@@ -44,6 +44,7 @@ import type { UpdateChannel } from '@/types/setting'
 import { SponsorsGroup } from './about/SponsorsGroup'
 import { SettingGroup } from './SettingGroup'
 import { SettingRow } from './SettingRow'
+import { useOptimisticSetting } from './useOptimisticSetting'
 
 const log = createLogger('about-section')
 
@@ -83,21 +84,35 @@ const AboutSection: React.FC = () => {
     isManualUpdate,
   } = useUpdate()
   const [appVersion, setAppVersion] = useState<string>('')
-  const [autoCheckUpdate, setAutoCheckUpdate] = useState(setting?.general.autoCheckUpdate ?? true)
-  const [autoDownloadUpdate, setAutoDownloadUpdate] = useState(
-    setting?.general.autoDownloadUpdate ?? false
+  const [autoCheckUpdate, setAutoCheckUpdate] = useOptimisticSetting(
+    setting?.general.autoCheckUpdate ?? true,
+    next => updateGeneralSetting({ autoCheckUpdate: next }),
+    { failureLog: 'Failed to change auto-check-update setting' }
   )
-  const [updateChannel, setUpdateChannel] = useState<UpdateChannel | null>(null)
+  const [autoDownloadUpdate, setAutoDownloadUpdate] = useOptimisticSetting(
+    setting?.general.autoDownloadUpdate ?? false,
+    next => updateGeneralSetting({ autoDownloadUpdate: next }),
+    { failureLog: 'Failed to change auto-download-update setting' }
+  )
+  // The channel persists like the others, then kicks off a background update
+  // check for the newly-selected channel (best-effort — a failed check does not
+  // revert the channel).
+  const [updateChannel, setUpdateChannel] = useOptimisticSetting<UpdateChannel | null>(
+    setting?.general.updateChannel ?? null,
+    async next => {
+      await updateGeneralSetting({ updateChannel: next })
+      checkForUpdates(next).catch(err => log.error({ err }, 'Failed to check for updates'))
+    },
+    { failureLog: 'Failed to change update channel' }
+  )
   const pendingUpdateChannelRef = useRef<UpdateChannel | null>(null)
   const [updateDialogOpen, setUpdateDialogOpen] = useState(false)
   const [packageManagerDialogOpen, setPackageManagerDialogOpen] = useState(false)
   const [alphaWarningOpen, setAlphaWarningOpen] = useState(false)
-  const [saving, setSaving] = useState(false)
   /** See `Sidebar.tsx` for the dismissal-reason ref pattern. */
   const dialogDismissReasonRef = useRef<DismissSource | null>(null)
   const isInstallingUpdate =
     downloadProgress.phase === 'downloading' || downloadProgress.phase === 'installing'
-  const isBusy = settingLoading || saving
   useShortcutLayer({
     layer: 'modal',
     scope: 'modal',
@@ -112,66 +127,6 @@ const AboutSection: React.FC = () => {
       .catch(err => log.error({ err }, 'Failed to get app version'))
   }, [])
 
-  useEffect(() => {
-    if (!setting?.general) return
-    setAutoCheckUpdate(setting.general.autoCheckUpdate)
-  }, [setting])
-
-  useEffect(() => {
-    if (!setting?.general) return
-    setAutoDownloadUpdate(setting.general.autoDownloadUpdate)
-  }, [setting])
-
-  useEffect(() => {
-    if (!setting?.general) return
-    setUpdateChannel(setting.general.updateChannel ?? null)
-  }, [setting])
-
-  const handleAutoCheckUpdateChange = async (checked: boolean) => {
-    const previous = autoCheckUpdate
-    try {
-      setSaving(true)
-      setAutoCheckUpdate(checked)
-      await updateGeneralSetting({ autoCheckUpdate: checked })
-    } catch (error) {
-      log.error({ err: error }, '更改自动检查更新状态失败')
-      setAutoCheckUpdate(previous)
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const handleAutoDownloadUpdateChange = async (checked: boolean) => {
-    const previous = autoDownloadUpdate
-    try {
-      setSaving(true)
-      setAutoDownloadUpdate(checked)
-      await updateGeneralSetting({ autoDownloadUpdate: checked })
-    } catch (error) {
-      log.error({ err: error }, '更改自动下载更新状态失败')
-      setAutoDownloadUpdate(previous)
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const applyUpdateChannelChange = async (newChannel: UpdateChannel | null) => {
-    if (newChannel === updateChannel) return
-
-    const previous = updateChannel
-    try {
-      setSaving(true)
-      setUpdateChannel(newChannel)
-      await updateGeneralSetting({ updateChannel: newChannel })
-      checkForUpdates(newChannel).catch(err => log.error({ err }, 'Failed to check for updates'))
-    } catch (error) {
-      log.error({ err: error }, '更改更新频道失败')
-      setUpdateChannel(previous)
-    } finally {
-      setSaving(false)
-    }
-  }
-
   const handleUpdateChannelChange = (value: string) => {
     const newChannel = normalizeUpdateChannel(value)
     if (newChannel === updateChannel) return
@@ -182,7 +137,7 @@ const AboutSection: React.FC = () => {
       return
     }
 
-    void applyUpdateChannelChange(newChannel)
+    setUpdateChannel(newChannel)
   }
 
   const handleAlphaWarningOpenChange = (open: boolean) => {
@@ -198,7 +153,7 @@ const AboutSection: React.FC = () => {
     pendingUpdateChannelRef.current = null
 
     if (channel !== 'alpha') return
-    void applyUpdateChannelChange(channel)
+    setUpdateChannel(channel)
   }
 
   const handleOpenUpdaterWindowDev = async () => {
@@ -310,7 +265,7 @@ const AboutSection: React.FC = () => {
           size="lg"
           className="w-44 transition-colors"
           onClick={handleCheckUpdate}
-          disabled={isBusy || isCheckingUpdate}
+          disabled={settingLoading || isCheckingUpdate}
           aria-busy={isCheckingUpdate}
         >
           <span className="inline-flex min-w-0 items-center justify-center gap-1.5">
@@ -340,11 +295,7 @@ const AboutSection: React.FC = () => {
           label={t('settings.sections.about.autoCheckUpdate.label')}
           description={t('settings.sections.about.autoCheckUpdate.description')}
         >
-          <Switch
-            checked={autoCheckUpdate}
-            onCheckedChange={handleAutoCheckUpdateChange}
-            disabled={isBusy}
-          />
+          <Switch checked={autoCheckUpdate} onCheckedChange={setAutoCheckUpdate} />
         </SettingRow>
 
         <SettingRow
@@ -357,8 +308,8 @@ const AboutSection: React.FC = () => {
         >
           <Switch
             checked={autoDownloadUpdate && autoCheckUpdate}
-            onCheckedChange={handleAutoDownloadUpdateChange}
-            disabled={isBusy || !autoCheckUpdate}
+            onCheckedChange={setAutoDownloadUpdate}
+            disabled={!autoCheckUpdate}
           />
         </SettingRow>
 
@@ -366,11 +317,7 @@ const AboutSection: React.FC = () => {
           label={t('settings.sections.about.updateChannel.label')}
           description={t('settings.sections.about.updateChannel.description')}
         >
-          <Select
-            value={updateChannel ?? 'auto'}
-            onValueChange={handleUpdateChannelChange}
-            disabled={isBusy}
-          >
+          <Select value={updateChannel ?? 'auto'} onValueChange={handleUpdateChannelChange}>
             <SelectTrigger className="w-40">
               <SelectValue />
             </SelectTrigger>
@@ -521,11 +468,10 @@ const AboutSection: React.FC = () => {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={saving}>
+            <AlertDialogCancel>
               {t('settings.sections.about.updateChannel.alphaWarning.cancel')}
             </AlertDialogCancel>
             <AlertDialogAction
-              disabled={saving}
               onClick={event => {
                 event.preventDefault()
                 handleConfirmAlphaChannel()

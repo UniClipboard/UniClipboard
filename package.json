@@ -67,6 +67,7 @@
     "@tauri-apps/plugin-notification": "^2.3.3",
     "@tauri-apps/plugin-opener": "^2.5.4",
     "@types/culori": "^4.0.1",
+    "cuelume": "^0.1.0",
     "culori": "^4.0.2",
     "framer-motion": "^12.38.0",
     "i18next": "^26.2.0",

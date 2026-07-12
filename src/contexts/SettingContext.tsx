@@ -53,8 +53,14 @@ export const SettingProvider: React.FC<SettingProviderProps> = ({ children }) =>
   // Phase 95: 返回 { restartRequired } 透传 daemon PUT /settings 响应；
   // 现有调用方 await 但不读返回值，向后兼容（Promise<X> 可被忽略）。
   const saveSetting = async (newSetting: Settings): Promise<{ restartRequired: boolean }> => {
+    // Per-section saves must NOT flip the global `loading` flag. Every settings
+    // section subscribes to this context and ORs `loading` into its own
+    // `disabled` state (`isBusy = loading || saving`), so toggling `loading`
+    // here would disable/dim every sibling section's controls at once — a
+    // full-panel flash on each save. `loading` is reserved for the initial
+    // load / reload in `loadSetting`; an in-flight per-section save is tracked
+    // by that section's local `saving` flag instead.
     try {
-      setLoading(true)
       const result = await updateSettings(newSetting)
       setSetting(newSetting)
       setError(null)
@@ -68,8 +74,6 @@ export const SettingProvider: React.FC<SettingProviderProps> = ({ children }) =>
       log.error({ err }, '保存设置失败')
       setError(`保存设置失败: ${err}`)
       throw err // 重新抛出错误，让调用者可以处理
-    } finally {
-      setLoading(false)
     }
   }
 
@@ -103,8 +107,9 @@ export const SettingProvider: React.FC<SettingProviderProps> = ({ children }) =>
     if (!setting) {
       throw new Error('No settings loaded')
     }
+    // See `saveSetting`: `loading` is not flipped for per-section saves. The
+    // Startup section already tracks this mutation via its local `saving`.
     try {
-      setLoading(true)
       await persistAutostart(enabled)
       const updatedSetting: Settings = {
         ...setting,
@@ -123,8 +128,6 @@ export const SettingProvider: React.FC<SettingProviderProps> = ({ children }) =>
       log.error({ err }, '更改自启动状态失败')
       setError(`保存设置失败: ${err}`)
       throw err
-    } finally {
-      setLoading(false)
     }
   }
 
@@ -223,8 +226,9 @@ export const SettingProvider: React.FC<SettingProviderProps> = ({ children }) =>
     if (enabled === undefined && position === undefined) {
       return { restartRequired: false }
     }
+    // See `saveSetting`: `loading` is not flipped for per-section saves. The
+    // Quick Panel section already tracks this mutation via its local `saving`.
     try {
-      setLoading(true)
       if (enabled !== undefined) {
         await persistQuickPanelEnabled(enabled)
       }
@@ -251,8 +255,6 @@ export const SettingProvider: React.FC<SettingProviderProps> = ({ children }) =>
       log.error({ err }, 'Failed to update quick panel setting')
       setError(`保存设置失败: ${err}`)
       throw err
-    } finally {
-      setLoading(false)
     }
   }
 
@@ -262,8 +264,9 @@ export const SettingProvider: React.FC<SettingProviderProps> = ({ children }) =>
     if (!setting) {
       throw new Error('No settings loaded')
     }
+    // See `saveSetting`: `loading` is not flipped for per-section saves. The
+    // shortcut editors manage their own in-flight state locally.
     try {
-      setLoading(true)
       const keyboardShortcuts = await persistKeyboardShortcuts(
         setting.keyboardShortcuts ?? {},
         overrides
@@ -283,8 +286,6 @@ export const SettingProvider: React.FC<SettingProviderProps> = ({ children }) =>
       log.error({ err }, 'Failed to update keyboard shortcuts')
       setError(`保存设置失败: ${err}`)
       throw err
-    } finally {
-      setLoading(false)
     }
   }
 

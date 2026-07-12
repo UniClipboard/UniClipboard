@@ -140,6 +140,11 @@
           "label": "UI language",
           "description": "Takes effect immediately"
         },
+        "sound": {
+          "title": "Sound",
+          "label": "Interaction sound feedback",
+          "description": "Play a light cue when toggling switches"
+        },
         "telemetry": {
           "title": "Privacy",
           "diagnostics": {

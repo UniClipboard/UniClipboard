@@ -1,6 +1,7 @@
 import { Check, Copy } from 'lucide-react'
 import React from 'react'
 import { useTranslation } from 'react-i18next'
+import { Button } from '@/components/ui'
 import { useCopyToClipboard } from '@/hooks/useCopyToClipboard'
 
 /**
@@ -14,15 +15,17 @@ const CopyIconButton: React.FC<{ value: string; label?: string }> = ({ value, la
     ? t('devices.panel.profile.copied')
     : (label ?? t('devices.panel.profile.copy'))
   return (
-    <button
+    <Button
       type="button"
+      variant="ghost"
+      size="icon-xs"
       aria-label={title}
       title={title}
       onClick={() => void copy(value)}
-      className="rounded-md p-1 text-muted-foreground/60 transition-colors hover:bg-muted hover:text-foreground"
+      className="size-5 text-muted-foreground/60"
     >
       {copied ? <Check className="size-3 text-success" /> : <Copy className="size-3" />}
-    </button>
+    </Button>
   )
 }
 

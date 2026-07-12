@@ -5,6 +5,7 @@ import { Provider } from 'react-redux'
 import './i18n'
 import { getDeviceMeta } from '@/api/runtime'
 import { connectDaemonWs, registerDaemonShutdownListener } from '@/lib/daemon-ws-bootstrap'
+import { initializeUiSound } from '@/lib/ui-sound'
 import { initializeWindowUi } from '@/lib/window-ui'
 import { applyDeviceMetaToSentry, initSentry, Sentry } from '@/observability/sentry'
 import App from './App'
@@ -63,6 +64,7 @@ if (typeof window !== 'undefined') {
 }
 
 initializeWindowUi()
+initializeUiSound()
 
 // 初始化日志系统：将后端日志输出到浏览器 DevTools
 const initLogging = async () => {

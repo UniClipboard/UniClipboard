@@ -17,6 +17,7 @@ import { RestartBanner } from './RestartBanner'
 import { SettingGroup } from './SettingGroup'
 import { SettingRow } from './SettingRow'
 import { ShortcutRow } from './ShortcutRow'
+import { useOptimisticSetting } from './useOptimisticSetting'
 
 const log = createLogger('quick-panel-section')
 
@@ -38,7 +39,7 @@ const QUICK_PANEL_SHORTCUT_ID = 'global.toggleQuickPanel'
  */
 export default function QuickPanelSection() {
   const { t } = useTranslation()
-  const { setting, loading, updateQuickPanelSetting, updateKeyboardShortcuts } = useSetting()
+  const { setting, updateQuickPanelSetting, updateKeyboardShortcuts } = useSetting()
 
   // setting?.keyboardShortcuts 可能在 setting 重新加载时被赋成全新对象，但
   // 内容若未变（同一份持久 JSON re-parse）useCallback 仍会被无谓重建，并把
@@ -50,46 +51,32 @@ export default function QuickPanelSection() {
     []
   )
 
-  const enabled = setting?.quickPanel?.enabled ?? false
-  const position: QuickPanelPosition = setting?.quickPanel?.position ?? 'center'
-  const [saving, setSaving] = useState(false)
-  const isBusy = loading || saving
-
   // 用户在本次会话里从开启切到关闭后,显示"重启以彻底释放资源"提示。
   // 不持久化:重启 GUI 后这条 hint 自然消失,因为启动期 pre_create 已经
   // 因 enabled=false 跳过,资源也已释放。再次开启时清掉提示。
   const [disabledThisSession, setDisabledThisSession] = useState(false)
   const [restartLoading, setRestartLoading] = useState(false)
   const [restartError, setRestartError] = useState<string | null>(null)
-  const restartHintVisible = disabledThisSession && !enabled
 
-  const handleEnabledChange = async (next: boolean) => {
-    try {
-      setSaving(true)
+  // Optimistic like every other settings toggle: the switch flips immediately
+  // and persists in the background, so it no longer waits a daemon round-trip
+  // or dims the group while saving. The session-local "was disabled" hint and
+  // the stale-error reset run only after a successful persist.
+  const [enabled, setEnabled] = useOptimisticSetting(
+    setting?.quickPanel?.enabled ?? false,
+    async (next: boolean) => {
       await updateQuickPanelSetting({ enabled: next })
       setDisabledThisSession(prev => (next ? false : prev || true))
-      if (next) {
-        // 重新开启 → 隐藏窗口已复用,旧的 restart 错误也作废。
-        setRestartError(null)
-      }
-    } catch (err) {
-      log.error({ err }, '更改快捷面板开关失败')
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const handlePositionChange = async (next: QuickPanelPosition) => {
-    if (next === position) return
-    try {
-      setSaving(true)
-      await updateQuickPanelSetting({ position: next })
-    } catch (err) {
-      log.error({ err }, '更改快捷面板展示位置失败')
-    } finally {
-      setSaving(false)
-    }
-  }
+      if (next) setRestartError(null)
+    },
+    { failureLog: 'Failed to toggle quick panel' }
+  )
+  const [position, setPosition] = useOptimisticSetting<QuickPanelPosition>(
+    setting?.quickPanel?.position ?? 'center',
+    next => updateQuickPanelSetting({ position: next }),
+    { failureLog: 'Failed to change quick panel position' }
+  )
+  const restartHintVisible = disabledThisSession && !enabled
 
   const handleRestart = async () => {
     setRestartLoading(true)
@@ -173,7 +160,7 @@ export default function QuickPanelSection() {
           label={t('settings.sections.quickPanel.enable.label')}
           description={t('settings.sections.quickPanel.enable.description')}
         >
-          <Switch checked={enabled} onCheckedChange={handleEnabledChange} disabled={isBusy} />
+          <Switch checked={enabled} onCheckedChange={setEnabled} />
         </SettingRow>
         <SettingRow
           label={t('settings.sections.quickPanel.position.label')}
@@ -181,8 +168,8 @@ export default function QuickPanelSection() {
         >
           <Select
             value={position}
-            onValueChange={value => void handlePositionChange(value as QuickPanelPosition)}
-            disabled={isBusy || !enabled}
+            onValueChange={value => setPosition(value as QuickPanelPosition)}
+            disabled={!enabled}
           >
             <SelectTrigger className="h-7 w-[160px] text-xs">
               <SelectValue />

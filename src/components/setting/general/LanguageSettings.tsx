@@ -1,11 +1,10 @@
-import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui'
 import { useSetting } from '@/hooks/useSetting'
 import { SUPPORTED_LANGUAGES, type SupportedLanguage, getInitialLanguage } from '@/i18n'
 import { SettingGroup } from '../SettingGroup'
 import { SettingRow } from '../SettingRow'
-import { useSavingState } from './useSavingState'
+import { useOptimisticSetting } from '../useOptimisticSetting'
 
 /** Validate a backend language value, falling back to the detected default. */
 function resolveLanguage(raw: string | null | undefined): SupportedLanguage {
@@ -15,24 +14,13 @@ function resolveLanguage(raw: string | null | undefined): SupportedLanguage {
 
 export function LanguageSettings() {
   const { t } = useTranslation()
-  const { setting, loading, updateGeneralSetting } = useSetting()
-  const { saving, runSave } = useSavingState()
-  const [language, setLanguage] = useState<SupportedLanguage>(() =>
-    resolveLanguage(setting?.general.language)
+  const { setting, updateGeneralSetting } = useSetting()
+
+  const [language, setLanguage] = useOptimisticSetting<SupportedLanguage>(
+    resolveLanguage(setting?.general.language),
+    next => updateGeneralSetting({ language: next }),
+    { failureLog: 'Failed to change language setting' }
   )
-  const isBusy = loading || saving
-
-  useEffect(() => {
-    if (!setting?.general) return
-    setLanguage(resolveLanguage(setting.general.language))
-  }, [setting])
-
-  const handleLanguageChange = (next: string) =>
-    runSave('Failed to change language setting', async () => {
-      const normalized = (next as SupportedLanguage) || getInitialLanguage()
-      await updateGeneralSetting({ language: normalized })
-      setLanguage(normalized)
-    })
 
   return (
     <SettingGroup title={t('settings.sections.general.language.title')}>
@@ -41,7 +29,10 @@ export function LanguageSettings() {
         description={t('settings.sections.general.language.description')}
       >
         <div className="w-40">
-          <Select value={language} onValueChange={handleLanguageChange} disabled={isBusy}>
+          <Select
+            value={language}
+            onValueChange={next => setLanguage((next as SupportedLanguage) || getInitialLanguage())}
+          >
             <SelectTrigger className="w-full">
               <SelectValue />
             </SelectTrigger>

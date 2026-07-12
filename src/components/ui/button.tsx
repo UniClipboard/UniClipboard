@@ -41,6 +41,7 @@ const buttonVariants = cva(
 )
 
 function Button({
+  ref,
   className,
   variant = 'default',
   size = 'default',
@@ -54,6 +55,7 @@ function Button({
 
   return (
     <Comp
+      ref={ref}
       data-slot="button"
       data-variant={variant}
       data-size={size}

@@ -93,8 +93,10 @@ struct InfraLayer {
     /// 投递结果仓储,由 `DispatchClipboardEntryUseCase` 写、由
     /// `GetEntryDeliveryViewUseCase` 读。
     entry_delivery_repo: Arc<dyn uc_core::ports::EntryDeliveryRepositoryPort>,
-    /// File-class entry line-level manifest, built and persisted by capture.
-    entry_file_set_repo: Arc<dyn uc_core::ports::clipboard::EntryFileSetRepositoryPort>,
+    /// Shared Diesel executor. Exposed so repos that also need a post-`platform`
+    /// dependency (e.g. the entry-file-set repo's per-session path cipher) can be
+    /// constructed after space access is wired, over the same connection pool.
+    db_executor: Arc<DieselSqliteExecutor>,
     representation_repo: Arc<dyn ClipboardRepresentationStore>,
     selection_repo: Arc<dyn ClipboardSelectionRepositoryPort>,
 
@@ -568,10 +570,10 @@ fn create_infra_layer(
         uc_infra::db::repositories::DieselEntryDeliveryRepository::new(Arc::clone(&db_executor)),
     );
 
-    let entry_file_set_repo: Arc<dyn uc_core::ports::clipboard::EntryFileSetRepositoryPort> =
-        Arc::new(
-            uc_infra::db::repositories::DieselEntryFileSetRepository::new(Arc::clone(&db_executor)),
-        );
+    // NOTE: the entry-file-set repo seals its path columns with a per-session
+    // subkey, which needs `current_profile` + space access — both wired after
+    // `platform`. It is therefore constructed at the orchestrator level once
+    // those exist (mirroring the search index), over `infra.db_executor`.
 
     let member_repo_impl =
         DieselSpaceMemberRepository::new(Arc::clone(&db_executor), SpaceMemberRowMapper);
@@ -725,7 +727,7 @@ fn create_infra_layer(
         clipboard_event_repo,
         clipboard_event_reader_repo,
         entry_delivery_repo,
-        entry_file_set_repo,
+        db_executor,
         representation_repo,
         selection_repo,
         active_clipboard_register,
@@ -828,6 +830,19 @@ pub fn wire_dependencies(
         &platform.current_profile,
         &platform.session,
     );
+
+    // File-class entry line-level manifest. Its path columns are sealed with a
+    // per-session subkey derived from space access, so it is constructed here
+    // (after space access + profile exist) rather than in `create_infra_layer`,
+    // reusing the shared executor.
+    let entry_file_set_repo: Arc<dyn uc_core::ports::clipboard::EntryFileSetRepositoryPort> =
+        Arc::new(
+            uc_infra::db::repositories::DieselEntryFileSetRepository::new(
+                infra.db_executor.clone(),
+                space_access_ports.derive_subkey.clone(),
+                platform.current_profile.clone(),
+            ),
+        );
 
     // Wire the search bundle (Phase 92). Search only derives a subkey.
     let SearchAssembly {
@@ -964,7 +979,7 @@ pub fn wire_dependencies(
             blob_store: platform.blob_store,
             blob_writer: platform.blob_writer,
             blob_content_ingest: platform.blob_content_ingest,
-            entry_file_set_repo: infra.entry_file_set_repo,
+            entry_file_set_repo,
             thumbnail_repo: infra.thumbnail_repo,
             thumbnail_generator: infra.thumbnail_generator,
             file_transfer: infra.file_transfer,

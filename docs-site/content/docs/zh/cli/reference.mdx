@@ -212,6 +212,7 @@ uniclip upgrade ack        # 把游标推进到当前构建版本
   CLI 中 **唯一** 写系统剪贴板的入口（仅限 `probe restore`），仅供开发与 E2E 调试。
 - `uniclip dev seed-clipboard --text <TEXT>` —— switch-space 数据完整性测试用的种子写入。
 - `uniclip dev dump-clipboard --limit <N>` —— 调试用，打印解密后的历史。
+- `uniclip dev capture-files --path <PATH>` —— 通过真实的本地捕获流程捕获一个或多个文件/目录，并打印落盘的文件集清单。可重复传入 `--path` 以混合选择多个路径。`--max-members` 和 `--max-bytes` 只临时覆盖本次捕获的文件集上限，不会写回 profile 的持久化设置。
 - `uniclip dev pairing ...` —— 配对邀请的诊断子命令组：`addrs` 列出经过产品过滤后的候选地址，`issue --addr <IP>` 把邀请约束在某一个本机 IP 上。daemon 跑着时会被拒绝；仅供开发与排查 [配对在虚拟网卡环境下打不通](../help/troubleshooting#配对失败) 这类问题使用。
 - `uniclipd` —— 后台 daemon，现在是**独立的二进制**（不再是 `uniclip daemon` 子命令）。`uniclip start` 和桌面应用会自动拉起它；你会在 `ps` 中看到它，但不要直接运行。
 

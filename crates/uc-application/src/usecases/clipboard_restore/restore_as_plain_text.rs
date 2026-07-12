@@ -263,6 +263,7 @@ impl RestoreClipboardEntryAsPlainTextUseCase {
                 ts_ms: chrono::Utc::now().timestamp_millis(),
                 representations: vec![observed],
                 file_content_digests: Vec::new(),
+                file_set_v1_component: None,
             });
         }
 
@@ -397,6 +398,7 @@ impl RestoreClipboardEntryAsPlainTextUseCase {
                         ts_ms: chrono::Utc::now().timestamp_millis(),
                         representations: vec![observed],
                         file_content_digests: Vec::new(),
+                        file_set_v1_component: None,
                     }));
                 }
                 Err(err) => {

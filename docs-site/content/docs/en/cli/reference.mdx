@@ -248,6 +248,12 @@ The following commands exist but are deliberately hidden from
   switch-space data-integrity tests.
 - `uniclip dev dump-clipboard --limit <N>` — debug printing of decrypted
   history.
+- `uniclip dev capture-files --path <PATH>` — captures one or more files
+  or directories through the real local-capture pipeline and prints the
+  persisted file-set manifest. Repeat `--path` for mixed selections.
+  `--max-members` and `--max-bytes` temporarily override the file-set
+  caps for this capture only; the override is not written back to the
+  profile's settings.
 - `uniclip dev pairing ...` — pairing-invitation diagnostics: `addrs`
   lists candidate addresses after the product filter has run, and
   `issue --addr <IP>` issues an invitation constrained to one local

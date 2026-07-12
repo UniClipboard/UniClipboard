@@ -28,11 +28,13 @@ use uc_observability::analytics::{
     AnalyticsPort, CaptureOrigin, Event, PayloadSizeBucket, PayloadType,
 };
 use uc_observability::{stages, FlowId};
+use unicode_normalization::UnicodeNormalization;
 
 use uc_core::blob::ports::BlobContentIngestPort;
 use uc_core::clipboard::{
     is_file_mime_or_format, ClipboardPayloadSource, EntryFileSet, EntryFileSetExcludeReason,
-    EntryFileSetLine, EntryFileSetLineKind, PersistedClipboardRepresentation,
+    EntryFileSetLine, EntryFileSetLineKind, FileSetMemberKind, FileSetMemberLocation,
+    PersistedClipboardRepresentation,
 };
 
 use crate::facade::clipboard_outbound::{parse_uri_list_line, UriListLineKind};
@@ -274,12 +276,16 @@ impl CaptureClipboardUseCase {
             };
             // Build this capture's file-set manifest (line-level: kept for
             // persistence below) and use it to populate `file_content_digests`
-            // so `snapshot_hash()` is based on device-independent file
-            // *content* rather than the text/uri-list path text (device-
-            // specific). Skipped when already populated (RemotePush: the
-            // inbound materializer fills these from the wire before this
-            // capture runs; it does not yet build a manifest — out of this
-            // phase's scope).
+            // / `file_set_v1_component` so `snapshot_hash()` is based on
+            // device-independent file *content* rather than the text/uri-list
+            // path text (device-specific). Skipped when either is already
+            // populated (RemotePush: the inbound materializer fills these
+            // from the wire before this capture runs; it does not yet build
+            // a manifest — out of this phase's scope). No current snapshot
+            // constructor pre-populates `file_set_v1_component`, so that half
+            // of the guard is a no-op today; it exists for parity with
+            // `file_content_digests` and to cover a future wire path that
+            // carries the component directly.
             let mut file_set: Option<EntryFileSet> = None;
             // Only file-class captures build a manifest, so keep the text/image
             // hot path off the settings port (see the `settings` field doc).
@@ -288,27 +294,35 @@ impl CaptureClipboardUseCase {
                 matches!(rep.source(), ClipboardPayloadSource::LocalFile { .. })
                     || is_file_mime_or_format(rep.mime.as_ref(), &rep.format_id)
             });
-            if snapshot.file_content_digests.is_empty() && is_file_class {
+            if snapshot.file_content_digests.is_empty()
+                && snapshot.file_set_v1_component.is_none()
+                && is_file_class
+            {
                 // Read the file-set caps for this capture. A load failure must
-                // not drop the capture — fall back to no cap (behaviour before
-                // the gate existed) so a transient settings error can't silently
-                // stop file sync.
+                // not drop the capture, but it must stay bounded — fall back to
+                // the conservative ADR-010 default ceiling rather than no cap,
+                // so a transient settings error can't let a directory capture
+                // traverse and hash an entire tree unbounded.
                 let caps = match self.settings.load().await {
                     Ok(s) => FileSetCaps {
                         max_total_bytes: s.file_sync.max_file_set_total_bytes,
                         max_member_count: s.file_sync.max_file_set_member_count,
                     },
                     Err(err) => {
-                        warn!(error = %err, "capture: settings load failed; file-set caps disabled for this capture");
-                        FileSetCaps::unbounded()
+                        warn!(error = %err, "capture: settings load failed; using fallback file-set caps for this capture");
+                        FileSetCaps::fallback()
                     }
                 };
                 if let Some(built) =
                     build_entry_file_set(&snapshot, self.blob_ingest.as_ref(), caps).await
                 {
-                    let digests = built.content_digest_contribution();
-                    if !digests.is_empty() {
-                        snapshot.file_content_digests = digests;
+                    if let Some(component) = built.file_set_v1_component() {
+                        snapshot.file_set_v1_component = Some(component);
+                    } else {
+                        let digests = built.content_digest_contribution();
+                        if !digests.is_empty() {
+                            snapshot.file_content_digests = digests;
+                        }
                     }
                     file_set = Some(built);
                 }
@@ -775,8 +789,23 @@ struct FileSetCaps {
 }
 
 impl FileSetCaps {
-    /// No cap on either dimension — used when the settings load fails so a
-    /// transient error never silently stops file sync.
+    /// Conservative fallback caps for when the settings load fails: a transient
+    /// error must not silently stop file sync, but it also must not disable the
+    /// caps entirely — with directory capture, unbounded caps would let one
+    /// settings hiccup traverse and hash an entire directory tree. Mirror the
+    /// ADR-010 defaults (`uc-core` `Settings::default`: 1 GiB / 2000 members)
+    /// so the fallback stays bounded without dropping the capture.
+    fn fallback() -> Self {
+        Self {
+            max_total_bytes: 1024 * 1024 * 1024, // 1 GiB
+            max_member_count: 2000,
+        }
+    }
+
+    /// No cap on either dimension. Test-only: exercises the manifest builder
+    /// without cap interference. Production never disables the caps — a
+    /// settings-load failure uses [`Self::fallback`], not this.
+    #[cfg(test)]
     fn unbounded() -> Self {
         Self {
             max_total_bytes: 0,
@@ -804,21 +833,16 @@ impl FileSetCaps {
 ///
 /// # Whole-set caps (ADR-010)
 ///
-/// Before hashing, a millisecond-scale metadata pre-check sums member sizes
-/// and counts members (`metadata()` only — no content read). If either
-/// `caps` dimension is exceeded, every file line is marked
+/// Before hashing, a metadata-only traversal expands directory leaves while
+/// summing member sizes and counts. If either `caps` dimension is exceeded,
+/// traversal stops immediately and every discovered file line is marked
 /// `Excluded { SizeCapExceeded }` and hashing is skipped entirely: an
 /// over-budget set's identity falls back to path text anyway, so streaming
-/// gigabytes just to discard the digests would be pure waste (and, once
-/// directory capture lands, unbounded). The set is still admitted to local
-/// history; only sync is suppressed (the outbound path skips any manifest with
-/// excluded lines). The check is all-or-nothing to match
-/// [`EntryFileSet::content_digest_contribution`]. `LocalFile` reps carry their
-/// size, so their byte cap needs no filesystem access; inline uri-list members
-/// are `stat`ed. If an unmeasurable member is reached while still under budget
-/// the verdict stays `false` and the per-line hashing below marks it
-/// `IngestFailed`, which already forces the same path-text fallback, so the
-/// size verdict is moot.
+/// gigabytes just to discard the digests would be pure waste. The set is still
+/// admitted to local history; only sync is suppressed (the outbound path skips
+/// any manifest with excluded lines). The check is all-or-nothing to match
+/// [`EntryFileSet::content_digest_contribution`]. Symlinks and non-regular
+/// special files stop the same traversal without being dereferenced.
 ///
 /// Each file line's content hash comes from the fallible
 /// [`BlobContentIngestPort::hash_path`] (never a rep's `content_hash()`,
@@ -840,34 +864,39 @@ async fn build_entry_file_set(
     blob_ingest: &dyn BlobContentIngestPort,
     caps: FileSetCaps,
 ) -> Option<EntryFileSet> {
-    // LocalFile reps already carry the member size (captured with the rep), so
-    // the byte-cap pre-check can sum sizes without any `metadata()` round-trip.
-    let local_file_members: Vec<CapMember> = snapshot
+    let local_file_members: Vec<TopLevelFileMember> = snapshot
         .representations
         .iter()
-        .filter_map(|r| match r.source() {
-            ClipboardPayloadSource::LocalFile { path, size_bytes } => Some(CapMember {
-                path: path.clone(),
-                known_size: Some(*size_bytes),
-            }),
+        .filter_map(|rep| match rep.source() {
+            ClipboardPayloadSource::LocalFile { path, size_bytes } => {
+                Some((path.clone(), *size_bytes))
+            }
             ClipboardPayloadSource::Inline(_) => None,
+        })
+        .enumerate()
+        .map(|(idx, (path, size_bytes))| TopLevelFileMember {
+            line_index: idx as i64,
+            root_index: idx as i64,
+            original_text: path.display().to_string(),
+            root_name: normalized_basename(&path),
+            path,
+            known_size: Some(size_bytes),
         })
         .collect();
 
     if !local_file_members.is_empty() {
-        let over_cap = file_set_exceeds_caps(&local_file_members, caps).await;
-        let mut lines = Vec::with_capacity(local_file_members.len());
-        for (idx, member) in local_file_members.iter().enumerate() {
-            let kind = classify_file_path(&member.path, blob_ingest, over_cap).await;
-            lines.push(EntryFileSetLine {
-                line_index: idx as i64,
-                original_text: member.path.display().to_string(),
-                kind,
-            });
-        }
+        let top_level_count = local_file_members.len() as i64;
+        let lines = build_file_member_lines(
+            local_file_members,
+            Vec::new(),
+            top_level_count,
+            blob_ingest,
+            caps,
+        )
+        .await;
         debug!(
             line_count = lines.len(),
-            over_cap, "capture: built file-set manifest from LocalFile reps"
+            "capture: built file-set manifest from LocalFile reps"
         );
         return Some(EntryFileSet { lines });
     }
@@ -881,86 +910,417 @@ async fn build_entry_file_set(
             .map(str::to_string)
     })?;
 
-    let parsed: Vec<UriListLineKind> = uri_list_text.lines().map(parse_uri_list_line).collect();
-    // Inline uri-list only yields path strings, so sizes are unknown here and
-    // the byte-cap pre-check must `stat` each member.
-    let file_members: Vec<CapMember> = parsed
-        .iter()
-        .filter_map(|kind| match kind {
-            UriListLineKind::File(path) => Some(CapMember {
-                path: path.clone(),
+    let mut file_members = Vec::new();
+    let mut non_file_lines = Vec::new();
+    let mut root_index = 0i64;
+    let top_level_count = uri_list_text.lines().count() as i64;
+    for (idx, raw_line) in uri_list_text.lines().enumerate() {
+        match parse_uri_list_line(raw_line) {
+            UriListLineKind::File(path) => file_members.push(TopLevelFileMember {
+                line_index: idx as i64,
+                root_index: {
+                    let current = root_index;
+                    root_index = root_index.saturating_add(1);
+                    current
+                },
+                original_text: raw_line.to_string(),
+                root_name: normalized_basename(&path),
+                path,
                 known_size: None,
             }),
-            UriListLineKind::NonFile => None,
-        })
-        .collect();
-    let over_cap = file_set_exceeds_caps(&file_members, caps).await;
-
-    let mut lines = Vec::with_capacity(parsed.len());
-    for (idx, (raw_line, parsed_kind)) in uri_list_text.lines().zip(parsed).enumerate() {
-        let kind = match parsed_kind {
-            UriListLineKind::NonFile => EntryFileSetLineKind::NonFile,
-            UriListLineKind::File(path) => classify_file_path(&path, blob_ingest, over_cap).await,
-        };
-        lines.push(EntryFileSetLine {
-            line_index: idx as i64,
-            original_text: raw_line.to_string(),
-            kind,
-        });
+            UriListLineKind::NonFile => non_file_lines.push(EntryFileSetLine {
+                line_index: idx as i64,
+                original_text: raw_line.to_string(),
+                member_location: None,
+                kind: EntryFileSetLineKind::NonFile,
+            }),
+        }
     }
+    let lines = build_file_member_lines(
+        file_members,
+        non_file_lines,
+        top_level_count,
+        blob_ingest,
+        caps,
+    )
+    .await;
     debug!(
         line_count = lines.len(),
-        over_cap, "capture: built file-set manifest from inline uri-list text"
+        "capture: built file-set manifest from inline uri-list text"
     );
     Some(EntryFileSet { lines })
 }
 
-/// A file-set member for the whole-set cap pre-check.
-struct CapMember {
+struct TopLevelFileMember {
+    line_index: i64,
+    root_index: i64,
+    original_text: String,
+    root_name: String,
     path: std::path::PathBuf,
-    /// Size already known from the capture rep (`LocalFile` carries it), so the
-    /// byte cap can be evaluated without a `metadata()` round-trip. `None` means
-    /// "measure it" — inline uri-list only gives a path string.
     known_size: Option<u64>,
 }
 
-/// Millisecond-scale pre-check: does this file set exceed either whole-set
-/// cap? Reads `metadata()` only for members whose size isn't already known
-/// (never content); the member-count cap short-circuits before any filesystem
-/// access.
-///
-/// The byte verdict flips to `true` as soon as the running total exceeds the
-/// cap, so a member that can't be measured *after* the cap is already blown
-/// doesn't change the outcome. It only aborts to `false` when an unmeasurable
-/// member (missing / directory / stat error) is reached while still under
-/// budget — then the caller's per-line hashing marks that member
-/// `IngestFailed`, which forces the same path-text fallback, so the size
-/// verdict is moot anyway.
-async fn file_set_exceeds_caps(members: &[CapMember], caps: FileSetCaps) -> bool {
-    if caps.max_member_count > 0 && members.len() as u64 > caps.max_member_count {
-        return true;
-    }
-    if caps.max_total_bytes == 0 {
-        return false;
-    }
-    let mut total: u64 = 0;
-    for member in members {
-        let size = match member.known_size {
-            Some(size) => size,
-            None => match tokio::fs::metadata(&member.path).await {
-                Ok(meta) if meta.is_file() => meta.len(),
-                // Non-regular or unreadable member, still under budget: can't
-                // confirm over-budget. Per-line hashing will mark it
-                // IngestFailed → path-text identity.
-                _ => return false,
-            },
-        };
-        total = total.saturating_add(size);
-        if total > caps.max_total_bytes {
-            return true;
+struct PendingFileSetLine {
+    line_index: i64,
+    original_text: String,
+    member_location: FileSetMemberLocation,
+    file_path: Option<std::path::PathBuf>,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum ExpansionFailure {
+    SizeCapExceeded,
+    UnsupportedMember,
+    IngestFailed,
+}
+
+impl ExpansionFailure {
+    fn exclude_reason(self) -> EntryFileSetExcludeReason {
+        match self {
+            Self::SizeCapExceeded => EntryFileSetExcludeReason::SizeCapExceeded,
+            Self::UnsupportedMember => EntryFileSetExcludeReason::UnsupportedMember,
+            Self::IngestFailed => EntryFileSetExcludeReason::IngestFailed,
         }
     }
-    false
+}
+
+#[derive(Default)]
+struct TraversalBudget {
+    member_count: u64,
+    total_bytes: u64,
+}
+
+impl TraversalBudget {
+    fn admit(&mut self, size_bytes: u64, caps: FileSetCaps) -> bool {
+        self.member_count = self.member_count.saturating_add(1);
+        self.total_bytes = self.total_bytes.saturating_add(size_bytes);
+        (caps.max_member_count > 0 && self.member_count > caps.max_member_count)
+            || (caps.max_total_bytes > 0 && self.total_bytes > caps.max_total_bytes)
+    }
+}
+
+async fn build_file_member_lines(
+    roots: Vec<TopLevelFileMember>,
+    mut lines: Vec<EntryFileSetLine>,
+    top_level_count: i64,
+    blob_ingest: &dyn BlobContentIngestPort,
+    caps: FileSetCaps,
+) -> Vec<EntryFileSetLine> {
+    if caps.max_member_count > 0 && roots.len() as u64 > caps.max_member_count {
+        lines.extend(
+            roots
+                .into_iter()
+                .map(|root| excluded_root_line(root, EntryFileSetExcludeReason::SizeCapExceeded)),
+        );
+        lines.sort_by_key(|line| line.line_index);
+        return lines;
+    }
+
+    let mut budget = TraversalBudget::default();
+    let mut pending = Vec::new();
+    let mut next_directory_line = top_level_count;
+    let mut failure = None;
+
+    let mut roots = roots.into_iter();
+    while let Some(root) = roots.next() {
+        let metadata = tokio::fs::symlink_metadata(&root.path).await;
+        match metadata {
+            Ok(metadata) if metadata.file_type().is_symlink() => {
+                pending.push(pending_root_marker(root, next_directory_line));
+                failure = Some(ExpansionFailure::UnsupportedMember);
+                break;
+            }
+            Ok(metadata) if metadata.is_dir() => {
+                match expand_directory(&root, &mut next_directory_line, &mut budget, caps).await {
+                    Ok(mut members) => pending.append(&mut members),
+                    Err((reason, marker)) => {
+                        pending.push(marker);
+                        failure = Some(reason);
+                        break;
+                    }
+                }
+            }
+            Ok(metadata) if metadata.is_file() => {
+                let size = root.known_size.unwrap_or_else(|| metadata.len());
+                if budget.admit(size, caps) {
+                    pending.push(pending_flat_file(root, metadata));
+                    failure = Some(ExpansionFailure::SizeCapExceeded);
+                    break;
+                }
+                pending.push(pending_flat_file(root, metadata));
+            }
+            Ok(_) => {
+                pending.push(pending_root_marker(root, next_directory_line));
+                failure = Some(ExpansionFailure::UnsupportedMember);
+                break;
+            }
+            Err(_) => {
+                let size = root.known_size.unwrap_or(0);
+                if budget.admit(size, caps) {
+                    pending.push(pending_missing_file(root));
+                    failure = Some(ExpansionFailure::SizeCapExceeded);
+                    break;
+                }
+                pending.push(pending_missing_file(root));
+            }
+        }
+    }
+
+    if let Some(failure) = failure {
+        let reason = failure.exclude_reason();
+        pending.extend(roots.map(|root| PendingFileSetLine {
+            line_index: root.line_index,
+            original_text: root.original_text,
+            member_location: FileSetMemberLocation {
+                root_index: root.root_index,
+                root_name: root.root_name,
+                relative_path: normalized_basename(&root.path),
+                kind: FileSetMemberKind::File,
+            },
+            file_path: None,
+        }));
+        warn!(
+            reason = ?reason,
+            "capture: file-set traversal stopped; the whole set is ineligible"
+        );
+        lines.extend(pending.into_iter().map(|line| EntryFileSetLine {
+            line_index: line.line_index,
+            original_text: line.original_text,
+            member_location: Some(line.member_location),
+            kind: EntryFileSetLineKind::Excluded { reason },
+        }));
+    } else {
+        for line in pending {
+            let kind = match line.file_path {
+                Some(path) => classify_file_path(&path, blob_ingest, false).await,
+                None => EntryFileSetLineKind::NonFile,
+            };
+            lines.push(EntryFileSetLine {
+                line_index: line.line_index,
+                original_text: line.original_text,
+                member_location: Some(line.member_location),
+                kind,
+            });
+        }
+    }
+    lines.sort_by_key(|line| line.line_index);
+    lines
+}
+
+fn pending_flat_file(root: TopLevelFileMember, metadata: std::fs::Metadata) -> PendingFileSetLine {
+    let relative_path = normalized_basename(&root.path);
+    PendingFileSetLine {
+        line_index: root.line_index,
+        original_text: root.original_text,
+        member_location: FileSetMemberLocation {
+            root_index: root.root_index,
+            root_name: root.root_name,
+            relative_path,
+            kind: member_kind(&metadata),
+        },
+        file_path: Some(root.path),
+    }
+}
+
+fn pending_missing_file(root: TopLevelFileMember) -> PendingFileSetLine {
+    let relative_path = normalized_basename(&root.path);
+    PendingFileSetLine {
+        line_index: root.line_index,
+        original_text: root.original_text,
+        member_location: FileSetMemberLocation {
+            root_index: root.root_index,
+            root_name: root.root_name,
+            relative_path,
+            kind: FileSetMemberKind::File,
+        },
+        file_path: Some(root.path),
+    }
+}
+
+fn pending_root_marker(root: TopLevelFileMember, line_index: i64) -> PendingFileSetLine {
+    PendingFileSetLine {
+        line_index,
+        original_text: root.original_text,
+        member_location: FileSetMemberLocation {
+            root_index: root.root_index,
+            root_name: root.root_name,
+            relative_path: ".".to_string(),
+            kind: FileSetMemberKind::File,
+        },
+        file_path: None,
+    }
+}
+
+fn excluded_root_line(
+    root: TopLevelFileMember,
+    reason: EntryFileSetExcludeReason,
+) -> EntryFileSetLine {
+    EntryFileSetLine {
+        line_index: root.line_index,
+        original_text: root.original_text,
+        member_location: Some(FileSetMemberLocation {
+            root_index: root.root_index,
+            root_name: root.root_name,
+            relative_path: normalized_basename(&root.path),
+            kind: FileSetMemberKind::File,
+        }),
+        kind: EntryFileSetLineKind::Excluded { reason },
+    }
+}
+
+async fn expand_directory(
+    root: &TopLevelFileMember,
+    next_line_index: &mut i64,
+    budget: &mut TraversalBudget,
+    caps: FileSetCaps,
+) -> std::result::Result<Vec<PendingFileSetLine>, (ExpansionFailure, PendingFileSetLine)> {
+    use std::collections::VecDeque;
+
+    let mut pending = Vec::new();
+    let mut queue = VecDeque::from([(root.path.clone(), String::new())]);
+    while let Some((directory, relative_directory)) = queue.pop_front() {
+        let mut read_dir = tokio::fs::read_dir(&directory).await.map_err(|_| {
+            (
+                ExpansionFailure::IngestFailed,
+                directory_marker(root, next_line_index, &relative_directory),
+            )
+        })?;
+        let mut entries = Vec::new();
+        while let Some(entry) = read_dir.next_entry().await.map_err(|_| {
+            (
+                ExpansionFailure::IngestFailed,
+                directory_marker(root, next_line_index, &relative_directory),
+            )
+        })? {
+            entries.push(entry);
+        }
+        entries.sort_by_key(|entry| entry.file_name());
+
+        if entries.is_empty() {
+            let relative_path = if relative_directory.is_empty() {
+                ".".to_string()
+            } else {
+                relative_directory.clone()
+            };
+            let marker = PendingFileSetLine {
+                line_index: take_line_index(next_line_index),
+                original_text: root.original_text.clone(),
+                member_location: FileSetMemberLocation {
+                    root_index: root.root_index,
+                    root_name: root.root_name.clone(),
+                    relative_path,
+                    kind: FileSetMemberKind::EmptyDirectory,
+                },
+                file_path: None,
+            };
+            if budget.admit(0, caps) {
+                return Err((ExpansionFailure::SizeCapExceeded, marker));
+            }
+            pending.push(marker);
+            continue;
+        }
+
+        for entry in entries {
+            let name = entry.file_name();
+            let Some(name) = name.to_str() else {
+                return Err((
+                    ExpansionFailure::UnsupportedMember,
+                    directory_marker(root, next_line_index, &relative_directory),
+                ));
+            };
+            let name = name.nfc().collect::<String>();
+            let relative_path = if relative_directory.is_empty() {
+                name
+            } else {
+                format!("{relative_directory}/{name}")
+            };
+            let path = entry.path();
+            let metadata = tokio::fs::symlink_metadata(&path).await.map_err(|_| {
+                (
+                    ExpansionFailure::IngestFailed,
+                    directory_marker(root, next_line_index, &relative_path),
+                )
+            })?;
+            if metadata.file_type().is_symlink() {
+                return Err((
+                    ExpansionFailure::UnsupportedMember,
+                    directory_marker(root, next_line_index, &relative_path),
+                ));
+            }
+            if metadata.is_dir() {
+                queue.push_back((path, relative_path));
+                continue;
+            }
+            if !metadata.is_file() {
+                return Err((
+                    ExpansionFailure::UnsupportedMember,
+                    directory_marker(root, next_line_index, &relative_path),
+                ));
+            }
+
+            let member = PendingFileSetLine {
+                line_index: take_line_index(next_line_index),
+                original_text: root.original_text.clone(),
+                member_location: FileSetMemberLocation {
+                    root_index: root.root_index,
+                    root_name: root.root_name.clone(),
+                    relative_path,
+                    kind: member_kind(&metadata),
+                },
+                file_path: Some(path),
+            };
+            if budget.admit(metadata.len(), caps) {
+                return Err((ExpansionFailure::SizeCapExceeded, member));
+            }
+            pending.push(member);
+        }
+    }
+    Ok(pending)
+}
+
+fn directory_marker(
+    root: &TopLevelFileMember,
+    next_line_index: &mut i64,
+    relative_path: &str,
+) -> PendingFileSetLine {
+    PendingFileSetLine {
+        line_index: take_line_index(next_line_index),
+        original_text: root.original_text.clone(),
+        member_location: FileSetMemberLocation {
+            root_index: root.root_index,
+            root_name: root.root_name.clone(),
+            relative_path: if relative_path.is_empty() {
+                ".".to_string()
+            } else {
+                relative_path.to_string()
+            },
+            kind: FileSetMemberKind::File,
+        },
+        file_path: None,
+    }
+}
+
+fn take_line_index(next_line_index: &mut i64) -> i64 {
+    let current = *next_line_index;
+    *next_line_index = (*next_line_index).saturating_add(1);
+    current
+}
+
+fn normalized_basename(path: &std::path::Path) -> String {
+    path.file_name()
+        .map(|name| name.to_string_lossy().nfc().collect())
+        .unwrap_or_else(|| ".".to_string())
+}
+
+fn member_kind(metadata: &std::fs::Metadata) -> FileSetMemberKind {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        if metadata.permissions().mode() & 0o111 != 0 {
+            return FileSetMemberKind::Executable;
+        }
+    }
+    FileSetMemberKind::File
 }
 
 /// Classify one resolved file path into a manifest line's kind.
@@ -1078,7 +1438,210 @@ mod tests {
             ts_ms: 1_700_000_000_000,
             representations: reps,
             file_content_digests: Vec::new(),
+            file_set_v1_component: None,
         }
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn directory_capture_expands_members_and_preserves_member_semantics() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let parent = tempfile::tempdir().unwrap();
+        let root = parent.path().join("roote\u{301}");
+        std::fs::create_dir(&root).unwrap();
+        std::fs::write(root.join("visible.txt"), b"visible").unwrap();
+        std::fs::write(root.join(".hidden"), b"hidden").unwrap();
+        std::fs::create_dir(root.join("nested")).unwrap();
+        let executable = root.join("nested/run.sh");
+        std::fs::write(&executable, b"#!/bin/sh\n").unwrap();
+        std::fs::set_permissions(&executable, std::fs::Permissions::from_mode(0o755)).unwrap();
+        std::fs::create_dir(root.join("empty")).unwrap();
+        std::fs::write(root.join("e\u{301}.txt"), b"unicode").unwrap();
+
+        let uri_list = format!("file://{}", root.display());
+        let snapshot = snapshot_with(vec![rep(
+            "public.file-url",
+            Some("text/uri-list"),
+            uri_list.as_bytes(),
+        )]);
+        let set = build_entry_file_set(&snapshot, &FakeIngestByName, FileSetCaps::unbounded())
+            .await
+            .expect("directory should produce a manifest");
+
+        let members: Vec<_> = set
+            .lines
+            .iter()
+            .map(|line| {
+                let location = line
+                    .member_location
+                    .as_ref()
+                    .expect("directory member location");
+                (
+                    location.root_name.as_str(),
+                    location.relative_path.as_str(),
+                    location.kind,
+                )
+            })
+            .collect();
+        assert!(members.contains(&("root\u{e9}", ".hidden", FileSetMemberKind::File)));
+        assert!(members.contains(&("root\u{e9}", "visible.txt", FileSetMemberKind::File)));
+        assert!(members.contains(&("root\u{e9}", "nested/run.sh", FileSetMemberKind::Executable)));
+        assert!(members.contains(&("root\u{e9}", "empty", FileSetMemberKind::EmptyDirectory)));
+        assert!(members.contains(&("root\u{e9}", "\u{e9}.txt", FileSetMemberKind::File)));
+        assert!(set.has_directory_structure());
+        assert!(set.content_digest_contribution().is_empty());
+        assert!(set.file_set_v1_component().is_some());
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn directory_capture_rejects_symlinks_and_special_files() {
+        use std::os::unix::fs::symlink;
+        use std::os::unix::net::UnixListener;
+
+        for forbidden in ["symlink", "socket"] {
+            let parent = tempfile::tempdir().unwrap();
+            let root = parent.path().join("root");
+            std::fs::create_dir(&root).unwrap();
+            std::fs::write(root.join("target.txt"), b"target").unwrap();
+            let _socket = if forbidden == "symlink" {
+                symlink(root.join("target.txt"), root.join("forbidden")).unwrap();
+                None
+            } else {
+                Some(UnixListener::bind(root.join("forbidden")).unwrap())
+            };
+            let uri_list = format!("file://{}", root.display());
+            let snapshot = snapshot_with(vec![rep(
+                "public.file-url",
+                Some("text/uri-list"),
+                uri_list.as_bytes(),
+            )]);
+
+            let set = build_entry_file_set(&snapshot, &PanicOnHash, FileSetCaps::unbounded())
+                .await
+                .expect("ineligible directory should still produce a manifest");
+            assert!(set.lines.iter().any(|line| matches!(
+                line.kind,
+                EntryFileSetLineKind::Excluded {
+                    reason: EntryFileSetExcludeReason::UnsupportedMember
+                }
+            )));
+            assert_eq!(set.file_lines().count(), 0);
+        }
+    }
+
+    #[tokio::test]
+    async fn directory_member_count_cap_stops_before_hashing() {
+        let parent = tempfile::tempdir().unwrap();
+        let root = parent.path().join("root");
+        std::fs::create_dir(&root).unwrap();
+        for name in ["a", "b", "c"] {
+            std::fs::write(root.join(name), name.as_bytes()).unwrap();
+        }
+        let uri_list = format!("file://{}", root.display());
+        let snapshot = snapshot_with(vec![rep(
+            "public.file-url",
+            Some("text/uri-list"),
+            uri_list.as_bytes(),
+        )]);
+
+        let set = build_entry_file_set(&snapshot, &PanicOnHash, caps(0, 2))
+            .await
+            .expect("over-cap directory should produce a manifest");
+        assert!(set.lines.iter().all(|line| matches!(
+            line.kind,
+            EntryFileSetLineKind::Excluded {
+                reason: EntryFileSetExcludeReason::SizeCapExceeded
+            }
+        )));
+    }
+
+    #[tokio::test]
+    async fn traversal_failure_keeps_remaining_top_level_roots() {
+        let parent = tempfile::tempdir().unwrap();
+        let paths: Vec<_> = ["a", "b", "c"]
+            .into_iter()
+            .map(|name| {
+                let path = parent.path().join(name);
+                std::fs::write(&path, b"xx").unwrap();
+                path
+            })
+            .collect();
+        let uri_list = paths
+            .iter()
+            .map(|path| format!("file://{}", path.display()))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let snapshot = snapshot_with(vec![rep(
+            "public.file-url",
+            Some("text/uri-list"),
+            uri_list.as_bytes(),
+        )]);
+
+        let set = build_entry_file_set(&snapshot, &PanicOnHash, caps(1, 0))
+            .await
+            .expect("over-cap selection should produce a manifest");
+        assert_eq!(set.lines.len(), 3);
+        assert!(set.lines.iter().all(|line| matches!(
+            line.kind,
+            EntryFileSetLineKind::Excluded {
+                reason: EntryFileSetExcludeReason::SizeCapExceeded
+            }
+        )));
+    }
+
+    #[tokio::test]
+    async fn mixed_file_and_directory_keep_stable_root_indexes() {
+        let parent = tempfile::tempdir().unwrap();
+        let loose = parent.path().join("loose.txt");
+        std::fs::write(&loose, b"loose").unwrap();
+        let root = parent.path().join("root");
+        std::fs::create_dir(&root).unwrap();
+        std::fs::write(root.join("child.txt"), b"child").unwrap();
+        let uri_list = format!("file://{}\nfile://{}", loose.display(), root.display());
+        let snapshot = snapshot_with(vec![rep(
+            "public.file-url",
+            Some("text/uri-list"),
+            uri_list.as_bytes(),
+        )]);
+
+        let set = build_entry_file_set(&snapshot, &FakeIngestByName, FileSetCaps::unbounded())
+            .await
+            .expect("mixed selection should produce a manifest");
+        let flat = set
+            .lines
+            .iter()
+            .find(|line| line.line_index == 0)
+            .unwrap()
+            .member_location
+            .as_ref()
+            .unwrap();
+        assert_eq!(
+            (
+                flat.root_index,
+                flat.root_name.as_str(),
+                flat.relative_path.as_str()
+            ),
+            (0, "loose.txt", "loose.txt")
+        );
+        let child = set
+            .lines
+            .iter()
+            .find(|line| {
+                line.member_location
+                    .as_ref()
+                    .is_some_and(|location| location.relative_path == "child.txt")
+            })
+            .unwrap();
+        assert_eq!(
+            (
+                child.member_location.as_ref().unwrap().root_index,
+                child.member_location.as_ref().unwrap().root_name.as_str()
+            ),
+            (1, "root")
+        );
+        assert!(child.line_index >= 2);
     }
 
     /// Fake ingest whose content hash is keyed on the file *name*, so two
@@ -1180,6 +1743,54 @@ mod tests {
             snap_a.snapshot_hash(),
             "filling content digests must move identity off the path-text hash"
         );
+    }
+
+    #[tokio::test]
+    async fn directory_identity_is_stable_across_devices_and_distinct_from_flat_files() {
+        let fixture = tempfile::tempdir().unwrap();
+        let device_a = fixture.path().join("device-a/root");
+        let device_b = fixture.path().join("device-b/root");
+        for root in [&device_a, &device_b] {
+            std::fs::create_dir_all(root).unwrap();
+            std::fs::write(root.join("1.txt"), b"one").unwrap();
+            std::fs::write(root.join("2.txt"), b"two").unwrap();
+        }
+
+        let make_directory_snapshot = |root: &std::path::Path| {
+            snapshot_with(vec![rep(
+                "files",
+                Some("text/uri-list"),
+                format!("file://{}", root.display()).as_bytes(),
+            )])
+        };
+        let mut directory_a = make_directory_snapshot(&device_a);
+        let mut directory_b = make_directory_snapshot(&device_b);
+        for snapshot in [&mut directory_a, &mut directory_b] {
+            let set = build_entry_file_set(snapshot, &FakeIngestByName, FileSetCaps::unbounded())
+                .await
+                .expect("directory manifest");
+            snapshot.file_set_v1_component = set.file_set_v1_component();
+        }
+        assert_eq!(directory_a.snapshot_hash(), directory_b.snapshot_hash());
+
+        let flat_a = fixture.path().join("flat-a/1.txt");
+        let flat_b = fixture.path().join("flat-b/2.txt");
+        std::fs::create_dir_all(flat_a.parent().unwrap()).unwrap();
+        std::fs::create_dir_all(flat_b.parent().unwrap()).unwrap();
+        std::fs::write(&flat_a, b"one").unwrap();
+        std::fs::write(&flat_b, b"two").unwrap();
+        let mut flat = snapshot_with(vec![rep(
+            "files",
+            Some("text/uri-list"),
+            format!("file://{}\nfile://{}", flat_a.display(), flat_b.display()).as_bytes(),
+        )]);
+        flat.file_content_digests =
+            build_entry_file_set(&flat, &FakeIngestByName, FileSetCaps::unbounded())
+                .await
+                .expect("flat manifest")
+                .content_digest_contribution();
+
+        assert_ne!(directory_a.snapshot_hash(), flat.snapshot_hash());
     }
 
     /// A per-file ingest failure must be skipped (not abort the capture); when

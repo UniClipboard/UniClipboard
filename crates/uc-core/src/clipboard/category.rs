@@ -346,6 +346,7 @@ mod tests {
             ts_ms: 0,
             representations: reps,
             file_content_digests: Vec::new(),
+            file_set_v1_component: None,
         }
     }
 

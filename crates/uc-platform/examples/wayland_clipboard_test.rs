@@ -55,6 +55,7 @@ fn main() -> anyhow::Result<()> {
             payload.clone().into_bytes(),
         )],
         file_content_digests: Vec::new(),
+        file_set_v1_component: None,
     };
     eprintln!("[1/3] writing via WaylandClipboard: {payload:?}");
     clipboard.write_snapshot(write_snap)?;

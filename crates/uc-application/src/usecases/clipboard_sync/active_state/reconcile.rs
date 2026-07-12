@@ -215,6 +215,7 @@ mod tests {
                 text.as_bytes().to_vec(),
             )],
             file_content_digests: Vec::new(),
+            file_set_v1_component: None,
         }
     }
 
@@ -234,6 +235,8 @@ mod tests {
                     representations: vec![],
 
                     file_content_digests: Vec::new(),
+
+                    file_set_v1_component: None,
                 }),
                 FakeClipboard::ReadError => Err(anyhow::anyhow!("clipboard unreadable")),
             }

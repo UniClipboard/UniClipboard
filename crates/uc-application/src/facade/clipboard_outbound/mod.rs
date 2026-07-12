@@ -237,9 +237,19 @@ impl ClipboardOutboundPort for ClipboardOutboundDispatcher {
                 expected_digests,
             } => (paths, true, expected_digests),
             OutboundFileSetResolution::Fallback { paths } => (paths, false, Vec::new()),
+            OutboundFileSetResolution::DirectoryNotYetSyncable => {
+                info!(
+                    entry_id = %entry_id_str,
+                    "outbound: directory manifest retained locally; skipping dispatch"
+                );
+                return Ok(ClipboardOutboundOutcome::Skipped {
+                    reason: "directory_not_yet_syncable".to_string(),
+                });
+            }
             OutboundFileSetResolution::Excluded {
                 ingest_failed,
                 size_cap_exceeded,
+                unsupported_member,
             } => {
                 // All-or-nothing: the manifest says at least one member never
                 // got a content identity, so this entry is keyed on path text.
@@ -250,6 +260,7 @@ impl ClipboardOutboundPort for ClipboardOutboundDispatcher {
                     entry_id = %entry_id_str,
                     ingest_failed,
                     size_cap_exceeded,
+                    unsupported_member,
                     "outbound: file-set manifest has excluded lines; skipping dispatch (all-or-nothing)"
                 );
                 return Ok(ClipboardOutboundOutcome::Skipped {
@@ -560,6 +571,9 @@ pub(crate) enum OutboundFileSetResolution {
     /// best-effort save at capture, or an unreadable manifest row) — fall
     /// back to re-parsing the snapshot's reps.
     Fallback { paths: Vec<PathBuf> },
+    /// Directory members are captured locally but the current wire protocol
+    /// cannot reconstruct their tree yet.
+    DirectoryNotYetSyncable,
     /// The manifest exists but contains excluded lines: at least one member
     /// never got a content identity, so the entry's identity fell back to
     /// path text at capture. All-or-nothing — callers must not publish the
@@ -568,6 +582,7 @@ pub(crate) enum OutboundFileSetResolution {
     Excluded {
         ingest_failed: usize,
         size_cap_exceeded: usize,
+        unsupported_member: usize,
     },
 }
 
@@ -617,20 +632,27 @@ pub(crate) async fn resolve_outbound_file_set(
         }
     };
 
+    if file_set.has_directory_structure() {
+        return OutboundFileSetResolution::DirectoryNotYetSyncable;
+    }
+
     let mut ingest_failed = 0usize;
     let mut size_cap_exceeded = 0usize;
+    let mut unsupported_member = 0usize;
     for line in &file_set.lines {
         if let EntryFileSetLineKind::Excluded { reason } = &line.kind {
             match reason {
                 EntryFileSetExcludeReason::IngestFailed => ingest_failed += 1,
                 EntryFileSetExcludeReason::SizeCapExceeded => size_cap_exceeded += 1,
+                EntryFileSetExcludeReason::UnsupportedMember => unsupported_member += 1,
             }
         }
     }
-    if ingest_failed + size_cap_exceeded > 0 {
+    if ingest_failed + size_cap_exceeded + unsupported_member > 0 {
         return OutboundFileSetResolution::Excluded {
             ingest_failed,
             size_cap_exceeded,
+            unsupported_member,
         };
     }
 
@@ -831,8 +853,8 @@ mod tests {
     use super::*;
     use std::sync::Mutex;
     use uc_core::clipboard::{
-        ContentHash, EntryFileSet, EntryFileSetError, EntryFileSetLine, HashAlgorithm, MimeType,
-        ObservedClipboardRepresentation,
+        ContentHash, EntryFileSet, EntryFileSetError, EntryFileSetLine, FileSetMemberKind,
+        FileSetMemberLocation, HashAlgorithm, MimeType, ObservedClipboardRepresentation,
     };
     use uc_core::ids::{EntryId, FormatId, RepresentationId};
 
@@ -936,6 +958,7 @@ mod tests {
                 text.as_bytes().to_vec(),
             )],
             file_content_digests: Vec::new(),
+            file_set_v1_component: None,
         }
     }
 
@@ -949,6 +972,7 @@ mod tests {
                 b"hello".to_vec(),
             )],
             file_content_digests: Vec::new(),
+            file_set_v1_component: None,
         }
     }
 
@@ -956,6 +980,7 @@ mod tests {
         EntryFileSetLine {
             line_index: index,
             original_text: original_text.to_string(),
+            member_location: None,
             kind: EntryFileSetLineKind::File {
                 content_hash: ContentHash {
                     alg: HashAlgorithm::Blake3V1,
@@ -971,8 +996,31 @@ mod tests {
         EntryFileSetLine {
             line_index: index,
             original_text: "file:///excluded".to_string(),
+            member_location: None,
             kind: EntryFileSetLineKind::Excluded { reason },
         }
+    }
+
+    #[tokio::test]
+    async fn resolver_blocks_directory_manifest_before_path_publication() {
+        let mut line = file_line(1, "file:///tmp/root", 1);
+        line.member_location = Some(FileSetMemberLocation {
+            root_index: 0,
+            root_name: "root".to_string(),
+            relative_path: "child.txt".to_string(),
+            kind: FileSetMemberKind::File,
+        });
+        let resolution = resolve_outbound_file_set(
+            &FakeFileSetRepo::Found(EntryFileSet { lines: vec![line] }),
+            &EntryId::from("e1"),
+            &uri_list_snapshot("file:///tmp/root\n"),
+        )
+        .await;
+
+        assert_eq!(
+            resolution,
+            OutboundFileSetResolution::DirectoryNotYetSyncable
+        );
     }
 
     #[tokio::test]
@@ -1001,6 +1049,7 @@ mod tests {
                 EntryFileSetLine {
                     line_index: 3,
                     original_text: "# comment".to_string(),
+                    member_location: None,
                     kind: EntryFileSetLineKind::NonFile,
                 },
             ],
@@ -1065,6 +1114,7 @@ mod tests {
             OutboundFileSetResolution::Excluded {
                 ingest_failed: 1,
                 size_cap_exceeded: 1,
+                unsupported_member: 0,
             }
         );
     }
@@ -1108,6 +1158,8 @@ mod tests {
                     ts_ms: 0,
 
                     file_content_digests: Vec::new(),
+
+                    file_set_v1_component: None,
                 },
                 origin: ClipboardChangeOrigin::LocalCapture,
             })

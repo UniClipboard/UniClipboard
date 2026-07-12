@@ -351,6 +351,7 @@ mod tests {
             ts_ms: 1,
             representations: vec![r],
             file_content_digests: Vec::new(),
+            file_set_v1_component: None,
         };
         let selection = ClipboardSelection {
             primary_rep_id: id.clone(),
@@ -382,6 +383,7 @@ mod tests {
             ts_ms: 1,
             representations: vec![plain, html],
             file_content_digests: Vec::new(),
+            file_set_v1_component: None,
         };
         let selection = ClipboardSelection {
             primary_rep_id: html_id.clone(),
@@ -423,6 +425,7 @@ mod tests {
             ts_ms: 1,
             representations: vec![plain],
             file_content_digests: Vec::new(),
+            file_set_v1_component: None,
         };
         let selection = ClipboardSelection {
             primary_rep_id: plain_id.clone(),
@@ -465,6 +468,7 @@ mod tests {
             ts_ms: 1,
             representations: vec![image, html, plain],
             file_content_digests: Vec::new(),
+            file_set_v1_component: None,
         };
         // The selection policy ranks the rich-text (html) rep as the paste rep.
         let selection = ClipboardSelection {
@@ -525,6 +529,7 @@ mod tests {
             ts_ms: 1,
             representations: vec![image, files],
             file_content_digests: Vec::new(),
+            file_set_v1_component: None,
         };
         let selection = ClipboardSelection {
             primary_rep_id: files_id.clone(),
@@ -573,6 +578,7 @@ mod tests {
             ts_ms: 1,
             representations: vec![image, files],
             file_content_digests: Vec::new(),
+            file_set_v1_component: None,
         };
         let selection = ClipboardSelection {
             primary_rep_id: files_id.clone(),
@@ -709,6 +715,7 @@ mod tests {
             ts_ms: 1,
             representations: vec![r],
             file_content_digests: Vec::new(),
+            file_set_v1_component: None,
         };
         let selection = ClipboardSelection {
             primary_rep_id: id.clone(),
@@ -885,6 +892,7 @@ mod tests {
             ts_ms: 1,
             representations: vec![observed],
             file_content_digests: Vec::new(),
+            file_set_v1_component: None,
         };
         let live = SearchProjectionBuilder::build_from_capture(
             &e,

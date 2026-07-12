@@ -56,6 +56,7 @@ fn main() -> anyhow::Result<()> {
             payload.clone().into_bytes(),
         )],
         file_content_digests: Vec::new(),
+        file_set_v1_component: None,
     };
     eprintln!("[1/3] writing via X11Clipboard: {payload:?}");
     clipboard.write_snapshot(write_snap)?;

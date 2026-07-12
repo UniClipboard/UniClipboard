@@ -33,7 +33,7 @@ pub use entry::*;
 pub use event::*;
 pub use file_set::{
     EntryFileSet, EntryFileSetError, EntryFileSetExcludeReason, EntryFileSetLine,
-    EntryFileSetLineKind,
+    EntryFileSetLineKind, FileSetMemberKind, FileSetMemberLocation,
 };
 pub use policy::ClipboardSelection;
 pub use policy::*;

@@ -96,12 +96,16 @@ diesel::table! {
     entry_file_set (entry_id, line_index) {
         entry_id -> Text,
         line_index -> BigInt,
-        original_text -> Text,
         kind -> Text,
         content_hash -> Nullable<Text>,
         blob_id -> Nullable<Text>,
         size_bytes -> Nullable<BigInt>,
         exclude_reason -> Nullable<Text>,
+        original_text_ct -> Nullable<Binary>,
+        root_index -> Nullable<BigInt>,
+        relative_path_ct -> Nullable<Binary>,
+        kind_tag -> Nullable<Text>,
+        root_name_ct -> Nullable<Binary>,
     }
 }
 

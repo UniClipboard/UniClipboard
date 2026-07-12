@@ -659,6 +659,7 @@ mod tests {
                 b"hello text".to_vec(),
             )],
             file_content_digests: Vec::new(),
+            file_set_v1_component: None,
         };
         let (envelope_bytes, _hash) =
             super::super::payload_codec::encode_snapshot_to_v3_bytes(&snapshot)

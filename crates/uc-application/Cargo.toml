@@ -46,6 +46,7 @@ hex = "0.4"
 # boundaries without extra clones. Matches uc-core + uc-infra.
 bytes = "1.7"
 url = "2"
+unicode-normalization = "0.1"
 # Base64 — Basic Auth credential parsing (mobile sync auth use case).
 base64 = "0.22"
 # QR code rendering for SyncClipboard install URL (mobile sync register use case).

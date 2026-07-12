@@ -33,6 +33,11 @@ pub struct SystemClipboardSnapshot {
     /// Empty for text-only / image-only snapshots (no file-list rep).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub file_content_digests: Vec<[u8; 32]>,
+    /// Precomputed ADR-010 `file-set-v1` component for a structured directory
+    /// manifest. This replaces the file-list representation directly and must
+    /// not be wrapped again with the legacy `file-content|` prefix.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub file_set_v1_component: Option<[u8; 32]>,
 }
 
 /// 表示一条 rep 的负载来源。
@@ -532,14 +537,15 @@ impl SystemClipboardSnapshot {
         // When file_content_digests are available, use them as the hash
         // contribution for file-list reps instead of hashing the
         // text/uri-list inline bytes (which contain device-local paths).
+        let has_file_component = self.file_set_v1_component.is_some();
         let has_file_digests = !self.file_content_digests.is_empty();
 
         let mut rep_hashes: Vec<[u8; 32]> = self
             .representations
             .iter()
             .filter_map(|r| {
-                if has_file_digests && is_file_representation(r) {
-                    // Skip — file-list rep hash replaced by file_content_digests below
+                if (has_file_component || has_file_digests) && is_file_representation(r) {
+                    // Skip — the file-list rep is replaced by a stable file component below.
                     None
                 } else {
                     Some(r.content_hash().bytes)
@@ -547,7 +553,9 @@ impl SystemClipboardSnapshot {
             })
             .collect();
 
-        if has_file_digests {
+        if let Some(component) = self.file_set_v1_component {
+            rep_hashes.push(component);
+        } else if has_file_digests {
             rep_hashes.push(uc_content_hash::file_content_wrapper(
                 &self.file_content_digests,
             ));
@@ -602,6 +610,48 @@ impl SystemClipboardSnapshot {
 #[cfg(test)]
 mod snapshot_hash_tests {
     use super::*;
+
+    fn uri_list_rep(bytes: &[u8]) -> ObservedClipboardRepresentation {
+        ObservedClipboardRepresentation::new(
+            RepresentationId::from("files"),
+            FormatId::from("text/uri-list"),
+            Some(MimeType::uri_list()),
+            bytes.to_vec(),
+        )
+    }
+
+    #[test]
+    fn structured_file_set_component_replaces_uri_list_hash_directly() {
+        let component = uc_content_hash::content_hash(b"file-set-v1 component");
+        let snapshot = SystemClipboardSnapshot {
+            ts_ms: 0,
+            representations: vec![uri_list_rep(b"file:///device-local/folder")],
+            file_content_digests: Vec::new(),
+            file_set_v1_component: Some(component),
+        };
+
+        assert_eq!(
+            snapshot.snapshot_hash().bytes,
+            uc_content_hash::snapshot_hash([component])
+        );
+    }
+
+    #[test]
+    fn flat_file_digest_identity_remains_byte_for_byte_unchanged() {
+        let digests = vec![[2; 32], [1; 32]];
+        let snapshot = SystemClipboardSnapshot {
+            ts_ms: 0,
+            representations: vec![uri_list_rep(b"file:///device-local/file.txt")],
+            file_content_digests: digests.clone(),
+            file_set_v1_component: None,
+        };
+
+        let legacy_component = uc_content_hash::file_content_wrapper(&digests);
+        assert_eq!(
+            snapshot.snapshot_hash().bytes,
+            uc_content_hash::snapshot_hash([legacy_component])
+        );
+    }
 
     #[test]
     fn parse_round_trips_display_form() {

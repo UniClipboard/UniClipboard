@@ -396,6 +396,7 @@ impl ClipboardHistoryFacade {
                 bytes.clone(),
             )],
             file_content_digests: Vec::new(),
+            file_set_v1_component: None,
         };
         let snapshot_hash = snapshot.snapshot_hash();
 

@@ -148,6 +148,8 @@ pub struct FileSyncSettingsView {
     pub file_cache_quota_per_device: u64,
     pub file_retention_hours: u32,
     pub file_auto_cleanup: bool,
+    pub max_file_set_total_bytes: u64,
+    pub max_file_set_member_count: u64,
     /// Directory where inbound files are saved, or `None` for managed storage.
     pub auto_save_dir: Option<String>,
 }
@@ -285,6 +287,8 @@ pub struct FileSyncSettingsPatch {
     pub file_cache_quota_per_device: Option<u64>,
     pub file_retention_hours: Option<u32>,
     pub file_auto_cleanup: Option<bool>,
+    pub max_file_set_total_bytes: Option<u64>,
+    pub max_file_set_member_count: Option<u64>,
     /// `None` = leave unchanged. `Some("")` (blank) = clear (managed storage).
     /// `Some(dir)` = save inbound files to `dir`.
     pub auto_save_dir: Option<String>,
@@ -583,6 +587,8 @@ impl From<core::Settings> for SettingsView {
                 file_cache_quota_per_device: value.file_sync.file_cache_quota_per_device,
                 file_retention_hours: value.file_sync.file_retention_hours,
                 file_auto_cleanup: value.file_sync.file_auto_cleanup,
+                max_file_set_total_bytes: value.file_sync.max_file_set_total_bytes,
+                max_file_set_member_count: value.file_sync.max_file_set_member_count,
                 auto_save_dir: value.file_sync.auto_save_dir,
             },
             network: NetworkSettingsView {
@@ -742,6 +748,12 @@ pub(crate) fn apply_settings_patch(
         }
         if let Some(v) = file_sync.file_auto_cleanup {
             existing.file_sync.file_auto_cleanup = v;
+        }
+        if let Some(v) = file_sync.max_file_set_total_bytes {
+            existing.file_sync.max_file_set_total_bytes = v;
+        }
+        if let Some(v) = file_sync.max_file_set_member_count {
+            existing.file_sync.max_file_set_member_count = v;
         }
         if let Some(dir) = file_sync.auto_save_dir {
             // Blank clears the setting (managed storage); a path sets it.
@@ -1092,6 +1104,28 @@ mod file_sync_auto_save_dir_apply_patch_tests {
             result.file_sync.auto_save_dir.as_deref(),
             Some("/Users/me/Downloads")
         );
+    }
+
+    #[test]
+    fn file_set_caps_round_trip_through_patch_and_view() {
+        let existing = Settings::default();
+        let result = apply_settings_patch(
+            existing,
+            SettingsPatch {
+                file_sync: Some(FileSyncSettingsPatch {
+                    max_file_set_total_bytes: Some(123),
+                    max_file_set_member_count: Some(7),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            },
+        );
+        assert_eq!(result.file_sync.max_file_set_total_bytes, 123);
+        assert_eq!(result.file_sync.max_file_set_member_count, 7);
+
+        let view = SettingsView::from(result);
+        assert_eq!(view.file_sync.max_file_set_total_bytes, 123);
+        assert_eq!(view.file_sync.max_file_set_member_count, 7);
     }
 
     /// A blank string clears the directory (back to managed storage).

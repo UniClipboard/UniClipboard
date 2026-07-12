@@ -1,0 +1,11 @@
+-- Intentionally irreversible (see up.sql).
+--
+-- Sealed path columns cannot be decrypted inside a migration context, so a
+-- rollback would recreate an empty plaintext original_text column and silently
+-- drop the manifest data. Failing loudly is safer than persisting broken
+-- manifests. To go back to an older binary, delete the entry_file_set rows and
+-- let capture rebuild them (dispatch falls back to snapshot re-parse meanwhile).
+--
+-- The quoted identifier is not a real table; SQLite reports it as the error
+-- message so the intent is visible in logs.
+SELECT 1 FROM "cannot downgrade: entry_file_set path encryption is irreversible; clear the manifest to rebuild on the older version";

@@ -499,6 +499,7 @@ mod tests {
                 ts_ms: 0,
                 representations: vec![],
                 file_content_digests: Vec::new(),
+                file_set_v1_component: None,
             })
         }
         fn write_snapshot(&self, _snapshot: SystemClipboardSnapshot) -> anyhow::Result<()> {
@@ -526,6 +527,7 @@ mod tests {
             ts_ms: 0,
             representations: vec![rep],
             file_content_digests: Vec::new(),
+            file_set_v1_component: None,
         }
     }
 
@@ -555,6 +557,7 @@ mod tests {
             ts_ms: 0,
             representations: vec![primary, secondary],
             file_content_digests: Vec::new(),
+            file_set_v1_component: None,
         }
     }
 
@@ -571,6 +574,7 @@ mod tests {
             ts_ms: 0,
             representations: vec![rep],
             file_content_digests: Vec::new(),
+            file_set_v1_component: None,
         }
     }
 
@@ -611,6 +615,7 @@ mod tests {
             ts_ms: 0,
             representations: vec![rep],
             file_content_digests: Vec::new(),
+            file_set_v1_component: None,
         }
     }
 

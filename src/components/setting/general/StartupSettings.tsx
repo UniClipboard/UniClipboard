@@ -9,73 +9,55 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui'
+import { toast } from '@/components/ui/toast'
 import { useSetting } from '@/hooks/useSetting'
-import type { GeneralSettings, StartupMode } from '@/types/setting'
+import { createLogger } from '@/lib/logger'
+import type { StartupMode } from '@/types/setting'
 import { SettingGroup } from '../SettingGroup'
 import { SettingRow } from '../SettingRow'
-import { useSavingState } from './useSavingState'
+import { useOptimisticSetting } from '../useOptimisticSetting'
+
+const log = createLogger('startup-settings')
 
 const STARTUP_MODES: StartupMode[] = ['normal', 'silent', 'lightweight']
 
-interface StartupForm {
-  autoStart: boolean
-  startupMode: StartupMode
-  restoreLastEntryOnStartup: boolean
-  deviceName: string
-}
-
-function deriveStartupForm(general: GeneralSettings | undefined): StartupForm {
-  return {
-    autoStart: general?.autoStart ?? false,
-    startupMode: general?.startupMode ?? 'normal',
-    restoreLastEntryOnStartup: general?.restoreLastEntryOnStartup ?? false,
-    deviceName: general?.deviceName ?? '',
-  }
-}
-
 export function StartupSettings() {
   const { t } = useTranslation()
-  const { setting, loading, updateAutostart, updateGeneralSetting } = useSetting()
-  const { saving, runSave } = useSavingState()
-  // Mirror the persisted fields in a single object so re-hydration is one
-  // setState, not a cascade of individual setters.
-  const [form, setForm] = useState(() => deriveStartupForm(setting?.general))
-  const isBusy = loading || saving
+  const { setting, updateAutostart, updateGeneralSetting } = useSetting()
 
+  // Autostart still routes through the dedicated host command (it applies OS
+  // launch registration), the others through the daemon settings API — but all
+  // are optimistic: they reflect immediately and persist in the background.
+  const [autoStart, setAutoStart] = useOptimisticSetting(
+    setting?.general.autoStart ?? false,
+    next => updateAutostart(next),
+    { failureLog: 'Failed to change autostart setting' }
+  )
+  const [startupMode, setStartupMode] = useOptimisticSetting<StartupMode>(
+    setting?.general.startupMode ?? 'normal',
+    next => updateGeneralSetting({ startupMode: next }),
+    { failureLog: 'Failed to change startup-mode setting' }
+  )
+  const [restoreLastEntry, setRestoreLastEntry] = useOptimisticSetting(
+    setting?.general.restoreLastEntryOnStartup ?? false,
+    next => updateGeneralSetting({ restoreLastEntryOnStartup: next }),
+    { failureLog: 'Failed to change restore-last-entry-on-startup setting' }
+  )
+
+  // Device name is free text edited continuously and persisted on blur, so it
+  // keeps its own local edit state rather than the optimistic-toggle hook.
+  const [deviceName, setDeviceName] = useState(setting?.general.deviceName ?? '')
   useEffect(() => {
-    if (!setting?.general) return
-    setForm(deriveStartupForm(setting.general))
-  }, [setting])
+    setDeviceName(setting?.general.deviceName ?? '')
+  }, [setting?.general?.deviceName])
 
-  const handleAutoStartChange = (checked: boolean) =>
-    // Autostart still uses the dedicated host command because it applies OS
-    // launch registration. `startupMode` is an independent preference —
-    // Lightweight mode only takes effect on an auto-start launch, but it
-    // stays configurable either way; turning autostart off no longer resets it.
-    runSave('Failed to change autostart setting', async () => {
-      await updateAutostart(checked)
-      setForm(prev => ({ ...prev, autoStart: checked }))
+  const handleDeviceNameBlur = () => {
+    if (deviceName === (setting?.general.deviceName ?? '')) return
+    updateGeneralSetting({ deviceName }).catch((err: unknown) => {
+      log.error({ err }, 'Failed to change device name')
+      toast.error(t('settings.sections.general.saveError'))
     })
-
-  const handleStartupModeChange = (next: StartupMode) =>
-    runSave('Failed to change startup-mode setting', async () => {
-      await updateGeneralSetting({ startupMode: next })
-      setForm(prev => ({ ...prev, startupMode: next }))
-    })
-
-  const handleRestoreLastEntryOnStartupChange = (checked: boolean) =>
-    runSave('Failed to change restore-last-entry-on-startup setting', async () => {
-      await updateGeneralSetting({ restoreLastEntryOnStartup: checked })
-      setForm(prev => ({ ...prev, restoreLastEntryOnStartup: checked }))
-    })
-
-  const handleDeviceNameChange = (e: React.ChangeEvent<HTMLInputElement>) =>
-    setForm(prev => ({ ...prev, deviceName: e.target.value }))
-
-  const handleDeviceNameBlur = () =>
-    runSave('Failed to change device name', async () => {
-      await updateGeneralSetting({ deviceName: form.deviceName })
-    })
+  }
 
   return (
     <SettingGroup title={t('settings.sections.general.startupTitle')}>
@@ -85,11 +67,10 @@ export function StartupSettings() {
       >
         <div className="w-40">
           <Input
-            value={form.deviceName}
-            onChange={handleDeviceNameChange}
+            value={deviceName}
+            onChange={e => setDeviceName(e.target.value)}
             onBlur={handleDeviceNameBlur}
             placeholder={t('settings.sections.general.deviceName.placeholder')}
-            disabled={isBusy}
           />
         </div>
       </SettingRow>
@@ -98,11 +79,7 @@ export function StartupSettings() {
         label={t('settings.sections.general.autoStart.label')}
         description={t('settings.sections.general.autoStart.description')}
       >
-        <Switch
-          checked={form.autoStart}
-          onCheckedChange={handleAutoStartChange}
-          disabled={isBusy}
-        />
+        <Switch checked={autoStart} onCheckedChange={setAutoStart} />
       </SettingRow>
 
       <SettingRow
@@ -110,11 +87,7 @@ export function StartupSettings() {
         description={t('settings.sections.general.startupMode.description')}
       >
         <div className="w-40">
-          <Select
-            value={form.startupMode}
-            onValueChange={handleStartupModeChange}
-            disabled={isBusy}
-          >
+          <Select value={startupMode} onValueChange={next => setStartupMode(next as StartupMode)}>
             <SelectTrigger className="w-full">
               <SelectValue />
             </SelectTrigger>
@@ -133,11 +106,7 @@ export function StartupSettings() {
         label={t('settings.sections.general.restoreLastEntryOnStartup.label')}
         description={t('settings.sections.general.restoreLastEntryOnStartup.description')}
       >
-        <Switch
-          checked={form.restoreLastEntryOnStartup}
-          onCheckedChange={handleRestoreLastEntryOnStartupChange}
-          disabled={isBusy}
-        />
+        <Switch checked={restoreLastEntry} onCheckedChange={setRestoreLastEntry} />
       </SettingRow>
     </SettingGroup>
   )

@@ -911,11 +911,14 @@ impl FileCacheBlobMaterializer {
             };
             let destination = match reserved {
                 Some(path) => path,
-                None => resolve_nonconflicting_root_path(
-                    &managed_parent,
-                    root_name,
-                    &reserved_destinations,
-                )?,
+                None => {
+                    resolve_nonconflicting_root_path(
+                        &managed_parent,
+                        root_name,
+                        &reserved_destinations,
+                    )
+                    .await?
+                }
             };
             if !reserved_destinations.insert(destination.clone()) {
                 return Err(anyhow!(
@@ -927,8 +930,10 @@ impl FileCacheBlobMaterializer {
         }
 
         for (_, _, destination) in &destinations {
-            if destination.is_file() {
-                tokio::fs::remove_file(destination).await?;
+            if let Ok(metadata) = tokio::fs::metadata(destination).await {
+                if metadata.is_file() {
+                    tokio::fs::remove_file(destination).await?;
+                }
             }
             if tokio::fs::try_exists(destination).await? {
                 return Err(anyhow!(
@@ -1001,19 +1006,19 @@ pub(crate) fn compute_file_set_component(
         .ok_or_else(|| anyhow!("directory manifest cannot produce a file-set identity"))
 }
 
-fn resolve_nonconflicting_root_path(
+async fn resolve_nonconflicting_root_path(
     parent: &std::path::Path,
     desired_name: &str,
     reserved: &HashSet<PathBuf>,
 ) -> Result<PathBuf> {
     let desired = parent.join(desired_name);
-    if !desired.exists() && !reserved.contains(&desired) {
+    if !reserved.contains(&desired) && !tokio::fs::try_exists(&desired).await? {
         return Ok(desired);
     }
     let mut suffix = 2u32;
     loop {
         let candidate = parent.join(format!("{desired_name} ({suffix})"));
-        if !candidate.exists() && !reserved.contains(&candidate) {
+        if !reserved.contains(&candidate) && !tokio::fs::try_exists(&candidate).await? {
             return Ok(candidate);
         }
         suffix = suffix

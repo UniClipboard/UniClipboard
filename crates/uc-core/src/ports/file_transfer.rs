@@ -82,18 +82,8 @@ pub struct EntryTransferSummary {
     pub aggregate_status: TrackedFileTransferStatus,
     /// Human-readable reason when aggregate is `Failed`.
     pub failure_reason: Option<String>,
-    /// Transfer IDs belonging to this entry.
+    /// Transfer IDs belonging to this entry, sorted for deterministic reads.
     pub transfer_ids: Vec<String>,
-    /// Per-member state, ordered by transfer id for deterministic reads.
-    pub members: Vec<EntryTransferMemberSummary>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct EntryTransferMemberSummary {
-    pub transfer_id: String,
-    pub filename: String,
-    pub status: TrackedFileTransferStatus,
-    pub failure_reason: Option<String>,
 }
 
 /// Expired in-flight record with cleanup target.

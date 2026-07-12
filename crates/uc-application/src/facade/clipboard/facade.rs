@@ -430,6 +430,11 @@ impl ClipboardSyncFacade {
         .await
     }
 
+    /// 编码并发送带目录成员清单的剪贴板快照。
+    ///
+    /// 与 [`Self::dispatch_snapshot_with_blob_refs`] 相同,但额外携带
+    /// `manifest` 让接收端能原子重建目录树,因此走 `DIRECTORY_VERSION` wire。
+    #[instrument(skip_all, fields(rep_count = snapshot.representations.len(), blob_ref_count = blob_refs.len(), member_count = manifest.members.len(), origin = ?origin))]
     pub async fn dispatch_snapshot_with_blob_refs_and_file_set(
         &self,
         snapshot: SystemClipboardSnapshot,
@@ -439,7 +444,7 @@ impl ClipboardSyncFacade {
         entry_id: Option<EntryId>,
         target_filter: Option<Vec<DeviceId>>,
     ) -> Result<DispatchEntryOutcome, ClipboardSyncError> {
-        let _ = origin;
+        let _ = origin; // span metadata only (see sibling dispatch methods)
         let categories = ClipboardContentCategorySet::from_snapshot(&snapshot);
         let (plaintext, snapshot_hash) =
             crate::usecases::clipboard_sync::payload_codec::encode_snapshot_with_blob_refs_and_file_set_to_v3_bytes(

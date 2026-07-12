@@ -698,13 +698,11 @@ pub(crate) async fn resolve_outbound_file_set(
         let directory_roots: std::collections::HashSet<i64> = file_set
             .lines
             .iter()
+            .filter(|line| line.indicates_directory_root(row_count))
             .filter_map(|line| {
-                line.member_location.as_ref().and_then(|location| {
-                    (location.kind == FileSetMemberKind::EmptyDirectory
-                        || location.relative_path.contains('/')
-                        || line.line_index >= row_count)
-                        .then_some(location.root_index)
-                })
+                line.member_location
+                    .as_ref()
+                    .map(|location| location.root_index)
             })
             .collect();
         let mut paths = Vec::new();

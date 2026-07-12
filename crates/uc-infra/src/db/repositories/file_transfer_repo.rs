@@ -7,10 +7,10 @@ use crate::db::models::{FileTransferRow, NewFileTransferRow};
 use crate::db::ports::DbExecutor;
 use crate::db::schema::file_transfer;
 use uc_core::ports::file_transfer::{
-    compute_aggregate_status, EntryTransferMemberSummary, EntryTransferSummary,
-    ExpiredInflightTransfer, FailInflightTransfersPort, FileTransferProjectionError,
-    FindEntryIdForTransferPort, GetEntryTransferSummaryPort, ListExpiredInflightTransfersPort,
-    PendingInboundTransfer, RecordReceiverTransferPort, TrackedFileTransferStatus,
+    compute_aggregate_status, EntryTransferSummary, ExpiredInflightTransfer,
+    FailInflightTransfersPort, FileTransferProjectionError, FindEntryIdForTransferPort,
+    GetEntryTransferSummaryPort, ListExpiredInflightTransfersPort, PendingInboundTransfer,
+    RecordReceiverTransferPort, TrackedFileTransferStatus,
 };
 
 /// SQLite adapter for the receiver-side file-transfer projection ports.
@@ -173,28 +173,15 @@ impl<E: DbExecutor> GetEntryTransferSummaryPort for DieselFileTransferRepository
                     None
                 };
 
-                let mut members: Vec<EntryTransferMemberSummary> = rows
-                    .iter()
-                    .map(|row| EntryTransferMemberSummary {
-                        transfer_id: row.transfer_id.clone(),
-                        filename: row.filename.clone(),
-                        status: TrackedFileTransferStatus::from_str_value(&row.status)
-                            .unwrap_or(TrackedFileTransferStatus::Pending),
-                        failure_reason: row.failure_reason.clone(),
-                    })
-                    .collect();
-                members.sort_by(|left, right| left.transfer_id.cmp(&right.transfer_id));
-                let transfer_ids = members
-                    .iter()
-                    .map(|member| member.transfer_id.clone())
-                    .collect();
+                let mut transfer_ids: Vec<String> =
+                    rows.iter().map(|row| row.transfer_id.clone()).collect();
+                transfer_ids.sort();
 
                 Ok(Some(EntryTransferSummary {
                     entry_id: eid,
                     aggregate_status,
                     failure_reason,
                     transfer_ids,
-                    members,
                 }))
             })
             .map_err(backend)
@@ -348,11 +335,12 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn entry_summary_lists_each_directory_member_and_aggregates_failure() {
+    async fn entry_summary_sorts_transfer_ids_and_aggregates_failure() {
         let (repo, writer, _tempdir) = make_repo();
+        // Seed out of order to prove the summary sorts deterministically.
+        seed(&repo, "transfer-c", "c.txt").await;
         seed(&repo, "transfer-a", "a.txt").await;
         seed(&repo, "transfer-b", "b.txt").await;
-        seed(&repo, "transfer-c", "c.txt").await;
         writer
             .run(|conn| {
                 diesel::update(
@@ -379,18 +367,14 @@ mod tests {
             .unwrap();
 
         assert_eq!(summary.aggregate_status, TrackedFileTransferStatus::Failed);
-        assert_eq!(summary.members.len(), 3);
-        assert_eq!(summary.members[0].filename, "a.txt");
+        assert_eq!(summary.failure_reason.as_deref(), Some("network"));
         assert_eq!(
-            summary.members[0].status,
-            TrackedFileTransferStatus::Completed
-        );
-        assert_eq!(summary.members[1].filename, "b.txt");
-        assert_eq!(summary.members[1].status, TrackedFileTransferStatus::Failed);
-        assert_eq!(summary.members[2].filename, "c.txt");
-        assert_eq!(
-            summary.members[2].status,
-            TrackedFileTransferStatus::Pending
+            summary.transfer_ids,
+            vec![
+                "transfer-a".to_string(),
+                "transfer-b".to_string(),
+                "transfer-c".to_string()
+            ]
         );
     }
 }

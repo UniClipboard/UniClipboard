@@ -133,6 +133,10 @@ struct WireHeaderV1 {
     payload_version: u8,
 }
 
+/// Postcard schema shared by wire versions v2 and v3. The two versions are
+/// byte-identical; the leading `version` byte alone gates receiver
+/// compatibility — v3 signals that a directory member manifest travels in the
+/// payload trailer and must only be sent to peers that can rebuild the tree.
 #[derive(Serialize, Deserialize, Debug)]
 struct WireHeaderV2 {
     version: u8,
@@ -144,17 +148,6 @@ struct WireHeaderV2 {
     /// Cross-device trace correlation id (UUIDv7 as string). `None` only
     /// during construction from older in-memory paths; encoded as the
     /// postcard `Option` discriminant (single byte `0x00` when None).
-    flow_id: Option<String>,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-struct WireHeaderV3 {
-    version: u8,
-    snapshot_hash: String,
-    captured_at_ms: i64,
-    origin_device_id: String,
-    origin_device_name: String,
-    payload_version: u8,
     flow_id: Option<String>,
 }
 
@@ -200,30 +193,24 @@ pub enum WireDecodeError {
 /// magic byte or length prefix — callers typically run this once and hand
 /// the bytes (plus the payload) to [`write_frame`].
 ///
-/// 永远以 v2 schema 编码;v1 仅作为兼容老对端的*解码*入口存在(见
-/// [`decode_header`])。
+/// v2 与 v3 共用同一份 postcard schema([`WireHeaderV2`]),仅版本号不同;
+/// v1 仅作为兼容老对端的*解码*入口存在(见 [`decode_header`])。
 pub fn encode_header(header: &ClipboardHeader) -> Result<Vec<u8>, WireEncodeError> {
-    let bytes = match header.version {
-        ClipboardHeader::CURRENT_VERSION => postcard::to_allocvec(&WireHeaderV2 {
-            version: header.version,
-            snapshot_hash: header.snapshot_hash.clone(),
-            captured_at_ms: header.captured_at_ms,
-            origin_device_id: header.origin_device_id.clone(),
-            origin_device_name: header.origin_device_name.clone(),
-            payload_version: header.payload_version,
-            flow_id: header.flow_id.clone(),
-        })?,
-        ClipboardHeader::DIRECTORY_VERSION => postcard::to_allocvec(&WireHeaderV3 {
-            version: header.version,
-            snapshot_hash: header.snapshot_hash.clone(),
-            captured_at_ms: header.captured_at_ms,
-            origin_device_id: header.origin_device_id.clone(),
-            origin_device_name: header.origin_device_name.clone(),
-            payload_version: header.payload_version,
-            flow_id: header.flow_id.clone(),
-        })?,
-        other => return Err(WireEncodeError::UnsupportedVersion(other)),
-    };
+    if !matches!(
+        header.version,
+        ClipboardHeader::CURRENT_VERSION | ClipboardHeader::DIRECTORY_VERSION
+    ) {
+        return Err(WireEncodeError::UnsupportedVersion(header.version));
+    }
+    let bytes = postcard::to_allocvec(&WireHeaderV2 {
+        version: header.version,
+        snapshot_hash: header.snapshot_hash.clone(),
+        captured_at_ms: header.captured_at_ms,
+        origin_device_id: header.origin_device_id.clone(),
+        origin_device_name: header.origin_device_name.clone(),
+        payload_version: header.payload_version,
+        flow_id: header.flow_id.clone(),
+    })?;
     if bytes.len() > MAX_HEADER_SIZE as usize {
         return Err(WireEncodeError::HeaderTooLarge {
             size: bytes.len(),
@@ -257,20 +244,10 @@ pub fn decode_header(bytes: &[u8]) -> Result<ClipboardHeader, WireDecodeError> {
                 flow_id: None,
             })
         }
-        2 => {
+        // v2 and v3 share the same schema; the version byte gates the payload
+        // trailer, not the header layout.
+        2 | 3 => {
             let wire: WireHeaderV2 = postcard::from_bytes(bytes)?;
-            Ok(ClipboardHeader {
-                version: wire.version,
-                snapshot_hash: wire.snapshot_hash,
-                captured_at_ms: wire.captured_at_ms,
-                origin_device_id: wire.origin_device_id,
-                origin_device_name: wire.origin_device_name,
-                payload_version: wire.payload_version,
-                flow_id: wire.flow_id,
-            })
-        }
-        3 => {
-            let wire: WireHeaderV3 = postcard::from_bytes(bytes)?;
             Ok(ClipboardHeader {
                 version: wire.version,
                 snapshot_hash: wire.snapshot_hash,
@@ -544,7 +521,7 @@ mod tests {
     /// as the current schema.
     #[tokio::test]
     async fn decode_rejects_future_header_version() {
-        let future = WireHeaderV3 {
+        let future = WireHeaderV2 {
             version: ClipboardHeader::DIRECTORY_VERSION + 1,
             snapshot_hash: "stub".to_string(),
             captured_at_ms: 0,

@@ -10,6 +10,7 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "version:bump": "node scripts/bump-version.js",
+    "add:beui": "node scripts/add-beui.mjs",
     "gen:openapi": "cargo run -p uc-webserver --bin gen-openapi",
     "gen:client": "openapi-ts",
     "gen:api": "bun run gen:openapi && bun run gen:client",

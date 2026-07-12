@@ -742,6 +742,7 @@ mod tests {
     use super::*;
 
     use std::path::PathBuf;
+    use std::sync::atomic::{AtomicUsize, Ordering};
     use std::time::Duration;
 
     use iroh::{protocol::Router, RelayMode};
@@ -810,6 +811,18 @@ mod tests {
     /// 断言无影响。
     fn dummy_reason(name: &str) -> TagReason {
         TagReason::ClipboardEntry(EntryId::from_str(name))
+    }
+
+    #[derive(Default)]
+    struct CountingProgressSink {
+        reports: AtomicUsize,
+    }
+
+    #[async_trait]
+    impl BlobProgressSink for CountingProgressSink {
+        async fn report(&self, _bytes_transferred: u64, _total_bytes: Option<u64>) {
+            self.reports.fetch_add(1, Ordering::SeqCst);
+        }
     }
 
     #[tokio::test]
@@ -1173,6 +1186,67 @@ mod tests {
         let fetched = receiver.adapter.fetch(&ticket, None).await?;
 
         assert_eq!(fetched, payload);
+        receiver.shutdown().await?;
+        provider.shutdown().await?;
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn partially_cached_directory_batch_downloads_only_missing_member() -> anyhow::Result<()>
+    {
+        let provider = Fixture::bind().await?;
+        let receiver = Fixture::bind().await?;
+        provider.wait_for_direct_addr().await?;
+        receiver.wait_for_direct_addr().await?;
+
+        let cached_payload = vec![0x31; 64 * 1024];
+        let missing_payload = vec![0x72; 64 * 1024];
+        let cached_digest = provider
+            .adapter
+            .publish(
+                Bytes::from(cached_payload.clone()),
+                dummy_reason("resend-provider-cached"),
+            )
+            .await?;
+        let missing_digest = provider
+            .adapter
+            .publish(
+                Bytes::from(missing_payload.clone()),
+                dummy_reason("resend-provider-missing"),
+            )
+            .await?;
+        let cached_ticket = provider.adapter.issue_ticket(&cached_digest).await?;
+        let missing_ticket = provider.adapter.issue_ticket(&missing_digest).await?;
+
+        let receiver_cached_digest = receiver
+            .adapter
+            .publish(
+                Bytes::from(cached_payload.clone()),
+                dummy_reason("resend-receiver-preloaded"),
+            )
+            .await?;
+        assert_eq!(receiver_cached_digest, cached_digest);
+
+        let target_dir = tempdir()?;
+        let cached_target = target_dir.path().join("cached-member.bin");
+        let missing_target = target_dir.path().join("missing-member.bin");
+        let cached_progress = CountingProgressSink::default();
+        let missing_progress = CountingProgressSink::default();
+
+        receiver
+            .adapter
+            .fetch_to_path(&cached_ticket, &cached_target, Some(&cached_progress))
+            .await?;
+        receiver
+            .adapter
+            .fetch_to_path(&missing_ticket, &missing_target, Some(&missing_progress))
+            .await?;
+
+        assert_eq!(std::fs::read(cached_target)?, cached_payload);
+        assert_eq!(std::fs::read(missing_target)?, missing_payload);
+        assert_eq!(cached_progress.reports.load(Ordering::SeqCst), 0);
+        assert!(missing_progress.reports.load(Ordering::SeqCst) > 0);
+
         receiver.shutdown().await?;
         provider.shutdown().await?;
         Ok(())

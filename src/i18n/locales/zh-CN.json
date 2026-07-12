@@ -140,6 +140,11 @@
           "label": "界面语言",
           "description": "切换后立即生效"
         },
+        "sound": {
+          "title": "声音",
+          "label": "交互声音反馈",
+          "description": "切换开关时播放轻量提示音"
+        },
         "telemetry": {
           "title": "隐私",
           "diagnostics": {

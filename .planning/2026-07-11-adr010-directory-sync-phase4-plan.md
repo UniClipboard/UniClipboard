@@ -394,6 +394,11 @@ ticket DAG：#1316 #1317 为 frontier；#1319 依赖 #1316+#1317；#1320 依赖 
 
 - **阶段 5**：进度/取消 UI、Sync-ineligible 原因展示、`file_sync` 设置界面、**移动端 register 降级
   修复**（§7）、面向用户文档。
+- **阶段 5**：目录 root 提升的预留竞态（CodeRabbit PR #1323 Finding 2）。接收侧目录提升复用了面向
+  文件的 `ReserveInboundFileTargetPort`：`reserve_target()` 只预留一个文件占位，promote 前先
+  `remove_file` 再把目录树 `rename` 就位，中间存在一段预留路径不受保护的 TOCTOU 窗口（Minor，窗口
+  极小）。正确修法是给该端口增加目录感知的预留（或让占位在提升全程保持），属跨 crate 端口设计决策，
+  与阶段 5 的 reserver/UX 工作一并处理。
 - **阶段 3b**：延迟身份就绪（捕获流水线异步化）+ 摄取毕 `(mtime,size)` 漂移复核——与阶段 4 正交，
   独立往后排。
 - **移动端完整参与文件集同步**：ADR 范围外（桌面三平台专属）。

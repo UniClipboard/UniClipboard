@@ -138,6 +138,8 @@ pub trait InboundBlobFetcher: Send + Sync {
         &self,
         command: FetchBlobToPathCommand,
     ) -> Result<FetchBlobToPathResult>;
+
+    async fn record_unfetched_failure(&self, _context: FetchTransferContext, _detail: String) {}
 }
 
 #[async_trait]
@@ -157,6 +159,10 @@ impl InboundBlobFetcher for BlobTransferFacade {
         BlobTransferFacade::fetch_blob_to_path(self, command)
             .await
             .map_err(anyhow::Error::from)
+    }
+
+    async fn record_unfetched_failure(&self, context: FetchTransferContext, detail: String) {
+        BlobTransferFacade::record_unfetched_failure(self, context, detail).await;
     }
 }
 
@@ -273,12 +279,14 @@ impl InboundBlobMaterializer for FileCacheBlobMaterializer {
             // 两者让 sender UI 能定位本地 entry 并接收实时字节进度。
             let transfer_context = FetchTransferContext {
                 transfer_id: receiver_entry_id.as_ref().to_string(),
+                entry_id: receiver_entry_id.as_ref().to_string(),
                 peer_id: from_device.as_str().to_string(),
                 total_bytes: Some(advertised_size),
                 filename: String::new(),
                 outbound_transfer_id: Some(blob_ref.entry_id.as_ref().to_string()),
                 outbound_target: Some(from_device.clone()),
                 batch_position: position_in_batch(batch_idx, batch_total),
+                individual_lifecycle: false,
             };
             batch_idx += 1;
             let fetched = match self
@@ -416,12 +424,14 @@ impl InboundBlobMaterializer for FileCacheBlobMaterializer {
             // 让 sender UI 定位本地 entry,target 是消息来源 device。
             let transfer_context = FetchTransferContext {
                 transfer_id: receiver_entry_id.as_ref().to_string(),
+                entry_id: receiver_entry_id.as_ref().to_string(),
                 peer_id: from_device.as_str().to_string(),
                 total_bytes: Some(advertised_size),
                 filename: declared_name.clone().unwrap_or_default(),
                 outbound_transfer_id: Some(blob_ref.entry_id.as_ref().to_string()),
                 outbound_target: Some(from_device.clone()),
                 batch_position: position_in_batch(batch_idx, batch_total),
+                individual_lifecycle: false,
             };
             batch_idx += 1;
 
@@ -738,7 +748,7 @@ impl FileCacheBlobMaterializer {
         }
 
         let mut member_digests = BTreeMap::new();
-        for member in &manifest.members {
+        for (member_index, member) in manifest.members.iter().enumerate() {
             let root = staging_root(staging_base, member.root_index, &member.root_name);
             let target = join_relative_path(&root, &member.relative_path)?;
             match member.kind {
@@ -763,16 +773,18 @@ impl FileCacheBlobMaterializer {
                         tokio::fs::create_dir_all(parent).await?;
                     }
                     let context = FetchTransferContext {
-                        transfer_id: receiver_entry_id.as_ref().to_string(),
+                        transfer_id: directory_member_transfer_id(receiver_entry_id, member_index),
+                        entry_id: receiver_entry_id.as_ref().to_string(),
                         peer_id: from_device.as_str().to_string(),
                         total_bytes: Some(blob_ref.size_bytes),
                         filename: blob_ref.filename.clone().unwrap_or_default(),
                         outbound_transfer_id: Some(blob_ref.entry_id.as_ref().to_string()),
                         outbound_target: Some(from_device.clone()),
                         batch_position: position_in_batch(*batch_idx, batch_total),
+                        individual_lifecycle: true,
                     };
                     *batch_idx += 1;
-                    let fetched = self
+                    let fetched = match self
                         .fetcher
                         .fetch_blob_to_path(FetchBlobToPathCommand {
                             ticket: blob_ref.ticket.clone(),
@@ -780,7 +792,52 @@ impl FileCacheBlobMaterializer {
                             target_path: target.clone(),
                             transfer_context: Some(context),
                         })
-                        .await?;
+                        .await
+                    {
+                        Ok(fetched) => fetched,
+                        Err(err) => {
+                            let detail = err.to_string();
+                            for (remaining_index, remaining) in
+                                manifest.members.iter().enumerate().skip(member_index + 1)
+                            {
+                                if remaining.kind == FileSetMemberKind::EmptyDirectory {
+                                    continue;
+                                }
+                                let remaining_blob_index =
+                                    remaining.blob_ref_index.ok_or_else(|| {
+                                        anyhow!("file member is missing its blob reference")
+                                    })? as usize;
+                                let remaining_blob = blob_refs.get(remaining_blob_index).ok_or_else(|| {
+                                    anyhow!("directory blob reference index {remaining_blob_index} is out of bounds")
+                                })?;
+                                self.fetcher
+                                    .record_unfetched_failure(
+                                        FetchTransferContext {
+                                            transfer_id: directory_member_transfer_id(
+                                                receiver_entry_id,
+                                                remaining_index,
+                                            ),
+                                            entry_id: receiver_entry_id.as_ref().to_string(),
+                                            peer_id: from_device.as_str().to_string(),
+                                            total_bytes: Some(remaining_blob.size_bytes),
+                                            filename: remaining_blob
+                                                .filename
+                                                .clone()
+                                                .unwrap_or_default(),
+                                            outbound_transfer_id: Some(
+                                                remaining_blob.entry_id.as_ref().to_string(),
+                                            ),
+                                            outbound_target: Some(*from_device),
+                                            batch_position: BatchPosition::Middle,
+                                            individual_lifecycle: true,
+                                        },
+                                        format!("not fetched after another directory member failed: {detail}"),
+                                    )
+                                    .await;
+                            }
+                            return Err(err);
+                        }
+                    };
                     if member.kind == FileSetMemberKind::Executable {
                         restore_executable_permission(&target).await?;
                     }
@@ -843,6 +900,10 @@ impl FileCacheBlobMaterializer {
         }
         Ok((promoted, member_digests))
     }
+}
+
+fn directory_member_transfer_id(receiver_entry_id: &EntryId, member_index: usize) -> String {
+    format!("{}:member:{member_index}", receiver_entry_id.as_ref())
 }
 
 pub(crate) fn compute_file_set_component(

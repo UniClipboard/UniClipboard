@@ -134,6 +134,12 @@ mockall::mock! {
             &self,
             command: crate::facade::blob_transfer::FetchBlobToPathCommand,
         ) -> Result<crate::facade::blob_transfer::FetchBlobToPathResult>;
+
+        async fn record_unfetched_failure(
+            &self,
+            context: crate::facade::blob_transfer::FetchTransferContext,
+            detail: String,
+        );
     }
 }
 
@@ -1170,7 +1176,7 @@ async fn directory_materializer_removes_staging_and_exposes_nothing_on_failure()
 
     let cache_dir = tempfile::tempdir().expect("cache dir");
     let receiver_entry_id = EntryId::from("receiver-failed-directory");
-    let blob_refs = ["first.txt", "second.txt"]
+    let blob_refs = ["first.txt", "second.txt", "third.txt"]
         .into_iter()
         .enumerate()
         .map(|(index, name)| V3BlobRef {
@@ -1204,10 +1210,19 @@ async fn directory_materializer_removes_staging_and_exposes_nothing_on_failure()
 
     let mut fetcher = MockBlobFetcher::new();
     let mut call = 0usize;
+    let transfer_ids = Arc::new(Mutex::new(Vec::new()));
+    let recorded_ids = Arc::clone(&transfer_ids);
     fetcher
         .expect_fetch_blob_to_path()
         .times(2)
         .returning(move |command| {
+            let context = command.transfer_context.as_ref().expect("transfer context");
+            assert_eq!(context.entry_id, "receiver-failed-directory");
+            assert!(context.individual_lifecycle);
+            recorded_ids
+                .lock()
+                .unwrap()
+                .push(context.transfer_id.clone());
             call += 1;
             if call == 2 {
                 anyhow::bail!("network failed");
@@ -1220,6 +1235,16 @@ async fn directory_materializer_removes_staging_and_exposes_nothing_on_failure()
                 bytes_written: 1,
             })
         });
+    fetcher
+        .expect_record_unfetched_failure()
+        .times(1)
+        .withf(|context, detail| {
+            context.entry_id == "receiver-failed-directory"
+                && context.filename == "third.txt"
+                && context.individual_lifecycle
+                && detail.contains("network failed")
+        })
+        .return_const(());
 
     let materializer =
         FileCacheBlobMaterializer::new(Arc::new(fetcher), cache_dir.path().to_path_buf());
@@ -1235,6 +1260,9 @@ async fn directory_materializer_removes_staging_and_exposes_nothing_on_failure()
         .expect_err("directory failure must fail the whole entry");
 
     assert!(error.to_string().contains("network failed"));
+    let transfer_ids = transfer_ids.lock().unwrap();
+    assert_eq!(transfer_ids.len(), 2);
+    assert_ne!(transfer_ids[0], transfer_ids[1]);
     assert!(!cache_dir
         .path()
         .join("iroh-blobs")

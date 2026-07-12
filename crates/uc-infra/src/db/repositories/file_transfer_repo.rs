@@ -7,10 +7,10 @@ use crate::db::models::{FileTransferRow, NewFileTransferRow};
 use crate::db::ports::DbExecutor;
 use crate::db::schema::file_transfer;
 use uc_core::ports::file_transfer::{
-    compute_aggregate_status, EntryTransferSummary, ExpiredInflightTransfer,
-    FailInflightTransfersPort, FileTransferProjectionError, FindEntryIdForTransferPort,
-    GetEntryTransferSummaryPort, ListExpiredInflightTransfersPort, PendingInboundTransfer,
-    RecordReceiverTransferPort, TrackedFileTransferStatus,
+    compute_aggregate_status, EntryTransferMemberSummary, EntryTransferSummary,
+    ExpiredInflightTransfer, FailInflightTransfersPort, FileTransferProjectionError,
+    FindEntryIdForTransferPort, GetEntryTransferSummaryPort, ListExpiredInflightTransfersPort,
+    PendingInboundTransfer, RecordReceiverTransferPort, TrackedFileTransferStatus,
 };
 
 /// SQLite adapter for the receiver-side file-transfer projection ports.
@@ -173,13 +173,28 @@ impl<E: DbExecutor> GetEntryTransferSummaryPort for DieselFileTransferRepository
                     None
                 };
 
-                let transfer_ids = rows.iter().map(|r| r.transfer_id.clone()).collect();
+                let mut members: Vec<EntryTransferMemberSummary> = rows
+                    .iter()
+                    .map(|row| EntryTransferMemberSummary {
+                        transfer_id: row.transfer_id.clone(),
+                        filename: row.filename.clone(),
+                        status: TrackedFileTransferStatus::from_str_value(&row.status)
+                            .unwrap_or(TrackedFileTransferStatus::Pending),
+                        failure_reason: row.failure_reason.clone(),
+                    })
+                    .collect();
+                members.sort_by(|left, right| left.transfer_id.cmp(&right.transfer_id));
+                let transfer_ids = members
+                    .iter()
+                    .map(|member| member.transfer_id.clone())
+                    .collect();
 
                 Ok(Some(EntryTransferSummary {
                     entry_id: eid,
                     aggregate_status,
                     failure_reason,
                     transfer_ids,
+                    members,
                 }))
             })
             .map_err(backend)
@@ -297,5 +312,85 @@ impl<E: DbExecutor> FailInflightTransfersPort for DieselFileTransferRepository<E
                 Ok(targets)
             })
             .map_err(backend)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::executor::DieselSqliteExecutor;
+    use crate::db::pool::init_db_pool;
+    use crate::db::ports::DbExecutor;
+    use tempfile::{tempdir, TempDir};
+
+    type Repo = DieselFileTransferRepository<DieselSqliteExecutor>;
+
+    fn make_repo() -> (Repo, DieselSqliteExecutor, TempDir) {
+        let tempdir = tempdir().unwrap();
+        let path = tempdir.path().join("file-transfer-repo.sqlite");
+        let path_str = path.to_str().unwrap();
+        let repo = Repo::new(DieselSqliteExecutor::new(init_db_pool(path_str).unwrap()));
+        let writer = DieselSqliteExecutor::new(init_db_pool(path_str).unwrap());
+        (repo, writer, tempdir)
+    }
+
+    async fn seed(repo: &Repo, transfer_id: &str, filename: &str) {
+        repo.upsert_pending_transfer(&PendingInboundTransfer {
+            transfer_id: transfer_id.to_string(),
+            entry_id: "entry-directory".to_string(),
+            origin_device_id: "peer-a".to_string(),
+            filename: filename.to_string(),
+            cached_path: String::new(),
+            created_at_ms: 1,
+        })
+        .await
+        .unwrap();
+    }
+
+    #[tokio::test]
+    async fn entry_summary_lists_each_directory_member_and_aggregates_failure() {
+        let (repo, writer, _tempdir) = make_repo();
+        seed(&repo, "transfer-a", "a.txt").await;
+        seed(&repo, "transfer-b", "b.txt").await;
+        seed(&repo, "transfer-c", "c.txt").await;
+        writer
+            .run(|conn| {
+                diesel::update(
+                    file_transfer::table.filter(file_transfer::transfer_id.eq("transfer-a")),
+                )
+                .set(file_transfer::status.eq(TrackedFileTransferStatus::Completed.as_str()))
+                .execute(conn)?;
+                diesel::update(
+                    file_transfer::table.filter(file_transfer::transfer_id.eq("transfer-b")),
+                )
+                .set((
+                    file_transfer::status.eq(TrackedFileTransferStatus::Failed.as_str()),
+                    file_transfer::failure_reason.eq(Some("network")),
+                ))
+                .execute(conn)?;
+                Ok(())
+            })
+            .unwrap();
+
+        let summary = repo
+            .get_entry_transfer_summary("entry-directory")
+            .await
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(summary.aggregate_status, TrackedFileTransferStatus::Failed);
+        assert_eq!(summary.members.len(), 3);
+        assert_eq!(summary.members[0].filename, "a.txt");
+        assert_eq!(
+            summary.members[0].status,
+            TrackedFileTransferStatus::Completed
+        );
+        assert_eq!(summary.members[1].filename, "b.txt");
+        assert_eq!(summary.members[1].status, TrackedFileTransferStatus::Failed);
+        assert_eq!(summary.members[2].filename, "c.txt");
+        assert_eq!(
+            summary.members[2].status,
+            TrackedFileTransferStatus::Pending
+        );
     }
 }

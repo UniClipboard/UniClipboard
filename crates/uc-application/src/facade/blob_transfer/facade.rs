@@ -119,6 +119,9 @@ pub struct PublishBlobResult {
 #[derive(Debug, Clone)]
 pub struct FetchTransferContext {
     pub transfer_id: String,
+    /// Clipboard entry that owns this transfer. Directory members use a
+    /// distinct `transfer_id` while sharing this entry id for aggregation.
+    pub entry_id: String,
     pub peer_id: String,
     pub total_bytes: Option<u64>,
     pub filename: String,
@@ -134,6 +137,9 @@ pub struct FetchTransferContext {
     /// 单 blob 调用者(CLI `uniclip recv`、子 facade 内部转发)保留默认
     /// `Only`,行为与改造前完全一致。
     pub batch_position: BatchPosition,
+    /// Track this fetch as its own receiver-side lifecycle row even when it
+    /// belongs to a larger outbound progress batch.
+    pub individual_lifecycle: bool,
 }
 
 /// 位置标志:在一个共享 `transfer_id` 的 fetch batch 里,本次 fetch 处在哪个位置。
@@ -329,7 +335,7 @@ impl BlobTransferFacade {
     ) {
         self.emit_host_event(HostEvent::Transfer(TransferHostEvent::Progress {
             transfer_id: ctx.transfer_id.clone(),
-            entry_id: Some(ctx.transfer_id.clone()),
+            entry_id: Some(ctx.entry_id.clone()),
             peer_id: ctx.peer_id.clone(),
             direction: FileTransferDirection::Receiving,
             bytes_transferred,
@@ -350,7 +356,7 @@ impl BlobTransferFacade {
         };
         let input = SeedReceiverContext {
             transfer_id: ctx.transfer_id.clone(),
-            entry_id: ctx.transfer_id.clone(),
+            entry_id: ctx.entry_id.clone(),
             origin_device_id: ctx.peer_id.clone(),
             filename: ctx.filename.clone(),
             cached_path,
@@ -435,6 +441,12 @@ impl BlobTransferFacade {
                 );
             }
         }
+    }
+
+    pub async fn record_unfetched_failure(&self, ctx: FetchTransferContext, detail: String) {
+        self.seed_lifecycle(&ctx, String::new()).await;
+        self.start_lifecycle(&ctx).await;
+        self.fail_lifecycle(&ctx, detail).await;
     }
 
     /// 取消一次进行中的 inbound fetch。
@@ -617,6 +629,7 @@ impl BlobTransferFacade {
                 let sink: Arc<dyn BlobProgressSink> = Arc::new(HostEventProgressSink {
                     bus: self.host_event_emitter.clone().unwrap(),
                     transfer_id: ctx.transfer_id.clone(),
+                    entry_id: ctx.entry_id.clone(),
                     peer_id: ctx.peer_id.clone(),
                     fallback_total: ctx.total_bytes,
                     outbound: outbound_ctx.clone(),
@@ -629,7 +642,7 @@ impl BlobTransferFacade {
         // receiver projection 行已经 `transferring`/`completed`,upsert
         // 会 fail-soft 但 warn 流满天飞。
         if let Some(ctx) = command.transfer_context.as_ref() {
-            if ctx.batch_position.is_first() {
+            if ctx.individual_lifecycle || ctx.batch_position.is_first() {
                 self.seed_lifecycle(ctx, String::new()).await;
                 self.start_lifecycle(ctx).await;
                 self.emit_progress(ctx, 0, ctx.total_bytes);
@@ -654,8 +667,13 @@ impl BlobTransferFacade {
                     // 但 complete lifecycle + outbound terminal Completed
                     // 只在 batch 收尾时发,避免提前告诉 sender"完成了"。
                     self.emit_progress(ctx, final_size, total);
-                    if ctx.batch_position.is_last() {
+                    if ctx.individual_lifecycle {
                         self.complete_lifecycle(ctx).await;
+                    }
+                    if ctx.batch_position.is_last() {
+                        if !ctx.individual_lifecycle {
+                            self.complete_lifecycle(ctx).await;
+                        }
                         self.report_outbound_terminal(
                             ctx,
                             final_size,
@@ -708,6 +726,7 @@ impl BlobTransferFacade {
                 let sink: Arc<dyn BlobProgressSink> = Arc::new(HostEventProgressSink {
                     bus: self.host_event_emitter.clone().unwrap(),
                     transfer_id: ctx.transfer_id.clone(),
+                    entry_id: ctx.entry_id.clone(),
                     peer_id: ctx.peer_id.clone(),
                     fallback_total: ctx.total_bytes,
                     outbound: outbound_ctx.clone(),
@@ -719,7 +738,7 @@ impl BlobTransferFacade {
         // dashboard `cached_path` 字段直接显示为本地副本路径。
         // 仅 batch 首帧时 seed/start,见 `BatchPosition` doc。
         if let Some(ctx) = command.transfer_context.as_ref() {
-            if ctx.batch_position.is_first() {
+            if ctx.individual_lifecycle || ctx.batch_position.is_first() {
                 let cached_path = command.target_path.to_string_lossy().into_owned();
                 self.seed_lifecycle(ctx, cached_path).await;
                 self.start_lifecycle(ctx).await;
@@ -779,8 +798,13 @@ impl BlobTransferFacade {
                     let final_size = outcome.bytes_written;
                     let total = ctx.total_bytes.or(Some(final_size));
                     self.emit_progress(ctx, final_size, total);
-                    if ctx.batch_position.is_last() {
+                    if ctx.individual_lifecycle {
                         self.complete_lifecycle(ctx).await;
+                    }
+                    if ctx.batch_position.is_last() {
+                        if !ctx.individual_lifecycle {
+                            self.complete_lifecycle(ctx).await;
+                        }
                         self.report_outbound_terminal(
                             ctx,
                             final_size,
@@ -892,8 +916,8 @@ fn flip_cancel_reason_perspective(
 ///
 /// adapter 已经做了字节阈值/时间窗节流,这里只负责把每次回调翻译成
 /// `TransferHostEvent::Progress`,并填充上下文字段(transfer_id /
-/// peer_id / direction)。`entry_id` 字段直接复用 `transfer_id`(协议
-/// 约定 == receiver_entry_id)。`fallback_total` 用于补全 adapter 不知
+/// peer_id / direction)。`entry_id` identifies the owning clipboard entry;
+/// directory members may use distinct transfer ids. `fallback_total` 用于补全 adapter 不知
 /// 道总大小(`total_bytes == None`)的场景——iroh 拉取过程中 size 通
 /// 常要等到 PartComplete 才已知,所以前端的进度百分比依赖这个 fallback。
 ///
@@ -903,6 +927,7 @@ fn flip_cancel_reason_perspective(
 struct HostEventProgressSink {
     bus: SharedHostEventEmitter,
     transfer_id: String,
+    entry_id: String,
     peer_id: String,
     fallback_total: Option<u64>,
     outbound: Option<OutboundReportContext>,
@@ -914,7 +939,7 @@ impl BlobProgressSink for HostEventProgressSink {
         let total = total_bytes.or(self.fallback_total);
         let event = HostEvent::Transfer(TransferHostEvent::Progress {
             transfer_id: self.transfer_id.clone(),
-            entry_id: Some(self.transfer_id.clone()),
+            entry_id: Some(self.entry_id.clone()),
             peer_id: self.peer_id.clone(),
             direction: FileTransferDirection::Receiving,
             bytes_transferred,

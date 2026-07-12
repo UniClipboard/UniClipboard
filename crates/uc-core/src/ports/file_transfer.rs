@@ -84,6 +84,16 @@ pub struct EntryTransferSummary {
     pub failure_reason: Option<String>,
     /// Transfer IDs belonging to this entry.
     pub transfer_ids: Vec<String>,
+    /// Per-member state, ordered by transfer id for deterministic reads.
+    pub members: Vec<EntryTransferMemberSummary>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EntryTransferMemberSummary {
+    pub transfer_id: String,
+    pub filename: String,
+    pub status: TrackedFileTransferStatus,
+    pub failure_reason: Option<String>,
 }
 
 /// Expired in-flight record with cleanup target.

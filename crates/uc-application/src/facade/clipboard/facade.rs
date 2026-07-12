@@ -20,9 +20,9 @@ use tracing::instrument;
 use uc_core::ids::{DeviceId, EntryId};
 use uc_core::ports::security::TransferCipherPort;
 use uc_core::ports::{
-    ClipboardDispatchPort, ClipboardReceiverPort, ClockPort, DeviceIdentityPort, DispatchAck,
-    EntryDeliveryRepositoryPort, FindMobileDeviceByIdPort, FirstSyncStatePort, LocalIdentityPort,
-    PeerAddressRepositoryPort, PresencePort, SettingsPort,
+    ClipboardDispatchPort, ClipboardHeader, ClipboardReceiverPort, ClockPort, DeviceIdentityPort,
+    DispatchAck, EntryDeliveryRepositoryPort, FindMobileDeviceByIdPort, FirstSyncStatePort,
+    LocalIdentityPort, PeerAddressRepositoryPort, PresencePort, SettingsPort,
 };
 use uc_core::MemberRepositoryPort;
 use uc_core::{ClipboardChangeOrigin, SystemClipboardSnapshot};
@@ -317,6 +317,7 @@ impl ClipboardSyncFacade {
                 plaintext: input.plaintext,
                 snapshot_hash: input.snapshot_hash.clone(),
                 payload_version: input.payload_version,
+                wire_version: ClipboardHeader::CURRENT_VERSION,
                 categories: ClipboardContentCategorySet::empty(),
                 // raw-bytes 路径不与某条 entry 绑定,跳过 delivery 落盘。
                 entry_id: None,
@@ -335,6 +336,7 @@ impl ClipboardSyncFacade {
         plaintext: Bytes,
         snapshot_hash: String,
         payload_version: u8,
+        wire_version: u8,
         categories: ClipboardContentCategorySet,
         entry_id: Option<EntryId>,
         target_filter: Option<Vec<DeviceId>>,
@@ -345,6 +347,7 @@ impl ClipboardSyncFacade {
                 plaintext,
                 snapshot_hash,
                 payload_version,
+                wire_version,
                 categories,
                 entry_id,
                 target_filter,
@@ -380,6 +383,7 @@ impl ClipboardSyncFacade {
             plaintext,
             snapshot_hash,
             3,
+            ClipboardHeader::CURRENT_VERSION,
             categories,
             entry_id,
             target_filter,
@@ -409,6 +413,37 @@ impl ClipboardSyncFacade {
             plaintext,
             snapshot_hash,
             3,
+            ClipboardHeader::CURRENT_VERSION,
+            categories,
+            entry_id,
+            target_filter,
+        )
+        .await
+    }
+
+    pub async fn dispatch_snapshot_with_blob_refs_and_file_set(
+        &self,
+        snapshot: SystemClipboardSnapshot,
+        blob_refs: Vec<V3BlobRef>,
+        manifest: crate::usecases::clipboard_sync::apply_inbound::InboundFileSetManifest,
+        origin: ClipboardChangeOrigin,
+        entry_id: Option<EntryId>,
+        target_filter: Option<Vec<DeviceId>>,
+    ) -> Result<DispatchEntryOutcome, ClipboardSyncError> {
+        let _ = origin;
+        let categories = ClipboardContentCategorySet::from_snapshot(&snapshot);
+        let (plaintext, snapshot_hash) =
+            crate::usecases::clipboard_sync::payload_codec::encode_snapshot_with_blob_refs_and_file_set_to_v3_bytes(
+                &snapshot,
+                &blob_refs,
+                &manifest,
+            )
+            .map_err(|e| ClipboardSyncError::CipherFailure(format!("payload encode: {e}")))?;
+        self.dispatch_internal(
+            plaintext,
+            snapshot_hash,
+            3,
+            ClipboardHeader::DIRECTORY_VERSION,
             categories,
             entry_id,
             target_filter,

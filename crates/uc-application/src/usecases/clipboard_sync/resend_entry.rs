@@ -394,7 +394,7 @@ impl ResendEntryUseCase {
             OutboundFileSetResolution::NotFileClass => (Vec::new(), false),
             OutboundFileSetResolution::Manifest { paths, .. } => (paths, true),
             OutboundFileSetResolution::Fallback { paths } => (paths, false),
-            OutboundFileSetResolution::DirectoryNotYetSyncable => {
+            OutboundFileSetResolution::DirectorySyncable { .. } => {
                 // TODO(ADR-010 phase 4): remove this gate once the wire format
                 // carries directory member locations and receivers rebuild trees.
                 return Err(ResendEntryError::Dispatch(
@@ -497,6 +497,7 @@ impl ResendEntryUseCase {
                 plaintext,
                 snapshot_hash,
                 payload_version: 3,
+                wire_version: uc_core::ports::ClipboardHeader::CURRENT_VERSION,
                 categories,
                 entry_id: Some(cmd.entry_id.clone()),
                 target_filter: Some(targets),

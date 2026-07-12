@@ -193,6 +193,8 @@ pub(crate) struct DispatchClipboardEntryInput {
     pub snapshot_hash: String,
     /// Payload codec tag, e.g. `3` for the V3 `ClipboardBinaryPayload`.
     pub payload_version: u8,
+    /// Minimum wire version required to preserve this payload's semantics.
+    pub wire_version: u8,
     /// Set of content categories present in the snapshot, used to gate
     /// against each peer's `send_content_types` toggle. Caller (facade
     /// `dispatch_snapshot*`) computes via
@@ -1006,6 +1008,7 @@ mod tests {
             plaintext: Bytes::from_static(b"hello world"),
             snapshot_hash: "9".repeat(64),
             payload_version: 3,
+            wire_version: ClipboardHeader::CURRENT_VERSION,
             // Existing verdicts predate the content-type filter; default
             // to an empty set so they always pass the gate (fail open).
             categories: ClipboardContentCategorySet::empty(),
@@ -1542,6 +1545,7 @@ mod tests {
             plaintext: Bytes::from_static(b"hello world"),
             snapshot_hash: "9".repeat(64),
             payload_version: 3,
+            wire_version: ClipboardHeader::CURRENT_VERSION,
             categories,
             entry_id: None,
             target_filter: None,
@@ -1873,6 +1877,7 @@ mod tests {
             plaintext: Bytes::from_static(b"hello world"),
             snapshot_hash: "9".repeat(64),
             payload_version: 3,
+            wire_version: ClipboardHeader::CURRENT_VERSION,
             categories,
             entry_id: None,
             target_filter: None,

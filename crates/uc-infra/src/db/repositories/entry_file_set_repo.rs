@@ -308,7 +308,7 @@ where
                     // members (ADR-010 caps the set at ~2000), so a multi-row
                     // insert beats per-row round-trips. Chunk so a single
                     // statement stays well under SQLite's bound-parameter limit
-                    // (8 columns × CHUNK params); the whole loop is inside the
+                    // (12 columns × CHUNK params); the whole loop is inside the
                     // surrounding transaction, so it's still all-or-nothing.
                     for chunk in new_rows.chunks(ENTRY_FILE_SET_INSERT_CHUNK) {
                         diesel::insert_into(entry_file_set::table)

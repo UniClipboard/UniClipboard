@@ -299,17 +299,18 @@ impl CaptureClipboardUseCase {
                 && is_file_class
             {
                 // Read the file-set caps for this capture. A load failure must
-                // not drop the capture — fall back to no cap (behaviour before
-                // the gate existed) so a transient settings error can't silently
-                // stop file sync.
+                // not drop the capture, but it must stay bounded — fall back to
+                // the conservative ADR-010 default ceiling rather than no cap,
+                // so a transient settings error can't let a directory capture
+                // traverse and hash an entire tree unbounded.
                 let caps = match self.settings.load().await {
                     Ok(s) => FileSetCaps {
                         max_total_bytes: s.file_sync.max_file_set_total_bytes,
                         max_member_count: s.file_sync.max_file_set_member_count,
                     },
                     Err(err) => {
-                        warn!(error = %err, "capture: settings load failed; file-set caps disabled for this capture");
-                        FileSetCaps::unbounded()
+                        warn!(error = %err, "capture: settings load failed; using fallback file-set caps for this capture");
+                        FileSetCaps::fallback()
                     }
                 };
                 if let Some(built) =
@@ -788,8 +789,23 @@ struct FileSetCaps {
 }
 
 impl FileSetCaps {
-    /// No cap on either dimension — used when the settings load fails so a
-    /// transient error never silently stops file sync.
+    /// Conservative fallback caps for when the settings load fails: a transient
+    /// error must not silently stop file sync, but it also must not disable the
+    /// caps entirely — with directory capture, unbounded caps would let one
+    /// settings hiccup traverse and hash an entire directory tree. Mirror the
+    /// ADR-010 defaults (`uc-core` `Settings::default`: 1 GiB / 2000 members)
+    /// so the fallback stays bounded without dropping the capture.
+    fn fallback() -> Self {
+        Self {
+            max_total_bytes: 1024 * 1024 * 1024, // 1 GiB
+            max_member_count: 2000,
+        }
+    }
+
+    /// No cap on either dimension. Test-only: exercises the manifest builder
+    /// without cap interference. Production never disables the caps — a
+    /// settings-load failure uses [`Self::fallback`], not this.
+    #[cfg(test)]
     fn unbounded() -> Self {
         Self {
             max_total_bytes: 0,

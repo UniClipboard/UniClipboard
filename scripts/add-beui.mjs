@@ -4,8 +4,10 @@
 // beUI is a copy-paste component registry, not a standard shadcn registry, so
 // the shadcn CLI cannot add its items. This script fetches a component's JSON
 // from the registry, writes each file under src/ (beUI paths are src-relative
-// and its `@/...` imports already match our `@ -> src` alias), and rewrites the
-// `motion/react` imports to `framer-motion` (the package this project uses).
+// and its `@/...` imports already match our `@ -> src` alias), and rewrites its
+// motion imports for this project: `motion/react` -> `framer-motion` (the package
+// we ship), and the full `motion` component -> the lightweight `m` component
+// (required because every React root here runs under <LazyMotion strict>).
 //
 // Usage:
 //   node scripts/add-beui.mjs <slug> [<slug>...] [--no-install]
@@ -49,10 +51,28 @@ const owned = new Set([
 
 const exists = (p) => access(p).then(() => true, () => false)
 
-const rewriteMotion = (content) =>
-  content
+const rewriteMotion = (content) => {
+  // 1. Module path: beUI imports from "motion/react"; this project ships framer-motion.
+  let out = content
     .replace(/(["'])motion\/react\1/g, '$1framer-motion$1')
     .replace(/(from\s+["'])motion(["'])/g, '$1framer-motion$2')
+
+  // 2. Every React root in this project renders under <LazyMotion strict>, which
+  //    forbids the full `motion` component (it throws at runtime) — the
+  //    lightweight `m` component must be used instead. Rewrite the `motion` named
+  //    import from framer-motion and every `motion.<tag>` usage to `m`. This
+  //    leaves useReducedMotion / MotionConfig / HTMLMotionProps / AnimatePresence
+  //    and the "framer-motion" string untouched. (This step is only valid because
+  //    this project guarantees a LazyMotion ancestor; it is not generally safe.)
+  out = out.replace(
+    /import\s*\{([\s\S]*?)\}\s*from\s*(["'])framer-motion\2/g,
+    (_full, names, q) =>
+      `import {${names.replace(/(^|[,\s])motion(\s*(?:,|$))/g, '$1m$2')}} from ${q}framer-motion${q}`
+  )
+  out = out.replace(/\bmotion\.(?=[a-zA-Z])/g, 'm.')
+
+  return out
+}
 
 const missingDeps = new Set()
 const written = []

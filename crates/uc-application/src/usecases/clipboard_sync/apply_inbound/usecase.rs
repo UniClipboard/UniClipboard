@@ -364,6 +364,7 @@ impl ApplyInboundClipboardUseCase {
         }));
 
         let requires_materialize = !blob_refs.is_empty() || file_set_manifest.is_some();
+        let verify_directory_identity = file_set_manifest.is_some();
         let (snapshot, is_partial) = match (requires_materialize, &self.blob_materializer) {
             (false, _) => (snapshot, false),
             (true, Some(materializer)) => {
@@ -392,6 +393,21 @@ impl ApplyInboundClipboardUseCase {
                         ApplyInboundError::Internal(format!("blob materialize: {e}"))
                     })?;
                 let partial = result.is_partial();
+                if verify_directory_identity {
+                    verify_file_set_identity(&result.snapshot, &input.snapshot_hash).map_err(
+                        |err| {
+                            self.emit_host_event(HostEvent::Transfer(
+                                TransferHostEvent::StatusChanged {
+                                    transfer_id: receiver_entry_id.as_ref().to_string(),
+                                    entry_id: receiver_entry_id.as_ref().to_string(),
+                                    status: "failed".to_string(),
+                                    reason: Some(err.to_string()),
+                                },
+                            ));
+                            ApplyInboundError::Internal(err.to_string())
+                        },
+                    )?;
+                }
                 info!(
                     blob_ref_count = count,
                     rep_count = result.snapshot.representations.len(),
@@ -638,6 +654,19 @@ impl ApplyInboundClipboardUseCase {
 
         Ok(ApplyOutcome::Applied { entry_id })
     }
+}
+
+pub(crate) fn verify_file_set_identity(
+    snapshot: &SystemClipboardSnapshot,
+    expected_snapshot_hash: &str,
+) -> anyhow::Result<()> {
+    let actual = snapshot.snapshot_hash().to_string();
+    if actual != expected_snapshot_hash {
+        anyhow::bail!(
+            "directory file-set identity mismatch: expected {expected_snapshot_hash}, got {actual}"
+        );
+    }
+    Ok(())
 }
 
 /// Compact summary of the snapshot's representations for tracing.

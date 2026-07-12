@@ -30,7 +30,7 @@ use crate::facade::{
 };
 use crate::sync_planner::{FileCandidate, FileSyncIntent, OutboundSyncPlanner};
 use crate::usecases::clipboard_sync::apply_inbound::{
-    InboundFileSetManifest, InboundFileSetMember,
+    compute_file_set_component, InboundFileSetManifest, InboundFileSetMember,
 };
 use crate::usecases::clipboard_sync::resend_entry::{
     ResendEntryDeps, ResendEntryRunner, ResendEntryUseCase,
@@ -366,10 +366,6 @@ impl ClipboardOutboundPort for ClipboardOutboundDispatcher {
             }
         }
 
-        if !file_content_digests.is_empty() {
-            clipboard_intent.snapshot.file_content_digests = file_content_digests;
-        }
-
         let publish_inline_start = Instant::now();
         let mut image_blob_refs = publish_oversized_inline_blob_refs(
             self.blob_transfer.as_ref(),
@@ -393,6 +389,20 @@ impl ClipboardOutboundPort for ClipboardOutboundDispatcher {
             }
             None => None,
         };
+        if let Some(manifest) = &file_set_manifest {
+            let digests = file_content_digests
+                .iter()
+                .enumerate()
+                .map(|(index, digest)| (index as u32, *digest))
+                .collect();
+            clipboard_intent.snapshot.file_content_digests.clear();
+            clipboard_intent.snapshot.file_set_v1_component = Some(
+                compute_file_set_component(manifest, &digests)
+                    .map_err(|err| ClipboardOutboundError::Internal(err.to_string()))?,
+            );
+        } else if !file_content_digests.is_empty() {
+            clipboard_intent.snapshot.file_content_digests = file_content_digests;
+        }
 
         let dispatch_phase_start = Instant::now();
         // LocalCapture 路径:把 entry_id 透传给 dispatch,fan-out 完成后落盘
@@ -751,7 +761,7 @@ pub(crate) async fn resolve_outbound_file_set(
     }
 }
 
-fn build_transfer_manifest(
+pub(crate) fn build_transfer_manifest(
     members: &[DirectoryMemberSource],
     files: &[FileSyncIntent],
 ) -> Result<InboundFileSetManifest, ClipboardOutboundError> {

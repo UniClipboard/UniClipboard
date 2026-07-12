@@ -249,6 +249,12 @@ pub struct ClipboardSyncFacade {
     view_uc: Arc<GetEntryDeliveryViewUseCase>,
 }
 
+#[derive(Clone, Copy)]
+struct DispatchVersions {
+    payload: u8,
+    wire: u8,
+}
+
 impl ClipboardSyncFacade {
     pub fn new(deps: ClipboardSyncDeps) -> Self {
         let dispatch_uc = Arc::new(DispatchClipboardEntryUseCase::new(
@@ -335,8 +341,7 @@ impl ClipboardSyncFacade {
         &self,
         plaintext: Bytes,
         snapshot_hash: String,
-        payload_version: u8,
-        wire_version: u8,
+        versions: DispatchVersions,
         categories: ClipboardContentCategorySet,
         entry_id: Option<EntryId>,
         target_filter: Option<Vec<DeviceId>>,
@@ -346,8 +351,8 @@ impl ClipboardSyncFacade {
             .execute(DispatchClipboardEntryInput {
                 plaintext,
                 snapshot_hash,
-                payload_version,
-                wire_version,
+                payload_version: versions.payload,
+                wire_version: versions.wire,
                 categories,
                 entry_id,
                 target_filter,
@@ -382,8 +387,10 @@ impl ClipboardSyncFacade {
         self.dispatch_internal(
             plaintext,
             snapshot_hash,
-            3,
-            ClipboardHeader::CURRENT_VERSION,
+            DispatchVersions {
+                payload: 3,
+                wire: ClipboardHeader::CURRENT_VERSION,
+            },
             categories,
             entry_id,
             target_filter,
@@ -412,8 +419,10 @@ impl ClipboardSyncFacade {
         self.dispatch_internal(
             plaintext,
             snapshot_hash,
-            3,
-            ClipboardHeader::CURRENT_VERSION,
+            DispatchVersions {
+                payload: 3,
+                wire: ClipboardHeader::CURRENT_VERSION,
+            },
             categories,
             entry_id,
             target_filter,
@@ -442,8 +451,10 @@ impl ClipboardSyncFacade {
         self.dispatch_internal(
             plaintext,
             snapshot_hash,
-            3,
-            ClipboardHeader::DIRECTORY_VERSION,
+            DispatchVersions {
+                payload: 3,
+                wire: ClipboardHeader::DIRECTORY_VERSION,
+            },
             categories,
             entry_id,
             target_filter,

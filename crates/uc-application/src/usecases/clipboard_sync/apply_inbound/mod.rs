@@ -67,6 +67,7 @@ mod usecase;
 #[cfg(test)]
 mod tests;
 
+pub(crate) use materializer::compute_file_set_component;
 pub use materializer::{
     FileCacheBlobMaterializer, InboundBlobFetcher, InboundBlobMaterializer, InboundFileSetManifest,
     InboundFileSetMember,

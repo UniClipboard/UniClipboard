@@ -18,7 +18,10 @@ use async_trait::async_trait;
 use tracing::{debug, info, warn};
 use url::Url;
 
-use uc_core::clipboard::FileSetMemberKind;
+use uc_core::clipboard::{
+    ContentHash, EntryFileSet, EntryFileSetLine, EntryFileSetLineKind, FileSetMemberKind,
+    FileSetMemberLocation, HashAlgorithm,
+};
 use uc_core::ids::{DeviceId, EntryId, FormatId, RepresentationId};
 use uc_core::ports::inbound_file_target::ReserveInboundFileTargetPort;
 use uc_core::{MimeType, ObservedClipboardRepresentation, SystemClipboardSnapshot};
@@ -193,7 +196,7 @@ impl InboundBlobMaterializer for FileCacheBlobMaterializer {
         blob_refs: Vec<V3BlobRef>,
         file_set_manifest: Option<InboundFileSetManifest>,
     ) -> Result<MaterializeResult> {
-        if blob_refs.is_empty() {
+        if blob_refs.is_empty() && file_set_manifest.is_none() {
             return Ok(MaterializeResult::complete(snapshot));
         }
 
@@ -670,7 +673,7 @@ impl FileCacheBlobMaterializer {
             .join("iroh-blobs")
             .join("staging")
             .join(sanitize_path_segment(receiver_entry_id.as_ref()));
-        if tokio::fs::try_exists(&staging_base).await.unwrap_or(false) {
+        if tokio::fs::try_exists(&staging_base).await? {
             tokio::fs::remove_dir_all(&staging_base).await?;
         }
         tokio::fs::create_dir_all(&staging_base).await?;
@@ -688,9 +691,11 @@ impl FileCacheBlobMaterializer {
             .await;
 
         match result {
-            Ok((root_paths, file_content_digests)) => {
+            Ok((root_paths, member_digests)) => {
                 remove_directory_and_empty_parents(&staging_base, &self.cache_dir).await;
-                snapshot.file_content_digests = file_content_digests;
+                snapshot.file_content_digests.clear();
+                snapshot.file_set_v1_component =
+                    Some(compute_file_set_component(&manifest, &member_digests)?);
                 let uri_list = local_file_uri_list(&root_paths)?;
                 rewrite_file_list(&mut snapshot, uri_list, root_paths.len())?;
                 Ok(MaterializeResult::complete(snapshot))
@@ -711,7 +716,7 @@ impl FileCacheBlobMaterializer {
         staging_base: &std::path::Path,
         batch_idx: &mut usize,
         batch_total: usize,
-    ) -> Result<(Vec<PathBuf>, Vec<[u8; 32]>)> {
+    ) -> Result<(Vec<PathBuf>, BTreeMap<u32, [u8; 32]>)> {
         let mut roots = BTreeMap::<u32, String>::new();
         for member in &manifest.members {
             validate_manifest_member(member)?;
@@ -732,7 +737,7 @@ impl FileCacheBlobMaterializer {
             tokio::fs::create_dir_all(staging_root(staging_base, *root_index, root_name)).await?;
         }
 
-        let mut file_content_digests = Vec::new();
+        let mut member_digests = BTreeMap::new();
         for member in &manifest.members {
             let root = staging_root(staging_base, member.root_index, &member.root_name);
             let target = join_relative_path(&root, &member.relative_path)?;
@@ -772,11 +777,14 @@ impl FileCacheBlobMaterializer {
                         .fetch_blob_to_path(FetchBlobToPathCommand {
                             ticket: blob_ref.ticket.clone(),
                             entry_id: blob_ref.entry_id.clone(),
-                            target_path: target,
+                            target_path: target.clone(),
                             transfer_context: Some(context),
                         })
                         .await?;
-                    file_content_digests.push(*fetched.plaintext_hash.as_bytes());
+                    if member.kind == FileSetMemberKind::Executable {
+                        restore_executable_permission(&target).await?;
+                    }
+                    member_digests.insert(index as u32, *fetched.plaintext_hash.as_bytes());
                 }
             }
         }
@@ -787,27 +795,195 @@ impl FileCacheBlobMaterializer {
             .join(sanitize_path_segment(receiver_entry_id.as_ref()));
         tokio::fs::create_dir_all(&managed_parent).await?;
         let mut destinations = Vec::new();
+        let mut reserved_destinations = HashSet::new();
         for (root_index, root_name) in &roots {
             let reserved = match &self.target_reserver {
                 Some(reserver) => reserver.reserve_target(root_name).await,
                 None => None,
             };
-            let destination = reserved.unwrap_or_else(|| managed_parent.join(root_name));
-            if destination.is_file() {
-                tokio::fs::remove_file(&destination).await?;
+            let destination = match reserved {
+                Some(path) => path,
+                None => resolve_nonconflicting_root_path(
+                    &managed_parent,
+                    root_name,
+                    &reserved_destinations,
+                )?,
+            };
+            if !reserved_destinations.insert(destination.clone()) {
+                return Err(anyhow!(
+                    "directory target reserver returned a duplicate path: {}",
+                    destination.display()
+                ));
             }
-            if tokio::fs::try_exists(&destination).await? {
+            destinations.push((*root_index, root_name.clone(), destination));
+        }
+
+        for (_, _, destination) in &destinations {
+            if destination.is_file() {
+                tokio::fs::remove_file(destination).await?;
+            }
+            if tokio::fs::try_exists(destination).await? {
                 return Err(anyhow!(
                     "directory destination already exists: {}",
                     destination.display()
                 ));
             }
-            let source = staging_root(staging_base, *root_index, root_name);
-            tokio::fs::rename(&source, &destination).await?;
-            destinations.push(destination);
         }
-        Ok((destinations, file_content_digests))
+
+        let mut promoted = Vec::new();
+        for (root_index, root_name, destination) in &destinations {
+            let source = staging_root(staging_base, *root_index, root_name);
+            if let Err(err) = promote_directory(&source, destination).await {
+                for path in promoted.iter().rev() {
+                    let _ = tokio::fs::remove_dir_all(path).await;
+                }
+                return Err(err);
+            }
+            promoted.push(destination.clone());
+        }
+        Ok((promoted, member_digests))
     }
+}
+
+pub(crate) fn compute_file_set_component(
+    manifest: &InboundFileSetManifest,
+    member_digests: &BTreeMap<u32, [u8; 32]>,
+) -> Result<[u8; 32]> {
+    let row_count = i64::try_from(manifest.members.len())?;
+    let mut lines = Vec::with_capacity(manifest.members.len());
+    for (index, member) in manifest.members.iter().enumerate() {
+        let location = FileSetMemberLocation {
+            root_index: i64::from(member.root_index),
+            root_name: member.root_name.clone(),
+            relative_path: member.relative_path.clone(),
+            kind: member.kind,
+        };
+        let kind = match member.kind {
+            FileSetMemberKind::File | FileSetMemberKind::Executable => {
+                let blob_ref_index = member
+                    .blob_ref_index
+                    .ok_or_else(|| anyhow!("file member is missing its blob reference"))?;
+                let bytes = member_digests
+                    .get(&blob_ref_index)
+                    .ok_or_else(|| anyhow!("file member is missing its fetched content digest"))?;
+                EntryFileSetLineKind::File {
+                    content_hash: ContentHash {
+                        alg: HashAlgorithm::Blake3V1,
+                        bytes: *bytes,
+                    },
+                    blob_id: None,
+                    size_bytes: None,
+                }
+            }
+            FileSetMemberKind::EmptyDirectory => EntryFileSetLineKind::NonFile,
+        };
+        lines.push(EntryFileSetLine {
+            line_index: row_count + i64::try_from(index)?,
+            original_text: String::new(),
+            member_location: Some(location),
+            kind,
+        });
+    }
+    EntryFileSet { lines }
+        .file_set_v1_component()
+        .ok_or_else(|| anyhow!("directory manifest cannot produce a file-set identity"))
+}
+
+fn resolve_nonconflicting_root_path(
+    parent: &std::path::Path,
+    desired_name: &str,
+    reserved: &HashSet<PathBuf>,
+) -> Result<PathBuf> {
+    let desired = parent.join(desired_name);
+    if !desired.exists() && !reserved.contains(&desired) {
+        return Ok(desired);
+    }
+    let mut suffix = 2u32;
+    loop {
+        let candidate = parent.join(format!("{desired_name} ({suffix})"));
+        if !candidate.exists() && !reserved.contains(&candidate) {
+            return Ok(candidate);
+        }
+        suffix = suffix
+            .checked_add(1)
+            .ok_or_else(|| anyhow!("directory collision suffix space exhausted"))?;
+    }
+}
+
+async fn promote_directory(source: &std::path::Path, destination: &std::path::Path) -> Result<()> {
+    match tokio::fs::rename(source, destination).await {
+        Ok(()) => Ok(()),
+        Err(rename_error) => {
+            let parent = destination
+                .parent()
+                .ok_or_else(|| anyhow!("directory destination has no parent"))?;
+            let file_name = destination
+                .file_name()
+                .and_then(|name| name.to_str())
+                .ok_or_else(|| anyhow!("directory destination name is not valid UTF-8"))?;
+            let hidden = parent.join(format!(".uniclip-staging-{file_name}"));
+            if tokio::fs::try_exists(&hidden).await? {
+                tokio::fs::remove_dir_all(&hidden).await?;
+            }
+            let source = source.to_path_buf();
+            let source_copy = source.clone();
+            let hidden_copy = hidden.clone();
+            tokio::task::spawn_blocking(move || copy_directory_tree(&source_copy, &hidden_copy))
+                .await
+                .map_err(|err| anyhow!("directory copy task failed: {err}"))??;
+            if let Err(err) = tokio::fs::rename(&hidden, destination).await {
+                let _ = tokio::fs::remove_dir_all(&hidden).await;
+                return Err(anyhow!(
+                    "directory promotion failed after rename error ({rename_error}): {err}"
+                ));
+            }
+            tokio::fs::remove_dir_all(source).await?;
+            Ok(())
+        }
+    }
+}
+
+fn copy_directory_tree(source: &std::path::Path, destination: &std::path::Path) -> Result<()> {
+    std::fs::create_dir_all(destination)?;
+    for entry in std::fs::read_dir(source)? {
+        let entry = entry?;
+        let source_path = entry.path();
+        let destination_path = destination.join(entry.file_name());
+        let metadata = entry.metadata()?;
+        if metadata.is_dir() {
+            copy_directory_tree(&source_path, &destination_path)?;
+        } else if metadata.is_file() {
+            let copied = std::fs::copy(&source_path, &destination_path)?;
+            if copied != metadata.len() {
+                return Err(anyhow!(
+                    "copied byte count mismatch for {}",
+                    source_path.display()
+                ));
+            }
+            std::fs::set_permissions(&destination_path, metadata.permissions())?;
+        } else {
+            return Err(anyhow!(
+                "staging tree contains an unsupported member: {}",
+                source_path.display()
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[cfg(unix)]
+async fn restore_executable_permission(path: &std::path::Path) -> Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+
+    let mut permissions = tokio::fs::metadata(path).await?.permissions();
+    permissions.set_mode(permissions.mode() | 0o111);
+    tokio::fs::set_permissions(path, permissions).await?;
+    Ok(())
+}
+
+#[cfg(not(unix))]
+async fn restore_executable_permission(_path: &std::path::Path) -> Result<()> {
+    Ok(())
 }
 
 fn validate_manifest_member(member: &InboundFileSetMember) -> Result<()> {

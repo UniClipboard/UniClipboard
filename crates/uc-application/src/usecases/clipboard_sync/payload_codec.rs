@@ -708,7 +708,7 @@ mod tests {
 
         let (bytes, _) = encode_snapshot_with_blob_refs_and_file_set_to_v3_bytes(
             &original,
-            &[blob_ref.clone()],
+            std::slice::from_ref(&blob_ref),
             &manifest,
         )
         .unwrap();

@@ -31,6 +31,7 @@ use super::materializer::{
     InboundFileSetMember, MaterializeResult,
 };
 use super::ports::{InboundCapture, InboundWrite};
+use super::usecase::verify_file_set_identity;
 use super::usecase::ApplyInboundClipboardUseCase;
 use super::{ApplyInboundError, ApplyInboundInput, ApplyOutcome};
 
@@ -160,6 +161,20 @@ fn fixture_input(text: &str) -> (ApplyInboundInput, String) {
         },
         snapshot_hash,
     )
+}
+
+#[test]
+fn directory_identity_verification_rejects_mismatched_snapshot_hash() {
+    let snapshot = SystemClipboardSnapshot {
+        ts_ms: 1,
+        representations: Vec::new(),
+        file_content_digests: Vec::new(),
+        file_set_v1_component: Some([1; 32]),
+    };
+
+    let error = verify_file_set_identity(&snapshot, "blake3v1:deadbeef")
+        .expect_err("mismatched directory identity must fail");
+    assert!(error.to_string().contains("identity mismatch"));
 }
 
 fn fixture_input_from_snapshot(snapshot: SystemClipboardSnapshot) -> (ApplyInboundInput, String) {
@@ -1132,6 +1147,7 @@ async fn directory_materializer_rebuilds_nested_tree_and_empty_directory() {
         b"hello"
     );
     assert!(root.join("empty").is_dir());
+    assert!(result.snapshot.file_set_v1_component.is_some());
     let uri_list = String::from_utf8(
         result.snapshot.representations[0]
             .expect_inline_bytes()
@@ -1226,6 +1242,139 @@ async fn directory_materializer_removes_staging_and_exposes_nothing_on_failure()
         .join("folder")
         .exists());
     assert!(!cache_dir.path().join("iroh-blobs/staging").exists());
+}
+
+#[tokio::test]
+async fn directory_materializer_suffixes_existing_and_same_paste_root_names() {
+    use uc_core::clipboard::FileSetMemberKind;
+
+    let cache_dir = tempfile::tempdir().expect("cache dir");
+    let receiver_entry_id = EntryId::from("receiver-collisions");
+    let destination = cache_dir
+        .path()
+        .join("iroh-blobs")
+        .join(receiver_entry_id.as_ref());
+    std::fs::create_dir_all(destination.join("folder")).unwrap();
+    let manifest = InboundFileSetManifest {
+        members: vec![
+            InboundFileSetMember {
+                root_index: 0,
+                root_name: "folder".to_string(),
+                relative_path: "empty-a".to_string(),
+                kind: FileSetMemberKind::EmptyDirectory,
+                blob_ref_index: None,
+            },
+            InboundFileSetMember {
+                root_index: 1,
+                root_name: "folder".to_string(),
+                relative_path: "empty-b".to_string(),
+                kind: FileSetMemberKind::EmptyDirectory,
+                blob_ref_index: None,
+            },
+        ],
+    };
+    let snapshot = SystemClipboardSnapshot {
+        ts_ms: 1,
+        representations: Vec::new(),
+        file_content_digests: Vec::new(),
+        file_set_v1_component: None,
+    };
+
+    let materializer = FileCacheBlobMaterializer::new(
+        Arc::new(MockBlobFetcher::new()),
+        cache_dir.path().to_path_buf(),
+    );
+    let result = materializer
+        .materialize(
+            DeviceId::new("peer-x"),
+            receiver_entry_id,
+            snapshot,
+            Vec::new(),
+            Some(manifest),
+        )
+        .await
+        .expect("empty directory set should materialize");
+
+    assert!(destination.join("folder (2)/empty-a").is_dir());
+    assert!(destination.join("folder (3)/empty-b").is_dir());
+    let uri_list = String::from_utf8(
+        result.snapshot.representations[0]
+            .expect_inline_bytes()
+            .to_vec(),
+    )
+    .unwrap();
+    assert_eq!(uri_list.lines().count(), 2);
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn directory_materializer_restores_executable_permission() {
+    use std::os::unix::fs::PermissionsExt;
+    use uc_core::clipboard::FileSetMemberKind;
+
+    let cache_dir = tempfile::tempdir().expect("cache dir");
+    let receiver_entry_id = EntryId::from("receiver-executable");
+    let blob_ref = V3BlobRef {
+        ticket: BlobTicket::from_bytes(vec![3]),
+        entry_id: EntryId::from("sender-executable"),
+        filename: Some("run.sh".to_string()),
+        mime: None,
+        size_bytes: 9,
+        representation_index: None,
+    };
+    let manifest = InboundFileSetManifest {
+        members: vec![InboundFileSetMember {
+            root_index: 0,
+            root_name: "scripts".to_string(),
+            relative_path: "run.sh".to_string(),
+            kind: FileSetMemberKind::Executable,
+            blob_ref_index: Some(0),
+        }],
+    };
+    let snapshot = SystemClipboardSnapshot {
+        ts_ms: 1,
+        representations: Vec::new(),
+        file_content_digests: Vec::new(),
+        file_set_v1_component: None,
+    };
+    let mut fetcher = MockBlobFetcher::new();
+    fetcher
+        .expect_fetch_blob_to_path()
+        .times(1)
+        .returning(|command| {
+            std::fs::write(&command.target_path, b"#!/bin/sh").unwrap();
+            Ok(crate::facade::blob_transfer::FetchBlobToPathResult {
+                entry_id: command.entry_id,
+                plaintext_hash: PlaintextHash::from_bytes([3; 32]),
+                digest: BlobDigest::from_bytes([4; 32]),
+                bytes_written: 9,
+            })
+        });
+
+    let materializer =
+        FileCacheBlobMaterializer::new(Arc::new(fetcher), cache_dir.path().to_path_buf());
+    materializer
+        .materialize(
+            DeviceId::new("peer-x"),
+            receiver_entry_id.clone(),
+            snapshot,
+            vec![blob_ref],
+            Some(manifest),
+        )
+        .await
+        .unwrap();
+
+    let mode = std::fs::metadata(
+        cache_dir
+            .path()
+            .join("iroh-blobs")
+            .join(receiver_entry_id.as_ref())
+            .join("scripts/run.sh"),
+    )
+    .unwrap()
+    .permissions()
+    .mode();
+    assert_ne!(mode & 0o111, 0);
 }
 
 /// Fake reserver: redirects every inbound file flat into `dir`.

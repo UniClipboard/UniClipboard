@@ -294,6 +294,7 @@ fn write_file_set_extension<W: Write>(
             FileSetMemberKind::EmptyDirectory => b'd',
         };
         writer.write_all(&[kind])?;
+        writer.write_all(&[u8::from(member.root_is_file)])?;
         writer.write_all(&member.root_index.to_le_bytes())?;
         write_string_u16(writer, &member.root_name, "root_name")?;
         write_string_u16(writer, &member.relative_path, "relative_path")?;
@@ -331,8 +332,18 @@ fn read_file_set_extension(mut bytes: &[u8]) -> Result<Option<InboundFileSetMani
             b'd' => FileSetMemberKind::EmptyDirectory,
             other => return Err(anyhow!("invalid directory member kind byte: {other}")),
         };
+        let mut root_is_file = [0u8; 1];
+        bytes
+            .read_exact(&mut root_is_file)
+            .map_err(|e| anyhow!("read directory root kind: {e}"))?;
+        let root_is_file = match root_is_file[0] {
+            0 => false,
+            1 => true,
+            other => return Err(anyhow!("invalid directory root kind byte: {other}")),
+        };
         members.push(InboundFileSetMember {
             kind,
+            root_is_file,
             root_index: read_u32(&mut bytes, "root_index")?,
             root_name: read_string_u16(&mut bytes, "root_name")?,
             relative_path: read_string_u16(&mut bytes, "relative_path")?,
@@ -692,6 +703,7 @@ mod tests {
                 InboundFileSetMember {
                     root_index: 0,
                     root_name: "project".to_string(),
+                    root_is_file: false,
                     relative_path: "bin/run.sh".to_string(),
                     kind: FileSetMemberKind::Executable,
                     blob_ref_index: Some(0),
@@ -699,6 +711,7 @@ mod tests {
                 InboundFileSetMember {
                     root_index: 0,
                     root_name: "project".to_string(),
+                    root_is_file: false,
                     relative_path: "empty".to_string(),
                     kind: FileSetMemberKind::EmptyDirectory,
                     blob_ref_index: None,

@@ -62,6 +62,7 @@ pub struct InboundFileSetManifest {
 pub struct InboundFileSetMember {
     pub root_index: u32,
     pub root_name: String,
+    pub root_is_file: bool,
     pub relative_path: String,
     pub kind: FileSetMemberKind,
     pub blob_ref_index: Option<u32>,
@@ -727,30 +728,50 @@ impl FileCacheBlobMaterializer {
         batch_idx: &mut usize,
         batch_total: usize,
     ) -> Result<(Vec<PathBuf>, BTreeMap<u32, [u8; 32]>)> {
-        let mut roots = BTreeMap::<u32, String>::new();
+        let mut roots = BTreeMap::<u32, (String, bool)>::new();
+        let mut root_member_counts = BTreeMap::<u32, usize>::new();
         for member in &manifest.members {
             validate_manifest_member(member)?;
+            *root_member_counts.entry(member.root_index).or_default() += 1;
             match roots.get(&member.root_index) {
-                Some(existing) if existing != &member.root_name => {
+                Some((existing_name, existing_is_file))
+                    if existing_name != &member.root_name
+                        || *existing_is_file != member.root_is_file =>
+                {
                     return Err(anyhow!(
                         "directory root {} has conflicting names",
                         member.root_index
                     ));
                 }
                 _ => {
-                    roots.insert(member.root_index, member.root_name.clone());
+                    roots.insert(
+                        member.root_index,
+                        (member.root_name.clone(), member.root_is_file),
+                    );
                 }
             }
         }
+        for (root_index, (_, root_is_file)) in &roots {
+            if *root_is_file && root_member_counts.get(root_index) != Some(&1) {
+                return Err(anyhow!("top-level file root must have exactly one member"));
+            }
+        }
 
-        for (root_index, root_name) in &roots {
-            tokio::fs::create_dir_all(staging_root(staging_base, *root_index, root_name)).await?;
+        for (root_index, (root_name, root_is_file)) in &roots {
+            if !root_is_file {
+                tokio::fs::create_dir_all(staging_root(staging_base, *root_index, root_name))
+                    .await?;
+            }
         }
 
         let mut member_digests = BTreeMap::new();
         for (member_index, member) in manifest.members.iter().enumerate() {
             let root = staging_root(staging_base, member.root_index, &member.root_name);
-            let target = join_relative_path(&root, &member.relative_path)?;
+            let target = if member.root_is_file {
+                root.clone()
+            } else {
+                join_relative_path(&root, &member.relative_path)?
+            };
             match member.kind {
                 FileSetMemberKind::EmptyDirectory => {
                     if member.blob_ref_index.is_some() {
@@ -853,7 +874,7 @@ impl FileCacheBlobMaterializer {
         tokio::fs::create_dir_all(&managed_parent).await?;
         let mut destinations = Vec::new();
         let mut reserved_destinations = HashSet::new();
-        for (root_index, root_name) in &roots {
+        for (root_index, (root_name, _)) in &roots {
             let reserved = match &self.target_reserver {
                 Some(reserver) => reserver.reserve_target(root_name).await,
                 None => None,
@@ -887,12 +908,12 @@ impl FileCacheBlobMaterializer {
             }
         }
 
-        let mut promoted = Vec::new();
+        let mut promoted: Vec<PathBuf> = Vec::new();
         for (root_index, root_name, destination) in &destinations {
             let source = staging_root(staging_base, *root_index, root_name);
-            if let Err(err) = promote_directory(&source, destination).await {
+            if let Err(err) = promote_root(&source, destination).await {
                 for path in promoted.iter().rev() {
-                    let _ = tokio::fs::remove_dir_all(path).await;
+                    remove_path(path).await?;
                 }
                 return Err(err);
             }
@@ -971,7 +992,7 @@ fn resolve_nonconflicting_root_path(
     }
 }
 
-async fn promote_directory(source: &std::path::Path, destination: &std::path::Path) -> Result<()> {
+async fn promote_root(source: &std::path::Path, destination: &std::path::Path) -> Result<()> {
     match tokio::fs::rename(source, destination).await {
         Ok(()) => Ok(()),
         Err(rename_error) => {
@@ -984,24 +1005,60 @@ async fn promote_directory(source: &std::path::Path, destination: &std::path::Pa
                 .ok_or_else(|| anyhow!("directory destination name is not valid UTF-8"))?;
             let hidden = parent.join(format!(".uniclip-staging-{file_name}"));
             if tokio::fs::try_exists(&hidden).await? {
-                tokio::fs::remove_dir_all(&hidden).await?;
+                remove_path(&hidden).await?;
             }
             let source = source.to_path_buf();
             let source_copy = source.clone();
             let hidden_copy = hidden.clone();
-            tokio::task::spawn_blocking(move || copy_directory_tree(&source_copy, &hidden_copy))
+            tokio::task::spawn_blocking(move || copy_root(&source_copy, &hidden_copy))
                 .await
                 .map_err(|err| anyhow!("directory copy task failed: {err}"))??;
             if let Err(err) = tokio::fs::rename(&hidden, destination).await {
-                let _ = tokio::fs::remove_dir_all(&hidden).await;
+                let cleanup_error = remove_path(&hidden).await.err();
                 return Err(anyhow!(
-                    "directory promotion failed after rename error ({rename_error}): {err}"
+                    "directory promotion failed after rename error ({rename_error}): {err}; cleanup error: {cleanup_error:?}"
                 ));
             }
-            tokio::fs::remove_dir_all(source).await?;
+            remove_path(&source).await?;
             Ok(())
         }
     }
+}
+
+fn copy_root(source: &std::path::Path, destination: &std::path::Path) -> Result<()> {
+    let metadata = std::fs::metadata(source)?;
+    if metadata.is_dir() {
+        return copy_directory_tree(source, destination);
+    }
+    if metadata.is_file() {
+        let copied = std::fs::copy(source, destination)?;
+        if copied != metadata.len() {
+            return Err(anyhow!(
+                "copied byte count mismatch for {}",
+                source.display()
+            ));
+        }
+        std::fs::set_permissions(destination, metadata.permissions())?;
+        return Ok(());
+    }
+    Err(anyhow!(
+        "staging root has an unsupported type: {}",
+        source.display()
+    ))
+}
+
+async fn remove_path(path: &std::path::Path) -> Result<()> {
+    match tokio::fs::metadata(path).await {
+        Ok(metadata) if metadata.is_dir() => {
+            tokio::fs::remove_dir_all(path).await?;
+        }
+        Ok(_) => {
+            tokio::fs::remove_file(path).await?;
+        }
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
+        Err(err) => return Err(err.into()),
+    }
+    Ok(())
 }
 
 fn copy_directory_tree(source: &std::path::Path, destination: &std::path::Path) -> Result<()> {
@@ -1057,6 +1114,12 @@ fn validate_manifest_member(member: &InboundFileSetMember) -> Result<()> {
     }
     if member.relative_path.is_empty() {
         return Err(anyhow!("directory member has an empty relative path"));
+    }
+    if member.root_is_file
+        && (member.relative_path != member.root_name
+            || member.kind == FileSetMemberKind::EmptyDirectory)
+    {
+        return Err(anyhow!("invalid top-level file member"));
     }
     Ok(())
 }

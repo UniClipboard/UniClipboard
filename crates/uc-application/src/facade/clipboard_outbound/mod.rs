@@ -624,6 +624,7 @@ pub(crate) enum OutboundFileSetResolution {
 pub(crate) struct DirectoryMemberSource {
     pub location: FileSetMemberLocation,
     pub path: Option<PathBuf>,
+    pub root_is_file: bool,
 }
 
 /// Resolve the member path list for an outbound file-class send, preferring
@@ -693,6 +694,19 @@ pub(crate) async fn resolve_outbound_file_set(
     }
 
     if file_set.has_directory_structure() {
+        let row_count = file_set.lines.len() as i64;
+        let directory_roots: std::collections::HashSet<i64> = file_set
+            .lines
+            .iter()
+            .filter_map(|line| {
+                line.member_location.as_ref().and_then(|location| {
+                    (location.kind == FileSetMemberKind::EmptyDirectory
+                        || location.relative_path.contains('/')
+                        || line.line_index >= row_count)
+                        .then_some(location.root_index)
+                })
+            })
+            .collect();
         let mut paths = Vec::new();
         let mut members = Vec::new();
         for line in &file_set.lines {
@@ -726,7 +740,12 @@ pub(crate) async fn resolve_outbound_file_set(
                     };
                 }
             };
-            members.push(DirectoryMemberSource { location, path });
+            let root_is_file = !directory_roots.contains(&location.root_index);
+            members.push(DirectoryMemberSource {
+                location,
+                path,
+                root_is_file,
+            });
         }
         paths.sort();
         paths.dedup();
@@ -792,6 +811,7 @@ pub(crate) fn build_transfer_manifest(
                     ClipboardOutboundError::Internal("negative directory root index".to_string())
                 })?,
                 root_name: member.location.root_name.clone(),
+                root_is_file: member.root_is_file,
                 relative_path: member.location.relative_path.clone(),
                 kind: member.location.kind,
                 blob_ref_index,
@@ -1140,9 +1160,43 @@ mod tests {
                 assert_eq!(members.len(), 1);
                 assert_eq!(members[0].location.root_name, "root");
                 assert_eq!(members[0].path, Some(PathBuf::from("/tmp/root")));
+                assert!(!members[0].root_is_file);
             }
             other => panic!("expected directory syncable resolution, got {other:?}"),
         }
+    }
+
+    #[tokio::test]
+    async fn resolver_distinguishes_file_roots_in_mixed_selection() {
+        let mut loose_file = file_line(0, "file:///tmp/loose.txt", 1);
+        loose_file.member_location = Some(FileSetMemberLocation {
+            root_index: 0,
+            root_name: "loose.txt".to_string(),
+            relative_path: "loose.txt".to_string(),
+            kind: FileSetMemberKind::File,
+        });
+        let mut directory_member = file_line(2, "file:///tmp/folder", 2);
+        directory_member.member_location = Some(FileSetMemberLocation {
+            root_index: 1,
+            root_name: "folder".to_string(),
+            relative_path: "child.txt".to_string(),
+            kind: FileSetMemberKind::File,
+        });
+
+        let resolution = resolve_outbound_file_set(
+            &FakeFileSetRepo::Found(EntryFileSet {
+                lines: vec![loose_file, directory_member],
+            }),
+            &EntryId::from("e1"),
+            &uri_list_snapshot("file:///tmp/loose.txt\nfile:///tmp/folder\n"),
+        )
+        .await;
+
+        let OutboundFileSetResolution::DirectorySyncable { members, .. } = resolution else {
+            panic!("expected directory syncable resolution");
+        };
+        assert!(members[0].root_is_file);
+        assert!(!members[1].root_is_file);
     }
 
     #[tokio::test]

@@ -1091,6 +1091,7 @@ async fn directory_materializer_rebuilds_nested_tree_and_empty_directory() {
             InboundFileSetMember {
                 root_index: 0,
                 root_name: "project".to_string(),
+                root_is_file: false,
                 relative_path: "docs/notes.txt".to_string(),
                 kind: FileSetMemberKind::File,
                 blob_ref_index: Some(0),
@@ -1098,6 +1099,7 @@ async fn directory_materializer_rebuilds_nested_tree_and_empty_directory() {
             InboundFileSetMember {
                 root_index: 0,
                 root_name: "project".to_string(),
+                root_is_file: false,
                 relative_path: "empty".to_string(),
                 kind: FileSetMemberKind::EmptyDirectory,
                 blob_ref_index: None,
@@ -1171,6 +1173,88 @@ async fn directory_materializer_rebuilds_nested_tree_and_empty_directory() {
 }
 
 #[tokio::test]
+async fn directory_materializer_preserves_mixed_top_level_file_and_directory() {
+    use uc_core::clipboard::FileSetMemberKind;
+
+    let cache_dir = tempfile::tempdir().expect("cache dir");
+    let receiver_entry_id = EntryId::from("receiver-mixed-roots");
+    let blob_refs = ["loose.txt", "child.txt"]
+        .into_iter()
+        .enumerate()
+        .map(|(index, filename)| V3BlobRef {
+            ticket: BlobTicket::from_bytes(vec![index as u8 + 1]),
+            entry_id: EntryId::from(format!("sender-mixed-{index}")),
+            filename: Some(filename.to_string()),
+            mime: None,
+            size_bytes: 5,
+            representation_index: None,
+        })
+        .collect::<Vec<_>>();
+    let manifest = InboundFileSetManifest {
+        members: vec![
+            InboundFileSetMember {
+                root_index: 0,
+                root_name: "loose.txt".to_string(),
+                root_is_file: true,
+                relative_path: "loose.txt".to_string(),
+                kind: FileSetMemberKind::File,
+                blob_ref_index: Some(0),
+            },
+            InboundFileSetMember {
+                root_index: 1,
+                root_name: "folder".to_string(),
+                root_is_file: false,
+                relative_path: "child.txt".to_string(),
+                kind: FileSetMemberKind::File,
+                blob_ref_index: Some(1),
+            },
+        ],
+    };
+    let snapshot = SystemClipboardSnapshot {
+        ts_ms: 1,
+        representations: Vec::new(),
+        file_content_digests: Vec::new(),
+        file_set_v1_component: None,
+    };
+    let mut fetcher = MockBlobFetcher::new();
+    fetcher
+        .expect_fetch_blob_to_path()
+        .times(2)
+        .returning(|command| {
+            std::fs::write(&command.target_path, b"hello").unwrap();
+            Ok(crate::facade::blob_transfer::FetchBlobToPathResult {
+                entry_id: command.entry_id,
+                plaintext_hash: PlaintextHash::from_bytes([5; 32]),
+                digest: BlobDigest::from_bytes([6; 32]),
+                bytes_written: 5,
+            })
+        });
+    let materializer =
+        FileCacheBlobMaterializer::new(Arc::new(fetcher), cache_dir.path().to_path_buf());
+
+    materializer
+        .materialize(
+            DeviceId::new("peer-x"),
+            receiver_entry_id.clone(),
+            snapshot,
+            blob_refs,
+            Some(manifest),
+        )
+        .await
+        .expect("mixed roots should materialize");
+
+    let target = cache_dir
+        .path()
+        .join("iroh-blobs")
+        .join(receiver_entry_id.as_ref());
+    assert_eq!(std::fs::read(target.join("loose.txt")).unwrap(), b"hello");
+    assert_eq!(
+        std::fs::read(target.join("folder/child.txt")).unwrap(),
+        b"hello"
+    );
+}
+
+#[tokio::test]
 async fn directory_materializer_removes_staging_and_exposes_nothing_on_failure() {
     use uc_core::clipboard::FileSetMemberKind;
 
@@ -1195,6 +1279,7 @@ async fn directory_materializer_removes_staging_and_exposes_nothing_on_failure()
             .map(|(index, blob_ref)| InboundFileSetMember {
                 root_index: 0,
                 root_name: "folder".to_string(),
+                root_is_file: false,
                 relative_path: blob_ref.filename.clone().unwrap(),
                 kind: FileSetMemberKind::File,
                 blob_ref_index: Some(index as u32),
@@ -1288,6 +1373,7 @@ async fn directory_materializer_suffixes_existing_and_same_paste_root_names() {
             InboundFileSetMember {
                 root_index: 0,
                 root_name: "folder".to_string(),
+                root_is_file: false,
                 relative_path: "empty-a".to_string(),
                 kind: FileSetMemberKind::EmptyDirectory,
                 blob_ref_index: None,
@@ -1295,6 +1381,7 @@ async fn directory_materializer_suffixes_existing_and_same_paste_root_names() {
             InboundFileSetMember {
                 root_index: 1,
                 root_name: "folder".to_string(),
+                root_is_file: false,
                 relative_path: "empty-b".to_string(),
                 kind: FileSetMemberKind::EmptyDirectory,
                 blob_ref_index: None,
@@ -1354,6 +1441,7 @@ async fn directory_materializer_restores_executable_permission() {
         members: vec![InboundFileSetMember {
             root_index: 0,
             root_name: "scripts".to_string(),
+            root_is_file: false,
             relative_path: "run.sh".to_string(),
             kind: FileSetMemberKind::Executable,
             blob_ref_index: Some(0),

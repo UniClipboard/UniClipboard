@@ -144,6 +144,28 @@ pub trait InboundBlobFetcher: Send + Sync {
 }
 
 #[async_trait]
+pub(crate) trait RootRenamer: Send + Sync {
+    async fn rename(
+        &self,
+        source: &std::path::Path,
+        destination: &std::path::Path,
+    ) -> std::io::Result<()>;
+}
+
+struct TokioRootRenamer;
+
+#[async_trait]
+impl RootRenamer for TokioRootRenamer {
+    async fn rename(
+        &self,
+        source: &std::path::Path,
+        destination: &std::path::Path,
+    ) -> std::io::Result<()> {
+        tokio::fs::rename(source, destination).await
+    }
+}
+
+#[async_trait]
 impl InboundBlobFetcher for BlobTransferFacade {
     async fn fetch_blob(&self, command: FetchBlobCommand) -> Result<FetchBlobResult> {
         // 保留 thiserror 类型链:materializer 用 `is_cancel_error` downcast
@@ -171,6 +193,7 @@ pub struct FileCacheBlobMaterializer {
     fetcher: Arc<dyn InboundBlobFetcher>,
     cache_dir: PathBuf,
     target_reserver: Option<Arc<dyn ReserveInboundFileTargetPort>>,
+    root_renamer: Arc<dyn RootRenamer>,
 }
 
 impl FileCacheBlobMaterializer {
@@ -179,6 +202,7 @@ impl FileCacheBlobMaterializer {
             fetcher,
             cache_dir,
             target_reserver: None,
+            root_renamer: Arc::new(TokioRootRenamer),
         }
     }
 
@@ -189,6 +213,12 @@ impl FileCacheBlobMaterializer {
     /// `cache_dir/iroh-blobs/<entry_id>/` layout is used.
     pub fn with_target_reserver(mut self, reserver: Arc<dyn ReserveInboundFileTargetPort>) -> Self {
         self.target_reserver = Some(reserver);
+        self
+    }
+
+    #[cfg(test)]
+    pub(crate) fn with_root_renamer(mut self, renamer: Arc<dyn RootRenamer>) -> Self {
+        self.root_renamer = renamer;
         self
     }
 }
@@ -911,7 +941,7 @@ impl FileCacheBlobMaterializer {
         let mut promoted: Vec<PathBuf> = Vec::new();
         for (root_index, root_name, destination) in &destinations {
             let source = staging_root(staging_base, *root_index, root_name);
-            if let Err(err) = promote_root(&source, destination).await {
+            if let Err(err) = promote_root(&source, destination, self.root_renamer.as_ref()).await {
                 for path in promoted.iter().rev() {
                     remove_path(path).await?;
                 }
@@ -992,8 +1022,12 @@ fn resolve_nonconflicting_root_path(
     }
 }
 
-async fn promote_root(source: &std::path::Path, destination: &std::path::Path) -> Result<()> {
-    match tokio::fs::rename(source, destination).await {
+async fn promote_root(
+    source: &std::path::Path,
+    destination: &std::path::Path,
+    renamer: &dyn RootRenamer,
+) -> Result<()> {
+    match renamer.rename(source, destination).await {
         Ok(()) => Ok(()),
         Err(rename_error) => {
             let parent = destination
@@ -1013,7 +1047,7 @@ async fn promote_root(source: &std::path::Path, destination: &std::path::Path) -
             tokio::task::spawn_blocking(move || copy_root(&source_copy, &hidden_copy))
                 .await
                 .map_err(|err| anyhow!("directory copy task failed: {err}"))??;
-            if let Err(err) = tokio::fs::rename(&hidden, destination).await {
+            if let Err(err) = renamer.rename(&hidden, destination).await {
                 let cleanup_error = remove_path(&hidden).await.err();
                 return Err(anyhow!(
                     "directory promotion failed after rename error ({rename_error}): {err}; cleanup error: {cleanup_error:?}"

@@ -1,6 +1,6 @@
 # ADR-010 目录同步 · 第四阶段规划（传输与接收）
 
-Status: draft (2026-07-11)
+Status: completed (2026-07-12)
 Issue: #875 · Map: #1315（子 ticket #1316 #1317 #1318 #1319 #1320）
 ADR: `docs/architecture/adr-010-directory-sync-as-file-set-manifest.md`
 前序规划：`.planning/2026-07-10-adr010-directory-sync-phase2-plan.md` ·
@@ -11,6 +11,28 @@ PR-C `3fa5749be`）。本文所有行号锚点相对阶段 3a 基线。
 > 本阶段目标：**跨设备目录粘贴可用**（#875 核心验收）。阶段 5（UX / 进度 / 取消 /
 > Sync-ineligible 展示 / `file_sync` 设置 UI / 移动端 register 兼容修复 / 文档）不在本文，
 > 见 §8 Out of scope。
+
+## 0. 实施结果（2026-07-12）
+
+阶段 4 已完成。实现按以下提交分阶段落地：
+
+- `a756e3a25`：接收侧目录树暂存、全有或全无重建与原子提升。
+- `eeba764ae`：目录帧使用 wire version 3，旧接收端可在确认前明确拒绝。
+- `bebda9ecf`：传输目录成员清单。
+- `cc46e322a`：冲突后缀、权限、身份复校与目录重发。
+- `6238461c9`：按目录成员独立记录传输结果与失败原因。
+- `9eb100b3e`：混合选择中的顶层文件与目录保持原始形态。
+- `c4f9681e2`：完整接收流程与旧版本拒绝流程验证。
+- `99a9e8516`：跨卷复制回退与 Windows 权限行为验证。
+- `d58ac2abe`：部分内容已到达时，重发只通过网络补齐缺失内容。
+
+最终验证：
+
+- `uc-application`：773 个单元测试与 10 个集成测试通过。
+- `uc-core`：165 个单元测试与 19 个文档测试通过。
+- `uc-infra`：556 个单元测试、12 个独立网络测试与 16 个文档测试通过；6 个既有手动/性能测试按声明跳过。
+- Windows 目标的 `uc-application` 测试代码编译通过。
+- `cargo check --workspace` 通过。
 
 ---
 
@@ -157,6 +179,7 @@ PR-C `3fa5749be`）。本文所有行号锚点相对阶段 3a 基线。
    count  u16 LE                       // 成员总数（含空目录）
    repeat count 次：
      kind_tag        u8               // b'f' | b'x' | b'd'
+     root_is_file    u8               // 0 = 目录 root，1 = 顶层独立文件 root
      root_index      u32 LE
      root_name       u16-len + UTF-8   // NFC
      relative_path   u16-len + UTF-8   // NFC, '/' 分隔

@@ -23,12 +23,13 @@ use uc_core::{MimeType, ObservedClipboardRepresentation, SystemClipboardSnapshot
 use uc_observability::FlowId;
 
 use crate::usecases::clipboard_sync::payload_codec::{
-    encode_snapshot_to_v3_bytes, encode_snapshot_with_blob_refs_to_v3_bytes, V3BlobRef,
+    encode_snapshot_to_v3_bytes, encode_snapshot_with_blob_refs_and_file_set_to_v3_bytes,
+    encode_snapshot_with_blob_refs_to_v3_bytes, V3BlobRef,
 };
 
 use super::materializer::{
-    FileCacheBlobMaterializer, InboundBlobFetcher, InboundBlobMaterializer, InboundFileSetManifest,
-    InboundFileSetMember, MaterializeResult,
+    compute_file_set_component, FileCacheBlobMaterializer, InboundBlobFetcher,
+    InboundBlobMaterializer, InboundFileSetManifest, InboundFileSetMember, MaterializeResult,
 };
 use super::ports::{InboundCapture, InboundWrite};
 use super::usecase::verify_file_set_identity;
@@ -1252,6 +1253,152 @@ async fn directory_materializer_preserves_mixed_top_level_file_and_directory() {
         std::fs::read(target.join("folder/child.txt")).unwrap(),
         b"hello"
     );
+}
+
+#[tokio::test]
+async fn apply_inbound_materializes_and_commits_mixed_directory_payload() {
+    use std::collections::BTreeMap;
+
+    use uc_core::clipboard::FileSetMemberKind;
+
+    let cache_dir = tempfile::tempdir().expect("cache dir");
+    let blob_refs = ["loose.txt", "child.txt"]
+        .into_iter()
+        .enumerate()
+        .map(|(index, filename)| V3BlobRef {
+            ticket: BlobTicket::from_bytes(vec![index as u8 + 1]),
+            entry_id: EntryId::from(format!("sender-full-flow-{index}")),
+            filename: Some(filename.to_string()),
+            mime: Some("text/plain".to_string()),
+            size_bytes: 5,
+            representation_index: None,
+        })
+        .collect::<Vec<_>>();
+    let manifest = InboundFileSetManifest {
+        members: vec![
+            InboundFileSetMember {
+                root_index: 0,
+                root_name: "loose.txt".to_string(),
+                root_is_file: true,
+                relative_path: "loose.txt".to_string(),
+                kind: FileSetMemberKind::File,
+                blob_ref_index: Some(0),
+            },
+            InboundFileSetMember {
+                root_index: 1,
+                root_name: "folder".to_string(),
+                root_is_file: false,
+                relative_path: "child.txt".to_string(),
+                kind: FileSetMemberKind::File,
+                blob_ref_index: Some(1),
+            },
+        ],
+    };
+    let member_digests = BTreeMap::from([(0, [5; 32]), (1, [6; 32])]);
+    let snapshot = SystemClipboardSnapshot {
+        ts_ms: 1,
+        representations: vec![ObservedClipboardRepresentation::new(
+            RepresentationId::new(),
+            FormatId::from("files"),
+            Some(MimeType("text/uri-list".to_string())),
+            b"file:///sender/loose.txt\r\nfile:///sender/folder\r\n".to_vec(),
+        )],
+        file_content_digests: Vec::new(),
+        file_set_v1_component: Some(
+            compute_file_set_component(&manifest, &member_digests).expect("file-set component"),
+        ),
+    };
+    let (plaintext, snapshot_hash) =
+        encode_snapshot_with_blob_refs_and_file_set_to_v3_bytes(&snapshot, &blob_refs, &manifest)
+            .expect("encode directory payload");
+
+    let mut repo = MockEntryRepo::new();
+    repo.expect_find_entry_id_by_snapshot_hash()
+        .with(eq(snapshot_hash.clone()))
+        .times(1)
+        .returning(|_| Ok(None));
+
+    let mut fetcher = MockBlobFetcher::new();
+    fetcher
+        .expect_fetch_blob_to_path()
+        .times(2)
+        .returning(|command| {
+            let index = usize::from(command.ticket.as_bytes()[0] - 1);
+            std::fs::write(&command.target_path, b"hello").expect("write fetched member");
+            Ok(crate::facade::blob_transfer::FetchBlobToPathResult {
+                entry_id: command.entry_id,
+                plaintext_hash: PlaintextHash::from_bytes(if index == 0 {
+                    [5; 32]
+                } else {
+                    [6; 32]
+                }),
+                digest: BlobDigest::from_bytes([7; 32]),
+                bytes_written: 5,
+            })
+        });
+
+    let mut capture = MockCapture::new();
+    capture
+        .expect_capture()
+        .times(1)
+        .withf(|_, _, snapshot| snapshot_paths_exist(snapshot))
+        .returning(|entry_id, _, _| Ok(Some(entry_id)));
+
+    let write_completed = Arc::new(tokio::sync::Notify::new());
+    let mut write = MockWrite::new();
+    write
+        .expect_write()
+        .times(1)
+        .withf(snapshot_paths_exist)
+        .returning({
+            let write_completed = Arc::clone(&write_completed);
+            move |_| {
+                write_completed.notify_one();
+                Ok(())
+            }
+        });
+
+    let materializer =
+        FileCacheBlobMaterializer::new(Arc::new(fetcher), cache_dir.path().to_path_buf());
+    let uc = ApplyInboundClipboardUseCase::new(Arc::new(repo), Arc::new(capture), Arc::new(write))
+        .with_blob_materializer(Arc::new(materializer));
+    let outcome = uc
+        .execute(ApplyInboundInput {
+            from_device: DeviceId::new("peer-full-flow"),
+            snapshot_hash,
+            plaintext,
+            flow_id: None,
+        })
+        .await
+        .expect("directory payload should apply");
+    assert!(matches!(outcome, ApplyOutcome::Applied { .. }));
+    tokio::time::timeout(
+        std::time::Duration::from_secs(1),
+        write_completed.notified(),
+    )
+    .await
+    .expect("clipboard write should complete");
+}
+
+fn snapshot_paths_exist(snapshot: &SystemClipboardSnapshot) -> bool {
+    let Some(rep) = snapshot.representations.iter().find(|rep| {
+        rep.mime
+            .as_ref()
+            .is_some_and(|mime| mime.0 == "text/uri-list")
+    }) else {
+        return false;
+    };
+    let Ok(uri_list) = std::str::from_utf8(rep.expect_inline_bytes()) else {
+        return false;
+    };
+    let paths = uri_list
+        .lines()
+        .filter_map(|line| url::Url::parse(line).ok())
+        .filter_map(|url| url.to_file_path().ok())
+        .collect::<Vec<_>>();
+    paths.len() == 2
+        && paths.iter().any(|path| path.is_file())
+        && paths.iter().any(|path| path.join("child.txt").is_file())
 }
 
 #[tokio::test]

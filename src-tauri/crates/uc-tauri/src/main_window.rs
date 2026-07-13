@@ -22,11 +22,10 @@
 
 use tauri::Manager;
 use tracing::{error, info};
-// Every `warn!` call in this file lives inside a macOS or Windows `cfg`
-// block; on other platforms (e.g. the Linux coverage runner) the import is
-// genuinely unused.
+// Every `warn!` call in this file lives inside a macOS, Windows, or Linux
+// `cfg` block; on other platforms the import is genuinely unused.
 #[cfg_attr(
-    not(any(target_os = "macos", target_os = "windows")),
+    not(any(target_os = "macos", target_os = "windows", target_os = "linux")),
     allow(unused_imports)
 )]
 use tracing::warn;
@@ -92,17 +91,23 @@ fn create_main_window(app: &tauri::AppHandle) -> tauri::Result<tauri::WebviewWin
     Ok(window)
 }
 
-/// Windows: the config uses `titleBarStyle: Overlay` for macOS; on Windows the
-/// native decorations must be turned off after creation instead. This must run
-/// on every (re)creation, not just at startup.
-#[cfg(target_os = "windows")]
+/// Windows and Linux: the config uses `titleBarStyle: Overlay` for macOS; on
+/// Windows and Linux the native decorations must be turned off after creation
+/// instead, so the React-drawn `TitleBar` component (which draws its own
+/// window controls on these platforms) is the only thing handling clicks.
+/// Leaving native GTK/Wayland CSD enabled alongside the transparent webview
+/// causes clicks on the OS decoration buttons to be swallowed by the
+/// compositor's resize hit-testing margin while the window is not maximized
+/// (see issue #1303). This must run on every (re)creation, not just at
+/// startup.
+#[cfg(any(target_os = "windows", target_os = "linux"))]
 fn configure_for_platform(window: &tauri::WebviewWindow) {
     if let Err(error) = window.set_decorations(false) {
-        warn!(error = %error, "Failed to disable Windows main window decorations");
+        warn!(error = %error, "Failed to disable native main window decorations");
     }
 }
 
-#[cfg(not(target_os = "windows"))]
+#[cfg(not(any(target_os = "windows", target_os = "linux")))]
 fn configure_for_platform(_window: &tauri::WebviewWindow) {}
 
 /// macOS: force the Dock to repaint this app's icon after flipping back to the

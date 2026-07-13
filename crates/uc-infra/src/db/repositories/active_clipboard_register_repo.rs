@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use diesel::prelude::*;
-use tracing::debug_span;
+use tracing::{debug_span, warn};
 
 use super::active_clipboard_register_cipher::{
     ActiveClipboardRegisterCipher, CONSUMABLE_HKDF_INFO,
@@ -204,11 +204,35 @@ impl<E: DbExecutor> LoadMobileConsumableClipboardPort
         let Some(ciphertext) = ciphertext else {
             return Ok(None);
         };
-        self.cipher()
-            .await?
-            .open(&ciphertext)
-            .map(Some)
-            .map_err(|err| ActiveClipboardRegisterError::Storage(err.to_string()))
+        match self.cipher().await?.open(&ciphertext) {
+            Ok(reference) => Ok(Some(reference)),
+            Err(err) => {
+                // The reference is a rebuildable shadow of the register: an
+                // unreadable envelope must degrade the mobile snapshot to
+                // "nothing consumable", never break the read path. Discard it
+                // so the warning does not repeat on every poll; the next
+                // consumable advance or unlock backfill rewrites the column.
+                warn!(
+                    error = %err,
+                    "mobile-consumable reference ciphertext is unreadable; discarding it"
+                );
+                if let Err(clear_err) = self.executor.run(move |conn| {
+                    diesel::update(
+                        active_clipboard_register::table
+                            .filter(active_clipboard_register::id.eq(REGISTER_ROW_ID)),
+                    )
+                    .set(active_clipboard_register::consumable_ref_ciphertext.eq(None::<Vec<u8>>))
+                    .execute(conn)?;
+                    Ok(())
+                }) {
+                    warn!(
+                        error = %clear_err,
+                        "failed to discard unreadable mobile-consumable ciphertext"
+                    );
+                }
+                Ok(None)
+            }
+        }
     }
 }
 
@@ -675,5 +699,36 @@ mod tests {
                 original.entry_id
             ))
         );
+    }
+
+    #[tokio::test]
+    async fn unreadable_shadow_ciphertext_degrades_to_none_and_is_discarded() {
+        let (repo, reader, _tmp) = make_repo();
+        repo.advance(&exact_state("blake3v1:aa", "entry-aa", 1), true)
+            .await
+            .unwrap();
+
+        // Corrupt the stored envelope out-of-band.
+        reader
+            .run(|conn| {
+                diesel::update(active_clipboard_register::table)
+                    .set(active_clipboard_register::consumable_ref_ciphertext.eq(vec![0u8; 8]))
+                    .execute(conn)?;
+                Ok(())
+            })
+            .unwrap();
+
+        assert_eq!(repo.load_mobile_consumable().await.unwrap(), None);
+
+        // The unreadable envelope must be discarded, not re-decrypted (and
+        // re-warned about) on every subsequent read.
+        let remaining: Option<Vec<u8>> = reader
+            .run(|conn| {
+                Ok(active_clipboard_register::table
+                    .select(active_clipboard_register::consumable_ref_ciphertext)
+                    .first::<Option<Vec<u8>>>(conn)?)
+            })
+            .unwrap();
+        assert_eq!(remaining, None);
     }
 }

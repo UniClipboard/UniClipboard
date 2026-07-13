@@ -24,7 +24,7 @@ mod timing;
 pub use active_register::LocalActiveRegisterAdvancer;
 pub use coordinator::{ClipboardWriteCoordinator, ClipboardWriteIntent};
 pub use mobile_consumability::{
-    BackfillMobileConsumableRef, MobileConsumabilityProbe, MobileConsumableBackfill,
+    MobileConsumabilityProbe, MobileConsumableBackfill, MobileConsumableRefBackfill,
 };
 pub use primary_rep_selector::{narrow_to_primary, PrimaryRepError};
 pub use restore_broadcast::{RestoreBroadcastRequest, RestoreBroadcastTrigger};

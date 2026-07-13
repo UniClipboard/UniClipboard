@@ -834,7 +834,7 @@ pub fn wire_dependencies(
     let mobile_consumable_backfill: Arc<
         dyn uc_application::clipboard_write::MobileConsumableBackfill,
     > = Arc::new(
-        uc_application::clipboard_write::BackfillMobileConsumableRef::new(
+        uc_application::clipboard_write::MobileConsumableRefBackfill::new(
             active_clipboard_register_load.clone(),
             mobile_consumable_backfill_port,
             mobile_consumability.clone(),

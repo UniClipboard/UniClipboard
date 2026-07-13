@@ -124,12 +124,10 @@ impl EncryptionFacade {
             .await
         {
             Ok(Some(_)) => {
-                if let Err(err) = self.deps.mobile_consumable_backfill.backfill().await {
-                    tracing::warn!(
-                        error = %err,
-                        "mobile-consumable reference backfill failed after unlock"
-                    );
-                }
+                self.deps
+                    .mobile_consumable_backfill
+                    .backfill_best_effort()
+                    .await;
                 Ok(true)
             }
             Ok(None) => Ok(false),

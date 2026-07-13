@@ -425,9 +425,7 @@ impl SpaceSetupFacade {
                     "migration resume failed: {err}"
                 )));
             }
-            if let Err(err) = self.mobile_consumable_backfill.backfill().await {
-                warn!(error = %err, "mobile-consumable reference backfill failed after resume");
-            }
+            self.mobile_consumable_backfill.backfill_best_effort().await;
         }
 
         Ok(resumed)
@@ -527,9 +525,7 @@ impl SpaceSetupFacade {
                 "migration resume failed: {err}"
             )));
         }
-        if let Err(err) = self.mobile_consumable_backfill.backfill().await {
-            warn!(error = %err, "mobile-consumable reference backfill failed after unlock");
-        }
+        self.mobile_consumable_backfill.backfill_best_effort().await;
 
         self.auto_prime_presence().await;
         Ok(out)

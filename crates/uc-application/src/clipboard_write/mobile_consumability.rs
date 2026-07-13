@@ -39,7 +39,7 @@ impl MobileConsumabilityProbe {
 }
 
 /// Idempotently initializes the mobile-consumable reference after unlock.
-pub struct BackfillMobileConsumableRef {
+pub struct MobileConsumableRefBackfill {
     load_register: Arc<dyn LoadActiveClipboardPort>,
     backfill: Arc<dyn BackfillMobileConsumableClipboardPort>,
     probe: MobileConsumabilityProbe,
@@ -47,10 +47,21 @@ pub struct BackfillMobileConsumableRef {
 
 #[async_trait]
 pub trait MobileConsumableBackfill: Send + Sync {
+    /// Initialize the mobile-consumable reference from the current register
+    /// value when it is absent. Returns whether a reference was written.
     async fn backfill(&self) -> Result<bool, ActiveClipboardRegisterError>;
+
+    /// Fire-and-forget variant for unlock/resume flows: the reference is a
+    /// rebuildable shadow of the register, so a failed backfill only logs and
+    /// never blocks the unlock itself.
+    async fn backfill_best_effort(&self) {
+        if let Err(err) = self.backfill().await {
+            warn!(error = %err, "mobile-consumable reference backfill failed");
+        }
+    }
 }
 
-impl BackfillMobileConsumableRef {
+impl MobileConsumableRefBackfill {
     pub fn new(
         load_register: Arc<dyn LoadActiveClipboardPort>,
         backfill: Arc<dyn BackfillMobileConsumableClipboardPort>,
@@ -80,7 +91,7 @@ impl BackfillMobileConsumableRef {
 }
 
 #[async_trait]
-impl MobileConsumableBackfill for BackfillMobileConsumableRef {
+impl MobileConsumableBackfill for MobileConsumableRefBackfill {
     async fn backfill(&self) -> Result<bool, ActiveClipboardRegisterError> {
         self.execute().await
     }
@@ -213,7 +224,7 @@ mod tests {
     #[tokio::test]
     async fn ordinary_legacy_register_value_is_backfilled_after_unlock() {
         let recorder = Arc::new(RecordingBackfill::default());
-        let backfill = BackfillMobileConsumableRef::new(
+        let backfill = MobileConsumableRefBackfill::new(
             Arc::new(FixedRegister(Some(active_state()))),
             recorder.clone(),
             MobileConsumabilityProbe::new(Arc::new(FixedFileSets(Ok(None)))),
@@ -232,7 +243,7 @@ mod tests {
     #[tokio::test]
     async fn directory_legacy_register_value_is_not_backfilled() {
         let recorder = Arc::new(RecordingBackfill::default());
-        let backfill = BackfillMobileConsumableRef::new(
+        let backfill = MobileConsumableRefBackfill::new(
             Arc::new(FixedRegister(Some(active_state()))),
             recorder.clone(),
             MobileConsumabilityProbe::new(Arc::new(FixedFileSets(Ok(Some(EntryFileSet {

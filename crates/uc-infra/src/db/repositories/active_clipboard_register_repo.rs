@@ -6,7 +6,9 @@ use async_trait::async_trait;
 use diesel::prelude::*;
 use tracing::debug_span;
 
-use super::active_clipboard_register_cipher::ActiveClipboardRegisterCipher;
+use super::active_clipboard_register_cipher::{
+    ActiveClipboardRegisterCipher, CONSUMABLE_HKDF_INFO,
+};
 use crate::db::ports::DbExecutor;
 use crate::db::schema::active_clipboard_register;
 use uc_core::clipboard::{ActiveClipboardState, MobileConsumableRef};
@@ -22,7 +24,6 @@ use uc_core::ports::space::{DeriveSpaceSubkeyPort, SpaceAccessError};
 /// Fixed primary key for the single register row (the table is pinned to a
 /// single row via a `CHECK (id = 1)` constraint).
 const REGISTER_ROW_ID: i32 = 1;
-const CONSUMABLE_KEY_INFO: &[u8] = b"uniclipboard-active-register-consumable/v1";
 
 #[derive(Debug, Insertable)]
 #[diesel(table_name = active_clipboard_register)]
@@ -65,7 +66,7 @@ impl<E> DieselActiveClipboardRegisterRepository<E> {
             })?;
         let key = self
             .derive_subkey
-            .derive_subkey(profile.as_ref().as_bytes(), CONSUMABLE_KEY_INFO)
+            .derive_subkey(profile.as_ref().as_bytes(), CONSUMABLE_HKDF_INFO)
             .await
             .map_err(|err| match err {
                 SpaceAccessError::NotUnlocked => ActiveClipboardRegisterError::NotUnlocked,

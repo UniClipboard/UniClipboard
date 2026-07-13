@@ -8,7 +8,20 @@ const MAGIC: [u8; 4] = *b"UCAR";
 const FORMAT_VERSION: u8 = 1;
 const NONCE_LEN: usize = 24;
 const HEADER_LEN: usize = MAGIC.len() + 1 + NONCE_LEN;
-const AAD: &[u8] = b"uniclipboard-active-register-consumable/v1";
+
+/// Domain-separation labels for the consumable-reference envelope. Both derive
+/// from the same versioned prefix so the HKDF info and the AEAD AAD can only
+/// evolve together; the distinct suffixes keep the two roles from ever being
+/// interchangeable.
+macro_rules! consumable_label {
+    ($role:literal) => {
+        concat!("uniclipboard-active-register-consumable/v1#", $role).as_bytes()
+    };
+}
+
+/// HKDF `info` input for deriving the envelope key (used by the repository).
+pub(super) const CONSUMABLE_HKDF_INFO: &[u8] = consumable_label!("hkdf");
+const AAD: &[u8] = consumable_label!("aad");
 
 #[derive(Debug, Serialize, Deserialize)]
 struct ConsumableRefPayload {

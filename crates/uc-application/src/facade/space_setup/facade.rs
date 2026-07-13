@@ -825,7 +825,6 @@ mod tests {
 
     use super::*;
 
-    use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Mutex as StdMutex;
 
     use async_trait::async_trait;
@@ -1459,29 +1458,7 @@ mod tests {
         IdentityFingerprint::from_raw_string("ABCDEFGHIJKLMNOP").unwrap()
     }
 
-    struct NoopMobileConsumableBackfill;
-
-    #[async_trait]
-    impl MobileConsumableBackfill for NoopMobileConsumableBackfill {
-        async fn backfill(
-            &self,
-        ) -> Result<bool, uc_core::ports::clipboard::ActiveClipboardRegisterError> {
-            Ok(false)
-        }
-    }
-
-    #[derive(Default)]
-    struct CountingMobileConsumableBackfill(AtomicUsize);
-
-    #[async_trait]
-    impl MobileConsumableBackfill for CountingMobileConsumableBackfill {
-        async fn backfill(
-            &self,
-        ) -> Result<bool, uc_core::ports::clipboard::ActiveClipboardRegisterError> {
-            self.0.fetch_add(1, Ordering::SeqCst);
-            Ok(false)
-        }
-    }
+    use crate::test_support::{CountingMobileConsumableBackfill, NoopMobileConsumableBackfill};
 
     fn make_facade(
         space_access: Arc<FakeSpaceAccess>,
@@ -1492,11 +1469,12 @@ mod tests {
         Arc<FakeInvitationPort>,
         Arc<FakePeerAddrRepo>,
     ) {
-        make_facade_with_migration_state(
+        make_facade_with(
             space_access,
             setup_status,
             settings,
             Arc::new(FakeMigrationState::default()),
+            Arc::new(NoopMobileConsumableBackfill),
         )
     }
 
@@ -1505,6 +1483,26 @@ mod tests {
         setup_status: Arc<dyn SetupStatusPort>,
         settings: Arc<dyn SettingsPort>,
         migration_state: Arc<FakeMigrationState>,
+    ) -> (
+        SpaceSetupFacade,
+        Arc<FakeInvitationPort>,
+        Arc<FakePeerAddrRepo>,
+    ) {
+        make_facade_with(
+            space_access,
+            setup_status,
+            settings,
+            migration_state,
+            Arc::new(NoopMobileConsumableBackfill),
+        )
+    }
+
+    fn make_facade_with(
+        space_access: Arc<FakeSpaceAccess>,
+        setup_status: Arc<dyn SetupStatusPort>,
+        settings: Arc<dyn SettingsPort>,
+        migration_state: Arc<FakeMigrationState>,
+        mobile_consumable_backfill: Arc<dyn MobileConsumableBackfill>,
     ) -> (
         SpaceSetupFacade,
         Arc<FakeInvitationPort>,
@@ -1524,7 +1522,7 @@ mod tests {
             setup_status,
             settings,
             clock: Arc::new(FixedClock(0)),
-            mobile_consumable_backfill: Arc::new(NoopMobileConsumableBackfill),
+            mobile_consumable_backfill,
             pairing_invitation: pairing_invitation.clone(),
             pairing_invitation_addresses: pairing_invitation.clone(),
             pairing_invitation_by_address: pairing_invitation.clone(),
@@ -1594,18 +1592,19 @@ mod tests {
             has_completed: true,
             space_id: None,
         };
-        let (mut facade, _inv, _peer) = make_facade(
+        let backfill = Arc::new(CountingMobileConsumableBackfill::default());
+        let (facade, _inv, _peer) = make_facade_with(
             Arc::new(FakeSpaceAccess::default()),
             Arc::new(setup_status),
             Arc::new(InMemorySettings::default()),
+            Arc::new(FakeMigrationState::default()),
+            backfill.clone(),
         );
-        let backfill = Arc::new(CountingMobileConsumableBackfill::default());
-        facade.mobile_consumable_backfill = backfill.clone();
         let cmd = UnlockSpaceInput {
             passphrase: "hunter22hunter22".to_string(),
         };
         facade.unlock_space(cmd).await.expect("A2 ok");
-        assert_eq!(backfill.0.load(Ordering::SeqCst), 1);
+        assert_eq!(backfill.calls(), 1);
     }
 
     #[tokio::test]

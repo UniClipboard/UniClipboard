@@ -459,13 +459,12 @@ mod tests {
         ClipboardSelection, ClipboardSelectionDecision, MimeType, PersistedClipboardRepresentation,
         SelectionPolicyVersion, SystemClipboardSnapshot,
     };
-    use uc_core::clipboard::{EntryFileSet, EntryFileSetError};
     use uc_core::ids::{DeviceId, EntryId, EventId, FormatId, RepresentationId};
     use uc_core::ports::clipboard::{
         ActiveClipboardRegisterError, AdvanceActiveClipboardPort, ClipboardPayloadResolverPort,
-        EntryFileSetRepositoryPort, GetClipboardEntryPort, GetEntrySnapshotHashPort,
-        GetRepresentationPort, PayloadResolveError, ResolvedClipboardPayload, SelfWriteAttribution,
-        SelfWriteLedgerPort, SelfWriteMatch, SystemClipboardPort,
+        GetClipboardEntryPort, GetEntrySnapshotHashPort, GetRepresentationPort,
+        PayloadResolveError, ResolvedClipboardPayload, SelfWriteAttribution, SelfWriteLedgerPort,
+        SelfWriteMatch, SystemClipboardPort,
     };
     use uc_core::ports::{ClipboardSelectionRepositoryPort, ClockPort, DeviceIdentityPort};
     use uc_core::BlobId;
@@ -718,26 +717,6 @@ mod tests {
         }
     }
 
-    struct EmptyFileSets;
-
-    #[async_trait]
-    impl EntryFileSetRepositoryPort for EmptyFileSets {
-        async fn save(
-            &self,
-            _entry_id: &EntryId,
-            _file_set: &EntryFileSet,
-        ) -> Result<(), EntryFileSetError> {
-            unreachable!()
-        }
-
-        async fn load(
-            &self,
-            _entry_id: &EntryId,
-        ) -> Result<Option<EntryFileSet>, EntryFileSetError> {
-            Ok(None)
-        }
-    }
-
     struct FixedDevice;
     impl DeviceIdentityPort for FixedDevice {
         fn current_device_id(&self) -> DeviceId {
@@ -791,7 +770,9 @@ mod tests {
             register.clone(),
             Arc::new(FixedDevice),
             Arc::new(FixedClock),
-            crate::clipboard_write::MobileConsumabilityProbe::new(Arc::new(EmptyFileSets)),
+            crate::clipboard_write::MobileConsumabilityProbe::new(Arc::new(
+                crate::test_support::FixedFileSets::empty(),
+            )),
         );
         let uc = build_use_case(
             entry_repo,

@@ -103,53 +103,10 @@ mod tests {
     use async_trait::async_trait;
     use std::sync::Mutex;
     use uc_core::clipboard::ActiveClipboardState;
-    use uc_core::clipboard::{
-        ContentHash, EntryFileSet, EntryFileSetError, EntryFileSetLine, EntryFileSetLineKind,
-        FileSetMemberKind, FileSetMemberLocation,
-    };
-    use uc_core::ids::BlobId;
+    use uc_core::clipboard::{EntryFileSet, EntryFileSetError};
     use uc_core::ids::DeviceId;
 
-    struct FixedFileSets(Result<Option<EntryFileSet>, EntryFileSetError>);
-
-    #[async_trait]
-    impl EntryFileSetRepositoryPort for FixedFileSets {
-        async fn save(
-            &self,
-            _entry_id: &EntryId,
-            _file_set: &EntryFileSet,
-        ) -> Result<(), EntryFileSetError> {
-            unreachable!()
-        }
-
-        async fn load(
-            &self,
-            _entry_id: &EntryId,
-        ) -> Result<Option<EntryFileSet>, EntryFileSetError> {
-            match &self.0 {
-                Ok(value) => Ok(value.clone()),
-                Err(err) => Err(EntryFileSetError::Storage(err.to_string())),
-            }
-        }
-    }
-
-    fn file_line(line_index: i64, root_index: i64, relative_path: &str) -> EntryFileSetLine {
-        EntryFileSetLine {
-            line_index,
-            original_text: relative_path.to_string(),
-            member_location: Some(FileSetMemberLocation {
-                root_index,
-                root_name: "root".to_string(),
-                relative_path: relative_path.to_string(),
-                kind: FileSetMemberKind::File,
-            }),
-            kind: EntryFileSetLineKind::File {
-                content_hash: ContentHash::from(&[7; 32]),
-                blob_id: Some(BlobId::from("blob")),
-                size_bytes: Some(1),
-            },
-        }
-    }
+    use crate::test_support::{flat_file_set, nested_file_set, FixedFileSets};
 
     async fn probe(result: Result<Option<EntryFileSet>, EntryFileSetError>) -> bool {
         MobileConsumabilityProbe::new(Arc::new(FixedFileSets(result)))
@@ -164,22 +121,12 @@ mod tests {
 
     #[tokio::test]
     async fn flat_file_set_is_mobile_consumable() {
-        assert!(
-            probe(Ok(Some(EntryFileSet {
-                lines: vec![file_line(0, 0, ""), file_line(1, 1, "")],
-            })))
-            .await
-        );
+        assert!(probe(Ok(Some(flat_file_set()))).await);
     }
 
     #[tokio::test]
     async fn directory_file_set_is_not_mobile_consumable() {
-        assert!(
-            !probe(Ok(Some(EntryFileSet {
-                lines: vec![file_line(0, 0, "a.txt"), file_line(2, 0, "b.txt")],
-            })))
-            .await
-        );
+        assert!(!probe(Ok(Some(nested_file_set()))).await);
     }
 
     #[tokio::test]
@@ -227,7 +174,7 @@ mod tests {
         let backfill = MobileConsumableRefBackfill::new(
             Arc::new(FixedRegister(Some(active_state()))),
             recorder.clone(),
-            MobileConsumabilityProbe::new(Arc::new(FixedFileSets(Ok(None)))),
+            MobileConsumabilityProbe::new(Arc::new(FixedFileSets::empty())),
         );
 
         assert!(backfill.backfill().await.unwrap());
@@ -246,9 +193,7 @@ mod tests {
         let backfill = MobileConsumableRefBackfill::new(
             Arc::new(FixedRegister(Some(active_state()))),
             recorder.clone(),
-            MobileConsumabilityProbe::new(Arc::new(FixedFileSets(Ok(Some(EntryFileSet {
-                lines: vec![file_line(0, 0, "a.txt"), file_line(2, 0, "b.txt")],
-            }))))),
+            MobileConsumabilityProbe::new(Arc::new(FixedFileSets(Ok(Some(nested_file_set()))))),
         );
 
         assert!(!backfill.backfill().await.unwrap());

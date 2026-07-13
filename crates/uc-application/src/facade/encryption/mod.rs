@@ -167,22 +167,11 @@ mod tests {
     use super::*;
 
     use async_trait::async_trait;
-    use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Mutex;
     use uc_core::crypto::domain::{ActiveSpace, Passphrase};
-    use uc_core::ports::clipboard::ActiveClipboardRegisterError;
     use uc_core::setup::SetupStatus;
 
-    #[derive(Default)]
-    struct CountingBackfill(AtomicUsize);
-
-    #[async_trait]
-    impl MobileConsumableBackfill for CountingBackfill {
-        async fn backfill(&self) -> Result<bool, ActiveClipboardRegisterError> {
-            self.0.fetch_add(1, Ordering::SeqCst);
-            Ok(false)
-        }
-    }
+    use crate::test_support::CountingMobileConsumableBackfill;
 
     #[derive(Default)]
     struct FakeSetupStatus {
@@ -272,7 +261,7 @@ mod tests {
     ) -> (
         EncryptionFacade,
         Arc<FakeSpaceAccess>,
-        Arc<CountingBackfill>,
+        Arc<CountingMobileConsumableBackfill>,
     ) {
         let setup_status = Arc::new(FakeSetupStatus::default());
         setup_status
@@ -287,7 +276,7 @@ mod tests {
             .lock()
             .expect("resume lock") = resume_returns_session;
         *space_access.verify_granted.lock().expect("verify lock") = verify_granted;
-        let backfill = Arc::new(CountingBackfill::default());
+        let backfill = Arc::new(CountingMobileConsumableBackfill::default());
 
         (
             EncryptionFacade::new(EncryptionFacadeDeps {
@@ -341,8 +330,8 @@ mod tests {
 
         assert!(resumed.unlock().await.expect("resumed"));
         assert!(!not_resumed.unlock().await.expect("not resumed"));
-        assert_eq!(resumed_backfill.0.load(Ordering::SeqCst), 1);
-        assert_eq!(not_resumed_backfill.0.load(Ordering::SeqCst), 0);
+        assert_eq!(resumed_backfill.calls(), 1);
+        assert_eq!(not_resumed_backfill.calls(), 0);
     }
 
     #[tokio::test]

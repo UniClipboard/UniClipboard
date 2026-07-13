@@ -100,12 +100,10 @@ mod tests {
     use super::*;
     use async_trait::async_trait;
     use std::sync::Mutex;
-    use uc_core::clipboard::{
-        EntryFileSet, EntryFileSetError, EntryFileSetLine, EntryFileSetLineKind, FileSetMemberKind,
-        FileSetMemberLocation,
-    };
     use uc_core::ids::DeviceId;
-    use uc_core::ports::clipboard::{ActiveClipboardRegisterError, EntryFileSetRepositoryPort};
+    use uc_core::ports::clipboard::ActiveClipboardRegisterError;
+
+    use crate::test_support::{empty_directory_file_set, FixedFileSets};
 
     #[derive(Default)]
     struct RecordingRegister(Mutex<Vec<bool>>);
@@ -119,26 +117,6 @@ mod tests {
         ) -> Result<bool, ActiveClipboardRegisterError> {
             self.0.lock().unwrap().push(mobile_consumable);
             Ok(true)
-        }
-    }
-
-    struct FixedFileSet(Option<EntryFileSet>);
-
-    #[async_trait]
-    impl EntryFileSetRepositoryPort for FixedFileSet {
-        async fn save(
-            &self,
-            _entry_id: &EntryId,
-            _file_set: &EntryFileSet,
-        ) -> Result<(), EntryFileSetError> {
-            unreachable!()
-        }
-
-        async fn load(
-            &self,
-            _entry_id: &EntryId,
-        ) -> Result<Option<EntryFileSet>, EntryFileSetError> {
-            Ok(self.0.clone())
         }
     }
 
@@ -158,22 +136,6 @@ mod tests {
         }
     }
 
-    fn directory_file_set() -> EntryFileSet {
-        EntryFileSet {
-            lines: vec![EntryFileSetLine {
-                line_index: 0,
-                original_text: "folder".into(),
-                member_location: Some(FileSetMemberLocation {
-                    root_index: 0,
-                    root_name: "folder".into(),
-                    relative_path: "".into(),
-                    kind: FileSetMemberKind::EmptyDirectory,
-                }),
-                kind: EntryFileSetLineKind::NonFile,
-            }],
-        }
-    }
-
     #[tokio::test]
     async fn local_advance_marks_directories_non_consumable() {
         let register = Arc::new(RecordingRegister::default());
@@ -181,7 +143,9 @@ mod tests {
             register.clone(),
             Arc::new(FixedDevice),
             Arc::new(FixedClock),
-            MobileConsumabilityProbe::new(Arc::new(FixedFileSet(Some(directory_file_set())))),
+            MobileConsumabilityProbe::new(Arc::new(FixedFileSets(Ok(Some(
+                empty_directory_file_set(),
+            ))))),
         );
 
         advancer

@@ -602,15 +602,14 @@ mod tests {
     use chrono::Utc;
     use uc_core::blob::ports::BlobReaderPort;
     use uc_core::clipboard::{
-        ClipboardEntry, ClipboardRepositoryError, ClipboardSelectionDecision, EntryFileSet,
-        EntryFileSetError, PayloadAvailability, PersistedClipboardRepresentation,
-        SystemClipboardSnapshot,
+        ClipboardEntry, ClipboardRepositoryError, ClipboardSelectionDecision, PayloadAvailability,
+        PersistedClipboardRepresentation, SystemClipboardSnapshot,
     };
     use uc_core::ids::{DeviceId, EntryId, EventId, RepresentationId, SpaceId};
     use uc_core::membership::{MembershipError, SpaceMember};
     use uc_core::ports::clipboard::{
-        ActiveClipboardRegisterError, ClipboardPayloadResolverPort, EntryFileSetRepositoryPort,
-        GetClipboardEntryPort, GetRepresentationPort, PayloadResolveError, ProcessingUpdateOutcome,
+        ActiveClipboardRegisterError, ClipboardPayloadResolverPort, GetClipboardEntryPort,
+        GetRepresentationPort, PayloadResolveError, ProcessingUpdateOutcome,
         ResolvedClipboardPayload, UpdateRepresentationProcessingResultPort,
     };
     use uc_core::ports::{
@@ -648,26 +647,6 @@ mod tests {
     impl ClockPort for FixedClock {
         fn now_ms(&self) -> i64 {
             self.0
-        }
-    }
-
-    struct EmptyFileSets;
-
-    #[async_trait]
-    impl EntryFileSetRepositoryPort for EmptyFileSets {
-        async fn save(
-            &self,
-            _entry_id: &EntryId,
-            _file_set: &EntryFileSet,
-        ) -> Result<(), EntryFileSetError> {
-            unreachable!()
-        }
-
-        async fn load(
-            &self,
-            _entry_id: &EntryId,
-        ) -> Result<Option<EntryFileSet>, EntryFileSetError> {
-            Ok(None)
         }
     }
 
@@ -933,7 +912,7 @@ mod tests {
             Arc::new(EmptyPeerAddrRepo),
             Arc::new(StaticPresence(ReachabilityState::Online)),
             Arc::new(FixedClock(now_ms)),
-            MobileConsumabilityProbe::new(Arc::new(EmptyFileSets)),
+            MobileConsumabilityProbe::new(Arc::new(crate::test_support::FixedFileSets::empty())),
             converged_tx,
         );
         Harness {
@@ -1286,7 +1265,7 @@ mod tests {
             peer_addr_repo,
             Arc::new(StaticPresence(ReachabilityState::Online)),
             Arc::new(FixedClock(1_000)),
-            MobileConsumabilityProbe::new(Arc::new(EmptyFileSets)),
+            MobileConsumabilityProbe::new(Arc::new(crate::test_support::FixedFileSets::empty())),
             converged_tx,
         );
         if let (Some(pull_client), Some(store)) = (pull_client, store) {

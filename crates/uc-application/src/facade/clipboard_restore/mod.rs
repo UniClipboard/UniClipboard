@@ -5,10 +5,7 @@ use uc_core::blob::ports::BlobReaderPort;
 use uc_core::clipboard::ClipboardIntegrationMode;
 use uc_core::ids::EntryId;
 use uc_core::ports::{
-    clipboard::{
-        AdvanceActiveClipboardPort, ClipboardPayloadResolverPort, EntryFileSetRepositoryPort,
-        PayloadResolveError,
-    },
+    clipboard::{AdvanceActiveClipboardPort, ClipboardPayloadResolverPort, PayloadResolveError},
     ClipboardSelectionRepositoryPort, ClockPort, DeviceIdentityPort,
 };
 
@@ -74,7 +71,7 @@ pub struct ClipboardRestoreFacadeDeps {
     /// Cross-device active-clipboard register advanced after a successful
     /// restore.
     pub active_register: Arc<dyn AdvanceActiveClipboardPort>,
-    pub entry_file_sets: Arc<dyn EntryFileSetRepositoryPort>,
+    pub mobile_consumability: MobileConsumabilityProbe,
     /// Optional restore-broadcast trigger. When present, a successful restore
     /// that advanced the register also offers the activation to the broadcast
     /// subsystem (which gates on `sync_on_restore` + per-device send prefs
@@ -102,7 +99,7 @@ impl ClipboardRestoreFacade {
             clock,
             device_identity,
             active_register,
-            entry_file_sets,
+            mobile_consumability,
             restore_broadcast,
             write_coordinator,
             integration_mode,
@@ -114,7 +111,7 @@ impl ClipboardRestoreFacade {
             active_register,
             device_identity,
             clock.clone(),
-            MobileConsumabilityProbe::new(entry_file_sets),
+            mobile_consumability,
         );
 
         let ClipboardEntryPorts {

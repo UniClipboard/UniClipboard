@@ -825,15 +825,19 @@ pub fn wire_dependencies(
     let mobile_consumable_backfill_port: Arc<
         dyn uc_core::ports::clipboard::BackfillMobileConsumableClipboardPort,
     > = active_clipboard_register_impl.clone();
+    // Single shared consumability probe: every register-advance path (local
+    // advancer, inbound apply, backfill) clones this one instance via
+    // `ClipboardPorts.mobile_consumability` instead of re-assembling it from
+    // the file-set repository.
+    let mobile_consumability =
+        uc_application::clipboard_write::MobileConsumabilityProbe::new(entry_file_set_repo.clone());
     let mobile_consumable_backfill: Arc<
         dyn uc_application::clipboard_write::MobileConsumableBackfill,
     > = Arc::new(
         uc_application::clipboard_write::BackfillMobileConsumableRef::new(
             active_clipboard_register_load.clone(),
             mobile_consumable_backfill_port,
-            uc_application::clipboard_write::MobileConsumabilityProbe::new(
-                entry_file_set_repo.clone(),
-            ),
+            mobile_consumability.clone(),
         ),
     );
     let active_clipboard_register_reset: Arc<
@@ -953,6 +957,7 @@ pub fn wire_dependencies(
             active_register_load: active_clipboard_register_load,
             mobile_consumable_load,
             mobile_consumable_backfill,
+            mobile_consumability,
             active_register_reset: active_clipboard_register_reset,
         },
         security: SecurityPorts {

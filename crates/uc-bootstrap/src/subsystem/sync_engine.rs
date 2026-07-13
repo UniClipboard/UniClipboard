@@ -700,7 +700,7 @@ pub(crate) async fn build_sync_engine_assembly(
         is_unlocked: Arc::clone(&deps.security.space_access_ports.is_unlocked),
         load_register: Arc::clone(&deps.clipboard.active_register_load),
         advance_register: Arc::clone(&deps.clipboard.active_register),
-        entry_file_sets: Arc::clone(&deps.storage.entry_file_set_repo),
+        mobile_consumability: deps.clipboard.mobile_consumability.clone(),
         member_repo: Arc::clone(&deps.device.member_repo),
         peer_addr_repo: Arc::clone(&space_setup.peer_addr_repo),
         presence: Arc::clone(&presence),

@@ -154,9 +154,7 @@ fn build_fallback_apply_inbound(deps: &AppDeps) -> Arc<ApplyInboundClipboardUseC
         )
         .with_active_register(
             deps.clipboard.active_register.clone(),
-            uc_application::clipboard_write::MobileConsumabilityProbe::new(
-                deps.storage.entry_file_set_repo.clone(),
-            ),
+            deps.clipboard.mobile_consumability.clone(),
         )
         .with_check_entry_availability(deps.clipboard.entry_ports.availability.clone())
         .with_entry_identity_coordinator(deps.clipboard.entry_identity_coordinator.clone()),
@@ -406,7 +404,7 @@ pub fn build_app_facade_from_deps(
             clock: deps.system.clock.clone(),
             device_identity: deps.device.device_identity.clone(),
             active_register: deps.clipboard.active_register.clone(),
-            entry_file_sets: deps.storage.entry_file_set_repo.clone(),
+            mobile_consumability: deps.clipboard.mobile_consumability.clone(),
             restore_broadcast: restore.restore_broadcast,
             write_coordinator: restore.write_coordinator,
             integration_mode: restore.integration_mode,

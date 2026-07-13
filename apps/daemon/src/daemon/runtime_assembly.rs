@@ -155,9 +155,7 @@ pub fn build_daemon_runtime_workers(
         .with_host_event_emitter(input.host_event_bus)
         .with_active_register(
             input.deps.clipboard.active_register.clone(),
-            uc_application::clipboard_write::MobileConsumabilityProbe::new(
-                input.deps.storage.entry_file_set_repo.clone(),
-            ),
+            input.deps.clipboard.mobile_consumability.clone(),
         )
         .with_search_live_index(Arc::clone(&search_live_indexer))
         .with_check_entry_availability(input.deps.clipboard.entry_ports.availability.clone())
@@ -224,9 +222,7 @@ pub fn build_daemon_runtime_workers(
                 input.deps.clipboard.active_register.clone(),
                 input.deps.device.device_identity.clone(),
                 input.deps.system.clock.clone(),
-                uc_application::clipboard_write::MobileConsumabilityProbe::new(
-                    input.deps.storage.entry_file_set_repo.clone(),
-                ),
+                input.deps.clipboard.mobile_consumability.clone(),
             ),
         ));
         Some(Arc::new(ClipboardWatcherWorker::new(

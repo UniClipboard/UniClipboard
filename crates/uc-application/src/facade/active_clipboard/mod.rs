@@ -26,9 +26,9 @@ use uc_core::ids::{DeviceId, EntryId};
 use uc_core::ports::clipboard::{
     ActiveClipboardDispatchPort, ActiveClipboardPullClientPort, ActiveClipboardPullServePort,
     ActiveClipboardReceiverPort, AdvanceActiveClipboardPort, CheckEntryAvailabilityPort,
-    ClipboardPayloadResolverPort, ClipboardSelectionRepositoryPort, EntryFileSetRepositoryPort,
-    FindEntryIdBySnapshotHashPort, GetClipboardEntryPort, GetRepresentationPort,
-    LoadActiveClipboardPort, TouchClipboardEntryPort, UpdateRepresentationProcessingResultPort,
+    ClipboardPayloadResolverPort, ClipboardSelectionRepositoryPort, FindEntryIdBySnapshotHashPort,
+    GetClipboardEntryPort, GetRepresentationPort, LoadActiveClipboardPort, TouchClipboardEntryPort,
+    UpdateRepresentationProcessingResultPort,
 };
 use uc_core::ports::security::TransferCipherPort;
 use uc_core::ports::space::IsSpaceUnlockedPort;
@@ -103,7 +103,7 @@ pub struct ActiveClipboardDeps {
     pub is_unlocked: Arc<dyn IsSpaceUnlockedPort>,
     pub load_register: Arc<dyn LoadActiveClipboardPort>,
     pub advance_register: Arc<dyn AdvanceActiveClipboardPort>,
-    pub entry_file_sets: Arc<dyn EntryFileSetRepositoryPort>,
+    pub mobile_consumability: MobileConsumabilityProbe,
     pub member_repo: Arc<dyn MemberRepositoryPort>,
     pub peer_addr_repo: Arc<dyn PeerAddressRepositoryPort>,
     /// Presence stream for the peer-online resync worker: an "online"
@@ -213,7 +213,7 @@ pub struct ActiveClipboardFacade {
 impl ActiveClipboardFacade {
     pub fn new(deps: ActiveClipboardDeps) -> Self {
         let reconstructor = deps.snapshot.into_reconstructor();
-        let mobile_consumability = MobileConsumabilityProbe::new(deps.entry_file_sets);
+        let mobile_consumability = deps.mobile_consumability;
         let local_advancer = LocalActiveRegisterAdvancer::new(
             Arc::clone(&deps.advance_register),
             deps.device_identity,

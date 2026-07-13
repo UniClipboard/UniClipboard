@@ -394,6 +394,13 @@ ticket DAG：#1316 #1317 为 frontier；#1319 依赖 #1316+#1317；#1320 依赖 
 
 - **阶段 5**：进度/取消 UI、Sync-ineligible 原因展示、`file_sync` 设置界面、**移动端 register 降级
   修复**（§7）、面向用户文档。
+- **阶段 5**：发送端 per-member 目录传输进度/完成状态（与进度/取消 UI 同一块）。现状——目录 N 个成员
+  在 **接收侧** 有各自的生命周期行（`transfer_id = entry:member:N`，`individual_lifecycle`），但 **发送侧**
+  只有一个共享的 `outbound_transfer_id`（= 目录 entry_id，因 `publish_file_blob_refs` 对每个成员都用目录
+  entry_id 发布），故 `report_outbound_terminal` 在批次收尾对该唯一 id 报一次终态即正确（这也是 CodeRabbit
+  PR #1323 Finding 1 被判为误报的原因：它误以为成员已有各自的 outbound id）。若产品上要让发送端看到每个成员
+  各自完成，需：①发送侧给每个成员分配 **不同的** outbound transfer id（不再复用目录 entry_id）；②`OutboundProgressReporterPort`/reporter
+  改按成员粒度建模；③wire/publish 路径把这些 id 带过去。属真功能，非上报点 refactor，随进度 UI 一并设计。
 - **阶段 5**：目录 root 提升的预留竞态（CodeRabbit PR #1323 Finding 2）。接收侧目录提升复用了面向
   文件的 `ReserveInboundFileTargetPort`：`reserve_target()` 只预留一个文件占位，promote 前先
   `remove_file` 再把目录树 `rename` 就位，中间存在一段预留路径不受保护的 TOCTOU 窗口（Minor，窗口

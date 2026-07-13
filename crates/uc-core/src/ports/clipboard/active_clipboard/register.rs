@@ -2,11 +2,13 @@
 
 use async_trait::async_trait;
 
-use crate::clipboard::ActiveClipboardState;
+use crate::clipboard::{ActiveClipboardState, MobileConsumableRef};
 
 /// Error surface for active-clipboard register persistence.
 #[derive(Debug, thiserror::Error)]
 pub enum ActiveClipboardRegisterError {
+    #[error("active clipboard register is unavailable while the space is locked")]
+    NotUnlocked,
     #[error("active clipboard register storage failure: {0}")]
     Storage(String),
 }
@@ -27,6 +29,32 @@ pub trait AdvanceActiveClipboardPort: Send + Sync {
     async fn advance(
         &self,
         state: &ActiveClipboardState,
+        mobile_consumable: bool,
+    ) -> Result<bool, ActiveClipboardRegisterError>;
+}
+
+/// Read the most recent content reference that remains consumable by limited
+/// clipboard clients.
+#[async_trait]
+pub trait LoadMobileConsumableClipboardPort: Send + Sync {
+    /// Return the most recent consumable reference, or `None` when none has
+    /// been recorded.
+    async fn load_mobile_consumable(
+        &self,
+    ) -> Result<Option<MobileConsumableRef>, ActiveClipboardRegisterError>;
+}
+
+/// Conditionally initialize a missing mobile-consumable reference.
+#[async_trait]
+pub trait BackfillMobileConsumableClipboardPort: Send + Sync {
+    /// Store `reference` only when the consumable reference is absent and the
+    /// current register still points to the same content and local entry.
+    ///
+    /// Returns `true` when the reference was written. A changed register or an
+    /// already-present reference is a successful no-op and returns `false`.
+    async fn backfill_mobile_consumable_if_current(
+        &self,
+        reference: &MobileConsumableRef,
     ) -> Result<bool, ActiveClipboardRegisterError>;
 }
 

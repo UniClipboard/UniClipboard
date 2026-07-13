@@ -33,6 +33,7 @@ use uc_core::ports::{
 use uc_core::setup::SetupStatus;
 use uc_observability::analytics::AnalyticsFacade;
 
+use crate::clipboard_write::MobileConsumableBackfill;
 use crate::facade::space_setup::commands::{
     CurrentInvitation, InitializeSpaceCommand, InitializeSpaceInput, InitializeSpaceResult,
     IssuePairingInvitationResult, MigrationPhaseKind, MigrationProgress,
@@ -92,6 +93,7 @@ pub struct SpaceSetupFacade {
     /// clearing setup status.
     factory_reset: Arc<dyn FactoryResetSpacePort>,
     setup_status: Arc<dyn SetupStatusPort>,
+    mobile_consumable_backfill: Arc<dyn MobileConsumableBackfill>,
     /// Slice4 P3 T3.2 · `query_setup_state` reads `device_name` from
     /// `Settings.general`; `cancel_invitation` / `reset` need no
     /// settings access but the field stays `pub(crate)` so a future
@@ -146,6 +148,7 @@ impl SpaceSetupFacade {
             setup_status,
             settings,
             clock,
+            mobile_consumable_backfill,
             pairing_invitation,
             pairing_invitation_addresses,
             pairing_invitation_by_address,
@@ -325,6 +328,7 @@ impl SpaceSetupFacade {
             resume_session: resume_session_for_facade,
             factory_reset: factory_reset_for_facade,
             setup_status: setup_status_for_facade,
+            mobile_consumable_backfill,
             settings: settings_for_facade,
             invitation_holder: invitation_holder_for_facade,
             ensure_reachable_all,
@@ -420,6 +424,9 @@ impl SpaceSetupFacade {
                 return Err(TryResumeSessionError::Internal(format!(
                     "migration resume failed: {err}"
                 )));
+            }
+            if let Err(err) = self.mobile_consumable_backfill.backfill().await {
+                warn!(error = %err, "mobile-consumable reference backfill failed after resume");
             }
         }
 
@@ -519,6 +526,9 @@ impl SpaceSetupFacade {
             return Err(UnlockSpaceError::Internal(format!(
                 "migration resume failed: {err}"
             )));
+        }
+        if let Err(err) = self.mobile_consumable_backfill.backfill().await {
+            warn!(error = %err, "mobile-consumable reference backfill failed after unlock");
         }
 
         self.auto_prime_presence().await;
@@ -819,6 +829,7 @@ mod tests {
 
     use super::*;
 
+    use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Mutex as StdMutex;
 
     use async_trait::async_trait;
@@ -1452,6 +1463,30 @@ mod tests {
         IdentityFingerprint::from_raw_string("ABCDEFGHIJKLMNOP").unwrap()
     }
 
+    struct NoopMobileConsumableBackfill;
+
+    #[async_trait]
+    impl MobileConsumableBackfill for NoopMobileConsumableBackfill {
+        async fn backfill(
+            &self,
+        ) -> Result<bool, uc_core::ports::clipboard::ActiveClipboardRegisterError> {
+            Ok(false)
+        }
+    }
+
+    #[derive(Default)]
+    struct CountingMobileConsumableBackfill(AtomicUsize);
+
+    #[async_trait]
+    impl MobileConsumableBackfill for CountingMobileConsumableBackfill {
+        async fn backfill(
+            &self,
+        ) -> Result<bool, uc_core::ports::clipboard::ActiveClipboardRegisterError> {
+            self.0.fetch_add(1, Ordering::SeqCst);
+            Ok(false)
+        }
+    }
+
     fn make_facade(
         space_access: Arc<FakeSpaceAccess>,
         setup_status: Arc<dyn SetupStatusPort>,
@@ -1493,6 +1528,7 @@ mod tests {
             setup_status,
             settings,
             clock: Arc::new(FixedClock(0)),
+            mobile_consumable_backfill: Arc::new(NoopMobileConsumableBackfill),
             pairing_invitation: pairing_invitation.clone(),
             pairing_invitation_addresses: pairing_invitation.clone(),
             pairing_invitation_by_address: pairing_invitation.clone(),
@@ -1562,15 +1598,18 @@ mod tests {
             has_completed: true,
             space_id: None,
         };
-        let (facade, _inv, _peer) = make_facade(
+        let (mut facade, _inv, _peer) = make_facade(
             Arc::new(FakeSpaceAccess::default()),
             Arc::new(setup_status),
             Arc::new(InMemorySettings::default()),
         );
+        let backfill = Arc::new(CountingMobileConsumableBackfill::default());
+        facade.mobile_consumable_backfill = backfill.clone();
         let cmd = UnlockSpaceInput {
             passphrase: "hunter22hunter22".to_string(),
         };
         facade.unlock_space(cmd).await.expect("A2 ok");
+        assert_eq!(backfill.0.load(Ordering::SeqCst), 1);
     }
 
     #[tokio::test]

@@ -13,6 +13,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 
+use uc_application::clipboard_write::MobileConsumableBackfill;
 use uc_core::crypto::domain::{Aad, ActiveSpace, Ciphertext, Plaintext};
 use uc_core::ids::{EventId, RepresentationId};
 use uc_core::ports::clipboard::{BlobMigrationRepoError, BlobMigrationRepoPort, MigrationRecord};
@@ -21,6 +22,21 @@ use uc_core::ports::security::{
 };
 use uc_core::ports::setup::{MigrationStateError, MigrationStatePort};
 use uc_core::setup::{MigrationPhase, MigrationRunId};
+
+pub struct NoopMobileConsumableBackfill;
+
+#[async_trait]
+impl MobileConsumableBackfill for NoopMobileConsumableBackfill {
+    async fn backfill(
+        &self,
+    ) -> Result<bool, uc_core::ports::clipboard::ActiveClipboardRegisterError> {
+        Ok(false)
+    }
+}
+
+pub fn mobile_consumable_backfill_noop() -> Arc<dyn MobileConsumableBackfill> {
+    Arc::new(NoopMobileConsumableBackfill)
+}
 
 pub struct NoopMigrationState;
 

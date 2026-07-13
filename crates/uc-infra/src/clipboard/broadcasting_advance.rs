@@ -29,8 +29,9 @@ impl AdvanceActiveClipboardPort for BroadcastingAdvance {
     async fn advance(
         &self,
         state: &ActiveClipboardState,
+        mobile_consumable: bool,
     ) -> Result<bool, ActiveClipboardRegisterError> {
-        let advanced = self.inner.advance(state).await?;
+        let advanced = self.inner.advance(state, mobile_consumable).await?;
         if advanced {
             // Fire-and-forget: no subscribers is a normal, expected state
             // (no SSE clients connected), not a failure of `advance` itself.
@@ -58,6 +59,7 @@ mod tests {
         async fn advance(
             &self,
             _state: &ActiveClipboardState,
+            _mobile_consumable: bool,
         ) -> Result<bool, ActiveClipboardRegisterError> {
             match &self.result {
                 Ok(v) => Ok(*v),
@@ -76,7 +78,7 @@ mod tests {
         let decorator = BroadcastingAdvance::new(Arc::new(StubAdvance { result: Ok(true) }), tx);
 
         let published_state = state();
-        let advanced = decorator.advance(&published_state).await.unwrap();
+        let advanced = decorator.advance(&published_state, true).await.unwrap();
         assert!(advanced);
         let published = rx.try_recv().expect("state must be published");
         assert_eq!(published, published_state);
@@ -87,7 +89,7 @@ mod tests {
         let (tx, mut rx) = broadcast::channel(64);
         let decorator = BroadcastingAdvance::new(Arc::new(StubAdvance { result: Ok(false) }), tx);
 
-        let advanced = decorator.advance(&state()).await.unwrap();
+        let advanced = decorator.advance(&state(), true).await.unwrap();
         assert!(!advanced);
         assert!(rx.try_recv().is_err(), "no publish on a no-op advance");
     }
@@ -102,7 +104,7 @@ mod tests {
             tx,
         );
 
-        let result = decorator.advance(&state()).await;
+        let result = decorator.advance(&state(), true).await;
         assert!(result.is_err());
         assert!(rx.try_recv().is_err(), "no publish on an error");
     }
@@ -113,7 +115,7 @@ mod tests {
         drop(rx);
         let decorator = BroadcastingAdvance::new(Arc::new(StubAdvance { result: Ok(true) }), tx);
 
-        let advanced = decorator.advance(&state()).await.unwrap();
+        let advanced = decorator.advance(&state(), true).await.unwrap();
         assert!(
             advanced,
             "send failure with no subscribers must not fail advance"

@@ -21,7 +21,7 @@ mod system;
 mod thumbnail;
 mod timestamp;
 
-pub use active_state::ActiveClipboardState;
+pub use active_state::{ActiveClipboardState, MobileConsumableRef};
 pub use category::{
     ClipboardContentCategory, ClipboardContentCategorySet, ClipboardEntryContentCategory,
 };

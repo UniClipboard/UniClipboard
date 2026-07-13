@@ -1,3 +1,4 @@
+mod active_clipboard_register_cipher;
 mod active_clipboard_register_repo;
 mod blob_reference_repo;
 mod blob_repo;

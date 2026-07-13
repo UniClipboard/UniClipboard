@@ -13,6 +13,7 @@ use uc_core::ports::clipboard::{
 };
 use uc_core::{SnapshotHash, SystemClipboardSnapshot};
 
+use crate::clipboard_write::MobileConsumabilityProbe;
 use crate::entry_identity::EntryIdentityCoordinator;
 
 use crate::facade::blob_transfer::SharedHostEventEmitter;
@@ -68,6 +69,7 @@ pub struct ApplyInboundClipboardUseCase {
     /// write that trails it is best-effort and intentionally not gated on).
     /// `None` in tests / contexts that don't track active state.
     active_register: Option<Arc<dyn AdvanceActiveClipboardPort>>,
+    mobile_consumability: Option<MobileConsumabilityProbe>,
     /// Optional search live-indexer. When wired, a freshly applied inbound
     /// entry is indexed for full-text search (best-effort), so remote-origin
     /// clipboard is searchable just like local captures. `None` in tests /
@@ -90,6 +92,7 @@ impl ApplyInboundClipboardUseCase {
             availability: None,
             host_event_emitter: None,
             active_register: None,
+            mobile_consumability: None,
             search_live_index: None,
             recent_snapshot_hashes: Cache::builder()
                 .max_capacity(RECENT_INBOUND_MAX_RECORDS)
@@ -143,8 +146,13 @@ impl ApplyInboundClipboardUseCase {
     /// Wire the cross-device active-clipboard register. When set, a newly
     /// applied inbound entry advances the register so this device reflects
     /// that the peer's content is now its active clipboard state.
-    pub fn with_active_register(mut self, register: Arc<dyn AdvanceActiveClipboardPort>) -> Self {
+    pub fn with_active_register(
+        mut self,
+        register: Arc<dyn AdvanceActiveClipboardPort>,
+        mobile_consumability: MobileConsumabilityProbe,
+    ) -> Self {
         self.active_register = Some(register);
+        self.mobile_consumability = Some(mobile_consumability);
         self
     }
 
@@ -200,7 +208,11 @@ impl ApplyInboundClipboardUseCase {
         };
         let state =
             ActiveClipboardState::new(snapshot_hash, entry_id, activated_at_ms, activated_by);
-        if let Err(e) = register.advance(&state).await {
+        let mobile_consumable = match self.mobile_consumability.as_ref() {
+            Some(probe) => probe.is_mobile_consumable(&state.entry_id).await,
+            None => false,
+        };
+        if let Err(e) = register.advance(&state, mobile_consumable).await {
             warn!(
                 error = %e,
                 snapshot_hash = %state.snapshot_hash,

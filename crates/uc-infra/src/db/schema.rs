@@ -7,6 +7,7 @@ diesel::table! {
         entry_id -> Text,
         activated_at_ms -> BigInt,
         activated_by -> Text,
+        consumable_ref_ciphertext -> Nullable<Binary>,
     }
 }
 

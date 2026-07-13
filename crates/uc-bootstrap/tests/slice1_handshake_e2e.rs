@@ -390,6 +390,7 @@ async fn build_side(name: &'static str, rendezvous_base_url: String) -> Side {
         setup_status: Arc::clone(&setup_status) as Arc<dyn SetupStatusPort>,
         settings: Arc::clone(&settings) as Arc<dyn SettingsPort>,
         clock: Arc::new(SystemClock),
+        mobile_consumable_backfill: common::mobile_consumable_backfill_noop(),
         pairing_invitation,
         pairing_invitation_addresses,
         pairing_invitation_by_address,

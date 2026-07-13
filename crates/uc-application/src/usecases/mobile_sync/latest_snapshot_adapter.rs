@@ -2,14 +2,14 @@
 //! path.
 //!
 //! Wires `LatestClipboardSnapshotPort` (`uc-core`) onto the existing clipboard
-//! pipeline ports, composing "the paste-priority rep + bytes of the currently
-//! active content (the active-clipboard register)".
+//! pipeline ports, composing "the paste-priority rep + bytes of the most recent
+//! mobile-consumable content".
 //!
 //! ## Data flow
 //!
 //! ```text
 //! latest_paste_representation()
-//!   ↓ active_register_load.load() — get the local entry_id of the active content
+//!   ↓ mobile_consumable_load.load_mobile_consumable() — get the fallback-safe content ref
 //!   ↓ get_entry(entry_id) — fill in the entry (carries event_id)
 //! ClipboardEntry { entry_id, event_id }
 //!   ↓ get_selection(entry_id) — get paste_rep_id
@@ -23,9 +23,8 @@
 //!   ↓
 //! LatestPasteRepresentation { entry_id, snapshot_hash, format_id, mime, bytes }
 //! ```
-//! `snapshot_hash` is taken from the active register's current value (the stable
-//! cross-device identity), independent of the byte-content hash; the upper layer
-//! serializes it to the wire `contentId`.
+//! `snapshot_hash` is taken from the mobile-consumable reference, independent of
+//! the byte-content hash; the upper layer serializes it to the wire `contentId`.
 //!
 //! ## Boundary & error policy
 //!
@@ -58,7 +57,7 @@ use uc_core::ids::{EntryId, EventId, RepresentationId};
 use uc_core::mobile_sync::LatestPasteRepresentation;
 use uc_core::ports::clipboard::{
     ClipboardPayloadResolverPort, ClipboardSelectionRepositoryPort, GetClipboardEntryPort,
-    GetRepresentationPort, LoadActiveClipboardPort, ResolvedClipboardPayload,
+    GetRepresentationPort, LoadMobileConsumableClipboardPort, ResolvedClipboardPayload,
 };
 use uc_core::ports::mobile_sync::{LatestClipboardSnapshotError, LatestClipboardSnapshotPort};
 use uc_core::MimeType;
@@ -69,18 +68,16 @@ use uc_core::MimeType;
 /// row of parallel ports directly; the split makes "what this snapshot path
 /// needs" obvious at the call site.
 ///
-/// The outbound read is anchored on the active-clipboard register:
-/// `active_register_load` gives the local `entry_id` of the "currently active
-/// content", `entry_repo` fills in the entry (carrying `event_id`) from it, and
-/// the downstream selection / representation / blob materialization chain is
-/// source-agnostic.
+/// The outbound read is anchored on the mobile-consumable reference. It gives
+/// the local `entry_id` and stable `snapshot_hash`; the downstream selection,
+/// representation, and blob materialization chain is source-agnostic.
 ///
 /// `pub` rather than `pub(crate)`: bootstrap uses this struct directly at the
 /// facade assembly point, but since this file lives under
 /// `pub(crate) mod latest_snapshot_adapter` it is only reachable indirectly via
 /// the facade-layer re-export — still honoring the §11.4 boundary.
 pub struct MobileSyncSnapshotPorts {
-    pub active_register_load: Arc<dyn LoadActiveClipboardPort>,
+    pub mobile_consumable_load: Arc<dyn LoadMobileConsumableClipboardPort>,
     pub entry_repo: Arc<dyn GetClipboardEntryPort>,
     pub selection_repo: Arc<dyn ClipboardSelectionRepositoryPort>,
     pub representation_repo: Arc<dyn GetRepresentationPort>,
@@ -97,38 +94,43 @@ impl LatestClipboardSnapshotAdapter {
         Self { ports }
     }
 
-    /// Step 1+2: resolve the entry of the "currently active content" and its
+    /// Step 1+2: resolve the most recent mobile-consumable entry and its
     /// corresponding selection decision.
     ///
-    /// The anchor is the active-clipboard register: `load` gives the local
-    /// `entry_id` of the active content (the register advances ⟺ the content was
-    /// materialized into a local entry, so this id is always valid), and
-    /// `get_entry` fills in the full entry (carrying `event_id`) from it for the
-    /// downstream representation lookup.
+    /// The anchor is the encrypted mobile-consumable reference. `get_entry`
+    /// fills in the full entry (carrying `event_id`) for downstream lookup.
     ///
-    /// Any step yielding empty (register never written / entry no longer exists
-    /// / no selection) → `Ok(None)`, consistent with the existing `NotFound`
-    /// translation. Port-layer errors are uniformly translated to `Resolution`.
+    /// Any step yielding empty (no consumable reference / entry removed / no
+    /// selection) returns `Ok(None)`. A locked reference also returns `Ok(None)`;
+    /// other port failures are translated to `Resolution`.
     async fn load_entry_and_selection(
         &self,
     ) -> Result<
         Option<(ClipboardEntry, ClipboardSelectionDecision, String)>,
         LatestClipboardSnapshotError,
     > {
-        let state = self
+        let reference = match self
             .ports
-            .active_register_load
-            .load()
+            .mobile_consumable_load
+            .load_mobile_consumable()
             .await
-            .map_err(|e| LatestClipboardSnapshotError::Resolution(e.to_string()))?;
-        let Some(state) = state else {
+        {
+            Ok(reference) => reference,
+            Err(uc_core::ports::clipboard::ActiveClipboardRegisterError::NotUnlocked) => {
+                return Ok(None);
+            }
+            Err(err) => {
+                return Err(LatestClipboardSnapshotError::Resolution(err.to_string()));
+            }
+        };
+        let Some(reference) = reference else {
             return Ok(None);
         };
 
         let entry = self
             .ports
             .entry_repo
-            .get_entry(&state.entry_id)
+            .get_entry(&reference.entry_id)
             .await
             .map_err(|e| LatestClipboardSnapshotError::Resolution(e.to_string()))?;
         let Some(entry) = entry else {
@@ -144,11 +146,9 @@ impl LatestClipboardSnapshotAdapter {
         let Some(decision) = selection else {
             return Ok(None);
         };
-        // `snapshot_hash` is this entry's stable cross-device identity, read
-        // alongside the active register's current value; it is carried with the
-        // materialized result to the upper layer for serialization into the wire
-        // `contentId`.
-        Ok(Some((entry, decision, state.snapshot_hash)))
+        // Carry the stable identity from the same fallback-safe reference used
+        // to resolve the local entry.
+        Ok(Some((entry, decision, reference.snapshot_hash)))
     }
 
     /// Step 3:按 (event_id, rep_id) 取出 representation,把 port 错统一翻成
@@ -295,11 +295,10 @@ mod tests {
     use std::sync::Mutex;
 
     use uc_core::clipboard::{
-        ActiveClipboardState, ClipboardEntry, ClipboardRepositoryError, ClipboardSelection,
-        ClipboardSelectionDecision, MimeType, PersistedClipboardRepresentation,
-        SelectionPolicyVersion,
+        ClipboardEntry, ClipboardRepositoryError, ClipboardSelection, ClipboardSelectionDecision,
+        MimeType, MobileConsumableRef, PersistedClipboardRepresentation, SelectionPolicyVersion,
     };
-    use uc_core::ids::{DeviceId, EntryId, EventId, FormatId, RepresentationId};
+    use uc_core::ids::{EntryId, EventId, FormatId, RepresentationId};
     use uc_core::ports::clipboard::{ActiveClipboardRegisterError, PayloadResolveError};
     use uc_core::BlobId;
 
@@ -312,12 +311,12 @@ mod tests {
     // method is consumed only once, and a second call panics to expose an
     // unexpected duplicate read.
     struct FakeSource {
-        load: Mutex<Option<Result<Option<ActiveClipboardState>, ActiveClipboardRegisterError>>>,
+        load: Mutex<Option<Result<Option<MobileConsumableRef>, ActiveClipboardRegisterError>>>,
         get: Mutex<Option<Result<Option<ClipboardEntry>, ClipboardRepositoryError>>>,
     }
     impl FakeSource {
         fn build(
-            load: Result<Option<ActiveClipboardState>, ActiveClipboardRegisterError>,
+            load: Result<Option<MobileConsumableRef>, ActiveClipboardRegisterError>,
             get: Result<Option<ClipboardEntry>, ClipboardRepositoryError>,
         ) -> Arc<Self> {
             Arc::new(Self {
@@ -325,8 +324,8 @@ mod tests {
                 get: Mutex::new(Some(get)),
             })
         }
-        fn state_for(entry_id: EntryId) -> ActiveClipboardState {
-            ActiveClipboardState::new("blake3v1:test", entry_id, 1, DeviceId::new("dev-test"))
+        fn state_for(entry_id: EntryId) -> MobileConsumableRef {
+            MobileConsumableRef::new("blake3v1:test", entry_id)
         }
         /// Active content exists and the entry is fetchable: `load` points at
         /// `e.entry_id` and `get_entry` returns that entry.
@@ -350,6 +349,9 @@ mod tests {
                 Ok(None),
             )
         }
+        fn locked() -> Arc<Self> {
+            Self::build(Err(ActiveClipboardRegisterError::NotUnlocked), Ok(None))
+        }
         /// load succeeds but the entry lookup fails.
         fn get_err(msg: &str) -> Arc<Self> {
             Self::build(
@@ -359,8 +361,10 @@ mod tests {
         }
     }
     #[async_trait]
-    impl LoadActiveClipboardPort for FakeSource {
-        async fn load(&self) -> Result<Option<ActiveClipboardState>, ActiveClipboardRegisterError> {
+    impl LoadMobileConsumableClipboardPort for FakeSource {
+        async fn load_mobile_consumable(
+            &self,
+        ) -> Result<Option<MobileConsumableRef>, ActiveClipboardRegisterError> {
             self.load.lock().unwrap().take().expect("load 被调用多次")
         }
     }
@@ -522,7 +526,7 @@ mod tests {
     ) -> LatestClipboardSnapshotAdapter {
         // FakeSource doubles as both the register-load and entry-get ports.
         LatestClipboardSnapshotAdapter::new(MobileSyncSnapshotPorts {
-            active_register_load: source.clone(),
+            mobile_consumable_load: source.clone(),
             entry_repo: source,
             selection_repo,
             representation_repo,
@@ -554,6 +558,22 @@ mod tests {
         // active register never written → load() == None → NotFound upstream.
         let adapter = build_adapter(
             FakeSource::empty(),
+            dummy_selection_repo(),
+            dummy_rep_repo(),
+            dummy_resolver(),
+            dummy_blob_reader(),
+        );
+        assert!(adapter
+            .latest_paste_representation()
+            .await
+            .unwrap()
+            .is_none());
+    }
+
+    #[tokio::test]
+    async fn locked_register_returns_none() {
+        let adapter = build_adapter(
+            FakeSource::locked(),
             dummy_selection_repo(),
             dummy_rep_repo(),
             dummy_resolver(),

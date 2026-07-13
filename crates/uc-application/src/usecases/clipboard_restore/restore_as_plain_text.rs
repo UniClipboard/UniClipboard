@@ -459,12 +459,13 @@ mod tests {
         ClipboardSelection, ClipboardSelectionDecision, MimeType, PersistedClipboardRepresentation,
         SelectionPolicyVersion, SystemClipboardSnapshot,
     };
+    use uc_core::clipboard::{EntryFileSet, EntryFileSetError};
     use uc_core::ids::{DeviceId, EntryId, EventId, FormatId, RepresentationId};
     use uc_core::ports::clipboard::{
         ActiveClipboardRegisterError, AdvanceActiveClipboardPort, ClipboardPayloadResolverPort,
-        GetClipboardEntryPort, GetEntrySnapshotHashPort, GetRepresentationPort,
-        PayloadResolveError, ResolvedClipboardPayload, SelfWriteAttribution, SelfWriteLedgerPort,
-        SelfWriteMatch, SystemClipboardPort,
+        EntryFileSetRepositoryPort, GetClipboardEntryPort, GetEntrySnapshotHashPort,
+        GetRepresentationPort, PayloadResolveError, ResolvedClipboardPayload, SelfWriteAttribution,
+        SelfWriteLedgerPort, SelfWriteMatch, SystemClipboardPort,
     };
     use uc_core::ports::{ClipboardSelectionRepositoryPort, ClockPort, DeviceIdentityPort};
     use uc_core::BlobId;
@@ -700,6 +701,7 @@ mod tests {
         async fn advance(
             &self,
             state: &ActiveClipboardState,
+            _mobile_consumable: bool,
         ) -> Result<bool, ActiveClipboardRegisterError> {
             self.advanced
                 .lock()
@@ -713,6 +715,26 @@ mod tests {
     impl ClockPort for FixedClock {
         fn now_ms(&self) -> i64 {
             1_000
+        }
+    }
+
+    struct EmptyFileSets;
+
+    #[async_trait]
+    impl EntryFileSetRepositoryPort for EmptyFileSets {
+        async fn save(
+            &self,
+            _entry_id: &EntryId,
+            _file_set: &EntryFileSet,
+        ) -> Result<(), EntryFileSetError> {
+            unreachable!()
+        }
+
+        async fn load(
+            &self,
+            _entry_id: &EntryId,
+        ) -> Result<Option<EntryFileSet>, EntryFileSetError> {
+            Ok(None)
         }
     }
 
@@ -769,6 +791,7 @@ mod tests {
             register.clone(),
             Arc::new(FixedDevice),
             Arc::new(FixedClock),
+            crate::clipboard_write::MobileConsumabilityProbe::new(Arc::new(EmptyFileSets)),
         );
         let uc = build_use_case(
             entry_repo,

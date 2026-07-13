@@ -152,7 +152,12 @@ fn build_fallback_apply_inbound(deps: &AppDeps) -> Arc<ApplyInboundClipboardUseC
             capture,
             write,
         )
-        .with_active_register(deps.clipboard.active_register.clone())
+        .with_active_register(
+            deps.clipboard.active_register.clone(),
+            uc_application::clipboard_write::MobileConsumabilityProbe::new(
+                deps.storage.entry_file_set_repo.clone(),
+            ),
+        )
         .with_check_entry_availability(deps.clipboard.entry_ports.availability.clone())
         .with_entry_identity_coordinator(deps.clipboard.entry_identity_coordinator.clone()),
     )
@@ -265,7 +270,7 @@ pub fn build_mobile_sync_facade(
             FsInboundFileTarget::new(deps.settings.clone()),
         ),
         snapshot_ports: MobileSyncSnapshotPorts {
-            active_register_load: deps.clipboard.active_register_load.clone(),
+            mobile_consumable_load: deps.clipboard.mobile_consumable_load.clone(),
             entry_repo: deps.clipboard.entry_ports.get.clone(),
             selection_repo: deps.clipboard.selection_repo.clone(),
             representation_repo: deps.clipboard.representation_ports.get.clone(),
@@ -401,6 +406,7 @@ pub fn build_app_facade_from_deps(
             clock: deps.system.clock.clone(),
             device_identity: deps.device.device_identity.clone(),
             active_register: deps.clipboard.active_register.clone(),
+            entry_file_sets: deps.storage.entry_file_set_repo.clone(),
             restore_broadcast: restore.restore_broadcast,
             write_coordinator: restore.write_coordinator,
             integration_mode: restore.integration_mode,
@@ -424,6 +430,7 @@ pub fn build_app_facade_from_deps(
                 .space_access_ports
                 .verify_keychain_access
                 .clone(),
+            mobile_consumable_backfill: deps.clipboard.mobile_consumable_backfill.clone(),
         })),
         resource: Arc::new(ResourceFacade::new(ResourceFacadeDeps {
             representation_by_blob_id: deps.clipboard.representation_ports.get_by_blob_id.clone(),

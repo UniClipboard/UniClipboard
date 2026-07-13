@@ -294,7 +294,7 @@ async fn build_facade_deps_with_seeded_device(
         incoming_buffer: Arc::new(IncomingMobileBuffer::new()),
         file_staging: NoopFileStaging::new(),
         snapshot_ports: MobileSyncSnapshotPorts {
-            active_register_load: Arc::new(NoopEntryRepo),
+            mobile_consumable_load: Arc::new(NoopEntryRepo),
             entry_repo,
             selection_repo: Arc::new(NoopSelectionRepo),
             representation_repo: Arc::new(NoopRepRepo),
@@ -358,11 +358,11 @@ impl uc_core::ports::clipboard::GetClipboardEntryPort for NoopEntryRepo {
 }
 
 #[async_trait]
-impl uc_core::ports::clipboard::LoadActiveClipboardPort for NoopEntryRepo {
-    async fn load(
+impl uc_core::ports::clipboard::LoadMobileConsumableClipboardPort for NoopEntryRepo {
+    async fn load_mobile_consumable(
         &self,
     ) -> Result<
-        Option<uc_core::clipboard::ActiveClipboardState>,
+        Option<uc_core::clipboard::MobileConsumableRef>,
         uc_core::ports::clipboard::ActiveClipboardRegisterError,
     > {
         Ok(None)

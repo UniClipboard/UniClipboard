@@ -47,7 +47,9 @@ use uc_core::ports::space::IsSpaceUnlockedPort;
 use uc_core::ports::{ClockPort, PeerAddressRepositoryPort, PresencePort};
 use uc_core::MemberRepositoryPort;
 
-use crate::clipboard_write::{ClipboardWriteCoordinator, ClipboardWriteIntent};
+use crate::clipboard_write::{
+    ClipboardWriteCoordinator, ClipboardWriteIntent, MobileConsumabilityProbe,
+};
 
 use super::super::receive_gate::MemberReceiveGate;
 use super::super::send_gate::MemberSendGate;
@@ -144,6 +146,7 @@ pub(crate) struct ApplyInboundActiveClipboardStateUseCase {
     presence: Arc<dyn PresencePort>,
     send_gate: MemberSendGate,
     clock: Arc<dyn ClockPort>,
+    mobile_consumability: MobileConsumabilityProbe,
     /// On-demand pull of content this device observed but does not hold (D6).
     /// `None` when the pull subsystem is unwired — the "content missing"
     /// branch then logs and returns without converging.
@@ -177,6 +180,7 @@ impl ApplyInboundActiveClipboardStateUseCase {
         peer_addr_repo: Arc<dyn PeerAddressRepositoryPort>,
         presence: Arc<dyn PresencePort>,
         clock: Arc<dyn ClockPort>,
+        mobile_consumability: MobileConsumabilityProbe,
         converged_tx: broadcast::Sender<ActiveClipboardConvergedEvent>,
     ) -> Self {
         Self {
@@ -193,6 +197,7 @@ impl ApplyInboundActiveClipboardStateUseCase {
             presence,
             send_gate: MemberSendGate::new(member_repo),
             clock,
+            mobile_consumability,
             pull_client: None,
             pulled_content_store: None,
             availability: None,
@@ -485,7 +490,11 @@ impl ApplyInboundActiveClipboardStateUseCase {
             incoming.activated_at_ms,
             incoming.activated_by.clone(),
         );
-        self.spawn_write_then_converge(snapshot, advance_state, categories);
+        let mobile_consumable = self
+            .mobile_consumability
+            .is_mobile_consumable(&local_entry_id)
+            .await;
+        self.spawn_write_then_converge(snapshot, advance_state, categories, mobile_consumable);
     }
 
     /// Spawn the OS write; on success advance the register (SQL CAS enforces
@@ -497,6 +506,7 @@ impl ApplyInboundActiveClipboardStateUseCase {
         snapshot: uc_core::SystemClipboardSnapshot,
         state: ActiveClipboardState,
         categories: ClipboardContentCategorySet,
+        mobile_consumable: bool,
     ) -> JoinHandle<()> {
         let coordinator = Arc::clone(&self.coordinator);
         let advance_register = Arc::clone(&self.advance_register);
@@ -528,7 +538,7 @@ impl ApplyInboundActiveClipboardStateUseCase {
                 // authoritative LWW arbiter; `advanced == false` means a
                 // concurrent local/inbound write already moved the register past
                 // this state, in which case we must NOT re-broadcast (loop-safe).
-                match advance_register.advance(&state).await {
+                match advance_register.advance(&state, mobile_consumable).await {
                     Ok(true) => {}
                     Ok(false) => {
                         debug!(
@@ -592,14 +602,15 @@ mod tests {
     use chrono::Utc;
     use uc_core::blob::ports::BlobReaderPort;
     use uc_core::clipboard::{
-        ClipboardEntry, ClipboardRepositoryError, ClipboardSelectionDecision, PayloadAvailability,
-        PersistedClipboardRepresentation, SystemClipboardSnapshot,
+        ClipboardEntry, ClipboardRepositoryError, ClipboardSelectionDecision, EntryFileSet,
+        EntryFileSetError, PayloadAvailability, PersistedClipboardRepresentation,
+        SystemClipboardSnapshot,
     };
     use uc_core::ids::{DeviceId, EntryId, EventId, RepresentationId, SpaceId};
     use uc_core::membership::{MembershipError, SpaceMember};
     use uc_core::ports::clipboard::{
-        ActiveClipboardRegisterError, ClipboardPayloadResolverPort, GetClipboardEntryPort,
-        GetRepresentationPort, PayloadResolveError, ProcessingUpdateOutcome,
+        ActiveClipboardRegisterError, ClipboardPayloadResolverPort, EntryFileSetRepositoryPort,
+        GetClipboardEntryPort, GetRepresentationPort, PayloadResolveError, ProcessingUpdateOutcome,
         ResolvedClipboardPayload, UpdateRepresentationProcessingResultPort,
     };
     use uc_core::ports::{
@@ -640,6 +651,26 @@ mod tests {
         }
     }
 
+    struct EmptyFileSets;
+
+    #[async_trait]
+    impl EntryFileSetRepositoryPort for EmptyFileSets {
+        async fn save(
+            &self,
+            _entry_id: &EntryId,
+            _file_set: &EntryFileSet,
+        ) -> Result<(), EntryFileSetError> {
+            unreachable!()
+        }
+
+        async fn load(
+            &self,
+            _entry_id: &EntryId,
+        ) -> Result<Option<EntryFileSet>, EntryFileSetError> {
+            Ok(None)
+        }
+    }
+
     struct FixedUnlocked(bool);
     #[async_trait]
     impl IsSpaceUnlockedPort for FixedUnlocked {
@@ -666,6 +697,7 @@ mod tests {
         async fn advance(
             &self,
             _state: &ActiveClipboardState,
+            _mobile_consumable: bool,
         ) -> Result<bool, ActiveClipboardRegisterError> {
             self.calls.fetch_add(1, Ordering::SeqCst);
             Ok(true)
@@ -901,6 +933,7 @@ mod tests {
             Arc::new(EmptyPeerAddrRepo),
             Arc::new(StaticPresence(ReachabilityState::Online)),
             Arc::new(FixedClock(now_ms)),
+            MobileConsumabilityProbe::new(Arc::new(EmptyFileSets)),
             converged_tx,
         );
         Harness {
@@ -1253,6 +1286,7 @@ mod tests {
             peer_addr_repo,
             Arc::new(StaticPresence(ReachabilityState::Online)),
             Arc::new(FixedClock(1_000)),
+            MobileConsumabilityProbe::new(Arc::new(EmptyFileSets)),
             converged_tx,
         );
         if let (Some(pull_client), Some(store)) = (pull_client, store) {

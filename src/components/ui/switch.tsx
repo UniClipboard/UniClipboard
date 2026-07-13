@@ -1,12 +1,12 @@
-import { MotionConfig, animate, m, useReducedMotion } from 'framer-motion'
+import { MotionConfig, m, useReducedMotion } from 'framer-motion'
 import * as React from 'react'
 import { cn } from '@/lib/utils'
 
 // Motion feel ported from beui.dev/components/motion/switch: a heavy, deliberate
-// thumb (high mass, no wobble) that springs across on toggle, squishes on press,
-// and shakes when a disabled switch is pressed. The public API stays identical to
-// the previous Radix-based switch (controlled checked/onCheckedChange + size +
-// arbitrary button props like id/aria-label), so no call site changes.
+// thumb (high mass, no wobble) that springs across on toggle and squishes on
+// press. The public API stays identical to the previous Radix-based switch
+// (controlled checked/onCheckedChange + size + arbitrary button props like
+// id/aria-label), so no call site changes.
 const THUMB_SPRING = { type: 'spring', stiffness: 800, damping: 80, mass: 4 } as const
 
 const SIZES = {
@@ -45,18 +45,9 @@ function Switch({
   className,
   ...props
 }: SwitchProps) {
-  const thumbRef = React.useRef<HTMLDivElement>(null)
   const reduce = useReducedMotion()
   const [isPressed, setIsPressed] = React.useState(false)
   const [isPointer, setIsPointer] = React.useState(false)
-
-  // Disabled shake feedback when pressed.
-  React.useEffect(() => {
-    if (!thumbRef.current || reduce) return
-    if (disabled && isPressed) {
-      animate(thumbRef.current, { x: [0, -2, 2, -1, 0] }, { delay: 0.2, duration: 0.6 })
-    }
-  }, [disabled, isPressed, reduce])
 
   const squish = !disabled && isPointer && isPressed && !reduce
   const dims = SIZES[size]
@@ -93,7 +84,6 @@ function Switch({
         )}
       >
         <m.div
-          ref={thumbRef}
           layout
           animate={{ scale: squish ? 0.9 : 1 }}
           className={cn(

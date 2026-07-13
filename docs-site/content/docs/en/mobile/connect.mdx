@@ -1,0 +1,120 @@
+---
+title: Connect to Desktop
+description: 'Connect your phone to the desktop for the first time: scan to pair or enter the server address and credentials manually.'
+---
+
+import { Step, Steps } from 'fumadocs-ui/components/steps'
+import { Tab, Tabs } from 'fumadocs-ui/components/tabs'
+
+The UniClipboard mobile app is a LAN-only / self-hosted sync client. It doesn't
+join the desktop's encrypted space, and it doesn't run a P2P node — it connects
+to a computer running the UniClipboard **desktop app with "phone sync" turned
+on**, and everything flows through that computer. Two phones never sync directly
+with each other; each one talks to the desktop on its own.
+
+The first connection boils down to this: grab a one-time credential on the
+desktop, then get it into your phone by scanning a QR code or typing it in.
+
+<Steps>
+
+<Step>
+
+### Get the credential on the desktop
+
+Open the UniClipboard desktop app on your computer and go to
+**Devices → Phone Sync → Add Device**. The desktop shows a one-time credential
+(server address + username + password) and a QR code for adding this one phone.
+
+- For how to enable phone sync on the desktop and what each field of the
+  credential means, see [Mobile Sync](../core-features/mobile-sync) and
+  [Pairing & Sync](../guides/pairing).
+- Your phone and computer need to be on the **same Wi-Fi**, or both on the same
+  Tailscale / VPN. For access across networks, see
+  [Self-Hosted Server Node](../guides/self-host-server-node).
+
+The **plaintext password is usually shown only once**. If the scan or entry
+doesn't go through, you can add the device again / rotate the password on the
+desktop to get a fresh one.
+
+</Step>
+
+<Step>
+
+### Option 1: Scan the QR code in the app (recommended)
+
+Once the app is installed, choose **Scan** on the connect screen and point the
+camera at the QR code shown on the desktop.
+
+- The first scan requires **camera permission**. In low light, turn on the
+  **flashlight** from the screen.
+- After a successful scan, the **server address, username, and password are
+  filled in automatically** — just confirm and save.
+- If the scan won't lock on, the camera is inconvenient, or the QR code isn't
+  fully visible, choose **Enter manually instead** to switch to Option 2.
+
+</Step>
+
+<Step>
+
+### Option 2: Fill in the form manually
+
+If scanning isn't convenient, type in the values from the desktop dialog by
+hand. Form fields:
+
+| Field | Description |
+| --- | --- |
+| Name | A memorable name for this desktop (e.g. "Mac at home"). Just for your own reference. |
+| Server address | The address from the desktop dialog, like `http://192.168.1.5:42720`. **You can add multiple fallback addresses** (e.g. one each for LAN, Tailscale, public network); the first is the default. |
+| Allow insecure certificates | Turn on **only** if the desktop uses self-signed HTTPS; ignore it for plain HTTP addresses. |
+| Username | The username from the desktop dialog. |
+| Password | The one-time password from the desktop dialog (HTTP Basic Auth). |
+
+Multiple fallback addresses let you reach the same desktop from different
+networks: LAN at home, Tailscale or a public gateway when you're out. Adding a
+few does no harm — the app picks a route automatically.
+
+</Step>
+
+<Step>
+
+### Test the connection and automatic address selection
+
+Before saving, tap **Test Connection** to confirm the address and credentials
+are correct.
+
+If you entered multiple fallback addresses, the app **automatically picks the
+one that's reachable on your current network**, and the screen marks which
+address **"Will use"** — you don't need to switch manually. It re-selects a
+route after you change networks.
+
+If it can't connect, first check that the phone and computer are on the same
+Wi-Fi, that phone sync is enabled on the desktop, and that the address and port
+are correct. An authentication-failure message usually means the username or
+password is wrong (rotate the password on the desktop and re-enter it).
+
+</Step>
+
+<Step>
+
+### Connect multiple desktops / switch servers
+
+You can save credentials for several desktops at once. To add another, just
+repeat the scan or manual flow above.
+
+On the main screen, **tap the current server name in the top bar** to open the
+switcher panel, where you can **switch** between desktops, **delete** one, or
+**scan to add** a new one. All credentials are stored locally on the phone.
+
+</Step>
+
+</Steps>
+
+<Callout type="info">
+  The desktop QR code uses the `uniclipboard://connect` deep-link format. Its
+  full specification only matters if you want to write your own compatible
+  client — regular use doesn't require any of it. See the
+  [Mobile Connect URI protocol](../reference/mobile-connect-uri).
+</Callout>
+
+Once connected, you can start sending and receiving clipboard content. Next, see
+[Daily Use](./daily-use).

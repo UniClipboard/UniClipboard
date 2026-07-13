@@ -1,0 +1,176 @@
+---
+title: Android Clipboard Access
+description: Background clipboard read/write and required permissions on Android.
+---
+
+import { Tab, Tabs } from 'fumadocs-ui/components/tabs'
+import { Step, Steps } from 'fumadocs-ui/components/steps'
+
+**This page is Android-only.** On iOS, clipboard access goes through the keyboard extension, the share extension, and per-app "paste from other apps" permission — those are covered elsewhere and do not apply to Android.
+
+Since Android 10, the system blocks background apps from reading the clipboard by default: when the app is not in the foreground, it can neither read what you copied elsewhere nor write remote content into the system clipboard. To make "copy syncs automatically" and "remote content is written to this device automatically" work in the background too, UniClipboard has to use a special mechanism to work around this restriction. The app offers two: **Overlay window** (default) and **Shizuku**. Pick either one.
+
+## The two access methods
+
+<Tabs items={['Overlay window (default)', 'Shizuku']}>
+
+<Tab value="Overlay window (default)">
+
+The overlay window method depends on no external tools — it works as soon as you install the app. It works by briefly showing an overlay window to perform the background read/write.
+
+Permissions needed:
+
+- **Overlay window permission (SYSTEM_ALERT_WINDOW)** — required for both background reads and writes of the clipboard. The app can guide you straight to the system setting to turn this on.
+- **READ_LOGS permission** — only required if you turn on "copy syncs automatically" (that is, the moment you copy in another app, it uploads to the desktop). It lets the app detect "the clipboard changed" instantly by listening to system events. **This permission cannot be requested from within the app** — you must grant it by running one adb command from a computer.
+
+Granting READ_LOGS requires running one command against your phone from a computer over adb. For how to install adb and enable USB debugging, see the **[Preparation: USB debugging and adb](#preparation-usb-debugging-and-adb)** section below. Once ready, run:
+
+```bash
+adb shell pm grant <package-name> android.permission.READ_LOGS
+```
+
+The app copies this full command (with the actual package name already filled in) to the clipboard — just paste it into your computer's terminal and press Enter. **You need to restart the app after granting it** for it to take effect.
+
+Without READ_LOGS, "copy syncs automatically" still works, but it **falls back to periodic polling** — instead of triggering instantly, it checks the clipboard at intervals, which is less responsive and uses more battery.
+
+<Callout type="info">
+At the moment of a background read or write, the overlay window **briefly appears on screen**, then hides automatically after about 10 seconds of idle. This is expected behavior, not a pop-up ad.
+</Callout>
+
+</Tab>
+
+<Tab value="Shizuku">
+
+Shizuku is a third-party open-source tool that safely grants system-level permissions to ordinary apps. Once set up, UniClipboard uses it to bypass the background clipboard restriction and no longer needs the overlay window; on MIUI (Xiaomi / HyperOS) it can also **disable the "smart clipboard" restriction** that interferes with background clipboard read/write.
+
+<Steps>
+
+<Step>
+
+### Install the Shizuku app
+
+Install from any of:
+
+- **GitHub Releases** (sideload the APK): [github.com/RikkaApps/Shizuku/releases](https://github.com/RikkaApps/Shizuku/releases)
+- Google Play: search for "Shizuku"
+- Third-party app stores such as Coolapk
+
+</Step>
+
+<Step>
+
+### Start the Shizuku service
+
+Shizuku needs its service started once after every reboot. Pick one method:
+
+- **No root (what most people use)** — start it from a computer over adb. First set up adb per **[Preparation: USB debugging and adb](#preparation-usb-debugging-and-adb)** below, then run the start command Shizuku shows you inside the app (follow the exact command displayed in-app). On Android 11+ you can also use Shizuku's built-in **wireless debugging** pairing to do it entirely without a computer.
+- **Rooted** — just tap "Start" inside the Shizuku app; no computer needed.
+
+<Callout type="warn">
+  With the no-root method, **you must restart the Shizuku service after every phone reboot** (an inherent limitation of Shizuku, not a UniClipboard issue). If you want something hands-off, consider the default overlay window method.
+</Callout>
+
+</Step>
+
+<Step>
+
+### Authorize and switch to Shizuku
+
+- **Authorize** UniClipboard inside Shizuku (it prompts on first use).
+- Back in UniClipboard, go to **Settings → Background** and switch the "Background clipboard access method" to Shizuku.
+
+</Step>
+
+</Steps>
+
+</Tab>
+
+</Tabs>
+
+## Preparation: USB debugging and adb
+
+Granting `READ_LOGS` for the overlay window method, or starting Shizuku on a non-rooted phone, both require connecting to your phone from a computer over **adb**. You only configure this once. If you only use the overlay window method and can live with "copy syncs automatically" degrading to periodic polling, you can skip this section.
+
+<Steps>
+
+<Step>
+
+### Install adb on your computer
+
+adb is part of Google's official **Android Platform Tools**. Download the package for your OS from [developer.android.com/tools/releases/platform-tools](https://developer.android.com/tools/releases/platform-tools) and unzip it anywhere.
+
+- On **macOS** you can also use Homebrew: `brew install --cask android-platform-tools`
+- On **Windows / Linux**, after unzipping, open a terminal in that folder (or add it to your PATH) to use the `adb` command.
+
+Verify: run `adb version` in your terminal; if it prints a version number, it's installed.
+
+</Step>
+
+<Step>
+
+### Enable "Developer options" on your phone
+
+Go to **Settings → About phone** and tap the **build number** (on some systems it's labeled "MIUI version", "Build number", etc.) about 7 times, until it says "You are now a developer".
+
+</Step>
+
+<Step>
+
+### Turn on "USB debugging"
+
+Go to **Settings → System → Developer options** (the exact location varies by vendor) and turn on the **USB debugging** switch.
+
+</Step>
+
+<Step>
+
+### Connect and authorize the computer
+
+Connect the phone to the computer with a USB cable (choosing "File transfer / MTP" mode is more reliable). The phone shows an **"Allow USB debugging?"** dialog — check "Always allow from this computer" and confirm.
+
+Run `adb devices` in your terminal; when your device shows up with status `device` (not `unauthorized`), you're connected.
+
+</Step>
+
+</Steps>
+
+<Callout type="info">
+  Don't want to stay tethered? Android 11+ supports **wireless debugging**: turn on "Wireless debugging" in Developer options, pair your computer with the phone using a pairing code over the same Wi‑Fi, then unplug and run adb commands over Wi‑Fi.
+</Callout>
+
+Once connected: to grant READ_LOGS, run the `adb shell pm grant …` command from the "Overlay window" tab above (the app has already copied the full command with the package name filled in); to start Shizuku, run the start command shown inside the Shizuku app.
+
+## Where to configure it
+
+All background-related toggles live under **Settings → Background**.
+
+When the master toggle **"Background auto-sync"** at the top is on, it **walks you through** granting the system permissions needed for background operation, one after another:
+
+1. Ignore battery optimization (otherwise the system suspends the app in the background);
+2. Notification permission (for the persistent notification);
+3. Overlay window permission.
+
+Just allow each one as the walkthrough prompts you. Below that is a set of advanced items you can adjust individually as needed:
+
+- **Persistent notification** — keeps one notification present to reduce the chance of the app being killed in the background.
+- **Ignore battery optimization** — re-triggers this grant on its own.
+- **Background download from remote** — pull new content pushed by the desktop while in the background.
+- **Background upload from this device** — push content copied on this device to the desktop while in the background.
+- **Background clipboard access method** — switch between **Overlay window** and **Shizuku**.
+
+UniClipboard **does not use the Accessibility service** — you don't need to enable any accessibility permission in the system.
+
+<Callout type="warn">
+Whether background sync runs reliably over the long term **depends heavily on your phone's vendor OS**. Chinese vendor systems like MIUI / HyperOS, EMUI / HarmonyOS, ColorOS, and Funtouch generally have more aggressive background management than stock Android — even with the permissions above granted, they may suspend the app and drop sync after the screen locks or after a period of inactivity.
+
+We recommend, where possible: turn on the **persistent notification**, add UniClipboard to the system's battery "unrestricted / always allow background" allowlist, and "lock" it in the recent tasks list so it isn't cleared by a one-tap sweep. MIUI users can also use the **Shizuku method** to disable the "smart clipboard" restriction. These are system-level behaviors that the app cannot fully handle on your behalf.
+</Callout>
+
+## Can't connect or not syncing?
+
+- **Background upload isn't working** — make sure the overlay window or Shizuku is ready; for "copy syncs automatically" to trigger instantly you also need READ_LOGS (without it, it degrades to polling).
+- **Granted READ_LOGS but still no effect** — remember to **restart the app**; the adb grant doesn't take effect until you do.
+- **It stops syncing after a while** — most likely the vendor OS killed the app in the background; see the recommendations in the Callout above.
+- **Does syncing require a network connection to the desktop** — yes. Background access only addresses "can it read/write this device's clipboard"; whether it can reach the desktop is a separate matter, see [Connect to desktop](./connect).
+
+For more complete troubleshooting, see the [Troubleshooting](./troubleshooting) page. To learn how to enable phone sync on the desktop side and how to get pairing credentials, see [Mobile sync](../core-features/mobile-sync) and [Pairing and sync](../guides/pairing).

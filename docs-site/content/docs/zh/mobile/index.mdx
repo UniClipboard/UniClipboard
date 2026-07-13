@@ -1,0 +1,76 @@
+---
+title: 概览
+description: UniClipboard 移动 App 是什么、和桌面端的关系，以及 iOS 与 Android 的能力差异。
+---
+
+import { Step, Steps } from 'fumadocs-ui/components/steps'
+
+UniClipboard 移动 App 是一个 **纯局域网 / 自建服务器的剪贴板同步客户端**：它把手机的剪贴板和你自己的电脑打通——文本、图片、单个文件双向流动，附带一份剪贴历史。它不是完整的 P2P 节点，也不会加入桌面端设备之间的加密「空间」。
+
+<Callout type="warn">
+  你需要先有一台运行 UniClipboard **桌面端** 的电脑，并在桌面端开启了「手机同步」。App 连的就是这台电脑；没有它，App 无处可连。桌面侧怎么开启，见 [移动端同步](core-features/mobile-sync) 与 [配对与同步](guides/pairing)。
+</Callout>
+
+## App 和桌面端的关系
+
+桌面端在局域网上开放一个 HTTP 服务，手机是这个服务的客户端——手机负责读写，桌面负责托管。你在桌面上复制的东西流到手机，你在手机上上传的东西流到桌面。
+
+两台手机之间 **不会互相同步**。每台手机都各自跟同一台桌面通信，由桌面居中中转。
+
+默认只在 **同一个 Wi-Fi** 下可达。想在外面（4G/5G、别的 Wi-Fi）也能用，需要桌面侧走自建 server 节点或 Tailscale，见 [跨网络访问](guides/self-host-server-node)。
+
+协议、LAN API、扫码 URI 这些内幕不在本手册范围内——如果你在写第三方客户端，看 [移动端 LAN API](reference/mobile-api) 和 [扫码接入协议](reference/mobile-connect-uri)。
+
+## iOS 与 Android 能力差异
+
+两个平台的核心同步能力一致，但各自有一批平台专属功能。
+
+| 能力 | iOS | Android |
+| --- | :---: | :---: |
+| 文本 / 图片 / 单文件同步 | ✅ | ✅ |
+| 剪贴历史、按类型筛选 | ✅ | ✅ |
+| 扫码 / 深链接入、多服务器切换 | ✅ | ✅ |
+| SSE 实时推送 | ✅ | ✅ |
+| 简中 / English、外观模式 | ✅ | ✅ |
+| 自定义键盘扩展 | ✅ | — |
+| 分享扩展 + Sharing Suggestions 建议 | ✅ | — |
+| 「从其他 App 粘贴」授权 | ✅ | — |
+| 后台剪贴板读写（悬浮窗 / Shizuku） | — | ✅ |
+| 短信验证码自动转发 | — | ✅ |
+| 桌面 pin 快捷方式 + Quick Settings 磁贴 | — | ✅ |
+| 划词菜单（Process Text） | — | ✅ |
+| 在最近任务列表中隐藏 | — | ✅ |
+
+简单说：**iOS 靠系统扩展**（键盘、分享面板）把同步塞进别的 App；**Android 能做真正的后台剪贴板同步**（复制即自动上传），但需要额外授权。两边的扩展 / 后台细节分别见 [iOS 扩展](mobile/ios-extensions) 与 [Android 后台访问](mobile/android-access)。
+
+## 从这里开始
+
+按顺序走一遍就能用起来：
+
+<Steps>
+
+<Step>
+
+### [安装 App](mobile/install)
+
+iOS 走 TestFlight，Android 侧载 APK。先确认有一台桌面端在跑。
+
+</Step>
+
+<Step>
+
+### [连接桌面](mobile/connect)
+
+扫桌面弹出的二维码，或手动填服务器地址 + 账号密码。
+
+</Step>
+
+<Step>
+
+### [日常使用](mobile/daily-use)
+
+上传、同步、管理剪贴历史，以及自动同步开关。
+
+</Step>
+
+</Steps>

@@ -1,0 +1,149 @@
+---
+title: iOS Extensions
+description: The keyboard extension, share extension, and Shortcuts on iOS.
+---
+
+import { Step, Steps } from 'fumadocs-ui/components/steps'
+
+This page is iOS-only. Besides its main screen, the UniClipboard iOS app ships two
+system-level extensions — a **custom keyboard** and a **share extension** — that let
+you read and write the clipboard and push content to your desktop without opening the
+app. Android users can skip this page.
+
+Prerequisite: you've already installed the app and configured at least one server via
+[Connect to Desktop](./connect). For how to turn on phone sync on the desktop and how
+to get pairing credentials, see [Mobile Sync](../core-features/mobile-sync) and
+[Pairing and Sync](../guides/pairing).
+
+## Keyboard Extension
+
+The keyboard extension is a custom input method. Once installed, you can switch to the
+**UniClip Keyboard** in any app's text field to type out your most recent clipboard
+content directly, or push what you're typing to the desktop — without switching back and
+forth to the main UniClipboard app.
+
+<Callout type="warn">
+  The keyboard **must have "Allow Full Access" enabled**, otherwise it can't read the
+  system clipboard or reach your server, and is just an empty shell. This is a hard iOS
+  restriction on third-party keyboards, unrelated to this app.
+</Callout>
+
+### Enable the Keyboard
+
+<Steps>
+
+<Step>
+
+### Open the keyboard list in system Settings
+
+Go to **Settings → General → Keyboard → Keyboards** on your iPhone. This lists all
+currently enabled input methods.
+
+</Step>
+
+<Step>
+
+### Add UniClip Keyboard
+
+Tap **Add New Keyboard…** and select **UniClip Keyboard** under "Third-Party Keyboards".
+
+</Step>
+
+<Step>
+
+### Allow Full Access
+
+Back in the keyboard list, tap into the **UniClip Keyboard** you just added and turn on
+**Allow Full Access**. The system will ask for confirmation once — choose Allow.
+**Without this the keyboard won't work** (it can't read the clipboard or reach the server).
+
+</Step>
+
+<Step>
+
+### Switch to it in any text field
+
+In any app's text field, long-press the globe icon (🌐) at the bottom left and pick
+**UniClip Keyboard** to use it.
+
+</Step>
+
+</Steps>
+
+### Keyboard Settings and Status
+
+The app's **Settings → Keyboard** has an enablement guide and a status display, with
+three states: **Not Added / Added / Ready**.
+
+<Callout type="info">
+  The status isn't real-time — it refreshes from a heartbeat reported when you **open the
+  keyboard once**. If you just added the keyboard in system Settings and the app still
+  shows the old status, switch UniClip Keyboard into any text field and use it briefly,
+  then come back to the app and the status will be updated.
+</Callout>
+
+The same page also lets you toggle **key sounds** and **haptic feedback** to your liking.
+
+## Share Extension
+
+The share extension lets you send content to UniClipboard directly from other apps. It
+**appears in the system share sheet automatically once the app is installed — there's no
+separate toggle**, and you don't need to enable anything inside the app.
+
+To use it: tap the system share button in any app, find **UniClipboard** in the row of
+app icons in the share sheet, and tap it — the content lands in your clipboard history
+and is pushed to the desktop. It supports sharing **text, links, images, and a single
+file**.
+
+If UniClipboard is ranked too far down the share sheet, iOS has no API for an app to
+promote itself, so you have to set it once by hand:
+
+<Steps>
+
+<Step>
+
+### Open the share sheet and enter edit mode
+
+Tap the share button in any app, scroll the row of app icons all the way to the right,
+and tap **More** (the ellipsis icon).
+
+</Step>
+
+<Step>
+
+### Set UniClipboard as a favorite
+
+Find UniClipboard in the list that appears and tap the **green plus** on its left or
+**Favorite** on its right. It will be pinned to an earlier position in the share sheet
+so you can reach it at a glance from then on.
+
+</Step>
+
+</Steps>
+
+## About Sharing Suggestions
+
+<Callout type="info">
+  UniClipboard donates some sharing suggestions to the "people / suggestions" strip at
+  the **very top** of the iOS share sheet, so you can share content to it faster.
+
+**These are not shortcuts in the Shortcuts app** — don't go looking for UniClipboard in
+the Shortcuts app, it isn't there. These suggestions only appear in the top area of the
+system share sheet.
+</Callout>
+
+## Main App and Extensions Share the Same Data
+
+The main app, the keyboard extension, and the share extension all **share the same
+clipboard history and settings** (via iOS App Group shared storage). So the content you
+push from the keyboard, the content you send from the share sheet, and what you work with
+in the main app all see the same history, and you only need to configure settings once in
+the main app for all three to take effect.
+
+## Where to Go Next
+
+- [Connect to Desktop](./connect) — scan a code or enter the server address manually.
+- [Daily Use](./daily-use) — the main screen, uploading, auto-sync.
+- [Troubleshooting](./troubleshooting) — common issues like the keyboard reading an empty
+  config or uploads not taking effect.
+- [Mobile Sync](../core-features/mobile-sync) — how to turn on phone sync on the desktop.

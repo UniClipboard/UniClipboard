@@ -1,0 +1,76 @@
+---
+title: Overview
+description: What the UniClipboard mobile app is, how it relates to the desktop, and iOS vs Android capability differences.
+---
+
+import { Step, Steps } from 'fumadocs-ui/components/steps'
+
+The UniClipboard mobile app is a **LAN-only / self-hosted clipboard sync client**: it bridges your phone's clipboard with your own computer — text, images, and single files flow both ways, backed by a clipboard history. It is not a full P2P node, and it does not join the encrypted "space" that your desktop devices share.
+
+<Callout type="warn">
+  You first need a computer running the UniClipboard **desktop app** with **mobile sync** turned on. The app connects to that computer; without it, there is nowhere to connect. For how to enable it on the desktop side, see [Mobile sync](core-features/mobile-sync) and [Pairing & sync](guides/pairing).
+</Callout>
+
+## How the app relates to the desktop
+
+The desktop opens an HTTP service on your local network, and the phone is a client of that service — the phone reads and writes, the desktop hosts. What you copy on the desktop flows to the phone, and what you upload from the phone flows to the desktop.
+
+Two phones **do not sync with each other**. Each phone talks to the same desktop independently, with the desktop acting as the hub in between.
+
+By default this only works on **the same Wi-Fi**. To use it away from home (4G/5G, a different Wi-Fi), the desktop side needs a self-hosted server node or Tailscale — see [Cross-network access](guides/self-host-server-node).
+
+The protocol, LAN API, and connect-URI internals are out of scope for this handbook — if you're building a third-party client, see [Mobile LAN API](reference/mobile-api) and [Connect URI protocol](reference/mobile-connect-uri).
+
+## iOS vs Android capability differences
+
+The two platforms share the same core sync capabilities, but each has its own set of platform-specific features.
+
+| Capability | iOS | Android |
+| --- | :---: | :---: |
+| Text / image / single-file sync | ✅ | ✅ |
+| Clipboard history, filter by type | ✅ | ✅ |
+| QR / deep-link onboarding, multi-server switching | ✅ | ✅ |
+| SSE real-time push | ✅ | ✅ |
+| Simplified Chinese / English, appearance mode | ✅ | ✅ |
+| Custom keyboard extension | ✅ | — |
+| Share extension + Sharing Suggestions | ✅ | — |
+| "Paste from Other Apps" permission | ✅ | — |
+| Background clipboard read/write (overlay / Shizuku) | — | ✅ |
+| Auto-forward SMS verification codes | — | ✅ |
+| Home-screen pinned shortcuts + Quick Settings tile | — | ✅ |
+| Text-selection menu (Process Text) | — | ✅ |
+| Hide from the recent tasks list | — | ✅ |
+
+In short: **iOS relies on system extensions** (keyboard, share sheet) to bring sync into other apps; **Android can do true background clipboard sync** (auto-upload on copy), but requires extra permissions. For the extension / background details on each side, see [iOS extensions](mobile/ios-extensions) and [Android access](mobile/android-access).
+
+## Start here
+
+Walk through these in order and you'll be up and running:
+
+<Steps>
+
+<Step>
+
+### [Install the app](mobile/install)
+
+iOS via TestFlight, Android by side-loading the APK. First make sure a desktop is running.
+
+</Step>
+
+<Step>
+
+### [Connect the desktop](mobile/connect)
+
+Scan the QR code the desktop shows, or manually enter the server address plus username and password.
+
+</Step>
+
+<Step>
+
+### [Daily use](mobile/daily-use)
+
+Upload, sync, manage clipboard history, and the auto-sync toggle.
+
+</Step>
+
+</Steps>

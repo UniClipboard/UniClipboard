@@ -1,0 +1,73 @@
+---
+title: 安装
+description: 在 iPhone(TestFlight)与 Android(APK)上安装 UniClipboard App。
+---
+
+import { Tab, Tabs } from 'fumadocs-ui/components/tabs'
+
+UniClipboard 移动 App 是一个**纯局域网 / 自建服务器的同步客户端**——它连接一台运行
+UniClipboard 桌面端、并开启了「手机同步」的电脑，跟这台电脑双向同步剪贴板。它不是完整
+的 P2P 节点，也不会加入桌面之间的加密空间；两台手机之间不会互相同步，它们各自跟桌面
+通信。
+
+App 不上架应用商店。iOS 走 TestFlight 公测，Android 侧载 APK。按你的手机选下面对应的
+一栏。
+
+<Callout type="info">
+  装 App 之前，先准备好一台电脑：它需要运行 UniClipboard 桌面端、开启「手机同步」、并
+  且和手机在**同一个 Wi-Fi** 下。桌面侧如何开启见
+  [移动端同步](../core-features/mobile-sync)。没有这台电脑，App 装上也无处可连。
+</Callout>
+
+<Tabs items={['iOS', 'Android']}>
+
+<Tab value="iOS">
+
+iOS 版目前是 **TestFlight beta 公测**，需要先装 Apple 官方的 **TestFlight** App 才能安装。
+
+1. 打开 iPhone 上的 **App Store**，搜索并安装 **TestFlight**。
+2. 在 iPhone 上打开邀请链接：
+   [https://testflight.apple.com/join/nyNQ8dQe](https://testflight.apple.com/join/nyNQ8dQe)
+3. 链接会跳进 TestFlight，依次点 **接受（Accept）** 和 **安装（Install）**，UniClipboard
+   就会装到主屏幕。
+
+<Callout type="warn">
+  安装或打开链接卡住、提示证书 / HTTPS 错误，多半是代理梯子（Loon、Surge、Shadowrocket、
+  Clash 等）在拦截 TestFlight。先**临时关掉代理**（含全局规则、TUN、HTTPS 解密）让
+  TestFlight 走直连，装好后再打开。App 本身只跟你局域网里的桌面通信，不需要代理。
+</Callout>
+
+</Tab>
+
+<Tab value="Android">
+
+Android 版**不上架 Google Play**，通过 GitHub Releases 侧载 APK 安装。
+
+1. 在手机浏览器打开 releases 页：
+   [github.com/UniClipboard/UniClip/releases/latest](https://github.com/UniClipboard/UniClip/releases/latest)
+   （国内打不开可用 Gitee 镜像）。
+2. 下载对应的 APK 变体：
+
+   | 变体 | 适用 |
+   | --- | --- |
+   | `arm64-v8a` | 绝大多数近几年的手机（推荐） |
+   | `armeabi-v7a` | 较老的 32 位设备 |
+   | `x86_64` | 模拟器 / 少数 x86 设备 |
+   | `universal` | 拿不准就选这个，包含全部架构、体积更大 |
+
+   多数手机选 **`arm64-v8a`**；不确定就直接选 **`universal`**。
+3. 点开下载好的 APK 安装。首次安装系统会拦下来，按提示允许当前浏览器 / 文件管理器
+   **安装未知来源应用**，再重新点一次即可。
+
+</Tab>
+
+</Tabs>
+
+## 关于开发版
+
+App 可能同时提供 dev / 正式两个版本，能并存安装（开发版显示名带 “Dev” 后缀）。普通用户
+装**正式版**即可，不用管开发版。
+
+## 下一步
+
+装好 App 后，把它连接到你的桌面：见 [连接到桌面](./connect)。

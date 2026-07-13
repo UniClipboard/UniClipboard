@@ -1,0 +1,15 @@
+{
+  "title": "Mobile App",
+  "icon": "Smartphone",
+  "defaultOpen": false,
+  "pages": [
+    "index",
+    "install",
+    "connect",
+    "daily-use",
+    "ios-extensions",
+    "android-access",
+    "settings",
+    "troubleshooting"
+  ]
+}

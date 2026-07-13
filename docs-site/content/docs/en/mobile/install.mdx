@@ -1,0 +1,78 @@
+---
+title: Install
+description: Install the UniClipboard app on iPhone (TestFlight) and Android (APK).
+---
+
+import { Tab, Tabs } from 'fumadocs-ui/components/tabs'
+
+The UniClipboard mobile app is a **LAN-only / self-hosted sync client** — it connects to a
+computer running UniClipboard desktop with "phone sync" turned on, and syncs your clipboard
+both ways with that computer. It is not a full P2P node and does not join the encrypted space
+that desktops share; two phones never sync with each other, they each talk to the desktop.
+
+The app is not published to any app store. On iOS it ships as a TestFlight beta; on Android you
+sideload the APK. Pick the tab below that matches your phone.
+
+<Callout type="info">
+  Before installing the app, get a computer ready: it needs to be running UniClipboard desktop,
+  have "phone sync" turned on, and be on the **same Wi-Fi** as your phone. See
+  [Mobile sync](../core-features/mobile-sync) for how to turn it on from the desktop side.
+  Without that computer, the app has nothing to connect to.
+</Callout>
+
+<Tabs items={['iOS', 'Android']}>
+
+<Tab value="iOS">
+
+The iOS build is currently a **TestFlight beta**. You need Apple's official **TestFlight** app
+installed first.
+
+1. Open the **App Store** on your iPhone, then search for and install **TestFlight**.
+2. Open the invite link on your iPhone:
+   [https://testflight.apple.com/join/nyNQ8dQe](https://testflight.apple.com/join/nyNQ8dQe)
+3. The link opens TestFlight; tap **Accept**, then **Install**, and UniClipboard lands on your
+   home screen.
+
+<Callout type="warn">
+  If installing or opening the link stalls, or you see a certificate / HTTPS error, a proxy or
+  VPN (Loon, Surge, Shadowrocket, Clash, etc.) is most likely intercepting TestFlight.
+  **Temporarily turn the proxy off** (including global rules, TUN mode, and HTTPS decryption) so
+  TestFlight can connect directly, then re-open the link. The app itself only talks to the
+  desktop on your local network and needs no proxy.
+</Callout>
+
+</Tab>
+
+<Tab value="Android">
+
+The Android build is **not on Google Play**. You sideload the APK from GitHub Releases.
+
+1. Open the releases page in your phone's browser:
+   [github.com/UniClipboard/UniClip/releases/latest](https://github.com/UniClipboard/UniClip/releases/latest)
+   (if it won't load in your region, use the Gitee mirror).
+2. Download the matching APK variant:
+
+   | Variant | Use for |
+   | --- | --- |
+   | `arm64-v8a` | Almost all recent phones (recommended) |
+   | `armeabi-v7a` | Older 32-bit devices |
+   | `x86_64` | Emulators / a few x86 devices |
+   | `universal` | Pick this if unsure — includes every architecture, larger file |
+
+   Most phones want **`arm64-v8a`**; when in doubt, grab **`universal`**.
+3. Tap the downloaded APK to install. The first time, the system will block it — follow the
+   prompt to allow your browser / file manager to **install unknown apps**, then tap it again.
+
+</Tab>
+
+</Tabs>
+
+## About the dev build
+
+The app may ship a dev build alongside the release build; they can be installed side by side
+(the dev build's display name has a "Dev" suffix). Regular users should install the **release
+build** and can ignore the dev one.
+
+## Next step
+
+Once the app is installed, connect it to your desktop: see [Connect to your desktop](./connect).

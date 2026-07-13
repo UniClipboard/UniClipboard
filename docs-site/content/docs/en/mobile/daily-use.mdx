@@ -1,0 +1,148 @@
+---
+title: Daily Use
+description: Browse clipboard history, upload manually, upload via the system share sheet, and enable auto-sync.
+---
+
+import { Step, Steps } from 'fumadocs-ui/components/steps'
+
+Once you're connected to a desktop (if you aren't yet, start with
+[Connect to a Desktop](./connect)), you do almost everything from the
+main screen: view history, upload content, and control syncing.
+
+## Main screen
+
+Opening the app lands you on your clipboard history, shown as a grid of
+cards. Each card is one clip (text, image, or a single file), newest
+first. The top bar has three things:
+
+- **Search** — filter history by content.
+- **Current server name** — tap it to open the switcher and move between
+  multiple desktops (see [Connect to a Desktop](./connect)).
+- **Connection status dot** — shows whether your link to the desktop is
+  healthy.
+
+You can filter history by type (text / image / file) to see only what you
+care about.
+
+## Adding content
+
+The **Add** floating action button (FAB) in the bottom-right corner
+expands into 5 actions:
+
+| Action              | What it does                                          |
+| ------------------- | ----------------------------------------------------- |
+| Take photo          | Shoot a new photo and upload it                        |
+| Pick image          | Upload an existing image from your photo library       |
+| Pick file           | Upload a file                                          |
+| Upload clipboard    | Upload whatever is on your phone's system clipboard    |
+| Sync now            | Do one send/receive with the desktop immediately       |
+
+After you pick something, it appears in your history right away (see
+[Saved means done](#saved-means-done-and-the-clock-badge) below), then
+gets pushed to the desktop in the background.
+
+## Uploading via the system share sheet
+
+You don't have to open UniClipboard first. From **any** app, tap the
+system share button and choose **UniClipboard** from the share sheet to
+send the current item (text, link, image, file) over.
+
+<Steps>
+
+<Step>
+
+### Share from the source app
+
+In your browser, photos, files, or any other app, tap the system share
+button and pick UniClipboard.
+
+</Step>
+
+<Step>
+
+### It lands in local history instantly
+
+The shared content is written to UniClipboard's history immediately — no
+waiting on the network.
+
+</Step>
+
+<Step>
+
+### You return to the source app
+
+The share sheet closes and you go back to what you were doing. Pushing to
+the desktop happens in the background and doesn't cost you any time. (In
+some cases, such as screenshots and system shares, the UI may stay inside
+the app.)
+
+</Step>
+
+</Steps>
+
+<Callout type="info">
+  On iOS, the share extension appears in the system share sheet
+  automatically once the app is installed — you don't need to enable it in
+  Settings. If it's ranked low, you can drag it forward manually and mark
+  it as a favorite in the share sheet. See [iOS Extensions](./ios-extensions).
+</Callout>
+
+## Saved means done, and the clock badge
+
+Whether you use the FAB or the system share sheet, UniClipboard always
+**saves locally first and pushes in the background**: the moment content
+enters your history it's done, and you can see it right away.
+
+A card that hasn't been pushed successfully yet shows a **clock icon** in
+its bottom-right corner, meaning "pending upload / pending sync." The
+background retries automatically, and once the push to the desktop
+succeeds the badge disappears. So a clock you see is nothing to act on —
+it clears itself. Only a clock that never goes away signals a connection
+problem (see [Troubleshooting](./troubleshooting)).
+
+## Foreground auto-sync
+
+The main screen has an auto-sync toggle. When it's on, as long as the app
+is in the foreground it does two things at once:
+
+- **Auto-apply remote** — new clips on the desktop flow into your phone
+  automatically.
+- **Auto-push local** — anything you newly copy on the phone is sent to
+  the desktop automatically.
+
+<Callout type="info">
+  This foreground toggle only works while the app is open. To send and
+  receive even when the app isn't in the foreground or the screen is
+  locked, iOS relies on the keyboard / share extensions plus background
+  configuration, and Android relies on background clipboard access — see
+  [iOS Extensions](./ios-extensions) and
+  [Android Background Access](./android-access) respectively.
+</Callout>
+
+## Card detail actions
+
+Tap any card to open its detail view, where you can:
+
+- **Copy** — write this content back to your phone's system clipboard.
+- **Save image to library** — for image content.
+- **Save file** — for file content.
+- **Delete** — remove this entry from history.
+
+## Supported content types
+
+The UniClipboard mobile app syncs three kinds of content:
+
+- **Text** (including links)
+- **Images**
+- **A single file**
+
+## Where to go next
+
+- [Connect to a Desktop](./connect) — scan a code or fill in the server
+  manually, and switch between multiple servers.
+- [iOS Extensions](./ios-extensions) — the keyboard, the share extension,
+  and the "paste from other apps" permission.
+- [Android Background Access](./android-access) — read/write the clipboard
+  in the background, and auto-sync on copy.
+- [Troubleshooting](./troubleshooting) — what to do when you can't connect
+  or content won't sync.

@@ -1,0 +1,183 @@
+---
+title: Troubleshooting
+description: Troubleshooting connection failures, sync not working, and OS background restrictions.
+---
+
+import { Tab, Tabs } from 'fumadocs-ui/components/tabs'
+
+This page is organized as "symptom → what to check." The mobile app is a
+LAN-only / self-hosted sync client: it connects to a computer running the
+UniClipboard **desktop app with "mobile sync" enabled**; two phones don't
+sync with each other, they each talk to the desktop. Keep this structure in
+mind when troubleshooting — most problems are either in **that computer**,
+in the **network between phone and computer**, or in **OS permissions**.
+
+## Can't connect to the server
+
+"Test connection" fails, it stays stuck on "Connecting," or history never
+loads — this is usually one of the three cases below.
+
+| Symptom | Cause | What to do |
+| --- | --- | --- |
+| Address unreachable / connection timeout | Desktop isn't listening, phone and computer aren't on the same Wi-Fi, or the address/port is wrong | Confirm mobile sync is enabled in the UniClipboard desktop app; confirm the phone and computer are on the same Wi-Fi; double-check the server address and port |
+| Auth failed / unauthorized | Wrong username or password | Verify the credentials; the password is shown only once when the device is added on the desktop — if you forgot it, rotate the password on the desktop and re-enter it |
+| Certificate error | The desktop uses self-signed HTTPS | Turn on "allow insecure certificates" for that server; plain HTTP doesn't need this |
+
+Things to check:
+
+- If you entered **multiple addresses** in the connection form (LAN /
+  Tailscale / public), the app automatically picks the best one for your
+  current network, and the UI labels which address it "will use." When you
+  can't connect, first check whether the selected one is the address you
+  expect.
+- The full steps for getting credentials and enabling mobile sync on the
+  desktop are in the desktop docs:
+  [Mobile sync](../core-features/mobile-sync) and
+  [Pairing & sync](../guides/pairing).
+- To reach the desktop across networks (on 4G/5G or away from home), you
+  need a publicly reachable server node — see
+  [Self-hosting a headless server node](../guides/self-host-server-node).
+
+## Downlink doesn't write: remote content never reaches the system clipboard
+
+The desktop copied something, you can even see it in the phone's history,
+but **you can't paste it** — the system clipboard still holds the old
+content.
+
+<Tabs items={['iOS', 'Android']}>
+
+<Tab value="iOS">
+
+- On iOS, "auto-write to this device's clipboard" is a separate toggle
+  (**Settings → Sync**). With it off, remote content is only highlighted on
+  the home screen and **won't** overwrite the system clipboard. Turn it on
+  if you want content to land in the clipboard automatically.
+- Real-time push (SSE) requires support from the desktop server. When the
+  server doesn't support it, the app **won't** automatically fall back to
+  polling, and the downlink becomes noticeably slower or non-real-time. You
+  can pull-to-refresh manually, or use "Sync now" on the main screen.
+
+</Tab>
+
+<Tab value="Android">
+
+- Android background auto-write depends on background clipboard access being
+  ready (overlay window or Shizuku) — see
+  [Android background access](./android-access).
+- Real-time push (SSE) requires support from the desktop server; when it's
+  not supported, there's no automatic fallback to polling. You can increase
+  or decrease the polling interval, or "Sync now" manually.
+
+</Tab>
+
+</Tabs>
+
+## Uplink doesn't work: local content won't push out
+
+You copied or uploaded content on the phone, but the desktop doesn't receive
+it, and the **clock icon** (pending upload / pending sync) in the card's
+bottom-right corner never goes away.
+
+<Tabs items={['iOS', 'Android']}>
+
+<Tab value="iOS">
+
+Reading the system clipboard on iOS requires a one-time authorization. Go to
+**Settings → Extensions & permissions → Clipboard access** and trigger a
+"Paste from other apps" authorization once. Without it, the app can't read
+the system clipboard and therefore can't push anything.
+
+If you're pushing content via the **share** or **keyboard** extension,
+confirm the extension itself is set up — see [iOS extensions](./ios-extensions).
+
+</Tab>
+
+<Tab value="Android">
+
+Background upload requires background clipboard access to be ready: the
+overlay method needs the overlay-window permission, or switch to the Shizuku
+method. Until the method is set up, the app can't push while it isn't in the
+foreground. Full setup is in [Android background access](./android-access).
+
+While in the foreground you can push manually via "Upload clipboard" under
+the "Add" button in the bottom-right, or "Sync now," to first confirm
+whether this is purely a background problem.
+
+</Tab>
+
+</Tabs>
+
+The clock icon only means "not pushed successfully yet" — the content is
+already safely stored in local history, and the background upload manager
+retries with a backoff strategy. It usually pushes automatically once the
+desktop is reachable again.
+
+## Killed by the OS in the background
+
+The app stops syncing after a while in the background, the persistent
+notification disappears, or it acts cold-started when you reopen it. This is
+the OS's battery / background restriction, not sync itself being broken.
+
+- Go to **Settings → Background running** and turn on the master switch
+  "Background auto-sync"; it will walk you through **ignoring battery
+  optimization**, granting **notification permission**, and granting
+  **overlay-window permission** in turn.
+- Turn on the **persistent notification** (an advanced background-running
+  option) so the OS is less likely to reclaim the app.
+- Vendor OSes like MIUI / HyperOS have extra background restrictions. The
+  Shizuku method can also disable MIUI's "smart clipboard" restriction — see
+  [Android background access](./android-access).
+- The battery-optimization authorization dialog usually appears only once per
+  install. If you missed it, add UniClipboard to the list exempt from battery
+  optimization manually in **system Settings**.
+
+<Callout type="info">
+  iOS also restricts clipboard reads/writes after lock / backgrounding — this
+  is OS behavior. When you need stable background sync, keep the app in the
+  foreground, or use the keyboard / share extension to trigger it on demand.
+</Callout>
+
+## iOS extension reads an empty config
+
+The keyboard or share extension says "server not configured yet," even though
+the main app is clearly connected to the desktop.
+
+- The keyboard extension must have **"Allow Full Access"** enabled: system
+  Settings → General → Keyboard → Keyboards → UniClip Keyboard → Allow Full
+  Access. Without full access, the keyboard can't read the clipboard and can't
+  connect to the server.
+- The status in the app's **Settings → Keyboard** (not added / added / ready)
+  refreshes via a **heartbeat reported once you open the keyboard**. Right
+  after adding it, switch to any text field to bring the keyboard up and use
+  it once so the status updates.
+- Full extension enablement steps are in [iOS extensions](./ios-extensions).
+
+## Android permissions
+
+On Android, most "feature not working" cases come down to some permission that
+wasn't granted.
+
+| Permission | Purpose | How to grant |
+| --- | --- | --- |
+| READ_LOGS | Event listening for "copy = auto-sync" (overlay method) | Can't be requested in-app; can only be granted by running an `adb` command from a computer; the app copies the command to the clipboard so you can paste it, and you must restart the app after granting |
+| Overlay window (SYSTEM_ALERT_WINDOW) | Background clipboard read / write | Enable manually in system Settings; the Settings → Background running walkthrough takes you there |
+| SMS permission | Auto-forwarding of SMS verification codes | Grant it via the walkthrough in Settings → SMS forwarding |
+| Camera permission | Scan-to-connect | Grant it the first time you scan; if permanently denied, enable it in system Settings, or use "manual entry" to connect instead |
+
+The READ_LOGS adb command looks like:
+
+```bash
+adb shell pm grant <app-package-name> android.permission.READ_LOGS
+```
+
+Without READ_LOGS, the overlay method automatically **falls back to
+polling** — the feature still works, only the "copy = sync" real-time
+responsiveness degrades. For the tradeoff between the overlay method and the
+Shizuku method, see [Android background access](./android-access).
+
+<Callout type="info">
+  If you want to write your own third-party client, or need to debug the
+  protocol layer (HTTP request / response, auth, field formats), see
+  [Mobile LAN API](../reference/mobile-api). This handbook only covers what
+  you can see and tap in the app, not the protocol internals.
+</Callout>

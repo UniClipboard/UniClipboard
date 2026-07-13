@@ -35,7 +35,7 @@ const IGNORED_DEPS = new Set(['motion'])
 
 const args = process.argv.slice(2)
 const noInstall = args.includes('--no-install')
-const slugs = args.filter((a) => !a.startsWith('-'))
+const slugs = args.filter(a => !a.startsWith('-'))
 
 if (slugs.length === 0) {
   console.error('Usage: node scripts/add-beui.mjs <slug> [<slug>...] [--no-install]')
@@ -49,9 +49,13 @@ const owned = new Set([
   ...Object.keys(pkg.devDependencies ?? {}),
 ])
 
-const exists = (p) => access(p).then(() => true, () => false)
+const exists = p =>
+  access(p).then(
+    () => true,
+    () => false
+  )
 
-const rewriteMotion = (content) => {
+const rewriteMotion = content => {
   // 1. Module path: beUI imports from "motion/react"; this project ships framer-motion.
   let out = content
     .replace(/(["'])motion\/react\1/g, '$1framer-motion$1')
@@ -111,8 +115,8 @@ for (const slug of slugs) {
 
 console.log('\n── summary ──')
 if (written.length === 0) console.log('  (no new files written)')
-written.forEach((p) => console.log(`  + ${p}`))
-skipped.forEach((p) => console.log(`  · skipped ${p}`))
+written.forEach(p => console.log(`  + ${p}`))
+skipped.forEach(p => console.log(`  · skipped ${p}`))
 
 if (missingDeps.size === 0) {
   console.log('\nNo new dependencies needed.')

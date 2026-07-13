@@ -1,6 +1,7 @@
 /**
  * View Transition utility using the View Transition API.
- * Creates circular reveal animations from a given origin point (used for theme switching).
+ * Creates a circle-blur reveal animation from a given origin point (used for
+ * theme switching): an expanding circular clip-path paired with a deblur.
  */
 
 import { flushSync } from 'react-dom'
@@ -37,13 +38,18 @@ function startCircularReveal(x: number | null, y: number | null, updateDOM: () =
   })
 
   transition.ready.then(() => {
+    // "circle-blur" reveal (ported from beui.dev/components/motion/theme-toggle):
+    // the new snapshot clips in as an expanding circle from the click point while
+    // deblurring 8px -> 0px. globals.css already pins the old snapshot underneath
+    // (animation: none, z-index) so only this reveal is visible.
     document.documentElement.animate(
       {
         clipPath: [`circle(0px at ${x}px ${y}px)`, `circle(${endRadius}px at ${x}px ${y}px)`],
+        filter: ['blur(8px)', 'blur(0px)'],
       },
       {
-        duration: 500,
-        easing: 'ease-in-out',
+        duration: 700,
+        easing: 'cubic-bezier(0.4, 0, 0.2, 1)',
         pseudoElement: '::view-transition-new(root)',
       }
     )

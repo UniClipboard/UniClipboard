@@ -1,6 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Switch } from '@/components/ui'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { useDebounce } from '@/hooks/useDebounce'
 import { useSetting } from '@/hooks/useSetting'
 import { commands } from '@/lib/ipc'
@@ -221,9 +228,8 @@ const NetworkSection: React.FC = () => {
   }
 
   // ── Select 切换 handler（Congestion Controller） ───────────────
-  const handleCongestionControllerChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const value = e.target.value as CongestionController
-    setCongestionController(value)
+  const handleCongestionControllerChange = (value: string) => {
+    setCongestionController(value as CongestionController)
     setPending(true)
     setSaveError(null)
     setRestartError(null)
@@ -295,18 +301,22 @@ const NetworkSection: React.FC = () => {
         description={t('settings.sections.network.congestionController.description')}
         experimentalKey="network.congestionController"
       >
-        <select
-          id="congestion-controller-select"
-          aria-label={t('settings.sections.network.congestionController.label')}
-          value={congestionController}
-          onChange={handleCongestionControllerChange}
-          className="rounded-md border border-input bg-background px-3 py-1.5 text-sm"
-        >
-          <option value="cubic">
-            CUBIC ({t('settings.sections.network.congestionController.recommended')})
-          </option>
-          <option value="bbr3">BBR3</option>
-        </select>
+        <Select value={congestionController} onValueChange={handleCongestionControllerChange}>
+          <SelectTrigger
+            id="congestion-controller-select"
+            size="sm"
+            aria-label={t('settings.sections.network.congestionController.label')}
+            className="w-[180px]"
+          >
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="cubic">
+              CUBIC ({t('settings.sections.network.congestionController.recommended')})
+            </SelectItem>
+            <SelectItem value="bbr3">BBR3</SelectItem>
+          </SelectContent>
+        </Select>
       </SettingRow>
       <CustomRelayUrlsField value={customRelayUrls} onChange={handleCustomRelayUrlsChange} />
       {saveError && (

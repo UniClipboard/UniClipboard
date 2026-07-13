@@ -41,7 +41,8 @@ manifest：复用 dedup 计划的 `entry_file_set` 逐行表，每行以
 4. **成员边界**：symlink 与特殊文件（FIFO/socket/设备节点）→ 整个目录判
    Sync-ineligible（不静默跳过、不解引用）；隐藏文件包含；硬链接当独立文件；
    除 exec bit 外权限/xattr/时间戳不保留。
-5. **范围**：桌面三平台；移动端不消费文件集 entry（register 指向它时 mobile
-   GET 保持上一个可消费值）。前置依赖：dedup 计划的 `entry_file_set` 表先落地。
+5. **范围**：桌面三平台；移动端不消费 **含目录结构的** 文件集 entry（register
+   指向它时 mobile GET 保持上一个可消费值）。单文件与平铺多文件仍可由移动端
+   消费。前置依赖：dedup 计划的 `entry_file_set` 表先落地。
 
 领域术语与完整语义见 `CONTEXT.md`「Language — 文件集与目录」。

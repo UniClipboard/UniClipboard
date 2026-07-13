@@ -73,14 +73,19 @@ use uc_core::trusted_peer::TrustedPeerRepositoryPort;
 use uc_core::ClipboardChangeOrigin;
 
 use crate::facade::clipboard_outbound::{
-    publish_file_blob_refs, publish_oversized_inline_blob_refs, resolve_outbound_file_set,
-    ClipboardOutboundError, OutboundBlobPublishGateway, OutboundFileSetResolution,
+    build_transfer_manifest, publish_file_blob_refs, publish_oversized_inline_blob_refs,
+    resolve_outbound_file_set, ClipboardOutboundError, OutboundBlobPublishGateway,
+    OutboundFileSetResolution,
 };
 use crate::sync_planner::{FileCandidate, OutboundSyncPlanner};
+use crate::usecases::clipboard_sync::apply_inbound::compute_file_set_component;
 use crate::usecases::clipboard_sync::dispatch_entry::{
     DispatchClipboardEntryInput, DispatchEntryRunner, DispatchSyncError,
 };
-use crate::usecases::clipboard_sync::payload_codec::encode_snapshot_with_blob_refs_to_v3_bytes;
+use crate::usecases::clipboard_sync::payload_codec::{
+    encode_snapshot_with_blob_refs_and_file_set_to_v3_bytes,
+    encode_snapshot_with_blob_refs_to_v3_bytes,
+};
 use crate::usecases::clipboard_sync::snapshot_from_entry::{
     reconstruct_snapshot_from_entry, BuildSnapshotError,
 };
@@ -390,16 +395,12 @@ impl ResendEntryUseCase {
         let resolution =
             resolve_outbound_file_set(self.entry_file_set_repo.as_ref(), &cmd.entry_id, &snapshot)
                 .await;
-        let (resolved_paths, from_manifest) = match resolution {
-            OutboundFileSetResolution::NotFileClass => (Vec::new(), false),
-            OutboundFileSetResolution::Manifest { paths, .. } => (paths, true),
-            OutboundFileSetResolution::Fallback { paths } => (paths, false),
-            OutboundFileSetResolution::DirectoryNotYetSyncable => {
-                // TODO(ADR-010 phase 4): remove this gate once the wire format
-                // carries directory member locations and receivers rebuild trees.
-                return Err(ResendEntryError::Dispatch(
-                    "directory_not_yet_syncable".to_string(),
-                ));
+        let (resolved_paths, from_manifest, directory_members) = match resolution {
+            OutboundFileSetResolution::NotFileClass => (Vec::new(), false, None),
+            OutboundFileSetResolution::Manifest { paths, .. } => (paths, true, None),
+            OutboundFileSetResolution::Fallback { paths } => (paths, false, None),
+            OutboundFileSetResolution::DirectorySyncable { paths, members } => {
+                (paths, true, Some(members))
             }
             OutboundFileSetResolution::Excluded {
                 ingest_failed,
@@ -468,7 +469,33 @@ impl ResendEntryUseCase {
             publish_file_blob_refs(self.blob_publisher.as_ref(), &plan.files, &cmd.entry_id)
                 .await
                 .map_err(map_outbound_publish_error)?;
-        if !file_content_digests.is_empty() {
+        let file_set_manifest = match directory_members {
+            Some(members) => {
+                if plan.files.len() != extracted_paths_count {
+                    return Err(ResendEntryError::EntryNotResendable {
+                        entry_id: cmd.entry_id.clone(),
+                        reason: NotResendableReason::PayloadLost,
+                    });
+                }
+                Some(
+                    build_transfer_manifest(&members, &plan.files)
+                        .map_err(map_outbound_publish_error)?,
+                )
+            }
+            None => None,
+        };
+        if let Some(manifest) = &file_set_manifest {
+            let digests = file_content_digests
+                .iter()
+                .enumerate()
+                .map(|(index, digest)| (index as u32, *digest))
+                .collect();
+            clipboard_intent.snapshot.file_content_digests.clear();
+            clipboard_intent.snapshot.file_set_v1_component = Some(
+                compute_file_set_component(manifest, &digests)
+                    .map_err(|err| ResendEntryError::Dispatch(err.to_string()))?,
+            );
+        } else if !file_content_digests.is_empty() {
             clipboard_intent.snapshot.file_content_digests = file_content_digests;
         }
         let mut image_blob_refs = publish_oversized_inline_blob_refs(
@@ -482,9 +509,34 @@ impl ResendEntryUseCase {
 
         // 6. Encode V3 envelope.
         let categories = ClipboardContentCategorySet::from_snapshot(&clipboard_intent.snapshot);
-        let (plaintext, snapshot_hash) =
-            encode_snapshot_with_blob_refs_to_v3_bytes(&clipboard_intent.snapshot, &blob_refs)
+        let (plaintext, snapshot_hash, wire_version) = match file_set_manifest {
+            Some(manifest) => {
+                let (plaintext, snapshot_hash) =
+                    encode_snapshot_with_blob_refs_and_file_set_to_v3_bytes(
+                        &clipboard_intent.snapshot,
+                        &blob_refs,
+                        &manifest,
+                    )
+                    .map_err(|e| ResendEntryError::Dispatch(format!("payload encode: {e}")))?;
+                (
+                    plaintext,
+                    snapshot_hash,
+                    uc_core::ports::ClipboardHeader::DIRECTORY_VERSION,
+                )
+            }
+            None => {
+                let (plaintext, snapshot_hash) = encode_snapshot_with_blob_refs_to_v3_bytes(
+                    &clipboard_intent.snapshot,
+                    &blob_refs,
+                )
                 .map_err(|e| ResendEntryError::Dispatch(format!("payload encode: {e}")))?;
+                (
+                    plaintext,
+                    snapshot_hash,
+                    uc_core::ports::ClipboardHeader::CURRENT_VERSION,
+                )
+            }
+        };
 
         // 7. Dispatch. fan-out 的 delivery 落盘 + host event emit 在
         //    `DispatchClipboardEntryUseCase::execute` 内串行完成,本用例只
@@ -497,6 +549,7 @@ impl ResendEntryUseCase {
                 plaintext,
                 snapshot_hash,
                 payload_version: 3,
+                wire_version,
                 categories,
                 entry_id: Some(cmd.entry_id.clone()),
                 target_filter: Some(targets),
@@ -831,6 +884,30 @@ mod tests {
             _command: PublishBlobPathCommand,
         ) -> Result<PublishBlobResult, BlobTransferError> {
             unreachable!("UnusedPublishGateway: publish_blob_path must not be called for text-only snapshots")
+        }
+    }
+
+    struct FilePublishGateway;
+    #[async_trait]
+    impl OutboundBlobPublishGateway for FilePublishGateway {
+        async fn publish_blob(
+            &self,
+            _command: PublishBlobCommand,
+        ) -> Result<PublishBlobResult, BlobTransferError> {
+            unreachable!("directory resend test has no oversized inline blob")
+        }
+
+        async fn publish_blob_path(
+            &self,
+            command: PublishBlobPathCommand,
+        ) -> Result<PublishBlobResult, BlobTransferError> {
+            Ok(PublishBlobResult {
+                ticket: uc_core::ports::blob::BlobTicket::from_bytes(vec![1, 2, 3]),
+                entry_id: command.entry_id.unwrap(),
+                plaintext_hash: uc_core::ports::blob::PlaintextHash::from_bytes([5; 32]),
+                digest: uc_core::ports::blob::BlobDigest::from_bytes([6; 32]),
+                reused_existing: false,
+            })
         }
     }
 
@@ -1369,7 +1446,7 @@ mod tests {
                 entry: Some(entry_with_event(&entry_id, &event_id)),
             }),
             event_repo: Arc::new(FakeEventRepo {
-                source: Some(local.clone()),
+                source: Some(local),
             }),
             selection_repo: Arc::new(FakeSelectionRepo {
                 selection: Some(selection_for(&entry_id, "rep-files")),
@@ -1469,5 +1546,94 @@ mod tests {
             }
             other => panic!("expected EntryNotResendable, got {other:?}"),
         }
+    }
+
+    #[tokio::test]
+    async fn resend_directory_uses_full_manifest_and_directory_wire_version() {
+        use uc_core::clipboard::{
+            ContentHash, EntryFileSet, EntryFileSetLine, EntryFileSetLineKind, FileSetMemberKind,
+            FileSetMemberLocation, HashAlgorithm,
+        };
+
+        let temp = tempfile::tempdir().unwrap();
+        let file = temp.path().join("child.txt");
+        std::fs::write(&file, b"hello").unwrap();
+        let uri = url::Url::from_file_path(&file).unwrap().to_string();
+        let entry_id = EntryId::from("entry-directory-resend");
+        let event_id = EventId::from("event-directory-resend");
+        let local = DeviceId::new("self");
+        let file_set = EntryFileSet {
+            lines: vec![EntryFileSetLine {
+                line_index: 1,
+                original_text: uri.clone(),
+                member_location: Some(FileSetMemberLocation {
+                    root_index: 0,
+                    root_name: "folder".to_string(),
+                    relative_path: "child.txt".to_string(),
+                    kind: FileSetMemberKind::File,
+                }),
+                kind: EntryFileSetLineKind::File {
+                    content_hash: ContentHash {
+                        alg: HashAlgorithm::Blake3V1,
+                        bytes: [5; 32],
+                    },
+                    blob_id: None,
+                    size_bytes: Some(5),
+                },
+            }],
+        };
+        let runner = Arc::new(RecordingDispatchRunner::new(|input| {
+            Ok(happy_outcome(input))
+        }));
+        let uc = ResendEntryUseCase::new(ResendEntryDeps {
+            entry_repo: Arc::new(FakeEntryRepo {
+                entry: Some(entry_with_event(&entry_id, &event_id)),
+            }),
+            event_repo: Arc::new(FakeEventRepo {
+                source: Some(local.clone()),
+            }),
+            selection_repo: Arc::new(FakeSelectionRepo {
+                selection: Some(selection_for(&entry_id, "rep-files")),
+            }),
+            representation_repo: Arc::new(StaticRepRepo {
+                reps: vec![uri_list_rep("rep-files", &format!("{uri}\r\n"))],
+            }),
+            rep_processing_repo: Arc::new(StubProcessingRepo),
+            payload_resolver: Arc::new(StubResolver(ResolveBehavior::Inline(
+                format!("{uri}\r\n").into_bytes(),
+            ))),
+            blob_store: Arc::new(UnusedBlobStore),
+            entry_delivery_repo: Arc::new(StubDeliveryRepo { records: vec![] }),
+            trusted_peer_repo: Arc::new(StubTrustedPeerRepo {
+                peers: vec![trusted(&local, "peer-a", 1)],
+            }),
+            device_identity: Arc::new(StubDeviceIdentity(local)),
+            settings: Arc::new(StubSettings),
+            entry_file_set_repo: Arc::new(StubFileSetRepo {
+                file_set: Some(file_set),
+            }),
+            blob_publisher: Arc::new(FilePublishGateway),
+            dispatch_runner: runner.clone(),
+        });
+
+        uc.execute(ResendEntryCommand {
+            entry_id,
+            target_filter: Some(vec![DeviceId::new("peer-a")]),
+        })
+        .await
+        .expect("directory resend should dispatch");
+
+        let captured = runner.captured();
+        assert_eq!(
+            captured[0].wire_version,
+            uc_core::ports::ClipboardHeader::DIRECTORY_VERSION
+        );
+        let (_, refs, manifest) =
+            crate::usecases::clipboard_sync::payload_codec::decode_v3_bytes_to_snapshot_blob_refs_and_file_set(
+                &captured[0].plaintext,
+            )
+            .unwrap();
+        assert_eq!(refs.len(), 1);
+        assert_eq!(manifest.unwrap().members[0].relative_path, "child.txt");
     }
 }

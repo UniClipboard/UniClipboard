@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
@@ -8,7 +9,8 @@ use thiserror::Error;
 use tracing::{debug, info, warn};
 use uc_core::blob::ports::BlobReaderPort;
 use uc_core::clipboard::{
-    is_file_mime_or_format, ClipboardPayloadSource, EntryFileSetExcludeReason, EntryFileSetLineKind,
+    is_file_mime_or_format, ClipboardPayloadSource, EntryFileSetExcludeReason,
+    EntryFileSetLineKind, FileSetMemberKind, FileSetMemberLocation,
 };
 use uc_core::ids::EntryId;
 use uc_core::ports::clipboard::{
@@ -27,6 +29,9 @@ use crate::facade::{
     PublishBlobPathCommand, PublishBlobResult,
 };
 use crate::sync_planner::{FileCandidate, FileSyncIntent, OutboundSyncPlanner};
+use crate::usecases::clipboard_sync::apply_inbound::{
+    compute_file_set_component, InboundFileSetManifest, InboundFileSetMember,
+};
 use crate::usecases::clipboard_sync::resend_entry::{
     ResendEntryDeps, ResendEntryRunner, ResendEntryUseCase,
 };
@@ -230,22 +235,17 @@ impl ClipboardOutboundPort for ClipboardOutboundDispatcher {
         } else {
             OutboundFileSetResolution::NotFileClass
         };
-        let (resolved_paths, from_manifest, expected_digests) = match resolution {
-            OutboundFileSetResolution::NotFileClass => (Vec::new(), false, Vec::new()),
+        let (resolved_paths, from_manifest, expected_digests, directory_members) = match resolution
+        {
+            OutboundFileSetResolution::NotFileClass => (Vec::new(), false, Vec::new(), None),
             OutboundFileSetResolution::Manifest {
                 paths,
                 expected_digests,
-            } => (paths, true, expected_digests),
-            OutboundFileSetResolution::Fallback { paths } => (paths, false, Vec::new()),
-            OutboundFileSetResolution::DirectoryNotYetSyncable => {
-                info!(
-                    entry_id = %entry_id_str,
-                    "outbound: directory manifest retained locally; skipping dispatch"
-                );
-                return Ok(ClipboardOutboundOutcome::Skipped {
-                    reason: "directory_not_yet_syncable".to_string(),
-                });
+            } => (paths, true, expected_digests, None),
+            OutboundFileSetResolution::DirectorySyncable { paths, members } => {
+                (paths, true, Vec::new(), Some(members))
             }
+            OutboundFileSetResolution::Fallback { paths } => (paths, false, Vec::new(), None),
             OutboundFileSetResolution::Excluded {
                 ingest_failed,
                 size_cap_exceeded,
@@ -366,10 +366,6 @@ impl ClipboardOutboundPort for ClipboardOutboundDispatcher {
             }
         }
 
-        if !file_content_digests.is_empty() {
-            clipboard_intent.snapshot.file_content_digests = file_content_digests;
-        }
-
         let publish_inline_start = Instant::now();
         let mut image_blob_refs = publish_oversized_inline_blob_refs(
             self.blob_transfer.as_ref(),
@@ -382,10 +378,47 @@ impl ClipboardOutboundPort for ClipboardOutboundDispatcher {
         blob_refs.append(&mut image_blob_refs);
         let blob_ref_count = blob_refs.len();
 
+        let file_set_manifest = match directory_members {
+            Some(members) => {
+                if plan.files.len() != extracted_paths_count {
+                    return Ok(ClipboardOutboundOutcome::Skipped {
+                        reason: "file_set_member_unavailable".to_string(),
+                    });
+                }
+                Some(build_transfer_manifest(&members, &plan.files)?)
+            }
+            None => None,
+        };
+        if let Some(manifest) = &file_set_manifest {
+            let digests = file_content_digests
+                .iter()
+                .enumerate()
+                .map(|(index, digest)| (index as u32, *digest))
+                .collect();
+            clipboard_intent.snapshot.file_content_digests.clear();
+            clipboard_intent.snapshot.file_set_v1_component = Some(
+                compute_file_set_component(manifest, &digests)
+                    .map_err(|err| ClipboardOutboundError::Internal(err.to_string()))?,
+            );
+        } else if !file_content_digests.is_empty() {
+            clipboard_intent.snapshot.file_content_digests = file_content_digests;
+        }
+
         let dispatch_phase_start = Instant::now();
         // LocalCapture 路径:把 entry_id 透传给 dispatch,fan-out 完成后落盘
         // 每个对端的投递结果(供视图层追踪"这条 entry 同步到了哪些设备")。
-        let dispatch_result = if blob_refs.is_empty() {
+        let dispatch_result = if let Some(manifest) = file_set_manifest {
+            self.clipboard_sync
+                .dispatch_snapshot_with_blob_refs_and_file_set(
+                    clipboard_intent.snapshot,
+                    blob_refs,
+                    manifest,
+                    input.origin,
+                    Some(entry_id.clone()),
+                    None,
+                )
+                .await
+        } else if blob_refs.is_empty() {
             self.clipboard_sync
                 .dispatch_snapshot(
                     clipboard_intent.snapshot,
@@ -571,9 +604,10 @@ pub(crate) enum OutboundFileSetResolution {
     /// best-effort save at capture, or an unreadable manifest row) — fall
     /// back to re-parsing the snapshot's reps.
     Fallback { paths: Vec<PathBuf> },
-    /// Directory members are captured locally but the current wire protocol
-    /// cannot reconstruct their tree yet.
-    DirectoryNotYetSyncable,
+    DirectorySyncable {
+        paths: Vec<PathBuf>,
+        members: Vec<DirectoryMemberSource>,
+    },
     /// The manifest exists but contains excluded lines: at least one member
     /// never got a content identity, so the entry's identity fell back to
     /// path text at capture. All-or-nothing — callers must not publish the
@@ -584,6 +618,13 @@ pub(crate) enum OutboundFileSetResolution {
         size_cap_exceeded: usize,
         unsupported_member: usize,
     },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct DirectoryMemberSource {
+    pub location: FileSetMemberLocation,
+    pub path: Option<PathBuf>,
+    pub root_is_file: bool,
 }
 
 /// Resolve the member path list for an outbound file-class send, preferring
@@ -632,10 +673,6 @@ pub(crate) async fn resolve_outbound_file_set(
         }
     };
 
-    if file_set.has_directory_structure() {
-        return OutboundFileSetResolution::DirectoryNotYetSyncable;
-    }
-
     let mut ingest_failed = 0usize;
     let mut size_cap_exceeded = 0usize;
     let mut unsupported_member = 0usize;
@@ -654,6 +691,63 @@ pub(crate) async fn resolve_outbound_file_set(
             size_cap_exceeded,
             unsupported_member,
         };
+    }
+
+    if file_set.has_directory_structure() {
+        let row_count = file_set.lines.len() as i64;
+        let directory_roots: std::collections::HashSet<i64> = file_set
+            .lines
+            .iter()
+            .filter(|line| line.indicates_directory_root(row_count))
+            .filter_map(|line| {
+                line.member_location
+                    .as_ref()
+                    .map(|location| location.root_index)
+            })
+            .collect();
+        let mut paths = Vec::new();
+        let mut members = Vec::new();
+        for line in &file_set.lines {
+            let Some(location) = line.member_location.clone() else {
+                if matches!(line.kind, EntryFileSetLineKind::NonFile) {
+                    continue;
+                }
+                return OutboundFileSetResolution::Fallback {
+                    paths: extract_file_paths_from_snapshot(snapshot),
+                };
+            };
+            let path = match (&line.kind, location.kind) {
+                (
+                    EntryFileSetLineKind::File { .. },
+                    FileSetMemberKind::File | FileSetMemberKind::Executable,
+                ) => match manifest_line_path(&line.original_text) {
+                    Some(path) => {
+                        paths.push(path.clone());
+                        Some(path)
+                    }
+                    None => {
+                        return OutboundFileSetResolution::Fallback {
+                            paths: extract_file_paths_from_snapshot(snapshot),
+                        };
+                    }
+                },
+                (EntryFileSetLineKind::NonFile, FileSetMemberKind::EmptyDirectory) => None,
+                _ => {
+                    return OutboundFileSetResolution::Fallback {
+                        paths: extract_file_paths_from_snapshot(snapshot),
+                    };
+                }
+            };
+            let root_is_file = !directory_roots.contains(&location.root_index);
+            members.push(DirectoryMemberSource {
+                location,
+                path,
+                root_is_file,
+            });
+        }
+        paths.sort();
+        paths.dedup();
+        return OutboundFileSetResolution::DirectorySyncable { paths, members };
     }
 
     let mut paths = Vec::new();
@@ -682,6 +776,47 @@ pub(crate) async fn resolve_outbound_file_set(
         expected_digests: file_set.content_digest_contribution(),
         paths,
     }
+}
+
+pub(crate) fn build_transfer_manifest(
+    members: &[DirectoryMemberSource],
+    files: &[FileSyncIntent],
+) -> Result<InboundFileSetManifest, ClipboardOutboundError> {
+    let indexes: HashMap<&std::path::Path, u32> = files
+        .iter()
+        .enumerate()
+        .map(|(index, file)| {
+            let index = u32::try_from(index).map_err(|_| {
+                ClipboardOutboundError::Internal("file-set index cannot fit u32".to_string())
+            })?;
+            Ok((file.path.as_path(), index))
+        })
+        .collect::<Result<_, ClipboardOutboundError>>()?;
+    let members = members
+        .iter()
+        .map(|member| {
+            let blob_ref_index = match &member.path {
+                Some(path) => Some(*indexes.get(path.as_path()).ok_or_else(|| {
+                    ClipboardOutboundError::Internal(format!(
+                        "directory member was not published: {}",
+                        path.display()
+                    ))
+                })?),
+                None => None,
+            };
+            Ok(InboundFileSetMember {
+                root_index: u32::try_from(member.location.root_index).map_err(|_| {
+                    ClipboardOutboundError::Internal("negative directory root index".to_string())
+                })?,
+                root_name: member.location.root_name.clone(),
+                root_is_file: member.root_is_file,
+                relative_path: member.location.relative_path.clone(),
+                kind: member.location.kind,
+                blob_ref_index,
+            })
+        })
+        .collect::<Result<Vec<_>, ClipboardOutboundError>>()?;
+    Ok(InboundFileSetManifest { members })
 }
 
 /// Recover the local path of a manifest `File` line. Capture writes
@@ -1002,7 +1137,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn resolver_blocks_directory_manifest_before_path_publication() {
+    async fn resolver_exposes_directory_members_for_wire_publication() {
         let mut line = file_line(1, "file:///tmp/root", 1);
         line.member_location = Some(FileSetMemberLocation {
             root_index: 0,
@@ -1017,10 +1152,49 @@ mod tests {
         )
         .await;
 
-        assert_eq!(
-            resolution,
-            OutboundFileSetResolution::DirectoryNotYetSyncable
-        );
+        match resolution {
+            OutboundFileSetResolution::DirectorySyncable { paths, members } => {
+                assert_eq!(paths, vec![PathBuf::from("/tmp/root")]);
+                assert_eq!(members.len(), 1);
+                assert_eq!(members[0].location.root_name, "root");
+                assert_eq!(members[0].path, Some(PathBuf::from("/tmp/root")));
+                assert!(!members[0].root_is_file);
+            }
+            other => panic!("expected directory syncable resolution, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn resolver_distinguishes_file_roots_in_mixed_selection() {
+        let mut loose_file = file_line(0, "file:///tmp/loose.txt", 1);
+        loose_file.member_location = Some(FileSetMemberLocation {
+            root_index: 0,
+            root_name: "loose.txt".to_string(),
+            relative_path: "loose.txt".to_string(),
+            kind: FileSetMemberKind::File,
+        });
+        let mut directory_member = file_line(2, "file:///tmp/folder", 2);
+        directory_member.member_location = Some(FileSetMemberLocation {
+            root_index: 1,
+            root_name: "folder".to_string(),
+            relative_path: "child.txt".to_string(),
+            kind: FileSetMemberKind::File,
+        });
+
+        let resolution = resolve_outbound_file_set(
+            &FakeFileSetRepo::Found(EntryFileSet {
+                lines: vec![loose_file, directory_member],
+            }),
+            &EntryId::from("e1"),
+            &uri_list_snapshot("file:///tmp/loose.txt\nfile:///tmp/folder\n"),
+        )
+        .await;
+
+        let OutboundFileSetResolution::DirectorySyncable { members, .. } = resolution else {
+            panic!("expected directory syncable resolution");
+        };
+        assert!(members[0].root_is_file);
+        assert!(!members[1].root_is_file);
     }
 
     #[tokio::test]

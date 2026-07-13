@@ -193,6 +193,8 @@ pub(crate) struct DispatchClipboardEntryInput {
     pub snapshot_hash: String,
     /// Payload codec tag, e.g. `3` for the V3 `ClipboardBinaryPayload`.
     pub payload_version: u8,
+    /// Minimum wire version required to preserve this payload's semantics.
+    pub wire_version: u8,
     /// Set of content categories present in the snapshot, used to gate
     /// against each peer's `send_content_types` toggle. Caller (facade
     /// `dispatch_snapshot*`) computes via
@@ -1006,6 +1008,7 @@ mod tests {
             plaintext: Bytes::from_static(b"hello world"),
             snapshot_hash: "9".repeat(64),
             payload_version: 3,
+            wire_version: ClipboardHeader::CURRENT_VERSION,
             // Existing verdicts predate the content-type filter; default
             // to an empty set so they always pass the gate (fail open).
             categories: ClipboardContentCategorySet::empty(),
@@ -1542,6 +1545,7 @@ mod tests {
             plaintext: Bytes::from_static(b"hello world"),
             snapshot_hash: "9".repeat(64),
             payload_version: 3,
+            wire_version: ClipboardHeader::CURRENT_VERSION,
             categories,
             entry_id: None,
             target_filter: None,
@@ -1873,6 +1877,7 @@ mod tests {
             plaintext: Bytes::from_static(b"hello world"),
             snapshot_hash: "9".repeat(64),
             payload_version: 3,
+            wire_version: ClipboardHeader::CURRENT_VERSION,
             categories,
             entry_id: None,
             target_filter: None,
@@ -2093,6 +2098,70 @@ mod tests {
         for rec in &attempts {
             assert_eq!(rec.entry_id.to_string(), "entry-1");
         }
+    }
+
+    #[tokio::test]
+    async fn directory_send_to_v2_receiver_records_explicit_rejection() {
+        let mut repo = MockPeerAddrRepo::new();
+        repo.expect_list()
+            .times(1)
+            .returning(|| Ok(vec![record("peer-v2")]));
+
+        let mut cipher = MockCipher::new();
+        cipher
+            .expect_encrypt()
+            .times(1)
+            .returning(|plaintext| Ok(plaintext.to_vec()));
+
+        let mut dispatch = MockDispatch::new();
+        dispatch
+            .expect_dispatch()
+            .withf(|device_id, header, _| {
+                device_id == &DeviceId::new("peer-v2")
+                    && header.version == ClipboardHeader::DIRECTORY_VERSION
+            })
+            .times(1)
+            .returning(|_, _, _| {
+                dispatch_report(Err(ClipboardDispatchError::PeerRejected(
+                    "unsupported clipboard wire version 3".to_string(),
+                )))
+            });
+
+        let spy = Arc::new(SpyEntryDeliveryRepo::default());
+        let uc = DispatchClipboardEntryUseCase::new(
+            Arc::new(repo),
+            Arc::new(make_member_repo_all_enabled()),
+            Arc::new(StaticPresence(ReachabilityState::Unknown)),
+            Arc::new(cipher),
+            Arc::new(dispatch),
+            Arc::new(make_device_identity("self-device")),
+            Arc::new(make_local_identity_stub()),
+            Arc::new(make_settings_stub()),
+            Arc::new(FixedClock(1_700_000_000_000)),
+            Arc::new(uc_observability::analytics::NoopAnalyticsSink),
+            Arc::new(AllMarkedFirstSyncState),
+            Arc::clone(&spy) as Arc<dyn EntryDeliveryRepositoryPort>,
+            Arc::new(crate::facade::host_event::HostEventBus::new()),
+        );
+
+        let mut input = input();
+        input.entry_id = Some(EntryId::from("entry-directory"));
+        input.wire_version = ClipboardHeader::DIRECTORY_VERSION;
+        let outcome = uc.execute(input).await.expect("dispatch should settle");
+        assert_eq!(outcome.total_errored, 1);
+
+        let attempts = spy.snapshot().await;
+        assert_eq!(attempts.len(), 1);
+        assert!(matches!(
+            attempts[0].status,
+            EntryDeliveryStatus::Failed {
+                reason: DeliveryFailureReason::PeerRejected
+            }
+        ));
+        assert_eq!(
+            attempts[0].reason_detail.as_deref(),
+            Some("unsupported clipboard wire version 3")
+        );
     }
 
     /// entry_id=None 路径(CLI raw-bytes / 测试)永不触发落盘:dispatch

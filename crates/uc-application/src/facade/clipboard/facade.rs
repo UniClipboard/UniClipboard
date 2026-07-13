@@ -20,9 +20,9 @@ use tracing::instrument;
 use uc_core::ids::{DeviceId, EntryId};
 use uc_core::ports::security::TransferCipherPort;
 use uc_core::ports::{
-    ClipboardDispatchPort, ClipboardReceiverPort, ClockPort, DeviceIdentityPort, DispatchAck,
-    EntryDeliveryRepositoryPort, FindMobileDeviceByIdPort, FirstSyncStatePort, LocalIdentityPort,
-    PeerAddressRepositoryPort, PresencePort, SettingsPort,
+    ClipboardDispatchPort, ClipboardHeader, ClipboardReceiverPort, ClockPort, DeviceIdentityPort,
+    DispatchAck, EntryDeliveryRepositoryPort, FindMobileDeviceByIdPort, FirstSyncStatePort,
+    LocalIdentityPort, PeerAddressRepositoryPort, PresencePort, SettingsPort,
 };
 use uc_core::MemberRepositoryPort;
 use uc_core::{ClipboardChangeOrigin, SystemClipboardSnapshot};
@@ -249,6 +249,12 @@ pub struct ClipboardSyncFacade {
     view_uc: Arc<GetEntryDeliveryViewUseCase>,
 }
 
+#[derive(Clone, Copy)]
+struct DispatchVersions {
+    payload: u8,
+    wire: u8,
+}
+
 impl ClipboardSyncFacade {
     pub fn new(deps: ClipboardSyncDeps) -> Self {
         let dispatch_uc = Arc::new(DispatchClipboardEntryUseCase::new(
@@ -317,6 +323,7 @@ impl ClipboardSyncFacade {
                 plaintext: input.plaintext,
                 snapshot_hash: input.snapshot_hash.clone(),
                 payload_version: input.payload_version,
+                wire_version: ClipboardHeader::CURRENT_VERSION,
                 categories: ClipboardContentCategorySet::empty(),
                 // raw-bytes 路径不与某条 entry 绑定,跳过 delivery 落盘。
                 entry_id: None,
@@ -334,7 +341,7 @@ impl ClipboardSyncFacade {
         &self,
         plaintext: Bytes,
         snapshot_hash: String,
-        payload_version: u8,
+        versions: DispatchVersions,
         categories: ClipboardContentCategorySet,
         entry_id: Option<EntryId>,
         target_filter: Option<Vec<DeviceId>>,
@@ -344,7 +351,8 @@ impl ClipboardSyncFacade {
             .execute(DispatchClipboardEntryInput {
                 plaintext,
                 snapshot_hash,
-                payload_version,
+                payload_version: versions.payload,
+                wire_version: versions.wire,
                 categories,
                 entry_id,
                 target_filter,
@@ -379,7 +387,10 @@ impl ClipboardSyncFacade {
         self.dispatch_internal(
             plaintext,
             snapshot_hash,
-            3,
+            DispatchVersions {
+                payload: 3,
+                wire: ClipboardHeader::CURRENT_VERSION,
+            },
             categories,
             entry_id,
             target_filter,
@@ -408,7 +419,47 @@ impl ClipboardSyncFacade {
         self.dispatch_internal(
             plaintext,
             snapshot_hash,
-            3,
+            DispatchVersions {
+                payload: 3,
+                wire: ClipboardHeader::CURRENT_VERSION,
+            },
+            categories,
+            entry_id,
+            target_filter,
+        )
+        .await
+    }
+
+    /// 编码并发送带目录成员清单的剪贴板快照。
+    ///
+    /// 与 [`Self::dispatch_snapshot_with_blob_refs`] 相同,但额外携带
+    /// `manifest` 让接收端能原子重建目录树,因此走 `DIRECTORY_VERSION` wire。
+    #[instrument(skip_all, fields(rep_count = snapshot.representations.len(), blob_ref_count = blob_refs.len(), member_count = manifest.members.len(), origin = ?origin))]
+    pub async fn dispatch_snapshot_with_blob_refs_and_file_set(
+        &self,
+        snapshot: SystemClipboardSnapshot,
+        blob_refs: Vec<V3BlobRef>,
+        manifest: crate::usecases::clipboard_sync::apply_inbound::InboundFileSetManifest,
+        origin: ClipboardChangeOrigin,
+        entry_id: Option<EntryId>,
+        target_filter: Option<Vec<DeviceId>>,
+    ) -> Result<DispatchEntryOutcome, ClipboardSyncError> {
+        let _ = origin; // span metadata only (see sibling dispatch methods)
+        let categories = ClipboardContentCategorySet::from_snapshot(&snapshot);
+        let (plaintext, snapshot_hash) =
+            crate::usecases::clipboard_sync::payload_codec::encode_snapshot_with_blob_refs_and_file_set_to_v3_bytes(
+                &snapshot,
+                &blob_refs,
+                &manifest,
+            )
+            .map_err(|e| ClipboardSyncError::CipherFailure(format!("payload encode: {e}")))?;
+        self.dispatch_internal(
+            plaintext,
+            snapshot_hash,
+            DispatchVersions {
+                payload: 3,
+                wire: ClipboardHeader::DIRECTORY_VERSION,
+            },
             categories,
             entry_id,
             target_filter,

@@ -244,6 +244,7 @@ pub(crate) fn dispatch_input() -> DispatchClipboardEntryInput {
         plaintext: Bytes::from_static(b"hello world"),
         snapshot_hash: "9".repeat(64),
         payload_version: 3,
+        wire_version: ClipboardHeader::CURRENT_VERSION,
         categories: ClipboardContentCategorySet::empty(),
         entry_id: None,
         target_filter: None,

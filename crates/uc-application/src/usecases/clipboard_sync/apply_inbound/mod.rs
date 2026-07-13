@@ -67,7 +67,11 @@ mod usecase;
 #[cfg(test)]
 mod tests;
 
-pub use materializer::{FileCacheBlobMaterializer, InboundBlobFetcher, InboundBlobMaterializer};
+pub(crate) use materializer::compute_file_set_component;
+pub use materializer::{
+    FileCacheBlobMaterializer, InboundBlobFetcher, InboundBlobMaterializer, InboundFileSetManifest,
+    InboundFileSetMember,
+};
 pub use ports::{InboundCapture, InboundWrite};
 pub use usecase::ApplyInboundClipboardUseCase;
 

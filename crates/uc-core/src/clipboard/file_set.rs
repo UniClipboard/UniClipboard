@@ -32,6 +32,30 @@ pub struct EntryFileSetLine {
     pub kind: EntryFileSetLineKind,
 }
 
+impl EntryFileSetLine {
+    /// Whether this line marks its selected root as an expanded directory
+    /// rather than a loose top-level file.
+    ///
+    /// Directory members are assigned line indexes after the top-level input
+    /// range, so at least the final expanded member sits at or beyond the
+    /// persisted `row_count` (pass `EntryFileSet::lines.len()`). That threshold
+    /// recognizes even a one-member directory without confusing flat files
+    /// preceded by uri-list comments. The empty-directory and nested-path
+    /// checks defend the same invariant for data decoded off the wire, where
+    /// line indexes are re-derived.
+    ///
+    /// This predicate is the single source of truth for directory-root
+    /// detection; callers deriving per-root state must go through it rather
+    /// than re-inlining the condition.
+    pub fn indicates_directory_root(&self, row_count: i64) -> bool {
+        self.member_location.as_ref().is_some_and(|location| {
+            location.kind == FileSetMemberKind::EmptyDirectory
+                || location.relative_path.contains('/')
+                || self.line_index >= row_count
+        })
+    }
+}
+
 /// Stable location of a selected file or a member expanded from a directory.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FileSetMemberLocation {
@@ -118,20 +142,14 @@ pub enum EntryFileSetError {
 impl EntryFileSet {
     /// Whether this manifest contains members expanded from a directory root.
     ///
-    /// Directory members are assigned line indexes after the top-level input
-    /// range. At least the final expanded member therefore sits outside the
-    /// persisted row count, which distinguishes even a one-member directory
-    /// without confusing flat files preceded by uri-list comments. The path
-    /// and empty-directory checks defend the same invariant for decoded data.
+    /// Delegates the per-line decision to
+    /// [`EntryFileSetLine::indicates_directory_root`] so the detection rule
+    /// lives in exactly one place.
     pub fn has_directory_structure(&self) -> bool {
         let row_count = self.lines.len() as i64;
-        self.lines.iter().any(|line| {
-            line.member_location.as_ref().is_some_and(|location| {
-                location.kind == FileSetMemberKind::EmptyDirectory
-                    || location.relative_path.contains('/')
-                    || line.line_index >= row_count
-            })
-        })
+        self.lines
+            .iter()
+            .any(|line| line.indicates_directory_root(row_count))
     }
 
     /// 该清单中 `File` 行的内容 hash,已排序。

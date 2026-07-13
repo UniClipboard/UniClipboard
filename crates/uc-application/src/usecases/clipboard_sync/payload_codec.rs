@@ -29,6 +29,7 @@ use anyhow::{anyhow, Result};
 use bytes::Bytes;
 
 use uc_core::clipboard::normalize_wire_mime;
+use uc_core::clipboard::FileSetMemberKind;
 use uc_core::ids::{EntryId, FormatId, RepresentationId};
 use uc_core::network::protocol::{BinaryRepresentation, ClipboardBinaryPayload};
 use uc_core::ports::blob::BlobTicket;
@@ -36,9 +37,12 @@ use uc_core::ports::blob::BlobTicket;
 use uc_core::MimeType;
 use uc_core::{ObservedClipboardRepresentation, SystemClipboardSnapshot};
 
+use super::apply_inbound::{InboundFileSetManifest, InboundFileSetMember};
+
 /// V3 blob refs trailer magic. Each ref carries 6 fields:
 /// `ticket / entry_id / filename / mime / size_bytes / representation_index`.
 const BLOB_REFS_MAGIC: &[u8; 4] = b"UCBS";
+const FILE_SET_MAGIC: &[u8; 4] = b"UCDS";
 const NONE_STRING_LEN: u16 = u16::MAX;
 const NONE_U32_MARKER: u8 = 0;
 const SOME_U32_MARKER: u8 = 1;
@@ -121,6 +125,20 @@ pub fn encode_snapshot_with_blob_refs_to_v3_bytes(
     Ok((Bytes::from(out), snapshot_hash))
 }
 
+pub fn encode_snapshot_with_blob_refs_and_file_set_to_v3_bytes(
+    snapshot: &SystemClipboardSnapshot,
+    blob_refs: &[V3BlobRef],
+    manifest: &InboundFileSetManifest,
+) -> Result<(Bytes, String)> {
+    let (bytes, snapshot_hash) = encode_snapshot_to_v3_bytes(snapshot)?;
+    let mut out = bytes.to_vec();
+    write_blob_refs_extension(&mut out, blob_refs)
+        .map_err(|e| anyhow!("encode V3 blob refs extension: {e}"))?;
+    write_file_set_extension(&mut out, manifest)
+        .map_err(|e| anyhow!("encode directory file-set extension: {e}"))?;
+    Ok((Bytes::from(out), snapshot_hash))
+}
+
 /// Decode V3 envelope bytes back into a `SystemClipboardSnapshot`.
 ///
 /// Each `BinaryRepresentation` becomes an
@@ -140,6 +158,17 @@ pub fn decode_v3_bytes_to_snapshot(bytes: &[u8]) -> Result<SystemClipboardSnapsh
 pub fn decode_v3_bytes_to_snapshot_and_blob_refs(
     bytes: &[u8],
 ) -> Result<(SystemClipboardSnapshot, Vec<V3BlobRef>)> {
+    let (snapshot, blob_refs, _) = decode_v3_bytes_to_snapshot_blob_refs_and_file_set(bytes)?;
+    Ok((snapshot, blob_refs))
+}
+
+pub fn decode_v3_bytes_to_snapshot_blob_refs_and_file_set(
+    bytes: &[u8],
+) -> Result<(
+    SystemClipboardSnapshot,
+    Vec<V3BlobRef>,
+    Option<InboundFileSetManifest>,
+)> {
     let mut cursor = bytes;
     let payload = ClipboardBinaryPayload::decode_from(&mut cursor)
         .map_err(|e| anyhow!("decode V3 envelope: {e}"))?;
@@ -160,7 +189,8 @@ pub fn decode_v3_bytes_to_snapshot_and_blob_refs(
         })
         .collect();
 
-    let blob_refs = read_blob_refs_extension(cursor)?;
+    let (blob_refs, trailing) = read_blob_refs_extension_with_remainder(cursor)?;
+    let file_set_manifest = read_file_set_extension(trailing)?;
     Ok((
         SystemClipboardSnapshot {
             ts_ms: payload.ts_ms,
@@ -169,6 +199,7 @@ pub fn decode_v3_bytes_to_snapshot_and_blob_refs(
             file_set_v1_component: None,
         },
         blob_refs,
+        file_set_manifest,
     ))
 }
 
@@ -200,9 +231,9 @@ fn write_blob_refs_extension<W: Write>(
     Ok(())
 }
 
-fn read_blob_refs_extension(mut bytes: &[u8]) -> Result<Vec<V3BlobRef>> {
+fn read_blob_refs_extension_with_remainder(mut bytes: &[u8]) -> Result<(Vec<V3BlobRef>, &[u8])> {
     if bytes.is_empty() {
-        return Ok(Vec::new());
+        return Ok((Vec::new(), bytes));
     }
 
     let mut magic = [0u8; 4];
@@ -238,13 +269,94 @@ fn read_blob_refs_extension(mut bytes: &[u8]) -> Result<Vec<V3BlobRef>> {
         });
     }
 
+    Ok((refs, bytes))
+}
+
+fn write_file_set_extension<W: Write>(
+    writer: &mut W,
+    manifest: &InboundFileSetManifest,
+) -> std::io::Result<()> {
+    if manifest.members.is_empty() || manifest.members.len() > MAX_BLOB_REFS {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            format!(
+                "directory member count {} is outside 1..={MAX_BLOB_REFS}",
+                manifest.members.len()
+            ),
+        ));
+    }
+    writer.write_all(FILE_SET_MAGIC)?;
+    writer.write_all(&(manifest.members.len() as u16).to_le_bytes())?;
+    for member in &manifest.members {
+        let kind = match member.kind {
+            FileSetMemberKind::File => b'f',
+            FileSetMemberKind::Executable => b'x',
+            FileSetMemberKind::EmptyDirectory => b'd',
+        };
+        writer.write_all(&[kind])?;
+        writer.write_all(&[u8::from(member.root_is_file)])?;
+        writer.write_all(&member.root_index.to_le_bytes())?;
+        write_string_u16(writer, &member.root_name, "root_name")?;
+        write_string_u16(writer, &member.relative_path, "relative_path")?;
+        write_optional_u32(writer, member.blob_ref_index)?;
+    }
+    Ok(())
+}
+
+fn read_file_set_extension(mut bytes: &[u8]) -> Result<Option<InboundFileSetManifest>> {
+    if bytes.is_empty() {
+        return Ok(None);
+    }
+    let mut magic = [0u8; 4];
+    bytes
+        .read_exact(&mut magic)
+        .map_err(|e| anyhow!("read directory file-set magic: {e}"))?;
+    if &magic != FILE_SET_MAGIC {
+        return Err(anyhow!("unknown V3 trailing extension"));
+    }
+    let count = read_u16(&mut bytes, "directory_member_count")? as usize;
+    if count == 0 || count > MAX_BLOB_REFS {
+        return Err(anyhow!(
+            "directory_member_count {count} is outside 1..={MAX_BLOB_REFS}"
+        ));
+    }
+    let mut members = Vec::with_capacity(count);
+    for _ in 0..count {
+        let mut kind = [0u8; 1];
+        bytes
+            .read_exact(&mut kind)
+            .map_err(|e| anyhow!("read directory member kind: {e}"))?;
+        let kind = match kind[0] {
+            b'f' => FileSetMemberKind::File,
+            b'x' => FileSetMemberKind::Executable,
+            b'd' => FileSetMemberKind::EmptyDirectory,
+            other => return Err(anyhow!("invalid directory member kind byte: {other}")),
+        };
+        let mut root_is_file = [0u8; 1];
+        bytes
+            .read_exact(&mut root_is_file)
+            .map_err(|e| anyhow!("read directory root kind: {e}"))?;
+        let root_is_file = match root_is_file[0] {
+            0 => false,
+            1 => true,
+            other => return Err(anyhow!("invalid directory root kind byte: {other}")),
+        };
+        members.push(InboundFileSetMember {
+            kind,
+            root_is_file,
+            root_index: read_u32(&mut bytes, "root_index")?,
+            root_name: read_string_u16(&mut bytes, "root_name")?,
+            relative_path: read_string_u16(&mut bytes, "relative_path")?,
+            blob_ref_index: read_optional_u32(&mut bytes, "blob_ref_index")?,
+        });
+    }
     if !bytes.is_empty() {
         return Err(anyhow!(
-            "V3 blob refs extension has {} trailing byte(s)",
+            "directory file-set extension has {} trailing byte(s)",
             bytes.len()
         ));
     }
-    Ok(refs)
+    Ok(Some(InboundFileSetManifest { members }))
 }
 
 fn write_bytes_u32<W: Write>(writer: &mut W, value: &[u8], label: &str) -> std::io::Result<()> {
@@ -568,6 +680,57 @@ mod tests {
         assert_eq!(refs.len(), 1);
         assert_eq!(refs[0], blob_ref);
         assert_eq!(refs[0].representation_index, Some(0));
+    }
+
+    #[test]
+    fn directory_manifest_round_trip_preserves_member_locations() {
+        use crate::usecases::clipboard_sync::apply_inbound::{
+            InboundFileSetManifest, InboundFileSetMember,
+        };
+        use uc_core::clipboard::FileSetMemberKind;
+
+        let original = fixture_snapshot("directory placeholder");
+        let blob_ref = V3BlobRef {
+            ticket: BlobTicket::from_bytes(vec![9, 8, 7]),
+            entry_id: EntryId::from("directory-entry"),
+            filename: Some("run.sh".to_string()),
+            mime: None,
+            size_bytes: 12,
+            representation_index: None,
+        };
+        let manifest = InboundFileSetManifest {
+            members: vec![
+                InboundFileSetMember {
+                    root_index: 0,
+                    root_name: "project".to_string(),
+                    root_is_file: false,
+                    relative_path: "bin/run.sh".to_string(),
+                    kind: FileSetMemberKind::Executable,
+                    blob_ref_index: Some(0),
+                },
+                InboundFileSetMember {
+                    root_index: 0,
+                    root_name: "project".to_string(),
+                    root_is_file: false,
+                    relative_path: "empty".to_string(),
+                    kind: FileSetMemberKind::EmptyDirectory,
+                    blob_ref_index: None,
+                },
+            ],
+        };
+
+        let (bytes, _) = encode_snapshot_with_blob_refs_and_file_set_to_v3_bytes(
+            &original,
+            std::slice::from_ref(&blob_ref),
+            &manifest,
+        )
+        .unwrap();
+        let (decoded, refs, decoded_manifest) =
+            decode_v3_bytes_to_snapshot_blob_refs_and_file_set(&bytes).unwrap();
+
+        assert_eq!(decoded.ts_ms, original.ts_ms);
+        assert_eq!(refs, vec![blob_ref]);
+        assert_eq!(decoded_manifest, Some(manifest));
     }
 
     /// Verdict 6 —— 不带扩展时新 decoder 返回空 blob 引用,保持普通文本

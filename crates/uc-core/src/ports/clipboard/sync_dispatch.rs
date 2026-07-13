@@ -59,6 +59,9 @@ impl ClipboardHeader {
     /// - v1: initial Slice 2 Phase 2 format (no `flow_id`)
     /// - v2: adds `flow_id` for cross-device trace correlation
     pub const CURRENT_VERSION: u8 = 2;
+    /// Frames carrying a directory member manifest require a receiver that
+    /// understands the all-or-nothing directory reconstruction contract.
+    pub const DIRECTORY_VERSION: u8 = 3;
 }
 
 /// Opaque ciphertext already sealed by the application layer. Phase 2 keeps

@@ -23,13 +23,17 @@ use uc_core::{MimeType, ObservedClipboardRepresentation, SystemClipboardSnapshot
 use uc_observability::FlowId;
 
 use crate::usecases::clipboard_sync::payload_codec::{
-    encode_snapshot_to_v3_bytes, encode_snapshot_with_blob_refs_to_v3_bytes, V3BlobRef,
+    encode_snapshot_to_v3_bytes, encode_snapshot_with_blob_refs_and_file_set_to_v3_bytes,
+    encode_snapshot_with_blob_refs_to_v3_bytes, V3BlobRef,
 };
 
 use super::materializer::{
-    FileCacheBlobMaterializer, InboundBlobFetcher, InboundBlobMaterializer, MaterializeResult,
+    compute_file_set_component, FileCacheBlobMaterializer, InboundBlobFetcher,
+    InboundBlobMaterializer, InboundFileSetManifest, InboundFileSetMember, MaterializeResult,
+    RootRenamer,
 };
 use super::ports::{InboundCapture, InboundWrite};
+use super::usecase::verify_file_set_identity;
 use super::usecase::ApplyInboundClipboardUseCase;
 use super::{ApplyInboundError, ApplyInboundInput, ApplyOutcome};
 
@@ -83,6 +87,28 @@ mockall::mock! {
     }
 }
 
+#[derive(Default)]
+struct FailFirstRootRenamer {
+    calls: std::sync::atomic::AtomicUsize,
+}
+
+#[async_trait]
+impl RootRenamer for FailFirstRootRenamer {
+    async fn rename(
+        &self,
+        source: &std::path::Path,
+        destination: &std::path::Path,
+    ) -> std::io::Result<()> {
+        if self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst) == 0 {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::CrossesDevices,
+                "forced cross-device rename",
+            ));
+        }
+        tokio::fs::rename(source, destination).await
+    }
+}
+
 mockall::mock! {
     pub Capture {}
     #[async_trait]
@@ -114,6 +140,7 @@ mockall::mock! {
             receiver_entry_id: EntryId,
             snapshot: SystemClipboardSnapshot,
             blob_refs: Vec<V3BlobRef>,
+            file_set_manifest: Option<InboundFileSetManifest>,
         ) -> Result<MaterializeResult>;
     }
 }
@@ -131,6 +158,12 @@ mockall::mock! {
             &self,
             command: crate::facade::blob_transfer::FetchBlobToPathCommand,
         ) -> Result<crate::facade::blob_transfer::FetchBlobToPathResult>;
+
+        async fn record_unfetched_failure(
+            &self,
+            context: crate::facade::blob_transfer::FetchTransferContext,
+            detail: String,
+        );
     }
 }
 
@@ -158,6 +191,20 @@ fn fixture_input(text: &str) -> (ApplyInboundInput, String) {
         },
         snapshot_hash,
     )
+}
+
+#[test]
+fn directory_identity_verification_rejects_mismatched_snapshot_hash() {
+    let snapshot = SystemClipboardSnapshot {
+        ts_ms: 1,
+        representations: Vec::new(),
+        file_content_digests: Vec::new(),
+        file_set_v1_component: Some([1; 32]),
+    };
+
+    let error = verify_file_set_identity(&snapshot, "blake3v1:deadbeef")
+        .expect_err("mismatched directory identity must fail");
+    assert!(error.to_string().contains("identity mismatch"));
 }
 
 fn fixture_input_from_snapshot(snapshot: SystemClipboardSnapshot) -> (ApplyInboundInput, String) {
@@ -737,11 +784,15 @@ async fn materializes_blob_refs_before_capture_and_write() {
     materializer
         .expect_materialize()
         .times(1)
-        .withf(move |_from_device, _receiver_entry_id, snapshot, refs| {
-            snapshot.representations[0].expect_inline_bytes() == b"file:///sender/original.txt\n"
-                && refs == &vec![blob_ref.clone()]
-        })
-        .returning(|_from_device, _receiver_entry_id, mut snapshot, _| {
+        .withf(
+            move |_from_device, _receiver_entry_id, snapshot, refs, manifest| {
+                assert!(manifest.is_none());
+                snapshot.representations[0].expect_inline_bytes()
+                    == b"file:///sender/original.txt\n"
+                    && refs == &vec![blob_ref.clone()]
+            },
+        )
+        .returning(|_from_device, _receiver_entry_id, mut snapshot, _, _| {
             snapshot.representations[0]
                 .set_inline_bytes(b"file:///local/cache/original.txt\n".to_vec())
                 .unwrap();
@@ -821,7 +872,7 @@ async fn partial_materialize_persists_entry_but_skips_os_write() {
     // 已被重写为带 uniclip-missing:// 占位,missing 列表非空。
     let mut materializer = MockBlobMaterializer::new();
     materializer.expect_materialize().times(1).returning(
-        |_from_device, _receiver_entry_id, mut snapshot, _| {
+        |_from_device, _receiver_entry_id, mut snapshot, _, _| {
             snapshot.representations[0]
                 .set_inline_bytes(
                     b"uniclip-missing:///big.iso?size=950000000&reason=cancelled".to_vec(),
@@ -912,7 +963,7 @@ async fn partial_materialize_does_not_register_dedup_entry() {
     let mut materializer = MockBlobMaterializer::new();
     let call_count = std::sync::atomic::AtomicUsize::new(0);
     materializer.expect_materialize().times(2).returning(
-        move |_from_device, _receiver_entry_id, mut snapshot, _| {
+        move |_from_device, _receiver_entry_id, mut snapshot, _, _| {
             let n = call_count.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
             if n == 0 {
                 snapshot.representations[0]
@@ -1020,6 +1071,7 @@ async fn file_cache_blob_materializer_writes_file_and_rewrites_file_uri_list() {
             EntryId::from("entry-receiver"),
             snapshot,
             vec![blob_ref],
+            None,
         )
         .await
         .expect("materialize should succeed");
@@ -1041,6 +1093,711 @@ async fn file_cache_blob_materializer_writes_file_and_rewrites_file_uri_list() {
         .await
         .expect("materialized file should exist");
     assert_eq!(bytes, b"hello world");
+}
+
+#[tokio::test]
+async fn directory_materializer_rebuilds_nested_tree_and_empty_directory() {
+    use uc_core::clipboard::FileSetMemberKind;
+
+    let cache_dir = tempfile::tempdir().expect("cache dir");
+    let sender_entry_id = EntryId::from("entry-directory");
+    let receiver_entry_id = EntryId::from("receiver-directory");
+    let blob_ref = V3BlobRef {
+        ticket: BlobTicket::from_bytes(vec![4, 5, 6]),
+        entry_id: sender_entry_id,
+        filename: Some("notes.txt".to_string()),
+        mime: Some("text/plain".to_string()),
+        size_bytes: 5,
+        representation_index: None,
+    };
+    let manifest = InboundFileSetManifest {
+        members: vec![
+            InboundFileSetMember {
+                root_index: 0,
+                root_name: "project".to_string(),
+                root_is_file: false,
+                relative_path: "docs/notes.txt".to_string(),
+                kind: FileSetMemberKind::File,
+                blob_ref_index: Some(0),
+            },
+            InboundFileSetMember {
+                root_index: 0,
+                root_name: "project".to_string(),
+                root_is_file: false,
+                relative_path: "empty".to_string(),
+                kind: FileSetMemberKind::EmptyDirectory,
+                blob_ref_index: None,
+            },
+        ],
+    };
+    let snapshot = SystemClipboardSnapshot {
+        ts_ms: 1,
+        representations: vec![ObservedClipboardRepresentation::new(
+            RepresentationId::new(),
+            FormatId::from("files"),
+            Some(MimeType("text/uri-list".to_string())),
+            b"file:///sender/project\n".to_vec(),
+        )],
+        file_content_digests: Vec::new(),
+        file_set_v1_component: None,
+    };
+
+    let mut fetcher = MockBlobFetcher::new();
+    fetcher
+        .expect_fetch_blob_to_path()
+        .times(1)
+        .returning(|command| {
+            std::fs::write(&command.target_path, b"hello").expect("write nested file");
+            Ok(crate::facade::blob_transfer::FetchBlobToPathResult {
+                entry_id: command.entry_id,
+                plaintext_hash: PlaintextHash::from_bytes([7; 32]),
+                digest: BlobDigest::from_bytes([8; 32]),
+                bytes_written: 5,
+            })
+        });
+
+    let materializer =
+        FileCacheBlobMaterializer::new(Arc::new(fetcher), cache_dir.path().to_path_buf());
+    let result = materializer
+        .materialize(
+            DeviceId::new("peer-x"),
+            receiver_entry_id.clone(),
+            snapshot,
+            vec![blob_ref],
+            Some(manifest),
+        )
+        .await
+        .expect("directory materialize");
+
+    let root = cache_dir
+        .path()
+        .join("iroh-blobs")
+        .join(receiver_entry_id.as_ref())
+        .join("project");
+    assert_eq!(
+        std::fs::read(root.join("docs/notes.txt")).unwrap(),
+        b"hello"
+    );
+    assert!(root.join("empty").is_dir());
+    assert!(result.snapshot.file_set_v1_component.is_some());
+    let uri_list = String::from_utf8(
+        result.snapshot.representations[0]
+            .expect_inline_bytes()
+            .to_vec(),
+    )
+    .unwrap();
+    assert_eq!(
+        url::Url::parse(uri_list.trim())
+            .unwrap()
+            .to_file_path()
+            .unwrap(),
+        root
+    );
+    assert!(!cache_dir.path().join("iroh-blobs/staging").exists());
+}
+
+#[tokio::test]
+async fn directory_materializer_copies_complete_tree_when_direct_rename_crosses_devices() {
+    use uc_core::clipboard::FileSetMemberKind;
+
+    let cache_dir = tempfile::tempdir().expect("cache dir");
+    let receiver_entry_id = EntryId::from("receiver-cross-volume");
+    let manifest = InboundFileSetManifest {
+        members: vec![InboundFileSetMember {
+            root_index: 0,
+            root_name: "project".to_string(),
+            root_is_file: false,
+            relative_path: "nested/notes.txt".to_string(),
+            kind: FileSetMemberKind::File,
+            blob_ref_index: Some(0),
+        }],
+    };
+    let blob_ref = V3BlobRef {
+        ticket: BlobTicket::from_bytes(vec![9]),
+        entry_id: EntryId::from("sender-cross-volume"),
+        filename: Some("notes.txt".to_string()),
+        mime: Some("text/plain".to_string()),
+        size_bytes: 5,
+        representation_index: None,
+    };
+    let snapshot = SystemClipboardSnapshot {
+        ts_ms: 1,
+        representations: Vec::new(),
+        file_content_digests: Vec::new(),
+        file_set_v1_component: None,
+    };
+    let mut fetcher = MockBlobFetcher::new();
+    fetcher
+        .expect_fetch_blob_to_path()
+        .times(1)
+        .returning(|command| {
+            std::fs::write(&command.target_path, b"hello").expect("write staged member");
+            Ok(crate::facade::blob_transfer::FetchBlobToPathResult {
+                entry_id: command.entry_id,
+                plaintext_hash: PlaintextHash::from_bytes([3; 32]),
+                digest: BlobDigest::from_bytes([4; 32]),
+                bytes_written: 5,
+            })
+        });
+    let renamer = Arc::new(FailFirstRootRenamer::default());
+    let materializer =
+        FileCacheBlobMaterializer::new(Arc::new(fetcher), cache_dir.path().to_path_buf())
+            .with_root_renamer(renamer.clone());
+
+    materializer
+        .materialize(
+            DeviceId::new("peer-x"),
+            receiver_entry_id.clone(),
+            snapshot,
+            vec![blob_ref],
+            Some(manifest),
+        )
+        .await
+        .expect("copy fallback should materialize");
+
+    let entry_root = cache_dir
+        .path()
+        .join("iroh-blobs")
+        .join(receiver_entry_id.as_ref());
+    assert_eq!(
+        std::fs::read(entry_root.join("project/nested/notes.txt")).unwrap(),
+        b"hello"
+    );
+    assert!(!entry_root.join(".uniclip-staging-project").exists());
+    assert!(!cache_dir.path().join("iroh-blobs/staging").exists());
+    assert_eq!(renamer.calls.load(std::sync::atomic::Ordering::SeqCst), 2);
+}
+
+#[tokio::test]
+async fn directory_materializer_preserves_mixed_top_level_file_and_directory() {
+    use uc_core::clipboard::FileSetMemberKind;
+
+    let cache_dir = tempfile::tempdir().expect("cache dir");
+    let receiver_entry_id = EntryId::from("receiver-mixed-roots");
+    let blob_refs = ["loose.txt", "child.txt"]
+        .into_iter()
+        .enumerate()
+        .map(|(index, filename)| V3BlobRef {
+            ticket: BlobTicket::from_bytes(vec![index as u8 + 1]),
+            entry_id: EntryId::from(format!("sender-mixed-{index}")),
+            filename: Some(filename.to_string()),
+            mime: None,
+            size_bytes: 5,
+            representation_index: None,
+        })
+        .collect::<Vec<_>>();
+    let manifest = InboundFileSetManifest {
+        members: vec![
+            InboundFileSetMember {
+                root_index: 0,
+                root_name: "loose.txt".to_string(),
+                root_is_file: true,
+                relative_path: "loose.txt".to_string(),
+                kind: FileSetMemberKind::File,
+                blob_ref_index: Some(0),
+            },
+            InboundFileSetMember {
+                root_index: 1,
+                root_name: "folder".to_string(),
+                root_is_file: false,
+                relative_path: "child.txt".to_string(),
+                kind: FileSetMemberKind::File,
+                blob_ref_index: Some(1),
+            },
+        ],
+    };
+    let snapshot = SystemClipboardSnapshot {
+        ts_ms: 1,
+        representations: Vec::new(),
+        file_content_digests: Vec::new(),
+        file_set_v1_component: None,
+    };
+    let mut fetcher = MockBlobFetcher::new();
+    fetcher
+        .expect_fetch_blob_to_path()
+        .times(2)
+        .returning(|command| {
+            std::fs::write(&command.target_path, b"hello").unwrap();
+            Ok(crate::facade::blob_transfer::FetchBlobToPathResult {
+                entry_id: command.entry_id,
+                plaintext_hash: PlaintextHash::from_bytes([5; 32]),
+                digest: BlobDigest::from_bytes([6; 32]),
+                bytes_written: 5,
+            })
+        });
+    let materializer =
+        FileCacheBlobMaterializer::new(Arc::new(fetcher), cache_dir.path().to_path_buf());
+
+    materializer
+        .materialize(
+            DeviceId::new("peer-x"),
+            receiver_entry_id.clone(),
+            snapshot,
+            blob_refs,
+            Some(manifest),
+        )
+        .await
+        .expect("mixed roots should materialize");
+
+    let target = cache_dir
+        .path()
+        .join("iroh-blobs")
+        .join(receiver_entry_id.as_ref());
+    assert_eq!(std::fs::read(target.join("loose.txt")).unwrap(), b"hello");
+    assert_eq!(
+        std::fs::read(target.join("folder/child.txt")).unwrap(),
+        b"hello"
+    );
+}
+
+#[tokio::test]
+async fn apply_inbound_materializes_and_commits_mixed_directory_payload() {
+    use std::collections::BTreeMap;
+
+    use uc_core::clipboard::FileSetMemberKind;
+
+    let cache_dir = tempfile::tempdir().expect("cache dir");
+    let blob_refs = ["loose.txt", "child.txt"]
+        .into_iter()
+        .enumerate()
+        .map(|(index, filename)| V3BlobRef {
+            ticket: BlobTicket::from_bytes(vec![index as u8 + 1]),
+            entry_id: EntryId::from(format!("sender-full-flow-{index}")),
+            filename: Some(filename.to_string()),
+            mime: Some("text/plain".to_string()),
+            size_bytes: 5,
+            representation_index: None,
+        })
+        .collect::<Vec<_>>();
+    let manifest = InboundFileSetManifest {
+        members: vec![
+            InboundFileSetMember {
+                root_index: 0,
+                root_name: "loose.txt".to_string(),
+                root_is_file: true,
+                relative_path: "loose.txt".to_string(),
+                kind: FileSetMemberKind::File,
+                blob_ref_index: Some(0),
+            },
+            InboundFileSetMember {
+                root_index: 1,
+                root_name: "folder".to_string(),
+                root_is_file: false,
+                relative_path: "child.txt".to_string(),
+                kind: FileSetMemberKind::File,
+                blob_ref_index: Some(1),
+            },
+        ],
+    };
+    let member_digests = BTreeMap::from([(0, [5; 32]), (1, [6; 32])]);
+    let snapshot = SystemClipboardSnapshot {
+        ts_ms: 1,
+        representations: vec![ObservedClipboardRepresentation::new(
+            RepresentationId::new(),
+            FormatId::from("files"),
+            Some(MimeType("text/uri-list".to_string())),
+            b"file:///sender/loose.txt\r\nfile:///sender/folder\r\n".to_vec(),
+        )],
+        file_content_digests: Vec::new(),
+        file_set_v1_component: Some(
+            compute_file_set_component(&manifest, &member_digests).expect("file-set component"),
+        ),
+    };
+    let (plaintext, snapshot_hash) =
+        encode_snapshot_with_blob_refs_and_file_set_to_v3_bytes(&snapshot, &blob_refs, &manifest)
+            .expect("encode directory payload");
+
+    let mut repo = MockEntryRepo::new();
+    repo.expect_find_entry_id_by_snapshot_hash()
+        .with(eq(snapshot_hash.clone()))
+        .times(1)
+        .returning(|_| Ok(None));
+
+    let mut fetcher = MockBlobFetcher::new();
+    fetcher
+        .expect_fetch_blob_to_path()
+        .times(2)
+        .returning(|command| {
+            let index = usize::from(command.ticket.as_bytes()[0] - 1);
+            std::fs::write(&command.target_path, b"hello").expect("write fetched member");
+            Ok(crate::facade::blob_transfer::FetchBlobToPathResult {
+                entry_id: command.entry_id,
+                plaintext_hash: PlaintextHash::from_bytes(if index == 0 {
+                    [5; 32]
+                } else {
+                    [6; 32]
+                }),
+                digest: BlobDigest::from_bytes([7; 32]),
+                bytes_written: 5,
+            })
+        });
+
+    let mut capture = MockCapture::new();
+    capture
+        .expect_capture()
+        .times(1)
+        .withf(|_, _, snapshot| snapshot_paths_exist(snapshot))
+        .returning(|entry_id, _, _| Ok(Some(entry_id)));
+
+    let write_completed = Arc::new(tokio::sync::Notify::new());
+    let mut write = MockWrite::new();
+    write
+        .expect_write()
+        .times(1)
+        .withf(snapshot_paths_exist)
+        .returning({
+            let write_completed = Arc::clone(&write_completed);
+            move |_| {
+                write_completed.notify_one();
+                Ok(())
+            }
+        });
+
+    let materializer =
+        FileCacheBlobMaterializer::new(Arc::new(fetcher), cache_dir.path().to_path_buf());
+    let uc = ApplyInboundClipboardUseCase::new(Arc::new(repo), Arc::new(capture), Arc::new(write))
+        .with_blob_materializer(Arc::new(materializer));
+    let outcome = uc
+        .execute(ApplyInboundInput {
+            from_device: DeviceId::new("peer-full-flow"),
+            snapshot_hash,
+            plaintext,
+            flow_id: None,
+        })
+        .await
+        .expect("directory payload should apply");
+    assert!(matches!(outcome, ApplyOutcome::Applied { .. }));
+    tokio::time::timeout(
+        std::time::Duration::from_secs(1),
+        write_completed.notified(),
+    )
+    .await
+    .expect("clipboard write should complete");
+}
+
+fn snapshot_paths_exist(snapshot: &SystemClipboardSnapshot) -> bool {
+    let Some(rep) = snapshot.representations.iter().find(|rep| {
+        rep.mime
+            .as_ref()
+            .is_some_and(|mime| mime.0 == "text/uri-list")
+    }) else {
+        return false;
+    };
+    let Ok(uri_list) = std::str::from_utf8(rep.expect_inline_bytes()) else {
+        return false;
+    };
+    let paths = uri_list
+        .lines()
+        .filter_map(|line| url::Url::parse(line).ok())
+        .filter_map(|url| url.to_file_path().ok())
+        .collect::<Vec<_>>();
+    paths.len() == 2
+        && paths.iter().any(|path| path.is_file())
+        && paths.iter().any(|path| path.join("child.txt").is_file())
+}
+
+#[tokio::test]
+async fn directory_materializer_removes_staging_and_exposes_nothing_on_failure() {
+    use uc_core::clipboard::FileSetMemberKind;
+
+    let cache_dir = tempfile::tempdir().expect("cache dir");
+    let receiver_entry_id = EntryId::from("receiver-failed-directory");
+    let blob_refs = ["first.txt", "second.txt", "third.txt"]
+        .into_iter()
+        .enumerate()
+        .map(|(index, name)| V3BlobRef {
+            ticket: BlobTicket::from_bytes(vec![index as u8 + 1]),
+            entry_id: EntryId::from(format!("sender-{index}")),
+            filename: Some(name.to_string()),
+            mime: None,
+            size_bytes: 1,
+            representation_index: None,
+        })
+        .collect::<Vec<_>>();
+    let manifest = InboundFileSetManifest {
+        members: blob_refs
+            .iter()
+            .enumerate()
+            .map(|(index, blob_ref)| InboundFileSetMember {
+                root_index: 0,
+                root_name: "folder".to_string(),
+                root_is_file: false,
+                relative_path: blob_ref.filename.clone().unwrap(),
+                kind: FileSetMemberKind::File,
+                blob_ref_index: Some(index as u32),
+            })
+            .collect(),
+    };
+    let snapshot = SystemClipboardSnapshot {
+        ts_ms: 1,
+        representations: Vec::new(),
+        file_content_digests: Vec::new(),
+        file_set_v1_component: None,
+    };
+
+    let mut fetcher = MockBlobFetcher::new();
+    let mut call = 0usize;
+    let transfer_ids = Arc::new(Mutex::new(Vec::new()));
+    let recorded_ids = Arc::clone(&transfer_ids);
+    fetcher
+        .expect_fetch_blob_to_path()
+        .times(2)
+        .returning(move |command| {
+            let context = command.transfer_context.as_ref().expect("transfer context");
+            assert_eq!(context.entry_id, "receiver-failed-directory");
+            assert!(context.individual_lifecycle);
+            recorded_ids
+                .lock()
+                .unwrap()
+                .push(context.transfer_id.clone());
+            call += 1;
+            if call == 2 {
+                anyhow::bail!("network failed");
+            }
+            std::fs::write(&command.target_path, b"a").expect("write first staged file");
+            Ok(crate::facade::blob_transfer::FetchBlobToPathResult {
+                entry_id: command.entry_id,
+                plaintext_hash: PlaintextHash::from_bytes([1; 32]),
+                digest: BlobDigest::from_bytes([2; 32]),
+                bytes_written: 1,
+            })
+        });
+    fetcher
+        .expect_record_unfetched_failure()
+        .times(1)
+        .withf(|context, detail| {
+            context.entry_id == "receiver-failed-directory"
+                && context.filename == "third.txt"
+                && context.individual_lifecycle
+                && detail.contains("network failed")
+        })
+        .return_const(());
+
+    let materializer =
+        FileCacheBlobMaterializer::new(Arc::new(fetcher), cache_dir.path().to_path_buf());
+    let error = materializer
+        .materialize(
+            DeviceId::new("peer-x"),
+            receiver_entry_id.clone(),
+            snapshot,
+            blob_refs,
+            Some(manifest),
+        )
+        .await
+        .expect_err("directory failure must fail the whole entry");
+
+    assert!(error.to_string().contains("network failed"));
+    let transfer_ids = transfer_ids.lock().unwrap();
+    assert_eq!(transfer_ids.len(), 2);
+    assert_ne!(transfer_ids[0], transfer_ids[1]);
+    assert!(!cache_dir
+        .path()
+        .join("iroh-blobs")
+        .join(receiver_entry_id.as_ref())
+        .join("folder")
+        .exists());
+    assert!(!cache_dir.path().join("iroh-blobs/staging").exists());
+}
+
+#[tokio::test]
+async fn directory_materializer_suffixes_existing_and_same_paste_root_names() {
+    use uc_core::clipboard::FileSetMemberKind;
+
+    let cache_dir = tempfile::tempdir().expect("cache dir");
+    let receiver_entry_id = EntryId::from("receiver-collisions");
+    let destination = cache_dir
+        .path()
+        .join("iroh-blobs")
+        .join(receiver_entry_id.as_ref());
+    std::fs::create_dir_all(destination.join("folder")).unwrap();
+    let manifest = InboundFileSetManifest {
+        members: vec![
+            InboundFileSetMember {
+                root_index: 0,
+                root_name: "folder".to_string(),
+                root_is_file: false,
+                relative_path: "empty-a".to_string(),
+                kind: FileSetMemberKind::EmptyDirectory,
+                blob_ref_index: None,
+            },
+            InboundFileSetMember {
+                root_index: 1,
+                root_name: "folder".to_string(),
+                root_is_file: false,
+                relative_path: "empty-b".to_string(),
+                kind: FileSetMemberKind::EmptyDirectory,
+                blob_ref_index: None,
+            },
+        ],
+    };
+    let snapshot = SystemClipboardSnapshot {
+        ts_ms: 1,
+        representations: Vec::new(),
+        file_content_digests: Vec::new(),
+        file_set_v1_component: None,
+    };
+
+    let materializer = FileCacheBlobMaterializer::new(
+        Arc::new(MockBlobFetcher::new()),
+        cache_dir.path().to_path_buf(),
+    );
+    let result = materializer
+        .materialize(
+            DeviceId::new("peer-x"),
+            receiver_entry_id,
+            snapshot,
+            Vec::new(),
+            Some(manifest),
+        )
+        .await
+        .expect("empty directory set should materialize");
+
+    assert!(destination.join("folder (2)/empty-a").is_dir());
+    assert!(destination.join("folder (3)/empty-b").is_dir());
+    let uri_list = String::from_utf8(
+        result.snapshot.representations[0]
+            .expect_inline_bytes()
+            .to_vec(),
+    )
+    .unwrap();
+    assert_eq!(uri_list.lines().count(), 2);
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn directory_materializer_restores_executable_permission() {
+    use std::os::unix::fs::PermissionsExt;
+    use uc_core::clipboard::FileSetMemberKind;
+
+    let cache_dir = tempfile::tempdir().expect("cache dir");
+    let receiver_entry_id = EntryId::from("receiver-executable");
+    let blob_ref = V3BlobRef {
+        ticket: BlobTicket::from_bytes(vec![3]),
+        entry_id: EntryId::from("sender-executable"),
+        filename: Some("run.sh".to_string()),
+        mime: None,
+        size_bytes: 9,
+        representation_index: None,
+    };
+    let manifest = InboundFileSetManifest {
+        members: vec![InboundFileSetMember {
+            root_index: 0,
+            root_name: "scripts".to_string(),
+            root_is_file: false,
+            relative_path: "run.sh".to_string(),
+            kind: FileSetMemberKind::Executable,
+            blob_ref_index: Some(0),
+        }],
+    };
+    let snapshot = SystemClipboardSnapshot {
+        ts_ms: 1,
+        representations: Vec::new(),
+        file_content_digests: Vec::new(),
+        file_set_v1_component: None,
+    };
+    let mut fetcher = MockBlobFetcher::new();
+    fetcher
+        .expect_fetch_blob_to_path()
+        .times(1)
+        .returning(|command| {
+            std::fs::write(&command.target_path, b"#!/bin/sh").unwrap();
+            Ok(crate::facade::blob_transfer::FetchBlobToPathResult {
+                entry_id: command.entry_id,
+                plaintext_hash: PlaintextHash::from_bytes([3; 32]),
+                digest: BlobDigest::from_bytes([4; 32]),
+                bytes_written: 9,
+            })
+        });
+
+    let materializer =
+        FileCacheBlobMaterializer::new(Arc::new(fetcher), cache_dir.path().to_path_buf());
+    materializer
+        .materialize(
+            DeviceId::new("peer-x"),
+            receiver_entry_id.clone(),
+            snapshot,
+            vec![blob_ref],
+            Some(manifest),
+        )
+        .await
+        .unwrap();
+
+    let mode = std::fs::metadata(
+        cache_dir
+            .path()
+            .join("iroh-blobs")
+            .join(receiver_entry_id.as_ref())
+            .join("scripts/run.sh"),
+    )
+    .unwrap()
+    .permissions()
+    .mode();
+    assert_ne!(mode & 0o111, 0);
+}
+
+#[cfg(windows)]
+#[tokio::test]
+async fn directory_materializer_keeps_executable_member_as_regular_windows_file() {
+    use uc_core::clipboard::FileSetMemberKind;
+
+    let cache_dir = tempfile::tempdir().expect("cache dir");
+    let receiver_entry_id = EntryId::from("receiver-windows-executable");
+    let blob_ref = V3BlobRef {
+        ticket: BlobTicket::from_bytes(vec![3]),
+        entry_id: EntryId::from("sender-windows-executable"),
+        filename: Some("run.cmd".to_string()),
+        mime: None,
+        size_bytes: 7,
+        representation_index: None,
+    };
+    let manifest = InboundFileSetManifest {
+        members: vec![InboundFileSetMember {
+            root_index: 0,
+            root_name: "scripts".to_string(),
+            root_is_file: false,
+            relative_path: "run.cmd".to_string(),
+            kind: FileSetMemberKind::Executable,
+            blob_ref_index: Some(0),
+        }],
+    };
+    let snapshot = SystemClipboardSnapshot {
+        ts_ms: 1,
+        representations: Vec::new(),
+        file_content_digests: Vec::new(),
+        file_set_v1_component: None,
+    };
+    let mut fetcher = MockBlobFetcher::new();
+    fetcher
+        .expect_fetch_blob_to_path()
+        .times(1)
+        .returning(|command| {
+            std::fs::write(&command.target_path, b"echo ok").unwrap();
+            Ok(crate::facade::blob_transfer::FetchBlobToPathResult {
+                entry_id: command.entry_id,
+                plaintext_hash: PlaintextHash::from_bytes([3; 32]),
+                digest: BlobDigest::from_bytes([4; 32]),
+                bytes_written: 7,
+            })
+        });
+
+    FileCacheBlobMaterializer::new(Arc::new(fetcher), cache_dir.path().to_path_buf())
+        .materialize(
+            DeviceId::new("peer-x"),
+            receiver_entry_id.clone(),
+            snapshot,
+            vec![blob_ref],
+            Some(manifest),
+        )
+        .await
+        .unwrap();
+
+    let path = cache_dir
+        .path()
+        .join("iroh-blobs")
+        .join(receiver_entry_id.as_ref())
+        .join("scripts/run.cmd");
+    assert_eq!(std::fs::read(&path).unwrap(), b"echo ok");
+    assert!(!std::fs::metadata(path).unwrap().permissions().readonly());
 }
 
 /// Fake reserver: redirects every inbound file flat into `dir`.
@@ -1116,6 +1873,7 @@ async fn file_cache_blob_materializer_redirects_to_reserved_user_dir() {
             EntryId::from("entry-receiver"),
             snapshot,
             vec![blob_ref],
+            None,
         )
         .await
         .expect("materialize should succeed");
@@ -1194,6 +1952,7 @@ async fn file_cache_blob_materializer_removes_reserved_placeholder_on_fetch_erro
             EntryId::from("entry-receiver"),
             snapshot,
             vec![blob_ref],
+            None,
         )
         .await
         .expect("partial materialize should succeed (fetch error is soft)");
@@ -1261,6 +2020,7 @@ async fn file_cache_blob_materializer_inlines_representation_bound_blob_into_rep
             EntryId::from("entry-receiver"),
             snapshot,
             vec![blob_ref],
+            None,
         )
         .await
         .expect("representation-bound materialize should succeed");
@@ -1329,6 +2089,7 @@ async fn file_cache_blob_materializer_rejects_out_of_bounds_representation_index
             EntryId::from("entry-receiver"),
             snapshot,
             vec![blob_ref],
+            None,
         )
         .await
         .expect_err("out-of-bounds index should fail");
@@ -1405,6 +2166,7 @@ async fn file_cache_blob_materializer_partial_on_cancel_mid_batch() {
             EntryId::from("entry-receiver"),
             snapshot,
             vec![blob_ref_ok, blob_ref_cancel],
+            None,
         )
         .await
         .expect("partial materialize should succeed (no real error)");
@@ -1476,6 +2238,7 @@ async fn file_cache_blob_materializer_partial_on_cancel_first_file() {
             EntryId::from("entry-receiver"),
             snapshot,
             vec![blob_ref],
+            None,
         )
         .await
         .expect("first-file cancel still yields Ok(partial)");
@@ -1532,6 +2295,7 @@ async fn file_cache_blob_materializer_partial_on_rep_cancel_no_files() {
             EntryId::from("entry-receiver"),
             snapshot,
             vec![blob_ref],
+            None,
         )
         .await
         .expect("rep-only cancel yields Ok(partial)");
@@ -1688,7 +2452,7 @@ async fn partial_match_is_upgraded_in_place_by_complete_delivery() {
 
     let mut materializer = MockBlobMaterializer::new();
     materializer.expect_materialize().times(1).returning(
-        |_from_device, _receiver_entry_id, mut snapshot, _| {
+        |_from_device, _receiver_entry_id, mut snapshot, _, _| {
             snapshot.representations[0]
                 .set_inline_bytes(b"file:///local/cache/payload.bin\n".to_vec())
                 .unwrap();
@@ -1775,7 +2539,7 @@ async fn partial_delivery_does_not_replace_existing_partial() {
 
     let mut materializer = MockBlobMaterializer::new();
     materializer.expect_materialize().times(1).returning(
-        |_from_device, _receiver_entry_id, mut snapshot, _| {
+        |_from_device, _receiver_entry_id, mut snapshot, _, _| {
             snapshot.representations[0]
                 .set_inline_bytes(
                     b"uniclip-missing:///payload.bin?size=10&reason=cancelled".to_vec(),

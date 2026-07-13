@@ -22,7 +22,7 @@ use crate::facade::clipboard_live_index::{
 use crate::facade::host_event::{
     ClipboardHostEvent, ClipboardOriginKind, HostEvent, TransferHostEvent,
 };
-use crate::usecases::clipboard_sync::payload_codec::decode_v3_bytes_to_snapshot_and_blob_refs;
+use crate::usecases::clipboard_sync::payload_codec::decode_v3_bytes_to_snapshot_blob_refs_and_file_set;
 
 use super::materializer::InboundBlobMaterializer;
 use super::ports::{InboundCapture, InboundWrite};
@@ -282,8 +282,8 @@ impl ApplyInboundClipboardUseCase {
         tracing::Span::current().record("flow.id", tracing::field::display(&flow_id));
         // 1. Decode V3 envelope. Decode failure is non-fatal — drop the
         // frame, keep the loop alive (peer may be on a newer wire).
-        let (snapshot, blob_refs) =
-            match decode_v3_bytes_to_snapshot_and_blob_refs(input.plaintext.as_ref()) {
+        let (snapshot, blob_refs, file_set_manifest) =
+            match decode_v3_bytes_to_snapshot_blob_refs_and_file_set(input.plaintext.as_ref()) {
                 Ok(decoded) => decoded,
                 Err(e) => {
                     let reason = e.to_string();
@@ -363,9 +363,11 @@ impl ApplyInboundClipboardUseCase {
             filenames: advertised_filenames,
         }));
 
-        let (snapshot, is_partial) = match (blob_refs.is_empty(), &self.blob_materializer) {
-            (true, _) => (snapshot, false),
-            (false, Some(materializer)) => {
+        let requires_materialize = !blob_refs.is_empty() || file_set_manifest.is_some();
+        let verify_directory_identity = file_set_manifest.is_some();
+        let (snapshot, is_partial) = match (requires_materialize, &self.blob_materializer) {
+            (false, _) => (snapshot, false),
+            (true, Some(materializer)) => {
                 let count = blob_refs.len();
                 let result = materializer
                     .materialize(
@@ -373,6 +375,7 @@ impl ApplyInboundClipboardUseCase {
                         receiver_entry_id.clone(),
                         snapshot,
                         blob_refs,
+                        file_set_manifest,
                     )
                     .await
                     .map_err(|e| {
@@ -390,6 +393,21 @@ impl ApplyInboundClipboardUseCase {
                         ApplyInboundError::Internal(format!("blob materialize: {e}"))
                     })?;
                 let partial = result.is_partial();
+                if verify_directory_identity {
+                    verify_file_set_identity(&result.snapshot, &input.snapshot_hash).map_err(
+                        |err| {
+                            self.emit_host_event(HostEvent::Transfer(
+                                TransferHostEvent::StatusChanged {
+                                    transfer_id: receiver_entry_id.as_ref().to_string(),
+                                    entry_id: receiver_entry_id.as_ref().to_string(),
+                                    status: "failed".to_string(),
+                                    reason: Some(err.to_string()),
+                                },
+                            ));
+                            ApplyInboundError::Internal(err.to_string())
+                        },
+                    )?;
+                }
                 info!(
                     blob_ref_count = count,
                     rep_count = result.snapshot.representations.len(),
@@ -400,7 +418,7 @@ impl ApplyInboundClipboardUseCase {
                 );
                 (result.snapshot, partial)
             }
-            (false, None) => {
+            (true, None) => {
                 let reason =
                     "payload contains blob refs but no blob materializer is wired".to_string();
                 warn!(reason, "inbound dropped: blob materializer missing");
@@ -636,6 +654,19 @@ impl ApplyInboundClipboardUseCase {
 
         Ok(ApplyOutcome::Applied { entry_id })
     }
+}
+
+pub(crate) fn verify_file_set_identity(
+    snapshot: &SystemClipboardSnapshot,
+    expected_snapshot_hash: &str,
+) -> anyhow::Result<()> {
+    let actual = snapshot.snapshot_hash().to_string();
+    if actual != expected_snapshot_hash {
+        anyhow::bail!(
+            "directory file-set identity mismatch: expected {expected_snapshot_hash}, got {actual}"
+        );
+    }
+    Ok(())
 }
 
 /// Compact summary of the snapshot's representations for tracing.

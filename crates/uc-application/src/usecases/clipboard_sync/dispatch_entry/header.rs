@@ -41,7 +41,7 @@ impl OutboundHeaderFactory {
     ) -> ClipboardHeader {
         let origin_device_name = self.load_origin_device_name().await;
         ClipboardHeader {
-            version: ClipboardHeader::CURRENT_VERSION,
+            version: input.wire_version,
             snapshot_hash: input.snapshot_hash.clone(),
             captured_at_ms: self.clock.now_ms(),
             origin_device_id: local_device.as_str().to_string(),
@@ -114,6 +114,23 @@ mod tests {
         assert_eq!(header.origin_device_id, "self-device");
         assert_eq!(header.origin_device_name, "Alice Laptop");
         assert_eq!(header.flow_id, Some(flow.to_string()));
+    }
+
+    #[tokio::test]
+    async fn build_preserves_directory_wire_requirement() {
+        let mut settings = MockSettings_::new();
+        settings
+            .expect_load()
+            .returning(|| Ok(settings_with_device_name("Alice Laptop")));
+        let factory = factory(settings, MockLocalIdentity::new());
+        let mut input = dispatch_input();
+        input.wire_version = ClipboardHeader::DIRECTORY_VERSION;
+
+        let header = factory
+            .build(&input, &FlowId::generate(), &dev("self-device"))
+            .await;
+
+        assert_eq!(header.version, ClipboardHeader::DIRECTORY_VERSION);
     }
 
     /// No usable settings name (absent) ⇒ fall back to the fingerprint

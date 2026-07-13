@@ -133,6 +133,10 @@ struct WireHeaderV1 {
     payload_version: u8,
 }
 
+/// Postcard schema shared by wire versions v2 and v3. The two versions are
+/// byte-identical; the leading `version` byte alone gates receiver
+/// compatibility — v3 signals that a directory member manifest travels in the
+/// payload trailer and must only be sent to peers that can rebuild the tree.
 #[derive(Serialize, Deserialize, Debug)]
 struct WireHeaderV2 {
     version: u8,
@@ -161,6 +165,8 @@ pub enum WireEncodeError {
     PayloadTooLarge { size: usize, max: u32 },
     #[error("stream io: {0}")]
     Io(std::io::Error),
+    #[error("unsupported outbound clipboard wire version {0}")]
+    UnsupportedVersion(u8),
 }
 
 #[derive(Debug, Error)]
@@ -187,19 +193,24 @@ pub enum WireDecodeError {
 /// magic byte or length prefix — callers typically run this once and hand
 /// the bytes (plus the payload) to [`write_frame`].
 ///
-/// 永远以 v2 schema 编码;v1 仅作为兼容老对端的*解码*入口存在(见
-/// [`decode_header`])。
+/// v2 与 v3 共用同一份 postcard schema([`WireHeaderV2`]),仅版本号不同;
+/// v1 仅作为兼容老对端的*解码*入口存在(见 [`decode_header`])。
 pub fn encode_header(header: &ClipboardHeader) -> Result<Vec<u8>, WireEncodeError> {
-    let wire = WireHeaderV2 {
-        version: ClipboardHeader::CURRENT_VERSION,
+    if !matches!(
+        header.version,
+        ClipboardHeader::CURRENT_VERSION | ClipboardHeader::DIRECTORY_VERSION
+    ) {
+        return Err(WireEncodeError::UnsupportedVersion(header.version));
+    }
+    let bytes = postcard::to_allocvec(&WireHeaderV2 {
+        version: header.version,
         snapshot_hash: header.snapshot_hash.clone(),
         captured_at_ms: header.captured_at_ms,
         origin_device_id: header.origin_device_id.clone(),
         origin_device_name: header.origin_device_name.clone(),
         payload_version: header.payload_version,
         flow_id: header.flow_id.clone(),
-    };
-    let bytes = postcard::to_allocvec(&wire)?;
+    })?;
     if bytes.len() > MAX_HEADER_SIZE as usize {
         return Err(WireEncodeError::HeaderTooLarge {
             size: bytes.len(),
@@ -233,7 +244,9 @@ pub fn decode_header(bytes: &[u8]) -> Result<ClipboardHeader, WireDecodeError> {
                 flow_id: None,
             })
         }
-        2 => {
+        // v2 and v3 share the same schema; the version byte gates the payload
+        // trailer, not the header layout.
+        2 | 3 => {
             let wire: WireHeaderV2 = postcard::from_bytes(bytes)?;
             Ok(ClipboardHeader {
                 version: wire.version,
@@ -247,7 +260,7 @@ pub fn decode_header(bytes: &[u8]) -> Result<ClipboardHeader, WireDecodeError> {
         }
         other => Err(WireDecodeError::UnsupportedVersion {
             got: other,
-            expected: ClipboardHeader::CURRENT_VERSION,
+            expected: ClipboardHeader::DIRECTORY_VERSION,
         }),
     }
 }
@@ -509,7 +522,7 @@ mod tests {
     #[tokio::test]
     async fn decode_rejects_future_header_version() {
         let future = WireHeaderV2 {
-            version: ClipboardHeader::CURRENT_VERSION + 1,
+            version: ClipboardHeader::DIRECTORY_VERSION + 1,
             snapshot_hash: "stub".to_string(),
             captured_at_ms: 0,
             origin_device_id: "d".to_string(),
@@ -521,8 +534,8 @@ mod tests {
 
         match decode_header(&bytes) {
             Err(WireDecodeError::UnsupportedVersion { got, expected }) => {
-                assert_eq!(got, ClipboardHeader::CURRENT_VERSION + 1);
-                assert_eq!(expected, ClipboardHeader::CURRENT_VERSION);
+                assert_eq!(got, ClipboardHeader::DIRECTORY_VERSION + 1);
+                assert_eq!(expected, ClipboardHeader::DIRECTORY_VERSION);
             }
             other => panic!("expected UnsupportedVersion, got {other:?}"),
         }
@@ -566,6 +579,19 @@ mod tests {
         let decoded = decode_header(&bytes).unwrap();
         assert_eq!(decoded.flow_id, header.flow_id);
         assert_eq!(decoded.version, ClipboardHeader::CURRENT_VERSION);
+    }
+
+    #[tokio::test]
+    async fn directory_header_round_trip_uses_v3_without_changing_default_version() {
+        let mut header = sample_header();
+        header.version = ClipboardHeader::DIRECTORY_VERSION;
+
+        let bytes = encode_header(&header).unwrap();
+        let decoded = decode_header(&bytes).unwrap();
+
+        assert_eq!(decoded.version, ClipboardHeader::DIRECTORY_VERSION);
+        assert_eq!(decoded.flow_id, header.flow_id);
+        assert_eq!(ClipboardHeader::CURRENT_VERSION, 2);
     }
 
     /// Ack codec sanity — the three defined variants round-trip through

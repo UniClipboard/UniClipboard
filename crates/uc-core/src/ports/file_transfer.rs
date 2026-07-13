@@ -82,7 +82,7 @@ pub struct EntryTransferSummary {
     pub aggregate_status: TrackedFileTransferStatus,
     /// Human-readable reason when aggregate is `Failed`.
     pub failure_reason: Option<String>,
-    /// Transfer IDs belonging to this entry.
+    /// Transfer IDs belonging to this entry, sorted for deterministic reads.
     pub transfer_ids: Vec<String>,
 }
 

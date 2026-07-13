@@ -30,7 +30,7 @@ type MotionConflictingProps =
 
 export interface SwitchProps extends Omit<
   React.ComponentProps<'button'>,
-  'onChange' | 'children' | MotionConflictingProps
+  'onChange' | 'onClick' | 'children' | MotionConflictingProps
 > {
   checked: boolean
   onCheckedChange?: (checked: boolean) => void
@@ -81,6 +81,7 @@ function Switch({
         }}
         onPointerUp={() => setIsPressed(false)}
         onPointerLeave={() => setIsPressed(false)}
+        onPointerCancel={() => setIsPressed(false)}
         initial={false}
         className={cn(
           'peer inline-flex shrink-0 cursor-pointer items-center rounded-full outline-none transition-colors duration-200',

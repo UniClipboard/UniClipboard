@@ -21,7 +21,7 @@
 // (lib/ease.ts, ...) are written once by the first component and skipped after.
 
 import { mkdir, writeFile, readFile, access } from 'node:fs/promises'
-import { dirname, resolve, join } from 'node:path'
+import { dirname, resolve, join, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { execFileSync } from 'node:child_process'
 
@@ -99,6 +99,12 @@ for (const slug of slugs) {
       continue
     }
     const target = join(SRC, file.path)
+    // Sandbox: registry data is untrusted; reject paths that escape src/.
+    if (!resolve(target).startsWith(SRC + sep)) {
+      console.error(`✗ ${file.path}: resolves outside src/, skipping`)
+      process.exitCode = 1
+      continue
+    }
     if (await exists(target)) {
       skipped.push(`${file.path} (already exists)`)
       continue

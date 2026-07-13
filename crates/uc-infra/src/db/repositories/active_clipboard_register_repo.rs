@@ -216,10 +216,18 @@ impl<E: DbExecutor> LoadMobileConsumableClipboardPort
                     error = %err,
                     "mobile-consumable reference ciphertext is unreadable; discarding it"
                 );
+                // CAS on the exact unreadable bytes: a concurrent advance or
+                // backfill may have replaced the column with a valid envelope
+                // between the read above and this clear, and that value must
+                // survive.
                 if let Err(clear_err) = self.executor.run(move |conn| {
                     diesel::update(
                         active_clipboard_register::table
-                            .filter(active_clipboard_register::id.eq(REGISTER_ROW_ID)),
+                            .filter(active_clipboard_register::id.eq(REGISTER_ROW_ID))
+                            .filter(
+                                active_clipboard_register::consumable_ref_ciphertext
+                                    .eq(&ciphertext),
+                            ),
                     )
                     .set(active_clipboard_register::consumable_ref_ciphertext.eq(None::<Vec<u8>>))
                     .execute(conn)?;

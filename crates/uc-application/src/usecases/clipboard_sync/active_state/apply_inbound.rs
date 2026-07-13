@@ -666,18 +666,21 @@ mod tests {
         }
     }
 
-    /// Spies on `advance` — the early-return tests assert it is never called.
+    /// Spies on `advance` — the early-return tests assert it is never called;
+    /// convergence tests assert the propagated `mobile_consumable` verdict.
     #[derive(Default)]
     struct AdvanceSpy {
         calls: AtomicUsize,
+        consumable: Mutex<Vec<bool>>,
     }
     #[async_trait]
     impl AdvanceActiveClipboardPort for AdvanceSpy {
         async fn advance(
             &self,
             _state: &ActiveClipboardState,
-            _mobile_consumable: bool,
+            mobile_consumable: bool,
         ) -> Result<bool, ActiveClipboardRegisterError> {
+            self.consumable.lock().unwrap().push(mobile_consumable);
             self.calls.fetch_add(1, Ordering::SeqCst);
             Ok(true)
         }
@@ -1228,6 +1231,7 @@ mod tests {
         store: Option<Arc<dyn InboundPulledContentStore>>,
         stored_entry_id: EntryId,
         peer_addr_repo: Arc<dyn PeerAddressRepositoryPort>,
+        probe: MobileConsumabilityProbe,
     ) -> Harness {
         let advance = Arc::new(AdvanceSpy::default());
         let dispatch = Arc::new(DispatchSpy::default());
@@ -1265,7 +1269,7 @@ mod tests {
             peer_addr_repo,
             Arc::new(StaticPresence(ReachabilityState::Online)),
             Arc::new(FixedClock(1_000)),
-            MobileConsumabilityProbe::new(Arc::new(crate::test_support::FixedFileSets::empty())),
+            probe,
             converged_tx,
         );
         if let (Some(pull_client), Some(store)) = (pull_client, store) {
@@ -1289,6 +1293,7 @@ mod tests {
             store,
             stored_entry_id,
             Arc::new(EmptyPeerAddrRepo),
+            MobileConsumabilityProbe::new(Arc::new(crate::test_support::FixedFileSets::empty())),
         )
     }
 
@@ -1354,6 +1359,7 @@ mod tests {
             Some(Arc::clone(&store) as _),
             stored_entry_id,
             Arc::new(OnePeerAddrRepo("peer-rebroadcast".to_string())),
+            MobileConsumabilityProbe::new(Arc::new(crate::test_support::FixedFileSets::empty())),
         );
         h.uc.handle_one(inbound("blake3v1:aa", 1_000, "dev-x"))
             .await;
@@ -1361,6 +1367,11 @@ mod tests {
         assert!(
             wait_for_advance(&h.advance).await,
             "register must advance after a successful pull + store + OS write"
+        );
+        assert_eq!(
+            h.advance.consumable.lock().unwrap().as_slice(),
+            &[true],
+            "flat content must propagate the consumable verdict to advance"
         );
         assert_eq!(
             pull_client.calls.load(Ordering::SeqCst),
@@ -1378,6 +1389,37 @@ mod tests {
             h.dispatch.calls.load(Ordering::SeqCst),
             1,
             "converged state must be re-broadcast to the allowed peer"
+        );
+    }
+
+    /// The 0xC3 convergence path must feed the probe's directory verdict into
+    /// `advance` — a directory-shaped local entry advances the register as
+    /// non-consumable so the mobile shadow reference is preserved.
+    #[tokio::test]
+    async fn pull_success_advances_directory_content_as_non_consumable() {
+        let stored_entry_id = EntryId::from("entry-pulled-dir");
+        let pull_client = PullClientSpy::new(Ok(b"transfer-envelope".to_vec()));
+        let store = Arc::new(StoreSpy {
+            entry_id: stored_entry_id.clone(),
+            seen_envelope: Mutex::new(None),
+        });
+        let h = pull_harness_with_peers(
+            Some(Arc::clone(&pull_client) as _),
+            Some(Arc::clone(&store) as _),
+            stored_entry_id,
+            Arc::new(EmptyPeerAddrRepo),
+            MobileConsumabilityProbe::new(Arc::new(crate::test_support::FixedFileSets(Ok(Some(
+                crate::test_support::nested_file_set(),
+            ))))),
+        );
+        h.uc.handle_one(inbound("blake3v1:dir", 1_000, "dev-x"))
+            .await;
+
+        assert!(wait_for_advance(&h.advance).await, "register must advance");
+        assert_eq!(
+            h.advance.consumable.lock().unwrap().as_slice(),
+            &[false],
+            "directory content must advance the register as non-consumable"
         );
     }
 }

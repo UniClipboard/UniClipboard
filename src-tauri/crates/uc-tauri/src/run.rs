@@ -275,9 +275,6 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
 
     let runtime = Arc::new(TauriAppRuntime::new(client_deps));
 
-    // Startup barrier used to coordinate backend readiness and main window show timing.
-    let startup_barrier = Arc::new(crate::commands::startup::StartupBarrier::default());
-
     let disable_single_instance = std::env::var("UC_DISABLE_SINGLE_INSTANCE").as_deref() == Ok("1");
 
     // Store TaskRegistry reference for exit hook registration
@@ -340,7 +337,6 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
                 "[StartupTiming] main webview page load"
             );
 
-            if matches!(payload.event(), PageLoadEvent::Finished) {}
         })
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_opener::init())
@@ -648,18 +644,12 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
             ));
             app.manage(crate::commands::settings::KeyboardShortcutsUpdateLock::default());
 
-            // Pre-create quick panel (hidden) so the first
-            // shortcut press doesn't activate the app via WebviewWindowBuilder::build()
+            // Create the main window before any auxiliary webview. On Windows,
+            // the first WebView2 cold start is expensive; letting the hidden
+            // quick panel initialize first delays the user-facing navigation.
+            // The main window stays hidden until PageLoadEvent::Finished.
             //
-            // 同样按 `quick_panel_enabled` 门控:禁用时不预创建窗口,避免占用
-            // webview 资源。用户在设置页开启时由 `set_quick_panel_enabled`
-            // 即时补一次 `pre_create`,不需要重启 GUI。
-            if quick_panel_enabled {
-                quick_panel::pre_create(app.handle());
-            }
-
-            // Create + show the window based on the resolved startup mode. The
-            // main window is declared with `create: false`, so a Silent or
+            // The main window is declared with `create: false`, so a Silent or
             // Lightweight start never pays the webview cost — the window only
             // comes into existence on the first explicit open, when
             // `show_main_window` creates it from config on demand. That is
@@ -682,6 +672,14 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
                 }
             }
 
+            // Pre-create the hidden quick panel only after the main window has
+            // claimed WebView2 initialization priority. This still avoids the
+            // first-shortcut activation problem while keeping the user-facing
+            // window on the critical startup path.
+            if quick_panel_enabled {
+                quick_panel::pre_create(app.handle());
+            }
+
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
             app.handle()
                 .plugin(tauri_plugin_updater::Builder::new().build())?;
@@ -700,11 +698,9 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
 
             // Clone handles for async blocks
             let app_handle_for_startup = app.handle().clone();
-            let startup_barrier_for_backend = startup_barrier.clone();
 
             // Spawn the initialization task immediately (don't wait for frontend)
             let runtime = runtime.clone();
-            let silent_start_for_barrier = silent_start;
             tauri::async_runtime::spawn(async move {
                 info!("Starting backend initialization");
 
@@ -714,15 +710,9 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
                     // Non-fatal: continue startup even if device name initialization fails
                 }
 
-                // Mark backend-side startup tasks completed. We now finish startup based on backend readiness
-                // to avoid deadlocks when the main window is hidden; frontend handles its own loading state.
-                info!("[Startup] Backend startup tasks completed, marking backend_ready");
-                startup_barrier_for_backend.mark_backend_ready();
-                if !silent_start_for_barrier {
-                    startup_barrier_for_backend.try_finish(&app_handle_for_startup);
-                } else {
-                    info!("[Startup] Silent start: skipping startup barrier window show");
-                }
+                // Frontend loading state owns backend readiness presentation;
+                // window visibility is handled independently by main_window.
+                info!("[Startup] Backend startup tasks completed");
 
                 // 1. Daemon-dependent startup actions (non-blocking), all as RPCs
                 // over daemon loopback HTTP: auto-unlock + lifecycle retry,

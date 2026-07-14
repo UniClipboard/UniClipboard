@@ -998,11 +998,11 @@ mod tests {
     }
 
     #[async_trait]
-    impl uc_core::ports::clipboard::LoadActiveClipboardPort for UnusedEntryRepo {
-        async fn load(
+    impl uc_core::ports::clipboard::LoadMobileConsumableClipboardPort for UnusedEntryRepo {
+        async fn load_mobile_consumable(
             &self,
         ) -> Result<
-            Option<uc_core::clipboard::ActiveClipboardState>,
+            Option<uc_core::clipboard::MobileConsumableRef>,
             uc_core::ports::clipboard::ActiveClipboardRegisterError,
         > {
             unimplemented!("not used by facade-level happy-path tests")
@@ -1152,7 +1152,7 @@ mod tests {
             incoming_buffer: Arc::new(IncomingMobileBuffer::new()),
             file_staging: staging_unused(),
             snapshot_ports: MobileSyncSnapshotPorts {
-                active_register_load: Arc::new(UnusedEntryRepo),
+                mobile_consumable_load: Arc::new(UnusedEntryRepo),
                 entry_repo,
                 selection_repo: Arc::new(UnusedSelectionRepo),
                 representation_repo: Arc::new(UnusedRepRepo),
@@ -1319,7 +1319,7 @@ mod tests {
             incoming_buffer: Arc::new(IncomingMobileBuffer::new()),
             file_staging: staging_unused(),
             snapshot_ports: MobileSyncSnapshotPorts {
-                active_register_load: Arc::new(UnusedEntryRepo),
+                mobile_consumable_load: Arc::new(UnusedEntryRepo),
                 entry_repo,
                 selection_repo: Arc::new(UnusedSelectionRepo),
                 representation_repo: Arc::new(UnusedRepRepo),
@@ -1408,7 +1408,7 @@ mod tests {
             incoming_buffer: Arc::new(IncomingMobileBuffer::new()),
             file_staging: staging_unused(),
             snapshot_ports: MobileSyncSnapshotPorts {
-                active_register_load: Arc::new(UnusedEntryRepo),
+                mobile_consumable_load: Arc::new(UnusedEntryRepo),
                 entry_repo,
                 selection_repo: Arc::new(UnusedSelectionRepo),
                 representation_repo: Arc::new(UnusedRepRepo),
@@ -1528,7 +1528,7 @@ mod tests {
             incoming_buffer: Arc::new(IncomingMobileBuffer::new()),
             file_staging: staging_unused(),
             snapshot_ports: MobileSyncSnapshotPorts {
-                active_register_load: Arc::new(UnusedEntryRepo),
+                mobile_consumable_load: Arc::new(UnusedEntryRepo),
                 entry_repo,
                 selection_repo: Arc::new(UnusedSelectionRepo),
                 representation_repo: Arc::new(UnusedRepRepo),
@@ -1681,7 +1681,7 @@ mod tests {
             incoming_buffer: Arc::new(IncomingMobileBuffer::new()),
             file_staging: staging_unused(),
             snapshot_ports: MobileSyncSnapshotPorts {
-                active_register_load: Arc::new(UnusedEntryRepo),
+                mobile_consumable_load: Arc::new(UnusedEntryRepo),
                 entry_repo,
                 selection_repo: Arc::new(UnusedSelectionRepo),
                 representation_repo: Arc::new(UnusedRepRepo),

@@ -700,6 +700,7 @@ mod tests {
         async fn advance(
             &self,
             state: &ActiveClipboardState,
+            _mobile_consumable: bool,
         ) -> Result<bool, ActiveClipboardRegisterError> {
             self.advanced
                 .lock()
@@ -769,6 +770,9 @@ mod tests {
             register.clone(),
             Arc::new(FixedDevice),
             Arc::new(FixedClock),
+            crate::clipboard_write::MobileConsumabilityProbe::new(Arc::new(
+                crate::test_support::FixedFileSets::empty(),
+            )),
         );
         let uc = build_use_case(
             entry_repo,

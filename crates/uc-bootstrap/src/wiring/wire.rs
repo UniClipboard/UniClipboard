@@ -100,11 +100,6 @@ struct InfraLayer {
     representation_repo: Arc<dyn ClipboardRepresentationStore>,
     selection_repo: Arc<dyn ClipboardSelectionRepositoryPort>,
 
-    // Cross-device active-clipboard LWW register (single-row table).
-    active_clipboard_register: Arc<dyn uc_core::ports::clipboard::AdvanceActiveClipboardPort>,
-    active_clipboard_register_load: Arc<dyn uc_core::ports::clipboard::LoadActiveClipboardPort>,
-    active_clipboard_register_reset: Arc<dyn uc_core::ports::clipboard::ResetActiveClipboardPort>,
-
     // Membership repository (phase 4b PR-4 起成为唯一持久成员层).
     member_repo: Arc<dyn uc_core::MemberRepositoryPort>,
 
@@ -172,12 +167,6 @@ struct InfraLayer {
     // 持有具体类型是为了让 daemon 拿到写入面;同一份 Arc 通过 unsizing
     // coercion 也能 share 给 AppDeps.mobile_sync.endpoint_info。
     mobile_sync_endpoint_info: Arc<uc_infra::mobile_sync::InMemoryMobileSyncEndpointInfoAdapter>,
-
-    // Fan-out source for the mobile-sync LAN SSE endpoint; see
-    // `SharedRuntimeDeps::active_clipboard_sse_source` docs for the
-    // publisher/subscriber split.
-    active_clipboard_sse_source:
-        tokio::sync::broadcast::Sender<uc_core::clipboard::ActiveClipboardState>,
 }
 
 /// Create SQLite database connection pool
@@ -650,39 +639,6 @@ fn create_infra_layer(
     let selection_repo_impl = DieselClipboardSelectionRepository::new(Arc::clone(&db_executor));
     let selection_repo: Arc<dyn ClipboardSelectionRepositoryPort> = Arc::new(selection_repo_impl);
 
-    // One Diesel adapter implements the write (advance / SQL CAS), read (load),
-    // and reset (unconditional clear) sides of the single-row register; coerce
-    // it into each so every consumer holds only its slice (ports.md §8.3).
-    let active_clipboard_register_impl = Arc::new(
-        uc_infra::db::repositories::DieselActiveClipboardRegisterRepository::new(Arc::clone(
-            &db_executor,
-        )),
-    );
-    // Fan-out source for the mobile-sync LAN SSE endpoint: cloned into the
-    // `BroadcastingAdvance` decorator (publisher) below and carried out on
-    // `WiredDependencies.shared` for the daemon's mobile-sync listener
-    // assembly to hand a `Receiver` to each connection (subscriber).
-    //
-    // Capacity sizes each subscriber's unread backlog; overflowing it only
-    // degrades that connection to a `resync` frame (never an error), so it
-    // just needs to comfortably exceed any realistic burst of register
-    // advances between two polls of a connection task.
-    const ACTIVE_CLIPBOARD_SSE_CAPACITY: usize = 64;
-    let (active_clipboard_sse_source, _) = tokio::sync::broadcast::channel::<
-        uc_core::clipboard::ActiveClipboardState,
-    >(ACTIVE_CLIPBOARD_SSE_CAPACITY);
-    let active_clipboard_register: Arc<dyn uc_core::ports::clipboard::AdvanceActiveClipboardPort> =
-        Arc::new(uc_infra::clipboard::BroadcastingAdvance::new(
-            active_clipboard_register_impl.clone() as _,
-            active_clipboard_sse_source.clone(),
-        ));
-    let active_clipboard_register_load: Arc<
-        dyn uc_core::ports::clipboard::LoadActiveClipboardPort,
-    > = Arc::clone(&active_clipboard_register_impl) as _;
-    let active_clipboard_register_reset: Arc<
-        dyn uc_core::ports::clipboard::ResetActiveClipboardPort,
-    > = active_clipboard_register_impl as _;
-
     // One Diesel adapter implements all five receiver-side projection intent
     // ports; coerce it into each so every consumer holds only its slice.
     let file_transfer_adapter =
@@ -730,9 +686,6 @@ fn create_infra_layer(
         db_executor,
         representation_repo,
         selection_repo,
-        active_clipboard_register,
-        active_clipboard_register_load,
-        active_clipboard_register_reset,
         member_repo,
         trusted_peer_repo,
         peer_addr_repo,
@@ -753,7 +706,6 @@ fn create_infra_layer(
         file_transfer_store,
         mobile_device_ports,
         mobile_sync_endpoint_info,
-        active_clipboard_sse_source,
     };
 
     Ok(infra)
@@ -843,6 +795,54 @@ pub fn wire_dependencies(
                 platform.current_profile.clone(),
             ),
         );
+
+    // The mobile-consumable reference is encrypted with a session-derived
+    // subkey, so this register adapter must be assembled after space access and
+    // the active profile exist. One concrete adapter is exposed through narrow
+    // write, current-read, mobile-read, backfill, and reset ports.
+    let active_clipboard_register_impl = Arc::new(
+        uc_infra::db::repositories::DieselActiveClipboardRegisterRepository::new(
+            infra.db_executor.clone(),
+            space_access_ports.derive_subkey.clone(),
+            platform.current_profile.clone(),
+        ),
+    );
+    const ACTIVE_CLIPBOARD_SSE_CAPACITY: usize = 64;
+    let (active_clipboard_sse_source, _) = tokio::sync::broadcast::channel::<
+        uc_core::clipboard::ActiveClipboardState,
+    >(ACTIVE_CLIPBOARD_SSE_CAPACITY);
+    let active_clipboard_register: Arc<dyn uc_core::ports::clipboard::AdvanceActiveClipboardPort> =
+        Arc::new(uc_infra::clipboard::BroadcastingAdvance::new(
+            active_clipboard_register_impl.clone(),
+            active_clipboard_sse_source.clone(),
+        ));
+    let active_clipboard_register_load: Arc<
+        dyn uc_core::ports::clipboard::LoadActiveClipboardPort,
+    > = active_clipboard_register_impl.clone();
+    let mobile_consumable_load: Arc<
+        dyn uc_core::ports::clipboard::LoadMobileConsumableClipboardPort,
+    > = active_clipboard_register_impl.clone();
+    let mobile_consumable_backfill_port: Arc<
+        dyn uc_core::ports::clipboard::BackfillMobileConsumableClipboardPort,
+    > = active_clipboard_register_impl.clone();
+    // Single shared consumability probe: every register-advance path (local
+    // advancer, inbound apply, backfill) clones this one instance via
+    // `ClipboardPorts.mobile_consumability` instead of re-assembling it from
+    // the file-set repository.
+    let mobile_consumability =
+        uc_application::clipboard_write::MobileConsumabilityProbe::new(entry_file_set_repo.clone());
+    let mobile_consumable_backfill: Arc<
+        dyn uc_application::clipboard_write::MobileConsumableBackfill,
+    > = Arc::new(
+        uc_application::clipboard_write::MobileConsumableRefBackfill::new(
+            active_clipboard_register_load.clone(),
+            mobile_consumable_backfill_port,
+            mobile_consumability.clone(),
+        ),
+    );
+    let active_clipboard_register_reset: Arc<
+        dyn uc_core::ports::clipboard::ResetActiveClipboardPort,
+    > = active_clipboard_register_impl;
 
     // Wire the search bundle (Phase 92). Search only derives a subkey.
     let SearchAssembly {
@@ -953,9 +953,12 @@ pub fn wire_dependencies(
             clipboard_change_origin,
             worker_tx,
             payload_resolver,
-            active_register: infra.active_clipboard_register,
-            active_register_load: infra.active_clipboard_register_load,
-            active_register_reset: infra.active_clipboard_register_reset,
+            active_register: active_clipboard_register,
+            active_register_load: active_clipboard_register_load,
+            mobile_consumable_load,
+            mobile_consumable_backfill,
+            mobile_consumability,
+            active_register_reset: active_clipboard_register_reset,
         },
         security: SecurityPorts {
             current_profile: platform.current_profile,
@@ -1061,7 +1064,7 @@ pub fn wire_dependencies(
             clipboard_write_coordinator: Arc::clone(&clipboard_write_coordinator),
             file_cache_dir: paths.file_cache_dir.clone(),
             trusted_peer_repo: Arc::clone(&infra.trusted_peer_repo),
-            active_clipboard_sse_source: infra.active_clipboard_sse_source.clone(),
+            active_clipboard_sse_source,
         },
     };
     let background = BackgroundRuntimeDeps {

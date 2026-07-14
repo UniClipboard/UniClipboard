@@ -33,6 +33,7 @@ use uc_core::ports::{
 use uc_core::setup::SetupStatus;
 use uc_observability::analytics::AnalyticsFacade;
 
+use crate::clipboard_write::MobileConsumableBackfill;
 use crate::facade::space_setup::commands::{
     CurrentInvitation, InitializeSpaceCommand, InitializeSpaceInput, InitializeSpaceResult,
     IssuePairingInvitationResult, MigrationPhaseKind, MigrationProgress,
@@ -92,6 +93,7 @@ pub struct SpaceSetupFacade {
     /// clearing setup status.
     factory_reset: Arc<dyn FactoryResetSpacePort>,
     setup_status: Arc<dyn SetupStatusPort>,
+    mobile_consumable_backfill: Arc<dyn MobileConsumableBackfill>,
     /// Slice4 P3 T3.2 · `query_setup_state` reads `device_name` from
     /// `Settings.general`; `cancel_invitation` / `reset` need no
     /// settings access but the field stays `pub(crate)` so a future
@@ -146,6 +148,7 @@ impl SpaceSetupFacade {
             setup_status,
             settings,
             clock,
+            mobile_consumable_backfill,
             pairing_invitation,
             pairing_invitation_addresses,
             pairing_invitation_by_address,
@@ -325,6 +328,7 @@ impl SpaceSetupFacade {
             resume_session: resume_session_for_facade,
             factory_reset: factory_reset_for_facade,
             setup_status: setup_status_for_facade,
+            mobile_consumable_backfill,
             settings: settings_for_facade,
             invitation_holder: invitation_holder_for_facade,
             ensure_reachable_all,
@@ -421,6 +425,7 @@ impl SpaceSetupFacade {
                     "migration resume failed: {err}"
                 )));
             }
+            self.mobile_consumable_backfill.backfill_best_effort().await;
         }
 
         Ok(resumed)
@@ -520,6 +525,7 @@ impl SpaceSetupFacade {
                 "migration resume failed: {err}"
             )));
         }
+        self.mobile_consumable_backfill.backfill_best_effort().await;
 
         self.auto_prime_presence().await;
         Ok(out)
@@ -1452,6 +1458,8 @@ mod tests {
         IdentityFingerprint::from_raw_string("ABCDEFGHIJKLMNOP").unwrap()
     }
 
+    use crate::test_support::{CountingMobileConsumableBackfill, NoopMobileConsumableBackfill};
+
     fn make_facade(
         space_access: Arc<FakeSpaceAccess>,
         setup_status: Arc<dyn SetupStatusPort>,
@@ -1461,11 +1469,12 @@ mod tests {
         Arc<FakeInvitationPort>,
         Arc<FakePeerAddrRepo>,
     ) {
-        make_facade_with_migration_state(
+        make_facade_with(
             space_access,
             setup_status,
             settings,
             Arc::new(FakeMigrationState::default()),
+            Arc::new(NoopMobileConsumableBackfill),
         )
     }
 
@@ -1474,6 +1483,26 @@ mod tests {
         setup_status: Arc<dyn SetupStatusPort>,
         settings: Arc<dyn SettingsPort>,
         migration_state: Arc<FakeMigrationState>,
+    ) -> (
+        SpaceSetupFacade,
+        Arc<FakeInvitationPort>,
+        Arc<FakePeerAddrRepo>,
+    ) {
+        make_facade_with(
+            space_access,
+            setup_status,
+            settings,
+            migration_state,
+            Arc::new(NoopMobileConsumableBackfill),
+        )
+    }
+
+    fn make_facade_with(
+        space_access: Arc<FakeSpaceAccess>,
+        setup_status: Arc<dyn SetupStatusPort>,
+        settings: Arc<dyn SettingsPort>,
+        migration_state: Arc<FakeMigrationState>,
+        mobile_consumable_backfill: Arc<dyn MobileConsumableBackfill>,
     ) -> (
         SpaceSetupFacade,
         Arc<FakeInvitationPort>,
@@ -1493,6 +1522,7 @@ mod tests {
             setup_status,
             settings,
             clock: Arc::new(FixedClock(0)),
+            mobile_consumable_backfill,
             pairing_invitation: pairing_invitation.clone(),
             pairing_invitation_addresses: pairing_invitation.clone(),
             pairing_invitation_by_address: pairing_invitation.clone(),
@@ -1562,15 +1592,19 @@ mod tests {
             has_completed: true,
             space_id: None,
         };
-        let (facade, _inv, _peer) = make_facade(
+        let backfill = Arc::new(CountingMobileConsumableBackfill::default());
+        let (facade, _inv, _peer) = make_facade_with(
             Arc::new(FakeSpaceAccess::default()),
             Arc::new(setup_status),
             Arc::new(InMemorySettings::default()),
+            Arc::new(FakeMigrationState::default()),
+            backfill.clone(),
         );
         let cmd = UnlockSpaceInput {
             passphrase: "hunter22hunter22".to_string(),
         };
         facade.unlock_space(cmd).await.expect("A2 ok");
+        assert_eq!(backfill.calls(), 1);
     }
 
     #[tokio::test]

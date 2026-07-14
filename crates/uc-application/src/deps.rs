@@ -19,10 +19,11 @@ use uc_core::ports::clipboard::{
     ClipboardRepresentationNormalizerPort, DeleteClipboardEntryPort, EntryFileSetRepositoryPort,
     FindEntryIdBySnapshotHashPort, GetClipboardEntryPort, GetEntrySnapshotHashPort,
     GetRepresentationByBlobIdPort, GetRepresentationPort, ListClipboardEntriesPort,
-    ListRepresentationsForEventPort, LoadActiveClipboardPort, ReplaceEntryContentPort,
-    RepresentationCachePort, ResetActiveClipboardPort, SaveClipboardEntryPort, SelfWriteLedgerPort,
-    SetClipboardEntryFavoritePort, SpoolQueuePort, SystemClipboardPort, ThumbnailGeneratorPort,
-    ThumbnailRepositoryPort, TouchClipboardEntryPort, UpdateRepresentationProcessingResultPort,
+    ListRepresentationsForEventPort, LoadActiveClipboardPort, LoadMobileConsumableClipboardPort,
+    ReplaceEntryContentPort, RepresentationCachePort, ResetActiveClipboardPort,
+    SaveClipboardEntryPort, SelfWriteLedgerPort, SetClipboardEntryFavoritePort, SpoolQueuePort,
+    SystemClipboardPort, ThumbnailGeneratorPort, ThumbnailRepositoryPort, TouchClipboardEntryPort,
+    UpdateRepresentationProcessingResultPort,
 };
 use uc_core::ports::search::maintenance::SearchIndexMaintenancePort;
 use uc_core::ports::search::search_index::SearchIndexPort;
@@ -36,6 +37,8 @@ use uc_core::ports::space::{
 use uc_core::ports::*;
 use uc_core::MemberRepositoryPort;
 use uc_observability::analytics::AnalyticsPort;
+
+use crate::clipboard_write::{MobileConsumabilityProbe, MobileConsumableBackfill};
 
 // §11.4.3 — the `entry_identity` module is `pub(crate)`, but its coordinator is
 // held by the `pub` `ClipboardPorts` field below and threaded into `pub` use-case
@@ -122,6 +125,13 @@ pub struct ClipboardPorts {
     /// inbound 0xC3 state handler to decide whether an incoming observation
     /// supersedes the current value (LWW + loop-stop).
     pub active_register_load: Arc<dyn LoadActiveClipboardPort>,
+    pub mobile_consumable_load: Arc<dyn LoadMobileConsumableClipboardPort>,
+    pub mobile_consumable_backfill: Arc<dyn MobileConsumableBackfill>,
+    /// Single shared probe deciding whether an entry's content may reach a
+    /// mobile client (directory-shaped file sets may not). Constructed once
+    /// by the composition root; every register-advance path clones it from
+    /// here instead of re-assembling it from raw repositories.
+    pub mobile_consumability: MobileConsumabilityProbe,
     /// Cross-device active-clipboard LWW register reset port. Clears the
     /// register unconditionally; the startup reconcile uses it to drop a
     /// persisted row that no longer matches the live OS clipboard.

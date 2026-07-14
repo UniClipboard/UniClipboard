@@ -47,7 +47,9 @@ use uc_core::ports::space::IsSpaceUnlockedPort;
 use uc_core::ports::{ClockPort, PeerAddressRepositoryPort, PresencePort};
 use uc_core::MemberRepositoryPort;
 
-use crate::clipboard_write::{ClipboardWriteCoordinator, ClipboardWriteIntent};
+use crate::clipboard_write::{
+    ClipboardWriteCoordinator, ClipboardWriteIntent, MobileConsumabilityProbe,
+};
 
 use super::super::receive_gate::MemberReceiveGate;
 use super::super::send_gate::MemberSendGate;
@@ -144,6 +146,7 @@ pub(crate) struct ApplyInboundActiveClipboardStateUseCase {
     presence: Arc<dyn PresencePort>,
     send_gate: MemberSendGate,
     clock: Arc<dyn ClockPort>,
+    mobile_consumability: MobileConsumabilityProbe,
     /// On-demand pull of content this device observed but does not hold (D6).
     /// `None` when the pull subsystem is unwired — the "content missing"
     /// branch then logs and returns without converging.
@@ -177,6 +180,7 @@ impl ApplyInboundActiveClipboardStateUseCase {
         peer_addr_repo: Arc<dyn PeerAddressRepositoryPort>,
         presence: Arc<dyn PresencePort>,
         clock: Arc<dyn ClockPort>,
+        mobile_consumability: MobileConsumabilityProbe,
         converged_tx: broadcast::Sender<ActiveClipboardConvergedEvent>,
     ) -> Self {
         Self {
@@ -193,6 +197,7 @@ impl ApplyInboundActiveClipboardStateUseCase {
             presence,
             send_gate: MemberSendGate::new(member_repo),
             clock,
+            mobile_consumability,
             pull_client: None,
             pulled_content_store: None,
             availability: None,
@@ -485,7 +490,11 @@ impl ApplyInboundActiveClipboardStateUseCase {
             incoming.activated_at_ms,
             incoming.activated_by.clone(),
         );
-        self.spawn_write_then_converge(snapshot, advance_state, categories);
+        let mobile_consumable = self
+            .mobile_consumability
+            .is_mobile_consumable(&local_entry_id)
+            .await;
+        self.spawn_write_then_converge(snapshot, advance_state, categories, mobile_consumable);
     }
 
     /// Spawn the OS write; on success advance the register (SQL CAS enforces
@@ -497,6 +506,7 @@ impl ApplyInboundActiveClipboardStateUseCase {
         snapshot: uc_core::SystemClipboardSnapshot,
         state: ActiveClipboardState,
         categories: ClipboardContentCategorySet,
+        mobile_consumable: bool,
     ) -> JoinHandle<()> {
         let coordinator = Arc::clone(&self.coordinator);
         let advance_register = Arc::clone(&self.advance_register);
@@ -528,7 +538,7 @@ impl ApplyInboundActiveClipboardStateUseCase {
                 // authoritative LWW arbiter; `advanced == false` means a
                 // concurrent local/inbound write already moved the register past
                 // this state, in which case we must NOT re-broadcast (loop-safe).
-                match advance_register.advance(&state).await {
+                match advance_register.advance(&state, mobile_consumable).await {
                     Ok(true) => {}
                     Ok(false) => {
                         debug!(
@@ -656,17 +666,21 @@ mod tests {
         }
     }
 
-    /// Spies on `advance` — the early-return tests assert it is never called.
+    /// Spies on `advance` — the early-return tests assert it is never called;
+    /// convergence tests assert the propagated `mobile_consumable` verdict.
     #[derive(Default)]
     struct AdvanceSpy {
         calls: AtomicUsize,
+        consumable: Mutex<Vec<bool>>,
     }
     #[async_trait]
     impl AdvanceActiveClipboardPort for AdvanceSpy {
         async fn advance(
             &self,
             _state: &ActiveClipboardState,
+            mobile_consumable: bool,
         ) -> Result<bool, ActiveClipboardRegisterError> {
+            self.consumable.lock().unwrap().push(mobile_consumable);
             self.calls.fetch_add(1, Ordering::SeqCst);
             Ok(true)
         }
@@ -901,6 +915,7 @@ mod tests {
             Arc::new(EmptyPeerAddrRepo),
             Arc::new(StaticPresence(ReachabilityState::Online)),
             Arc::new(FixedClock(now_ms)),
+            MobileConsumabilityProbe::new(Arc::new(crate::test_support::FixedFileSets::empty())),
             converged_tx,
         );
         Harness {
@@ -1216,6 +1231,7 @@ mod tests {
         store: Option<Arc<dyn InboundPulledContentStore>>,
         stored_entry_id: EntryId,
         peer_addr_repo: Arc<dyn PeerAddressRepositoryPort>,
+        probe: MobileConsumabilityProbe,
     ) -> Harness {
         let advance = Arc::new(AdvanceSpy::default());
         let dispatch = Arc::new(DispatchSpy::default());
@@ -1253,6 +1269,7 @@ mod tests {
             peer_addr_repo,
             Arc::new(StaticPresence(ReachabilityState::Online)),
             Arc::new(FixedClock(1_000)),
+            probe,
             converged_tx,
         );
         if let (Some(pull_client), Some(store)) = (pull_client, store) {
@@ -1276,6 +1293,7 @@ mod tests {
             store,
             stored_entry_id,
             Arc::new(EmptyPeerAddrRepo),
+            MobileConsumabilityProbe::new(Arc::new(crate::test_support::FixedFileSets::empty())),
         )
     }
 
@@ -1341,6 +1359,7 @@ mod tests {
             Some(Arc::clone(&store) as _),
             stored_entry_id,
             Arc::new(OnePeerAddrRepo("peer-rebroadcast".to_string())),
+            MobileConsumabilityProbe::new(Arc::new(crate::test_support::FixedFileSets::empty())),
         );
         h.uc.handle_one(inbound("blake3v1:aa", 1_000, "dev-x"))
             .await;
@@ -1348,6 +1367,11 @@ mod tests {
         assert!(
             wait_for_advance(&h.advance).await,
             "register must advance after a successful pull + store + OS write"
+        );
+        assert_eq!(
+            h.advance.consumable.lock().unwrap().as_slice(),
+            &[true],
+            "flat content must propagate the consumable verdict to advance"
         );
         assert_eq!(
             pull_client.calls.load(Ordering::SeqCst),
@@ -1365,6 +1389,37 @@ mod tests {
             h.dispatch.calls.load(Ordering::SeqCst),
             1,
             "converged state must be re-broadcast to the allowed peer"
+        );
+    }
+
+    /// The 0xC3 convergence path must feed the probe's directory verdict into
+    /// `advance` — a directory-shaped local entry advances the register as
+    /// non-consumable so the mobile shadow reference is preserved.
+    #[tokio::test]
+    async fn pull_success_advances_directory_content_as_non_consumable() {
+        let stored_entry_id = EntryId::from("entry-pulled-dir");
+        let pull_client = PullClientSpy::new(Ok(b"transfer-envelope".to_vec()));
+        let store = Arc::new(StoreSpy {
+            entry_id: stored_entry_id.clone(),
+            seen_envelope: Mutex::new(None),
+        });
+        let h = pull_harness_with_peers(
+            Some(Arc::clone(&pull_client) as _),
+            Some(Arc::clone(&store) as _),
+            stored_entry_id,
+            Arc::new(EmptyPeerAddrRepo),
+            MobileConsumabilityProbe::new(Arc::new(crate::test_support::FixedFileSets(Ok(Some(
+                crate::test_support::nested_file_set(),
+            ))))),
+        );
+        h.uc.handle_one(inbound("blake3v1:dir", 1_000, "dev-x"))
+            .await;
+
+        assert!(wait_for_advance(&h.advance).await, "register must advance");
+        assert_eq!(
+            h.advance.consumable.lock().unwrap().as_slice(),
+            &[false],
+            "directory content must advance the register as non-consumable"
         );
     }
 }

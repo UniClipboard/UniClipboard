@@ -17,6 +17,7 @@ pub use pull::{
 };
 pub use receiver::{ActiveClipboardReceiverPort, InboundActiveClipboardState};
 pub use register::{
-    ActiveClipboardRegisterError, AdvanceActiveClipboardPort, LoadActiveClipboardPort,
-    ResetActiveClipboardPort,
+    ActiveClipboardRegisterError, AdvanceActiveClipboardPort,
+    BackfillMobileConsumableClipboardPort, LoadActiveClipboardPort,
+    LoadMobileConsumableClipboardPort, ResetActiveClipboardPort,
 };

@@ -21,6 +21,8 @@ use uc_core::ids::EntryId;
 use uc_core::ports::clipboard::AdvanceActiveClipboardPort;
 use uc_core::ports::{ClockPort, DeviceIdentityPort};
 
+use super::MobileConsumabilityProbe;
+
 /// Advances the active-clipboard register on behalf of locally-originated
 /// writes, stamping `(now, this_device)` as the activation key.
 #[derive(Clone)]
@@ -28,6 +30,7 @@ pub struct LocalActiveRegisterAdvancer {
     register: Arc<dyn AdvanceActiveClipboardPort>,
     device_identity: Arc<dyn DeviceIdentityPort>,
     clock: Arc<dyn ClockPort>,
+    mobile_consumability: MobileConsumabilityProbe,
 }
 
 impl LocalActiveRegisterAdvancer {
@@ -35,11 +38,13 @@ impl LocalActiveRegisterAdvancer {
         register: Arc<dyn AdvanceActiveClipboardPort>,
         device_identity: Arc<dyn DeviceIdentityPort>,
         clock: Arc<dyn ClockPort>,
+        mobile_consumability: MobileConsumabilityProbe,
     ) -> Self {
         Self {
             register,
             device_identity,
             clock,
+            mobile_consumability,
         }
     }
 
@@ -64,7 +69,11 @@ impl LocalActiveRegisterAdvancer {
             self.clock.now_ms(),
             self.device_identity.current_device_id(),
         );
-        match self.register.advance(&state).await {
+        let mobile_consumable = self
+            .mobile_consumability
+            .is_mobile_consumable(&state.entry_id)
+            .await;
+        match self.register.advance(&state, mobile_consumable).await {
             Ok(advanced) => {
                 tracing::debug!(
                     snapshot_hash = %state.snapshot_hash,
@@ -83,5 +92,66 @@ impl LocalActiveRegisterAdvancer {
             }
         }
         state
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use async_trait::async_trait;
+    use std::sync::Mutex;
+    use uc_core::ids::DeviceId;
+    use uc_core::ports::clipboard::ActiveClipboardRegisterError;
+
+    use crate::test_support::{empty_directory_file_set, FixedFileSets};
+
+    #[derive(Default)]
+    struct RecordingRegister(Mutex<Vec<bool>>);
+
+    #[async_trait]
+    impl AdvanceActiveClipboardPort for RecordingRegister {
+        async fn advance(
+            &self,
+            _state: &ActiveClipboardState,
+            mobile_consumable: bool,
+        ) -> Result<bool, ActiveClipboardRegisterError> {
+            self.0.lock().unwrap().push(mobile_consumable);
+            Ok(true)
+        }
+    }
+
+    struct FixedClock;
+
+    impl ClockPort for FixedClock {
+        fn now_ms(&self) -> i64 {
+            1
+        }
+    }
+
+    struct FixedDevice;
+
+    impl DeviceIdentityPort for FixedDevice {
+        fn current_device_id(&self) -> DeviceId {
+            DeviceId::new("device")
+        }
+    }
+
+    #[tokio::test]
+    async fn local_advance_marks_directories_non_consumable() {
+        let register = Arc::new(RecordingRegister::default());
+        let advancer = LocalActiveRegisterAdvancer::new(
+            register.clone(),
+            Arc::new(FixedDevice),
+            Arc::new(FixedClock),
+            MobileConsumabilityProbe::new(Arc::new(FixedFileSets(Ok(Some(
+                empty_directory_file_set(),
+            ))))),
+        );
+
+        advancer
+            .advance_local("blake3v1:directory".into(), EntryId::from("directory"))
+            .await;
+
+        assert_eq!(register.0.lock().unwrap().as_slice(), &[false]);
     }
 }

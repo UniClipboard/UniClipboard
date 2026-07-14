@@ -9,6 +9,8 @@ use uc_core::ports::space::{
     SpaceAccessError, VerifyKeychainAccessPort,
 };
 
+use crate::clipboard_write::MobileConsumableBackfill;
+
 const DEFAULT_SPACE_ID: &str = "space";
 
 /// Narrow space-access ports consumed by [`EncryptionFacade`]. Each maps to one
@@ -21,6 +23,7 @@ pub struct EncryptionFacadeDeps {
     pub is_unlocked: Arc<dyn IsSpaceUnlockedPort>,
     pub lock: Arc<dyn LockSpacePort>,
     pub verify_keychain_access: Arc<dyn VerifyKeychainAccessPort>,
+    pub mobile_consumable_backfill: Arc<dyn MobileConsumableBackfill>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -120,7 +123,13 @@ impl EncryptionFacade {
             .try_resume_session(&default_space_id())
             .await
         {
-            Ok(Some(_)) => Ok(true),
+            Ok(Some(_)) => {
+                self.deps
+                    .mobile_consumable_backfill
+                    .backfill_best_effort()
+                    .await;
+                Ok(true)
+            }
             Ok(None) => Ok(false),
             Err(err) => Err(space_access_error(err)),
         }
@@ -161,6 +170,8 @@ mod tests {
     use std::sync::Mutex;
     use uc_core::crypto::domain::{ActiveSpace, Passphrase};
     use uc_core::setup::SetupStatus;
+
+    use crate::test_support::CountingMobileConsumableBackfill;
 
     #[derive(Default)]
     struct FakeSetupStatus {
@@ -247,7 +258,11 @@ mod tests {
         unlocked: bool,
         resume_returns_session: bool,
         verify_granted: bool,
-    ) -> (EncryptionFacade, Arc<FakeSpaceAccess>) {
+    ) -> (
+        EncryptionFacade,
+        Arc<FakeSpaceAccess>,
+        Arc<CountingMobileConsumableBackfill>,
+    ) {
         let setup_status = Arc::new(FakeSetupStatus::default());
         setup_status
             .status
@@ -261,6 +276,7 @@ mod tests {
             .lock()
             .expect("resume lock") = resume_returns_session;
         *space_access.verify_granted.lock().expect("verify lock") = verify_granted;
+        let backfill = Arc::new(CountingMobileConsumableBackfill::default());
 
         (
             EncryptionFacade::new(EncryptionFacadeDeps {
@@ -270,14 +286,16 @@ mod tests {
                 is_unlocked: space_access.clone(),
                 lock: space_access.clone(),
                 verify_keychain_access: space_access.clone(),
+                mobile_consumable_backfill: backfill.clone(),
             }),
             space_access,
+            backfill,
         )
     }
 
     #[tokio::test]
     async fn state_reports_not_ready_when_setup_is_incomplete() {
-        let (facade, _) = facade_with(false, true, false, false);
+        let (facade, _, _) = facade_with(false, true, false, false);
 
         let state = facade.state().await.expect("state");
 
@@ -292,7 +310,7 @@ mod tests {
 
     #[tokio::test]
     async fn state_reports_session_ready_after_completed_setup() {
-        let (facade, _) = facade_with(true, true, false, false);
+        let (facade, _, _) = facade_with(true, true, false, false);
 
         let state = facade.state().await.expect("state");
 
@@ -307,16 +325,18 @@ mod tests {
 
     #[tokio::test]
     async fn unlock_returns_whether_session_was_resumed() {
-        let (resumed, _) = facade_with(true, false, true, false);
-        let (not_resumed, _) = facade_with(true, false, false, false);
+        let (resumed, _, resumed_backfill) = facade_with(true, false, true, false);
+        let (not_resumed, _, not_resumed_backfill) = facade_with(true, false, false, false);
 
         assert!(resumed.unlock().await.expect("resumed"));
         assert!(!not_resumed.unlock().await.expect("not resumed"));
+        assert_eq!(resumed_backfill.calls(), 1);
+        assert_eq!(not_resumed_backfill.calls(), 0);
     }
 
     #[tokio::test]
     async fn lock_clears_session() {
-        let (facade, space_access) = facade_with(true, true, false, false);
+        let (facade, space_access, _) = facade_with(true, true, false, false);
 
         facade.lock().await.expect("lock");
 
@@ -326,7 +346,7 @@ mod tests {
 
     #[tokio::test]
     async fn verify_keychain_access_returns_grant_state() {
-        let (facade, _) = facade_with(true, false, false, true);
+        let (facade, _, _) = facade_with(true, false, false, true);
 
         assert!(facade
             .verify_keychain_access()
@@ -338,7 +358,7 @@ mod tests {
     async fn initialize_creates_space_and_marks_setup_complete() {
         use uc_core::crypto::model::Passphrase as ModelPassphrase;
 
-        let (facade, space_access) = facade_with(false, false, false, false);
+        let (facade, space_access, _) = facade_with(false, false, false, false);
 
         facade
             .initialize(ModelPassphrase("hunter2".to_string()))
@@ -354,7 +374,7 @@ mod tests {
     async fn initialize_maps_already_initialized_error() {
         use uc_core::crypto::model::Passphrase as ModelPassphrase;
 
-        let (facade, space_access) = facade_with(false, false, false, false);
+        let (facade, space_access, _) = facade_with(false, false, false, false);
         *space_access.init_already_initialized.lock().expect("flag") = true;
 
         let err = facade

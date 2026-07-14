@@ -2,6 +2,26 @@
 
 use crate::ids::{DeviceId, EntryId};
 
+/// The last clipboard content reference that a limited consumer can read.
+///
+/// This identifies content only. It deliberately carries no activation time
+/// or device because those fields belong to the current register value and
+/// may describe a different, later activation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MobileConsumableRef {
+    pub snapshot_hash: String,
+    pub entry_id: EntryId,
+}
+
+impl MobileConsumableRef {
+    pub fn new(snapshot_hash: impl Into<String>, entry_id: EntryId) -> Self {
+        Self {
+            snapshot_hash: snapshot_hash.into(),
+            entry_id,
+        }
+    }
+}
+
 /// Which clipboard content is currently the active OS-clipboard content,
 /// modelled as a last-writer-wins (LWW) register that converges across
 /// devices.

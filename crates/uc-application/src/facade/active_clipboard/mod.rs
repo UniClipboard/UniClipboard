@@ -38,7 +38,8 @@ use uc_core::ports::{
 use uc_core::{blob::ports::BlobReaderPort, MemberRepositoryPort};
 
 use crate::clipboard_write::{
-    ClipboardWriteCoordinator, LocalActiveRegisterAdvancer, RestoreBroadcastRequest,
+    ClipboardWriteCoordinator, LocalActiveRegisterAdvancer, MobileConsumabilityProbe,
+    RestoreBroadcastRequest,
 };
 use crate::facade::blob_transfer::{BlobTransferFacade, SharedHostEventEmitter};
 use crate::facade::clipboard_inbound::{
@@ -102,6 +103,7 @@ pub struct ActiveClipboardDeps {
     pub is_unlocked: Arc<dyn IsSpaceUnlockedPort>,
     pub load_register: Arc<dyn LoadActiveClipboardPort>,
     pub advance_register: Arc<dyn AdvanceActiveClipboardPort>,
+    pub mobile_consumability: MobileConsumabilityProbe,
     pub member_repo: Arc<dyn MemberRepositoryPort>,
     pub peer_addr_repo: Arc<dyn PeerAddressRepositoryPort>,
     /// Presence stream for the peer-online resync worker: an "online"
@@ -211,10 +213,12 @@ pub struct ActiveClipboardFacade {
 impl ActiveClipboardFacade {
     pub fn new(deps: ActiveClipboardDeps) -> Self {
         let reconstructor = deps.snapshot.into_reconstructor();
+        let mobile_consumability = deps.mobile_consumability;
         let local_advancer = LocalActiveRegisterAdvancer::new(
             Arc::clone(&deps.advance_register),
             deps.device_identity,
             Arc::clone(&deps.clock),
+            mobile_consumability.clone(),
         );
         let send_gate = MemberSendGate::new(Arc::clone(&deps.member_repo));
 
@@ -233,6 +237,7 @@ impl ActiveClipboardFacade {
             Arc::clone(&deps.peer_addr_repo),
             Arc::clone(&deps.presence),
             deps.clock,
+            mobile_consumability,
             converged_tx,
         );
 

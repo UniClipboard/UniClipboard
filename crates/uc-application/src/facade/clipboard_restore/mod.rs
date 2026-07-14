@@ -12,7 +12,8 @@ use uc_core::ports::{
 use crate::deps::{ClipboardEntryPorts, ClipboardRepresentationPorts};
 
 use crate::clipboard_write::{
-    ClipboardWriteCoordinator, LocalActiveRegisterAdvancer, RestoreBroadcastTrigger,
+    ClipboardWriteCoordinator, LocalActiveRegisterAdvancer, MobileConsumabilityProbe,
+    RestoreBroadcastTrigger,
 };
 use crate::usecases::clipboard_restore::{
     NoFilePathsAvailable, PlainRestoreOutcome, RestoreClipboardEntryAsPlainTextUseCase,
@@ -70,6 +71,7 @@ pub struct ClipboardRestoreFacadeDeps {
     /// Cross-device active-clipboard register advanced after a successful
     /// restore.
     pub active_register: Arc<dyn AdvanceActiveClipboardPort>,
+    pub mobile_consumability: MobileConsumabilityProbe,
     /// Optional restore-broadcast trigger. When present, a successful restore
     /// that advanced the register also offers the activation to the broadcast
     /// subsystem (which gates on `sync_on_restore` + per-device send prefs
@@ -97,6 +99,7 @@ impl ClipboardRestoreFacade {
             clock,
             device_identity,
             active_register,
+            mobile_consumability,
             restore_broadcast,
             write_coordinator,
             integration_mode,
@@ -104,8 +107,12 @@ impl ClipboardRestoreFacade {
 
         // Shared advancer wired into both restore paths so any successful
         // restore advances the cross-device active-clipboard register.
-        let register_advancer =
-            LocalActiveRegisterAdvancer::new(active_register, device_identity, clock.clone());
+        let register_advancer = LocalActiveRegisterAdvancer::new(
+            active_register,
+            device_identity,
+            clock.clone(),
+            mobile_consumability,
+        );
 
         let ClipboardEntryPorts {
             get: entry_get,

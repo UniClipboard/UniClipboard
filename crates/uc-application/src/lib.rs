@@ -11,6 +11,8 @@ pub(crate) mod entry_identity;
 pub mod facade;
 pub mod file_sync;
 pub mod sync_planner;
+#[cfg(test)]
+pub(crate) mod test_support;
 
 // D16-2: deps re-exports so composition roots (uc-bootstrap, uc-tauri,
 // uc-daemon) can depend on `uc_application::*` directly and the legacy

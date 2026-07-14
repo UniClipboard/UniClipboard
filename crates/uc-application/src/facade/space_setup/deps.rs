@@ -23,6 +23,7 @@ use uc_core::ports::{
 use uc_core::trusted_peer::TrustedPeerRepositoryPort;
 use uc_observability::analytics::AnalyticsFacade;
 
+use crate::clipboard_write::MobileConsumableBackfill;
 use crate::deps::SpaceAccessPorts;
 
 /// Dependencies for [`super::SpaceSetupFacade`].
@@ -40,6 +41,7 @@ pub struct SpaceSetupDeps {
     pub setup_status: Arc<dyn SetupStatusPort>,
     pub settings: Arc<dyn SettingsPort>,
     pub clock: Arc<dyn ClockPort>,
+    pub mobile_consumable_backfill: Arc<dyn MobileConsumableBackfill>,
     /// Sponsor-side rendezvous client for issuing invitation codes (B1)
     /// and notifying the rendezvous of successful consumes (P7e inbound
     /// path).

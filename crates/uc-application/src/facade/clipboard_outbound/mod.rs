@@ -716,12 +716,18 @@ pub(crate) async fn resolve_outbound_file_set(
                     paths: extract_file_paths_from_snapshot(snapshot),
                 };
             };
+            let root_is_file = !directory_roots.contains(&location.root_index);
             let path = match (&line.kind, location.kind) {
                 (
                     EntryFileSetLineKind::File { .. },
                     FileSetMemberKind::File | FileSetMemberKind::Executable,
                 ) => match manifest_line_path(&line.original_text) {
-                    Some(path) => {
+                    Some(root_path) => {
+                        let path = if root_is_file {
+                            root_path
+                        } else {
+                            root_path.join(&location.relative_path)
+                        };
                         paths.push(path.clone());
                         Some(path)
                     }
@@ -738,7 +744,6 @@ pub(crate) async fn resolve_outbound_file_set(
                     };
                 }
             };
-            let root_is_file = !directory_roots.contains(&location.root_index);
             members.push(DirectoryMemberSource {
                 location,
                 path,
@@ -1154,10 +1159,10 @@ mod tests {
 
         match resolution {
             OutboundFileSetResolution::DirectorySyncable { paths, members } => {
-                assert_eq!(paths, vec![PathBuf::from("/tmp/root")]);
+                assert_eq!(paths, vec![PathBuf::from("/tmp/root/child.txt")]);
                 assert_eq!(members.len(), 1);
                 assert_eq!(members[0].location.root_name, "root");
-                assert_eq!(members[0].path, Some(PathBuf::from("/tmp/root")));
+                assert_eq!(members[0].path, Some(PathBuf::from("/tmp/root/child.txt")));
                 assert!(!members[0].root_is_file);
             }
             other => panic!("expected directory syncable resolution, got {other:?}"),
@@ -1190,10 +1195,22 @@ mod tests {
         )
         .await;
 
-        let OutboundFileSetResolution::DirectorySyncable { members, .. } = resolution else {
+        let OutboundFileSetResolution::DirectorySyncable { paths, members } = resolution else {
             panic!("expected directory syncable resolution");
         };
+        assert_eq!(
+            paths,
+            [
+                PathBuf::from("/tmp/folder/child.txt"),
+                PathBuf::from("/tmp/loose.txt"),
+            ]
+        );
+        assert_eq!(members[0].path, Some(PathBuf::from("/tmp/loose.txt")));
         assert!(members[0].root_is_file);
+        assert_eq!(
+            members[1].path,
+            Some(PathBuf::from("/tmp/folder/child.txt"))
+        );
         assert!(!members[1].root_is_file);
     }
 

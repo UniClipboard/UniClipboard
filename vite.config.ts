@@ -4,19 +4,14 @@ import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vitest/config'
 
-// @ts-expect-error process is a nodejs global
 const host = process.env.TAURI_DEV_HOST
-// @ts-expect-error process is a nodejs global
 const sentryAuthToken = process.env.SENTRY_AUTH_TOKEN
-// @ts-expect-error process is a nodejs global
 const sentryOrg = process.env.SENTRY_ORG
-// @ts-expect-error process is a nodejs global
 const sentryProject = process.env.VITE_SENTRY_PROJECT
-// @ts-expect-error process is a nodejs global
 const appVersion = process.env.VITE_APP_VERSION
 
 // https://vitejs.dev/config/
-export default defineConfig(async () => ({
+export default defineConfig({
   plugins: [
     react(),
     tailwindcss(),
@@ -47,7 +42,13 @@ export default defineConfig(async () => ({
     },
   },
 
-  // 添加路径别名配置
+  // Keep cuelume in the startup optimization set so a cache created from a
+  // different source state cannot trigger a mid-session dependency re-bundle.
+  optimizeDeps: {
+    include: ['cuelume'],
+  },
+
+  // Configure source aliases.
   resolve: {
     alias: {
       '@': resolve('./src'),
@@ -95,4 +96,4 @@ export default defineConfig(async () => ({
       ],
     },
   },
-}))
+})

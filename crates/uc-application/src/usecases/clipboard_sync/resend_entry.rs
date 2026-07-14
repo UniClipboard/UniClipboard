@@ -343,7 +343,7 @@ impl ResendEntryUseCase {
                 // 不在信任集合内,与 UI 中点的顺序一致)。
                 for d in filter {
                     if !trusted.iter().any(|t| t == d) {
-                        return Err(ResendEntryError::TargetNotTrusted(d.clone()));
+                        return Err(ResendEntryError::TargetNotTrusted(*d));
                     }
                 }
                 if filter.is_empty() {
@@ -1558,14 +1558,16 @@ mod tests {
         let temp = tempfile::tempdir().unwrap();
         let file = temp.path().join("child.txt");
         std::fs::write(&file, b"hello").unwrap();
-        let uri = url::Url::from_file_path(&file).unwrap().to_string();
+        let root_uri = url::Url::from_directory_path(temp.path())
+            .unwrap()
+            .to_string();
         let entry_id = EntryId::from("entry-directory-resend");
         let event_id = EventId::from("event-directory-resend");
         let local = DeviceId::new("self");
         let file_set = EntryFileSet {
             lines: vec![EntryFileSetLine {
                 line_index: 1,
-                original_text: uri.clone(),
+                original_text: root_uri.clone(),
                 member_location: Some(FileSetMemberLocation {
                     root_index: 0,
                     root_name: "folder".to_string(),
@@ -1596,11 +1598,11 @@ mod tests {
                 selection: Some(selection_for(&entry_id, "rep-files")),
             }),
             representation_repo: Arc::new(StaticRepRepo {
-                reps: vec![uri_list_rep("rep-files", &format!("{uri}\r\n"))],
+                reps: vec![uri_list_rep("rep-files", &format!("{root_uri}\r\n"))],
             }),
             rep_processing_repo: Arc::new(StubProcessingRepo),
             payload_resolver: Arc::new(StubResolver(ResolveBehavior::Inline(
-                format!("{uri}\r\n").into_bytes(),
+                format!("{root_uri}\r\n").into_bytes(),
             ))),
             blob_store: Arc::new(UnusedBlobStore),
             entry_delivery_repo: Arc::new(StubDeliveryRepo { records: vec![] }),

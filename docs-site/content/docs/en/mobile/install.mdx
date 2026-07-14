@@ -14,10 +14,10 @@ The app is not published to any app store. On iOS it ships as a TestFlight beta;
 sideload the APK. Pick the tab below that matches your phone.
 
 <Callout type="info">
-  Before installing the app, get a computer ready: it needs to be running UniClipboard desktop,
-  have "phone sync" turned on, and be on the **same Wi-Fi** as your phone. See
-  [Mobile sync](../core-features/mobile-sync) for how to turn it on from the desktop side.
-  Without that computer, the app has nothing to connect to.
+  Before installing the app, get a computer ready: it needs to be running UniClipboard desktop, have
+  "phone sync" turned on, and be on the **same Wi-Fi** as your phone. See [Mobile
+  sync](../core-features/mobile-sync) for how to turn it on from the desktop side. Without that
+  computer, the app has nothing to connect to.
 </Callout>
 
 <Tabs items={['iOS', 'Android']}>
@@ -34,11 +34,11 @@ installed first.
    home screen.
 
 <Callout type="warn">
-  If installing or opening the link stalls, or you see a certificate / HTTPS error, a proxy or
-  VPN (Loon, Surge, Shadowrocket, Clash, etc.) is most likely intercepting TestFlight.
-  **Temporarily turn the proxy off** (including global rules, TUN mode, and HTTPS decryption) so
-  TestFlight can connect directly, then re-open the link. The app itself only talks to the
-  desktop on your local network and needs no proxy.
+  If installing or opening the link stalls, or you see a certificate / HTTPS error, a proxy or VPN
+  (Loon, Surge, Shadowrocket, Clash, etc.) is most likely intercepting TestFlight. **Temporarily
+  turn the proxy off** (including global rules, TUN mode, and HTTPS decryption) so TestFlight can
+  connect directly, then re-open the link. The app itself only talks to the desktop on your local
+  network and needs no proxy.
 </Callout>
 
 </Tab>
@@ -52,14 +52,15 @@ The Android build is **not on Google Play**. You sideload the APK from GitHub Re
    (if it won't load in your region, use the Gitee mirror).
 2. Download the matching APK variant:
 
-   | Variant | Use for |
-   | --- | --- |
-   | `arm64-v8a` | Almost all recent phones (recommended) |
-   | `armeabi-v7a` | Older 32-bit devices |
-   | `x86_64` | Emulators / a few x86 devices |
-   | `universal` | Pick this if unsure — includes every architecture, larger file |
+   | Variant       | Use for                                                        |
+   | ------------- | -------------------------------------------------------------- |
+   | `arm64-v8a`   | Almost all recent phones (recommended)                         |
+   | `armeabi-v7a` | Older 32-bit devices                                           |
+   | `x86_64`      | Emulators / a few x86 devices                                  |
+   | `universal`   | Pick this if unsure — includes every architecture, larger file |
 
    Most phones want **`arm64-v8a`**; when in doubt, grab **`universal`**.
+
 3. Tap the downloaded APK to install. The first time, the system will block it — follow the
    prompt to allow your browser / file manager to **install unknown apps**, then tap it again.
 

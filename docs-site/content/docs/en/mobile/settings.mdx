@@ -21,14 +21,16 @@ For options that mean the same thing on both platforms, the full explanation is 
 
 Three independent toggles control the flow of data between this phone and the desktop:
 
-| Toggle | What it does | Default |
-| --- | --- | --- |
-| Auto-write to this device's clipboard | Automatically writes the latest remote content into the iOS system clipboard. **When off**, remote content is only highlighted on the main screen and won't overwrite the clipboard already on your phone. | On |
-| Auto-push this device's clipboard | While the app is in the foreground, automatically pushes whatever you copy on your phone to the desktop. | Off |
-| Real-time push (SSE) | Receives new content instantly via server push instead of periodic polling. Requires desktop support; when unsupported it does **not** fall back to polling automatically. | On |
+| Toggle                                | What it does                                                                                                                                                                                               | Default |
+| ------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| Auto-write to this device's clipboard | Automatically writes the latest remote content into the iOS system clipboard. **When off**, remote content is only highlighted on the main screen and won't overwrite the clipboard already on your phone. | On      |
+| Auto-push this device's clipboard     | While the app is in the foreground, automatically pushes whatever you copy on your phone to the desktop.                                                                                                   | Off     |
+| Real-time push (SSE)                  | Receives new content instantly via server push instead of periodic polling. Requires desktop support; when unsupported it does **not** fall back to polling automatically.                                 | On      |
 
 <Callout type="info">
-  If remote content never makes it into your system clipboard, first check that "Auto-write to this device's clipboard" is on. On iOS you also need to grant "Paste from Other Apps" once under "Clipboard access" before the app can read what you copy and push it up.
+  If remote content never makes it into your system clipboard, first check that "Auto-write to this
+  device's clipboard" is on. On iOS you also need to grant "Paste from Other Apps" once under
+  "Clipboard access" before the app can read what you copy and push it up.
 </Callout>
 
 ### Extensions and permissions
@@ -60,13 +62,13 @@ Android settings are a hub; you tap into each sub-page.
 
 Advanced options:
 
-| Option | What it does |
-| --- | --- |
-| Sync toast notifications | Shows a toast when a sync happens. |
-| Max data size for auto sync | Content larger than this size is not synced automatically, to avoid large images or files consuming the network. |
-| Real-time push (SSE) | Receives new content instantly via server push instead of polling. Requires desktop support; when unsupported it does not fall back automatically. On by default. |
-| Remote polling interval | How often to pull from the remote when real-time push isn't available. |
-| Local polling interval | How often to check this device's clipboard for changes. |
+| Option                      | What it does                                                                                                                                                      |
+| --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Sync toast notifications    | Shows a toast when a sync happens.                                                                                                                                |
+| Max data size for auto sync | Content larger than this size is not synced automatically, to avoid large images or files consuming the network.                                                  |
+| Real-time push (SSE)        | Receives new content instantly via server push instead of polling. Requires desktop support; when unsupported it does not fall back automatically. On by default. |
+| Remote polling interval     | How often to pull from the remote when real-time push isn't available.                                                                                            |
+| Local polling interval      | How often to check this device's clipboard for changes.                                                                                                           |
 
 ### History
 
@@ -100,13 +102,13 @@ Background operation is all off by default. For the full explanation, see [Backg
 
 ## Defaults at a glance
 
-| Option | iOS | Android |
-| --- | --- | --- |
-| Auto-write remote → device | On | Follows the "Auto sync" master toggle |
-| Auto-push device → remote | Off | Follows the "Auto sync" master toggle |
-| Real-time push (SSE) | On | On |
+| Option                     | iOS            | Android                                           |
+| -------------------------- | -------------- | ------------------------------------------------- |
+| Auto-write remote → device | On             | Follows the "Auto sync" master toggle             |
+| Auto-push device → remote  | Off            | Follows the "Auto sync" master toggle             |
+| Real-time push (SSE)       | On             | On                                                |
 | Background clipboard tasks | Not applicable | Off by default; access method defaults to overlay |
-| History retention cap | — | 1000 entries |
+| History retention cap      | —              | 1000 entries                                      |
 
 ## Where to go next
 

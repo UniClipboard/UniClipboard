@@ -8,7 +8,10 @@ import { Step, Steps } from 'fumadocs-ui/components/steps'
 The UniClipboard mobile app is a **LAN-only / self-hosted clipboard sync client**: it bridges your phone's clipboard with your own computer — text, images, and single files flow both ways, backed by a clipboard history. It is not a full P2P node, and it does not join the encrypted "space" that your desktop devices share.
 
 <Callout type="warn">
-  You first need a computer running the UniClipboard **desktop app** with **mobile sync** turned on. The app connects to that computer; without it, there is nowhere to connect. For how to enable it on the desktop side, see [Mobile sync](core-features/mobile-sync) and [Pairing & sync](guides/pairing).
+  You first need a computer running the UniClipboard **desktop app** with **mobile sync** turned on.
+  The app connects to that computer; without it, there is nowhere to connect. For how to enable it
+  on the desktop side, see [Mobile sync](core-features/mobile-sync) and [Pairing &
+  sync](guides/pairing).
 </Callout>
 
 ## How the app relates to the desktop
@@ -25,21 +28,21 @@ The protocol, LAN API, and connect-URI internals are out of scope for this handb
 
 The two platforms share the same core sync capabilities, but each has its own set of platform-specific features.
 
-| Capability | iOS | Android |
-| --- | :---: | :---: |
-| Text / image / single-file sync | ✅ | ✅ |
-| Clipboard history, filter by type | ✅ | ✅ |
-| QR / deep-link onboarding, multi-server switching | ✅ | ✅ |
-| SSE real-time push | ✅ | ✅ |
-| Simplified Chinese / English, appearance mode | ✅ | ✅ |
-| Custom keyboard extension | ✅ | — |
-| Share extension + Sharing Suggestions | ✅ | — |
-| "Paste from Other Apps" permission | ✅ | — |
-| Background clipboard read/write (overlay / Shizuku) | — | ✅ |
-| Auto-forward SMS verification codes | — | ✅ |
-| Home-screen pinned shortcuts + Quick Settings tile | — | ✅ |
-| Text-selection menu (Process Text) | — | ✅ |
-| Hide from the recent tasks list | — | ✅ |
+| Capability                                          | iOS | Android |
+| --------------------------------------------------- | :-: | :-----: |
+| Text / image / single-file sync                     | ✅  |   ✅    |
+| Clipboard history, filter by type                   | ✅  |   ✅    |
+| QR / deep-link onboarding, multi-server switching   | ✅  |   ✅    |
+| SSE real-time push                                  | ✅  |   ✅    |
+| Simplified Chinese / English, appearance mode       | ✅  |   ✅    |
+| Custom keyboard extension                           | ✅  |    —    |
+| Share extension + Sharing Suggestions               | ✅  |    —    |
+| "Paste from Other Apps" permission                  | ✅  |    —    |
+| Background clipboard read/write (overlay / Shizuku) |  —  |   ✅    |
+| Auto-forward SMS verification codes                 |  —  |   ✅    |
+| Home-screen pinned shortcuts + Quick Settings tile  |  —  |   ✅    |
+| Text-selection menu (Process Text)                  |  —  |   ✅    |
+| Hide from the recent tasks list                     |  —  |   ✅    |
 
 In short: **iOS relies on system extensions** (keyboard, share sheet) to bring sync into other apps; **Android can do true background clipboard sync** (auto-upload on copy), but requires extra permissions. For the extension / background details on each side, see [iOS extensions](mobile/ios-extensions) and [Android access](mobile/android-access).
 

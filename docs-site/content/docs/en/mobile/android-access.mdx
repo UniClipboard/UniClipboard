@@ -34,7 +34,9 @@ The app copies this full command (with the actual package name already filled in
 Without READ_LOGS, "copy syncs automatically" still works, but it **falls back to periodic polling** — instead of triggering instantly, it checks the clipboard at intervals, which is less responsive and uses more battery.
 
 <Callout type="info">
-At the moment of a background read or write, the overlay window **briefly appears on screen**, then hides automatically after about 10 seconds of idle. This is expected behavior, not a pop-up ad.
+  At the moment of a background read or write, the overlay window **briefly appears on screen**,
+  then hides automatically after about 10 seconds of idle. This is expected behavior, not a pop-up
+  ad.
 </Callout>
 
 </Tab>
@@ -67,7 +69,9 @@ Shizuku needs its service started once after every reboot. Pick one method:
 - **Rooted** — just tap "Start" inside the Shizuku app; no computer needed.
 
 <Callout type="warn">
-  With the no-root method, **you must restart the Shizuku service after every phone reboot** (an inherent limitation of Shizuku, not a UniClipboard issue). If you want something hands-off, consider the default overlay window method.
+  With the no-root method, **you must restart the Shizuku service after every phone reboot** (an
+  inherent limitation of Shizuku, not a UniClipboard issue). If you want something hands-off,
+  consider the default overlay window method.
 </Callout>
 
 </Step>
@@ -135,7 +139,9 @@ Run `adb devices` in your terminal; when your device shows up with status `devic
 </Steps>
 
 <Callout type="info">
-  Don't want to stay tethered? Android 11+ supports **wireless debugging**: turn on "Wireless debugging" in Developer options, pair your computer with the phone using a pairing code over the same Wi‑Fi, then unplug and run adb commands over Wi‑Fi.
+  Don't want to stay tethered? Android 11+ supports **wireless debugging**: turn on "Wireless
+  debugging" in Developer options, pair your computer with the phone using a pairing code over the
+  same Wi‑Fi, then unplug and run adb commands over Wi‑Fi.
 </Callout>
 
 Once connected: to grant READ_LOGS, run the `adb shell pm grant …` command from the "Overlay window" tab above (the app has already copied the full command with the package name filled in); to start Shizuku, run the start command shown inside the Shizuku app.
@@ -164,6 +170,7 @@ UniClipboard **does not use the Accessibility service** — you don't need to en
 Whether background sync runs reliably over the long term **depends heavily on your phone's vendor OS**. Chinese vendor systems like MIUI / HyperOS, EMUI / HarmonyOS, ColorOS, and Funtouch generally have more aggressive background management than stock Android — even with the permissions above granted, they may suspend the app and drop sync after the screen locks or after a period of inactivity.
 
 We recommend, where possible: turn on the **persistent notification**, add UniClipboard to the system's battery "unrestricted / always allow background" allowlist, and "lock" it in the recent tasks list so it isn't cleared by a one-tap sweep. MIUI users can also use the **Shizuku method** to disable the "smart clipboard" restriction. These are system-level behaviors that the app cannot fully handle on your behalf.
+
 </Callout>
 
 ## Can't connect or not syncing?

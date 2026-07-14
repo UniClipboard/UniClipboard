@@ -17,11 +17,11 @@ in the **network between phone and computer**, or in **OS permissions**.
 "Test connection" fails, it stays stuck on "Connecting," or history never
 loads — this is usually one of the three cases below.
 
-| Symptom | Cause | What to do |
-| --- | --- | --- |
-| Address unreachable / connection timeout | Desktop isn't listening, phone and computer aren't on the same Wi-Fi, or the address/port is wrong | Confirm mobile sync is enabled in the UniClipboard desktop app; confirm the phone and computer are on the same Wi-Fi; double-check the server address and port |
-| Auth failed / unauthorized | Wrong username or password | Verify the credentials; the password is shown only once when the device is added on the desktop — if you forgot it, rotate the password on the desktop and re-enter it |
-| Certificate error | The desktop uses self-signed HTTPS | Turn on "allow insecure certificates" for that server; plain HTTP doesn't need this |
+| Symptom                                  | Cause                                                                                              | What to do                                                                                                                                                             |
+| ---------------------------------------- | -------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Address unreachable / connection timeout | Desktop isn't listening, phone and computer aren't on the same Wi-Fi, or the address/port is wrong | Confirm mobile sync is enabled in the UniClipboard desktop app; confirm the phone and computer are on the same Wi-Fi; double-check the server address and port         |
+| Auth failed / unauthorized               | Wrong username or password                                                                         | Verify the credentials; the password is shown only once when the device is added on the desktop — if you forgot it, rotate the password on the desktop and re-enter it |
+| Certificate error                        | The desktop uses self-signed HTTPS                                                                 | Turn on "allow insecure certificates" for that server; plain HTTP doesn't need this                                                                                    |
 
 Things to check:
 
@@ -132,9 +132,9 @@ the OS's battery / background restriction, not sync itself being broken.
   optimization manually in **system Settings**.
 
 <Callout type="info">
-  iOS also restricts clipboard reads/writes after lock / backgrounding — this
-  is OS behavior. When you need stable background sync, keep the app in the
-  foreground, or use the keyboard / share extension to trigger it on demand.
+  iOS also restricts clipboard reads/writes after lock / backgrounding — this is OS behavior. When
+  you need stable background sync, keep the app in the foreground, or use the keyboard / share
+  extension to trigger it on demand.
 </Callout>
 
 ## iOS extension reads an empty config
@@ -157,12 +157,12 @@ the main app is clearly connected to the desktop.
 On Android, most "feature not working" cases come down to some permission that
 wasn't granted.
 
-| Permission | Purpose | How to grant |
-| --- | --- | --- |
-| READ_LOGS | Event listening for "copy = auto-sync" (overlay method) | Can't be requested in-app; can only be granted by running an `adb` command from a computer; the app copies the command to the clipboard so you can paste it, and you must restart the app after granting |
-| Overlay window (SYSTEM_ALERT_WINDOW) | Background clipboard read / write | Enable manually in system Settings; the Settings → Background running walkthrough takes you there |
-| SMS permission | Auto-forwarding of SMS verification codes | Grant it via the walkthrough in Settings → SMS forwarding |
-| Camera permission | Scan-to-connect | Grant it the first time you scan; if permanently denied, enable it in system Settings, or use "manual entry" to connect instead |
+| Permission                           | Purpose                                                 | How to grant                                                                                                                                                                                             |
+| ------------------------------------ | ------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| READ_LOGS                            | Event listening for "copy = auto-sync" (overlay method) | Can't be requested in-app; can only be granted by running an `adb` command from a computer; the app copies the command to the clipboard so you can paste it, and you must restart the app after granting |
+| Overlay window (SYSTEM_ALERT_WINDOW) | Background clipboard read / write                       | Enable manually in system Settings; the Settings → Background running walkthrough takes you there                                                                                                        |
+| SMS permission                       | Auto-forwarding of SMS verification codes               | Grant it via the walkthrough in Settings → SMS forwarding                                                                                                                                                |
+| Camera permission                    | Scan-to-connect                                         | Grant it the first time you scan; if permanently denied, enable it in system Settings, or use "manual entry" to connect instead                                                                          |
 
 The READ_LOGS adb command looks like:
 
@@ -176,8 +176,7 @@ responsiveness degrades. For the tradeoff between the overlay method and the
 Shizuku method, see [Android background access](./android-access).
 
 <Callout type="info">
-  If you want to write your own third-party client, or need to debug the
-  protocol layer (HTTP request / response, auth, field formats), see
-  [Mobile LAN API](../reference/mobile-api). This handbook only covers what
-  you can see and tap in the app, not the protocol internals.
+  If you want to write your own third-party client, or need to debug the protocol layer (HTTP
+  request / response, auth, field formats), see [Mobile LAN API](../reference/mobile-api). This
+  handbook only covers what you can see and tap in the app, not the protocol internals.
 </Callout>

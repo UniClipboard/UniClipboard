@@ -61,13 +61,13 @@ camera at the QR code shown on the desktop.
 If scanning isn't convenient, type in the values from the desktop dialog by
 hand. Form fields:
 
-| Field | Description |
-| --- | --- |
-| Name | A memorable name for this desktop (e.g. "Mac at home"). Just for your own reference. |
-| Server address | The address from the desktop dialog, like `http://192.168.1.5:42720`. **You can add multiple fallback addresses** (e.g. one each for LAN, Tailscale, public network); the first is the default. |
-| Allow insecure certificates | Turn on **only** if the desktop uses self-signed HTTPS; ignore it for plain HTTP addresses. |
-| Username | The username from the desktop dialog. |
-| Password | The one-time password from the desktop dialog (HTTP Basic Auth). |
+| Field                       | Description                                                                                                                                                                                     |
+| --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Name                        | A memorable name for this desktop (e.g. "Mac at home"). Just for your own reference.                                                                                                            |
+| Server address              | The address from the desktop dialog, like `http://192.168.1.5:42720`. **You can add multiple fallback addresses** (e.g. one each for LAN, Tailscale, public network); the first is the default. |
+| Allow insecure certificates | Turn on **only** if the desktop uses self-signed HTTPS; ignore it for plain HTTP addresses.                                                                                                     |
+| Username                    | The username from the desktop dialog.                                                                                                                                                           |
+| Password                    | The one-time password from the desktop dialog (HTTP Basic Auth).                                                                                                                                |
 
 Multiple fallback addresses let you reach the same desktop from different
 networks: LAN at home, Tailscale or a public gateway when you're out. Adding a
@@ -110,10 +110,9 @@ switcher panel, where you can **switch** between desktops, **delete** one, or
 </Steps>
 
 <Callout type="info">
-  The desktop QR code uses the `uniclipboard://connect` deep-link format. Its
-  full specification only matters if you want to write your own compatible
-  client — regular use doesn't require any of it. See the
-  [Mobile Connect URI protocol](../reference/mobile-connect-uri).
+  The desktop QR code uses the `uniclipboard://connect` deep-link format. Its full specification
+  only matters if you want to write your own compatible client — regular use doesn't require any of
+  it. See the [Mobile Connect URI protocol](../reference/mobile-connect-uri).
 </Callout>
 
 Once connected, you can start sending and receiving clipboard content. Next, see

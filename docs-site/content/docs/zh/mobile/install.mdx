@@ -32,9 +32,9 @@ iOS 版目前是 **TestFlight beta 公测**，需要先装 Apple 官方的 **Tes
    就会装到主屏幕。
 
 <Callout type="warn">
-  安装或打开链接卡住、提示证书 / HTTPS 错误，多半是代理梯子（Loon、Surge、Shadowrocket、
-  Clash 等）在拦截 TestFlight。先**临时关掉代理**（含全局规则、TUN、HTTPS 解密）让
-  TestFlight 走直连，装好后再打开。App 本身只跟你局域网里的桌面通信，不需要代理。
+  安装或打开链接卡住、提示证书 / HTTPS 错误，多半是代理梯子（Loon、Surge、Shadowrocket、 Clash
+  等）在拦截 TestFlight。先**临时关掉代理**（含全局规则、TUN、HTTPS 解密）让 TestFlight
+  走直连，装好后再打开。App 本身只跟你局域网里的桌面通信，不需要代理。
 </Callout>
 
 </Tab>
@@ -48,14 +48,15 @@ Android 版**不上架 Google Play**，通过 GitHub Releases 侧载 APK 安装�
    （国内打不开可用 Gitee 镜像）。
 2. 下载对应的 APK 变体：
 
-   | 变体 | 适用 |
-   | --- | --- |
-   | `arm64-v8a` | 绝大多数近几年的手机（推荐） |
-   | `armeabi-v7a` | 较老的 32 位设备 |
-   | `x86_64` | 模拟器 / 少数 x86 设备 |
-   | `universal` | 拿不准就选这个，包含全部架构、体积更大 |
+   | 变体          | 适用                                   |
+   | ------------- | -------------------------------------- |
+   | `arm64-v8a`   | 绝大多数近几年的手机（推荐）           |
+   | `armeabi-v7a` | 较老的 32 位设备                       |
+   | `x86_64`      | 模拟器 / 少数 x86 设备                 |
+   | `universal`   | 拿不准就选这个，包含全部架构、体积更大 |
 
    多数手机选 **`arm64-v8a`**；不确定就直接选 **`universal`**。
+
 3. 点开下载好的 APK 安装。首次安装系统会拦下来，按提示允许当前浏览器 / 文件管理器
    **安装未知来源应用**，再重新点一次即可。
 

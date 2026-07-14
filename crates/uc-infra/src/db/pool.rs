@@ -129,3 +129,86 @@ fn run_migrations(pool: &DbPool) -> Result<()> {
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use diesel::sql_types::Text;
+    use diesel::QueryableByName;
+
+    // Must match the forward-only schema repair migration directory.
+    const ENTRY_FILE_SET_REPAIR_VERSION: &str = "20260714000001";
+
+    #[derive(QueryableByName)]
+    struct TableColumn {
+        #[diesel(sql_type = Text)]
+        name: String,
+    }
+
+    fn entry_file_set_columns(conn: &mut SqliteConnection) -> Vec<String> {
+        diesel::sql_query("PRAGMA table_info(entry_file_set)")
+            .load::<TableColumn>(conn)
+            .unwrap()
+            .into_iter()
+            .map(|column| column.name)
+            .collect()
+    }
+
+    #[test]
+    fn pending_migrations_repair_entry_file_set_after_version_collision() {
+        let tempdir = tempfile::tempdir().unwrap();
+        let db_path = tempdir.path().join("migration-collision.sqlite");
+        let database_url = db_path.to_str().unwrap();
+        let pool = init_db_pool(database_url).unwrap();
+
+        {
+            let mut conn = pool.get().unwrap();
+            diesel::sql_query("DROP TABLE entry_file_set")
+                .execute(&mut conn)
+                .unwrap();
+            diesel::sql_query(
+                "CREATE TABLE entry_file_set (\
+                    entry_id TEXT NOT NULL,\
+                    line_index BIGINT NOT NULL,\
+                    original_text TEXT NOT NULL,\
+                    kind TEXT NOT NULL,\
+                    content_hash TEXT,\
+                    blob_id TEXT,\
+                    size_bytes BIGINT,\
+                    exclude_reason TEXT,\
+                    root_name_ct BLOB,\
+                    PRIMARY KEY (entry_id, line_index),\
+                    FOREIGN KEY (entry_id) REFERENCES clipboard_entry(entry_id) ON DELETE CASCADE\
+                )",
+            )
+            .execute(&mut conn)
+            .unwrap();
+            diesel::sql_query(format!(
+                "DELETE FROM __diesel_schema_migrations WHERE version = '{ENTRY_FILE_SET_REPAIR_VERSION}'"
+            ))
+            .execute(&mut conn)
+            .unwrap();
+        }
+        drop(pool);
+
+        let repaired_pool = init_db_pool(database_url).unwrap();
+        let mut conn = repaired_pool.get().unwrap();
+        assert_eq!(
+            entry_file_set_columns(&mut conn),
+            [
+                "entry_id",
+                "line_index",
+                "kind",
+                "content_hash",
+                "blob_id",
+                "size_bytes",
+                "exclude_reason",
+                "original_text_ct",
+                "root_index",
+                "relative_path_ct",
+                "kind_tag",
+                "root_name_ct",
+            ]
+        );
+    }
+}

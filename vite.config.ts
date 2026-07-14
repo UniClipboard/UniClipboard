@@ -42,6 +42,12 @@ export default defineConfig({
     },
   },
 
+  // Keep cuelume in the startup optimization set so a cache created from a
+  // different source state cannot trigger a mid-session dependency re-bundle.
+  optimizeDeps: {
+    include: ['cuelume'],
+  },
+
   // Configure source aliases.
   resolve: {
     alias: {

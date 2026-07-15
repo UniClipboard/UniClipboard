@@ -7,13 +7,14 @@ export interface SearchTagOption {
 }
 
 // Mirror the backend's reserved builtin tag set (`link`/`code`/`favorited`/
-// `image`) so fallback options and builtin-first ordering stay consistent with
+// `image`/`directory`) so fallback options and builtin-first ordering stay consistent with
 // what the server returns.
 const BUILTIN_SEARCH_TAGS: SearchTagOption[] = [
   { id: 'link', count: 0, isBuiltin: true },
   { id: 'code', count: 0, isBuiltin: true },
   { id: 'favorited', count: 0, isBuiltin: true },
   { id: 'image', count: 0, isBuiltin: true },
+  { id: 'directory', count: 0, isBuiltin: true },
 ]
 
 export function defaultSearchTagOptions(): SearchTagOption[] {

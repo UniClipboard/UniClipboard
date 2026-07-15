@@ -4,7 +4,9 @@ use async_trait::async_trait;
 use thiserror::Error;
 use tracing::debug;
 use uc_core::ids::EntryId;
-use uc_core::ports::clipboard::{ClipboardEventRepositoryPort, GetClipboardEntryPort};
+use uc_core::ports::clipboard::{
+    ClipboardEventRepositoryPort, EntryFileSetRepositoryPort, GetClipboardEntryPort,
+};
 use uc_core::ports::search::SearchPipelinePort;
 use uc_core::ports::{SearchIndexPort, SearchKeyDerivationPort, SelectRepresentationPolicyPort};
 use uc_core::SystemClipboardSnapshot;
@@ -50,6 +52,9 @@ pub struct ClipboardLiveIndexDeps {
     /// Resolves the originating device of a capture's event for the
     /// `source_device` render column (live/rebuild use the same lookup).
     pub event_repo: Arc<dyn ClipboardEventRepositoryPort>,
+    /// Loads the persisted file manifest so live and rebuild indexing use the
+    /// same directory-structure authority.
+    pub entry_file_set_repo: Arc<dyn EntryFileSetRepositoryPort>,
 }
 
 pub struct ClipboardLiveIndexer {
@@ -110,11 +115,25 @@ impl ClipboardLiveIndexPort for ClipboardLiveIndexer {
             }
         };
 
+        let has_directory = match self.deps.entry_file_set_repo.load(&entry_id).await {
+            Ok(Some(file_set)) => file_set.has_directory_structure(),
+            Ok(None) => false,
+            Err(err) => {
+                debug!(
+                    error = %err,
+                    entry_id = %entry_id,
+                    "search: failed to load file set, indexing without directory tag"
+                );
+                false
+            }
+        };
+
         let Some(pipeline_input) = SearchProjectionBuilder::build_from_capture(
             &entry,
             input.snapshot.as_ref(),
             &selection,
             source_device,
+            has_directory,
         ) else {
             return Ok(ClipboardLiveIndexOutcome::Skipped {
                 reason: "no_searchable_content".to_string(),

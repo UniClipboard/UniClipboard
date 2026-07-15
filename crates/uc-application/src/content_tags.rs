@@ -57,6 +57,29 @@ impl TagRule for ImageRule {
     }
 }
 
+/// A [`TagRule`] that marks file entries containing a copied directory root.
+struct DirectoryRule {
+    tag_id: TagId,
+}
+
+impl DirectoryRule {
+    fn new() -> Self {
+        Self {
+            tag_id: TagId::directory(),
+        }
+    }
+}
+
+impl TagRule for DirectoryRule {
+    fn tag_id(&self) -> &TagId {
+        &self.tag_id
+    }
+
+    fn evaluate(&self, content: &TaggableContent<'_>) -> bool {
+        content.has_directory
+    }
+}
+
 /// A [`TagRule`] that marks plain-text snippets that look like source code with
 /// the builtin `code` tag.
 struct CodeRule {
@@ -142,12 +165,14 @@ fn looks_like_code(text: Option<&str>) -> bool {
 }
 
 /// The builtin tag rules evaluated for every entry: [`LinkRule`] (web URLs),
-/// [`ImageRule`] (image content), and [`CodeRule`] (source-like text).
+/// [`ImageRule`] (image content), [`DirectoryRule`] (directory roots), and
+/// [`CodeRule`] (source-like text).
 /// User-defined rules are a later extension point.
 fn builtin_rules() -> Vec<Box<dyn TagRule>> {
     vec![
         Box::new(LinkRule::new()),
         Box::new(ImageRule::new()),
+        Box::new(DirectoryRule::new()),
         Box::new(CodeRule::new()),
     ]
 }
@@ -166,19 +191,25 @@ mod tests {
     use super::*;
     use uc_core::search::document::ContentType;
 
-    fn tags_for(plain_text: Option<&str>, uri_list: &[String], has_image: bool) -> Vec<TagId> {
+    fn tags_for(
+        plain_text: Option<&str>,
+        uri_list: &[String],
+        has_image: bool,
+        has_directory: bool,
+    ) -> Vec<TagId> {
         evaluate_builtin_content_tags(&TaggableContent {
             content_type: ContentType::Text,
             uri_list,
             plain_text,
             has_image,
+            has_directory,
         })
     }
 
     #[test]
     fn plain_text_url_gets_link_tag() {
         assert_eq!(
-            tags_for(Some("https://example.com"), &[], false),
+            tags_for(Some("https://example.com"), &[], false, false),
             vec![TagId::link()]
         );
     }
@@ -188,6 +219,7 @@ mod tests {
         let tags = tags_for(
             Some("function greet(name) {\n  return `hello ${name}`;\n}"),
             &[],
+            false,
             false,
         );
         assert!(tags.contains(&TagId::code()));
@@ -199,13 +231,20 @@ mod tests {
             Some("Notes from today: please return the signed form after the meeting."),
             &[],
             false,
+            false,
         );
         assert!(!tags.contains(&TagId::code()));
     }
 
     #[test]
     fn image_content_gets_image_tag() {
-        let tags = tags_for(None, &[], true);
+        let tags = tags_for(None, &[], true, false);
         assert_eq!(tags, vec![TagId::image()]);
+    }
+
+    #[test]
+    fn directory_content_gets_directory_tag() {
+        let tags = tags_for(None, &[], false, true);
+        assert_eq!(tags, vec![TagId::directory()]);
     }
 }

@@ -20,11 +20,10 @@
 //! 但下游(plan → publish → encode → dispatch)100% 复用既有路径:
 //!
 //! - [`reconstruct_snapshot_from_entry`] —— commit B2 抽出的共享 helper;
-//! - [`OutboundSyncPlanner::plan`] —— commit B3 让 `Resend` 与 `LocalCapture`
-//!   共享文件分支条件;
-//! - [`publish_file_blob_refs`] / [`publish_oversized_inline_blob_refs`] ——
-//!   commit B3 提升为 `pub(crate)` + 抽出 [`OutboundBlobPublishGateway`]
-//!   trait 让本用例可单测;
+//! - [`assemble_outbound_payload`] —— resolve file set → plan → publish →
+//!   directory manifest → identity stamp 的共享出站组装链,与
+//!   active-clipboard pull serve 同源(issue #1327);其内部的 planner
+//!   bypass 语义见下文 `max_file_size` 契约;
 //! - [`encode_snapshot_with_blob_refs_to_v3_bytes`] —— payload codec;
 //! - [`DispatchEntryRunner`] —— commit A 的 `target_filter` 字段 + 本 commit
 //!   抽出的内部 trait,让 fan-out / delivery 落盘 / host event emit 全部复用。
@@ -43,9 +42,10 @@
 //!
 //! Resend 路径**不**受 `settings.file_sync.max_file_size` 限制 —— 该 setting
 //! 是 LocalCapture 自动出站的带宽护栏(用户没主动表态时不想偷偷送大文件),
-//! 而 resend 是用户显式动作,理应越过此护栏自行承担后果。bypass 在
-//! [`OutboundSyncPlanner::plan`] 内实现(origin-aware),`file_sync_enabled`
-//! 不在 bypass 范围内 —— "关闭文件同步"是更强的用户意图,resend 仍尊重。
+//! 而 resend 是用户显式动作,理应越过此护栏自行承担后果。bypass 在 planner
+//! 内实现(origin-aware,[`assemble_outbound_payload`] 以 `Resend` origin
+//! 规划),`file_sync_enabled` 不在 bypass 范围内 —— "关闭文件同步"是更强
+//! 的用户意图,resend 仍尊重。
 //!
 //! 这条契约让 [`NotResendableReason::PayloadLost`] 的语义严格收窄到"本机
 //! 不持有 plaintext / blob",不再混入"持有但超用户上限"的歧义,前端
@@ -55,7 +55,7 @@ use std::collections::HashSet;
 use std::sync::Arc;
 
 use thiserror::Error;
-use tracing::{info, warn};
+use tracing::info;
 
 use uc_core::blob::ports::BlobReaderPort;
 use uc_core::clipboard::ClipboardContentCategorySet;
@@ -70,15 +70,11 @@ use uc_core::ports::{
     EntryDeliveryRepositoryPort, SettingsPort,
 };
 use uc_core::trusted_peer::TrustedPeerRepositoryPort;
-use uc_core::ClipboardChangeOrigin;
 
 use crate::facade::clipboard_outbound::{
-    build_transfer_manifest, publish_file_blob_refs, publish_oversized_inline_blob_refs,
-    resolve_outbound_file_set, ClipboardOutboundError, OutboundBlobPublishGateway,
-    OutboundFileSetResolution,
+    assemble_outbound_payload, ClipboardOutboundError, OutboundBlobPublishGateway, OutboundPayload,
+    OutboundPayloadError,
 };
-use crate::sync_planner::{FileCandidate, OutboundSyncPlanner};
-use crate::usecases::clipboard_sync::apply_inbound::compute_file_set_component;
 use crate::usecases::clipboard_sync::dispatch_entry::{
     DispatchClipboardEntryInput, DispatchEntryRunner, DispatchSyncError,
 };
@@ -263,8 +259,8 @@ impl ResendEntryUseCase {
     /// 2. `event_repo.get_source_device` — 非本机则 `RemoteOrigin`。
     /// 3. `reconstruct_snapshot_from_entry` — 任一必要 rep 不可解则 `PayloadLost`。
     /// 4. 派生目标集合(filter 校验 / 差集派生)。
-    /// 5. `OutboundSyncPlanner.plan(Resend)` + `publish_*` — 文件全缺失或
-    ///    publish 失败映射到对应 error。
+    /// 5. `assemble_outbound_payload` — resolve file set → plan(Resend) →
+    ///    publish;文件集不可复现 / publish 失败映射到对应 error。
     /// 6. V3 envelope 编码。
     /// 7. `dispatch_runner.execute` with `target_filter = Some(targets)`。
     ///
@@ -378,144 +374,48 @@ impl ResendEntryUseCase {
             }
         };
 
-        // 5. Plan + publish blobs.
-        //
-        // The member path list comes from the persisted file-set manifest
-        // (single source of truth, shared with the LocalCapture dispatch
-        // path); pre-manifest entries fall back to re-parsing the
-        // reconstructed snapshot's `text/uri-list` rep.
-        //
-        // Manifest-backed sets are all-or-nothing: an excluded manifest line
-        // (a member that never got a content identity at capture) or a member
-        // unreadable now both mean this machine cannot reproduce the set the
-        // entry's identity covers → `PayloadLost`. Fallback (legacy) sets keep
-        // the older lenient semantics: a lost member is warned and skipped;
-        // if all members are lost, the planner returns `clipboard: None`
-        // below, which also maps to `PayloadLost`.
-        let resolution =
-            resolve_outbound_file_set(self.entry_file_set_repo.as_ref(), &cmd.entry_id, &snapshot)
-                .await;
-        let (resolved_paths, from_manifest, directory_members) = match resolution {
-            OutboundFileSetResolution::NotFileClass => (Vec::new(), false, None),
-            OutboundFileSetResolution::Manifest { paths, .. } => (paths, true, None),
-            OutboundFileSetResolution::Fallback { paths } => (paths, false, None),
-            OutboundFileSetResolution::DirectorySyncable { paths, members } => {
-                (paths, true, Some(members))
-            }
-            OutboundFileSetResolution::Excluded {
-                ingest_failed,
-                size_cap_exceeded,
-                unsupported_member,
-            } => {
-                warn!(
-                    entry_id = %cmd.entry_id,
-                    ingest_failed,
-                    size_cap_exceeded,
-                    unsupported_member,
-                    "resend: file-set manifest has excluded lines; entry not resendable (all-or-nothing)"
-                );
+        // 5. Assemble the payload via the shared outbound chain (file-set
+        //    resolution from the persisted manifest, all-or-nothing member
+        //    checks, blob publish, directory manifest + identity stamp; shared
+        //    with the pull-serve path — issue #1327). `Unavailable` covers
+        //    every "this machine cannot reproduce the set" case (excluded
+        //    manifest lines, a member unreadable now, planner exclusions) →
+        //    `PayloadLost`.
+        let payload = assemble_outbound_payload(
+            self.entry_file_set_repo.as_ref(),
+            self.blob_publisher.as_ref(),
+            Arc::clone(&self.settings),
+            &cmd.entry_id,
+            snapshot,
+        )
+        .await;
+        let OutboundPayload {
+            snapshot,
+            blob_refs,
+            file_set_manifest,
+        } = match payload {
+            Ok(parts) => parts,
+            Err(OutboundPayloadError::Unavailable) => {
                 return Err(ResendEntryError::EntryNotResendable {
                     entry_id: cmd.entry_id.clone(),
                     reason: NotResendableReason::PayloadLost,
                 });
             }
-        };
-        let extracted_paths_count = resolved_paths.len();
-        let mut file_candidates = Vec::with_capacity(resolved_paths.len());
-        for path in resolved_paths {
-            match tokio::fs::metadata(&path).await {
-                Ok(meta) => file_candidates.push(FileCandidate {
-                    path,
-                    size: meta.len(),
-                }),
-                Err(err) if from_manifest => {
-                    warn!(
-                        error = %err,
-                        entry_id = %cmd.entry_id,
-                        "resend: file-set member unreadable; entry not resendable (all-or-nothing)"
-                    );
-                    return Err(ResendEntryError::EntryNotResendable {
-                        entry_id: cmd.entry_id.clone(),
-                        reason: NotResendableReason::PayloadLost,
-                    });
-                }
-                Err(err) => warn!(
-                    error = %err,
-                    "resend: 排除无法读取元数据的剪贴板文件(本机可能已不持有)"
-                ),
+            Err(OutboundPayloadError::Publish(err)) => {
+                return Err(map_outbound_publish_error(err));
             }
-        }
-
-        let planner = OutboundSyncPlanner::new(Arc::clone(&self.settings));
-        let plan = planner
-            .plan(
-                snapshot,
-                ClipboardChangeOrigin::Resend,
-                file_candidates,
-                extracted_paths_count,
-            )
-            .await;
-        let Some(mut clipboard_intent) = plan.clipboard else {
-            // resend 路径下唯一让 `clipboard` 落空的分支是 planner 的
-            // `all_files_excluded` —— 即 extracted_paths_count > 0 但所有
-            // candidate 都被 metadata 失败 / size 上限排除。视为 PayloadLost。
-            return Err(ResendEntryError::EntryNotResendable {
-                entry_id: cmd.entry_id.clone(),
-                reason: NotResendableReason::PayloadLost,
-            });
-        };
-
-        let (mut blob_refs, file_content_digests) =
-            publish_file_blob_refs(self.blob_publisher.as_ref(), &plan.files, &cmd.entry_id)
-                .await
-                .map_err(map_outbound_publish_error)?;
-        let file_set_manifest = match directory_members {
-            Some(members) => {
-                if plan.files.len() != extracted_paths_count {
-                    return Err(ResendEntryError::EntryNotResendable {
-                        entry_id: cmd.entry_id.clone(),
-                        reason: NotResendableReason::PayloadLost,
-                    });
-                }
-                Some(
-                    build_transfer_manifest(&members, &plan.files)
-                        .map_err(map_outbound_publish_error)?,
-                )
+            Err(OutboundPayloadError::Internal(msg)) => {
+                return Err(ResendEntryError::Dispatch(msg));
             }
-            None => None,
         };
-        if let Some(manifest) = &file_set_manifest {
-            let digests = file_content_digests
-                .iter()
-                .enumerate()
-                .map(|(index, digest)| (index as u32, *digest))
-                .collect();
-            clipboard_intent.snapshot.file_content_digests.clear();
-            clipboard_intent.snapshot.file_set_v1_component = Some(
-                compute_file_set_component(manifest, &digests)
-                    .map_err(|err| ResendEntryError::Dispatch(err.to_string()))?,
-            );
-        } else if !file_content_digests.is_empty() {
-            clipboard_intent.snapshot.file_content_digests = file_content_digests;
-        }
-        let mut image_blob_refs = publish_oversized_inline_blob_refs(
-            self.blob_publisher.as_ref(),
-            &mut clipboard_intent.snapshot,
-            &cmd.entry_id,
-        )
-        .await
-        .map_err(map_outbound_publish_error)?;
-        blob_refs.append(&mut image_blob_refs);
 
         // 6. Encode V3 envelope.
-        let categories = ClipboardContentCategorySet::from_snapshot(&clipboard_intent.snapshot);
+        let categories = ClipboardContentCategorySet::from_snapshot(&snapshot);
         let (plaintext, snapshot_hash, wire_version) = match file_set_manifest {
             Some(manifest) => {
                 let (plaintext, snapshot_hash) =
                     encode_snapshot_with_blob_refs_and_file_set_to_v3_bytes(
-                        &clipboard_intent.snapshot,
-                        &blob_refs,
-                        &manifest,
+                        &snapshot, &blob_refs, &manifest,
                     )
                     .map_err(|e| ResendEntryError::Dispatch(format!("payload encode: {e}")))?;
                 (
@@ -525,11 +425,9 @@ impl ResendEntryUseCase {
                 )
             }
             None => {
-                let (plaintext, snapshot_hash) = encode_snapshot_with_blob_refs_to_v3_bytes(
-                    &clipboard_intent.snapshot,
-                    &blob_refs,
-                )
-                .map_err(|e| ResendEntryError::Dispatch(format!("payload encode: {e}")))?;
+                let (plaintext, snapshot_hash) =
+                    encode_snapshot_with_blob_refs_to_v3_bytes(&snapshot, &blob_refs)
+                        .map_err(|e| ResendEntryError::Dispatch(format!("payload encode: {e}")))?;
                 (
                     plaintext,
                     snapshot_hash,

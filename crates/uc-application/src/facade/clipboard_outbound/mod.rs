@@ -44,6 +44,9 @@ pub use crate::usecases::clipboard_sync::resend_entry::{
 mod file_uri_line;
 pub(crate) use file_uri_line::{parse_uri_list_line, UriListLineKind};
 
+mod payload_prep;
+pub(crate) use payload_prep::{assemble_outbound_payload, OutboundPayload, OutboundPayloadError};
+
 /// Crate-internal adapter trait over [`BlobTransferFacade`]'s publish surface.
 ///
 /// 抽出这层只为单测 ergonomics:[`publish_file_blob_refs`] /
@@ -351,8 +354,11 @@ impl ClipboardOutboundPort for ClipboardOutboundDispatcher {
         // identity this entry was persisted under; the publish digests are
         // what actually went on the wire. Only comparable when the planner
         // kept every member (a per-file `max_file_size` exclusion legitimately
-        // shrinks the publish set).
-        if from_manifest && plan.files.len() == extracted_paths_count {
+        // shrinks the publish set) and the manifest carries a flat digest
+        // contribution at all — directory sets contribute none
+        // (`content_digest_contribution` is empty for them), so comparing
+        // would false-positive on every directory dispatch.
+        if !expected_digests.is_empty() && plan.files.len() == extracted_paths_count {
             let mut wire_digests = file_content_digests.clone();
             wire_digests.sort_unstable();
             wire_digests.dedup();

@@ -17,7 +17,10 @@
 //!    published into **this device's** blob store, which issues a fresh
 //!    ticket **pinned to this device** (D3: the relay re-signs the ticket so a
 //!    downstream fetch dials the holder, not the original provider);
-//! 4. [`encode_snapshot_with_blob_refs_to_v3_bytes`] — frame the V3 envelope;
+//! 4. [`encode_snapshot_with_blob_refs_to_v3_bytes`] — frame the V3 envelope
+//!    (directory entries resolved via `resolve_outbound_file_set` are framed
+//!    with [`encode_snapshot_with_blob_refs_and_file_set_to_v3_bytes`] so the
+//!    UCDS manifest travels, same as dispatch/resend — issue #1327);
 //! 5. [`TransferCipherPort::encrypt`] — wrap it with a fresh transfer identity.
 //!
 //! A locked session cannot decrypt at step 2, so it cannot serve: the use case
@@ -35,20 +38,21 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use tracing::{debug, info, instrument, warn};
 
-use uc_core::clipboard::ClipboardChangeOrigin;
 use uc_core::ids::EntryId;
 use uc_core::ports::clipboard::{
-    ActiveClipboardPullServeError, ActiveClipboardPullServePort, FindEntryIdBySnapshotHashPort,
+    ActiveClipboardPullServeError, ActiveClipboardPullServePort, EntryFileSetRepositoryPort,
+    FindEntryIdBySnapshotHashPort,
 };
 use uc_core::ports::security::{TransferCipherError, TransferCipherPort};
 use uc_core::ports::SettingsPort;
 
 use crate::facade::clipboard_outbound::{
-    extract_file_paths_from_snapshot, publish_file_blob_refs, publish_oversized_inline_blob_refs,
-    OutboundBlobPublishGateway,
+    assemble_outbound_payload, OutboundBlobPublishGateway, OutboundPayload, OutboundPayloadError,
 };
-use crate::sync_planner::{FileCandidate, OutboundSyncPlanner};
-use crate::usecases::clipboard_sync::payload_codec::encode_snapshot_with_blob_refs_to_v3_bytes;
+use crate::usecases::clipboard_sync::payload_codec::{
+    encode_snapshot_with_blob_refs_and_file_set_to_v3_bytes,
+    encode_snapshot_with_blob_refs_to_v3_bytes,
+};
 use crate::usecases::clipboard_sync::snapshot_from_entry::{
     BuildSnapshotError, SnapshotReconstructor,
 };
@@ -61,6 +65,7 @@ pub(crate) struct ActiveClipboardPullServeUseCase {
     reconstructor: SnapshotReconstructor,
     settings: Arc<dyn SettingsPort>,
     blob_publisher: Arc<dyn OutboundBlobPublishGateway>,
+    entry_file_set_repo: Arc<dyn EntryFileSetRepositoryPort>,
     cipher: Arc<dyn TransferCipherPort>,
 }
 
@@ -70,6 +75,7 @@ pub(crate) struct ActiveClipboardPullServeDeps {
     pub reconstructor: SnapshotReconstructor,
     pub settings: Arc<dyn SettingsPort>,
     pub blob_publisher: Arc<dyn OutboundBlobPublishGateway>,
+    pub entry_file_set_repo: Arc<dyn EntryFileSetRepositoryPort>,
     pub cipher: Arc<dyn TransferCipherPort>,
 }
 
@@ -80,6 +86,7 @@ impl ActiveClipboardPullServeUseCase {
             reconstructor: deps.reconstructor,
             settings: deps.settings,
             blob_publisher: deps.blob_publisher,
+            entry_file_set_repo: deps.entry_file_set_repo,
             cipher: deps.cipher,
         }
     }
@@ -123,83 +130,55 @@ impl ActiveClipboardPullServeUseCase {
             Err(err) => return Err(map_reconstruct_error(err, &entry_id)),
         };
 
-        // 3. Plan + publish blobs. Planning with `Resend` origin treats this as
-        //    a user-initiated outbound (bypassing the `max_file_size` capture
-        //    guard, like resend). Publishing re-issues blob tickets pinned to
-        //    THIS device (D3) so a downstream fetch dials the holder.
-        let resolved_paths = extract_file_paths_from_snapshot(&snapshot);
-        let extracted_paths_count = resolved_paths.len();
-        let mut file_candidates = Vec::with_capacity(resolved_paths.len());
-        for path in resolved_paths {
-            match tokio::fs::metadata(&path).await {
-                Ok(meta) => file_candidates.push(FileCandidate {
-                    path,
-                    size: meta.len(),
-                }),
-                Err(err) => warn!(
-                    error = %err,
-                    "pull serve: excluding clipboard file whose metadata could not be read"
-                ),
-            }
-        }
-
-        let planner = OutboundSyncPlanner::new(Arc::clone(&self.settings));
-        let plan = planner
-            .plan(
-                snapshot,
-                ClipboardChangeOrigin::Resend,
-                file_candidates,
-                extracted_paths_count,
-            )
-            .await;
-        let Some(mut clipboard_intent) = plan.clipboard else {
-            // The only branch that drops `clipboard` for a Resend-origin plan
-            // is `all_files_excluded` (every referenced file gone). Treat as
-            // not available.
-            debug!("pull serve: all referenced files excluded; content not available");
-            return Err(ActiveClipboardPullServeError::NotAvailable);
-        };
-
-        let (mut blob_refs, file_content_digests) = match publish_file_blob_refs(
+        // 3. Assemble the payload via the shared outbound chain (issue #1327:
+        //    same single source of truth as resend — file-set resolution,
+        //    all-or-nothing member checks, blob publish re-issuing tickets
+        //    pinned to THIS device (D3), directory manifest + identity stamp).
+        //    `Unavailable` covers every "this holder cannot reproduce the set"
+        //    case → the requester should ask another holder.
+        let payload = assemble_outbound_payload(
+            self.entry_file_set_repo.as_ref(),
             self.blob_publisher.as_ref(),
-            &plan.files,
+            Arc::clone(&self.settings),
             &entry_id,
+            snapshot,
         )
-        .await
-        {
-            Ok(result) => result,
-            Err(err) => {
-                warn!(error = %err, "pull serve: file blob publish failed");
+        .await;
+        let OutboundPayload {
+            snapshot,
+            blob_refs,
+            file_set_manifest,
+        } = match payload {
+            Ok(parts) => parts,
+            Err(OutboundPayloadError::Unavailable) => {
+                debug!("pull serve: payload not reproducible on this holder; not available");
+                return Err(ActiveClipboardPullServeError::NotAvailable);
+            }
+            Err(OutboundPayloadError::Publish(err)) => {
+                warn!(error = %err, "pull serve: blob publish failed");
                 return Err(ActiveClipboardPullServeError::Internal(format!(
-                    "publish file blobs: {err}"
+                    "publish blobs: {err}"
                 )));
             }
-        };
-        if !file_content_digests.is_empty() {
-            clipboard_intent.snapshot.file_content_digests = file_content_digests;
-        }
-        let mut image_blob_refs = match publish_oversized_inline_blob_refs(
-            self.blob_publisher.as_ref(),
-            &mut clipboard_intent.snapshot,
-            &entry_id,
-        )
-        .await
-        {
-            Ok(refs) => refs,
-            Err(err) => {
-                warn!(error = %err, "pull serve: inline blob publish failed");
-                return Err(ActiveClipboardPullServeError::Internal(format!(
-                    "publish inline blobs: {err}"
-                )));
+            Err(OutboundPayloadError::Internal(msg)) => {
+                warn!(error = %msg, "pull serve: payload assembly failed");
+                return Err(ActiveClipboardPullServeError::Internal(msg));
             }
         };
-        blob_refs.append(&mut image_blob_refs);
 
-        // 4. Encode the V3 envelope (snapshot + blob refs trailer).
-        let (plaintext, _snapshot_hash) = match encode_snapshot_with_blob_refs_to_v3_bytes(
-            &clipboard_intent.snapshot,
-            &blob_refs,
-        ) {
+        // 4. Encode the V3 envelope (snapshot + blob refs trailer; directory
+        //    entries additionally carry the UCDS file-set manifest trailer,
+        //    same as the dispatch/resend paths). The pull channel has no
+        //    header version gate — an old puller's strict trailing-byte check
+        //    fails loudly on the UCDS trailer, which is the intended failure
+        //    shape (issue #1327 §4.2: no pull-side version negotiation).
+        let encoded = match &file_set_manifest {
+            Some(manifest) => encode_snapshot_with_blob_refs_and_file_set_to_v3_bytes(
+                &snapshot, &blob_refs, manifest,
+            ),
+            None => encode_snapshot_with_blob_refs_to_v3_bytes(&snapshot, &blob_refs),
+        };
+        let (plaintext, _snapshot_hash) = match encoded {
             Ok(encoded) => encoded,
             Err(err) => {
                 warn!(error = %err, "pull serve: V3 envelope encode failed");
@@ -272,7 +251,9 @@ mod tests {
     use uc_core::blob::ports::BlobReaderPort;
     use uc_core::clipboard::{
         ClipboardEntry, ClipboardRepositoryError, ClipboardSelection, ClipboardSelectionDecision,
-        MimeType, PayloadAvailability, PersistedClipboardRepresentation, SelectionPolicyVersion,
+        ContentHash, EntryFileSet, EntryFileSetError, EntryFileSetExcludeReason, EntryFileSetLine,
+        EntryFileSetLineKind, FileSetMemberKind, FileSetMemberLocation, HashAlgorithm, MimeType,
+        PayloadAvailability, PersistedClipboardRepresentation, SelectionPolicyVersion,
     };
     use uc_core::ids::{EventId, FormatId, RepresentationId};
     use uc_core::ports::blob::{BlobDigest, BlobTicket, PlaintextHash};
@@ -298,6 +279,27 @@ mod tests {
             &self,
             _hash: &str,
         ) -> Result<Option<EntryId>, ClipboardRepositoryError> {
+            Ok(self.0.clone())
+        }
+    }
+
+    /// File-set manifest fake. `None` models a pre-manifest (legacy) entry —
+    /// the serve chain falls back to rep parsing, i.e. the pre-#1327 behavior
+    /// every flat/text verdict below exercises.
+    struct FakeFileSetRepo(Option<EntryFileSet>);
+    #[async_trait]
+    impl EntryFileSetRepositoryPort for FakeFileSetRepo {
+        async fn save(
+            &self,
+            _entry_id: &EntryId,
+            _file_set: &EntryFileSet,
+        ) -> Result<(), EntryFileSetError> {
+            unreachable!("serve never writes the manifest")
+        }
+        async fn load(
+            &self,
+            _entry_id: &EntryId,
+        ) -> Result<Option<EntryFileSet>, EntryFileSetError> {
             Ok(self.0.clone())
         }
     }
@@ -405,6 +407,21 @@ mod tests {
     impl SettingsPort for StubSettings {
         async fn load(&self) -> anyhow::Result<Settings> {
             Ok(Settings::default())
+        }
+        async fn save(&self, _s: &Settings) -> anyhow::Result<()> {
+            unimplemented!()
+        }
+    }
+
+    /// Settings with file sync turned off — the planner then plans zero files
+    /// even though the manifest lists members.
+    struct FileSyncDisabledSettings;
+    #[async_trait]
+    impl SettingsPort for FileSyncDisabledSettings {
+        async fn load(&self) -> anyhow::Result<Settings> {
+            let mut settings = Settings::default();
+            settings.file_sync.file_sync_enabled = false;
+            Ok(settings)
         }
         async fn save(&self, _s: &Settings) -> anyhow::Result<()> {
             unimplemented!()
@@ -583,18 +600,38 @@ mod tests {
             reconstructor,
             settings: Arc::new(StubSettings),
             blob_publisher: Arc::new(UnusedPublishGateway),
+            entry_file_set_repo: Arc::new(FakeFileSetRepo(None)),
             cipher,
         })
     }
 
     /// Build a serve use case whose local entry resolves to a single-file
     /// `text/uri-list` snapshot pointing at `file_uri`, with an injectable
-    /// blob publish gateway. Drives the blob (file) sub-path: reconstruct →
-    /// extract path → plan(Resend) → `publish_blob_path` → V3 blob ref trailer.
-    fn build_uc_for_file(
+    /// blob publish gateway and file-set manifest. Drives the blob (file)
+    /// sub-path: reconstruct → resolve file set → plan(Resend) →
+    /// `publish_blob_path` → V3 blob ref trailer (+ UCDS manifest trailer for
+    /// directory manifests).
+    fn build_uc_for_file_with_manifest(
         file_uri: &str,
+        manifest: Option<EntryFileSet>,
         gateway: Arc<dyn OutboundBlobPublishGateway>,
         cipher: Arc<dyn TransferCipherPort>,
+    ) -> ActiveClipboardPullServeUseCase {
+        build_uc_for_file_with_manifest_and_settings(
+            file_uri,
+            manifest,
+            gateway,
+            cipher,
+            Arc::new(StubSettings),
+        )
+    }
+
+    fn build_uc_for_file_with_manifest_and_settings(
+        file_uri: &str,
+        manifest: Option<EntryFileSet>,
+        gateway: Arc<dyn OutboundBlobPublishGateway>,
+        cipher: Arc<dyn TransferCipherPort>,
+        settings: Arc<dyn SettingsPort>,
     ) -> ActiveClipboardPullServeUseCase {
         let entry_id = EntryId::from("entry-1");
         let event_id = EventId::from("evt-1");
@@ -619,10 +656,49 @@ mod tests {
         ActiveClipboardPullServeUseCase::new(ActiveClipboardPullServeDeps {
             entry_lookup: Arc::new(FixedLookup(Some(entry_id))),
             reconstructor,
-            settings: Arc::new(StubSettings),
+            settings,
             blob_publisher: gateway,
+            entry_file_set_repo: Arc::new(FakeFileSetRepo(manifest)),
             cipher,
         })
+    }
+
+    /// Legacy single-file builder — no persisted manifest (rep-parsing
+    /// fallback), matching every pre-#1327 flat-file verdict.
+    fn build_uc_for_file(
+        file_uri: &str,
+        gateway: Arc<dyn OutboundBlobPublishGateway>,
+        cipher: Arc<dyn TransferCipherPort>,
+    ) -> ActiveClipboardPullServeUseCase {
+        build_uc_for_file_with_manifest(file_uri, None, gateway, cipher)
+    }
+
+    /// A directory-shaped file-set manifest with a single member
+    /// `<root>/nested/file.txt` under top-level root `root_name`. The line's
+    /// `original_text` carries the ROOT uri (the outbound resolver joins
+    /// `relative_path` onto it), and `relative_path` containing `/` is what
+    /// flips `has_directory_structure()`.
+    fn directory_manifest(root_uri: &str, root_name: &str) -> EntryFileSet {
+        EntryFileSet {
+            lines: vec![EntryFileSetLine {
+                line_index: 0,
+                original_text: root_uri.to_string(),
+                member_location: Some(FileSetMemberLocation {
+                    root_index: 0,
+                    root_name: root_name.to_string(),
+                    relative_path: "nested/file.txt".to_string(),
+                    kind: FileSetMemberKind::File,
+                }),
+                kind: EntryFileSetLineKind::File {
+                    content_hash: ContentHash {
+                        alg: HashAlgorithm::Blake3V1,
+                        bytes: [7u8; 32],
+                    },
+                    blob_id: None,
+                    size_bytes: Some(10),
+                },
+            }],
+        }
     }
 
     // ── verdicts ─────────────────────────────────────────────────────────
@@ -787,5 +863,291 @@ mod tests {
         // File blob refs are independent files (not inline image reps), so the
         // ref must not claim a representation slot.
         assert_eq!(blob_refs[0].representation_index, None);
+    }
+
+    /// V6 (issue #1327) — serving a directory entry resolves the member list
+    /// through the persisted file-set manifest (same single source of truth as
+    /// dispatch/resend) and frames the V3 envelope WITH the UCDS manifest
+    /// trailer, so a pulling peer reconstructs the tree instead of receiving a
+    /// flat frame. Also proves the intended old-puller failure shape: the
+    /// pre-directory strict decoder rejects the payload loudly (§4.2 — no
+    /// pull-side version negotiation).
+    #[tokio::test]
+    async fn serves_directory_entry_with_file_set_manifest() {
+        // Real on-disk tree: <root>/nested/file.txt — the resolver joins the
+        // manifest's relative_path onto the root and reads its metadata.
+        let dir = tempfile::tempdir().expect("tempdir");
+        let root_path = dir.path().join("folder");
+        std::fs::create_dir_all(root_path.join("nested")).expect("mkdir");
+        let member_path = root_path.join("nested/file.txt");
+        std::fs::write(&member_path, b"directory member bytes").expect("write member");
+        let root_uri = url::Url::from_file_path(&root_path)
+            .expect("root path to file:// URI")
+            .to_string();
+
+        let resigned_ticket = BlobTicket::from_bytes(b"DIR-MEMBER-TICKET".to_vec());
+        let gateway =
+            RecordingPublishGateway::new(resigned_ticket.clone(), EntryId::from("entry-1"));
+        let cipher = StubCipher::new(Ok(b"CIPHERTEXT".to_vec()));
+        let uc = build_uc_for_file_with_manifest(
+            &root_uri,
+            Some(directory_manifest(&root_uri, "folder")),
+            Arc::clone(&gateway) as _,
+            Arc::clone(&cipher) as _,
+        );
+
+        let envelope = uc.serve("blake3v1:whatever").await.expect("serve ok");
+        assert_eq!(envelope, b"CIPHERTEXT");
+
+        // The publish set is the manifest-resolved member, not the raw rep's
+        // root path — proof the resolution came from the manifest.
+        let published = gateway.published_paths.lock().unwrap().clone();
+        assert_eq!(published, vec![member_path]);
+
+        // The plaintext carries the UCDS trailer with the directory shape.
+        let seen = cipher.seen_plaintext.lock().unwrap().clone().unwrap();
+        let (snapshot, blob_refs, manifest) =
+            crate::usecases::clipboard_sync::payload_codec::decode_v3_bytes_to_snapshot_blob_refs_and_file_set(&seen)
+                .expect("plaintext must be a V3 envelope with a UCDS trailer");
+        let manifest = manifest.expect("directory serve must carry the file-set manifest");
+        assert_eq!(manifest.members.len(), 1);
+        assert_eq!(manifest.members[0].root_name, "folder");
+        assert!(!manifest.members[0].root_is_file);
+        assert_eq!(manifest.members[0].relative_path, "nested/file.txt");
+        assert_eq!(manifest.members[0].blob_ref_index, Some(0));
+        assert_eq!(blob_refs.len(), 1);
+        assert_eq!(blob_refs[0].ticket.as_bytes(), resigned_ticket.as_bytes());
+        // Directory identity never travels as flat per-file digests — the
+        // receiver recomputes the structured component from the UCDS manifest
+        // (the wire does not carry `file_set_v1_component` itself).
+        assert!(snapshot.file_content_digests.is_empty());
+
+        // Old-puller simulation: the pre-directory decoder (any bytes after
+        // the UCBS section are an error) must reject this payload loudly —
+        // the legacy peer fails the pull instead of persisting a corrupted
+        // flat entry (issue #1327 §4.2: no pull-side version negotiation).
+        let err =
+            crate::usecases::clipboard_sync::payload_codec::decode_v3_bytes_as_legacy_peer(&seen)
+                .expect_err("legacy decoder must hard-fail on the UCDS trailer");
+        assert!(err.to_string().contains("trailing byte"));
+    }
+
+    /// V7 (issue #1327 regression) — a FLAT (no directory structure) manifest
+    /// keeps the pre-directory wire shape: no UCDS trailer, so existing peers
+    /// decode it unchanged.
+    #[tokio::test]
+    async fn flat_manifest_entry_serves_without_file_set_trailer() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let file_path = dir.path().join("flat.bin");
+        std::fs::write(&file_path, b"flat payload").expect("write temp file");
+        let file_uri = url::Url::from_file_path(&file_path)
+            .expect("file path to file:// URI")
+            .to_string();
+
+        let flat_manifest = EntryFileSet {
+            lines: vec![EntryFileSetLine {
+                line_index: 0,
+                original_text: file_uri.clone(),
+                member_location: None,
+                kind: EntryFileSetLineKind::File {
+                    content_hash: ContentHash {
+                        alg: HashAlgorithm::Blake3V1,
+                        bytes: [9u8; 32],
+                    },
+                    blob_id: None,
+                    size_bytes: Some(12),
+                },
+            }],
+        };
+
+        let gateway = RecordingPublishGateway::new(
+            BlobTicket::from_bytes(b"FLAT-TICKET".to_vec()),
+            EntryId::from("entry-1"),
+        );
+        let cipher = StubCipher::new(Ok(b"CIPHERTEXT".to_vec()));
+        let uc = build_uc_for_file_with_manifest(
+            &file_uri,
+            Some(flat_manifest),
+            Arc::clone(&gateway) as _,
+            Arc::clone(&cipher) as _,
+        );
+
+        uc.serve("blake3v1:whatever").await.expect("serve ok");
+
+        // The legacy-peer decoder (hard-errors on any bytes after the UCBS
+        // section) accepts the plaintext — i.e. no UCDS trailer traveled for
+        // a flat set, so old peers keep decoding flat pulls unchanged.
+        let seen = cipher.seen_plaintext.lock().unwrap().clone().unwrap();
+        let (snapshot, blob_refs) =
+            crate::usecases::clipboard_sync::payload_codec::decode_v3_bytes_as_legacy_peer(&seen)
+                .expect("no UCDS trailer expected");
+        assert_eq!(blob_refs.len(), 1);
+        assert!(snapshot.file_set_v1_component.is_none());
+    }
+
+    /// V8 (issue #1327) — an excluded manifest (a member never got a content
+    /// identity at capture) is a true not-syncable state: serve answers
+    /// NotAvailable without publishing or encrypting anything.
+    #[tokio::test]
+    async fn excluded_manifest_is_not_available() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let file_path = dir.path().join("excluded.bin");
+        std::fs::write(&file_path, b"bytes").expect("write temp file");
+        let file_uri = url::Url::from_file_path(&file_path)
+            .expect("file path to file:// URI")
+            .to_string();
+
+        let excluded_manifest = EntryFileSet {
+            lines: vec![EntryFileSetLine {
+                line_index: 0,
+                original_text: file_uri.clone(),
+                member_location: None,
+                kind: EntryFileSetLineKind::Excluded {
+                    reason: EntryFileSetExcludeReason::UnsupportedMember,
+                },
+            }],
+        };
+
+        let cipher = StubCipher::new(Ok(b"unused".to_vec()));
+        let uc = build_uc_for_file_with_manifest(
+            &file_uri,
+            Some(excluded_manifest),
+            Arc::new(UnusedPublishGateway),
+            Arc::clone(&cipher) as _,
+        );
+
+        let err = uc
+            .serve("blake3v1:whatever")
+            .await
+            .expect_err("excluded manifest must not serve");
+        assert!(matches!(err, ActiveClipboardPullServeError::NotAvailable));
+        assert!(cipher.seen_plaintext.lock().unwrap().is_none());
+    }
+
+    /// V9 (issue #1327) — all-or-nothing: a directory member unreadable at
+    /// serve time means this holder cannot reproduce the set → NotAvailable,
+    /// never a subset.
+    #[tokio::test]
+    async fn unreadable_directory_member_is_not_available() {
+        // Root exists but the manifest's member path does not.
+        let dir = tempfile::tempdir().expect("tempdir");
+        let root_path = dir.path().join("folder");
+        std::fs::create_dir_all(&root_path).expect("mkdir");
+        let root_uri = url::Url::from_file_path(&root_path)
+            .expect("root path to file:// URI")
+            .to_string();
+
+        let cipher = StubCipher::new(Ok(b"unused".to_vec()));
+        let uc = build_uc_for_file_with_manifest(
+            &root_uri,
+            Some(directory_manifest(&root_uri, "folder")),
+            Arc::new(UnusedPublishGateway),
+            Arc::clone(&cipher) as _,
+        );
+
+        let err = uc
+            .serve("blake3v1:whatever")
+            .await
+            .expect_err("unreadable member must not serve");
+        assert!(matches!(err, ActiveClipboardPullServeError::NotAvailable));
+        assert!(cipher.seen_plaintext.lock().unwrap().is_none());
+    }
+
+    /// V10 (issue #1327) — all-or-nothing also applies to FLAT manifest sets:
+    /// a manifest member unreadable at serve time → NotAvailable, never the
+    /// readable subset. This pins an intentional tightening: pre-#1327 the
+    /// serve path warned and published the surviving subset, which would key
+    /// the pulled copy on a diverged identity (the manifest covers ALL
+    /// members). Aligns pull with the dispatch/resend semantics.
+    #[tokio::test]
+    async fn unreadable_flat_manifest_member_is_not_available() {
+        // Two-member flat manifest; only the first file exists on disk.
+        let dir = tempfile::tempdir().expect("tempdir");
+        let present_path = dir.path().join("present.bin");
+        std::fs::write(&present_path, b"still here").expect("write temp file");
+        let present_uri = url::Url::from_file_path(&present_path)
+            .expect("file path to file:// URI")
+            .to_string();
+        let missing_uri = url::Url::from_file_path(dir.path().join("gone.bin"))
+            .expect("file path to file:// URI")
+            .to_string();
+
+        let flat_line = |index: i64, uri: &str, byte: u8| EntryFileSetLine {
+            line_index: index,
+            original_text: uri.to_string(),
+            member_location: None,
+            kind: EntryFileSetLineKind::File {
+                content_hash: ContentHash {
+                    alg: HashAlgorithm::Blake3V1,
+                    bytes: [byte; 32],
+                },
+                blob_id: None,
+                size_bytes: Some(10),
+            },
+        };
+        let flat_manifest = EntryFileSet {
+            lines: vec![flat_line(0, &present_uri, 1), flat_line(1, &missing_uri, 2)],
+        };
+
+        let cipher = StubCipher::new(Ok(b"unused".to_vec()));
+        let uc = build_uc_for_file_with_manifest(
+            &present_uri,
+            Some(flat_manifest),
+            Arc::new(UnusedPublishGateway),
+            Arc::clone(&cipher) as _,
+        );
+
+        let err = uc
+            .serve("blake3v1:whatever")
+            .await
+            .expect_err("a flat manifest with an unreadable member must not serve a subset");
+        assert!(matches!(err, ActiveClipboardPullServeError::NotAvailable));
+        assert!(cipher.seen_plaintext.lock().unwrap().is_none());
+    }
+
+    /// V11 (issue #1327, CodeRabbit round 1) — file sync disabled: the planner
+    /// plans zero files, so a manifest-backed flat entry cannot carry the
+    /// contents its persisted identity covers. Serve must answer NotAvailable
+    /// instead of shipping path text under a content-keyed identity.
+    #[tokio::test]
+    async fn flat_manifest_with_file_sync_disabled_is_not_available() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let file_path = dir.path().join("present.bin");
+        std::fs::write(&file_path, b"bytes").expect("write temp file");
+        let file_uri = url::Url::from_file_path(&file_path)
+            .expect("file path to file:// URI")
+            .to_string();
+
+        let flat_manifest = EntryFileSet {
+            lines: vec![EntryFileSetLine {
+                line_index: 0,
+                original_text: file_uri.clone(),
+                member_location: None,
+                kind: EntryFileSetLineKind::File {
+                    content_hash: ContentHash {
+                        alg: HashAlgorithm::Blake3V1,
+                        bytes: [4u8; 32],
+                    },
+                    blob_id: None,
+                    size_bytes: Some(5),
+                },
+            }],
+        };
+
+        let cipher = StubCipher::new(Ok(b"unused".to_vec()));
+        let uc = build_uc_for_file_with_manifest_and_settings(
+            &file_uri,
+            Some(flat_manifest),
+            Arc::new(UnusedPublishGateway),
+            Arc::clone(&cipher) as _,
+            Arc::new(FileSyncDisabledSettings),
+        );
+
+        let err = uc
+            .serve("blake3v1:whatever")
+            .await
+            .expect_err("file sync disabled must not serve a manifest-backed file entry");
+        assert!(matches!(err, ActiveClipboardPullServeError::NotAvailable));
+        assert!(cipher.seen_plaintext.lock().unwrap().is_none());
     }
 }

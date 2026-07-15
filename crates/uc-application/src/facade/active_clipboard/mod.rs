@@ -26,9 +26,9 @@ use uc_core::ids::{DeviceId, EntryId};
 use uc_core::ports::clipboard::{
     ActiveClipboardDispatchPort, ActiveClipboardPullClientPort, ActiveClipboardPullServePort,
     ActiveClipboardReceiverPort, AdvanceActiveClipboardPort, CheckEntryAvailabilityPort,
-    ClipboardPayloadResolverPort, ClipboardSelectionRepositoryPort, FindEntryIdBySnapshotHashPort,
-    GetClipboardEntryPort, GetRepresentationPort, LoadActiveClipboardPort, TouchClipboardEntryPort,
-    UpdateRepresentationProcessingResultPort,
+    ClipboardPayloadResolverPort, ClipboardSelectionRepositoryPort, EntryFileSetRepositoryPort,
+    FindEntryIdBySnapshotHashPort, GetClipboardEntryPort, GetRepresentationPort,
+    LoadActiveClipboardPort, TouchClipboardEntryPort, UpdateRepresentationProcessingResultPort,
 };
 use uc_core::ports::security::TransferCipherPort;
 use uc_core::ports::space::IsSpaceUnlockedPort;
@@ -160,6 +160,11 @@ pub struct ActiveClipboardPullServeFacadeDeps {
     /// free-standing files into this device's blob store through it, re-issuing
     /// tickets pinned to this device (D3) before encoding the V3 envelope.
     pub blob_publisher: Arc<BlobTransferFacade>,
+    /// File-set manifest store — the single source of truth for a file-class
+    /// entry's member list on every outbound path (dispatch / resend / pull
+    /// serve, issue #1327). The serve side resolves directory entries through
+    /// it so pulled payloads carry the same UCDS manifest as dispatched ones.
+    pub entry_file_set_repo: Arc<dyn EntryFileSetRepositoryPort>,
     /// Snapshot reconstruction ports (shared with restore / resend), folded
     /// into a `SnapshotReconstructor` at construction.
     pub snapshot: ClipboardSnapshotDeps,
@@ -182,6 +187,7 @@ pub fn build_active_clipboard_pull_serve_port(
             reconstructor,
             settings: deps.settings,
             blob_publisher,
+            entry_file_set_repo: deps.entry_file_set_repo,
             cipher: deps.transfer_cipher,
         },
     ))

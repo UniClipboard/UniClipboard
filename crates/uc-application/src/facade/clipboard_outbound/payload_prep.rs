@@ -147,6 +147,21 @@ pub(crate) async fn assemble_outbound_payload(
         return Err(OutboundPayloadError::Unavailable);
     };
 
+    // All-or-nothing for every manifest-backed set (flat AND directory): a
+    // planner-dropped member (e.g. file sync disabled → zero files planned)
+    // means the wire payload cannot carry the contents the entry's persisted
+    // identity covers. Serving the remainder would ship path text under a
+    // content-keyed identity — refuse instead.
+    if from_manifest && plan.files.len() != extracted_paths_count {
+        warn!(
+            entry_id = %entry_id,
+            published = plan.files.len(),
+            expected = extracted_paths_count,
+            "outbound payload: planner excluded manifest members; not reproducible (all-or-nothing)"
+        );
+        return Err(OutboundPayloadError::Unavailable);
+    }
+
     // 4. Publish file blobs (re-issues tickets pinned to this device).
     let (mut blob_refs, file_content_digests) =
         publish_file_blob_refs(blob_publisher, &plan.files, entry_id)
@@ -156,9 +171,9 @@ pub(crate) async fn assemble_outbound_payload(
     // Capture→send drift observability (flat manifests only — directory sets
     // carry no flat digest contribution): the manifest digests are the
     // identity the entry was persisted under; the publish digests are what
-    // actually goes on the wire. Only comparable when the planner kept every
-    // member.
-    if !expected_digests.is_empty() && plan.files.len() == extracted_paths_count {
+    // actually goes on the wire. The all-or-nothing guard above already
+    // ensured the planner kept every member.
+    if !expected_digests.is_empty() {
         let mut wire_digests = file_content_digests.clone();
         wire_digests.sort_unstable();
         wire_digests.dedup();
@@ -172,25 +187,14 @@ pub(crate) async fn assemble_outbound_payload(
         }
     }
 
-    // 5. Directory sets: all members must have survived planning, then the
-    //    transfer manifest + structured identity component replace the flat
-    //    digest contribution.
+    // 5. Directory sets: the transfer manifest + structured identity component
+    //    replace the flat digest contribution (member completeness is already
+    //    guaranteed by the all-or-nothing guard above).
     let file_set_manifest = match directory_members {
-        Some(members) => {
-            if plan.files.len() != extracted_paths_count {
-                warn!(
-                    entry_id = %entry_id,
-                    published = plan.files.len(),
-                    expected = extracted_paths_count,
-                    "outbound payload: planner excluded directory members; not reproducible (all-or-nothing)"
-                );
-                return Err(OutboundPayloadError::Unavailable);
-            }
-            Some(
-                build_transfer_manifest(&members, &plan.files)
-                    .map_err(|err| OutboundPayloadError::Internal(err.to_string()))?,
-            )
-        }
+        Some(members) => Some(
+            build_transfer_manifest(&members, &plan.files)
+                .map_err(|err| OutboundPayloadError::Internal(err.to_string()))?,
+        ),
         None => None,
     };
     if let Some(manifest) = &file_set_manifest {

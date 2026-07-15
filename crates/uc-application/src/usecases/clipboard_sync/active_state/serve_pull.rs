@@ -413,6 +413,21 @@ mod tests {
         }
     }
 
+    /// Settings with file sync turned off — the planner then plans zero files
+    /// even though the manifest lists members.
+    struct FileSyncDisabledSettings;
+    #[async_trait]
+    impl SettingsPort for FileSyncDisabledSettings {
+        async fn load(&self) -> anyhow::Result<Settings> {
+            let mut settings = Settings::default();
+            settings.file_sync.file_sync_enabled = false;
+            Ok(settings)
+        }
+        async fn save(&self, _s: &Settings) -> anyhow::Result<()> {
+            unimplemented!()
+        }
+    }
+
     struct UnusedPublishGateway;
     #[async_trait]
     impl OutboundBlobPublishGateway for UnusedPublishGateway {
@@ -602,6 +617,22 @@ mod tests {
         gateway: Arc<dyn OutboundBlobPublishGateway>,
         cipher: Arc<dyn TransferCipherPort>,
     ) -> ActiveClipboardPullServeUseCase {
+        build_uc_for_file_with_manifest_and_settings(
+            file_uri,
+            manifest,
+            gateway,
+            cipher,
+            Arc::new(StubSettings),
+        )
+    }
+
+    fn build_uc_for_file_with_manifest_and_settings(
+        file_uri: &str,
+        manifest: Option<EntryFileSet>,
+        gateway: Arc<dyn OutboundBlobPublishGateway>,
+        cipher: Arc<dyn TransferCipherPort>,
+        settings: Arc<dyn SettingsPort>,
+    ) -> ActiveClipboardPullServeUseCase {
         let entry_id = EntryId::from("entry-1");
         let event_id = EventId::from("evt-1");
         let reconstructor = SnapshotReconstructor::new(
@@ -625,7 +656,7 @@ mod tests {
         ActiveClipboardPullServeUseCase::new(ActiveClipboardPullServeDeps {
             entry_lookup: Arc::new(FixedLookup(Some(entry_id))),
             reconstructor,
-            settings: Arc::new(StubSettings),
+            settings,
             blob_publisher: gateway,
             entry_file_set_repo: Arc::new(FakeFileSetRepo(manifest)),
             cipher,
@@ -1070,6 +1101,52 @@ mod tests {
             .serve("blake3v1:whatever")
             .await
             .expect_err("a flat manifest with an unreadable member must not serve a subset");
+        assert!(matches!(err, ActiveClipboardPullServeError::NotAvailable));
+        assert!(cipher.seen_plaintext.lock().unwrap().is_none());
+    }
+
+    /// V11 (issue #1327, CodeRabbit round 1) — file sync disabled: the planner
+    /// plans zero files, so a manifest-backed flat entry cannot carry the
+    /// contents its persisted identity covers. Serve must answer NotAvailable
+    /// instead of shipping path text under a content-keyed identity.
+    #[tokio::test]
+    async fn flat_manifest_with_file_sync_disabled_is_not_available() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let file_path = dir.path().join("present.bin");
+        std::fs::write(&file_path, b"bytes").expect("write temp file");
+        let file_uri = url::Url::from_file_path(&file_path)
+            .expect("file path to file:// URI")
+            .to_string();
+
+        let flat_manifest = EntryFileSet {
+            lines: vec![EntryFileSetLine {
+                line_index: 0,
+                original_text: file_uri.clone(),
+                member_location: None,
+                kind: EntryFileSetLineKind::File {
+                    content_hash: ContentHash {
+                        alg: HashAlgorithm::Blake3V1,
+                        bytes: [4u8; 32],
+                    },
+                    blob_id: None,
+                    size_bytes: Some(5),
+                },
+            }],
+        };
+
+        let cipher = StubCipher::new(Ok(b"unused".to_vec()));
+        let uc = build_uc_for_file_with_manifest_and_settings(
+            &file_uri,
+            Some(flat_manifest),
+            Arc::new(UnusedPublishGateway),
+            Arc::clone(&cipher) as _,
+            Arc::new(FileSyncDisabledSettings),
+        );
+
+        let err = uc
+            .serve("blake3v1:whatever")
+            .await
+            .expect_err("file sync disabled must not serve a manifest-backed file entry");
         assert!(matches!(err, ActiveClipboardPullServeError::NotAvailable));
         assert!(cipher.seen_plaintext.lock().unwrap().is_none());
     }

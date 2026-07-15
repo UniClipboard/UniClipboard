@@ -1,12 +1,13 @@
 //! Authoritative search schema and tokenizer constants for `uc-infra`.
 //!
-//! `CURRENT_INDEX_VERSION` must be bumped whenever normalization rules change
-//! (NFKC, separator splitting, camelCase, CJK bigram). A version mismatch
-//! triggers a full index rebuild in Phase 91.
+//! `CURRENT_INDEX_VERSION` must be bumped whenever normalization or derived
+//! projection rules change. A version mismatch triggers a full index rebuild in
+//! Phase 91.
 
 /// Current tokenizer/normalization schema version.
 ///
-/// Bump this whenever the tokenization rules change to trigger a full rebuild.
+/// Bump this whenever tokenization or derived projection rules change to trigger
+/// a full rebuild.
 ///
 /// History:
 /// - `search-v2`: per-field prefix expansion (body/html unexpanded).
@@ -46,7 +47,10 @@
 ///   `render_payload` BLOB. The rebuild backfills the encrypted payload from the
 ///   decrypted representations (see the `encrypt_search_render_columns`
 ///   migration). `source_device` and `payload_state` stay plaintext by design.
-pub const CURRENT_INDEX_VERSION: &str = "search-v10";
+/// - `search-v11`: adds the derived `directory` tag for file entries whose
+///   persisted file manifest contains a copied directory root. The rebuild
+///   backfills this tag for existing directory entries.
+pub const CURRENT_INDEX_VERSION: &str = "search-v11";
 
 /// Field-mask bit: term was extracted from the plain-text body.
 pub const SEARCH_FIELD_BODY: u8 = 0b0000_0001;

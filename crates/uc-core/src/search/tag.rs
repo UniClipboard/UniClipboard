@@ -30,6 +30,8 @@ pub mod builtin {
     pub const IMAGE: &str = "image";
     /// Code/rich-text tag: the entry carries rich text / HTML content.
     pub const CODE: &str = "code";
+    /// Directory tag: the entry contains a top-level root copied as a directory.
+    pub const DIRECTORY: &str = "directory";
 }
 
 /// Stable identifier of a search tag.
@@ -65,6 +67,11 @@ impl TagId {
         Self::new(builtin::CODE)
     }
 
+    /// The builtin `directory` tag id.
+    pub fn directory() -> Self {
+        Self::new(builtin::DIRECTORY)
+    }
+
     /// Borrow the id as a string slice.
     pub fn as_str(&self) -> &str {
         &self.0
@@ -74,7 +81,11 @@ impl TagId {
     pub fn is_builtin(&self) -> bool {
         matches!(
             self.0.as_str(),
-            builtin::LINK | builtin::FAVORITED | builtin::IMAGE | builtin::CODE
+            builtin::LINK
+                | builtin::FAVORITED
+                | builtin::IMAGE
+                | builtin::CODE
+                | builtin::DIRECTORY
         )
     }
 }
@@ -128,6 +139,10 @@ pub struct TaggableContent<'a> {
     /// an image file. Drives the builtin `image` tag, which is orthogonal to
     /// `content_type` (a copied image file is physically a `File`).
     pub has_image: bool,
+    /// True when the entry contains a top-level root copied as a directory.
+    /// Drives the builtin `directory` tag and remains orthogonal to
+    /// `content_type` (directory copies are physically `File`).
+    pub has_directory: bool,
 }
 
 /// A producer of exactly one tag: given content, decides whether the tag
@@ -162,10 +177,12 @@ mod tests {
         assert_eq!(TagId::favorited().as_str(), builtin::FAVORITED);
         assert_eq!(TagId::image().as_str(), builtin::IMAGE);
         assert_eq!(TagId::code().as_str(), builtin::CODE);
+        assert_eq!(TagId::directory().as_str(), builtin::DIRECTORY);
         assert!(TagId::link().is_builtin());
         assert!(TagId::favorited().is_builtin());
         assert!(TagId::image().is_builtin());
         assert!(TagId::code().is_builtin());
+        assert!(TagId::directory().is_builtin());
     }
 
     #[test]

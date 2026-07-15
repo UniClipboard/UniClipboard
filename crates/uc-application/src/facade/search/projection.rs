@@ -164,6 +164,7 @@ impl SearchableContent {
         mime_type: String,
         source_device: Option<String>,
         payload_state: Option<String>,
+        has_directory: bool,
     ) -> Option<SearchPipelineInput> {
         if self.is_empty() {
             return None;
@@ -175,6 +176,7 @@ impl SearchableContent {
             uri_list: &self.uri_list,
             plain_text: self.plain_text.as_deref(),
             has_image: self.has_image,
+            has_directory,
         });
         // `favorited` is user-state, not a content rule, so it cannot come from
         // `builtin_rules`. Mirror the entry's persisted favorite flag into the
@@ -244,6 +246,7 @@ impl SearchProjectionBuilder {
         snapshot: &SystemClipboardSnapshot,
         selection: &ClipboardSelection,
         source_device: Option<String>,
+        has_directory: bool,
     ) -> Option<SearchPipelineInput> {
         let preview_rep_id = &selection.preview_rep_id;
 
@@ -265,7 +268,7 @@ impl SearchProjectionBuilder {
             .map(|m| m.as_str().to_string())
             .unwrap_or_else(|| "application/octet-stream".to_string());
 
-        content.into_pipeline_input(entry, mime_type, source_device, None)
+        content.into_pipeline_input(entry, mime_type, source_device, None, has_directory)
     }
 
     /// Build a `SearchPipelineInput` from persisted clipboard data.
@@ -283,6 +286,7 @@ impl SearchProjectionBuilder {
         selection: &ClipboardSelectionDecision,
         reps: &[PersistedClipboardRepresentation],
         source_device: Option<String>,
+        has_directory: bool,
     ) -> Option<SearchPipelineInput> {
         let preview_rep_id = &selection.selection.preview_rep_id;
 
@@ -308,7 +312,13 @@ impl SearchProjectionBuilder {
             .unwrap_or_else(|| "application/octet-stream".to_string());
         let payload_state = paste_rep.and_then(|r| payload_state_marker(&r.payload_state));
 
-        content.into_pipeline_input(entry, mime_type, source_device, payload_state)
+        content.into_pipeline_input(
+            entry,
+            mime_type,
+            source_device,
+            payload_state,
+            has_directory,
+        )
     }
 }
 
@@ -365,6 +375,7 @@ mod tests {
             &snapshot,
             &selection,
             None,
+            false,
         )
         .expect("snapshot has searchable content")
     }
@@ -398,6 +409,7 @@ mod tests {
             &snapshot,
             &selection,
             None,
+            false,
         )
         .expect("snapshot has searchable content");
 
@@ -440,6 +452,7 @@ mod tests {
             &snapshot,
             &selection,
             None,
+            false,
         )
         .expect("snapshot has searchable content");
 
@@ -484,6 +497,7 @@ mod tests {
             &snapshot,
             &selection,
             None,
+            false,
         )
         .expect("snapshot has searchable content");
 
@@ -544,6 +558,7 @@ mod tests {
             &snapshot,
             &selection,
             None,
+            false,
         )
         .expect("snapshot has searchable content");
 
@@ -593,6 +608,7 @@ mod tests {
             &snapshot,
             &selection,
             None,
+            false,
         )
         .expect("snapshot has searchable content");
 
@@ -730,6 +746,7 @@ mod tests {
             &snapshot,
             &selection,
             Some("dev-x".to_string()),
+            false,
         )
         .expect("snapshot has searchable content");
 
@@ -787,9 +804,14 @@ mod tests {
             },
         );
 
-        let input =
-            SearchProjectionBuilder::build_from_persisted(&e, &decision, &[preview, paste], None)
-                .expect("preview supplies searchable content");
+        let input = SearchProjectionBuilder::build_from_persisted(
+            &e,
+            &decision,
+            &[preview, paste],
+            None,
+            false,
+        )
+        .expect("preview supplies searchable content");
 
         assert_eq!(input.payload_state.as_deref(), Some("Lost"));
         assert_eq!(input.content_type, ContentType::Html);
@@ -812,7 +834,7 @@ mod tests {
             },
         );
 
-        let input = SearchProjectionBuilder::build_from_persisted(&e, &decision, &[r], None)
+        let input = SearchProjectionBuilder::build_from_persisted(&e, &decision, &[r], None, false)
             .expect("inline text is searchable");
 
         assert_eq!(input.payload_state, None);
@@ -836,9 +858,14 @@ mod tests {
                 policy_version: SelectionPolicyVersion::V1,
             },
         );
-        let fav_input =
-            SearchProjectionBuilder::build_from_persisted(&favorited, &fav_dec, &[fav_rep], None)
-                .expect("inline text is searchable");
+        let fav_input = SearchProjectionBuilder::build_from_persisted(
+            &favorited,
+            &fav_dec,
+            &[fav_rep],
+            None,
+            false,
+        )
+        .expect("inline text is searchable");
         assert!(
             fav_input.tags.contains(&TagId::favorited()),
             "a persisted favorited entry carries the favorited tag"
@@ -857,9 +884,14 @@ mod tests {
                 policy_version: SelectionPolicyVersion::V1,
             },
         );
-        let plain_input =
-            SearchProjectionBuilder::build_from_persisted(&plain, &plain_dec, &[plain_rep], None)
-                .expect("inline text is searchable");
+        let plain_input = SearchProjectionBuilder::build_from_persisted(
+            &plain,
+            &plain_dec,
+            &[plain_rep],
+            None,
+            false,
+        )
+        .expect("inline text is searchable");
         assert!(
             !plain_input.tags.contains(&TagId::favorited()),
             "an unfavorited entry carries no favorited tag"
@@ -873,7 +905,7 @@ mod tests {
     fn live_and_rebuild_render_parity() {
         let bytes = b"file:///home/u/a.txt\nhttps://example.com\n";
         let rep_id = RepresentationId::new();
-        let e = entry();
+        let e = entry_with_category(ClipboardEntryContentCategory::File);
         let make_selection = || ClipboardSelection {
             primary_rep_id: rep_id.clone(),
             secondary_rep_ids: Vec::new(),
@@ -899,6 +931,7 @@ mod tests {
             &snapshot,
             &make_selection(),
             Some("dev-1".to_string()),
+            true,
         )
         .expect("live snapshot is searchable");
 
@@ -909,6 +942,7 @@ mod tests {
             &decision,
             &[stored],
             Some("dev-1".to_string()),
+            true,
         )
         .expect("persisted reps are searchable");
 
@@ -916,5 +950,8 @@ mod tests {
         assert_eq!(live.link_urls, rebuilt.link_urls);
         assert_eq!(live.source_device, rebuilt.source_device);
         assert_eq!(live.content_type, rebuilt.content_type);
+        assert_eq!(live.content_type, ContentType::File);
+        assert_eq!(live.tags, rebuilt.tags);
+        assert!(live.tags.contains(&TagId::directory()));
     }
 }

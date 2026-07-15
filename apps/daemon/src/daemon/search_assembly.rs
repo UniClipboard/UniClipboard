@@ -30,6 +30,7 @@ pub fn build_daemon_search_assembly(
         deps.clipboard.representation_ports.list_for_event.clone(),
         deps.clipboard.selection_repo.clone(),
         deps.clipboard.clipboard_event_reader_repo.clone(),
+        deps.storage.entry_file_set_repo.clone(),
     )));
 
     let service = Arc::new(SearchCoordinatorService::new(

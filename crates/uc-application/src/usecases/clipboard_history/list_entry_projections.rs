@@ -228,6 +228,7 @@ fn content_tags_for_projection(
         uri_list: &uri_list,
         plain_text,
         has_image,
+        has_directory: false,
     })
     .into_iter()
     .map(|tag| tag.to_string())

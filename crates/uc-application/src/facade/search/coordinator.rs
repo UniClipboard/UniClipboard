@@ -10,8 +10,8 @@ use tracing::{debug, info, info_span, instrument, warn, Instrument};
 use uc_core::clipboard::ClipboardEntry;
 use uc_core::ids::EntryId;
 use uc_core::ports::clipboard::{
-    ClipboardEventRepositoryPort, GetClipboardEntryPort, ListClipboardEntriesPort,
-    ListRepresentationsForEventPort,
+    ClipboardEventRepositoryPort, EntryFileSetRepositoryPort, GetClipboardEntryPort,
+    ListClipboardEntriesPort, ListRepresentationsForEventPort,
 };
 use uc_core::ports::search::{SearchIndexMaintenancePort, SearchPipelinePort};
 use uc_core::ports::{ClipboardSelectionRepositoryPort, SearchIndexPort, SearchKeyDerivationPort};
@@ -85,6 +85,8 @@ pub struct SearchCoordinatorDeps {
     /// Resolves the originating device of each entry's event for the
     /// `source_device` render column (same lookup as the live index path).
     pub event_repo: Arc<dyn ClipboardEventRepositoryPort>,
+    /// Loads the persisted file manifest used by the directory tag rule.
+    pub entry_file_set_repo: Arc<dyn EntryFileSetRepositoryPort>,
     pub current_index_version: String,
 }
 
@@ -100,6 +102,7 @@ impl SearchCoordinatorDeps {
         representation_repo: Arc<dyn ListRepresentationsForEventPort>,
         selection_repo: Arc<dyn ClipboardSelectionRepositoryPort>,
         event_repo: Arc<dyn ClipboardEventRepositoryPort>,
+        entry_file_set_repo: Arc<dyn EntryFileSetRepositoryPort>,
     ) -> Self {
         Self {
             search_index,
@@ -111,6 +114,7 @@ impl SearchCoordinatorDeps {
             representation_repo,
             selection_repo,
             event_repo,
+            entry_file_set_repo,
             current_index_version: CURRENT_INDEX_VERSION.to_string(),
         }
     }
@@ -206,6 +210,7 @@ impl SearchCoordinator {
             self.deps.representation_repo.as_ref(),
             self.deps.selection_repo.as_ref(),
             self.deps.event_repo.as_ref(),
+            self.deps.entry_file_set_repo.as_ref(),
             limit,
             offset,
         )
@@ -469,6 +474,7 @@ impl SearchCoordinator {
                     deps.representation_repo.as_ref(),
                     deps.selection_repo.as_ref(),
                     deps.event_repo.as_ref(),
+                    deps.entry_file_set_repo.as_ref(),
                     entry,
                 )
                 .await
@@ -610,6 +616,7 @@ async fn project_persisted_entry(
     representation_repo: &dyn ListRepresentationsForEventPort,
     selection_repo: &dyn ClipboardSelectionRepositoryPort,
     event_repo: &dyn ClipboardEventRepositoryPort,
+    entry_file_set_repo: &dyn EntryFileSetRepositoryPort,
     entry: &ClipboardEntry,
 ) -> Option<SearchPipelineInput> {
     let reps = match representation_repo
@@ -660,7 +667,26 @@ async fn project_persisted_entry(
         }
     };
 
-    SearchProjectionBuilder::build_from_persisted(entry, &selection, &reps, source_device)
+    let has_directory = match entry_file_set_repo.load(&entry.entry_id).await {
+        Ok(Some(file_set)) => file_set.has_directory_structure(),
+        Ok(None) => false,
+        Err(e) => {
+            debug!(
+                error = %e,
+                entry_id = %entry.entry_id,
+                "search projection: failed to load file set, projecting without directory tag"
+            );
+            false
+        }
+    };
+
+    SearchProjectionBuilder::build_from_persisted(
+        entry,
+        &selection,
+        &reps,
+        source_device,
+        has_directory,
+    )
 }
 
 /// Build a degraded browse page (§4.7) directly from the main store. Extracted
@@ -671,6 +697,7 @@ async fn project_browse_page(
     representation_repo: &dyn ListRepresentationsForEventPort,
     selection_repo: &dyn ClipboardSelectionRepositoryPort,
     event_repo: &dyn ClipboardEventRepositoryPort,
+    entry_file_set_repo: &dyn EntryFileSetRepositoryPort,
     limit: usize,
     offset: usize,
 ) -> Result<SearchResultsPage, SearchError> {
@@ -685,8 +712,14 @@ async fn project_browse_page(
 
     let mut items = Vec::with_capacity(entries.len());
     for entry in &entries {
-        if let Some(input) =
-            project_persisted_entry(representation_repo, selection_repo, event_repo, entry).await
+        if let Some(input) = project_persisted_entry(
+            representation_repo,
+            selection_repo,
+            event_repo,
+            entry_file_set_repo,
+            entry,
+        )
+        .await
         {
             items.push(pipeline_input_to_search_result(input));
         }
@@ -752,6 +785,7 @@ async fn repair_entry(deps: &SearchCoordinatorDeps, entry_id: &EntryId) {
         deps.representation_repo.as_ref(),
         deps.selection_repo.as_ref(),
         deps.event_repo.as_ref(),
+        deps.entry_file_set_repo.as_ref(),
         &entry,
     )
     .await
@@ -916,6 +950,27 @@ mod tests {
         }
     }
 
+    struct FakeFileSetRepo;
+
+    #[async_trait::async_trait]
+    impl EntryFileSetRepositoryPort for FakeFileSetRepo {
+        async fn save(
+            &self,
+            _entry_id: &EntryId,
+            _file_set: &uc_core::clipboard::EntryFileSet,
+        ) -> Result<(), uc_core::clipboard::EntryFileSetError> {
+            unimplemented!("not used by search projection tests")
+        }
+
+        async fn load(
+            &self,
+            _entry_id: &EntryId,
+        ) -> Result<Option<uc_core::clipboard::EntryFileSet>, uc_core::clipboard::EntryFileSetError>
+        {
+            Ok(None)
+        }
+    }
+
     fn entry(favorited: bool) -> ClipboardEntry {
         let e = ClipboardEntry::new(EntryId::new(), EventId::new(), 0, 0)
             .with_content_category(ClipboardEntryContentCategory::Text);
@@ -945,9 +1000,17 @@ mod tests {
         let event_repo = FakeEventRepo;
 
         // limit 5 over 2 entries => no further page.
-        let page = project_browse_page(&entry_repo, &rep_repo, &sel_repo, &event_repo, 5, 0)
-            .await
-            .expect("degraded browse projects without error");
+        let page = project_browse_page(
+            &entry_repo,
+            &rep_repo,
+            &sel_repo,
+            &event_repo,
+            &FakeFileSetRepo,
+            5,
+            0,
+        )
+        .await
+        .expect("degraded browse projects without error");
 
         assert_eq!(page.items.len(), 2);
         assert!(!page.has_more, "2 of 2 entries fit in a page of 5");
@@ -981,9 +1044,17 @@ mod tests {
         };
         let event_repo = FakeEventRepo;
 
-        let page = project_browse_page(&entry_repo, &rep_repo, &sel_repo, &event_repo, 2, 0)
-            .await
-            .expect("degraded browse projects without error");
+        let page = project_browse_page(
+            &entry_repo,
+            &rep_repo,
+            &sel_repo,
+            &event_repo,
+            &FakeFileSetRepo,
+            2,
+            0,
+        )
+        .await
+        .expect("degraded browse projects without error");
 
         assert_eq!(page.items.len(), 2);
         assert!(page.has_more, "page of 2 over 3 entries has a next page");
@@ -1130,6 +1201,7 @@ mod tests {
             }),
             Arc::new(FakeSelectionRepo { rep_id }),
             Arc::new(FakeEventRepo),
+            Arc::new(FakeFileSetRepo),
         );
         let coordinator = SearchCoordinator::new(deps);
 
@@ -1213,6 +1285,7 @@ mod tests {
             }),
             Arc::new(FakeSelectionRepo { rep_id }),
             Arc::new(FakeEventRepo),
+            Arc::new(FakeFileSetRepo),
         );
         let coordinator = SearchCoordinator::new(deps);
 

@@ -203,6 +203,31 @@ pub fn decode_v3_bytes_to_snapshot_blob_refs_and_file_set(
     ))
 }
 
+/// Test-only replica of the pre-directory-sync decoder as shipped before
+/// ADR-010 phase 4: it read the UCBS blob-refs extension and hard-errored on
+/// any remaining bytes. Kept as an executable spec of the legacy-peer failure
+/// shape — a payload carrying the UCDS directory trailer must fail loudly on
+/// old peers (no silent corruption, no pull-side version negotiation; issue
+/// #1327 §4.2).
+#[cfg(test)]
+pub(crate) fn decode_v3_bytes_as_legacy_peer(
+    bytes: &[u8],
+) -> Result<(SystemClipboardSnapshot, Vec<V3BlobRef>)> {
+    let mut cursor = bytes;
+    let _ = ClipboardBinaryPayload::decode_from(&mut cursor)
+        .map_err(|e| anyhow!("decode V3 envelope: {e}"))?;
+    let (_, trailing) = read_blob_refs_extension_with_remainder(cursor)?;
+    if !trailing.is_empty() {
+        // Verbatim legacy error: `read_blob_refs_extension` rejected any
+        // bytes left after the UCBS section.
+        return Err(anyhow!(
+            "V3 blob refs extension has {} trailing byte(s)",
+            trailing.len()
+        ));
+    }
+    decode_v3_bytes_to_snapshot_and_blob_refs(bytes)
+}
+
 fn write_blob_refs_extension<W: Write>(
     writer: &mut W,
     blob_refs: &[V3BlobRef],

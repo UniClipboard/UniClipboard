@@ -505,6 +505,7 @@ pub(crate) async fn build_sync_engine_assembly(
             settings: Arc::clone(&deps.settings),
             transfer_cipher: Arc::clone(&deps.security.transfer_cipher),
             blob_publisher: Arc::clone(&blob),
+            entry_file_set_repo: Arc::clone(&deps.storage.entry_file_set_repo),
             snapshot: ClipboardSnapshotDeps {
                 entry_repo: Arc::clone(&deps.clipboard.entry_ports.get),
                 selection_repo: Arc::clone(&deps.clipboard.selection_repo),

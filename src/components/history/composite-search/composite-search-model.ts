@@ -18,6 +18,7 @@ import {
   File,
   FileCode,
   FileText,
+  Folder,
   Hash,
   Image as ImageIcon,
   Laptop,
@@ -83,6 +84,7 @@ const TYPE_ICONS: Record<string, LucideIcon> = {
   [Filter.Link]: ExternalLink,
   [Filter.Image]: ImageIcon,
   [Filter.File]: File,
+  directory: Folder,
 }
 
 /** Default ("cleared") value of each dimension — clearing a chip resets to this. */

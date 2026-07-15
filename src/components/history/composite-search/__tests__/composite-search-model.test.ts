@@ -1,3 +1,4 @@
+import { Folder } from 'lucide-react'
 import { describe, expect, it } from 'vitest'
 import { Filter } from '@/api/clipboardItems'
 import {
@@ -64,6 +65,20 @@ describe('composite search model', () => {
       tagOptions,
     }).map(c => c.value)
 
-    expect(values).toEqual(['link', 'code', 'favorited', 'image'])
+    expect(values).toEqual(['link', 'code', 'favorited', 'image', 'directory'])
+  })
+
+  it('offers the builtin directory tag as a folder', () => {
+    const tagOptions = searchableTagsToOptions([])
+    const [candidate] = buildCandidates('tag', 'directory', {
+      t: key => (key === 'history.type.directory' ? '文件夹' : key),
+      sourceOptions: [],
+      current,
+      tagOptions,
+    })
+
+    expect(candidate.value).toBe('directory')
+    expect(candidate.label).toBe('文件夹')
+    expect(candidate.icon).toBe(Folder)
   })
 })

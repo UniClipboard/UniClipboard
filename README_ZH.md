@@ -61,7 +61,7 @@
 UniClipboard 是一款以 **隐私优先** 为核心理念的跨设备剪贴板同步工具。它支持在多台设备之间无缝、安全地同步文本、图片和文件，无论设备处于同一 Wi-Fi 还是不同网络环境。数据在传输与本地存储阶段均保持加密，仅在用户设备本地解密，服务器与网络层永远无法访问明文。
 
 <p align="center">
-  <img alt="UniClipboard 桌面端截图" src="https://github.com/user-attachments/assets/8d339467-5bbe-4afa-9235-1d26cbff82c9" />
+  <img width="990" height="660" alt="UniClipboard desktop screenshot" src="https://github.com/user-attachments/assets/5e1d75b0-3fed-40ee-ba47-99f5a87f2ec4" />
 </p>
 
 <p align="center">

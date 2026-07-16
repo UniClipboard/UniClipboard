@@ -1,5 +1,6 @@
 import { applyPlatformEffectPreferences, detectPlatformInfo } from '@/lib/platform'
 import { initializeUiScale } from '@/lib/ui-scale'
+import { initializeUiSound } from '@/lib/ui-sound'
 
 export { applyPlatformEffectPreferences } from '@/lib/platform'
 
@@ -27,5 +28,11 @@ export const applyPlatformTypographyScale = () => {
 export const initializeWindowUi = (): (() => void) => {
   applyPlatformTypographyScale()
   applyPlatformEffectPreferences()
-  return initializeUiScale()
+  const disposeUiScale = initializeUiScale()
+  const disposeUiSound = initializeUiSound()
+
+  return () => {
+    disposeUiSound()
+    disposeUiScale()
+  }
 }

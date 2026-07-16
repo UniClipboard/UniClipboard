@@ -143,7 +143,7 @@
         "sound": {
           "title": "声音",
           "label": "交互声音反馈",
-          "description": "切换开关时播放轻量提示音"
+          "description": "在状态切换、菜单选择和操作成功时播放轻量提示音"
         },
         "telemetry": {
           "title": "隐私",

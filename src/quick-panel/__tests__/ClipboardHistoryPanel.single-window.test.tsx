@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { deleteClipboardEntry, restoreClipboardEntry } from '@/api/daemon'
 import { __resetResendActionStoreForTests } from '@/hooks/useResendAction'
 import i18n from '@/i18n'
+import { playUiSound } from '@/lib/ui-sound'
 import devicesReducer from '@/store/slices/devicesSlice'
 import ClipboardHistoryPanel from '../ClipboardHistoryPanel'
 import { useHistorySearch } from '../hooks/useHistorySearch'
@@ -37,6 +38,7 @@ vi.mock('@tauri-apps/api/event', () => ({
 vi.mock('@/hooks/useThemeSync', () => ({ useThemeSync: vi.fn() }))
 vi.mock('@/hooks/useHistorySourceOptions', () => ({ useHistorySourceOptions: () => [] }))
 vi.mock('@/hooks/useShortcut', () => ({ useShortcut: vi.fn() }))
+vi.mock('@/lib/ui-sound', () => ({ playUiSound: vi.fn() }))
 
 // The panel now sources its list from the unified live browse/search hook; mock
 // it directly with the launcher's simplified DisplayItem shape (these tests
@@ -374,6 +376,7 @@ describe('ClipboardHistoryPanel row context menu', () => {
 
     await waitFor(() => {
       expect(restoreClipboardEntry).toHaveBeenCalledWith('entry-1')
+      expect(playUiSound).toHaveBeenCalledWith('success')
     })
     // Copy is a terminal launcher action: the panel dismisses only on success.
     await waitFor(() => {
@@ -394,7 +397,25 @@ describe('ClipboardHistoryPanel row context menu', () => {
     await waitFor(() => {
       expect(restoreClipboardEntry).toHaveBeenCalledWith('entry-file', { filePathsOnly: true })
       expect(invokeMock).toHaveBeenCalledWith('paste_to_previous_app', expect.any(Object))
+      expect(playUiSound).toHaveBeenCalledWith('success')
     })
+  })
+
+  it('keeps copy failures silent', async () => {
+    vi.mocked(restoreClipboardEntry).mockRejectedValueOnce(new Error('copy failed'))
+    renderPanel()
+    openRowMenu('Preview title')
+
+    fireEvent.click(
+      await screen.findByRole('menuitem', {
+        name: new RegExp(i18n.t('clipboard.contextMenu.copy')),
+      })
+    )
+
+    await waitFor(() => {
+      expect(restoreClipboardEntry).toHaveBeenCalledWith('entry-1')
+    })
+    expect(playUiSound).not.toHaveBeenCalled()
   })
 
   it('shows a favorite star on the row after Favorite is clicked', async () => {

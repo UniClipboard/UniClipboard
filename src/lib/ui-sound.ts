@@ -1,4 +1,7 @@
-import { bind, setEnabled } from 'cuelume'
+import { bind, play, setEnabled, type SoundName } from 'cuelume'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('ui-sound')
 
 export const UI_SOUND_STORAGE_KEY = 'uniclipboard.uiSoundEnabled'
 export const DEFAULT_UI_SOUND_ENABLED = true
@@ -80,6 +83,22 @@ export const setUiSoundEnabled = (enabled: boolean, storage?: Storage | null): v
   }
   setEnabled(enabled)
   dispatchUiSoundChanged()
+}
+
+/**
+ * Plays a semantic UI cue while keeping Cuelume ownership in one module.
+ *
+ * Playback is best-effort: callers invoke this inside the success path of
+ * clipboard/paste flows, so a throwing `play()` would reach their `catch` and
+ * report a completed operation as failed. Swallow the error to keep that
+ * guarantee local rather than borrowing it from Cuelume's internals.
+ */
+export const playUiSound = (sound: SoundName): void => {
+  try {
+    play(sound)
+  } catch (err) {
+    log.warn({ err }, 'Failed to play UI sound')
+  }
 }
 
 /**

@@ -11,6 +11,7 @@ import { useThemeSync } from '@/hooks/useThemeSync'
 import { commands } from '@/lib/ipc'
 import { createLogger } from '@/lib/logger'
 import { readStoredUiScale, subscribeUiScaleChanges } from '@/lib/ui-scale'
+import { playUiSound } from '@/lib/ui-sound'
 import { cn } from '@/lib/utils'
 import { useAppDispatch } from '@/store/hooks'
 import { fetchSpaceMembers } from '@/store/slices/devicesSlice'
@@ -389,6 +390,7 @@ const ClipboardHistoryPanelSession: React.FC<ClipboardHistoryPanelProps> = ({
       try {
         await restoreClipboardEntry(item.id, plainOnly ? { plainOnly: true } : undefined)
         await pasteToApp()
+        playUiSound('success')
       } catch (err) {
         log.error({ err }, 'Failed to restore clipboard entry')
       }
@@ -441,6 +443,7 @@ const ClipboardHistoryPanelSession: React.FC<ClipboardHistoryPanelProps> = ({
     async (id: string) => {
       try {
         await restoreClipboardEntry(id)
+        playUiSound('success')
       } catch (err) {
         log.error({ err }, 'Failed to copy clipboard entry')
         toast.error(t('clipboard.errors.copyFailed'))
@@ -462,6 +465,7 @@ const ClipboardHistoryPanelSession: React.FC<ClipboardHistoryPanelProps> = ({
       try {
         await restoreClipboardEntry(id, { filePathsOnly: true })
         await pasteToApp()
+        playUiSound('success')
       } catch (err) {
         log.error({ err }, 'Failed to paste file paths')
         toast.error(t('clipboard.errors.copyFailed'))

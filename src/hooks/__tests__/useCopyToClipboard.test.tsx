@@ -1,7 +1,7 @@
 import { act, renderHook } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { useCopyToClipboard } from '@/hooks/useCopyToClipboard'
 import { playUiSound } from '@/lib/ui-sound'
-import { useCopyToClipboard } from '../useCopyToClipboard'
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string) => key }),

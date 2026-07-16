@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Switch } from '@/components/ui'
-import { readStoredUiSoundEnabled, setUiSoundEnabled } from '@/lib/ui-sound'
+import { playUiSound, readStoredUiSoundEnabled, setUiSoundEnabled } from '@/lib/ui-sound'
 import { SettingGroup } from '../SettingGroup'
 import { SettingRow } from '../SettingRow'
 
@@ -16,6 +16,7 @@ export function SoundSettings() {
   const handleChange = (checked: boolean) => {
     setEnabled(checked)
     setUiSoundEnabled(checked)
+    if (checked) playUiSound('toggle')
   }
 
   return (

@@ -117,11 +117,13 @@ describe('HistoryCardContextMenu', () => {
     const props = renderMenu()
     openMenu()
 
-    fireEvent.click(
-      await screen.findByRole('menuitem', {
-        name: new RegExp(i18n.t('clipboard.contextMenu.copy')),
-      })
-    )
+    const copyItem = await screen.findByRole('menuitem', {
+      name: new RegExp(i18n.t('clipboard.contextMenu.copy')),
+    })
+    expect(copyItem).not.toHaveAttribute('data-cuelume-hover')
+    expect(copyItem).toHaveAttribute('data-cuelume-toggle', 'release')
+
+    fireEvent.click(copyItem)
     expect(props.onCopy).toHaveBeenCalledWith('entry-1')
   })
 

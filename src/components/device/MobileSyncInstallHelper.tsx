@@ -60,6 +60,7 @@ export const MobileSyncInstallHelper: React.FC<MobileSyncInstallHelperProps> = (
       <CollapsibleTrigger asChild>
         <button
           type="button"
+          data-cuelume-toggle={open ? 'droplet' : 'bloom'}
           className="flex w-full items-center justify-between rounded-md border border-border/60 bg-card px-3 py-2 text-sm hover:bg-accent/50"
         >
           <span className="flex items-center gap-2">

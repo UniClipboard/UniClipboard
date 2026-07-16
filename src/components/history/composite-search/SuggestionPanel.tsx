@@ -64,6 +64,7 @@ function SuggestionPanel({
                 ref={active ? activeRef : undefined}
                 type="button"
                 role="option"
+                data-cuelume-toggle={opt.isActive ? undefined : ''}
                 aria-selected={active}
                 tabIndex={-1}
                 onMouseDown={e => e.preventDefault()}

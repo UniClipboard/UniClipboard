@@ -45,6 +45,7 @@ function HistoryCardActions({
     >
       <button
         type="button"
+        data-cuelume-press=""
         aria-label={t('clipboard.item.actions.copy')}
         tabIndex={isHovered ? 0 : -1}
         onClick={e => runAction(e, () => onCopy(itemId))}
@@ -54,6 +55,7 @@ function HistoryCardActions({
       </button>
       <button
         type="button"
+        data-cuelume-toggle=""
         aria-label={t(
           isFavorited ? 'clipboard.item.actions.unfavorite' : 'clipboard.item.actions.favorite'
         )}
@@ -65,6 +67,7 @@ function HistoryCardActions({
       </button>
       <button
         type="button"
+        data-cuelume-press=""
         aria-label={t('clipboard.item.actions.delete')}
         tabIndex={isHovered ? 0 : -1}
         onClick={e => runAction(e, () => onDelete(itemId))}

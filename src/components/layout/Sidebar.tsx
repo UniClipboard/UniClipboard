@@ -67,6 +67,7 @@ const NavButton: React.FC<{
           <Link
             data-tauri-drag-region="false"
             data-settings-icon={dataSettingsIcon || undefined}
+            data-cuelume-toggle="release"
             to={to}
             className="relative group"
             onClick={

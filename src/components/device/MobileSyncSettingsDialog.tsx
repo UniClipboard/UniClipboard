@@ -85,6 +85,7 @@ import {
 } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { createLogger } from '@/lib/logger'
+import { playUiSound } from '@/lib/ui-sound'
 import { cn } from '@/lib/utils'
 
 const log = createLogger('mobile-sync-settings-dialog')
@@ -563,6 +564,7 @@ function useCopyWithFeedback(): {
     let next: CopyState
     try {
       await navigator.clipboard.writeText(url)
+      playUiSound('success')
       next = 'copied'
     } catch (err) {
       log.warn({ err }, 'failed to copy listen url')
@@ -633,6 +635,7 @@ const AutoListenUrlBlock: React.FC<{
     let next: CopyState
     try {
       await navigator.clipboard.writeText(url)
+      playUiSound('success')
       next = 'copied'
     } catch (err) {
       log.warn({ err }, 'failed to copy listen url')

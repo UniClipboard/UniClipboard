@@ -158,6 +158,7 @@ const AddMobileSyncDeviceDialogInner: React.FC<Props> = ({ open, onOpenChange, o
             <CollapsibleTrigger asChild>
               <button
                 type="button"
+                data-cuelume-toggle={advancedOpen ? 'droplet' : 'bloom'}
                 className="flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground"
               >
                 {advancedOpen ? (

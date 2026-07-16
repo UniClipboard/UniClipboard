@@ -25,6 +25,7 @@ import { toast } from '@/components/ui/toast'
 import { asConfigError, isCancelled, useConfigImport } from '@/hooks/useConfigImport'
 import { commands } from '@/lib/ipc'
 import { createLogger } from '@/lib/logger'
+import { playUiSound } from '@/lib/ui-sound'
 import { SettingGroup } from './SettingGroup'
 import { SettingRow } from './SettingRow'
 
@@ -76,6 +77,7 @@ export function ConfigBackupGroup() {
     setExporting(true)
     try {
       const result = await commands.exportConfigPackage()
+      playUiSound('success')
       toast.success(t(`${I18N}.export.success`))
       // Reveal the bundle so the user can find it immediately. A reveal
       // failure is non-fatal — the export already landed at `result.path`.

@@ -143,7 +143,7 @@
         "sound": {
           "title": "Sound",
           "label": "Interaction sound feedback",
-          "description": "Play a light cue when toggling switches"
+          "description": "Play light cues for state changes, menu selection, and successful actions"
         },
         "telemetry": {
           "title": "Privacy",

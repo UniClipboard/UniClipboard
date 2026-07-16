@@ -10,7 +10,13 @@ function AlertDialog({ ...props }: React.ComponentProps<typeof AlertDialogPrimit
 function AlertDialogTrigger({
   ...props
 }: React.ComponentProps<typeof AlertDialogPrimitive.Trigger>) {
-  return <AlertDialogPrimitive.Trigger data-slot="alert-dialog-trigger" {...props} />
+  return (
+    <AlertDialogPrimitive.Trigger
+      data-slot="alert-dialog-trigger"
+      data-cuelume-press=""
+      {...props}
+    />
+  )
 }
 
 function AlertDialogPortal({ ...props }: React.ComponentProps<typeof AlertDialogPrimitive.Portal>) {
@@ -143,6 +149,7 @@ function AlertDialogAction({
     <Button variant={variant} size={size} asChild>
       <AlertDialogPrimitive.Action
         data-slot="alert-dialog-action"
+        data-cuelume-press=""
         className={cn(className)}
         {...props}
       />
@@ -161,6 +168,7 @@ function AlertDialogCancel({
     <Button variant={variant} size={size} asChild>
       <AlertDialogPrimitive.Cancel
         data-slot="alert-dialog-cancel"
+        data-cuelume-toggle="droplet"
         className={cn(className)}
         {...props}
       />

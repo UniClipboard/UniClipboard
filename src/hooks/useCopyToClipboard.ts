@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from '@/components/ui/toast'
+import { playUiSound } from '@/lib/ui-sound'
 
 /**
  * Write text to the system clipboard with a transient "copied" flag.
@@ -27,6 +28,7 @@ export function useCopyToClipboard(resetMs = 1500) {
     async (value: string): Promise<boolean> => {
       try {
         await navigator.clipboard.writeText(value)
+        playUiSound('success')
         setCopied(true)
         if (timerRef.current) clearTimeout(timerRef.current)
         timerRef.current = setTimeout(() => setCopied(false), resetMs)

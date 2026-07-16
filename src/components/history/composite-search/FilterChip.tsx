@@ -31,6 +31,7 @@ function FilterChip({ icon: Icon, label, onActivate, onClear }: FilterChipProps)
       </button>
       <button
         type="button"
+        data-cuelume-toggle=""
         onMouseDown={e => e.preventDefault()}
         onClick={onClear}
         aria-label={t('history.composite.removeFilter', { filter: label })}

@@ -43,6 +43,7 @@ use std::sync::{Arc, Mutex};
 use thiserror::Error;
 use tracing::{debug, info, instrument, warn};
 
+use crate::clipboard_write::ClipboardWriteIntent;
 use uc_core::file_transfer::FileTransferFailureReason;
 use uc_core::ids::{DeviceId, EntryId, FormatId, RepresentationId};
 use uc_core::mobile_sync::{MobileDeviceId, StagedFile};
@@ -106,15 +107,13 @@ pub(crate) trait MobileInboundFanOutPort: Send + Sync {
 ///
 /// 用户从手机推送一条内容, 语义是"现在让桌面也活跃这条内容"——这是**本
 /// 设备**的一次激活 (`activated_by = self`, `activated_at_ms = now`), 不论
-/// 这条 snapshot_hash 本机此前是否存在。因此两个入站结果都要收敛对端:
+/// 这条 snapshot_hash 本机此前是否存在。
 ///
-/// - `announce_new`: 内容是新的, 入站管线已写过系统剪贴板; 只需盖本设备
-///   激活戳、前进跨设备 register、按 per-device send 闸门广播 0xC3 state。
-/// - `announce_duplicate`: 内容本机已有 (`DuplicateSkipped`), 系统剪贴板
-///   可能早被后续复制覆盖, 需要先把这次上传的 snapshot 写回系统剪贴板,
-///   再盖激活戳 + 前进 register + 同一条 send-gated 广播。
+/// 系统剪贴板由入站管线负责写(新内容走落库后的后台写, 已有内容走 dedup
+/// 命中的重激活写), 所以本 port 只做一件事: 盖本设备激活戳、前进跨设备
+/// register、按 per-device send 闸门广播 0xC3 state。
 ///
-/// 两条路径的 register 前进与 0xC3 广播只受 **per-device send 闸门**
+/// register 前进与 0xC3 广播只受 **per-device send 闸门**
 /// (`send_enabled` ∧ `send_content_types`) 约束, **不**看 `sync_on_restore`
 /// (那个 flag 仅作用于历史 restore 广播)。
 ///
@@ -122,22 +121,22 @@ pub(crate) trait MobileInboundFanOutPort: Send + Sync {
 ///
 /// - use case 持 trait 而非具体 facade, 测试可注入 fake;
 /// - 生产 adapter 在 `facade/mobile_sync/activation_announce_adapter.rs`,
-///   委托 `ClipboardWriteCoordinator` (duplicate 写 OS) +
-///   `ActiveClipboardFacade::announce_local_activation` (advance + fan-out);
+///   委托 `ActiveClipboardFacade::announce_local_activation` (advance + fan-out);
 /// - 失败仅 `warn!`, 不回灌成 HTTP 错误 —— mobile 上传是否"成功"只取决
 ///   于本机入站管线的 outcome, 收敛是事后传播。
 ///
-/// ## 仅 `Applied` / `DuplicateSkipped` 分支调用
+/// ## 仅 `Applied` / `Resurfaced { os_write_succeeded: true }` 分支调用
 ///
 /// - `DecodeFailed` / `Err(...)`: 本机入站没成功, 没有激活可收敛;
-/// - `Buffered`: 两步 PUT 中间态, 还没有 entry。
+/// - `Buffered`: 两步 PUT 中间态, 还没有 entry;
+/// - `DuplicateSkipped`: 冗余投递, 没有新激活;
+/// - `Resurfaced { os_write_succeeded: false }`: 系统剪贴板没写成功, 收敛
+///   会把 peer 钉在本机并不持有的 activation 上 (issue #1017 §1)。
 #[async_trait::async_trait]
 pub(crate) trait MobileActivationAnnouncePort: Send + Sync {
-    /// New content already on the OS clipboard (inbound apply wrote it).
+    /// Converge an activation the inbound pipeline already put on the OS
+    /// clipboard: stamp it as local, advance the register, fan the state out.
     async fn announce_new(&self, entry_id: EntryId, snapshot: SystemClipboardSnapshot);
-    /// Duplicate of existing content: re-write `snapshot` to the OS clipboard,
-    /// then converge the activation like `announce_new`.
-    async fn announce_duplicate(&self, entry_id: EntryId, snapshot: SystemClipboardSnapshot);
 }
 
 // ─── Public types (pub(crate) per AGENTS.md §11.4) ──────────────────────
@@ -205,8 +204,18 @@ pub enum ApplyIncomingMobileClipOutcome {
         entry_id: EntryId,
         content_id: String,
     },
-    /// `snapshot_hash` already exists locally — no persist, no OS write.
-    /// Mirrors `ApplyOutcome::DuplicateSkipped`.
+    /// `snapshot_hash` already exists locally as a fully-held entry — no
+    /// persist, but the entry was re-activated (OS write + register advance +
+    /// history bump). Mirrors `ApplyOutcome::Resurfaced`.
+    Resurfaced {
+        snapshot_hash: String,
+        existing_entry_id: EntryId,
+        /// `false` means the pasteboard was left untouched, so this activation
+        /// must not be converged onto peers.
+        os_write_succeeded: bool,
+    },
+    /// Redundant delivery (sub-second re-push / partial-over-partial) — no
+    /// persist, no OS write. Mirrors `ApplyOutcome::DuplicateSkipped`.
     DuplicateSkipped {
         snapshot_hash: String,
         existing_entry_id: EntryId,
@@ -531,23 +540,45 @@ impl ApplyIncomingMobileClipUseCase {
         }
     }
 
-    /// schema doc §7.6 / §12.2 P1：iPhone → 桌面剪贴板实际落地 inbound。
+    /// schema doc §7.6 / §12.2 P1: iPhone -> desktop clipboard actually
+    /// landing once, inbound.
     ///
-    /// **仅** `Applied` outcome emit；`Buffered` / `DuplicateSkipped` /
-    /// `DecodeFailed` / `Err` 全不上报：
+    /// Emitted for the two outcomes that really put content on the pasteboard:
     ///
-    /// - `DuplicateSkipped` 命中本机 dedup——内容此前已存在，重复埋点会
-    ///   让 dashboard 频率口径双计（沿用 `ClipboardEntryCaptured` RemotePush
-    ///   红线哲学）。
-    /// - `Buffered` 是文件两步 PUT 协议的中间态，不代表用户可感知的同步。
-    /// - `DecodeFailed` / `Err` 本机入站没成功，与产品视角的"sync 成功
-    ///   一次"语义不一致。
+    /// - `Applied` — new content: persisted, then written.
+    /// - `Resurfaced { os_write_succeeded: true }` — content was already held
+    ///   locally, but this delivery re-activated it (OS write + register
+    ///   advance + history bump). §7.6 counts a landing, not a new row, so a
+    ///   re-copy from the phone is a real sync. It does not double-count: the
+    ///   resurface write carries a non-capturing intent, so
+    ///   `ClipboardEntryCaptured` never fires for it (the RemotePush red line)
+    ///   and this stays the only event for the delivery.
+    ///
+    /// Everything else stays silent:
+    ///
+    /// - `Resurfaced { os_write_succeeded: false }` — the pasteboard was left
+    ///   untouched, so nothing landed.
+    /// - `DuplicateSkipped` — redundant delivery (sub-second re-push /
+    ///   partial-over-partial). No OS write, and the content already landed via
+    ///   the delivery that emitted its own event.
+    /// - `Buffered` is the intermediate state of the two-step file PUT
+    ///   protocol, not a user-perceivable sync.
+    /// - `DecodeFailed` / `Err` never landed locally, which contradicts the
+    ///   product-level "synced once" semantics.
     fn maybe_emit_inbound_synced(
         &self,
         outcome: &Result<ApplyIncomingMobileClipOutcome, ApplyIncomingMobileClipError>,
         payload_bytes: u64,
     ) {
-        if let Ok(ApplyIncomingMobileClipOutcome::Applied { .. }) = outcome {
+        let landed = matches!(
+            outcome,
+            Ok(ApplyIncomingMobileClipOutcome::Applied { .. })
+                | Ok(ApplyIncomingMobileClipOutcome::Resurfaced {
+                    os_write_succeeded: true,
+                    ..
+                })
+        );
+        if landed {
             self.analytics.capture(Event::MobileClipboardSynced {
                 direction: Direction::Inbound,
                 payload_size_bucket: PayloadSizeBucket::from_bytes(payload_bytes),
@@ -595,14 +626,19 @@ impl ApplyIncomingMobileClipUseCase {
     ///
     /// 移动端推送的语义是"现在让桌面也活跃这条内容"——本设备的一次激活:
     ///
-    /// - `Applied` (新内容): 入站管线已写过系统剪贴板, 只需盖本设备激活戳
-    ///   + 前进跨设备 register + 按 per-device send 闸门广播 0xC3 state;
-    /// - `DuplicateSkipped` (本机已有): 系统剪贴板可能早被后续复制覆盖,
-    ///   先把这次上传的 snapshot 写回系统剪贴板, 再走同一条 advance + 广播。
+    /// 两条 outcome 到这里时, 入站管线都已经写过系统剪贴板了 —— `Applied`
+    /// 走新内容落库后的后台写, `Resurfaced` 走 dedup 命中的重激活写 —— 所以
+    /// 这里只需盖本设备激活戳 + 前进跨设备 register + 按 per-device send 闸门
+    /// 广播 0xC3 state。
+    ///
+    /// 唯一例外是 `Resurfaced { os_write_succeeded: false }`: 系统剪贴板没写
+    /// 成功, 收敛会把 peer 钉在本机并不持有的 activation 上(issue #1017 §1),
+    /// 直接跳过。
     ///
     /// 收敛只受 per-device send 闸门(`send_enabled` ∧ `send_content_types`)
     /// 约束, **不**看 `sync_on_restore`。`DecodeFailed` / `Err(...)` 本机入站
-    /// 没成功、`Buffered` 还没有 entry, 都不收敛。
+    /// 没成功、`Buffered` 还没有 entry、`DuplicateSkipped` 是冗余投递,
+    /// 都不收敛。
     ///
     /// adapter 一定接了才会到这里时 snapshot 已被上游克隆; 若 announce 已接
     /// 但 snapshot 为 `None` 属编程错误, 沉默跳过(收敛只是事后传播, 不应
@@ -617,32 +653,36 @@ impl ApplyIncomingMobileClipUseCase {
         };
         let entry_id = match outcome {
             Ok(ApplyIncomingMobileClipOutcome::Applied { entry_id, .. }) => entry_id.clone(),
-            Ok(ApplyIncomingMobileClipOutcome::DuplicateSkipped {
-                existing_entry_id, ..
+            Ok(ApplyIncomingMobileClipOutcome::Resurfaced {
+                existing_entry_id,
+                os_write_succeeded: true,
+                ..
             }) => existing_entry_id.clone(),
+            // OS write failed — converging would broadcast an activation this
+            // device does not hold (issue #1017 §1).
+            Ok(ApplyIncomingMobileClipOutcome::Resurfaced {
+                existing_entry_id,
+                os_write_succeeded: false,
+                ..
+            }) => {
+                warn!(
+                    entry_id = %existing_entry_id,
+                    "mobile_sync apply_incoming: held entry re-activation did not reach the OS \
+                     clipboard; skipping active-clipboard convergence"
+                );
+                return;
+            }
             _ => return,
         };
         let Some(snapshot) = snapshot_for_announce else {
             warn!("mobile_sync announce: announce wired but snapshot_for_announce=None, skipping");
             return;
         };
-        match outcome {
-            Ok(ApplyIncomingMobileClipOutcome::Applied { .. }) => {
-                info!(
-                    entry_id = %entry_id,
-                    "mobile_sync apply_incoming: new content applied, announcing active-clipboard state"
-                );
-                announce.announce_new(entry_id, snapshot).await;
-            }
-            Ok(ApplyIncomingMobileClipOutcome::DuplicateSkipped { .. }) => {
-                info!(
-                    entry_id = %entry_id,
-                    "mobile_sync apply_incoming: duplicate detected, re-writing to OS and announcing active-clipboard state"
-                );
-                announce.announce_duplicate(entry_id, snapshot).await;
-            }
-            _ => {}
-        }
+        info!(
+            entry_id = %entry_id,
+            "mobile_sync apply_incoming: inbound activated local clipboard, announcing active-clipboard state"
+        );
+        announce.announce_new(entry_id, snapshot).await;
     }
 
     /// SyncDoc apply 完成后把 mobile_lan 路径预先打开的 transfer 关闭。
@@ -650,9 +690,9 @@ impl ApplyIncomingMobileClipUseCase {
     /// - `Applied { entry_id }`:把 transfer 行从占位 entry_id 改挂到真实
     ///   entry_id,然后发 `Completed` 事件。这是 mobile_lan 路径独有的
     ///   "buffered 期间没有 entry_id → SyncDoc apply 后 backfill" 模式。
-    /// - `DuplicateSkipped { existing_entry_id }`:重定向到已存在的 entry,
-    ///   仍然 complete —— transfer 字节已经收齐, dedup 命中只是没产生新
-    ///   entry, 不应让 transfer 永久卡在 transferring。
+    /// - `Resurfaced` / `DuplicateSkipped { existing_entry_id }`:重定向到
+    ///   已存在的 entry, 仍然 complete —— transfer 字节已经收齐, dedup 命中
+    ///   只是没产生新 entry, 不应让 transfer 永久卡在 transferring。
     /// - `DecodeFailed`:几乎不可能 (我们刚 encode 出来的 envelope),但若
     ///   发生应 fail —— 否则 transfer 也会卡在 transferring。
     /// - 应用层错误 (`Err(...)`):capture / write 链路真出问题, fail。
@@ -674,7 +714,10 @@ impl ApplyIncomingMobileClipUseCase {
                 self.link_then_complete(facade, &transfer_id, entry_id.as_ref(), &peer_id)
                     .await;
             }
-            Ok(ApplyIncomingMobileClipOutcome::DuplicateSkipped {
+            Ok(ApplyIncomingMobileClipOutcome::Resurfaced {
+                existing_entry_id, ..
+            })
+            | Ok(ApplyIncomingMobileClipOutcome::DuplicateSkipped {
                 existing_entry_id, ..
             }) => {
                 self.link_then_complete(facade, &transfer_id, existing_entry_id.as_ref(), &peer_id)
@@ -897,6 +940,12 @@ impl ApplyIncomingMobileClipUseCase {
                 snapshot_hash: snapshot_hash.clone(),
                 plaintext,
                 flow_id: None,
+                // The phone reached exactly one desktop, so re-activating held
+                // content is *this* device's activation: `LocalRestore` lets the
+                // watcher pick the write up and carry it to the other desktops.
+                // (The fresh-content branch needs no such help — it propagates
+                // through `maybe_fan_out_to_paired_peers`.)
+                resurface_intent: ClipboardWriteIntent::LocalRestore,
             })
             .await?;
 
@@ -908,6 +957,23 @@ impl ApplyIncomingMobileClipUseCase {
                     content_id: snapshot_hash,
                 }
             }
+            ApplyOutcome::Resurfaced {
+                snapshot_hash: hash,
+                existing_entry_id,
+                os_write_succeeded,
+            } => {
+                debug!(
+                    snapshot_hash = %hash,
+                    existing_entry_id = %existing_entry_id,
+                    os_write_succeeded,
+                    "mobile_sync apply_incoming: dedup hit, held entry re-activated"
+                );
+                ApplyIncomingMobileClipOutcome::Resurfaced {
+                    snapshot_hash: hash,
+                    existing_entry_id,
+                    os_write_succeeded,
+                }
+            }
             ApplyOutcome::DuplicateSkipped {
                 snapshot_hash: hash,
                 existing_entry_id,
@@ -915,7 +981,7 @@ impl ApplyIncomingMobileClipUseCase {
                 debug!(
                     snapshot_hash = %hash,
                     existing_entry_id = %existing_entry_id,
-                    "mobile_sync apply_incoming: dedup hit, skipping"
+                    "mobile_sync apply_incoming: redundant delivery, skipping"
                 );
                 ApplyIncomingMobileClipOutcome::DuplicateSkipped {
                     snapshot_hash: hash,
@@ -970,7 +1036,9 @@ mod tests {
 
     use uc_core::ports::clipboard::FindEntryIdBySnapshotHashPort;
 
-    use crate::usecases::clipboard_sync::apply_inbound::{InboundCapture, InboundWrite};
+    use crate::usecases::clipboard_sync::apply_inbound::{
+        InboundCapture, InboundSnapshotRebuild, InboundWrite,
+    };
 
     use uc_core::mobile_sync::{StagedFile, StagedFileUri};
     use uc_observability::analytics::NoopAnalyticsSink;
@@ -1037,7 +1105,42 @@ mod tests {
         Write {}
         #[async_trait]
         impl InboundWrite for Write {
-            async fn write(&self, snapshot: SystemClipboardSnapshot) -> AnyResult<()>;
+            async fn write(&self, snapshot: SystemClipboardSnapshot, intent: ClipboardWriteIntent) -> AnyResult<()>;
+        }
+    }
+
+    mockall::mock! {
+        SnapshotRebuild {}
+        #[async_trait]
+        impl InboundSnapshotRebuild for SnapshotRebuild {
+            async fn rebuild(&self, entry_id: &EntryId) -> AnyResult<SystemClipboardSnapshot>;
+        }
+    }
+
+    mockall::mock! {
+        TouchEntry {}
+        #[async_trait]
+        impl uc_core::ports::clipboard::TouchClipboardEntryPort for TouchEntry {
+            async fn touch_entry(
+                &self,
+                entry_id: &EntryId,
+                active_time_ms: i64,
+            ) -> Result<bool, uc_core::clipboard::ClipboardRepositoryError>;
+        }
+    }
+
+    /// A held-content snapshot the rebuild seam hands back on a dedup hit.
+    fn held_snapshot() -> SystemClipboardSnapshot {
+        SystemClipboardSnapshot {
+            ts_ms: 1,
+            representations: vec![ObservedClipboardRepresentation::new(
+                RepresentationId::new(),
+                FormatId::from("text"),
+                Some(MimeType("text/plain".to_string())),
+                b"already-here".to_vec(),
+            )],
+            file_content_digests: Vec::new(),
+            file_set_v1_component: None,
         }
     }
 
@@ -1065,7 +1168,7 @@ mod tests {
             .returning(move |_, _, _| Ok(Some(id_for_capture.clone())));
 
         let mut write = MockWrite::new();
-        write.expect_write().times(1).returning(|_| Ok(()));
+        write.expect_write().times(1).returning(|_, _| Ok(()));
 
         let inbound =
             ApplyInboundClipboardUseCase::new(Arc::new(repo), Arc::new(capture), Arc::new(write));
@@ -1122,7 +1225,7 @@ mod tests {
             .returning(move |_, _, _| Ok(Some(id_for_capture.clone())));
 
         let mut write = MockWrite::new();
-        write.expect_write().times(1).returning(|_| Ok(()));
+        write.expect_write().times(1).returning(|_, _| Ok(()));
 
         let inbound =
             ApplyInboundClipboardUseCase::new(Arc::new(repo), Arc::new(capture), Arc::new(write));
@@ -1158,7 +1261,7 @@ mod tests {
             .times(1)
             .returning(move |_, _, _| Ok(Some(id_for_capture.clone())));
         let mut write = MockWrite::new();
-        write.expect_write().times(1).returning(|_| Ok(()));
+        write.expect_write().times(1).returning(|_, _| Ok(()));
 
         let inbound =
             ApplyInboundClipboardUseCase::new(Arc::new(repo), Arc::new(capture), Arc::new(write));
@@ -1515,7 +1618,7 @@ mod tests {
             .returning(|_, _, _| Ok(Some(EntryId::from("entry-file-win"))));
 
         let mut write = MockWrite::new();
-        write.expect_write().times(1).returning(|_| Ok(()));
+        write.expect_write().times(1).returning(|_, _| Ok(()));
 
         let inbound =
             ApplyInboundClipboardUseCase::new(Arc::new(repo), Arc::new(capture), Arc::new(write));
@@ -1662,7 +1765,7 @@ mod tests {
             .times(1)
             .returning(|_, _, _| Ok(Some(EntryId::from("entry-fanout-1"))));
         let mut write = MockWrite::new();
-        write.expect_write().times(1).returning(|_| Ok(()));
+        write.expect_write().times(1).returning(|_, _| Ok(()));
         let inbound =
             ApplyInboundClipboardUseCase::new(Arc::new(repo), Arc::new(capture), Arc::new(write));
 
@@ -1846,7 +1949,7 @@ mod tests {
             .returning(|_, _, _| Ok(Some(EntryId::from("entry-clock"))));
 
         let mut write = MockWrite::new();
-        write.expect_write().times(1).returning(|_| Ok(()));
+        write.expect_write().times(1).returning(|_, _| Ok(()));
 
         let inbound =
             ApplyInboundClipboardUseCase::new(Arc::new(repo), Arc::new(capture), Arc::new(write));
@@ -1890,7 +1993,7 @@ mod tests {
             .times(1)
             .returning(move |_, _, _| Ok(Some(id_for_capture.clone())));
         let mut write = MockWrite::new();
-        write.expect_write().times(1).returning(|_| Ok(()));
+        write.expect_write().times(1).returning(|_, _| Ok(()));
         let inbound =
             ApplyInboundClipboardUseCase::new(Arc::new(repo), Arc::new(capture), Arc::new(write));
         ApplyIncomingMobileClipUseCase::new(
@@ -1920,6 +2023,59 @@ mod tests {
         let write = MockWrite::new();
         let inbound =
             ApplyInboundClipboardUseCase::new(Arc::new(repo), Arc::new(capture), Arc::new(write));
+        ApplyIncomingMobileClipUseCase::new(
+            Arc::new(inbound),
+            Arc::new(IncomingMobileBuffer::new()),
+            staging_never_called(),
+            Arc::new(FixedClock),
+            None,
+            None,
+            analytics,
+            None,
+        )
+    }
+
+    /// Dedup hit with resurface wired: the held entry is rebuilt and written
+    /// back to the pasteboard. `os_write_ok` selects which `Resurfaced` branch
+    /// the delivery takes.
+    fn build_uc_with_analytics_expect_resurface(
+        existing_entry_id: &str,
+        os_write_ok: bool,
+        analytics: Arc<dyn AnalyticsPort>,
+    ) -> ApplyIncomingMobileClipUseCase {
+        let mut repo = MockEntryRepo::new();
+        let id_clone = EntryId::from(existing_entry_id);
+        repo.expect_find_entry_id_by_snapshot_hash()
+            .times(1)
+            .returning(move |_| Ok(Some(id_clone.clone())));
+        // dedup hit → no new row, but rebuild + write back.
+        let capture = MockCapture::new();
+        let mut rebuild = MockSnapshotRebuild::new();
+        rebuild
+            .expect_rebuild()
+            .times(1)
+            .returning(|_| Ok(held_snapshot()));
+        let mut write = MockWrite::new();
+        write.expect_write().times(1).returning(move |_, _| {
+            if os_write_ok {
+                Ok(())
+            } else {
+                Err(anyhow::anyhow!("clipboard busy"))
+            }
+        });
+        let mut touch = MockTouchEntry::new();
+        if os_write_ok {
+            touch
+                .expect_touch_entry()
+                .times(1)
+                .returning(|_, _| Ok(true));
+        } else {
+            // A failed OS write must not bump history.
+            touch.expect_touch_entry().never();
+        }
+        let inbound =
+            ApplyInboundClipboardUseCase::new(Arc::new(repo), Arc::new(capture), Arc::new(write))
+                .with_resurface_ports(Arc::new(rebuild), Arc::new(touch));
         ApplyIncomingMobileClipUseCase::new(
             Arc::new(inbound),
             Arc::new(IncomingMobileBuffer::new()),
@@ -1975,9 +2131,9 @@ mod tests {
 
     #[tokio::test]
     async fn duplicate_skipped_does_not_emit_synced() {
-        // dedup 命中 = 本机已存在该 snapshot_hash；重复埋点会让 dashboard
-        // 频率口径双计，沿用 ClipboardEntryCaptured 防 RemotePush 双计的
-        // 红线哲学。
+        // Resurface is unwired here, so the dedup hit degrades to a plain skip:
+        // the pasteboard is never written, so nothing landed. (With resurface
+        // wired, the same hit becomes `Resurfaced` and does emit — see below.)
         let analytics = capturing_analytics();
         let uc = build_uc_with_analytics_expect_dedup_hit(
             "entry-existing",
@@ -1990,6 +2146,63 @@ mod tests {
         assert!(matches!(
             outcome,
             ApplyIncomingMobileClipOutcome::DuplicateSkipped { .. }
+        ));
+        assert!(analytics.events().is_empty(), "{:?}", analytics.events());
+    }
+
+    #[tokio::test]
+    async fn resurfaced_emits_mobile_clipboard_synced_inbound() {
+        // The phone re-copies content this desktop already holds: no new row,
+        // but the pasteboard really was rewritten, so §7.6 counts a landing.
+        // This delivery emitted nothing before resurface existed.
+        let analytics = capturing_analytics();
+        let uc = build_uc_with_analytics_expect_resurface(
+            "entry-existing",
+            true,
+            analytics.clone() as Arc<dyn AnalyticsPort>,
+        );
+        let outcome = uc
+            .execute(input_sync_doc(SyncClipboardItemType::Text, "hello", None))
+            .await
+            .expect("dedup hit returns Ok");
+        assert!(matches!(
+            outcome,
+            ApplyIncomingMobileClipOutcome::Resurfaced {
+                os_write_succeeded: true,
+                ..
+            }
+        ));
+        // The bucket comes from the inbound payload (5 bytes "hello"), not the
+        // rebuilt snapshot.
+        assert_eq!(
+            analytics.events(),
+            vec![Event::MobileClipboardSynced {
+                direction: Direction::Inbound,
+                payload_size_bucket: PayloadSizeBucket::Lt1Kb,
+            }]
+        );
+    }
+
+    #[tokio::test]
+    async fn resurface_with_failed_os_write_does_not_emit_synced() {
+        // The pasteboard was left untouched, so nothing landed — emitting here
+        // would count a sync the user never actually received.
+        let analytics = capturing_analytics();
+        let uc = build_uc_with_analytics_expect_resurface(
+            "entry-existing",
+            false,
+            analytics.clone() as Arc<dyn AnalyticsPort>,
+        );
+        let outcome = uc
+            .execute(input_sync_doc(SyncClipboardItemType::Text, "hello", None))
+            .await
+            .expect("dedup hit returns Ok");
+        assert!(matches!(
+            outcome,
+            ApplyIncomingMobileClipOutcome::Resurfaced {
+                os_write_succeeded: false,
+                ..
+            }
         ));
         assert!(analytics.events().is_empty(), "{:?}", analytics.events());
     }
@@ -2043,15 +2256,11 @@ mod tests {
     #[derive(Default)]
     struct RecordingAnnounce {
         new_calls: std::sync::Mutex<Vec<(EntryId, SystemClipboardSnapshot)>>,
-        duplicate_calls: std::sync::Mutex<Vec<(EntryId, SystemClipboardSnapshot)>>,
     }
 
     impl RecordingAnnounce {
         fn new_calls(&self) -> Vec<(EntryId, SystemClipboardSnapshot)> {
             self.new_calls.lock().unwrap().clone()
-        }
-        fn duplicate_calls(&self) -> Vec<(EntryId, SystemClipboardSnapshot)> {
-            self.duplicate_calls.lock().unwrap().clone()
         }
     }
 
@@ -2060,15 +2269,9 @@ mod tests {
         async fn announce_new(&self, entry_id: EntryId, snapshot: SystemClipboardSnapshot) {
             self.new_calls.lock().unwrap().push((entry_id, snapshot));
         }
-        async fn announce_duplicate(&self, entry_id: EntryId, snapshot: SystemClipboardSnapshot) {
-            self.duplicate_calls
-                .lock()
-                .unwrap()
-                .push((entry_id, snapshot));
-        }
     }
 
-    /// `Applied` (新内容) → `announce_new` 一次, `announce_duplicate` 零次。
+    /// `Applied` (新内容) → `announce_new` 一次。
     /// snapshot 必须随之透传 (adapter 据此派生 snapshot_hash / categories)。
     #[tokio::test]
     async fn applied_invokes_announce_new_with_snapshot() {
@@ -2082,7 +2285,7 @@ mod tests {
             .times(1)
             .returning(|_, _, _| Ok(Some(EntryId::from("entry-new"))));
         let mut write = MockWrite::new();
-        write.expect_write().times(1).returning(|_| Ok(()));
+        write.expect_write().times(1).returning(|_, _| Ok(()));
         let inbound =
             ApplyInboundClipboardUseCase::new(Arc::new(repo), Arc::new(capture), Arc::new(write));
 
@@ -2116,28 +2319,41 @@ mod tests {
         assert_eq!(new_calls[0].0, EntryId::from("entry-new"));
         // snapshot 至少携带原 rep, 让 adapter 能派生 snapshot_hash / categories。
         assert_eq!(new_calls[0].1.representations.len(), 1);
-        assert_eq!(
-            recorder.duplicate_calls().len(),
-            0,
-            "Applied 分支不得触发 announce_duplicate"
-        );
     }
 
-    /// `DuplicateSkipped` (本机已有) → `announce_duplicate` 一次,
-    /// `announce_new` 零次。entry_id 用 `existing_entry_id`。
+    /// 已有内容命中 → 入站管线重激活 (`Resurfaced`) → `announce_new` 一次,
+    /// entry_id 用 `existing_entry_id`。写 OS 用 `LocalRestore` —— 手机推给
+    /// 单台桌面, 本机是激活者, watcher 要接手转播给其他桌面。
     #[tokio::test]
-    async fn duplicate_skipped_invokes_announce_duplicate() {
+    async fn resurfaced_invokes_announce_new_with_local_restore_intent() {
         let mut repo = MockEntryRepo::new();
         let existing = EntryId::from("entry-existing");
         let existing_clone = existing.clone();
         repo.expect_find_entry_id_by_snapshot_hash()
             .times(1)
             .returning(move |_| Ok(Some(existing_clone.clone())));
-        // dedup hit → capture / write 都不该被调。
+        // dedup hit → 不建新行, 但要重建 + 写回 OS。
         let capture = MockCapture::new();
-        let write = MockWrite::new();
+        let mut rebuild = MockSnapshotRebuild::new();
+        rebuild
+            .expect_rebuild()
+            .times(1)
+            .returning(|_| Ok(held_snapshot()));
+        let mut write = MockWrite::new();
+        write
+            .expect_write()
+            .times(1)
+            .withf(|_, intent| *intent == ClipboardWriteIntent::LocalRestore)
+            .returning(|_, _| Ok(()));
+        let mut touch = MockTouchEntry::new();
+        touch
+            .expect_touch_entry()
+            .times(1)
+            .returning(|_, _| Ok(true));
+
         let inbound =
-            ApplyInboundClipboardUseCase::new(Arc::new(repo), Arc::new(capture), Arc::new(write));
+            ApplyInboundClipboardUseCase::new(Arc::new(repo), Arc::new(capture), Arc::new(write))
+                .with_resurface_ports(Arc::new(rebuild), Arc::new(touch));
 
         let recorder = Arc::new(RecordingAnnounce::default());
         let uc = ApplyIncomingMobileClipUseCase::new(
@@ -2161,21 +2377,76 @@ mod tests {
             .expect("dedup hit ok");
         assert!(matches!(
             outcome,
-            ApplyIncomingMobileClipOutcome::DuplicateSkipped { .. }
+            ApplyIncomingMobileClipOutcome::Resurfaced {
+                os_write_succeeded: true,
+                ..
+            }
         ));
 
-        let dup_calls = recorder.duplicate_calls();
-        assert_eq!(
-            dup_calls.len(),
-            1,
-            "DuplicateSkipped 必须触发 announce_duplicate 一次"
+        let new_calls = recorder.new_calls();
+        assert_eq!(new_calls.len(), 1, "Resurfaced 必须触发 announce_new 一次");
+        assert_eq!(new_calls[0].0, existing);
+    }
+
+    /// issue #1017 §1: 重激活没写进系统剪贴板时不得收敛 —— 否则本机会把 peer
+    /// 钉在一个自己并不持有的 activation 上。
+    #[tokio::test]
+    async fn resurface_with_failed_os_write_does_not_announce() {
+        let mut repo = MockEntryRepo::new();
+        let existing = EntryId::from("entry-existing");
+        repo.expect_find_entry_id_by_snapshot_hash()
+            .times(1)
+            .returning(move |_| Ok(Some(existing.clone())));
+        let capture = MockCapture::new();
+        let mut rebuild = MockSnapshotRebuild::new();
+        rebuild
+            .expect_rebuild()
+            .times(1)
+            .returning(|_| Ok(held_snapshot()));
+        let mut write = MockWrite::new();
+        write
+            .expect_write()
+            .times(1)
+            .returning(|_, _| Err(anyhow::anyhow!("clipboard busy")));
+        // OS write 失败 → 不该再 bump 历史。
+        let mut touch = MockTouchEntry::new();
+        touch.expect_touch_entry().never();
+
+        let inbound =
+            ApplyInboundClipboardUseCase::new(Arc::new(repo), Arc::new(capture), Arc::new(write))
+                .with_resurface_ports(Arc::new(rebuild), Arc::new(touch));
+
+        let recorder = Arc::new(RecordingAnnounce::default());
+        let uc = ApplyIncomingMobileClipUseCase::new(
+            Arc::new(inbound),
+            Arc::new(IncomingMobileBuffer::new()),
+            staging_never_called(),
+            Arc::new(FixedClock),
+            None,
+            None,
+            noop_analytics(),
+            Some(Arc::clone(&recorder) as Arc<dyn MobileActivationAnnouncePort>),
         );
-        assert_eq!(dup_calls[0].0, existing);
-        assert_eq!(dup_calls[0].1.representations.len(), 1);
+
+        let outcome = uc
+            .execute(input_sync_doc(
+                SyncClipboardItemType::Text,
+                "already-here",
+                None,
+            ))
+            .await
+            .expect("dedup hit ok");
+        assert!(matches!(
+            outcome,
+            ApplyIncomingMobileClipOutcome::Resurfaced {
+                os_write_succeeded: false,
+                ..
+            }
+        ));
         assert_eq!(
             recorder.new_calls().len(),
             0,
-            "DuplicateSkipped 分支不得触发 announce_new"
+            "OS 写失败的重激活不得收敛对端"
         );
     }
 
@@ -2210,13 +2481,13 @@ mod tests {
             ApplyIncomingMobileClipOutcome::DecodeFailed { .. }
         ));
         assert_eq!(
-            recorder.new_calls().len() + recorder.duplicate_calls().len(),
+            recorder.new_calls().len(),
             0,
             "DecodeFailed 分支不得触发任何 announce"
         );
     }
 
-    /// `BufferFile` 中间态两个 announce 方法都不调 —— 还没有 entry / 激活。
+    /// `BufferFile` 中间态不调 announce —— 还没有 entry / 激活。
     #[tokio::test]
     async fn buffer_file_does_not_invoke_announce() {
         let repo = MockEntryRepo::new();
@@ -2248,7 +2519,7 @@ mod tests {
             .expect("buffer-file path returns Ok");
         assert_eq!(outcome, ApplyIncomingMobileClipOutcome::Buffered);
         assert_eq!(
-            recorder.new_calls().len() + recorder.duplicate_calls().len(),
+            recorder.new_calls().len(),
             0,
             "Buffered 分支不得触发任何 announce"
         );

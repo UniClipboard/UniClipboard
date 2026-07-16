@@ -24,6 +24,7 @@ use async_trait::async_trait;
 use base64::engine::general_purpose::STANDARD as BASE64_STD;
 use base64::Engine;
 
+use uc_application::clipboard_write::ClipboardWriteIntent;
 use uc_application::deps::MobileDevicePorts;
 use uc_application::facade::{
     IncomingMobileBuffer, MobileSyncFacade, MobileSyncFacadeDeps, MobileSyncSnapshotPorts,
@@ -306,7 +307,6 @@ async fn build_facade_deps_with_seeded_device(
         lan_lifecycle: None,
         // schema doc §7.6 / §12.2 P1：测试装配走 noop sink，不污染 capture。
         analytics: Arc::new(uc_observability::analytics::NoopAnalyticsSink::default()),
-        write_coordinator: None,
         active_clipboard: None,
         find_entry_by_snapshot_hash: Arc::new(NoopEntryRepo),
         check_entry_availability: Arc::new(NoopEntryRepo),
@@ -435,7 +435,7 @@ impl ApplyInboundCapture for NoopInboundCapture {
 struct NoopInboundWrite;
 #[async_trait]
 impl ApplyInboundWrite for NoopInboundWrite {
-    async fn write(&self, _: SystemClipboardSnapshot) -> AnyResult<()> {
+    async fn write(&self, _: SystemClipboardSnapshot, _: ClipboardWriteIntent) -> AnyResult<()> {
         Err(anyhow!(
             "test_support: NoOp InboundWrite should not be reached"
         ))

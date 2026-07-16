@@ -6,6 +6,7 @@ use thiserror::Error;
 use uc_core::ids::DeviceId;
 use uc_observability::FlowId;
 
+use crate::clipboard_write::ClipboardWriteIntent;
 use crate::{ApplyInboundClipboardUseCase, ApplyInboundInput, ApplyOutcome};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -20,6 +21,13 @@ pub struct InboundClipboardNoticeInput {
 pub enum InboundClipboardApplyOutcome {
     Applied {
         entry_id: String,
+    },
+    /// Content already held locally; the existing entry was re-activated
+    /// instead of duplicated. Mirrors [`ApplyOutcome::Resurfaced`].
+    Resurfaced {
+        snapshot_hash: String,
+        existing_entry_id: String,
+        os_write_succeeded: bool,
     },
     DuplicateSkipped {
         snapshot_hash: String,
@@ -50,6 +58,9 @@ pub struct InboundClipboardApplyInput {
     pub snapshot_hash: String,
     pub plaintext: Bytes,
     pub flow_id: Option<FlowId>,
+    /// See [`ApplyInboundInput::resurface_intent`] — only consulted when the
+    /// delivery resolves to an already-held entry.
+    pub resurface_intent: ClipboardWriteIntent,
 }
 
 #[async_trait]
@@ -64,6 +75,7 @@ impl InboundClipboardApplyPort for ApplyInboundClipboardUseCase {
                 snapshot_hash: input.snapshot_hash,
                 plaintext: input.plaintext,
                 flow_id: input.flow_id,
+                resurface_intent: input.resurface_intent,
             })
             .await
             .map_err(|err| InboundClipboardApplyError::Internal(err.to_string()))?;
@@ -90,6 +102,10 @@ impl InboundClipboardFacade {
                 snapshot_hash: input.snapshot_hash,
                 plaintext: input.plaintext,
                 flow_id: input.flow_id,
+                // P2P bulk sync: the sender already broadcast this clip to the
+                // whole space, so anything we write must stay invisible to our
+                // own watcher rather than be re-dispatched.
+                resurface_intent: ClipboardWriteIntent::RemotePush,
             })
             .await
     }
@@ -99,6 +115,15 @@ fn apply_outcome_to_view(outcome: ApplyOutcome) -> InboundClipboardApplyOutcome 
     match outcome {
         ApplyOutcome::Applied { entry_id } => InboundClipboardApplyOutcome::Applied {
             entry_id: entry_id.to_string(),
+        },
+        ApplyOutcome::Resurfaced {
+            snapshot_hash,
+            existing_entry_id,
+            os_write_succeeded,
+        } => InboundClipboardApplyOutcome::Resurfaced {
+            snapshot_hash,
+            existing_entry_id: existing_entry_id.to_string(),
+            os_write_succeeded,
         },
         ApplyOutcome::DuplicateSkipped {
             snapshot_hash,

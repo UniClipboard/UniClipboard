@@ -593,10 +593,12 @@ P1 落地（2026-05-15）。LAN HTTP 协议（iPhone Shortcut 客户端）三件
 | 事件名 | 触发位置 | 关键 properties |
 |---|---|---|
 | `mobile_device_registered` | `mobile_sync/register_device.rs::execute` 成功（`device_repo.save` 之后） | （仅 EventContext） |
-| `mobile_clipboard_synced` | `mobile_sync/apply_incoming.rs::execute` SyncDoc arm 的 `Applied` outcome | `direction`: `inbound` \| `outbound`（v1 恒为 `inbound`）, `payload_size_bucket` |
+| `mobile_clipboard_synced` | `mobile_sync/apply_incoming.rs::execute` SyncDoc arm 的 `Applied` / `Resurfaced { os_write_succeeded: true }` outcome | `direction`: `inbound` \| `outbound`（v1 恒为 `inbound`）, `payload_size_bucket` |
 | `mobile_auth_failed` | `mobile_sync/authenticate_basic.rs::execute` 失败分支 | `failure_kind`: `MobileAuthFailureKind`（见 §7.7） |
 
-**`mobile_clipboard_synced` 红线**：仅 `Applied` outcome emit；`Buffered`（两步 PUT 协议中间态）/ `DuplicateSkipped`（命中本机 dedup）/ `DecodeFailed` / 应用层错误一律不上报。沿用 `clipboard_entry_captured` 防 RemotePush 双计的红线哲学——重复埋点会让 dashboard 频率口径双计。
+**`mobile_clipboard_synced` 红线**：仅在内容真的写进 pasteboard 时 emit —— `Applied`（新内容）与 `Resurfaced { os_write_succeeded: true }`（内容已在本机，但这次投递重新激活了它：写 OS + 推进 register + 历史上浮）。本节统计的是「落地一次」而非「新增一行」，所以手机重新复制同一份已同步过的内容是一次真实同步。resurface 不构成双计：它的写入走非 capture intent（`RemotePush` 在 `telemetry_capture_origin` 映射为 `None`；`LocalRestore` 在 `execute_with_origin` 入口短路），`clipboard_entry_captured` 不会与之并发 emit。
+
+`Resurfaced { os_write_succeeded: false }`（pasteboard 未被写，没有落地）/ `DuplicateSkipped`（冗余投递：亚秒重推、partial-over-partial；无 OS 写，且内容已由此前那次 emit 过事件的投递落地）/ `Buffered`（两步 PUT 协议中间态）/ `DecodeFailed` / 应用层错误一律不上报。沿用 `clipboard_entry_captured` 防 RemotePush 双计的红线哲学——重复埋点会让 dashboard 频率口径双计。
 
 **v1 `direction = Inbound` 恒值**：`GetLatestMobileSyncDoc` 出站埋点延后到 v2。原因——iPhone 客户端的轮询频率会让 outbound 量级比 inbound 高一个数量级，需要单独评估采样口径。`direction` 字段保留枚举槽位是为了 v2 直接扩展（§8：新增 property 取值非破坏式演化，dashboard 零迁移）。
 
@@ -605,7 +607,8 @@ P1 落地（2026-05-15）。LAN HTTP 协议（iPhone Shortcut 客户端）三件
 落地备注（保留以便回溯）：
 
 - `mobile_device_registered`：emit 在 `device_repo.save` 成功之后、QR 渲染之前——后续 QR 渲染失败仍保留事件（schema 主目录说明"已登记但拿不到 install URL"是孤儿记录路径，但设备 IS registered，telemetry 反映事实）。
-- `mobile_clipboard_synced`：`payload_size_bucket` 用 `PayloadSizeBucket::from_bytes(snapshot.total_size_bytes())`。BufferFile arm 不 emit（中间态），SyncDoc DuplicateSkipped 不 emit（dedup 双计红线）。
+- `mobile_clipboard_synced`：`payload_size_bucket` 用 `PayloadSizeBucket::from_bytes(snapshot.total_size_bytes())`，在 dispatch 消费 snapshot 之前取好，`Applied` 与 `Resurfaced` 共用同一份入站字节数。BufferFile arm 不 emit（中间态），SyncDoc `DuplicateSkipped` 与 `Resurfaced { os_write_succeeded: false }` 不 emit。
+  - `Resurfaced` 分支自「dedup 命中改为重新激活」起纳入 emit 范围。此前手机重新复制同一份内容会走 `DuplicateSkipped` 且完全不上报，因此该事件的 inbound 量在改动落地后会上升——这是补回一直漏计的真实同步，不是口径破坏（事件名与 property 取值均未变，§8 意义上非破坏）。读 dashboard 时注意改动前后的基线不可直接比较。
 - `mobile_auth_failed`：6 个失败分支统一走 `emit_failure(kind)` 薄包装；happy path **不** emit——产品视角"成功"由 `mobile_clipboard_synced` inbound 间接覆盖。
 
 ### 7.7 MobileAuthFailureKind 枚举（mobile_auth_failed 专用）

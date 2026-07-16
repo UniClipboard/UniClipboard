@@ -44,6 +44,7 @@ use tracing::debug;
 const TRANSLATOR_PROGRESS_MIN_INTERVAL: Duration = Duration::from_millis(200);
 
 use uc_application::clipboard_capture::CaptureClipboardUseCase;
+use uc_application::clipboard_write::ClipboardWriteIntent;
 use uc_application::facade::{
     build_active_clipboard_pull_serve_port, ActiveClipboardDeps, ActiveClipboardFacade,
     ActiveClipboardHandle, ActiveClipboardPeerOnlineResyncHandle,
@@ -319,7 +320,11 @@ struct NoopPullStoreWrite;
 
 #[async_trait::async_trait]
 impl ApplyInboundWrite for NoopPullStoreWrite {
-    async fn write(&self, _snapshot: uc_core::SystemClipboardSnapshot) -> anyhow::Result<()> {
+    async fn write(
+        &self,
+        _snapshot: uc_core::SystemClipboardSnapshot,
+        _intent: ClipboardWriteIntent,
+    ) -> anyhow::Result<()> {
         Ok(())
     }
 }

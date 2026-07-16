@@ -12,7 +12,7 @@ use uc_application::deps::AppDeps;
 use uc_application::facade::{
     BlobTransferFacade, ClipboardCaptureFacade, ClipboardLiveIndexDeps, ClipboardLiveIndexFacade,
     ClipboardLiveIndexPort, ClipboardLiveIndexer, ClipboardOutboundDeps, ClipboardOutboundFacade,
-    ClipboardSyncFacade, HostEventBus, InboundClipboardFacade,
+    ClipboardSnapshotDeps, ClipboardSyncFacade, HostEventBus, InboundClipboardFacade,
 };
 use uc_application::{
     ApplyInboundClipboardUseCase, FileCacheBlobMaterializer, InboundCapture as ApplyInboundCapture,
@@ -160,7 +160,28 @@ pub fn build_daemon_runtime_workers(
         )
         .with_search_live_index(Arc::clone(&search_live_indexer))
         .with_check_entry_availability(input.deps.clipboard.entry_ports.availability.clone())
-        .with_entry_identity_coordinator(input.deps.clipboard.entry_identity_coordinator.clone()),
+        .with_entry_identity_coordinator(input.deps.clipboard.entry_identity_coordinator.clone())
+        // This is the instance that owns the user's pasteboard (P2P + mobile
+        // LAN), so a delivery whose content is already held must re-activate it
+        // rather than be dropped — otherwise a peer re-copying an older clip
+        // leaves the pasteboard on the previous one until the periodic
+        // active-state broadcast repairs it.
+        .with_resurface(
+            ClipboardSnapshotDeps {
+                entry_repo: input.deps.clipboard.entry_ports.get.clone(),
+                selection_repo: input.deps.clipboard.selection_repo.clone(),
+                representation_repo: input.deps.clipboard.representation_ports.get.clone(),
+                rep_processing_repo: input
+                    .deps
+                    .clipboard
+                    .representation_ports
+                    .update_processing_result
+                    .clone(),
+                payload_resolver: input.deps.clipboard.payload_resolver.clone(),
+                blob_store: input.deps.storage.blob_store.clone(),
+            },
+            input.deps.clipboard.entry_ports.touch.clone(),
+        ),
     );
     let inbound_clipboard_facade = Arc::new(InboundClipboardFacade::new(apply_inbound_uc.clone()));
     let clipboard_outbound_facade = Arc::new(ClipboardOutboundFacade::new(ClipboardOutboundDeps {

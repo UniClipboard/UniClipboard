@@ -98,6 +98,35 @@ impl InboundClipboardSyncWorker {
                 info!(entry_id = %entry_id, "inbound clipboard applied; broadcasting WS event");
                 Self::emit_ws_event(&self.event_tx, entry_id, from_device);
             }
+            // The peer re-copied a clip we already hold: no new entry, but it
+            // moved to the top of history and is now the active clipboard, so
+            // the frontend needs the same refresh a fresh entry triggers.
+            Ok(InboundClipboardApplyOutcome::Resurfaced {
+                existing_entry_id,
+                os_write_succeeded: true,
+                ..
+            }) => {
+                info!(
+                    entry_id = %existing_entry_id,
+                    "inbound clipboard re-activated already-held entry; broadcasting WS event"
+                );
+                Self::emit_ws_event(&self.event_tx, existing_entry_id, from_device);
+            }
+            // The OS write failed, so the use case left the register unadvanced
+            // and the entry unmoved in history. `clipboard.new_content` would
+            // tell the frontend this entry is the active clip while the backend
+            // still points at the previous one, so stay silent — the use case
+            // already logged the write failure with its cause.
+            Ok(InboundClipboardApplyOutcome::Resurfaced {
+                existing_entry_id,
+                os_write_succeeded: false,
+                ..
+            }) => {
+                debug!(
+                    entry_id = %existing_entry_id,
+                    "inbound re-activation left the pasteboard untouched; no WS event"
+                );
+            }
             Ok(InboundClipboardApplyOutcome::DuplicateSkipped {
                 snapshot_hash,
                 existing_entry_id,
@@ -105,7 +134,7 @@ impl InboundClipboardSyncWorker {
                 debug!(
                     snapshot_hash = %snapshot_hash,
                     existing_entry_id = %existing_entry_id,
-                    "inbound dropped: duplicate of existing local entry"
+                    "inbound dropped: redundant delivery of existing local entry"
                 );
             }
             Ok(InboundClipboardApplyOutcome::DecodeFailed { reason }) => {

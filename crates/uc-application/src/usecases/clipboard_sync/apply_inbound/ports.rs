@@ -11,6 +11,7 @@ use uc_core::{ClipboardChangeOrigin, DeviceId, SnapshotHash, SystemClipboardSnap
 
 use crate::clipboard_capture::{CaptureClipboardUseCase, CommitMode};
 use crate::clipboard_write::{ClipboardWriteCoordinator, ClipboardWriteIntent};
+use crate::usecases::clipboard_sync::snapshot_from_entry::SnapshotReconstructor;
 
 /// Internal abstraction over the persistence pipeline. Production uses
 /// the blanket impl on `CaptureClipboardUseCase`; tests use a `mockall`
@@ -140,19 +141,51 @@ impl InboundCapture for CaptureClipboardUseCase {
     }
 }
 
+/// Internal abstraction over "rebuild the snapshot this entry holds locally".
+/// Production uses the blanket impl on `SnapshotReconstructor` (6 ports); tests
+/// mock this one method.
+#[async_trait]
+pub trait InboundSnapshotRebuild: Send + Sync {
+    /// Rebuild `entry_id`'s snapshot from local storage, resolving every
+    /// representation's bytes. Used to re-activate held content without
+    /// re-downloading the sender's payload.
+    async fn rebuild(&self, entry_id: &EntryId) -> Result<SystemClipboardSnapshot>;
+}
+
+#[async_trait]
+impl InboundSnapshotRebuild for SnapshotReconstructor {
+    async fn rebuild(&self, entry_id: &EntryId) -> Result<SystemClipboardSnapshot> {
+        self.reconstruct(entry_id).await.map_err(Into::into)
+    }
+}
+
 /// Internal abstraction over the OS clipboard write boundary. Production
 /// uses the blanket impl on `ClipboardWriteCoordinator`; tests mock it.
 #[async_trait]
 pub trait InboundWrite: Send + Sync {
-    /// Write `snapshot` to the OS clipboard with the `RemotePush`
-    /// intent (registers the appropriate hash guards + next-origin
-    /// override per the coordinator's contract).
-    async fn write(&self, snapshot: SystemClipboardSnapshot) -> Result<()>;
+    /// Write `snapshot` to the OS clipboard under `intent` (registers the
+    /// appropriate hash guards + next-origin override per the coordinator's
+    /// contract).
+    ///
+    /// Fresh content always arrives as `RemotePush`; the resurface path passes
+    /// [`ApplyInboundInput::resurface_intent`], which differs per inbound
+    /// channel — see its docs for why.
+    ///
+    /// [`ApplyInboundInput::resurface_intent`]: super::ApplyInboundInput::resurface_intent
+    async fn write(
+        &self,
+        snapshot: SystemClipboardSnapshot,
+        intent: ClipboardWriteIntent,
+    ) -> Result<()>;
 }
 
 #[async_trait]
 impl InboundWrite for ClipboardWriteCoordinator {
-    async fn write(&self, snapshot: SystemClipboardSnapshot) -> Result<()> {
-        ClipboardWriteCoordinator::write(self, snapshot, ClipboardWriteIntent::RemotePush).await
+    async fn write(
+        &self,
+        snapshot: SystemClipboardSnapshot,
+        intent: ClipboardWriteIntent,
+    ) -> Result<()> {
+        ClipboardWriteCoordinator::write(self, snapshot, intent).await
     }
 }

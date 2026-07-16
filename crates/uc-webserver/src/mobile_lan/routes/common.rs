@@ -29,6 +29,7 @@ pub(super) const FILE_UPLOAD_DISK_SANITY_LIMIT: usize = 10 * 1024 * 1024 * 1024;
 pub(super) fn outcome_kind(outcome: &ApplyIncomingMobileClipOutcome) -> &'static str {
     match outcome {
         ApplyIncomingMobileClipOutcome::Applied { .. } => "applied",
+        ApplyIncomingMobileClipOutcome::Resurfaced { .. } => "resurfaced",
         ApplyIncomingMobileClipOutcome::DuplicateSkipped { .. } => "duplicate_skipped",
         ApplyIncomingMobileClipOutcome::DecodeFailed { .. } => "decode_failed",
         ApplyIncomingMobileClipOutcome::Buffered => "buffered",

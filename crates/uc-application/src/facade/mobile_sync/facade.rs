@@ -52,7 +52,6 @@ use uc_core::ports::{
 };
 use uc_observability::analytics::AnalyticsPort;
 
-use crate::clipboard_write::ClipboardWriteCoordinator;
 use crate::deps::MobileDevicePorts;
 use crate::facade::active_clipboard::ActiveClipboardFacade;
 use crate::facade::clipboard_outbound::ClipboardOutboundFacade;
@@ -247,16 +246,15 @@ pub struct MobileSyncFacadeDeps {
     /// `GatedAnalyticsSink`，运行时按用户 `usage_analytics_enabled` 切换
     /// noop / 真实 sink）。测试装配传 `NoopAnalyticsSink`。
     pub analytics: Arc<dyn AnalyticsPort>,
-    /// 可选剪贴板写边界 + active-clipboard facade。两者同时提供时, 移动端
-    /// 入站激活本机剪贴板后 (`Applied` 新内容 / `DuplicateSkipped` 重复命中)
-    /// 统一收敛对端 (issue #1017 D1 call-sites 3 & 4):盖本设备激活戳、前进
-    /// 跨设备 register、按 per-device send 闸门广播 0xC3 state; duplicate
-    /// 命中还先用 `write_coordinator` 把这次上传的 snapshot 写回系统剪贴板。
+    /// 可选 active-clipboard facade。提供时, 移动端入站激活本机剪贴板后
+    /// (`Applied` 新内容 / `Resurfaced` 重复命中且已写入系统剪贴板) 统一收敛
+    /// 对端 (issue #1017 D1 call-sites 3 & 4):盖本设备激活戳、前进跨设备
+    /// register、按 per-device send 闸门广播 0xC3 state。
     ///
-    /// daemon 装配两者都传 `Some(...)`;CLI fallback / 单测传 `None`,
-    /// 移动端上传仅落地本机, 不收敛(行为与本特性引入前一致)。两者
-    /// 必须**同时** `Some` 才装 announce adapter —— 缺一个就降级成 `None`。
-    pub write_coordinator: Option<Arc<ClipboardWriteCoordinator>>,
+    /// 系统剪贴板由入站管线负责写, 不在本 facade 的职责内。
+    ///
+    /// daemon 装配传 `Some(...)`;CLI fallback / 单测传 `None`,
+    /// 移动端上传仅落地本机, 不收敛(行为与本特性引入前一致)。
     pub active_clipboard: Option<Arc<ActiveClipboardFacade>>,
     /// Backs [`MobileSyncFacade::check_content_available`] — the mobile-only
     /// content-availability probe. Resolves a client-computed `snapshot_hash`
@@ -333,7 +331,6 @@ impl MobileSyncFacade {
             clipboard_outbound,
             lan_lifecycle,
             analytics,
-            write_coordinator,
             active_clipboard,
             find_entry_by_snapshot_hash,
             check_entry_availability,
@@ -390,19 +387,15 @@ impl MobileSyncFacade {
                         as Arc<dyn MobileInboundFanOutPort>
                 }),
                 analytics,
-                // Mobile-activation announce (issue #1017 PR7): wired only when
-                // both the write boundary and the active-clipboard facade are
-                // present, so the adapter can re-write the OS clipboard on a
-                // duplicate hit and converge peers via the send-gated 0xC3 path.
-                // Either missing → no announce (mobile upload lands locally only).
-                write_coordinator
-                    .zip(active_clipboard)
-                    .map(|(coordinator, active_clipboard)| {
-                        Arc::new(MobileActivationAnnounceAdapter::new(
-                            coordinator,
-                            active_clipboard,
-                        )) as Arc<dyn MobileActivationAnnouncePort>
-                    }),
+                // Mobile-activation announce (issue #1017 PR7): converges the
+                // activation onto peers via the send-gated 0xC3 path. The OS
+                // write itself belongs to the inbound pipeline, so only the
+                // active-clipboard facade is needed here; `None` → no announce
+                // (mobile upload lands locally only).
+                active_clipboard.map(|active_clipboard| {
+                    Arc::new(MobileActivationAnnounceAdapter::new(active_clipboard))
+                        as Arc<dyn MobileActivationAnnouncePort>
+                }),
             ),
             get_latest_doc: GetLatestMobileSyncDocUseCase::new(snapshot_port.clone()),
             get_file: GetMobileSyncFileUseCase::new(snapshot_port, file_staging.clone()),
@@ -750,6 +743,7 @@ mod tests {
     //! `snapshot_ports` 用 5 个 unimplemented stub。
 
     use super::*;
+    use crate::clipboard_write::ClipboardWriteIntent;
 
     use std::sync::Mutex;
 
@@ -1073,7 +1067,11 @@ mod tests {
     struct UnusedWrite;
     #[async_trait]
     impl InboundWrite for UnusedWrite {
-        async fn write(&self, _: SystemClipboardSnapshot) -> AnyResult<()> {
+        async fn write(
+            &self,
+            _: SystemClipboardSnapshot,
+            _: ClipboardWriteIntent,
+        ) -> AnyResult<()> {
             unimplemented!()
         }
     }
@@ -1163,7 +1161,6 @@ mod tests {
             clipboard_outbound: None,
             lan_lifecycle: None,
             analytics: Arc::new(uc_observability::analytics::NoopAnalyticsSink::default()),
-            write_coordinator: None,
             active_clipboard: None,
             find_entry_by_snapshot_hash: Arc::new(UnusedEntryRepo),
             check_entry_availability: Arc::new(UnusedEntryRepo),
@@ -1330,7 +1327,6 @@ mod tests {
             clipboard_outbound: None,
             lan_lifecycle: None,
             analytics: Arc::new(uc_observability::analytics::NoopAnalyticsSink::default()),
-            write_coordinator: None,
             active_clipboard: None,
             find_entry_by_snapshot_hash: Arc::new(UnusedEntryRepo),
             check_entry_availability: Arc::new(UnusedEntryRepo),
@@ -1419,7 +1415,6 @@ mod tests {
             clipboard_outbound: None,
             lan_lifecycle: None,
             analytics: Arc::new(uc_observability::analytics::NoopAnalyticsSink::default()),
-            write_coordinator: None,
             active_clipboard: None,
             find_entry_by_snapshot_hash: Arc::new(UnusedEntryRepo),
             check_entry_availability: Arc::new(UnusedEntryRepo),
@@ -1539,7 +1534,6 @@ mod tests {
             clipboard_outbound: None,
             lan_lifecycle: Some(lifecycle),
             analytics: Arc::new(uc_observability::analytics::NoopAnalyticsSink::default()),
-            write_coordinator: None,
             active_clipboard: None,
             find_entry_by_snapshot_hash: Arc::new(UnusedEntryRepo),
             check_entry_availability: Arc::new(UnusedEntryRepo),
@@ -1692,7 +1686,6 @@ mod tests {
             clipboard_outbound: None,
             lan_lifecycle: Some(lifecycle),
             analytics: Arc::new(uc_observability::analytics::NoopAnalyticsSink::default()),
-            write_coordinator: None,
             active_clipboard: None,
             find_entry_by_snapshot_hash: Arc::new(UnusedEntryRepo),
             check_entry_availability: Arc::new(UnusedEntryRepo),

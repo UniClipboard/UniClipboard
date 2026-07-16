@@ -10,12 +10,14 @@ use uc_core::clipboard::ActiveClipboardState;
 use uc_core::ids::EntryId;
 use uc_core::ports::clipboard::{
     AdvanceActiveClipboardPort, CheckEntryAvailabilityPort, FindEntryIdBySnapshotHashPort,
+    TouchClipboardEntryPort,
 };
 use uc_core::{SnapshotHash, SystemClipboardSnapshot};
 
-use crate::clipboard_write::MobileConsumabilityProbe;
+use crate::clipboard_write::{ClipboardWriteIntent, MobileConsumabilityProbe};
 use crate::entry_identity::EntryIdentityCoordinator;
 
+use crate::facade::active_clipboard::ClipboardSnapshotDeps;
 use crate::facade::blob_transfer::SharedHostEventEmitter;
 use crate::facade::clipboard_live_index::{
     ClipboardLiveIndexInput, ClipboardLiveIndexOutcome, ClipboardLiveIndexPort,
@@ -26,7 +28,7 @@ use crate::facade::host_event::{
 use crate::usecases::clipboard_sync::payload_codec::decode_v3_bytes_to_snapshot_blob_refs_and_file_set;
 
 use super::materializer::InboundBlobMaterializer;
-use super::ports::{InboundCapture, InboundWrite};
+use super::ports::{InboundCapture, InboundSnapshotRebuild, InboundWrite};
 use super::timing::{RAPID_DUPLICATE_WINDOW, VISIBLE_DUPLICATE_WINDOW};
 use super::{ApplyInboundError, ApplyInboundInput, ApplyOutcome};
 
@@ -75,6 +77,22 @@ pub struct ApplyInboundClipboardUseCase {
     /// clipboard is searchable just like local captures. `None` in tests /
     /// contexts without a search subsystem.
     search_live_index: Option<Arc<dyn ClipboardLiveIndexPort>>,
+    /// Optional resurface support for the fully-held dedup hit: rebuild the
+    /// held entry's snapshot and bump it to the top of history. Both ports are
+    /// wired together or not at all ([`Self::with_resurface`]). `None` degrades
+    /// a dedup hit to a plain skip — correct for the store-only paths (pull /
+    /// CLI), whose OS write is a no-op anyway.
+    resurface: Option<ResurfacePorts>,
+}
+
+/// Ports needed to re-activate an already-held entry on a dedup hit.
+struct ResurfacePorts {
+    /// Rebuilds the snapshot from local storage, so re-activating held content
+    /// never re-downloads the sender's payload.
+    rebuild: Arc<dyn InboundSnapshotRebuild>,
+    /// Bumps the entry to the top of history, mirroring what a local re-copy
+    /// of the same content does.
+    touch_entry: Arc<dyn TouchClipboardEntryPort>,
 }
 
 impl ApplyInboundClipboardUseCase {
@@ -94,6 +112,7 @@ impl ApplyInboundClipboardUseCase {
             active_register: None,
             mobile_consumability: None,
             search_live_index: None,
+            resurface: None,
             recent_snapshot_hashes: Cache::builder()
                 .max_capacity(RECENT_INBOUND_MAX_RECORDS)
                 .time_to_live(RAPID_DUPLICATE_WINDOW)
@@ -161,6 +180,35 @@ impl ApplyInboundClipboardUseCase {
     /// remote-origin clipboard shows up in search like local captures.
     pub fn with_search_live_index(mut self, index: Arc<dyn ClipboardLiveIndexPort>) -> Self {
         self.search_live_index = Some(index);
+        self
+    }
+
+    /// Wire resurface support, so a delivery whose content is already held
+    /// locally still re-activates it (OS write + register advance + history
+    /// bump) instead of being dropped.
+    ///
+    /// Required on any path that owns the user's pasteboard. Leaving it unwired
+    /// keeps the prior skip-on-match behavior, which is what the store-only
+    /// paths (pull / CLI) want — they pair it with a no-op write port.
+    pub fn with_resurface(
+        self,
+        snapshot_deps: ClipboardSnapshotDeps,
+        touch_entry: Arc<dyn TouchClipboardEntryPort>,
+    ) -> Self {
+        self.with_resurface_ports(Arc::new(snapshot_deps.into_reconstructor()), touch_entry)
+    }
+
+    /// [`Self::with_resurface`] against the narrow rebuild seam, so tests can
+    /// mock one method instead of standing up six repository ports.
+    pub fn with_resurface_ports(
+        mut self,
+        rebuild: Arc<dyn InboundSnapshotRebuild>,
+        touch_entry: Arc<dyn TouchClipboardEntryPort>,
+    ) -> Self {
+        self.resurface = Some(ResurfacePorts {
+            rebuild,
+            touch_entry,
+        });
         self
     }
 
@@ -267,6 +315,152 @@ impl ApplyInboundClipboardUseCase {
         }
     }
 
+    /// Re-activate an entry whose content this device already holds in full.
+    ///
+    /// Reached when a peer re-copies an older clip (A → B → A): the payload is
+    /// already ours, so there is nothing to download and no row to add — but the
+    /// activation is real and the OS clipboard must follow it. Skipping the
+    /// write here is what used to leave the pasteboard on the *previous* clip
+    /// until the periodic active-state broadcast repaired it up to a minute
+    /// later.
+    ///
+    /// `activated_at_ms` comes from the **inbound** snapshot (when the sender
+    /// activated this content), never from the rebuilt one — the rebuilt
+    /// snapshot carries `entry.created_at_ms`, i.e. when this content was
+    /// *first* seen. Feeding that to the register would look like a stale
+    /// activation and lose the LWW comparison against the clip it is meant to
+    /// supersede.
+    ///
+    /// Ordering mirrors the active-state convergence tail: OS write first, and
+    /// only on success advance the register. A register pointing at content the
+    /// pasteboard does not hold would let this device broadcast a phantom
+    /// activation to its peers. The history bump and the UI event are
+    /// best-effort tails that never fail the outcome.
+    async fn resurface_held_entry(
+        &self,
+        input: &ApplyInboundInput,
+        existing_id: &EntryId,
+        activated_at_ms: i64,
+    ) -> ApplyOutcome {
+        let Some(resurface) = self.resurface.as_ref() else {
+            debug!(
+                existing_entry_id = %existing_id,
+                "inbound dropped: duplicate of existing, fully-held local entry (resurface unwired)"
+            );
+            return ApplyOutcome::DuplicateSkipped {
+                snapshot_hash: input.snapshot_hash.clone(),
+                existing_entry_id: existing_id.clone(),
+            };
+        };
+
+        // A re-activation this recent is the same logical delivery arriving
+        // twice (a retried frame, or one clip reaching us over both the direct
+        // dispatch and the active-state channel) — not the user copying the
+        // same thing again. Re-writing the pasteboard for it is pure noise.
+        // The window is sub-second (see `timing`), far below any human re-copy,
+        // so a genuine repeat copy still resurfaces.
+        if self
+            .recent_snapshot_hashes
+            .get(&input.snapshot_hash)
+            .is_some()
+        {
+            debug!(
+                existing_entry_id = %existing_id,
+                "inbound dropped: re-activation of a just-activated entry (rapid duplicate)"
+            );
+            return ApplyOutcome::DuplicateSkipped {
+                snapshot_hash: input.snapshot_hash.clone(),
+                existing_entry_id: existing_id.clone(),
+            };
+        }
+
+        // Rebuild from local storage rather than the inbound envelope: the
+        // envelope's blob-backed reps are unresolved refs, and re-materializing
+        // them would re-download bytes we already have.
+        let snapshot = match resurface.rebuild.rebuild(existing_id).await {
+            Ok(snapshot) => snapshot,
+            Err(err) => {
+                warn!(
+                    error = %err,
+                    existing_entry_id = %existing_id,
+                    "inbound: held entry could not be rebuilt; skipping re-activation"
+                );
+                return ApplyOutcome::DuplicateSkipped {
+                    snapshot_hash: input.snapshot_hash.clone(),
+                    existing_entry_id: existing_id.clone(),
+                };
+            }
+        };
+
+        if let Err(err) = self.write.write(snapshot, input.resurface_intent).await {
+            warn!(
+                event = "inbound_os_write_failed",
+                error_kind = "inbound_os_write_failed",
+                error = %err,
+                existing_entry_id = %existing_id,
+                "inbound: OS clipboard write failed while re-activating held entry; \
+                 not advancing the active register"
+            );
+            return ApplyOutcome::Resurfaced {
+                snapshot_hash: input.snapshot_hash.clone(),
+                existing_entry_id: existing_id.clone(),
+                os_write_succeeded: false,
+            };
+        }
+
+        // Arms the rapid-duplicate guard above against this delivery's own
+        // retries / second channel. Only recorded once the write landed, so a
+        // failed re-activation stays retryable.
+        self.remember_recent_inbound(input.snapshot_hash.clone(), None, existing_id.clone());
+
+        self.advance_active_register(
+            input.snapshot_hash.clone(),
+            existing_id.clone(),
+            input.from_device,
+            activated_at_ms,
+        )
+        .await;
+
+        // Bump to the top of history, mirroring the local-capture dedup path
+        // (`clipboard_capture::usecase`), so a re-copy on either side of the
+        // link surfaces the entry the same way.
+        match resurface
+            .touch_entry
+            .touch_entry(existing_id, activated_at_ms)
+            .await
+        {
+            Ok(true) => {}
+            Ok(false) => debug!(
+                existing_entry_id = %existing_id,
+                "inbound: resurface target vanished before history bump"
+            ),
+            Err(err) => warn!(
+                error = %err,
+                existing_entry_id = %existing_id,
+                "inbound: history bump failed (best-effort, ignored)"
+            ),
+        }
+
+        info!(
+            existing_entry_id = %existing_id,
+            "inbound: re-activated already-held entry (no download, no duplicate row)"
+        );
+
+        // Same event the fresh-content path emits: the entry moved in history
+        // and is now the active clipboard, so the list has to re-render.
+        self.emit_host_event(HostEvent::Clipboard(ClipboardHostEvent::NewContent {
+            entry_id: existing_id.as_ref().to_string(),
+            preview: "New clipboard content".to_string(),
+            origin: ClipboardOriginKind::Remote,
+        }));
+
+        ApplyOutcome::Resurfaced {
+            snapshot_hash: input.snapshot_hash.clone(),
+            existing_entry_id: existing_id.clone(),
+            os_write_succeeded: true,
+        }
+    }
+
     // 跨设备可观测性(PR2):
     //   - `peer.device_id` 是 PR2 起的标准字段名,把发送方 device 摆到一级
     //     span field;`from_device` 暂时保留兼容现有日志查询,Sentry tag
@@ -321,8 +515,10 @@ impl ApplyInboundClipboardUseCase {
         // identities proceed in parallel via the coordinator's lock striping.
         let _identity_guard = self.coordinator.lock(&input.snapshot_hash).await;
 
-        // 3. Pre-download dedup. A hash match that is *fully held* is skipped
-        // before we show a progress card or download anything. A match that is
+        // 3. Pre-download dedup. A hash match that is *fully held* needs no
+        // download and no new row — but it still re-activates the held entry
+        // (see `resurface_held_entry`), because the sender copying an older clip
+        // is a real activation the pasteboard must follow. A match that is
         // *partial* (e.g. a cancelled transfer's `uniclip-missing://`
         // placeholder) is NOT held — fall through to materialize and upgrade it
         // in place. The repo's default `Ok(None)` impl (in-memory test fakes)
@@ -335,14 +531,9 @@ impl ApplyInboundClipboardUseCase {
             .map_err(|e| ApplyInboundError::DedupQuery(e.to_string()))?;
         if let Some(existing_id) = existing.as_ref() {
             if self.is_entry_available(existing_id).await {
-                debug!(
-                    existing_entry_id = %existing_id,
-                    "inbound dropped: duplicate of existing, fully-held local entry"
-                );
-                return Ok(ApplyOutcome::DuplicateSkipped {
-                    snapshot_hash: input.snapshot_hash,
-                    existing_entry_id: existing_id.clone(),
-                });
+                return Ok(self
+                    .resurface_held_entry(&input, existing_id, snapshot.ts_ms)
+                    .await);
             }
             debug!(
                 existing_entry_id = %existing_id,
@@ -602,7 +793,13 @@ impl ApplyInboundClipboardUseCase {
                     // (refcount is 1 here) and only guards a future second holder.
                     let snapshot_for_write = Arc::try_unwrap(snapshot_for_write)
                         .unwrap_or_else(|shared| (*shared).clone());
-                    if let Err(e) = write_port.write(snapshot_for_write).await {
+                    // Fresh content is always a remote push regardless of which
+                    // channel delivered it: this write must not be re-captured
+                    // and re-dispatched by our own watcher.
+                    if let Err(e) = write_port
+                        .write(snapshot_for_write, ClipboardWriteIntent::RemotePush)
+                        .await
+                    {
                         error!(
                             event = "inbound_os_write_failed",
                             error_kind = "inbound_os_write_failed",

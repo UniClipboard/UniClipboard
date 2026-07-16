@@ -9,7 +9,7 @@ import {
   RefreshCw,
   XCircle,
 } from 'lucide-react'
-import { useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
+import { useEffect, useEffectEvent, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   cancelInvitation,
@@ -72,10 +72,6 @@ function AddDeviceDialogInner({ open, onOpenChange }: AddDeviceDialogProps) {
   const [step, setStep] = useState<Step>('invitation')
   const [failureReason, setFailureReason] = useState<string | null>(null)
 
-  // 标记本次 open 是否已经初始化过邀请。effect 因 t 引用变化、Strict Mode
-  // 双跑或父组件结构切换重挂载等原因被重跑时，不要重复 issue 新邀请。
-  const initializedRef = useRef(false)
-
   // 倒计时 tick — 仅在邀请态 + 有邀请时启动
   useEffect(() => {
     if (!open || !invitation || step !== 'invitation') return
@@ -85,14 +81,17 @@ function AddDeviceDialogInner({ open, onOpenChange }: AddDeviceDialogProps) {
 
   // 打开时：优先恢复 currentInvitation，否则申请新邀请
   // 后端约束"同一时刻一个邀请"，关闭对话框不取消邀请，重开会拿回同一个
+  //
+  // t 只在失败分支用到，包成 effect event 移出依赖：本组件由外层 wrapper 按
+  // open 会话重挂载，effect 必须严格「每次挂载跑一次」。若 t 留在依赖里，i18n
+  // 资源 reload 会重跑 effect 并重复 issue 新邀请，把还没展示完的 step='success'
+  // 覆盖掉。
+  const reportIssueFailure = useEffectEvent((err: unknown) => {
+    log.error({ err }, 'Failed to load or issue invitation')
+    setError(t('devices.addDevice.errors.issueFailed'))
+  })
   useEffect(() => {
     if (!open) return
-    // 防止 effect 重跑导致重复申请邀请。例如：配对成功后父组件因 spaceMembers
-    // 变化重渲染，又或者 i18n 资源 reload 让 t 引用变化 — 这些都不应该触发
-    // 第二次 issuePairingInvitation()，否则 step='success' 还没显示完就被新
-    // 邀请码覆盖了。重置在 line 184 的关闭副作用里完成。
-    if (initializedRef.current) return
-    initializedRef.current = true
     let cancelled = false
     void (async () => {
       setLoading(true)
@@ -112,8 +111,7 @@ function AddDeviceDialogInner({ open, onOpenChange }: AddDeviceDialogProps) {
         }
       } catch (err) {
         if (cancelled) return
-        log.error({ err }, 'Failed to load or issue invitation')
-        setError(t('devices.addDevice.errors.issueFailed'))
+        reportIssueFailure(err)
       } finally {
         if (!cancelled) setLoading(false)
       }
@@ -121,7 +119,7 @@ function AddDeviceDialogInner({ open, onOpenChange }: AddDeviceDialogProps) {
     return () => {
       cancelled = true
     }
-  }, [open, t])
+  }, [open])
 
   // 订阅 setup.pairingCompleted / setup.invitationRevoked — 后端在配对成功 /
   // 失败 / 邀请被撤销时会推送，对话框据此切换状态机

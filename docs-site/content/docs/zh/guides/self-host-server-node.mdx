@@ -238,15 +238,15 @@ Basic Auth、没有 websocket，一个默认的反代块就够了。
   速率限制没问题。它的处理成本是常数级，限速是可选的加固，不是必需。
 
 <Callout type="info">
-  `/healthz` 无需鉴权，这是有意设计。它只回一个空的 `204`，不含版本、设备、 用户名或任何剪贴板信息
-  —— 只暴露「这个地址上有个监听器在应答」，而这一点 TCP
+  `/healthz` 无需鉴权，这是有意设计。它只回一个空的
+  `204`，不含版本、设备、用户名或任何剪贴板信息——只暴露「这个地址上有个监听器在应答」，而这一点 TCP
   连接本身就已经暴露了。反过来，让每次探测都跑一遍 Argon2id 密码校验（`/SyncClipboard.json`
   每个请求的代价，约 64MB 内存 + 数十毫秒 CPU）才是真正的滥用面。
 </Callout>
 
 <Callout type="warn">
-  别把守护进程控制面的 `GET /health` 重写或代理成 `/healthz`。两者是不同 监听器上的不同端点：控制面
-  `/health` 在 loopback API 上，`/healthz` 在移动 端 LAN
+  别把守护进程控制面的 `GET /health` 重写或代理成 `/healthz`。两者是不同监听器上的不同端点：控制面
+  `/health` 在 loopback API 上，`/healthz` 在移动端 LAN
   监听器上。用前者冒充后者，探针就会在移动端链路实际不通时报成功。
 </Callout>
 

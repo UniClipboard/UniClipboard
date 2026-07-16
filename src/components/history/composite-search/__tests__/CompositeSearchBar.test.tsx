@@ -126,7 +126,6 @@ describe('HistoryFilterPanel', () => {
     expect(selectedRow.className).toContain('text-foreground')
     expect(selectedRow.className).not.toContain('bg-primary')
     expect(selectedRow.className).not.toContain('font-medium')
-    expect(selectedRow).toHaveAttribute('data-cuelume-toggle')
     expect(selectedIcon).toHaveClass('text-muted-foreground')
   })
 })

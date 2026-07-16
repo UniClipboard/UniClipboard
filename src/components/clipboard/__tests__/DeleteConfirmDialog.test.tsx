@@ -54,12 +54,6 @@ describe('DeleteConfirmDialog i18n', () => {
     expect(screen.getByText('Cancel')).toBeInTheDocument()
     expect(screen.getByText('Delete')).toBeInTheDocument()
 
-    expect(screen.getByRole('button', { name: /cancel/i })).toHaveAttribute(
-      'data-cuelume-toggle',
-      'droplet'
-    )
-    expect(screen.getByRole('button', { name: /delete/i })).toHaveAttribute('data-cuelume-press')
-
     expect(screen.queryByText('confirmDeleteTitle')).not.toBeInTheDocument()
     expect(screen.queryByText('cancelLabel')).not.toBeInTheDocument()
     expect(screen.queryByText('deleteLabel')).not.toBeInTheDocument()

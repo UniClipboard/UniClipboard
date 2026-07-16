@@ -36,7 +36,6 @@ function PanelRow({
   return (
     <button
       type="button"
-      data-cuelume-toggle=""
       onClick={onClick}
       aria-pressed={active}
       className={cn(

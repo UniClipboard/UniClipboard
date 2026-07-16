@@ -29,7 +29,6 @@ import {
 } from '@/components/ui/alert-dialog'
 import { toast } from '@/components/ui/toast'
 import { createLogger } from '@/lib/logger'
-import { playUiSound } from '@/lib/ui-sound'
 
 const log = createLogger('package-manager-update-dialog')
 
@@ -81,7 +80,6 @@ export const PackageManagerUpdateDialog: React.FC<PackageManagerUpdateDialogProp
   const handleCopy = async () => {
     try {
       await navigator.clipboard.writeText(command)
-      playUiSound('success')
       setCopied(true)
       toast.success(t('update.packageManager.copied'))
       // Brief visual feedback on the button itself; toast handles the

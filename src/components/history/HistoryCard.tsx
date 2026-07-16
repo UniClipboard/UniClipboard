@@ -98,7 +98,6 @@ const HistoryCard: React.FC<HistoryCardProps> = ({
     >
       <button
         type="button"
-        data-cuelume-press=""
         aria-label={t('clipboard.item.actions.open', 'Open clipboard item')}
         onClick={handleClick}
         className="absolute inset-0 z-[1] cursor-pointer appearance-none border-0 bg-transparent p-0 text-left outline-none focus-visible:ring-2 focus-visible:ring-primary/40"

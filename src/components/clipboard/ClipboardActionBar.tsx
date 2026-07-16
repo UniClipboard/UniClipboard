@@ -44,7 +44,6 @@ const ClipboardActionBar: React.FC<ClipboardActionBarProps> = ({
     >
       <m.button
         type="button"
-        data-cuelume-press=""
         whileTap={{ scale: 0.97 }}
         className={cn(
           'flex items-center gap-2 px-2.5 py-1 rounded-md text-xs transition-all duration-200 relative group',
@@ -101,7 +100,6 @@ const ClipboardActionBar: React.FC<ClipboardActionBarProps> = ({
 
       <m.button
         type="button"
-        data-cuelume-toggle=""
         whileTap={{ scale: 0.97 }}
         className={cn(
           'flex items-center gap-2 px-2.5 py-1 rounded-md text-xs transition-all duration-200 group',
@@ -127,7 +125,6 @@ const ClipboardActionBar: React.FC<ClipboardActionBarProps> = ({
 
       <m.button
         type="button"
-        data-cuelume-press=""
         whileTap={{ scale: 0.97 }}
         className={cn(
           'flex items-center gap-2 px-2.5 py-1 rounded-md text-xs transition-all duration-200 group',

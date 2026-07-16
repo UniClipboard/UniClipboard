@@ -3,7 +3,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { Filter } from '@/api/clipboardItems'
 import { useShortcut } from '@/hooks/useShortcut'
 import type { DisplayClipboardItem } from '@/lib/clipboard-entry'
-import { playUiSound } from '@/lib/ui-sound'
 import {
   clearHistorySessionSnapshot,
   readHistorySessionSnapshot,
@@ -92,7 +91,6 @@ vi.mock('@/hooks/useSearchTags', () => ({
 }))
 
 vi.mock('@/hooks/useShortcut', () => ({ useShortcut: vi.fn() }))
-vi.mock('@/lib/ui-sound', () => ({ playUiSound: vi.fn() }))
 
 vi.mock('@/hooks/useShortcutScope', () => ({
   useShortcutScope: vi.fn(),
@@ -181,24 +179,14 @@ describe('useHistoryController', () => {
 
     expect(favoriteShortcut).toBeDefined()
 
-    act(() => {
-      favoriteShortcut?.handler()
+    await act(async () => {
+      await favoriteShortcut?.handler()
     })
 
     await waitFor(() => {
       expect(result.current.selectedItem?.isFavorited).toBe(true)
     })
     expect(clipboardItemsApi.favoriteClipboardItem).toHaveBeenCalledWith('entry-1')
-  })
-
-  it('plays success feedback after copying an entry', async () => {
-    const { result } = renderHook(() => useHistoryController())
-
-    await act(async () => {
-      expect(await result.current.handleCopy('entry-1')).toBe(true)
-    })
-
-    expect(playUiSound).toHaveBeenCalledWith('success')
   })
 
   it('keeps the active row on the first card when a newer card is prepended', async () => {

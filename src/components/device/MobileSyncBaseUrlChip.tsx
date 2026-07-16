@@ -22,7 +22,6 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { toast } from '@/components/ui/toast'
-import { playUiSound } from '@/lib/ui-sound'
 
 interface BaseUrlChipProps {
   baseUrl: string
@@ -90,7 +89,6 @@ export const CopyIconButton: React.FC<{ value: string }> = ({ value }) => {
   const handleCopy = useCallback(async () => {
     try {
       await navigator.clipboard.writeText(value)
-      playUiSound('success')
       setCopied(true)
       setTimeout(() => setCopied(false), 1500)
     } catch {

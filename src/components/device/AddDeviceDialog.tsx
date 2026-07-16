@@ -30,7 +30,6 @@ import {
 } from '@/components/ui/dialog'
 import { Progress } from '@/components/ui/progress'
 import { createLogger } from '@/lib/logger'
-import { playUiSound } from '@/lib/ui-sound'
 import { cn } from '@/lib/utils'
 import { useAppDispatch } from '@/store/hooks'
 import { fetchSpaceMembers } from '@/store/slices/devicesSlice'
@@ -209,7 +208,6 @@ export default function AddDeviceDialog({ open, onOpenChange }: AddDeviceDialogP
     if (!invitation) return
     try {
       await navigator.clipboard.writeText(invitation.code)
-      playUiSound('success')
       setCopied(true)
       setTimeout(() => setCopied(false), 1500)
     } catch (err) {

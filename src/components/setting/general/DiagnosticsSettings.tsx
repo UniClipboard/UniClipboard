@@ -19,7 +19,6 @@ import { toast } from '@/components/ui/toast'
 import { useSetting } from '@/hooks/useSetting'
 import { commands } from '@/lib/ipc'
 import { createLogger } from '@/lib/logger'
-import { playUiSound } from '@/lib/ui-sound'
 import { SettingGroup } from '../SettingGroup'
 import { SettingRow } from '../SettingRow'
 import { useSavingState } from './useSavingState'
@@ -109,7 +108,6 @@ export function DiagnosticsSettings() {
       setExportingLogs(true)
       const result = await exportLogs(24)
       setExportPath(result.path)
-      playUiSound('success')
       toast.success(t('settings.sections.general.logs.export.success'))
       // Reveal the exported archive in the file manager so the user can find
       // it immediately. Failure here is non-fatal: the export already
@@ -131,7 +129,6 @@ export function DiagnosticsSettings() {
     if (!exportPath) return
     try {
       await navigator.clipboard.writeText(exportPath)
-      playUiSound('success')
       toast.success(t('settings.sections.general.logs.export.copySuccess'))
     } catch (error) {
       log.warn({ err: error }, 'Failed to copy log export path')

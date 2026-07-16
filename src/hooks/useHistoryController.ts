@@ -12,7 +12,6 @@ import { useShortcut } from '@/hooks/useShortcut'
 import { useShortcutScope } from '@/hooks/useShortcutScope'
 import { useTransferProgress } from '@/hooks/useTransferProgress'
 import { createLogger } from '@/lib/logger'
-import { playUiSound } from '@/lib/ui-sound'
 import { useAppDispatch } from '@/store/hooks'
 import { copyToClipboard, removeClipboardItem } from '@/store/slices/clipboardSlice'
 import { fetchSpaceMembers } from '@/store/slices/devicesSlice'
@@ -93,7 +92,6 @@ export function useHistoryController() {
       try {
         await dispatch(copyToClipboard(id)).unwrap()
         markCopied(id)
-        playUiSound('success')
         return true
       } catch (err) {
         // `copyToClipboard` rejects with a specific, user-facing reason for
@@ -113,7 +111,6 @@ export function useHistoryController() {
       try {
         await restoreClipboardEntry(id, { filePathsOnly: true })
         markCopied(id)
-        playUiSound('success')
         return true
       } catch {
         toast.error(t('clipboard.errors.copyFailed'))

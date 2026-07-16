@@ -26,11 +26,8 @@ describe('ClipboardActionBar', () => {
     )
 
     const favoriteButton = screen.getByRole('button', { name: 'clipboard.actionBar.favorite' })
-    const copyButton = screen.getByRole('button', { name: 'clipboard.actionBar.copy' })
 
     expect(favoriteButton).toBeEnabled()
-    expect(favoriteButton).toHaveAttribute('data-cuelume-toggle')
-    expect(copyButton).not.toHaveAttribute('data-cuelume-toggle')
     expect(screen.getByText('F')).toBeInTheDocument()
 
     await user.click(favoriteButton)

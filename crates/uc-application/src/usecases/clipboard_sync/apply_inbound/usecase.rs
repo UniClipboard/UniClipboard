@@ -394,6 +394,8 @@ impl ApplyInboundClipboardUseCase {
 
         if let Err(err) = self.write.write(snapshot, input.resurface_intent).await {
             warn!(
+                event = "inbound_os_write_failed",
+                error_kind = "inbound_os_write_failed",
                 error = %err,
                 existing_entry_id = %existing_id,
                 "inbound: OS clipboard write failed while re-activating held entry; \

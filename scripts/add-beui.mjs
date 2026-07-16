@@ -20,10 +20,11 @@
 // holds project helpers like formatPeerIdForDisplay. Shared beUI utils
 // (lib/ease.ts, ...) are written once by the first component and skipped after.
 
+import { execFileSync } from 'node:child_process'
 import { mkdir, writeFile, readFile, access } from 'node:fs/promises'
 import { dirname, resolve, join, sep } from 'node:path'
+import process from 'node:process'
 import { fileURLToPath } from 'node:url'
-import { execFileSync } from 'node:child_process'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const SRC = join(ROOT, 'src')
@@ -43,7 +44,16 @@ if (slugs.length === 0) {
   process.exit(1)
 }
 
-const pkg = JSON.parse(await readFile(join(ROOT, 'package.json'), 'utf8'))
+let pkg
+try {
+  pkg = JSON.parse(await readFile(join(ROOT, 'package.json'), 'utf8'))
+} catch (error) {
+  console.error(
+    `Failed to read package.json: ${error instanceof Error ? error.message : String(error)}`
+  )
+  process.exit(1)
+}
+
 const owned = new Set([
   ...Object.keys(pkg.dependencies ?? {}),
   ...Object.keys(pkg.devDependencies ?? {}),

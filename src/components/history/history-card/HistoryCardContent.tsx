@@ -21,7 +21,11 @@ interface HistoryCardContentProps {
 function HistoryCardContent({ item }: HistoryCardContentProps) {
   if (item.type === 'image') {
     return (
-      <ImageEntryContent entryId={item.id} imageItem={item.content as ClipboardImageItem | null} />
+      <ImageEntryContent
+        key={item.id}
+        entryId={item.id}
+        imageItem={item.content as ClipboardImageItem | null}
+      />
     )
   }
   const hasCodeTag = item.contentTags?.includes('code') ?? false

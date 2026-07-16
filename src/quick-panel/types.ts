@@ -34,6 +34,7 @@ export interface QuickPanelContextMenuActions {
 
 export type PreviewMode = 'closed' | 'reserving' | 'expanded'
 export type PreviewFocusSource = 'selection' | 'hover'
+export type PreviewSide = 'left' | 'right'
 
 export interface PreviewState {
   entryId: string | null
@@ -41,6 +42,7 @@ export interface PreviewState {
   suppressed: boolean
   historyLockedWidth: number | null
   focusSource: PreviewFocusSource
+  side: PreviewSide
 }
 
 export type PreviewAction =
@@ -49,4 +51,5 @@ export type PreviewAction =
   | { type: 'set-entry'; entryId: string | null }
   | { type: 'set-focus-source'; source: PreviewFocusSource }
   | { type: 'reserve-space'; entryId: string; historyLockedWidth: number | null }
+  | { type: 'set-side'; side: PreviewSide }
   | { type: 'expand' }

@@ -1,6 +1,6 @@
 import { listen } from '@tauri-apps/api/event'
 import { LazyMotion, MotionConfig, domMax } from 'framer-motion'
-import React, { useCallback, useEffect, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useEffectEvent, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { daemonClient } from '@/api/daemon/client'
 import { Toaster } from '@/components/ui/sonner'
@@ -56,6 +56,7 @@ const QuickPanelApp: React.FC = () => {
     },
     [clearFinalizeTimer]
   )
+  const finalizeShowFromEffect = useEffectEvent(finalizeShow)
 
   useEffect(() => {
     const unlistenPrepare = listen('quick-panel://prepare-show', () => {
@@ -67,7 +68,7 @@ const QuickPanelApp: React.FC = () => {
       clearFinalizeTimer()
       finalizeTimerRef.current = setTimeout(() => {
         finalizeTimerRef.current = null
-        finalizeShow(requestId)
+        finalizeShowFromEffect(requestId)
       }, SHOW_FALLBACK_DELAY_MS)
     })
 
@@ -75,7 +76,7 @@ const QuickPanelApp: React.FC = () => {
       clearFinalizeTimer()
       unlistenPrepare.then(fn => fn())
     }
-  }, [clearFinalizeTimer, finalizeShow])
+  }, [clearFinalizeTimer])
 
   useEffect(() => {
     if (daemonClient.initialized) {

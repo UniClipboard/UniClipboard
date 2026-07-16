@@ -56,44 +56,41 @@ function measureTextMetrics(
  * user-visible layout.
  */
 const WindowedLongText: React.FC<{ text: string; className?: string }> = ({ text, className }) => {
-  const observerRef = useRef<ResizeObserver | null>(null)
   const [metrics, setMetrics] = useState<{
     charsPerLine: number
     lineHeight: number
     containerHeight: number
   } | null>(null)
   const [scrollTop, setScrollTop] = useState(0)
+  const [container, setContainer] = useState<HTMLDivElement | null>(null)
   const rafRef = useRef(0)
 
-  // Callback ref: measure synchronously on mount and observe resizes.
+  const updateMetrics = useCallback((el: HTMLDivElement) => {
+    const measured = measureTextMetrics(el)
+    if (measured) setMetrics({ ...measured, containerHeight: el.clientHeight })
+  }, [])
+
+  // Callback ref: measure synchronously on mount so the first useful frame
+  // does not wait for a passive effect.
   // This avoids the useState(null) + useEffect(setState) "initialize state in
   // effect" anti-pattern flagged by react-doctor's no-initialize-state rule.
-  const setContainerRef = useCallback((el: HTMLDivElement | null) => {
-    // Tear down previous observer when the node detaches or swaps.
-    observerRef.current?.disconnect()
-    observerRef.current = null
-    if (!el) return
+  const setContainerRef = useCallback(
+    (el: HTMLDivElement | null) => {
+      setContainer(el)
+      if (el) updateMetrics(el)
+    },
+    [updateMetrics]
+  )
 
-    const update = () => {
-      const m = measureTextMetrics(el)
-      if (m) setMetrics({ ...m, containerHeight: el.clientHeight })
-    }
-    update()
-
-    const obs = new ResizeObserver(() => update())
-    obs.observe(el)
-    observerRef.current = obs
-  }, [])
-
-  // Cleanup observer on unmount in case the callback-ref's null call is
-  // skipped (some React versions only invoke it when the node identity
-  // changes).
   useEffect(() => {
+    if (!container) return
+    const observer = new ResizeObserver(() => updateMetrics(container))
+    observer.observe(container)
     return () => {
-      observerRef.current?.disconnect()
-      observerRef.current = null
+      observer.disconnect()
+      cancelAnimationFrame(rafRef.current)
     }
-  }, [])
+  }, [container, updateMetrics])
 
   const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
     const st = e.currentTarget.scrollTop

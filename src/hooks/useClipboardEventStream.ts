@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useEffectEvent } from 'react'
 import { getClipboardEntries } from '@/api/daemon/clipboard'
 import type { ClipboardEntry } from '@/lib/clipboard-entry'
 import { projectClipboardEntry } from '@/lib/clipboard-transform'
@@ -26,15 +26,9 @@ export function useClipboardEventStream({
   onDeleted,
 }: UseClipboardEventStreamOptions): void {
   const dispatch = useAppDispatch()
-  const onLocalItemRef = useRef(onLocalItem)
-  const onRemoteInvalidateRef = useRef(onRemoteInvalidate)
-  const onDeletedRef = useRef(onDeleted)
-
-  useEffect(() => {
-    onLocalItemRef.current = onLocalItem
-    onRemoteInvalidateRef.current = onRemoteInvalidate
-    onDeletedRef.current = onDeleted
-  }, [onDeleted, onLocalItem, onRemoteInvalidate])
+  const handleLocalItem = useEffectEvent(onLocalItem)
+  const handleRemoteInvalidate = useEffectEvent(onRemoteInvalidate)
+  const handleDeleted = useEffectEvent(onDeleted)
 
   useEffect(() => {
     if (!enabled) {
@@ -64,7 +58,7 @@ export function useClipboardEventStream({
               log.warn({ entryId: id }, 'local entry not found in list reload')
               continue
             }
-            onLocalItemRef.current(projectClipboardEntry(entry))
+            handleLocalItem(projectClipboardEntry(entry))
           }
         })
         .catch(err => {
@@ -97,7 +91,7 @@ export function useClipboardEventStream({
             clearTimeout(remoteInvalidateTimer)
             remoteInvalidateTimer = null
           }
-          onRemoteInvalidateRef.current()
+          handleRemoteInvalidate()
           continue
         }
 
@@ -119,7 +113,7 @@ export function useClipboardEventStream({
 
       // Note: clipboard.deleted is never emitted by the daemon.
       // The onDeleted callback is retained for API symmetry but will never fire.
-      void onDeletedRef
+      void handleDeleted
     }
 
     const unsubscribe = daemonWs.subscribe(['clipboard'], handler)

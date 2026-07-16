@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { StateSnapshot, VirtuosoHandle } from 'react-virtuoso'
 import { favoriteClipboardItem, Filter, unfavoriteClipboardItem } from '@/api/clipboardItems'
@@ -11,6 +11,7 @@ import { useSearchTags } from '@/hooks/useSearchTags'
 import { useShortcut } from '@/hooks/useShortcut'
 import { useShortcutScope } from '@/hooks/useShortcutScope'
 import { useTransferProgress } from '@/hooks/useTransferProgress'
+import type { DisplayClipboardItem } from '@/lib/clipboard-entry'
 import { createLogger } from '@/lib/logger'
 import { useAppDispatch } from '@/store/hooks'
 import { copyToClipboard, removeClipboardItem } from '@/store/slices/clipboardSlice'
@@ -60,12 +61,7 @@ export function useHistoryController() {
   const initialSnapshot = readHistorySessionSnapshot()
 
   // Per-card interaction state (small + render-driving).
-  const [hoveredId, setHoveredId] = useState<string | null>(null)
-  const [selectedId, setSelectedId] = useState<string | null>(
-    () => initialSnapshot?.selectedId ?? null
-  )
-  const previousFirstItemIdRef = useRef<string | null>(null)
-  const previousItemIdsRef = useRef<Set<string>>(new Set())
+  const [requestedHoveredId, setHoveredId] = useState<string | null>(null)
   // Stable Set of ids already rendered once; read during render to gate the
   // entrance animation, mutated only in an effect (never during render).
   const [seenIds] = useState(() => new Set<string>(initialSnapshot?.seenIds ?? []))
@@ -73,11 +69,6 @@ export function useHistoryController() {
     () => initialSnapshot?.scrollState ?? null
   )
   const listRef = useRef<VirtuosoHandle>(null)
-  const latestSnapshotRef = useRef({
-    searchState: data.filter,
-    live: data.liveSnapshot,
-    selectedId,
-  })
   // Optimistic favorite overrides keyed by entry id: the live list does not
   // re-fetch on toggle, so a flip is reflected here immediately and reverted if
   // the backend call fails.
@@ -168,6 +159,39 @@ export function useHistoryController() {
     return [base[idx], ...base.slice(0, idx), ...base.slice(idx + 1)]
   }, [data.baseItems, promotedId, favoriteOverrides])
 
+  const [selection, setSelection] = useState<{
+    id: string | null
+    items: DisplayClipboardItem[]
+  }>(() => ({ id: initialSnapshot?.selectedId ?? null, items: [] }))
+
+  if (selection.items !== orderedItems) {
+    const ids = new Set(orderedItems.map(item => item.id))
+    const firstItemId = orderedItems[0]?.id ?? null
+    const previousFirstItemId = selection.items[0]?.id ?? null
+    const previousIds = new Set(selection.items.map(item => item.id))
+    let nextId = selection.id
+
+    if (nextId !== null && !ids.has(nextId)) nextId = null
+    if (firstItemId !== null && nextId === null) nextId = firstItemId
+    if (
+      previousFirstItemId !== null &&
+      nextId === previousFirstItemId &&
+      firstItemId !== previousFirstItemId &&
+      !previousIds.has(firstItemId)
+    ) {
+      nextId = firstItemId
+    }
+
+    setSelection({ id: nextId, items: orderedItems })
+  }
+
+  const selectedId = selection.id
+  const orderedItemIds = new Set(orderedItems.map(item => item.id))
+  const hoveredId =
+    requestedHoveredId !== null && orderedItemIds.has(requestedHoveredId)
+      ? requestedHoveredId
+      : null
+
   const selectedItem = useMemo(
     () => orderedItems.find(it => it.id === selectedId) ?? null,
     [orderedItems, selectedId]
@@ -220,67 +244,32 @@ export function useHistoryController() {
     preventDefault: true,
   })
 
-  // Keep hover/selection valid and the preview pane populated:
-  // - drop a hover/selection that points at an entry no longer in the list
-  //   (after a delete, filter switch, or search change)
-  // - auto-select the first row when nothing is selected but items exist, so the
-  //   master-detail preview is never blank while there is something to show.
-  useEffect(() => {
-    const ids = new Set(orderedItems.map(it => it.id))
-    const firstItemId = orderedItems[0]?.id ?? null
-    const previousFirstItemId = previousFirstItemIdRef.current
-    const previousItemIds = previousItemIdsRef.current
-    previousFirstItemIdRef.current = firstItemId
-    previousItemIdsRef.current = ids
-
-    if (hoveredId !== null && !ids.has(hoveredId)) setHoveredId(null)
-    if (selectedId !== null && !ids.has(selectedId)) {
-      setSelectedId(null)
-      return
-    }
-    if (firstItemId === null) return
-    if (selectedId === null) {
-      setSelectedId(firstItemId)
-      return
-    }
-    if (
-      previousFirstItemId !== null &&
-      selectedId === previousFirstItemId &&
-      firstItemId !== previousFirstItemId &&
-      !previousItemIds.has(firstItemId)
-    ) {
-      setSelectedId(firstItemId)
-    }
-  }, [orderedItems, hoveredId, selectedId])
-
-  const handleCardClick = useCallback((id: string) => setSelectedId(id), [])
+  const handleCardClick = useCallback(
+    (id: string) => setSelection({ id, items: orderedItems }),
+    [orderedItems]
+  )
 
   useEffect(() => {
     if (selectedId !== null) updateHistorySessionSelection(selectedId)
   }, [selectedId])
 
-  useEffect(() => {
-    latestSnapshotRef.current = {
+  const writeCurrentSnapshot = useEffectEvent((nextScrollState: StateSnapshot) => {
+    writeHistorySessionSnapshot({
       searchState: data.filter,
       live: data.liveSnapshot,
       selectedId,
-    }
-  }, [data.filter, data.liveSnapshot, selectedId])
+      seenIds: Array.from(seenIds),
+      scrollState: nextScrollState,
+    })
+  })
 
   useEffect(() => {
     return () => {
       listRef.current?.getState(nextScrollState => {
-        const latest = latestSnapshotRef.current
-        writeHistorySessionSnapshot({
-          searchState: latest.searchState,
-          live: latest.live,
-          selectedId: latest.selectedId,
-          seenIds: Array.from(seenIds),
-          scrollState: nextScrollState,
-        })
+        writeCurrentSnapshot(nextScrollState)
       })
     }
-  }, [seenIds])
+  }, [])
 
   // Heading reflects the active quick view / content-type filter ("收藏",
   // "文本", …), falling back to "全部" while unfiltered.

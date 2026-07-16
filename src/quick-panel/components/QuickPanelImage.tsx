@@ -1,5 +1,5 @@
 import { Image as ImageIcon } from 'lucide-react'
-import React, { useEffect, useState } from 'react'
+import React, { useState } from 'react'
 import { invalidateResourceImageDescriptor } from '@/hooks/useResourceImageDescriptor'
 import { cn } from '@/lib/utils'
 import {
@@ -55,16 +55,8 @@ const QuickPanelImage: React.FC<QuickPanelImageProps> = ({
   const hasOverride = urlOverride !== undefined
   const { url: resolvedUrl } = useQuickPanelImage(entryId, { enabled: !hasOverride && enabled })
   const url = hasOverride ? urlOverride : resolvedUrl
-  const [failed, setFailed] = useState(false)
-
-  // A new URL means either a different entry (row reuse) or a retry after
-  // invalidation — either way, forget the previous failure so the fresh URL
-  // gets its own attempt.
-  useEffect(() => {
-    setFailed(false)
-  }, [url])
-
-  const showImage = url != null && !failed
+  const [failedUrl, setFailedUrl] = useState<string | null>(null)
+  const showImage = url != null && url !== failedUrl
   return (
     <div className={cn('relative overflow-hidden', className)}>
       {showImage ? (
@@ -83,7 +75,7 @@ const QuickPanelImage: React.FC<QuickPanelImageProps> = ({
             // retried in-place: repeated 404s would burn requests on a resource
             // that's genuinely gone.
             invalidateResourceImageDescriptor(entryId)
-            setFailed(true)
+            setFailedUrl(url)
           }}
         />
       ) : (

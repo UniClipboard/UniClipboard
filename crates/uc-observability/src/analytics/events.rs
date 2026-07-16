@@ -148,13 +148,23 @@ pub enum Event {
     /// 当前完全 0 信号，仅靠日志推断。
     MobileDeviceRegistered,
 
-    /// iPhone 与桌面之间剪贴板内容实际落地一次（`apply_incoming::execute`
-    /// SyncDoc arm 的 `Applied` outcome）。
+    /// The clipboard actually landing once between iPhone and desktop
+    /// (`apply_incoming::execute`, SyncDoc arm).
     ///
-    /// **仅 `Applied` 分支 emit**：`Buffered` / `DuplicateSkipped` /
-    /// `DecodeFailed` / `Err` 都不触发——`DuplicateSkipped` 已在本机存在
-    /// （`ClipboardEntryCaptured` 的 RemotePush 红线同理），重复广播会
-    /// 污染 dashboard 频率口径；`Buffered` 是文件两步 PUT 协议的中间态。
+    /// Emitted for the two outcomes that really write the pasteboard:
+    /// `Applied` (new content) and `Resurfaced { os_write_succeeded: true }`
+    /// (already held locally, re-activated by this delivery — §7.6 counts a
+    /// landing, not a new row, so a re-copy from the phone is a real sync).
+    /// Resurface does not double-count: its write carries a non-capturing
+    /// intent, so `ClipboardEntryCaptured` never fires alongside it (the same
+    /// RemotePush red line).
+    ///
+    /// Not emitted: `Resurfaced { os_write_succeeded: false }` (pasteboard
+    /// left untouched, nothing landed); `DuplicateSkipped` (redundant delivery
+    /// — sub-second re-push / partial-over-partial — no OS write, and the
+    /// content already landed via the delivery that emitted its own event);
+    /// `DecodeFailed` / `Err` (never landed locally); `Buffered` (intermediate
+    /// state of the two-step file PUT protocol).
     ///
     /// v1 `direction` 恒为 [`Direction::Inbound`]——`GetLatestMobileSyncDoc`
     /// 出站埋点延后到 v2（iPhone 客户端的轮询频率会让 outbound 量级比

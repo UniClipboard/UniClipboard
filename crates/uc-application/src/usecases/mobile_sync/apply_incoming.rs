@@ -540,23 +540,45 @@ impl ApplyIncomingMobileClipUseCase {
         }
     }
 
-    /// schema doc §7.6 / §12.2 P1：iPhone → 桌面剪贴板实际落地 inbound。
+    /// schema doc §7.6 / §12.2 P1: iPhone -> desktop clipboard actually
+    /// landing once, inbound.
     ///
-    /// **仅** `Applied` outcome emit；`Buffered` / `DuplicateSkipped` /
-    /// `DecodeFailed` / `Err` 全不上报：
+    /// Emitted for the two outcomes that really put content on the pasteboard:
     ///
-    /// - `DuplicateSkipped` 命中本机 dedup——内容此前已存在，重复埋点会
-    ///   让 dashboard 频率口径双计（沿用 `ClipboardEntryCaptured` RemotePush
-    ///   红线哲学）。
-    /// - `Buffered` 是文件两步 PUT 协议的中间态，不代表用户可感知的同步。
-    /// - `DecodeFailed` / `Err` 本机入站没成功，与产品视角的"sync 成功
-    ///   一次"语义不一致。
+    /// - `Applied` — new content: persisted, then written.
+    /// - `Resurfaced { os_write_succeeded: true }` — content was already held
+    ///   locally, but this delivery re-activated it (OS write + register
+    ///   advance + history bump). §7.6 counts a landing, not a new row, so a
+    ///   re-copy from the phone is a real sync. It does not double-count: the
+    ///   resurface write carries a non-capturing intent, so
+    ///   `ClipboardEntryCaptured` never fires for it (the RemotePush red line)
+    ///   and this stays the only event for the delivery.
+    ///
+    /// Everything else stays silent:
+    ///
+    /// - `Resurfaced { os_write_succeeded: false }` — the pasteboard was left
+    ///   untouched, so nothing landed.
+    /// - `DuplicateSkipped` — redundant delivery (sub-second re-push /
+    ///   partial-over-partial). No OS write, and the content already landed via
+    ///   the delivery that emitted its own event.
+    /// - `Buffered` is the intermediate state of the two-step file PUT
+    ///   protocol, not a user-perceivable sync.
+    /// - `DecodeFailed` / `Err` never landed locally, which contradicts the
+    ///   product-level "synced once" semantics.
     fn maybe_emit_inbound_synced(
         &self,
         outcome: &Result<ApplyIncomingMobileClipOutcome, ApplyIncomingMobileClipError>,
         payload_bytes: u64,
     ) {
-        if let Ok(ApplyIncomingMobileClipOutcome::Applied { .. }) = outcome {
+        let landed = matches!(
+            outcome,
+            Ok(ApplyIncomingMobileClipOutcome::Applied { .. })
+                | Ok(ApplyIncomingMobileClipOutcome::Resurfaced {
+                    os_write_succeeded: true,
+                    ..
+                })
+        );
+        if landed {
             self.analytics.capture(Event::MobileClipboardSynced {
                 direction: Direction::Inbound,
                 payload_size_bucket: PayloadSizeBucket::from_bytes(payload_bytes),
@@ -2013,6 +2035,59 @@ mod tests {
         )
     }
 
+    /// Dedup hit with resurface wired: the held entry is rebuilt and written
+    /// back to the pasteboard. `os_write_ok` selects which `Resurfaced` branch
+    /// the delivery takes.
+    fn build_uc_with_analytics_expect_resurface(
+        existing_entry_id: &str,
+        os_write_ok: bool,
+        analytics: Arc<dyn AnalyticsPort>,
+    ) -> ApplyIncomingMobileClipUseCase {
+        let mut repo = MockEntryRepo::new();
+        let id_clone = EntryId::from(existing_entry_id);
+        repo.expect_find_entry_id_by_snapshot_hash()
+            .times(1)
+            .returning(move |_| Ok(Some(id_clone.clone())));
+        // dedup hit → no new row, but rebuild + write back.
+        let capture = MockCapture::new();
+        let mut rebuild = MockSnapshotRebuild::new();
+        rebuild
+            .expect_rebuild()
+            .times(1)
+            .returning(|_| Ok(held_snapshot()));
+        let mut write = MockWrite::new();
+        write.expect_write().times(1).returning(move |_, _| {
+            if os_write_ok {
+                Ok(())
+            } else {
+                Err(anyhow::anyhow!("clipboard busy"))
+            }
+        });
+        let mut touch = MockTouchEntry::new();
+        if os_write_ok {
+            touch
+                .expect_touch_entry()
+                .times(1)
+                .returning(|_, _| Ok(true));
+        } else {
+            // A failed OS write must not bump history.
+            touch.expect_touch_entry().never();
+        }
+        let inbound =
+            ApplyInboundClipboardUseCase::new(Arc::new(repo), Arc::new(capture), Arc::new(write))
+                .with_resurface_ports(Arc::new(rebuild), Arc::new(touch));
+        ApplyIncomingMobileClipUseCase::new(
+            Arc::new(inbound),
+            Arc::new(IncomingMobileBuffer::new()),
+            staging_never_called(),
+            Arc::new(FixedClock),
+            None,
+            None,
+            analytics,
+            None,
+        )
+    }
+
     /// inbound + capture + write + staging 全无期望（短路在 use case 层）。
     fn build_uc_with_analytics_expect_no_inbound(
         analytics: Arc<dyn AnalyticsPort>,
@@ -2056,9 +2131,9 @@ mod tests {
 
     #[tokio::test]
     async fn duplicate_skipped_does_not_emit_synced() {
-        // dedup 命中 = 本机已存在该 snapshot_hash；重复埋点会让 dashboard
-        // 频率口径双计，沿用 ClipboardEntryCaptured 防 RemotePush 双计的
-        // 红线哲学。
+        // Resurface is unwired here, so the dedup hit degrades to a plain skip:
+        // the pasteboard is never written, so nothing landed. (With resurface
+        // wired, the same hit becomes `Resurfaced` and does emit — see below.)
         let analytics = capturing_analytics();
         let uc = build_uc_with_analytics_expect_dedup_hit(
             "entry-existing",
@@ -2071,6 +2146,63 @@ mod tests {
         assert!(matches!(
             outcome,
             ApplyIncomingMobileClipOutcome::DuplicateSkipped { .. }
+        ));
+        assert!(analytics.events().is_empty(), "{:?}", analytics.events());
+    }
+
+    #[tokio::test]
+    async fn resurfaced_emits_mobile_clipboard_synced_inbound() {
+        // The phone re-copies content this desktop already holds: no new row,
+        // but the pasteboard really was rewritten, so §7.6 counts a landing.
+        // This delivery emitted nothing before resurface existed.
+        let analytics = capturing_analytics();
+        let uc = build_uc_with_analytics_expect_resurface(
+            "entry-existing",
+            true,
+            analytics.clone() as Arc<dyn AnalyticsPort>,
+        );
+        let outcome = uc
+            .execute(input_sync_doc(SyncClipboardItemType::Text, "hello", None))
+            .await
+            .expect("dedup hit returns Ok");
+        assert!(matches!(
+            outcome,
+            ApplyIncomingMobileClipOutcome::Resurfaced {
+                os_write_succeeded: true,
+                ..
+            }
+        ));
+        // The bucket comes from the inbound payload (5 bytes "hello"), not the
+        // rebuilt snapshot.
+        assert_eq!(
+            analytics.events(),
+            vec![Event::MobileClipboardSynced {
+                direction: Direction::Inbound,
+                payload_size_bucket: PayloadSizeBucket::Lt1Kb,
+            }]
+        );
+    }
+
+    #[tokio::test]
+    async fn resurface_with_failed_os_write_does_not_emit_synced() {
+        // The pasteboard was left untouched, so nothing landed — emitting here
+        // would count a sync the user never actually received.
+        let analytics = capturing_analytics();
+        let uc = build_uc_with_analytics_expect_resurface(
+            "entry-existing",
+            false,
+            analytics.clone() as Arc<dyn AnalyticsPort>,
+        );
+        let outcome = uc
+            .execute(input_sync_doc(SyncClipboardItemType::Text, "hello", None))
+            .await
+            .expect("dedup hit returns Ok");
+        assert!(matches!(
+            outcome,
+            ApplyIncomingMobileClipOutcome::Resurfaced {
+                os_write_succeeded: false,
+                ..
+            }
         ));
         assert!(analytics.events().is_empty(), "{:?}", analytics.events());
     }

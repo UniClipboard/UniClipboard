@@ -19,10 +19,78 @@ import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { refreshPresence } from '@/api/daemon'
-import { getMobileSyncSettings, type MobileSyncSettingsView } from '@/api/tauri-command/mobile_sync'
+import {
+  getMobileSyncSettings,
+  listMobileDevices,
+  type MobileDeviceView,
+  type MobileSyncSettingsView,
+  type RegisterMobileDeviceResult,
+} from '@/api/tauri-command/mobile_sync'
 import { toast } from '@/components/ui/toast'
 import i18n from '@/i18n'
 import DevicesPage from '@/pages/DevicesPage'
+
+/** The one-time registration result the stubbed add dialog hands back. */
+const REGISTERED: RegisterMobileDeviceResult = {
+  deviceId: 'mobile-1',
+  label: 'iPhone 15 Pro',
+  username: 'uc-user',
+  password: 'one-time-secret',
+  clientType: 'ios_shortcut',
+  baseUrl: 'http://192.168.1.10:42720',
+  connectUri: 'uniclipboard://connect?host=192.168.1.10',
+  createdAtMs: 1_700_000_000_000,
+  installUrl: 'https://www.icloud.com/shortcuts/stub',
+  installQrCodePngBase64: '',
+  qrCodeAscii: '',
+  qrCodePngBase64: '',
+}
+
+const settingsFixture = (overrides: Partial<MobileSyncSettingsView> = {}): MobileSyncSettingsView =>
+  ({
+    enabled: false,
+    lanListenEnabled: false,
+    lanAdvertiseIp: null,
+    lanPort: null,
+    lanListenerError: null,
+    shortcutInstallMethods: [],
+    ...overrides,
+  }) as MobileSyncSettingsView
+
+// The add dialog is stubbed down to a single "succeed" button: these suites are
+// about what DevicesPage does with the result, not about the form. The real
+// dialog's submit path is covered by its own unit tests.
+vi.mock('@/components/device/AddMobileSyncDeviceDialog', () => ({
+  default: ({
+    open,
+    onSuccess,
+  }: {
+    open: boolean
+    onSuccess: (result: RegisterMobileDeviceResult) => void
+  }) =>
+    open ? (
+      <button type="button" data-testid="stub-register" onClick={() => onSuccess(REGISTERED)}>
+        register
+      </button>
+    ) : null,
+}))
+
+// The panel is stubbed for the same reason: its fresh-state QR + credential
+// rendering is its own suite's job. Here we only need to see which device the
+// page selected and whether the one-time credential reached the panel.
+vi.mock('@/components/device/MobileDevicePanel', () => ({
+  default: ({
+    device,
+    initialCredential,
+  }: {
+    device: MobileDeviceView
+    initialCredential: RegisterMobileDeviceResult | null
+  }) => (
+    <div data-testid="mobile-panel" data-device-id={device.deviceId}>
+      {initialCredential ? 'has-credential' : 'no-credential'}
+    </div>
+  ),
+}))
 
 const dispatchMock = vi.fn()
 
@@ -168,19 +236,6 @@ describe('DevicesPage', () => {
 })
 
 describe('DevicesPage add-device entry points', () => {
-  const settingsFixture = (
-    overrides: Partial<MobileSyncSettingsView> = {}
-  ): MobileSyncSettingsView =>
-    ({
-      enabled: false,
-      lanListenEnabled: false,
-      lanAdvertiseIp: null,
-      lanPort: null,
-      lanListenerError: null,
-      shortcutInstallMethods: [],
-      ...overrides,
-    }) as MobileSyncSettingsView
-
   afterEach(() => {
     vi.mocked(toast.error).mockClear()
     vi.mocked(getMobileSyncSettings).mockReset()
@@ -235,5 +290,50 @@ describe('DevicesPage add-device entry points', () => {
     await user.click(addMobile)
 
     expect(toast.error).toHaveBeenCalledWith(expect.stringContaining('address in use'))
+  })
+})
+
+describe('DevicesPage mobile add flow', () => {
+  afterEach(() => {
+    vi.mocked(getMobileSyncSettings).mockReset()
+    vi.mocked(listMobileDevices).mockReset()
+    vi.mocked(listMobileDevices).mockResolvedValue([])
+  })
+
+  it('selects the newly added device and hands it the one-time credential', async () => {
+    // Regression guard (#1347): the page selected the new device while
+    // `reload()` was still in flight, so for one render the id resolved to
+    // nothing. A render-phase `setSelection({ kind: 'local' })` treated that
+    // gap as "device vanished" and overwrote the selection, leaving the user
+    // pinned to the local panel once the device finally loaded.
+    vi.mocked(getMobileSyncSettings).mockResolvedValue(
+      settingsFixture({ enabled: true, lanListenEnabled: true })
+    )
+    // Empty on mount; the device only appears on the post-register reload —
+    // this ordering is the whole point of the test.
+    const registered: MobileDeviceView = {
+      deviceId: REGISTERED.deviceId,
+      label: REGISTERED.label,
+      username: REGISTERED.username,
+      clientType: REGISTERED.clientType,
+      createdAtMs: REGISTERED.createdAtMs,
+      lastSeenAtMs: null,
+    }
+    vi.mocked(listMobileDevices).mockResolvedValueOnce([]).mockResolvedValue([registered])
+
+    const user = userEvent.setup()
+    render(<DevicesPage />)
+
+    // Let the preloaded settings settle so handleAddClick takes the add path
+    // instead of the first-run enable confirm.
+    await waitFor(() => expect(getMobileSyncSettings).toHaveBeenCalled())
+    await act(async () => {})
+
+    await user.click(screen.getByRole('button', { name: i18n.t('devices.panel.addMenu.mobile') }))
+    await user.click(await screen.findByTestId('stub-register'))
+
+    const panel = await screen.findByTestId('mobile-panel')
+    expect(panel).toHaveAttribute('data-device-id', REGISTERED.deviceId)
+    expect(panel).toHaveTextContent('has-credential')
   })
 })

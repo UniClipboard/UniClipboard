@@ -179,10 +179,17 @@ const DevicesPage: React.FC = () => {
     selection.kind === 'peer' ? peers.find(p => p.peerId === selection.id) : undefined
   const selectedMobile =
     selection.kind === 'mobile' ? mobileDevices.find(d => d.deviceId === selection.id) : undefined
-  const selectionVanished =
+  // An unresolvable selection falls back to the local panel for this render
+  // only — it must not be written back into `selection`. The id may simply not
+  // have loaded yet: the add flow selects the new device while its
+  // `reload()` is still in flight, and resetting the state here would strand
+  // the user on the local panel once the device does arrive. A device that
+  // really vanished (unpaired / revoked) never comes back, so it keeps
+  // falling back for every subsequent render anyway.
+  const effectiveSelection: Selection =
     (selection.kind === 'peer' && !selectedPeer) || (selection.kind === 'mobile' && !selectedMobile)
-  if (selectionVanished) setSelection({ kind: 'local' })
-  const effectiveSelection: Selection = selectionVanished ? { kind: 'local' } : selection
+      ? { kind: 'local' }
+      : selection
 
   // ── p2p dialogs ──────────────────────────────────────────────
   const [addP2PDialogOpen, setAddP2PDialogOpen] = useState(false)

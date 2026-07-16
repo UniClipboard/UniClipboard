@@ -991,9 +991,7 @@
       "onlineCount": "{{count}} 台在线"
     },
     "pairedDevices": {
-      "title": "已配对设备",
-      "subtitle": "{{total}} 台已配对 · {{online}} 台在线",
-      "subtitleEmpty": "尚未配对任何设备"
+      "title": "已配对设备"
     },
     "addDevice": {
       "title": "邀请新设备",
@@ -1140,9 +1138,6 @@
       },
       "list": {
         "title": "已配对设备",
-        "empty": {
-          "title": "暂无已配对设备"
-        },
         "addButton": "添加设备",
         "lastSeen": {
           "never": "从未活动",
@@ -1371,6 +1366,7 @@
       },
       "addMenu": {
         "trigger": "添加设备",
+        "triggerShort": "添加",
         "p2p": "配对电脑设备",
         "mobile": "添加移动设备"
       }

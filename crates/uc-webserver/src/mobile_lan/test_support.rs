@@ -141,6 +141,100 @@ pub(crate) async fn build_facade_with_auth_trap() -> Arc<MobileSyncFacade> {
     }))
 }
 
+/// A facade wired with the *real* Argon2id hasher and a seeded device whose
+/// stored hash is a real Argon2id PHC — for the `/healthz` load benchmark's
+/// control arm.
+///
+/// The benchmark's whole claim is that `/SyncClipboard.json` is too expensive
+/// to poll; measuring it against [`build_facade_with_seeded_device`]'s string
+/// -compare `FakeHasher` would compare `/healthz` to nothing and flatter the
+/// result. Parameters mirror `uc_infra::mobile_sync::password_hasher`
+/// (m=65536, t=3, p=4) — the only reason this is duplicated here rather than
+/// imported is that `uc-webserver` may not depend on `uc-infra`. If the
+/// production parameters change, this drifts and the benchmark understates or
+/// overstates the real cost.
+///
+/// The seeded device's hash is rewritten through the `update` port, which
+/// shares the same repo `Arc` the deps were built with.
+pub(crate) async fn build_facade_with_real_argon2(
+    username: &str,
+    password: &str,
+) -> Arc<MobileSyncFacade> {
+    let deps = build_facade_deps_with_seeded_device(username, password).await;
+    let hasher = Argon2idHasher;
+    let phc = hasher
+        .hash(password)
+        .await
+        .expect("seeding a real Argon2id PHC must succeed");
+
+    deps.devices
+        .update
+        .update_mobile_device(&MobileDevice {
+            device_id: MobileDeviceId::new("did_seed"),
+            label: "iPhone".into(),
+            client_type: MobileClientType::IosShortcut,
+            username: username.into(),
+            password_hash: phc,
+            created_at_ms: 1,
+            last_seen_at_ms: None,
+            last_seen_ip: None,
+            reported_name: None,
+            reported_os: None,
+        })
+        .await
+        .expect("rewriting the seeded device's hash must succeed");
+
+    Arc::new(MobileSyncFacade::new(MobileSyncFacadeDeps {
+        password_hasher: Arc::new(hasher),
+        ..deps
+    }))
+}
+
+/// Mirrors `uc_infra::mobile_sync::password_hasher::Argon2idPasswordHasher`.
+/// See [`build_facade_with_real_argon2`] for why it is duplicated.
+pub(crate) struct Argon2idHasher;
+
+#[async_trait]
+impl PasswordHasherPort for Argon2idHasher {
+    async fn hash(&self, password: &str) -> Result<String, PasswordHasherError> {
+        use argon2::password_hash::{PasswordHasher, SaltString};
+        use argon2::{Algorithm, Argon2, Params, Version};
+
+        let password = password.to_owned();
+        tokio::task::spawn_blocking(move || {
+            let salt = SaltString::encode_b64(&[7u8; 16])
+                .map_err(|e| PasswordHasherError::Internal(e.to_string()))?;
+            let params = Params::new(65536, 3, 4, None)
+                .map_err(|e| PasswordHasherError::Internal(e.to_string()))?;
+            Argon2::new(Algorithm::Argon2id, Version::V0x13, params)
+                .hash_password(password.as_bytes(), &salt)
+                .map(|h| h.to_string())
+                .map_err(|e| PasswordHasherError::Internal(e.to_string()))
+        })
+        .await
+        .map_err(|e| PasswordHasherError::Internal(e.to_string()))?
+    }
+
+    async fn verify(&self, password: &str, phc: &str) -> Result<bool, PasswordHasherError> {
+        use argon2::password_hash::{PasswordHash, PasswordVerifier};
+        use argon2::Argon2;
+
+        let password = password.to_owned();
+        let phc = phc.to_owned();
+        tokio::task::spawn_blocking(move || {
+            let parsed = PasswordHash::new(&phc)
+                .map_err(|e| PasswordHasherError::InvalidPhc(e.to_string()))?;
+            match Argon2::default().verify_password(password.as_bytes(), &parsed) {
+                Ok(()) => Ok(true),
+                Err(argon2::password_hash::Error::Password) => Ok(false),
+                Err(e) => Err(PasswordHasherError::InvalidPhc(e.to_string())),
+            }
+        })
+        .await
+        .map_err(|e| PasswordHasherError::Internal(e.to_string()))?
+    }
+}
+
 async fn build_facade_deps_with_seeded_device(
     username: &str,
     password: &str,

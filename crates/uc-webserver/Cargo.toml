@@ -39,6 +39,13 @@ uuid = { version = "1.10.0", features = ["v4"] }
 [dev-dependencies]
 async-trait = "0.1"
 tower = { version = "0.5", features = ["util"] }
+# The /healthz load benchmark only: it drives a real listener over real TCP and
+# needs the *real* Argon2id cost on the control arm — a fake hasher would make
+# the comparison meaningless. `libc` reads process CPU time via getrusage.
+# All three are dev-only; none reaches the shipped binary.
+argon2 = "0.5.3"
+libc = "0.2"
+reqwest = { version = "0.12", default-features = false }
 
 [lints]
 workspace = true

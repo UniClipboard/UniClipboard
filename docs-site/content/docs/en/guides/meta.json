@@ -2,5 +2,12 @@
   "title": "Guides",
   "icon": "BookOpen",
   "defaultOpen": true,
-  "pages": ["pairing", "config-migration", "settings", "self-host-relay", "self-host-server-node"]
+  "pages": [
+    "pairing",
+    "config-migration",
+    "settings",
+    "tailscale",
+    "self-host-relay",
+    "self-host-server-node"
+  ]
 }

@@ -81,7 +81,7 @@ SyncClipboard 协议的 Android 客户端通过这个接口读写。
 - **移动端这边不走 P2P。** 移动客户端不走 iroh、不打洞、也不走中继 ——
   它就是个普通 HTTP 客户端。同一 LAN 下开箱即用；需要跨网络时，自建
   [无头 server 节点](../guides/self-host-server-node)（公网 HTTPS 端点）
-  或让两端接入同一个 Tailscale / VPN overlay 即可。
+  或让两端接入同一个 [Tailscale / VPN overlay](../guides/tailscale) 即可。
 - **移动端之间不会互相同步。** 两部手机不会直连，它们都与桌面通信。
 - **暂无按方向 / 按内容类型的开关** 适用于移动端配对。
 - **不参与空间的加密历史网络。** 移动客户端通过 HTTP 读取与推送最新一条剪贴，

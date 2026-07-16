@@ -439,5 +439,12 @@ function AddDeviceDialogInner({ open, onOpenChange }: AddDeviceDialogProps) {
 }
 
 export default function AddDeviceDialog(props: AddDeviceDialogProps) {
-  return <AddDeviceDialogInner key={props.open ? 'open' : 'closed'} {...props} />
+  const [previousOpen, setPreviousOpen] = useState(props.open)
+  const [sessionKey, setSessionKey] = useState(0)
+  if (props.open !== previousOpen) {
+    setPreviousOpen(props.open)
+    if (props.open) setSessionKey(key => key + 1)
+  }
+
+  return <AddDeviceDialogInner key={sessionKey} {...props} />
 }

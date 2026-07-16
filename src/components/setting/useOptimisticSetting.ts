@@ -38,7 +38,7 @@ export function useOptimisticSetting<T>(
   const { t } = useTranslation()
   const [pending, setPending] = useState<{ id: number; value: T } | null>(null)
   const nextMutationIdRef = useRef(0)
-  const value = pending?.value ?? current
+  const value = pending ? pending.value : current
 
   const set = (next: T) => {
     const id = nextMutationIdRef.current + 1

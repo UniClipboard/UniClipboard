@@ -36,11 +36,10 @@ export const UpdateProvider: React.FC<UpdateProviderProps> = ({ children }) => {
   const [state, setReactState] = useState<UpdateState>(initialState)
   const stateRef = useRef<UpdateState>(initialState)
   const setState = useCallback((action: React.SetStateAction<UpdateState>) => {
-    setReactState(previous => {
-      const next = typeof action === 'function' ? action(previous) : action
-      stateRef.current = next
-      return next
-    })
+    const previous = stateRef.current
+    const next = typeof action === 'function' ? action(previous) : action
+    stateRef.current = next
+    setReactState(next)
   }, [])
   const [isCheckingUpdate, setIsCheckingUpdate] = useState(false)
   const [installKind, setInstallKind] = useState<InstallKind | null>(null)

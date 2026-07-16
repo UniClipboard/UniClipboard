@@ -171,7 +171,6 @@ const ClipboardHistoryPanelSession: React.FC<ClipboardHistoryPanelProps> = ({
   const itemRefs = useRef<Map<number, HTMLDivElement>>(new Map())
   const previewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const previewLayoutTokenRef = useRef(0)
-  const deletingRef = useRef(false)
   const [skipTransition, setSkipTransition] = useState(false)
   const previewExpanded = previewState.mode === 'expanded'
   const previewReservingSpace = previewState.mode === 'reserving'
@@ -192,18 +191,8 @@ const ClipboardHistoryPanelSession: React.FC<ClipboardHistoryPanelProps> = ({
     })
   const visibleUnlocking = isLocked && unlocking
   const visibleUnlockError = isLocked ? unlockError : null
-
-  // Latest `filteredItems` for `handleKeyDown` to read by index without
-  // depending on the array's identity — `filteredItems` gets a new reference
-  // on every live-search update, and that identity is not something the
-  // keydown handler otherwise needs to react to (it already depends on
-  // `filteredItems.length` for its own boundary checks). Mutated directly
-  // during render (matches `lastFilteredCountRef` below) rather than via a
-  // useEffect, which would just add a redundant post-render pass.
-  /* eslint-disable react-hooks/refs */
-  const filteredItemsRef = useRef(filteredItems)
-  filteredItemsRef.current = filteredItems
-  /* eslint-enable react-hooks/refs */
+  const [previousFilteredCount, setPreviousFilteredCount] = useState(filteredItems.length)
+  const [preserveSelectionOnNextListChange, setPreserveSelectionOnNextListChange] = useState(false)
 
   const clearPreviewTimer = useCallback(() => {
     if (previewTimerRef.current) {
@@ -283,23 +272,16 @@ const ClipboardHistoryPanelSession: React.FC<ClipboardHistoryPanelProps> = ({
     if (isLocked) closePreview(false)
   }, [closePreview, isLocked])
 
-  // Reset selectedIndex to 0 whenever the visible result set shape changes
-  // (filter/search/etc). Done inline during render with a tracking ref to
-  // avoid a useEffect that chains a state update behind another state.
-  // Deletes set deletingRef.current=true so we keep the user's current row.
-  // The ref imperatively detects "filteredItems length changed" during the
-  // same render — intentional, see https://react.dev/learn/you-might-not-need-an-effect#adjusting-some-state-when-a-prop-changes
-  /* eslint-disable react-hooks/refs */
-  const lastFilteredCountRef = useRef(filteredItems.length)
-  if (lastFilteredCountRef.current !== filteredItems.length) {
-    lastFilteredCountRef.current = filteredItems.length
-    if (deletingRef.current) {
-      deletingRef.current = false
+  // Reset selectedIndex in the same render that receives a different visible
+  // result count, so a new filter never paints the stale selected row.
+  if (previousFilteredCount !== filteredItems.length) {
+    setPreviousFilteredCount(filteredItems.length)
+    if (preserveSelectionOnNextListChange) {
+      setPreserveSelectionOnNextListChange(false)
     } else if (selectedIndex !== 0) {
       setSelectedIndex(0)
     }
   }
-  /* eslint-enable react-hooks/refs */
 
   useEffect(() => {
     const el = itemRefs.current.get(selectedIndex)
@@ -416,7 +398,7 @@ const ClipboardHistoryPanelSession: React.FC<ClipboardHistoryPanelProps> = ({
       if (!item) return
       try {
         await deleteClipboardEntry(item.id)
-        deletingRef.current = true
+        setPreserveSelectionOnNextListChange(true)
         clearPreviewTimer()
         setHoveredIndex(null)
         dispatchPreview({ type: 'suppress', value: false })
@@ -571,7 +553,7 @@ const ClipboardHistoryPanelSession: React.FC<ClipboardHistoryPanelProps> = ({
         const input = e.currentTarget
         if (input.selectionStart !== input.selectionEnd) return
         e.preventDefault()
-        const item = filteredItemsRef.current[activeIndex]
+        const item = filteredItems[activeIndex]
         if (item) void handleContextCopy(item.id)
         return
       }
@@ -638,7 +620,7 @@ const ClipboardHistoryPanelSession: React.FC<ClipboardHistoryPanelProps> = ({
       }
     },
     [
-      filteredItems.length,
+      filteredItems,
       handleContextCopy,
       handleDelete,
       handleSelect,

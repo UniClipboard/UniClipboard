@@ -99,6 +99,7 @@ export const SettingProvider: React.FC<SettingProviderProps> = ({ children }) =>
       return await enqueueSettingMutation(async current => {
         const next = buildNext(current)
         const result = await updateSettings(next)
+        if (!result.success) throw new Error('Settings update was rejected')
         return { next, result: { restartRequired: result.restartRequired } }
       })
     } catch (err) {
@@ -119,7 +120,6 @@ export const SettingProvider: React.FC<SettingProviderProps> = ({ children }) =>
   const updateGeneralSetting = async (
     newGeneralSetting: Partial<Omit<Settings['general'], 'autoStart'>>
   ) => {
-    if (!latestSettingRef.current) return
     await saveSetting(current => ({
       ...current,
       general: {
@@ -134,9 +134,6 @@ export const SettingProvider: React.FC<SettingProviderProps> = ({ children }) =>
   // 持久化 auto_start 并应用 OS 注册（失败回滚），这里只把落地后的值合并进
   // 内存 state 并广播，避免与 updateKeyboardShortcuts 一样的展示态漂移。
   const updateAutostart = async (enabled: boolean) => {
-    if (!latestSettingRef.current) {
-      throw new Error('No settings loaded')
-    }
     // See `saveSetting`: `loading` is not flipped for per-section saves. The
     // Startup section already tracks this mutation via its local `saving`.
     try {
@@ -156,7 +153,6 @@ export const SettingProvider: React.FC<SettingProviderProps> = ({ children }) =>
 
   // 更新同步设置
   const updateSyncSetting = async (newSyncSetting: Partial<Settings['sync']>) => {
-    if (!latestSettingRef.current) return
     await saveSetting(current => ({
       ...current,
       sync: {
@@ -168,7 +164,6 @@ export const SettingProvider: React.FC<SettingProviderProps> = ({ children }) =>
 
   // 更新安全设置
   const updateSecuritySetting = async (newSecuritySetting: Partial<Settings['security']>) => {
-    if (!latestSettingRef.current) return
     await saveSetting(current => ({
       ...current,
       security: {
@@ -180,7 +175,6 @@ export const SettingProvider: React.FC<SettingProviderProps> = ({ children }) =>
 
   // 更新保留策略
   const updateRetentionPolicy = async (newPolicy: Partial<Settings['retentionPolicy']>) => {
-    if (!latestSettingRef.current) return
     await saveSetting(current => ({
       ...current,
       retentionPolicy: {
@@ -194,7 +188,6 @@ export const SettingProvider: React.FC<SettingProviderProps> = ({ children }) =>
   const updateFileSyncSetting = async (
     newFileSyncSetting: Partial<Settings['fileSync'] & object>
   ) => {
-    if (!latestSettingRef.current) return
     await saveSetting(current => ({
       ...current,
       fileSync: {
@@ -217,7 +210,6 @@ export const SettingProvider: React.FC<SettingProviderProps> = ({ children }) =>
   const updateNetworkSetting = async (
     newNetworkSetting: Partial<Settings['network']>
   ): Promise<{ restartRequired: boolean }> => {
-    if (!latestSettingRef.current) return { restartRequired: false }
     return await saveSetting(current => ({
       ...current,
       network: {
@@ -239,7 +231,6 @@ export const SettingProvider: React.FC<SettingProviderProps> = ({ children }) =>
   const updateQuickPanelSetting = async (
     newQuickPanelSetting: Partial<Settings['quickPanel']>
   ): Promise<{ restartRequired: boolean }> => {
-    if (!latestSettingRef.current) return { restartRequired: false }
     const { enabled, position } = newQuickPanelSetting
     if (enabled === undefined && position === undefined) {
       return { restartRequired: false }
@@ -271,9 +262,6 @@ export const SettingProvider: React.FC<SettingProviderProps> = ({ children }) =>
     previousOverrides: Record<string, string | string[]>,
     nextOverrides: Record<string, string | string[]>
   ) => {
-    if (!latestSettingRef.current) {
-      throw new Error('No settings loaded')
-    }
     // See `saveSetting`: `loading` is not flipped for per-section saves. The
     // shortcut editors manage their own in-flight state locally.
     try {

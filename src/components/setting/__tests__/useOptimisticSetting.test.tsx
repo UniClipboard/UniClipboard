@@ -33,16 +33,30 @@ describe('useOptimisticSetting', () => {
     const first = deferred()
     const second = deferred()
     const persist = vi.fn().mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise)
-    const { result } = renderHook(() => useOptimisticSetting<boolean>(false, persist))
+    const { result, rerender } = renderHook(
+      ({ current }) => useOptimisticSetting(current, persist),
+      { initialProps: { current: 'persisted' } }
+    )
 
-    act(() => result.current[1](true))
-    act(() => result.current[1](false))
+    act(() => result.current[1]('first'))
+    act(() => result.current[1]('second'))
     await act(async () => first.resolve())
 
-    expect(result.current[0]).toBe(false)
+    expect(result.current[0]).toBe('second')
 
+    rerender({ current: 'second' })
     await act(async () => second.resolve())
-    expect(result.current[0]).toBe(false)
+    expect(result.current[0]).toBe('second')
+  })
+
+  it('preserves a pending null value', () => {
+    const request = deferred()
+    const persist = vi.fn(() => request.promise)
+    const { result } = renderHook(() => useOptimisticSetting<string | null>('manual', persist))
+
+    act(() => result.current[1](null))
+
+    expect(result.current[0]).toBeNull()
   })
 
   it('rolls back only the latest failed mutation to the current persisted value', async () => {

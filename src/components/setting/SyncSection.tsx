@@ -59,6 +59,7 @@ const SyncSection: React.FC = () => {
   const maxFileSizeLimitValue = maxFileSizeLimitDraft ?? String(persistedMaxFileSizeLimit)
   const cacheQuotaValue = cacheQuotaDraft ?? String(persistedCacheQuota)
   const retentionHoursValue = retentionHoursDraft ?? String(persistedRetentionHours)
+  const effectiveSmallFileThreshold = Number.parseInt(smallFileThresholdValue, 10) || 0
   const effectiveMaxFileSizeLimit = Number.parseInt(maxFileSizeLimitValue, 10) || 0
 
   // Auto-save directory for inbound files (null/undefined ⇒ managed storage).
@@ -132,6 +133,13 @@ const SyncSection: React.FC = () => {
     const size = parseInt(value)
     if (size < 1 || size > 10240) {
       setMaxFileSizeLimitError(t('settings.sections.sync.fileSync.maxFileSize.errors.range'))
+      return
+    }
+
+    if (size <= effectiveSmallFileThreshold) {
+      setMaxFileSizeLimitError(
+        t('settings.sections.sync.fileSync.smallFileThreshold.errors.exceedsMax')
+      )
       return
     }
 

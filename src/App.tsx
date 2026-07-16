@@ -159,16 +159,15 @@ const AppContent = ({
       ? String(encryptionQueryError.message)
       : 'Failed to check encryption status'
     : null
-  const encryptionError = encryptionData
-    ? null
-    : (bootEncryptionError ??
-      encryptionQueryErrorMessage ??
-      (loadingTimedOut ? 'Timed out waiting for the background service.' : null))
-
   // Event/user overrides are newer than an in-flight query snapshot. Keeping
   // them separate prevents a stale query from downgrading a just-unlocked
   // session without mirroring every query result through another render.
   const resolvedEncryptionStatus = resolveEncryptionStatus(encryptionData, encryptionOverride)
+  const encryptionError = resolvedEncryptionStatus
+    ? null
+    : (bootEncryptionError ??
+      encryptionQueryErrorMessage ??
+      (loadingTimedOut ? 'Timed out waiting for the background service.' : null))
 
   // Retry RESTARTS the daemon, then reconnects. A plain WS reconnect can never
   // recover from a daemon that is wedged or left over from a previous version

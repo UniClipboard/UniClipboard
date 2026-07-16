@@ -135,18 +135,21 @@ const NetworkSection: React.FC = () => {
     setSaveError(null)
     setRestartError(null)
 
-    const generation = saveGenerationRef.current + 1
-    saveGenerationRef.current = generation
-    if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
-
     const payload = { ...next, customRelayUrls: normalizeRelayUrls(next.customRelayUrls) }
     const invalidRelayUrl = validateRelayUrls(payload.customRelayUrls)
     if (invalidRelayUrl) {
+      // Keep an already queued valid update alive, but ensure its completion
+      // cannot clear this newer invalid draft.
+      saveGenerationRef.current += 1
       showSaveError(
         t('settings.sections.network.customRelays.invalidUrl', { url: invalidRelayUrl })
       )
       return
     }
+
+    const generation = saveGenerationRef.current + 1
+    saveGenerationRef.current = generation
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
 
     const relayChanged = next.allowRelayFallback !== persistedAllowRelay
     const customRelaysChanged = !relayUrlListsEqual(

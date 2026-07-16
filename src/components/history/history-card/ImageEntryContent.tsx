@@ -14,6 +14,11 @@ function ImageEntryContent({ entryId, imageItem }: ImageEntryContentProps) {
   const { t } = useTranslation()
   const imageUrl = useResourceImageUrl(entryId)
   const [loadedDims, setLoadedDims] = useState<{ w: number; h: number } | null>(null)
+  const [previousEntryId, setPreviousEntryId] = useState(entryId)
+  if (entryId !== previousEntryId) {
+    setPreviousEntryId(entryId)
+    setLoadedDims(null)
+  }
   const title = imageTitle(t('history.type.image', 'image'), loadedDims, imageItem)
 
   return (

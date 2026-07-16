@@ -420,6 +420,32 @@ describe('NetworkSection — Phase 95 集成', () => {
     })
   })
 
+  it('keeps a queued valid save when a later relay draft is invalid', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    const mockUpdate = vi.fn().mockResolvedValue({ restartRequired: true })
+    setupSetting({ updateNetworkSetting: mockUpdate })
+
+    render(<NetworkSection />)
+    await user.click(await screen.findByRole('switch', { name: /LAN-only/ }))
+    const textbox = screen.getByRole('textbox', {
+      name: /自定义中继节点 1|Custom relay node 1/,
+    })
+    await user.type(textbox, 'ftp://relay.example.com')
+
+    await act(async () => {
+      vi.advanceTimersByTime(600)
+    })
+
+    expect(mockUpdate).toHaveBeenCalledWith({
+      allowRelayFallback: false,
+      allowOverlayNetworkAddrs: false,
+      customRelayUrls: [],
+      congestionController: 'cubic',
+    })
+    expect(screen.getByRole('alert').textContent).toMatch(/无效的中继 URL|Invalid relay URL/)
+  })
+
   it('Test 21: 自定义中继 URL 非 http(s) 时不保存并显示 inline error', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true })
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })

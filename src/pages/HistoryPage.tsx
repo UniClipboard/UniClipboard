@@ -1,5 +1,6 @@
 import { m } from 'framer-motion'
-import React, { useEffect, useMemo } from 'react'
+import React, { useMemo } from 'react'
+import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import ClipboardActionBar from '@/components/clipboard/ClipboardActionBar'
 import ClipboardPreview from '@/components/clipboard/ClipboardPreview'
@@ -18,7 +19,7 @@ import { usePlatform } from '@/hooks/usePlatform'
 const HistoryPage: React.FC = () => {
   const { t } = useTranslation()
   const { isMac, isWindows } = usePlatform()
-  const { setRightSlot } = useTitleBarSlot()
+  const { rightSlotHost } = useTitleBarSlot()
   const c = useHistoryController()
 
   // The composite search box is shared between the in-page top bar (other
@@ -69,14 +70,9 @@ const HistoryPage: React.FC = () => {
     [hoistSearchToTitleBar, searchBox]
   )
 
-  useEffect(() => {
-    if (!hoistSearchToTitleBar) return
-    setRightSlot(titleBarContent)
-    return () => setRightSlot(null)
-  }, [hoistSearchToTitleBar, titleBarContent, setRightSlot])
-
   return (
     <div className="flex flex-col h-full">
+      {rightSlotHost && titleBarContent ? createPortal(titleBarContent, rightSlotHost) : null}
       {/* ── Top bar: page heading (left) + composite search (right) ─ */}
       {/* On mac/windows this row is hidden; the search box is hoisted into the
           window title bar instead (see above). */}

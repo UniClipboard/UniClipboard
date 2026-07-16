@@ -30,17 +30,31 @@ export const SettingProvider: React.FC<SettingProviderProps> = ({ children }) =>
   const [setting, setSetting] = useState<Settings | null>(null)
   const [loading, setLoading] = useState<boolean>(true)
   const [error, setError] = useState<string | null>(null)
+  const latestSettingRef = React.useRef<Settings | null>(null)
+  const mutationQueueRef = React.useRef<Promise<void>>(Promise.resolve())
+
+  const enqueueTask = <T,>(task: () => Promise<T>): Promise<T> => {
+    const operation = mutationQueueRef.current.then(task)
+    mutationQueueRef.current = operation.then(
+      () => undefined,
+      () => undefined
+    )
+    return operation
+  }
 
   // 加载设置
   const loadSetting = useCallback(async () => {
     try {
       setLoading(true)
-      // Ensure daemon is connected before making API calls — the connection may not
-      // have been established yet if this fires before AppContent calls connectDaemonWs().
-      await connectDaemonWs()
-      const settingObj = await getSettings()
-      setSetting(settingObj)
-      setError(null)
+      await enqueueTask(async () => {
+        // Ensure daemon is connected before making API calls — the connection may not
+        // have been established yet if this fires before AppContent calls connectDaemonWs().
+        await connectDaemonWs()
+        const settingObj = await getSettings()
+        latestSettingRef.current = settingObj
+        setSetting(settingObj)
+        setError(null)
+      })
     } catch (err) {
       log.error({ err }, '加载设置失败')
       setError(`加载设置失败: ${err}`)
@@ -49,10 +63,31 @@ export const SettingProvider: React.FC<SettingProviderProps> = ({ children }) =>
     }
   }, [])
 
+  const enqueueSettingMutation = <T,>(
+    mutate: (current: Settings) => Promise<{ next: Settings; result: T }>
+  ): Promise<T> => {
+    return enqueueTask(async () => {
+      const current = latestSettingRef.current
+      if (!current) throw new Error('No settings loaded')
+      const { next, result } = await mutate(current)
+      latestSettingRef.current = next
+      setSetting(next)
+      setError(null)
+      try {
+        await emitSettingsChanged(next)
+      } catch (err) {
+        log.error({ err }, 'Failed to broadcast settings change')
+      }
+      return result
+    })
+  }
+
   // 保存设置
   // Phase 95: 返回 { restartRequired } 透传 daemon PUT /settings 响应；
   // 现有调用方 await 但不读返回值，向后兼容（Promise<X> 可被忽略）。
-  const saveSetting = async (newSetting: Settings): Promise<{ restartRequired: boolean }> => {
+  const saveSetting = async (
+    buildNext: (current: Settings) => Settings
+  ): Promise<{ restartRequired: boolean }> => {
     // Per-section saves must NOT flip the global `loading` flag. Every settings
     // section subscribes to this context and ORs `loading` into its own
     // `disabled` state (`isBusy = loading || saving`), so toggling `loading`
@@ -61,15 +96,12 @@ export const SettingProvider: React.FC<SettingProviderProps> = ({ children }) =>
     // load / reload in `loadSetting`; an in-flight per-section save is tracked
     // by that section's local `saving` flag instead.
     try {
-      const result = await updateSettings(newSetting)
-      setSetting(newSetting)
-      setError(null)
-      try {
-        await emitSettingsChanged(newSetting)
-      } catch (err) {
-        log.error({ err }, 'Failed to broadcast settings change')
-      }
-      return { restartRequired: result.restartRequired }
+      return await enqueueSettingMutation(async current => {
+        const next = buildNext(current)
+        const result = await updateSettings(next)
+        if (!result.success) throw new Error('Settings update was rejected')
+        return { next, result: { restartRequired: result.restartRequired } }
+      })
     } catch (err) {
       log.error({ err }, '保存设置失败')
       setError(`保存设置失败: ${err}`)
@@ -79,7 +111,7 @@ export const SettingProvider: React.FC<SettingProviderProps> = ({ children }) =>
 
   // 更新整个设置
   const updateSetting = async (newSetting: Settings) => {
-    await saveSetting(newSetting)
+    await saveSetting(() => newSetting)
   }
 
   // 更新通用设置。autoStart 被排除在外:它是桌面宿主 OS 副作用,必须走专用的
@@ -88,15 +120,13 @@ export const SettingProvider: React.FC<SettingProviderProps> = ({ children }) =>
   const updateGeneralSetting = async (
     newGeneralSetting: Partial<Omit<Settings['general'], 'autoStart'>>
   ) => {
-    if (!setting) return
-    const updatedSetting: Settings = {
-      ...setting,
+    await saveSetting(current => ({
+      ...current,
       general: {
-        ...setting.general,
+        ...current.general,
         ...newGeneralSetting,
       },
-    } as Settings
-    await saveSetting(updatedSetting)
+    }))
   }
 
   // 切换开机自启动。必须走 Tauri in-process command：OS 启动项注册是桌面宿主
@@ -104,26 +134,16 @@ export const SettingProvider: React.FC<SettingProviderProps> = ({ children }) =>
   // 持久化 auto_start 并应用 OS 注册（失败回滚），这里只把落地后的值合并进
   // 内存 state 并广播，避免与 updateKeyboardShortcuts 一样的展示态漂移。
   const updateAutostart = async (enabled: boolean) => {
-    if (!setting) {
-      throw new Error('No settings loaded')
-    }
     // See `saveSetting`: `loading` is not flipped for per-section saves. The
     // Startup section already tracks this mutation via its local `saving`.
     try {
-      await persistAutostart(enabled)
-      const updatedSetting: Settings = {
-        ...setting,
-        general: { ...setting.general, autoStart: enabled },
-      }
-      setSetting(prev =>
-        prev ? { ...prev, general: { ...prev.general, autoStart: enabled } } : updatedSetting
-      )
-      setError(null)
-      try {
-        await emitSettingsChanged(updatedSetting)
-      } catch (err) {
-        log.error({ err }, 'Failed to broadcast settings change')
-      }
+      await enqueueSettingMutation(async current => {
+        await persistAutostart(enabled)
+        return {
+          next: { ...current, general: { ...current.general, autoStart: enabled } },
+          result: undefined,
+        }
+      })
     } catch (err) {
       log.error({ err }, '更改自启动状态失败')
       setError(`保存设置失败: ${err}`)
@@ -133,52 +153,45 @@ export const SettingProvider: React.FC<SettingProviderProps> = ({ children }) =>
 
   // 更新同步设置
   const updateSyncSetting = async (newSyncSetting: Partial<Settings['sync']>) => {
-    if (!setting) return
-    const updatedSetting: Settings = {
-      ...setting,
+    await saveSetting(current => ({
+      ...current,
       sync: {
-        ...setting.sync,
+        ...current.sync,
         ...newSyncSetting,
       },
-    } as Settings
-    await saveSetting(updatedSetting)
+    }))
   }
 
   // 更新安全设置
   const updateSecuritySetting = async (newSecuritySetting: Partial<Settings['security']>) => {
-    if (!setting) return
-    const updatedSetting: Settings = {
-      ...setting,
+    await saveSetting(current => ({
+      ...current,
       security: {
-        ...setting.security,
+        ...current.security,
         ...newSecuritySetting,
       },
-    } as Settings
-    await saveSetting(updatedSetting)
+    }))
   }
 
   // 更新保留策略
   const updateRetentionPolicy = async (newPolicy: Partial<Settings['retentionPolicy']>) => {
-    if (!setting) return
-    const updatedSetting: Settings = {
-      ...setting,
+    await saveSetting(current => ({
+      ...current,
       retentionPolicy: {
-        ...setting.retentionPolicy,
+        ...current.retentionPolicy,
         ...newPolicy,
       },
-    } as Settings
-    await saveSetting(updatedSetting)
+    }))
   }
 
   // Update file sync settings
   const updateFileSyncSetting = async (
     newFileSyncSetting: Partial<Settings['fileSync'] & object>
   ) => {
-    if (!setting) return
-    const updatedSetting: Settings = {
-      ...setting,
+    await saveSetting(current => ({
+      ...current,
       fileSync: {
-        ...(setting.fileSync ?? {
+        ...(current.fileSync ?? {
           fileSyncEnabled: true,
           smallFileThreshold: 10 * 1024 * 1024,
           maxFileSize: 5 * 1024 * 1024 * 1024,
@@ -188,8 +201,7 @@ export const SettingProvider: React.FC<SettingProviderProps> = ({ children }) =>
         }),
         ...newFileSyncSetting,
       },
-    }
-    await saveSetting(updatedSetting)
+    }))
   }
 
   // Update network settings (Phase 95)
@@ -198,15 +210,13 @@ export const SettingProvider: React.FC<SettingProviderProps> = ({ children }) =>
   const updateNetworkSetting = async (
     newNetworkSetting: Partial<Settings['network']>
   ): Promise<{ restartRequired: boolean }> => {
-    if (!setting) return { restartRequired: false }
-    const updatedSetting: Settings = {
-      ...setting,
+    return await saveSetting(current => ({
+      ...current,
       network: {
-        ...setting.network,
+        ...current.network,
         ...newNetworkSetting,
       },
-    }
-    return await saveSetting(updatedSetting)
+    }))
   }
 
   // Update quick panel settings.
@@ -221,7 +231,6 @@ export const SettingProvider: React.FC<SettingProviderProps> = ({ children }) =>
   const updateQuickPanelSetting = async (
     newQuickPanelSetting: Partial<Settings['quickPanel']>
   ): Promise<{ restartRequired: boolean }> => {
-    if (!setting) return { restartRequired: false }
     const { enabled, position } = newQuickPanelSetting
     if (enabled === undefined && position === undefined) {
       return { restartRequired: false }
@@ -229,28 +238,17 @@ export const SettingProvider: React.FC<SettingProviderProps> = ({ children }) =>
     // See `saveSetting`: `loading` is not flipped for per-section saves. The
     // Quick Panel section already tracks this mutation via its local `saving`.
     try {
-      if (enabled !== undefined) {
-        await persistQuickPanelEnabled(enabled)
-      }
-      if (position !== undefined) {
-        await persistQuickPanelPosition(position)
-      }
-      const updatedSetting: Settings = {
-        ...setting,
-        quickPanel: { ...setting.quickPanel, ...newQuickPanelSetting },
-      }
-      setSetting(prev =>
-        prev
-          ? { ...prev, quickPanel: { ...prev.quickPanel, ...newQuickPanelSetting } }
-          : updatedSetting
-      )
-      setError(null)
-      try {
-        await emitSettingsChanged(updatedSetting)
-      } catch (err) {
-        log.error({ err }, 'Failed to broadcast settings change')
-      }
-      return { restartRequired: false }
+      return await enqueueSettingMutation(async current => {
+        if (enabled !== undefined) await persistQuickPanelEnabled(enabled)
+        if (position !== undefined) await persistQuickPanelPosition(position)
+        return {
+          next: {
+            ...current,
+            quickPanel: { ...current.quickPanel, ...newQuickPanelSetting },
+          },
+          result: { restartRequired: false },
+        }
+      })
     } catch (err) {
       log.error({ err }, 'Failed to update quick panel setting')
       setError(`保存设置失败: ${err}`)
@@ -260,28 +258,28 @@ export const SettingProvider: React.FC<SettingProviderProps> = ({ children }) =>
 
   // 更新快捷键。GUI 路径必须走 Tauri in-process command，因为快捷面板全局
   // 快捷键需要同步更新 OS 注册状态；daemon HTTP settings API 只负责持久化。
-  const updateKeyboardShortcuts = async (overrides: Record<string, string | string[]>) => {
-    if (!setting) {
-      throw new Error('No settings loaded')
-    }
+  const updateKeyboardShortcuts = async (
+    previousOverrides: Record<string, string | string[]>,
+    nextOverrides: Record<string, string | string[]>
+  ) => {
     // See `saveSetting`: `loading` is not flipped for per-section saves. The
     // shortcut editors manage their own in-flight state locally.
     try {
-      const keyboardShortcuts = await persistKeyboardShortcuts(
-        setting.keyboardShortcuts ?? {},
-        overrides
-      )
-      // 合并到 await 之后的最新 state，避免覆盖期间发生的并发更新。
-      // 广播仍用 await 前快照——任何并发更新会自己 emit，这里只承诺广播
-      // 本次快捷键变更落地后的视图。
-      const updatedSetting: Settings = { ...setting, keyboardShortcuts }
-      setSetting(prev => (prev ? { ...prev, keyboardShortcuts } : updatedSetting))
-      setError(null)
-      try {
-        await emitSettingsChanged(updatedSetting)
-      } catch (err) {
-        log.error({ err }, 'Failed to broadcast settings change')
-      }
+      await enqueueSettingMutation(async current => {
+        const currentOverrides = current.keyboardShortcuts ?? {}
+        const desiredOverrides = { ...currentOverrides }
+        const touchedIds = new Set([
+          ...Object.keys(previousOverrides),
+          ...Object.keys(nextOverrides),
+        ])
+        for (const id of touchedIds) {
+          if (JSON.stringify(previousOverrides[id]) === JSON.stringify(nextOverrides[id])) continue
+          if (id in nextOverrides) desiredOverrides[id] = nextOverrides[id]
+          else delete desiredOverrides[id]
+        }
+        const keyboardShortcuts = await persistKeyboardShortcuts(currentOverrides, desiredOverrides)
+        return { next: { ...current, keyboardShortcuts }, result: undefined }
+      })
     } catch (err) {
       log.error({ err }, 'Failed to update keyboard shortcuts')
       setError(`保存设置失败: ${err}`)

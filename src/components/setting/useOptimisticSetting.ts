@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from '@/components/ui/toast'
 import { createLogger } from '@/lib/logger'
@@ -36,23 +36,24 @@ export function useOptimisticSetting<T>(
   options?: OptimisticSettingOptions
 ): [T, (next: T) => void] {
   const { t } = useTranslation()
-  const [value, setValue] = useState(current)
-
-  // Re-sync when the persisted source changes — external updates, a settings
-  // reload, or the successful persist that flows back through the context.
-  // During an in-flight persist `current` is unchanged, so this never clobbers
-  // the optimistic value.
-  useEffect(() => {
-    setValue(current)
-  }, [current])
+  const [pending, setPending] = useState<{ id: number; value: T } | null>(null)
+  const nextMutationIdRef = useRef(0)
+  const value = pending ? pending.value : current
 
   const set = (next: T) => {
-    setValue(next)
-    void Promise.resolve(persist(next)).catch((err: unknown) => {
-      log.error({ err }, options?.failureLog ?? 'Failed to persist setting')
-      setValue(current)
-      toast.error(t(options?.errorKey ?? DEFAULT_ERROR_KEY))
-    })
+    const id = nextMutationIdRef.current + 1
+    nextMutationIdRef.current = id
+    setPending({ id, value: next })
+    void Promise.resolve(persist(next)).then(
+      () => {
+        setPending(active => (active?.id === id ? null : active))
+      },
+      (err: unknown) => {
+        log.error({ err }, options?.failureLog ?? 'Failed to persist setting')
+        setPending(active => (active?.id === id ? null : active))
+        toast.error(t(options?.errorKey ?? DEFAULT_ERROR_KEY))
+      }
+    )
   }
 
   return [value, set]

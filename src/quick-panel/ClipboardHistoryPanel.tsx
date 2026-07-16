@@ -1,4 +1,12 @@
-import React, { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
+import React, {
+  useCallback,
+  useEffect,
+  useEffectEvent,
+  useMemo,
+  useReducer,
+  useRef,
+  useState,
+} from 'react'
 import { useTranslation } from 'react-i18next'
 import { Filter, favoriteClipboardItem, unfavoriteClipboardItem } from '@/api/clipboardItems'
 import { deleteClipboardEntry, restoreClipboardEntry } from '@/api/daemon'
@@ -21,6 +29,7 @@ import { PREVIEW_OPEN_DELAY_MS, PREVIEW_SWITCH_DELAY_MS, QUICK_FILTER_ORDER } fr
 import { useHistorySearch } from './hooks/useHistorySearch'
 import type {
   PreviewAction,
+  PreviewSide,
   PreviewState,
   QuickPanelContextMenuActions,
   TimeRangePreset,
@@ -39,9 +48,6 @@ async function pasteToApp(): Promise<void> {
 async function setQuickPanelLayout(scale: number, previewExpanded: boolean): Promise<void> {
   await commands.setQuickPanelLayout(scale, previewExpanded)
 }
-
-/** Which side the inline preview opens toward, relative to the history pane. */
-type PreviewSide = 'left' | 'right'
 
 /**
  * Ask the backend which side the preview will open toward, before the window
@@ -64,6 +70,7 @@ const initialPreviewState: PreviewState = {
   suppressed: false,
   historyLockedWidth: null,
   focusSource: 'selection',
+  side: 'right',
 }
 
 function previewReducer(state: PreviewState, action: PreviewAction): PreviewState {
@@ -83,7 +90,10 @@ function previewReducer(state: PreviewState, action: PreviewAction): PreviewStat
         suppressed: false,
         historyLockedWidth: action.historyLockedWidth,
         focusSource: state.focusSource,
+        side: state.side,
       }
+    case 'set-side':
+      return state.side === action.side ? state : { ...state, side: action.side }
     case 'expand':
       if (state.mode === 'expanded') return state
       return { ...state, mode: 'expanded', historyLockedWidth: null }
@@ -150,7 +160,6 @@ const ClipboardHistoryPanelSession: React.FC<ClipboardHistoryPanelProps> = ({
   const [uiScale, setUiScale] = useState(() => readStoredUiScale())
   const [previewState, dispatchPreview] = useReducer(previewReducer, initialPreviewState)
   const [hasPointerMovedSinceShow, setHasPointerMovedSinceShow] = useState(false)
-  const [previewTargetId, setPreviewTargetId] = useState<string | null>(null)
   // Optimistic favorite overrides keyed by entry id, mirroring the history
   // controller: the live list does not re-fetch on toggle, so a flip is
   // reflected here immediately (and reverted if the backend call fails) — this
@@ -162,19 +171,14 @@ const ClipboardHistoryPanelSession: React.FC<ClipboardHistoryPanelProps> = ({
   const itemRefs = useRef<Map<number, HTMLDivElement>>(new Map())
   const previewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const previewLayoutTokenRef = useRef(0)
-  const deletingRef = useRef(false)
   const [skipTransition, setSkipTransition] = useState(false)
-  // Which side the preview opens toward. Driven by the backend (it knows the
-  // window's screen position): 'left' when the right edge can't fit the
-  // expanded panel. Reversing the flex order keeps the history pane pinned.
-  const [previewSide, setPreviewSide] = useState<PreviewSide>('right')
-
   const previewExpanded = previewState.mode === 'expanded'
   const previewReservingSpace = previewState.mode === 'reserving'
   const previewEntryId = previewState.entryId
   const previewSuppressed = previewState.suppressed
   const historyLockedWidth = previewState.historyLockedWidth
   const previewFocusSource = previewState.focusSource
+  const previewSide = previewState.side
 
   const { filteredItems, previewItems, isSearching, searchTotal, loading, isLocked, removeItem } =
     useHistorySearch({
@@ -185,18 +189,10 @@ const ClipboardHistoryPanelSession: React.FC<ClipboardHistoryPanelProps> = ({
       extensionFilter,
       timeRange,
     })
-
-  // Latest `filteredItems` for `handleKeyDown` to read by index without
-  // depending on the array's identity — `filteredItems` gets a new reference
-  // on every live-search update, and that identity is not something the
-  // keydown handler otherwise needs to react to (it already depends on
-  // `filteredItems.length` for its own boundary checks). Mutated directly
-  // during render (matches `lastFilteredCountRef` below) rather than via a
-  // useEffect, which would just add a redundant post-render pass.
-  /* eslint-disable react-hooks/refs */
-  const filteredItemsRef = useRef(filteredItems)
-  filteredItemsRef.current = filteredItems
-  /* eslint-enable react-hooks/refs */
+  const visibleUnlocking = isLocked && unlocking
+  const visibleUnlockError = isLocked ? unlockError : null
+  const [previousFilteredCount, setPreviousFilteredCount] = useState(filteredItems.length)
+  const [preserveSelectionOnNextListChange, setPreserveSelectionOnNextListChange] = useState(false)
 
   const clearPreviewTimer = useCallback(() => {
     if (previewTimerRef.current) {
@@ -210,7 +206,6 @@ const ClipboardHistoryPanelSession: React.FC<ClipboardHistoryPanelProps> = ({
       clearPreviewTimer()
       previewLayoutTokenRef.current += 1
       dispatchPreview({ type: 'reset', suppressed: suppressUntilNextSelection })
-      setPreviewSide('right')
       void setQuickPanelLayout(readStoredUiScale(), false).catch(() => {})
     },
     [clearPreviewTimer]
@@ -218,20 +213,23 @@ const ClipboardHistoryPanelSession: React.FC<ClipboardHistoryPanelProps> = ({
 
   // Session remount already resets search/filters/list. This only focuses the
   // search box and tells the host the UI is ready to finalize the show.
+  const notifyShowPrepared = useEffectEvent((requestId: number) => {
+    onShowPrepared?.(requestId)
+  })
   useEffect(() => {
     if (showRequestId === 0) return
     setSkipTransition(true)
 
     const focusTimer = setTimeout(() => {
       setSkipTransition(false)
-      onShowPrepared?.(showRequestId)
+      notifyShowPrepared(showRequestId)
       searchInputRef.current?.focus()
     }, 0)
 
     return () => {
       clearTimeout(focusTimer)
     }
-  }, [onShowPrepared, showRequestId])
+  }, [showRequestId])
 
   useEffect(() => {
     void setQuickPanelLayout(uiScale, previewExpanded).catch(() => {})
@@ -272,29 +270,18 @@ const ClipboardHistoryPanelSession: React.FC<ClipboardHistoryPanelProps> = ({
 
   useEffect(() => {
     if (isLocked) closePreview(false)
-    else {
-      setUnlocking(false)
-      setUnlockError(null)
-    }
   }, [closePreview, isLocked])
 
-  // Reset selectedIndex to 0 whenever the visible result set shape changes
-  // (filter/search/etc). Done inline during render with a tracking ref to
-  // avoid a useEffect that chains a state update behind another state.
-  // Deletes set deletingRef.current=true so we keep the user's current row.
-  // The ref imperatively detects "filteredItems length changed" during the
-  // same render — intentional, see https://react.dev/learn/you-might-not-need-an-effect#adjusting-some-state-when-a-prop-changes
-  /* eslint-disable react-hooks/refs */
-  const lastFilteredCountRef = useRef(filteredItems.length)
-  if (lastFilteredCountRef.current !== filteredItems.length) {
-    lastFilteredCountRef.current = filteredItems.length
-    if (deletingRef.current) {
-      deletingRef.current = false
+  // Reset selectedIndex in the same render that receives a different visible
+  // result count, so a new filter never paints the stale selected row.
+  if (previousFilteredCount !== filteredItems.length) {
+    setPreviousFilteredCount(filteredItems.length)
+    if (preserveSelectionOnNextListChange) {
+      setPreserveSelectionOnNextListChange(false)
     } else if (selectedIndex !== 0) {
       setSelectedIndex(0)
     }
   }
-  /* eslint-enable react-hooks/refs */
 
   useEffect(() => {
     const el = itemRefs.current.get(selectedIndex)
@@ -303,6 +290,10 @@ const ClipboardHistoryPanelSession: React.FC<ClipboardHistoryPanelProps> = ({
 
   const selectedItem = filteredItems[selectedIndex] ?? null
   const hoveredItem = hoveredIndex != null ? (filteredItems[hoveredIndex] ?? null) : null
+  const previewTargetId =
+    previewFocusSource === 'hover'
+      ? (hoveredItem?.id ?? previewEntryId)
+      : (selectedItem?.id ?? null)
   const targetPreviewItem =
     previewTargetId != null
       ? (previewItems.find(item => item.id === previewTargetId) ?? null)
@@ -312,20 +303,11 @@ const ClipboardHistoryPanelSession: React.FC<ClipboardHistoryPanelProps> = ({
     : null
 
   useEffect(() => {
-    if (previewFocusSource === 'selection') setPreviewTargetId(selectedItem?.id ?? null)
-  }, [previewFocusSource, selectedItem])
-
-  useEffect(() => {
-    if (previewFocusSource === 'hover' && hoveredItem) setPreviewTargetId(hoveredItem.id)
-  }, [hoveredIndex, hoveredItem, previewFocusSource])
-
-  useEffect(() => {
     clearPreviewTimer()
     if (previewSuppressed || isLocked) return
     if (!targetPreviewItem) {
       previewLayoutTokenRef.current += 1
       dispatchPreview({ type: 'reset' })
-      setPreviewSide('right')
       void setQuickPanelLayout(uiScale, false).catch(() => {})
       return
     }
@@ -351,7 +333,7 @@ const ClipboardHistoryPanelSession: React.FC<ClipboardHistoryPanelProps> = ({
           // cancellation window and apply a stale side. Keep this order.
           const side = await resolveExpandSide(uiScale)
           if (previewLayoutTokenRef.current !== token) return
-          setPreviewSide(side)
+          dispatchPreview({ type: 'set-side', side })
           dispatchPreview({
             type: 'reserve-space',
             entryId: nextEntryId,
@@ -405,7 +387,6 @@ const ClipboardHistoryPanelSession: React.FC<ClipboardHistoryPanelProps> = ({
       if (!item) return
       dispatchPreview({ type: 'suppress', value: false })
       dispatchPreview({ type: 'set-focus-source', source: 'hover' })
-      setPreviewTargetId(item.id)
       setHoveredIndex(index)
     },
     [filteredItems, hasPointerMovedSinceShow, isKeyboardNav]
@@ -417,7 +398,7 @@ const ClipboardHistoryPanelSession: React.FC<ClipboardHistoryPanelProps> = ({
       if (!item) return
       try {
         await deleteClipboardEntry(item.id)
-        deletingRef.current = true
+        setPreserveSelectionOnNextListChange(true)
         clearPreviewTimer()
         setHoveredIndex(null)
         dispatchPreview({ type: 'suppress', value: false })
@@ -425,7 +406,6 @@ const ClipboardHistoryPanelSession: React.FC<ClipboardHistoryPanelProps> = ({
         const remainingItems = filteredItems.filter((_, i) => i !== index)
         const nextIndex = remainingItems.length > 0 ? Math.min(index, remainingItems.length - 1) : 0
         setSelectedIndex(nextIndex)
-        setPreviewTargetId(remainingItems[nextIndex]?.id ?? null)
         removeItem(item.id)
       } catch (err) {
         log.error({ err }, 'Failed to delete clipboard entry')
@@ -537,7 +517,7 @@ const ClipboardHistoryPanelSession: React.FC<ClipboardHistoryPanelProps> = ({
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLInputElement>) => {
       if (isLocked) {
-        if (e.key === 'Enter' && !unlocking) {
+        if (e.key === 'Enter' && !visibleUnlocking) {
           e.preventDefault()
           void handleUnlock()
         }
@@ -573,7 +553,7 @@ const ClipboardHistoryPanelSession: React.FC<ClipboardHistoryPanelProps> = ({
         const input = e.currentTarget
         if (input.selectionStart !== input.selectionEnd) return
         e.preventDefault()
-        const item = filteredItemsRef.current[activeIndex]
+        const item = filteredItems[activeIndex]
         if (item) void handleContextCopy(item.id)
         return
       }
@@ -640,7 +620,7 @@ const ClipboardHistoryPanelSession: React.FC<ClipboardHistoryPanelProps> = ({
       }
     },
     [
-      filteredItems.length,
+      filteredItems,
       handleContextCopy,
       handleDelete,
       handleSelect,
@@ -648,7 +628,7 @@ const ClipboardHistoryPanelSession: React.FC<ClipboardHistoryPanelProps> = ({
       hoveredIndex,
       isLocked,
       selectedIndex,
-      unlocking,
+      visibleUnlocking,
     ]
   )
 
@@ -697,8 +677,8 @@ const ClipboardHistoryPanelSession: React.FC<ClipboardHistoryPanelProps> = ({
           selectedIndex={selectedIndex}
           setHoveredIndex={setHoveredIndex}
           setIsKeyboardNav={setIsKeyboardNav}
-          unlocking={unlocking}
-          unlockError={unlockError}
+          unlocking={visibleUnlocking}
+          unlockError={visibleUnlockError}
           activeFilter={activeFilter}
           setActiveFilter={setActiveFilter}
           tagFilter={tagFilter}

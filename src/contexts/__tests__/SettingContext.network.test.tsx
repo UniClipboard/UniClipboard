@@ -111,8 +111,7 @@ describe('SettingContext network — updateNetworkSetting + saveSetting restartR
     expect(passed.sync).toEqual(baseSetting.sync)
   })
 
-  it('Test 3: setting === null 时 graceful return，updateSettings 未被调用', async () => {
-    // 让 getSettings 一直 pending，setting 维持 null
+  it('Test 3: initial load queues a network mutation until settings are available', async () => {
     let resolveGet: ((s: Settings) => void) | undefined
     mockGetSettings.mockImplementationOnce(
       () =>
@@ -122,25 +121,25 @@ describe('SettingContext network — updateNetworkSetting + saveSetting restartR
     )
 
     const { result } = renderSettingHook()
-
-    // 在 setting 仍为 null 的窗口期调用
-    await waitFor(() => {
-      expect(result.current.loading).toBe(true)
-    })
+    await waitFor(() => expect(result.current.loading).toBe(true))
     expect(result.current.setting).toBeNull()
 
-    let outcome: { restartRequired: boolean } | undefined
-    await act(async () => {
-      outcome = await result.current.updateNetworkSetting({ allowRelayFallback: false })
+    let save!: Promise<{ restartRequired: boolean }>
+    act(() => {
+      save = result.current.updateNetworkSetting({ allowRelayFallback: false })
     })
-
-    expect(outcome).toEqual({ restartRequired: false })
     expect(mockUpdateSettings).not.toHaveBeenCalled()
 
-    // 让 mount load 完成，免得测试结束时 act warning
     await act(async () => {
       resolveGet?.(baseSetting)
+      await save
     })
+
+    expect(mockUpdateSettings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        network: expect.objectContaining({ allowRelayFallback: false }),
+      })
+    )
   })
 
   it('Test 4: PUT /settings 失败时错误向上抛，caller 可 catch（不被消化）', async () => {
@@ -172,6 +171,99 @@ describe('SettingContext network — updateNetworkSetting + saveSetting restartR
     })
 
     expect(outcome).toEqual({ restartRequired: false })
+  })
+
+  it('does not commit a settings update the daemon rejected', async () => {
+    const { result } = renderSettingHook()
+    await waitFor(() => expect(result.current.setting).toEqual(baseSetting))
+
+    mockUpdateSettings.mockResolvedValueOnce({ success: false, restartRequired: false })
+
+    await act(async () => {
+      await expect(
+        result.current.updateNetworkSetting({ allowRelayFallback: false })
+      ).rejects.toThrow('Settings update was rejected')
+    })
+
+    expect(result.current.setting).toEqual(baseSetting)
+    expect(mockEmitSettingsChanged).not.toHaveBeenCalled()
+  })
+
+  it('serializes cross-section mutations and builds each payload from the latest commit', async () => {
+    const { result } = renderSettingHook()
+    await waitFor(() => {
+      expect(result.current.setting).toEqual(baseSetting)
+    })
+
+    let resolveFirst: ((value: { success: boolean; restartRequired: boolean }) => void) | undefined
+    mockUpdateSettings
+      .mockImplementationOnce(
+        () =>
+          new Promise(resolve => {
+            resolveFirst = resolve
+          })
+      )
+      .mockResolvedValueOnce({ success: true, restartRequired: false })
+
+    let networkSave!: Promise<{ restartRequired: boolean }>
+    let generalSave!: Promise<void>
+    act(() => {
+      networkSave = result.current.updateNetworkSetting({ allowRelayFallback: false })
+      generalSave = result.current.updateGeneralSetting({ theme: 'dark' })
+    })
+
+    await waitFor(() => expect(mockUpdateSettings).toHaveBeenCalledTimes(1))
+    const firstPayload = mockUpdateSettings.mock.calls[0][0] as Settings
+    expect(firstPayload.network?.allowRelayFallback).toBe(false)
+
+    await act(async () => {
+      resolveFirst?.({ success: true, restartRequired: false })
+      await networkSave
+      await generalSave
+    })
+
+    expect(mockUpdateSettings).toHaveBeenCalledTimes(2)
+    const secondPayload = mockUpdateSettings.mock.calls[1][0] as Settings
+    expect(secondPayload.network?.allowRelayFallback).toBe(false)
+    expect(secondPayload.general?.theme).toBe('dark')
+  })
+
+  it('queues reloads behind an in-flight mutation', async () => {
+    const { result } = renderSettingHook()
+    await waitFor(() => {
+      expect(result.current.setting).toEqual(baseSetting)
+    })
+
+    let resolveSave: ((value: { success: boolean; restartRequired: boolean }) => void) | undefined
+    mockUpdateSettings.mockImplementationOnce(
+      () =>
+        new Promise(resolve => {
+          resolveSave = resolve
+        })
+    )
+    const updatedSetting = {
+      ...baseSetting,
+      network: { ...baseSetting.network, allowRelayFallback: false },
+    }
+    mockGetSettings.mockResolvedValueOnce(updatedSetting)
+
+    let save!: Promise<{ restartRequired: boolean }>
+    let reload!: Promise<void>
+    act(() => {
+      save = result.current.updateNetworkSetting({ allowRelayFallback: false })
+      reload = result.current.reloadSetting()
+    })
+
+    await waitFor(() => expect(mockUpdateSettings).toHaveBeenCalledTimes(1))
+    expect(mockGetSettings).toHaveBeenCalledTimes(1)
+    await act(async () => {
+      resolveSave?.({ success: true, restartRequired: false })
+      await save
+      await reload
+    })
+
+    expect(mockGetSettings).toHaveBeenCalledTimes(2)
+    expect(result.current.setting?.network?.allowRelayFallback).toBe(false)
   })
 })
 

@@ -33,7 +33,14 @@ const initialState: UpdateState = {
 
 export const UpdateProvider: React.FC<UpdateProviderProps> = ({ children }) => {
   const { setting } = useSetting()
-  const [state, setState] = useState<UpdateState>(initialState)
+  const [state, setReactState] = useState<UpdateState>(initialState)
+  const stateRef = useRef<UpdateState>(initialState)
+  const setState = useCallback((action: React.SetStateAction<UpdateState>) => {
+    const previous = stateRef.current
+    const next = typeof action === 'function' ? action(previous) : action
+    stateRef.current = next
+    setReactState(next)
+  }, [])
   const [isCheckingUpdate, setIsCheckingUpdate] = useState(false)
   const [installKind, setInstallKind] = useState<InstallKind | null>(null)
   const isSystemManaged = installKind === 'deb' || installKind === 'rpm'
@@ -44,11 +51,6 @@ export const UpdateProvider: React.FC<UpdateProviderProps> = ({ children }) => {
 
   const activeCheckRef = useRef<Promise<UpdateMetadata | null> | null>(null)
   const activeCheckChannelRef = useRef<UpdateChannel | null>(null)
-  /** Latest `state` value visible to event-driven callbacks. */
-  const stateRef = useRef<UpdateState>(initialState)
-  useEffect(() => {
-    stateRef.current = state
-  }, [state])
 
   const runCheckForChannel = useCallback(async (channel: UpdateChannel | null) => {
     setIsCheckingUpdate(true)

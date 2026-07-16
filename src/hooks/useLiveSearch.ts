@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useEffectEvent, useRef, useState } from 'react'
 import { DaemonApiError, DaemonErrorCode } from '@/api/daemon/errors'
 import { querySearch } from '@/api/daemon/search'
 import type { HistoryLiveSnapshot } from '@/hooks/historySessionSnapshot'
@@ -67,6 +67,32 @@ function sameModel(a: LiveSearchQueryModel, b: LiveSearchQueryModel): boolean {
   )
 }
 
+interface QueryWindow {
+  model: LiveSearchQueryModel
+  pageSize: number
+  limit: number
+}
+
+export function resolveQueryWindowLimit(
+  window: QueryWindow,
+  model: LiveSearchQueryModel,
+  pageSize: number
+): number {
+  return window.pageSize === pageSize && sameModel(window.model, model) ? window.limit : pageSize
+}
+
+export function growQueryWindow(
+  window: QueryWindow,
+  model: LiveSearchQueryModel,
+  pageSize: number
+): QueryWindow {
+  return {
+    model,
+    pageSize,
+    limit: resolveQueryWindowLimit(window, model, pageSize) + pageSize,
+  }
+}
+
 /**
  * Unified live browse/search list (Phase 3B).
  *
@@ -114,15 +140,11 @@ export function useLiveSearch(options: UseLiveSearchOptions): UseLiveSearchResul
   const [state, setState] = useState<'ready' | 'degraded'>(() =>
     canUseInitialSnapshot ? initialSnapshot.state : 'ready'
   )
-  const [limit, setLimit] = useState(pageSize)
+  const [queryWindow, setQueryWindow] = useState(() => ({ model, pageSize, limit: pageSize }))
+  const limit = resolveQueryWindowLimit(queryWindow, model, pageSize)
   const [refetchNonce, setRefetchNonce] = useState(0)
 
   const abortRef = useRef<AbortController | null>(null)
-
-  // Collapse the window back to one page whenever the query model changes.
-  useEffect(() => {
-    setLimit(pageSize)
-  }, [query, contentTypes, tags, sourceDevices, extensions, timeRange, pageSize])
 
   // Base query: (re)seed the list from the engine on model/window/refetch change.
   // Re-runs on `encryptionReady` too, so unlocking refetches.
@@ -247,16 +269,7 @@ export function useLiveSearch(options: UseLiveSearchOptions): UseLiveSearchResul
     onDeleted,
   })
 
-  // The degraded banner is driven by the last query's `state`. While the index
-  // rebuilds, a filter-less browse is served degraded (§4.7) and new local
-  // entries are slotted in client-side without a refetch — so nothing re-queries
-  // when the rebuild finishes, and the banner would otherwise persist forever.
-  // Track the latest `state` in a ref so the WS handler can read it without
-  // re-subscribing on every query.
-  const stateRef = useRef(state)
-  useEffect(() => {
-    stateRef.current = state
-  }, [state])
+  const getCurrentState = useEffectEvent(() => state)
 
   // Subscribe to the search-index status stream and, once the index reports
   // `ready` again while we are showing the degraded view, refetch the current
@@ -265,7 +278,7 @@ export function useLiveSearch(options: UseLiveSearchOptions): UseLiveSearchResul
   useEffect(() => {
     if (!enabled) return
     return daemonWs.subscribe<SearchStatusEventPayload>(['search'], event => {
-      if (shouldRefetchOnSearchStatus(event.payload, stateRef.current)) {
+      if (shouldRefetchOnSearchStatus(event.payload, getCurrentState())) {
         setRefetchNonce(n => n + 1)
       }
     })
@@ -281,7 +294,9 @@ export function useLiveSearch(options: UseLiveSearchOptions): UseLiveSearchResul
     })
   }, [enabled, encryptionReady])
 
-  const growWindow = useCallback(() => setLimit(value => value + pageSize), [pageSize])
+  const growWindow = useCallback(() => {
+    setQueryWindow(current => growQueryWindow(current, model, pageSize))
+  }, [model, pageSize])
   const refetch = useCallback(() => setRefetchNonce(n => n + 1), [])
   const removeItem = useCallback((id: string) => setItems(prev => removeLiveItem(prev, id)), [])
   const patchItem = useCallback(

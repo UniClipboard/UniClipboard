@@ -19,11 +19,7 @@ const MSG = '需要重启应用以使更改生效。'
 describe('RestartBanner', () => {
   it('Test 1: visible=false 时不渲染（节点不挂）', () => {
     const { container } = render(
-      <RestartBanner
-        visible={false}
-        message={MSG}
-        onRestart={vi.fn().mockResolvedValue(undefined)}
-      />
+      <RestartBanner visible={false} message={MSG} onRestart={vi.fn().mockResolvedValue(true)} />
     )
     expect(screen.queryByRole('status')).toBeNull()
     // 整个组件应返回 null — container 内无任何子元素
@@ -31,7 +27,7 @@ describe('RestartBanner', () => {
   })
 
   it('Test 2: visible=true 时渲染主信息 + role=status + aria-live="polite"', () => {
-    render(<RestartBanner visible message={MSG} onRestart={vi.fn().mockResolvedValue(undefined)} />)
+    render(<RestartBanner visible message={MSG} onRestart={vi.fn().mockResolvedValue(true)} />)
     const status = screen.getByRole('status')
     expect(status).toBeInTheDocument()
     expect(status).toHaveAttribute('aria-live', 'polite')
@@ -40,7 +36,7 @@ describe('RestartBanner', () => {
   })
 
   it('Test 3: 点击「立即重启」Button 触发 onRestart 一次', async () => {
-    const onRestart = vi.fn().mockResolvedValue(undefined)
+    const onRestart = vi.fn().mockResolvedValue(true)
     const user = userEvent.setup()
     render(<RestartBanner visible message={MSG} onRestart={onRestart} />)
     const button = screen.getByRole('button', { name: /立即重启|Restart now/ })
@@ -50,12 +46,7 @@ describe('RestartBanner', () => {
 
   it('Test 4: loading=true 时 Button 禁用 + 文案变 "正在重启…"', () => {
     render(
-      <RestartBanner
-        visible
-        loading
-        message={MSG}
-        onRestart={vi.fn().mockResolvedValue(undefined)}
-      />
+      <RestartBanner visible loading message={MSG} onRestart={vi.fn().mockResolvedValue(true)} />
     )
     const button = screen.getByRole('button', { name: /正在重启|Restarting/ })
     expect(button).toBeDisabled()
@@ -67,7 +58,7 @@ describe('RestartBanner', () => {
         visible
         message={MSG}
         error="自动重启失败"
-        onRestart={vi.fn().mockResolvedValue(undefined)}
+        onRestart={vi.fn().mockResolvedValue(false)}
       />
     )
     const alert = screen.getByRole('alert')
@@ -76,7 +67,7 @@ describe('RestartBanner', () => {
   })
 
   it('Test 6: error 状态显示「重试」Button 与 dismiss X icon；点击 dismiss 触发 onDismissError', async () => {
-    const onRestart = vi.fn().mockResolvedValue(undefined)
+    const onRestart = vi.fn().mockResolvedValue(false)
     const onDismissError = vi.fn()
     const user = userEvent.setup()
     render(
@@ -102,7 +93,7 @@ describe('RestartBanner', () => {
 
   it('Test 7: visible=true 时含 lucide RefreshCw icon (svg)', () => {
     const { container } = render(
-      <RestartBanner visible message={MSG} onRestart={vi.fn().mockResolvedValue(undefined)} />
+      <RestartBanner visible message={MSG} onRestart={vi.fn().mockResolvedValue(true)} />
     )
     // lucide-react 输出 <svg class="lucide lucide-refresh-cw ..."> — 用 svg 选择器即可
     const svg = container.querySelector('svg')
@@ -111,7 +102,7 @@ describe('RestartBanner', () => {
 
   it('Test 8: 不复用 shadcn Alert — 静态结构 fence (data-slot="alert" 不应存在)', () => {
     const { container } = render(
-      <RestartBanner visible message={MSG} onRestart={vi.fn().mockResolvedValue(undefined)} />
+      <RestartBanner visible message={MSG} onRestart={vi.fn().mockResolvedValue(true)} />
     )
     expect(container.querySelector('[data-slot="alert"]')).toBeNull()
   })

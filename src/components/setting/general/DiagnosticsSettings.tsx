@@ -1,5 +1,5 @@
 import { Loader2 } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { exportLogs, updateDebugMode } from '@/api/daemon/diagnostics'
 import * as storageApi from '@/api/storage'
@@ -46,17 +46,12 @@ export function DiagnosticsSettings() {
   const { t } = useTranslation()
   const { setting, loading, reloadSetting } = useSetting()
   const { saving, runSave } = useSavingState()
-  const [debugMode, setDebugMode] = useState(setting?.general.debugMode ?? false)
+  const debugMode = setting?.general.debugMode ?? false
   const [debugDialog, setDebugDialog] = useState<DebugDialogState>('closed')
   const [exportPath, setExportPath] = useState<string | null>(null)
   const [exportingLogs, setExportingLogs] = useState(false)
   const isBusy = loading || saving
   const isRestarting = debugDialog === 'restarting'
-
-  useEffect(() => {
-    if (!setting?.general) return
-    setDebugMode(setting.general.debugMode ?? false)
-  }, [setting])
 
   const persistDebugModeOff = () =>
     runSave(
@@ -64,7 +59,6 @@ export function DiagnosticsSettings() {
       async () => {
         const result = await updateDebugMode(false)
         await reloadSetting()
-        setDebugMode(result.debugMode)
         if (result.restartRequired) {
           toast.message(t('settings.sections.general.logs.debug.restartToast'))
         }
@@ -85,9 +79,8 @@ export function DiagnosticsSettings() {
     // user cannot dismiss it while the app and daemon are coming back up.
     setDebugDialog('restarting')
     try {
-      const result = await updateDebugMode(true)
+      await updateDebugMode(true)
       await reloadSetting()
-      setDebugMode(result.debugMode)
       // Debug mode changes the log profile, which both the daemon and the GUI
       // read only at process start. Restart the daemon first so the engine —
       // the primary log producer — picks up the debug profile, then restart the

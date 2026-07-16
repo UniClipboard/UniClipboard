@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Switch } from '@/components/ui'
 import {
@@ -8,7 +8,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { useDebounce } from '@/hooks/useDebounce'
 import { useSetting } from '@/hooks/useSetting'
 import { commands } from '@/lib/ipc'
 import { createLogger } from '@/lib/logger'
@@ -21,6 +20,15 @@ import { SettingGroup } from './SettingGroup'
 import { SettingRow } from './SettingRow'
 
 const log = createLogger('network-section')
+const SAVE_DELAY_MS = 500
+const SAVE_ERROR_DISPLAY_MS = 5000
+
+interface NetworkDraft {
+  allowRelayFallback: boolean
+  allowOverlayNetworkAddrs: boolean
+  customRelayUrls: string[]
+  congestionController: CongestionController
+}
 
 function normalizeRelayUrls(urls: string[]): string[] {
   return urls.flatMap(url => {
@@ -82,13 +90,16 @@ const NetworkSection: React.FC = () => {
   const persistedCongestionController: CongestionController =
     setting?.network?.congestionController ?? 'cubic'
 
-  // 本地乐观 state（D-D2：切换后立即更新，不等 PUT 返回）
-  const [allowRelayFallback, setAllowRelayFallback] = useState(persistedAllowRelay)
-  const [allowOverlayNetworkAddrs, setAllowOverlayNetworkAddrs] = useState(persistedAllowOverlay)
-  const [customRelayUrls, setCustomRelayUrls] = useState(persistedCustomRelayUrls)
-  const [congestionController, setCongestionController] = useState<CongestionController>(
-    persistedCongestionController
-  )
+  const persistedDraft: NetworkDraft = {
+    allowRelayFallback: persistedAllowRelay,
+    allowOverlayNetworkAddrs: persistedAllowOverlay,
+    customRelayUrls: persistedCustomRelayUrls,
+    congestionController: persistedCongestionController,
+  }
+  const [draftOverride, setDraftOverride] = useState<NetworkDraft | null>(null)
+  const draft = draftOverride ?? persistedDraft
+  const { allowRelayFallback, allowOverlayNetworkAddrs, customRelayUrls, congestionController } =
+    draft
 
   // pending 状态（来自两个源：用户切换 / PUT 后 restartRequired；不跨 session）
   const [pending, setPending] = useState(false)
@@ -96,143 +107,99 @@ const NetworkSection: React.FC = () => {
   const [restartError, setRestartError] = useState<string | null>(null)
   const [saveError, setSaveError] = useState<string | null>(null)
 
-  // 防止 useEffect 在 mount 时立即触发 PUT（网络设置整体只跳过一次）
-  const isPristineRef = useRef(true)
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const saveErrorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const saveGenerationRef = useRef(0)
 
-  // debounced 写盘值（D-D3：500ms after last user change）
-  const networkDraft = useMemo(
-    () => ({
-      allowRelayFallback,
-      allowOverlayNetworkAddrs,
-      customRelayUrls: normalizeRelayUrls(customRelayUrls),
-      congestionController,
-    }),
-    [allowRelayFallback, allowOverlayNetworkAddrs, customRelayUrls, congestionController]
-  )
-  const debouncedNetwork = useDebounce(networkDraft, 500)
-
-  // ── Effect 1: setting 加载后同步本地 state baseline ─────────────
   useEffect(() => {
-    if (setting?.network) {
-      setAllowRelayFallback(setting.network.allowRelayFallback)
-      setAllowOverlayNetworkAddrs(setting.network.allowOverlayNetworkAddrs)
-      setCustomRelayUrls(setting.network.customRelayUrls ?? [])
-      setCongestionController(setting.network.congestionController ?? 'cubic')
+    return () => {
+      saveGenerationRef.current += 1
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
+      if (saveErrorTimerRef.current) clearTimeout(saveErrorTimerRef.current)
     }
-  }, [setting])
+  }, [])
 
-  // ── Effect 2: debounced PUT for the network settings group ──────
-  //
-  // 设计意图：effect 只在 debounced draft 真正变化时跑一次 PUT。把 setting、
-  // persistedAllow*、t、updateNetworkSetting 这些"读取一下就够"的值塞进
-  // 依赖数组会破坏防抖语义 —— setting 在 PUT 成功后会回流变成新引用，
-  // 进而触发第二次 effect。这里用 ref 把"最新值"做读边界，effect 依赖
-  // 仅保留 debouncedNetwork。
-  const persistedAllowRelayRef = useRef(persistedAllowRelay)
-  const persistedAllowOverlayRef = useRef(persistedAllowOverlay)
-  const persistedCustomRelayUrlsRef = useRef(persistedCustomRelayUrls)
-  const persistedCongestionControllerRef = useRef(persistedCongestionController)
-  const settingLoadedRef = useRef(!!setting)
-  const tRef = useRef(t)
-  const updateNetworkSettingRef = useRef(updateNetworkSetting)
-  useEffect(() => {
-    persistedAllowRelayRef.current = persistedAllowRelay
-    persistedAllowOverlayRef.current = persistedAllowOverlay
-    persistedCustomRelayUrlsRef.current = persistedCustomRelayUrls
-    persistedCongestionControllerRef.current = persistedCongestionController
-    settingLoadedRef.current = !!setting
-    tRef.current = t
-    updateNetworkSettingRef.current = updateNetworkSetting
-  })
+  const showSaveError = (message: string) => {
+    setSaveError(message)
+    if (saveErrorTimerRef.current) clearTimeout(saveErrorTimerRef.current)
+    saveErrorTimerRef.current = setTimeout(() => setSaveError(null), SAVE_ERROR_DISPLAY_MS)
+  }
 
-  useEffect(() => {
-    if (isPristineRef.current) {
-      isPristineRef.current = false
-      return
+  const queueNetworkUpdate = (patch: Partial<NetworkDraft>, showPendingImmediately = true) => {
+    const next: NetworkDraft = {
+      ...draft,
+      ...patch,
     }
-    if (!settingLoadedRef.current) return
-    const persistedRelay = persistedAllowRelayRef.current
-    const persistedOverlay = persistedAllowOverlayRef.current
-    const persistedCustom = persistedCustomRelayUrlsRef.current
-    const persistedCC = persistedCongestionControllerRef.current
-    const tNow = tRef.current
-    const updateNow = updateNetworkSettingRef.current
+    setDraftOverride(next)
+    if (showPendingImmediately) setPending(true)
+    setSaveError(null)
+    setRestartError(null)
 
-    const relayChanged = debouncedNetwork.allowRelayFallback !== persistedRelay
-    const overlayChanged = debouncedNetwork.allowOverlayNetworkAddrs !== persistedOverlay
-    const customRelaysChanged = !relayUrlListsEqual(
-      debouncedNetwork.customRelayUrls,
-      persistedCustom
-    )
-    const ccChanged = debouncedNetwork.congestionController !== persistedCC
-    if (!relayChanged && !overlayChanged && !customRelaysChanged && !ccChanged) return
-
-    const invalidRelayUrl = validateRelayUrls(debouncedNetwork.customRelayUrls)
+    const payload = { ...next, customRelayUrls: normalizeRelayUrls(next.customRelayUrls) }
+    const invalidRelayUrl = validateRelayUrls(payload.customRelayUrls)
     if (invalidRelayUrl) {
-      setSaveError(
-        tNow('settings.sections.network.customRelays.invalidUrl', { url: invalidRelayUrl })
+      // Keep an already queued valid update alive, but ensure its completion
+      // cannot clear this newer invalid draft.
+      saveGenerationRef.current += 1
+      showSaveError(
+        t('settings.sections.network.customRelays.invalidUrl', { url: invalidRelayUrl })
       )
-      window.setTimeout(() => setSaveError(null), 5000)
       return
     }
 
-    void (async () => {
-      try {
-        const result = await updateNow(debouncedNetwork)
-        if (result.restartRequired) {
-          setPending(true)
-        } else {
+    const generation = saveGenerationRef.current + 1
+    saveGenerationRef.current = generation
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
+
+    const relayChanged = next.allowRelayFallback !== persistedAllowRelay
+    const customRelaysChanged = !relayUrlListsEqual(
+      payload.customRelayUrls,
+      persistedCustomRelayUrls
+    )
+    saveTimerRef.current = setTimeout(() => {
+      saveTimerRef.current = null
+      void updateNetworkSetting(payload).then(
+        result => {
+          if (saveGenerationRef.current !== generation) return
+          setDraftOverride(null)
+          setPending(result.restartRequired)
+        },
+        err => {
+          if (saveGenerationRef.current !== generation) return
+          log.error({ err }, 'Failed to save network settings')
+          setDraftOverride(null)
           setPending(false)
+          const message = err instanceof Error ? err.message : String(err)
+          const errorKey = customRelaysChanged
+            ? 'settings.sections.network.customRelays.saveError'
+            : relayChanged
+              ? 'settings.sections.network.lanOnly.saveError'
+              : 'settings.sections.network.allowOverlayAddrs.saveError'
+          showSaveError(t(errorKey, { message }))
         }
-      } catch (err) {
-        log.error({ err }, '保存网络设置失败')
-        setAllowRelayFallback(persistedRelay)
-        setAllowOverlayNetworkAddrs(persistedOverlay)
-        setCustomRelayUrls(persistedCustom)
-        setCongestionController(persistedCC)
-        setPending(false)
-        const message = err instanceof Error ? err.message : String(err)
-        const errorKey = customRelaysChanged
-          ? 'settings.sections.network.customRelays.saveError'
-          : relayChanged
-            ? 'settings.sections.network.lanOnly.saveError'
-            : 'settings.sections.network.allowOverlayAddrs.saveError'
-        setSaveError(tNow(errorKey, { message }))
-        window.setTimeout(() => setSaveError(null), 5000)
-      }
-    })()
-  }, [debouncedNetwork])
+      )
+    }, SAVE_DELAY_MS)
+  }
 
   // ── Switch 切换 handler（LAN-only — 反向命名唯一取反点） ────────
   const handleLanOnlySwitchChange = (checked: boolean) => {
     // FENCE: 反向命名唯一取反点（Pitfall 1 — UI checked = LAN-only ON = allowRelay false）
     const newAllowRelay = !checked
-    setAllowRelayFallback(newAllowRelay)
-    setPending(true)
-    setSaveError(null)
-    setRestartError(null)
+    queueNetworkUpdate({ allowRelayFallback: newAllowRelay })
   }
 
   const handleCustomRelayUrlsChange = (value: string[]) => {
-    setCustomRelayUrls(value)
-    setSaveError(null)
-    setRestartError(null)
+    queueNetworkUpdate({ customRelayUrls: value }, false)
   }
 
   // ── Switch 切换 handler（Allow Overlay — 正向同名，不取反） ─────
   const handleAllowOverlaySwitchChange = (checked: boolean) => {
-    setAllowOverlayNetworkAddrs(checked)
-    setPending(true)
-    setSaveError(null)
-    setRestartError(null)
+    queueNetworkUpdate({ allowOverlayNetworkAddrs: checked })
   }
 
   // ── Select 切换 handler（Congestion Controller） ───────────────
   const handleCongestionControllerChange = (value: string) => {
-    setCongestionController(value as CongestionController)
-    setPending(true)
-    setSaveError(null)
-    setRestartError(null)
+    queueNetworkUpdate({ congestionController: value as CongestionController })
   }
 
   // ── 「立即重启」按钮 handler ───────────────────────────────────
@@ -242,9 +209,11 @@ const NetworkSection: React.FC = () => {
     try {
       await commands.restartDaemon()
       setPending(false)
+      return true
     } catch (err) {
       log.error({ err }, 'restart_daemon 失败')
       setRestartError(t('settings.sections.network.restartBanner.errorMessage'))
+      return false
     } finally {
       setRestartLoading(false)
     }

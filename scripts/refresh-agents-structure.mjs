@@ -7,9 +7,10 @@
  * Only rewrites the STRUCTURE block; other sections are untouched.
  */
 
-import { readFileSync, writeFileSync, existsSync, readdirSync } from 'node:fs'
-import { join, basename } from 'node:path'
 import { execSync } from 'node:child_process'
+import { readFileSync, writeFileSync, existsSync } from 'node:fs'
+import { join, basename } from 'node:path'
+import process from 'node:process'
 
 const ROOT = new URL('..', import.meta.url).pathname.replace(/\/$/, '')
 const AGENTS_PATH = join(ROOT, 'crates', 'AGENTS.md')
@@ -125,8 +126,6 @@ function generateStructure(members) {
   const apps = members.filter(m => m.startsWith('apps/'))
   const libs = members.filter(m => m.startsWith('crates/'))
   const tauri = members.filter(m => m === 'src-tauri' || m.startsWith('src-tauri/'))
-  const crateCount = members.length
-
   const lines = [
     '```text',
     '.                        # repo root = cargo workspace',

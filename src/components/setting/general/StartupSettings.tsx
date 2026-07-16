@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   Switch,
@@ -44,19 +44,25 @@ export function StartupSettings() {
     { failureLog: 'Failed to change restore-last-entry-on-startup setting' }
   )
 
-  // Device name is free text edited continuously and persisted on blur, so it
-  // keeps its own local edit state rather than the optimistic-toggle hook.
-  const [deviceName, setDeviceName] = useState(setting?.general.deviceName ?? '')
-  useEffect(() => {
-    setDeviceName(setting?.general.deviceName ?? '')
-  }, [setting?.general?.deviceName])
+  const persistedDeviceName = setting?.general.deviceName ?? ''
+  const [deviceNameDraft, setDeviceNameDraft] = useState<string | null>(null)
+  const deviceName = deviceNameDraft ?? persistedDeviceName
 
   const handleDeviceNameBlur = () => {
-    if (deviceName === (setting?.general.deviceName ?? '')) return
-    updateGeneralSetting({ deviceName }).catch((err: unknown) => {
-      log.error({ err }, 'Failed to change device name')
-      toast.error(t('settings.sections.general.saveError'))
-    })
+    if (deviceName === persistedDeviceName) {
+      setDeviceNameDraft(null)
+      return
+    }
+    const submittedName = deviceName
+    updateGeneralSetting({ deviceName: submittedName }).then(
+      () => {
+        setDeviceNameDraft(active => (active === submittedName ? null : active))
+      },
+      (err: unknown) => {
+        log.error({ err }, 'Failed to change device name')
+        toast.error(t('settings.sections.general.saveError'))
+      }
+    )
   }
 
   return (
@@ -68,7 +74,7 @@ export function StartupSettings() {
         <div className="w-40">
           <Input
             value={deviceName}
-            onChange={e => setDeviceName(e.target.value)}
+            onChange={e => setDeviceNameDraft(e.target.value)}
             onBlur={handleDeviceNameBlur}
             placeholder={t('settings.sections.general.deviceName.placeholder')}
           />

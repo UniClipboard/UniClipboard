@@ -85,7 +85,10 @@ import {
 
 const log = createLogger('devices-page')
 
-type Selection = { kind: 'local' } | { kind: 'peer'; id: string } | { kind: 'mobile'; id: string }
+type Selection =
+  | { kind: 'local' }
+  | { kind: 'peer'; id: string }
+  | { kind: 'mobile'; id: string; pendingCredential?: RegisterMobileDeviceResult }
 
 /** A mobile device counts as "recently active" within this window. */
 const MOBILE_ACTIVE_WINDOW_MS = 10 * 60 * 1000
@@ -172,30 +175,14 @@ const DevicesPage: React.FC = () => {
 
   // ── selection ────────────────────────────────────────────────
   const [selection, setSelection] = useState<Selection>({ kind: 'local' })
-  // One-time credentials from a just-completed add. Handed to the selected
-  // MobileDevicePanel so it shows the pairing QR + credentials + install helper
-  // inline (the old post-registration modal, retired). Cleared as soon as the
-  // user navigates to any other device so the one-time secret can't linger.
-  const [pendingCredential, setPendingCredential] = useState<RegisterMobileDeviceResult | null>(
-    null
-  )
-  useEffect(() => {
-    if (
-      pendingCredential &&
-      !(selection.kind === 'mobile' && selection.id === pendingCredential.deviceId)
-    ) {
-      setPendingCredential(null)
-    }
-  }, [selection, pendingCredential])
   const selectedPeer =
     selection.kind === 'peer' ? peers.find(p => p.peerId === selection.id) : undefined
   const selectedMobile =
     selection.kind === 'mobile' ? mobileDevices.find(d => d.deviceId === selection.id) : undefined
-  // A vanished selection (unpaired / revoked device) falls back to local.
-  const effectiveSelection: Selection =
+  const selectionVanished =
     (selection.kind === 'peer' && !selectedPeer) || (selection.kind === 'mobile' && !selectedMobile)
-      ? { kind: 'local' }
-      : selection
+  if (selectionVanished) setSelection({ kind: 'local' })
+  const effectiveSelection: Selection = selectionVanished ? { kind: 'local' } : selection
 
   // ── p2p dialogs ──────────────────────────────────────────────
   const [addP2PDialogOpen, setAddP2PDialogOpen] = useState(false)
@@ -366,7 +353,16 @@ const DevicesPage: React.FC = () => {
                     effectiveSelection.kind === 'mobile' &&
                     effectiveSelection.id === mobile.deviceId
                   }
-                  onSelect={() => setSelection({ kind: 'mobile', id: mobile.deviceId })}
+                  onSelect={() =>
+                    setSelection(current => ({
+                      kind: 'mobile',
+                      id: mobile.deviceId,
+                      pendingCredential:
+                        current.kind === 'mobile' && current.id === mobile.deviceId
+                          ? current.pendingCredential
+                          : undefined,
+                    }))
+                  }
                 />
               )
             })}
@@ -426,7 +422,9 @@ const DevicesPage: React.FC = () => {
               device={selectedMobile}
               settings={mobileSettings}
               initialCredential={
-                pendingCredential?.deviceId === selectedMobile.deviceId ? pendingCredential : null
+                selection.kind === 'mobile' && selection.id === selectedMobile.deviceId
+                  ? (selection.pendingCredential ?? null)
+                  : null
               }
               onRevoke={mobileActions.requestRevoke}
               onRotated={mobileActions.reload}
@@ -461,8 +459,7 @@ const DevicesPage: React.FC = () => {
           // device, and hand its one-time credentials to the panel's fresh
           // state (pairing QR + credentials + install helper) inline.
           mobileActions.reload()
-          setPendingCredential(result)
-          setSelection({ kind: 'mobile', id: result.deviceId })
+          setSelection({ kind: 'mobile', id: result.deviceId, pendingCredential: result })
         }}
       />
 

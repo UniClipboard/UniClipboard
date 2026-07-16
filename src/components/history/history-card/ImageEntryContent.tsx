@@ -1,5 +1,5 @@
 import { Image as ImageIcon } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { ClipboardImageItem } from '@/lib/clipboard-entry'
 import { imageTitle } from './history-card-utils'
@@ -14,11 +14,11 @@ function ImageEntryContent({ entryId, imageItem }: ImageEntryContentProps) {
   const { t } = useTranslation()
   const imageUrl = useResourceImageUrl(entryId)
   const [loadedDims, setLoadedDims] = useState<{ w: number; h: number } | null>(null)
-  // Reset measured dimensions when the row is reused for a different entry, so a
-  // previous image's size doesn't leak into this card until onLoad fires again.
-  useEffect(() => {
+  const [previousEntryId, setPreviousEntryId] = useState(entryId)
+  if (entryId !== previousEntryId) {
+    setPreviousEntryId(entryId)
     setLoadedDims(null)
-  }, [entryId])
+  }
   const title = imageTitle(t('history.type.image', 'image'), loadedDims, imageItem)
 
   return (

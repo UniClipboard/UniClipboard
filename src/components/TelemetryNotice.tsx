@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   AlertDialog,
@@ -30,17 +30,12 @@ interface TelemetryNoticeProps {
 export default function TelemetryNotice({ enabled = true, onDismiss }: TelemetryNoticeProps = {}) {
   const { t } = useTranslation()
   const { updateGeneralSetting } = useSetting()
-  const [open, setOpen] = useState(false)
-
-  useEffect(() => {
-    if (enabled && !localStorage.getItem(TELEMETRY_NOTICE_KEY)) {
-      setOpen(true)
-    }
-  }, [enabled])
+  const [dismissed, setDismissed] = useState(() => !!localStorage.getItem(TELEMETRY_NOTICE_KEY))
+  const open = enabled && !dismissed
 
   const finish = () => {
     localStorage.setItem(TELEMETRY_NOTICE_KEY, '1')
-    setOpen(false)
+    setDismissed(true)
     onDismiss?.()
   }
 

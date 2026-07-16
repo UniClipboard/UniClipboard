@@ -9,7 +9,7 @@ import {
   RefreshCw,
   XCircle,
 } from 'lucide-react'
-import { useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
+import { useEffect, useEffectEvent, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   cancelInvitation,
@@ -17,7 +17,12 @@ import {
   issuePairingInvitation,
   type CurrentInvitation,
 } from '@/api/daemon/setupV2'
-import { onSetupInvitationRevoked, onSetupPairingCompleted } from '@/api/setupEvents'
+import {
+  onSetupInvitationRevoked,
+  onSetupPairingCompleted,
+  type SetupInvitationRevokedEvent,
+  type SetupPairingCompletedEvent,
+} from '@/api/setupEvents'
 import { formatInvitationCode } from '@/components/invitation-code-utils'
 import { Button } from '@/components/ui/button'
 import {
@@ -55,7 +60,7 @@ function formatRemaining(ms: number): string {
   return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`
 }
 
-export default function AddDeviceDialog({ open, onOpenChange }: AddDeviceDialogProps) {
+function AddDeviceDialogInner({ open, onOpenChange }: AddDeviceDialogProps) {
   const { t } = useTranslation()
   const dispatch = useAppDispatch()
   const [invitation, setInvitation] = useState<CurrentInvitation | null>(null)
@@ -67,19 +72,6 @@ export default function AddDeviceDialog({ open, onOpenChange }: AddDeviceDialogP
   const [step, setStep] = useState<Step>('invitation')
   const [failureReason, setFailureReason] = useState<string | null>(null)
 
-  // ref 镜像 step / loading，供 ws 回调判断且避免 effect 因依赖变更重订阅
-  const stepRef = useRef<Step>('invitation')
-  const loadingRef = useRef(false)
-  // 标记本次 open 是否已经初始化过邀请。effect 因 t 引用变化、Strict Mode
-  // 双跑或父组件结构切换重挂载等原因被重跑时，不要重复 issue 新邀请。
-  const initializedRef = useRef(false)
-  useEffect(() => {
-    stepRef.current = step
-  }, [step])
-  useEffect(() => {
-    loadingRef.current = loading
-  }, [loading])
-
   // 倒计时 tick — 仅在邀请态 + 有邀请时启动
   useEffect(() => {
     if (!open || !invitation || step !== 'invitation') return
@@ -89,14 +81,17 @@ export default function AddDeviceDialog({ open, onOpenChange }: AddDeviceDialogP
 
   // 打开时：优先恢复 currentInvitation，否则申请新邀请
   // 后端约束"同一时刻一个邀请"，关闭对话框不取消邀请，重开会拿回同一个
+  //
+  // t 只在失败分支用到，包成 effect event 移出依赖：本组件由外层 wrapper 按
+  // open 会话重挂载，effect 必须严格「每次挂载跑一次」。若 t 留在依赖里，i18n
+  // 资源 reload 会重跑 effect 并重复 issue 新邀请，把还没展示完的 step='success'
+  // 覆盖掉。
+  const reportIssueFailure = useEffectEvent((err: unknown) => {
+    log.error({ err }, 'Failed to load or issue invitation')
+    setError(t('devices.addDevice.errors.issueFailed'))
+  })
   useEffect(() => {
     if (!open) return
-    // 防止 effect 重跑导致重复申请邀请。例如：配对成功后父组件因 spaceMembers
-    // 变化重渲染，又或者 i18n 资源 reload 让 t 引用变化 — 这些都不应该触发
-    // 第二次 issuePairingInvitation()，否则 step='success' 还没显示完就被新
-    // 邀请码覆盖了。重置在 line 184 的关闭副作用里完成。
-    if (initializedRef.current) return
-    initializedRef.current = true
     let cancelled = false
     void (async () => {
       setLoading(true)
@@ -116,8 +111,7 @@ export default function AddDeviceDialog({ open, onOpenChange }: AddDeviceDialogP
         }
       } catch (err) {
         if (cancelled) return
-        log.error({ err }, 'Failed to load or issue invitation')
-        setError(t('devices.addDevice.errors.issueFailed'))
+        reportIssueFailure(err)
       } finally {
         if (!cancelled) setLoading(false)
       }
@@ -125,10 +119,26 @@ export default function AddDeviceDialog({ open, onOpenChange }: AddDeviceDialogP
     return () => {
       cancelled = true
     }
-  }, [open, t])
+  }, [open])
 
   // 订阅 setup.pairingCompleted / setup.invitationRevoked — 后端在配对成功 /
   // 失败 / 邀请被撤销时会推送，对话框据此切换状态机
+  const handlePairingCompleted = useEffectEvent((evt: SetupPairingCompletedEvent) => {
+    if (step !== 'invitation') return
+    if (evt.success) {
+      setStep('success')
+      dispatch(fetchSpaceMembers())
+    } else {
+      setFailureReason(evt.reason)
+      setStep('failed')
+    }
+  })
+  const handleInvitationRevoked = useEffectEvent((evt: SetupInvitationRevokedEvent) => {
+    if (step !== 'invitation' || loading) return
+    setFailureReason(evt.reason)
+    setStep('failed')
+  })
+
   useEffect(() => {
     if (!open) return
     let mounted = true
@@ -136,14 +146,7 @@ export default function AddDeviceDialog({ open, onOpenChange }: AddDeviceDialogP
 
     void onSetupPairingCompleted(evt => {
       if (!mounted) return
-      if (stepRef.current !== 'invitation') return
-      if (evt.success) {
-        setStep('success')
-        dispatch(fetchSpaceMembers())
-      } else {
-        setFailureReason(evt.reason)
-        setStep('failed')
-      }
+      handlePairingCompleted(evt)
     }).then(
       fn => {
         if (mounted) unsubs.push(fn)
@@ -154,11 +157,7 @@ export default function AddDeviceDialog({ open, onOpenChange }: AddDeviceDialogP
 
     void onSetupInvitationRevoked(evt => {
       if (!mounted) return
-      if (stepRef.current !== 'invitation') return
-      // 重新生成期间会先 cancelInvitation 触发 revoked，loading 中跳过
-      if (loadingRef.current) return
-      setFailureReason(evt.reason)
-      setStep('failed')
+      handleInvitationRevoked(evt)
     }).then(
       fn => {
         if (mounted) unsubs.push(fn)
@@ -181,19 +180,6 @@ export default function AddDeviceDialog({ open, onOpenChange }: AddDeviceDialogP
     const id = setTimeout(() => closeDialog(), SUCCESS_AUTO_CLOSE_MS)
     return () => clearTimeout(id)
   }, [step])
-
-  // 关闭时清状态
-  useEffect(() => {
-    if (!open) {
-      setInvitation(null)
-      setIssuedAtMs(null)
-      setError(null)
-      setCopied(false)
-      setStep('invitation')
-      setFailureReason(null)
-      initializedRef.current = false
-    }
-  }, [open])
 
   const remaining = invitation ? Math.max(0, invitation.expiresAtMs - now) : 0
   const expired = invitation && step === 'invitation' ? remaining <= 0 : false
@@ -448,4 +434,15 @@ export default function AddDeviceDialog({ open, onOpenChange }: AddDeviceDialogP
       </DialogContent>
     </Dialog>
   )
+}
+
+export default function AddDeviceDialog(props: AddDeviceDialogProps) {
+  const [previousOpen, setPreviousOpen] = useState(props.open)
+  const [sessionKey, setSessionKey] = useState(0)
+  if (props.open !== previousOpen) {
+    setPreviousOpen(props.open)
+    if (props.open) setSessionKey(key => key + 1)
+  }
+
+  return <AddDeviceDialogInner key={sessionKey} {...props} />
 }

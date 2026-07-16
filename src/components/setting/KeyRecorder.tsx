@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useEffectEvent, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui'
 import { formatShortcutChord } from '@/lib/shortcut-format'
@@ -50,11 +50,7 @@ export function KeyRecorder({
   // Committed chord segments (one combo each), at most MAX_CHORD_SEGMENTS.
   const [segments, setSegments] = useState<string[]>([])
 
-  // Hold the latest onCancel in a ref so the key-capture effect stays mount-only.
-  const onCancelRef = useRef(onCancel)
-  useEffect(() => {
-    onCancelRef.current = onCancel
-  }, [onCancel])
+  const cancelRecording = useEffectEvent(onCancel)
 
   // Capture key presses globally while recording. Each non-modifier keydown
   // appends one segment (VS Code style); Escape cancels.
@@ -70,7 +66,7 @@ export function KeyRecorder({
       }
       if (e.key === 'Escape') {
         e.preventDefault()
-        onCancelRef.current()
+        cancelRecording()
         return
       }
       e.preventDefault()

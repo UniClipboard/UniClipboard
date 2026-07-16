@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Switch, Input, Badge, Button } from '@/components/ui'
 import { useSetting } from '@/hooks/useSetting'
@@ -6,6 +6,7 @@ import { commands } from '@/lib/ipc'
 import { createLogger } from '@/lib/logger'
 import { SettingGroup } from './SettingGroup'
 import { SettingRow } from './SettingRow'
+import { useOptimisticSetting } from './useOptimisticSetting'
 
 const log = createLogger('sync-section')
 
@@ -22,27 +23,44 @@ const SyncSection: React.FC = () => {
   // Use setting context
   const { setting, error, updateSyncSetting, updateFileSyncSetting } = useSetting()
 
-  // Local state for UI display - initialize from setting to avoid flash
-  const [autoSync, setAutoSync] = useState(setting?.sync.autoSync ?? true)
-  const [syncOnRestore, setSyncOnRestore] = useState(setting?.sync.syncOnRestore ?? false)
-
-  // File sync local state
-  const [fileSyncEnabled, setFileSyncEnabled] = useState(setting?.fileSync?.fileSyncEnabled ?? true)
-  const [smallFileThreshold, setSmallFileThreshold] = useState(() =>
-    bytesToMb(setting?.fileSync?.smallFileThreshold ?? 10 * MB)
+  const [autoSync, setAutoSync] = useOptimisticSetting(
+    setting?.sync.autoSync ?? true,
+    next => updateSyncSetting({ autoSync: next }),
+    { failureLog: 'Failed to change auto-sync setting' }
   )
+  const [syncOnRestore, setSyncOnRestore] = useOptimisticSetting(
+    setting?.sync.syncOnRestore ?? false,
+    next => updateSyncSetting({ syncOnRestore: next }),
+    { failureLog: 'Failed to change sync-on-restore setting' }
+  )
+  const [fileSyncEnabled, setFileSyncEnabled] = useOptimisticSetting(
+    setting?.fileSync?.fileSyncEnabled ?? true,
+    next => updateFileSyncSetting({ fileSyncEnabled: next }),
+    { failureLog: 'Failed to change file-sync setting' }
+  )
+  const [fileAutoCleanup, setFileAutoCleanup] = useOptimisticSetting(
+    setting?.fileSync?.fileAutoCleanup ?? true,
+    next => updateFileSyncSetting({ fileAutoCleanup: next }),
+    { failureLog: 'Failed to change file auto-cleanup setting' }
+  )
+  const persistedSmallFileThreshold = bytesToMb(setting?.fileSync?.smallFileThreshold ?? 10 * MB)
+  const persistedMaxFileSizeLimit = bytesToMb(setting?.fileSync?.maxFileSize ?? 5120 * MB)
+  const persistedCacheQuota = bytesToMb(setting?.fileSync?.fileCacheQuotaPerDevice ?? 500 * MB)
+  const persistedRetentionHours = setting?.fileSync?.fileRetentionHours ?? 24
+  const [smallFileThresholdDraft, setSmallFileThresholdDraft] = useState<string | null>(null)
   const [smallFileThresholdError, setSmallFileThresholdError] = useState<string | null>(null)
-  const [maxFileSizeLimit, setMaxFileSizeLimit] = useState(() =>
-    bytesToMb(setting?.fileSync?.maxFileSize ?? 5120 * MB)
-  )
+  const [maxFileSizeLimitDraft, setMaxFileSizeLimitDraft] = useState<string | null>(null)
   const [maxFileSizeLimitError, setMaxFileSizeLimitError] = useState<string | null>(null)
-  const [cacheQuota, setCacheQuota] = useState(() =>
-    bytesToMb(setting?.fileSync?.fileCacheQuotaPerDevice ?? 500 * MB)
-  )
+  const [cacheQuotaDraft, setCacheQuotaDraft] = useState<string | null>(null)
   const [cacheQuotaError, setCacheQuotaError] = useState<string | null>(null)
-  const [retentionHours, setRetentionHours] = useState(setting?.fileSync?.fileRetentionHours ?? 24)
+  const [retentionHoursDraft, setRetentionHoursDraft] = useState<string | null>(null)
   const [retentionHoursError, setRetentionHoursError] = useState<string | null>(null)
-  const [fileAutoCleanup, setFileAutoCleanup] = useState(setting?.fileSync?.fileAutoCleanup ?? true)
+  const smallFileThresholdValue = smallFileThresholdDraft ?? String(persistedSmallFileThreshold)
+  const maxFileSizeLimitValue = maxFileSizeLimitDraft ?? String(persistedMaxFileSizeLimit)
+  const cacheQuotaValue = cacheQuotaDraft ?? String(persistedCacheQuota)
+  const retentionHoursValue = retentionHoursDraft ?? String(persistedRetentionHours)
+  const effectiveSmallFileThreshold = Number.parseInt(smallFileThresholdValue, 10) || 0
+  const effectiveMaxFileSizeLimit = Number.parseInt(maxFileSizeLimitValue, 10) || 0
 
   // Auto-save directory for inbound files (null/undefined ⇒ managed storage).
   const autoSaveDir = setting?.fileSync?.autoSaveDir ?? null
@@ -57,47 +75,12 @@ const SyncSection: React.FC = () => {
     { value: '15m', label: t('settings.sections.sync.syncFrequency.15m') },
   ]
 
-  // Update local state when settings are loaded
-  useEffect(() => {
-    if (setting) {
-      setAutoSync(setting.sync.autoSync)
-      setSyncOnRestore(setting.sync.syncOnRestore)
-
-      // File sync settings
-      setFileSyncEnabled(setting.fileSync?.fileSyncEnabled ?? true)
-      setSmallFileThreshold(bytesToMb(setting.fileSync?.smallFileThreshold ?? 10 * MB))
-      setMaxFileSizeLimit(bytesToMb(setting.fileSync?.maxFileSize ?? 5120 * MB))
-      setCacheQuota(bytesToMb(setting.fileSync?.fileCacheQuotaPerDevice ?? 500 * MB))
-      setRetentionHours(setting.fileSync?.fileRetentionHours ?? 24)
-      setFileAutoCleanup(setting.fileSync?.fileAutoCleanup ?? true)
-    }
-  }, [setting])
-
-  // Handle auto sync switch change
-  const handleAutoSyncChange = (checked: boolean) => {
-    setAutoSync(checked)
-    updateSyncSetting({ autoSync: checked })
-  }
-
-  // Handle "sync on restore" switch change
-  const handleSyncOnRestoreChange = (checked: boolean) => {
-    setSyncOnRestore(checked)
-    updateSyncSetting({ syncOnRestore: checked })
-  }
-
-  // --- File sync handlers ---
-
-  const handleFileSyncEnabledChange = (checked: boolean) => {
-    setFileSyncEnabled(checked)
-    updateFileSyncSetting({ fileSyncEnabled: checked })
-  }
-
   const handleSmallFileThresholdChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value
+    setSmallFileThresholdDraft(value)
 
     if (!value.trim()) {
       setSmallFileThresholdError(null)
-      setSmallFileThreshold(0)
       return
     }
 
@@ -105,13 +88,10 @@ const SyncSection: React.FC = () => {
       setSmallFileThresholdError(
         t('settings.sections.sync.fileSync.smallFileThreshold.errors.invalid')
       )
-      setSmallFileThreshold(parseInt(value) || 0)
       return
     }
 
     const size = parseInt(value)
-    setSmallFileThreshold(size)
-
     if (size < 1 || size > 1000) {
       setSmallFileThresholdError(
         t('settings.sections.sync.fileSync.smallFileThreshold.errors.range')
@@ -119,7 +99,7 @@ const SyncSection: React.FC = () => {
       return
     }
 
-    if (size >= maxFileSizeLimit) {
+    if (size >= effectiveMaxFileSizeLimit) {
       setSmallFileThresholdError(
         t('settings.sections.sync.fileSync.smallFileThreshold.errors.exceedsMax')
       )
@@ -127,93 +107,110 @@ const SyncSection: React.FC = () => {
     }
 
     setSmallFileThresholdError(null)
-    updateFileSyncSetting({ smallFileThreshold: mbToBytes(size) })
+    void updateFileSyncSetting({ smallFileThreshold: mbToBytes(size) }).then(
+      () => setSmallFileThresholdDraft(active => (active === value ? null : active)),
+      err => {
+        log.error({ err }, 'Failed to change small-file threshold')
+        setSmallFileThresholdDraft(active => (active === value ? null : active))
+      }
+    )
   }
 
   const handleMaxFileSizeLimitChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value
+    setMaxFileSizeLimitDraft(value)
 
     if (!value.trim()) {
       setMaxFileSizeLimitError(null)
-      setMaxFileSizeLimit(0)
       return
     }
 
     if (!/^\d+$/.test(value)) {
       setMaxFileSizeLimitError(t('settings.sections.sync.fileSync.maxFileSize.errors.invalid'))
-      setMaxFileSizeLimit(parseInt(value) || 0)
       return
     }
 
     const size = parseInt(value)
-    setMaxFileSizeLimit(size)
-
     if (size < 1 || size > 10240) {
       setMaxFileSizeLimitError(t('settings.sections.sync.fileSync.maxFileSize.errors.range'))
       return
     }
 
+    if (size <= effectiveSmallFileThreshold) {
+      setMaxFileSizeLimitError(
+        t('settings.sections.sync.fileSync.smallFileThreshold.errors.exceedsMax')
+      )
+      return
+    }
+
     setMaxFileSizeLimitError(null)
-    updateFileSyncSetting({ maxFileSize: mbToBytes(size) })
+    void updateFileSyncSetting({ maxFileSize: mbToBytes(size) }).then(
+      () => setMaxFileSizeLimitDraft(active => (active === value ? null : active)),
+      err => {
+        log.error({ err }, 'Failed to change max-file-size setting')
+        setMaxFileSizeLimitDraft(active => (active === value ? null : active))
+      }
+    )
   }
 
   const handleCacheQuotaChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value
+    setCacheQuotaDraft(value)
 
     if (!value.trim()) {
       setCacheQuotaError(null)
-      setCacheQuota(0)
       return
     }
 
     if (!/^\d+$/.test(value)) {
       setCacheQuotaError(t('settings.sections.sync.fileSync.cacheQuota.errors.invalid'))
-      setCacheQuota(parseInt(value) || 0)
       return
     }
 
     const size = parseInt(value)
-    setCacheQuota(size)
-
     if (size < 50 || size > 10240) {
       setCacheQuotaError(t('settings.sections.sync.fileSync.cacheQuota.errors.range'))
       return
     }
 
     setCacheQuotaError(null)
-    updateFileSyncSetting({ fileCacheQuotaPerDevice: mbToBytes(size) })
+    void updateFileSyncSetting({ fileCacheQuotaPerDevice: mbToBytes(size) }).then(
+      () => setCacheQuotaDraft(active => (active === value ? null : active)),
+      err => {
+        log.error({ err }, 'Failed to change file-cache quota')
+        setCacheQuotaDraft(active => (active === value ? null : active))
+      }
+    )
   }
 
   const handleRetentionHoursChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value
+    setRetentionHoursDraft(value)
 
     if (!value.trim()) {
       setRetentionHoursError(null)
-      setRetentionHours(0)
       return
     }
 
     if (!/^\d+$/.test(value)) {
       setRetentionHoursError(t('settings.sections.sync.fileSync.retentionPeriod.errors.invalid'))
-      setRetentionHours(parseInt(value) || 0)
       return
     }
 
     const hours = parseInt(value)
-    setRetentionHours(hours)
-
     if (hours < 1 || hours > 720) {
       setRetentionHoursError(t('settings.sections.sync.fileSync.retentionPeriod.errors.range'))
       return
     }
 
     setRetentionHoursError(null)
-    updateFileSyncSetting({ fileRetentionHours: hours })
-  }
-
-  const handleFileAutoCleanupChange = (checked: boolean) => {
-    setFileAutoCleanup(checked)
-    updateFileSyncSetting({ fileAutoCleanup: checked })
+    void updateFileSyncSetting({ fileRetentionHours: hours }).then(
+      () => setRetentionHoursDraft(active => (active === value ? null : active)),
+      err => {
+        log.error({ err }, 'Failed to change file-retention period')
+        setRetentionHoursDraft(active => (active === value ? null : active))
+      }
+    )
   }
 
   const handlePickAutoSaveDir = async () => {
@@ -259,7 +256,7 @@ const SyncSection: React.FC = () => {
           label={t('settings.sections.sync.autoSync.label')}
           description={t('settings.sections.sync.autoSync.description')}
         >
-          <Switch id="auto-sync" checked={autoSync} onCheckedChange={handleAutoSyncChange} />
+          <Switch id="auto-sync" checked={autoSync} onCheckedChange={setAutoSync} />
         </SettingRow>
 
         <SettingRow
@@ -269,7 +266,7 @@ const SyncSection: React.FC = () => {
           <Switch
             id="sync-on-restore"
             checked={syncOnRestore}
-            onCheckedChange={handleSyncOnRestoreChange}
+            onCheckedChange={setSyncOnRestore}
             disabled={!autoSync}
           />
         </SettingRow>
@@ -299,7 +296,7 @@ const SyncSection: React.FC = () => {
             <Switch
               id="file-sync-enabled"
               checked={fileSyncEnabled}
-              onCheckedChange={handleFileSyncEnabledChange}
+              onCheckedChange={setFileSyncEnabled}
               disabled={!autoSync}
             />
           </SettingRow>
@@ -354,7 +351,7 @@ const SyncSection: React.FC = () => {
               <div className="flex items-center gap-2">
                 <Input
                   type="text"
-                  value={smallFileThreshold.toString()}
+                  value={smallFileThresholdValue}
                   onChange={handleSmallFileThresholdChange}
                   className={smallFileThresholdError ? 'border-red-500 w-32' : 'w-32'}
                   disabled={!autoSync || !fileSyncEnabled}
@@ -378,7 +375,7 @@ const SyncSection: React.FC = () => {
               <div className="flex items-center gap-2">
                 <Input
                   type="text"
-                  value={maxFileSizeLimit.toString()}
+                  value={maxFileSizeLimitValue}
                   onChange={handleMaxFileSizeLimitChange}
                   className={maxFileSizeLimitError ? 'border-red-500 w-32' : 'w-32'}
                   disabled={!autoSync || !fileSyncEnabled}
@@ -402,7 +399,7 @@ const SyncSection: React.FC = () => {
               <div className="flex items-center gap-2">
                 <Input
                   type="text"
-                  value={cacheQuota.toString()}
+                  value={cacheQuotaValue}
                   onChange={handleCacheQuotaChange}
                   className={cacheQuotaError ? 'border-red-500 w-32' : 'w-32'}
                   disabled={!autoSync || !fileSyncEnabled}
@@ -424,7 +421,7 @@ const SyncSection: React.FC = () => {
               <div className="flex items-center gap-2">
                 <Input
                   type="text"
-                  value={retentionHours.toString()}
+                  value={retentionHoursValue}
                   onChange={handleRetentionHoursChange}
                   className={retentionHoursError ? 'border-red-500 w-32' : 'w-32'}
                   disabled={!autoSync || !fileSyncEnabled}
@@ -445,7 +442,7 @@ const SyncSection: React.FC = () => {
             <Switch
               id="file-auto-cleanup"
               checked={fileAutoCleanup}
-              onCheckedChange={handleFileAutoCleanupChange}
+              onCheckedChange={setFileAutoCleanup}
               disabled={!autoSync || !fileSyncEnabled}
             />
           </SettingRow>

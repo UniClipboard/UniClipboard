@@ -1,8 +1,7 @@
-import { createContext, use, type ReactNode } from 'react'
+import { createContext, use } from 'react'
 
 export interface TitleBarSlotContextType {
-  rightSlot: ReactNode
-  setRightSlot: (node: ReactNode) => void
+  rightSlotHost: HTMLElement | null
 }
 
 export const TitleBarSlotContext = createContext<TitleBarSlotContextType | undefined>(undefined)

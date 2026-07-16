@@ -1,5 +1,5 @@
 import { LazyMotion, MotionConfig, domMax } from 'framer-motion'
-import { use, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { BrowserRouter as Router, Route, Navigate, Outlet, useNavigate } from 'react-router-dom'
 import { daemonClient } from '@/api/daemon/client'
 import { signalLifecycleReady } from '@/api/daemon/lifecycle'
@@ -19,6 +19,7 @@ import { useEncryptionState } from '@/hooks/useDaemonEvents'
 import { usePlatform } from '@/hooks/usePlatform'
 import { useUINavigateListener } from '@/hooks/useUINavigateListener'
 import { MainLayout, SettingsFullLayout, WindowShell } from '@/layouts'
+import { isSetupGateActive, resolveEncryptionStatus } from '@/lib/app-state'
 import { DaemonBootstrapFailedError } from '@/lib/daemon-connection-info'
 import {
   shouldSignalDaemonLifecycleReady,
@@ -34,7 +35,7 @@ import SettingsPage from '@/pages/SettingsPage'
 import SetupPage from '@/pages/SetupPage'
 import UnlockPage from '@/pages/UnlockPage'
 import { useGetEncryptionSessionStatusQuery } from '@/store/api'
-import { type SetupFlow, useSetupRealtimeStore } from '@/store/setupRealtimeStore'
+import { useSetupRealtimeStore } from '@/store/setupRealtimeStore'
 import './App.css'
 
 /** How long the initial encryption-status load may stay blank before the UI
@@ -50,35 +51,6 @@ const AuthenticatedLayout = () => {
   )
 }
 
-/**
- * Returns true when the setup completion screen should remain visible after
- * the underlying flow has just transitioned to `completed`. We only latch
- * this if the previous flow was a non-completed state — that distinguishes
- * "just-finished pairing in this session" (show the success summary) from
- * "this device was already set up at launch" (skip straight into the app).
- */
-export function shouldKeepSetupCompletionStep(
-  previousFlow: SetupFlow | null,
-  nextFlow: SetupFlow,
-  hydrated: boolean
-): boolean {
-  return (
-    hydrated &&
-    previousFlow !== null &&
-    previousFlow.kind !== 'completed' &&
-    previousFlow.kind !== 'loading' &&
-    nextFlow.kind === 'completed'
-  )
-}
-
-export function isSetupGateActive(
-  flow: SetupFlow,
-  hydrated: boolean,
-  showCompletionStep: boolean
-): boolean {
-  return !hydrated || flow.kind !== 'completed' || showCompletionStep
-}
-
 // 主应用程序内容
 const AppContent = ({
   isSetupActive,
@@ -87,11 +59,11 @@ const AppContent = ({
   isSetupActive: boolean
   onSetupComplete: () => void
 }) => {
-  const [encryptionStatus, setEncryptionStatus] = useState<EncryptionStatusView | null>(null)
+  const [encryptionOverride, setEncryptionOverride] = useState<EncryptionStatusView | null>(null)
   // Captures boot-time WS failures so the error UI can surface them even
   // before the RTK Query attempt fires. The final `encryptionError` view is
   // derived (see below) from this + the query error so we don't have to
-  // chain a clear-on-success setEncryptionError(null) behind setEncryptionStatus.
+  // chain a clear-on-success state update behind the status sources.
   const [bootEncryptionError, setBootEncryptionError] = useState<string | null>(null)
   // Typed daemon-bootstrap failure (when the native side gave up reaching the
   // daemon), so the error screen can branch on `kind` — e.g. tell the user to
@@ -151,7 +123,7 @@ const AppContent = ({
   // After LOADING_WATCHDOG_MS without a status or error, surface the actionable
   // error screen (with Retry) instead of an indefinite blank screen.
   const [loadingTimedOut, setLoadingTimedOut] = useState(false)
-  const isInitialLoading = encryptionLoading && encryptionStatus === null
+  const isInitialLoading = encryptionLoading && encryptionOverride === null
   // Arm the watchdog while the initial load is in flight; disarm (clearTimeout)
   // when it ends. No state is adjusted here on the flag change — a stale
   // timed-out `true` once loading ends is harmless (any data/error overrides it
@@ -166,50 +138,36 @@ const AppContent = ({
   // Listen for encryption session ready/failed via daemon WebSocket.
   useEncryptionState(
     () => {
-      // Session became ready — update status without downgrading session_ready.
-      setEncryptionStatus(prev =>
+      setEncryptionOverride(prev =>
         prev ? { ...prev, session_ready: true } : { initialized: true, session_ready: true }
       )
     },
     () => {
-      // Session failed — clear session_ready.
-      setEncryptionStatus(prev =>
+      setEncryptionOverride(prev =>
         prev ? { ...prev, session_ready: false } : { initialized: true, session_ready: false }
       )
     }
   )
 
-  useEffect(() => {
-    if (!encryptionData) return
-    setEncryptionStatus(prev => {
-      // Never downgrade session_ready from true → false.
-      // The RTK Query result may be stale (captured before unlock completed),
-      // so if we already know the session is ready (from a SessionReady event),
-      // do not let an older query result roll that back.
-      if (prev?.session_ready && !encryptionData.session_ready) {
-        return prev
-      }
-      return encryptionData
-    })
-  }, [encryptionData])
-
   // Derive the encryptionError view directly from the RTK Query error +
   // any locally-captured boot error. Keeping this in a single useState +
   // useEffect would chain a clear-on-success state update behind the
-  // success-path setEncryptionStatus above; collapsing it to a derived
+  // success path; collapsing it to a derived
   // value avoids that chain.
   const encryptionQueryErrorMessage = encryptionQueryError
     ? typeof encryptionQueryError === 'object' && 'message' in encryptionQueryError
       ? String(encryptionQueryError.message)
       : 'Failed to check encryption status'
     : null
-  const encryptionError = encryptionData
+  // Event/user overrides are newer than an in-flight query snapshot. Keeping
+  // them separate prevents a stale query from downgrading a just-unlocked
+  // session without mirroring every query result through another render.
+  const resolvedEncryptionStatus = resolveEncryptionStatus(encryptionData, encryptionOverride)
+  const encryptionError = resolvedEncryptionStatus
     ? null
     : (bootEncryptionError ??
       encryptionQueryErrorMessage ??
       (loadingTimedOut ? 'Timed out waiting for the background service.' : null))
-
-  const resolvedEncryptionStatus = encryptionStatus ?? encryptionData ?? null
 
   // Retry RESTARTS the daemon, then reconnects. A plain WS reconnect can never
   // recover from a daemon that is wedged or left over from a previous version
@@ -350,13 +308,13 @@ const AppContent = ({
   }
 
   // Only show blank screen during initial load when we have no encryption status at all.
-  // Once encryptionStatus is known (from a previous query or SessionReady event), we continue
+  // Once encryption status is known (from a previous query or SessionReady event), we continue
   // rendering even if RTK Query is re-fetching — this prevents a blank screen flash when
   // isSetupActive transitions from true→false and RTK Query starts a new request.
   // Stay blank only while genuinely still loading with no error. Once the
   // watchdog (or the query) produces an error, fall through to the error
   // screen below instead of short-circuiting to an indefinite blank (#995).
-  if (encryptionLoading && encryptionStatus === null && !encryptionError) {
+  if (encryptionLoading && encryptionOverride === null && !encryptionError) {
     return null
   }
 
@@ -374,7 +332,7 @@ const AppContent = ({
     )
   }
 
-  if (!daemonBootstrapReady && encryptionStatus === null) {
+  if (!daemonBootstrapReady && encryptionOverride === null) {
     return null
   }
 
@@ -383,8 +341,12 @@ const AppContent = ({
     return (
       <>
         <UnlockPage
-          onUnlockSucceeded={() => setEncryptionStatus({ initialized: true, session_ready: true })}
-          onResetSucceeded={() => setEncryptionStatus({ initialized: false, session_ready: false })}
+          onUnlockSucceeded={() =>
+            setEncryptionOverride({ initialized: true, session_ready: true })
+          }
+          onResetSucceeded={() =>
+            setEncryptionOverride({ initialized: false, session_ready: false })
+          }
         />
       </>
     )
@@ -431,10 +393,13 @@ export default function App() {
 }
 
 // TitleBar wrapper with slot context
-const TitleBarWithSearch = ({ isSetupActive }: { isSetupActive: boolean }) => {
-  const slotCtx = use(TitleBarSlotContext)
-  return <TitleBar isSetupActive={isSetupActive} rightSlot={slotCtx?.rightSlot} />
-}
+const TitleBarWithSearch = ({
+  isSetupActive,
+  rightSlot,
+}: {
+  isSetupActive: boolean
+  rightSlot: React.ReactNode
+}) => <TitleBar isSetupActive={isSetupActive} rightSlot={rightSlot} />
 
 // App content with WindowShell structure
 export const AppContentWithBar = () => {
@@ -444,18 +409,7 @@ export const AppContentWithBar = () => {
   const { isMac, isTauri, isWindows } = usePlatform()
   const showCustomTitleBar = !isTauri || isMac || isWindows
   const { hydrated, flow } = useSetupRealtimeStore()
-  const [showCompletionStep, setShowCompletionStep] = useState(false)
-  const previousFlowRef = useRef<SetupFlow | null>(null)
-
-  useEffect(() => {
-    const previousFlow = previousFlowRef.current
-    if (shouldKeepSetupCompletionStep(previousFlow, flow, hydrated)) {
-      setShowCompletionStep(true)
-    }
-    previousFlowRef.current = flow
-  }, [hydrated, flow])
-
-  const isSetupActive = isSetupGateActive(flow, hydrated, showCompletionStep)
+  const isSetupActive = isSetupGateActive(flow, hydrated)
 
   const navigate = useNavigate()
   const handleNavigate = useCallback(
@@ -467,7 +421,6 @@ export const AppContentWithBar = () => {
   useUINavigateListener(handleNavigate)
 
   const handleSetupComplete = () => {
-    setShowCompletionStep(false)
     // When setup just completed, trigger Tauri-side auto-unlock.
     // Trigger Tauri-side auto-unlock only when setup actually completes during this session.
     // The daemon runs MarkSetupComplete + ensure_ready on its side, but the Tauri-side
@@ -475,8 +428,9 @@ export const AppContentWithBar = () => {
     unlockEncryptionSession().catch(err => console.warn('Post-setup auto-unlock failed:', err))
   }
 
-  const [rightSlot, setRightSlot] = useState<React.ReactNode>(null)
-  const slotValue = useMemo(() => ({ rightSlot, setRightSlot }), [rightSlot])
+  const [rightSlotHost, setRightSlotHost] = useState<HTMLDivElement | null>(null)
+  const slotValue = useMemo(() => ({ rightSlotHost }), [rightSlotHost])
+  const rightSlot = useMemo(() => <div ref={setRightSlotHost} />, [])
 
   // Memoize so WindowShell doesn't receive brand-new titleBar JSX every render
   // (jsx-no-jsx-as-prop) — only rebuild when its inputs actually change.
@@ -484,10 +438,10 @@ export const AppContentWithBar = () => {
     () =>
       showCustomTitleBar ? (
         <TitleBarSlotContext value={slotValue}>
-          <TitleBarWithSearch isSetupActive={isSetupActive} />
+          <TitleBarWithSearch isSetupActive={isSetupActive} rightSlot={rightSlot} />
         </TitleBarSlotContext>
       ) : null,
-    [showCustomTitleBar, slotValue, isSetupActive]
+    [showCustomTitleBar, slotValue, isSetupActive, rightSlot]
   )
 
   return (

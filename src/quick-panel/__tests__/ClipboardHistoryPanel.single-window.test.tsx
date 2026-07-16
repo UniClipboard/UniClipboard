@@ -147,6 +147,13 @@ vi.mock('../ClipboardPreviewPane', () => ({
     item ? <div>{`Preview for ${item.id}`}</div> : <div data-testid="preview-empty" />,
 }))
 
+// The preview opens on a PREVIEW_OPEN_DELAY_MS (500ms) timer, so anything that
+// asserts post-open layout has to wait for the state to land. Sleeping just past
+// the delay is not enough: the timer is rescheduled by the renders that follow
+// mount, which pushes the flip to ~520ms and leaves a loaded CI runner far too
+// little headroom. Wait on the condition with a timeout well clear of the delay.
+const PREVIEW_OPEN_TIMEOUT_MS = 3000
+
 function deferred() {
   let resolve!: () => void
   let reject!: (reason?: unknown) => void
@@ -188,15 +195,21 @@ describe('ClipboardHistoryPanel single-window preview', () => {
   it('keeps history and preview panes flexible when the inline preview opens', async () => {
     const { container } = renderPanel()
 
-    await act(async () => {
-      await new Promise(resolve => setTimeout(resolve, 550))
-    })
-
-    expect(await screen.findByText('Preview for entry-1')).toBeInTheDocument()
+    expect(
+      await screen.findByText('Preview for entry-1', undefined, {
+        timeout: PREVIEW_OPEN_TIMEOUT_MS,
+      })
+    ).toBeInTheDocument()
 
     const rootLayout = container.firstElementChild as HTMLDivElement | null
     const historyWrapper = rootLayout?.children.item(0) as HTMLDivElement | null
     const previewWrapper = rootLayout?.children.item(1) as HTMLDivElement | null
+
+    // The panes are briefly pinned while the resize is in flight; the flexible
+    // layout is the settled end state, so assert only once the expand lands.
+    await waitFor(() => expect(previewWrapper?.className).toContain('flex-1'), {
+      timeout: PREVIEW_OPEN_TIMEOUT_MS,
+    })
 
     expect(historyWrapper?.className).toContain('basis-0')
     expect(historyWrapper?.className).toContain('min-w-0')
@@ -231,14 +244,15 @@ describe('ClipboardHistoryPanel single-window preview', () => {
       toJSON: () => ({}),
     }))
 
-    await act(async () => {
-      await new Promise(resolve => setTimeout(resolve, 550))
-    })
-
     const previewWrapper = rootLayout?.children.item(1) as HTMLDivElement | null
 
+    // `pendingResize` never settles here, so the reserving state is stable once
+    // reached — waiting for it is safe, and does not race the open delay.
+    await waitFor(() => expect(historyWrapper?.className).toContain('shrink-0'), {
+      timeout: PREVIEW_OPEN_TIMEOUT_MS,
+    })
+
     expect(previewWrapper?.getAttribute('aria-hidden')).toBe('true')
-    expect(historyWrapper?.className).toContain('shrink-0')
     expect(historyWrapper?.style.width).toBe('360px')
     expect(previewWrapper?.className).toContain('shrink-0')
 
@@ -306,11 +320,13 @@ describe('ClipboardHistoryPanel single-window preview', () => {
 
     fireEvent.mouseEnter(secondItem)
 
-    await act(async () => {
-      await new Promise(resolve => setTimeout(resolve, 550))
-    })
-
-    expect(screen.getByText('Preview for entry-1')).toBeInTheDocument()
+    // The selection preview (entry-1) still wins: a mouseEnter without a prior
+    // mouseMove is not a hover, so entry-2 never becomes the preview target.
+    expect(
+      await screen.findByText('Preview for entry-1', undefined, {
+        timeout: PREVIEW_OPEN_TIMEOUT_MS,
+      })
+    ).toBeInTheDocument()
     expect(screen.queryByText('Preview for entry-2')).not.toBeInTheDocument()
   })
 })

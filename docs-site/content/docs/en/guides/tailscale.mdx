@@ -40,12 +40,11 @@ It changes **reachability** only — the wire protocol is untouched:
   stay up while every desktop sleeps, that's the server-node scenario.
 
 <Callout type="warn">
-  **Tailscale does not close the listener on your LAN.** The gateway socket
-  **always binds `0.0.0.0`** — this is not configurable. The **Bind IP** picker
-  used below is **advertisement-only**: it decides which address goes into the
-  install URL / QR handed to the phone, and **nothing else**. Even after you
-  pick `100.x.x.x`, the gateway **is still listening in cleartext on your
-  physical LAN**. Tailscale gets your phone *in* from outside; it does not keep
+  **Tailscale does not close the listener on your LAN.** The gateway socket **always binds
+  `0.0.0.0`** — this is not configurable. The **Bind IP** picker used below is
+  **advertisement-only**: it decides which address goes into the install URL / QR handed to the
+  phone, and **nothing else**. Even after you pick `100.x.x.x`, the gateway **is still listening in
+  cleartext on your physical LAN**. Tailscale gets your phone *in* from outside; it does not keep
   anyone else *out*. On untrusted networks (public Wi-Fi), turn it off.
 </Callout>
 
@@ -200,10 +199,10 @@ uniclip mobile network set --ip 100.101.102.103 --accept-network-risk
 ```
 
 <Callout type="info">
-  `--accept-network-risk` only skips the interactive y/N confirmation — it
-  **changes no technical behavior**, and is required for non-interactive use
-  (scripts / CI). The warning text it prints is hardcoded for the LAN case and
-  prints verbatim on the tailnet path too — defer to the warn callout above.
+  `--accept-network-risk` only skips the interactive y/N confirmation — it **changes no technical
+  behavior**, and is required for non-interactive use (scripts / CI). The warning text it prints is
+  hardcoded for the LAN case and prints verbatim on the tailnet path too — defer to the warn callout
+  above.
 </Callout>
 
 </Tab>
@@ -211,11 +210,11 @@ uniclip mobile network set --ip 100.101.102.103 --accept-network-risk
 </Tabs>
 
 <Callout type="info">
-  This is **independent** of the **Settings → Network → Allow overlay network
-  addrs** toggle. That toggle gates desktop-↔-desktop P2P path candidates (see
-  [below](#advanced-desktop-to-desktop-p2p-over-the-tailnet)); mobile sync is a manual pick of an address handed to the
-  phone, so the Tailscale range is **always listed** here. The two mechanisms are
-  deliberately separate.
+  This is **independent** of the **Settings → Network → Allow overlay network addrs** toggle. That
+  toggle gates desktop-↔-desktop P2P path candidates (see
+  [below](#advanced-desktop-to-desktop-p2p-over-the-tailnet)); mobile sync is a manual pick of an
+  address handed to the phone, so the Tailscale range is **always listed** here. The two mechanisms
+  are deliberately separate.
 </Callout>
 
 </Step>
@@ -254,7 +253,7 @@ on cellular or any external Wi-Fi.
 ## You don't need to enter two addresses
 
 The QR encodes **a candidate list, not a single address**: when minting
-credentials the desktop puts *every* eligible interface — LAN (`192.168.x` /
+credentials the desktop puts _every_ eligible interface — LAN (`192.168.x` /
 `10.x`) and tailnet (`100.x`) — into the connect URI, and the client probes them
 in turn.
 
@@ -272,10 +271,10 @@ only auto-selected when **no RFC1918 interface** is available.
 Everything above is **phone ↔ desktop**. Desktops talk to each other over iroh
 P2P, which treats Tailscale addresses the **opposite** way by default:
 
-| | Default for Tailscale `100.x` | Why |
-| --- | --- | --- |
-| Mobile sync (advertised addr) | **Included** | you pick the address by hand — no path-probing cost |
-| Desktop P2P (dial candidates) | **Filtered out** | automatic path racing would burn its budget on dead paths |
+|                               | Default for Tailscale `100.x` | Why                                                       |
+| ----------------------------- | ----------------------------- | --------------------------------------------------------- |
+| Mobile sync (advertised addr) | **Included**                  | you pick the address by hand — no path-probing cost       |
+| Desktop P2P (dial candidates) | **Filtered out**              | automatic path racing would burn its budget on dead paths |
 
 This asymmetry is deliberate, and it's the easiest thing on this page to
 conflate. Only when **both desktops are on the same tailnet** and you want iroh
@@ -286,14 +285,13 @@ Once on, Tailscale CGNAT (`100.64.0.0/10`) and the IPv6 ULA
 pairing invites.
 
 <Callout type="warn">
-  **Restart the daemon after changing this.** The address filter is fixed at iroh
-  endpoint **bind time** — the toggle does not take effect hot.
+  **Restart the daemon after changing this.** The address filter is fixed at iroh endpoint **bind
+  time** — the toggle does not take effect hot.
 </Callout>
 
 <Callout type="info">
-  Clash TUN fake-ip (`198.18.0.0/15`) and IPv4 link-local (`169.254.0.0/16`) are
-  **always filtered, with no toggle** — those interfaces can't carry a real dial
-  anyway.
+  Clash TUN fake-ip (`198.18.0.0/15`) and IPv4 link-local (`169.254.0.0/16`) are **always filtered,
+  with no toggle** — those interfaces can't carry a real dial anyway.
 </Callout>
 
 Typical symptom: the sponsor runs Tailscale, the joiner's invite contains only
@@ -319,29 +317,29 @@ unreachable LAN addresses, and pairing never connects — see
 
 ## Troubleshooting
 
-| Symptom | Where to look |
-| --- | --- |
-| App reports a connection timeout | First confirm **both machines are online** in the Tailscale **Machines** list on both ends. Nine out of ten issues are here. |
-| Phone can ping `100.x` but the app times out | The desktop gateway is off or on a different port. Run `uniclip mobile status` to see the current listening URL. |
-| Sync is slow, large files stall | You're probably on DERP relays. Check direct vs DERP in the Tailscale client. |
-| Auth failure / 401 | Wrong username or password. Rotate on the desktop and re-enter on the phone. |
-| Can't connect after returning to home Wi-Fi | Check which address the app says it **will use**; confirm the LAN entry is in the candidate list. |
-| Desktop-↔-desktop pairing won't connect | Turn on **Allow overlay network addrs** on the sponsor and **restart the daemon** so Tailscale addresses reach the invite. |
+| Symptom                                      | Where to look                                                                                                                |
+| -------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| App reports a connection timeout             | First confirm **both machines are online** in the Tailscale **Machines** list on both ends. Nine out of ten issues are here. |
+| Phone can ping `100.x` but the app times out | The desktop gateway is off or on a different port. Run `uniclip mobile status` to see the current listening URL.             |
+| Sync is slow, large files stall              | You're probably on DERP relays. Check direct vs DERP in the Tailscale client.                                                |
+| Auth failure / 401                           | Wrong username or password. Rotate on the desktop and re-enter on the phone.                                                 |
+| Can't connect after returning to home Wi-Fi  | Check which address the app says it **will use**; confirm the LAN entry is in the candidate list.                            |
+| Desktop-↔-desktop pairing won't connect      | Turn on **Allow overlay network addrs** on the sponsor and **restart the daemon** so Tailscale addresses reach the invite.   |
 
 ## Choosing: Tailscale or a server node
 
-| | Tailscale | [Server node](./self-host-server-node) |
-| --- | --- | --- |
-| Needs a VPS / domain | ❌ No | ✅ Yes |
-| Syncs while the desktop sleeps | ❌ No | ✅ Yes |
-| Extra app on the phone | ✅ Yes (Tailscale) | ❌ No |
-| Transport confidentiality | 🔒 WireGuard tunnel (network layer) | 🔒 Real HTTPS certs |
-| Large-file speed | ⚡ Fast when direct; slow on DERP | 🌐 Bounded by VPS bandwidth |
-| Operational cost | 🟢 Almost none | 🟡 Container, certs, backups to maintain |
+|                                | Tailscale                           | [Server node](./self-host-server-node)   |
+| ------------------------------ | ----------------------------------- | ---------------------------------------- |
+| Needs a VPS / domain           | ❌ No                               | ✅ Yes                                   |
+| Syncs while the desktop sleeps | ❌ No                               | ✅ Yes                                   |
+| Extra app on the phone         | ✅ Yes (Tailscale)                  | ❌ No                                    |
+| Transport confidentiality      | 🔒 WireGuard tunnel (network layer) | 🔒 Real HTTPS certs                      |
+| Large-file speed               | ⚡ Fast when direct; slow on DERP   | 🌐 Bounded by VPS bandwidth              |
+| Operational cost               | 🟢 Almost none                      | 🟡 Container, certs, backups to maintain |
 
 Both ends are yours and you'd rather not run a VPS — pick Tailscale. You need
 the phone to work while every desktop is off, or you want a stable public HTTPS
 endpoint — pick the server node.
 
 The two **aren't mutually exclusive**: configure both and the phone's candidate
-list can carry the tailnet address *and* the public gateway.
+list can carry the tailnet address _and_ the public gateway.

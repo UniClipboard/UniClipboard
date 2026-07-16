@@ -6,14 +6,22 @@
  *   1. mount dispatches `fetchLocalDeviceInfo` + `fetchSpaceMembers`
  *   2. the list column renders its three section labels
  *   3. presence is probed once on mount / on visibility regain, no polling
+ *   4. the add-device entry points (header menu + empty-state rows)
  *
  * Panel-level interactions (sync toggles, unpair, mobile edit/revoke) are
  * covered by the panel components' own unit tests.
+ *
+ * Expected labels come from `i18n.t` rather than literals so the assertions
+ * survive a locale switch, matching the language-agnostic style below.
  */
 
-import { act, render, screen } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { refreshPresence } from '@/api/daemon'
+import { getMobileSyncSettings, type MobileSyncSettingsView } from '@/api/tauri-command/mobile_sync'
+import { toast } from '@/components/ui/toast'
+import i18n from '@/i18n'
 import DevicesPage from '@/pages/DevicesPage'
 
 const dispatchMock = vi.fn()
@@ -74,6 +82,14 @@ vi.mock('@/api/tauri-command/mobile_sync', () => ({
 
 vi.mock('@/lib/daemon-ws', () => ({
   daemonWs: { subscribe: () => () => undefined },
+}))
+
+vi.mock('@/components/ui/toast', () => ({
+  toast: {
+    success: vi.fn(),
+    error: vi.fn(),
+    message: vi.fn(),
+  },
 }))
 
 vi.mock('@/hooks/useSetting', () => ({
@@ -148,5 +164,76 @@ describe('DevicesPage', () => {
       document.dispatchEvent(new Event('visibilitychange'))
     })
     expect(refreshPresence).toHaveBeenCalledTimes(2)
+  })
+})
+
+describe('DevicesPage add-device entry points', () => {
+  const settingsFixture = (
+    overrides: Partial<MobileSyncSettingsView> = {}
+  ): MobileSyncSettingsView =>
+    ({
+      enabled: false,
+      lanListenEnabled: false,
+      lanAdvertiseIp: null,
+      lanPort: null,
+      lanListenerError: null,
+      shortcutInstallMethods: [],
+      ...overrides,
+    }) as MobileSyncSettingsView
+
+  afterEach(() => {
+    vi.mocked(toast.error).mockClear()
+    vi.mocked(getMobileSyncSettings).mockReset()
+    vi.mocked(getMobileSyncSettings).mockResolvedValue(settingsFixture())
+  })
+
+  it('opens the header menu with both add paths', async () => {
+    const user = userEvent.setup()
+    render(<DevicesPage />)
+
+    // The trigger shows the short label but announces the full wording.
+    await user.click(screen.getByRole('button', { name: i18n.t('devices.panel.addMenu.trigger') }))
+
+    expect(
+      await screen.findByRole('menuitem', { name: i18n.t('devices.panel.addMenu.p2p') })
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('menuitem', { name: i18n.t('devices.panel.addMenu.mobile') })
+    ).toBeInTheDocument()
+  })
+
+  it('offers an add entry in each empty section', async () => {
+    render(<DevicesPage />)
+
+    // Both sections are empty under this suite's mocks (no peers, no mobile
+    // devices), so each renders its labelled add row instead of a dead line.
+    expect(
+      await screen.findByRole('button', { name: i18n.t('devices.panel.addMenu.p2p') })
+    ).toBeEnabled()
+    expect(
+      screen.getByRole('button', { name: i18n.t('devices.panel.addMenu.mobile') })
+    ).toBeEnabled()
+  })
+
+  it('explains a LAN bind failure instead of silently disabling the mobile entry', async () => {
+    // Regression guard: this row used to be `disabled` on lanListenerError,
+    // which made it unclickable and therefore made the toast below — the only
+    // place the failure reason surfaces — unreachable.
+    vi.mocked(getMobileSyncSettings).mockResolvedValue(
+      settingsFixture({ enabled: true, lanListenEnabled: true, lanListenerError: 'address in use' })
+    )
+    const user = userEvent.setup()
+    render(<DevicesPage />)
+
+    // Let the preloaded settings promise settle before clicking, otherwise
+    // handleAddClick still sees `settings === null` and takes the enable path.
+    await waitFor(() => expect(getMobileSyncSettings).toHaveBeenCalled())
+    await act(async () => {})
+
+    const addMobile = screen.getByRole('button', { name: i18n.t('devices.panel.addMenu.mobile') })
+    expect(addMobile).toBeEnabled()
+    await user.click(addMobile)
+
+    expect(toast.error).toHaveBeenCalledWith(expect.stringContaining('address in use'))
   })
 })

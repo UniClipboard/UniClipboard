@@ -55,8 +55,8 @@ The page has a "This device" Hero on top and a row of two tabs:
 **Paired devices** and **Mobile sync**. Switch to the **Mobile sync**
 tab; two action buttons appear on the right of the tab bar:
 **Configure** and **Add device**. If the listener fails to bind,
-`Add device` greys out and the reason shows on hover — the full
-detail is inside the Configure modal.
+`Add device` stays clickable and clicking it surfaces the reason as a
+toast — the full detail is inside the Configure modal.
 
 </Step>
 
@@ -88,8 +88,8 @@ hot-swapped: changes apply immediately, no daemon restart needed.
 
 If the daemon raises `lan_listener_error` (port in use, permission
 denied, etc.), a red Alert at the top of the dialog spells out the
-reason; the tab-bar `Add device` button also greys out while the
-listener can't bind.
+reason; clicking `Add device` surfaces the same reason as a toast
+while the listener can't bind.
 
 </Step>
 
@@ -358,8 +358,8 @@ the two.
 <Callout type="info">
   **This only changes _reachability_, not the v1 HTTP wire format.** The listener still speaks plain
   HTTP + Basic Auth; confidentiality is provided by the Tailscale / WireGuard tunnel you trust. It
-  also does **not** close the listener on your LAN — the socket always binds `0.0.0.0`, and "Bind IP"
-  only picks which address is advertised to the phone.
+  also does **not** close the listener on your LAN — the socket always binds `0.0.0.0`, and "Bind
+  IP" only picks which address is advertised to the phone.
 </Callout>
 
 ## Manage paired devices

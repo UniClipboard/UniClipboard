@@ -2,15 +2,15 @@
  * DevicesPage: master-detail layout ("Ledger" treatment).
  *
  *   ┌─ list column ──────┬─ detail pane ──────────────────────────┐
- *   │ 设备        2/3 在线 │  Windows 工作站            [取消配对]  │
- *   │ ── 本机 ──────────  │  ● 在线 · 局域网直连                    │
- *   │ ● MacBook Pro      │  ─────────────────────────────────────  │
- *   │ ── 已配对设备 ────  │  PEER ID   通道   地址                  │
- *   │ ● Windows 工作站 ◀ │  ─────────────────────────────────────  │
- *   │ ● Arch VM          │  同步设置（开关 + 内容类型）             │
+ *   │ 设备       [＋ 添加] │  Windows 工作站            [取消配对]  │
+ *   │ 2/3 在线            │  ● 在线 · 局域网直连                    │
+ *   │ ── 本机 ──────────  │  ─────────────────────────────────────  │
+ *   │ ● MacBook Pro      │  PEER ID   通道   地址                  │
+ *   │ ── 已配对设备 ────  │  ─────────────────────────────────────  │
+ *   │ ● Windows 工作站 ◀ │  同步设置（开关 + 内容类型）             │
+ *   │ ● Arch VM          │                                         │
  *   │ ── 移动同步 ──  ⚙  │                                         │
  *   │ ● iPhone 15 Pro    │                                         │
- *   │ ＋ 添加设备         │                                         │
  *   └────────────────────┴─────────────────────────────────────────┘
  *
  * Selecting a device renders its detail inline (LocalDevicePanel /
@@ -225,10 +225,38 @@ const DevicesPage: React.FC = () => {
     <div className="flex h-full">
       {/* ── list column ───────────────────────────────────────── */}
       <aside className="flex w-60 shrink-0 flex-col border-r border-border/50">
+        {/* The add button shares a row with the title only, so the counts
+            line below keeps the full column width instead of wrapping in a
+            long locale (ru). */}
         <div className="px-4 pb-2 pt-5">
-          <h2 className="text-base font-semibold tracking-tight text-foreground">
-            {t('devices.panel.listTitle')}
-          </h2>
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="min-w-0 truncate text-base font-semibold tracking-tight text-foreground">
+              {t('devices.panel.listTitle')}
+            </h2>
+            {/* The button shows `triggerShort` but announces the full
+                `trigger` wording. WCAG 2.5.3 (Label in Name) requires the
+                accessible name to contain the visible text, so every locale
+                must keep triggerShort a substring of trigger. */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="xs" aria-label={t('devices.panel.addMenu.trigger')}>
+                  <Plus />
+                  {t('devices.panel.addMenu.triggerShort')}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-52">
+                <DropdownMenuItem onSelect={() => setAddP2PDialogOpen(true)}>
+                  {t('devices.panel.addMenu.p2p')}
+                </DropdownMenuItem>
+                {/* Not disabled on `lanListenerError`: `handleAddClick` owns
+                    that gate and explains the failure via toast. A disabled
+                    item would block the only path to that explanation. */}
+                <DropdownMenuItem onSelect={mobileActions.handleAddClick}>
+                  {t('devices.panel.addMenu.mobile')}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
           <p className="mt-0.5 text-[11px] text-muted-foreground">
             {t('devices.panel.counts', {
               online: onlineCount,
@@ -306,9 +334,10 @@ const DevicesPage: React.FC = () => {
               />
             ))}
             {peers.length === 0 && !spaceMembersError && (
-              <p className="px-2.5 py-1.5 text-[11px] text-muted-foreground/70">
-                {t('devices.pairedDevices.subtitleEmpty')}
-              </p>
+              <EmptyAddRow
+                label={t('devices.panel.addMenu.p2p')}
+                onClick={() => setAddP2PDialogOpen(true)}
+              />
             )}
 
             <SectionLabel
@@ -342,38 +371,13 @@ const DevicesPage: React.FC = () => {
               )
             })}
             {mobileDevices.length === 0 && !mobileDevicesError && (
-              <p className="px-2.5 py-1.5 text-[11px] text-muted-foreground/70">
-                {t('devices.mobileSync.list.empty.title')}
-              </p>
+              <EmptyAddRow
+                label={t('devices.panel.addMenu.mobile')}
+                onClick={mobileActions.handleAddClick}
+              />
             )}
           </div>
         </ScrollArea>
-
-        <div className="border-t border-border/50 p-2">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="w-full justify-start gap-2 text-muted-foreground hover:text-foreground"
-              >
-                <Plus className="size-3.5" />
-                {t('devices.panel.addMenu.trigger')}
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="w-52">
-              <DropdownMenuItem onSelect={() => setAddP2PDialogOpen(true)}>
-                {t('devices.panel.addMenu.p2p')}
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                disabled={mobileSettings?.lanListenerError != null}
-                onSelect={mobileActions.handleAddClick}
-              >
-                {t('devices.panel.addMenu.mobile')}
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
       </aside>
 
       {/* ── detail pane ───────────────────────────────────────── */}
@@ -513,6 +517,25 @@ const SectionLabel: React.FC<{ label: string; trailing?: React.ReactNode }> = ({
     </span>
     {trailing}
   </div>
+)
+
+/**
+ * Empty-state row that doubles as that section's add entry point: with no
+ * devices to list, the space is better spent on a labelled target than on a
+ * dead "nothing here" line. The header's `＋` stays the steady-state shortcut.
+ *
+ * Deliberately never disabled - the click handler owns any gating and can say
+ * why it refused, which a greyed-out row cannot.
+ */
+const EmptyAddRow: React.FC<{ label: string; onClick: () => void }> = ({ label, onClick }) => (
+  <button
+    type="button"
+    onClick={onClick}
+    className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-left text-[11px] text-muted-foreground/70 transition-colors hover:bg-muted/60 hover:text-foreground"
+  >
+    <Plus className="size-3" />
+    {label}
+  </button>
 )
 
 interface DeviceListItemProps {

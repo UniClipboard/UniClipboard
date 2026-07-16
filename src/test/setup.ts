@@ -46,4 +46,19 @@ if (typeof globalThis.matchMedia !== 'function') {
   })
 }
 
+// jsdom ships no `ResizeObserver`; Radix's ScrollArea observes its viewport in
+// a layout effect. Provide an inert stub so components built on it render in
+// tests instead of throwing.
+if (typeof globalThis.ResizeObserver !== 'function') {
+  Object.defineProperty(globalThis, 'ResizeObserver', {
+    value: class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    },
+    configurable: true,
+    writable: true,
+  })
+}
+
 await import('@/i18n')

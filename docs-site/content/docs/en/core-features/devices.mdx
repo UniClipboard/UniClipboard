@@ -178,8 +178,8 @@ of the tab bar:
 | `Add device` | Starts the registration flow ([Mobile sync — Pair an iPhone](./mobile-sync#pair-an-iphone)). If the master switch or LAN listener is off, an onboarding dialog appears first. |
 
 If the LAN listener fails to bind (port in use, permission denied,
-…), the `Add device` button greys out and the reason shows up as a
-tooltip. The full reason — and the LAN safety warning — live as
+…), `Add device` stays clickable and clicking it surfaces the reason
+as a toast. The full reason — and the LAN safety warning — live as
 Alerts **inside** the Configure modal; there's no separate status
 strip on the page anymore.
 

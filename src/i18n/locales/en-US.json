@@ -992,9 +992,7 @@
       "onlineCount": "{{count}} online"
     },
     "pairedDevices": {
-      "title": "Paired devices",
-      "subtitle": "{{total}} paired · {{online}} online",
-      "subtitleEmpty": "No devices paired yet"
+      "title": "Paired devices"
     },
     "addDevice": {
       "title": "Invite a new device",
@@ -1141,9 +1139,6 @@
       },
       "list": {
         "title": "Paired devices",
-        "empty": {
-          "title": "No devices paired yet"
-        },
         "addButton": "Add device",
         "lastSeen": {
           "never": "Never active",
@@ -1372,6 +1367,7 @@
       },
       "addMenu": {
         "trigger": "Add device",
+        "triggerShort": "Add",
         "p2p": "Pair a computer",
         "mobile": "Add a mobile device"
       }

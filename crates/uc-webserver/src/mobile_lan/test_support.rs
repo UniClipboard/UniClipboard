@@ -89,6 +89,58 @@ pub(crate) async fn build_facade_with_seeded_device_and_content_index(
     }))
 }
 
+/// A facade whose Basic Auth dependencies fail the moment they are touched.
+///
+/// This exists to give the `/healthz` structural regression test something
+/// sharper than a status-code assertion: if the public route ever ends up
+/// behind the auth middleware — including via a path special-case *inside* it —
+/// the device lookup trips this trap and the test fails. A route that never
+/// consults credentials cannot be broken by credentials that cannot be read.
+///
+/// The trap sits on the device repo rather than the hasher because
+/// `authenticate_basic` reaches the repo first; the hasher is trapped too so
+/// that a future auth path which somehow skips the lookup still cannot pass
+/// silently.
+pub(crate) async fn build_facade_with_auth_trap() -> Arc<MobileSyncFacade> {
+    struct TrapDeviceRepo;
+    #[async_trait]
+    impl FindMobileDeviceByUsernamePort for TrapDeviceRepo {
+        async fn find_by_username(
+            &self,
+            _: &str,
+        ) -> Result<Option<MobileDevice>, MobileDeviceError> {
+            Err(MobileDeviceError::Storage(
+                "auth trap: /healthz must never reach the device repo".into(),
+            ))
+        }
+    }
+
+    struct TrapHasher;
+    #[async_trait]
+    impl PasswordHasherPort for TrapHasher {
+        async fn hash(&self, _: &str) -> Result<String, PasswordHasherError> {
+            Err(PasswordHasherError::Internal(
+                "auth trap: /healthz must never reach the password hasher".into(),
+            ))
+        }
+        async fn verify(&self, _: &str, _: &str) -> Result<bool, PasswordHasherError> {
+            Err(PasswordHasherError::Internal(
+                "auth trap: /healthz must never reach the password hasher".into(),
+            ))
+        }
+    }
+
+    let deps = build_facade_deps_with_seeded_device("mobile_alice", "wonderland").await;
+    Arc::new(MobileSyncFacade::new(MobileSyncFacadeDeps {
+        password_hasher: Arc::new(TrapHasher),
+        devices: MobileDevicePorts {
+            find_by_username: Arc::new(TrapDeviceRepo),
+            ..deps.devices
+        },
+        ..deps
+    }))
+}
+
 async fn build_facade_deps_with_seeded_device(
     username: &str,
     password: &str,

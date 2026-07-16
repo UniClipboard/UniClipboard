@@ -298,7 +298,10 @@ export interface SettingContextType {
   updateSyncSetting: (newSyncSetting: Partial<SyncSettings>) => Promise<void>
   updateSecuritySetting: (newSecuritySetting: Partial<SecuritySettings>) => Promise<void>
   updateRetentionPolicy: (newPolicy: Partial<RetentionPolicy>) => Promise<void>
-  updateKeyboardShortcuts: (overrides: Record<string, string | string[]>) => Promise<void>
+  updateKeyboardShortcuts: (
+    previousOverrides: Record<string, string | string[]>,
+    nextOverrides: Record<string, string | string[]>
+  ) => Promise<void>
   updateFileSyncSetting: (newFileSyncSetting: Partial<FileSyncSettings>) => Promise<void>
   updateNetworkSetting: (
     newNetworkSetting: Partial<NetworkSettings>

@@ -122,9 +122,17 @@ const AboutSection: React.FC = () => {
   const channel = appVersion ? parseChannel(appVersion) : null
 
   useEffect(() => {
+    let cancelled = false
     getVersion()
-      .then(setAppVersion)
-      .catch(err => log.error({ err }, 'Failed to get app version'))
+      .then(version => {
+        if (!cancelled) setAppVersion(version)
+      })
+      .catch(err => {
+        if (!cancelled) log.error({ err }, 'Failed to get app version')
+      })
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   const handleUpdateChannelChange = (value: string) => {

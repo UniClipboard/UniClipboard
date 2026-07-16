@@ -18,17 +18,24 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { useSetting } from '@/hooks/useSetting'
 import { createLogger } from '@/lib/logger'
-import type { RetentionRule } from '@/types/setting'
+import type { RetentionPolicy, RetentionRule } from '@/types/setting'
 import ClearHistoryDialog from './ClearHistoryDialog'
 import { ConfigBackupGroup } from './ConfigBackupGroup'
 import { SettingGroup } from './SettingGroup'
 import { SettingRow } from './SettingRow'
+import { useOptimisticSetting } from './useOptimisticSetting'
 
 const log = createLogger('storage-section')
 
 // ── Constants ────────────────────────────────────────────────────────
 
 const SECONDS_PER_DAY = 86400
+const DEFAULT_RETENTION_POLICY: RetentionPolicy = {
+  enabled: true,
+  rules: [{ byAge: { maxAge: 30 * SECONDS_PER_DAY } }],
+  skipPinned: true,
+  evaluation: 'anyMatch',
+}
 
 /**
  * Storage category definitions — each segment in the usage bar.
@@ -284,14 +291,23 @@ const StorageSection: React.FC = () => {
   const { t } = useTranslation()
   const { setting, error, updateRetentionPolicy } = useSetting()
 
-  // Retention policy state
-  const [enabled, setEnabled] = useState(true)
-  const [retentionDays, setRetentionDays] = useState('30')
-  const [maxItems, setMaxItems] = useState('unlimited')
-  const [skipPinned, setSkipPinned] = useState(true)
-
-  // Optimistic rules ref to avoid stale reads when rapidly changing both rules
-  const optimisticRulesRef = useRef<RetentionRule[]>([])
+  const [retentionPolicy, setRetentionPolicy] = useOptimisticSetting<RetentionPolicy>(
+    setting?.retentionPolicy ?? DEFAULT_RETENTION_POLICY,
+    next => updateRetentionPolicy(next),
+    { failureLog: 'Failed to update retention policy' }
+  )
+  const enabled = retentionPolicy.enabled
+  const skipPinned = retentionPolicy.skipPinned
+  const ageSecs = getByAgeSecs(retentionPolicy.rules)
+  const retentionDays =
+    RETENTION_DAYS_OPTIONS.find(
+      option => option.days === Math.round((ageSecs ?? 0) / SECONDS_PER_DAY)
+    )?.value ?? '30'
+  const countItems = getByCountItems(retentionPolicy.rules)
+  const maxItems =
+    countItems === null
+      ? 'unlimited'
+      : (MAX_ITEMS_OPTIONS.find(option => option.count === countItems)?.value ?? '500')
 
   // Storage stats state
   const [stats, setStats] = useState<StorageStats | null>(null)
@@ -301,6 +317,7 @@ const StorageSection: React.FC = () => {
   // Search index state
   const [searchStatus, setSearchStatus] = useState<SearchStatusData | null>(null)
   const [rebuildingIndex, setRebuildingIndex] = useState(false)
+  const rebuildPollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   // Action states
   const [clearingCache, setClearingCache] = useState(false)
@@ -309,38 +326,56 @@ const StorageSection: React.FC = () => {
 
   // ── Load storage stats ───────────────────────────────────────────
 
-  const loadStats = useCallback(async () => {
+  const loadStats = useCallback(async (isCancelled: () => boolean = () => false) => {
     setStatsLoading(true)
     setStatsError(null)
     try {
       const result = await storageApi.getStorageStats()
+      if (isCancelled()) return
       setStats(result)
     } catch (err) {
+      if (isCancelled()) return
       log.error({ err }, 'Failed to load storage stats')
       setStatsError(err instanceof Error ? err.message : String(err))
     } finally {
-      setStatsLoading(false)
+      if (!isCancelled()) setStatsLoading(false)
     }
   }, [])
 
   useEffect(() => {
-    void loadStats()
+    let cancelled = false
+    void loadStats(() => cancelled)
+    return () => {
+      cancelled = true
+    }
   }, [loadStats])
 
   // ── Load search index status ────────────────────────────────────
 
-  const loadSearchStatus = useCallback(async () => {
+  const loadSearchStatus = useCallback(async (isCancelled: () => boolean = () => false) => {
     try {
       const resp = await getSearchStatus()
+      if (isCancelled()) return
       setSearchStatus(resp.data)
     } catch (err) {
+      if (isCancelled()) return
       log.error({ err }, 'Failed to load search index status')
     }
   }, [])
 
   useEffect(() => {
-    void loadSearchStatus()
+    let cancelled = false
+    void loadSearchStatus(() => cancelled)
+    return () => {
+      cancelled = true
+    }
   }, [loadSearchStatus])
+
+  useEffect(() => {
+    return () => {
+      if (rebuildPollRef.current) clearInterval(rebuildPollRef.current)
+    }
+  }, [])
 
   // ── Compute bar segments ─────────────────────────────────────────
 
@@ -369,88 +404,33 @@ const StorageSection: React.FC = () => {
     }))
   }, [stats, t])
 
-  // ── Sync retention policy from backend ───────────────────────────
-
-  useEffect(() => {
-    if (!setting?.retentionPolicy) return
-    const rp = setting.retentionPolicy
-
-    setEnabled(rp.enabled)
-    setSkipPinned(rp.skipPinned)
-    optimisticRulesRef.current = rp.rules
-
-    const ageSecs = getByAgeSecs(rp.rules)
-    if (ageSecs !== null) {
-      const days = Math.round(ageSecs / SECONDS_PER_DAY)
-      const match = RETENTION_DAYS_OPTIONS.find(o => o.days === days)
-      setRetentionDays(match ? match.value : '30')
-    }
-
-    const count = getByCountItems(rp.rules)
-    if (count === null) {
-      setMaxItems('unlimited')
-    } else {
-      const match = MAX_ITEMS_OPTIONS.find(o => o.count === count)
-      setMaxItems(match ? match.value : '500')
-    }
-  }, [setting?.retentionPolicy])
-
   // ── Handlers ─────────────────────────────────────────────────────
 
-  const handleEnabledChange = async (checked: boolean) => {
-    const prev = enabled
-    setEnabled(checked)
-    try {
-      await updateRetentionPolicy({ enabled: checked })
-    } catch (err) {
-      log.error({ err }, 'Failed to update retention enabled')
-      setEnabled(prev)
-    }
+  const handleEnabledChange = (checked: boolean) => {
+    setRetentionPolicy({ ...retentionPolicy, enabled: checked })
   }
 
-  const handleRetentionDaysChange = async (value: string) => {
-    const prev = retentionDays
-    setRetentionDays(value)
-    if (!setting?.retentionPolicy) return
+  const handleRetentionDaysChange = (value: string) => {
     const days = RETENTION_DAYS_OPTIONS.find(o => o.value === value)?.days ?? 30
-    const prevRules = optimisticRulesRef.current
-    const newRules = setByAgeRule(prevRules, days)
-    optimisticRulesRef.current = newRules
-    try {
-      await updateRetentionPolicy({ rules: newRules })
-    } catch (err) {
-      log.error({ err }, 'Failed to update retention days')
-      setRetentionDays(prev)
-      optimisticRulesRef.current = prevRules
-    }
+    setRetentionPolicy({
+      ...retentionPolicy,
+      rules: setByAgeRule(retentionPolicy.rules, days),
+    })
   }
 
-  const handleMaxItemsChange = async (value: string) => {
-    const prev = maxItems
-    setMaxItems(value)
-    if (!setting?.retentionPolicy) return
+  const handleMaxItemsChange = (value: string) => {
     const count = resolveMaxItemsCount(value)
-    const prevRules = optimisticRulesRef.current
-    const newRules = count === null ? clearByCountRule(prevRules) : setByCountRule(prevRules, count)
-    optimisticRulesRef.current = newRules
-    try {
-      await updateRetentionPolicy({ rules: newRules })
-    } catch (err) {
-      log.error({ err }, 'Failed to update max items')
-      setMaxItems(prev)
-      optimisticRulesRef.current = prevRules
-    }
+    setRetentionPolicy({
+      ...retentionPolicy,
+      rules:
+        count === null
+          ? clearByCountRule(retentionPolicy.rules)
+          : setByCountRule(retentionPolicy.rules, count),
+    })
   }
 
-  const handleSkipPinnedChange = async (checked: boolean) => {
-    const prev = skipPinned
-    setSkipPinned(checked)
-    try {
-      await updateRetentionPolicy({ skipPinned: checked })
-    } catch (err) {
-      log.error({ err }, 'Failed to update skip pinned')
-      setSkipPinned(prev)
-    }
+  const handleSkipPinnedChange = (checked: boolean) => {
+    setRetentionPolicy({ ...retentionPolicy, skipPinned: checked })
   }
 
   const handleClearCache = async () => {
@@ -485,16 +465,19 @@ const StorageSection: React.FC = () => {
     try {
       await triggerSearchRebuild()
       // Poll status until rebuild completes or timeout
-      const poll = setInterval(async () => {
+      if (rebuildPollRef.current) clearInterval(rebuildPollRef.current)
+      rebuildPollRef.current = setInterval(async () => {
         try {
           const resp = await getSearchStatus()
           setSearchStatus(resp.data)
           if (resp.data.state !== 'rebuilding') {
-            clearInterval(poll)
+            if (rebuildPollRef.current) clearInterval(rebuildPollRef.current)
+            rebuildPollRef.current = null
             setRebuildingIndex(false)
           }
         } catch {
-          clearInterval(poll)
+          if (rebuildPollRef.current) clearInterval(rebuildPollRef.current)
+          rebuildPollRef.current = null
           setRebuildingIndex(false)
         }
       }, 2000)
@@ -529,7 +512,9 @@ const StorageSection: React.FC = () => {
           total={stats?.totalBytes ?? 0}
           loading={statsLoading}
           error={statsError}
-          onRefresh={loadStats}
+          onRefresh={() => {
+            void loadStats()
+          }}
         />
       </SettingGroup>
 

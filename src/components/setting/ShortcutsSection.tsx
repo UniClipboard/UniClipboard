@@ -79,7 +79,7 @@ const ShortcutsSection: React.FC = () => {
       }
 
       try {
-        await updateKeyboardShortcuts(newOverrides)
+        await updateKeyboardShortcuts(overrides, newOverrides)
       } catch (error) {
         log.error({ err: error }, 'Failed to update keyboard shortcuts')
       }
@@ -93,7 +93,7 @@ const ShortcutsSection: React.FC = () => {
       const newOverrides = { ...overrides }
       delete newOverrides[id]
       try {
-        await updateKeyboardShortcuts(newOverrides)
+        await updateKeyboardShortcuts(overrides, newOverrides)
       } catch (error) {
         log.error({ err: error }, 'Failed to reset shortcut')
       }
@@ -104,11 +104,11 @@ const ShortcutsSection: React.FC = () => {
   // Handle reset all shortcuts
   const handleResetAll = useCallback(async () => {
     try {
-      await updateKeyboardShortcuts({})
+      await updateKeyboardShortcuts(overrides, {})
     } catch (error) {
       log.error({ err: error }, 'Failed to reset all shortcuts')
     }
-  }, [updateKeyboardShortcuts])
+  }, [overrides, updateKeyboardShortcuts])
 
   return (
     <div className="space-y-6">

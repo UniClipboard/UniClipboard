@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 export interface RestartBannerProps {
   visible: boolean
   message: string
-  onRestart: () => Promise<void>
+  onRestart: () => Promise<boolean>
   loading?: boolean
   error?: string | null
   onDismissError?: () => void
@@ -24,16 +24,21 @@ export function RestartBanner({
 }: RestartBannerProps) {
   const { t } = useTranslation()
   const [showSuccess, setShowSuccess] = useState(false)
-  const prevVisibleRef = useRef(visible)
+  const successTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
-    if (prevVisibleRef.current && !visible && !error) {
-      setShowSuccess(true)
-      const timer = window.setTimeout(() => setShowSuccess(false), SUCCESS_DISPLAY_MS)
-      return () => window.clearTimeout(timer)
+    return () => {
+      if (successTimerRef.current) clearTimeout(successTimerRef.current)
     }
-    prevVisibleRef.current = visible
-  }, [visible, error])
+  }, [])
+
+  const handleRestart = async () => {
+    const succeeded = await onRestart()
+    if (!succeeded) return
+    setShowSuccess(true)
+    if (successTimerRef.current) clearTimeout(successTimerRef.current)
+    successTimerRef.current = setTimeout(() => setShowSuccess(false), SUCCESS_DISPLAY_MS)
+  }
 
   if (showSuccess) {
     return (
@@ -77,7 +82,7 @@ export function RestartBanner({
             variant="default"
             size="sm"
             onClick={() => {
-              void onRestart()
+              void handleRestart()
             }}
             disabled={loading}
           >
@@ -91,7 +96,7 @@ export function RestartBanner({
               variant="outline"
               size="sm"
               onClick={() => {
-                void onRestart()
+                void handleRestart()
               }}
               disabled={loading}
             >

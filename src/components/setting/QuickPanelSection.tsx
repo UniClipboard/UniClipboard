@@ -85,10 +85,13 @@ export default function QuickPanelSection() {
       // app.restart() 不返回(进程会 exit),后续代码理论上不可达;
       // 走到 catch 说明 spawn 本身就失败了。
       await commands.restartApp()
+      setRestartLoading(false)
+      return true
     } catch (err) {
       log.error({ err }, '快捷面板关闭后重启应用失败')
       setRestartError(t('settings.restartBanner.errorMessage'))
       setRestartLoading(false)
+      return false
     }
   }
 
@@ -124,7 +127,7 @@ export default function QuickPanelSection() {
         }
       }
       try {
-        await updateKeyboardShortcuts(newOverrides)
+        await updateKeyboardShortcuts(overrides, newOverrides)
       } catch (err) {
         log.error({ err }, '更新快捷面板快捷键失败')
       }
@@ -137,7 +140,7 @@ export default function QuickPanelSection() {
       const newOverrides = { ...overrides }
       delete newOverrides[id]
       try {
-        await updateKeyboardShortcuts(newOverrides)
+        await updateKeyboardShortcuts(overrides, newOverrides)
       } catch (err) {
         log.error({ err }, '重置快捷面板快捷键失败')
       }

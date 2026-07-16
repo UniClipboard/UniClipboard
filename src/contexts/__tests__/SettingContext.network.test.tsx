@@ -173,6 +173,83 @@ describe('SettingContext network — updateNetworkSetting + saveSetting restartR
 
     expect(outcome).toEqual({ restartRequired: false })
   })
+
+  it('serializes cross-section mutations and builds each payload from the latest commit', async () => {
+    const { result } = renderSettingHook()
+    await waitFor(() => {
+      expect(result.current.setting).toEqual(baseSetting)
+    })
+
+    let resolveFirst: ((value: { success: boolean; restartRequired: boolean }) => void) | undefined
+    mockUpdateSettings
+      .mockImplementationOnce(
+        () =>
+          new Promise(resolve => {
+            resolveFirst = resolve
+          })
+      )
+      .mockResolvedValueOnce({ success: true, restartRequired: false })
+
+    let networkSave!: Promise<{ restartRequired: boolean }>
+    let generalSave!: Promise<void>
+    act(() => {
+      networkSave = result.current.updateNetworkSetting({ allowRelayFallback: false })
+      generalSave = result.current.updateGeneralSetting({ theme: 'dark' })
+    })
+
+    await waitFor(() => expect(mockUpdateSettings).toHaveBeenCalledTimes(1))
+    const firstPayload = mockUpdateSettings.mock.calls[0][0] as Settings
+    expect(firstPayload.network?.allowRelayFallback).toBe(false)
+
+    await act(async () => {
+      resolveFirst?.({ success: true, restartRequired: false })
+      await networkSave
+      await generalSave
+    })
+
+    expect(mockUpdateSettings).toHaveBeenCalledTimes(2)
+    const secondPayload = mockUpdateSettings.mock.calls[1][0] as Settings
+    expect(secondPayload.network?.allowRelayFallback).toBe(false)
+    expect(secondPayload.general?.theme).toBe('dark')
+  })
+
+  it('queues reloads behind an in-flight mutation', async () => {
+    const { result } = renderSettingHook()
+    await waitFor(() => {
+      expect(result.current.setting).toEqual(baseSetting)
+    })
+
+    let resolveSave: ((value: { success: boolean; restartRequired: boolean }) => void) | undefined
+    mockUpdateSettings.mockImplementationOnce(
+      () =>
+        new Promise(resolve => {
+          resolveSave = resolve
+        })
+    )
+    const updatedSetting = {
+      ...baseSetting,
+      network: { ...baseSetting.network, allowRelayFallback: false },
+    }
+    mockGetSettings.mockResolvedValueOnce(updatedSetting)
+
+    let save!: Promise<{ restartRequired: boolean }>
+    let reload!: Promise<void>
+    act(() => {
+      save = result.current.updateNetworkSetting({ allowRelayFallback: false })
+      reload = result.current.reloadSetting()
+    })
+
+    await waitFor(() => expect(mockUpdateSettings).toHaveBeenCalledTimes(1))
+    expect(mockGetSettings).toHaveBeenCalledTimes(1)
+    await act(async () => {
+      resolveSave?.({ success: true, restartRequired: false })
+      await save
+      await reload
+    })
+
+    expect(mockGetSettings).toHaveBeenCalledTimes(2)
+    expect(result.current.setting?.network?.allowRelayFallback).toBe(false)
+  })
 })
 
 describe('SettingContext network — 反向命名 + 契约 fence (Pitfall 1 + Pitfall 10)', () => {

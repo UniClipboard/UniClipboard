@@ -86,7 +86,7 @@ describe('SettingContext shortcuts — in-process apply path', () => {
     })
 
     await act(async () => {
-      await result.current.updateKeyboardShortcuts({
+      await result.current.updateKeyboardShortcuts(baseSetting.keyboardShortcuts ?? {}, {
         'global.toggleQuickPanel': 'meta+shift+v',
       })
     })
@@ -108,6 +108,51 @@ describe('SettingContext shortcuts — in-process apply path', () => {
       keyboardShortcuts: {
         'global.toggleQuickPanel': 'meta+shift+v',
       },
+    })
+  })
+
+  it('merges queued edits that were both created from the same previous snapshot', async () => {
+    const { result } = renderHook(() => useSetting(), { wrapper })
+    await waitFor(() => {
+      expect(result.current.setting).toEqual(baseSetting)
+    })
+
+    let resolveFirst: ((value: Record<string, string | string[]>) => void) | undefined
+    mockPersistKeyboardShortcuts
+      .mockImplementationOnce(
+        () =>
+          new Promise(resolve => {
+            resolveFirst = resolve
+          })
+      )
+      .mockImplementationOnce(async (_previous, next) => next)
+
+    const previous = baseSetting.keyboardShortcuts ?? {}
+    let firstSave!: Promise<void>
+    let secondSave!: Promise<void>
+    act(() => {
+      firstSave = result.current.updateKeyboardShortcuts(previous, {
+        ...previous,
+        'clipboard.copy': 'meta+shift+c',
+      })
+      secondSave = result.current.updateKeyboardShortcuts(previous, {
+        ...previous,
+        'clipboard.delete': 'meta+shift+d',
+      })
+    })
+
+    await waitFor(() => expect(mockPersistKeyboardShortcuts).toHaveBeenCalledTimes(1))
+    await act(async () => {
+      resolveFirst?.({ ...previous, 'clipboard.copy': 'meta+shift+c' })
+      await firstSave
+      await secondSave
+    })
+
+    expect(mockPersistKeyboardShortcuts).toHaveBeenCalledTimes(2)
+    expect(mockPersistKeyboardShortcuts.mock.calls[1][1]).toEqual({
+      ...previous,
+      'clipboard.copy': 'meta+shift+c',
+      'clipboard.delete': 'meta+shift+d',
     })
   })
 })

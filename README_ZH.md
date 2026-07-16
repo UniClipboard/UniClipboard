@@ -418,10 +418,12 @@ uniclip status / start / stop   # 守护进程生命周期
   <tr>
     <td align="center"><strong>QQ 群</strong></td>
     <td align="center"><strong>微信群</strong></td>
+    <td align="center"><strong>Telegram 群组</strong></td>
   </tr>
   <tr>
     <td align="center"><img src="./assets/qq-group-qrcode.jpg" alt="QQ 群二维码" width="250" /></td>
     <td align="center"><img src="./assets/wechat-group-qrcode.png" alt="微信群二维码" width="250" /></td>
+    <td align="center"><a href="https://t.me/uniclipboard"><img src="./assets/telegram-group-qrcode.jpg" alt="Telegram 群组二维码" width="250" /></a></td>
   </tr>
 </table>
 

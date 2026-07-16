@@ -1,5 +1,4 @@
 
-
 <div align="center">
   <h1>UniClipboard</h1>
   <a href="https://github.com/UniClipboard/UniClipboard/releases">
@@ -422,10 +421,12 @@ Join us to chat with other users and the dev team:
   <tr>
     <td align="center"><strong>QQ Group</strong></td>
     <td align="center"><strong>WeChat Group</strong></td>
+    <td align="center"><strong>Telegram Group</strong></td>
   </tr>
   <tr>
     <td align="center"><img src="./assets/qq-group-qrcode.jpg" alt="QQ Group QR Code" width="250" /></td>
     <td align="center"><img src="./assets/wechat-group-qrcode.png" alt="WeChat Group QR Code" width="250" /></td>
+    <td align="center"><a href="https://t.me/uniclipboard"><img src="./assets/telegram-group-qrcode.jpg" alt="Telegram Group QR Code" width="250" /></a></td>
   </tr>
 </table>
 

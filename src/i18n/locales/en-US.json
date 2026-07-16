@@ -263,15 +263,6 @@
           "5m": "Every 5 minutes",
           "15m": "Every 15 minutes"
         },
-        "maxFileSize": {
-          "label": "Max file size",
-          "description": "Limit the maximum size of a single file to sync",
-          "unit": "MB",
-          "errors": {
-            "invalid": "Please enter a valid number",
-            "range": "Must be between 1 and 50 MB"
-          }
-        },
         "loadError": "Failed to load settings:",
         "fileSync": {
           "title": "File Sync",
@@ -710,7 +701,8 @@
   },
   "language": {
     "zh-CN": "简体中文",
-    "en-US": "English"
+    "en-US": "English",
+    "ru-RU": "Русский"
   },
   "history": {
     "title": "History",

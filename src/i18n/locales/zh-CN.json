@@ -701,7 +701,8 @@
   },
   "language": {
     "zh-CN": "简体中文",
-    "en-US": "English"
+    "en-US": "English",
+    "ru-RU": "Русский"
   },
   "history": {
     "title": "历史记录",
@@ -1810,99 +1811,6 @@
         "continue": "继续",
         "staging": "正在导入…",
         "import": "开始导入"
-      }
-    },
-    "createPassphrase": {
-      "title": "创建加密口令",
-      "subtitle": "该口令用于保护你的加密空间，请妥善保管。",
-      "labels": {
-        "pass1": "设置口令",
-        "pass2": "确认口令"
-      },
-      "placeholders": {
-        "pass1": "输入一个强口令",
-        "pass2": "再次输入口令"
-      },
-      "errors": {
-        "mismatch": "两次输入的口令不一致",
-        "tooShort": "口令至少需要 {{minLen}} 个字符",
-        "empty": "口令不能为空",
-        "generic": "设置口令失败，请重试。"
-      },
-      "actions": {
-        "creating": "正在创建...",
-        "submit": "创建空间"
-      },
-      "hint": "请将口令保存在安全的位置，后续邀请设备时会用到。"
-    },
-    "joinPickDevice": {
-      "title": "选择要加入的设备",
-      "subtitle": "请选择已经加入该加密空间的设备。",
-      "scanning": {
-        "title": "正在扫描设备...",
-        "description": "正在寻找局域网内的其他设备。",
-        "compact": "扫描中..."
-      },
-      "errors": {
-        "timeout": "扫描超时，请稍后重试。",
-        "peerUnavailable": "对方设备当前不可用，请重新选择设备。",
-        "pairingRejected": "对方设备已拒绝此次配对请求。",
-        "pairingFailed": "对方设备未同意或未及时响应配对请求，请重试。",
-        "loadPeers": "获取设备列表失败。"
-      },
-      "empty": {
-        "title": "没有发现可连接的设备",
-        "description": "请确认主设备与本机在同一网络，并已开启配对。",
-        "rescan": "重新扫描",
-        "tips": {
-          "heading": "排查建议",
-          "sameNetwork": "确认两台设备连接到同一 Wi-Fi 或局域网",
-          "pairingEnabled": "确认主设备已开启配对功能",
-          "firewall": "检查防火墙设置是否阻止了局域网连接"
-        }
-      },
-      "actions": {
-        "select": "选择"
-      }
-    },
-    "joinVerifyPassphrase": {
-      "title": "验证加密口令",
-      "subtitle": "请输入主设备设置的口令以解锁共享空间。",
-      "targetDevice": "目标设备：{{peerShort}}",
-      "errors": {
-        "empty": "口令不能为空",
-        "timeout": "验证超时，请重试。",
-        "peerUnavailable": "对方设备已离线，请重新选择设备。",
-        "generic": "验证口令失败，请稍后重试。"
-      },
-      "actions": {
-        "backToPick": "返回设备列表",
-        "verifying": "正在验证...",
-        "verify": "验证并继续"
-      },
-      "mismatchHelp": {
-        "title": "口令不匹配",
-        "subtitle": "刚刚输入的口令与主设备不一致。",
-        "p1": "请仔细检查大小写、空格和符号是否完全一致。",
-        "p2": "如果仍无法通过验证，可以返回重新选择设备，或直接创建新的空间。",
-        "option1": "重新输入并再次尝试",
-        "option2": "请主设备确认口令",
-        "retry": "重试",
-        "createNew": "改为创建新的空间"
-      }
-    },
-    "pairingConfirm": {
-      "title": "确认配对验证码",
-      "subtitle": "继续之前请确认两台设备显示的验证码完全一致。",
-      "peerFingerprint": "设备指纹",
-      "errors": {
-        "rejected": "对方已拒绝此次配对请求。",
-        "generic": "确认配对失败，请稍后重试。"
-      },
-      "actions": {
-        "cancel": "取消",
-        "confirming": "正在确认...",
-        "confirm": "确认配对"
       }
     },
     "initializeSpace": {

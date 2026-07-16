@@ -1,5 +1,79 @@
 import { afterEach, beforeAll, describe, expect, it } from 'vitest'
-import i18n from '@/i18n'
+import i18n, { SUPPORTED_LANGUAGES, normalizeLanguage } from '@/i18n'
+import enUS from '@/i18n/locales/en-US.json'
+import ruRU from '@/i18n/locales/ru-RU.json'
+import zhCN from '@/i18n/locales/zh-CN.json'
+
+/** Flatten a nested resource bundle into dotted key paths. */
+function flatten(node: unknown, prefix = '', out: Record<string, string> = {}) {
+  for (const [key, value] of Object.entries(node as Record<string, unknown>)) {
+    const path = prefix ? `${prefix}.${key}` : key
+    if (value && typeof value === 'object') flatten(value, path, out)
+    else out[path] = value as string
+  }
+  return out
+}
+
+/** i18next plural suffixes; `_zero` is an i18next extension, not an Intl category. */
+const PLURAL_SUFFIX = /_(zero|one|two|few|many|other)$/
+
+describe('locale bundle parity', () => {
+  const bundles: Record<string, Record<string, string>> = {
+    'zh-CN': flatten(zhCN),
+    'en-US': flatten(enUS),
+    'ru-RU': flatten(ruRU),
+  }
+
+  it('covers every non-plural en-US key in each locale', () => {
+    const expected = Object.keys(bundles['en-US']).filter(k => !PLURAL_SUFFIX.test(k))
+    for (const [locale, bundle] of Object.entries(bundles)) {
+      const missing = expected.filter(k => !(k in bundle))
+      expect(missing, `${locale} is missing keys`).toEqual([])
+    }
+  })
+
+  it('has no keys beyond what en-US declares', () => {
+    const known = new Set(Object.keys(bundles['en-US']).map(k => k.replace(PLURAL_SUFFIX, '')))
+    for (const [locale, bundle] of Object.entries(bundles)) {
+      const extra = Object.keys(bundle).filter(k => !known.has(k.replace(PLURAL_SUFFIX, '')))
+      expect(extra, `${locale} declares unknown keys`).toEqual([])
+    }
+  })
+
+  it('supplies every plural form each locale grammatically requires', () => {
+    // Russian needs one/few/many/other where English only needs one/other, so a
+    // bundle copied key-for-key from en-US would silently fall back for 2-4 items.
+    const groups = new Set(
+      Object.keys(bundles['en-US'])
+        .filter(k => PLURAL_SUFFIX.test(k))
+        .map(k => k.replace(PLURAL_SUFFIX, ''))
+    )
+    for (const [locale, bundle] of Object.entries(bundles)) {
+      const categories = new Intl.PluralRules(locale).resolvedOptions().pluralCategories
+      for (const group of groups) {
+        const missing = categories.filter(c => !(`${group}_${c}` in bundle))
+        expect(missing, `${locale} ${group} is missing plural forms`).toEqual([])
+      }
+    }
+  })
+
+  it('keeps interpolation placeholders identical to the en-US source', () => {
+    const placeholders = (value: string): string[] => [...(value.match(/{{[^}]+}}/g) ?? [])].sort()
+    for (const [locale, bundle] of Object.entries(bundles)) {
+      if (locale === 'en-US') continue
+      for (const [key, value] of Object.entries(bundle)) {
+        // A plural form inherits its placeholders from the en-US `_other` form,
+        // which is the one English uses whenever a count is rendered.
+        const source = PLURAL_SUFFIX.test(key)
+          ? bundles['en-US'][`${key.replace(PLURAL_SUFFIX, '')}_other`]
+          : bundles['en-US'][key]
+        if (typeof source !== 'string') continue
+        const extra = placeholders(value).filter(p => !placeholders(source).includes(p))
+        expect(extra, `${locale} ${key} uses placeholders absent from en-US`).toEqual([])
+      }
+    }
+  })
+})
 
 describe('setup i18n keys', () => {
   let initialLanguage: string
@@ -37,6 +111,12 @@ describe('setup i18n keys', () => {
     expect(i18n.t('setup.page.loadingSetupState')).toBe('Loading setup state...')
   })
 
+  it('resolves ru-RU setup.welcome.title', async () => {
+    await i18n.changeLanguage('ru-RU')
+    expect(i18n.t('setup.welcome.title')).toBe('Начало работы')
+    expect(i18n.t('setup.page.loadingSetupState')).toBe('Загрузка состояния настройки...')
+  })
+
   it('contains pairing failure copy in both locales', async () => {
     await i18n.changeLanguage('zh-CN')
     expect(i18n.t('pairing.failed.errors.activeSession')).toBe('已有正在进行的配对，请稍后再试')
@@ -59,6 +139,31 @@ describe('setup i18n keys', () => {
     expect(i18n.t('pairing.failed.errors.daemonUnavailable')).toBe(
       'The pairing daemon is unavailable. Start the desktop service and try again'
     )
+  })
+
+  it('normalizes language tags to the nearest supported locale', () => {
+    expect(normalizeLanguage('zh')).toBe('zh-CN')
+    expect(normalizeLanguage('zh-TW')).toBe('zh-CN')
+    expect(normalizeLanguage('ru')).toBe('ru-RU')
+    expect(normalizeLanguage('ru-BY')).toBe('ru-RU')
+    expect(normalizeLanguage('RU-ru')).toBe('ru-RU')
+    expect(normalizeLanguage('fr-FR')).toBe('en-US')
+  })
+
+  it('offers a self-named picker label for every supported language', async () => {
+    // Each locale must name every language in that language's own words, so the
+    // picker stays readable no matter which locale is active.
+    const autonyms: Record<string, string> = {
+      'zh-CN': '简体中文',
+      'en-US': 'English',
+      'ru-RU': 'Русский',
+    }
+    for (const active of SUPPORTED_LANGUAGES) {
+      await i18n.changeLanguage(active)
+      for (const listed of SUPPORTED_LANGUAGES) {
+        expect(i18n.t(`language.${listed}`)).toBe(autonyms[listed])
+      }
+    }
   })
 
   it('contains display labels for every built-in history tag', async () => {

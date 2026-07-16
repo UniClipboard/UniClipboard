@@ -351,6 +351,8 @@ fn lan_only_status_label(language: &str, lan_only_active: bool) -> &'static str 
     match (language, lan_only_active) {
         ("zh-CN", true) => "LAN-only Mode:已开启",
         ("zh-CN", false) => "LAN-only Mode:未开启",
+        ("ru-RU", true) => "LAN-only Mode: включён",
+        ("ru-RU", false) => "LAN-only Mode: выключен",
         (_, true) => "LAN-only Mode: ON",
         (_, false) => "LAN-only Mode: OFF",
     }
@@ -361,6 +363,8 @@ fn lan_only_tooltip(language: &str, lan_only_active: bool) -> String {
     match (language, lan_only_active) {
         ("zh-CN", true) => "UniClipboard — LAN-only Mode 已开启".to_string(),
         ("zh-CN", false) => "UniClipboard".to_string(),
+        ("ru-RU", true) => "UniClipboard — LAN-only Mode включён".to_string(),
+        ("ru-RU", false) => "UniClipboard".to_string(),
         (_, true) => "UniClipboard — LAN-only Mode is ON".to_string(),
         (_, false) => "UniClipboard".to_string(),
     }
@@ -368,11 +372,16 @@ fn lan_only_tooltip(language: &str, lan_only_active: bool) -> String {
 
 /// Normalize a language string to a supported locale.
 ///
-/// If the language starts with "zh" (case-insensitive), returns `"zh-CN"`.
-/// Otherwise returns `"en-US"`.
+/// Matches on the language subtag (case-insensitive): "zh" maps to `"zh-CN"`,
+/// "ru" to `"ru-RU"`. Anything else falls back to `"en-US"`.
+///
+/// Keep the supported set in sync with `SUPPORTED_LANGUAGES` in `src/i18n/index.ts`.
 pub(crate) fn normalize_language(language: &str) -> &'static str {
-    if language.to_lowercase().starts_with("zh") {
+    let lower = language.to_lowercase();
+    if lower.starts_with("zh") {
         "zh-CN"
+    } else if lower.starts_with("ru") {
+        "ru-RU"
     } else {
         "en-US"
     }
@@ -401,15 +410,23 @@ impl MenuLabels {
                 settings: "设置",
                 check_update: "检查更新…",
                 restart: "重启",
-                lightweight: "轻量模式（关闭窗口，后台继续运行）",
+                lightweight: "轻量模式（后台同步）",
                 quit: "退出",
+            },
+            "ru-RU" => Self {
+                open: "Открыть",
+                settings: "Настройки",
+                check_update: "Проверить обновления…",
+                restart: "Перезапустить",
+                lightweight: "Лёгкий режим (фоновая синхронизация)",
+                quit: "Выйти",
             },
             _ => Self {
                 open: "Open",
                 settings: "Settings",
                 check_update: "Check for Updates…",
                 restart: "Restart",
-                lightweight: "Lightweight Mode (Close Window, Keep Running)",
+                lightweight: "Lightweight Mode (Background Sync)",
                 quit: "Quit",
             },
         }

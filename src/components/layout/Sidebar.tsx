@@ -8,7 +8,7 @@ import {
   Settings,
   X,
 } from 'lucide-react'
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { updateDebugMode } from '@/api/daemon/diagnostics'
@@ -162,6 +162,12 @@ const Sidebar: React.FC<SidebarProps> = ({ className }) => {
   const navigate = useNavigate()
   const { setting, reloadSetting } = useSetting()
   const [updateDialogOpen, setUpdateDialogOpen] = useState(false)
+  const autoCheckUpdate = setting?.general.autoCheckUpdate
+  const [previousAutoCheckUpdate, setPreviousAutoCheckUpdate] = useState(autoCheckUpdate)
+  if (previousAutoCheckUpdate !== autoCheckUpdate) {
+    setPreviousAutoCheckUpdate(autoCheckUpdate)
+    if (autoCheckUpdate === false && updateDialogOpen) setUpdateDialogOpen(false)
+  }
   const [packageManagerDialogOpen, setPackageManagerDialogOpen] = useState(false)
   const [feedbackOpen, setFeedbackOpen] = useState(false)
   const [disablingDebug, setDisablingDebug] = useState(false)
@@ -200,12 +206,6 @@ const Sidebar: React.FC<SidebarProps> = ({ className }) => {
     { to: '/devices', icon: Monitor, label: t('nav.devices') },
   ]
   const activeTopNavIndex = navItems.findIndex(item => location.pathname === item.to)
-
-  useEffect(() => {
-    if (!setting?.general.autoCheckUpdate) {
-      setUpdateDialogOpen(false)
-    }
-  }, [setting?.general.autoCheckUpdate])
 
   const indicatorLabel = (() => {
     if (isDownloading) {

@@ -3,6 +3,7 @@
  */
 
 import { describe, expect, it } from 'vitest'
+import { resolveEncryptionStatus } from '@/lib/app-state'
 import { shouldSignalDaemonLifecycleReady } from '@/lib/daemon-lifecycle-ready'
 
 describe('shouldSignalDaemonLifecycleReady', () => {
@@ -40,5 +41,23 @@ describe('shouldSignalDaemonLifecycleReady', () => {
         session_ready: false,
       })
     ).toBe(false)
+  })
+})
+
+describe('resolveEncryptionStatus', () => {
+  it('keeps a newer realtime-ready override over a stale locked query', () => {
+    expect(
+      resolveEncryptionStatus(
+        { initialized: true, session_ready: false },
+        { initialized: true, session_ready: true }
+      )
+    ).toEqual({ initialized: true, session_ready: true })
+  })
+
+  it('uses the query snapshot before a realtime or user override exists', () => {
+    expect(resolveEncryptionStatus({ initialized: true, session_ready: false }, null)).toEqual({
+      initialized: true,
+      session_ready: false,
+    })
   })
 })

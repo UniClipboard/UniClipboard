@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import {
@@ -16,6 +16,7 @@ import {
 } from '@/api/daemon/setupV2'
 import { createLogger } from '@/lib/logger'
 import {
+  acknowledgeSetupCompletion,
   applyServerSetupState,
   refreshSetupState,
   type SetupFlow,
@@ -84,29 +85,18 @@ export function useSetupFlow(): UseSetupFlowReturn {
   const { t } = useTranslation(undefined, { keyPrefix: 'setup.page' })
   const [pageScreen, setPageScreen] = useState<SetupScreen | null>(null)
   const [loading, setLoading] = useState(false)
-  const lastFlowKindRef = useRef<SetupFlow['kind']>(flow.kind)
-
-  // Reset page-screen overrides whenever the underlying flow shifts in a way
-  // that should re-anchor the UI (e.g. invitation issued via WS while the
-  // user was sitting on the entry screen, or setup completion received).
-  useEffect(() => {
-    if (lastFlowKindRef.current === flow.kind) return
-    lastFlowKindRef.current = flow.kind
-
-    if (flow.kind === 'invitation_pending' || flow.kind === 'completed') {
-      // Server-driven anchor — drop any in-progress page screen so the
-      // user lands on the canonical view for the new flow state.
-      setPageScreen(null)
-    }
-  }, [flow])
 
   const screen: SetupScreen = (() => {
-    if (pageScreen) return pageScreen
     if (flow.kind === 'loading') return { kind: 'loading' }
     if (flow.kind === 'invitation_pending') {
       return { kind: 'show_invitation', code: flow.code, expiresAtMs: flow.expiresAtMs }
     }
-    if (flow.kind === 'completed') return { kind: 'pairing_complete', role: 'sponsor' }
+    if (flow.kind === 'completed' && flow.completion) {
+      return flow.completion.role === 'joiner'
+        ? { kind: 'pairing_complete', role: 'joiner', redeem: flow.completion.redeem }
+        : { kind: 'pairing_complete', role: 'sponsor' }
+    }
+    if (pageScreen) return pageScreen
     return { kind: 'entry' }
   })()
 
@@ -129,8 +119,7 @@ export function useSetupFlow(): UseSetupFlowReturn {
         // then surface the post-pairing summary as the page screen so the
         // user gets visual confirmation before being dropped into the app.
         const next = await getSetupState()
-        applyServerSetupState(next)
-        setPageScreen({ kind: 'pairing_complete', role: 'sponsor' })
+        applyServerSetupState(next, { role: 'sponsor' })
         return { ok: true } as const
       } catch (err) {
         if (err instanceof SetupV2Error) {
@@ -202,8 +191,7 @@ export function useSetupFlow(): UseSetupFlowReturn {
       try {
         const redeem = await redeemInvitation({ code: input.code, passphrase: input.passphrase })
         const next = await getSetupState()
-        applyServerSetupState(next)
-        setPageScreen({ kind: 'pairing_complete', role: 'joiner', redeem })
+        applyServerSetupState(next, { role: 'joiner', redeem })
         return { ok: true, redeem } as const
       } catch (err) {
         if (err instanceof SetupV2Error) {
@@ -239,9 +227,7 @@ export function useSetupFlow(): UseSetupFlowReturn {
   }, [t])
 
   const finishPairing = useCallback(() => {
-    // Drop the page-screen override; the underlying flow is `completed`,
-    // so the gate (App.tsx) will route us out of setup automatically.
-    setPageScreen(null)
+    acknowledgeSetupCompletion()
   }, [])
 
   return {

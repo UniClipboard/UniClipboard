@@ -157,20 +157,16 @@ const MobileDevicePanel: React.FC<Props> = ({
     return out
   }, [lanInterfaces, preferredHost])
 
-  useEffect(() => {
-    if (selectedHost !== null) return
-    if (dropdownInterfaces.length === 0) return
-    if (preferredHost !== null && dropdownInterfaces.some(i => i.ipv4 === preferredHost)) {
-      setSelectedHost(preferredHost)
-    } else {
-      setSelectedHost(dropdownInterfaces[0].ipv4)
-    }
-  }, [dropdownInterfaces, preferredHost, selectedHost])
+  const effectiveSelectedHost =
+    selectedHost ??
+    (preferredHost !== null && dropdownInterfaces.some(i => i.ipv4 === preferredHost)
+      ? preferredHost
+      : dropdownInterfaces[0]?.ipv4) ??
+    DEFAULT_MOBILE_LAN_BIND_IP
 
   const effectiveBaseUrl = useMemo(() => {
-    const host = selectedHost ?? preferredHost ?? DEFAULT_MOBILE_LAN_BIND_IP
-    return `http://${host}:${port}`
-  }, [selectedHost, preferredHost, port])
+    return `http://${effectiveSelectedHost}:${port}`
+  }, [effectiveSelectedHost, port])
 
   const connectUri = useMemo<string | null>(() => {
     if (!credentialResult?.password) return null
@@ -356,7 +352,7 @@ const MobileDevicePanel: React.FC<Props> = ({
           effectiveBaseUrl={effectiveBaseUrl}
           dropdownInterfaces={dropdownInterfaces}
           port={port}
-          selectedHost={selectedHost}
+          selectedHost={effectiveSelectedHost}
           onSelectHost={setSelectedHost}
           connectUri={connectUri}
           credentialResult={credentialResult}

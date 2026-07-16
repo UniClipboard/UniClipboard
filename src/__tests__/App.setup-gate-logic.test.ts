@@ -1,27 +1,31 @@
 import { describe, expect, it } from 'vitest'
-import { isSetupGateActive, shouldKeepSetupCompletionStep } from '@/App'
+import { isSetupGateActive } from '@/lib/app-state'
 import type { SetupFlow } from '@/store/setupRealtimeStore'
 
-const completed: SetupFlow = { kind: 'completed', deviceName: 'host' }
+const completed: SetupFlow = { kind: 'completed', deviceName: 'host', completion: null }
+const completedWithSummary: SetupFlow = {
+  kind: 'completed',
+  deviceName: 'host',
+  completion: { role: 'sponsor' },
+}
 const entry: SetupFlow = { kind: 'entry' }
 const loading: SetupFlow = { kind: 'loading' }
 
 describe('App setup gate logic', () => {
   it('keeps setup active while the shared setup store is hydrating', () => {
-    expect(isSetupGateActive(loading, false, false)).toBe(true)
+    expect(isSetupGateActive(loading, false)).toBe(true)
   })
 
   it('skips setup when hydration is complete and the flow is already completed', () => {
-    expect(isSetupGateActive(completed, true, false)).toBe(false)
+    expect(isSetupGateActive(completed, true)).toBe(false)
   })
 
-  it('keeps the completed step visible after a live transition to completed', () => {
-    expect(shouldKeepSetupCompletionStep(entry, completed, true)).toBe(true)
-    expect(isSetupGateActive(completed, true, true)).toBe(true)
+  it('keeps the completed step visible while its summary is pending', () => {
+    expect(isSetupGateActive(entry, true)).toBe(true)
+    expect(isSetupGateActive(completedWithSummary, true)).toBe(true)
   })
 
-  it('does not latch the completion step when the device was already completed at launch', () => {
-    expect(shouldKeepSetupCompletionStep(loading, completed, true)).toBe(false)
-    expect(shouldKeepSetupCompletionStep(completed, completed, true)).toBe(false)
+  it('does not keep the gate open when the device was already completed at launch', () => {
+    expect(isSetupGateActive(completed, true)).toBe(false)
   })
 })

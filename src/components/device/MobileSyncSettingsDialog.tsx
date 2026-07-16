@@ -137,35 +137,50 @@ const MobileSyncSettingsDialog: React.FC<Props> = ({ open, onOpenChange, onSetti
   const translate = useCallback((err: unknown): string => translateMobileSyncError(t, err), [t])
 
   // ── Loaders ──────────────────────────────────────────────────────────
-  const loadSettings = useCallback(async () => {
-    try {
-      const view = await getMobileSyncSettings()
-      setSettings(view)
-      setSettingsError(null)
-      setPortDraft(view.lanPort != null ? String(view.lanPort) : '')
-      onSettingsChange?.(view)
-    } catch (err) {
-      log.error({ err }, 'failed to load mobile sync settings')
-      setSettingsError(translate(err))
-      onSettingsChange?.(null)
-    }
-  }, [onSettingsChange, translate])
+  const loadSettings = useCallback(
+    async (isCancelled: () => boolean = () => false) => {
+      try {
+        const view = await getMobileSyncSettings()
+        if (isCancelled()) return
+        setSettings(view)
+        setSettingsError(null)
+        setPortDraft(view.lanPort != null ? String(view.lanPort) : '')
+        onSettingsChange?.(view)
+      } catch (err) {
+        if (isCancelled()) return
+        log.error({ err }, 'failed to load mobile sync settings')
+        setSettingsError(translate(err))
+        onSettingsChange?.(null)
+      }
+    },
+    [onSettingsChange, translate]
+  )
 
-  const loadLanInterfaces = useCallback(async () => {
-    try {
-      const list = await listMobileLanInterfaces()
-      setLanInterfaces(list)
-    } catch (err) {
-      log.warn({ err }, 'failed to list LAN interfaces')
-      setSettingsError(translate(err))
-    }
-  }, [translate])
+  const loadLanInterfaces = useCallback(
+    async (isCancelled: () => boolean = () => false) => {
+      try {
+        const list = await listMobileLanInterfaces()
+        if (isCancelled()) return
+        setLanInterfaces(list)
+      } catch (err) {
+        if (isCancelled()) return
+        log.warn({ err }, 'failed to list LAN interfaces')
+        setSettingsError(translate(err))
+      }
+    },
+    [translate]
+  )
 
   // 首次挂载就拉一次，状态条立刻有数据；Dialog 关闭后下次打开不重新 mount，
   // 所以只跑一次。
   useEffect(() => {
-    void loadSettings()
-    void loadLanInterfaces()
+    let cancelled = false
+    const isCancelled = () => cancelled
+    void loadSettings(isCancelled)
+    void loadLanInterfaces(isCancelled)
+    return () => {
+      cancelled = true
+    }
   }, [loadSettings, loadLanInterfaces])
 
   // ── Mutators ─────────────────────────────────────────────────────────

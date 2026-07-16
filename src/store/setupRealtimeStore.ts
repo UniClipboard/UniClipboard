@@ -1,5 +1,10 @@
 import { useEffect, useSyncExternalStore } from 'react'
-import { getSetupState, type SetupStateResponse, SetupV2Error } from '@/api/daemon/setupV2'
+import {
+  getSetupState,
+  type RedeemResponse,
+  type SetupStateResponse,
+  SetupV2Error,
+} from '@/api/daemon/setupV2'
 import {
   onSetupInvitationIssued,
   onSetupInvitationRevoked,
@@ -19,6 +24,8 @@ const log = createLogger('setup-realtime-store')
  * inside `entry` mode, in-flight requests, transient errors) is held in
  * `useSetupFlow` page-local state, not here.
  */
+export type SetupCompletion = { role: 'sponsor' } | { role: 'joiner'; redeem: RedeemResponse }
+
 export type SetupFlow =
   /** Initial fetch in progress; setup gate stays active. */
   | { kind: 'loading' }
@@ -26,8 +33,12 @@ export type SetupFlow =
   | { kind: 'entry' }
   /** Sponsor has issued an invitation; resume the show-code screen on launch. */
   | { kind: 'invitation_pending'; code: string; expiresAtMs: number }
-  /** Setup has completed and there is no in-flight invitation; gate is closed. */
-  | { kind: 'completed'; deviceName: string | null }
+  /** Setup has completed; a pending summary keeps the gate open until acknowledged. */
+  | {
+      kind: 'completed'
+      deviceName: string | null
+      completion: SetupCompletion | null
+    }
 
 interface Snapshot {
   flow: SetupFlow
@@ -45,6 +56,7 @@ const listeners = new Set<() => void>()
 let startPromise: Promise<void> | null = null
 let retryTimer: ReturnType<typeof setTimeout> | null = null
 let syncGeneration = 0
+let completionRevision = 0
 let syncPhase: 'idle' | 'starting' | 'running' = 'idle'
 
 function emitChange() {
@@ -57,7 +69,10 @@ function clearRetryTimer() {
   retryTimer = null
 }
 
-function flowFromState(state: SetupStateResponse): SetupFlow {
+function flowFromState(
+  state: SetupStateResponse,
+  completion: SetupCompletion | null = null
+): SetupFlow {
   if (state.currentInvitation) {
     return {
       kind: 'invitation_pending',
@@ -66,7 +81,7 @@ function flowFromState(state: SetupStateResponse): SetupFlow {
     }
   }
   if (state.hasCompleted) {
-    return { kind: 'completed', deviceName: state.deviceName }
+    return { kind: 'completed', deviceName: state.deviceName, completion }
   }
   return { kind: 'entry' }
 }
@@ -79,6 +94,7 @@ function update(flow: SetupFlow, hydrated = true) {
 function applyInvitationIssued(event: SetupInvitationIssuedEvent) {
   // Sponsor issued a new invitation — switch to the show-code screen even if
   // we previously thought we were in `completed` state.
+  completionRevision += 1
   update({ kind: 'invitation_pending', code: event.code, expiresAtMs: event.expiresAtMs })
 }
 
@@ -89,19 +105,32 @@ function applyInvitationRevoked(_event: SetupInvitationRevokedEvent) {
   void refreshFromServer()
 }
 
-function applyPairingCompleted(_event: SetupPairingCompletedEvent) {
+function applyPairingCompleted(event: SetupPairingCompletedEvent) {
   // Either side finished a handshake. The sponsor's invitation is now
   // consumed; `hasCompleted` may have flipped on the joiner. Refresh the
   // authoritative state from the server.
-  void refreshFromServer()
+  if (!event.success) return
+  const completion =
+    snapshot.flow.kind === 'completed' && snapshot.flow.completion
+      ? snapshot.flow.completion
+      : { role: 'sponsor' as const }
+  void refreshFromServer(completion)
 }
 
-async function refreshFromServer() {
+async function refreshFromServer(completion: SetupCompletion | null = null) {
   const generation = syncGeneration
+  const revision = completionRevision
   try {
     const next = await getSetupState()
     if (generation !== syncGeneration) return
-    update(flowFromState(next))
+    const completionChangedWhileLoading = completionRevision !== revision
+    let latestCompletion = completion
+    if (completionChangedWhileLoading) {
+      latestCompletion = snapshot.flow.kind === 'completed' ? snapshot.flow.completion : null
+    } else if (snapshot.flow.kind === 'completed' && snapshot.flow.completion) {
+      latestCompletion = snapshot.flow.completion
+    }
+    update(flowFromState(next, latestCompletion))
   } catch (err) {
     if (err instanceof SetupV2Error) {
       log.warn({ kind: err.kind, raw: err.raw }, 'failed to refresh setup state')
@@ -181,8 +210,19 @@ export async function ensureSetupRealtimeSync(): Promise<void> {
  * `redeemInvitation`, `cancelInvitation`, or `resetSetup` so the UI
  * reflects the change before the (possibly slower) ws roundtrip lands.
  */
-export function applyServerSetupState(state: SetupStateResponse) {
-  update(flowFromState(state))
+export function applyServerSetupState(
+  state: SetupStateResponse,
+  completion: SetupCompletion | null = null
+) {
+  completionRevision += 1
+  update(flowFromState(state, completion))
+}
+
+/** Close the transient completion summary without changing completed setup state. */
+export function acknowledgeSetupCompletion() {
+  if (snapshot.flow.kind !== 'completed' || snapshot.flow.completion === null) return
+  completionRevision += 1
+  update({ ...snapshot.flow, completion: null })
 }
 
 /** Force a `GET /v2/setup/state` refresh from page code. */

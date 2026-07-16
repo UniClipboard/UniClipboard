@@ -211,6 +211,25 @@ async fn run_arm(
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "load benchmark: ~60s and saturates cores; run explicitly with --ignored --nocapture"]
 async fn healthz_load_vs_sync_clipboard_json() {
+    // Bail before spending 60s producing nothing. `process_cpu_seconds` has no
+    // non-Unix implementation, so every CPU figure would be NaN — and the final
+    // assertion, comparing NaN against NaN, fails with a message blaming a
+    // regression in /healthz. A misleading diagnosis is worse than no run, so
+    // say plainly what is missing instead.
+    //
+    // This is a runtime `cfg!` rather than `#[cfg(unix)]` on the test: gating
+    // the attribute would leave `run_arm` and `ArmResult` dead on Windows and
+    // trade this problem for a wall of warnings.
+    if cfg!(not(unix)) {
+        println!(
+            "\n=== mobile LAN /healthz load benchmark ===\n\
+             SKIPPED on {}: CPU accounting needs getrusage(2), which this\n\
+             benchmark only implements for Unix. Run it on macOS or Linux.",
+            std::env::consts::OS,
+        );
+        return;
+    }
+
     println!(
         "\n=== mobile LAN /healthz load benchmark ===\n\
          host          : {} / {} logical cores\n\

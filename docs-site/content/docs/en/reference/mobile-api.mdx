@@ -10,14 +10,24 @@ SyncClipboard client — can read and push clipboard items.
 All endpoints are mounted at the **root path**. The main SyncClipboard paths are
 `/SyncClipboard.json` and `/file/{dataName}`; Android-compatible clients may also
 call `/api/history/*`, `/api/time`, `/api/version`, `/version`, `/`, and `/file`.
-There is also a UniClipboard **private extension**, `GET /api/sse/clipboard`
-(Server-Sent Events): it pushes a signal to subscribed clients whenever the
-desktop clipboard changes, and the client then pulls `GET /SyncClipboard.json`,
-replacing periodic polling. It is not part of the SyncClipboard protocol and
-third-party clients can ignore it.
+There are also two UniClipboard **private extensions**. Neither is part of the
+SyncClipboard protocol, and third-party clients can ignore both:
 
-Every endpoint requires **HTTP Basic Authentication**. Credentials are minted on
-the desktop side during pairing and are bound to a single registered device.
+- `GET /api/sse/clipboard` (Server-Sent Events): pushes a signal to subscribed
+  clients whenever the desktop clipboard changes; the client then pulls
+  `GET /SyncClipboard.json`, replacing periodic polling.
+- `GET /healthz`: a constant-cost liveness probe, so a client that has gone
+  offline can discover when the listener is reachable again.
+
+Every endpoint requires **HTTP Basic Authentication** except `GET /healthz`.
+Credentials are minted on the desktop side during pairing and are bound to a
+single registered device.
+
+`GET /healthz` is public by design: it returns an empty `204` with no version,
+device, username, or clipboard information — revealing only that a listener
+answers at this address, which a TCP connect already reveals. Requiring
+credentials would instead mean running an Argon2id verification on every probe,
+which is the abuse vector rather than a defense against it.
 
 <Callout type="info">
   This API is the **mobile companion** path. It is independent of the iroh P2P transport that
@@ -47,6 +57,7 @@ SyncClipboard history server.
 | `PATCH /api/history/{type}/{hash}`, `DELETE /api/history/clear`, `DELETE /file` | Compatibility-only. These requests are accepted so clients can continue their flow, but UniClipboard does not persist starred, pinned, deleted, clear, or folder-delete state through them. |
 | `GET /api/time`, `GET /api/version`, `GET /version`, `/`                        | Probe endpoints used by clients to confirm that the server is reachable.                                                                                                                    |
 | `GET /api/sse/clipboard`                                                        | UniClipboard-private push extension (SSE). Carries change signals only, never content; not part of the SyncClipboard protocol.                                                              |
+| `GET /healthz`                                                                  | UniClipboard-private liveness probe. Public and constant-cost; not part of the SyncClipboard protocol, so older servers return `404`.                                                       |
 
 ## Upload behavior
 
@@ -69,6 +80,7 @@ misreported as text or generic files.
 <APIPage
   document="./openapi/mobile-lan.yaml"
   operations={[
+    { path: '/healthz', method: 'get' },
     { path: '/', method: 'get' },
     { path: '/api/time', method: 'get' },
     { path: '/api/version', method: 'get' },

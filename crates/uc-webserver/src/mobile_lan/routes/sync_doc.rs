@@ -143,7 +143,8 @@ pub(super) struct SyncClipboardPutAck {
 fn put_ack_content_id(outcome: &ApplyIncomingMobileClipOutcome) -> Option<String> {
     match outcome {
         ApplyIncomingMobileClipOutcome::Applied { content_id, .. } => Some(content_id.clone()),
-        ApplyIncomingMobileClipOutcome::DuplicateSkipped { snapshot_hash, .. } => {
+        ApplyIncomingMobileClipOutcome::Resurfaced { snapshot_hash, .. }
+        | ApplyIncomingMobileClipOutcome::DuplicateSkipped { snapshot_hash, .. } => {
             Some(snapshot_hash.clone())
         }
         ApplyIncomingMobileClipOutcome::DecodeFailed { .. }

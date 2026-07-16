@@ -4,9 +4,16 @@
 //! ## Flow
 //!
 //! 1. **Dedup short-circuit**: if `snapshot_hash` already exists in the
-//!    local `clipboard_event` table, return `DuplicateSkipped`. Skips
-//!    persist + OS-clipboard write — Phase 3 acceptance #4 guarantees a
-//!    repeat copy from a peer doesn't double-write the user's clipboard.
+//!    local `clipboard_event` table as a *fully-held* entry, the payload is
+//!    already ours — skip the download and the duplicate row, but still
+//!    **re-activate** it (`Resurfaced`): rebuild the snapshot from the local
+//!    entry, write it to the OS clipboard, advance the register, and bump it
+//!    to the top of history. "This content exists in history" is not the same
+//!    claim as "the OS clipboard currently holds it": a peer re-copying an
+//!    older clip (A → B → A) must still land on the user's pasteboard.
+//!    Genuinely redundant deliveries — a re-push inside the sub-second
+//!    [`timing`] windows, or a partial superseding a partial — stay
+//!    `DuplicateSkipped` (no OS write).
 //! 2. **Envelope decode**: V3 → `SystemClipboardSnapshot`. Decode failure
 //!    is non-fatal (`DecodeFailed` outcome) — corrupted payloads from a
 //!    misbehaving peer don't crash the daemon's ingest loop.
@@ -59,6 +66,8 @@ use thiserror::Error;
 use uc_core::ids::{DeviceId, EntryId};
 use uc_observability::FlowId;
 
+use crate::clipboard_write::ClipboardWriteIntent;
+
 mod materializer;
 mod ports;
 mod timing;
@@ -72,7 +81,7 @@ pub use materializer::{
     FileCacheBlobMaterializer, InboundBlobFetcher, InboundBlobMaterializer, InboundFileSetManifest,
     InboundFileSetMember,
 };
-pub use ports::{InboundCapture, InboundWrite};
+pub use ports::{InboundCapture, InboundSnapshotRebuild, InboundWrite};
 pub use usecase::ApplyInboundClipboardUseCase;
 
 /// Caller-supplied input mapped from the facade's public `InboundNotice`.
@@ -86,17 +95,53 @@ pub struct ApplyInboundInput {
     pub snapshot_hash: String,
     pub plaintext: Bytes,
     pub flow_id: Option<FlowId>,
+    /// Write intent for the [`ApplyOutcome::Resurfaced`] branch only — the
+    /// fresh-content branch always writes as `RemotePush`.
+    ///
+    /// The two inbound channels re-activate held content under different
+    /// identities, and the intent is what encodes that difference to the
+    /// watcher (see [`ClipboardWriteIntent`]):
+    ///
+    /// * **P2P bulk sync** → `RemotePush`. The sending peer already broadcast
+    ///   this clip to the whole space, so the watcher must short-circuit on our
+    ///   own write rather than re-dispatch it (loop defence).
+    /// * **Mobile LAN sync** → `LocalRestore`. The phone reached exactly one
+    ///   desktop; this device is the one activating the content, so the watcher
+    ///   is expected to pick the write up and propagate it to the remaining
+    ///   desktops.
+    ///
+    /// [`ClipboardWriteIntent`]: crate::clipboard_write::ClipboardWriteIntent
+    pub resurface_intent: ClipboardWriteIntent,
 }
 
 /// Result of one `execute` call. Daemon's worker maps each variant to a
-/// distinct telemetry path (WS event for `Applied`, debug log for
-/// `DuplicateSkipped`, warn log for `DecodeFailed`).
+/// distinct telemetry path (WS event for `Applied` / `Resurfaced`, debug log
+/// for `DuplicateSkipped`, warn log for `DecodeFailed`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ApplyOutcome {
     /// New content — persisted + OS clipboard written. WS event fires.
     Applied { entry_id: EntryId },
-    /// `snapshot_hash` was already present in the local DB. No persist,
+    /// `snapshot_hash` matched a fully-held local entry: no download and no
+    /// new row, but the entry was re-activated — OS clipboard written under
+    /// [`ApplyInboundInput::resurface_intent`], register advanced, entry
+    /// bumped to the top of history. WS event fires.
+    Resurfaced {
+        snapshot_hash: String,
+        existing_entry_id: EntryId,
+        /// Whether the OS clipboard write succeeded. `false` means the content
+        /// is still held locally and still surfaced in history, but the
+        /// pasteboard was left untouched — so the register was **not** advanced
+        /// either. Callers that converge peers off this activation must treat
+        /// `false` as "do not propagate": broadcasting it would pin peers to an
+        /// activation this device does not actually hold.
+        os_write_succeeded: bool,
+    },
+    /// Delivery carried nothing to act on — a re-push inside the sub-second
+    /// dedup windows, or a partial superseding an existing partial. No persist,
     /// no OS write, no WS event.
+    ///
+    /// This is **not** the "peer re-copied an older clip" case; that resolves
+    /// to [`Self::Resurfaced`].
     DuplicateSkipped {
         snapshot_hash: String,
         existing_entry_id: EntryId,

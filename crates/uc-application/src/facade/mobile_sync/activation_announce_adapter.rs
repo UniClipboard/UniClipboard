@@ -7,16 +7,12 @@
 //! `ApplyIncomingMobileClipUseCase` 通过 [`MobileActivationAnnouncePort`]
 //! 这层薄抽象与"如何收敛一次本设备激活"解耦 ——
 //!
-//! - **测试时**: fake 实现直接 record 调用, 不必拉真实 coordinator /
-//!   register / dispatch;
-//! - **生产时**: 本 adapter 承担两件事:
-//!   1. duplicate 命中时, 用这次上传的 snapshot 把内容写回系统剪贴板
-//!      (`ClipboardWriteCoordinator`, `LocalRestore` intent —— 同本机
-//!      restore 一样的写回环防御);new 内容由入站管线写过, 跳过这步;
-//!   2. 不论新旧, 都委托 [`ActiveClipboardFacade::announce_local_activation`]
-//!      盖本设备激活戳 (`activated_by = self`, `activated_at_ms = now`)、
-//!      前进跨设备 register、按 per-device send 闸门 (`send_enabled` ∧
-//!      `send_content_types`) 广播 0xC3 state。
+//! - **测试时**: fake 实现直接 record 调用, 不必拉真实 register / dispatch;
+//! - **生产时**: 本 adapter 委托
+//!   [`ActiveClipboardFacade::announce_local_activation`] 盖本设备激活戳
+//!   (`activated_by = self`, `activated_at_ms = now`)、前进跨设备 register、
+//!   按 per-device send 闸门 (`send_enabled` ∧ `send_content_types`) 广播
+//!   0xC3 state。
 //!
 //! # 闸门
 //!
@@ -25,30 +21,25 @@
 //!
 //! # OS-write coupling (issue #1017 §1 invariant)
 //!
-//! `announce_local_activation` internally degrades best-effort on
-//! register / dispatch failure. The OS re-write on the `announce_duplicate`
-//! path, however, is part of the core invariant
-//! (register-advance <=> OS-write-success <=> re-broadcast): if it fails
-//! (e.g. the write coordinator's circuit breaker is open), the converge is
-//! skipped so this device cannot pin peers to a phantom activation it does not
-//! actually hold. The failure is `warn!`-logged but never propagated to the
-//! use case — the mobile upload's success depends only on the inbound
-//! pipeline, and convergence is after-the-fact propagation. `announce_new`
-//! does not re-write (the inbound pipeline already wrote the OS clipboard), so
-//! it converges unconditionally.
+//! 不变式 (register-advance <=> OS-write-success <=> re-broadcast) 依然成立,
+//! 但本 adapter 不再是它的执行点: 系统剪贴板由入站管线统一写(新内容走落库
+//! 后的后台写, 已有内容走 dedup 命中的重激活写), 调用方
+//! `ApplyIncomingMobileClipUseCase::maybe_announce_activation` 只在那次写
+//! 确认落地后才调到这里。因此本 adapter 无条件收敛, 不持写边界 ——
+//! 写失败的情况在调用方就被挡掉了。
+//!
+//! `announce_local_activation` 内部对 register / dispatch 失败仍是
+//! best-effort 降级。
 //!
 //! [`MobileActivationAnnouncePort`]: crate::usecases::mobile_sync::apply_incoming::MobileActivationAnnouncePort
 //! [`ActiveClipboardFacade`]: crate::facade::active_clipboard::ActiveClipboardFacade
 
 use std::sync::Arc;
 
-use tracing::warn;
-
 use uc_core::clipboard::ClipboardContentCategorySet;
 use uc_core::ids::EntryId;
 use uc_core::SystemClipboardSnapshot;
 
-use crate::clipboard_write::{ClipboardWriteCoordinator, ClipboardWriteIntent};
 use crate::facade::active_clipboard::ActiveClipboardFacade;
 use crate::usecases::mobile_sync::apply_incoming::MobileActivationAnnouncePort;
 
@@ -56,10 +47,9 @@ use crate::usecases::mobile_sync::apply_incoming::MobileActivationAnnouncePort;
 /// a local activation, advance the cross-device register, and fan the 0xC3
 /// state out under the per-device send gate.
 ///
-/// Existing only so the adapter's OS-write gating (`announce_duplicate`) can be
-/// unit-tested without standing up the full active-clipboard facade (~25
-/// ports). Production binds this to the real facade; tests bind a spy that
-/// records whether convergence ran.
+/// Existing so the adapter can be unit-tested without standing up the full
+/// active-clipboard facade (~25 ports). Production binds this to the real
+/// facade; tests bind a spy that records whether convergence ran.
 #[async_trait::async_trait]
 pub(crate) trait LocalActivationConverge: Send + Sync {
     async fn announce_local_activation(
@@ -86,142 +76,63 @@ impl LocalActivationConverge for ActiveClipboardFacade {
 }
 
 pub(crate) struct MobileActivationAnnounceAdapter {
-    coordinator: Arc<ClipboardWriteCoordinator>,
     active_clipboard: Arc<dyn LocalActivationConverge>,
 }
 
 impl MobileActivationAnnounceAdapter {
-    pub(crate) fn new(
-        coordinator: Arc<ClipboardWriteCoordinator>,
-        active_clipboard: Arc<dyn LocalActivationConverge>,
-    ) -> Self {
-        Self {
-            coordinator,
-            active_clipboard,
-        }
-    }
-
-    /// Derive the cross-device activation key + content category set from the
-    /// snapshot, then advance the register and fan the 0xC3 state out under the
-    /// per-device send gate. Shared tail of both `announce_*` paths.
-    async fn converge(&self, entry_id: EntryId, snapshot: &SystemClipboardSnapshot) {
-        let snapshot_hash = snapshot.snapshot_hash().to_string();
-        let categories = ClipboardContentCategorySet::from_snapshot(snapshot);
-        self.active_clipboard
-            .announce_local_activation(snapshot_hash, entry_id, categories)
-            .await;
+    pub(crate) fn new(active_clipboard: Arc<dyn LocalActivationConverge>) -> Self {
+        Self { active_clipboard }
     }
 }
 
 #[async_trait::async_trait]
 impl MobileActivationAnnouncePort for MobileActivationAnnounceAdapter {
     async fn announce_new(&self, entry_id: EntryId, snapshot: SystemClipboardSnapshot) {
-        // Inbound apply already wrote the OS clipboard; only converge peers.
-        self.converge(entry_id, &snapshot).await;
-    }
-
-    async fn announce_duplicate(&self, entry_id: EntryId, snapshot: SystemClipboardSnapshot) {
-        // Content already held locally, but the OS clipboard may have been
-        // overwritten by later copies. Re-write this upload's snapshot so the
-        // user's next paste yields it, then converge peers like a new push.
-        //
-        // Invariant (issue #1017 §1): register-advance <=> OS-write-success <=>
-        // re-broadcast. If the re-write fails (e.g. the coordinator's circuit
-        // breaker is open), skip the converge — otherwise this device would
-        // stamp a high LWW ts and broadcast a 0xC3 state for content its OS
-        // clipboard does not actually hold, pinning peers to a phantom
-        // activation. The mobile upload itself already succeeded; convergence
-        // is best-effort after-the-fact propagation, so dropping it here is
-        // safe.
-        if let Err(err) = self
-            .coordinator
-            .write(snapshot.clone(), ClipboardWriteIntent::LocalRestore)
-            .await
-        {
-            warn!(
-                entry_id = %entry_id,
-                error = %err,
-                "mobile_sync duplicate announce: OS clipboard re-write failed; \
-                 skipping register advance + 0xC3 fan-out"
-            );
-            return;
-        }
-        self.converge(entry_id, &snapshot).await;
+        // The inbound pipeline owns the OS write for both new and re-activated
+        // content, and the use case only calls this once that write is known to
+        // have landed — so converging here upholds the issue #1017 §1 invariant
+        // (register-advance <=> OS-write-success <=> re-broadcast) without
+        // needing to touch the clipboard itself.
+        let snapshot_hash = snapshot.snapshot_hash().to_string();
+        let categories = ClipboardContentCategorySet::from_snapshot(&snapshot);
+        self.active_clipboard
+            .announce_local_activation(snapshot_hash, entry_id, categories)
+            .await;
     }
 }
 
 #[cfg(test)]
 mod tests {
-    //! `announce_duplicate` must honour the issue #1017 §1 invariant: a failed
-    //! OS re-write must NOT advance the register / broadcast 0xC3. The seam
-    //! trait lets us assert that with a trivially-failing write coordinator.
+    //! The adapter is now a thin converge seam: the OS write lives in the
+    //! inbound pipeline, and the issue #1017 §1 gate (skip convergence when
+    //! that write failed) is enforced by the caller in
+    //! `ApplyIncomingMobileClipUseCase::maybe_announce_activation`.
     use super::*;
 
     use std::sync::atomic::{AtomicUsize, Ordering};
-    use std::time::Duration;
 
     use async_trait::async_trait;
 
-    use uc_core::clipboard::ClipboardChangeOrigin;
     use uc_core::ids::{FormatId, RepresentationId};
-    use uc_core::ports::clipboard::{
-        SelfWriteAttribution, SelfWriteLedgerPort, SelfWriteMatch, SystemClipboardPort,
-    };
     use uc_core::{MimeType, ObservedClipboardRepresentation};
 
     /// Records how many times convergence (register advance + 0xC3 fan-out) ran.
     #[derive(Default)]
     struct SpyConverge {
         calls: AtomicUsize,
+        last_hash: std::sync::Mutex<Option<String>>,
     }
 
     #[async_trait]
     impl LocalActivationConverge for SpyConverge {
         async fn announce_local_activation(
             &self,
-            _snapshot_hash: String,
+            snapshot_hash: String,
             _entry_id: EntryId,
             _categories: ClipboardContentCategorySet,
         ) {
             self.calls.fetch_add(1, Ordering::SeqCst);
-        }
-    }
-
-    /// System clipboard whose write outcome is fixed at construction.
-    struct FixedWriter {
-        write_ok: bool,
-    }
-
-    impl SystemClipboardPort for FixedWriter {
-        fn read_snapshot(&self) -> anyhow::Result<SystemClipboardSnapshot> {
-            unreachable!("the announce adapter never reads the OS clipboard")
-        }
-
-        fn write_snapshot(&self, _snapshot: SystemClipboardSnapshot) -> anyhow::Result<()> {
-            if self.write_ok {
-                Ok(())
-            } else {
-                Err(anyhow::anyhow!("simulated OS clipboard write failure"))
-            }
-        }
-    }
-
-    /// Origin guard port with no behaviour — the coordinator drives it but its
-    /// calls are irrelevant to this test.
-    struct NoopOrigin;
-
-    #[async_trait]
-    impl SelfWriteLedgerPort for NoopOrigin {
-        async fn record_self_write(
-            &self,
-            _matching: SelfWriteMatch,
-            _attribution: SelfWriteAttribution,
-            _ttl: Duration,
-        ) {
-        }
-
-        async fn attribute_observed_change(&self, _snapshot_hash: &str) -> ClipboardChangeOrigin {
-            ClipboardChangeOrigin::LocalCapture
+            *self.last_hash.lock().unwrap() = Some(snapshot_hash);
         }
     }
 
@@ -239,59 +150,20 @@ mod tests {
         }
     }
 
-    fn adapter_with(write_ok: bool, spy: Arc<SpyConverge>) -> MobileActivationAnnounceAdapter {
-        let coordinator = Arc::new(ClipboardWriteCoordinator::new(
-            Arc::new(FixedWriter { write_ok }),
-            Arc::new(NoopOrigin),
-        ));
-        MobileActivationAnnounceAdapter::new(coordinator, spy)
-    }
-
     #[tokio::test]
-    async fn duplicate_skips_converge_when_os_write_fails() {
+    async fn announce_converges_once_under_the_snapshot_identity() {
         let spy = Arc::new(SpyConverge::default());
-        let adapter = adapter_with(false, spy.clone());
+        let adapter = MobileActivationAnnounceAdapter::new(spy.clone());
+        let snapshot = text_snapshot();
+        let expected_hash = snapshot.snapshot_hash().to_string();
 
-        adapter
-            .announce_duplicate(EntryId::new(), text_snapshot())
-            .await;
+        adapter.announce_new(EntryId::new(), snapshot).await;
 
+        assert_eq!(spy.calls.load(Ordering::SeqCst), 1);
         assert_eq!(
-            spy.calls.load(Ordering::SeqCst),
-            0,
-            "failed OS re-write must not advance the register or broadcast 0xC3"
-        );
-    }
-
-    #[tokio::test]
-    async fn duplicate_converges_once_when_os_write_succeeds() {
-        let spy = Arc::new(SpyConverge::default());
-        let adapter = adapter_with(true, spy.clone());
-
-        adapter
-            .announce_duplicate(EntryId::new(), text_snapshot())
-            .await;
-
-        assert_eq!(
-            spy.calls.load(Ordering::SeqCst),
-            1,
-            "successful OS re-write must converge exactly once"
-        );
-    }
-
-    #[tokio::test]
-    async fn new_converges_unconditionally_without_os_write() {
-        // announce_new does not re-write the OS clipboard (the inbound pipeline
-        // already did), so a failing writer must not affect it.
-        let spy = Arc::new(SpyConverge::default());
-        let adapter = adapter_with(false, spy.clone());
-
-        adapter.announce_new(EntryId::new(), text_snapshot()).await;
-
-        assert_eq!(
-            spy.calls.load(Ordering::SeqCst),
-            1,
-            "announce_new converges once, independent of any OS write"
+            spy.last_hash.lock().unwrap().as_deref(),
+            Some(expected_hash.as_str()),
+            "convergence must key off the snapshot's own identity"
         );
     }
 }

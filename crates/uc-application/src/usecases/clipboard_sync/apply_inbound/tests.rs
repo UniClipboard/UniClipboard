@@ -10,6 +10,7 @@ use tracing_subscriber::layer::{Context, Layer};
 use tracing_subscriber::prelude::*;
 use tracing_subscriber::registry::LookupSpan;
 
+use crate::clipboard_write::ClipboardWriteIntent;
 use crate::facade::host_event::{
     ClipboardHostEvent, ClipboardOriginKind, EmitError, HostEvent, HostEventBus,
     HostEventEmitterPort,
@@ -18,7 +19,7 @@ use crate::facade::host_event::{
 use uc_core::clipboard::ClipboardRepositoryError;
 use uc_core::ids::{DeviceId, EntryId, FormatId, RepresentationId};
 use uc_core::ports::blob::{BlobDigest, BlobTicket, PlaintextHash};
-use uc_core::ports::clipboard::FindEntryIdBySnapshotHashPort;
+use uc_core::ports::clipboard::{FindEntryIdBySnapshotHashPort, TouchClipboardEntryPort};
 use uc_core::{MimeType, ObservedClipboardRepresentation, SystemClipboardSnapshot};
 use uc_observability::FlowId;
 
@@ -32,7 +33,7 @@ use super::materializer::{
     InboundBlobMaterializer, InboundFileSetManifest, InboundFileSetMember, MaterializeResult,
     RootRenamer,
 };
-use super::ports::{InboundCapture, InboundWrite};
+use super::ports::{InboundCapture, InboundSnapshotRebuild, InboundWrite};
 use super::usecase::verify_file_set_identity;
 use super::usecase::ApplyInboundClipboardUseCase;
 use super::{ApplyInboundError, ApplyInboundInput, ApplyOutcome};
@@ -126,7 +127,27 @@ mockall::mock! {
     pub Write {}
     #[async_trait]
     impl InboundWrite for Write {
-        async fn write(&self, snapshot: SystemClipboardSnapshot) -> Result<()>;
+        async fn write(&self, snapshot: SystemClipboardSnapshot, intent: ClipboardWriteIntent) -> Result<()>;
+    }
+}
+
+mockall::mock! {
+    pub SnapshotRebuild {}
+    #[async_trait]
+    impl InboundSnapshotRebuild for SnapshotRebuild {
+        async fn rebuild(&self, entry_id: &EntryId) -> Result<SystemClipboardSnapshot>;
+    }
+}
+
+mockall::mock! {
+    pub TouchEntry {}
+    #[async_trait]
+    impl TouchClipboardEntryPort for TouchEntry {
+        async fn touch_entry(
+            &self,
+            entry_id: &EntryId,
+            active_time_ms: i64,
+        ) -> std::result::Result<bool, ClipboardRepositoryError>;
     }
 }
 
@@ -188,6 +209,7 @@ fn fixture_input(text: &str) -> (ApplyInboundInput, String) {
             snapshot_hash: snapshot_hash.clone(),
             plaintext,
             flow_id: None,
+            resurface_intent: ClipboardWriteIntent::RemotePush,
         },
         snapshot_hash,
     )
@@ -215,6 +237,7 @@ fn fixture_input_from_snapshot(snapshot: SystemClipboardSnapshot) -> (ApplyInbou
             snapshot_hash: snapshot_hash.clone(),
             plaintext,
             flow_id: None,
+            resurface_intent: ClipboardWriteIntent::RemotePush,
         },
         snapshot_hash,
     )
@@ -299,7 +322,7 @@ async fn applied_on_new_content() {
         .returning(|_, _, _| Ok(Some(EntryId::from("entry-new"))));
 
     let mut write = MockWrite::new();
-    write.expect_write().times(1).returning(|_| Ok(()));
+    write.expect_write().times(1).returning(|_, _| Ok(()));
 
     let uc = build(repo, capture, write);
     let outcome = uc.execute(input).await.expect("happy path returns ok");
@@ -334,18 +357,17 @@ async fn from_device_is_forwarded_to_capture() {
         .returning(|_, _, _| Ok(Some(EntryId::from("entry-remote"))));
 
     let mut write = MockWrite::new();
-    write.expect_write().times(1).returning(|_| Ok(()));
+    write.expect_write().times(1).returning(|_, _| Ok(()));
 
     let uc = build(repo, capture, write);
     uc.execute(input).await.expect("forwarding path ok");
 }
 
-/// Verdict 2 — dedup hit: returns `DuplicateSkipped` and **does
-/// not** call capture or write. Critical correctness property —
-/// repeated dispatches from a peer must not double-write the user's
-/// OS clipboard (Phase 3 acceptance #4).
+/// Store-only paths (pull / CLI) leave resurface unwired: a dedup hit then
+/// degrades to the plain skip — no capture, no write. Their write port is a
+/// no-op anyway, and the pull path's convergence tail owns the real OS write.
 #[tokio::test]
-async fn duplicate_skipped_when_hash_already_local() {
+async fn dedup_hit_skips_when_resurface_is_unwired() {
     let (input, hash) = fixture_input("already-here");
 
     let mut repo = MockEntryRepo::new();
@@ -387,7 +409,7 @@ async fn rapid_duplicate_skipped_even_when_repo_has_not_caught_up() {
         .returning(|_, _, _| Ok(Some(EntryId::from("entry-first"))));
 
     let mut write = MockWrite::new();
-    write.expect_write().times(1).returning(|_| Ok(()));
+    write.expect_write().times(1).returning(|_, _| Ok(()));
 
     let uc = build(repo, capture, write);
     let first = uc
@@ -469,7 +491,7 @@ async fn visible_duplicate_skipped_across_channel_representation_expansion() {
         .returning(|_, _, _| Ok(Some(EntryId::from("entry-visible"))));
 
     let mut write = MockWrite::new();
-    write.expect_write().times(1).returning(|_| Ok(()));
+    write.expect_write().times(1).returning(|_, _| Ok(()));
 
     let uc = build(repo, capture, write);
     let first = uc
@@ -537,7 +559,7 @@ async fn visible_duplicate_window_expires() {
         .returning(|_, _, _| Ok(Some(EntryId::new())));
 
     let mut write = MockWrite::new();
-    write.expect_write().times(2).returning(|_| Ok(()));
+    write.expect_write().times(2).returning(|_, _| Ok(()));
 
     let uc = build(repo, capture, write);
     assert!(
@@ -568,6 +590,7 @@ async fn decode_failed_on_truncated_envelope() {
         snapshot_hash: "blake3v1:00".to_string(),
         plaintext: Bytes::from_static(b"not a valid V3 envelope"),
         flow_id: None,
+        resurface_intent: ClipboardWriteIntent::RemotePush,
     };
 
     let mut repo = MockEntryRepo::new();
@@ -600,6 +623,7 @@ async fn execute_records_incoming_flow_id_on_span() {
         snapshot_hash: "blake3v1:11".to_string(),
         plaintext: Bytes::from_static(b"not a valid V3 envelope"),
         flow_id: Some(incoming_flow_id.clone()),
+        resurface_intent: ClipboardWriteIntent::RemotePush,
     };
 
     let mut repo = MockEntryRepo::new();
@@ -697,7 +721,7 @@ async fn write_failure_does_not_surface_after_capture_commits() {
     let tx_for_mock = std::sync::Arc::clone(&tx);
 
     let mut write = MockWrite::new();
-    write.expect_write().times(1).returning(move |_| {
+    write.expect_write().times(1).returning(move |_, _| {
         if let Some(tx) = tx_for_mock.lock().unwrap_or_else(|p| p.into_inner()).take() {
             let _ = tx.send(());
         }
@@ -772,6 +796,7 @@ async fn materializes_blob_refs_before_capture_and_write() {
         snapshot_hash: snapshot_hash.clone(),
         plaintext,
         flow_id: None,
+        resurface_intent: ClipboardWriteIntent::RemotePush,
     };
 
     let mut repo = MockEntryRepo::new();
@@ -812,9 +837,9 @@ async fn materializes_blob_refs_before_capture_and_write() {
     let mut write = MockWrite::new();
     write
         .expect_write()
-        .withf(move |snapshot| assert_local_file(snapshot))
+        .withf(move |snapshot, _| assert_local_file(snapshot))
         .times(1)
-        .returning(|_| Ok(()));
+        .returning(|_, _| Ok(()));
 
     let uc = build_with_blob_materializer(repo, capture, write, materializer);
     let outcome = uc.execute(input).await.expect("blob materialize path ok");
@@ -861,6 +886,7 @@ async fn partial_materialize_persists_entry_but_skips_os_write() {
         snapshot_hash,
         plaintext,
         flow_id: None,
+        resurface_intent: ClipboardWriteIntent::RemotePush,
     };
 
     let mut repo = MockEntryRepo::new();
@@ -946,12 +972,14 @@ async fn partial_materialize_does_not_register_dedup_entry() {
         snapshot_hash: snapshot_hash.clone(),
         plaintext: plaintext.clone(),
         flow_id: None,
+        resurface_intent: ClipboardWriteIntent::RemotePush,
     };
     let input2 = ApplyInboundInput {
         from_device: DeviceId::new("peer-sender"),
         snapshot_hash,
         plaintext,
         flow_id: None,
+        resurface_intent: ClipboardWriteIntent::RemotePush,
     };
 
     let mut repo = MockEntryRepo::new();
@@ -999,7 +1027,7 @@ async fn partial_materialize_does_not_register_dedup_entry() {
 
     // OS write 只发生在第二次(complete)。
     let mut write = MockWrite::new();
-    write.expect_write().times(1).returning(|_| Ok(()));
+    write.expect_write().times(1).returning(|_, _| Ok(()));
 
     let uc = build_with_blob_materializer(repo, capture, write, materializer);
 
@@ -1444,10 +1472,10 @@ async fn apply_inbound_materializes_and_commits_mixed_directory_payload() {
     write
         .expect_write()
         .times(1)
-        .withf(snapshot_paths_exist)
+        .withf(|s, _| snapshot_paths_exist(s))
         .returning({
             let write_completed = Arc::clone(&write_completed);
-            move |_| {
+            move |_, _| {
                 write_completed.notify_one();
                 Ok(())
             }
@@ -1463,6 +1491,7 @@ async fn apply_inbound_materializes_and_commits_mixed_directory_payload() {
             snapshot_hash,
             plaintext,
             flow_id: None,
+            resurface_intent: ClipboardWriteIntent::RemotePush,
         })
         .await
         .expect("directory payload should apply");
@@ -2338,7 +2367,7 @@ async fn happy_path_emits_incoming_pending_then_new_content() {
         .returning(|preset, _, _| Ok(Some(preset)));
 
     let mut write = MockWrite::new();
-    write.expect_write().times(1).returning(|_| Ok(()));
+    write.expect_write().times(1).returning(|_, _| Ok(()));
 
     let (uc, recorder) = build_with_recording_emitter(repo, capture, write);
     let outcome = uc.execute(input).await.expect("happy path");
@@ -2431,6 +2460,7 @@ fn file_blob_input() -> ApplyInboundInput {
         snapshot_hash,
         plaintext,
         flow_id: None,
+        resurface_intent: ClipboardWriteIntent::RemotePush,
     }
 }
 
@@ -2474,7 +2504,7 @@ async fn partial_match_is_upgraded_in_place_by_complete_delivery() {
         .returning(|preset, _, _| Ok(Some(preset)));
 
     let mut write = MockWrite::new();
-    write.expect_write().times(1).returning(|_| Ok(()));
+    write.expect_write().times(1).returning(|_, _| Ok(()));
 
     let uc = build_with_blob_materializer(repo, capture, write, materializer)
         .with_check_entry_availability(Arc::new(FakeAvailability { available: false }));
@@ -2569,5 +2599,315 @@ async fn partial_delivery_does_not_replace_existing_partial() {
             snapshot_hash: file_blob_input().snapshot_hash,
             existing_entry_id: partial_id,
         }
+    );
+}
+
+// ── resurface: a peer re-copying an older clip ──────────────────────
+//
+// Regression cover for the A → B → A bug: peer copies `abc`, then `xyz`, then
+// `abc` again. The third delivery's content is already held here, so the old
+// code dropped it and left the pasteboard on `xyz` until the periodic
+// active-state broadcast repaired it up to a minute later.
+
+fn resurface_uc(
+    repo: MockEntryRepo,
+    capture: MockCapture,
+    write: MockWrite,
+    rebuild: MockSnapshotRebuild,
+    touch: MockTouchEntry,
+) -> ApplyInboundClipboardUseCase {
+    ApplyInboundClipboardUseCase::new(Arc::new(repo), Arc::new(capture), Arc::new(write))
+        .with_resurface_ports(Arc::new(rebuild), Arc::new(touch))
+}
+
+/// The held entry is rebuilt from local storage and written to the OS
+/// clipboard — never re-downloaded, never duplicated as a new row.
+#[tokio::test]
+async fn dedup_hit_rewrites_held_entry_to_os_clipboard() {
+    let (input, hash) = fixture_input("abc");
+    let existing = EntryId::from("entry-abc");
+
+    let mut repo = MockEntryRepo::new();
+    let existing_for_repo = existing.clone();
+    repo.expect_find_entry_id_by_snapshot_hash()
+        .with(eq(hash.clone()))
+        .times(1)
+        .returning(move |_| Ok(Some(existing_for_repo.clone())));
+
+    // No new row: capture must never be called on this path.
+    let capture = MockCapture::new();
+
+    let mut rebuild = MockSnapshotRebuild::new();
+    let existing_for_rebuild = existing.clone();
+    rebuild
+        .expect_rebuild()
+        .withf(move |id| id == &existing_for_rebuild)
+        .times(1)
+        .returning(|_| {
+            Ok(SystemClipboardSnapshot {
+                // The rebuilt snapshot carries the entry's *original* creation
+                // time — deliberately different from the inbound activation
+                // time asserted below.
+                ts_ms: 1_600_000_000_000,
+                representations: vec![ObservedClipboardRepresentation::new(
+                    RepresentationId::new(),
+                    FormatId::from("text"),
+                    Some(MimeType("text/plain".to_string())),
+                    b"abc".to_vec(),
+                )],
+                file_content_digests: Vec::new(),
+                file_set_v1_component: None,
+            })
+        });
+
+    let mut write = MockWrite::new();
+    write
+        .expect_write()
+        .withf(|snapshot, intent| {
+            *intent == ClipboardWriteIntent::RemotePush
+                && snapshot.representations[0].inline_bytes() == Some(b"abc".as_slice())
+        })
+        .times(1)
+        .returning(|_, _| Ok(()));
+
+    let mut touch = MockTouchEntry::new();
+    touch
+        .expect_touch_entry()
+        .times(1)
+        .returning(|_, _| Ok(true));
+
+    let uc = resurface_uc(repo, capture, write, rebuild, touch);
+    let outcome = uc.execute(input).await.expect("resurface path ok");
+
+    assert_eq!(
+        outcome,
+        ApplyOutcome::Resurfaced {
+            snapshot_hash: hash,
+            existing_entry_id: existing,
+            os_write_succeeded: true,
+        }
+    );
+}
+
+/// The history bump must be stamped with the *inbound* activation time, not the
+/// rebuilt snapshot's `created_at_ms`. Getting this wrong stamps the entry with
+/// when the content was first seen, which loses the LWW comparison against the
+/// clip it is meant to supersede.
+#[tokio::test]
+async fn resurface_stamps_the_inbound_activation_time_not_the_entrys_creation_time() {
+    let (input, _hash) = fixture_input("abc");
+    // `fixture_input` stamps the inbound snapshot with this observation time.
+    let inbound_ts = 1_700_000_000_000i64;
+
+    let mut repo = MockEntryRepo::new();
+    repo.expect_find_entry_id_by_snapshot_hash()
+        .times(1)
+        .returning(|_| Ok(Some(EntryId::from("entry-abc"))));
+
+    let mut rebuild = MockSnapshotRebuild::new();
+    rebuild.expect_rebuild().times(1).returning(|_| {
+        Ok(SystemClipboardSnapshot {
+            ts_ms: 1_600_000_000_000, // entry.created_at_ms — the wrong source
+            representations: vec![ObservedClipboardRepresentation::new(
+                RepresentationId::new(),
+                FormatId::from("text"),
+                Some(MimeType("text/plain".to_string())),
+                b"abc".to_vec(),
+            )],
+            file_content_digests: Vec::new(),
+            file_set_v1_component: None,
+        })
+    });
+
+    let mut write = MockWrite::new();
+    write.expect_write().times(1).returning(|_, _| Ok(()));
+
+    let mut touch = MockTouchEntry::new();
+    touch
+        .expect_touch_entry()
+        .withf(move |_, active_time_ms| *active_time_ms == inbound_ts)
+        .times(1)
+        .returning(|_, _| Ok(true));
+
+    let uc = resurface_uc(repo, MockCapture::new(), write, rebuild, touch);
+    uc.execute(input).await.expect("resurface path ok");
+}
+
+/// A rebuild failure (payload lost / blob gone) must not fabricate an
+/// activation: fall back to the plain skip rather than writing a broken
+/// snapshot to the pasteboard.
+#[tokio::test]
+async fn resurface_degrades_to_skip_when_rebuild_fails() {
+    let (input, hash) = fixture_input("abc");
+
+    let mut repo = MockEntryRepo::new();
+    repo.expect_find_entry_id_by_snapshot_hash()
+        .times(1)
+        .returning(|_| Ok(Some(EntryId::from("entry-abc"))));
+
+    let mut rebuild = MockSnapshotRebuild::new();
+    rebuild
+        .expect_rebuild()
+        .times(1)
+        .returning(|_| Err(anyhow::anyhow!("payload lost")));
+
+    // Nothing may reach the clipboard or history.
+    let write = MockWrite::new();
+    let mut touch = MockTouchEntry::new();
+    touch.expect_touch_entry().never();
+
+    let uc = resurface_uc(repo, MockCapture::new(), write, rebuild, touch);
+    let outcome = uc.execute(input).await.expect("degraded path ok");
+
+    assert_eq!(
+        outcome,
+        ApplyOutcome::DuplicateSkipped {
+            snapshot_hash: hash,
+            existing_entry_id: EntryId::from("entry-abc"),
+        }
+    );
+}
+
+/// A failed OS write reports `os_write_succeeded: false` and skips the history
+/// bump — callers use that flag to avoid broadcasting an activation this device
+/// does not actually hold.
+#[tokio::test]
+async fn resurface_reports_failed_os_write_and_skips_history_bump() {
+    let (input, _hash) = fixture_input("abc");
+
+    let mut repo = MockEntryRepo::new();
+    repo.expect_find_entry_id_by_snapshot_hash()
+        .times(1)
+        .returning(|_| Ok(Some(EntryId::from("entry-abc"))));
+
+    let mut rebuild = MockSnapshotRebuild::new();
+    rebuild.expect_rebuild().times(1).returning(|_| {
+        Ok(SystemClipboardSnapshot {
+            ts_ms: 1,
+            representations: vec![ObservedClipboardRepresentation::new(
+                RepresentationId::new(),
+                FormatId::from("text"),
+                Some(MimeType("text/plain".to_string())),
+                b"abc".to_vec(),
+            )],
+            file_content_digests: Vec::new(),
+            file_set_v1_component: None,
+        })
+    });
+
+    let mut write = MockWrite::new();
+    write
+        .expect_write()
+        .times(1)
+        .returning(|_, _| Err(anyhow::anyhow!("clipboard busy")));
+
+    let mut touch = MockTouchEntry::new();
+    touch.expect_touch_entry().never();
+
+    let uc = resurface_uc(repo, MockCapture::new(), write, rebuild, touch);
+    let outcome = uc.execute(input).await.expect("failed-write path still ok");
+
+    assert!(matches!(
+        outcome,
+        ApplyOutcome::Resurfaced {
+            os_write_succeeded: false,
+            ..
+        }
+    ));
+}
+
+/// A retried frame (or the same clip arriving over a second channel) must not
+/// re-write the pasteboard again: only the first re-activation acts.
+#[tokio::test]
+async fn rapid_re_delivery_of_held_entry_resurfaces_only_once() {
+    let (input, _hash) = fixture_input("abc");
+
+    let mut repo = MockEntryRepo::new();
+    repo.expect_find_entry_id_by_snapshot_hash()
+        .times(2)
+        .returning(|_| Ok(Some(EntryId::from("entry-abc"))));
+
+    // Rebuild + write happen exactly once across the two deliveries.
+    let mut rebuild = MockSnapshotRebuild::new();
+    rebuild.expect_rebuild().times(1).returning(|_| {
+        Ok(SystemClipboardSnapshot {
+            ts_ms: 1,
+            representations: vec![ObservedClipboardRepresentation::new(
+                RepresentationId::new(),
+                FormatId::from("text"),
+                Some(MimeType("text/plain".to_string())),
+                b"abc".to_vec(),
+            )],
+            file_content_digests: Vec::new(),
+            file_set_v1_component: None,
+        })
+    });
+    let mut write = MockWrite::new();
+    write.expect_write().times(1).returning(|_, _| Ok(()));
+    let mut touch = MockTouchEntry::new();
+    touch
+        .expect_touch_entry()
+        .times(1)
+        .returning(|_, _| Ok(true));
+
+    let uc = resurface_uc(repo, MockCapture::new(), write, rebuild, touch);
+
+    let first = uc.execute(input.clone()).await.expect("first ok");
+    assert!(matches!(first, ApplyOutcome::Resurfaced { .. }));
+
+    let second = uc.execute(input).await.expect("second ok");
+    assert!(
+        matches!(second, ApplyOutcome::DuplicateSkipped { .. }),
+        "a rapid re-delivery must not touch the pasteboard again, got {second:?}"
+    );
+}
+
+/// The rapid guard must not swallow a genuine repeat copy: once the window
+/// lapses, the same content re-activates again (peer copies abc → xyz → abc).
+#[tokio::test]
+async fn repeat_copy_after_window_resurfaces_again() {
+    let (input, _hash) = fixture_input("abc");
+
+    let mut repo = MockEntryRepo::new();
+    repo.expect_find_entry_id_by_snapshot_hash()
+        .times(2)
+        .returning(|_| Ok(Some(EntryId::from("entry-abc"))));
+
+    // Both deliveries act: this is the A → B → A case the fix exists for.
+    let mut rebuild = MockSnapshotRebuild::new();
+    rebuild.expect_rebuild().times(2).returning(|_| {
+        Ok(SystemClipboardSnapshot {
+            ts_ms: 1,
+            representations: vec![ObservedClipboardRepresentation::new(
+                RepresentationId::new(),
+                FormatId::from("text"),
+                Some(MimeType("text/plain".to_string())),
+                b"abc".to_vec(),
+            )],
+            file_content_digests: Vec::new(),
+            file_set_v1_component: None,
+        })
+    });
+    let mut write = MockWrite::new();
+    write.expect_write().times(2).returning(|_, _| Ok(()));
+    let mut touch = MockTouchEntry::new();
+    touch
+        .expect_touch_entry()
+        .times(2)
+        .returning(|_, _| Ok(true));
+
+    let uc = resurface_uc(repo, MockCapture::new(), write, rebuild, touch);
+
+    let first = uc.execute(input.clone()).await.expect("first ok");
+    assert!(matches!(first, ApplyOutcome::Resurfaced { .. }));
+
+    // Past RAPID_DUPLICATE_WINDOW (200ms), matching how the sibling
+    // visible-window test waits it out.
+    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+
+    let second = uc.execute(input).await.expect("second ok");
+    assert!(
+        matches!(second, ApplyOutcome::Resurfaced { .. }),
+        "a deliberate repeat copy must re-activate, got {second:?}"
     );
 }

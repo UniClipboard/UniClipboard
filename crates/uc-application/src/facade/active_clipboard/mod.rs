@@ -38,8 +38,8 @@ use uc_core::ports::{
 use uc_core::{blob::ports::BlobReaderPort, MemberRepositoryPort};
 
 use crate::clipboard_write::{
-    ClipboardWriteCoordinator, LocalActiveRegisterAdvancer, MobileConsumabilityProbe,
-    RestoreBroadcastRequest,
+    ClipboardWriteCoordinator, ClipboardWriteIntent, LocalActiveRegisterAdvancer,
+    MobileConsumabilityProbe, RestoreBroadcastRequest,
 };
 use crate::facade::blob_transfer::{BlobTransferFacade, SharedHostEventEmitter};
 use crate::facade::clipboard_inbound::{
@@ -84,7 +84,7 @@ impl ClipboardSnapshotDeps {
     /// Fold the bundled ports into the shared `SnapshotReconstructor`. The free
     /// function `reconstruct_snapshot_from_entry` stays the single source of
     /// truth; this just owns the ports.
-    fn into_reconstructor(self) -> SnapshotReconstructor {
+    pub(crate) fn into_reconstructor(self) -> SnapshotReconstructor {
         SnapshotReconstructor::new(
             self.entry_repo,
             self.selection_repo,
@@ -478,6 +478,11 @@ impl InboundPulledContentStore for PulledContentStore {
                 snapshot_hash: snapshot_hash.to_string(),
                 plaintext: plaintext.into(),
                 flow_id: None,
+                // Store-only path: this apply's write port is a no-op (the
+                // convergence tail below owns the authoritative OS write), so
+                // the intent never reaches the clipboard. `RemotePush` states
+                // the truth of where the content came from.
+                resurface_intent: ClipboardWriteIntent::RemotePush,
             })
             .await
             .map_err(|err| InboundPulledContentStoreError::Store(err.to_string()))?;
@@ -487,7 +492,10 @@ impl InboundPulledContentStore for PulledContentStore {
             // A duplicate means the content landed locally between the pull and
             // the store (e.g. the bulk path raced us); the existing entry is
             // exactly what we wanted, so converge on it.
-            InboundClipboardApplyOutcome::DuplicateSkipped {
+            InboundClipboardApplyOutcome::Resurfaced {
+                existing_entry_id, ..
+            }
+            | InboundClipboardApplyOutcome::DuplicateSkipped {
                 existing_entry_id, ..
             } => Ok(EntryId::from(existing_entry_id)),
             InboundClipboardApplyOutcome::DecodeFailed { reason } => {

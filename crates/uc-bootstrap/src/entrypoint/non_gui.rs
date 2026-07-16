@@ -11,7 +11,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use uc_application::clipboard_capture::CaptureClipboardUseCase;
-use uc_application::clipboard_write::ClipboardWriteCoordinator;
+use uc_application::clipboard_write::ClipboardWriteIntent;
 use uc_application::deps::AppDeps;
 use uc_application::facade::settings::{RelayDiagnosticPort, RelayProbeError, RelayProbeReport};
 use uc_application::facade::space_setup::SpaceSetupFacade;
@@ -207,7 +207,11 @@ struct NoopInboundWrite;
 
 #[async_trait]
 impl ApplyInboundWrite for NoopInboundWrite {
-    async fn write(&self, _snapshot: SystemClipboardSnapshot) -> anyhow::Result<()> {
+    async fn write(
+        &self,
+        _snapshot: SystemClipboardSnapshot,
+        _intent: ClipboardWriteIntent,
+    ) -> anyhow::Result<()> {
         Ok(())
     }
 }
@@ -242,12 +246,10 @@ pub fn build_mobile_sync_facade(
     // CLI fallback / 不接 P2P 出站的入口传 `None`, mobile 上传仅落地本机,
     // 不传播。
     clipboard_outbound: Option<Arc<ClipboardOutboundFacade>>,
-    // Mobile-activation announce (issue #1017 PR7): the shared write boundary
-    // (re-write OS on a duplicate hit) + the active-clipboard facade (advance
-    // register + send-gated 0xC3 fan-out). daemon 装配两者都传 `Some(...)`;
+    // Mobile-activation announce (issue #1017 PR7): the active-clipboard facade
+    // (advance register + send-gated 0xC3 fan-out). daemon 装配传 `Some(...)`;
     // CLI fallback / 不接 active-clipboard 的入口传 `None`,移动端上传仅落地
-    // 本机, 不向对端收敛。两者必须同时 `Some` 才装 announce adapter。
-    write_coordinator: Option<Arc<ClipboardWriteCoordinator>>,
+    // 本机, 不向对端收敛。OS 剪贴板由入站管线负责写, 不经过这里。
     active_clipboard: Option<Arc<ActiveClipboardFacade>>,
 ) -> Arc<MobileSyncFacade> {
     Arc::new(MobileSyncFacade::new(MobileSyncFacadeDeps {
@@ -282,7 +284,6 @@ pub fn build_mobile_sync_facade(
         // sink。bootstrap 已把 GatedAnalyticsSink 包好，runtime 切换 noop / 真
         // 实 sink 是 sink 自身职责，不在此装配。
         analytics: deps.analytics.clone(),
-        write_coordinator,
         active_clipboard,
         find_entry_by_snapshot_hash: deps.clipboard.entry_ports.find_by_snapshot_hash.clone(),
         check_entry_availability: deps.clipboard.entry_ports.availability.clone(),
@@ -386,10 +387,8 @@ pub fn build_app_facade_from_deps(
                 // `Some(clipboard_outbound)` 装入完整 fan-out 能力(含文件 blob
                 // 发布)。
                 None,
-                // CLI fallback 不接 active-clipboard 收敛 (无 OS clipboard 写
-                // 边界 / 无 active-clipboard facade) —— write_coordinator +
-                // active_clipboard 都留 None, mobile 上传仅落地本机。
-                None,
+                // CLI fallback 不接 active-clipboard 收敛, mobile 上传仅落地
+                // 本机。
                 None,
             )
         });

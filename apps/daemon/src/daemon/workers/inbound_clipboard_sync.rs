@@ -98,6 +98,21 @@ impl InboundClipboardSyncWorker {
                 info!(entry_id = %entry_id, "inbound clipboard applied; broadcasting WS event");
                 Self::emit_ws_event(&self.event_tx, entry_id, from_device);
             }
+            // The peer re-copied a clip we already hold: no new entry, but it
+            // moved to the top of history and is now the active clipboard, so
+            // the frontend needs the same refresh a fresh entry triggers.
+            Ok(InboundClipboardApplyOutcome::Resurfaced {
+                existing_entry_id,
+                os_write_succeeded,
+                ..
+            }) => {
+                info!(
+                    entry_id = %existing_entry_id,
+                    os_write_succeeded,
+                    "inbound clipboard re-activated already-held entry; broadcasting WS event"
+                );
+                Self::emit_ws_event(&self.event_tx, existing_entry_id, from_device);
+            }
             Ok(InboundClipboardApplyOutcome::DuplicateSkipped {
                 snapshot_hash,
                 existing_entry_id,
@@ -105,7 +120,7 @@ impl InboundClipboardSyncWorker {
                 debug!(
                     snapshot_hash = %snapshot_hash,
                     existing_entry_id = %existing_entry_id,
-                    "inbound dropped: duplicate of existing local entry"
+                    "inbound dropped: redundant delivery of existing local entry"
                 );
             }
             Ok(InboundClipboardApplyOutcome::DecodeFailed { reason }) => {

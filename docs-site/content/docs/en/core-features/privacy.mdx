@@ -30,6 +30,15 @@ Turning either toggle off drops the next matching event; no daemon restart is re
 
 This data is not used for ad targeting, is not sold to third parties, and is not used to recover, read, or analyze your clipboard content.
 
+## Local keyboard-state access
+
+If you enable the Quick Panel's modifier double-tap trigger, the GUI process samples the local
+keyboard state while that trigger is active. It reduces each sample immediately to two booleans:
+whether the selected modifier is down and whether any other key is down. Raw keys are not logged,
+persisted, indexed, included in diagnostics, or sent to another device or service. Disabling the
+trigger stops the sampling worker. On macOS this capability requires the separate Accessibility
+grant; native Wayland sessions are reported as unsupported.
+
 ## What Diagnostics Include
 
 Diagnostics include the minimum context needed to understand failures:

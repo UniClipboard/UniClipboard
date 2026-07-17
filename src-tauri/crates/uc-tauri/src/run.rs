@@ -25,11 +25,16 @@ use uc_desktop::daemon_probe::{
     INCOMPATIBLE_DAEMON_EXIT_TIMEOUT,
 };
 use uc_desktop::gui_wiring::{build_gui_client_context, ensure_default_device_name};
+use uc_desktop::modifier_double_tap_monitor::ModifierDoubleTapMonitor;
 use uc_desktop::shortcuts::GlobalShortcutRegistry;
 use uc_desktop::{DaemonLaunchOrigin, DaemonOwnership};
 
 use crate::bootstrap::TauriAppRuntime;
+use crate::commands::quick_panel::desired_live_modifier;
 use crate::commands::updater::PendingUpdate;
+use crate::modifier_double_tap_platform::{
+    modifier_double_tap_availability, modifier_key_state_factory,
+};
 use crate::quick_panel;
 use crate::tray::TrayState;
 
@@ -502,6 +507,7 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
                 initial_language,
                 lan_only_active,
                 quick_panel_enabled,
+                quick_panel_double_tap_modifier,
                 auto_start,
                 settings_loaded,
             ) = {
@@ -533,16 +539,35 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
                         // 与 NetworkSection.tsx / SpaceMembersPanel.tsx 同源。
                         let lan_only = !settings.network.allow_relay_fallback;
                         let quick_panel = settings.quick_panel.enabled;
+                        let quick_panel_modifier = settings.quick_panel.double_tap_modifier;
                         let auto = settings.general.auto_start;
                         // Seed the cached placement preference so the first
                         // shortcut-triggered show() picks the right position
                         // without an async settings read on the main thread.
                         quick_panel::set_position(settings.quick_panel.position);
-                        (silent, silent_mode, lang, lan_only, quick_panel, auto, true)
+                        (
+                            silent,
+                            silent_mode,
+                            lang,
+                            lan_only,
+                            quick_panel,
+                            quick_panel_modifier,
+                            auto,
+                            true,
+                        )
                     }
                     Err(e) => {
                         warn!("Failed to load settings for startup: {}, using defaults", e);
-                        (false, false, "en-US".to_string(), false, false, false, false)
+                        (
+                            false,
+                            false,
+                            "en-US".to_string(),
+                            false,
+                            false,
+                            uc_core::settings::model::QuickPanelDoubleTapModifier::Disabled,
+                            false,
+                            false,
+                        )
                     }
                 }
             };
@@ -642,7 +667,59 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
             app.manage(uc_desktop::shortcuts::CurrentShortcuts::new(
                 registered_quick_panel_shortcuts,
             ));
-            app.manage(crate::commands::settings::KeyboardShortcutsUpdateLock::default());
+
+            let modifier_toggle_handle = app.handle().clone();
+            let modifier_monitor = ModifierDoubleTapMonitor::new(
+                modifier_key_state_factory(),
+                move || {
+                    let dispatch_handle = modifier_toggle_handle.clone();
+                    let toggle_handle = dispatch_handle.clone();
+                    if let Err(error) = dispatch_handle.run_on_main_thread(move || {
+                        quick_panel::toggle(&toggle_handle);
+                    }) {
+                        error!(
+                            error = %error,
+                            "Failed to dispatch modifier double-tap trigger to main thread"
+                        );
+                    }
+                },
+            );
+            let startup_modifier = desired_live_modifier(
+                quick_panel_enabled,
+                modifier_double_tap_availability(),
+                quick_panel_double_tap_modifier,
+            );
+            let startup_monitor = modifier_monitor.clone();
+            let update_lock = crate::commands::settings::KeyboardShortcutsUpdateLock::default();
+            let startup_guard = if startup_modifier
+                != uc_core::settings::model::QuickPanelDoubleTapModifier::Disabled
+            {
+                Some(update_lock.reserve_startup().map_err(anyhow::Error::msg)?)
+            } else {
+                None
+            };
+            app.manage(modifier_monitor);
+            app.manage(update_lock);
+            if let Some(startup_guard) = startup_guard {
+                tauri::async_runtime::spawn(async move {
+                    let _startup_guard = startup_guard;
+                    match tokio::task::spawn_blocking(move || {
+                        startup_monitor.set_modifier(startup_modifier)
+                    })
+                    .await
+                    {
+                        Ok(Ok(())) => {}
+                        Ok(Err(error)) => error!(
+                            error = %error,
+                            "Failed to initialize quick panel modifier double-tap listener"
+                        ),
+                        Err(error) => error!(
+                            error = %error,
+                            "Quick panel modifier double-tap startup task failed"
+                        ),
+                    }
+                });
+            }
 
             // Create the main window before any auxiliary webview. On Windows,
             // the first WebView2 cold start is expensive; letting the hidden
@@ -887,6 +964,7 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
                     // (D21) drains in-flight work; the GUI does not block. Identity +
                     // legacy-in-process safety live in the stop helper.
                     task_registry_for_run.token().cancel();
+                    app_handle.state::<ModifierDoubleTapMonitor>().shutdown();
                     if app_handle
                         .state::<crate::lightweight::QuitIntent>()
                         .should_stop_daemon_on_exit()

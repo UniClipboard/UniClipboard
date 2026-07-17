@@ -1,6 +1,13 @@
-import { useCallback, useMemo, useState } from 'react'
+import { openUrl } from '@tauri-apps/plugin-opener'
+import { ExternalLink } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
+  getQuickPanelDoubleTapAvailability,
+  type ModifierDoubleTapAvailability,
+} from '@/api/tauri-command'
+import {
+  Button,
   Select,
   SelectContent,
   SelectItem,
@@ -8,11 +15,13 @@ import {
   SelectValue,
   Switch,
 } from '@/components/ui'
+import { toast } from '@/components/ui/toast'
+import { usePlatform } from '@/hooks/usePlatform'
 import { useSetting } from '@/hooks/useSetting'
 import { commands } from '@/lib/ipc'
 import { createLogger } from '@/lib/logger'
 import { SHORTCUT_DEFINITIONS, type ShortcutDefinition } from '@/shortcuts/definitions'
-import type { QuickPanelPosition } from '@/types/setting'
+import type { QuickPanelDoubleTapModifier, QuickPanelPosition } from '@/types/setting'
 import { RestartBanner } from './RestartBanner'
 import { SettingGroup } from './SettingGroup'
 import { SettingRow } from './SettingRow'
@@ -22,6 +31,8 @@ import { useOptimisticSetting } from './useOptimisticSetting'
 const log = createLogger('quick-panel-section')
 
 const QUICK_PANEL_SHORTCUT_ID = 'global.toggleQuickPanel'
+const MACOS_ACCESSIBILITY_SETTINGS_URL =
+  'x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility'
 
 /**
  * Quick panel feature section.
@@ -39,6 +50,7 @@ const QUICK_PANEL_SHORTCUT_ID = 'global.toggleQuickPanel'
  */
 export default function QuickPanelSection() {
   const { t } = useTranslation()
+  const { isMac, isWindows } = usePlatform()
   const { setting, updateQuickPanelSetting, updateKeyboardShortcuts } = useSetting()
 
   // setting?.keyboardShortcuts 可能在 setting 重新加载时被赋成全新对象，但
@@ -57,6 +69,29 @@ export default function QuickPanelSection() {
   const [disabledThisSession, setDisabledThisSession] = useState(false)
   const [restartLoading, setRestartLoading] = useState(false)
   const [restartError, setRestartError] = useState<string | null>(null)
+  const [doubleTapAvailability, setDoubleTapAvailability] =
+    useState<ModifierDoubleTapAvailability | null>(null)
+
+  useEffect(() => {
+    let active = true
+    const refreshAvailability = () => {
+      void getQuickPanelDoubleTapAvailability()
+        .then(availability => {
+          if (active) setDoubleTapAvailability(availability)
+        })
+        .catch(err => {
+          log.error({ err }, 'Failed to detect modifier double-tap availability')
+          if (active) setDoubleTapAvailability('unsupported_display_session')
+        })
+    }
+
+    refreshAvailability()
+    window.addEventListener('focus', refreshAvailability)
+    return () => {
+      active = false
+      window.removeEventListener('focus', refreshAvailability)
+    }
+  }, [])
 
   // Optimistic like every other settings toggle: the switch flips immediately
   // and persists in the background, so it no longer waits a daemon round-trip
@@ -76,7 +111,46 @@ export default function QuickPanelSection() {
     next => updateQuickPanelSetting({ position: next }),
     { failureLog: 'Failed to change quick panel position' }
   )
+  const [doubleTapModifier, setDoubleTapModifier] =
+    useOptimisticSetting<QuickPanelDoubleTapModifier>(
+      setting?.quickPanel?.doubleTapModifier ?? 'disabled',
+      next => updateQuickPanelSetting({ doubleTapModifier: next }),
+      {
+        failureLog: 'Failed to change quick panel modifier trigger',
+        errorKey: error =>
+          typeof error === 'object' &&
+          error !== null &&
+          'code' in error &&
+          error.code === 'AccessibilityPermissionRequired'
+            ? 'settings.sections.quickPanel.doubleTap.permissionRequired'
+            : 'settings.sections.general.saveError',
+      }
+    )
+  const altLabel = isMac
+    ? t('settings.sections.quickPanel.doubleTap.option')
+    : t('settings.sections.quickPanel.doubleTap.alt')
+  const metaLabel = isMac
+    ? t('settings.sections.quickPanel.doubleTap.command')
+    : isWindows
+      ? t('settings.sections.quickPanel.doubleTap.windows')
+      : t('settings.sections.quickPanel.doubleTap.super')
   const restartHintVisible = disabledThisSession && !enabled
+  const doubleTapSupported = doubleTapAvailability === 'supported'
+  const doubleTapDescriptionKey =
+    doubleTapAvailability === null
+      ? 'settings.sections.quickPanel.doubleTap.checking'
+      : doubleTapAvailability === 'accessibility_permission_required'
+        ? 'settings.sections.quickPanel.doubleTap.permissionRequired'
+        : doubleTapSupported
+          ? 'settings.sections.quickPanel.doubleTap.description'
+          : 'settings.sections.quickPanel.doubleTap.unsupported'
+
+  const handleOpenAccessibilitySettings = () => {
+    void openUrl(MACOS_ACCESSIBILITY_SETTINGS_URL).catch(err => {
+      log.error({ err }, 'Failed to open macOS Accessibility settings')
+      toast.error(t('settings.sections.quickPanel.doubleTap.openSettingsError'))
+    })
+  }
 
   const handleRestart = async () => {
     setRestartLoading(true)
@@ -174,7 +248,7 @@ export default function QuickPanelSection() {
             onValueChange={value => setPosition(value as QuickPanelPosition)}
             disabled={!enabled}
           >
-            <SelectTrigger className="h-7 w-[160px] text-xs">
+            <SelectTrigger className="h-7 w-40 text-xs">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -191,6 +265,42 @@ export default function QuickPanelSection() {
 
       {quickPanelDef && (
         <SettingGroup title={t('settings.sections.quickPanel.shortcutTitle')}>
+          <SettingRow
+            label={t('settings.sections.quickPanel.doubleTap.label')}
+            description={t(doubleTapDescriptionKey)}
+          >
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              {doubleTapAvailability === 'accessibility_permission_required' && (
+                <Button variant="outline" size="sm" onClick={handleOpenAccessibilitySettings}>
+                  <ExternalLink className="size-3.5" />
+                  {t('settings.sections.quickPanel.doubleTap.openSettings')}
+                </Button>
+              )}
+              <Select
+                value={doubleTapModifier}
+                onValueChange={value => setDoubleTapModifier(value as QuickPanelDoubleTapModifier)}
+                disabled={!enabled || !doubleTapSupported}
+              >
+                <SelectTrigger className="h-7 w-40 text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="disabled" className="text-xs">
+                    {t('settings.sections.quickPanel.doubleTap.disabled')}
+                  </SelectItem>
+                  <SelectItem value="alt" className="text-xs">
+                    {altLabel}
+                  </SelectItem>
+                  <SelectItem value="control" className="text-xs">
+                    {t('settings.sections.quickPanel.doubleTap.control')}
+                  </SelectItem>
+                  <SelectItem value="meta" className="text-xs">
+                    {metaLabel}
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </SettingRow>
           <ShortcutRow
             definition={quickPanelDef}
             currentKey={getCurrentKey(quickPanelDef)}

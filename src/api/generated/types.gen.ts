@@ -1623,6 +1623,8 @@ export type PreviewImportResponse = {
     sourceMode: string;
 };
 
+export type QuickPanelDoubleTapModifierDto = 'disabled' | 'alt' | 'control' | 'meta';
+
 /**
  * 快捷面板出现位置 DTO。wire form: `center` | `follow_cursor`。
  */
@@ -1631,12 +1633,11 @@ export type QuickPanelPositionDto = 'center' | 'follow_cursor';
 /**
  * 快捷面板（Spotlight 风格）功能偏好 DTO。
  *
- * wire 字段命名为 camelCase（`enabled` / `position`）。`#[serde(default)]`
- * 让缺字段时回退到 `Default`（`enabled = true`、`position = center`），与
- * `core::QuickPanelSettings` 默认保持一致——新装/老 wire 缺字段都视为
- * "启用 + 居中"，避免出现 wire 与磁盘真相撕裂。
+ * wire 字段命名为 camelCase。`#[serde(default)]` 让旧客户端缺少新增字段时
+ * 回退到领域默认值，避免 wire 与磁盘真相分裂。
  */
 export type QuickPanelSettingsDto = {
+    doubleTapModifier?: QuickPanelDoubleTapModifierDto;
     enabled?: boolean;
     position?: QuickPanelPositionDto;
 };
@@ -1645,6 +1646,7 @@ export type QuickPanelSettingsDto = {
  * 快捷面板字段 patch DTO 镜像 — `null` = 不修改。
  */
 export type QuickPanelSettingsPatchDto = {
+    doubleTapModifier?: QuickPanelDoubleTapModifierDto | null;
     enabled?: boolean | null;
     position?: QuickPanelPositionDto | null;
 };

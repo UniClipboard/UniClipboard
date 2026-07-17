@@ -90,6 +90,7 @@ export function makeBaseSettings(overrides: BaseSettingsOverrides = {}): Setting
     quickPanel: {
       enabled: true,
       position: 'center',
+      doubleTapModifier: 'disabled',
     },
     ...rest,
   }

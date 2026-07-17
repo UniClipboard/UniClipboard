@@ -1,5 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { buildKeyboardShortcutsPatch, updateKeyboardShortcuts } from '@/api/tauri-command/settings'
+import {
+  buildKeyboardShortcutsPatch,
+  getQuickPanelDoubleTapAvailability,
+  setQuickPanelDoubleTapModifier,
+  updateKeyboardShortcuts,
+} from '@/api/tauri-command/settings'
 import { commands } from '@/lib/ipc'
 
 // 实现已切到 typed `commands` proxy（`@/lib/ipc`，背后是 tauri-specta
@@ -7,10 +12,16 @@ import { commands } from '@/lib/ipc'
 // 直接抛 TypeError，等于 fail-fast 防止误调用未 stub 的命令。
 vi.mock('@/lib/ipc', () => ({
   commands: {
+    getQuickPanelDoubleTapAvailability: vi.fn(),
+    setQuickPanelDoubleTapModifier: vi.fn(),
     updateKeyboardShortcuts: vi.fn(),
   },
 }))
 
+const mockGetQuickPanelDoubleTapAvailability = vi.mocked(
+  commands.getQuickPanelDoubleTapAvailability
+)
+const mockSetQuickPanelDoubleTapModifier = vi.mocked(commands.setQuickPanelDoubleTapModifier)
 const mockUpdateKeyboardShortcuts = vi.mocked(commands.updateKeyboardShortcuts)
 
 beforeEach(() => {
@@ -33,6 +44,24 @@ describe('Tauri settings command wrapper — keyboard shortcuts', () => {
       'global.toggleQuickPanel': null,
       'nav.dashboard': 'mod+2',
     })
+  })
+
+  it('读取当前桌面会话的双击修饰键能力', async () => {
+    mockGetQuickPanelDoubleTapAvailability.mockResolvedValueOnce(
+      'accessibility_permission_required'
+    )
+
+    await expect(getQuickPanelDoubleTapAvailability()).resolves.toBe(
+      'accessibility_permission_required'
+    )
+  })
+
+  it('通过 typed command 保存并应用双击修饰键', async () => {
+    mockSetQuickPanelDoubleTapModifier.mockResolvedValueOnce(null)
+
+    await setQuickPanelDoubleTapModifier('meta')
+
+    expect(mockSetQuickPanelDoubleTapModifier).toHaveBeenCalledWith('meta')
   })
 
   it('通过 in-process Tauri command 保存并应用快捷键', async () => {

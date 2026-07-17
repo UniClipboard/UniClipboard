@@ -2,11 +2,12 @@
 //! 设置相关的 Tauri 命令
 
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, State};
 use tauri_plugin_dialog::DialogExt;
-use tokio::sync::Mutex as AsyncMutex;
+use tokio::sync::{Mutex as AsyncMutex, OwnedMutexGuard};
 use tracing::{error, info_span, Instrument};
 use uc_core::ports::observability::TraceMetadata;
 use uc_core::settings::model::ShortcutKey as ShortcutKeyView;
@@ -24,8 +25,21 @@ use crate::quick_panel;
 /// 内存 registry replace 的协调流程。并发调用会让 OS 状态、`CurrentShortcuts`、
 /// 和 facade 持久化值相互错位（详见 [`update_keyboard_shortcuts`]），所以整段
 /// 必须在锁内独占执行。
-#[derive(Default)]
-pub struct KeyboardShortcutsUpdateLock(pub AsyncMutex<()>);
+#[derive(Clone, Default)]
+pub struct KeyboardShortcutsUpdateLock(pub Arc<AsyncMutex<()>>);
+
+impl KeyboardShortcutsUpdateLock {
+    /// Reserve the first transition before the startup task is spawned.
+    ///
+    /// The lock is freshly constructed during setup, so contention here means
+    /// the startup ordering invariant was violated rather than a condition to
+    /// wait through on the Tauri main thread.
+    pub fn reserve_startup(&self) -> Result<OwnedMutexGuard<()>, String> {
+        Arc::clone(&self.0)
+            .try_lock_owned()
+            .map_err(|error| format!("failed to reserve shortcut startup transition: {error}"))
+    }
+}
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, specta::Type)]
 #[serde(untagged)]
@@ -390,6 +404,31 @@ mod tests {
         let next = apply_keyboard_shortcut_patch_to_map(current, &patch);
 
         assert!(!next.contains_key(QUICK_PANEL_SHORTCUT_SETTINGS_KEY));
+    }
+
+    #[tokio::test]
+    async fn startup_reservation_precedes_later_transition() {
+        let lock = KeyboardShortcutsUpdateLock::default();
+        let startup_guard = lock.reserve_startup().expect("fresh lock is available");
+        let contender = lock.clone();
+        let (entered_tx, mut entered_rx) = tokio::sync::oneshot::channel();
+
+        let contender_task = tokio::spawn(async move {
+            let _guard = contender.0.lock().await;
+            entered_tx.send(()).expect("receiver remains alive");
+        });
+        tokio::task::yield_now().await;
+        assert!(matches!(
+            entered_rx.try_recv(),
+            Err(tokio::sync::oneshot::error::TryRecvError::Empty)
+        ));
+
+        drop(startup_guard);
+        tokio::time::timeout(std::time::Duration::from_secs(1), &mut entered_rx)
+            .await
+            .expect("contender enters after startup")
+            .expect("sender completes");
+        contender_task.await.expect("contender task completes");
     }
 
     #[test]

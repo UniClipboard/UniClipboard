@@ -9,11 +9,15 @@
  * 强制对齐）。
  */
 
-import type { QuickPanelPosition, ShortcutKey } from '@/api/daemon/settings'
+import type {
+  QuickPanelDoubleTapModifier,
+  QuickPanelPosition,
+  ShortcutKey,
+} from '@/api/daemon/settings'
 import { commands } from '@/lib/ipc'
-import type { RelayProbeOutcome } from '@/lib/ipc-bindings.generated'
+import type { ModifierDoubleTapAvailability, RelayProbeOutcome } from '@/lib/ipc-bindings.generated'
 
-export type { RelayProbeOutcome }
+export type { ModifierDoubleTapAvailability, RelayProbeOutcome }
 
 export type KeyboardShortcutsPatch = Record<string, ShortcutKey | null>
 
@@ -76,6 +80,18 @@ export async function setQuickPanelEnabled(enabled: boolean): Promise<void> {
  */
 export async function setQuickPanelPosition(position: QuickPanelPosition): Promise<void> {
   await commands.setQuickPanelPosition(position)
+}
+
+/** Return the current platform capability for global modifier observation. */
+export async function getQuickPanelDoubleTapAvailability(): Promise<ModifierDoubleTapAvailability> {
+  return commands.getQuickPanelDoubleTapAvailability()
+}
+
+/** Persist and apply the standalone modifier double-tap trigger. */
+export async function setQuickPanelDoubleTapModifier(
+  modifier: QuickPanelDoubleTapModifier
+): Promise<void> {
+  await commands.setQuickPanelDoubleTapModifier(modifier)
 }
 
 /**

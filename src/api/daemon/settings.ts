@@ -38,6 +38,9 @@ export type Theme = 'light' | 'dark' | 'system'
 /** Quick panel placement. / 快捷面板出现位置。wire: `center` | `follow_cursor`。 */
 export type QuickPanelPosition = 'center' | 'follow_cursor'
 
+/** Modifier whose standalone double tap toggles the quick panel. */
+export type QuickPanelDoubleTapModifier = 'disabled' | 'alt' | 'control' | 'meta'
+
 /** Update channel override. / 更新通道覆盖。 */
 export type UpdateChannel = 'stable' | 'alpha' | 'beta' | 'rc'
 
@@ -185,6 +188,7 @@ export interface NetworkSettings {
 export interface QuickPanelSettings {
   enabled: boolean
   position: QuickPanelPosition
+  doubleTapModifier: QuickPanelDoubleTapModifier
 }
 
 /**

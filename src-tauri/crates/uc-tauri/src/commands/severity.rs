@@ -77,6 +77,7 @@ classify!(CommandError {
     "Cancelled" => UserError,
     "ValidationError" => UserError,
     "Conflict" => UserError,
+    "AccessibilityPermissionRequired" => UserError,
 });
 
 // NOTE (ADR-008 P3-1 / P3-b): the unlock / silent-unlock / factory-reset /
@@ -167,7 +168,8 @@ mod tests {
                 | E::Timeout(_)
                 | E::Cancelled(_)
                 | E::ValidationError(_)
-                | E::Conflict(_) => {}
+                | E::Conflict(_)
+                | E::AccessibilityPermissionRequired(_) => {}
             }
         }
         let s = || "x".to_string();
@@ -178,6 +180,7 @@ mod tests {
             E::Cancelled(s()),
             E::ValidationError(s()),
             E::Conflict(s()),
+            E::AccessibilityPermissionRequired(s()),
         ]);
     }
 

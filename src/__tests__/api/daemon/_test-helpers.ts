@@ -237,6 +237,7 @@ export function makeSettingsDto(overrides: Partial<Settings> = {}): Settings {
     quickPanel: {
       enabled: true,
       position: 'center',
+      doubleTapModifier: 'disabled',
     },
     ...overrides,
   }

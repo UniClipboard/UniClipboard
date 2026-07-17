@@ -343,6 +343,11 @@ export const commands = {
 	trace_id: string,
 	timestamp: number,
 } | null) => typedError<null, string>(__TAURI_INVOKE("finalize_quick_panel_show", { trace })),
+	/**  Return the current platform capability for global modifier observation. */
+	getQuickPanelDoubleTapAvailability: (trace: {
+	trace_id: string,
+	timestamp: number,
+} | null) => typedError<ModifierDoubleTapAvailability, CommandError>(__TAURI_INVOKE("get_quick_panel_double_tap_availability", { trace })),
 	/**
 	 *  实时启用/禁用快捷面板。
 	 * 
@@ -373,6 +378,11 @@ export const commands = {
 	trace_id: string,
 	timestamp: number,
 } | null) => typedError<null, CommandError>(__TAURI_INVOKE("set_quick_panel_enabled", { enabled, trace })),
+	/**  Persist and apply the standalone modifier double-tap trigger. */
+	setQuickPanelDoubleTapModifier: (modifier: QuickPanelDoubleTapModifierArg, trace: {
+	trace_id: string,
+	timestamp: number,
+} | null) => typedError<null, CommandError>(__TAURI_INVOKE("set_quick_panel_double_tap_modifier", { modifier, trace })),
 	/**
 	 *  Persist the quick panel placement preference and update the live cache.
 	 * 
@@ -503,7 +513,7 @@ export const commands = {
  * 
  *  Serializes to {"code": "...", "message": "..."} for frontend discriminated union handling.
  */
-export type CommandError = { code: "NotFound"; message: string } | { code: "InternalError"; message: string } | { code: "Timeout"; message: string } | { code: "Cancelled"; message: string } | { code: "ValidationError"; message: string } | { code: "Conflict"; message: string };
+export type CommandError = { code: "NotFound"; message: string } | { code: "InternalError"; message: string } | { code: "Timeout"; message: string } | { code: "Cancelled"; message: string } | { code: "ValidationError"; message: string } | { code: "Conflict"; message: string } | { code: "AccessibilityPermissionRequired"; message: string };
 
 /**
  *  Typed error for the config import/export commands.
@@ -712,6 +722,10 @@ export type InstallKind = "macos" | "windows" |
  *  "download the new portable zip" dialog instead of self-installing.
  */
 "windowsportable" | "appimage" | "deb" | "rpm" | "unknown";
+
+export type ModifierDoubleTapAvailability = "supported" | "accessibility_permission_required" | "unsupported_display_session";
+
+export type QuickPanelDoubleTapModifierArg = "disabled" | "alt" | "control" | "meta";
 
 /**
  *  Which side the inline preview opens toward (Tauri command wire form).

@@ -588,6 +588,22 @@
           "center": "Screen center",
           "followCursor": "Follow cursor"
         },
+        "doubleTap": {
+          "label": "Double-tap modifier",
+          "description": "Open the quick panel by tapping a modifier key twice. The recorded shortcut remains active.",
+          "checking": "Checking whether this desktop session supports modifier double-tap.",
+          "permissionRequired": "macOS Accessibility permission is required. Grant access in System Settings, then return to UniClipboard.",
+          "unsupported": "Modifier double-tap is unavailable in this display session, including Wayland sessions. The recorded shortcut remains active.",
+          "openSettings": "Open Accessibility settings",
+          "openSettingsError": "Could not open Accessibility settings. Open System Settings > Privacy & Security > Accessibility manually.",
+          "disabled": "Off",
+          "option": "Option",
+          "alt": "Alt",
+          "control": "Control",
+          "command": "Command",
+          "windows": "Windows",
+          "super": "Super"
+        },
         "restartHint": "Quick panel is now off. Restart the app to fully release the background processes."
       },
       "about": {

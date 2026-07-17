@@ -85,26 +85,70 @@ tracing = "0.1"
 # 没一个能加载就跳过 tray init 而不是让上游 panic 撂倒整个进程。
 # 版本钉到 0.7 — 与 Cargo.lock 现有的间接依赖对齐避免双版本膨胀。
 libloading = "0.7"
+# Dynamically load Xlib for modifier snapshots without adding a hard link-time dependency.
+x11-dl = "2.21"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 windows = { version = "0.61", features = [
-    "Win32_Foundation",
-    "Win32_UI_WindowsAndMessaging",
-    "Win32_UI_Input_KeyboardAndMouse",
-    "Win32_System_Threading",
-    # Suspend/resume notification for the update scheduler's wake source
-    # (resume_listener_windows.rs): RegisterSuspendResumeNotification +
-    # DEVICE_NOTIFY_SUBSCRIBE_PARAMETERS live under Win32_System_Power.
-    "Win32_System_Power",
+  "Win32_Foundation",
+  "Win32_UI_WindowsAndMessaging",
+  "Win32_UI_Input_KeyboardAndMouse",
+  "Win32_System_Threading",
+  # Suspend/resume notification for the update scheduler's wake source
+  # (resume_listener_windows.rs): RegisterSuspendResumeNotification +
+  # DEVICE_NOTIFY_SUBSCRIBE_PARAMETERS live under Win32_System_Power.
+  "Win32_System_Power",
 ] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 core-foundation = "0.10"
 objc2 = "0.6"
-objc2-app-kit = { version = "0.3", features = ["NSApplication", "NSImage", "NSEvent", "NSScreen", "NSPanel", "NSResponder", "NSWindow", "NSColor", "NSGraphics", "NSWorkspace", "NSRunningApplication", "NSStackView", "NSProgressIndicator", "NSTextField", "NSText", "NSButton", "NSControl", "NSCell", "NSView", "NSVisualEffectView", "NSLayoutConstraint", "NSFont", "objc2-quartz-core", "libc"] }
+objc2-app-kit = { version = "0.3", features = [
+  "NSApplication",
+  "NSImage",
+  "NSEvent",
+  "NSScreen",
+  "NSPanel",
+  "NSResponder",
+  "NSWindow",
+  "NSColor",
+  "NSGraphics",
+  "NSWorkspace",
+  "NSRunningApplication",
+  "NSStackView",
+  "NSProgressIndicator",
+  "NSTextField",
+  "NSText",
+  "NSButton",
+  "NSControl",
+  "NSCell",
+  "NSView",
+  "NSVisualEffectView",
+  "NSLayoutConstraint",
+  "NSFont",
+  "objc2-quartz-core",
+  "libc",
+] }
+objc2-application-services = { version = "0.3", default-features = false, features = [
+  "HIServices",
+  "AXUIElement",
+] }
+objc2-core-graphics = { version = "0.3", features = [
+  "CGEventSource",
+  "CGEventTypes",
+  "CGRemoteOperation",
+] }
 objc2-quartz-core = { version = "0.3", features = ["CALayer"] }
 core-graphics = "0.24"
-objc2-foundation = { version = "0.3", features = ["NSBundle", "NSGeometry", "objc2-core-foundation", "NSBackgroundActivityScheduler", "NSString", "NSDate", "block2"] }
+objc2-foundation = { version = "0.3", features = [
+  "NSBundle",
+  "NSGeometry",
+  "objc2-core-foundation",
+  "NSBackgroundActivityScheduler",
+  "NSString",
+  "NSDate",
+  "block2",
+] }
 # block2 drives the NSBackgroundActivityScheduler completion-handler block used
 # by the update scheduler's macOS wake source (background_activity_macos.rs).
 block2 = "0.6"

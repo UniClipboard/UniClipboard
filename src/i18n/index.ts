@@ -14,18 +14,24 @@ export function isSupportedLanguage(language: unknown): language is SupportedLan
   return SUPPORTED_LANGUAGES.includes(language as SupportedLanguage)
 }
 
+/**
+ * Every region variant collapses onto the one bundle that covers it — including
+ * pt-PT, since Brazilian copy serves a Portuguese speaker better than English.
+ *
+ * Keep in sync with `normalize_language` in `src-tauri/crates/uc-tauri/src/tray.rs`.
+ */
+const LOCALE_BY_SUBTAG: Partial<Record<string, SupportedLanguage>> = {
+  zh: 'zh-CN',
+  ru: 'ru-RU',
+  pt: 'pt-BR',
+}
+
 export function normalizeLanguage(language: string | null | undefined): SupportedLanguage {
-  if (!language) {
-    // Fallback to system language
-    language = navigator.language
-  }
-  const lower = language.toLowerCase()
-  if (lower.startsWith('zh')) return 'zh-CN'
-  if (lower.startsWith('ru')) return 'ru-RU'
-  // pt-BR is the only Portuguese bundle, so European Portuguese resolves here
-  // too: a pt-PT speaker is better served by Brazilian copy than by English.
-  if (lower.startsWith('pt')) return 'pt-BR'
-  return 'en-US'
+  // Fall back to the system language when the caller has no stored preference.
+  const tag = language || navigator.language
+  // Accept both separators: BCP-47 hands us "pt-BR", POSIX locale envs "pt_BR".
+  const primary = tag.split(/[-_]/)[0].toLowerCase()
+  return LOCALE_BY_SUBTAG[primary] ?? 'en-US'
 }
 
 export function getInitialLanguage(): SupportedLanguage {

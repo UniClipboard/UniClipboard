@@ -376,20 +376,20 @@ fn lan_only_tooltip(language: &str, lan_only_active: bool) -> String {
 
 /// Normalize a language string to a supported locale.
 ///
-/// Matches on the language subtag (case-insensitive): "zh" maps to `"zh-CN"`,
-/// "ru" to `"ru-RU"`, "pt" to `"pt-BR"`. Anything else falls back to `"en-US"`.
+/// Matches case-insensitively on the primary subtag, so every region variant
+/// collapses onto the one bundle that covers it: "zh-TW" to `"zh-CN"`, "ru-BY"
+/// to `"ru-RU"`, "pt-PT" to `"pt-BR"`. Anything without a bundle is `"en-US"`.
 ///
-/// Keep the supported set in sync with `SUPPORTED_LANGUAGES` in `src/i18n/index.ts`.
+/// Keep the supported set in sync with `SUPPORTED_LANGUAGES` in `src/i18n/index.ts`,
+/// including the frontend's subtag fallbacks in `normalizeLanguage()`.
 pub(crate) fn normalize_language(language: &str) -> &'static str {
-    let lower = language.to_lowercase();
-    if lower.starts_with("zh") {
-        "zh-CN"
-    } else if lower.starts_with("ru") {
-        "ru-RU"
-    } else if lower.starts_with("pt") {
-        "pt-BR"
-    } else {
-        "en-US"
+    // Accept both separators: BCP-47 hands us "pt-BR", POSIX locale envs "pt_BR".
+    let primary = language.split(['-', '_']).next().unwrap_or_default();
+    match primary.to_ascii_lowercase().as_str() {
+        "zh" => "zh-CN",
+        "ru" => "ru-RU",
+        "pt" => "pt-BR",
+        _ => "en-US",
     }
 }
 
@@ -495,6 +495,38 @@ fn panic_payload_to_string(payload: Box<dyn std::any::Any + Send>) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn collapses_region_variants_onto_their_bundle() {
+        assert_eq!(normalize_language("zh-CN"), "zh-CN");
+        assert_eq!(normalize_language("zh-TW"), "zh-CN");
+        assert_eq!(normalize_language("ru-BY"), "ru-RU");
+        assert_eq!(normalize_language("pt-BR"), "pt-BR");
+        // European Portuguese has no bundle; Brazilian copy beats falling back to English.
+        assert_eq!(normalize_language("pt-PT"), "pt-BR");
+    }
+
+    #[test]
+    fn falls_back_to_english_without_a_bundle() {
+        assert_eq!(normalize_language("fr-FR"), "en-US");
+        assert_eq!(normalize_language("en-US"), "en-US");
+        assert_eq!(normalize_language(""), "en-US");
+    }
+
+    #[test]
+    fn ignores_case_and_accepts_posix_separators() {
+        assert_eq!(normalize_language("RU-ru"), "ru-RU");
+        assert_eq!(normalize_language("PT"), "pt-BR");
+        assert_eq!(normalize_language("pt_BR"), "pt-BR");
+        assert_eq!(normalize_language("zh_CN"), "zh-CN");
+    }
+
+    #[test]
+    fn matches_the_primary_subtag_not_a_bare_prefix() {
+        // A starts_with() check would have claimed these as Portuguese/Chinese.
+        assert_eq!(normalize_language("ptx"), "en-US");
+        assert_eq!(normalize_language("zhx-Hant"), "en-US");
+    }
 
     #[test]
     fn every_supported_locale_has_tray_labels() {

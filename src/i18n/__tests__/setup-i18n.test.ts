@@ -161,6 +161,12 @@ describe('setup i18n keys', () => {
     // pt-BR is the only Portuguese bundle, so European Portuguese lands here too.
     expect(normalizeLanguage('pt-PT')).toBe('pt-BR')
     expect(normalizeLanguage('fr-FR')).toBe('en-US')
+    // POSIX locale envs use an underscore; BCP-47 uses a hyphen.
+    expect(normalizeLanguage('pt_BR')).toBe('pt-BR')
+    expect(normalizeLanguage('zh_CN')).toBe('zh-CN')
+    // The primary subtag decides, not a bare prefix: "ptx" is not Portuguese.
+    expect(normalizeLanguage('ptx')).toBe('en-US')
+    expect(normalizeLanguage('zhx-Hant')).toBe('en-US')
   })
 
   it('offers a self-named picker label for every supported language', async () => {

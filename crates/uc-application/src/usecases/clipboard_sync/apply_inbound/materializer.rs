@@ -176,6 +176,13 @@ const MAX_PUBLISH_ATTEMPTS: u32 = 64;
 /// Stand-in for a root name that sanitizes away to nothing.
 const FALLBACK_ROOT_NAME: &str = "received-folder";
 
+/// Upper bound on collision-suffix attempts before giving up.
+///
+/// Matches the bound free-standing inbound files get. Without one, a folder
+/// already holding a long run of `name (n)` entries turns every publication
+/// into a walk over all of them.
+const MAX_COLLISION_ATTEMPTS: u32 = 10_000;
+
 /// Reduce a sender-supplied root name to a usable directory name.
 ///
 /// `validate_manifest_member` has already rejected separators and the `.`/`..`
@@ -1344,6 +1351,14 @@ pub(crate) fn compute_file_set_component(
         .ok_or_else(|| anyhow!("directory manifest cannot produce a file-set identity"))
 }
 
+/// Find a free name under `parent` for `desired_name`, stepping through
+/// `name (1)`, `name (2)`, … past anything the filesystem or `reserved`
+/// already holds.
+///
+/// The suffix sequence matches the one free-standing inbound files get: both
+/// kinds land in the same folder, and a user seeing `report (1).pdf` next to
+/// `report (2)/` for the first collision of each would be reading a difference
+/// that means nothing.
 async fn resolve_nonconflicting_root_path(
     parent: &std::path::Path,
     desired_name: &str,
@@ -1353,16 +1368,13 @@ async fn resolve_nonconflicting_root_path(
     if !reserved.contains(&desired) && !tokio::fs::try_exists(&desired).await? {
         return Ok(desired);
     }
-    let mut suffix = 2u32;
-    loop {
+    for suffix in 1..MAX_COLLISION_ATTEMPTS {
         let candidate = parent.join(format!("{desired_name} ({suffix})"));
         if !reserved.contains(&candidate) && !tokio::fs::try_exists(&candidate).await? {
             return Ok(candidate);
         }
-        suffix = suffix
-            .checked_add(1)
-            .ok_or_else(|| anyhow!("directory collision suffix space exhausted"))?;
     }
+    Err(anyhow!("directory collision suffix space exhausted"))
 }
 
 #[cfg(unix)]

@@ -1700,8 +1700,8 @@ async fn directory_materializer_suffixes_existing_and_same_paste_root_names() {
         .await
         .expect("empty directory set should materialize");
 
-    assert!(destination.join("folder (2)/empty-a").is_dir());
-    assert!(destination.join("folder (3)/empty-b").is_dir());
+    assert!(destination.join("folder (1)/empty-a").is_dir());
+    assert!(destination.join("folder (2)/empty-b").is_dir());
     let uri_list = String::from_utf8(
         result.snapshot.representations[0]
             .expect_inline_bytes()
@@ -3114,7 +3114,7 @@ async fn directory_publication_takes_the_next_name_rather_than_replacing_a_folde
 
     assert_eq!(
         visible_names(save_dir.path()),
-        vec!["alpha", "alpha (2)", "beta"]
+        vec!["alpha", "alpha (1)", "beta"]
     );
     // The user's folder is untouched and nothing merged into it.
     assert_eq!(
@@ -3123,7 +3123,7 @@ async fn directory_publication_takes_the_next_name_rather_than_replacing_a_folde
     );
     assert!(!save_dir.path().join("alpha/one.txt").exists());
     assert_eq!(
-        std::fs::read(save_dir.path().join("alpha (2)/one.txt")).unwrap(),
+        std::fs::read(save_dir.path().join("alpha (1)/one.txt")).unwrap(),
         b"hello"
     );
 }
@@ -3151,13 +3151,13 @@ async fn directory_publication_retries_onto_a_free_name_after_losing_a_race() {
         .commit()
         .await;
 
-    // The racer holds `alpha`; our root stepped aside to `alpha (2)`.
+    // The racer holds `alpha`; our root stepped aside to `alpha (1)`.
     assert_eq!(
         visible_names(save_dir.path()),
-        vec!["alpha", "alpha (2)", "beta"]
+        vec!["alpha", "alpha (1)", "beta"]
     );
     assert_eq!(
-        std::fs::read(save_dir.path().join("alpha (2)/one.txt")).unwrap(),
+        std::fs::read(save_dir.path().join("alpha (1)/one.txt")).unwrap(),
         b"hello"
     );
     // 2 roots + 1 lost race.

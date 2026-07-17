@@ -144,6 +144,19 @@ tar = "0.4"
 version = "1.10.0"
 features = ["v4"]
 
+# No-replace publication primitives: renameat2(RENAME_NOREPLACE) on Linux and
+# renamex_np(RENAME_EXCL) on macOS. std::fs::rename replaces silently, so the
+# raw syscalls are the only way to get "fail if the destination exists".
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+# Same guarantee via MoveFileExW without MOVEFILE_REPLACE_EXISTING.
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = [
+    "Win32_Foundation",
+    "Win32_Storage_FileSystem",
+] }
+
 [dev-dependencies]
 tokio = { version = "1", features = ["full", "test-util"] }
 tempfile = "3"

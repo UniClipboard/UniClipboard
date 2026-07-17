@@ -10,7 +10,9 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use tracing::{debug, warn};
-use uc_core::ports::inbound_file_target::ReserveInboundFileTargetPort;
+use uc_core::ports::inbound_file_target::{
+    ReserveInboundFileTargetPort, ResolveInboundSaveDirPort,
+};
 use uc_core::ports::settings::SettingsPort;
 
 /// Upper bound on collision-suffix attempts before giving up and falling back.
@@ -61,35 +63,49 @@ impl FsInboundFileTarget {
         }
         Some(path)
     }
+
+    /// Resolve the configured directory and make sure it is usable, without
+    /// creating anything inside it.
+    async fn usable_dir(&self) -> Option<PathBuf> {
+        let dir = self.configured_dir().await?;
+
+        // A configured-but-missing directory (e.g. an unmounted external
+        // drive) must not break inbound sync — fall back to managed storage
+        // instead.
+        if let Err(e) = tokio::fs::create_dir_all(&dir).await {
+            warn!(
+                error = %e,
+                "auto-save dir unusable; falling back to managed storage"
+            );
+            return None;
+        }
+        Some(dir)
+    }
+}
+
+#[async_trait]
+impl ResolveInboundSaveDirPort for FsInboundFileTarget {
+    async fn resolve_save_dir(&self) -> Option<PathBuf> {
+        self.usable_dir().await
+    }
 }
 
 #[async_trait]
 impl ReserveInboundFileTargetPort for FsInboundFileTarget {
     async fn reserve_target(&self, file_name: &str) -> Option<PathBuf> {
-        let dir = self.configured_dir().await?;
-
-        // Ensure the directory exists and is writable. A configured-but-missing
-        // directory (e.g. an unmounted external drive) must not break inbound
-        // sync — fall back to managed storage instead.
-        if let Err(e) = tokio::fs::create_dir_all(&dir).await {
-            warn!(
-                dir = %dir.display(),
-                error = %e,
-                "reserve_target: auto-save dir unusable; falling back to managed storage"
-            );
-            return None;
-        }
+        let dir = self.usable_dir().await?;
 
         let sanitized = sanitize_basename(file_name);
         match reserve_unique(&dir, &sanitized).await {
             Some(path) => {
-                debug!(path = %path.display(), "reserve_target: reserved auto-save path");
+                debug!("reserve_target: reserved auto-save path");
                 Some(path)
             }
             None => {
+                // Neither the name nor the resulting path may appear here: an
+                // inbound file name is user content, and these logs are
+                // plaintext.
                 warn!(
-                    dir = %dir.display(),
-                    file_name = %sanitized,
                     "reserve_target: could not reserve a unique path; falling back to managed storage"
                 );
                 None
@@ -121,7 +137,6 @@ async fn reserve_unique(dir: &Path, file_name: &str) -> Option<PathBuf> {
             Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
             Err(e) => {
                 warn!(
-                    candidate = %candidate.display(),
                     error = %e,
                     "reserve_target: failed to create reservation placeholder"
                 );
@@ -242,6 +257,50 @@ mod tests {
         let path = a.reserve_target("f.bin").await.expect("reserved");
         assert!(nested.exists());
         assert_eq!(path, nested.join("f.bin"));
+    }
+
+    #[tokio::test]
+    async fn resolve_save_dir_returns_the_configured_dir_without_creating_anything_inside() {
+        let tmp = TempDir::new().unwrap();
+        let a = adapter(Some(tmp.path().display().to_string()));
+
+        let dir = a.resolve_save_dir().await.expect("resolved");
+
+        assert_eq!(dir, tmp.path());
+        // The whole reason this port exists next to `reserve_target`: choosing
+        // a destination must not put anything on the final path.
+        assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 0);
+    }
+
+    #[tokio::test]
+    async fn resolve_save_dir_is_stable_across_calls() {
+        let tmp = TempDir::new().unwrap();
+        let a = adapter(Some(tmp.path().display().to_string()));
+
+        assert_eq!(a.resolve_save_dir().await, a.resolve_save_dir().await);
+    }
+
+    #[tokio::test]
+    async fn resolve_save_dir_returns_none_when_unset_or_relative() {
+        assert!(adapter(None).resolve_save_dir().await.is_none());
+        assert!(adapter(Some("   ".to_string()))
+            .resolve_save_dir()
+            .await
+            .is_none());
+        assert!(adapter(Some("relative/sub".to_string()))
+            .resolve_save_dir()
+            .await
+            .is_none());
+    }
+
+    #[tokio::test]
+    async fn resolve_save_dir_creates_the_dir_when_missing() {
+        let tmp = TempDir::new().unwrap();
+        let nested = tmp.path().join("a").join("b");
+        let a = adapter(Some(nested.display().to_string()));
+
+        assert_eq!(a.resolve_save_dir().await, Some(nested.clone()));
+        assert!(nested.exists());
     }
 
     #[tokio::test]

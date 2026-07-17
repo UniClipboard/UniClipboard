@@ -475,9 +475,11 @@ pub struct FileCacheBlobMaterializer {
     publisher: Arc<dyn AtomicPublishPort>,
     hidden_marker: Option<Arc<dyn MarkHiddenPort>>,
     /// Per-destination answers from [`AtomicPublishPort::supports_no_replace`],
-    /// keyed by the directory the roots land in. See
-    /// [`Self::supports_no_replace_cached`].
-    no_replace_support: tokio::sync::Mutex<BTreeMap<PathBuf, bool>>,
+    /// keyed by the directory the roots land in. Each entry is a shared
+    /// [`tokio::sync::OnceCell`] so concurrent receives to the same
+    /// destination coalesce onto one probe instead of each observing a cache
+    /// miss and issuing its own. See [`Self::supports_no_replace_cached`].
+    no_replace_support: tokio::sync::Mutex<BTreeMap<PathBuf, Arc<tokio::sync::OnceCell<bool>>>>,
 }
 
 impl FileCacheBlobMaterializer {
@@ -1194,12 +1196,24 @@ impl FileCacheBlobMaterializer {
             .parent()
             .map(|parent| parent.to_path_buf())
             .unwrap_or_else(|| staging.to_path_buf());
-        if let Some(known) = self.no_replace_support.lock().await.get(&key) {
-            return *known;
-        }
-        let supported = self.publisher.supports_no_replace(staging).await;
-        self.no_replace_support.lock().await.insert(key, supported);
-        supported
+        // Take (or create) the destination's shared cell under the lock, then
+        // release the lock before probing: the probe can be several network
+        // round trips, and holding the map lock across it would serialize
+        // every destination behind whichever one is probing.
+        let cell = {
+            let mut support = self.no_replace_support.lock().await;
+            Arc::clone(
+                support
+                    .entry(key)
+                    .or_insert_with(|| Arc::new(tokio::sync::OnceCell::new())),
+            )
+        };
+        // Concurrent receives to the same destination all await this one
+        // initialization, so the "once per destination" guarantee holds under
+        // concurrency and not just in steady state.
+        *cell
+            .get_or_init(|| async { self.publisher.supports_no_replace(staging).await })
+            .await
     }
 
     async fn build_and_publish_directory(

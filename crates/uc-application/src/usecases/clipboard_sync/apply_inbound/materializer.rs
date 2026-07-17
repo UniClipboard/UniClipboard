@@ -1033,19 +1033,36 @@ impl FileCacheBlobMaterializer {
 
         match result {
             Ok((publication, root_paths, member_digests)) => {
-                snapshot.file_content_digests.clear();
-                snapshot.file_set_v1_component =
-                    Some(compute_file_set_component(&manifest, &member_digests)?);
-                let uri_list = local_file_uri_list(&root_paths)?;
-                rewrite_file_list(&mut snapshot, uri_list, root_paths.len())?;
-                // The staging area stays until the caller settles the
-                // publication: rollback needs somewhere to put the roots back.
-                Ok(MaterializeResult {
-                    snapshot,
-                    missing: Vec::new(),
-                    partial: false,
-                    publication: Some(publication),
-                })
+                // Fold the landed roots into the snapshot. A failure here would
+                // otherwise drop `publication` unsettled, and its `Drop` cannot
+                // withdraw (withdrawal is async, `Drop` is not) — the roots
+                // would stay visible with no entry behind them. Take them back
+                // ourselves before propagating, the same duty the caller owes
+                // once it holds the publication.
+                match finalize_directory_snapshot(
+                    &mut snapshot,
+                    &manifest,
+                    &member_digests,
+                    &root_paths,
+                ) {
+                    // The staging area stays until the caller settles the
+                    // publication: rollback needs somewhere to put the roots back.
+                    Ok(()) => Ok(MaterializeResult {
+                        snapshot,
+                        missing: Vec::new(),
+                        partial: false,
+                        publication: Some(publication),
+                    }),
+                    Err(err) => match publication.rollback().await {
+                        RollbackOutcome::Clean => Err(err),
+                        RollbackOutcome::PartialPublication { visible_roots } => {
+                            Err(err.context(format!(
+                                "rolled back after snapshot finalization failed, but \
+                                 {visible_roots} published root(s) remain visible"
+                            )))
+                        }
+                    },
+                }
             }
             Err(err) => {
                 // Anything published was already withdrawn inside
@@ -1434,6 +1451,27 @@ async fn publish_root(
 
 fn directory_member_transfer_id(receiver_entry_id: &EntryId, member_index: usize) -> String {
     format!("{}:member:{member_index}", receiver_entry_id.as_ref())
+}
+
+/// Fold the published roots into the snapshot: clear the per-file digests,
+/// recompute the file-set identity component, and rewrite the file list to the
+/// roots' local `file://` URIs.
+///
+/// Split out from [`FileCacheBlobMaterializer::materialize_directory`] so its
+/// failure is a single value the caller can react to — the roots are already
+/// visible by this point, so a failure here has to withdraw the publication
+/// rather than drop it.
+fn finalize_directory_snapshot(
+    snapshot: &mut SystemClipboardSnapshot,
+    manifest: &InboundFileSetManifest,
+    member_digests: &BTreeMap<u32, [u8; 32]>,
+    root_paths: &[PathBuf],
+) -> Result<()> {
+    snapshot.file_content_digests.clear();
+    snapshot.file_set_v1_component = Some(compute_file_set_component(manifest, member_digests)?);
+    let uri_list = local_file_uri_list(root_paths)?;
+    rewrite_file_list(snapshot, uri_list, root_paths.len())?;
+    Ok(())
 }
 
 pub(crate) fn compute_file_set_component(

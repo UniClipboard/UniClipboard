@@ -26,17 +26,14 @@
 //! actually pays per probe.
 //!
 //! CPU is reported as total process CPU time (`getrusage`) across the run and
-//! as mean utilisation over wall-clock, not as an instantaneous peak. Peak
-//! sampling needs a sampling thread and reports whatever the scheduler happened
-//! to be doing at each tick; total CPU time is deterministic, reproducible, and
-//! is the quantity that actually matters here — "how much CPU did answering
-//! these probes burn". The PRD's "no sustained business CPU" is read as
-//! utilisation over the run.
+//! as mean utilisation over wall-clock. The numbers are whole-process, so both
+//! arms include the listener and load generator. This makes the test useful as
+//! a fast structural regression gate, but not as the PRD's daemon-process peak
+//! CPU or real log-file evidence.
 //!
-//! The numbers are whole-process, so both arms include the load generator's own
-//! CPU. That inflates `/healthz`'s figure (where the client is a large share of
-//! the work) and is negligible for the control arm — which biases *against*
-//! the result being argued, so it is left uncorrected rather than papered over.
+//! For quotable end-to-end evidence, run the process-isolated
+//! `mobile_healthz_process_bench` binary in `p2p-bench`. It starts a real daemon,
+//! samples only that PID, and verifies INFO/WARN deltas in `UC_LOG_FILE`.
 
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
@@ -298,11 +295,22 @@ async fn healthz_load_vs_sync_clipboard_json() {
     cancel.cancel();
     let _ = handle.join_handle.await;
 
+    assert_eq!(health.errors, 0, "/healthz must not error under probe load");
+    assert_eq!(
+        sync.errors, 0,
+        "/SyncClipboard.json must not error under control load"
+    );
+    assert!(health.total > 0, "/healthz must produce successful samples");
+    assert!(
+        sync.total > 0,
+        "/SyncClipboard.json must produce successful control samples"
+    );
+
     health.report();
     sync.report();
 
-    let health_cpu_per_req = health.cpu_seconds / health.total.max(1) as f64;
-    let sync_cpu_per_req = sync.cpu_seconds / sync.total.max(1) as f64;
+    let health_cpu_per_req = health.cpu_seconds / health.total as f64;
+    let sync_cpu_per_req = sync.cpu_seconds / sync.total as f64;
 
     println!(
         "\n── comparison ──\n\
@@ -335,8 +343,6 @@ async fn healthz_load_vs_sync_clipboard_json() {
         health_cpu_per_req * PROBE_RPS * 100.0,
         sync_cpu_per_req * PROBE_RPS * 100.0,
     );
-
-    assert_eq!(health.errors, 0, "/healthz must not error under probe load");
 
     // The claim under test is a cost *class* difference, not a tuned margin:
     // constant-cost handler vs memory-hard KDF. An order of magnitude is a

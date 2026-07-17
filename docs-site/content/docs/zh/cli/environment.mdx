@@ -35,6 +35,7 @@ description: 面向无头、服务器与多 profile 部署的运营开关。
 | ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
 | `RUST_LOG`       | 标准 tracing 过滤器，设置后 **覆盖 `UC_LOG_PROFILE`**。可以是级别（`RUST_LOG=debug`）或按模块指定（`RUST_LOG=uniclip=debug,iroh=info`）。 |
 | `UC_LOG_PROFILE` | 选择日志预设 —— `dev`、`prod`、`debug_clipboard` 或 `cli`。debug 构建默认 `dev`，release 构建默认 `prod`。                                |
+| `UC_LOG_FILE`    | 诊断专用：把 JSON 日志写入这一个指定文件，不按日滚动、不做保留期清理。仅限 daemon —— 取值必须是绝对路径，且 `UC_HOST_ROLE` 必须为 `daemon`，否则进程直接启动失败，以免多个角色同时追加同一文件。留空则沿用按角色、按日滚动的正常日志。 |
 
 日常配置见[安装](../getting-started/install)与[自建中继](../guides/self-host-relay)。
 可接受的取值与默认值，以二进制的 `--help` 和源码为准。

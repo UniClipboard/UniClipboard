@@ -160,14 +160,12 @@ fn main() -> io::Result<()> {
     // Materialize once for validation, reusing the SAME serde_json model that
     // produces the pretty output below (so the gate inspects exactly what we
     // are about to write).
-    let value: Value =
-        serde_json::to_value(&doc).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+    let value: Value = serde_json::to_value(&doc).map_err(io::Error::other)?;
     let (path_count, operation_count) = validate(&value);
 
     // Pretty JSON = serde_json::to_string_pretty (2-space indent). Deterministic
     // because utoipa uses BTreeMaps and serde_json has no preserve_order.
-    let mut json = serde_json::to_string_pretty(&value)
-        .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+    let mut json = serde_json::to_string_pretty(&value).map_err(io::Error::other)?;
     json.push('\n'); // POSIX-clean trailing newline.
 
     let schema_count = value

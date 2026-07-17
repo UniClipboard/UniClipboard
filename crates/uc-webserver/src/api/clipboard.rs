@@ -361,7 +361,7 @@ async fn dispatch_text(
     // ADR-008 P5-L L8b: refuse new clipboard dispatch while a controlled restart drains.
     crate::api::server::ensure_not_quiescing(&state.quiescing)?;
     let app = require_app_facade(&state)?;
-    let Json(req) = body.map_err(|e| ApiError::bad_request(&e.to_string()))?;
+    let Json(req) = body.map_err(|e| ApiError::bad_request(e.to_string()))?;
 
     if req.text.is_empty() {
         return Err(ApiError::bad_request("text must not be empty"));
@@ -602,13 +602,13 @@ async fn cancel_transfer(
     body: Result<Json<CancelTransferRequest>, axum::extract::rejection::JsonRejection>,
 ) -> Result<Json<ApiEnvelope<CancelTransferResponse>>, ApiError> {
     let app = require_app_facade(&state)?;
-    let Json(req) = body.map_err(|e| ApiError::bad_request(&e.to_string()))?;
+    let Json(req) = body.map_err(|e| ApiError::bad_request(e.to_string()))?;
 
     let reason = match req.reason.as_str() {
         "local_user" => uc_core::FileTransferCancellationReason::LocalUser,
         "timeout" => uc_core::FileTransferCancellationReason::Timeout,
         other => {
-            return Err(ApiError::bad_request(&format!(
+            return Err(ApiError::bad_request(format!(
                 "unknown cancellation reason: {other}"
             )));
         }

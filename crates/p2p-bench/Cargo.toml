@@ -3,7 +3,7 @@ name = "p2p-bench"
 version = "0.0.0"
 edition = "2021"
 publish = false
-description = "Throwaway spike bins, isolated from the uniclipboard app stack. `p2p-bench` (needs --features iroh) measures raw iroh P2P blob throughput; `http_blob_bench` measures the full-buffer blob-over-loopback path for ADR-008 OQ-perf-gate."
+description = "Throwaway spike and process-isolated performance binaries for P2P, loopback blob transfer, and mobile LAN health probes."
 
 # Raw iroh P2P throughput bench. Heavy iroh deps are feature-gated so the
 # lightweight http_blob_bench can build without dragging iroh/iroh-blobs in.
@@ -19,9 +19,21 @@ required-features = ["iroh"]
 name = "http_blob_bench"
 path = "src/bin/http_blob_bench.rs"
 
+# Mobile LAN liveness evidence: starts a real daemon profile, drives each route
+# from this separate load-generator process, and samples only the daemon PID.
+[[bin]]
+name = "mobile_healthz_process_bench"
+path = "src/bin/mobile_healthz_process_bench.rs"
+
 [features]
 # Opt-in to the heavy iroh stack (only the p2p-bench bin needs it).
-iroh = ["dep:iroh", "dep:iroh-blobs", "dep:noq-proto", "dep:futures-lite", "dep:time"]
+iroh = [
+  "dep:iroh",
+  "dep:iroh-blobs",
+  "dep:noq-proto",
+  "dep:futures-lite",
+  "dep:time",
+]
 
 [dependencies]
 anyhow = "1"
@@ -38,8 +50,26 @@ futures-lite = { version = "2", optional = true }
 time = { version = "0.3", features = ["formatting", "macros"], optional = true }
 
 # http_blob_bench deps (all already in src-tauri/Cargo.lock — no new downloads/lock churn)
-axum = { version = "0.7", default-features = false, features = ["tokio", "http1"] }
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "rustls-tls-webpki-roots", "stream"] }
+axum = { version = "0.7", default-features = false, features = [
+  "tokio",
+  "http1",
+] }
+reqwest = { version = "0.12", default-features = false, features = [
+  "rustls-tls",
+  "rustls-tls-webpki-roots",
+  "stream",
+] }
 bytes = "1"
 futures-util = "0.3"
 tokio-util = { version = "0.7", features = ["io"] }
+
+# mobile_healthz_process_bench only: black-box daemon orchestration, JSON log
+# validation, and cross-platform PID CPU sampling. These stay out of shipped bins.
+hdrhistogram = "7"
+serde_json = "1"
+sysinfo = "0.38"
+uc-app-paths = { path = "../uc-app-paths" }
+uc-daemon-process = { path = "../uc-daemon-process" }
+
+[dev-dependencies]
+tempfile = "3"

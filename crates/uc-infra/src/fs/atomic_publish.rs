@@ -49,6 +49,18 @@ impl AtomicPublishPort for FsAtomicPublisher {
             .map_err(|err| PublishError::Io(format!("publish task did not run: {err}")))?
     }
 
+    async fn publish_into_free_name(
+        &self,
+        source: &Path,
+        destination: &Path,
+    ) -> Result<(), PublishError> {
+        let source = source.to_path_buf();
+        let destination = destination.to_path_buf();
+        tokio::task::spawn_blocking(move || rename_plain(&source, &destination))
+            .await
+            .map_err(|err| PublishError::Io(format!("publish task did not run: {err}")))?
+    }
+
     async fn supports_no_replace(&self, probe_dir: &Path) -> bool {
         let probe_dir = probe_dir.to_path_buf();
         match tokio::task::spawn_blocking(move || probe_no_replace(&probe_dir)).await {
@@ -134,7 +146,7 @@ fn rename_no_replace(source: &Path, destination: &Path) -> Result<(), PublishErr
     if rc == 0 {
         return Ok(());
     }
-    Err(classify_errno(std::io::Error::last_os_error()))
+    Err(classify_os_error(std::io::Error::last_os_error()))
 }
 
 #[cfg(target_os = "linux")]
@@ -175,7 +187,7 @@ unsafe fn rename_excl_syscall(
 }
 
 #[cfg(unix)]
-fn classify_errno(err: std::io::Error) -> PublishError {
+fn classify_os_error(err: std::io::Error) -> PublishError {
     match err.raw_os_error() {
         Some(libc::EEXIST) | Some(libc::ENOTEMPTY) => PublishError::DestinationExists,
         // ENOSYS: kernel too old. EINVAL: the flag reached a filesystem that
@@ -189,12 +201,19 @@ fn classify_errno(err: std::io::Error) -> PublishError {
     }
 }
 
+/// Move without asking the platform for the no-replace guarantee.
+///
+/// `std::fs::rename` is the right tool once the guarantee is off the table:
+/// it reaches volumes the no-replace primitives reject outright — exFAT, some
+/// FUSE and network mounts — which is the entire reason this variant exists.
+/// The atomicity of the rename itself is unaffected.
+fn rename_plain(source: &Path, destination: &Path) -> Result<(), PublishError> {
+    std::fs::rename(source, destination).map_err(classify_os_error)
+}
+
 #[cfg(windows)]
 fn rename_no_replace(source: &Path, destination: &Path) -> Result<(), PublishError> {
     use std::os::windows::ffi::OsStrExt;
-    use windows_sys::Win32::Foundation::{
-        ERROR_ALREADY_EXISTS, ERROR_FILE_EXISTS, ERROR_NOT_SAME_DEVICE,
-    };
     use windows_sys::Win32::Storage::FileSystem::MoveFileExW;
 
     let to_wide = |path: &Path| {
@@ -218,14 +237,21 @@ fn rename_no_replace(source: &Path, destination: &Path) -> Result<(), PublishErr
     if ok != 0 {
         return Ok(());
     }
+    Err(classify_os_error(std::io::Error::last_os_error()))
+}
 
-    let err = std::io::Error::last_os_error();
+#[cfg(windows)]
+fn classify_os_error(err: std::io::Error) -> PublishError {
+    use windows_sys::Win32::Foundation::{
+        ERROR_ALREADY_EXISTS, ERROR_FILE_EXISTS, ERROR_NOT_SAME_DEVICE,
+    };
+
     let code = err.raw_os_error().unwrap_or_default() as u32;
-    Err(match code {
+    match code {
         ERROR_ALREADY_EXISTS | ERROR_FILE_EXISTS => PublishError::DestinationExists,
         ERROR_NOT_SAME_DEVICE => PublishError::Unsupported,
         _ => PublishError::Io(describe_io(&err)),
-    })
+    }
 }
 
 /// Describe a failure by kind and code only.

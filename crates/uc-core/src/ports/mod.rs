@@ -32,6 +32,7 @@ pub mod errors;
 pub mod file_transfer;
 pub mod first_sync_state;
 mod hash;
+pub mod hidden_path;
 pub mod host_event;
 pub mod inbound_file_target;
 pub mod local_identity;
@@ -73,6 +74,7 @@ pub use file_transfer::{
     GetEntryTransferSummaryPort, ListExpiredInflightTransfersPort, PendingInboundTransfer,
     RecordReceiverTransferPort, TrackedFileTransferStatus,
 };
+pub use hidden_path::MarkHiddenPort;
 pub use host_event::{
     ClipboardHostEvent, ClipboardOriginKind, DeliveryHostEvent, EmitError, HostEvent,
     HostEventEmitterPort, TransferHostEvent,

@@ -1211,17 +1211,15 @@ impl FileCacheBlobMaterializer {
         let mut claimed = HashSet::new();
         let mut plans = Vec::new();
         for (root_index, (root_name, _)) in &roots {
-            let desired = resolve_nonconflicting_root_path(
-                &plan.dest_parent,
-                &sanitize_root_name(root_name),
-                &claimed,
-            )
-            .await?;
+            let sanitized_name = sanitize_root_name(root_name);
+            let desired =
+                resolve_nonconflicting_root_path(&plan.dest_parent, &sanitized_name, &claimed)
+                    .await?;
             claimed.insert(desired.clone());
             plans.push((
                 staging_root(staging_base, *root_index, root_name),
                 desired,
-                sanitize_root_name(root_name),
+                sanitized_name,
             ));
         }
 

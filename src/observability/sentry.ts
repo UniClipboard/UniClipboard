@@ -77,6 +77,40 @@ function syncFrontendReplayEnabled(enabled: boolean): void {
   void replay.stop()
 }
 
+/**
+ * 基线 trace 采样率，前端的单一真相源。
+ *
+ * 与后端 `sentry_gate::BASE_TRACE_SAMPLE_RATE` 对称;两个 DSN 指向不同
+ * Sentry 项目,配额独立,所以数值不需要一致。
+ */
+export const TRACES_SAMPLE_RATE = import.meta.env.DEV ? 1.0 : 0.1
+
+/**
+ * 最终 envelope 出口 gate,对应后端的 `TelemetryGatedTransport`。
+ *
+ * 关闭遥测时在这里丢弃,而不是只靠 `beforeSend` 系列钩子:那些钩子每个只
+ * 管一种载荷,而 session(release-health)、client report 这类 envelope
+ * 不经过任何 `beforeSend`,只有 transport 能拦住。这一层也自动覆盖了
+ * "切换前已采样、切换后才结束"的 Transaction。
+ *
+ * 包在 `makeFetchTransport` 外面而不是里面:后者内部已经带缓冲与限流队列,
+ * 从外面拦截才能保证被丢弃的 envelope 根本不进队列。
+ */
+function makeTelemetryGatedTransport(
+  options: Parameters<typeof Sentry.makeFetchTransport>[0]
+): ReturnType<typeof Sentry.makeFetchTransport> {
+  const transport = Sentry.makeFetchTransport(options)
+  return {
+    send: envelope => {
+      if (!sentryRuntimeEnabled) {
+        return Promise.resolve({})
+      }
+      return transport.send(envelope)
+    },
+    flush: timeout => transport.flush(timeout),
+  }
+}
+
 const getTauriPlatform = (): string => {
   if (typeof window === 'undefined' || !('__TAURI__' in window)) {
     return 'unknown'
@@ -120,7 +154,18 @@ export function initSentry(): void {
 
   Sentry.init({
     dsn: import.meta.env.VITE_SENTRY_DSN,
-    tracesSampleRate: import.meta.env.DEV ? 1.0 : 0.1,
+    transport: makeTelemetryGatedTransport,
+    // 关闭遥测时返回 0,连 span 都不记录。已采样的 Transaction 若在切换后
+    // 才结束,由上面的 transport gate 兜住,这里不需要再加
+    // `beforeSendTransaction`。`inheritOrSampleWith` 复刻了原
+    // `tracesSampleRate` 的分布式追踪继承语义(先 parentSampleRate,
+    // 再 parentSampled,最后 fallback)。
+    tracesSampler: samplingContext => {
+      if (!sentryRuntimeEnabled) {
+        return 0
+      }
+      return samplingContext.inheritOrSampleWith(TRACES_SAMPLE_RATE)
+    },
     replaysSessionSampleRate: 0,
     replaysOnErrorSampleRate: 1.0,
     environment: import.meta.env.VITE_APP_ENV ?? import.meta.env.MODE,

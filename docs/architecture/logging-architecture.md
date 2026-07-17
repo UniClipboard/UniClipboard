@@ -793,10 +793,19 @@ The previous OTLP→Seq pipeline was retired in commit `faa8eb8d` (backend) and 
 
 ### Privacy and Telemetry Gate
 
-Both backend and frontend honor the in-app **Settings → General → Telemetry** toggle (`general.telemetry_enabled`):
+后端与前端都遵守应用内的 **设置 → 通用 → 遥测** 开关（`general.telemetry_enabled`）。没有任何单一钩子能覆盖全部载荷，因此两端都在三个深度上设卡：
 
-- **Backend** — `uc_observability::telemetry_gate` is consulted by Sentry's `before_send`, `before_breadcrumb`, and `before_send_log` hooks. When the gate is off, all three return `None` and nothing leaves the process.
-- **Frontend** — `setFrontendSentryEnabled` flips the same flag for the browser SDK. The `beforeSend` / `beforeBreadcrumb` / `beforeSendLog` hooks in `src/observability/sentry.ts` short-circuit to `null` while disabled. The default is **off** at startup; SettingContext flips it on once the daemon returns the persisted user preference, so any events captured before that point are dropped silently.
+| 深度                | 后端（`uc-bootstrap/src/observability/`）                            | 前端（`src/observability/sentry.ts`）                         |
+| ------------------- | ------------------------------------------------------------------- | ------------------------------------------------------------- |
+| Transaction 采样器  | `traces_sampler` -> `sentry_gate::transaction_sample_rate` -> `0.0` | `tracesSampler` -> `0`                                        |
+| 载荷钩子            | `before_send` / `before_breadcrumb` / `before_send_log` -> `None`    | `beforeSend` / `beforeBreadcrumb` / `beforeSendLog` -> `null` |
+| Envelope transport  | `sentry_gate::TelemetryGatedTransportFactory` 丢弃 envelope          | `makeTelemetryGatedTransport` 直接 resolve，不发送            |
+
+采样器让新 Transaction 根本不被记录。载荷钩子在 capture 时丢弃各自的载荷——其中 breadcrumb 尤其必须在这一层丢弃而不是留到 transport：只有在 capture 时就丢掉，会话中途重新打开遥测才不会把此前静默期的上下文泄漏进下一条事件。
+
+transport 是最后一道边界，且与前面的钩子 **并不冗余**：它是唯一能覆盖那些任何 `before_*` 钩子都看不到的 envelope 的关卡——包括切换开关前已经采样的 Transaction、`release-health` 的 session 更新（sentry-core 的 `session.rs` 直接调用 `send_envelope`，绕过 `before_send`），以及未来 SDK 升级引入的新 envelope 类型。
+
+前端的 gate 启动时默认 **关闭**，并把上次确认过的偏好镜像进 `localStorage`（`uc.telemetry_enabled`），这样在 SettingContext 从 daemon 拿到持久化值之前的启动早期窗口，关掉过遥测的用户依然受保护。后端的等价做法是 `tracing.rs` 同步读 `settings.json`，在 `sentry::init` 之前调用 `set_telemetry_enabled`。
 
 A shared field-name redaction blocklist (backend: `uc_observability::redact`, frontend: `src/observability/redaction.ts`) is applied to attributes regardless of the gate state, so secrets like `password`, `token`, `auth`, `api_key`, etc. never leave the process even if telemetry is enabled.
 

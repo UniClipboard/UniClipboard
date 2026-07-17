@@ -401,10 +401,9 @@ export const SettingProvider: React.FC<SettingProviderProps> = ({ children }) =>
     })
   }, [setting?.general?.language])
 
-  // 将用户侧遥测开关同步到前端观测出口；初次加载设置和后续变更都会立即生效。
-  // 前端通过 Sentry 的 beforeSend / beforeBreadcrumb / beforeSendLog 钩子
-  // 在 sentryRuntimeEnabled=false 时直接丢弃事件；后端 Sentry 由
-  // uc-observability 的 telemetry_gate 同步，不需要重启。
+  // Synchronize the user preference to every frontend Sentry payload path.
+  // Sampling and before-send hooks read the runtime gate on every capture, so
+  // both the initial settings load and later changes take effect immediately.
   useEffect(() => {
     const enabled = setting?.general?.telemetryEnabled
     if (typeof enabled !== 'boolean') return

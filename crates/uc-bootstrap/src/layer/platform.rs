@@ -175,7 +175,7 @@ pub fn create_platform_layer(
                     };
                     if entry.path().is_file() {
                         let path = entry.path();
-                        if path.file_name().map_or(false, |n| n == ".v2_migrated") {
+                        if path.file_name().is_some_and(|n| n == ".v2_migrated") {
                             continue;
                         }
                         if is_v2_blob(&path) {

@@ -37,6 +37,7 @@ use tracing_subscriber::filter::{filter_fn, FilterExt};
 use tracing_subscriber::prelude::*;
 
 use super::correlation::{self, CorrelationLayer};
+use super::sentry_gate::{transaction_sample_rate, TelemetryGatedTransportFactory};
 use uc_application::facade::AppPaths;
 use uc_infra::settings::repository::load_settings_snapshot;
 use uc_observability::redact::{is_sensitive_key, REDACTED_PLACEHOLDER};
@@ -185,7 +186,7 @@ pub fn init_tracing_subscriber() -> anyhow::Result<()> {
     }
 
     // Step 1b: Resolve device_id for process-wide logging correlation
-    let device_id = std::fs::read_to_string(&paths.device_id_path()).ok();
+    let device_id = std::fs::read_to_string(paths.device_id_path()).ok();
 
     if let Some(device_id) = device_id.as_ref() {
         let _ = uc_observability::set_global_device_id(device_id.clone());
@@ -246,9 +247,10 @@ pub fn init_tracing_subscriber() -> anyhow::Result<()> {
     //
     // ## 与 telemetry_enabled 的关系
     //
-    // Sentry 在有 DSN 时无条件初始化,但每条出站事件 / breadcrumb / log 都会
-    // 被对应的 `before_*` 钩子拦截,在用户关闭 telemetry 时一律返回 None。
-    // 净效果是用户开关即时生效,不需要重启进程。
+    // Sentry initializes whenever a DSN exists. Payload-specific hooks drop
+    // events, breadcrumbs, and logs while telemetry is disabled; the sampler
+    // rejects new transactions, and the final transport gate catches every
+    // envelope, including transactions started before the toggle changed.
     //
     // ## 防双重 panic 上报
     //
@@ -275,31 +277,19 @@ pub fn init_tracing_subscriber() -> anyhow::Result<()> {
                 environment: option_env!("APP_ENV")
                     .filter(|s| !s.is_empty())
                     .map(Into::into),
-                // ERROR / Exception 全采样;performance trace 紧急下调至 2%
-                // 控制 quota —— 2026-05 月底配额已用 80%,经诊断 iroh
-                // poll_send 与 presence 链路占 81%,在加上下方 iroh
-                // target 过滤后,2% 仍能保留可观测性。
+                // Sample every ERROR / Exception.
                 sample_rate: 1.0,
-                traces_sample_rate: 0.02,
-                // 兜底过滤:对一组已知"高频且无业务价值"的 transaction
-                // 名直接返回 0.0,确保即使有人后续加 instrument 也不会再
-                // 烧配额。对其他 transaction 退回 traces_sample_rate
-                // 的 0.02。`traces_sampler` 一旦设置就完全取代
-                // `traces_sample_rate`,所以必须显式在这里复述基线值
-                // (sentry-rust 行为详见 performance::sample_rate)。
-                //
-                // 命中表来自 2026-05 月度配额诊断 —— 这几个名字对应
-                // iroh / noq_proto 的 root transaction(虽然上方 layer
-                // filter 已经按 target 屏蔽,但 sentry-tracing 也可能
-                // 在某些路径下用更短的 transaction name,这里加一道。
-                traces_sampler: Some(Arc::new(|ctx| {
-                    matches!(
-                        ctx.name(),
-                        "poll_send" | "connect" | "QADv4" | "tx" | "state"
-                    )
-                    .then_some(0.0)
-                    .unwrap_or(0.02)
-                })),
+                // Transaction sampling: rate, quota backstop, and telemetry gate
+                // all live in `sentry_gate::transaction_sample_rate`. Note there
+                // is deliberately no `traces_sample_rate` here — sentry-core
+                // ignores it once `traces_sampler` is set, so setting it would
+                // only create a second, dead copy of the baseline rate.
+                traces_sampler: Some(Arc::new(transaction_sample_rate)),
+                // Final process-wide envelope gate. Unlike the payload-specific
+                // before_* hooks below, this also covers transactions sampled
+                // before the toggle flipped, release-health sessions, and future
+                // Sentry envelope types added by SDK upgrades.
+                transport: Some(Arc::new(TelemetryGatedTransportFactory)),
                 // Enable Sentry Logs (replaces the legacy OTLP→Seq pipeline).
                 // Tracing ERROR + WARN events are routed to Logs by the
                 // `event_filter` below; INFO stays as a breadcrumb only.

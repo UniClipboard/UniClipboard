@@ -256,6 +256,24 @@ struct DispatchVersions {
 }
 
 impl ClipboardSyncFacade {
+    /// Reclaim the areas where interrupted directory receives were being
+    /// assembled, and report how many were removed.
+    ///
+    /// Only the directories in `dirs` are searched; an area under a folder the
+    /// user has since stopped using is not reachable from here.
+    ///
+    /// Associated rather than a method, and deliberately so: this must run
+    /// while nothing can be receiving, which is before this facade's own
+    /// dependencies — the network stack among them — exist. Binding it to an
+    /// instance would push the sweep past the point where a peer can already
+    /// be pushing into the very area being swept.
+    ///
+    /// Governance only: nothing here is fatal. A leftover area costs disk
+    /// space, not correctness, since no entry refers to it.
+    pub async fn sweep_orphaned_inbound_staging(dirs: &[std::path::PathBuf]) -> usize {
+        crate::usecases::clipboard_sync::sweep_inbound_staging(dirs).await
+    }
+
     pub fn new(deps: ClipboardSyncDeps) -> Self {
         let dispatch_uc = Arc::new(DispatchClipboardEntryUseCase::new(
             Arc::clone(&deps.peer_addr_repo),

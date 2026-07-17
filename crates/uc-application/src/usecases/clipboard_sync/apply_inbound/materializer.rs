@@ -23,7 +23,11 @@ use uc_core::clipboard::{
     FileSetMemberLocation, HashAlgorithm,
 };
 use uc_core::ids::{DeviceId, EntryId, FormatId, RepresentationId};
-use uc_core::ports::inbound_file_target::ReserveInboundFileTargetPort;
+use uc_core::ports::atomic_publish::{AtomicPublishPort, PublishError};
+use uc_core::ports::hidden_path::MarkHiddenPort;
+use uc_core::ports::inbound_file_target::{
+    ReserveInboundFileTargetPort, ResolveInboundSaveDirPort,
+};
 use uc_core::{MimeType, ObservedClipboardRepresentation, SystemClipboardSnapshot};
 
 use crate::facade::blob_transfer::{
@@ -89,6 +93,14 @@ pub struct MaterializeResult {
     /// 统一通过 `is_partial()` 读,避免新调用方又掉进"missing 空 ⇒
     /// complete"陷阱。
     pub(crate) partial: bool,
+    /// Present when this result put directory roots at their final location.
+    ///
+    /// Those roots are visible but provisional: the caller owes them either a
+    /// [`DirectoryPublication::commit`] once the entry is durably recorded, or
+    /// a [`DirectoryPublication::rollback`] on any path that abandons the
+    /// entry. Take it with [`Self::take_publication`] and settle it on every
+    /// branch — dropping it leaves user-visible roots with nothing behind them.
+    pub(crate) publication: Option<DirectoryPublication>,
 }
 
 impl MaterializeResult {
@@ -97,11 +109,17 @@ impl MaterializeResult {
             snapshot,
             missing: Vec::new(),
             partial: false,
+            publication: None,
         }
     }
 
     pub fn is_partial(&self) -> bool {
         self.partial
+    }
+
+    /// Take ownership of the publication this result is holding, if any.
+    pub fn take_publication(&mut self) -> Option<DirectoryPublication> {
+        self.publication.take()
     }
 }
 
@@ -143,25 +161,285 @@ pub trait InboundBlobFetcher: Send + Sync {
     async fn record_unfetched_failure(&self, _context: FetchTransferContext, _detail: String) {}
 }
 
-#[async_trait]
-pub(crate) trait RootRenamer: Send + Sync {
-    async fn rename(
-        &self,
-        source: &std::path::Path,
-        destination: &std::path::Path,
-    ) -> std::io::Result<()>;
+/// Prefix marking an area where an inbound directory is assembled.
+///
+/// The area sits on the destination volume, so publication is a same-volume
+/// rename. The prefix does two jobs: it makes crash debris recognizable —
+/// nothing else creates these, and a live receive only holds one while it runs
+/// — and on platforms where a leading dot means "hidden", it is also what
+/// keeps the area out of the user's view. Windows needs an explicit attribute
+/// for that, which is [`MarkHiddenPort`]'s job.
+const STAGING_DIR_PREFIX: &str = ".uniclip-incoming-";
+
+/// How many times a single root may lose the race for a name before the
+/// receive gives up. Each loss means another process took the exact name in
+/// the window between choosing it and publishing, so reaching this bound means
+/// something is generating names as fast as we are.
+const MAX_PUBLISH_ATTEMPTS: u32 = 64;
+
+/// Stand-in for a root name that sanitizes away to nothing.
+const FALLBACK_ROOT_NAME: &str = "received-folder";
+
+/// Upper bound on collision-suffix attempts before giving up.
+///
+/// Matches the bound free-standing inbound files get. Without one, a folder
+/// already holding a long run of `name (n)` entries turns every publication
+/// into a walk over all of them.
+const MAX_COLLISION_ATTEMPTS: u32 = 10_000;
+
+/// Reduce a sender-supplied root name to a usable directory name.
+///
+/// `validate_manifest_member` has already rejected separators and the `.`/`..`
+/// entries, so this handles what is left: characters the local filesystem
+/// cannot store, and names that sanitize down to nothing (`"..."` trims to an
+/// empty string, which would resolve to the parent directory itself).
+///
+/// Two known gaps, both shared with the sanitizer free-standing files go
+/// through and neither introduced here:
+///
+/// - Windows rejects more than this replaces (`<>"|?*`, trailing spaces, and
+///   the reserved device names `CON`, `NUL`, `COM1`, …). A folder named `a?b`
+///   sent from macOS fails the receive on Windows rather than landing under a
+///   substituted name.
+/// - The rules are duplicated: this and the free-standing file path each carry
+///   their own copy, in different crates.
+///
+/// The two are one problem. Closing the first in one copy would make the two
+/// disagree about what a legal name is, and unifying them is not a local edit:
+/// the shared home would have to be a crate both layers may depend on, and
+/// "what Windows forbids" is platform knowledge that `uc-core` is expressly not
+/// allowed to hold. Fix them together, deliberately, or not at all.
+fn sanitize_root_name(root_name: &str) -> String {
+    let sanitized = sanitize_path_segment(root_name);
+    if sanitized.is_empty() {
+        FALLBACK_ROOT_NAME.to_string()
+    } else {
+        sanitized
+    }
 }
 
-struct TokioRootRenamer;
+fn staging_dir_name(receiver_entry_id: &EntryId) -> String {
+    // The entry id is ours, not the sender's content, so it is safe to spell
+    // out on disk.
+    format!(
+        "{STAGING_DIR_PREFIX}{}",
+        sanitize_path_segment(receiver_entry_id.as_ref())
+    )
+}
 
-#[async_trait]
-impl RootRenamer for TokioRootRenamer {
-    async fn rename(
-        &self,
-        source: &std::path::Path,
-        destination: &std::path::Path,
-    ) -> std::io::Result<()> {
-        tokio::fs::rename(source, destination).await
+/// Remove assembly areas that a crash left behind.
+///
+/// Returns how many were removed. Anything matching the prefix in one of
+/// `dirs` is debris: an interrupted receive never gets to publish, and its
+/// contents are unreachable from any entry.
+///
+/// Only the directories passed in are searched. An area left in a folder the
+/// user has since stopped using as their save directory is not reachable from
+/// here and will not be found.
+///
+/// The caller owes one precondition: no receive may be running anywhere that
+/// can reach `dirs`. An area is only distinguishable as debris by the fact
+/// that nothing is currently building in it, and the prefix alone cannot say
+/// so. Two processes sharing a save directory — which today means two profiles
+/// configured to the same folder — break that: sweeping at one's startup takes
+/// the other's in-flight area. The cost is bounded (that receive fails and can
+/// be re-sent; nothing already published is touched), which is why the prefix
+/// carries no owner. Give the areas an owner tag before relaxing this.
+pub async fn sweep_inbound_staging(dirs: &[PathBuf]) -> usize {
+    let mut swept = 0;
+    for dir in dirs {
+        let mut entries = match tokio::fs::read_dir(dir).await {
+            Ok(entries) => entries,
+            // A save dir that is gone or unreadable is not an error worth
+            // failing startup over; there is simply nothing to sweep.
+            Err(_) => continue,
+        };
+        loop {
+            match entries.next_entry().await {
+                Ok(Some(entry)) => {
+                    let matches = entry
+                        .file_name()
+                        .to_str()
+                        .is_some_and(|name| name.starts_with(STAGING_DIR_PREFIX));
+                    if !matches {
+                        continue;
+                    }
+                    match tokio::fs::remove_dir_all(entry.path()).await {
+                        Ok(()) => swept += 1,
+                        Err(err) => {
+                            warn!(error = %err, "failed to sweep an inbound staging area")
+                        }
+                    }
+                }
+                Ok(None) => break,
+                Err(err) => {
+                    warn!(error = %err, "failed to enumerate a directory while sweeping");
+                    break;
+                }
+            }
+        }
+    }
+    if swept > 0 {
+        info!(count = swept, "swept inbound staging areas left by a crash");
+    }
+    swept
+}
+
+/// Directory roots that are visible at their final location but not yet
+/// permanent.
+///
+/// Publication is not the commit point. A receive is only "all there" once its
+/// entry is durably recorded, and verification or persistence can still fail
+/// after the roots have landed — so the ability to take them back must outlive
+/// publication itself. That is what this handle is: it stays alive until the
+/// receive either commits or gives up.
+pub struct DirectoryPublication {
+    publisher: Arc<dyn AtomicPublishPort>,
+    staging: PathBuf,
+    mode: PublishMode,
+    /// `(final path, the staging path it was published from)`, in publication
+    /// order. The staging name is free again once published, so withdrawing is
+    /// the same move run backwards.
+    published: Vec<(PathBuf, PathBuf)>,
+    settled: bool,
+}
+
+/// Which guarantee a destination needs when roots land on it.
+///
+/// The two destinations differ in what lives around them, and that — not the
+/// volume — is what decides the guarantee.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PublishMode {
+    /// The destination holds the user's own files. A name we did not put there
+    /// may appear at any moment, so the move itself has to refuse an occupied
+    /// name; checking first and moving second would leave a window in which we
+    /// destroy someone's folder.
+    NoReplace,
+    /// The destination is ours alone and scoped to one receive, so the only
+    /// name that can appear is one we chose. Nothing is at risk, and demanding
+    /// a guarantee the volume may not offer would cost the receive for nothing.
+    IntoFreeName,
+}
+
+/// What a rollback managed to achieve.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RollbackOutcome {
+    /// Every root was withdrawn; the final location holds nothing from this
+    /// receive.
+    Clean,
+    /// Some roots could not be withdrawn and are still visible to the user.
+    ///
+    /// Carries only a count. The roots' names are the sender's content and
+    /// must not travel into plaintext logs or columns.
+    PartialPublication { visible_roots: usize },
+}
+
+impl std::fmt::Debug for DirectoryPublication {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // Names and paths withheld deliberately — see `RollbackOutcome`.
+        f.debug_struct("DirectoryPublication")
+            .field("root_count", &self.published.len())
+            .field("settled", &self.settled)
+            .finish()
+    }
+}
+
+/// Run one move under `mode`'s guarantee.
+async fn publish_via(
+    publisher: &dyn AtomicPublishPort,
+    mode: PublishMode,
+    source: &std::path::Path,
+    destination: &std::path::Path,
+) -> Result<(), PublishError> {
+    match mode {
+        PublishMode::NoReplace => publisher.publish_no_replace(source, destination).await,
+        PublishMode::IntoFreeName => publisher.publish_into_free_name(source, destination).await,
+    }
+}
+
+impl DirectoryPublication {
+    fn new(publisher: Arc<dyn AtomicPublishPort>, staging: PathBuf, mode: PublishMode) -> Self {
+        Self {
+            publisher,
+            staging,
+            mode,
+            published: Vec::new(),
+            settled: false,
+        }
+    }
+
+    fn record(&mut self, final_path: PathBuf, staged_from: PathBuf) {
+        self.published.push((final_path, staged_from));
+    }
+
+    pub fn root_count(&self) -> usize {
+        self.published.len()
+    }
+
+    /// Make the publication permanent and drop the assembly area.
+    pub async fn commit(mut self) {
+        self.settled = true;
+        discard_staging(&self.staging).await;
+    }
+
+    /// Take every root back out of the final location.
+    ///
+    /// Withdrawal is a same-volume rename into an assembly area whose names are
+    /// free, so it succeeds in all but extreme cases. Whatever is withdrawn is
+    /// then discarded along with the staging area: the receive is over and its
+    /// content has no entry to belong to.
+    pub async fn rollback(mut self) -> RollbackOutcome {
+        self.settled = true;
+        let mut stuck = 0usize;
+        // Reverse order, undoing the most recent first.
+        for (final_path, staged_from) in self.published.iter().rev() {
+            if let Err(err) =
+                publish_via(self.publisher.as_ref(), self.mode, final_path, staged_from).await
+            {
+                warn!(error = %err, "failed to withdraw a published directory root");
+                stuck += 1;
+            }
+        }
+        discard_staging(&self.staging).await;
+
+        if stuck == 0 {
+            debug!(
+                root_count = self.published.len(),
+                "withdrew every published directory root"
+            );
+            RollbackOutcome::Clean
+        } else {
+            warn!(
+                visible_roots = stuck,
+                "some published directory roots could not be withdrawn and remain visible"
+            );
+            RollbackOutcome::PartialPublication {
+                visible_roots: stuck,
+            }
+        }
+    }
+}
+
+impl Drop for DirectoryPublication {
+    fn drop(&mut self) {
+        if !self.settled {
+            // Nothing can be undone from here: withdrawal is async and Drop is
+            // not. Make the omission visible instead of hiding it — the roots
+            // stay visible to the user with no entry behind them.
+            warn!(
+                root_count = self.published.len(),
+                "directory publication dropped without commit or rollback; roots remain visible"
+            );
+        }
+    }
+}
+
+/// Remove an assembly area, tolerating its absence.
+async fn discard_staging(staging: &std::path::Path) {
+    match tokio::fs::remove_dir_all(staging).await {
+        Ok(()) => {}
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
+        Err(err) => warn!(error = %err, "failed to discard an inbound staging area"),
     }
 }
 
@@ -193,17 +471,46 @@ pub struct FileCacheBlobMaterializer {
     fetcher: Arc<dyn InboundBlobFetcher>,
     cache_dir: PathBuf,
     target_reserver: Option<Arc<dyn ReserveInboundFileTargetPort>>,
-    root_renamer: Arc<dyn RootRenamer>,
+    save_dir_resolver: Option<Arc<dyn ResolveInboundSaveDirPort>>,
+    publisher: Arc<dyn AtomicPublishPort>,
+    hidden_marker: Option<Arc<dyn MarkHiddenPort>>,
+    /// Per-destination answers from [`AtomicPublishPort::supports_no_replace`],
+    /// keyed by the directory the roots land in. Each entry is a shared
+    /// [`tokio::sync::OnceCell`] so concurrent receives to the same
+    /// destination coalesce onto one probe instead of each observing a cache
+    /// miss and issuing its own. See [`Self::supports_no_replace_cached`].
+    no_replace_support: tokio::sync::Mutex<BTreeMap<PathBuf, Arc<tokio::sync::OnceCell<bool>>>>,
 }
 
 impl FileCacheBlobMaterializer {
-    pub fn new(fetcher: Arc<dyn InboundBlobFetcher>, cache_dir: PathBuf) -> Self {
+    /// `publisher` is not optional: every directory root reaches its final
+    /// location through it. Which guarantee each root travels under is
+    /// [`PublishMode`]'s decision, and it turns on whose files share the
+    /// destination — never on what is convenient.
+    pub fn new(
+        fetcher: Arc<dyn InboundBlobFetcher>,
+        cache_dir: PathBuf,
+        publisher: Arc<dyn AtomicPublishPort>,
+    ) -> Self {
         Self {
             fetcher,
             cache_dir,
             target_reserver: None,
-            root_renamer: Arc::new(TokioRootRenamer),
+            save_dir_resolver: None,
+            publisher,
+            hidden_marker: None,
+            no_replace_support: tokio::sync::Mutex::new(BTreeMap::new()),
         }
+    }
+
+    /// Inject the marker that keeps the assembly area out of the user's way.
+    ///
+    /// Without it the area is only hidden where a leading dot is enough, which
+    /// is every platform except Windows. Nothing else changes: the area is
+    /// transient either way, and no behavior depends on whether it is seen.
+    pub fn with_hidden_marker(mut self, marker: Arc<dyn MarkHiddenPort>) -> Self {
+        self.hidden_marker = Some(marker);
+        self
     }
 
     /// Inject the user-configured save-directory resolver. When set and a save
@@ -216,9 +523,12 @@ impl FileCacheBlobMaterializer {
         self
     }
 
-    #[cfg(test)]
-    pub(crate) fn with_root_renamer(mut self, renamer: Arc<dyn RootRenamer>) -> Self {
-        self.root_renamer = renamer;
+    /// Inject the resolver that says which directory the user wants inbound
+    /// content in. Directory roots need the directory itself rather than a
+    /// reserved path, because their destination must stay untouched until the
+    /// whole tree is ready to appear at once.
+    pub fn with_save_dir_resolver(mut self, resolver: Arc<dyn ResolveInboundSaveDirPort>) -> Self {
+        self.save_dir_resolver = Some(resolver);
         self
     }
 }
@@ -709,55 +1019,214 @@ impl FileCacheBlobMaterializer {
             return Err(anyhow!("directory manifest has no members"));
         }
 
-        let staging_base = self
-            .cache_dir
-            .join("iroh-blobs")
-            .join("staging")
-            .join(sanitize_path_segment(receiver_entry_id.as_ref()));
-        if tokio::fs::try_exists(&staging_base).await? {
-            tokio::fs::remove_dir_all(&staging_base).await?;
-        }
-        tokio::fs::create_dir_all(&staging_base).await?;
+        let plan = self.open_publication(&receiver_entry_id).await?;
 
         let result = self
-            .build_and_promote_directory(
+            .build_and_publish_directory(
                 &from_device,
                 &receiver_entry_id,
                 &blob_refs,
                 &manifest,
-                &staging_base,
+                &plan,
                 &mut batch_idx,
                 batch_total,
             )
             .await;
 
         match result {
-            Ok((root_paths, member_digests)) => {
-                remove_directory_and_empty_parents(&staging_base, &self.cache_dir).await;
-                snapshot.file_content_digests.clear();
-                snapshot.file_set_v1_component =
-                    Some(compute_file_set_component(&manifest, &member_digests)?);
-                let uri_list = local_file_uri_list(&root_paths)?;
-                rewrite_file_list(&mut snapshot, uri_list, root_paths.len())?;
-                Ok(MaterializeResult::complete(snapshot))
+            Ok((publication, root_paths, member_digests)) => {
+                // Fold the landed roots into the snapshot. A failure here would
+                // otherwise drop `publication` unsettled, and its `Drop` cannot
+                // withdraw (withdrawal is async, `Drop` is not) — the roots
+                // would stay visible with no entry behind them. Take them back
+                // ourselves before propagating, the same duty the caller owes
+                // once it holds the publication.
+                match finalize_directory_snapshot(
+                    &mut snapshot,
+                    &manifest,
+                    &member_digests,
+                    &root_paths,
+                ) {
+                    // The staging area stays until the caller settles the
+                    // publication: rollback needs somewhere to put the roots back.
+                    Ok(()) => Ok(MaterializeResult {
+                        snapshot,
+                        missing: Vec::new(),
+                        partial: false,
+                        publication: Some(publication),
+                    }),
+                    Err(err) => match publication.rollback().await {
+                        RollbackOutcome::Clean => Err(err),
+                        RollbackOutcome::PartialPublication { visible_roots } => {
+                            Err(err.context(format!(
+                                "rolled back after snapshot finalization failed, but \
+                                 {visible_roots} published root(s) remain visible"
+                            )))
+                        }
+                    },
+                }
             }
             Err(err) => {
-                remove_directory_and_empty_parents(&staging_base, &self.cache_dir).await;
+                // Anything published was already withdrawn inside
+                // `build_and_publish_directory`; this only clears the area.
+                discard_staging(&plan.staging).await;
                 Err(err)
             }
         }
     }
 
-    async fn build_and_promote_directory(
+    /// Choose where the roots will land, and open the assembly area beside them.
+    ///
+    /// The area is a sibling of the final destination, which is what makes
+    /// publication a same-volume rename — the atomicity the whole design rests
+    /// on.
+    ///
+    /// The user's save directory is only usable if its volume can refuse an
+    /// occupied name, because the user's own folders live there; a volume that
+    /// cannot is declined in favour of managed storage. Managed storage itself
+    /// asks for no such thing — see [`PublishMode::IntoFreeName`] — so it is
+    /// always available and this never fails for want of a volume.
+    async fn open_publication(&self, receiver_entry_id: &EntryId) -> Result<PublishPlan> {
+        let staging_name = staging_dir_name(receiver_entry_id);
+
+        // Preferred destination: the folder the user configured.
+        if let Some(resolver) = &self.save_dir_resolver {
+            if let Some(save_dir) = resolver.resolve_save_dir().await {
+                let staging = save_dir.join(&staging_name);
+                match self
+                    .open_staging_area(&staging, PublishMode::NoReplace)
+                    .await
+                {
+                    Ok(true) => {
+                        return Ok(PublishPlan {
+                            dest_parent: save_dir,
+                            staging,
+                            mode: PublishMode::NoReplace,
+                        })
+                    }
+                    Ok(false) => {
+                        // The volume would let us replace someone's folder
+                        // without noticing. Decline it and use managed storage:
+                        // the content still lands, just not where the user
+                        // asked. This is the same fallback the reserver's
+                        // `None` already expresses for free-standing files.
+                        info!(
+                            "auto-save volume cannot publish without replacing; \
+                             using managed storage for this directory"
+                        );
+                    }
+                    Err(err) => {
+                        warn!(
+                            error = %err,
+                            "could not open a staging area in the auto-save dir; \
+                             using managed storage for this directory"
+                        );
+                    }
+                }
+            }
+        }
+
+        // Fallback: the managed cache layout, on the app's own volume. This
+        // parent is ours and scoped to this one receive, so no probe gates it:
+        // the volume need only be able to move within itself. Requiring more
+        // would strand directory sync entirely on exFAT, NFS and the like —
+        // which is exactly where a portable install tends to live.
+        let dest_parent = self
+            .cache_dir
+            .join("iroh-blobs")
+            .join(sanitize_path_segment(receiver_entry_id.as_ref()));
+        tokio::fs::create_dir_all(&dest_parent).await?;
+        let staging = dest_parent.join(&staging_name);
+        self.open_staging_area(&staging, PublishMode::IntoFreeName)
+            .await?;
+        Ok(PublishPlan {
+            dest_parent,
+            staging,
+            mode: PublishMode::IntoFreeName,
+        })
+    }
+
+    /// Create the assembly area and report whether it can carry `mode`.
+    ///
+    /// [`PublishMode::IntoFreeName`] asks nothing of the volume and always
+    /// answers `true`. [`PublishMode::NoReplace`] is probed against the real
+    /// filesystem, and the area is removed again when the answer is `false`,
+    /// leaving no trace.
+    async fn open_staging_area(
+        &self,
+        staging: &std::path::Path,
+        mode: PublishMode,
+    ) -> Result<bool> {
+        // A same-id leftover can only be debris from an earlier crashed
+        // receive: this id belongs to the receive happening right now.
+        if tokio::fs::try_exists(staging).await? {
+            tokio::fs::remove_dir_all(staging).await?;
+        }
+        tokio::fs::create_dir_all(staging).await?;
+        if let Some(marker) = &self.hidden_marker {
+            marker.mark_hidden(staging).await;
+        }
+
+        if mode == PublishMode::IntoFreeName {
+            return Ok(true);
+        }
+
+        // Probe inside the area rather than in the destination folder: same
+        // volume, same answer, but the check itself never appears next to the
+        // user's files.
+        if self.supports_no_replace_cached(staging).await {
+            return Ok(true);
+        }
+        discard_staging(staging).await;
+        Ok(false)
+    }
+
+    /// Answer the volume-support question once per destination.
+    ///
+    /// Support is a property of the volume, not of the receive, so asking on
+    /// every paste buys nothing — and on a network save directory each ask is
+    /// several round trips. The key is the probe area's parent: one save
+    /// directory, one answer.
+    ///
+    /// A wrong answer cached here cannot cost data. `false` only ever costs a
+    /// fallback to managed storage, and `true` still runs through
+    /// `publish_no_replace`, which refuses an occupied name on its own.
+    async fn supports_no_replace_cached(&self, staging: &std::path::Path) -> bool {
+        let key = staging
+            .parent()
+            .map(|parent| parent.to_path_buf())
+            .unwrap_or_else(|| staging.to_path_buf());
+        // Take (or create) the destination's shared cell under the lock, then
+        // release the lock before probing: the probe can be several network
+        // round trips, and holding the map lock across it would serialize
+        // every destination behind whichever one is probing.
+        let cell = {
+            let mut support = self.no_replace_support.lock().await;
+            Arc::clone(
+                support
+                    .entry(key)
+                    .or_insert_with(|| Arc::new(tokio::sync::OnceCell::new())),
+            )
+        };
+        // Concurrent receives to the same destination all await this one
+        // initialization, so the "once per destination" guarantee holds under
+        // concurrency and not just in steady state.
+        *cell
+            .get_or_init(|| async { self.publisher.supports_no_replace(staging).await })
+            .await
+    }
+
+    async fn build_and_publish_directory(
         &self,
         from_device: &DeviceId,
         receiver_entry_id: &EntryId,
         blob_refs: &[V3BlobRef],
         manifest: &InboundFileSetManifest,
-        staging_base: &std::path::Path,
+        plan: &PublishPlan,
         batch_idx: &mut usize,
         batch_total: usize,
-    ) -> Result<(Vec<PathBuf>, BTreeMap<u32, [u8; 32]>)> {
+    ) -> Result<(DirectoryPublication, Vec<PathBuf>, BTreeMap<u32, [u8; 32]>)> {
+        let staging_base = plan.staging.as_path();
         let mut roots = BTreeMap::<u32, (String, bool)>::new();
         let mut root_member_counts = BTreeMap::<u32, usize>::new();
         for member in &manifest.members {
@@ -897,69 +1366,126 @@ impl FileCacheBlobMaterializer {
             }
         }
 
-        let managed_parent = self
-            .cache_dir
-            .join("iroh-blobs")
-            .join(sanitize_path_segment(receiver_entry_id.as_ref()));
-        tokio::fs::create_dir_all(&managed_parent).await?;
-        let mut destinations = Vec::new();
-        let mut reserved_destinations = HashSet::new();
+        // Pre-flight every root before publishing any of them. Publication is
+        // atomic per root but not across roots, so a failure discovered halfway
+        // means users briefly see part of a paste. Settling names up front —
+        // against the filesystem and against each other — leaves the sequence
+        // below with little left to fail on.
+        let mut claimed = HashSet::new();
+        let mut plans = Vec::new();
         for (root_index, (root_name, _)) in &roots {
-            let reserved = match &self.target_reserver {
-                Some(reserver) => reserver.reserve_target(root_name).await,
-                None => None,
-            };
-            let destination = match reserved {
-                Some(path) => path,
-                None => {
-                    resolve_nonconflicting_root_path(
-                        &managed_parent,
-                        root_name,
-                        &reserved_destinations,
-                    )
-                    .await?
-                }
-            };
-            if !reserved_destinations.insert(destination.clone()) {
-                return Err(anyhow!(
-                    "directory target reserver returned a duplicate path: {}",
-                    destination.display()
-                ));
-            }
-            destinations.push((*root_index, root_name.clone(), destination));
+            let sanitized_name = sanitize_root_name(root_name);
+            let desired =
+                resolve_nonconflicting_root_path(&plan.dest_parent, &sanitized_name, &claimed)
+                    .await?;
+            claimed.insert(desired.clone());
+            plans.push((
+                staging_root(staging_base, *root_index, root_name),
+                desired,
+                sanitized_name,
+            ));
         }
 
-        for (_, _, destination) in &destinations {
-            if let Ok(metadata) = tokio::fs::metadata(destination).await {
-                if metadata.is_file() {
-                    tokio::fs::remove_file(destination).await?;
+        let mut publication =
+            DirectoryPublication::new(Arc::clone(&self.publisher), plan.staging.clone(), plan.mode);
+        let mut published_paths = Vec::new();
+        for (source, desired, sanitized_name) in plans {
+            match publish_root(
+                self.publisher.as_ref(),
+                plan.mode,
+                &source,
+                &desired,
+                &plan.dest_parent,
+                &sanitized_name,
+                &claimed,
+            )
+            .await
+            {
+                Ok(final_path) => {
+                    published_paths.push(final_path.clone());
+                    publication.record(final_path, source);
+                }
+                Err(err) => {
+                    // Compensating rollback: a paste is all roots or none, so
+                    // take back the ones that made it before giving up.
+                    let outcome = publication.rollback().await;
+                    return Err(match outcome {
+                        RollbackOutcome::Clean => err,
+                        RollbackOutcome::PartialPublication { visible_roots } => err.context(
+                            format!("partial_publication: {visible_roots} root(s) left visible"),
+                        ),
+                    });
                 }
             }
-            if tokio::fs::try_exists(destination).await? {
-                return Err(anyhow!(
-                    "directory destination already exists: {}",
-                    destination.display()
-                ));
-            }
         }
-
-        let mut promoted: Vec<PathBuf> = Vec::new();
-        for (root_index, root_name, destination) in &destinations {
-            let source = staging_root(staging_base, *root_index, root_name);
-            if let Err(err) = promote_root(&source, destination, self.root_renamer.as_ref()).await {
-                for path in promoted.iter().rev() {
-                    remove_path(path).await?;
-                }
-                return Err(err);
-            }
-            promoted.push(destination.clone());
-        }
-        Ok((promoted, member_digests))
+        Ok((publication, published_paths, member_digests))
     }
+}
+
+/// Where a directory receive is assembled and where it will land.
+struct PublishPlan {
+    /// Final parent directory for every root of this receive.
+    dest_parent: PathBuf,
+    /// Assembly area, a child of `dest_parent` and so on its volume.
+    staging: PathBuf,
+    /// The guarantee `dest_parent` needs, decided by whose files live there.
+    mode: PublishMode,
+}
+
+/// Publish one root, stepping to the next free name if the chosen one was taken
+/// between pre-flight and now.
+///
+/// The retry is what turns a lost race into a bounded cost, and it only has
+/// teeth under [`PublishMode::NoReplace`]: there a name taken in the gap costs
+/// another attempt rather than someone else's data.
+async fn publish_root(
+    publisher: &dyn AtomicPublishPort,
+    mode: PublishMode,
+    source: &std::path::Path,
+    desired: &std::path::Path,
+    dest_parent: &std::path::Path,
+    sanitized_name: &str,
+    claimed: &HashSet<PathBuf>,
+) -> Result<PathBuf> {
+    let mut candidate = desired.to_path_buf();
+    for _ in 0..MAX_PUBLISH_ATTEMPTS {
+        match publish_via(publisher, mode, source, &candidate).await {
+            Ok(()) => return Ok(candidate),
+            Err(PublishError::DestinationExists) => {
+                candidate =
+                    resolve_nonconflicting_root_path(dest_parent, sanitized_name, claimed).await?;
+            }
+            Err(err) => return Err(anyhow!("directory root publication failed: {err}")),
+        }
+    }
+    Err(anyhow!(
+        "directory root publication lost {MAX_PUBLISH_ATTEMPTS} races for a free name"
+    ))
 }
 
 fn directory_member_transfer_id(receiver_entry_id: &EntryId, member_index: usize) -> String {
     format!("{}:member:{member_index}", receiver_entry_id.as_ref())
+}
+
+/// Fold the published roots into the snapshot: clear the per-file digests,
+/// recompute the file-set identity component, and rewrite the file list to the
+/// roots' local `file://` URIs.
+///
+/// Split out from [`FileCacheBlobMaterializer::materialize_directory`] so its
+/// failure is a single value the caller can react to — the roots are already
+/// visible by this point, so a failure here has to withdraw the publication
+/// rather than drop it.
+fn finalize_directory_snapshot(
+    snapshot: &mut SystemClipboardSnapshot,
+    manifest: &InboundFileSetManifest,
+    member_digests: &BTreeMap<u32, [u8; 32]>,
+    root_paths: &[PathBuf],
+) -> Result<()> {
+    snapshot.file_content_digests.clear();
+    snapshot.file_set_v1_component = Some(compute_file_set_component(manifest, member_digests)?);
+    let uri_list = local_file_uri_list(root_paths)?;
+    rewrite_file_list(snapshot, uri_list, root_paths.len())?;
+    Ok(())
 }
 
 pub(crate) fn compute_file_set_component(
@@ -1006,6 +1532,14 @@ pub(crate) fn compute_file_set_component(
         .ok_or_else(|| anyhow!("directory manifest cannot produce a file-set identity"))
 }
 
+/// Find a free name under `parent` for `desired_name`, stepping through
+/// `name (1)`, `name (2)`, … past anything the filesystem or `reserved`
+/// already holds.
+///
+/// The suffix sequence matches the one free-standing inbound files get: both
+/// kinds land in the same folder, and a user seeing `report (1).pdf` next to
+/// `report (2)/` for the first collision of each would be reading a difference
+/// that means nothing.
 async fn resolve_nonconflicting_root_path(
     parent: &std::path::Path,
     desired_name: &str,
@@ -1015,117 +1549,13 @@ async fn resolve_nonconflicting_root_path(
     if !reserved.contains(&desired) && !tokio::fs::try_exists(&desired).await? {
         return Ok(desired);
     }
-    let mut suffix = 2u32;
-    loop {
+    for suffix in 1..MAX_COLLISION_ATTEMPTS {
         let candidate = parent.join(format!("{desired_name} ({suffix})"));
         if !reserved.contains(&candidate) && !tokio::fs::try_exists(&candidate).await? {
             return Ok(candidate);
         }
-        suffix = suffix
-            .checked_add(1)
-            .ok_or_else(|| anyhow!("directory collision suffix space exhausted"))?;
     }
-}
-
-async fn promote_root(
-    source: &std::path::Path,
-    destination: &std::path::Path,
-    renamer: &dyn RootRenamer,
-) -> Result<()> {
-    match renamer.rename(source, destination).await {
-        Ok(()) => Ok(()),
-        Err(rename_error) => {
-            let parent = destination
-                .parent()
-                .ok_or_else(|| anyhow!("directory destination has no parent"))?;
-            let file_name = destination
-                .file_name()
-                .and_then(|name| name.to_str())
-                .ok_or_else(|| anyhow!("directory destination name is not valid UTF-8"))?;
-            let hidden = parent.join(format!(".uniclip-staging-{file_name}"));
-            if tokio::fs::try_exists(&hidden).await? {
-                remove_path(&hidden).await?;
-            }
-            let source = source.to_path_buf();
-            let source_copy = source.clone();
-            let hidden_copy = hidden.clone();
-            tokio::task::spawn_blocking(move || copy_root(&source_copy, &hidden_copy))
-                .await
-                .map_err(|err| anyhow!("directory copy task failed: {err}"))??;
-            if let Err(err) = renamer.rename(&hidden, destination).await {
-                let cleanup_error = remove_path(&hidden).await.err();
-                return Err(anyhow!(
-                    "directory promotion failed after rename error ({rename_error}): {err}; cleanup error: {cleanup_error:?}"
-                ));
-            }
-            remove_path(&source).await?;
-            Ok(())
-        }
-    }
-}
-
-fn copy_root(source: &std::path::Path, destination: &std::path::Path) -> Result<()> {
-    let metadata = std::fs::metadata(source)?;
-    if metadata.is_dir() {
-        return copy_directory_tree(source, destination);
-    }
-    if metadata.is_file() {
-        let copied = std::fs::copy(source, destination)?;
-        if copied != metadata.len() {
-            return Err(anyhow!(
-                "copied byte count mismatch for {}",
-                source.display()
-            ));
-        }
-        std::fs::set_permissions(destination, metadata.permissions())?;
-        return Ok(());
-    }
-    Err(anyhow!(
-        "staging root has an unsupported type: {}",
-        source.display()
-    ))
-}
-
-async fn remove_path(path: &std::path::Path) -> Result<()> {
-    match tokio::fs::metadata(path).await {
-        Ok(metadata) if metadata.is_dir() => {
-            tokio::fs::remove_dir_all(path).await?;
-        }
-        Ok(_) => {
-            tokio::fs::remove_file(path).await?;
-        }
-        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
-        Err(err) => return Err(err.into()),
-    }
-    Ok(())
-}
-
-fn copy_directory_tree(source: &std::path::Path, destination: &std::path::Path) -> Result<()> {
-    std::fs::create_dir_all(destination)?;
-    for entry in std::fs::read_dir(source)? {
-        let entry = entry?;
-        let source_path = entry.path();
-        let destination_path = destination.join(entry.file_name());
-        let metadata = entry.metadata()?;
-        if metadata.is_dir() {
-            copy_directory_tree(&source_path, &destination_path)?;
-        } else if metadata.is_file() {
-            let copied = std::fs::copy(&source_path, &destination_path)?;
-            if copied != metadata.len() {
-                return Err(anyhow!(
-                    "copied byte count mismatch for {}",
-                    source_path.display()
-                ));
-            }
-            std::fs::set_permissions(&destination_path, metadata.permissions())?;
-        } else {
-            return Err(anyhow!(
-                "staging tree contains an unsupported member: {}",
-                source_path.display()
-            ));
-        }
-    }
-    Ok(())
+    Err(anyhow!("directory collision suffix space exhausted"))
 }
 
 #[cfg(unix)]
@@ -1177,20 +1607,6 @@ fn join_relative_path(root: &std::path::Path, relative_path: &str) -> Result<Pat
         result.push(component);
     }
     Ok(result)
-}
-
-async fn remove_directory_and_empty_parents(path: &std::path::Path, stop: &std::path::Path) {
-    let _ = tokio::fs::remove_dir_all(path).await;
-    let mut current = path.parent();
-    while let Some(parent) = current {
-        if parent == stop {
-            break;
-        }
-        if tokio::fs::remove_dir(parent).await.is_err() {
-            break;
-        }
-        current = parent.parent();
-    }
 }
 
 fn rewrite_file_list(
@@ -1323,6 +1739,9 @@ fn finalize_partial(
         snapshot,
         missing: missing_files,
         partial: true,
+        // Directory receives are all-or-nothing and never finalize as partial,
+        // so this path never carries a publication.
+        publication: None,
     }
 }
 

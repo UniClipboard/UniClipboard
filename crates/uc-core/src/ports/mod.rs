@@ -17,6 +17,7 @@
 //! Otherwise, place it in the relevant `domain` submodule.
 
 pub mod app_version;
+pub mod atomic_publish;
 pub mod autostart;
 pub mod blob;
 pub mod cache_fs;
@@ -31,6 +32,7 @@ pub mod errors;
 pub mod file_transfer;
 pub mod first_sync_state;
 mod hash;
+pub mod hidden_path;
 pub mod host_event;
 pub mod inbound_file_target;
 pub mod local_identity;
@@ -55,6 +57,7 @@ pub use first_sync_state::{FirstSyncStateError, FirstSyncStatePort};
 pub use hash::*;
 pub use timer::TimerPort;
 
+pub use atomic_publish::{AtomicPublishPort, PublishError};
 pub use autostart::AutostartPort;
 pub use clipboard::*;
 pub use clipboard_change_handler::ClipboardChangeHandler;
@@ -71,11 +74,12 @@ pub use file_transfer::{
     GetEntryTransferSummaryPort, ListExpiredInflightTransfersPort, PendingInboundTransfer,
     RecordReceiverTransferPort, TrackedFileTransferStatus,
 };
+pub use hidden_path::MarkHiddenPort;
 pub use host_event::{
     ClipboardHostEvent, ClipboardOriginKind, DeliveryHostEvent, EmitError, HostEvent,
     HostEventEmitterPort, TransferHostEvent,
 };
-pub use inbound_file_target::ReserveInboundFileTargetPort;
+pub use inbound_file_target::{ReserveInboundFileTargetPort, ResolveInboundSaveDirPort};
 pub use local_identity::{LocalIdentityError, LocalIdentityPort};
 pub use mobile_sync::{
     DeleteMobileDevicePort, EndpointInfoError, FindMobileDeviceByIdPort,

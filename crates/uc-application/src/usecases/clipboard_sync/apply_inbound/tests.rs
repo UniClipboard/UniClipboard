@@ -29,14 +29,167 @@ use crate::usecases::clipboard_sync::payload_codec::{
 };
 
 use super::materializer::{
-    compute_file_set_component, FileCacheBlobMaterializer, InboundBlobFetcher,
-    InboundBlobMaterializer, InboundFileSetManifest, InboundFileSetMember, MaterializeResult,
-    RootRenamer,
+    compute_file_set_component, sweep_inbound_staging, FileCacheBlobMaterializer,
+    InboundBlobFetcher, InboundBlobMaterializer, InboundFileSetManifest, InboundFileSetMember,
+    MaterializeResult, RollbackOutcome,
 };
 use super::ports::{InboundCapture, InboundSnapshotRebuild, InboundWrite};
 use super::usecase::verify_file_set_identity;
 use super::usecase::ApplyInboundClipboardUseCase;
 use super::{ApplyInboundError, ApplyInboundInput, ApplyOutcome};
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use uc_core::ports::atomic_publish::{AtomicPublishPort, PublishError};
+
+/// A publisher with the port's real semantics: it performs the move, and it
+/// refuses a destination that already exists.
+///
+/// The native primitives are exercised against real filesystems in `uc-infra`.
+/// This double exists so the orchestration above them — pre-flight, suffix
+/// retry, multi-root rollback — can be driven through failures no real
+/// filesystem produces on demand.
+#[derive(Default)]
+struct FakeAtomicPublisher {
+    /// 1-based call ordinals that must fail, and how. Covers withdrawals too:
+    /// a withdrawal is just another `publish_no_replace`.
+    scripted: Mutex<std::collections::HashMap<usize, PublishError>>,
+    /// When a scripted `DestinationExists` fires, also create the destination
+    /// for real — modelling the racer that actually took the name.
+    steal_on_conflict: AtomicBool,
+    /// Volume boundaries are not simulable in a temp dir, so "this volume
+    /// cannot publish atomically" is expressed as a path prefix.
+    unsupported_under: Mutex<Option<PathBuf>>,
+    /// Same, for the case where no volume in reach supports the primitive.
+    unsupported_anywhere: AtomicBool,
+    calls: AtomicUsize,
+    probes: AtomicUsize,
+}
+
+impl FakeAtomicPublisher {
+    fn failing_at(ordinals: &[(usize, PublishError)]) -> Arc<Self> {
+        let this = Self::default();
+        {
+            let mut scripted = this.scripted.lock().unwrap();
+            for (n, err) in ordinals {
+                scripted.insert(*n, err.clone());
+            }
+        }
+        Arc::new(this)
+    }
+
+    fn losing_a_race_at(ordinal: usize) -> Arc<Self> {
+        let this = Self::failing_at(&[(ordinal, PublishError::DestinationExists)]);
+        this.steal_on_conflict.store(true, Ordering::SeqCst);
+        this
+    }
+
+    fn unsupported_under(dir: &Path) -> Arc<Self> {
+        let this = Self::default();
+        *this.unsupported_under.lock().unwrap() = Some(dir.to_path_buf());
+        Arc::new(this)
+    }
+
+    /// Every volume in reach refuses the no-replace primitive — the exFAT /
+    /// NFS install, where there is nowhere better to fall back to.
+    fn unsupported_everywhere() -> Arc<Self> {
+        let this = Self::default();
+        this.unsupported_anywhere.store(true, Ordering::SeqCst);
+        Arc::new(this)
+    }
+
+    fn publish_count(&self) -> usize {
+        self.calls.load(Ordering::SeqCst)
+    }
+
+    fn probe_count(&self) -> usize {
+        self.probes.load(Ordering::SeqCst)
+    }
+
+    /// Count this move and hand back the failure scripted for it, if any.
+    /// Both publish variants are one sequence: an ordinal names the Nth move,
+    /// whichever guarantee it asked for.
+    fn next_scripted(&self, destination: &Path) -> Option<PublishError> {
+        let ordinal = self.calls.fetch_add(1, Ordering::SeqCst) + 1;
+        let err = self.scripted.lock().unwrap().remove(&ordinal)?;
+        if err == PublishError::DestinationExists && self.steal_on_conflict.load(Ordering::SeqCst) {
+            std::fs::create_dir_all(destination).expect("racer takes the name");
+        }
+        Some(err)
+    }
+}
+
+#[async_trait]
+impl AtomicPublishPort for FakeAtomicPublisher {
+    async fn publish_no_replace(
+        &self,
+        source: &Path,
+        destination: &Path,
+    ) -> Result<(), PublishError> {
+        if let Some(err) = self.next_scripted(destination) {
+            return Err(err);
+        }
+        if destination.exists() {
+            return Err(PublishError::DestinationExists);
+        }
+        std::fs::rename(source, destination).map_err(|e| PublishError::Io(e.to_string()))
+    }
+
+    async fn publish_into_free_name(
+        &self,
+        source: &Path,
+        destination: &Path,
+    ) -> Result<(), PublishError> {
+        if let Some(err) = self.next_scripted(destination) {
+            return Err(err);
+        }
+        // No existence check on purpose: this variant promises nothing about
+        // an occupied destination, and mirroring the strict one here would
+        // hide a caller that leans on a guarantee it did not ask for.
+        std::fs::rename(source, destination).map_err(|e| PublishError::Io(e.to_string()))
+    }
+
+    async fn supports_no_replace(&self, probe_dir: &Path) -> bool {
+        self.probes.fetch_add(1, Ordering::SeqCst);
+        if self.unsupported_anywhere.load(Ordering::SeqCst) {
+            return false;
+        }
+        match self.unsupported_under.lock().unwrap().as_ref() {
+            Some(dir) => !probe_dir.starts_with(dir),
+            None => true,
+        }
+    }
+}
+
+fn test_materializer(
+    fetcher: Arc<dyn InboundBlobFetcher>,
+    cache_dir: PathBuf,
+) -> FileCacheBlobMaterializer {
+    FileCacheBlobMaterializer::new(fetcher, cache_dir, Arc::new(FakeAtomicPublisher::default()))
+}
+
+/// Redirects inbound content into `dir` without claiming any name — the
+/// directory-publish counterpart to `FakeUserDirReserver`.
+struct FakeSaveDir {
+    dir: PathBuf,
+}
+
+#[async_trait]
+impl uc_core::ports::inbound_file_target::ResolveInboundSaveDirPort for FakeSaveDir {
+    async fn resolve_save_dir(&self) -> Option<PathBuf> {
+        Some(self.dir.clone())
+    }
+}
+
+/// Names visible directly inside `dir`, excluding hidden staging areas.
+fn visible_names(dir: &Path) -> Vec<String> {
+    let mut names: Vec<String> = std::fs::read_dir(dir)
+        .expect("read dir")
+        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+        .filter(|name| !name.starts_with(".uniclip-"))
+        .collect();
+    names.sort();
+    names
+}
 
 // ── mockall: the 3 collaborator surfaces ────────────────────────────
 
@@ -85,28 +238,6 @@ mockall::mock! {
             &self,
             snapshot_hash: &str,
         ) -> std::result::Result<Option<EntryId>, ClipboardRepositoryError>;
-    }
-}
-
-#[derive(Default)]
-struct FailFirstRootRenamer {
-    calls: std::sync::atomic::AtomicUsize,
-}
-
-#[async_trait]
-impl RootRenamer for FailFirstRootRenamer {
-    async fn rename(
-        &self,
-        source: &std::path::Path,
-        destination: &std::path::Path,
-    ) -> std::io::Result<()> {
-        if self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst) == 0 {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::CrossesDevices,
-                "forced cross-device rename",
-            ));
-        }
-        tokio::fs::rename(source, destination).await
     }
 }
 
@@ -911,6 +1042,8 @@ async fn partial_materialize_persists_entry_but_skips_os_write() {
                     size_bytes: 950_000_000,
                 }],
                 partial: true,
+                // This fake stands in for the materializer; it publishes nothing.
+                publication: None,
             })
         },
     );
@@ -1006,6 +1139,8 @@ async fn partial_materialize_does_not_register_dedup_entry() {
                         size_bytes: 100,
                     }],
                     partial: true,
+                    // This fake stands in for the materializer; it publishes nothing.
+                    publication: None,
                 })
             } else {
                 snapshot.representations[0]
@@ -1091,8 +1226,7 @@ async fn file_cache_blob_materializer_writes_file_and_rewrites_file_uri_list() {
             })
         });
 
-    let materializer =
-        FileCacheBlobMaterializer::new(Arc::new(fetcher), cache_dir.path().to_path_buf());
+    let materializer = test_materializer(Arc::new(fetcher), cache_dir.path().to_path_buf());
     let rewritten = materializer
         .materialize(
             DeviceId::new("peer-x"),
@@ -1184,8 +1318,7 @@ async fn directory_materializer_rebuilds_nested_tree_and_empty_directory() {
             })
         });
 
-    let materializer =
-        FileCacheBlobMaterializer::new(Arc::new(fetcher), cache_dir.path().to_path_buf());
+    let materializer = test_materializer(Arc::new(fetcher), cache_dir.path().to_path_buf());
     let result = materializer
         .materialize(
             DeviceId::new("peer-x"),
@@ -1222,78 +1355,6 @@ async fn directory_materializer_rebuilds_nested_tree_and_empty_directory() {
         root
     );
     assert!(!cache_dir.path().join("iroh-blobs/staging").exists());
-}
-
-#[tokio::test]
-async fn directory_materializer_copies_complete_tree_when_direct_rename_crosses_devices() {
-    use uc_core::clipboard::FileSetMemberKind;
-
-    let cache_dir = tempfile::tempdir().expect("cache dir");
-    let receiver_entry_id = EntryId::from("receiver-cross-volume");
-    let manifest = InboundFileSetManifest {
-        members: vec![InboundFileSetMember {
-            root_index: 0,
-            root_name: "project".to_string(),
-            root_is_file: false,
-            relative_path: "nested/notes.txt".to_string(),
-            kind: FileSetMemberKind::File,
-            blob_ref_index: Some(0),
-        }],
-    };
-    let blob_ref = V3BlobRef {
-        ticket: BlobTicket::from_bytes(vec![9]),
-        entry_id: EntryId::from("sender-cross-volume"),
-        filename: Some("notes.txt".to_string()),
-        mime: Some("text/plain".to_string()),
-        size_bytes: 5,
-        representation_index: None,
-    };
-    let snapshot = SystemClipboardSnapshot {
-        ts_ms: 1,
-        representations: Vec::new(),
-        file_content_digests: Vec::new(),
-        file_set_v1_component: None,
-    };
-    let mut fetcher = MockBlobFetcher::new();
-    fetcher
-        .expect_fetch_blob_to_path()
-        .times(1)
-        .returning(|command| {
-            std::fs::write(&command.target_path, b"hello").expect("write staged member");
-            Ok(crate::facade::blob_transfer::FetchBlobToPathResult {
-                entry_id: command.entry_id,
-                plaintext_hash: PlaintextHash::from_bytes([3; 32]),
-                digest: BlobDigest::from_bytes([4; 32]),
-                bytes_written: 5,
-            })
-        });
-    let renamer = Arc::new(FailFirstRootRenamer::default());
-    let materializer =
-        FileCacheBlobMaterializer::new(Arc::new(fetcher), cache_dir.path().to_path_buf())
-            .with_root_renamer(renamer.clone());
-
-    materializer
-        .materialize(
-            DeviceId::new("peer-x"),
-            receiver_entry_id.clone(),
-            snapshot,
-            vec![blob_ref],
-            Some(manifest),
-        )
-        .await
-        .expect("copy fallback should materialize");
-
-    let entry_root = cache_dir
-        .path()
-        .join("iroh-blobs")
-        .join(receiver_entry_id.as_ref());
-    assert_eq!(
-        std::fs::read(entry_root.join("project/nested/notes.txt")).unwrap(),
-        b"hello"
-    );
-    assert!(!entry_root.join(".uniclip-staging-project").exists());
-    assert!(!cache_dir.path().join("iroh-blobs/staging").exists());
-    assert_eq!(renamer.calls.load(std::sync::atomic::Ordering::SeqCst), 2);
 }
 
 #[tokio::test]
@@ -1353,8 +1414,7 @@ async fn directory_materializer_preserves_mixed_top_level_file_and_directory() {
                 bytes_written: 5,
             })
         });
-    let materializer =
-        FileCacheBlobMaterializer::new(Arc::new(fetcher), cache_dir.path().to_path_buf());
+    let materializer = test_materializer(Arc::new(fetcher), cache_dir.path().to_path_buf());
 
     materializer
         .materialize(
@@ -1481,8 +1541,7 @@ async fn apply_inbound_materializes_and_commits_mixed_directory_payload() {
             }
         });
 
-    let materializer =
-        FileCacheBlobMaterializer::new(Arc::new(fetcher), cache_dir.path().to_path_buf());
+    let materializer = test_materializer(Arc::new(fetcher), cache_dir.path().to_path_buf());
     let uc = ApplyInboundClipboardUseCase::new(Arc::new(repo), Arc::new(capture), Arc::new(write))
         .with_blob_materializer(Arc::new(materializer));
     let outcome = uc
@@ -1602,8 +1661,7 @@ async fn directory_materializer_removes_staging_and_exposes_nothing_on_failure()
         })
         .return_const(());
 
-    let materializer =
-        FileCacheBlobMaterializer::new(Arc::new(fetcher), cache_dir.path().to_path_buf());
+    let materializer = test_materializer(Arc::new(fetcher), cache_dir.path().to_path_buf());
     let error = materializer
         .materialize(
             DeviceId::new("peer-x"),
@@ -1666,7 +1724,7 @@ async fn directory_materializer_suffixes_existing_and_same_paste_root_names() {
         file_set_v1_component: None,
     };
 
-    let materializer = FileCacheBlobMaterializer::new(
+    let materializer = test_materializer(
         Arc::new(MockBlobFetcher::new()),
         cache_dir.path().to_path_buf(),
     );
@@ -1681,8 +1739,8 @@ async fn directory_materializer_suffixes_existing_and_same_paste_root_names() {
         .await
         .expect("empty directory set should materialize");
 
-    assert!(destination.join("folder (2)/empty-a").is_dir());
-    assert!(destination.join("folder (3)/empty-b").is_dir());
+    assert!(destination.join("folder (1)/empty-a").is_dir());
+    assert!(destination.join("folder (2)/empty-b").is_dir());
     let uri_list = String::from_utf8(
         result.snapshot.representations[0]
             .expect_inline_bytes()
@@ -1738,8 +1796,7 @@ async fn directory_materializer_restores_executable_permission() {
             })
         });
 
-    let materializer =
-        FileCacheBlobMaterializer::new(Arc::new(fetcher), cache_dir.path().to_path_buf());
+    let materializer = test_materializer(Arc::new(fetcher), cache_dir.path().to_path_buf());
     materializer
         .materialize(
             DeviceId::new("peer-x"),
@@ -1809,7 +1866,7 @@ async fn directory_materializer_keeps_executable_member_as_regular_windows_file(
             })
         });
 
-    FileCacheBlobMaterializer::new(Arc::new(fetcher), cache_dir.path().to_path_buf())
+    test_materializer(Arc::new(fetcher), cache_dir.path().to_path_buf())
         .materialize(
             DeviceId::new("peer-x"),
             receiver_entry_id.clone(),
@@ -1891,11 +1948,10 @@ async fn file_cache_blob_materializer_redirects_to_reserved_user_dir() {
         });
 
     let user_dir_path = user_dir.path().to_path_buf();
-    let materializer =
-        FileCacheBlobMaterializer::new(Arc::new(fetcher), cache_dir.path().to_path_buf())
-            .with_target_reserver(Arc::new(FakeUserDirReserver {
-                dir: user_dir_path.clone(),
-            }));
+    let materializer = test_materializer(Arc::new(fetcher), cache_dir.path().to_path_buf())
+        .with_target_reserver(Arc::new(FakeUserDirReserver {
+            dir: user_dir_path.clone(),
+        }));
     let rewritten = materializer
         .materialize(
             DeviceId::new("peer-x"),
@@ -1970,11 +2026,10 @@ async fn file_cache_blob_materializer_removes_reserved_placeholder_on_fetch_erro
         .returning(|_command| Err(anyhow::anyhow!("network dropped mid-transfer")));
 
     let user_dir_path = user_dir.path().to_path_buf();
-    let materializer =
-        FileCacheBlobMaterializer::new(Arc::new(fetcher), cache_dir.path().to_path_buf())
-            .with_target_reserver(Arc::new(FakeUserDirReserver {
-                dir: user_dir_path.clone(),
-            }));
+    let materializer = test_materializer(Arc::new(fetcher), cache_dir.path().to_path_buf())
+        .with_target_reserver(Arc::new(FakeUserDirReserver {
+            dir: user_dir_path.clone(),
+        }));
     let result = materializer
         .materialize(
             DeviceId::new("peer-x"),
@@ -2041,8 +2096,7 @@ async fn file_cache_blob_materializer_inlines_representation_bound_blob_into_rep
             })
         });
 
-    let materializer =
-        FileCacheBlobMaterializer::new(Arc::new(fetcher), cache_dir.path().to_path_buf());
+    let materializer = test_materializer(Arc::new(fetcher), cache_dir.path().to_path_buf());
     let materialized = materializer
         .materialize(
             DeviceId::new("peer-x"),
@@ -2110,8 +2164,7 @@ async fn file_cache_blob_materializer_rejects_out_of_bounds_representation_index
         })
     });
 
-    let materializer =
-        FileCacheBlobMaterializer::new(Arc::new(fetcher), cache_dir.path().to_path_buf());
+    let materializer = test_materializer(Arc::new(fetcher), cache_dir.path().to_path_buf());
     let err = materializer
         .materialize(
             DeviceId::new("peer-x"),
@@ -2187,8 +2240,7 @@ async fn file_cache_blob_materializer_partial_on_cancel_mid_batch() {
             }
         });
 
-    let materializer =
-        FileCacheBlobMaterializer::new(Arc::new(fetcher), cache_dir.path().to_path_buf());
+    let materializer = test_materializer(Arc::new(fetcher), cache_dir.path().to_path_buf());
     let result = materializer
         .materialize(
             DeviceId::new("peer-sender"),
@@ -2259,8 +2311,7 @@ async fn file_cache_blob_materializer_partial_on_cancel_first_file() {
         .times(1)
         .returning(|_| Err(anyhow::Error::from(BlobTransferError::Cancelled)));
 
-    let materializer =
-        FileCacheBlobMaterializer::new(Arc::new(fetcher), cache_dir.path().to_path_buf());
+    let materializer = test_materializer(Arc::new(fetcher), cache_dir.path().to_path_buf());
     let result = materializer
         .materialize(
             DeviceId::new("peer-sender"),
@@ -2316,8 +2367,7 @@ async fn file_cache_blob_materializer_partial_on_rep_cancel_no_files() {
         .times(1)
         .returning(|_| Err(anyhow::Error::from(BlobTransferError::Cancelled)));
 
-    let materializer =
-        FileCacheBlobMaterializer::new(Arc::new(fetcher), cache_dir.path().to_path_buf());
+    let materializer = test_materializer(Arc::new(fetcher), cache_dir.path().to_path_buf());
     let result = materializer
         .materialize(
             DeviceId::new("peer-sender"),
@@ -2582,6 +2632,8 @@ async fn partial_delivery_does_not_replace_existing_partial() {
                     size_bytes: 10,
                 }],
                 partial: true,
+                // This fake stands in for the materializer; it publishes nothing.
+                publication: None,
             })
         },
     );
@@ -2909,5 +2961,719 @@ async fn repeat_copy_after_window_resurfaces_again() {
     assert!(
         matches!(second, ApplyOutcome::Resurfaced { .. }),
         "a deliberate repeat copy must re-activate, got {second:?}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Directory publication: hidden staging, no-replace publish, multi-root
+// compensating rollback (#1328).
+// ---------------------------------------------------------------------------
+
+/// Two independent roots, `alpha/one.txt` and `beta/two.txt` — the shape that
+/// makes publication multi-step and therefore rollback-able.
+fn two_root_payload() -> (
+    Vec<V3BlobRef>,
+    InboundFileSetManifest,
+    SystemClipboardSnapshot,
+) {
+    use uc_core::clipboard::FileSetMemberKind;
+
+    let blob_refs = ["one.txt", "two.txt"]
+        .into_iter()
+        .enumerate()
+        .map(|(index, filename)| V3BlobRef {
+            ticket: BlobTicket::from_bytes(vec![index as u8 + 1]),
+            entry_id: EntryId::from(format!("sender-root-{index}")),
+            filename: Some(filename.to_string()),
+            mime: Some("text/plain".to_string()),
+            size_bytes: 5,
+            representation_index: None,
+        })
+        .collect::<Vec<_>>();
+    let manifest = InboundFileSetManifest {
+        members: vec![
+            InboundFileSetMember {
+                root_index: 0,
+                root_name: "alpha".to_string(),
+                root_is_file: false,
+                relative_path: "one.txt".to_string(),
+                kind: FileSetMemberKind::File,
+                blob_ref_index: Some(0),
+            },
+            InboundFileSetMember {
+                root_index: 1,
+                root_name: "beta".to_string(),
+                root_is_file: false,
+                relative_path: "two.txt".to_string(),
+                kind: FileSetMemberKind::File,
+                blob_ref_index: Some(1),
+            },
+        ],
+    };
+    let snapshot = SystemClipboardSnapshot {
+        ts_ms: 1,
+        representations: vec![ObservedClipboardRepresentation::new(
+            RepresentationId::new(),
+            FormatId::from("files"),
+            Some(MimeType("text/uri-list".to_string())),
+            b"file:///sender/alpha\r\nfile:///sender/beta\r\n".to_vec(),
+        )],
+        file_content_digests: Vec::new(),
+        file_set_v1_component: None,
+    };
+    (blob_refs, manifest, snapshot)
+}
+
+fn writing_fetcher(times: usize) -> MockBlobFetcher {
+    let mut fetcher = MockBlobFetcher::new();
+    fetcher
+        .expect_fetch_blob_to_path()
+        .times(times)
+        .returning(|command| {
+            std::fs::write(&command.target_path, b"hello").expect("write member");
+            Ok(crate::facade::blob_transfer::FetchBlobToPathResult {
+                entry_id: command.entry_id,
+                plaintext_hash: PlaintextHash::from_bytes([5; 32]),
+                digest: BlobDigest::from_bytes([7; 32]),
+                bytes_written: 5,
+            })
+        });
+    fetcher
+}
+
+fn directory_materializer(
+    fetcher: MockBlobFetcher,
+    cache_dir: &Path,
+    save_dir: &Path,
+    publisher: Arc<FakeAtomicPublisher>,
+) -> FileCacheBlobMaterializer {
+    FileCacheBlobMaterializer::new(Arc::new(fetcher), cache_dir.to_path_buf(), publisher)
+        .with_save_dir_resolver(Arc::new(FakeSaveDir {
+            dir: save_dir.to_path_buf(),
+        }))
+}
+
+async fn materialize_two_roots(
+    materializer: &FileCacheBlobMaterializer,
+    entry_id: &str,
+) -> Result<MaterializeResult> {
+    let (blob_refs, manifest, snapshot) = two_root_payload();
+    materializer
+        .materialize(
+            DeviceId::new("peer-pub"),
+            EntryId::from(entry_id),
+            snapshot,
+            blob_refs,
+            Some(manifest),
+        )
+        .await
+}
+
+/// AC: no intermediate artifact — not even an empty directory — appears at the
+/// final path before publication succeeds.
+#[tokio::test]
+async fn directory_publication_leaves_the_final_path_empty_until_it_completes() {
+    let cache_dir = tempfile::tempdir().expect("cache dir");
+    let save_dir = tempfile::tempdir().expect("save dir");
+    let observed: Arc<Mutex<Vec<Vec<String>>>> = Arc::new(Mutex::new(Vec::new()));
+
+    let mut fetcher = MockBlobFetcher::new();
+    let save_path = save_dir.path().to_path_buf();
+    let recorder = Arc::clone(&observed);
+    fetcher
+        .expect_fetch_blob_to_path()
+        .times(2)
+        .returning(move |command| {
+            // Snapshot what the user would see mid-transfer.
+            recorder.lock().unwrap().push(visible_names(&save_path));
+            std::fs::write(&command.target_path, b"hello").expect("write member");
+            Ok(crate::facade::blob_transfer::FetchBlobToPathResult {
+                entry_id: command.entry_id,
+                plaintext_hash: PlaintextHash::from_bytes([5; 32]),
+                digest: BlobDigest::from_bytes([7; 32]),
+                bytes_written: 5,
+            })
+        });
+
+    let materializer = directory_materializer(
+        fetcher,
+        cache_dir.path(),
+        save_dir.path(),
+        Arc::new(FakeAtomicPublisher::default()),
+    );
+    let mut result = materialize_two_roots(&materializer, "entry-invisible")
+        .await
+        .expect("materialize");
+
+    for seen in observed.lock().unwrap().iter() {
+        assert!(
+            seen.is_empty(),
+            "user saw {seen:?} in the save dir before publication completed"
+        );
+    }
+    // Only after publication do both roots appear, together.
+    assert_eq!(visible_names(save_dir.path()), vec!["alpha", "beta"]);
+    result
+        .take_publication()
+        .expect("publication")
+        .commit()
+        .await;
+    assert_eq!(visible_names(save_dir.path()), vec!["alpha", "beta"]);
+    // Staging is gone once committed.
+    assert_eq!(
+        std::fs::read_dir(save_dir.path()).unwrap().count(),
+        2,
+        "staging area should be gone after commit"
+    );
+}
+
+/// AC: never overwrite existing content; take the next name instead.
+#[tokio::test]
+async fn directory_publication_takes_the_next_name_rather_than_replacing_a_folder() {
+    let cache_dir = tempfile::tempdir().expect("cache dir");
+    let save_dir = tempfile::tempdir().expect("save dir");
+    // The user already has an `alpha/` holding their own work.
+    std::fs::create_dir(save_dir.path().join("alpha")).unwrap();
+    std::fs::write(save_dir.path().join("alpha/precious.txt"), b"mine").unwrap();
+
+    let materializer = directory_materializer(
+        writing_fetcher(2),
+        cache_dir.path(),
+        save_dir.path(),
+        Arc::new(FakeAtomicPublisher::default()),
+    );
+    let mut result = materialize_two_roots(&materializer, "entry-collide")
+        .await
+        .expect("materialize");
+    result
+        .take_publication()
+        .expect("publication")
+        .commit()
+        .await;
+
+    assert_eq!(
+        visible_names(save_dir.path()),
+        vec!["alpha", "alpha (1)", "beta"]
+    );
+    // The user's folder is untouched and nothing merged into it.
+    assert_eq!(
+        std::fs::read(save_dir.path().join("alpha/precious.txt")).unwrap(),
+        b"mine"
+    );
+    assert!(!save_dir.path().join("alpha/one.txt").exists());
+    assert_eq!(
+        std::fs::read(save_dir.path().join("alpha (1)/one.txt")).unwrap(),
+        b"hello"
+    );
+}
+
+/// AC: a name lost between pre-flight and publish costs a bounded retry, not
+/// the other writer's data.
+#[tokio::test]
+async fn directory_publication_retries_onto_a_free_name_after_losing_a_race() {
+    let cache_dir = tempfile::tempdir().expect("cache dir");
+    let save_dir = tempfile::tempdir().expect("save dir");
+    let publisher = FakeAtomicPublisher::losing_a_race_at(1);
+
+    let materializer = directory_materializer(
+        writing_fetcher(2),
+        cache_dir.path(),
+        save_dir.path(),
+        Arc::clone(&publisher),
+    );
+    let mut result = materialize_two_roots(&materializer, "entry-race")
+        .await
+        .expect("materialize");
+    result
+        .take_publication()
+        .expect("publication")
+        .commit()
+        .await;
+
+    // The racer holds `alpha`; our root stepped aside to `alpha (1)`.
+    assert_eq!(
+        visible_names(save_dir.path()),
+        vec!["alpha", "alpha (1)", "beta"]
+    );
+    assert_eq!(
+        std::fs::read(save_dir.path().join("alpha (1)/one.txt")).unwrap(),
+        b"hello"
+    );
+    // 2 roots + 1 lost race.
+    assert_eq!(publisher.publish_count(), 3);
+}
+
+/// AC: a mid-sequence failure withdraws the roots that already landed, leaving
+/// the final location exactly as it was.
+#[tokio::test]
+async fn directory_publication_withdraws_earlier_roots_when_a_later_one_fails() {
+    let cache_dir = tempfile::tempdir().expect("cache dir");
+    let save_dir = tempfile::tempdir().expect("save dir");
+    std::fs::write(save_dir.path().join("unrelated.txt"), b"keep").unwrap();
+
+    // Call 1 publishes `alpha`; call 2 fails on `beta`.
+    let publisher = FakeAtomicPublisher::failing_at(&[(2, PublishError::Io("disk gone".into()))]);
+    let materializer = directory_materializer(
+        writing_fetcher(2),
+        cache_dir.path(),
+        save_dir.path(),
+        Arc::clone(&publisher),
+    );
+
+    let err = materialize_two_roots(&materializer, "entry-rollback")
+        .await
+        .expect_err("a failed root must fail the receive");
+
+    assert!(
+        !format!("{err:#}").contains("partial_publication"),
+        "rollback succeeded, so no partial publication should be reported: {err:#}"
+    );
+    // Zero residue: the published root is gone and the user's file survives.
+    assert_eq!(visible_names(save_dir.path()), vec!["unrelated.txt"]);
+    // Including the hidden staging area.
+    assert_eq!(std::fs::read_dir(save_dir.path()).unwrap().count(), 1);
+}
+
+/// AC: when rollback itself fails, the receive still fails, and what stays
+/// visible is reported as a count — never as names.
+#[tokio::test]
+async fn directory_publication_reports_a_count_when_rollback_cannot_withdraw() {
+    let cache_dir = tempfile::tempdir().expect("cache dir");
+    let save_dir = tempfile::tempdir().expect("save dir");
+
+    // 1: `alpha` publishes. 2: `beta` fails. 3: withdrawing `alpha` fails.
+    let publisher = FakeAtomicPublisher::failing_at(&[
+        (2, PublishError::Io("disk gone".into())),
+        (3, PublishError::Io("still gone".into())),
+    ]);
+    let materializer = directory_materializer(
+        writing_fetcher(2),
+        cache_dir.path(),
+        save_dir.path(),
+        Arc::clone(&publisher),
+    );
+
+    let err = materialize_two_roots(&materializer, "entry-stuck")
+        .await
+        .expect_err("a failed root must fail the receive");
+
+    let rendered = format!("{err:#}");
+    assert!(
+        rendered.contains("partial_publication: 1 root(s) left visible"),
+        "expected a non-sensitive partial-publication marker, got: {rendered}"
+    );
+    // The stuck root is still there — that is the honest outcome being reported.
+    assert_eq!(visible_names(save_dir.path()), vec!["alpha"]);
+    assert!(
+        !rendered.contains("alpha"),
+        "root name leaked into the error: {rendered}"
+    );
+}
+
+/// AC: root names and paths never reach a plaintext error string, on any
+/// publication failure path.
+#[tokio::test]
+async fn directory_publication_failures_never_name_the_roots() {
+    let cache_dir = tempfile::tempdir().expect("cache dir");
+    let save_dir = tempfile::tempdir().expect("save dir");
+    let publisher = FakeAtomicPublisher::failing_at(&[(1, PublishError::Io("nope".into()))]);
+    let materializer = directory_materializer(
+        writing_fetcher(2),
+        cache_dir.path(),
+        save_dir.path(),
+        publisher,
+    );
+
+    let err = materialize_two_roots(&materializer, "entry-redact")
+        .await
+        .expect_err("publication failed");
+
+    let rendered = format!("{err:#}");
+    for secret in ["alpha", "beta", "one.txt", "two.txt"] {
+        assert!(
+            !rendered.contains(secret),
+            "`{secret}` leaked into a plaintext error: {rendered}"
+        );
+    }
+    assert!(
+        !rendered.contains(&save_dir.path().display().to_string()),
+        "destination path leaked into a plaintext error: {rendered}"
+    );
+}
+
+/// A save-dir volume that cannot refuse a replace is not used at all: the
+/// content still lands, in managed storage, rather than risking the user's
+/// files.
+#[tokio::test]
+async fn directory_publication_falls_back_to_managed_storage_when_the_volume_cannot_refuse() {
+    let cache_dir = tempfile::tempdir().expect("cache dir");
+    let save_dir = tempfile::tempdir().expect("save dir");
+    let publisher = FakeAtomicPublisher::unsupported_under(save_dir.path());
+
+    let materializer = directory_materializer(
+        writing_fetcher(2),
+        cache_dir.path(),
+        save_dir.path(),
+        publisher,
+    );
+    let mut result = materialize_two_roots(&materializer, "entry-fallback")
+        .await
+        .expect("materialize should still succeed via managed storage");
+    result
+        .take_publication()
+        .expect("publication")
+        .commit()
+        .await;
+
+    // Nothing was written to the user's folder, not even a probe leftover.
+    assert_eq!(std::fs::read_dir(save_dir.path()).unwrap().count(), 0);
+    let managed = cache_dir.path().join("iroh-blobs").join("entry-fallback");
+    assert_eq!(
+        std::fs::read(managed.join("alpha/one.txt")).unwrap(),
+        b"hello"
+    );
+    assert_eq!(
+        std::fs::read(managed.join("beta/two.txt")).unwrap(),
+        b"hello"
+    );
+}
+
+/// The install where no volume in reach honors the primitive — a portable
+/// build on exFAT, a home on NFS. Managed storage is ours and scoped to one
+/// receive, so the guarantee protects nothing there and is not demanded:
+/// directory sync keeps working instead of failing outright.
+#[tokio::test]
+async fn directory_publication_still_lands_when_no_volume_supports_no_replace() {
+    let cache_dir = tempfile::tempdir().expect("cache dir");
+    let save_dir = tempfile::tempdir().expect("save dir");
+    let publisher = FakeAtomicPublisher::unsupported_everywhere();
+
+    let materializer = directory_materializer(
+        writing_fetcher(2),
+        cache_dir.path(),
+        save_dir.path(),
+        Arc::clone(&publisher),
+    );
+    let mut result = materialize_two_roots(&materializer, "entry-nofs")
+        .await
+        .expect("a volume without the primitive must not cost the receive");
+    result
+        .take_publication()
+        .expect("publication")
+        .commit()
+        .await;
+
+    // The user's folder was declined — its volume cannot protect what is in
+    // it — and the content landed in managed storage regardless.
+    assert_eq!(std::fs::read_dir(save_dir.path()).unwrap().count(), 0);
+    let managed = cache_dir.path().join("iroh-blobs").join("entry-nofs");
+    assert_eq!(
+        std::fs::read(managed.join("alpha/one.txt")).unwrap(),
+        b"hello"
+    );
+    assert_eq!(
+        std::fs::read(managed.join("beta/two.txt")).unwrap(),
+        b"hello"
+    );
+}
+
+/// The same install, taken all the way through rollback: withdrawal runs on
+/// the same volume that could not honor the primitive, so it must not lean on
+/// it either.
+#[tokio::test]
+async fn rollback_withdraws_on_a_volume_without_no_replace() {
+    let cache_dir = tempfile::tempdir().expect("cache dir");
+    let save_dir = tempfile::tempdir().expect("save dir");
+    let publisher = FakeAtomicPublisher::unsupported_everywhere();
+
+    let materializer = directory_materializer(
+        writing_fetcher(2),
+        cache_dir.path(),
+        save_dir.path(),
+        Arc::clone(&publisher),
+    );
+    let mut result = materialize_two_roots(&materializer, "entry-nofs-rb")
+        .await
+        .expect("materialize");
+
+    let outcome = result
+        .take_publication()
+        .expect("publication")
+        .rollback()
+        .await;
+
+    assert_eq!(outcome, RollbackOutcome::Clean);
+    let managed = cache_dir.path().join("iroh-blobs").join("entry-nofs-rb");
+    assert_eq!(visible_names(&managed), Vec::<String>::new());
+}
+
+/// Support is a property of the volume, not of the receive. Asking once per
+/// paste is wasted work — several network round trips on a NAS save dir.
+#[tokio::test]
+async fn the_no_replace_probe_is_not_repeated_per_receive() {
+    let cache_dir = tempfile::tempdir().expect("cache dir");
+    let save_dir = tempfile::tempdir().expect("save dir");
+    let publisher = Arc::new(FakeAtomicPublisher::default());
+
+    let materializer = directory_materializer(
+        writing_fetcher(4),
+        cache_dir.path(),
+        save_dir.path(),
+        Arc::clone(&publisher),
+    );
+    for entry_id in ["entry-probe-a", "entry-probe-b"] {
+        let mut result = materialize_two_roots(&materializer, entry_id)
+            .await
+            .expect("materialize");
+        result
+            .take_publication()
+            .expect("publication")
+            .commit()
+            .await;
+    }
+
+    assert_eq!(
+        publisher.probe_count(),
+        1,
+        "the save dir's volume was probed more than once"
+    );
+}
+
+/// AC: crash debris lives only in a recognizable hidden area, and a sweep
+/// reclaims it without touching anything else.
+#[tokio::test]
+async fn sweep_reclaims_hidden_staging_and_leaves_everything_else_alone() {
+    let dir = tempfile::tempdir().expect("dir");
+    // Debris from an interrupted receive.
+    let debris = dir.path().join(".uniclip-incoming-entry-crashed");
+    std::fs::create_dir_all(debris.join("0-alpha")).unwrap();
+    std::fs::write(debris.join("0-alpha/half.txt"), b"partial").unwrap();
+    // The user's own content, including an unrelated dotfile.
+    std::fs::create_dir(dir.path().join("alpha")).unwrap();
+    std::fs::write(dir.path().join("alpha/mine.txt"), b"mine").unwrap();
+    std::fs::write(dir.path().join(".hidden-but-theirs"), b"theirs").unwrap();
+
+    let swept = sweep_inbound_staging(&[dir.path().to_path_buf()]).await;
+
+    assert_eq!(swept, 1);
+    assert!(!debris.exists());
+    assert_eq!(
+        std::fs::read(dir.path().join("alpha/mine.txt")).unwrap(),
+        b"mine"
+    );
+    assert!(dir.path().join(".hidden-but-theirs").exists());
+}
+
+#[tokio::test]
+async fn sweep_tolerates_a_missing_directory() {
+    let dir = tempfile::tempdir().expect("dir");
+    assert_eq!(sweep_inbound_staging(&[dir.path().join("absent")]).await, 0);
+}
+
+/// Build a full two-root inbound payload plus the wire hash the sender would
+/// have advertised for it.
+fn two_root_wire_payload() -> (Bytes, String) {
+    use std::collections::BTreeMap;
+
+    let (blob_refs, manifest, mut snapshot) = two_root_payload();
+    // The sender advertises an identity derived from the content it sent.
+    snapshot.file_set_v1_component = Some(
+        compute_file_set_component(&manifest, &BTreeMap::from([(0, [5; 32]), (1, [5; 32])]))
+            .expect("file-set component"),
+    );
+    encode_snapshot_with_blob_refs_and_file_set_to_v3_bytes(&snapshot, &blob_refs, &manifest)
+        .expect("encode directory payload")
+}
+
+/// AC: publication succeeding is not enough — content that fails verification
+/// after landing is withdrawn again.
+#[tokio::test]
+async fn apply_inbound_withdraws_published_roots_when_identity_verification_fails() {
+    let cache_dir = tempfile::tempdir().expect("cache dir");
+    let save_dir = tempfile::tempdir().expect("save dir");
+    let (plaintext, snapshot_hash) = two_root_wire_payload();
+
+    let mut repo = MockEntryRepo::new();
+    repo.expect_find_entry_id_by_snapshot_hash()
+        .times(1)
+        .returning(|_| Ok(None));
+
+    // The bytes that arrive hash to something other than what was advertised.
+    let mut fetcher = MockBlobFetcher::new();
+    fetcher
+        .expect_fetch_blob_to_path()
+        .times(2)
+        .returning(|command| {
+            std::fs::write(&command.target_path, b"tampered").expect("write member");
+            Ok(crate::facade::blob_transfer::FetchBlobToPathResult {
+                entry_id: command.entry_id,
+                plaintext_hash: PlaintextHash::from_bytes([9; 32]),
+                digest: BlobDigest::from_bytes([7; 32]),
+                bytes_written: 8,
+            })
+        });
+
+    let mut capture = MockCapture::new();
+    capture.expect_capture().never();
+    let mut write = MockWrite::new();
+    write.expect_write().never();
+
+    let materializer = directory_materializer(
+        fetcher,
+        cache_dir.path(),
+        save_dir.path(),
+        Arc::new(FakeAtomicPublisher::default()),
+    );
+    let uc = ApplyInboundClipboardUseCase::new(Arc::new(repo), Arc::new(capture), Arc::new(write))
+        .with_blob_materializer(Arc::new(materializer));
+
+    let err = uc
+        .execute(ApplyInboundInput {
+            from_device: DeviceId::new("peer-verify-fail"),
+            snapshot_hash,
+            plaintext,
+            flow_id: None,
+            resurface_intent: ClipboardWriteIntent::RemotePush,
+        })
+        .await
+        .expect_err("identity mismatch must fail the delivery");
+
+    assert!(matches!(err, ApplyInboundError::Internal(_)), "{err:?}");
+    // The roots were published, then taken back: zero residue.
+    assert!(
+        visible_names(save_dir.path()).is_empty(),
+        "content that failed verification stayed visible: {:?}",
+        visible_names(save_dir.path())
+    );
+    assert_eq!(std::fs::read_dir(save_dir.path()).unwrap().count(), 0);
+}
+
+/// AC: the commit point is a durable receipt — if persistence fails, the roots
+/// go back, so the user never keeps a folder no entry knows about.
+#[tokio::test]
+async fn apply_inbound_withdraws_published_roots_when_persistence_fails() {
+    let cache_dir = tempfile::tempdir().expect("cache dir");
+    let save_dir = tempfile::tempdir().expect("save dir");
+    let (plaintext, snapshot_hash) = two_root_wire_payload();
+
+    let mut repo = MockEntryRepo::new();
+    repo.expect_find_entry_id_by_snapshot_hash()
+        .times(1)
+        .returning(|_| Ok(None));
+
+    let mut capture = MockCapture::new();
+    capture
+        .expect_capture()
+        .times(1)
+        .returning(|_, _, _| Err(anyhow::anyhow!("database is locked")));
+    let mut write = MockWrite::new();
+    write.expect_write().never();
+
+    let materializer = directory_materializer(
+        writing_fetcher(2),
+        cache_dir.path(),
+        save_dir.path(),
+        Arc::new(FakeAtomicPublisher::default()),
+    );
+    let uc = ApplyInboundClipboardUseCase::new(Arc::new(repo), Arc::new(capture), Arc::new(write))
+        .with_blob_materializer(Arc::new(materializer));
+
+    let err = uc
+        .execute(ApplyInboundInput {
+            from_device: DeviceId::new("peer-persist-fail"),
+            snapshot_hash,
+            plaintext,
+            flow_id: None,
+            resurface_intent: ClipboardWriteIntent::RemotePush,
+        })
+        .await
+        .expect_err("a failed receipt must fail the delivery");
+
+    assert!(matches!(err, ApplyInboundError::Capture(_)), "{err:?}");
+    assert!(
+        visible_names(save_dir.path()).is_empty(),
+        "roots outlived the entry that failed to persist: {:?}",
+        visible_names(save_dir.path())
+    );
+    assert_eq!(std::fs::read_dir(save_dir.path()).unwrap().count(), 0);
+}
+
+/// Records every field value and message of every event, so a test can assert
+/// on what actually reached the logs.
+#[derive(Clone, Default)]
+struct RecordEverythingLayer {
+    lines: Arc<Mutex<Vec<String>>>,
+}
+
+impl<S> Layer<S> for RecordEverythingLayer
+where
+    S: Subscriber,
+    S: for<'lookup> LookupSpan<'lookup>,
+{
+    fn on_event(&self, event: &tracing::Event<'_>, _ctx: Context<'_, S>) {
+        #[derive(Default)]
+        struct Sink(String);
+        impl Visit for Sink {
+            fn record_debug(&mut self, field: &Field, value: &dyn std::fmt::Debug) {
+                self.0.push_str(&format!(" {}={value:?}", field.name()));
+            }
+            fn record_str(&mut self, field: &Field, value: &str) {
+                self.0.push_str(&format!(" {}={value}", field.name()));
+            }
+        }
+        let mut sink = Sink::default();
+        event.record(&mut sink);
+        self.lines.lock().unwrap().push(sink.0);
+    }
+}
+
+/// AC: root names and paths appear in no plaintext log, on the worst path —
+/// a failed publication whose rollback also fails.
+#[tokio::test]
+async fn directory_publication_logs_never_carry_root_names_or_paths() {
+    let cache_dir = tempfile::tempdir().expect("cache dir");
+    let save_dir = tempfile::tempdir().expect("save dir");
+    let lines = Arc::new(Mutex::new(Vec::new()));
+
+    {
+        let subscriber = tracing_subscriber::registry().with(RecordEverythingLayer {
+            lines: Arc::clone(&lines),
+        });
+        let _guard = tracing::subscriber::set_default(subscriber);
+
+        // `beta` fails to publish, then withdrawing `alpha` fails too — the
+        // path that has the most to say and the most to leak.
+        let publisher = FakeAtomicPublisher::failing_at(&[
+            (2, PublishError::Io("disk gone".into())),
+            (3, PublishError::Io("still gone".into())),
+        ]);
+        let materializer = directory_materializer(
+            writing_fetcher(2),
+            cache_dir.path(),
+            save_dir.path(),
+            publisher,
+        );
+        let _ = materialize_two_roots(&materializer, "entry-log-redact").await;
+    }
+
+    let logged = lines.lock().unwrap().join("\n");
+    assert!(
+        logged.contains("could not be withdrawn"),
+        "expected the failed withdrawal to be logged at all: {logged}"
+    );
+    for secret in ["alpha", "beta", "one.txt", "two.txt"] {
+        assert!(
+            !logged.contains(secret),
+            "`{secret}` reached a plaintext log: {logged}"
+        );
+    }
+    assert!(
+        !logged.contains(&save_dir.path().display().to_string()),
+        "a destination path reached a plaintext log: {logged}"
+    );
+    // What the plaintext side is allowed to carry: a count, not an identity.
+    assert!(
+        logged.contains("visible_roots=1"),
+        "expected a non-sensitive count marker: {logged}"
     );
 }

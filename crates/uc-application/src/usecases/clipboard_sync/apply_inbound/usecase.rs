@@ -27,7 +27,7 @@ use crate::facade::host_event::{
 };
 use crate::usecases::clipboard_sync::payload_codec::decode_v3_bytes_to_snapshot_blob_refs_and_file_set;
 
-use super::materializer::InboundBlobMaterializer;
+use super::materializer::{DirectoryPublication, InboundBlobMaterializer, RollbackOutcome};
 use super::ports::{InboundCapture, InboundSnapshotRebuild, InboundWrite};
 use super::timing::{RAPID_DUPLICATE_WINDOW, VISIBLE_DUPLICATE_WINDOW};
 use super::{ApplyInboundError, ApplyInboundInput, ApplyOutcome};
@@ -568,11 +568,17 @@ impl ApplyInboundClipboardUseCase {
 
         let requires_materialize = !blob_refs.is_empty() || file_set_manifest.is_some();
         let verify_directory_identity = file_set_manifest.is_some();
+        // A directory receive publishes its roots to the user's folder inside
+        // `materialize`, but publication is not the commit point — the entry
+        // being durably recorded is. Until then the roots are visible without
+        // anything behind them, so every path out of this function must either
+        // commit them or take them back.
+        let mut publication: Option<DirectoryPublication> = None;
         let (snapshot, is_partial) = match (requires_materialize, &self.blob_materializer) {
             (false, _) => (snapshot, false),
             (true, Some(materializer)) => {
                 let count = blob_refs.len();
-                let result = materializer
+                let mut result = materializer
                     .materialize(
                         input.from_device.clone(),
                         receiver_entry_id.clone(),
@@ -595,21 +601,26 @@ impl ApplyInboundClipboardUseCase {
                         ));
                         ApplyInboundError::Internal(format!("blob materialize: {e}"))
                     })?;
+                publication = result.take_publication();
                 let partial = result.is_partial();
                 if verify_directory_identity {
-                    verify_file_set_identity(&result.snapshot, &input.snapshot_hash).map_err(
-                        |err| {
-                            self.emit_host_event(HostEvent::Transfer(
-                                TransferHostEvent::StatusChanged {
-                                    transfer_id: receiver_entry_id.as_ref().to_string(),
-                                    entry_id: receiver_entry_id.as_ref().to_string(),
-                                    status: "failed".to_string(),
-                                    reason: Some(err.to_string()),
-                                },
-                            ));
-                            ApplyInboundError::Internal(err.to_string())
-                        },
-                    )?;
+                    if let Err(err) =
+                        verify_file_set_identity(&result.snapshot, &input.snapshot_hash)
+                    {
+                        // What landed is not what the sender advertised, so no
+                        // entry will exist for it — the roots must go.
+                        withdraw_publication(publication, "content failed identity verification")
+                            .await;
+                        self.emit_host_event(HostEvent::Transfer(
+                            TransferHostEvent::StatusChanged {
+                                transfer_id: receiver_entry_id.as_ref().to_string(),
+                                entry_id: receiver_entry_id.as_ref().to_string(),
+                                status: "failed".to_string(),
+                                reason: Some(err.to_string()),
+                            },
+                        ));
+                        return Err(ApplyInboundError::Internal(err.to_string()));
+                    }
                 }
                 info!(
                     blob_ref_count = count,
@@ -648,6 +659,11 @@ impl ApplyInboundClipboardUseCase {
                     existing_entry_id = %existing_entry_id,
                     "inbound dropped: rapid duplicate of recently applied entry"
                 );
+                // The content is already here under another entry, so this
+                // delivery keeps no entry of its own and its roots would be a
+                // second visible copy of the same paste.
+                withdraw_publication(publication, "delivery is a duplicate of a recent entry")
+                    .await;
                 return Ok(ApplyOutcome::DuplicateSkipped {
                     snapshot_hash: input.snapshot_hash,
                     existing_entry_id,
@@ -666,7 +682,8 @@ impl ApplyInboundClipboardUseCase {
         // unparseable wire hash degrades to `None` (recompute), never a DoS.
         let snapshot_for_write = Arc::new(snapshot.clone());
         let authoritative_hash = SnapshotHash::parse(&input.snapshot_hash);
-        let entry_id = match existing {
+        let replacing = existing.is_some();
+        let captured = match existing {
             // Any surviving match is partial — fully-held matches returned at
             // step 3.
             Some(existing_id) => {
@@ -678,6 +695,11 @@ impl ApplyInboundClipboardUseCase {
                         existing_entry_id = %existing_id,
                         "inbound: delivery also partial; keeping existing placeholder"
                     );
+                    // Defensive: a directory receive is all-or-nothing and never
+                    // reports partial, so there is nothing to withdraw here
+                    // today. Kept so the invariant holds if that ever changes.
+                    withdraw_publication(publication, "delivery is partial; placeholder kept")
+                        .await;
                     return Ok(ApplyOutcome::DuplicateSkipped {
                         snapshot_hash: input.snapshot_hash,
                         existing_entry_id: existing_id,
@@ -691,29 +713,39 @@ impl ApplyInboundClipboardUseCase {
                         authoritative_hash,
                     )
                     .await
-                    .map_err(|e| ApplyInboundError::Capture(e.to_string()))?
-                    .ok_or_else(|| {
-                        ApplyInboundError::Internal(
-                            "replace returned None for RemotePush origin (unexpected)".to_string(),
-                        )
-                    })?
             }
-            None => self
-                .capture
-                .capture_with_identity(
-                    receiver_entry_id.clone(),
-                    input.from_device,
-                    snapshot,
-                    authoritative_hash,
-                )
-                .await
-                .map_err(|e| ApplyInboundError::Capture(e.to_string()))?
-                .ok_or_else(|| {
-                    ApplyInboundError::Internal(
-                        "capture returned None for RemotePush origin (unexpected)".to_string(),
+            None => {
+                self.capture
+                    .capture_with_identity(
+                        receiver_entry_id.clone(),
+                        input.from_device,
+                        snapshot,
+                        authoritative_hash,
                     )
-                })?,
+                    .await
+            }
         };
+        // Persistence is the commit point: only a durable receipt makes the
+        // published roots permanent. Anything else takes them back, so a
+        // failure here cannot leave content in the user's folder that no entry
+        // knows about.
+        let entry_id = match captured {
+            Ok(Some(entry_id)) => entry_id,
+            Ok(None) => {
+                withdraw_publication(publication, "persistence produced no entry").await;
+                let action = if replacing { "replace" } else { "capture" };
+                return Err(ApplyInboundError::Internal(format!(
+                    "{action} returned None for RemotePush origin (unexpected)"
+                )));
+            }
+            Err(e) => {
+                withdraw_publication(publication, "persistence failed").await;
+                return Err(ApplyInboundError::Capture(e.to_string()));
+            }
+        };
+        if let Some(publication) = publication {
+            publication.commit().await;
+        }
 
         // The find → commit section is complete; release the per-identity lock
         // before the best-effort side work (register advance, search index, OS
@@ -862,6 +894,38 @@ impl ApplyInboundClipboardUseCase {
         }));
 
         Ok(ApplyOutcome::Applied { entry_id })
+    }
+}
+
+/// Take back directory roots published for an entry that will not exist.
+///
+/// A no-op when the delivery published nothing, which is every non-directory
+/// path.
+///
+/// `reason` is one of this module's own strings, never sender-supplied content:
+/// it is logged in plaintext, and the roots' names — which are user content —
+/// deliberately are not.
+async fn withdraw_publication(publication: Option<DirectoryPublication>, reason: &'static str) {
+    let Some(publication) = publication else {
+        return;
+    };
+    let root_count = publication.root_count();
+    match publication.rollback().await {
+        RollbackOutcome::Clean => {
+            info!(
+                root_count,
+                reason, "inbound: withdrew published directory roots; final location is clean"
+            );
+        }
+        RollbackOutcome::PartialPublication { visible_roots } => {
+            warn!(
+                partial_publication = true,
+                visible_roots,
+                root_count,
+                reason,
+                "inbound: some directory roots could not be withdrawn and stay visible"
+            );
+        }
     }
 }
 

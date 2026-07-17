@@ -76,7 +76,7 @@ use uc_infra::network::iroh::{
 };
 // Re-exported so external callers can parametrise the assembly without
 // having to `use uc_infra` themselves.
-use uc_infra::fs::FsInboundFileTarget;
+use uc_infra::fs::{FsAtomicPublisher, FsHiddenPathMarker, FsInboundFileTarget};
 pub(crate) use uc_infra::network::iroh::IrohNodeConfig;
 use uc_infra::security::Sha256IdentityFingerprintFactory;
 use uc_platform::file_secure_storage::FileSecureStorage;
@@ -663,8 +663,11 @@ pub(crate) async fn build_sync_engine_assembly(
         FileCacheBlobMaterializer::new(
             blob.clone() as Arc<dyn uc_application::InboundBlobFetcher>,
             shared.file_cache_dir.clone(),
+            FsAtomicPublisher::new(),
         )
-        .with_target_reserver(FsInboundFileTarget::new(Arc::clone(&deps.settings))),
+        .with_target_reserver(FsInboundFileTarget::new(Arc::clone(&deps.settings)))
+        .with_save_dir_resolver(FsInboundFileTarget::new(Arc::clone(&deps.settings)))
+        .with_hidden_marker(FsHiddenPathMarker::new()),
     );
     // Index pull-store entries for search too (same rationale as the main
     // inbound path): content materialized via the 0xC2 pull should be findable.

@@ -120,7 +120,7 @@
         },
         "autoStart": {
           "label": "开机自启动",
-          "description": "系统启动时自动启动 Uniclipboard"
+          "description": "系统启动时自动启动 UniClipboard"
         },
         "startupMode": {
           "label": "启动方式",

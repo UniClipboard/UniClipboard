@@ -120,7 +120,7 @@
         },
         "autoStart": {
           "label": "Launch at startup",
-          "description": "Start Uniclipboard when the system boots"
+          "description": "Start UniClipboard when the system boots"
         },
         "startupMode": {
           "label": "Startup mode",

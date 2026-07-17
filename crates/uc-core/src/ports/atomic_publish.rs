@@ -35,7 +35,7 @@ impl fmt::Display for PublishError {
 
 impl std::error::Error for PublishError {}
 
-/// Move prepared content into place atomically, never overwriting.
+/// Move prepared content into place atomically.
 #[async_trait]
 pub trait AtomicPublishPort: Send + Sync {
     /// Make `source` visible at `destination` in a single atomic step: either
@@ -45,10 +45,31 @@ pub trait AtomicPublishPort: Send + Sync {
     /// anything at all — file, directory, or link — the result is
     /// [`PublishError::DestinationExists`] and that content is left intact.
     ///
+    /// The guarantee is not available on every volume; where it cannot be
+    /// honored the result is [`PublishError::Unsupported`] and nothing is
+    /// moved. [`Self::supports_no_replace`] answers that question in advance.
+    ///
     /// Both paths must be on one volume. A cross-volume request yields
     /// [`PublishError::Unsupported`] rather than degrading to a copy, which
     /// would forfeit atomicity.
     async fn publish_no_replace(
+        &self,
+        source: &Path,
+        destination: &Path,
+    ) -> Result<(), PublishError>;
+
+    /// Make `source` visible at `destination` in a single atomic step, where
+    /// the caller already holds `destination` free by its own means.
+    ///
+    /// Carries no no-replace guarantee: whether an occupied `destination`
+    /// is refused or replaced is the volume's choice, so a caller that cannot
+    /// establish the name is free must use [`Self::publish_no_replace`] and
+    /// accept its narrower reach.
+    ///
+    /// In exchange the move works on every volume that can move within
+    /// itself, including those where [`Self::supports_no_replace`] answers
+    /// `false`. Atomicity and the same-volume requirement are unchanged.
+    async fn publish_into_free_name(
         &self,
         source: &Path,
         destination: &Path,

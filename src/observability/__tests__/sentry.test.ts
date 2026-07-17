@@ -3,6 +3,7 @@ import * as Sentry from '@sentry/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   DEVICE_ROLE_WEBVIEW,
+  TRACES_SAMPLE_RATE,
   applyDeviceMetaToSentry,
   initSentry,
   setFrontendSentryEnabled,
@@ -16,6 +17,7 @@ vi.mock('@sentry/react', async importOriginal => {
     init: vi.fn(),
     browserTracingIntegration: vi.fn(),
     getReplay: vi.fn(),
+    makeFetchTransport: vi.fn(),
     replayIntegration: vi.fn(),
     setTag: vi.fn(),
     setUser: vi.fn(),
@@ -126,6 +128,50 @@ describe('initSentry', () => {
     expect(await Promise.resolve(beforeSend(event, {}))).toBeNull()
     expect(beforeBreadcrumb(breadcrumb, {})).toBeNull()
     expect(beforeSendLog(log)).toBeNull()
+  })
+
+  it('stops sampling new transactions while disabled', () => {
+    initSentry()
+    const tracesSampler = vi.mocked(Sentry.init).mock.calls[0][0].tracesSampler!
+    const inheritOrSampleWith = vi.fn((rate: number) => rate)
+    const samplingContext: Parameters<typeof tracesSampler>[0] = {
+      name: 'settings.load',
+      inheritOrSampleWith,
+    }
+
+    setFrontendSentryEnabled(false)
+    expect(tracesSampler(samplingContext)).toBe(0)
+    expect(inheritOrSampleWith).not.toHaveBeenCalled()
+
+    setFrontendSentryEnabled(true)
+    expect(tracesSampler(samplingContext)).toBe(TRACES_SAMPLE_RATE)
+    // 开启时必须走 inheritOrSampleWith,否则会丢掉上游 trace 的采样决定。
+    expect(inheritOrSampleWith).toHaveBeenCalledWith(TRACES_SAMPLE_RATE)
+  })
+
+  it('blocks every envelope at the final transport while disabled', async () => {
+    const send = vi.fn(() => Promise.resolve({ statusCode: 200 }))
+    const flush = vi.fn(() => Promise.resolve(true))
+    vi.mocked(Sentry.makeFetchTransport).mockReturnValue({ send, flush })
+    initSentry()
+    const initCall = vi.mocked(Sentry.init).mock.calls[0][0]
+    const transportFactory = initCall.transport!
+    const transport = transportFactory({
+      url: 'https://sentry.example/api/1/envelope/',
+      recordDroppedEvent: vi.fn(),
+    })
+    const envelope = [{}, []] as Parameters<typeof transport.send>[0]
+
+    setFrontendSentryEnabled(false)
+    await transport.send(envelope)
+    expect(send).not.toHaveBeenCalled()
+
+    setFrontendSentryEnabled(true)
+    await transport.send(envelope)
+    expect(send).toHaveBeenCalledWith(envelope)
+
+    await transport.flush(25)
+    expect(flush).toHaveBeenCalledWith(25)
   })
 
   it('configures Replay as diagnostics-gated error buffering', () => {

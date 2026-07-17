@@ -6,9 +6,9 @@
 //! - Frontend has its own gate (`setFrontendSentryEnabled` in
 //!   `src/observability/sentry.ts`) since the gate must live in the JS runtime.
 //! - This module is the equivalent for the Rust side: `uc-bootstrap` consults
-//!   it from Sentry's `before_send`, `before_breadcrumb`, and `before_send_log`
-//!   hooks. When the gate is off, Issues / breadcrumbs / Logs are all dropped
-//!   at capture time.
+//!   it from Sentry's transaction sampler, final transport, `before_send`,
+//!   `before_breadcrumb`, and `before_send_log` hooks. When the gate is off,
+//!   payloads are dropped before capture or at the final envelope boundary.
 //!
 //! ## Default
 //!

@@ -793,10 +793,31 @@ The previous OTLP→Seq pipeline was retired in commit `faa8eb8d` (backend) and 
 
 ### Privacy and Telemetry Gate
 
-Both backend and frontend honor the in-app **Settings → General → Telemetry** toggle (`general.telemetry_enabled`):
+Both backend and frontend honor the in-app **Settings → General → Telemetry** toggle (`general.telemetry_enabled`). Each side gates at three depths, because no single hook covers every payload:
 
-- **Backend** — `uc_observability::telemetry_gate` is consulted by Sentry's `before_send`, `before_breadcrumb`, and `before_send_log` hooks. When the gate is off, all three return `None` and nothing leaves the process.
-- **Frontend** — `setFrontendSentryEnabled` flips the same flag for the browser SDK. The `beforeSend` / `beforeBreadcrumb` / `beforeSendLog` hooks in `src/observability/sentry.ts` short-circuit to `null` while disabled. The default is **off** at startup; SettingContext flips it on once the daemon returns the persisted user preference, so any events captured before that point are dropped silently.
+| Depth               | Backend (`uc-bootstrap/src/observability/`)                         | Frontend (`src/observability/sentry.ts`)                        |
+| ------------------- | ------------------------------------------------------------------- | --------------------------------------------------------------- |
+| Transaction sampler | `traces_sampler` -> `sentry_gate::transaction_sample_rate` -> `0.0` | `tracesSampler` -> `0`                                           |
+| Payload hooks       | `before_send` / `before_breadcrumb` / `before_send_log` -> `None`    | `beforeSend` / `beforeBreadcrumb` / `beforeSendLog` -> `null`    |
+| Envelope transport  | `sentry_gate::TelemetryGatedTransportFactory` drops the envelope     | `makeTelemetryGatedTransport` resolves without sending           |
+
+The sampler stops new transactions from being recorded at all. The payload hooks
+drop their respective payload at capture time — breadcrumbs in particular must be
+dropped there rather than at the transport, so that re-enabling telemetry
+mid-session cannot leak the preceding quiet period's context into the next event.
+
+The transport is the final boundary and is **not** redundant with the hooks: it is
+the only gate covering envelopes that no `before_*` hook ever sees — transactions
+sampled before the user flipped the toggle, `release-health` session updates
+(sentry-core's `session.rs` calls `send_envelope` directly, bypassing
+`before_send`), and any envelope type a future SDK upgrade introduces.
+
+The frontend gate defaults to **off** at startup and mirrors the last confirmed
+preference into `localStorage` (`uc.telemetry_enabled`), so a user who disabled
+telemetry stays covered during the early window before SettingContext receives the
+persisted value from the daemon. The backend equivalent is `tracing.rs` reading
+`settings.json` synchronously and calling `set_telemetry_enabled` before
+`sentry::init`.
 
 A shared field-name redaction blocklist (backend: `uc_observability::redact`, frontend: `src/observability/redaction.ts`) is applied to attributes regardless of the gate state, so secrets like `password`, `token`, `auth`, `api_key`, etc. never leave the process even if telemetry is enabled.
 

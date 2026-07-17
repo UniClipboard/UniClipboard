@@ -26,9 +26,9 @@ pub use deps::{
 // (which is `pub(crate)`) so Phase 2 internals stay encapsulated; we
 // re-export only the small public surface here.
 pub use usecases::clipboard_sync::{
-    sweep_inbound_staging, ApplyInboundClipboardUseCase, ApplyInboundError, ApplyInboundInput,
-    ApplyOutcome, FileCacheBlobMaterializer, InboundBlobFetcher, InboundBlobMaterializer,
-    InboundCapture, InboundWrite,
+    ApplyInboundClipboardUseCase, ApplyInboundError, ApplyInboundInput, ApplyOutcome,
+    FileCacheBlobMaterializer, InboundBlobFetcher, InboundBlobMaterializer, InboundCapture,
+    InboundWrite,
 };
 
 // Note: V3 envelope codec helpers (decode_v3_bytes_to_snapshot,

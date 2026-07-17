@@ -77,9 +77,10 @@ mod usecase;
 mod tests;
 
 pub(crate) use materializer::compute_file_set_component;
+pub(crate) use materializer::sweep_inbound_staging;
 pub use materializer::{
-    sweep_inbound_staging, FileCacheBlobMaterializer, InboundBlobFetcher, InboundBlobMaterializer,
-    InboundFileSetManifest, InboundFileSetMember,
+    FileCacheBlobMaterializer, InboundBlobFetcher, InboundBlobMaterializer, InboundFileSetManifest,
+    InboundFileSetMember,
 };
 pub use ports::{InboundCapture, InboundSnapshotRebuild, InboundWrite};
 pub use usecase::ApplyInboundClipboardUseCase;

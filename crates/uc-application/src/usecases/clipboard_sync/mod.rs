@@ -38,10 +38,14 @@ pub(crate) use payload_codec::encode_snapshot_to_v3_bytes;
 // directly, so it gets re-exported at lib.rs root rather than staying
 // behind `pub(crate)`.
 pub use apply_inbound::{
-    sweep_inbound_staging, ApplyInboundClipboardUseCase, ApplyInboundError, ApplyInboundInput,
-    ApplyOutcome, FileCacheBlobMaterializer, InboundBlobFetcher, InboundBlobMaterializer,
-    InboundCapture, InboundWrite,
+    ApplyInboundClipboardUseCase, ApplyInboundError, ApplyInboundInput, ApplyOutcome,
+    FileCacheBlobMaterializer, InboundBlobFetcher, InboundBlobMaterializer, InboundCapture,
+    InboundWrite,
 };
+
+// Startup governance, reached only through `ClipboardSyncFacade` — the sweep
+// and the areas it removes are the same module's business.
+pub(crate) use apply_inbound::sweep_inbound_staging;
 
 // Slice 2 Phase 3 · T10 — CLI `watch` decodes the V3 envelope payload
 // so it can display human-readable text (daemon-sent payloads are now

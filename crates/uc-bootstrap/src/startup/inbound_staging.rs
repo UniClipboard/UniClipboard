@@ -62,5 +62,5 @@ pub(crate) async fn sweep_inbound_staging(
         }
     }
 
-    uc_application::sweep_inbound_staging(&scan_dirs).await;
+    uc_application::facade::ClipboardSyncFacade::sweep_orphaned_inbound_staging(&scan_dirs).await;
 }

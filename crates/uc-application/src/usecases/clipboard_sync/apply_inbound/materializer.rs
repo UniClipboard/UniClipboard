@@ -193,6 +193,22 @@ const MAX_COLLISION_ATTEMPTS: u32 = 10_000;
 /// entries, so this handles what is left: characters the local filesystem
 /// cannot store, and names that sanitize down to nothing (`"..."` trims to an
 /// empty string, which would resolve to the parent directory itself).
+///
+/// Two known gaps, both shared with the sanitizer free-standing files go
+/// through and neither introduced here:
+///
+/// - Windows rejects more than this replaces (`<>"|?*`, trailing spaces, and
+///   the reserved device names `CON`, `NUL`, `COM1`, …). A folder named `a?b`
+///   sent from macOS fails the receive on Windows rather than landing under a
+///   substituted name.
+/// - The rules are duplicated: this and the free-standing file path each carry
+///   their own copy, in different crates.
+///
+/// The two are one problem. Closing the first in one copy would make the two
+/// disagree about what a legal name is, and unifying them is not a local edit:
+/// the shared home would have to be a crate both layers may depend on, and
+/// "what Windows forbids" is platform knowledge that `uc-core` is expressly not
+/// allowed to hold. Fix them together, deliberately, or not at all.
 fn sanitize_root_name(root_name: &str) -> String {
     let sanitized = sanitize_path_segment(root_name);
     if sanitized.is_empty() {
@@ -220,6 +236,15 @@ fn staging_dir_name(receiver_entry_id: &EntryId) -> String {
 /// Only the directories passed in are searched. An area left in a folder the
 /// user has since stopped using as their save directory is not reachable from
 /// here and will not be found.
+///
+/// The caller owes one precondition: no receive may be running anywhere that
+/// can reach `dirs`. An area is only distinguishable as debris by the fact
+/// that nothing is currently building in it, and the prefix alone cannot say
+/// so. Two processes sharing a save directory — which today means two profiles
+/// configured to the same folder — break that: sweeping at one's startup takes
+/// the other's in-flight area. The cost is bounded (that receive fails and can
+/// be re-sent; nothing already published is touched), which is why the prefix
+/// carries no owner. Give the areas an owner tag before relaxing this.
 pub async fn sweep_inbound_staging(dirs: &[PathBuf]) -> usize {
     let mut swept = 0;
     for dir in dirs {

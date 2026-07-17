@@ -1,0 +1,1917 @@
+{
+  "common": {
+    "loading": "Carregando...",
+    "unknownSize": "Tamanho desconhecido",
+    "zeroBytes": "0 Bytes"
+  },
+  "loading": {
+    "initializing": "Inicializando...",
+    "error_title": "Falha na inicialização",
+    "timeout_error": "Tempo esgotado na inicialização. Reinicie o aplicativo."
+  },
+  "nav": {
+    "dashboard": "Painel",
+    "history": "Histórico",
+    "devices": "Dispositivos",
+    "settings": "Configurações",
+    "updateAvailable": "Atualização disponível",
+    "updateDownloading": "Baixando atualização...",
+    "updateDownloadingWithProgress": "Baixando atualização... {{percent}}%",
+    "updateInstalling": "Instalando atualização...",
+    "updateReady": "Atualização pronta para instalar",
+    "back": "Voltar",
+    "feedback": "Feedback"
+  },
+  "debugBadge": {
+    "title": "O modo de depuração está ativado",
+    "description": "Os logs locais ficam mais detalhados e podem crescer mais rápido.",
+    "restartHint": "Desative-o e reinicie o aplicativo ou o daemon para voltar totalmente ao registro de logs normal.",
+    "disable": "Desativar o modo de depuração",
+    "disabledToast": "Modo de depuração desativado. Reinicie para voltar totalmente ao registro de logs normal.",
+    "disableFailed": "Falha ao desativar o modo de depuração"
+  },
+  "update": {
+    "title": "Atualização disponível",
+    "currentVersion": "Versão atual",
+    "latestVersion": "Versão mais recente",
+    "releaseNotes": "Notas da versão",
+    "noNotes": "Nenhuma nota de versão disponível.",
+    "updateNow": "Atualizar agora",
+    "installNow": "Instalar agora",
+    "downloadInBackground": "Baixar em segundo plano",
+    "cancelDownload": "Cancelar download",
+    "cancelling": "Cancelando...",
+    "readyHint": "Atualização baixada. Clique em Instalar agora para aplicar e reiniciar.",
+    "later": "Depois",
+    "noUpdate": "Você já está na versão mais recente.",
+    "checkFailed": "Falha ao verificar atualizações.",
+    "installFailed": "Falha na atualização. Tente novamente.",
+    "downloadFailed": "Falha no download em segundo plano. Tente novamente.",
+    "downloading": "Baixando...",
+    "installing": "Instalando...",
+    "packageManager": {
+      "title": "Atualize pelo seu gerenciador de pacotes",
+      "portableTitle": "Baixe a nova versão portátil",
+      "debHint": "O UniClipboard foi instalado via apt (Debian/Ubuntu). Execute isto em um terminal para atualizar:",
+      "rpmHint": "O UniClipboard foi instalado via dnf/yum (Fedora/RHEL). Execute isto em um terminal para atualizar:",
+      "portableHint": "Você está usando a versão portátil. Ela não se atualiza sozinha — baixe o novo zip portátil na página da versão e substitua o executável (sua pasta de dados permanece intacta).",
+      "debCommand": "sudo apt update && sudo apt install --only-upgrade uniclipboard",
+      "rpmCommand": "sudo dnf upgrade uniclipboard",
+      "copyCommand": "Copiar comando",
+      "copied": "Copiado",
+      "openReleasePage": "Abrir página da versão",
+      "ok": "Entendi"
+    }
+  },
+  "updater": {
+    "window": {
+      "title": "Uma nova versão do UniClipboard está disponível!",
+      "subtitle": "O {{app}} {{version}} já está disponível — você tem a {{currentVersion}}. Deseja baixá-la agora?",
+      "readySubtitle": "O {{app}} {{version}} foi baixado e está pronto para instalar.",
+      "skipThisVersion": "Ignorar esta versão",
+      "remindMeLater": "Lembrar mais tarde",
+      "downloadUpdate": "Baixar atualização",
+      "checking": "Procurando a versão mais recente…",
+      "autoUpdate": "Baixar atualizações automaticamente no futuro",
+      "upToDateTitle": "Tudo atualizado!",
+      "upToDateBody": "Você já está usando a versão mais recente do UniClipboard.",
+      "close": "Fechar"
+    }
+  },
+  "upgradeNotice": {
+    "title": "Pareie seus dispositivos novamente",
+    "body": "Esta versão altera o esquema de pareamento de dispositivos. Seus pareamentos anteriores não sincronizam mais. Abra Dispositivos para convidar o outro dispositivo ou entrar novamente a partir dele.",
+    "fromVersion": "Versão anterior: {{from}}",
+    "toVersion": "Versão atual: {{to}}",
+    "fromUnknown": "Versão anterior: desconhecida",
+    "gotIt": "Entendi, não lembrar novamente",
+    "later": "Depois"
+  },
+  "settings": {
+    "title": "Configurações",
+    "restartBanner": {
+      "restartButton": "Reiniciar agora",
+      "restartingButton": "Reiniciando…",
+      "successMessage": "Reinicialização concluída",
+      "dismissAriaLabel": "Dispensar aviso de reinicialização",
+      "errorMessage": "A reinicialização automática falhou. Feche o app manualmente e abra-o novamente para aplicar a alteração.",
+      "retryButton": "Tentar novamente"
+    },
+    "categories": {
+      "general": "Geral",
+      "appearance": "Aparência",
+      "sync": "Sincronização",
+      "security": "Segurança e privacidade",
+      "network": "Rede",
+      "storage": "Armazenamento",
+      "about": "Sobre",
+      "shortcuts": "Atalhos",
+      "quickPanel": "Painel rápido"
+    },
+    "sections": {
+      "general": {
+        "title": "Geral",
+        "startupTitle": "Inicialização",
+        "saveError": "Falha ao salvar a configuração",
+        "deviceName": {
+          "label": "Nome do dispositivo",
+          "description": "Usado para identificar este dispositivo na rede local",
+          "placeholder": "Digite o nome do dispositivo"
+        },
+        "autoStart": {
+          "label": "Iniciar junto com o sistema",
+          "description": "Iniciar o UniClipboard ao iniciar o sistema"
+        },
+        "startupMode": {
+          "label": "Modo de inicialização",
+          "description": "O modo Silencioso pula a janela e roda direto em segundo plano. O modo Leve vai além — assim que a sincronização fica pronta, ele fecha a janela e também sai da bandeja do sistema, mantendo só o serviço em segundo plano e enviando uma notificação; clique no ícone do app de novo para reabrir a janela.",
+          "options": {
+            "normal": "Normal",
+            "silent": "Silencioso",
+            "lightweight": "Leve"
+          }
+        },
+        "restoreLastEntryOnStartup": {
+          "label": "Restaurar a última entrada ao iniciar",
+          "description": "Assim que o serviço em segundo plano estiver pronto na inicialização, coloca a entrada mais recente do histórico de volta na área de transferência do sistema"
+        },
+        "language": {
+          "title": "Idioma",
+          "label": "Idioma da interface",
+          "description": "Aplicado imediatamente"
+        },
+        "sound": {
+          "title": "Som",
+          "label": "Feedback sonoro de interação",
+          "description": "Toca sons sutis para mudanças de estado, seleção de menu e ações concluídas com sucesso"
+        },
+        "telemetry": {
+          "title": "Privacidade",
+          "diagnostics": {
+            "label": "Enviar diagnósticos",
+            "description": "Envia travamentos, erros e logs anônimos. O conteúdo da área de transferência nunca é coletado."
+          },
+          "usageAnalytics": {
+            "label": "Enviar dados de uso",
+            "description": "Envia estatísticas anônimas de uso dos recursos para melhorar o produto. O conteúdo da área de transferência nunca é coletado."
+          },
+          "notice": {
+            "title": "Ajude a melhorar o UniClipboard",
+            "body": "O UniClipboard coleta diagnósticos e dados de uso anônimos para ajudar a melhorar o app. O conteúdo da sua área de transferência nunca é coletado nem transmitido. Você pode alterar essas escolhas quando quiser em Configurações > Geral > Privacidade.",
+            "accept": "OK",
+            "optOut": "Desativar"
+          }
+        },
+        "logsDirectory": {
+          "title": "Logs",
+          "label": "Diretório de logs",
+          "description": "Abrir a pasta onde os logs do aplicativo são armazenados",
+          "button": "Abrir no gerenciador de arquivos"
+        },
+        "logs": {
+          "debug": {
+            "label": "Modo de depuração",
+            "description": "Aumenta o detalhamento dos logs locais de diagnóstico depois que o app e o daemon forem reiniciados.",
+            "confirmTitle": "Ativar o modo de depuração?",
+            "confirmDescription": "O modo de depuração aumenta o volume de logs locais e pode incluir mais contexto de execução. O conteúdo da área de transferência não deve ser registrado ativamente. Ao confirmar, o app e o daemon serão reiniciados imediatamente para aplicar a alteração. Desative quando não precisar mais e reinicie o app ou o daemon para voltar totalmente ao registro normal.",
+            "confirm": "Ativar e reiniciar",
+            "cancel": "Cancelar",
+            "restartToast": "Reinicie o app ou o daemon para que a mudança no registro de logs tenha efeito completo.",
+            "error": "Falha ao alterar o modo de depuração",
+            "restartingTitle": "Reiniciando…",
+            "restartingDescription": "Reiniciando o app e o daemon em segundo plano para aplicar o modo de depuração. Aguarde e não feche esta janela."
+          },
+          "export": {
+            "label": "Exportar logs",
+            "description": "Cria na pasta Downloads um arquivo zip com os logs de GUI, daemon e CLI das últimas 24 horas.",
+            "button": "Exportar logs",
+            "exporting": "Exportando...",
+            "success": "Logs exportados",
+            "error": "Falha ao exportar os logs",
+            "copyPath": "Copiar caminho",
+            "copySuccess": "Caminho da exportação copiado",
+            "copyError": "Falha ao copiar o caminho da exportação"
+          }
+        }
+      },
+      "appearance": {
+        "title": "Aparência",
+        "themeMode": {
+          "title": "Aparência",
+          "light": "Claro",
+          "dark": "Escuro",
+          "system": "Sistema"
+        },
+        "themeColor": {
+          "title": "Cor do tema"
+        },
+        "themePreview": {
+          "title": "Tema",
+          "lightLabel": "Claro",
+          "darkLabel": "Escuro",
+          "followSystem": "Seguir o sistema",
+          "setAsLight": "Mudar para claro",
+          "setAsDark": "Mudar para escuro",
+          "currentLight": "Claro",
+          "currentDark": "Escuro"
+        },
+        "lightTheme": {
+          "title": "Tema claro",
+          "preset": "Predefinição",
+          "accent": "Destaque",
+          "background": "Fundo",
+          "foreground": "Primeiro plano",
+          "border": "Borda"
+        },
+        "darkTheme": {
+          "title": "Tema escuro",
+          "preset": "Predefinição",
+          "accent": "Destaque",
+          "background": "Fundo",
+          "foreground": "Primeiro plano",
+          "border": "Borda"
+        },
+        "tokenPicker": {
+          "openPicker": "Escolher cor",
+          "reset": "Restaurar predefinição",
+          "modified": "Personalizado",
+          "hexInputLabel": "Valor hexadecimal da cor"
+        },
+        "zoom": {
+          "title": "Escala da interface",
+          "description": "A escala vale tanto para a janela principal quanto para o painel rápido, e fica em sincronia com os atalhos.",
+          "current": "Escala atual: {{value}}",
+          "reset": "Voltar para 100%"
+        }
+      },
+      "sync": {
+        "title": "Sincronização",
+        "autoSync": {
+          "label": "Sincronização automática",
+          "description": "Controla a sincronização da área de transferência entre todos os dispositivos. Quando desativada, nenhum conteúdo é sincronizado para nenhum dispositivo."
+        },
+        "syncOnRestore": {
+          "label": "Sincronizar ao restaurar",
+          "description": "Ao restaurar uma entrada antiga da área de transferência, torná-la também a área de transferência ativa nos seus outros dispositivos. Desativado por padrão."
+        },
+        "syncFrequency": {
+          "label": "Frequência de sincronização",
+          "description": "Controla com que frequência o uniClipboard procura conteúdo novo",
+          "realtime": "Em tempo real",
+          "30s": "A cada 30s",
+          "1m": "A cada minuto",
+          "5m": "A cada 5 minutos",
+          "15m": "A cada 15 minutos"
+        },
+        "loadError": "Falha ao carregar as configurações:",
+        "fileSync": {
+          "title": "Sincronização de arquivos",
+          "enable": {
+            "label": "Ativar a sincronização de arquivos",
+            "description": "Sincroniza os arquivos copiados entre dispositivos pela rede local"
+          },
+          "smallFileThreshold": {
+            "label": "Limite para transferência imediata",
+            "description": "Arquivos menores que isso são transferidos na hora; os maiores sincronizam apenas os metadados",
+            "unit": "MB",
+            "errors": {
+              "invalid": "Precisa ser um número positivo",
+              "range": "Precisa estar entre 1 e 1000 MB",
+              "exceedsMax": "Precisa ser menor que o tamanho máximo de arquivo"
+            }
+          },
+          "maxFileSize": {
+            "label": "Tamanho máximo de arquivo",
+            "description": "Arquivos maiores que isso não serão sincronizados",
+            "unit": "MB",
+            "errors": {
+              "invalid": "Precisa ser um número positivo",
+              "range": "Precisa estar entre 1 e 10240 MB (10 GB)"
+            }
+          },
+          "cacheQuota": {
+            "label": "Cota de cache por dispositivo",
+            "description": "Espaço máximo em disco para os arquivos em cache de cada dispositivo",
+            "unit": "MB",
+            "errors": {
+              "invalid": "Precisa ser um número positivo",
+              "range": "Precisa estar entre 50 e 10240 MB"
+            }
+          },
+          "retentionPeriod": {
+            "label": "Período de retenção dos arquivos",
+            "description": "Os arquivos em cache são removidos depois desse período",
+            "unit": "horas",
+            "errors": {
+              "invalid": "Precisa ser um número positivo",
+              "range": "Precisa estar entre 1 e 720 horas (30 dias)"
+            }
+          },
+          "autoCleanup": {
+            "label": "Limpeza automática",
+            "description": "Remover automaticamente os arquivos em cache expirados na inicialização"
+          },
+          "autoSaveDir": {
+            "label": "Local de armazenamento dos arquivos",
+            "description": "Defina um diretório personalizado para armazenar os arquivos. Sem definição, eles ficam no armazenamento gerenciado.",
+            "managed": "Armazenamento gerenciado (padrão)",
+            "choose": "Escolher pasta",
+            "clear": "Restaurar padrão"
+          }
+        }
+      },
+      "security": {
+        "title": "Segurança e privacidade",
+        "endToEndEncryption": {
+          "label": "Criptografia de ponta a ponta",
+          "description": "Ativar a criptografia de ponta a ponta para todo o conteúdo sincronizado"
+        },
+        "encryptionPassword": {
+          "label": "Senha de criptografia",
+          "description": "Usada para criptografar e descriptografar os dados",
+          "modify": "Alterar",
+          "cancel": "Cancelar",
+          "save": "Salvar",
+          "placeholder": "Digite a nova senha de criptografia"
+        },
+        "autoUnlock": {
+          "label": "Desbloqueio automático",
+          "description": "Desbloquear automaticamente pelo Keychain na inicialização"
+        },
+        "loadError": "Falha ao carregar as configurações:"
+      },
+      "network": {
+        "loadError": "Falha ao carregar as configurações:",
+        "lanOnly": {
+          "label": "LAN-only Mode",
+          "description": "Desativa o fallback pelo relay público. Os dispositivos sincronizam somente na mesma rede local. Tem efeito após reiniciar.",
+          "infoIconAriaLabel": "Ver a lista de requisições que ainda chegam à internet quando o LAN-only Mode está ativado",
+          "saveError": "Falha ao salvar: {{message}}. A configuração anterior foi restaurada.",
+          "disclosure": {
+            "title": "Requisições que ainda chegam à internet com o LAN-only Mode ativado",
+            "intro": "Os 4 tipos de requisição a seguir são controlados por módulos independentes e não são afetados pelo LAN-only Mode:",
+            "rendezvous": {
+              "title": "Rendezvous do primeiro pareamento",
+              "description": "Parear um novo dispositivo ainda exige acesso a rendezvous.uniclipboard.app para trocar os NodeIds. Depois do pareamento, a sincronização do dia a dia não usa mais o rendezvous."
+            },
+            "telemetry": {
+              "title": "Telemetria",
+              "description": "A telemetria é controlada de forma independente em Geral → Telemetria, e não pelo LAN-only Mode. Para desativá-la, vá até a seção Geral."
+            },
+            "pkarr": {
+              "title": "Resolução de NodeId pela DHT pkarr",
+              "description": "Conexões entre sub-redes diferentes resolvem os NodeIds dos pares pela DHT pública pkarr, algo parecido com o DNS. Desativá-la derrubaria a taxa de conexão entre sub-redes de cerca de 90% para quase zero."
+            },
+            "autoUpdate": {
+              "title": "Verificação de atualizações no GitHub",
+              "description": "Controlada de forma independente em Geral → Atualização automática, que consulta a API de Releases do GitHub em busca de novas versões."
+            }
+          }
+        },
+        "allowOverlayAddrs": {
+          "label": "Permitir endereços de rede overlay",
+          "description": "Desativado por padrão. Ative quando os dois pares estiverem na mesma VPN (por exemplo, Tailscale) para que as conexões possam usar essa rede overlay. Tem efeito após reiniciar.",
+          "infoIconAriaLabel": "Saiba o que são endereços de rede overlay e quando ativar esta opção",
+          "saveError": "Falha ao salvar: {{message}}. A configuração anterior foi restaurada.",
+          "disclosure": {
+            "title": "Sobre os endereços de rede overlay",
+            "intro": "Ao estabelecer conexões diretas, sua máquina tem vários endereços IP (a LAN real, túneis de VPN etc.). \"Endereços de rede overlay\" são os IPs de placas de rede virtuais criadas por softwares de VPN:",
+            "covered": {
+              "title": "O que isso afeta",
+              "description": "Especificamente a faixa CGNAT 100.64.0.0/10 (o IPv4 padrão do Tailscale) e a ULA IPv6 do Tailscale fd7a:115c:a1e0::/48. O fake-ip do Clash (198.18.0.0/15) e os link-local (169.254.0.0/16) são sempre filtrados, independentemente desta configuração."
+            },
+            "whyOff": {
+              "title": "Por que fica desativado por padrão",
+              "description": "Quando os dois pares não estão na mesma VPN, publicar IPs de placas virtuais como candidatos de conexão desperdiça o orçamento de validação de caminho com candidatos mortos e atrasa a conexão direta de verdade."
+            },
+            "whenOn": {
+              "title": "Quando ativar",
+              "description": "Ative se os dois pares estiverem na mesma tailnet do Tailscale (ou em outra rede overlay compartilhada) e os caminhos diretos por LAN/internet estiverem bloqueados, mas a rota pelo overlay funcionar. Aí o iroh vai usar o caminho do overlay como candidato de conexão."
+            },
+            "tradeoff": {
+              "title": "Contrapartida",
+              "description": "Se só um dos pares tiver a VPN — ou se os pares estiverem em tailnets diferentes — ativar isso deixa as conexões mais lentas, mas não as quebra de vez (o fallback pelo relay continua funcionando). Na dúvida, deixe desativado."
+            }
+          }
+        },
+        "customRelays": {
+          "label": "Nós de relay personalizados",
+          "description": "Adicione uma ou mais URLs de relay do iroh. Deixe vazio para usar os relays padrão. O LAN-only Mode preserva esta lista, mas não a utiliza. Tem efeito após reiniciar.",
+          "placeholder": "https://relay.example.com.",
+          "addButton": "Adicionar nó de relay",
+          "itemAriaLabel": "Nó de relay personalizado {{index}}",
+          "removeAriaLabel": "Remover o nó de relay {{index}}",
+          "saveError": "Falha ao salvar os relays personalizados: {{message}}. A configuração anterior foi restaurada.",
+          "invalidUrl": "URL de relay inválida: {{url}}. Informe uma URL http ou https.",
+          "testAriaLabel": "Testar o nó de relay {{index}}",
+          "testing": "Testando o nó de relay…",
+          "testSuccess": "Handshake bem-sucedido ({{latencyMs}} ms)",
+          "testErrors": {
+            "invalidUrl": "URL de relay inválida: {{message}}",
+            "dns": "Não foi possível resolver o host do relay: {{message}}",
+            "tls": "Falha no handshake TLS: {{message}}",
+            "handshake": "Falha no handshake do iroh-relay: {{message}}",
+            "timeout": "O teste expirou depois de 5 segundos",
+            "other": "Falha no teste: {{message}}",
+            "unavailable": "O teste de relay não está disponível neste ambiente de execução."
+          }
+        },
+        "congestionController": {
+          "label": "Controlador de congestionamento",
+          "description": "Algoritmo de controle de fluxo da rede. O CUBIC funciona melhor em redes locais e bem dimensionadas; o BBR3 pode ir melhor em links de longa distância ou com perda de pacotes. Tem efeito após reiniciar.",
+          "recommended": "recomendado"
+        },
+        "restartBanner": {
+          "message": "As configurações de rede mudaram. É preciso reiniciar o serviço em segundo plano para aplicar.",
+          "errorMessage": "Falha ao reiniciar o serviço em segundo plano. Tente novamente ou reinicie o app manualmente."
+        }
+      },
+      "storage": {
+        "title": "Armazenamento",
+        "autoClearHistory": {
+          "label": "Limpeza automática do histórico",
+          "description": "Limpar automaticamente as entradas antigas da área de transferência conforme as regras de retenção"
+        },
+        "storageUsage": {
+          "label": "Uso do armazenamento",
+          "usage": "{{percentage}}% usado",
+          "database": "Banco de dados",
+          "blobVault": "Cofre de blobs",
+          "cache": "Cache",
+          "logs": "Logs",
+          "total": "Total"
+        },
+        "historyRetention": {
+          "label": "Retenção do histórico",
+          "description": "Tempo máximo de retenção do histórico da área de transferência",
+          "days": "{{days}} dias"
+        },
+        "maxHistoryItems": {
+          "label": "Máximo de itens no histórico",
+          "description": "Número máximo de entradas da área de transferência a manter",
+          "items": "{{count}} itens",
+          "unlimited": "Ilimitado"
+        },
+        "skipPinned": {
+          "label": "Ignorar itens fixados",
+          "description": "Os itens fixados ficam de fora da limpeza automática"
+        },
+        "clearHistory": {
+          "label": "Limpar histórico",
+          "description": "Excluir todo o histórico da área de transferência e liberar espaço de armazenamento",
+          "button": "Limpar tudo",
+          "confirm": "Tem certeza? Esta ação não pode ser desfeita.",
+          "cleared": "Histórico limpo",
+          "clearing": "Limpando...",
+          "dialogTitle": "Confirmar limpeza do histórico",
+          "dialogDescription": "Isso vai excluir todo o histórico da área de transferência e não pode ser desfeito.",
+          "dialogConfirm": "Limpar histórico"
+        },
+        "clearCache": {
+          "label": "Limpar cache",
+          "description": "Remover as miniaturas em cache e os arquivos temporários",
+          "button": "Limpar cache",
+          "cleared": "Cache limpo",
+          "clearing": "Limpando..."
+        },
+        "dataDirectory": {
+          "label": "Diretório de dados",
+          "description": "Abrir a pasta onde os dados do aplicativo são armazenados",
+          "button": "Abrir no gerenciador de arquivos"
+        },
+        "configBackup": {
+          "label": "Backup e migração das configurações",
+          "export": {
+            "label": "Exportar configurações",
+            "description": "Empacota todas as suas configurações, o histórico e a identidade do dispositivo em um único arquivo criptografado para levar a outro computador. Ele é protegido pela frase secreta do seu Espaço — nenhuma senha extra é necessária",
+            "button": "Exportar configurações…",
+            "exporting": "Exportando…",
+            "success": "Configurações exportadas",
+            "lockedError": "Desbloqueie primeiro e depois exporte as configurações",
+            "genericError": "Falha ao exportar as configurações"
+          },
+          "import": {
+            "label": "Importar configurações",
+            "description": "Restaura as configurações a partir de um arquivo exportado. Isso é uma mudança de dispositivo: esta máquina passa a ser aquele dispositivo exportado, substituindo o que estiver aqui agora",
+            "button": "Importar configurações…",
+            "passwordTitle": "Digite a frase secreta do seu Espaço",
+            "passwordDescription": "Digite a frase secreta do Espaço do dispositivo de onde este arquivo foi exportado — é ela que o desbloqueia.",
+            "passwordLabel": "Frase secreta do Espaço",
+            "passwordPlaceholder": "Frase secreta do Espaço do dispositivo exportado",
+            "passwordConfirmButton": "Continuar",
+            "confirmTitle": "Confirmar importação: isso é uma mudança de dispositivo",
+            "confirmDescription": "Ao importar, esta máquina passa a entrar com a identidade do dispositivo exportado e substitui as configurações que estão nela agora. Revise com atenção — isso não pode ser desfeito.",
+            "warningMove": "Esta máquina vai se tornar aquele dispositivo exportado, assumindo a identidade e os pareamentos dele.",
+            "warningNoDualOnline": "Depois disso, não coloque o dispositivo original online de novo. Dois dispositivos online com a mesma identidade vão entrar em conflito na rede de dispositivos.",
+            "warningReplace": "Todas as configurações e o histórico que estiverem nesta máquina serão substituídos pelos importados. Se esta máquina já estiver em uso, confira se não há nada nela que você queira manter.",
+            "metaTitle": "Configurações a importar",
+            "metaAppVersion": "Exportado da versão",
+            "metaSourceMode": "Tipo de origem",
+            "metaSourcePortable": "Portátil",
+            "metaSourceInstalled": "Instalado",
+            "metaFingerprint": "Impressão digital do dispositivo",
+            "confirmButton": "Entendi, iniciar a importação",
+            "cancelButton": "Cancelar",
+            "staging": "Importando…",
+            "restartingTitle": "Reiniciando para concluir a importação",
+            "restartingDescription": "Aguarde — o app vai reiniciar e aplicar as configurações importadas. Não o feche.",
+            "restartingUnlockHint": "Depois de reiniciar, você vai precisar digitar a frase secreta do seu Espaço para desbloquear.",
+            "invalidPasswordError": "Frase secreta incorreta ou arquivo corrompido",
+            "incompatibleError": "A versão deste pacote de configurações não é compatível com o app atual",
+            "genericError": "Falha ao importar as configurações"
+          }
+        },
+        "searchIndex": {
+          "label": "Índice de busca",
+          "status": "Status do índice",
+          "statusDescription": "Estado atual do índice de busca de texto completo",
+          "ready": "Pronto",
+          "rebuilding": "Reconstruindo…",
+          "unavailable": "Indisponível",
+          "lastRebuilt": "Última reconstrução",
+          "lastRebuiltDescription": "Horário da última reconstrução do índice concluída com sucesso",
+          "never": "Nunca",
+          "rebuild": "Reconstruir o índice",
+          "rebuildDescription": "Disparar manualmente uma reconstrução completa do índice de busca",
+          "rebuildButton": "Reconstruir",
+          "rebuildingButton": "Reconstruindo…"
+        },
+        "loadError": "Falha ao carregar as configurações de armazenamento:",
+        "placeholder": "As configurações de armazenamento ainda não estão disponíveis."
+      },
+      "shortcuts": {
+        "title": "Atalhos",
+        "description": "Personalize os atalhos de teclado",
+        "scope": {
+          "global": "Global",
+          "clipboard": "Área de transferência",
+          "settings": "Configurações",
+          "devices": "Dispositivos",
+          "modal": "Modal"
+        },
+        "actions": {
+          "goSettings": "Ir para as configurações",
+          "toggleQuickPanel": "Abrir/fechar o painel rápido",
+          "favoriteClipboardItem": "Favoritar o item atual da área de transferência",
+          "zoomIn": "Aumentar o zoom",
+          "zoomOut": "Diminuir o zoom"
+        },
+        "issues": {
+          "sameScope": "Conflito de atalho no mesmo escopo: {{key}}",
+          "sameLayer": "Mesma tecla usada em outro escopo desta camada: {{key}}",
+          "shadowedByHigher": "Será encoberto quando uma camada superior estiver ativa: {{key}}",
+          "shadowsLower": "Vai encobrir atalhos de camadas inferiores: {{key}}"
+        },
+        "edit": "Editar",
+        "reset": "Restaurar padrão",
+        "resetAll": "Restaurar todos os atalhos",
+        "recording": "Pressione as teclas...",
+        "chordHint": "Pressione outra combinação para um segundo passo (pressione a mesma combinação duas vezes para um \"toque duplo\") ou confirme",
+        "rerecord": "Regravar",
+        "conflict": "Conflita com: {{name}}",
+        "confirmOverride": "Aplicar mesmo assim (remove o conflito)",
+        "confirm": "Confirmar",
+        "cancel": "Cancelar",
+        "modified": "Modificado"
+      },
+      "quickPanel": {
+        "title": "Painel rápido",
+        "featureTitle": "Recurso",
+        "shortcutTitle": "Atalho",
+        "enable": {
+          "label": "Ativar o painel rápido",
+          "description": "Registra um atalho global e cria a janela do painel rápido em segundo plano. Ao desativar, o atalho é removido na hora."
+        },
+        "position": {
+          "label": "Posição",
+          "description": "Escolha onde o painel rápido aparece quando você pressiona o atalho.",
+          "center": "Centro da tela",
+          "followCursor": "Seguir o cursor"
+        },
+        "doubleTap": {
+          "label": "Toque duplo no modificador",
+          "description": "Abre o painel rápido tocando duas vezes em uma tecla modificadora. O atalho gravado continua ativo.",
+          "checking": "Verificando se esta sessão do desktop oferece suporte ao toque duplo no modificador.",
+          "permissionRequired": "É necessária a permissão de Acessibilidade do macOS. Conceda o acesso nas Configurações do Sistema e volte ao UniClipboard.",
+          "unsupported": "O toque duplo no modificador não está disponível nesta sessão de exibição, incluindo sessões Wayland. O atalho gravado continua ativo.",
+          "openSettings": "Abrir configurações de Acessibilidade",
+          "openSettingsError": "Não foi possível abrir as configurações de Acessibilidade. Abra Configurações do Sistema > Privacidade e Segurança > Acessibilidade manualmente.",
+          "disabled": "Desativado",
+          "option": "Option",
+          "alt": "Alt",
+          "control": "Control",
+          "command": "Command",
+          "windows": "Windows",
+          "super": "Super"
+        },
+        "restartHint": "O painel rápido está desativado agora. Reinicie o app para liberar totalmente os processos em segundo plano."
+      },
+      "about": {
+        "title": "Sobre",
+        "appName": "UniClipboard",
+        "version": "Versão {{version}}",
+        "checkUpdate": "Verificar atualizações",
+        "checkingUpdate": "Verificando...",
+        "updatesTitle": "Atualizações",
+        "autoCheckUpdate": {
+          "label": "Verificar atualizações automaticamente",
+          "description": "Verificar automaticamente se há novas versões quando o app iniciar"
+        },
+        "autoDownloadUpdate": {
+          "label": "Baixar atualizações em segundo plano",
+          "description": "Baixa o instalador assim que uma nova versão é detectada, deixando a instalação instantânea.",
+          "disabledHint": "Ative primeiro \"Verificar atualizações automaticamente\""
+        },
+        "updateChannel": {
+          "label": "Canal de atualização",
+          "description": "Escolha de qual canal de lançamento receber as atualizações",
+          "auto": "Detectar automaticamente",
+          "stable": "Estável",
+          "beta": "Beta",
+          "alpha": "Alpha",
+          "rc": "Release Candidate",
+          "alphaWarning": {
+            "title": "Mudar para o canal Alpha?",
+            "description": "As versões alpha podem trazer recursos e regressões que ainda não foram totalmente validados. O UniClipboard vai verificar o canal alpha logo após a mudança.",
+            "cancel": "Cancelar",
+            "confirm": "Mudar"
+          }
+        },
+        "sponsors": {
+          "title": "Patrocinadores",
+          "thanks": "Obrigado a estas pessoas incríveis, cujo patrocínio mantém o UniClipboard avançando.",
+          "goldBadge": "Ouro",
+          "becomeSponsor": "Seja um patrocinador →",
+          "githubStar": "Deixe uma estrela no GitHub →"
+        },
+        "copyright": "© 2025 UniClipboard. Todos os direitos reservados.",
+        "links": {
+          "privacyPolicy": "Política de Privacidade",
+          "termsOfService": "Termos de Serviço",
+          "aboutMaintainers": "Sobre e mantenedores"
+        }
+      }
+    }
+  },
+  "unlock": {
+    "title": "Desbloquear o UniClipboard",
+    "description": "Seus dados estão criptografados. Desbloqueie para continuar.",
+    "button": "Desbloquear",
+    "unlocking": "Desbloqueando...",
+    "autoUnlock": {
+      "label": "Desbloqueio automático",
+      "description": "Desbloquear automaticamente ao iniciar o aplicativo"
+    },
+    "macOSNote": "No macOS, você pode escolher \"Sempre Permitir\" no aviso do Keychain para que o desbloqueio automático funcione sem interrupções.",
+    "keychainModal": {
+      "title": "Conceder acesso ao Keychain",
+      "description": "Para ativar o desbloqueio automático, o UniClipboard precisa de acesso permanente ao Keychain do macOS.",
+      "step1": "Um aviso de acesso ao Keychain do macOS será exibido",
+      "step2": "Selecione \"Sempre Permitir\" no aviso",
+      "step3": "Digite a senha do seu macOS para confirmar",
+      "note": "Esta é uma janela do sistema macOS, não faz parte do UniClipboard.",
+      "confirm": "Entendi",
+      "cancel": "Cancelar",
+      "verifying": "Verificando acesso...",
+      "error": "A permissão \"Sempre Permitir\" do Keychain não foi detectada. Tente novamente e selecione \"Sempre Permitir\" no aviso do Keychain do macOS."
+    },
+    "passphraseModal": {
+      "title": "Digite a frase secreta do seu Espaço",
+      "description": "O desbloqueio automático não conseguiu obter a chave do Keychain. Digite a frase secreta que você definiu para este Espaço e desbloqueie manualmente.",
+      "passphraseLabel": "Frase secreta",
+      "passphrasePlaceholder": "Digite sua frase secreta",
+      "submit": "Desbloquear",
+      "submitting": "Desbloqueando...",
+      "cancel": "Cancelar",
+      "show": "Mostrar frase secreta",
+      "hide": "Ocultar frase secreta",
+      "hint": "Após desbloquear uma vez, o Keychain será atualizado para que as próximas sessões voltem a ser desbloqueadas automaticamente."
+    },
+    "errors": {
+      "wrongPassphrase": "Frase secreta incorreta. Tente novamente.",
+      "corruptedKeyMaterial": "O material de chave local está corrompido. Você precisará redefinir este Espaço e entrar nele novamente a partir de outro dispositivo para recuperá-lo.",
+      "setupNotCompleted": "A configuração inicial ainda não foi concluída neste dispositivo. Execute a configuração inicial primeiro.",
+      "spaceNotInitialized": "Não existe nenhum Espaço neste dispositivo. Crie um novo Espaço ou entre em um a partir de outro dispositivo.",
+      "facadeUnavailable": "O aplicativo ainda está iniciando. Aguarde um momento e tente novamente.",
+      "internal": "Falha inesperada ao desbloquear. Tente novamente ou reinicie o aplicativo."
+    },
+    "factoryReset": {
+      "link": "Esqueceu sua frase secreta? Redefina e comece de novo",
+      "modal": {
+        "title": "Redefinir e começar de novo",
+        "warning": "Depois da redefinição, o histórico criptografado da área de transferência armazenado neste dispositivo não poderá ser recuperado.",
+        "recovery": "Se você tiver outro dispositivo pareado, poderá convidar este dispositivo novamente a partir dele, e o histórico será sincronizado de volta a partir dele.",
+        "confirmPrompt": "Digite RESET para confirmar",
+        "confirmPlaceholder": "RESET",
+        "confirm": "Redefinir",
+        "resetting": "Redefinindo...",
+        "cancel": "Cancelar"
+      },
+      "errors": {
+        "keyMaterialWipeFailed": "Falha ao apagar o material de chave; a redefinição não foi concluída. Tente novamente ou reinicie o aplicativo.",
+        "storageFailed": "O material de chave foi apagado, mas não foi possível salvar o estado. Reinicie o aplicativo para concluir a redefinição.",
+        "facadeUnavailable": "O aplicativo ainda está iniciando. Aguarde um momento e tente novamente.",
+        "internal": "Falha inesperada ao redefinir. Tente novamente ou reinicie o aplicativo."
+      }
+    }
+  },
+  "language": {
+    "zh-CN": "简体中文",
+    "en-US": "English",
+    "ru-RU": "Русский",
+    "pt-BR": "Português (Brasil)"
+  },
+  "history": {
+    "title": "Histórico",
+    "subtitle_one": "{{count}} item",
+    "subtitle_many": "{{count}} itens",
+    "subtitle_other": "{{count}} itens",
+    "searchPlaceholder": "Pesquisar na área de transferência…",
+    "loadMore": "Carregar mais",
+    "unknownFile": "Arquivo desconhecido",
+    "filter": {
+      "all": "Todos",
+      "favorited": "Favoritos",
+      "text": "Texto",
+      "richtext": "Texto formatado",
+      "code": "Código",
+      "link": "Links",
+      "image": "Imagens",
+      "file": "Arquivos"
+    },
+    "timeRange": {
+      "label": "Período",
+      "all_time": "Todo o período",
+      "today": "Hoje",
+      "yesterday": "Ontem",
+      "last_7d": "Últimos 7 dias",
+      "last_30d": "Últimos 30 dias",
+      "this_week": "Esta semana",
+      "this_month": "Este mês"
+    },
+    "source": {
+      "label": "Origem",
+      "all": "Todas as origens"
+    },
+    "type": {
+      "text": "Texto",
+      "richtext": "Texto formatado",
+      "code": "Código",
+      "link": "Link",
+      "favorited": "Favoritos",
+      "image": "Imagem",
+      "directory": "Pasta",
+      "file": "Arquivo",
+      "unknown": "Desconhecido"
+    },
+    "detail": {
+      "capturedAt": "Capturado",
+      "size": "Tamanho",
+      "fileCount": "Arquivos",
+      "urlCount": "URLs",
+      "fileMissing": "(ausente)"
+    },
+    "composite": {
+      "title": "Pesquisar e filtrar",
+      "dimension": {
+        "type": "Tipo",
+        "tag": "Tag",
+        "source": "Origem",
+        "time": "Período",
+        "extension": "Extensão"
+      },
+      "noMatches": "Nenhum resultado",
+      "removeFilter": "Remover filtro: {{filter}}",
+      "moreFilters": "Mostrar mais {{count}} filtros",
+      "clearAll": "Limpar tudo"
+    }
+  },
+  "dashboard": {
+    "logs": {
+      "loadingClipboard": "Carregando registros e estatísticas da área de transferência...",
+      "filterChanged": "Filtro alterado, atualizando o valor da ref:",
+      "settingGlobalListener": "Configurando o listener global...",
+      "startingBackendListener": "Iniciando o listener de novo conteúdo da área de transferência no backend...",
+      "backendListenerStarted": "Listener de novo conteúdo da área de transferência iniciado no backend",
+      "listeningToClipboardEvents": "Começando a escutar os eventos de novo conteúdo da área de transferência...",
+      "clearingPreviousListener": "Limpando o listener anterior",
+      "newClipboardEvent": "Evento de novo conteúdo da área de transferência recebido:",
+      "ignoringDuplicateEvent": "Ignorando eventos duplicados em um curto intervalo",
+      "listenerAlreadyActive": "O listener já está ativo, ignorando a configuração",
+      "globalListenerExists": "O listener global já existe, não é necessário configurá-lo de novo",
+      "setupListenerFailed": "Falha ao configurar o listener:",
+      "componentUnmounting": "Componente sendo desmontado, mas mantendo o listener global ativo"
+    },
+    "constants": {
+      "debounceDelay": "Atraso do debounce (milissegundos)"
+    },
+    "errors": {
+      "loadFailed": "Falha ao carregar os dados da área de transferência",
+      "listenerSetupFailed": "Falha ao configurar o listener da área de transferência",
+      "unknown": "Ocorreu um erro desconhecido"
+    }
+  },
+  "header": {
+    "searchPlaceholder": "Pesquisar por palavras-chave...",
+    "resultsCount": "{{count}} resultados",
+    "filters": {
+      "all": "Todos",
+      "favorited": "Favoritos",
+      "text": "Texto",
+      "richtext": "Texto formatado",
+      "image": "Imagem",
+      "link": "Link",
+      "file": "Arquivo",
+      "code": "Código"
+    },
+    "timeRange": {
+      "all_time": "Todo o período",
+      "today": "Hoje",
+      "yesterday": "Ontem",
+      "last_7d": "Últimos 7 dias",
+      "last_30d": "Últimos 30 dias",
+      "this_week": "Esta semana",
+      "this_month": "Este mês"
+    }
+  },
+  "clipboard": {
+    "search": {
+      "noResults": "Nenhum resultado para \"{{query}}\"",
+      "noResultsFiltered": "Nenhum item corresponde aos filtros atuais",
+      "noResultsSub": "Tente uma palavra completa ou outra palavra-chave",
+      "empty": "Seu histórico da área de transferência está vazio",
+      "emptySub": "Copie algo para começar",
+      "resultsCount": "resultados",
+      "searching": "Pesquisando…",
+      "degraded": "O índice de busca está sendo reconstruído — exibindo os itens recentes. Os filtros e a busca por palavra-chave voltam em instantes."
+    },
+    "content": {
+      "filterCondition": "Condição do filtro:",
+      "queryResults": "Resultados da consulta:",
+      "convertedItems": "Itens de exibição convertidos:",
+      "noItemsFound": "Nenhum item encontrado",
+      "noClipboardItems": "Nenhum item na área de transferência",
+      "emptyDescription": "Quando você copiar algum conteúdo, ele aparecerá aqui.",
+      "emptyHint": "Experimente copiar um texto ou uma imagem!",
+      "logs": {
+        "copyItem": "ID do item a copiar:",
+        "copyToClipboardFailed": "Falha ao copiar para a área de transferência",
+        "convertingItem": "Convertendo para item de exibição:"
+      }
+    },
+    "source": {
+      "local": "Este dispositivo"
+    },
+    "errors": {
+      "copyFailed": "Falha ao copiar para a área de transferência",
+      "favoriteFailed": "Falha ao atualizar o status de favorito",
+      "openLocationFailed": "Falha ao abrir o local do arquivo",
+      "fileLocationUnavailable": "Este arquivo não está mais disponível localmente.",
+      "loadDetailFailed": "Falha ao carregar os detalhes",
+      "unknown": "Ocorreu um erro desconhecido",
+      "unavailableBadge": "Conteúdo indisponível",
+      "unavailableTooltip": "Este conteúdo não está mais disponível (bytes perdidos). Não é possível colar. Considere excluí-lo do histórico.",
+      "fileSourceMissing": "O arquivo de origem não está mais no local original — ele pode ter sido excluído ou movido. Restaure-o para tentar novamente."
+    },
+    "item": {
+      "characters": "caracteres",
+      "link": "link",
+      "image": "imagem",
+      "unknownContent": "Conteúdo desconhecido",
+      "expand": "Expandir",
+      "collapse": "Recolher",
+      "loading": "Carregando...",
+      "actions": {
+        "copy": "Copiar",
+        "copied": "Copiado",
+        "favorite": "Favoritar",
+        "unfavorite": "Desfavoritar",
+        "delete": "Excluir",
+        "more": "Mais"
+      },
+      "altText": {
+        "clipboardImage": "Imagem da área de transferência",
+        "copyButton": "Copiar",
+        "favoriteButton": "Favoritar"
+      },
+      "largeImageTitle": "Imagem grande",
+      "largeImageHint": "{{size}} — não carregada automaticamente",
+      "loadLargeImage": "Carregar imagem"
+    },
+    "time": {
+      "justNow": "Agora mesmo",
+      "minutesAgo": "há {{minutes}}min",
+      "hoursAgo": "há {{hours}}h",
+      "daysAgo": "há {{days}}d"
+    },
+    "dateGroup": {
+      "today": "Hoje",
+      "yesterday": "Ontem",
+      "earlier": "Anteriores"
+    },
+    "preview": {
+      "selectItem": "Selecione um item para ver a prévia",
+      "information": "Informações",
+      "contentType": "Tipo de conteúdo",
+      "characters": "Caracteres",
+      "charactersCount": "{{count}} caracteres",
+      "words": "Palavras",
+      "size": "Tamanho",
+      "dimensions": "Dimensões",
+      "filesCount": "{{count}} arquivos",
+      "imageFilesAriaLabel": "Arquivos de imagem",
+      "imagesCount": "{{count}} imagens",
+      "sourceDevice": "Dispositivo de origem"
+    },
+    "contextMenu": {
+      "copy": "Copiar",
+      "copyFilePaths": "Copiar caminhos dos arquivos",
+      "pasteFilePaths": "Colar caminhos dos arquivos",
+      "favorite": "Favoritar",
+      "unfavorite": "Desfavoritar",
+      "send": "Enviar para",
+      "sendAll": "Todos os dispositivos",
+      "sendNoDevices": "Nenhum dispositivo pareado",
+      "fileDeleted": "Arquivo excluído",
+      "openFileLocation": "Abrir local do arquivo",
+      "resend": "Reenviar",
+      "resending": "Reenviando...",
+      "delete": "Excluir"
+    },
+    "actionBar": {
+      "title": "Histórico da área de transferência",
+      "copy": "Copiar",
+      "favorite": "Favoritar",
+      "unfavorite": "Desfavoritar",
+      "delete": "Excluir"
+    },
+    "notification": {
+      "syncStartSingle": "Sincronizando arquivo com {{device}}",
+      "syncStartBatch": "Sincronizando {{count}} arquivos com {{device}}",
+      "syncCompleteSingle": "Arquivo sincronizado com sucesso",
+      "syncCompleteBatch": "Todos os {{count}} arquivos foram sincronizados",
+      "syncFailed": "Falha na sincronização do arquivo",
+      "syncFailedDetail": "Falha ao sincronizar o arquivo: {{reason}}"
+    },
+    "transfer": {
+      "sending": "Enviando",
+      "receiving": "Recebendo",
+      "progress": "{{transferred}} / {{total}} ({{percent}}%)",
+      "speedValue": "{{speed}}",
+      "speedPending": "Calculando a velocidade",
+      "remainingValue": "{{time}} restantes",
+      "remainingPending": "Calculando o tempo restante",
+      "completed": "Transferência concluída",
+      "failed": "Falha na transferência",
+      "cancelled": "Cancelada",
+      "pending": "Transferência pendente",
+      "transferring": "Transferindo...",
+      "incoming": "Recebendo...",
+      "incomingWithSize": "Recebendo ({{size}})...",
+      "cancel": "Cancelar transferência",
+      "cancelReason": {
+        "local_user": "Você cancelou esta transferência",
+        "remote_peer": "O outro dispositivo cancelou esta transferência",
+        "replaced": "Substituída por um conteúdo mais recente",
+        "timeout": "A transferência expirou e foi cancelada",
+        "unknown": "Transferência cancelada"
+      },
+      "statusBadge": {
+        "pending": "Transferência de arquivo pendente",
+        "transferring": "Transferência de arquivo em andamento",
+        "completed": "Transferência de arquivo concluída",
+        "failed": "Falha na transferência do arquivo",
+        "cancelled": "Transferência de arquivo cancelada"
+      },
+      "copyDisabled": {
+        "pending": "Transferência de arquivo pendente",
+        "transferring": "Transferência de arquivo em andamento",
+        "failed": "Falha na transferência do arquivo",
+        "cancelled": "Transferência de arquivo cancelada"
+      }
+    },
+    "confirmDeleteTitle": "Confirmar exclusão",
+    "confirmDeleteDescription_one": "Tem certeza de que deseja excluir o item selecionado? Esta ação não pode ser desfeita.",
+    "confirmDeleteDescription_other": "Tem certeza de que deseja excluir os {{count}} itens selecionados? Esta ação não pode ser desfeita.",
+    "confirmDeleteDescription_many": "Tem certeza de que deseja excluir os {{count}} itens selecionados? Esta ação não pode ser desfeita.",
+    "cancelLabel": "Cancelar",
+    "deleteLabel": "Excluir",
+    "deletingLabel": "Excluindo..."
+  },
+  "devices": {
+    "title": "Gerenciamento de dispositivos",
+    "addNew": "Convidar novo dispositivo",
+    "thisDevice": {
+      "title": "Este dispositivo",
+      "syncActive": "Sincronização ativa",
+      "syncPaused": "Sincronização pausada",
+      "pairedCount_zero": "Nenhum dispositivo pareado",
+      "pairedCount_one": "{{count}} pareado",
+      "pairedCount_other": "{{count}} pareados",
+      "pairedCount_many": "{{count}} pareados",
+      "onlineCount": "{{count}} online"
+    },
+    "pairedDevices": {
+      "title": "Dispositivos pareados"
+    },
+    "addDevice": {
+      "title": "Convidar um novo dispositivo",
+      "subtitle": "Digite este código no dispositivo que vai entrar",
+      "expiresIn": "Expira em {{remaining}}",
+      "expired": "Convite expirado",
+      "passphraseHint": "O dispositivo que vai entrar também precisa da frase secreta do Espaço para concluir o pareamento",
+      "loading": "Gerando código de convite…",
+      "actions": {
+        "cancel": "Cancelar",
+        "regenerate": "Gerar novamente",
+        "close": "Fechar",
+        "copy": "Copiar",
+        "copied": "Copiado"
+      },
+      "errors": {
+        "issueFailed": "Falha ao gerar o convite. Tente novamente."
+      },
+      "success": {
+        "title": "Dispositivo adicionado",
+        "subtitle": "O outro dispositivo entrou neste Espaço com sucesso"
+      },
+      "failed": {
+        "title": "Falha no pareamento",
+        "unknown": "O outro dispositivo não conseguiu entrar",
+        "fallback": "Falha no pareamento: {{reason}}",
+        "reasons": {
+          "cancelled": "O convite foi cancelado",
+          "expired": "Convite expirado",
+          "timeout": "Tempo esgotado — o outro dispositivo não concluiu o pareamento a tempo",
+          "passphrase_mismatch": "O outro dispositivo digitou a frase secreta errada",
+          "user_rejected": "Você recusou esta solicitação de pareamento",
+          "proof_mismatch": "Falha na verificação de identidade",
+          "joiner_disconnected": "O outro dispositivo se desconectou durante o pareamento"
+        }
+      }
+    },
+    "unpair": {
+      "confirmTitle": "Desparear dispositivo",
+      "confirmDescription": "Tem certeza de que deseja desparear {{deviceName}}? Você precisará parear novamente para sincronizar o conteúdo da área de transferência."
+    },
+    "tabs": {
+      "connected": "Dispositivos conectados",
+      "requests": "Solicitações de pareamento"
+    },
+    "sections": {
+      "requests": "Solicitações de pareamento",
+      "noRequests": "Nenhuma solicitação de pareamento"
+    },
+    "list": {
+      "empty": {
+        "title": "Nenhum dispositivo pareado ainda"
+      },
+      "status": {
+        "online": "Online",
+        "offline": "Offline"
+      },
+      "channel": {
+        "lan": "Direto",
+        "relay": "Via relay",
+        "offline": "Desconectado",
+        "unknown": "—",
+        "outOfLan": "Fora da rede local",
+        "tooltip": {
+          "lan": "Enviado por um caminho IP direto, que pode ser a rede local ou uma VPN como o Tailscale.",
+          "relay": "Enviado por um servidor de relay criptografado. O conteúdo é criptografado, mas as informações de conexão ficam visíveis para o relay.",
+          "offline": "Nenhuma conexão ativa no momento.",
+          "unknown": "Detectando como este dispositivo pode ser alcançado.",
+          "outOfLan": "A sincronização somente na rede local está ativada, mas este dispositivo não está na mesma rede. Ele se reconectará assim que voltar para a mesma rede."
+        }
+      },
+      "labels": {
+        "unknownDevice": "Dispositivo desconhecido"
+      },
+      "actions": {
+        "retry": "Tentar novamente",
+        "unpair": "Desparear",
+        "settings": "Configurações",
+        "addDevice": "Convidar dispositivo",
+        "addAnotherDevice": "Convidar outro dispositivo"
+      }
+    },
+    "syncPaused": {
+      "message": "A sincronização da área de transferência está pausada. Nenhum dispositivo está sincronizando no momento.",
+      "goToSettings": "Ir para Configurações"
+    },
+    "mobileSync": {
+      "title": "Sincronização móvel",
+      "description": "Sincronize sua área de transferência com dispositivos móveis (iOS / Android) pela rede local usando o protocolo SyncClipboard",
+      "configure": "Configurar",
+      "statusBar": {
+        "bindFailed": "Falha ao iniciar o listener: {{reason}}"
+      },
+      "enableConfirm": {
+        "title": "Ativar sincronização móvel",
+        "body": "A sincronização móvel será ativada e passará a escutar na porta {{port}} via HTTP na rede local. Use apenas em redes confiáveis — qualquer pessoa na mesma rede local que tenha as credenciais pode ler e escrever nesta área de transferência.",
+        "confirm": "Ativar e continuar",
+        "enabling": "Ativando…",
+        "cancel": "Cancelar"
+      },
+      "feedback": {
+        "applied": "Aplicado imediatamente",
+        "applyFailed": "Falha ao aplicar as configurações: {{message}}"
+      },
+      "settingsSheet": {
+        "title": "Configuração da sincronização móvel",
+        "description": "Ajuste as opções e os parâmetros de rede que permitem que dispositivos móveis alcancem esta máquina pela rede local",
+        "close": "Concluído"
+      },
+      "enabled": {
+        "label": "Ativar sincronização móvel",
+        "description": "Quando desativado, todas as solicitações de sincronização de dispositivos móveis são rejeitadas imediatamente"
+      },
+      "lanListener": {
+        "label": "Listener LAN",
+        "description": "Escuta HTTP sem criptografia na interface de rede escolhida; necessário para receber solicitações de dispositivos móveis",
+        "currentUrl": {
+          "label": "Endereço de escuta atual",
+          "unavailable": "—",
+          "copy": "Copiar",
+          "copied": "Copiado",
+          "auto": {
+            "label": "Automático",
+            "hint": "O daemon escuta em todas as interfaces. Copie o endereço que seu dispositivo móvel consegue alcançar."
+          }
+        },
+        "bindIp": {
+          "label": "IP de bind",
+          "placeholder": "Escolha uma interface de rede",
+          "empty": "Nenhum endereço IPv4 utilizável detectado na rede local",
+          "auto": "Automático (0.0.0.0)"
+        },
+        "port": {
+          "label": "Porta",
+          "placeholder": "42720"
+        },
+        "warning": {
+          "title": "Aviso de exposição na rede",
+          "body": "Qualquer pessoa nesta rede local pode ler ou escrever na sua área de transferência assim que obtiver a URL desta máquina e uma credencial pareada. Ative apenas em redes Wi-Fi confiáveis.",
+          "confirm": "Entendi",
+          "cancel": "Cancelar"
+        },
+        "disabledHint": "Ative o listener LAN antes de adicionar um dispositivo"
+      },
+      "list": {
+        "title": "Dispositivos pareados",
+        "addButton": "Adicionar dispositivo",
+        "lastSeen": {
+          "never": "Nunca ativo",
+          "justNow": "agora mesmo",
+          "label": "Última atividade · {{rel}}"
+        }
+      },
+      "add": {
+        "title": "Adicionar dispositivo",
+        "subtitle": "Gere um par de credenciais de longa duração. O mesmo par funciona no Atalho do iOS e em qualquer cliente Android que fale o protocolo SyncClipboard.",
+        "labelField": {
+          "label": "Nome do dispositivo",
+          "placeholder": "Meu celular"
+        },
+        "advanced": {
+          "title": "Opções avançadas",
+          "description": "Deixe em branco para gerar automaticamente um par de credenciais aleatório"
+        },
+        "username": {
+          "label": "Nome de usuário personalizado",
+          "placeholder": "Deixe em branco para gerar automaticamente",
+          "help": "6–32 caracteres, deve começar com uma letra, apenas A-Z a-z 0-9 _"
+        },
+        "password": {
+          "label": "Senha personalizada",
+          "placeholder": "Deixe em branco para gerar automaticamente",
+          "help": "Pelo menos 8 caracteres; sem requisito de complexidade"
+        },
+        "submit": "Adicionar",
+        "submitting": "Adicionando…",
+        "cancel": "Cancelar"
+      },
+      "credential": {
+        "pair": {
+          "qrAlt": "QR code que preenche automaticamente as credenciais de sincronização"
+        },
+        "baseUrl": {
+          "selectAria": "Selecionar URL do servidor"
+        },
+        "noClient": {
+          "title": "Ainda não instalou um cliente?",
+          "tabs": {
+            "ios": "iOS",
+            "android": "Android"
+          },
+          "ios": {
+            "scanLabel": "Escaneie para instalar o app UniClipboard (TestFlight)",
+            "scanQrAlt": "QR code do link de convite do TestFlight",
+            "openInBrowser": "Abrir o TestFlight no navegador",
+            "shortcutFallback": "Não quer o app? Escaneie para instalar o Atalho como alternativa",
+            "shortcutQrAria": "Mostrar QR code de instalação do Atalho do iOS",
+            "shortcutQrAlt": "QR code para instalar o Atalho do iOS"
+          },
+          "android": {
+            "scanLabel": "Escaneie para baixar o APK (GitHub Releases)",
+            "scanQrAlt": "QR code da página de download do APK no GitHub Releases",
+            "openInBrowser": "Abrir o GitHub Releases no navegador"
+          }
+        },
+        "credentials": {
+          "title": "Credenciais",
+          "warning": "não ficarão visíveis depois de fechar",
+          "backup": "Fazer backup",
+          "backupCopied": "Backup feito"
+        },
+        "username": {
+          "label": "Nome de usuário"
+        },
+        "password": {
+          "label": "Senha",
+          "show": "Mostrar senha",
+          "hide": "Ocultar senha"
+        },
+        "copy": "Copiar",
+        "copied": "Copiado",
+        "copyFailed": "Falha ao copiar"
+      },
+      "revoke": {
+        "confirmTitle": "Revogar {{label}}",
+        "confirmDescription": "Depois de revogado, este dispositivo não poderá mais sincronizar. Para reconectar, você precisará adicioná-lo novamente (a senha não pode ser recuperada).",
+        "confirm": "Revogar",
+        "cancel": "Cancelar"
+      },
+      "edit": {
+        "button": "Editar dispositivo",
+        "title": "Editar dispositivo",
+        "subtitle": "Altere o nome, o nome de usuário ou redefina a senha",
+        "cancel": "Cancelar",
+        "save": "Salvar",
+        "saving": "Salvando...",
+        "label": {
+          "label": "Nome do dispositivo",
+          "placeholder": "Meu celular"
+        },
+        "username": {
+          "label": "Nome de usuário",
+          "placeholder": "mobile_phone",
+          "help": "6-32 caracteres, deve começar com uma letra, apenas A-Z a-z 0-9 _",
+          "renameNotice": "Alterar o nome de usuário gera uma nova senha e exige parear o dispositivo novamente."
+        },
+        "password": {
+          "label": "Senha",
+          "placeholder": "Deixe em branco para manter a senha atual",
+          "autoPlaceholder": "Uma nova senha será gerada",
+          "help": "Deixe em branco para mantê-la inalterada. Digite uma nova senha (pelo menos 8 caracteres) para substituí-la.",
+          "autoHelp": "Uma nova senha será gerada e exibida uma única vez após salvar.",
+          "regenerate": "Gerar novamente"
+        },
+        "result": {
+          "warning": "Estas credenciais são exibidas uma única vez. Salve-as antes de fechar esta janela.",
+          "warningReissued": "A senha antiga não funciona mais. O cliente móvel precisa usar esta nova senha para continuar sincronizando. Estas credenciais são exibidas uma única vez — salve-as antes de fechar esta janela."
+        }
+      },
+      "rotate": {
+        "button": "Alterar senha",
+        "dialog": {
+          "title": "Alterar a senha de {{label}}",
+          "subtitle": "O servidor armazena apenas um hash da senha, então a senha atual não pode ser exibida. Depois de trocar, atualize o campo de senha no seu cliente móvel.",
+          "passwordLabel": "Nova senha (opcional)",
+          "passwordPlaceholder": "Deixe em branco para gerar automaticamente",
+          "passwordHelp": "Em branco → senha forte gerada automaticamente. A personalizada deve ter 8–256 caracteres.",
+          "warning": "A senha antiga é invalidada imediatamente. O cliente móvel não vai sincronizar até que o campo de senha seja atualizado.",
+          "submit": "Gerar nova senha",
+          "submitting": "Processando...",
+          "cancel": "Cancelar"
+        },
+        "result": {
+          "title": "Nova senha gerada",
+          "subtitle": "Esta é a nova senha — exibida apenas desta vez. Copie agora e cole no campo de senha do seu cliente móvel.",
+          "usernameLabel": "Nome de usuário",
+          "passwordLabel": "Nova senha",
+          "copy": "Copiar senha",
+          "copied": "Copiado",
+          "warning": "A senha antiga não funciona mais. O cliente móvel precisa usar esta nova senha para continuar sincronizando.",
+          "confirmSaved": "Salvei a nova senha",
+          "close": "Fechar",
+          "closeBlocked": "Confirme \"Salvei a nova senha\" primeiro"
+        }
+      },
+      "deviceDialog": {
+        "sections": {
+          "serverAddress": "Conexão",
+          "pairing": "Escaneie para parear",
+          "info": "Informações do dispositivo"
+        },
+        "status": {
+          "online": "Online",
+          "offline": "Offline",
+          "neverSeen": "Nunca conectado"
+        },
+        "connectTitle": "Conectar {{label}}",
+        "connectSubtitle": "Escaneie com o celular — pareado em segundos",
+        "scanInstruction": "Abra o UniClipboard no seu celular e escaneie este código para conectar",
+        "wifiSameNetwork": "Verifique se o celular está no mesmo Wi-Fi que este computador",
+        "manualEntry": {
+          "title": "Não consegue escanear? Digite o nome de usuário e a senha manualmente",
+          "oneTimeHint": "Senha exibida uma única vez"
+        },
+        "repair": {
+          "title": "Precisa parear este celular novamente?",
+          "description": "Por segurança, o servidor guarda apenas um hash da senha, então o QR code não pode ser gerado novamente. Redefina a senha para obter um novo QR code de pareamento.",
+          "action": "Redefinir senha"
+        },
+        "fields": {
+          "createdAt": "Adicionado em",
+          "lastSeen": "Última atividade",
+          "lastSeenIp": "Último IP de origem",
+          "reportedName": "Nome do cliente",
+          "reportedOs": "SO do cliente"
+        }
+      },
+      "errors": {
+        "facadeUnavailable": "A sincronização móvel não está ativada nesta versão",
+        "labelEmpty": "O nome do dispositivo não pode ficar vazio",
+        "labelTooLong": "O nome do dispositivo é muito longo (máx. {{max}} caracteres)",
+        "lanListenerDisabled": "Ative o listener LAN primeiro",
+        "usernameTaken": "O nome de usuário \"{{username}}\" já está em uso",
+        "usernameTooShort": "O nome de usuário é muito curto (mín. {{min}} caracteres, recebido {{got}})",
+        "usernameTooLong": "O nome de usuário é muito longo (máx. {{max}} caracteres, recebido {{got}})",
+        "usernameMustStartWithLetter": "O nome de usuário deve começar com uma letra ASCII",
+        "usernameContainsForbiddenChars": "O nome de usuário pode conter apenas letras, dígitos e sublinhado",
+        "passwordTooShort": "A senha é muito curta (mín. {{min}} caracteres)",
+        "passwordTooLong": "A senha é muito longa (máx. {{max}} caracteres)",
+        "passwordHashFailed": "Falha ao gerar o hash da senha: {{message}}",
+        "deviceNotFound": "O dispositivo não existe mais; atualize a lista",
+        "invalidLanParameter": "Parâmetro de rede local inválido: {{reason}}",
+        "settingsLoadFailed": "Falha ao carregar as configurações: {{message}}",
+        "settingsSaveFailed": "Falha ao salvar as configurações: {{message}}",
+        "endpointInfoFailed": "Falha ao detectar o endereço atual na rede local: {{message}}",
+        "lanProbeFailed": "Falha ao listar as interfaces de rede: {{message}}",
+        "noLanInterfaceAvailable": "Nenhum endereço IPv4 utilizável detectado na rede local. Conecte-se a uma rede local ou escolha um endereço específico em Configurar → IP de bind e tente novamente.",
+        "persistenceFailed": "Falha ao salvar: {{message}}",
+        "qrRenderFailed": "Falha ao renderizar o QR code: {{message}}",
+        "unknown": "Erro: {{message}}",
+        "loadFailed": "Falha ao carregar: {{message}}"
+      }
+    },
+    "panel": {
+      "listTitle": "Dispositivos",
+      "counts": "{{online}}/{{total}} online · {{mobile}} móveis",
+      "localBadge": "Este dispositivo",
+      "fields": {
+        "peerId": "Peer ID"
+      },
+      "profile": {
+        "title": "Perfil",
+        "platform": "Plataforma",
+        "version": "Versão do app",
+        "space": "Espaço",
+        "memberCount_one": "{{count}} membro",
+        "memberCount_other": "{{count}} membros",
+        "memberCount_many": "{{count}} membros",
+        "copy": "Copiar Peer ID",
+        "copied": "Copiado",
+        "copyFailed": "Falha ao copiar para a área de transferência"
+      },
+      "policies": {
+        "title": "Políticas globais de sincronização",
+        "autoSync": {
+          "title": "Sincronização automática",
+          "description": "Envia automaticamente o novo conteúdo da área de transferência para todos os dispositivos pareados"
+        },
+        "fileSync": {
+          "title": "Sincronização de arquivos",
+          "description": "Permite transferir arquivos entre dispositivos"
+        }
+      },
+      "addMenu": {
+        "trigger": "Adicionar dispositivo",
+        "triggerShort": "Adicionar",
+        "p2p": "Parear um computador",
+        "mobile": "Adicionar um dispositivo móvel"
+      }
+    },
+    "settings": {
+      "readOnly": "Bloqueado",
+      "sections": {
+        "connection": "Conexão"
+      },
+      "fields": {
+        "channel": "Canal",
+        "address": "Endereço"
+      },
+      "badges": {
+        "mvp": "MVP",
+        "comingSoon": "Em breve",
+        "notEditable": "Não editável",
+        "globalFileSyncOff": "Sincronização de arquivos desativada",
+        "experimental": "Experimental",
+        "experimentalTooltip": "Este recurso é experimental — seu comportamento pode mudar ou ficar instável em versões futuras."
+      },
+      "sync": {
+        "title": "Configurações de sincronização",
+        "restoreDefaults": "Restaurar padrões",
+        "contentTypes": "Tipos de conteúdo",
+        "rules": {
+          "sendEnabled": {
+            "title": "Enviar para este dispositivo",
+            "description": "Quando ativado, o conteúdo da área de transferência deste computador é enviado para o dispositivo selecionado. Por enquanto, o recebimento fica sempre ativo; uma opção dedicada para recebimento chegará em uma versão futura."
+          },
+          "syncText": {
+            "title": "Sincronizar texto",
+            "description": "Permite sincronizar conteúdo de texto"
+          },
+          "syncImage": {
+            "title": "Sincronizar imagens",
+            "description": "Permite sincronizar conteúdo de imagem (pode consumir mais banda)"
+          },
+          "syncFile": {
+            "title": "Sincronizar arquivos",
+            "description": "Permite sincronizar conteúdo de arquivos (até 10 MB)"
+          },
+          "syncLink": {
+            "title": "Sincronizar links",
+            "description": "Permite sincronizar conteúdo de URL/link"
+          },
+          "syncRichText": {
+            "title": "Sincronizar texto formatado",
+            "description": "Permite sincronizar conteúdo de texto formatado (HTML, RTF)"
+          }
+        }
+      },
+      "permissions": {
+        "title": "Permissões de acesso",
+        "items": {
+          "readClipboard": "Ler a área de transferência",
+          "writeClipboard": "Escrever na área de transferência",
+          "historyAccess": "Acessar o histórico",
+          "fileTransfer": "Transferir arquivos"
+        }
+      }
+    },
+    "switchSpace": {
+      "button": "Entrar em outro Espaço",
+      "title": "Mudar para outro Espaço",
+      "subtitle": "O histórico da área de transferência existente será recriptografado com a nova chave mestra.",
+      "warning": "Todos os dados locais da área de transferência são recriptografados em 4 fases. Não feche o app até terminar — se houver uma falha no meio do processo, ele será retomado automaticamente na próxima inicialização.",
+      "labels": {
+        "code": "Código de convite",
+        "newPassphrase": "Frase secreta do novo Espaço"
+      },
+      "placeholders": {
+        "newPassphrase": "Frase secreta escolhida pelo novo anfitrião"
+      },
+      "actions": {
+        "switch": "Mudar",
+        "switching": "Mudando…",
+        "cancel": "Cancelar",
+        "close": "Fechar",
+        "retry": "Tentar novamente",
+        "useNewCode": "Inserir um novo código"
+      },
+      "migrating": {
+        "title": "Migrando o histórico da área de transferência",
+        "phase": {
+          "preparing": "Fase 1: fazendo backup do histórico",
+          "prepared": "Fase 2: handshake com o novo anfitrião",
+          "handshakeDone": "Fase 3: recriptografando com a nova chave",
+          "swapped": "Fase 4: finalizando"
+        },
+        "recordsHint": "{{count}} registros na tabela de backup"
+      },
+      "success": {
+        "title": "Espaço alterado",
+        "subtitle_one": "1 registro da área de transferência migrado com a nova chave mestra.",
+        "subtitle_other": "{{count}} registros da área de transferência migrados com a nova chave mestra.",
+        "subtitle_many": "{{count}} registros da área de transferência migrados com a nova chave mestra.",
+        "subtitle_zero": "Nenhum histórico da área de transferência precisou de migração."
+      },
+      "failed": {
+        "title": "Falha ao mudar de Espaço",
+        "fallback": "Falha ao mudar de Espaço: {{reason}}",
+        "reasons": {
+          "not_setup": "Este dispositivo não concluiu a configuração inicial. Use \"Inicializar\" ou \"Entrar\" primeiro.",
+          "pending_migration": "Uma migração anterior ainda está em andamento. Reinicie o app para retomá-la automaticamente.",
+          "not_unlocked": "A sessão do Espaço está bloqueada. Reinicie o app para que o keychain a desbloqueie novamente.",
+          "sponsor_rejected": "O anfitrião não reconheceu o código de convite. Peça que ele gere um novo.",
+          "sponsor_declined": "O anfitrião recusou o pareamento.",
+          "invitation_not_found": "O código de convite já foi usado ou não é mais válido. Peça ao anfitrião que gere um novo.",
+          "invitation_expired": "Convite expirado. Peça ao anfitrião que gere um novo.",
+          "passphrase_mismatch": "Frase secreta incorreta — tente novamente.",
+          "device_name_required": "O nome do dispositivo é obrigatório.",
+          "sponsor_unreachable": "Não foi possível alcançar o anfitrião. Verifique NAT / relay.",
+          "service_unavailable": "Não foi possível alcançar o serviço de pareamento. Tente novamente mais tarde.",
+          "timeout": "O handshake expirou.",
+          "connection_lost": "Conexão perdida durante o handshake.",
+          "corrupted_key_material": "O material de chave local está corrompido.",
+          "invalid_ciphertext": "Não foi possível descriptografar o registro de backup. Reinicie o app para retomar automaticamente.",
+          "internal": "Erro interno — consulte os logs do daemon."
+        }
+      }
+    }
+  },
+  "pairing": {
+    "globalRequest": {
+      "title": "Solicitação de pareamento",
+      "description": "{{deviceName}} quer parear com você",
+      "warning": "Confirme que foi você quem iniciou este pareamento"
+    },
+    "requests": {
+      "accept": "Aceitar",
+      "accepting": "Aceitando...",
+      "reject": "Recusar"
+    },
+    "steps": {
+      "discovery": "Descobrir dispositivos",
+      "connecting": "Conectando...",
+      "pinVerify": "Verificação de segurança",
+      "success": "Pareamento concluído",
+      "failed": "Falha no pareamento"
+    },
+    "discovery": {
+      "description": "Verifique se os dois dispositivos estão na mesma rede local",
+      "searching": "Procurando dispositivos...",
+      "noDevices": "Nenhum dispositivo disponível encontrado",
+      "reScan": "Buscar novamente",
+      "foundCount": "{{count}} dispositivos encontrados",
+      "unknownDevice": "Dispositivo desconhecido",
+      "connect": "Conectar"
+    },
+    "connecting": {
+      "title": "Conectando a {{deviceName}}",
+      "pleaseWait": "Aguarde..."
+    },
+    "pinVerify": {
+      "description": "Confirme se os códigos PIN dos dois dispositivos são iguais",
+      "initiatorTitle": "Verificar código PIN",
+      "initiatorDescription": "Verifique se este PIN é igual ao exibido em {{deviceName}}",
+      "responderTitle": "Seu código PIN",
+      "responderDescription": "Compare este PIN com o de {{deviceName}} e confirme a correspondência no dispositivo que iniciou o pareamento.",
+      "verifying": "Verificando...",
+      "pleaseWait": "Aguarde...",
+      "pinLabel": "Código PIN de pareamento",
+      "warning": "Verifique se os dois dispositivos exibem o mesmo código PIN",
+      "notMatch": "Não confere",
+      "match": "Confere",
+      "timeout": "Tempo restante: {{time}}"
+    },
+    "success": {
+      "title": "Pareamento concluído!"
+    },
+    "failed": {
+      "title": "Falha no pareamento",
+      "retry": "Tentar novamente",
+      "errors": {
+        "loadPeers": "Falha ao obter a lista de dispositivos",
+        "reject": "Solicitação de conexão recusada",
+        "initiate": "Falha ao iniciar o pareamento",
+        "verifyPin": "Falha ao verificar o PIN",
+        "activeSession": "Já existe outra sessão de pareamento em andamento",
+        "noParticipant": "Nenhum dispositivo local está pronto para confirmar o pareamento",
+        "sessionExpired": "A sessão de pareamento expirou ou já foi encerrada",
+        "daemonUnavailable": "O daemon de pareamento está indisponível. Inicie o serviço do desktop e tente novamente"
+      }
+    }
+  },
+  "connectionRequest": {
+    "title": "Solicitação de conexão",
+    "status": {
+      "idle": "O dispositivo {{name}} está solicitando conexão com este dispositivo",
+      "processing": "Processando...",
+      "accepted": "Solicitação de conexão aceita",
+      "rejected": "Solicitação de conexão recusada",
+      "error": "Falha ao processar: {{message}}",
+      "establishing": "Processando a solicitação de conexão...",
+      "connected": "Conexão estabelecida",
+      "rejectedResult": "Conexão recusada"
+    },
+    "info": {
+      "device": "Dispositivo {{id}}",
+      "ip": "IP: {{ip}}",
+      "platform": "Plataforma: {{platform}}"
+    },
+    "timeout": "Recusar automaticamente em {{time}} segundos",
+    "actions": {
+      "reject": "Recusar",
+      "accept": "Aceitar",
+      "close": "Fechar",
+      "retry": "Tentar novamente"
+    }
+  },
+  "feedback": {
+    "modal": {
+      "title": "Enviar feedback",
+      "description": "Seu feedback nos ajuda a melhorar o UniClipboard. Descreva abaixo seu problema ou sugestão.",
+      "label": {
+        "content": "Conteúdo do feedback",
+        "email": "Endereço de e-mail (opcional)"
+      },
+      "placeholder": {
+        "content": "Digite seu feedback aqui...",
+        "email": "seu@email.com"
+      },
+      "submit": "Enviar feedback",
+      "useSavedEmail": "Usar e-mail salvo",
+      "success": "Feedback enviado com sucesso. Obrigado!",
+      "error": "Falha ao enviar o feedback. Tente novamente mais tarde."
+    }
+  },
+  "lifecycle": {
+    "watcherFailed": "Falha ao iniciar o monitor da área de transferência",
+    "networkFailed": "Falha ao iniciar a rede",
+    "retry": "Tentar novamente",
+    "retrying": "Tentando novamente..."
+  },
+  "previewPanel": {
+    "title": "Prévia",
+    "error": "Falha ao carregar a prévia",
+    "imageUnavailable": "Imagem indisponível",
+    "empty": "Passe o mouse sobre um item para ver a prévia",
+    "imageAlt": "Imagem da área de transferência",
+    "deleteHint": "{{modifier}}⌫ excluir",
+    "largeImageTitle": "Imagem grande",
+    "largeImageHint": "{{size}} — não carregada automaticamente",
+    "loadLargeImage": "Carregar imagem"
+  },
+  "delivery": {
+    "section": {
+      "aria": "Status de sincronização da entrada"
+    },
+    "source": {
+      "label": "De:",
+      "local": "este dispositivo",
+      "remote": "{{device}}",
+      "historical": "histórico local (antigo)",
+      "localShort": "Este dispositivo",
+      "remoteShort": "De {{device}}",
+      "historicalShort": "Entrada antiga"
+    },
+    "list": {
+      "title": "Status da sincronização",
+      "historical": "Criada antes do rastreamento de sincronização; sem registros de entrega",
+      "noPeers": "Nenhum dispositivo pareado ainda"
+    },
+    "status": {
+      "delivered": "entregue",
+      "duplicate": "entregue (duplicado)",
+      "pending": "não tentado",
+      "unreachable": "dispositivo offline",
+      "failedWithReason": "falhou · {{reason}}"
+    },
+    "summary": {
+      "synced": "Sincronizado",
+      "partial": "Parcialmente sincronizado",
+      "syncing": "Sincronizando",
+      "failed": "Falha na sincronização",
+      "waiting": "Dispositivo offline",
+      "pending": "Aguardando sincronização"
+    },
+    "popover": {
+      "title": "Status da sincronização",
+      "ariaTrigger": "Ver detalhes de sincronização por dispositivo"
+    },
+    "failureReason": {
+      "localPolicy": "bloqueado pela política local",
+      "peerRejected": "recusado pelo dispositivo",
+      "io": "erro de rede",
+      "internal": "erro interno"
+    },
+    "resend": {
+      "button": {
+        "entry": "Reenviar",
+        "entryAria": "Reenviar para todos os dispositivos elegíveis",
+        "entryDisabled": "Já entregue a todos os dispositivos pareados",
+        "peer": "Reenviar",
+        "peerAria": "Reenviar para {{device}}",
+        "pending": "Reenviando…"
+      },
+      "success": {
+        "summary": "Reenvio despachado · {{accepted}}/{{total}} aceitos"
+      },
+      "error": {
+        "notResendable": {
+          "remoteOrigin": "A entrada {{entryIdShort}} foi criada em outro dispositivo e não pode ser reenviada daqui.",
+          "payloadLost": "A entrada {{entryIdShort}} não está mais disponível neste dispositivo."
+        },
+        "targetNotTrusted": "O dispositivo {{device}} não está mais pareado.",
+        "noEligibleTargets": "Nenhum dispositivo elegível para o reenvio.",
+        "entryNotFound": "Entrada {{entryIdShort}} não encontrada.",
+        "internal": "Falha ao reenviar: {{message}}"
+      }
+    }
+  },
+  "quickPanel": {
+    "loading": "Conectando ao histórico da área de transferência...",
+    "unavailable": "O histórico da área de transferência está indisponível no momento.",
+    "history": {
+      "searchPlaceholder": "Pesquisar no histórico da área de transferência…",
+      "advancedPlaceholder": "Filtrar…",
+      "searchAriaLabel": "Pesquisar no histórico da área de transferência",
+      "filterMenuLabel": "Abrir menu de filtros",
+      "listAriaLabel": "Itens do histórico da área de transferência",
+      "filters": {
+        "all": "Todos",
+        "text": "Texto",
+        "richtext": "Texto formatado",
+        "image": "Imagem",
+        "link": "Link",
+        "file": "Arquivo",
+        "code": "Código"
+      },
+      "timeRange": {
+        "all_time": "Todo o período",
+        "today": "Hoje",
+        "yesterday": "Ontem",
+        "last_7d": "Últimos 7 dias",
+        "last_30d": "Últimos 30 dias",
+        "this_week": "Esta semana",
+        "this_month": "Este mês"
+      },
+      "locked": {
+        "title": "Área de transferência bloqueada",
+        "description": "Desbloqueie para acessar seu histórico da área de transferência",
+        "action": "Desbloquear",
+        "unlocking": "Desbloqueando..."
+      },
+      "status": {
+        "close": "esc fechar",
+        "loading": "Carregando…",
+        "searching": "Pesquisando…",
+        "navigatePaste": "↑↓ navegar · ⇥ tipo · ⏎ colar"
+      },
+      "empty": {
+        "title": "Nenhum resultado encontrado",
+        "description": "Tente outras palavras-chave ou filtros"
+      }
+    }
+  },
+  "setup": {
+    "page": {
+      "loadingSetupState": "Carregando o estado da configuração...",
+      "processing": "Processando...",
+      "processingJoinSpace": {
+        "title": "Conectando ao dispositivo…",
+        "subtitle": "A solicitação de pareamento foi enviada. Aguarde a resposta do outro dispositivo.",
+        "hint": "Vá até o outro dispositivo e aprove a solicitação de pareamento"
+      },
+      "unknownState": "Estado de configuração desconhecido: {{state}}",
+      "errors": {
+        "loadSetupStateFailed": "Falha ao carregar o estado da configuração",
+        "refreshPeersFailed": "Falha ao atualizar a lista de dispositivos",
+        "operationFailed": "A operação falhou. Tente novamente."
+      },
+      "badges": {
+        "e2ee": "Criptografia de ponta a ponta",
+        "localKeys": "Guarda local das chaves",
+        "lanDiscovery": "Descoberta na rede local"
+      }
+    },
+    "common": {
+      "unknownDevice": "Dispositivo desconhecido",
+      "back": "Voltar",
+      "refresh": "Atualizar",
+      "cancel": "Cancelar",
+      "encryptPassphraseLabel": "Frase secreta de criptografia",
+      "encryptPassphrasePlaceholder": "Digite a frase secreta exibida no dispositivo anfitrião"
+    },
+    "brand": {
+      "headline": "Sua área de transferência, em todo lugar.",
+      "tagline": "Criptografia de ponta a ponta. Suas chaves nunca saem dos seus dispositivos."
+    },
+    "welcome": {
+      "title": "Vamos começar",
+      "subtitle": "Escolha como configurar este dispositivo.",
+      "create": {
+        "title": "Criar um novo Espaço seguro",
+        "description": "Gere as chaves de criptografia e proteja os dados da sua área de transferência com sua própria frase secreta.",
+        "cta": "Criar novo Espaço"
+      },
+      "join": {
+        "title": "Entrar em um Espaço existente",
+        "description": "Pareie com outro dispositivo e reutilize a frase secreta para acessar o Espaço compartilhado.",
+        "cta": "Entrar via pareamento"
+      },
+      "import": {
+        "divider": "Já configurou em outro dispositivo?",
+        "title": "Importar de um backup",
+        "description": "Traga seu Espaço para cá a partir de um arquivo de configuração exportado."
+      },
+      "footer": "Depois você pode trocar de Espaço ou convidar mais dispositivos em Configurações."
+    },
+    "importConfig": {
+      "title": "Importar configuração",
+      "subtitle": "Configure este dispositivo a partir de um arquivo de configuração exportado em outro dispositivo.",
+      "confirmSubtitle": "Revise o que você está importando e confirme.",
+      "fileLabel": "Pacote de configuração",
+      "chooseFile": "Escolher um arquivo .ucbundle…",
+      "changeFile": "Alterar",
+      "passwordLabel": "Frase secreta do Espaço",
+      "passwordPlaceholder": "Frase secreta do dispositivo exportado",
+      "passwordHint": "Use a frase secreta do Espaço do dispositivo de onde este arquivo foi exportado - é ela que o desbloqueia.",
+      "note": "Este dispositivo vai assumir a identidade e os pareamentos do dispositivo exportado. Depois de importar, não coloque o dispositivo original online de novo - dois dispositivos com a mesma identidade entram em conflito na rede de dispositivos.",
+      "metaTitle": "Configuração a importar",
+      "metaAppVersion": "Exportado da versão",
+      "metaSourceMode": "Tipo de origem",
+      "metaSourcePortable": "Portátil",
+      "metaSourceInstalled": "Instalado",
+      "metaFingerprint": "Impressão digital do dispositivo",
+      "restartingTitle": "Reiniciando para concluir a importação",
+      "restartingDescription": "Aguarde - o app vai reiniciar e aplicar a configuração importada. Não o feche.",
+      "restartingUnlockHint": "Depois de reiniciar, você vai precisar da frase secreta do Espaço para desbloquear.",
+      "errors": {
+        "invalidPassword": "Frase secreta incorreta ou arquivo corrompido",
+        "incompatible": "A versão deste pacote de configuração não é compatível com o app atual",
+        "generic": "Falha ao importar a configuração. Tente novamente."
+      },
+      "actions": {
+        "back": "Voltar",
+        "continue": "Continuar",
+        "staging": "Importando…",
+        "import": "Iniciar importação"
+      }
+    },
+    "initializeSpace": {
+      "title": "Crie seu Espaço",
+      "subtitle": "Defina um nome para este dispositivo e escolha uma frase secreta para proteger o Espaço criptografado.",
+      "labels": {
+        "deviceName": "Nome do dispositivo",
+        "passphrase": "Frase secreta",
+        "passphraseConfirm": "Confirmar frase secreta"
+      },
+      "placeholders": {
+        "deviceName": "ex.: MacBook Pro",
+        "passphrase": "Digite uma frase secreta forte",
+        "passphraseConfirm": "Digite a frase secreta novamente"
+      },
+      "errors": {
+        "passphraseMismatch": "As frases secretas não coincidem",
+        "deviceNameRequired": "O nome do dispositivo é obrigatório",
+        "alreadyInitialized": "Este dispositivo já está configurado.",
+        "serviceUnavailable": "O daemon ainda não está pronto. Tente novamente em instantes.",
+        "generic": "Falha ao criar o Espaço. Tente novamente."
+      },
+      "actions": {
+        "back": "Voltar",
+        "creating": "Criando...",
+        "submit": "Criar Espaço"
+      },
+      "hint": "Guarde esta frase secreta em um lugar seguro — você vai precisar dela em todos os dispositivos que entrarem neste Espaço."
+    },
+    "showInvitation": {
+      "title": "Convidar um novo dispositivo",
+      "subtitle": "Digite este código no dispositivo que vai entrar para adicioná-lo ao Espaço.",
+      "expiresIn": "Expira em {{remaining}}",
+      "expired": "Convite expirado",
+      "hint": "Os dois dispositivos precisam ficar online durante o pareamento.",
+      "hintExpired": "O código não é mais válido. Cancele e crie um novo convite.",
+      "actions": {
+        "cancel": "Cancelar convite"
+      }
+    },
+    "redeemInvitation": {
+      "title": "Entrar em um Espaço existente",
+      "subtitle": "Digite o código de convite exibido no outro dispositivo e informe a mesma frase secreta usada para criar o Espaço.",
+      "labels": {
+        "code": "Código de convite",
+        "passphrase": "Frase secreta do Espaço"
+      },
+      "placeholders": {
+        "passphrase": "Digite a frase secreta do dispositivo anfitrião"
+      },
+      "errors": {
+        "invitationNotFound": "Este código de convite já foi usado ou não é mais válido. Peça um novo código ao dispositivo anfitrião.",
+        "invitationExpired": "Este convite expirou. Peça um novo código ao dispositivo anfitrião.",
+        "passphraseMismatch": "A frase secreta não confere. Tente novamente.",
+        "sponsorUnreachable": "Não foi possível alcançar o dispositivo anfitrião agora. Verifique se os dois dispositivos estão online.",
+        "sponsorRejected": "O dispositivo anfitrião não reconheceu este código. Peça um novo.",
+        "sponsorDeclined": "O dispositivo anfitrião recusou a solicitação de pareamento.",
+        "timeout": "O handshake de pareamento expirou. Tente novamente.",
+        "connectionLost": "A conexão caiu durante o handshake. Tente novamente.",
+        "serviceUnavailable": "O daemon ainda não está pronto. Tente novamente em instantes.",
+        "deviceNameRequired": "Este dispositivo precisa de um nome de exibição antes de entrar.",
+        "generic": "Não foi possível entrar no Espaço. Tente novamente."
+      },
+      "hint": "O código dura pouco tempo — peça para manter o dispositivo anfitrião com o código na tela até o pareamento terminar.",
+      "actions": {
+        "back": "Voltar",
+        "joining": "Entrando...",
+        "submit": "Entrar no Espaço"
+      }
+    },
+    "pairingComplete": {
+      "title": "Tudo pronto",
+      "sponsor": {
+        "subtitle": "Seu Espaço está pronto. Você pode convidar mais dispositivos depois, pela lista de dispositivos."
+      },
+      "joiner": {
+        "subtitle": "Agora você faz parte deste Espaço criptografado.",
+        "connectedTo": "Conectado a"
+      },
+      "actions": {
+        "done": "Continuar"
+      }
+    }
+  }
+}

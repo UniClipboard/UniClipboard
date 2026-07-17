@@ -1,6 +1,7 @@
 import { afterEach, beforeAll, describe, expect, it } from 'vitest'
 import i18n, { SUPPORTED_LANGUAGES, normalizeLanguage } from '@/i18n'
 import enUS from '@/i18n/locales/en-US.json'
+import ptBR from '@/i18n/locales/pt-BR.json'
 import ruRU from '@/i18n/locales/ru-RU.json'
 import zhCN from '@/i18n/locales/zh-CN.json'
 
@@ -22,6 +23,7 @@ describe('locale bundle parity', () => {
     'zh-CN': flatten(zhCN),
     'en-US': flatten(enUS),
     'ru-RU': flatten(ruRU),
+    'pt-BR': flatten(ptBR),
   }
 
   it('covers every non-plural en-US key in each locale', () => {
@@ -43,6 +45,7 @@ describe('locale bundle parity', () => {
   it('supplies every plural form each locale grammatically requires', () => {
     // Russian needs one/few/many/other where English only needs one/other, so a
     // bundle copied key-for-key from en-US would silently fall back for 2-4 items.
+    // Portuguese likewise adds `many` on top of one/other.
     const groups = new Set(
       Object.keys(bundles['en-US'])
         .filter(k => PLURAL_SUFFIX.test(k))
@@ -117,6 +120,12 @@ describe('setup i18n keys', () => {
     expect(i18n.t('setup.page.loadingSetupState')).toBe('Загрузка состояния настройки...')
   })
 
+  it('resolves pt-BR setup.welcome.title', async () => {
+    await i18n.changeLanguage('pt-BR')
+    expect(i18n.t('setup.welcome.title')).toBe('Vamos começar')
+    expect(i18n.t('setup.page.loadingSetupState')).toBe('Carregando o estado da configuração...')
+  })
+
   it('contains pairing failure copy in both locales', async () => {
     await i18n.changeLanguage('zh-CN')
     expect(i18n.t('pairing.failed.errors.activeSession')).toBe('已有正在进行的配对，请稍后再试')
@@ -147,7 +156,17 @@ describe('setup i18n keys', () => {
     expect(normalizeLanguage('ru')).toBe('ru-RU')
     expect(normalizeLanguage('ru-BY')).toBe('ru-RU')
     expect(normalizeLanguage('RU-ru')).toBe('ru-RU')
+    expect(normalizeLanguage('pt')).toBe('pt-BR')
+    expect(normalizeLanguage('pt-BR')).toBe('pt-BR')
+    // pt-BR is the only Portuguese bundle, so European Portuguese lands here too.
+    expect(normalizeLanguage('pt-PT')).toBe('pt-BR')
     expect(normalizeLanguage('fr-FR')).toBe('en-US')
+    // POSIX locale envs use an underscore; BCP-47 uses a hyphen.
+    expect(normalizeLanguage('pt_BR')).toBe('pt-BR')
+    expect(normalizeLanguage('zh_CN')).toBe('zh-CN')
+    // The primary subtag decides, not a bare prefix: "ptx" is not Portuguese.
+    expect(normalizeLanguage('ptx')).toBe('en-US')
+    expect(normalizeLanguage('zhx-Hant')).toBe('en-US')
   })
 
   it('offers a self-named picker label for every supported language', async () => {
@@ -157,6 +176,7 @@ describe('setup i18n keys', () => {
       'zh-CN': '简体中文',
       'en-US': 'English',
       'ru-RU': 'Русский',
+      'pt-BR': 'Português (Brasil)',
     }
     for (const active of SUPPORTED_LANGUAGES) {
       await i18n.changeLanguage(active)

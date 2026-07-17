@@ -90,14 +90,14 @@ page and drag the app into `/Applications`.
 
 ### First-launch permissions
 
-On first launch macOS will prompt for two permissions. Both are
-required for clipboard sync to function:
+macOS may ask for **Input Monitoring** when UniClipboard registers the global Quick Panel
+shortcut. Grant it under **System Settings → Privacy & Security → Input Monitoring**, then quit and
+reopen the app.
 
-- **Accessibility** — needed to read the system clipboard.
-- **Input Monitoring** — needed for the global quick-panel shortcut.
-
-If you grant them later in **System Settings → Privacy & Security**,
-quit and reopen the app for the change to take effect.
+**Accessibility** is separate and optional: it is required only when you enable the Quick Panel's
+modifier double-tap trigger. UniClipboard does not request it in the background. The setting shows
+an explicit button that opens **Privacy & Security → Accessibility**; grant access there, then
+return to the app. Clipboard sync itself does not require Accessibility.
 
 </Tab>
 

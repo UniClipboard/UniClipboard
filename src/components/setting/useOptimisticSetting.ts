@@ -10,8 +10,8 @@ const DEFAULT_ERROR_KEY = 'settings.sections.general.saveError'
 interface OptimisticSettingOptions {
   /** Message logged when the background persist rejects. */
   failureLog?: string
-  /** i18n key for the toast shown when the persist rejects. */
-  errorKey?: string
+  /** Static or error-aware i18n key for the rejection toast. */
+  errorKey?: string | ((error: unknown) => string)
 }
 
 /**
@@ -51,7 +51,11 @@ export function useOptimisticSetting<T>(
       (err: unknown) => {
         log.error({ err }, options?.failureLog ?? 'Failed to persist setting')
         setPending(active => (active?.id === id ? null : active))
-        toast.error(t(options?.errorKey ?? DEFAULT_ERROR_KEY))
+        const errorKey =
+          typeof options?.errorKey === 'function'
+            ? options.errorKey(err)
+            : (options?.errorKey ?? DEFAULT_ERROR_KEY)
+        toast.error(t(errorKey))
       }
     )
   }

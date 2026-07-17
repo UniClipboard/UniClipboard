@@ -23,6 +23,9 @@ pub enum CommandError {
 
     #[error("conflict: {0}")]
     Conflict(String),
+
+    #[error("accessibility permission required: {0}")]
+    AccessibilityPermissionRequired(String),
 }
 
 impl CommandError {

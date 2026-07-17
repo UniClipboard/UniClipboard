@@ -588,6 +588,22 @@
           "center": "屏幕中央",
           "followCursor": "跟随光标"
         },
+        "doubleTap": {
+          "label": "双击修饰键",
+          "description": "连续轻按两次修饰键打开快捷面板；已录制的快捷键仍然有效。",
+          "checking": "正在检查当前桌面会话是否支持双击修饰键。",
+          "permissionRequired": "双击修饰键需要 macOS 辅助功能权限。请在系统设置中授权，然后返回 UniClipboard。",
+          "unsupported": "当前显示会话不支持双击修饰键，Wayland 会话暂不支持；已录制的快捷键仍然有效。",
+          "openSettings": "打开辅助功能设置",
+          "openSettingsError": "无法打开辅助功能设置，请手动前往「系统设置 > 隐私与安全性 > 辅助功能」。",
+          "disabled": "关闭",
+          "option": "Option",
+          "alt": "Alt",
+          "control": "Control",
+          "command": "Command",
+          "windows": "Windows",
+          "super": "Super"
+        },
         "restartHint": "快捷面板已停用。建议重启应用以彻底释放后台进程。"
       },
       "about": {

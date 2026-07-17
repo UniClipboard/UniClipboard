@@ -5862,6 +5862,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "objc2-application-services"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "69282c2b5bc58fba07cb9de2113619532eb551e98efe3d8d695509ef45fbd53b"
+dependencies = [
+ "bitflags 2.11.1",
+ "objc2-core-foundation",
+]
+
+[[package]]
 name = "objc2-cloud-kit"
 version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5903,10 +5913,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e022c9d066895efa1345f8e33e584b9f958da2fd4cd116792e15e07e4720a807"
 dependencies = [
  "bitflags 2.11.1",
+ "block2",
  "dispatch2",
+ "libc",
  "objc2",
  "objc2-core-foundation",
  "objc2-io-surface",
+ "objc2-metal",
 ]
 
 [[package]]
@@ -10548,6 +10561,8 @@ dependencies = [
  "mockall 0.13.1",
  "objc2",
  "objc2-app-kit",
+ "objc2-application-services",
+ "objc2-core-graphics",
  "objc2-foundation",
  "objc2-quartz-core",
  "rand 0.9.4",
@@ -10580,6 +10595,7 @@ dependencies = [
  "uc-observability",
  "url",
  "windows 0.61.3",
+ "x11-dl",
 ]
 
 [[package]]

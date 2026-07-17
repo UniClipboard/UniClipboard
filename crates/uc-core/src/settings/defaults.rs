@@ -277,6 +277,7 @@ impl Default for QuickPanelSettings {
         Self {
             enabled: true,
             position: QuickPanelPosition::Center,
+            double_tap_modifier: QuickPanelDoubleTapModifier::Disabled,
         }
     }
 }
@@ -340,8 +341,9 @@ impl Default for Settings {
 #[cfg(test)]
 mod tests {
     use crate::settings::model::{
-        ContentTypes, FileSyncSettings, GeneralSettings, NetworkSettings, Settings, StartupMode,
-        SyncFrequency, Theme, CURRENT_SCHEMA_VERSION,
+        ContentTypes, FileSyncSettings, GeneralSettings, NetworkSettings,
+        QuickPanelDoubleTapModifier, QuickPanelSettings, Settings, StartupMode, SyncFrequency,
+        Theme, CURRENT_SCHEMA_VERSION,
     };
 
     /// Pitfall 2 防御：默认值必须为 true（允许 fallback），保护老用户
@@ -363,6 +365,18 @@ mod tests {
         assert!(s.network.allow_relay_fallback);
         assert!(!s.general.debug_mode);
         assert_eq!(s.schema_version, CURRENT_SCHEMA_VERSION);
+    }
+
+    #[test]
+    fn old_quick_panel_settings_default_modifier_double_tap_to_disabled() {
+        let quick_panel: QuickPanelSettings =
+            serde_json::from_str(r#"{"enabled":true,"position":"center"}"#)
+                .expect("parse old quick panel settings");
+
+        assert_eq!(
+            quick_panel.double_tap_modifier,
+            QuickPanelDoubleTapModifier::Disabled
+        );
     }
 
     #[test]

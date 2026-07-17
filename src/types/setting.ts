@@ -207,9 +207,12 @@ export interface NetworkSettings {
  * `position` 默认 `center`：控制面板出现在屏幕中央还是光标附近，变更走
  * `set_quick_panel_position` Tauri command（仅影响下次展示位置，无 OS 副作用）。
  */
+export type QuickPanelDoubleTapModifier = 'disabled' | 'alt' | 'control' | 'meta'
+
 export interface QuickPanelSettings {
   enabled: boolean
   position: QuickPanelPosition
+  doubleTapModifier: QuickPanelDoubleTapModifier
 }
 
 /**

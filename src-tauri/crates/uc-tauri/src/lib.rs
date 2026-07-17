@@ -12,6 +12,7 @@ pub mod bootstrap;
 pub mod commands;
 pub mod lightweight;
 pub mod main_window;
+pub mod modifier_double_tap_platform;
 pub mod quick_panel;
 pub mod run;
 pub mod specta_builder;

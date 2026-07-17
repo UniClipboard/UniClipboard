@@ -26,6 +26,7 @@ export type CommandErrorCode =
   | 'Cancelled'
   | 'ValidationError'
   | 'Conflict'
+  | 'AccessibilityPermissionRequired'
 
 export interface CommandError {
   code: CommandErrorCode

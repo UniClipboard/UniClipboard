@@ -457,6 +457,17 @@ pub enum QuickPanelPosition {
     FollowCursor,
 }
 
+/// A modifier that may toggle the quick panel when tapped twice by itself.
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum QuickPanelDoubleTapModifier {
+    #[default]
+    Disabled,
+    Alt,
+    Control,
+    Meta,
+}
+
 /// 快捷面板（Spotlight 风格）功能偏好。
 ///
 /// 表达用户对快捷面板的偏好：是否启用、出现在哪里。具体如何落地（全局
@@ -464,12 +475,13 @@ pub enum QuickPanelPosition {
 ///
 /// `enabled` 默认 `true`：快捷面板是产品的核心交互入口，新装即应可用；
 /// 需要避开全局快捷键的用户（与其他工具冲突 / 企业策略）可在设置页关闭。
-/// `position` 默认 `Center`，保持历史行为。
+/// `position` 默认 `Center`，保持历史行为；`double_tap_modifier` 默认关闭。
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(default)]
 pub struct QuickPanelSettings {
     pub enabled: bool,
     pub position: QuickPanelPosition,
+    pub double_tap_modifier: QuickPanelDoubleTapModifier,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

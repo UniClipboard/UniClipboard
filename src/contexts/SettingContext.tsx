@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { getSettings, updateSettings } from '@/api/daemon'
 import {
   updateKeyboardShortcuts as persistKeyboardShortcuts,
+  setQuickPanelDoubleTapModifier as persistQuickPanelDoubleTapModifier,
   setQuickPanelEnabled as persistQuickPanelEnabled,
   setQuickPanelPosition as persistQuickPanelPosition,
   updateAutostart as persistAutostart,
@@ -221,18 +222,15 @@ export const SettingProvider: React.FC<SettingProviderProps> = ({ children }) =>
 
   // Update quick panel settings.
   //
-  // GUI 路径必须走 Tauri in-process command:`enabled` 启用/禁用会即时触发
-  // 全局快捷键注册/反注册 + 隐藏窗口的创建/销毁；`position` 则刷新后端缓存
-  // 的展示位置（供同步执行的 show() 读取）。这些副作用都只能在 GUI 进程内
-  // 完成,命令内部已协调好 OS 副作用与 facade 持久化的事务性,所以这里只在
-  // 成功后更新本地 setState + 广播,不再额外走 daemon HTTP PUT。
-  //
-  // 两个字段对应两条独立命令,按本次 patch 里实际出现的字段分别下发。
+  // Each quick-panel field uses a dedicated in-process command because enable,
+  // placement, and modifier double-tap all have GUI-process side effects. The
+  // commands coordinate those effects with daemon persistence, so this layer
+  // only updates React state and broadcasts after each command succeeds.
   const updateQuickPanelSetting = async (
     newQuickPanelSetting: Partial<Settings['quickPanel']>
   ): Promise<{ restartRequired: boolean }> => {
-    const { enabled, position } = newQuickPanelSetting
-    if (enabled === undefined && position === undefined) {
+    const { doubleTapModifier, enabled, position } = newQuickPanelSetting
+    if (enabled === undefined && position === undefined && doubleTapModifier === undefined) {
       return { restartRequired: false }
     }
     // See `saveSetting`: `loading` is not flipped for per-section saves. The
@@ -241,6 +239,9 @@ export const SettingProvider: React.FC<SettingProviderProps> = ({ children }) =>
       return await enqueueSettingMutation(async current => {
         if (enabled !== undefined) await persistQuickPanelEnabled(enabled)
         if (position !== undefined) await persistQuickPanelPosition(position)
+        if (doubleTapModifier !== undefined) {
+          await persistQuickPanelDoubleTapModifier(doubleTapModifier)
+        }
         return {
           next: {
             ...current,

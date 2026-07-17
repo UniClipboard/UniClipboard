@@ -153,6 +153,15 @@ surface, not a workbench.
 
 ## Customizing the hotkey
 
+The recorded key combination remains the primary trigger. Under **Settings → Quick Panel →
+Double-tap modifier**, you can also choose Option/Alt, Control, or Command/Windows/Super and tap
+that modifier twice to open the panel. Turning this off does not change the recorded shortcut.
+
+On macOS, modifier double-tap requires the separate **Accessibility** permission. UniClipboard
+checks the permission without showing a system prompt; use the **Open Accessibility settings**
+button to grant it explicitly. Native Wayland sessions are not supported, including sessions that
+also expose an XWayland `DISPLAY`; use the recorded shortcut there.
+
 <Tabs items={['Where', 'Combos that tend to be free']}>
 
 <Tab value="Where">
@@ -193,10 +202,13 @@ Combinations that are unlikely to clash with system or IDE shortcuts:
 
 ## Troubleshooting
 
-- Hotkey doesn't fire: see
+- Recorded hotkey doesn't fire: see
   [Troubleshooting — Clipboard permissions](../help/troubleshooting#clipboard-permissions).
   On macOS confirm **Input Monitoring** is granted and the app was
   fully relaunched afterwards.
+- Modifier double-tap is disabled on macOS: grant **Accessibility** from the button beside the
+  setting, then return to UniClipboard. On Linux, native Wayland sessions intentionally report this
+  trigger as unsupported; the recorded hotkey remains available.
 - Items you just copied don't appear: the daemon isn't running or the
   clipboard listener was sandboxed. Check `daemon.running` and the
   clipboard logs in `uniclip status`.

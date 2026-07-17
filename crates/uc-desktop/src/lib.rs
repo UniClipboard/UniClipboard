@@ -18,6 +18,8 @@ pub mod daemon_probe;
 pub mod daemon_recovery;
 pub mod file_ports;
 pub mod gui_wiring;
+pub mod modifier_double_tap;
+pub mod modifier_double_tap_monitor;
 pub mod runtime;
 pub mod shortcuts;
 pub mod startup_actions;

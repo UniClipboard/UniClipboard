@@ -14,6 +14,7 @@
 // 权威来源:`src-tauri/crates/uc-tauri/src/commands/severity.rs`。
 
 export const USER_FACING_ERROR_CODES: ReadonlySet<string> = new Set([
+  "AccessibilityPermissionRequired",
   "Cancelled",
   "Conflict",
   "NotFound",

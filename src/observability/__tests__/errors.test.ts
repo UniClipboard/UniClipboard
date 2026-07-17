@@ -53,6 +53,7 @@ describe('isExpectedCommandError', () => {
     expect(isExpectedCommandError({ code: 'Cancelled' })).toBe(true)
     expect(isExpectedCommandError({ code: 'NotFound' })).toBe(true)
     expect(isExpectedCommandError({ code: 'Conflict' })).toBe(true)
+    expect(isExpectedCommandError({ code: 'AccessibilityPermissionRequired' })).toBe(true)
   })
 
   it('treats system error codes as unexpected (reportable)', () => {

@@ -162,14 +162,9 @@ uniclip invite        # 在 sponsor 上重出一张
 
 <Tab value="macOS">
 
-需要两项权限：
+已录制的全局快捷面板快捷键需要 **输入监控（Input Monitoring）** 权限。请在 **系统设置 → 隐私与安全性 → 输入监控** 中授权，然后完全退出并重新启动应用。
 
-- **辅助功能（Accessibility）** —— 读系统剪贴板。
-- **输入监控（Input Monitoring）** —— 全局快捷面板快捷键。
-
-授权后 **完全退出再重启** 应用。macOS 不会对运行中的进程动态生效。
-
-如果选项里没有 UniClipboard，先在 **系统设置 → 隐私与安全 → 辅助功能** 里点 `+` 手动加入 `/Applications/UniClipboard.app`。
+可选的双击修饰键触发方式使用另一项独立的 **辅助功能（Accessibility）** 权限。UniClipboard 只会静默检查，权限不可用时会禁用下拉框。点击旁边的 **打开辅助功能设置**；如果列表里没有 UniClipboard，点 `+` 手动加入 `/Applications/UniClipboard.app`，授权后返回应用。剪贴板捕获本身不依赖辅助功能权限。
 
 </Tab>
 

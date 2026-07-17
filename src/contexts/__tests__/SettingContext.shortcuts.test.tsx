@@ -2,7 +2,10 @@ import { act, renderHook, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { getSettings, updateSettings } from '@/api/daemon'
 import type { Settings } from '@/api/daemon/settings'
-import { updateKeyboardShortcuts as persistKeyboardShortcuts } from '@/api/tauri-command'
+import {
+  setQuickPanelDoubleTapModifier as persistQuickPanelDoubleTapModifier,
+  updateKeyboardShortcuts as persistKeyboardShortcuts,
+} from '@/api/tauri-command'
 import { SettingProvider } from '@/contexts/SettingContext'
 import { useSetting } from '@/hooks/useSetting'
 import { connectDaemonWs } from '@/lib/daemon-ws-bootstrap'
@@ -16,6 +19,10 @@ vi.mock('@/api/daemon', () => ({
 }))
 
 vi.mock('@/api/tauri-command', () => ({
+  setQuickPanelDoubleTapModifier: vi.fn(),
+  setQuickPanelEnabled: vi.fn(),
+  setQuickPanelPosition: vi.fn(),
+  updateAutostart: vi.fn(),
   updateKeyboardShortcuts: vi.fn(),
 }))
 
@@ -43,6 +50,7 @@ vi.mock('@/i18n', () => ({
 
 const mockGetSettings = vi.mocked(getSettings)
 const mockUpdateSettings = vi.mocked(updateSettings)
+const mockPersistQuickPanelDoubleTapModifier = vi.mocked(persistQuickPanelDoubleTapModifier)
 const mockPersistKeyboardShortcuts = vi.mocked(persistKeyboardShortcuts)
 const mockConnectDaemonWs = vi.mocked(connectDaemonWs)
 const mockEmitSettingsChanged = vi.mocked(emitSettingsChanged)
@@ -63,6 +71,7 @@ describe('SettingContext shortcuts — in-process apply path', () => {
     mockConnectDaemonWs.mockResolvedValue(undefined)
     mockGetSettings.mockResolvedValue(baseSetting)
     mockUpdateSettings.mockResolvedValue({ success: true, restartRequired: false })
+    mockPersistQuickPanelDoubleTapModifier.mockResolvedValue(undefined)
     mockPersistKeyboardShortcuts.mockResolvedValue({
       'global.toggleQuickPanel': 'meta+shift+v',
     })
@@ -77,6 +86,21 @@ describe('SettingContext shortcuts — in-process apply path', () => {
         removeEventListener: vi.fn(),
       }),
     })
+  })
+
+  it('更新双击修饰键时走本机副作用命令并更新设置视图', async () => {
+    const { result } = renderHook(() => useSetting(), { wrapper })
+    await waitFor(() => {
+      expect(result.current.setting).toEqual(baseSetting)
+    })
+
+    await act(async () => {
+      await result.current.updateQuickPanelSetting({ doubleTapModifier: 'meta' })
+    })
+
+    expect(mockPersistQuickPanelDoubleTapModifier).toHaveBeenCalledWith('meta')
+    expect(mockUpdateSettings).not.toHaveBeenCalled()
+    expect(result.current.setting?.quickPanel.doubleTapModifier).toBe('meta')
   })
 
   it('更新快捷键时不走 daemon HTTP，避免丢失 OS 全局快捷键副作用', async () => {

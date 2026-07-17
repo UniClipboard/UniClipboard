@@ -348,17 +348,26 @@ pub enum QuickPanelPositionDto {
     FollowCursor,
 }
 
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum QuickPanelDoubleTapModifierDto {
+    #[default]
+    Disabled,
+    Alt,
+    Control,
+    Meta,
+}
+
 /// 快捷面板（Spotlight 风格）功能偏好 DTO。
 ///
-/// wire 字段命名为 camelCase（`enabled` / `position`）。`#[serde(default)]`
-/// 让缺字段时回退到 `Default`（`enabled = true`、`position = center`），与
-/// `core::QuickPanelSettings` 默认保持一致——新装/老 wire 缺字段都视为
-/// "启用 + 居中"，避免出现 wire 与磁盘真相撕裂。
+/// wire 字段命名为 camelCase。`#[serde(default)]` 让旧客户端缺少新增字段时
+/// 回退到领域默认值，避免 wire 与磁盘真相分裂。
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, ToSchema)]
 #[serde(default, rename_all = "camelCase")]
 pub struct QuickPanelSettingsDto {
     pub enabled: bool,
     pub position: QuickPanelPositionDto,
+    pub double_tap_modifier: QuickPanelDoubleTapModifierDto,
 }
 
 impl Default for QuickPanelSettingsDto {
@@ -366,6 +375,7 @@ impl Default for QuickPanelSettingsDto {
         Self {
             enabled: true,
             position: QuickPanelPositionDto::Center,
+            double_tap_modifier: QuickPanelDoubleTapModifierDto::Disabled,
         }
     }
 }
@@ -515,6 +525,7 @@ pub struct NetworkSettingsPatchDto {
 pub struct QuickPanelSettingsPatchDto {
     pub enabled: Option<bool>,
     pub position: Option<QuickPanelPositionDto>,
+    pub double_tap_modifier: Option<QuickPanelDoubleTapModifierDto>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
@@ -756,11 +767,23 @@ impl From<core::QuickPanelPosition> for QuickPanelPositionDto {
     }
 }
 
+impl From<core::QuickPanelDoubleTapModifier> for QuickPanelDoubleTapModifierDto {
+    fn from(value: core::QuickPanelDoubleTapModifier) -> Self {
+        match value {
+            core::QuickPanelDoubleTapModifier::Disabled => Self::Disabled,
+            core::QuickPanelDoubleTapModifier::Alt => Self::Alt,
+            core::QuickPanelDoubleTapModifier::Control => Self::Control,
+            core::QuickPanelDoubleTapModifier::Meta => Self::Meta,
+        }
+    }
+}
+
 impl From<core::QuickPanelSettings> for QuickPanelSettingsDto {
     fn from(value: core::QuickPanelSettings) -> Self {
         Self {
             enabled: value.enabled,
             position: value.position.into(),
+            double_tap_modifier: value.double_tap_modifier.into(),
         }
     }
 }
@@ -836,6 +859,17 @@ impl From<QuickPanelPositionDto> for core::QuickPanelPosition {
         match value {
             QuickPanelPositionDto::Center => Self::Center,
             QuickPanelPositionDto::FollowCursor => Self::FollowCursor,
+        }
+    }
+}
+
+impl From<QuickPanelDoubleTapModifierDto> for core::QuickPanelDoubleTapModifier {
+    fn from(value: QuickPanelDoubleTapModifierDto) -> Self {
+        match value {
+            QuickPanelDoubleTapModifierDto::Disabled => Self::Disabled,
+            QuickPanelDoubleTapModifierDto::Alt => Self::Alt,
+            QuickPanelDoubleTapModifierDto::Control => Self::Control,
+            QuickPanelDoubleTapModifierDto::Meta => Self::Meta,
         }
     }
 }
@@ -1420,6 +1454,22 @@ mod enum_wire_tests {
         // 防御:误改成 PascalCase / camelCase 必须解析失败。
         assert!(serde_json::from_str::<ThemeDto>(r#""Light""#).is_err());
         assert!(serde_json::from_str::<ThemeDto>(r#""systemTheme""#).is_err());
+    }
+
+    #[test]
+    fn quick_panel_double_tap_modifier_wire_is_snake_case_lowercase() {
+        for (variant, literal) in [
+            (QuickPanelDoubleTapModifierDto::Disabled, r#""disabled""#),
+            (QuickPanelDoubleTapModifierDto::Alt, r#""alt""#),
+            (QuickPanelDoubleTapModifierDto::Control, r#""control""#),
+            (QuickPanelDoubleTapModifierDto::Meta, r#""meta""#),
+        ] {
+            assert_eq!(serde_json::to_string(&variant).unwrap(), literal);
+            assert_eq!(
+                serde_json::from_str::<QuickPanelDoubleTapModifierDto>(literal).unwrap(),
+                variant
+            );
+        }
     }
 
     #[test]

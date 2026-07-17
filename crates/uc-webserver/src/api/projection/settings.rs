@@ -6,9 +6,10 @@ use super::{IntoApiDto, IntoDomain};
 use crate::api::dto::settings::{
     CongestionControllerDto, ContentTypesDto, ContentTypesPatchDto, FileSyncSettingsDto,
     GeneralSettingsDto, KeyboardShortcutsPatchDto, NetworkSettingsDto, PairingSettingsDto,
-    QuickPanelPositionDto, QuickPanelSettingsDto, RetentionPolicyDto, RetentionRuleDto,
-    RuleEvaluationDto, SecuritySettingsDto, SettingsDto, SettingsPatchDto, ShortcutKeyDto,
-    StartupModeDto, SyncFrequencyDto, SyncSettingsDto, ThemeDto, UpdateChannelDto,
+    QuickPanelDoubleTapModifierDto, QuickPanelPositionDto, QuickPanelSettingsDto,
+    RetentionPolicyDto, RetentionRuleDto, RuleEvaluationDto, SecuritySettingsDto, SettingsDto,
+    SettingsPatchDto, ShortcutKeyDto, StartupModeDto, SyncFrequencyDto, SyncSettingsDto, ThemeDto,
+    UpdateChannelDto,
 };
 
 impl IntoDomain<app_settings::SettingsPatch> for SettingsPatchDto {
@@ -105,6 +106,9 @@ impl IntoDomain<app_settings::SettingsPatch> for SettingsPatchDto {
                 app_settings::QuickPanelSettingsPatch {
                     enabled: quick_panel.enabled,
                     position: quick_panel.position.map(IntoDomain::into_domain),
+                    double_tap_modifier: quick_panel
+                        .double_tap_modifier
+                        .map(IntoDomain::into_domain),
                 }
             }),
         }
@@ -190,7 +194,30 @@ impl IntoApiDto<SettingsDto> for app_settings::SettingsView {
             quick_panel: QuickPanelSettingsDto {
                 enabled: self.quick_panel.enabled,
                 position: self.quick_panel.position.into_api_dto(),
+                double_tap_modifier: self.quick_panel.double_tap_modifier.into_api_dto(),
             },
+        }
+    }
+}
+
+impl IntoDomain<app_settings::QuickPanelDoubleTapModifierView> for QuickPanelDoubleTapModifierDto {
+    fn into_domain(self) -> app_settings::QuickPanelDoubleTapModifierView {
+        match self {
+            Self::Disabled => app_settings::QuickPanelDoubleTapModifierView::Disabled,
+            Self::Alt => app_settings::QuickPanelDoubleTapModifierView::Alt,
+            Self::Control => app_settings::QuickPanelDoubleTapModifierView::Control,
+            Self::Meta => app_settings::QuickPanelDoubleTapModifierView::Meta,
+        }
+    }
+}
+
+impl IntoApiDto<QuickPanelDoubleTapModifierDto> for app_settings::QuickPanelDoubleTapModifierView {
+    fn into_api_dto(self) -> QuickPanelDoubleTapModifierDto {
+        match self {
+            Self::Disabled => QuickPanelDoubleTapModifierDto::Disabled,
+            Self::Alt => QuickPanelDoubleTapModifierDto::Alt,
+            Self::Control => QuickPanelDoubleTapModifierDto::Control,
+            Self::Meta => QuickPanelDoubleTapModifierDto::Meta,
         }
     }
 }

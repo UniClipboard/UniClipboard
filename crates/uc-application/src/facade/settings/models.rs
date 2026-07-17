@@ -180,12 +180,21 @@ pub enum QuickPanelPositionView {
     FollowCursor,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum QuickPanelDoubleTapModifierView {
+    Disabled,
+    Alt,
+    Control,
+    Meta,
+}
+
 /// 快捷面板功能偏好业务镜像。承载用户对"是否启用 / 出现在哪里"的偏好；
 /// 落地副作用（OS 快捷键、窗口生命周期、坐标换算等）由消费此视图的上层负责。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct QuickPanelSettingsView {
     pub enabled: bool,
     pub position: QuickPanelPositionView,
+    pub double_tap_modifier: QuickPanelDoubleTapModifierView,
 }
 
 #[derive(Debug, Clone)]
@@ -308,6 +317,7 @@ pub struct NetworkSettingsPatch {
 pub struct QuickPanelSettingsPatch {
     pub enabled: Option<bool>,
     pub position: Option<QuickPanelPositionView>,
+    pub double_tap_modifier: Option<QuickPanelDoubleTapModifierView>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -388,6 +398,28 @@ impl From<QuickPanelPositionView> for core::QuickPanelPosition {
         match value {
             QuickPanelPositionView::Center => Self::Center,
             QuickPanelPositionView::FollowCursor => Self::FollowCursor,
+        }
+    }
+}
+
+impl From<core::QuickPanelDoubleTapModifier> for QuickPanelDoubleTapModifierView {
+    fn from(value: core::QuickPanelDoubleTapModifier) -> Self {
+        match value {
+            core::QuickPanelDoubleTapModifier::Disabled => Self::Disabled,
+            core::QuickPanelDoubleTapModifier::Alt => Self::Alt,
+            core::QuickPanelDoubleTapModifier::Control => Self::Control,
+            core::QuickPanelDoubleTapModifier::Meta => Self::Meta,
+        }
+    }
+}
+
+impl From<QuickPanelDoubleTapModifierView> for core::QuickPanelDoubleTapModifier {
+    fn from(value: QuickPanelDoubleTapModifierView) -> Self {
+        match value {
+            QuickPanelDoubleTapModifierView::Disabled => Self::Disabled,
+            QuickPanelDoubleTapModifierView::Alt => Self::Alt,
+            QuickPanelDoubleTapModifierView::Control => Self::Control,
+            QuickPanelDoubleTapModifierView::Meta => Self::Meta,
         }
     }
 }
@@ -575,11 +607,7 @@ impl From<core::Settings> for SettingsView {
                 max_retries: value.pairing.max_retries,
                 protocol_version: value.pairing.protocol_version,
             },
-            keyboard_shortcuts: value
-                .keyboard_shortcuts
-                .into_iter()
-                .map(|(k, v)| (k, v.into()))
-                .collect(),
+            keyboard_shortcuts: value.keyboard_shortcuts,
             file_sync: FileSyncSettingsView {
                 file_sync_enabled: value.file_sync.file_sync_enabled,
                 small_file_threshold: value.file_sync.small_file_threshold,
@@ -600,6 +628,7 @@ impl From<core::Settings> for SettingsView {
             quick_panel: QuickPanelSettingsView {
                 enabled: value.quick_panel.enabled,
                 position: value.quick_panel.position.into(),
+                double_tap_modifier: value.quick_panel.double_tap_modifier.into(),
             },
         }
     }
@@ -721,7 +750,7 @@ pub(crate) fn apply_settings_patch(
         for (name, value) in keyboard_shortcuts {
             match value {
                 Some(shortcut) => {
-                    existing.keyboard_shortcuts.insert(name, shortcut.into());
+                    existing.keyboard_shortcuts.insert(name, shortcut);
                 }
                 None => {
                     existing.keyboard_shortcuts.remove(&name);
@@ -789,6 +818,9 @@ pub(crate) fn apply_settings_patch(
         }
         if let Some(v) = quick_panel.position {
             existing.quick_panel.position = v.into();
+        }
+        if let Some(v) = quick_panel.double_tap_modifier {
+            existing.quick_panel.double_tap_modifier = v.into();
         }
     }
 

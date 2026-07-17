@@ -21,7 +21,7 @@ use uc_application::{
 use uc_bootstrap::{FileTransferLifecycle, SystemClipboardWiring};
 use uc_core::ports::{ClipboardEventRepositoryPort, EntryDeliveryRepositoryPort};
 use uc_core::trusted_peer::TrustedPeerRepositoryPort;
-use uc_infra::fs::{FsAtomicPublisher, FsInboundFileTarget};
+use uc_infra::fs::{FsAtomicPublisher, FsHiddenPathMarker, FsInboundFileTarget};
 use uc_webserver::api::types::DaemonWsEvent;
 
 use crate::daemon::run_mode::DaemonRunMode;
@@ -131,7 +131,8 @@ pub fn build_daemon_runtime_workers(
             FsAtomicPublisher::new(),
         )
         .with_target_reserver(FsInboundFileTarget::new(input.deps.settings.clone()))
-        .with_save_dir_resolver(FsInboundFileTarget::new(input.deps.settings.clone())),
+        .with_save_dir_resolver(FsInboundFileTarget::new(input.deps.settings.clone()))
+        .with_hidden_marker(FsHiddenPathMarker::new()),
     );
     // Shared search live-indexer: indexes both OS-clipboard captures (via the
     // watcher below) and remote-origin inbound entries (P2P + mobile, via

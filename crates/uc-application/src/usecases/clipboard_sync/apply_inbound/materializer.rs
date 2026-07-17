@@ -267,11 +267,29 @@ pub async fn sweep_inbound_staging(dirs: &[PathBuf]) -> usize {
 pub struct DirectoryPublication {
     publisher: Arc<dyn AtomicPublishPort>,
     staging: PathBuf,
+    mode: PublishMode,
     /// `(final path, the staging path it was published from)`, in publication
     /// order. The staging name is free again once published, so withdrawing is
-    /// the same no-replace move run backwards.
+    /// the same move run backwards.
     published: Vec<(PathBuf, PathBuf)>,
     settled: bool,
+}
+
+/// Which guarantee a destination needs when roots land on it.
+///
+/// The two destinations differ in what lives around them, and that — not the
+/// volume — is what decides the guarantee.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PublishMode {
+    /// The destination holds the user's own files. A name we did not put there
+    /// may appear at any moment, so the move itself has to refuse an occupied
+    /// name; checking first and moving second would leave a window in which we
+    /// destroy someone's folder.
+    NoReplace,
+    /// The destination is ours alone and scoped to one receive, so the only
+    /// name that can appear is one we chose. Nothing is at risk, and demanding
+    /// a guarantee the volume may not offer would cost the receive for nothing.
+    IntoFreeName,
 }
 
 /// What a rollback managed to achieve.
@@ -297,11 +315,25 @@ impl std::fmt::Debug for DirectoryPublication {
     }
 }
 
+/// Run one move under `mode`'s guarantee.
+async fn publish_via(
+    publisher: &dyn AtomicPublishPort,
+    mode: PublishMode,
+    source: &std::path::Path,
+    destination: &std::path::Path,
+) -> Result<(), PublishError> {
+    match mode {
+        PublishMode::NoReplace => publisher.publish_no_replace(source, destination).await,
+        PublishMode::IntoFreeName => publisher.publish_into_free_name(source, destination).await,
+    }
+}
+
 impl DirectoryPublication {
-    fn new(publisher: Arc<dyn AtomicPublishPort>, staging: PathBuf) -> Self {
+    fn new(publisher: Arc<dyn AtomicPublishPort>, staging: PathBuf, mode: PublishMode) -> Self {
         Self {
             publisher,
             staging,
+            mode,
             published: Vec::new(),
             settled: false,
         }
@@ -332,10 +364,8 @@ impl DirectoryPublication {
         let mut stuck = 0usize;
         // Reverse order, undoing the most recent first.
         for (final_path, staged_from) in self.published.iter().rev() {
-            if let Err(err) = self
-                .publisher
-                .publish_no_replace(final_path, staged_from)
-                .await
+            if let Err(err) =
+                publish_via(self.publisher.as_ref(), self.mode, final_path, staged_from).await
             {
                 warn!(error = %err, "failed to withdraw a published directory root");
                 stuck += 1;
@@ -418,8 +448,9 @@ pub struct FileCacheBlobMaterializer {
 
 impl FileCacheBlobMaterializer {
     /// `publisher` is not optional: every directory root reaches its final
-    /// location through it, and the alternative — a rename that replaces
-    /// whatever it lands on — is the behavior this type exists to avoid.
+    /// location through it. Which guarantee each root travels under is
+    /// [`PublishMode`]'s decision, and it turns on whose files share the
+    /// destination — never on what is convenient.
     pub fn new(
         fetcher: Arc<dyn InboundBlobFetcher>,
         cache_dir: PathBuf,
@@ -983,9 +1014,13 @@ impl FileCacheBlobMaterializer {
     ///
     /// The area is a sibling of the final destination, which is what makes
     /// publication a same-volume rename — the atomicity the whole design rests
-    /// on. It also means the destination volume's own behavior decides whether
-    /// this receive can be published safely, so support is probed here rather
-    /// than assumed.
+    /// on.
+    ///
+    /// The user's save directory is only usable if its volume can refuse an
+    /// occupied name, because the user's own folders live there; a volume that
+    /// cannot is declined in favour of managed storage. Managed storage itself
+    /// asks for no such thing — see [`PublishMode::IntoFreeName`] — so it is
+    /// always available and this never fails for want of a volume.
     async fn open_publication(&self, receiver_entry_id: &EntryId) -> Result<PublishPlan> {
         let staging_name = staging_dir_name(receiver_entry_id);
 
@@ -993,11 +1028,15 @@ impl FileCacheBlobMaterializer {
         if let Some(resolver) = &self.save_dir_resolver {
             if let Some(save_dir) = resolver.resolve_save_dir().await {
                 let staging = save_dir.join(&staging_name);
-                match self.open_staging_area(&staging).await {
+                match self
+                    .open_staging_area(&staging, PublishMode::NoReplace)
+                    .await
+                {
                     Ok(true) => {
                         return Ok(PublishPlan {
                             dest_parent: save_dir,
                             staging,
+                            mode: PublishMode::NoReplace,
                         })
                     }
                     Ok(false) => {
@@ -1022,33 +1061,47 @@ impl FileCacheBlobMaterializer {
             }
         }
 
-        // Fallback: the managed cache layout, on the app's own volume.
+        // Fallback: the managed cache layout, on the app's own volume. This
+        // parent is ours and scoped to this one receive, so no probe gates it:
+        // the volume need only be able to move within itself. Requiring more
+        // would strand directory sync entirely on exFAT, NFS and the like —
+        // which is exactly where a portable install tends to live.
         let dest_parent = self
             .cache_dir
             .join("iroh-blobs")
             .join(sanitize_path_segment(receiver_entry_id.as_ref()));
         tokio::fs::create_dir_all(&dest_parent).await?;
         let staging = dest_parent.join(&staging_name);
-        if !self.open_staging_area(&staging).await? {
-            return Err(anyhow!(
-                "no volume available that can publish without replacing"
-            ));
-        }
+        self.open_staging_area(&staging, PublishMode::IntoFreeName)
+            .await?;
         Ok(PublishPlan {
             dest_parent,
             staging,
+            mode: PublishMode::IntoFreeName,
         })
     }
 
-    /// Create the assembly area and report whether its volume can publish
-    /// atomically. Removes the area again when it cannot, leaving no trace.
-    async fn open_staging_area(&self, staging: &std::path::Path) -> Result<bool> {
+    /// Create the assembly area and report whether it can carry `mode`.
+    ///
+    /// [`PublishMode::IntoFreeName`] asks nothing of the volume and always
+    /// answers `true`. [`PublishMode::NoReplace`] is probed against the real
+    /// filesystem, and the area is removed again when the answer is `false`,
+    /// leaving no trace.
+    async fn open_staging_area(
+        &self,
+        staging: &std::path::Path,
+        mode: PublishMode,
+    ) -> Result<bool> {
         // A same-id leftover can only be debris from an earlier crashed
         // receive: this id belongs to the receive happening right now.
         if tokio::fs::try_exists(staging).await? {
             tokio::fs::remove_dir_all(staging).await?;
         }
         tokio::fs::create_dir_all(staging).await?;
+
+        if mode == PublishMode::IntoFreeName {
+            return Ok(true);
+        }
 
         // Probe inside the area rather than in the destination folder: same
         // volume, same answer, but the check itself never appears next to the
@@ -1231,11 +1284,12 @@ impl FileCacheBlobMaterializer {
         }
 
         let mut publication =
-            DirectoryPublication::new(Arc::clone(&self.publisher), plan.staging.clone());
+            DirectoryPublication::new(Arc::clone(&self.publisher), plan.staging.clone(), plan.mode);
         let mut published_paths = Vec::new();
         for (source, desired, sanitized_name) in plans {
             match publish_root(
                 self.publisher.as_ref(),
+                plan.mode,
                 &source,
                 &desired,
                 &plan.dest_parent,
@@ -1269,18 +1323,21 @@ impl FileCacheBlobMaterializer {
 struct PublishPlan {
     /// Final parent directory for every root of this receive.
     dest_parent: PathBuf,
-    /// Hidden assembly area, a child of `dest_parent` and so on its volume.
+    /// Assembly area, a child of `dest_parent` and so on its volume.
     staging: PathBuf,
+    /// The guarantee `dest_parent` needs, decided by whose files live there.
+    mode: PublishMode,
 }
 
 /// Publish one root, stepping to the next free name if the chosen one was taken
 /// between pre-flight and now.
 ///
-/// The retry is what turns a lost race into a bounded cost. Publication refuses
-/// occupied names, so a name taken in the gap costs another attempt rather than
-/// someone else's data.
+/// The retry is what turns a lost race into a bounded cost, and it only has
+/// teeth under [`PublishMode::NoReplace`]: there a name taken in the gap costs
+/// another attempt rather than someone else's data.
 async fn publish_root(
     publisher: &dyn AtomicPublishPort,
+    mode: PublishMode,
     source: &std::path::Path,
     desired: &std::path::Path,
     dest_parent: &std::path::Path,
@@ -1289,7 +1346,7 @@ async fn publish_root(
 ) -> Result<PathBuf> {
     let mut candidate = desired.to_path_buf();
     for _ in 0..MAX_PUBLISH_ATTEMPTS {
-        match publisher.publish_no_replace(source, &candidate).await {
+        match publish_via(publisher, mode, source, &candidate).await {
             Ok(()) => return Ok(candidate),
             Err(PublishError::DestinationExists) => {
                 candidate =

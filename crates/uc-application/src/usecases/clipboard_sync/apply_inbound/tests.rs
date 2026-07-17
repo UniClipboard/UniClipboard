@@ -31,7 +31,7 @@ use crate::usecases::clipboard_sync::payload_codec::{
 use super::materializer::{
     compute_file_set_component, sweep_inbound_staging, FileCacheBlobMaterializer,
     InboundBlobFetcher, InboundBlobMaterializer, InboundFileSetManifest, InboundFileSetMember,
-    MaterializeResult,
+    MaterializeResult, RollbackOutcome,
 };
 use super::ports::{InboundCapture, InboundSnapshotRebuild, InboundWrite};
 use super::usecase::verify_file_set_identity;
@@ -59,6 +59,8 @@ struct FakeAtomicPublisher {
     /// Volume boundaries are not simulable in a temp dir, so "this volume
     /// cannot publish atomically" is expressed as a path prefix.
     unsupported_under: Mutex<Option<PathBuf>>,
+    /// Same, for the case where no volume in reach supports the primitive.
+    unsupported_anywhere: AtomicBool,
     calls: AtomicUsize,
 }
 
@@ -86,8 +88,28 @@ impl FakeAtomicPublisher {
         Arc::new(this)
     }
 
+    /// Every volume in reach refuses the no-replace primitive — the exFAT /
+    /// NFS install, where there is nowhere better to fall back to.
+    fn unsupported_everywhere() -> Arc<Self> {
+        let this = Self::default();
+        this.unsupported_anywhere.store(true, Ordering::SeqCst);
+        Arc::new(this)
+    }
+
     fn publish_count(&self) -> usize {
         self.calls.load(Ordering::SeqCst)
+    }
+
+    /// Count this move and hand back the failure scripted for it, if any.
+    /// Both publish variants are one sequence: an ordinal names the Nth move,
+    /// whichever guarantee it asked for.
+    fn next_scripted(&self, destination: &Path) -> Option<PublishError> {
+        let ordinal = self.calls.fetch_add(1, Ordering::SeqCst) + 1;
+        let err = self.scripted.lock().unwrap().remove(&ordinal)?;
+        if err == PublishError::DestinationExists && self.steal_on_conflict.load(Ordering::SeqCst) {
+            std::fs::create_dir_all(destination).expect("racer takes the name");
+        }
+        Some(err)
     }
 }
 
@@ -98,13 +120,7 @@ impl AtomicPublishPort for FakeAtomicPublisher {
         source: &Path,
         destination: &Path,
     ) -> Result<(), PublishError> {
-        let ordinal = self.calls.fetch_add(1, Ordering::SeqCst) + 1;
-        if let Some(err) = self.scripted.lock().unwrap().remove(&ordinal) {
-            if err == PublishError::DestinationExists
-                && self.steal_on_conflict.load(Ordering::SeqCst)
-            {
-                std::fs::create_dir_all(destination).expect("racer takes the name");
-            }
+        if let Some(err) = self.next_scripted(destination) {
             return Err(err);
         }
         if destination.exists() {
@@ -113,7 +129,24 @@ impl AtomicPublishPort for FakeAtomicPublisher {
         std::fs::rename(source, destination).map_err(|e| PublishError::Io(e.to_string()))
     }
 
+    async fn publish_into_free_name(
+        &self,
+        source: &Path,
+        destination: &Path,
+    ) -> Result<(), PublishError> {
+        if let Some(err) = self.next_scripted(destination) {
+            return Err(err);
+        }
+        // No existence check on purpose: this variant promises nothing about
+        // an occupied destination, and mirroring the strict one here would
+        // hide a caller that leans on a guarantee it did not ask for.
+        std::fs::rename(source, destination).map_err(|e| PublishError::Io(e.to_string()))
+    }
+
     async fn supports_no_replace(&self, probe_dir: &Path) -> bool {
+        if self.unsupported_anywhere.load(Ordering::SeqCst) {
+            return false;
+        }
         match self.unsupported_under.lock().unwrap().as_ref() {
             Some(dir) => !probe_dir.starts_with(dir),
             None => true,
@@ -3297,6 +3330,75 @@ async fn directory_publication_falls_back_to_managed_storage_when_the_volume_can
         std::fs::read(managed.join("beta/two.txt")).unwrap(),
         b"hello"
     );
+}
+
+/// The install where no volume in reach honors the primitive — a portable
+/// build on exFAT, a home on NFS. Managed storage is ours and scoped to one
+/// receive, so the guarantee protects nothing there and is not demanded:
+/// directory sync keeps working instead of failing outright.
+#[tokio::test]
+async fn directory_publication_still_lands_when_no_volume_supports_no_replace() {
+    let cache_dir = tempfile::tempdir().expect("cache dir");
+    let save_dir = tempfile::tempdir().expect("save dir");
+    let publisher = FakeAtomicPublisher::unsupported_everywhere();
+
+    let materializer = directory_materializer(
+        writing_fetcher(2),
+        cache_dir.path(),
+        save_dir.path(),
+        Arc::clone(&publisher),
+    );
+    let mut result = materialize_two_roots(&materializer, "entry-nofs")
+        .await
+        .expect("a volume without the primitive must not cost the receive");
+    result
+        .take_publication()
+        .expect("publication")
+        .commit()
+        .await;
+
+    // The user's folder was declined — its volume cannot protect what is in
+    // it — and the content landed in managed storage regardless.
+    assert_eq!(std::fs::read_dir(save_dir.path()).unwrap().count(), 0);
+    let managed = cache_dir.path().join("iroh-blobs").join("entry-nofs");
+    assert_eq!(
+        std::fs::read(managed.join("alpha/one.txt")).unwrap(),
+        b"hello"
+    );
+    assert_eq!(
+        std::fs::read(managed.join("beta/two.txt")).unwrap(),
+        b"hello"
+    );
+}
+
+/// The same install, taken all the way through rollback: withdrawal runs on
+/// the same volume that could not honor the primitive, so it must not lean on
+/// it either.
+#[tokio::test]
+async fn rollback_withdraws_on_a_volume_without_no_replace() {
+    let cache_dir = tempfile::tempdir().expect("cache dir");
+    let save_dir = tempfile::tempdir().expect("save dir");
+    let publisher = FakeAtomicPublisher::unsupported_everywhere();
+
+    let materializer = directory_materializer(
+        writing_fetcher(2),
+        cache_dir.path(),
+        save_dir.path(),
+        Arc::clone(&publisher),
+    );
+    let mut result = materialize_two_roots(&materializer, "entry-nofs-rb")
+        .await
+        .expect("materialize");
+
+    let outcome = result
+        .take_publication()
+        .expect("publication")
+        .rollback()
+        .await;
+
+    assert_eq!(outcome, RollbackOutcome::Clean);
+    let managed = cache_dir.path().join("iroh-blobs").join("entry-nofs-rb");
+    assert_eq!(visible_names(&managed), Vec::<String>::new());
 }
 
 /// AC: crash debris lives only in a recognizable hidden area, and a sweep

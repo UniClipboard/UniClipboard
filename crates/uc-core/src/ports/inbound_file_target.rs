@@ -29,3 +29,21 @@ pub trait ReserveInboundFileTargetPort: Send + Sync {
     /// layout; it is not an error and callers must not treat it as one.
     async fn reserve_target(&self, file_name: &str) -> Option<PathBuf>;
 }
+
+/// Resolve the directory the user configured to receive inbound content.
+///
+/// Answers "where does the user want this to land" without claiming a name or
+/// creating anything, so a destination can be chosen while the final location
+/// stays free of artifacts.
+#[async_trait]
+pub trait ResolveInboundSaveDirPort: Send + Sync {
+    /// Return the configured save directory once it exists and is writable.
+    ///
+    /// The path is absolute. `None` means no directory is configured, or the
+    /// configured one is currently unusable (missing and uncreatable, not
+    /// writable); it is a fallback signal, not an error.
+    ///
+    /// Nothing inside the directory is created or reserved, so two calls with
+    /// no intervening writes return the same path.
+    async fn resolve_save_dir(&self) -> Option<PathBuf>;
+}

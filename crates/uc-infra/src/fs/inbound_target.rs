@@ -64,14 +64,25 @@ impl FsInboundFileTarget {
         Some(path)
     }
 
-    /// Resolve the configured directory and make sure it is usable, without
-    /// creating anything inside it.
+    /// Resolve the configured directory and make sure it can hold a receive,
+    /// without creating anything inside it.
+    ///
+    /// "Usable" here means resolvable and creatable — not writable. Proving
+    /// write access would mean putting a probe on the final path, which is
+    /// exactly what this step must not do (see the sibling `ResolveInboundSaveDirPort`
+    /// contract). Write access is instead proven by the create each caller
+    /// does next: [`reserve_target`](Self::reserve_target) creates the
+    /// reservation placeholder, and the directory path creates its staging
+    /// area. Both fail on an existing-but-unwritable directory and fall back to
+    /// managed storage there, so returning the directory here defers only the
+    /// detection, never the fallback.
     async fn usable_dir(&self) -> Option<PathBuf> {
         let dir = self.configured_dir().await?;
 
         // A configured-but-missing directory (e.g. an unmounted external
         // drive) must not break inbound sync — fall back to managed storage
-        // instead.
+        // instead. This also rejects a configured path that is not a directory
+        // (e.g. an existing regular file), since `create_dir_all` fails there.
         if let Err(e) = tokio::fs::create_dir_all(&dir).await {
             warn!(
                 error = %e,
@@ -301,6 +312,33 @@ mod tests {
 
         assert_eq!(a.resolve_save_dir().await, Some(nested.clone()));
         assert!(nested.exists());
+    }
+
+    #[tokio::test]
+    async fn resolve_save_dir_returns_none_when_configured_path_is_a_file() {
+        // A configured path that already exists as a regular file cannot hold a
+        // receive: `create_dir_all` fails on it, so the adapter must decline it
+        // and let the caller fall back to managed storage rather than report it
+        // as usable. (Root-proof: this failure is `NotADirectory`, not a
+        // permission check.)
+        let tmp = TempDir::new().unwrap();
+        let file = tmp.path().join("not-a-dir");
+        std::fs::write(&file, b"x").unwrap();
+        let a = adapter(Some(file.display().to_string()));
+
+        assert!(a.resolve_save_dir().await.is_none());
+    }
+
+    #[tokio::test]
+    async fn reserve_target_returns_none_when_configured_path_is_a_file() {
+        // Same unusable destination as above, reached through the file port:
+        // the reservation must fall back to managed storage.
+        let tmp = TempDir::new().unwrap();
+        let file = tmp.path().join("not-a-dir");
+        std::fs::write(&file, b"x").unwrap();
+        let a = adapter(Some(file.display().to_string()));
+
+        assert!(a.reserve_target("report.pdf").await.is_none());
     }
 
     #[tokio::test]

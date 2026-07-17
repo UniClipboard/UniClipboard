@@ -12,3 +12,7 @@ pub(crate) mod reconcile;
 
 /// Deferred config-import application staged by a prior `.ucbundle` import.
 pub mod pending_import;
+
+/// Removal of inbound directory-assembly areas orphaned by a crash.
+/// Crate-internal: invoked once from the composition-root entry.
+pub(crate) mod inbound_staging;

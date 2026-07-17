@@ -324,7 +324,7 @@ async fn handle_connection(socket: WebSocket, state: DaemonApiState, claims: Ses
                                 continue;
                             }
                         };
-                        if sender.send(Message::Text(payload.into())).await.is_err() {
+                        if sender.send(Message::Text(payload)).await.is_err() {
                             break;
                         }
                     }

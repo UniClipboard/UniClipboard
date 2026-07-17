@@ -353,6 +353,8 @@ fn lan_only_status_label(language: &str, lan_only_active: bool) -> &'static str 
         ("zh-CN", false) => "LAN-only Mode:未开启",
         ("ru-RU", true) => "LAN-only Mode: включён",
         ("ru-RU", false) => "LAN-only Mode: выключен",
+        ("pt-BR", true) => "LAN-only Mode: ativado",
+        ("pt-BR", false) => "LAN-only Mode: desativado",
         (_, true) => "LAN-only Mode: ON",
         (_, false) => "LAN-only Mode: OFF",
     }
@@ -365,6 +367,8 @@ fn lan_only_tooltip(language: &str, lan_only_active: bool) -> String {
         ("zh-CN", false) => "UniClipboard".to_string(),
         ("ru-RU", true) => "UniClipboard — LAN-only Mode включён".to_string(),
         ("ru-RU", false) => "UniClipboard".to_string(),
+        ("pt-BR", true) => "UniClipboard — LAN-only Mode ativado".to_string(),
+        ("pt-BR", false) => "UniClipboard".to_string(),
         (_, true) => "UniClipboard — LAN-only Mode is ON".to_string(),
         (_, false) => "UniClipboard".to_string(),
     }
@@ -373,7 +377,7 @@ fn lan_only_tooltip(language: &str, lan_only_active: bool) -> String {
 /// Normalize a language string to a supported locale.
 ///
 /// Matches on the language subtag (case-insensitive): "zh" maps to `"zh-CN"`,
-/// "ru" to `"ru-RU"`. Anything else falls back to `"en-US"`.
+/// "ru" to `"ru-RU"`, "pt" to `"pt-BR"`. Anything else falls back to `"en-US"`.
 ///
 /// Keep the supported set in sync with `SUPPORTED_LANGUAGES` in `src/i18n/index.ts`.
 pub(crate) fn normalize_language(language: &str) -> &'static str {
@@ -382,6 +386,8 @@ pub(crate) fn normalize_language(language: &str) -> &'static str {
         "zh-CN"
     } else if lower.starts_with("ru") {
         "ru-RU"
+    } else if lower.starts_with("pt") {
+        "pt-BR"
     } else {
         "en-US"
     }
@@ -420,6 +426,14 @@ impl MenuLabels {
                 restart: "Перезапустить",
                 lightweight: "Лёгкий режим (фоновая синхронизация)",
                 quit: "Выйти",
+            },
+            "pt-BR" => Self {
+                open: "Abrir",
+                settings: "Configurações",
+                check_update: "Verificar atualizações…",
+                restart: "Reiniciar",
+                lightweight: "Modo Leve (sincronização em segundo plano)",
+                quit: "Sair",
             },
             _ => Self {
                 open: "Open",
@@ -475,5 +489,23 @@ fn panic_payload_to_string(payload: Box<dyn std::any::Any + Send>) -> String {
         s.clone()
     } else {
         "<non-string panic payload>".to_string()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn every_supported_locale_has_tray_labels() {
+        // MenuLabels falls through to English, so a locale added to normalize_language
+        // without a label arm would silently ship an English tray menu.
+        for locale in ["zh-CN", "ru-RU", "pt-BR"] {
+            assert_ne!(
+                MenuLabels::for_language(locale).quit,
+                MenuLabels::for_language("en-US").quit,
+                "{locale} has no tray labels of its own"
+            );
+        }
     }
 }

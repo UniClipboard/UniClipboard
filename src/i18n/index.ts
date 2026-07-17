@@ -1,10 +1,11 @@
 import i18n from 'i18next'
 import { initReactI18next } from 'react-i18next'
 import enUS from './locales/en-US.json'
+import ptBR from './locales/pt-BR.json'
 import ruRU from './locales/ru-RU.json'
 import zhCN from './locales/zh-CN.json'
 
-export const SUPPORTED_LANGUAGES = ['zh-CN', 'en-US', 'ru-RU'] as const
+export const SUPPORTED_LANGUAGES = ['zh-CN', 'en-US', 'ru-RU', 'pt-BR'] as const
 export type SupportedLanguage = (typeof SUPPORTED_LANGUAGES)[number]
 
 const STORAGE_KEY = 'uniclipboard.language'
@@ -21,6 +22,9 @@ export function normalizeLanguage(language: string | null | undefined): Supporte
   const lower = language.toLowerCase()
   if (lower.startsWith('zh')) return 'zh-CN'
   if (lower.startsWith('ru')) return 'ru-RU'
+  // pt-BR is the only Portuguese bundle, so European Portuguese resolves here
+  // too: a pt-PT speaker is better served by Brazilian copy than by English.
+  if (lower.startsWith('pt')) return 'pt-BR'
   return 'en-US'
 }
 
@@ -39,6 +43,7 @@ i18n.use(initReactI18next).init({
     'zh-CN': { translation: zhCN },
     'en-US': { translation: enUS },
     'ru-RU': { translation: ruRU },
+    'pt-BR': { translation: ptBR },
   },
   lng: getInitialLanguage(),
   fallbackLng: 'zh-CN',

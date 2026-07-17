@@ -62,6 +62,7 @@ struct FakeAtomicPublisher {
     /// Same, for the case where no volume in reach supports the primitive.
     unsupported_anywhere: AtomicBool,
     calls: AtomicUsize,
+    probes: AtomicUsize,
 }
 
 impl FakeAtomicPublisher {
@@ -98,6 +99,10 @@ impl FakeAtomicPublisher {
 
     fn publish_count(&self) -> usize {
         self.calls.load(Ordering::SeqCst)
+    }
+
+    fn probe_count(&self) -> usize {
+        self.probes.load(Ordering::SeqCst)
     }
 
     /// Count this move and hand back the failure scripted for it, if any.
@@ -144,6 +149,7 @@ impl AtomicPublishPort for FakeAtomicPublisher {
     }
 
     async fn supports_no_replace(&self, probe_dir: &Path) -> bool {
+        self.probes.fetch_add(1, Ordering::SeqCst);
         if self.unsupported_anywhere.load(Ordering::SeqCst) {
             return false;
         }
@@ -3399,6 +3405,38 @@ async fn rollback_withdraws_on_a_volume_without_no_replace() {
     assert_eq!(outcome, RollbackOutcome::Clean);
     let managed = cache_dir.path().join("iroh-blobs").join("entry-nofs-rb");
     assert_eq!(visible_names(&managed), Vec::<String>::new());
+}
+
+/// Support is a property of the volume, not of the receive. Asking once per
+/// paste is wasted work — several network round trips on a NAS save dir.
+#[tokio::test]
+async fn the_no_replace_probe_is_not_repeated_per_receive() {
+    let cache_dir = tempfile::tempdir().expect("cache dir");
+    let save_dir = tempfile::tempdir().expect("save dir");
+    let publisher = Arc::new(FakeAtomicPublisher::default());
+
+    let materializer = directory_materializer(
+        writing_fetcher(4),
+        cache_dir.path(),
+        save_dir.path(),
+        Arc::clone(&publisher),
+    );
+    for entry_id in ["entry-probe-a", "entry-probe-b"] {
+        let mut result = materialize_two_roots(&materializer, entry_id)
+            .await
+            .expect("materialize");
+        result
+            .take_publication()
+            .expect("publication")
+            .commit()
+            .await;
+    }
+
+    assert_eq!(
+        publisher.probe_count(),
+        1,
+        "the save dir's volume was probed more than once"
+    );
 }
 
 /// AC: crash debris lives only in a recognizable hidden area, and a sweep

@@ -449,6 +449,10 @@ pub struct FileCacheBlobMaterializer {
     save_dir_resolver: Option<Arc<dyn ResolveInboundSaveDirPort>>,
     publisher: Arc<dyn AtomicPublishPort>,
     hidden_marker: Option<Arc<dyn MarkHiddenPort>>,
+    /// Per-destination answers from [`AtomicPublishPort::supports_no_replace`],
+    /// keyed by the directory the roots land in. See
+    /// [`Self::supports_no_replace_cached`].
+    no_replace_support: tokio::sync::Mutex<BTreeMap<PathBuf, bool>>,
 }
 
 impl FileCacheBlobMaterializer {
@@ -468,6 +472,7 @@ impl FileCacheBlobMaterializer {
             save_dir_resolver: None,
             publisher,
             hidden_marker: None,
+            no_replace_support: tokio::sync::Mutex::new(BTreeMap::new()),
         }
     }
 
@@ -1125,11 +1130,34 @@ impl FileCacheBlobMaterializer {
         // Probe inside the area rather than in the destination folder: same
         // volume, same answer, but the check itself never appears next to the
         // user's files.
-        if self.publisher.supports_no_replace(staging).await {
+        if self.supports_no_replace_cached(staging).await {
             return Ok(true);
         }
         discard_staging(staging).await;
         Ok(false)
+    }
+
+    /// Answer the volume-support question once per destination.
+    ///
+    /// Support is a property of the volume, not of the receive, so asking on
+    /// every paste buys nothing — and on a network save directory each ask is
+    /// several round trips. The key is the probe area's parent: one save
+    /// directory, one answer.
+    ///
+    /// A wrong answer cached here cannot cost data. `false` only ever costs a
+    /// fallback to managed storage, and `true` still runs through
+    /// `publish_no_replace`, which refuses an occupied name on its own.
+    async fn supports_no_replace_cached(&self, staging: &std::path::Path) -> bool {
+        let key = staging
+            .parent()
+            .map(|parent| parent.to_path_buf())
+            .unwrap_or_else(|| staging.to_path_buf());
+        if let Some(known) = self.no_replace_support.lock().await.get(&key) {
+            return *known;
+        }
+        let supported = self.publisher.supports_no_replace(staging).await;
+        self.no_replace_support.lock().await.insert(key, supported);
+        supported
     }
 
     async fn build_and_publish_directory(

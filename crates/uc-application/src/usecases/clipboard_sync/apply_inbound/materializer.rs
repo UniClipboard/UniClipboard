@@ -24,6 +24,7 @@ use uc_core::clipboard::{
 };
 use uc_core::ids::{DeviceId, EntryId, FormatId, RepresentationId};
 use uc_core::ports::atomic_publish::{AtomicPublishPort, PublishError};
+use uc_core::ports::hidden_path::MarkHiddenPort;
 use uc_core::ports::inbound_file_target::{
     ReserveInboundFileTargetPort, ResolveInboundSaveDirPort,
 };
@@ -160,11 +161,14 @@ pub trait InboundBlobFetcher: Send + Sync {
     async fn record_unfetched_failure(&self, _context: FetchTransferContext, _detail: String) {}
 }
 
-/// Prefix marking a hidden area where an inbound directory is assembled.
+/// Prefix marking an area where an inbound directory is assembled.
 ///
 /// The area sits on the destination volume, so publication is a same-volume
-/// rename. The prefix is what makes crash debris recognizable: nothing else
-/// creates these, and a live receive only holds one while it runs.
+/// rename. The prefix does two jobs: it makes crash debris recognizable —
+/// nothing else creates these, and a live receive only holds one while it runs
+/// — and on platforms where a leading dot means "hidden", it is also what
+/// keeps the area out of the user's view. Windows needs an explicit attribute
+/// for that, which is [`MarkHiddenPort`]'s job.
 const STAGING_DIR_PREFIX: &str = ".uniclip-incoming-";
 
 /// How many times a single root may lose the race for a name before the
@@ -444,6 +448,7 @@ pub struct FileCacheBlobMaterializer {
     target_reserver: Option<Arc<dyn ReserveInboundFileTargetPort>>,
     save_dir_resolver: Option<Arc<dyn ResolveInboundSaveDirPort>>,
     publisher: Arc<dyn AtomicPublishPort>,
+    hidden_marker: Option<Arc<dyn MarkHiddenPort>>,
 }
 
 impl FileCacheBlobMaterializer {
@@ -462,7 +467,18 @@ impl FileCacheBlobMaterializer {
             target_reserver: None,
             save_dir_resolver: None,
             publisher,
+            hidden_marker: None,
         }
+    }
+
+    /// Inject the marker that keeps the assembly area out of the user's way.
+    ///
+    /// Without it the area is only hidden where a leading dot is enough, which
+    /// is every platform except Windows. Nothing else changes: the area is
+    /// transient either way, and no behavior depends on whether it is seen.
+    pub fn with_hidden_marker(mut self, marker: Arc<dyn MarkHiddenPort>) -> Self {
+        self.hidden_marker = Some(marker);
+        self
     }
 
     /// Inject the user-configured save-directory resolver. When set and a save
@@ -1098,6 +1114,9 @@ impl FileCacheBlobMaterializer {
             tokio::fs::remove_dir_all(staging).await?;
         }
         tokio::fs::create_dir_all(staging).await?;
+        if let Some(marker) = &self.hidden_marker {
+            marker.mark_hidden(staging).await;
+        }
 
         if mode == PublishMode::IntoFreeName {
             return Ok(true);

@@ -221,6 +221,35 @@ Basic Auth、没有 websocket，一个默认的反代块就够了。
   后面。让它待在 loopback 或 Docker 内网，只通过你的代理暴露 `443`。
 </Callout>
 
+### `/healthz` 的转发要求
+
+移动端在掉线后会用 `GET /healthz` 快速探测服务是否恢复。它必须和
+`/SyncClipboard.json` 反代到**同一个** upstream —— 探针的意义就是证明这条
+链路通，转发到别处会让手机以为服务已恢复，然后真实同步立刻失败。
+
+默认的反代块（转发一切到 `http://127.0.0.1:42720`）已经满足要求，不用额外
+配置。只有两种情况需要动手：
+
+- **你在代理上开了响应缓存**：必须排除 `/healthz`。服务端已经发
+  `Cache-Control: no-store`，尊重该头的代理会自动跳过；但显式配了
+  `proxy_cache` 又忽略 upstream 缓存头的配置，会把一个 `204` 缓存住，让手机
+  在守护进程已经挂掉之后仍然认为它在线 —— 这恰好是这个端点要发现的故障。
+- **你想限速**：`/healthz` 是公开的（不要求 Basic Auth，见下），在边缘配通用
+  速率限制没问题。它的处理成本是常数级，限速是可选的加固，不是必需。
+
+<Callout type="info">
+  `/healthz` 无需鉴权，这是有意设计。它只回一个空的
+  `204`，不含版本、设备、用户名或任何剪贴板信息——只暴露「这个地址上有个监听器在应答」，而这一点 TCP
+  连接本身就已经暴露了。反过来，让每次探测都跑一遍 Argon2id 密码校验（`/SyncClipboard.json`
+  每个请求的代价，约 64MB 内存 + 数十毫秒 CPU）才是真正的滥用面。
+</Callout>
+
+<Callout type="warn">
+  别把守护进程控制面的 `GET /health` 重写或代理成 `/healthz`。两者是不同监听器上的不同端点：控制面
+  `/health` 在 loopback API 上，`/healthz` 在移动端 LAN
+  监听器上。用前者冒充后者，探针就会在移动端链路实际不通时报成功。
+</Callout>
+
 ## 状态与备份
 
 保住身份、空间成员、手机凭据所需的一切都在 `HOME=/data` 的 `uniclip-state`
@@ -265,6 +294,10 @@ docker compose ps                                # app 应为 "healthy"
 
 # TLS + 网关可达；401 = 监听在、需鉴权（不带凭据时就是这样）：
 curl -i https://clip.example.com/SyncClipboard.json
+
+# 移动端恢复探针；应为 204，且带 Cache-Control: no-store、无 body。
+# 若返回 404，说明代理没把 /healthz 转到网关，手机会退回低频兼容探测：
+curl -i https://clip.example.com/healthz
 
 # 明文网关端口没有暴露到宿主（应被拒绝）：
 curl -i http://clip.example.com:42720/SyncClipboard.json

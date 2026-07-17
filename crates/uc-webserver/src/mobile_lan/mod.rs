@@ -20,6 +20,8 @@ mod server;
 mod sse_registry;
 
 #[cfg(test)]
+mod healthz_load;
+#[cfg(test)]
 mod test_support;
 
 pub use server::{start_mobile_lan_server, MobileLanServerHandle};

@@ -15,11 +15,12 @@
 //! | `POST /api/history/query`, `GET /api/history/statistics` | 兼容壳,只暴露当前最新一条或空结果,不是完整历史分页 / 统计 |
 //! | `PATCH /api/history/{type}/{hash}`, `DELETE /api/history/clear`, `DELETE /file` | 兼容壳,接住客户端请求,暂不持久化标星 / 置顶 / 删除状态,也不执行真实清空 |
 //! | `GET /api/mobile-sync/content-availability` | **不属于 SyncClipboard 协议**,只给本项目自己的移动客户端用:按 `snapshotHash`(`blake3v1:<hex>`)做可靠的存在性 + 可用性探测,不受 `/api/history/*` 的 hash 漂移容忍影响 |
+//! | `GET /healthz` | **不属于 SyncClipboard 协议**,也是唯一的公开路由:掉线的移动客户端用它常数成本地探测 listener 是否恢复。第三方 / 旧版 SyncClipboard 服务端没有这个端点,客户端据 404 判定"不支持"并退回低频兼容探测 —— 所以它是加法契约,不改变现有 wire schema |
 //!
 //! 这份表是协议承诺边界:修复 Android 客户端上传前的 404 不等于已经实现
-//! SyncClipboard 官方服务端的完整历史系统。`content-availability` 路由是本
-//! 项目自有能力的扩展点,不是这份协议边界的一部分,未来演进不受"不能破坏
-//! SyncClipboard 兼容性"的约束。
+//! SyncClipboard 官方服务端的完整历史系统。`content-availability` 与
+//! `healthz` 路由是本项目自有能力的扩展点,不是这份协议边界的一部分,未来
+//! 演进不受"不能破坏 SyncClipboard 兼容性"的约束。
 
 use std::sync::Arc;
 
@@ -41,6 +42,7 @@ mod common;
 mod compat;
 mod content_availability;
 mod file;
+mod health;
 mod history;
 mod sse;
 mod sync_doc;
@@ -85,8 +87,28 @@ impl FromRef<MobileLanState> for Option<Arc<FileTransferFacade>> {
 
 /// 构造根路径 SyncClipboard 协议路由。daemon listener 把它挂到 axum app 根。
 ///
-/// 所有路由都接 Basic Auth middleware, 未登记 / 未带头 / 凭据错的请求拿
-/// 401 + `WWW-Authenticate: Basic` 头。
+/// Router 分两层,merge 后交给 listener:
+///
+/// ```text
+/// public router
+/// └── GET /healthz          ← 无鉴权、常数成本的 liveness
+///
+/// protected router
+/// ├── /SyncClipboard.json
+/// ├── /file/*
+/// ├── /api/history/*
+/// ├── /api/sse/clipboard
+/// └── Basic Auth middleware
+/// ```
+///
+/// 这个分层就是"哪些路由公开"的权威来源。`/healthz` 的公开性由它挂在
+/// public router 这一事实表达,**不是**靠在 Basic Auth middleware 里加路径
+/// 特判 —— 后者会让公开/受保护的边界散落进中间件的控制流,既读不出来也
+/// 挡不住回归。public router 的 state 只有 `CancellationToken`,连 facade
+/// 都不在作用域内,健康探针的常数成本因此由类型系统保证。
+///
+/// protected 路由都接 Basic Auth middleware, 未登记 / 未带头 / 凭据错的
+/// 请求拿 401 + `WWW-Authenticate: Basic` 头。
 ///
 /// `file_transfer` 是可选的:daemon 入口装配时透传 `app_facade.file_transfer`,
 /// PUT /file handler 用它在收 body 的过程中发 lifecycle 事件
@@ -94,6 +116,31 @@ impl FromRef<MobileLanState> for Option<Arc<FileTransferFacade>> {
 /// handler 自动降级为静默(buffered 仍然写 IncomingMobileBuffer,但
 /// `file_transfer` 表里不会有这条 transfer 的 lifecycle 行)。
 pub(crate) fn build_router(
+    facade: Arc<MobileSyncFacade>,
+    file_transfer: Option<Arc<FileTransferFacade>>,
+    sse_source: broadcast::Sender<ActiveClipboardState>,
+    cancel: CancellationToken,
+) -> Router {
+    build_public_router(cancel.clone()).merge(build_protected_router(
+        facade,
+        file_transfer,
+        sse_source,
+        cancel,
+    ))
+}
+
+/// 公开路由:不经过 Basic Auth,不接触任何业务 port。
+///
+/// state 刻意只放 `CancellationToken` —— listener 为 `with_graceful_shutdown`
+/// 本来就持有它,`/healthz` 用它区分"服务中"与"正在 drain",不新增任何状态。
+fn build_public_router(cancel: CancellationToken) -> Router {
+    Router::new()
+        .route("/healthz", get(health::get_healthz))
+        .with_state(cancel)
+}
+
+/// 受保护路由:SyncClipboard 协议面 + 本项目自有扩展,全部经 Basic Auth。
+fn build_protected_router(
     facade: Arc<MobileSyncFacade>,
     file_transfer: Option<Arc<FileTransferFacade>>,
     sse_source: broadcast::Sender<ActiveClipboardState>,

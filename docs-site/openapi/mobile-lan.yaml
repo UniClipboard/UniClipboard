@@ -8,10 +8,16 @@ info:
     LAN so a paired mobile client (iOS Shortcuts, Android, or any SyncClipboard
     client) can read and push clipboard items.
 
-    All requests require **HTTP Basic Authentication**. Credentials are minted on the
-    desktop side when the user pairs a mobile device. Username and password are
-    bound to a single registered device. Unauthenticated or wrong-credential
-    requests get `401 Unauthorized` with `WWW-Authenticate: Basic`.
+    Every endpoint requires **HTTP Basic Authentication** except `GET /healthz`.
+    Credentials are minted on the desktop side when the user pairs a mobile device.
+    Username and password are bound to a single registered device. Unauthenticated
+    or wrong-credential requests get `401 Unauthorized` with
+    `WWW-Authenticate: Basic`.
+
+    `GET /healthz` is public by design: it is a constant-cost liveness probe for
+    offline clients, and authenticating it would mean running an Argon2id
+    verification per probe. It returns no identifying information — see its
+    description below.
 
     The wire format follows the SyncClipboard project's JSON schema. Field casing
     is fixed by that protocol; the desktop also accepts PascalCase aliases on
@@ -38,6 +44,8 @@ servers:
 tags:
   - name: Probe
     description: Lightweight compatibility probes used by SyncClipboard clients.
+  - name: Health
+    description: UniClipboard-private liveness probe for offline clients (not part of the SyncClipboard protocol).
   - name: Clipboard
     description: Clipboard metadata read/write (SyncClipboard JSON document).
   - name: Push
@@ -51,6 +59,69 @@ tags:
 security:
   - basicAuth: []
 paths:
+  /healthz:
+    get:
+      tags: [Health]
+      operationId: getHealthz
+      security: []
+      summary: Liveness probe for the mobile LAN listener
+      description: |
+        UniClipboard-private extension (not part of the SyncClipboard protocol):
+        a constant-cost liveness check for clients that have gone offline and
+        need to discover when the listener is reachable again.
+
+        **Public — no authentication.** An `Authorization` header, if sent, is
+        ignored: no device lookup and no password verification happen. This is
+        deliberate. The endpoint performs no database, clipboard, blob, crypto,
+        or hashing work, so a probe costs a constant amount regardless of who
+        sends it. Requiring Basic Auth would instead spend a memory-hard
+        Argon2id verification (m=64MB, t=3, p=4) on every probe — the abuse
+        vector rather than a defense against it.
+
+        The response reveals only that a listener answers at this address —
+        something a TCP connect already reveals. It carries no version, device
+        identity, Space id, username, hostname, or clipboard information, and
+        it does not update the device's `last_seen` or any analytics state.
+
+        A `204` means the listener is live and accepting SyncClipboard requests.
+        It does **not** mean credentials are valid, the daemon is unlocked, or
+        the next sync will succeed — a successful probe should trigger one real
+        sync, which remains the authority on sync state.
+
+        Third-party and older SyncClipboard servers do not implement this path
+        and return `404`; clients should treat that as "no health capability"
+        and fall back to a lower-frequency probe against the regular endpoints.
+
+        Deployment note: a reverse proxy must forward this to the same upstream
+        as `/SyncClipboard.json` and must not cache it (the server sends
+        `Cache-Control: no-store`). The daemon control API's `GET /health` is a
+        different endpoint on a different listener and must not stand in for it.
+      responses:
+        '204':
+          description: |
+            The listener is live. Empty body, no identifying information.
+          headers:
+            Cache-Control:
+              description: Always `no-store` — a cached probe would report a dead daemon as alive.
+              schema:
+                type: string
+                const: no-store
+        '503':
+          description: |
+            The listener is draining: cancellation has been signalled but the
+            socket has not finished shutting down. Empty body.
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                const: no-store
+            Retry-After:
+              description: Seconds to wait before probing again.
+              schema:
+                type: string
+                const: '1'
+        '405':
+          description: Returned for any method other than GET (and HEAD, which the framework answers body-free).
   /:
     get:
       tags: [Probe]

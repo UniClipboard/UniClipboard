@@ -10,13 +10,21 @@ description: 桌面守护进程对外暴露的、SyncClipboard 兼容的 HTTP �
 所有接口都挂在 **根路径**。主要 SyncClipboard 路径是
 `/SyncClipboard.json` 和 `/file/{dataName}`；兼容 Android 客户端时还会用到
 `/api/history/*`、`/api/time`、`/api/version`、`/version`、`/` 和 `/file`。
-此外还有一个 UniClipboard **私有扩展** `GET /api/sse/clipboard`（Server-Sent
-Events）：桌面剪贴板更新时向订阅的客户端推送信号，客户端收到后再走
-`GET /SyncClipboard.json` 拉取，替代周期轮询；该接口不属于 SyncClipboard
-协议，第三方客户端可以忽略。
+此外还有两个 UniClipboard **私有扩展**，都不属于 SyncClipboard 协议，第三方
+客户端可以忽略：
 
-每个接口都会通过 **HTTP Basic 认证** 校验。用户名 / 密码由桌面端在配对流程中
-签发，且与一台已登记的移动设备一一绑定。
+- `GET /api/sse/clipboard`（Server-Sent Events）：桌面剪贴板更新时向订阅的
+  客户端推送信号，客户端收到后再走 `GET /SyncClipboard.json` 拉取，替代周期
+  轮询。
+- `GET /healthz`：常数成本的存活探测，供掉线的客户端快速发现监听器何时恢复。
+
+除 `GET /healthz` 外，每个接口都会通过 **HTTP Basic 认证** 校验。用户名 /
+密码由桌面端在配对流程中签发，且与一台已登记的移动设备一一绑定。
+
+`GET /healthz` 公开且无需鉴权，这是有意设计：它只回一个空的 `204`，不含版本、
+设备、用户名或剪贴板信息 —— 只暴露「这个地址上有个监听器在应答」，而这一点
+TCP 连接本身就已经暴露了。反过来，让每次探测都跑一遍 Argon2id 密码校验才是
+真正的滥用面。
 
 <Callout type="info">
   本接口属于 **移动端伴侣** 路径，独立于桌面 ↔ 桌面同步所走的 iroh P2P 传输，运行在明文 HTTP
@@ -43,6 +51,7 @@ SyncClipboard 服务端子集，不是完整的 SyncClipboard 历史服务端。
 | `PATCH /api/history/{type}/{hash}`、`DELETE /api/history/clear`、`DELETE /file` | 仅用于兼容客户端流程。服务端会接收请求，但不会通过这些接口持久化标星、置顶、删除、清空或文件夹删除状态。 |
 | `GET /api/time`、`GET /api/version`、`GET /version`、`/`                        | 客户端用于确认服务在线的探测接口。                                                                       |
 | `GET /api/sse/clipboard`                                                        | UniClipboard 私有推送扩展（SSE），只送变更信号不送内容；不属于 SyncClipboard 协议。                      |
+| `GET /healthz`                                                                  | UniClipboard 私有存活探测，公开且常数成本；不属于 SyncClipboard 协议，旧服务端返回 `404`。               |
 
 ## 上传行为
 
@@ -62,6 +71,7 @@ BMP、TIFF、HEIC 和 HEIF 上传继续保持为图片，而不是被误报成�
 <APIPage
   document="./openapi/mobile-lan.yaml"
   operations={[
+    { path: '/healthz', method: 'get' },
     { path: '/', method: 'get' },
     { path: '/api/time', method: 'get' },
     { path: '/api/version', method: 'get' },

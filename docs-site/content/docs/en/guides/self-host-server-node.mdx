@@ -248,6 +248,41 @@ enough.
   `443` through your proxy.
 </Callout>
 
+### Forwarding requirements for `/healthz`
+
+Mobile clients that have gone offline poll `GET /healthz` to discover when
+the service is reachable again. It must reverse-proxy to the **same**
+upstream as `/SyncClipboard.json` — the probe exists to prove that path is
+live, so routing it elsewhere makes the phone believe the service recovered
+right before the real sync fails.
+
+The default block that forwards everything to `http://127.0.0.1:42720`
+already satisfies this. Only two situations need attention:
+
+- **You enabled response caching on the proxy**: exclude `/healthz`. The
+  server sends `Cache-Control: no-store`, so a proxy that honours upstream
+  cache headers skips it automatically. But a `proxy_cache` configuration
+  that ignores those headers will cache a `204` and keep reporting a dead
+  daemon as alive — exactly the failure this endpoint exists to detect.
+- **You want rate limiting**: `/healthz` is public (no Basic Auth, see
+  below), and a generic edge rate limit is fine. Its handler is constant
+  cost, so this is optional hardening rather than a requirement.
+
+<Callout type="info">
+  `/healthz` needs no authentication, by design. It returns an empty `204` with no version, device,
+  username, or clipboard information — it reveals only that a listener answers at this address,
+  which a TCP connect already reveals. The real abuse surface would be the opposite: making every
+  probe run a full Argon2id verification (what `/SyncClipboard.json` costs per request — roughly
+  64MB of memory and tens of milliseconds of CPU).
+</Callout>
+
+<Callout type="warn">
+  Don't rewrite or proxy the daemon control API's `GET /health` to `/healthz`. They are different
+  endpoints on different listeners: control `/health` is on the loopback API, `/healthz` is on the
+  mobile LAN listener. Passing one off as the other makes the probe report success while the mobile
+  path is actually unreachable.
+</Callout>
+
 ## State and backups
 
 Everything needed to keep identity, Space membership, and mobile
@@ -297,6 +332,11 @@ docker compose ps                                # app should be "healthy"
 
 # TLS + gateway reachable; 401 = listener up, auth required (expected without creds):
 curl -i https://clip.example.com/SyncClipboard.json
+
+# Mobile recovery probe; expect 204 with Cache-Control: no-store and no body.
+# A 404 means the proxy isn't forwarding /healthz to the gateway, and phones
+# will fall back to the slower compatibility probe:
+curl -i https://clip.example.com/healthz
 
 # The plaintext gateway port is NOT exposed on the host (should refuse):
 curl -i http://clip.example.com:42720/SyncClipboard.json

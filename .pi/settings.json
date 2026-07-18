@@ -1,0 +1,4 @@
+{
+  "skills": ["../.claude/skills"],
+  "prompts": ["../.claude/commands"]
+}

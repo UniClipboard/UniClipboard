@@ -45,7 +45,7 @@ uc-mobile-proto = { path = "../uc-mobile-proto" }
 # content-availability endpoint. Zero-dependency leaf crate — safe for the
 # mobile dependency graph (no cmake/native crypto lib).
 uc-content-hash = { path = "../uc-content-hash" }
-uniffi = "=0.31.1"
+uniffi = "=0.32.0"
 thiserror = "2.0.17"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -70,7 +70,7 @@ url = "2"
 chrono = { version = "0.4", default-features = false, features = ["std"] }
 
 [dev-dependencies]
-axum = { version = "0.7", features = ["tokio", "http1", "json"] }
+axum = { version = "0.8", features = ["tokio", "http1", "json"] }
 base64 = "0.22"
 tokio = { version = "1", features = ["rt", "macros", "net", "time", "sync", "io-util"] }
 

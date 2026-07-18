@@ -30,6 +30,7 @@ interface SetupScreenProps {
   startJoinSpace: SetupFlow['startJoinSpace']
   startImportConfig: SetupFlow['startImportConfig']
   initializeSpace: SetupFlow['initializeSpace']
+  issueInvitation: SetupFlow['issueInvitation']
   cancelInvitation: SetupFlow['cancelInvitation']
   redeemInvitation: SetupFlow['redeemInvitation']
   onDone: () => void
@@ -43,6 +44,7 @@ const SetupScreen: React.FC<SetupScreenProps> = ({
   startJoinSpace,
   startImportConfig,
   initializeSpace,
+  issueInvitation,
   cancelInvitation,
   redeemInvitation,
   onDone,
@@ -85,7 +87,15 @@ const SetupScreen: React.FC<SetupScreenProps> = ({
         <RedeemInvitationScreen onSubmit={redeemInvitation} onBack={goEntry} loading={loading} />
       )
     case 'pairing_complete':
-      return <PairingCompleteScreen role={screen.role} redeem={screen.redeem} onDone={onDone} />
+      return (
+        <PairingCompleteScreen
+          role={screen.role}
+          redeem={screen.redeem}
+          onInvite={issueInvitation}
+          onDone={onDone}
+          loading={loading}
+        />
+      )
   }
 }
 
@@ -100,6 +110,7 @@ export default function SetupPage({ onCompleteSetup }: SetupPageProps = {}) {
     startJoinSpace,
     startImportConfig,
     initializeSpace,
+    issueInvitation,
     cancelInvitation,
     redeemInvitation,
     finishPairing,
@@ -138,6 +149,7 @@ export default function SetupPage({ onCompleteSetup }: SetupPageProps = {}) {
                   startJoinSpace={startJoinSpace}
                   startImportConfig={startImportConfig}
                   initializeSpace={initializeSpace}
+                  issueInvitation={issueInvitation}
                   cancelInvitation={cancelInvitation}
                   redeemInvitation={redeemInvitation}
                   onDone={handleDone}

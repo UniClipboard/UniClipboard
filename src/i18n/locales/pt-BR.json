@@ -851,7 +851,7 @@
       "convertedItems": "Itens de exibição convertidos:",
       "noItemsFound": "Nenhum item encontrado",
       "noClipboardItems": "Nenhum item na área de transferência",
-      "emptyDescription": "Quando você copiar algum conteúdo, ele aparecerá aqui.",
+      "emptyDescription": "Conecte outro dispositivo e copie algo para começar a sincronizar.",
       "emptyHint": "Experimente copiar um texto ou uma imagem!",
       "logs": {
         "copyItem": "ID do item a copiar:",
@@ -1782,23 +1782,23 @@
     },
     "welcome": {
       "title": "Vamos começar",
-      "subtitle": "Escolha como configurar este dispositivo.",
+      "subtitle": "Primeiro, diga como este dispositivo será usado.",
       "create": {
-        "title": "Criar um novo Espaço seguro",
-        "description": "Gere as chaves de criptografia e proteja os dados da sua área de transferência com sua própria frase secreta.",
+        "title": "Este é meu primeiro dispositivo",
+        "description": "Crie um Espaço criptografado e conecte outro dispositivo para começar a sincronizar.",
         "cta": "Criar novo Espaço"
       },
       "join": {
-        "title": "Entrar em um Espaço existente",
-        "description": "Pareie com outro dispositivo e reutilize a frase secreta para acessar o Espaço compartilhado.",
+        "title": "Já uso o UniClipboard em outro dispositivo",
+        "description": "Obtenha nele um código de convite e conecte este dispositivo.",
         "cta": "Entrar via pareamento"
       },
       "import": {
-        "divider": "Já configurou em outro dispositivo?",
-        "title": "Importar de um backup",
-        "description": "Traga seu Espaço para cá a partir de um arquivo de configuração exportado."
+        "divider": "Migrar ou recuperar",
+        "title": "Migrar o backup de um dispositivo",
+        "description": "Este dispositivo assume a identidade do backup; o dispositivo original deve ficar offline."
       },
-      "footer": "Depois você pode trocar de Espaço ou convidar mais dispositivos em Configurações."
+      "footer": "Não é preciso ter uma conta. O conteúdo fica apenas nos seus dispositivos."
     },
     "importConfig": {
       "title": "Importar configuração",
@@ -1903,14 +1903,18 @@
     "pairingComplete": {
       "title": "Tudo pronto",
       "sponsor": {
-        "subtitle": "Seu Espaço está pronto. Você pode convidar mais dispositivos depois, pela lista de dispositivos."
+        "subtitle": "Seu Espaço está pronto. Conecte outro dispositivo agora para começar a sincronizar.",
+        "issueFailed": "Não foi possível criar um convite. Tente novamente."
       },
       "joiner": {
         "subtitle": "Agora você faz parte deste Espaço criptografado.",
         "connectedTo": "Conectado a"
       },
       "actions": {
-        "done": "Continuar"
+        "done": "Continuar",
+        "invite": "Conectar um dispositivo",
+        "inviting": "Criando convite...",
+        "later": "Fazer isso depois"
       }
     }
   }

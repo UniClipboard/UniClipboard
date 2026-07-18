@@ -218,6 +218,48 @@ fn png_to_dibv5(png_bytes: &[u8]) -> Result<Vec<u8>> {
     Ok(out)
 }
 
+/// Source byte size threshold that determines which encode strategy to use for
+/// an image/png rep in the pre-encode phase.
+///
+/// Reps whose raw PNG source bytes are **at most** this size are pre-encoded
+/// (PNG → RGBA → DIBV5) *outside* the `OpenClipboard` session (small-rep path).
+///
+/// Reps whose source exceeds this size use the large-rep path: only the raw
+/// PNG bytes are loaded before the session; DIBV5 encoding is deferred to
+/// *inside* the session, one rep at a time, so the transient DIBV5 buffer
+/// (≈ pixel_w × pixel_h × 4 bytes) is freed before the next rep begins.
+/// This bounds peak DIBV5 memory to one large-rep budget regardless of how
+/// many large reps the snapshot contains.
+///
+/// Threshold rationale: 4 MB of PNG source typically expands to ≤ 16 MB of
+/// DIBV5 (4 MP image at 32 bpp), which is tolerable as a simultaneous
+/// per-rep peak for the pre-encode batch. A 20 MB PNG (9-rep inbound sync
+/// scenario that triggered the OOM report) decodes to ~80 MB DIBV5 per rep;
+/// pre-encoding all 9 simultaneously would peak at ~900 MB.
+const LARGE_PNG_BYTES: usize = 4 * 1024 * 1024; // 4 MB
+
+/// Encoding strategy selected for each image/png rep during the pre-encode phase.
+///
+/// See `write_snapshot_multi_windows` for the threshold logic and the
+/// memory / lock-hold-time tradeoff it encodes.
+enum PngEncodeSlot {
+    /// Both PNG bytes and CF_DIBV5 bytes were pre-encoded *outside* the
+    /// `OpenClipboard` session. Used for reps ≤ `LARGE_PNG_BYTES`.
+    /// Minimises clipboard lock hold time; peak memory grows with the number
+    /// of small reps (acceptable when they are small by definition).
+    Small {
+        png_bytes: Vec<u8>,
+        /// `None` when DIBV5 transcoding failed; only the "PNG" custom format
+        /// will be written in that case.
+        dib_bytes: Option<Vec<u8>>,
+    },
+    /// Raw PNG bytes loaded *outside* the lock (to avoid IO inside the session).
+    /// DIBV5 encoding is deferred to inside the `OpenClipboard` session, one
+    /// rep at a time: the DIBV5 buffer is allocated, written to the clipboard,
+    /// and dropped before the next rep begins. Used for reps > `LARGE_PNG_BYTES`.
+    Large { png_bytes: Vec<u8> },
+}
+
 /// 单次写入尝试的最大次数。
 ///
 /// `ERROR_CLIPBOARD_NOT_OPEN (1418)` 在大多数情况下是瞬态的（消息泵、GDI 竞争
@@ -352,15 +394,41 @@ pub(crate) fn write_snapshot_multi_windows(snapshot: SystemClipboardSnapshot) ->
         );
     }
 
-    // 预编码阶段 —— 在 OpenClipboard 会话**之外**完成两件事:
-    //   1) 把 image/png rep 的字节物化成 owned `Vec<u8>`（Inline 直接 to_vec, LocalFile
-    //      同步读盘）。在 OpenClipboard 会话内读盘会拉长持锁时间、增加 1418 风险,因此
-    //      所有 IO 都在会话外完成。
-    //   2) 把这份字节继续转码为 CF_DIBV5。失败时 `dib=None`,只写 "PNG" 自定义 format。
+    // Pre-encode phase — run OUTSIDE the OpenClipboard session.
     //
-    // 与 `rep` 一一对应；外层 `None` 表示该 rep 不走 image/png 路径（非 image/png 或读
-    // LocalFile 失败）。LocalFile 读盘失败会在这里 warn 并 None,主循环看到 None 时跳过。
-    let png_preencoded: Vec<Option<(Vec<u8>, Option<Vec<u8>>)>> = snapshot
+    // Two competing concerns must be balanced:
+    //
+    //  • Lock hold time: any significant work (image decode, DIBV5 encode,
+    //    disk IO) done *inside* the clipboard session extends the time other
+    //    Windows processes are blocked from reading the clipboard. Long holds
+    //    increase ERROR_CLIPBOARD_NOT_OPEN (1418) risk from racing processes
+    //    (AV scanners, IME hooks, clipboard managers, RDP clip proxy).
+    //
+    //  • Peak memory: pre-encoding *all* reps simultaneously keeps every
+    //    DIBV5 buffer alive until the session ends. With 9 large image reps
+    //    (e.g. TIFF/DIBV5/PNG received from macOS), a 20 MB source PNG
+    //    decodes to ~80 MB DIBV5 (pixel_w × pixel_h × 4). Pre-encoding all 9
+    //    simultaneously peaks at ~900 MB and causes OOM crashes on constrained
+    //    Windows machines.
+    //
+    // Resolution — threshold = LARGE_PNG_BYTES (4 MB per source rep):
+    //
+    //  • Small reps (≤ 4 MB source): pre-encode both PNG bytes and DIBV5
+    //    outside the lock. IO and CPU happen before the session; during the
+    //    session only cheap SetClipboardData calls run.
+    //
+    //  • Large reps (> 4 MB source): load only the raw PNG bytes outside the
+    //    lock (avoids IO inside the session). DIBV5 encoding is deferred to
+    //    inside the OpenClipboard session, processed one rep at a time.
+    //    The DIBV5 buffer is allocated, written, and dropped before the next
+    //    rep is processed, so peak DIBV5 memory stays at one large-rep budget
+    //    regardless of N. The clipboard is held longer per large rep, but the
+    //    incremental hold (encode + one SetClipboardData) is bounded and far
+    //    shorter than the multi-rep simultaneous hold of the old strategy.
+    //
+    // One entry per rep in `snapshot.representations`; `None` means the rep
+    // is not an image/png or its bytes could not be loaded (already warned).
+    let png_preencoded: Vec<Option<PngEncodeSlot>> = snapshot
         .representations
         .iter()
         .map(|rep| {
@@ -377,23 +445,39 @@ pub(crate) fn write_snapshot_multi_windows(snapshot: SystemClipboardSnapshot) ->
                         error = %err,
                         format_id = %rep.format_id,
                         size_bytes = rep.size_bytes(),
-                        "Windows 多 rep 写入：读取 LocalFile image/png rep 字节失败，跳过该 rep"
+                        "Windows multi-rep write: failed to read LocalFile image/png rep bytes; skipping rep"
                     );
                     return None;
                 }
             };
-            let dib = match png_to_dibv5(&bytes) {
-                Ok(dib) => Some(dib),
-                Err(e) => {
-                    warn!(
-                        error = %e,
-                        png_bytes = bytes.len(),
-                        "PNG→CF_DIBV5 转码失败；仅写 \"PNG\" 自定义 format"
-                    );
-                    None
-                }
-            };
-            Some((bytes, dib))
+            if bytes.len() > LARGE_PNG_BYTES {
+                // Large rep: defer DIBV5 encoding to inside the clipboard
+                // session. Only the PNG source bytes are kept here; the DIBV5
+                // buffer will be created, written, and freed one rep at a time
+                // during the write loop, keeping peak DIBV5 memory bounded.
+                debug!(
+                    format_id = %rep.format_id,
+                    png_bytes = bytes.len(),
+                    threshold_bytes = LARGE_PNG_BYTES,
+                    "Large image/png rep: deferring DIBV5 encode to inside clipboard session"
+                );
+                Some(PngEncodeSlot::Large { png_bytes: bytes })
+            } else {
+                // Small rep: pre-encode DIBV5 now, outside the clipboard
+                // session, to keep lock hold time minimal.
+                let dib = match png_to_dibv5(&bytes) {
+                    Ok(dib) => Some(dib),
+                    Err(e) => {
+                        warn!(
+                            error = %e,
+                            png_bytes = bytes.len(),
+                            "PNG->CF_DIBV5 transcode failed; will write \"PNG\" custom format only"
+                        );
+                        None
+                    }
+                };
+                Some(PngEncodeSlot::Small { png_bytes: bytes, dib_bytes: dib })
+            }
         })
         .collect();
 
@@ -484,7 +568,7 @@ pub(crate) fn write_snapshot_multi_windows(snapshot: SystemClipboardSnapshot) ->
 /// 返回 None），不包含"整体尝试失败"的情况。
 fn attempt_multi_write_inner(
     snapshot: &SystemClipboardSnapshot,
-    png_preencoded: &[Option<(Vec<u8>, Option<Vec<u8>>)>],
+    png_preencoded: &[Option<PngEncodeSlot>],
 ) -> Result<Vec<String>> {
     use clipboard_win::formats::{Html as HtmlFmt, CF_DIBV5};
     use clipboard_win::options::NoClear;
@@ -611,51 +695,84 @@ fn attempt_multi_write_inner(
                 wrote_any = true;
             }
             Some(MimeClass::Image(ImageKind::Png)) => {
-                // 双写策略：CF_DIBV5（标准格式，Windows 自动合成 CF_BITMAP/CF_DIB 给老应用）
-                // + 自定义 "PNG" format（现代应用直读 PNG 字节，保留 PNG 压缩率与 alpha 元数据）。
+                // Dual-write strategy: CF_DIBV5 (Windows-standard; auto-synthesises
+                // CF_BITMAP/CF_DIB for legacy apps) + custom "PNG" format (modern
+                // apps prefer this to preserve compression and alpha metadata).
                 //
-                // 兼容矩阵：
-                //   - CF_DIBV5 ← 画图、Office、写字板、剪贴板历史（Win+V）、第三方剪贴板工具
-                //     （合成路径覆盖所有认 CF_BITMAP / CF_DIB 的应用）
-                //   - "PNG"    ← Chrome、Firefox、Paint.NET、新版 Office、Google Docs
+                // Compatibility matrix:
+                //   CF_DIBV5 ← Paint, Office, WordPad, clipboard history (Win+V),
+                //               third-party clipboard managers (synthesis covers
+                //               all CF_BITMAP / CF_DIB consumers)
+                //   "PNG"    ← Chrome, Firefox, Paint.NET, modern Office, Google Docs
                 //
-                // PNG owned 字节 + CF_DIBV5 字节都已在 OpenClipboard 会话外完成预编码
-                // （见 `png_preencoded` 构造），这里只做纯系统调用；任一 set_* 失败都 `?`
-                // 抛到外层由重试机制兜底。
-                //
-                // 外层 None 表示该 rep 在预编码阶段读 LocalFile 失败（已 warn）,直接跳过。
-                let Some((png_bytes, dib_opt)) = png_preencoded.get(idx).and_then(|o| o.as_ref())
-                else {
+                // `None` in the pre-encode slot means the rep's bytes could not be
+                // loaded in the pre-encode phase (already warned); skip it here.
+                let Some(slot) = png_preencoded.get(idx).and_then(|o| o.as_ref()) else {
                     skipped.push(rep.format_id.as_str().to_string());
                     continue;
                 };
+
+                // For Large reps, DIBV5 encoding runs here, inside the clipboard
+                // session, to limit peak memory. The buffer is allocated below,
+                // written to the clipboard, and dropped at the end of this arm —
+                // before the next rep is processed.
+                //
+                // For Small reps, DIBV5 was pre-encoded outside the session; we
+                // just borrow its bytes here.
+                let large_dib: Option<Vec<u8>> = if let PngEncodeSlot::Large { png_bytes } = slot {
+                    match png_to_dibv5(png_bytes) {
+                        Ok(d) => Some(d),
+                        Err(e) => {
+                            warn!(
+                                error = %e,
+                                png_bytes = png_bytes.len(),
+                                "Large rep: inline DIBV5 encode failed inside clipboard \
+                                 session; writing PNG-only format"
+                            );
+                            None
+                        }
+                    }
+                } else {
+                    None
+                };
+
+                let (png_bytes_ref, dib_opt): (&[u8], Option<&[u8]>) = match slot {
+                    PngEncodeSlot::Small {
+                        png_bytes,
+                        dib_bytes,
+                    } => (png_bytes.as_slice(), dib_bytes.as_deref()),
+                    PngEncodeSlot::Large { png_bytes } => {
+                        (png_bytes.as_slice(), large_dib.as_deref())
+                    }
+                };
+
                 let mut wrote_dib = false;
                 let mut wrote_png = false;
 
-                if let Some(dib_bytes) = dib_opt.as_ref() {
+                if let Some(dib_bytes) = dib_opt {
                     cb_raw::set_without_clear(CF_DIBV5, dib_bytes)
                         .map_err(|e| anyhow::anyhow!("set CF_DIBV5 failed: {}", e))?;
                     debug!(
                         dib_bytes = dib_bytes.len(),
-                        png_bytes = png_bytes.len(),
-                        "写入 CF_DIBV5 成功"
+                        png_bytes = png_bytes_ref.len(),
+                        "wrote CF_DIBV5"
                     );
                     wrote_dib = true;
                 }
 
                 match cb_raw::register_format("PNG") {
                     Some(png_fmt) => {
-                        cb_raw::set_without_clear(png_fmt.get(), png_bytes).map_err(|e| {
+                        cb_raw::set_without_clear(png_fmt.get(), png_bytes_ref).map_err(|e| {
                             anyhow::anyhow!("set \"PNG\" custom format failed: {}", e)
                         })?;
                         debug!(
-                            png_bytes = png_bytes.len(),
-                            "写入 \"PNG\" 自定义 format 成功"
+                            png_bytes = png_bytes_ref.len(),
+                            "wrote \"PNG\" custom format"
                         );
                         wrote_png = true;
                     }
                     None => {
-                        warn!("register_format(\"PNG\") 返回 None；跳过 \"PNG\" 路径");
+                        warn!("register_format(\"PNG\") returned None; skipping \"PNG\" path");
                     }
                 }
 
@@ -664,6 +781,8 @@ fn attempt_multi_write_inner(
                 } else {
                     skipped.push(rep.format_id.as_str().to_string());
                 }
+                // `large_dib` (if any) is dropped here — the DIBV5 buffer for this
+                // large rep is freed before the loop advances to the next rep.
             }
             Some(MimeClass::UriList) => {
                 // CF_HDROP 写入路径：把 rep 里的 file:// URI 列表（接收端 materializer

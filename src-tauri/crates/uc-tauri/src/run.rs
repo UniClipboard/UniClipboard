@@ -440,6 +440,12 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
             let daemon_ownership_for_setup = daemon_ownership.clone();
             let daemon_launch_origin_for_setup = daemon_launch_origin.clone();
             let daemon_bootstrap_status_for_setup = daemon_bootstrap_status.clone();
+            // Cloned here (before the async move) so the bootstrap task can
+            // register the daemon monitor with the same registry once bootstrap
+            // succeeds. Using `runtime.task_registry()` avoids capturing `runtime`
+            // into the bootstrap async block (it is already moved into the large
+            // init task below).
+            let task_registry_for_monitor = runtime.task_registry().clone();
             tauri::async_runtime::spawn(async move {
                 match bootstrap_daemon_in_process(
                     &daemon_ownership_for_setup,
@@ -459,6 +465,25 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
                         // (P4-3 已落地:仅显式「彻底退出」停 daemon,关窗/轻量保留)。
                         // 自启=GUI (D10 2026-06-04 修订):登录起 GUI → 这里必拉起
                         // daemon,即"自启 GUI 等于后台同步就绪"的闭环。
+
+                        // Start the daemon liveness monitor now that we have confirmed
+                        // the daemon is healthy. Spawning AFTER bootstrap avoids false
+                        // positives during startup and prevents the monitor from acting
+                        // on a legitimately-refused daemon version (RefusedNewerDaemon).
+                        // The monitor probes every 5 s and restarts automatically after
+                        // 3 consecutive failures (~15 s of confirmed absence).
+                        let monitor_conn = daemon_connection_state_for_setup.clone();
+                        task_registry_for_monitor
+                            .spawn("daemon_monitor", move |token| async move {
+                                uc_desktop::daemon_monitor::run(
+                                    EXPECTED_PACKAGE_VERSION,
+                                    monitor_conn,
+                                    token,
+                                )
+                                .await;
+                            })
+                            .await;
+                        info!("daemon_monitor task registered with TaskRegistry");
                     }
                     Err(error) => {
                         // Display 只暴露 thiserror 外层 message，会把 anyhow source chain

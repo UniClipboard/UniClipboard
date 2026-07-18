@@ -704,22 +704,18 @@ export function RedeemInvitationScreen({
   )
 }
 
-// ── S5 — Pairing complete ──────────────────────────────────────────────────
+// ── Sponsor Space ready ────────────────────────────────────────────────────
 
-export function PairingCompleteScreen({
-  role,
-  redeem,
+export function SpaceReadyScreen({
   onInvite,
   onDone,
   loading = false,
 }: {
-  role: 'sponsor' | 'joiner'
-  redeem?: RedeemResponse
   onInvite: () => Promise<{ ok: true } | { ok: false; kind: IssueInvitationErrorKind; raw: string }>
   onDone: () => void
   loading?: boolean
 }) {
-  const { t } = useTranslation(undefined, { keyPrefix: 'setup.pairingComplete' })
+  const { t } = useTranslation(undefined, { keyPrefix: 'setup.spaceReady' })
   const [inviteError, setInviteError] = useState<string | null>(null)
 
   const handleInvite = async () => {
@@ -731,53 +727,138 @@ export function PairingCompleteScreen({
   return (
     <ScreenShell
       title={t('title')}
-      subtitle={role === 'sponsor' ? t('sponsor.subtitle') : t('joiner.subtitle')}
+      subtitle={t('subtitle')}
       error={inviteError}
       footer={
-        role === 'sponsor' ? (
-          <div className="flex w-full flex-col-reverse gap-3 sm:flex-row sm:justify-center">
-            <Button
-              data-testid="setup-complete-later"
-              variant="ghost"
-              onClick={onDone}
-              disabled={loading}
-            >
-              {t('actions.later')}
-            </Button>
-            <Button
-              data-testid="setup-complete-invite"
-              onClick={handleInvite}
-              disabled={loading}
-              className="min-w-40"
-            >
-              {loading ? (
-                <Loader2 className="mr-2 size-4 animate-spin" />
-              ) : (
-                <Monitor className="mr-2 size-4" />
-              )}
-              {loading ? t('actions.inviting') : t('actions.invite')}
-            </Button>
-          </div>
-        ) : (
-          <Button data-testid="setup-complete-done" onClick={onDone} className="min-w-32">
-            {t('actions.done')}
+        <div className="flex w-full flex-col-reverse gap-3 sm:flex-row sm:justify-center">
+          <Button
+            data-testid="setup-complete-later"
+            variant="ghost"
+            onClick={onDone}
+            disabled={loading}
+          >
+            {t('actions.later')}
           </Button>
-        )
+          <Button
+            data-testid="setup-complete-invite"
+            onClick={handleInvite}
+            disabled={loading}
+            className="min-w-40"
+          >
+            {loading ? (
+              <Loader2 className="mr-2 size-4 animate-spin" />
+            ) : (
+              <Monitor className="mr-2 size-4" />
+            )}
+            {loading ? t('actions.inviting') : t('actions.invite')}
+          </Button>
+        </div>
       }
       centered
     >
       <div className="mt-8 flex flex-col items-center gap-3 sm:mt-10">
         <CheckCircle2 className="size-12 text-emerald-500" />
-        {role === 'joiner' && redeem && (
-          <div className="mt-2 grid gap-1 text-center text-sm text-muted-foreground">
-            <div>
-              <span className="font-medium text-foreground">{t('joiner.connectedTo')}</span>{' '}
-              <span className="font-mono">{redeem.sponsorDeviceId}</span>
-            </div>
-            <div className="font-mono text-xs">{redeem.sponsorIdentityFingerprint}</div>
-          </div>
-        )}
       </div>
+    </ScreenShell>
+  )
+}
+
+// ── S5 — Pairing complete ──────────────────────────────────────────────────
+
+function shortDeviceId(deviceId?: string | null): string {
+  if (!deviceId) return '---'
+  if (deviceId.length <= 14) return deviceId
+  return `${deviceId.slice(0, 6)}...${deviceId.slice(-4)}`
+}
+
+export function PairingCompleteScreen({
+  localDeviceName,
+  peerDeviceId,
+  onDone,
+}: {
+  localDeviceName?: string | null
+  peerDeviceId?: string | null
+  onDone: () => void
+}) {
+  const { t } = useTranslation(undefined, { keyPrefix: 'setup.pairingComplete' })
+
+  return (
+    <ScreenShell
+      title={t('title')}
+      footer={
+        <Button data-testid="setup-complete-done" onClick={onDone} className="min-w-40">
+          {t('actions.done')}
+          <ArrowRight className="ml-2 size-4" />
+        </Button>
+      }
+      centered
+    >
+      <div className="mt-4 flex justify-center">
+        <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-3 py-1 text-xs font-medium text-emerald-600 dark:text-emerald-400">
+          <CheckCircle2 className="size-3.5" />
+          {t('connected')}
+        </span>
+      </div>
+
+      <div className="mx-auto mt-8 grid w-full min-w-0 max-w-md grid-cols-[minmax(0,1fr)_3rem_minmax(0,1fr)] items-start gap-2 sm:grid-cols-[minmax(0,1fr)_7rem_minmax(0,1fr)]">
+        <div className="flex min-w-0 flex-col items-center gap-2.5">
+          <div className="flex size-16 items-center justify-center rounded-2xl border border-emerald-500/40 bg-muted shadow-[0_0_0_3px_oklch(0.62_0.15_156_/_0.12)] sm:size-18">
+            <Monitor className="size-7" />
+          </div>
+          <div className="min-w-0 text-center">
+            <div className="break-words text-xs font-medium leading-tight sm:text-sm">
+              {localDeviceName || t('devices.thisDevice')}
+            </div>
+            <div className="mt-0.5 text-xs text-muted-foreground">{t('devices.local')}</div>
+          </div>
+        </div>
+
+        <div className="relative mt-3 flex h-10 items-center justify-center sm:mt-4">
+          <div className="absolute inset-x-0 border-t-2 border-dashed border-border" />
+          <div className="relative flex size-10 items-center justify-center rounded-full bg-emerald-600 text-white shadow-sm">
+            <ShieldCheck className="size-5" />
+          </div>
+        </div>
+
+        <div className="flex min-w-0 flex-col items-center gap-2.5">
+          <div className="flex size-16 items-center justify-center rounded-2xl border border-border bg-muted sm:size-18">
+            <Monitor className="size-7" />
+          </div>
+          <div className="min-w-0 text-center">
+            <div className="text-xs font-medium leading-tight sm:text-sm">{t('devices.peer')}</div>
+            <div className="mt-0.5 text-xs text-muted-foreground">{t('devices.joined')}</div>
+          </div>
+        </div>
+      </div>
+
+      <div className="mx-auto mt-8 flex w-full max-w-md items-center gap-3 rounded-lg border border-border bg-card p-3 text-left">
+        <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-muted">
+          <Monitor className="size-5" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2 text-sm font-medium">
+            <span className="size-2 rounded-full bg-emerald-500 shadow-[0_0_0_3px_oklch(0.72_0.16_158_/_0.12)]" />
+            {t('devices.peer')}
+          </div>
+          <div className="mt-0.5 truncate font-mono text-xs text-muted-foreground">
+            {shortDeviceId(peerDeviceId)}
+          </div>
+        </div>
+        <span className="shrink-0 rounded-full border border-border px-2 py-1 text-xs text-muted-foreground">
+          {t('devices.direct')}
+        </span>
+      </div>
+
+      <ul className="mx-auto mt-6 grid w-full max-w-md gap-3 text-left text-sm text-muted-foreground">
+        <li className="flex items-start gap-2.5">
+          <Shield className="mt-0.5 size-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+          <span>{t('points.encrypted')}</span>
+        </li>
+        <li className="flex items-start gap-2.5">
+          <Wifi className="mt-0.5 size-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+          <span>{t('points.sync')}</span>
+        </li>
+      </ul>
     </ScreenShell>
   )
 }

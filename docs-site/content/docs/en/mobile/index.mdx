@@ -28,21 +28,21 @@ The protocol, LAN API, and connect-URI internals are out of scope for this handb
 
 The two platforms share the same core sync capabilities, but each has its own set of platform-specific features.
 
-| Capability                                          | iOS | Android |
-| --------------------------------------------------- | :-: | :-----: |
-| Text / image / single-file sync                     | ✅  |   ✅    |
-| Clipboard history, filter by type                   | ✅  |   ✅    |
-| QR / deep-link onboarding, multi-server switching   | ✅  |   ✅    |
-| SSE real-time push                                  | ✅  |   ✅    |
-| Simplified Chinese / English, appearance mode       | ✅  |   ✅    |
-| Custom keyboard extension                           | ✅  |    —    |
-| Share extension + Sharing Suggestions               | ✅  |    —    |
-| "Paste from Other Apps" permission                  | ✅  |    —    |
+| Capability                                                       | iOS | Android |
+| ---------------------------------------------------------------- | :-: | :-----: |
+| Text / image / single-file sync                                  | ✅  |   ✅    |
+| Clipboard history, filter by type                                | ✅  |   ✅    |
+| QR / deep-link onboarding, multi-server switching                | ✅  |   ✅    |
+| SSE real-time push                                               | ✅  |   ✅    |
+| Simplified Chinese / English, appearance mode                    | ✅  |   ✅    |
+| Custom keyboard extension                                        | ✅  |    —    |
+| Share extension + Sharing Suggestions                            | ✅  |    —    |
+| "Paste from Other Apps" permission                               | ✅  |    —    |
 | Background clipboard read/write (polling / ADB events / Shizuku) |  —  |   ✅    |
-| Auto-forward SMS verification codes                 |  —  |   ✅    |
-| Home-screen pinned shortcuts + Quick Settings tile  |  —  |   ✅    |
-| Text-selection menu (Process Text)                  |  —  |   ✅    |
-| Hide from the recent tasks list                     |  —  |   ✅    |
+| Auto-forward SMS verification codes                              |  —  |   ✅    |
+| Home-screen pinned shortcuts + Quick Settings tile               |  —  |   ✅    |
+| Text-selection menu (Process Text)                               |  —  |   ✅    |
+| Hide from the recent tasks list                                  |  —  |   ✅    |
 
 In short: **iOS relies on system extensions** (keyboard, share sheet) to bring sync into other apps; **Android can do true background clipboard sync** (auto-upload on copy), but requires extra permissions. For the extension / background details on each side, see [iOS extensions](mobile/ios-extensions) and [Android access](mobile/android-access).
 

@@ -6,7 +6,7 @@ const completed: SetupFlow = { kind: 'completed', deviceName: 'host', completion
 const completedWithSummary: SetupFlow = {
   kind: 'completed',
   deviceName: 'host',
-  completion: { role: 'sponsor' },
+  completion: { kind: 'space_ready' },
 }
 const entry: SetupFlow = { kind: 'entry' }
 const loading: SetupFlow = { kind: 'loading' }

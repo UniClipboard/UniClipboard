@@ -25,7 +25,15 @@ const log = createLogger('setup-realtime-store')
  * inside `entry` mode, in-flight requests, transient errors) is held in
  * `useSetupFlow` page-local state, not here.
  */
-export type SetupCompletion = { role: 'sponsor' } | { role: 'joiner'; redeem: RedeemResponse }
+export type SetupCompletion =
+  | { kind: 'space_ready' }
+  | {
+      kind: 'pairing_succeeded'
+      role: 'sponsor'
+      sponsorDeviceId: string
+      peerDeviceId: string | null
+    }
+  | { kind: 'pairing_succeeded'; role: 'joiner'; redeem: RedeemResponse }
 
 export type SetupFlow =
   /** Initial fetch in progress; setup gate stays active. */
@@ -37,6 +45,7 @@ export type SetupFlow =
       kind: 'invitation_pending'
       code: string
       expiresAtMs: number
+      deviceName: string | null
       completion: SetupCompletion | null
     }
   /** Setup has completed; a pending summary keeps the gate open until acknowledged. */
@@ -84,6 +93,7 @@ function flowFromState(
       kind: 'invitation_pending',
       code: state.currentInvitation.code,
       expiresAtMs: state.currentInvitation.expiresAtMs,
+      deviceName: state.deviceName,
       completion,
     }
   }
@@ -102,6 +112,10 @@ function completionFromFlow(flow: SetupFlow): SetupCompletion | null {
   return flow.kind === 'completed' || flow.kind === 'invitation_pending' ? flow.completion : null
 }
 
+function deviceNameFromFlow(flow: SetupFlow): string | null {
+  return flow.kind === 'completed' || flow.kind === 'invitation_pending' ? flow.deviceName : null
+}
+
 export function applyIssuedInvitation(invitation: CurrentInvitation) {
   // An API response and its matching WebSocket event carry the same canonical
   // invitation. Apply both through one store transition so the page never
@@ -111,6 +125,7 @@ export function applyIssuedInvitation(invitation: CurrentInvitation) {
     kind: 'invitation_pending',
     code: invitation.code,
     expiresAtMs: invitation.expiresAtMs,
+    deviceName: deviceNameFromFlow(snapshot.flow),
     completion: completionFromFlow(snapshot.flow),
   })
 }
@@ -127,12 +142,26 @@ function applyInvitationRevoked(_event: SetupInvitationRevokedEvent) {
 }
 
 function applyPairingCompleted(event: SetupPairingCompletedEvent) {
-  // Either side finished a handshake. The sponsor's invitation is now
-  // consumed; `hasCompleted` may have flipped on the joiner. Refresh the
-  // authoritative state from the server.
   if (!event.success) return
-  const completion = completionFromFlow(snapshot.flow) ?? { role: 'sponsor' as const }
-  void refreshFromServer(completion)
+
+  const currentCompletion = completionFromFlow(snapshot.flow)
+  const sponsorWasWaiting = snapshot.flow.kind === 'invitation_pending'
+  const sponsorWasReady = currentCompletion?.kind === 'space_ready'
+  if (!sponsorWasWaiting && !sponsorWasReady) return
+
+  // The completion event is authoritative. Move the sponsor forward before
+  // the invitation-revoked event or a potentially stale setup-state refresh.
+  completionRevision += 1
+  update({
+    kind: 'completed',
+    deviceName: deviceNameFromFlow(snapshot.flow),
+    completion: {
+      kind: 'pairing_succeeded',
+      role: 'sponsor',
+      sponsorDeviceId: event.sponsorDeviceId,
+      peerDeviceId: event.joinerDeviceId,
+    },
+  })
 }
 
 async function refreshFromServer(completion: SetupCompletion | null = null) {

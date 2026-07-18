@@ -44,8 +44,14 @@ export type SetupScreen =
   | { kind: 'show_invitation'; code: string; expiresAtMs: number }
   /** S4 — joiner: paste invitation code + passphrase. */
   | { kind: 'redeem_invitation' }
-  /** S5 — both: post-handshake summary. `redeem` is set on the joiner side. */
-  | { kind: 'pairing_complete'; role: 'sponsor' | 'joiner'; redeem?: RedeemResponse }
+  /** Sponsor Space is ready and can issue its first invitation. */
+  | { kind: 'space_ready' }
+  /** S5 — both: post-handshake summary. */
+  | {
+      kind: 'pairing_complete'
+      localDeviceName: string | null
+      peerDeviceId?: string | null
+    }
 
 export interface UseSetupFlowReturn {
   screen: SetupScreen
@@ -93,9 +99,18 @@ export function useSetupFlow(): UseSetupFlowReturn {
       return { kind: 'show_invitation', code: flow.code, expiresAtMs: flow.expiresAtMs }
     }
     if (flow.kind === 'completed' && flow.completion) {
+      if (flow.completion.kind === 'space_ready') return { kind: 'space_ready' }
       return flow.completion.role === 'joiner'
-        ? { kind: 'pairing_complete', role: 'joiner', redeem: flow.completion.redeem }
-        : { kind: 'pairing_complete', role: 'sponsor' }
+        ? {
+            kind: 'pairing_complete',
+            localDeviceName: flow.deviceName,
+            peerDeviceId: flow.completion.redeem.sponsorDeviceId,
+          }
+        : {
+            kind: 'pairing_complete',
+            localDeviceName: flow.deviceName,
+            peerDeviceId: flow.completion.peerDeviceId,
+          }
     }
     if (pageScreen) return pageScreen
     return { kind: 'entry' }
@@ -115,12 +130,10 @@ export function useSetupFlow(): UseSetupFlowReturn {
           passphraseConfirm: input.passphraseConfirm,
           deviceName: input.deviceName,
         })
-        // After initialize the device has hasCompleted=true with no pending
-        // invitation — push the canonical state so the gate flips immediately,
-        // then surface the post-pairing summary as the page screen so the
-        // user gets visual confirmation before being dropped into the app.
+        // Space initialization and peer pairing are separate milestones. Keep
+        // setup open on the ready screen until the user invites a peer or exits.
         const next = await getSetupState()
-        applyServerSetupState(next, { role: 'sponsor' })
+        applyServerSetupState(next, { kind: 'space_ready' })
         return { ok: true } as const
       } catch (err) {
         if (err instanceof SetupV2Error) {
@@ -189,7 +202,7 @@ export function useSetupFlow(): UseSetupFlowReturn {
       try {
         const redeem = await redeemInvitation({ code: input.code, passphrase: input.passphrase })
         const next = await getSetupState()
-        applyServerSetupState(next, { role: 'joiner', redeem })
+        applyServerSetupState(next, { kind: 'pairing_succeeded', role: 'joiner', redeem })
         return { ok: true, redeem } as const
       } catch (err) {
         if (err instanceof SetupV2Error) {

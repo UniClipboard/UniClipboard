@@ -1900,21 +1900,32 @@
         "submit": "Entrar no Espaço"
       }
     },
-    "pairingComplete": {
+    "spaceReady": {
       "title": "Tudo pronto",
-      "sponsor": {
-        "subtitle": "Seu Espaço está pronto. Conecte outro dispositivo agora para começar a sincronizar.",
-        "issueFailed": "Não foi possível criar um convite. Tente novamente."
-      },
-      "joiner": {
-        "subtitle": "Agora você faz parte deste Espaço criptografado.",
-        "connectedTo": "Conectado a"
-      },
+      "subtitle": "Seu Espaço está pronto. Conecte outro dispositivo agora para começar a sincronizar.",
+      "issueFailed": "Não foi possível criar um convite. Tente novamente.",
       "actions": {
-        "done": "Continuar",
         "invite": "Conectar um dispositivo",
         "inviting": "Criando convite...",
         "later": "Fazer isso depois"
+      }
+    },
+    "pairingComplete": {
+      "title": "Pareamento concluído",
+      "connected": "Conectado",
+      "devices": {
+        "thisDevice": "Este dispositivo",
+        "local": "Local",
+        "peer": "Novo dispositivo",
+        "joined": "Acabou de entrar",
+        "direct": "Conexão direta na rede local"
+      },
+      "points": {
+        "encrypted": "O conteúdo permanece criptografado e só pode ser lido pelos dispositivos pareados.",
+        "sync": "O conteúdo copiado sincroniza automaticamente enquanto os dois dispositivos estão online."
+      },
+      "actions": {
+        "done": "Concluir"
       }
     }
   }

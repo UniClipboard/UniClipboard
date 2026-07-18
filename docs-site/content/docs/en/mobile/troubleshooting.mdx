@@ -158,12 +158,12 @@ the main app is clearly connected to the desktop.
 On Android, most "feature not working" cases come down to some permission that
 wasn't granted.
 
-| Permission                           | Purpose                                                 | How to grant                                                                                                                                                                                             |
-| ------------------------------------ | ------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Permission                           | Purpose                                                    | How to grant                                                                                                                                                                                             |
+| ------------------------------------ | ---------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | READ_LOGS                            | Event listening for "copy = auto-sync" (ADB events method) | Can't be requested in-app; can only be granted by running an `adb` command from a computer; the app copies the command to the clipboard so you can paste it, and you must restart the app after granting |
-| Overlay window (SYSTEM_ALERT_WINDOW) | Background clipboard read / write                       | Enable manually in system Settings; the Settings → Background running walkthrough takes you there                                                                                                        |
-| SMS permission                       | Auto-forwarding of SMS verification codes               | Grant it via the walkthrough in Settings → SMS forwarding                                                                                                                                                |
-| Camera permission                    | Scan-to-connect                                         | Grant it the first time you scan; if permanently denied, enable it in system Settings, or use "manual entry" to connect instead                                                                          |
+| Overlay window (SYSTEM_ALERT_WINDOW) | Background clipboard read / write                          | Enable manually in system Settings; the Settings → Background running walkthrough takes you there                                                                                                        |
+| SMS permission                       | Auto-forwarding of SMS verification codes                  | Grant it via the walkthrough in Settings → SMS forwarding                                                                                                                                                |
+| Camera permission                    | Scan-to-connect                                            | Grant it the first time you scan; if permanently denied, enable it in system Settings, or use "manual entry" to connect instead                                                                          |
 
 The READ_LOGS adb command looks like:
 

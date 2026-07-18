@@ -21,14 +21,14 @@ To understand the three methods, separate two things: **what does the reading/wr
 
 ## Choosing among the three
 
-| Aspect | Timed polling (default) | ADB events | Shizuku |
-| --- | --- | --- | --- |
-| Underlying read/write | Overlay window grabs focus | Overlay window grabs focus | Shizuku privileged service |
-| Copy detection | Timed polling | Listens for system copy events | Event-driven |
-| Needs a computer | No | Yes (grant READ_LOGS, once) | Yes, to start Shizuku without root |
-| Key permissions | Overlay | Overlay + READ_LOGS | Shizuku authorization |
-| Briefly shows overlay | Yes | Yes | No |
-| Best for | Most people who want it to just work | People who can connect a computer and care about power/input | Advanced users familiar with Shizuku |
+| Aspect                | Timed polling (default)              | ADB events                                                   | Shizuku                              |
+| --------------------- | ------------------------------------ | ------------------------------------------------------------ | ------------------------------------ |
+| Underlying read/write | Overlay window grabs focus           | Overlay window grabs focus                                   | Shizuku privileged service           |
+| Copy detection        | Timed polling                        | Listens for system copy events                               | Event-driven                         |
+| Needs a computer      | No                                   | Yes (grant READ_LOGS, once)                                  | Yes, to start Shizuku without root   |
+| Key permissions       | Overlay                              | Overlay + READ_LOGS                                          | Shizuku authorization                |
+| Briefly shows overlay | Yes                                  | Yes                                                          | No                                   |
+| Best for              | Most people who want it to just work | People who can connect a computer and care about power/input | Advanced users familiar with Shizuku |
 
 You can switch methods anytime in the app: **Settings → Background → Background reading method**, swipe to compare, then pick one. Each is detailed below.
 

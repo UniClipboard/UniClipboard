@@ -23,6 +23,10 @@ vi.mock('@/lib/daemon-ws', () => ({
   },
 }))
 
+vi.mock('@/api/file_transfer', () => ({
+  listEntryReceives: vi.fn(async () => []),
+}))
+
 // ── Store helper ─────────────────────────────────────────────
 
 function createTestStore() {
@@ -61,7 +65,7 @@ describe('useTransferProgress', () => {
     vi.useRealTimers()
   })
 
-  it('subscribes to file-transfer topic on mount', async () => {
+  it('subscribes to receive and file-transfer topics on mount', async () => {
     const { daemonWs } = await import('@/lib/daemon-ws')
     const { Wrapper } = createWrapper()
     renderHook(() => useTransferProgress(), { wrapper: Wrapper })
@@ -70,7 +74,10 @@ describe('useTransferProgress', () => {
       expect(capturedHandler).not.toBeNull()
     })
 
-    expect(daemonWs.subscribe).toHaveBeenCalledWith(['file-transfer'], expect.any(Function))
+    expect(daemonWs.subscribe).toHaveBeenCalledWith(
+      ['file-transfer', 'clipboard'],
+      expect.any(Function)
+    )
   })
 
   describe('durable transfer status', () => {

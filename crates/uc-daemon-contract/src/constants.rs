@@ -43,6 +43,8 @@ pub mod ws_event {
     /// `file-transfer.progress` 一起显示传输进度。后续 `clipboard.new_content`
     /// 到达时占位卡片自然被真实 entry 替换(同 entry_id)。
     pub const CLIPBOARD_INCOMING_PENDING: &str = "clipboard.incoming_pending";
+    pub const CLIPBOARD_RECEIVE_ATTEMPT_STATE_CHANGED: &str =
+        "clipboard.receive_attempt_state_changed";
     pub const FILE_TRANSFER_STATUS_CHANGED: &str = "file-transfer.status_changed";
     pub const FILE_TRANSFER_PROGRESS: &str = "file-transfer.progress";
     /// 某条 entry 对某个对端的投递状态发生变化(ADR-008 P3-3 GAP-WS-1)。

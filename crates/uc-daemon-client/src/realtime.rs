@@ -83,6 +83,7 @@ pub struct SpaceMembersChangedEvent {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ClipboardNewContentEvent {
     pub entry_id: String,
+    pub attempt_id: Option<String>,
     pub preview: String,
     pub origin: String, // "local" or "remote"
 }
@@ -92,6 +93,7 @@ pub struct ClipboardNewContentEvent {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ClipboardIncomingPendingEvent {
     pub entry_id: String,
+    pub attempt_id: Option<String>,
     pub from_device: String,
     pub total_bytes: Option<u64>,
     pub filenames: Vec<String>,
@@ -102,6 +104,7 @@ pub struct ClipboardIncomingPendingEvent {
 pub struct FileTransferStatusChangedEvent {
     pub transfer_id: String,
     pub entry_id: String,
+    pub attempt_id: Option<String>,
     pub status: String,
     pub reason: Option<String>,
 }
@@ -111,10 +114,18 @@ pub struct FileTransferStatusChangedEvent {
 pub struct FileTransferProgressEvent {
     pub transfer_id: String,
     pub entry_id: Option<String>,
+    pub attempt_id: Option<String>,
     pub peer_id: String,
     pub direction: FileTransferDirection,
     pub bytes_transferred: u64,
     pub total_bytes: Option<u64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReceiveAttemptStateChangedEvent {
+    pub entry_id: String,
+    pub attempt_id: String,
+    pub state: String,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -129,6 +140,7 @@ pub enum RealtimeEvent {
     SpaceMembersChanged(SpaceMembersChangedEvent),
     ClipboardNewContent(ClipboardNewContentEvent),
     ClipboardIncomingPending(ClipboardIncomingPendingEvent),
+    ReceiveAttemptStateChanged(ReceiveAttemptStateChangedEvent),
     FileTransferStatusChanged(FileTransferStatusChangedEvent),
     FileTransferProgress(FileTransferProgressEvent),
 }

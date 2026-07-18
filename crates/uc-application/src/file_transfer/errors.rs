@@ -14,7 +14,7 @@ pub enum FileTransferApplicationError {
     /// 向外发布事件失败。
     #[error("file transfer event publishing failed: {0}")]
     Publish(String),
-    /// 操作 receiver-side projection 表失败（例如 `link_transfer_to_entry`）。
+    /// Receiver-side projection operation failed.
     #[error("file transfer repository failed: {0}")]
     Repository(String),
     /// 传输尚未开始，不能继续推进。

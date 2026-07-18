@@ -14,6 +14,7 @@ use uc_application::facade::{
     ClipboardLiveIndexPort, ClipboardLiveIndexer, ClipboardOutboundDeps, ClipboardOutboundFacade,
     ClipboardSnapshotDeps, ClipboardSyncFacade, HostEventBus, InboundClipboardFacade,
 };
+use uc_application::receive_reconciliation::ReceiveReadinessCoordinator;
 use uc_application::{
     ApplyInboundClipboardUseCase, FileCacheBlobMaterializer, InboundCapture as ApplyInboundCapture,
     InboundWrite as ApplyInboundWrite,
@@ -49,6 +50,7 @@ pub struct DaemonRuntimeAssemblyInput<'a> {
     pub blob_transfer_facade: Arc<BlobTransferFacade>,
     pub file_cache_dir: PathBuf,
     pub file_transfer_lifecycle: Arc<FileTransferLifecycle>,
+    pub receive_readiness: Arc<ReceiveReadinessCoordinator>,
     pub clipboard_write_coordinator: Arc<ClipboardWriteCoordinator>,
     /// 共享的 host event bus —— 与 `BlobTransferFacade` 同源。ApplyInbound
     /// 用它在 fetch 之前发 `IncomingPending`,让前端立即出现占位卡片。
@@ -122,6 +124,7 @@ pub fn build_daemon_runtime_workers(
         // instance, reused below) serializes with inbound apply on a per-content
         // lock — preventing a local copy and an inbound delivery of the same
         // content from creating two entries (R5-F3).
+        .with_inbound_receive_commit(input.deps.storage.directory_receive.commit_inbound.clone())
         .with_entry_identity_coordinator(input.deps.clipboard.entry_identity_coordinator.clone()),
     );
     let blob_materializer = Arc::new(
@@ -129,6 +132,20 @@ pub fn build_daemon_runtime_workers(
             input.blob_transfer_facade.clone(),
             input.file_cache_dir,
             FsAtomicPublisher::new(),
+        )
+        .with_directory_receive_attempt_ports(
+            input.deps.storage.directory_receive.get_attempt.clone(),
+            input.deps.storage.directory_receive.claim_commit.clone(),
+            input.deps.storage.directory_receive.record_publish.clone(),
+            input.deps.system.clock.clone(),
+        )
+        .with_receive_artifact_log(
+            input
+                .deps
+                .storage
+                .directory_receive
+                .record_artifacts
+                .clone(),
         )
         .with_target_reserver(FsInboundFileTarget::new(input.deps.settings.clone()))
         .with_save_dir_resolver(FsInboundFileTarget::new(input.deps.settings.clone()))
@@ -159,6 +176,25 @@ pub fn build_daemon_runtime_workers(
             Arc::clone(&input.clipboard_write_coordinator) as Arc<dyn ApplyInboundWrite>,
         )
         .with_blob_materializer(blob_materializer)
+        .with_receive_attempt_ports(
+            input.deps.storage.directory_receive.get_attempt.clone(),
+            input.deps.storage.directory_receive.begin_receive.clone(),
+            input.deps.storage.directory_receive.claim_commit.clone(),
+            input.deps.storage.directory_receive.request_cancel.clone(),
+            input.deps.storage.directory_receive.begin_failure.clone(),
+            input.deps.storage.directory_receive.commit_inbound.clone(),
+            input.deps.system.clock.clone(),
+        )
+        .with_receive_artifact_cleanup(Arc::new(uc_infra::fs::FsReceiveArtifactCleaner))
+        .with_provisional_receive(
+            input
+                .deps
+                .storage
+                .file_transfer
+                .finalize_provisional
+                .clone(),
+        )
+        .with_receive_readiness(input.receive_readiness)
         .with_host_event_emitter(input.host_event_bus)
         .with_active_register(
             input.deps.clipboard.active_register.clone(),

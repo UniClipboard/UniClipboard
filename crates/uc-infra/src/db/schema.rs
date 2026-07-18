@@ -33,16 +33,41 @@ diesel::table! {
 }
 
 diesel::table! {
+    directory_publish_log (entry_id, attempt_id) {
+        entry_id -> Text,
+        attempt_id -> Text,
+        phase -> Text,
+        root_map_ciphertext -> Nullable<Binary>,
+        partial_publication -> Bool,
+        partial_root_count -> Integer,
+        landed -> Bool,
+        updated_at_ms -> BigInt,
+    }
+}
+
+diesel::table! {
+    entry_receive_attempt (entry_id) {
+        entry_id -> Text,
+        current_attempt_id -> Text,
+        attempt_state -> Text,
+        updated_at_ms -> BigInt,
+    }
+}
+
+diesel::table! {
     file_transfer (transfer_id) {
         transfer_id -> Text,
-        entry_id -> Text,
-        filename -> Text,
+        entry_id -> Nullable<Text>,
         file_size -> Nullable<BigInt>,
+        attempt_id -> Nullable<Text>,
+        binding_state -> Text,
+        receive_item_id -> Nullable<Text>,
+        item_role -> Nullable<Text>,
         content_hash -> Nullable<Text>,
         status -> Text,
         source_device -> Text,
-        cached_path -> Nullable<Text>,
-        failure_reason -> Nullable<Text>,
+        failure_code -> Nullable<Text>,
+        metadata_ciphertext -> Binary,
         created_at_ms -> BigInt,
         updated_at_ms -> BigInt,
     }
@@ -54,8 +79,16 @@ diesel::table! {
         transfer_id -> Text,
         sequence -> Integer,
         event_type -> Text,
-        payload_json -> Text,
+        payload_ciphertext -> Binary,
         occurred_at_ms -> BigInt,
+    }
+}
+
+diesel::table! {
+    file_transfer_privacy_maintenance (id) {
+        id -> Integer,
+        state -> Text,
+        updated_at_ms -> BigInt,
     }
 }
 
@@ -208,6 +241,17 @@ diesel::table! {
 }
 
 diesel::table! {
+    receive_artifact_log (entry_id, attempt_id) {
+        entry_id -> Text,
+        attempt_id -> Text,
+        phase -> Text,
+        resolution -> Text,
+        artifact_ciphertext -> Binary,
+        updated_at_ms -> BigInt,
+    }
+}
+
+diesel::table! {
     search_document (profile_id, entry_id) {
         profile_id -> Text,
         entry_id -> Text,
@@ -271,11 +315,15 @@ diesel::allow_tables_to_appear_in_same_query!(
     clipboard_selection,
     clipboard_representation_thumbnail,
     clipboard_snapshot_representation,
+    directory_publish_log,
     entry_file_set,
+    entry_receive_attempt,
     file_transfer,
     file_transfer_events,
+    file_transfer_privacy_maintenance,
     mobile_device,
     peer_address,
+    receive_artifact_log,
     space_member,
     trusted_peer,
     search_document,

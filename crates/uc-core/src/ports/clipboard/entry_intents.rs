@@ -11,7 +11,7 @@ use crate::clipboard::{
     ClipboardEntry, ClipboardEvent, ClipboardRepositoryError, ClipboardSelectionDecision,
     PersistedClipboardRepresentation,
 };
-use crate::ids::EntryId;
+use crate::ids::{EntryId, EventId};
 
 /// Fetch a single clipboard entry by id.
 #[async_trait]
@@ -78,6 +78,15 @@ pub trait DeleteClipboardEntryPort: Send + Sync {
     /// Removes the entry identified by `entry_id`. Succeeds even when no such
     /// entry exists (idempotent delete).
     async fn delete_entry(&self, entry_id: &EntryId) -> Result<(), ClipboardRepositoryError>;
+}
+
+#[async_trait]
+pub trait DeleteClipboardEntryWithReceiveStatePort: Send + Sync {
+    async fn delete_entry_with_receive_state(
+        &self,
+        entry_id: &EntryId,
+        event_id: &EventId,
+    ) -> Result<(), ClipboardRepositoryError>;
 }
 
 /// Resolve an entry id from a previously observed content snapshot hash.

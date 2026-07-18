@@ -216,6 +216,7 @@ mod tests {
     fn sample_health() -> HealthResponse {
         HealthResponse {
             status: "ok".to_string(),
+            degraded_reason: None,
             package_version: "0.6.0".to_string(),
             api_revision: "rev-1".to_string(),
             residency: DaemonResidency::Standalone,

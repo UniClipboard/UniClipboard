@@ -72,13 +72,10 @@ const TransferProgressBar: React.FC<TransferProgressBarProps> = ({
 
   if (variant === 'compact') {
     return (
-      <div className="flex items-center gap-1.5 w-full">
+      <div className="flex w-full min-w-0 items-center gap-1.5">
         <DirectionIcon className="size-3 shrink-0 text-primary" />
-        <Progress value={percent} className="h-1.5 flex-1" />
+        <Progress value={percent} className="h-1.5 w-auto min-w-0 flex-1" />
         <span className="text-xs text-muted-foreground shrink-0">{percent}%</span>
-        {speedLabel && (
-          <span className="text-[11px] text-muted-foreground shrink-0">{speedLabel}</span>
-        )}
         {showCancel && (
           <button
             type="button"

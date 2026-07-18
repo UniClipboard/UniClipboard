@@ -103,8 +103,8 @@ pub struct AppFacade {
     /// CLI `uniclip send --resend` 都从这一份读;未装入(daemon 未启)
     /// 场景下调用方拿到 None 应给"功能未启用"反馈。
     pub clipboard_outbound: OnceLock<Arc<ClipboardOutboundFacade>>,
-    /// 文件传输 lifecycle 入口 —— 5 个动作 + seed_receiver_context +
-    /// link_transfer_to_entry。`None` 表示当前装配场景未接入 lifecycle
+    /// 文件传输 lifecycle 入口 —— 5 个动作 + seed_receiver_context。
+    /// `None` 表示当前装配场景未接入 lifecycle
     /// (典型:仅查询的 CLI / 单元测试)。进程级单例(在
     /// `BackgroundRuntimeDeps` 里构造,GUI shell 启动期通过
     /// `AppFacadeAssemblyOptions::file_transfer` 一次性装入),不在
@@ -468,6 +468,47 @@ impl AppFacade {
             )
         })?;
         facade.get_entry_delivery_view(entry_id).await
+    }
+
+    pub async fn get_entry_receive_progress(
+        &self,
+        entry_id: &uc_core::ids::EntryId,
+    ) -> Result<Option<uc_core::ports::EntryReceiveProgress>, crate::facade::CancelEntryReceiveError>
+    {
+        let facade = self
+            .clipboard_sync
+            .get()
+            .cloned()
+            .ok_or(crate::facade::CancelEntryReceiveError::Unavailable)?;
+        facade.get_entry_receive_progress(entry_id).await
+    }
+
+    pub async fn list_entry_receive_progress(
+        &self,
+    ) -> Result<Vec<uc_core::ports::EntryReceiveProgress>, crate::facade::CancelEntryReceiveError>
+    {
+        let facade = self
+            .clipboard_sync
+            .get()
+            .cloned()
+            .ok_or(crate::facade::CancelEntryReceiveError::Unavailable)?;
+        facade.list_entry_receive_progress().await
+    }
+
+    pub async fn cancel_entry_receive(
+        &self,
+        entry_id: &uc_core::ids::EntryId,
+        expected_attempt_id: &str,
+    ) -> Result<crate::facade::CancelEntryReceiveOutcome, crate::facade::CancelEntryReceiveError>
+    {
+        let facade = self
+            .clipboard_sync
+            .get()
+            .cloned()
+            .ok_or(crate::facade::CancelEntryReceiveError::Unavailable)?;
+        facade
+            .cancel_entry_receive(entry_id, expected_attempt_id)
+            .await
     }
 
     /// 用户主动 resend 一条本机来源的 entry。GUI / Tauri command / CLI

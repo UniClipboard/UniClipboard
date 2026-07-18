@@ -5,6 +5,8 @@ license.workspace = true
 edition = "2021"
 
 [dependencies]
+# Shared directory-layout constants
+uc-app-paths = { path = "../uc-app-paths" }
 # Core domain models
 uc-core = { path = "../uc-core" }
 # Mobile-sync wire protocol codec (connect-uri). Leaf crate, zero internal deps.

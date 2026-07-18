@@ -678,6 +678,7 @@ mod tests {
     fn compatible_with_residency(residency: DaemonResidency) -> ProbeOutcome {
         ProbeOutcome::Compatible(HealthResponse {
             status: "ok".into(),
+            degraded_reason: None,
             package_version: EXPECTED_PACKAGE_VERSION.into(),
             api_revision: uc_daemon_contract::DAEMON_API_REVISION.into(),
             residency,

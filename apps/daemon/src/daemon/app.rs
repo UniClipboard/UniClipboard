@@ -12,6 +12,7 @@ use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, error, info, warn};
 use uc_application::facade::{AppFacade, AppPaths, HostEventBus, HostEventEmitterPort};
+use uc_application::receive_reconciliation::EnsureReceiveReadyPort;
 use uc_core::ports::MobileLanLifecyclePort;
 
 use crate::daemon::peers::presence_monitor::PresenceMonitor;
@@ -144,6 +145,7 @@ pub struct DaemonApp {
     /// (ADR-008 D20). `None` (test / GUI-only assembly) leaves the API state's
     /// no-op default in place.
     analytics: Option<Arc<dyn uc_observability::analytics::AnalyticsPort>>,
+    receive_readiness: Arc<dyn EnsureReceiveReadyPort>,
 }
 
 impl DaemonApp {
@@ -156,6 +158,7 @@ impl DaemonApp {
         host_event_bus: Arc<HostEventBus>,
         state: Arc<RwLock<RuntimeState>>,
         event_tx: broadcast::Sender<DaemonWsEvent>,
+        receive_readiness: Arc<dyn EnsureReceiveReadyPort>,
     ) -> Self {
         Self {
             services,
@@ -176,6 +179,7 @@ impl DaemonApp {
             mobile_lan_endpoint_info: None,
             mobile_lan_lifecycle: None,
             analytics: None,
+            receive_readiness,
         }
     }
 
@@ -198,6 +202,7 @@ impl DaemonApp {
         local_device_id: Option<String>,
         listens_to_os_signals: bool,
         process_mode: DaemonProcessMode,
+        receive_readiness: Arc<dyn EnsureReceiveReadyPort>,
     ) -> Self {
         debug_assert!(
             deferred_services.is_empty() || deferred_ready_notify.is_some(),
@@ -229,6 +234,7 @@ impl DaemonApp {
             mobile_lan_endpoint_info: None,
             mobile_lan_lifecycle: None,
             analytics: None,
+            receive_readiness,
         }
     }
 
@@ -327,8 +333,13 @@ impl DaemonApp {
         security.register_pid(pid).await;
 
         // 3. Build API state using the shared event_tx (same channel used by all services)
-        let mut api_state = DaemonApiState::new(Arc::clone(&self.app_facade), auth_token, security)
-            .with_residency(self.residency);
+        let mut api_state = DaemonApiState::new(
+            Arc::clone(&self.app_facade),
+            auth_token,
+            security,
+            Arc::clone(&self.receive_readiness),
+        )
+        .with_residency(self.residency);
         api_state.event_tx = self.event_tx.clone();
         let api_state = match &self.clipboard_capture_gate {
             Some(gate) => api_state.with_clipboard_gate(Arc::clone(gate)),

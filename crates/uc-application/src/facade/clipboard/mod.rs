@@ -7,8 +7,10 @@
 //! `InboundClipboardNotice`, …) so CLI / daemon / Tauri never import
 //! from `usecases::*` directly.
 
+mod cancel_entry_receive;
 mod facade;
 
+pub use cancel_entry_receive::{CancelEntryReceiveError, CancelEntryReceiveOutcome};
 pub use facade::{
     ClipboardSyncDeps, ClipboardSyncError, ClipboardSyncFacade, DispatchEntryInput,
     DispatchEntryOutcome, DispatchEntryPerTarget, InboundAction, InboundNotice,

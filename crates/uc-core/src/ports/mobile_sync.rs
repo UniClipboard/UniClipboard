@@ -382,6 +382,11 @@ pub trait MobileLanLifecyclePort: Send + Sync {
 /// 进程退出时清理。use case 不持有路径,也不调用任何"释放"接口。
 #[async_trait]
 pub trait MobileFileStagingPort: Send + Sync {
+    async fn discard_staged_file(&self, staged: &StagedFile) -> Result<(), MobileFileStagingError> {
+        let _ = staged;
+        Ok(())
+    }
+
     /// 把 `bytes` 写到 staging 区,产出可拼 file-list rep 的 [`StagedFile`]。
     ///
     /// `data_name` 来自 iPhone 上传的 wire 字段(可能含路径分隔符 / `..` /

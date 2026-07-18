@@ -182,6 +182,40 @@ pub fn for_file_set_line(entry_id: &EntryId, line_index: i64) -> Vec<u8> {
     .into_bytes()
 }
 
+/// Generates AAD for an encrypted directory publication root mapping.
+///
+/// Binds recovery metadata to one entry and one receive attempt so ciphertext
+/// cannot be transplanted across retries.
+pub fn for_directory_publish_log(entry_id: &EntryId, attempt_id: &str) -> Vec<u8> {
+    format!(
+        "{AAD_NAMESPACE}:directory_publish:{AAD_VERSION}|{}|{attempt_id}",
+        entry_id.as_ref()
+    )
+    .into_bytes()
+}
+
+/// Binds encrypted transfer metadata to its projection row.
+pub fn for_file_transfer_metadata(transfer_id: &str) -> Vec<u8> {
+    format!("{AAD_NAMESPACE}:file_transfer_metadata:{AAD_VERSION}|{transfer_id}").into_bytes()
+}
+
+/// Binds an encrypted transfer event to its exact timeline position and type.
+pub fn for_file_transfer_event(transfer_id: &str, sequence: i32, event_type: &str) -> Vec<u8> {
+    format!(
+        "{AAD_NAMESPACE}:file_transfer_event:{AAD_VERSION}|{transfer_id}|{sequence}|{event_type}"
+    )
+    .into_bytes()
+}
+
+/// Binds encrypted receive artifact paths to one exact receive attempt.
+pub fn for_receive_artifact_log(entry_id: &EntryId, attempt_id: &str) -> Vec<u8> {
+    format!(
+        "{AAD_NAMESPACE}:receive_artifact:{AAD_VERSION}|{}|{attempt_id}",
+        entry_id.as_ref()
+    )
+    .into_bytes()
+}
+
 pub fn for_network_clipboard(message_id: &str) -> Vec<u8> {
     format!("{AAD_NAMESPACE}:net_clipboard:{AAD_VERSION}|{message_id}").into_bytes()
 }

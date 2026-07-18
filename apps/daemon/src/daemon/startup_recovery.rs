@@ -6,11 +6,53 @@ use std::sync::Arc;
 use tokio::sync::Notify;
 use tracing::{info_span, Instrument};
 use uc_application::facade::{AppFacade, SpaceSetupFacade};
+use uc_application::receive_reconciliation::{
+    EnsureReceiveReadyPort, ReceiveReadinessError, ReceiveReadinessStatus,
+};
 use uc_core::ports::SettingsPort;
 use uc_daemon_local::process_metadata::DaemonSpawnOrigin;
 use uc_daemon_local::spawn_contract::unattended_from_env;
 
 use super::run_mode::DaemonRunMode;
+
+pub struct DaemonReceiveReadinessCoordinator {
+    recovery: Arc<dyn EnsureReceiveReadyPort>,
+    clipboard_capture_gate: Arc<AtomicBool>,
+    deferred_ready_notify: Arc<Notify>,
+}
+
+impl DaemonReceiveReadinessCoordinator {
+    pub fn new(
+        recovery: Arc<dyn EnsureReceiveReadyPort>,
+        clipboard_capture_gate: Arc<AtomicBool>,
+        deferred_ready_notify: Arc<Notify>,
+    ) -> Self {
+        Self {
+            recovery,
+            clipboard_capture_gate,
+            deferred_ready_notify,
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl EnsureReceiveReadyPort for DaemonReceiveReadinessCoordinator {
+    async fn ensure_receive_ready(&self) -> Result<(), ReceiveReadinessError> {
+        self.recovery.ensure_receive_ready().await?;
+        self.clipboard_capture_gate.store(true, Ordering::SeqCst);
+        self.deferred_ready_notify.notify_one();
+        Ok(())
+    }
+
+    fn close_receive_gate(&self) {
+        self.recovery.close_receive_gate();
+        self.clipboard_capture_gate.store(false, Ordering::SeqCst);
+    }
+
+    fn receive_readiness_status(&self) -> ReceiveReadinessStatus {
+        self.recovery.receive_readiness_status()
+    }
+}
 
 /// ADR-008 D9: whether this daemon is *attended* — i.e. respects the user's
 /// `auto_unlock_enabled` setting because a GUI will connect and drive the
@@ -32,8 +74,7 @@ pub struct StartupRecoveryInput {
     pub app_facade: Arc<AppFacade>,
     pub settings: Arc<dyn SettingsPort>,
     pub space_setup: Arc<SpaceSetupFacade>,
-    pub deferred_ready_notify: Arc<Notify>,
-    pub clipboard_capture_gate: Arc<AtomicBool>,
+    pub receive_readiness: Arc<dyn EnsureReceiveReadyPort>,
 }
 
 /// 在后台恢复加密会话、空间会话和 presence。
@@ -121,9 +162,19 @@ pub fn spawn_startup_recovery(input: StartupRecoveryInput) {
         }
 
         if input.run_mode.auto_triggers_deferred_services() && unlocked {
-            input.clipboard_capture_gate.store(true, Ordering::SeqCst);
-            input.deferred_ready_notify.notify_one();
-            tracing::info!("background unlock: persistent mode auto-triggered deferred services");
+            match input.receive_readiness.ensure_receive_ready().await {
+                Ok(()) => {
+                    tracing::info!(
+                        "background unlock: receive recovery completed and deferred services were released"
+                    );
+                }
+                Err(error) => {
+                    tracing::warn!(
+                        error = %error,
+                        "background unlock: receive recovery failed; daemon remains gated"
+                    );
+                }
+            }
         }
     });
 }
@@ -131,6 +182,77 @@ pub fn spawn_startup_recovery(input: StartupRecoveryInput) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::atomic::AtomicUsize;
+
+    struct Recovery {
+        fail: AtomicBool,
+        calls: AtomicUsize,
+    }
+
+    #[async_trait::async_trait]
+    impl EnsureReceiveReadyPort for Recovery {
+        async fn ensure_receive_ready(&self) -> Result<(), ReceiveReadinessError> {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            if self.fail.load(Ordering::SeqCst) {
+                Err(ReceiveReadinessError::Recovery(
+                    "encrypted artifact metadata is unavailable".to_string(),
+                ))
+            } else {
+                Ok(())
+            }
+        }
+
+        fn close_receive_gate(&self) {}
+
+        fn receive_readiness_status(&self) -> ReceiveReadinessStatus {
+            ReceiveReadinessStatus {
+                ready: !self.fail.load(Ordering::SeqCst),
+                degraded_reason: self
+                    .fail
+                    .load(Ordering::SeqCst)
+                    .then(|| "encrypted artifact metadata is unavailable".to_string()),
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn receive_recovery_failure_keeps_runtime_gates_closed_until_retry_succeeds() {
+        let recovery = Arc::new(Recovery {
+            fail: AtomicBool::new(true),
+            calls: AtomicUsize::new(0),
+        });
+        let clipboard_gate = Arc::new(AtomicBool::new(false));
+        let notify = Arc::new(Notify::new());
+        let coordinator = DaemonReceiveReadinessCoordinator::new(
+            recovery.clone(),
+            clipboard_gate.clone(),
+            notify.clone(),
+        );
+
+        coordinator
+            .ensure_receive_ready()
+            .await
+            .expect_err("failed recovery must be reported");
+        assert!(!clipboard_gate.load(Ordering::SeqCst));
+        assert!(
+            tokio::time::timeout(std::time::Duration::from_millis(10), notify.notified())
+                .await
+                .is_err(),
+            "failed recovery must not release deferred services"
+        );
+
+        recovery.fail.store(false, Ordering::SeqCst);
+        coordinator
+            .ensure_receive_ready()
+            .await
+            .expect("retry should recover");
+
+        assert!(clipboard_gate.load(Ordering::SeqCst));
+        tokio::time::timeout(std::time::Duration::from_secs(1), notify.notified())
+            .await
+            .expect("successful recovery must release deferred services");
+        assert_eq!(recovery.calls.load(Ordering::SeqCst), 2);
+    }
 
     #[test]
     fn only_gui_spawned_standalone_is_attended() {

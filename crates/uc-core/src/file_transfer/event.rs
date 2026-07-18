@@ -59,6 +59,18 @@ pub enum FileTransferCancellationReason {
     Unknown,
 }
 
+impl FileTransferCancellationReason {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::LocalUser => "local_user",
+            Self::RemotePeer => "remote_peer",
+            Self::Replaced => "replaced",
+            Self::Timeout => "timeout",
+            Self::Unknown => "unknown",
+        }
+    }
+}
+
 /// File transfer domain events.
 ///
 /// This event model captures business facts only. Transport details such as

@@ -6,6 +6,7 @@ use std::sync::Arc;
 use tokio::sync::{broadcast, Notify};
 use tokio_util::sync::CancellationToken;
 use uc_application::facade::{AppFacade, AppPaths, HostEventBus};
+use uc_application::receive_reconciliation::EnsureReceiveReadyPort;
 use uc_daemon_local::process_metadata::DaemonProcessMode;
 use uc_webserver::api::types::{DaemonResidency, DaemonWsEvent};
 
@@ -50,6 +51,7 @@ pub struct DaemonAppAssemblyInput {
     /// Analytics sink — daemon becomes the single authoritative analytics sender
     /// (ADR-008 D20). Wired into `DaemonApiState` for `POST /analytics/capture`.
     pub analytics: Arc<dyn uc_observability::analytics::AnalyticsPort>,
+    pub receive_readiness: Arc<dyn EnsureReceiveReadyPort>,
 }
 
 /// 构造 daemon 应用实例。
@@ -71,6 +73,7 @@ pub fn build_daemon_app_instance(input: DaemonAppAssemblyInput) -> DaemonApp {
         mobile_sync_endpoint_info,
         mobile_lan_lifecycle,
         analytics,
+        receive_readiness,
     } = input;
 
     let peer_keepalive_worker: Arc<dyn DaemonService> =
@@ -99,6 +102,7 @@ pub fn build_daemon_app_instance(input: DaemonAppAssemblyInput) -> DaemonApp {
         Some(local_device_id),
         listens_to_os_signals,
         process_mode,
+        receive_readiness,
     )
     .with_mobile_lan_endpoint_info(mobile_sync_endpoint_info)
     .with_mobile_lan_lifecycle(mobile_lan_lifecycle)

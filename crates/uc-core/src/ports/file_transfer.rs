@@ -10,6 +10,26 @@
 
 use async_trait::async_trait;
 
+/// Failure while completing the one-shot privacy maintenance required after
+/// migrating receiver transfer persistence from plaintext to ciphertext.
+#[derive(Debug, thiserror::Error)]
+pub enum FileTransferPrivacyMaintenanceError {
+    #[error("file transfer privacy maintenance failed: {0}")]
+    Backend(String),
+}
+
+/// Ensure dropped plaintext transfer data has been physically removed before
+/// any receiver worker is allowed to read or write transfer state.
+///
+/// Implementations must be idempotent. They may mark maintenance complete only
+/// after the WAL is truncated and the database has been compacted successfully.
+#[async_trait]
+pub trait EnsureFileTransferPrivacyMaintenancePort: Send + Sync {
+    async fn ensure_file_transfer_privacy_maintenance(
+        &self,
+    ) -> Result<(), FileTransferPrivacyMaintenanceError>;
+}
+
 /// Durable status of a tracked inbound file transfer.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TrackedFileTransferStatus {
@@ -63,10 +83,98 @@ impl std::fmt::Display for TrackedFileTransferStatus {
 pub struct PendingInboundTransfer {
     pub transfer_id: String,
     pub entry_id: String,
+    pub attempt_id: Option<String>,
     pub origin_device_id: String,
     pub filename: String,
+    pub file_size: Option<i64>,
     pub cached_path: String,
     pub created_at_ms: i64,
+}
+
+#[derive(Debug, Clone)]
+pub struct ProvisionalInboundTransfer {
+    pub transfer_id: String,
+    pub origin_device_id: String,
+    pub filename: String,
+    pub file_size: Option<i64>,
+    pub created_at_ms: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProvisionalReceiveRecovery {
+    pub transfer_id: String,
+    pub cached_path: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReceiveItemRole {
+    Representation,
+    File,
+}
+
+impl ReceiveItemRole {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Representation => "representation",
+            Self::File => "file",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ProvisionalReceiveAction {
+    AdoptIntoAttempt {
+        entry_id: String,
+        attempt_id: String,
+        item_id: String,
+        role: ReceiveItemRole,
+    },
+    DiscardAsFullyHeld,
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum ProvisionalReceiveError {
+    #[error("provisional receive does not exist")]
+    NotFound,
+    #[error("provisional receive is no longer claimable")]
+    Conflict,
+    #[error("provisional receive store error: {0}")]
+    Backend(String),
+}
+
+#[async_trait]
+pub trait SeedProvisionalReceivePort: Send + Sync {
+    async fn seed_provisional_receive(
+        &self,
+        transfer: &ProvisionalInboundTransfer,
+    ) -> Result<(), ProvisionalReceiveError>;
+}
+
+#[async_trait]
+pub trait UpdateProvisionalReceivePathPort: Send + Sync {
+    async fn update_provisional_receive_path(
+        &self,
+        provisional_transfer_id: &str,
+        cached_path: &str,
+        now_ms: i64,
+    ) -> Result<(), ProvisionalReceiveError>;
+}
+
+#[async_trait]
+pub trait ListProvisionalReceivesPort: Send + Sync {
+    async fn list_provisional_receives(
+        &self,
+    ) -> Result<Vec<ProvisionalReceiveRecovery>, ProvisionalReceiveError>;
+}
+
+#[async_trait]
+pub trait FinalizeProvisionalReceivePort: Send + Sync {
+    async fn finalize_provisional_receive(
+        &self,
+        provisional_transfer_id: &str,
+        action: ProvisionalReceiveAction,
+        now_ms: i64,
+    ) -> Result<(), ProvisionalReceiveError>;
 }
 
 /// Aggregate transfer status for a clipboard entry.
@@ -84,6 +192,18 @@ pub struct EntryTransferSummary {
     pub failure_reason: Option<String>,
     /// Transfer IDs belonging to this entry, sorted for deterministic reads.
     pub transfer_ids: Vec<String>,
+}
+
+/// Current aggregate progress for any remote inbound receive attempt.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EntryReceiveProgress {
+    pub entry_id: String,
+    pub attempt_id: String,
+    pub state: crate::ports::entry_receive_attempt::AttemptState,
+    pub total_bytes: i64,
+    pub completed_bytes: i64,
+    pub items_total: u32,
+    pub items_completed: u32,
 }
 
 /// Expired in-flight record with cleanup target.
@@ -110,8 +230,8 @@ pub trait RecordReceiverTransferPort: Send + Sync {
     ///
     /// If no row exists for `transfer.transfer_id`, a fresh `pending` row is
     /// inserted. If a row already exists, the mutable seed fields (`entry_id`,
-    /// `filename`, `origin_device_id`, `cached_path`) are overwritten; status,
-    /// timestamps, file_size and content_hash are left untouched.
+    /// `attempt_id`, `filename`, `origin_device_id`, `file_size`, `cached_path`)
+    /// are overwritten; status, timestamps, and content_hash are left untouched.
     ///
     /// Idempotent — calling it twice with the same input is equivalent to
     /// calling it once.
@@ -119,20 +239,20 @@ pub trait RecordReceiverTransferPort: Send + Sync {
         &self,
         transfer: &PendingInboundTransfer,
     ) -> Result<(), FileTransferProjectionError>;
+}
 
-    /// Re-associate a transfer with a different `entry_id`.
-    ///
-    /// The new association replaces any prior `entry_id` recorded for the
-    /// transfer. Idempotent when the new value equals the existing one.
-    ///
-    /// Returns `true` if a row was updated, `false` if no matching
-    /// transfer_id exists.
-    async fn link_transfer_to_entry(
+/// Command: cancel every receiver transfer owned by one directory attempt.
+#[async_trait]
+pub trait CancelDirectoryAttemptTransfersPort: Send + Sync {
+    /// Move every non-terminal member of the exact `(entry_id, attempt_id)`
+    /// pair to `Cancelled` and return the number of rows changed.
+    async fn cancel_attempt_transfers(
         &self,
-        transfer_id: &str,
         entry_id: &str,
+        attempt_id: &str,
+        reason: crate::file_transfer::FileTransferCancellationReason,
         now_ms: i64,
-    ) -> Result<bool, FileTransferProjectionError>;
+    ) -> Result<u32, FileTransferProjectionError>;
 }
 
 /// Query: aggregate transfer status for a clipboard entry.
@@ -146,12 +266,29 @@ pub trait GetEntryTransferSummaryPort: Send + Sync {
     ) -> Result<Option<EntryTransferSummary>, FileTransferProjectionError>;
 }
 
+/// Query aggregate progress for the current remote inbound receive attempt.
+#[async_trait]
+pub trait GetEntryReceiveProgressPort: Send + Sync {
+    async fn get_entry_receive_progress(
+        &self,
+        entry_id: &str,
+    ) -> Result<Option<EntryReceiveProgress>, FileTransferProjectionError>;
+}
+
 /// Query: resolve the entry a transfer belongs to.
 #[async_trait]
 pub trait FindEntryIdForTransferPort: Send + Sync {
     /// Return the `entry_id` recorded for a transfer, or `None` when no
     /// projection row exists for the given transfer_id.
     async fn get_entry_id_for_transfer(
+        &self,
+        transfer_id: &str,
+    ) -> Result<Option<String>, FileTransferProjectionError>;
+}
+
+#[async_trait]
+pub trait FindAttemptIdForTransferPort: Send + Sync {
+    async fn get_attempt_id_for_transfer(
         &self,
         transfer_id: &str,
     ) -> Result<Option<String>, FileTransferProjectionError>;

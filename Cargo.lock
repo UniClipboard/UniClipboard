@@ -10135,6 +10135,7 @@ dependencies = [
  "tokio-util",
  "tracing",
  "tracing-subscriber",
+ "uc-app-paths",
  "uc-core",
  "uc-infra",
  "uc-mobile-proto",

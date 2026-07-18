@@ -15,6 +15,22 @@ use uc_core::{
     ports::{ClipboardEventRepositoryPort, ClipboardEventWriterPort},
 };
 
+pub(super) fn insert_clipboard_event_rows(
+    conn: &mut SqliteConnection,
+    event: &NewClipboardEventRow,
+    representations: &[NewSnapshotRepresentationRow],
+) -> Result<()> {
+    diesel::insert_into(clipboard_event::table)
+        .values(event)
+        .execute(conn)?;
+    for representation in representations {
+        diesel::insert_into(clipboard_snapshot_representation::table)
+            .values(representation)
+            .execute(conn)?;
+    }
+    Ok(())
+}
+
 pub struct DieselClipboardEventRepository<E, ME, MS> {
     executor: E,
     event_mapper: ME,
@@ -81,19 +97,7 @@ where
                 .collect::<Result<Vec<_>, _>>()?;
 
             self.executor.run(|conn| {
-                conn.transaction(|conn| {
-                    diesel::insert_into(clipboard_event::table)
-                        .values(&new_event)
-                        .execute(conn)?;
-
-                    for rep in new_reps {
-                        diesel::insert_into(clipboard_snapshot_representation::table)
-                            .values(&rep)
-                            .execute(conn)?;
-                    }
-
-                    Ok(())
-                })
+                conn.transaction(|conn| insert_clipboard_event_rows(conn, &new_event, &new_reps))
             })
         })
     }

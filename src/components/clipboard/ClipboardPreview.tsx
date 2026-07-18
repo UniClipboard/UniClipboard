@@ -1,7 +1,7 @@
 import { Clipboard } from 'lucide-react'
 import React, { useCallback, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { cancelFileTransfer } from '@/api/file_transfer'
+import { cancelEntryReceive, cancelFileTransfer } from '@/api/file_transfer'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { useClipboardPreviewState } from '@/hooks/useClipboardPreviewState'
 import { useEntryDelivery } from '@/hooks/useEntryDelivery'
@@ -116,19 +116,28 @@ const ClipboardPreview: React.FC<ClipboardPreviewProps> = ({ item, actions }) =>
   const { delivery } = useEntryDelivery(item?.id ?? null)
   const [cancelling, setCancelling] = useState(false)
 
+  const itemId = item?.id
   const transferId = transfer?.transferId
+  const attemptId = transfer?.attemptId
   const handleCancelTransfer = useCallback(async () => {
     if (!transferId || cancelling) return
     setCancelling(true)
     try {
-      await cancelFileTransfer(transferId)
+      if (itemId && attemptId) {
+        await cancelEntryReceive(itemId, attemptId)
+      } else {
+        await cancelFileTransfer(transferId)
+      }
     } catch (err) {
-      reportError(err, { command: 'cancelFileTransfer', transferId })
+      reportError(err, {
+        command: itemId && attemptId ? 'cancelEntryReceive' : 'cancelFileTransfer',
+        transferId,
+      })
     } finally {
       // 无论成功或失败都释放本地锁，避免后续 transfer 被误禁用。
       setCancelling(false)
     }
-  }, [transferId, cancelling])
+  }, [attemptId, cancelling, itemId, transferId])
 
   if (!item) {
     return (

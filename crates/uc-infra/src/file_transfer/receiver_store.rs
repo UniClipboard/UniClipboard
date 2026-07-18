@@ -1,20 +1,34 @@
 use anyhow::Result;
 use async_trait::async_trait;
 use diesel::Connection;
+use std::sync::Arc;
 
 use crate::db::ports::DbExecutor;
 use crate::file_transfer::event_store::sqlite::{append_event, load_events};
+use crate::file_transfer::persistence_cipher::derive_transfer_persistence_cipher;
 use crate::file_transfer::projection::sqlite::apply_event;
 use uc_core::file_transfer::{FileTransferEvent, FileTransferEventStorePort};
+use uc_core::ports::security::current_profile::CurrentProfilePort;
+use uc_core::ports::space::DeriveSpaceSubkeyPort;
 
 /// Receiver-side durable store that keeps event log and projection updates in one SQLite transaction.
 pub struct SqliteReceiverFileTransferStore<E> {
     executor: E,
+    derive_subkey: Arc<dyn DeriveSpaceSubkeyPort>,
+    current_profile: Arc<dyn CurrentProfilePort>,
 }
 
 impl<E> SqliteReceiverFileTransferStore<E> {
-    pub fn new(executor: E) -> Self {
-        Self { executor }
+    pub fn new(
+        executor: E,
+        derive_subkey: Arc<dyn DeriveSpaceSubkeyPort>,
+        current_profile: Arc<dyn CurrentProfilePort>,
+    ) -> Self {
+        Self {
+            executor,
+            derive_subkey,
+            current_profile,
+        }
     }
 }
 
@@ -22,15 +36,19 @@ impl<E> SqliteReceiverFileTransferStore<E> {
 impl<E: DbExecutor> FileTransferEventStorePort for SqliteReceiverFileTransferStore<E> {
     async fn load(&self, transfer_id: &str) -> Result<Vec<FileTransferEvent>> {
         let transfer_id = transfer_id.to_string();
+        let cipher =
+            derive_transfer_persistence_cipher(&self.derive_subkey, &self.current_profile).await?;
         self.executor
-            .run(move |conn| load_events(conn, &transfer_id))
+            .run(move |conn| load_events(conn, &transfer_id, &cipher))
     }
 
     async fn append(&self, event: FileTransferEvent) -> Result<()> {
+        let cipher =
+            derive_transfer_persistence_cipher(&self.derive_subkey, &self.current_profile).await?;
         self.executor.run(move |conn| {
             conn.transaction::<_, anyhow::Error, _>(|conn| {
-                append_event(conn, event.clone())?;
-                apply_event(conn, &event)?;
+                append_event(conn, event.clone(), &cipher)?;
+                apply_event(conn, &event, &cipher)?;
                 Ok(())
             })
         })
@@ -48,6 +66,7 @@ mod tests {
     use crate::db::schema::file_transfer;
     use diesel::prelude::*;
     use tempfile::{tempdir, TempDir};
+    use uc_core::file_transfer::FileTransferCancellationReason;
     use uc_core::ports::file_transfer::{PendingInboundTransfer, TrackedFileTransferStatus};
     use uc_core::ports::RecordReceiverTransferPort;
     use uc_core::{FileTransferDirection, FileTransferProgress};
@@ -61,8 +80,18 @@ mod tests {
         let tempdir = tempdir().unwrap();
         let database_url = tempdir.path().join("receiver-file-transfer-store.sqlite");
         let pool = init_db_pool(database_url.to_str().unwrap()).unwrap();
-        let store = SqliteReceiverFileTransferStore::new(DieselSqliteExecutor::new(pool.clone()));
-        let repo = DieselFileTransferRepository::new(DieselSqliteExecutor::new(pool.clone()));
+        let (derive_subkey, current_profile) =
+            crate::file_transfer::persistence_cipher::test_keys::ports();
+        let store = SqliteReceiverFileTransferStore::new(
+            DieselSqliteExecutor::new(pool.clone()),
+            derive_subkey.clone(),
+            current_profile.clone(),
+        );
+        let repo = DieselFileTransferRepository::new(
+            DieselSqliteExecutor::new(pool.clone()),
+            derive_subkey,
+            current_profile,
+        );
         let reader = DieselSqliteExecutor::new(pool);
 
         (store, repo, reader, tempdir)
@@ -85,8 +114,10 @@ mod tests {
         PendingInboundTransfer {
             transfer_id: "transfer-1".into(),
             entry_id: "entry-1".into(),
+            attempt_id: None,
             origin_device_id: "device-1".into(),
             filename: "report.pdf".into(),
+            file_size: None,
             cached_path: "/tmp/report.pdf".into(),
             created_at_ms: 10,
         }
@@ -139,5 +170,33 @@ mod tests {
             store.load("sender-only-transfer").await.unwrap(),
             vec![event]
         );
+    }
+
+    #[tokio::test]
+    async fn late_completed_event_does_not_regress_a_cancelled_projection() {
+        let (store, repo, reader, _tempdir) = make_store();
+        repo.upsert_pending_transfer(&pending_transfer())
+            .await
+            .unwrap();
+        store
+            .append(FileTransferEvent::cancelled(
+                "transfer-1",
+                "peer-1",
+                FileTransferCancellationReason::LocalUser,
+            ))
+            .await
+            .unwrap();
+
+        store
+            .append(FileTransferEvent::completed("transfer-1", "peer-1"))
+            .await
+            .unwrap();
+
+        let rows = load_rows(&reader, "entry-1");
+        assert_eq!(
+            rows[0].status,
+            TrackedFileTransferStatus::Cancelled.as_str()
+        );
+        assert_eq!(store.load("transfer-1").await.unwrap().len(), 2);
     }
 }

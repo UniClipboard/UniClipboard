@@ -10,12 +10,10 @@
 
 use std::sync::Arc;
 
-use uc_application::deps::AppDeps;
-use uc_application::facade::ClipboardSyncFacade;
-use uc_infra::fs::FsInboundFileTarget;
-
 use crate::subsystem::sync_engine::{build_sync_engine_assembly, SyncEngineAssembly};
 use crate::wiring::deps::{SharedRuntimeDeps, SyncEngineDeps};
+use uc_application::deps::AppDeps;
+use uc_application::facade::ClipboardSyncFacade;
 
 /// daemon-lifecycle 装配产出。
 ///
@@ -80,15 +78,6 @@ pub async fn build_daemon_lifecycle(
             "trusted_peer reconcile failed at boot; daemon continues with whatever orphans remain"
         );
     }
-
-    // An interrupted directory receive leaves a hidden assembly area behind,
-    // holding a partial tree no entry refers to. Reclaim it now, while nothing
-    // is receiving.
-    crate::startup::inbound_staging::sweep_inbound_staging(
-        FsInboundFileTarget::new(Arc::clone(&deps.settings)),
-        &shared.file_cache_dir,
-    )
-    .await;
 
     // Phase 94 NETSET-03:从 settings 读取 LAN-only Mode 偏好后翻译为
     // `IrohNodeConfig`。`SettingsPort::load` 当前错误返回类型 `anyhow::Result`

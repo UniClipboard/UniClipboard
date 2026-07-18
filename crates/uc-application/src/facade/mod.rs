@@ -51,10 +51,11 @@ pub use blob_transfer::{
     PublishBlobCommand, PublishBlobPathCommand, PublishBlobResult,
 };
 pub use clipboard::{
-    ClipboardSyncDeps, ClipboardSyncError, ClipboardSyncFacade, DispatchEntryInput,
-    DispatchEntryOutcome, DispatchEntryPerTarget, EntryDeliveryStatusView, EntryDeliveryTargetView,
-    EntryDeliveryView, EntrySource, GetEntryDeliveryViewError, InboundAction, InboundNotice,
-    InboundNoticeSubscription, IngestHandle,
+    CancelEntryReceiveError, CancelEntryReceiveOutcome, ClipboardSyncDeps, ClipboardSyncError,
+    ClipboardSyncFacade, DispatchEntryInput, DispatchEntryOutcome, DispatchEntryPerTarget,
+    EntryDeliveryStatusView, EntryDeliveryTargetView, EntryDeliveryView, EntrySource,
+    GetEntryDeliveryViewError, InboundAction, InboundNotice, InboundNoticeSubscription,
+    IngestHandle,
 };
 // V3 envelope codec helpers — surfaced through the facade per §11.4.3 so
 // external CLI / test consumers don't reach into `crate::usecases::*`
@@ -101,8 +102,8 @@ pub use encryption::{
 };
 pub use file_transfer::{
     CancelTransfer, CompleteTransfer, FailTransfer, FileTransferApplicationError,
-    FileTransferFacade, FileTransferFacadeDeps, LinkTransferToEntry, ReportTransferProgress,
-    SeedReceiverContext, StartTransfer,
+    FileTransferFacade, FileTransferFacadeDeps, ReportTransferProgress, SeedReceiverContext,
+    StartTransfer,
 };
 pub use host_event::{
     ClipboardHostEvent, ClipboardOriginKind, DeliveryHostEvent, EmitError,

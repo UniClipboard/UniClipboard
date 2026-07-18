@@ -6,8 +6,9 @@ use uc_daemon_contract::api::dto::clipboard::{
     EntryDetailDto, EntryProjectionResponseDto, EntryResourceDto,
 };
 use uc_daemon_contract::api::dto::clipboard_command::{
-    CancelTransferRequest, CancelTransferResponse, CaptureCurrentClipboardResponse,
-    DispatchOutcomeResponse, DispatchTextRequest, ResendRequest, ResendResponse,
+    CancelEntryReceiveRequest, CancelEntryReceiveResponse, CancelTransferRequest,
+    CancelTransferResponse, CaptureCurrentClipboardResponse, DispatchOutcomeResponse,
+    DispatchTextRequest, EntryReceiveProgressResponse, ResendRequest, ResendResponse,
 };
 use uc_daemon_contract::constants::http_route;
 
@@ -133,6 +134,54 @@ impl DaemonClipboardClient {
             Method::POST,
             &path,
             |r| r.json(&req_body),
+        )
+        .await?)
+    }
+
+    pub async fn entry_receive_progress(
+        &self,
+        entry_id: &str,
+    ) -> Result<Option<EntryReceiveProgressResponse>> {
+        let path = entry_receive_progress_path(entry_id);
+        Ok(enveloped_request(
+            &self.http,
+            &self.connection_state,
+            &self.client_type,
+            Method::GET,
+            &path,
+            |request| request,
+        )
+        .await?)
+    }
+
+    pub async fn cancel_entry_receive(
+        &self,
+        entry_id: &str,
+        attempt_id: &str,
+    ) -> Result<CancelEntryReceiveResponse> {
+        let path = cancel_entry_receive_path(entry_id);
+        let body = CancelEntryReceiveRequest {
+            attempt_id: attempt_id.to_owned(),
+        };
+        Ok(enveloped_request(
+            &self.http,
+            &self.connection_state,
+            &self.client_type,
+            Method::POST,
+            &path,
+            |request| request.json(&body),
+        )
+        .await?)
+    }
+
+    pub async fn list_entry_receive_progress(&self) -> Result<Vec<EntryReceiveProgressResponse>> {
+        Ok(enveloped_request(
+            &self.http,
+            &self.connection_state,
+            &self.client_type,
+            Method::GET,
+            "/clipboard/receives",
+            |request| request,
         )
         .await?)
     }
@@ -303,6 +352,14 @@ fn filename_from_content_disposition(header: &str) -> Option<String> {
     None
 }
 
+fn entry_receive_progress_path(entry_id: &str) -> String {
+    format!("/clipboard/entries/{entry_id}/receive")
+}
+
+fn cancel_entry_receive_path(entry_id: &str) -> String {
+    format!("/clipboard/entries/{entry_id}/receive/cancel")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -326,5 +383,24 @@ mod tests {
     #[test]
     fn returns_none_without_filename() {
         assert_eq!(filename_from_content_disposition("attachment"), None);
+    }
+
+    #[test]
+    fn receive_request_paths_and_cancel_body_are_exact() {
+        assert_eq!(
+            entry_receive_progress_path("entry-1"),
+            "/clipboard/entries/entry-1/receive"
+        );
+        assert_eq!(
+            cancel_entry_receive_path("entry-1"),
+            "/clipboard/entries/entry-1/receive/cancel"
+        );
+        assert_eq!(
+            serde_json::to_value(CancelEntryReceiveRequest {
+                attempt_id: "attempt-2".to_owned(),
+            })
+            .unwrap(),
+            serde_json::json!({ "attemptId": "attempt-2" })
+        );
     }
 }

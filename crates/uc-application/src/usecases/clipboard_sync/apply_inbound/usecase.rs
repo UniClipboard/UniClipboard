@@ -12,10 +12,20 @@ use uc_core::ports::clipboard::{
     AdvanceActiveClipboardPort, CheckEntryAvailabilityPort, FindEntryIdBySnapshotHashPort,
     TouchClipboardEntryPort,
 };
+use uc_core::ports::{
+    AttemptState, BeginReceiveAttemptPort, BeginReceiveFailureOutcome, BeginReceiveFailurePort,
+    BeginReceiveOutcome, ClaimReceiveCommitPort, CleanupReceiveArtifactsPort, ClockPort,
+    CommitInboundReceivePort, CompletedReceiveArtifacts, FinalizeProvisionalReceivePort,
+    GetEntryAttemptPort, InboundReceiveSettlement, NoEntryReceiveArtifacts,
+    PartialReceiveArtifacts, PartialReceiveTerminal, ProvisionalReceiveAction, ReceiveArtifact,
+    ReceiveItemRole, RequestReceiveCancellationOutcome, RequestReceiveCancellationPort,
+};
 use uc_core::{SnapshotHash, SystemClipboardSnapshot};
 
+use crate::clipboard_capture::InboundCaptureCommitContext;
 use crate::clipboard_write::{ClipboardWriteIntent, MobileConsumabilityProbe};
 use crate::entry_identity::EntryIdentityCoordinator;
+use crate::receive_reconciliation::ReceiveReadinessCoordinator;
 
 use crate::facade::active_clipboard::ClipboardSnapshotDeps;
 use crate::facade::blob_transfer::SharedHostEventEmitter;
@@ -27,7 +37,10 @@ use crate::facade::host_event::{
 };
 use crate::usecases::clipboard_sync::payload_codec::decode_v3_bytes_to_snapshot_blob_refs_and_file_set;
 
-use super::materializer::{DirectoryPublication, InboundBlobMaterializer, RollbackOutcome};
+use super::materializer::{
+    is_directory_cancel_error, verify_file_set_identity, DirectoryPublication,
+    InboundBlobMaterializer, MaterializeOutcome, ReceiveWorkPlan, RollbackOutcome,
+};
 use super::ports::{InboundCapture, InboundSnapshotRebuild, InboundWrite};
 use super::timing::{RAPID_DUPLICATE_WINDOW, VISIBLE_DUPLICATE_WINDOW};
 use super::{ApplyInboundError, ApplyInboundInput, ApplyOutcome};
@@ -39,6 +52,10 @@ pub struct ApplyInboundClipboardUseCase {
     capture: Arc<dyn InboundCapture>,
     write: Arc<dyn InboundWrite>,
     blob_materializer: Option<Arc<dyn InboundBlobMaterializer>>,
+    receive_attempts: Option<ReceiveAttemptPorts>,
+    receive_artifact_cleanup: Option<Arc<dyn CleanupReceiveArtifactsPort>>,
+    provisional_receive: Option<Arc<dyn FinalizeProvisionalReceivePort>>,
+    receive_readiness: Option<Arc<ReceiveReadinessCoordinator>>,
     /// Inbound idempotency, `snapshot_hash` → `entry_id`: collapses a peer
     /// re-pushing byte-identical frames to one logical clip. TTL =
     /// `RAPID_DUPLICATE_WINDOW` (see [`super::timing`]).
@@ -95,6 +112,16 @@ struct ResurfacePorts {
     touch_entry: Arc<dyn TouchClipboardEntryPort>,
 }
 
+struct ReceiveAttemptPorts {
+    get: Arc<dyn GetEntryAttemptPort>,
+    begin: Arc<dyn BeginReceiveAttemptPort>,
+    claim_commit: Arc<dyn ClaimReceiveCommitPort>,
+    request_cancel: Arc<dyn RequestReceiveCancellationPort>,
+    begin_failure: Arc<dyn BeginReceiveFailurePort>,
+    commit: Arc<dyn CommitInboundReceivePort>,
+    clock: Arc<dyn ClockPort>,
+}
+
 impl ApplyInboundClipboardUseCase {
     pub fn new(
         entry_repo: Arc<dyn FindEntryIdBySnapshotHashPort>,
@@ -106,6 +133,10 @@ impl ApplyInboundClipboardUseCase {
             capture,
             write,
             blob_materializer: None,
+            receive_attempts: None,
+            receive_artifact_cleanup: None,
+            provisional_receive: None,
+            receive_readiness: None,
             coordinator: Arc::new(EntryIdentityCoordinator::new()),
             availability: None,
             host_event_emitter: None,
@@ -150,6 +181,49 @@ impl ApplyInboundClipboardUseCase {
         blob_materializer: Arc<dyn InboundBlobMaterializer>,
     ) -> Self {
         self.blob_materializer = Some(blob_materializer);
+        self
+    }
+
+    pub fn with_receive_attempt_ports(
+        mut self,
+        get: Arc<dyn GetEntryAttemptPort>,
+        begin: Arc<dyn BeginReceiveAttemptPort>,
+        claim_commit: Arc<dyn ClaimReceiveCommitPort>,
+        request_cancel: Arc<dyn RequestReceiveCancellationPort>,
+        begin_failure: Arc<dyn BeginReceiveFailurePort>,
+        commit: Arc<dyn CommitInboundReceivePort>,
+        clock: Arc<dyn ClockPort>,
+    ) -> Self {
+        self.receive_attempts = Some(ReceiveAttemptPorts {
+            get,
+            begin,
+            claim_commit,
+            request_cancel,
+            begin_failure,
+            commit,
+            clock,
+        });
+        self
+    }
+
+    pub fn with_receive_artifact_cleanup(
+        mut self,
+        cleanup: Arc<dyn CleanupReceiveArtifactsPort>,
+    ) -> Self {
+        self.receive_artifact_cleanup = Some(cleanup);
+        self
+    }
+
+    pub fn with_provisional_receive(
+        mut self,
+        provisional_receive: Arc<dyn FinalizeProvisionalReceivePort>,
+    ) -> Self {
+        self.provisional_receive = Some(provisional_receive);
+        self
+    }
+
+    pub fn with_receive_readiness(mut self, readiness: Arc<ReceiveReadinessCoordinator>) -> Self {
+        self.receive_readiness = Some(readiness);
         self
     }
 
@@ -276,6 +350,24 @@ impl ApplyInboundClipboardUseCase {
         bus.emit_or_warn(event);
     }
 
+    fn emit_receive_state(
+        &self,
+        entry_id: &EntryId,
+        attempt_id: Option<&str>,
+        state: AttemptState,
+    ) {
+        let Some(attempt_id) = attempt_id else {
+            return;
+        };
+        self.emit_host_event(HostEvent::Clipboard(
+            ClipboardHostEvent::ReceiveAttemptStateChanged {
+                entry_id: entry_id.as_ref().to_owned(),
+                attempt_id: attempt_id.to_owned(),
+                state: state.to_string(),
+            },
+        ));
+    }
+
     fn find_recent_duplicate(
         &self,
         snapshot_hash: &str,
@@ -313,6 +405,203 @@ impl ApplyInboundClipboardUseCase {
                 .unwrap_or(true),
             None => true,
         }
+    }
+
+    async fn begin_receive_attempt(
+        &self,
+        entry_id: &EntryId,
+    ) -> Result<Option<String>, ApplyInboundError> {
+        let Some(ports) = &self.receive_attempts else {
+            return Ok(None);
+        };
+        let attempt_id = EntryId::new().to_string();
+        let now_ms = ports.clock.now_ms();
+        let current = ports
+            .get
+            .get_entry_attempt(entry_id.as_ref())
+            .await
+            .map_err(|error| ApplyInboundError::Internal(error.to_string()))?;
+        let outcome = match current {
+            None => ports
+                .begin
+                .begin_first_receive(entry_id.as_ref(), &attempt_id, now_ms)
+                .await
+                .map_err(|error| ApplyInboundError::Internal(error.to_string()))?,
+            Some(current) if current.state.is_terminal() => ports
+                .begin
+                .begin_redelivery(
+                    entry_id.as_ref(),
+                    &current.current_attempt_id,
+                    &attempt_id,
+                    now_ms,
+                )
+                .await
+                .map_err(|error| ApplyInboundError::Internal(error.to_string()))?,
+            Some(current) => {
+                return Err(ApplyInboundError::Internal(format!(
+                    "remote receive already has an authoritative {} attempt",
+                    current.state
+                )))
+            }
+        };
+        match outcome {
+            BeginReceiveOutcome::Begun => Ok(Some(attempt_id)),
+            BeginReceiveOutcome::AlreadyReceiving | BeginReceiveOutcome::Superseded => {
+                Err(ApplyInboundError::Internal(
+                    "remote receive attempt could not be started".to_owned(),
+                ))
+            }
+        }
+    }
+
+    async fn claim_receive_commit(
+        &self,
+        entry_id: &EntryId,
+        attempt_id: Option<&str>,
+    ) -> Result<(), ApplyInboundError> {
+        let (Some(ports), Some(attempt_id)) = (&self.receive_attempts, attempt_id) else {
+            return Ok(());
+        };
+        if ports
+            .claim_commit
+            .claim_receive_commit(entry_id.as_ref(), attempt_id, ports.clock.now_ms())
+            .await
+            .map_err(|error| ApplyInboundError::Internal(error.to_string()))?
+        {
+            return Ok(());
+        }
+        let current = ports
+            .get
+            .get_entry_attempt(entry_id.as_ref())
+            .await
+            .map_err(|error| ApplyInboundError::Internal(error.to_string()))?;
+        if current.as_ref().is_some_and(|current| {
+            current.current_attempt_id == attempt_id && current.state == AttemptState::Committing
+        }) {
+            Ok(())
+        } else {
+            Err(ApplyInboundError::Internal(
+                "remote receive lost commit authority".to_owned(),
+            ))
+        }
+    }
+
+    async fn begin_receive_failure(
+        &self,
+        entry_id: &EntryId,
+        attempt_id: Option<&str>,
+    ) -> Result<(), ApplyInboundError> {
+        let (Some(ports), Some(attempt_id)) = (&self.receive_attempts, attempt_id) else {
+            return Ok(());
+        };
+        match ports
+            .begin_failure
+            .begin_receive_failure(entry_id.as_ref(), attempt_id, ports.clock.now_ms())
+            .await
+            .map_err(|error| ApplyInboundError::Internal(error.to_string()))?
+        {
+            BeginReceiveFailureOutcome::Begun => Ok(()),
+            BeginReceiveFailureOutcome::CancellationWon => Err(ApplyInboundError::Internal(
+                "remote receive was cancelled while failing".to_owned(),
+            )),
+            BeginReceiveFailureOutcome::Terminal | BeginReceiveFailureOutcome::Superseded => Err(
+                ApplyInboundError::Internal("remote receive lost failure authority".to_owned()),
+            ),
+        }
+    }
+
+    async fn request_receive_cancellation(
+        &self,
+        entry_id: &EntryId,
+        attempt_id: Option<&str>,
+    ) -> Result<(), ApplyInboundError> {
+        let (Some(ports), Some(attempt_id)) = (&self.receive_attempts, attempt_id) else {
+            return Ok(());
+        };
+        match ports
+            .request_cancel
+            .request_receive_cancellation(entry_id.as_ref(), attempt_id, ports.clock.now_ms())
+            .await
+            .map_err(|error| ApplyInboundError::Internal(error.to_string()))?
+        {
+            RequestReceiveCancellationOutcome::Requested
+            | RequestReceiveCancellationOutcome::AlreadyCancelling => Ok(()),
+            RequestReceiveCancellationOutcome::TooLate
+            | RequestReceiveCancellationOutcome::Terminal
+            | RequestReceiveCancellationOutcome::Superseded => Err(ApplyInboundError::Internal(
+                "remote receive lost cancellation authority".to_owned(),
+            )),
+        }
+    }
+
+    async fn settle_receive_without_entry(
+        &self,
+        entry_id: &EntryId,
+        attempt_id: Option<&str>,
+        terminal: PartialReceiveTerminal,
+        artifacts: &[ReceiveArtifact],
+        has_artifact_journal: bool,
+    ) -> Result<(), ApplyInboundError> {
+        let (Some(ports), Some(attempt_id)) = (&self.receive_attempts, attempt_id) else {
+            return Ok(());
+        };
+
+        let artifact_resolution = if has_artifact_journal {
+            let cleanup = self.receive_artifact_cleanup.as_ref().ok_or_else(|| {
+                ApplyInboundError::Internal("receive artifact cleanup port is not wired".to_owned())
+            })?;
+            cleanup
+                .cleanup_receive_artifacts(artifacts)
+                .await
+                .map_err(|error| ApplyInboundError::Internal(error.to_string()))?;
+            NoEntryReceiveArtifacts::RolledBack
+        } else {
+            NoEntryReceiveArtifacts::None
+        };
+
+        ports
+            .commit
+            .commit_inbound_receive(&InboundReceiveSettlement::NoEntry {
+                entry_id: entry_id.clone(),
+                attempt_id: attempt_id.to_owned(),
+                terminal,
+                artifacts: artifact_resolution,
+                now_ms: ports.clock.now_ms(),
+            })
+            .await
+            .map_err(|error| ApplyInboundError::Internal(error.to_string()))?;
+
+        self.emit_receive_state(
+            entry_id,
+            Some(attempt_id),
+            match terminal {
+                PartialReceiveTerminal::Cancelled => AttemptState::Cancelled,
+                PartialReceiveTerminal::Failed => AttemptState::Failed,
+            },
+        );
+        Ok(())
+    }
+
+    async fn finalize_provisional(
+        &self,
+        transfer_id: &str,
+        action: ProvisionalReceiveAction,
+    ) -> Result<(), ApplyInboundError> {
+        let port = self.provisional_receive.as_ref().ok_or_else(|| {
+            ApplyInboundError::Internal(
+                "mobile provisional receive finalizer is not wired".to_owned(),
+            )
+        })?;
+        let now_ms = self
+            .receive_attempts
+            .as_ref()
+            .map(|ports| ports.clock.now_ms())
+            .ok_or_else(|| {
+                ApplyInboundError::Internal("receive attempt clock is not wired".to_owned())
+            })?;
+        port.finalize_provisional_receive(transfer_id, action, now_ms)
+            .await
+            .map_err(|error| ApplyInboundError::Internal(error.to_string()))
     }
 
     /// Re-activate an entry whose content this device already holds in full.
@@ -450,6 +739,7 @@ impl ApplyInboundClipboardUseCase {
         // and is now the active clipboard, so the list has to re-render.
         self.emit_host_event(HostEvent::Clipboard(ClipboardHostEvent::NewContent {
             entry_id: existing_id.as_ref().to_string(),
+            attempt_id: None,
             preview: "New clipboard content".to_string(),
             origin: ClipboardOriginKind::Remote,
         }));
@@ -468,6 +758,23 @@ impl ApplyInboundClipboardUseCase {
     //   - `flow.id` 优先沿用 wire header 上带过来的对端 flow_id,实现
     //     A 端 root flow.id == B 端 root flow.id;旧版 peer 没带时才本地生成。
     //   - `flow.kind` 静态 `clipboard_sync`,方便按业务流过滤。
+    pub async fn execute(
+        &self,
+        input: ApplyInboundInput,
+    ) -> Result<ApplyOutcome, ApplyInboundError> {
+        self.execute_internal(input, None).await
+    }
+
+    pub async fn execute_with_provisional(
+        &self,
+        input: ApplyInboundInput,
+        provisional_transfer_id: String,
+        role: ReceiveItemRole,
+    ) -> Result<ApplyOutcome, ApplyInboundError> {
+        self.execute_internal(input, Some((provisional_transfer_id, role)))
+            .await
+    }
+
     #[instrument(
         name = "apply_inbound.execute",
         skip_all,
@@ -480,10 +787,14 @@ impl ApplyInboundClipboardUseCase {
             flow.kind = "clipboard_sync",
         )
     )]
-    pub async fn execute(
+    async fn execute_internal(
         &self,
         input: ApplyInboundInput,
+        provisional: Option<(String, ReceiveItemRole)>,
     ) -> Result<ApplyOutcome, ApplyInboundError> {
+        if let Some(readiness) = &self.receive_readiness {
+            readiness.wait_ready().await;
+        }
         let flow_id = input.flow_id.clone().unwrap_or_else(FlowId::generate);
         tracing::Span::current().record("flow.id", tracing::field::display(&flow_id));
         // 1. Decode V3 envelope. Decode failure is non-fatal — drop the
@@ -531,6 +842,13 @@ impl ApplyInboundClipboardUseCase {
             .map_err(|e| ApplyInboundError::DedupQuery(e.to_string()))?;
         if let Some(existing_id) = existing.as_ref() {
             if self.is_entry_available(existing_id).await {
+                if let Some((transfer_id, _)) = provisional.as_ref() {
+                    self.finalize_provisional(
+                        transfer_id,
+                        ProvisionalReceiveAction::DiscardAsFullyHeld,
+                    )
+                    .await?;
+                }
                 return Ok(self
                     .resurface_held_entry(&input, existing_id, snapshot.ts_ms)
                     .await);
@@ -539,6 +857,22 @@ impl ApplyInboundClipboardUseCase {
                 existing_entry_id = %existing_id,
                 "inbound: hash matches a partial local entry; will materialize and upgrade in place"
             );
+        }
+
+        if existing.is_none() {
+            if let Some(existing_entry_id) = self.recent_snapshot_hashes.get(&input.snapshot_hash) {
+                if let Some((transfer_id, _)) = provisional.as_ref() {
+                    self.finalize_provisional(
+                        transfer_id,
+                        ProvisionalReceiveAction::DiscardAsFullyHeld,
+                    )
+                    .await?;
+                }
+                return Ok(ApplyOutcome::DuplicateSkipped {
+                    snapshot_hash: input.snapshot_hash,
+                    existing_entry_id,
+                });
+            }
         }
 
         // Pre-allocate the receiver-side entry_id so the UI placeholder, the
@@ -552,6 +886,43 @@ impl ApplyInboundClipboardUseCase {
         // below, so the IncomingPending card and the final entry must share it —
         // a fresh id would strand the pending card on a different entry.
         let receiver_entry_id = existing.clone().unwrap_or_else(EntryId::new);
+        let receive_attempt_id = self.begin_receive_attempt(&receiver_entry_id).await?;
+        self.emit_receive_state(
+            &receiver_entry_id,
+            receive_attempt_id.as_deref(),
+            AttemptState::Receiving,
+        );
+        if let Some((transfer_id, role)) = provisional.as_ref() {
+            let attempt_id = receive_attempt_id.as_ref().ok_or_else(|| {
+                ApplyInboundError::Internal(
+                    "mobile provisional receive cannot be adopted without an attempt".to_owned(),
+                )
+            })?;
+            if let Err(error) = self
+                .finalize_provisional(
+                    transfer_id,
+                    ProvisionalReceiveAction::AdoptIntoAttempt {
+                        entry_id: receiver_entry_id.as_ref().to_owned(),
+                        attempt_id: attempt_id.clone(),
+                        item_id: transfer_id.clone(),
+                        role: *role,
+                    },
+                )
+                .await
+            {
+                self.begin_receive_failure(&receiver_entry_id, Some(attempt_id))
+                    .await?;
+                self.settle_receive_without_entry(
+                    &receiver_entry_id,
+                    Some(attempt_id),
+                    PartialReceiveTerminal::Failed,
+                    &[],
+                    false,
+                )
+                .await?;
+                return Err(error);
+            }
+        }
         let advertised_total_bytes: u64 = blob_refs.iter().map(|r| r.size_bytes).sum();
         // free-standing files 走 V3BlobRef.filename;rep-bound blobs (image /
         // 大二进制) 通常 filename 为 None,自动被 filter_map 跳过。
@@ -561,6 +932,7 @@ impl ApplyInboundClipboardUseCase {
             .collect();
         self.emit_host_event(HostEvent::Clipboard(ClipboardHostEvent::IncomingPending {
             entry_id: receiver_entry_id.as_ref().to_string(),
+            attempt_id: receive_attempt_id.clone(),
             from_device: input.from_device.as_str().to_string(),
             total_bytes: (advertised_total_bytes > 0).then_some(advertised_total_bytes),
             filenames: advertised_filenames,
@@ -574,47 +946,102 @@ impl ApplyInboundClipboardUseCase {
         // anything behind them, so every path out of this function must either
         // commit them or take them back.
         let mut publication: Option<DirectoryPublication> = None;
-        let (snapshot, is_partial) = match (requires_materialize, &self.blob_materializer) {
-            (false, _) => (snapshot, false),
+        let mut directory_file_set = None;
+        let (snapshot, materialize_outcome, has_receive_artifacts, receive_artifacts) = match (
+            requires_materialize,
+            &self.blob_materializer,
+        ) {
+            (false, _) => (snapshot, MaterializeOutcome::Complete, false, Vec::new()),
             (true, Some(materializer)) => {
                 let count = blob_refs.len();
-                let mut result = materializer
-                    .materialize(
-                        input.from_device.clone(),
+                let mut result = match materializer
+                    .materialize_plan(ReceiveWorkPlan::new(
+                        input.from_device,
                         receiver_entry_id.clone(),
                         snapshot,
                         blob_refs,
                         file_set_manifest,
-                    )
+                        receive_attempt_id.clone(),
+                        Some(input.snapshot_hash.clone()),
+                    ))
                     .await
-                    .map_err(|e| {
-                        warn!(error = %e, blob_ref_count = count, "inbound: blob materialize failed");
-                        // Tell the UI to fail the placeholder card too —
-                        // otherwise it stays stuck in "transferring".
+                {
+                    Ok(result) => result,
+                    Err(error) => {
+                        let cancelled = is_directory_cancel_error(&error);
+                        let terminal = if cancelled {
+                            self.request_receive_cancellation(
+                                &receiver_entry_id,
+                                receive_attempt_id.as_deref(),
+                            )
+                            .await?;
+                            PartialReceiveTerminal::Cancelled
+                        } else {
+                            self.begin_receive_failure(
+                                &receiver_entry_id,
+                                receive_attempt_id.as_deref(),
+                            )
+                            .await?;
+                            PartialReceiveTerminal::Failed
+                        };
+                        self.settle_receive_without_entry(
+                            &receiver_entry_id,
+                            receive_attempt_id.as_deref(),
+                            terminal,
+                            &[],
+                            false,
+                        )
+                        .await?;
+                        warn!(error = %error, blob_ref_count = count, cancelled, "inbound: blob materialize stopped");
                         self.emit_host_event(HostEvent::Transfer(
                             TransferHostEvent::StatusChanged {
                                 transfer_id: receiver_entry_id.as_ref().to_string(),
                                 entry_id: receiver_entry_id.as_ref().to_string(),
-                                status: "failed".to_string(),
-                                reason: Some(e.to_string()),
+                                attempt_id: receive_attempt_id.clone(),
+                                status: if cancelled { "cancelled" } else { "failed" }.to_string(),
+                                reason: if cancelled {
+                                    Some("local_user".to_string())
+                                } else {
+                                    Some(error.to_string())
+                                },
                             },
                         ));
-                        ApplyInboundError::Internal(format!("blob materialize: {e}"))
-                    })?;
+                        return Err(ApplyInboundError::Internal(format!(
+                            "blob materialize: {error}"
+                        )));
+                    }
+                };
                 publication = result.take_publication();
+                directory_file_set = result.directory_file_set.take();
                 let partial = result.is_partial();
+                let outcome = result.outcome();
+                let has_receive_artifacts = result.has_receive_artifacts;
                 if verify_directory_identity {
                     if let Err(err) =
                         verify_file_set_identity(&result.snapshot, &input.snapshot_hash)
                     {
                         // What landed is not what the sender advertised, so no
                         // entry will exist for it — the roots must go.
+                        self.begin_receive_failure(
+                            &receiver_entry_id,
+                            receive_attempt_id.as_deref(),
+                        )
+                        .await?;
                         withdraw_publication(publication, "content failed identity verification")
                             .await;
+                        self.settle_receive_without_entry(
+                            &receiver_entry_id,
+                            receive_attempt_id.as_deref(),
+                            PartialReceiveTerminal::Failed,
+                            &result.receive_artifacts,
+                            result.has_receive_artifacts,
+                        )
+                        .await?;
                         self.emit_host_event(HostEvent::Transfer(
                             TransferHostEvent::StatusChanged {
                                 transfer_id: receiver_entry_id.as_ref().to_string(),
                                 entry_id: receiver_entry_id.as_ref().to_string(),
+                                attempt_id: receive_attempt_id.clone(),
                                 status: "failed".to_string(),
                                 reason: Some(err.to_string()),
                             },
@@ -630,7 +1057,13 @@ impl ApplyInboundClipboardUseCase {
                     partial,
                     "inbound: blob refs materialized into local cache"
                 );
-                (result.snapshot, partial)
+                let receive_artifacts = result.take_receive_artifacts();
+                (
+                    result.snapshot,
+                    outcome,
+                    has_receive_artifacts,
+                    receive_artifacts,
+                )
             }
             (true, None) => {
                 let reason =
@@ -639,12 +1072,24 @@ impl ApplyInboundClipboardUseCase {
                 self.emit_host_event(HostEvent::Transfer(TransferHostEvent::StatusChanged {
                     transfer_id: receiver_entry_id.as_ref().to_string(),
                     entry_id: receiver_entry_id.as_ref().to_string(),
+                    attempt_id: receive_attempt_id.clone(),
                     status: "failed".to_string(),
                     reason: Some(reason.clone()),
                 }));
+                self.begin_receive_failure(&receiver_entry_id, receive_attempt_id.as_deref())
+                    .await?;
+                self.settle_receive_without_entry(
+                    &receiver_entry_id,
+                    receive_attempt_id.as_deref(),
+                    PartialReceiveTerminal::Failed,
+                    &[],
+                    false,
+                )
+                .await?;
                 return Ok(ApplyOutcome::DecodeFailed { reason });
             }
         };
+        let is_partial = materialize_outcome != MaterializeOutcome::Complete;
 
         // 6. Rapid in-memory dedup of a recently-completed re-push. Only
         // complete entries are remembered, so this never suppresses the
@@ -664,6 +1109,19 @@ impl ApplyInboundClipboardUseCase {
                 // second visible copy of the same paste.
                 withdraw_publication(publication, "delivery is a duplicate of a recent entry")
                     .await;
+                self.request_receive_cancellation(
+                    &receiver_entry_id,
+                    receive_attempt_id.as_deref(),
+                )
+                .await?;
+                self.settle_receive_without_entry(
+                    &receiver_entry_id,
+                    receive_attempt_id.as_deref(),
+                    PartialReceiveTerminal::Cancelled,
+                    &receive_artifacts,
+                    has_receive_artifacts,
+                )
+                .await?;
                 return Ok(ApplyOutcome::DuplicateSkipped {
                     snapshot_hash: input.snapshot_hash,
                     existing_entry_id,
@@ -683,6 +1141,61 @@ impl ApplyInboundClipboardUseCase {
         let snapshot_for_write = Arc::new(snapshot.clone());
         let authoritative_hash = SnapshotHash::parse(&input.snapshot_hash);
         let replacing = existing.is_some();
+        if is_partial {
+            match materialize_outcome {
+                MaterializeOutcome::PartialCancelled => {
+                    self.request_receive_cancellation(
+                        &receiver_entry_id,
+                        receive_attempt_id.as_deref(),
+                    )
+                    .await?;
+                }
+                MaterializeOutcome::PartialFailed | MaterializeOutcome::Complete => {
+                    self.begin_receive_failure(&receiver_entry_id, receive_attempt_id.as_deref())
+                        .await?;
+                }
+            }
+        } else {
+            self.claim_receive_commit(&receiver_entry_id, receive_attempt_id.as_deref())
+                .await?;
+            self.emit_receive_state(
+                &receiver_entry_id,
+                receive_attempt_id.as_deref(),
+                AttemptState::Committing,
+            );
+        }
+        let receive_commit = receive_attempt_id.clone().map(|attempt_id| {
+            let file_set = directory_file_set.take();
+            if is_partial {
+                InboundCaptureCommitContext::Partial {
+                    attempt_id,
+                    terminal: match materialize_outcome {
+                        MaterializeOutcome::PartialCancelled => PartialReceiveTerminal::Cancelled,
+                        MaterializeOutcome::PartialFailed | MaterializeOutcome::Complete => {
+                            PartialReceiveTerminal::Failed
+                        }
+                    },
+                    file_set,
+                    artifacts: if has_receive_artifacts {
+                        PartialReceiveArtifacts::Landed
+                    } else {
+                        PartialReceiveArtifacts::None
+                    },
+                }
+            } else {
+                InboundCaptureCommitContext::Complete {
+                    attempt_id,
+                    file_set,
+                    artifacts: if verify_directory_identity {
+                        CompletedReceiveArtifacts::DirectoryPublished
+                    } else if has_receive_artifacts {
+                        CompletedReceiveArtifacts::Landed
+                    } else {
+                        CompletedReceiveArtifacts::None
+                    },
+                }
+            }
+        });
         let captured = match existing {
             // Any surviving match is partial — fully-held matches returned at
             // step 3.
@@ -700,30 +1213,73 @@ impl ApplyInboundClipboardUseCase {
                     // today. Kept so the invariant holds if that ever changes.
                     withdraw_publication(publication, "delivery is partial; placeholder kept")
                         .await;
+                    self.settle_receive_without_entry(
+                        &receiver_entry_id,
+                        receive_attempt_id.as_deref(),
+                        match materialize_outcome {
+                            MaterializeOutcome::PartialCancelled => {
+                                PartialReceiveTerminal::Cancelled
+                            }
+                            MaterializeOutcome::PartialFailed | MaterializeOutcome::Complete => {
+                                PartialReceiveTerminal::Failed
+                            }
+                        },
+                        &receive_artifacts,
+                        has_receive_artifacts,
+                    )
+                    .await?;
                     return Ok(ApplyOutcome::DuplicateSkipped {
                         snapshot_hash: input.snapshot_hash,
                         existing_entry_id: existing_id,
                     });
                 }
-                self.capture
-                    .replace_with_identity(
-                        existing_id,
-                        input.from_device,
-                        snapshot,
-                        authoritative_hash,
-                    )
-                    .await
+                match receive_commit {
+                    Some(commit) => {
+                        self.capture
+                            .replace_inbound_with_identity(
+                                existing_id,
+                                input.from_device,
+                                snapshot,
+                                authoritative_hash,
+                                commit,
+                            )
+                            .await
+                    }
+                    None => {
+                        self.capture
+                            .replace_with_identity(
+                                existing_id,
+                                input.from_device,
+                                snapshot,
+                                authoritative_hash,
+                            )
+                            .await
+                    }
+                }
             }
-            None => {
-                self.capture
-                    .capture_with_identity(
-                        receiver_entry_id.clone(),
-                        input.from_device,
-                        snapshot,
-                        authoritative_hash,
-                    )
-                    .await
-            }
+            None => match receive_commit {
+                Some(commit) => {
+                    self.capture
+                        .capture_inbound_with_identity(
+                            receiver_entry_id.clone(),
+                            input.from_device,
+                            snapshot,
+                            authoritative_hash,
+                            commit,
+                        )
+                        .await
+                }
+                None => {
+                    self.capture
+                        .capture_with_identity(
+                            receiver_entry_id.clone(),
+                            input.from_device,
+                            snapshot,
+                            authoritative_hash,
+                        )
+                        .await
+                }
+            },
         };
         // Persistence is the commit point: only a durable receipt makes the
         // published roots permanent. Anything else takes them back, so a
@@ -732,14 +1288,48 @@ impl ApplyInboundClipboardUseCase {
         let entry_id = match captured {
             Ok(Some(entry_id)) => entry_id,
             Ok(None) => {
+                if !is_partial {
+                    self.begin_receive_failure(&receiver_entry_id, receive_attempt_id.as_deref())
+                        .await?;
+                }
                 withdraw_publication(publication, "persistence produced no entry").await;
+                self.settle_receive_without_entry(
+                    &receiver_entry_id,
+                    receive_attempt_id.as_deref(),
+                    match materialize_outcome {
+                        MaterializeOutcome::PartialCancelled => PartialReceiveTerminal::Cancelled,
+                        MaterializeOutcome::PartialFailed | MaterializeOutcome::Complete => {
+                            PartialReceiveTerminal::Failed
+                        }
+                    },
+                    &receive_artifacts,
+                    has_receive_artifacts,
+                )
+                .await?;
                 let action = if replacing { "replace" } else { "capture" };
                 return Err(ApplyInboundError::Internal(format!(
                     "{action} returned None for RemotePush origin (unexpected)"
                 )));
             }
             Err(e) => {
+                if !is_partial {
+                    self.begin_receive_failure(&receiver_entry_id, receive_attempt_id.as_deref())
+                        .await?;
+                }
                 withdraw_publication(publication, "persistence failed").await;
+                self.settle_receive_without_entry(
+                    &receiver_entry_id,
+                    receive_attempt_id.as_deref(),
+                    match materialize_outcome {
+                        MaterializeOutcome::PartialCancelled => PartialReceiveTerminal::Cancelled,
+                        MaterializeOutcome::PartialFailed | MaterializeOutcome::Complete => {
+                            PartialReceiveTerminal::Failed
+                        }
+                    },
+                    &receive_artifacts,
+                    has_receive_artifacts,
+                )
+                .await?;
                 return Err(ApplyInboundError::Capture(e.to_string()));
             }
         };
@@ -807,7 +1397,7 @@ impl ApplyInboundClipboardUseCase {
             debug!(entry_id = %entry_id, "inbound: entry persisted, scheduling background OS clipboard write");
             let write_port = Arc::clone(&self.write);
             let entry_id_for_write = entry_id.clone();
-            let from_device_for_write = input.from_device.clone();
+            let from_device_for_write = input.from_device;
             let snapshot_hash_for_write = input.snapshot_hash.clone();
             let origin_guard_key_for_write = snapshot_for_write.origin_guard_key();
             // `.in_current_span()` keeps the spawned task under `apply_inbound.execute`
@@ -858,6 +1448,16 @@ impl ApplyInboundClipboardUseCase {
 
         info!(entry_id = %entry_id, "inbound clipboard applied");
 
+        self.emit_receive_state(
+            &entry_id,
+            receive_attempt_id.as_deref(),
+            match materialize_outcome {
+                MaterializeOutcome::Complete => AttemptState::Completed,
+                MaterializeOutcome::PartialCancelled => AttemptState::Cancelled,
+                MaterializeOutcome::PartialFailed => AttemptState::Failed,
+            },
+        );
+
         // 关键:发出 `clipboard.new_content`,让前端 placeholder 卡片下线。
         //
         // 单点修复链路如下:
@@ -889,6 +1489,7 @@ impl ApplyInboundClipboardUseCase {
         // 列表 API 拿到的 `ClipboardItemResponse` 提供。
         self.emit_host_event(HostEvent::Clipboard(ClipboardHostEvent::NewContent {
             entry_id: entry_id.as_ref().to_string(),
+            attempt_id: receive_attempt_id.clone(),
             preview: "New clipboard content".to_string(),
             origin: ClipboardOriginKind::Remote,
         }));
@@ -927,19 +1528,6 @@ async fn withdraw_publication(publication: Option<DirectoryPublication>, reason:
             );
         }
     }
-}
-
-pub(crate) fn verify_file_set_identity(
-    snapshot: &SystemClipboardSnapshot,
-    expected_snapshot_hash: &str,
-) -> anyhow::Result<()> {
-    let actual = snapshot.snapshot_hash().to_string();
-    if actual != expected_snapshot_hash {
-        anyhow::bail!(
-            "directory file-set identity mismatch: expected {expected_snapshot_hash}, got {actual}"
-        );
-    }
-    Ok(())
 }
 
 /// Compact summary of the snapshot's representations for tracing.

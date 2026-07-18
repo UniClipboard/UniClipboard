@@ -3,11 +3,16 @@ use async_trait::async_trait;
 use chrono::Utc;
 use diesel::prelude::*;
 use diesel::sqlite::SqliteConnection;
-use serde_json;
+use std::sync::Arc;
 
 use crate::db::ports::DbExecutor;
 use crate::db::schema::file_transfer_events;
+use crate::file_transfer::persistence_cipher::{
+    derive_transfer_persistence_cipher, TransferPersistenceCipher,
+};
 use uc_core::file_transfer::{FileTransferEvent, FileTransferEventStorePort};
+use uc_core::ports::security::current_profile::CurrentProfilePort;
+use uc_core::ports::space::DeriveSpaceSubkeyPort;
 
 #[allow(dead_code)]
 #[derive(Debug, Clone, Queryable, Selectable)]
@@ -18,7 +23,7 @@ pub(crate) struct FileTransferEventRow {
     transfer_id: String,
     sequence: i32,
     event_type: String,
-    payload_json: String,
+    payload_ciphertext: Vec<u8>,
     occurred_at_ms: i64,
 }
 
@@ -28,18 +33,28 @@ pub(crate) struct NewFileTransferEventRow {
     transfer_id: String,
     sequence: i32,
     event_type: String,
-    payload_json: String,
+    payload_ciphertext: Vec<u8>,
     occurred_at_ms: i64,
 }
 
 /// SQLite-backed event store for file transfer lifecycle events.
 pub struct SqliteFileTransferEventStore<E> {
     executor: E,
+    derive_subkey: Arc<dyn DeriveSpaceSubkeyPort>,
+    current_profile: Arc<dyn CurrentProfilePort>,
 }
 
 impl<E> SqliteFileTransferEventStore<E> {
-    pub fn new(executor: E) -> Self {
-        Self { executor }
+    pub fn new(
+        executor: E,
+        derive_subkey: Arc<dyn DeriveSpaceSubkeyPort>,
+        current_profile: Arc<dyn CurrentProfilePort>,
+    ) -> Self {
+        Self {
+            executor,
+            derive_subkey,
+            current_profile,
+        }
     }
 }
 
@@ -47,19 +62,25 @@ impl<E> SqliteFileTransferEventStore<E> {
 impl<E: DbExecutor> FileTransferEventStorePort for SqliteFileTransferEventStore<E> {
     async fn load(&self, transfer_id: &str) -> Result<Vec<FileTransferEvent>> {
         let transfer_id = transfer_id.to_string();
+        let cipher =
+            derive_transfer_persistence_cipher(&self.derive_subkey, &self.current_profile).await?;
 
         self.executor
-            .run(move |conn| load_events(conn, &transfer_id))
+            .run(move |conn| load_events(conn, &transfer_id, &cipher))
     }
 
     async fn append(&self, event: FileTransferEvent) -> Result<()> {
-        self.executor.run(move |conn| append_event(conn, event))
+        let cipher =
+            derive_transfer_persistence_cipher(&self.derive_subkey, &self.current_profile).await?;
+        self.executor
+            .run(move |conn| append_event(conn, event, &cipher))
     }
 }
 
 pub(crate) fn load_events(
     conn: &mut SqliteConnection,
     transfer_id: &str,
+    cipher: &TransferPersistenceCipher,
 ) -> Result<Vec<FileTransferEvent>> {
     let rows = file_transfer_events::table
         .filter(file_transfer_events::transfer_id.eq(transfer_id))
@@ -69,24 +90,30 @@ pub(crate) fn load_events(
 
     rows.into_iter()
         .map(|row| {
-            let event: FileTransferEvent =
-                serde_json::from_str(&row.payload_json).with_context(|| {
+            cipher
+                .open_event(
+                    &row.transfer_id,
+                    row.sequence,
+                    &row.event_type,
+                    &row.payload_ciphertext,
+                )
+                .with_context(|| {
                     format!(
                         "failed to deserialize file transfer event `{}` for `{}` at sequence {}",
                         row.event_type, row.transfer_id, row.sequence
                     )
-                })?;
-
-            Ok(event)
+                })
         })
         .collect()
 }
 
-pub(crate) fn append_event(conn: &mut SqliteConnection, event: FileTransferEvent) -> Result<()> {
+pub(crate) fn append_event(
+    conn: &mut SqliteConnection,
+    event: FileTransferEvent,
+    cipher: &TransferPersistenceCipher,
+) -> Result<()> {
     let transfer_id = transfer_id_of(&event).to_string();
     let event_type = event_type_of(&event).to_string();
-    let payload_json = serde_json::to_string(&event)
-        .with_context(|| format!("failed to serialize file transfer event `{event_type}`"))?;
     let occurred_at_ms = Utc::now().timestamp_millis();
 
     let current_max: Option<i32> = file_transfer_events::table
@@ -98,12 +125,15 @@ pub(crate) fn append_event(conn: &mut SqliteConnection, event: FileTransferEvent
         })?;
 
     let sequence = current_max.unwrap_or(0) + 1;
+    let payload_ciphertext = cipher
+        .seal_event(&transfer_id, sequence, &event_type, &event)
+        .with_context(|| format!("failed to seal file transfer event `{event_type}`"))?;
 
     let row = NewFileTransferEventRow {
         transfer_id: transfer_id.clone(),
         sequence,
         event_type,
-        payload_json,
+        payload_ciphertext,
         occurred_at_ms,
     };
 
@@ -152,8 +182,14 @@ mod tests {
         let tempdir = tempdir().unwrap();
         let database_url = tempdir.path().join("file-transfer-events.sqlite");
         let pool = init_db_pool(database_url.to_str().unwrap()).unwrap();
+        let (derive_subkey, current_profile) =
+            crate::file_transfer::persistence_cipher::test_keys::ports();
         (
-            SqliteFileTransferEventStore::new(DieselSqliteExecutor::new(pool)),
+            SqliteFileTransferEventStore::new(
+                DieselSqliteExecutor::new(pool),
+                derive_subkey,
+                current_profile,
+            ),
             tempdir,
         )
     }

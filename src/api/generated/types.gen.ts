@@ -74,6 +74,37 @@ export type ApiErrorResponse = {
  * bare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare
  * generic, and an un-aliased generic inlines an anonymous schema.
  */
+export type CancelEntryReceiveEnvelope = {
+    data: CancelEntryReceiveResponse;
+    /**
+     * Server time when the response was built (unix epoch milliseconds).
+     */
+    ts: number;
+};
+
+export type CancelEntryReceiveRequest = {
+    attemptId: string;
+};
+
+export type CancelEntryReceiveResponse = {
+    outcome: string;
+};
+
+/**
+ * Canonical success envelope: `{ "data": T, "ts": <unix millis i64> }`.
+ *
+ * `ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler
+ * via [`ApiEnvelope::now`] (the contract carries only the type + the clock
+ * helper, not a hard dependency on when the handler reads the clock).
+ * `rename_all = "camelCase"` is a no-op for the single-word fields here but is
+ * declared for forward-compat.
+ *
+ * IMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named
+ * OpenAPI component is declared in the `#[aliases(...)]` block below. Add a new
+ * alias line whenever a new payload type needs enveloping. NEVER register the
+ * bare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare
+ * generic, and an un-aliased generic inlines an anonymous schema.
+ */
 export type CancelTransferEnvelope = {
     data: CancelTransferResponse;
     /**
@@ -678,6 +709,62 @@ export type EntryProjectionResponseDto = {
 };
 
 /**
+ * Canonical success envelope: `{ "data": T, "ts": <unix millis i64> }`.
+ *
+ * `ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler
+ * via [`ApiEnvelope::now`] (the contract carries only the type + the clock
+ * helper, not a hard dependency on when the handler reads the clock).
+ * `rename_all = "camelCase"` is a no-op for the single-word fields here but is
+ * declared for forward-compat.
+ *
+ * IMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named
+ * OpenAPI component is declared in the `#[aliases(...)]` block below. Add a new
+ * alias line whenever a new payload type needs enveloping. NEVER register the
+ * bare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare
+ * generic, and an un-aliased generic inlines an anonymous schema.
+ */
+export type EntryReceiveProgressEnvelope = {
+    data?: EntryReceiveProgressResponse | null;
+    /**
+     * Server time when the response was built (unix epoch milliseconds).
+     */
+    ts: number;
+};
+
+/**
+ * Canonical success envelope: `{ "data": T, "ts": <unix millis i64> }`.
+ *
+ * `ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler
+ * via [`ApiEnvelope::now`] (the contract carries only the type + the clock
+ * helper, not a hard dependency on when the handler reads the clock).
+ * `rename_all = "camelCase"` is a no-op for the single-word fields here but is
+ * declared for forward-compat.
+ *
+ * IMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named
+ * OpenAPI component is declared in the `#[aliases(...)]` block below. Add a new
+ * alias line whenever a new payload type needs enveloping. NEVER register the
+ * bare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare
+ * generic, and an un-aliased generic inlines an anonymous schema.
+ */
+export type EntryReceiveProgressListEnvelope = {
+    data: Array<EntryReceiveProgressResponse>;
+    /**
+     * Server time when the response was built (unix epoch milliseconds).
+     */
+    ts: number;
+};
+
+export type EntryReceiveProgressResponse = {
+    attemptId: string;
+    completedBytes: number;
+    entryId: string;
+    itemsCompleted: number;
+    itemsTotal: number;
+    state: string;
+    totalBytes: number;
+};
+
+/**
  * Resource metadata (blob URL or inline data).
  * Matches the frontend `ClipboardEntryResource` interface.
  */
@@ -933,6 +1020,7 @@ export type HealthEnvelope = {
 
 export type HealthResponse = {
     apiRevision: string;
+    degradedReason?: string | null;
     packageVersion: string;
     residency?: DaemonResidency;
     status: string;
@@ -3501,6 +3589,70 @@ export type GetClipboardEntryFileResponses = {
 
 export type GetClipboardEntryFileResponse = GetClipboardEntryFileResponses[keyof GetClipboardEntryFileResponses];
 
+export type GetEntryReceiveProgressData = {
+    body?: never;
+    path: {
+        /**
+         * Clipboard entry ID
+         */
+        id: string;
+    };
+    query?: never;
+    url: '/clipboard/entries/{id}/receive';
+};
+
+export type GetEntryReceiveProgressErrors = {
+    /**
+     * Internal server error
+     */
+    500: ApiErrorResponse;
+};
+
+export type GetEntryReceiveProgressError = GetEntryReceiveProgressErrors[keyof GetEntryReceiveProgressErrors];
+
+export type GetEntryReceiveProgressResponses = {
+    /**
+     * Current receive progress or null
+     */
+    200: EntryReceiveProgressEnvelope;
+};
+
+export type GetEntryReceiveProgressResponse = GetEntryReceiveProgressResponses[keyof GetEntryReceiveProgressResponses];
+
+export type CancelEntryReceiveData = {
+    body: CancelEntryReceiveRequest;
+    path: {
+        /**
+         * Clipboard entry ID
+         */
+        id: string;
+    };
+    query?: never;
+    url: '/clipboard/entries/{id}/receive/cancel';
+};
+
+export type CancelEntryReceiveErrors = {
+    /**
+     * Invalid request
+     */
+    400: ApiErrorResponse;
+    /**
+     * Internal server error
+     */
+    500: ApiErrorResponse;
+};
+
+export type CancelEntryReceiveError = CancelEntryReceiveErrors[keyof CancelEntryReceiveErrors];
+
+export type CancelEntryReceiveResponses = {
+    /**
+     * Exact receive cancellation outcome
+     */
+    200: CancelEntryReceiveEnvelope;
+};
+
+export type CancelEntryReceiveResponse2 = CancelEntryReceiveResponses[keyof CancelEntryReceiveResponses];
+
 export type GetClipboardEntryResourceData = {
     body?: never;
     path: {
@@ -3534,6 +3686,31 @@ export type GetClipboardEntryResourceResponses = {
 };
 
 export type GetClipboardEntryResourceResponse = GetClipboardEntryResourceResponses[keyof GetClipboardEntryResourceResponses];
+
+export type ListEntryReceiveProgressData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/clipboard/receives';
+};
+
+export type ListEntryReceiveProgressErrors = {
+    /**
+     * Internal server error
+     */
+    500: ApiErrorResponse;
+};
+
+export type ListEntryReceiveProgressError = ListEntryReceiveProgressErrors[keyof ListEntryReceiveProgressErrors];
+
+export type ListEntryReceiveProgressResponses = {
+    /**
+     * Active remote receives listed
+     */
+    200: EntryReceiveProgressListEnvelope;
+};
+
+export type ListEntryReceiveProgressResponse = ListEntryReceiveProgressResponses[keyof ListEntryReceiveProgressResponses];
 
 export type ResendClipboardEntryData = {
     body: ResendRequest;

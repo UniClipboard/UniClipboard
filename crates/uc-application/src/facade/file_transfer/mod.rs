@@ -11,6 +11,4 @@ pub use crate::file_transfer::{
     CancelTransfer, CompleteTransfer, FailTransfer, FileTransferApplicationError,
     ReportTransferProgress, StartTransfer,
 };
-pub use facade::{
-    FileTransferFacade, FileTransferFacadeDeps, LinkTransferToEntry, SeedReceiverContext,
-};
+pub use facade::{FileTransferFacade, FileTransferFacadeDeps, SeedReceiverContext};

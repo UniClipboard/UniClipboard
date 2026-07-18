@@ -121,6 +121,7 @@ impl ClipboardRestoreFacade {
             touch: entry_touch,
             set_favorite: _entry_set_favorite,
             delete: _entry_delete,
+            delete_with_receive_state: _entry_delete_with_receive_state,
             find_by_snapshot_hash: _entry_find,
             get_snapshot_hash: entry_snapshot_hash_lookup,
             availability: _entry_availability,

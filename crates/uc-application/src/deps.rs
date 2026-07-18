@@ -61,6 +61,7 @@ pub struct ClipboardEntryPorts {
     pub touch: Arc<dyn TouchClipboardEntryPort>,
     pub set_favorite: Arc<dyn SetClipboardEntryFavoritePort>,
     pub delete: Arc<dyn DeleteClipboardEntryPort>,
+    pub delete_with_receive_state: Arc<dyn DeleteClipboardEntryWithReceiveStatePort>,
     pub find_by_snapshot_hash: Arc<dyn FindEntryIdBySnapshotHashPort>,
     /// Forward lookup of an entry's persisted cross-device snapshot hash. The
     /// restore paths read this rather than recomputing it from the
@@ -237,11 +238,37 @@ pub struct DevicePorts {
 /// whole bundle.
 #[derive(Clone)]
 pub struct FileTransferPorts {
+    pub privacy_maintenance: Arc<dyn EnsureFileTransferPrivacyMaintenancePort>,
     pub record: Arc<dyn RecordReceiverTransferPort>,
+    pub seed_provisional: Arc<dyn SeedProvisionalReceivePort>,
+    pub update_provisional_path: Arc<dyn UpdateProvisionalReceivePathPort>,
+    pub list_provisional: Arc<dyn ListProvisionalReceivesPort>,
+    pub finalize_provisional: Arc<dyn FinalizeProvisionalReceivePort>,
     pub entry_summary: Arc<dyn GetEntryTransferSummaryPort>,
     pub find_entry_id: Arc<dyn FindEntryIdForTransferPort>,
+    pub find_attempt_id: Arc<dyn FindAttemptIdForTransferPort>,
     pub list_expired: Arc<dyn ListExpiredInflightTransfersPort>,
     pub fail_inflight: Arc<dyn FailInflightTransfersPort>,
+    pub cancel_attempt: Arc<dyn CancelDirectoryAttemptTransfersPort>,
+}
+
+#[derive(Clone)]
+pub struct DirectoryReceivePorts {
+    pub get_attempt: Arc<dyn GetEntryAttemptPort>,
+    pub list_attempts: Arc<dyn ListNonTerminalAttemptsPort>,
+    pub record_publish: Arc<dyn RecordDirectoryPublishPort>,
+    pub get_publish: Arc<dyn GetDirectoryPublishRecordPort>,
+    pub begin_receive: Arc<dyn BeginReceiveAttemptPort>,
+    pub claim_commit: Arc<dyn ClaimReceiveCommitPort>,
+    pub request_cancel: Arc<dyn RequestReceiveCancellationPort>,
+    pub begin_failure: Arc<dyn BeginReceiveFailurePort>,
+    pub record_artifacts: Arc<dyn RecordReceiveArtifactsPort>,
+    pub get_artifacts: Arc<dyn GetReceiveArtifactRecordPort>,
+    pub list_unsettled_artifacts: Arc<dyn ListUnsettledReceiveArtifactsPort>,
+    pub commit_inbound: Arc<dyn CommitInboundReceivePort>,
+    pub entry_progress: Arc<dyn GetEntryReceiveProgressPort>,
+    pub delete_state: Arc<dyn DeleteReceiveStateForEntryPort>,
+    pub purge_orphans: Arc<dyn PurgeTerminalOrphanAttemptsPort>,
 }
 
 /// Storage-domain ports bundle (blobs, thumbnails, file transfer tracking).
@@ -259,6 +286,7 @@ pub struct StoragePorts {
     pub thumbnail_repo: Arc<dyn ThumbnailRepositoryPort>,
     pub thumbnail_generator: Arc<dyn ThumbnailGeneratorPort>,
     pub file_transfer: FileTransferPorts,
+    pub directory_receive: DirectoryReceivePorts,
 }
 
 /// Search-domain ports bundle.

@@ -101,6 +101,8 @@ struct RowView {
 // 轻量 NSObject 子类,在它的 method 里调 Rust 逻辑。
 struct UCHudCancelButtonIvars {
     transfer_id: String,
+    entry_id: String,
+    attempt_id: Option<String>,
     actions: Arc<dyn ActivityHudActions>,
 }
 
@@ -123,18 +125,29 @@ define_class!(
                 transfer_id = %ivars.transfer_id,
                 "activity_hud: cancel button clicked"
             );
-            ivars.actions.cancel(&ivars.transfer_id);
+            ivars.actions.cancel(
+                &ivars.entry_id,
+                ivars.attempt_id.as_deref(),
+                &ivars.transfer_id,
+            );
         }
     }
 );
 
 impl UCHudCancelButton {
-    fn new(transfer_id: String, actions: Arc<dyn ActivityHudActions>) -> Retained<Self> {
+    fn new(
+        transfer_id: String,
+        entry_id: String,
+        attempt_id: Option<String>,
+        actions: Arc<dyn ActivityHudActions>,
+    ) -> Retained<Self> {
         // alloc 不需要主线程标记(本类继承 NSObject,不是 MainThreadOnly),
         // 但实际调用方都在主线程上 —— 没有限制就用 AllocAnyThread trait。
         let allocated: Allocated<Self> = Self::alloc();
         let this = allocated.set_ivars(UCHudCancelButtonIvars {
             transfer_id,
+            entry_id,
+            attempt_id,
             actions,
         });
         unsafe { msg_send![super(this), init] }
@@ -422,7 +435,12 @@ impl RowView {
 
         // 取消按钮:文本 "✕",bezelStyle 圆形小按钮。终态行的按钮设
         // disabled,update_from 里也会跟着切。
-        let cancel_target = UCHudCancelButton::new(row.transfer_id.clone(), Arc::clone(actions));
+        let cancel_target = UCHudCancelButton::new(
+            row.transfer_id.clone(),
+            row.entry_id.clone(),
+            row.attempt_id.clone(),
+            Arc::clone(actions),
+        );
         let cancel_button: Retained<NSButton> = unsafe { NSButton::new(mtm) };
         unsafe {
             cancel_button.setTitle(&NSString::from_str("✕"));

@@ -76,7 +76,9 @@ use uc_infra::network::iroh::{
 };
 // Re-exported so external callers can parametrise the assembly without
 // having to `use uc_infra` themselves.
-use uc_infra::fs::{FsAtomicPublisher, FsHiddenPathMarker, FsInboundFileTarget};
+use uc_infra::fs::{
+    FsAtomicPublisher, FsDirectoryStagingCleaner, FsHiddenPathMarker, FsInboundFileTarget,
+};
 pub(crate) use uc_infra::network::iroh::IrohNodeConfig;
 use uc_infra::security::Sha256IdentityFingerprintFactory;
 use uc_platform::file_secure_storage::FileSecureStorage;
@@ -279,6 +281,7 @@ fn spawn_outbound_progress_translator(
                         bus.emit_or_warn(HostEvent::Transfer(TransferHostEvent::Progress {
                             transfer_id: event.transfer_id.clone(),
                             entry_id: Some(event.transfer_id.clone()),
+                            attempt_id: None,
                             peer_id: event.from_device.as_str().to_string(),
                             direction: FileTransferDirection::Sending,
                             bytes_transferred: event.bytes_transferred,
@@ -291,6 +294,7 @@ fn spawn_outbound_progress_translator(
                         bus.emit_or_warn(HostEvent::Transfer(TransferHostEvent::StatusChanged {
                             transfer_id: event.transfer_id.clone(),
                             entry_id: event.transfer_id,
+                            attempt_id: None,
                             status: status.to_string(),
                             reason,
                         }));
@@ -605,33 +609,47 @@ pub(crate) async fn build_sync_engine_assembly(
     // AEAD adapter。ingest 后台 loop 立刻起一次,与 receiver handler 同
     // 生命周期(随 `iroh_node.shutdown()` 自然退出 `RecvError::Closed`,
     // `SyncEngineAssembly::shutdown` 显式 `abort()` 加速过程)。
-    let clipboard_sync = Arc::new(ClipboardSyncFacade::new(ClipboardSyncDeps {
-        peer_addr_repo: Arc::clone(&space_setup.peer_addr_repo),
-        member_repo: Arc::clone(&deps.device.member_repo),
-        presence: Arc::clone(&presence),
-        transfer_cipher: Arc::clone(&deps.security.transfer_cipher),
-        clipboard_dispatch,
-        clipboard_receiver,
-        device_identity: Arc::clone(&deps.device.device_identity),
-        local_identity,
-        settings: Arc::clone(&deps.settings),
-        clock: Arc::clone(&deps.system.clock),
-        analytics: Arc::clone(&deps.analytics),
-        first_sync_state: Arc::clone(&deps.first_sync_state),
-        entry_delivery_repo: Arc::clone(&shared.entry_delivery_repo),
-        entry_repo: Arc::clone(&deps.clipboard.entry_ports.get),
-        event_repo: Arc::clone(&shared.clipboard_event_reader_repo),
-        trusted_peer_repo: Arc::clone(&shared.trusted_peer_repo),
-        mobile_device_repo: Arc::clone(&deps.mobile_sync.devices.find_by_id),
-        // Issue #747 Phase 5：与 blob_transfer / apply_inbound 共享同一根
-        // host_event_bus。GUI 装配链路在 Tauri setup callback 中
-        // `bus.register("tauri", TauriHostEventEmitter)`,daemon 启动时
-        // `bus.register("daemon_ws", DaemonApiEventEmitter)`。dispatch_uc
-        // fan-out 完成、delivery 落盘后追发 `HostEvent::Delivery::
-        // StatusChanged`,bus 把事件 fan-out 给所有已注册下游;CLI 装配
-        // 走同一 bus,只挂着默认 logging emitter,emit 无副作用。
-        host_event_bus: Arc::clone(&shared.host_event_bus),
-    }));
+    let clipboard_sync = Arc::new(
+        ClipboardSyncFacade::new(ClipboardSyncDeps {
+            peer_addr_repo: Arc::clone(&space_setup.peer_addr_repo),
+            member_repo: Arc::clone(&deps.device.member_repo),
+            presence: Arc::clone(&presence),
+            transfer_cipher: Arc::clone(&deps.security.transfer_cipher),
+            clipboard_dispatch,
+            clipboard_receiver,
+            device_identity: Arc::clone(&deps.device.device_identity),
+            local_identity,
+            settings: Arc::clone(&deps.settings),
+            clock: Arc::clone(&deps.system.clock),
+            analytics: Arc::clone(&deps.analytics),
+            first_sync_state: Arc::clone(&deps.first_sync_state),
+            entry_delivery_repo: Arc::clone(&shared.entry_delivery_repo),
+            entry_repo: Arc::clone(&deps.clipboard.entry_ports.get),
+            event_repo: Arc::clone(&shared.clipboard_event_reader_repo),
+            trusted_peer_repo: Arc::clone(&shared.trusted_peer_repo),
+            mobile_device_repo: Arc::clone(&deps.mobile_sync.devices.find_by_id),
+            // Issue #747 Phase 5：与 blob_transfer / apply_inbound 共享同一根
+            // host_event_bus。GUI 装配链路在 Tauri setup callback 中
+            // `bus.register("tauri", TauriHostEventEmitter)`,daemon 启动时
+            // `bus.register("daemon_ws", DaemonApiEventEmitter)`。dispatch_uc
+            // fan-out 完成、delivery 落盘后追发 `HostEvent::Delivery::
+            // StatusChanged`,bus 把事件 fan-out 给所有已注册下游;CLI 装配
+            // 走同一 bus,只挂着默认 logging emitter,emit 无副作用。
+            host_event_bus: Arc::clone(&shared.host_event_bus),
+        })
+        .with_entry_receive_cancellation(
+            Arc::clone(&deps.storage.directory_receive.get_attempt),
+            Arc::clone(&deps.storage.directory_receive.request_cancel),
+            Arc::clone(&deps.storage.directory_receive.entry_progress),
+            Arc::clone(&deps.storage.directory_receive.list_attempts),
+            Arc::clone(&deps.storage.directory_receive.commit_inbound),
+            Arc::clone(&deps.storage.directory_receive.get_publish),
+            FsDirectoryStagingCleaner::new(),
+            Arc::clone(&deps.storage.file_transfer.cancel_attempt),
+            Arc::clone(&blob),
+            Arc::clone(&deps.system.clock),
+        ),
+    );
     let ingest_handle = clipboard_sync.spawn_ingest_loop();
 
     // Store-only inbound apply path for pulled content (issue #1017 PR8). It
@@ -657,6 +675,7 @@ pub(crate) async fn build_sync_engine_assembly(
             Arc::clone(&deps.clipboard.entry_ports.replace_content),
             Arc::clone(&deps.analytics),
         )
+        .with_inbound_receive_commit(Arc::clone(&deps.storage.directory_receive.commit_inbound))
         .with_entry_identity_coordinator(Arc::clone(&deps.clipboard.entry_identity_coordinator)),
     );
     let pull_store_materializer = Arc::new(
@@ -665,6 +684,13 @@ pub(crate) async fn build_sync_engine_assembly(
             shared.file_cache_dir.clone(),
             FsAtomicPublisher::new(),
         )
+        .with_directory_receive_attempt_ports(
+            Arc::clone(&deps.storage.directory_receive.get_attempt),
+            Arc::clone(&deps.storage.directory_receive.claim_commit),
+            Arc::clone(&deps.storage.directory_receive.record_publish),
+            Arc::clone(&deps.system.clock),
+        )
+        .with_receive_artifact_log(Arc::clone(&deps.storage.directory_receive.record_artifacts))
         .with_target_reserver(FsInboundFileTarget::new(Arc::clone(&deps.settings)))
         .with_save_dir_resolver(FsInboundFileTarget::new(Arc::clone(&deps.settings)))
         .with_hidden_marker(FsHiddenPathMarker::new()),
@@ -690,6 +716,17 @@ pub(crate) async fn build_sync_engine_assembly(
             Arc::new(NoopPullStoreWrite) as Arc<dyn ApplyInboundWrite>,
         )
         .with_blob_materializer(pull_store_materializer)
+        .with_receive_attempt_ports(
+            Arc::clone(&deps.storage.directory_receive.get_attempt),
+            Arc::clone(&deps.storage.directory_receive.begin_receive),
+            Arc::clone(&deps.storage.directory_receive.claim_commit),
+            Arc::clone(&deps.storage.directory_receive.request_cancel),
+            Arc::clone(&deps.storage.directory_receive.begin_failure),
+            Arc::clone(&deps.storage.directory_receive.commit_inbound),
+            Arc::clone(&deps.system.clock),
+        )
+        .with_receive_artifact_cleanup(Arc::new(uc_infra::fs::FsReceiveArtifactCleaner))
+        .with_receive_readiness(Arc::clone(&shared.receive_readiness))
         .with_host_event_emitter(Arc::clone(&shared.host_event_bus))
         .with_search_live_index(pull_store_indexer)
         .with_check_entry_availability(Arc::clone(&deps.clipboard.entry_ports.availability))

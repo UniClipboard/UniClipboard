@@ -40,6 +40,7 @@ vi.mock('@/hooks/useEntryDelivery', () => ({
 }))
 
 vi.mock('@/api/file_transfer', () => ({
+  cancelEntryReceive: vi.fn(),
   cancelFileTransfer: vi.fn(),
 }))
 

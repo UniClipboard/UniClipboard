@@ -15,6 +15,7 @@ use diesel::query_dsl::methods::{FilterDsl, OrderDsl};
 use diesel::Connection;
 use diesel::ExpressionMethods;
 use diesel::RunQueryDsl;
+use diesel::SqliteConnection;
 
 use async_trait::async_trait;
 use tracing::instrument;
@@ -72,22 +73,27 @@ impl<E> DieselEntryFileSetRepository<E> {
     /// unlocked, and the dispatch reader treats a load error as "no manifest"
     /// and falls back to snapshot re-parse.
     async fn cipher(&self) -> Result<EntryFileSetPathCipher, EntryFileSetError> {
-        let profile =
-            self.current_profile.current_profile().await.map_err(|e| {
-                EntryFileSetError::Storage(format!("current profile unavailable: {e}"))
-            })?;
-        let key = self
-            .derive_subkey
-            .derive_subkey(profile.as_ref().as_bytes(), FILE_SET_KEY_INFO)
-            .await
-            .map_err(|e| match e {
-                SpaceAccessError::NotUnlocked => {
-                    EntryFileSetError::Storage("session locked: cannot derive file-set key".into())
-                }
-                other => EntryFileSetError::Storage(format!("derive file-set key: {other}")),
-            })?;
-        Ok(EntryFileSetPathCipher::new(key))
+        derive_file_set_cipher(self.derive_subkey.as_ref(), self.current_profile.as_ref()).await
     }
+}
+
+pub(super) async fn derive_file_set_cipher(
+    derive_subkey: &dyn DeriveSpaceSubkeyPort,
+    current_profile: &dyn CurrentProfilePort,
+) -> Result<EntryFileSetPathCipher, EntryFileSetError> {
+    let profile = current_profile.current_profile().await.map_err(|error| {
+        EntryFileSetError::Storage(format!("current profile unavailable: {error}"))
+    })?;
+    let key = derive_subkey
+        .derive_subkey(profile.as_ref().as_bytes(), FILE_SET_KEY_INFO)
+        .await
+        .map_err(|error| match error {
+            SpaceAccessError::NotUnlocked => {
+                EntryFileSetError::Storage("session locked: cannot derive file-set key".into())
+            }
+            other => EntryFileSetError::Storage(format!("derive file-set key: {other}")),
+        })?;
+    Ok(EntryFileSetPathCipher::new(key))
 }
 
 /// `kind` / `exclude_reason` 在持久化层的字符串编码。变体名保持稳定,不随
@@ -102,6 +108,18 @@ mod exclude_reason_codec {
     pub const SIZE_CAP_EXCEEDED: &str = "size_cap_exceeded";
     pub const INGEST_FAILED: &str = "ingest_failed";
     pub const UNSUPPORTED_MEMBER: &str = "unsupported_member";
+}
+
+pub(super) fn encode_file_set_rows(
+    cipher: &EntryFileSetPathCipher,
+    entry_id: &EntryId,
+    file_set: &EntryFileSet,
+) -> Result<Vec<NewEntryFileSetRow>, EntryFileSetError> {
+    file_set
+        .lines
+        .iter()
+        .map(|line| encode_line(cipher, entry_id, line))
+        .collect()
 }
 
 fn encode_line(
@@ -262,6 +280,22 @@ fn decode_row(
     })
 }
 
+pub(super) fn replace_entry_file_set_rows(
+    conn: &mut SqliteConnection,
+    entry_id: &str,
+    new_rows: &[NewEntryFileSetRow],
+) -> anyhow::Result<()> {
+    diesel::delete(entry_file_set::table)
+        .filter(entry_file_set::entry_id.eq(entry_id))
+        .execute(conn)?;
+    for chunk in new_rows.chunks(ENTRY_FILE_SET_INSERT_CHUNK) {
+        diesel::insert_into(entry_file_set::table)
+            .values(chunk)
+            .execute(conn)?;
+    }
+    Ok(())
+}
+
 #[async_trait]
 impl<E> EntryFileSetRepositoryPort for DieselEntryFileSetRepository<E>
 where
@@ -288,36 +322,14 @@ where
             Vec::new()
         } else {
             let cipher = self.cipher().await?;
-            file_set
-                .lines
-                .iter()
-                .map(|line| encode_line(&cipher, entry_id, line))
-                .collect::<Result<Vec<_>, _>>()?
+            encode_file_set_rows(&cipher, entry_id, file_set)?
         };
 
         let entry_id_str = entry_id.to_string();
         let entry_id_for_err = entry_id_str.clone();
         self.executor
             .run(move |conn| {
-                conn.transaction(|conn| {
-                    diesel::delete(entry_file_set::table)
-                        .filter(entry_file_set::entry_id.eq(&entry_id_str))
-                        .execute(conn)?;
-
-                    // Batch insert in chunks: a directory copy can carry many
-                    // members (ADR-010 caps the set at ~2000), so a multi-row
-                    // insert beats per-row round-trips. Chunk so a single
-                    // statement stays well under SQLite's bound-parameter limit
-                    // (12 columns × CHUNK params); the whole loop is inside the
-                    // surrounding transaction, so it's still all-or-nothing.
-                    for chunk in new_rows.chunks(ENTRY_FILE_SET_INSERT_CHUNK) {
-                        diesel::insert_into(entry_file_set::table)
-                            .values(chunk)
-                            .execute(conn)?;
-                    }
-
-                    Ok(())
-                })
+                conn.transaction(|conn| replace_entry_file_set_rows(conn, &entry_id_str, &new_rows))
             })
             .map_err(|err| translate_storage_error(err, &entry_id_for_err))
     }

@@ -6,7 +6,29 @@
  */
 
 import { daemonClient } from '@/api/daemon/client'
-import { cancelClipboardTransfer } from '@/api/generated/sdk.gen'
+import {
+  cancelClipboardTransfer,
+  cancelEntryReceive as cancelEntryReceiveSdk,
+  listEntryReceiveProgress,
+} from '@/api/generated/sdk.gen'
+import type { EntryReceiveProgressResponse } from '@/api/generated/types.gen'
+
+export type EntryReceiveProgress = EntryReceiveProgressResponse
+
+export async function listEntryReceives(): Promise<EntryReceiveProgress[]> {
+  return daemonClient.callEnveloped(() => listEntryReceiveProgress({ throwOnError: true }))
+}
+
+export async function cancelEntryReceive(entryId: string, attemptId: string): Promise<string> {
+  const response = await daemonClient.callEnveloped(() =>
+    cancelEntryReceiveSdk({
+      path: { id: entryId },
+      body: { attemptId },
+      throwOnError: true,
+    })
+  )
+  return response.outcome
+}
 
 /**
  * Cancel an in-flight inbound file transfer.

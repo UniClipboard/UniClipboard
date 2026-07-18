@@ -201,7 +201,7 @@ async fn unlock_handler(
     match app.try_resume_session().await {
         Ok(true) => {
             info!("encryption session auto-unlocked via keyring");
-            on_session_ready(&state).await;
+            on_session_ready(&state).await?;
             Ok(Json(ApiEnvelope::now(EncryptionActionResponse {
                 success: true,
             })))
@@ -264,7 +264,7 @@ async fn unlock_with_passphrase_handler(
         .map_err(map_unlock_err)?;
 
     info!("space unlocked via passphrase");
-    on_session_ready(&state).await;
+    on_session_ready(&state).await?;
 
     Ok(Json(ApiEnvelope::now(UnlockSpaceResponse {
         space_id: result.space_id.to_string(),
@@ -278,7 +278,8 @@ async fn unlock_with_passphrase_handler(
 /// identical. Broadcasts the WS event and notifies the search subsystem, which
 /// drives any index rebuild / plaintext-residue purge that a locked cold start
 /// could not run.
-async fn on_session_ready(state: &DaemonApiState) {
+async fn on_session_ready(state: &DaemonApiState) -> Result<(), ApiError> {
+    state.ensure_receive_ready().await?;
     let ts = chrono::Utc::now().timestamp_millis();
     let event_payload = EncryptionSessionReadyPayload { ts };
     let event = DaemonWsEvent {
@@ -297,6 +298,7 @@ async fn on_session_ready(state: &DaemonApiState) {
     if let Ok(app) = state.app_facade_or_error() {
         app.search.on_session_ready().await;
     }
+    Ok(())
 }
 
 /// POST /encryption/lock
@@ -318,6 +320,7 @@ async fn lock_handler(
     app.encryption.lock().await.map_err(|e| {
         map_encryption_internal("encryption_lock", format!("failed to lock encryption: {e}"))
     })?;
+    state.receive_readiness.close_receive_gate();
 
     info!("encryption session cleared (locked)");
     Ok(Json(ApiEnvelope::now(EncryptionActionResponse {

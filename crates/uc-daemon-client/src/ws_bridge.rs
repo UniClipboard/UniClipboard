@@ -8,7 +8,7 @@ use crate::realtime::{
     FileTransferStatusChangedEvent, PairingCompleteEvent, PairingFailedEvent, PairingUpdatedEvent,
     PairingVerificationRequiredEvent, PeerChangedEvent, PeerConnectionChangedEvent,
     PeerNameUpdatedEvent, RealtimeEvent, RealtimePeerSummary, RealtimeTopic, RealtimeTopicPort,
-    SpaceMembersChangedEvent,
+    ReceiveAttemptStateChangedEvent, SpaceMembersChangedEvent,
 };
 use anyhow::{Context, Result};
 use async_trait::async_trait;
@@ -1144,6 +1144,8 @@ fn map_daemon_ws_event(event: DaemonWsEvent) -> Option<RealtimeEvent> {
             #[serde(rename_all = "camelCase")]
             struct ClipboardPayload {
                 entry_id: String,
+                #[serde(default)]
+                attempt_id: Option<String>,
                 preview: String,
                 origin: String,
             }
@@ -1170,6 +1172,7 @@ fn map_daemon_ws_event(event: DaemonWsEvent) -> Option<RealtimeEvent> {
                     Some(RealtimeEvent::ClipboardNewContent(
                         ClipboardNewContentEvent {
                             entry_id: payload.entry_id,
+                            attempt_id: payload.attempt_id,
                             preview: payload.preview,
                             origin: payload.origin,
                         },
@@ -1192,6 +1195,8 @@ fn map_daemon_ws_event(event: DaemonWsEvent) -> Option<RealtimeEvent> {
             #[serde(rename_all = "camelCase")]
             struct IncomingPendingPayload {
                 entry_id: String,
+                #[serde(default)]
+                attempt_id: Option<String>,
                 from_device: String,
                 #[serde(default)]
                 total_bytes: Option<u64>,
@@ -1220,6 +1225,7 @@ fn map_daemon_ws_event(event: DaemonWsEvent) -> Option<RealtimeEvent> {
                     Some(RealtimeEvent::ClipboardIncomingPending(
                         ClipboardIncomingPendingEvent {
                             entry_id: payload.entry_id,
+                            attempt_id: payload.attempt_id,
                             from_device: payload.from_device,
                             total_bytes: payload.total_bytes,
                             filenames: payload.filenames,
@@ -1238,12 +1244,42 @@ fn map_daemon_ws_event(event: DaemonWsEvent) -> Option<RealtimeEvent> {
                 }
             }
         }
+        ws_event::CLIPBOARD_RECEIVE_ATTEMPT_STATE_CHANGED => {
+            #[derive(serde::Deserialize)]
+            #[serde(rename_all = "camelCase")]
+            struct ReceiveAttemptStatePayload {
+                entry_id: String,
+                attempt_id: String,
+                state: String,
+            }
+            match serde_json::from_value::<ReceiveAttemptStatePayload>(event.payload) {
+                Ok(payload) => Some(RealtimeEvent::ReceiveAttemptStateChanged(
+                    ReceiveAttemptStateChangedEvent {
+                        entry_id: payload.entry_id,
+                        attempt_id: payload.attempt_id,
+                        state: payload.state,
+                    },
+                )),
+                Err(error) => {
+                    log_decode_failed(
+                        &topic,
+                        &event_type,
+                        session_id.as_deref(),
+                        "ReceiveAttemptStatePayload",
+                        &error,
+                    );
+                    None
+                }
+            }
+        }
         ws_event::FILE_TRANSFER_STATUS_CHANGED => {
             #[derive(serde::Deserialize)]
             #[serde(rename_all = "camelCase")]
             struct StatusChangedPayload {
                 transfer_id: String,
                 entry_id: String,
+                #[serde(default)]
+                attempt_id: Option<String>,
                 status: String,
                 #[serde(default)]
                 reason: Option<String>,
@@ -1272,6 +1308,7 @@ fn map_daemon_ws_event(event: DaemonWsEvent) -> Option<RealtimeEvent> {
                         FileTransferStatusChangedEvent {
                             transfer_id: payload.transfer_id,
                             entry_id: payload.entry_id,
+                            attempt_id: payload.attempt_id,
                             status: payload.status,
                             reason: payload.reason,
                         },
@@ -1314,6 +1351,7 @@ fn map_daemon_ws_event(event: DaemonWsEvent) -> Option<RealtimeEvent> {
                         FileTransferProgressEvent {
                             transfer_id: payload.transfer_id,
                             entry_id: payload.entry_id,
+                            attempt_id: payload.attempt_id,
                             peer_id: payload.peer_id,
                             direction: payload.direction,
                             bytes_transferred: payload.bytes_transferred,
@@ -1347,9 +1385,9 @@ fn event_topic(event: &RealtimeEvent) -> RealtimeTopic {
         | RealtimeEvent::PeersNameUpdated(_)
         | RealtimeEvent::PeersConnectionChanged(_) => RealtimeTopic::Peers,
         RealtimeEvent::SpaceMembersChanged(_) => RealtimeTopic::PairedDevices,
-        RealtimeEvent::ClipboardNewContent(_) | RealtimeEvent::ClipboardIncomingPending(_) => {
-            RealtimeTopic::Clipboard
-        }
+        RealtimeEvent::ClipboardNewContent(_)
+        | RealtimeEvent::ClipboardIncomingPending(_)
+        | RealtimeEvent::ReceiveAttemptStateChanged(_) => RealtimeTopic::Clipboard,
         RealtimeEvent::FileTransferStatusChanged(_) | RealtimeEvent::FileTransferProgress(_) => {
             RealtimeTopic::FileTransfer
         }

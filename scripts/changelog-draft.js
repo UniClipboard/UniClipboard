@@ -62,7 +62,7 @@ function assertFinalizedContent(filePath, version) {
     'Release notes are not available yet.',
     'Release notes pending.',
     'Pending release notes.',
-    'No installer artifacts found for this release.',
+    'No desktop installer artifacts found for this release.',
     'No CLI artifacts found for this release.',
     '<!--',
   ]

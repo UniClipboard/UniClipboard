@@ -67,6 +67,33 @@ describe('buildInstallerTable Windows rows', () => {
   })
 })
 
+describe('buildInstallerTable mobile rows', () => {
+  it('always advertises the latest iOS beta and Android APK links', () => {
+    seed(['UniClipboard_0.13.0_aarch64.dmg'])
+
+    const table = buildInstallerTable({ artifactsDir, baseUrl: BASE_URL })
+
+    expect(table).toContain(
+      '| iOS | Public Beta (TestFlight) | [Join the public beta](https://testflight.apple.com/join/nyNQ8dQe) |'
+    )
+    expect(table).toContain(
+      '| Android | APK (arm64-v8a / armeabi-v7a / x86_64 / universal) | [Latest release](https://github.com/UniClipboard/UniClip/releases/latest) |'
+    )
+    // Mobile links point at the companion repo / TestFlight, never this release's baseUrl.
+    expect(table).not.toContain(`${BASE_URL}/https`)
+  })
+
+  it('still surfaces mobile downloads when no desktop artifacts are present', () => {
+    const table = buildInstallerTable({ artifactsDir, baseUrl: BASE_URL })
+
+    expect(table).toContain('No desktop installer artifacts found for this release.')
+    expect(table).toContain('[Join the public beta](https://testflight.apple.com/join/nyNQ8dQe)')
+    expect(table).toContain(
+      '[Latest release](https://github.com/UniClipboard/UniClip/releases/latest)'
+    )
+  })
+})
+
 describe('readChangelogSection pinned announcement', () => {
   it('prepends announcement.md from the changelog directory', () => {
     const changelogPath = path.join(artifactsDir, '0.14.1.md')

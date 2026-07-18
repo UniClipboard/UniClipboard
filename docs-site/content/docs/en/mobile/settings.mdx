@@ -76,7 +76,7 @@ Advanced options:
 
 ### Background operation
 
-Controls background clipboard read/write and keep-alive when the app isn't in the foreground. The master "Background auto sync" toggle walks you through ignoring battery optimization, granting notification permission, and granting the overlay permission in turn. Advanced options include the persistent notification, ignore battery optimization, background download from remote, background upload of this device, and the background clipboard access method (overlay / Shizuku).
+Controls background clipboard read/write and keep-alive when the app isn't in the foreground. The master "Background auto sync" toggle walks you through ignoring battery optimization, granting notification permission, and granting whatever the current background reading method requires, in turn. Advanced options include the persistent notification, ignore battery optimization, background download from remote, background upload of this device, and the background reading method (Timed polling / ADB events / Shizuku).
 
 Background operation is all off by default. For the full explanation, see [Background clipboard access](./android-access).
 
@@ -107,12 +107,12 @@ Background operation is all off by default. For the full explanation, see [Backg
 | Auto-write remote → device | On             | Follows the "Auto sync" master toggle             |
 | Auto-push device → remote  | Off            | Follows the "Auto sync" master toggle             |
 | Real-time push (SSE)       | On             | On                                                |
-| Background clipboard tasks | Not applicable | Off by default; access method defaults to overlay |
+| Background clipboard tasks | Not applicable | Off by default; reading method defaults to Timed polling |
 | History retention cap      | —              | 1000 entries                                      |
 
 ## Where to go next
 
 - [Connect to a desktop](./connect) — scan a QR code or enter the server and credentials manually.
 - [iOS extensions](./ios-extensions) — enabling and authorizing the keyboard and share extensions.
-- [Background clipboard access](./android-access) — overlay / Shizuku, READ_LOGS permission.
+- [Background clipboard access](./android-access) — Timed polling / ADB events / Shizuku, READ_LOGS permission.
 - [How to enable mobile sync on the desktop](../core-features/mobile-sync) — turn on the listener and add a device on your computer.

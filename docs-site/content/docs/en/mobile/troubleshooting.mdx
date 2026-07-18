@@ -61,8 +61,8 @@ content.
 
 <Tab value="Android">
 
-- Android background auto-write depends on background clipboard access being
-  ready (overlay window or Shizuku) — see
+- Android background auto-write depends on the background reading method being
+  ready (Timed polling, ADB events, or Shizuku — any one) — see
   [Android background access](./android-access).
 - Real-time push (SSE) requires support from the desktop server; when it's
   not supported, there's no automatic fallback to polling. You can increase
@@ -94,10 +94,11 @@ confirm the extension itself is set up — see [iOS extensions](./ios-extensions
 
 <Tab value="Android">
 
-Background upload requires background clipboard access to be ready: the
-overlay method needs the overlay-window permission, or switch to the Shizuku
-method. Until the method is set up, the app can't push while it isn't in the
-foreground. Full setup is in [Android background access](./android-access).
+Background upload requires the background reading method to be ready: Timed
+polling and ADB events both need overlay-window permission (ADB events also
+needs READ_LOGS), or switch to the Shizuku method. Until the method is set up,
+the app can't push while it isn't in the foreground. Full setup is in
+[Android background access](./android-access).
 
 While in the foreground you can push manually via "Upload clipboard" under
 the "Add" button in the bottom-right, or "Sync now," to first confirm
@@ -159,7 +160,7 @@ wasn't granted.
 
 | Permission                           | Purpose                                                 | How to grant                                                                                                                                                                                             |
 | ------------------------------------ | ------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| READ_LOGS                            | Event listening for "copy = auto-sync" (overlay method) | Can't be requested in-app; can only be granted by running an `adb` command from a computer; the app copies the command to the clipboard so you can paste it, and you must restart the app after granting |
+| READ_LOGS                            | Event listening for "copy = auto-sync" (ADB events method) | Can't be requested in-app; can only be granted by running an `adb` command from a computer; the app copies the command to the clipboard so you can paste it, and you must restart the app after granting |
 | Overlay window (SYSTEM_ALERT_WINDOW) | Background clipboard read / write                       | Enable manually in system Settings; the Settings → Background running walkthrough takes you there                                                                                                        |
 | SMS permission                       | Auto-forwarding of SMS verification codes               | Grant it via the walkthrough in Settings → SMS forwarding                                                                                                                                                |
 | Camera permission                    | Scan-to-connect                                         | Grant it the first time you scan; if permanently denied, enable it in system Settings, or use "manual entry" to connect instead                                                                          |
@@ -170,10 +171,11 @@ The READ_LOGS adb command looks like:
 adb shell pm grant <app-package-name> android.permission.READ_LOGS
 ```
 
-Without READ_LOGS, the overlay method automatically **falls back to
-polling** — the feature still works, only the "copy = sync" real-time
-responsiveness degrades. For the tradeoff between the overlay method and the
-Shizuku method, see [Android background access](./android-access).
+READ_LOGS is only needed by the "ADB events" method. If you'd rather not touch
+a computer, just use the default "Timed polling" — it detects copies by polling,
+needs no READ_LOGS, and only trades a little responsiveness and battery. For the
+tradeoffs among the three background reading methods (Timed polling / ADB events
+/ Shizuku), see [Android background access](./android-access).
 
 <Callout type="info">
   If you want to write your own third-party client, or need to debug the protocol layer (HTTP

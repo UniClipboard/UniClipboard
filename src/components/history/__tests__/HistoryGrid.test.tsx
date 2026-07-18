@@ -210,4 +210,12 @@ describe('HistoryGrid', () => {
 
     expect(screen.getByText('clipboard.content.noClipboardItems')).toBeInTheDocument()
   })
+
+  it('does not show the pairing action in the empty history state', () => {
+    renderGrid({ items: [] })
+
+    expect(
+      screen.queryByRole('button', { name: 'clipboard.content.addDevice' })
+    ).not.toBeInTheDocument()
+  })
 })

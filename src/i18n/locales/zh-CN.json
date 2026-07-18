@@ -849,7 +849,7 @@
       "convertedItems": "转换后的显示项目:",
       "noItemsFound": "没有查询到任何项目",
       "noClipboardItems": "没有剪贴板项",
-      "emptyDescription": "当您复制内容时，它们会显示在这里。",
+      "emptyDescription": "连接另一台设备，然后复制内容开始同步。",
       "emptyHint": "试着复制一些文本或图片吧！",
       "logs": {
         "copyItem": "复制项目 ID:",
@@ -1776,23 +1776,23 @@
     },
     "welcome": {
       "title": "开始使用",
-      "subtitle": "选择本机的初始化方式。",
+      "subtitle": "先告诉我们，这是你的第几台设备。",
       "create": {
-        "title": "创建新的安全空间",
-        "description": "生成密钥并用自定义口令保护你的剪贴板数据。",
+        "title": "这是我的第一台设备",
+        "description": "创建加密空间，然后连接另一台设备开始同步。",
         "cta": "创建空间"
       },
       "join": {
-        "title": "加入已有空间",
-        "description": "与另一台设备配对，并使用其口令访问共享空间。",
+        "title": "我已经在另一台设备上使用",
+        "description": "获取另一台设备显示的邀请码，将本机连接进去。",
         "cta": "通过配对加入"
       },
       "import": {
-        "divider": "已经在另一台设备上配置过？",
-        "title": "从备份导入",
-        "description": "用导出的配置文件，把你的空间迁移到本机。"
+        "divider": "迁移或恢复",
+        "title": "迁移设备备份",
+        "description": "接管备份中的设备身份；导出备份的原设备需要下线。"
       },
-      "footer": "你可以稍后在设置中切换空间或邀请更多设备。"
+      "footer": "无需账号。剪贴板内容仅保存在你自己的设备上。"
     },
     "importConfig": {
       "title": "导入配置",
@@ -1897,14 +1897,18 @@
     "pairingComplete": {
       "title": "完成",
       "sponsor": {
-        "subtitle": "你的空间已就绪，稍后可在设备列表里继续邀请其他设备。"
+        "subtitle": "空间已创建。现在连接另一台设备即可开始同步。",
+        "issueFailed": "暂时无法生成邀请码，请稍后重试。"
       },
       "joiner": {
         "subtitle": "你已成功加入这个加密空间。",
         "connectedTo": "已连接到"
       },
       "actions": {
-        "done": "继续"
+        "done": "继续",
+        "invite": "立即连接设备",
+        "inviting": "正在生成邀请码...",
+        "later": "稍后再说"
       }
     }
   }

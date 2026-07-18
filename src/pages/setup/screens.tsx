@@ -12,6 +12,7 @@ import {
   KeyRound,
   Loader2,
   type LucideIcon,
+  Monitor,
   Package,
   Shield,
   ShieldCheck,
@@ -19,11 +20,12 @@ import {
   Wifi,
   XCircle,
 } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useEffectEvent, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { getSettings } from '@/api/daemon/settings'
 import type {
   InitializeSpaceErrorKind,
+  IssueInvitationErrorKind,
   RedeemInvitationErrorKind,
   RedeemResponse,
 } from '@/api/daemon/setupV2'
@@ -218,7 +220,7 @@ export function EntryScreen({
         <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{t('subtitle')}</p>
       </div>
 
-      <div className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-card">
+      <div className="divide-y divide-border overflow-hidden rounded-lg border border-border bg-card">
         <EntryRow
           icon={Shield}
           title={t('create.title')}
@@ -235,17 +237,23 @@ export function EntryScreen({
           loading={loading}
           testId="setup-entry-join"
         />
-        <EntryRow
-          icon={Package}
-          title={t('import.title')}
-          description={t('import.description')}
-          onClick={onImport}
-          loading={loading}
-          testId="setup-entry-import"
-        />
       </div>
 
-      <p className="mt-6 text-xs leading-relaxed text-muted-foreground">{t('footer')}</p>
+      <div className="mt-5">
+        <p className="mb-2 text-xs font-medium text-muted-foreground">{t('import.divider')}</p>
+        <div className="overflow-hidden rounded-lg border border-border/70 bg-card/60">
+          <EntryRow
+            icon={Package}
+            title={t('import.title')}
+            description={t('import.description')}
+            onClick={onImport}
+            loading={loading}
+            testId="setup-entry-import"
+          />
+        </div>
+      </div>
+
+      <p className="mt-5 text-xs leading-relaxed text-muted-foreground">{t('footer')}</p>
     </m.div>
   )
 }
@@ -466,6 +474,17 @@ export function ShowInvitationScreen({
   const remaining = expiresAtMs - now
   const expired = remaining <= 0
   const display = useMemo(() => formatInvitationCode(code), [code])
+  const handledExpiryCodeRef = useRef<string | null>(null)
+  const cancelExpiredInvitation = useEffectEvent(onCancel)
+
+  // Key the guard on `code` so a fresh invitation re-arms auto-cancel even if
+  // this screen stays mounted, while still firing at most once per code
+  // (including under StrictMode's double-invoked effects).
+  useEffect(() => {
+    if (!expired || handledExpiryCodeRef.current === code) return
+    handledExpiryCodeRef.current = code
+    cancelExpiredInvitation()
+  }, [expired, code])
 
   return (
     <ScreenShell
@@ -690,22 +709,60 @@ export function RedeemInvitationScreen({
 export function PairingCompleteScreen({
   role,
   redeem,
+  onInvite,
   onDone,
+  loading = false,
 }: {
   role: 'sponsor' | 'joiner'
   redeem?: RedeemResponse
+  onInvite: () => Promise<{ ok: true } | { ok: false; kind: IssueInvitationErrorKind; raw: string }>
   onDone: () => void
+  loading?: boolean
 }) {
   const { t } = useTranslation(undefined, { keyPrefix: 'setup.pairingComplete' })
+  const [inviteError, setInviteError] = useState<string | null>(null)
+
+  const handleInvite = async () => {
+    setInviteError(null)
+    const result = await onInvite()
+    if (!result.ok) setInviteError(t('sponsor.issueFailed'))
+  }
 
   return (
     <ScreenShell
       title={t('title')}
       subtitle={role === 'sponsor' ? t('sponsor.subtitle') : t('joiner.subtitle')}
+      error={inviteError}
       footer={
-        <Button onClick={onDone} className="min-w-32">
-          {t('actions.done')}
-        </Button>
+        role === 'sponsor' ? (
+          <div className="flex w-full flex-col-reverse gap-3 sm:flex-row sm:justify-center">
+            <Button
+              data-testid="setup-complete-later"
+              variant="ghost"
+              onClick={onDone}
+              disabled={loading}
+            >
+              {t('actions.later')}
+            </Button>
+            <Button
+              data-testid="setup-complete-invite"
+              onClick={handleInvite}
+              disabled={loading}
+              className="min-w-40"
+            >
+              {loading ? (
+                <Loader2 className="mr-2 size-4 animate-spin" />
+              ) : (
+                <Monitor className="mr-2 size-4" />
+              )}
+              {loading ? t('actions.inviting') : t('actions.invite')}
+            </Button>
+          </div>
+        ) : (
+          <Button data-testid="setup-complete-done" onClick={onDone} className="min-w-32">
+            {t('actions.done')}
+          </Button>
+        )
       }
       centered
     >

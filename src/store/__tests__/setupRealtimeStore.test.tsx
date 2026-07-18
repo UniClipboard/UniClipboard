@@ -3,9 +3,19 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { RedeemResponse, SetupStateResponse } from '@/api/daemon/setupV2'
 import {
   acknowledgeSetupCompletion,
+  applyIssuedInvitation,
   applyServerSetupState,
+  refreshSetupState,
   useSetupRealtimeStore,
 } from '@/store/setupRealtimeStore'
+
+const getSetupState = vi.hoisted(() => vi.fn())
+
+vi.mock('@/api/daemon/setupV2', async () => {
+  const actual =
+    await vi.importActual<typeof import('@/api/daemon/setupV2')>('@/api/daemon/setupV2')
+  return { ...actual, getSetupState }
+})
 
 vi.mock('@/lib/daemon-ws-bootstrap', () => ({
   connectDaemonWs: vi.fn(() => new Promise<void>(() => {})),
@@ -33,6 +43,7 @@ const redeem: RedeemResponse = {
 
 describe('setupRealtimeStore completion ownership', () => {
   beforeEach(() => {
+    getSetupState.mockReset()
     act(() => applyServerSetupState(entryState))
   })
 
@@ -57,6 +68,38 @@ describe('setupRealtimeStore completion ownership', () => {
       kind: 'completed',
       deviceName: 'MacBook',
       completion: { role: 'joiner', redeem },
+    })
+  })
+
+  it('moves a completed sponsor into the invitation screen from the issued response', () => {
+    const { result } = renderHook(() => useSetupRealtimeStore())
+    act(() => applyServerSetupState(completedState, { role: 'sponsor' }))
+
+    act(() => {
+      applyIssuedInvitation({ code: 'ABC123', expiresAtMs: 123_456 })
+      applyIssuedInvitation({ code: 'ABC123', expiresAtMs: 123_456 })
+    })
+
+    expect(result.current.flow).toEqual({
+      kind: 'invitation_pending',
+      code: 'ABC123',
+      expiresAtMs: 123_456,
+      completion: { role: 'sponsor' },
+    })
+  })
+
+  it('restores the sponsor completion after an invitation is cancelled or expires', async () => {
+    const { result } = renderHook(() => useSetupRealtimeStore())
+    act(() => applyServerSetupState(completedState, { role: 'sponsor' }))
+    act(() => applyIssuedInvitation({ code: 'ABC123', expiresAtMs: 123_456 }))
+    getSetupState.mockResolvedValue(completedState)
+
+    await act(async () => refreshSetupState())
+
+    expect(result.current.flow).toEqual({
+      kind: 'completed',
+      deviceName: 'MacBook',
+      completion: { role: 'sponsor' },
     })
   })
 

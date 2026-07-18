@@ -86,7 +86,7 @@ const HistoryGrid: React.FC<HistoryGridProps> = ({
             ) : (
               <>
                 <p className="text-[13px] font-medium">{t('clipboard.content.noClipboardItems')}</p>
-                <p className="text-[12px] text-muted-foreground/50">
+                <p className="text-[12px] text-muted-foreground/70">
                   {t('clipboard.content.emptyDescription')}
                 </p>
               </>

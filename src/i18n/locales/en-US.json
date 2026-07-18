@@ -850,7 +850,7 @@
       "convertedItems": "Converted display items:",
       "noItemsFound": "No items found",
       "noClipboardItems": "No clipboard items",
-      "emptyDescription": "When you copy content, it will appear here.",
+      "emptyDescription": "Connect another device, then copy something to start syncing.",
       "emptyHint": "Try copying some text or images!",
       "logs": {
         "copyItem": "Copy item ID:",
@@ -1777,23 +1777,23 @@
     },
     "welcome": {
       "title": "Get started",
-      "subtitle": "Choose how to set up this device.",
+      "subtitle": "First, tell us where this device fits.",
       "create": {
-        "title": "Create a new secure space",
-        "description": "Generate encryption keys and protect your clipboard data with your own passphrase.",
+        "title": "This is my first device",
+        "description": "Create an encrypted space, then connect another device to start syncing.",
         "cta": "Start new space"
       },
       "join": {
-        "title": "Join an existing space",
-        "description": "Pair with another device and reuse the passphrase to access the shared space.",
+        "title": "I already use UniClipboard elsewhere",
+        "description": "Get an invitation code from that device and connect this one.",
         "cta": "Join via pairing"
       },
       "import": {
-        "divider": "Already set up on another device?",
-        "title": "Import from a backup",
-        "description": "Move your space here from an exported config file."
+        "divider": "Move or recover",
+        "title": "Move a device backup",
+        "description": "Take over the backed-up device identity; the original device must stay offline."
       },
-      "footer": "You can switch spaces or invite more devices later in Settings."
+      "footer": "No account required. Clipboard content stays on your own devices."
     },
     "importConfig": {
       "title": "Import configuration",
@@ -1898,14 +1898,18 @@
     "pairingComplete": {
       "title": "All set",
       "sponsor": {
-        "subtitle": "Your space is ready. You can invite more devices later from the device list."
+        "subtitle": "Your space is ready. Connect another device now to start syncing.",
+        "issueFailed": "Couldn't create an invitation. Please try again."
       },
       "joiner": {
         "subtitle": "You're now part of this encrypted space.",
         "connectedTo": "Connected to"
       },
       "actions": {
-        "done": "Continue"
+        "done": "Continue",
+        "invite": "Connect a device",
+        "inviting": "Creating invitation...",
+        "later": "Do this later"
       }
     }
   }

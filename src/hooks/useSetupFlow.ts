@@ -17,6 +17,7 @@ import {
 import { createLogger } from '@/lib/logger'
 import {
   acknowledgeSetupCompletion,
+  applyIssuedInvitation,
   applyServerSetupState,
   refreshSetupState,
   type SetupFlow,
@@ -144,13 +145,10 @@ export function useSetupFlow(): UseSetupFlowReturn {
     setLoading(true)
     try {
       const out = await issuePairingInvitation()
-      // Server will also fire `setup.invitationIssued`, but optimistically
-      // jump to the show-code screen so there's no perceptible delay.
-      setPageScreen({
-        kind: 'show_invitation',
-        code: out.code,
-        expiresAtMs: out.expiresAtMs,
-      })
+      // The response is already authoritative. The matching WebSocket event
+      // may arrive before or after it, and both converge through the store's
+      // single invitation transition.
+      applyIssuedInvitation(out)
       return { ok: true } as const
     } catch (err) {
       if (err instanceof SetupV2Error) {

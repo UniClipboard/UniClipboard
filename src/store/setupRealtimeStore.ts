@@ -1,6 +1,7 @@
 import { useEffect, useSyncExternalStore } from 'react'
 import {
   getSetupState,
+  type CurrentInvitation,
   type RedeemResponse,
   type SetupStateResponse,
   SetupV2Error,
@@ -32,7 +33,12 @@ export type SetupFlow =
   /** No space initialised yet — show the entry / initialise / redeem screens. */
   | { kind: 'entry' }
   /** Sponsor has issued an invitation; resume the show-code screen on launch. */
-  | { kind: 'invitation_pending'; code: string; expiresAtMs: number }
+  | {
+      kind: 'invitation_pending'
+      code: string
+      expiresAtMs: number
+      completion: SetupCompletion | null
+    }
   /** Setup has completed; a pending summary keeps the gate open until acknowledged. */
   | {
       kind: 'completed'
@@ -78,6 +84,7 @@ function flowFromState(
       kind: 'invitation_pending',
       code: state.currentInvitation.code,
       expiresAtMs: state.currentInvitation.expiresAtMs,
+      completion,
     }
   }
   if (state.hasCompleted) {
@@ -91,11 +98,25 @@ function update(flow: SetupFlow, hydrated = true) {
   emitChange()
 }
 
-function applyInvitationIssued(event: SetupInvitationIssuedEvent) {
-  // Sponsor issued a new invitation — switch to the show-code screen even if
-  // we previously thought we were in `completed` state.
+function completionFromFlow(flow: SetupFlow): SetupCompletion | null {
+  return flow.kind === 'completed' || flow.kind === 'invitation_pending' ? flow.completion : null
+}
+
+export function applyIssuedInvitation(invitation: CurrentInvitation) {
+  // An API response and its matching WebSocket event carry the same canonical
+  // invitation. Apply both through one store transition so the page never
+  // needs a parallel optimistic screen state.
   completionRevision += 1
-  update({ kind: 'invitation_pending', code: event.code, expiresAtMs: event.expiresAtMs })
+  update({
+    kind: 'invitation_pending',
+    code: invitation.code,
+    expiresAtMs: invitation.expiresAtMs,
+    completion: completionFromFlow(snapshot.flow),
+  })
+}
+
+function applyInvitationIssued(event: SetupInvitationIssuedEvent) {
+  applyIssuedInvitation(event)
 }
 
 function applyInvitationRevoked(_event: SetupInvitationRevokedEvent) {
@@ -110,10 +131,7 @@ function applyPairingCompleted(event: SetupPairingCompletedEvent) {
   // consumed; `hasCompleted` may have flipped on the joiner. Refresh the
   // authoritative state from the server.
   if (!event.success) return
-  const completion =
-    snapshot.flow.kind === 'completed' && snapshot.flow.completion
-      ? snapshot.flow.completion
-      : { role: 'sponsor' as const }
+  const completion = completionFromFlow(snapshot.flow) ?? { role: 'sponsor' as const }
   void refreshFromServer(completion)
 }
 
@@ -126,9 +144,9 @@ async function refreshFromServer(completion: SetupCompletion | null = null) {
     const completionChangedWhileLoading = completionRevision !== revision
     let latestCompletion = completion
     if (completionChangedWhileLoading) {
-      latestCompletion = snapshot.flow.kind === 'completed' ? snapshot.flow.completion : null
-    } else if (snapshot.flow.kind === 'completed' && snapshot.flow.completion) {
-      latestCompletion = snapshot.flow.completion
+      latestCompletion = completionFromFlow(snapshot.flow)
+    } else {
+      latestCompletion = completionFromFlow(snapshot.flow) ?? latestCompletion
     }
     update(flowFromState(next, latestCompletion))
   } catch (err) {

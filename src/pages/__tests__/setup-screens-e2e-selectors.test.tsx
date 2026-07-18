@@ -1,6 +1,13 @@
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
-import { EntryScreen, InitializeSpaceScreen, RedeemInvitationScreen } from '@/pages/setup/screens'
+import {
+  EntryScreen,
+  InitializeSpaceScreen,
+  PairingCompleteScreen,
+  RedeemInvitationScreen,
+  ShowInvitationScreen,
+} from '@/pages/setup/screens'
 
 describe('setup screens e2e selectors', () => {
   beforeAll(() => {
@@ -23,6 +30,42 @@ describe('setup screens e2e selectors', () => {
   afterEach(async () => {
     cleanup()
     await new Promise(resolve => setTimeout(resolve, 60))
+  })
+
+  it('lets a sponsor continue directly into device invitation', async () => {
+    const user = userEvent.setup()
+    const onInvite = vi.fn().mockResolvedValue({ ok: true })
+    const onDone = vi.fn()
+
+    render(<PairingCompleteScreen role="sponsor" onInvite={onInvite} onDone={onDone} />)
+
+    await user.click(screen.getByTestId('setup-complete-invite'))
+    expect(onInvite).toHaveBeenCalledTimes(1)
+    expect(onDone).not.toHaveBeenCalled()
+
+    await user.click(screen.getByTestId('setup-complete-later'))
+    expect(onDone).toHaveBeenCalledTimes(1)
+  })
+
+  it('returns from an invitation as soon as its code expires', async () => {
+    const onCancel = vi.fn()
+
+    render(<ShowInvitationScreen code="ABC123" expiresAtMs={Date.now() - 1} onCancel={onCancel} />)
+
+    await waitFor(() => expect(onCancel).toHaveBeenCalledTimes(1))
+  })
+
+  it('keeps the joiner completion focused on entering the app', async () => {
+    const user = userEvent.setup()
+    const onInvite = vi.fn().mockResolvedValue({ ok: true })
+    const onDone = vi.fn()
+
+    render(<PairingCompleteScreen role="joiner" onInvite={onInvite} onDone={onDone} />)
+
+    expect(screen.queryByTestId('setup-complete-invite')).not.toBeInTheDocument()
+    await user.click(screen.getByTestId('setup-complete-done'))
+    expect(onDone).toHaveBeenCalledTimes(1)
+    expect(onInvite).not.toHaveBeenCalled()
   })
 
   it('exposes stable controls for the real-window setup smoke test', () => {

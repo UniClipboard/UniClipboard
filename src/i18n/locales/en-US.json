@@ -1895,21 +1895,32 @@
         "submit": "Join space"
       }
     },
-    "pairingComplete": {
+    "spaceReady": {
       "title": "All set",
-      "sponsor": {
-        "subtitle": "Your space is ready. Connect another device now to start syncing.",
-        "issueFailed": "Couldn't create an invitation. Please try again."
-      },
-      "joiner": {
-        "subtitle": "You're now part of this encrypted space.",
-        "connectedTo": "Connected to"
-      },
+      "subtitle": "Your space is ready. Connect another device now to start syncing.",
+      "issueFailed": "Couldn't create an invitation. Please try again.",
       "actions": {
-        "done": "Continue",
         "invite": "Connect a device",
         "inviting": "Creating invitation...",
         "later": "Do this later"
+      }
+    },
+    "pairingComplete": {
+      "title": "Pairing successful",
+      "connected": "Connected",
+      "devices": {
+        "thisDevice": "This device",
+        "local": "Local",
+        "peer": "New device",
+        "joined": "Just joined",
+        "direct": "Direct on local network"
+      },
+      "points": {
+        "encrypted": "Content stays encrypted and can only be read by paired devices.",
+        "sync": "Copied content syncs automatically while both devices are online."
+      },
+      "actions": {
+        "done": "Done"
       }
     }
   }

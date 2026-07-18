@@ -7,6 +7,7 @@ import {
   PairingCompleteScreen,
   RedeemInvitationScreen,
   ShowInvitationScreen,
+  SpaceReadyScreen,
 } from '@/pages/setup/screens'
 
 describe('setup screens e2e selectors', () => {
@@ -32,12 +33,12 @@ describe('setup screens e2e selectors', () => {
     await new Promise(resolve => setTimeout(resolve, 60))
   })
 
-  it('lets a sponsor continue directly into device invitation', async () => {
+  it('lets a sponsor continue directly into device invitation from the space-ready screen', async () => {
     const user = userEvent.setup()
     const onInvite = vi.fn().mockResolvedValue({ ok: true })
     const onDone = vi.fn()
 
-    render(<PairingCompleteScreen role="sponsor" onInvite={onInvite} onDone={onDone} />)
+    render(<SpaceReadyScreen onInvite={onInvite} onDone={onDone} />)
 
     await user.click(screen.getByTestId('setup-complete-invite'))
     expect(onInvite).toHaveBeenCalledTimes(1)
@@ -45,6 +46,19 @@ describe('setup screens e2e selectors', () => {
 
     await user.click(screen.getByTestId('setup-complete-later'))
     expect(onDone).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps sponsor pairing success focused on entering the app', async () => {
+    const user = userEvent.setup()
+    const onInvite = vi.fn().mockResolvedValue({ ok: true })
+    const onDone = vi.fn()
+
+    render(<PairingCompleteScreen onDone={onDone} />)
+
+    expect(screen.queryByTestId('setup-complete-invite')).not.toBeInTheDocument()
+    await user.click(screen.getByTestId('setup-complete-done'))
+    expect(onDone).toHaveBeenCalledTimes(1)
+    expect(onInvite).not.toHaveBeenCalled()
   })
 
   it('returns from an invitation as soon as its code expires', async () => {
@@ -60,7 +74,7 @@ describe('setup screens e2e selectors', () => {
     const onInvite = vi.fn().mockResolvedValue({ ok: true })
     const onDone = vi.fn()
 
-    render(<PairingCompleteScreen role="joiner" onInvite={onInvite} onDone={onDone} />)
+    render(<PairingCompleteScreen onDone={onDone} />)
 
     expect(screen.queryByTestId('setup-complete-invite')).not.toBeInTheDocument()
     await user.click(screen.getByTestId('setup-complete-done'))

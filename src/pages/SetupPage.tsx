@@ -14,6 +14,7 @@ import {
   RedeemInvitationScreen,
   SetupBrandPanel,
   ShowInvitationScreen,
+  SpaceReadyScreen,
 } from '@/pages/setup/screens'
 
 interface SetupPageProps {
@@ -86,14 +87,14 @@ const SetupScreen: React.FC<SetupScreenProps> = ({
       return (
         <RedeemInvitationScreen onSubmit={redeemInvitation} onBack={goEntry} loading={loading} />
       )
+    case 'space_ready':
+      return <SpaceReadyScreen onInvite={issueInvitation} onDone={onDone} loading={loading} />
     case 'pairing_complete':
       return (
         <PairingCompleteScreen
-          role={screen.role}
-          redeem={screen.redeem}
-          onInvite={issueInvitation}
+          localDeviceName={screen.localDeviceName}
+          peerDeviceId={screen.peerDeviceId}
           onDone={onDone}
-          loading={loading}
         />
       )
   }
@@ -123,10 +124,16 @@ export default function SetupPage({ onCompleteSetup }: SetupPageProps = {}) {
   }
 
   const stepKey = screen.kind
+  const pairingComplete = screen.kind === 'pairing_complete'
 
   return (
-    <div className="grid h-full w-full overflow-hidden bg-background lg:grid-cols-[22rem_1fr]">
-      <SetupBrandPanel />
+    <div
+      className={cn(
+        'grid h-full w-full overflow-hidden bg-background',
+        !pairingComplete && 'lg:grid-cols-[22rem_1fr]'
+      )}
+    >
+      {!pairingComplete && <SetupBrandPanel />}
 
       <main className="relative flex min-h-0 flex-col bg-background">
         {/* Drag strip. On macOS below `lg` (brand rail hidden) the traffic
@@ -138,7 +145,7 @@ export default function SetupPage({ onCompleteSetup }: SetupPageProps = {}) {
         />
 
         <div className="flex min-h-0 flex-1 items-center overflow-y-auto px-8 pb-12 sm:px-14">
-          <div className="mx-auto w-full max-w-md">
+          <div className={cn('mx-auto min-w-0 w-full', pairingComplete ? 'max-w-xl' : 'max-w-md')}>
             <AnimatePresence mode="wait" initial={false}>
               <div key={stepKey} className="w-full">
                 <SetupScreen

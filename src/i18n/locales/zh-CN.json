@@ -1894,21 +1894,32 @@
         "submit": "加入空间"
       }
     },
-    "pairingComplete": {
+    "spaceReady": {
       "title": "完成",
-      "sponsor": {
-        "subtitle": "空间已创建。现在连接另一台设备即可开始同步。",
-        "issueFailed": "暂时无法生成邀请码，请稍后重试。"
-      },
-      "joiner": {
-        "subtitle": "你已成功加入这个加密空间。",
-        "connectedTo": "已连接到"
-      },
+      "subtitle": "空间已创建。现在连接另一台设备即可开始同步。",
+      "issueFailed": "暂时无法生成邀请码，请稍后重试。",
       "actions": {
-        "done": "继续",
         "invite": "立即连接设备",
         "inviting": "正在生成邀请码...",
         "later": "稍后再说"
+      }
+    },
+    "pairingComplete": {
+      "title": "配对成功",
+      "connected": "已连接",
+      "devices": {
+        "thisDevice": "这台设备",
+        "local": "本机",
+        "peer": "新设备",
+        "joined": "刚刚加入",
+        "direct": "局域网直连"
+      },
+      "points": {
+        "encrypted": "内容全程加密，只有已配对的设备能够读取。",
+        "sync": "复制的内容会在两台在线设备之间自动同步。"
+      },
+      "actions": {
+        "done": "完成"
       }
     }
   }

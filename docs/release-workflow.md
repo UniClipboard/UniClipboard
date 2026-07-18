@@ -121,7 +121,7 @@ bun run version:bump --type patch --channel alpha --dry-run
 
 3. **创建发布 (create-release)**
    - 创建 Git 标签
-   - 生成发布说明（包含直接下载链接）
+   - 生成发布说明（含桌面端直接下载链接，以及移动端仓库 [UniClipboard/UniClip](https://github.com/UniClipboard/UniClip) 的 iOS 公测与安卓最新版下载链接）
    - 上传所有构建产物
    - 创建 GitHub Release 草稿
 

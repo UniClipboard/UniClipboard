@@ -100,6 +100,31 @@ function findFirstFile(artifactsDir, predicate) {
   return files.find(predicate) || ''
 }
 
+// Mobile apps live in the companion repo (UniClipboard/UniClip) and ship on
+// their own cadence, independent of this desktop release. These links always
+// resolve to the latest mobile build, so every desktop release advertises the
+// current iOS public beta and Android APK without being pinned to this tag.
+const MOBILE_REPO = 'UniClipboard/UniClip'
+const MOBILE_IOS_TESTFLIGHT_URL = 'https://testflight.apple.com/join/nyNQ8dQe'
+const MOBILE_ANDROID_LATEST_URL = `https://github.com/${MOBILE_REPO}/releases/latest`
+
+// Fixed, always-latest external rows for the App download matrix. Unlike the
+// desktop rows these are not scanned from artifactsDir, so the download cell is
+// a full URL rather than `baseUrl/fileName`.
+export function buildMobileInstallerRows() {
+  const makeRow = (platform, target, label, url) =>
+    `| ${platform} | ${target} | [${label}](${url}) |`
+  return [
+    makeRow('iOS', 'Public Beta (TestFlight)', 'Join the public beta', MOBILE_IOS_TESTFLIGHT_URL),
+    makeRow(
+      'Android',
+      'APK (arm64-v8a / armeabi-v7a / x86_64 / universal)',
+      'Latest release',
+      MOBILE_ANDROID_LATEST_URL
+    ),
+  ]
+}
+
 export function buildInstallerTable({ artifactsDir, baseUrl }) {
   // Tauri v2 Linux 产物命名约定:
   //   .deb       — `<lower-product>_<version>_<amd64|arm64>.deb`        (Debian arch)
@@ -157,11 +182,18 @@ export function buildInstallerTable({ artifactsDir, baseUrl }) {
   if (windowsPortableX64) rows.push(makeRow('Windows', 'x86_64 (Portable)', windowsPortableX64))
   if (windowsPortableArm) rows.push(makeRow('Windows', 'ARM64 (Portable)', windowsPortableArm))
 
+  const header = '| Platform | Architecture | Download |\n| --- | --- | --- |\n'
+  const mobileRows = buildMobileInstallerRows()
+
   if (rows.length === 0) {
-    return 'No installer artifacts found for this release.'
+    // No desktop installer artifacts detected (anomalous — a normal release
+    // always ships them). Flag it, but still surface the mobile downloads,
+    // which do not depend on this release's assets.
+    const mobileTable = header + mobileRows.join('\n')
+    return `No desktop installer artifacts found for this release.\n\n${mobileTable}`
   }
 
-  return '| Platform | Architecture | Download |\n| --- | --- | --- |\n' + rows.join('\n')
+  return header + [...rows, ...mobileRows].join('\n')
 }
 
 function buildCliInstallerTable({ artifactsDir, baseUrl }) {

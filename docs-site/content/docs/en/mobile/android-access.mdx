@@ -8,42 +8,84 @@ import { Step, Steps } from 'fumadocs-ui/components/steps'
 
 **This page is Android-only.** On iOS, clipboard access goes through the keyboard extension, the share extension, and per-app "paste from other apps" permission — those are covered elsewhere and do not apply to Android.
 
-Since Android 10, the system blocks background apps from reading the clipboard by default: when the app is not in the foreground, it can neither read what you copied elsewhere nor write remote content into the system clipboard. To make "copy syncs automatically" and "remote content is written to this device automatically" work in the background too, UniClipboard has to use a special mechanism to work around this restriction. The app offers two: **Overlay window** (default) and **Shizuku**. Pick either one.
+Since Android 10, the system blocks background apps from reading the clipboard by default: when the app is not in the foreground, it can neither read what you copied elsewhere nor write remote content into the system clipboard. To make "copy syncs automatically" and "remote content is written to this device automatically" work in the background too, UniClipboard has to use a special mechanism to work around this restriction. Under **Settings → Background → Background reading method**, the app offers three; pick any one:
 
-## The two access methods
+- **Timed polling** (default) — reads/writes via an overlay window and checks the clipboard on a timer. Works out of the box, no computer needed.
+- **ADB events** — also reads/writes via the overlay window, but only fires when the system actually reports a copy. Less interference and lower power, but needs a computer once for setup.
+- **Shizuku** — reads/writes through Shizuku's privileged service, with no overlay window and event-driven detection. Requires installing and keeping Shizuku running.
 
-<Tabs items={['Overlay window (default)', 'Shizuku']}>
+To understand the three methods, separate two things: **what does the reading/writing** and **what detects that the clipboard changed**:
 
-<Tab value="Overlay window (default)">
+- The first two (Timed polling, ADB events) share **the same underlying mechanism** — both briefly show an **overlay window** to grab window focus and actually read/write the system clipboard. They differ only in how they detect a copy: one uses **timed polling**, the other **listens for system copy events** (which requires READ_LOGS).
+- **Shizuku is entirely different** — it reads/writes through a privileged service, needs **no overlay window**, and never temporarily grabs focus.
 
-The overlay window method depends on no external tools — it works as soon as you install the app. It works by briefly showing an overlay window to perform the background read/write.
+## Choosing among the three
+
+| Aspect | Timed polling (default) | ADB events | Shizuku |
+| --- | --- | --- | --- |
+| Underlying read/write | Overlay window grabs focus | Overlay window grabs focus | Shizuku privileged service |
+| Copy detection | Timed polling | Listens for system copy events | Event-driven |
+| Needs a computer | No | Yes (grant READ_LOGS, once) | Yes, to start Shizuku without root |
+| Key permissions | Overlay | Overlay + READ_LOGS | Shizuku authorization |
+| Briefly shows overlay | Yes | Yes | No |
+| Best for | Most people who want it to just work | People who can connect a computer and care about power/input | Advanced users familiar with Shizuku |
+
+You can switch methods anytime in the app: **Settings → Background → Background reading method**, swipe to compare, then pick one. Each is detailed below.
+
+<Callout type="info">
+  Both Timed polling and ADB events read/write via the overlay window, so at the moment of a
+  background read or write the overlay **briefly appears on screen**, then hides automatically after
+  about 10 seconds of idle — this is expected behavior, not a pop-up ad. The Shizuku method uses no
+  overlay and never shows it.
+</Callout>
+
+## The three reading methods
+
+<Tabs items={['Timed polling (default)', 'ADB events', 'Shizuku']}>
+
+<Tab value="Timed polling (default)">
+
+Timed polling depends on no external tools — it works as soon as you install the app. It briefly shows an overlay window to perform the background read/write, and **checks the system clipboard on a timer** for changes.
 
 Permissions needed:
 
-- **Overlay window permission (SYSTEM_ALERT_WINDOW)** — required for both background reads and writes of the clipboard. The app can guide you straight to the system setting to turn this on.
-- **READ_LOGS permission** — only required if you turn on "copy syncs automatically" (that is, the moment you copy in another app, it uploads to the desktop). It lets the app detect "the clipboard changed" instantly by listening to system events. **This permission cannot be requested from within the app** — you must grant it by running one adb command from a computer.
+- **Overlay window permission (SYSTEM_ALERT_WINDOW)** — required for both background reads and writes. The app can guide you straight to the system setting to turn this on.
 
-Granting READ_LOGS requires running one command against your phone from a computer over adb. For how to install adb and enable USB debugging, see the **[Preparation: USB debugging and adb](#preparation-usb-debugging-and-adb)** section below. Once ready, run:
+No computer, no adb, nothing to install. The trade-off: because it polls periodically, it briefly grabs focus on each tick, which **may momentarily affect keyboards, games, or full-screen apps**; it's also less immediate than the two event-driven methods — after you copy, sync can take up to one polling interval. You can adjust that interval under **Settings → Sync → Local polling interval**.
+
+If you want "install it and never touch a computer again," this is the one.
+
+</Tab>
+
+<Tab value="ADB events">
+
+The ADB events method still uses the same overlay window for reading/writing, but swaps change detection for an **event-driven** approach: it only reads when the system actually reports a copy event, with no polling in between. That makes it lower-power and less disruptive to foreground input, at the cost of one permission the app cannot request on its own — **READ_LOGS**.
+
+Permissions needed:
+
+- **Overlay window permission (SYSTEM_ALERT_WINDOW)** — for reading/writing the clipboard, same as Timed polling.
+- **READ_LOGS permission** — used to listen for system copy events. **This permission cannot be requested from within the app** — you must grant it by running one adb command from a computer, and **you must restart the app after granting it** for it to take effect. UniClipboard uses it only to detect that a copy happened; it does not read other log content.
+
+To grant it: first set up adb per **[Preparation: USB debugging and adb](#preparation-usb-debugging-and-adb)** below, then run:
 
 ```bash
 adb shell pm grant <package-name> android.permission.READ_LOGS
 ```
 
-The app copies this full command (with the actual package name already filled in) to the clipboard — just paste it into your computer's terminal and press Enter. **You need to restart the app after granting it** for it to take effect.
+Once you set the reading method to "ADB events" in the app, the Settings page walks you through this and copies the full command (**with the actual package name already filled in**) to the clipboard — just paste it into your computer's terminal and press Enter. **Restart the app** after granting.
 
-Without READ_LOGS, "copy syncs automatically" still works, but it **falls back to periodic polling** — instead of triggering instantly, it checks the clipboard at intervals, which is less responsive and uses more battery.
-
-<Callout type="info">
-  At the moment of a background read or write, the overlay window **briefly appears on screen**,
-  then hides automatically after about 10 seconds of idle. This is expected behavior, not a pop-up
-  ad.
+<Callout type="warn">
+  If you pick "ADB events" but haven't granted READ_LOGS yet, background "copy = sync" **won't
+  fire** (the Settings page shows "Computer authorization is still required" with the steps), and it
+  **won't** silently fall back to Timed polling. If you'd rather not deal with a computer, just use
+  Timed polling.
 </Callout>
 
 </Tab>
 
 <Tab value="Shizuku">
 
-Shizuku is a third-party open-source tool that safely grants system-level permissions to ordinary apps. Once set up, UniClipboard uses it to bypass the background clipboard restriction and no longer needs the overlay window; on MIUI (Xiaomi / HyperOS) it can also **disable the "smart clipboard" restriction** that interferes with background clipboard read/write.
+Shizuku is a third-party open-source tool that safely grants system-level permissions to ordinary apps. Once set up, UniClipboard uses its privileged service to read/write the clipboard directly — **no overlay window, no focus grabbing, and event-driven**, giving the most stable background experience. On MIUI (Xiaomi / HyperOS) it can also **disable the "smart clipboard" restriction** that interferes with background clipboard read/write.
 
 <Steps>
 
@@ -71,7 +113,7 @@ Shizuku needs its service started once after every reboot. Pick one method:
 <Callout type="warn">
   With the no-root method, **you must restart the Shizuku service after every phone reboot** (an
   inherent limitation of Shizuku, not a UniClipboard issue). If you want something hands-off,
-  consider the default overlay window method.
+  consider the default Timed polling method.
 </Callout>
 
 </Step>
@@ -81,7 +123,7 @@ Shizuku needs its service started once after every reboot. Pick one method:
 ### Authorize and switch to Shizuku
 
 - **Authorize** UniClipboard inside Shizuku (it prompts on first use).
-- Back in UniClipboard, go to **Settings → Background** and switch the "Background clipboard access method" to Shizuku.
+- Back in UniClipboard, go to **Settings → Background → Background reading method** and switch it to Shizuku.
 
 </Step>
 
@@ -93,7 +135,7 @@ Shizuku needs its service started once after every reboot. Pick one method:
 
 ## Preparation: USB debugging and adb
 
-Granting `READ_LOGS` for the overlay window method, or starting Shizuku on a non-rooted phone, both require connecting to your phone from a computer over **adb**. You only configure this once. If you only use the overlay window method and can live with "copy syncs automatically" degrading to periodic polling, you can skip this section.
+Granting `READ_LOGS` for the ADB events method, or starting Shizuku on a non-rooted phone, both require connecting to your phone from a computer over **adb**. You only configure this once. If you only use Timed polling, you can skip this section.
 
 <Steps>
 
@@ -144,7 +186,7 @@ Run `adb devices` in your terminal; when your device shows up with status `devic
   same Wi‑Fi, then unplug and run adb commands over Wi‑Fi.
 </Callout>
 
-Once connected: to grant READ_LOGS, run the `adb shell pm grant …` command from the "Overlay window" tab above (the app has already copied the full command with the package name filled in); to start Shizuku, run the start command shown inside the Shizuku app.
+Once connected: to grant READ_LOGS, run the `adb shell pm grant …` command from the "ADB events" tab above (the app has already copied the full command with the package name filled in); to start Shizuku, run the start command shown inside the Shizuku app.
 
 ## Where to configure it
 
@@ -154,7 +196,7 @@ When the master toggle **"Background auto-sync"** at the top is on, it **walks y
 
 1. Ignore battery optimization (otherwise the system suspends the app in the background);
 2. Notification permission (for the persistent notification);
-3. Overlay window permission.
+3. The authorization required by your current **background reading method** (the default Timed polling needs overlay permission; other methods guide you through their own).
 
 Just allow each one as the walkthrough prompts you. Below that is a set of advanced items you can adjust individually as needed:
 
@@ -162,7 +204,7 @@ Just allow each one as the walkthrough prompts you. Below that is a set of advan
 - **Ignore battery optimization** — re-triggers this grant on its own.
 - **Background download from remote** — pull new content pushed by the desktop while in the background.
 - **Background upload from this device** — push content copied on this device to the desktop while in the background.
-- **Background clipboard access method** — switch between **Overlay window** and **Shizuku**.
+- **Background reading method** — switch among **Timed polling**, **ADB events**, and **Shizuku** (tap in to swipe and compare).
 
 UniClipboard **does not use the Accessibility service** — you don't need to enable any accessibility permission in the system.
 
@@ -175,7 +217,7 @@ We recommend, where possible: turn on the **persistent notification**, add UniCl
 
 ## Can't connect or not syncing?
 
-- **Background upload isn't working** — make sure the overlay window or Shizuku is ready; for "copy syncs automatically" to trigger instantly you also need READ_LOGS (without it, it degrades to polling).
+- **Background upload isn't working** — make sure your selected background reading method is ready. With ADB events, background copy detection also needs READ_LOGS (finish the computer-side grant, or just switch to Timed polling); with Shizuku, confirm the service is started and authorized.
 - **Granted READ_LOGS but still no effect** — remember to **restart the app**; the adb grant doesn't take effect until you do.
 - **It stops syncing after a while** — most likely the vendor OS killed the app in the background; see the recommendations in the Callout above.
 - **Does syncing require a network connection to the desktop** — yes. Background access only addresses "can it read/write this device's clipboard"; whether it can reach the desktop is a separate matter, see [Connect to desktop](./connect).

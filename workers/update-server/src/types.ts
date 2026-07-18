@@ -25,3 +25,20 @@ export interface MergeResult {
   mergedCount: number
   omittedCount: number
 }
+
+/**
+ * Android companion-app update manifest.
+ *
+ * Distinct from the desktop `Manifest`: the mobile app is not a Tauri updater,
+ * so it carries per-ABI APK descriptors (name + sha256) instead of signed
+ * platform tuples, and embeds bilingual notes inline rather than merging them
+ * from a separate archive. Served verbatim from R2 at `android/{channel}.json`.
+ */
+export interface AndroidManifest {
+  version: string
+  tagName: string
+  prerelease: boolean
+  pub_date: string
+  notes: { en: string; zh: string }
+  assets: Array<{ name: string; sha256: string }>
+}

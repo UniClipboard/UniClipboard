@@ -21,10 +21,30 @@ interface Env {
 
 const VALID_CHANNELS = new Set(['stable', 'alpha', 'beta', 'rc'])
 
-const CORS_HEADERS: Record<string, string> = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type',
+// The Android companion app has two channels: stable and beta (including prereleases).
+const VALID_ANDROID_CHANNELS = new Set(['stable', 'beta'])
+
+const ALLOWED_BROWSER_ORIGINS = new Set([
+  'https://uniclipboard.app',
+  'https://www.uniclipboard.app',
+])
+
+function withCors(response: Response, request: Request): Response {
+  const headers = new Headers(response.headers)
+  headers.set('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS')
+  headers.set('Access-Control-Allow-Headers', 'Content-Type')
+
+  const origin = request.headers.get('Origin')
+  if (origin && ALLOWED_BROWSER_ORIGINS.has(origin)) {
+    headers.set('Access-Control-Allow-Origin', origin)
+    headers.append('Vary', 'Origin')
+  }
+
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  })
 }
 
 function jsonResponse(
@@ -36,7 +56,6 @@ function jsonResponse(
     status,
     headers: {
       'Content-Type': 'application/json',
-      ...CORS_HEADERS,
       ...extraHeaders,
     },
   })
@@ -47,7 +66,6 @@ function r2HeadersToResponse(
   extraHeaders?: Record<string, string>
 ): Record<string, string> {
   const headers: Record<string, string> = {
-    ...CORS_HEADERS,
     ...extraHeaders,
   }
 
@@ -198,6 +216,45 @@ async function handleArtifact(version: string, filename: string, env: Env): Prom
   return new Response(object.body, { status: 200, headers })
 }
 
+async function handleAndroidManifest(channel: string, env: Env): Promise<Response> {
+  if (!VALID_ANDROID_CHANNELS.has(channel)) {
+    return jsonResponse({ error: `Invalid android channel: ${channel}` }, 400)
+  }
+  const key = `android/${channel}.json`
+  const object = await env.RELEASES_BUCKET.get(key)
+  if (!object) {
+    return jsonResponse({ error: `Android manifest not found for channel: ${channel}` }, 404)
+  }
+  const headers = r2HeadersToResponse(object, {
+    'Content-Type': 'application/json',
+    'Cache-Control': 'public, max-age=60',
+  })
+  return new Response(object.body, { status: 200, headers })
+}
+
+async function handleAndroidArtifact(
+  version: string,
+  filename: string,
+  env: Env
+): Promise<Response> {
+  const key = `android/artifacts/v${version}/${filename}`
+  const object = await env.RELEASES_BUCKET.get(key)
+
+  if (!object) {
+    return jsonResponse({ error: 'Android artifact not found' }, 404)
+  }
+
+  const contentType = inferContentType(filename)
+
+  const headers = r2HeadersToResponse(object, {
+    'Content-Type': contentType,
+    'Cache-Control': 'public, max-age=86400, immutable',
+    'Content-Disposition': `attachment; filename="${filename}"`,
+  })
+
+  return new Response(object.body, { status: 200, headers })
+}
+
 function inferContentType(filename: string): string {
   if (filename.endsWith('.tar.gz')) return 'application/gzip'
   if (filename.endsWith('.sig')) return 'application/octet-stream'
@@ -206,6 +263,7 @@ function inferContentType(filename: string): string {
   if (filename.endsWith('.AppImage')) return 'application/x-executable'
   if (filename.endsWith('.msi')) return 'application/x-msi'
   if (filename.endsWith('.exe')) return 'application/x-msdownload'
+  if (filename.endsWith('.apk')) return 'application/vnd.android.package-archive'
   if (filename.endsWith('.zip')) return 'application/zip'
   if (filename.endsWith('.json')) return 'application/json'
   return 'application/octet-stream'
@@ -221,14 +279,19 @@ const VERSION_PATH_REGEX = /^\/release-notes\/v([0-9A-Za-z.\-+]+)\.json$/
 
 async function route(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
   if (request.method === 'OPTIONS') {
-    return new Response(null, { status: 204, headers: CORS_HEADERS })
+    return new Response(null, { status: 204 })
   }
 
   if (request.method !== 'GET' && request.method !== 'HEAD') {
     return jsonResponse({ error: 'Method not allowed' }, 405)
   }
 
-  const url = new URL(request.url)
+  let url: URL
+  try {
+    url = new URL(request.url)
+  } catch {
+    return jsonResponse({ error: 'Invalid request URL' }, 400)
+  }
   const path = url.pathname
 
   // GET /health
@@ -265,23 +328,38 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
     return handleArtifact(artifactMatch[1], artifactMatch[2], env)
   }
 
+  // Keep the Android companion-app manifest route before the shared artifact prefix.
+  const androidManifestMatch = path.match(/^\/android\/([a-z]+)\.json$/)
+  if (androidManifestMatch) {
+    return handleAndroidManifest(androidManifestMatch[1], env)
+  }
+
+  // GET /android/artifacts/v{version}/{filename} (APK download)
+  const androidArtifactMatch = path.match(/^\/android\/artifacts\/v([^/]+)\/(.+)$/)
+  if (androidArtifactMatch) {
+    return handleAndroidArtifact(androidArtifactMatch[1], androidArtifactMatch[2], env)
+  }
+
   return jsonResponse({ error: 'Not found' }, 404)
 }
 
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     try {
-      return await route(request, env, ctx)
+      return withCors(await route(request, env, ctx), request)
     } catch (err) {
       // 兜底捕获意外错误（例如 getJsonFromR2 抛出的 R2 JSON 损坏），
       // 确保响应仍然带 CORS headers 与结构化 500 body，而不是 runtime 的裸错误页。
       console.error('Unhandled error:', err)
-      return jsonResponse(
-        {
-          error: 'Internal server error',
-          detail: err instanceof Error ? err.message : String(err),
-        },
-        500
+      return withCors(
+        jsonResponse(
+          {
+            error: 'Internal server error',
+            detail: err instanceof Error ? err.message : String(err),
+          },
+          500
+        ),
+        request
       )
     }
   },

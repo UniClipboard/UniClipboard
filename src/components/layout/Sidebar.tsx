@@ -316,7 +316,7 @@ const Sidebar: React.FC<SidebarProps> = ({ className }) => {
         data-tauri-drag-region
         className={cn(
           'relative z-10 w-14 h-full shrink-0 flex flex-col items-center py-4',
-          'bg-background',
+          'bg-card',
           className
         )}
       >

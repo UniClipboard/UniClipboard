@@ -147,7 +147,7 @@ describe('Sidebar update indicator', () => {
   it('keeps inactive navigation hover backgrounds rounded without transparent clipping', () => {
     renderSidebarAt('/devices')
 
-    expect(document.querySelector('aside')).toHaveClass('bg-background')
+    expect(document.querySelector('aside')).toHaveClass('bg-card')
 
     const historyLink = document.querySelector('a[href="/history"]')
     expect(historyLink).toHaveClass('rounded-lg', 'hover:bg-muted')

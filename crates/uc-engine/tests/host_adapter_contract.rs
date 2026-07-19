@@ -1,7 +1,10 @@
 use std::collections::HashMap;
-use std::sync::{Mutex, MutexGuard};
+use std::sync::{Arc, Mutex, MutexGuard};
 
-use uc_engine::{HostCapabilityError, HostSecureStorage};
+use uc_engine::{
+    HostCapabilityError, HostClipboard, HostClipboardRepresentation, HostClipboardSnapshot,
+    HostSecureStorage,
+};
 
 #[derive(Default)]
 struct MemoryHostSecureStorage {
@@ -91,4 +94,99 @@ fn secure_storage_adapter_preserves_stable_error_categories() {
         denied.set("identity", b"secret"),
         Err(SecureStorageError::PermissionDenied(_))
     ));
+}
+
+struct StaticHostClipboard {
+    snapshot: HostClipboardSnapshot,
+}
+
+impl HostClipboard for StaticHostClipboard {
+    fn read(&self) -> Result<HostClipboardSnapshot, HostCapabilityError> {
+        Ok(self.snapshot.clone())
+    }
+
+    fn write(&self, _snapshot: HostClipboardSnapshot) -> Result<(), HostCapabilityError> {
+        Ok(())
+    }
+}
+
+#[test]
+fn clipboard_adapter_preserves_inline_representation_on_read() {
+    let clipboard =
+        uc_engine::internal::host_adapters::adapt_system_clipboard(Box::new(StaticHostClipboard {
+            snapshot: HostClipboardSnapshot {
+                observed_at_ms: 42,
+                representations: vec![HostClipboardRepresentation::Inline {
+                    format: "public.utf8-plain-text".into(),
+                    mime_type: Some("text/plain;charset=utf-8".into()),
+                    bytes: vec![0, 1, 2, 255],
+                }],
+            },
+        }));
+
+    let snapshot = clipboard.read_snapshot().unwrap();
+    let representation = &snapshot.representations[0];
+
+    assert_eq!(snapshot.ts_ms, 42);
+    assert_eq!(representation.format_id.as_ref(), "public.utf8-plain-text");
+    assert_eq!(
+        representation.mime.as_ref().map(|mime| mime.as_str()),
+        Some("text/plain;charset=utf-8")
+    );
+    assert_eq!(representation.inline_bytes(), Some(&[0, 1, 2, 255][..]));
+}
+
+struct RecordingHostClipboard {
+    written: Arc<Mutex<Option<HostClipboardSnapshot>>>,
+}
+
+impl HostClipboard for RecordingHostClipboard {
+    fn read(&self) -> Result<HostClipboardSnapshot, HostCapabilityError> {
+        Ok(HostClipboardSnapshot {
+            observed_at_ms: 0,
+            representations: Vec::new(),
+        })
+    }
+
+    fn write(&self, snapshot: HostClipboardSnapshot) -> Result<(), HostCapabilityError> {
+        *self.written.lock().unwrap() = Some(snapshot);
+        Ok(())
+    }
+}
+
+#[test]
+fn clipboard_adapter_preserves_inline_representation_on_write() {
+    use uc_core::clipboard::{MimeType, ObservedClipboardRepresentation, SystemClipboardSnapshot};
+    use uc_core::ids::{FormatId, RepresentationId};
+
+    let written = Arc::new(Mutex::new(None));
+    let clipboard = uc_engine::internal::host_adapters::adapt_system_clipboard(Box::new(
+        RecordingHostClipboard {
+            written: Arc::clone(&written),
+        },
+    ));
+    let snapshot = SystemClipboardSnapshot {
+        ts_ms: 84,
+        representations: vec![ObservedClipboardRepresentation::new(
+            RepresentationId::new(),
+            FormatId::from("image"),
+            Some(MimeType("image/png".into())),
+            vec![137, 80, 78, 71],
+        )],
+        file_content_digests: Vec::new(),
+        file_set_v1_component: None,
+    };
+
+    clipboard.write_snapshot(snapshot).unwrap();
+    let snapshot = written.lock().unwrap().clone().unwrap();
+
+    assert_eq!(snapshot.observed_at_ms, 84);
+    assert_eq!(
+        snapshot.representations,
+        vec![HostClipboardRepresentation::Inline {
+            format: "image".into(),
+            mime_type: Some("image/png".into()),
+            bytes: vec![137, 80, 78, 71],
+        }]
+    );
 }

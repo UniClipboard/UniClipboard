@@ -9,3 +9,4 @@ pub(crate) mod inbound_staging;
 pub mod network_policy;
 pub mod platform;
 pub mod reconcile;
+pub mod wire;

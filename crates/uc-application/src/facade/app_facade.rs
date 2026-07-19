@@ -40,7 +40,8 @@ use crate::facade::space_setup::{
     IssuePairingInvitationResult, MigrationProgress, PairingInvitationAddressCandidate,
     PairingOutcome, QueryMigrationProgressError, RedeemPairingInvitationError,
     RedeemPairingInvitationInput, RedeemPairingInvitationResult, SwitchSpaceError,
-    SwitchSpaceInput, SwitchSpaceResult, TryResumeSessionError,
+    SwitchSpaceInput, SwitchSpaceResult, TryResumeSessionError, UnlockSpaceError, UnlockSpaceInput,
+    UnlockSpaceResult,
 };
 use crate::facade::upgrade::UpgradeFacade;
 use crate::facade::{
@@ -234,6 +235,21 @@ impl AppFacade {
                 InitializeSpaceError::Internal("space setup facade unavailable".to_string())
             })?
             .initialize_space(input)
+            .await
+    }
+
+    /// A2: unlock a space through the top-level application facade.
+    pub async fn unlock_space(
+        &self,
+        input: UnlockSpaceInput,
+    ) -> Result<UnlockSpaceResult, UnlockSpaceError> {
+        self.space_setup
+            .get()
+            .cloned()
+            .ok_or_else(|| {
+                UnlockSpaceError::Internal("space setup facade unavailable".to_string())
+            })?
+            .unlock_space(input)
             .await
     }
 

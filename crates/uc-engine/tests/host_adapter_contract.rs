@@ -339,6 +339,59 @@ async fn engine_start_builds_a_resumable_real_session() {
             .unwrap(),
         uc_engine::OperationResult::Devices(Vec::new())
     );
+    let mismatch = engine
+        .execute(uc_engine::Operation::CreateSpace(
+            uc_engine::CreateSpaceInput {
+                device_name: "Test Device".into(),
+                passphrase: uc_engine::SecretString::new("correct horse"),
+                passphrase_confirmation: uc_engine::SecretString::new("different phrase"),
+            },
+        ))
+        .await
+        .unwrap_err();
+    assert_eq!(
+        mismatch.category(),
+        uc_engine::EngineErrorCategory::InvalidInput
+    );
+
+    let created = engine
+        .execute(uc_engine::Operation::CreateSpace(
+            uc_engine::CreateSpaceInput {
+                device_name: "Test Device".into(),
+                passphrase: uc_engine::SecretString::new("correct horse"),
+                passphrase_confirmation: uc_engine::SecretString::new("correct horse"),
+            },
+        ))
+        .await
+        .unwrap();
+    assert!(matches!(
+        created,
+        uc_engine::OperationResult::SpaceCreated { ref space_id } if !space_id.is_empty()
+    ));
+
+    let wrong_passphrase = engine
+        .execute(uc_engine::Operation::UnlockSpace(
+            uc_engine::UnlockSpaceInput {
+                passphrase: uc_engine::SecretString::new("wrong phrase"),
+            },
+        ))
+        .await
+        .unwrap_err();
+    assert_eq!(
+        wrong_passphrase.category(),
+        uc_engine::EngineErrorCategory::Unauthorized
+    );
+    assert_eq!(
+        engine
+            .execute(uc_engine::Operation::UnlockSpace(
+                uc_engine::UnlockSpaceInput {
+                    passphrase: uc_engine::SecretString::new("correct horse"),
+                },
+            ))
+            .await
+            .unwrap(),
+        uc_engine::OperationResult::SpaceUnlocked
+    );
 
     engine.suspend().await.unwrap();
     engine.resume().await.unwrap();

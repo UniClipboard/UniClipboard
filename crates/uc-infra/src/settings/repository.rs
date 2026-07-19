@@ -263,6 +263,6 @@ impl SettingsPort for CachedSettingsRepository {
     /// # }
     /// ```
     async fn save(&self, settings: &Settings) -> Result<()> {
-        self.inner.save(&settings).await
+        self.inner.save(settings).await
     }
 }

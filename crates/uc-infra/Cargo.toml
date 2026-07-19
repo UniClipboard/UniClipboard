@@ -7,12 +7,9 @@ description = "Infrastructure utilities and shared components for UniClipboard"
 
 [features]
 default = []
-# Phase 94 / Pitfall 3 — disables `IrohNodeBuilder::bind` 的 OnceCell 单进程
-# 守护，让下游 crate 的 e2e 测试在同 binary 内多次 bind sponsor + joiner
-# endpoint。`#[cfg(test)]` 只对正在 `cargo test` 的 crate 生效，不传递到
-# 依赖；下游 e2e（如 uc-bootstrap/tests/slice*_e2e.rs）必须显式启用此 feature
-# 来 elide 守护。**production build 严禁启用此 feature**，否则 Pitfall 3
-# 结构性防御失效。见 src/network/iroh/node.rs 上的 BIND_LOCK doc comment。
+# Allows test harnesses to bind sponsor and joiner endpoints in one process.
+# Production builds must not enable it: the runtime lease must reject a second
+# live node. See src/network/iroh/node.rs for the production lifecycle guard.
 test-util = []
 
 [dependencies]
@@ -50,9 +47,9 @@ if-addrs = "0.13"
 
 # ===== 数据库 =====
 diesel = { version = "2.3.5", features = [
-    "sqlite",
-    "returning_clauses_for_sqlite_3_35",
-    "r2d2",
+  "sqlite",
+  "returning_clauses_for_sqlite_3_35",
+  "r2d2",
 ] } # ORM数据库框架
 # build libsqlite3 as part of the build process
 # uncomment this line if you run into setup issues
@@ -61,12 +58,12 @@ diesel_migrations = { version = "2.2.0", features = ["sqlite"] } # Diesel迁移�
 
 # Async runtime (for mpsc channels in ports)
 tokio = { version = "1", features = [
-    "sync",
-    "fs",
-    "rt-multi-thread",
-    "macros",
-    "time",
-    "io-util",
+  "sync",
+  "fs",
+  "rt-multi-thread",
+  "macros",
+  "time",
+  "io-util",
 ] }
 
 tracing = "0.1"
@@ -88,7 +85,12 @@ unicode-normalization = "0.1"
 unicode-segmentation = "1"
 url = "2"
 config = "0.15.19"
-image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "tiff"] }
+image = { version = "0.25", default-features = false, features = [
+  "png",
+  "jpeg",
+  "webp",
+  "tiff",
+] }
 zstd = { version = "0.13", features = ["zstdmt"] }
 # SpoolManager 用 IndexMap 维护 insertion-ordered 条目，做 O(1) 容量计数 +
 # FIFO eviction。需要稳定的迭代顺序来表达 "evict 最旧未完成 staged" 语义，
@@ -124,7 +126,11 @@ iroh-tickets = "1.0.0-rc.1"
 # Used solely to reach `congestion::Bbr3Config` when wiring the QUIC
 # TransportConfig — iroh re-exports the trait but not the BBR factory itself.
 noq-proto = "1.0.0-rc.1"
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "rustls-tls-webpki-roots"] }
+reqwest = { version = "0.12", default-features = false, features = [
+  "json",
+  "rustls-tls",
+  "rustls-tls-webpki-roots",
+] }
 # Slice 1 pairing session wire codec — binary, compact, serde-compatible.
 postcard = { version = "1", features = ["use-std"] }
 # Slice 2 Phase 2 clipboard wire codec — carry zero-copy ciphertext across
@@ -153,8 +159,8 @@ libc = "0.2"
 # Same guarantee via MoveFileExW without MOVEFILE_REPLACE_EXISTING.
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.59", features = [
-    "Win32_Foundation",
-    "Win32_Storage_FileSystem",
+  "Win32_Foundation",
+  "Win32_Storage_FileSystem",
 ] }
 
 [dev-dependencies]

@@ -465,7 +465,7 @@ impl IrohPresenceAdapter {
             Some(r) => r,
             None => {
                 debug!("dial_and_track: no address record; returning NoAddress");
-                return Err(PresenceError::NoAddress(device.clone()));
+                return Err(PresenceError::NoAddress(*device));
             }
         };
 
@@ -493,7 +493,7 @@ impl IrohPresenceAdapter {
         {
             Ok(connection) => {
                 let now = self.now();
-                let device_id_for_watchdog = device.clone();
+                let device_id_for_watchdog = *device;
                 let peers_for_watchdog = Arc::clone(&self.peers);
                 let last_state_for_watchdog = Arc::clone(&self.last_state);
                 let event_tx_for_watchdog = self.event_tx.clone();

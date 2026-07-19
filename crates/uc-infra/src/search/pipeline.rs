@@ -191,7 +191,7 @@ fn count_occurrences(haystack: &str, needle: &str) -> u32 {
     }
     let mut count = 0u32;
     let mut start = 0;
-    while let Some(pos) = haystack[start..].find(needle.as_ref() as &str) {
+    while let Some(pos) = haystack[start..].find(needle as &str) {
         count += 1;
         start += pos + needle.len();
         if start >= haystack.len() {

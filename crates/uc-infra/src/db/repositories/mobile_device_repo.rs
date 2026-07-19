@@ -198,7 +198,7 @@ where
             password_hash: updated.password_hash.clone(),
         };
 
-        let outcome = self
+        self
             .executor
             .run(move |conn| {
                 let result = diesel::update(mobile_device.filter(device_id.eq(&current_device_id)))
@@ -217,9 +217,7 @@ where
                     Err(e) => Err(anyhow::anyhow!(e.to_string())),
                 }
             })
-            .map_err(|e| MobileDeviceError::Storage(e.to_string()))?;
-
-        outcome
+            .map_err(|e| MobileDeviceError::Storage(e.to_string()))?
     }
 }
 

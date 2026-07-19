@@ -151,7 +151,7 @@ impl ChunkedEncoder {
         let total_chunks = if plaintext.is_empty() {
             0u32
         } else {
-            ((plaintext.len() + CHUNK_SIZE - 1) / CHUNK_SIZE) as u32
+            plaintext.len().div_ceil(CHUNK_SIZE) as u32
         };
 
         // Write V3 header (37 bytes total):
@@ -272,9 +272,9 @@ impl ChunkedDecoder {
         // Validate uncompressed_len against safe ceiling to prevent OOM from
         // forged headers.
         match compression_algo {
-            0 => {
+            0
                 // No compression: uncompressed_len must equal total_plaintext_len.
-                if uncompressed_len != total_plaintext_len {
+                if uncompressed_len != total_plaintext_len => {
                     return Err(ChunkedTransferError::InvalidHeader {
                         reason: format!(
                             "compression_algo=0 but uncompressed_len {} != total_plaintext_len {}",
@@ -282,9 +282,8 @@ impl ChunkedDecoder {
                         ),
                     });
                 }
-            }
-            1 => {
-                if uncompressed_len > MAX_DECOMPRESSED_SIZE {
+            1
+                if uncompressed_len > MAX_DECOMPRESSED_SIZE => {
                     return Err(ChunkedTransferError::InvalidHeader {
                         reason: format!(
                             "uncompressed_len {} exceeds MAX_DECOMPRESSED_SIZE {}",
@@ -292,7 +291,6 @@ impl ChunkedDecoder {
                         ),
                     });
                 }
-            }
             _ => {} // handled later by the match on compression_algo
         }
 
@@ -371,7 +369,7 @@ impl ChunkedDecoder {
 fn compress_zstd(data: &[u8], level: i32) -> std::io::Result<Vec<u8>> {
     if data.len() < PARALLEL_COMPRESSION_THRESHOLD {
         return zstd::bulk::compress(data, level)
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e));
+            .map_err(std::io::Error::other);
     }
     let n_workers = std::thread::available_parallelism()
         .map(|n| n.get() as u32)

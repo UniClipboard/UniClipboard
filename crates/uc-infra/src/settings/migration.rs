@@ -176,7 +176,7 @@ impl SettingsMigrator {
                 .migrations
                 .iter()
                 .find(|m| m.from_version() == current)
-                .ok_or_else(|| MigrationError::NoMigrationFound {
+                .ok_or(MigrationError::NoMigrationFound {
                     from_version: current,
                 })?;
 

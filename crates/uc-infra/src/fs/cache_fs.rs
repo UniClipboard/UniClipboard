@@ -11,6 +11,12 @@ use uc_core::ports::cache_fs::{CacheFsPort, DirEntry, FileMetadata};
 /// 用于缓存操作的 Tokio 文件系统适配器。
 pub struct TokioCacheFsAdapter;
 
+impl Default for TokioCacheFsAdapter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl TokioCacheFsAdapter {
     pub fn new() -> Self {
         Self

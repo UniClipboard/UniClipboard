@@ -21,23 +21,27 @@ tokio-util = "0.7"
 anyhow = "1.0"
 thiserror = "2.0"
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "registry"] }
+tracing-subscriber = { version = "0.3", features = [
+  "env-filter",
+  "fmt",
+  "registry",
+] }
 sentry = { version = "0.48.1", default-features = false, features = [
-    "backtrace",
-    "contexts",
-    "debug-images",
-    "panic",
-    "release-health",
-    # transport=ureq 而非 reqwest:reqwest 0.13 的 rustls feature 硬绑定
-    # aws-lc-rs (C 库,CMake 编译,musl cross 不友好);ureq 3.x 的 rustls
-    # feature 只走 ring,与 workspace 其他 rustls 用户对齐。这样 uc-cli 走
-    # musl 静态编译时依赖图里没有任何 C 工具链强依赖。sentry 的 HTTP 上报
-    # 本就 fire-and-forget,同步 ureq 在独立 worker 线程跑,不阻塞主程序
-    # async 调度。
-    "ureq",
-    "rustls",
-    "tracing",
-    "logs",
+  "backtrace",
+  "contexts",
+  "debug-images",
+  "panic",
+  "release-health",
+  # transport=ureq 而非 reqwest:reqwest 0.13 的 rustls feature 硬绑定
+  # aws-lc-rs (C 库,CMake 编译,musl cross 不友好);ureq 3.x 的 rustls
+  # feature 只走 ring,与 workspace 其他 rustls 用户对齐。这样 uc-cli 走
+  # musl 静态编译时依赖图里没有任何 C 工具链强依赖。sentry 的 HTTP 上报
+  # 本就 fire-and-forget,同步 ureq 在独立 worker 线程跑,不阻塞主程序
+  # async 调度。
+  "ureq",
+  "rustls",
+  "tracing",
+  "logs",
 ] }
 gethostname = "1.1"
 toml = "0.8"
@@ -68,10 +72,8 @@ wiremock = "0.6"
 # Slice 2 Phase 2 · T12 — clipboard e2e packs plaintext as `Bytes`
 # for `ClipboardSyncFacade::dispatch_entry`.
 bytes = "1.7"
-# Phase 94 / plan 06 — e2e 测试同 binary 内多次 IrohNodeBuilder::bind
-# sponsor + joiner 双 endpoint；`uc-infra/test-util` feature 在测试构建下
-# elide BIND_LOCK 守护（production build 不启用此 feature，结构性防御依然
-# 生效）。见 uc-infra/src/network/iroh/node.rs BIND_LOCK doc comment。
+# Pairing E2E runs sponsor and joiner endpoints in one test process. This
+# test-only feature disables the production single-live-node lease.
 uc-infra = { path = "../uc-infra", features = ["test-util"] }
 # config-migration round-trip e2e seeds a real sqlite db with a probe row and
 # reads it back from the landed snapshot. Version/features mirror uc-infra so no

@@ -94,7 +94,7 @@ impl SpoolState {
         let victim_index = self
             .entries
             .iter()
-            .position(|(id, _)| exclude_id.map_or(true, |excl| id != excl))?;
+            .position(|(id, _)| exclude_id != Some(id))?;
         let (id, size) = self.entries.shift_remove_index(victim_index)?;
         self.total_bytes = self.total_bytes.saturating_sub(size);
         Some((id, size))

@@ -46,6 +46,6 @@ impl LocalDeviceIdentity {
 
 impl DeviceIdentityPort for LocalDeviceIdentity {
     fn current_device_id(&self) -> DeviceId {
-        self.device_id.clone()
+        self.device_id
     }
 }

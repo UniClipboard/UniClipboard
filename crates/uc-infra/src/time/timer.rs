@@ -10,6 +10,12 @@ pub struct Timer {
     timers: Arc<Mutex<HashMap<SessionId, tokio::task::AbortHandle>>>,
 }
 
+impl Default for Timer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Timer {
     pub fn new() -> Self {
         Self {

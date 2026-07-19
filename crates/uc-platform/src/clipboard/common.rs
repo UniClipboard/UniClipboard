@@ -998,7 +998,7 @@ impl CommonClipboardImpl {
             //（与 Windows 不同：macOS NSPasteboard 不是独占句柄模型）。
             let _ = ctx; // 显式标注未使用，消除 unused-variable warning。
             let _ = rep_count; // macOS 分支不需要 rep_count，显式忽略。
-            return crate::clipboard::platform::macos::write_snapshot_multi_macos(snapshot);
+            crate::clipboard::platform::macos::write_snapshot_multi_macos(snapshot)
         }
 
         // Linux 与其他非 Windows / 非 macOS 的 Unix：显式降级（§9.3 不允许静默降级）。

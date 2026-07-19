@@ -190,7 +190,7 @@ impl ProtocolHandler for IrohTransferProgressHandler {
             match transfer_progress_wire::read_frame(&mut recv).await {
                 Ok(frame) => {
                     let event = InboundProgressEvent {
-                        from_device: from_device.clone(),
+                        from_device,
                         transfer_id: transfer_id_from_bytes(&frame.transfer_id_bytes),
                         bytes_transferred: frame.bytes_transferred,
                         total_bytes: frame.total_bytes,

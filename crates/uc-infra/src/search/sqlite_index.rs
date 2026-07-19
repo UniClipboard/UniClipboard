@@ -718,7 +718,7 @@ impl SqliteSearchIndex {
 
                 // File type filter (pre-encoded snake_case strings).
                 if !filters.content_types.is_empty()
-                    && !filters.content_types.iter().any(|ft| *ft == doc.file_type)
+                    && !filters.content_types.contains(&doc.file_type)
                 {
                     return None;
                 }
@@ -1609,7 +1609,7 @@ impl SearchIndexPort for SqliteSearchIndex {
             }
 
             // Emit Indexing progress after every 100 entries or at the final batch.
-            if indexed % 100 == 0 || indexed == total {
+            if indexed.is_multiple_of(100) || indexed == total {
                 let _ = progress_tx
                     .send(RebuildProgress {
                         stage: RebuildStage::Indexing,
@@ -1969,7 +1969,7 @@ fn resolve_time_range(filter: &TimeRangeFilter, now_ms: i64) -> (u64, u64) {
             // Epoch (1970-01-01) was a Thursday. Days since Thursday = (days % 7).
             // Monday offset from Thursday = -3 mod 7 = 4.
             let days_since_epoch = today_start_ms / (MS_PER_DAY);
-            let day_of_week = ((days_since_epoch + 4) % 7) as i64; // 0=Mon
+            let day_of_week = (days_since_epoch + 4) % 7; // 0=Mon
             let start = today_start_ms - day_of_week * MS_PER_DAY;
             (start as u64, now_ms as u64)
         }

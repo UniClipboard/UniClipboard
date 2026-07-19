@@ -85,16 +85,14 @@ where
     for a in addrs {
         saw_any = true;
         match (a.usage(), a.addr()) {
-            (iroh::endpoint::TransportAddrUsage::Active, TransportAddr::Ip(s)) => {
-                if !is_filtered_ip(s.ip()) && active_direct.is_none() {
+            (iroh::endpoint::TransportAddrUsage::Active, TransportAddr::Ip(s))
+                if !is_filtered_ip(s.ip()) && active_direct.is_none() => {
                     active_direct = Some(s.to_string());
                 }
-            }
-            (iroh::endpoint::TransportAddrUsage::Active, TransportAddr::Relay(u)) => {
-                if active_relay.is_none() {
+            (iroh::endpoint::TransportAddrUsage::Active, TransportAddr::Relay(u))
+                if active_relay.is_none() => {
                     active_relay = Some(u.to_string());
                 }
-            }
             // Inactive / discovery candidates: do not promote, but keep
             // `saw_any = true` so the empty-set tail returns Offline only
             // when literally nothing is known.
@@ -145,8 +143,7 @@ fn is_filtered_ip(ip: IpAddr) -> bool {
         IpAddr::V6(v6) => {
             let segs = v6.octets();
             // fe80::/10 link-local
-            let is_link_local = segs[0] == 0xfe && (segs[1] & 0xc0) == 0x80;
-            is_link_local
+            segs[0] == 0xfe && (segs[1] & 0xc0) == 0x80
         }
     }
 }

@@ -177,7 +177,7 @@ impl ProtocolHandler for IrohClipboardReceiverHandler {
         //    `Accepted` because the sender side did its job; application
         //    consumer responsibility is to subscribe before F1 completes.
         let inbound = InboundClipboard {
-            peer_device_id: peer_device_id.clone(),
+            peer_device_id,
             header: frame.header,
             ciphertext: frame.ciphertext,
         };

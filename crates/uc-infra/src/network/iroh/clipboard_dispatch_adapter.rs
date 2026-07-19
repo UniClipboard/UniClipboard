@@ -125,7 +125,7 @@ impl IrohClipboardDispatchAdapter {
                 Some(tx) => Role::Follower(tx.subscribe()),
                 None => {
                     let (tx, _) = broadcast::channel::<DialResult>(8);
-                    map.insert(target.clone(), tx.clone());
+                    map.insert(*target, tx.clone());
                     Role::Leader(tx)
                 }
             }

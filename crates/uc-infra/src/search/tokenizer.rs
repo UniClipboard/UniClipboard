@@ -249,9 +249,9 @@ fn split_camel_case_original(s: &str) -> Vec<String> {
         let ch = chars[i];
 
         if ch.is_uppercase() && !current.is_empty() {
-            let prev_lower = current.chars().last().map_or(false, |c| c.is_lowercase());
-            let next_lower = chars.get(i + 1).map_or(false, |c| c.is_lowercase());
-            let prev_upper = current.chars().last().map_or(false, |c| c.is_uppercase());
+            let prev_lower = current.chars().last().is_some_and(|c| c.is_lowercase());
+            let next_lower = chars.get(i + 1).is_some_and(|c| c.is_lowercase());
+            let prev_upper = current.chars().last().is_some_and(|c| c.is_uppercase());
 
             // Transition: lowercase→UPPER or upper-run before UPPER+lower
             if prev_lower || (prev_upper && next_lower && current.len() > 1) {

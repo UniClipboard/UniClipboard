@@ -31,7 +31,7 @@ pub(crate) fn load_from_disk(config_dir: &PathBuf) -> Result<Option<DeviceId>> {
     uuid::Uuid::parse_str(id_str)
         .with_context(|| format!("invalid device_id UUID in file: {}", path.display()))?;
 
-    Ok(Some(DeviceId::new(id_str.to_string())))
+    Ok(Some(DeviceId::new(id_str)))
 }
 
 /// Save device ID to disk, creating parent directory if needed.

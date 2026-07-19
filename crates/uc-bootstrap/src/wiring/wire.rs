@@ -194,6 +194,9 @@ struct CoreWiringInputs {
     secure_storage: Arc<dyn SecureStoragePort>,
     iroh_identity_dir: PathBuf,
     system_clipboard: crate::layer::platform::SystemClipboardLayer,
+    analytics_sink: Arc<dyn uc_observability::analytics::AnalyticsPort>,
+    analytics_facade: Arc<dyn AnalyticsFacade>,
+    host_event_emitter: Arc<dyn HostEventEmitterPort>,
 }
 
 /// Build the [`SecureStoragePrelude`]: create the secure-storage backend, resolve
@@ -720,11 +723,18 @@ pub fn wire_dependencies(
     } = build_secure_storage_prelude(&paths)?;
 
     let system_clipboard = create_desktop_system_clipboard()?;
+    let analytics_sink = crate::subsystem::analytics::build_analytics_sink();
+    let analytics_facade = build_analytics_facade(&analytics_sink, &paths.app_data_root_dir);
+    let host_event_emitter = Arc::new(crate::observability::host_event::LoggingHostEventEmitter)
+        as Arc<dyn HostEventEmitterPort>;
     wire_dependencies_from_inputs(CoreWiringInputs {
         paths,
         secure_storage,
         iroh_identity_dir,
         system_clipboard,
+        analytics_sink,
+        analytics_facade,
+        host_event_emitter,
     })
 }
 
@@ -736,6 +746,9 @@ fn wire_dependencies_from_inputs(
         secure_storage,
         iroh_identity_dir,
         system_clipboard,
+        analytics_sink,
+        analytics_facade,
+        host_event_emitter,
     } = inputs;
     let secure_storage = crate::subsystem::sync_engine::build_identity_storage(
         secure_storage,
@@ -1071,7 +1084,7 @@ fn wire_dependencies_from_inputs(
             devices: infra.mobile_device_ports,
             endpoint_info: infra.mobile_sync_endpoint_info.clone(),
         },
-        analytics: crate::subsystem::analytics::build_analytics_sink(),
+        analytics: analytics_sink,
     };
 
     // Create shared host-event bus at wire time. The bus starts with the
@@ -1082,11 +1095,7 @@ fn wire_dependencies_from_inputs(
     // can pull a transport off cleanly (e.g. daemon reload).
     let host_event_bus: Arc<uc_application::facade::HostEventBus> =
         Arc::new(uc_application::facade::HostEventBus::new());
-    host_event_bus.register(
-        "logging",
-        Arc::new(crate::observability::host_event::LoggingHostEventEmitter)
-            as Arc<dyn HostEventEmitterPort>,
-    );
+    host_event_bus.register("logging", host_event_emitter);
     let receive_readiness =
         Arc::new(uc_application::receive_reconciliation::ReceiveReadinessCoordinator::new());
 
@@ -1108,11 +1117,6 @@ fn wire_dependencies_from_inputs(
         deps.clipboard.system_clipboard.clone(),
         deps.clipboard.clipboard_change_origin.clone(),
     );
-
-    // Compose the analytics facade over the gated sink on `deps.analytics` plus a
-    // local identity store. SpaceSetupFacade consumes the composed facade;
-    // capture-only facades keep talking to the bare sink on `deps.analytics`.
-    let analytics_facade = build_analytics_facade(&deps.analytics, &app_data_root);
 
     let wired = WiredDependencies {
         deps,
@@ -1180,6 +1184,9 @@ mod tests {
             secure_storage: Arc::new(storage) as Arc<dyn SecureStoragePort>,
             iroh_identity_dir: data_root.join("iroh-identity"),
             system_clipboard: noop_system_clipboard_layer(),
+            analytics_sink: Arc::new(uc_observability::analytics::NoopAnalyticsSink),
+            analytics_facade: Arc::new(uc_observability::analytics::NoopAnalyticsFacade),
+            host_event_emitter: Arc::new(crate::observability::host_event::LoggingHostEventEmitter),
         })
         .expect("core wiring");
 

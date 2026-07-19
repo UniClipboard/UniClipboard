@@ -34,6 +34,8 @@ use std::sync::{Arc, RwLock};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+pub use uc_observability_contract::analytics::Os;
+
 /// 事件共享上下文，每条事件都会带这些字段。
 ///
 /// 一个进程一份，session 内不可变（`active_device_count` 在进程启动时
@@ -268,18 +270,6 @@ pub enum AppChannel {
     Alpha,
     Beta,
     Stable,
-}
-
-/// 操作系统。`Other` 兜底未知 unix-like / 嵌入式平台。
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
-#[serde(rename_all = "snake_case")]
-pub enum Os {
-    Macos,
-    Windows,
-    Linux,
-    Ios,
-    Android,
-    Other,
 }
 
 /// CPU 架构。`Other` 兜底，新增架构应优先扩展枚举值。

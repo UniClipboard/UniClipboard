@@ -16,6 +16,7 @@ members = [
   "crates/uc-app-paths",
   "crates/uc-infra",
   "crates/uc-observability",
+  "crates/uc-observability-contract",
   "crates/uc-bootstrap",
   "crates/uc-daemon-contract",
   "crates/uc-daemon-process",

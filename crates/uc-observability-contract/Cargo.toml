@@ -1,0 +1,19 @@
+[package]
+name = "uc-observability-contract"
+version.workspace = true
+license.workspace = true
+edition = "2021"
+description = "Portable observability contracts shared by the core engine and host adapters"
+
+[dependencies]
+anyhow = "1.0"
+chrono = { version = "0.4", features = ["serde"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+tracing = "0.1"
+tokio = { version = "1", default-features = false, features = ["rt"] }
+uuid = { version = "1", features = ["v7", "serde"] }
+
+[lints]
+workspace = true

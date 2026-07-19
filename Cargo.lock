@@ -10140,7 +10140,7 @@ dependencies = [
  "uc-core",
  "uc-infra",
  "uc-mobile-proto",
- "uc-observability",
+ "uc-observability-contract",
  "uc-platform",
  "unicode-normalization",
  "url",
@@ -10498,8 +10498,23 @@ dependencies = [
  "tracing",
  "tracing-appender",
  "tracing-subscriber",
+ "uc-observability-contract",
  "uuid",
  "wiremock",
+]
+
+[[package]]
+name = "uc-observability-contract"
+version = "0.19.1"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tokio",
+ "tracing",
+ "uuid",
 ]
 
 [[package]]

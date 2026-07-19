@@ -368,6 +368,16 @@ async fn engine_start_builds_a_resumable_real_session() {
         created,
         uc_engine::OperationResult::SpaceCreated { ref space_id } if !space_id.is_empty()
     ));
+    let invitation = engine
+        .execute(uc_engine::Operation::IssueInvitation)
+        .await
+        .unwrap();
+    assert!(matches!(
+        invitation,
+        uc_engine::OperationResult::InvitationIssued {
+            ref invitation_code
+        } if !invitation_code.is_empty()
+    ));
 
     let wrong_passphrase = engine
         .execute(uc_engine::Operation::UnlockSpace(

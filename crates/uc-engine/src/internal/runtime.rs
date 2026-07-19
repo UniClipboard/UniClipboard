@@ -7,7 +7,7 @@ use tokio_util::sync::CancellationToken;
 use tracing::error;
 use uc_application::facade::{
     AppFacade, InMemoryLifecycleStatus, InitializeSpaceError,
-    InitializeSpaceInput as AppInitializeSpaceInput, UnlockSpaceError,
+    InitializeSpaceInput as AppInitializeSpaceInput, IssuePairingInvitationError, UnlockSpaceError,
     UnlockSpaceInput as AppUnlockSpaceInput,
 };
 use uc_core::ports::ReachabilityState;
@@ -39,6 +39,10 @@ const CREATE_SPACE_FAILED_CODE: u32 = 1203;
 const UNLOCK_SPACE_INVALID_STATE_CODE: u32 = 1211;
 const UNLOCK_SPACE_UNAUTHORIZED_CODE: u32 = 1212;
 const UNLOCK_SPACE_FAILED_CODE: u32 = 1213;
+const INVITATION_INVALID_STATE_CODE: u32 = 1221;
+const INVITATION_INVALID_INPUT_CODE: u32 = 1222;
+const INVITATION_UNAVAILABLE_CODE: u32 = 1223;
+const INVITATION_FAILED_CODE: u32 = 1224;
 
 pub(crate) struct ProductionRuntime {
     wired: WiredDependencies,
@@ -166,6 +170,17 @@ impl EngineRuntime for ProductionRuntime {
                     .map_err(map_unlock_space_error)?;
                 Ok(OperationResult::SpaceUnlocked)
             }
+            Operation::IssueInvitation => {
+                let invitation = self
+                    .current_facade()
+                    .await?
+                    .issue_pairing_invitation()
+                    .await
+                    .map_err(map_issue_invitation_error)?;
+                Ok(OperationResult::InvitationIssued {
+                    invitation_code: invitation.code.as_str().to_string(),
+                })
+            }
             Operation::ListDevices => {
                 let entries = self
                     .current_facade()
@@ -265,6 +280,29 @@ fn map_unlock_space_error(error: UnlockSpaceError) -> EngineError {
         ),
         UnlockSpaceError::CorruptedKeyMaterial | UnlockSpaceError::Internal(_) => {
             operation_error_with_code(UNLOCK_SPACE_FAILED_CODE, "unlock space", error)
+        }
+    }
+}
+
+fn map_issue_invitation_error(error: IssuePairingInvitationError) -> EngineError {
+    match error {
+        IssuePairingInvitationError::NetworkNotStarted => EngineError::new(
+            INVITATION_INVALID_STATE_CODE,
+            EngineErrorCategory::InvalidState,
+            true,
+        ),
+        IssuePairingInvitationError::AddressNotAvailable(_) => EngineError::new(
+            INVITATION_INVALID_INPUT_CODE,
+            EngineErrorCategory::InvalidInput,
+            false,
+        ),
+        IssuePairingInvitationError::ServiceUnavailable => EngineError::new(
+            INVITATION_UNAVAILABLE_CODE,
+            EngineErrorCategory::Unavailable,
+            true,
+        ),
+        IssuePairingInvitationError::Internal(_) => {
+            operation_error_with_code(INVITATION_FAILED_CODE, "issue invitation", error)
         }
     }
 }

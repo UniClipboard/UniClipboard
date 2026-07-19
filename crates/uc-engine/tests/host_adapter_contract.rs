@@ -414,6 +414,37 @@ async fn engine_start_builds_a_resumable_real_session() {
         uc_engine::OperationResult::SpaceUnlocked
     );
 
+    assert_eq!(
+        engine
+            .execute(uc_engine::Operation::QueryHistory(
+                uc_engine::QueryHistoryInput {
+                    cursor: None,
+                    limit: 25,
+                    query: None,
+                },
+            ))
+            .await
+            .unwrap(),
+        uc_engine::OperationResult::HistoryPage {
+            entries: Vec::new(),
+            next_cursor: None,
+        }
+    );
+    let invalid_cursor = engine
+        .execute(uc_engine::Operation::QueryHistory(
+            uc_engine::QueryHistoryInput {
+                cursor: Some("not-an-engine-cursor".into()),
+                limit: 25,
+                query: None,
+            },
+        ))
+        .await
+        .unwrap_err();
+    assert_eq!(
+        invalid_cursor.category(),
+        uc_engine::EngineErrorCategory::InvalidInput
+    );
+
     engine.suspend().await.unwrap();
     engine.resume().await.unwrap();
     engine

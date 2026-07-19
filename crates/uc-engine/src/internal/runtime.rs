@@ -10,6 +10,7 @@ use uc_application::facade::{
     AppFacade, InMemoryLifecycleStatus, InitializeSpaceError,
     InitializeSpaceInput as AppInitializeSpaceInput, IssuePairingInvitationError,
     QuerySetupStateError, RedeemPairingInvitationError, RedeemPairingInvitationInput,
+    SearchCoordinator, SearchCoordinatorDeps, SearchFacadeError, SearchPageView, SearchQueryInput,
     UnlockSpaceError, UnlockSpaceInput as AppUnlockSpaceInput,
 };
 use uc_core::ports::ReachabilityState;
@@ -28,8 +29,8 @@ use crate::internal::host_adapters::{
 use crate::internal::lifecycle::build_daemon_lifecycle;
 use crate::internal::sync_engine::SyncEngineAssembly;
 use crate::{
-    DeviceSummary, EngineConfig, EngineError, EngineErrorCategory, HostCapabilities,
-    HostFileAccess, Operation, OperationResult,
+    DeviceSummary, EngineConfig, EngineError, EngineErrorCategory, EntrySummary, HostCapabilities,
+    HostFileAccess, Operation, OperationResult, QueryHistoryInput,
 };
 
 const START_FAILED_CODE: u32 = 1101;
@@ -53,6 +54,12 @@ const JOIN_SPACE_CONFLICT_CODE: u32 = 1235;
 const JOIN_SPACE_UNAVAILABLE_CODE: u32 = 1236;
 const JOIN_SPACE_DEADLINE_CODE: u32 = 1237;
 const JOIN_SPACE_FAILED_CODE: u32 = 1238;
+const QUERY_HISTORY_INVALID_INPUT_CODE: u32 = 1241;
+const QUERY_HISTORY_UNAUTHORIZED_CODE: u32 = 1242;
+const QUERY_HISTORY_UNAVAILABLE_CODE: u32 = 1243;
+const QUERY_HISTORY_FAILED_CODE: u32 = 1244;
+const HISTORY_CURSOR_PREFIX: &str = "uc-history-v1:";
+const MAX_HISTORY_PAGE_SIZE: u32 = 200;
 
 pub(crate) struct ProductionRuntime {
     wired: WiredDependencies,
@@ -109,6 +116,7 @@ impl ProductionRuntime {
         let mut sync_engine = lifecycle.sync_engine_assembly;
         let (restore_tx, restore_rx) = tokio::sync::mpsc::unbounded_channel();
         sync_engine.attach_restore_broadcast(restore_rx);
+        let search_coordinator = build_search_coordinator(&wired.deps);
         let facade = build_app_facade_from_deps(
             &wired.deps,
             paths,
@@ -127,6 +135,7 @@ impl ProductionRuntime {
                         uc_application::clipboard_write::RestoreBroadcastTrigger::new(restore_tx),
                     ),
                 }),
+                search_coordinator: Some(search_coordinator),
                 ..Default::default()
             },
         );
@@ -249,6 +258,18 @@ impl EngineRuntime for ProductionRuntime {
                         .collect(),
                 ))
             }
+            Operation::QueryHistory(input) => {
+                let search_input = history_search_input(input)?;
+                let offset = search_input.offset;
+                let limit = search_input.limit;
+                let page = self
+                    .current_facade()
+                    .await?
+                    .search_query(search_input)
+                    .await
+                    .map_err(map_query_history_error)?;
+                history_page_result(page, offset, limit)
+            }
             _ => Err(operation_unavailable_error()),
         }
     }
@@ -272,6 +293,79 @@ impl EngineRuntime for ProductionRuntime {
         self.task_registry.shutdown(deadline).await;
         Ok(())
     }
+}
+
+fn build_search_coordinator(deps: &uc_application::deps::AppDeps) -> Arc<SearchCoordinator> {
+    Arc::new(SearchCoordinator::new(SearchCoordinatorDeps::new(
+        deps.search.search_index.clone(),
+        deps.search.search_maintenance.clone(),
+        deps.search.search_key_derivation.clone(),
+        deps.search.search_pipeline.clone(),
+        deps.clipboard.entry_ports.list.clone(),
+        deps.clipboard.entry_ports.get.clone(),
+        deps.clipboard.representation_ports.list_for_event.clone(),
+        deps.clipboard.selection_repo.clone(),
+        deps.clipboard.clipboard_event_reader_repo.clone(),
+        deps.storage.entry_file_set_repo.clone(),
+        uc_infra::search::constants::CURRENT_INDEX_VERSION,
+    )))
+}
+
+fn history_search_input(input: QueryHistoryInput) -> Result<SearchQueryInput, EngineError> {
+    if input.limit == 0 || input.limit > MAX_HISTORY_PAGE_SIZE {
+        return Err(query_history_invalid_input_error());
+    }
+    let offset = match input.cursor.as_deref() {
+        None => 0,
+        Some(cursor) => cursor
+            .strip_prefix(HISTORY_CURSOR_PREFIX)
+            .and_then(|value| value.parse::<u32>().ok())
+            .ok_or_else(query_history_invalid_input_error)?,
+    };
+
+    Ok(SearchQueryInput {
+        query: input.query.unwrap_or_default(),
+        operator: None,
+        time_preset: None,
+        from_ms: None,
+        to_ms: None,
+        content_types: None,
+        extensions: None,
+        source_devices: None,
+        tags: None,
+        limit: input.limit,
+        offset,
+    })
+}
+
+fn history_page_result(
+    page: SearchPageView,
+    offset: u32,
+    limit: u32,
+) -> Result<OperationResult, EngineError> {
+    let next_cursor = if page.has_more {
+        let next_offset = offset
+            .checked_add(limit)
+            .ok_or_else(query_history_invalid_input_error)?;
+        Some(format!("{HISTORY_CURSOR_PREFIX}{next_offset}"))
+    } else {
+        None
+    };
+    let entries = page
+        .items
+        .into_iter()
+        .map(|item| EntrySummary {
+            entry_id: item.entry_id,
+            content_type: item.content_type,
+            preview: item.text_preview,
+            created_at_ms: item.active_time_ms,
+        })
+        .collect();
+
+    Ok(OperationResult::HistoryPage {
+        entries,
+        next_cursor,
+    })
 }
 
 fn startup_error(context: &'static str, error: impl std::fmt::Display) -> EngineError {
@@ -411,6 +505,43 @@ fn map_switch_space_error(error: SwitchSpaceError) -> EngineError {
     }
 }
 
+fn map_query_history_error(error: SearchFacadeError) -> EngineError {
+    match error {
+        SearchFacadeError::InvalidQuery(_) | SearchFacadeError::BadRequest(_) => {
+            query_history_invalid_input_error()
+        }
+        SearchFacadeError::SessionLocked => EngineError::new(
+            QUERY_HISTORY_UNAUTHORIZED_CODE,
+            EngineErrorCategory::Unauthorized,
+            false,
+        ),
+        SearchFacadeError::IndexNotReady
+        | SearchFacadeError::IndexRebuilding
+        | SearchFacadeError::IndexUnavailable
+        | SearchFacadeError::ServiceUnavailable(_) => EngineError::new(
+            QUERY_HISTORY_UNAVAILABLE_CODE,
+            EngineErrorCategory::Unavailable,
+            true,
+        ),
+        SearchFacadeError::RebuildAlreadyRunning => EngineError::new(
+            QUERY_HISTORY_UNAVAILABLE_CODE,
+            EngineErrorCategory::Conflict,
+            true,
+        ),
+        SearchFacadeError::Internal(_) => {
+            operation_error_with_code(QUERY_HISTORY_FAILED_CODE, "query history", error)
+        }
+    }
+}
+
+fn query_history_invalid_input_error() -> EngineError {
+    EngineError::new(
+        QUERY_HISTORY_INVALID_INPUT_CODE,
+        EngineErrorCategory::InvalidInput,
+        false,
+    )
+}
+
 fn join_invalid_input_error() -> EngineError {
     EngineError::new(
         JOIN_SPACE_INVALID_INPUT_CODE,
@@ -466,4 +597,103 @@ fn operation_error_with_code(
 ) -> EngineError {
     error!(context, error = %error, "engine operation failed");
     EngineError::new(code, EngineErrorCategory::Internal, false)
+}
+
+#[cfg(test)]
+mod tests {
+    use uc_application::facade::{SearchPageView, SearchResultView};
+
+    use super::*;
+
+    #[test]
+    fn history_search_input_parses_only_versioned_bounded_cursors() {
+        let parsed = history_search_input(QueryHistoryInput {
+            cursor: Some("uc-history-v1:40".into()),
+            limit: 20,
+            query: Some("needle".into()),
+        })
+        .unwrap();
+        assert_eq!(parsed.offset, 40);
+        assert_eq!(parsed.limit, 20);
+        assert_eq!(parsed.query, "needle");
+
+        for input in [
+            QueryHistoryInput {
+                cursor: Some("40".into()),
+                limit: 20,
+                query: None,
+            },
+            QueryHistoryInput {
+                cursor: Some("uc-history-v2:40".into()),
+                limit: 20,
+                query: None,
+            },
+            QueryHistoryInput {
+                cursor: None,
+                limit: 0,
+                query: None,
+            },
+            QueryHistoryInput {
+                cursor: None,
+                limit: 201,
+                query: None,
+            },
+        ] {
+            let error = history_search_input(input).unwrap_err();
+            assert_eq!(error.category(), EngineErrorCategory::InvalidInput);
+        }
+    }
+
+    #[test]
+    fn history_page_result_projects_entries_and_advances_cursor() {
+        let result = history_page_result(
+            SearchPageView {
+                total: 61,
+                has_more: true,
+                items: vec![SearchResultView {
+                    entry_id: "entry-1".into(),
+                    content_type: "text".into(),
+                    active_time_ms: 123,
+                    tags: Vec::new(),
+                    text_preview: Some("private preview".into()),
+                    char_count: Some(15),
+                    mime_type: "text/plain".into(),
+                    file_extensions: Vec::new(),
+                    file_names: Vec::new(),
+                    file_paths: Vec::new(),
+                    link_urls: Vec::new(),
+                    source_device: None,
+                    payload_state: None,
+                }],
+                state: "ready".into(),
+            },
+            40,
+            20,
+        )
+        .unwrap();
+
+        assert_eq!(
+            result,
+            OperationResult::HistoryPage {
+                entries: vec![EntrySummary {
+                    entry_id: "entry-1".into(),
+                    content_type: "text".into(),
+                    preview: Some("private preview".into()),
+                    created_at_ms: 123,
+                }],
+                next_cursor: Some("uc-history-v1:60".into()),
+            }
+        );
+    }
+
+    #[test]
+    fn history_error_mapping_preserves_retry_semantics() {
+        let locked = map_query_history_error(SearchFacadeError::SessionLocked);
+        assert_eq!(locked.category(), EngineErrorCategory::Unauthorized);
+        assert!(!locked.is_retryable());
+
+        let rebuilding = map_query_history_error(SearchFacadeError::IndexRebuilding);
+        assert_eq!(rebuilding.category(), EngineErrorCategory::Unavailable);
+        assert!(rebuilding.is_retryable());
+    }
 }

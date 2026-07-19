@@ -10172,6 +10172,7 @@ dependencies = [
  "uc-app-paths",
  "uc-application",
  "uc-core",
+ "uc-engine",
  "uc-infra",
  "uc-observability",
  "uc-observability-contract",
@@ -10394,10 +10395,15 @@ dependencies = [
 name = "uc-engine"
 version = "0.19.1"
 dependencies = [
+ "anyhow",
  "async-trait",
+ "chrono",
  "serde",
  "tokio",
  "tokio-util",
+ "tracing",
+ "uc-core",
+ "uc-infra",
  "zeroize",
 ]
 

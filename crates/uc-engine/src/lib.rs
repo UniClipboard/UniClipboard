@@ -9,6 +9,9 @@ mod engine;
 mod event_stream;
 mod host;
 
+#[doc(hidden)]
+pub mod internal;
+
 pub use engine::Engine;
 pub use event_stream::EventStream;
 pub use host::{

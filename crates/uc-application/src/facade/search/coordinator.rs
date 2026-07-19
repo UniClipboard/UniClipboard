@@ -16,10 +16,9 @@ use uc_core::ports::clipboard::{
 use uc_core::ports::search::{SearchIndexMaintenancePort, SearchPipelinePort};
 use uc_core::ports::{ClipboardSelectionRepositoryPort, SearchIndexPort, SearchKeyDerivationPort};
 use uc_core::search::{
-    RebuildProgress, RebuildStage, SearchError, SearchResult, SearchResultsPage,
+    RebuildProgress, RebuildStage, SearchError, SearchPipelineInput, SearchResult,
+    SearchResultsPage,
 };
-use uc_infra::search::constants::CURRENT_INDEX_VERSION;
-use uc_infra::search::text_extractor::SearchPipelineInput;
 
 use crate::facade::search::{SearchProjectionBuilder, SearchStatusView};
 use crate::file_set_query::load_has_directory_structure;
@@ -104,6 +103,7 @@ impl SearchCoordinatorDeps {
         selection_repo: Arc<dyn ClipboardSelectionRepositoryPort>,
         event_repo: Arc<dyn ClipboardEventRepositoryPort>,
         entry_file_set_repo: Arc<dyn EntryFileSetRepositoryPort>,
+        current_index_version: impl Into<String>,
     ) -> Self {
         Self {
             search_index,
@@ -116,7 +116,7 @@ impl SearchCoordinatorDeps {
             selection_repo,
             event_repo,
             entry_file_set_repo,
-            current_index_version: CURRENT_INDEX_VERSION.to_string(),
+            current_index_version: current_index_version.into(),
         }
     }
 }
@@ -864,6 +864,7 @@ mod tests {
     use uc_core::search::tag::TagId;
     use uc_core::ClipboardEntryContentCategory;
     use uc_core::MimeType;
+    use uc_infra::search::constants::CURRENT_INDEX_VERSION;
 
     /// Returns the supplied entries verbatim (already windowed by the test).
     struct FakeEntryRepo {
@@ -1207,6 +1208,7 @@ mod tests {
             Arc::new(FakeSelectionRepo { rep_id }),
             Arc::new(FakeEventRepo),
             Arc::new(FakeFileSetRepo),
+            CURRENT_INDEX_VERSION,
         );
         let coordinator = SearchCoordinator::new(deps);
 
@@ -1291,6 +1293,7 @@ mod tests {
             Arc::new(FakeSelectionRepo { rep_id }),
             Arc::new(FakeEventRepo),
             Arc::new(FakeFileSetRepo),
+            CURRENT_INDEX_VERSION,
         );
         let coordinator = SearchCoordinator::new(deps);
 

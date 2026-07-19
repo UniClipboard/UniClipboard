@@ -617,6 +617,7 @@ pub async fn build_cli_app_runtime(
         deps.clipboard.selection_repo.clone(),
         deps.clipboard.clipboard_event_reader_repo.clone(),
         deps.storage.entry_file_set_repo.clone(),
+        uc_infra::search::constants::CURRENT_INDEX_VERSION,
     )));
 
     // CLI 不接 LAN listener,但仍需 `mobile_sync` facade 跑查询命令

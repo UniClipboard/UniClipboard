@@ -10,7 +10,7 @@ use uc_core::clipboard::{
 };
 use uc_core::search::document::ContentType;
 use uc_core::search::tag::{TagId, TaggableContent};
-use uc_infra::search::text_extractor::SearchPipelineInput;
+use uc_core::search::SearchPipelineInput;
 
 use crate::content_tags::evaluate_builtin_content_tags;
 

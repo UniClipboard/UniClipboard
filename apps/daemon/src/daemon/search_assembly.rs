@@ -5,6 +5,7 @@ use std::sync::Arc;
 use tokio::sync::broadcast;
 use uc_application::deps::AppDeps;
 use uc_application::facade::{SearchCoordinator, SearchCoordinatorDeps};
+use uc_infra::search::constants::CURRENT_INDEX_VERSION;
 use uc_webserver::api::types::DaemonWsEvent;
 
 use crate::daemon::search::coordinator::SearchCoordinatorService;
@@ -31,6 +32,7 @@ pub fn build_daemon_search_assembly(
         deps.clipboard.selection_repo.clone(),
         deps.clipboard.clipboard_event_reader_repo.clone(),
         deps.storage.entry_file_set_repo.clone(),
+        CURRENT_INDEX_VERSION,
     )));
 
     let service = Arc::new(SearchCoordinatorService::new(

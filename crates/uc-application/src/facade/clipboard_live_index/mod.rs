@@ -3,6 +3,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use thiserror::Error;
 use tracing::debug;
+use uc_core::clipboard::ClipboardEntryContentCategory;
 use uc_core::ids::EntryId;
 use uc_core::ports::clipboard::{
     ClipboardEventRepositoryPort, EntryFileSetRepositoryPort, GetClipboardEntryPort,
@@ -116,7 +117,9 @@ impl ClipboardLiveIndexPort for ClipboardLiveIndexer {
             }
         };
 
-        let has_directory =
+        // Only file entries can carry a directory manifest; skip the extra repo
+        // read for text/image/etc., mirroring the list projection.
+        let has_directory = if entry.content_category == ClipboardEntryContentCategory::File {
             load_has_directory_structure(self.deps.entry_file_set_repo.as_ref(), &entry_id)
                 .await
                 .unwrap_or_else(|err| {
@@ -126,7 +129,10 @@ impl ClipboardLiveIndexPort for ClipboardLiveIndexer {
                         "search: failed to load file set, indexing without directory tag"
                     );
                     false
-                });
+                })
+        } else {
+            false
+        };
 
         let Some(pipeline_input) = SearchProjectionBuilder::build_from_capture(
             &entry,

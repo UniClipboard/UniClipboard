@@ -32,8 +32,11 @@ function HistoryCardTransferProgress({
           active ? 'opacity-100' : 'opacity-0'
         )}
         // Directory sends have no meaningful percentage, so the tint stays
-        // full-width to signal activity without a fake fill level.
-        style={{ width: active && !hideByteProgress ? `${percent}%` : '100%' }}
+        // full-width to signal activity without a fake fill level. Regular sends
+        // keep their real percentage even when inactive: opacity (via `active`)
+        // handles hide/show, so the bar fades out at its last width instead of
+        // animating out to 100% on completion or cancel.
+        style={{ width: hideByteProgress ? '100%' : `${percent}%` }}
       />
       {!hideByteProgress && (
         <div

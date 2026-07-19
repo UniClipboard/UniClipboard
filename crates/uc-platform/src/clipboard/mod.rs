@@ -26,5 +26,6 @@ pub use event_loop::{
     build_event_loop, shutdown_channel, PlatformClipboardEventLoop, ShutdownRx, ShutdownTx,
 };
 pub use noop::NoopSystemClipboard;
+#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
 pub use platform::LocalClipboard;
 pub use watcher::{PlatformEvent, PlatformEventSender};

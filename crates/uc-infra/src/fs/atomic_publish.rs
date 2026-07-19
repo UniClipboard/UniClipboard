@@ -130,7 +130,7 @@ fn probe_no_replace(probe_dir: &Path) -> bool {
     }
 }
 
-#[cfg(unix)]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 fn rename_no_replace(source: &Path, destination: &Path) -> Result<(), PublishError> {
     use std::ffi::CString;
     use std::os::unix::ffi::OsStrExt;
@@ -149,6 +149,13 @@ fn rename_no_replace(source: &Path, destination: &Path) -> Result<(), PublishErr
     Err(classify_os_error(std::io::Error::last_os_error()))
 }
 
+/// Mobile Unix targets currently have no verified native no-replace primitive.
+/// Refuse publication rather than emulating errno or silently replacing data.
+#[cfg(all(unix, not(any(target_os = "linux", target_os = "macos"))))]
+fn rename_no_replace(_source: &Path, _destination: &Path) -> Result<(), PublishError> {
+    Err(PublishError::Unsupported)
+}
+
 #[cfg(target_os = "linux")]
 unsafe fn rename_excl_syscall(
     source: *const libc::c_char,
@@ -156,14 +163,16 @@ unsafe fn rename_excl_syscall(
 ) -> libc::c_int {
     // Called through `syscall` rather than the glibc `renameat2` wrapper: musl
     // has no wrapper, and the raw syscall behaves identically on both.
-    libc::syscall(
-        libc::SYS_renameat2,
-        libc::AT_FDCWD,
-        source,
-        libc::AT_FDCWD,
-        destination,
-        libc::RENAME_NOREPLACE,
-    ) as libc::c_int
+    unsafe {
+        libc::syscall(
+            libc::SYS_renameat2,
+            libc::AT_FDCWD,
+            source,
+            libc::AT_FDCWD,
+            destination,
+            libc::RENAME_NOREPLACE,
+        ) as libc::c_int
+    }
 }
 
 #[cfg(target_os = "macos")]
@@ -171,19 +180,7 @@ unsafe fn rename_excl_syscall(
     source: *const libc::c_char,
     destination: *const libc::c_char,
 ) -> libc::c_int {
-    libc::renamex_np(source, destination, libc::RENAME_EXCL)
-}
-
-/// Unix platforms outside the shipped set (Linux, macOS) have no verified
-/// no-replace primitive here. Report it rather than silently degrading to a
-/// replacing rename.
-#[cfg(all(unix, not(any(target_os = "linux", target_os = "macos"))))]
-unsafe fn rename_excl_syscall(
-    _source: *const libc::c_char,
-    _destination: *const libc::c_char,
-) -> libc::c_int {
-    *libc::__errno_location() = libc::ENOSYS;
-    -1
+    unsafe { libc::renamex_np(source, destination, libc::RENAME_EXCL) }
 }
 
 #[cfg(unix)]

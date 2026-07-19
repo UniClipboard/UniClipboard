@@ -7,8 +7,11 @@
 //!
 //! 本模块只依赖 `uc-core` + `std`，无 cfg gate，三平台均可使用。
 
+#[cfg(any(test, target_os = "linux", target_os = "macos", target_os = "windows"))]
 use anyhow::{Context, Result};
+#[cfg(any(test, target_os = "linux", target_os = "macos", target_os = "windows"))]
 use std::borrow::Cow;
+#[cfg(any(test, target_os = "linux", target_os = "macos", target_os = "windows"))]
 use uc_core::clipboard::{ClipboardPayloadSource, ObservedClipboardRepresentation};
 
 /// 取 rep 字节，按 source 分流。
@@ -29,6 +32,7 @@ use uc_core::clipboard::{ClipboardPayloadSource, ObservedClipboardRepresentation
 /// Win32 OpenClipboard 等系统 API 本就阻塞），对端图片 blob 已由 iroh-blobs
 /// export 到本地 cache，读盘 = 顺序 IO，通常 < 几十 ms，与原系统 API 调用同量级。
 /// 如未来出现极大 payload 阻塞 worker 的证据再换 `spawn_blocking`，目前不预先优化。
+#[cfg(any(test, target_os = "linux", target_os = "macos", target_os = "windows"))]
 pub(crate) fn rep_bytes(rep: &ObservedClipboardRepresentation) -> Result<Cow<'_, [u8]>> {
     match rep.source() {
         ClipboardPayloadSource::Inline(b) => Ok(Cow::Borrowed(b.as_slice())),

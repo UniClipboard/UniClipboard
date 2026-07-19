@@ -72,7 +72,6 @@ use uc_infra::network::iroh::transfer_progress_adapter::InboundProgressEvent;
 use uc_infra::network::iroh::{
     ActiveClipboardHandlers, ActiveClipboardPullHandlers, BlobHandlers, ClipboardHandlers,
     IrohIdentityStore, IrohNode, IrohNodeBuilder, IrohNodeError, TransferProgressHandlers,
-    IDENTITY_STORE_KEY,
 };
 // Re-exported so external callers can parametrise the assembly without
 // having to `use uc_infra` themselves.
@@ -81,24 +80,9 @@ use uc_infra::fs::{
 };
 pub(crate) use uc_infra::network::iroh::IrohNodeConfig;
 use uc_infra::security::Sha256IdentityFingerprintFactory;
-use uc_platform::file_secure_storage::FileSecureStorage;
-use uc_platform::migrating_secure_storage::MigratingSecureStorage;
 
 use crate::wiring::deps::{SharedRuntimeDeps, SyncEngineDeps};
 use uc_application::deps::AppDeps;
-
-pub(crate) fn build_identity_storage(
-    primary: Arc<dyn uc_core::ports::SecureStoragePort>,
-    legacy_identity_dir: std::path::PathBuf,
-) -> Arc<dyn uc_core::ports::SecureStoragePort> {
-    let legacy: Arc<dyn uc_core::ports::SecureStoragePort> =
-        Arc::new(FileSecureStorage::with_base_dir(legacy_identity_dir));
-    Arc::new(MigratingSecureStorage::new(
-        primary,
-        legacy,
-        vec![IDENTITY_STORE_KEY.to_string()],
-    ))
-}
 
 /// Output of [`build_sync_engine_assembly`]. External callers keep the
 /// whole assembly alive for the process lifetime; they only dispatch
@@ -780,74 +764,4 @@ pub(crate) async fn build_sync_engine_assembly(
         restore_broadcast_handle: None,
         outbound_progress_translator,
     })
-}
-
-#[cfg(test)]
-mod identity_storage_tests {
-    use std::collections::HashMap;
-    use std::fmt::Display;
-    use std::sync::{Arc, Mutex};
-
-    use uc_core::ports::{SecureStorageError, SecureStoragePort};
-
-    use super::{build_identity_storage, IDENTITY_STORE_KEY};
-
-    #[derive(Default)]
-    struct MemorySecureStorage {
-        values: Mutex<HashMap<String, Vec<u8>>>,
-    }
-
-    fn must<T, E: Display>(result: Result<T, E>) -> T {
-        match result {
-            Ok(value) => value,
-            Err(error) => panic!("test setup failed: {error}"),
-        }
-    }
-
-    impl MemorySecureStorage {
-        fn values(&self) -> std::sync::MutexGuard<'_, HashMap<String, Vec<u8>>> {
-            match self.values.lock() {
-                Ok(values) => values,
-                Err(poisoned) => poisoned.into_inner(),
-            }
-        }
-    }
-
-    impl SecureStoragePort for MemorySecureStorage {
-        fn get(&self, key: &str) -> Result<Option<Vec<u8>>, SecureStorageError> {
-            Ok(self.values().get(key).cloned())
-        }
-
-        fn set(&self, key: &str, value: &[u8]) -> Result<(), SecureStorageError> {
-            self.values().insert(key.to_owned(), value.to_vec());
-            Ok(())
-        }
-
-        fn delete(&self, key: &str) -> Result<(), SecureStorageError> {
-            self.values().remove(key);
-            Ok(())
-        }
-    }
-
-    #[test]
-    fn legacy_file_identity_moves_into_primary_secure_storage() {
-        let temp = must(tempfile::tempdir());
-        let legacy_dir = temp.path().join("iroh-identity");
-        must(std::fs::create_dir_all(&legacy_dir));
-        let legacy =
-            uc_platform::file_secure_storage::FileSecureStorage::with_base_dir(legacy_dir.clone());
-        let identity = [7u8; 32];
-        must(legacy.set(IDENTITY_STORE_KEY, &identity));
-        let primary = Arc::new(MemorySecureStorage::default());
-
-        let storage = build_identity_storage(primary.clone(), legacy_dir);
-        let loaded = must(storage.get(IDENTITY_STORE_KEY));
-
-        assert_eq!(loaded.as_deref(), Some(identity.as_slice()));
-        assert_eq!(
-            must(primary.get(IDENTITY_STORE_KEY)).as_deref(),
-            Some(identity.as_slice())
-        );
-        assert!(must(legacy.get(IDENTITY_STORE_KEY)).is_none());
-    }
 }

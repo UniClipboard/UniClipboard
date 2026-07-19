@@ -628,11 +628,6 @@ pub(crate) fn wire_dependencies_from_inputs(
         analytics_facade,
         host_event_emitter,
     } = inputs;
-    let secure_storage = crate::subsystem::sync_engine::build_identity_storage(
-        secure_storage,
-        legacy_iroh_identity_dir.clone(),
-    );
-
     let db_path = paths.db_path;
     let vault_path = paths.vault_dir;
     let settings_path = paths.settings_path;

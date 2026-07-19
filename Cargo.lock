@@ -10402,6 +10402,7 @@ dependencies = [
  "tokio",
  "tokio-util",
  "tracing",
+ "uc-application",
  "uc-core",
  "uc-infra",
  "zeroize",

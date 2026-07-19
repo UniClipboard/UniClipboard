@@ -10,6 +10,7 @@ use std::sync::Arc;
 use crate::internal::clipboard::SystemClipboardWiring;
 use crate::internal::deps::{WiringError, WiringResult};
 use uc_core::blob::ports::{BlobContentIngestPort, BlobReaderPort, BlobWriterPort};
+use uc_core::ids::ProfileId;
 use uc_core::ports::clipboard::ClipboardRepresentationNormalizerPort;
 use uc_core::ports::*;
 use uc_infra::blob::{BlobRepositoryPort, BlobStorePort, BlobWriter, FilesystemBlobStore};
@@ -76,6 +77,7 @@ impl SystemClipboardLayer {
 
 pub fn create_platform_layer(
     secure_storage: Arc<dyn SecureStoragePort>,
+    profile_id: ProfileId,
     config_dir: &PathBuf,
     blob_repository: Arc<dyn BlobRepositoryPort>,
     _member_repo: Arc<dyn uc_core::MemberRepositoryPort>,
@@ -180,8 +182,7 @@ pub fn create_platform_layer(
     let blob_content_ingest: Arc<dyn BlobContentIngestPort> = blob_writer_concrete;
     let blob_store_reader: Arc<dyn BlobReaderPort> = encrypted_blob_store;
 
-    let current_profile: Arc<dyn uc_core::ports::security::current_profile::CurrentProfilePort> =
-        Arc::new(uc_infra::security::DefaultCurrentProfile::new());
+    let current_profile = current_profile_for(profile_id);
 
     Ok(PlatformLayer {
         clipboard: system_clipboard.clipboard,
@@ -196,6 +197,14 @@ pub fn create_platform_layer(
         session,
         current_profile,
     })
+}
+
+pub fn current_profile_for(
+    profile_id: impl Into<ProfileId>,
+) -> Arc<dyn uc_core::ports::security::current_profile::CurrentProfilePort> {
+    Arc::new(uc_infra::security::DefaultCurrentProfile::for_profile(
+        profile_id.into(),
+    ))
 }
 
 /// Check if a file starts with the UCBL binary format magic bytes.

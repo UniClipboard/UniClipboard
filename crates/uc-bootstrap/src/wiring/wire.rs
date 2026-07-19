@@ -21,6 +21,7 @@ mod tests {
         let (wired, _background) = wire_dependencies_from_inputs(CoreWiringInputs {
             paths,
             secure_storage: Arc::new(storage) as Arc<dyn SecureStoragePort>,
+            profile_id: uc_core::ids::ProfileId::from("default"),
             legacy_iroh_identity_dir: data_root.join("iroh-identity"),
             iroh_blob_store_dir: data_root.join("iroh-blobs"),
             system_clipboard: noop_system_clipboard_layer(),

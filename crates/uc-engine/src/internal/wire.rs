@@ -178,6 +178,7 @@ pub fn create_db_pool(db_path: &PathBuf) -> WiringResult<DbPool> {
 pub struct CoreWiringInputs {
     pub paths: AppPaths,
     pub secure_storage: Arc<dyn SecureStoragePort>,
+    pub profile_id: ProfileId,
     pub legacy_iroh_identity_dir: PathBuf,
     pub iroh_blob_store_dir: PathBuf,
     pub system_clipboard: SystemClipboardLayer,
@@ -621,6 +622,7 @@ pub fn wire_dependencies_from_inputs(
     let CoreWiringInputs {
         paths,
         secure_storage,
+        profile_id,
         legacy_iroh_identity_dir,
         iroh_blob_store_dir,
         system_clipboard,
@@ -651,6 +653,7 @@ pub fn wire_dependencies_from_inputs(
     let storage_config = Arc::new(ClipboardStorageConfig::defaults());
     let platform = create_platform_layer(
         secure_storage,
+        profile_id,
         &vault_path,
         infra.blob_repository.clone(),
         infra.member_repo.clone(),

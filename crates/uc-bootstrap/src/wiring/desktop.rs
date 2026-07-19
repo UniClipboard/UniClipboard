@@ -9,6 +9,7 @@ use std::sync::Arc;
 
 use uc_application::facade::{AppPaths, HostEventEmitterPort};
 use uc_core::config::AppConfig;
+use uc_core::ids::ProfileId;
 use uc_core::ports::SecureStoragePort;
 use uc_infra::network::iroh::IDENTITY_STORE_KEY;
 use uc_platform::file_secure_storage::FileSecureStorage;
@@ -100,6 +101,7 @@ pub fn wire_dependencies(
     wire_dependencies_from_inputs(CoreWiringInputs {
         paths,
         secure_storage,
+        profile_id: ProfileId::from("default"),
         legacy_iroh_identity_dir,
         iroh_blob_store_dir,
         system_clipboard,

@@ -217,3 +217,13 @@ fn host_directories_derive_only_private_and_cache_storage_paths() {
     assert_eq!(paths.cache_dir, std::path::Path::new("/host/cache"));
     assert_eq!(paths.spool_dir, std::path::Path::new("/host/cache/spool"));
 }
+
+#[tokio::test]
+async fn engine_platform_uses_the_configured_profile() {
+    let profile = uc_engine::internal::platform::current_profile_for("mobile-primary");
+
+    assert_eq!(
+        profile.current_profile().await.unwrap().as_ref(),
+        "mobile-primary"
+    );
+}

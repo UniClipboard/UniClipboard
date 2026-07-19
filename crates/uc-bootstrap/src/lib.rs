@@ -34,4 +34,4 @@ pub use subsystem::blob_tasks::{spawn_blob_processing_tasks, BlobProcessingPorts
 pub use subsystem::file_transfer::FileTransferLifecycle;
 pub use subsystem::sync_engine::SyncEngineAssembly;
 pub use wiring::deps::{BackgroundRuntimeDeps, WiredDependencies, WiringError, WiringResult};
-pub use wiring::wire::wire_dependencies;
+pub use wiring::desktop::wire_dependencies;

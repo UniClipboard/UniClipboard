@@ -64,21 +64,20 @@ use uc_infra::config_migration::staging::{
 /// Secure-storage key prefixes whose presence may be logged (no values ever
 /// leave the process). Anything else is reported as `unknown`.
 ///
-/// The iroh device identity no longer travels as a secret (it is migrated as
-/// 0600 files under `iroh-identity/`), so only the KEK is expected here; the
-/// identity prefix is kept defensively for forward/backward-compatible bundles.
+/// Current bundles carry the iroh identity as an encrypted secret. Legacy
+/// bundles may still carry 0600 files under `iroh-identity/`, so both prefixes
+/// remain accepted during import.
 const KNOWN_SECRET_PREFIXES: &[&str] = &["iroh-identity:", "kek:v1:"];
 
 /// Detect and apply a staged configuration import, if one is pending.
 ///
 /// `app_data_root` is the staging/marker root (and the parent of `ui-state/`);
 /// `db_path` / `vault_dir` / `settings_path` are the live destinations for the
-/// copied members. `iroh_identity_dir` is the live device-identity directory
-/// (`<app_data>/iroh-identity[_<profile>]/`): the iroh identity is migrated as
-/// 0600 files (not a secret), so each staged `iroh-identity/<file>` is copied
-/// back here. `secure_storage` must be the *same* backend the rest of wiring
-/// uses so the staged secrets (the KEK) land where the running daemon will later
-/// read them.
+/// copied members. `iroh_identity_dir` is a migration source for legacy bundles:
+/// each staged `iroh-identity/<file>` is copied there and moved into secure
+/// storage on first identity access. `secure_storage` must be the *same* backend
+/// the rest of wiring uses so current encrypted secrets land where the running
+/// daemon will later read them.
 ///
 /// Returns `Ok(())` in the common (no-marker) case with zero filesystem work,
 /// and also when a recoverable problem (schema mismatch, secret-write failure)
@@ -186,9 +185,9 @@ pub fn apply_pending_import(
         &vault_dir.join(".setup_status"),
     )?;
 
-    // Device identity: migrated as 0600 files, not a secret. Copy each staged
-    // `iroh-identity/<file>` into the live identity dir. A missing/empty staged
-    // dir is not fatal (mirrors the export side's defensive handling).
+    // Legacy bundles may carry identity files. Copy them into the migration
+    // source; the secure-storage wrapper imports them on first identity access.
+    // A missing or empty staged directory is not fatal.
     copy_dir_members(&staging_dir, IROH_IDENTITY_PREFIX, iroh_identity_dir)?;
 
     // Optional members: skip silently when absent.
@@ -383,9 +382,8 @@ mod tests {
         )
         .unwrap();
 
-        // Device identity now travels as 0600 files under `iroh-identity/`,
-        // not as a secret. Seed one flat file to assert it lands in the live
-        // identity dir.
+        // Seed a legacy flat-file identity to assert it lands in the migration
+        // source accepted for backward-compatible bundles.
         std::fs::create_dir_all(staging.join(IROH_IDENTITY_PREFIX.trim_end_matches('/'))).unwrap();
         std::fs::write(
             staging
@@ -508,15 +506,14 @@ mod tests {
             b"{}"
         );
 
-        // (1b) Device-identity files copied into the live identity dir (not the
-        // secure-storage backend).
+        // (1b) Legacy device-identity files copied into the migration source.
         assert_eq!(
             std::fs::read(d.iroh_identity_dir.join("iroh-identity-v1.bin")).unwrap(),
             b"IROHKEYFILE"
         );
 
-        // (2) Secrets written into the backend: only the KEK now; the identity
-        // is no longer carried as a secret.
+        // (2) Secrets from this fixture are written into the backend. This
+        // legacy fixture carries the identity as a file, so only the KEK is here.
         assert_eq!(
             storage_concrete
                 .get("kek:v1:profile:default")

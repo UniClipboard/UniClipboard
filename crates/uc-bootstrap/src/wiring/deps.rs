@@ -1,6 +1,6 @@
 //! Wiring output bundles.
 //!
-//! The data types produced by [`wire_dependencies`](crate::wiring::wire::wire_dependencies):
+//! The data types produced by [`wire_dependencies`](crate::wire_dependencies):
 //! the process-resident `WiredDependencies` plus the consumer-grouped bundles
 //! (`SyncEngineDeps` / `DaemonRuntimeDeps` / `SharedRuntimeDeps`) and the
 //! one-shot `BackgroundRuntimeDeps`. These carry no behavior — the wiring logic
@@ -98,12 +98,6 @@ pub struct SyncEngineDeps {
     pub key_migration: Arc<dyn uc_core::ports::security::KeyMigrationPort>,
     /// iroh-blobs store dir, used when assembling the iroh blob handler.
     pub iroh_blob_store_dir: PathBuf,
-    /// iroh long-term Ed25519 device-identity file-store root
-    /// (`<app_data>/iroh-identity[_<profile>]/`). Isolated from the KEK's system
-    /// keychain: the device identity is "which machine am I", not a user secret,
-    /// so it lives in a file backend to avoid a startup keychain prompt during
-    /// `IrohNodeBuilder::bind`.
-    pub iroh_identity_dir: PathBuf,
     /// Application-facing analytics entry point (pairing / switch-space events).
     pub analytics_facade: Arc<dyn AnalyticsFacade>,
 }
@@ -170,7 +164,7 @@ pub struct SharedRuntimeDeps {
 /// 旁路 bundle(`sync_engine` / `daemon_runtime` / `shared`)。
 ///
 /// 一次性消费的 [`BackgroundRuntimeDeps`](含 blob worker receiver)通过
-/// [`wire_dependencies`](crate::wiring::wire::wire_dependencies) 的 tuple 返回值单独移交,不嵌在这里 —— 因为 mpsc
+/// [`wire_dependencies`](crate::wire_dependencies) 的 tuple 返回值单独移交,不嵌在这里 —— 因为 mpsc
 /// `Receiver` 不可 Clone。
 ///
 /// 只被 daemon 进程路径消费(`apps/daemon` process_bootstrap → host →

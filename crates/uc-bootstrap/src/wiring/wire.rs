@@ -2,11 +2,10 @@
 //!
 //! The composition-root core: builds the infrastructure layer (DB pool, repos,
 //! encryption decorators, search, blob processing) into an `InfraLayer`, then
-//! `wire_dependencies` orchestrates it together with the platform layer
-//! ([`crate::layer::platform`]) and path resolution ([`crate::layer::paths`])
-//! into the `WiredDependencies` + `BackgroundRuntimeDeps` the process consumes.
+//! assembles already prepared host inputs into the `WiredDependencies` and
+//! `BackgroundRuntimeDeps` consumed by the process.
 //!
-//! Infra construction stays co-located with `wire_dependencies` because the
+//! Infra construction stays co-located with the shared orchestrator because the
 //! orchestrator consumes the `InfraLayer` (and the intermediate assembly DTOs)
 //! field-by-field; they are one cohesive wiring unit. The output bundle types
 //! live in [`crate::wiring::deps`].
@@ -27,7 +26,6 @@ use uc_application::deps::{
 use uc_application::facade::{ConfigMigrationDeps, ConfigMigrationFacade, HostEventEmitterPort};
 use uc_core::app_dirs::AppPaths;
 use uc_core::clipboard::SelectRepresentationPolicyV1;
-use uc_core::config::AppConfig;
 use uc_core::ids::{ProfileId, RepresentationId};
 use uc_core::ports::blob::BlobReferenceRepositoryPort;
 use uc_core::ports::clipboard::{RepresentationCachePort, SelfWriteLedgerPort, SpoolQueuePort};
@@ -74,8 +72,7 @@ use uc_infra::{
 };
 use uc_observability::analytics::AnalyticsFacade;
 
-use crate::layer::paths::{apply_profile_suffix, get_default_app_dirs, resolve_app_paths};
-use crate::layer::platform::{create_desktop_system_clipboard, create_platform_layer};
+use crate::layer::platform::create_platform_layer;
 use crate::wiring::deps::{
     BackgroundRuntimeDeps, DaemonRuntimeDeps, SharedRuntimeDeps, SyncEngineDeps, WiredDependencies,
     WiringError, WiringResult,
@@ -178,69 +175,15 @@ pub fn create_db_pool(db_path: &PathBuf) -> WiringResult<DbPool> {
         .map_err(|e| WiringError::DatabaseInit(format!("Failed to initialize DB: {}", e)))
 }
 
-/// Secure storage backend + iroh device-identity dir, prepared *before* the db
-/// pool so a staged config import (gap-3 bridge) can land secrets into the same
-/// backend the rest of wiring uses and migrate the identity files into place
-/// before anything opens the db.
-struct SecureStoragePrelude {
-    secure_storage: Arc<dyn SecureStoragePort>,
-    iroh_identity_dir: PathBuf,
-}
-
-struct CoreWiringInputs {
-    paths: AppPaths,
-    secure_storage: Arc<dyn SecureStoragePort>,
-    iroh_identity_dir: PathBuf,
-    system_clipboard: crate::layer::platform::SystemClipboardLayer,
-    analytics_sink: Arc<dyn uc_observability::analytics::AnalyticsPort>,
-    analytics_facade: Arc<dyn AnalyticsFacade>,
-    host_event_emitter: Arc<dyn HostEventEmitterPort>,
-}
-
-/// Build the [`SecureStoragePrelude`]: create the secure-storage backend, resolve
-/// and create the (profile-suffixed) iroh-identity dir, then apply any pending
-/// staged import. Runs ahead of the db pool. Idempotent and crash-safe
-/// (secrets-first); the common no-marker import case is a cheap existence check.
-fn build_secure_storage_prelude(
-    paths: &uc_application::facade::AppPaths,
-) -> WiringResult<SecureStoragePrelude> {
-    let app_data_root = paths.app_data_root_dir.clone();
-
-    let secure_storage =
-        uc_platform::secure_storage::create_default_secure_storage_in_app_data_root(
-            app_data_root.clone(),
-        )
-        .map_err(|e| WiringError::SecureStorageInit(e.to_string()))?;
-
-    // iroh device-identity dir (0600 files, profile-suffixed): the staged-import
-    // bridge migrates the identity as *files* here, and the config-migration
-    // adapter reads its fingerprint from this same dir. `create_dir_all` ensures
-    // `FileSecureStorage::with_base_dir` never fails on first identity write.
-    let iroh_identity_dir = apply_profile_suffix(app_data_root.join("iroh-identity"));
-    std::fs::create_dir_all(&iroh_identity_dir).map_err(|e| {
-        WiringError::SecureStorageInit(format!(
-            "failed to create iroh-identity dir {}: {e}",
-            iroh_identity_dir.display()
-        ))
-    })?;
-
-    // Apply a pending staged import (if `pending-import.json` exists): write
-    // staged secrets into the current backend, then copy db/vault/settings and
-    // the iroh-identity files into their live locations, then clear staging.
-    crate::startup::pending_import::apply_pending_import(
-        &app_data_root,
-        &paths.db_path,
-        &paths.vault_dir,
-        &paths.settings_path,
-        &iroh_identity_dir,
-        &secure_storage,
-    )
-    .map_err(|e| WiringError::PendingImport(e.to_string()))?;
-
-    Ok(SecureStoragePrelude {
-        secure_storage,
-        iroh_identity_dir,
-    })
+pub(crate) struct CoreWiringInputs {
+    pub(crate) paths: AppPaths,
+    pub(crate) secure_storage: Arc<dyn SecureStoragePort>,
+    pub(crate) legacy_iroh_identity_dir: PathBuf,
+    pub(crate) iroh_blob_store_dir: PathBuf,
+    pub(crate) system_clipboard: crate::layer::platform::SystemClipboardLayer,
+    pub(crate) analytics_sink: Arc<dyn uc_observability::analytics::AnalyticsPort>,
+    pub(crate) analytics_facade: Arc<dyn AnalyticsFacade>,
+    pub(crate) host_event_emitter: Arc<dyn HostEventEmitterPort>,
 }
 
 /// Wire the [`SpaceAccessPorts`] bundle: one `DefaultSpaceAccessAdapter` coerced
@@ -672,63 +615,14 @@ fn create_infra_layer(
     Ok(infra)
 }
 
-/// 进程级一次性装配:把 sqlite pool / repos / settings / secure storage /
-/// blob store / 所有 adapter 等装配成 [`WiredDependencies`] +
-/// [`BackgroundRuntimeDeps`]。
-///
-/// 整个进程只调用一次 —— GUI shell 在 `build_process_runtime` 里调,
-/// standalone daemon binary 同样走这条路径 (两条入口共用)。
-///
-/// 返回 tuple 把"持久" 与"一次性消费"两类资源分开:`WiredDependencies`
-/// 进程内常驻;`BackgroundRuntimeDeps` 含 blob worker mpsc::Receiver,
-/// 在进程启动期被 `spawn_blob_processing_tasks` 消费一次后不复存在。
-///
-/// Slice 4 P5b 起 libp2p adapter 已删除,旧的 `wire_dependencies_with_identity_store`
-/// 变体随之退场——iroh 栈走 `IrohIdentityStore`(由 `build_sync_engine_assembly`
-/// 构造,密钥落地 `SecureStoragePort`),不再需要 platform 层
-/// `IdentityStorePort` 兼容入口。
-pub fn wire_dependencies(
-    config: &AppConfig,
-) -> WiringResult<(WiredDependencies, BackgroundRuntimeDeps)> {
-    let platform_dirs = get_default_app_dirs()?;
-    let paths = resolve_app_paths(&platform_dirs, config)?;
-
-    // Secure storage + iroh device-identity dir, prepared before the db pool so a
-    // staged config import (gap-3 bridge) can land secrets into the same backend
-    // and migrate the identity files into place before anything opens the db.
-    // Borrows `paths` (ahead of the `db_path`/`vault_dir`/`settings_path` moves
-    // below) so the prelude can read the live filesystem layout.
-    let SecureStoragePrelude {
-        secure_storage,
-        iroh_identity_dir,
-    } = build_secure_storage_prelude(&paths)?;
-
-    let system_clipboard = create_desktop_system_clipboard()?;
-    let analytics_sink = crate::subsystem::analytics::build_analytics_sink();
-    let analytics_facade = crate::subsystem::analytics::build_analytics_facade(
-        &analytics_sink,
-        &paths.app_data_root_dir,
-    );
-    let host_event_emitter = Arc::new(crate::observability::host_event::LoggingHostEventEmitter)
-        as Arc<dyn HostEventEmitterPort>;
-    wire_dependencies_from_inputs(CoreWiringInputs {
-        paths,
-        secure_storage,
-        iroh_identity_dir,
-        system_clipboard,
-        analytics_sink,
-        analytics_facade,
-        host_event_emitter,
-    })
-}
-
-fn wire_dependencies_from_inputs(
+pub(crate) fn wire_dependencies_from_inputs(
     inputs: CoreWiringInputs,
 ) -> WiringResult<(WiredDependencies, BackgroundRuntimeDeps)> {
     let CoreWiringInputs {
         paths,
         secure_storage,
-        iroh_identity_dir,
+        legacy_iroh_identity_dir,
+        iroh_blob_store_dir,
         system_clipboard,
         analytics_sink,
         analytics_facade,
@@ -736,7 +630,7 @@ fn wire_dependencies_from_inputs(
     } = inputs;
     let secure_storage = crate::subsystem::sync_engine::build_identity_storage(
         secure_storage,
-        iroh_identity_dir.clone(),
+        legacy_iroh_identity_dir.clone(),
     );
 
     let db_path = paths.db_path;
@@ -955,15 +849,12 @@ fn wire_dependencies_from_inputs(
         clipboard_change_origin,
     } = build_blob_processing_assembly(&storage_config, spool_dir.clone())?;
 
-    // iroh-blobs store dir + device-identity dir. The identity dir was resolved
-    // (and created) once near the secure-storage setup above so the staged-import
-    // bridge could migrate its files; reuse that single resolution here for
-    // `WiredDependencies` / space_setup instead of recomputing it (avoids divergence).
+    // The host resolves these directories once. The identity directory
+    // is only a migration source for old backups; active identity storage uses
+    // the secure-storage wrapper created above.
     // The remaining bypass repos are `Arc::clone`d directly from `infra` at the
     // `WiredDependencies` construction site below (infra retains ownership).
-    let iroh_blob_store_dir_for_wiring =
-        apply_profile_suffix(paths.app_data_root_dir.join("iroh-blobs"));
-    let iroh_identity_dir_for_wiring = iroh_identity_dir.clone();
+    let iroh_blob_store_dir_for_wiring = iroh_blob_store_dir;
 
     // `key_migration` adapter consumes secure_storage from PlatformLayer,
     // so it's constructed here at wire_dependencies level rather than in
@@ -990,7 +881,7 @@ fn wire_dependencies_from_inputs(
             vault_dir: vault_path.clone(),
             settings_path: settings_path.clone(),
             app_data_root: app_data_root.clone(),
-            iroh_identity_dir: iroh_identity_dir.clone(),
+            iroh_identity_dir: legacy_iroh_identity_dir,
         },
     );
 
@@ -1112,7 +1003,6 @@ fn wire_dependencies_from_inputs(
             migration_state: Arc::clone(&infra.migration_state),
             key_migration: key_migration_for_wiring,
             iroh_blob_store_dir: iroh_blob_store_dir_for_wiring,
-            iroh_identity_dir: iroh_identity_dir_for_wiring,
             analytics_facade,
         },
         daemon_runtime: DaemonRuntimeDeps {
@@ -1166,7 +1056,8 @@ mod tests {
         let (wired, _background) = wire_dependencies_from_inputs(CoreWiringInputs {
             paths,
             secure_storage: Arc::new(storage) as Arc<dyn SecureStoragePort>,
-            iroh_identity_dir: data_root.join("iroh-identity"),
+            legacy_iroh_identity_dir: data_root.join("iroh-identity"),
+            iroh_blob_store_dir: data_root.join("iroh-blobs"),
             system_clipboard: noop_system_clipboard_layer(),
             analytics_sink: Arc::new(uc_observability::analytics::NoopAnalyticsSink),
             analytics_facade: Arc::new(uc_observability::analytics::NoopAnalyticsFacade),

@@ -32,15 +32,10 @@ members = [
   "src-tauri",
   "src-tauri/crates/uc-tauri",
 ]
-# Submodule `vendor/iroh-blobs` is our fork of n0-computer/iroh-blobs
-# (branch `uniclipboard/0.100.0-patched`). It is consumed via
-# `[patch.crates-io]` below, NOT as a workspace member — exclude it so
-# cargo doesn't try to fold it into this workspace's resolver.
-#
 # `tests/e2e` is the CLI E2E test crate. It's excluded from the workspace
 # so `cargo check --workspace` doesn't pull reqwest/libc/assert_cmd into
 # every PR check. Build it explicitly: `cargo test --manifest-path tests/e2e/Cargo.toml`
-exclude = ["vendor/iroh-blobs", "tests/e2e"]
+exclude = ["tests/e2e"]
 resolver = "2"
 
 [workspace.package]
@@ -65,16 +60,21 @@ dbg_macro = "warn"
 # `tauri/src/ipc/channel.rs` 用了 `#[specta(remote=..., rename="...")]`
 # 容器级 rename，rc.25 已移除该属性会编译失败。tauri-specta rc.25 通过
 # Cargo unification 强制把 specta 升到 rc.25，所以 tauri 也必须 ≥ 2.11。
-tauri = { version = "2.11", features = ["tray-icon", "macos-private-api", "image-png", "protocol-asset"] }
+tauri = { version = "2.11", features = [
+  "tray-icon",
+  "macos-private-api",
+  "image-png",
+  "protocol-asset",
+] }
 tauri-plugin-autostart = "2"
 
-# Vendor 替换 iroh-blobs 0.100.0：上游 HashContext::persist() 在非 Partial
-# 状态下会把 BaoFileStorage 永久污染为 Poisoned，下次 observe(hash) 触发
-# BaoFileStorage::bitfield() 的 panic 分支。修复见
-# vendor/iroh-blobs/src/store/fs.rs::HashContext::persist 与
-# vendor/iroh-blobs/src/store/fs/bao_file.rs::persist_regression 单元测试。
+# Pin the UniClipboard iroh-blobs fork at b33af91e8a4bd189cc0f954fc6584feb5ffd1823
+# (version 0.102.0, MIT OR Apache-2.0). It fixes HashContext::persist(), which
+# otherwise leaves BaoFileStorage poisoned after persisting a non-partial state.
+# This must remain an auditable Git revision rather than a local submodule so a
+# clean checkout resolves the same patched blob implementation on every target.
 [patch.crates-io]
-iroh-blobs = { path = "vendor/iroh-blobs" }
+iroh-blobs = { git = "https://github.com/UniClipboard/iroh-blobs.git", rev = "b33af91e8a4bd189cc0f954fc6584feb5ffd1823" }
 
 # dev profile:用 line-tables-only 替代完整 dwarf,大幅缩短 link 阶段。
 # 实测 inner-loop 11s → 4s(-65%),target 体积 46GB → 4.4GB(-91%)。
@@ -122,14 +122,14 @@ opt-level = 3
 opt-level = 3
 
 [profile.release]
-panic = "abort"                # Strip expensive panic clean-up logic
-codegen-units = 1              # Compile crates one after another so the compiler can optimize better
-lto = true                     # Enables link to optimizations
-opt-level = "z"                # Optimize for binary size
+panic = "abort"   # Strip expensive panic clean-up logic
+codegen-units = 1 # Compile crates one after another so the compiler can optimize better
+lto = true        # Enables link to optimizations
+opt-level = "z"   # Optimize for binary size
 # 关键:Sentry symbolication 需要 debug info。`line-tables-only` 只保留地址→
 # 文件/行号映射,不带变量名等更重的信息,体积成本最小;配合 split-debuginfo
 # 和 strip = "symbols",最终 binary 仍然干净,debug info 单独打包成
 # .dSYM/.dwp/.pdb,由 CI 上传给 Sentry 用作 stack trace 解析。
 debug = "line-tables-only"
-split-debuginfo = "packed"     # macOS → .dSYM bundle, Linux → .dwp;Windows MSVC 自带 .pdb
-strip = "symbols"              # binary 内嵌符号 strip 干净,独立 debug 文件保留
+split-debuginfo = "packed" # macOS → .dSYM bundle, Linux → .dwp;Windows MSVC 自带 .pdb
+strip = "symbols"          # binary 内嵌符号 strip 干净,独立 debug 文件保留

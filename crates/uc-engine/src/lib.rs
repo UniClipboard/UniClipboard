@@ -5,6 +5,7 @@ use std::fmt;
 use serde::{Deserialize, Serialize};
 use zeroize::Zeroize;
 
+mod config;
 mod engine;
 mod event_stream;
 mod host;
@@ -12,6 +13,7 @@ mod host;
 #[doc(hidden)]
 pub mod internal;
 
+pub use config::EngineConfig;
 pub use engine::Engine;
 pub use event_stream::EventStream;
 pub use host::{

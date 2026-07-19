@@ -1,9 +1,22 @@
 use uc_engine::{
-    CreateSpaceInput, DeviceSummary, EngineError, EngineErrorCategory, EngineEvent, EngineState,
-    EntrySummary, ExportEntryInput, HostFileHandle, JoinSpaceInput, Operation, OperationKind,
-    OperationResult, QueryHistoryInput, RefreshReason, ResendEntryInput, SecretString,
-    SendFilesInput, SendImageInput, SendTextInput, UnlockSpaceInput,
+    CreateSpaceInput, DeviceSummary, EngineConfig, EngineError, EngineErrorCategory, EngineEvent,
+    EngineState, EntrySummary, ExportEntryInput, HostFileHandle, JoinSpaceInput, Operation,
+    OperationKind, OperationResult, QueryHistoryInput, RefreshReason, ResendEntryInput,
+    SecretString, SendFilesInput, SendImageInput, SendTextInput, UnlockSpaceInput,
 };
+
+#[test]
+fn engine_config_has_stable_profile_and_version_inputs() {
+    let config = EngineConfig::new("1.2.3").with_profile_id("private-profile-name");
+
+    assert_eq!(config.app_version(), "1.2.3");
+    assert_eq!(config.profile_id(), "private-profile-name");
+    assert_eq!(EngineConfig::new("1.2.3").profile_id(), "default");
+
+    let debug = format!("{config:?}");
+    assert!(debug.contains("1.2.3"));
+    assert!(!debug.contains("private-profile-name"));
+}
 
 #[test]
 fn every_public_operation_has_a_stable_kind() {

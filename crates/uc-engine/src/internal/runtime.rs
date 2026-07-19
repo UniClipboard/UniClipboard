@@ -7,11 +7,11 @@ use tokio_util::sync::CancellationToken;
 use tracing::{error, warn};
 use uc_application::facade::space_setup::{SwitchSpaceError, SwitchSpaceInput};
 use uc_application::facade::{
-    AppFacade, InMemoryLifecycleStatus, InitializeSpaceError,
+    AppFacade, ClipboardHistoryError, InMemoryLifecycleStatus, InitializeSpaceError,
     InitializeSpaceInput as AppInitializeSpaceInput, IssuePairingInvitationError,
     QuerySetupStateError, RedeemPairingInvitationError, RedeemPairingInvitationInput,
-    ResendEntryCommand, ResendEntryError, SearchCoordinator, SearchCoordinatorDeps,
-    SearchFacadeError, SearchPageView, SearchQueryInput, UnlockSpaceError,
+    ResendEntryCommand, ResendEntryError, ResourceFacadeError, SearchCoordinator,
+    SearchCoordinatorDeps, SearchFacadeError, SearchPageView, SearchQueryInput, UnlockSpaceError,
     UnlockSpaceInput as AppUnlockSpaceInput,
 };
 use uc_application::facade::{
@@ -79,6 +79,12 @@ const RESEND_NOT_FOUND_CODE: u32 = 1261;
 const RESEND_CONFLICT_CODE: u32 = 1262;
 const RESEND_UNAUTHORIZED_CODE: u32 = 1263;
 const RESEND_FAILED_CODE: u32 = 1264;
+const EXPORT_NOT_FOUND_CODE: u32 = 1271;
+const EXPORT_INVALID_TARGET_CODE: u32 = 1272;
+const EXPORT_UNAUTHORIZED_CODE: u32 = 1273;
+const EXPORT_UNAVAILABLE_CODE: u32 = 1274;
+const EXPORT_FAILED_CODE: u32 = 1275;
+const EXPORT_CHUNK_SIZE: usize = 64 * 1024;
 
 pub(crate) struct ProductionRuntime {
     wired: WiredDependencies,
@@ -87,7 +93,7 @@ pub(crate) struct ProductionRuntime {
     task_registry: Arc<TaskRegistry>,
     file_transfer_lifecycle: Arc<FileTransferLifecycle>,
     _temporary_dir: std::path::PathBuf,
-    _files: Box<dyn HostFileAccess>,
+    files: Box<dyn HostFileAccess>,
 }
 
 struct ProductionSession {
@@ -126,7 +132,7 @@ impl ProductionRuntime {
             task_registry,
             file_transfer_lifecycle,
             _temporary_dir: temporary_dir,
-            _files: files,
+            files,
         })
     }
 
@@ -379,6 +385,21 @@ impl EngineRuntime for ProductionRuntime {
                     .map_err(map_resend_error)?;
                 Ok(OperationResult::EntryResent { entry_id })
             }
+            Operation::ExportEntry(input) => {
+                let facade = self.current_facade().await?;
+                let bytes = load_export_bytes(&facade, &input.entry_id).await?;
+                for (index, chunk) in bytes.chunks(EXPORT_CHUNK_SIZE).enumerate() {
+                    let offset = (index as u64) * (EXPORT_CHUNK_SIZE as u64);
+                    self.files
+                        .write_chunk(&input.destination, offset, chunk)
+                        .map_err(map_export_host_error)?;
+                    tokio::task::yield_now().await;
+                }
+                self.files
+                    .finish_write(&input.destination)
+                    .map_err(map_export_host_error)?;
+                Ok(OperationResult::EntryExported)
+            }
             _ => Err(operation_unavailable_error()),
         }
     }
@@ -494,6 +515,89 @@ fn map_resend_error(error: ResendEntryError) -> EngineError {
             operation_error_with_code(RESEND_FAILED_CODE, "resend entry", error)
         }
     }
+}
+
+async fn load_export_bytes(facade: &AppFacade, entry_id: &str) -> Result<Vec<u8>, EngineError> {
+    let resource = facade
+        .clipboard_history
+        .get_entry_resource(entry_id)
+        .await
+        .map_err(map_export_history_error)?;
+    let file_list = resource.mime_type.as_deref().is_some_and(|mime| {
+        mime.eq_ignore_ascii_case("text/uri-list") || mime.eq_ignore_ascii_case("file/uri-list")
+    });
+    if file_list {
+        return facade
+            .resource
+            .entry_file(entry_id)
+            .await
+            .map(|file| file.bytes)
+            .map_err(map_export_resource_error);
+    }
+    if let Some(bytes) = resource.inline_data {
+        return Ok(bytes);
+    }
+    if let Some(blob_id) = resource.blob_id {
+        return facade
+            .resource
+            .blob(&blob_id)
+            .await
+            .map(|blob| blob.bytes)
+            .map_err(map_export_resource_error);
+    }
+    Err(EngineError::new(
+        EXPORT_FAILED_CODE,
+        EngineErrorCategory::Internal,
+        false,
+    ))
+}
+
+fn map_export_history_error(error: ClipboardHistoryError) -> EngineError {
+    match error {
+        ClipboardHistoryError::NotFound => {
+            EngineError::new(EXPORT_NOT_FOUND_CODE, EngineErrorCategory::NotFound, false)
+        }
+        ClipboardHistoryError::UnsupportedContent => {
+            EngineError::new(EXPORT_FAILED_CODE, EngineErrorCategory::Conflict, false)
+        }
+        ClipboardHistoryError::Internal(_) => {
+            operation_error_with_code(EXPORT_FAILED_CODE, "load export entry", error)
+        }
+    }
+}
+
+fn map_export_resource_error(error: ResourceFacadeError) -> EngineError {
+    match error {
+        ResourceFacadeError::NotFound => {
+            EngineError::new(EXPORT_NOT_FOUND_CODE, EngineErrorCategory::NotFound, false)
+        }
+        ResourceFacadeError::Mismatch(_) | ResourceFacadeError::Internal(_) => {
+            operation_error_with_code(EXPORT_FAILED_CODE, "load export resource", error)
+        }
+    }
+}
+
+fn map_export_host_error(error: crate::HostCapabilityError) -> EngineError {
+    let (code, category, retryable) = match error.category() {
+        crate::HostCapabilityErrorCategory::InvalidHandle => (
+            EXPORT_INVALID_TARGET_CODE,
+            EngineErrorCategory::InvalidInput,
+            false,
+        ),
+        crate::HostCapabilityErrorCategory::PermissionDenied => (
+            EXPORT_UNAUTHORIZED_CODE,
+            EngineErrorCategory::Unauthorized,
+            false,
+        ),
+        crate::HostCapabilityErrorCategory::Unavailable
+        | crate::HostCapabilityErrorCategory::Io => (
+            EXPORT_UNAVAILABLE_CODE,
+            EngineErrorCategory::Unavailable,
+            true,
+        ),
+    };
+    error!(error = %error, "host export failed");
+    EngineError::new(code, category, retryable)
 }
 
 fn build_search_coordinator(deps: &uc_application::deps::AppDeps) -> Arc<SearchCoordinator> {

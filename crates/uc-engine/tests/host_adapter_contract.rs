@@ -262,6 +262,57 @@ impl HostFileAccess for EmptyHostFiles {
     }
 }
 
+#[derive(Default)]
+struct RecordingHostFilesState {
+    writes: Mutex<Vec<(String, u64, Vec<u8>)>>,
+    finished: Mutex<Vec<String>>,
+}
+
+struct RecordingHostFiles {
+    state: Arc<RecordingHostFilesState>,
+}
+
+impl HostFileAccess for RecordingHostFiles {
+    fn metadata(&self, _handle: &HostFileHandle) -> Result<HostFileMetadata, HostCapabilityError> {
+        Err(HostCapabilityError::new(
+            uc_engine::HostCapabilityErrorCategory::InvalidHandle,
+            "missing",
+        ))
+    }
+
+    fn read_chunk(
+        &self,
+        _handle: &HostFileHandle,
+        _offset: u64,
+        _max_bytes: u32,
+    ) -> Result<Vec<u8>, HostCapabilityError> {
+        Ok(Vec::new())
+    }
+
+    fn write_chunk(
+        &self,
+        handle: &HostFileHandle,
+        offset: u64,
+        bytes: &[u8],
+    ) -> Result<(), HostCapabilityError> {
+        self.state.writes.lock().unwrap().push((
+            handle.as_str().to_string(),
+            offset,
+            bytes.to_vec(),
+        ));
+        Ok(())
+    }
+
+    fn finish_write(&self, handle: &HostFileHandle) -> Result<(), HostCapabilityError> {
+        self.state
+            .finished
+            .lock()
+            .unwrap()
+            .push(handle.as_str().to_string());
+        Ok(())
+    }
+}
+
 #[tokio::test]
 async fn host_capabilities_wire_real_core_dependencies() {
     let temp = tempfile::tempdir().unwrap();
@@ -305,6 +356,7 @@ async fn host_capabilities_wire_real_core_dependencies() {
 async fn engine_start_builds_a_resumable_real_session() {
     let temp = tempfile::tempdir().unwrap();
     let private = temp.path().join("private");
+    let host_files = Arc::new(RecordingHostFilesState::default());
     let host = HostCapabilities::new(
         HostDirectories::new(
             private.clone(),
@@ -318,7 +370,9 @@ async fn engine_start_builds_a_resumable_real_session() {
                 representations: Vec::new(),
             },
         }),
-        Box::new(EmptyHostFiles),
+        Box::new(RecordingHostFiles {
+            state: Arc::clone(&host_files),
+        }),
     );
 
     let (engine, mut events) = Engine::start(EngineConfig::new("1.2.3"), host)
@@ -470,6 +524,43 @@ async fn engine_start_builds_a_resumable_real_session() {
         other => panic!("expected sent entry, got {other:?}"),
     };
     assert!(!sent_entry_id.is_empty());
+    assert_eq!(
+        engine
+            .execute(uc_engine::Operation::ExportEntry(
+                uc_engine::ExportEntryInput {
+                    entry_id: sent_entry_id.clone(),
+                    destination: HostFileHandle::new("export-text"),
+                },
+            ))
+            .await
+            .unwrap(),
+        uc_engine::OperationResult::EntryExported
+    );
+    assert_eq!(
+        *host_files.writes.lock().unwrap(),
+        vec![(
+            "export-text".to_string(),
+            0,
+            b"engine text dispatch".to_vec(),
+        )]
+    );
+    assert_eq!(
+        *host_files.finished.lock().unwrap(),
+        vec!["export-text".to_string()]
+    );
+    let missing_export = engine
+        .execute(uc_engine::Operation::ExportEntry(
+            uc_engine::ExportEntryInput {
+                entry_id: "missing-export".into(),
+                destination: HostFileHandle::new("missing-export-target"),
+            },
+        ))
+        .await
+        .unwrap_err();
+    assert_eq!(
+        missing_export.category(),
+        uc_engine::EngineErrorCategory::NotFound
+    );
 
     let empty_image = engine
         .execute(uc_engine::Operation::SendImage(uc_engine::SendImageInput {

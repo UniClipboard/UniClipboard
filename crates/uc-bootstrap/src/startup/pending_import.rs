@@ -9,12 +9,11 @@
 //! This is the bridge across "gap 3" from the design doc. The migration spans
 //! two backends:
 //!
-//! * The optional KEK travels in `secrets.json` and is written into the
+//! * The P2P identity and optional KEK travel in `secrets.json` and are written into the
 //!   *current* secure-storage backend — whichever the rest of wiring selected
 //!   (installer ⇒ Credential Manager / Keychain, portable ⇒ file).
-//! * The iroh device identity travels as 0600 *files* under `iroh-identity/`
-//!   (it lives in a dedicated file dir, never in the system keyring) and is
-//!   copied back into the live identity dir.
+//! * Legacy bundles may also carry 0600 identity files under `iroh-identity/`;
+//!   these remain accepted and are migrated into secure storage on startup.
 //!
 //! Together these let a portable→installer migration keep the same network
 //! identity without re-pairing.
@@ -22,7 +21,7 @@
 //! ## Replace semantics
 //!
 //! Applying overwrites whatever the target currently holds: the db, vault
-//! members, identity files, settings, and the KEK are all idempotent
+//! members, identity, settings, and the KEK are all idempotent
 //! overwrites, so importing onto an already-initialized installation replaces it
 //! in place (no separate factory-reset step). When the db file is replaced, any
 //! stale SQLite `-wal`/`-shm` sidecars left by the previous installation are

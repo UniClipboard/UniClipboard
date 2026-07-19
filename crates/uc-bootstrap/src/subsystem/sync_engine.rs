@@ -87,6 +87,19 @@ use uc_platform::migrating_secure_storage::MigratingSecureStorage;
 use crate::wiring::deps::{SharedRuntimeDeps, SyncEngineDeps};
 use uc_application::deps::AppDeps;
 
+pub(crate) fn build_identity_storage(
+    primary: Arc<dyn uc_core::ports::SecureStoragePort>,
+    legacy_identity_dir: std::path::PathBuf,
+) -> Arc<dyn uc_core::ports::SecureStoragePort> {
+    let legacy: Arc<dyn uc_core::ports::SecureStoragePort> =
+        Arc::new(FileSecureStorage::with_base_dir(legacy_identity_dir));
+    Arc::new(MigratingSecureStorage::new(
+        primary,
+        legacy,
+        vec![IDENTITY_STORE_KEY.to_string()],
+    ))
+}
+
 /// Output of [`build_sync_engine_assembly`]. External callers keep the
 /// whole assembly alive for the process lifetime; they only dispatch
 /// user-facing commands through [`Self::facade`] / [`Self::roster`] and
@@ -362,47 +375,8 @@ pub(crate) async fn build_sync_engine_assembly(
     // `IrohIdentityStore::new` takes the concrete factory trait object and
     // we'd have to re-wrap anyway.
     //
-    // **Storage backend separation**: iroh 长期 Ed25519 设备密钥走独立的
-    // `FileSecureStorage`(落地 `<app_data>/iroh-identity[_<profile>]/`),不
-    // 复用 `deps.security.secure_storage`(即 KEK 用的系统 keychain)。
-    //
-    // Why: `IrohNodeBuilder::bind` 在应用启动期被调用,会 `ensure_secret_key`
-    // → `secure_storage.get/set("iroh-identity:v1")`。如果用 keychain 后端,
-    // 这条路径会在用户**没有任何操作**(没点 unlock、没启用 auto-unlock、
-    // 没设置加密口令)的情况下触发 macOS keychain 弹窗,违反"keychain 只
-    // 在用户解锁/初始化加密时访问"的边界规则。
-    //
-    // 设备身份密钥不是用户秘密,本身只能用于 P2P 网络握手身份伪冒(且
-    // 攻击者还需要 KEK 才能解密剪贴板内容),用 0600 文件 + FileVault
-    // 全盘加密保护已足够,与 SSH/IPFS/Tailscale 等同类工具实践一致。
-    //
-    // Migration (0.6.x → 0.7+): 0.6.x 把 `iroh-identity:v1` 写在系统 keychain
-    // (与 KEK 同 service "UniClipboard")。直接换 file backend 会让升级用户
-    // 的 iroh 设备身份重置 → 对端 `trusted_peer.peer_fingerprint` 不再匹配
-    // → 必须重新走完整 pairing 流程。这里用 `MigratingSecureStorage` 做
-    // 一次性迁移装饰:`get` 优先 file,miss 时 fallback 查 keychain,命中
-    // 后写 file 并 best-effort 删 keychain。后续 `set` / `delete` 只走 file。
-    //
-    // 迁移仅作用于 `IDENTITY_STORE_KEY` 白名单——其他 key 的访问永远不会
-    // 触碰 keychain,因此 fresh 安装零额外 keychain 调用(平台 NoEntry 不
-    // 弹窗);只有"keychain 里恰好有 iroh-identity:v1 条目"的升级路径会
-    // 读一次 keychain。在生产签名稳定的 build 上,同应用同 service 的读取
-    // 命中已有 ACL 白名单 → 不弹 prompt;最坏情况(codesign drift)弹一次
-    // 也比让用户重新配对友好得多。
-    //
-    // 迁移代码保留至 1.0:确保跳版本升级 (e.g. 0.6.x → 0.7.5 跳过中间版本)
-    // 仍能拾起残留的 keychain 条目;清理时机与 0.6.x EOL 对齐。
-    let file_backend: Arc<dyn uc_core::ports::SecureStoragePort> = Arc::new(
-        FileSecureStorage::with_base_dir(space_setup.iroh_identity_dir.clone()),
-    );
-    let iroh_identity_storage: Arc<dyn uc_core::ports::SecureStoragePort> =
-        Arc::new(MigratingSecureStorage::new(
-            file_backend,
-            Arc::clone(&deps.security.secure_storage),
-            vec![IDENTITY_STORE_KEY.to_string()],
-        ));
     let identity_store = Arc::new(IrohIdentityStore::new(
-        iroh_identity_storage,
+        Arc::clone(&deps.security.secure_storage),
         Arc::new(Sha256IdentityFingerprintFactory),
     ));
 
@@ -806,4 +780,74 @@ pub(crate) async fn build_sync_engine_assembly(
         restore_broadcast_handle: None,
         outbound_progress_translator,
     })
+}
+
+#[cfg(test)]
+mod identity_storage_tests {
+    use std::collections::HashMap;
+    use std::fmt::Display;
+    use std::sync::{Arc, Mutex};
+
+    use uc_core::ports::{SecureStorageError, SecureStoragePort};
+
+    use super::{build_identity_storage, IDENTITY_STORE_KEY};
+
+    #[derive(Default)]
+    struct MemorySecureStorage {
+        values: Mutex<HashMap<String, Vec<u8>>>,
+    }
+
+    fn must<T, E: Display>(result: Result<T, E>) -> T {
+        match result {
+            Ok(value) => value,
+            Err(error) => panic!("test setup failed: {error}"),
+        }
+    }
+
+    impl MemorySecureStorage {
+        fn values(&self) -> std::sync::MutexGuard<'_, HashMap<String, Vec<u8>>> {
+            match self.values.lock() {
+                Ok(values) => values,
+                Err(poisoned) => poisoned.into_inner(),
+            }
+        }
+    }
+
+    impl SecureStoragePort for MemorySecureStorage {
+        fn get(&self, key: &str) -> Result<Option<Vec<u8>>, SecureStorageError> {
+            Ok(self.values().get(key).cloned())
+        }
+
+        fn set(&self, key: &str, value: &[u8]) -> Result<(), SecureStorageError> {
+            self.values().insert(key.to_owned(), value.to_vec());
+            Ok(())
+        }
+
+        fn delete(&self, key: &str) -> Result<(), SecureStorageError> {
+            self.values().remove(key);
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn legacy_file_identity_moves_into_primary_secure_storage() {
+        let temp = must(tempfile::tempdir());
+        let legacy_dir = temp.path().join("iroh-identity");
+        must(std::fs::create_dir_all(&legacy_dir));
+        let legacy =
+            uc_platform::file_secure_storage::FileSecureStorage::with_base_dir(legacy_dir.clone());
+        let identity = [7u8; 32];
+        must(legacy.set(IDENTITY_STORE_KEY, &identity));
+        let primary = Arc::new(MemorySecureStorage::default());
+
+        let storage = build_identity_storage(primary.clone(), legacy_dir);
+        let loaded = must(storage.get(IDENTITY_STORE_KEY));
+
+        assert_eq!(loaded.as_deref(), Some(identity.as_slice()));
+        assert_eq!(
+            must(primary.get(IDENTITY_STORE_KEY)).as_deref(),
+            Some(identity.as_slice())
+        );
+        assert!(must(legacy.get(IDENTITY_STORE_KEY)).is_none());
+    }
 }

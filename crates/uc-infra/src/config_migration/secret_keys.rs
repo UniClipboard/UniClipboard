@@ -6,12 +6,7 @@
 //! concentrates the enumeration so the export side does not open-code key names
 //! and a future addition (or rename) has exactly one place to change.
 //!
-//! Scope rule (locked decision): only the **current** profile's KEK is carried.
-//!
-//! The iroh device identity is deliberately *not* enumerated here. It is not a
-//! credential-store secret — production wiring persists it as `0600` files in a
-//! dedicated directory (see `IROH_IDENTITY_PREFIX` in [`super::staging`]), so it
-//! migrates as files, not as a `secrets.json` entry.
+//! Scope rule: the P2P identity and only the **current** profile's KEK are carried.
 
 /// Name of the secrets member inside the bundle archive.
 pub const SECRETS_MEMBER: &str = "secrets.json";
@@ -29,6 +24,8 @@ pub struct MigratableSecretKey {
 /// string.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MigratableSecretKind {
+    /// Long-lived Ed25519 identity used by the full P2P node.
+    IrohIdentity,
     /// The key-encryption key for the current profile. Re-derivable from the
     /// passphrase, so its presence only decides whether unlock is required
     /// after apply.
@@ -43,10 +40,16 @@ pub enum MigratableSecretKind {
 /// modules) is intentional so the migration manifest of keys lives in one
 /// place.
 pub fn migratable_secret_keys(profile_id: &str) -> Vec<MigratableSecretKey> {
-    vec![MigratableSecretKey {
-        key: profile_kek_key(profile_id),
-        kind: MigratableSecretKind::ProfileKek,
-    }]
+    vec![
+        MigratableSecretKey {
+            key: crate::network::iroh::IDENTITY_STORE_KEY.to_string(),
+            kind: MigratableSecretKind::IrohIdentity,
+        },
+        MigratableSecretKey {
+            key: profile_kek_key(profile_id),
+            kind: MigratableSecretKind::ProfileKek,
+        },
+    ]
 }
 
 /// Compose the secure-storage key for the current profile's KEK.
@@ -63,16 +66,18 @@ mod tests {
     use super::*;
 
     #[test]
-    fn enumerates_only_current_profile_kek() {
+    fn enumerates_identity_and_current_profile_kek() {
         let keys = migratable_secret_keys("default");
-        assert_eq!(keys.len(), 1);
-        assert_eq!(keys[0].key, "kek:v1:profile:default");
-        assert_eq!(keys[0].kind, MigratableSecretKind::ProfileKek);
+        assert_eq!(keys.len(), 2);
+        assert_eq!(keys[0].key, "iroh-identity:v1");
+        assert_eq!(keys[0].kind, MigratableSecretKind::IrohIdentity);
+        assert_eq!(keys[1].key, "kek:v1:profile:default");
+        assert_eq!(keys[1].kind, MigratableSecretKind::ProfileKek);
     }
 
     #[test]
     fn kek_key_tracks_profile_id() {
         let keys = migratable_secret_keys("alice");
-        assert_eq!(keys[0].key, "kek:v1:profile:alice");
+        assert_eq!(keys[1].key, "kek:v1:profile:alice");
     }
 }

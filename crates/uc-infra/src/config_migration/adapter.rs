@@ -53,10 +53,9 @@ pub struct ConfigMigrationPaths {
     pub db_path: PathBuf,
     /// Vault directory holding `keyslot.json` and `device_id.txt`.
     pub vault_dir: PathBuf,
-    /// Directory holding the iroh device-identity files
-    /// (`<app_data>/iroh-identity[_<profile>]/`). Its contents are carried as
-    /// bundle files (not a credential-store secret), since production wiring
-    /// persists the identity to `0600` files there rather than the keychain.
+    /// Legacy directory that may still hold pre-migration iroh identity files.
+    /// New identities travel through secure storage; files found here remain
+    /// bundle members for backward compatibility with older installations.
     pub iroh_identity_dir: PathBuf,
     /// User settings file (`settings.json`).
     pub settings_path: PathBuf,
@@ -158,11 +157,9 @@ impl ConfigMigrationAdapter {
     /// storage. Returns the raw entries plus the current-profile KEK bytes when
     /// one was present.
     ///
-    /// Only the current-profile KEK is a credential-store secret here. It is
-    /// read once and used twice by the export: as the bundle's own AEAD key and
-    /// as a carried secret so the target can auto-unlock after apply. The iroh
-    /// device identity is *not* read here; it migrates as files (see
-    /// [`Self::collect_iroh_identity_files`]).
+    /// The current-profile KEK is read once and used twice by the export: as the
+    /// bundle's own AEAD key and as a carried secret so the target can
+    /// auto-unlock after apply. The P2P identity is carried alongside it.
     fn collect_secrets(&self) -> Result<CollectedSecrets, ConfigMigrationError> {
         let mut entries = Vec::new();
         let mut kek = None;
@@ -186,13 +183,11 @@ impl ConfigMigrationAdapter {
         Ok((entries, kek))
     }
 
-    /// Collect the iroh device-identity files as bundle members under
+    /// Collect legacy iroh device-identity files as bundle members under
     /// [`IROH_IDENTITY_PREFIX`].
     ///
-    /// Defensive: an initialized source should have identity files, but a
-    /// missing or empty directory is not fatal — it is skipped rather than
-    /// failing the export. Only regular files at the directory's top level are
-    /// carried (the `FileSecureStorage` backend keeps flat `*.bin` files).
+    /// A missing or empty directory is expected after secure-storage migration.
+    /// Only regular files at the directory's top level are carried.
     fn collect_iroh_identity_files(&self) -> Result<Vec<(String, Vec<u8>)>, ConfigMigrationError> {
         let dir = &self.paths.iroh_identity_dir;
         let read_dir = match std::fs::read_dir(dir) {
@@ -394,7 +389,7 @@ impl ExportConfigBundlePort for ConfigMigrationAdapter {
                 })?
                 .map_err(map_db_snapshot_err)?;
 
-        // 2. Secrets (current-profile KEK only; identity is files). The KEK both
+        // 2. Secrets (P2P identity + current-profile KEK). The KEK both
         //    encrypts this bundle and rides inside it for post-import
         //    auto-unlock. An unlocked session that lacks its KEK is a degenerate
         //    state we cannot seal from (the passphrase is never retained, so the
@@ -415,7 +410,7 @@ impl ExportConfigBundlePort for ConfigMigrationAdapter {
         })?;
         let secrets_file = SecretsFile::from_raw(secret_entries);
 
-        // 3. iroh device-identity files (migrated as files, not a secret).
+        // 3. Legacy iroh device-identity files, if migration has not removed them.
         let iroh_identity_files = self.collect_iroh_identity_files()?;
 
         // 4. Vault + settings files. The keyslot is carried verbatim and also

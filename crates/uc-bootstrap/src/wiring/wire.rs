@@ -434,11 +434,9 @@ fn build_blob_processing_assembly(
 /// reconstructable from the abstract `AppDeps` ports; the composed facade travels
 /// on `AppDeps.config_migration`.
 ///
-/// The local-identity port reads the device fingerprint for the export manifest.
-/// The iroh identity lives in the *file* backend under
-/// `migration_paths.iroh_identity_dir` (a 0600 dir), NOT in `secure_storage`
-/// (Credential Manager / Keychain on installer builds), so it is bound to a
-/// `FileSecureStorage` there. Single-user mode pins the profile to `default`.
+/// The local-identity port reads the device fingerprint for the export manifest
+/// from the same secure-storage view used by the running node. Single-user mode
+/// pins the profile to `default`.
 fn build_config_migration_facade(
     secure_storage: &Arc<dyn SecureStoragePort>,
     db_pool_for_config_migration: DbPool,
@@ -450,11 +448,7 @@ fn build_config_migration_facade(
     let config_migration_profile = ProfileId::from("default");
     let config_migration_local_identity: Arc<dyn LocalIdentityPort> =
         Arc::new(IrohIdentityStore::new(
-            Arc::new(
-                uc_platform::file_secure_storage::FileSecureStorage::with_base_dir(
-                    migration_paths.iroh_identity_dir.clone(),
-                ),
-            ),
+            secure_storage.clone(),
             Arc::new(Sha256IdentityFingerprintFactory),
         ));
     let config_migration_adapter = Arc::new(ConfigMigrationAdapter::new(
@@ -743,6 +737,10 @@ fn wire_dependencies_from_inputs(
         iroh_identity_dir,
         system_clipboard,
     } = inputs;
+    let secure_storage = crate::subsystem::sync_engine::build_identity_storage(
+        secure_storage,
+        iroh_identity_dir.clone(),
+    );
 
     let db_path = paths.db_path;
     let vault_path = paths.vault_dir;

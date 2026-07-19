@@ -4,6 +4,7 @@
 pub mod blob_tasks;
 pub mod clipboard;
 pub mod deps;
+pub mod facade;
 pub mod file_transfer;
 pub(crate) mod inbound_staging;
 pub mod lifecycle;
@@ -12,3 +13,11 @@ pub mod platform;
 pub mod reconcile;
 pub mod sync_engine;
 pub mod wire;
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn facade_assembly_is_owned_by_engine() {
+        let _ = super::facade::build_app_facade_from_deps;
+    }
+}

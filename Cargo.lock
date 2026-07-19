@@ -10393,7 +10393,7 @@ dependencies = [
 
 [[package]]
 name = "uc-engine"
-version = "0.19.1"
+version = "0.20.0-alpha.2"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -10526,7 +10526,7 @@ dependencies = [
 
 [[package]]
 name = "uc-observability-contract"
-version = "0.19.1"
+version = "0.20.0-alpha.2"
 dependencies = [
  "anyhow",
  "chrono",

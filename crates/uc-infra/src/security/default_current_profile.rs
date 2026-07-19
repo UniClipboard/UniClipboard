@@ -1,4 +1,5 @@
-//! 默认 `CurrentProfilePort` 实现——单用户模式下固定返回 `"default"` profile。
+//! Default `CurrentProfilePort` implementation with an explicit profile option.
+//! The no-argument constructor preserves the single-user `"default"` profile.
 //!
 //! 历史演进:
 //! - 最初位于 `uc-platform/src/key_scope.rs`(违反平台层定位)
@@ -15,9 +16,11 @@ pub struct DefaultCurrentProfile {
 
 impl DefaultCurrentProfile {
     pub fn new() -> Self {
-        Self {
-            profile: ProfileId::from("default"),
-        }
+        Self::for_profile(ProfileId::from("default"))
+    }
+
+    pub fn for_profile(profile: ProfileId) -> Self {
+        Self { profile }
     }
 }
 
@@ -31,5 +34,23 @@ impl Default for DefaultCurrentProfile {
 impl CurrentProfilePort for DefaultCurrentProfile {
     async fn current_profile(&self) -> Result<ProfileId, CurrentProfileError> {
         Ok(self.profile.clone())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use uc_core::ids::ProfileId;
+    use uc_core::ports::security::current_profile::CurrentProfilePort;
+
+    use super::DefaultCurrentProfile;
+
+    #[tokio::test]
+    async fn explicit_profile_is_returned_without_replacement() {
+        let profile = DefaultCurrentProfile::for_profile(ProfileId::from("mobile-primary"));
+
+        assert_eq!(
+            profile.current_profile().await.unwrap(),
+            ProfileId::from("mobile-primary")
+        );
     }
 }

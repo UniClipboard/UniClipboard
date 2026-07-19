@@ -12,6 +12,7 @@ use uc_core::ports::{SearchIndexPort, SearchKeyDerivationPort, SelectRepresentat
 use uc_core::SystemClipboardSnapshot;
 
 use crate::facade::SearchProjectionBuilder;
+use crate::file_set_query::load_has_directory_structure;
 
 #[derive(Debug, Clone)]
 pub struct ClipboardLiveIndexInput {
@@ -115,18 +116,17 @@ impl ClipboardLiveIndexPort for ClipboardLiveIndexer {
             }
         };
 
-        let has_directory = match self.deps.entry_file_set_repo.load(&entry_id).await {
-            Ok(Some(file_set)) => file_set.has_directory_structure(),
-            Ok(None) => false,
-            Err(err) => {
-                debug!(
-                    error = %err,
-                    entry_id = %entry_id,
-                    "search: failed to load file set, indexing without directory tag"
-                );
-                false
-            }
-        };
+        let has_directory =
+            load_has_directory_structure(self.deps.entry_file_set_repo.as_ref(), &entry_id)
+                .await
+                .unwrap_or_else(|err| {
+                    debug!(
+                        error = %err,
+                        entry_id = %entry_id,
+                        "search: failed to load file set, indexing without directory tag"
+                    );
+                    false
+                });
 
         let Some(pipeline_input) = SearchProjectionBuilder::build_from_capture(
             &entry,

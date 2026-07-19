@@ -594,6 +594,7 @@ mod tests {
             file_sizes: None,
             image_width: None,
             image_height: None,
+            is_directory: false,
             payload_state: None,
         }
     }

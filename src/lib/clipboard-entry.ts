@@ -103,6 +103,13 @@ export interface ClipboardEntry {
    * tell before clicking (see `DaemonErrorCode.PAYLOAD_UNAVAILABLE`).
    */
   isUnavailable: boolean
+  /**
+   * True when a file entry was captured as a directory. The sender's transfer
+   * row renders status only (no byte percentage) for directory sends, whose
+   * reverse progress aliases every member onto one id and would otherwise show
+   * a percentage that resets on each member. `false` for non-file entries.
+   */
+  isDirectory: boolean
 }
 
 /**
@@ -123,6 +130,10 @@ export interface DisplayClipboardItem {
   activeTime: number
   isFavorited?: boolean
   isUnavailable?: boolean
+  /** True for directory file entries; drives status-only send rows. Populated on
+   * both browse rows (projection `isDirectory`) and search rows (the builtin
+   * `directory` tag); absent only on synthetic pending placeholders. */
+  isDirectory?: boolean
   /** Source device name, only for pending inbound placeholder rows. */
   device?: string
   /** Fallback preview text when `content` is unavailable (search/pending rows). */

@@ -43,6 +43,12 @@ pub struct EntryProjectionResponseDto {
     /// Original image height in pixels (only for image entries).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub image_height: Option<i32>,
+    /// Whether this file entry was captured as a directory. `true` lets the
+    /// sender UI render status only (no byte percentage) for directory sends,
+    /// whose reverse progress aliases every member onto one id. Defaults to
+    /// `false` for non-file entries and older responses that omit the field.
+    #[serde(default)]
+    pub is_directory: bool,
     /// `paste_rep` 的 payload_state, 仅在 `Lost` 时输出。前端用此把"内容已
     /// 丢失"的 entry 灰显, 让用户在点击粘贴前就知道这条记录已不可用。
     #[serde(skip_serializing_if = "Option::is_none")]

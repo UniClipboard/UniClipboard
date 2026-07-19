@@ -456,6 +456,7 @@ pub fn build_app_facade_from_deps(
             blob_store: deps.storage.blob_store.clone(),
             thumbnail_repo: deps.storage.thumbnail_repo.clone(),
             file_transfer_repo: deps.storage.file_transfer.entry_summary.clone(),
+            entry_file_set_repo: deps.storage.entry_file_set_repo.clone(),
             search_index: Some(deps.search.search_index.clone()),
             file_cache_dir: Some(storage_paths.file_cache_dir.clone()),
             blob_transfer: options.blob_transfer_port.clone(),

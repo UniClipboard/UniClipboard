@@ -1,8 +1,10 @@
 import { describe, it, expect } from 'vitest'
 import fileTransferReducer, {
   markTransferCancelled,
+  markTransferCompleted,
   normalizeCancelReason,
   resolveEntryTransferStatus,
+  selectTransferByEntryId,
   setEntryTransferStatus,
   hydrateEntryTransferStatuses,
   removeEntryTransferStatus,
@@ -358,6 +360,57 @@ describe('fileTransferSlice - file transfer status', () => {
         markTransferCancelled({ transferId: 'missing', reason: 'unknown' })
       )
       expect(next.activeTransfers).toEqual({})
+    })
+  })
+
+  // Regression for issue #1330: a directory send reverse-reports every member
+  // onto one transfer id (= the directory entry_id, no attemptId), so byte
+  // progress bounces. Progress events must never fabricate a terminal state;
+  // the terminal only arrives once, from the `status_changed` event the daemon
+  // emits after the last member completes.
+  describe('directory send terminal state (issue #1330)', () => {
+    const dirEntry = 'dir-entry'
+
+    function progress(state: typeof initialState, bytes: number, total: number | null) {
+      return fileTransferReducer(
+        state,
+        updateTransferProgress({
+          transferId: dirEntry,
+          entryId: dirEntry,
+          peerId: 'peer',
+          direction: 'Sending',
+          bytesTransferred: bytes,
+          totalBytes: total,
+        })
+      )
+    }
+
+    it('keeps the send active across resetting member progress; completes only on the terminal signal', () => {
+      // Member 1 climbs, then member 2 restarts from a low byte count — the
+      // shared id makes progress look like it went backwards.
+      let state = progress(initialState, 90, 100)
+      state = progress(state, 10, 100)
+      state = progress(state, 40, 100)
+
+      let transfer = selectTransferByEntryId({ fileTransfer: state } as never, dirEntry)
+      expect(transfer?.status).toBe('active')
+      expect(resolveEntryTransferStatus(undefined, transfer)).toBe('transferring')
+
+      // The daemon's post-last-member status_changed is what finalizes it.
+      state = fileTransferReducer(state, markTransferCompleted({ transferId: dirEntry }))
+      transfer = selectTransferByEntryId({ fileTransfer: state } as never, dirEntry)
+      expect(transfer?.status).toBe('completed')
+      expect(resolveEntryTransferStatus(undefined, transfer)).toBe('completed')
+    })
+
+    it('a late progress event does not regress a completed send back to transferring', () => {
+      let state = progress(initialState, 40, 100)
+      state = fileTransferReducer(state, markTransferCompleted({ transferId: dirEntry }))
+      // A straggler reverse-progress frame arrives after completion.
+      state = progress(state, 55, 100)
+
+      const transfer = selectTransferByEntryId({ fileTransfer: state } as never, dirEntry)
+      expect(transfer?.status).toBe('completed')
     })
   })
 })

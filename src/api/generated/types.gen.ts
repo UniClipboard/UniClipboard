@@ -693,6 +693,13 @@ export type EntryProjectionResponseDto = {
      * Original image width in pixels (only for image entries).
      */
     imageWidth?: number | null;
+    /**
+     * Whether this file entry was captured as a directory. `true` lets the
+     * sender UI render status only (no byte percentage) for directory sends,
+     * whose reverse progress aliases every member onto one id. Defaults to
+     * `false` for non-file entries and older responses that omit the field.
+     */
+    isDirectory?: boolean;
     isEncrypted: boolean;
     isFavorited: boolean;
     linkDomains?: Array<string> | null;

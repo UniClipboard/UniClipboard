@@ -7,7 +7,9 @@ use uc_core::clipboard::link_utils::{detect_link_urls as detect_web_urls, parse_
 use uc_core::clipboard::{
     ClipboardEntryContentCategory, MimeType, PayloadAvailability, PersistedClipboardRepresentation,
 };
-use uc_core::ports::clipboard::{GetRepresentationPort, ListClipboardEntriesPort};
+use uc_core::ports::clipboard::{
+    EntryFileSetRepositoryPort, GetRepresentationPort, ListClipboardEntriesPort,
+};
 use uc_core::ports::{
     ClipboardSelectionRepositoryPort, GetEntryTransferSummaryPort, ThumbnailRepositoryPort,
 };
@@ -15,6 +17,7 @@ use uc_core::search::document::ContentType;
 use uc_core::search::tag::TaggableContent;
 
 use crate::content_tags::evaluate_builtin_content_tags;
+use crate::file_set_query::load_has_directory_structure;
 
 /// Application-layer DTO for clipboard entry projection.
 #[derive(Debug, Clone, PartialEq)]
@@ -39,6 +42,14 @@ pub(crate) struct EntryProjectionDto {
     pub(crate) file_sizes: Option<Vec<i64>>,
     pub(crate) image_width: Option<i32>,
     pub(crate) image_height: Option<i32>,
+    /// Whether this file entry was captured as a directory (its manifest carries
+    /// members expanded from a directory root). Sourced from the single
+    /// `EntryFileSet::has_directory_structure()` authority. The sender UI hides
+    /// the (per-member-aliased, thus meaningless) byte percentage for directory
+    /// sends and renders status only; single-file / flat-multi-file entries keep
+    /// their real percentage. `false` for non-file entries and when the manifest
+    /// is absent or unreadable.
+    pub(crate) is_directory: bool,
     /// `paste_rep` 的 payload_state, 仅在该 representation 已不可恢复时输出
     /// (`Lost`)。其他状态返回 `None` —— 由前端默认渲染。这是面向 UI 列表
     /// "灰显损坏 entry" 的最小信号；list 渲染基于 preview_rep, 但实际粘贴
@@ -61,6 +72,7 @@ pub(crate) struct ListClipboardEntryProjectionsUseCase {
     representation_repo: Arc<dyn GetRepresentationPort>,
     thumbnail_repo: Arc<dyn ThumbnailRepositoryPort>,
     file_transfer_repo: Arc<dyn GetEntryTransferSummaryPort>,
+    entry_file_set_repo: Arc<dyn EntryFileSetRepositoryPort>,
     max_limit: usize,
 }
 
@@ -242,6 +254,7 @@ impl ListClipboardEntryProjectionsUseCase {
         representation_repo: Arc<dyn GetRepresentationPort>,
         thumbnail_repo: Arc<dyn ThumbnailRepositoryPort>,
         file_transfer_repo: Arc<dyn GetEntryTransferSummaryPort>,
+        entry_file_set_repo: Arc<dyn EntryFileSetRepositoryPort>,
     ) -> Self {
         Self {
             entry_repo,
@@ -249,6 +262,7 @@ impl ListClipboardEntryProjectionsUseCase {
             representation_repo,
             thumbnail_repo,
             file_transfer_repo,
+            entry_file_set_repo,
             max_limit: 1000,
         }
     }
@@ -464,6 +478,25 @@ impl ListClipboardEntryProjectionsUseCase {
                 }
             };
 
+            // Only file entries can carry a directory manifest; skip the extra
+            // repo read for text/image/etc. Mirror the search projection's
+            // degradation: on a load error or absent manifest, project as
+            // non-directory rather than failing the whole list.
+            let is_directory = if entry.content_category == ClipboardEntryContentCategory::File {
+                load_has_directory_structure(self.entry_file_set_repo.as_ref(), &entry.entry_id)
+                    .await
+                    .unwrap_or_else(|e| {
+                        warn!(
+                            entry_id = %entry_id_str,
+                            error = %e,
+                            "Failed to load file set for directory flag; projecting as non-directory"
+                        );
+                        false
+                    })
+            } else {
+                false
+            };
+
             projections.push(EntryProjectionDto {
                 id: entry_id_str,
                 preview,
@@ -485,6 +518,7 @@ impl ListClipboardEntryProjectionsUseCase {
                 file_sizes,
                 image_width,
                 image_height,
+                is_directory,
                 payload_state,
             });
         }
@@ -519,7 +553,9 @@ mod tests {
     use async_trait::async_trait;
     use uc_core::clipboard::{
         ClipboardEntry, ClipboardRepositoryError, ClipboardSelection, ClipboardSelectionDecision,
-        MimeType, SelectionPolicyVersion, ThumbnailMetadata,
+        ContentHash, EntryFileSet, EntryFileSetError, EntryFileSetLine, EntryFileSetLineKind,
+        FileSetMemberKind, FileSetMemberLocation, HashAlgorithm, MimeType, SelectionPolicyVersion,
+        ThumbnailMetadata,
     };
     use uc_core::ids::{BlobId, EntryId, EventId, FormatId, RepresentationId};
     use uc_core::ports::file_transfer::{EntryTransferSummary, FileTransferProjectionError};
@@ -622,6 +658,32 @@ mod tests {
                 entry_id: &str,
             ) -> Result<Option<EntryTransferSummary>, FileTransferProjectionError>;
         }
+    }
+
+    mockall::mock! {
+        FileSetRepo {}
+
+        #[async_trait]
+        impl EntryFileSetRepositoryPort for FileSetRepo {
+            async fn save(
+                &self,
+                entry_id: &EntryId,
+                file_set: &EntryFileSet,
+            ) -> Result<(), EntryFileSetError>;
+
+            async fn load(
+                &self,
+                entry_id: &EntryId,
+            ) -> Result<Option<EntryFileSet>, EntryFileSetError>;
+        }
+    }
+
+    /// A `FileSetRepo` that never reports a directory manifest (returns `None`
+    /// for every `load`). Used by tests whose subject is not the directory flag.
+    fn file_set_repo_none() -> MockFileSetRepo {
+        let mut repo = MockFileSetRepo::new();
+        repo.expect_load().returning(|_| Ok(None));
+        repo
     }
 
     #[test]
@@ -791,6 +853,7 @@ mod tests {
             Arc::new(representation_repo),
             Arc::new(thumbnail_repo),
             Arc::new(transfer_repo),
+            Arc::new(file_set_repo_none()),
         );
 
         let projections = usecase.execute(10, 0).await.expect("projection succeeds");
@@ -798,6 +861,181 @@ mod tests {
         assert_eq!(projections.len(), 1);
         assert_eq!(projections[0].preview, uri);
         assert_eq!(projections[0].file_sizes, Some(vec![5]));
+        assert!(!projections[0].is_directory);
+    }
+
+    /// A single-line manifest whose member is expanded from a directory root,
+    /// so `has_directory_structure()` is true.
+    fn directory_file_set() -> EntryFileSet {
+        EntryFileSet {
+            lines: vec![EntryFileSetLine {
+                line_index: 1,
+                original_text: "file:///root/child.txt".to_string(),
+                member_location: Some(FileSetMemberLocation {
+                    root_index: 0,
+                    root_name: "root".to_string(),
+                    relative_path: "child.txt".to_string(),
+                    kind: FileSetMemberKind::File,
+                }),
+                kind: EntryFileSetLineKind::File {
+                    content_hash: ContentHash {
+                        alg: HashAlgorithm::Blake3V1,
+                        bytes: [7u8; 32],
+                    },
+                    blob_id: None,
+                    size_bytes: Some(10),
+                },
+            }],
+        }
+    }
+
+    /// Project a single entry whose `preview_rep == paste_rep`, backed by
+    /// `file_set_repo` for the directory-flag lookup. Keeps the directory tests
+    /// focused on `is_directory` without repeating the full mock wiring.
+    async fn project_single_entry(
+        category: ClipboardEntryContentCategory,
+        mime: &str,
+        body: &str,
+        file_set_repo: MockFileSetRepo,
+    ) -> Vec<EntryProjectionDto> {
+        let entry_id = EntryId::from("entry-1");
+        let event_id = EventId::from("event-1");
+        let rep_id = RepresentationId::from("rep-1");
+        let rep = PersistedClipboardRepresentation::new(
+            rep_id.clone(),
+            FormatId::from("f"),
+            Some(MimeType(mime.to_string())),
+            body.len() as i64,
+            Some(body.as_bytes().to_vec()),
+            None,
+        );
+        let entry = ClipboardEntry::new(entry_id.clone(), event_id.clone(), 100, rep.size_bytes)
+            .with_content_category(category);
+        let selection = ClipboardSelectionDecision::new(
+            entry_id.clone(),
+            ClipboardSelection {
+                primary_rep_id: rep_id.clone(),
+                secondary_rep_ids: vec![],
+                preview_rep_id: rep_id.clone(),
+                paste_rep_id: rep_id.clone(),
+                policy_version: SelectionPolicyVersion::V1,
+            },
+        );
+
+        let mut entry_repo = MockEntryRepo::new();
+        entry_repo
+            .expect_list_entries()
+            .times(1)
+            .return_once(move |_, _| Ok(vec![entry]));
+
+        let mut selection_repo = MockSelectionRepo::new();
+        selection_repo
+            .expect_get_selection()
+            .times(1)
+            .return_once(move |_| Ok(Some(selection)));
+
+        let mut representation_repo = MockRepresentationRepo::new();
+        representation_repo
+            .expect_get_representation()
+            .times(1)
+            .return_once(move |_, _| Ok(Some(rep)));
+
+        // Non-image reps never touch the thumbnail repo.
+        let thumbnail_repo = MockThumbnailRepo::new();
+
+        let mut transfer_repo = MockTransferRepo::new();
+        transfer_repo
+            .expect_get_entry_transfer_summary()
+            .times(1)
+            .return_once(|_| Ok(None));
+
+        let usecase = ListClipboardEntryProjectionsUseCase::new(
+            Arc::new(entry_repo),
+            Arc::new(selection_repo),
+            Arc::new(representation_repo),
+            Arc::new(thumbnail_repo),
+            Arc::new(transfer_repo),
+            Arc::new(file_set_repo),
+        );
+
+        usecase.execute(10, 0).await.expect("projection succeeds")
+    }
+
+    #[tokio::test]
+    async fn execute_marks_file_entry_with_directory_manifest() {
+        let mut file_set_repo = MockFileSetRepo::new();
+        file_set_repo
+            .expect_load()
+            .times(1)
+            .return_once(|_| Ok(Some(directory_file_set())));
+
+        let projections = project_single_entry(
+            ClipboardEntryContentCategory::File,
+            "text/uri-list",
+            "file:///root/child.txt",
+            file_set_repo,
+        )
+        .await;
+
+        assert_eq!(projections.len(), 1);
+        assert!(projections[0].is_directory);
+    }
+
+    #[tokio::test]
+    async fn execute_flat_file_entry_is_not_directory() {
+        // A file manifest without directory structure projects as non-directory,
+        // preserving the single-file / flat-multi-file percentage path.
+        let projections = project_single_entry(
+            ClipboardEntryContentCategory::File,
+            "text/uri-list",
+            "file:///home/u/report.pdf",
+            file_set_repo_none(),
+        )
+        .await;
+
+        assert_eq!(projections.len(), 1);
+        assert!(!projections[0].is_directory);
+    }
+
+    #[tokio::test]
+    async fn execute_non_file_entry_skips_file_set_lookup() {
+        // Text/image/etc. can never carry a directory manifest, so the hot list
+        // path must not pay for the extra repo read.
+        let mut file_set_repo = MockFileSetRepo::new();
+        file_set_repo.expect_load().never();
+
+        let projections = project_single_entry(
+            ClipboardEntryContentCategory::Text,
+            "text/plain",
+            "hello world",
+            file_set_repo,
+        )
+        .await;
+
+        assert_eq!(projections.len(), 1);
+        assert!(!projections[0].is_directory);
+    }
+
+    #[tokio::test]
+    async fn execute_directory_lookup_error_degrades_to_non_directory() {
+        // A manifest load failure must not fail the whole list; the entry falls
+        // back to non-directory (percentage path) rather than erroring out.
+        let mut file_set_repo = MockFileSetRepo::new();
+        file_set_repo
+            .expect_load()
+            .times(1)
+            .return_once(|_| Err(EntryFileSetError::Storage("boom".to_string())));
+
+        let projections = project_single_entry(
+            ClipboardEntryContentCategory::File,
+            "text/uri-list",
+            "file:///root/child.txt",
+            file_set_repo,
+        )
+        .await;
+
+        assert_eq!(projections.len(), 1);
+        assert!(!projections[0].is_directory);
     }
 
     #[test]

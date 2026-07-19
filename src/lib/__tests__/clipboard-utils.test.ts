@@ -20,6 +20,7 @@ function createEntry(
     activeTime: 0,
     isFavorited: false,
     isUnavailable: false,
+    isDirectory: false,
   }
 }
 

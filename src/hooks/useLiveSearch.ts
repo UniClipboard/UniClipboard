@@ -5,7 +5,7 @@ import type { HistoryLiveSnapshot } from '@/hooks/historySessionSnapshot'
 import { useClipboardEventStream } from '@/hooks/useClipboardEventStream'
 import { useEncryptionSessionState } from '@/hooks/useEncryptionSessionState'
 import type { ClipboardEntry, DisplayClipboardItem } from '@/lib/clipboard-entry'
-import { searchResultToDisplayItem } from '@/lib/clipboard-transform'
+import { clipboardEntryToDisplayItem, searchResultToDisplayItem } from '@/lib/clipboard-transform'
 import { daemonWs } from '@/lib/daemon-ws'
 import { createLogger } from '@/lib/logger'
 import {
@@ -244,15 +244,7 @@ export function useLiveSearch(options: UseLiveSearchOptions): UseLiveSearchResul
         setRefetchNonce(n => n + 1)
         return
       }
-      const display: DisplayClipboardItem = {
-        id: entry.id,
-        type: entry.type,
-        contentTags: entry.contentTags,
-        content: entry.content,
-        activeTime: entry.activeTime,
-        isFavorited: entry.isFavorited,
-        isUnavailable: entry.isUnavailable,
-      }
+      const display = clipboardEntryToDisplayItem(entry)
       if (!matchesFilter(display, current)) return
       setItems(prev => prependLiveItem(prev, display))
     },

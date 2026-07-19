@@ -1067,6 +1067,10 @@
             "nullable": true,
             "type": "integer"
           },
+          "isDirectory": {
+            "description": "Whether this file entry was captured as a directory. `true` lets the\nsender UI render status only (no byte percentage) for directory sends,\nwhose reverse progress aliases every member onto one id. Defaults to\n`false` for non-file entries and older responses that omit the field.",
+            "type": "boolean"
+          },
           "isEncrypted": {
             "type": "boolean"
           },

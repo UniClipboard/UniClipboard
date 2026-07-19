@@ -22,6 +22,7 @@ use uc_infra::search::constants::CURRENT_INDEX_VERSION;
 use uc_infra::search::text_extractor::SearchPipelineInput;
 
 use crate::facade::search::{SearchProjectionBuilder, SearchStatusView};
+use crate::file_set_query::load_has_directory_structure;
 
 pub const REASON_INITIAL_BACKFILL: &str = "initial_backfill";
 pub const REASON_VERSION_MISMATCH: &str = "version_mismatch";
@@ -667,18 +668,16 @@ async fn project_persisted_entry(
         }
     };
 
-    let has_directory = match entry_file_set_repo.load(&entry.entry_id).await {
-        Ok(Some(file_set)) => file_set.has_directory_structure(),
-        Ok(None) => false,
-        Err(e) => {
+    let has_directory = load_has_directory_structure(entry_file_set_repo, &entry.entry_id)
+        .await
+        .unwrap_or_else(|e| {
             debug!(
                 error = %e,
                 entry_id = %entry.entry_id,
                 "search projection: failed to load file set, projecting without directory tag"
             );
             false
-        }
-    };
+        });
 
     SearchProjectionBuilder::build_from_persisted(
         entry,

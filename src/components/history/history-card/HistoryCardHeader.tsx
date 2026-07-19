@@ -34,6 +34,9 @@ interface HistoryCardHeaderProps {
     isPending: boolean
   }
   percent: number
+  /** Directory sends: show a "Transferring" status label instead of the
+   * (meaningless) byte percentage + speed. */
+  hideByteProgress: boolean
 }
 
 function HistoryCardHeader({
@@ -43,6 +46,7 @@ function HistoryCardHeader({
   transfer,
   state,
   percent,
+  hideByteProgress,
 }: HistoryCardHeaderProps) {
   const { t } = useTranslation()
   const { isFileType, isFavorited, isUnavailable, isTransferring, isPending } = state
@@ -92,7 +96,14 @@ function HistoryCardHeader({
           />
         )}
         {isFavorited && <Star className="size-2.5 fill-amber-400 text-amber-400" />}
-        {isFileType && isTransferring ? (
+        {isFileType && isTransferring && hideByteProgress ? (
+          <>
+            <DirectionIcon className="size-2.5 text-primary/70" />
+            <span className="text-[10px] font-medium text-primary/80">
+              {t('clipboard.transfer.transferring')}
+            </span>
+          </>
+        ) : isFileType && isTransferring ? (
           <>
             <DirectionIcon className="size-2.5 text-primary/70" />
             <span className="text-[10px] font-medium tabular-nums text-primary/80">{percent}%</span>

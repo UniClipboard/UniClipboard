@@ -132,16 +132,40 @@ function renderSidebarAt(pathname: string) {
 }
 
 describe('Sidebar update indicator', () => {
-  it('keeps primary navigation highlight on a lightweight CSS path', () => {
+  it('keeps the primary navigation highlight inside the active item', () => {
     renderSidebarAt('/devices')
 
-    expect(document.querySelector('[data-layout-id="sidebar-nav-top"]')).not.toBeInTheDocument()
+    const activeLink = document.querySelector('a[href="/devices"]')
+    const activeHighlight = activeLink?.querySelector(':scope > div[aria-hidden]')
+    expect(activeHighlight).toHaveClass('absolute', 'inset-0', 'rounded-lg', 'bg-primary/10')
+    expect(activeHighlight).not.toHaveClass('transition-transform', 'will-change-transform')
+  })
 
-    const movingHighlight = document.querySelector('aside > div:first-of-type > div[aria-hidden]')
-    expect(movingHighlight).toHaveClass('transition-transform')
-    expect(movingHighlight).toHaveClass('left-2')
-    expect(movingHighlight).not.toHaveClass('-translate-x-1/2')
-    expect(movingHighlight).toHaveStyle({ transform: 'translateY(3.25rem)' })
+  it('keeps inactive navigation hover backgrounds rounded without transparent clipping', () => {
+    renderSidebarAt('/devices')
+
+    expect(document.querySelector('aside')).toHaveClass('bg-transparent')
+
+    const historyLink = document.querySelector('a[href="/history"]')
+    expect(historyLink).toHaveClass('rounded-lg', 'hover:bg-muted')
+    expect(historyLink).not.toHaveClass('overflow-hidden', 'transition-colors')
+    expect(historyLink?.firstElementChild).not.toHaveClass('transition-colors')
+  })
+
+  it('keeps navigation tooltips inside the transparent sidebar layer', async () => {
+    const user = userEvent.setup()
+    renderSidebarAt('/devices')
+
+    const sidebar = document.querySelector('aside')
+    const historyLink = document.querySelector('a[href="/history"]')
+    expect(sidebar).toBeInTheDocument()
+    expect(historyLink).toBeInTheDocument()
+
+    await user.hover(historyLink!)
+
+    await waitFor(() => {
+      expect(sidebar?.querySelector('[data-slot="tooltip-content"]')).toBeInTheDocument()
+    })
   })
 
   it('shows the amber "available" icon when an update is available', async () => {

@@ -127,17 +127,19 @@ const TransferProgressBar: React.FC<TransferProgressBarProps> = ({
         </button>
       )}
       <Popover>
-        <PopoverTrigger asChild>
-          <button
-            type="button"
-            className={cn(
-              'flex size-6 shrink-0 items-center justify-center rounded-full border border-primary/15 bg-background/80 text-muted-foreground transition-colors',
-              'hover:border-primary/30 hover:text-primary'
-            )}
-            aria-label={t('clipboard.preview.information')}
-          >
-            <Info className="size-3.5" />
-          </button>
+        <PopoverTrigger
+          render={
+            <button
+              type="button"
+              className={cn(
+                'flex size-6 shrink-0 items-center justify-center rounded-full border border-primary/15 bg-background/80 text-muted-foreground transition-colors',
+                'hover:border-primary/30 hover:text-primary'
+              )}
+              aria-label={t('clipboard.preview.information')}
+            />
+          }
+        >
+          <Info className="size-3.5" />
         </PopoverTrigger>
         <PopoverContent align="end" className="w-72">
           <div className="flex flex-col gap-3">

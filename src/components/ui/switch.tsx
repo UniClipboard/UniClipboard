@@ -4,7 +4,7 @@ import { cn } from '@/lib/utils'
 
 // Motion feel ported from beui.dev/components/motion/switch: a heavy, deliberate
 // thumb (high mass, no wobble) that springs across on toggle and squishes on
-// press. The public API stays identical to the previous Radix-based switch
+// press. The public API stays identical to the existing shared switch
 // (controlled checked/onCheckedChange + size + arbitrary button props like
 // id/aria-label), so no call site changes.
 const THUMB_SPRING = { type: 'spring', stiffness: 800, damping: 80, mass: 4 } as const

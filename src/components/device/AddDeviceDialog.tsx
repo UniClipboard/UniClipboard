@@ -413,8 +413,8 @@ function AddDeviceDialogInner({ open, onOpenChange }: AddDeviceDialogProps) {
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md" onInteractOutside={e => e.preventDefault()}>
+    <Dialog open={open} onOpenChange={onOpenChange} disablePointerDismissal>
+      <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>
             {step === 'success'

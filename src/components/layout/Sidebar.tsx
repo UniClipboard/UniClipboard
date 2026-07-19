@@ -48,7 +48,7 @@ const NavButton: React.FC<{
   icon: React.ComponentType<{ className?: string }>
   label: string
   isActive: boolean
-  showActiveBackground?: boolean
+  portalContainer: React.RefObject<HTMLElement | null>
   onClick?: (e: React.MouseEvent<HTMLAnchorElement>) => void
   'data-settings-icon'?: boolean
 }> = ({
@@ -56,44 +56,55 @@ const NavButton: React.FC<{
   icon: Icon,
   label,
   isActive,
-  showActiveBackground = true,
+  portalContainer,
   onClick,
   'data-settings-icon': dataSettingsIcon,
 }) => {
   return (
-    <TooltipProvider delayDuration={0}>
+    <TooltipProvider delay={0}>
       <Tooltip>
-        <TooltipTrigger asChild>
-          <Link
-            data-tauri-drag-region="false"
-            data-settings-icon={dataSettingsIcon || undefined}
-            to={to}
-            className="relative group"
-            onClick={
-              onClick
-                ? e => {
-                    e.preventDefault()
-                    onClick(e)
-                  }
-                : undefined
-            }
-          >
-            {isActive && showActiveBackground && (
-              <div className="absolute inset-0 rounded-lg bg-primary/10 dark:bg-primary/20" />
-            )}
-            <div
+        <TooltipTrigger
+          render={
+            <Link
+              data-tauri-drag-region="false"
+              data-settings-icon={dataSettingsIcon || undefined}
+              to={to}
               className={cn(
-                'relative flex items-center justify-center size-10 rounded-lg transition-colors duration-200 z-10',
-                isActive
-                  ? 'text-primary'
-                  : 'text-muted-foreground group-hover:text-primary group-hover:bg-muted'
+                'group relative block size-10 rounded-lg',
+                !isActive && 'hover:bg-muted'
               )}
-            >
-              <Icon className="size-5" />
-            </div>
-          </Link>
+              onClick={
+                onClick
+                  ? e => {
+                      e.preventDefault()
+                      onClick(e)
+                    }
+                  : undefined
+              }
+            />
+          }
+        >
+          {isActive && (
+            <div
+              aria-hidden
+              className="absolute inset-0 rounded-lg bg-primary/10 dark:bg-primary/20"
+            />
+          )}
+          <div
+            className={cn(
+              'relative z-10 flex size-10 items-center justify-center rounded-lg',
+              isActive ? 'text-primary' : 'text-muted-foreground group-hover:text-primary'
+            )}
+          >
+            <Icon className="size-5" />
+          </div>
         </TooltipTrigger>
-        <TooltipContent side="right" align="center" className="font-medium">
+        <TooltipContent
+          portalContainer={portalContainer}
+          side="right"
+          align="center"
+          className="font-medium"
+        >
           <p>{label}</p>
         </TooltipContent>
       </Tooltip>
@@ -157,6 +168,7 @@ interface SidebarProps {
 }
 
 const Sidebar: React.FC<SidebarProps> = ({ className }) => {
+  const sidebarRef = useRef<HTMLElement>(null)
   const { t } = useTranslation()
   const location = useLocation()
   const navigate = useNavigate()
@@ -205,8 +217,6 @@ const Sidebar: React.FC<SidebarProps> = ({ className }) => {
     { to: '/history', icon: Layers, label: t('nav.history') },
     { to: '/devices', icon: Monitor, label: t('nav.devices') },
   ]
-  const activeTopNavIndex = navItems.findIndex(item => location.pathname === item.to)
-
   const indicatorLabel = (() => {
     if (isDownloading) {
       return downloadPercent !== null
@@ -310,6 +320,7 @@ const Sidebar: React.FC<SidebarProps> = ({ className }) => {
   return (
     <>
       <aside
+        ref={sidebarRef}
         data-tauri-drag-region
         className={cn(
           'relative z-10 w-14 h-full shrink-0 flex flex-col items-center py-4',
@@ -319,13 +330,6 @@ const Sidebar: React.FC<SidebarProps> = ({ className }) => {
       >
         {/* Main Navigation */}
         <div className="relative z-10 flex flex-col gap-3 w-full items-center">
-          {activeTopNavIndex >= 0 && (
-            <div
-              aria-hidden
-              className="absolute left-2 top-0 size-10 rounded-lg bg-primary/10 transition-transform duration-200 ease-out will-change-transform dark:bg-primary/20"
-              style={{ transform: `translateY(${activeTopNavIndex * 3.25}rem)` }}
-            />
-          )}
           {navItems.map(item => (
             <NavButton
               key={item.to}
@@ -333,7 +337,7 @@ const Sidebar: React.FC<SidebarProps> = ({ className }) => {
               icon={item.icon}
               label={item.label}
               isActive={location.pathname === item.to}
-              showActiveBackground={false}
+              portalContainer={sidebarRef}
             />
           ))}
         </div>
@@ -343,24 +347,31 @@ const Sidebar: React.FC<SidebarProps> = ({ className }) => {
         {/* Bottom Navigation */}
         <div className="relative z-10 flex flex-col gap-3 w-full items-center">
           {setting?.general.debugMode && (
-            <TooltipProvider delayDuration={0}>
+            <TooltipProvider delay={0}>
               <Tooltip>
-                <TooltipTrigger asChild>
-                  <div className="relative flex size-10 items-center justify-center rounded-lg border border-amber-500/25 bg-amber-500/10 text-amber-700 dark:text-amber-300">
-                    <Bug className="size-5" />
-                    <button
-                      type="button"
-                      aria-label={t('debugBadge.disable')}
-                      data-tauri-drag-region="false"
-                      className="absolute -right-1 -top-1 flex size-4 items-center justify-center rounded-full bg-background text-muted-foreground shadow-sm ring-1 ring-border transition-colors hover:text-foreground"
-                      onClick={handleDisableDebugMode}
-                      disabled={disablingDebug}
-                    >
-                      <X className="size-3" />
-                    </button>
-                  </div>
+                <TooltipTrigger
+                  render={
+                    <div className="relative flex size-10 items-center justify-center rounded-lg border border-amber-500/25 bg-amber-500/10 text-amber-700 dark:text-amber-300" />
+                  }
+                >
+                  <Bug className="size-5" />
+                  <button
+                    type="button"
+                    aria-label={t('debugBadge.disable')}
+                    data-tauri-drag-region="false"
+                    className="absolute -right-1 -top-1 flex size-4 items-center justify-center rounded-full bg-background text-muted-foreground shadow-sm ring-1 ring-border transition-colors hover:text-foreground"
+                    onClick={handleDisableDebugMode}
+                    disabled={disablingDebug}
+                  >
+                    <X className="size-3" />
+                  </button>
                 </TooltipTrigger>
-                <TooltipContent side="right" align="center" className="max-w-64">
+                <TooltipContent
+                  portalContainer={sidebarRef}
+                  side="right"
+                  align="center"
+                  className="max-w-64"
+                >
                   <div className="space-y-1">
                     <p className="font-medium">{t('debugBadge.title')}</p>
                     <p className="text-xs text-muted-foreground">{t('debugBadge.description')}</p>
@@ -371,60 +382,67 @@ const Sidebar: React.FC<SidebarProps> = ({ className }) => {
             </TooltipProvider>
           )}
           {indicatorVisible && (
-            <TooltipProvider delayDuration={0}>
+            <TooltipProvider delay={0}>
               <Tooltip>
-                <TooltipTrigger asChild>
-                  <button
-                    type="button"
-                    aria-label={indicatorLabel}
-                    data-update-state={phase}
-                    data-tauri-drag-region="false"
-                    className="relative group"
-                    onClick={handleIndicatorClick}
-                    disabled={isCheckingUpdate}
+                <TooltipTrigger
+                  render={
+                    <button
+                      type="button"
+                      aria-label={indicatorLabel}
+                      data-update-state={phase}
+                      data-tauri-drag-region="false"
+                      className="group relative size-10 rounded-lg hover:bg-muted"
+                      onClick={handleIndicatorClick}
+                      disabled={isCheckingUpdate}
+                    />
+                  }
+                >
+                  <div
+                    className={cn(
+                      'relative z-10 flex size-10 items-center justify-center rounded-lg',
+                      isReady
+                        ? 'text-emerald-600 dark:text-emerald-400'
+                        : 'text-amber-600 dark:text-amber-400'
+                    )}
                   >
-                    <div
-                      className={cn(
-                        'relative flex items-center justify-center size-10 rounded-lg transition-colors duration-200 z-10',
-                        isReady
-                          ? 'text-emerald-600 dark:text-emerald-400 group-hover:bg-muted'
-                          : 'text-amber-600 dark:text-amber-400 group-hover:bg-muted'
-                      )}
-                    >
-                      <ArrowUpCircle className="size-5" />
+                    <ArrowUpCircle className="size-5" />
 
-                      {isAvailable && (
-                        <span
-                          aria-hidden
-                          className="absolute top-2.5 right-2.5 flex size-2 motion-reduce:hidden"
-                        >
-                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-500/70 opacity-75" />
-                          <span className="relative inline-flex size-2 rounded-full bg-amber-500" />
-                        </span>
-                      )}
-                      {isAvailable && (
-                        <span
-                          aria-hidden
-                          className="hidden motion-reduce:flex absolute top-2.5 right-2.5 size-2 rounded-full bg-amber-500"
-                        />
-                      )}
+                    {isAvailable && (
+                      <span
+                        aria-hidden
+                        className="absolute top-2.5 right-2.5 flex size-2 motion-reduce:hidden"
+                      >
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-500/70 opacity-75" />
+                        <span className="relative inline-flex size-2 rounded-full bg-amber-500" />
+                      </span>
+                    )}
+                    {isAvailable && (
+                      <span
+                        aria-hidden
+                        className="hidden motion-reduce:flex absolute top-2.5 right-2.5 size-2 rounded-full bg-amber-500"
+                      />
+                    )}
 
-                      {(isDownloading || isInstalling) && (
-                        <UpdateProgressRing percent={isInstalling ? null : downloadPercent} />
-                      )}
+                    {(isDownloading || isInstalling) && (
+                      <UpdateProgressRing percent={isInstalling ? null : downloadPercent} />
+                    )}
 
-                      {isReady && (
-                        <span
-                          aria-hidden
-                          className="absolute -top-0.5 -right-0.5 flex size-3.5 items-center justify-center rounded-full bg-emerald-500 text-white shadow"
-                        >
-                          <Check className="size-2.5 stroke-[3]" />
-                        </span>
-                      )}
-                    </div>
-                  </button>
+                    {isReady && (
+                      <span
+                        aria-hidden
+                        className="absolute -top-0.5 -right-0.5 flex size-3.5 items-center justify-center rounded-full bg-emerald-500 text-white shadow"
+                      >
+                        <Check className="size-2.5 stroke-[3]" />
+                      </span>
+                    )}
+                  </div>
                 </TooltipTrigger>
-                <TooltipContent side="right" align="center" className="font-medium">
+                <TooltipContent
+                  portalContainer={sidebarRef}
+                  side="right"
+                  align="center"
+                  className="font-medium"
+                >
                   <p>{indicatorLabel}</p>
                 </TooltipContent>
               </Tooltip>
@@ -432,27 +450,34 @@ const Sidebar: React.FC<SidebarProps> = ({ className }) => {
           )}
           {sentryEnabled && (
             <>
-              <TooltipProvider delayDuration={0}>
+              <TooltipProvider delay={0}>
                 <Tooltip>
-                  <TooltipTrigger asChild>
-                    <button
-                      type="button"
-                      aria-label={t('nav.feedback')}
-                      data-tauri-drag-region="false"
-                      className="relative group"
-                      onClick={() => setFeedbackOpen(true)}
+                  <TooltipTrigger
+                    render={
+                      <button
+                        type="button"
+                        aria-label={t('nav.feedback')}
+                        data-tauri-drag-region="false"
+                        className="group relative size-10 rounded-lg hover:bg-muted"
+                        onClick={() => setFeedbackOpen(true)}
+                      />
+                    }
+                  >
+                    <div
+                      className={cn(
+                        'relative z-10 flex size-10 items-center justify-center rounded-lg',
+                        'text-muted-foreground group-hover:text-primary'
+                      )}
                     >
-                      <div
-                        className={cn(
-                          'relative flex items-center justify-center size-10 rounded-lg transition-colors duration-200 z-10',
-                          'text-muted-foreground group-hover:text-primary group-hover:bg-muted'
-                        )}
-                      >
-                        <MessageSquare className="size-5" />
-                      </div>
-                    </button>
+                      <MessageSquare className="size-5" />
+                    </div>
                   </TooltipTrigger>
-                  <TooltipContent side="right" align="center" className="font-medium">
+                  <TooltipContent
+                    portalContainer={sidebarRef}
+                    side="right"
+                    align="center"
+                    className="font-medium"
+                  >
                     <p>{t('nav.feedback')}</p>
                   </TooltipContent>
                 </Tooltip>
@@ -465,6 +490,7 @@ const Sidebar: React.FC<SidebarProps> = ({ className }) => {
             icon={Settings}
             label={t('nav.settings')}
             isActive={location.pathname.startsWith('/settings')}
+            portalContainer={sidebarRef}
             onClick={() => {
               if (location.pathname.startsWith('/settings')) return
               navigate('/settings')
@@ -476,44 +502,42 @@ const Sidebar: React.FC<SidebarProps> = ({ className }) => {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>{t('update.title')}</AlertDialogTitle>
-            <AlertDialogDescription asChild>
-              <div className="space-y-3">
-                <div className="space-y-1 text-sm">
-                  <div className="flex items-center justify-between text-muted-foreground">
-                    <span>{t('update.currentVersion')}</span>
-                    <span className="text-foreground">{state.info?.currentVersion ?? '-'}</span>
-                  </div>
-                  <div className="flex items-center justify-between text-muted-foreground">
-                    <span>{t('update.latestVersion')}</span>
-                    <span className="text-foreground">{state.info?.version ?? '-'}</span>
-                  </div>
+            <AlertDialogDescription render={<div />} className="space-y-3">
+              <div className="space-y-1 text-sm">
+                <div className="flex items-center justify-between text-muted-foreground">
+                  <span>{t('update.currentVersion')}</span>
+                  <span className="text-foreground">{state.info?.currentVersion ?? '-'}</span>
                 </div>
-                <div className="space-y-2">
-                  <div className="text-sm font-medium text-foreground">
-                    {t('update.releaseNotes')}
-                  </div>
-                  <div className="max-h-48 overflow-auto rounded-md border border-border/60 bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
-                    <ReleaseNotes content={state.info?.body ?? ''} fallback={t('update.noNotes')} />
-                  </div>
+                <div className="flex items-center justify-between text-muted-foreground">
+                  <span>{t('update.latestVersion')}</span>
+                  <span className="text-foreground">{state.info?.version ?? '-'}</span>
                 </div>
-                {isReady && (
-                  <div className="text-xs text-emerald-600 dark:text-emerald-400 pt-1">
-                    {t('update.readyHint')}
-                  </div>
-                )}
-                {(isDownloading || isInstalling) && (
-                  <div className="space-y-2 pt-2">
-                    <div className="flex justify-between text-xs text-muted-foreground">
-                      <span>{isInstalling ? t('update.installing') : t('update.downloading')}</span>
-                      {downloadPercent !== null && <span>{downloadPercent}%</span>}
-                    </div>
-                    <Progress
-                      value={downloadPercent ?? undefined}
-                      className={cn('h-2', downloadPercent === null && 'animate-pulse')}
-                    />
-                  </div>
-                )}
               </div>
+              <div className="space-y-2">
+                <div className="text-sm font-medium text-foreground">
+                  {t('update.releaseNotes')}
+                </div>
+                <div className="max-h-48 overflow-auto rounded-md border border-border/60 bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
+                  <ReleaseNotes content={state.info?.body ?? ''} fallback={t('update.noNotes')} />
+                </div>
+              </div>
+              {isReady && (
+                <div className="text-xs text-emerald-600 dark:text-emerald-400 pt-1">
+                  {t('update.readyHint')}
+                </div>
+              )}
+              {(isDownloading || isInstalling) && (
+                <div className="space-y-2 pt-2">
+                  <div className="flex justify-between text-xs text-muted-foreground">
+                    <span>{isInstalling ? t('update.installing') : t('update.downloading')}</span>
+                    {downloadPercent !== null && <span>{downloadPercent}%</span>}
+                  </div>
+                  <Progress
+                    value={downloadPercent ?? undefined}
+                    className={cn('h-2', downloadPercent === null && 'animate-pulse')}
+                  />
+                </div>
+              )}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

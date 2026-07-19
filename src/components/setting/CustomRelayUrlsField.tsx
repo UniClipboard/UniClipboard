@@ -129,7 +129,7 @@ export function CustomRelayUrlsField({ value, onChange }: CustomRelayUrlsFieldPr
   }
 
   return (
-    <TooltipProvider delayDuration={200}>
+    <TooltipProvider delay={200}>
       <div className="space-y-3 px-4 py-3">
         <div className="space-y-0.5">
           <label htmlFor="custom-relay-url-0" className="text-sm font-medium">
@@ -242,7 +242,7 @@ function ProbeButton({ status, disabled, ariaLabel, tooltip, onClick }: ProbeBut
   if (!tooltip) return button
   return (
     <Tooltip>
-      <TooltipTrigger asChild>{button}</TooltipTrigger>
+      <TooltipTrigger render={button} />
       <TooltipContent side="top">{tooltip}</TooltipContent>
     </Tooltip>
   )

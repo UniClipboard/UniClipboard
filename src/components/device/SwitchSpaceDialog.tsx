@@ -303,9 +303,8 @@ function SwitchSpaceDialogInner({ open, onOpenChange }: SwitchSpaceDialogProps) 
       </>
     )
   } else if (step === 'migrating') {
-    // 迁移进行中——禁用所有交互，避免用户中断。Ctrl-C / 关闭窗口仍然可
-    // 以触发，但 onInteractOutside / onEscapeKeyDown 已经在 DialogContent
-    // 上拦截。
+    // Disable dialog actions while migration is running. The root cancels
+    // every close request until the state machine leaves this step.
     footer = (
       <Button variant="outline" disabled>
         <Loader2 className="mr-2 size-4 animate-spin" />
@@ -327,21 +326,16 @@ function SwitchSpaceDialogInner({ open, onOpenChange }: SwitchSpaceDialogProps) 
   return (
     <Dialog
       open={open}
-      onOpenChange={next => {
+      onOpenChange={(next, eventDetails) => {
         // 迁移中阻止关闭，避免用户误触导致状态机从 GUI 视角看起来"丢失"
-        if (step === 'migrating' && !next) return
+        if (step === 'migrating' && !next) {
+          eventDetails.cancel()
+          return
+        }
         onOpenChange(next)
       }}
     >
-      <DialogContent
-        className="sm:max-w-md"
-        onInteractOutside={e => {
-          if (step === 'migrating') e.preventDefault()
-        }}
-        onEscapeKeyDown={e => {
-          if (step === 'migrating') e.preventDefault()
-        }}
-      >
+      <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>
             {step === 'success'

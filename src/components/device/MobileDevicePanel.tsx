@@ -622,20 +622,22 @@ const ManualCredentials: React.FC<ManualCredentialsProps> = ({
       defaultOpen={defaultOpen}
       className="rounded-xl border border-warning/40 bg-warning/5"
     >
-      <CollapsibleTrigger asChild>
-        <button
-          type="button"
-          className="group flex w-full items-center gap-2.5 px-3.5 py-3 text-left"
-        >
-          <KeyRound className="size-4 shrink-0 text-warning" />
-          <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-warning">
-            {t('devices.mobileSync.deviceDialog.manualEntry.title')}
-          </span>
-          <span className="hidden shrink-0 text-[11px] text-muted-foreground sm:inline">
-            {t('devices.mobileSync.deviceDialog.manualEntry.oneTimeHint')}
-          </span>
-          <ChevronRight className="size-3.5 shrink-0 text-muted-foreground transition-transform group-data-[state=open]:rotate-90" />
-        </button>
+      <CollapsibleTrigger
+        render={
+          <button
+            type="button"
+            className="group flex w-full items-center gap-2.5 px-3.5 py-3 text-left"
+          />
+        }
+      >
+        <KeyRound className="size-4 shrink-0 text-warning" />
+        <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-warning">
+          {t('devices.mobileSync.deviceDialog.manualEntry.title')}
+        </span>
+        <span className="hidden shrink-0 text-[11px] text-muted-foreground sm:inline">
+          {t('devices.mobileSync.deviceDialog.manualEntry.oneTimeHint')}
+        </span>
+        <ChevronRight className="size-3.5 shrink-0 text-muted-foreground transition-transform group-data-[state=open]:rotate-90" />
       </CollapsibleTrigger>
       <CollapsibleContent className="space-y-3 border-t border-warning/30 px-3.5 pt-3 pb-3.5">
         <p className="flex items-start gap-2 text-xs text-warning">

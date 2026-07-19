@@ -57,21 +57,23 @@ export const MobileSyncInstallHelper: React.FC<MobileSyncInstallHelperProps> = (
 
   return (
     <Collapsible open={open} onOpenChange={setOpen}>
-      <CollapsibleTrigger asChild>
-        <button
-          type="button"
-          className="flex w-full items-center justify-between rounded-md border border-border/60 bg-card px-3 py-2 text-sm hover:bg-accent/50"
-        >
-          <span className="flex items-center gap-2">
-            <Smartphone className="h-4 w-4 text-muted-foreground" />
-            {t('devices.mobileSync.credential.noClient.title')}
-          </span>
-          {open ? (
-            <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
-          ) : (
-            <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
-          )}
-        </button>
+      <CollapsibleTrigger
+        render={
+          <button
+            type="button"
+            className="flex w-full items-center justify-between rounded-md border border-border/60 bg-card px-3 py-2 text-sm hover:bg-accent/50"
+          />
+        }
+      >
+        <span className="flex items-center gap-2">
+          <Smartphone className="h-4 w-4 text-muted-foreground" />
+          {t('devices.mobileSync.credential.noClient.title')}
+        </span>
+        {open ? (
+          <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+        ) : (
+          <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
+        )}
       </CollapsibleTrigger>
       <CollapsibleContent className="mt-2 rounded-md border border-border/40 bg-muted/20 p-3">
         <Tabs value={tab} onValueChange={v => setTab(v as NoClientTab)}>
@@ -184,10 +186,18 @@ interface QrPopoverButtonProps {
  */
 const QrPopoverButton: React.FC<QrPopoverButtonProps> = ({ ariaLabel, imageSrc, imageAlt }) => (
   <Popover>
-    <PopoverTrigger asChild>
-      <Button type="button" size="icon-sm" variant="ghost" aria-label={ariaLabel} title={ariaLabel}>
-        <Smartphone className="h-3.5 w-3.5" />
-      </Button>
+    <PopoverTrigger
+      render={
+        <Button
+          type="button"
+          size="icon-sm"
+          variant="ghost"
+          aria-label={ariaLabel}
+          title={ariaLabel}
+        />
+      }
+    >
+      <Smartphone className="h-3.5 w-3.5" />
     </PopoverTrigger>
     <PopoverContent className="w-auto p-3" align="end">
       <div className="rounded bg-white p-2">

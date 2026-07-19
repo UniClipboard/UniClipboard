@@ -113,7 +113,7 @@ const EntryDeliveryBadge: React.FC<EntryDeliveryBadgeProps> = ({ delivery }) => 
   const resendable = source.tag === 'local'
 
   return (
-    <TooltipProvider delayDuration={150}>
+    <TooltipProvider delay={150}>
       <div className="flex shrink-0 items-center gap-3">
         <SourceBadge source={source} />
         {summary && (
@@ -165,16 +165,18 @@ const SourceBadge: React.FC<SourceBadgeProps> = ({ source }) => {
 
   return (
     <Tooltip>
-      <TooltipTrigger asChild>
-        <span
-          className="group inline-flex items-center gap-1.5"
-          aria-label={label}
-          data-source={source.tag}
-        >
-          <Icon className={cn('size-3.5 transition-colors group-hover:text-foreground/80', tone)} />
-          <span className="text-[11px] font-semibold tabular-nums text-muted-foreground/60 transition-colors group-hover:text-foreground/80">
-            {label}
-          </span>
+      <TooltipTrigger
+        render={
+          <span
+            className="group inline-flex items-center gap-1.5"
+            aria-label={label}
+            data-source={source.tag}
+          />
+        }
+      >
+        <Icon className={cn('size-3.5 transition-colors group-hover:text-foreground/80', tone)} />
+        <span className="text-[11px] font-semibold tabular-nums text-muted-foreground/60 transition-colors group-hover:text-foreground/80">
+          {label}
         </span>
       </TooltipTrigger>
       <TooltipContent side="top">{label}</TooltipContent>
@@ -254,25 +256,27 @@ const SyncBadge: React.FC<SyncBadgeProps> = ({
   // 关闭流程,跨越间隙也不会触发 close → open 的闪烁。
   return (
     <HoverCard>
-      <HoverCardTrigger asChild>
-        <button
-          type="button"
-          aria-label={t('delivery.popover.ariaTrigger')}
-          className="group inline-flex items-center gap-1.5 rounded outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
-          data-summary={summary}
-          data-delivery-summary={summary}
+      <HoverCardTrigger
+        render={
+          <button
+            type="button"
+            aria-label={t('delivery.popover.ariaTrigger')}
+            className="group inline-flex items-center gap-1.5 rounded outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
+            data-summary={summary}
+            data-delivery-summary={summary}
+          />
+        }
+      >
+        <Icon className={cn('size-3.5 transition-colors', tone, spin && 'animate-spin')} />
+        <span
+          className={cn(
+            'text-[11px] font-semibold tabular-nums transition-colors',
+            tone,
+            'opacity-80 group-hover:opacity-100'
+          )}
         >
-          <Icon className={cn('size-3.5 transition-colors', tone, spin && 'animate-spin')} />
-          <span
-            className={cn(
-              'text-[11px] font-semibold tabular-nums transition-colors',
-              tone,
-              'opacity-80 group-hover:opacity-100'
-            )}
-          >
-            {label}
-          </span>
-        </button>
+          {label}
+        </span>
       </HoverCardTrigger>
       <HoverCardContent
         align="end"

@@ -240,9 +240,9 @@ const ClipboardHistoryPanelSession: React.FC<ClipboardHistoryPanelProps> = ({
   useEffect(() => {
     const handleWindowKeyDown = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return
-      // A right-click menu is open: let Radix consume Escape (close the
+      // A right-click menu is open: let Base UI consume Escape (close the
       // menu/submenu) rather than dismissing the whole panel. Both listen on the
-      // same bubbling keydown and Radix does not stop propagation, so without
+      // same bubbling keydown and Base UI does not stop propagation, so without
       // this guard one Escape would close the menu AND the panel.
       if (document.querySelector('[data-slot="context-menu-content"][data-state="open"]')) return
       e.preventDefault()
@@ -480,7 +480,7 @@ const ClipboardHistoryPanelSession: React.FC<ClipboardHistoryPanelProps> = ({
   // Right-clicking a row moves the selection onto it, so the highlighted row is
   // always the one the menu acts on (otherwise the keyboard-selected row stays
   // highlighted while the menu targets a different, right-clicked row). Preview
-  // follows the selection; Radix opens the menu on the same event.
+  // follows the selection; Base UI opens the menu on the same event.
   const handleContextMenuSelect = useCallback((index: number) => {
     dispatchPreview({ type: 'suppress', value: false })
     dispatchPreview({ type: 'set-focus-source', source: 'selection' })

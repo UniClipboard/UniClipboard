@@ -99,35 +99,33 @@ export const PackageManagerUpdateDialog: React.FC<PackageManagerUpdateDialogProp
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>{title}</AlertDialogTitle>
-          <AlertDialogDescription asChild>
-            <div className="space-y-3">
-              {updateInfo && (
-                <div className="space-y-1 text-sm">
-                  <div className="flex items-center justify-between text-muted-foreground">
-                    <span>{t('update.currentVersion')}</span>
-                    <span className="text-foreground">{updateInfo.currentVersion}</span>
-                  </div>
-                  <div className="flex items-center justify-between text-muted-foreground">
-                    <span>{t('update.latestVersion')}</span>
-                    <span className="text-foreground">{updateInfo.version}</span>
-                  </div>
+          <AlertDialogDescription render={<div />} className="space-y-3">
+            {updateInfo && (
+              <div className="space-y-1 text-sm">
+                <div className="flex items-center justify-between text-muted-foreground">
+                  <span>{t('update.currentVersion')}</span>
+                  <span className="text-foreground">{updateInfo.currentVersion}</span>
                 </div>
-              )}
-              <p className="text-sm text-muted-foreground">{t(hintKey)}</p>
-              {!isPortable && (
-                <div className="relative rounded-md border border-border/60 bg-muted/40 px-3 py-2 pr-10 font-mono text-xs text-foreground break-all">
-                  {command}
-                  <button
-                    type="button"
-                    aria-label={t('update.packageManager.copyCommand')}
-                    onClick={handleCopy}
-                    className="absolute right-1.5 top-1.5 inline-flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                  >
-                    {copied ? <Check className="size-4" /> : <Copy className="size-4" />}
-                  </button>
+                <div className="flex items-center justify-between text-muted-foreground">
+                  <span>{t('update.latestVersion')}</span>
+                  <span className="text-foreground">{updateInfo.version}</span>
                 </div>
-              )}
-            </div>
+              </div>
+            )}
+            <p className="text-sm text-muted-foreground">{t(hintKey)}</p>
+            {!isPortable && (
+              <div className="relative rounded-md border border-border/60 bg-muted/40 px-3 py-2 pr-10 font-mono text-xs text-foreground break-all">
+                {command}
+                <button
+                  type="button"
+                  aria-label={t('update.packageManager.copyCommand')}
+                  onClick={handleCopy}
+                  className="absolute right-1.5 top-1.5 inline-flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                >
+                  {copied ? <Check className="size-4" /> : <Copy className="size-4" />}
+                </button>
+              </div>
+            )}
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>

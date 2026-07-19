@@ -5,7 +5,6 @@ import {
   ContextMenu,
   ContextMenuContent,
   ContextMenuItem,
-  ContextMenuPortal,
   ContextMenuSeparator,
   ContextMenuShortcut,
   ContextMenuSub,
@@ -149,31 +148,27 @@ const HistoryCardContextMenu: React.FC<HistoryCardContextMenuProps> = ({
             )}
             {t('clipboard.contextMenu.send')}
           </ContextMenuSubTrigger>
-          <ContextMenuPortal>
-            <ContextMenuSubContent className="w-44">
-              {members.length === 0 ? (
-                <ContextMenuItem disabled>
-                  {t('clipboard.contextMenu.sendNoDevices')}
+          <ContextMenuSubContent className="w-44">
+            {members.length === 0 ? (
+              <ContextMenuItem disabled>{t('clipboard.contextMenu.sendNoDevices')}</ContextMenuItem>
+            ) : (
+              <>
+                <ContextMenuItem onClick={() => void resendAction.resendAll(item.id)}>
+                  {t('clipboard.contextMenu.sendAll')}
                 </ContextMenuItem>
-              ) : (
-                <>
-                  <ContextMenuItem onClick={() => void resendAction.resendAll(item.id)}>
-                    {t('clipboard.contextMenu.sendAll')}
+                <ContextMenuSeparator />
+                {members.map(member => (
+                  <ContextMenuItem
+                    key={member.peerId}
+                    disabled={!member.connected}
+                    onClick={() => void resendAction.resendToPeer(item.id, member.peerId)}
+                  >
+                    <span className="truncate">{member.deviceName}</span>
                   </ContextMenuItem>
-                  <ContextMenuSeparator />
-                  {members.map(member => (
-                    <ContextMenuItem
-                      key={member.peerId}
-                      disabled={!member.connected}
-                      onClick={() => void resendAction.resendToPeer(item.id, member.peerId)}
-                    >
-                      <span className="truncate">{member.deviceName}</span>
-                    </ContextMenuItem>
-                  ))}
-                </>
-              )}
-            </ContextMenuSubContent>
-          </ContextMenuPortal>
+                ))}
+              </>
+            )}
+          </ContextMenuSubContent>
         </ContextMenuSub>
 
         {/* Open file location — file entries with at least one revealable path. */}

@@ -232,20 +232,26 @@ const DevicesPage: React.FC = () => {
                 accessible name to contain the visible text, so every locale
                 must keep triggerShort a substring of trigger. */}
             <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="xs" aria-label={t('devices.panel.addMenu.trigger')}>
-                  <Plus />
-                  {t('devices.panel.addMenu.triggerShort')}
-                </Button>
+              <DropdownMenuTrigger
+                render={
+                  <Button
+                    variant="outline"
+                    size="xs"
+                    aria-label={t('devices.panel.addMenu.trigger')}
+                  />
+                }
+              >
+                <Plus />
+                {t('devices.panel.addMenu.triggerShort')}
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-52">
-                <DropdownMenuItem onSelect={() => setAddP2PDialogOpen(true)}>
+                <DropdownMenuItem onClick={() => setAddP2PDialogOpen(true)}>
                   {t('devices.panel.addMenu.p2p')}
                 </DropdownMenuItem>
                 {/* Not disabled on `lanListenerError`: `handleAddClick` owns
                     that gate and explains the failure via toast. A disabled
                     item would block the only path to that explanation. */}
-                <DropdownMenuItem onSelect={mobileActions.handleAddClick}>
+                <DropdownMenuItem onClick={mobileActions.handleAddClick}>
                   {t('devices.panel.addMenu.mobile')}
                 </DropdownMenuItem>
               </DropdownMenuContent>

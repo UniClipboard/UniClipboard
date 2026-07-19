@@ -15,15 +15,17 @@ export function AllowOverlayAddrsDisclosure() {
 
   return (
     <Popover>
-      <PopoverTrigger asChild>
-        <button
-          type="button"
-          aria-label={t('settings.sections.network.allowOverlayAddrs.infoIconAriaLabel')}
-          aria-haspopup="dialog"
-          className="inline-flex items-center justify-center rounded-md p-1 text-muted-foreground hover:text-foreground hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
-        >
-          <Info className="size-3.5" aria-hidden="true" />
-        </button>
+      <PopoverTrigger
+        render={
+          <button
+            type="button"
+            aria-label={t('settings.sections.network.allowOverlayAddrs.infoIconAriaLabel')}
+            aria-haspopup="dialog"
+            className="inline-flex items-center justify-center rounded-md p-1 text-muted-foreground hover:text-foreground hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+          />
+        }
+      >
+        <Info className="size-3.5" aria-hidden="true" />
       </PopoverTrigger>
       <PopoverContent
         align="start"

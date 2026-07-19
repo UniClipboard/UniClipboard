@@ -11,7 +11,7 @@ import App from './App'
 import { store } from './store'
 
 // 屏蔽 WebKit/WebView2 默认右键菜单(Inspect / Reload / 拼写检查),否则用户右键
-// 任何文本都会暴露 webview 身份。需要原生右键的地方用 @radix-ui/react-context-menu opt-in。
+// Any text would expose the webview identity. Use the shared context menu where native right-click is needed.
 if (typeof window !== 'undefined') {
   window.addEventListener('contextmenu', e => e.preventDefault())
 

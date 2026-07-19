@@ -26,15 +26,17 @@ export function LanOnlyDisclosure() {
 
   return (
     <Popover>
-      <PopoverTrigger asChild>
-        <button
-          type="button"
-          aria-label={t('settings.sections.network.lanOnly.infoIconAriaLabel')}
-          aria-haspopup="dialog"
-          className="inline-flex items-center justify-center rounded-md p-1 text-muted-foreground hover:text-foreground hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
-        >
-          <Info className="size-3.5" aria-hidden="true" />
-        </button>
+      <PopoverTrigger
+        render={
+          <button
+            type="button"
+            aria-label={t('settings.sections.network.lanOnly.infoIconAriaLabel')}
+            aria-haspopup="dialog"
+            className="inline-flex items-center justify-center rounded-md p-1 text-muted-foreground hover:text-foreground hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+          />
+        }
+      >
+        <Info className="size-3.5" aria-hidden="true" />
       </PopoverTrigger>
       <PopoverContent align="start" sideOffset={8} aria-labelledby="lan-only-disclosure-title">
         <div className="space-y-3">

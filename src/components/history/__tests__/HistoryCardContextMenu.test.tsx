@@ -78,7 +78,7 @@ function renderMenu(overrides: Partial<React.ComponentProps<typeof HistoryCardCo
 }
 
 function openMenu() {
-  // radix-ui ContextMenu listens for the native contextmenu event; userEvent
+  // The shared ContextMenu listens for the native contextmenu event; userEvent
   // right-click is flaky under jsdom, so fire it directly.
   fireEvent.contextMenu(screen.getByTestId('row'))
 }

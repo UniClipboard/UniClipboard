@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import TelemetryNotice from '@/components/TelemetryNotice'
@@ -20,7 +20,7 @@ describe('TelemetryNotice', () => {
     } as unknown as ReturnType<typeof useSetting>)
   })
 
-  it('derives visibility from the coordinator gate without an effect pass', () => {
+  it('derives visibility from the coordinator gate without an effect pass', async () => {
     const { rerender } = render(<TelemetryNotice enabled={false} />)
     expect(screen.queryByRole('alertdialog')).toBeNull()
 
@@ -28,7 +28,7 @@ describe('TelemetryNotice', () => {
     expect(screen.getByRole('alertdialog')).toBeInTheDocument()
 
     rerender(<TelemetryNotice enabled={false} />)
-    expect(screen.queryByRole('alertdialog')).toBeNull()
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull())
   })
 
   it('persists the user decision and notifies the startup coordinator', async () => {
@@ -42,6 +42,6 @@ describe('TelemetryNotice', () => {
 
     expect(localStorage.getItem('uc-telemetry-notice-seen')).toBe('1')
     expect(onDismiss).toHaveBeenCalledOnce()
-    expect(screen.queryByRole('alertdialog')).toBeNull()
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull())
   })
 })

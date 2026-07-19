@@ -25,6 +25,7 @@ use uc_application::deps::{
     SecurityPorts, SpaceAccessPorts, StoragePorts, SystemPorts,
 };
 use uc_application::facade::{ConfigMigrationDeps, ConfigMigrationFacade, HostEventEmitterPort};
+use uc_core::app_dirs::AppPaths;
 use uc_core::clipboard::SelectRepresentationPolicyV1;
 use uc_core::config::AppConfig;
 use uc_core::ids::{ProfileId, RepresentationId};
@@ -186,6 +187,13 @@ pub fn create_db_pool(db_path: &PathBuf) -> WiringResult<DbPool> {
 struct SecureStoragePrelude {
     secure_storage: Arc<dyn SecureStoragePort>,
     iroh_identity_dir: PathBuf,
+}
+
+struct CoreWiringInputs {
+    paths: AppPaths,
+    secure_storage: Arc<dyn SecureStoragePort>,
+    iroh_identity_dir: PathBuf,
+    system_clipboard: crate::layer::platform::SystemClipboardLayer,
 }
 
 /// Build the [`SecureStoragePrelude`]: create the secure-storage backend, resolve
@@ -717,6 +725,25 @@ pub fn wire_dependencies(
         iroh_identity_dir,
     } = build_secure_storage_prelude(&paths)?;
 
+    let system_clipboard = create_desktop_system_clipboard()?;
+    wire_dependencies_from_inputs(CoreWiringInputs {
+        paths,
+        secure_storage,
+        iroh_identity_dir,
+        system_clipboard,
+    })
+}
+
+fn wire_dependencies_from_inputs(
+    inputs: CoreWiringInputs,
+) -> WiringResult<(WiredDependencies, BackgroundRuntimeDeps)> {
+    let CoreWiringInputs {
+        paths,
+        secure_storage,
+        iroh_identity_dir,
+        system_clipboard,
+    } = inputs;
+
     let db_path = paths.db_path;
     let vault_path = paths.vault_dir;
     let settings_path = paths.settings_path;
@@ -738,7 +765,6 @@ pub fn wire_dependencies(
     )?;
 
     let storage_config = Arc::new(ClipboardStorageConfig::defaults());
-    let system_clipboard = create_desktop_system_clipboard()?;
     let platform = create_platform_layer(
         secure_storage,
         &vault_path,
@@ -1131,6 +1157,36 @@ pub fn wire_dependencies(
         clipboard_write_coordinator,
     };
     Ok((wired, background))
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use uc_core::app_dirs::AppPaths;
+    use uc_core::ports::SecureStoragePort;
+    use uc_platform::file_secure_storage::FileSecureStorage;
+
+    use super::{wire_dependencies_from_inputs, CoreWiringInputs};
+    use crate::layer::platform::{noop_system_clipboard_layer, SystemClipboardWiring};
+
+    #[test]
+    fn core_wiring_accepts_preselected_host_inputs() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let data_root = temp.path().join("data");
+        let paths = AppPaths::with_base_data_local_dir(data_root.clone());
+        let storage = FileSecureStorage::with_base_dir(temp.path().join("keyring"));
+
+        let (wired, _background) = wire_dependencies_from_inputs(CoreWiringInputs {
+            paths,
+            secure_storage: Arc::new(storage) as Arc<dyn SecureStoragePort>,
+            iroh_identity_dir: data_root.join("iroh-identity"),
+            system_clipboard: noop_system_clipboard_layer(),
+        })
+        .expect("core wiring");
+
+        assert_eq!(wired.system_clipboard_wiring, SystemClipboardWiring::Noop);
+    }
 }
 
 /// Constructs a `ClipboardWriteCoordinator` — the single write boundary for all

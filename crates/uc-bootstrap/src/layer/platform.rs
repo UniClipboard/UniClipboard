@@ -88,6 +88,16 @@ fn noop_system_clipboard() -> (Arc<dyn PlatformClipboardPort>, Arc<dyn SystemCli
     (noop.clone(), noop)
 }
 
+#[cfg(test)]
+pub(crate) fn noop_system_clipboard_layer() -> SystemClipboardLayer {
+    let (clipboard, system_clipboard) = noop_system_clipboard();
+    SystemClipboardLayer {
+        clipboard,
+        system_clipboard,
+        wiring: SystemClipboardWiring::Noop,
+    }
+}
+
 pub fn create_desktop_system_clipboard() -> WiringResult<SystemClipboardLayer> {
     // Which system clipboard adapter to wire. Two reasons to substitute the
     // no-op adapter, both decided here in the composition root (uc-platform

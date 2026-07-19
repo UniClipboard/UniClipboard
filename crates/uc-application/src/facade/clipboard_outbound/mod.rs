@@ -12,7 +12,7 @@ use uc_core::clipboard::{
     is_file_mime_or_format, ClipboardPayloadSource, EntryFileSetExcludeReason,
     EntryFileSetLineKind, FileSetMemberKind, FileSetMemberLocation,
 };
-use uc_core::ids::EntryId;
+use uc_core::ids::{DeviceId, EntryId};
 use uc_core::ports::clipboard::{
     ClipboardPayloadResolverPort, EntryFileSetRepositoryPort, GetClipboardEntryPort,
     GetRepresentationPort, UpdateRepresentationProcessingResultPort,
@@ -121,6 +121,7 @@ pub trait ClipboardOutboundPort: Send + Sync {
     async fn dispatch_capture(
         &self,
         input: ClipboardOutboundInput,
+        target_filter: Option<Vec<DeviceId>>,
     ) -> Result<ClipboardOutboundOutcome, ClipboardOutboundError>;
 }
 
@@ -180,6 +181,7 @@ impl ClipboardOutboundPort for ClipboardOutboundDispatcher {
     async fn dispatch_capture(
         &self,
         mut input: ClipboardOutboundInput,
+        target_filter: Option<Vec<DeviceId>>,
     ) -> Result<ClipboardOutboundOutcome, ClipboardOutboundError> {
         if input.origin.is_remote_push() {
             return Ok(ClipboardOutboundOutcome::Skipped {
@@ -421,7 +423,7 @@ impl ClipboardOutboundPort for ClipboardOutboundDispatcher {
                     manifest,
                     input.origin,
                     Some(entry_id.clone()),
-                    None,
+                    target_filter,
                 )
                 .await
         } else if blob_refs.is_empty() {
@@ -430,9 +432,7 @@ impl ClipboardOutboundPort for ClipboardOutboundDispatcher {
                     clipboard_intent.snapshot,
                     input.origin,
                     Some(entry_id.clone()),
-                    // LocalCapture 路径走"全 fan-out"语义。resend 路径不经此
-                    // 入口,而是直接走 ResendEntryUseCase + DispatchEntryRunner。
-                    None,
+                    target_filter,
                 )
                 .await
         } else {
@@ -442,7 +442,7 @@ impl ClipboardOutboundPort for ClipboardOutboundDispatcher {
                     blob_refs,
                     input.origin,
                     Some(entry_id.clone()),
-                    None,
+                    target_filter,
                 )
                 .await
         }
@@ -533,7 +533,15 @@ impl ClipboardOutboundFacade {
         &self,
         input: ClipboardOutboundInput,
     ) -> Result<ClipboardOutboundOutcome, ClipboardOutboundError> {
-        self.dispatcher.dispatch_capture(input).await
+        self.dispatcher.dispatch_capture(input, None).await
+    }
+
+    pub async fn dispatch_capture_to_targets(
+        &self,
+        input: ClipboardOutboundInput,
+        target_filter: Option<Vec<DeviceId>>,
+    ) -> Result<ClipboardOutboundOutcome, ClipboardOutboundError> {
+        self.dispatcher.dispatch_capture(input, target_filter).await
     }
 
     /// 用户主动 resend 一条本机来源的 entry。详细语义见
@@ -1011,8 +1019,13 @@ mod tests {
         async fn dispatch_capture(
             &self,
             input: ClipboardOutboundInput,
+            target_filter: Option<Vec<DeviceId>>,
         ) -> Result<ClipboardOutboundOutcome, ClipboardOutboundError> {
             assert_eq!(input.entry_id, "entry-a");
+            assert_eq!(
+                target_filter,
+                Some(vec![DeviceId::new("peer-a"), DeviceId::new("peer-b")])
+            );
             Ok(ClipboardOutboundOutcome::Dispatched {
                 accepted: 1,
                 duplicate: 0,
@@ -1342,24 +1355,27 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn dispatch_capture_accepts_application_entry_id() {
+    async fn dispatch_capture_forwards_target_filter() {
         let facade = ClipboardOutboundFacade::from_parts(
             Arc::new(FakeOutbound),
             Arc::new(UnusedResendRunner),
         );
         let outcome = facade
-            .dispatch_capture(ClipboardOutboundInput {
-                entry_id: "entry-a".to_string(),
-                snapshot: SystemClipboardSnapshot {
-                    representations: Vec::new(),
-                    ts_ms: 0,
+            .dispatch_capture_to_targets(
+                ClipboardOutboundInput {
+                    entry_id: "entry-a".to_string(),
+                    snapshot: SystemClipboardSnapshot {
+                        representations: Vec::new(),
+                        ts_ms: 0,
 
-                    file_content_digests: Vec::new(),
+                        file_content_digests: Vec::new(),
 
-                    file_set_v1_component: None,
+                        file_set_v1_component: None,
+                    },
+                    origin: ClipboardChangeOrigin::LocalCapture,
                 },
-                origin: ClipboardChangeOrigin::LocalCapture,
-            })
+                Some(vec![DeviceId::new("peer-a"), DeviceId::new("peer-b")]),
+            )
             .await
             .unwrap();
 

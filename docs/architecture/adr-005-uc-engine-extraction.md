@@ -11,19 +11,19 @@
 
 `src-tauri/` 下当前的 workspace 已经按六边形架构落到 14 个 crate：
 
-| Crate | 职责 |
-|---|---|
-| `uc-core` | 纯领域模型 + Port traits |
-| `uc-application` | Use cases / orchestrators |
-| `uc-infra` | Diesel / SQLite / FS / iroh-blobs 等基础设施适配器 |
-| `uc-platform` | OS 适配器（clipboard、keyring、libp2p） |
-| `uc-observability` | tracing + PostHog sink |
-| `uc-bootstrap` | 组合根 + Sentry / autostart / 文件式 tracing 初始化 |
-| `uc-desktop` | 桌面进程内 host：daemon 模式、本地 API、桌面事件源 |
-| `uc-tauri` | Tauri builder / commands / plugin 装配 |
-| `uc-webserver` | 进程内 axum HTTP/WS server |
-| `uc-daemon-{contract,local,client}` | 进程间协议与客户端 |
-| `uc-cli` | `uniclip` 二进制 |
+| Crate                               | 职责                                                |
+| ----------------------------------- | --------------------------------------------------- |
+| `uc-core`                           | 纯领域模型 + Port traits                            |
+| `uc-application`                    | Use cases / orchestrators                           |
+| `uc-infra`                          | Diesel / SQLite / FS / iroh-blobs 等基础设施适配器  |
+| `uc-platform`                       | OS 适配器（clipboard、keyring、libp2p）             |
+| `uc-observability`                  | tracing + PostHog sink                              |
+| `uc-bootstrap`                      | 组合根 + Sentry / autostart / 文件式 tracing 初始化 |
+| `uc-desktop`                        | 桌面进程内 host：daemon 模式、本地 API、桌面事件源  |
+| `uc-tauri`                          | Tauri builder / commands / plugin 装配              |
+| `uc-webserver`                      | 进程内 axum HTTP/WS server                          |
+| `uc-daemon-{contract,local,client}` | 进程间协议与客户端                                  |
+| `uc-cli`                            | `uniclip` 二进制                                    |
 
 **实质上 engine = `uc-core` + `uc-application` + 一个"组合 + 生命周期"门面**。
 当前这个门面被埋在 `uc-bootstrap` 与 `uc-desktop` 里，并且夹杂了不少桌面假设。
@@ -46,7 +46,7 @@
 3. **四平台彼此对等**：desktop、iOS、Android、HarmonyOS 之间不按平台限制连接组合
 4. **恢复保持身份**：移动宿主恢复后重新创建短生命 endpoint，但必须加载原有持久身份并回到同一 Space
 5. **离线语义不变**：离线不重发、不排队、不最终一致；失败即报告，用户需要时主动重发
-6. **iOS share extension 拓扑**：尚未确认（独立进程运行核心，或只把用户操作交给主 app），但不得另建 LAN 协议路径
+6. **iOS share extension 拓扑**：尚未确认（独立进程运行核心，或只把用户操作交给主 app）。移动产品可保留用户显式选择的既有 LAN HTTP 兼容通道，但不得为 extension 另建协议路径，也不得让 P2P 自动回退到 LAN
 
 约束 2 是核心架构主张：**mobile 不需要 engine 的精简子集**，它跑同一份 engine，差异仅在生命周期与平台适配器。
 
@@ -87,13 +87,13 @@ impl Engine {
 
 #### 2.1.1 生命周期状态机
 
-| 调用 | 合法起点 | 结果 | 在途操作规则 |
-|---|---|---|---|
-| `start` | 尚无实例 | `Running` | 加载或首次生成持久身份，创建新 endpoint，返回与实例同生命周期的事件流 |
-| `quiesce(deadline)` | `Running` | `Quiesced` | 停止接收新操作；在 deadline 内等待在途操作结束，到期后取消剩余操作并为每项报告明确失败 |
-| `suspend` | `Running` 或 `Quiesced` | `Suspended` | 从 `Running` 调用时先执行零等待 quiesce；释放 endpoint 和运行任务，不保留待发送队列 |
-| `resume` | `Suspended` | `Running` | 在同一实例内重建 endpoint，恢复原身份；原事件流继续有效并收到状态变化 |
-| `shutdown(deadline)` | `Running`、`Quiesced` 或 `Suspended` | `Stopped` | 完成有 deadline 的终止清理；实例与事件流随后失效 |
+| 调用                 | 合法起点                             | 结果        | 在途操作规则                                                                           |
+| -------------------- | ------------------------------------ | ----------- | -------------------------------------------------------------------------------------- |
+| `start`              | 尚无实例                             | `Running`   | 加载或首次生成持久身份，创建新 endpoint，返回与实例同生命周期的事件流                  |
+| `quiesce(deadline)`  | `Running`                            | `Quiesced`  | 停止接收新操作；在 deadline 内等待在途操作结束，到期后取消剩余操作并为每项报告明确失败 |
+| `suspend`            | `Running` 或 `Quiesced`              | `Suspended` | 从 `Running` 调用时先执行零等待 quiesce；释放 endpoint 和运行任务，不保留待发送队列    |
+| `resume`             | `Suspended`                          | `Running`   | 在同一实例内重建 endpoint，恢复原身份；原事件流继续有效并收到状态变化                  |
+| `shutdown(deadline)` | `Running`、`Quiesced` 或 `Suspended` | `Stopped`   | 完成有 deadline 的终止清理；实例与事件流随后失效                                       |
 
 不合法的状态转换返回稳定的状态错误，不能静默忽略。若进程被系统终止，旧实例已经不存在；宿主下次获得运行机会时调用 `start`，核心从安全存储恢复原身份，而不是调用 `resume`。
 
@@ -111,25 +111,25 @@ uc-engine  ✗→ uc-webserver / uc-daemon-*  ← host 决定是否启动的外�
 
 ### 2.3 Host 层分布
 
-| Host crate | 状态 | 职责 |
-|---|---|---|
-| `uc-host-desktop` | 由现 `uc-desktop` + `uc-bootstrap` 桌面部分演化而来 | Sentry / 文件 tracing / autostart / daemon HTTP 起停 |
-| `uc-tauri` | 不动 | 调 `uc-host-desktop` |
-| `uc-cli` | 不动 | in-process 时调 `uc-host-desktop`；远程调 `uc-daemon-client` |
-| `uc-host-ios`（新） | 新建 | 绑 iOS lifecycle，注入 Pasteboard / Keychain |
-| `uc-host-android`（新） | 新建 | 绑 Android lifecycle，注入 JNI ClipboardManager / Keystore |
-| `uc-host-ohos`（新） | 新建 | 绑 HarmonyOS lifecycle，注入 Pasteboard / HUKS 或 Asset Store |
-| `uc-mobile-ffi`（新） | 新建 | UniFFI 暴露 `Engine` 稳定操作给 Kotlin / Swift |
-| `uc-ohos-napi`（新） | 新建 | N-API 暴露同一 `Engine` 稳定操作给 ArkTS |
+| Host crate              | 状态                                                | 职责                                                          |
+| ----------------------- | --------------------------------------------------- | ------------------------------------------------------------- |
+| `uc-host-desktop`       | 由现 `uc-desktop` + `uc-bootstrap` 桌面部分演化而来 | Sentry / 文件 tracing / autostart / daemon HTTP 起停          |
+| `uc-tauri`              | 不动                                                | 调 `uc-host-desktop`                                          |
+| `uc-cli`                | 不动                                                | in-process 时调 `uc-host-desktop`；远程调 `uc-daemon-client`  |
+| `uc-host-ios`（新）     | 新建                                                | 绑 iOS lifecycle，注入 Pasteboard / Keychain                  |
+| `uc-host-android`（新） | 新建                                                | 绑 Android lifecycle，注入 JNI ClipboardManager / Keystore    |
+| `uc-host-ohos`（新）    | 新建                                                | 绑 HarmonyOS lifecycle，注入 Pasteboard / HUKS 或 Asset Store |
+| `uc-mobile-ffi`（新）   | 新建                                                | UniFFI 暴露 `Engine` 稳定操作给 Kotlin / Swift                |
+| `uc-ohos-napi`（新）    | 新建                                                | N-API 暴露同一 `Engine` 稳定操作给 ArkTS                      |
 
 ### 2.4 Platform 适配器拆分
 
-| 当前 | 演化后 |
-|---|---|
-| `uc-platform` | 改名为 `uc-platform-desktop`（保留全部内容） |
-| 无 | 新建 `uc-platform-ios`（Pasteboard / Keychain / 网络接口探测） |
-| 无 | 新建 `uc-platform-android`（JNI Clipboard / Keystore） |
-| 无 | 新建 `uc-platform-ohos`（Pasteboard / HUKS 或 Asset Store / 网络接口探测） |
+| 当前          | 演化后                                                                     |
+| ------------- | -------------------------------------------------------------------------- |
+| `uc-platform` | 改名为 `uc-platform-desktop`（保留全部内容）                               |
+| 无            | 新建 `uc-platform-ios`（Pasteboard / Keychain / 网络接口探测）             |
+| 无            | 新建 `uc-platform-android`（JNI Clipboard / Keystore）                     |
+| 无            | 新建 `uc-platform-ohos`（Pasteboard / HUKS 或 Asset Store / 网络接口探测） |
 
 所有 port trait 仍归 `uc-core`，platform crate 只是同一 trait 的不同 impl。
 
@@ -176,35 +176,35 @@ pub struct ResendEntryCommand {
 4. 对每个目标调既有 `DispatchClipboardEntryUseCase`，走原 fan-out 路径
 5. 结果落新 `EntryDeliveryRecord`，UI 通过既有视图刷新
 
-| 层 | 物件 | 状态 |
-|---|---|---|
-| `uc-core/ports` | `EntryDeliveryRepositoryPort` / `TrustedPeerRepositoryPort` / `MemberRepositoryPort` | ✅ 已有 |
-| `uc-infra` | `DieselEntryDeliveryRepository` | ✅ 已有 |
-| `uc-application` | **新增 `ResendEntryUseCase`** | 待新增；由公开操作层调用，不直接暴露给宿主 |
-| `uc-application/facade` | `ClipboardOutboundFacade::resend_entry(cmd)` thin method | 待新增 |
-| `uc-engine` | `Operation::ResendEntry` | 抽 engine 时作为统一操作的一种，不增加旁路方法 |
-| UI | desktop 详情视图加"重发"入口（按 entry / 按 peer）；mobile 同 | 待新增（前端工作） |
+| 层                      | 物件                                                                                 | 状态                                           |
+| ----------------------- | ------------------------------------------------------------------------------------ | ---------------------------------------------- |
+| `uc-core/ports`         | `EntryDeliveryRepositoryPort` / `TrustedPeerRepositoryPort` / `MemberRepositoryPort` | ✅ 已有                                        |
+| `uc-infra`              | `DieselEntryDeliveryRepository`                                                      | ✅ 已有                                        |
+| `uc-application`        | **新增 `ResendEntryUseCase`**                                                        | 待新增；由公开操作层调用，不直接暴露给宿主     |
+| `uc-application/facade` | `ClipboardOutboundFacade::resend_entry(cmd)` thin method                             | 待新增                                         |
+| `uc-engine`             | `Operation::ResendEntry`                                                             | 抽 engine 时作为统一操作的一种，不增加旁路方法 |
+| UI                      | desktop 详情视图加"重发"入口（按 entry / 按 peer）；mobile 同                        | 待新增（前端工作）                             |
 
 #### 2.5.5 触发完全交给用户，与 host 无关
 
-| Host | 触发方式 |
-|---|---|
-| desktop | 用户在详情视图点"重发"（按 entry 整体 / 按某个 peer 行）|
-| mobile (iOS / Android / HarmonyOS) | 同 desktop，UI 上点"重发" |
-| CLI | `uniclip send --resend <entry-id> [--peer <device-id>]` 子命令 |
-| web server | 不暴露（只读视图） |
+| Host                               | 触发方式                                                       |
+| ---------------------------------- | -------------------------------------------------------------- |
+| desktop                            | 用户在详情视图点"重发"（按 entry 整体 / 按某个 peer 行）       |
+| mobile (iOS / Android / HarmonyOS) | 同 desktop，UI 上点"重发"                                      |
+| CLI                                | `uniclip send --resend <entry-id> [--peer <device-id>]` 子命令 |
+| web server                         | 不暴露（只读视图）                                             |
 
 **不存在自动触发器**，因此也不存在"BGTask 周期"、"presence 上线钩子"、"`WorkManager` 调度"这些跨平台差异。mobile 与 desktop 在重发能力上 **行为完全对称**——跟 §1.3 的核心约束"前台时 mobile = 一个完整 node"自洽。
 
 ### 2.6 Engine 必须满足的工程约束（mobile 反向施加，desktop 同样受益）
 
-| 约束 | 来自 | 要求 |
-|---|---|---|
-| 启动预算可测且受控 | 移动宿主运行窗口有限 | 数据库连接、iroh node bind 分阶段初始化，并记录各阶段耗时 |
-| `quiesce` / `shutdown` 支持硬 deadline | 移动系统可能随时暂停宿主 | 所有 spawned task 接入统一取消机制；到期后的操作进入失败或取消终态，不得在 resume 后自动继续 |
-| 同进程可多次 `start` / `shutdown` | mobile 反复 fg/bg | 同一时刻只允许一个节点；完成 shutdown 后允许重建，不使用进程终身 `OnceCell` bind 守卫 |
-| iroh node：endpoint 短生命、identity 长生命 | mobile 短会话 | 核心拥有身份格式和恢复规则，并通过宿主提供的系统安全存储持久化密钥；endpoint 每次 start 或 resume 重建 |
-| 协议与内容能力不按平台裁剪 | 四平台对等 | 不用 platform feature 关闭配对、relay、图片或文件传输；差异只在宿主能力 |
+| 约束                                        | 来自                     | 要求                                                                                                   |
+| ------------------------------------------- | ------------------------ | ------------------------------------------------------------------------------------------------------ |
+| 启动预算可测且受控                          | 移动宿主运行窗口有限     | 数据库连接、iroh node bind 分阶段初始化，并记录各阶段耗时                                              |
+| `quiesce` / `shutdown` 支持硬 deadline      | 移动系统可能随时暂停宿主 | 所有 spawned task 接入统一取消机制；到期后的操作进入失败或取消终态，不得在 resume 后自动继续           |
+| 同进程可多次 `start` / `shutdown`           | mobile 反复 fg/bg        | 同一时刻只允许一个节点；完成 shutdown 后允许重建，不使用进程终身 `OnceCell` bind 守卫                  |
+| iroh node：endpoint 短生命、identity 长生命 | mobile 短会话            | 核心拥有身份格式和恢复规则，并通过宿主提供的系统安全存储持久化密钥；endpoint 每次 start 或 resume 重建 |
+| 协议与内容能力不按平台裁剪                  | 四平台对等               | 不用 platform feature 关闭配对、relay、图片或文件传输；差异只在宿主能力                                |
 
 这些约束不视为 mobile-specific 特性，而是 engine 的卫生基线——desktop 上做到这些只会让 daemon 重启更平滑，没有副作用。
 
@@ -214,7 +214,7 @@ pub struct ResendEntryCommand {
 - ❌ 不引入中央 relay blob 暂存
 - ❌ 不按 platform 用 cargo feature 拆 engine profile（同一份代码喂所有 host）
 - ❌ 不在 engine 公开 API 上漏出 tokio future / handle / `Arc<…>` 内部类型
-- ❌ 不把 LAN HTTP 兼容路径作为新移动客户端的目标架构
+- ❌ 不把 LAN HTTP 兼容路径混入 `uc-engine`，或将其作为 P2P 失败后的自动回退；LAN 只能是宿主向用户显式提供的独立选项
 
 ## 3. 后果
 
@@ -275,7 +275,7 @@ pub struct ResendEntryCommand {
 2. 在现有代码形态上证明四平台完整依赖、真机互通和反复启停，不先造临时公开入口。
 3. 可行性通过后，按用例驱动建立唯一 `uc-engine` 入口并让桌面先切换。
 4. 三种移动宿主只通过该入口接入并完成一致性矩阵。
-5. 最后迁入单一核心仓库，发布统一版本并移除旧 LAN 主路径。
+5. 最后迁入单一核心仓库，发布统一 P2P 核心版本，并保留独立的可选 LAN 兼容发布线。
 
 计划 002 未通过时不得开始计划 003；计划 004 未通过时不得拆仓。该顺序取代本 ADR 初稿中的“先做桌面 EngineHandle 雏形，再验证移动端”安排，避免制造临时入口和二次迁移。
 
@@ -395,14 +395,14 @@ pub struct ResendEntryCommand {
 
 ## 6. 风险与未知
 
-| 风险 | 影响 | 缓解 |
-|---|---|---|
-| 完整依赖图在任一移动目标无法构建或运行 | 计划 002 阻塞 | 先验证并修复平台假设；无法解决时停止并报告，不得以 LAN HTTP 冒充完成 |
-| iOS share extension 进程模型未定（独立 process vs 主 app） | 影响 `Engine` 的宿主方式 | 在计划 002 真机实验完成前必须由产品与工程共同决定 |
-| 系统安全存储加载身份超过移动宿主的实测启动预算 | mobile 启动卡顿或错过运行窗口 | Stage 2a 分平台实测；必要时分阶段初始化，但不得缓存明文密钥到普通文件 |
-| 统一取消机制改造涉及面广 | 计划 002/003 工时低估 | 优先改造高频任务，并用生命周期状态机测试守住行为 |
-| `ResendEntryUseCase` 上线后用户无法识别"哪些 entry 该 resend" | 功能形同虚设 | desktop / mobile UI 必须在 entry 详情视图清晰暴露每个 peer 的投递状态（视图层 `GetEntryDeliveryViewUseCase` 已就绪，前端需要把 `Failed { Offline }` 状态做明显视觉提示） |
-| `uc-platform` 改名导致全 workspace import 大范围变更 | 一次性 diff 过大 | 通过 cargo `[package].rename` + 一个迁移 commit 完成，不与功能改动混合 |
+| 风险                                                          | 影响                          | 缓解                                                                                                                                                                     |
+| ------------------------------------------------------------- | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 完整依赖图在任一移动目标无法构建或运行                        | 计划 002 阻塞                 | 先验证并修复平台假设；无法解决时停止并报告，不得以 LAN HTTP 冒充完成                                                                                                     |
+| iOS share extension 进程模型未定（独立 process vs 主 app）    | 影响 `Engine` 的宿主方式      | 在计划 002 真机实验完成前必须由产品与工程共同决定                                                                                                                        |
+| 系统安全存储加载身份超过移动宿主的实测启动预算                | mobile 启动卡顿或错过运行窗口 | Stage 2a 分平台实测；必要时分阶段初始化，但不得缓存明文密钥到普通文件                                                                                                    |
+| 统一取消机制改造涉及面广                                      | 计划 002/003 工时低估         | 优先改造高频任务，并用生命周期状态机测试守住行为                                                                                                                         |
+| `ResendEntryUseCase` 上线后用户无法识别"哪些 entry 该 resend" | 功能形同虚设                  | desktop / mobile UI 必须在 entry 详情视图清晰暴露每个 peer 的投递状态（视图层 `GetEntryDeliveryViewUseCase` 已就绪，前端需要把 `Failed { Offline }` 状态做明显视觉提示） |
+| `uc-platform` 改名导致全 workspace import 大范围变更          | 一次性 diff 过大              | 通过 cargo `[package].rename` + 一个迁移 commit 完成，不与功能改动混合                                                                                                   |
 
 ## 7. 待决问题（Open Questions）
 
@@ -421,6 +421,6 @@ pub struct ResendEntryCommand {
 - 对等节点共享身份、配对、加密、传输和内容能力，不按平台限制连接组合
 - 对等身份不等于永久后台在线；移动宿主暂停时正常离线，恢复后以原身份重连
 - 离线不重发、不排队、不最终一致，仍由用户主动重发
-- 旧 LAN HTTP 仅作为限期兼容路径，不再承载新能力
+- 移动产品可提供用户显式选择的 LAN HTTP 兼容通道；它独立于 `uc-engine`，不得自动回退或替代完整 P2P 能力
 
 任何对上述决定的修订必须更新本节，并通过后续 ADR 显式取代。

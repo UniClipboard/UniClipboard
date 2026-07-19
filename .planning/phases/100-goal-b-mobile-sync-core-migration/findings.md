@@ -2,7 +2,7 @@
 
 > 外部记忆。权威细节在 commit message + `.planning/research/` + 代码 doc comments；本文存「接手必知」的浓缩。
 >
-> **状态更新（2026-07-19）**：本文记录的 LAN HTTP 方案已转为迁移期兼容线，不再代表新移动客户端方向。新方向见 `docs/architecture/adr-005-uc-engine-extraction.md` 与 `plans/README.md`。
+> **状态更新（2026-07-19 修订）**：本文记录的 LAN HTTP 方案属于用户显式选择的独立兼容通道，不代表完整 P2P 节点方向，也不得作为 P2P 失败后的自动回退。完整 P2P 方向见 `docs/architecture/adr-005-uc-engine-extraction.md` 与 `plans/README.md`。
 
 ## Requirements
 

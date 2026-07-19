@@ -1,6 +1,6 @@
 # 移动 LAN 兼容核心（uc-mobile）构建与发包 Runbook
 
-> **兼容状态（2026-07-19）**：`uc-mobile` 已转为 LAN HTTP 迁移期兼容线，不是新的四平台共享核心。本文仅用于已发布客户端的安全修复、兼容修复和迁移支持；不得在此发布线新增产品能力。完整 P2P 核心的交付顺序见 `plans/README.md`。
+> **兼容状态（2026-07-19 修订）**：`uc-mobile` 是移动产品可向用户显式提供的 LAN HTTP 兼容实现，不是四平台共享 P2P 核心。它保持独立版本线，不得混入完整 P2P 核心、作为 P2P 失败后的自动回退，或替代完整 P2P 的验收。完整 P2P 核心的交付顺序见 `plans/README.md`。
 
 本文是 Rust 移动 LAN 兼容实现 `uc-mobile` 的构建与发布操作手册。它把 `uc-mobile` 编译成
 `UniClipboardCore.xcframework`（含 UniFFI 绑定 `uc_mobile.swift`），发布为 GitHub Release，
@@ -11,10 +11,10 @@
 
 ## 1. 角色与产物
 
-| 角色 | 仓库 | 关键文件 |
-|---|---|---|
-| 生产侧（Producer） | 本仓库 `UniClipboard/UniClipboard` | `crates/uc-mobile/scripts/build-ios-xcframework.sh`、`.github/workflows/build-mobile-core.yml` |
-| 消费侧（Consumer） | iOS app 仓库 | `Package.swift`、`Scripts/update-rust-core.sh`、`RustCore/pinned.json`、`RustCore/uc_mobile.swift` |
+| 角色               | 仓库                               | 关键文件                                                                                           |
+| ------------------ | ---------------------------------- | -------------------------------------------------------------------------------------------------- |
+| 生产侧（Producer） | 本仓库 `UniClipboard/UniClipboard` | `crates/uc-mobile/scripts/build-ios-xcframework.sh`、`.github/workflows/build-mobile-core.yml`     |
+| 消费侧（Consumer） | iOS app 仓库                       | `Package.swift`、`Scripts/update-rust-core.sh`、`RustCore/pinned.json`、`RustCore/uc_mobile.swift` |
 
 每个 release 产出三件套（GitHub Release assets）：
 
@@ -25,7 +25,7 @@
 
 ## 2. 版本语义（决策 D1）
 
-LAN 兼容核心走 **独立版本线**，与桌面 `v*` 解耦；该版本线只用于兼容期维护，不是未来 `core-v*` 统一版本线：
+LAN 兼容实现走 **独立版本线**，与桌面 `v*` 解耦；该版本线是用户显式选择的独立通道，不是未来 `core-v*` 统一 P2P 核心版本线：
 
 - 版本单一真相源 = `crates/uc-mobile/Cargo.toml` 的 `version`（当前 `0.1.0`）。
   其它 workspace crate 仍用 `version.workspace`；**`uc-mobile-proto` 不脱钩**（它经 `uc-application`
@@ -105,4 +105,4 @@ UC_RUST_REPO=/path/to/uniclipboard Scripts/build-rust-core.sh
 
 ## 7. Android（旧方案占位，不再实施）
 
-旧 LAN 核心的 Android 交付未实现，`crates/uc-mobile/scripts/build-android-aar.sh` 仍是拒绝执行的形态记录。兼容线不再补齐该发布任务。Android 的正式 Rust 交付必须按 `plans/004-ship-mobile-bindings-and-conformance.md` 使用完整 P2P 核心，并与 iOS、HarmonyOS、桌面来自同一 `core-v*` 版本。
+旧 LAN 核心的 Android 交付尚未实现，`crates/uc-mobile/scripts/build-android-aar.sh` 仍是拒绝执行的形态记录。若 Android 提供 LAN 选项，必须作为与完整 P2P 核心独立的显式用户选择通道交付，且不得以该通道替代 `plans/004-ship-mobile-bindings-and-conformance.md` 要求的完整 P2P 核心与四平台验收。

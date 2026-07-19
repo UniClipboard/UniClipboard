@@ -108,9 +108,9 @@ It enables seamless and secure syncing of text, images, and files across multipl
 
 ## Features
 
-- **Cross-platform**: First-class support on Windows, macOS, and Linux. The current iOS and Android releases connect through the compatibility mode described below; the next mobile architecture makes desktop, iOS, Android, and HarmonyOS equal P2P peers.
-- **Cross-network sync**: Desktop peers sync on the same Wi-Fi or across the internet with automatic NAT traversal and encrypted relay fallback. Current mobile releases use the time-limited compatibility path until the shared P2P core ships.
-- **Mobile app**: Install the **[UniClipboard mobile app](https://github.com/UniClipboard/UniClip)** for **iOS** ([TestFlight public beta](https://testflight.apple.com/join/nyNQ8dQe)) and **Android** ([download APK](https://github.com/UniClipboard/UniClip/releases/latest)). The bundled **iOS Shortcut** remains available during migration. Current releases exchange clipboard content through the compatibility service; new product capabilities will land only on the shared P2P core.
+- **Cross-platform**: First-class support on Windows, macOS, and Linux. The current iOS and Android releases connect through the compatibility mode described below; the target architecture makes desktop, iOS, Android, and HarmonyOS equal P2P peers.
+- **Cross-network sync**: Desktop peers sync on the same Wi-Fi or across the internet with automatic NAT traversal and encrypted relay fallback. Mobile products may also expose LAN HTTP as a separate, user-selected compatibility channel; it never replaces or automatically takes over from the shared P2P core.
+- **Mobile app**: Install the **[UniClipboard mobile app](https://github.com/UniClipboard/UniClip)** for **iOS** ([TestFlight public beta](https://testflight.apple.com/join/nyNQ8dQe)) and **Android** ([download APK](https://github.com/UniClipboard/UniClip/releases/latest)). The bundled **iOS Shortcut** remains available as part of the separately versioned LAN compatibility channel. Full P2P capability is delivered and validated independently.
 - **Encrypted spaces**: Devices join a shared "space" with one invitation code + passphrase — no cloud account, no email, just two devices agreeing to trust each other.
 - **Local full-text search**: Search your full history in milliseconds, even with tens of thousands of entries — and the index itself stays encrypted on disk.
 - **Text, images, and files**: Copy on one device, paste on another. Large files use streaming transfer so they don't have to fit in memory.

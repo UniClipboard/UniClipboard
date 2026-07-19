@@ -106,9 +106,9 @@ UniClipboard 是一款以 **隐私优先** 为核心理念的跨设备剪贴板�
 
 ## 功能特点
 
-- **跨平台支持**：Windows、macOS 和 Linux 当前已完整支持。现有 iOS 与 Android 版本仍使用下文的迁移期兼容方式；目标架构会让桌面、iOS、Android、HarmonyOS 成为对等的 P2P 节点。
-- **跨网络同步**：桌面节点可在同一 Wi-Fi 或跨互联网同步，并自动进行 NAT 穿透与加密中继回落。移动端在共享 P2P 核心交付前暂时使用限期兼容路径。
-- **移动端 App**：安装 **[UniClipboard 移动端 App](https://github.com/UniClipboard/UniClip)**，一个客户端覆盖 **iOS**（目前 [TestFlight beta 公测中](https://testflight.apple.com/join/nyNQ8dQe)）与 **Android**（[下载 APK](https://github.com/UniClipboard/UniClip/releases/latest)）。内置的 **iOS Shortcut** 在迁移期继续可用。现有版本通过兼容服务交换剪贴板；后续新能力只进入共享 P2P 核心。
+- **跨平台支持**：Windows、macOS 和 Linux 当前已完整支持。现有 iOS 与 Android 版本仍使用下文的 LAN 兼容方式；目标架构会让桌面、iOS、Android、HarmonyOS 成为对等的 P2P 节点。
+- **跨网络同步**：桌面节点可在同一 Wi-Fi 或跨互联网同步，并自动进行 NAT 穿透与加密中继回落。移动产品可以额外提供由用户显式选择的 LAN HTTP 兼容通道；它不替代共享 P2P 核心，也不会在 P2P 失败后自动接管。
+- **移动端 App**：安装 **[UniClipboard 移动端 App](https://github.com/UniClipboard/UniClip)**，一个客户端覆盖 **iOS**（目前 [TestFlight beta 公测中](https://testflight.apple.com/join/nyNQ8dQe)）与 **Android**（[下载 APK](https://github.com/UniClipboard/UniClip/releases/latest)）。内置的 **iOS Shortcut** 作为独立版本的 LAN 兼容通道继续可用；完整 P2P 能力独立交付和验收。
 - **加密空间**: 设备通过邀请码 + 口令加入同一个"空间" —— 不需要云账号、不需要邮箱，只需要两台设备相互信任。
 - **本地加密全文搜索**: 在数万条历史中也能毫秒级检索，索引本身在磁盘上同样加密 —— "本地存储"不等于"安全存储"，"本地加密存储"才是。
 - **文本、图片、文件**: 在一台设备复制，在另一台设备粘贴。大文件采用流式传输，不需要先装进内存。

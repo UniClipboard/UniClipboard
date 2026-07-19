@@ -6,7 +6,7 @@
 > 进度：B0 ✅（`uc-mobile-proto` 抽出，commit c1576bd05）· B1 ✅（`uc-mobile` UniFFI crate + xcframework + Swift binding，iOS 模拟器 demo 三探针全过：golden vector 解析 / 错误映射 / `with_foreign` bridge 构造 + 回调往返）· B2 ✅（`uc_mobile_init` ring provider + async `get_latest`/`put_clipboard`/`tls_probe`，模拟器 demo 对真实 daemon 完成 put+get 往返、401 映射、真实 TLS 握手；缝 3 由 detached-task 执行模型落实并有 drop/cancel 单测；编排脚本 `crates/uc-mobile/scripts/run-b2-daemon-demo.sh`）
 > ⚠️ B2 验收中「App / 键盘扩展 / 分享扩展三进程上下文各自 TLS 握手」**未在 spike 内验证**——demo 载体是单进程 CLI 二进制，三进程验收需等接入真实 uc-ios app（目标 B 启动时补）。其余 DoD 全部达成。
 >
-> **定位更新（2026-07-19）**：本方案及其 `uc-mobile` / `uc-mobile-proto` 产物转为 LAN HTTP 迁移期兼容线。自该日期起停止新增产品能力，只接受安全修复、现有客户端兼容修复和迁移支持。新目标由 `docs/architecture/adr-005-uc-engine-extraction.md` 与 `plans/README.md` 定义：桌面、iOS、Android、HarmonyOS 都运行同一完整 P2P 核心。当 iOS 和 Android 都发布首个只使用完整 P2P 核心的稳定版时，计划 005 必须登记一个不可滚动后移的明确删除版本；该版本至少晚于两端各自两个稳定发布周期，并覆盖 iOS Shortcut、HarmonyOS 社区版和已知第三方客户端的支持结束公告。到达该版本且不存在受支持的 LAN-only 客户端后，移除本兼容线。
+> **定位更新（2026-07-19 修订）**：本方案及其 `uc-mobile` / `uc-mobile-proto` 产物是移动产品可向用户显式提供的 LAN HTTP 兼容通道。它与 `docs/architecture/adr-005-uc-engine-extraction.md` 和 `plans/README.md` 定义的四平台完整 P2P 核心独立演进、独立发布；不得根据 P2P 失败自动回退，也不得替代完整 P2P 的构建和真机验收。
 
 ## 0. 一句话定位
 
@@ -138,7 +138,7 @@ impl MobileSyncClient {
 ## 6. 风险与待决
 
 - **历史假 oracle 警告（原目标 B）**：daemon 的 history query/PATCH 是 **兼容壳**（patch 不读 body、version 硬编码 0、无 409、无 modifiedAfter，见 `routes.rs:15-16`）——原计划全量迁移 `HistoryRecord`/version/isDelete 时，**真实 daemon 不是可靠字节对照物**。本 spike 未处理这些；若兼容修复必须触及该处，应使用 iOS 真实字节 fixture，而不是扩展产品能力。
-- **历史决定（2026-06-12，已于 2026-07-19 被取代）**：当时决定移动端只做 mobile-sync，不做真正的 P2P，并据此把 `uc-mobile` 收敛为 mobile-sync 的共享 Rust 实现。该实现现仅作为迁移期兼容线；FFI、移动目标编译、绑定配对和真机验证经验继续供统一完整 P2P 核心复用。
+- **历史决定（2026-06-12，已于 2026-07-19 被取代）**：当时决定移动端只做 mobile-sync，不做真正的 P2P，并据此把 `uc-mobile` 收敛为 mobile-sync 的共享 Rust 实现。该实现现作为独立 LAN HTTP 兼容通道；FFI、移动目标编译、绑定配对和真机验证经验继续供统一完整 P2P 核心复用。
 - **iOS demo 载体**：B1/B2 用一个最小 iOS demo target（非接入正式 uc-ios app），避免污染产品代码；管道证明后再谈接入。
 
 ---

@@ -1,6 +1,6 @@
 # Plan 004：交付三种移动绑定并完成四平台真机互通
 
-> **执行要求**：绑定层必须薄，只做类型转换和系统调用，不得复制配对、连接恢复、入站解码、文件组装或同步决策。每个平台正式包只允许使用完整 P2P 核心。
+> **执行要求**：P2P 绑定层必须薄，只做类型转换和系统调用，不得复制配对、连接恢复、入站解码、文件组装或同步决策。移动产品可额外提供用户显式选择的 LAN HTTP 兼容通道，但不得将其混入 P2P 绑定或作为自动回退。
 >
 > **漂移检查**：`git diff --stat 1c229e9e1..HEAD -- crates/uc-mobile .github/workflows/build-mobile-core.yml docs/packaging/mobile-core-build-release.md crates/uc-engine`
 
@@ -15,7 +15,7 @@
 
 ## 为什么必须做
 
-现有 `uc-mobile` 是 LAN HTTP 客户端，不能扩名冒充完整节点。iOS/Android 已有 UniFFI 与 XCFramework/AAR 接入经验，HarmonyOS 社区版已有 N-API 经验；应复用交付方式，但三种绑定都只依赖计划 003 的统一入口。
+现有 `uc-mobile` 是 LAN HTTP 客户端，不能扩名冒充完整节点。iOS/Android 已有 UniFFI 与 XCFramework/AAR 接入经验，HarmonyOS 社区版已有 N-API 经验；三种 P2P 绑定都只依赖计划 003 的统一入口。移动产品可在独立且用户显式选择的通道中继续支持 LAN HTTP。
 
 ## 当前事实
 
@@ -42,7 +42,7 @@
 - 用普通文件替代移动系统安全密钥库
 - 让 iOS 永久后台在线成为验收条件
 - 把 Android 后台剪贴板读取等同于节点在线
-- 在正式构建中保留运行时 LAN/P2P 切换开关
+- 实现 P2P 失败后自动切换到 LAN 的回退逻辑
 
 ## 步骤
 

@@ -2,7 +2,7 @@
 
 > 前置：spike B0–B2 已完成（FFI 管道证明成立，见 `uc-mobile-spike-plan.md`）。
 > 输入：`uc-ios-feature-inventory.md`（行为基线）+ `uc-ios-regression-checklist.md`（验收闸门）。
-> 状态更新（2026-07-19）：本方案已转为 LAN HTTP 迁移期兼容线，不再代表新移动客户端方向。新方向见 `docs/architecture/adr-005-uc-engine-extraction.md` 与 `plans/README.md`。
+> 状态更新（2026-07-19 修订）：本方案属于用户显式选择的独立 LAN HTTP 兼容通道，不代表完整 P2P 节点方向，也不得作为 P2P 失败后的自动回退。完整 P2P 方向见 `docs/architecture/adr-005-uc-engine-extraction.md` 与 `plans/README.md`。
 > 历史范围（2026-06-12）：**只做 mobile-sync，不做 P2P**——本方案不含任何 Transport/iroh/加密栈内容。
 > 冻结快照：M0+M1+M2+M3+M4+M5 已完成（M5 于 2026-06-14），M6 不再按原产品范围继续。语言审查豁免路径（`.planning/`）。
 > 冻结时进度：M0 ✅ + M1 ✅（`uc-mobile-proto` 抽出五个纯逻辑模块）· M2 ✅（补全 HTTP 客户端）· M3 ✅（补全连接测试）· M4 ✅（补全兼容状态逻辑）· M5 ✅（补全旧 SyncEngine 决策核）· M6 已停止。完整历史细节保留在 Git 中。

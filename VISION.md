@@ -28,7 +28,7 @@
 - **GUI 与 daemon 分离**：GUI 进程通过 HTTP/WS 连接外部 daemon，绝不内嵌 AppFacade 或打开数据库；daemon 绝不依赖任何 GUI 框架
 - **uc-desktop GUI 框架无关**：该 crate 禁止依赖 Tauri/AppKit/egui 等，由 uc-tauri 负责 GUI 壳适配
 - **薄中间层隔离重依赖**：uc-daemon-contract/uc-daemon-client/uc-daemon-process 作为叶子 crate，不携带 iroh/diesel/sqlite，使 CLI 和 GUI release 二进制免于链接重型依赖
-- **统一 P2P 核心**：桌面与移动宿主都通过同一核心入口运行完整节点；平台差异只存在于剪贴板、安全存储、文件句柄和生命周期接入，不得分叉协议、加密或内容能力
+- **统一 P2P 核心**：桌面与移动宿主都通过同一核心入口运行完整节点；平台差异只存在于剪贴板、安全存储、文件句柄和生命周期接入，不得分叉协议、加密或内容能力。移动产品可额外提供用户显式选择的 LAN HTTP 兼容通道；它独立于 P2P 核心，不得自动回退或替代完整节点能力
 - **可测试性**：76+ async trait Port 均为 Send + Sync，通过 Arc&lt;dyn Port&gt; 注入，应用层测试使用 mockall/手写 fake，永不触碰真实基础设施
 
 ## 安全与隐私底线
@@ -56,14 +56,14 @@
 ## 锁定决策
 
 | 决策 | 理由 |
-|------|------|
+| ------ | ------ |
 | iroh 作为唯一 P2P 传输 | QUIC NAT 穿越 + Ed25519 身份 + relay fallback，一栈解决连接问题 |
 | 单 MasterKey 扁平加密 | v1 简化实现，代价是无法可靠撤销已泄露设备（需 DEK 信封分层，留待 v2） |
 | 剪贴板语义为瞬时性 | 离线不重发、不排队、不最终一致——失败即报告，用户手动重发 |
 | daemon per-profile 单例 | fs2 文件锁保证一个 profile 只有一个 daemon 实例 |
 | AGPL-3.0-only 许可 | 任何修改后通过网络提供服务的实体必须开源对应源码 |
 | 遥测事件名一旦上线永不重命名 | 防止历史数据聚合断裂，演进通过创建 *_v2 + 废弃旧事件 |
-| 四平台运行统一完整 P2P 节点 | 桌面、iOS、Android、HarmonyOS 使用同一核心与协议；对等身份不等于永久后台在线，移动端暂停时离线、恢复后以原身份重连 |
+| 四平台运行统一完整 P2P 节点 | 桌面、iOS、Android、HarmonyOS 使用同一核心与协议；对等身份不等于永久后台在线，移动端暂停时离线、恢复后以原身份重连。移动产品可让用户显式选择独立 LAN HTTP 兼容通道，但不得自动回退或以其替代 P2P 验收 |
 
 ## 绝对禁区
 

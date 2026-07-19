@@ -15,7 +15,7 @@
 
 ## 为什么必须先做
 
-执行本计划前，项目文档同时保留两套互相冲突的决定。`docs/architecture/adr-005-uc-engine-extraction.md` 主张移动端前台运行完整节点；`VISION.md` 和 `.planning/research/uc-mobile-spike-plan.md` 后来把移动端锁定为 LAN HTTP 客户端。新的明确决定是：桌面、HarmonyOS、Android、iOS 都运行同一完整 P2P 核心，LAN HTTP 只作为限期兼容方案。
+执行本计划前，项目文档同时保留两套互相冲突的决定。`docs/architecture/adr-005-uc-engine-extraction.md` 主张移动端前台运行完整节点；`VISION.md` 和 `.planning/research/uc-mobile-spike-plan.md` 后来把移动端锁定为 LAN HTTP 客户端。新的明确决定是：桌面、HarmonyOS、Android、iOS 都运行同一完整 P2P 核心；移动产品可以额外提供用户显式选择的独立 LAN HTTP 兼容通道。
 
 ## 基线事实
 
@@ -67,11 +67,11 @@
 
 **验证**：`rg -n "退回 LAN|不承诺 mobile|mobile ⇄ mobile|start.*quiesce.*suspend.*resume" docs/architecture/adr-005-uc-engine-extraction.md`，预期只保留带历史说明或明确否决含义的 LAN 文本，生命周期新定义存在。
 
-### 3. 降级旧移动方案文档
+### 3. 明确旧移动方案的独立兼容身份
 
-在移动 spike 与连接 URI 文档开头标明其是迁移期兼容方案，写明停止新增能力的日期、目标移除条件，以及新核心计划入口。不得删除现有协议说明，因为已发布客户端仍需要它。
+在移动 spike 与连接 URI 文档开头标明其是用户显式选择的独立 LAN HTTP 兼容通道，写明它与完整 P2P 核心分别演进、分别发布，不得自动回退或替代完整 P2P 验收。不得删除现有协议说明，因为已发布客户端仍需要它。
 
-**验证**：`rg -n "迁移期|兼容|停止新增|移除" .planning/research/uc-mobile-spike-plan.md docs/architecture/mobile-sync-connect-uri.md`，预期两份文档都有明确标记。
+**验证**：`rg -n "兼容|显式选择|独立|自动回退" .planning/research/uc-mobile-spike-plan.md docs/architecture/mobile-sync-connect-uri.md`，预期两份文档都有明确标记。
 
 ## 测试计划
 
@@ -81,13 +81,13 @@
 
 **验证**：
 
-```bash
+````bash
 git diff HEAD --check
 if git diff HEAD -U0 -- README.md README_ZH.md VISION.md docs/architecture/adr-005-uc-engine-extraction.md docs/architecture/mobile-sync-connect-uri.md docs/packaging/mobile-core-build-release.md .planning/research/uc-mobile-spike-plan.md .planning/research/uc-mobile-goal-b-migration-plan.md .planning/phases/100-goal-b-mobile-sync-core-migration .planning/2026-06-25-dual-channel-file-sync-dedup-design.md | rg '^\+.*(/Users/|/Volumes/|/private/var/|/tmp/|[A-Za-z]:\\)'; then exit 1; fi
 for file in plans/*.md README.md README_ZH.md VISION.md docs/architecture/adr-005-uc-engine-extraction.md docs/architecture/mobile-sync-connect-uri.md docs/packaging/mobile-core-build-release.md; do
   awk 'BEGIN { open = 0; bad = 0 } /^```/ { if (!open) { if ($0 == "```") bad = 1; open = 1 } else { open = 0 } } END { if (open) bad = 1; exit bad }' "$file" || exit 1
 done
-```
+````
 
 预期所有命令均退出 0，且路径检查没有输出。
 
@@ -95,7 +95,7 @@ done
 
 - [x] 产品方向只剩一个当前决定：四平台完整 P2P。
 - [x] 移动暂停等于节点离线，不被写成降级 LAN 客户端。
-- [x] LAN HTTP 有明确兼容身份和删除条件。
+- [x] LAN HTTP 是用户显式选择的独立兼容通道，不自动回退且不替代 P2P 验收。
 - [x] 离线不自动补投规则未改变。
 - [x] `git diff --check` 通过。
 

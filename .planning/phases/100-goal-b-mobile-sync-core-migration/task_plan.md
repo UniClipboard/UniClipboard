@@ -6,7 +6,7 @@
 
 ## Goal
 
-> **状态更新（2026-07-19）**：本阶段已转为 LAN HTTP 迁移期兼容线，不再代表新移动客户端方向。新方向见 `docs/architecture/adr-005-uc-engine-extraction.md` 与 `plans/README.md`。
+> **状态更新（2026-07-19 修订）**：本阶段属于用户显式选择的独立 LAN HTTP 兼容通道，不代表完整 P2P 节点方向，也不得作为 P2P 失败后的自动回退。完整 P2P 方向见 `docs/architecture/adr-005-uc-engine-extraction.md` 与 `plans/README.md`。
 
 本阶段原始目标是把 uc-ios `Shared/`（Network/Models/Cache）里「给定输入 → 确定输出」的纯逻辑 + HTTP 客户端
 下沉到共享 Rust crate（`uc-mobile-proto` 纯编解码叶子 + `uc-mobile` UniFFI 边界），iOS（未来
@@ -15,7 +15,7 @@ Android）经 UniFFI 调用；其历史范围只做 mobile-sync（明文 HTTP + 
 
 ## 历史执行快照（已冻结）
 
-以下内容只记录 2026-07-19 前的执行现场，不再是当前工作队列。除安全、兼容和迁移支持外，不得继续推进未完成的 M6 产品能力。
+以下内容只记录 2026-07-19 前的执行现场，不再是完整 P2P 核心的当前工作队列。LAN HTTP 后续工作必须保持独立入口、独立发布和用户显式选择。
 
 **Phase 6（M6）· uc-ios 接入与灰度** — 冻结时未完成。connect-uri 全 done。**M6-1 全 7 端点 📱真机通过**（step 1 getClipboard + step 2/3 put/file/history，2026-06-16 用户真机验过）：getClipboard/putClipboard/putFile/getFile/queryHistory/getHistoryPayload + cancelInFlight 全经 Rust core，native fallback 仅剩 cancelInFlight、待 step 4 删（step 4 = 删 adapter native fallback，待 M4/M5 全切完 + 真机后做）。220 XCTest + 38 Swift Testing 全绿、app build SUCCEEDED。4 设计决策见 Decisions。**M6-2 子步 3 阶段 ①（M5 决策核 pull 路径）代码完成（iOS `f8ddf79`）**：SyncEngine tick 的 preamble + truth-gate/server-new 经 Rust M5 reducer（flag-gated 双路径，flag off 零回归）；push/history/公开方法仍 native（阶段 ②+）。220 XCTest + **50** Swift Testing 全绿、app build SUCCEEDED。阶段 ① 4 实现级决策（含 🔴 loop-trip guard 陷阱）见 findings。**阶段 ① 📱 真机验通过（2026-06-17 用户翻 toggle，Console 实测 reducer 逐 tick 日志 + 拉取/收敛/server-new/loop 正常）**。**阶段 ② done（push，iOS `2c2711f`）**：`route` 的 `.push(decision)` 捕获 reducer 算好的 PushDecision → 新 `maybePushViaReducer`（skip→`commit_push_skipped`+shell 补 lastSyncedAt 细微差；doPush→native PUT→`commit_push`+native appendHistory/donation；trip stick loopDetected）；flag off 逐字节不变=零回归；app build SUCCEEDED + 220 XCTest + 50 Swift Testing 不回归。**阶段 ② 📱 真机验通过（2026-06-18 用户翻 toggle，push 路径正常）**。**阶段 ③ done（consentPush + markStagedApplied，iOS `89918f3`，📱 验通过）+ 阶段 ④ done（history sync `runHistorySyncIfDue` 节流/冷启/watermark/done-commit 经 reducer，iOS `761d1b4`）+ 阶段 ⑤ done（余下公开方法 acknowledge/reset/handleActiveServerChanged/handleNetworkRouteChanged/handleEndpointChanged，iOS `157a626`）**：全 dispatcher/native/viaReducer 三件套，flag off 逐字节不变=零回归；app build SUCCEEDED + 220 XCTest + 50 Swift Testing 不回归。**🎉 子步 3 收口（SyncEngine 决策核全 5 阶段全迁，flag on 时 pull+push+consent+staged-apply+history-sync+ 公开转移全经 Rust M5 reducer）**。**✅ 子步 3 整体 📱 终验通过（2026-06-18 用户「全部验证通过」，flag on 全路径真机跑通）**。用户拍板 **现在删原生路径**，但前置：删后 reducer 路径必须能靠日志诊断、不黑盒。**生产诊断日志 harness done（iOS `e94ffd1`）**：去掉全部 reducer 日志的 `#if DEBUG`（原先 Release 零输出=黑盒）；1Hz 分级（逐 tick 决策 preamble/route/skip→`debug` 仅 live-stream 不刷持久库；状态变化 apply/stage/push/consent/staged-apply/history/5 公开转移→`notice` 持久留痕；失败→`error`）；补全 push 结果/history 计数/5 公开转移/consent 错误分支缺口；隐私只打状态/bool/计数/决策 + 8 位 hash 前缀 (`hashTag`，单向不可逆，绝不打内容)。23 条日志 subsystem `app.uniclipboard`/category `sync`。app build SUCCEEDED + 220+50 不回归。**✅ 诊断闭环实测通过（2026-06-18，agent 自主）**：boot 模拟器 + `simctl spawn defaults write` 注入 flag+server(App Group) + launch + `log stream`/`log show` 拉日志——实测抓到 reducer `sync preamble: stop(backoffGate)`(live debug) + `sync route-changed`(持久 notice) + `tick: SyncError`(持久 error)。**删原生路径后我能自主诊断、不黑盒（删后连 flag 都不用注，reducer 是唯一路径）**。流程存记忆 `ios-sim-log-diagnosis-harness` + **固化成 model-invoked skill `.claude/skills/ios-log-diagnose/`**（helper `ios-logs.sh` 三子命令 drive/stream/show，已实测；untracked 待用户决定是否 commit）。**冻结前焦点（不得继续作为产品主线）→ 删原生路径前置已满足，proceed 删原生路径（13 method-triple 塌缩 + flag + adapter native fallback + 工厂/router 双路径，多 commit 每步 build/test）**。⚠️ phase④ 期间发现用户并行提交了 manual-refresh consent-push 功能（`858a1e5` VM+View），其 SyncEngine 侧 `explicitRefresh(pushing:)` 漏提交→我补 `2aebbe8`（详见 Errors）。
 iOS repo: `/Users/mark/MyProjects/iOSApp/UniClipboard`，分支 `mobile-sync-rust-core`（基线 main，本地 20 commit，未推送/未 PR；含用户并行提交的 manual-refresh 功能 `858a1e5`+我补的 `2aebbe8`）。RustCore/ gitignored 产物，改 Rust 后需 `UC_RUST_REPO=<rust-repo> bash Scripts/build-rust-core.sh` 重 stage。⚠️ Shared/ 里调 Rust core 的代码必须 `#if UC_RUST_CORE`（非 canImport，见 findings 🔴）。
@@ -137,7 +137,7 @@ iOS repo: `/Users/mark/MyProjects/iOSApp/UniClipboard`，分支 `mobile-sync-rus
 
 | Decision | Rationale |
 |----------|-----------|
-| 移动端只做 mobile-sync，不做 P2P/iroh/加密栈 | 2026-06-12 的历史决定；已于 2026-07-19 被四平台统一完整 P2P 核心决定取代。本阶段记录仅用于维护 LAN HTTP 迁移期兼容线。 |
+| 移动端只做 mobile-sync，不做 P2P/iroh/加密栈 | 2026-06-12 的历史决定；已于 2026-07-19 被四平台统一完整 P2P 核心决定取代。本阶段记录仅用于维护独立 LAN HTTP 兼容通道。 |
 | cancel **不永久 poison**（偏离 Swift） | Rust client 长生命周期、多 server、独占 runtime；poison 会逼原生每次网络切换重建 client+ 重起线程（M2，2026-06-12 拍板） |
 | 单一真相收敛只做 client 侧（删 WireDoc），daemon 侧另立 issue | daemon `SyncClipboardDoc` 收敛有 PascalCase 别名/size 恒在/hash 不归一三处回归风险（M2，用户拍板） |
 | M3 就为 probe/test 接 trustInsecureCert | 各自构建客户端、成本极低、忠实 A7；生产客户端 trust 留 M4（2026-06-14 拍板） |

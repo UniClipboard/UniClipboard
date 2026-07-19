@@ -1,13 +1,15 @@
 # Mobile Sync Connect URI — Protocol Specification
 
-> Single source of truth for the `uniclipboard://connect` deep-link protocol used to onboard
-> mobile clients (iOS Shortcut, Android SyncClipboard-compatible clients, future native apps)
+> Single source of truth for the `uniclipboard://connect` deep-link protocol used to maintain
+> supported compatibility clients (iOS Shortcut and Android SyncClipboard-compatible clients)
 > by encoding `base_url`, `username`, `password`, and extensible metadata into a single QR code.
 >
-> **Status**: v1 — accepted. Implemented across `uc-application`, Tauri DTOs, web UI, and
-> client integration templates.
+> **Status**: v1 — accepted for compatibility maintenance only; closed to new product capabilities.
+> Implemented across `uc-application`, Tauri DTOs, web UI, and client integration templates.
 > **Revision 2026-06-11**: additive `urls` multi-candidate field (§3.1a, §7.3) — no
 > version bump; see `docs/planning/mobile-sync-qr-multi-url.md` for the design rationale.
+>
+> **兼容状态（2026-07-19）**：本协议继续服务已发布的 LAN HTTP 客户端，但已进入迁移期兼容状态，自该日期起停止新增产品能力，只接受安全修复、兼容修复和迁移支持。新客户端目标是 `docs/architecture/adr-005-uc-engine-extraction.md` 定义的四平台统一完整 P2P 核心。当 iOS 和 Android 都发布首个只使用完整 P2P 核心的稳定版时，计划 005 必须在本文登记一个不可滚动后移的明确删除版本；该版本至少晚于两端各自两个稳定发布周期，并覆盖 iOS Shortcut、HarmonyOS 社区版和已知第三方客户端的支持结束公告。到达该版本且不存在受支持的 LAN-only 客户端后，移除本协议及其服务端入口。实施顺序见 `plans/README.md`。
 >
 > **Tracking issue**: [#789](https://github.com/UniClipboard/UniClipboard/issues/789)
 
@@ -30,11 +32,11 @@ Design constraints driving the shape below:
 
 - **Single QR**: one scan, no manual fields. QR Version ≤ 20 (≤ ~800 chars URI) so it stays
   easy to scan on common phones in normal lighting.
-- **Versioned**: future fields can be added without breaking v1 clients.
+- **Versioned**: v1 clients can continue rejecting incompatible historical payloads deterministically; this compatibility line is closed to new fields.
 - **Multi-client neutral**: same payload works for iOS Shortcut, Android compatible clients,
-  and any future native UniClipboard app.
+  and native apps that already implemented this compatibility protocol.
 - **Forward-compatible metadata**: `o` (other) is an open key-value bag; **clients ignore
-  unknown keys** so the server can ship new hints without coordinated client releases.
+  unknown keys** so already-issued payloads remain parseable across compatibility releases.
 - **Connectivity unchanged**: HTTP wire protocol stays SyncClipboard-compatible
   (`GET /SyncClipboard.json` + HTTP Basic Auth); the URI only carries credentials and
   metadata, never wire-level behavior.
@@ -172,14 +174,14 @@ all connectivity comes from `url`/`user`/`pwd`.
 
 **Generator-side allow-list (v1)**: the desktop encoder MAY write only the following keys.
 Implementations MUST NOT serialize any other keys into `o` to prevent field pollution and
-keep the QR compact. Adding a new key requires bumping this allow-list in a follow-up
-spec revision (no payload version bump needed — clients already ignore unknowns).
+keep the QR compact. The allow-list is frozen; new product keys belong to the full P2P
+pairing protocol, not a follow-up revision of this compatibility spec.
 
 | Key       | Example value           | Purpose                                                                |
 | --------- | ----------------------- | ---------------------------------------------------------------------- |
 | `label`   | `"My iPhone"`           | Human-readable device name for client-side UI display.                 |
 | `did`     | `"did_0123abcd"`        | Server-assigned `device_id`, for diagnostics and log correlation.      |
-| `proto`   | `"syncclipboard"`       | Protocol family hint. Future values may include `"uniclipboard-native"`. |
+| `proto`   | `"syncclipboard"`       | Frozen protocol family hint for compatibility clients.                  |
 | `install` | `"shortcut-ex"`         | iOS Shortcut template hint, paired with the iCloud install URL constant. |
 
 **Parser-side**: lenient. Read the keys above when present; ignore everything else without
@@ -196,15 +198,15 @@ failing.
 - `pwd` MAY contain any printable Unicode (it survives JSON escaping); however, in practice
   the password mint flow produces ASCII-only values (see `MintedCredentials`).
 
-### 3.4 Why two version numbers?
+### 3.4 Why v1 contains two version numbers
 
 - URI-level `v` (`?v=1`) lets a client reject the URI *before* base64-decoding when the
-  envelope itself is incompatible (e.g. a future v2 wraps `p` differently).
+  envelope is incompatible.
 - Payload `v` (inside JSON) lets a client reject the *contents* when the envelope was
   understood but field semantics changed.
 
-In v1 they are both `1`. They will diverge if and only if the envelope format ever changes
-in a way that base64url+JSON cannot accommodate.
+In the frozen compatibility protocol they are both `1`. No later envelope version is planned;
+new clients use the full P2P pairing protocol instead.
 
 ---
 
@@ -430,20 +432,18 @@ After first install, every subsequent device add only needs the connect-URI scan
 
 ## 9. Client integration notes
 
-The three paths below are listed in **delivery-priority order**. Path 9.1 is the
-primary onboarding route for new users; 9.2 is the fallback for users who haven't
-installed the native iOS App yet; 9.3 covers third-party clients.
+The three paths below document supported compatibility clients. They are not onboarding
+routes for the new P2P architecture, and their order does not imply future investment.
 
-### 9.1 Native UniClipboard iOS App (primary)
+### 9.1 Native UniClipboard iOS App (compatibility mode)
 
 The iOS App registers the `uniclipboard` URL scheme. When the user points the system
 Camera app at the desktop's QR, iOS surfaces an "Open in UniClipboard?" smart action
 and routes the URL into the App's `.onOpenURL` handler. The App parses per §4 and
 either pre-fills the Add Server form or asks the user to confirm before saving.
 
-`o.proto` distinguishes "SyncClipboard-compatible HTTP" from a possible future native
-protocol family. v1 clients ignore the field; future clients may switch transport
-based on it.
+`o.proto` records that this payload belongs to SyncClipboard-compatible HTTP. It must not
+be used to switch a new client onto another transport.
 
 Step-by-step integration (URL scheme registration, `.onOpenURL` wiring, Swift parser,
 error-code → user-copy mapping, `simctl openurl` test recipe) lives in
@@ -479,9 +479,10 @@ client-specific guides for this path — the spec itself is the contract.
 
 ---
 
-## 10. Forward compatibility and v2 sketch
+## 10. Archived v2 sketch
 
-Not part of v1, but designed-for:
+The following ideas were considered before the compatibility line was frozen. They are not
+planned work and must not be implemented here; replacement pairing belongs to the full P2P core:
 
 - **`o.exp` (expiry)**: Unix-ms timestamp after which a parser should refuse the URI. Lets
   the desktop emit time-bounded onboarding QRs (e.g. valid 10 minutes). v1 parsers ignore;
@@ -495,7 +496,8 @@ Not part of v1, but designed-for:
 - **Per-device push channel hints**: `o.push` for APNs/FCM topic. Pure additive, no
   version bump.
 
-Any change that *removes* or *re-typed* a required v1 field requires bumping payload `v`.
+No v2 will be created in this compatibility line. Security fixes that cannot preserve v1
+must retire the affected flow rather than create a parallel future protocol here.
 
 ---
 

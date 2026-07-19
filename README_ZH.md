@@ -21,13 +21,13 @@
   <a href="#mobile-companion-lan">
     <img
       alt="iOS"
-      src="https://img.shields.io/badge/-iOS%20(LAN)-lightgrey?style=flat-square&logo=apple&logoColor=white"
+      src="https://img.shields.io/badge/-iOS%20(compat)-lightgrey?style=flat-square&logo=apple&logoColor=white"
     />
   </a>
   <a href="#mobile-companion-lan">
     <img
       alt="Android"
-      src="https://img.shields.io/badge/-Android%20(LAN)-3DDC84?style=flat-square&logo=android&logoColor=white"
+      src="https://img.shields.io/badge/-Android%20(compat)-3DDC84?style=flat-square&logo=android&logoColor=white"
     />
   </a>
 
@@ -71,7 +71,7 @@ UniClipboard 是一款以 **隐私优先** 为核心理念的跨设备剪贴板�
 </p>
 
 <details>
-  <summary><strong>移动配套</strong> —— 在手机上分享截图到电脑。（点击展开）</summary>
+  <summary><strong>当前移动兼容方式演示</strong> —— 在手机上分享截图到电脑。（点击展开）</summary>
   <p align="center">
     <video src="https://github.com/user-attachments/assets/29f4bf5d-8996-4602-8784-067fb919c671" controls muted playsinline width="800"></video>
   </p>
@@ -92,7 +92,7 @@ UniClipboard 是一款以 **隐私优先** 为核心理念的跨设备剪贴板�
 - [使用说明](#使用说明)
   - [第一台设备（新建空间）](#第一台设备新建空间)
   - [添加更多设备（通过邀请码加入）](#添加更多设备通过邀请码加入)
-  - [配对手机（伴侣）](#mobile-companion-lan)
+  - [配对手机（当前兼容方式）](#mobile-companion-lan)
   - [主要页面](#主要页面)
 - [高级功能](#高级功能)
   - [工作原理](#工作原理)
@@ -106,9 +106,9 @@ UniClipboard 是一款以 **隐私优先** 为核心理念的跨设备剪贴板�
 
 ## 功能特点
 
-- **跨平台支持**: Windows、macOS 和 Linux 三端均为一等公民 —— 你的剪贴板跟着你在哪都能用。iPhone 与 Android 可以作为 **伴侣** 接入（见下文）。
-- **跨网络同步**: 同一 Wi-Fi、不同家庭/办公室网络、甚至跨广域网均可实时同步，自动 NAT 穿透与加密中继回落 —— 不再局限于局域网，也不绑定单一网络。（桌面 ↔ 桌面适用；手机是伴侣 —— 默认走 LAN，也可经 server 节点或 Tailscale 跨网络。）
-- **移动端伴侣**: 安装 **[UniClipboard 移动端 App](https://github.com/UniClipboard/UniClip)** —— 一个客户端同时覆盖 **iOS**（目前 [TestFlight beta 公测中](https://testflight.apple.com/join/nyNQ8dQe)）与 **Android**（[下载 APK](https://github.com/UniClipboard/UniClip/releases/latest)）。内置的 **iOS Shortcut** 也保留作为备选。与桌面双向交换剪贴 —— 默认走 LAN，也可经 server 节点或 Tailscale 跨网络。支持二维码配对、每台手机独立凭证，密码可在不解绑设备的情况下轮换。
+- **跨平台支持**：Windows、macOS 和 Linux 当前已完整支持。现有 iOS 与 Android 版本仍使用下文的迁移期兼容方式；目标架构会让桌面、iOS、Android、HarmonyOS 成为对等的 P2P 节点。
+- **跨网络同步**：桌面节点可在同一 Wi-Fi 或跨互联网同步，并自动进行 NAT 穿透与加密中继回落。移动端在共享 P2P 核心交付前暂时使用限期兼容路径。
+- **移动端 App**：安装 **[UniClipboard 移动端 App](https://github.com/UniClipboard/UniClip)**，一个客户端覆盖 **iOS**（目前 [TestFlight beta 公测中](https://testflight.apple.com/join/nyNQ8dQe)）与 **Android**（[下载 APK](https://github.com/UniClipboard/UniClip/releases/latest)）。内置的 **iOS Shortcut** 在迁移期继续可用。现有版本通过兼容服务交换剪贴板；后续新能力只进入共享 P2P 核心。
 - **加密空间**: 设备通过邀请码 + 口令加入同一个"空间" —— 不需要云账号、不需要邮箱，只需要两台设备相互信任。
 - **本地加密全文搜索**: 在数万条历史中也能毫秒级检索，索引本身在磁盘上同样加密 —— "本地存储"不等于"安全存储"，"本地加密存储"才是。
 - **文本、图片、文件**: 在一台设备复制，在另一台设备粘贴。大文件采用流式传输，不需要先装进内存。
@@ -253,9 +253,9 @@ bun tauri build
 
 > 已经完成设置、想切换到另一个空间？在 **设备** 页使用 **切换空间**（或在 CLI 中运行 `uniclip join --switch`）—— 本地的剪贴板历史会被重新加密并迁移到新空间。不带 `--switch` 时，`uniclip join` 走非破坏性的赎回 / 重新配对分支，不会切换空间。
 
-### 配对手机（伴侣） <a id="mobile-companion-lan"></a>
+### 配对手机（当前兼容方式） <a id="mobile-companion-lan"></a>
 
-**[UniClipboard 移动端 App](https://github.com/UniClipboard/UniClip)** 一个客户端同时覆盖 **iOS**（目前在 [TestFlight beta 公测](https://testflight.apple.com/join/nyNQ8dQe)）与 **Android**（APK 直接在 [releases 页](https://github.com/UniClipboard/UniClip/releases/latest)下载）。手机以 **HTTP 伴侣** 的形式接入：桌面 daemon 暴露一个小型 HTTP 服务，手机直接读写它（默认走 LAN，也可经 server 节点或 Tailscale 跨网络）。
+**[UniClipboard 移动端 App](https://github.com/UniClipboard/UniClip)** 一个客户端同时覆盖 **iOS**（目前在 [TestFlight beta 公测](https://testflight.apple.com/join/nyNQ8dQe)）与 **Android**（APK 直接在 [releases 页](https://github.com/UniClipboard/UniClip/releases/latest)下载）。现有版本使用限期保留的 **HTTP 兼容方式**：桌面 daemon 暴露一个小型 HTTP 服务，手机直接读写它。该路径只接受安全、兼容与迁移修复；目标架构会让移动设备成为完整的 P2P 空间节点。
 
 1. 桌面打开 **设备 → 移动端同步**，启用开关，并挑一块手机能拨通的 LAN IPv4 网卡（**别** 把 `0.0.0.0` / `Auto` 印到手机屏幕上）。
 2. 点 **Add device**，生成包含监听 URL、用户名与一次性密码的二维码。
@@ -264,11 +264,11 @@ bun tauri build
 4. **Android** —— 装 [**UniClipboard 移动端 App**](https://github.com/UniClipboard/UniClip)（[APK 下载](https://github.com/UniClipboard/UniClip/releases/latest)），填同样的 URL 和凭证。
 5. 任意一端复制，另一端通过 Wi-Fi 收到。
 
-当前限制：
+兼容方式的当前限制：
 
-- **不走 P2P** —— 移动端不做 NAT 穿透、不走 relay，就是个普通 HTTP 客户端。默认在 LAN 下开箱即用，跨网络可经自建 server 节点（公网 HTTPS）或 Tailscale / VPN overlay。
+- **现有版本不走 P2P** —— 兼容客户端不做 NAT 穿透、不走 relay。默认在 LAN 下使用，跨网络可经自建 server 节点（公网 HTTPS）或 Tailscale / VPN overlay。
 - **监听器是明文 HTTP + Basic Auth** —— 放一层 TLS 反向代理（例如 server 节点）即可走 HTTPS；监听器原生 TLS 计划在 v2 引入。裸监听器只在你信任的网络上开启。
-- **手机不是空间对端** —— 不分配 node ID，看不到加密历史数据库，只交换当下的剪贴。
+- **兼容客户端不是空间对端** —— 不分配 node ID，看不到加密历史数据库。这个限制只属于迁移路径，不属于共享 P2P 核心。
 - **iOS 没有静默后台同步** —— iOS 不给第三方 App 通用的后台剪贴板钩子，所以 iOS 端只在前台（或点开通知时）才能收发剪贴，做不到桌面那种常驻后台静默同步。这是系统层限制，不是功能缺失；连微信输入法也只能在键盘被调起的那一刻同步剪贴。详见 [FAQ — iOS 后台同步](https://www.uniclipboard.app/docs/zh/faq#ios-app-为什么不能像桌面那样在后台静默同步剪贴板)。
 
 完整流程见 [移动端同步指南](https://www.uniclipboard.app/docs/zh/guides/mobile-sync)，或 [无头 server 节点指南](https://www.uniclipboard.app/docs/zh/guides/self-host-server-node) —— 让手机从任意网络都能经 HTTPS 访问。
@@ -379,7 +379,7 @@ uniclip status / start / stop   # 守护进程生命周期
 <details>
   <summary><strong>有移动端 App 吗？</strong></summary>
 
-有 —— **[UniClipboard 移动端 App](https://github.com/UniClipboard/UniClip)** 一个客户端同时覆盖 iOS 与 Android。iOS 侧已开启 **TestFlight beta 公测**：在 App Store 装好 TestFlight 后，打开 [testflight.apple.com/join/nyNQ8dQe](https://testflight.apple.com/join/nyNQ8dQe) 接受邀请并安装即可。Android 侧的 APK 直接在 [releases 页](https://github.com/UniClipboard/UniClip/releases/latest)下载。移动端以 **HTTP 伴侣** 的方式跑：桌面 daemon 暴露一个 HTTP 端点，手机用 base URL + 凭据与之读写。双向同步；默认走 LAN，也可经 server 节点（公网 HTTPS）或 Tailscale 跨网络。移动端本身不打洞、不走 relay。具体步骤见上文 [配对手机](#mobile-companion-lan) 一节。
+有 —— **[UniClipboard 移动端 App](https://github.com/UniClipboard/UniClip)** 同时覆盖 iOS 与 Android。现有版本使用上文所述的限期 HTTP 兼容方式，可在 LAN 内使用，也可经 server 节点或 Tailscale 跨网络，但移动端自身暂不做 P2P 穿透。目标移动架构会使用与桌面、HarmonyOS 相同的完整 P2P 核心。当前设置方法见上文 [配对手机](#mobile-companion-lan)。
 </details>
 
 ## 参与贡献

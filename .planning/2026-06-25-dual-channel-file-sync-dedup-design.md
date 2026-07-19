@@ -52,7 +52,7 @@ restore / active-state / pull **忠实地复用存储的 hash B**（`crates/uc-a
   - **本地产生**：capture 基于 **文件内容** 填 digest 后调 `content_identity` 算出 H，存进 `clipboard_event.snapshot_hash`。
   - **远端接收（inbound）**：H 等于发送方 wire 携带的 `snapshot_hash`。**接收端持久化必须原样采用 wire H，禁止用本机 materialized 快照（已重写本地路径）重算**（F-4）。
   - 编码函数（`encode_*_to_v3_bytes`）**不再产出可被业务使用的 hash**，至多产诊断值。
-  - **范围说明**：mobile 入站走独立 LAN HTTP 协议（VISION 锁定，非 iroh），有自己的身份处理，不在本次 iroh 双通道修复内；本节"唯一入口"指桌面 iroh 同步链路的本地产生路径。
+  - **范围说明**：本方案制定时，mobile 入站走独立 LAN HTTP 协议（非 iroh），有自己的身份处理，因此不在本次 iroh 双通道修复内。该移动路径已于 2026-07-19 转为迁移期兼容线；本节"唯一入口"仍只指本方案处理的桌面 iroh 同步链路本地产生路径。
 - **H 不可变 + Resend 一致性（R4-F3）**：一个 entry 的 canonical H 一旦在出生点确定即 **不可变**，它绑定的是 capture 时持久化的那份 `EntryFileSet`（含被 size-cap 排除的事实）。由此：
   - 任何复用该 entry 的再发（dispatch / active pull serve / 显式 Resend）**只能发 `EntryFileSet` 记录的那一组字节**——**绝不** 在旧 H 下多发当初被排除的文件。
   - 用户若想"把当初超限排除的大文件也发出去"，那是一次 **新捕获 → 新 `EntryFileSet` → 新 H → 新 entry**，不是同一身份。

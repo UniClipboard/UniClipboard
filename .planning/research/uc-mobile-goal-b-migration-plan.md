@@ -2,9 +2,10 @@
 
 > 前置：spike B0–B2 已完成（FFI 管道证明成立，见 `uc-mobile-spike-plan.md`）。
 > 输入：`uc-ios-feature-inventory.md`（行为基线）+ `uc-ios-regression-checklist.md`（验收闸门）。
-> 范围拍板（2026-06-12）：**只做 mobile-sync，不做 P2P**——本方案不含任何 Transport/iroh/加密栈内容。
-> 状态：M0+M1+M2+M3+M4+M5 已完成（M5 于 2026-06-14），M6 待续。语言审查豁免路径（`.planning/`）。
-> 进度：M0 ✅ + M1 ✅（`uc-mobile-proto` 扩出 `hash`/`clipboard_doc`/`history_record`/`multipart`/`net_class` 五模块，从 uc-ios Swift 逐字节迁移，140 测试全绿）· M2 ✅（`uc-mobile/client.rs` 补全 A6：全端点 + 状态映射 + 重试 + 取消 + base-url/文件名校验，29 测试绿、iOS-sim 交叉编译通过，client 侧 `WireDoc` 收敛到 proto `Clipboard`）· M3 ✅（`client.rs` 补 A7：`test_connection`/`probe`/`first_reachable`，复用 proto `ordered_urls`，trustInsecureCert 接线 probe/test、epoch 透传回带 `ProbeReport`，53 测试绿、iOS-sim 通过）· M4 ✅（E/F 区：Rust 拥有持久化 blob 字节——proto 新增 `app_settings`/`server_config`/`history_log`/`loop_guard`/`payload_cache`/`file_state`/`persist_keys` 7 模块 198 测试；trustInsecureCert 补生产客户端构造期+setter，55+1 测试绿、iOS-sim 通过）· M5 ✅（C 区 SyncEngine 决策核：proto 新增 `sync_engine` 模块——reducer 形态 `SyncRuntimeState` plain struct + plan/commit 纯转移函数；server-wins 路由、去重守卫三件套、loop-guard 接线、退避/节奏、history due/cold-start、epoch 校验；网络 I/O + 1Hz 调度 + UIPasteboard 留原生；proto 246 测试绿、iOS-sim 通过，FFI 镜像延后 M6）· M6 ⏳
+> 状态更新（2026-07-19）：本方案已转为 LAN HTTP 迁移期兼容线，不再代表新移动客户端方向。新方向见 `docs/architecture/adr-005-uc-engine-extraction.md` 与 `plans/README.md`。
+> 历史范围（2026-06-12）：**只做 mobile-sync，不做 P2P**——本方案不含任何 Transport/iroh/加密栈内容。
+> 冻结快照：M0+M1+M2+M3+M4+M5 已完成（M5 于 2026-06-14），M6 不再按原产品范围继续。语言审查豁免路径（`.planning/`）。
+> 冻结时进度：M0 ✅ + M1 ✅（`uc-mobile-proto` 抽出五个纯逻辑模块）· M2 ✅（补全 HTTP 客户端）· M3 ✅（补全连接测试）· M4 ✅（补全兼容状态逻辑）· M5 ✅（补全旧 SyncEngine 决策核）· M6 已停止。完整历史细节保留在 Git 中。
 
 ## 0. 一句话定位
 
@@ -113,6 +114,6 @@ xcframework 经 SPM binaryTarget 进 uc-ios；**feature flag 双路径**（原�
 
 ## 6. 与现有文档的关系
 
-- 验收唯一标准：`uc-ios-regression-checklist.md`（本方案的里程碑↔清单分区映射：M0/M1↔A、M3↔A7+B、M4↔E/F、M5↔C、M6↔D/G–L）。
+- 原兼容线验收标准：`uc-ios-regression-checklist.md`（本方案的里程碑↔清单分区映射：M0/M1↔A、M3↔A7+B、M4↔E/F、M5↔C、M6↔D/G–L）。
 - 行为语义查询：`uc-ios-feature-inventory.md`。
 - 管道与执行模型（runtime/缝 1/2/3）：`uc-mobile-spike-plan.md`，本方案不重复。

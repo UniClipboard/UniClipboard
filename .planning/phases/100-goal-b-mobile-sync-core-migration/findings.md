@@ -1,21 +1,23 @@
 # Findings & Decisions — 目标 B mobile-sync 迁移
 
 > 外部记忆。权威细节在 commit message + `.planning/research/` + 代码 doc comments；本文存「接手必知」的浓缩。
+>
+> **状态更新（2026-07-19）**：本文记录的 LAN HTTP 方案已转为迁移期兼容线，不再代表新移动客户端方向。新方向见 `docs/architecture/adr-005-uc-engine-extraction.md` 与 `plans/README.md`。
 
 ## Requirements
 
 <!-- 来自迁移方案 + 回归清单 -->
 - 把 uc-ios `Shared/`（Network/Models/Cache）纯逻辑 + HTTP 客户端下沉到共享 Rust crate，iOS/Android 经 UniFFI 调用。
 - UI / 剪贴板 I/O / SSID 探测 / 系统 API / 扩展壳 **永留原生**。
-- 只做 mobile-sync（SyncClipboard 兼容 LAN HTTP，明文 + Basic Auth），**不做 P2P/iroh/加密栈**。
-- 验收唯一标准 = `.planning/research/uc-ios-regression-checklist.md` 逐条全绿（A 字节关键 → L 捐赠）。
+- 历史范围只做 mobile-sync（SyncClipboard 兼容 LAN HTTP，明文 + Basic Auth），不做 P2P/iroh/加密栈；该范围已于 2026-07-19 被四平台统一完整 P2P 核心方向取代。
+- 该兼容线原验收标准 = `.planning/research/uc-ios-regression-checklist.md` 逐条全绿（A 字节关键 → L 捐赠）。
 - 零回归：迁移期保留原生/Rust 双路径 feature-flag，A/B 定位来源；全绿后删原生路径。
 
 ## 纲领文档（接手按序读）
 
 1. `.planning/research/uc-mobile-spike-plan.md` — spike B0–B2，FFI 管道 + runtime 执行模型 + 三个工程缝。
-2. `.planning/research/uc-mobile-goal-b-migration-plan.md` — **主线方案**，M0–M6 + oracle 策略 + 风险表（M0–M3 已 ✅）。
-3. `.planning/research/uc-ios-regression-checklist.md` — **验收唯一标准**，逐条勾选（A1–A7 + B 编解码已勾）。
+2. `.planning/research/uc-mobile-goal-b-migration-plan.md` — **原主线方案（已冻结）**，M0–M6 + oracle 策略 + 风险表（M0–M3 已 ✅）。
+3. `.planning/research/uc-ios-regression-checklist.md` — **原兼容线验收标准**，逐条勾选（A1–A7 + B 编解码已勾）。
 - uc-ios 源码：`/tmp/uc-ios`（可能被清理，重 clone：`git clone --depth 1 https://github.com/UniClipboard/uc-ios /tmp/uc-ios`）。Swift 实现 + `Tests/` 是规范源。
 
 ## crate 拓扑

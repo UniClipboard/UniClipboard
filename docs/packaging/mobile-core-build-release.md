@@ -1,6 +1,8 @@
-# 移动核心（uc-mobile）构建与发包 Runbook
+# 移动 LAN 兼容核心（uc-mobile）构建与发包 Runbook
 
-本文是共享 Rust 移动同步核心 `uc-mobile` 的构建与发布操作手册。它把 `uc-mobile` 编译成
+> **兼容状态（2026-07-19）**：`uc-mobile` 已转为 LAN HTTP 迁移期兼容线，不是新的四平台共享核心。本文仅用于已发布客户端的安全修复、兼容修复和迁移支持；不得在此发布线新增产品能力。完整 P2P 核心的交付顺序见 `plans/README.md`。
+
+本文是 Rust 移动 LAN 兼容实现 `uc-mobile` 的构建与发布操作手册。它把 `uc-mobile` 编译成
 `UniClipboardCore.xcframework`（含 UniFFI 绑定 `uc_mobile.swift`），发布为 GitHub Release，
 供 **独立的 iOS app 仓库** 经 SwiftPM `binaryTarget(url:checksum:)` 消费。
 
@@ -23,7 +25,7 @@
 
 ## 2. 版本语义（决策 D1）
 
-移动核心走 **独立版本线**，与桌面 `v*` 解耦：
+LAN 兼容核心走 **独立版本线**，与桌面 `v*` 解耦；该版本线只用于兼容期维护，不是未来 `core-v*` 统一版本线：
 
 - 版本单一真相源 = `crates/uc-mobile/Cargo.toml` 的 `version`（当前 `0.1.0`）。
   其它 workspace crate 仍用 `version.workspace`；**`uc-mobile-proto` 不脱钩**（它经 `uc-application`
@@ -101,11 +103,6 @@ UC_RUST_REPO=/path/to/uniclipboard Scripts/build-rust-core.sh
   `update-rust-core.sh <version>` 重新 pin。
 - **重复发布**：同版本的 Release 已存在时 workflow 直接失败，需先 bump `crates/uc-mobile/Cargo.toml`。
 
-## 7. Android（占位，未实现）
+## 7. Android（旧方案占位，不再实施）
 
-Android 交付 **暂未实现**（iOS 优先）。设计骨架见 `crates/uc-mobile/scripts/build-android-aar.sh`
-（运行会拒绝，仅记录形态）：uniffi Kotlin 绑定 + `cargo-ndk` 编三 ABI（arm64-v8a / armeabi-v7a /
-x86_64）的 `libuc_mobile.so` + gradle 打 `.aar`；runtime 依赖 `net.java.dev.jna:jna`；发布候选
-GitHub Packages(Maven) 或 Maven Central，与 iOS 同 `uc-mobile-v*` 版本、同源构建。`uc-mobile` 的
-`cdylib` crate-type 已就绪，`uc-mobile-proto` / `uc-mobile` 与目标平台无关，无 Rust 侧阻塞。届时在
-`build-mobile-core.yml` 加一个并行 job 即可。
+旧 LAN 核心的 Android 交付未实现，`crates/uc-mobile/scripts/build-android-aar.sh` 仍是拒绝执行的形态记录。兼容线不再补齐该发布任务。Android 的正式 Rust 交付必须按 `plans/004-ship-mobile-bindings-and-conformance.md` 使用完整 P2P 核心，并与 iOS、HarmonyOS、桌面来自同一 `core-v*` 版本。

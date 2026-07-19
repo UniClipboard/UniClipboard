@@ -7,9 +7,9 @@
 ## 项目定义
 
 - 产品定位：「多台设备服务一个人」——不是协作工具，不是消息队列
-- 支持 macOS、Windows、Linux 桌面全平台，iOS/Android 作为 LAN 伴侣设备
+- 支持 macOS、Windows、Linux、iOS、Android、HarmonyOS；所有平台都是同一 Space 中的完整 P2P 对等节点
 - 同步内容涵盖文本、图片、文件、链接、富文本、代码片段
-- 交付形态：GUI 桌面应用（Tauri + React）、CLI 工具（uniclip）、后台 daemon（uniclipd）
+- 交付形态：GUI 桌面应用（Tauri + React）、原生移动应用、CLI 工具（uniclip）、桌面后台 daemon（uniclipd）
 - 核心交互入口：Quick Panel（Spotlight 式全局快捷面板，搜索历史、即时粘贴）
 
 ## 核心目标
@@ -19,6 +19,7 @@
 - **零配置可用**：设备配对后即自动同步，Quick Panel 默认启用，开箱即用
 - **轻量常驻**：GUI 是 daemon 的纯客户端，不加载 SQLite/iroh，可随时进入 Lightweight Mode（GUI 退出、daemon 继续）
 - **跨平台一致性**：同一份 uc-core 领域模型驱动所有平台，差异仅在适配器层
+- **对等能力一致**：桌面、iOS、Android、HarmonyOS 使用同一身份、配对、加密、P2P 传输和内容协议；对等不要求系统剪贴板自动化程度相同，移动端可因权限改为用户主动触发；受系统限制暂停时正常离线，恢复后以原身份重新上线
 
 ## 架构原则
 
@@ -27,6 +28,7 @@
 - **GUI 与 daemon 分离**：GUI 进程通过 HTTP/WS 连接外部 daemon，绝不内嵌 AppFacade 或打开数据库；daemon 绝不依赖任何 GUI 框架
 - **uc-desktop GUI 框架无关**：该 crate 禁止依赖 Tauri/AppKit/egui 等，由 uc-tauri 负责 GUI 壳适配
 - **薄中间层隔离重依赖**：uc-daemon-contract/uc-daemon-client/uc-daemon-process 作为叶子 crate，不携带 iroh/diesel/sqlite，使 CLI 和 GUI release 二进制免于链接重型依赖
+- **统一 P2P 核心**：桌面与移动宿主都通过同一核心入口运行完整节点；平台差异只存在于剪贴板、安全存储、文件句柄和生命周期接入，不得分叉协议、加密或内容能力
 - **可测试性**：76+ async trait Port 均为 Send + Sync，通过 Arc&lt;dyn Port&gt; 注入，应用层测试使用 mockall/手写 fake，永不触碰真实基础设施
 
 ## 安全与隐私底线
@@ -44,7 +46,7 @@
 
 ## 用户体验哲学
 
-- **背景优先**：窗口关闭仅隐藏到托盘，应用始终作为系统服务常驻
+- **桌面背景优先**：桌面窗口关闭仅隐藏到托盘，daemon 继续常驻；移动端是否后台运行由系统授予的运行窗口决定
 - **Quick Panel 零延迟感知**：启动时预创建隐藏 WebView 并转换为 NSPanel（macOS），首次唤起无窗口创建开销
 - **粘贴不夺焦**：NSPanel NonactivatingPanel 样式保持前一应用焦点，粘贴时先确认焦点恢复再发送按键
 - **模糊事件防抖**：300ms show-debounce + 100ms verify-delay 消除 IME/系统通知导致的误关闭
@@ -61,7 +63,7 @@
 | daemon per-profile 单例 | fs2 文件锁保证一个 profile 只有一个 daemon 实例 |
 | AGPL-3.0-only 许可 | 任何修改后通过网络提供服务的实体必须开源对应源码 |
 | 遥测事件名一旦上线永不重命名 | 防止历史数据聚合断裂，演进通过创建 *_v2 + 废弃旧事件 |
-| Mobile 走独立 LAN HTTP 协议 | 移动端无法运行 iroh full node，SyncClipboard v3 协议足够轻量 |
+| 四平台运行统一完整 P2P 节点 | 桌面、iOS、Android、HarmonyOS 使用同一核心与协议；对等身份不等于永久后台在线，移动端暂停时离线、恢复后以原身份重连 |
 
 ## 绝对禁区
 

@@ -4,21 +4,30 @@ use std::time::Duration;
 use async_trait::async_trait;
 use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
-use tracing::error;
+use tracing::{error, warn};
 use uc_application::facade::space_setup::{SwitchSpaceError, SwitchSpaceInput};
 use uc_application::facade::{
     AppFacade, InMemoryLifecycleStatus, InitializeSpaceError,
     InitializeSpaceInput as AppInitializeSpaceInput, IssuePairingInvitationError,
     QuerySetupStateError, RedeemPairingInvitationError, RedeemPairingInvitationInput,
-    SearchCoordinator, SearchCoordinatorDeps, SearchFacadeError, SearchPageView, SearchQueryInput,
-    UnlockSpaceError, UnlockSpaceInput as AppUnlockSpaceInput,
+    ResendEntryCommand, ResendEntryError, SearchCoordinator, SearchCoordinatorDeps,
+    SearchFacadeError, SearchPageView, SearchQueryInput, UnlockSpaceError,
+    UnlockSpaceInput as AppUnlockSpaceInput,
 };
+use uc_application::facade::{
+    ClipboardLiveIndexInput, ClipboardOutboundInput, ClipboardOutboundOutcome,
+};
+use uc_core::ids::{DeviceId, FormatId, RepresentationId};
 use uc_core::ports::ReachabilityState;
 use uc_core::TaskRegistry;
+use uc_core::{
+    ClipboardChangeOrigin, MimeType, ObservedClipboardRepresentation, SystemClipboardSnapshot,
+};
 
 use crate::engine::EngineRuntime;
 use crate::event_stream::EventSender;
 use crate::internal::blob_tasks::{spawn_blob_processing_tasks, BlobProcessingPorts};
+use crate::internal::clipboard_runtime::{build_clipboard_runtime, ClipboardRuntime};
 use crate::internal::deps::WiredDependencies;
 use crate::internal::facade::{
     build_app_facade_from_deps, AppFacadeAssemblyOptions, ClipboardRestoreAssembly,
@@ -60,6 +69,13 @@ const QUERY_HISTORY_UNAVAILABLE_CODE: u32 = 1243;
 const QUERY_HISTORY_FAILED_CODE: u32 = 1244;
 const HISTORY_CURSOR_PREFIX: &str = "uc-history-v1:";
 const MAX_HISTORY_PAGE_SIZE: u32 = 200;
+const SEND_INVALID_INPUT_CODE: u32 = 1251;
+const SEND_FAILED_CODE: u32 = 1252;
+const SEND_SKIPPED_CODE: u32 = 1253;
+const RESEND_NOT_FOUND_CODE: u32 = 1261;
+const RESEND_CONFLICT_CODE: u32 = 1262;
+const RESEND_UNAUTHORIZED_CODE: u32 = 1263;
+const RESEND_FAILED_CODE: u32 = 1264;
 
 pub(crate) struct ProductionRuntime {
     wired: WiredDependencies,
@@ -72,6 +88,7 @@ pub(crate) struct ProductionRuntime {
 
 struct ProductionSession {
     facade: Arc<AppFacade>,
+    clipboard: ClipboardRuntime,
     sync_engine: SyncEngineAssembly,
 }
 
@@ -117,6 +134,7 @@ impl ProductionRuntime {
         let (restore_tx, restore_rx) = tokio::sync::mpsc::unbounded_channel();
         sync_engine.attach_restore_broadcast(restore_rx);
         let search_coordinator = build_search_coordinator(&wired.deps);
+        let clipboard = build_clipboard_runtime(wired, &sync_engine);
         let facade = build_app_facade_from_deps(
             &wired.deps,
             paths,
@@ -136,12 +154,14 @@ impl ProductionRuntime {
                     ),
                 }),
                 search_coordinator: Some(search_coordinator),
+                clipboard_outbound: Some(Arc::clone(&clipboard.outbound)),
                 ..Default::default()
             },
         );
 
         Ok(ProductionSession {
             facade,
+            clipboard,
             sync_engine,
         })
     }
@@ -270,6 +290,59 @@ impl EngineRuntime for ProductionRuntime {
                     .map_err(map_query_history_error)?;
                 history_page_result(page, offset, limit)
             }
+            Operation::SendText(input) => {
+                if input.text.is_empty() {
+                    return Err(send_invalid_input_error());
+                }
+                let snapshot = SystemClipboardSnapshot {
+                    ts_ms: self.wired.deps.system.clock.now_ms(),
+                    representations: vec![ObservedClipboardRepresentation::new(
+                        RepresentationId::new(),
+                        FormatId::from("text"),
+                        Some(MimeType("text/plain".into())),
+                        input.text.into_bytes(),
+                    )],
+                    file_content_digests: Vec::new(),
+                    file_set_v1_component: None,
+                };
+                self.send_snapshot(snapshot, input.target_devices).await
+            }
+            Operation::SendImage(input) => {
+                if input.bytes.is_empty() || !input.mime_type.starts_with("image/") {
+                    return Err(send_invalid_input_error());
+                }
+                let snapshot = SystemClipboardSnapshot {
+                    ts_ms: self.wired.deps.system.clock.now_ms(),
+                    representations: vec![ObservedClipboardRepresentation::new(
+                        RepresentationId::new(),
+                        FormatId::from("image"),
+                        Some(MimeType(input.mime_type)),
+                        input.bytes,
+                    )],
+                    file_content_digests: Vec::new(),
+                    file_set_v1_component: None,
+                };
+                self.send_snapshot(snapshot, input.target_devices).await
+            }
+            Operation::ResendEntry(input) => {
+                let entry_id = input.entry_id;
+                let target_filter = (!input.target_devices.is_empty()).then(|| {
+                    input
+                        .target_devices
+                        .into_iter()
+                        .map(DeviceId::new)
+                        .collect()
+                });
+                self.current_facade()
+                    .await?
+                    .resend_entry(ResendEntryCommand {
+                        entry_id: uc_core::ids::EntryId::from(entry_id.as_str()),
+                        target_filter,
+                    })
+                    .await
+                    .map_err(map_resend_error)?;
+                Ok(OperationResult::EntryResent { entry_id })
+            }
             _ => Err(operation_unavailable_error()),
         }
     }
@@ -292,6 +365,96 @@ impl EngineRuntime for ProductionRuntime {
         self.suspend().await?;
         self.task_registry.shutdown(deadline).await;
         Ok(())
+    }
+}
+
+impl ProductionRuntime {
+    async fn send_snapshot(
+        &self,
+        snapshot: SystemClipboardSnapshot,
+        target_devices: Vec<String>,
+    ) -> Result<OperationResult, EngineError> {
+        let (capture, live_index, outbound) = {
+            let session = self.session.lock().await;
+            let session = session.as_ref().ok_or_else(operation_unavailable_error)?;
+            (
+                Arc::clone(&session.clipboard.capture),
+                Arc::clone(&session.clipboard.live_index),
+                Arc::clone(&session.clipboard.outbound),
+            )
+        };
+        let captured = capture
+            .capture(snapshot.clone(), ClipboardChangeOrigin::LocalCapture, None)
+            .await
+            .map_err(|error| operation_error_with_code(SEND_FAILED_CODE, "capture send", error))?
+            .ok_or_else(|| {
+                EngineError::new(SEND_SKIPPED_CODE, EngineErrorCategory::Conflict, false)
+            })?;
+        if !captured.deduplicated {
+            if let Err(error) = live_index
+                .index_capture(ClipboardLiveIndexInput {
+                    entry_id: captured.entry_id.clone(),
+                    snapshot: Arc::new(snapshot.clone()),
+                })
+                .await
+            {
+                warn!(error = %error, "failed to index engine send");
+            }
+        }
+        let target_filter = (!target_devices.is_empty()).then(|| {
+            target_devices
+                .into_iter()
+                .map(DeviceId::new)
+                .collect::<Vec<_>>()
+        });
+        match outbound
+            .dispatch_capture_to_targets(
+                ClipboardOutboundInput {
+                    entry_id: captured.entry_id.clone(),
+                    snapshot,
+                    origin: ClipboardChangeOrigin::LocalCapture,
+                },
+                target_filter,
+            )
+            .await
+            .map_err(|error| operation_error_with_code(SEND_FAILED_CODE, "send clipboard", error))?
+        {
+            ClipboardOutboundOutcome::Dispatched { .. } => Ok(OperationResult::EntrySent {
+                entry_id: captured.entry_id,
+            }),
+            ClipboardOutboundOutcome::Skipped { .. } => Err(EngineError::new(
+                SEND_SKIPPED_CODE,
+                EngineErrorCategory::Conflict,
+                false,
+            )),
+        }
+    }
+}
+
+fn send_invalid_input_error() -> EngineError {
+    EngineError::new(
+        SEND_INVALID_INPUT_CODE,
+        EngineErrorCategory::InvalidInput,
+        false,
+    )
+}
+
+fn map_resend_error(error: ResendEntryError) -> EngineError {
+    match error {
+        ResendEntryError::EntryNotFound(_) => {
+            EngineError::new(RESEND_NOT_FOUND_CODE, EngineErrorCategory::NotFound, false)
+        }
+        ResendEntryError::EntryNotResendable { .. } | ResendEntryError::NoEligibleTargets => {
+            EngineError::new(RESEND_CONFLICT_CODE, EngineErrorCategory::Conflict, false)
+        }
+        ResendEntryError::TargetNotTrusted(_) => EngineError::new(
+            RESEND_UNAUTHORIZED_CODE,
+            EngineErrorCategory::Unauthorized,
+            false,
+        ),
+        ResendEntryError::Storage(_) | ResendEntryError::Dispatch(_) => {
+            operation_error_with_code(RESEND_FAILED_CODE, "resend entry", error)
+        }
     }
 }
 

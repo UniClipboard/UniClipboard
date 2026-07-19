@@ -445,6 +445,69 @@ async fn engine_start_builds_a_resumable_real_session() {
         uc_engine::EngineErrorCategory::InvalidInput
     );
 
+    let empty_text = engine
+        .execute(uc_engine::Operation::SendText(uc_engine::SendTextInput {
+            text: String::new(),
+            target_devices: Vec::new(),
+        }))
+        .await
+        .unwrap_err();
+    assert_eq!(
+        empty_text.category(),
+        uc_engine::EngineErrorCategory::InvalidInput
+    );
+    let sent = engine
+        .execute(uc_engine::Operation::SendText(uc_engine::SendTextInput {
+            text: "engine text dispatch".into(),
+            target_devices: Vec::new(),
+        }))
+        .await
+        .unwrap();
+    let sent_entry_id = match sent {
+        uc_engine::OperationResult::EntrySent { entry_id } => entry_id,
+        other => panic!("expected sent entry, got {other:?}"),
+    };
+    assert!(!sent_entry_id.is_empty());
+
+    let empty_image = engine
+        .execute(uc_engine::Operation::SendImage(uc_engine::SendImageInput {
+            bytes: Vec::new(),
+            mime_type: "image/png".into(),
+            target_devices: Vec::new(),
+        }))
+        .await
+        .unwrap_err();
+    assert_eq!(
+        empty_image.category(),
+        uc_engine::EngineErrorCategory::InvalidInput
+    );
+    let sent_image = engine
+        .execute(uc_engine::Operation::SendImage(uc_engine::SendImageInput {
+            bytes: vec![137, 80, 78, 71],
+            mime_type: "image/png".into(),
+            target_devices: Vec::new(),
+        }))
+        .await
+        .unwrap();
+    assert!(matches!(
+        sent_image,
+        uc_engine::OperationResult::EntrySent { ref entry_id } if !entry_id.is_empty()
+    ));
+
+    let missing_resend = engine
+        .execute(uc_engine::Operation::ResendEntry(
+            uc_engine::ResendEntryInput {
+                entry_id: "missing-entry".into(),
+                target_devices: Vec::new(),
+            },
+        ))
+        .await
+        .unwrap_err();
+    assert_eq!(
+        missing_resend.category(),
+        uc_engine::EngineErrorCategory::NotFound
+    );
+
     engine.suspend().await.unwrap();
     engine.resume().await.unwrap();
     engine

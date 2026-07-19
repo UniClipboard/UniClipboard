@@ -45,7 +45,7 @@ Design constraints driving the shape below:
 
 ## 2. URI shape
 
-```
+```text
 uniclipboard://connect?v=1&svc=mobile-sync&p=<PAYLOAD>
 ```
 
@@ -243,7 +243,7 @@ flowchart TD
 
 ### 4.1 Pseudocode (language-neutral)
 
-```
+```text
 raw = trim(qr_text)
 uri = parse(raw)                              # may throw → INVALID_SCHEME
 require uri.scheme == "uniclipboard"          # else INVALID_SCHEME
@@ -354,13 +354,13 @@ suites MUST assert against the exact strings below.
 
 **Payload JSON (minified, fields in spec order):**
 
-```
+```json
 {"v":1,"url":"http://192.168.1.5:42720","user":"mobile_aabbccdd","pwd":"AbCdEfGhIjKlMnOpQrSt","o":{"did":"did_0123abcd","label":"Test","proto":"syncclipboard"}}
 ```
 
 **Encoded URI:**
 
-```
+```text
 uniclipboard://connect?v=1&svc=mobile-sync&p=eyJ2IjoxLCJ1cmwiOiJodHRwOi8vMTkyLjE2OC4xLjU6NDI3MjAiLCJ1c2VyIjoibW9iaWxlX2FhYmJjY2RkIiwicHdkIjoiQWJDZEVmR2hJaktsTW5PcFFyU3QiLCJvIjp7ImRpZCI6ImRpZF8wMTIzYWJjZCIsImxhYmVsIjoiVGVzdCIsInByb3RvIjoic3luY2NsaXBib2FyZCJ9fQ
 ```
 
@@ -374,13 +374,13 @@ uniclipboard://connect?v=1&svc=mobile-sync&p=eyJ2IjoxLCJ1cmwiOiJodHRwOi8vMTkyLjE
 
 **Payload JSON (minified, fields in spec order):**
 
-```
+```json
 {"v":1,"url":"https://203-0-113-10.sslip.io","urls":["https://203-0-113-10.sslip.io","http://192.168.1.5:42720","http://100.64.0.5:42720"],"user":"mobile_aabbccdd","pwd":"AbCdEfGhIjKlMnOpQrSt","o":{"did":"did_0123abcd","label":"Test","proto":"syncclipboard"}}
 ```
 
 **Encoded URI:**
 
-```
+```text
 uniclipboard://connect?v=1&svc=mobile-sync&p=eyJ2IjoxLCJ1cmwiOiJodHRwczovLzIwMy0wLTExMy0xMC5zc2xpcC5pbyIsInVybHMiOlsiaHR0cHM6Ly8yMDMtMC0xMTMtMTAuc3NsaXAuaW8iLCJodHRwOi8vMTkyLjE2OC4xLjU6NDI3MjAiLCJodHRwOi8vMTAwLjY0LjAuNTo0MjcyMCJdLCJ1c2VyIjoibW9iaWxlX2FhYmJjY2RkIiwicHdkIjoiQWJDZEVmR2hJaktsTW5PcFFyU3QiLCJvIjp7ImRpZCI6ImRpZF8wMTIzYWJjZCIsImxhYmVsIjoiVGVzdCIsInByb3RvIjoic3luY2NsaXBib2FyZCJ9fQ
 ```
 

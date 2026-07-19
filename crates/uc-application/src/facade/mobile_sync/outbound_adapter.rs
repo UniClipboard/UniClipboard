@@ -85,7 +85,7 @@ impl MobileInboundFanOutPort for ClipboardOutboundFanOutAdapter {
         // - 触发 file 路径提取 + blob 发布(`RemotePush` 会被 dispatcher
         //   显式 short-circuit 成 Skipped, 不走 publish);
         // - 经由 `OutboundSyncPlanner` 与本机复制走同一条策略链路。
-        uc_observability::spawn_supervised("mobile_sync.outbound_dispatch", async move {
+        uc_observability_contract::spawn_supervised("mobile_sync.outbound_dispatch", async move {
             match outbound
                 .dispatch_capture(ClipboardOutboundInput {
                     entry_id: entry_id_str,

@@ -35,7 +35,7 @@ use tokio::sync::broadcast;
 use tokio::sync::mpsc::Receiver;
 use tokio::task::JoinHandle;
 use tracing::{debug, info, instrument, warn};
-use uc_observability::FlowId;
+use uc_observability_contract::FlowId;
 
 use uc_core::pairing::invitation::InvitationCode;
 use uc_core::pairing::session_message::{
@@ -48,7 +48,9 @@ use uc_core::ports::{
 };
 use uc_core::MemberRepositoryPort;
 use uc_core::TrustedPeerRepositoryPort;
-use uc_observability::analytics::{AnalyticsFacade, Event, PairingFailureReason, PairingMethod};
+use uc_observability_contract::analytics::{
+    AnalyticsFacade, Event, PairingFailureReason, PairingMethod,
+};
 
 use crate::facade::space_setup::PairingOutcome;
 use crate::membership::usecases::{AdmitMember, AdmitMemberUseCase};
@@ -623,7 +625,7 @@ mod tests {
     use uc_core::settings::model::Settings;
     use uc_core::space_access::domain::{JoinOffer, ProofDerivedKey, SpaceAccessProofArtifact};
     use uc_core::trusted_peer::{TrustedPeer, TrustedPeerError};
-    use uc_observability::analytics::{
+    use uc_observability_contract::analytics::{
         AnalyticsPort, DefaultAnalyticsFacade, NoopAnalyticsIdentity,
     };
 
@@ -993,7 +995,7 @@ mod tests {
                 peer_addr_repo: permissive_peer_addr_repo(),
                 proof_verdicts: vec![true],
                 clock_ms: fixed_now_ms(),
-                analytics: Arc::new(uc_observability::analytics::NoopAnalyticsSink),
+                analytics: Arc::new(uc_observability_contract::analytics::NoopAnalyticsSink),
             }
         }
 
@@ -1016,7 +1018,7 @@ mod tests {
                 Arc::new(FixedDevice(DeviceId::new("sponsor-device"))),
                 Arc::new(NamedSettings("sponsor-mac".into())),
                 Arc::new(OrchestratorStubSetupStatus),
-                Arc::new(uc_observability::analytics::NoopAnalyticsFacade),
+                Arc::new(uc_observability_contract::analytics::NoopAnalyticsFacade),
                 std::time::Duration::from_secs(3600),
             );
             let (outcome_tx, outcome_rx) = broadcast::channel(16);

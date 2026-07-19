@@ -30,7 +30,7 @@ use uc_core::ports::{
     RequestReceiveCancellationPort,
 };
 use uc_core::{MimeType, ObservedClipboardRepresentation, SystemClipboardSnapshot};
-use uc_observability::FlowId;
+use uc_observability_contract::FlowId;
 
 use crate::usecases::clipboard_sync::payload_codec::{
     encode_snapshot_to_v3_bytes, encode_snapshot_with_blob_refs_and_file_set_to_v3_bytes,

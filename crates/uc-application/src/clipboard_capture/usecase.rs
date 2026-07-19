@@ -24,10 +24,10 @@ use std::time::SystemTime;
 
 use anyhow::Result;
 use tracing::{debug, info, info_span, warn, Instrument};
-use uc_observability::analytics::{
+use uc_observability_contract::analytics::{
     AnalyticsPort, CaptureOrigin, Event, PayloadSizeBucket, PayloadType,
 };
-use uc_observability::{stages, FlowId};
+use uc_observability_contract::{stages, FlowId};
 use unicode_normalization::UnicodeNormalization;
 
 use uc_core::blob::ports::BlobContentIngestPort;

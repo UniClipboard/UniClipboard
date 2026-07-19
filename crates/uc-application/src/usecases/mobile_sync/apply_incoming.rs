@@ -50,7 +50,7 @@ use uc_core::mobile_sync::{MobileDeviceId, StagedFile};
 use uc_core::ports::mobile_sync::{MobileFileStagingError, MobileFileStagingPort};
 use uc_core::ports::{ClockPort, ReceiveItemRole};
 use uc_core::{MimeType, ObservedClipboardRepresentation, SystemClipboardSnapshot};
-use uc_observability::analytics::{AnalyticsPort, Direction, Event, PayloadSizeBucket};
+use uc_observability_contract::analytics::{AnalyticsPort, Direction, Event, PayloadSizeBucket};
 
 use crate::facade::file_transfer::{CompleteTransfer, FailTransfer, FileTransferFacade};
 use crate::usecases::clipboard_sync::apply_inbound::{
@@ -1051,7 +1051,7 @@ mod tests {
     };
 
     use uc_core::mobile_sync::{StagedFile, StagedFileUri};
-    use uc_observability::analytics::NoopAnalyticsSink;
+    use uc_observability_contract::analytics::NoopAnalyticsSink;
 
     // MobileFileStagingPort mock(get_file 的 read_by_uri 路径共用)与
     // CapturingAnalyticsSink 都在 test_support 模块集中维护。

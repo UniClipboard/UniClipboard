@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use moka::sync::Cache;
 use tracing::{debug, error, info, instrument, warn, Instrument};
-use uc_observability::FlowId;
+use uc_observability_contract::FlowId;
 
 use uc_core::clipboard::ActiveClipboardState;
 use uc_core::ids::EntryId;
@@ -1406,7 +1406,7 @@ impl ApplyInboundClipboardUseCase {
             // the missing peer_id field is exactly what made the recent UNICLIPBOARD-RUST-F
             // triage take an extra hour (couldn't tell whether 50 failures were one peer
             // hammering or many peers each pushing once).
-            uc_observability::spawn_supervised(
+            uc_observability_contract::spawn_supervised(
                 "clipboard_sync.inbound_os_write",
                 async move {
                     // The live-index pass above already awaited and dropped its

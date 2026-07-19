@@ -13,7 +13,7 @@ use tracing::{debug, info, instrument, warn};
 use uc_core::ids::SpaceId;
 use uc_core::ports::space::{SpaceAccessError, UnlockSpacePort};
 use uc_core::ports::SetupStatusPort;
-use uc_observability::analytics::{AnalyticsFacade, Event, UnlockFailureReason};
+use uc_observability_contract::analytics::{AnalyticsFacade, Event, UnlockFailureReason};
 
 use crate::facade::space_setup::commands::UnlockSpaceCommand;
 use crate::facade::space_setup::{UnlockSpaceError, UnlockSpaceResult};
@@ -166,17 +166,19 @@ mod tests {
             self.captured.lock().unwrap().clone()
         }
     }
-    impl uc_observability::analytics::AnalyticsPort for CapturingAnalyticsSink {
+    impl uc_observability_contract::analytics::AnalyticsPort for CapturingAnalyticsSink {
         fn capture(&self, event: Event) {
             self.captured.lock().unwrap().push(event);
         }
     }
 
     fn wrap_facade(sink: Arc<CapturingAnalyticsSink>) -> Arc<dyn AnalyticsFacade> {
-        Arc::new(uc_observability::analytics::DefaultAnalyticsFacade::new(
-            sink as Arc<dyn uc_observability::analytics::AnalyticsPort>,
-            Arc::new(uc_observability::analytics::NoopAnalyticsIdentity),
-        ))
+        Arc::new(
+            uc_observability_contract::analytics::DefaultAnalyticsFacade::new(
+                sink as Arc<dyn uc_observability_contract::analytics::AnalyticsPort>,
+                Arc::new(uc_observability_contract::analytics::NoopAnalyticsIdentity),
+            ),
+        )
     }
 
     fn build(

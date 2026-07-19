@@ -58,7 +58,7 @@ use std::time::Duration;
 use bytes::Bytes;
 use tokio::task::JoinSet;
 use tracing::{info, info_span, instrument, Instrument};
-use uc_observability::FlowId;
+use uc_observability_contract::FlowId;
 
 /// 主流程等 fan-out join 的硬上限。超过此时长后,剩余仍在跑的 peer task 会被
 /// move 到后台 spawn 继续 join,delivery 写盘与 host event emit 都在后台完成
@@ -109,7 +109,7 @@ use uc_core::ports::{
     LocalIdentityPort, PeerAddressRepositoryPort, PresencePort, SettingsPort, SyncPayload,
 };
 use uc_core::MemberRepositoryPort;
-use uc_observability::analytics::{
+use uc_observability_contract::analytics::{
     AnalyticsPort, FailureReason, PayloadSizeBucket, PayloadType, SyncFailureStage, TransportType,
 };
 
@@ -564,7 +564,7 @@ mod tests {
     use uc_core::security::IdentityFingerprint;
     use uc_core::settings::model::Settings;
     use uc_core::{MemberRepositoryPort, MemberSyncPreferences, MembershipError, SpaceMember};
-    use uc_observability::analytics::{Direction, Event, SyncDeferReason, TransportType};
+    use uc_observability_contract::analytics::{Direction, Event, SyncDeferReason, TransportType};
 
     // ── mockall: PeerAddressRepositoryPort ──────────────────────────────
 
@@ -809,7 +809,7 @@ mod tests {
             device_identity,
             local_identity,
             settings,
-            Arc::new(uc_observability::analytics::NoopAnalyticsSink),
+            Arc::new(uc_observability_contract::analytics::NoopAnalyticsSink),
         )
     }
 
@@ -2035,7 +2035,7 @@ mod tests {
             Arc::new(make_local_identity_stub()),
             Arc::new(make_settings_stub()),
             Arc::new(FixedClock(1_700_000_000_000)),
-            Arc::new(uc_observability::analytics::NoopAnalyticsSink),
+            Arc::new(uc_observability_contract::analytics::NoopAnalyticsSink),
             Arc::new(AllMarkedFirstSyncState),
             Arc::clone(&spy) as Arc<dyn EntryDeliveryRepositoryPort>,
             Arc::new(crate::facade::host_event::HostEventBus::new()),
@@ -2138,7 +2138,7 @@ mod tests {
             Arc::new(make_local_identity_stub()),
             Arc::new(make_settings_stub()),
             Arc::new(FixedClock(1_700_000_000_000)),
-            Arc::new(uc_observability::analytics::NoopAnalyticsSink),
+            Arc::new(uc_observability_contract::analytics::NoopAnalyticsSink),
             Arc::new(AllMarkedFirstSyncState),
             Arc::clone(&spy) as Arc<dyn EntryDeliveryRepositoryPort>,
             Arc::new(crate::facade::host_event::HostEventBus::new()),
@@ -2196,7 +2196,7 @@ mod tests {
             Arc::new(make_local_identity_stub()),
             Arc::new(make_settings_stub()),
             Arc::new(FixedClock(1_700_000_000_000)),
-            Arc::new(uc_observability::analytics::NoopAnalyticsSink),
+            Arc::new(uc_observability_contract::analytics::NoopAnalyticsSink),
             Arc::new(AllMarkedFirstSyncState),
             Arc::clone(&spy) as Arc<dyn EntryDeliveryRepositoryPort>,
             Arc::new(crate::facade::host_event::HostEventBus::new()),
@@ -2294,7 +2294,7 @@ mod tests {
             Arc::new(make_local_identity_stub()),
             Arc::new(make_settings_stub()),
             Arc::new(FixedClock(1_700_000_000_000)),
-            Arc::new(uc_observability::analytics::NoopAnalyticsSink),
+            Arc::new(uc_observability_contract::analytics::NoopAnalyticsSink),
             Arc::new(AllMarkedFirstSyncState),
             spy as Arc<dyn EntryDeliveryRepositoryPort>,
             bus,
@@ -2442,7 +2442,7 @@ mod tests {
             Arc::new(make_local_identity_stub()),
             Arc::new(make_settings_stub()),
             Arc::new(FixedClock(1_700_000_000_000)),
-            Arc::new(uc_observability::analytics::NoopAnalyticsSink),
+            Arc::new(uc_observability_contract::analytics::NoopAnalyticsSink),
             Arc::new(AllMarkedFirstSyncState),
             Arc::clone(&spy) as Arc<dyn EntryDeliveryRepositoryPort>,
             Arc::new(HostEventBus::new()),
@@ -2528,7 +2528,7 @@ mod tests {
             Arc::new(make_local_identity_stub()),
             Arc::new(make_settings_stub()),
             Arc::new(FixedClock(1_700_000_000_000)),
-            Arc::new(uc_observability::analytics::NoopAnalyticsSink),
+            Arc::new(uc_observability_contract::analytics::NoopAnalyticsSink),
             Arc::new(AllMarkedFirstSyncState),
             Arc::clone(&spy) as Arc<dyn EntryDeliveryRepositoryPort>,
             Arc::clone(&bus),
@@ -2645,7 +2645,7 @@ mod tests {
             make_device_identity("self-device"),
             make_local_identity_stub(),
             make_settings_stub(),
-            Arc::new(uc_observability::analytics::NoopAnalyticsSink),
+            Arc::new(uc_observability_contract::analytics::NoopAnalyticsSink),
             Arc::new(AllMarkedFirstSyncState),
         );
 

@@ -21,7 +21,7 @@ use uc_core::ports::{
     SettingsPort, SetupStatusPort,
 };
 use uc_core::trusted_peer::TrustedPeerRepositoryPort;
-use uc_observability::analytics::AnalyticsFacade;
+use uc_observability_contract::analytics::AnalyticsFacade;
 
 use crate::clipboard_write::MobileConsumableBackfill;
 use crate::deps::SpaceAccessPorts;

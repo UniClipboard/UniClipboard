@@ -32,7 +32,7 @@ use tracing::instrument;
 
 use uc_core::mobile_sync::{MobileDevice, MobileDeviceError};
 use uc_core::ports::{FindMobileDeviceByUsernamePort, PasswordHasherError, PasswordHasherPort};
-use uc_observability::analytics::{AnalyticsPort, Event, MobileAuthFailureKind};
+use uc_observability_contract::analytics::{AnalyticsPort, Event, MobileAuthFailureKind};
 
 // ─── public-shaped (input / output / error) ─────────────────────────────
 

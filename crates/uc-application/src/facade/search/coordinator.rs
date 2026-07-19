@@ -227,7 +227,7 @@ impl SearchCoordinator {
                 let state = Arc::clone(&self.state);
 
                 let span = info_span!("search.rebuild", reason = REASON_MANUAL_REBUILD);
-                uc_observability::spawn_supervised(
+                uc_observability_contract::spawn_supervised(
                     "search.rebuild.manual",
                     async move {
                         let _guard = guard;
@@ -334,7 +334,7 @@ impl SearchCoordinator {
     /// version or the purge already completed.
     fn spawn_purge_if_needed(&self) {
         let deps = Arc::clone(&self.deps);
-        uc_observability::spawn_supervised(
+        uc_observability_contract::spawn_supervised(
             "search.purge_residue",
             async move {
                 purge_plaintext_residue_if_needed(&deps).await;
@@ -398,7 +398,7 @@ impl SearchCoordinator {
             }
             let deps = Arc::clone(&self.deps);
             let in_flight = Arc::clone(&self.repair_in_flight);
-            uc_observability::spawn_supervised(
+            uc_observability_contract::spawn_supervised(
                 "search.repair",
                 async move {
                     // Hold the permit for the whole repair so concurrency stays
@@ -418,7 +418,7 @@ impl SearchCoordinator {
         let event_tx = self.event_tx.clone();
         let state = Arc::clone(&self.state);
         let span = info_span!("search.rebuild", reason);
-        uc_observability::spawn_supervised(
+        uc_observability_contract::spawn_supervised(
             "search.rebuild.trigger",
             async move {
                 let _guard = guard;
@@ -509,7 +509,7 @@ impl SearchCoordinator {
 
         let (progress_tx, mut progress_rx) = mpsc::channel::<RebuildProgress>(64);
         let event_tx_clone = event_tx.clone();
-        uc_observability::spawn_supervised(
+        uc_observability_contract::spawn_supervised(
             "search.rebuild.progress_forwarder",
             async move {
                 while let Some(progress) = progress_rx.recv().await {

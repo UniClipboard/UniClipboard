@@ -33,7 +33,7 @@ use uc_core::ports::{
     SettingsPort,
 };
 use uc_core::settings::model::MobileSyncSettings;
-use uc_observability::analytics::{AnalyticsPort, Event};
+use uc_observability_contract::analytics::{AnalyticsPort, Event};
 
 use super::list_lan_interfaces::may_advertise_interface;
 use uc_mobile_proto::{build_mobile_sync_connect_uri, ConnectUriError, ConnectUriOther};

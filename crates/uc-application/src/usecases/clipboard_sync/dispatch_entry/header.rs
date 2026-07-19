@@ -8,7 +8,7 @@ use std::sync::Arc;
 use tracing::warn;
 use uc_core::ids::DeviceId;
 use uc_core::ports::{ClipboardHeader, ClockPort, LocalIdentityPort, SettingsPort};
-use uc_observability::FlowId;
+use uc_observability_contract::FlowId;
 
 use super::DispatchClipboardEntryInput;
 

@@ -29,7 +29,7 @@ use uc_core::ports::{
 };
 use uc_core::MemberRepositoryPort;
 use uc_core::{ClipboardChangeOrigin, SystemClipboardSnapshot};
-use uc_observability::analytics::AnalyticsPort;
+use uc_observability_contract::analytics::AnalyticsPort;
 
 use crate::facade::blob_transfer::{BlobTransferFacade, SharedHostEventEmitter};
 use crate::facade::clipboard::cancel_entry_receive::{
@@ -51,7 +51,7 @@ use uc_core::clipboard::ClipboardContentCategorySet;
 use uc_core::ports::clipboard::GetClipboardEntryPort;
 use uc_core::ports::ClipboardEventRepositoryPort;
 use uc_core::trusted_peer::TrustedPeerRepositoryPort;
-use uc_observability::FlowId;
+use uc_observability_contract::FlowId;
 
 /// Construction bundle, mirrors `MemberRosterDeps` pattern so bootstrap
 /// wiring stays consistent across facades.
@@ -1085,7 +1085,7 @@ mod tests {
             local_identity: Arc::new(local_identity),
             settings: Arc::new(settings),
             clock: Arc::new(FixedClock(1_700_000_000_000)),
-            analytics: Arc::new(uc_observability::analytics::NoopAnalyticsSink),
+            analytics: Arc::new(uc_observability_contract::analytics::NoopAnalyticsSink),
             first_sync_state: Arc::new(NoopFirstSyncState),
             entry_delivery_repo: Arc::new(make_noop_entry_delivery_repo()),
             entry_repo: Arc::new(make_noop_entry_repo()),

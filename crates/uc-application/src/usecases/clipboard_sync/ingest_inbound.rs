@@ -30,7 +30,7 @@ use bytes::Bytes;
 use tokio::sync::broadcast;
 use tokio::task::JoinHandle;
 use tracing::{debug, info, instrument, warn};
-use uc_observability::FlowId;
+use uc_observability_contract::FlowId;
 
 use uc_core::ids::DeviceId;
 use uc_core::ports::security::TransferCipherPort;

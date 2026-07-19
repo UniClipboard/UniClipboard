@@ -20,7 +20,7 @@ use uc_core::ports::PeerAddressError;
 use uc_core::security::IdentityFingerprint;
 use uc_core::setup::SetupStatus;
 use uc_core::trusted_peer::{TrustedPeer, TrustedPeerError};
-use uc_observability::analytics::{
+use uc_observability_contract::analytics::{
     AnalyticsFacade, NoopAnalyticsFacade, ResetIdentityError, SelfMintedAdoptRequest,
 };
 use uuid::Uuid;
@@ -207,7 +207,7 @@ impl RecordingAnalyticsFacade {
 }
 
 impl AnalyticsFacade for RecordingAnalyticsFacade {
-    fn capture(&self, _: uc_observability::analytics::events::Event) {}
+    fn capture(&self, _: uc_observability_contract::analytics::events::Event) {}
     fn adopt_self_minted(&self, _: SelfMintedAdoptRequest) {}
     fn adopt_from_sponsor(&self, space_person_id: Uuid) {
         self.adopted.lock().unwrap().push(space_person_id);

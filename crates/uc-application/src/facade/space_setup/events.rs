@@ -11,7 +11,7 @@
 use uc_core::ids::DeviceId;
 use uc_core::security::IdentityFingerprint;
 
-pub use uc_observability::analytics::PairingFailureReason;
+pub use uc_observability_contract::analytics::PairingFailureReason;
 
 /// Terminal result of a sponsor-side inbound pairing handshake.
 #[derive(Debug, Clone, PartialEq, Eq)]

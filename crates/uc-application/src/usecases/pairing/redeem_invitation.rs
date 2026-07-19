@@ -52,10 +52,10 @@ use uc_core::ports::pairing::DiscoveryChannel;
 use uc_core::ports::{ClockPort, PeerAddressRecord, PeerAddressRepositoryPort, SetupStatusPort};
 use uc_core::setup::SetupStatus;
 use uc_core::{MemberRepositoryPort, MemberSyncPreferences, TrustedPeerRepositoryPort};
-use uc_observability::analytics::events::{
+use uc_observability_contract::analytics::events::{
     Event, PairingDiscoveryChannel, PairingFailureReason, PairingMethod,
 };
-use uc_observability::analytics::AnalyticsFacade;
+use uc_observability_contract::analytics::AnalyticsFacade;
 
 use crate::facade::space_setup::commands::RedeemPairingInvitationCommand;
 use crate::facade::space_setup::{RedeemPairingInvitationError, RedeemPairingInvitationResult};
@@ -709,7 +709,7 @@ mod tests {
     #[derive(Debug, Clone)]
     enum CapturedAnalytics {
         Capture(Event),
-        Identify(uc_observability::analytics::IdentifyPayload),
+        Identify(uc_observability_contract::analytics::IdentifyPayload),
     }
 
     impl CapturingAnalyticsSink {
@@ -719,7 +719,7 @@ mod tests {
         fn ordered(&self) -> Vec<CapturedAnalytics> {
             self.ordered.lock().unwrap().clone()
         }
-        fn identify_calls(&self) -> Vec<uc_observability::analytics::IdentifyPayload> {
+        fn identify_calls(&self) -> Vec<uc_observability_contract::analytics::IdentifyPayload> {
             self.ordered
                 .lock()
                 .unwrap()
@@ -732,7 +732,7 @@ mod tests {
         }
     }
 
-    impl uc_observability::analytics::AnalyticsPort for CapturingAnalyticsSink {
+    impl uc_observability_contract::analytics::AnalyticsPort for CapturingAnalyticsSink {
         fn capture(&self, event: Event) {
             self.events.lock().unwrap().push(event.clone());
             self.ordered
@@ -740,7 +740,7 @@ mod tests {
                 .unwrap()
                 .push(CapturedAnalytics::Capture(event));
         }
-        fn identify(&self, payload: uc_observability::analytics::IdentifyPayload) {
+        fn identify(&self, payload: uc_observability_contract::analytics::IdentifyPayload) {
             self.ordered
                 .lock()
                 .unwrap()
@@ -841,11 +841,13 @@ mod tests {
             // Default harness uses a noop identity since most A2 tests
             // run with `sponsor_space_person_id = None`; the tests that
             // exercise the adopt path build their own facade locally.
-            let facade: Arc<dyn AnalyticsFacade> =
-                Arc::new(uc_observability::analytics::DefaultAnalyticsFacade::new(
-                    Arc::clone(&analytics) as Arc<dyn uc_observability::analytics::AnalyticsPort>,
-                    Arc::new(uc_observability::analytics::NoopAnalyticsIdentity),
-                ));
+            let facade: Arc<dyn AnalyticsFacade> = Arc::new(
+                uc_observability_contract::analytics::DefaultAnalyticsFacade::new(
+                    Arc::clone(&analytics)
+                        as Arc<dyn uc_observability_contract::analytics::AnalyticsPort>,
+                    Arc::new(uc_observability_contract::analytics::NoopAnalyticsIdentity),
+                ),
+            );
             let uc = RedeemPairingInvitationUseCase::new(
                 handshake,
                 admit_uc,
@@ -1061,23 +1063,23 @@ mod tests {
             }
         }
     }
-    impl uc_observability::analytics::AnalyticsIdentityPort for FakeJoinerAnalyticsIdentity {
+    impl uc_observability_contract::analytics::AnalyticsIdentityPort for FakeJoinerAnalyticsIdentity {
         fn adopt_space_person(
             &self,
             space_person_id: Uuid,
         ) -> Result<
-            uc_observability::analytics::AdoptOutcome,
-            uc_observability::analytics::AnalyticsIdentityError,
+            uc_observability_contract::analytics::AdoptOutcome,
+            uc_observability_contract::analytics::AnalyticsIdentityError,
         > {
             if let Some(msg) = self.adopt_err.lock().unwrap().take() {
                 return Err(
-                    uc_observability::analytics::AnalyticsIdentityError::PersistFailed(
+                    uc_observability_contract::analytics::AnalyticsIdentityError::PersistFailed(
                         anyhow::anyhow!(msg),
                     ),
                 );
             }
             self.adopted.lock().unwrap().push(space_person_id);
-            Ok(uc_observability::analytics::AdoptOutcome {
+            Ok(uc_observability_contract::analytics::AdoptOutcome {
                 previous_distinct_id: self.previous_anon,
                 new_distinct_id: space_person_id,
             })
@@ -1085,10 +1087,10 @@ mod tests {
         fn release_space_person(
             &self,
         ) -> Result<
-            uc_observability::analytics::ReleaseOutcome,
-            uc_observability::analytics::AnalyticsIdentityError,
+            uc_observability_contract::analytics::ReleaseOutcome,
+            uc_observability_contract::analytics::AnalyticsIdentityError,
         > {
-            Ok(uc_observability::analytics::ReleaseOutcome {
+            Ok(uc_observability_contract::analytics::ReleaseOutcome {
                 previous_distinct_id: self.previous_anon,
                 new_distinct_id: self.previous_anon,
             })
@@ -1099,10 +1101,10 @@ mod tests {
         fn reset_telemetry_identity(
             &self,
         ) -> Result<
-            uc_observability::analytics::ReleaseOutcome,
-            uc_observability::analytics::AnalyticsIdentityError,
+            uc_observability_contract::analytics::ReleaseOutcome,
+            uc_observability_contract::analytics::AnalyticsIdentityError,
         > {
-            Ok(uc_observability::analytics::ReleaseOutcome {
+            Ok(uc_observability_contract::analytics::ReleaseOutcome {
                 previous_distinct_id: self.previous_anon,
                 new_distinct_id: self.previous_anon,
             })
@@ -1135,11 +1137,13 @@ mod tests {
             m.expect_upsert().times(0);
             Arc::new(m)
         };
-        let facade: Arc<dyn AnalyticsFacade> =
-            Arc::new(uc_observability::analytics::DefaultAnalyticsFacade::new(
-                Arc::clone(&analytics) as Arc<dyn uc_observability::analytics::AnalyticsPort>,
-                identity as Arc<dyn uc_observability::analytics::AnalyticsIdentityPort>,
-            ));
+        let facade: Arc<dyn AnalyticsFacade> = Arc::new(
+            uc_observability_contract::analytics::DefaultAnalyticsFacade::new(
+                Arc::clone(&analytics)
+                    as Arc<dyn uc_observability_contract::analytics::AnalyticsPort>,
+                identity as Arc<dyn uc_observability_contract::analytics::AnalyticsIdentityPort>,
+            ),
+        );
         let uc = RedeemPairingInvitationUseCase::new(
             handshake,
             admit_uc,

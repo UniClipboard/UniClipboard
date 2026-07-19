@@ -36,7 +36,7 @@ use uc_core::ports::{
     SetupStatusPort,
 };
 use uc_core::setup::SetupStatus;
-use uc_observability::analytics::{
+use uc_observability_contract::analytics::{
     AnalyticsFacade, Event, NameLengthBucket, SelfMintedAdoptRequest, SetupEntry,
 };
 
@@ -446,8 +446,8 @@ mod tests {
     #[derive(Debug, Clone)]
     enum CapturedAnalytics {
         Capture(Event),
-        Identify(uc_observability::analytics::IdentifyPayload),
-        GroupIdentify(uc_observability::analytics::GroupIdentifyPayload),
+        Identify(uc_observability_contract::analytics::IdentifyPayload),
+        GroupIdentify(uc_observability_contract::analytics::GroupIdentifyPayload),
     }
     impl CapturingAnalyticsSink {
         fn events(&self) -> Vec<Event> {
@@ -464,7 +464,7 @@ mod tests {
         fn ordered(&self) -> Vec<CapturedAnalytics> {
             self.captured.lock().unwrap().clone()
         }
-        fn identify_calls(&self) -> Vec<uc_observability::analytics::IdentifyPayload> {
+        fn identify_calls(&self) -> Vec<uc_observability_contract::analytics::IdentifyPayload> {
             self.captured
                 .lock()
                 .unwrap()
@@ -475,7 +475,9 @@ mod tests {
                 })
                 .collect()
         }
-        fn group_identify_calls(&self) -> Vec<uc_observability::analytics::GroupIdentifyPayload> {
+        fn group_identify_calls(
+            &self,
+        ) -> Vec<uc_observability_contract::analytics::GroupIdentifyPayload> {
             self.captured
                 .lock()
                 .unwrap()
@@ -487,20 +489,23 @@ mod tests {
                 .collect()
         }
     }
-    impl uc_observability::analytics::AnalyticsPort for CapturingAnalyticsSink {
+    impl uc_observability_contract::analytics::AnalyticsPort for CapturingAnalyticsSink {
         fn capture(&self, event: Event) {
             self.captured
                 .lock()
                 .unwrap()
                 .push(CapturedAnalytics::Capture(event));
         }
-        fn identify(&self, payload: uc_observability::analytics::IdentifyPayload) {
+        fn identify(&self, payload: uc_observability_contract::analytics::IdentifyPayload) {
             self.captured
                 .lock()
                 .unwrap()
                 .push(CapturedAnalytics::Identify(payload));
         }
-        fn group_identify(&self, payload: uc_observability::analytics::GroupIdentifyPayload) {
+        fn group_identify(
+            &self,
+            payload: uc_observability_contract::analytics::GroupIdentifyPayload,
+        ) {
             self.captured
                 .lock()
                 .unwrap()
@@ -530,23 +535,23 @@ mod tests {
             self.adopted.lock().unwrap().clone()
         }
     }
-    impl uc_observability::analytics::AnalyticsIdentityPort for FakeAnalyticsIdentity {
+    impl uc_observability_contract::analytics::AnalyticsIdentityPort for FakeAnalyticsIdentity {
         fn adopt_space_person(
             &self,
             space_person_id: Uuid,
         ) -> Result<
-            uc_observability::analytics::AdoptOutcome,
-            uc_observability::analytics::AnalyticsIdentityError,
+            uc_observability_contract::analytics::AdoptOutcome,
+            uc_observability_contract::analytics::AnalyticsIdentityError,
         > {
             if let Some(msg) = self.adopt_err.lock().unwrap().take() {
                 return Err(
-                    uc_observability::analytics::AnalyticsIdentityError::PersistFailed(
+                    uc_observability_contract::analytics::AnalyticsIdentityError::PersistFailed(
                         anyhow::anyhow!(msg),
                     ),
                 );
             }
             self.adopted.lock().unwrap().push(space_person_id);
-            Ok(uc_observability::analytics::AdoptOutcome {
+            Ok(uc_observability_contract::analytics::AdoptOutcome {
                 previous_distinct_id: self.previous_anon,
                 new_distinct_id: space_person_id,
             })
@@ -554,11 +559,11 @@ mod tests {
         fn release_space_person(
             &self,
         ) -> Result<
-            uc_observability::analytics::ReleaseOutcome,
-            uc_observability::analytics::AnalyticsIdentityError,
+            uc_observability_contract::analytics::ReleaseOutcome,
+            uc_observability_contract::analytics::AnalyticsIdentityError,
         > {
             *self.released_count.lock().unwrap() += 1;
-            Ok(uc_observability::analytics::ReleaseOutcome {
+            Ok(uc_observability_contract::analytics::ReleaseOutcome {
                 previous_distinct_id: self.previous_anon,
                 new_distinct_id: self.previous_anon,
             })
@@ -572,12 +577,12 @@ mod tests {
         fn reset_telemetry_identity(
             &self,
         ) -> Result<
-            uc_observability::analytics::ReleaseOutcome,
-            uc_observability::analytics::AnalyticsIdentityError,
+            uc_observability_contract::analytics::ReleaseOutcome,
+            uc_observability_contract::analytics::AnalyticsIdentityError,
         > {
             *self.released_count.lock().unwrap() += 1;
             // Fake：模拟 reset 后切回新 anonymous（这里复用 previous_anon 占位）。
-            Ok(uc_observability::analytics::ReleaseOutcome {
+            Ok(uc_observability_contract::analytics::ReleaseOutcome {
                 previous_distinct_id: self.previous_anon,
                 new_distinct_id: self.previous_anon,
             })
@@ -611,11 +616,12 @@ mod tests {
         let analytics_identity = Arc::new(FakeAnalyticsIdentity::new(Uuid::now_v7()));
         // The production code only sees `AnalyticsFacade`; the recording
         // sink + identity are stashed on the harness for assertions.
-        let facade: Arc<dyn AnalyticsFacade> =
-            Arc::new(uc_observability::analytics::DefaultAnalyticsFacade::new(
+        let facade: Arc<dyn AnalyticsFacade> = Arc::new(
+            uc_observability_contract::analytics::DefaultAnalyticsFacade::new(
                 analytics.clone(),
                 analytics_identity.clone(),
-            ));
+            ),
+        );
 
         let uc = InitializeSpaceUseCase::new(
             space_access.clone(),

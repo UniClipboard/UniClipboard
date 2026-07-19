@@ -36,7 +36,7 @@ use uc_core::ports::space::{
 };
 use uc_core::ports::*;
 use uc_core::MemberRepositoryPort;
-use uc_observability::analytics::AnalyticsPort;
+use uc_observability_contract::analytics::AnalyticsPort;
 
 use crate::clipboard_write::{MobileConsumabilityProbe, MobileConsumableBackfill};
 
@@ -401,8 +401,8 @@ pub struct AppDeps {
     pub mobile_sync: MobileSyncPorts,
     /// 产品 telemetry 上报 sink（横切关注点）。
     ///
-    /// bootstrap 装配时用 [`uc_observability::analytics::GatedAnalyticsSink`]
-    /// 包一层真实 sink（dev=`StdoutSink`、release=`NoopAnalyticsSink`，未来
+    /// bootstrap 装配时用带开关的 observer 包一层真实 sink（dev=`StdoutSink`、
+    /// release=`NoopAnalyticsSink`，未来
     /// 接 `PosthogSink`），调用方只需 `analytics.capture(event)`，不必自己
     /// 查 `usage_analytics_enabled`——wrapper 内部已 atomic 守卫。
     pub analytics: Arc<dyn AnalyticsPort>,

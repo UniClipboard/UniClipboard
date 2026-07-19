@@ -64,7 +64,7 @@
 use bytes::Bytes;
 use thiserror::Error;
 use uc_core::ids::{DeviceId, EntryId};
-use uc_observability::FlowId;
+use uc_observability_contract::FlowId;
 
 use crate::clipboard_write::ClipboardWriteIntent;
 

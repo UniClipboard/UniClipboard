@@ -85,7 +85,7 @@ use uc_core::ports::setup::{MigrationStateError, MigrationStatePort};
 use uc_core::ports::{ClockPort, PeerAddressRecord, PeerAddressRepositoryPort, SetupStatusPort};
 use uc_core::setup::{MigrationPhase, MigrationRunId, SetupStatus};
 use uc_core::TrustedPeerRepositoryPort;
-use uc_observability::analytics::AnalyticsFacade;
+use uc_observability_contract::analytics::AnalyticsFacade;
 use uuid::Uuid;
 
 use crate::facade::space_setup::commands::SwitchSpaceCommand;

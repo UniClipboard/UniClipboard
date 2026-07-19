@@ -50,7 +50,7 @@ use uc_core::ports::{
     MobileLanLifecyclePort, MobileLanTarget, MobileSyncEndpointInfoPort, PasswordHasherPort,
     SettingsPort,
 };
-use uc_observability::analytics::AnalyticsPort;
+use uc_observability_contract::analytics::AnalyticsPort;
 
 use crate::deps::MobileDevicePorts;
 use crate::facade::active_clipboard::ActiveClipboardFacade;
@@ -1157,7 +1157,7 @@ mod tests {
             file_transfer: None,
             clipboard_outbound: None,
             lan_lifecycle: None,
-            analytics: Arc::new(uc_observability::analytics::NoopAnalyticsSink::default()),
+            analytics: Arc::new(uc_observability_contract::analytics::NoopAnalyticsSink::default()),
             active_clipboard: None,
             find_entry_by_snapshot_hash: Arc::new(UnusedEntryRepo),
             check_entry_availability: Arc::new(UnusedEntryRepo),
@@ -1323,7 +1323,7 @@ mod tests {
             file_transfer: None,
             clipboard_outbound: None,
             lan_lifecycle: None,
-            analytics: Arc::new(uc_observability::analytics::NoopAnalyticsSink::default()),
+            analytics: Arc::new(uc_observability_contract::analytics::NoopAnalyticsSink::default()),
             active_clipboard: None,
             find_entry_by_snapshot_hash: Arc::new(UnusedEntryRepo),
             check_entry_availability: Arc::new(UnusedEntryRepo),
@@ -1411,7 +1411,7 @@ mod tests {
             file_transfer: None,
             clipboard_outbound: None,
             lan_lifecycle: None,
-            analytics: Arc::new(uc_observability::analytics::NoopAnalyticsSink::default()),
+            analytics: Arc::new(uc_observability_contract::analytics::NoopAnalyticsSink::default()),
             active_clipboard: None,
             find_entry_by_snapshot_hash: Arc::new(UnusedEntryRepo),
             check_entry_availability: Arc::new(UnusedEntryRepo),
@@ -1530,7 +1530,7 @@ mod tests {
             file_transfer: None,
             clipboard_outbound: None,
             lan_lifecycle: Some(lifecycle),
-            analytics: Arc::new(uc_observability::analytics::NoopAnalyticsSink::default()),
+            analytics: Arc::new(uc_observability_contract::analytics::NoopAnalyticsSink::default()),
             active_clipboard: None,
             find_entry_by_snapshot_hash: Arc::new(UnusedEntryRepo),
             check_entry_availability: Arc::new(UnusedEntryRepo),
@@ -1682,7 +1682,7 @@ mod tests {
             file_transfer: None,
             clipboard_outbound: None,
             lan_lifecycle: Some(lifecycle),
-            analytics: Arc::new(uc_observability::analytics::NoopAnalyticsSink::default()),
+            analytics: Arc::new(uc_observability_contract::analytics::NoopAnalyticsSink::default()),
             active_clipboard: None,
             find_entry_by_snapshot_hash: Arc::new(UnusedEntryRepo),
             check_entry_availability: Arc::new(UnusedEntryRepo),

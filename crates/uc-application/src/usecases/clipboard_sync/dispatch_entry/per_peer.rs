@@ -27,7 +27,7 @@ use uc_core::ports::{
     ClipboardDispatchError, ClipboardDispatchPort, ClipboardHeader, DispatchReport,
     FirstSyncStatePort, PresencePort, ReachabilityState, SyncPayload,
 };
-use uc_observability::analytics::{
+use uc_observability_contract::analytics::{
     AnalyticsPort, Direction, Event, PayloadSizeBucket, PayloadType, SyncDeferReason,
     SyncDeferredProps, SyncEventProps, TransportType,
 };
@@ -207,7 +207,7 @@ mod tests {
     use super::*;
 
     use uc_core::ports::{ConnectionChannel, DispatchAck};
-    use uc_observability::analytics::{FailureReason, SyncFailureStage};
+    use uc_observability_contract::analytics::{FailureReason, SyncFailureStage};
 
     fn header() -> Arc<ClipboardHeader> {
         Arc::new(test_header())

@@ -31,7 +31,9 @@ use uc_core::ports::pairing_invitation::{
     PairingInvitationAddressQueryPort, PairingInvitationByAddressPort, PairingInvitationPort,
 };
 use uc_core::ports::{ClockPort, DeviceIdentityPort};
-use uc_observability::analytics::{AnalyticsFacade, Event, InvitationCodeSource, PairingMethod};
+use uc_observability_contract::analytics::{
+    AnalyticsFacade, Event, InvitationCodeSource, PairingMethod,
+};
 
 use crate::facade::space_setup::{IssuePairingInvitationError, IssuePairingInvitationResult};
 use crate::pairing_invitation::InMemoryPairingInvitationHolder;
@@ -202,17 +204,19 @@ mod tests {
             self.captured.lock().unwrap().clone()
         }
     }
-    impl uc_observability::analytics::AnalyticsPort for CapturingAnalyticsSink {
+    impl uc_observability_contract::analytics::AnalyticsPort for CapturingAnalyticsSink {
         fn capture(&self, event: Event) {
             self.captured.lock().unwrap().push(event);
         }
     }
 
     fn wrap_facade(sink: Arc<CapturingAnalyticsSink>) -> Arc<dyn AnalyticsFacade> {
-        Arc::new(uc_observability::analytics::DefaultAnalyticsFacade::new(
-            sink as Arc<dyn uc_observability::analytics::AnalyticsPort>,
-            Arc::new(uc_observability::analytics::NoopAnalyticsIdentity),
-        ))
+        Arc::new(
+            uc_observability_contract::analytics::DefaultAnalyticsFacade::new(
+                sink as Arc<dyn uc_observability_contract::analytics::AnalyticsPort>,
+                Arc::new(uc_observability_contract::analytics::NoopAnalyticsIdentity),
+            ),
+        )
     }
 
     // ---------- Fakes ----------

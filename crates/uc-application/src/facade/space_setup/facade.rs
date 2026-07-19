@@ -31,7 +31,7 @@ use uc_core::ports::{
     SetupStatusPort,
 };
 use uc_core::setup::SetupStatus;
-use uc_observability::analytics::AnalyticsFacade;
+use uc_observability_contract::analytics::AnalyticsFacade;
 
 use crate::clipboard_write::MobileConsumableBackfill;
 use crate::facade::space_setup::commands::{
@@ -1537,7 +1537,7 @@ mod tests {
             key_migration: Arc::new(FakeKeyMigration),
             blob_migration_repo: Arc::new(FakeBlobMigrationRepo),
             blob_cipher: Arc::new(FakeBlobCipher),
-            analytics: Arc::new(uc_observability::analytics::NoopAnalyticsFacade),
+            analytics: Arc::new(uc_observability_contract::analytics::NoopAnalyticsFacade),
         });
         (facade, pairing_invitation, peer_addr_repo)
     }

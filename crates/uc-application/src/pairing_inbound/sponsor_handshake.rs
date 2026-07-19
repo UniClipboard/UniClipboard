@@ -56,7 +56,7 @@ use uc_core::ports::space::{PrepareJoinOfferPort, ProofPort};
 use uc_core::ports::{DeviceIdentityPort, LocalIdentityPort, SettingsPort, SetupStatusPort};
 use uc_core::security::IdentityFingerprint;
 use uc_core::space_access::domain::SpaceAccessProofArtifact;
-use uc_observability::analytics::AnalyticsFacade;
+use uc_observability_contract::analytics::AnalyticsFacade;
 
 /// Facts about the verified joiner, handed to the orchestrator so it can
 /// drive admit + trust use cases without re-parsing the `JoinerRequest`.
@@ -709,7 +709,7 @@ mod tests {
             // Sponsor handshake unit tests don't assert on the
             // `sponsor_space_person_id` field; tests that exercise the
             // populated path construct a facade with a real identity.
-            Arc::new(uc_observability::analytics::NoopAnalyticsFacade),
+            Arc::new(uc_observability_contract::analytics::NoopAnalyticsFacade),
             ttl,
         )
     }

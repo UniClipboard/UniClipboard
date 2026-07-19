@@ -26,7 +26,7 @@ use uc_core::ports::{
 use uc_core::security::IdentityFingerprint;
 use uc_core::settings::model::Settings;
 use uc_core::{MemberRepositoryPort, MemberSyncPreferences, MembershipError, SpaceMember};
-use uc_observability::analytics::{AnalyticsPort, Event};
+use uc_observability_contract::analytics::{AnalyticsPort, Event};
 
 use super::DispatchClipboardEntryInput;
 

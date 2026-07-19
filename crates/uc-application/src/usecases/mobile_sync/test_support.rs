@@ -51,7 +51,7 @@ use uc_core::ports::{
     ListMobileDevicesPort, MobileCredentialsMinterPort, PasswordHasherError, PasswordHasherPort,
     SaveMobileDevicePort, UpdateMobileDevicePort,
 };
-use uc_observability::analytics::{AnalyticsPort, Event};
+use uc_observability_contract::analytics::{AnalyticsPort, Event};
 
 mockall::mock! {
     pub DeviceRepo {}

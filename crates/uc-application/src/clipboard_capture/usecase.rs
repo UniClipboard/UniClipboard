@@ -45,8 +45,9 @@ use uc_core::ports::clipboard::{
     TouchClipboardEntryPort,
 };
 use uc_core::ports::{
-    ClipboardEventWriterPort, ClipboardRepresentationNormalizerPort, DeviceIdentityPort,
-    SelectRepresentationPolicyPort, SettingsPort,
+    ClipboardEventWriterPort, ClipboardRepresentationNormalizerPort, CommitInboundReceivePort,
+    CompletedReceiveArtifacts, DeviceIdentityPort, InboundReceiveRecord, InboundReceiveSettlement,
+    PartialReceiveArtifacts, PartialReceiveTerminal, SelectRepresentationPolicyPort, SettingsPort,
 };
 use uc_core::{
     ClipboardChangeOrigin, ClipboardEntry, ClipboardEntryContentCategory, ClipboardEvent,
@@ -87,6 +88,29 @@ pub enum CommitMode {
     Replace,
 }
 
+pub struct DirectoryCaptureCommitContext {
+    pub attempt_id: String,
+    pub file_set: EntryFileSet,
+}
+
+pub enum InboundCaptureCommitContext {
+    Complete {
+        attempt_id: String,
+        file_set: Option<EntryFileSet>,
+        artifacts: CompletedReceiveArtifacts,
+    },
+    Partial {
+        attempt_id: String,
+        terminal: PartialReceiveTerminal,
+        file_set: Option<EntryFileSet>,
+        artifacts: PartialReceiveArtifacts,
+    },
+}
+
+enum CaptureCommitContext {
+    Inbound(InboundCaptureCommitContext),
+}
+
 /// Capture clipboard content and create persistent entries.
 ///
 /// Uses trait objects (`Arc<dyn Port>`) rather than generic parameters —
@@ -124,6 +148,7 @@ pub struct CaptureClipboardUseCase {
     /// state preserved) instead of inserting a new entry. Only the inbound
     /// upgrade path drives the `Replace` mode; local capture always `Create`s.
     replace_entry: Arc<dyn ReplaceEntryContentPort>,
+    inbound_receive_commit: Option<Arc<dyn CommitInboundReceivePort>>,
     /// Shared per-identity write coordinator. When wired, a *local* capture
     /// serializes its "resurface-or-create by content hash" section on the lock
     /// for that hash so it cannot race an inbound apply of the same content into
@@ -170,9 +195,18 @@ impl CaptureClipboardUseCase {
             entry_file_set_repo,
             settings,
             replace_entry,
+            inbound_receive_commit: None,
             coordinator: None,
             analytics,
         }
+    }
+
+    pub fn with_inbound_receive_commit(
+        mut self,
+        commit: Arc<dyn CommitInboundReceivePort>,
+    ) -> Self {
+        self.inbound_receive_commit = Some(commit);
+        self
     }
 
     /// Share the per-identity write coordinator so a local capture serializes
@@ -220,11 +254,77 @@ impl CaptureClipboardUseCase {
     /// dedup against every other channel that carries the same wire hash.
     pub async fn execute_with_origin(
         &self,
+        snapshot: SystemClipboardSnapshot,
+        origin: ClipboardChangeOrigin,
+        preset_entry_id: Option<EntryId>,
+        authoritative_hash: Option<SnapshotHash>,
+        commit_mode: CommitMode,
+    ) -> Result<Option<CaptureOutcome>> {
+        self.execute_with_origin_internal(
+            snapshot,
+            origin,
+            preset_entry_id,
+            authoritative_hash,
+            commit_mode,
+            None,
+        )
+        .await
+    }
+
+    pub(crate) async fn execute_directory_with_origin(
+        &self,
+        snapshot: SystemClipboardSnapshot,
+        origin: ClipboardChangeOrigin,
+        preset_entry_id: EntryId,
+        authoritative_hash: Option<SnapshotHash>,
+        commit_mode: CommitMode,
+        directory_commit: DirectoryCaptureCommitContext,
+    ) -> Result<Option<CaptureOutcome>> {
+        self.execute_with_origin_internal(
+            snapshot,
+            origin,
+            Some(preset_entry_id),
+            authoritative_hash,
+            commit_mode,
+            Some(CaptureCommitContext::Inbound(
+                InboundCaptureCommitContext::Complete {
+                    attempt_id: directory_commit.attempt_id,
+                    file_set: Some(directory_commit.file_set),
+                    artifacts: CompletedReceiveArtifacts::DirectoryPublished,
+                },
+            )),
+        )
+        .await
+    }
+
+    pub async fn execute_inbound_with_origin(
+        &self,
+        snapshot: SystemClipboardSnapshot,
+        origin: ClipboardChangeOrigin,
+        preset_entry_id: EntryId,
+        authoritative_hash: Option<SnapshotHash>,
+        commit_mode: CommitMode,
+        commit: InboundCaptureCommitContext,
+    ) -> Result<Option<CaptureOutcome>> {
+        self.execute_with_origin_internal(
+            snapshot,
+            origin,
+            Some(preset_entry_id),
+            authoritative_hash,
+            commit_mode,
+            Some(CaptureCommitContext::Inbound(commit)),
+        )
+        .await
+    }
+
+    async fn execute_with_origin_internal(
+        &self,
         mut snapshot: SystemClipboardSnapshot,
         origin: ClipboardChangeOrigin,
         preset_entry_id: Option<EntryId>,
         authoritative_hash: Option<SnapshotHash>,
         commit_mode: CommitMode,
+        commit_context: Option<CaptureCommitContext>,
     ) -> Result<Option<CaptureOutcome>> {
         // Root span: all pipeline stages are children of clipboard.flow.
         // The origin field distinguishes local capture from remote push.
@@ -484,7 +584,7 @@ impl CaptureClipboardUseCase {
             // Create commits the event as a standalone insert here; Replace
             // defers the event insert into the transactional entry-replace below
             // so the old event/reps and the new ones swap atomically.
-            if commit_mode == CommitMode::Create {
+            if commit_mode == CommitMode::Create && commit_context.is_none() {
                 async {
                     self.event_writer
                         .insert_event(&new_event, &normalized_reps)
@@ -520,7 +620,7 @@ impl CaptureClipboardUseCase {
             // 4. policy.select(snapshot) — purely sync, .entered() is safe (no .await inside)
             let (entry_id, new_selection) = {
                 let _guard = info_span!(stages::SELECT_POLICY).entered();
-                let entry_id = preset_entry_id.unwrap_or_else(EntryId::new);
+                let entry_id = preset_entry_id.unwrap_or_default();
                 let selection = self.representation_policy.select(&snapshot)?;
                 let new_selection = ClipboardSelectionDecision::new(entry_id.clone(), selection);
                 (entry_id, new_selection)
@@ -585,23 +685,88 @@ impl CaptureClipboardUseCase {
                 .await?;
             }
 
-            // 6. Persist the entry — bytes are durable by this point. Create
-            //    inserts a fresh entry; Replace swaps the content behind the
-            //    existing entry_id in one transaction (event/reps/selection +
-            //    cascade), reusing its identity and sticky state.
+            // 6. Persist the entry — bytes are durable by this point. A
+            // directory receive commits the entry, manifest and publication
+            // state together; every other capture keeps the established path.
+            let used_atomic_receive_commit = commit_context.is_some();
             async {
                 let total_size = snapshot.total_size_bytes();
                 let content_category = ClipboardEntryContentCategory::from_snapshot(&snapshot);
+                let now_ms = SystemTime::now()
+                    .duration_since(SystemTime::UNIX_EPOCH)
+                    .map_err(|e| anyhow::anyhow!("Failed to get system time: {}", e))?
+                    .as_millis() as i64;
+                if let Some(commit_context) = commit_context {
+                    let record = match commit_mode {
+                        CommitMode::Create => {
+                            let entry = ClipboardEntry::new(
+                                entry_id.clone(),
+                                event_id.clone(),
+                                now_ms,
+                                total_size,
+                            )
+                            .with_content_category(content_category);
+                            InboundReceiveRecord::Create {
+                                entry,
+                                event: new_event,
+                                representations: normalized_reps,
+                                selection: new_selection,
+                            }
+                        }
+                        CommitMode::Replace => InboundReceiveRecord::Replace {
+                            entry_id: entry_id.clone(),
+                            new_event,
+                            new_representations: normalized_reps,
+                            new_selection,
+                            new_total_size: total_size,
+                            new_content_category: content_category,
+                        },
+                    };
+                    return match commit_context {
+                        CaptureCommitContext::Inbound(commit_context) => {
+                            let commit_port = self.inbound_receive_commit.as_ref().ok_or_else(|| {
+                                anyhow::anyhow!("inbound receive commit port is not wired")
+                            })?;
+                            let settlement = match commit_context {
+                                InboundCaptureCommitContext::Complete {
+                                    attempt_id,
+                                    file_set,
+                                    artifacts,
+                                } => InboundReceiveSettlement::Complete {
+                                    record,
+                                    attempt_id,
+                                    file_set,
+                                    artifacts,
+                                    now_ms,
+                                },
+                                InboundCaptureCommitContext::Partial {
+                                    attempt_id,
+                                    terminal,
+                                    file_set,
+                                    artifacts,
+                                } => InboundReceiveSettlement::Partial {
+                                    record,
+                                    attempt_id,
+                                    terminal,
+                                    file_set,
+                                    artifacts,
+                                    now_ms,
+                                },
+                            };
+                            commit_port
+                                .commit_inbound_receive(&settlement)
+                                .await
+                                .map_err(anyhow::Error::from)
+                        }
+                    };
+                }
+
                 match commit_mode {
                     CommitMode::Create => {
-                        let created_at_ms = SystemTime::now()
-                            .duration_since(SystemTime::UNIX_EPOCH)
-                            .map_err(|e| anyhow::anyhow!("Failed to get system time: {}", e))?
-                            .as_millis() as i64;
                         let new_entry = ClipboardEntry::new(
                             entry_id.clone(),
                             event_id.clone(),
-                            created_at_ms,
+                            now_ms,
                             total_size,
                         )
                         .with_content_category(content_category);
@@ -638,13 +803,15 @@ impl CaptureClipboardUseCase {
             // indistinguishable from "not a file-class entry". At that point
             // either make this save part of the entry's persistence
             // transaction, or give the reader a way to tell the two apart.
-            if let Some(file_set) = &file_set {
-                if let Err(err) = self.entry_file_set_repo.save(&entry_id, file_set).await {
-                    warn!(
-                        entry_id = %entry_id,
-                        error = %err,
-                        "capture: failed to persist entry file-set manifest"
-                    );
+            if !used_atomic_receive_commit {
+                if let Some(file_set) = &file_set {
+                    if let Err(err) = self.entry_file_set_repo.save(&entry_id, file_set).await {
+                        warn!(
+                            entry_id = %entry_id,
+                            error = %err,
+                            "capture: failed to persist entry file-set manifest"
+                        );
+                    }
                 }
             }
 
@@ -1022,7 +1189,7 @@ async fn build_file_member_lines(
     let mut failure = None;
 
     let mut roots = roots.into_iter();
-    while let Some(root) = roots.next() {
+    for root in roots.by_ref() {
         let metadata = tokio::fs::symlink_metadata(&root.path).await;
         match metadata {
             Ok(metadata) if metadata.file_type().is_symlink() => {
@@ -1041,7 +1208,7 @@ async fn build_file_member_lines(
                 }
             }
             Ok(metadata) if metadata.is_file() => {
-                let size = root.known_size.unwrap_or_else(|| metadata.len());
+                let size = root.known_size.unwrap_or(metadata.len());
                 if budget.admit(size, caps) {
                     pending.push(pending_flat_file(root, metadata));
                     failure = Some(ExpansionFailure::SizeCapExceeded);

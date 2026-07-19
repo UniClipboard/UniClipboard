@@ -28,6 +28,8 @@ mod clock;
 pub mod config_migration;
 pub mod connection_channel;
 pub mod device_identity;
+pub mod directory_publish_log;
+pub mod entry_receive_attempt;
 pub mod errors;
 pub mod file_transfer;
 pub mod first_sync_state;
@@ -35,6 +37,7 @@ mod hash;
 pub mod hidden_path;
 pub mod host_event;
 pub mod inbound_file_target;
+pub mod inbound_receive_commit;
 pub mod local_identity;
 pub mod mobile_sync;
 pub mod observability;
@@ -42,6 +45,7 @@ pub mod pairing;
 pub mod pairing_invitation;
 pub mod peer_address;
 pub mod presence;
+pub mod receive_artifact_log;
 pub mod search;
 pub mod security;
 pub mod settings;
@@ -67,12 +71,28 @@ pub use config_migration::{
 };
 pub use connection_channel::{ConnectionChannel, ConnectionChannelPort, ConnectionPath};
 pub use device_identity::DeviceIdentityPort;
+pub use directory_publish_log::{
+    CleanupDirectoryStagingPort, DirectoryPublishRecord, DirectoryStagingCleanupError,
+    GetDirectoryPublishRecordPort, PublishLogError, PublishPhase, RecordDirectoryPublishPort,
+};
+pub use entry_receive_attempt::{
+    AttemptError, AttemptState, BeginReceiveAttemptPort, BeginReceiveFailureOutcome,
+    BeginReceiveFailurePort, BeginReceiveOutcome, ClaimReceiveCommitPort,
+    DeleteReceiveStateForEntryPort, EntryReceiveAttempt, GetEntryAttemptPort,
+    ListNonTerminalAttemptsPort, PurgeTerminalOrphanAttemptsPort,
+    RequestReceiveCancellationOutcome, RequestReceiveCancellationPort,
+};
 pub use errors::AppDirsError;
 pub use file_transfer::{
-    compute_aggregate_status, EntryTransferSummary, ExpiredInflightTransfer,
-    FailInflightTransfersPort, FileTransferProjectionError, FindEntryIdForTransferPort,
-    GetEntryTransferSummaryPort, ListExpiredInflightTransfersPort, PendingInboundTransfer,
-    RecordReceiverTransferPort, TrackedFileTransferStatus,
+    compute_aggregate_status, CancelDirectoryAttemptTransfersPort,
+    EnsureFileTransferPrivacyMaintenancePort, EntryReceiveProgress, EntryTransferSummary,
+    ExpiredInflightTransfer, FailInflightTransfersPort, FileTransferPrivacyMaintenanceError,
+    FileTransferProjectionError, FinalizeProvisionalReceivePort, FindAttemptIdForTransferPort,
+    FindEntryIdForTransferPort, GetEntryReceiveProgressPort, GetEntryTransferSummaryPort,
+    ListExpiredInflightTransfersPort, ListProvisionalReceivesPort, PendingInboundTransfer,
+    ProvisionalInboundTransfer, ProvisionalReceiveAction, ProvisionalReceiveError,
+    ProvisionalReceiveRecovery, ReceiveItemRole, RecordReceiverTransferPort,
+    SeedProvisionalReceivePort, TrackedFileTransferStatus, UpdateProvisionalReceivePathPort,
 };
 pub use hidden_path::MarkHiddenPort;
 pub use host_event::{
@@ -80,6 +100,11 @@ pub use host_event::{
     HostEventEmitterPort, TransferHostEvent,
 };
 pub use inbound_file_target::{ReserveInboundFileTargetPort, ResolveInboundSaveDirPort};
+pub use inbound_receive_commit::{
+    CommitInboundReceivePort, CompletedReceiveArtifacts, InboundReceiveCommitError,
+    InboundReceiveRecord, InboundReceiveSettlement, NoEntryReceiveArtifacts,
+    PartialReceiveArtifacts, PartialReceiveTerminal,
+};
 pub use local_identity::{LocalIdentityError, LocalIdentityPort};
 pub use mobile_sync::{
     DeleteMobileDevicePort, EndpointInfoError, FindMobileDeviceByIdPort,
@@ -100,6 +125,11 @@ pub use pairing_invitation::{
 };
 pub use peer_address::{PeerAddressError, PeerAddressRecord, PeerAddressRepositoryPort};
 pub use presence::{PresenceError, PresenceEvent, PresencePort, ReachabilityState};
+pub use receive_artifact_log::{
+    CleanupReceiveArtifactsPort, GetReceiveArtifactRecordPort, ListUnsettledReceiveArtifactsPort,
+    ReceiveArtifact, ReceiveArtifactLogError, ReceiveArtifactOwnership, ReceiveArtifactPhase,
+    ReceiveArtifactRecord, ReceiveArtifactResolution, RecordReceiveArtifactsPort,
+};
 pub use search::maintenance::SearchIndexMaintenancePort;
 pub use search::search_index::SearchIndexPort;
 pub use search::search_key::SearchKeyDerivationPort;

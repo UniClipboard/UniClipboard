@@ -21,8 +21,8 @@ use std::sync::Arc;
 use tokio::sync::mpsc;
 use uc_application::deps::{
     AppDeps, ClipboardEntryPorts, ClipboardPorts, ClipboardRepresentationPorts, DevicePorts,
-    FileTransferPorts, MobileDevicePorts, MobileSyncPorts, SearchPorts, SecurityPorts,
-    SpaceAccessPorts, StoragePorts, SystemPorts,
+    DirectoryReceivePorts, FileTransferPorts, MobileDevicePorts, MobileSyncPorts, SearchPorts,
+    SecurityPorts, SpaceAccessPorts, StoragePorts, SystemPorts,
 };
 use uc_application::facade::{ConfigMigrationDeps, ConfigMigrationFacade, HostEventEmitterPort};
 use uc_core::clipboard::SelectRepresentationPolicyV1;
@@ -54,7 +54,8 @@ use uc_infra::db::repositories::{
     DieselClipboardEntryReplaceRepository, DieselClipboardEntryRepository,
     DieselClipboardEventRepository, DieselClipboardRepresentationRepository,
     DieselClipboardSelectionRepository, DieselEntryAvailabilityRepository,
-    DieselFileTransferRepository, DieselMobileDeviceRepository, DieselPeerAddressRepository,
+    DieselFileTransferRepository, DieselInboundReceiveCommitRepository,
+    DieselMobileDeviceRepository, DieselPeerAddressRepository, DieselReceiveArtifactLogRepository,
     DieselSpaceMemberRepository, DieselThumbnailRepository, DieselTrustedPeerRepository,
 };
 use uc_infra::fs::key_slot_store::JsonKeySlotStore;
@@ -147,15 +148,6 @@ struct InfraLayer {
     // System services
     clock: Arc<dyn ClockPort>,
     hash: Arc<dyn ContentHashPort>,
-
-    // File transfer tracking — receiver-side projection intent ports (ADR-009).
-    file_transfer: FileTransferPorts,
-
-    // File transfer durable event store. Held as the concrete type so the
-    // assembly can pass it directly to `build_file_transfer_assembly`
-    // (which casts it to `Arc<dyn FileTransferEventStorePort>` before
-    // handing it to the publisher and use cases).
-    file_transfer_store: Arc<crate::subsystem::file_transfer::FileTransferEventStore>,
 
     // Mobile sync 设备仓库 — narrow device-repository intent ports, all backed
     // by one `DieselMobileDeviceRepository` (cross-restart / cross-process
@@ -534,6 +526,7 @@ fn create_infra_layer(
         touch: entry_repo_arc.clone(),
         set_favorite: entry_repo_arc.clone(),
         delete: entry_repo_arc.clone(),
+        delete_with_receive_state: entry_repo_arc.clone(),
         find_by_snapshot_hash: entry_repo_arc.clone(),
         get_snapshot_hash: entry_repo_arc,
         availability: entry_availability_repo,
@@ -639,22 +632,6 @@ fn create_infra_layer(
     let selection_repo_impl = DieselClipboardSelectionRepository::new(Arc::clone(&db_executor));
     let selection_repo: Arc<dyn ClipboardSelectionRepositoryPort> = Arc::new(selection_repo_impl);
 
-    // One Diesel adapter implements all five receiver-side projection intent
-    // ports; coerce it into each so every consumer holds only its slice.
-    let file_transfer_adapter =
-        Arc::new(DieselFileTransferRepository::new(Arc::clone(&db_executor)));
-    let file_transfer = FileTransferPorts {
-        record: Arc::clone(&file_transfer_adapter) as _,
-        entry_summary: Arc::clone(&file_transfer_adapter) as _,
-        find_entry_id: Arc::clone(&file_transfer_adapter) as _,
-        list_expired: Arc::clone(&file_transfer_adapter) as _,
-        fail_inflight: file_transfer_adapter as _,
-    };
-
-    let file_transfer_store = Arc::new(
-        uc_infra::file_transfer::SqliteReceiverFileTransferStore::new(Arc::clone(&db_executor)),
-    );
-
     // Keep a concrete Arc so it can be coerced into each narrow device-repo
     // intent port. The adapter implements the aggregate MobileDeviceStore and
     // each intent-port impl delegates to it (ports.md §8.3); only the narrow
@@ -702,8 +679,6 @@ fn create_infra_layer(
         first_sync_state,
         clock,
         hash,
-        file_transfer,
-        file_transfer_store,
         mobile_device_ports,
         mobile_sync_endpoint_info,
     };
@@ -783,6 +758,41 @@ pub fn wire_dependencies(
         &platform.session,
     );
 
+    // Transfer metadata and event payloads are encrypted with two independent
+    // profile-scoped subkeys, so their adapters are assembled only after space
+    // access and the active profile are available.
+    let file_transfer_adapter = Arc::new(DieselFileTransferRepository::new(
+        infra.db_executor.clone(),
+        space_access_ports.derive_subkey.clone(),
+        platform.current_profile.clone(),
+    ));
+    let file_transfer_privacy_maintenance = Arc::new(
+        uc_infra::file_transfer::SqliteFileTransferPrivacyMaintenance::new(
+            infra.db_executor.clone(),
+        ),
+    );
+    let file_transfer = FileTransferPorts {
+        privacy_maintenance: file_transfer_privacy_maintenance,
+        record: Arc::clone(&file_transfer_adapter) as _,
+        seed_provisional: Arc::clone(&file_transfer_adapter) as _,
+        update_provisional_path: Arc::clone(&file_transfer_adapter) as _,
+        list_provisional: Arc::clone(&file_transfer_adapter) as _,
+        finalize_provisional: Arc::clone(&file_transfer_adapter) as _,
+        entry_summary: Arc::clone(&file_transfer_adapter) as _,
+        find_entry_id: Arc::clone(&file_transfer_adapter) as _,
+        find_attempt_id: Arc::clone(&file_transfer_adapter) as _,
+        list_expired: Arc::clone(&file_transfer_adapter) as _,
+        fail_inflight: Arc::clone(&file_transfer_adapter) as _,
+        cancel_attempt: Arc::clone(&file_transfer_adapter) as _,
+    };
+    let file_transfer_store_arc = Arc::new(
+        uc_infra::file_transfer::SqliteReceiverFileTransferStore::new(
+            infra.db_executor.clone(),
+            space_access_ports.derive_subkey.clone(),
+            platform.current_profile.clone(),
+        ),
+    );
+
     // File-class entry line-level manifest. Its path columns are sealed with a
     // per-session subkey derived from space access, so it is constructed here
     // (after space access + profile exist) rather than in `create_infra_layer`,
@@ -795,6 +805,46 @@ pub fn wire_dependencies(
                 platform.current_profile.clone(),
             ),
         );
+
+    let directory_attempt_impl = Arc::new(
+        uc_infra::db::repositories::DieselEntryReceiveAttemptRepository::new(
+            infra.db_executor.clone(),
+        ),
+    );
+    let directory_publish_impl = Arc::new(
+        uc_infra::db::repositories::DieselDirectoryPublishLogRepository::new(
+            infra.db_executor.clone(),
+            space_access_ports.derive_subkey.clone(),
+            platform.current_profile.clone(),
+        ),
+    );
+    let receive_artifact_impl = Arc::new(DieselReceiveArtifactLogRepository::new(
+        infra.db_executor.clone(),
+        space_access_ports.derive_subkey.clone(),
+        platform.current_profile.clone(),
+    ));
+    let inbound_commit_impl = Arc::new(DieselInboundReceiveCommitRepository::new(
+        infra.db_executor.clone(),
+        space_access_ports.derive_subkey.clone(),
+        platform.current_profile.clone(),
+    ));
+    let directory_receive = DirectoryReceivePorts {
+        get_attempt: directory_attempt_impl.clone(),
+        list_attempts: directory_attempt_impl.clone(),
+        record_publish: directory_publish_impl.clone(),
+        get_publish: directory_publish_impl,
+        begin_receive: directory_attempt_impl.clone(),
+        claim_commit: directory_attempt_impl.clone(),
+        request_cancel: directory_attempt_impl.clone(),
+        begin_failure: directory_attempt_impl.clone(),
+        record_artifacts: receive_artifact_impl.clone(),
+        get_artifacts: receive_artifact_impl.clone(),
+        list_unsettled_artifacts: receive_artifact_impl,
+        commit_inbound: inbound_commit_impl,
+        entry_progress: file_transfer_adapter,
+        delete_state: directory_attempt_impl.clone(),
+        purge_orphans: directory_attempt_impl,
+    };
 
     // The mobile-consumable reference is encrypted with a session-derived
     // subkey, so this register adapter must be assembled after space access and
@@ -884,12 +934,6 @@ pub fn wire_dependencies(
         worker_rx,
         clipboard_change_origin,
     } = build_blob_processing_assembly(&storage_config, spool_dir.clone())?;
-
-    // Extract the concrete file-transfer store before moving the rest of InfraLayer
-    // into AppDeps — it is not exposed through the application ports (use cases see
-    // it as `Arc<dyn FileTransferEventStorePort>`), so it travels via
-    // BackgroundRuntimeDeps.
-    let file_transfer_store_arc = Arc::clone(&infra.file_transfer_store);
 
     // iroh-blobs store dir + device-identity dir. The identity dir was resolved
     // (and created) once near the secure-storage setup above so the staged-import
@@ -985,7 +1029,8 @@ pub fn wire_dependencies(
             entry_file_set_repo,
             thumbnail_repo: infra.thumbnail_repo,
             thumbnail_generator: infra.thumbnail_generator,
-            file_transfer: infra.file_transfer,
+            file_transfer,
+            directory_receive,
         },
         settings: infra.settings_repo,
         system: SystemPorts {
@@ -1019,6 +1064,8 @@ pub fn wire_dependencies(
         Arc::new(crate::observability::host_event::LoggingHostEventEmitter)
             as Arc<dyn HostEventEmitterPort>,
     );
+    let receive_readiness =
+        Arc::new(uc_application::receive_reconciliation::ReceiveReadinessCoordinator::new());
 
     let crate::subsystem::file_transfer::FileTransferAssembly {
         lifecycle: file_transfer_lifecycle,
@@ -1027,7 +1074,11 @@ pub fn wire_dependencies(
         Arc::clone(&file_transfer_store_arc),
         Arc::clone(&host_event_bus),
         deps.storage.file_transfer.clone(),
+        deps.storage.directory_receive.clone(),
         deps.system.clock.clone(),
+        Arc::clone(&receive_readiness),
+        uc_infra::fs::FsInboundFileTarget::new(deps.settings.clone()),
+        paths.file_cache_dir.clone(),
     );
 
     let clipboard_write_coordinator = build_clipboard_write_coordinator(
@@ -1057,6 +1108,7 @@ pub fn wire_dependencies(
             mobile_sync_endpoint_info: Arc::clone(&infra.mobile_sync_endpoint_info),
         },
         shared: SharedRuntimeDeps {
+            receive_readiness,
             host_event_bus,
             entry_delivery_repo: Arc::clone(&infra.entry_delivery_repo),
             clipboard_event_reader_repo: Arc::clone(&infra.clipboard_event_reader_repo),

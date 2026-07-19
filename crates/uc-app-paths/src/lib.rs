@@ -34,6 +34,9 @@
 //! to its own error type.
 
 use std::path::{Path, PathBuf};
+
+/// Prefix of dedicated transient directory receive areas.
+pub const DIRECTORY_RECEIVE_STAGING_PREFIX: &str = ".uniclip-incoming-";
 use std::sync::OnceLock;
 
 /// Application directory name. The data/cache roots are

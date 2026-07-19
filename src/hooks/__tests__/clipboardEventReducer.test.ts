@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
+import fileTransferReducer from '@/store/slices/fileTransferSlice'
 import {
   createInitialClipboardEventReducerState,
   flushClipboardLocal,
@@ -15,6 +16,28 @@ function actionTypes(actions: ClipboardEventReducerAction[]): string[] {
 }
 
 describe('clipboardEventReducer', () => {
+  it('routes attempt state through exact placeholder removal', () => {
+    const result = reduce(
+      createInitialClipboardEventReducerState(),
+      {
+        topic: 'clipboard',
+        eventType: 'clipboard.receive_attempt_state_changed',
+        payload: { entryId: 'entry-1', attemptId: 'attempt-2', state: 'cancelled' },
+      },
+      1000
+    )
+
+    expect(result.actions).toMatchObject([
+      {
+        type: 'fileTransfer/setReceiveAttemptState',
+        payload: { entryId: 'entry-1', attemptId: 'attempt-2', state: 'cancelled' },
+      },
+      {
+        type: 'clipboard/removePendingEntryForAttempt',
+        payload: { entryId: 'entry-1', attemptId: 'attempt-2' },
+      },
+    ])
+  })
   it('turns incoming pending events into placeholder and transfer-status actions', () => {
     const now = vi.fn(() => 1234)
     const state = createInitialClipboardEventReducerState()
@@ -184,6 +207,42 @@ describe('clipboardEventReducer', () => {
         payload: { transferId: 'tx-1', entryId: 'entry-1' },
       },
     ])
+  })
+
+  it('keeps attempt progress linked to the aggregate transfer', () => {
+    const result = reduce(
+      createInitialClipboardEventReducerState(),
+      {
+        topic: 'file-transfer',
+        eventType: 'file-transfer.progress',
+        ts: 99,
+        payload: {
+          transferId: 'item-1',
+          entryId: 'entry-1',
+          attemptId: 'attempt-1',
+          peerId: 'peer-1',
+          direction: 'Receiving',
+          bytesTransferred: 512,
+          totalBytes: 1024,
+        },
+      },
+      1000
+    )
+
+    let state = fileTransferReducer(undefined, { type: '@@init' })
+    for (const action of result.actions) {
+      state = fileTransferReducer(state, action)
+    }
+    const aggregateId = 'entry-1\0attempt-1'
+
+    expect(result.actions).toHaveLength(1)
+    expect(state.entryTransferMap['entry-1']).toBe(aggregateId)
+    expect(state.activeTransfers[aggregateId]).toMatchObject({
+      entryId: 'entry-1',
+      attemptId: 'attempt-1',
+      bytesTransferred: 512,
+      totalBytes: 1024,
+    })
   })
 })
 

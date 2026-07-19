@@ -8,6 +8,7 @@ import fileTransferReducer, {
   removeEntryTransferStatus,
   updateTransferProgress,
   removeTransfer,
+  setReceiveAttemptState,
 } from '../fileTransferSlice'
 import type { EntryTransferStatus } from '../fileTransferSlice'
 
@@ -18,6 +19,59 @@ const initialState = {
 }
 
 describe('fileTransferSlice - file transfer status', () => {
+  it('aggregates item progress for the current attempt and rejects stale items', () => {
+    let state = fileTransferReducer(
+      initialState,
+      setReceiveAttemptState({ entryId: 'entry', attemptId: 'a1', state: 'receiving' })
+    )
+    state = fileTransferReducer(
+      state,
+      updateTransferProgress({
+        transferId: 'item-1',
+        entryId: 'entry',
+        attemptId: 'a1',
+        peerId: 'peer',
+        direction: 'Receiving',
+        bytesTransferred: 25,
+        totalBytes: 100,
+      })
+    )
+    state = fileTransferReducer(
+      state,
+      updateTransferProgress({
+        transferId: 'item-2',
+        entryId: 'entry',
+        attemptId: 'a1',
+        peerId: 'peer',
+        direction: 'Receiving',
+        bytesTransferred: 50,
+        totalBytes: 200,
+      })
+    )
+    let aggregate = state.activeTransfers[state.entryTransferMap.entry]
+    expect(aggregate.bytesTransferred).toBe(75)
+    expect(aggregate.totalBytes).toBe(300)
+
+    state = fileTransferReducer(
+      state,
+      setReceiveAttemptState({ entryId: 'entry', attemptId: 'a2', state: 'receiving' })
+    )
+    state = fileTransferReducer(
+      state,
+      updateTransferProgress({
+        transferId: 'late-item',
+        entryId: 'entry',
+        attemptId: 'a1',
+        peerId: 'peer',
+        direction: 'Receiving',
+        bytesTransferred: 100,
+        totalBytes: 100,
+      })
+    )
+    aggregate = state.activeTransfers[state.entryTransferMap.entry]
+    expect(aggregate.bytesTransferred).toBe(75)
+    expect(state.currentAttemptByEntry?.entry).toBe('a2')
+  })
   describe('setEntryTransferStatus', () => {
     it('sets durable entry status from live status event to transferring', () => {
       const state = fileTransferReducer(

@@ -58,6 +58,9 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Install cargo-audit from its locked dependency set
+        run: cargo install cargo-audit --locked
+
       - name: Audit Rust dependencies
         uses: rustsec/audit-check@v2.0.0
         with:

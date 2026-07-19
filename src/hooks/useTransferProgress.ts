@@ -1,7 +1,10 @@
 import { useEffect } from 'react'
+import { listEntryReceives } from '@/api/file_transfer'
 import { daemonWs } from '@/lib/daemon-ws'
 import { createLogger } from '@/lib/logger'
 import { useAppDispatch } from '@/store/hooks'
+import { addPendingEntry } from '@/store/slices/clipboardSlice'
+import { hydrateReceiveAttempts } from '@/store/slices/fileTransferSlice'
 import { createClipboardEventReducer } from './clipboardEventReducer'
 import type { ClipboardRealtimeEvent } from './clipboardEventReducer'
 
@@ -23,6 +26,25 @@ export function useTransferProgress(): void {
   useEffect(() => {
     let cancelled = false
     const reducer = createClipboardEventReducer({ now: () => Date.now(), throttleMs: 300 })
+
+    void listEntryReceives()
+      .then(receives => {
+        if (cancelled) return
+        dispatch(hydrateReceiveAttempts(receives))
+        for (const receive of receives) {
+          dispatch(
+            addPendingEntry({
+              entryId: receive.entryId,
+              attemptId: receive.attemptId,
+              fromDevice: '',
+              totalBytes: receive.totalBytes || null,
+              filenames: [],
+              createdAt: Date.now(),
+            })
+          )
+        }
+      })
+      .catch(error => log.warn({ error }, 'receive attempt hydration failed'))
 
     const handler = (event: ClipboardRealtimeEvent) => {
       if (cancelled) return
@@ -75,7 +97,7 @@ export function useTransferProgress(): void {
       for (const action of reduction.actions) dispatch(action)
     }
 
-    const unsubscribe = daemonWs.subscribe(['file-transfer'], handler)
+    const unsubscribe = daemonWs.subscribe(['file-transfer', 'clipboard'], handler)
 
     return () => {
       cancelled = true

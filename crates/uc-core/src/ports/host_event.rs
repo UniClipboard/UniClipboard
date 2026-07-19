@@ -18,6 +18,7 @@ pub enum ClipboardOriginKind {
 pub enum ClipboardHostEvent {
     NewContent {
         entry_id: String,
+        attempt_id: Option<String>,
         preview: String,
         origin: ClipboardOriginKind,
     },
@@ -26,12 +27,18 @@ pub enum ClipboardHostEvent {
     /// render a placeholder card immediately.
     IncomingPending {
         entry_id: String,
+        attempt_id: Option<String>,
         from_device: String,
         /// Total blob bytes declared in the envelope. `None` when no blobs
         /// (pure-text sync).
         total_bytes: Option<u64>,
         /// Filenames collected from `blob_refs[i].filename` in the V3 envelope.
         filenames: Vec<String>,
+    },
+    ReceiveAttemptStateChanged {
+        entry_id: String,
+        attempt_id: String,
+        state: String,
     },
 }
 
@@ -41,12 +48,14 @@ pub enum TransferHostEvent {
     StatusChanged {
         transfer_id: String,
         entry_id: String,
+        attempt_id: Option<String>,
         status: String,
         reason: Option<String>,
     },
     Progress {
         transfer_id: String,
         entry_id: Option<String>,
+        attempt_id: Option<String>,
         peer_id: String,
         direction: FileTransferDirection,
         bytes_transferred: u64,

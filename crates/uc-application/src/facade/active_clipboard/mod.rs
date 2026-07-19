@@ -429,6 +429,7 @@ async fn resurface_entry(
             debug!("entry resurfaced");
             bus.emit_or_warn(HostEvent::Clipboard(ClipboardHostEvent::NewContent {
                 entry_id: entry_id.as_ref().to_string(),
+                attempt_id: None,
                 preview: "Clipboard restored".to_string(),
                 origin: ClipboardOriginKind::Remote,
             }));

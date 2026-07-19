@@ -1,10 +1,9 @@
 //! daemon 运行循环。
 
-use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 
-use tokio::sync::Notify;
 use uc_application::facade::{AppFacade, UpgradeStatus};
+use uc_application::receive_reconciliation::EnsureReceiveReadyPort;
 use uc_bootstrap::SyncEngineAssembly;
 use uc_core::ports::SettingsPort;
 
@@ -23,8 +22,7 @@ pub struct DaemonRunLoopInput {
     pub app_facade: Arc<AppFacade>,
     pub settings: Arc<dyn SettingsPort>,
     pub sync_engine_assembly: SyncEngineAssembly,
-    pub deferred_ready_notify: Arc<Notify>,
-    pub clipboard_capture_gate: Arc<AtomicBool>,
+    pub receive_readiness: Arc<dyn EnsureReceiveReadyPort>,
 }
 
 /// 运行 daemon main loop，退出后关闭 space setup 资源。
@@ -40,8 +38,7 @@ pub async fn run_daemon_main(input: DaemonRunLoopInput) -> anyhow::Result<()> {
         app_facade,
         settings,
         sync_engine_assembly,
-        deferred_ready_notify,
-        clipboard_capture_gate,
+        receive_readiness,
     } = input;
 
     let space_setup = sync_engine_assembly.facade.clone();
@@ -57,8 +54,7 @@ pub async fn run_daemon_main(input: DaemonRunLoopInput) -> anyhow::Result<()> {
         app_facade,
         settings,
         space_setup,
-        deferred_ready_notify,
-        clipboard_capture_gate,
+        receive_readiness,
     });
 
     // ORDERING (ADR-008 P5-L L8a) — these two awaits are SEQUENTIAL: the iroh

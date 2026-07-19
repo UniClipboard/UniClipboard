@@ -39,7 +39,6 @@ pub(super) async fn get_clipboard_file(
     match facade.get_clipboard_file(&data_name).await {
         Ok(out) => {
             tracing::info!(
-                data_name = %data_name,
                 mime = %out.mime,
                 bytes = out.bytes.len(),
                 "GET /file: 200"
@@ -54,7 +53,7 @@ pub(super) async fn get_clipboard_file(
             Ok(resp)
         }
         Err(GetMobileSyncFileError::NotFound) => {
-            tracing::info!(data_name = %data_name, "GET /file: 404");
+            tracing::info!("GET /file: 404");
             Err(StatusCode::NOT_FOUND.into_response())
         }
         Err(GetMobileSyncFileError::Port(err)) => {
@@ -100,9 +99,7 @@ pub(super) async fn put_clipboard_file(
     let device_id = authed.device.device_id.clone();
     let peer_id = format!("mobile:{}", device_id);
 
-    // Lifecycle 启动:seed receiver projection(占位 entry_id 用
-    // `mobile-pending:<transfer_id>`,等 SyncDoc apply 后 backfill 为
-    // 真实 entry_id);然后发 Started 事件。两步合起来让
+    // Lifecycle starts as a provisional receive without entry authority.
     // FileTransferHostEventPublisher 能立刻发 `StatusChanged transferring`,
     // 前端 list row 看到占位状态。`file_transfer` 没装配时整段降级。
     seed_and_start_lifecycle(
@@ -130,7 +127,6 @@ pub(super) async fn put_clipboard_file(
             )
             .await;
             tracing::warn!(
-                data_name = %data_name,
                 error = %err,
                 "PUT /file: begin_stage failed"
             );
@@ -162,7 +158,6 @@ pub(super) async fn put_clipboard_file(
                     )
                     .await;
                     tracing::warn!(
-                        data_name = %data_name,
                         bytes_received,
                         limit = FILE_UPLOAD_DISK_SANITY_LIMIT,
                         "PUT /file: body exceeded disk sanity limit"
@@ -183,7 +178,6 @@ pub(super) async fn put_clipboard_file(
                     )
                     .await;
                     tracing::warn!(
-                        data_name = %data_name,
                         error = %err,
                         "PUT /file: append_stage_chunk failed"
                     );
@@ -243,7 +237,6 @@ pub(super) async fn put_clipboard_file(
         match infer_image_mime(&data_name, &sniff_window) {
             Some(sniffed) => {
                 tracing::info!(
-                    data_name = %data_name,
                     raw_mime = %raw_mime,
                     sniffed_mime = sniffed,
                     "PUT /file: overrode unspecific Content-Type with sniffed image mime"
@@ -256,7 +249,6 @@ pub(super) async fn put_clipboard_file(
         raw_mime.clone()
     };
 
-    let log_data_name = data_name.clone();
     let log_mime = effective_mime.clone();
     match facade
         .finalize_file_upload(handle, data_name, effective_mime, device_id, transfer_id)
@@ -264,7 +256,6 @@ pub(super) async fn put_clipboard_file(
     {
         Ok(outcome) => {
             tracing::info!(
-                data_name = %log_data_name,
                 mime = %log_mime,
                 bytes = bytes_received,
                 outcome = ?outcome_kind(&outcome),
@@ -278,9 +269,6 @@ pub(super) async fn put_clipboard_file(
 
 /// PUT /file 入口 lifecycle 起始:seed receiver projection + Started 事件。
 ///
-/// `entry_id` 用 `mobile-pending:<transfer_id>` 占位,等
-/// `ApplyIncomingMobileClipUseCase` 在 SyncDoc apply 拿到真实 entry_id
-/// 后 `link_transfer_to_entry` 把这条 projection 行改挂过去。
 async fn seed_and_start_lifecycle(
     facade: Option<&Arc<FileTransferFacade>>,
     transfer_id: &str,
@@ -292,11 +280,13 @@ async fn seed_and_start_lifecycle(
         return;
     };
     if let Err(err) = facade
-        .seed_receiver_context(SeedReceiverContext {
+        .seed_provisional_receiver_context(SeedReceiverContext {
             transfer_id: transfer_id.to_string(),
-            entry_id: format!("mobile-pending:{transfer_id}"),
+            entry_id: String::new(),
+            attempt_id: None,
             origin_device_id: peer_id.to_string(),
             filename: filename.to_string(),
+            file_size: total_bytes,
             cached_path: String::new(),
         })
         .await

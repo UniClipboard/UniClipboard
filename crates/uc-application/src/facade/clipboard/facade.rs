@@ -20,15 +20,21 @@ use tracing::instrument;
 use uc_core::ids::{DeviceId, EntryId};
 use uc_core::ports::security::TransferCipherPort;
 use uc_core::ports::{
-    ClipboardDispatchPort, ClipboardHeader, ClipboardReceiverPort, ClockPort, DeviceIdentityPort,
-    DispatchAck, EntryDeliveryRepositoryPort, FindMobileDeviceByIdPort, FirstSyncStatePort,
-    LocalIdentityPort, PeerAddressRepositoryPort, PresencePort, SettingsPort,
+    CancelDirectoryAttemptTransfersPort, CleanupDirectoryStagingPort, ClipboardDispatchPort,
+    ClipboardHeader, ClipboardReceiverPort, ClockPort, CommitInboundReceivePort,
+    DeviceIdentityPort, DispatchAck, EntryDeliveryRepositoryPort, FindMobileDeviceByIdPort,
+    FirstSyncStatePort, GetDirectoryPublishRecordPort, GetEntryAttemptPort,
+    GetEntryReceiveProgressPort, ListNonTerminalAttemptsPort, LocalIdentityPort,
+    PeerAddressRepositoryPort, PresencePort, RequestReceiveCancellationPort, SettingsPort,
 };
 use uc_core::MemberRepositoryPort;
 use uc_core::{ClipboardChangeOrigin, SystemClipboardSnapshot};
 use uc_observability::analytics::AnalyticsPort;
 
-use crate::facade::blob_transfer::SharedHostEventEmitter;
+use crate::facade::blob_transfer::{BlobTransferFacade, SharedHostEventEmitter};
+use crate::facade::clipboard::cancel_entry_receive::{
+    CancelEntryReceiveError, CancelEntryReceiveOutcome, CancelEntryReceiveUseCase,
+};
 use crate::usecases::clipboard_sync::dispatch_entry::DispatchEntryRunner;
 use crate::usecases::clipboard_sync::get_entry_delivery_view::{
     EntryDeliveryView, GetEntryDeliveryViewError, GetEntryDeliveryViewUseCase,
@@ -247,6 +253,10 @@ pub struct ClipboardSyncFacade {
     dispatch_uc: Arc<DispatchClipboardEntryUseCase>,
     ingest_uc: Arc<IngestInboundClipboardUseCase>,
     view_uc: Arc<GetEntryDeliveryViewUseCase>,
+    cancel_entry_receive_uc: Option<Arc<CancelEntryReceiveUseCase>>,
+    receive_progress: Option<Arc<dyn GetEntryReceiveProgressPort>>,
+    list_receive_attempts: Option<Arc<dyn ListNonTerminalAttemptsPort>>,
+    host_event_bus: Arc<crate::facade::HostEventBus>,
 }
 
 #[derive(Clone, Copy)]
@@ -309,7 +319,94 @@ impl ClipboardSyncFacade {
             dispatch_uc,
             ingest_uc,
             view_uc,
+            cancel_entry_receive_uc: None,
+            receive_progress: None,
+            list_receive_attempts: None,
+            host_event_bus: deps.host_event_bus.clone(),
         }
+    }
+
+    pub fn with_entry_receive_cancellation(
+        mut self,
+        get_attempt: Arc<dyn GetEntryAttemptPort>,
+        request_cancel: Arc<dyn RequestReceiveCancellationPort>,
+        progress: Arc<dyn GetEntryReceiveProgressPort>,
+        list_attempts: Arc<dyn ListNonTerminalAttemptsPort>,
+        commit_inbound: Arc<dyn CommitInboundReceivePort>,
+        get_publish: Arc<dyn GetDirectoryPublishRecordPort>,
+        staging_cleanup: Arc<dyn CleanupDirectoryStagingPort>,
+        cancel_projection: Arc<dyn CancelDirectoryAttemptTransfersPort>,
+        blob_transfer: Arc<BlobTransferFacade>,
+        clock: Arc<dyn ClockPort>,
+    ) -> Self {
+        self.receive_progress = Some(progress.clone());
+        self.list_receive_attempts = Some(list_attempts);
+        self.cancel_entry_receive_uc = Some(Arc::new(CancelEntryReceiveUseCase::new(
+            get_attempt,
+            request_cancel,
+            progress,
+            commit_inbound,
+            get_publish,
+            staging_cleanup,
+            cancel_projection,
+            blob_transfer,
+            clock,
+            self.host_event_bus.clone(),
+        )));
+        self
+    }
+
+    pub async fn get_entry_receive_progress(
+        &self,
+        entry_id: &EntryId,
+    ) -> Result<Option<uc_core::ports::EntryReceiveProgress>, CancelEntryReceiveError> {
+        let progress = self
+            .receive_progress
+            .as_ref()
+            .ok_or(CancelEntryReceiveError::Unavailable)?;
+        progress
+            .get_entry_receive_progress(entry_id.as_ref())
+            .await
+            .map_err(|error| CancelEntryReceiveError::Attempt(error.to_string()))
+    }
+
+    pub async fn list_entry_receive_progress(
+        &self,
+    ) -> Result<Vec<uc_core::ports::EntryReceiveProgress>, CancelEntryReceiveError> {
+        let attempts = self
+            .list_receive_attempts
+            .as_ref()
+            .ok_or(CancelEntryReceiveError::Unavailable)?
+            .list_non_terminal_attempts()
+            .await
+            .map_err(|error| CancelEntryReceiveError::Attempt(error.to_string()))?;
+        let progress = self
+            .receive_progress
+            .as_ref()
+            .ok_or(CancelEntryReceiveError::Unavailable)?;
+        let mut result = Vec::with_capacity(attempts.len());
+        for attempt in attempts {
+            if let Some(current) = progress
+                .get_entry_receive_progress(&attempt.entry_id)
+                .await
+                .map_err(|error| CancelEntryReceiveError::Attempt(error.to_string()))?
+            {
+                result.push(current);
+            }
+        }
+        Ok(result)
+    }
+
+    pub async fn cancel_entry_receive(
+        &self,
+        entry_id: &EntryId,
+        expected_attempt_id: &str,
+    ) -> Result<CancelEntryReceiveOutcome, CancelEntryReceiveError> {
+        let use_case = self
+            .cancel_entry_receive_uc
+            .as_ref()
+            .ok_or(CancelEntryReceiveError::Unavailable)?;
+        use_case.execute(entry_id, expected_attempt_id).await
     }
 
     /// 拿一条 entry 对每个可信对端的同步状态视图。详见

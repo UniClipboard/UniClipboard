@@ -4,6 +4,7 @@ import type { RootState } from '../index'
 export interface TransferProgressInfo {
   transferId: string
   entryId: string | null
+  attemptId?: string | null
   peerId: string
   direction: 'Sending' | 'Receiving'
   bytesTransferred: number
@@ -17,6 +18,7 @@ export interface TransferProgressInfo {
   updatedAt: number
   bytesPerSecond: number | null
   estimatedRemainingSeconds: number | null
+  itemProgress?: Record<string, { bytesTransferred: number; totalBytes: number | null }>
 }
 
 /** Durable entry-level transfer status seeded from command responses and status-changed events.
@@ -36,17 +38,20 @@ interface FileTransferState {
   entryTransferMap: Record<string, string>
   /** Durable entry-level transfer status keyed by entryId. Survives progress cleanup. */
   entryStatusById: Record<string, EntryTransferStatus>
+  currentAttemptByEntry?: Record<string, string>
 }
 
 const initialState: FileTransferState = {
   activeTransfers: {},
   entryTransferMap: {},
   entryStatusById: {},
+  currentAttemptByEntry: {},
 }
 
 interface UpdateTransferProgressPayload {
   transferId: string
   entryId?: string | null
+  attemptId?: string | null
   peerId: string
   direction: 'Sending' | 'Receiving'
   bytesTransferred: number
@@ -59,21 +64,48 @@ const fileTransferSlice = createSlice({
   initialState,
   reducers: {
     updateTransferProgress(state, action: PayloadAction<UpdateTransferProgressPayload>) {
-      const { transferId, entryId, peerId, direction, bytesTransferred, totalBytes, eventTs } =
-        action.payload
+      const {
+        transferId,
+        entryId,
+        attemptId,
+        peerId,
+        direction,
+        bytesTransferred,
+        totalBytes,
+        eventTs,
+      } = action.payload
+      if (
+        entryId &&
+        attemptId &&
+        state.currentAttemptByEntry?.[entryId] &&
+        state.currentAttemptByEntry[entryId] !== attemptId
+      ) {
+        return
+      }
+      if (entryId && attemptId) (state.currentAttemptByEntry ??= {})[entryId] = attemptId
+      const aggregateId = entryId && attemptId ? `${entryId}\0${attemptId}` : transferId
       const now = eventTs ?? Date.now()
-      const existing = state.activeTransfers[transferId]
+      const existing = state.activeTransfers[aggregateId]
+      const itemProgress = {
+        ...(existing?.itemProgress ?? {}),
+        [transferId]: {
+          bytesTransferred,
+          totalBytes: totalBytes ?? null,
+        },
+      }
+      const items = Object.values(itemProgress)
+      const aggregateBytes = items.reduce((sum, item) => sum + item.bytesTransferred, 0)
+      const aggregateTotal = items.every(item => item.totalBytes !== null)
+        ? items.reduce((sum, item) => sum + (item.totalBytes ?? 0), 0)
+        : null
 
       const startedAt = existing?.startedAt ?? now
       const elapsedSeconds = Math.max((now - startedAt) / 1000, 0.001)
-      const bytesPerSecond = bytesTransferred > 0 ? bytesTransferred / elapsedSeconds : null
-      const totalBytesValue = totalBytes ?? existing?.totalBytes ?? null
+      const bytesPerSecond = aggregateBytes > 0 ? aggregateBytes / elapsedSeconds : null
+      const totalBytesValue = aggregateTotal ?? existing?.totalBytes ?? null
       const estimatedRemainingSeconds =
-        totalBytesValue &&
-        bytesPerSecond &&
-        bytesPerSecond > 0 &&
-        bytesTransferred <= totalBytesValue
-          ? Math.max((totalBytesValue - bytesTransferred) / bytesPerSecond, 0)
+        totalBytesValue && bytesPerSecond && bytesPerSecond > 0 && aggregateBytes <= totalBytesValue
+          ? Math.max((totalBytesValue - aggregateBytes) / bytesPerSecond, 0)
           : null
 
       // Preserve terminal status set by status_changed events — progress events must not regress it.
@@ -84,23 +116,25 @@ const fileTransferSlice = createSlice({
           ? existing.status
           : 'active'
 
-      state.activeTransfers[transferId] = {
+      state.activeTransfers[aggregateId] = {
         ...existing,
-        transferId,
+        transferId: aggregateId,
         entryId: entryId ?? existing?.entryId ?? null,
+        attemptId: attemptId ?? existing?.attemptId ?? null,
         peerId,
         direction,
-        bytesTransferred,
+        bytesTransferred: aggregateBytes,
         totalBytes: totalBytesValue,
         status,
         startedAt,
         updatedAt: now,
         bytesPerSecond,
         estimatedRemainingSeconds,
+        itemProgress,
       }
 
       if (entryId) {
-        state.entryTransferMap[entryId] = transferId
+        state.entryTransferMap[entryId] = aggregateId
       }
     },
 
@@ -206,6 +240,71 @@ const fileTransferSlice = createSlice({
     /** Remove durable entry status (e.g., when entry is deleted). */
     removeEntryTransferStatus(state, action: PayloadAction<string>) {
       delete state.entryStatusById[action.payload]
+      if (state.currentAttemptByEntry) delete state.currentAttemptByEntry[action.payload]
+    },
+
+    setReceiveAttemptState(
+      state,
+      action: PayloadAction<{ entryId: string; attemptId: string; state: string }>
+    ) {
+      const { entryId, attemptId, state: attemptState } = action.payload
+      const current = state.currentAttemptByEntry?.[entryId]
+      if (current && current !== attemptId && attemptState !== 'receiving') return
+      ;(state.currentAttemptByEntry ??= {})[entryId] = attemptId
+      const transferId = state.entryTransferMap[entryId]
+      const transfer = transferId ? state.activeTransfers[transferId] : undefined
+      if (transfer && transfer.attemptId === attemptId) {
+        if (attemptState === 'completed') transfer.status = 'completed'
+        if (attemptState === 'failed') transfer.status = 'failed'
+        if (attemptState === 'cancelled') transfer.status = 'cancelled'
+        transfer.updatedAt = Date.now()
+      }
+      const status =
+        attemptState === 'receiving' || attemptState === 'committing'
+          ? 'transferring'
+          : attemptState === 'completed'
+            ? 'completed'
+            : attemptState === 'cancelled'
+              ? 'cancelled'
+              : attemptState === 'failed'
+                ? 'failed'
+                : undefined
+      if (status) state.entryStatusById[entryId] = { status, reason: null }
+    },
+
+    hydrateReceiveAttempts(
+      state,
+      action: PayloadAction<
+        Array<{
+          entryId: string
+          attemptId: string
+          state: string
+          totalBytes: number
+          completedBytes: number
+        }>
+      >
+    ) {
+      for (const receive of action.payload) {
+        ;(state.currentAttemptByEntry ??= {})[receive.entryId] = receive.attemptId
+        const transferId = `${receive.entryId}\0${receive.attemptId}`
+        state.entryTransferMap[receive.entryId] = transferId
+        state.activeTransfers[transferId] = {
+          transferId,
+          entryId: receive.entryId,
+          attemptId: receive.attemptId,
+          peerId: '',
+          direction: 'Receiving',
+          bytesTransferred: receive.completedBytes,
+          totalBytes: receive.totalBytes || null,
+          status: 'active',
+          startedAt: Date.now(),
+          updatedAt: Date.now(),
+          bytesPerSecond: null,
+          estimatedRemainingSeconds: null,
+          itemProgress: {},
+        }
+        state.entryStatusById[receive.entryId] = { status: 'transferring', reason: null }
+      }
     },
   },
 })
@@ -222,6 +321,8 @@ export const {
   setEntryTransferStatus,
   hydrateEntryTransferStatuses,
   removeEntryTransferStatus,
+  setReceiveAttemptState,
+  hydrateReceiveAttempts,
 } = fileTransferSlice.actions
 
 // Selectors

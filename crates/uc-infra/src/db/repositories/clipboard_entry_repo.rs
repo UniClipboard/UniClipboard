@@ -3,7 +3,10 @@ use crate::db::models::NewClipboardEntryRow;
 use crate::db::models::NewClipboardSelectionRow;
 use crate::db::ports::DbExecutor;
 use crate::db::ports::{InsertMapper, RowMapper};
-use crate::db::schema::{clipboard_entry, clipboard_event, clipboard_selection};
+use crate::db::schema::{
+    clipboard_entry, clipboard_event, clipboard_selection, clipboard_snapshot_representation,
+    entry_receive_attempt, receive_artifact_log,
+};
 use anyhow::Result;
 use diesel::query_dsl::methods::FilterDsl;
 use diesel::query_dsl::methods::LimitDsl;
@@ -14,15 +17,17 @@ use diesel::Connection;
 use diesel::ExpressionMethods;
 use diesel::OptionalExtension;
 use diesel::RunQueryDsl;
+use diesel::SqliteConnection;
 use tracing::instrument;
 use uc_core::clipboard::{ClipboardEntry, ClipboardRepositoryError, ClipboardSelectionDecision};
-use uc_core::ids::EntryId;
+use uc_core::ids::{EntryId, EventId};
 use uc_core::ports::clipboard::{
-    DeleteClipboardEntryPort, FindEntryIdBySnapshotHashPort, GetClipboardEntryPort,
-    GetEntrySnapshotHashPort, ListClipboardEntriesPort, SaveClipboardEntryPort,
-    SetClipboardEntryFavoritePort, TouchClipboardEntryPort,
+    DeleteClipboardEntryPort, DeleteClipboardEntryWithReceiveStatePort,
+    FindEntryIdBySnapshotHashPort, GetClipboardEntryPort, GetEntrySnapshotHashPort,
+    ListClipboardEntriesPort, SaveClipboardEntryPort, SetClipboardEntryFavoritePort,
+    TouchClipboardEntryPort,
 };
-use uc_core::ports::ClipboardEntryStore;
+use uc_core::ports::{AttemptState, ClipboardEntryStore};
 
 pub struct DieselClipboardEntryRepository<E, ME, MS, RE> {
     executor: E,
@@ -40,6 +45,20 @@ impl<E, ME, MS, RE> DieselClipboardEntryRepository<E, ME, MS, RE> {
             row_entry_mapper,
         }
     }
+}
+
+pub(super) fn insert_entry_and_selection_rows(
+    conn: &mut SqliteConnection,
+    entry: &NewClipboardEntryRow,
+    selection: &NewClipboardSelectionRow,
+) -> Result<()> {
+    diesel::insert_into(clipboard_entry::table)
+        .values(entry)
+        .execute(conn)?;
+    diesel::insert_into(clipboard_selection::table)
+        .values(selection)
+        .execute(conn)?;
+    Ok(())
 }
 
 #[async_trait::async_trait]
@@ -69,15 +88,7 @@ where
             let new_selection_row = self.selection_mapper.to_row(selection)?;
 
             conn.transaction(|conn| {
-                diesel::insert_into(clipboard_entry::table)
-                    .values(&new_entry_row)
-                    .execute(conn)?;
-
-                diesel::insert_into(clipboard_selection::table)
-                    .values(&new_selection_row)
-                    .execute(conn)?;
-
-                Ok(())
+                insert_entry_and_selection_rows(conn, &new_entry_row, &new_selection_row)
             })
         })
     }
@@ -441,6 +452,77 @@ where
 }
 
 #[async_trait::async_trait]
+impl<E, ME, MS, RE> DeleteClipboardEntryWithReceiveStatePort
+    for DieselClipboardEntryRepository<E, ME, MS, RE>
+where
+    E: DbExecutor,
+    ME: InsertMapper<ClipboardEntry, NewClipboardEntryRow>,
+    MS: InsertMapper<ClipboardSelectionDecision, NewClipboardSelectionRow>,
+    RE: RowMapper<ClipboardEntryRow, ClipboardEntry>,
+{
+    async fn delete_entry_with_receive_state(
+        &self,
+        entry_id: &EntryId,
+        event_id: &EventId,
+    ) -> Result<(), ClipboardRepositoryError> {
+        let entry_id = entry_id.to_string();
+        let event_id = event_id.to_string();
+        self.executor
+            .run(move |conn| {
+                conn.transaction::<_, anyhow::Error, _>(|conn| {
+                    let attempt_state = entry_receive_attempt::table
+                        .filter(entry_receive_attempt::entry_id.eq(&entry_id))
+                        .select(entry_receive_attempt::attempt_state)
+                        .first::<String>(conn)
+                        .optional()?;
+                    if attempt_state
+                        .as_deref()
+                        .map(str::parse::<AttemptState>)
+                        .transpose()?
+                        .is_some_and(|state| !state.is_terminal())
+                    {
+                        return Err(anyhow::anyhow!("entry has a nonterminal remote receive"));
+                    }
+                    let pending_artifacts = receive_artifact_log::table
+                        .filter(receive_artifact_log::entry_id.eq(&entry_id))
+                        .filter(receive_artifact_log::resolution.eq("pending"))
+                        .select(receive_artifact_log::entry_id)
+                        .first::<String>(conn)
+                        .optional()?
+                        .is_some();
+                    if pending_artifacts {
+                        return Err(anyhow::anyhow!("entry has unsettled receive artifacts"));
+                    }
+
+                    diesel::delete(
+                        clipboard_selection::table
+                            .filter(clipboard_selection::entry_id.eq(&entry_id)),
+                    )
+                    .execute(conn)?;
+                    diesel::delete(
+                        clipboard_entry::table.filter(clipboard_entry::entry_id.eq(&entry_id)),
+                    )
+                    .execute(conn)?;
+                    diesel::delete(
+                        clipboard_snapshot_representation::table
+                            .filter(clipboard_snapshot_representation::event_id.eq(&event_id)),
+                    )
+                    .execute(conn)?;
+                    diesel::delete(
+                        clipboard_event::table.filter(clipboard_event::event_id.eq(&event_id)),
+                    )
+                    .execute(conn)?;
+                    crate::db::repositories::entry_receive_attempt_repo::delete_receive_state(
+                        conn, &entry_id,
+                    )?;
+                    Ok(())
+                })
+            })
+            .map_err(|error| ClipboardRepositoryError::Storage(error.to_string()))
+    }
+}
+
+#[async_trait::async_trait]
 impl<E, ME, MS, RE> FindEntryIdBySnapshotHashPort for DieselClipboardEntryRepository<E, ME, MS, RE>
 where
     E: DbExecutor,
@@ -554,6 +636,135 @@ mod tests {
             .unwrap();
 
         entry_id
+    }
+
+    fn seed_entry_with_receive_state(
+        executor: &DieselSqliteExecutor,
+        attempt_state_value: &str,
+        artifact_resolution: &str,
+    ) -> (EntryId, EventId) {
+        use crate::db::schema::{
+            clipboard_entry, clipboard_selection, clipboard_snapshot_representation,
+            entry_receive_attempt, receive_artifact_log,
+        };
+
+        let entry_id = seed_event_and_entry(executor, &format!("blake3v1:{}", "12".repeat(32)));
+        let event_id = executor
+            .run({
+                let entry_id = entry_id.clone();
+                move |conn| {
+                    clipboard_entry::table
+                        .filter(clipboard_entry::entry_id.eq(entry_id))
+                        .select(clipboard_entry::event_id)
+                        .first::<String>(conn)
+                        .map_err(Into::into)
+                }
+            })
+            .unwrap();
+        let attempt_state_value = attempt_state_value.to_owned();
+        let artifact_resolution = artifact_resolution.to_owned();
+        executor
+            .run({
+                let entry_id = entry_id.clone();
+                let event_id = event_id.clone();
+                move |conn| {
+                    diesel::insert_into(clipboard_snapshot_representation::table)
+                        .values((
+                            clipboard_snapshot_representation::id.eq("rep"),
+                            clipboard_snapshot_representation::event_id.eq(&event_id),
+                            clipboard_snapshot_representation::format_id.eq("text"),
+                            clipboard_snapshot_representation::mime_type.eq(Some("text/plain")),
+                            clipboard_snapshot_representation::size_bytes.eq(5_i64),
+                            clipboard_snapshot_representation::inline_data
+                                .eq(Some(b"hello".to_vec())),
+                            clipboard_snapshot_representation::blob_id.eq::<Option<&str>>(None),
+                            clipboard_snapshot_representation::payload_state.eq("Inline"),
+                            clipboard_snapshot_representation::last_error.eq::<Option<&str>>(None),
+                        ))
+                        .execute(conn)?;
+                    diesel::insert_into(clipboard_selection::table)
+                        .values((
+                            clipboard_selection::entry_id.eq(&entry_id),
+                            clipboard_selection::primary_rep_id.eq("rep"),
+                            clipboard_selection::secondary_rep_ids.eq("[]"),
+                            clipboard_selection::preview_rep_id.eq("rep"),
+                            clipboard_selection::paste_rep_id.eq("rep"),
+                            clipboard_selection::policy_version.eq("v1"),
+                        ))
+                        .execute(conn)?;
+                    diesel::insert_into(entry_receive_attempt::table)
+                        .values((
+                            entry_receive_attempt::entry_id.eq(&entry_id),
+                            entry_receive_attempt::current_attempt_id.eq("attempt"),
+                            entry_receive_attempt::attempt_state.eq(attempt_state_value),
+                            entry_receive_attempt::updated_at_ms.eq(1_i64),
+                        ))
+                        .execute(conn)?;
+                    diesel::insert_into(receive_artifact_log::table)
+                        .values((
+                            receive_artifact_log::entry_id.eq(&entry_id),
+                            receive_artifact_log::attempt_id.eq("attempt"),
+                            receive_artifact_log::phase.eq("landed"),
+                            receive_artifact_log::resolution.eq(artifact_resolution),
+                            receive_artifact_log::artifact_ciphertext.eq(vec![1_u8, 2, 3]),
+                            receive_artifact_log::updated_at_ms.eq(1_i64),
+                        ))
+                        .execute(conn)?;
+                    Ok(())
+                }
+            })
+            .unwrap();
+
+        (EntryId::from(entry_id), EventId::from(event_id))
+    }
+
+    fn assert_receive_delete_fixture_counts(executor: &DieselSqliteExecutor, expected: i64) {
+        use crate::db::schema::{
+            clipboard_entry, clipboard_event, clipboard_selection,
+            clipboard_snapshot_representation, entry_receive_attempt, receive_artifact_log,
+        };
+
+        executor
+            .run(move |conn| {
+                assert_eq!(
+                    clipboard_entry::table
+                        .select(diesel::dsl::count_star())
+                        .first::<i64>(conn)?,
+                    expected
+                );
+                assert_eq!(
+                    clipboard_event::table
+                        .select(diesel::dsl::count_star())
+                        .first::<i64>(conn)?,
+                    expected
+                );
+                assert_eq!(
+                    clipboard_selection::table
+                        .select(diesel::dsl::count_star())
+                        .first::<i64>(conn)?,
+                    expected
+                );
+                assert_eq!(
+                    clipboard_snapshot_representation::table
+                        .select(diesel::dsl::count_star())
+                        .first::<i64>(conn)?,
+                    expected
+                );
+                assert_eq!(
+                    entry_receive_attempt::table
+                        .select(diesel::dsl::count_star())
+                        .first::<i64>(conn)?,
+                    expected
+                );
+                assert_eq!(
+                    receive_artifact_log::table
+                        .select(diesel::dsl::count_star())
+                        .first::<i64>(conn)?,
+                    expected
+                );
+                Ok(())
+            })
+            .unwrap();
     }
 
     #[tokio::test]
@@ -671,5 +882,79 @@ mod tests {
             !updated,
             "favoriting an unknown entry must report no row update"
         );
+    }
+
+    #[tokio::test]
+    async fn combined_delete_removes_terminal_entry_and_receive_state() {
+        let (repo, executor, _tempdir) = make_repo();
+        let (entry_id, event_id) = seed_entry_with_receive_state(&executor, "completed", "landed");
+
+        repo.delete_entry_with_receive_state(&entry_id, &event_id)
+            .await
+            .unwrap();
+
+        assert_receive_delete_fixture_counts(&executor, 0);
+    }
+
+    #[tokio::test]
+    async fn combined_delete_rejects_nonterminal_receive_without_changes() {
+        let (repo, executor, _tempdir) = make_repo();
+        let (entry_id, event_id) = seed_entry_with_receive_state(&executor, "receiving", "landed");
+
+        assert!(repo
+            .delete_entry_with_receive_state(&entry_id, &event_id)
+            .await
+            .is_err());
+
+        assert_receive_delete_fixture_counts(&executor, 1);
+    }
+
+    #[tokio::test]
+    async fn combined_delete_loses_to_an_attempt_that_is_committing() {
+        let (repo, executor, _tempdir) = make_repo();
+        let (entry_id, event_id) = seed_entry_with_receive_state(&executor, "committing", "landed");
+
+        assert!(repo
+            .delete_entry_with_receive_state(&entry_id, &event_id)
+            .await
+            .is_err());
+
+        assert_receive_delete_fixture_counts(&executor, 1);
+    }
+
+    #[tokio::test]
+    async fn combined_delete_rejects_pending_artifacts_without_changes() {
+        let (repo, executor, _tempdir) = make_repo();
+        let (entry_id, event_id) = seed_entry_with_receive_state(&executor, "completed", "pending");
+
+        assert!(repo
+            .delete_entry_with_receive_state(&entry_id, &event_id)
+            .await
+            .is_err());
+
+        assert_receive_delete_fixture_counts(&executor, 1);
+    }
+
+    #[tokio::test]
+    async fn combined_delete_rolls_back_every_table_when_a_delete_fails() {
+        let (repo, executor, _tempdir) = make_repo();
+        let (entry_id, event_id) = seed_entry_with_receive_state(&executor, "completed", "landed");
+        executor
+            .run(|conn| {
+                diesel::sql_query(
+                    "CREATE TRIGGER fail_event_delete BEFORE DELETE ON clipboard_event \
+                     BEGIN SELECT RAISE(ABORT, 'injected delete failure'); END",
+                )
+                .execute(conn)?;
+                Ok(())
+            })
+            .unwrap();
+
+        assert!(repo
+            .delete_entry_with_receive_state(&entry_id, &event_id)
+            .await
+            .is_err());
+
+        assert_receive_delete_fixture_counts(&executor, 1);
     }
 }

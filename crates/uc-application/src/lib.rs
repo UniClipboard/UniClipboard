@@ -43,6 +43,7 @@ pub(crate) mod pairing_inbound;
 pub(crate) mod pairing_invitation;
 pub(crate) mod pairing_outbound;
 pub mod proof;
+pub mod receive_reconciliation;
 pub mod trusted_peer;
 /// `pub` (not `pub(crate)`) only because Slice 2 Phase 3 · T10 needs a
 /// publicly-reachable path to `usecases::clipboard_sync::payload_codec

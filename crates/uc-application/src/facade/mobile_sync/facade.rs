@@ -201,12 +201,9 @@ pub struct MobileSyncFacadeDeps {
     /// 测试场景可注入内存 fake。
     pub file_staging: Arc<dyn MobileFileStagingPort>,
     pub snapshot_ports: MobileSyncSnapshotPorts,
-    /// 可选 file-transfer lifecycle facade。装配处提供时,SyncDoc apply
-    /// 后自动 `link_transfer_to_entry` + `complete`,失败路径 `fail`,让
-    /// mobile_lan 路径产生的 transfer 在 file_transfer 表里有完整 lifecycle;
-    /// `None` 时静默降级(unit / 测试装配)。`PUT /file` handler 端
-    /// (`webserver`)在收 body 期间自己调 `start` / `Progress` —— 本字段
-    /// 仅用于 apply 阶段收尾。
+    /// Optional lifecycle facade for provisional Mobile receives. SyncDoc
+    /// adoption establishes entry ownership; this dependency records the
+    /// staged path and settles the transfer after apply.
     pub file_transfer: Option<Arc<FileTransferFacade>>,
     /// 可选剪贴板出站 facade。装配处提供时,移动端 `PUT /SyncClipboard.json`
     /// 成功落地本机后,本 facade 内部会异步把同一份 snapshot 走"本机捕获

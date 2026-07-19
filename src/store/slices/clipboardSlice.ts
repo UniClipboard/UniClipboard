@@ -18,6 +18,7 @@ import { deleteClipboardEntry, restoreClipboardEntry } from '@/api/daemon'
  */
 export interface PendingClipboardEntry {
   entryId: string
+  attemptId?: string | null
   fromDevice: string
   totalBytes: number | null
   /**
@@ -112,9 +113,21 @@ const clipboardSlice = createSlice({
     removePendingEntry: (state, action: PayloadAction<string>) => {
       state.pendingItems = state.pendingItems.filter(p => p.entryId !== action.payload)
     },
+    removePendingEntryForAttempt: (
+      state,
+      action: PayloadAction<{ entryId: string; attemptId: string | null }>
+    ) => {
+      const { entryId, attemptId } = action.payload
+      state.pendingItems = state.pendingItems.filter(
+        pending =>
+          pending.entryId !== entryId ||
+          (attemptId !== null && (pending.attemptId ?? null) !== attemptId)
+      )
+    },
   },
 })
 
-export const { addPendingEntry, removePendingEntry } = clipboardSlice.actions
+export const { addPendingEntry, removePendingEntry, removePendingEntryForAttempt } =
+  clipboardSlice.actions
 
 export default clipboardSlice.reducer

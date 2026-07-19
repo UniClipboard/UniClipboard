@@ -8,21 +8,29 @@
 //! external callers reach those actions through the facade, not through
 //! the lifecycle struct.
 
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
 use tokio::task::JoinHandle;
 use tracing::{info, info_span, warn, Instrument};
 
-use uc_application::deps::FileTransferPorts;
+use uc_application::deps::{DirectoryReceivePorts, FileTransferPorts};
 use uc_application::facade::{
     BlobTransferFacade, FileTransferFacade, FileTransferFacadeDeps, FileTransferHostEventPublisher,
     HostEvent, HostEventBus, InboundCancelOutcome, OutboundEntryIdCache, TransferHostEvent,
+};
+use uc_application::receive_reconciliation::{
+    EnsureReceiveReadyPort, ReceiveReadinessCoordinator, ReceiveReadinessError,
+    ReceiveReadinessStatus, ReconcileReceiveAttemptsUseCase,
 };
 use uc_core::file_transfer::{
     FileTransferCancellationReason, FileTransferEventPublisherPort, FileTransferEventStorePort,
 };
 use uc_core::ports::file_transfer::TrackedFileTransferStatus;
+use uc_core::ports::{
+    inbound_file_target::ResolveInboundSaveDirPort, EnsureFileTransferPrivacyMaintenancePort,
+};
 use uc_core::ports::{ClockPort, FailInflightTransfersPort, ListExpiredInflightTransfersPort};
 use uc_infra::db::executor::DieselSqliteExecutor;
 use uc_infra::file_transfer::SqliteReceiverFileTransferStore;
@@ -75,6 +83,11 @@ pub struct FileTransferLifecycle {
 
     list_expired: Arc<dyn ListExpiredInflightTransfersPort>,
     fail_inflight: Arc<dyn FailInflightTransfersPort>,
+    receive_reconcile: Arc<ReconcileReceiveAttemptsUseCase>,
+    receive_readiness: Arc<ReceiveReadinessCoordinator>,
+    privacy_maintenance: Arc<dyn EnsureFileTransferPrivacyMaintenancePort>,
+    save_dir_resolver: Arc<dyn ResolveInboundSaveDirPort>,
+    file_cache_dir: PathBuf,
     clock: Arc<dyn ClockPort>,
 }
 
@@ -90,6 +103,25 @@ pub struct FileTransferAssembly {
 }
 
 impl FileTransferLifecycle {
+    pub async fn ensure_receive_ready(&self) -> Result<(), ReceiveReadinessError> {
+        self.receive_readiness
+            .ensure_ready(|| async {
+                self.privacy_maintenance
+                    .ensure_file_transfer_privacy_maintenance()
+                    .await
+                    .map_err(|error| anyhow::anyhow!(error.to_string()))?;
+                self.receive_reconcile.execute().await?;
+                self.reconcile_on_startup().await?;
+                crate::startup::inbound_staging::sweep_inbound_staging(
+                    Arc::clone(&self.save_dir_resolver),
+                    &self.file_cache_dir,
+                )
+                .await;
+                Ok(())
+            })
+            .await
+            .map_err(|error| ReceiveReadinessError::Recovery(error.to_string()))
+    }
     /// Spawn a periodic timeout sweep.
     ///
     /// Runs every 15 seconds. Fails stalled pending (>60s) and transferring
@@ -104,9 +136,11 @@ impl FileTransferLifecycle {
         let fail_inflight = Arc::clone(&self.fail_inflight);
         let clock = Arc::clone(&self.clock);
         let bus = Arc::clone(&self.host_event_bus);
+        let readiness = Arc::clone(&self.receive_readiness);
 
         tokio::spawn(
             async move {
+                readiness.wait_ready().await;
                 let mut interval = tokio::time::interval(SWEEP_INTERVAL);
                 let mut cancel = cancel;
 
@@ -196,6 +230,7 @@ impl FileTransferLifecycle {
                         bus.emit_or_warn(HostEvent::Transfer(TransferHostEvent::StatusChanged {
                             transfer_id: t.transfer_id.clone(),
                             entry_id: t.entry_id.clone(),
+                            attempt_id: None,
                             status: "failed".to_string(),
                             reason: Some(reason.to_string()),
                         }));
@@ -209,8 +244,9 @@ impl FileTransferLifecycle {
     /// Run startup reconciliation: mark orphaned in-flight transfers as
     /// failed and clean their cache artifacts.
     ///
-    /// Non-blocking and non-fatal: errors are logged as warnings.
-    pub async fn reconcile_on_startup(&self) {
+    /// A storage failure is returned so the receive readiness gate remains
+    /// closed and a later lifecycle retry can run the same idempotent pass.
+    pub async fn reconcile_on_startup(&self) -> anyhow::Result<()> {
         let now_ms = self.clock.now_ms();
         let reason = "orphaned: app restarted while transfer was in-flight";
 
@@ -222,14 +258,14 @@ impl FileTransferLifecycle {
         {
             Ok(targets) => targets,
             Err(err) => {
-                warn!(error = %err, "Startup reconciliation failed (non-fatal)");
-                return;
+                warn!(error = %err, "Startup reconciliation failed");
+                return Err(anyhow::anyhow!(err.to_string()));
             }
         };
 
         if cleanup_targets.is_empty() {
             info!("No orphaned in-flight transfers found at startup");
-            return;
+            return Ok(());
         }
 
         info!(
@@ -244,11 +280,28 @@ impl FileTransferLifecycle {
                 TransferHostEvent::StatusChanged {
                     transfer_id: t.transfer_id.clone(),
                     entry_id: t.entry_id.clone(),
+                    attempt_id: None,
                     status: "failed".to_string(),
                     reason: Some(reason.to_string()),
                 },
             ));
         }
+        Ok(())
+    }
+}
+
+#[async_trait::async_trait]
+impl EnsureReceiveReadyPort for FileTransferLifecycle {
+    async fn ensure_receive_ready(&self) -> Result<(), ReceiveReadinessError> {
+        Self::ensure_receive_ready(self).await
+    }
+
+    fn close_receive_gate(&self) {
+        self.receive_readiness.mark_not_ready();
+    }
+
+    fn receive_readiness_status(&self) -> ReceiveReadinessStatus {
+        self.receive_readiness.status()
     }
 }
 
@@ -272,7 +325,7 @@ async fn cleanup_cached_path(cached_path: &str) {
 
     if path.is_file() {
         if let Err(err) = tokio::fs::remove_file(path).await {
-            warn!(error = %err, path = %cached_path, "Failed to remove cached file");
+            warn!(error = %err, "Failed to remove cached file");
         }
     }
 
@@ -286,7 +339,6 @@ async fn cleanup_cached_path(cached_path: &str) {
                     if let Err(err) = tokio::fs::remove_dir(parent).await {
                         warn!(
                             error = %err,
-                            path = %parent.display(),
                             "Failed to remove empty transfer directory"
                         );
                     }
@@ -300,13 +352,18 @@ pub fn build_file_transfer_assembly(
     store: Arc<FileTransferEventStore>,
     host_event_bus: Arc<HostEventBus>,
     file_transfer: FileTransferPorts,
+    directory_receive: DirectoryReceivePorts,
     clock: Arc<dyn ClockPort>,
+    receive_readiness: Arc<ReceiveReadinessCoordinator>,
+    save_dir_resolver: Arc<dyn ResolveInboundSaveDirPort>,
+    file_cache_dir: PathBuf,
 ) -> FileTransferAssembly {
     let outbound_entry_cache = Arc::new(OutboundEntryIdCache::new());
 
     let publisher = Arc::new(FileTransferHostEventPublisher::new(
         Arc::clone(&host_event_bus),
         file_transfer.find_entry_id,
+        file_transfer.find_attempt_id,
         Arc::clone(&outbound_entry_cache),
     ));
 
@@ -317,8 +374,10 @@ pub fn build_file_transfer_assembly(
         store: store_port,
         publisher: publisher_port,
         repo: file_transfer.record,
+        provisional_seed: file_transfer.seed_provisional,
+        provisional_path: file_transfer.update_provisional_path,
+        provisional_finalize: file_transfer.finalize_provisional.clone(),
         clock: Arc::clone(&clock),
-        host_publisher: Some(Arc::clone(&publisher)),
     }));
 
     let lifecycle = Arc::new(FileTransferLifecycle {
@@ -326,6 +385,22 @@ pub fn build_file_transfer_assembly(
         host_event_bus,
         list_expired: file_transfer.list_expired,
         fail_inflight: file_transfer.fail_inflight,
+        receive_reconcile: Arc::new(ReconcileReceiveAttemptsUseCase::new(
+            directory_receive.get_attempt,
+            directory_receive.list_attempts,
+            directory_receive.list_unsettled_artifacts,
+            directory_receive.get_publish,
+            directory_receive.begin_failure,
+            Arc::new(uc_infra::fs::FsReceiveArtifactCleaner),
+            file_transfer.list_provisional,
+            file_transfer.finalize_provisional.clone(),
+            directory_receive.commit_inbound,
+            Arc::clone(&clock),
+        )),
+        receive_readiness,
+        privacy_maintenance: file_transfer.privacy_maintenance,
+        save_dir_resolver,
+        file_cache_dir,
         clock,
     });
 

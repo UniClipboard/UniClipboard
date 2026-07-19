@@ -68,6 +68,8 @@ pub const FAILED_RETAIN_MS: u64 = 4_000;
 #[derive(Debug, Clone, PartialEq)]
 pub struct ActivityHudRow {
     pub transfer_id: String,
+    pub entry_id: String,
+    pub attempt_id: Option<String>,
     pub peer_id: String,
     /// 从 `IncomingPending.filenames` 缓存来。事件比 first Progress 晚到
     /// 时为 `None`,UI 应显示 "正在接收文件…" 占位文案。
@@ -89,6 +91,8 @@ pub struct ActivityHudRow {
 #[derive(Debug, Clone)]
 struct InternalRow {
     transfer_id: String,
+    entry_id: String,
+    attempt_id: Option<String>,
     peer_id: String,
     filenames: Option<Vec<String>>,
     bytes_transferred: u64,
@@ -99,6 +103,7 @@ struct InternalRow {
     speed_window: VecDeque<(u64, u64)>,
     /// 行首次插入顺序号,用于 snapshot 稳定排序。
     insert_order: u64,
+    item_progress: HashMap<String, (u64, Option<u64>)>,
 }
 
 impl InternalRow {
@@ -136,6 +141,8 @@ impl InternalRow {
         let eta_ms = self.compute_eta_ms(speed_bps);
         ActivityHudRow {
             transfer_id: self.transfer_id.clone(),
+            entry_id: self.entry_id.clone(),
+            attempt_id: self.attempt_id.clone(),
             peer_id: self.peer_id.clone(),
             filenames: self.filenames.clone(),
             bytes_transferred: self.bytes_transferred,
@@ -157,6 +164,7 @@ pub struct ActivityHudState {
     /// Progress 先到、IncomingPending 后到时,从这里查不到,落到
     /// `apply_incoming_pending` 的"行已存在则直接回填"分支。
     pending_filenames: HashMap<String, Vec<String>>,
+    current_attempt_by_entry: HashMap<String, String>,
     /// 单调递增,赋给每个新插入的 `InternalRow.insert_order`,决定
     /// snapshot 的稳定顺序。
     next_insert_order: u64,
@@ -168,6 +176,7 @@ impl ActivityHudState {
             clock,
             rows: HashMap::new(),
             pending_filenames: HashMap::new(),
+            current_attempt_by_entry: HashMap::new(),
             next_insert_order: 0,
         }
     }
@@ -183,12 +192,45 @@ impl ActivityHudState {
         bytes_transferred: u64,
         total_bytes: Option<u64>,
     ) -> bool {
+        self.apply_scoped_progress(
+            transfer_id,
+            None,
+            None,
+            peer_id,
+            direction,
+            bytes_transferred,
+            total_bytes,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn apply_scoped_progress(
+        &mut self,
+        transfer_id: &str,
+        entry_id: Option<&str>,
+        attempt_id: Option<&str>,
+        peer_id: &str,
+        direction: FileTransferDirection,
+        bytes_transferred: u64,
+        total_bytes: Option<u64>,
+    ) -> bool {
         if direction != FileTransferDirection::Receiving {
             return false;
         }
         let now_ms = self.clock.now_ms();
+        let entry_id = entry_id.unwrap_or(transfer_id);
+        if let Some(attempt_id) = attempt_id {
+            if self
+                .current_attempt_by_entry
+                .get(entry_id)
+                .is_some_and(|current| current != attempt_id)
+            {
+                return false;
+            }
+        }
+        let key = row_key(entry_id, attempt_id, transfer_id);
 
-        if let Some(row) = self.rows.get_mut(transfer_id) {
+        if let Some(row) = self.rows.get_mut(&key) {
             if row.state.is_terminal() {
                 // 行已进入终态(可能是 publisher 乱序、或 sweep 还没到):
                 // 不再倒退状态,也不再更新字节数。返回 false 让上层别
@@ -198,26 +240,33 @@ impl ActivityHudState {
             // CancelPending 也允许进度继续推进 —— 后端可能还在传几个字
             // 节才把 cancel 落地,UI 显示进度仍在涨 + "取消中..."文案比
             // 直接冻结进度更诚实。
-            row.bytes_transferred = bytes_transferred;
-            // total_bytes 在 buffered 阶段可能为 None,后续 progress 才补;
-            // 一旦补上就锁定,后面不允许再倒退回 None。
-            if total_bytes.is_some() {
-                row.total_bytes = total_bytes;
-            }
-            push_speed_sample(&mut row.speed_window, now_ms, bytes_transferred);
+            row.item_progress
+                .insert(transfer_id.to_owned(), (bytes_transferred, total_bytes));
+            row.bytes_transferred = row.item_progress.values().map(|(bytes, _)| *bytes).sum();
+            row.total_bytes = row
+                .item_progress
+                .values()
+                .map(|(_, total)| *total)
+                .collect::<Option<Vec<_>>>()
+                .map(|totals| totals.into_iter().sum());
+            push_speed_sample(&mut row.speed_window, now_ms, row.bytes_transferred);
             return true;
         }
 
         // first Progress:插入新行。文件名从 pending_filenames 拿(可能为空)。
-        let filenames = self.pending_filenames.remove(transfer_id);
+        let filenames = self.pending_filenames.remove(&key);
         let insert_order = self.next_insert_order;
         self.next_insert_order = self.next_insert_order.wrapping_add(1);
         let mut speed_window = VecDeque::new();
         push_speed_sample(&mut speed_window, now_ms, bytes_transferred);
+        let mut item_progress = HashMap::new();
+        item_progress.insert(transfer_id.to_owned(), (bytes_transferred, total_bytes));
         self.rows.insert(
-            transfer_id.to_string(),
+            key,
             InternalRow {
                 transfer_id: transfer_id.to_string(),
+                entry_id: entry_id.to_owned(),
+                attempt_id: attempt_id.map(str::to_owned),
                 peer_id: peer_id.to_string(),
                 filenames,
                 bytes_transferred,
@@ -226,6 +275,7 @@ impl ActivityHudState {
                 state_entered_at_ms: now_ms,
                 speed_window,
                 insert_order,
+                item_progress,
             },
         );
         true
@@ -241,8 +291,20 @@ impl ActivityHudState {
         status: &str,
         reason: Option<String>,
     ) -> bool {
+        self.apply_scoped_status_changed(transfer_id, None, None, status, reason)
+    }
+
+    pub fn apply_scoped_status_changed(
+        &mut self,
+        transfer_id: &str,
+        entry_id: Option<&str>,
+        attempt_id: Option<&str>,
+        status: &str,
+        reason: Option<String>,
+    ) -> bool {
         let now_ms = self.clock.now_ms();
-        let Some(row) = self.rows.get_mut(transfer_id) else {
+        let key = row_key(entry_id.unwrap_or(transfer_id), attempt_id, transfer_id);
+        let Some(row) = self.rows.get_mut(&key) else {
             return false;
         };
         let new_state = match status {
@@ -269,10 +331,33 @@ impl ActivityHudState {
         filenames: Vec<String>,
         total_bytes: Option<u64>,
     ) -> bool {
-        if filenames.is_empty() && total_bytes.is_none() {
+        self.apply_scoped_incoming_pending(transfer_id, None, "", filenames, total_bytes)
+    }
+
+    pub fn apply_scoped_incoming_pending(
+        &mut self,
+        entry_id: &str,
+        attempt_id: Option<&str>,
+        peer_id: &str,
+        filenames: Vec<String>,
+        total_bytes: Option<u64>,
+    ) -> bool {
+        if filenames.is_empty() && total_bytes.is_none() && attempt_id.is_none() {
             return false;
         }
-        if let Some(row) = self.rows.get_mut(transfer_id) {
+        if let Some(attempt_id) = attempt_id {
+            let replaced = self
+                .current_attempt_by_entry
+                .insert(entry_id.to_owned(), attempt_id.to_owned());
+            if replaced
+                .as_deref()
+                .is_some_and(|current| current != attempt_id)
+            {
+                self.rows.retain(|_, row| row.entry_id != entry_id);
+            }
+        }
+        let key = row_key(entry_id, attempt_id, entry_id);
+        if let Some(row) = self.rows.get_mut(&key) {
             let mut changed = false;
             if !filenames.is_empty() && row.filenames.as_ref().map(Vec::is_empty).unwrap_or(true) {
                 row.filenames = Some(filenames);
@@ -284,15 +369,33 @@ impl ActivityHudState {
             }
             return changed;
         }
-        // 行还不存在:把 filenames 缓存起来等 first Progress。total_bytes
-        // 不缓存(IncomingPending 的 total 是 envelope 声明值,Progress 自
-        // 己也会携带真实值);只缓存 IncomingPending 独有的 filenames。
-        if !filenames.is_empty() {
-            self.pending_filenames
-                .insert(transfer_id.to_string(), filenames);
-            return true;
+        if attempt_id.is_none() {
+            if !filenames.is_empty() {
+                self.pending_filenames.insert(key, filenames);
+                return true;
+            }
+            return false;
         }
-        false
+        let insert_order = self.next_insert_order;
+        self.next_insert_order = self.next_insert_order.wrapping_add(1);
+        self.rows.insert(
+            key,
+            InternalRow {
+                transfer_id: entry_id.to_owned(),
+                entry_id: entry_id.to_owned(),
+                attempt_id: attempt_id.map(str::to_owned),
+                peer_id: peer_id.to_owned(),
+                filenames: (!filenames.is_empty()).then_some(filenames),
+                bytes_transferred: 0,
+                total_bytes,
+                state: RowState::Receiving,
+                state_entered_at_ms: self.clock.now_ms(),
+                speed_window: VecDeque::new(),
+                insert_order,
+                item_progress: HashMap::new(),
+            },
+        );
+        true
     }
 
     /// 用户在 HUD 上点击了某行的取消按钮 —— 乐观把状态切到
@@ -309,6 +412,32 @@ impl ActivityHudState {
             return false;
         }
         row.state = RowState::CancelPending;
+        row.state_entered_at_ms = now_ms;
+        true
+    }
+
+    pub fn mark_attempt_cancel_pending(&mut self, entry_id: &str, attempt_id: &str) -> bool {
+        let key = row_key(entry_id, Some(attempt_id), entry_id);
+        self.mark_cancel_pending(&key)
+    }
+
+    pub fn apply_attempt_state(&mut self, entry_id: &str, attempt_id: &str, state: &str) -> bool {
+        let key = row_key(entry_id, Some(attempt_id), entry_id);
+        let now_ms = self.clock.now_ms();
+        let Some(row) = self.rows.get_mut(&key) else {
+            return false;
+        };
+        let next = match state {
+            "completed" => RowState::Completed,
+            "failed" => RowState::Failed { reason: None },
+            "cancelled" => RowState::Cancelled { reason: None },
+            "cancelling" => RowState::CancelPending,
+            _ => return false,
+        };
+        if row.state == next {
+            return false;
+        }
+        row.state = next;
         row.state_entered_at_ms = now_ms;
         true
     }
@@ -368,6 +497,12 @@ fn push_speed_sample(window: &mut VecDeque<(u64, u64)>, now_ms: u64, bytes: u64)
     }
 }
 
+fn row_key(entry_id: &str, attempt_id: Option<&str>, legacy_transfer_id: &str) -> String {
+    attempt_id
+        .map(|attempt_id| format!("{entry_id}\0{attempt_id}"))
+        .unwrap_or_else(|| legacy_transfer_id.to_owned())
+}
+
 #[cfg(test)]
 mod tests {
     use super::super::clock::ManualClock;
@@ -377,6 +512,52 @@ mod tests {
         let clock = Arc::new(ManualClock::new());
         let state = ActivityHudState::new(clock.clone() as Arc<dyn Clock>);
         (state, clock)
+    }
+
+    #[test]
+    fn current_attempt_aggregates_items_and_rejects_stale_progress() {
+        let (mut state, _clock) = make_state();
+        assert!(state.apply_scoped_incoming_pending(
+            "entry",
+            Some("a2"),
+            "peer",
+            Vec::new(),
+            Some(300),
+        ));
+        assert!(state.apply_scoped_progress(
+            "item-1",
+            Some("entry"),
+            Some("a2"),
+            "peer",
+            FileTransferDirection::Receiving,
+            25,
+            Some(100),
+        ));
+        assert!(state.apply_scoped_progress(
+            "item-2",
+            Some("entry"),
+            Some("a2"),
+            "peer",
+            FileTransferDirection::Receiving,
+            50,
+            Some(200),
+        ));
+        assert!(!state.apply_scoped_progress(
+            "late-old-item",
+            Some("entry"),
+            Some("a1"),
+            "peer",
+            FileTransferDirection::Receiving,
+            100,
+            Some(100),
+        ));
+
+        let rows = state.snapshot();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].entry_id, "entry");
+        assert_eq!(rows[0].attempt_id.as_deref(), Some("a2"));
+        assert_eq!(rows[0].bytes_transferred, 75);
+        assert_eq!(rows[0].total_bytes, Some(300));
     }
 
     #[test]

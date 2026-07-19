@@ -12,4 +12,7 @@
 
 mod usecase;
 
-pub use usecase::{CaptureClipboardUseCase, CaptureOutcome, CommitMode};
+pub use usecase::{
+    CaptureClipboardUseCase, CaptureOutcome, CommitMode, DirectoryCaptureCommitContext,
+    InboundCaptureCommitContext,
+};

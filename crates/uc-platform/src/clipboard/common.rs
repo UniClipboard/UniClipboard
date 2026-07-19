@@ -221,28 +221,48 @@ fn should_skip_raw_format(
     false
 }
 
-/// 过滤剪贴板 `files` rep 中应当跨设备同步的路径。
+/// Lightweight file classification injected into
+/// [`filter_syncable_clipboard_files`] so the filter can be unit-tested without
+/// touching the filesystem.
+struct ClipboardFileStat {
+    is_dir: bool,
+    len: u64,
+}
+
+/// Filters the paths in a clipboard `files` rep down to those worth syncing
+/// across devices.
 ///
-/// 当前过滤策略:
-/// 1. **零字节文件直接丢弃** —— 第三方剪贴板同步工具(例如网易 UU 远控的
-///    `~/Library/Application Support/com.netease.uuremote/Clipboard/.uuremote_*`,
-///    其他远控如 TeamViewer / 向日葵也观察到类似模式)会反复往本地目录写零字节占位
-///    文件作为心跳/握手,这些文件没有真实负载,跨设备传输纯属噪音,且对端会被弹通知。
-/// 2. **stat 失败的文件也丢弃** —— 拿不到元数据就无法保证文件依然存在或可读,跨网
-///    传输有可能拿到部分写入的内容或触发对端的 ENOENT。
+/// Policy, in order:
+/// 1. **Directories are kept.** A copied folder is a legitimate clipboard
+///    member; keep its path so the upstream file-set expansion can traverse
+///    it. This case MUST come before the zero-byte rule below: a directory's
+///    own byte length is `0` on Windows (and only a few dozen bytes on
+///    macOS/Linux), so classifying by size alone silently drops every copied
+///    folder on Windows.
+/// 2. **Zero-byte files are dropped.** Third-party clipboard-sync tools (e.g.
+///    NetEase UU Remote's `com.netease.uuremote/Clipboard/.uuremote_*`, with
+///    similar patterns from TeamViewer / Sunflower) repeatedly write zero-byte
+///    placeholder files as heartbeats/handshakes. They carry no real payload,
+///    are pure noise to transfer, and pop a notification on the peer.
+/// 3. **Un-stat-able paths are dropped.** Without metadata we cannot be sure
+///    the file still exists or is readable; syncing it risks partial content
+///    or an ENOENT on the peer.
 ///
-/// `size_lookup` 注入便于单元测试;生产环境传 `std::fs::metadata(p).map(|m| m.len())`。
+/// `stat_lookup` is injected for unit-testing; production passes a closure over
+/// `std::fs::metadata`, which follows symlinks so a symlink-to-directory is
+/// correctly treated as a directory here.
 fn filter_syncable_clipboard_files<F>(
     paths: Vec<std::path::PathBuf>,
-    mut size_lookup: F,
+    mut stat_lookup: F,
 ) -> Vec<std::path::PathBuf>
 where
-    F: FnMut(&std::path::Path) -> std::io::Result<u64>,
+    F: FnMut(&std::path::Path) -> std::io::Result<ClipboardFileStat>,
 {
     paths
         .into_iter()
-        .filter_map(|path| match size_lookup(&path) {
-            Ok(0) => {
+        .filter_map(|path| match stat_lookup(&path) {
+            Ok(stat) if stat.is_dir => Some(path),
+            Ok(stat) if stat.len == 0 => {
                 debug!(
                     path = %path.display(),
                     "Skipping zero-byte file in clipboard files rep (likely third-party clipboard-sync tool)"
@@ -434,7 +454,10 @@ impl CommonClipboardImpl {
                         files.iter().map(std::path::PathBuf::from).collect();
                     let raw_count = raw_paths.len();
                     let paths = filter_syncable_clipboard_files(raw_paths, |p| {
-                        std::fs::metadata(p).map(|m| m.len())
+                        std::fs::metadata(p).map(|m| ClipboardFileStat {
+                            is_dir: m.is_dir(),
+                            len: m.len(),
+                        })
                     });
 
                     if paths.is_empty() {
@@ -1143,6 +1166,17 @@ mod tests {
 
     use std::path::{Path, PathBuf};
 
+    fn file(len: u64) -> std::io::Result<ClipboardFileStat> {
+        Ok(ClipboardFileStat { is_dir: false, len })
+    }
+
+    fn dir() -> std::io::Result<ClipboardFileStat> {
+        Ok(ClipboardFileStat {
+            is_dir: true,
+            len: 0,
+        })
+    }
+
     #[test]
     fn filter_syncable_clipboard_files_drops_zero_byte_files() {
         let paths = vec![
@@ -1152,9 +1186,9 @@ mod tests {
         ];
         let kept = filter_syncable_clipboard_files(paths, |p: &Path| {
             if p == Path::new("/tmp/real.txt") {
-                Ok(1024)
+                file(1024)
             } else {
-                Ok(0)
+                file(0)
             }
         });
         assert_eq!(kept, vec![PathBuf::from("/tmp/real.txt")]);
@@ -1166,7 +1200,7 @@ mod tests {
             PathBuf::from("/tmp/.uuremote_aaa"),
             PathBuf::from("/tmp/.uuremote_bbb"),
         ];
-        let kept = filter_syncable_clipboard_files(paths, |_p: &Path| Ok(0));
+        let kept = filter_syncable_clipboard_files(paths, |_p: &Path| file(0));
         assert!(kept.is_empty());
     }
 
@@ -1180,7 +1214,7 @@ mod tests {
             if p == Path::new("/tmp/missing") {
                 Err(std::io::Error::from(std::io::ErrorKind::NotFound))
             } else {
-                Ok(42)
+                file(42)
             }
         });
         assert_eq!(kept, vec![PathBuf::from("/tmp/real.bin")]);
@@ -1189,8 +1223,26 @@ mod tests {
     #[test]
     fn filter_syncable_clipboard_files_keeps_all_when_all_nonzero() {
         let paths = vec![PathBuf::from("/tmp/a"), PathBuf::from("/tmp/b")];
-        let kept = filter_syncable_clipboard_files(paths.clone(), |_p: &Path| Ok(1));
+        let kept = filter_syncable_clipboard_files(paths.clone(), |_p: &Path| file(1));
         assert_eq!(kept, paths);
+    }
+
+    #[test]
+    fn filter_syncable_clipboard_files_keeps_directories_even_when_zero_len() {
+        // Regression (Windows): a directory's own byte length is 0, so the
+        // zero-byte rule dropped every copied folder. Directories must be kept
+        // so the upstream file-set expansion can traverse them; only zero-byte
+        // regular files (third-party sync placeholders) are dropped.
+        let dir_path = PathBuf::from("D:/Downloads/folder");
+        let paths = vec![dir_path.clone(), PathBuf::from("/tmp/.uuremote_aaa")];
+        let kept = filter_syncable_clipboard_files(paths, |p: &Path| {
+            if p == dir_path.as_path() {
+                dir()
+            } else {
+                file(0)
+            }
+        });
+        assert_eq!(kept, vec![dir_path]);
     }
 
     // ─── sniff_image_magic ──────────────────────────────────────────────

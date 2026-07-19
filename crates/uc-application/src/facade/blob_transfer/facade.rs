@@ -122,6 +122,9 @@ pub struct FetchTransferContext {
     /// Clipboard entry that owns this transfer. Directory members use a
     /// distinct `transfer_id` while sharing this entry id for aggregation.
     pub entry_id: String,
+    /// Directory receive attempt owning this member. Legacy and flat transfers
+    /// leave it unset.
+    pub attempt_id: Option<String>,
     pub peer_id: String,
     pub total_bytes: Option<u64>,
     pub filename: String,
@@ -230,6 +233,8 @@ pub enum BlobTransferError {
     /// Fetch 表达"传输本身失败",Cancelled 表达"传输被主动撤回"。
     #[error("fetch blob cancelled")]
     Cancelled,
+    #[error("record blob transfer failed: {0}")]
+    Persistence(String),
 }
 
 /// Result of attempting to cancel an inbound transfer.
@@ -265,6 +270,8 @@ struct InflightFetch {
     /// 时把 peer_id 一起塞进 registry。`None` 表示这次 fetch 没带
     /// `transfer_context`(纯静默拉取,无需发 cancel event)。
     peer_id: Option<String>,
+    /// Directory receive attempt that owns this member fetch.
+    attempt_id: Option<String>,
     /// 反向上报通道。`cancel_inbound_transfer` 在撕 QUIC connection
     /// 之前先用它给 sender 发一帧 `Cancelled` 状态,让 sender UI 也能
     /// 看到中性"已取消"展示(而不是 fetch error 路径反向推的 Failed)。
@@ -336,6 +343,7 @@ impl BlobTransferFacade {
         self.emit_host_event(HostEvent::Transfer(TransferHostEvent::Progress {
             transfer_id: ctx.transfer_id.clone(),
             entry_id: Some(ctx.entry_id.clone()),
+            attempt_id: ctx.attempt_id.clone(),
             peer_id: ctx.peer_id.clone(),
             direction: FileTransferDirection::Receiving,
             bytes_transferred,
@@ -350,15 +358,21 @@ impl BlobTransferFacade {
     /// `transfer_id == receiver_entry_id`,所以两个字段填同一个值。
     /// `cached_path` 仅 fetch_blob_to_path 路径有意义(blob 落盘的目标
     /// 路径);fetch_blob 写回 representation bytes,留空。
-    async fn seed_lifecycle(&self, ctx: &FetchTransferContext, cached_path: String) {
+    async fn seed_lifecycle(
+        &self,
+        ctx: &FetchTransferContext,
+        cached_path: String,
+    ) -> Result<(), BlobTransferError> {
         let Some(facade) = self.file_transfer.as_ref() else {
-            return;
+            return Ok(());
         };
         let input = SeedReceiverContext {
             transfer_id: ctx.transfer_id.clone(),
             entry_id: ctx.entry_id.clone(),
+            attempt_id: ctx.attempt_id.clone(),
             origin_device_id: ctx.peer_id.clone(),
             filename: ctx.filename.clone(),
+            file_size: ctx.total_bytes,
             cached_path,
         };
         if let Err(first_err) = facade.seed_receiver_context(input.clone()).await {
@@ -370,8 +384,17 @@ impl BlobTransferFacade {
                     error = %retry_err,
                     "blob fetch: seed receiver context failed after retry"
                 );
+                return Err(BlobTransferError::Persistence(retry_err.to_string()));
             }
         }
+        Ok(())
+    }
+
+    pub(crate) async fn seed_pending_transfer(
+        &self,
+        context: &FetchTransferContext,
+    ) -> Result<(), BlobTransferError> {
+        self.seed_lifecycle(context, String::new()).await
     }
 
     /// Record `Started` via `FileTransferFacade::start`. Retries once after
@@ -444,7 +467,10 @@ impl BlobTransferFacade {
     }
 
     pub async fn record_unfetched_failure(&self, ctx: FetchTransferContext, detail: String) {
-        self.seed_lifecycle(&ctx, String::new()).await;
+        if let Err(error) = self.seed_lifecycle(&ctx, String::new()).await {
+            warn!(error = %error, transfer_id = %ctx.transfer_id, "could not record unfetched transfer failure");
+            return;
+        }
         self.start_lifecycle(&ctx).await;
         self.fail_lifecycle(&ctx, detail).await;
     }
@@ -481,7 +507,11 @@ impl BlobTransferFacade {
         reason: FileTransferCancellationReason,
     ) -> Result<InboundCancelOutcome, BlobTransferError> {
         // 一次性取出 entry,避免锁跨 await。
-        let entry = self.inflight_fetches.lock().unwrap().remove(transfer_id);
+        let entry = self
+            .inflight_fetches
+            .lock()
+            .map_err(|_| BlobTransferError::Fetch("in-flight fetch registry is poisoned".into()))?
+            .remove(transfer_id);
         let Some(entry) = entry else {
             info!(
                 transfer_id,
@@ -543,6 +573,40 @@ impl BlobTransferFacade {
         }
 
         Ok(InboundCancelOutcome::Cancelled)
+    }
+
+    pub(crate) async fn cancel_inbound_attempt(
+        &self,
+        attempt_id: &str,
+        reason: FileTransferCancellationReason,
+    ) -> Result<usize, BlobTransferError> {
+        let transfer_ids = self
+            .inflight_fetches
+            .lock()
+            .map_err(|_| BlobTransferError::Fetch("in-flight fetch registry is poisoned".into()))?
+            .iter()
+            .filter(|(_, fetch)| fetch.attempt_id.as_deref() == Some(attempt_id))
+            .map(|(transfer_id, _)| transfer_id.clone())
+            .collect::<Vec<_>>();
+
+        let mut cancelled = 0usize;
+        let mut first_error = None;
+        for transfer_id in transfer_ids {
+            match self.cancel_inbound_transfer(&transfer_id, reason).await {
+                Ok(InboundCancelOutcome::Cancelled) => cancelled += 1,
+                Ok(InboundCancelOutcome::NotInflight) => {}
+                Err(error) => {
+                    warn!(%transfer_id, %error, "failed to cancel directory member transfer");
+                    if first_error.is_none() {
+                        first_error = Some(error);
+                    }
+                }
+            }
+        }
+        match first_error {
+            Some(error) => Err(error),
+            None => Ok(cancelled),
+        }
     }
 
     /// 内部辅助:`cancel_inbound_transfer` 路径下,registry 已经被移除,
@@ -630,6 +694,7 @@ impl BlobTransferFacade {
                     bus: self.host_event_emitter.clone().unwrap(),
                     transfer_id: ctx.transfer_id.clone(),
                     entry_id: ctx.entry_id.clone(),
+                    attempt_id: ctx.attempt_id.clone(),
                     peer_id: ctx.peer_id.clone(),
                     fallback_total: ctx.total_bytes,
                     outbound: outbound_ctx.clone(),
@@ -643,20 +708,49 @@ impl BlobTransferFacade {
         // 会 fail-soft 但 warn 流满天飞。
         if let Some(ctx) = command.transfer_context.as_ref() {
             if ctx.individual_lifecycle || ctx.batch_position.is_first() {
-                self.seed_lifecycle(ctx, String::new()).await;
+                self.seed_lifecycle(ctx, String::new()).await?;
                 self.start_lifecycle(ctx).await;
                 self.emit_progress(ctx, 0, ctx.total_bytes);
             }
         }
 
-        let result = self
-            .fetch_uc
-            .execute(FetchBlobInput {
+        let cancel_token = CancellationToken::new();
+        if let Some(ctx) = command.transfer_context.as_ref() {
+            self.inflight_fetches
+                .lock()
+                .map_err(|_| {
+                    BlobTransferError::Fetch("in-flight fetch registry is poisoned".into())
+                })?
+                .insert(
+                    ctx.transfer_id.clone(),
+                    InflightFetch {
+                        token: cancel_token.clone(),
+                        ticket: command.ticket.clone(),
+                        peer_id: Some(ctx.peer_id.clone()),
+                        attempt_id: ctx.attempt_id.clone(),
+                        outbound: outbound_ctx.clone(),
+                    },
+                );
+        }
+
+        let result = tokio::select! {
+            biased;
+            _ = cancel_token.cancelled() => Err(BlobTransferError::Cancelled),
+            result = self.fetch_uc.execute(FetchBlobInput {
                 ticket: command.ticket,
                 entry_id: iroh_tag_entry_id,
                 progress: progress_sink,
-            })
-            .await;
+            }) => result.map_err(|error| BlobTransferError::Fetch(error.to_string())),
+        };
+
+        if let Some(ctx) = command.transfer_context.as_ref() {
+            self.inflight_fetches
+                .lock()
+                .map_err(|_| {
+                    BlobTransferError::Fetch("in-flight fetch registry is poisoned".into())
+                })?
+                .remove(&ctx.transfer_id);
+        }
 
         match result {
             Ok(outcome) => {
@@ -690,8 +784,8 @@ impl BlobTransferFacade {
                     digest: outcome.digest,
                 })
             }
-            Err(e) => {
-                let msg = e.to_string();
+            Err(BlobTransferError::Cancelled) => Err(BlobTransferError::Cancelled),
+            Err(BlobTransferError::Fetch(msg)) => {
                 if let Some(ctx) = command.transfer_context.as_ref() {
                     self.fail_lifecycle(ctx, msg.clone()).await;
                     self.report_outbound_terminal(
@@ -704,6 +798,7 @@ impl BlobTransferFacade {
                 }
                 Err(BlobTransferError::Fetch(msg))
             }
+            Err(other) => Err(other),
         }
     }
 
@@ -727,6 +822,7 @@ impl BlobTransferFacade {
                     bus: self.host_event_emitter.clone().unwrap(),
                     transfer_id: ctx.transfer_id.clone(),
                     entry_id: ctx.entry_id.clone(),
+                    attempt_id: ctx.attempt_id.clone(),
                     peer_id: ctx.peer_id.clone(),
                     fallback_total: ctx.total_bytes,
                     outbound: outbound_ctx.clone(),
@@ -739,8 +835,12 @@ impl BlobTransferFacade {
         // 仅 batch 首帧时 seed/start,见 `BatchPosition` doc。
         if let Some(ctx) = command.transfer_context.as_ref() {
             if ctx.individual_lifecycle || ctx.batch_position.is_first() {
-                let cached_path = command.target_path.to_string_lossy().into_owned();
-                self.seed_lifecycle(ctx, cached_path).await;
+                let cached_path = if ctx.attempt_id.is_some() {
+                    String::new()
+                } else {
+                    command.target_path.to_string_lossy().into_owned()
+                };
+                self.seed_lifecycle(ctx, cached_path).await?;
                 self.start_lifecycle(ctx).await;
                 self.emit_progress(ctx, 0, ctx.total_bytes);
             }
@@ -754,15 +854,21 @@ impl BlobTransferFacade {
         // 等价于原行为。
         let cancel_token = CancellationToken::new();
         if let Some(ctx) = command.transfer_context.as_ref() {
-            self.inflight_fetches.lock().unwrap().insert(
-                ctx.transfer_id.clone(),
-                InflightFetch {
-                    token: cancel_token.clone(),
-                    ticket: command.ticket.clone(),
-                    peer_id: Some(ctx.peer_id.clone()),
-                    outbound: outbound_ctx.clone(),
-                },
-            );
+            self.inflight_fetches
+                .lock()
+                .map_err(|_| {
+                    BlobTransferError::Fetch("in-flight fetch registry is poisoned".into())
+                })?
+                .insert(
+                    ctx.transfer_id.clone(),
+                    InflightFetch {
+                        token: cancel_token.clone(),
+                        ticket: command.ticket.clone(),
+                        peer_id: Some(ctx.peer_id.clone()),
+                        attempt_id: ctx.attempt_id.clone(),
+                        outbound: outbound_ctx.clone(),
+                    },
+                );
         }
 
         // select! 把 fetch_uc 包到一个取消感知的 future 里。cancel arm 中
@@ -788,7 +894,9 @@ impl BlobTransferFacade {
         if let Some(ctx) = command.transfer_context.as_ref() {
             self.inflight_fetches
                 .lock()
-                .unwrap()
+                .map_err(|_| {
+                    BlobTransferError::Fetch("in-flight fetch registry is poisoned".into())
+                })?
                 .remove(&ctx.transfer_id);
         }
 
@@ -859,7 +967,7 @@ impl BlobTransferFacade {
         let ctx = ctx?;
         let reporter = self.outbound_progress_reporter.clone()?;
         let transfer_id = ctx.outbound_transfer_id.clone()?;
-        let target = ctx.outbound_target.clone()?;
+        let target = ctx.outbound_target?;
         Some(OutboundReportContext {
             reporter,
             transfer_id,
@@ -928,6 +1036,7 @@ struct HostEventProgressSink {
     bus: SharedHostEventEmitter,
     transfer_id: String,
     entry_id: String,
+    attempt_id: Option<String>,
     peer_id: String,
     fallback_total: Option<u64>,
     outbound: Option<OutboundReportContext>,
@@ -940,6 +1049,7 @@ impl BlobProgressSink for HostEventProgressSink {
         let event = HostEvent::Transfer(TransferHostEvent::Progress {
             transfer_id: self.transfer_id.clone(),
             entry_id: Some(self.entry_id.clone()),
+            attempt_id: self.attempt_id.clone(),
             peer_id: self.peer_id.clone(),
             direction: FileTransferDirection::Receiving,
             bytes_transferred,
@@ -958,5 +1068,182 @@ impl BlobProgressSink for HostEventProgressSink {
                 )
                 .await;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tokio::sync::Semaphore;
+    use uc_core::clipboard::{ContentHash, HashAlgorithm};
+    use uc_core::ports::blob::{BlobError, BlobReferenceError, TagReason};
+
+    struct TestHash;
+
+    impl ContentHashPort for TestHash {
+        fn hash_bytes(&self, bytes: &[u8]) -> anyhow::Result<ContentHash> {
+            Ok(ContentHash {
+                alg: HashAlgorithm::Blake3V1,
+                bytes: *blake3::hash(bytes).as_bytes(),
+            })
+        }
+    }
+
+    struct TestReferences;
+
+    #[async_trait]
+    impl BlobReferenceRepositoryPort for TestReferences {
+        async fn find_by_plaintext_hash(
+            &self,
+            _hash: &PlaintextHash,
+        ) -> Result<Option<BlobDigest>, BlobReferenceError> {
+            Ok(None)
+        }
+
+        async fn save(
+            &self,
+            _hash: PlaintextHash,
+            _digest: BlobDigest,
+        ) -> Result<(), BlobReferenceError> {
+            Ok(())
+        }
+
+        async fn forget(&self, _hash: &PlaintextHash) -> Result<(), BlobReferenceError> {
+            Ok(())
+        }
+    }
+
+    struct BlockingBlobTransfer {
+        started: Semaphore,
+        release: Semaphore,
+    }
+
+    impl BlockingBlobTransfer {
+        fn new() -> Self {
+            Self {
+                started: Semaphore::new(0),
+                release: Semaphore::new(0),
+            }
+        }
+    }
+
+    #[async_trait]
+    impl BlobTransferPort for BlockingBlobTransfer {
+        async fn publish(
+            &self,
+            _ciphertext: Bytes,
+            _reason: TagReason,
+        ) -> Result<BlobDigest, BlobError> {
+            Err(BlobError::Internal("unused".to_owned()))
+        }
+
+        async fn publish_path(
+            &self,
+            _path: &std::path::Path,
+            _reason: TagReason,
+        ) -> Result<BlobDigest, BlobError> {
+            Err(BlobError::Internal("unused".to_owned()))
+        }
+
+        async fn issue_ticket(&self, _digest: &BlobDigest) -> Result<BlobTicket, BlobError> {
+            Err(BlobError::Internal("unused".to_owned()))
+        }
+
+        async fn fetch(
+            &self,
+            _ticket: &BlobTicket,
+            _progress: Option<&dyn BlobProgressSink>,
+        ) -> Result<Bytes, BlobError> {
+            self.started.add_permits(1);
+            let permit = self
+                .release
+                .acquire()
+                .await
+                .map_err(|error| BlobError::Internal(error.to_string()))?;
+            permit.forget();
+            Ok(Bytes::from_static(b"image"))
+        }
+
+        async fn fetch_to_path(
+            &self,
+            _ticket: &BlobTicket,
+            _target_path: &std::path::Path,
+            _progress: Option<&dyn BlobProgressSink>,
+        ) -> Result<BlobDigest, BlobError> {
+            Err(BlobError::Internal("unused".to_owned()))
+        }
+
+        async fn shutdown_inflight_fetch(&self, _ticket: &BlobTicket) -> Result<(), BlobError> {
+            self.release.add_permits(1);
+            Ok(())
+        }
+
+        async fn has(&self, _digest: &BlobDigest) -> Result<bool, BlobError> {
+            Ok(false)
+        }
+
+        async fn tag(&self, _digest: &BlobDigest, _reason: TagReason) -> Result<(), BlobError> {
+            Ok(())
+        }
+
+        async fn untag(&self, _reason: TagReason) -> Result<(), BlobError> {
+            Ok(())
+        }
+
+        fn digest_of(&self, ticket: &BlobTicket) -> Result<BlobDigest, BlobError> {
+            let bytes: [u8; 32] = ticket
+                .as_bytes()
+                .try_into()
+                .map_err(|_| BlobError::InvalidTicket)?;
+            Ok(BlobDigest::from_bytes(bytes))
+        }
+    }
+
+    #[tokio::test]
+    async fn attempt_cancel_interrupts_representation_fetch() {
+        let transfer = Arc::new(BlockingBlobTransfer::new());
+        let facade = Arc::new(BlobTransferFacade::new(BlobTransferDeps {
+            hash: Arc::new(TestHash),
+            blob_transfer: transfer.clone(),
+            blob_reference: Arc::new(TestReferences),
+            host_event_emitter: None,
+            outbound_progress_reporter: None,
+            file_transfer: None,
+        }));
+        let fetch = tokio::spawn({
+            let facade = Arc::clone(&facade);
+            async move {
+                facade
+                    .fetch_blob(FetchBlobCommand {
+                        ticket: BlobTicket::from_bytes(vec![1; 32]),
+                        entry_id: EntryId::from("sender-image"),
+                        transfer_context: Some(FetchTransferContext {
+                            transfer_id: "entry:attempt:a1:representation:0".to_owned(),
+                            entry_id: "entry".to_owned(),
+                            attempt_id: Some("a1".to_owned()),
+                            peer_id: "peer".to_owned(),
+                            total_bytes: Some(5),
+                            filename: String::new(),
+                            outbound_transfer_id: None,
+                            outbound_target: None,
+                            batch_position: BatchPosition::Only,
+                            individual_lifecycle: true,
+                        }),
+                    })
+                    .await
+            }
+        });
+        let permit = transfer.started.acquire().await.expect("fetch started");
+        permit.forget();
+
+        let cancelled = facade
+            .cancel_inbound_attempt("a1", FileTransferCancellationReason::LocalUser)
+            .await
+            .expect("cancel attempt");
+        transfer.release.add_permits(1);
+        let fetch_result = fetch.await.expect("fetch task");
+
+        assert_eq!(cancelled, 1);
+        assert!(matches!(fetch_result, Err(BlobTransferError::Cancelled)));
     }
 }

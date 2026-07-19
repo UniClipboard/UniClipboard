@@ -12,14 +12,13 @@
 //! | [`FileTransferFacade::complete`] | `CompleteTransferUseCase` | 标记传输完成，落 `Completed` 事件 |
 //! | [`FileTransferFacade::fail`] | `FailTransferUseCase` | 标记传输失败，落 `Failed` 事件 |
 //! | [`FileTransferFacade::cancel`] | `CancelTransferUseCase` | 取消传输，落 `Cancelled` 事件 |
-//! | [`FileTransferFacade::link_transfer_to_entry`] | `RecordReceiverTransferPort::link_transfer_to_entry` | 把 projection 行重新关联到另一个 `entry_id`（`now_ms` 由内部 clock 提供） |
 //! | [`FileTransferFacade::seed_receiver_context`] | `RecordReceiverTransferPort::upsert_pending_transfer` | 在 receiver-side projection 表里 upsert 一条 `pending` 行（接收方本地上下文，不进 domain event 总线） |
 //!
 //! ## 设计取舍
 //!
 //! - 5 个 lifecycle 动作各自有完整事件历史校验（见 `timeline::TransferTimeline`）；
 //!   facade 不再做额外校验，直接转发 use case。
-//! - `link_transfer_to_entry` / `seed_receiver_context` 走的是 receiver-side
+//! - `seed_receiver_context` 走的是 receiver-side
 //!   projection 端口而不是 domain 事件总线 —— 它们修改的是 receiver 本地
 //!   投影状态（哪条 entry 拥有这个 transfer / 一条 pending 行先存在），
 //!   不属于 transfer 本身的状态转移，没有对应的 domain event。
@@ -27,27 +26,20 @@
 use std::sync::Arc;
 
 use uc_core::file_transfer::{FileTransferEventPublisherPort, FileTransferEventStorePort};
-use uc_core::ports::file_transfer::PendingInboundTransfer;
-use uc_core::ports::{ClockPort, RecordReceiverTransferPort};
+use uc_core::ports::file_transfer::{
+    PendingInboundTransfer, ProvisionalInboundTransfer, UpdateProvisionalReceivePathPort,
+};
+use uc_core::ports::{
+    ClockPort, FinalizeProvisionalReceivePort, ProvisionalReceiveAction, ProvisionalReceiveError,
+    RecordReceiverTransferPort, SeedProvisionalReceivePort,
+};
 use uc_core::FileTransferEvent;
 
-use crate::facade::host_event::FileTransferHostEventPublisher;
 use crate::file_transfer::{
     CancelTransfer, CancelTransferUseCase, CompleteTransfer, CompleteTransferUseCase, FailTransfer,
     FailTransferUseCase, FileTransferApplicationError, ReportTransferProgress,
     ReportTransferProgressUseCase, StartTransfer, StartTransferUseCase,
 };
-
-/// Re-associate a transfer projection row with a different `entry_id`.
-///
-/// 应用层输入：把 receiver-side `file_transfer` 表里的 transfer 行从
-/// 旧的 `entry_id` 改挂到新的 `entry_id`。`now_ms` 由 facade 内部
-/// `ClockPort` 提供，不暴露给调用方。
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct LinkTransferToEntry {
-    pub transfer_id: String,
-    pub entry_id: String,
-}
 
 /// Seed an initial pending row for an inbound transfer.
 ///
@@ -60,8 +52,10 @@ pub struct LinkTransferToEntry {
 pub struct SeedReceiverContext {
     pub transfer_id: String,
     pub entry_id: String,
+    pub attempt_id: Option<String>,
     pub origin_device_id: String,
     pub filename: String,
+    pub file_size: Option<u64>,
     pub cached_path: String,
 }
 
@@ -74,13 +68,10 @@ pub struct FileTransferFacadeDeps {
     pub store: Arc<dyn FileTransferEventStorePort>,
     pub publisher: Arc<dyn FileTransferEventPublisherPort>,
     pub repo: Arc<dyn RecordReceiverTransferPort>,
+    pub provisional_seed: Arc<dyn SeedProvisionalReceivePort>,
+    pub provisional_path: Arc<dyn UpdateProvisionalReceivePathPort>,
+    pub provisional_finalize: Arc<dyn FinalizeProvisionalReceivePort>,
     pub clock: Arc<dyn ClockPort>,
-    /// 可选:concrete publisher 引用,用于在 `link_transfer_to_entry` 成功后
-    /// flush buffered 阶段暂存的 `StatusChanged transferring`。生产装配会
-    /// 传入与 `publisher` 同一个 `Arc<FileTransferHostEventPublisher>`;
-    /// 测试场景可填 `None`,缺失只影响 mobile_lan buffered 阶段的状态过渡
-    /// 显示,不影响 store / projection 的真相。
-    pub host_publisher: Option<Arc<FileTransferHostEventPublisher>>,
 }
 
 /// 文件传输 lifecycle 应用层入口。
@@ -95,8 +86,10 @@ pub struct FileTransferFacade {
     fail_uc: Arc<FailTransferUseCase>,
     cancel_uc: Arc<CancelTransferUseCase>,
     repo: Arc<dyn RecordReceiverTransferPort>,
+    provisional_seed: Arc<dyn SeedProvisionalReceivePort>,
+    provisional_path: Arc<dyn UpdateProvisionalReceivePathPort>,
+    provisional_finalize: Arc<dyn FinalizeProvisionalReceivePort>,
     clock: Arc<dyn ClockPort>,
-    host_publisher: Option<Arc<FileTransferHostEventPublisher>>,
 }
 
 impl FileTransferFacade {
@@ -126,8 +119,10 @@ impl FileTransferFacade {
             fail_uc,
             cancel_uc,
             repo: deps.repo,
+            provisional_seed: deps.provisional_seed,
+            provisional_path: deps.provisional_path,
+            provisional_finalize: deps.provisional_finalize,
             clock: deps.clock,
-            host_publisher: deps.host_publisher,
         }
     }
 
@@ -166,35 +161,6 @@ impl FileTransferFacade {
         self.cancel_uc.execute(input).await
     }
 
-    /// 把一条 transfer 重新关联到指定 `entry_id`。
-    ///
-    /// 返回 `true` 表示 receiver-side projection 表里有匹配行被更新；
-    /// 返回 `false` 表示 `transfer_id` 还没被 seed —— 调用方自己决定
-    /// 是当作错误，还是先 seed 再 link。
-    pub async fn link_transfer_to_entry(
-        &self,
-        input: LinkTransferToEntry,
-    ) -> Result<bool, FileTransferApplicationError> {
-        let now_ms = self.clock.now_ms();
-        let updated = self
-            .repo
-            .link_transfer_to_entry(&input.transfer_id, &input.entry_id, now_ms)
-            .await
-            .map_err(|err| FileTransferApplicationError::Repository(err.to_string()))?;
-        // projection 行的 entry_id 真实化之后,补发 buffered 阶段被暂存的
-        // `StatusChanged transferring`(若有);见 publisher.rs 的占位前缀逻
-        // 辑。`updated == false` 表示 projection 没匹配行(transfer_id 没被
-        // seed 过),既然没 link 也就没什么可 flush 的,跳过。
-        if updated {
-            if let Some(publisher) = self.host_publisher.as_ref() {
-                publisher
-                    .flush_pending_status_after_link(&input.transfer_id)
-                    .await;
-            }
-        }
-        Ok(updated)
-    }
-
     /// 在 receiver-side projection 表里 upsert 一条 `pending` 行。
     ///
     /// 用于：接收方在拿到要传输的元数据但 transfer 真正开始（`Started`
@@ -210,16 +176,71 @@ impl FileTransferFacade {
         input: SeedReceiverContext,
     ) -> Result<(), FileTransferApplicationError> {
         let now_ms = self.clock.now_ms();
+        let file_size = input
+            .file_size
+            .map(i64::try_from)
+            .transpose()
+            .map_err(|_| {
+                FileTransferApplicationError::Repository(
+                    "inbound file size exceeds the receiver projection range".to_owned(),
+                )
+            })?;
         self.repo
             .upsert_pending_transfer(&PendingInboundTransfer {
                 transfer_id: input.transfer_id,
                 entry_id: input.entry_id,
+                attempt_id: input.attempt_id,
                 origin_device_id: input.origin_device_id,
                 filename: input.filename,
+                file_size,
                 cached_path: input.cached_path,
                 created_at_ms: now_ms,
             })
             .await
             .map_err(|err| FileTransferApplicationError::Repository(err.to_string()))
+    }
+
+    pub async fn seed_provisional_receiver_context(
+        &self,
+        input: SeedReceiverContext,
+    ) -> Result<(), ProvisionalReceiveError> {
+        let file_size = input
+            .file_size
+            .map(i64::try_from)
+            .transpose()
+            .map_err(|_| {
+                ProvisionalReceiveError::Backend(
+                    "inbound file size exceeds the receiver projection range".to_owned(),
+                )
+            })?;
+        self.provisional_seed
+            .seed_provisional_receive(&ProvisionalInboundTransfer {
+                transfer_id: input.transfer_id,
+                origin_device_id: input.origin_device_id,
+                filename: input.filename,
+                file_size,
+                created_at_ms: self.clock.now_ms(),
+            })
+            .await
+    }
+
+    pub async fn finalize_provisional_receive(
+        &self,
+        transfer_id: &str,
+        action: ProvisionalReceiveAction,
+    ) -> Result<(), ProvisionalReceiveError> {
+        self.provisional_finalize
+            .finalize_provisional_receive(transfer_id, action, self.clock.now_ms())
+            .await
+    }
+
+    pub async fn record_provisional_receive_path(
+        &self,
+        transfer_id: &str,
+        cached_path: &str,
+    ) -> Result<(), ProvisionalReceiveError> {
+        self.provisional_path
+            .update_provisional_receive_path(transfer_id, cached_path, self.clock.now_ms())
+            .await
     }
 }

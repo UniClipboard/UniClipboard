@@ -5,7 +5,8 @@ use tracing::{info, info_span, warn, Instrument};
 use uc_core::ids::EntryId;
 use uc_core::ports::blob::{BlobTransferPort, TagReason};
 use uc_core::ports::clipboard::{
-    DeleteClipboardEntryPort, GetClipboardEntryPort, ListRepresentationsForEventPort,
+    DeleteClipboardEntryPort, DeleteClipboardEntryWithReceiveStatePort, GetClipboardEntryPort,
+    ListRepresentationsForEventPort,
 };
 use uc_core::ports::{ClipboardEventWriterPort, ClipboardSelectionRepositoryPort, SearchIndexPort};
 
@@ -19,6 +20,7 @@ pub(crate) struct DeleteClipboardEntryUseCase {
     file_cache_dir: Option<PathBuf>,
     search_index: Option<Arc<dyn SearchIndexPort>>,
     blob_transfer: Option<Arc<dyn BlobTransferPort>>,
+    delete_with_receive_state: Option<Arc<dyn DeleteClipboardEntryWithReceiveStatePort>>,
 }
 
 impl DeleteClipboardEntryUseCase {
@@ -38,6 +40,7 @@ impl DeleteClipboardEntryUseCase {
             file_cache_dir: None,
             search_index: None,
             blob_transfer: None,
+            delete_with_receive_state: None,
         }
     }
 
@@ -53,6 +56,14 @@ impl DeleteClipboardEntryUseCase {
 
     pub(crate) fn with_blob_transfer(mut self, blob_transfer: Arc<dyn BlobTransferPort>) -> Self {
         self.blob_transfer = Some(blob_transfer);
+        self
+    }
+
+    pub(crate) fn with_receive_state_delete(
+        mut self,
+        delete: Arc<dyn DeleteClipboardEntryWithReceiveStatePort>,
+    ) -> Self {
+        self.delete_with_receive_state = Some(delete);
         self
     }
 
@@ -79,6 +90,46 @@ impl DeleteClipboardEntryUseCase {
         .await?;
         let event_id = entry.event_id.clone();
 
+        let representations = self
+            .representation_repo
+            .get_representations_for_event(&event_id)
+            .await
+            .unwrap_or_default();
+
+        if let Some(delete) = self.delete_with_receive_state.as_ref() {
+            delete
+                .delete_entry_with_receive_state(entry_id, &event_id)
+                .await
+                .map_err(|error| anyhow::anyhow!("Failed to delete entry: {error}"))?;
+        } else {
+            self.selection_repo
+                .delete_selection(entry_id)
+                .instrument(info_span!(
+                    "delete_selection",
+                    entry_id = %entry_id
+                ))
+                .await
+                .map_err(|e| anyhow::anyhow!("Failed to delete selection: {}", e))?;
+
+            self.delete_entry
+                .delete_entry(entry_id)
+                .instrument(info_span!(
+                    "delete_entry",
+                    entry_id = %entry_id
+                ))
+                .await
+                .map_err(|e| anyhow::anyhow!("Failed to delete entry: {}", e))?;
+
+            self.event_writer
+                .delete_event_and_representations(&event_id)
+                .instrument(info_span!(
+                    "delete_event",
+                    event_id = %event_id
+                ))
+                .await
+                .map_err(|e| anyhow::anyhow!("Failed to delete event: {}", e))?;
+        }
+
         if let Some(blob_transfer) = self.blob_transfer.as_ref() {
             async {
                 if let Err(e) = blob_transfer
@@ -101,59 +152,46 @@ impl DeleteClipboardEntryUseCase {
                 return;
             };
 
-            if let Ok(representations) = self
-                .representation_repo
-                .get_representations_for_event(&event_id)
-                .await
-            {
-                for rep in &representations {
-                    let mime = rep.mime_type.as_ref().map(|m| m.as_str()).unwrap_or("");
-                    if mime.contains("uri-list") {
-                        if let Some(ref inline) = rep.inline_data {
-                            let uri_text = String::from_utf8_lossy(inline);
-                            for line in uri_text.lines() {
-                                let line = line.trim();
-                                if line.is_empty() || line.starts_with('#') {
-                                    continue;
-                                }
-                                let path = if line.starts_with("file://") {
-                                    url::Url::parse(line)
-                                        .ok()
-                                        .and_then(|u| u.to_file_path().ok())
-                                } else {
-                                    Some(std::path::PathBuf::from(line))
-                                };
+            for rep in &representations {
+                let mime = rep.mime_type.as_ref().map(|m| m.as_str()).unwrap_or("");
+                if mime.contains("uri-list") {
+                    if let Some(ref inline) = rep.inline_data {
+                        let uri_text = String::from_utf8_lossy(inline);
+                        for line in uri_text.lines() {
+                            let line = line.trim();
+                            if line.is_empty() || line.starts_with('#') {
+                                continue;
+                            }
+                            let path = if line.starts_with("file://") {
+                                url::Url::parse(line)
+                                    .ok()
+                                    .and_then(|u| u.to_file_path().ok())
+                            } else {
+                                Some(std::path::PathBuf::from(line))
+                            };
 
-                                let Some(path) = path else {
-                                    continue;
-                                };
+                            let Some(path) = path else {
+                                continue;
+                            };
 
-                                if !path.starts_with(cache_dir) {
-                                    info!(
-                                        path = %path.display(),
-                                        cache_dir = %cache_dir.display(),
-                                        "Skipping file deletion — path is outside the managed file-cache directory (user-owned file)"
-                                    );
-                                    continue;
-                                }
+                            if !path.starts_with(cache_dir) {
+                                info!(
+                                    "Skipping file deletion — path is outside the managed file-cache directory (user-owned file)"
+                                );
+                                continue;
+                            }
 
-                                if let Err(e) = tokio::fs::remove_file(&path).await {
-                                    warn!(
-                                        path = %path.display(),
-                                        error = %e,
-                                        "Failed to delete cache file during entry cleanup"
-                                    );
-                                } else {
-                                    info!(
-                                        path = %path.display(),
-                                        "Deleted cache file during entry cleanup"
-                                    );
-                                    if let Some(parent) = path.parent() {
-                                        if parent != cache_dir.as_path()
-                                            && parent.starts_with(cache_dir)
-                                        {
-                                            let _ = tokio::fs::remove_dir(parent).await;
-                                        }
+                            if let Err(e) = tokio::fs::remove_file(&path).await {
+                                warn!(
+                                    error = %e,
+                                    "Failed to delete cache file during entry cleanup"
+                                );
+                            } else {
+                                info!("Deleted cache file during entry cleanup");
+                                if let Some(parent) = path.parent() {
+                                    if parent != cache_dir.as_path() && parent.starts_with(cache_dir)
+                                    {
+                                        let _ = tokio::fs::remove_dir(parent).await;
                                     }
                                 }
                             }
@@ -178,33 +216,6 @@ impl DeleteClipboardEntryUseCase {
             .instrument(info_span!("cleanup_search_index", entry_id = %entry_id))
             .await;
         }
-
-        self.selection_repo
-            .delete_selection(entry_id)
-            .instrument(info_span!(
-                "delete_selection",
-                entry_id = %entry_id
-            ))
-            .await
-            .map_err(|e| anyhow::anyhow!("Failed to delete selection: {}", e))?;
-
-        self.delete_entry
-            .delete_entry(entry_id)
-            .instrument(info_span!(
-                "delete_entry",
-                entry_id = %entry_id
-            ))
-            .await
-            .map_err(|e| anyhow::anyhow!("Failed to delete entry: {}", e))?;
-
-        self.event_writer
-            .delete_event_and_representations(&event_id)
-            .instrument(info_span!(
-                "delete_event",
-                event_id = %event_id
-            ))
-            .await
-            .map_err(|e| anyhow::anyhow!("Failed to delete event: {}", e))?;
 
         info!(
             entry_id = %entry_id,

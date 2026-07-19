@@ -27,7 +27,6 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use async_trait::async_trait;
-use serde::Serialize;
 use tokio::sync::broadcast;
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, info, warn};
@@ -43,20 +42,6 @@ use uc_daemon_contract::constants::{ws_event, ws_topic};
 
 use crate::daemon::service::{DaemonService, ServiceHealth};
 use uc_webserver::api::types::DaemonWsEvent;
-
-// ---------------------------------------------------------------------------
-// ClipboardNewContentPayload
-// ---------------------------------------------------------------------------
-
-/// Payload for the clipboard.new_content WS event.
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct ClipboardNewContentPayload {
-    entry_id: String,
-    preview: String,
-    origin: String,
-    from_device: String,
-}
 
 // ---------------------------------------------------------------------------
 // InboundClipboardSyncWorker
@@ -95,8 +80,7 @@ impl InboundClipboardSyncWorker {
         };
         match self.inbound_clipboard.apply_notice(input).await {
             Ok(InboundClipboardApplyOutcome::Applied { entry_id }) => {
-                info!(entry_id = %entry_id, "inbound clipboard applied; broadcasting WS event");
-                Self::emit_ws_event(&self.event_tx, entry_id, from_device);
+                info!(entry_id = %entry_id, "inbound clipboard applied");
             }
             // The peer re-copied a clip we already hold: no new entry, but it
             // moved to the top of history and is now the active clipboard, so
@@ -106,11 +90,7 @@ impl InboundClipboardSyncWorker {
                 os_write_succeeded: true,
                 ..
             }) => {
-                info!(
-                    entry_id = %existing_entry_id,
-                    "inbound clipboard re-activated already-held entry; broadcasting WS event"
-                );
-                Self::emit_ws_event(&self.event_tx, existing_entry_id, from_device);
+                info!(entry_id = %existing_entry_id, "inbound clipboard re-activated already-held entry");
             }
             // The OS write failed, so the use case left the register unadvanced
             // and the entry unmoved in history. `clipboard.new_content` would
@@ -143,38 +123,6 @@ impl InboundClipboardSyncWorker {
             Err(e) => {
                 warn!(error = %e, "inbound apply failed");
             }
-        }
-    }
-
-    fn emit_ws_event(
-        event_tx: &broadcast::Sender<DaemonWsEvent>,
-        entry_id: String,
-        from_device: String,
-    ) {
-        let payload = ClipboardNewContentPayload {
-            entry_id,
-            preview: "Remote clipboard content".to_string(),
-            origin: "remote".to_string(),
-            from_device,
-        };
-        let payload_value = match serde_json::to_value(payload) {
-            Ok(v) => v,
-            Err(e) => {
-                warn!(error = %e, "Failed to serialize clipboard.new_content payload");
-                return;
-            }
-        };
-
-        let event = DaemonWsEvent {
-            topic: ws_topic::CLIPBOARD.to_string(),
-            event_type: ws_event::CLIPBOARD_NEW_CONTENT.to_string(),
-            session_id: None,
-            ts: chrono::Utc::now().timestamp_millis(),
-            payload: payload_value,
-        };
-
-        if let Err(e) = event_tx.send(event) {
-            debug!(error = %e, "No WS subscribers for clipboard.new_content");
         }
     }
 

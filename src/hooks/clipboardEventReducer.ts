@@ -2,6 +2,7 @@ import type { UnknownAction } from '@reduxjs/toolkit'
 import {
   addPendingEntry,
   removePendingEntry,
+  removePendingEntryForAttempt,
   type PendingClipboardEntry,
 } from '@/store/slices/clipboardSlice'
 import {
@@ -12,6 +13,7 @@ import {
   markTransferFailed,
   normalizeCancelReason,
   setEntryTransferStatus,
+  setReceiveAttemptState,
   updateTransferProgress,
 } from '@/store/slices/fileTransferSlice'
 
@@ -56,12 +58,14 @@ export interface ClipboardEventReducerInput {
 
 interface ClipboardNewContentPayload {
   entryId: string
+  attemptId?: string | null
   preview: string
   origin: string
 }
 
 interface ClipboardIncomingPendingPayload {
   entryId: string
+  attemptId?: string | null
   fromDevice: string
   totalBytes?: number | null
   filenames?: string[]
@@ -70,6 +74,7 @@ interface ClipboardIncomingPendingPayload {
 interface FileTransferStatusEvent {
   transferId: string
   entryId: string
+  attemptId?: string | null
   status: string
   reason?: string | null
 }
@@ -77,6 +82,7 @@ interface FileTransferStatusEvent {
 interface FileTransferProgressEvent {
   transferId: string
   entryId?: string | null
+  attemptId?: string | null
   peerId: string
   direction: 'Sending' | 'Receiving'
   bytesTransferred: number
@@ -152,6 +158,7 @@ export function reduceClipboardRealtimeEvent(
     const payload = event.payload as ClipboardIncomingPendingPayload
     const pending: PendingClipboardEntry = {
       entryId: payload.entryId,
+      attemptId: payload.attemptId ?? null,
       fromDevice: payload.fromDevice,
       totalBytes: payload.totalBytes ?? null,
       filenames: payload.filenames ?? [],
@@ -164,12 +171,29 @@ export function reduceClipboardRealtimeEvent(
         status: 'transferring',
         reason: null,
       }),
+      ...(payload.attemptId
+        ? [
+            setReceiveAttemptState({
+              entryId: payload.entryId,
+              attemptId: payload.attemptId,
+              state: 'receiving',
+            }),
+          ]
+        : []),
     ])
   }
 
   if (event.eventType === 'clipboard.new_content') {
     const payload = event.payload as ClipboardNewContentPayload
-    const actions = [removePendingEntry(payload.entryId), cancelClipboardWrite()]
+    const actions = [
+      payload.attemptId
+        ? removePendingEntryForAttempt({
+            entryId: payload.entryId,
+            attemptId: payload.attemptId,
+          })
+        : removePendingEntry(payload.entryId),
+      cancelClipboardWrite(),
+    ]
     if (payload.origin === 'local') {
       const local = reduceLocalNewContent(payload.entryId, state, input)
       return result(local.state, actions, local.effects)
@@ -180,6 +204,20 @@ export function reduceClipboardRealtimeEvent(
 
   if (event.eventType === 'file-transfer.status_changed') {
     return result(state, reduceTransferStatus(event.payload as FileTransferStatusEvent))
+  }
+
+  if (event.eventType === 'clipboard.receive_attempt_state_changed') {
+    const payload = event.payload as { entryId: string; attemptId: string; state: string }
+    const actions: ClipboardEventReducerAction[] = [setReceiveAttemptState(payload)]
+    if (['completed', 'cancelled', 'failed'].includes(payload.state)) {
+      actions.push(
+        removePendingEntryForAttempt({
+          entryId: payload.entryId,
+          attemptId: payload.attemptId,
+        })
+      )
+    }
+    return result(state, actions)
   }
 
   if (event.eventType === 'file-transfer.progress') {
@@ -289,6 +327,7 @@ function reduceRemoteNewContent(
 }
 
 function reduceTransferStatus(payload: FileTransferStatusEvent): ClipboardEventReducerAction[] {
+  if (payload.attemptId) return []
   const actions: ClipboardEventReducerAction[] = [
     linkTransferToEntry({ transferId: payload.transferId, entryId: payload.entryId }),
   ]
@@ -333,6 +372,7 @@ function reduceTransferProgress(
     updateTransferProgress({
       transferId: payload.transferId,
       entryId: payload.entryId ?? null,
+      attemptId: payload.attemptId ?? null,
       peerId: payload.peerId,
       direction: payload.direction,
       bytesTransferred: payload.bytesTransferred,
@@ -341,7 +381,7 @@ function reduceTransferProgress(
     }),
   ]
 
-  if (payload.entryId) {
+  if (payload.entryId && !payload.attemptId) {
     actions.push(linkTransferToEntry({ transferId: payload.transferId, entryId: payload.entryId }))
   }
 

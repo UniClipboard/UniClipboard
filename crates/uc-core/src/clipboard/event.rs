@@ -24,6 +24,7 @@ pub enum ClipboardContentAction {
     Unpin,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ClipboardEvent {
     pub event_id: EventId,
     pub captured_at_ms: i64,

@@ -20,6 +20,7 @@ use axum::Router;
 use tokio::sync::{broadcast, Semaphore};
 use tokio_util::sync::CancellationToken;
 use uc_application::facade::AppFacade;
+use uc_application::receive_reconciliation::EnsureReceiveReadyPort;
 use uc_observability::analytics::{AnalyticsPort, NoopAnalyticsSink};
 use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
@@ -48,6 +49,7 @@ pub struct DaemonApiState {
     pub clipboard_capture_gate: Option<Arc<AtomicBool>>,
     /// Notify to trigger deferred service startup (clipboard-watcher, etc.)
     pub deferred_ready_notify: Option<Arc<tokio::sync::Notify>>,
+    pub receive_readiness: Arc<dyn EnsureReceiveReadyPort>,
     /// Security state: JWT secret, PID whitelist, and rate limiter.
     /// Wrapped in Arc so middleware (which receives Arc<DaemonApiState>) can share
     /// the same state with the server without cloning the inner fields.
@@ -112,6 +114,7 @@ impl DaemonApiState {
         app_facade: Arc<AppFacade>,
         auth_token: DaemonAuthToken,
         security: Arc<SecurityState>,
+        receive_readiness: Arc<dyn EnsureReceiveReadyPort>,
     ) -> Self {
         let (event_tx, _) = broadcast::channel(64);
         // ADR-008 P5-L L8c: the quiescing flag and the restart coordinator must
@@ -126,6 +129,7 @@ impl DaemonApiState {
             started_at: Instant::now(),
             clipboard_capture_gate: None,
             deferred_ready_notify: None,
+            receive_readiness,
             security,
             analytics: Arc::new(NoopAnalyticsSink),
             large_blob_semaphore: Arc::new(Semaphore::new(MAX_CONCURRENT_BLOB_PULLS)),
@@ -162,7 +166,16 @@ impl DaemonApiState {
     }
 
     pub fn health_response(&self) -> HealthResponse {
-        Self::health_response_for(self.residency)
+        let readiness = self.receive_readiness.receive_readiness_status();
+        HealthResponse {
+            status: if readiness.degraded_reason.is_some() {
+                "degraded".to_string()
+            } else {
+                "ok".to_string()
+            },
+            degraded_reason: readiness.degraded_reason,
+            ..Self::health_response_for(self.residency)
+        }
     }
 
     /// Build the `GET /health` body for a given residency. Split out from
@@ -173,6 +186,7 @@ impl DaemonApiState {
     pub fn health_response_for(residency: DaemonResidency) -> HealthResponse {
         HealthResponse {
             status: "ok".to_string(),
+            degraded_reason: None,
             package_version: env!("CARGO_PKG_VERSION").to_string(),
             api_revision: uc_daemon_contract::DAEMON_API_REVISION.to_string(),
             residency,
@@ -265,6 +279,13 @@ impl DaemonApiState {
     pub fn with_deferred_ready_notify(mut self, notify: Arc<tokio::sync::Notify>) -> Self {
         self.deferred_ready_notify = Some(notify);
         self
+    }
+
+    pub async fn ensure_receive_ready(&self) -> Result<(), ApiError> {
+        self.receive_readiness
+            .ensure_receive_ready()
+            .await
+            .map_err(|error| ApiError::service_unavailable(error.to_string()))
     }
 
     pub fn connection_info_for_addr(

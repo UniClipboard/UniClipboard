@@ -42,6 +42,8 @@ pub enum DaemonResidency {
 #[serde(rename_all = "camelCase")]
 pub struct HealthResponse {
     pub status: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub degraded_reason: Option<String>,
     pub package_version: String,
     pub api_revision: String,
     /// Daemon residency mode (ADR-008 P5-L L1). Backward-tolerant via
@@ -128,6 +130,7 @@ pub struct PresenceRefreshResponse {
 pub struct FileTransferProgressPayload {
     pub transfer_id: String,
     pub entry_id: Option<String>,
+    pub attempt_id: Option<String>,
     pub peer_id: String,
     pub direction: FileTransferDirection,
     pub bytes_transferred: u64,
@@ -305,6 +308,7 @@ mod residency_backward_tolerance_tests {
 
         let new_body = serde_json::to_value(HealthResponse {
             status: "ok".to_string(),
+            degraded_reason: None,
             package_version: "0.14.0".to_string(),
             api_revision: "residency-revision".to_string(),
             residency: DaemonResidency::Oneshot,

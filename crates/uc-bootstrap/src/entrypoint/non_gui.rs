@@ -142,6 +142,7 @@ fn build_fallback_apply_inbound(deps: &AppDeps) -> Arc<ApplyInboundClipboardUseC
             deps.clipboard.entry_ports.replace_content.clone(),
             deps.analytics.clone(),
         )
+        .with_inbound_receive_commit(deps.storage.directory_receive.commit_inbound.clone())
         .with_entry_identity_coordinator(deps.clipboard.entry_identity_coordinator.clone()),
     );
     let capture: Arc<dyn ApplyInboundCapture> = capture_uc;
@@ -152,6 +153,16 @@ fn build_fallback_apply_inbound(deps: &AppDeps) -> Arc<ApplyInboundClipboardUseC
             capture,
             write,
         )
+        .with_receive_attempt_ports(
+            deps.storage.directory_receive.get_attempt.clone(),
+            deps.storage.directory_receive.begin_receive.clone(),
+            deps.storage.directory_receive.claim_commit.clone(),
+            deps.storage.directory_receive.request_cancel.clone(),
+            deps.storage.directory_receive.begin_failure.clone(),
+            deps.storage.directory_receive.commit_inbound.clone(),
+            deps.system.clock.clone(),
+        )
+        .with_receive_artifact_cleanup(Arc::new(uc_infra::fs::FsReceiveArtifactCleaner))
         .with_active_register(
             deps.clipboard.active_register.clone(),
             deps.clipboard.mobile_consumability.clone(),

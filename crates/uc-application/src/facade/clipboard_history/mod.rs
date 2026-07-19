@@ -205,6 +205,7 @@ impl ClipboardHistoryFacade {
             touch: _entry_touch,
             set_favorite: entry_set_favorite,
             delete: entry_delete,
+            delete_with_receive_state: entry_delete_with_receive_state,
             find_by_snapshot_hash: _entry_find,
             get_snapshot_hash: _entry_snapshot_hash,
             availability: _entry_availability,
@@ -263,7 +264,8 @@ impl ClipboardHistoryFacade {
             selection_repo.clone(),
             event_writer.clone(),
             rep_list_for_event.clone(),
-        );
+        )
+        .with_receive_state_delete(entry_delete_with_receive_state);
         if let Some(dir) = file_cache_dir.clone() {
             delete_uc = delete_uc.with_file_cache_dir(dir);
         }

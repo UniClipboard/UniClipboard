@@ -198,6 +198,19 @@ impl FilesystemMobileFileStaging {
 
 #[async_trait]
 impl MobileFileStagingPort for FilesystemMobileFileStaging {
+    async fn discard_staged_file(&self, staged: &StagedFile) -> Result<(), MobileFileStagingError> {
+        let url = url::Url::parse(staged.uri.as_str())
+            .map_err(|error| MobileFileStagingError::Io(error.to_string()))?;
+        let path = url
+            .to_file_path()
+            .map_err(|_| MobileFileStagingError::Io("staged file URI is not local".to_owned()))?;
+        match tokio::fs::remove_file(path).await {
+            Ok(()) => Ok(()),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(error) => Err(MobileFileStagingError::Io(error.to_string())),
+        }
+    }
+
     async fn read_by_uri(&self, uri: &str) -> Result<Vec<u8>, MobileFileStagingError> {
         // 解析 URI → path。url 的 `to_file_path` 自动 percent decode +
         // 跨平台(Windows 盘符 / Linux/macOS 普通路径都吃)。
@@ -1121,5 +1134,29 @@ mod tests {
     fn sanitize_scope_falls_back_to_unscoped_when_empty() {
         assert_eq!(sanitize_scope(""), "unscoped");
         assert_eq!(sanitize_scope("   "), "unscoped");
+    }
+
+    #[tokio::test]
+    async fn discard_staged_file_removes_the_exact_provisional_file() {
+        let directory = tempfile::tempdir().unwrap();
+        let adapter = FilesystemMobileFileStaging::new(directory.path().to_path_buf());
+        let staged = adapter
+            .stage_file(
+                "provisional",
+                "duplicate.bin",
+                "application/octet-stream",
+                b"duplicate".to_vec(),
+            )
+            .await
+            .unwrap();
+        let path = url::Url::parse(staged.uri.as_str())
+            .unwrap()
+            .to_file_path()
+            .unwrap();
+        assert!(path.exists());
+
+        adapter.discard_staged_file(&staged).await.unwrap();
+        assert!(!path.exists());
+        adapter.discard_staged_file(&staged).await.unwrap();
     }
 }

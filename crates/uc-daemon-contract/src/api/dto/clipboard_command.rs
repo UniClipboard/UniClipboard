@@ -89,6 +89,30 @@ pub struct CancelTransferResponse {
     pub outcome: String,
 }
 
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct CancelEntryReceiveRequest {
+    pub attempt_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct CancelEntryReceiveResponse {
+    pub outcome: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct EntryReceiveProgressResponse {
+    pub entry_id: String,
+    pub attempt_id: String,
+    pub state: String,
+    pub total_bytes: i64,
+    pub completed_bytes: i64,
+    pub items_total: u32,
+    pub items_completed: u32,
+}
+
 // ── POST /clipboard/restore/:entry_id ────────────────────────────
 
 /// Response body for `POST /clipboard/restore/:entry_id`.

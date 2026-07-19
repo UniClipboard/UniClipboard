@@ -9,7 +9,6 @@ use axum::response::IntoResponse;
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde_json::json;
-use std::sync::atomic::Ordering;
 use tracing::{info, Instrument};
 
 use uc_daemon_contract::api::dto::envelope::{ApiEnvelope, LifecycleStatusEnvelope};
@@ -46,20 +45,11 @@ pub fn router() -> Router<DaemonApiState> {
     )
 )]
 async fn lifecycle_ready_handler(State(state): State<DaemonApiState>) -> impl IntoResponse {
-    if let Some(gate) = &state.clipboard_capture_gate {
-        let was_closed = !gate.swap(true, Ordering::SeqCst);
-        if was_closed {
-            info!("Clipboard capture gate opened by GUI lifecycle/ready signal");
-        } else {
-            info!("Clipboard capture gate already open (duplicate lifecycle/ready call)");
-        }
+    if let Err(error) = state.ensure_receive_ready().await {
+        return error.into_response();
     }
 
-    // Trigger deferred services start (clipboard-watcher, inbound-clipboard-sync, etc.)
-    if let Some(notify) = &state.deferred_ready_notify {
-        notify.notify_one();
-    }
-
+    info!("Receive recovery completed through lifecycle/ready");
     StatusCode::NO_CONTENT.into_response()
 }
 
@@ -113,21 +103,12 @@ async fn retry_lifecycle_handler(State(state): State<DaemonApiState>) -> impl In
 
     let span = tracing::info_span!("daemon.lifecycle.retry");
     async move {
+        if let Err(error) = state.ensure_receive_ready().await {
+            return error.into_response();
+        }
+
         if let Err(error) = app.lifecycle.retry_to_ready().await {
             return ApiError::internal(format!("lifecycle retry failed: {error}")).into_response();
-        }
-
-        // Signal clipboard capture gate (if present) — same as /lifecycle/ready.
-        if let Some(gate) = &state.clipboard_capture_gate {
-            let was_closed = !gate.swap(true, std::sync::atomic::Ordering::SeqCst);
-            if was_closed {
-                info!("Clipboard capture gate opened by lifecycle retry");
-            }
-        }
-
-        // Trigger deferred services start.
-        if let Some(notify) = &state.deferred_ready_notify {
-            notify.notify_one();
         }
 
         info!("Lifecycle retry completed successfully");

@@ -19,6 +19,8 @@ use crate::api::types::{DaemonWsEvent, FileTransferProgressPayload};
 struct FileTransferStatusChangedPayload {
     transfer_id: String,
     entry_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    attempt_id: Option<String>,
     status: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     reason: Option<String>,
@@ -28,6 +30,8 @@ struct FileTransferStatusChangedPayload {
 #[serde(rename_all = "camelCase")]
 struct ClipboardNewContentPayload {
     entry_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    attempt_id: Option<String>,
     preview: String,
     origin: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -45,12 +49,22 @@ struct ClipboardDeliveryStatusChangedPayload {
 #[serde(rename_all = "camelCase")]
 struct ClipboardIncomingPendingPayload {
     entry_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    attempt_id: Option<String>,
     from_device: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     total_bytes: Option<u64>,
     /// 文件名列表(顺序与 envelope 的 blob_refs 一致)。空列表表示
     /// 该入站事件没有可显示的文件名(纯文本 / 仅图像等)。
     filenames: Vec<String>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ClipboardReceiveAttemptStatePayload {
+    entry_id: String,
+    attempt_id: String,
+    state: String,
 }
 
 pub struct DaemonApiEventEmitter {
@@ -98,6 +112,7 @@ impl HostEventEmitterPort for DaemonApiEventEmitter {
             HostEvent::Transfer(TransferHostEvent::StatusChanged {
                 transfer_id,
                 entry_id,
+                attempt_id,
                 status,
                 reason,
             }) => {
@@ -109,6 +124,7 @@ impl HostEventEmitterPort for DaemonApiEventEmitter {
                     FileTransferStatusChangedPayload {
                         transfer_id,
                         entry_id,
+                        attempt_id,
                         status,
                         reason,
                     },
@@ -117,6 +133,7 @@ impl HostEventEmitterPort for DaemonApiEventEmitter {
             HostEvent::Transfer(TransferHostEvent::Progress {
                 transfer_id,
                 entry_id,
+                attempt_id,
                 peer_id,
                 direction,
                 bytes_transferred,
@@ -130,6 +147,7 @@ impl HostEventEmitterPort for DaemonApiEventEmitter {
                     FileTransferProgressPayload {
                         transfer_id,
                         entry_id,
+                        attempt_id,
                         peer_id,
                         direction,
                         bytes_transferred,
@@ -139,6 +157,7 @@ impl HostEventEmitterPort for DaemonApiEventEmitter {
             }
             HostEvent::Clipboard(ClipboardHostEvent::NewContent {
                 entry_id,
+                attempt_id,
                 preview,
                 origin,
             }) => {
@@ -149,6 +168,7 @@ impl HostEventEmitterPort for DaemonApiEventEmitter {
                     Self::now_ms(),
                     ClipboardNewContentPayload {
                         entry_id,
+                        attempt_id,
                         preview,
                         origin: format!("{:?}", origin).to_lowercase(),
                         content_type: None,
@@ -157,6 +177,7 @@ impl HostEventEmitterPort for DaemonApiEventEmitter {
             }
             HostEvent::Clipboard(ClipboardHostEvent::IncomingPending {
                 entry_id,
+                attempt_id,
                 from_device,
                 total_bytes,
                 filenames,
@@ -168,9 +189,27 @@ impl HostEventEmitterPort for DaemonApiEventEmitter {
                     Self::now_ms(),
                     ClipboardIncomingPendingPayload {
                         entry_id,
+                        attempt_id,
                         from_device,
                         total_bytes,
                         filenames,
+                    },
+                );
+            }
+            HostEvent::Clipboard(ClipboardHostEvent::ReceiveAttemptStateChanged {
+                entry_id,
+                attempt_id,
+                state,
+            }) => {
+                self.emit_ws_event(
+                    ws_event::CLIPBOARD_RECEIVE_ATTEMPT_STATE_CHANGED,
+                    ws_topic::CLIPBOARD,
+                    None,
+                    Self::now_ms(),
+                    ClipboardReceiveAttemptStatePayload {
+                        entry_id,
+                        attempt_id,
+                        state,
                     },
                 );
             }

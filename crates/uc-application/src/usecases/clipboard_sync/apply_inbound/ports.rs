@@ -9,7 +9,9 @@ use async_trait::async_trait;
 use uc_core::ids::EntryId;
 use uc_core::{ClipboardChangeOrigin, DeviceId, SnapshotHash, SystemClipboardSnapshot};
 
-use crate::clipboard_capture::{CaptureClipboardUseCase, CommitMode};
+use crate::clipboard_capture::{
+    CaptureClipboardUseCase, CommitMode, DirectoryCaptureCommitContext, InboundCaptureCommitContext,
+};
 use crate::clipboard_write::{ClipboardWriteCoordinator, ClipboardWriteIntent};
 use crate::usecases::clipboard_sync::snapshot_from_entry::SnapshotReconstructor;
 
@@ -84,6 +86,52 @@ pub trait InboundCapture: Send + Sync {
         self.capture_with_identity(entry_id, from_device, snapshot, authoritative_hash)
             .await
     }
+
+    async fn capture_inbound_with_identity(
+        &self,
+        entry_id: EntryId,
+        from_device: DeviceId,
+        snapshot: SystemClipboardSnapshot,
+        authoritative_hash: Option<SnapshotHash>,
+        _commit: InboundCaptureCommitContext,
+    ) -> Result<Option<EntryId>> {
+        self.capture_with_identity(entry_id, from_device, snapshot, authoritative_hash)
+            .await
+    }
+
+    async fn replace_inbound_with_identity(
+        &self,
+        entry_id: EntryId,
+        from_device: DeviceId,
+        snapshot: SystemClipboardSnapshot,
+        authoritative_hash: Option<SnapshotHash>,
+        _commit: InboundCaptureCommitContext,
+    ) -> Result<Option<EntryId>> {
+        self.replace_with_identity(entry_id, from_device, snapshot, authoritative_hash)
+            .await
+    }
+
+    async fn capture_directory_with_identity(
+        &self,
+        _entry_id: EntryId,
+        _from_device: DeviceId,
+        _snapshot: SystemClipboardSnapshot,
+        _authoritative_hash: Option<SnapshotHash>,
+        _commit: DirectoryCaptureCommitContext,
+    ) -> Result<Option<EntryId>> {
+        anyhow::bail!("directory receive commit is not supported by this capture adapter")
+    }
+
+    async fn replace_directory_with_identity(
+        &self,
+        _entry_id: EntryId,
+        _from_device: DeviceId,
+        _snapshot: SystemClipboardSnapshot,
+        _authoritative_hash: Option<SnapshotHash>,
+        _commit: DirectoryCaptureCommitContext,
+    ) -> Result<Option<EntryId>> {
+        anyhow::bail!("directory receive commit is not supported by this capture adapter")
+    }
 }
 
 #[async_trait]
@@ -135,6 +183,94 @@ impl InboundCapture for CaptureClipboardUseCase {
             Some(entry_id),
             authoritative_hash,
             CommitMode::Replace,
+        )
+        .await
+        .map(|outcome| outcome.map(|o| o.entry_id))
+    }
+
+    async fn capture_inbound_with_identity(
+        &self,
+        entry_id: EntryId,
+        from_device: DeviceId,
+        snapshot: SystemClipboardSnapshot,
+        authoritative_hash: Option<SnapshotHash>,
+        commit: InboundCaptureCommitContext,
+    ) -> Result<Option<EntryId>> {
+        self.execute_inbound_with_origin(
+            snapshot,
+            ClipboardChangeOrigin::RemotePush {
+                from_device: Some(from_device),
+            },
+            entry_id,
+            authoritative_hash,
+            CommitMode::Create,
+            commit,
+        )
+        .await
+        .map(|outcome| outcome.map(|o| o.entry_id))
+    }
+
+    async fn replace_inbound_with_identity(
+        &self,
+        entry_id: EntryId,
+        from_device: DeviceId,
+        snapshot: SystemClipboardSnapshot,
+        authoritative_hash: Option<SnapshotHash>,
+        commit: InboundCaptureCommitContext,
+    ) -> Result<Option<EntryId>> {
+        self.execute_inbound_with_origin(
+            snapshot,
+            ClipboardChangeOrigin::RemotePush {
+                from_device: Some(from_device),
+            },
+            entry_id,
+            authoritative_hash,
+            CommitMode::Replace,
+            commit,
+        )
+        .await
+        .map(|outcome| outcome.map(|o| o.entry_id))
+    }
+
+    async fn capture_directory_with_identity(
+        &self,
+        entry_id: EntryId,
+        from_device: DeviceId,
+        snapshot: SystemClipboardSnapshot,
+        authoritative_hash: Option<SnapshotHash>,
+        commit: DirectoryCaptureCommitContext,
+    ) -> Result<Option<EntryId>> {
+        self.execute_directory_with_origin(
+            snapshot,
+            ClipboardChangeOrigin::RemotePush {
+                from_device: Some(from_device),
+            },
+            entry_id,
+            authoritative_hash,
+            CommitMode::Create,
+            commit,
+        )
+        .await
+        .map(|outcome| outcome.map(|o| o.entry_id))
+    }
+
+    async fn replace_directory_with_identity(
+        &self,
+        entry_id: EntryId,
+        from_device: DeviceId,
+        snapshot: SystemClipboardSnapshot,
+        authoritative_hash: Option<SnapshotHash>,
+        commit: DirectoryCaptureCommitContext,
+    ) -> Result<Option<EntryId>> {
+        self.execute_directory_with_origin(
+            snapshot,
+            ClipboardChangeOrigin::RemotePush {
+                from_device: Some(from_device),
+            },
+            entry_id,
+            authoritative_hash,
+            CommitMode::Replace,
+            commit,
         )
         .await
         .map(|outcome| outcome.map(|o| o.entry_id))

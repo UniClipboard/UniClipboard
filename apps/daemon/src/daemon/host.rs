@@ -27,6 +27,7 @@ use uc_application::facade::{
     ActiveClipboardReconcileDeps, ActiveClipboardReconcileFacade, AppFacade, AppPaths,
     ClipboardSnapshotDeps, FileTransferFacade,
 };
+use uc_application::receive_reconciliation::EnsureReceiveReadyPort;
 use uc_bootstrap::{FileTransferLifecycle, WiredDependencies};
 
 use super::app_assembly::{build_daemon_app_instance, DaemonAppAssemblyInput};
@@ -41,6 +42,7 @@ use super::runtime_assembly::{build_daemon_runtime_workers, DaemonRuntimeAssembl
 use super::runtime_controls::build_daemon_runtime_controls;
 use super::search_assembly::build_daemon_search_assembly;
 use super::service_assembly::build_daemon_service_plan;
+use super::startup_recovery::DaemonReceiveReadinessCoordinator;
 use super::tokio_runtime::build_daemon_tokio_runtime;
 
 /// Process-level persistent resource handles passed to the daemon on each spawn.
@@ -297,6 +299,13 @@ pub async fn start_in_process(
     let host_event_bus = wired.shared.host_event_bus;
     let settings_port = deps.settings.clone();
     let runtime_controls = build_daemon_runtime_controls(run_mode);
+    let receive_recovery: Arc<dyn EnsureReceiveReadyPort> = file_transfer_lifecycle.clone();
+    let receive_readiness: Arc<dyn EnsureReceiveReadyPort> =
+        Arc::new(DaemonReceiveReadinessCoordinator::new(
+            receive_recovery,
+            runtime_controls.clipboard_capture_gate.clone(),
+            runtime_controls.deferred_ready_notify.clone(),
+        ));
 
     let runtime_workers = build_daemon_runtime_workers(DaemonRuntimeAssemblyInput {
         deps: &deps,
@@ -307,7 +316,8 @@ pub async fn start_in_process(
         clipboard_sync_facade: clipboard_sync_facade.clone(),
         blob_transfer_facade: blob_transfer_facade.clone(),
         file_cache_dir: storage_paths.file_cache_dir.clone(),
-        file_transfer_lifecycle,
+        file_transfer_lifecycle: file_transfer_lifecycle.clone(),
+        receive_readiness: wired.shared.receive_readiness.clone(),
         clipboard_write_coordinator: clipboard_write_coordinator.clone(),
         host_event_bus: host_event_bus.clone(),
         entry_delivery_repo: wired.shared.entry_delivery_repo.clone(),
@@ -374,6 +384,7 @@ pub async fn start_in_process(
         mobile_sync_endpoint_info,
         mobile_lan_lifecycle: Arc::clone(&mobile_lan_lifecycle),
         analytics: Arc::clone(&deps.analytics),
+        receive_readiness: Arc::clone(&receive_readiness),
     });
 
     let input = DaemonRunLoopInput {
@@ -382,8 +393,7 @@ pub async fn start_in_process(
         app_facade: app_facade_for_daemon,
         settings: settings_port,
         sync_engine_assembly,
-        deferred_ready_notify: runtime_controls.deferred_ready_notify,
-        clipboard_capture_gate: runtime_controls.clipboard_capture_gate,
+        receive_readiness,
     };
     let join = tokio::spawn(run_daemon_main(input));
 

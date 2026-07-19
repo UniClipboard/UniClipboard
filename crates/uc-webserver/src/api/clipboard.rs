@@ -25,8 +25,9 @@ use uc_core::{
 use utoipa::IntoParams;
 
 use uc_daemon_contract::api::dto::clipboard_command::{
-    CancelTransferRequest, CancelTransferResponse, DispatchOutcomeResponse, DispatchTextRequest,
-    ResendRequest, ResendResponse,
+    CancelEntryReceiveRequest, CancelEntryReceiveResponse, CancelTransferRequest,
+    CancelTransferResponse, DispatchOutcomeResponse, DispatchTextRequest,
+    EntryReceiveProgressResponse, ResendRequest, ResendResponse,
 };
 use uc_daemon_contract::api::dto::clipboard_delivery::EntryDeliveryViewDto;
 use uc_daemon_contract::api::dto::envelope::ApiEnvelope;
@@ -75,9 +76,18 @@ pub fn router() -> Router<DaemonApiState> {
     Router::new()
         .route("/clipboard/entries", get(list_entries))
         .route("/clipboard/entries/clear", post(clear_history))
+        .route("/clipboard/receives", get(list_entry_receive_progress))
         .route("/clipboard/entries/:id", get(get_entry))
         .route("/clipboard/entries/:id", delete(delete_entry))
         .route("/clipboard/entries/:id/favorite", post(toggle_favorite))
+        .route(
+            "/clipboard/entries/:id/receive",
+            get(get_entry_receive_progress),
+        )
+        .route(
+            "/clipboard/entries/:id/receive/cancel",
+            post(cancel_entry_receive),
+        )
         .route("/clipboard/stats", get(get_stats))
         .route("/clipboard/entries/:id/resource", get(get_entry_resource))
         .route(
@@ -90,6 +100,113 @@ pub fn router() -> Router<DaemonApiState> {
             &format!("{}/:transfer_id", http_route::CLIPBOARD_CANCEL_TRANSFER),
             post(cancel_transfer),
         )
+}
+
+#[utoipa::path(
+    get,
+    path = "/clipboard/entries/{id}/receive",
+    operation_id = "getEntryReceiveProgress",
+    tag = "clipboard",
+    params(("id" = String, Path, description = "Clipboard entry ID")),
+    responses(
+        (status = 200, description = "Current receive progress or null", body = EntryReceiveProgressEnvelope),
+        (status = 500, description = "Internal server error", body = ApiErrorResponse),
+    )
+)]
+pub(crate) async fn get_entry_receive_progress(
+    State(state): State<DaemonApiState>,
+    Path(entry_id): Path<String>,
+) -> Result<Json<ApiEnvelope<Option<EntryReceiveProgressResponse>>>, ApiError> {
+    let app = require_app_facade(&state)?;
+    let progress = app
+        .get_entry_receive_progress(&EntryId::from_string(entry_id))
+        .await
+        .map_err(|error| ApiError::internal(error.to_string()))?
+        .map(receive_progress_response);
+    Ok(Json(ApiEnvelope::now(progress)))
+}
+
+#[utoipa::path(
+    get,
+    path = "/clipboard/receives",
+    operation_id = "listEntryReceiveProgress",
+    tag = "clipboard",
+    responses(
+        (status = 200, description = "Active remote receives listed", body = EntryReceiveProgressListEnvelope),
+        (status = 500, description = "Internal server error", body = ApiErrorResponse),
+    )
+)]
+pub(crate) async fn list_entry_receive_progress(
+    State(state): State<DaemonApiState>,
+) -> Result<Json<ApiEnvelope<Vec<EntryReceiveProgressResponse>>>, ApiError> {
+    let app = require_app_facade(&state)?;
+    let progress = app
+        .list_entry_receive_progress()
+        .await
+        .map_err(|error| ApiError::internal(error.to_string()))?
+        .into_iter()
+        .map(receive_progress_response)
+        .collect();
+    Ok(Json(ApiEnvelope::now(progress)))
+}
+
+fn receive_progress_response(
+    progress: uc_core::ports::EntryReceiveProgress,
+) -> EntryReceiveProgressResponse {
+    EntryReceiveProgressResponse {
+        entry_id: progress.entry_id,
+        attempt_id: progress.attempt_id,
+        state: progress.state.to_string(),
+        total_bytes: progress.total_bytes,
+        completed_bytes: progress.completed_bytes,
+        items_total: progress.items_total,
+        items_completed: progress.items_completed,
+    }
+}
+
+#[utoipa::path(
+    post,
+    path = "/clipboard/entries/{id}/receive/cancel",
+    operation_id = "cancelEntryReceive",
+    tag = "clipboard",
+    params(("id" = String, Path, description = "Clipboard entry ID")),
+    request_body = CancelEntryReceiveRequest,
+    responses(
+        (status = 200, description = "Exact receive cancellation outcome", body = CancelEntryReceiveEnvelope),
+        (status = 400, description = "Invalid request", body = ApiErrorResponse),
+        (status = 500, description = "Internal server error", body = ApiErrorResponse),
+    )
+)]
+pub(crate) async fn cancel_entry_receive(
+    State(state): State<DaemonApiState>,
+    Path(entry_id): Path<String>,
+    body: Result<Json<CancelEntryReceiveRequest>, axum::extract::rejection::JsonRejection>,
+) -> Result<Json<ApiEnvelope<CancelEntryReceiveResponse>>, ApiError> {
+    let app = require_app_facade(&state)?;
+    let Json(request) = body.map_err(|error| ApiError::bad_request(error.to_string()))?;
+    let outcome = app
+        .cancel_entry_receive(&EntryId::from_string(entry_id), &request.attempt_id)
+        .await
+        .map_err(|error| ApiError::internal(error.to_string()))?;
+    Ok(Json(ApiEnvelope::now(cancel_receive_response(outcome))))
+}
+
+fn cancel_receive_response(
+    outcome: uc_application::facade::CancelEntryReceiveOutcome,
+) -> CancelEntryReceiveResponse {
+    let outcome = match outcome {
+        uc_application::facade::CancelEntryReceiveOutcome::CancellationRequested => {
+            "cancellation_requested"
+        }
+        uc_application::facade::CancelEntryReceiveOutcome::Cancelled => "cancelled",
+        uc_application::facade::CancelEntryReceiveOutcome::NotReceiving => "not_receiving",
+        uc_application::facade::CancelEntryReceiveOutcome::TooLate => "too_late",
+        uc_application::facade::CancelEntryReceiveOutcome::AlreadyTerminal => "already_terminal",
+        uc_application::facade::CancelEntryReceiveOutcome::Superseded => "superseded",
+    };
+    CancelEntryReceiveResponse {
+        outcome: outcome.to_owned(),
+    }
 }
 
 /// GET /clipboard/entries?limit=50&offset=0
@@ -713,5 +830,29 @@ mod tests {
         let api = map_delivery_view_err(GetEntryDeliveryViewError::EntryNotFound("ent-x".into()));
         assert_eq!(api.status, StatusCode::NOT_FOUND);
         assert_eq!(api.code, "not_found");
+    }
+
+    #[test]
+    fn receive_progress_and_stale_cancel_use_stable_wire_values() {
+        let response = receive_progress_response(uc_core::ports::EntryReceiveProgress {
+            entry_id: "entry".to_owned(),
+            attempt_id: "attempt-2".to_owned(),
+            state: uc_core::ports::AttemptState::Receiving,
+            total_bytes: 30,
+            completed_bytes: 10,
+            items_total: 3,
+            items_completed: 1,
+        });
+        assert_eq!(response.entry_id, "entry");
+        assert_eq!(response.attempt_id, "attempt-2");
+        assert_eq!(response.state, "receiving");
+        assert_eq!(response.total_bytes, 30);
+        assert_eq!(response.completed_bytes, 10);
+        assert_eq!(response.items_total, 3);
+        assert_eq!(response.items_completed, 1);
+
+        let cancelled =
+            cancel_receive_response(uc_application::facade::CancelEntryReceiveOutcome::Superseded);
+        assert_eq!(cancelled.outcome, "superseded");
     }
 }

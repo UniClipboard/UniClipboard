@@ -37,7 +37,7 @@ pub trait ActivityHudActions: Send + Sync {
     /// 2. 向后端发出实际取消请求 (`facade.cancel_inbound_transfer`)
     /// 3. 后端落地的 `StatusChanged: cancelled` 会通过 host event bus
     ///    回流到状态机,把行最终切到 `Cancelled`
-    fn cancel(&self, transfer_id: &str);
+    fn cancel(&self, entry_id: &str, attempt_id: Option<&str>, transfer_id: &str);
 }
 
 /// 默认实现:把"乐观状态更新"和"调 facade"两件事捏在一起。
@@ -60,22 +60,35 @@ impl DefaultActivityHudActions {
 }
 
 impl ActivityHudActions for DefaultActivityHudActions {
-    fn cancel(&self, transfer_id: &str) {
+    fn cancel(&self, entry_id: &str, attempt_id: Option<&str>, transfer_id: &str) {
         // 1) 乐观切到 CancelPending —— UI 立即反馈,不等 facade 回应。
-        self.emitter.mark_cancel_pending(transfer_id);
+        self.emitter
+            .mark_cancel_pending(entry_id, attempt_id, transfer_id);
 
         // 2) 真正发出取消请求。spawn 到 Tauri 自维护的 runtime;调用是
         //    async,主线程不能 block 等待。ADR-008 P3-3 B2':经 daemon
         //    loopback HTTP (`POST /clipboard/cancel-transfer/:id`) 而非
         //    in-process facade —— GUI 转纯 client。
         let transfer_id = transfer_id.to_string();
+        let entry_id = entry_id.to_string();
+        let attempt_id = attempt_id.map(str::to_owned);
         let app_handle = self.app_handle.clone();
         tauri::async_runtime::spawn(async move {
             let connection_state = app_handle.state::<DaemonConnectionState>().inner().clone();
             let client = DaemonClipboardClient::new(connection_state);
             // `local_user` is the reason string the daemon parses back into
             // `FileTransferCancellationReason::LocalUser`.
-            if let Err(err) = client.cancel_transfer(&transfer_id, "local_user").await {
+            let result = match attempt_id.as_deref() {
+                Some(attempt_id) => client
+                    .cancel_entry_receive(&entry_id, attempt_id)
+                    .await
+                    .map(|_| ()),
+                None => client
+                    .cancel_transfer(&transfer_id, "local_user")
+                    .await
+                    .map(|_| ()),
+            };
+            if let Err(err) = result {
                 warn!(
                     error = %err,
                     transfer_id = %transfer_id,

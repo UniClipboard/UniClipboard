@@ -90,8 +90,11 @@ impl ActivityHudEmitter {
     /// UI 立刻显示"取消中…",真正的 `Cancelled` 由后端
     /// `status_changed: cancelled` 落地。调用方还应另外调
     /// `facade.cancel_inbound_transfer(...)` 真正发出取消请求。
-    pub fn mark_cancel_pending(&self, transfer_id: &str) {
-        self.apply(|state| state.mark_cancel_pending(transfer_id));
+    pub fn mark_cancel_pending(&self, entry_id: &str, attempt_id: Option<&str>, transfer_id: &str) {
+        self.apply(|state| match attempt_id {
+            Some(attempt_id) => state.mark_attempt_cancel_pending(entry_id, attempt_id),
+            None => state.mark_cancel_pending(transfer_id),
+        });
     }
 
     /// 给后台 sweep 任务调用:扫掉过保留期的终态行,如有变化通知 listener。
@@ -146,15 +149,18 @@ impl HostEventEmitterPort for ActivityHudEmitter {
         match event {
             HostEvent::Transfer(TransferHostEvent::Progress {
                 transfer_id,
-                entry_id: _,
+                entry_id,
+                attempt_id,
                 peer_id,
                 direction,
                 bytes_transferred,
                 total_bytes,
             }) => {
                 self.apply(|state| {
-                    state.apply_progress(
+                    state.apply_scoped_progress(
                         &transfer_id,
+                        entry_id.as_deref(),
+                        attempt_id.as_deref(),
                         &peer_id,
                         direction,
                         bytes_transferred,
@@ -164,21 +170,46 @@ impl HostEventEmitterPort for ActivityHudEmitter {
             }
             HostEvent::Transfer(TransferHostEvent::StatusChanged {
                 transfer_id,
-                entry_id: _,
+                entry_id,
+                attempt_id,
                 status,
                 reason,
             }) => {
-                self.apply(|state| state.apply_status_changed(&transfer_id, &status, reason));
+                if attempt_id.is_none() {
+                    self.apply(|state| {
+                        state.apply_scoped_status_changed(
+                            &transfer_id,
+                            Some(&entry_id),
+                            None,
+                            &status,
+                            reason,
+                        )
+                    });
+                }
             }
             HostEvent::Clipboard(ClipboardHostEvent::IncomingPending {
                 entry_id,
-                from_device: _,
+                attempt_id,
+                from_device,
                 total_bytes,
                 filenames,
             }) => {
-                // 协议约定 transfer_id == entry_id,所以直接用 entry_id 作行键。
-                self.apply(|state| state.apply_incoming_pending(&entry_id, filenames, total_bytes));
+                self.apply(|state| {
+                    state.apply_scoped_incoming_pending(
+                        &entry_id,
+                        attempt_id.as_deref(),
+                        &from_device,
+                        filenames,
+                        total_bytes,
+                    )
+                });
             }
+            HostEvent::Clipboard(ClipboardHostEvent::ReceiveAttemptStateChanged {
+                entry_id,
+                attempt_id,
+                state: attempt_state,
+            }) => self
+                .apply(|state| state.apply_attempt_state(&entry_id, &attempt_id, &attempt_state)),
             // 其它事件类别 (Delivery / Clipboard::NewContent) HUD 不消费。
             HostEvent::Clipboard(_) | HostEvent::Delivery(_) => {}
         }
@@ -235,6 +266,7 @@ mod tests {
         HostEvent::Transfer(TransferHostEvent::Progress {
             transfer_id: transfer_id.into(),
             entry_id: Some(transfer_id.into()),
+            attempt_id: None,
             peer_id: peer_id.into(),
             direction,
             bytes_transferred: bytes,
@@ -281,6 +313,7 @@ mod tests {
         emitter
             .emit(HostEvent::Clipboard(ClipboardHostEvent::IncomingPending {
                 entry_id: "t1".into(),
+                attempt_id: None,
                 from_device: "win-laptop".into(),
                 total_bytes: Some(2048),
                 filenames: vec!["a.txt".into(), "b.txt".into()],
@@ -318,6 +351,7 @@ mod tests {
             .emit(HostEvent::Transfer(TransferHostEvent::StatusChanged {
                 transfer_id: "t1".into(),
                 entry_id: "t1".into(),
+                attempt_id: None,
                 status: "completed".into(),
                 reason: None,
             }))
@@ -337,6 +371,7 @@ mod tests {
             .emit(HostEvent::Transfer(TransferHostEvent::StatusChanged {
                 transfer_id: "t-outbound".into(),
                 entry_id: "t-outbound".into(),
+                attempt_id: None,
                 status: "cancelled".into(),
                 reason: Some("local_user".into()),
             }))

@@ -661,6 +661,7 @@ mod tests {
     fn ok_health() -> HealthResponse {
         HealthResponse {
             status: "ok".into(),
+            degraded_reason: None,
             package_version: TEST_PACKAGE_VERSION.into(),
             api_revision: DAEMON_API_REVISION.into(),
             residency: uc_daemon_contract::api::types::DaemonResidency::Standalone,

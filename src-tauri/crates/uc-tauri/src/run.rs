@@ -84,6 +84,7 @@ fn realtime_to_host_event(
             Some(HostEvent::Transfer(TransferHostEvent::StatusChanged {
                 transfer_id: e.transfer_id,
                 entry_id: e.entry_id,
+                attempt_id: e.attempt_id,
                 status: e.status,
                 reason: e.reason,
             }))
@@ -91,6 +92,7 @@ fn realtime_to_host_event(
         Re::FileTransferProgress(e) => Some(HostEvent::Transfer(TransferHostEvent::Progress {
             transfer_id: e.transfer_id,
             entry_id: e.entry_id,
+            attempt_id: e.attempt_id,
             peer_id: e.peer_id,
             direction: e.direction,
             bytes_transferred: e.bytes_transferred,
@@ -99,11 +101,19 @@ fn realtime_to_host_event(
         Re::ClipboardIncomingPending(e) => {
             Some(HostEvent::Clipboard(ClipboardHostEvent::IncomingPending {
                 entry_id: e.entry_id,
+                attempt_id: e.attempt_id,
                 from_device: e.from_device,
                 total_bytes: e.total_bytes,
                 filenames: e.filenames,
             }))
         }
+        Re::ReceiveAttemptStateChanged(e) => Some(HostEvent::Clipboard(
+            ClipboardHostEvent::ReceiveAttemptStateChanged {
+                entry_id: e.entry_id,
+                attempt_id: e.attempt_id,
+                state: e.state,
+            },
+        )),
         _ => None,
     }
 }

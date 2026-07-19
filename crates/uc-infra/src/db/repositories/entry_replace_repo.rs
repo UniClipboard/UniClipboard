@@ -20,6 +20,8 @@ use uc_core::ports::clipboard::ReplaceEntryContentPort;
 use crate::db::mappers::clipboard_event_mapper::ClipboardEventRowMapper;
 use crate::db::mappers::clipboard_selection_mapper::ClipboardSelectionRowMapper;
 use crate::db::mappers::snapshot_representation_mapper::RepresentationRowMapper;
+use crate::db::models::snapshot_representation::NewSnapshotRepresentationRow;
+use crate::db::models::{NewClipboardEventRow, NewClipboardSelectionRow};
 use crate::db::ports::{DbExecutor, InsertMapper};
 use crate::db::schema::{
     clipboard_entry, clipboard_entry_delivery, clipboard_event, clipboard_representation_thumbnail,
@@ -38,6 +40,131 @@ impl<E> DieselClipboardEntryReplaceRepository<E> {
 
 fn to_repo_err(e: anyhow::Error) -> ClipboardRepositoryError {
     ClipboardRepositoryError::Storage(e.to_string())
+}
+
+pub(super) struct PreparedEntryReplacement {
+    entry_id: String,
+    new_event_id: String,
+    new_event_row: NewClipboardEventRow,
+    representation_rows: Vec<NewSnapshotRepresentationRow>,
+    selection_row: NewClipboardSelectionRow,
+    new_total_size: i64,
+    new_content_category: String,
+}
+
+pub(super) fn prepare_entry_replacement(
+    entry_id: &EntryId,
+    new_event: &ClipboardEvent,
+    new_representations: &[PersistedClipboardRepresentation],
+    new_selection: &ClipboardSelectionDecision,
+    new_total_size: i64,
+    new_content_category: ClipboardEntryContentCategory,
+) -> Result<PreparedEntryReplacement> {
+    let new_event_row = ClipboardEventRowMapper.to_row(new_event)?;
+    let representation_rows = new_representations
+        .iter()
+        .map(|representation| {
+            RepresentationRowMapper.to_row(&(representation, &new_event.event_id))
+        })
+        .collect::<Result<Vec<_>>>()?;
+    let entry_id = entry_id.to_string();
+    let mut selection_row = ClipboardSelectionRowMapper.to_row(new_selection)?;
+    selection_row.entry_id = entry_id.clone();
+    Ok(PreparedEntryReplacement {
+        entry_id,
+        new_event_id: new_event.event_id.to_string(),
+        new_event_row,
+        representation_rows,
+        selection_row,
+        new_total_size,
+        new_content_category: new_content_category.as_db_str().to_owned(),
+    })
+}
+
+pub(super) fn replace_entry_content_rows(
+    conn: &mut SqliteConnection,
+    prepared: &PreparedEntryReplacement,
+    preserve_directory_attempts: bool,
+) -> Result<()> {
+    let old_event_id = clipboard_entry::table
+        .filter(clipboard_entry::entry_id.eq(&prepared.entry_id))
+        .select(clipboard_entry::event_id)
+        .first::<String>(conn)
+        .optional()?
+        .ok_or_else(|| {
+            anyhow!(
+                "replace_entry_content: no entry with id {}",
+                prepared.entry_id
+            )
+        })?;
+    let old_rep_ids = clipboard_snapshot_representation::table
+        .filter(clipboard_snapshot_representation::event_id.eq(&old_event_id))
+        .select(clipboard_snapshot_representation::id)
+        .load::<String>(conn)?;
+    let mut transfers = file_transfer::table
+        .filter(file_transfer::entry_id.eq(&prepared.entry_id))
+        .into_boxed();
+    if preserve_directory_attempts {
+        transfers = transfers.filter(file_transfer::attempt_id.is_null());
+    }
+    let old_transfer_ids = transfers
+        .select(file_transfer::transfer_id)
+        .load::<String>(conn)?;
+
+    diesel::insert_into(clipboard_event::table)
+        .values(&prepared.new_event_row)
+        .execute(conn)?;
+    diesel::update(clipboard_entry::table.filter(clipboard_entry::entry_id.eq(&prepared.entry_id)))
+        .set((
+            clipboard_entry::event_id.eq(&prepared.new_event_id),
+            clipboard_entry::total_size.eq(prepared.new_total_size),
+            clipboard_entry::content_category.eq(&prepared.new_content_category),
+        ))
+        .execute(conn)?;
+    for representation in &prepared.representation_rows {
+        diesel::insert_into(clipboard_snapshot_representation::table)
+            .values(representation)
+            .execute(conn)?;
+    }
+    diesel::delete(
+        clipboard_selection::table.filter(clipboard_selection::entry_id.eq(&prepared.entry_id)),
+    )
+    .execute(conn)?;
+    diesel::insert_into(clipboard_selection::table)
+        .values(&prepared.selection_row)
+        .execute(conn)?;
+
+    if !old_rep_ids.is_empty() {
+        diesel::delete(
+            clipboard_representation_thumbnail::table
+                .filter(clipboard_representation_thumbnail::representation_id.eq_any(&old_rep_ids)),
+        )
+        .execute(conn)?;
+    }
+    diesel::delete(
+        clipboard_snapshot_representation::table
+            .filter(clipboard_snapshot_representation::event_id.eq(&old_event_id)),
+    )
+    .execute(conn)?;
+    if !old_transfer_ids.is_empty() {
+        diesel::delete(
+            file_transfer_events::table
+                .filter(file_transfer_events::transfer_id.eq_any(&old_transfer_ids)),
+        )
+        .execute(conn)?;
+        diesel::delete(
+            file_transfer::table.filter(file_transfer::transfer_id.eq_any(&old_transfer_ids)),
+        )
+        .execute(conn)?;
+    }
+    diesel::delete(
+        clipboard_entry_delivery::table
+            .filter(clipboard_entry_delivery::entry_id.eq(&prepared.entry_id)),
+    )
+    .execute(conn)?;
+    diesel::delete(clipboard_event::table.filter(clipboard_event::event_id.eq(old_event_id)))
+        .execute(conn)?;
+    Ok(())
 }
 
 #[async_trait::async_trait]
@@ -59,124 +186,18 @@ where
         new_total_size: i64,
         new_content_category: ClipboardEntryContentCategory,
     ) -> Result<(), ClipboardRepositoryError> {
-        // Map domain → rows up front (pure, outside the transaction).
-        let new_event_row = ClipboardEventRowMapper
-            .to_row(new_event)
-            .map_err(to_repo_err)?;
-        let new_event_id = new_event.event_id.to_string();
-        let rep_rows = new_representations
-            .iter()
-            .map(|rep| RepresentationRowMapper.to_row(&(rep, &new_event.event_id)))
-            .collect::<Result<Vec<_>>>()
-            .map_err(to_repo_err)?;
-        let mut new_selection_row = ClipboardSelectionRowMapper
-            .to_row(new_selection)
-            .map_err(to_repo_err)?;
-        let entry_id_str = entry_id.to_string();
-        // Bind the selection to the authoritative entry_id. The port contract
-        // requires `new_selection` to reference `entry_id`; force it here so a
-        // mismatched decision can never attach selection to a different entry
-        // inside the transaction (which deletes selection by `entry_id_str`).
-        new_selection_row.entry_id = entry_id_str.clone();
-
+        let prepared = prepare_entry_replacement(
+            entry_id,
+            new_event,
+            new_representations,
+            new_selection,
+            new_total_size,
+            new_content_category,
+        )
+        .map_err(to_repo_err)?;
         self.executor
             .run(move |conn| {
-                conn.transaction(|conn| {
-                    // 1. Resolve the entry's current event; absent → error
-                    //    (replace never implicitly creates).
-                    let old_event_id: Option<String> = clipboard_entry::table
-                        .filter(clipboard_entry::entry_id.eq(&entry_id_str))
-                        .select(clipboard_entry::event_id)
-                        .first::<String>(conn)
-                        .optional()?;
-                    let old_event_id = old_event_id.ok_or_else(|| {
-                        anyhow!("replace_entry_content: no entry with id {entry_id_str}")
-                    })?;
-
-                    // 2. Capture old child ids needed for cascades before delete.
-                    let old_rep_ids: Vec<String> = clipboard_snapshot_representation::table
-                        .filter(clipboard_snapshot_representation::event_id.eq(&old_event_id))
-                        .select(clipboard_snapshot_representation::id)
-                        .load::<String>(conn)?;
-                    let old_transfer_ids: Vec<String> = file_transfer::table
-                        .filter(file_transfer::entry_id.eq(&entry_id_str))
-                        .select(file_transfer::transfer_id)
-                        .load::<String>(conn)?;
-
-                    // 3. Insert the new event, then re-point the entry at it.
-                    //    Sticky fields (pinned/active_time_ms/created_at_ms) are
-                    //    intentionally left untouched.
-                    diesel::insert_into(clipboard_event::table)
-                        .values(&new_event_row)
-                        .execute(conn)?;
-                    diesel::update(
-                        clipboard_entry::table.filter(clipboard_entry::entry_id.eq(&entry_id_str)),
-                    )
-                    .set((
-                        clipboard_entry::event_id.eq(new_event_id.as_str()),
-                        clipboard_entry::total_size.eq(new_total_size),
-                        clipboard_entry::content_category.eq(new_content_category.as_db_str()),
-                    ))
-                    .execute(conn)?;
-
-                    // 4. Insert the new representations (FK → new event).
-                    for rep in &rep_rows {
-                        diesel::insert_into(clipboard_snapshot_representation::table)
-                            .values(rep)
-                            .execute(conn)?;
-                    }
-
-                    // 5. Replace the selection (PK = entry_id ⇒ delete then insert).
-                    diesel::delete(
-                        clipboard_selection::table
-                            .filter(clipboard_selection::entry_id.eq(&entry_id_str)),
-                    )
-                    .execute(conn)?;
-                    diesel::insert_into(clipboard_selection::table)
-                        .values(&new_selection_row)
-                        .execute(conn)?;
-
-                    // 6. Drop the old content's dependents.
-                    if !old_rep_ids.is_empty() {
-                        diesel::delete(
-                            clipboard_representation_thumbnail::table.filter(
-                                clipboard_representation_thumbnail::representation_id
-                                    .eq_any(&old_rep_ids),
-                            ),
-                        )
-                        .execute(conn)?;
-                    }
-                    diesel::delete(
-                        clipboard_snapshot_representation::table
-                            .filter(clipboard_snapshot_representation::event_id.eq(&old_event_id)),
-                    )
-                    .execute(conn)?;
-                    if !old_transfer_ids.is_empty() {
-                        diesel::delete(
-                            file_transfer_events::table.filter(
-                                file_transfer_events::transfer_id.eq_any(&old_transfer_ids),
-                            ),
-                        )
-                        .execute(conn)?;
-                    }
-                    diesel::delete(
-                        file_transfer::table.filter(file_transfer::entry_id.eq(&entry_id_str)),
-                    )
-                    .execute(conn)?;
-                    diesel::delete(
-                        clipboard_entry_delivery::table
-                            .filter(clipboard_entry_delivery::entry_id.eq(&entry_id_str)),
-                    )
-                    .execute(conn)?;
-
-                    // 7. Finally remove the now-orphaned old event.
-                    diesel::delete(
-                        clipboard_event::table.filter(clipboard_event::event_id.eq(&old_event_id)),
-                    )
-                    .execute(conn)?;
-
-                    Ok(())
-                })
+                conn.transaction(|conn| replace_entry_content_rows(conn, &prepared, false))
             })
             .map_err(to_repo_err)
     }
@@ -286,15 +307,15 @@ mod tests {
                 .execute(conn)?;
                 diesel::sql_query(
                     "INSERT INTO file_transfer \
-                     (transfer_id, entry_id, filename, status, source_device, \
-                      created_at_ms, updated_at_ms) \
-                     VALUES ('t1', 'e1', 'f.bin', 'pending', 'dev-a', 0, 0)",
+                     (transfer_id, entry_id, binding_state, receive_item_id, status, \
+                      source_device, metadata_ciphertext, created_at_ms, updated_at_ms) \
+                     VALUES ('t1', 'e1', 'legacy', 't1', 'pending', 'dev-a', X'00', 0, 0)",
                 )
                 .execute(conn)?;
                 diesel::sql_query(
                     "INSERT INTO file_transfer_events \
-                     (transfer_id, sequence, event_type, payload_json, occurred_at_ms) \
-                     VALUES ('t1', 0, 'started', '{}', 0)",
+                     (transfer_id, sequence, event_type, payload_ciphertext, occurred_at_ms) \
+                     VALUES ('t1', 0, 'started', X'00', 0)",
                 )
                 .execute(conn)?;
                 Ok(())

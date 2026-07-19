@@ -27,11 +27,14 @@ use uc_core::{
 use crate::engine::EngineRuntime;
 use crate::event_stream::EventSender;
 use crate::internal::blob_tasks::{spawn_blob_processing_tasks, BlobProcessingPorts};
-use crate::internal::clipboard_runtime::{build_clipboard_runtime, ClipboardRuntime};
+use crate::internal::clipboard_runtime::{
+    build_clipboard_runtime, spawn_clipboard_runtime_tasks, ClipboardRuntime,
+};
 use crate::internal::deps::WiredDependencies;
 use crate::internal::facade::{
     build_app_facade_from_deps, AppFacadeAssemblyOptions, ClipboardRestoreAssembly,
 };
+use crate::internal::file_transfer::FileTransferLifecycle;
 use crate::internal::host_adapters::{
     wire_host_capabilities_with_emitter, EngineHostEventEmitter, HostWiring,
 };
@@ -82,6 +85,7 @@ pub(crate) struct ProductionRuntime {
     paths: uc_application::facade::AppPaths,
     session: Mutex<Option<ProductionSession>>,
     task_registry: Arc<TaskRegistry>,
+    file_transfer_lifecycle: Arc<FileTransferLifecycle>,
     _temporary_dir: std::path::PathBuf,
     _files: Box<dyn HostFileAccess>,
 }
@@ -90,6 +94,7 @@ struct ProductionSession {
     facade: Arc<AppFacade>,
     clipboard: ClipboardRuntime,
     sync_engine: SyncEngineAssembly,
+    tasks: Arc<TaskRegistry>,
 }
 
 impl ProductionRuntime {
@@ -108,7 +113,8 @@ impl ProductionRuntime {
         } = wire_host_capabilities_with_emitter(&config, host, emitter)
             .map_err(|error| startup_error("dependency wiring", error))?;
 
-        let session = Self::build_session(&wired, &paths).await?;
+        let file_transfer_lifecycle = Arc::clone(&background.file_transfer_lifecycle);
+        let session = Self::build_session(&wired, &paths, &file_transfer_lifecycle).await?;
         let task_registry = Arc::new(TaskRegistry::new());
         let blob_ports = BlobProcessingPorts::from_app_deps(&wired.deps);
         spawn_blob_processing_tasks(background, blob_ports, &task_registry).await;
@@ -118,6 +124,7 @@ impl ProductionRuntime {
             paths,
             session: Mutex::new(Some(session)),
             task_registry,
+            file_transfer_lifecycle,
             _temporary_dir: temporary_dir,
             _files: files,
         })
@@ -126,6 +133,7 @@ impl ProductionRuntime {
     async fn build_session(
         wired: &WiredDependencies,
         paths: &uc_application::facade::AppPaths,
+        file_transfer_lifecycle: &Arc<FileTransferLifecycle>,
     ) -> Result<ProductionSession, EngineError> {
         let lifecycle = build_daemon_lifecycle(&wired.deps, &wired.sync_engine, &wired.shared)
             .await
@@ -135,6 +143,33 @@ impl ProductionRuntime {
         sync_engine.attach_restore_broadcast(restore_rx);
         let search_coordinator = build_search_coordinator(&wired.deps);
         let clipboard = build_clipboard_runtime(wired, &sync_engine);
+        let tasks = Arc::new(TaskRegistry::new());
+        spawn_clipboard_runtime_tasks(&clipboard, Arc::clone(&sync_engine.clipboard_sync), &tasks)
+            .await;
+        let search = Arc::clone(&search_coordinator);
+        tasks
+            .spawn("search_coordinator", move |cancel| async move {
+                if let Err(error) = search.start(cancel).await {
+                    error!(error = %error, "search coordinator stopped with error");
+                }
+            })
+            .await;
+        let lifecycle = Arc::clone(file_transfer_lifecycle);
+        let blob_transfer = Arc::clone(&sync_engine.blob);
+        tasks
+            .spawn("file_transfer_timeout_sweep", move |cancel| async move {
+                let (cancel_tx, cancel_rx) = tokio::sync::watch::channel(false);
+                let mut handle = lifecycle.spawn_timeout_sweep(cancel_rx, blob_transfer);
+                cancel.cancelled().await;
+                let _ = cancel_tx.send(true);
+                if tokio::time::timeout(Duration::from_secs(1), &mut handle)
+                    .await
+                    .is_err()
+                {
+                    handle.abort();
+                }
+            })
+            .await;
         let facade = build_app_facade_from_deps(
             &wired.deps,
             paths,
@@ -163,6 +198,7 @@ impl ProductionRuntime {
             facade,
             clipboard,
             sync_engine,
+            tasks,
         })
     }
 
@@ -350,13 +386,15 @@ impl EngineRuntime for ProductionRuntime {
     async fn suspend(&self) -> Result<(), EngineError> {
         let session = self.session.lock().await.take();
         if let Some(session) = session {
+            session.tasks.shutdown(Duration::from_secs(5)).await;
             session.sync_engine.shutdown().await;
         }
         Ok(())
     }
 
     async fn resume(&self) -> Result<(), EngineError> {
-        let session = Self::build_session(&self.wired, &self.paths).await?;
+        let session =
+            Self::build_session(&self.wired, &self.paths, &self.file_transfer_lifecycle).await?;
         *self.session.lock().await = Some(session);
         Ok(())
     }

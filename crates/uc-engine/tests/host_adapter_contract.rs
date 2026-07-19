@@ -339,6 +339,8 @@ async fn engine_start_builds_a_resumable_real_session() {
             .unwrap(),
         uc_engine::OperationResult::Devices(Vec::new())
     );
+    engine.suspend().await.unwrap();
+    engine.resume().await.unwrap();
     let mismatch = engine
         .execute(uc_engine::Operation::CreateSpace(
             uc_engine::CreateSpaceInput {
@@ -524,6 +526,10 @@ async fn engine_start_builds_a_resumable_real_session() {
     assert_eq!(
         states,
         vec![
+            EngineState::Quiescing,
+            EngineState::Quiesced,
+            EngineState::Suspended,
+            EngineState::Running,
             EngineState::Quiescing,
             EngineState::Quiesced,
             EngineState::Suspended,

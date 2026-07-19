@@ -2,8 +2,9 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use uc_engine::{
-    HostCapabilityError, HostClipboard, HostClipboardRepresentation, HostClipboardSnapshot,
-    HostDirectories, HostSecureStorage,
+    EngineConfig, HostCapabilities, HostCapabilityError, HostClipboard,
+    HostClipboardRepresentation, HostClipboardSnapshot, HostDirectories, HostFileAccess,
+    HostFileHandle, HostFileMetadata, HostSecureStorage,
 };
 
 #[derive(Default)]
@@ -224,6 +225,78 @@ async fn engine_platform_uses_the_configured_profile() {
 
     assert_eq!(
         profile.current_profile().await.unwrap().as_ref(),
+        "mobile-primary"
+    );
+}
+
+struct EmptyHostFiles;
+
+impl HostFileAccess for EmptyHostFiles {
+    fn metadata(&self, _handle: &HostFileHandle) -> Result<HostFileMetadata, HostCapabilityError> {
+        Err(HostCapabilityError::new(
+            uc_engine::HostCapabilityErrorCategory::InvalidHandle,
+            "missing",
+        ))
+    }
+
+    fn read_chunk(
+        &self,
+        _handle: &HostFileHandle,
+        _offset: u64,
+        _max_bytes: u32,
+    ) -> Result<Vec<u8>, HostCapabilityError> {
+        Ok(Vec::new())
+    }
+
+    fn write_chunk(
+        &self,
+        _handle: &HostFileHandle,
+        _offset: u64,
+        _bytes: &[u8],
+    ) -> Result<(), HostCapabilityError> {
+        Ok(())
+    }
+
+    fn finish_write(&self, _handle: &HostFileHandle) -> Result<(), HostCapabilityError> {
+        Ok(())
+    }
+}
+
+#[tokio::test]
+async fn host_capabilities_wire_real_core_dependencies() {
+    let temp = tempfile::tempdir().unwrap();
+    let private = temp.path().join("private");
+    let cache = temp.path().join("cache");
+    let temporary = temp.path().join("temporary");
+    let host = HostCapabilities::new(
+        HostDirectories::new(private.clone(), cache, temporary),
+        Box::new(MemoryHostSecureStorage::default()),
+        Box::new(StaticHostClipboard {
+            snapshot: HostClipboardSnapshot {
+                observed_at_ms: 0,
+                representations: Vec::new(),
+            },
+        }),
+        Box::new(EmptyHostFiles),
+    );
+
+    let wiring = uc_engine::internal::host_adapters::wire_host_capabilities(
+        &EngineConfig::new("1.2.3").with_profile_id("mobile-primary"),
+        host,
+    )
+    .unwrap();
+
+    assert_eq!(wiring.paths.app_data_root_dir, private);
+    assert_eq!(
+        wiring
+            .wired
+            .deps
+            .security
+            .current_profile
+            .current_profile()
+            .await
+            .unwrap()
+            .as_ref(),
         "mobile-primary"
     );
 }

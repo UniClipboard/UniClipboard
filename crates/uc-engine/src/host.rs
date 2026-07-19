@@ -232,6 +232,22 @@ impl HostCapabilities {
     pub fn files(&self) -> &dyn HostFileAccess {
         self.files.as_ref()
     }
+
+    pub(crate) fn into_parts(
+        self,
+    ) -> (
+        HostDirectories,
+        Box<dyn HostSecureStorage>,
+        Box<dyn HostClipboard>,
+        Box<dyn HostFileAccess>,
+    ) {
+        (
+            self.directories,
+            self.secure_storage,
+            self.clipboard,
+            self.files,
+        )
+    }
 }
 
 impl fmt::Debug for HostCapabilities {

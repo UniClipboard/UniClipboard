@@ -5,11 +5,18 @@ use uc_core::clipboard::{
     normalize_wire_mime, ObservedClipboardRepresentation, SystemClipboardSnapshot,
 };
 use uc_core::ids::{FormatId, RepresentationId};
-use uc_core::ports::{SecureStorageError, SecureStoragePort, SystemClipboardPort};
+use uc_core::ports::{
+    EmitError, HostEvent, HostEventEmitterPort, PlatformClipboardPort, SecureStorageError,
+    SecureStoragePort, SystemClipboardPort,
+};
 
+use crate::internal::clipboard::SystemClipboardWiring;
+use crate::internal::deps::{BackgroundRuntimeDeps, WiredDependencies, WiringResult};
+use crate::internal::platform::SystemClipboardLayer;
+use crate::internal::wire::{wire_dependencies_from_inputs, CoreWiringInputs};
 use crate::{
-    HostCapabilityError, HostCapabilityErrorCategory, HostClipboard, HostClipboardRepresentation,
-    HostDirectories, HostSecureStorage,
+    EngineConfig, HostCapabilities, HostCapabilityError, HostCapabilityErrorCategory,
+    HostClipboard, HostClipboardRepresentation, HostDirectories, HostFileAccess, HostSecureStorage,
 };
 
 struct HostSecureStorageAdapter {
@@ -124,5 +131,57 @@ pub fn derive_app_paths(directories: &HostDirectories) -> AppPaths {
         app_data_root: directories.private_data().to_path_buf(),
         app_cache_root: directories.cache().to_path_buf(),
         app_log_dir: directories.cache().join("logs"),
+    })
+}
+
+fn adapt_system_clipboard_layer(host: Box<dyn HostClipboard>) -> SystemClipboardLayer {
+    let adapter = Arc::new(HostClipboardAdapter { host });
+    let clipboard: Arc<dyn PlatformClipboardPort> = adapter.clone();
+    let system_clipboard: Arc<dyn SystemClipboardPort> = adapter;
+    SystemClipboardLayer::new(clipboard, system_clipboard, SystemClipboardWiring::Real)
+}
+
+struct NoopHostEventEmitter;
+
+impl HostEventEmitterPort for NoopHostEventEmitter {
+    fn emit(&self, _event: HostEvent) -> Result<(), EmitError> {
+        Ok(())
+    }
+}
+
+pub struct HostWiring {
+    pub wired: WiredDependencies,
+    pub background: BackgroundRuntimeDeps,
+    pub paths: AppPaths,
+    pub temporary_dir: std::path::PathBuf,
+    pub files: Box<dyn HostFileAccess>,
+}
+
+pub fn wire_host_capabilities(
+    config: &EngineConfig,
+    host: HostCapabilities,
+) -> WiringResult<HostWiring> {
+    let (directories, secure_storage, clipboard, files) = host.into_parts();
+    let paths = derive_app_paths(&directories);
+    let temporary_dir = directories.temporary().to_path_buf();
+    let app_data_root = paths.app_data_root_dir.clone();
+    let (wired, background) = wire_dependencies_from_inputs(CoreWiringInputs {
+        paths: paths.clone(),
+        secure_storage: adapt_secure_storage(secure_storage),
+        profile_id: uc_core::ids::ProfileId::from(config.profile_id()),
+        legacy_iroh_identity_dir: app_data_root.join("iroh-identity"),
+        iroh_blob_store_dir: app_data_root.join("iroh-blobs"),
+        system_clipboard: adapt_system_clipboard_layer(clipboard),
+        analytics_sink: Arc::new(uc_observability_contract::analytics::NoopAnalyticsSink),
+        analytics_facade: Arc::new(uc_observability_contract::analytics::NoopAnalyticsFacade),
+        host_event_emitter: Arc::new(NoopHostEventEmitter),
+    })?;
+
+    Ok(HostWiring {
+        wired,
+        background,
+        paths,
+        temporary_dir,
+        files,
     })
 }

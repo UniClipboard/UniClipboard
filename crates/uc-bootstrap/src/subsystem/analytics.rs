@@ -32,16 +32,31 @@
 //! 通常是磁盘整盘不可写（`anonymous_user_id` 都没法落地），那是更严重的
 //! 问题，应该让调用方决定要不要让进程继续。
 
+use std::path::Path;
 use std::sync::Arc;
 
 use uc_application::deps::AppDeps;
 use uc_application::facade::AppPaths;
 use uc_observability::analytics::{
     build_event_context, global_event_context, hash_space_id_for_telemetry, load_or_create_ids,
-    load_space_person_id, set_global_event_context, AnalyticsPersonId, AnalyticsPort, AppChannel,
-    Event, EventContext, EventContextInputs, GatedAnalyticsSink, InstallSource, NoopAnalyticsSink,
-    PosthogSink, StdoutSink,
+    load_space_person_id, set_global_event_context, AnalyticsFacade, AnalyticsIdentityPort,
+    AnalyticsPersonId, AnalyticsPort, AppChannel, DefaultAnalyticsFacade, Event, EventContext,
+    EventContextInputs, GatedAnalyticsSink, InstallSource, LocalAnalyticsIdentity,
+    NoopAnalyticsSink, PosthogSink, StdoutSink,
 };
+
+pub(crate) fn build_analytics_facade(
+    analytics_sink: &Arc<dyn AnalyticsPort>,
+    app_data_root: &Path,
+) -> Arc<dyn AnalyticsFacade> {
+    let analytics_dir = app_data_root.join("analytics");
+    let analytics_identity: Arc<dyn AnalyticsIdentityPort> =
+        Arc::new(LocalAnalyticsIdentity::new(analytics_dir));
+    Arc::new(DefaultAnalyticsFacade::new(
+        analytics_sink.clone(),
+        analytics_identity,
+    ))
+}
 
 /// 装配并注册进程级 `EventContext`。
 ///

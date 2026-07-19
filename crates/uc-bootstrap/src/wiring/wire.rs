@@ -72,9 +72,7 @@ use uc_infra::{
     FileAppVersionStateRepository, FileFirstSyncStateRepository, FileMigrationStateRepository,
     FileSetupStatusRepository, SystemClock,
 };
-use uc_observability::analytics::{
-    AnalyticsFacade, AnalyticsIdentityPort, DefaultAnalyticsFacade, LocalAnalyticsIdentity,
-};
+use uc_observability::analytics::AnalyticsFacade;
 
 use crate::layer::paths::{apply_profile_suffix, get_default_app_dirs, resolve_app_paths};
 use crate::layer::platform::{create_desktop_system_clipboard, create_platform_layer};
@@ -471,23 +469,6 @@ fn build_config_migration_facade(
     }))
 }
 
-/// Compose the analytics facade over the gated capture sink plus a local
-/// identity store sharing the `<app_data>/analytics/` directory with
-/// `compose_event_context`. SpaceSetupFacade consumes the composed facade;
-/// capture-only facades keep talking to the bare sink.
-fn build_analytics_facade(
-    analytics_sink: &Arc<dyn uc_observability::analytics::AnalyticsPort>,
-    app_data_root: &PathBuf,
-) -> Arc<dyn AnalyticsFacade> {
-    let analytics_dir = app_data_root.join("analytics");
-    let analytics_identity: Arc<dyn AnalyticsIdentityPort> =
-        Arc::new(LocalAnalyticsIdentity::new(analytics_dir));
-    Arc::new(DefaultAnalyticsFacade::new(
-        analytics_sink.clone(),
-        analytics_identity,
-    ))
-}
-
 /// Create infrastructure layer implementations
 fn create_infra_layer(
     db_pool: DbPool,
@@ -724,7 +705,10 @@ pub fn wire_dependencies(
 
     let system_clipboard = create_desktop_system_clipboard()?;
     let analytics_sink = crate::subsystem::analytics::build_analytics_sink();
-    let analytics_facade = build_analytics_facade(&analytics_sink, &paths.app_data_root_dir);
+    let analytics_facade = crate::subsystem::analytics::build_analytics_facade(
+        &analytics_sink,
+        &paths.app_data_root_dir,
+    );
     let host_event_emitter = Arc::new(crate::observability::host_event::LoggingHostEventEmitter)
         as Arc<dyn HostEventEmitterPort>;
     wire_dependencies_from_inputs(CoreWiringInputs {

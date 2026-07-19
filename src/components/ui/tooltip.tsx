@@ -32,6 +32,7 @@ function TooltipTrigger({ ...props }: TooltipPrimitive.Trigger.Props) {
 
 function TooltipContent({
   className,
+  portalContainer,
   side = 'top',
   sideOffset = 0,
   align = 'center',
@@ -39,14 +40,17 @@ function TooltipContent({
   children,
   ...props
 }: TooltipPrimitive.Popup.Props &
-  Pick<TooltipPrimitive.Positioner.Props, 'align' | 'alignOffset' | 'side' | 'sideOffset'>) {
+  Pick<TooltipPrimitive.Positioner.Props, 'align' | 'alignOffset' | 'side' | 'sideOffset'> & {
+    portalContainer?: React.RefObject<HTMLElement | null>
+  }) {
   return (
-    <TooltipPrimitive.Portal>
+    <TooltipPrimitive.Portal container={portalContainer}>
       <TooltipPrimitive.Positioner
         align={align}
         alignOffset={alignOffset}
         side={side}
         sideOffset={sideOffset}
+        positionMethod={portalContainer ? 'fixed' : 'absolute'}
         className="isolate z-50"
       >
         <TooltipPrimitive.Popup

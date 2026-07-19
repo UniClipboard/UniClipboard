@@ -48,7 +48,7 @@ const NavButton: React.FC<{
   icon: React.ComponentType<{ className?: string }>
   label: string
   isActive: boolean
-  showActiveBackground?: boolean
+  portalContainer: React.RefObject<HTMLElement | null>
   onClick?: (e: React.MouseEvent<HTMLAnchorElement>) => void
   'data-settings-icon'?: boolean
 }> = ({
@@ -56,7 +56,7 @@ const NavButton: React.FC<{
   icon: Icon,
   label,
   isActive,
-  showActiveBackground = true,
+  portalContainer,
   onClick,
   'data-settings-icon': dataSettingsIcon,
 }) => {
@@ -84,8 +84,11 @@ const NavButton: React.FC<{
             />
           }
         >
-          {isActive && showActiveBackground && (
-            <div className="absolute inset-0 rounded-lg bg-primary/10 dark:bg-primary/20" />
+          {isActive && (
+            <div
+              aria-hidden
+              className="absolute inset-0 rounded-lg bg-primary/10 dark:bg-primary/20"
+            />
           )}
           <div
             className={cn(
@@ -96,7 +99,12 @@ const NavButton: React.FC<{
             <Icon className="size-5" />
           </div>
         </TooltipTrigger>
-        <TooltipContent side="right" align="center" className="font-medium">
+        <TooltipContent
+          portalContainer={portalContainer}
+          side="right"
+          align="center"
+          className="font-medium"
+        >
           <p>{label}</p>
         </TooltipContent>
       </Tooltip>
@@ -160,6 +168,7 @@ interface SidebarProps {
 }
 
 const Sidebar: React.FC<SidebarProps> = ({ className }) => {
+  const sidebarRef = useRef<HTMLElement>(null)
   const { t } = useTranslation()
   const location = useLocation()
   const navigate = useNavigate()
@@ -208,8 +217,6 @@ const Sidebar: React.FC<SidebarProps> = ({ className }) => {
     { to: '/history', icon: Layers, label: t('nav.history') },
     { to: '/devices', icon: Monitor, label: t('nav.devices') },
   ]
-  const activeTopNavIndex = navItems.findIndex(item => location.pathname === item.to)
-
   const indicatorLabel = (() => {
     if (isDownloading) {
       return downloadPercent !== null
@@ -313,22 +320,16 @@ const Sidebar: React.FC<SidebarProps> = ({ className }) => {
   return (
     <>
       <aside
+        ref={sidebarRef}
         data-tauri-drag-region
         className={cn(
           'relative z-10 w-14 h-full shrink-0 flex flex-col items-center py-4',
-          'bg-card',
+          'bg-transparent',
           className
         )}
       >
         {/* Main Navigation */}
         <div className="relative z-10 flex flex-col gap-3 w-full items-center">
-          {activeTopNavIndex >= 0 && (
-            <div
-              aria-hidden
-              className="absolute left-2 top-0 size-10 rounded-lg bg-primary/10 transition-transform duration-200 ease-out will-change-transform dark:bg-primary/20"
-              style={{ transform: `translateY(${activeTopNavIndex * 3.25}rem)` }}
-            />
-          )}
           {navItems.map(item => (
             <NavButton
               key={item.to}
@@ -336,7 +337,7 @@ const Sidebar: React.FC<SidebarProps> = ({ className }) => {
               icon={item.icon}
               label={item.label}
               isActive={location.pathname === item.to}
-              showActiveBackground={false}
+              portalContainer={sidebarRef}
             />
           ))}
         </div>
@@ -365,7 +366,12 @@ const Sidebar: React.FC<SidebarProps> = ({ className }) => {
                     <X className="size-3" />
                   </button>
                 </TooltipTrigger>
-                <TooltipContent side="right" align="center" className="max-w-64">
+                <TooltipContent
+                  portalContainer={sidebarRef}
+                  side="right"
+                  align="center"
+                  className="max-w-64"
+                >
                   <div className="space-y-1">
                     <p className="font-medium">{t('debugBadge.title')}</p>
                     <p className="text-xs text-muted-foreground">{t('debugBadge.description')}</p>
@@ -431,7 +437,12 @@ const Sidebar: React.FC<SidebarProps> = ({ className }) => {
                     )}
                   </div>
                 </TooltipTrigger>
-                <TooltipContent side="right" align="center" className="font-medium">
+                <TooltipContent
+                  portalContainer={sidebarRef}
+                  side="right"
+                  align="center"
+                  className="font-medium"
+                >
                   <p>{indicatorLabel}</p>
                 </TooltipContent>
               </Tooltip>
@@ -461,7 +472,12 @@ const Sidebar: React.FC<SidebarProps> = ({ className }) => {
                       <MessageSquare className="size-5" />
                     </div>
                   </TooltipTrigger>
-                  <TooltipContent side="right" align="center" className="font-medium">
+                  <TooltipContent
+                    portalContainer={sidebarRef}
+                    side="right"
+                    align="center"
+                    className="font-medium"
+                  >
                     <p>{t('nav.feedback')}</p>
                   </TooltipContent>
                 </Tooltip>
@@ -474,6 +490,7 @@ const Sidebar: React.FC<SidebarProps> = ({ className }) => {
             icon={Settings}
             label={t('nav.settings')}
             isActive={location.pathname.startsWith('/settings')}
+            portalContainer={sidebarRef}
             onClick={() => {
               if (location.pathname.startsWith('/settings')) return
               navigate('/settings')

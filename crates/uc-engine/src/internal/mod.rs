@@ -6,6 +6,7 @@ pub mod clipboard;
 pub mod deps;
 pub mod facade;
 pub mod file_transfer;
+pub mod host_adapters;
 pub(crate) mod inbound_staging;
 pub mod lifecycle;
 pub mod network_policy;

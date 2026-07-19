@@ -5,6 +5,12 @@ use std::fmt;
 use serde::{Deserialize, Serialize};
 use zeroize::Zeroize;
 
+mod engine;
+mod event_stream;
+
+pub use engine::Engine;
+pub use event_stream::EventStream;
+
 #[derive(Clone, PartialEq, Eq)]
 pub struct SecretString(Vec<u8>);
 

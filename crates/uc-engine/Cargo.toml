@@ -6,7 +6,10 @@ edition = "2021"
 description = "Stable cross-platform engine interface for UniClipboard hosts"
 
 [dependencies]
+async-trait = "0.1"
 serde = { version = "1", features = ["derive"] }
+tokio = { version = "1", features = ["macros", "rt", "sync", "time"] }
+tokio-util = "0.7"
 zeroize = "1.8"
 
 [lints]

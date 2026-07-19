@@ -10393,7 +10393,10 @@ dependencies = [
 name = "uc-engine"
 version = "0.19.1"
 dependencies = [
+ "async-trait",
  "serde",
+ "tokio",
+ "tokio-util",
  "zeroize",
 ]
 

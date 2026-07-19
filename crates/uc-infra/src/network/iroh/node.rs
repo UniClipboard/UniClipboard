@@ -19,7 +19,7 @@
 
 use std::net::{Ipv4Addr, SocketAddr};
 #[cfg(not(any(test, feature = "test-util")))]
-use std::sync::OnceLock;
+use std::sync::Mutex;
 use std::{path::PathBuf, sync::Arc, time::Duration};
 
 use iroh::address_lookup::AddrFilter;
@@ -153,6 +153,9 @@ pub struct IrohNode {
     ///
     /// [`shutdown`]: IrohNode::shutdown
     net_recovery: Option<tokio::task::JoinHandle<()>>,
+    /// Keeps the process-wide single-node reservation until shutdown is
+    /// complete. Dropping a partially-built or live node releases it too.
+    _run_lease: NodeRunLease,
 }
 
 impl IrohNode {
@@ -484,37 +487,44 @@ fn relay_mode_from_config(config: &IrohNodeConfig) -> Result<RelayMode, IrohNode
     Ok(RelayMode::custom(relay_urls))
 }
 
-/// Pitfall 3 结构性防御：进程级单次 bind 守护（**production-only**）。
-///
-/// `iroh::Endpoint::builder().relay_mode(...).bind()` 完成后 `RelayMode` 被冻结
-/// 为 endpoint 的 bind-time 常量；任何 PR 试图实现"运行时热切换 LAN-only Mode"
-/// 必须经过 `endpoint.close() + 重新 IrohNodeBuilder::bind`，第二次 `set` 会 panic
-/// 让 production daemon 启动失败 / panic 进程级可见。
-///
-/// 双契约（**checker BLOCKER 2 — 修订版**）：
-/// 1. **Production build（默认 — 无 `test-util` feature 且非 `cfg(test)`）** —
-///    OnceCell 守护激活，进程级 single-shot；
-/// 2. **Test build (`cfg(test)`)** 与 **下游 crate 启用 `uc-infra/test-util`
-///    feature 时** — 守护 elided（不编译），允许同 binary 内多次 bind 支持现有
-///    ≥9 处测试 binding 调用（uc-infra/uc-bootstrap pairing e2e 的 sponsor+joiner
-///    双 endpoint 等）。
-///
-/// 注意：下游 crate（如 uc-bootstrap）的 e2e 测试编译时使用的是 uc-infra 的
-/// production build —— `#[cfg(test)]` 只对**正在 `cargo test`** 的 crate 生效，
-/// 不会传递到依赖。所以单独 `#[cfg(test)]` 不能 elide 守护。这里通过显式
-/// cargo feature `test-util` 解决：uc-bootstrap dev-deps 中启用 `uc-infra/test-util`，
-/// 当下游运行 e2e 测试时拿到 elided 版本。
-///
-/// 跨契约的 single-bind 保证由 `uc-bootstrap` 单 entrypoint（`builders.rs:178` /
-/// `non_gui_runtime.rs:280` — 详见 plan 05）承担。**这是固有 CI 盲点：测试构建
-/// （含下游 e2e）通过 `test-util` feature 永远 elided 守护，单元测试不能覆盖
-/// production 守护**；任何修改本守护的 PR 必须用手工 production-build 验证：
-/// `cargo build -p uc-bootstrap --release`（不带 `test-util` feature）后启动
-/// daemon，断言无二次 bind。
-///
-/// 见：`.planning/research/PITFALLS.md` §Pitfall 3 + 094-06-PLAN.md must_haves.truths。
+/// A process-wide lease prevents two live production endpoints from sharing
+/// mutable runtime state. Unlike the former `OnceLock`, the lease is owned by
+/// the builder and then the live node, so a completed shutdown permits restart.
 #[cfg(not(any(test, feature = "test-util")))]
-static BIND_LOCK: OnceLock<()> = OnceLock::new();
+static NODE_RUN_ACTIVE: Mutex<bool> = Mutex::new(false);
+
+struct NodeRunLease;
+
+impl NodeRunLease {
+    fn acquire() -> Result<Self, IrohNodeError> {
+        #[cfg(not(any(test, feature = "test-util")))]
+        {
+            let mut active = NODE_RUN_ACTIVE
+                .lock()
+                .map_err(|_| IrohNodeError::RuntimeStatePoisoned)?;
+            if *active {
+                return Err(IrohNodeError::AlreadyRunning);
+            }
+            *active = true;
+        }
+        Ok(Self)
+    }
+}
+
+impl Drop for NodeRunLease {
+    fn drop(&mut self) {
+        #[cfg(not(any(test, feature = "test-util")))]
+        {
+            // Clear the runtime configuration before releasing the lease so a
+            // newly-bound node cannot inherit the previous node's LAN policy.
+            super::runtime_consts::clear_lan_only();
+            match NODE_RUN_ACTIVE.lock() {
+                Ok(mut active) => *active = false,
+                Err(_) => warn!("iroh node runtime state lock poisoned during release"),
+            }
+        }
+    }
+}
 
 /// Staged builder — bind endpoint, install transport handlers, then
 /// [`spawn`](Self::spawn) the router.
@@ -526,6 +536,7 @@ pub struct IrohNodeBuilder {
     /// Retained so `install_*` methods can read the rendezvous override
     /// when constructing the per-transport adapters.
     config: IrohNodeConfig,
+    run_lease: NodeRunLease,
 }
 
 impl IrohNodeBuilder {
@@ -541,17 +552,7 @@ impl IrohNodeBuilder {
         identity_store: &IrohIdentityStore,
         config: IrohNodeConfig,
     ) -> Result<Self, IrohNodeError> {
-        // Pitfall 3 防御（production-only — checker BLOCKER 2 双契约修订版）：
-        // 单进程只允许 bind 一次。第二次调用 panic 阻断任何"运行时重建
-        // endpoint"路径，迫使运行时热切换走独立 phase 立项。
-        // test 配置或下游 crate 开启 `test-util` feature 下 elided ——
-        // uc-infra/uc-bootstrap 测试 binary 内 ≥9 处 bind 调用必须正常工作。
-        // 注意：`#[cfg(test)]` 只对正在 `cargo test` 的 crate 生效，不传递到
-        // 下游依赖；所以下游 e2e 必须开 `uc-infra/test-util` feature。
-        #[cfg(not(any(test, feature = "test-util")))]
-        BIND_LOCK
-            .set(())
-            .expect("IrohNodeBuilder::bind called more than once in the same process — runtime hot-swap of LAN-only Mode is explicitly out of scope (Phase 94 / Pitfall 3); see .planning/research/PITFALLS.md");
+        let run_lease = NodeRunLease::acquire()?;
 
         let secret = identity_store.ensure_secret_key()?;
         let relay_mode = relay_mode_from_config(&config)?;
@@ -663,6 +664,7 @@ impl IrohNodeBuilder {
             endpoint,
             router_builder: Some(router_builder),
             config,
+            run_lease,
         })
     }
 
@@ -1078,6 +1080,7 @@ impl IrohNodeBuilder {
             endpoint: self.endpoint,
             router,
             net_recovery,
+            _run_lease: self.run_lease,
         }
     }
 }
@@ -1088,6 +1091,12 @@ impl IrohNodeBuilder {
 /// types don't leak third-party error types upward).
 #[derive(Debug, thiserror::Error)]
 pub enum IrohNodeError {
+    #[error("an iroh node is already running in this process")]
+    AlreadyRunning,
+
+    #[error("iroh node runtime state lock is poisoned")]
+    RuntimeStatePoisoned,
+
     #[error("failed to bind iroh endpoint: {0}")]
     Bind(String),
 

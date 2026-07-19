@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex, MutexGuard};
 
 use uc_engine::{
     HostCapabilityError, HostClipboard, HostClipboardRepresentation, HostClipboardSnapshot,
-    HostSecureStorage,
+    HostDirectories, HostSecureStorage,
 };
 
 #[derive(Default)]
@@ -189,4 +189,31 @@ fn clipboard_adapter_preserves_inline_representation_on_write() {
             bytes: vec![137, 80, 78, 71],
         }]
     );
+}
+
+#[test]
+fn host_directories_derive_only_private_and_cache_storage_paths() {
+    let directories = HostDirectories::new(
+        "/host/private".into(),
+        "/host/cache".into(),
+        "/host/temporary".into(),
+    );
+
+    let paths = uc_engine::internal::host_adapters::derive_app_paths(&directories);
+
+    assert_eq!(
+        paths.db_path,
+        std::path::Path::new("/host/private/uniclipboard.db")
+    );
+    assert_eq!(paths.vault_dir, std::path::Path::new("/host/private/vault"));
+    assert_eq!(
+        paths.settings_path,
+        std::path::Path::new("/host/private/settings.json")
+    );
+    assert_eq!(
+        paths.file_cache_dir,
+        std::path::Path::new("/host/private/file-cache")
+    );
+    assert_eq!(paths.cache_dir, std::path::Path::new("/host/cache"));
+    assert_eq!(paths.spool_dir, std::path::Path::new("/host/cache/spool"));
 }

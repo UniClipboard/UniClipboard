@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use uc_core::app_dirs::{AppDirs, AppPaths};
 use uc_core::clipboard::{
     normalize_wire_mime, ObservedClipboardRepresentation, SystemClipboardSnapshot,
 };
@@ -8,7 +9,7 @@ use uc_core::ports::{SecureStorageError, SecureStoragePort, SystemClipboardPort}
 
 use crate::{
     HostCapabilityError, HostCapabilityErrorCategory, HostClipboard, HostClipboardRepresentation,
-    HostSecureStorage,
+    HostDirectories, HostSecureStorage,
 };
 
 struct HostSecureStorageAdapter {
@@ -116,4 +117,12 @@ impl SystemClipboardPort for HostClipboardAdapter {
 
 pub fn adapt_system_clipboard(host: Box<dyn HostClipboard>) -> Arc<dyn SystemClipboardPort> {
     Arc::new(HostClipboardAdapter { host })
+}
+
+pub fn derive_app_paths(directories: &HostDirectories) -> AppPaths {
+    AppPaths::from_app_dirs(&AppDirs {
+        app_data_root: directories.private_data().to_path_buf(),
+        app_cache_root: directories.cache().to_path_buf(),
+        app_log_dir: directories.cache().join("logs"),
+    })
 }

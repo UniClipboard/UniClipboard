@@ -38,10 +38,10 @@ use crate::facade::space_setup::{EnsureReachableAllError, EnsureReachableAllRepo
 use crate::facade::space_setup::{
     InitializeSpaceError, InitializeSpaceInput, InitializeSpaceResult, IssuePairingInvitationError,
     IssuePairingInvitationResult, MigrationProgress, PairingInvitationAddressCandidate,
-    PairingOutcome, QueryMigrationProgressError, RedeemPairingInvitationError,
-    RedeemPairingInvitationInput, RedeemPairingInvitationResult, SwitchSpaceError,
-    SwitchSpaceInput, SwitchSpaceResult, TryResumeSessionError, UnlockSpaceError, UnlockSpaceInput,
-    UnlockSpaceResult,
+    PairingOutcome, QueryMigrationProgressError, QuerySetupStateError,
+    RedeemPairingInvitationError, RedeemPairingInvitationInput, RedeemPairingInvitationResult,
+    SetupStateView, SwitchSpaceError, SwitchSpaceInput, SwitchSpaceResult, TryResumeSessionError,
+    UnlockSpaceError, UnlockSpaceInput, UnlockSpaceResult,
 };
 use crate::facade::upgrade::UpgradeFacade;
 use crate::facade::{
@@ -250,6 +250,18 @@ impl AppFacade {
                 UnlockSpaceError::Internal("space setup facade unavailable".to_string())
             })?
             .unlock_space(input)
+            .await
+    }
+
+    /// Read setup state through the top-level application facade.
+    pub async fn query_setup_state(&self) -> Result<SetupStateView, QuerySetupStateError> {
+        self.space_setup
+            .get()
+            .cloned()
+            .ok_or_else(|| {
+                QuerySetupStateError::Internal("space setup facade unavailable".to_string())
+            })?
+            .query_setup_state()
             .await
     }
 

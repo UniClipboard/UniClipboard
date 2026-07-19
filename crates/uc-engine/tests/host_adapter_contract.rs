@@ -372,12 +372,23 @@ async fn engine_start_builds_a_resumable_real_session() {
         .execute(uc_engine::Operation::IssueInvitation)
         .await
         .unwrap();
-    assert!(matches!(
-        invitation,
-        uc_engine::OperationResult::InvitationIssued {
-            ref invitation_code
-        } if !invitation_code.is_empty()
-    ));
+    let invitation_code = match invitation {
+        uc_engine::OperationResult::InvitationIssued { invitation_code } => invitation_code,
+        other => panic!("expected invitation, got {other:?}"),
+    };
+    assert!(!invitation_code.is_empty());
+    let invalid_join = engine
+        .execute(uc_engine::Operation::JoinSpace(uc_engine::JoinSpaceInput {
+            invitation_code,
+            device_name: "  ".into(),
+            passphrase: uc_engine::SecretString::new("correct horse"),
+        }))
+        .await
+        .unwrap_err();
+    assert_eq!(
+        invalid_join.category(),
+        uc_engine::EngineErrorCategory::InvalidInput
+    );
 
     let wrong_passphrase = engine
         .execute(uc_engine::Operation::UnlockSpace(

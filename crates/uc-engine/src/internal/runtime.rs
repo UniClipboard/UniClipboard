@@ -5,10 +5,12 @@ use async_trait::async_trait;
 use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 use tracing::error;
+use uc_application::facade::space_setup::{SwitchSpaceError, SwitchSpaceInput};
 use uc_application::facade::{
     AppFacade, InMemoryLifecycleStatus, InitializeSpaceError,
-    InitializeSpaceInput as AppInitializeSpaceInput, IssuePairingInvitationError, UnlockSpaceError,
-    UnlockSpaceInput as AppUnlockSpaceInput,
+    InitializeSpaceInput as AppInitializeSpaceInput, IssuePairingInvitationError,
+    QuerySetupStateError, RedeemPairingInvitationError, RedeemPairingInvitationInput,
+    UnlockSpaceError, UnlockSpaceInput as AppUnlockSpaceInput,
 };
 use uc_core::ports::ReachabilityState;
 use uc_core::TaskRegistry;
@@ -43,6 +45,14 @@ const INVITATION_INVALID_STATE_CODE: u32 = 1221;
 const INVITATION_INVALID_INPUT_CODE: u32 = 1222;
 const INVITATION_UNAVAILABLE_CODE: u32 = 1223;
 const INVITATION_FAILED_CODE: u32 = 1224;
+const JOIN_SPACE_INVALID_INPUT_CODE: u32 = 1231;
+const JOIN_SPACE_INVALID_STATE_CODE: u32 = 1232;
+const JOIN_SPACE_UNAUTHORIZED_CODE: u32 = 1233;
+const JOIN_SPACE_NOT_FOUND_CODE: u32 = 1234;
+const JOIN_SPACE_CONFLICT_CODE: u32 = 1235;
+const JOIN_SPACE_UNAVAILABLE_CODE: u32 = 1236;
+const JOIN_SPACE_DEADLINE_CODE: u32 = 1237;
+const JOIN_SPACE_FAILED_CODE: u32 = 1238;
 
 pub(crate) struct ProductionRuntime {
     wired: WiredDependencies,
@@ -169,6 +179,46 @@ impl EngineRuntime for ProductionRuntime {
                     .await
                     .map_err(map_unlock_space_error)?;
                 Ok(OperationResult::SpaceUnlocked)
+            }
+            Operation::JoinSpace(input) => {
+                let device_name = input.device_name.trim().to_owned();
+                if device_name.is_empty() {
+                    return Err(join_invalid_input_error());
+                }
+                let facade = self.current_facade().await?;
+                facade.set_device_name(device_name).await.map_err(|error| {
+                    operation_error_with_code(
+                        JOIN_SPACE_FAILED_CODE,
+                        "save join device name",
+                        error,
+                    )
+                })?;
+                let setup = facade
+                    .query_setup_state()
+                    .await
+                    .map_err(|error| map_query_setup_state_error("route join operation", error))?;
+                let space_id = if setup.has_completed {
+                    facade
+                        .switch_space(SwitchSpaceInput {
+                            code: input.invitation_code,
+                            new_passphrase: input.passphrase.expose().to_owned(),
+                        })
+                        .await
+                        .map_err(map_switch_space_error)?
+                        .space_id
+                } else {
+                    facade
+                        .redeem_pairing_invitation(RedeemPairingInvitationInput {
+                            code: input.invitation_code,
+                            passphrase: input.passphrase.expose().to_owned(),
+                        })
+                        .await
+                        .map_err(map_join_space_error)?
+                        .space_id
+                };
+                Ok(OperationResult::SpaceJoined {
+                    space_id: space_id.as_ref().to_string(),
+                })
             }
             Operation::IssueInvitation => {
                 let invitation = self
@@ -305,6 +355,108 @@ fn map_issue_invitation_error(error: IssuePairingInvitationError) -> EngineError
             operation_error_with_code(INVITATION_FAILED_CODE, "issue invitation", error)
         }
     }
+}
+
+fn map_query_setup_state_error(context: &'static str, error: QuerySetupStateError) -> EngineError {
+    operation_error_with_code(JOIN_SPACE_FAILED_CODE, context, error)
+}
+
+fn map_join_space_error(error: RedeemPairingInvitationError) -> EngineError {
+    match error {
+        RedeemPairingInvitationError::DeviceNameRequired => join_invalid_input_error(),
+        RedeemPairingInvitationError::PassphraseMismatch => join_unauthorized_error(),
+        RedeemPairingInvitationError::InvitationNotFound
+        | RedeemPairingInvitationError::InvitationExpired => join_not_found_error(),
+        RedeemPairingInvitationError::SponsorRejectedInvitation
+        | RedeemPairingInvitationError::SponsorDeclined => join_conflict_error(),
+        RedeemPairingInvitationError::SponsorUnreachable
+        | RedeemPairingInvitationError::ServiceUnavailable
+        | RedeemPairingInvitationError::ConnectionLost => join_unavailable_error(),
+        RedeemPairingInvitationError::SponsorTimedOut | RedeemPairingInvitationError::Timeout => {
+            join_deadline_error()
+        }
+        RedeemPairingInvitationError::CorruptedKeyMaterial
+        | RedeemPairingInvitationError::SponsorInternal(_)
+        | RedeemPairingInvitationError::Internal(_) => {
+            operation_error_with_code(JOIN_SPACE_FAILED_CODE, "join space", error)
+        }
+    }
+}
+
+fn map_switch_space_error(error: SwitchSpaceError) -> EngineError {
+    match error {
+        SwitchSpaceError::DeviceNameRequired => join_invalid_input_error(),
+        SwitchSpaceError::NotSetup | SwitchSpaceError::NotUnlocked => EngineError::new(
+            JOIN_SPACE_INVALID_STATE_CODE,
+            EngineErrorCategory::InvalidState,
+            false,
+        ),
+        SwitchSpaceError::PassphraseMismatch => join_unauthorized_error(),
+        SwitchSpaceError::InvitationNotFound | SwitchSpaceError::InvitationExpired => {
+            join_not_found_error()
+        }
+        SwitchSpaceError::PendingMigration(_)
+        | SwitchSpaceError::SponsorDeclined
+        | SwitchSpaceError::SponsorRejectedInvitation => join_conflict_error(),
+        SwitchSpaceError::SponsorUnreachable
+        | SwitchSpaceError::ServiceUnavailable
+        | SwitchSpaceError::ConnectionLost => join_unavailable_error(),
+        SwitchSpaceError::Timeout => join_deadline_error(),
+        SwitchSpaceError::CorruptedKeyMaterial
+        | SwitchSpaceError::InvalidCiphertext
+        | SwitchSpaceError::Storage(_)
+        | SwitchSpaceError::Internal(_) => {
+            operation_error_with_code(JOIN_SPACE_FAILED_CODE, "switch space", error)
+        }
+    }
+}
+
+fn join_invalid_input_error() -> EngineError {
+    EngineError::new(
+        JOIN_SPACE_INVALID_INPUT_CODE,
+        EngineErrorCategory::InvalidInput,
+        false,
+    )
+}
+
+fn join_unauthorized_error() -> EngineError {
+    EngineError::new(
+        JOIN_SPACE_UNAUTHORIZED_CODE,
+        EngineErrorCategory::Unauthorized,
+        false,
+    )
+}
+
+fn join_not_found_error() -> EngineError {
+    EngineError::new(
+        JOIN_SPACE_NOT_FOUND_CODE,
+        EngineErrorCategory::NotFound,
+        false,
+    )
+}
+
+fn join_conflict_error() -> EngineError {
+    EngineError::new(
+        JOIN_SPACE_CONFLICT_CODE,
+        EngineErrorCategory::Conflict,
+        false,
+    )
+}
+
+fn join_unavailable_error() -> EngineError {
+    EngineError::new(
+        JOIN_SPACE_UNAVAILABLE_CODE,
+        EngineErrorCategory::Unavailable,
+        true,
+    )
+}
+
+fn join_deadline_error() -> EngineError {
+    EngineError::new(
+        JOIN_SPACE_DEADLINE_CODE,
+        EngineErrorCategory::DeadlineExceeded,
+        true,
+    )
 }
 
 fn operation_error_with_code(

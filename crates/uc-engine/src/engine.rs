@@ -7,21 +7,20 @@ use async_trait::async_trait;
 use tokio::sync::{Mutex, Notify};
 use tokio_util::sync::CancellationToken;
 
-#[cfg(test)]
 use crate::event_stream::event_channel;
 use crate::event_stream::EventSender;
-#[cfg(test)]
+use crate::internal::runtime::ProductionRuntime;
 use crate::EventStream;
 use crate::{
-    EngineError, EngineErrorCategory, EngineEvent, EngineState, Operation, OperationResult,
-    OperationTerminal,
+    EngineConfig, EngineError, EngineErrorCategory, EngineEvent, EngineState, HostCapabilities,
+    Operation, OperationResult, OperationTerminal,
 };
 
 const INVALID_STATE_CODE: u32 = 1001;
 const OPERATION_CANCELLED_CODE: u32 = 1002;
 
 #[async_trait]
-trait EngineRuntime: Send + Sync {
+pub(crate) trait EngineRuntime: Send + Sync {
     async fn execute(
         &self,
         operation: Operation,
@@ -30,7 +29,7 @@ trait EngineRuntime: Send + Sync {
 
     async fn suspend(&self) -> Result<(), EngineError>;
     async fn resume(&self) -> Result<(), EngineError>;
-    async fn shutdown(&self) -> Result<(), EngineError>;
+    async fn shutdown(&self, deadline: Duration) -> Result<(), EngineError>;
 }
 
 pub struct Engine {
@@ -48,6 +47,31 @@ struct CoordinatorState {
 }
 
 impl Engine {
+    pub async fn start(
+        config: EngineConfig,
+        host: HostCapabilities,
+    ) -> Result<(Self, EventStream), EngineError> {
+        const EVENT_CAPACITY: usize = 256;
+
+        let (events, stream) = event_channel(EVENT_CAPACITY);
+        let runtime = Arc::new(ProductionRuntime::start(config, host, events.clone()).await?);
+        let engine = Self {
+            state: Mutex::new(CoordinatorState {
+                lifecycle: EngineState::Running,
+                in_flight: HashMap::new(),
+            }),
+            lifecycle_gate: Mutex::new(()),
+            runtime,
+            events,
+            in_flight_changed: Notify::new(),
+            next_operation_id: AtomicU64::new(1),
+        };
+        engine.events.send(EngineEvent::StateChanged {
+            state: EngineState::Running,
+        });
+        Ok((engine, stream))
+    }
+
     #[cfg(test)]
     fn from_runtime<R>(runtime: Arc<R>, event_capacity: usize) -> (Self, EventStream)
     where
@@ -162,12 +186,15 @@ impl Engine {
             state: EngineState::ShuttingDown,
         });
 
-        let shutdown_result =
-            match tokio::time::timeout(remaining_until(deadline_at), self.runtime.shutdown()).await
-            {
-                Ok(result) => result,
-                Err(_) => Err(operation_cancelled_error()),
-            };
+        let shutdown_result = match tokio::time::timeout(
+            remaining_until(deadline_at),
+            self.runtime.shutdown(remaining_until(deadline_at)),
+        )
+        .await
+        {
+            Ok(result) => result,
+            Err(_) => Err(operation_cancelled_error()),
+        };
 
         if let Err(error) = &shutdown_result {
             if !error.is_retryable() {
@@ -323,7 +350,7 @@ mod tests {
             Ok(())
         }
 
-        async fn shutdown(&self) -> Result<(), EngineError> {
+        async fn shutdown(&self, _deadline: Duration) -> Result<(), EngineError> {
             self.shutdown_calls.fetch_add(1, Ordering::SeqCst);
             if self.fail_shutdown.load(Ordering::SeqCst) {
                 return Err(EngineError::new(9001, EngineErrorCategory::Internal, false));

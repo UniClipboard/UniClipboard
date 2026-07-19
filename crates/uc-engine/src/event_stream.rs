@@ -20,6 +20,7 @@ impl EventStream {
     }
 }
 
+#[derive(Clone)]
 pub(crate) struct EventSender {
     sender: Arc<Mutex<Option<broadcast::Sender<EngineEvent>>>>,
 }
@@ -44,7 +45,6 @@ impl EventSender {
     }
 }
 
-#[cfg(test)]
 pub(crate) fn event_channel(capacity: usize) -> (EventSender, EventStream) {
     let (sender, receiver) = broadcast::channel(capacity);
     (

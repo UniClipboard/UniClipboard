@@ -137,9 +137,15 @@ pub async fn spawn_blob_processing_tasks(
         Duration::from_millis(worker_retry_backoff_ms),
     );
     task_registry
-        .spawn("blob_worker", |_token| async move {
-            worker.run().await;
-            info!("BackgroundBlobWorker stopped");
+        .spawn("blob_worker", |token| async move {
+            tokio::select! {
+                _ = token.cancelled() => {
+                    info!("BackgroundBlobWorker shutting down");
+                }
+                _ = worker.run() => {
+                    info!("BackgroundBlobWorker stopped");
+                }
+            }
         })
         .await;
 

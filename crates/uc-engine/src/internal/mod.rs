@@ -12,6 +12,7 @@ pub mod lifecycle;
 pub mod network_policy;
 pub mod platform;
 pub mod reconcile;
+pub(crate) mod runtime;
 pub mod sync_engine;
 pub mod wire;
 

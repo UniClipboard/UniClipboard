@@ -2,9 +2,9 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use uc_engine::{
-    EngineConfig, HostCapabilities, HostCapabilityError, HostClipboard,
-    HostClipboardRepresentation, HostClipboardSnapshot, HostDirectories, HostFileAccess,
-    HostFileHandle, HostFileMetadata, HostSecureStorage,
+    Engine, EngineConfig, EngineEvent, EngineState, HostCapabilities, HostCapabilityError,
+    HostClipboard, HostClipboardRepresentation, HostClipboardSnapshot, HostDirectories,
+    HostFileAccess, HostFileHandle, HostFileMetadata, HostSecureStorage,
 };
 
 #[derive(Default)]
@@ -298,5 +298,72 @@ async fn host_capabilities_wire_real_core_dependencies() {
             .unwrap()
             .as_ref(),
         "mobile-primary"
+    );
+}
+
+#[tokio::test]
+async fn engine_start_builds_a_resumable_real_session() {
+    let temp = tempfile::tempdir().unwrap();
+    let private = temp.path().join("private");
+    let host = HostCapabilities::new(
+        HostDirectories::new(
+            private.clone(),
+            temp.path().join("cache"),
+            temp.path().join("temporary"),
+        ),
+        Box::new(MemoryHostSecureStorage::default()),
+        Box::new(StaticHostClipboard {
+            snapshot: HostClipboardSnapshot {
+                observed_at_ms: 0,
+                representations: Vec::new(),
+            },
+        }),
+        Box::new(EmptyHostFiles),
+    );
+
+    let (engine, mut events) = Engine::start(EngineConfig::new("1.2.3"), host)
+        .await
+        .unwrap();
+
+    assert!(private.join("uniclipboard.db").is_file());
+    assert_eq!(
+        events.next().await,
+        Some(EngineEvent::StateChanged {
+            state: EngineState::Running,
+        })
+    );
+    assert_eq!(
+        engine
+            .execute(uc_engine::Operation::ListDevices)
+            .await
+            .unwrap(),
+        uc_engine::OperationResult::Devices(Vec::new())
+    );
+
+    engine.suspend().await.unwrap();
+    engine.resume().await.unwrap();
+    engine
+        .shutdown(std::time::Duration::from_secs(15))
+        .await
+        .unwrap();
+
+    let mut states = Vec::new();
+    while let Some(event) = events.next().await {
+        if let EngineEvent::StateChanged { state } = event {
+            states.push(state);
+        }
+    }
+    assert_eq!(
+        states,
+        vec![
+            EngineState::Quiescing,
+            EngineState::Quiesced,
+            EngineState::Suspended,
+            EngineState::Running,
+            EngineState::Quiescing,
+            EngineState::Quiesced,
+            EngineState::ShuttingDown,
+            EngineState::Stopped,
+        ]
     );
 }

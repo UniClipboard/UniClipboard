@@ -7,16 +7,18 @@ use uc_core::clipboard::{
 use uc_core::ids::{FormatId, RepresentationId};
 use uc_core::ports::{
     EmitError, HostEvent, HostEventEmitterPort, PlatformClipboardPort, SecureStorageError,
-    SecureStoragePort, SystemClipboardPort,
+    SecureStoragePort, SystemClipboardPort, TransferHostEvent,
 };
 
+use crate::event_stream::EventSender;
 use crate::internal::clipboard::SystemClipboardWiring;
 use crate::internal::deps::{BackgroundRuntimeDeps, WiredDependencies, WiringResult};
 use crate::internal::platform::SystemClipboardLayer;
 use crate::internal::wire::{wire_dependencies_from_inputs, CoreWiringInputs};
 use crate::{
-    EngineConfig, HostCapabilities, HostCapabilityError, HostCapabilityErrorCategory,
+    EngineConfig, EngineEvent, HostCapabilities, HostCapabilityError, HostCapabilityErrorCategory,
     HostClipboard, HostClipboardRepresentation, HostDirectories, HostFileAccess, HostSecureStorage,
+    RefreshReason, TransferProgress,
 };
 
 struct HostSecureStorageAdapter {
@@ -149,6 +151,40 @@ impl HostEventEmitterPort for NoopHostEventEmitter {
     }
 }
 
+pub(crate) struct EngineHostEventEmitter {
+    events: EventSender,
+}
+
+impl EngineHostEventEmitter {
+    pub(crate) fn new(events: EventSender) -> Self {
+        Self { events }
+    }
+}
+
+impl HostEventEmitterPort for EngineHostEventEmitter {
+    fn emit(&self, event: HostEvent) -> Result<(), EmitError> {
+        let event = match event {
+            HostEvent::Transfer(TransferHostEvent::Progress {
+                transfer_id,
+                bytes_transferred,
+                total_bytes,
+                ..
+            }) => EngineEvent::TransferProgress(TransferProgress {
+                transfer_id,
+                completed_bytes: bytes_transferred,
+                total_bytes,
+            }),
+            HostEvent::Clipboard(_)
+            | HostEvent::Transfer(TransferHostEvent::StatusChanged { .. })
+            | HostEvent::Delivery(_) => EngineEvent::RefreshRequired {
+                reason: RefreshReason::StateInvalidated,
+            },
+        };
+        self.events.send(event);
+        Ok(())
+    }
+}
+
 pub struct HostWiring {
     pub wired: WiredDependencies,
     pub background: BackgroundRuntimeDeps,
@@ -160,6 +196,14 @@ pub struct HostWiring {
 pub fn wire_host_capabilities(
     config: &EngineConfig,
     host: HostCapabilities,
+) -> WiringResult<HostWiring> {
+    wire_host_capabilities_with_emitter(config, host, Arc::new(NoopHostEventEmitter))
+}
+
+pub(crate) fn wire_host_capabilities_with_emitter(
+    config: &EngineConfig,
+    host: HostCapabilities,
+    host_event_emitter: Arc<dyn HostEventEmitterPort>,
 ) -> WiringResult<HostWiring> {
     let (directories, secure_storage, clipboard, files) = host.into_parts();
     let paths = derive_app_paths(&directories);
@@ -174,7 +218,7 @@ pub fn wire_host_capabilities(
         system_clipboard: adapt_system_clipboard_layer(clipboard),
         analytics_sink: Arc::new(uc_observability_contract::analytics::NoopAnalyticsSink),
         analytics_facade: Arc::new(uc_observability_contract::analytics::NoopAnalyticsFacade),
-        host_event_emitter: Arc::new(NoopHostEventEmitter),
+        host_event_emitter,
     })?;
 
     Ok(HostWiring {
@@ -184,4 +228,68 @@ pub fn wire_host_capabilities(
         temporary_dir,
         files,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use uc_core::file_transfer::FileTransferDirection;
+    use uc_core::ports::{
+        ClipboardHostEvent, ClipboardOriginKind, HostEvent, HostEventEmitterPort, TransferHostEvent,
+    };
+
+    use crate::event_stream::event_channel;
+    use crate::{EngineEvent, RefreshReason, TransferProgress};
+
+    use super::EngineHostEventEmitter;
+
+    #[tokio::test]
+    async fn engine_event_emitter_forwards_transfer_progress() {
+        let (events, mut stream) = event_channel(8);
+        let emitter: Arc<dyn HostEventEmitterPort> = Arc::new(EngineHostEventEmitter::new(events));
+
+        emitter
+            .emit(HostEvent::Transfer(TransferHostEvent::Progress {
+                transfer_id: "transfer-1".into(),
+                entry_id: Some("entry-1".into()),
+                attempt_id: Some("attempt-1".into()),
+                peer_id: "peer-1".into(),
+                direction: FileTransferDirection::Receiving,
+                bytes_transferred: 64,
+                total_bytes: Some(128),
+            }))
+            .unwrap();
+
+        assert_eq!(
+            stream.next().await,
+            Some(EngineEvent::TransferProgress(TransferProgress {
+                transfer_id: "transfer-1".into(),
+                completed_bytes: 64,
+                total_bytes: Some(128),
+            }))
+        );
+    }
+
+    #[tokio::test]
+    async fn clipboard_change_requests_authoritative_refresh() {
+        let (events, mut stream) = event_channel(8);
+        let emitter = EngineHostEventEmitter::new(events);
+
+        emitter
+            .emit(HostEvent::Clipboard(ClipboardHostEvent::NewContent {
+                entry_id: "entry-1".into(),
+                attempt_id: None,
+                preview: "placeholder".into(),
+                origin: ClipboardOriginKind::Remote,
+            }))
+            .unwrap();
+
+        assert_eq!(
+            stream.next().await,
+            Some(EngineEvent::RefreshRequired {
+                reason: RefreshReason::StateInvalidated,
+            })
+        );
+    }
 }

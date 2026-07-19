@@ -72,11 +72,11 @@ use uc_infra::{
 };
 use uc_observability_contract::analytics::{AnalyticsFacade, AnalyticsPort};
 
-use crate::layer::platform::create_platform_layer;
 use crate::wiring::deps::{
     BackgroundRuntimeDeps, DaemonRuntimeDeps, SharedRuntimeDeps, SyncEngineDeps, WiredDependencies,
     WiringError, WiringResult,
 };
+use uc_engine::internal::platform::create_platform_layer;
 
 /// Infrastructure layer implementations
 struct InfraLayer {

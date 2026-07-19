@@ -1,0 +1,13 @@
+[package]
+name = "uc-engine"
+version.workspace = true
+license.workspace = true
+edition = "2021"
+description = "Stable cross-platform engine interface for UniClipboard hosts"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+zeroize = "1.8"
+
+[lints]
+workspace = true

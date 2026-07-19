@@ -10390,6 +10390,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "uc-engine"
+version = "0.19.1"
+dependencies = [
+ "serde",
+ "zeroize",
+]
+
+[[package]]
 name = "uc-infra"
 version = "0.20.0-alpha.2"
 dependencies = [

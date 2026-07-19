@@ -1,0 +1,492 @@
+//! Stable cross-platform interface owned by the UniClipboard engine.
+
+use std::fmt;
+
+use serde::{Deserialize, Serialize};
+use zeroize::Zeroize;
+
+#[derive(Clone, PartialEq, Eq)]
+pub struct SecretString(Vec<u8>);
+
+impl SecretString {
+    pub fn new(value: impl AsRef<str>) -> Self {
+        Self(value.as_ref().as_bytes().to_vec())
+    }
+
+    pub fn expose(&self) -> &str {
+        std::str::from_utf8(&self.0).unwrap_or_default()
+    }
+}
+
+impl fmt::Debug for SecretString {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("SecretString([REDACTED])")
+    }
+}
+
+impl Drop for SecretString {
+    fn drop(&mut self) {
+        self.0.zeroize();
+    }
+}
+
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct HostFileHandle(String);
+
+impl HostFileHandle {
+    pub fn new(value: impl Into<String>) -> Self {
+        Self(value.into())
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl fmt::Debug for HostFileHandle {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("HostFileHandle([REDACTED])")
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum OperationKind {
+    CreateSpace,
+    JoinSpace,
+    UnlockSpace,
+    IssueInvitation,
+    ListDevices,
+    SendText,
+    SendImage,
+    SendFiles,
+    QueryHistory,
+    ExportEntry,
+    ResendEntry,
+}
+
+impl fmt::Display for OperationKind {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let value = match self {
+            Self::CreateSpace => "create_space",
+            Self::JoinSpace => "join_space",
+            Self::UnlockSpace => "unlock_space",
+            Self::IssueInvitation => "issue_invitation",
+            Self::ListDevices => "list_devices",
+            Self::SendText => "send_text",
+            Self::SendImage => "send_image",
+            Self::SendFiles => "send_files",
+            Self::QueryHistory => "query_history",
+            Self::ExportEntry => "export_entry",
+            Self::ResendEntry => "resend_entry",
+        };
+        formatter.write_str(value)
+    }
+}
+
+#[derive(Clone, PartialEq, Eq)]
+pub enum Operation {
+    CreateSpace(CreateSpaceInput),
+    JoinSpace(JoinSpaceInput),
+    UnlockSpace(UnlockSpaceInput),
+    IssueInvitation,
+    ListDevices,
+    SendText(SendTextInput),
+    SendImage(SendImageInput),
+    SendFiles(SendFilesInput),
+    QueryHistory(QueryHistoryInput),
+    ExportEntry(ExportEntryInput),
+    ResendEntry(ResendEntryInput),
+}
+
+impl Operation {
+    pub fn kind(&self) -> OperationKind {
+        match self {
+            Self::CreateSpace(_) => OperationKind::CreateSpace,
+            Self::JoinSpace(_) => OperationKind::JoinSpace,
+            Self::UnlockSpace(_) => OperationKind::UnlockSpace,
+            Self::IssueInvitation => OperationKind::IssueInvitation,
+            Self::ListDevices => OperationKind::ListDevices,
+            Self::SendText(_) => OperationKind::SendText,
+            Self::SendImage(_) => OperationKind::SendImage,
+            Self::SendFiles(_) => OperationKind::SendFiles,
+            Self::QueryHistory(_) => OperationKind::QueryHistory,
+            Self::ExportEntry(_) => OperationKind::ExportEntry,
+            Self::ResendEntry(_) => OperationKind::ResendEntry,
+        }
+    }
+}
+
+impl fmt::Debug for Operation {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("Operation")
+            .field("kind", &self.kind().to_string())
+            .finish_non_exhaustive()
+    }
+}
+
+#[derive(Clone, PartialEq, Eq)]
+pub struct CreateSpaceInput {
+    pub device_name: String,
+    pub passphrase: SecretString,
+    pub passphrase_confirmation: SecretString,
+}
+
+impl fmt::Debug for CreateSpaceInput {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("CreateSpaceInput")
+            .field("device_name", &"[REDACTED]")
+            .field("passphrase", &"[REDACTED]")
+            .field("passphrase_confirmation", &"[REDACTED]")
+            .finish()
+    }
+}
+
+#[derive(Clone, PartialEq, Eq)]
+pub struct JoinSpaceInput {
+    pub invitation_code: String,
+    pub device_name: String,
+    pub passphrase: SecretString,
+}
+
+impl fmt::Debug for JoinSpaceInput {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("JoinSpaceInput")
+            .field("invitation_code", &"[REDACTED]")
+            .field("device_name", &"[REDACTED]")
+            .field("passphrase", &"[REDACTED]")
+            .finish()
+    }
+}
+
+#[derive(Clone, PartialEq, Eq)]
+pub struct UnlockSpaceInput {
+    pub passphrase: SecretString,
+}
+
+impl fmt::Debug for UnlockSpaceInput {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("UnlockSpaceInput")
+            .field("passphrase", &"[REDACTED]")
+            .finish()
+    }
+}
+
+#[derive(Clone, PartialEq, Eq)]
+pub struct SendTextInput {
+    pub text: String,
+    pub target_devices: Vec<String>,
+}
+
+impl fmt::Debug for SendTextInput {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("SendTextInput")
+            .field("text", &"[REDACTED]")
+            .field("target_count", &self.target_devices.len())
+            .finish()
+    }
+}
+
+#[derive(Clone, PartialEq, Eq)]
+pub struct SendImageInput {
+    pub bytes: Vec<u8>,
+    pub mime_type: String,
+    pub target_devices: Vec<String>,
+}
+
+impl fmt::Debug for SendImageInput {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("SendImageInput")
+            .field("byte_len", &self.bytes.len())
+            .field("mime_type", &self.mime_type)
+            .field("target_count", &self.target_devices.len())
+            .finish()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SendFilesInput {
+    pub files: Vec<HostFileHandle>,
+    pub target_devices: Vec<String>,
+}
+
+#[derive(Clone, PartialEq, Eq)]
+pub struct QueryHistoryInput {
+    pub cursor: Option<String>,
+    pub limit: u32,
+    pub query: Option<String>,
+}
+
+impl fmt::Debug for QueryHistoryInput {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("QueryHistoryInput")
+            .field("has_cursor", &self.cursor.is_some())
+            .field("limit", &self.limit)
+            .field("has_query", &self.query.is_some())
+            .finish()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExportEntryInput {
+    pub entry_id: String,
+    pub destination: HostFileHandle,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResendEntryInput {
+    pub entry_id: String,
+    pub target_devices: Vec<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EngineState {
+    Running,
+    Quiescing,
+    Quiesced,
+    Suspended,
+    ShuttingDown,
+    Stopped,
+}
+
+impl EngineState {
+    pub fn accepts_operations(self) -> bool {
+        self == Self::Running
+    }
+
+    pub fn can_transition_to(self, next: Self) -> bool {
+        matches!(
+            (self, next),
+            (Self::Running, Self::Quiescing)
+                | (Self::Quiescing, Self::Quiesced)
+                | (Self::Quiesced, Self::Suspended)
+                | (Self::Suspended, Self::Running)
+                | (Self::Running, Self::ShuttingDown)
+                | (Self::Quiescing, Self::ShuttingDown)
+                | (Self::Quiesced, Self::ShuttingDown)
+                | (Self::Suspended, Self::ShuttingDown)
+                | (Self::ShuttingDown, Self::Stopped)
+        )
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EngineErrorCategory {
+    InvalidInput,
+    InvalidState,
+    Unauthorized,
+    NotFound,
+    Conflict,
+    Unavailable,
+    DeadlineExceeded,
+    Internal,
+}
+
+impl fmt::Display for EngineErrorCategory {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let value = match self {
+            Self::InvalidInput => "invalid_input",
+            Self::InvalidState => "invalid_state",
+            Self::Unauthorized => "unauthorized",
+            Self::NotFound => "not_found",
+            Self::Conflict => "conflict",
+            Self::Unavailable => "unavailable",
+            Self::DeadlineExceeded => "deadline_exceeded",
+            Self::Internal => "internal",
+        };
+        formatter.write_str(value)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EngineError {
+    code: u32,
+    category: EngineErrorCategory,
+    retryable: bool,
+}
+
+impl EngineError {
+    pub fn new(code: u32, category: EngineErrorCategory, retryable: bool) -> Self {
+        Self {
+            code,
+            category,
+            retryable,
+        }
+    }
+
+    pub fn code(&self) -> u32 {
+        self.code
+    }
+
+    pub fn category(&self) -> EngineErrorCategory {
+        self.category
+    }
+
+    pub fn is_retryable(&self) -> bool {
+        self.retryable
+    }
+}
+
+impl fmt::Display for EngineError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(formatter, "engine error {} ({})", self.code, self.category)
+    }
+}
+
+impl std::error::Error for EngineError {}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RefreshReason {
+    ConsumerLagged,
+    StateInvalidated,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum EngineEvent {
+    StateChanged {
+        state: EngineState,
+    },
+    IncomingEntry {
+        entry: EntrySummary,
+    },
+    TransferProgress(TransferProgress),
+    RefreshRequired {
+        reason: RefreshReason,
+    },
+    OperationFinished {
+        operation_id: String,
+        terminal: OperationTerminal,
+    },
+    Fatal {
+        error: EngineError,
+    },
+}
+
+impl EngineEvent {
+    pub fn kind(&self) -> &'static str {
+        match self {
+            Self::StateChanged { .. } => "state_changed",
+            Self::IncomingEntry { .. } => "incoming_entry",
+            Self::TransferProgress(_) => "transfer_progress",
+            Self::RefreshRequired { .. } => "refresh_required",
+            Self::OperationFinished { .. } => "operation_finished",
+            Self::Fatal { .. } => "fatal",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum OperationTerminal {
+    Succeeded,
+    Failed(EngineError),
+    Cancelled,
+}
+
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EntrySummary {
+    pub entry_id: String,
+    pub content_type: String,
+    pub preview: Option<String>,
+    pub created_at_ms: i64,
+}
+
+impl fmt::Debug for EntrySummary {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("EntrySummary")
+            .field("entry_id", &self.entry_id)
+            .field("content_type", &self.content_type)
+            .field("has_preview", &self.preview.is_some())
+            .field("created_at_ms", &self.created_at_ms)
+            .finish()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TransferProgress {
+    pub transfer_id: String,
+    pub completed_bytes: u64,
+    pub total_bytes: Option<u64>,
+}
+
+#[derive(Clone, PartialEq, Eq)]
+pub enum OperationResult {
+    SpaceCreated {
+        space_id: String,
+    },
+    SpaceJoined {
+        space_id: String,
+    },
+    SpaceUnlocked,
+    InvitationIssued {
+        invitation_code: String,
+    },
+    Devices(Vec<DeviceSummary>),
+    EntrySent {
+        entry_id: String,
+    },
+    HistoryPage {
+        entries: Vec<EntrySummary>,
+        next_cursor: Option<String>,
+    },
+    EntryExported,
+    EntryResent {
+        entry_id: String,
+    },
+}
+
+impl fmt::Debug for OperationResult {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut debug = formatter.debug_struct("OperationResult");
+        match self {
+            Self::SpaceCreated { .. } => debug.field("kind", &"space_created"),
+            Self::SpaceJoined { .. } => debug.field("kind", &"space_joined"),
+            Self::SpaceUnlocked => debug.field("kind", &"space_unlocked"),
+            Self::InvitationIssued { .. } => debug.field("kind", &"invitation_issued"),
+            Self::Devices(devices) => debug
+                .field("kind", &"devices")
+                .field("device_count", &devices.len()),
+            Self::EntrySent { .. } => debug.field("kind", &"entry_sent"),
+            Self::HistoryPage {
+                entries,
+                next_cursor,
+            } => debug
+                .field("kind", &"history_page")
+                .field("entry_count", &entries.len())
+                .field("has_next_cursor", &next_cursor.is_some()),
+            Self::EntryExported => debug.field("kind", &"entry_exported"),
+            Self::EntryResent { .. } => debug.field("kind", &"entry_resent"),
+        };
+        debug.finish()
+    }
+}
+
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DeviceSummary {
+    pub device_id: String,
+    pub display_name: String,
+    pub online: bool,
+}
+
+impl fmt::Debug for DeviceSummary {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("DeviceSummary")
+            .field("device_id", &self.device_id)
+            .field("has_display_name", &!self.display_name.is_empty())
+            .field("online", &self.online)
+            .finish()
+    }
+}

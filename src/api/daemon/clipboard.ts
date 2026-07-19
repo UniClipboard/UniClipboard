@@ -71,6 +71,9 @@ export interface ClipboardEntryDto {
   linkDomains: string[] | null
   /** Per-file sizes in bytes for file (uri-list) entries. */
   fileSizes: number[] | null
+  /** True when a file entry was captured as a directory. Absent on older daemon
+   * responses (defaults to non-directory). */
+  isDirectory?: boolean
   /** Original image width in pixels (only for image entries). */
   imageWidth?: number | null
   /** Original image height in pixels (only for image entries). */

@@ -7,7 +7,8 @@ use uc_core::clipboard::link_utils::extract_domain;
 use uc_core::ids::{EntryId, EventId, FormatId, RepresentationId};
 use uc_core::ports::blob::BlobTransferPort;
 use uc_core::ports::clipboard::{
-    ClipboardPayloadResolverPort, SaveClipboardEntryPort, ThumbnailRepositoryPort,
+    ClipboardPayloadResolverPort, EntryFileSetRepositoryPort, SaveClipboardEntryPort,
+    ThumbnailRepositoryPort,
 };
 use uc_core::ports::search::search_index::SearchIndexPort;
 use uc_core::ports::{
@@ -58,6 +59,11 @@ pub struct EntryProjectionView {
     pub file_sizes: Option<Vec<i64>>,
     pub image_width: Option<i32>,
     pub image_height: Option<i32>,
+    /// Whether this file entry was captured as a directory. Sourced from the
+    /// single `EntryFileSet::has_directory_structure()` authority; `false` for
+    /// non-file entries or when no manifest is available. The sender UI keys off
+    /// this to render status only (no byte percentage) for directory sends.
+    pub is_directory: bool,
     /// `paste_rep` 的 payload_state, 仅在 `Lost` 时输出。其他状态为 `None`。
     /// 前端按此判断"该 entry 点了能不能粘贴" —— 粘贴行为基于 paste_rep,
     /// 而 list 里的 preview 基于 preview_rep, 两者可能不同。
@@ -141,6 +147,9 @@ pub struct ClipboardHistoryFacadeDeps {
     pub blob_store: Arc<dyn BlobReaderPort>,
     pub thumbnail_repo: Arc<dyn ThumbnailRepositoryPort>,
     pub file_transfer_repo: Arc<dyn GetEntryTransferSummaryPort>,
+    /// Directory-structure authority for the list projection's `is_directory`
+    /// flag (`EntryFileSet::has_directory_structure()`).
+    pub entry_file_set_repo: Arc<dyn EntryFileSetRepositoryPort>,
     pub search_index: Option<Arc<dyn SearchIndexPort>>,
     pub file_cache_dir: Option<PathBuf>,
     /// 删除剪贴板条目时释放对应的 iroh-blobs tag。`None` 表示该装配场景
@@ -190,6 +199,7 @@ impl ClipboardHistoryFacade {
             blob_store,
             thumbnail_repo,
             file_transfer_repo,
+            entry_file_set_repo,
             search_index,
             file_cache_dir,
             blob_transfer,
@@ -235,6 +245,7 @@ impl ClipboardHistoryFacade {
             rep_get.clone(),
             thumbnail_repo,
             file_transfer_repo,
+            entry_file_set_repo,
         );
 
         let detail_uc = GetEntryDetailUseCase::new(
@@ -614,6 +625,7 @@ fn projection_to_view(entry: EntryProjectionDto) -> EntryProjectionView {
         file_sizes: entry.file_sizes,
         image_width: entry.image_width,
         image_height: entry.image_height,
+        is_directory: entry.is_directory,
         payload_state: entry.payload_state,
     }
 }

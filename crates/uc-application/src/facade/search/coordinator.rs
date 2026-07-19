@@ -7,7 +7,7 @@ use tokio::sync::{broadcast, mpsc, Mutex, Semaphore};
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, info, info_span, instrument, warn, Instrument};
 
-use uc_core::clipboard::ClipboardEntry;
+use uc_core::clipboard::{ClipboardEntry, ClipboardEntryContentCategory};
 use uc_core::ids::EntryId;
 use uc_core::ports::clipboard::{
     ClipboardEventRepositoryPort, EntryFileSetRepositoryPort, GetClipboardEntryPort,
@@ -22,6 +22,7 @@ use uc_infra::search::constants::CURRENT_INDEX_VERSION;
 use uc_infra::search::text_extractor::SearchPipelineInput;
 
 use crate::facade::search::{SearchProjectionBuilder, SearchStatusView};
+use crate::file_set_query::load_has_directory_structure;
 
 pub const REASON_INITIAL_BACKFILL: &str = "initial_backfill";
 pub const REASON_VERSION_MISMATCH: &str = "version_mismatch";
@@ -667,17 +668,21 @@ async fn project_persisted_entry(
         }
     };
 
-    let has_directory = match entry_file_set_repo.load(&entry.entry_id).await {
-        Ok(Some(file_set)) => file_set.has_directory_structure(),
-        Ok(None) => false,
-        Err(e) => {
-            debug!(
-                error = %e,
-                entry_id = %entry.entry_id,
-                "search projection: failed to load file set, projecting without directory tag"
-            );
-            false
-        }
+    // Only file entries can carry a directory manifest; skip the extra repo read
+    // for text/image/etc., mirroring the list projection.
+    let has_directory = if entry.content_category == ClipboardEntryContentCategory::File {
+        load_has_directory_structure(entry_file_set_repo, &entry.entry_id)
+            .await
+            .unwrap_or_else(|e| {
+                debug!(
+                    error = %e,
+                    entry_id = %entry.entry_id,
+                    "search projection: failed to load file set, projecting without directory tag"
+                );
+                false
+            })
+    } else {
+        false
     };
 
     SearchProjectionBuilder::build_from_persisted(

@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import type { ClipboardEntryDto } from '@/api/daemon/clipboard'
 import type { SearchResultDto } from '@/api/daemon/search'
-import { projectClipboardEntry, searchResultToDisplayItem } from '../clipboard-transform'
+import {
+  clipboardEntryToDisplayItem,
+  projectClipboardEntry,
+  searchResultToDisplayItem,
+} from '../clipboard-transform'
 import { getItemPreview } from '../clipboard-utils'
 
 function makeDto(overrides: Partial<ClipboardEntryDto> = {}): ClipboardEntryDto {
@@ -40,7 +44,18 @@ describe('projectClipboardEntry', () => {
       activeTime: 3,
       isFavorited: true,
       isUnavailable: false,
+      isDirectory: false,
     })
+  })
+
+  it('projects the directory flag from a file DTO', () => {
+    const dir = projectClipboardEntry(
+      makeDto({ contentType: 'file', preview: 'file:///root/child', isDirectory: true })
+    )
+    expect(dir.isDirectory).toBe(true)
+
+    // Absent flag (older daemon) and non-directory files fall back to false.
+    expect(projectClipboardEntry(makeDto({ contentType: 'file' })).isDirectory).toBe(false)
   })
 
   it('preserves image dimensions from daemon DTOs', () => {
@@ -221,6 +236,50 @@ describe('searchResultToDisplayItem', () => {
     expect(item.content).toMatchObject({
       file_names: ['report.pdf'],
       file_paths: ['/tmp/report.pdf'],
+    })
+  })
+
+  it('projects the directory flag from the builtin directory tag', () => {
+    // The search projection derives the `directory` builtin tag; the display
+    // item must key its status-only directory-send row off it. Regression for
+    // the flag being dropped between SearchResultDto and the rendered item.
+    const dir = searchResultToDisplayItem(
+      makeSearchResult({ contentType: 'file', tags: ['directory'], fileNames: ['photos'] })
+    )
+    expect(dir.isDirectory).toBe(true)
+
+    // A flat file result (no directory tag) stays non-directory.
+    const flat = searchResultToDisplayItem(makeSearchResult({ contentType: 'file' }))
+    expect(flat.isDirectory).toBe(false)
+  })
+})
+
+describe('clipboardEntryToDisplayItem', () => {
+  it('carries the directory flag from the browse entry into the display item', () => {
+    // The realtime browse path (useLiveSearch.onLocalItem) runs this over a
+    // freshly-captured entry. Regression for issue #1330: the flag was dropped
+    // by an inline field copy, so directory sends still showed a byte %.
+    const entry = projectClipboardEntry(
+      makeDto({ contentType: 'file', preview: 'file:///root/child', isDirectory: true })
+    )
+    expect(clipboardEntryToDisplayItem(entry).isDirectory).toBe(true)
+
+    const flat = projectClipboardEntry(makeDto({ contentType: 'file' }))
+    expect(clipboardEntryToDisplayItem(flat).isDirectory).toBe(false)
+  })
+
+  it('preserves the render-relevant fields', () => {
+    const entry = projectClipboardEntry(
+      makeDto({ id: 'e9', preview: 'hi', isFavorited: true, payloadState: 'Lost' })
+    )
+    const item = clipboardEntryToDisplayItem(entry)
+    expect(item).toMatchObject({
+      id: 'e9',
+      type: entry.type,
+      content: entry.content,
+      activeTime: entry.activeTime,
+      isFavorited: true,
+      isUnavailable: true,
     })
   })
 })

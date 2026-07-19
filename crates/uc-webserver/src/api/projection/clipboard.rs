@@ -48,6 +48,7 @@ impl IntoApiDto<EntryProjectionResponseDto> for EntryProjectionView {
             file_sizes: self.file_sizes,
             image_width: self.image_width,
             image_height: self.image_height,
+            is_directory: self.is_directory,
             payload_state: self.payload_state,
         }
     }

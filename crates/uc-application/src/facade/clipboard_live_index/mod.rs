@@ -3,6 +3,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use thiserror::Error;
 use tracing::debug;
+use uc_core::clipboard::ClipboardEntryContentCategory;
 use uc_core::ids::EntryId;
 use uc_core::ports::clipboard::{
     ClipboardEventRepositoryPort, EntryFileSetRepositoryPort, GetClipboardEntryPort,
@@ -12,6 +13,7 @@ use uc_core::ports::{SearchIndexPort, SearchKeyDerivationPort, SelectRepresentat
 use uc_core::SystemClipboardSnapshot;
 
 use crate::facade::SearchProjectionBuilder;
+use crate::file_set_query::load_has_directory_structure;
 
 #[derive(Debug, Clone)]
 pub struct ClipboardLiveIndexInput {
@@ -115,17 +117,21 @@ impl ClipboardLiveIndexPort for ClipboardLiveIndexer {
             }
         };
 
-        let has_directory = match self.deps.entry_file_set_repo.load(&entry_id).await {
-            Ok(Some(file_set)) => file_set.has_directory_structure(),
-            Ok(None) => false,
-            Err(err) => {
-                debug!(
-                    error = %err,
-                    entry_id = %entry_id,
-                    "search: failed to load file set, indexing without directory tag"
-                );
-                false
-            }
+        // Only file entries can carry a directory manifest; skip the extra repo
+        // read for text/image/etc., mirroring the list projection.
+        let has_directory = if entry.content_category == ClipboardEntryContentCategory::File {
+            load_has_directory_structure(self.deps.entry_file_set_repo.as_ref(), &entry_id)
+                .await
+                .unwrap_or_else(|err| {
+                    debug!(
+                        error = %err,
+                        entry_id = %entry_id,
+                        "search: failed to load file set, indexing without directory tag"
+                    );
+                    false
+                })
+        } else {
+            false
         };
 
         let Some(pipeline_input) = SearchProjectionBuilder::build_from_capture(

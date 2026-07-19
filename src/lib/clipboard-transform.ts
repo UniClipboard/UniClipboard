@@ -88,6 +88,30 @@ export function projectClipboardEntry(dto: ClipboardEntryDto): ClipboardEntry {
     activeTime: dto.activeTime,
     isFavorited: dto.isFavorited,
     isUnavailable: dto.payloadState === 'Lost',
+    isDirectory: dto.isDirectory ?? false,
+  }
+}
+
+/**
+ * Project a browse-side {@link ClipboardEntry} into the {@link DisplayClipboardItem}
+ * the live list renders — the browse analogue of {@link searchResultToDisplayItem}.
+ *
+ * `ClipboardEntry` is a structural superset of the item, but the display model
+ * intentionally carries only the render-relevant subset (no `createdAt`/
+ * `updatedAt`). Centralizing the field copy here keeps every new entry field a
+ * one-line decision — a hand-maintained inline literal silently dropped
+ * `isDirectory` before, killing the directory-send status row (issue #1330).
+ */
+export function clipboardEntryToDisplayItem(entry: ClipboardEntry): DisplayClipboardItem {
+  return {
+    id: entry.id,
+    type: entry.type,
+    contentTags: entry.contentTags,
+    content: entry.content,
+    activeTime: entry.activeTime,
+    isFavorited: entry.isFavorited,
+    isUnavailable: entry.isUnavailable,
+    isDirectory: entry.isDirectory,
   }
 }
 
@@ -198,6 +222,11 @@ export function searchResultToDisplayItem(r: SearchResultDto): DisplayClipboardI
     activeTime: r.activeTimeMs,
     isFavorited: r.tags.includes('favorited'),
     isUnavailable: r.payloadState === 'Lost',
+    // Reuse the builtin `directory` tag the search projection already derives
+    // (evaluate_builtin_content_tags), so search rows key off the same
+    // single-source directory signal the browse projection carries via
+    // `isDirectory`. Drives the status-only send row for directory sends.
+    isDirectory: r.tags.includes('directory'),
     textPreview: r.textPreview ?? undefined,
   }
 }

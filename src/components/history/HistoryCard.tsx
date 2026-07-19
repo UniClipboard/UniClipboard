@@ -59,6 +59,11 @@ const HistoryCard: React.FC<HistoryCardProps> = ({
     transfer && transfer.totalBytes && transfer.totalBytes > 0
       ? Math.round((transfer.bytesTransferred / transfer.totalBytes) * 100)
       : 0
+  // Directory sends reverse-report every member onto one transfer id, so the
+  // byte percentage resets on each member switch — it is meaningless. Render
+  // status only for those rows. Receiving directories keep their real
+  // per-member aggregate percentage; single-file / flat sends are unaffected.
+  const hideByteProgress = (item.isDirectory ?? false) && transfer?.direction === 'Sending'
 
   // Reveal the action bar on keyboard focus too, not just mouse hover — its
   // buttons are otherwise untabbable, so keyboard users could never reach
@@ -107,6 +112,7 @@ const HistoryCard: React.FC<HistoryCardProps> = ({
         isTransferring={isTransferring}
         transfer={transfer}
         percent={percent}
+        hideByteProgress={hideByteProgress}
       />
       <HistoryCardHeader
         item={item}
@@ -115,6 +121,7 @@ const HistoryCard: React.FC<HistoryCardProps> = ({
         transfer={transfer}
         state={cardState}
         percent={percent}
+        hideByteProgress={hideByteProgress}
       />
       <div
         className={cn(

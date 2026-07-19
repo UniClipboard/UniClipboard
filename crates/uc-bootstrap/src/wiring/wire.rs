@@ -76,7 +76,7 @@ use uc_observability::analytics::{
 };
 
 use crate::layer::paths::{apply_profile_suffix, get_default_app_dirs, resolve_app_paths};
-use crate::layer::platform::create_platform_layer;
+use crate::layer::platform::{create_desktop_system_clipboard, create_platform_layer};
 use crate::wiring::deps::{
     BackgroundRuntimeDeps, DaemonRuntimeDeps, SharedRuntimeDeps, SyncEngineDeps, WiredDependencies,
     WiringError, WiringResult,
@@ -686,9 +686,6 @@ fn create_infra_layer(
     Ok(infra)
 }
 
-/// Both clipboard port flavors backed by the same no-op adapter (no system
-/// clipboard available or explicitly disabled).
-
 /// 进程级一次性装配:把 sqlite pool / repos / settings / secure storage /
 /// blob store / 所有 adapter 等装配成 [`WiredDependencies`] +
 /// [`BackgroundRuntimeDeps`]。
@@ -741,6 +738,7 @@ pub fn wire_dependencies(
     )?;
 
     let storage_config = Arc::new(ClipboardStorageConfig::defaults());
+    let system_clipboard = create_desktop_system_clipboard()?;
     let platform = create_platform_layer(
         secure_storage,
         &vault_path,
@@ -748,6 +746,7 @@ pub fn wire_dependencies(
         infra.member_repo.clone(),
         infra.clock.clone(),
         storage_config.clone(),
+        system_clipboard,
     )?;
 
     // Space access — single session/key access entry. See

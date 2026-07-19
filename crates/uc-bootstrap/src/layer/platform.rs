@@ -77,19 +77,18 @@ pub struct PlatformLayer {
     pub current_profile: Arc<dyn uc_core::ports::security::current_profile::CurrentProfilePort>,
 }
 
+pub struct SystemClipboardLayer {
+    clipboard: Arc<dyn PlatformClipboardPort>,
+    system_clipboard: Arc<dyn SystemClipboardPort>,
+    wiring: SystemClipboardWiring,
+}
+
 fn noop_system_clipboard() -> (Arc<dyn PlatformClipboardPort>, Arc<dyn SystemClipboardPort>) {
     let noop: Arc<NoopSystemClipboard> = Arc::new(NoopSystemClipboard);
     (noop.clone(), noop)
 }
 
-pub fn create_platform_layer(
-    secure_storage: Arc<dyn SecureStoragePort>,
-    config_dir: &PathBuf,
-    blob_repository: Arc<dyn BlobRepositoryPort>,
-    _member_repo: Arc<dyn uc_core::MemberRepositoryPort>,
-    clock: Arc<dyn ClockPort>,
-    storage_config: Arc<ClipboardStorageConfig>,
-) -> WiringResult<PlatformLayer> {
+pub fn create_desktop_system_clipboard() -> WiringResult<SystemClipboardLayer> {
     // Which system clipboard adapter to wire. Two reasons to substitute the
     // no-op adapter, both decided here in the composition root (uc-platform
     // only reports capability):
@@ -111,14 +110,8 @@ pub fn create_platform_layer(
     // Parse the opt-out as a boolean-like flag (documented contract is
     // `UC_DISABLE_SYSTEM_CLIPBOARD=1`): only truthy values opt out, so a
     // leftover `0` / `false` in the environment keeps the real adapter.
-    let disable_system_clipboard = std::env::var("UC_DISABLE_SYSTEM_CLIPBOARD")
-        .ok()
-        .is_some_and(|value| {
-            matches!(
-                value.trim().to_ascii_lowercase().as_str(),
-                "1" | "true" | "yes" | "on"
-            )
-        });
+    let clipboard_opt_out = std::env::var("UC_DISABLE_SYSTEM_CLIPBOARD").ok();
+    let disable_system_clipboard = is_clipboard_disabled(clipboard_opt_out.as_deref());
     #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
     let system_clipboard_wiring = if disable_system_clipboard {
         tracing::info!(
@@ -167,6 +160,22 @@ pub fn create_platform_layer(
         }
     };
 
+    Ok(SystemClipboardLayer {
+        clipboard,
+        system_clipboard,
+        wiring: system_clipboard_wiring,
+    })
+}
+
+pub fn create_platform_layer(
+    secure_storage: Arc<dyn SecureStoragePort>,
+    config_dir: &PathBuf,
+    blob_repository: Arc<dyn BlobRepositoryPort>,
+    _member_repo: Arc<dyn uc_core::MemberRepositoryPort>,
+    clock: Arc<dyn ClockPort>,
+    storage_config: Arc<ClipboardStorageConfig>,
+    system_clipboard: SystemClipboardLayer,
+) -> WiringResult<PlatformLayer> {
     let device_identity = LocalDeviceIdentity::load_or_create(config_dir.clone()).map_err(|e| {
         WiringError::SettingsInit(format!("Failed to create device identity: {}", e))
     })?;
@@ -268,9 +277,9 @@ pub fn create_platform_layer(
         Arc::new(uc_infra::security::DefaultCurrentProfile::new());
 
     Ok(PlatformLayer {
-        clipboard,
-        system_clipboard,
-        system_clipboard_wiring,
+        clipboard: system_clipboard.clipboard,
+        system_clipboard: system_clipboard.system_clipboard,
+        system_clipboard_wiring: system_clipboard.wiring,
         secure_storage,
         device_identity,
         representation_normalizer,
@@ -279,6 +288,15 @@ pub fn create_platform_layer(
         blob_store: blob_store_reader,
         session,
         current_profile,
+    })
+}
+
+fn is_clipboard_disabled(value: Option<&str>) -> bool {
+    value.is_some_and(|value| {
+        matches!(
+            value.trim().to_ascii_lowercase().as_str(),
+            "1" | "true" | "yes" | "on"
+        )
     })
 }
 
@@ -294,4 +312,20 @@ fn is_v2_blob(path: &std::path::Path) -> bool {
             Ok(buf == UCBL_MAGIC)
         })
         .unwrap_or(false)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_clipboard_disabled;
+
+    #[test]
+    fn clipboard_opt_out_only_accepts_boolean_true_values() {
+        for value in ["1", "true", "TRUE", "yes", "on", " On "] {
+            assert!(is_clipboard_disabled(Some(value)));
+        }
+        for value in ["0", "false", "no", "off", "", "anything"] {
+            assert!(!is_clipboard_disabled(Some(value)));
+        }
+        assert!(!is_clipboard_disabled(None));
+    }
 }

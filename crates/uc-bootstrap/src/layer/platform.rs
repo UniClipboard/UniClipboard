@@ -16,7 +16,9 @@ use uc_infra::clipboard::ClipboardRepresentationNormalizer;
 use uc_infra::config::ClipboardStorageConfig;
 use uc_infra::device::LocalDeviceIdentity;
 use uc_infra::security::{EncryptedBlobStore, InMemorySession};
-use uc_platform::clipboard::{LocalClipboard, NoopSystemClipboard};
+#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+use uc_platform::clipboard::LocalClipboard;
+use uc_platform::clipboard::NoopSystemClipboard;
 
 use crate::wiring::deps::{WiringError, WiringResult};
 
@@ -117,6 +119,7 @@ pub fn create_platform_layer(
                 "1" | "true" | "yes" | "on"
             )
         });
+    #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
     let system_clipboard_wiring = if disable_system_clipboard {
         tracing::info!(
             "UC_DISABLE_SYSTEM_CLIPBOARD set; substituting NoopSystemClipboard \
@@ -135,17 +138,32 @@ pub fn create_platform_layer(
     } else {
         SystemClipboardWiring::Real
     };
+
+    #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
+    let system_clipboard_wiring = {
+        let _ = disable_system_clipboard;
+        SystemClipboardWiring::Noop
+    };
     let (clipboard, system_clipboard): (
         Arc<dyn PlatformClipboardPort>,
         Arc<dyn SystemClipboardPort>,
     ) = match system_clipboard_wiring {
         SystemClipboardWiring::Noop => noop_system_clipboard(),
         SystemClipboardWiring::Real => {
-            let clipboard_impl = LocalClipboard::new().map_err(|e| {
-                WiringError::ClipboardInit(format!("Failed to create clipboard: {}", e))
-            })?;
-            let clipboard_impl = Arc::new(clipboard_impl);
-            (clipboard_impl.clone(), clipboard_impl)
+            #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+            {
+                let clipboard_impl = LocalClipboard::new().map_err(|e| {
+                    WiringError::ClipboardInit(format!("Failed to create clipboard: {}", e))
+                })?;
+                let clipboard_impl = Arc::new(clipboard_impl);
+                (clipboard_impl.clone(), clipboard_impl)
+            }
+            #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
+            {
+                return Err(WiringError::ClipboardInit(
+                    "mobile hosts must inject a clipboard implementation".to_string(),
+                ));
+            }
         }
     };
 

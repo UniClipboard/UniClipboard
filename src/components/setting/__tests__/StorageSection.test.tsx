@@ -67,7 +67,7 @@ const mockGetSearchStatus = vi.mocked(getSearchStatus)
 const mockGetStorageStats = vi.mocked(storageApi.getStorageStats)
 
 beforeAll(() => {
-  // Radix Select needs pointer-capture + scrollIntoView shims under jsdom.
+  // Base UI Select needs pointer-capture + scrollIntoView shims under jsdom.
   if (!HTMLElement.prototype.hasPointerCapture) {
     Object.defineProperty(HTMLElement.prototype, 'hasPointerCapture', {
       value: () => false,
@@ -194,7 +194,7 @@ describe('StorageSection — max items "unlimited" selection', () => {
 
     render(<StorageSection />)
 
-    // Radix's `combobox` role doesn't compute an accessible name from content
+    // The `combobox` role doesn't compute an accessible name from content
     // (that role isn't in the ARIA "name from content" set), and SettingRow
     // doesn't wire a <label for>/aria-labelledby to the Select — so we can't
     // filter by `name`. Fall back to DOM order, which mirrors the fixed JSX

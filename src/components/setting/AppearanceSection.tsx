@@ -96,22 +96,24 @@ function ColorPickerRow({
           </span>
         )}
         <Popover open={open} onOpenChange={handleOpenChange}>
-          <PopoverTrigger asChild>
-            <button
-              type="button"
-              className={cn(
-                'flex items-center gap-2 rounded-md border px-2 py-1 transition-all',
-                'hover:border-primary/40 hover:shadow-sm',
-                isModified ? 'border-primary/50' : 'border-border/60'
-              )}
-            >
-              <span
-                className="size-4 rounded-sm border border-border/40 shadow-inner"
-                style={{ backgroundColor: hex }}
-                aria-hidden
+          <PopoverTrigger
+            render={
+              <button
+                type="button"
+                className={cn(
+                  'flex items-center gap-2 rounded-md border px-2 py-1 transition-all',
+                  'hover:border-primary/40 hover:shadow-sm',
+                  isModified ? 'border-primary/50' : 'border-border/60'
+                )}
               />
-              <span className="font-mono text-xs text-foreground/80">{hex.toUpperCase()}</span>
-            </button>
+            }
+          >
+            <span
+              className="size-4 rounded-sm border border-border/40 shadow-inner"
+              style={{ backgroundColor: hex }}
+              aria-hidden
+            />
+            <span className="font-mono text-xs text-foreground/80">{hex.toUpperCase()}</span>
           </PopoverTrigger>
           <PopoverContent className="w-auto p-3" align="end">
             <HexColorPicker color={displayedHex} onChange={handleHexChange} />

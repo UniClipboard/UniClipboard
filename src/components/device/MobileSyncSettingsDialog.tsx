@@ -30,7 +30,7 @@
  *
  * # 关键不变量
  *
- * - LAN 安全告警：开启 LAN 监听仍弹 AlertDialog（Radix portal 自然堆叠在
+ * - LAN 安全告警：开启 LAN 监听仍弹 AlertDialog（Base UI portal 自然堆叠在
  *   Dialog 之上）
  * - port: 本地 portDraft + onBlur 提交，避免每键击都触发 update_settings
  * - bindIp: BIND_IP_AUTO_SENTINEL ↔ null 互转（Auto 选项）
@@ -90,7 +90,7 @@ import { cn } from '@/lib/utils'
 const log = createLogger('mobile-sync-settings-dialog')
 
 /**
- * Radix Select 禁止 SelectItem.value 为空串；用非空 sentinel 表示"自动"，
+ * Base UI Select 禁止 SelectItem.value 为空串；用非空 sentinel 表示"自动"，
  * 在 boundary 处与 facade 的 null 互转。
  */
 const BIND_IP_AUTO_SENTINEL = '__auto__'
@@ -449,7 +449,7 @@ const MobileSyncSettingsDialog: React.FC<Props> = ({ open, onOpenChange, onSetti
         </DialogContent>
       </Dialog>
 
-      {/* ── LAN 安全告警 modal（Radix portal 自然堆叠在主 Dialog 之上） */}
+      {/* ── LAN 安全告警 modal（Base UI portal 自然堆叠在主 Dialog 之上） */}
       <AlertDialog
         open={pendingLanEnable}
         onOpenChange={open => !open && setPendingLanEnable(false)}

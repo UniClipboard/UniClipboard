@@ -144,6 +144,17 @@ describe('Sidebar update indicator', () => {
     expect(movingHighlight).toHaveStyle({ transform: 'translateY(3.25rem)' })
   })
 
+  it('keeps inactive navigation hover backgrounds rounded without transparent clipping', () => {
+    renderSidebarAt('/devices')
+
+    expect(document.querySelector('aside')).toHaveClass('bg-background')
+
+    const historyLink = document.querySelector('a[href="/history"]')
+    expect(historyLink).toHaveClass('rounded-lg', 'hover:bg-muted')
+    expect(historyLink).not.toHaveClass('overflow-hidden', 'transition-colors')
+    expect(historyLink?.firstElementChild).not.toHaveClass('transition-colors')
+  })
+
   it('shows the amber "available" icon when an update is available', async () => {
     renderSidebar({
       phase: 'available',

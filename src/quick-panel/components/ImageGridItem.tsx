@@ -64,7 +64,7 @@ const ImageGridItem: React.FC<ImageGridItemProps> = React.memo(
         )}
         onClick={e => onSelect(index, e.altKey)}
         onMouseEnter={() => onHover(index)}
-        // Radix opens the menu on the same event; selecting here just keeps the
+        // Base UI opens the menu on the same event; selecting here just keeps the
         // highlighted tile aligned with the menu's target.
         onContextMenu={() => onContextMenu(index)}
         onKeyDown={e => {

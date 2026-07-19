@@ -109,8 +109,9 @@ describe('UnlockPage', () => {
 
     expect(unlockSpaceWithPassphrase).toHaveBeenCalledWith('correct-horse-battery-staple')
     expect(onUnlockSucceeded).toHaveBeenCalledTimes(1)
-    // Modal closes
-    expect(screen.queryByText(i18n.t('unlock.passphraseModal.title'))).not.toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.queryByText(i18n.t('unlock.passphraseModal.title'))).not.toBeInTheDocument()
+    })
   })
 
   it('shows WRONG_PASSPHRASE message and keeps modal open on wrong passphrase', async () => {
@@ -241,8 +242,11 @@ describe('UnlockPage', () => {
 
       expect(resetSpace).toHaveBeenCalledTimes(1)
       expect(onResetSucceeded).toHaveBeenCalledTimes(1)
-      // Modal closes
-      expect(screen.queryByText(i18n.t('unlock.factoryReset.modal.title'))).not.toBeInTheDocument()
+      await waitFor(() => {
+        expect(
+          screen.queryByText(i18n.t('unlock.factoryReset.modal.title'))
+        ).not.toBeInTheDocument()
+      })
     })
 
     it('shows typed error and keeps modal open when key wipe fails', async () => {

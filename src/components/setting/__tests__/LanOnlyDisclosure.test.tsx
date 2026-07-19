@@ -1,5 +1,5 @@
 import '@testing-library/jest-dom/vitest'
-import { render, screen, cleanup, fireEvent } from '@testing-library/react'
+import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { LanOnlyDisclosure } from '@/components/setting/LanOnlyDisclosure'
@@ -44,7 +44,7 @@ describe('LanOnlyDisclosure', () => {
     })
     fireEvent.mouseEnter(trigger)
     fireEvent.mouseOver(trigger)
-    // hover 不应打开 dialog（Radix Popover 默认就 click-only — 此测试是 fence）
+    // hover 不应打开 dialog（Base UI Popover 默认就 click-only — 此测试是 fence）
     expect(screen.queryByRole('dialog')).toBeNull()
   })
 
@@ -77,7 +77,7 @@ describe('LanOnlyDisclosure', () => {
     await user.click(screen.getByRole('button', { name: /查看 LAN-only|View the list/ }))
     expect(screen.getByRole('dialog')).toBeInTheDocument()
     await user.keyboard('{Escape}')
-    expect(screen.queryByRole('dialog')).toBeNull()
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
   })
 
   it('Test 7: Popover 标题 + intro 文案双语命中', async () => {

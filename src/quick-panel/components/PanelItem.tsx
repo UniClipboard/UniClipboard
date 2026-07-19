@@ -1,5 +1,5 @@
+import { useMergedRefs } from '@base-ui/utils/useMergedRefs'
 import { FileText, Star } from 'lucide-react'
-import { useComposedRefs } from 'radix-ui/internal'
 import React from 'react'
 import { useInView } from '@/hooks/useInView'
 import { formatRelativeTime } from '@/lib/clipboard-utils'
@@ -44,7 +44,7 @@ const PanelItem: React.FC<PanelItemProps> = React.memo(
     // to PAGE_SIZE daemon calls at once, most for off-screen rows. Defer each
     // row's own thumbnail fetch until it has actually scrolled into view.
     const [inViewRef, inView] = useInView<HTMLDivElement>()
-    const ref = useComposedRefs(itemRef, inViewRef)
+    const ref = useMergedRefs(itemRef, inViewRef)
 
     return (
       <div
@@ -68,9 +68,9 @@ const PanelItem: React.FC<PanelItemProps> = React.memo(
         )}
         onClick={e => onSelect(index, e.altKey)}
         onMouseEnter={() => onHover(index)}
-        // Radix opens the menu on the same event; we only move the selection so
+        // Base UI opens the menu on the same event; we only move the selection so
         // the highlighted row is the one the menu acts on. No preventDefault —
-        // that's Radix's job (it suppresses the native browser menu).
+        // that's Base UI's job (it suppresses the native browser menu).
         onContextMenu={() => onContextMenu(index)}
         onKeyDown={e => {
           if (e.key === 'Enter' || e.key === ' ') {

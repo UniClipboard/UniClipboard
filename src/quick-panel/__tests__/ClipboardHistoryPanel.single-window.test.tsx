@@ -342,7 +342,7 @@ describe('ClipboardHistoryPanel row context menu', () => {
     __resetResendActionStoreForTests()
   })
 
-  // radix-ui ContextMenu listens for the native contextmenu event; fire it
+  // The shared ContextMenu listens for the native contextmenu event; fire it
   // directly (userEvent right-click is flaky under jsdom).
   function openRowMenu(rowText: string) {
     fireEvent.contextMenu(screen.getByText(rowText))

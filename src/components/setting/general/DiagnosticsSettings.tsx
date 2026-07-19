@@ -180,19 +180,17 @@ export function DiagnosticsSettings() {
 
       <AlertDialog
         open={debugDialog !== 'closed'}
-        onOpenChange={open => {
+        onOpenChange={(open, eventDetails) => {
           // While restarting, the dialog is forced: ignore every close request
           // (Escape, overlay, programmatic) until the restart finishes or fails.
-          if (isRestarting) return
+          if (isRestarting) {
+            eventDetails.cancel()
+            return
+          }
           if (!open) setDebugDialog('closed')
         }}
       >
-        <AlertDialogContent
-          className="bg-card text-card-foreground"
-          onEscapeKeyDown={event => {
-            if (isRestarting) event.preventDefault()
-          }}
-        >
+        <AlertDialogContent className="bg-card text-card-foreground">
           <AlertDialogHeader>
             <AlertDialogTitle>
               {isRestarting
@@ -219,7 +217,7 @@ export function DiagnosticsSettings() {
               </AlertDialogCancel>
               <AlertDialogAction
                 onClick={event => {
-                  // Prevent Radix from auto-closing the dialog on action click;
+                  // Prevent the alert dialog from closing on action click;
                   // we keep it open to show the forced restarting state.
                   event.preventDefault()
                   void handleConfirmDebugMode()

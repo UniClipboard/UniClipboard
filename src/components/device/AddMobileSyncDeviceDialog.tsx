@@ -155,18 +155,20 @@ const AddMobileSyncDeviceDialogInner: React.FC<Props> = ({ open, onOpenChange, o
 
           {/* Advanced options */}
           <Collapsible open={advancedOpen} onOpenChange={setAdvancedOpen}>
-            <CollapsibleTrigger asChild>
-              <button
-                type="button"
-                className="flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground"
-              >
-                {advancedOpen ? (
-                  <ChevronDown className="size-3.5" />
-                ) : (
-                  <ChevronRight className="size-3.5" />
-                )}
-                {t('devices.mobileSync.add.advanced.title')}
-              </button>
+            <CollapsibleTrigger
+              render={
+                <button
+                  type="button"
+                  className="flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground"
+                />
+              }
+            >
+              {advancedOpen ? (
+                <ChevronDown className="size-3.5" />
+              ) : (
+                <ChevronRight className="size-3.5" />
+              )}
+              {t('devices.mobileSync.add.advanced.title')}
             </CollapsibleTrigger>
             <CollapsibleContent className="mt-2 space-y-3 rounded-md border border-border/40 bg-muted/30 p-3">
               <p className="text-xs text-muted-foreground">

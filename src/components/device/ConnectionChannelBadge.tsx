@@ -63,18 +63,18 @@ const ConnectionChannelBadge: React.FC<ConnectionChannelBadgeProps> = ({
   const tip = t(`devices.list.channel.tooltip.${kind}`)
 
   return (
-    <TooltipProvider delayDuration={200}>
+    <TooltipProvider delay={200}>
       <Tooltip>
         {/*
-          用原生 span 当 trigger,既保留可 hover 语义,又让 Radix 拿到真实
+          用原生 span 当 trigger,既保留可 hover 语义,又让 Base UI 拿到真实
           DOM ref(避免 Function components cannot be given refs 警告)。
           外层 SpaceMembersPanel 已是 button,这里不再加 tabIndex/role,
           以免造成 button 嵌套的 a11y 冲突。
         */}
-        <TooltipTrigger asChild>
-          <span aria-label={tip} className={`${textClass} ${className ?? ''}`}>
-            {label}
-          </span>
+        <TooltipTrigger
+          render={<span aria-label={tip} className={`${textClass} ${className ?? ''}`} />}
+        >
+          {label}
         </TooltipTrigger>
         <TooltipContent side="top">{tip}</TooltipContent>
       </Tooltip>

@@ -1,10 +1,7 @@
+import { Input as InputPrimitive } from '@base-ui/react/input'
 import * as React from 'react'
 import { cn } from '@/lib/utils'
 
-// macOS WKWebView 默认对 <input> 开启拼写检查 / 词典纠错 / 首字母大写,
-// 而 UniClipboard 大量输入框装的是 ID / username / URL / 配对码等机器
-// 字符串,纠错出来的字符通常会被后端校验直接打回。在 wrapper 层统一关
-// 掉,业务代码可通过显式传同名 prop 覆盖(例如真的需要自然语言纠错时)。
 function Input({
   className,
   type,
@@ -14,7 +11,7 @@ function Input({
   ...props
 }: React.ComponentProps<'input'>) {
   return (
-    <input
+    <InputPrimitive
       type={type}
       data-slot="input"
       autoCorrect={autoCorrect ?? 'off'}

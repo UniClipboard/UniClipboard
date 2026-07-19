@@ -242,16 +242,18 @@ function StorageUsageBar({
           {segments.map(seg =>
             seg.percentage > 0 ? (
               <Tooltip key={seg.key}>
-                <TooltipTrigger asChild>
-                  <div
-                    className="h-full transition-all duration-500 ease-out first:rounded-l-full last:rounded-r-full cursor-default"
-                    style={{
-                      width: `${Math.max(seg.percentage, 2)}%`,
-                      backgroundColor: seg.color,
-                      opacity: 0.85,
-                    }}
-                  />
-                </TooltipTrigger>
+                <TooltipTrigger
+                  render={
+                    <div
+                      className="h-full transition-all duration-500 ease-out first:rounded-l-full last:rounded-r-full cursor-default"
+                      style={{
+                        width: `${Math.max(seg.percentage, 2)}%`,
+                        backgroundColor: seg.color,
+                        opacity: 0.85,
+                      }}
+                    />
+                  }
+                />
                 <TooltipContent>
                   <span className="font-medium">{seg.label}</span>
                   <span className="ml-1.5 opacity-70">{formatBytes(seg.bytes)}</span>

@@ -161,18 +161,16 @@ export function ConfigBackupGroup() {
       {/* ── Import confirmation (device-move warning) ── */}
       <AlertDialog
         open={imp.phase === 'confirm' || imp.isRestarting}
-        onOpenChange={open => {
+        onOpenChange={(open, eventDetails) => {
           // While restarting, the dialog is forced: ignore every close request.
-          if (imp.isRestarting) return
+          if (imp.isRestarting) {
+            eventDetails.cancel()
+            return
+          }
           if (!open) imp.reset()
         }}
       >
-        <AlertDialogContent
-          className="bg-card text-card-foreground"
-          onEscapeKeyDown={event => {
-            if (imp.isRestarting) event.preventDefault()
-          }}
-        >
+        <AlertDialogContent className="bg-card text-card-foreground">
           <AlertDialogHeader>
             <AlertDialogTitle>
               {imp.isRestarting

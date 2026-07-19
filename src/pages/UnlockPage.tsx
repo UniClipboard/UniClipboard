@@ -380,8 +380,11 @@ export default function UnlockPage({ onUnlockSucceeded, onResetSucceeded }: Unlo
         </button>
       </div>
 
-      <AlertDialog open={showKeychainModal}>
-        <AlertDialogContent onEscapeKeyDown={e => e.preventDefault()}>
+      <AlertDialog
+        open={showKeychainModal}
+        onOpenChange={(_, eventDetails) => eventDetails.cancel()}
+      >
+        <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>{t('unlock.keychainModal.title')}</AlertDialogTitle>
             <AlertDialogDescription>{t('unlock.keychainModal.description')}</AlertDialogDescription>
@@ -419,16 +422,18 @@ export default function UnlockPage({ onUnlockSucceeded, onResetSucceeded }: Unlo
         </AlertDialogContent>
       </AlertDialog>
 
-      <AlertDialog open={showPassphraseModal}>
-        <AlertDialogContent
-          onEscapeKeyDown={event => {
-            if (submitting) {
-              event.preventDefault()
-              return
-            }
-            closePassphraseModal()
-          }}
-        >
+      <AlertDialog
+        open={showPassphraseModal}
+        onOpenChange={(open, eventDetails) => {
+          if (open) return
+          if (submitting) {
+            eventDetails.cancel()
+            return
+          }
+          closePassphraseModal()
+        }}
+      >
+        <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>{t('unlock.passphraseModal.title')}</AlertDialogTitle>
             <AlertDialogDescription>
@@ -507,16 +512,18 @@ export default function UnlockPage({ onUnlockSucceeded, onResetSucceeded }: Unlo
         </AlertDialogContent>
       </AlertDialog>
 
-      <AlertDialog open={showResetModal}>
-        <AlertDialogContent
-          onEscapeKeyDown={event => {
-            if (resetting) {
-              event.preventDefault()
-              return
-            }
-            closeResetModal()
-          }}
-        >
+      <AlertDialog
+        open={showResetModal}
+        onOpenChange={(open, eventDetails) => {
+          if (open) return
+          if (resetting) {
+            eventDetails.cancel()
+            return
+          }
+          closeResetModal()
+        }}
+      >
+        <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>{t('unlock.factoryReset.modal.title')}</AlertDialogTitle>
             <AlertDialogDescription>

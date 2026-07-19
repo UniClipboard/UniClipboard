@@ -46,7 +46,7 @@ if (typeof globalThis.matchMedia !== 'function') {
   })
 }
 
-// jsdom ships no `ResizeObserver`; Radix's ScrollArea observes its viewport in
+// jsdom ships no `ResizeObserver`; Base UI's ScrollArea observes its viewport in
 // a layout effect. Provide an inert stub so components built on it render in
 // tests instead of throwing.
 if (typeof globalThis.ResizeObserver !== 'function') {
@@ -56,6 +56,17 @@ if (typeof globalThis.ResizeObserver !== 'function') {
       unobserve() {}
       disconnect() {}
     },
+    configurable: true,
+    writable: true,
+  })
+}
+
+// Base UI waits for viewport animations before measuring its scrollbar thumb.
+// jsdom has no Web Animations API, so expose the no-animation result used by
+// static test layouts.
+if (typeof Element !== 'undefined' && typeof Element.prototype.getAnimations !== 'function') {
+  Object.defineProperty(Element.prototype, 'getAnimations', {
+    value: () => [],
     configurable: true,
     writable: true,
   })

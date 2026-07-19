@@ -382,53 +382,50 @@ const AboutSection: React.FC = () => {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>{t('update.title')}</AlertDialogTitle>
-            <AlertDialogDescription asChild className="space-y-3">
-              <div>
-                <div className="space-y-1">
-                  <div className="flex items-center justify-between text-muted-foreground">
-                    <span>{t('update.currentVersion')}</span>
-                    <span className="text-foreground">{updateInfo?.currentVersion ?? '-'}</span>
-                  </div>
-                  <div className="flex items-center justify-between text-muted-foreground">
-                    <span>{t('update.latestVersion')}</span>
-                    <span className="text-foreground">{updateInfo?.version ?? '-'}</span>
-                  </div>
+            <AlertDialogDescription render={<div />} className="space-y-3">
+              <div className="space-y-1">
+                <div className="flex items-center justify-between text-muted-foreground">
+                  <span>{t('update.currentVersion')}</span>
+                  <span className="text-foreground">{updateInfo?.currentVersion ?? '-'}</span>
                 </div>
-                <div className="space-y-2">
-                  <div className="text-sm font-medium text-foreground">
-                    {t('update.releaseNotes')}
-                  </div>
-                  <div className="scrollbar-thin max-h-48 overflow-auto rounded-md border border-border/60 bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
-                    <ReleaseNotes content={updateInfo?.body ?? ''} fallback={t('update.noNotes')} />
-                  </div>
+                <div className="flex items-center justify-between text-muted-foreground">
+                  <span>{t('update.latestVersion')}</span>
+                  <span className="text-foreground">{updateInfo?.version ?? '-'}</span>
                 </div>
-                {(downloadProgress.phase === 'downloading' ||
-                  downloadProgress.phase === 'installing') && (
-                  <div className="space-y-2 pt-2">
-                    <div className="flex justify-between text-xs text-muted-foreground">
-                      <span>
-                        {downloadProgress.phase === 'installing'
-                          ? t('update.installing')
-                          : t('update.downloading')}
-                      </span>
-                      {downloadProgress.total !== null && (
-                        <span>
-                          {Math.round((downloadProgress.downloaded / downloadProgress.total) * 100)}
-                          %
-                        </span>
-                      )}
-                    </div>
-                    <Progress
-                      value={
-                        downloadProgress.total !== null
-                          ? (downloadProgress.downloaded / downloadProgress.total) * 100
-                          : undefined
-                      }
-                      className={cn('h-2', downloadProgress.total === null && 'animate-pulse')}
-                    />
-                  </div>
-                )}
               </div>
+              <div className="space-y-2">
+                <div className="text-sm font-medium text-foreground">
+                  {t('update.releaseNotes')}
+                </div>
+                <div className="scrollbar-thin max-h-48 overflow-auto rounded-md border border-border/60 bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
+                  <ReleaseNotes content={updateInfo?.body ?? ''} fallback={t('update.noNotes')} />
+                </div>
+              </div>
+              {(downloadProgress.phase === 'downloading' ||
+                downloadProgress.phase === 'installing') && (
+                <div className="space-y-2 pt-2">
+                  <div className="flex justify-between text-xs text-muted-foreground">
+                    <span>
+                      {downloadProgress.phase === 'installing'
+                        ? t('update.installing')
+                        : t('update.downloading')}
+                    </span>
+                    {downloadProgress.total !== null && (
+                      <span>
+                        {Math.round((downloadProgress.downloaded / downloadProgress.total) * 100)}%
+                      </span>
+                    )}
+                  </div>
+                  <Progress
+                    value={
+                      downloadProgress.total !== null
+                        ? (downloadProgress.downloaded / downloadProgress.total) * 100
+                        : undefined
+                    }
+                    className={cn('h-2', downloadProgress.total === null && 'animate-pulse')}
+                  />
+                </div>
+              )}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

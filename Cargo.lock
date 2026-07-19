@@ -10399,12 +10399,14 @@ dependencies = [
  "async-trait",
  "chrono",
  "serde",
+ "thiserror 2.0.18",
  "tokio",
  "tokio-util",
  "tracing",
  "uc-application",
  "uc-core",
  "uc-infra",
+ "uc-observability-contract",
  "zeroize",
 ]
 

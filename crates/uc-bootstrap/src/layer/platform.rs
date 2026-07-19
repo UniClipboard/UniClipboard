@@ -21,27 +21,9 @@ use uc_platform::clipboard::LocalClipboard;
 use uc_platform::clipboard::NoopSystemClipboard;
 
 use crate::wiring::deps::{WiringError, WiringResult};
+pub use uc_engine::internal::clipboard::SystemClipboardWiring;
 
 /// Platform layer implementations
-/// Outcome of the system-clipboard wiring decision made in
-/// [`create_platform_layer`] — the single place that decides whether this
-/// process talks to the real OS clipboard.
-///
-/// Carried through [`PlatformLayer`] / [`WiredDependencies`] so hosts align
-/// their own clipboard-dependent assembly (e.g. the daemon's OS-clipboard
-/// watcher worker) with the wiring instead of re-deciding — or re-probing —
-/// on their own.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SystemClipboardWiring {
-    /// The real OS clipboard adapter is wired; clipboard integration works.
-    Real,
-    /// `NoopSystemClipboard` is wired (explicitly disabled via
-    /// `UC_DISABLE_SYSTEM_CLIPBOARD`, or no graphical session to talk to).
-    /// Captures and writes are no-ops; nothing OS-clipboard-bound should be
-    /// assembled on top.
-    Noop,
-}
-
 pub struct PlatformLayer {
     // System clipboard
     pub clipboard: Arc<dyn PlatformClipboardPort>,

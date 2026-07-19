@@ -12,9 +12,11 @@ serde = { version = "1", features = ["derive"] }
 tokio = { version = "1", features = ["macros", "rt", "sync", "time"] }
 tokio-util = "0.7"
 tracing = "0.1"
+thiserror = "2.0"
 uc-application = { path = "../uc-application" }
-uc-core = { path = "../uc-core" }
+uc-core = { path = "../uc-core", features = ["task-registry"] }
 uc-infra = { path = "../uc-infra" }
+uc-observability-contract = { path = "../uc-observability-contract" }
 zeroize = "1.8"
 
 [dev-dependencies]

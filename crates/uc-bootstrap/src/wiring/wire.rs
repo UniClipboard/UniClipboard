@@ -70,7 +70,7 @@ use uc_infra::{
     FileAppVersionStateRepository, FileFirstSyncStateRepository, FileMigrationStateRepository,
     FileSetupStatusRepository, SystemClock,
 };
-use uc_observability::analytics::AnalyticsFacade;
+use uc_observability_contract::analytics::{AnalyticsFacade, AnalyticsPort};
 
 use crate::layer::platform::create_platform_layer;
 use crate::wiring::deps::{
@@ -181,7 +181,7 @@ pub(crate) struct CoreWiringInputs {
     pub(crate) legacy_iroh_identity_dir: PathBuf,
     pub(crate) iroh_blob_store_dir: PathBuf,
     pub(crate) system_clipboard: crate::layer::platform::SystemClipboardLayer,
-    pub(crate) analytics_sink: Arc<dyn uc_observability::analytics::AnalyticsPort>,
+    pub(crate) analytics_sink: Arc<dyn AnalyticsPort>,
     pub(crate) analytics_facade: Arc<dyn AnalyticsFacade>,
     pub(crate) host_event_emitter: Arc<dyn HostEventEmitterPort>,
 }

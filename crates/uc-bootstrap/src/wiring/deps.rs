@@ -16,7 +16,7 @@ use uc_core::clipboard::ActiveClipboardState;
 use uc_core::ids::RepresentationId;
 use uc_core::ports::blob::BlobReferenceRepositoryPort;
 use uc_infra::clipboard::{RepresentationCache, SpoolManager};
-use uc_observability::analytics::AnalyticsFacade;
+use uc_observability_contract::analytics::AnalyticsFacade;
 
 use crate::layer::platform::SystemClipboardWiring;
 

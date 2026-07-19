@@ -10174,6 +10174,7 @@ dependencies = [
  "uc-core",
  "uc-infra",
  "uc-observability",
+ "uc-observability-contract",
  "uc-platform",
  "wiremock",
 ]

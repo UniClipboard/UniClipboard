@@ -184,4 +184,57 @@ describe('ClipboardPreview', () => {
     expect(screen.queryByRole('img', { name: 'report.pdf' })).not.toBeInTheDocument()
     expect(screen.getByText('report.pdf')).toBeInTheDocument()
   })
+
+  it('wraps long URLs instead of truncating them', () => {
+    const longUrl =
+      'https://example.com/a/very/long/path/that/should/remain/fully/visible?query=complete-url-preview'
+
+    render(
+      <ClipboardPreview
+        item={{
+          id: 'link-entry',
+          type: 'text',
+          activeTime: 1710000000000,
+          contentTags: ['link'],
+          content: {
+            display_text: longUrl,
+            has_detail: false,
+            size: longUrl.length,
+            link_urls: [longUrl],
+            link_domains: ['example.com'],
+          },
+        }}
+      />
+    )
+
+    const url = screen.getByText(longUrl)
+    expect(url).not.toHaveClass('truncate')
+    expect(url).toHaveClass('break-all', 'whitespace-normal')
+  })
+
+  it('renders URLs as plain links instead of cards', () => {
+    const url = 'https://example.com/docs'
+
+    render(
+      <ClipboardPreview
+        item={{
+          id: 'link-entry',
+          type: 'text',
+          activeTime: 1710000000000,
+          contentTags: ['link'],
+          content: {
+            display_text: url,
+            has_detail: false,
+            size: url.length,
+            link_urls: [url],
+            link_domains: ['example.com'],
+          },
+        }}
+      />
+    )
+
+    const link = screen.getByRole('button', { name: url })
+    expect(link).not.toHaveClass('rounded-xl', 'border', 'bg-muted/10', 'p-4')
+    expect(screen.queryByText('example.com')).not.toBeInTheDocument()
+  })
 })

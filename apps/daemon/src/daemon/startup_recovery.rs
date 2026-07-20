@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use tokio::sync::Notify;
 use tracing::{info_span, Instrument};
-use uc_application::facade::{AppFacade, UpgradeStatus};
+use uc_application::facade::{AppFacade, UpgradeFacade, UpgradeStatus};
 use uc_application::receive_reconciliation::{
     EnsureReceiveReadyPort, ReceiveReadinessError, ReceiveReadinessStatus,
 };
@@ -152,8 +152,8 @@ pub fn spawn_startup_recovery(input: StartupRecoveryInput) {
     });
 }
 
-pub(crate) async fn record_upgrade_status_at_startup(app_facade: &AppFacade) {
-    let status = match app_facade.upgrade.detect_on_startup(DAEMON_VERSION).await {
+pub(crate) async fn record_upgrade_status_at_startup(upgrade: &UpgradeFacade) {
+    let status = match upgrade.detect_on_startup(DAEMON_VERSION).await {
         Ok(status) => status,
         Err(error) => {
             tracing::warn!(
@@ -174,7 +174,7 @@ pub(crate) async fn record_upgrade_status_at_startup(app_facade: &AppFacade) {
             );
             // Seal fresh installs immediately. Otherwise the next boot can
             // misclassify a newly completed setup as an unknown upgrade.
-            if let Err(error) = app_facade.upgrade.acknowledge(DAEMON_VERSION).await {
+            if let Err(error) = upgrade.acknowledge(DAEMON_VERSION).await {
                 tracing::warn!(
                     target: "upgrade",
                     error = %error,
@@ -202,7 +202,7 @@ pub(crate) async fn record_upgrade_status_at_startup(app_facade: &AppFacade) {
             // daemon advances their cursor. Unknown upgrades remain pending
             // until the GUI has shown and dismissed the re-pair notice.
             if from.is_some() {
-                if let Err(error) = app_facade.upgrade.acknowledge(DAEMON_VERSION).await {
+                if let Err(error) = upgrade.acknowledge(DAEMON_VERSION).await {
                     tracing::warn!(
                         target: "upgrade",
                         error = %error,

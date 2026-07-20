@@ -56,9 +56,8 @@ pub fn router() -> Router<DaemonApiState> {
 async fn get_upgrade_status_handler(
     State(state): State<DaemonApiState>,
 ) -> Result<Json<ApiEnvelope<UpgradeStatusDto>>, ApiError> {
-    let app = state.app_facade_or_error()?;
-    let status = app
-        .upgrade
+    let upgrade = state.upgrade;
+    let status = upgrade
         .detect_on_startup(SERVER_VERSION)
         .await
         .map_err(detect_error_to_api)?;
@@ -85,8 +84,8 @@ async fn get_upgrade_status_handler(
 async fn ack_upgrade_handler(
     State(state): State<DaemonApiState>,
 ) -> Result<Json<ApiEnvelope<AckUpgradePayload>>, ApiError> {
-    let app = state.app_facade_or_error()?;
-    app.upgrade
+    let upgrade = state.upgrade;
+    upgrade
         .acknowledge(SERVER_VERSION)
         .await
         .map_err(ack_error_to_api)?;

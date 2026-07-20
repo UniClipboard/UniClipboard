@@ -205,7 +205,7 @@ pub(super) async fn start_runtime(
     // Startup recovery remains in the same task as the run loop so creating a
     // DaemonHandle stays non-blocking while HTTP readiness ordering is stable.
     let join = tokio::spawn(async move {
-        record_upgrade_status_at_startup(&app_facade_for_daemon).await;
+        record_upgrade_status_at_startup(app_facade_for_daemon.upgrade.as_ref()).await;
         spawn_startup_recovery(StartupRecoveryInput {
             run_mode,
             app_facade: app_facade_for_daemon,

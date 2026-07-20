@@ -343,6 +343,33 @@ fn daemon_silent_unlock_delegates_business_orchestration_to_engine() {
     );
 }
 
+#[test]
+fn daemon_upgrade_paths_depend_on_the_desktop_upgrade_capability() {
+    let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let startup_path = manifest.join("../../apps/daemon/src/daemon/startup_recovery.rs");
+    let startup = std::fs::read_to_string(&startup_path)
+        .unwrap_or_else(|error| panic!("failed to read {}: {error}", startup_path.display()));
+    let startup_upgrade = startup
+        .split("pub(crate) async fn record_upgrade_status_at_startup(")
+        .nth(1)
+        .and_then(|source| source.split("#[cfg(test)]").next())
+        .expect("startup upgrade function must remain discoverable");
+
+    assert!(
+        !startup_upgrade.contains("AppFacade") && !startup_upgrade.contains("app_facade"),
+        "daemon startup upgrade detection must depend on UpgradeFacade directly"
+    );
+
+    let handler_path = manifest.join("../../crates/uc-webserver/src/api/upgrade.rs");
+    let handler = std::fs::read_to_string(&handler_path)
+        .unwrap_or_else(|error| panic!("failed to read {}: {error}", handler_path.display()));
+
+    assert!(
+        !handler.contains("app_facade_or_error()") && handler.contains("state.upgrade"),
+        "daemon upgrade HTTP handlers must use the desktop upgrade capability directly"
+    );
+}
+
 fn rust_sources(root: &Path) -> Vec<PathBuf> {
     let mut pending = vec![root.to_path_buf()];
     let mut sources = Vec::new();

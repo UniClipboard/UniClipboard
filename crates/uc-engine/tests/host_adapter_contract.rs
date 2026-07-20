@@ -542,17 +542,18 @@ async fn engine_start_builds_a_resumable_real_session() {
         wrong_passphrase.category(),
         uc_engine::EngineErrorCategory::Unauthorized
     );
-    assert_eq!(
-        engine
-            .execute(uc_engine::Operation::UnlockSpace(
-                uc_engine::UnlockSpaceInput {
-                    passphrase: uc_engine::SecretString::new("correct horse"),
-                },
-            ))
-            .await
-            .unwrap(),
-        uc_engine::OperationResult::SpaceUnlocked
-    );
+    let unlocked = engine
+        .execute(uc_engine::Operation::UnlockSpace(
+            uc_engine::UnlockSpaceInput {
+                passphrase: uc_engine::SecretString::new("correct horse"),
+            },
+        ))
+        .await
+        .unwrap();
+    let uc_engine::OperationResult::SpaceUnlocked { space_id } = unlocked else {
+        panic!("expected unlocked space, got {unlocked:?}");
+    };
+    assert!(!space_id.is_empty(), "unlocked space id must be returned");
 
     assert_eq!(
         engine

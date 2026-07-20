@@ -12,8 +12,7 @@ use uc_application::facade::{
     InitializeSpaceInput as AppInitializeSpaceInput, QuerySetupStateError,
     RedeemPairingInvitationError, RedeemPairingInvitationInput, ResendEntryCommand,
     ResendEntryError, ResourceFacadeError, SearchCoordinator, SearchCoordinatorDeps,
-    SearchFacadeError, SearchPageView, SearchQueryInput, UnlockSpaceError,
-    UnlockSpaceInput as AppUnlockSpaceInput, MAX_INLINE_OUTBOUND_REPRESENTATION_BYTES,
+    SearchFacadeError, SearchPageView, SearchQueryInput, MAX_INLINE_OUTBOUND_REPRESENTATION_BYTES,
 };
 use uc_application::facade::{
     ClipboardLiveIndexInput, ClipboardOutboundInput, ClipboardOutboundOutcome,
@@ -46,6 +45,9 @@ use crate::internal::invitation::execute_issue_invitation;
 use crate::internal::lifecycle::build_daemon_lifecycle;
 use crate::internal::session_recovery::execute_recover_session;
 use crate::internal::sync_engine::SyncEngineAssembly;
+use crate::internal::unlock::execute_unlock_space;
+#[cfg(test)]
+use crate::internal::unlock::UNLOCK_SPACE_FAILED_CODE;
 use crate::{
     DeviceSummary, EngineConfig, EngineError, EngineErrorCategory, EntrySummary, HostCapabilities,
     HostFileAccess, Operation, OperationResult, QueryHistoryInput,
@@ -57,9 +59,6 @@ const OPERATION_UNAVAILABLE_CODE: u32 = 1103;
 const CREATE_SPACE_INVALID_INPUT_CODE: u32 = 1201;
 const CREATE_SPACE_CONFLICT_CODE: u32 = 1202;
 const CREATE_SPACE_FAILED_CODE: u32 = 1203;
-const UNLOCK_SPACE_INVALID_STATE_CODE: u32 = 1211;
-const UNLOCK_SPACE_UNAUTHORIZED_CODE: u32 = 1212;
-const UNLOCK_SPACE_FAILED_CODE: u32 = 1213;
 const JOIN_SPACE_INVALID_INPUT_CODE: u32 = 1231;
 const JOIN_SPACE_INVALID_STATE_CODE: u32 = 1232;
 const JOIN_SPACE_UNAUTHORIZED_CODE: u32 = 1233;
@@ -256,17 +255,10 @@ impl EngineRuntime for ProductionRuntime {
             }
             Operation::UnlockSpace(input) => {
                 let facade = self.current_facade().await?;
-                facade
-                    .unlock_space(AppUnlockSpaceInput {
-                        passphrase: input.passphrase.expose().to_owned(),
-                    })
-                    .await
-                    .map_err(map_unlock_space_error)?;
-                facade.search.on_session_ready().await;
-                ensure_receive_ready_after_space_access(
-                    Ok(OperationResult::SpaceUnlocked),
+                execute_unlock_space(
+                    facade.as_ref(),
                     self.file_transfer_lifecycle.as_ref(),
-                    UNLOCK_SPACE_FAILED_CODE,
+                    input,
                 )
                 .await
             }
@@ -927,26 +919,6 @@ fn map_create_space_error(error: InitializeSpaceError) -> EngineError {
         }
         InitializeSpaceError::StorageFailed(_) | InitializeSpaceError::Internal(_) => {
             operation_error_with_code(CREATE_SPACE_FAILED_CODE, "create space", error)
-        }
-    }
-}
-
-fn map_unlock_space_error(error: UnlockSpaceError) -> EngineError {
-    match error {
-        UnlockSpaceError::SetupNotCompleted | UnlockSpaceError::SpaceNotInitialized => {
-            EngineError::new(
-                UNLOCK_SPACE_INVALID_STATE_CODE,
-                EngineErrorCategory::InvalidState,
-                false,
-            )
-        }
-        UnlockSpaceError::WrongPassphrase => EngineError::new(
-            UNLOCK_SPACE_UNAUTHORIZED_CODE,
-            EngineErrorCategory::Unauthorized,
-            false,
-        ),
-        UnlockSpaceError::CorruptedKeyMaterial | UnlockSpaceError::Internal(_) => {
-            operation_error_with_code(UNLOCK_SPACE_FAILED_CODE, "unlock space", error)
         }
     }
 }

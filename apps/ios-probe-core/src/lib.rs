@@ -541,7 +541,9 @@ fn operation_response(result: OperationResult) -> Value {
         OperationResult::SpaceJoined { space_id } => {
             json!({"ok": true, "kind": "space_joined", "space_id": space_id})
         }
-        OperationResult::SpaceUnlocked => json!({"ok": true, "kind": "space_unlocked"}),
+        OperationResult::SpaceUnlocked { space_id } => {
+            json!({"ok": true, "kind": "space_unlocked", "space_id": space_id})
+        }
         OperationResult::SessionRecovered { unlocked, resumed } => json!({
             "ok": true,
             "kind": "session_recovered",

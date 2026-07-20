@@ -455,7 +455,9 @@ pub enum OperationResult {
     SpaceJoined {
         space_id: String,
     },
-    SpaceUnlocked,
+    SpaceUnlocked {
+        space_id: String,
+    },
     SessionRecovered {
         unlocked: bool,
         resumed: bool,
@@ -484,7 +486,7 @@ impl fmt::Debug for OperationResult {
         match self {
             Self::SpaceCreated { .. } => debug.field("kind", &"space_created"),
             Self::SpaceJoined { .. } => debug.field("kind", &"space_joined"),
-            Self::SpaceUnlocked => debug.field("kind", &"space_unlocked"),
+            Self::SpaceUnlocked { .. } => debug.field("kind", &"space_unlocked"),
             Self::SessionRecovered { unlocked, resumed } => debug
                 .field("kind", &"session_recovered")
                 .field("unlocked", unlocked)

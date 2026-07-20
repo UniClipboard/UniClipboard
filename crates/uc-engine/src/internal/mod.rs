@@ -17,6 +17,7 @@ pub mod reconcile;
 pub(crate) mod runtime;
 pub mod session_recovery;
 pub mod sync_engine;
+pub mod unlock;
 pub mod wire;
 
 #[cfg(test)]

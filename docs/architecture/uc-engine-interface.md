@@ -51,6 +51,8 @@ Running|Quiescing|Quiesced|Suspended -> ShuttingDown -> Stopped
 | `ResetSpace` | 清除当前空间设置，使设备回到未设置状态 |
 | `QuerySetupState` | 查询设置是否完成、当前邀请和已保存设备名 |
 | `QueryMigrationProgress` | 查询空间切换所处阶段和已备份记录数量 |
+| `QueryStorageStats` | 查询数据库、密钥库、缓存和日志占用大小，不返回本机目录 |
+| `ClearStorageCache` | 清理核心缓存并返回实际释放的字节数 |
 | `ListDevices` | 返回设备编号、显示名和在线状态 |
 | `SendText` | 写入加密历史、更新搜索并发送不超过 64 KiB 的文本 |
 | `SendImage` | 写入加密历史、更新搜索并发送不超过 64 KiB 的图片 |
@@ -62,6 +64,8 @@ Running|Quiescing|Quiesced|Suspended -> ShuttingDown -> Stopped
 `RecoverSession` 的 `allow_secure_storage_unlock` 由宿主根据当前运行环境决定。值为 `false` 时核心不得尝试从系统安全存储恢复密钥；值为 `true` 时，核心统一完成加密会话、空间会话、搜索和接收能力恢复。
 
 `CancelInvitation` 在没有待取消邀请时返回冲突错误。`ResetSpace` 只清除当前空间设置，不向宿主暴露底层存储步骤。`QuerySetupState` 不返回内部服务状态；`QueryMigrationProgress` 只返回准备、握手完成、切换完成三个稳定阶段，不公开内部运行编号或目标空间。
+
+`QueryStorageStats` 和 `ClearStorageCache` 由核心执行。宿主只能看到分类后的字节数和实际释放量，不能取得数据库、密钥库、缓存或日志的本机路径。
 
 空目标设备列表表示向所有符合条件的可信设备发送；非空列表只会缩小目标范围，不能绕过信任、在线状态和发送设置。
 

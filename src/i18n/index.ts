@@ -1,11 +1,13 @@
 import i18n from 'i18next'
 import { initReactI18next } from 'react-i18next'
 import enUS from './locales/en-US.json'
+import jaJP from './locales/ja-JP.json'
 import ptBR from './locales/pt-BR.json'
 import ruRU from './locales/ru-RU.json'
 import zhCN from './locales/zh-CN.json'
+import zhTW from './locales/zh-TW.json'
 
-export const SUPPORTED_LANGUAGES = ['zh-CN', 'en-US', 'ru-RU', 'pt-BR'] as const
+export const SUPPORTED_LANGUAGES = ['zh-CN', 'zh-TW', 'en-US', 'ja-JP', 'ru-RU', 'pt-BR'] as const
 export type SupportedLanguage = (typeof SUPPORTED_LANGUAGES)[number]
 
 const STORAGE_KEY = 'uniclipboard.language'
@@ -17,20 +19,27 @@ export function isSupportedLanguage(language: unknown): language is SupportedLan
 /**
  * Every region variant collapses onto the one bundle that covers it — including
  * pt-PT, since Brazilian copy serves a Portuguese speaker better than English.
+ * Chinese distinguishes Traditional-script variants from Simplified Chinese.
  *
  * Keep in sync with `normalize_language` in `src-tauri/crates/uc-tauri/src/tray.rs`.
  */
 const LOCALE_BY_SUBTAG: Partial<Record<string, SupportedLanguage>> = {
-  zh: 'zh-CN',
+  ja: 'ja-JP',
   ru: 'ru-RU',
   pt: 'pt-BR',
 }
+
+const TRADITIONAL_CHINESE_SUBTAGS = new Set(['hant', 'tw', 'hk', 'mo'])
 
 export function normalizeLanguage(language: string | null | undefined): SupportedLanguage {
   // Fall back to the system language when the caller has no stored preference.
   const tag = language || navigator.language
   // Accept both separators: BCP-47 hands us "pt-BR", POSIX locale envs "pt_BR".
-  const primary = tag.split(/[-_]/)[0].toLowerCase()
+  const subtags = tag.toLowerCase().split(/[-_]/)
+  const [primary, ...variants] = subtags
+  if (primary === 'zh') {
+    return variants.some(subtag => TRADITIONAL_CHINESE_SUBTAGS.has(subtag)) ? 'zh-TW' : 'zh-CN'
+  }
   return LOCALE_BY_SUBTAG[primary] ?? 'en-US'
 }
 
@@ -47,7 +56,9 @@ export function persistLanguage(language: SupportedLanguage) {
 i18n.use(initReactI18next).init({
   resources: {
     'zh-CN': { translation: zhCN },
+    'zh-TW': { translation: zhTW },
     'en-US': { translation: enUS },
+    'ja-JP': { translation: jaJP },
     'ru-RU': { translation: ruRU },
     'pt-BR': { translation: ptBR },
   },

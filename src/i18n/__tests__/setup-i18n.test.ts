@@ -1,9 +1,11 @@
 import { afterEach, beforeAll, describe, expect, it } from 'vitest'
 import i18n, { SUPPORTED_LANGUAGES, normalizeLanguage } from '@/i18n'
 import enUS from '@/i18n/locales/en-US.json'
+import jaJP from '@/i18n/locales/ja-JP.json'
 import ptBR from '@/i18n/locales/pt-BR.json'
 import ruRU from '@/i18n/locales/ru-RU.json'
 import zhCN from '@/i18n/locales/zh-CN.json'
+import zhTW from '@/i18n/locales/zh-TW.json'
 
 /** Flatten a nested resource bundle into dotted key paths. */
 function flatten(node: unknown, prefix = '', out: Record<string, string> = {}) {
@@ -21,7 +23,9 @@ const PLURAL_SUFFIX = /_(zero|one|two|few|many|other)$/
 describe('locale bundle parity', () => {
   const bundles: Record<string, Record<string, string>> = {
     'zh-CN': flatten(zhCN),
+    'zh-TW': flatten(zhTW),
     'en-US': flatten(enUS),
+    'ja-JP': flatten(jaJP),
     'ru-RU': flatten(ruRU),
     'pt-BR': flatten(ptBR),
   }
@@ -108,10 +112,22 @@ describe('setup i18n keys', () => {
     expect(i18n.t('setup.page.loadingSetupState')).toBe('正在加载初始化状态...')
   })
 
+  it('resolves zh-TW setup.welcome.title', async () => {
+    await i18n.changeLanguage('zh-TW')
+    expect(i18n.t('setup.welcome.title')).toBe('開始使用')
+    expect(i18n.t('setup.page.loadingSetupState')).toBe('正在載入初始化狀態...')
+  })
+
   it('resolves en-US setup.welcome.title', async () => {
     await i18n.changeLanguage('en-US')
     expect(i18n.t('setup.welcome.title')).toBe('Get started')
     expect(i18n.t('setup.page.loadingSetupState')).toBe('Loading setup state...')
+  })
+
+  it('resolves ja-JP setup.welcome.title', async () => {
+    await i18n.changeLanguage('ja-JP')
+    expect(i18n.t('setup.welcome.title')).toBe('始めましょう')
+    expect(i18n.t('setup.page.loadingSetupState')).toBe('セットアップ状態を読み込み中...')
   })
 
   it('resolves ru-RU setup.welcome.title', async () => {
@@ -152,7 +168,15 @@ describe('setup i18n keys', () => {
 
   it('normalizes language tags to the nearest supported locale', () => {
     expect(normalizeLanguage('zh')).toBe('zh-CN')
-    expect(normalizeLanguage('zh-TW')).toBe('zh-CN')
+    expect(normalizeLanguage('zh-CN')).toBe('zh-CN')
+    expect(normalizeLanguage('zh-SG')).toBe('zh-CN')
+    expect(normalizeLanguage('zh-TW')).toBe('zh-TW')
+    expect(normalizeLanguage('zh-Hant')).toBe('zh-TW')
+    expect(normalizeLanguage('zh-HK')).toBe('zh-TW')
+    expect(normalizeLanguage('zh-MO')).toBe('zh-TW')
+    expect(normalizeLanguage('ja')).toBe('ja-JP')
+    expect(normalizeLanguage('ja-JP')).toBe('ja-JP')
+    expect(normalizeLanguage('JA_jp')).toBe('ja-JP')
     expect(normalizeLanguage('ru')).toBe('ru-RU')
     expect(normalizeLanguage('ru-BY')).toBe('ru-RU')
     expect(normalizeLanguage('RU-ru')).toBe('ru-RU')
@@ -164,6 +188,7 @@ describe('setup i18n keys', () => {
     // POSIX locale envs use an underscore; BCP-47 uses a hyphen.
     expect(normalizeLanguage('pt_BR')).toBe('pt-BR')
     expect(normalizeLanguage('zh_CN')).toBe('zh-CN')
+    expect(normalizeLanguage('ZH_tw')).toBe('zh-TW')
     // The primary subtag decides, not a bare prefix: "ptx" is not Portuguese.
     expect(normalizeLanguage('ptx')).toBe('en-US')
     expect(normalizeLanguage('zhx-Hant')).toBe('en-US')
@@ -174,7 +199,9 @@ describe('setup i18n keys', () => {
     // picker stays readable no matter which locale is active.
     const autonyms: Record<string, string> = {
       'zh-CN': '简体中文',
+      'zh-TW': '繁體中文',
       'en-US': 'English',
+      'ja-JP': '日本語',
       'ru-RU': 'Русский',
       'pt-BR': 'Português (Brasil)',
     }
@@ -192,6 +219,18 @@ describe('setup i18n keys', () => {
     expect(i18n.t('history.type.link')).toBe('链接')
     expect(i18n.t('history.type.code')).toBe('代码')
     expect(i18n.t('history.type.favorited')).toBe('收藏')
+
+    await i18n.changeLanguage('zh-TW')
+    expect(i18n.t('history.type.richtext')).toBe('格式化文字')
+    expect(i18n.t('history.type.link')).toBe('連結')
+    expect(i18n.t('history.type.code')).toBe('程式碼')
+    expect(i18n.t('history.type.favorited')).toBe('我的最愛')
+
+    await i18n.changeLanguage('ja-JP')
+    expect(i18n.t('history.type.richtext')).toBe('リッチテキスト')
+    expect(i18n.t('history.type.link')).toBe('リンク')
+    expect(i18n.t('history.type.code')).toBe('コード')
+    expect(i18n.t('history.type.favorited')).toBe('お気に入り')
 
     await i18n.changeLanguage('en-US')
     expect(i18n.t('history.type.richtext')).toBe('Rich Text')

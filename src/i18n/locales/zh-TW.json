@@ -1,0 +1,1928 @@
+{
+  "common": {
+    "loading": "載入中...",
+    "unknownSize": "未知大小",
+    "zeroBytes": "0 字節"
+  },
+  "loading": {
+    "initializing": "正在初始化...",
+    "error_title": "初始化失敗",
+    "timeout_error": "初始化超時，請重新啟動應用程式"
+  },
+  "nav": {
+    "dashboard": "儀表板",
+    "history": "歷程記錄",
+    "devices": "裝置管理",
+    "settings": "設定",
+    "updateAvailable": "有新版本",
+    "updateDownloading": "正在下載更新...",
+    "updateDownloadingWithProgress": "正在下載更新... {{percent}}%",
+    "updateInstalling": "正在安裝更新...",
+    "updateReady": "更新已就緒，可安裝",
+    "back": "返回",
+    "feedback": "意見回饋"
+  },
+  "debugBadge": {
+    "title": "Debug 模式已開啓",
+    "description": "本地日誌更詳細，日誌檔案增長也會更快。",
+    "restartHint": "關閉後請重新啟動應用程式或 daemon，才能完全恢復普通日誌級別。",
+    "disable": "關閉 Debug 模式",
+    "disabledToast": "Debug 模式已關閉。請重新啟動以完全恢復普通日誌級別。",
+    "disableFailed": "關閉 Debug 模式失敗"
+  },
+  "update": {
+    "title": "發現新版本",
+    "currentVersion": "目前版本",
+    "latestVersion": "最新版本",
+    "releaseNotes": "更新日誌",
+    "noNotes": "暫無更新日誌",
+    "updateNow": "立即更新",
+    "installNow": "立即安裝",
+    "downloadInBackground": "背景下載",
+    "cancelDownload": "取消下載",
+    "cancelling": "正在取消...",
+    "readyHint": "更新已下載完成。按一下［立即安裝］以套用更新並重新啟動。",
+    "later": "稍後",
+    "noUpdate": "目前已是最新版本。",
+    "checkFailed": "檢查更新失敗",
+    "installFailed": "更新失敗，請稍後重試",
+    "downloadFailed": "背景下載失敗，請稍後重試",
+    "downloading": "正在下載...",
+    "installing": "正在安裝...",
+    "packageManager": {
+      "title": "請通過系統包管理器升級",
+      "portableTitle": "請下載新的便攜版",
+      "debHint": "你目前通過 apt（Debian/Ubuntu）安裝了 UniClipboard，請在終端執行以下命令升級：",
+      "rpmHint": "你目前通過 dnf/yum（Fedora/RHEL）安裝了 UniClipboard，請在終端執行以下命令升級：",
+      "portableHint": "你正在運行便攜版，它不會原地自更新——請從發佈頁下載新的便攜版 zip 並替換可執行檔案（你的資料目錄不受影響）。",
+      "debCommand": "sudo apt update && sudo apt install --only-upgrade uniclipboard",
+      "rpmCommand": "sudo dnf upgrade uniclipboard",
+      "copyCommand": "複製命令",
+      "copied": "已複製",
+      "openReleasePage": "打開發佈頁",
+      "ok": "知道了"
+    }
+  },
+  "updater": {
+    "window": {
+      "title": "UniClipboard 有新版本可用！",
+      "subtitle": "{{app}} {{version}} 現已可用——你目前使用的是 {{currentVersion}}。是否要立即下載？",
+      "readySubtitle": "{{app}} {{version}} 已下載完成，隨時可以安裝。",
+      "skipThisVersion": "跳過此版本",
+      "remindMeLater": "稍後提醒",
+      "downloadUpdate": "下載更新",
+      "checking": "正在檢查最新版本…",
+      "autoUpdate": "今後自動下載更新",
+      "upToDateTitle": "已是最新版本！",
+      "upToDateBody": "你已經在使用最新的 UniClipboard。",
+      "close": "關閉"
+    }
+  },
+  "upgradeNotice": {
+    "title": "請重新配對裝置",
+    "body": "本版本更新了裝置配對機制，原有配對已不可用。請前往「裝置」頁向另一台裝置發送邀請或重新加入。",
+    "fromVersion": "上一版本：{{from}}",
+    "toVersion": "目前版本：{{to}}",
+    "fromUnknown": "上一版本：未知",
+    "gotIt": "我知道了，不再提醒",
+    "later": "稍後再說"
+  },
+  "settings": {
+    "title": "設定",
+    "restartBanner": {
+      "restartButton": "立即重新啟動",
+      "restartingButton": "正在重新啟動…",
+      "successMessage": "重新啟動完成",
+      "dismissAriaLabel": "收起重新啟動提示",
+      "errorMessage": "自動重新啟動失敗，請手動退出並重新打開應用程式以使更改生效。",
+      "retryButton": "重試"
+    },
+    "categories": {
+      "general": "通用設定",
+      "appearance": "外觀設定",
+      "sync": "同步設定",
+      "security": "安全與隱私",
+      "network": "網路設定",
+      "storage": "存儲管理",
+      "about": "關於",
+      "shortcuts": "快捷鍵",
+      "quickPanel": "快捷面板"
+    },
+    "sections": {
+      "general": {
+        "title": "通用設定",
+        "startupTitle": "啟動設定",
+        "saveError": "儲存設定失敗",
+        "deviceName": {
+          "label": "裝置名稱",
+          "description": "用於在區域網路中識別此裝置",
+          "placeholder": "輸入裝置名稱"
+        },
+        "autoStart": {
+          "label": "開機自啟動",
+          "description": "系統啟動時自動啟動 UniClipboard"
+        },
+        "startupMode": {
+          "label": "啟動方式",
+          "description": "「靜默」啟動後不彈窗，直接進入背景；「輕量」在背景就緒後進一步退出視窗和托盤、僅保留背景服務併發送通知，之後按一下應用程式圖標即可重新打開視窗。",
+          "options": {
+            "normal": "正常",
+            "silent": "靜默",
+            "lightweight": "輕量"
+          }
+        },
+        "restoreLastEntryOnStartup": {
+          "label": "啟動後恢復最近一條剪貼簿記錄",
+          "description": "應用程式啟動、背景就緒後自動將最近一條歷程記錄重新放入系統剪貼簿"
+        },
+        "language": {
+          "title": "語言",
+          "label": "介面語言",
+          "description": "切換後立即生效"
+        },
+        "sound": {
+          "title": "聲音",
+          "label": "交互聲音意見回饋",
+          "description": "在狀態切換、選單選擇和操作成功時播放輕量提示音"
+        },
+        "telemetry": {
+          "title": "隱私",
+          "diagnostics": {
+            "label": "發送診斷資料",
+            "description": "發送崩潰、錯誤與匿名日誌，不包含剪貼簿內容。"
+          },
+          "usageAnalytics": {
+            "label": "發送使用情況分析",
+            "description": "發送匿名功能使用統計，用於改進產品，不包含剪貼簿內容。"
+          },
+          "notice": {
+            "title": "幫助改進 UniClipboard",
+            "body": "UniClipboard 會收集匿名診斷與使用資料以幫助改進應用程式。您的剪貼簿內容絕不會被收集或傳輸。您可以隨時在 設定 > 通用 > 隱私 中分別更改這些選項。",
+            "accept": "好的",
+            "optOut": "關閉"
+          }
+        },
+        "logsDirectory": {
+          "title": "日誌",
+          "label": "日誌目錄",
+          "description": "在檔案管理器中打開目前應用程式的日誌資料夾",
+          "button": "在檔案管理器中打開"
+        },
+        "logs": {
+          "debug": {
+            "label": "Debug 模式",
+            "description": "應用程式和 daemon 重新啟動後提高本地診斷日誌詳細度。",
+            "confirmTitle": "開啓 Debug 模式？",
+            "confirmDescription": "Debug 模式會增加本地日誌量，並可能記錄更多運行上下文。剪貼簿內容仍不應被主動記錄。確認後將立即重新啟動應用程式與背景 daemon 以使變更生效。不需要時請關閉 Debug 模式，並重新啟動應用程式或 daemon 以完全恢復普通日誌級別。",
+            "confirm": "開啓並重新啟動",
+            "cancel": "取消",
+            "restartToast": "請重新啟動應用程式或 daemon，使日誌級別變更完全生效。",
+            "error": "更改 Debug 模式失敗",
+            "restartingTitle": "正在重新啟動…",
+            "restartingDescription": "正在重新啟動應用程式與背景 daemon 以套用 Debug 模式，請稍候，期間請勿關閉視窗。"
+          },
+          "export": {
+            "label": "匯出日誌",
+            "description": "在 Downloads 目錄建立包含最近 24 小時 GUI、daemon 和 CLI 日誌的 zip 包。",
+            "button": "匯出日誌",
+            "exporting": "正在匯出...",
+            "success": "日誌已匯出",
+            "error": "匯出日誌失敗",
+            "copyPath": "複製路徑",
+            "copySuccess": "已複製匯出路徑",
+            "copyError": "複製匯出路徑失敗"
+          }
+        }
+      },
+      "appearance": {
+        "title": "外觀設定",
+        "themeMode": {
+          "title": "外觀設定",
+          "light": "淺色",
+          "dark": "深色",
+          "system": "跟隨系統"
+        },
+        "themeColor": {
+          "title": "主題色"
+        },
+        "themePreview": {
+          "title": "主題",
+          "lightLabel": "淺色",
+          "darkLabel": "深色",
+          "followSystem": "跟隨系統",
+          "setAsLight": "切換到淺色",
+          "setAsDark": "切換到深色",
+          "currentLight": "目前淺色",
+          "currentDark": "目前深色"
+        },
+        "lightTheme": {
+          "title": "淺色主題",
+          "preset": "預設",
+          "accent": "強調色",
+          "background": "背景色",
+          "foreground": "前景色",
+          "border": "邊框色"
+        },
+        "darkTheme": {
+          "title": "深色主題",
+          "preset": "預設",
+          "accent": "強調色",
+          "background": "背景色",
+          "foreground": "前景色",
+          "border": "邊框色"
+        },
+        "tokenPicker": {
+          "openPicker": "選取顏色",
+          "reset": "恢復為預設",
+          "modified": "已自定義",
+          "hexInputLabel": "十六進制顏色值"
+        },
+        "zoom": {
+          "title": "介面縮放",
+          "description": "縮放會同時影響主視窗和快捷面板，也會和快捷鍵保持同步。",
+          "current": "目前縮放：{{value}}",
+          "reset": "重置為 100%"
+        }
+      },
+      "sync": {
+        "title": "同步設定",
+        "autoSync": {
+          "label": "自動同步",
+          "description": "控制所有裝置的剪貼簿同步。關閉後停止向所有裝置同步內容。"
+        },
+        "syncOnRestore": {
+          "label": "恢復時同步",
+          "description": "從歷程記錄恢復某條內容時，把它也設為其他裝置上的目前剪貼簿。預設關閉。"
+        },
+        "syncFrequency": {
+          "label": "同步頻率",
+          "description": "控制 uniClipboard 檢查新內容的頻率",
+          "realtime": "實時同步",
+          "30s": "每30秒",
+          "1m": "每分鐘",
+          "5m": "每5分鐘",
+          "15m": "每15分鐘"
+        },
+        "loadError": "載入設定失敗:",
+        "fileSync": {
+          "title": "檔案同步",
+          "enable": {
+            "label": "啓用檔案同步",
+            "description": "通過區域網路在裝置間同步複製的檔案"
+          },
+          "smallFileThreshold": {
+            "label": "即時傳輸閾值",
+            "description": "小於此大小的檔案立即傳輸；較大檔案僅同步元資料",
+            "unit": "MB",
+            "errors": {
+              "invalid": "必須為正整數",
+              "range": "必須在 1-1000 MB 之間",
+              "exceedsMax": "必須小於最大檔案大小"
+            }
+          },
+          "maxFileSize": {
+            "label": "最大檔案大小",
+            "description": "超過此大小的檔案不會被同步",
+            "unit": "MB",
+            "errors": {
+              "invalid": "必須為正整數",
+              "range": "必須在 1-10240 MB (10 GB) 之間"
+            }
+          },
+          "cacheQuota": {
+            "label": "單裝置緩存配額",
+            "description": "為每個裝置緩存檔案的最大磁盤空間",
+            "unit": "MB",
+            "errors": {
+              "invalid": "必須為正整數",
+              "range": "必須在 50-10240 MB 之間"
+            }
+          },
+          "retentionPeriod": {
+            "label": "檔案保留期限",
+            "description": "超過此時間的緩存檔案將被清理",
+            "unit": "小時",
+            "errors": {
+              "invalid": "必須為正整數",
+              "range": "必須在 1-720 小時（30 天）之間"
+            }
+          },
+          "autoCleanup": {
+            "label": "自動清理",
+            "description": "啟動時自動刪除過期的緩存檔案"
+          },
+          "autoSaveDir": {
+            "label": "檔案儲存位置",
+            "description": "自定義檔案的存儲目錄。未設定時保留在應用程式托管目錄。",
+            "managed": "應用程式托管目錄（預設）",
+            "choose": "選擇資料夾",
+            "clear": "恢復預設"
+          }
+        }
+      },
+      "security": {
+        "title": "安全與隱私設定",
+        "endToEndEncryption": {
+          "label": "端到端加密",
+          "description": "啓用後，所有同步內容將使用端到端加密傳輸"
+        },
+        "encryptionPassword": {
+          "label": "加密口令",
+          "description": "用於加解密資料",
+          "modify": "修改",
+          "cancel": "取消",
+          "save": "儲存",
+          "placeholder": "輸入新的加密口令"
+        },
+        "autoUnlock": {
+          "label": "自動解鎖",
+          "description": "啟動應用程式時自動從鑰匙串解鎖"
+        },
+        "loadError": "載入設定失敗:"
+      },
+      "network": {
+        "loadError": "載入設定失敗:",
+        "lanOnly": {
+          "label": "LAN-only 模式",
+          "description": "關閉公網中繼回落，僅通過同區域網路完成裝置同步。重新啟動後生效。",
+          "infoIconAriaLabel": "查看 LAN-only 模式開啓後仍走外網的請求清單",
+          "saveError": "儲存失敗：{{message}}。已恢復到上一次的設定。",
+          "disclosure": {
+            "title": "LAN-only 開啓後仍會走外網的請求",
+            "intro": "以下 4 類請求由獨立模塊控制，不受 LAN-only 影響：",
+            "rendezvous": {
+              "title": "首次配對 rendezvous",
+              "description": "配對新裝置時仍需聯網經 rendezvous.uniclipboard.app 完成 NodeId 交換；已配對裝置的日常同步不再使用 rendezvous。"
+            },
+            "telemetry": {
+              "title": "遙測",
+              "description": "遙測由「通用 → 遙測」開關獨立控制，與 LAN-only 無關；如需關閉，請到「通用」分類。"
+            },
+            "pkarr": {
+              "title": "pkarr DHT NodeId 解析",
+              "description": "跨網段連接通過 pkarr 公網 DHT 解析對端 NodeId，性質類似 DNS。關閉會導致跨網段連接率從約 90% 跌至接近 0。"
+            },
+            "autoUpdate": {
+              "title": "自動更新 GitHub 檢查",
+              "description": "由「通用 → 自動更新」開關獨立控制，訪問 GitHub Release API 檢查新版本。"
+            }
+          }
+        },
+        "allowOverlayAddrs": {
+          "label": "允許虛擬網路位址",
+          "description": "預設關閉。當兩端都接入同一個 VPN（如 Tailscale）時打開，讓連接借用該虛擬網路。重新啟動後生效。",
+          "infoIconAriaLabel": "瞭解甚麼是虛擬網路位址，以及何時應該開啓",
+          "saveError": "儲存失敗：{{message}}。已恢復到上一次的設定。",
+          "disclosure": {
+            "title": "關於虛擬網路位址",
+            "intro": "建立直連時，本機會同時擁有多個 IP（真實區域網路、VPN 隧道等）。「虛擬網路位址」指 VPN 軟體建立的虛擬網卡 IP：",
+            "covered": {
+              "title": "本開關影響的範圍",
+              "description": "具體是 CGNAT 段 100.64.0.0/10（Tailscale 預設 IPv4）和 Tailscale IPv6 ULA fd7a:115c:a1e0::/48。Clash fake-ip（198.18.0.0/15）和鏈路本地（169.254.0.0/16）始終被過濾，不受此開關影響。"
+            },
+            "whyOff": {
+              "title": "為甚麼預設關閉",
+              "description": "如果兩端不在同一個 VPN 中，把虛擬網卡位址作為連接候選會讓對端浪費 path-validation 預算去試一條死路，反而拖慢真正的直連建立速度。"
+            },
+            "whenOn": {
+              "title": "甚麼時候開啓",
+              "description": "如果兩端確實都在同一個 Tailscale tailnet（或其他相同的 overlay 網路）中，且真實區域網路 / 公網直連不通、但 overlay 通，開啓後 iroh 會把 overlay 路徑作為可選直連候選。"
+            },
+            "tradeoff": {
+              "title": "權衡說明",
+              "description": "如果只有一端裝了 VPN——或兩端在不同的 tailnet 中——開啓後只是連接更慢，並不會徹底連不上（中繼回落仍然有效）。不確定就保持關閉。"
+            }
+          }
+        },
+        "customRelays": {
+          "label": "自定義中繼節點",
+          "description": "新增一個或多個 iroh relay URL。留空使用預設中繼；開啓 LAN-only 時此列表會保留但不生效。重新啟動後生效。",
+          "placeholder": "https://relay.example.com.",
+          "addButton": "新增中繼節點",
+          "itemAriaLabel": "自定義中繼節點 {{index}}",
+          "removeAriaLabel": "移除中繼節點 {{index}}",
+          "saveError": "儲存自定義中繼失敗：{{message}}。已恢復到上一次的設定。",
+          "invalidUrl": "無效的中繼 URL：{{url}}。請輸入 http 或 https URL。",
+          "testAriaLabel": "測試中繼節點 {{index}}",
+          "testing": "正在測試中繼節點…",
+          "testSuccess": "握手成功（{{latencyMs}} ms）",
+          "testErrors": {
+            "invalidUrl": "無效的中繼 URL：{{message}}",
+            "dns": "無法解析中繼域名：{{message}}",
+            "tls": "TLS 握手失敗：{{message}}",
+            "handshake": "iroh-relay 握手失敗：{{message}}",
+            "timeout": "測試超時，未能在 5 秒內完成握手",
+            "other": "測試失敗：{{message}}",
+            "unavailable": "目前運行環境未啓用中繼測試能力。"
+          }
+        },
+        "congestionController": {
+          "label": "擁塞控制演算法",
+          "description": "網路流量控制演算法。CUBIC 在區域網路和頻寬充足的網路上表現最佳；BBR3 在高延遲或丟包較多的遠端鏈路上可能更好。修改後需重新啟動生效。",
+          "recommended": "推薦"
+        },
+        "restartBanner": {
+          "message": "網路設定已更改，需要重新啟動背景服務才能生效。",
+          "errorMessage": "背景服務重新啟動失敗，請重試或手動重新啟動應用程式。"
+        }
+      },
+      "storage": {
+        "title": "存儲管理",
+        "autoClearHistory": {
+          "label": "自動清理歷史",
+          "description": "根據保留規則自動清理舊的剪貼簿條目"
+        },
+        "storageUsage": {
+          "label": "存儲用量",
+          "usage": "已使用 {{percentage}}%",
+          "database": "資料庫",
+          "blobVault": "Blob 存儲",
+          "cache": "緩存",
+          "logs": "日誌",
+          "total": "總計"
+        },
+        "historyRetention": {
+          "label": "歷史保留時間",
+          "description": "剪貼簿歷史的最長保留時間",
+          "days": "{{days}} 天"
+        },
+        "maxHistoryItems": {
+          "label": "最大歷史條目數",
+          "description": "保留的最大剪貼簿條目數量",
+          "items": "{{count}} 條",
+          "unlimited": "無限制"
+        },
+        "skipPinned": {
+          "label": "跳過已我的最愛條目",
+          "description": "已我的最愛的條目不會被自動清理"
+        },
+        "clearHistory": {
+          "label": "清除歷史",
+          "description": "刪除所有剪貼簿歷史並釋放存儲空間",
+          "button": "全部清除",
+          "confirm": "確定要清除嗎？此操作不可撤銷。",
+          "cleared": "歷史已清除",
+          "clearing": "清除中...",
+          "dialogTitle": "確認清除歷史",
+          "dialogDescription": "此操作將刪除所有剪貼簿歷程記錄，且無法恢復。",
+          "dialogConfirm": "清除歷史"
+        },
+        "clearCache": {
+          "label": "清除緩存",
+          "description": "刪除緩存的縮略圖和臨時檔案",
+          "button": "清除緩存",
+          "cleared": "緩存已清除",
+          "clearing": "清除中..."
+        },
+        "dataDirectory": {
+          "label": "資料目錄",
+          "description": "打開應用程式資料存儲所在的資料夾",
+          "button": "在檔案管理器中打開"
+        },
+        "configBackup": {
+          "label": "設定備份與遷移",
+          "export": {
+            "label": "匯出設定",
+            "description": "把全部設定、歷史和裝置身份打包成一個加密檔案，用於搬到另一台電腦。檔案由你的 Space 口令保護，無需另設口令",
+            "button": "匯出設定…",
+            "exporting": "匯出中…",
+            "success": "設定已匯出",
+            "lockedError": "請先解鎖，再匯出設定",
+            "genericError": "匯出設定失敗"
+          },
+          "import": {
+            "label": "匯入設定",
+            "description": "從匯出的檔案恢復設定。這是一次「裝置搬家」：本機會變成那台匯出裝置，並替換掉本機目前的設定",
+            "button": "匯入設定…",
+            "passwordTitle": "輸入 Space 口令",
+            "passwordDescription": "輸入匯出這個檔案的那台裝置的 Space 口令，用它來解密。",
+            "passwordLabel": "Space 口令",
+            "passwordPlaceholder": "匯出裝置的 Space 口令",
+            "passwordConfirmButton": "繼續",
+            "confirmTitle": "確認匯入：這是一次裝置搬家",
+            "confirmDescription": "匯入會讓本機以匯出裝置的身份接入，並替換本機目前的設定。請仔細確認，此操作不可撤銷。",
+            "warningMove": "本機將「變成」那台匯出裝置，沿用它的身份和配對關係。",
+            "warningNoDualOnline": "完成後請勿再讓原裝置上線。兩台相同身份的裝置同時在線，會在裝置網路中互相衝突。",
+            "warningReplace": "本機目前的設定和歷史會被匯入的內容替換。如果本機正在使用，請先確認上面沒有你想保留的資料。",
+            "metaTitle": "即將匯入的設定",
+            "metaAppVersion": "匯出時版本",
+            "metaSourceMode": "來源類型",
+            "metaSourcePortable": "便攜版",
+            "metaSourceInstalled": "安裝版",
+            "metaFingerprint": "裝置指紋",
+            "confirmButton": "我已知曉，開始匯入",
+            "cancelButton": "取消",
+            "staging": "正在匯入…",
+            "restartingTitle": "正在重新啟動以完成匯入",
+            "restartingDescription": "請稍候，應用程式會自動重新啟動並落地匯入的設定，期間請勿關閉。",
+            "restartingUnlockHint": "重新啟動後需要輸入你的 Space 口令來解鎖。",
+            "invalidPasswordError": "口令錯誤，或檔案已損壞",
+            "incompatibleError": "這個設定包的版本與目前應用程式不兼容",
+            "genericError": "匯入設定失敗"
+          }
+        },
+        "searchIndex": {
+          "label": "搜尋索引",
+          "status": "索引狀態",
+          "statusDescription": "全文搜尋索引的目前狀態",
+          "ready": "就緒",
+          "rebuilding": "重建中…",
+          "unavailable": "不可用",
+          "lastRebuilt": "上次重建",
+          "lastRebuiltDescription": "上次成功重建索引的時間",
+          "never": "從未",
+          "rebuild": "重建索引",
+          "rebuildDescription": "手動觸發搜尋索引的完整重建",
+          "rebuildButton": "重建",
+          "rebuildingButton": "重建中…"
+        },
+        "loadError": "載入存儲設定失敗：",
+        "placeholder": "存儲設定尚不可用。"
+      },
+      "shortcuts": {
+        "title": "快捷鍵",
+        "description": "自定義鍵盤快捷鍵",
+        "scope": {
+          "global": "全局",
+          "clipboard": "剪貼簿",
+          "settings": "設定",
+          "devices": "裝置",
+          "modal": "模態框"
+        },
+        "actions": {
+          "goSettings": "前往設定",
+          "toggleQuickPanel": "切換快捷面板",
+          "favoriteClipboardItem": "我的最愛目前剪貼簿項目",
+          "zoomIn": "放大介面",
+          "zoomOut": "縮小介面"
+        },
+        "issues": {
+          "sameScope": "同一作用域內快捷鍵衝突：{{key}}",
+          "sameLayer": "同一層級內其它作用域也使用了該快捷鍵：{{key}}",
+          "shadowedByHigher": "當更高層級激活時會被遮蔽：{{key}}",
+          "shadowsLower": "會遮蔽更低層級中的快捷鍵：{{key}}"
+        },
+        "edit": "編輯",
+        "reset": "恢復預設",
+        "resetAll": "重置所有快捷鍵",
+        "recording": "請按快捷鍵...",
+        "chordHint": "可再按一個組合作為第二段（連按兩次相同組合即\"雙擊\"），或直接確認",
+        "rerecord": "重錄",
+        "conflict": "與 {{name}} 衝突",
+        "confirmOverride": "仍要套用（清除衝突）",
+        "confirm": "確認",
+        "cancel": "取消",
+        "modified": "已修改"
+      },
+      "quickPanel": {
+        "title": "快捷面板",
+        "featureTitle": "功能",
+        "shortcutTitle": "快捷鍵",
+        "enable": {
+          "label": "啓用快捷面板",
+          "description": "開啓後會注冊全局快捷鍵，並在背景建立快捷面板視窗；關閉即時反注冊快捷鍵。"
+        },
+        "position": {
+          "label": "展示位置",
+          "description": "選擇按下快捷鍵時，快捷面板出現的位置。",
+          "center": "屏幕中央",
+          "followCursor": "跟隨光標"
+        },
+        "doubleTap": {
+          "label": "雙擊修飾鍵",
+          "description": "連續輕按兩次修飾鍵打開快捷面板；已錄制的快捷鍵仍然有效。",
+          "checking": "正在檢查目前桌面會話是否支持雙擊修飾鍵。",
+          "permissionRequired": "雙擊修飾鍵需要 macOS 輔助功能權限。請在系統設定中授權，然後返回 UniClipboard。",
+          "unsupported": "目前顯示會話不支持雙擊修飾鍵，Wayland 會話暫不支持；已錄制的快捷鍵仍然有效。",
+          "openSettings": "打開輔助功能設定",
+          "openSettingsError": "無法打開輔助功能設定，請手動前往「系統設定 > 隱私與安全性 > 輔助功能」。",
+          "disabled": "關閉",
+          "option": "Option",
+          "alt": "Alt",
+          "control": "Control",
+          "command": "Command",
+          "windows": "Windows",
+          "super": "Super"
+        },
+        "restartHint": "快捷面板已停用。建議重新啟動應用程式以徹底釋放背景進程。"
+      },
+      "about": {
+        "title": "關於",
+        "appName": "UniClipboard",
+        "version": "版本 {{version}}",
+        "checkUpdate": "檢查更新",
+        "checkingUpdate": "正在檢查...",
+        "updatesTitle": "更新",
+        "autoCheckUpdate": {
+          "label": "自動檢查更新",
+          "description": "應用程式啟動時自動檢查是否有新版本"
+        },
+        "autoDownloadUpdate": {
+          "label": "背景下載更新",
+          "description": "檢測到新版本時靜默下載安裝包，按一下安裝時無需等待。",
+          "disabledHint": "請先開啓「自動檢查更新」"
+        },
+        "updateChannel": {
+          "label": "更新渠道",
+          "description": "選擇接收更新的發佈渠道",
+          "auto": "自動檢測",
+          "stable": "穩定版",
+          "beta": "測試版",
+          "alpha": "內測版",
+          "rc": "候選版",
+          "alphaWarning": {
+            "title": "切換到內測版？",
+            "description": "內測版可能包含未充分驗證的功能和回歸問題。切換後會立即檢查內測版更新。",
+            "cancel": "取消",
+            "confirm": "繼續切換"
+          }
+        },
+        "sponsors": {
+          "title": "贊助者",
+          "thanks": "感謝以下朋友的贊助支持，讓 UniClipboard 持續向前。",
+          "goldBadge": "金牌",
+          "becomeSponsor": "成為贊助者 →",
+          "githubStar": "去 GitHub 點 Star →"
+        },
+        "copyright": "© 2025 UniClipboard. All rights reserved.",
+        "links": {
+          "privacyPolicy": "隱私政策",
+          "termsOfService": "使用條款",
+          "aboutMaintainers": "關於與維護者"
+        }
+      }
+    }
+  },
+  "unlock": {
+    "title": "解鎖 UniClipboard",
+    "description": "您的資料已加密，請解鎖以繼續。",
+    "button": "解鎖",
+    "unlocking": "正在解鎖...",
+    "autoUnlock": {
+      "label": "自動解鎖",
+      "description": "啟動應用程式時自動解鎖"
+    },
+    "macOSNote": "在 macOS 上，您可以在鑰匙串提示中選擇“始終允許”以啓用無縫自動解鎖。",
+    "keychainModal": {
+      "title": "授權鑰匙串訪問",
+      "description": "要啓用自動解鎖，UniClipboard 需要獲得 macOS 鑰匙串的永久訪問權限。",
+      "step1": "macOS 鑰匙串訪問提示將會出現",
+      "step2": "在提示中選擇「始終允許」",
+      "step3": "輸入 macOS 密碼確認",
+      "note": "這是 macOS 系統對話框，不是 UniClipboard 的一部分。",
+      "confirm": "我知道了",
+      "cancel": "取消",
+      "verifying": "正在驗證訪問權限...",
+      "error": "未檢測到鑰匙串始終允許授權。請重試，並確保在 macOS 鑰匙串提示中選擇「始終允許」。"
+    },
+    "passphraseModal": {
+      "title": "請輸入空間口令",
+      "description": "自動解鎖無法從鑰匙串中讀取密鑰，請輸入您為該空間設定的口令以手動解鎖。",
+      "passphraseLabel": "口令",
+      "passphrasePlaceholder": "輸入您的口令",
+      "submit": "解鎖",
+      "submitting": "正在解鎖...",
+      "cancel": "取消",
+      "show": "顯示口令",
+      "hide": "隱藏口令",
+      "hint": "手動解鎖成功後，鑰匙串將被刷新，後續啟動可以恢復自動解鎖。"
+    },
+    "errors": {
+      "wrongPassphrase": "口令錯誤，請重新輸入。",
+      "corruptedKeyMaterial": "本機密鑰材料已損壞，需要重置該空間並從其他裝置重新加入才能恢復。",
+      "setupNotCompleted": "本裝置尚未完成 setup，請先執行 setup。",
+      "spaceNotInitialized": "本裝置沒有可解鎖的空間，請新建空間或從其他裝置加入。",
+      "facadeUnavailable": "應用程式仍在啟動中，請稍後重試。",
+      "internal": "解鎖失敗，請重試或重新啟動應用程式。"
+    },
+    "factoryReset": {
+      "link": "忘記口令？重置並重新開始",
+      "modal": {
+        "title": "重置並重新開始",
+        "warning": "重置後，本裝置上加密儲存的剪貼簿歷史將無法恢復。",
+        "recovery": "如果你有其他已配對裝置，可以從那台裝置重新邀請本機加入，歷史會從對端同步回來。",
+        "confirmPrompt": "請輸入 RESET 以確認",
+        "confirmPlaceholder": "RESET",
+        "confirm": "重置",
+        "resetting": "正在重置...",
+        "cancel": "取消"
+      },
+      "errors": {
+        "keyMaterialWipeFailed": "密鑰材料刪除失敗，重置未完成。請稍後重試或重新啟動應用程式。",
+        "storageFailed": "密鑰已清除但狀態未儲存，請重新啟動應用程式以完成重置。",
+        "facadeUnavailable": "應用程式仍在啟動中，請稍後重試。",
+        "internal": "重置失敗，請重試或重新啟動應用程式。"
+      }
+    }
+  },
+  "language": {
+    "zh-CN": "简体中文",
+    "zh-TW": "繁體中文",
+    "en-US": "English",
+    "ja-JP": "日本語",
+    "ru-RU": "Русский",
+    "pt-BR": "Português (Brasil)"
+  },
+  "history": {
+    "title": "歷程記錄",
+    "subtitle_other": "{{count}} 項",
+    "searchPlaceholder": "搜尋剪貼簿…",
+    "loadMore": "載入更多",
+    "unknownFile": "未知檔案",
+    "filter": {
+      "all": "全部",
+      "favorited": "我的最愛",
+      "text": "文字",
+      "richtext": "格式化文字",
+      "code": "程式碼",
+      "link": "連結",
+      "image": "圖片",
+      "file": "檔案"
+    },
+    "timeRange": {
+      "label": "時間範圍",
+      "all_time": "不限時間",
+      "today": "今天",
+      "yesterday": "昨天",
+      "last_7d": "最近 7 天",
+      "last_30d": "最近 30 天",
+      "this_week": "本周",
+      "this_month": "本月"
+    },
+    "source": {
+      "label": "來源",
+      "all": "全部來源"
+    },
+    "type": {
+      "text": "文字",
+      "richtext": "格式化文字",
+      "code": "程式碼",
+      "link": "連結",
+      "favorited": "我的最愛",
+      "image": "圖片",
+      "directory": "資料夾",
+      "file": "檔案",
+      "unknown": "未知"
+    },
+    "detail": {
+      "capturedAt": "捕獲時間",
+      "size": "大小",
+      "fileCount": "檔案數",
+      "urlCount": "連結數",
+      "fileMissing": "（已丟失）"
+    },
+    "composite": {
+      "title": "搜尋與篩選",
+      "dimension": {
+        "type": "類型",
+        "tag": "標籤",
+        "source": "來源",
+        "time": "時間",
+        "extension": "擴展名"
+      },
+      "noMatches": "無匹配項",
+      "removeFilter": "移除篩選：{{filter}}",
+      "moreFilters": "展開其餘 {{count}} 個篩選",
+      "clearAll": "清除全部"
+    }
+  },
+  "dashboard": {
+    "logs": {
+      "loadingClipboard": "開始載入剪貼簿記錄和統計資料...",
+      "filterChanged": "filter變化，更新ref值:",
+      "settingGlobalListener": "設定全局監聽器...",
+      "startingBackendListener": "啟動後端剪貼簿新內容監聽...",
+      "backendListenerStarted": "後端剪貼簿新內容監聽已啟動",
+      "listeningToClipboardEvents": "開始監聽剪貼簿新內容事件...",
+      "clearingPreviousListener": "清除之前的監聽器",
+      "newClipboardEvent": "收到新剪貼簿內容事件:",
+      "ignoringDuplicateEvent": "忽略短時間內的重復事件",
+      "listenerAlreadyActive": "監聽器已經處於活躍狀態，跳過設定",
+      "globalListenerExists": "全局監聽器已存在，無需再次設定",
+      "setupListenerFailed": "設定監聽器失敗:",
+      "componentUnmounting": "組件卸載，但保持全局監聽器活躍"
+    },
+    "constants": {
+      "debounceDelay": "防抖延遲時間（毫秒）"
+    },
+    "errors": {
+      "loadFailed": "載入剪貼簿資料失敗",
+      "listenerSetupFailed": "設定剪貼簿監聽器失敗",
+      "unknown": "發生未知錯誤"
+    }
+  },
+  "header": {
+    "searchPlaceholder": "關鍵詞搜尋...",
+    "resultsCount": "{{count}} 個結果",
+    "filters": {
+      "all": "全部",
+      "favorited": "我的最愛",
+      "text": "文字",
+      "richtext": "格式化文字",
+      "image": "圖片",
+      "link": "連結",
+      "file": "檔案",
+      "code": "程式碼"
+    },
+    "timeRange": {
+      "all_time": "不限時間",
+      "today": "今天",
+      "yesterday": "昨天",
+      "last_7d": "最近 7 天",
+      "last_30d": "最近 30 天",
+      "this_week": "本周",
+      "this_month": "本月"
+    }
+  },
+  "clipboard": {
+    "search": {
+      "noResults": "未找到 \"{{query}}\" 的結果",
+      "noResultsFiltered": "沒有符合篩選條件的記錄",
+      "noResultsSub": "嘗試搜尋完整單詞或其他關鍵詞",
+      "empty": "剪貼簿歷史為空",
+      "emptySub": "複製一些內容來開始使用吧",
+      "resultsCount": "條結果",
+      "searching": "搜尋中…",
+      "degraded": "搜尋索引正在重建,暫時顯示最近的瀏覽結果。過濾與關鍵詞搜尋稍後恢復。"
+    },
+    "content": {
+      "filterCondition": "篩選條件:",
+      "queryResults": "查詢結果:",
+      "convertedItems": "轉換後的顯示項目:",
+      "noItemsFound": "沒有查詢到任何項目",
+      "noClipboardItems": "沒有剪貼簿項",
+      "emptyDescription": "連接另一台裝置，然後複製內容開始同步。",
+      "emptyHint": "試著複製一些文字或圖片吧！",
+      "logs": {
+        "copyItem": "複製項目 ID:",
+        "copyToClipboardFailed": "複製到剪貼簿失敗",
+        "convertingItem": "轉換為顯示項目:"
+      }
+    },
+    "source": {
+      "local": "本機"
+    },
+    "errors": {
+      "copyFailed": "複製到剪貼簿失敗",
+      "favoriteFailed": "更新我的最愛狀態失敗",
+      "openLocationFailed": "打開檔案位置失敗",
+      "fileLocationUnavailable": "該檔案本地已不可用。",
+      "loadDetailFailed": "載入詳情失敗",
+      "unknown": "發生未知錯誤",
+      "unavailableBadge": "內容已不可用",
+      "unavailableTooltip": "該內容已不可用（資料已丟失），無法貼上。建議從歷史中刪除。",
+      "fileSourceMissing": "源檔案已不在原位置，可能被刪除或移動；放回原位置後可重試。"
+    },
+    "item": {
+      "characters": "字符",
+      "link": "連結",
+      "image": "圖片",
+      "unknownContent": "未知內容",
+      "expand": "展開",
+      "collapse": "收起",
+      "loading": "載入中...",
+      "actions": {
+        "copy": "複製",
+        "copied": "已複製",
+        "favorite": "我的最愛",
+        "unfavorite": "取消我的最愛",
+        "delete": "刪除",
+        "more": "更多"
+      },
+      "altText": {
+        "clipboardImage": "剪貼簿圖片",
+        "copyButton": "複製",
+        "favoriteButton": "我的最愛"
+      },
+      "largeImageTitle": "大圖片",
+      "largeImageHint": "{{size}} — 未自動載入",
+      "loadLargeImage": "載入圖片"
+    },
+    "time": {
+      "justNow": "剛剛",
+      "minutesAgo": "{{minutes}}分鐘前",
+      "hoursAgo": "{{hours}}小時前",
+      "daysAgo": "{{days}}天前"
+    },
+    "dateGroup": {
+      "today": "今天",
+      "yesterday": "昨天",
+      "earlier": "更早"
+    },
+    "preview": {
+      "selectItem": "選擇一個項目進行預覽",
+      "information": "詳情",
+      "contentType": "內容類型",
+      "characters": "字符數",
+      "charactersCount": "{{count}} 字符",
+      "words": "詞數",
+      "size": "大小",
+      "dimensions": "分辨率",
+      "filesCount": "{{count}} 個檔案",
+      "imageFilesAriaLabel": "圖片檔案",
+      "imagesCount": "{{count}} 張圖片",
+      "sourceDevice": "來源裝置"
+    },
+    "contextMenu": {
+      "copy": "複製",
+      "copyFilePaths": "複製檔案路徑",
+      "pasteFilePaths": "貼上檔案路徑",
+      "favorite": "我的最愛",
+      "unfavorite": "取消我的最愛",
+      "send": "發送到",
+      "sendAll": "所有裝置",
+      "sendNoDevices": "暫無已配對裝置",
+      "fileDeleted": "檔案已刪除",
+      "openFileLocation": "打開檔案位置",
+      "resend": "重發",
+      "resending": "正在重發...",
+      "delete": "刪除"
+    },
+    "actionBar": {
+      "title": "剪貼簿歷史",
+      "copy": "複製",
+      "favorite": "我的最愛",
+      "unfavorite": "取消我的最愛",
+      "delete": "刪除"
+    },
+    "notification": {
+      "syncStartSingle": "正在同步檔案到 {{device}}",
+      "syncStartBatch": "正在同步 {{count}} 個檔案到 {{device}}",
+      "syncCompleteSingle": "檔案同步完成",
+      "syncCompleteBatch": "所有 {{count}} 個檔案已同步",
+      "syncFailed": "檔案同步失敗",
+      "syncFailedDetail": "檔案同步失敗：{{reason}}"
+    },
+    "transfer": {
+      "sending": "發送中",
+      "receiving": "接收中",
+      "progress": "{{transferred}} / {{total}} ({{percent}}%)",
+      "speedValue": "{{speed}}",
+      "speedPending": "速度計算中",
+      "remainingValue": "剩餘 {{time}}",
+      "remainingPending": "剩餘時間計算中",
+      "completed": "傳輸完成",
+      "failed": "傳輸失敗",
+      "cancelled": "已取消",
+      "pending": "等待傳輸",
+      "transferring": "傳輸中...",
+      "incoming": "正在接收...",
+      "incomingWithSize": "正在接收 ({{size}})...",
+      "cancel": "取消傳輸",
+      "cancelReason": {
+        "local_user": "你取消了此次傳輸",
+        "remote_peer": "對方取消了此次傳輸",
+        "replaced": "已被新內容替換",
+        "timeout": "傳輸超時已自動取消",
+        "unknown": "傳輸已取消"
+      },
+      "statusBadge": {
+        "pending": "檔案等待傳輸",
+        "transferring": "檔案傳輸中",
+        "completed": "檔案傳輸完成",
+        "failed": "檔案傳輸失敗",
+        "cancelled": "檔案傳輸已取消"
+      },
+      "copyDisabled": {
+        "pending": "檔案等待傳輸中",
+        "transferring": "檔案正在傳輸中",
+        "failed": "檔案傳輸失敗",
+        "cancelled": "檔案傳輸已取消"
+      }
+    },
+    "confirmDeleteTitle": "確認刪除",
+    "confirmDeleteDescription_one": "確定要刪除選中的項目嗎？此操作無法撤銷。",
+    "confirmDeleteDescription_other": "確定要刪除選中的 {{count}} 項嗎？此操作無法撤銷。",
+    "cancelLabel": "取消",
+    "deleteLabel": "刪除",
+    "deletingLabel": "刪除中..."
+  },
+  "devices": {
+    "title": "裝置管理",
+    "addNew": "邀請新裝置",
+    "thisDevice": {
+      "title": "本裝置",
+      "syncActive": "同步已開啓",
+      "syncPaused": "同步已暫停",
+      "pairedCount_zero": "暫無配對",
+      "pairedCount_one": "{{count}} 台已配對",
+      "pairedCount_other": "{{count}} 台已配對",
+      "onlineCount": "{{count}} 台在線"
+    },
+    "pairedDevices": {
+      "title": "已配對裝置"
+    },
+    "addDevice": {
+      "title": "邀請新裝置",
+      "subtitle": "在新裝置上輸入此邀請碼",
+      "expiresIn": "{{remaining}} 後過期",
+      "expired": "邀請碼已過期",
+      "passphraseHint": "新裝置還需輸入空間口令完成配對",
+      "loading": "正在生成邀請碼……",
+      "actions": {
+        "cancel": "取消",
+        "regenerate": "重新生成",
+        "close": "關閉",
+        "copy": "複製",
+        "copied": "已複製"
+      },
+      "errors": {
+        "issueFailed": "生成邀請碼失敗，請重試"
+      },
+      "success": {
+        "title": "裝置已加入",
+        "subtitle": "對方裝置已成功加入此空間"
+      },
+      "failed": {
+        "title": "配對失敗",
+        "unknown": "對方裝置未能成功加入",
+        "fallback": "配對失敗：{{reason}}",
+        "reasons": {
+          "cancelled": "邀請已取消",
+          "expired": "邀請已過期",
+          "timeout": "等待超時，對方未在時限內完成配對",
+          "passphrase_mismatch": "對方輸入的口令錯誤",
+          "user_rejected": "你拒絕了這次配對請求",
+          "proof_mismatch": "身份校驗失敗",
+          "joiner_disconnected": "對方裝置中途斷開"
+        }
+      }
+    },
+    "unpair": {
+      "confirmTitle": "取消配對",
+      "confirmDescription": "確定要取消與 {{deviceName}} 的配對嗎？取消後需要重新配對才能同步剪貼簿內容。"
+    },
+    "tabs": {
+      "connected": "已連接裝置",
+      "requests": "配對請求"
+    },
+    "sections": {
+      "requests": "配對請求",
+      "noRequests": "暫無配對請求"
+    },
+    "list": {
+      "empty": {
+        "title": "暫無已配對裝置"
+      },
+      "status": {
+        "online": "在線",
+        "offline": "離線"
+      },
+      "channel": {
+        "lan": "直連",
+        "relay": "中轉",
+        "offline": "未連接",
+        "unknown": "—",
+        "outOfLan": "不在本地網路",
+        "tooltip": {
+          "lan": "資料通過 IP 直連傳輸，可能是區域網路，也可能是 Tailscale 等 VPN。",
+          "relay": "資料通過加密中轉服務器傳輸。內容已加密，但連接信息對中轉方可見。",
+          "offline": "目前沒有連接。",
+          "unknown": "正在確認連接方式。",
+          "outOfLan": "已開啓僅本地網路同步，但該裝置目前不在同一網路。回到同一網路後會自動恢復。"
+        }
+      },
+      "labels": {
+        "unknownDevice": "未知裝置"
+      },
+      "actions": {
+        "retry": "重試",
+        "unpair": "取消配對",
+        "settings": "設定",
+        "addDevice": "邀請裝置",
+        "addAnotherDevice": "邀請另一台裝置"
+      }
+    },
+    "syncPaused": {
+      "message": "剪貼簿同步已暫停，所有裝置目前均不會同步內容。",
+      "goToSettings": "前往設定"
+    },
+    "mobileSync": {
+      "title": "移動裝置同步",
+      "description": "通過 SyncClipboard 協議在區域網路內與移動裝置（iOS / Android）同步剪貼簿",
+      "configure": "設定",
+      "statusBar": {
+        "bindFailed": "無法啟動監聽:{{reason}}"
+      },
+      "enableConfirm": {
+        "title": "開啓移動端同步",
+        "body": "繼續將自動開啓移動同步並在端口 {{port}} 開始監聽區域網路 HTTP。僅在受信網路下使用——任何在同一網段的人拿到憑據都能讀寫本機剪貼簿。",
+        "confirm": "開啓並繼續",
+        "enabling": "正在開啓…",
+        "cancel": "取消"
+      },
+      "feedback": {
+        "applied": "已即時生效",
+        "applyFailed": "套用設定失敗：{{message}}"
+      },
+      "settingsSheet": {
+        "title": "移動裝置同步設定",
+        "description": "調整移動裝置通過區域網路訪問本機所需的開關與網路參數",
+        "close": "完成"
+      },
+      "enabled": {
+        "label": "啓用移動端同步",
+        "description": "關閉後將立即拒絕來自所有移動裝置的同步請求"
+      },
+      "lanListener": {
+        "label": "LAN 監聽",
+        "description": "在所選網路接口上監聽明文 HTTP，開啓後才能接收移動裝置的請求",
+        "currentUrl": {
+          "label": "目前監聽位址",
+          "unavailable": "—",
+          "copy": "複製",
+          "copied": "已複製",
+          "auto": {
+            "label": "自動",
+            "hint": "守護進程監聽所有接口，請複製移動裝置能訪問到的那個。"
+          }
+        },
+        "bindIp": {
+          "label": "監聽 IP",
+          "placeholder": "選擇網路接口",
+          "empty": "未檢測到可用的區域網路 IPv4 位址",
+          "auto": "自動（0.0.0.0）"
+        },
+        "port": {
+          "label": "端口",
+          "placeholder": "42720"
+        },
+        "warning": {
+          "title": "網路風險提示",
+          "body": "區域網路內任何人只要拿到此機的 LAN URL 與配對憑據即可讀寫剪貼簿。請確保 Wi-Fi 受信任。",
+          "confirm": "我已知曉",
+          "cancel": "取消"
+        },
+        "disabledHint": "請先啓用 LAN 監聽後再新增裝置"
+      },
+      "list": {
+        "title": "已配對裝置",
+        "addButton": "新增裝置",
+        "lastSeen": {
+          "never": "從未活動",
+          "justNow": "剛剛",
+          "label": "最近活動 · {{rel}}"
+        }
+      },
+      "add": {
+        "title": "新增裝置",
+        "subtitle": "為該裝置生成一對長期有效的憑據。同一組憑據可用於 iOS 快捷指令以及任何兼容 SyncClipboard 協議的 Android 客戶端。",
+        "labelField": {
+          "label": "裝置名稱",
+          "placeholder": "我的手機"
+        },
+        "advanced": {
+          "title": "高級選項",
+          "description": "留空則自動生成一對隨機憑據"
+        },
+        "username": {
+          "label": "自定義使用者名",
+          "placeholder": "留空自動生成",
+          "help": "6–32 字符，字母開頭，僅 A-Z a-z 0-9 _"
+        },
+        "password": {
+          "label": "自定義密碼",
+          "placeholder": "留空自動生成",
+          "help": "至少 8 字符；不強制複雜度"
+        },
+        "submit": "新增",
+        "submitting": "新增中…",
+        "cancel": "取消"
+      },
+      "credential": {
+        "pair": {
+          "qrAlt": "掃描後自動填入同步憑據的二維碼"
+        },
+        "baseUrl": {
+          "selectAria": "選擇服務位址"
+        },
+        "noClient": {
+          "title": "還沒裝客戶端？",
+          "tabs": {
+            "ios": "iOS",
+            "android": "Android"
+          },
+          "ios": {
+            "scanLabel": "掃碼安裝 UniClipboard App（TestFlight）",
+            "scanQrAlt": "TestFlight 邀請連結二維碼",
+            "openInBrowser": "在瀏覽器打開 TestFlight",
+            "shortcutFallback": "不想裝 App？掃碼安裝快捷指令兜底",
+            "shortcutQrAria": "顯示快捷指令安裝二維碼",
+            "shortcutQrAlt": "iOS 快捷指令安裝二維碼"
+          },
+          "android": {
+            "scanLabel": "掃碼下載 APK（GitHub Releases）",
+            "scanQrAlt": "GitHub Releases APK 下載頁二維碼",
+            "openInBrowser": "在瀏覽器打開 GitHub Releases"
+          }
+        },
+        "credentials": {
+          "title": "憑據",
+          "warning": "關閉後無法再查看",
+          "backup": "備份",
+          "backupCopied": "已備份"
+        },
+        "username": {
+          "label": "使用者名"
+        },
+        "password": {
+          "label": "密碼",
+          "show": "顯示密碼",
+          "hide": "隱藏密碼"
+        },
+        "copy": "複製",
+        "copied": "已複製",
+        "copyFailed": "複製失敗"
+      },
+      "revoke": {
+        "confirmTitle": "撤銷 {{label}}",
+        "confirmDescription": "撤銷後該裝置將立即無法同步。要再次連接需重新新增（密碼無法找回）。",
+        "confirm": "撤銷",
+        "cancel": "取消"
+      },
+      "edit": {
+        "button": "編輯裝置",
+        "title": "編輯裝置",
+        "subtitle": "修改名稱、使用者名或重置密碼",
+        "cancel": "取消",
+        "save": "儲存",
+        "saving": "儲存中...",
+        "label": {
+          "label": "裝置名稱",
+          "placeholder": "我的手機"
+        },
+        "username": {
+          "label": "使用者名",
+          "placeholder": "mobile_phone",
+          "help": "6-32 字符，字母開頭，僅 A-Z a-z 0-9 _",
+          "renameNotice": "修改使用者名會生成新密碼，並需要重新配對該裝置。"
+        },
+        "password": {
+          "label": "密碼",
+          "placeholder": "留空表示保持目前密碼",
+          "autoPlaceholder": "將自動生成新密碼",
+          "help": "留空則不修改密碼；填寫新密碼（至少 8 位）則替換目前密碼。",
+          "autoHelp": "儲存後會自動生成新密碼，並且只顯示這一次。",
+          "regenerate": "重新生成"
+        },
+        "result": {
+          "warning": "這些憑據只顯示一次。關閉前請先儲存。",
+          "warningReissued": "舊密碼已失效。移動端客戶端必須使用此新密碼才能繼續同步。這些憑據只顯示一次，請在關閉前先儲存。"
+        }
+      },
+      "rotate": {
+        "button": "修改密碼",
+        "dialog": {
+          "title": "為 {{label}} 修改密碼",
+          "subtitle": "服務端只儲存密碼哈希，無法顯示目前密碼。生成新密碼後請同步更新移動端客戶端中的 password 字段。",
+          "passwordLabel": "新密碼（可選）",
+          "passwordPlaceholder": "留空將自動生成",
+          "passwordHelp": "留空 → 自動生成強密碼；自定義需 8–256 字符。",
+          "warning": "提交後舊密碼立即失效。移動端客戶端在更新 password 字段前將無法同步。",
+          "submit": "生成新密碼",
+          "submitting": "處理中...",
+          "cancel": "取消"
+        },
+        "result": {
+          "title": "新密碼已生成",
+          "subtitle": "下面是新密碼，僅顯示這一次。請立即複製並更新到移動端客戶端的 password 字段。",
+          "usernameLabel": "使用者名",
+          "passwordLabel": "新密碼",
+          "copy": "複製密碼",
+          "copied": "已複製",
+          "warning": "舊密碼已失效。移動端客戶端必須用此新密碼才能繼續同步。",
+          "confirmSaved": "我已儲存新密碼",
+          "close": "關閉",
+          "closeBlocked": "請先勾選「我已儲存新密碼」"
+        }
+      },
+      "deviceDialog": {
+        "sections": {
+          "serverAddress": "連接信息",
+          "pairing": "掃碼配對",
+          "info": "裝置信息"
+        },
+        "status": {
+          "online": "在線",
+          "offline": "離線",
+          "neverSeen": "從未連接"
+        },
+        "connectTitle": "連接 {{label}}",
+        "connectSubtitle": "用手機掃一掃，幾秒完成配對",
+        "scanInstruction": "打開手機上的 UniClipboard，掃描二維碼即可連接",
+        "wifiSameNetwork": "確保手機和這台電腦連在同一個 Wi-Fi",
+        "manualEntry": {
+          "title": "掃碼不成功？手動輸入使用者名和密碼",
+          "oneTimeHint": "密碼僅此一次"
+        },
+        "repair": {
+          "title": "需要重新配對手機？",
+          "description": "出於安全，服務端只儲存密碼哈希，二維碼無法再次生成。重置密碼即可得到新的掃碼二維碼。",
+          "action": "重置密碼"
+        },
+        "fields": {
+          "createdAt": "新增時間",
+          "lastSeen": "最近活動",
+          "lastSeenIp": "最近來源 IP",
+          "reportedName": "客戶端名稱",
+          "reportedOs": "客戶端系統"
+        }
+      },
+      "errors": {
+        "facadeUnavailable": "移動端同步功能未啓用",
+        "labelEmpty": "裝置名稱不能為空",
+        "labelTooLong": "裝置名稱過長（最多 {{max}} 字符）",
+        "lanListenerDisabled": "請先啓用 LAN 監聽",
+        "usernameTaken": "使用者名 \"{{username}}\" 已被佔用",
+        "usernameTooShort": "使用者名過短（至少 {{min}} 位，目前 {{got}} 位）",
+        "usernameTooLong": "使用者名過長（最多 {{max}} 位，目前 {{got}} 位）",
+        "usernameMustStartWithLetter": "使用者名必須以英文字母開頭",
+        "usernameContainsForbiddenChars": "使用者名只能包含英文字母、數字和下划線",
+        "passwordTooShort": "密碼長度不足（至少 {{min}} 字符）",
+        "passwordTooLong": "密碼過長（最多 {{max}} 字符）",
+        "passwordHashFailed": "密碼處理失敗：{{message}}",
+        "deviceNotFound": "裝置已不存在，請刷新列表",
+        "invalidLanParameter": "LAN 參數不合法：{{reason}}",
+        "settingsLoadFailed": "載入設定失敗：{{message}}",
+        "settingsSaveFailed": "儲存設定失敗：{{message}}",
+        "endpointInfoFailed": "無法探測目前 LAN 位址：{{message}}",
+        "lanProbeFailed": "無法列出網路接口：{{message}}",
+        "noLanInterfaceAvailable": "未檢測到可用的區域網路 IPv4 位址。請連入區域網路，或在「設定 → 監聽 IP」中手動指定一個具體位址後再試。",
+        "persistenceFailed": "儲存失敗：{{message}}",
+        "qrRenderFailed": "二維碼渲染失敗：{{message}}",
+        "unknown": "發生錯誤：{{message}}",
+        "loadFailed": "載入失敗：{{message}}"
+      }
+    },
+    "panel": {
+      "listTitle": "裝置",
+      "counts": "{{online}}/{{total}} 在線 · {{mobile}} 移動裝置",
+      "localBadge": "本機",
+      "fields": {
+        "peerId": "Peer ID"
+      },
+      "profile": {
+        "title": "身份檔案",
+        "platform": "平台",
+        "version": "應用程式版本",
+        "space": "所在空間",
+        "memberCount_one": "{{count}} 名成員",
+        "memberCount_other": "{{count}} 名成員",
+        "copy": "複製 Peer ID",
+        "copied": "已複製",
+        "copyFailed": "複製到剪貼簿失敗"
+      },
+      "policies": {
+        "title": "全局同步策略",
+        "autoSync": {
+          "title": "自動同步剪貼簿",
+          "description": "複製內容後自動推送給所有已配對裝置"
+        },
+        "fileSync": {
+          "title": "檔案同步",
+          "description": "允許在裝置間傳輸檔案"
+        }
+      },
+      "addMenu": {
+        "trigger": "新增裝置",
+        "triggerShort": "新增",
+        "p2p": "配對電腦裝置",
+        "mobile": "新增移動裝置"
+      }
+    },
+    "settings": {
+      "readOnly": "不可更改",
+      "sections": {
+        "connection": "連接信息"
+      },
+      "fields": {
+        "channel": "通道",
+        "address": "位址"
+      },
+      "badges": {
+        "mvp": "MVP",
+        "comingSoon": "即將推出",
+        "notEditable": "不可變更",
+        "globalFileSyncOff": "檔案同步已關閉",
+        "experimental": "實驗性",
+        "experimentalTooltip": "該功能處於實驗階段，行為可能在後續版本中調整或不穩定。"
+      },
+      "sync": {
+        "title": "同步設定",
+        "restoreDefaults": "恢復預設",
+        "contentTypes": "內容類型",
+        "rules": {
+          "sendEnabled": {
+            "title": "發送到此裝置",
+            "description": "開啓後，本機的剪貼簿內容會同步給此裝置。接收方向目前始終開啓，獨立的接收開關將在後續版本中開放。"
+          },
+          "syncText": {
+            "title": "同步文字",
+            "description": "允許同步文字內容"
+          },
+          "syncImage": {
+            "title": "同步圖片",
+            "description": "允許同步圖片內容（可能會消耗更多流量）"
+          },
+          "syncFile": {
+            "title": "同步檔案",
+            "description": "允許同步檔案內容（最大 10MB）"
+          },
+          "syncLink": {
+            "title": "同步連結",
+            "description": "允許同步 URL/連結內容"
+          },
+          "syncRichText": {
+            "title": "同步格式化文字",
+            "description": "允許同步格式化文字內容（HTML, RTF）"
+          }
+        }
+      },
+      "permissions": {
+        "title": "訪問權限",
+        "items": {
+          "readClipboard": "讀取剪貼簿",
+          "writeClipboard": "寫入剪貼簿",
+          "historyAccess": "訪問歷程記錄",
+          "fileTransfer": "傳輸檔案"
+        }
+      }
+    },
+    "switchSpace": {
+      "button": "加入其他空間",
+      "title": "切換到其他空間",
+      "subtitle": "目前剪貼簿歷史會用新空間的主密鑰重新加密。",
+      "warning": "所有本地剪貼簿內容會經歷 4 階段重加密遷移。切換過程中不要退出應用程式——如果中途崩潰，下次啟動會自動續跑。",
+      "labels": {
+        "code": "邀請碼",
+        "newPassphrase": "新空間口令"
+      },
+      "placeholders": {
+        "newPassphrase": "新空間發起者設定的口令"
+      },
+      "actions": {
+        "switch": "切換",
+        "switching": "切換中…",
+        "cancel": "取消",
+        "close": "關閉",
+        "retry": "重試",
+        "useNewCode": "重新輸入邀請碼"
+      },
+      "migrating": {
+        "title": "遷移剪貼簿歷史",
+        "phase": {
+          "preparing": "階段 1：備份本地歷史",
+          "prepared": "階段 2：與新發起者握手",
+          "handshakeDone": "階段 3：用新密鑰重加密",
+          "swapped": "階段 4：收尾清理"
+        },
+        "recordsHint": "備份表中已有 {{count}} 條記錄"
+      },
+      "success": {
+        "title": "切換成功",
+        "subtitle_one": "已用新主密鑰遷移 1 條剪貼簿記錄。",
+        "subtitle_other": "已用新主密鑰遷移 {{count}} 條剪貼簿記錄。",
+        "subtitle_zero": "無剪貼簿歷史需要遷移。"
+      },
+      "failed": {
+        "title": "切換失敗",
+        "fallback": "切換失敗：{{reason}}",
+        "reasons": {
+          "not_setup": "本裝置尚未完成首次 setup，請先“初始化”或“加入”。",
+          "pending_migration": "上次遷移未完成，請重新啟動應用程式讓其自動續跑。",
+          "not_unlocked": "空間會話未解鎖，請重新啟動應用程式讓 keychain 重新解鎖。",
+          "sponsor_rejected": "對方未識別這個邀請碼，請讓對方重新生成。",
+          "sponsor_declined": "對方拒絕了配對請求。",
+          "invitation_not_found": "邀請碼已被使用或失效，請讓對方重新生成一個。",
+          "invitation_expired": "邀請碼已過期，請讓對方重新生成一個。",
+          "passphrase_mismatch": "口令錯誤，請重試。",
+          "device_name_required": "缺少裝置名。",
+          "sponsor_unreachable": "無法連接到對方，請檢查 NAT / relay。",
+          "service_unavailable": "配對服務暫不可用，請稍後再試。",
+          "timeout": "握手超時。",
+          "connection_lost": "握手中途連接斷開。",
+          "corrupted_key_material": "本地密鑰物料損壞。",
+          "invalid_ciphertext": "備份記錄無法解密，重新啟動應用程式讓其自動續跑。",
+          "internal": "內部錯誤 —— 請查看 daemon 日誌。"
+        }
+      }
+    }
+  },
+  "pairing": {
+    "globalRequest": {
+      "title": "裝置配對請求",
+      "description": "{{deviceName}} 請求與您配對",
+      "warning": "請確認這是您發起的配對操作"
+    },
+    "requests": {
+      "accept": "接受",
+      "accepting": "接受中...",
+      "reject": "拒絕"
+    },
+    "steps": {
+      "discovery": "發現裝置",
+      "connecting": "正在連接...",
+      "pinVerify": "安全驗證",
+      "success": "配對成功",
+      "failed": "配對失敗"
+    },
+    "discovery": {
+      "description": "請確保兩台裝置都在同一區域網路下",
+      "searching": "正在搜尋裝置...",
+      "noDevices": "未發現可連接裝置",
+      "reScan": "重新掃描",
+      "foundCount": "發現 {{count}} 個裝置",
+      "unknownDevice": "未知裝置",
+      "connect": "連接"
+    },
+    "connecting": {
+      "title": "正在連接 {{deviceName}}",
+      "pleaseWait": "請稍候..."
+    },
+    "pinVerify": {
+      "description": "請確認兩台裝置上的 PIN 碼是否一致",
+      "initiatorTitle": "驗證 PIN 碼",
+      "initiatorDescription": "檢查此 PIN 碼是否與 {{deviceName}} 上顯示的一致",
+      "responderTitle": "您的 PIN 碼",
+      "responderDescription": "請與 {{deviceName}} 上顯示的 PIN 碼進行比對，並在發起裝置上按一下確認完成配對",
+      "verifying": "正在驗證...",
+      "pleaseWait": "請稍候...",
+      "pinLabel": "配對 PIN 碼",
+      "warning": "請確保兩台裝置顯示相同的 PIN 碼",
+      "notMatch": "不匹配",
+      "match": "確認匹配",
+      "timeout": "剩餘時間：{{time}}"
+    },
+    "success": {
+      "title": "配對成功！"
+    },
+    "failed": {
+      "title": "配對失敗",
+      "retry": "重試",
+      "errors": {
+        "loadPeers": "無法獲取裝置列表",
+        "reject": "連接請求被拒絕",
+        "initiate": "發起配對失敗",
+        "verifyPin": "驗證 PIN 失敗",
+        "activeSession": "已有正在進行的配對，請稍後再試",
+        "noParticipant": "本地沒有可確認配對的裝置參與者",
+        "sessionExpired": "配對會話已過期或已關閉",
+        "daemonUnavailable": "配對 daemon 不可用，請啟動桌面服務後重試"
+      }
+    }
+  },
+  "connectionRequest": {
+    "title": "裝置連接請求",
+    "status": {
+      "idle": "裝置 {{name}} 請求連接到此裝置",
+      "processing": "正在處理...",
+      "accepted": "已接受連接請求",
+      "rejected": "已拒絕連接請求",
+      "error": "處理失敗：{{message}}",
+      "establishing": "正在處理連接請求...",
+      "connected": "連接已建立",
+      "rejectedResult": "已拒絕連接"
+    },
+    "info": {
+      "device": "裝置 {{id}}",
+      "ip": "IP: {{ip}}",
+      "platform": "平台: {{platform}}"
+    },
+    "timeout": "{{time}} 秒後自動拒絕",
+    "actions": {
+      "reject": "拒絕",
+      "accept": "接受",
+      "close": "關閉",
+      "retry": "重試"
+    }
+  },
+  "feedback": {
+    "modal": {
+      "title": "發送意見回饋",
+      "description": "您的意見回饋將幫助我們改進 UniClipboard。請在下方描述您的問題或建議。",
+      "label": {
+        "content": "意見回饋內容",
+        "email": "電子郵箱（選填）"
+      },
+      "placeholder": {
+        "content": "請輸入您的意見回饋內容...",
+        "email": "your@email.com"
+      },
+      "submit": "提交意見回饋",
+      "useSavedEmail": "使用已儲存郵箱",
+      "success": "意見回饋發送成功，感謝您的支持！",
+      "error": "意見回饋發送失敗，請稍後重試。"
+    }
+  },
+  "lifecycle": {
+    "watcherFailed": "剪貼簿監聽器啟動失敗",
+    "networkFailed": "網路啟動失敗",
+    "retry": "重試",
+    "retrying": "重試中..."
+  },
+  "previewPanel": {
+    "title": "預覽",
+    "error": "載入預覽失敗",
+    "imageUnavailable": "圖片不可用",
+    "empty": "將鼠標懸停在項目上以預覽",
+    "imageAlt": "剪貼簿圖片",
+    "deleteHint": "{{modifier}}⌫ 刪除",
+    "largeImageTitle": "大圖片",
+    "largeImageHint": "{{size}} — 未自動載入",
+    "loadLargeImage": "載入圖片"
+  },
+  "delivery": {
+    "section": {
+      "aria": "條目同步狀態"
+    },
+    "source": {
+      "label": "來自:",
+      "local": "本地",
+      "remote": "{{device}}",
+      "historical": "本機歷史條目",
+      "localShort": "本機",
+      "remoteShort": "來自 {{device}}",
+      "historicalShort": "歷史條目"
+    },
+    "list": {
+      "title": "同步狀態",
+      "historical": "此條目在同步追蹤啓用前建立,無投遞記錄",
+      "noPeers": "暫未配對任何裝置"
+    },
+    "status": {
+      "delivered": "已接收",
+      "duplicate": "已接收(去重)",
+      "pending": "未嘗試",
+      "unreachable": "對端離線",
+      "failedWithReason": "失敗 · {{reason}}"
+    },
+    "summary": {
+      "synced": "已同步",
+      "partial": "部分同步",
+      "syncing": "同步中",
+      "failed": "同步失敗",
+      "waiting": "對端離線",
+      "pending": "等待同步"
+    },
+    "popover": {
+      "title": "同步狀態",
+      "ariaTrigger": "查看每台裝置的同步詳情"
+    },
+    "failureReason": {
+      "localPolicy": "本地策略阻斷",
+      "peerRejected": "對端拒收",
+      "io": "網路錯誤",
+      "internal": "內部錯誤"
+    },
+    "resend": {
+      "button": {
+        "entry": "重發",
+        "entryAria": "重發給所有可投遞的裝置",
+        "entryDisabled": "所有已配對裝置均已收到",
+        "peer": "重發",
+        "peerAria": "重發給 {{device}}",
+        "pending": "正在重發…"
+      },
+      "success": {
+        "summary": "已觸發重發 · {{accepted}}/{{total}} 接收"
+      },
+      "error": {
+        "notResendable": {
+          "remoteOrigin": "條目 {{entryIdShort}} 來自其他裝置,無法從本機重發。",
+          "payloadLost": "條目 {{entryIdShort}} 在本機已不可用。"
+        },
+        "targetNotTrusted": "裝置 {{device}} 已不在配對列表中。",
+        "noEligibleTargets": "沒有可重發的裝置。",
+        "entryNotFound": "條目 {{entryIdShort}} 不存在。",
+        "internal": "重發失敗:{{message}}"
+      }
+    }
+  },
+  "quickPanel": {
+    "loading": "正在連接剪貼簿歷史...",
+    "unavailable": "目前無法使用剪貼簿歷史。",
+    "history": {
+      "searchPlaceholder": "搜尋剪貼簿歷史…",
+      "advancedPlaceholder": "篩選條件…",
+      "searchAriaLabel": "搜尋剪貼簿歷史",
+      "filterMenuLabel": "打開篩選選單",
+      "listAriaLabel": "剪貼簿歷史項",
+      "filters": {
+        "all": "全部",
+        "text": "文字",
+        "richtext": "格式化文字",
+        "image": "圖片",
+        "link": "連結",
+        "file": "檔案",
+        "code": "程式碼"
+      },
+      "timeRange": {
+        "all_time": "不限時間",
+        "today": "今天",
+        "yesterday": "昨天",
+        "last_7d": "最近 7 天",
+        "last_30d": "最近 30 天",
+        "this_week": "本周",
+        "this_month": "本月"
+      },
+      "locked": {
+        "title": "剪貼簿已鎖定",
+        "description": "解鎖後才能查看剪貼簿歷史",
+        "action": "解鎖",
+        "unlocking": "正在解鎖..."
+      },
+      "status": {
+        "close": "esc 關閉",
+        "loading": "載入中…",
+        "searching": "搜尋中…",
+        "navigatePaste": "↑↓ 移動 · ⇥ 類型 · ⏎ 貼上"
+      },
+      "empty": {
+        "title": "沒有找到結果",
+        "description": "試試別的關鍵詞或篩選條件"
+      }
+    }
+  },
+  "setup": {
+    "page": {
+      "loadingSetupState": "正在載入初始化狀態...",
+      "processing": "正在處理...",
+      "processingJoinSpace": {
+        "title": "正在連接裝置…",
+        "subtitle": "配對請求已發送，請等待對方裝置響應。",
+        "hint": "請前往另一台裝置上，同意配對請求"
+      },
+      "unknownState": "未知的初始化狀態：{{state}}",
+      "errors": {
+        "loadSetupStateFailed": "載入初始化狀態失敗",
+        "refreshPeersFailed": "刷新裝置列表失敗",
+        "operationFailed": "操作失敗，請稍後重試"
+      },
+      "badges": {
+        "e2ee": "端到端加密",
+        "localKeys": "本地密鑰托管",
+        "lanDiscovery": "區域網路發現"
+      }
+    },
+    "common": {
+      "unknownDevice": "未知裝置",
+      "back": "返回",
+      "refresh": "刷新",
+      "cancel": "取消",
+      "encryptPassphraseLabel": "加密口令",
+      "encryptPassphrasePlaceholder": "請輸入主裝置上顯示的加密口令"
+    },
+    "brand": {
+      "headline": "你的剪貼簿，無處不在。",
+      "tagline": "端到端加密，密鑰只留在你自己的裝置上。"
+    },
+    "welcome": {
+      "title": "開始使用",
+      "subtitle": "先告訴我們，這是你的第幾台裝置。",
+      "create": {
+        "title": "這是我的第一台裝置",
+        "description": "建立加密空間，然後連接另一台裝置開始同步。",
+        "cta": "建立空間"
+      },
+      "join": {
+        "title": "我已經在另一台裝置上使用",
+        "description": "獲取另一台裝置顯示的邀請碼，將本機連接進去。",
+        "cta": "通過配對加入"
+      },
+      "import": {
+        "divider": "遷移或恢復",
+        "title": "遷移裝置備份",
+        "description": "接管備份中的裝置身份；匯出備份的原裝置需要下線。"
+      },
+      "footer": "無需帳號。剪貼簿內容僅儲存在你自己的裝置上。"
+    },
+    "importConfig": {
+      "title": "匯入設定",
+      "subtitle": "用你在另一台裝置上匯出的設定檔案來初始化本機。",
+      "confirmSubtitle": "確認即將匯入的內容後再繼續。",
+      "fileLabel": "設定包",
+      "chooseFile": "選擇一個 .ucbundle 檔案…",
+      "changeFile": "更換",
+      "passwordLabel": "Space 口令",
+      "passwordPlaceholder": "匯出裝置的 Space 口令",
+      "passwordHint": "輸入匯出這個檔案的那台裝置的 Space 口令，用它來解密。",
+      "note": "本機將沿用那台匯出裝置的身份和配對關係。匯入後請勿再讓原裝置上線，兩台相同身份的裝置同時在線會在裝置網路中互相衝突。",
+      "metaTitle": "即將匯入的設定",
+      "metaAppVersion": "匯出時版本",
+      "metaSourceMode": "來源類型",
+      "metaSourcePortable": "便攜版",
+      "metaSourceInstalled": "安裝版",
+      "metaFingerprint": "裝置指紋",
+      "restartingTitle": "正在重新啟動以完成匯入",
+      "restartingDescription": "請稍候，應用程式會自動重新啟動並落地匯入的設定，期間請勿關閉。",
+      "restartingUnlockHint": "重新啟動後需要輸入你的 Space 口令來解鎖。",
+      "errors": {
+        "invalidPassword": "口令錯誤，或檔案已損壞",
+        "incompatible": "這個設定包的版本與目前應用程式不兼容",
+        "generic": "匯入設定失敗，請重試。"
+      },
+      "actions": {
+        "back": "返回",
+        "continue": "繼續",
+        "staging": "正在匯入…",
+        "import": "開始匯入"
+      }
+    },
+    "initializeSpace": {
+      "title": "建立你的空間",
+      "subtitle": "為本機設定一個名稱，並設定一個口令保護這個加密空間。",
+      "labels": {
+        "deviceName": "裝置名稱",
+        "passphrase": "口令",
+        "passphraseConfirm": "確認口令"
+      },
+      "placeholders": {
+        "deviceName": "例如：MacBook Pro",
+        "passphrase": "輸入一個強口令",
+        "passphraseConfirm": "再次輸入口令"
+      },
+      "errors": {
+        "passphraseMismatch": "兩次輸入的口令不一致",
+        "deviceNameRequired": "請填寫裝置名稱",
+        "alreadyInitialized": "本機已完成初始化。",
+        "serviceUnavailable": "守護進程尚未就緒，請稍後重試。",
+        "generic": "建立空間失敗，請重試。"
+      },
+      "actions": {
+        "back": "返回",
+        "creating": "正在建立...",
+        "submit": "建立空間"
+      },
+      "hint": "請妥善保管該口令，所有想加入此空間的裝置都需要輸入它。"
+    },
+    "showInvitation": {
+      "title": "邀請新裝置",
+      "subtitle": "在另一台裝置上輸入這個邀請碼即可加入空間。",
+      "expiresIn": "{{remaining}} 後過期",
+      "expired": "邀請碼已過期",
+      "hint": "配對完成前請保持兩台裝置都在線。",
+      "hintExpired": "邀請碼已失效，請取消後重新生成。",
+      "actions": {
+        "cancel": "取消邀請"
+      }
+    },
+    "redeemInvitation": {
+      "title": "加入已有空間",
+      "subtitle": "輸入對方裝置顯示的邀請碼，以及建立空間時設定的口令。",
+      "labels": {
+        "code": "邀請碼",
+        "passphrase": "空間口令"
+      },
+      "placeholders": {
+        "passphrase": "輸入對方在建立空間時使用的口令"
+      },
+      "errors": {
+        "invitationNotFound": "邀請碼已被使用或失效，請讓對方重新生成一個。",
+        "invitationExpired": "邀請碼已過期，請讓對方重新生成一個。",
+        "passphraseMismatch": "口令錯誤，請重試。",
+        "sponsorUnreachable": "暫時無法連接對方裝置，請確認兩台裝置都在線。",
+        "sponsorRejected": "對方未識別該邀請碼，請讓對方重新生成。",
+        "sponsorDeclined": "對方拒絕了本次配對請求。",
+        "timeout": "配對握手超時，請重試。",
+        "connectionLost": "配對過程中連接中斷，請重試。",
+        "serviceUnavailable": "守護進程尚未就緒，請稍後重試。",
+        "deviceNameRequired": "本機缺少裝置名稱，無法加入。",
+        "generic": "加入空間失敗，請重試。"
+      },
+      "hint": "邀請碼有效期較短，請讓對方保持顯示直到配對完成。",
+      "actions": {
+        "back": "返回",
+        "joining": "正在加入...",
+        "submit": "加入空間"
+      }
+    },
+    "spaceReady": {
+      "title": "完成",
+      "subtitle": "空間已建立。現在連接另一台裝置即可開始同步。",
+      "issueFailed": "暫時無法生成邀請碼，請稍後重試。",
+      "actions": {
+        "invite": "立即連接裝置",
+        "inviting": "正在生成邀請碼...",
+        "later": "稍後再說"
+      }
+    },
+    "pairingComplete": {
+      "title": "配對成功",
+      "connected": "已連接",
+      "devices": {
+        "thisDevice": "這台裝置",
+        "local": "本機",
+        "peer": "新裝置",
+        "joined": "剛剛加入",
+        "direct": "區域網路直連"
+      },
+      "points": {
+        "encrypted": "內容全程加密，只有已配對的裝置能夠讀取。",
+        "sync": "複製的內容會在兩台在線裝置之間自動同步。"
+      },
+      "actions": {
+        "done": "完成"
+      }
+    }
+  }
+}

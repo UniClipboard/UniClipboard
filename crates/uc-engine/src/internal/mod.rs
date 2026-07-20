@@ -7,6 +7,7 @@ pub mod clipboard;
 pub(crate) mod clipboard_runtime;
 pub mod create_space;
 pub mod deps;
+pub mod device;
 pub mod facade;
 pub mod file_transfer;
 pub mod host_adapters;

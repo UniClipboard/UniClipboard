@@ -1,10 +1,10 @@
 use uc_engine::{
     CreateSpaceInput, DeviceSummary, EngineConfig, EngineError, EngineErrorCategory, EngineEvent,
     EngineState, EntrySummary, ExportEntryInput, HostFileHandle, JoinSpaceInput,
-    MigrationPhaseSummary, MigrationProgressSummary, Operation, OperationKind, OperationResult,
-    QueryHistoryInput, RecoverSessionInput, RefreshReason, ResendEntryInput, SecretString,
-    SendFilesInput, SendImageInput, SendTextInput, SetupInvitationSummary, SetupStateSummary,
-    StorageStatsSummary, UnlockSpaceInput,
+    LocalDeviceSummary, MigrationPhaseSummary, MigrationProgressSummary, Operation, OperationKind,
+    OperationResult, QueryHistoryInput, RecoverSessionInput, RefreshReason, ResendEntryInput,
+    SecretString, SendFilesInput, SendImageInput, SendTextInput, SetupInvitationSummary,
+    SetupStateSummary, StorageStatsSummary, UnlockSpaceInput,
 };
 
 #[test]
@@ -67,6 +67,7 @@ fn every_public_operation_has_a_stable_kind() {
             Operation::ClearStorageCache,
             OperationKind::ClearStorageCache,
         ),
+        (Operation::QueryLocalDevice, OperationKind::QueryLocalDevice),
         (Operation::ListDevices, OperationKind::ListDevices),
         (
             Operation::SendText(SendTextInput {
@@ -117,6 +118,19 @@ fn every_public_operation_has_a_stable_kind() {
     for (operation, expected) in operations {
         assert_eq!(operation.kind(), expected);
     }
+}
+
+#[test]
+fn local_device_result_redacts_the_display_name() {
+    let result = OperationResult::LocalDevice(LocalDeviceSummary {
+        device_id: "device-1".into(),
+        display_name: "Private MacBook".into(),
+    });
+    let debug = format!("{result:?}");
+
+    assert!(debug.contains("local_device"));
+    assert!(debug.contains("device-1"));
+    assert!(!debug.contains("Private MacBook"));
 }
 
 #[test]

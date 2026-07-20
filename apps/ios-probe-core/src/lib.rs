@@ -588,6 +588,12 @@ fn operation_response(result: OperationResult) -> Value {
             "kind": "storage_cache_cleared",
             "freed_bytes": freed_bytes,
         }),
+        OperationResult::LocalDevice(device) => json!({
+            "ok": true,
+            "kind": "local_device",
+            "device_id": device.device_id,
+            "has_display_name": !device.display_name.is_empty(),
+        }),
         OperationResult::Devices(devices) => json!({
             "ok": true,
             "kind": "devices",
@@ -769,6 +775,12 @@ mod tests {
 
     #[test]
     fn operation_response_redacts_device_names_and_history_previews() {
+        let local = operation_response(OperationResult::LocalDevice(
+            uc_engine::LocalDeviceSummary {
+                device_id: "device-local".into(),
+                display_name: "private local device name".into(),
+            },
+        ));
         let devices =
             operation_response(OperationResult::Devices(vec![uc_engine::DeviceSummary {
                 device_id: "device-1".into(),
@@ -785,6 +797,7 @@ mod tests {
             next_cursor: None,
         });
 
+        assert!(!local.to_string().contains("private local device name"));
         assert!(!devices.to_string().contains("private phone name"));
         assert!(!history.to_string().contains("private payload"));
     }

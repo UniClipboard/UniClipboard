@@ -32,6 +32,7 @@ use crate::internal::clipboard_runtime::{
 };
 use crate::internal::create_space::execute_create_space;
 use crate::internal::deps::WiredDependencies;
+use crate::internal::device::execute_query_local_device;
 use crate::internal::facade::{
     build_app_facade_from_deps, AppFacadeAssemblyOptions, ClipboardRestoreAssembly,
 };
@@ -278,6 +279,9 @@ impl EngineRuntime for ProductionRuntime {
             }
             Operation::ClearStorageCache => {
                 execute_clear_storage_cache(self.current_facade().await?.as_ref()).await
+            }
+            Operation::QueryLocalDevice => {
+                execute_query_local_device(self.current_facade().await?.as_ref()).await
             }
             Operation::ListDevices => {
                 let entries = self

@@ -81,6 +81,7 @@ pub enum OperationKind {
     QueryMigrationProgress,
     QueryStorageStats,
     ClearStorageCache,
+    QueryLocalDevice,
     ListDevices,
     SendText,
     SendImage,
@@ -104,6 +105,7 @@ impl fmt::Display for OperationKind {
             Self::QueryMigrationProgress => "query_migration_progress",
             Self::QueryStorageStats => "query_storage_stats",
             Self::ClearStorageCache => "clear_storage_cache",
+            Self::QueryLocalDevice => "query_local_device",
             Self::ListDevices => "list_devices",
             Self::SendText => "send_text",
             Self::SendImage => "send_image",
@@ -129,6 +131,7 @@ pub enum Operation {
     QueryMigrationProgress,
     QueryStorageStats,
     ClearStorageCache,
+    QueryLocalDevice,
     ListDevices,
     SendText(SendTextInput),
     SendImage(SendImageInput),
@@ -152,6 +155,7 @@ impl Operation {
             Self::QueryMigrationProgress => OperationKind::QueryMigrationProgress,
             Self::QueryStorageStats => OperationKind::QueryStorageStats,
             Self::ClearStorageCache => OperationKind::ClearStorageCache,
+            Self::QueryLocalDevice => OperationKind::QueryLocalDevice,
             Self::ListDevices => OperationKind::ListDevices,
             Self::SendText(_) => OperationKind::SendText,
             Self::SendImage(_) => OperationKind::SendImage,
@@ -505,6 +509,7 @@ pub enum OperationResult {
     StorageCacheCleared {
         freed_bytes: u64,
     },
+    LocalDevice(LocalDeviceSummary),
     Devices(Vec<DeviceSummary>),
     EntrySent {
         entry_id: String,
@@ -543,6 +548,9 @@ impl fmt::Debug for OperationResult {
             Self::StorageCacheCleared { freed_bytes } => debug
                 .field("kind", &"storage_cache_cleared")
                 .field("freed_bytes", freed_bytes),
+            Self::LocalDevice(device) => {
+                debug.field("kind", &"local_device").field("device", device)
+            }
             Self::Devices(devices) => debug
                 .field("kind", &"devices")
                 .field("device_count", &devices.len()),
@@ -615,6 +623,22 @@ pub struct StorageStatsSummary {
     pub vault_bytes: u64,
     pub cache_bytes: u64,
     pub logs_bytes: u64,
+}
+
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LocalDeviceSummary {
+    pub device_id: String,
+    pub display_name: String,
+}
+
+impl fmt::Debug for LocalDeviceSummary {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("LocalDeviceSummary")
+            .field("device_id", &self.device_id)
+            .field("has_display_name", &!self.display_name.is_empty())
+            .finish()
+    }
 }
 
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]

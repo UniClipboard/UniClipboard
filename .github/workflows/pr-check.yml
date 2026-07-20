@@ -181,6 +181,9 @@ jobs:
           TAURI_CONFIG: '{"bundle":{"externalBin":[]}}'
         run: cargo check --workspace --locked
 
+      - name: Verify cross-platform engine lifecycle and persistence privacy
+        run: cargo test -p uc-engine --locked
+
       # IPC schema drift check (issue #698) —— `cargo test --test specta_export`
       # 用同一个 `tauri_specta::Builder` 构造命令清单，把 TypeScript binding
       # 写到 `src/lib/ipc-bindings.generated.ts`。如果 PR 改了任何

@@ -382,7 +382,9 @@ async fn run_send_file(path: PathBuf, json: bool, verbose: bool) -> i32 {
         }
         Err(err) => {
             let msg = match &err {
-                BlobTransferError::Publish(s) | BlobTransferError::Fetch(s) => s.clone(),
+                BlobTransferError::Publish(s)
+                | BlobTransferError::Fetch(s)
+                | BlobTransferError::Persistence(s) => s.clone(),
                 BlobTransferError::Cancelled => "publish cancelled".to_string(),
             };
             ui::spinner_finish_error(&publish_spinner, &format!("Publish failed: {msg}"));

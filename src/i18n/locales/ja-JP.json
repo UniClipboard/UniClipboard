@@ -1,0 +1,1929 @@
+{
+  "common": {
+    "loading": "読み込み中...",
+    "unknownSize": "不明なサイズ",
+    "zeroBytes": "0 バイト"
+  },
+  "loading": {
+    "initializing": "初期化中...",
+    "error_title": "初期化に失敗しました",
+    "timeout_error": "初期化がタイムアウトしました。アプリケーションを再起動してください。"
+  },
+  "nav": {
+    "dashboard": "ダッシュボード",
+    "history": "履歴",
+    "devices": "デバイス",
+    "settings": "設定",
+    "updateAvailable": "利用可能なアップデート",
+    "updateDownloading": "アップデートをダウンロード中...",
+    "updateDownloadingWithProgress": "アップデートをダウンロード中... {{percent}}%",
+    "updateInstalling": "更新をインストール中...",
+    "updateReady": "更新をインストールする準備ができました",
+    "back": "戻る",
+    "feedback": "フィードバック"
+  },
+  "debugBadge": {
+    "title": "デバッグ モードがオンになっています。",
+    "description": "ローカル ログはより詳細になり、より速く増加する可能性があります。",
+    "restartHint": "通常のログに完全に戻るには、デバッグ モードをオフにしてアプリまたはデーモンを再起動します。",
+    "disable": "デバッグ モードをオフにします",
+    "disabledToast": "デバッグ モードがオフになりました。再起動して通常のログに完全に戻ります。",
+    "disableFailed": "デバッグ モードをオフにできませんでした"
+  },
+  "update": {
+    "title": "利用可能なアップデート",
+    "currentVersion": "現在のバージョン",
+    "latestVersion": "最新バージョン",
+    "releaseNotes": "リリース ノート",
+    "noNotes": "リリース ノートは提供されていません。",
+    "updateNow": "今すぐ更新",
+    "installNow": "今すぐインストール",
+    "downloadInBackground": "バックグラウンドでダウンロード",
+    "cancelDownload": "ダウンロードをキャンセル",
+    "cancelling": "キャンセル中...",
+    "readyHint": "アップデートをダウンロードしました。［今すぐインストール］をクリックして適用し、再起動してください。",
+    "later": "後で",
+    "noUpdate": "すでに最新バージョンを使用しています。",
+    "checkFailed": "アップデートの確認に失敗しました。",
+    "installFailed": "アップデートに失敗しました。もう一度お試しください。",
+    "downloadFailed": "バックグラウンドでのダウンロードに失敗しました。もう一度お試しください。",
+    "downloading": "ダウンロード中...",
+    "installing": "インストール中...",
+    "packageManager": {
+      "title": "パッケージ マネージャー経由でアップグレードしてください",
+      "portableTitle": "新しいポータブル バージョンをダウンロードしてください",
+      "debHint": "UniClipboard は apt 経由でインストールされました(Debian/Ubuntu)。ターミナルでこれを実行してアップグレードします。",
+      "rpmHint": "UniClipboard は dnf/yum (Fedora/RHEL) 経由でインストールされました。ターミナルでこれを実行してアップグレードします。",
+      "portableHint": "ポータブル ビルドを実行しています。このファイルはその場で更新されません。リリース ページから新しいポータブル zip をダウンロードし、実行可能ファイルを置き換えます (データ フォルダーは変更されません)。",
+      "debCommand": "sudo apt update && sudo apt install --only-upgrade uniclipboard",
+      "rpmCommand": "sudo dnf upgrade uniclipboard",
+      "copyCommand": "コマンドをコピー",
+      "copied": "コピーされました",
+      "openReleasePage": "リリース ページを開く",
+      "ok": "わかりました"
+    }
+  },
+  "updater": {
+    "window": {
+      "title": "新しいバージョンの UniClipboard が利用可能になりました。",
+      "subtitle": "{{app}} {{version}} が利用可能です。現在のバージョンは {{currentVersion}} です。今すぐダウンロードしますか？",
+      "readySubtitle": "{{app}} {{version}} がダウンロードされ、インストールする準備ができています。",
+      "skipThisVersion": "このバージョンをスキップ",
+      "remindMeLater": "後で通知する",
+      "downloadUpdate": "アップデートをダウンロード",
+      "checking": "最新バージョンを確認中…",
+      "autoUpdate": "将来的にアップデートを自動的にダウンロードします",
+      "upToDateTitle": "最新のバージョンです。",
+      "upToDateBody": "すでに UniClipboard の最新バージョンを実行しています。",
+      "close": "閉じる"
+    }
+  },
+  "upgradeNotice": {
+    "title": "デバイスを再ペアリング",
+    "body": "このバージョンでは、デバイス ペアリング スキームが更新されます。以前のペアリングは同期できなくなります。 [デバイス] を開いて、他のデバイスを招待または再参加してください。",
+    "fromVersion": "以前のバージョン: {{from}}",
+    "toVersion": "現在のバージョン: {{to}}",
+    "fromUnknown": "以前のバージョン: 不明",
+    "gotIt": "わかりました。もう通知しないでください",
+    "later": "後で"
+  },
+  "settings": {
+    "title": "設定",
+    "restartBanner": {
+      "restartButton": "今すぐ再起動",
+      "restartingButton": "再起動中…",
+      "successMessage": "再起動が完了しました",
+      "dismissAriaLabel": "再起動通知を無視する",
+      "errorMessage": "自動再起動に失敗しました。アプリを手動で終了し、再度開いて変更を適用してください。",
+      "retryButton": "再試行"
+    },
+    "categories": {
+      "general": "全般",
+      "appearance": "外観",
+      "sync": "同期",
+      "security": "セキュリティとプライバシー",
+      "network": "ネットワーク",
+      "storage": "ストレージ",
+      "about": "概要",
+      "shortcuts": "ショートカット",
+      "quickPanel": "クイックパネル"
+    },
+    "sections": {
+      "general": {
+        "title": "全般",
+        "startupTitle": "起動",
+        "saveError": "設定の保存に失敗しました",
+        "deviceName": {
+          "label": "デバイス名",
+          "description": "ローカル ネットワーク上でこのデバイスを識別するために使用されます",
+          "placeholder": "デバイス名を入力してください"
+        },
+        "autoStart": {
+          "label": "起動時に開始",
+          "description": "システム起動時に UniClipboard を開始します"
+        },
+        "startupMode": {
+          "label": "スタートアップ モード",
+          "description": "サイレントはウィンドウをスキップし、バックグラウンドで直接実行します。軽量化はさらに進んでおり、同期の準備が完了するとウィンドウとトレイも終了し、バックグラウンド サービスだけを維持して通知を送信します。アプリ アイコンをもう一度クリックしてウィンドウを再度開きます。",
+          "options": {
+            "normal": "通常",
+            "silent": "サイレント",
+            "lightweight": "軽量"
+          }
+        },
+        "restoreLastEntryOnStartup": {
+          "label": "起動時に最後のエントリを復元する",
+          "description": "起動時にバックグラウンド サービスの準備ができたら、最新の履歴エントリをシステム クリップボードに戻します"
+        },
+        "language": {
+          "title": "言語",
+          "label": "UI 言語",
+          "description": "すぐに有効になります"
+        },
+        "sound": {
+          "title": "サウンド",
+          "label": "インタラクションサウンドフィードバック",
+          "description": "状態の変化、メニュー選択、成功したアクションを示す光の合図を再生します"
+        },
+        "telemetry": {
+          "title": "プライバシー",
+          "diagnostics": {
+            "label": "診断情報を送信",
+            "description": "クラッシュ、エラー、匿名ログを送信します。クリップボードのコンテンツは収集されません。"
+          },
+          "usageAnalytics": {
+            "label": "使用状況分析を送信します。",
+            "description": "製品を改善するために匿名の機能使用状況統計を送信します。クリップボードのコンテンツは収集されません。"
+          },
+          "notice": {
+            "title": "UniClipboard の改善にご協力ください",
+            "body": "UniClipboard は、アプリの改善に役立てるため、匿名の診断データと使用状況データを収集します。クリップボードの内容が収集または送信されることはありません。これらの選択はいつでも [設定] > [一般] > [プライバシー] で変更できます。",
+            "accept": "OK",
+            "optOut": "無効"
+          }
+        },
+        "logsDirectory": {
+          "title": "ログ",
+          "label": "ログ ディレクトリ",
+          "description": "アプリケーション ログが保存されているフォルダを開きます",
+          "button": "ファイル マネージャーで開く"
+        },
+        "logs": {
+          "debug": {
+            "label": "デバッグ モード",
+            "description": "アプリとデーモンの再起動後にローカル診断ログの詳細を増やします。",
+            "confirmTitle": "デバッグ モードを有効にしますか?",
+            "confirmDescription": "デバッグ モードでは、ローカル ログのボリュームが増加し、より多くのランタイム コンテキストが含まれる可能性があります。クリップボードのコンテンツは、アクティブにログに記録されるべきではありません。確認すると、アプリとデーモンがすぐに再起動され、変更が適用されます。必要がなくなったらオフにし、アプリまたはデーモンを再起動して、通常のログ記録に完全に戻します。",
+            "confirm": "有効にして再起動",
+            "cancel": "キャンセル",
+            "restartToast": "ログの変更を完全に有効にするには、アプリまたはデーモンを再起動します。",
+            "error": "デバッグモードの変更に失敗しました",
+            "restartingTitle": "再起動中…",
+            "restartingDescription": "アプリとバックグラウンド デーモンを再起動してデバッグ モードを適用します。このウィンドウを閉じずにお待ちください。"
+          },
+          "export": {
+            "label": "ログのエクスポート",
+            "description": "ダウンロードで過去 24 時間の GUI、デーモン、および CLI ログを含む zip アーカイブを作成します。",
+            "button": "ログのエクスポート",
+            "exporting": "エクスポート中...",
+            "success": "ログのエクスポート",
+            "error": "ログのエクスポートに失敗しました",
+            "copyPath": "パスのコピー",
+            "copySuccess": "エクスポート パスのコピーに失敗しました",
+            "copyError": "エクスポートのコピーに失敗しましたパス"
+          }
+        }
+      },
+      "appearance": {
+        "title": "外観",
+        "themeMode": {
+          "title": "外観",
+          "light": "ライト",
+          "dark": "ダーク",
+          "system": "システム"
+        },
+        "themeColor": {
+          "title": "テーマカラー"
+        },
+        "themePreview": {
+          "title": "テーマ",
+          "lightLabel": "ライト",
+          "darkLabel": "ダーク",
+          "followSystem": "システムに従ってください",
+          "setAsLight": "ライトに切り替える",
+          "setAsDark": "ダークに切り替える",
+          "currentLight": "ライト",
+          "currentDark": "ダーク"
+        },
+        "lightTheme": {
+          "title": "ライトテーマ",
+          "preset": "プリセット",
+          "accent": "アクセント",
+          "background": "背景",
+          "foreground": "フォアグラウンド",
+          "border": "境界線"
+        },
+        "darkTheme": {
+          "title": "ダークテーマ",
+          "preset": "プリセット",
+          "accent": "アクセント",
+          "background": "背景",
+          "foreground": "前景",
+          "border": "境界線"
+        },
+        "tokenPicker": {
+          "openPicker": "色の選択",
+          "reset": "プリセットにリセット",
+          "modified": "カスタム",
+          "hexInputLabel": "16 進数のカラー値"
+        },
+        "zoom": {
+          "title": "インターフェイス スケール",
+          "description": "スケールはメイン ウィンドウとクイック パネルの両方に適用され、ショートカットと同期したままになります。",
+          "current": "現在のスケール: {{value}}",
+          "reset": "100% にリセット"
+        }
+      },
+      "sync": {
+        "title": "同期",
+        "autoSync": {
+          "label": "自動sync",
+          "description": "すべてのデバイス間でクリップボードの同期を制御します。無効にすると、コンテンツはどのデバイスにも同期されなくなります。"
+        },
+        "syncOnRestore": {
+          "label": "復元時に同期",
+          "description": "過去のクリップボード エントリを復元するときは、他のデバイスでもそのエントリをアクティブなクリップボードにします。デフォルトではオフです。"
+        },
+        "syncFrequency": {
+          "label": "同期頻度",
+          "description": "uniClipboard が新しいコンテンツをチェックする頻度を制御します",
+          "realtime": "リアルタイム",
+          "30s": "30 秒ごと",
+          "1m": "毎分",
+          "5m": "5 分ごと",
+          "15m": "15 分ごと"
+        },
+        "loadError": "設定のロードに失敗しました:",
+        "fileSync": {
+          "title": "ファイル同期",
+          "enable": {
+            "label": "ファイル同期を有効にする",
+            "description": "コピーされたファイルをデバイス間で同期しますLAN 経由"
+          },
+          "smallFileThreshold": {
+            "label": "即時転送しきい値",
+            "description": "これより小さいファイルはすぐに転送されます。大きなファイルはメタデータのみを同期します",
+            "unit": "MB",
+            "errors": {
+              "invalid": "正の数である必要があります",
+              "range": "1 ～ 1000 MB である必要があります",
+              "exceedsMax": "最大ファイル サイズ未満である必要があります"
+            }
+          },
+          "maxFileSize": {
+            "label": "最大ファイル サイズ",
+            "description": "これより大きいファイルは同期されません",
+            "unit": "MB",
+            "errors": {
+              "invalid": "正の数である必要があります",
+              "range": "次の範囲である必要があります1 ～ 10240 MB (10 GB)"
+            }
+          },
+          "cacheQuota": {
+            "label": "デバイスごとのキャッシュ クォータ",
+            "description": "各デバイスからのキャッシュ ファイルの最大ディスク容量",
+            "unit": "MB",
+            "errors": {
+              "invalid": "正の数である必要があります",
+              "range": "次の範囲である必要があります50 ～ 10240 MB"
+            }
+          },
+          "retentionPeriod": {
+            "label": "ファイルの保存期間",
+            "description": "キャッシュされたファイルはこの期間後に削除されます",
+            "unit": "時間",
+            "errors": {
+              "invalid": "正の数である必要があります",
+              "range": "1 ～ の範囲である必要があります720 時間 (30 日間)"
+            }
+          },
+          "autoCleanup": {
+            "label": "自動クリーンアップ",
+            "description": "期限切れのキャッシュ ファイルを起動時に自動的に削除します"
+          },
+          "autoSaveDir": {
+            "label": "ファイルの保存場所",
+            "description": "ファイルを保存するためのカスタム ディレクトリを設定します。設定を解除すると、管理ストレージに残ります。",
+            "managed": "管理ストレージ (デフォルト)",
+            "choose": "フォルダを選択",
+            "clear": "デフォルトにリセット"
+          }
+        }
+      },
+      "security": {
+        "title": "セキュリティとプライバシー",
+        "endToEndEncryption": {
+          "label": "エンドツーエンドの暗号化",
+          "description": "すべての同期コンテンツに対してエンドツーエンドの暗号化を有効にする"
+        },
+        "encryptionPassword": {
+          "label": "暗号化パスワード",
+          "description": "データの暗号化と復号化に使用します",
+          "modify": "変更",
+          "cancel": "キャンセル",
+          "save": "保存",
+          "placeholder": "新しい暗号化パスワードを入力"
+        },
+        "autoUnlock": {
+          "label": "自動ロック解除",
+          "description": "起動時にキーチェーンから自動的にロックを解除する"
+        },
+        "loadError": "設定のロードに失敗しました:"
+      },
+      "network": {
+        "loadError": "設定のロードに失敗しました:",
+        "lanOnly": {
+          "label": "LAN専用モード",
+          "description": "パブリックリレー フォールバックを無効にします。デバイスは同じローカル ネットワーク上でのみ同期します。再起動後に有効になります。",
+          "infoIconAriaLabel": "LAN専用モードがオンの場合でもインターネットへ送信されるリクエストの一覧を表示",
+          "saveError": "保存に失敗しました: {{message}}。以前の設定に戻りました。",
+          "disclosure": {
+            "title": "LAN専用モードがオンでもインターネットへ送信されるリクエスト",
+            "intro": "次の 4 種類のリクエストは独立したモジュールで制御され、LAN専用モードの影響を受けません。",
+            "rendezvous": {
+              "title": "最初のペアリング ランデブー",
+              "description": "新しいデバイスをペアリングするには、引き続き rendezvous.uniclipboard.app にアクセスして NodeId を交換する必要があります。ペアリングすると、日々の同期ではランデブーが使用されなくなります。"
+            },
+            "telemetry": {
+              "title": "テレメトリ",
+              "description": "テレメトリは LAN専用モードとは独立して、［全般］→［テレメトリ］で制御されます。無効にするには［全般］を開いてください。"
+            },
+            "pkarr": {
+              "title": "pkarr DHT の NodeId 解決",
+              "description": "クロスサブネット接続は、DNS と同様の性質のパブリック pkarr DHT を介してピア NodeId を解決します。これを無効にすると、クロスサブネット接続率が最大 90% からゼロ近くまで低下します。"
+            },
+            "autoUpdate": {
+              "title": "GitHub の自動更新チェック",
+              "description": "「一般」→「自動更新」によって個別に制御され、GitHub リリース API に新しいバージョンを問い合わせます。"
+            }
+          }
+        },
+        "allowOverlayAddrs": {
+          "label": "オーバーレイ ネットワーク アドレスを許可する",
+          "description": "デフォルトではオフ。両方のピアが同じ VPN (Tailscale など) を共有する場合に有効にし、接続でそのオーバーレイ ネットワークを使用できるようにします。再起動後に有効になります。",
+          "infoIconAriaLabel": "オーバーレイ ネットワーク アドレスとは何か、このオプションをいつ有効にするかを確認してください。",
+          "saveError": "保存に失敗しました: {{message}}。以前の設定に戻りました。",
+          "disclosure": {
+            "title": "オーバーレイ ネットワーク アドレスについて",
+            "intro": "直接接続を確立する場合、マシンには複数の IP アドレス (実際の LAN、VPN トンネルなど) が割り当てられます。 「オーバーレイ ネットワーク アドレス」とは、VPN ソフトウェアによって作成された仮想 NIC IP を指します。",
+            "covered": {
+              "title": "影響",
+              "description": "具体的には、CGNAT 範囲 100.64.0.0/10 (Tailscale のデフォルト IPv4) および Tailscale IPv6 ULA fd7a:115c:a1e0::/48 です。この設定に関係なく、クラッシュ フェイク IP (198.18.0.0/15) とリンクローカル (169.254.0.0/16) は常にフィルタリングされます。"
+            },
+            "whyOff": {
+              "title": "デフォルトでオフになる理由",
+              "description": "2 つのピアが同じ VPN 内にない場合、仮想 NIC IP を接続候補として公開すると、無効な候補でパス検証の予算が無駄になります。 "
+            },
+            "whenOn": {
+              "title": "オンにする場合",
+              "description": "両方のピアが同じ Tailscale テールネット (または別の共有オーバーレイ) にあり、直接 LAN/インターネット パスがブロックされているが、オーバーレイ ルートが機能している場合にオンにします。 iroh はオーバーレイ パスを接続候補として使用します。"
+            },
+            "tradeoff": {
+              "title": "トレードオフ",
+              "description": "1 つのピアだけが VPN を持っている場合、またはピアが異なるテールネットにある場合、これをオンにすると接続は遅くなりますが、完全に切断されるわけではありません (リレー フォールバックは引き続き機能します)。不明な場合は、オフのままにしておきます。"
+            }
+          }
+        },
+        "customRelays": {
+          "label": "カスタム リレー ノード",
+          "description": "iroh リレーの URL を 1 つ以上追加します。既定のリレーを使用する場合は空欄のままにしてください。LAN専用モードではこの一覧は保持されますが使用されません。再起動後に有効になります。",
+          "placeholder": "https://relay.example.com.",
+          "addButton": "リレー ノードの追加",
+          "itemAriaLabel": "カスタム リレー ノード {{index}}",
+          "removeAriaLabel": "リレー ノード {{index}} の削除",
+          "saveError": "カスタム リレーの保存に失敗しました: {{message}}。以前の設定に戻りました。",
+          "invalidUrl": "無効なリレー URL: {{url}}。 http または https URL を入力します。",
+          "testAriaLabel": "テスト リレー ノード {{index}}",
+          "testing": "リレー ノードをテストしています…",
+          "testSuccess": "ハンドシェイクは成功しました ({{latencyMs}} ミリ秒)",
+          "testErrors": {
+            "invalidUrl": "無効なリレー URL: {{message}}",
+            "dns": "リレー ホストを解決できません: {{message}}",
+            "tls": "TLSハンドシェイクが失敗しました: {{message}}",
+            "handshake": "iroh-relay ハンドシェイクが失敗しました: {{message}}",
+            "timeout": "プローブが 5 秒後にタイムアウトしました",
+            "other": "プローブが失敗しました: {{message}}",
+            "unavailable": "リレー テストはこの環境では利用できませんランタイム。"
+          }
+        },
+        "congestionController": {
+          "label": "輻輳コントローラ",
+          "description": "ネットワーク フロー制御のアルゴリズム。 CUBIC は、適切にプロビジョニングされたローカル ネットワークで最もよく機能します。 BBR3 は、長距離リンクや損失の多いリンクではパフォーマンスが向上する可能性があります。再起動後に有効になります。",
+          "recommended": "推奨"
+        },
+        "restartBanner": {
+          "message": "ネットワーク設定が変更されました。適用するにはバックグラウンド サービスの再起動が必要です。",
+          "errorMessage": "バックグラウンド サービスの再起動に失敗しました。再試行するか、アプリを手動で再起動してください。"
+        }
+      },
+      "storage": {
+        "title": "ストレージ",
+        "autoClearHistory": {
+          "label": "履歴の自動消去",
+          "description": "保持ルールに基づいて古いクリップボード エントリを自動的にクリーンアップします"
+        },
+        "storageUsage": {
+          "label": "ストレージの使用量",
+          "usage": "{{percentage}}% 使用率",
+          "database": "データベース",
+          "blobVault": "BLOB コンテナー",
+          "cache": "キャッシュ",
+          "logs": "ログ",
+          "total": "合計"
+        },
+        "historyRetention": {
+          "label": "履歴の保持",
+          "description": "クリップボード履歴の最大保持期間",
+          "days": "{{days}} 日"
+        },
+        "maxHistoryItems": {
+          "label": "履歴アイテムの最大数",
+          "description": "保持するクリップボード エントリの最大数",
+          "items": "{{count}} 個のアイテム",
+          "unlimited": "無制限"
+        },
+        "skipPinned": {
+          "label": "ピン留めされたアイテムをスキップ",
+          "description": "ピン留めされたアイテムは自動クリーンアップから除外されます"
+        },
+        "clearHistory": {
+          "label": "履歴をクリア",
+          "description": "クリップボード履歴をすべて削除すると無料になりますストレージ容量を増やす",
+          "button": "すべてクリア",
+          "confirm": "よろしいですか？この操作は元に戻すことができません。",
+          "cleared": "履歴が消去されました",
+          "clearing": "消去中...",
+          "dialogTitle": "履歴の消去を確認します",
+          "dialogDescription": "これにより、すべてのクリップボード履歴が削除され、元に戻すことはできません。",
+          "dialogConfirm": "消去履歴"
+        },
+        "clearCache": {
+          "label": "キャッシュをクリア",
+          "description": "キャッシュされたサムネイルと一時ファイルを削除する",
+          "button": "キャッシュをクリア",
+          "cleared": "キャッシュをクリア",
+          "clearing": "クリア中..."
+        },
+        "dataDirectory": {
+          "label": "データ ディレクトリ",
+          "description": "アプリケーション データが保存されているフォルダを開きます",
+          "button": "ファイル マネージャーで開きます"
+        },
+        "configBackup": {
+          "label": "設定のバックアップと移行",
+          "export": {
+            "label": "設定をエクスポートします",
+            "description": "設定、履歴、デバイス ID のすべてを 1 つの暗号化されたファイルに圧縮して、別のコンピュータに移動します。 Space パスフレーズによって保護されています。追加のパスワードは必要ありません。",
+            "button": "設定をエクスポート…",
+            "exporting": "エクスポート中…",
+            "success": "設定がエクスポートされました",
+            "lockedError": "最初にロックを解除してから、設定をエクスポートしてください",
+            "genericError": "設定のエクスポートに失敗しました"
+          },
+          "import": {
+            "label": "設定のインポート",
+            "description": "エクスポートされたファイルから設定を復元します。これはデバイスの移動です。このマシンはエクスポートされたデバイスとなり、現在ここにあるものを置き換えます。",
+            "button": "設定をインポート…",
+            "passwordTitle": "スペース パスフレーズを入力してください",
+            "passwordDescription": "このファイルのエクスポート元デバイスのスペース パスフレーズを入力してください。これによりロックが解除されます。",
+            "passwordLabel": "スペース パスフレーズ",
+            "passwordPlaceholder": "エクスポートされたデバイスのスペース パスフレーズ",
+            "passwordConfirmButton": "続行",
+            "confirmTitle": "インポートの確認: これはデバイスの移動です",
+            "confirmDescription": "インポートすると、このマシンはエクスポート元デバイスの ID を引き継ぎ、現在の設定は置き換えられます。内容を確認してください。この操作は元に戻せません。",
+            "warningMove": "このマシンはエクスポートされたデバイスになり、その ID とペアリングが引き継がれます。",
+            "warningNoDualOnline": "この後は、元のデバイスをオンラインに戻さないでください。オンラインで 1 つの ID を共有する 2 つのデバイスは、デバイス ネットワーク上で互いに競合します。",
+            "warningReplace": "現在このマシン上にある設定と履歴は、インポートされたものに置き換えられます。このマシンがすでに使用されている場合は、保持したいものが何もないことを確認してください。",
+            "metaTitle": "インポートする構成",
+            "metaAppVersion": "エクスポート元のバージョン",
+            "metaSourceMode": "ソースの種類",
+            "metaSourcePortable": "ポータブル",
+            "metaSourceInstalled": "インストール済み",
+            "metaFingerprint": "デバイスのフィンガープリント",
+            "confirmButton": "理解しました。インポートを開始",
+            "cancelButton": "キャンセル",
+            "staging": "インポート中…",
+            "restartingTitle": "インポートを完了するために再起動しています",
+            "restartingDescription": "お待ちください - アプリが再起動され、インポートされた構成が適用されます。閉じないでください。",
+            "restartingUnlockHint": "再起動後、ロックを解除するにはスペースのパスフレーズを入力する必要があります。",
+            "invalidPasswordError": "パスフレーズが間違っているか、ファイルが破損しています。",
+            "incompatibleError": "この構成バンドルのバージョンは現在のアプリと互換性がありません",
+            "genericError": "構成のインポートに失敗しました"
+          }
+        },
+        "searchIndex": {
+          "label": "検索インデックス",
+          "status": "インデックスのステータス",
+          "statusDescription": "全文検索インデックスの現在の状態",
+          "ready": "準備完了",
+          "rebuilding": "再構築中…",
+          "unavailable": "利用不可",
+          "lastRebuilt": "最後に再構築",
+          "lastRebuiltDescription": "最後に成功したインデックスの再構築の時刻",
+          "never": "なし",
+          "rebuild": "インデックスの再構築",
+          "rebuildDescription": "検索インデックスの完全な再構築を手動でトリガーします",
+          "rebuildButton": "再構築",
+          "rebuildingButton": "再構築…"
+        },
+        "loadError": "ストレージ設定のロードに失敗しました:",
+        "placeholder": "ストレージ設定はまだ使用できません。"
+      },
+      "shortcuts": {
+        "title": "ショートカット",
+        "description": "キーボード ショートカットのカスタマイズ",
+        "scope": {
+          "global": "グローバル",
+          "clipboard": "クリップボード",
+          "settings": "設定",
+          "devices": "デバイス",
+          "modal": "モーダル"
+        },
+        "actions": {
+          "goSettings": "設定に移動",
+          "toggleQuickPanel": "クイック パネルの切り替え",
+          "favoriteClipboardItem": "現在のクリップボード項目をお気に入り",
+          "zoomIn": "拡大",
+          "zoomOut": "縮小"
+        },
+        "issues": {
+          "sameScope": "同じスコープ内のショートカットの競合: {{key}}",
+          "sameLayer": "このレイヤーの別のスコープで使用されている同じキー: {{key}}",
+          "shadowedByHigher": "上位レイヤーがアクティブな場合はシャドウされます: {{key}}",
+          "shadowsLower": "下位レイヤーのショートカットはシャドウされます: {{key}}"
+        },
+        "edit": "編集",
+        "reset": "デフォルトにリセット",
+        "resetAll": "すべてのショートカットをリセット",
+        "recording": "キーを押してください...",
+        "chordHint": "2 番目のステップとして別のコンボを押します (「ダブルタップ」するには同じコンボを 2 回押します)、または確認します",
+        "rerecord": "再録音",
+        "conflict": "次との競合: {{name}}",
+        "confirmOverride": "とにかく適用 (競合をクリア)",
+        "confirm": "確認",
+        "cancel": "キャンセル",
+        "modified": "変更済み"
+      },
+      "quickPanel": {
+        "title": "クイック パネル",
+        "featureTitle": "機能",
+        "shortcutTitle": "ショートカット",
+        "enable": {
+          "label": "クイック パネルを有効にする",
+          "description": "グローバル ショートカットを登録し、バックグラウンドでクイック パネル ウィンドウを作成します。無効にすると、ショートカットの登録がすぐに解除されます。"
+        },
+        "position": {
+          "label": "位置",
+          "description": "ショートカットを押したときにクイック パネルが表示される場所を選択します。",
+          "center": "画面の中心",
+          "followCursor": "カーソルに従う"
+        },
+        "doubleTap": {
+          "label": "修飾キーを 2 回タップします",
+          "description": "修飾キーを 2 回タップして、クイック パネルを開きます。記録されたショートカットはアクティブなままです。",
+          "checking": "このデスクトップ セッションが修飾子のダブルタップをサポートしているかどうかを確認しています。",
+          "permissionRequired": "macOS アクセシビリティ権限が必要です。システム設定でアクセスを許可し、UniClipboard に戻ります。",
+          "unsupported": "Wayland セッションを含むこの表示セッションでは、修飾子のダブルタップは使用できません。記録されたショートカットはアクティブなままです。",
+          "openSettings": "ユーザー補助設定を開きます",
+          "openSettingsError": "ユーザー補助設定を開けませんでした。 [システム設定] > [プライバシーとセキュリティ] > [アクセシビリティ] を手動で開きます。",
+          "disabled": "オフ",
+          "option": "オプション",
+          "alt": "Alt",
+          "control": "コントロール",
+          "command": "コマンド",
+          "windows": "Windows",
+          "super": "スーパー"
+        },
+        "restartHint": "クイック パネルがオフになりました。アプリを再起動して、バックグラウンド プロセスを完全に解放します。"
+      },
+      "about": {
+        "title": "概要",
+        "appName": "UniClipboard",
+        "version": "バージョン {{version}}",
+        "checkUpdate": "更新を確認します",
+        "checkingUpdate": "確認中...",
+        "updatesTitle": "アップデート",
+        "autoCheckUpdate": {
+          "label": "アップデートを自動チェックする",
+          "description": "アプリの起動時に新しいバージョンを自動的にチェックする"
+        },
+        "autoDownloadUpdate": {
+          "label": "バックグラウンドでアップデートをダウンロードする",
+          "description": "新しいバージョンが検出されたときにインストーラーをプリフェッチするため、インストールは簡単です",
+          "disabledHint": "最初に「アップデートの自動チェック」を有効にする"
+        },
+        "updateChannel": {
+          "label": "アップデート チャネル",
+          "description": "アップデートを受信するリリース チャネルを選択してください",
+          "auto": "自動検出",
+          "stable": "安定",
+          "beta": "ベータ版",
+          "alpha": "アルファ",
+          "rc": "リリース候補",
+          "alphaWarning": {
+            "title": "アルファに切り替えますか?",
+            "description": "アルファ ビルドには、完全に検証されていない機能やリグレッションが含まれている場合があります。 UniClipboard は、切り替え直後にアルファ チャネルをチェックします。",
+            "cancel": "キャンセル",
+            "confirm": "切り替え"
+          }
+        },
+        "sponsors": {
+          "title": "スポンサー",
+          "thanks": "スポンサーシップにより UniClipboard が前進し続ける素晴らしい人々のおかげです。",
+          "goldBadge": "ゴールド",
+          "becomeSponsor": "スポンサーになる →",
+          "githubStar": "GitHub でスターを付ける →"
+        },
+        "copyright": "© 2025 UniClipboard.無断転載を禁じます。",
+        "links": {
+          "privacyPolicy": "プライバシー ポリシー",
+          "termsOfService": "利用規約",
+          "aboutMaintainers": "概要と管理者"
+        }
+      }
+    }
+  },
+  "unlock": {
+    "title": "UniClipboardのロックを解除",
+    "description": "データは暗号化されます。続行するにはロックを解除してください。",
+    "button": "ロック解除",
+    "unlocking": "ロック解除中...",
+    "autoUnlock": {
+      "label": "自動ロック解除",
+      "description": "アプリケーション起動時に自動的にロックを解除する"
+    },
+    "macOSNote": "macOS では、[常に許可] を選択できます。 ",
+    "keychainModal": {
+      "title": "キーチェーン アクセスの許可",
+      "description": "自動ロック解除を有効にするには、UniClipboard が macOS キーチェーンに永続的にアクセスする必要があります。",
+      "step1": "macOS キーチェーン アクセス プロンプトが表示されます",
+      "step2": "プロンプトで [常に許可] を選択します",
+      "step3": "確認のために macOS パスワードを入力します",
+      "note": "これは macOS システム ダイアログであり、UniClipboard の一部ではありません。",
+      "confirm": "私理解する",
+      "cancel": "キャンセル",
+      "verifying": "アクセスを確認しています...",
+      "error": "キーチェーンの常に許可する権限が検出されません。もう一度試して、macOS キーチェーン プロンプトで [常に許可] を選択していることを確認してください。"
+    },
+    "passphraseModal": {
+      "title": "スペース パスフレーズを入力してください",
+      "description": "自動ロック解除でキーチェーンからキーを取得できませんでした。手動でロックを解除するには、このスペースに設定したパスフレーズを入力してください。",
+      "passphraseLabel": "パスフレーズ",
+      "passphrasePlaceholder": "パスフレーズを入力してください",
+      "submit": "ロック解除",
+      "submitting": "ロック解除中...",
+      "cancel": "キャンセル",
+      "show": "パスフレーズを表示",
+      "hide": "パスフレーズを非表示",
+      "hint": "一度ロックを解除すると、キーチェーンが更新されるため、今後のセッションは再度自動ロック解除できるようになります。"
+    },
+    "errors": {
+      "wrongPassphrase": "パスフレーズが間違っています。もう一度お試しください。",
+      "corruptedKeyMaterial": "ローカル キー マテリアルが破損しています。回復するには、このスペースをリセットし、別のデバイスから再参加する必要があります。",
+      "setupNotCompleted": "このデバイスではセットアップがまだ完了していません。最初にセットアップを実行してください。",
+      "spaceNotInitialized": "このデバイスには空き領域がありません。新しいスペースを初期化するか、別のデバイスから参加してください。",
+      "facadeUnavailable": "アプリはまだ起動中です。しばらく待ってからもう一度お試しください。",
+      "internal": "予期せずロック解除に失敗しました。もう一度試すか、アプリケーションを再起動してください。"
+    },
+    "factoryReset": {
+      "link": "パスフレーズをお忘れですか?リセットしてやり直す",
+      "modal": {
+        "title": "リセットしてやり直す",
+        "warning": "一度リセットすると、このデバイスに保存されている暗号化されたクリップボード履歴は復元できません。",
+        "recovery": "ペアリングされた別のデバイスがある場合は、そのデバイスからこのデバイスを再度招待でき、履歴はピアから同期されます。",
+        "confirmPrompt": "確認のために RESET と入力してください",
+        "confirmPlaceholder": "RESET",
+        "confirm": "リセット",
+        "resetting": "リセット中...",
+        "cancel": "キャンセル"
+      },
+      "errors": {
+        "keyMaterialWipeFailed": "キー マテリアルのワイプに失敗しました。リセットが完了しませんでした。もう一度試すか、アプリケーションを再起動してください。",
+        "storageFailed": "キーマテリアルはクリアされましたが、ステータスを保存できませんでした。リセットを完了するには、アプリケーションを再起動してください。",
+        "facadeUnavailable": "アプリはまだ起動中です。しばらく待ってからもう一度お試しください。",
+        "internal": "リセットが予期せず失敗しました。もう一度試すか、アプリケーションを再起動してください。"
+      }
+    }
+  },
+  "language": {
+    "zh-CN": "简体中文",
+    "zh-TW": "繁體中文",
+    "en-US": "English",
+    "ru-RU": "Русский",
+    "pt-BR": "Português (Brasil)",
+    "ja-JP": "日本語"
+  },
+  "history": {
+    "title": "履歴",
+    "subtitle_one": "{{count}} 件",
+    "subtitle_other": "{{count}} 件",
+    "searchPlaceholder": "クリップボードを検索…",
+    "loadMore": "さらに読み込む",
+    "unknownFile": "不明ファイル",
+    "filter": {
+      "all": "すべて",
+      "favorited": "お気に入り",
+      "text": "テキスト",
+      "richtext": "リッチテキスト",
+      "code": "コード",
+      "link": "リンク",
+      "image": "画像",
+      "file": "ファイル"
+    },
+    "timeRange": {
+      "label": "期間",
+      "all_time": "すべての時間",
+      "today": "今日",
+      "yesterday": "昨日",
+      "last_7d": "過去 7 日間",
+      "last_30d": "過去 30 日間",
+      "this_week": "今週",
+      "this_month": "今月"
+    },
+    "source": {
+      "label": "ソース",
+      "all": "すべてのソース"
+    },
+    "type": {
+      "text": "テキスト",
+      "richtext": "リッチテキスト",
+      "code": "コード",
+      "link": "リンク",
+      "favorited": "お気に入り",
+      "image": "画像",
+      "directory": "フォルダ",
+      "file": "ファイル",
+      "unknown": "不明"
+    },
+    "detail": {
+      "capturedAt": "キャプチャ済み",
+      "size": "サイズ",
+      "fileCount": "ファイル",
+      "urlCount": "URL",
+      "fileMissing": "(欠落)"
+    },
+    "composite": {
+      "title": "検索とフィルタ",
+      "dimension": {
+        "type": "タイプ",
+        "tag": "タグ",
+        "source": "ソース",
+        "time": "時間",
+        "extension": "拡張子"
+      },
+      "noMatches": "一致しません",
+      "removeFilter": "フィルタを削除: {{filter}}",
+      "moreFilters": "さらに {{count}} 個のフィルタを表示",
+      "clearAll": "すべてクリア"
+    }
+  },
+  "dashboard": {
+    "logs": {
+      "loadingClipboard": "クリップボードのレコードと統計をロードしています...",
+      "filterChanged": "フィルターが変更され、参照値を更新しています:",
+      "settingGlobalListener": "グローバル リスナーを設定しています...",
+      "startingBackendListener": "バックエンド クリップボードの新しいコンテンツ リスナーを開始しています...",
+      "backendListenerStarted": "バックエンド クリップボードの新しいコンテンツ リスナー開始しました",
+      "listeningToClipboardEvents": "クリップボードの新しいコンテンツ イベントのリッスンを開始しています...",
+      "clearingPreviousListener": "前のリスナーをクリアしています",
+      "newClipboardEvent": "新しいクリップボード コンテンツ イベントを受信しました:",
+      "ignoringDuplicateEvent": "短期間で重複イベントを無視します",
+      "listenerAlreadyActive": "リスナーはすでにアクティブなので、セットアップをスキップします",
+      "globalListenerExists": "グローバル リスナーはすでに存在するため、再度セットアップする必要はありません",
+      "setupListenerFailed": "クリップボードリスナーの設定に失敗しました:",
+      "componentUnmounting": "コンポーネントはアンマウントされていますが、グローバル リスナーはアクティブのままです"
+    },
+    "constants": {
+      "debounceDelay": "デバウンス遅延 (ミリ秒)"
+    },
+    "errors": {
+      "loadFailed": "クリップボード データのロードに失敗しました",
+      "listenerSetupFailed": "クリップボード リスナーのセットアップに失敗しました",
+      "unknown": "不明なエラー発生しました"
+    }
+  },
+  "header": {
+    "searchPlaceholder": "キーワードで検索...",
+    "resultsCount": "{{count}} 件の結果",
+    "filters": {
+      "all": "すべて",
+      "favorited": "お気に入り",
+      "text": "テキスト",
+      "richtext": "リッチテキスト",
+      "image": "画像",
+      "link": "リンク",
+      "file": "ファイル",
+      "code": "コード"
+    },
+    "timeRange": {
+      "all_time": "常時",
+      "today": "今日",
+      "yesterday": "昨日",
+      "last_7d": "過去 7 日間",
+      "last_30d": "過去 30 日間",
+      "this_week": "今週",
+      "this_month": "今月"
+    }
+  },
+  "clipboard": {
+    "search": {
+      "noResults": "「{{query}}」の結果はありません",
+      "noResultsFiltered": "現在のフィルタに一致するアイテムはありません",
+      "noResultsSub": "完全にお試しください単語または別のキーワード",
+      "empty": "クリップボードの履歴が空です",
+      "emptySub": "何かをコピーして開始してください",
+      "resultsCount": "結果",
+      "searching": "検索中…",
+      "degraded": "検索インデックスが再構築中です - 最近の閲覧を表示しています。フィルタとキーワード検索は間もなく再開されます。"
+    },
+    "content": {
+      "filterCondition": "フィルタ条件:",
+      "queryResults": "クエリ結果:",
+      "convertedItems": "変換された表示項目:",
+      "noItemsFound": "項目が見つかりません",
+      "noClipboardItems": "クリップボード項目がありません",
+      "emptyDescription": "別のデバイスを接続し、何かをコピーして同期を開始してください。",
+      "emptyHint": "テキストまたは画像をコピーしてみてください。",
+      "logs": {
+        "copyItem": "アイテム ID をコピーしました:",
+        "copyToClipboardFailed": "クリップボードにコピーできませんでした",
+        "convertingItem": "表示に変換していますitem:"
+      }
+    },
+    "source": {
+      "local": "このデバイス"
+    },
+    "errors": {
+      "copyFailed": "クリップボードへのコピーに失敗しました",
+      "favoriteFailed": "お気に入りのステータスを更新できませんでした",
+      "openLocationFailed": "ファイルの場所を開けませんでした",
+      "fileLocationUnavailable": "このファイルはローカルで使用できなくなりました。",
+      "loadDetailFailed": "詳細を読み込めませんでした",
+      "unknown": "不明なエラーが発生しました",
+      "unavailableBadge": "コンテンツは利用できません",
+      "unavailableTooltip": "このコンテンツは次のとおりです利用できなくなりました (バイトが失われます)。ペーストできません。履歴から削除することを検討してください。",
+      "fileSourceMissing": "ソース ファイルは元の場所になくなりました。削除または移動された可能性があります。復元して再試行してください。"
+    },
+    "item": {
+      "characters": "文字",
+      "link": "リンク",
+      "image": "画像",
+      "unknownContent": "不明なコンテンツ",
+      "expand": "展開",
+      "collapse": "折りたたむ",
+      "loading": "読み込み中...",
+      "actions": {
+        "copy": "コピー",
+        "copied": "コピーしました",
+        "favorite": "お気に入り",
+        "unfavorite": "お気に入り解除",
+        "delete": "削除",
+        "more": "その他"
+      },
+      "altText": {
+        "clipboardImage": "クリップボード画像",
+        "copyButton": "コピー",
+        "favoriteButton": "お気に入り"
+      },
+      "largeImageTitle": "大きい画像",
+      "largeImageHint": "{{size}} — 自動的にロードされません",
+      "loadLargeImage": "画像をロード"
+    },
+    "time": {
+      "justNow": "今",
+      "minutesAgo": "{{minutes}} 分前",
+      "hoursAgo": "{{hours}} 時間前",
+      "daysAgo": "{{days}}日前"
+    },
+    "dateGroup": {
+      "today": "今日",
+      "yesterday": "昨日",
+      "earlier": "以前"
+    },
+    "preview": {
+      "selectItem": "プレビューする項目を選択してください",
+      "information": "情報",
+      "contentType": "コンテンツ タイプ",
+      "characters": "文字数",
+      "charactersCount": "{{count}} 文字",
+      "words": "単語",
+      "size": "サイズ",
+      "dimensions": "寸法",
+      "filesCount": "{{count}} 個のファイル",
+      "imageFilesAriaLabel": "画像ファイル",
+      "imagesCount": "{{count}} 個の画像",
+      "sourceDevice": "ソースデバイス"
+    },
+    "contextMenu": {
+      "copy": "コピー",
+      "copyFilePaths": "ファイルパスをコピー",
+      "pasteFilePaths": "ファイルパスを貼り付け",
+      "favorite": "お気に入り",
+      "unfavorite": "お気に入り解除",
+      "send": "送信先",
+      "sendAll": "すべてのデバイス",
+      "sendNoDevices": "ペアリングされたデバイスなし",
+      "fileDeleted": "ファイルが削除されました",
+      "openFileLocation": "ファイルの場所を開く",
+      "resend": "再送信",
+      "resending": "再送信中...",
+      "delete": "削除"
+    },
+    "actionBar": {
+      "title": "クリップボード履歴",
+      "copy": "コピー",
+      "favorite": "お気に入り",
+      "unfavorite": "お気に入り解除",
+      "delete": "削除"
+    },
+    "notification": {
+      "syncStartSingle": "ファイルを {{device}} に同期しています",
+      "syncStartBatch": "{{count}} 個のファイルを {{device}} に同期しています",
+      "syncCompleteSingle": "ファイルは正常に同期されました",
+      "syncCompleteBatch": "すべての {{count}} 個のファイルが同期されました",
+      "syncFailed": "ファイルの同期に失敗しました",
+      "syncFailedDetail": "ファイルの同期に失敗しました: {{reason}}"
+    },
+    "transfer": {
+      "sending": "送信中",
+      "receiving": "受信中",
+      "progress": "{{transferred}} / {{total}} ({{percent}}%)",
+      "speedValue": "{{speed}}",
+      "speedPending": "速度を計算中",
+      "remainingValue": "残り {{time}}",
+      "remainingPending": "残り時間を計算中",
+      "completed": "転送完了",
+      "failed": "転送に失敗しました",
+      "cancelled": "キャンセルされました",
+      "pending": "転送保留中",
+      "transferring": "転送中...",
+      "incoming": "受信中...",
+      "incomingWithSize": "受信中 ({{size}})...",
+      "cancel": "転送をキャンセル",
+      "cancelReason": {
+        "local_user": "この転送はキャンセルされました",
+        "remote_peer": "相手側がこの転送をキャンセルしました",
+        "replaced": "新しいコンテンツに置き換えられました",
+        "timeout": "転送がタイムアウトしたためキャンセルされました",
+        "unknown": "転送はキャンセルされました"
+      },
+      "statusBadge": {
+        "pending": "ファイル転送保留中",
+        "transferring": "ファイル転送中",
+        "completed": "ファイル転送完了",
+        "failed": "ファイル転送に失敗",
+        "cancelled": "ファイル転送キャンセル"
+      },
+      "copyDisabled": {
+        "pending": "ファイル転送保留中",
+        "transferring": "ファイル転送中",
+        "failed": "ファイル転送に失敗しました",
+        "cancelled": "ファイル転送がキャンセルされました"
+      }
+    },
+    "confirmDeleteTitle": "削除の確認",
+    "confirmDeleteDescription_one": "選択したアイテムを削除してもよろしいですか?この操作は元に戻すことができません。",
+    "confirmDeleteDescription_other": "選択した {{count}} 個のアイテムを削除してもよろしいですか?この操作は元に戻すことができません。",
+    "cancelLabel": "キャンセル",
+    "deleteLabel": "削除",
+    "deletingLabel": "削除中..."
+  },
+  "devices": {
+    "title": "デバイス管理",
+    "addNew": "新しいデバイスの招待",
+    "thisDevice": {
+      "title": "これデバイス",
+      "syncActive": "同期がアクティブです",
+      "syncPaused": "同期が一時停止中",
+      "pairedCount_zero": "ペアリングされたデバイスがありません",
+      "pairedCount_one": "{{count}} 個がペアリングされました",
+      "pairedCount_other": "{{count}} 個がペアリングされました",
+      "onlineCount": "{{count}} 台のオンライン"
+    },
+    "pairedDevices": {
+      "title": "ペアリングされたデバイス"
+    },
+    "addDevice": {
+      "title": "新しいデバイスを招待",
+      "subtitle": "参加デバイスにこのコードを入力してください",
+      "expiresIn": "有効期限は {{remaining}}",
+      "expired": "招待の有効期限が切れました",
+      "passphraseHint": "参加デバイスでもペアリングを完了するにはスペース パスフレーズが必要です",
+      "loading": "招待コードを生成中…",
+      "actions": {
+        "cancel": "キャンセル",
+        "regenerate": "再生成",
+        "close": "閉じる",
+        "copy": "コピー",
+        "copied": "コピーされました"
+      },
+      "errors": {
+        "issueFailed": "招待状の生成に失敗しました。もう一度お試しください。"
+      },
+      "success": {
+        "title": "デバイスが参加しました",
+        "subtitle": "他のデバイスがこのスペースに正常に参加しました"
+      },
+      "failed": {
+        "title": "ペアリングに失敗しました",
+        "unknown": "他のデバイスは参加できませんでした",
+        "fallback": "ペアリングが失敗しました: {{reason}}",
+        "reasons": {
+          "cancelled": "招待がキャンセルされました",
+          "expired": "招待の有効期限が切れました",
+          "timeout": "タイムアウトしました - 他のデバイスが時間内にペアリングを完了しませんでした",
+          "passphrase_mismatch": "他のデバイスが間違ったパスフレーズを入力しました",
+          "user_rejected": "このペアリング リクエストは拒否されました",
+          "proof_mismatch": "本人確認に失敗しました",
+          "joiner_disconnected": "他のデバイスがペアリング中に切断されました"
+        }
+      }
+    },
+    "unpair": {
+      "confirmTitle": "デバイスのペアリングを解除します",
+      "confirmDescription": "本当に {{deviceName}} のペアリングを解除してもよろしいですか？クリップボードのコンテンツを同期するには、再度ペアリングする必要があります。"
+    },
+    "tabs": {
+      "connected": "接続されたデバイス",
+      "requests": "ペアリング リクエスト"
+    },
+    "sections": {
+      "requests": "ペアリング リクエスト",
+      "noRequests": "ペアリング リクエストなし"
+    },
+    "list": {
+      "empty": {
+        "title": "まだペアリングされたデバイスがありません"
+      },
+      "status": {
+        "online": "オンライン",
+        "offline": "オフライン"
+      },
+      "channel": {
+        "lan": "直接",
+        "relay": "中継",
+        "offline": "切断",
+        "unknown": "—",
+        "outOfLan": "オフローカル ネットワーク",
+        "tooltip": {
+          "lan": "直接 IP パス（ローカル ネットワークまたは Tailscale などの VPN など）を介して送信されます。",
+          "relay": "暗号化されたリレー サーバーを介して送信されます。コンテンツは暗号化されていますが、接続情報はリレーに表示されます。",
+          "offline": "現在、アクティブな接続はありません。",
+          "unknown": "このデバイスに到達する方法を検出しています。",
+          "outOfLan": "ローカル ネットワークのみの同期はオンになっていますが、このデバイスは同じネットワーク上にありません。同じネットワークに再度接続すると、"
+        }
+      },
+      "labels": {
+        "unknownDevice": "不明なデバイス"
+      },
+      "actions": {
+        "retry": "再試行",
+        "unpair": "ペアリングを解除",
+        "settings": "設定",
+        "addDevice": "デバイスを招待",
+        "addAnotherDevice": "別のデバイスを招待する"
+      }
+    },
+    "syncPaused": {
+      "message": "クリップボードの同期は一時停止されています。現在、すべてのデバイスが同期していません。",
+      "goToSettings": "設定に移動"
+    },
+    "mobileSync": {
+      "title": "モバイル同期",
+      "description": "SyncClipboard プロトコルを使用して LAN 経由でクリップボードをモバイル デバイス (iOS / Android) と同期します",
+      "configure": "設定",
+      "statusBar": {
+        "bindFailed": "リスナーの開始に失敗しました: {{reason}}"
+      },
+      "enableConfirm": {
+        "title": "モバイル同期を有効にする",
+        "body": "モバイル同期がオンになり、LAN HTTP 経由でポート {{port}} でのリスニングが開始されます。信頼できるネットワークでのみ使用します。認証情報を持つ同じ LAN 上の誰でもこのクリップボードの読み取り/書き込みができます。",
+        "confirm": "有効にして続行",
+        "enabling": "有効化中…",
+        "cancel": "キャンセル"
+      },
+      "feedback": {
+        "applied": "すぐに適用",
+        "applyFailed": "失敗設定を適用するには: {{message}}"
+      },
+      "settingsSheet": {
+        "title": "モバイル同期構成",
+        "description": "モバイル デバイスが LAN 経由でこのマシンにアクセスできるようにするスイッチとネットワーク パラメータを調整します",
+        "close": "完了"
+      },
+      "enabled": {
+        "label": "モバイル同期を有効にする",
+        "description": "オフの場合、すべてモバイル デバイスからの同期リクエストは直ちに拒否されます。"
+      },
+      "lanListener": {
+        "label": "LAN リスナー",
+        "description": "選択したネットワーク インターフェイスでクリアテキスト HTTP をリッスンします。モバイル リクエストを受信するために必要です",
+        "currentUrl": {
+          "label": "現在のリスニング アドレス",
+          "unavailable": "—",
+          "copy": "コピー",
+          "copied": "コピーされました",
+          "auto": {
+            "label": "自動",
+            "hint": "デーモンがリッスンしますすべてのインターフェース。モバイル デバイスが到達できるアドレスをコピーします。"
+          }
+        },
+        "bindIp": {
+          "label": "バインド IP",
+          "placeholder": "ネットワーク インターフェイスを選択してください",
+          "empty": "使用可能な LAN IPv4 アドレスが検出されません",
+          "auto": "自動 (0.0.0.0)"
+        },
+        "port": {
+          "label": "ポート",
+          "placeholder": "42720"
+        },
+        "warning": {
+          "title": "ネットワーク露出警告",
+          "body": "このマシンの URL とペアリングされた URL を取得すると、この LAN 上の誰でもクリップボードの読み取りまたは書き込みが可能になります。資格情報。信頼できる Wi-Fi でのみ有効にします。",
+          "confirm": "理解しました",
+          "cancel": "キャンセル"
+        },
+        "disabledHint": "デバイスを追加する前に LAN リスナーを有効にする"
+      },
+      "list": {
+        "title": "ペアリングされたデバイス",
+        "addButton": "デバイスを追加",
+        "lastSeen": {
+          "never": "決してアクティブではありません",
+          "justNow": "今",
+          "label": "最後にアクティブ · {{rel}}"
+        }
+      },
+      "add": {
+        "title": "デバイスを追加",
+        "subtitle": "長期間有効な資格情報ペアを生成します。同じペアは、iOS ショートカットと、SyncClipboard プロトコルを使用する Android クライアントで動作します。",
+        "labelField": {
+          "label": "デバイス ラベル",
+          "placeholder": "携帯電話"
+        },
+        "advanced": {
+          "title": "詳細オプション",
+          "description": "ランダムな認証情報を自動生成するには、空のままにします。ペア"
+        },
+        "username": {
+          "label": "カスタム ユーザー名",
+          "placeholder": "自動生成するには空のままにしてください",
+          "help": "6 ～ 32 文字、文字で始める必要があります。A-Z a-z 0-9 のみ _"
+        },
+        "password": {
+          "label": "カスタム パスワード",
+          "placeholder": "自動生成するには空のままにしてください",
+          "help": "少なくとも 8 文字。複雑さの要件なし"
+        },
+        "submit": "追加",
+        "submitting": "追加中…",
+        "cancel": "キャンセル"
+      },
+      "credential": {
+        "pair": {
+          "qrAlt": "同期資格情報を自動入力する QR コード"
+        },
+        "baseUrl": {
+          "selectAria": "サーバー URL の選択"
+        },
+        "noClient": {
+          "title": "クライアントをインストールしていませんか?",
+          "tabs": {
+            "ios": "iOS",
+            "android": "Android"
+          },
+          "ios": {
+            "scanLabel": "スキャンして UniClipboard アプリ (TestFlight) をインストールします",
+            "scanQrAlt": "TestFlight 招待リンクの QR コード",
+            "openInBrowser": "ブラウザで TestFlight を開きます",
+            "shortcutFallback": "アプリが不要ですか?スキャンしてフォールバックとしてショートカットをインストールします",
+            "shortcutQrAria": "iOS ショートカットのインストール QR を表示します",
+            "shortcutQrAlt": "iOS ショートカットをインストールする QR コード"
+          },
+          "android": {
+            "scanLabel": "スキャンして APK (GitHub リリース) をダウンロードします",
+            "scanQrAlt": "GitHub リリース APK ダウンロード用の QR コードページ",
+            "openInBrowser": "ブラウザで GitHub リリースを開く"
+          }
+        },
+        "credentials": {
+          "title": "認証情報",
+          "warning": "閉じると表示されなくなります",
+          "backup": "バックアップ",
+          "backupCopied": "バックアップされました"
+        },
+        "username": {
+          "label": "ユーザー名"
+        },
+        "password": {
+          "label": "パスワード",
+          "show": "パスワードを表示",
+          "hide": "パスワードを非表示"
+        },
+        "copy": "コピー",
+        "copied": "コピーしました",
+        "copyFailed": "コピーに失敗しました"
+      },
+      "revoke": {
+        "confirmTitle": "{{label}}",
+        "confirmDescription": "取り消されると、このデバイスは同期できなくなります。再接続するには、もう一度追加する必要があります (パスワードは回復できません)。",
+        "confirm": "取り消し",
+        "cancel": "キャンセル"
+      },
+      "edit": {
+        "button": "デバイスの編集",
+        "title": "デバイスの編集",
+        "subtitle": "名前、ユーザー名を変更するか、パスワードをリセットしてください",
+        "cancel": "キャンセル",
+        "save": "保存",
+        "saving": "保存中...",
+        "label": {
+          "label": "デバイスラベル",
+          "placeholder": "携帯電話"
+        },
+        "username": {
+          "label": "ユーザー名",
+          "placeholder": "mobile_phone",
+          "help": "6 ～ 32 文字、文字で始める必要があります。A-Z a-z 0-9 のみです。",
+          "renameNotice": "ユーザー名を変更すると、新しいパスワードが生成され、デバイスを再ペアリングする必要があります。"
+        },
+        "password": {
+          "label": "パスワード",
+          "placeholder": "現在のパスワードを保持する場合は空白のままにします",
+          "autoPlaceholder": "新しいパスワードが生成されます",
+          "help": "変更しない場合は空白のままにします。新しいパスワード (8 文字以上) を入力して置き換えます。",
+          "autoHelp": "新しいパスワードが生成され、保存後に 1 回表示されます。",
+          "regenerate": "再生成"
+        },
+        "result": {
+          "warning": "これらの認証情報は 1 回だけ表示されます。このダイアログを閉じる前に保存してください。",
+          "warningReissued": "古いパスワードは機能しなくなります。モバイル クライアントは同期を続けるためにこの新しいパスワードを使用する必要があります。これらの資格情報は 1 回だけ表示されます。このダイアログを閉じる前に保存してください。"
+        }
+      },
+      "rotate": {
+        "button": "パスワードの変更",
+        "dialog": {
+          "title": "{{label}} のパスワードを変更",
+          "subtitle": "サーバーはパスワード ハッシュのみを保存するため、現在のパスワード ハッシュは表示できません。回転後、モバイル クライアントのパスワード フィールドを更新します。",
+          "passwordLabel": "新しいパスワード (オプション)",
+          "passwordPlaceholder": "自動生成するには空のままにしておきます。",
+          "passwordHelp": "空 → 自動生成された強力なパスワード。カスタムは 8 ～ 256 文字である必要があります。",
+          "warning": "古いパスワードはすぐに無効になります。モバイル クライアントは、パスワード フィールドが更新されるまで同期しません。",
+          "submit": "新しいパスワードを生成します",
+          "submitting": "作業中...",
+          "cancel": "キャンセル"
+        },
+        "result": {
+          "title": "新しいパスワードが生成されました",
+          "subtitle": "新しいパスワードは次のとおりです。これは 1 回だけ表示されます。今すぐコピーして、モバイル クライアントのパスワード フィールドに貼り付けます。",
+          "usernameLabel": "ユーザー名",
+          "passwordLabel": "新しいパスワード",
+          "copy": "パスワードをコピー",
+          "copied": "コピーされました",
+          "warning": "古いパスワードは機能しなくなります。モバイル クライアントは同期を続けるためにこの新しいパスワードを使用する必要があります。",
+          "confirmSaved": "新しいパスワードを保存しました",
+          "close": "閉じる",
+          "closeBlocked": "最初に「新しいパスワードを保存しました」を確認します"
+        }
+      },
+      "deviceDialog": {
+        "sections": {
+          "serverAddress": "接続",
+          "pairing": "スキャンしてペアリングします",
+          "info": "デバイス情報"
+        },
+        "status": {
+          "online": "オンライン",
+          "offline": "オフライン",
+          "neverSeen": "接続されていません"
+        },
+        "connectTitle": "接続 {{label}}",
+        "connectSubtitle": "携帯電話でスキャン — 数秒でペアリングされます",
+        "scanInstruction": "携帯電話で UniClipboard を開いて、このコードをスキャンして接続します",
+        "wifiSameNetwork": "携帯電話がこれと同じ Wi-Fi 上にあることを確認してくださいコンピュータ",
+        "manualEntry": {
+          "title": "スキャンできませんか?ユーザー名とパスワードを手動で入力してください",
+          "oneTimeHint": "パスワードは 1 回表示されます"
+        },
+        "repair": {
+          "title": "この電話を再ペアリングする必要がありますか?",
+          "description": "セキュリティのため、サーバーはパスワード ハッシュのみを保持するため、QR コードは再生成できません。新しいペアリング QR コードを取得するには、パスワードをリセットしてください。",
+          "action": "パスワードのリセット"
+        },
+        "fields": {
+          "createdAt": "追加場所",
+          "lastSeen": "最終アクティブ",
+          "lastSeenIp": "最後のソース IP",
+          "reportedName": "クライアント名",
+          "reportedOs": "クライアント OS"
+        }
+      },
+      "errors": {
+        "facadeUnavailable": "このビルドではモバイル同期が有効になっていません",
+        "labelEmpty": "デバイス ラベルを空にすることはできません",
+        "labelTooLong": "デバイス ラベルが長すぎます (最大 {{max}} 文字)",
+        "lanListenerDisabled": "最初に LAN リスナーを有効にしてください",
+        "usernameTaken": "ユーザー名「{{username}}」はすでに使用されています",
+        "usernameTooShort": "ユーザー名が短すぎます（最小 {{min}} 文字、{{got}} を取得しました）",
+        "usernameTooLong": "ユーザー名が長すぎます（最大 {{max}} 文字、 got {{got}})",
+        "usernameMustStartWithLetter": "ユーザー名は ASCII 文字で始める必要があります",
+        "usernameContainsForbiddenChars": "ユーザー名に使用できるのは文字、数字、アンダースコアのみです",
+        "passwordTooShort": "パスワードが短すぎます (最小 {{min}} 文字)",
+        "passwordTooLong": "パスワードが長すぎます (最大{{max}} 文字)",
+        "passwordHashFailed": "パスワードのハッシュ化に失敗しました: {{message}}",
+        "deviceNotFound": "デバイスはもう存在しません。リストを更新してください。",
+        "invalidLanParameter": "無効な LAN パラメータ: {{reason}}",
+        "settingsLoadFailed": "設定のロードに失敗しました: {{message}}",
+        "settingsSaveFailed": "設定の保存に失敗しました: {{message}}",
+        "endpointInfoFailed": "現在の LAN アドレスの調査に失敗しました: {{message}}",
+        "lanProbeFailed": "ネットワーク インターフェイスのリストに失敗しました: {{message}}",
+        "noLanInterfaceAvailable": "使用可能な LAN IPv4 アドレスが検出されませんでした。 LAN に接続するか、「設定」→「IP のバインド」で特定のアドレスを選択して、再試行してください。",
+        "persistenceFailed": "保存失敗: {{message}}",
+        "qrRenderFailed": "QR レンダリング失敗: {{message}}",
+        "unknown": "エラー: {{message}}",
+        "loadFailed": "読み込み失敗しました: {{message}}"
+      }
+    },
+    "panel": {
+      "listTitle": "デバイス",
+      "counts": "{{online}}/{{total}} 個がオンライン · {{mobile}} 個のモバイル",
+      "localBadge": "このデバイス",
+      "fields": {
+        "peerId": "ピア ID"
+      },
+      "profile": {
+        "title": "プロフィール",
+        "platform": "プラットフォーム",
+        "version": "アプリのバージョン",
+        "space": "スペース",
+        "memberCount_one": "{{count}} 人のメンバー",
+        "memberCount_other": "{{count}} 人のメンバー",
+        "copy": "ピア ID のコピー",
+        "copied": "コピーされました",
+        "copyFailed": "クリップボードへのコピーに失敗しました"
+      },
+      "policies": {
+        "title": "グローバル同期ポリシー",
+        "autoSync": {
+          "title": "クリップボードの自動同期",
+          "description": "新しいクリップボードの内容を、ペアリング済みのすべてのデバイスへ自動的に送信します。"
+        },
+        "fileSync": {
+          "title": "ファイル同期",
+          "description": "デバイス間でのファイル転送を許可する"
+        }
+      },
+      "addMenu": {
+        "trigger": "デバイスを追加",
+        "triggerShort": "追加",
+        "p2p": "コンピュータをペアリングする",
+        "mobile": "モバイル デバイスを追加する"
+      }
+    },
+    "settings": {
+      "readOnly": "ロック済み",
+      "sections": {
+        "connection": "接続"
+      },
+      "fields": {
+        "channel": "チャネル",
+        "address": "アドレス"
+      },
+      "badges": {
+        "mvp": "MVP",
+        "comingSoon": "近日公開",
+        "notEditable": "編集できません",
+        "globalFileSyncOff": "ファイル同期がオフです",
+        "experimental": "実験的",
+        "experimentalTooltip": "この機能は実験的です。将来のリリースでは動作が変更されたり、不安定になる可能性があります。"
+      },
+      "sync": {
+        "title": "同期設定",
+        "restoreDefaults": "既定値に戻す",
+        "contentTypes": "コンテンツ タイプ",
+        "rules": {
+          "sendEnabled": {
+            "title": "このデバイスに送信",
+            "description": "オンの場合、このコンピュータのクリップボード コンテンツが選択したデバイスに送信されます。今のところ受信は常にオンになっています。専用の受信トグルは、後のリリースで追加される予定です。"
+          },
+          "syncText": {
+            "title": "テキストの同期",
+            "description": "テキスト コンテンツの同期を許可する"
+          },
+          "syncImage": {
+            "title": "画像の同期",
+            "description": "画像コンテンツの同期を許可する（より多くの帯域幅を使用する可能性があります）"
+          },
+          "syncFile": {
+            "title": "ファイルの同期",
+            "description": "ファイル コンテンツの同期を許可します（最大 10 MB）"
+          },
+          "syncLink": {
+            "title": "リンクの同期",
+            "description": "URL/リンク コンテンツの同期を許可します"
+          },
+          "syncRichText": {
+            "title": "リッチ テキストの同期",
+            "description": "リッチ テキスト コンテンツ (HTML、RTF) の同期を許可する"
+          }
+        }
+      },
+      "permissions": {
+        "title": "アクセス権限",
+        "items": {
+          "readClipboard": "クリップボードの読み取り",
+          "writeClipboard": "クリップボードの書き込み",
+          "historyAccess": "アクセス履歴",
+          "fileTransfer": "ファイル転送"
+        }
+      }
+    },
+    "switchSpace": {
+      "button": "別のスペースに参加します",
+      "title": "別のスペースに切り替えます",
+      "subtitle": "既存のクリップボード履歴は、新しいマスター キーで再暗号化されます。",
+      "warning": "すべてのローカル クリップボード データは 4 段階で再暗号化されます。終了するまでアプリを終了しないでください。飛行中のクラッシュは次回起動時に自動的に再開されます。",
+      "labels": {
+        "code": "招待コード",
+        "newPassphrase": "新しいスペース パスフレーズ"
+      },
+      "placeholders": {
+        "newPassphrase": "新しいスポンサーが選択したパスフレーズ"
+      },
+      "actions": {
+        "switch": "スイッチ",
+        "switching": "切り替え中…",
+        "cancel": "キャンセル",
+        "close": "閉じる",
+        "retry": "再試行",
+        "useNewCode": "新しいコードを入力してください"
+      },
+      "migrating": {
+        "title": "クリップボード履歴を移行しています",
+        "phase": {
+          "preparing": "フェーズ 1: 履歴のバックアップ",
+          "prepared": "フェーズ 2: 新しいスポンサーとのハンドシェイク",
+          "handshakeDone": "フェーズ 3: 新しいキーでの再暗号化",
+          "swapped": "フェーズ 4: ファイナライズ"
+        },
+        "recordsHint": "バックアップ テーブル内の {{count}} 個のレコード"
+      },
+      "success": {
+        "title": "スペースを切り替えました",
+        "subtitle_one": "新しいマスター キーの下に 1 つのクリップボード レコードを移行しました。",
+        "subtitle_other": "新しいマスター キーの下に {{count}} 個のクリップボード レコードを移行しました。",
+        "subtitle_zero": "クリップボード履歴を移行する必要はありません。"
+      },
+      "failed": {
+        "title": "スペースの切り替えに失敗しました",
+        "fallback": "スペースの切り替えに失敗しました: {{reason}}",
+        "reasons": {
+          "not_setup": "このデバイスは初回セットアップを完了していません。最初に「初期化」または「参加」を使用してください。",
+          "pending_migration": "以前の移行はまだ進行中です。自動再開するにはアプリを再起動してください。",
+          "not_unlocked": "スペース セッションはロックされています。アプリを再起動すると、キーチェーンが再度ロックを解除します。",
+          "sponsor_rejected": "スポンサーが招待コードを認識しませんでした。新しいものを発行するよう依頼してください。",
+          "sponsor_declined": "スポンサーがペアリングを拒否しました。",
+          "invitation_not_found": "招待コードはすでに使用されているか、無効になっています。スポンサーに新しい招待状を発行するよう依頼してください。",
+          "invitation_expired": "招待状の有効期限が切れました。スポンサーに新しいパスフレーズを発行するよう依頼してください。",
+          "passphrase_mismatch": "パスフレーズが間違っています - 再試行してください。",
+          "device_name_required": "デバイス名は必須です。",
+          "sponsor_unreachable": "スポンサーに接続できません。 NAT / リレーを確認してください。",
+          "service_unavailable": "ペアリング サービスに到達できません。後でもう一度お試しください。",
+          "timeout": "ハンドシェイクがタイムアウトしました。",
+          "connection_lost": "ハンドシェイク中に接続が失われました。",
+          "corrupted_key_material": "ローカル キー マテリアルが破損しています。",
+          "invalid_ciphertext": "バックアップ レコードを復号化できませんでした。自動再開するには、アプリを再起動してください。",
+          "internal": "内部エラー — デーモン ログを参照してください。"
+        }
+      }
+    }
+  },
+  "pairing": {
+    "globalRequest": {
+      "title": "デバイス ペアリング リクエスト",
+      "description": "{{deviceName}} はあなたとペアリングしようとしています",
+      "warning": "これを開始したことを確認してくださいペアリング"
+    },
+    "requests": {
+      "accept": "承諾",
+      "accepting": "承諾中...",
+      "reject": "拒否"
+    },
+    "steps": {
+      "discovery": "デバイスの検出",
+      "connecting": "接続中...",
+      "pinVerify": "セキュリティ検証",
+      "success": "ペアリング成功",
+      "failed": "ペアリング失敗"
+    },
+    "discovery": {
+      "description": "両方のデバイスが同じローカル ネットワーク上にあることを確認してください",
+      "searching": "デバイスを検索しています...",
+      "noDevices": "接続可能なデバイスが見つかりません",
+      "reScan": "再スキャン",
+      "foundCount": "{{count}} 台のデバイスが見つかりました",
+      "unknownDevice": "不明なデバイス",
+      "connect": "接続"
+    },
+    "connecting": {
+      "title": "{{deviceName}} に接続中",
+      "pleaseWait": "お待ちください..."
+    },
+    "pinVerify": {
+      "description": "両方のデバイスの PIN コードが一致しているか確認してください",
+      "initiatorTitle": "PIN コードを確認してください",
+      "initiatorDescription": "この PIN が に表示されているものと一致するかどうかを確認してください{{deviceName}}",
+      "responderTitle": "PIN コード",
+      "responderDescription": "この PIN を {{deviceName}} の PIN と比較し、開始デバイスで一致することを確認してください。",
+      "verifying": "確認中...",
+      "pleaseWait": "お待ちください...",
+      "pinLabel": "PIN コードのペアリング",
+      "warning": "両方のデバイスに同じ PIN コードが表示されていることを確認してください",
+      "notMatch": "一致しません",
+      "match": "一致を確認",
+      "timeout": "残り時間: {{time}}"
+    },
+    "success": {
+      "title": "ペアリング成功!"
+    },
+    "failed": {
+      "title": "ペアリング失敗",
+      "retry": "再試行",
+      "errors": {
+        "loadPeers": "デバイスリストの取得に失敗しました",
+        "reject": "接続要求が拒否されました",
+        "initiate": "ペアリングの開始に失敗しました",
+        "verifyPin": "PIN の検証に失敗しました",
+        "activeSession": "別のペアリング セッションがすでに進行中です",
+        "noParticipant": "ペアリングを確認する準備ができているローカル デバイスがありません",
+        "sessionExpired": "ペアリング セッションの有効期限が切れたか、すでに閉じられています。",
+        "daemonUnavailable": "ペアリング デーモンは使用できません。デスクトップ サービスを開始して再試行してください"
+      }
+    }
+  },
+  "connectionRequest": {
+    "title": "デバイス接続リクエスト",
+    "status": {
+      "idle": "デバイス {{name}} がこのデバイスへの接続をリクエストしています",
+      "processing": "処理中...",
+      "accepted": "接続リクエストが受け入れられました",
+      "rejected": "接続要求が拒否されました",
+      "error": "処理が失敗しました: {{message}}",
+      "establishing": "接続要求を処理しています...",
+      "connected": "接続が確立されました",
+      "rejectedResult": "接続が拒否されました"
+    },
+    "info": {
+      "device": "デバイス{{id}}",
+      "ip": "IP: {{ip}}",
+      "platform": "プラットフォーム: {{platform}}"
+    },
+    "timeout": "{{time}} 秒後に自動的に拒否",
+    "actions": {
+      "reject": "拒否",
+      "accept": "承諾",
+      "close": "閉じる",
+      "retry": "再試行"
+    }
+  },
+  "feedback": {
+    "modal": {
+      "title": "フィードバックの送信",
+      "description": "あなたのフィードバックは UniClipboard の改善に役立ちます。以下に問題または提案について説明してください。",
+      "label": {
+        "content": "フィードバックの内容",
+        "email": "メール アドレス (オプション)"
+      },
+      "placeholder": {
+        "content": "ここにフィードバックを入力してください...",
+        "email": "your@email.com"
+      },
+      "submit": "送信フィードバック",
+      "useSavedEmail": "保存されたメールを使用する",
+      "success": "フィードバックは正常に送信されました。ありがとうございます。",
+      "error": "フィードバックを送信できませんでした。後でもう一度お試しください。"
+    }
+  },
+  "lifecycle": {
+    "watcherFailed": "クリップボード リスナーの開始に失敗しました",
+    "networkFailed": "ネットワークの開始に失敗しました",
+    "retry": "再試行",
+    "retrying": "再試行中..."
+  },
+  "previewPanel": {
+    "title": "プレビュー",
+    "error": "プレビューの読み込みに失敗しました",
+    "imageUnavailable": "画像が利用できません",
+    "empty": "プレビューする項目の上にマウスを移動します",
+    "imageAlt": "クリップボード画像",
+    "deleteHint": "{{modifier}}⌫ 削除",
+    "largeImageTitle": "大きい画像",
+    "largeImageHint": "{{size}} - 自動的にロードされません",
+    "loadLargeImage": "画像をロード"
+  },
+  "delivery": {
+    "section": {
+      "aria": "エントリ同期ステータス"
+    },
+    "source": {
+      "label": "送信元:",
+      "local": "このデバイス",
+      "remote": "{{device}}",
+      "historical": "ローカル履歴 (レガシー)",
+      "localShort": "このデバイス",
+      "remoteShort": "送信元 {{device}}",
+      "historicalShort": "レガシー エントリ"
+    },
+    "list": {
+      "title": "同期ステータス",
+      "historical": "同期追跡の前に作成されました。配信記録はありません",
+      "noPeers": "ペアリングされたデバイスはまだありません"
+    },
+    "status": {
+      "delivered": "配信済み",
+      "duplicate": "配信済み（重複）",
+      "pending": "未試行",
+      "unreachable": "ピアがオフライン",
+      "failedWithReason": "失敗 · {{reason}}"
+    },
+    "summary": {
+      "synced": "同期しました",
+      "partial": "部分的に同期しました",
+      "syncing": "同期中",
+      "failed": "同期失敗",
+      "waiting": "オフラインのピア",
+      "pending": "同期待機中"
+    },
+    "popover": {
+      "title": "同期ステータス",
+      "ariaTrigger": "デバイスごとの同期の詳細を表示"
+    },
+    "failureReason": {
+      "localPolicy": "ローカル ポリシーによってブロックされています",
+      "peerRejected": "ピア拒否されました",
+      "io": "ネットワーク エラー",
+      "internal": "内部エラー"
+    },
+    "resend": {
+      "button": {
+        "entry": "再送信",
+        "entryAria": "対象となるすべてのピアに再送信します",
+        "entryDisabled": "ペアリングされたすべてのデバイスに既に配信されました",
+        "peer": "再送信",
+        "peerAria": "{{device}} に再送信",
+        "pending": "再送信中…"
+      },
+      "success": {
+        "summary": "再送信しました · {{accepted}}/{{total}} 件を受け付けました"
+      },
+      "error": {
+        "notResendable": {
+          "remoteOrigin": "エントリ{{entryIdShort}} は別のデバイスで送信されたため、ここから再送信できません。",
+          "payloadLost": "エントリ {{entryIdShort}} はこのデバイスでは利用できなくなりました。"
+        },
+        "targetNotTrusted": "デバイス {{device}} はペアリングされなくなりました。",
+        "noEligibleTargets": "再送信できるピアがありません",
+        "entryNotFound": "エントリ {{entryIdShort}} が見つかりません。",
+        "internal": "再送信に失敗しました: {{message}}"
+      }
+    }
+  },
+  "quickPanel": {
+    "loading": "クリップボード履歴を接続しています...",
+    "unavailable": "クリップボード履歴は現在利用できません。",
+    "history": {
+      "searchPlaceholder": "クリップボード履歴を検索…",
+      "advancedPlaceholder": "フィルタ…",
+      "searchAriaLabel": "クリップボード履歴の検索",
+      "filterMenuLabel": "フィルタ メニューを開く",
+      "listAriaLabel": "クリップボード履歴項目",
+      "filters": {
+        "all": "すべて",
+        "text": "テキスト",
+        "richtext": "リッチテキスト",
+        "image": "画像",
+        "link": "リンク",
+        "file": "ファイル",
+        "code": "コード"
+      },
+      "timeRange": {
+        "all_time": "常時",
+        "today": "今日",
+        "yesterday": "昨日",
+        "last_7d": "過去 7 日間",
+        "last_30d": "過去 30 日間",
+        "this_week": "今週",
+        "this_month": "今月"
+      },
+      "locked": {
+        "title": "クリップボードがロックされています",
+        "description": "ロックを解除してクリップボード履歴にアクセスします",
+        "action": "ロック解除",
+        "unlocking": "ロックを解除しています..."
+      },
+      "status": {
+        "close": "esc close",
+        "loading": "読み込み中…",
+        "searching": "検索中…",
+        "navigatePaste": "↑↓ 移動 · ⇥ 入力 · ⏎貼り付け"
+      },
+      "empty": {
+        "title": "結果が見つかりません",
+        "description": "別のキーワードまたはフィルタを試してください"
+      }
+    }
+  },
+  "setup": {
+    "page": {
+      "loadingSetupState": "セットアップ状態を読み込み中...",
+      "processing": "処理中...",
+      "processingJoinSpace": {
+        "title": "デバイスに接続中...",
+        "subtitle": "ペアリング要求が送信されました。他のデバイスが応答するまでお待ちください。",
+        "hint": "他のデバイスに移動し、ペアリング要求を承認します。"
+      },
+      "unknownState": "不明なセットアップ状態: {{state}}",
+      "errors": {
+        "loadSetupStateFailed": "セットアップ状態のロードに失敗しました",
+        "refreshPeersFailed": "デバイス リストの更新に失敗しました",
+        "operationFailed": "操作が失敗しました。もう一度お試しください。"
+      },
+      "badges": {
+        "e2ee": "エンドツーエンド暗号化",
+        "localKeys": "ローカル キー管理",
+        "lanDiscovery": "LAN 検出"
+      }
+    },
+    "common": {
+      "unknownDevice": "不明なデバイス",
+      "back": "戻る",
+      "refresh": "更新",
+      "cancel": "キャンセル",
+      "encryptPassphraseLabel": "暗号化パスフレーズ",
+      "encryptPassphrasePlaceholder": "ホスト デバイスに表示されているパスフレーズを入力してください"
+    },
+    "brand": {
+      "headline": "クリップボードをどこでも。",
+      "tagline": "エンドツーエンド暗号化。キーがデバイスから離れることはありません。"
+    },
+    "welcome": {
+      "title": "始めましょう",
+      "subtitle": "まず、このデバイスがどこに適合するかを教えてください。",
+      "create": {
+        "title": "これが私の最初のデバイスです",
+        "description": "暗号化されたスペースを作成し、別のデバイスを接続して同期を開始します。",
+        "cta": "新しいスペースを開始します"
+      },
+      "join": {
+        "title": "すでに他の場所で UniClipboard を使用しています",
+        "description": "そのデバイスから招待コードを取得し、これを接続します。",
+        "cta": "ペアリング経由で参加する"
+      },
+      "import": {
+        "divider": "移動または復元する",
+        "title": "デバイスのバックアップを移動する",
+        "description": "バックアップされたデバイス ID を引き継ぎます。元のデバイスはオフラインのままにする必要があります。"
+      },
+      "footer": "アカウントは必要ありません。クリップボードのコンテンツは自分のデバイス上に残ります。"
+    },
+    "importConfig": {
+      "title": "設定をインポートします",
+      "subtitle": "別のデバイスでエクスポートした設定ファイルからこのデバイスを設定します。",
+      "confirmSubtitle": "インポートしている内容を確認して確認します。",
+      "fileLabel": "設定バンドル",
+      "chooseFile": ".ucbundle ファイルを選択します…",
+      "changeFile": "変更",
+      "passwordLabel": "スペース パスフレーズ",
+      "passwordPlaceholder": "エクスポートされたデバイスのパスフレーズ",
+      "passwordHint": "このファイルのエクスポート元のデバイスのスペース パスフレーズを使用します -それがロックを解除するものです。",
+      "note": "このデバイスは、エクスポートされたデバイスの ID とペアリングを引き継ぎます。インポート後、元のデバイスをオンラインに戻さないでください。1 つの ID を共有する 2 つのデバイスがデバイス ネットワーク上で競合します。",
+      "metaTitle": "インポートする構成",
+      "metaAppVersion": "バージョンからエクスポートされました",
+      "metaSourceMode": "ソースの種類",
+      "metaSourcePortable": "ポータブル",
+      "metaSourceInstalled": "インストール済み",
+      "metaFingerprint": "デバイスのフィンガープリント",
+      "restartingTitle": "インポートを完了するために再起動しています",
+      "restartingDescription": "お待ちください - アプリが再起動し、インポートされた構成。閉じないでください。",
+      "restartingUnlockHint": "再起動後、ロックを解除するにはスペースのパスフレーズが必要になります。",
+      "errors": {
+        "invalidPassword": "パスフレーズが間違っているか、ファイルが破損しています。",
+        "incompatible": "この構成バンドルのバージョンは現在のアプリと互換性がありません",
+        "generic": "構成のインポートに失敗しました。もう一度お試しください。"
+      },
+      "actions": {
+        "back": "戻る",
+        "continue": "続行",
+        "staging": "インポート中…",
+        "import": "インポートを開始"
+      }
+    },
+    "initializeSpace": {
+      "title": "スペースを作成する",
+      "subtitle": "このデバイスの名前を設定し、暗号化されたスペースを保護するパスフレーズを選択します。",
+      "labels": {
+        "deviceName": "デバイス名",
+        "passphrase": "パスフレーズ",
+        "passphraseConfirm": "パスフレーズの確認"
+      },
+      "placeholders": {
+        "deviceName": "例: MacBook Pro",
+        "passphrase": "強力なパスフレーズを入力してください",
+        "passphraseConfirm": "パスフレーズを再入力してください"
+      },
+      "errors": {
+        "passphraseMismatch": "パスフレーズが一致しません",
+        "deviceNameRequired": "デバイス名が必要です",
+        "alreadyInitialized": "このデバイスはすでにセットアップされています。",
+        "serviceUnavailable": "デーモンの準備がまだ整っていません。しばらくしてからもう一度お試しください。",
+        "generic": "スペースの作成に失敗しました。もう一度お試しください。"
+      },
+      "actions": {
+        "back": "戻る",
+        "creating": "作成中...",
+        "submit": "スペースを作成します"
+      },
+      "hint": "このパスフレーズを安全な場所に保存してください。このパスフレーズは、このスペースに参加するすべてのデバイスで必要になります。"
+    },
+    "showInvitation": {
+      "title": "新しいユーザーを招待するデバイス",
+      "subtitle": "参加デバイスにこのコードを入力して、スペースに追加します。",
+      "expiresIn": "有効期限は {{remaining}} です",
+      "expired": "招待の有効期限が切れました",
+      "hint": "ペアリング中は両方のデバイスがオンラインのままである必要があります。",
+      "hintExpired": "コードは無効になりました。キャンセルして新しい招待を開始します。",
+      "actions": {
+        "cancel": "招待をキャンセルします"
+      }
+    },
+    "redeemInvitation": {
+      "title": "既存のスペースに参加します",
+      "subtitle": "他のデバイスに表示される招待コードを入力し、スペースの作成に使用したものと同じパスフレーズを入力します。",
+      "labels": {
+        "code": "招待コード",
+        "passphrase": "スペース パスフレーズ"
+      },
+      "placeholders": {
+        "passphrase": "ホスト デバイスからパスフレーズを入力してください"
+      },
+      "errors": {
+        "invitationNotFound": "この招待コードはすでに使用されているか、無効になっています。ホストに新しい招待状を発行するよう依頼してください。",
+        "invitationExpired": "この招待状は期限切れです。ホストに新しいパスフレーズを発行するよう依頼してください。",
+        "passphraseMismatch": "パスフレーズが一致しません。もう一度お試しください。",
+        "sponsorUnreachable": "現在、ホスト デバイスにアクセスできません。両方のデバイスがオンラインであることを確認してください。",
+        "sponsorRejected": "ホストはこのコードを認識できませんでした。新しいものを発行するよう依頼してください。",
+        "sponsorDeclined": "ホストはペアリング要求を拒否しました。",
+        "timeout": "ペアリング ハンドシェイクがタイムアウトになりました。もう一度お試しください。",
+        "connectionLost": "ハンドシェイク中に接続が切断されました。もう一度お試しください。",
+        "serviceUnavailable": "デーモンはまだ準備ができていません。しばらくしてからもう一度お試しください。",
+        "deviceNameRequired": "このデバイスは参加する前に表示名が必要です。",
+        "generic": "スペースに参加できませんでした。もう一度お試しください。"
+      },
+      "hint": "コードの有効期間は短いため、ペアリングが完了するまで画面上に表示しておくようにホストに依頼してください。",
+      "actions": {
+        "back": "戻る",
+        "joining": "参加中...",
+        "submit": "スペースに参加"
+      }
+    },
+    "spaceReady": {
+      "title": "すべてset",
+      "subtitle": "スペースの準備ができました。今すぐ別のデバイスを接続して同期を開始してください。",
+      "issueFailed": "招待状を作成できませんでした。もう一度お試しください。",
+      "actions": {
+        "invite": "デバイスを接続します",
+        "inviting": "招待状を作成しています...",
+        "later": "後で実行してください"
+      }
+    },
+    "pairingComplete": {
+      "title": "ペアリングが成功しました",
+      "connected": "接続されました",
+      "devices": {
+        "thisDevice": "このデバイス",
+        "local": "ローカル",
+        "peer": "新しいデバイス",
+        "joined": "参加したばかりです",
+        "direct": "ローカル ネットワーク上で直接"
+      },
+      "points": {
+        "encrypted": "コンテンツは暗号化されたままで、ペアリングされているユーザーのみが読み取ることができますデバイス。",
+        "sync": "コピーされたコンテンツは、両方のデバイスがオンラインの間、自動的に同期されます。"
+      },
+      "actions": {
+        "done": "完了"
+      }
+    }
+  }
+}

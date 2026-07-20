@@ -351,6 +351,10 @@ fn lan_only_status_label(language: &str, lan_only_active: bool) -> &'static str 
     match (language, lan_only_active) {
         ("zh-CN", true) => "LAN-only Mode:已开启",
         ("zh-CN", false) => "LAN-only Mode:未开启",
+        ("zh-TW", true) => "LAN 專用模式：開啟",
+        ("zh-TW", false) => "LAN 專用模式：關閉",
+        ("ja-JP", true) => "LAN専用モード: オン",
+        ("ja-JP", false) => "LAN専用モード: オフ",
         ("ru-RU", true) => "LAN-only Mode: включён",
         ("ru-RU", false) => "LAN-only Mode: выключен",
         ("pt-BR", true) => "LAN-only Mode: ativado",
@@ -365,6 +369,10 @@ fn lan_only_tooltip(language: &str, lan_only_active: bool) -> String {
     match (language, lan_only_active) {
         ("zh-CN", true) => "UniClipboard — LAN-only Mode 已开启".to_string(),
         ("zh-CN", false) => "UniClipboard".to_string(),
+        ("zh-TW", true) => "UniClipboard - LAN 專用模式：開啟".to_string(),
+        ("zh-TW", false) => "UniClipboard".to_string(),
+        ("ja-JP", true) => "UniClipboard - LAN専用モード: オン".to_string(),
+        ("ja-JP", false) => "UniClipboard".to_string(),
         ("ru-RU", true) => "UniClipboard — LAN-only Mode включён".to_string(),
         ("ru-RU", false) => "UniClipboard".to_string(),
         ("pt-BR", true) => "UniClipboard — LAN-only Mode ativado".to_string(),
@@ -376,17 +384,32 @@ fn lan_only_tooltip(language: &str, lan_only_active: bool) -> String {
 
 /// Normalize a language string to a supported locale.
 ///
-/// Matches case-insensitively on the primary subtag, so every region variant
-/// collapses onto the one bundle that covers it: "zh-TW" to `"zh-CN"`, "ru-BY"
-/// to `"ru-RU"`, "pt-PT" to `"pt-BR"`. Anything without a bundle is `"en-US"`.
+/// Matches case-insensitively on the primary subtag. Traditional Chinese tags
+/// (`zh-Hant`, `zh-TW`, `zh-HK`, and `zh-MO`) select `"zh-TW"`; other Chinese
+/// tags select `"zh-CN"`. Japanese, Russian, and Portuguese region variants
+/// collapse to their respective bundles. Anything without a bundle is `"en-US"`.
 ///
 /// Keep the supported set in sync with `SUPPORTED_LANGUAGES` in `src/i18n/index.ts`,
 /// including the frontend's subtag fallbacks in `normalizeLanguage()`.
 pub(crate) fn normalize_language(language: &str) -> &'static str {
     // Accept both separators: BCP-47 hands us "pt-BR", POSIX locale envs "pt_BR".
-    let primary = language.split(['-', '_']).next().unwrap_or_default();
+    let mut subtags = language.split(['-', '_']);
+    let primary = subtags.next().unwrap_or_default();
+    if primary.eq_ignore_ascii_case("zh") {
+        return if subtags.any(|subtag| {
+            matches!(
+                subtag.to_ascii_lowercase().as_str(),
+                "hant" | "tw" | "hk" | "mo"
+            )
+        }) {
+            "zh-TW"
+        } else {
+            "zh-CN"
+        };
+    }
+
     match primary.to_ascii_lowercase().as_str() {
-        "zh" => "zh-CN",
+        "ja" => "ja-JP",
         "ru" => "ru-RU",
         "pt" => "pt-BR",
         _ => "en-US",
@@ -418,6 +441,22 @@ impl MenuLabels {
                 restart: "重启",
                 lightweight: "轻量模式（后台同步）",
                 quit: "退出",
+            },
+            "zh-TW" => Self {
+                open: "開啟",
+                settings: "設定",
+                check_update: "檢查更新…",
+                restart: "重新啟動",
+                lightweight: "輕量模式（背景同步）",
+                quit: "結束",
+            },
+            "ja-JP" => Self {
+                open: "開く",
+                settings: "設定",
+                check_update: "アップデートを確認…",
+                restart: "再起動",
+                lightweight: "軽量モード（バックグラウンド同期）",
+                quit: "終了",
             },
             "ru-RU" => Self {
                 open: "Открыть",
@@ -499,7 +538,12 @@ mod tests {
     #[test]
     fn collapses_region_variants_onto_their_bundle() {
         assert_eq!(normalize_language("zh-CN"), "zh-CN");
-        assert_eq!(normalize_language("zh-TW"), "zh-CN");
+        assert_eq!(normalize_language("zh-TW"), "zh-TW");
+        assert_eq!(normalize_language("zh-Hant"), "zh-TW");
+        assert_eq!(normalize_language("zh-HK"), "zh-TW");
+        assert_eq!(normalize_language("zh-MO"), "zh-TW");
+        assert_eq!(normalize_language("zh-SG"), "zh-CN");
+        assert_eq!(normalize_language("ja-JP"), "ja-JP");
         assert_eq!(normalize_language("ru-BY"), "ru-RU");
         assert_eq!(normalize_language("pt-BR"), "pt-BR");
         // European Portuguese has no bundle; Brazilian copy beats falling back to English.
@@ -515,10 +559,12 @@ mod tests {
 
     #[test]
     fn ignores_case_and_accepts_posix_separators() {
+        assert_eq!(normalize_language("JA_jp"), "ja-JP");
         assert_eq!(normalize_language("RU-ru"), "ru-RU");
         assert_eq!(normalize_language("PT"), "pt-BR");
         assert_eq!(normalize_language("pt_BR"), "pt-BR");
         assert_eq!(normalize_language("zh_CN"), "zh-CN");
+        assert_eq!(normalize_language("ZH_tw"), "zh-TW");
     }
 
     #[test]
@@ -532,7 +578,7 @@ mod tests {
     fn every_supported_locale_has_tray_labels() {
         // MenuLabels falls through to English, so a locale added to normalize_language
         // without a label arm would silently ship an English tray menu.
-        for locale in ["zh-CN", "ru-RU", "pt-BR"] {
+        for locale in ["zh-CN", "zh-TW", "ja-JP", "ru-RU", "pt-BR"] {
             assert_ne!(
                 MenuLabels::for_language(locale).quit,
                 MenuLabels::for_language("en-US").quit,

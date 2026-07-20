@@ -396,6 +396,19 @@ fn daemon_config_paths_depend_on_the_desktop_config_migration_capability() {
     );
 }
 
+#[test]
+fn daemon_settings_paths_depend_on_the_desktop_settings_capability() {
+    let handler_path =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../crates/uc-webserver/src/api/settings.rs");
+    let handler = std::fs::read_to_string(&handler_path)
+        .unwrap_or_else(|error| panic!("failed to read {}: {error}", handler_path.display()));
+
+    assert!(
+        !handler.contains("app_facade_or_error()") && handler.contains("state.settings"),
+        "daemon settings HTTP handlers must use the desktop settings capability directly"
+    );
+}
+
 fn rust_sources(root: &Path) -> Vec<PathBuf> {
     let mut pending = vec![root.to_path_buf()];
     let mut sources = Vec::new();

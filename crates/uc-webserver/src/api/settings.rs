@@ -46,9 +46,8 @@ async fn get_settings_handler(
     State(state): State<DaemonApiState>,
 ) -> Result<Json<ApiEnvelope<SettingsDto>>, ApiError> {
     info!("get settings request received");
-    let app = state.app_facade_or_error()?;
-    let settings = app
-        .settings
+    let settings = state.settings;
+    let settings = settings
         .get()
         .await
         .map_err(|e| settings_error_to_api("get_settings", e))?;
@@ -97,7 +96,7 @@ async fn update_settings_handler(
     Json(payload): Json<SettingsPatchDto>,
 ) -> Result<Json<ApiEnvelope<SettingsUpdateResultDto>>, ApiError> {
     info!("update settings request received");
-    let app = state.app_facade_or_error()?;
+    let settings = state.settings;
 
     // D-D1：`network` 段非空（任何字段变更）触发 restart_required = true。
     // network 段里的 iroh 相关字段都是 endpoint bind-time 常量，仍走
@@ -132,7 +131,7 @@ async fn update_settings_handler(
     // `restart_required` INTO the payload DTO, so the updated `SettingsView` is
     // no longer echoed back on the wire (the FE re-reads settings via GET). The
     // write must still happen for its side effects and error propagation.
-    app.settings
+    settings
         .update(payload.into_domain())
         .await
         .map_err(|e| settings_error_to_api("update_settings", e))?;
@@ -178,9 +177,9 @@ async fn probe_relay_url_handler(
     Json(payload): Json<RelayProbeRequestDto>,
 ) -> Result<Json<ApiEnvelope<RelayProbeOutcomeDto>>, ApiError> {
     info!("relay probe request received");
-    let app = state.app_facade_or_error()?;
+    let settings = state.settings;
 
-    let result = app.settings.probe_relay_url(&payload.url).await;
+    let result = settings.probe_relay_url(&payload.url).await;
     let outcome = probe_result_to_outcome(result)
         .map_err(|other| settings_error_to_api("relay_probe", other))?;
 
@@ -225,13 +224,10 @@ fn settings_error_to_api(op: &'static str, err: app_settings::SettingsFacadeErro
             ApiError::internal(format!("failed to save settings: {msg}")),
         ),
         E::Invalid(msg) => ("invalid", ApiError::bad_request(msg)),
-        // Webserver 不调用 `SettingsFacade::probe_relay_url`,也不暴露探测端
-        // 点 —— 这 7 个变体在当前 wiring 下无法被 `update_settings_handler` /
-        // `get_settings_handler` 产出。穷举 match 让 rustc 在 facade 未来新增
-        // 变体时强制 review;同时显式映射成内部错误而不是 panic,避免某天
-        // 有人把 probe 接进新 handler 时让 daemon 在请求路径上直接挂掉。
-        // 实际触达 = facade wiring 出 bug,变体名通过 log_facade_failure 写
-        // 入 tracing 便于事后定位。
+        // These variants cannot come from the get/update handlers. The relay
+        // probe handler translates expected probe failures before reaching
+        // this mapper. Exhaustive matching keeps future facade changes visible
+        // and maps any misplaced probe error to a logged internal failure.
         E::RelayProbeUnavailable => {
             relay_probe_unexpected("relay_probe_unavailable", "Unavailable")
         }

@@ -505,6 +505,51 @@ async fn engine_start_builds_a_resumable_real_session() {
             && !self_device_id.is_empty()
             && !identity_fingerprint.is_empty()
     ));
+    assert_eq!(
+        engine
+            .execute(uc_engine::Operation::QueryEncryptionState)
+            .await
+            .unwrap(),
+        uc_engine::OperationResult::EncryptionState(uc_engine::EncryptionStateSummary {
+            initialized: true,
+            session_ready: true,
+        })
+    );
+    assert_eq!(
+        engine
+            .execute(uc_engine::Operation::VerifySecureStorageAccess)
+            .await
+            .unwrap(),
+        uc_engine::OperationResult::SecureStorageAccess { granted: true }
+    );
+    assert_eq!(
+        engine
+            .execute(uc_engine::Operation::LockEncryption)
+            .await
+            .unwrap(),
+        uc_engine::OperationResult::EncryptionLocked
+    );
+    assert_eq!(
+        engine
+            .execute(uc_engine::Operation::QueryEncryptionState)
+            .await
+            .unwrap(),
+        uc_engine::OperationResult::EncryptionState(uc_engine::EncryptionStateSummary {
+            initialized: true,
+            session_ready: false,
+        })
+    );
+    assert!(matches!(
+        engine
+            .execute(uc_engine::Operation::UnlockSpace(
+                uc_engine::UnlockSpaceInput {
+                    passphrase: uc_engine::SecretString::new("correct horse"),
+                },
+            ))
+            .await
+            .unwrap(),
+        uc_engine::OperationResult::SpaceUnlocked { .. }
+    ));
     let invitation = engine
         .execute(uc_engine::Operation::IssueInvitation)
         .await

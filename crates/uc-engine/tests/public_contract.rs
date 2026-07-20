@@ -1,10 +1,10 @@
 use uc_engine::{
-    CreateSpaceInput, DeviceSummary, EngineConfig, EngineError, EngineErrorCategory, EngineEvent,
-    EngineState, EntrySummary, ExportEntryInput, HostFileHandle, JoinSpaceInput,
-    LocalDeviceSummary, MigrationPhaseSummary, MigrationProgressSummary, Operation, OperationKind,
-    OperationResult, QueryHistoryInput, RecoverSessionInput, RefreshReason, ResendEntryInput,
-    SecretString, SendFilesInput, SendImageInput, SendTextInput, SetupInvitationSummary,
-    SetupStateSummary, StorageStatsSummary, UnlockSpaceInput,
+    CreateSpaceInput, DeviceSummary, EncryptionStateSummary, EngineConfig, EngineError,
+    EngineErrorCategory, EngineEvent, EngineState, EntrySummary, ExportEntryInput, HostFileHandle,
+    JoinSpaceInput, LocalDeviceSummary, MigrationPhaseSummary, MigrationProgressSummary, Operation,
+    OperationKind, OperationResult, QueryHistoryInput, RecoverSessionInput, RefreshReason,
+    ResendEntryInput, SecretString, SendFilesInput, SendImageInput, SendTextInput,
+    SetupInvitationSummary, SetupStateSummary, StorageStatsSummary, UnlockSpaceInput,
 };
 
 #[test]
@@ -68,6 +68,15 @@ fn every_public_operation_has_a_stable_kind() {
             OperationKind::ClearStorageCache,
         ),
         (Operation::QueryLocalDevice, OperationKind::QueryLocalDevice),
+        (
+            Operation::QueryEncryptionState,
+            OperationKind::QueryEncryptionState,
+        ),
+        (Operation::LockEncryption, OperationKind::LockEncryption),
+        (
+            Operation::VerifySecureStorageAccess,
+            OperationKind::VerifySecureStorageAccess,
+        ),
         (Operation::ListDevices, OperationKind::ListDevices),
         (
             Operation::SendText(SendTextInput {
@@ -118,6 +127,20 @@ fn every_public_operation_has_a_stable_kind() {
     for (operation, expected) in operations {
         assert_eq!(operation.kind(), expected);
     }
+}
+
+#[test]
+fn encryption_operations_expose_only_stable_state_and_outcomes() {
+    let state = OperationResult::EncryptionState(EncryptionStateSummary {
+        initialized: true,
+        session_ready: false,
+    });
+    let locked = OperationResult::EncryptionLocked;
+    let access = OperationResult::SecureStorageAccess { granted: true };
+
+    assert!(format!("{state:?}").contains("encryption_state"));
+    assert!(format!("{locked:?}").contains("encryption_locked"));
+    assert!(format!("{access:?}").contains("secure_storage_access"));
 }
 
 #[test]

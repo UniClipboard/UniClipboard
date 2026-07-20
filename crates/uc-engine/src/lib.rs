@@ -82,6 +82,9 @@ pub enum OperationKind {
     QueryStorageStats,
     ClearStorageCache,
     QueryLocalDevice,
+    QueryEncryptionState,
+    LockEncryption,
+    VerifySecureStorageAccess,
     ListDevices,
     SendText,
     SendImage,
@@ -106,6 +109,9 @@ impl fmt::Display for OperationKind {
             Self::QueryStorageStats => "query_storage_stats",
             Self::ClearStorageCache => "clear_storage_cache",
             Self::QueryLocalDevice => "query_local_device",
+            Self::QueryEncryptionState => "query_encryption_state",
+            Self::LockEncryption => "lock_encryption",
+            Self::VerifySecureStorageAccess => "verify_secure_storage_access",
             Self::ListDevices => "list_devices",
             Self::SendText => "send_text",
             Self::SendImage => "send_image",
@@ -132,6 +138,9 @@ pub enum Operation {
     QueryStorageStats,
     ClearStorageCache,
     QueryLocalDevice,
+    QueryEncryptionState,
+    LockEncryption,
+    VerifySecureStorageAccess,
     ListDevices,
     SendText(SendTextInput),
     SendImage(SendImageInput),
@@ -156,6 +165,9 @@ impl Operation {
             Self::QueryStorageStats => OperationKind::QueryStorageStats,
             Self::ClearStorageCache => OperationKind::ClearStorageCache,
             Self::QueryLocalDevice => OperationKind::QueryLocalDevice,
+            Self::QueryEncryptionState => OperationKind::QueryEncryptionState,
+            Self::LockEncryption => OperationKind::LockEncryption,
+            Self::VerifySecureStorageAccess => OperationKind::VerifySecureStorageAccess,
             Self::ListDevices => OperationKind::ListDevices,
             Self::SendText(_) => OperationKind::SendText,
             Self::SendImage(_) => OperationKind::SendImage,
@@ -510,6 +522,11 @@ pub enum OperationResult {
         freed_bytes: u64,
     },
     LocalDevice(LocalDeviceSummary),
+    EncryptionState(EncryptionStateSummary),
+    EncryptionLocked,
+    SecureStorageAccess {
+        granted: bool,
+    },
     Devices(Vec<DeviceSummary>),
     EntrySent {
         entry_id: String,
@@ -551,6 +568,13 @@ impl fmt::Debug for OperationResult {
             Self::LocalDevice(device) => {
                 debug.field("kind", &"local_device").field("device", device)
             }
+            Self::EncryptionState(state) => debug
+                .field("kind", &"encryption_state")
+                .field("state", state),
+            Self::EncryptionLocked => debug.field("kind", &"encryption_locked"),
+            Self::SecureStorageAccess { granted } => debug
+                .field("kind", &"secure_storage_access")
+                .field("granted", granted),
             Self::Devices(devices) => debug
                 .field("kind", &"devices")
                 .field("device_count", &devices.len()),
@@ -629,6 +653,12 @@ pub struct StorageStatsSummary {
 pub struct LocalDeviceSummary {
     pub device_id: String,
     pub display_name: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EncryptionStateSummary {
+    pub initialized: bool,
+    pub session_ready: bool,
 }
 
 impl fmt::Debug for LocalDeviceSummary {

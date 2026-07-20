@@ -33,6 +33,9 @@ use crate::internal::clipboard_runtime::{
 use crate::internal::create_space::execute_create_space;
 use crate::internal::deps::WiredDependencies;
 use crate::internal::device::execute_query_local_device;
+use crate::internal::encryption::{
+    execute_lock_encryption, execute_query_encryption_state, execute_verify_secure_storage_access,
+};
 use crate::internal::facade::{
     build_app_facade_from_deps, AppFacadeAssemblyOptions, ClipboardRestoreAssembly,
 };
@@ -282,6 +285,19 @@ impl EngineRuntime for ProductionRuntime {
             }
             Operation::QueryLocalDevice => {
                 execute_query_local_device(self.current_facade().await?.as_ref()).await
+            }
+            Operation::QueryEncryptionState => {
+                execute_query_encryption_state(self.current_facade().await?.as_ref()).await
+            }
+            Operation::LockEncryption => {
+                execute_lock_encryption(
+                    self.current_facade().await?.as_ref(),
+                    self.file_transfer_lifecycle.as_ref(),
+                )
+                .await
+            }
+            Operation::VerifySecureStorageAccess => {
+                execute_verify_secure_storage_access(self.current_facade().await?.as_ref()).await
             }
             Operation::ListDevices => {
                 let entries = self

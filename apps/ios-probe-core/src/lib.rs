@@ -594,6 +594,21 @@ fn operation_response(result: OperationResult) -> Value {
             "device_id": device.device_id,
             "has_display_name": !device.display_name.is_empty(),
         }),
+        OperationResult::EncryptionState(state) => json!({
+            "ok": true,
+            "kind": "encryption_state",
+            "initialized": state.initialized,
+            "session_ready": state.session_ready,
+        }),
+        OperationResult::EncryptionLocked => json!({
+            "ok": true,
+            "kind": "encryption_locked",
+        }),
+        OperationResult::SecureStorageAccess { granted } => json!({
+            "ok": true,
+            "kind": "secure_storage_access",
+            "granted": granted,
+        }),
         OperationResult::Devices(devices) => json!({
             "ok": true,
             "kind": "devices",

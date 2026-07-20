@@ -6,6 +6,7 @@
 | --- | --- | --- | --- |
 | `cli/` | `uc-cli` | `uniclip` | `apps/cli/AGENTS.md` |
 | `daemon/` | `uc-daemon` | `uniclipd` | （暂无；遵循 workspace 规则） |
+| `ios-probe-core/` | `uc-ios-probe-core` | iOS 真机验收静态库 | （诊断宿主，不发布） |
 | `../src-tauri/`（物理位置见说明） | `uniclipboard` | 桌面 GUI（Tauri） | `src-tauri/AGENTS.md` |
 
 桌面 GUI 在逻辑上也是一个 app，但物理目录必须叫 `src-tauri/` 且位于仓库根——这是 tauri-cli 的项目发现约定（`src-tauri/` + `tauri.conf.json`），官方不支持重命名，所以它不放在本目录下。

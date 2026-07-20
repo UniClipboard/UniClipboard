@@ -20,6 +20,7 @@ When documentation conflicts with code, treat the code as the source of truth an
 **For Implementation:**
 
 - [Bootstrap System](architecture/bootstrap.md) - How dependency injection works
+- [跨平台核心接口](architecture/uc-engine-interface.md) - 宿主操作、生命周期、事件与能力边界
 - [Local Encrypted Search Design](architecture/local-encrypted-search.md) - V1 local search architecture for encrypted history
 - [Snapshot Cache Pipeline ADR](architecture/snapshot-cache/adr-001-snapshot-cache-pipeline.md) - Cache/spool/worker design decisions
 - [Error Handling](guides/error-handling.md) - Error handling strategy

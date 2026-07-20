@@ -1,8 +1,7 @@
 //! Daemon main-loop 控制句柄。
 //!
-//! [`DaemonHandle`] 是 `start_in_process`（同模块 `host`）的产物:持有 daemon
-//! main loop 的 `JoinHandle` 和一个 `CancellationToken`。daemon 二进制的 `run`
-//! 拿到它后调 [`DaemonHandle::wait`] block 到 main loop 因 OS 信号自然退出。
+//! [`DaemonHandle`] is created by [`super::process_runtime::DaemonProcessRuntime::start`].
+//! It owns the daemon main loop join handle and cancellation token.
 //!
 //! ADR-008 P3-3 (B2'-3): GUI 已是外部 daemon 的纯客户端,不再持有此句柄。
 //! [`DaemonHandle::shutdown`]（cancel cascade → graceful）目前只剩单测覆盖;
@@ -15,10 +14,9 @@ use tokio_util::sync::CancellationToken;
 
 /// Daemon main-loop 实例的控制句柄。
 ///
-/// 由 `start_in_process` 返回。daemon 二进制的 `run` 持有它并 [`DaemonHandle::wait`]
-/// 到 main loop 退出;[`DaemonHandle::shutdown`]（cancel cascade → HTTP graceful
-/// shutdown → service stop）保留作显式优雅关停 API（当前生产路径走 OS 信号,
-/// shutdown 仅单测覆盖)。
+/// The daemon binary waits on this handle until the main loop exits. Production
+/// shutdown is signal-driven; [`DaemonHandle::shutdown`] remains the explicit
+/// cancellation path used by tests and embedders.
 pub struct DaemonHandle {
     cancel: CancellationToken,
     join: JoinHandle<anyhow::Result<()>>,

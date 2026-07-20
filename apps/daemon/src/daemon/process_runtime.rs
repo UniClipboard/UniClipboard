@@ -18,8 +18,18 @@ use uc_bootstrap::{
 };
 use uc_core::TaskRegistry;
 
-use uc_application::clipboard_write::{ClipboardWriteCoordinator, RestoreBroadcastTrigger};
+use uc_application::clipboard_write::{
+    ClipboardWriteCoordinator, RestoreBroadcastRequest, RestoreBroadcastTrigger,
+};
 use uc_bootstrap::ClipboardRestoreAssembly;
+
+use super::handle::DaemonHandle;
+use super::run_mode::DaemonRunMode;
+
+#[path = "process_runtime_start.rs"]
+mod start;
+use start::start_runtime;
+pub(crate) use start::ProcessRuntimeHandles;
 
 pub struct DaemonProcessRuntime {
     app_facade: Arc<AppFacade>,
@@ -63,8 +73,19 @@ impl DaemonProcessRuntime {
         }
     }
 
-    pub fn app_facade(&self) -> &Arc<AppFacade> {
-        &self.app_facade
+    pub(crate) async fn start(
+        &self,
+        run_mode: DaemonRunMode,
+        handles: ProcessRuntimeHandles,
+        restore_broadcast_rx: tokio::sync::mpsc::UnboundedReceiver<RestoreBroadcastRequest>,
+    ) -> anyhow::Result<DaemonHandle> {
+        start_runtime(
+            run_mode,
+            Arc::clone(&self.app_facade),
+            handles,
+            restore_broadcast_rx,
+        )
+        .await
     }
 
     pub(crate) fn spawn_blob_processing(

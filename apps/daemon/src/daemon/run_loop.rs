@@ -10,12 +10,10 @@ pub struct DaemonRunLoopInput {
     pub sync_engine_assembly: SyncEngineAssembly,
 }
 
-/// 运行 daemon main loop，退出后关闭 space setup 资源。
+/// Run the daemon main loop, then close the P2P session in order.
 ///
-/// async 形态：caller 必须已经在 tokio runtime 上下文中。daemon binary 入口
-/// `run` 在自己的 `Runtime::block_on` 里经 async assembly 入口
-/// （[`crate::daemon::start_in_process`]）调用——后者通过 `tokio::spawn` 把它
-/// 跑成 task，由 [`crate::daemon::DaemonHandle`] 持有 join handle。
+/// The caller must already be inside a Tokio runtime. The process runtime
+/// spawns this future and returns a [`crate::daemon::DaemonHandle`].
 pub async fn run_daemon_main(input: DaemonRunLoopInput) -> anyhow::Result<()> {
     let DaemonRunLoopInput {
         daemon,

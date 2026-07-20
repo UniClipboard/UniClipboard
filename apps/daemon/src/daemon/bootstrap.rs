@@ -1,12 +1,8 @@
-//! daemon-lifecycle 装配 (每次 daemon start/stop 重建)。
+//! Daemon-lifecycle assembly rebuilt for each daemon session.
 //!
-//! 进程级资源 (sqlite pool / repos / settings / secure storage / blob
-//! workers / clipboard_write_coordinator / file_transfer_lifecycle 等)
-//! 由 caller 通过 uc-desktop 的 `build_process_runtime` 一次性装好,
-//! 透传 [`uc_bootstrap::WiredDependencies`] 给本模块复用。
-//!
-//! 这条链上**不再** 跑 `wire_dependencies` —— sqlite pool 等跨 daemon
-//! reload 不会重建。
+//! Process-level resources are prepared once by the daemon process runtime and
+//! passed here as [`uc_bootstrap::WiredDependencies`]. This path never runs
+//! `wire_dependencies`, so persistent resources survive session restarts.
 
 use std::sync::Arc;
 
@@ -15,11 +11,8 @@ use uc_bootstrap::{build_daemon_lifecycle, SyncEngineAssembly, WiredDependencies
 
 /// daemon-lifecycle 装配结果。
 ///
-/// 方案 C 后 daemon 进程内只起一次, 这些字段也只装一次, 跟随 AppFacade
-/// Arc drop 自然回收。caller 持有的进程级资源 (deps / storage_paths /
-/// clipboard_write_coordinator / file_transfer_lifecycle / emitter_cell)
-/// 不在这里 —— 它们走 uc-desktop host 的 `ProcessRuntimeHandles`
-/// 传入 daemon spawn。
+/// Session-owned resources that are released when the runtime stops.
+/// Process-level resources remain owned by `DaemonProcessRuntime`.
 pub struct DaemonBootstrapAssembly {
     pub clipboard_sync_facade: Arc<ClipboardSyncFacade>,
     pub blob_transfer_facade: Arc<BlobTransferFacade>,

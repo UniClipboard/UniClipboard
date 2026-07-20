@@ -118,6 +118,6 @@ shell crate。如果在 desktop 里需要写 `if cfg!(feature = "tauri")` 或
     装配链、main loop、startup recovery、process bootstrap、host entry points）+
     `uniclipd` 独立二进制。不依赖 GUI 框架、**不反依赖 `uc-desktop`**。
     ADR-008 P3-3 (B2'-3) 已落地：GUI 永久转纯 client，删除 in-process
-    daemon 拉起路径 (`start_in_process`/`ProcessRuntimeHandles` re-export
-    shim 已移除);`GuiInProcess` run-mode 变体作为死代码在后续 cleanup
+    daemon 旧拉起入口及 `ProcessRuntimeHandles` re-export shim 已移除；
+    当前由 daemon 内部的 `DaemonProcessRuntime::start` 独占装配。`GuiInProcess` run-mode 变体作为死代码在后续 cleanup
     中删除，`DaemonProcessMode::InProcess` enum 保留供 legacy PID 文件读取。

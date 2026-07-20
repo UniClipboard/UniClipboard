@@ -70,6 +70,19 @@ fn daemon_process_runtime_does_not_expose_task_registry() {
     );
 }
 
+#[test]
+fn daemon_process_runtime_does_not_expose_app_facade() {
+    let runtime = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../apps/daemon/src/daemon/process_runtime.rs");
+    let source = std::fs::read_to_string(&runtime)
+        .unwrap_or_else(|error| panic!("failed to read {}: {error}", runtime.display()));
+
+    assert!(
+        !source.contains("fn app_facade("),
+        "daemon process runtime must expose behavior instead of the legacy facade"
+    );
+}
+
 fn rust_sources(root: &Path) -> Vec<PathBuf> {
     let mut pending = vec![root.to_path_buf()];
     let mut sources = Vec::new();

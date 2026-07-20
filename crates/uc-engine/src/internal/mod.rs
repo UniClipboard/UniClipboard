@@ -9,6 +9,7 @@ pub mod facade;
 pub mod file_transfer;
 pub mod host_adapters;
 pub(crate) mod inbound_staging;
+pub mod invitation;
 pub mod lifecycle;
 pub mod network_policy;
 pub mod platform;

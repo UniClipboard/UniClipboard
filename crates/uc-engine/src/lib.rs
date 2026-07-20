@@ -462,6 +462,7 @@ pub enum OperationResult {
     },
     InvitationIssued {
         invitation_code: String,
+        expires_at_ms: i64,
     },
     Devices(Vec<DeviceSummary>),
     EntrySent {

@@ -9,10 +9,10 @@ use tracing::{error, warn};
 use uc_application::facade::space_setup::{SwitchSpaceError, SwitchSpaceInput};
 use uc_application::facade::{
     AppFacade, ClipboardHistoryError, InMemoryLifecycleStatus, InitializeSpaceError,
-    InitializeSpaceInput as AppInitializeSpaceInput, IssuePairingInvitationError,
-    QuerySetupStateError, RedeemPairingInvitationError, RedeemPairingInvitationInput,
-    ResendEntryCommand, ResendEntryError, ResourceFacadeError, SearchCoordinator,
-    SearchCoordinatorDeps, SearchFacadeError, SearchPageView, SearchQueryInput, UnlockSpaceError,
+    InitializeSpaceInput as AppInitializeSpaceInput, QuerySetupStateError,
+    RedeemPairingInvitationError, RedeemPairingInvitationInput, ResendEntryCommand,
+    ResendEntryError, ResourceFacadeError, SearchCoordinator, SearchCoordinatorDeps,
+    SearchFacadeError, SearchPageView, SearchQueryInput, UnlockSpaceError,
     UnlockSpaceInput as AppUnlockSpaceInput, MAX_INLINE_OUTBOUND_REPRESENTATION_BYTES,
 };
 use uc_application::facade::{
@@ -42,6 +42,7 @@ use crate::internal::file_transfer::FileTransferLifecycle;
 use crate::internal::host_adapters::{
     wire_host_capabilities_with_emitter, EngineHostEventEmitter, HostWiring,
 };
+use crate::internal::invitation::execute_issue_invitation;
 use crate::internal::lifecycle::build_daemon_lifecycle;
 use crate::internal::session_recovery::execute_recover_session;
 use crate::internal::sync_engine::SyncEngineAssembly;
@@ -59,10 +60,6 @@ const CREATE_SPACE_FAILED_CODE: u32 = 1203;
 const UNLOCK_SPACE_INVALID_STATE_CODE: u32 = 1211;
 const UNLOCK_SPACE_UNAUTHORIZED_CODE: u32 = 1212;
 const UNLOCK_SPACE_FAILED_CODE: u32 = 1213;
-const INVITATION_INVALID_STATE_CODE: u32 = 1221;
-const INVITATION_INVALID_INPUT_CODE: u32 = 1222;
-const INVITATION_UNAVAILABLE_CODE: u32 = 1223;
-const INVITATION_FAILED_CODE: u32 = 1224;
 const JOIN_SPACE_INVALID_INPUT_CODE: u32 = 1231;
 const JOIN_SPACE_INVALID_STATE_CODE: u32 = 1232;
 const JOIN_SPACE_UNAUTHORIZED_CODE: u32 = 1233;
@@ -328,15 +325,7 @@ impl EngineRuntime for ProductionRuntime {
                 .await
             }
             Operation::IssueInvitation => {
-                let invitation = self
-                    .current_facade()
-                    .await?
-                    .issue_pairing_invitation()
-                    .await
-                    .map_err(map_issue_invitation_error)?;
-                Ok(OperationResult::InvitationIssued {
-                    invitation_code: invitation.code.as_str().to_string(),
-                })
+                execute_issue_invitation(self.current_facade().await?.as_ref()).await
             }
             Operation::ListDevices => {
                 let entries = self
@@ -958,29 +947,6 @@ fn map_unlock_space_error(error: UnlockSpaceError) -> EngineError {
         ),
         UnlockSpaceError::CorruptedKeyMaterial | UnlockSpaceError::Internal(_) => {
             operation_error_with_code(UNLOCK_SPACE_FAILED_CODE, "unlock space", error)
-        }
-    }
-}
-
-fn map_issue_invitation_error(error: IssuePairingInvitationError) -> EngineError {
-    match error {
-        IssuePairingInvitationError::NetworkNotStarted => EngineError::new(
-            INVITATION_INVALID_STATE_CODE,
-            EngineErrorCategory::InvalidState,
-            true,
-        ),
-        IssuePairingInvitationError::AddressNotAvailable(_) => EngineError::new(
-            INVITATION_INVALID_INPUT_CODE,
-            EngineErrorCategory::InvalidInput,
-            false,
-        ),
-        IssuePairingInvitationError::ServiceUnavailable => EngineError::new(
-            INVITATION_UNAVAILABLE_CODE,
-            EngineErrorCategory::Unavailable,
-            true,
-        ),
-        IssuePairingInvitationError::Internal(_) => {
-            operation_error_with_code(INVITATION_FAILED_CODE, "issue invitation", error)
         }
     }
 }

@@ -181,6 +181,7 @@ fn operation_result_debug_output_redacts_user_content() {
     let results = [
         OperationResult::InvitationIssued {
             invitation_code: "NEVER-SHOW-INVITATION".into(),
+            expires_at_ms: 1,
         },
         OperationResult::Devices(vec![DeviceSummary {
             device_id: "device-1".into(),

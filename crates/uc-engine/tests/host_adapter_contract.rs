@@ -504,7 +504,16 @@ async fn engine_start_builds_a_resumable_real_session() {
         .await
         .unwrap();
     let invitation_code = match invitation {
-        uc_engine::OperationResult::InvitationIssued { invitation_code } => invitation_code,
+        uc_engine::OperationResult::InvitationIssued {
+            invitation_code,
+            expires_at_ms,
+        } => {
+            assert!(
+                expires_at_ms > 0,
+                "invitation expiry must come from the engine"
+            );
+            invitation_code
+        }
         other => panic!("expected invitation, got {other:?}"),
     };
     assert!(!invitation_code.is_empty());

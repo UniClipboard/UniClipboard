@@ -10398,6 +10398,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "chrono",
+ "diesel",
  "serde",
  "tempfile",
  "thiserror 2.0.18",

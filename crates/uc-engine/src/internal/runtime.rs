@@ -242,13 +242,14 @@ impl EngineRuntime for ProductionRuntime {
                 })
             }
             Operation::UnlockSpace(input) => {
-                self.current_facade()
-                    .await?
+                let facade = self.current_facade().await?;
+                facade
                     .unlock_space(AppUnlockSpaceInput {
                         passphrase: input.passphrase.expose().to_owned(),
                     })
                     .await
                     .map_err(map_unlock_space_error)?;
+                facade.search.on_session_ready().await;
                 Ok(OperationResult::SpaceUnlocked)
             }
             Operation::JoinSpace(input) => {

@@ -7,9 +7,11 @@ use uc_engine::{
     HostFileAccess, HostFileHandle, HostFileMetadata, HostSecureStorage,
 };
 
-#[derive(Default)]
+static ENGINE_TEST_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+#[derive(Clone, Default)]
 struct MemoryHostSecureStorage {
-    values: Mutex<HashMap<String, Vec<u8>>>,
+    values: Arc<Mutex<HashMap<String, Vec<u8>>>>,
 }
 
 impl MemoryHostSecureStorage {
@@ -354,6 +356,7 @@ async fn host_capabilities_wire_real_core_dependencies() {
 
 #[tokio::test]
 async fn engine_start_builds_a_resumable_real_session() {
+    let _guard = ENGINE_TEST_LOCK.lock().await;
     let temp = tempfile::tempdir().unwrap();
     let private = temp.path().join("private");
     let host_files = Arc::new(RecordingHostFilesState::default());
@@ -654,4 +657,122 @@ async fn engine_start_builds_a_resumable_real_session() {
             EngineState::Stopped,
         ]
     );
+}
+
+#[tokio::test]
+async fn unlocking_a_locked_restart_recovers_keyword_search() {
+    use diesel::connection::SimpleConnection;
+    use diesel::Connection;
+
+    let _guard = ENGINE_TEST_LOCK.lock().await;
+    let temp = tempfile::tempdir().unwrap();
+    let private = temp.path().join("private");
+    let secure_storage = MemoryHostSecureStorage::default();
+    let host = HostCapabilities::new(
+        HostDirectories::new(
+            private.clone(),
+            temp.path().join("cache"),
+            temp.path().join("temporary"),
+        ),
+        Box::new(secure_storage.clone()),
+        Box::new(StaticHostClipboard {
+            snapshot: HostClipboardSnapshot {
+                observed_at_ms: 0,
+                representations: Vec::new(),
+            },
+        }),
+        Box::new(EmptyHostFiles),
+    );
+    let (engine, _events) = Engine::start(EngineConfig::new("1.2.3"), host)
+        .await
+        .unwrap();
+    engine
+        .execute(uc_engine::Operation::CreateSpace(
+            uc_engine::CreateSpaceInput {
+                device_name: "Search Device".into(),
+                passphrase: uc_engine::SecretString::new("correct horse"),
+                passphrase_confirmation: uc_engine::SecretString::new("correct horse"),
+            },
+        ))
+        .await
+        .unwrap();
+    engine
+        .execute(uc_engine::Operation::SendText(uc_engine::SendTextInput {
+            text: "recoverable keyword".into(),
+            target_devices: Vec::new(),
+        }))
+        .await
+        .unwrap();
+    engine
+        .shutdown(std::time::Duration::from_secs(15))
+        .await
+        .unwrap();
+
+    let database_path = private.join("uniclipboard.db");
+    let mut connection = diesel::sqlite::SqliteConnection::establish(
+        database_path.to_str().expect("database path must be UTF-8"),
+    )
+    .unwrap();
+    connection
+        .batch_execute("UPDATE search_index_meta SET index_version = 'stale', search_blocked = 1;")
+        .unwrap();
+    drop(connection);
+
+    let restarted_host = HostCapabilities::new(
+        HostDirectories::new(
+            private,
+            temp.path().join("cache"),
+            temp.path().join("temporary"),
+        ),
+        Box::new(secure_storage),
+        Box::new(StaticHostClipboard {
+            snapshot: HostClipboardSnapshot {
+                observed_at_ms: 0,
+                representations: Vec::new(),
+            },
+        }),
+        Box::new(EmptyHostFiles),
+    );
+    let (restarted, _events) = Engine::start(EngineConfig::new("1.2.3"), restarted_host)
+        .await
+        .unwrap();
+    restarted
+        .execute(uc_engine::Operation::UnlockSpace(
+            uc_engine::UnlockSpaceInput {
+                passphrase: uc_engine::SecretString::new("correct horse"),
+            },
+        ))
+        .await
+        .unwrap();
+
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(2);
+    loop {
+        match restarted
+            .execute(uc_engine::Operation::QueryHistory(
+                uc_engine::QueryHistoryInput {
+                    cursor: None,
+                    limit: 25,
+                    query: Some("recoverable".into()),
+                },
+            ))
+            .await
+        {
+            Ok(uc_engine::OperationResult::HistoryPage { entries, .. }) => {
+                assert_eq!(entries.len(), 1);
+                break;
+            }
+            Err(error)
+                if error.category() == uc_engine::EngineErrorCategory::Unavailable
+                    && tokio::time::Instant::now() < deadline =>
+            {
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            }
+            other => panic!("keyword search did not recover after unlock: {other:?}"),
+        }
+    }
+
+    restarted
+        .shutdown(std::time::Duration::from_secs(15))
+        .await
+        .unwrap();
 }

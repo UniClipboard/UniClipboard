@@ -21,6 +21,7 @@ zeroize = "1.8"
 
 [dev-dependencies]
 chrono = { version = "0.4", features = ["serde"] }
+diesel = { version = "2.3.5", features = ["sqlite"] }
 tempfile = "3"
 
 [lints]

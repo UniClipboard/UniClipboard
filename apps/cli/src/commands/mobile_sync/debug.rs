@@ -162,6 +162,17 @@ impl From<&ApplyIncomingMobileClipOutcome> for PutOutcomeDto {
                 existing_entry_id: Some(existing_entry_id.to_string()),
                 decode_reason: None,
             },
+            ApplyIncomingMobileClipOutcome::Resurfaced {
+                snapshot_hash,
+                existing_entry_id,
+                ..
+            } => Self {
+                outcome: "resurfaced",
+                entry_id: None,
+                snapshot_hash: Some(snapshot_hash.clone()),
+                existing_entry_id: Some(existing_entry_id.to_string()),
+                decode_reason: None,
+            },
             ApplyIncomingMobileClipOutcome::DecodeFailed { reason } => Self {
                 outcome: "decode_failed",
                 entry_id: None,
@@ -197,6 +208,16 @@ fn print_outcome(label: &str, outcome: &ApplyIncomingMobileClipOutcome) {
             ui::info(label, "duplicate_skipped");
             ui::info("snapshotHash", snapshot_hash);
             ui::info("existingEntryId", &existing_entry_id.to_string());
+        }
+        ApplyIncomingMobileClipOutcome::Resurfaced {
+            snapshot_hash,
+            existing_entry_id,
+            os_write_succeeded,
+        } => {
+            ui::info(label, "resurfaced");
+            ui::info("snapshotHash", snapshot_hash);
+            ui::info("existingEntryId", &existing_entry_id.to_string());
+            ui::info("osWriteSucceeded", &os_write_succeeded.to_string());
         }
         ApplyIncomingMobileClipOutcome::DecodeFailed { reason } => {
             ui::warn(&format!("{label}: decode_failed"));

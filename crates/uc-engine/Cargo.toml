@@ -23,6 +23,7 @@ zeroize = "1.8"
 chrono = { version = "0.4", features = ["serde"] }
 diesel = { version = "2.3.5", features = ["sqlite"] }
 tempfile = "3"
+uc-observability = { path = "../uc-observability" }
 
 [lints]
 workspace = true

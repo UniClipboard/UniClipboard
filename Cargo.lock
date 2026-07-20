@@ -10408,6 +10408,7 @@ dependencies = [
  "uc-application",
  "uc-core",
  "uc-infra",
+ "uc-observability",
  "uc-observability-contract",
  "zeroize",
 ]

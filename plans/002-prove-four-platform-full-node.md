@@ -99,7 +99,7 @@ HarmonyOS 已证明完整节点方向可行，但 Android 和 iOS 尚未跑过�
 
 **验证**：探针脚本退出 0，并在测试报告中列出扫描过的目录与文件类型，不记录真实用户内容。
 
-扫描器与当前自动覆盖见 [`docs/development/plaintext-probe.md`](../docs/development/plaintext-probe.md)。桌面文本和图片已进入自动测试；文件、标签、预览、平台日志及三种移动真机目录仍未验收。
+扫描器与当前自动覆盖见 [`docs/development/plaintext-probe.md`](../docs/development/plaintext-probe.md)。桌面文本、图片、预览和正式日志目录已进入自动测试；文件、标签及三种移动真机目录仍未验收。
 
 ## 完成标准
 

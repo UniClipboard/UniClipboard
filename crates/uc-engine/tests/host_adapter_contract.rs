@@ -844,15 +844,19 @@ async fn production_engine_restarts_ten_times_with_the_same_network_identity() {
 }
 
 #[tokio::test]
-async fn persisted_engine_text_and_image_do_not_leave_the_plaintext_probe_on_disk() {
+async fn persisted_engine_text_image_preview_and_logs_do_not_leave_plaintext_on_disk() {
     let _guard = ENGINE_TEST_LOCK.lock().await;
     let temp = tempfile::tempdir().unwrap();
     let private = temp.path().join("private");
     let cache = temp.path().join("cache");
     let temporary = temp.path().join("temporary");
-    for directory in [&private, &cache, &temporary] {
+    let logs = temp.path().join("logs");
+    for directory in [&private, &cache, &temporary, &logs] {
         std::fs::create_dir_all(directory).unwrap();
     }
+    let log_guard =
+        uc_observability::init_tracing_subscriber(&logs, uc_observability::LogProfile::Cli)
+            .unwrap();
 
     let probe = format!(
         "uc-plaintext-probe-{}-{}",
@@ -904,10 +908,33 @@ async fn persisted_engine_text_and_image_do_not_leave_the_plaintext_probe_on_dis
         }))
         .await
         .unwrap();
+
+    let history = engine
+        .execute(uc_engine::Operation::QueryHistory(
+            uc_engine::QueryHistoryInput {
+                cursor: None,
+                limit: 25,
+                query: None,
+            },
+        ))
+        .await
+        .unwrap();
+    let uc_engine::OperationResult::HistoryPage { entries, .. } = history else {
+        panic!("history query returned the wrong result");
+    };
+    assert!(
+        entries
+            .iter()
+            .filter_map(|entry| entry.preview.as_deref())
+            .any(|preview| preview.contains(&probe)),
+        "the probe must reach the generated preview before persistence is scanned"
+    );
+
     engine
         .shutdown(std::time::Duration::from_secs(15))
         .await
         .unwrap();
+    drop(log_guard);
 
     let scanner = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../..")
@@ -915,7 +942,7 @@ async fn persisted_engine_text_and_image_do_not_leave_the_plaintext_probe_on_dis
     let output = std::process::Command::new("bash")
         .arg(scanner)
         .arg(&probe_file)
-        .args([&private, &cache, &temporary])
+        .args([&private, &cache, &temporary, &logs])
         .output()
         .unwrap();
     let stdout = String::from_utf8_lossy(&output.stdout);

@@ -44,6 +44,7 @@ Running|Quiescing|Quiesced|Suspended -> ShuttingDown -> Stopped
 | --- | --- |
 | `CreateSpace` | 创建空间、设备身份和加密存储 |
 | `UnlockSpace` | 使用口令恢复当前空间会话 |
+| `RecoverSession` | 按宿主策略从系统安全存储恢复加密与空间会话 |
 | `JoinSpace` | 首次设备加入空间；已设置设备保留历史并切换空间 |
 | `IssueInvitation` | 签发一次配对邀请 |
 | `ListDevices` | 返回设备编号、显示名和在线状态 |
@@ -53,6 +54,8 @@ Running|Quiescing|Quiesced|Suspended -> ShuttingDown -> Stopped
 | `ExportEntry` | 通过宿主文件句柄分块写出主内容 |
 | `ResendEntry` | 重新发送一条本机仍持有内容的历史记录 |
 | `SendFiles` | 从宿主句柄分块导入文件，并按现有文件协议发送 |
+
+`RecoverSession` 的 `allow_secure_storage_unlock` 由宿主根据当前运行环境决定。值为 `false` 时核心不得尝试从系统安全存储恢复密钥；值为 `true` 时，核心统一完成加密会话、空间会话、搜索和接收能力恢复。
 
 空目标设备列表表示向所有符合条件的可信设备发送；非空列表只会缩小目标范围，不能绕过信任、在线状态和发送设置。
 

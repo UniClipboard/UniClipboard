@@ -73,6 +73,7 @@ pub enum OperationKind {
     CreateSpace,
     JoinSpace,
     UnlockSpace,
+    RecoverSession,
     IssueInvitation,
     ListDevices,
     SendText,
@@ -89,6 +90,7 @@ impl fmt::Display for OperationKind {
             Self::CreateSpace => "create_space",
             Self::JoinSpace => "join_space",
             Self::UnlockSpace => "unlock_space",
+            Self::RecoverSession => "recover_session",
             Self::IssueInvitation => "issue_invitation",
             Self::ListDevices => "list_devices",
             Self::SendText => "send_text",
@@ -107,6 +109,7 @@ pub enum Operation {
     CreateSpace(CreateSpaceInput),
     JoinSpace(JoinSpaceInput),
     UnlockSpace(UnlockSpaceInput),
+    RecoverSession(RecoverSessionInput),
     IssueInvitation,
     ListDevices,
     SendText(SendTextInput),
@@ -123,6 +126,7 @@ impl Operation {
             Self::CreateSpace(_) => OperationKind::CreateSpace,
             Self::JoinSpace(_) => OperationKind::JoinSpace,
             Self::UnlockSpace(_) => OperationKind::UnlockSpace,
+            Self::RecoverSession(_) => OperationKind::RecoverSession,
             Self::IssueInvitation => OperationKind::IssueInvitation,
             Self::ListDevices => OperationKind::ListDevices,
             Self::SendText(_) => OperationKind::SendText,
@@ -192,6 +196,11 @@ impl fmt::Debug for UnlockSpaceInput {
             .field("passphrase", &"[REDACTED]")
             .finish()
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RecoverSessionInput {
+    pub allow_secure_storage_unlock: bool,
 }
 
 #[derive(Clone, PartialEq, Eq)]
@@ -447,6 +456,10 @@ pub enum OperationResult {
         space_id: String,
     },
     SpaceUnlocked,
+    SessionRecovered {
+        unlocked: bool,
+        resumed: bool,
+    },
     InvitationIssued {
         invitation_code: String,
     },
@@ -471,6 +484,10 @@ impl fmt::Debug for OperationResult {
             Self::SpaceCreated { .. } => debug.field("kind", &"space_created"),
             Self::SpaceJoined { .. } => debug.field("kind", &"space_joined"),
             Self::SpaceUnlocked => debug.field("kind", &"space_unlocked"),
+            Self::SessionRecovered { unlocked, resumed } => debug
+                .field("kind", &"session_recovered")
+                .field("unlocked", unlocked)
+                .field("resumed", resumed),
             Self::InvitationIssued { .. } => debug.field("kind", &"invitation_issued"),
             Self::Devices(devices) => debug
                 .field("kind", &"devices")

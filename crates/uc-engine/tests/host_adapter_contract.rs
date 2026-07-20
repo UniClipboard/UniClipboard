@@ -873,7 +873,7 @@ async fn engine_send_files_imports_opaque_content_and_exports_after_resume() {
 }
 
 #[tokio::test]
-async fn unlocking_a_locked_restart_recovers_keyword_search() {
+async fn recovering_a_locked_restart_from_secure_storage_restores_keyword_search() {
     use diesel::connection::SimpleConnection;
     use diesel::Connection;
 
@@ -949,14 +949,20 @@ async fn unlocking_a_locked_restart_recovers_keyword_search() {
     let (restarted, _events) = Engine::start(EngineConfig::new("1.2.3"), restarted_host)
         .await
         .unwrap();
-    restarted
-        .execute(uc_engine::Operation::UnlockSpace(
-            uc_engine::UnlockSpaceInput {
-                passphrase: uc_engine::SecretString::new("correct horse"),
-            },
-        ))
-        .await
-        .unwrap();
+    assert_eq!(
+        restarted
+            .execute(uc_engine::Operation::RecoverSession(
+                uc_engine::RecoverSessionInput {
+                    allow_secure_storage_unlock: true,
+                },
+            ))
+            .await
+            .unwrap(),
+        uc_engine::OperationResult::SessionRecovered {
+            unlocked: true,
+            resumed: true,
+        }
+    );
 
     let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(2);
     loop {

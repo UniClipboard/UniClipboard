@@ -1,8 +1,9 @@
 use uc_engine::{
     CreateSpaceInput, DeviceSummary, EngineConfig, EngineError, EngineErrorCategory, EngineEvent,
     EngineState, EntrySummary, ExportEntryInput, HostFileHandle, JoinSpaceInput, Operation,
-    OperationKind, OperationResult, QueryHistoryInput, RefreshReason, ResendEntryInput,
-    SecretString, SendFilesInput, SendImageInput, SendTextInput, UnlockSpaceInput,
+    OperationKind, OperationResult, QueryHistoryInput, RecoverSessionInput, RefreshReason,
+    ResendEntryInput, SecretString, SendFilesInput, SendImageInput, SendTextInput,
+    UnlockSpaceInput,
 };
 
 #[test]
@@ -42,6 +43,12 @@ fn every_public_operation_has_a_stable_kind() {
                 passphrase: SecretString::new("secret"),
             }),
             OperationKind::UnlockSpace,
+        ),
+        (
+            Operation::RecoverSession(RecoverSessionInput {
+                allow_secure_storage_unlock: true,
+            }),
+            OperationKind::RecoverSession,
         ),
         (Operation::IssueInvitation, OperationKind::IssueInvitation),
         (Operation::ListDevices, OperationKind::ListDevices),

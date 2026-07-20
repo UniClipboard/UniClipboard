@@ -452,6 +452,20 @@ fn daemon_storage_handlers_delegate_storage_ownership_to_engine() {
     );
 }
 
+#[test]
+fn daemon_local_device_handler_delegates_identity_to_engine() {
+    let handler_path =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../crates/uc-webserver/src/api/device.rs");
+    let handler = std::fs::read_to_string(&handler_path)
+        .unwrap_or_else(|error| panic!("failed to read {}: {error}", handler_path.display()));
+
+    assert!(
+        !handler.contains(".device.local_device_info(")
+            && handler.contains("execute_query_local_device("),
+        "daemon local-device handler must leave identity ownership to uc-engine"
+    );
+}
+
 fn rust_sources(root: &Path) -> Vec<PathBuf> {
     let mut pending = vec![root.to_path_buf()];
     let mut sources = Vec::new();

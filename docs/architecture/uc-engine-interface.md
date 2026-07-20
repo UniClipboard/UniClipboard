@@ -53,6 +53,7 @@ Running|Quiescing|Quiesced|Suspended -> ShuttingDown -> Stopped
 | `QueryMigrationProgress` | 查询空间切换所处阶段和已备份记录数量 |
 | `QueryStorageStats` | 查询数据库、密钥库、缓存和日志占用大小，不返回本机目录 |
 | `ClearStorageCache` | 清理核心缓存并返回实际释放的字节数 |
+| `QueryLocalDevice` | 返回本机设备编号和按设置解析后的显示名 |
 | `ListDevices` | 返回设备编号、显示名和在线状态 |
 | `SendText` | 写入加密历史、更新搜索并发送不超过 64 KiB 的文本 |
 | `SendImage` | 写入加密历史、更新搜索并发送不超过 64 KiB 的图片 |
@@ -66,6 +67,8 @@ Running|Quiescing|Quiesced|Suspended -> ShuttingDown -> Stopped
 `CancelInvitation` 在没有待取消邀请时返回冲突错误。`ResetSpace` 只清除当前空间设置，不向宿主暴露底层存储步骤。`QuerySetupState` 不返回内部服务状态；`QueryMigrationProgress` 只返回准备、握手完成、切换完成三个稳定阶段，不公开内部运行编号或目标空间。
 
 `QueryStorageStats` 和 `ClearStorageCache` 由核心执行。宿主只能看到分类后的字节数和实际释放量，不能取得数据库、密钥库、缓存或日志的本机路径。
+
+`QueryLocalDevice` 的显示名由核心统一读取并规范化；设置缺失、读取失败或名称为空时使用稳定默认名称。调试输出不得包含显示名。
 
 空目标设备列表表示向所有符合条件的可信设备发送；非空列表只会缩小目标范围，不能绕过信任、在线状态和发送设置。
 

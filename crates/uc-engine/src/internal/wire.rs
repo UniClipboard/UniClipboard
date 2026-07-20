@@ -62,8 +62,8 @@ use uc_infra::network::iroh::IrohIdentityStore;
 use uc_infra::search::{HkdfSearchKeyDerivation, SearchPipeline, SqliteSearchIndex};
 use uc_infra::security::{
     Argon2PinHasher, Blake3Hasher, DecryptingClipboardRepresentationRepository,
-    EncryptingClipboardEventWriter, InMemorySession, KeyMaterialStore,
-    Sha256IdentityFingerprintFactory, Sha256ShortCodeGenerator,
+    EncryptingClipboardEventWriter, EncryptingInboundReceiveCommit, InMemorySession,
+    KeyMaterialStore, Sha256IdentityFingerprintFactory, Sha256ShortCodeGenerator,
 };
 use uc_infra::settings::repository::FileSettingsRepository;
 use uc_infra::{
@@ -740,7 +740,7 @@ pub fn wire_dependencies_from_inputs(
         space_access_ports.derive_subkey.clone(),
         platform.current_profile.clone(),
     ));
-    let directory_receive = DirectoryReceivePorts {
+    let mut directory_receive = DirectoryReceivePorts {
         get_attempt: directory_attempt_impl.clone(),
         list_attempts: directory_attempt_impl.clone(),
         record_publish: directory_publish_impl.clone(),
@@ -831,6 +831,10 @@ pub fn wire_dependencies_from_inputs(
         &infra.clipboard_event_repo,
         &infra.representation_repo,
     );
+    directory_receive.commit_inbound = Arc::new(EncryptingInboundReceiveCommit::new(
+        directory_receive.commit_inbound.clone(),
+        blob_cipher.clone(),
+    ));
 
     // Background blob-processing components (cache, spool, durable queue, payload
     // resolver, self-write ledger, worker channel). `worker_rx` is not Clone and

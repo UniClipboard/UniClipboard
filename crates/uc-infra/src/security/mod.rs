@@ -5,6 +5,7 @@ mod decrypting_representation_repo;
 mod default_current_profile;
 mod encrypted_blob_store;
 mod encrypting_clipboard_event_writer;
+mod encrypting_inbound_receive_commit;
 mod hashing;
 mod identity_fingerprint;
 mod key_material;
@@ -25,6 +26,7 @@ pub use decrypting_representation_repo::DecryptingClipboardRepresentationReposit
 pub use default_current_profile::DefaultCurrentProfile;
 pub use encrypted_blob_store::EncryptedBlobStore;
 pub use encrypting_clipboard_event_writer::EncryptingClipboardEventWriter;
+pub use encrypting_inbound_receive_commit::EncryptingInboundReceiveCommit;
 pub use hashing::{hash_pin, verify_pin, Argon2PinHasher, Blake3Hasher};
 pub use identity_fingerprint::{
     FingerprintDerivationError, Sha256IdentityFingerprintFactory, Sha256ShortCodeGenerator,

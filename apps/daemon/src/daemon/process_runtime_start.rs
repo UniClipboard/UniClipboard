@@ -15,7 +15,9 @@ use crate::daemon::app_facade_assembly::{
 };
 use crate::daemon::bootstrap::{build_daemon_bootstrap_assembly, DaemonBootstrapAssembly};
 use crate::daemon::handle::DaemonHandle;
-use crate::daemon::mobile_lan_lifecycle::{AppFacadeListenerSpawner, MobileLanLifecycleController};
+use crate::daemon::mobile_lan_lifecycle::{
+    MobileLanLifecycleController, MobileSyncFacadeSlot, MobileSyncListenerSpawner,
+};
 use crate::daemon::run_loop::{run_daemon_main, DaemonRunLoopInput};
 use crate::daemon::run_mode::DaemonRunMode;
 use crate::daemon::runtime_assembly::{build_daemon_runtime_workers, DaemonRuntimeAssemblyInput};
@@ -148,11 +150,12 @@ pub(super) async fn start_runtime(
     );
     let storage_paths_for_daemon = storage_paths.clone();
 
+    let mobile_sync_slot = MobileSyncFacadeSlot::default();
     let mobile_lan_lifecycle: Arc<MobileLanLifecycleController> =
         Arc::new(MobileLanLifecycleController::new(
             mobile_sync_endpoint_info.clone(),
-            Arc::new(AppFacadeListenerSpawner::new(
-                Arc::clone(&app_facade),
+            Arc::new(MobileSyncListenerSpawner::new(
+                mobile_sync_slot.clone(),
                 Some(file_transfer_facade.clone()),
                 wired.shared.active_clipboard_sse_source.clone(),
             )),
@@ -172,6 +175,7 @@ pub(super) async fn start_runtime(
                 as Arc<dyn uc_core::ports::MobileLanLifecyclePort>,
         });
 
+    mobile_sync_slot.install(&lifecycle_facades.mobile_sync)?;
     app_facade.install_daemon_lifecycle(lifecycle_facades);
     app_facade
         .search

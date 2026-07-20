@@ -27,16 +27,15 @@
 //!   `tokio::sync::Mutex<Option<RunningListener>>` 串行化所有 transition,
 //!   保证并发 `apply` 不会出现"两个 listener 同时占同一端口"或"start
 //!   半路被 stop 打断"。
-//! - controller 不直接持有 [`MobileSyncFacade`] —— facade ↔ controller
-//!   循环引用,装配期会陷入构造死锁。改通过 [`LanListenerSpawner`] 抽象,
-//!   生产实现 [`AppFacadeListenerSpawner`] 从 [`AppFacade`] 的 mobile_sync
-//!   OnceLock lazy 读取,装配期 facade 可以为空,首次 `apply` 时存在即可。
+//! - The controller cannot directly own [`MobileSyncFacade`] because the facade
+//!   also calls the controller. [`MobileSyncFacadeSlot`] breaks construction
+//!   ordering with a weak reference that is installed before the first `apply`.
 //! - bind 失败**不通过返回值上报**,而是写 [`InMemoryMobileSyncEndpointInfoAdapter`]
 //!   的 `BindFailed{reason}` 三态。UI 通过同一 adapter 查询,避免"设置已落盘但
 //!   返回值反悔"的语义割裂。
 
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock, Weak};
 
 use async_trait::async_trait;
 use tokio::sync::{broadcast, Mutex};
@@ -44,7 +43,7 @@ use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info, warn};
 
-use uc_application::facade::{AppFacade, FileTransferFacade, MobileSyncSettingsView};
+use uc_application::facade::{FileTransferFacade, MobileSyncFacade, MobileSyncSettingsView};
 use uc_core::clipboard::ActiveClipboardState;
 use uc_core::mobile_sync::LanEndpointInfo;
 use uc_core::ports::{MobileLanLifecyclePort, MobileLanTarget};
@@ -71,8 +70,27 @@ pub trait LanListenerSpawner: Send + Sync {
     ) -> anyhow::Result<MobileLanServerHandle>;
 }
 
-/// 生产实现:从 [`AppFacade`] 的 mobile_sync OnceLock lazy 读取当前 facade,
-/// 配合 file_transfer facade 调 [`start_mobile_lan_server`]。
+#[derive(Clone, Default)]
+pub struct MobileSyncFacadeSlot {
+    facade: Arc<OnceLock<Weak<MobileSyncFacade>>>,
+}
+
+impl MobileSyncFacadeSlot {
+    pub fn install(&self, facade: &Arc<MobileSyncFacade>) -> anyhow::Result<()> {
+        self.facade
+            .set(Arc::downgrade(facade))
+            .map_err(|_| anyhow::anyhow!("mobile-sync facade slot already installed"))
+    }
+
+    fn resolve(&self) -> anyhow::Result<Arc<MobileSyncFacade>> {
+        self.facade
+            .get()
+            .and_then(Weak::upgrade)
+            .ok_or_else(|| anyhow::anyhow!("mobile-sync facade is unavailable"))
+    }
+}
+
+/// Production listener spawner backed by the daemon's mobile-sync capability.
 ///
 /// `sse_source` is a process-level singleton (constructed once at wire time;
 /// `BroadcastingAdvance` is the sole publisher). It is stored as a
@@ -80,20 +98,20 @@ pub trait LanListenerSpawner: Send + Sync {
 /// the spawner is long-lived and every listener restart (port change /
 /// toggle) reuses the same `Sender`, so there is no need to thread it
 /// through the [`LanListenerSpawner`] trait signature.
-pub struct AppFacadeListenerSpawner {
-    app_facade: Arc<AppFacade>,
+pub struct MobileSyncListenerSpawner {
+    mobile_sync: MobileSyncFacadeSlot,
     file_transfer: Option<Arc<FileTransferFacade>>,
     sse_source: broadcast::Sender<ActiveClipboardState>,
 }
 
-impl AppFacadeListenerSpawner {
+impl MobileSyncListenerSpawner {
     pub fn new(
-        app_facade: Arc<AppFacade>,
+        mobile_sync: MobileSyncFacadeSlot,
         file_transfer: Option<Arc<FileTransferFacade>>,
         sse_source: broadcast::Sender<ActiveClipboardState>,
     ) -> Self {
         Self {
-            app_facade,
+            mobile_sync,
             file_transfer,
             sse_source,
         }
@@ -101,15 +119,13 @@ impl AppFacadeListenerSpawner {
 }
 
 #[async_trait]
-impl LanListenerSpawner for AppFacadeListenerSpawner {
+impl LanListenerSpawner for MobileSyncListenerSpawner {
     async fn spawn(
         &self,
         bind: SocketAddr,
         cancel: CancellationToken,
     ) -> anyhow::Result<MobileLanServerHandle> {
-        let facade = self.app_facade.mobile_sync.get().cloned().ok_or_else(|| {
-            anyhow::anyhow!("mobile_sync facade not installed; daemon lifecycle has not run yet")
-        })?;
+        let facade = self.mobile_sync.resolve()?;
         start_mobile_lan_server(
             bind,
             cancel,

@@ -409,6 +409,21 @@ fn daemon_settings_paths_depend_on_the_desktop_settings_capability() {
     );
 }
 
+#[test]
+fn daemon_mobile_lan_lifecycle_depends_only_on_mobile_sync_capability() {
+    let lifecycle_path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../apps/daemon/src/daemon/mobile_lan_lifecycle.rs");
+    let lifecycle = std::fs::read_to_string(&lifecycle_path)
+        .unwrap_or_else(|error| panic!("failed to read {}: {error}", lifecycle_path.display()));
+
+    assert!(
+        !lifecycle.contains("AppFacade")
+            && !lifecycle.contains("app_facade")
+            && lifecycle.contains("MobileSyncFacade"),
+        "mobile LAN lifecycle must use a dedicated mobile-sync capability slot"
+    );
+}
+
 fn rust_sources(root: &Path) -> Vec<PathBuf> {
     let mut pending = vec![root.to_path_buf()];
     let mut sources = Vec::new();

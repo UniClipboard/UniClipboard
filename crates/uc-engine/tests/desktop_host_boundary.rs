@@ -201,6 +201,29 @@ fn daemon_switch_space_handler_delegates_business_orchestration_to_engine() {
 }
 
 #[test]
+fn daemon_cancel_invitation_handler_delegates_business_orchestration_to_engine() {
+    let handler =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../crates/uc-webserver/src/api/v2/setup.rs");
+    let source = std::fs::read_to_string(&handler)
+        .unwrap_or_else(|error| panic!("failed to read {}: {error}", handler.display()));
+    let cancel_handler = source
+        .split("pub(crate) async fn cancel(")
+        .nth(1)
+        .and_then(|source| source.split("// POST /v2/setup/reset").next())
+        .expect("cancel-invitation handler must remain discoverable");
+
+    assert!(
+        !cancel_handler.contains(".cancel_invitation(")
+            && !cancel_handler.contains("CancelInvitationError"),
+        "daemon cancel-invitation handler must not own invitation business orchestration"
+    );
+    assert!(
+        cancel_handler.contains("execute_cancel_invitation("),
+        "daemon cancel-invitation handler must invoke the uc-engine implementation"
+    );
+}
+
+#[test]
 fn daemon_passphrase_unlock_delegates_business_orchestration_to_engine() {
     let handler = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../crates/uc-webserver/src/api/encryption.rs");

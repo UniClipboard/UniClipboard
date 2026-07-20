@@ -26,6 +26,7 @@ use uc_core::{
 use crate::engine::EngineRuntime;
 use crate::event_stream::EventSender;
 use crate::internal::blob_tasks::{spawn_blob_processing_tasks, BlobProcessingPorts};
+use crate::internal::cancel_invitation::execute_cancel_invitation;
 use crate::internal::clipboard_runtime::{
     build_clipboard_runtime, spawn_clipboard_runtime_tasks, ClipboardRuntime,
 };
@@ -255,6 +256,9 @@ impl EngineRuntime for ProductionRuntime {
             }
             Operation::IssueInvitation => {
                 execute_issue_invitation(self.current_facade().await?.as_ref()).await
+            }
+            Operation::CancelInvitation => {
+                execute_cancel_invitation(self.current_facade().await?.as_ref()).await
             }
             Operation::ListDevices => {
                 let entries = self

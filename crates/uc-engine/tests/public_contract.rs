@@ -51,6 +51,7 @@ fn every_public_operation_has_a_stable_kind() {
             OperationKind::RecoverSession,
         ),
         (Operation::IssueInvitation, OperationKind::IssueInvitation),
+        (Operation::CancelInvitation, OperationKind::CancelInvitation),
         (Operation::ListDevices, OperationKind::ListDevices),
         (
             Operation::SendText(SendTextInput {
@@ -101,6 +102,14 @@ fn every_public_operation_has_a_stable_kind() {
     for (operation, expected) in operations {
         assert_eq!(operation.kind(), expected);
     }
+}
+
+#[test]
+fn cancel_invitation_has_a_stable_terminal_result() {
+    assert_eq!(
+        OperationResult::InvitationCancelled,
+        OperationResult::InvitationCancelled
+    );
 }
 
 #[test]

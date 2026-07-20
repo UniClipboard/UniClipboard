@@ -75,6 +75,7 @@ pub enum OperationKind {
     UnlockSpace,
     RecoverSession,
     IssueInvitation,
+    CancelInvitation,
     ListDevices,
     SendText,
     SendImage,
@@ -92,6 +93,7 @@ impl fmt::Display for OperationKind {
             Self::UnlockSpace => "unlock_space",
             Self::RecoverSession => "recover_session",
             Self::IssueInvitation => "issue_invitation",
+            Self::CancelInvitation => "cancel_invitation",
             Self::ListDevices => "list_devices",
             Self::SendText => "send_text",
             Self::SendImage => "send_image",
@@ -111,6 +113,7 @@ pub enum Operation {
     UnlockSpace(UnlockSpaceInput),
     RecoverSession(RecoverSessionInput),
     IssueInvitation,
+    CancelInvitation,
     ListDevices,
     SendText(SendTextInput),
     SendImage(SendImageInput),
@@ -128,6 +131,7 @@ impl Operation {
             Self::UnlockSpace(_) => OperationKind::UnlockSpace,
             Self::RecoverSession(_) => OperationKind::RecoverSession,
             Self::IssueInvitation => OperationKind::IssueInvitation,
+            Self::CancelInvitation => OperationKind::CancelInvitation,
             Self::ListDevices => OperationKind::ListDevices,
             Self::SendText(_) => OperationKind::SendText,
             Self::SendImage(_) => OperationKind::SendImage,
@@ -473,6 +477,7 @@ pub enum OperationResult {
         invitation_code: String,
         expires_at_ms: i64,
     },
+    InvitationCancelled,
     Devices(Vec<DeviceSummary>),
     EntrySent {
         entry_id: String,
@@ -499,6 +504,7 @@ impl fmt::Debug for OperationResult {
                 .field("unlocked", unlocked)
                 .field("resumed", resumed),
             Self::InvitationIssued { .. } => debug.field("kind", &"invitation_issued"),
+            Self::InvitationCancelled => debug.field("kind", &"invitation_cancelled"),
             Self::Devices(devices) => debug
                 .field("kind", &"devices")
                 .field("device_count", &devices.len()),

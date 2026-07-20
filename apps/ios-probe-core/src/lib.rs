@@ -557,6 +557,9 @@ fn operation_response(result: OperationResult) -> Value {
             "kind": "invitation_issued",
             "invitation_code": invitation_code,
         }),
+        OperationResult::InvitationCancelled => {
+            json!({"ok": true, "kind": "invitation_cancelled"})
+        }
         OperationResult::Devices(devices) => json!({
             "ok": true,
             "kind": "devices",

@@ -11,9 +11,7 @@ use axum::routing::{get, post};
 use axum::{Json, Router};
 
 use uc_application::facade::space_setup::QueryMigrationProgressError;
-use uc_application::facade::{
-    CancelInvitationError, QuerySetupStateError, ResetSpaceError, SpaceSetupFacade,
-};
+use uc_application::facade::{QuerySetupStateError, ResetSpaceError, SpaceSetupFacade};
 use uc_daemon_contract::api::dto::envelope::ApiEnvelope;
 use uc_daemon_contract::api::dto::v2::setup::{
     InitializeSpaceRequest, InitializeSpaceResponse, IssueInvitationResponse,
@@ -21,6 +19,9 @@ use uc_daemon_contract::api::dto::v2::setup::{
     SwitchSpaceRequest, SwitchSpaceResponse,
 };
 use uc_daemon_contract::constants::http_route_v2;
+use uc_engine::internal::cancel_invitation::{
+    execute_cancel_invitation, CANCEL_INVITATION_NOT_ISSUED_CODE,
+};
 use uc_engine::internal::create_space::{
     execute_create_space, CREATE_SPACE_ALREADY_INITIALIZED_CODE, CREATE_SPACE_ALREADY_SETUP_CODE,
     CREATE_SPACE_DEVICE_NAME_REQUIRED_CODE, CREATE_SPACE_PASSPHRASE_MISMATCH_CODE,
@@ -363,19 +364,32 @@ fn map_join_engine_err(err: EngineError) -> ApiError {
     ),
 )]
 pub(crate) async fn cancel(State(state): State<DaemonApiState>) -> Result<StatusCode, ApiError> {
-    let facade = require_facade(&state)?;
-    facade.cancel_invitation().await.map_err(map_cancel_err)?;
+    let app = state.app_facade_or_error()?;
+    let result = execute_cancel_invitation(app.as_ref())
+        .await
+        .map_err(map_cancel_engine_err)?;
+    if result != OperationResult::InvitationCancelled {
+        return Err(ApiError::internal(
+            "engine returned an unexpected cancel-invitation result",
+        ));
+    }
     Ok(StatusCode::NO_CONTENT)
 }
 
-fn map_cancel_err(err: CancelInvitationError) -> ApiError {
-    use CancelInvitationError as E;
-    let (variant, api): (&'static str, ApiError) = match err {
-        E::NotIssued => (
+fn map_cancel_engine_err(err: EngineError) -> ApiError {
+    let (variant, api): (&'static str, ApiError) = match err.code() {
+        CANCEL_INVITATION_NOT_ISSUED_CODE => (
             "not_issued",
             ApiError::conflict("no in-flight invitation to cancel"),
         ),
-        E::Internal(msg) => ("internal", ApiError::internal(msg)),
+        _ if err.category() == EngineErrorCategory::Unavailable => (
+            "service_unavailable",
+            ApiError::service_unavailable("invitation service unavailable"),
+        ),
+        _ => (
+            "internal",
+            ApiError::internal("failed to cancel invitation"),
+        ),
     };
     log_facade_failure(
         "space_setup",
@@ -696,6 +710,21 @@ mod tests {
             true,
         ));
         assert_eq!(err.status.as_u16(), 503);
+    }
+
+    #[test]
+    fn map_cancel_engine_err_preserves_conflict_and_redacts_internal_failure() {
+        let conflict = map_cancel_engine_err(EngineError::new(
+            CANCEL_INVITATION_NOT_ISSUED_CODE,
+            EngineErrorCategory::Conflict,
+            false,
+        ));
+        assert_eq!(conflict.status.as_u16(), 409);
+
+        let internal =
+            map_cancel_engine_err(EngineError::new(1399, EngineErrorCategory::Internal, false));
+        assert_eq!(internal.status.as_u16(), 500);
+        assert!(!internal.message.contains("1399"));
     }
 
     #[test]

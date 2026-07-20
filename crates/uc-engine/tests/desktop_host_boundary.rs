@@ -42,6 +42,18 @@ fn daemon_run_loop_does_not_depend_on_legacy_application_runtime() {
     );
 }
 
+#[test]
+fn daemon_library_does_not_export_in_process_legacy_assembly() {
+    let library = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../apps/daemon/src/lib.rs");
+    let source = std::fs::read_to_string(&library)
+        .unwrap_or_else(|error| panic!("failed to read {}: {error}", library.display()));
+
+    assert!(
+        !source.contains("ProcessRuntimeHandles") && !source.contains("start_in_process"),
+        "daemon library must not export legacy in-process assembly"
+    );
+}
+
 fn rust_sources(root: &Path) -> Vec<PathBuf> {
     let mut pending = vec![root.to_path_buf()];
     let mut sources = Vec::new();

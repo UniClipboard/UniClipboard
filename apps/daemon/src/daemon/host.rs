@@ -58,7 +58,7 @@ use super::tokio_runtime::build_daemon_tokio_runtime;
 /// `Clone` is derived: `wired` internally holds `Arc<dyn Port>` / `PathBuf`,
 /// other fields are also `Arc`, so clone is just a set of `Arc::clone` calls.
 #[derive(Clone)]
-pub struct ProcessRuntimeHandles {
+pub(crate) struct ProcessRuntimeHandles {
     pub wired: WiredDependencies,
     pub storage_paths: AppPaths,
     pub clipboard_write_coordinator: Arc<ClipboardWriteCoordinator>,
@@ -211,7 +211,7 @@ pub fn run_standalone_from_env() -> anyhow::Result<()> {
 /// Assumes the caller already has an active tokio runtime context. Assembles
 /// the daemon, spawns the main loop as a task, and returns a [`DaemonHandle`]
 /// for explicit shutdown.
-pub async fn start_in_process(
+pub(crate) async fn start_in_process(
     run_mode: DaemonRunMode,
     app_facade: Arc<AppFacade>,
     handles: ProcessRuntimeHandles,

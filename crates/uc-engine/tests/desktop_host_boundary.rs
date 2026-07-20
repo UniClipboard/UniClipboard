@@ -424,6 +424,19 @@ fn daemon_mobile_lan_lifecycle_depends_only_on_mobile_sync_capability() {
     );
 }
 
+#[test]
+fn daemon_mobile_sync_http_depends_on_the_mobile_sync_capability() {
+    let handler_path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../crates/uc-webserver/src/api/mobile_sync.rs");
+    let handler = std::fs::read_to_string(&handler_path)
+        .unwrap_or_else(|error| panic!("failed to read {}: {error}", handler_path.display()));
+
+    assert!(
+        !handler.contains("app_facade_or_error()") && handler.contains("state.mobile_sync"),
+        "mobile-sync HTTP handlers must use the dedicated compatibility capability"
+    );
+}
+
 fn rust_sources(root: &Path) -> Vec<PathBuf> {
     let mut pending = vec![root.to_path_buf()];
     let mut sources = Vec::new();

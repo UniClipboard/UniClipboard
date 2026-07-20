@@ -507,11 +507,8 @@ async fn update_mobile_device_handler(
 
 /// Resolve the daemon-resident mobile-sync facade, or 503 `FACADE_UNAVAILABLE`.
 fn mobile_sync_facade(state: &DaemonApiState) -> Result<Arc<MobileSyncFacade>, ApiError> {
-    let app = state.app_facade_or_error()?;
-    app.mobile_sync
-        .get()
-        .cloned()
-        .ok_or_else(|| ApiError::from(MobileSyncError::FacadeUnavailable))
+    let mobile_sync = state.mobile_sync.clone();
+    mobile_sync.ok_or_else(|| ApiError::from(MobileSyncError::FacadeUnavailable))
 }
 
 /// POST /mobile-sync/devices

@@ -20,7 +20,8 @@ use axum::Router;
 use tokio::sync::{broadcast, Semaphore};
 use tokio_util::sync::CancellationToken;
 use uc_application::facade::{
-    AppFacade, ConfigMigrationFacade, DiagnosticsFacade, SettingsFacade, UpgradeFacade,
+    AppFacade, ConfigMigrationFacade, DiagnosticsFacade, MobileSyncFacade, SettingsFacade,
+    UpgradeFacade,
 };
 use uc_application::receive_reconciliation::EnsureReceiveReadyPort;
 use uc_observability::analytics::{AnalyticsPort, NoopAnalyticsSink};
@@ -46,6 +47,7 @@ pub struct DaemonApiState {
     pub app_facade: Arc<AppFacade>,
     pub config_migration: Arc<ConfigMigrationFacade>,
     pub diagnostics: Arc<DiagnosticsFacade>,
+    pub mobile_sync: Option<Arc<MobileSyncFacade>>,
     pub settings: Arc<SettingsFacade>,
     pub upgrade: Arc<UpgradeFacade>,
     pub event_tx: broadcast::Sender<DaemonWsEvent>,
@@ -125,6 +127,7 @@ impl DaemonApiState {
         let (event_tx, _) = broadcast::channel(64);
         let config_migration = Arc::clone(&app_facade.config_migration);
         let diagnostics = Arc::clone(&app_facade.diagnostics);
+        let mobile_sync = app_facade.mobile_sync.get().cloned();
         let settings = Arc::clone(&app_facade.settings);
         let upgrade = Arc::clone(&app_facade.upgrade);
         // ADR-008 P5-L L8c: the quiescing flag and the restart coordinator must
@@ -137,6 +140,7 @@ impl DaemonApiState {
             app_facade,
             config_migration,
             diagnostics,
+            mobile_sync,
             settings,
             upgrade,
             event_tx,

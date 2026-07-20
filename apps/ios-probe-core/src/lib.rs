@@ -548,7 +548,9 @@ fn operation_response(result: OperationResult) -> Value {
             "unlocked": unlocked,
             "resumed": resumed,
         }),
-        OperationResult::InvitationIssued { invitation_code } => json!({
+        OperationResult::InvitationIssued {
+            invitation_code, ..
+        } => json!({
             "ok": true,
             "kind": "invitation_issued",
             "invitation_code": invitation_code,

@@ -263,6 +263,9 @@ impl SearchFacade {
         match coordinator.request_manual_rebuild().await {
             ManualRebuildResult::Accepted => Ok(SearchRebuildAcceptedView { accepted: true }),
             ManualRebuildResult::AlreadyInProgress => Err(SearchFacadeError::RebuildAlreadyRunning),
+            ManualRebuildResult::Unavailable => Err(SearchFacadeError::ServiceUnavailable(
+                "search coordinator stopped".to_string(),
+            )),
         }
     }
 
@@ -274,6 +277,9 @@ impl SearchFacade {
         match coordinator.run_manual_rebuild_now().await {
             ManualRebuildResult::Accepted => Ok(SearchRebuildAcceptedView { accepted: true }),
             ManualRebuildResult::AlreadyInProgress => Err(SearchFacadeError::RebuildAlreadyRunning),
+            ManualRebuildResult::Unavailable => Err(SearchFacadeError::ServiceUnavailable(
+                "search coordinator stopped".to_string(),
+            )),
         }
     }
 }

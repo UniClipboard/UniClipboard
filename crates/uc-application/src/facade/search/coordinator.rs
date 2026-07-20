@@ -1,10 +1,15 @@
 //! 搜索重建协调器。拥有重建状态、原因码、启动检查和进度事件。
 
+use std::collections::HashSet;
+use std::future::Future;
+use std::panic::AssertUnwindSafe;
 use std::sync::Arc;
 
-use std::collections::HashSet;
+use futures::FutureExt;
 use tokio::sync::{broadcast, mpsc, Mutex, Semaphore};
 use tokio_util::sync::CancellationToken;
+use tokio_util::task::task_tracker::TaskTrackerToken;
+use tokio_util::task::TaskTracker;
 use tracing::{debug, info, info_span, instrument, warn, Instrument};
 
 use uc_core::clipboard::{ClipboardEntry, ClipboardEntryContentCategory};
@@ -52,6 +57,7 @@ pub struct SearchStatusSnapshot {
 pub enum ManualRebuildResult {
     Accepted,
     AlreadyInProgress,
+    Unavailable,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -147,6 +153,14 @@ pub struct SearchCoordinator {
     /// table) failing to decode cannot fan out into hundreds of concurrent
     /// repair tasks hammering the shared database.
     repair_semaphore: Arc<Semaphore>,
+    task_cancel: CancellationToken,
+    tasks: TaskTracker,
+    task_scope_open: std::sync::Mutex<bool>,
+}
+
+struct SearchTaskPermit {
+    cancel: CancellationToken,
+    tracker: TaskTrackerToken,
 }
 
 /// Maximum re-projection repairs running concurrently. Corruption is an
@@ -164,7 +178,58 @@ impl SearchCoordinator {
             state: Arc::new(Mutex::new(CoordinatorState::default())),
             repair_in_flight: Arc::new(Mutex::new(HashSet::new())),
             repair_semaphore: Arc::new(Semaphore::new(MAX_CONCURRENT_REPAIRS)),
+            task_cancel: CancellationToken::new(),
+            tasks: TaskTracker::new(),
+            task_scope_open: std::sync::Mutex::new(true),
         }
+    }
+
+    fn enter_task_scope(&self) -> Option<SearchTaskPermit> {
+        let task_scope_open = match self.task_scope_open.lock() {
+            Ok(guard) => guard,
+            Err(_) => {
+                warn!("search task scope lock was poisoned; refusing search task");
+                return None;
+            }
+        };
+        if !*task_scope_open {
+            return None;
+        }
+
+        Some(SearchTaskPermit {
+            cancel: self.task_cancel.child_token(),
+            tracker: self.tasks.token(),
+        })
+    }
+
+    fn spawn_task<F>(&self, name: &'static str, future: F) -> bool
+    where
+        F: Future<Output = ()> + Send + 'static,
+    {
+        let Some(permit) = self.enter_task_scope() else {
+            return false;
+        };
+        tokio::spawn(async move {
+            let SearchTaskPermit { cancel, tracker } = permit;
+            let result = AssertUnwindSafe(async move {
+                tokio::select! {
+                    _ = cancel.cancelled() => {}
+                    _ = future => {}
+                }
+            })
+            .catch_unwind()
+            .await;
+            drop(tracker);
+            if let Err(error) = result {
+                warn!(
+                    event = "task.panicked",
+                    task = name,
+                    error = ?error,
+                    "search background task panicked"
+                );
+            }
+        });
+        true
     }
 
     pub fn subscribe_events(&self) -> broadcast::Receiver<SearchCoordinatorEvent> {
@@ -227,7 +292,7 @@ impl SearchCoordinator {
                 let state = Arc::clone(&self.state);
 
                 let span = info_span!("search.rebuild", reason = REASON_MANUAL_REBUILD);
-                uc_observability_contract::spawn_supervised(
+                let accepted = self.spawn_task(
                     "search.rebuild.manual",
                     async move {
                         let _guard = guard;
@@ -236,8 +301,13 @@ impl SearchCoordinator {
                     .instrument(span),
                 );
 
-                info!(reason = REASON_MANUAL_REBUILD, "search rebuild accepted");
-                ManualRebuildResult::Accepted
+                if accepted {
+                    info!(reason = REASON_MANUAL_REBUILD, "search rebuild accepted");
+                    ManualRebuildResult::Accepted
+                } else {
+                    warn!("search rebuild rejected: coordinator unavailable");
+                    ManualRebuildResult::Unavailable
+                }
             }
             Err(_) => {
                 info!("search rebuild rejected: already in progress");
@@ -252,17 +322,28 @@ impl SearchCoordinator {
     /// detached background rebuild after the CLI exits.
     #[instrument(name = "search.run_manual_rebuild_now", level = "info", skip(self))]
     pub async fn run_manual_rebuild_now(&self) -> ManualRebuildResult {
-        match self.rebuild_lock.clone().try_lock_owned() {
+        let Some(permit) = self.enter_task_scope() else {
+            return ManualRebuildResult::Unavailable;
+        };
+        let SearchTaskPermit { cancel, tracker } = permit;
+        let result = match self.rebuild_lock.clone().try_lock_owned() {
             Ok(guard) => {
                 let deps = Arc::clone(&self.deps);
                 let event_tx = self.event_tx.clone();
                 let state = Arc::clone(&self.state);
                 let _guard = guard;
-                Self::run_rebuild(deps, event_tx, state, REASON_MANUAL_REBUILD).await;
-                ManualRebuildResult::Accepted
+                tokio::select! {
+                    biased;
+                    _ = cancel.cancelled() => ManualRebuildResult::Unavailable,
+                    _ = Self::run_rebuild(deps, event_tx, state, REASON_MANUAL_REBUILD) => {
+                        ManualRebuildResult::Accepted
+                    }
+                }
             }
             Err(_) => ManualRebuildResult::AlreadyInProgress,
-        }
+        };
+        drop(tracker);
+        result
     }
 
     #[instrument(name = "search.startup_evaluation", level = "info", skip(self))]
@@ -334,7 +415,7 @@ impl SearchCoordinator {
     /// version or the purge already completed.
     fn spawn_purge_if_needed(&self) {
         let deps = Arc::clone(&self.deps);
-        uc_observability_contract::spawn_supervised(
+        self.spawn_task(
             "search.purge_residue",
             async move {
                 purge_plaintext_residue_if_needed(&deps).await;
@@ -398,7 +479,7 @@ impl SearchCoordinator {
             }
             let deps = Arc::clone(&self.deps);
             let in_flight = Arc::clone(&self.repair_in_flight);
-            uc_observability_contract::spawn_supervised(
+            self.spawn_task(
                 "search.repair",
                 async move {
                     // Hold the permit for the whole repair so concurrency stays
@@ -418,7 +499,7 @@ impl SearchCoordinator {
         let event_tx = self.event_tx.clone();
         let state = Arc::clone(&self.state);
         let span = info_span!("search.rebuild", reason);
-        uc_observability_contract::spawn_supervised(
+        self.spawn_task(
             "search.rebuild.trigger",
             async move {
                 let _guard = guard;
@@ -509,17 +590,16 @@ impl SearchCoordinator {
 
         let (progress_tx, mut progress_rx) = mpsc::channel::<RebuildProgress>(64);
         let event_tx_clone = event_tx.clone();
-        uc_observability_contract::spawn_supervised(
-            "search.rebuild.progress_forwarder",
-            async move {
-                while let Some(progress) = progress_rx.recv().await {
-                    emit_progress(&event_tx_clone, progress);
-                }
+        let rebuild = deps.search_index.rebuild(all_entries, progress_tx);
+        let progress_forwarder = async move {
+            while let Some(progress) = progress_rx.recv().await {
+                emit_progress(&event_tx_clone, progress);
             }
-            .in_current_span(),
-        );
+        }
+        .in_current_span();
+        let (rebuild_result, ()) = tokio::join!(rebuild, progress_forwarder);
 
-        match deps.search_index.rebuild(all_entries, progress_tx).await {
+        match rebuild_result {
             Ok(()) => {
                 info!(reason, "search coordinator: rebuild completed successfully");
                 {
@@ -549,9 +629,28 @@ impl SearchCoordinator {
 
     pub async fn start(&self, cancel: CancellationToken) -> anyhow::Result<()> {
         info!("search coordinator starting");
-        self.startup_evaluation().await;
-        info!("search coordinator startup evaluation complete");
-        cancel.cancelled().await;
+        tokio::select! {
+            biased;
+            _ = cancel.cancelled() => {}
+            _ = async {
+                self.startup_evaluation().await;
+                info!("search coordinator startup evaluation complete");
+                cancel.cancelled().await;
+            } => {}
+        }
+        {
+            let mut task_scope_open = match self.task_scope_open.lock() {
+                Ok(guard) => guard,
+                Err(poisoned) => {
+                    warn!("search task scope lock was poisoned during shutdown");
+                    poisoned.into_inner()
+                }
+            };
+            *task_scope_open = false;
+            self.task_cancel.cancel();
+            self.tasks.close();
+        }
+        self.tasks.wait().await;
         info!("search coordinator cancelled");
         Ok(())
     }
@@ -1107,6 +1206,94 @@ mod tests {
         }
     }
 
+    struct DropFlag(Arc<AtomicBool>);
+
+    impl Drop for DropFlag {
+        fn drop(&mut self) {
+            self.0.store(true, Ordering::SeqCst);
+        }
+    }
+
+    struct BlockingSearchIndex {
+        meta: SearchIndexMeta,
+        rebuild_started: Arc<tokio::sync::Notify>,
+        rebuild_dropped: Arc<AtomicBool>,
+    }
+
+    #[async_trait::async_trait]
+    impl SearchIndexPort for BlockingSearchIndex {
+        async fn index_entry(
+            &self,
+            _document: SearchDocument,
+            _postings: Vec<SearchPosting>,
+        ) -> Result<(), SearchError> {
+            Ok(())
+        }
+
+        async fn remove_entry(&self, _entry_id: &EntryId) -> Result<(), SearchError> {
+            Ok(())
+        }
+
+        async fn search(&self, _query: SearchQuery) -> Result<SearchResultsPage, SearchError> {
+            Err(SearchError::IndexNotReady)
+        }
+
+        async fn rebuild(
+            &self,
+            _entries: Vec<(SearchDocument, Vec<SearchPosting>)>,
+            _progress_tx: mpsc::Sender<RebuildProgress>,
+        ) -> Result<(), SearchError> {
+            let _drop_flag = DropFlag(Arc::clone(&self.rebuild_dropped));
+            self.rebuild_started.notify_one();
+            std::future::pending().await
+        }
+
+        async fn get_index_meta(&self) -> Result<SearchIndexMeta, SearchError> {
+            Ok(self.meta.clone())
+        }
+    }
+
+    fn blocking_coordinator() -> (
+        Arc<SearchCoordinator>,
+        Arc<tokio::sync::Notify>,
+        Arc<AtomicBool>,
+    ) {
+        let rebuild_started = Arc::new(tokio::sync::Notify::new());
+        let rebuild_dropped = Arc::new(AtomicBool::new(false));
+        let index = BlockingSearchIndex {
+            meta: SearchIndexMeta {
+                index_version: "stale-version".to_string(),
+                search_blocked: false,
+                last_rebuild_started_at_ms: None,
+                last_rebuild_completed_at_ms: None,
+                plaintext_purge_done_ms: None,
+            },
+            rebuild_started: Arc::clone(&rebuild_started),
+            rebuild_dropped: Arc::clone(&rebuild_dropped),
+        };
+        let rep_id = RepresentationId::new();
+        let deps = SearchCoordinatorDeps::new(
+            Arc::new(index),
+            Arc::new(FakeMaintenance),
+            Arc::new(FakeKeyDerivation),
+            Arc::new(FakePipeline),
+            Arc::new(FakeEntryRepo { entries: vec![] }),
+            Arc::new(FakeGetEntry),
+            Arc::new(FakeRepRepo {
+                rep_id: rep_id.clone(),
+            }),
+            Arc::new(FakeSelectionRepo { rep_id }),
+            Arc::new(FakeEventRepo),
+            Arc::new(FakeFileSetRepo),
+            CURRENT_INDEX_VERSION,
+        );
+        (
+            Arc::new(SearchCoordinator::new(deps)),
+            rebuild_started,
+            rebuild_dropped,
+        )
+    }
+
     struct FakeKeyDerivation;
 
     #[async_trait::async_trait]
@@ -1235,6 +1422,96 @@ mod tests {
         let snapshot = coordinator.status_snapshot().await;
         assert_eq!(snapshot.state, STATUS_READY);
         assert_eq!(snapshot.reason, None);
+    }
+
+    #[tokio::test]
+    async fn cancellation_waits_for_spawned_rebuild_to_stop() {
+        let (coordinator, rebuild_started, rebuild_dropped) = blocking_coordinator();
+        let cancel = CancellationToken::new();
+        let run = {
+            let coordinator = Arc::clone(&coordinator);
+            let cancel = cancel.clone();
+            tokio::spawn(async move { coordinator.start(cancel).await })
+        };
+
+        tokio::time::timeout(Duration::from_secs(1), rebuild_started.notified())
+            .await
+            .expect("rebuild did not start");
+        cancel.cancel();
+        tokio::time::timeout(Duration::from_millis(100), run)
+            .await
+            .expect("coordinator did not stop")
+            .expect("coordinator task panicked")
+            .expect("coordinator returned an error");
+
+        assert!(
+            rebuild_dropped.load(Ordering::SeqCst),
+            "coordinator returned before its rebuild task stopped"
+        );
+    }
+
+    #[tokio::test]
+    async fn cancellation_interrupts_startup_waiting_for_a_rebuild() {
+        let (coordinator, rebuild_started, rebuild_dropped) = blocking_coordinator();
+        assert_eq!(
+            coordinator.request_manual_rebuild().await,
+            ManualRebuildResult::Accepted
+        );
+        tokio::time::timeout(Duration::from_secs(1), rebuild_started.notified())
+            .await
+            .expect("manual rebuild did not start");
+
+        let cancel = CancellationToken::new();
+        let run = {
+            let coordinator = Arc::clone(&coordinator);
+            let cancel = cancel.clone();
+            tokio::spawn(async move { coordinator.start(cancel).await })
+        };
+        tokio::task::yield_now().await;
+        cancel.cancel();
+
+        tokio::time::timeout(Duration::from_millis(100), run)
+            .await
+            .expect("coordinator did not cancel during startup")
+            .expect("coordinator task panicked")
+            .expect("coordinator returned an error");
+        assert!(rebuild_dropped.load(Ordering::SeqCst));
+    }
+
+    #[tokio::test]
+    async fn shutdown_rejects_new_background_tasks() {
+        let (coordinator, _, _) = blocking_coordinator();
+        let cancel = CancellationToken::new();
+        cancel.cancel();
+        coordinator
+            .start(cancel)
+            .await
+            .expect("coordinator returned an error");
+
+        assert_eq!(
+            coordinator.request_manual_rebuild().await,
+            ManualRebuildResult::Unavailable
+        );
+        let inline_result = tokio::time::timeout(
+            Duration::from_millis(100),
+            coordinator.run_manual_rebuild_now(),
+        )
+        .await
+        .expect("inline rebuild did not reject after shutdown");
+        assert_eq!(inline_result, ManualRebuildResult::Unavailable);
+
+        let task_ran = Arc::new(AtomicBool::new(false));
+        let task_ran_clone = Arc::clone(&task_ran);
+        coordinator.spawn_task("search.test.after_shutdown", async move {
+            task_ran_clone.store(true, Ordering::SeqCst);
+        });
+
+        assert!(
+            coordinator.tasks.is_empty(),
+            "shutdown must prevent new background tasks from being registered"
+        );
+        tokio::task::yield_now().await;
+        assert!(!task_ran.load(Ordering::SeqCst));
     }
 
     /// Counts `get_entry` calls and holds each in-flight for `delay`, so a repair

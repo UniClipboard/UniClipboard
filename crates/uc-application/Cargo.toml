@@ -16,7 +16,7 @@ uc-observability-contract = { path = "../uc-observability-contract" }
 
 # Async runtime
 tokio = { version = "1", features = ["full"] }
-tokio-util = "0.7"
+tokio-util = { version = "0.7", features = ["rt"] }
 async-trait = "0.1"
 
 # Error handling

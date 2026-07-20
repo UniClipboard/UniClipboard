@@ -6,7 +6,8 @@
 use uc_core::clipboard::link_utils::detect_link_urls;
 use uc_core::clipboard::{
     ClipboardEntry, ClipboardEntryContentCategory, ClipboardSelection, ClipboardSelectionDecision,
-    PayloadAvailability, PersistedClipboardRepresentation, SystemClipboardSnapshot,
+    FileDisplayMetadata, PayloadAvailability, PersistedClipboardRepresentation,
+    SystemClipboardSnapshot, FILE_DISPLAY_METADATA_MIME,
 };
 use uc_core::search::document::ContentType;
 use uc_core::search::tag::{TagId, TaggableContent};
@@ -66,6 +67,7 @@ struct SearchableContent {
     uri_list: Vec<String>,
     file_paths: Vec<String>,
     file_names: Vec<String>,
+    file_display_names: Vec<String>,
     text_preview: Option<String>,
     /// Full character count of the preview representation's plain text — the same
     /// source `text_preview` is truncated from. Set alongside `text_preview` so
@@ -137,6 +139,18 @@ impl SearchableContent {
                     }
                 }
             }
+        } else if mime == FILE_DISPLAY_METADATA_MIME {
+            if let Some(metadata) =
+                inline_bytes.and_then(|bytes| FileDisplayMetadata::decode(bytes).ok())
+            {
+                self.file_display_names.extend(
+                    metadata
+                        .files
+                        .into_iter()
+                        .map(|file| file.display_name)
+                        .filter(|name| !name.is_empty()),
+                );
+            }
         }
     }
 
@@ -149,6 +163,7 @@ impl SearchableContent {
             && self.uri_list.is_empty()
             && self.file_paths.is_empty()
             && self.file_names.is_empty()
+            && self.file_display_names.is_empty()
             && !self.has_image
     }
 
@@ -169,7 +184,12 @@ impl SearchableContent {
         if self.is_empty() {
             return None;
         }
-        let file_extensions = collect_extensions(&self.file_paths, &self.file_names);
+        let file_names = if self.file_display_names.is_empty() {
+            self.file_names
+        } else {
+            self.file_display_names
+        };
+        let file_extensions = collect_extensions(&self.file_paths, &file_names);
         let content_type = search_content_type_from_entry_category(entry.content_category);
         let mut tags = evaluate_builtin_content_tags(&TaggableContent {
             content_type: content_type.clone(),
@@ -203,7 +223,7 @@ impl SearchableContent {
             html_text: self.html_text,
             uri_list: self.uri_list,
             file_paths: self.file_paths,
-            file_names: self.file_names,
+            file_names,
             text_preview: self.text_preview,
             char_count: self.char_count,
             link_urls,

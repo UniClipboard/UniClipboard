@@ -10410,6 +10410,7 @@ dependencies = [
  "uc-infra",
  "uc-observability",
  "uc-observability-contract",
+ "url",
  "zeroize",
 ]
 

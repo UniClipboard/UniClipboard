@@ -116,11 +116,13 @@ impl OutboundSyncPlanner {
                 for candidate in file_candidates {
                     if bypass_size_limit || candidate.size <= max_file_size {
                         let transfer_id = Uuid::new_v4().to_string();
-                        let filename = candidate
-                            .path
-                            .file_name()
-                            .map(|n| n.to_string_lossy().into_owned())
-                            .unwrap_or_default();
+                        let filename = candidate.display_name.unwrap_or_else(|| {
+                            candidate
+                                .path
+                                .file_name()
+                                .map(|n| n.to_string_lossy().into_owned())
+                                .unwrap_or_default()
+                        });
 
                         mappings.push(FileTransferMapping {
                             transfer_id: transfer_id.clone(),
@@ -229,7 +231,31 @@ mod tests {
         FileCandidate {
             path: PathBuf::from(format!("/tmp/{name}")),
             size,
+            display_name: None,
         }
+    }
+
+    #[tokio::test]
+    async fn opaque_storage_path_uses_the_encrypted_display_name() {
+        let planner = planner_with_max_file_size(1024);
+        let mut file = candidate("00000000", 42);
+        file.display_name = Some("private report.txt".into());
+
+        let plan = planner
+            .plan(
+                text_snapshot(),
+                ClipboardChangeOrigin::LocalCapture,
+                vec![file],
+                1,
+            )
+            .await;
+
+        assert_eq!(plan.files.len(), 1);
+        assert_eq!(plan.files[0].filename, "private report.txt");
+        assert_eq!(
+            plan.clipboard.unwrap().file_transfers[0].filename,
+            "private report.txt"
+        );
     }
 
     /// Resend origin must bypass `settings.file_sync.max_file_size` while

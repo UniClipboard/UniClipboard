@@ -30,9 +30,9 @@ use crate::usecases::clipboard_sync::apply_inbound::{
 use crate::usecases::clipboard_sync::V3BlobRef;
 
 use super::{
-    build_transfer_manifest, publish_file_blob_refs, publish_oversized_inline_blob_refs,
-    resolve_outbound_file_set, ClipboardOutboundError, OutboundBlobPublishGateway,
-    OutboundFileSetResolution,
+    build_transfer_manifest, display_name_for_path, file_display_metadata, publish_file_blob_refs,
+    publish_oversized_inline_blob_refs, resolve_outbound_file_set, ClipboardOutboundError,
+    OutboundBlobPublishGateway, OutboundFileSetResolution,
 };
 
 /// The assembled outbound payload: the (possibly mutated) snapshot with its
@@ -72,6 +72,7 @@ pub(crate) async fn assemble_outbound_payload(
     entry_id: &EntryId,
     snapshot: SystemClipboardSnapshot,
 ) -> Result<OutboundPayload, OutboundPayloadError> {
+    let display_metadata = file_display_metadata(&snapshot);
     // 1. Member path list from the persisted file-set manifest — the single
     //    source of truth shared with the dispatch path.
     let resolution = resolve_outbound_file_set(entry_file_set_repo, entry_id, &snapshot).await;
@@ -109,6 +110,7 @@ pub(crate) async fn assemble_outbound_payload(
     for path in resolved_paths {
         match tokio::fs::metadata(&path).await {
             Ok(meta) => file_candidates.push(FileCandidate {
+                display_name: display_name_for_path(display_metadata.as_ref(), &path),
                 path,
                 size: meta.len(),
             }),

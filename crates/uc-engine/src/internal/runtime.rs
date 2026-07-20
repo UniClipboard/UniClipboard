@@ -1,5 +1,6 @@
 use std::sync::Arc;
 use std::time::Duration;
+use std::{fs::OpenOptions, io::Write, path::PathBuf};
 
 use async_trait::async_trait;
 use tokio::sync::Mutex;
@@ -21,7 +22,9 @@ use uc_core::ids::{DeviceId, FormatId, RepresentationId};
 use uc_core::ports::ReachabilityState;
 use uc_core::TaskRegistry;
 use uc_core::{
-    ClipboardChangeOrigin, MimeType, ObservedClipboardRepresentation, SystemClipboardSnapshot,
+    ClipboardChangeOrigin, FileDisplayMetadata, FileDisplayMetadataEntry, MimeType,
+    ObservedClipboardRepresentation, SystemClipboardSnapshot, FILE_DISPLAY_METADATA_FORMAT,
+    FILE_DISPLAY_METADATA_MIME,
 };
 
 use crate::engine::EngineRuntime;
@@ -101,6 +104,12 @@ struct ProductionSession {
     clipboard: ClipboardRuntime,
     sync_engine: SyncEngineAssembly,
     tasks: Arc<TaskRegistry>,
+}
+
+struct ImportedHostFile {
+    path: PathBuf,
+    storage_name: String,
+    display_name: String,
 }
 
 impl ProductionRuntime {
@@ -223,7 +232,7 @@ impl EngineRuntime for ProductionRuntime {
     async fn execute(
         &self,
         operation: Operation,
-        _cancellation: CancellationToken,
+        cancellation: CancellationToken,
     ) -> Result<OperationResult, EngineError> {
         match operation {
             Operation::CreateSpace(input) => {
@@ -372,6 +381,55 @@ impl EngineRuntime for ProductionRuntime {
                 };
                 self.send_snapshot(snapshot, input.target_devices).await
             }
+            Operation::SendFiles(input) => {
+                if input.files.is_empty() {
+                    return Err(send_invalid_input_error());
+                }
+                let imported = self.import_host_files(&input.files, &cancellation).await?;
+                let uri_list = imported
+                    .iter()
+                    .map(|file| {
+                        url::Url::from_file_path(&file.path)
+                            .map(|url| url.to_string())
+                            .map_err(|()| send_failed_error())
+                    })
+                    .collect::<Result<Vec<_>, _>>()?
+                    .join("\n");
+                let display_metadata = FileDisplayMetadata {
+                    files: imported
+                        .iter()
+                        .map(|file| FileDisplayMetadataEntry {
+                            storage_name: file.storage_name.clone(),
+                            display_name: file.display_name.clone(),
+                        })
+                        .collect(),
+                }
+                .encode()
+                .map_err(|error| {
+                    error!(error = %error, "failed to encode file display metadata");
+                    send_failed_error()
+                })?;
+                let snapshot = SystemClipboardSnapshot {
+                    ts_ms: self.wired.deps.system.clock.now_ms(),
+                    representations: vec![
+                        ObservedClipboardRepresentation::new(
+                            RepresentationId::new(),
+                            FormatId::from("files"),
+                            Some(MimeType("text/uri-list".into())),
+                            uri_list.into_bytes(),
+                        ),
+                        ObservedClipboardRepresentation::new(
+                            RepresentationId::new(),
+                            FormatId::from(FILE_DISPLAY_METADATA_FORMAT),
+                            Some(MimeType(FILE_DISPLAY_METADATA_MIME.into())),
+                            display_metadata,
+                        ),
+                    ],
+                    file_content_digests: Vec::new(),
+                    file_set_v1_component: None,
+                };
+                self.send_snapshot(snapshot, input.target_devices).await
+            }
             Operation::ResendEntry(input) => {
                 let entry_id = input.entry_id;
                 let target_filter = (!input.target_devices.is_empty()).then(|| {
@@ -406,7 +464,6 @@ impl EngineRuntime for ProductionRuntime {
                     .map_err(map_export_host_error)?;
                 Ok(OperationResult::EntryExported)
             }
-            _ => Err(operation_unavailable_error()),
         }
     }
 
@@ -434,6 +491,61 @@ impl EngineRuntime for ProductionRuntime {
 }
 
 impl ProductionRuntime {
+    async fn import_host_files(
+        &self,
+        handles: &[crate::HostFileHandle],
+        cancellation: &CancellationToken,
+    ) -> Result<Vec<ImportedHostFile>, EngineError> {
+        let import_root = self.paths.file_cache_dir.join("engine-imports");
+        std::fs::create_dir_all(&import_root).map_err(|error| {
+            error!(error = %error, "failed to create engine file import directory");
+            send_failed_error()
+        })?;
+        let operation_dir = import_root.join(RepresentationId::new().to_string());
+        std::fs::create_dir(&operation_dir).map_err(|error| {
+            error!(error = %error, "failed to create engine file import operation directory");
+            send_failed_error()
+        })?;
+
+        let mut imported = Vec::with_capacity(handles.len());
+        for (index, handle) in handles.iter().enumerate() {
+            if cancellation.is_cancelled() {
+                cleanup_failed_import(&operation_dir);
+                return Err(operation_unavailable_error());
+            }
+            let metadata = match self.files.metadata(handle) {
+                Ok(metadata) => metadata,
+                Err(error) => {
+                    cleanup_failed_import(&operation_dir);
+                    return Err(map_send_host_error(error));
+                }
+            };
+            if metadata.size_bytes == 0 || !valid_host_display_name(&metadata.display_name) {
+                cleanup_failed_import(&operation_dir);
+                return Err(send_invalid_input_error());
+            }
+            let storage_name = format!("{index:08}");
+            let path = operation_dir.join(&storage_name);
+            if let Err(error) = copy_host_file(
+                self.files.as_ref(),
+                handle,
+                metadata.size_bytes,
+                &path,
+                cancellation,
+            ) {
+                cleanup_failed_import(&operation_dir);
+                return Err(error);
+            }
+            imported.push(ImportedHostFile {
+                path,
+                storage_name,
+                display_name: metadata.display_name,
+            });
+            tokio::task::yield_now().await;
+        }
+        Ok(imported)
+    }
+
     async fn send_snapshot(
         &self,
         snapshot: SystemClipboardSnapshot,
@@ -496,12 +608,84 @@ impl ProductionRuntime {
     }
 }
 
+fn valid_host_display_name(display_name: &str) -> bool {
+    let name = display_name.trim();
+    !name.is_empty() && name != "." && name != ".." && !name.contains(['/', '\\', '\0'])
+}
+
+fn copy_host_file(
+    files: &dyn HostFileAccess,
+    handle: &crate::HostFileHandle,
+    size_bytes: u64,
+    destination: &std::path::Path,
+    cancellation: &CancellationToken,
+) -> Result<(), EngineError> {
+    let mut output = OpenOptions::new()
+        .create_new(true)
+        .write(true)
+        .open(destination)
+        .map_err(|error| {
+            error!(error = %error, "failed to create imported host file");
+            send_failed_error()
+        })?;
+    let mut offset = 0_u64;
+    while offset < size_bytes {
+        if cancellation.is_cancelled() {
+            return Err(operation_unavailable_error());
+        }
+        let remaining = size_bytes - offset;
+        let requested = remaining.min(EXPORT_CHUNK_SIZE as u64) as u32;
+        let chunk = files
+            .read_chunk(handle, offset, requested)
+            .map_err(map_send_host_error)?;
+        if chunk.is_empty() || chunk.len() > requested as usize {
+            return Err(send_failed_error());
+        }
+        output.write_all(&chunk).map_err(|error| {
+            error!(error = %error, "failed to write imported host file");
+            send_failed_error()
+        })?;
+        offset = offset
+            .checked_add(chunk.len() as u64)
+            .ok_or_else(send_failed_error)?;
+    }
+    output.sync_all().map_err(|error| {
+        error!(error = %error, "failed to sync imported host file");
+        send_failed_error()
+    })
+}
+
+fn cleanup_failed_import(operation_dir: &std::path::Path) {
+    if let Err(error) = std::fs::remove_dir_all(operation_dir) {
+        warn!(error = %error, "failed to remove incomplete engine file import");
+    }
+}
+
 fn send_invalid_input_error() -> EngineError {
     EngineError::new(
         SEND_INVALID_INPUT_CODE,
         EngineErrorCategory::InvalidInput,
         false,
     )
+}
+
+fn send_failed_error() -> EngineError {
+    EngineError::new(SEND_FAILED_CODE, EngineErrorCategory::Internal, false)
+}
+
+fn map_send_host_error(error: crate::HostCapabilityError) -> EngineError {
+    let (category, retryable) = match error.category() {
+        crate::HostCapabilityErrorCategory::InvalidHandle => {
+            (EngineErrorCategory::InvalidInput, false)
+        }
+        crate::HostCapabilityErrorCategory::PermissionDenied => {
+            (EngineErrorCategory::Unauthorized, false)
+        }
+        crate::HostCapabilityErrorCategory::Unavailable
+        | crate::HostCapabilityErrorCategory::Io => (EngineErrorCategory::Unavailable, true),
+    };
+    error!(error = %error, "host file import failed");
+    EngineError::new(SEND_FAILED_CODE, category, retryable)
 }
 
 fn map_resend_error(error: ResendEntryError) -> EngineError {

@@ -6,6 +6,7 @@ mod decision;
 mod delivery;
 mod entry;
 mod event;
+mod file_display_metadata;
 mod file_set;
 mod hash;
 pub mod integration_mode;
@@ -31,6 +32,10 @@ pub use delivery::{
 };
 pub use entry::*;
 pub use event::*;
+pub use file_display_metadata::{
+    FileDisplayMetadata, FileDisplayMetadataEntry, FILE_DISPLAY_METADATA_FORMAT,
+    FILE_DISPLAY_METADATA_MIME,
+};
 pub use file_set::{
     EntryFileSet, EntryFileSetError, EntryFileSetExcludeReason, EntryFileSetLine,
     EntryFileSetLineKind, FileSetMemberKind, FileSetMemberLocation,

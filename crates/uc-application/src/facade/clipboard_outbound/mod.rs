@@ -10,7 +10,8 @@ use tracing::{debug, info, warn};
 use uc_core::blob::ports::BlobReaderPort;
 use uc_core::clipboard::{
     is_file_mime_or_format, ClipboardPayloadSource, EntryFileSetExcludeReason,
-    EntryFileSetLineKind, FileSetMemberKind, FileSetMemberLocation,
+    EntryFileSetLineKind, FileDisplayMetadata, FileSetMemberKind, FileSetMemberLocation,
+    FILE_DISPLAY_METADATA_MIME,
 };
 use uc_core::ids::{DeviceId, EntryId};
 use uc_core::ports::clipboard::{
@@ -229,6 +230,7 @@ impl ClipboardOutboundPort for ClipboardOutboundDispatcher {
         let dispatch_start = Instant::now();
 
         let entry_id = EntryId::from(input.entry_id.as_str());
+        let display_metadata = file_display_metadata(&input.snapshot);
 
         let resolution = if input.origin == ClipboardChangeOrigin::LocalCapture {
             resolve_outbound_file_set(
@@ -284,6 +286,7 @@ impl ClipboardOutboundPort for ClipboardOutboundDispatcher {
                     total_file_metadata_bytes =
                         total_file_metadata_bytes.saturating_add(meta.len());
                     file_candidates.push(FileCandidate {
+                        display_name: display_name_for_path(display_metadata.as_ref(), &path),
                         path,
                         size: meta.len(),
                     });
@@ -795,6 +798,26 @@ pub(crate) async fn resolve_outbound_file_set(
         expected_digests: file_set.content_digest_contribution(),
         paths,
     }
+}
+
+pub(crate) fn file_display_metadata(
+    snapshot: &SystemClipboardSnapshot,
+) -> Option<FileDisplayMetadata> {
+    snapshot.representations.iter().find_map(|representation| {
+        let mime = representation.mime.as_ref()?.as_str();
+        mime.eq_ignore_ascii_case(FILE_DISPLAY_METADATA_MIME)
+            .then(|| representation.inline_bytes())
+            .flatten()
+            .and_then(|bytes| FileDisplayMetadata::decode(bytes).ok())
+    })
+}
+
+pub(crate) fn display_name_for_path(
+    metadata: Option<&FileDisplayMetadata>,
+    path: &std::path::Path,
+) -> Option<String> {
+    let storage_name = path.file_name()?.to_str()?;
+    metadata?.display_name_for(storage_name).map(str::to_owned)
 }
 
 pub(crate) fn build_transfer_manifest(

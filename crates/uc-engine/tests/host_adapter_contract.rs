@@ -265,6 +265,77 @@ impl HostFileAccess for EmptyHostFiles {
     }
 }
 
+struct ReadableHostFiles {
+    handle: String,
+    display_name: String,
+    mime_type: Option<String>,
+    bytes: Vec<u8>,
+    state: Arc<RecordingHostFilesState>,
+}
+
+impl HostFileAccess for ReadableHostFiles {
+    fn metadata(&self, handle: &HostFileHandle) -> Result<HostFileMetadata, HostCapabilityError> {
+        if handle.as_str() != self.handle {
+            return Err(HostCapabilityError::new(
+                uc_engine::HostCapabilityErrorCategory::InvalidHandle,
+                "missing",
+            ));
+        }
+        Ok(HostFileMetadata {
+            display_name: self.display_name.clone(),
+            size_bytes: self.bytes.len() as u64,
+            mime_type: self.mime_type.clone(),
+        })
+    }
+
+    fn read_chunk(
+        &self,
+        handle: &HostFileHandle,
+        offset: u64,
+        max_bytes: u32,
+    ) -> Result<Vec<u8>, HostCapabilityError> {
+        if handle.as_str() != self.handle {
+            return Err(HostCapabilityError::new(
+                uc_engine::HostCapabilityErrorCategory::InvalidHandle,
+                "missing",
+            ));
+        }
+        let start = usize::try_from(offset).map_err(|_| {
+            HostCapabilityError::new(uc_engine::HostCapabilityErrorCategory::Io, "offset")
+        })?;
+        if start >= self.bytes.len() {
+            return Ok(Vec::new());
+        }
+        let end = start
+            .saturating_add(max_bytes as usize)
+            .min(self.bytes.len());
+        Ok(self.bytes[start..end].to_vec())
+    }
+
+    fn write_chunk(
+        &self,
+        handle: &HostFileHandle,
+        offset: u64,
+        bytes: &[u8],
+    ) -> Result<(), HostCapabilityError> {
+        self.state.writes.lock().unwrap().push((
+            handle.as_str().to_string(),
+            offset,
+            bytes.to_vec(),
+        ));
+        Ok(())
+    }
+
+    fn finish_write(&self, handle: &HostFileHandle) -> Result<(), HostCapabilityError> {
+        self.state
+            .finished
+            .lock()
+            .unwrap()
+            .push(handle.as_str().to_string());
+        Ok(())
+    }
+}
+
 #[derive(Default)]
 struct RecordingHostFilesState {
     writes: Mutex<Vec<(String, u64, Vec<u8>)>>,
@@ -657,6 +728,147 @@ async fn engine_start_builds_a_resumable_real_session() {
             EngineState::ShuttingDown,
             EngineState::Stopped,
         ]
+    );
+}
+
+#[tokio::test]
+async fn engine_send_files_imports_opaque_content_and_exports_after_resume() {
+    let _guard = ENGINE_TEST_LOCK.lock().await;
+    let temp = tempfile::tempdir().unwrap();
+    let private = temp.path().join("private");
+    let cache = temp.path().join("cache");
+    let temporary = temp.path().join("temporary");
+    for directory in [&private, &cache, &temporary] {
+        std::fs::create_dir_all(directory).unwrap();
+    }
+    let display_name = "uc-sensitive-filename-probe.txt";
+    let file_bytes = b"host file payload survives import and resend".to_vec();
+    let host_files = Arc::new(RecordingHostFilesState::default());
+    let host = HostCapabilities::new(
+        HostDirectories::new(private.clone(), cache.clone(), temporary.clone()),
+        Box::new(MemoryHostSecureStorage::default()),
+        Box::new(StaticHostClipboard {
+            snapshot: HostClipboardSnapshot {
+                observed_at_ms: 0,
+                representations: Vec::new(),
+            },
+        }),
+        Box::new(ReadableHostFiles {
+            handle: "picked-file".into(),
+            display_name: display_name.into(),
+            mime_type: Some("text/plain".into()),
+            bytes: file_bytes.clone(),
+            state: Arc::clone(&host_files),
+        }),
+    );
+    let (engine, _events) = Engine::start(EngineConfig::new("1.2.3"), host)
+        .await
+        .unwrap();
+    engine
+        .execute(uc_engine::Operation::CreateSpace(
+            uc_engine::CreateSpaceInput {
+                device_name: "File Device".into(),
+                passphrase: uc_engine::SecretString::new("correct horse"),
+                passphrase_confirmation: uc_engine::SecretString::new("correct horse"),
+            },
+        ))
+        .await
+        .unwrap();
+
+    let sent = engine
+        .execute(uc_engine::Operation::SendFiles(uc_engine::SendFilesInput {
+            files: vec![HostFileHandle::new("picked-file")],
+            target_devices: Vec::new(),
+        }))
+        .await
+        .unwrap();
+    let entry_id = match sent {
+        uc_engine::OperationResult::EntrySent { entry_id } => entry_id,
+        other => panic!("expected sent file entry, got {other:?}"),
+    };
+    let history = engine
+        .execute(uc_engine::Operation::QueryHistory(
+            uc_engine::QueryHistoryInput {
+                cursor: None,
+                limit: 10,
+                query: None,
+            },
+        ))
+        .await
+        .unwrap();
+    let uc_engine::OperationResult::HistoryPage { entries, .. } = history else {
+        panic!("expected history page");
+    };
+    assert!(
+        entries
+            .iter()
+            .any(|entry| entry.preview.as_deref() == Some(display_name)),
+        "the encrypted history must retain the host display name"
+    );
+    engine.suspend().await.unwrap();
+    engine.resume().await.unwrap();
+    assert_eq!(
+        engine
+            .execute(uc_engine::Operation::ExportEntry(
+                uc_engine::ExportEntryInput {
+                    entry_id,
+                    destination: HostFileHandle::new("exported-file"),
+                },
+            ))
+            .await
+            .unwrap(),
+        uc_engine::OperationResult::EntryExported
+    );
+    assert_eq!(
+        *host_files.writes.lock().unwrap(),
+        vec![("exported-file".to_string(), 0, file_bytes.clone())]
+    );
+    assert_eq!(
+        *host_files.finished.lock().unwrap(),
+        vec!["exported-file".to_string()]
+    );
+    engine
+        .shutdown(std::time::Duration::from_secs(15))
+        .await
+        .unwrap();
+
+    let mut imported_content_found = false;
+    let mut pending = vec![private.clone()];
+    while let Some(directory) = pending.pop() {
+        for entry in std::fs::read_dir(directory).unwrap() {
+            let entry = entry.unwrap();
+            assert!(!entry.file_name().to_string_lossy().contains(display_name));
+            if entry.file_type().unwrap().is_dir() {
+                pending.push(entry.path());
+            } else if std::fs::read(entry.path()).is_ok_and(|bytes| {
+                bytes
+                    .windows(file_bytes.len())
+                    .any(|part| part == file_bytes)
+            }) {
+                imported_content_found = true;
+            }
+        }
+    }
+    assert!(
+        imported_content_found,
+        "the imported file bytes were not retained"
+    );
+
+    let probe_file = temp.path().join("filename-probe.txt");
+    std::fs::write(&probe_file, display_name).unwrap();
+    let scanner = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .join("scripts/security/scan-plaintext-probe.sh");
+    let output = std::process::Command::new("bash")
+        .arg(scanner)
+        .arg(probe_file)
+        .args([private, cache, temporary])
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "filename probe found plaintext: {}",
+        String::from_utf8_lossy(&output.stdout)
     );
 }
 

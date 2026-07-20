@@ -15,6 +15,8 @@ pub struct FileCandidate {
     pub path: PathBuf,
     /// File size in bytes, pre-computed by the runtime via `std::fs::metadata()`.
     pub size: u64,
+    /// Original user-visible name when the local storage path is opaque.
+    pub display_name: Option<String>,
 }
 
 /// Intent to sync clipboard content to peers.

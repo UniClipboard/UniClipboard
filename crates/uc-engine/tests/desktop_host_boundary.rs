@@ -130,6 +130,31 @@ fn daemon_invitation_handler_delegates_business_orchestration_to_engine() {
     );
 }
 
+#[test]
+fn daemon_passphrase_unlock_delegates_business_orchestration_to_engine() {
+    let handler = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../crates/uc-webserver/src/api/encryption.rs");
+    let source = std::fs::read_to_string(&handler)
+        .unwrap_or_else(|error| panic!("failed to read {}: {error}", handler.display()));
+    let unlock_handler = source
+        .split("async fn unlock_with_passphrase_handler")
+        .nth(1)
+        .and_then(|source| source.split("async fn on_session_ready").next())
+        .expect("passphrase unlock handler must remain discoverable");
+
+    assert!(
+        !source.contains("UnlockSpaceError")
+            && !unlock_handler.contains(".unlock_space(")
+            && !unlock_handler.contains("on_session_ready("),
+        "daemon passphrase unlock must not own engine recovery or repeat session recovery"
+    );
+    assert!(
+        unlock_handler.contains("execute_unlock_space(")
+            && unlock_handler.contains("broadcast_session_ready("),
+        "daemon passphrase unlock must invoke the engine and only broadcast success"
+    );
+}
+
 fn rust_sources(root: &Path) -> Vec<PathBuf> {
     let mut pending = vec![root.to_path_buf()];
     let mut sources = Vec::new();

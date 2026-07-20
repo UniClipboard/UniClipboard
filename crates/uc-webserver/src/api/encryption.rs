@@ -6,10 +6,16 @@ use axum::routing::{get, post};
 use axum::{Json, Router};
 use tokio::sync::broadcast::error::SendError;
 use tracing::{debug, info};
-use uc_application::facade::space_setup::UnlockSpaceError;
-use uc_application::facade::{FactoryResetError, UnlockSpaceInput};
+use uc_application::facade::FactoryResetError;
 use uc_daemon_contract::api::dto::envelope::ApiEnvelope;
 use uc_daemon_contract::constants::{ws_event, ws_topic};
+use uc_engine::internal::unlock::{
+    execute_unlock_space, UNLOCK_SPACE_CORRUPTED_CODE, UNLOCK_SPACE_NOT_INITIALIZED_CODE,
+    UNLOCK_SPACE_SETUP_NOT_COMPLETED_CODE, UNLOCK_SPACE_UNAUTHORIZED_CODE,
+};
+use uc_engine::{
+    EngineError, EngineErrorCategory, OperationResult, SecretString, UnlockSpaceInput,
+};
 use utoipa;
 
 use crate::api::dto::encryption::{
@@ -76,15 +82,10 @@ fn map_factory_reset_err(err: FactoryResetError) -> ApiError {
     api
 }
 
-/// Map the typed [`UnlockSpaceError`] onto an [`ApiError`] whose `code` is the
-/// SCREAMING_SNAKE semantic tag the frontend `UnlockSpaceCommandError` union
-/// switches on (read off `DaemonApiError.details.code` after `callSdk`
-/// normalization). Statuses avoid `401` so `callSdk` does not trigger a
-/// spurious session refresh + retry on a user-recoverable error.
-fn map_unlock_err(err: UnlockSpaceError) -> ApiError {
-    use UnlockSpaceError as E;
-    let (variant, api): (&'static str, ApiError) = match err {
-        E::SetupNotCompleted => (
+/// Map stable engine unlock failures onto the existing HTTP error contract.
+fn map_unlock_engine_err(err: EngineError) -> ApiError {
+    let (variant, api): (&'static str, ApiError) = match err.code() {
+        UNLOCK_SPACE_SETUP_NOT_COMPLETED_CODE => (
             "setup_not_completed",
             ApiError {
                 status: StatusCode::CONFLICT,
@@ -93,7 +94,7 @@ fn map_unlock_err(err: UnlockSpaceError) -> ApiError {
                 details: None,
             },
         ),
-        E::SpaceNotInitialized => (
+        UNLOCK_SPACE_NOT_INITIALIZED_CODE => (
             "space_not_initialized",
             ApiError {
                 status: StatusCode::CONFLICT,
@@ -102,7 +103,7 @@ fn map_unlock_err(err: UnlockSpaceError) -> ApiError {
                 details: None,
             },
         ),
-        E::WrongPassphrase => (
+        UNLOCK_SPACE_UNAUTHORIZED_CODE => (
             "wrong_passphrase",
             ApiError {
                 status: StatusCode::FORBIDDEN,
@@ -111,7 +112,7 @@ fn map_unlock_err(err: UnlockSpaceError) -> ApiError {
                 details: None,
             },
         ),
-        E::CorruptedKeyMaterial => (
+        UNLOCK_SPACE_CORRUPTED_CODE => (
             "corrupted_key_material",
             ApiError {
                 status: StatusCode::UNPROCESSABLE_ENTITY,
@@ -120,14 +121,16 @@ fn map_unlock_err(err: UnlockSpaceError) -> ApiError {
                 details: None,
             },
         ),
-        // `msg` is an infra/migration string (never the passphrase) — safe to
-        // surface to the 5xx root-cause log below.
-        E::Internal(msg) => (
+        _ if err.category() == EngineErrorCategory::Unavailable => (
+            "service_unavailable",
+            ApiError::service_unavailable("receive recovery failed after space unlock"),
+        ),
+        _ => (
             "internal",
             ApiError {
                 status: StatusCode::INTERNAL_SERVER_ERROR,
                 code: "INTERNAL".to_string(),
-                message: msg,
+                message: "failed to unlock space".to_string(),
                 details: None,
             },
         ),
@@ -222,11 +225,9 @@ async fn unlock_handler(
 /// POST /encryption/unlock-with-passphrase
 /// Unlocks the space with a user-supplied plaintext passphrase (ADR-008 D15).
 ///
-/// Routes through `SpaceSetupFacade::unlock_space`, which (unlike the bare
-/// `encryption.unlock`) also runs the switch-space migration recovery hook —
-/// the same reason the keyring `unlock_handler` above delegates to
-/// `try_resume_session`. On success it broadcasts `encryption.session_ready`
-/// so WS subscribers react identically regardless of which unlock path ran.
+/// Routes through the engine unlock operation, which also runs switch-space,
+/// search, receive, clipboard gate, and deferred-service recovery. On success
+/// the HTTP layer only broadcasts `encryption.session_ready`.
 ///
 /// D14: this endpoint is session-JWT gated (it is NOT in `PUBLIC_PATHS`) and
 /// the handler MUST NOT log the request body — there is intentionally no
@@ -250,36 +251,38 @@ async fn unlock_with_passphrase_handler(
     Json(req): Json<UnlockSpaceRequest>,
 ) -> Result<Json<ApiEnvelope<UnlockSpaceResponse>>, ApiError> {
     let app = state.app_facade_or_error()?;
-    let facade = app
-        .space_setup
-        .get()
-        .cloned()
-        .ok_or_else(|| ApiError::service_unavailable("space setup facade not assembled"))?;
-
-    let result = facade
-        .unlock_space(UnlockSpaceInput {
-            passphrase: req.passphrase,
-        })
-        .await
-        .map_err(map_unlock_err)?;
+    let result = execute_unlock_space(
+        app.as_ref(),
+        state.receive_readiness.as_ref(),
+        UnlockSpaceInput {
+            passphrase: SecretString::new(req.passphrase),
+        },
+    )
+    .await
+    .map_err(map_unlock_engine_err)?;
+    let OperationResult::SpaceUnlocked { space_id } = result else {
+        return Err(ApiError::internal(
+            "engine returned an unexpected unlock result",
+        ));
+    };
 
     info!("space unlocked via passphrase");
-    on_session_ready(&state).await?;
+    broadcast_session_ready(&state);
 
-    Ok(Json(ApiEnvelope::now(UnlockSpaceResponse {
-        space_id: result.space_id.to_string(),
-    })))
+    Ok(Json(ApiEnvelope::now(UnlockSpaceResponse { space_id })))
 }
 
-/// Single convergence point for "the encryption session just became ready".
-///
-/// Both unlock paths (keyring silent resume and passphrase unlock) funnel here so
-/// the `encryption.session_ready` broadcast and the downstream side effects stay
-/// identical. Broadcasts the WS event and notifies the search subsystem, which
-/// drives any index rebuild / plaintext-residue purge that a locked cold start
-/// could not run.
+/// Complete the remaining host work after a silent keyring resume.
 async fn on_session_ready(state: &DaemonApiState) -> Result<(), ApiError> {
     state.ensure_receive_ready().await?;
+    broadcast_session_ready(state);
+    if let Ok(app) = state.app_facade_or_error() {
+        app.search.on_session_ready().await;
+    }
+    Ok(())
+}
+
+fn broadcast_session_ready(state: &DaemonApiState) {
     let ts = chrono::Utc::now().timestamp_millis();
     let event_payload = EncryptionSessionReadyPayload { ts };
     let event = DaemonWsEvent {
@@ -292,13 +295,6 @@ async fn on_session_ready(state: &DaemonApiState) -> Result<(), ApiError> {
     if let Err(SendError(_)) = state.event_tx.send(event) {
         debug!("failed to broadcast encryption.session_ready event — no active subscribers");
     }
-
-    // Drive any search rebuild/purge deferred by a locked start. Best-effort:
-    // absent app facade (not yet assembled) is a no-op.
-    if let Ok(app) = state.app_facade_or_error() {
-        app.search.on_session_ready().await;
-    }
-    Ok(())
 }
 
 /// POST /encryption/lock
@@ -400,45 +396,88 @@ mod tests {
     /// every user-recoverable variant must carry its semantic code and a non-401
     /// status.
     #[test]
-    fn map_unlock_err_assigns_semantic_codes_and_avoids_401() {
+    fn map_engine_unlock_internal_is_500_and_redacted() {
+        let api = map_unlock_engine_err(EngineError::new(
+            uc_engine::internal::unlock::UNLOCK_SPACE_FAILED_CODE,
+            EngineErrorCategory::Internal,
+            false,
+        ));
+        assert_eq!(api.status, StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(api.code, "INTERNAL");
+        assert_eq!(api.message, "failed to unlock space");
+    }
+
+    #[test]
+    fn map_engine_unlock_errors_preserves_http_contract() {
+        use uc_engine::internal::unlock::{
+            UNLOCK_SPACE_CORRUPTED_CODE, UNLOCK_SPACE_FAILED_CODE,
+            UNLOCK_SPACE_NOT_INITIALIZED_CODE, UNLOCK_SPACE_SETUP_NOT_COMPLETED_CODE,
+            UNLOCK_SPACE_UNAUTHORIZED_CODE,
+        };
+        use uc_engine::{EngineError, EngineErrorCategory};
+
         let cases = [
             (
-                UnlockSpaceError::SetupNotCompleted,
+                EngineError::new(
+                    UNLOCK_SPACE_SETUP_NOT_COMPLETED_CODE,
+                    EngineErrorCategory::InvalidState,
+                    false,
+                ),
                 StatusCode::CONFLICT,
                 "SETUP_NOT_COMPLETED",
             ),
             (
-                UnlockSpaceError::SpaceNotInitialized,
+                EngineError::new(
+                    UNLOCK_SPACE_NOT_INITIALIZED_CODE,
+                    EngineErrorCategory::InvalidState,
+                    false,
+                ),
                 StatusCode::CONFLICT,
                 "SPACE_NOT_INITIALIZED",
             ),
             (
-                UnlockSpaceError::WrongPassphrase,
+                EngineError::new(
+                    UNLOCK_SPACE_UNAUTHORIZED_CODE,
+                    EngineErrorCategory::Unauthorized,
+                    false,
+                ),
                 StatusCode::FORBIDDEN,
                 "WRONG_PASSPHRASE",
             ),
             (
-                UnlockSpaceError::CorruptedKeyMaterial,
+                EngineError::new(
+                    UNLOCK_SPACE_CORRUPTED_CODE,
+                    EngineErrorCategory::Internal,
+                    false,
+                ),
                 StatusCode::UNPROCESSABLE_ENTITY,
                 "CORRUPTED_KEY_MATERIAL",
             ),
+            (
+                EngineError::new(
+                    UNLOCK_SPACE_FAILED_CODE,
+                    EngineErrorCategory::Internal,
+                    false,
+                ),
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "INTERNAL",
+            ),
+            (
+                EngineError::new(
+                    UNLOCK_SPACE_FAILED_CODE,
+                    EngineErrorCategory::Unavailable,
+                    true,
+                ),
+                StatusCode::SERVICE_UNAVAILABLE,
+                "runtime_unavailable",
+            ),
         ];
-        for (err, status, code) in cases {
-            let api = map_unlock_err(err);
+
+        for (error, status, code) in cases {
+            let api = map_unlock_engine_err(error);
             assert_eq!(api.status, status);
             assert_eq!(api.code, code);
-            assert_ne!(api.status, StatusCode::UNAUTHORIZED);
         }
-    }
-
-    #[test]
-    fn map_unlock_err_internal_is_500_and_keeps_message() {
-        let api = map_unlock_err(UnlockSpaceError::Internal(
-            "migration resume failed: boom".to_string(),
-        ));
-        assert_eq!(api.status, StatusCode::INTERNAL_SERVER_ERROR);
-        assert_eq!(api.code, "INTERNAL");
-        assert_eq!(api.message, "migration resume failed: boom");
     }
 
     /// Factory-reset variants keep the `FactoryResetCommandError` semantic codes

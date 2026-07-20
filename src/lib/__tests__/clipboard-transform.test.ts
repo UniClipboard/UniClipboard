@@ -222,6 +222,33 @@ describe('searchResultToDisplayItem', () => {
     expect(item.contentTags).toBeUndefined()
   })
 
+  it('marks a truncated, available text preview as detail-loadable', () => {
+    const item = searchResultToDisplayItem(
+      makeSearchResult({
+        textPreview: 'x'.repeat(200),
+        charCount: 400,
+      })
+    )
+
+    expect(item.content).toMatchObject({
+      display_text: 'x'.repeat(200),
+      has_detail: true,
+      char_count: 400,
+    })
+  })
+
+  it('does not request detail for an unrecoverable truncated preview', () => {
+    const item = searchResultToDisplayItem(
+      makeSearchResult({
+        textPreview: 'x'.repeat(200),
+        charCount: 400,
+        payloadState: 'Lost',
+      })
+    )
+
+    expect(item.content).toMatchObject({ has_detail: false })
+  })
+
   it('maps file search results to file content carrying names and local paths', () => {
     const item = searchResultToDisplayItem(
       makeSearchResult({

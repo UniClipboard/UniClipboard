@@ -12,7 +12,10 @@ use std::sync::Arc;
 
 use uc_application::deps::AppDeps;
 use uc_application::facade::{AppFacade, AppPaths, FileTransferFacade, InMemoryLifecycleStatus};
-use uc_bootstrap::{build_app_facade_from_deps, AppFacadeAssemblyOptions};
+use uc_bootstrap::{
+    build_app_facade_from_deps, AppFacadeAssemblyOptions, BackgroundRuntimeDeps,
+    BlobProcessingPorts,
+};
 use uc_core::TaskRegistry;
 
 use uc_application::clipboard_write::{ClipboardWriteCoordinator, RestoreBroadcastTrigger};
@@ -64,7 +67,14 @@ impl DaemonProcessRuntime {
         &self.app_facade
     }
 
-    pub fn task_registry(&self) -> &Arc<TaskRegistry> {
-        &self.task_registry
+    pub(crate) fn spawn_blob_processing(
+        &self,
+        background: BackgroundRuntimeDeps,
+        blob_ports: BlobProcessingPorts,
+    ) {
+        let task_registry = Arc::clone(&self.task_registry);
+        uc_observability::spawn_supervised("blob.processing_tasks", async move {
+            uc_bootstrap::spawn_blob_processing_tasks(background, blob_ports, &task_registry).await;
+        });
     }
 }

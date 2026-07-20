@@ -57,6 +57,19 @@ fn daemon_library_does_not_export_in_process_legacy_assembly() {
     );
 }
 
+#[test]
+fn daemon_process_runtime_does_not_expose_task_registry() {
+    let runtime = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../apps/daemon/src/daemon/process_runtime.rs");
+    let source = std::fs::read_to_string(&runtime)
+        .unwrap_or_else(|error| panic!("failed to read {}: {error}", runtime.display()));
+
+    assert!(
+        !source.contains("fn task_registry("),
+        "daemon process runtime must own background task registration"
+    );
+}
+
 fn rust_sources(root: &Path) -> Vec<PathBuf> {
     let mut pending = vec![root.to_path_buf()];
     let mut sources = Vec::new();

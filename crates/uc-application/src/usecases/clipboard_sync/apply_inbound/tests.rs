@@ -455,6 +455,43 @@ struct FlowIdRecordLayer {
     records: Arc<Mutex<Vec<String>>>,
 }
 
+#[derive(Clone, Default)]
+struct EventFieldRecordLayer {
+    records: Arc<Mutex<Vec<String>>>,
+}
+
+impl<S> Layer<S> for EventFieldRecordLayer
+where
+    S: Subscriber,
+{
+    fn on_event(&self, event: &tracing::Event<'_>, _ctx: Context<'_, S>) {
+        let mut visitor = EventFieldVisitor {
+            records: Arc::clone(&self.records),
+        };
+        event.record(&mut visitor);
+    }
+}
+
+struct EventFieldVisitor {
+    records: Arc<Mutex<Vec<String>>>,
+}
+
+impl Visit for EventFieldVisitor {
+    fn record_debug(&mut self, field: &Field, value: &dyn std::fmt::Debug) {
+        self.records
+            .lock()
+            .unwrap()
+            .push(format!("{}={value:?}", field.name()));
+    }
+
+    fn record_str(&mut self, field: &Field, value: &str) {
+        self.records
+            .lock()
+            .unwrap()
+            .push(format!("{}={value}", field.name()));
+    }
+}
+
 impl<S> Layer<S> for FlowIdRecordLayer
 where
     S: Subscriber,
@@ -1717,8 +1754,12 @@ async fn file_cache_blob_materializer_writes_file_and_rewrites_file_uri_list() {
     )
     .expect("uri-list should be UTF-8");
     assert!(uri_list.starts_with("file://"));
-    assert!(uri_list.ends_with("/report.txt\n"));
+    assert!(uri_list.ends_with("/00000000\n"));
     assert!(!uri_list.contains("/sender/"));
+    assert!(
+        !uri_list.contains("report.txt"),
+        "declared filename leaked into the managed cache path"
+    );
 
     let local_url = url::Url::parse(uri_list.trim()).expect("valid file URL");
     let local_path = local_url.to_file_path().expect("file URL to path");
@@ -1726,6 +1767,69 @@ async fn file_cache_blob_materializer_writes_file_and_rewrites_file_uri_list() {
         .await
         .expect("materialized file should exist");
     assert_eq!(bytes, b"hello world");
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn file_cache_blob_materializer_logs_do_not_include_declared_filename() {
+    let cache_dir = tempfile::tempdir().expect("tempdir");
+    let secret_name = "customer-contract-private.txt";
+    let blob_ref = V3BlobRef {
+        ticket: BlobTicket::from_bytes(vec![4, 5, 6]),
+        entry_id: EntryId::from("entry-file-log-redaction"),
+        filename: Some(secret_name.to_string()),
+        mime: Some("text/plain".to_string()),
+        size_bytes: 7,
+        representation_index: None,
+    };
+    let snapshot = SystemClipboardSnapshot {
+        ts_ms: 1,
+        representations: vec![ObservedClipboardRepresentation::new(
+            RepresentationId::new(),
+            FormatId::from("files"),
+            Some(MimeType("text/uri-list".to_string())),
+            b"file:///sender/customer-contract-private.txt\n".to_vec(),
+        )],
+        file_content_digests: Vec::new(),
+        file_set_v1_component: None,
+    };
+    let mut fetcher = MockBlobFetcher::new();
+    fetcher
+        .expect_fetch_blob_to_path()
+        .times(1)
+        .returning(|command| {
+            std::fs::write(&command.target_path, b"payload").expect("write fetched file");
+            Ok(crate::facade::blob_transfer::FetchBlobToPathResult {
+                entry_id: command.entry_id,
+                plaintext_hash: PlaintextHash::from_bytes([3; 32]),
+                digest: BlobDigest::from_bytes([4; 32]),
+                bytes_written: 7,
+            })
+        });
+    let materializer = test_materializer(Arc::new(fetcher), cache_dir.path().to_path_buf());
+
+    let layer = EventFieldRecordLayer::default();
+    let records = Arc::clone(&layer.records);
+    let subscriber = tracing_subscriber::registry().with(layer);
+    let _guard = tracing::subscriber::set_default(subscriber);
+
+    materializer
+        .materialize(
+            DeviceId::new("peer-log-redaction"),
+            EntryId::from("receiver-log-redaction"),
+            snapshot,
+            vec![blob_ref],
+            None,
+            None,
+            None,
+        )
+        .await
+        .expect("materialize should succeed");
+
+    let records = records.lock().unwrap();
+    assert!(
+        records.iter().all(|record| !record.contains(secret_name)),
+        "declared filename leaked into materializer logs: {records:?}"
+    );
 }
 
 #[tokio::test]
@@ -2762,8 +2866,12 @@ async fn file_cache_blob_materializer_partial_on_cancel_mid_batch() {
     )
     .expect("uri-list should be UTF-8");
     assert!(
-        uri_list.contains("file://") && uri_list.contains("/first.txt"),
+        uri_list.contains("file://") && uri_list.contains("/00000000"),
         "completed file:// should be present in uri-list: {uri_list:?}"
+    );
+    assert!(
+        !uri_list.contains("first.txt"),
+        "completed filename leaked into the managed cache path: {uri_list:?}"
     );
     assert!(
         uri_list.contains("uniclip-missing:///second.iso"),

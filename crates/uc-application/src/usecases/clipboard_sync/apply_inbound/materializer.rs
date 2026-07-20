@@ -1082,7 +1082,6 @@ impl InboundBlobMaterializer for FileCacheBlobMaterializer {
                 total = blob_ref_total,
                 entry_id = %entry_id,
                 size_bytes = advertised_size,
-                filename = declared_name.as_deref().unwrap_or(""),
                 "materialize: fetching blob"
             );
 
@@ -1161,8 +1160,7 @@ impl InboundBlobMaterializer for FileCacheBlobMaterializer {
                         .join(sanitize_path_segment(blob_ref.entry_id.as_ref()));
                     tokio::fs::create_dir_all(&entry_dir).await?;
 
-                    let filename =
-                        unique_filename(blob_ref.filename.as_deref(), idx, &mut used_names);
+                    let filename = opaque_managed_filename(idx, &mut used_names);
                     entry_dir.join(filename)
                 }
             };
@@ -2532,20 +2530,8 @@ fn is_file_list_representation(rep: &ObservedClipboardRepresentation) -> bool {
         || rep.format_id.eq_ignore_ascii_case("public.file-url")
 }
 
-fn unique_filename(
-    candidate: Option<&str>,
-    idx: usize,
-    used_names: &mut HashSet<String>,
-) -> String {
-    let base = candidate
-        .and_then(|name| {
-            std::path::Path::new(name)
-                .file_name()
-                .and_then(|n| n.to_str())
-        })
-        .map(sanitize_path_segment)
-        .filter(|name| !name.is_empty())
-        .unwrap_or_else(|| format!("blob-{idx}"));
+fn opaque_managed_filename(idx: usize, used_names: &mut HashSet<String>) -> String {
+    let base = format!("{idx:08}");
 
     if used_names.insert(base.clone()) {
         return base;

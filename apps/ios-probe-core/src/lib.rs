@@ -574,6 +574,20 @@ fn operation_response(result: OperationResult) -> Value {
             "has_phase": progress.phase.is_some(),
             "backup_record_count": progress.backup_record_count,
         }),
+        OperationResult::StorageStats(stats) => json!({
+            "ok": true,
+            "kind": "storage_stats",
+            "total_bytes": stats.total_bytes,
+            "database_bytes": stats.database_bytes,
+            "vault_bytes": stats.vault_bytes,
+            "cache_bytes": stats.cache_bytes,
+            "logs_bytes": stats.logs_bytes,
+        }),
+        OperationResult::StorageCacheCleared { freed_bytes } => json!({
+            "ok": true,
+            "kind": "storage_cache_cleared",
+            "freed_bytes": freed_bytes,
+        }),
         OperationResult::Devices(devices) => json!({
             "ok": true,
             "kind": "devices",
@@ -719,6 +733,37 @@ mod tests {
                 "unlocked": true,
                 "resumed": false,
             })
+        );
+    }
+
+    #[test]
+    fn operation_response_exposes_storage_counts() {
+        let stats = operation_response(OperationResult::StorageStats(
+            uc_engine::StorageStatsSummary {
+                total_bytes: 50,
+                database_bytes: 10,
+                vault_bytes: 20,
+                cache_bytes: 15,
+                logs_bytes: 5,
+            },
+        ));
+        let cleared = operation_response(OperationResult::StorageCacheCleared { freed_bytes: 15 });
+
+        assert_eq!(
+            stats,
+            json!({
+                "ok": true,
+                "kind": "storage_stats",
+                "total_bytes": 50,
+                "database_bytes": 10,
+                "vault_bytes": 20,
+                "cache_bytes": 15,
+                "logs_bytes": 5,
+            })
+        );
+        assert_eq!(
+            cleared,
+            json!({"ok": true, "kind": "storage_cache_cleared", "freed_bytes": 15})
         );
     }
 

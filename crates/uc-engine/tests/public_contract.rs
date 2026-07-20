@@ -4,7 +4,7 @@ use uc_engine::{
     MigrationPhaseSummary, MigrationProgressSummary, Operation, OperationKind, OperationResult,
     QueryHistoryInput, RecoverSessionInput, RefreshReason, ResendEntryInput, SecretString,
     SendFilesInput, SendImageInput, SendTextInput, SetupInvitationSummary, SetupStateSummary,
-    UnlockSpaceInput,
+    StorageStatsSummary, UnlockSpaceInput,
 };
 
 #[test]
@@ -59,6 +59,14 @@ fn every_public_operation_has_a_stable_kind() {
             Operation::QueryMigrationProgress,
             OperationKind::QueryMigrationProgress,
         ),
+        (
+            Operation::QueryStorageStats,
+            OperationKind::QueryStorageStats,
+        ),
+        (
+            Operation::ClearStorageCache,
+            OperationKind::ClearStorageCache,
+        ),
         (Operation::ListDevices, OperationKind::ListDevices),
         (
             Operation::SendText(SendTextInput {
@@ -109,6 +117,21 @@ fn every_public_operation_has_a_stable_kind() {
     for (operation, expected) in operations {
         assert_eq!(operation.kind(), expected);
     }
+}
+
+#[test]
+fn storage_results_expose_counts_without_host_paths() {
+    let stats = OperationResult::StorageStats(StorageStatsSummary {
+        total_bytes: 50,
+        database_bytes: 10,
+        vault_bytes: 20,
+        cache_bytes: 15,
+        logs_bytes: 5,
+    });
+    let cleared = OperationResult::StorageCacheCleared { freed_bytes: 15 };
+
+    assert!(format!("{stats:?}").contains("storage_stats"));
+    assert!(format!("{cleared:?}").contains("storage_cache_cleared"));
 }
 
 #[test]

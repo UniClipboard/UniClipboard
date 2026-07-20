@@ -79,6 +79,8 @@ pub enum OperationKind {
     ResetSpace,
     QuerySetupState,
     QueryMigrationProgress,
+    QueryStorageStats,
+    ClearStorageCache,
     ListDevices,
     SendText,
     SendImage,
@@ -100,6 +102,8 @@ impl fmt::Display for OperationKind {
             Self::ResetSpace => "reset_space",
             Self::QuerySetupState => "query_setup_state",
             Self::QueryMigrationProgress => "query_migration_progress",
+            Self::QueryStorageStats => "query_storage_stats",
+            Self::ClearStorageCache => "clear_storage_cache",
             Self::ListDevices => "list_devices",
             Self::SendText => "send_text",
             Self::SendImage => "send_image",
@@ -123,6 +127,8 @@ pub enum Operation {
     ResetSpace,
     QuerySetupState,
     QueryMigrationProgress,
+    QueryStorageStats,
+    ClearStorageCache,
     ListDevices,
     SendText(SendTextInput),
     SendImage(SendImageInput),
@@ -144,6 +150,8 @@ impl Operation {
             Self::ResetSpace => OperationKind::ResetSpace,
             Self::QuerySetupState => OperationKind::QuerySetupState,
             Self::QueryMigrationProgress => OperationKind::QueryMigrationProgress,
+            Self::QueryStorageStats => OperationKind::QueryStorageStats,
+            Self::ClearStorageCache => OperationKind::ClearStorageCache,
             Self::ListDevices => OperationKind::ListDevices,
             Self::SendText(_) => OperationKind::SendText,
             Self::SendImage(_) => OperationKind::SendImage,
@@ -493,6 +501,10 @@ pub enum OperationResult {
     SpaceReset,
     SetupState(SetupStateSummary),
     MigrationProgress(MigrationProgressSummary),
+    StorageStats(StorageStatsSummary),
+    StorageCacheCleared {
+        freed_bytes: u64,
+    },
     Devices(Vec<DeviceSummary>),
     EntrySent {
         entry_id: String,
@@ -525,6 +537,12 @@ impl fmt::Debug for OperationResult {
             Self::MigrationProgress(progress) => debug
                 .field("kind", &"migration_progress")
                 .field("progress", progress),
+            Self::StorageStats(stats) => {
+                debug.field("kind", &"storage_stats").field("stats", stats)
+            }
+            Self::StorageCacheCleared { freed_bytes } => debug
+                .field("kind", &"storage_cache_cleared")
+                .field("freed_bytes", freed_bytes),
             Self::Devices(devices) => debug
                 .field("kind", &"devices")
                 .field("device_count", &devices.len()),
@@ -588,6 +606,15 @@ pub enum MigrationPhaseSummary {
 pub struct MigrationProgressSummary {
     pub phase: Option<MigrationPhaseSummary>,
     pub backup_record_count: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StorageStatsSummary {
+    pub total_bytes: u64,
+    pub database_bytes: u64,
+    pub vault_bytes: u64,
+    pub cache_bytes: u64,
+    pub logs_bytes: u64,
 }
 
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]

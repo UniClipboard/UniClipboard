@@ -46,6 +46,7 @@ use crate::internal::migration_progress::execute_query_migration_progress;
 use crate::internal::reset_space::execute_reset_space;
 use crate::internal::session_recovery::execute_recover_session;
 use crate::internal::setup_state::execute_query_setup_state;
+use crate::internal::storage::{execute_clear_storage_cache, execute_query_storage_stats};
 use crate::internal::sync_engine::SyncEngineAssembly;
 use crate::internal::unlock::execute_unlock_space;
 use crate::{
@@ -271,6 +272,12 @@ impl EngineRuntime for ProductionRuntime {
             }
             Operation::QueryMigrationProgress => {
                 execute_query_migration_progress(self.current_facade().await?.as_ref()).await
+            }
+            Operation::QueryStorageStats => {
+                execute_query_storage_stats(self.current_facade().await?.as_ref()).await
+            }
+            Operation::ClearStorageCache => {
+                execute_clear_storage_cache(self.current_facade().await?.as_ref()).await
             }
             Operation::ListDevices => {
                 let entries = self
@@ -889,9 +896,16 @@ fn operation_error_with_code(
 
 #[cfg(test)]
 mod tests {
-    use uc_application::facade::{SearchPageView, SearchResultView};
+    use uc_application::facade::{
+        SearchPageView, SearchResultView, StorageFacadeError, StorageStatsView,
+    };
 
     use super::*;
+    use crate::internal::storage::{
+        map_storage_error, storage_stats_result, CLEAR_STORAGE_CACHE_FAILED_CODE,
+        QUERY_STORAGE_STATS_FAILED_CODE,
+    };
+    use crate::StorageStatsSummary;
 
     #[test]
     fn history_search_input_parses_only_versioned_bounded_cursors() {
@@ -983,5 +997,40 @@ mod tests {
         let rebuilding = map_query_history_error(SearchFacadeError::IndexRebuilding);
         assert_eq!(rebuilding.category(), EngineErrorCategory::Unavailable);
         assert!(rebuilding.is_retryable());
+    }
+
+    #[test]
+    fn storage_stats_projection_does_not_expose_the_host_data_path() {
+        let result = storage_stats_result(StorageStatsView {
+            total_bytes: 50,
+            database_bytes: 10,
+            vault_bytes: 20,
+            cache_bytes: 15,
+            logs_bytes: 5,
+            data_dir: "/private/user/path".into(),
+        });
+
+        assert_eq!(
+            result,
+            OperationResult::StorageStats(StorageStatsSummary {
+                total_bytes: 50,
+                database_bytes: 10,
+                vault_bytes: 20,
+                cache_bytes: 15,
+                logs_bytes: 5,
+            })
+        );
+        assert!(!format!("{result:?}").contains("/private/user/path"));
+    }
+
+    #[test]
+    fn storage_failures_use_distinct_stable_codes() {
+        let stats = map_storage_error(StorageFacadeError::Stats("private detail".into()));
+        let clear = map_storage_error(StorageFacadeError::ClearCache("private detail".into()));
+
+        assert_eq!(stats.code(), QUERY_STORAGE_STATS_FAILED_CODE);
+        assert_eq!(clear.code(), CLEAR_STORAGE_CACHE_FAILED_CODE);
+        assert_eq!(stats.category(), EngineErrorCategory::Internal);
+        assert_eq!(clear.category(), EngineErrorCategory::Internal);
     }
 }

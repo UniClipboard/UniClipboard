@@ -19,7 +19,7 @@ const DAEMON_VERSION: &str = env!("CARGO_PKG_VERSION");
 pub struct DaemonRunLoopInput {
     pub run_mode: DaemonRunMode,
     pub daemon: DaemonApp,
-    pub app_facade: Arc<AppFacade>,
+    pub(crate) app_facade: Arc<AppFacade>,
     pub settings: Arc<dyn SettingsPort>,
     pub sync_engine_assembly: SyncEngineAssembly,
     pub receive_readiness: Arc<dyn EnsureReceiveReadyPort>,

@@ -19,7 +19,7 @@ use crate::daemon::workers::peer_keepalive::PeerKeepAliveWorker;
 /// daemon 应用实例装配输入。
 pub struct DaemonAppAssemblyInput {
     pub service_plan: DaemonServicePlan,
-    pub app_facade: Arc<AppFacade>,
+    pub(crate) app_facade: Arc<AppFacade>,
     pub storage_paths: AppPaths,
     pub host_event_bus: Arc<HostEventBus>,
     pub event_tx: broadcast::Sender<DaemonWsEvent>,

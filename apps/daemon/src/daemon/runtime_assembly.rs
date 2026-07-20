@@ -34,7 +34,7 @@ use crate::daemon::workers::inbound_clipboard_sync::InboundClipboardSyncWorker;
 
 /// daemon worker 装配所需输入。
 pub struct DaemonRuntimeAssemblyInput<'a> {
-    pub deps: &'a AppDeps,
+    pub(crate) deps: &'a AppDeps,
     /// daemon 运行模式。决定是否装配系统剪贴板出站监听——
     /// `ServerHeadless` 不接 OS 剪贴板，`clipboard_watcher` 产出 `None`。
     pub run_mode: DaemonRunMode,

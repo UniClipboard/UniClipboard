@@ -22,7 +22,7 @@ use uc_core::ports::MobileLanLifecyclePort;
 
 /// 构造 daemon-lifecycle 装配输入。
 pub struct DaemonLifecycleFacadesInput<'a> {
-    pub deps: &'a AppDeps,
+    pub(crate) deps: &'a AppDeps,
     pub storage_paths: &'a AppPaths,
     pub sync_engine_assembly: &'a SyncEngineAssembly,
     pub clipboard_sync: Arc<ClipboardSyncFacade>,

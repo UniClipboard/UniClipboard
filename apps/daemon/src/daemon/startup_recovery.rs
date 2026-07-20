@@ -71,7 +71,7 @@ fn is_attended(
 /// 启动恢复任务所需输入。
 pub struct StartupRecoveryInput {
     pub run_mode: DaemonRunMode,
-    pub app_facade: Arc<AppFacade>,
+    pub(crate) app_facade: Arc<AppFacade>,
     pub settings: Arc<dyn SettingsPort>,
     pub space_setup: Arc<SpaceSetupFacade>,
     pub receive_readiness: Arc<dyn EnsureReceiveReadyPort>,

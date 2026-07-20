@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use uc_engine::{
@@ -840,4 +841,87 @@ async fn production_engine_restarts_ten_times_with_the_same_network_identity() {
             .await
             .unwrap_or_else(|error| panic!("engine shutdown failed on cycle {cycle}: {error}"));
     }
+}
+
+#[tokio::test]
+async fn persisted_engine_text_and_image_do_not_leave_the_plaintext_probe_on_disk() {
+    let _guard = ENGINE_TEST_LOCK.lock().await;
+    let temp = tempfile::tempdir().unwrap();
+    let private = temp.path().join("private");
+    let cache = temp.path().join("cache");
+    let temporary = temp.path().join("temporary");
+    for directory in [&private, &cache, &temporary] {
+        std::fs::create_dir_all(directory).unwrap();
+    }
+
+    let probe = format!(
+        "uc-plaintext-probe-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    );
+    let probe_file = temp.path().join("probe.txt");
+    std::fs::write(&probe_file, &probe).unwrap();
+
+    let host = HostCapabilities::new(
+        HostDirectories::new(private.clone(), cache.clone(), temporary.clone()),
+        Box::new(MemoryHostSecureStorage::default()),
+        Box::new(StaticHostClipboard {
+            snapshot: HostClipboardSnapshot {
+                observed_at_ms: 0,
+                representations: Vec::new(),
+            },
+        }),
+        Box::new(EmptyHostFiles),
+    );
+    let (engine, _events) = Engine::start(EngineConfig::new("1.2.3"), host)
+        .await
+        .unwrap();
+    engine
+        .execute(uc_engine::Operation::CreateSpace(
+            uc_engine::CreateSpaceInput {
+                device_name: "Probe Device".into(),
+                passphrase: uc_engine::SecretString::new("correct horse"),
+                passphrase_confirmation: uc_engine::SecretString::new("correct horse"),
+            },
+        ))
+        .await
+        .unwrap();
+    engine
+        .execute(uc_engine::Operation::SendText(uc_engine::SendTextInput {
+            text: format!("private payload {probe}"),
+            target_devices: Vec::new(),
+        }))
+        .await
+        .unwrap();
+    engine
+        .execute(uc_engine::Operation::SendImage(uc_engine::SendImageInput {
+            bytes: probe.as_bytes().to_vec(),
+            mime_type: "image/png".into(),
+            target_devices: Vec::new(),
+        }))
+        .await
+        .unwrap();
+    engine
+        .shutdown(std::time::Duration::from_secs(15))
+        .await
+        .unwrap();
+
+    let scanner = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .join("scripts/security/scan-plaintext-probe.sh");
+    let output = std::process::Command::new("bash")
+        .arg(scanner)
+        .arg(&probe_file)
+        .args([&private, &cache, &temporary])
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    assert!(output.status.success(), "plaintext scan failed: {stderr}");
+    assert!(!stdout.contains(&probe));
+    assert!(!stderr.contains(&probe));
 }

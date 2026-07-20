@@ -76,6 +76,8 @@ HarmonyOS 已证明完整节点方向可行，但 Android 和 iOS 尚未跑过�
 
 **验证**：运行新增测试，预期十轮全部成功；测试不得启用绕过生产守卫的 `test-util` 行为来伪造结果。
 
+当前自动证据：`cargo test -p uc-engine --test host_adapter_contract production_engine_restarts_ten_times_with_the_same_network_identity -- --exact`。该测试使用生产 `Engine::start`，连续十轮创建或解锁后关闭，并核对安全存储中的网络身份不变。
+
 ### 4. 建立四平台最小真机实验
 
 每个平台的最小宿主只做：注入私有目录和系统安全存储、启动节点、创建或加入空间、发送和接收文本/图片/文件、暂停、恢复、关闭。不得加入产品 UI。
@@ -95,12 +97,14 @@ HarmonyOS 已证明完整节点方向可行，但 Android 和 iOS 尚未跑过�
 
 **验证**：探针脚本退出 0，并在测试报告中列出扫描过的目录与文件类型，不记录真实用户内容。
 
+扫描器与当前自动覆盖见 [`docs/development/plaintext-probe.md`](../docs/development/plaintext-probe.md)。桌面文本和图片已进入自动测试；文件、标签、预览、平台日志及三种移动真机目录仍未验收。
+
 ## 完成标准
 
 - [ ] 四平台构建使用相同网络、协议、加密与 blob 依赖。
 - [ ] 四平台均完成真实 P2P 配对和双向文本、图片、文件传输。
 - [ ] 移动暂停时可离线，恢复时以原身份重新成为节点。
-- [ ] 同一进程反复启停十次通过。
+- [x] 同一进程反复启停十次通过。
 - [ ] 明文探针扫描通过。
 - [ ] 没有依靠 LAN HTTP 完成任何验收项。
 

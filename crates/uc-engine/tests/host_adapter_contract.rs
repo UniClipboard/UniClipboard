@@ -776,3 +776,68 @@ async fn unlocking_a_locked_restart_recovers_keyword_search() {
         .await
         .unwrap();
 }
+
+#[tokio::test]
+async fn production_engine_restarts_ten_times_with_the_same_network_identity() {
+    let _guard = ENGINE_TEST_LOCK.lock().await;
+    let temp = tempfile::tempdir().unwrap();
+    let private = temp.path().join("private");
+    let cache = temp.path().join("cache");
+    let temporary = temp.path().join("temporary");
+    let secure_storage = MemoryHostSecureStorage::default();
+    let mut expected_identity = None;
+
+    for cycle in 0..10 {
+        let host = HostCapabilities::new(
+            HostDirectories::new(private.clone(), cache.clone(), temporary.clone()),
+            Box::new(secure_storage.clone()),
+            Box::new(StaticHostClipboard {
+                snapshot: HostClipboardSnapshot {
+                    observed_at_ms: cycle,
+                    representations: Vec::new(),
+                },
+            }),
+            Box::new(EmptyHostFiles),
+        );
+        let (engine, _events) = Engine::start(EngineConfig::new("1.2.3"), host)
+            .await
+            .unwrap_or_else(|error| panic!("engine start failed on cycle {cycle}: {error}"));
+
+        if cycle == 0 {
+            engine
+                .execute(uc_engine::Operation::CreateSpace(
+                    uc_engine::CreateSpaceInput {
+                        device_name: "Restart Device".into(),
+                        passphrase: uc_engine::SecretString::new("correct horse"),
+                        passphrase_confirmation: uc_engine::SecretString::new("correct horse"),
+                    },
+                ))
+                .await
+                .unwrap();
+        } else {
+            engine
+                .execute(uc_engine::Operation::UnlockSpace(
+                    uc_engine::UnlockSpaceInput {
+                        passphrase: uc_engine::SecretString::new("correct horse"),
+                    },
+                ))
+                .await
+                .unwrap();
+        }
+
+        let identity = secure_storage
+            .values()
+            .get(uc_infra::network::iroh::IDENTITY_STORE_KEY)
+            .cloned()
+            .expect("network identity must be persisted in secure storage");
+        match &expected_identity {
+            Some(expected) => assert_eq!(identity, *expected, "identity changed on cycle {cycle}"),
+            None => expected_identity = Some(identity),
+        }
+
+        engine
+            .shutdown(std::time::Duration::from_secs(15))
+            .await
+            .unwrap_or_else(|error| panic!("engine shutdown failed on cycle {cycle}: {error}"));
+    }
+}

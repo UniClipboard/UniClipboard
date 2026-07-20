@@ -22,7 +22,7 @@
 //! daemon 本机剪贴板捕获完全相同的出站逻辑 ——
 //!
 //! - **文本 / 小图**:inline 进 V3 envelope, 经 iroh 加密通道投递;
-//! - **大图**:超过 `OVERSIZED_REP_THRESHOLD_BYTES` 的 image rep 自动剥
+//! - **大图**:超过 `MAX_INLINE_OUTBOUND_REPRESENTATION_BYTES` 的 image rep 自动剥
 //!   成 `representation_index = Some(i)` 的 V3BlobRef, 避免撞 iroh wire
 //!   层 2 MiB payload 上限;
 //! - **文件**:`text/uri-list` rep 中的 `file://` URI 被 dispatcher 抽

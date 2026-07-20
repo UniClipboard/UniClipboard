@@ -87,6 +87,7 @@ pub use clipboard_outbound::{
     ClipboardOutboundDeps, ClipboardOutboundDispatcher, ClipboardOutboundError,
     ClipboardOutboundFacade, ClipboardOutboundInput, ClipboardOutboundOutcome,
     ClipboardOutboundPort, NotResendableReason, ResendEntryCommand, ResendEntryError, ResendReport,
+    MAX_INLINE_OUTBOUND_REPRESENTATION_BYTES,
 };
 pub use clipboard_restore::{
     ClipboardRestoreError, ClipboardRestoreFacade, ClipboardRestoreFacadeDeps,

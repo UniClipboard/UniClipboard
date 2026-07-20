@@ -12,7 +12,7 @@ use uc_application::facade::{
     QuerySetupStateError, RedeemPairingInvitationError, RedeemPairingInvitationInput,
     ResendEntryCommand, ResendEntryError, ResourceFacadeError, SearchCoordinator,
     SearchCoordinatorDeps, SearchFacadeError, SearchPageView, SearchQueryInput, UnlockSpaceError,
-    UnlockSpaceInput as AppUnlockSpaceInput,
+    UnlockSpaceInput as AppUnlockSpaceInput, MAX_INLINE_OUTBOUND_REPRESENTATION_BYTES,
 };
 use uc_application::facade::{
     ClipboardLiveIndexInput, ClipboardOutboundInput, ClipboardOutboundOutcome,
@@ -333,7 +333,9 @@ impl EngineRuntime for ProductionRuntime {
                 history_page_result(page, offset, limit)
             }
             Operation::SendText(input) => {
-                if input.text.is_empty() {
+                if input.text.is_empty()
+                    || input.text.len() > MAX_INLINE_OUTBOUND_REPRESENTATION_BYTES
+                {
                     return Err(send_invalid_input_error());
                 }
                 let snapshot = SystemClipboardSnapshot {
@@ -350,7 +352,10 @@ impl EngineRuntime for ProductionRuntime {
                 self.send_snapshot(snapshot, input.target_devices).await
             }
             Operation::SendImage(input) => {
-                if input.bytes.is_empty() || !input.mime_type.starts_with("image/") {
+                if input.bytes.is_empty()
+                    || input.bytes.len() > MAX_INLINE_OUTBOUND_REPRESENTATION_BYTES
+                    || !input.mime_type.starts_with("image/")
+                {
                     return Err(send_invalid_input_error());
                 }
                 let snapshot = SystemClipboardSnapshot {

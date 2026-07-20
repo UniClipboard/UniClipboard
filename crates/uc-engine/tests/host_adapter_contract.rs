@@ -512,6 +512,17 @@ async fn engine_start_builds_a_resumable_real_session() {
         empty_text.category(),
         uc_engine::EngineErrorCategory::InvalidInput
     );
+    let oversized_text = engine
+        .execute(uc_engine::Operation::SendText(uc_engine::SendTextInput {
+            text: "x".repeat(64 * 1024 + 1),
+            target_devices: Vec::new(),
+        }))
+        .await
+        .unwrap_err();
+    assert_eq!(
+        oversized_text.category(),
+        uc_engine::EngineErrorCategory::InvalidInput
+    );
     let sent = engine
         .execute(uc_engine::Operation::SendText(uc_engine::SendTextInput {
             text: "engine text dispatch".into(),
@@ -572,6 +583,18 @@ async fn engine_start_builds_a_resumable_real_session() {
         .unwrap_err();
     assert_eq!(
         empty_image.category(),
+        uc_engine::EngineErrorCategory::InvalidInput
+    );
+    let oversized_image = engine
+        .execute(uc_engine::Operation::SendImage(uc_engine::SendImageInput {
+            bytes: vec![0; 64 * 1024 + 1],
+            mime_type: "image/png".into(),
+            target_devices: Vec::new(),
+        }))
+        .await
+        .unwrap_err();
+    assert_eq!(
+        oversized_image.category(),
         uc_engine::EngineErrorCategory::InvalidInput
     );
     let sent_image = engine

@@ -867,9 +867,9 @@ fn manifest_line_path(original_text: &str) -> Option<PathBuf> {
 /// 64 KiB 仍给 `inline_threshold_bytes = 16 KB`（uc-infra `clipboard_storage_config`）
 /// 的纯文本 rep 留出 4× 缓冲：emoji / 小 icon 之类的 < 64 KB 图片继续 inline，
 /// 不为它们多一次 iroh-blobs round-trip。
-const OVERSIZED_REP_THRESHOLD_BYTES: usize = 64 * 1024;
+pub const MAX_INLINE_OUTBOUND_REPRESENTATION_BYTES: usize = 64 * 1024;
 
-/// 把 snapshot 中超过 `OVERSIZED_REP_THRESHOLD_BYTES` 的 image-类 rep 上传到
+/// 把 snapshot 中超过 `MAX_INLINE_OUTBOUND_REPRESENTATION_BYTES` 的 image-类 rep 上传到
 /// blob store，把它们的 `bytes` 字段就地清空（保留 `format_id` / `mime` / `id`），
 /// 返回携带 `representation_index` 的 V3BlobRef 列表。
 ///
@@ -895,7 +895,7 @@ pub(crate) async fn publish_oversized_inline_blob_refs(
         let Some(rep_bytes) = rep.inline_bytes() else {
             continue;
         };
-        if rep_bytes.len() <= OVERSIZED_REP_THRESHOLD_BYTES {
+        if rep_bytes.len() <= MAX_INLINE_OUTBOUND_REPRESENTATION_BYTES {
             continue;
         }
         let mime_str = rep.mime.as_ref().map(|m| m.as_str().to_string());

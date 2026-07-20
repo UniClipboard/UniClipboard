@@ -9,12 +9,16 @@ use tracing::{debug, info};
 use uc_application::facade::FactoryResetError;
 use uc_daemon_contract::api::dto::envelope::ApiEnvelope;
 use uc_daemon_contract::constants::{ws_event, ws_topic};
+use uc_engine::internal::session_recovery::{
+    execute_recover_session, RECOVER_SESSION_RECEIVE_UNAVAILABLE_CODE,
+};
 use uc_engine::internal::unlock::{
     execute_unlock_space, UNLOCK_SPACE_CORRUPTED_CODE, UNLOCK_SPACE_NOT_INITIALIZED_CODE,
     UNLOCK_SPACE_SETUP_NOT_COMPLETED_CODE, UNLOCK_SPACE_UNAUTHORIZED_CODE,
 };
 use uc_engine::{
-    EngineError, EngineErrorCategory, OperationResult, SecretString, UnlockSpaceInput,
+    EngineError, EngineErrorCategory, OperationResult, RecoverSessionInput, SecretString,
+    UnlockSpaceInput,
 };
 use utoipa;
 
@@ -145,6 +149,33 @@ fn map_unlock_engine_err(err: EngineError) -> ApiError {
     api
 }
 
+fn map_recover_engine_err(err: EngineError) -> ApiError {
+    let (variant, api) = if err.code() == RECOVER_SESSION_RECEIVE_UNAVAILABLE_CODE {
+        (
+            "receive_unavailable",
+            ApiError::service_unavailable("receive recovery failed after session recovery"),
+        )
+    } else {
+        (
+            "recovery_failed",
+            ApiError {
+                status: StatusCode::INTERNAL_SERVER_ERROR,
+                code: "INTERNAL".to_string(),
+                message: "auto-unlock failed".to_string(),
+                details: None,
+            },
+        )
+    };
+    log_facade_failure(
+        "space_setup",
+        "recover_session",
+        variant,
+        api.status,
+        &api.message,
+    );
+    api
+}
+
 /// GET /encryption/state
 /// Returns the current encryption state and session readiness.
 #[utoipa::path(
@@ -191,33 +222,34 @@ async fn unlock_handler(
     State(state): State<DaemonApiState>,
 ) -> Result<Json<ApiEnvelope<EncryptionActionResponse>>, ApiError> {
     let app = state.app_facade_or_error()?;
+    let result = execute_recover_session(
+        app.as_ref(),
+        state.receive_readiness.as_ref(),
+        RecoverSessionInput {
+            allow_secure_storage_unlock: true,
+        },
+    )
+    .await
+    .map_err(map_recover_engine_err)?;
 
-    // Route to `space_setup.try_resume_session()` rather than the bare
-    // `encryption.unlock()`. The thin variant only resumes the session;
-    // the SpaceSetupFacade variant also runs the switch-space migration
-    // recovery hook (`resume_pending`) so a pending HandshakeDone replay
-    // gets advanced the moment the session unlocks. Without that, a
-    // device that crashed mid-`switch_space` would silently land here,
-    // get a new master_key, leave the main table inline_data encrypted
-    // with the previous key, and surface as "no history" in the UI —
-    // exactly the wedged state we just dug out of on fedora dev.
-    match app.try_resume_session().await {
-        Ok(true) => {
+    match result {
+        OperationResult::SessionRecovered { unlocked: true, .. } => {
             info!("encryption session auto-unlocked via keyring");
-            on_session_ready(&state).await?;
+            broadcast_session_ready(&state);
             Ok(Json(ApiEnvelope::now(EncryptionActionResponse {
                 success: true,
             })))
         }
-        Ok(false) => {
+        OperationResult::SessionRecovered {
+            unlocked: false, ..
+        } => {
             info!("encryption not initialized, skipping auto-unlock");
             Ok(Json(ApiEnvelope::now(EncryptionActionResponse {
                 success: false,
             })))
         }
-        Err(e) => Err(map_encryption_internal(
-            "encryption_unlock",
-            format!("auto-unlock failed: {e}"),
+        _ => Err(ApiError::internal(
+            "engine returned an unexpected recovery result",
         )),
     }
 }
@@ -270,16 +302,6 @@ async fn unlock_with_passphrase_handler(
     broadcast_session_ready(&state);
 
     Ok(Json(ApiEnvelope::now(UnlockSpaceResponse { space_id })))
-}
-
-/// Complete the remaining host work after a silent keyring resume.
-async fn on_session_ready(state: &DaemonApiState) -> Result<(), ApiError> {
-    state.ensure_receive_ready().await?;
-    broadcast_session_ready(state);
-    if let Ok(app) = state.app_facade_or_error() {
-        app.search.on_session_ready().await;
-    }
-    Ok(())
 }
 
 fn broadcast_session_ready(state: &DaemonApiState) {
@@ -478,6 +500,30 @@ mod tests {
             assert_eq!(api.status, status);
             assert_eq!(api.code, code);
         }
+    }
+
+    #[test]
+    fn map_engine_recovery_errors_preserves_http_statuses() {
+        use uc_engine::internal::session_recovery::{
+            RECOVER_SESSION_RECEIVE_UNAVAILABLE_CODE, RECOVER_SESSION_UNAVAILABLE_CODE,
+        };
+
+        let internal = map_recover_engine_err(EngineError::new(
+            RECOVER_SESSION_UNAVAILABLE_CODE,
+            EngineErrorCategory::Unavailable,
+            true,
+        ));
+        assert_eq!(internal.status, StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(internal.code, "INTERNAL");
+        assert_eq!(internal.message, "auto-unlock failed");
+
+        let receive = map_recover_engine_err(EngineError::new(
+            RECOVER_SESSION_RECEIVE_UNAVAILABLE_CODE,
+            EngineErrorCategory::Unavailable,
+            true,
+        ));
+        assert_eq!(receive.status, StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(receive.code, "runtime_unavailable");
     }
 
     /// Factory-reset variants keep the `FactoryResetCommandError` semantic codes

@@ -9,7 +9,8 @@ use uc_application::receive_reconciliation::EnsureReceiveReadyPort;
 
 use crate::{EngineError, EngineErrorCategory, OperationResult, RecoverSessionInput};
 
-const RECOVER_SESSION_UNAVAILABLE_CODE: u32 = 1214;
+pub const RECOVER_SESSION_UNAVAILABLE_CODE: u32 = 1214;
+pub const RECOVER_SESSION_RECEIVE_UNAVAILABLE_CODE: u32 = 1217;
 
 pub async fn execute_recover_session(
     facade: &AppFacade,
@@ -52,7 +53,7 @@ pub async fn execute_recover_session(
         .map_err(|error| {
             error!(error = %error, "receive recovery failed after space access");
             EngineError::new(
-                RECOVER_SESSION_UNAVAILABLE_CODE,
+                RECOVER_SESSION_RECEIVE_UNAVAILABLE_CODE,
                 EngineErrorCategory::Unavailable,
                 true,
             )
@@ -71,4 +72,17 @@ fn recover_session_error(context: &'static str, error: impl std::fmt::Display) -
         EngineErrorCategory::Unavailable,
         true,
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn receive_recovery_failure_has_a_distinct_stable_code() {
+        assert_ne!(
+            RECOVER_SESSION_UNAVAILABLE_CODE,
+            RECOVER_SESSION_RECEIVE_UNAVAILABLE_CODE
+        );
+    }
 }

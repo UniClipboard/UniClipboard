@@ -139,7 +139,7 @@ fn daemon_passphrase_unlock_delegates_business_orchestration_to_engine() {
     let unlock_handler = source
         .split("async fn unlock_with_passphrase_handler")
         .nth(1)
-        .and_then(|source| source.split("async fn on_session_ready").next())
+        .and_then(|source| source.split("fn broadcast_session_ready").next())
         .expect("passphrase unlock handler must remain discoverable");
 
     assert!(
@@ -152,6 +152,34 @@ fn daemon_passphrase_unlock_delegates_business_orchestration_to_engine() {
         unlock_handler.contains("execute_unlock_space(")
             && unlock_handler.contains("broadcast_session_ready("),
         "daemon passphrase unlock must invoke the engine and only broadcast success"
+    );
+}
+
+#[test]
+fn daemon_silent_unlock_delegates_business_orchestration_to_engine() {
+    let handler = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../crates/uc-webserver/src/api/encryption.rs");
+    let source = std::fs::read_to_string(&handler)
+        .unwrap_or_else(|error| panic!("failed to read {}: {error}", handler.display()));
+    let unlock_handler = source
+        .split("async fn unlock_handler(")
+        .nth(1)
+        .and_then(|source| {
+            source
+                .split("/// POST /encryption/unlock-with-passphrase")
+                .next()
+        })
+        .expect("silent unlock handler must remain discoverable");
+
+    assert!(
+        !unlock_handler.contains("try_resume_session(")
+            && !unlock_handler.contains("on_session_ready("),
+        "daemon silent unlock must not own or repeat session recovery"
+    );
+    assert!(
+        unlock_handler.contains("execute_recover_session(")
+            && unlock_handler.contains("broadcast_session_ready("),
+        "daemon silent unlock must invoke the engine and only broadcast success"
     );
 }
 

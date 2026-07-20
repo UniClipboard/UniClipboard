@@ -9,6 +9,11 @@ use tracing::{debug, info};
 use uc_application::facade::FactoryResetError;
 use uc_daemon_contract::api::dto::envelope::ApiEnvelope;
 use uc_daemon_contract::constants::{ws_event, ws_topic};
+use uc_engine::internal::encryption::{
+    execute_lock_encryption, execute_query_encryption_state, execute_verify_secure_storage_access,
+    LOCK_ENCRYPTION_FAILED_CODE, QUERY_ENCRYPTION_STATE_FAILED_CODE,
+    VERIFY_SECURE_STORAGE_ACCESS_FAILED_CODE,
+};
 use uc_engine::internal::session_recovery::{
     execute_recover_session, RECOVER_SESSION_RECEIVE_UNAVAILABLE_CODE,
 };
@@ -30,14 +35,19 @@ use crate::api::dto::error::{log_facade_failure, ApiError};
 use crate::api::server::DaemonApiState;
 use crate::api::types::DaemonWsEvent;
 
-/// 把 encryption facade 的 anyhow 错误映射为 500 + 根因日志。
-///
-/// 与 `RosterError` / `SearchFacadeError` 不同，encryption facade 当前向 webserver
-/// 暴露 `anyhow::Error` 而非 enum，所以 `error_variant` 退化为 `"call_failed"`，
-/// 分桶由 `op` 维度承担（state / unlock / lock / verify_keychain_access）。
-fn map_encryption_internal(op: &'static str, message: String) -> ApiError {
-    let api = ApiError::internal(message);
-    log_facade_failure("encryption", op, "call_failed", api.status, &api.message);
+fn map_encryption_engine_error(
+    op: &'static str,
+    expected_code: u32,
+    public_message: &'static str,
+    error: EngineError,
+) -> ApiError {
+    let variant = if error.code() == expected_code {
+        "operation_failed"
+    } else {
+        "unexpected_engine_error"
+    };
+    let api = ApiError::internal(public_message);
+    log_facade_failure("encryption", op, variant, api.status, &api.message);
     api
 }
 
@@ -192,11 +202,21 @@ async fn get_encryption_state_handler(
     State(state): State<DaemonApiState>,
 ) -> Result<Json<ApiEnvelope<EncryptionStateResponse>>, ApiError> {
     let app = state.app_facade_or_error()?;
-    let view = app
-        .encryption
-        .state()
+    let result = execute_query_encryption_state(app.as_ref())
         .await
-        .map_err(|e| map_encryption_internal("encryption_state", e.to_string()))?;
+        .map_err(|error| {
+            map_encryption_engine_error(
+                "encryption_state",
+                QUERY_ENCRYPTION_STATE_FAILED_CODE,
+                "failed to get encryption state",
+                error,
+            )
+        })?;
+    let OperationResult::EncryptionState(view) = result else {
+        return Err(ApiError::internal(
+            "engine returned an unexpected encryption-state result",
+        ));
+    };
 
     Ok(Json(ApiEnvelope::now(EncryptionStateResponse {
         initialized: view.initialized,
@@ -335,10 +355,21 @@ async fn lock_handler(
     State(state): State<DaemonApiState>,
 ) -> Result<Json<ApiEnvelope<EncryptionActionResponse>>, ApiError> {
     let app = state.app_facade_or_error()?;
-    app.encryption.lock().await.map_err(|e| {
-        map_encryption_internal("encryption_lock", format!("failed to lock encryption: {e}"))
-    })?;
-    state.receive_readiness.close_receive_gate();
+    let result = execute_lock_encryption(app.as_ref(), state.receive_readiness.as_ref())
+        .await
+        .map_err(|error| {
+            map_encryption_engine_error(
+                "encryption_lock",
+                LOCK_ENCRYPTION_FAILED_CODE,
+                "failed to lock encryption",
+                error,
+            )
+        })?;
+    if !matches!(result, OperationResult::EncryptionLocked) {
+        return Err(ApiError::internal(
+            "engine returned an unexpected encryption-lock result",
+        ));
+    }
 
     info!("encryption session cleared (locked)");
     Ok(Json(ApiEnvelope::now(EncryptionActionResponse {
@@ -398,12 +429,21 @@ async fn verify_keychain_access_handler(
     State(state): State<DaemonApiState>,
 ) -> Result<Json<ApiEnvelope<KeychainAccessResponse>>, ApiError> {
     let app = state.app_facade_or_error()?;
-    let granted = app.encryption.verify_keychain_access().await.map_err(|e| {
-        map_encryption_internal(
-            "verify_keychain_access",
-            format!("keychain access check failed: {e}"),
-        )
-    })?;
+    let result = execute_verify_secure_storage_access(app.as_ref())
+        .await
+        .map_err(|error| {
+            map_encryption_engine_error(
+                "verify_keychain_access",
+                VERIFY_SECURE_STORAGE_ACCESS_FAILED_CODE,
+                "secure storage access check failed",
+                error,
+            )
+        })?;
+    let OperationResult::SecureStorageAccess { granted } = result else {
+        return Err(ApiError::internal(
+            "engine returned an unexpected secure-storage result",
+        ));
+    };
 
     Ok(Json(ApiEnvelope::now(KeychainAccessResponse { granted })))
 }
@@ -411,6 +451,41 @@ async fn verify_keychain_access_handler(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn map_encryption_operation_errors_keeps_stable_public_messages() {
+        let cases = [
+            (
+                QUERY_ENCRYPTION_STATE_FAILED_CODE,
+                "encryption_state",
+                "failed to get encryption state",
+            ),
+            (
+                LOCK_ENCRYPTION_FAILED_CODE,
+                "encryption_lock",
+                "failed to lock encryption",
+            ),
+            (
+                VERIFY_SECURE_STORAGE_ACCESS_FAILED_CODE,
+                "verify_keychain_access",
+                "secure storage access check failed",
+            ),
+        ];
+
+        for (code, op, public_message) in cases {
+            let api = map_encryption_engine_error(
+                op,
+                code,
+                public_message,
+                EngineError::new(code, EngineErrorCategory::Internal, false),
+            );
+
+            assert_eq!(api.status, StatusCode::INTERNAL_SERVER_ERROR);
+            assert_eq!(api.code, "internal_error");
+            assert_eq!(api.message, public_message);
+            assert!(api.details.is_none());
+        }
+    }
 
     /// The frontend `UnlockSpaceCommandError` union switches on the SCREAMING_SNAKE
     /// `code` (read off `DaemonApiError.details.code` after `callSdk` normalization),

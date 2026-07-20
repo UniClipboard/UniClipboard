@@ -201,7 +201,13 @@ export function searchResultToDisplayItem(r: SearchResultDto): DisplayClipboardI
           ? withLinkMetadata(
               {
                 display_text: r.textPreview,
-                has_detail: false,
+                // Search results carry only the first 200 characters. Load the
+                // authoritative payload when the indexed full count proves the
+                // preview is incomplete, unless the payload is unrecoverable.
+                has_detail:
+                  r.payloadState !== 'Lost' &&
+                  r.charCount !== null &&
+                  r.charCount > Array.from(r.textPreview).length,
                 size: 0,
                 char_count: r.charCount ?? undefined,
               },

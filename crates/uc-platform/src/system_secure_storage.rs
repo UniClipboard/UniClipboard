@@ -58,17 +58,6 @@ fn classify_platform_failure(msg: &str) -> SecureStorageError {
 ///
 /// The function appends the `"dev"` suffix when `UNICLIPBOARD_ENV` is set to `"development"` or `"dev"` (case-insensitive).
 /// It also appends a profile suffix taken from `UC_PROFILE` if non-empty, or from `crate::default_profile()` if `UC_PROFILE` is unset or empty.
-///
-/// # Examples
-///
-/// ```
-/// // ensure a deterministic environment for the example
-/// std::env::set_var("UNICLIPBOARD_ENV", "development");
-/// std::env::set_var("UC_PROFILE", "staging");
-/// assert_eq!(resolve_service_name(), format!("{}-dev-staging", SERVICE_NAME));
-/// std::env::remove_var("UNICLIPBOARD_ENV");
-/// std::env::remove_var("UC_PROFILE");
-/// ```
 fn resolve_service_name() -> String {
     let mut suffixes: Vec<String> = Vec::new();
 

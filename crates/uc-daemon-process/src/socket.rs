@@ -29,6 +29,8 @@ const PROFILE_HTTP_PORT_START: u16 = 42719;
 /// # Examples
 ///
 /// ```
+/// use uc_daemon_process::socket::resolve_daemon_http_addr;
+///
 /// let addr = resolve_daemon_http_addr();
 /// assert_eq!(addr.ip().to_string(), "127.0.0.1");
 /// ```
@@ -45,6 +47,8 @@ pub fn resolve_daemon_http_addr() -> SocketAddr {
 /// # Examples
 ///
 /// ```
+/// use uc_daemon_process::socket::try_resolve_daemon_http_addr;
+///
 /// let addr = try_resolve_daemon_http_addr().unwrap();
 /// assert_eq!(addr.ip().to_string(), "127.0.0.1");
 /// ```
@@ -63,15 +67,6 @@ pub fn try_resolve_daemon_http_addr() -> Result<SocketAddr> {
 /// - If `UC_PROFILE` equals (case-insensitive) `"a"`, the profile A port is returned.
 /// - If `UC_PROFILE` equals (case-insensitive) `"b"`, the profile B port is returned.
 /// - For any other non-empty profile value, a deterministic port is chosen from the reserved hashed profile range based on a stable hash of the profile string.
-///
-/// # Examples
-///
-/// ```
-/// std::env::remove_var("UC_PROFILE");
-/// let port = resolve_daemon_http_port().unwrap();
-/// assert_eq!(port, DEFAULT_HTTP_PORT);
-/// ```
-///
 /// # Returns
 ///
 /// The resolved port number: `DEFAULT_HTTP_PORT` for default/empty/unreadable `UC_PROFILE`, `PROFILE_A_HTTP_PORT` for `"a"`, `PROFILE_B_HTTP_PORT` for `"b"`, or a deterministic port within the reserved profile range for other profile values.
@@ -92,13 +87,6 @@ fn resolve_daemon_http_port() -> Result<u16> {
 /// `u16::MAX`. The function computes a stable hash of `profile`, maps it into the slot count of
 /// the reserved range, and returns `PROFILE_HTTP_PORT_START + offset`. If the computed offset
 /// would overflow the reserved range the function returns an error.
-///
-/// # Examples
-///
-/// ```
-/// let port = resolve_hashed_profile_http_port("team-alpha").unwrap();
-/// assert!(port >= PROFILE_HTTP_PORT_START && port <= u16::MAX);
-/// ```
 fn resolve_hashed_profile_http_port(profile: &str) -> Result<u16> {
     let slot_count = u32::from(u16::MAX) - u32::from(PROFILE_HTTP_PORT_START) + 1;
     let hash = stable_profile_hash(profile);
@@ -115,18 +103,6 @@ fn resolve_hashed_profile_http_port(profile: &str) -> Result<u16> {
 ///
 /// The returned value is deterministic for a given input and intended for stable
 /// derivation of offsets (for example, mapping a profile name into a port slot).
-///
-/// # Examples
-///
-/// ```
-/// let h1 = stable_profile_hash("team-alpha");
-/// let h2 = stable_profile_hash("team-alpha");
-/// assert_eq!(h1, h2);
-///
-/// let h_default = stable_profile_hash("");
-/// let h_other = stable_profile_hash("team-beta");
-/// assert_ne!(h_default, h_other);
-/// ```
 fn stable_profile_hash(profile: &str) -> u64 {
     const FNV_OFFSET: u64 = 0xcbf29ce484222325;
     const FNV_PRIME: u64 = 0x100000001b3;
@@ -147,6 +123,8 @@ fn stable_profile_hash(profile: &str) -> u64 {
 /// # Examples
 ///
 /// ```
+/// use uc_daemon_process::socket::resolve_daemon_token_path;
+///
 /// let path = resolve_daemon_token_path().unwrap();
 /// println!("daemon token path: {}", path.display());
 /// ```

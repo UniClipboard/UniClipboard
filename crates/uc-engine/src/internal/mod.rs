@@ -4,6 +4,7 @@
 pub mod blob_tasks;
 pub mod clipboard;
 pub(crate) mod clipboard_runtime;
+pub mod create_space;
 pub mod deps;
 pub mod facade;
 pub mod file_transfer;

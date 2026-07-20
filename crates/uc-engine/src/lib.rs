@@ -150,7 +150,7 @@ impl fmt::Debug for Operation {
 
 #[derive(Clone, PartialEq, Eq)]
 pub struct CreateSpaceInput {
-    pub device_name: String,
+    pub device_name: Option<String>,
     pub passphrase: SecretString,
     pub passphrase_confirmation: SecretString,
 }
@@ -451,6 +451,8 @@ pub struct TransferProgress {
 pub enum OperationResult {
     SpaceCreated {
         space_id: String,
+        self_device_id: String,
+        identity_fingerprint: String,
     },
     SpaceJoined {
         space_id: String,

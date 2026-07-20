@@ -131,6 +131,29 @@ fn daemon_invitation_handler_delegates_business_orchestration_to_engine() {
 }
 
 #[test]
+fn daemon_create_space_handler_delegates_business_orchestration_to_engine() {
+    let handler =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../crates/uc-webserver/src/api/v2/setup.rs");
+    let source = std::fs::read_to_string(&handler)
+        .unwrap_or_else(|error| panic!("failed to read {}: {error}", handler.display()));
+    let initialize_handler = source
+        .split("pub(crate) async fn initialize(")
+        .nth(1)
+        .and_then(|source| source.split("// POST /v2/setup/issue-invitation").next())
+        .expect("create-space handler must remain discoverable");
+
+    assert!(
+        !initialize_handler.contains(".initialize_space(")
+            && !initialize_handler.contains("InitializeSpaceError"),
+        "daemon create-space handler must not own create-space business orchestration"
+    );
+    assert!(
+        initialize_handler.contains("execute_create_space("),
+        "daemon create-space handler must invoke the uc-engine create-space implementation"
+    );
+}
+
+#[test]
 fn daemon_passphrase_unlock_delegates_business_orchestration_to_engine() {
     let handler = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../crates/uc-webserver/src/api/encryption.rs");

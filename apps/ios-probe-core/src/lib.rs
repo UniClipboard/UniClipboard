@@ -377,7 +377,7 @@ async fn execute_command(state: &mut ProbeState, command: ProbeCommand) -> Value
             execute_operation(
                 state,
                 Operation::CreateSpace(CreateSpaceInput {
-                    device_name,
+                    device_name: Some(device_name),
                     passphrase: SecretString::new(passphrase.clone()),
                     passphrase_confirmation: SecretString::new(passphrase),
                 }),
@@ -535,7 +535,7 @@ async fn execute_operation(state: &ProbeState, operation: Operation) -> Value {
 
 fn operation_response(result: OperationResult) -> Value {
     match result {
-        OperationResult::SpaceCreated { space_id } => {
+        OperationResult::SpaceCreated { space_id, .. } => {
             json!({"ok": true, "kind": "space_created", "space_id": space_id})
         }
         OperationResult::SpaceJoined { space_id } => {

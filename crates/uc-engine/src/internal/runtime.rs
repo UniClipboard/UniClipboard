@@ -8,8 +8,7 @@ use tokio_util::sync::CancellationToken;
 use tracing::{error, warn};
 use uc_application::facade::space_setup::{SwitchSpaceError, SwitchSpaceInput};
 use uc_application::facade::{
-    AppFacade, ClipboardHistoryError, InMemoryLifecycleStatus, InitializeSpaceError,
-    InitializeSpaceInput as AppInitializeSpaceInput, QuerySetupStateError,
+    AppFacade, ClipboardHistoryError, InMemoryLifecycleStatus, QuerySetupStateError,
     RedeemPairingInvitationError, RedeemPairingInvitationInput, ResendEntryCommand,
     ResendEntryError, ResourceFacadeError, SearchCoordinator, SearchCoordinatorDeps,
     SearchFacadeError, SearchPageView, SearchQueryInput, MAX_INLINE_OUTBOUND_REPRESENTATION_BYTES,
@@ -33,6 +32,7 @@ use crate::internal::blob_tasks::{spawn_blob_processing_tasks, BlobProcessingPor
 use crate::internal::clipboard_runtime::{
     build_clipboard_runtime, spawn_clipboard_runtime_tasks, ClipboardRuntime,
 };
+use crate::internal::create_space::execute_create_space;
 use crate::internal::deps::WiredDependencies;
 use crate::internal::facade::{
     build_app_facade_from_deps, AppFacadeAssemblyOptions, ClipboardRestoreAssembly,
@@ -56,9 +56,6 @@ use crate::{
 const START_FAILED_CODE: u32 = 1101;
 const OPERATION_FAILED_CODE: u32 = 1102;
 const OPERATION_UNAVAILABLE_CODE: u32 = 1103;
-const CREATE_SPACE_INVALID_INPUT_CODE: u32 = 1201;
-const CREATE_SPACE_CONFLICT_CODE: u32 = 1202;
-const CREATE_SPACE_FAILED_CODE: u32 = 1203;
 const JOIN_SPACE_INVALID_INPUT_CODE: u32 = 1231;
 const JOIN_SPACE_INVALID_STATE_CODE: u32 = 1232;
 const JOIN_SPACE_UNAUTHORIZED_CODE: u32 = 1233;
@@ -234,22 +231,10 @@ impl EngineRuntime for ProductionRuntime {
     ) -> Result<OperationResult, EngineError> {
         match operation {
             Operation::CreateSpace(input) => {
-                let result = self
-                    .current_facade()
-                    .await?
-                    .initialize_space(AppInitializeSpaceInput {
-                        passphrase: input.passphrase.expose().to_owned(),
-                        passphrase_confirm: input.passphrase_confirmation.expose().to_owned(),
-                        device_name: Some(input.device_name),
-                    })
-                    .await
-                    .map_err(map_create_space_error)?;
-                ensure_receive_ready_after_space_access(
-                    Ok(OperationResult::SpaceCreated {
-                        space_id: result.space_id.as_ref().to_string(),
-                    }),
+                execute_create_space(
+                    self.current_facade().await?.as_ref(),
                     self.file_transfer_lifecycle.as_ref(),
-                    CREATE_SPACE_FAILED_CODE,
+                    input,
                 )
                 .await
             }
@@ -899,28 +884,6 @@ fn operation_unavailable_error() -> EngineError {
         EngineErrorCategory::Unavailable,
         false,
     )
-}
-
-fn map_create_space_error(error: InitializeSpaceError) -> EngineError {
-    match error {
-        InitializeSpaceError::PassphraseMismatch | InitializeSpaceError::DeviceNameRequired => {
-            EngineError::new(
-                CREATE_SPACE_INVALID_INPUT_CODE,
-                EngineErrorCategory::InvalidInput,
-                false,
-            )
-        }
-        InitializeSpaceError::AlreadyInitialized | InitializeSpaceError::AlreadySetup => {
-            EngineError::new(
-                CREATE_SPACE_CONFLICT_CODE,
-                EngineErrorCategory::Conflict,
-                false,
-            )
-        }
-        InitializeSpaceError::StorageFailed(_) | InitializeSpaceError::Internal(_) => {
-            operation_error_with_code(CREATE_SPACE_FAILED_CODE, "create space", error)
-        }
-    }
 }
 
 fn map_query_setup_state_error(context: &'static str, error: QuerySetupStateError) -> EngineError {

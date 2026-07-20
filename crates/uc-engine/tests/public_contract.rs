@@ -24,7 +24,7 @@ fn every_public_operation_has_a_stable_kind() {
     let operations = [
         (
             Operation::CreateSpace(CreateSpaceInput {
-                device_name: "desktop".into(),
+                device_name: Some("desktop".into()),
                 passphrase: SecretString::new("secret"),
                 passphrase_confirmation: SecretString::new("secret"),
             }),
@@ -128,6 +128,32 @@ fn setup_input_debug_output_redacts_user_and_pairing_data() {
     assert!(!debug.contains("Private Phone"));
     assert!(!debug.contains("never-show-passphrase"));
     assert!(debug.contains("[REDACTED]"));
+}
+
+#[test]
+fn create_space_contract_supports_saved_device_name_and_returns_identity() {
+    let input = CreateSpaceInput {
+        device_name: None,
+        passphrase: SecretString::new("never-show-passphrase"),
+        passphrase_confirmation: SecretString::new("never-show-passphrase"),
+    };
+    assert!(input.device_name.is_none());
+
+    let result = OperationResult::SpaceCreated {
+        space_id: "space-1".into(),
+        self_device_id: "device-1".into(),
+        identity_fingerprint: "fingerprint-1".into(),
+    };
+    assert!(matches!(
+        result,
+        OperationResult::SpaceCreated {
+            ref space_id,
+            ref self_device_id,
+            ref identity_fingerprint,
+        } if space_id == "space-1"
+            && self_device_id == "device-1"
+            && identity_fingerprint == "fingerprint-1"
+    ));
 }
 
 #[test]

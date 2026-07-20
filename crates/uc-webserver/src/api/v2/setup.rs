@@ -13,11 +13,11 @@ use axum::{Json, Router};
 use uc_application::facade::space_setup::{
     QueryMigrationProgressError, SwitchSpaceError, SwitchSpaceInput,
 };
+use uc_application::facade::RedeemPairingInvitationInput;
 use uc_application::facade::{
-    CancelInvitationError, InitializeSpaceError, QuerySetupStateError,
-    RedeemPairingInvitationError, ResetSpaceError, SpaceSetupFacade,
+    CancelInvitationError, QuerySetupStateError, RedeemPairingInvitationError, ResetSpaceError,
+    SpaceSetupFacade,
 };
-use uc_application::facade::{InitializeSpaceInput, RedeemPairingInvitationInput};
 use uc_daemon_contract::api::dto::envelope::ApiEnvelope;
 use uc_daemon_contract::api::dto::v2::setup::{
     InitializeSpaceRequest, InitializeSpaceResponse, IssueInvitationResponse,
@@ -25,8 +25,14 @@ use uc_daemon_contract::api::dto::v2::setup::{
     SwitchSpaceRequest, SwitchSpaceResponse,
 };
 use uc_daemon_contract::constants::http_route_v2;
+use uc_engine::internal::create_space::{
+    execute_create_space, CREATE_SPACE_ALREADY_INITIALIZED_CODE, CREATE_SPACE_ALREADY_SETUP_CODE,
+    CREATE_SPACE_DEVICE_NAME_REQUIRED_CODE, CREATE_SPACE_PASSPHRASE_MISMATCH_CODE,
+};
 use uc_engine::internal::invitation::execute_issue_invitation;
-use uc_engine::{EngineError, EngineErrorCategory, OperationResult};
+use uc_engine::{
+    CreateSpaceInput, EngineError, EngineErrorCategory, OperationResult, SecretString,
+};
 
 use crate::api::dto::error::{log_facade_failure, ApiError};
 use crate::api::projection::IntoApiDto;
@@ -81,37 +87,58 @@ pub(crate) async fn initialize(
     State(state): State<DaemonApiState>,
     Json(req): Json<InitializeSpaceRequest>,
 ) -> Result<Json<ApiEnvelope<InitializeSpaceResponse>>, ApiError> {
-    let facade = require_facade(&state)?;
-    let input = InitializeSpaceInput {
-        passphrase: req.passphrase,
-        passphrase_confirm: req.passphrase_confirm,
-        device_name: req.device_name,
+    let app = state.app_facade_or_error()?;
+    let result = execute_create_space(
+        app.as_ref(),
+        state.receive_readiness.as_ref(),
+        CreateSpaceInput {
+            passphrase: SecretString::new(req.passphrase),
+            passphrase_confirmation: SecretString::new(req.passphrase_confirm),
+            device_name: req.device_name,
+        },
+    )
+    .await
+    .map_err(map_create_engine_err)?;
+    let OperationResult::SpaceCreated {
+        space_id,
+        self_device_id,
+        identity_fingerprint,
+    } = result
+    else {
+        return Err(ApiError::internal(
+            "engine returned an unexpected create-space result",
+        ));
     };
-    let out = facade.initialize_space(input).await.map_err(map_init_err)?;
-    Ok(Json(ApiEnvelope::now(out.into_api_dto())))
+    Ok(Json(ApiEnvelope::now(InitializeSpaceResponse {
+        space_id,
+        self_device_id,
+        fingerprint: identity_fingerprint,
+    })))
 }
 
-fn map_init_err(err: InitializeSpaceError) -> ApiError {
-    use InitializeSpaceError as E;
-    let (variant, api): (&'static str, ApiError) = match err {
-        E::PassphraseMismatch => (
+fn map_create_engine_err(err: EngineError) -> ApiError {
+    let (variant, api): (&'static str, ApiError) = match err.code() {
+        CREATE_SPACE_PASSPHRASE_MISMATCH_CODE => (
             "passphrase_mismatch",
             ApiError::bad_request("passphrase and confirmation do not match"),
         ),
-        E::DeviceNameRequired => (
+        CREATE_SPACE_DEVICE_NAME_REQUIRED_CODE => (
             "device_name_required",
             ApiError::bad_request("device name is required"),
         ),
-        E::AlreadyInitialized => (
+        CREATE_SPACE_ALREADY_INITIALIZED_CODE => (
             "already_initialized",
             ApiError::conflict("space is already initialised"),
         ),
-        E::AlreadySetup => (
+        CREATE_SPACE_ALREADY_SETUP_CODE => (
             "already_setup",
             ApiError::conflict("setup has already been completed on this device"),
         ),
-        E::StorageFailed(msg) => ("storage_failed", ApiError::internal(msg)),
-        E::Internal(msg) => ("internal", ApiError::internal(msg)),
+        _ if err.category() == EngineErrorCategory::Unavailable => (
+            "service_unavailable",
+            ApiError::service_unavailable("create-space service unavailable"),
+        ),
+        _ => ("internal", ApiError::internal("failed to create space")),
     };
     log_facade_failure(
         "space_setup",
@@ -579,17 +606,40 @@ mod tests {
     use super::*;
 
     #[test]
-    fn map_init_err_branches() {
-        let err = map_init_err(InitializeSpaceError::PassphraseMismatch);
+    fn map_create_engine_err_branches() {
+        let err = map_create_engine_err(EngineError::new(
+            CREATE_SPACE_PASSPHRASE_MISMATCH_CODE,
+            EngineErrorCategory::InvalidInput,
+            false,
+        ));
         assert_eq!(err.status.as_u16(), 400);
-        let err = map_init_err(InitializeSpaceError::AlreadyInitialized);
+        let err = map_create_engine_err(EngineError::new(
+            CREATE_SPACE_ALREADY_INITIALIZED_CODE,
+            EngineErrorCategory::Conflict,
+            false,
+        ));
         assert_eq!(err.status.as_u16(), 409);
-        let err = map_init_err(InitializeSpaceError::AlreadySetup);
+        let err = map_create_engine_err(EngineError::new(
+            CREATE_SPACE_ALREADY_SETUP_CODE,
+            EngineErrorCategory::Conflict,
+            false,
+        ));
         assert_eq!(err.status.as_u16(), 409);
-        let err = map_init_err(InitializeSpaceError::DeviceNameRequired);
+        let err = map_create_engine_err(EngineError::new(
+            CREATE_SPACE_DEVICE_NAME_REQUIRED_CODE,
+            EngineErrorCategory::InvalidInput,
+            false,
+        ));
         assert_eq!(err.status.as_u16(), 400);
-        let err = map_init_err(InitializeSpaceError::StorageFailed("disk full".into()));
+        let err =
+            map_create_engine_err(EngineError::new(1299, EngineErrorCategory::Internal, false));
         assert_eq!(err.status.as_u16(), 500);
+        let err = map_create_engine_err(EngineError::new(
+            1299,
+            EngineErrorCategory::Unavailable,
+            true,
+        ));
+        assert_eq!(err.status.as_u16(), 503);
     }
 
     #[test]

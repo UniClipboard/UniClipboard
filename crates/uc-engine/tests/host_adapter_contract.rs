@@ -473,7 +473,7 @@ async fn engine_start_builds_a_resumable_real_session() {
     let mismatch = engine
         .execute(uc_engine::Operation::CreateSpace(
             uc_engine::CreateSpaceInput {
-                device_name: "Test Device".into(),
+                device_name: Some("Test Device".into()),
                 passphrase: uc_engine::SecretString::new("correct horse"),
                 passphrase_confirmation: uc_engine::SecretString::new("different phrase"),
             },
@@ -488,7 +488,7 @@ async fn engine_start_builds_a_resumable_real_session() {
     let created = engine
         .execute(uc_engine::Operation::CreateSpace(
             uc_engine::CreateSpaceInput {
-                device_name: "Test Device".into(),
+                device_name: Some("Test Device".into()),
                 passphrase: uc_engine::SecretString::new("correct horse"),
                 passphrase_confirmation: uc_engine::SecretString::new("correct horse"),
             },
@@ -497,7 +497,13 @@ async fn engine_start_builds_a_resumable_real_session() {
         .unwrap();
     assert!(matches!(
         created,
-        uc_engine::OperationResult::SpaceCreated { ref space_id } if !space_id.is_empty()
+        uc_engine::OperationResult::SpaceCreated {
+            ref space_id,
+            ref self_device_id,
+            ref identity_fingerprint,
+        } if !space_id.is_empty()
+            && !self_device_id.is_empty()
+            && !identity_fingerprint.is_empty()
     ));
     let invitation = engine
         .execute(uc_engine::Operation::IssueInvitation)
@@ -777,7 +783,7 @@ async fn engine_send_files_imports_opaque_content_and_exports_after_resume() {
     engine
         .execute(uc_engine::Operation::CreateSpace(
             uc_engine::CreateSpaceInput {
-                device_name: "File Device".into(),
+                device_name: Some("File Device".into()),
                 passphrase: uc_engine::SecretString::new("correct horse"),
                 passphrase_confirmation: uc_engine::SecretString::new("correct horse"),
             },
@@ -912,7 +918,7 @@ async fn recovering_a_locked_restart_from_secure_storage_restores_keyword_search
     engine
         .execute(uc_engine::Operation::CreateSpace(
             uc_engine::CreateSpaceInput {
-                device_name: "Search Device".into(),
+                device_name: Some("Search Device".into()),
                 passphrase: uc_engine::SecretString::new("correct horse"),
                 passphrase_confirmation: uc_engine::SecretString::new("correct horse"),
             },
@@ -1036,7 +1042,7 @@ async fn production_engine_restarts_ten_times_with_the_same_network_identity() {
             engine
                 .execute(uc_engine::Operation::CreateSpace(
                     uc_engine::CreateSpaceInput {
-                        device_name: "Restart Device".into(),
+                        device_name: Some("Restart Device".into()),
                         passphrase: uc_engine::SecretString::new("correct horse"),
                         passphrase_confirmation: uc_engine::SecretString::new("correct horse"),
                     },
@@ -1114,7 +1120,7 @@ async fn persisted_engine_text_image_preview_and_logs_do_not_leave_plaintext_on_
     engine
         .execute(uc_engine::Operation::CreateSpace(
             uc_engine::CreateSpaceInput {
-                device_name: "Probe Device".into(),
+                device_name: Some("Probe Device".into()),
                 passphrase: uc_engine::SecretString::new("correct horse"),
                 passphrase_confirmation: uc_engine::SecretString::new("correct horse"),
             },

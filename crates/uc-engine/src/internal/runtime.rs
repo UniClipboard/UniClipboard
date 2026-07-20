@@ -43,6 +43,7 @@ use crate::internal::host_adapters::{
     wire_host_capabilities_with_emitter, EngineHostEventEmitter, HostWiring,
 };
 use crate::internal::lifecycle::build_daemon_lifecycle;
+use crate::internal::session_recovery::execute_recover_session;
 use crate::internal::sync_engine::SyncEngineAssembly;
 use crate::{
     DeviceSummary, EngineConfig, EngineError, EngineErrorCategory, EntrySummary, HostCapabilities,
@@ -58,7 +59,6 @@ const CREATE_SPACE_FAILED_CODE: u32 = 1203;
 const UNLOCK_SPACE_INVALID_STATE_CODE: u32 = 1211;
 const UNLOCK_SPACE_UNAUTHORIZED_CODE: u32 = 1212;
 const UNLOCK_SPACE_FAILED_CODE: u32 = 1213;
-const RECOVER_SESSION_UNAVAILABLE_CODE: u32 = 1214;
 const INVITATION_INVALID_STATE_CODE: u32 = 1221;
 const INVITATION_INVALID_INPUT_CODE: u32 = 1222;
 const INVITATION_UNAVAILABLE_CODE: u32 = 1223;
@@ -274,43 +274,11 @@ impl EngineRuntime for ProductionRuntime {
                 .await
             }
             Operation::RecoverSession(input) => {
-                if !input.allow_secure_storage_unlock {
-                    return Ok(OperationResult::SessionRecovered {
-                        unlocked: false,
-                        resumed: false,
-                    });
-                }
-
                 let facade = self.current_facade().await?;
-                let unlocked =
-                    facade.encryption.unlock().await.map_err(|error| {
-                        recover_session_error("unlock encryption session", error)
-                    })?;
-                if !unlocked {
-                    return Ok(OperationResult::SessionRecovered {
-                        unlocked: false,
-                        resumed: false,
-                    });
-                }
-
-                let resumed = facade
-                    .try_resume_session()
-                    .await
-                    .map_err(|error| recover_session_error("resume space session", error))?;
-                if resumed {
-                    if let Err(error) = facade.refresh_presence().await {
-                        warn!(error = %error, "presence refresh failed after session recovery");
-                    }
-                }
-                facade.search.on_session_ready().await;
-
-                ensure_receive_ready_after_space_access(
-                    Ok(OperationResult::SessionRecovered {
-                        unlocked: true,
-                        resumed,
-                    }),
+                execute_recover_session(
+                    facade.as_ref(),
                     self.file_transfer_lifecycle.as_ref(),
-                    RECOVER_SESSION_UNAVAILABLE_CODE,
+                    input,
                 )
                 .await
             }
@@ -949,15 +917,6 @@ fn operation_unavailable_error() -> EngineError {
         OPERATION_UNAVAILABLE_CODE,
         EngineErrorCategory::Unavailable,
         false,
-    )
-}
-
-fn recover_session_error(context: &'static str, error: impl std::fmt::Display) -> EngineError {
-    error!(context, error = %error, "engine session recovery failed");
-    EngineError::new(
-        RECOVER_SESSION_UNAVAILABLE_CODE,
-        EngineErrorCategory::Unavailable,
-        true,
     )
 }
 

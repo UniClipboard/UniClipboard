@@ -59,16 +59,6 @@ impl DaemonRunMode {
         !matches!(self, Self::ServerHeadless)
     }
 
-    /// 解锁成功后是否由 daemon 自己触发延迟服务。
-    ///
-    /// 两个剩余模式都没有同进程 GUI 介入，自己解锁后直接放行(恒 `true`)。
-    pub fn auto_triggers_deferred_services(self) -> bool {
-        matches!(
-            self,
-            Self::Standalone | Self::ServerHeadless | Self::Oneshot
-        )
-    }
-
     /// daemon 是否在自己的 main loop 里监听 OS 信号（SIGTERM/SIGINT/Ctrl-C）。
     ///
     /// 两个剩余模式都是独立进程,自己处理 OS 信号(恒 `true`)。
@@ -153,7 +143,6 @@ mod tests {
     fn standalone_listens_to_signals_and_drives_itself() {
         let mode = DaemonRunMode::Standalone;
         assert!(mode.listens_to_os_signals());
-        assert!(mode.auto_triggers_deferred_services());
         assert!(!mode.waits_for_gui_ready());
     }
 
@@ -179,7 +168,6 @@ mod tests {
         // 通道兜底。唯一区别是不接系统剪贴板。
         let mode = DaemonRunMode::ServerHeadless;
         assert!(mode.listens_to_os_signals());
-        assert!(mode.auto_triggers_deferred_services());
         assert!(!mode.waits_for_gui_ready());
         assert_eq!(mode.process_mode(), DaemonProcessMode::Standalone);
     }
@@ -210,12 +198,6 @@ mod tests {
             oneshot.runs_system_clipboard(),
             "oneshot runs the OS clipboard exactly like standalone"
         );
-
-        assert_eq!(
-            oneshot.auto_triggers_deferred_services(),
-            standalone.auto_triggers_deferred_services()
-        );
-        assert!(oneshot.auto_triggers_deferred_services());
 
         assert_eq!(
             oneshot.listens_to_os_signals(),

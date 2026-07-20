@@ -10,7 +10,7 @@ use tokio::sync::broadcast;
 use tokio::sync::RwLock;
 use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, info, warn};
 use uc_application::facade::{AppFacade, AppPaths, HostEventBus, HostEventEmitterPort};
 use uc_application::receive_reconciliation::EnsureReceiveReadyPort;
 use uc_core::ports::MobileLanLifecyclePort;
@@ -26,64 +26,6 @@ use uc_webserver::api::server::{run_http_server, DaemonApiState};
 use uc_webserver::api::setup_events::spawn_pairing_completion_forwarder;
 use uc_webserver::api::types::{DaemonResidency, DaemonWsEvent};
 use uc_webserver::security::{cleanup_rate_limiter_task, SecurityState};
-
-/// Recover encryption session from disk/keyring if encryption has been initialized.
-///
-/// # Parameters
-///
-/// - `app_facade`: Application facade — entry point for all encryption ops
-/// - `auto_unlock_enabled`: Whether to attempt automatic unlock via keyring
-///
-/// # Returns
-///
-/// - `Ok(true)`: Session was successfully unlocked
-/// - `Ok(false)`: Session was NOT unlocked — either encryption is uninitialized,
-///   or `auto_unlock_enabled` is false while encryption is initialized
-/// - `Err`: Unlock failed (daemon must not start)
-///
-/// `pub` so the daemon background unlock task can call it BEFORE
-/// constructing `DaemonApp`, using the result to decide whether to start
-/// `PeerDiscoveryWorker` immediately or defer.
-pub async fn recover_encryption_session(
-    app_facade: &AppFacade,
-    auto_unlock_enabled: bool,
-) -> anyhow::Result<bool> {
-    // Phase C: setup completion truth source is `EncryptionStateView.initialized`,
-    // which is backed by `SetupStatus.has_completed`.
-    let setup_completed = app_facade
-        .encryption
-        .state()
-        .await
-        .map(|state| state.initialized)
-        .map_err(|e| anyhow::anyhow!("failed to load encryption state: {}", e))?;
-
-    if !auto_unlock_enabled {
-        if setup_completed {
-            info!("Auto-unlock disabled via settings — skipping encryption session recovery");
-        } else {
-            info!("Setup not completed, skipping session recovery");
-        }
-        return Ok(false);
-    }
-
-    match app_facade.encryption.unlock().await {
-        Ok(true) => {
-            info!("Encryption session recovered from disk");
-            Ok(true)
-        }
-        Ok(false) => {
-            info!("Encryption not initialized, skipping session recovery");
-            Ok(false)
-        }
-        Err(e) => {
-            error!(error = %e, "Encryption session recovery failed");
-            anyhow::bail!(
-                "Cannot start daemon: encryption session recovery failed: {}",
-                e
-            )
-        }
-    }
-}
 
 /// Main daemon application.
 ///
@@ -287,8 +229,8 @@ impl DaemonApp {
 
     /// Run the daemon: start the HTTP API server and services, wait for shutdown, cleanup.
     ///
-    /// NOTE: `recover_encryption_session` is called in the entrypoint background
-    /// task BEFORE constructing `DaemonApp`.
+    /// Session recovery runs through the engine-owned recovery operation in the
+    /// entrypoint background task before `DaemonApp` starts serving requests.
     pub async fn run(mut self) -> anyhow::Result<()> {
         info!("uniclipboard-daemon starting");
 

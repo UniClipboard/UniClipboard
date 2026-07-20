@@ -83,6 +83,35 @@ fn daemon_process_runtime_does_not_expose_app_facade() {
     );
 }
 
+#[test]
+fn daemon_startup_recovery_delegates_business_orchestration_to_engine() {
+    let recovery = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../apps/daemon/src/daemon/startup_recovery.rs");
+    let source = std::fs::read_to_string(&recovery)
+        .unwrap_or_else(|error| panic!("failed to read {}: {error}", recovery.display()));
+    let forbidden = [
+        "recover_encryption_session",
+        "SpaceSetupFacade",
+        "try_resume_session",
+        "refresh_presence",
+        "input.receive_readiness.ensure_receive_ready",
+    ];
+    let violations = forbidden
+        .into_iter()
+        .filter(|token| source.contains(token))
+        .collect::<Vec<_>>();
+
+    assert!(
+        violations.is_empty(),
+        "daemon startup recovery must leave business recovery to uc-engine; found: {}",
+        violations.join(", ")
+    );
+    assert!(
+        source.contains("execute_recover_session("),
+        "daemon startup recovery must invoke the uc-engine recovery implementation"
+    );
+}
+
 fn rust_sources(root: &Path) -> Vec<PathBuf> {
     let mut pending = vec![root.to_path_buf()];
     let mut sources = Vec::new();

@@ -210,7 +210,6 @@ pub(super) async fn start_runtime(
             run_mode,
             app_facade: app_facade_for_daemon,
             settings: settings_port,
-            space_setup: input.sync_engine_assembly.facade.clone(),
             receive_readiness,
         });
         run_daemon_main(input).await

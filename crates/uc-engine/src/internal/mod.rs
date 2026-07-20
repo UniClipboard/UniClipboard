@@ -20,6 +20,7 @@ pub mod reconcile;
 pub mod reset_space;
 pub(crate) mod runtime;
 pub mod session_recovery;
+pub mod setup_state;
 pub mod sync_engine;
 pub mod unlock;
 pub mod wire;

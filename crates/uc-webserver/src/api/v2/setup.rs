@@ -11,10 +11,10 @@ use axum::routing::{get, post};
 use axum::{Json, Router};
 
 use uc_application::facade::space_setup::QueryMigrationProgressError;
-use uc_application::facade::{QuerySetupStateError, SpaceSetupFacade};
+use uc_application::facade::SpaceSetupFacade;
 use uc_daemon_contract::api::dto::envelope::ApiEnvelope;
 use uc_daemon_contract::api::dto::v2::setup::{
-    InitializeSpaceRequest, InitializeSpaceResponse, IssueInvitationResponse,
+    CurrentInvitation, InitializeSpaceRequest, InitializeSpaceResponse, IssueInvitationResponse,
     MigrationProgressResponse, RedeemRequest, RedeemResponse, SetupStateResponse,
     SwitchSpaceRequest, SwitchSpaceResponse,
 };
@@ -38,6 +38,7 @@ use uc_engine::internal::join_space::{
     JOIN_SPACE_SPONSOR_UNREACHABLE_CODE, JOIN_SPACE_STORAGE_CODE, JOIN_SPACE_TIMEOUT_CODE,
 };
 use uc_engine::internal::reset_space::execute_reset_space;
+use uc_engine::internal::setup_state::execute_query_setup_state;
 use uc_engine::{
     CreateSpaceInput, EngineError, EngineErrorCategory, JoinSpaceInput, OperationResult,
     SecretString,
@@ -460,19 +461,35 @@ fn map_reset_engine_err(err: EngineError) -> ApiError {
 pub(crate) async fn get_state(
     State(state): State<DaemonApiState>,
 ) -> Result<Json<ApiEnvelope<SetupStateResponse>>, ApiError> {
-    let facade = require_facade(&state)?;
-    let view = facade
-        .query_setup_state()
+    let app = state.app_facade_or_error()?;
+    let result = execute_query_setup_state(app.as_ref())
         .await
-        .map_err(map_query_setup_state_err)?;
-    Ok(Json(ApiEnvelope::now(view.into_api_dto())))
+        .map_err(map_query_setup_state_engine_err)?;
+    let OperationResult::SetupState(view) = result else {
+        return Err(ApiError::internal(
+            "engine returned an unexpected setup-state result",
+        ));
+    };
+    Ok(Json(ApiEnvelope::now(SetupStateResponse {
+        has_completed: view.has_completed,
+        current_invitation: view.current_invitation.map(|invitation| CurrentInvitation {
+            code: invitation.invitation_code,
+            expires_at_ms: invitation.expires_at_ms,
+        }),
+        device_name: view.device_name,
+    })))
 }
 
-fn map_query_setup_state_err(err: QuerySetupStateError) -> ApiError {
-    use QuerySetupStateError as E;
-    let (variant, api): (&'static str, ApiError) = match err {
-        E::StorageFailed(msg) => ("storage_failed", ApiError::internal(msg)),
-        E::Internal(msg) => ("internal", ApiError::internal(msg)),
+fn map_query_setup_state_engine_err(err: EngineError) -> ApiError {
+    let (variant, api): (&'static str, ApiError) = match err.category() {
+        EngineErrorCategory::Unavailable => (
+            "service_unavailable",
+            ApiError::service_unavailable("setup-state service unavailable"),
+        ),
+        _ => (
+            "internal",
+            ApiError::internal("failed to query setup state"),
+        ),
     };
     log_facade_failure(
         "space_setup",
@@ -750,6 +767,24 @@ mod tests {
             map_reset_engine_err(EngineError::new(1312, EngineErrorCategory::Internal, false));
         assert_eq!(internal.status.as_u16(), 500);
         assert!(!internal.message.contains("1312"));
+    }
+
+    #[test]
+    fn map_setup_state_engine_err_preserves_unavailable_and_redacts_internal_failure() {
+        let unavailable = map_query_setup_state_engine_err(EngineError::new(
+            1321,
+            EngineErrorCategory::Unavailable,
+            true,
+        ));
+        assert_eq!(unavailable.status.as_u16(), 503);
+
+        let internal = map_query_setup_state_engine_err(EngineError::new(
+            1322,
+            EngineErrorCategory::Internal,
+            false,
+        ));
+        assert_eq!(internal.status.as_u16(), 500);
+        assert!(!internal.message.contains("1322"));
     }
 
     #[test]

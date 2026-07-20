@@ -3,7 +3,7 @@ use uc_engine::{
     EngineState, EntrySummary, ExportEntryInput, HostFileHandle, JoinSpaceInput, Operation,
     OperationKind, OperationResult, QueryHistoryInput, RecoverSessionInput, RefreshReason,
     ResendEntryInput, SecretString, SendFilesInput, SendImageInput, SendTextInput,
-    UnlockSpaceInput,
+    SetupInvitationSummary, SetupStateSummary, UnlockSpaceInput,
 };
 
 #[test]
@@ -53,6 +53,7 @@ fn every_public_operation_has_a_stable_kind() {
         (Operation::IssueInvitation, OperationKind::IssueInvitation),
         (Operation::CancelInvitation, OperationKind::CancelInvitation),
         (Operation::ResetSpace, OperationKind::ResetSpace),
+        (Operation::QuerySetupState, OperationKind::QuerySetupState),
         (Operation::ListDevices, OperationKind::ListDevices),
         (
             Operation::SendText(SendTextInput {
@@ -116,6 +117,23 @@ fn cancel_invitation_has_a_stable_terminal_result() {
 #[test]
 fn reset_space_has_a_stable_terminal_result() {
     assert_eq!(OperationResult::SpaceReset, OperationResult::SpaceReset);
+}
+
+#[test]
+fn setup_state_result_preserves_invitation_and_redacts_user_content() {
+    let result = OperationResult::SetupState(SetupStateSummary {
+        has_completed: true,
+        current_invitation: Some(SetupInvitationSummary {
+            invitation_code: "NEVER-SHOW".into(),
+            expires_at_ms: 1234,
+        }),
+        device_name: Some("Private Device".into()),
+    });
+    let debug = format!("{result:?}");
+
+    assert!(!debug.contains("NEVER-SHOW"));
+    assert!(!debug.contains("Private Device"));
+    assert!(debug.contains("setup_state"));
 }
 
 #[test]

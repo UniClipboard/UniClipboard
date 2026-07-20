@@ -77,6 +77,7 @@ pub enum OperationKind {
     IssueInvitation,
     CancelInvitation,
     ResetSpace,
+    QuerySetupState,
     ListDevices,
     SendText,
     SendImage,
@@ -96,6 +97,7 @@ impl fmt::Display for OperationKind {
             Self::IssueInvitation => "issue_invitation",
             Self::CancelInvitation => "cancel_invitation",
             Self::ResetSpace => "reset_space",
+            Self::QuerySetupState => "query_setup_state",
             Self::ListDevices => "list_devices",
             Self::SendText => "send_text",
             Self::SendImage => "send_image",
@@ -117,6 +119,7 @@ pub enum Operation {
     IssueInvitation,
     CancelInvitation,
     ResetSpace,
+    QuerySetupState,
     ListDevices,
     SendText(SendTextInput),
     SendImage(SendImageInput),
@@ -136,6 +139,7 @@ impl Operation {
             Self::IssueInvitation => OperationKind::IssueInvitation,
             Self::CancelInvitation => OperationKind::CancelInvitation,
             Self::ResetSpace => OperationKind::ResetSpace,
+            Self::QuerySetupState => OperationKind::QuerySetupState,
             Self::ListDevices => OperationKind::ListDevices,
             Self::SendText(_) => OperationKind::SendText,
             Self::SendImage(_) => OperationKind::SendImage,
@@ -483,6 +487,7 @@ pub enum OperationResult {
     },
     InvitationCancelled,
     SpaceReset,
+    SetupState(SetupStateSummary),
     Devices(Vec<DeviceSummary>),
     EntrySent {
         entry_id: String,
@@ -511,6 +516,7 @@ impl fmt::Debug for OperationResult {
             Self::InvitationIssued { .. } => debug.field("kind", &"invitation_issued"),
             Self::InvitationCancelled => debug.field("kind", &"invitation_cancelled"),
             Self::SpaceReset => debug.field("kind", &"space_reset"),
+            Self::SetupState(state) => debug.field("kind", &"setup_state").field("state", state),
             Self::Devices(devices) => debug
                 .field("kind", &"devices")
                 .field("device_count", &devices.len()),
@@ -526,6 +532,40 @@ impl fmt::Debug for OperationResult {
             Self::EntryResent { .. } => debug.field("kind", &"entry_resent"),
         };
         debug.finish()
+    }
+}
+
+#[derive(Clone, PartialEq, Eq)]
+pub struct SetupInvitationSummary {
+    pub invitation_code: String,
+    pub expires_at_ms: i64,
+}
+
+impl fmt::Debug for SetupInvitationSummary {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("SetupInvitationSummary")
+            .field("invitation_code", &"[REDACTED]")
+            .field("expires_at_ms", &self.expires_at_ms)
+            .finish()
+    }
+}
+
+#[derive(Clone, PartialEq, Eq)]
+pub struct SetupStateSummary {
+    pub has_completed: bool,
+    pub current_invitation: Option<SetupInvitationSummary>,
+    pub device_name: Option<String>,
+}
+
+impl fmt::Debug for SetupStateSummary {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("SetupStateSummary")
+            .field("has_completed", &self.has_completed)
+            .field("has_current_invitation", &self.current_invitation.is_some())
+            .field("has_device_name", &self.device_name.is_some())
+            .finish()
     }
 }
 

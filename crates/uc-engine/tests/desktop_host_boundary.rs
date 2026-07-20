@@ -246,6 +246,29 @@ fn daemon_reset_space_handler_delegates_business_orchestration_to_engine() {
 }
 
 #[test]
+fn daemon_setup_state_handler_delegates_business_orchestration_to_engine() {
+    let handler =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../crates/uc-webserver/src/api/v2/setup.rs");
+    let source = std::fs::read_to_string(&handler)
+        .unwrap_or_else(|error| panic!("failed to read {}: {error}", handler.display()));
+    let state_handler = source
+        .split("pub(crate) async fn get_state(")
+        .nth(1)
+        .and_then(|source| source.split("// POST /v2/setup/switch-space").next())
+        .expect("setup-state handler must remain discoverable");
+
+    assert!(
+        !state_handler.contains(".query_setup_state(")
+            && !state_handler.contains("QuerySetupStateError"),
+        "daemon setup-state handler must not own setup-state business orchestration"
+    );
+    assert!(
+        state_handler.contains("execute_query_setup_state("),
+        "daemon setup-state handler must invoke the uc-engine implementation"
+    );
+}
+
+#[test]
 fn daemon_passphrase_unlock_delegates_business_orchestration_to_engine() {
     let handler = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../crates/uc-webserver/src/api/encryption.rs");

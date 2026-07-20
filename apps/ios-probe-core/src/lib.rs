@@ -561,6 +561,13 @@ fn operation_response(result: OperationResult) -> Value {
             json!({"ok": true, "kind": "invitation_cancelled"})
         }
         OperationResult::SpaceReset => json!({"ok": true, "kind": "space_reset"}),
+        OperationResult::SetupState(state) => json!({
+            "ok": true,
+            "kind": "setup_state",
+            "has_completed": state.has_completed,
+            "has_current_invitation": state.current_invitation.is_some(),
+            "has_device_name": state.device_name.is_some(),
+        }),
         OperationResult::Devices(devices) => json!({
             "ok": true,
             "kind": "devices",

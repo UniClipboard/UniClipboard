@@ -44,6 +44,7 @@ use crate::internal::join_space::{execute_join_space, JoinSpaceMode};
 use crate::internal::lifecycle::build_daemon_lifecycle;
 use crate::internal::reset_space::execute_reset_space;
 use crate::internal::session_recovery::execute_recover_session;
+use crate::internal::setup_state::execute_query_setup_state;
 use crate::internal::sync_engine::SyncEngineAssembly;
 use crate::internal::unlock::execute_unlock_space;
 use crate::{
@@ -263,6 +264,9 @@ impl EngineRuntime for ProductionRuntime {
             }
             Operation::ResetSpace => {
                 execute_reset_space(self.current_facade().await?.as_ref()).await
+            }
+            Operation::QuerySetupState => {
+                execute_query_setup_state(self.current_facade().await?.as_ref()).await
             }
             Operation::ListDevices => {
                 let entries = self

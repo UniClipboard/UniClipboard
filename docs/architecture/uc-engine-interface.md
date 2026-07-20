@@ -54,6 +54,9 @@ Running|Quiescing|Quiesced|Suspended -> ShuttingDown -> Stopped
 | `QueryStorageStats` | 查询数据库、密钥库、缓存和日志占用大小，不返回本机目录 |
 | `ClearStorageCache` | 清理核心缓存并返回实际释放的字节数 |
 | `QueryLocalDevice` | 返回本机设备编号和按设置解析后的显示名 |
+| `QueryEncryptionState` | 查询当前空间是否已初始化、加密会话是否可用 |
+| `LockEncryption` | 清除当前加密会话并关闭接收入口 |
+| `VerifySecureStorageAccess` | 检查宿主安全存储是否可在当前环境中访问 |
 | `ListDevices` | 返回设备编号、显示名和在线状态 |
 | `SendText` | 写入加密历史、更新搜索并发送不超过 64 KiB 的文本 |
 | `SendImage` | 写入加密历史、更新搜索并发送不超过 64 KiB 的图片 |
@@ -69,6 +72,8 @@ Running|Quiescing|Quiesced|Suspended -> ShuttingDown -> Stopped
 `QueryStorageStats` 和 `ClearStorageCache` 由核心执行。宿主只能看到分类后的字节数和实际释放量，不能取得数据库、密钥库、缓存或日志的本机路径。
 
 `QueryLocalDevice` 的显示名由核心统一读取并规范化；设置缺失、读取失败或名称为空时使用稳定默认名称。调试输出不得包含显示名。
+
+`QueryEncryptionState` 只返回初始化和会话可用状态。`LockEncryption` 成功后必须同时关闭接收入口，避免锁定后继续写入加密业务数据。`VerifySecureStorageAccess` 使用跨平台安全存储语义，宿主接口可按平台显示为 Keychain、Keystore 或对应系统名称。
 
 空目标设备列表表示向所有符合条件的可信设备发送；非空列表只会缩小目标范围，不能绕过信任、在线状态和发送设置。
 

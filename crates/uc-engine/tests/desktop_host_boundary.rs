@@ -437,6 +437,21 @@ fn daemon_mobile_sync_http_depends_on_the_mobile_sync_capability() {
     );
 }
 
+#[test]
+fn daemon_storage_handlers_delegate_storage_ownership_to_engine() {
+    let handler_path =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../crates/uc-webserver/src/api/storage.rs");
+    let handler = std::fs::read_to_string(&handler_path)
+        .unwrap_or_else(|error| panic!("failed to read {}: {error}", handler_path.display()));
+
+    assert!(
+        !handler.contains(".storage\n")
+            && handler.contains("execute_query_storage_stats(")
+            && handler.contains("execute_clear_storage_cache("),
+        "daemon storage handlers must leave storage ownership to uc-engine"
+    );
+}
+
 fn rust_sources(root: &Path) -> Vec<PathBuf> {
     let mut pending = vec![root.to_path_buf()];
     let mut sources = Vec::new();

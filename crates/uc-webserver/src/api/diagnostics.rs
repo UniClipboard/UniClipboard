@@ -36,9 +36,8 @@ pub fn router() -> Router<DaemonApiState> {
 pub async fn get_debug_status_handler(
     State(state): State<DaemonApiState>,
 ) -> Result<Json<ApiEnvelope<DebugStatusDto>>, ApiError> {
-    let app = state.app_facade_or_error()?;
-    let status = app
-        .diagnostics
+    let diagnostics = state.diagnostics;
+    let status = diagnostics
         .debug_status()
         .await
         .map_err(|err| diagnostics_error_to_api("get_debug_status", err))?;
@@ -65,9 +64,8 @@ pub async fn update_debug_mode_handler(
     State(state): State<DaemonApiState>,
     Json(payload): Json<UpdateDebugModeRequestDto>,
 ) -> Result<Json<ApiEnvelope<UpdateDebugModeResultDto>>, ApiError> {
-    let app = state.app_facade_or_error()?;
-    let result = app
-        .diagnostics
+    let diagnostics = state.diagnostics;
+    let result = diagnostics
         .set_debug_mode(payload.enabled)
         .await
         .map_err(|err| diagnostics_error_to_api("update_debug_mode", err))?;
@@ -98,9 +96,8 @@ pub async fn export_logs_handler(
     State(state): State<DaemonApiState>,
     Json(payload): Json<LogExportRequestDto>,
 ) -> Result<Json<ApiEnvelope<LogExportResultDto>>, ApiError> {
-    let app = state.app_facade_or_error()?;
-    let result = app
-        .diagnostics
+    let diagnostics = state.diagnostics;
+    let result = diagnostics
         .export_logs(payload.since_hours)
         .await
         .map_err(|err| diagnostics_error_to_api("export_logs", err))?;

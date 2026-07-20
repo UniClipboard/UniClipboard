@@ -370,6 +370,19 @@ fn daemon_upgrade_paths_depend_on_the_desktop_upgrade_capability() {
     );
 }
 
+#[test]
+fn daemon_diagnostics_paths_depend_on_the_desktop_diagnostics_capability() {
+    let handler_path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../crates/uc-webserver/src/api/diagnostics.rs");
+    let handler = std::fs::read_to_string(&handler_path)
+        .unwrap_or_else(|error| panic!("failed to read {}: {error}", handler_path.display()));
+
+    assert!(
+        !handler.contains("app_facade_or_error()") && handler.contains("state.diagnostics"),
+        "daemon diagnostics HTTP handlers must use the desktop diagnostics capability directly"
+    );
+}
+
 fn rust_sources(root: &Path) -> Vec<PathBuf> {
     let mut pending = vec![root.to_path_buf()];
     let mut sources = Vec::new();

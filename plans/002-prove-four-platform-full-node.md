@@ -60,6 +60,8 @@ HarmonyOS 已证明完整节点方向可行，但 Android 和 iOS 尚未跑过�
 
 **验证**：在一个无父仓库、无预初始化子模块的临时检出中运行 `cargo metadata --locked --format-version 1`，预期退出 0。
 
+当前证据：从提交 `1c48d7e37` 使用 `git archive` 生成独立临时检出，未初始化任何子模块，`cargo metadata --locked --format-version 1` 退出 0。iOS 与 Android 依赖树均解析到 `iroh 1.0.0-rc.1` 和 `iroh-blobs` 固定提交 `b33af91e8a4bd189cc0f954fc6584feb5ffd1823`。
+
 ### 2. 修复移动目标的源码平台假设
 
 - 把 no-replace 文件发布实现按真实系统能力划分；Android、iOS 不得调用 Linux 私有 errno 符号。

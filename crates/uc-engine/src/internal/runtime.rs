@@ -18,6 +18,7 @@ use uc_application::facade::{
 use uc_application::facade::{
     ClipboardLiveIndexInput, ClipboardOutboundInput, ClipboardOutboundOutcome,
 };
+use uc_application::receive_reconciliation::EnsureReceiveReadyPort;
 use uc_core::ids::{DeviceId, FormatId, RepresentationId};
 use uc_core::ports::ReachabilityState;
 use uc_core::TaskRegistry;
@@ -246,9 +247,14 @@ impl EngineRuntime for ProductionRuntime {
                     })
                     .await
                     .map_err(map_create_space_error)?;
-                Ok(OperationResult::SpaceCreated {
-                    space_id: result.space_id.as_ref().to_string(),
-                })
+                ensure_receive_ready_after_space_access(
+                    Ok(OperationResult::SpaceCreated {
+                        space_id: result.space_id.as_ref().to_string(),
+                    }),
+                    self.file_transfer_lifecycle.as_ref(),
+                    CREATE_SPACE_FAILED_CODE,
+                )
+                .await
             }
             Operation::UnlockSpace(input) => {
                 let facade = self.current_facade().await?;
@@ -259,7 +265,12 @@ impl EngineRuntime for ProductionRuntime {
                     .await
                     .map_err(map_unlock_space_error)?;
                 facade.search.on_session_ready().await;
-                Ok(OperationResult::SpaceUnlocked)
+                ensure_receive_ready_after_space_access(
+                    Ok(OperationResult::SpaceUnlocked),
+                    self.file_transfer_lifecycle.as_ref(),
+                    UNLOCK_SPACE_FAILED_CODE,
+                )
+                .await
             }
             Operation::JoinSpace(input) => {
                 let device_name = input.device_name.trim().to_owned();
@@ -297,9 +308,14 @@ impl EngineRuntime for ProductionRuntime {
                         .map_err(map_join_space_error)?
                         .space_id
                 };
-                Ok(OperationResult::SpaceJoined {
-                    space_id: space_id.as_ref().to_string(),
-                })
+                ensure_receive_ready_after_space_access(
+                    Ok(OperationResult::SpaceJoined {
+                        space_id: space_id.as_ref().to_string(),
+                    }),
+                    self.file_transfer_lifecycle.as_ref(),
+                    JOIN_SPACE_FAILED_CODE,
+                )
+                .await
             }
             Operation::IssueInvitation => {
                 let invitation = self
@@ -667,6 +683,19 @@ fn send_invalid_input_error() -> EngineError {
         EngineErrorCategory::InvalidInput,
         false,
     )
+}
+
+async fn ensure_receive_ready_after_space_access<T>(
+    result: Result<T, EngineError>,
+    readiness: &dyn EnsureReceiveReadyPort,
+    error_code: u32,
+) -> Result<T, EngineError> {
+    let value = result?;
+    readiness.ensure_receive_ready().await.map_err(|error| {
+        error!(error = %error, "receive recovery failed after space access");
+        EngineError::new(error_code, EngineErrorCategory::Unavailable, true)
+    })?;
+    Ok(value)
 }
 
 fn send_failed_error() -> EngineError {
@@ -1096,9 +1125,80 @@ fn operation_error_with_code(
 
 #[cfg(test)]
 mod tests {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
     use uc_application::facade::{SearchPageView, SearchResultView};
+    use uc_application::receive_reconciliation::{
+        EnsureReceiveReadyPort, ReceiveReadinessError, ReceiveReadinessStatus,
+    };
 
     use super::*;
+
+    struct RecordingReceiveReadiness {
+        calls: AtomicUsize,
+        fail: bool,
+    }
+
+    #[async_trait]
+    impl EnsureReceiveReadyPort for RecordingReceiveReadiness {
+        async fn ensure_receive_ready(&self) -> Result<(), ReceiveReadinessError> {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            if self.fail {
+                Err(ReceiveReadinessError::Recovery("unavailable".into()))
+            } else {
+                Ok(())
+            }
+        }
+
+        fn close_receive_gate(&self) {}
+
+        fn receive_readiness_status(&self) -> ReceiveReadinessStatus {
+            ReceiveReadinessStatus {
+                ready: !self.fail,
+                degraded_reason: self.fail.then(|| "unavailable".into()),
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn successful_space_access_opens_receive_gate_before_returning() {
+        let readiness = RecordingReceiveReadiness {
+            calls: AtomicUsize::new(0),
+            fail: false,
+        };
+
+        let value = ensure_receive_ready_after_space_access(
+            Ok("space ready"),
+            &readiness,
+            UNLOCK_SPACE_FAILED_CODE,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(value, "space ready");
+        assert_eq!(readiness.calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn receive_recovery_failure_is_retryable_and_not_reported_as_success() {
+        let readiness = RecordingReceiveReadiness {
+            calls: AtomicUsize::new(0),
+            fail: true,
+        };
+
+        let error = ensure_receive_ready_after_space_access(
+            Ok("space ready"),
+            &readiness,
+            UNLOCK_SPACE_FAILED_CODE,
+        )
+        .await
+        .unwrap_err();
+
+        assert_eq!(error.code(), UNLOCK_SPACE_FAILED_CODE);
+        assert_eq!(error.category(), EngineErrorCategory::Unavailable);
+        assert!(error.is_retryable());
+        assert_eq!(readiness.calls.load(Ordering::SeqCst), 1);
+    }
 
     #[test]
     fn history_search_input_parses_only_versioned_bounded_cursors() {

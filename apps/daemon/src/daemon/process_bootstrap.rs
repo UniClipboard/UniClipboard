@@ -1,7 +1,7 @@
 //! Process-level runtime assembly for the standalone daemon process.
 //!
 //! Produces [`ProcessRuntimeContext`] — the one-shot process-level context that
-//! callers feed into their own runtime (`TauriAppRuntime` / `DaemonProcessRuntime`).
+//! the daemon host feeds into [`super::process_runtime::DaemonProcessRuntime`].
 //! Assembly itself is done by the [`uc_bootstrap`] composition root (tracing init,
 //! panic hook, `wire_dependencies`, `get_storage_paths`).
 //!
@@ -29,7 +29,7 @@ use super::run_mode::DaemonRunMode;
 /// - use `background` + `BlobProcessingPorts::from_app_deps(&wired.deps)` to
 ///   spawn one-shot spool/blob workers (on the runtime's task_registry).
 /// - read `storage_paths` / `config` for startup-time paths & config.
-pub struct ProcessRuntimeContext {
+pub(crate) struct ProcessRuntimeContext {
     pub wired: WiredDependencies,
     pub background: BackgroundRuntimeDeps,
     pub storage_paths: AppPaths,
@@ -57,7 +57,7 @@ pub struct ProcessRuntimeContext {
 /// listener / PID file) are NOT assembled here — those go through
 /// [`super::bootstrap::build_daemon_bootstrap_assembly`] and are rebuilt on
 /// each daemon start/stop cycle.
-pub async fn build_process_runtime(
+pub(crate) async fn build_process_runtime(
     run_mode: DaemonRunMode,
 ) -> anyhow::Result<ProcessRuntimeContext> {
     init_tracing_subscriber()?;

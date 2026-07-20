@@ -49,7 +49,10 @@ fn daemon_library_does_not_export_in_process_legacy_assembly() {
         .unwrap_or_else(|error| panic!("failed to read {}: {error}", library.display()));
 
     assert!(
-        !source.contains("ProcessRuntimeHandles") && !source.contains("start_in_process"),
+        !source.contains("ProcessRuntimeHandles")
+            && !source.contains("start_in_process")
+            && !source.contains("ProcessRuntimeContext")
+            && !source.contains("build_process_runtime"),
         "daemon library must not export legacy in-process assembly"
     );
 }

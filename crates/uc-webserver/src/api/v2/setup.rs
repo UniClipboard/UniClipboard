@@ -1,9 +1,9 @@
 //! Stateless v2 setup pairing HTTP handlers (Slice4 Phase 3 T3.2).
 //!
-//! Six endpoints under `/v2/setup/*`, each a thin adapter that
-//! translates a `SpaceSetupFacade` call into the wire DTOs declared
-//! in `uc_daemon_contract::api::dto::v2::setup`. Errors map onto the
-//! daemon-wide `ApiError` surface (400 / 409 / 500 / 503).
+//! Six endpoints under `/v2/setup/*`, each a thin adapter that translates a
+//! stable engine operation or remaining `SpaceSetupFacade` call into the wire
+//! DTOs declared in `uc_daemon_contract::api::dto::v2::setup`. Errors map onto
+//! the daemon-wide `ApiError` surface (400 / 409 / 500 / 503).
 
 use axum::extract::State;
 use axum::http::StatusCode;
@@ -25,6 +25,8 @@ use uc_daemon_contract::api::dto::v2::setup::{
     SwitchSpaceRequest, SwitchSpaceResponse,
 };
 use uc_daemon_contract::constants::http_route_v2;
+use uc_engine::internal::invitation::execute_issue_invitation;
+use uc_engine::{EngineError, EngineErrorCategory, OperationResult};
 
 use crate::api::dto::error::{log_facade_failure, ApiError};
 use crate::api::projection::IntoApiDto;
@@ -139,37 +141,43 @@ fn map_init_err(err: InitializeSpaceError) -> ApiError {
 pub(crate) async fn issue_invitation(
     State(state): State<DaemonApiState>,
 ) -> Result<Json<ApiEnvelope<IssueInvitationResponse>>, ApiError> {
-    let facade = require_facade(&state)?;
-    let out = facade
-        .issue_pairing_invitation()
+    let app = state.app_facade_or_error()?;
+    let result = execute_issue_invitation(app.as_ref())
         .await
-        .map_err(map_issue_err)?;
-    Ok(Json(ApiEnvelope::now(out.into_api_dto())))
+        .map_err(map_issue_engine_err)?;
+    let OperationResult::InvitationIssued {
+        invitation_code,
+        expires_at_ms,
+    } = result
+    else {
+        return Err(ApiError::internal(
+            "engine returned an unexpected invitation result",
+        ));
+    };
+    Ok(Json(ApiEnvelope::now(IssueInvitationResponse {
+        code: invitation_code,
+        expires_at_ms,
+    })))
 }
 
-fn map_issue_err(err: uc_application::facade::IssuePairingInvitationError) -> ApiError {
-    use uc_application::facade::IssuePairingInvitationError as E;
-    let (variant, api): (&'static str, ApiError) = match err {
-        E::NetworkNotStarted => (
+fn map_issue_engine_err(err: EngineError) -> ApiError {
+    let (variant, api): (&'static str, ApiError) = match err.category() {
+        EngineErrorCategory::InvalidState => (
             "network_not_started",
             ApiError::service_unavailable("network is not started"),
         ),
-        E::ServiceUnavailable => (
+        EngineErrorCategory::Unavailable => (
             "service_unavailable",
             ApiError::service_unavailable("pairing invitation service unavailable"),
         ),
-        // `AddressNotAvailable` is only emitted by the dev-only
-        // `issue_pairing_invitation_for_address` path. The webserver
-        // never calls that path; collapse to Internal so a future
-        // regression surfaces in logs instead of being silently
-        // mapped to a misleading 400.
-        E::AddressNotAvailable(ip) => (
-            "address_not_available",
-            ApiError::internal(format!(
-                "unexpected AddressNotAvailable({ip}) on default path"
-            )),
+        EngineErrorCategory::InvalidInput => (
+            "invalid_input",
+            ApiError::internal("unexpected invalid invitation input on default path"),
         ),
-        E::Internal(msg) => ("internal", ApiError::internal(msg)),
+        _ => (
+            "internal",
+            ApiError::internal("failed to issue pairing invitation"),
+        ),
     };
     log_facade_failure(
         "space_setup",

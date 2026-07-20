@@ -10683,6 +10683,7 @@ dependencies = [
  "uc-core",
  "uc-daemon-contract",
  "uc-daemon-local",
+ "uc-engine",
  "uc-mobile-proto",
  "uc-observability",
  "url",

@@ -112,6 +112,24 @@ fn daemon_startup_recovery_delegates_business_orchestration_to_engine() {
     );
 }
 
+#[test]
+fn daemon_invitation_handler_delegates_business_orchestration_to_engine() {
+    let handler =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../crates/uc-webserver/src/api/v2/setup.rs");
+    let source = std::fs::read_to_string(&handler)
+        .unwrap_or_else(|error| panic!("failed to read {}: {error}", handler.display()));
+
+    assert!(
+        !source.contains(".issue_pairing_invitation()")
+            && !source.contains("IssuePairingInvitationError"),
+        "daemon invitation HTTP handler must not own invitation business orchestration"
+    );
+    assert!(
+        source.contains("execute_issue_invitation("),
+        "daemon invitation HTTP handler must invoke the uc-engine invitation implementation"
+    );
+}
+
 fn rust_sources(root: &Path) -> Vec<PathBuf> {
     let mut pending = vec![root.to_path_buf()];
     let mut sources = Vec::new();

@@ -1,6 +1,13 @@
-import { LazyMotion, MotionConfig, domMax } from 'framer-motion'
+import { AnimatePresence, LazyMotion, MotionConfig, domMax, m } from 'framer-motion'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { BrowserRouter as Router, Route, Navigate, Outlet, useNavigate } from 'react-router-dom'
+import {
+  BrowserRouter as Router,
+  Route,
+  Navigate,
+  useLocation,
+  useNavigate,
+  useOutlet,
+} from 'react-router-dom'
 import { daemonClient } from '@/api/daemon/client'
 import { signalLifecycleReady } from '@/api/daemon/lifecycle'
 import { unlockEncryptionSession } from '@/api/security'
@@ -42,11 +49,30 @@ import './App.css'
  *  falls through to the actionable error screen instead of hanging (#995). */
 const LOADING_WATCHDOG_MS = 12_000
 
-// 认证布局包装器 - 保持 Sidebar 持久化
+const PAGE_TRANSITION = { duration: 0.16, ease: [0.22, 1, 0.36, 1] } as const
+
+// Keep the sidebar mounted while route bodies crossfade in the shared surface.
 const AuthenticatedLayout = () => {
+  const routerLocation = useLocation()
+  const outlet = useOutlet()
+  const { reduceVisualEffects } = usePlatform()
+
   return (
     <MainLayout>
-      <Outlet />
+      <div className="relative h-full overflow-hidden">
+        <AnimatePresence initial={false} mode="sync">
+          <m.div
+            key={routerLocation.pathname}
+            initial={reduceVisualEffects ? false : { opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={reduceVisualEffects ? undefined : { opacity: 0 }}
+            transition={reduceVisualEffects ? { duration: 0 } : PAGE_TRANSITION}
+            className="absolute inset-0"
+          >
+            {outlet}
+          </m.div>
+        </AnimatePresence>
+      </div>
     </MainLayout>
   )
 }

@@ -10,8 +10,8 @@ import { cn } from '@/lib/utils'
 const THUMB_SPRING = { type: 'spring', stiffness: 800, damping: 80, mass: 4 } as const
 
 const SIZES = {
-  default: { track: 'h-[18.4px] w-[32px] px-[2px]', thumb: 'size-4' },
-  sm: { track: 'h-[14px] w-[24px] px-[1px]', thumb: 'size-3' },
+  default: { track: 'h-[18.4px] w-[32px] px-[2px]', thumb: 'size-4', travel: 12 },
+  sm: { track: 'h-[14px] w-[24px] px-[1px]', thumb: 'size-3', travel: 10 },
 } as const
 
 // Drag/animation handlers collide with framer-motion's same-named props, so drop
@@ -75,17 +75,17 @@ function Switch({
         onPointerCancel={() => setIsPressed(false)}
         initial={false}
         className={cn(
-          'peer inline-flex shrink-0 cursor-pointer items-center rounded-full outline-none transition-colors duration-200',
+          'peer inline-flex shrink-0 cursor-pointer items-center justify-start rounded-full outline-none transition-colors duration-200',
           'focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background',
           'disabled:cursor-not-allowed disabled:opacity-50',
           dims.track,
-          checked ? 'justify-end bg-primary' : 'justify-start bg-input dark:bg-input/80',
+          checked ? 'bg-primary' : 'bg-input dark:bg-input/80',
           className
         )}
       >
         <m.div
-          layout
-          animate={{ scale: squish ? 0.9 : 1 }}
+          initial={false}
+          animate={{ x: checked ? dims.travel : 0, scale: squish ? 0.9 : 1 }}
           className={cn(
             'pointer-events-none block rounded-full bg-background shadow-sm dark:bg-foreground',
             dims.thumb

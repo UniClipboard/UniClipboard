@@ -1347,7 +1347,6 @@ mod tests {
                 "Text/Plain; Charset=UTF-8",
                 "  text/plain ; charset = \"utf-8\" ",
                 "TEXT/PLAIN",
-                "public.utf8-plain-text",
             ];
             for raw in cases {
                 let r = rep("text", Some(raw), b"hello".to_vec());
@@ -1374,6 +1373,12 @@ mod tests {
             // 现代 capture 路径会给 rep 打 mime,但旧 envelope / legacy 客户端
             // 可能省略 mime —— 单源映射表必须能从 format_id 兜底。
             let r = rep("text", None, b"hello".to_vec());
+            assert_eq!(
+                compute_effective_mime(&r).unwrap().classify(),
+                MimeClass::TextPlain
+            );
+
+            let r = rep("public.utf8-plain-text", None, b"hello".to_vec());
             assert_eq!(
                 compute_effective_mime(&r).unwrap().classify(),
                 MimeClass::TextPlain

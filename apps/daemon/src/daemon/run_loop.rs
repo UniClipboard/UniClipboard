@@ -1,28 +1,13 @@
 //! daemon 运行循环。
 
-use std::sync::Arc;
-
-use uc_application::facade::{AppFacade, UpgradeStatus};
-use uc_application::receive_reconciliation::EnsureReceiveReadyPort;
 use uc_bootstrap::SyncEngineAssembly;
-use uc_core::ports::SettingsPort;
 
 use crate::daemon::app::DaemonApp;
-use crate::daemon::run_mode::DaemonRunMode;
-use crate::daemon::startup_recovery::{spawn_startup_recovery, StartupRecoveryInput};
-
-/// daemon 版本号。迁入 uc-daemon 后取本 crate 的 `CARGO_PKG_VERSION`——与原
-/// uc-desktop `DAEMON_VERSION` 同为 workspace 版本，运行值不变（ADR-008 P1）。
-const DAEMON_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// daemon 运行循环输入。
 pub struct DaemonRunLoopInput {
-    pub run_mode: DaemonRunMode,
     pub daemon: DaemonApp,
-    pub(crate) app_facade: Arc<AppFacade>,
-    pub settings: Arc<dyn SettingsPort>,
     pub sync_engine_assembly: SyncEngineAssembly,
-    pub receive_readiness: Arc<dyn EnsureReceiveReadyPort>,
 }
 
 /// 运行 daemon main loop，退出后关闭 space setup 资源。
@@ -33,29 +18,9 @@ pub struct DaemonRunLoopInput {
 /// 跑成 task，由 [`crate::daemon::DaemonHandle`] 持有 join handle。
 pub async fn run_daemon_main(input: DaemonRunLoopInput) -> anyhow::Result<()> {
     let DaemonRunLoopInput {
-        run_mode,
         daemon,
-        app_facade,
-        settings,
         sync_engine_assembly,
-        receive_readiness,
     } = input;
-
-    let space_setup = sync_engine_assembly.facade.clone();
-
-    // P1 thin 升级检测：启动期一次性比较 last_seen_version 游标 vs
-    // 当前构建版本。结果一方面进 tracing 日志；另一方面，对全新
-    // 安装会就地把游标推进到当前版本，避免后续 UI 把"已完成 setup
-    // 的全新安装"误判成"老用户跨配对协议升级"而弹出重新配对提示。
-    record_upgrade_status_at_startup(&app_facade).await;
-
-    spawn_startup_recovery(StartupRecoveryInput {
-        run_mode,
-        app_facade,
-        settings,
-        space_setup,
-        receive_readiness,
-    });
 
     // ORDERING (ADR-008 P5-L L8a) — these two awaits are SEQUENTIAL: the iroh
     // teardown (`sync_engine_assembly.shutdown()`, which drives
@@ -67,91 +32,4 @@ pub async fn run_daemon_main(input: DaemonRunLoopInput) -> anyhow::Result<()> {
     let result = daemon.run().await;
     sync_engine_assembly.shutdown().await;
     result
-}
-
-async fn record_upgrade_status_at_startup(app_facade: &AppFacade) {
-    let status = match app_facade.upgrade.detect_on_startup(DAEMON_VERSION).await {
-        Ok(status) => status,
-        Err(error) => {
-            tracing::warn!(
-                target: "upgrade",
-                error = %error,
-                "detect_on_startup failed; skipping upgrade decision this boot"
-            );
-            return;
-        }
-    };
-
-    match &status {
-        UpgradeStatus::FreshInstall => {
-            tracing::info!(
-                target: "upgrade",
-                current = DAEMON_VERSION,
-                "fresh install detected"
-            );
-            // 全新安装时立即把游标推进到当前版本：否则等用户走完 setup，
-            // `has_completed` 会翻成 true，但 cursor 仍是 None，下一次
-            // detect 就会落入 `Upgraded { from: None }` 这条"没有游标但
-            // setup 已完成 = 老用户跨边界升级"的兜底分支，导致前端在首次
-            // 安装的设备上错误地弹出"请重新配对设备"提示。
-            // 失败仅警告，不阻塞 daemon 启动；下次启动还会重试。
-            if let Err(error) = app_facade.upgrade.acknowledge(DAEMON_VERSION).await {
-                tracing::warn!(
-                    target: "upgrade",
-                    error = %error,
-                    current = DAEMON_VERSION,
-                    "fresh install detected but failed to seal version cursor; \
-                     re-pair notice may surface on this device until next boot"
-                );
-            }
-        }
-        UpgradeStatus::NoChange => {
-            tracing::info!(
-                target: "upgrade",
-                current = DAEMON_VERSION,
-                "version cursor matches current build"
-            );
-        }
-        UpgradeStatus::Upgraded { from, to } => {
-            tracing::info!(
-                target: "upgrade",
-                from = from.as_ref().map(|v| v.to_string()).as_deref().unwrap_or("<unknown>"),
-                to = %to,
-                "upgrade detected"
-            );
-            // Seal the cursor for a *known* upgrade (`from = Some`).
-            //
-            // 这条路径没有任何需要用户交互的提示：前端 StartupModals 只在
-            // `Upgraded { from: None }`（跨未知旧版本）时弹"重新配对"提示，并在
-            // 用户确认后回调 `POST /upgrade/ack` 推进游标；`from = Some` 时前端
-            // 直接跳过，于是没有任何人 ack —— 游标永远停在旧版本，每次启动都被
-            // 重新判定为 "upgrade"（线上实测 from=0.11.1 反复出现，且 headless /
-            // server-node 场景根本没有 GUI 来调 ack）。由 daemon 在这里自行推进，
-            // 既修掉重复判定，也让无 GUI 的部署能正常收敛。
-            //
-            // 故意 **不** 处理 `from = None`：那条路径必须先让前端把"重新配对"
-            // 提示展示给用户，daemon 若抢先 ack 会让随后的 detect 立即返回
-            // NoChange、提示永远不弹。`None` 的游标推进留给前端 UpgradeNotice 的
-            // dismiss 回调。失败仅警告，不阻塞启动；下次启动会重试。
-            if from.is_some() {
-                if let Err(error) = app_facade.upgrade.acknowledge(DAEMON_VERSION).await {
-                    tracing::warn!(
-                        target: "upgrade",
-                        error = %error,
-                        to = %to,
-                        "known upgrade detected but failed to seal version cursor; \
-                         upgrade will be re-detected next boot"
-                    );
-                }
-            }
-        }
-        UpgradeStatus::Downgraded { from, to } => {
-            tracing::info!(
-                target: "upgrade",
-                from = %from,
-                to = %to,
-                "downgrade detected — rolled back to an older build"
-            );
-        }
-    }
 }

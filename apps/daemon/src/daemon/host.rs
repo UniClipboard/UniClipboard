@@ -42,7 +42,10 @@ use super::runtime_assembly::{build_daemon_runtime_workers, DaemonRuntimeAssembl
 use super::runtime_controls::build_daemon_runtime_controls;
 use super::search_assembly::build_daemon_search_assembly;
 use super::service_assembly::build_daemon_service_plan;
-use super::startup_recovery::DaemonReceiveReadinessCoordinator;
+use super::startup_recovery::{
+    record_upgrade_status_at_startup, spawn_startup_recovery, DaemonReceiveReadinessCoordinator,
+    StartupRecoveryInput,
+};
 use super::tokio_runtime::build_daemon_tokio_runtime;
 
 /// Process-level persistent resource handles passed to the daemon on each spawn.
@@ -388,14 +391,20 @@ pub async fn start_in_process(
     });
 
     let input = DaemonRunLoopInput {
-        run_mode,
         daemon,
-        app_facade: app_facade_for_daemon,
-        settings: settings_port,
         sync_engine_assembly,
-        receive_readiness,
     };
-    let join = tokio::spawn(run_daemon_main(input));
+    let join = tokio::spawn(async move {
+        record_upgrade_status_at_startup(&app_facade_for_daemon).await;
+        spawn_startup_recovery(StartupRecoveryInput {
+            run_mode,
+            app_facade: app_facade_for_daemon,
+            settings: settings_port,
+            space_setup: input.sync_engine_assembly.facade.clone(),
+            receive_readiness,
+        });
+        run_daemon_main(input).await
+    });
 
     Ok(DaemonHandle::new(cancel, join))
 }

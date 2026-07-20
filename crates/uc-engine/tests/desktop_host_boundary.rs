@@ -29,6 +29,19 @@ fn daemon_does_not_export_legacy_runtime_fields() {
     );
 }
 
+#[test]
+fn daemon_run_loop_does_not_depend_on_legacy_application_runtime() {
+    let run_loop =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../apps/daemon/src/daemon/run_loop.rs");
+    let source = std::fs::read_to_string(&run_loop)
+        .unwrap_or_else(|error| panic!("failed to read {}: {error}", run_loop.display()));
+
+    assert!(
+        !source.contains("AppFacade") && !source.contains("AppDeps"),
+        "daemon run loop must only own process run and shutdown ordering"
+    );
+}
+
 fn rust_sources(root: &Path) -> Vec<PathBuf> {
     let mut pending = vec![root.to_path_buf()];
     let mut sources = Vec::new();

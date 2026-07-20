@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use tokio::sync::Notify;
 use tracing::{info_span, Instrument};
-use uc_application::facade::{AppFacade, SpaceSetupFacade};
+use uc_application::facade::{AppFacade, SpaceSetupFacade, UpgradeStatus};
 use uc_application::receive_reconciliation::{
     EnsureReceiveReadyPort, ReceiveReadinessError, ReceiveReadinessStatus,
 };
@@ -14,6 +14,10 @@ use uc_daemon_local::process_metadata::DaemonSpawnOrigin;
 use uc_daemon_local::spawn_contract::unattended_from_env;
 
 use super::run_mode::DaemonRunMode;
+
+/// daemon 版本号。迁入 uc-daemon 后取本 crate 的 `CARGO_PKG_VERSION`——与原
+/// uc-desktop `DAEMON_VERSION` 同为 workspace 版本，运行值不变（ADR-008 P1）。
+const DAEMON_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 pub struct DaemonReceiveReadinessCoordinator {
     recovery: Arc<dyn EnsureReceiveReadyPort>,
@@ -177,6 +181,78 @@ pub fn spawn_startup_recovery(input: StartupRecoveryInput) {
             }
         }
     });
+}
+
+pub(crate) async fn record_upgrade_status_at_startup(app_facade: &AppFacade) {
+    let status = match app_facade.upgrade.detect_on_startup(DAEMON_VERSION).await {
+        Ok(status) => status,
+        Err(error) => {
+            tracing::warn!(
+                target: "upgrade",
+                error = %error,
+                "detect_on_startup failed; skipping upgrade decision this boot"
+            );
+            return;
+        }
+    };
+
+    match &status {
+        UpgradeStatus::FreshInstall => {
+            tracing::info!(
+                target: "upgrade",
+                current = DAEMON_VERSION,
+                "fresh install detected"
+            );
+            // Seal fresh installs immediately. Otherwise the next boot can
+            // misclassify a newly completed setup as an unknown upgrade.
+            if let Err(error) = app_facade.upgrade.acknowledge(DAEMON_VERSION).await {
+                tracing::warn!(
+                    target: "upgrade",
+                    error = %error,
+                    current = DAEMON_VERSION,
+                    "fresh install detected but failed to seal version cursor; \
+                     re-pair notice may surface on this device until next boot"
+                );
+            }
+        }
+        UpgradeStatus::NoChange => {
+            tracing::info!(
+                target: "upgrade",
+                current = DAEMON_VERSION,
+                "version cursor matches current build"
+            );
+        }
+        UpgradeStatus::Upgraded { from, to } => {
+            tracing::info!(
+                target: "upgrade",
+                from = from.as_ref().map(|v| v.to_string()).as_deref().unwrap_or("<unknown>"),
+                to = %to,
+                "upgrade detected"
+            );
+            // Known upgrades have no user-facing acknowledgement path, so the
+            // daemon advances their cursor. Unknown upgrades remain pending
+            // until the GUI has shown and dismissed the re-pair notice.
+            if from.is_some() {
+                if let Err(error) = app_facade.upgrade.acknowledge(DAEMON_VERSION).await {
+                    tracing::warn!(
+                        target: "upgrade",
+                        error = %error,
+                        to = %to,
+                        "known upgrade detected but failed to seal version cursor; \
+                         upgrade will be re-detected next boot"
+                    );
+                }
+            }
+        }
+        UpgradeStatus::Downgraded { from, to } => {
+            tracing::info!(
+                target: "upgrade",
+                from = %from,
+                to = %to,
+                "downgrade detected — rolled back to an older build"
+            );
+        }
+    }
 }
 
 #[cfg(test)]

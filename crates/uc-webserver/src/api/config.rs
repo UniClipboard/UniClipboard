@@ -160,12 +160,11 @@ async fn export_config_handler(
     State(state): State<DaemonApiState>,
     Json(req): Json<ExportConfigRequest>,
 ) -> Result<Json<ApiEnvelope<ExportConfigResponse>>, ApiError> {
-    let app = state.app_facade_or_error()?;
+    let config_migration = state.config_migration;
 
     info!("config export request received");
 
-    let path = app
-        .config_migration
+    let path = config_migration
         .export_config(Path::new(&req.target_path))
         .await
         .map_err(|e| map_config_migration_err("export_config", e))?;
@@ -198,13 +197,12 @@ async fn preview_import_handler(
     State(state): State<DaemonApiState>,
     Json(req): Json<PreviewImportRequest>,
 ) -> Result<Json<ApiEnvelope<PreviewImportResponse>>, ApiError> {
-    let app = state.app_facade_or_error()?;
+    let config_migration = state.config_migration;
 
     info!("config import preview request received");
 
     let password = Passphrase::new(req.password);
-    let preview = app
-        .config_migration
+    let preview = config_migration
         .preview_import(&password, Path::new(&req.source_path))
         .await
         .map_err(|e| map_config_migration_err("preview_import", e))?;
@@ -254,13 +252,12 @@ async fn import_config_handler(
 
     debug_assert!(req.confirmed);
 
-    let app = state.app_facade_or_error()?;
+    let config_migration = state.config_migration;
 
     info!("config import (stage) request received");
 
     let password = Passphrase::new(req.password);
-    let staged = app
-        .config_migration
+    let staged = config_migration
         .stage_import(&password, Path::new(&req.source_path))
         .await
         .map_err(|e| map_config_migration_err("stage_import", e))?;

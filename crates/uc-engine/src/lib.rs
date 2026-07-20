@@ -78,6 +78,7 @@ pub enum OperationKind {
     CancelInvitation,
     ResetSpace,
     QuerySetupState,
+    QueryMigrationProgress,
     ListDevices,
     SendText,
     SendImage,
@@ -98,6 +99,7 @@ impl fmt::Display for OperationKind {
             Self::CancelInvitation => "cancel_invitation",
             Self::ResetSpace => "reset_space",
             Self::QuerySetupState => "query_setup_state",
+            Self::QueryMigrationProgress => "query_migration_progress",
             Self::ListDevices => "list_devices",
             Self::SendText => "send_text",
             Self::SendImage => "send_image",
@@ -120,6 +122,7 @@ pub enum Operation {
     CancelInvitation,
     ResetSpace,
     QuerySetupState,
+    QueryMigrationProgress,
     ListDevices,
     SendText(SendTextInput),
     SendImage(SendImageInput),
@@ -140,6 +143,7 @@ impl Operation {
             Self::CancelInvitation => OperationKind::CancelInvitation,
             Self::ResetSpace => OperationKind::ResetSpace,
             Self::QuerySetupState => OperationKind::QuerySetupState,
+            Self::QueryMigrationProgress => OperationKind::QueryMigrationProgress,
             Self::ListDevices => OperationKind::ListDevices,
             Self::SendText(_) => OperationKind::SendText,
             Self::SendImage(_) => OperationKind::SendImage,
@@ -488,6 +492,7 @@ pub enum OperationResult {
     InvitationCancelled,
     SpaceReset,
     SetupState(SetupStateSummary),
+    MigrationProgress(MigrationProgressSummary),
     Devices(Vec<DeviceSummary>),
     EntrySent {
         entry_id: String,
@@ -517,6 +522,9 @@ impl fmt::Debug for OperationResult {
             Self::InvitationCancelled => debug.field("kind", &"invitation_cancelled"),
             Self::SpaceReset => debug.field("kind", &"space_reset"),
             Self::SetupState(state) => debug.field("kind", &"setup_state").field("state", state),
+            Self::MigrationProgress(progress) => debug
+                .field("kind", &"migration_progress")
+                .field("progress", progress),
             Self::Devices(devices) => debug
                 .field("kind", &"devices")
                 .field("device_count", &devices.len()),
@@ -567,6 +575,19 @@ impl fmt::Debug for SetupStateSummary {
             .field("has_device_name", &self.device_name.is_some())
             .finish()
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MigrationPhaseSummary {
+    Prepared,
+    HandshakeDone,
+    Swapped,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MigrationProgressSummary {
+    pub phase: Option<MigrationPhaseSummary>,
+    pub backup_record_count: u64,
 }
 
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]

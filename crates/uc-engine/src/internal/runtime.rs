@@ -42,6 +42,7 @@ use crate::internal::host_adapters::{
 use crate::internal::invitation::execute_issue_invitation;
 use crate::internal::join_space::{execute_join_space, JoinSpaceMode};
 use crate::internal::lifecycle::build_daemon_lifecycle;
+use crate::internal::migration_progress::execute_query_migration_progress;
 use crate::internal::reset_space::execute_reset_space;
 use crate::internal::session_recovery::execute_recover_session;
 use crate::internal::setup_state::execute_query_setup_state;
@@ -267,6 +268,9 @@ impl EngineRuntime for ProductionRuntime {
             }
             Operation::QuerySetupState => {
                 execute_query_setup_state(self.current_facade().await?.as_ref()).await
+            }
+            Operation::QueryMigrationProgress => {
+                execute_query_migration_progress(self.current_facade().await?.as_ref()).await
             }
             Operation::ListDevices => {
                 let entries = self

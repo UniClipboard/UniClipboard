@@ -568,6 +568,12 @@ fn operation_response(result: OperationResult) -> Value {
             "has_current_invitation": state.current_invitation.is_some(),
             "has_device_name": state.device_name.is_some(),
         }),
+        OperationResult::MigrationProgress(progress) => json!({
+            "ok": true,
+            "kind": "migration_progress",
+            "has_phase": progress.phase.is_some(),
+            "backup_record_count": progress.backup_record_count,
+        }),
         OperationResult::Devices(devices) => json!({
             "ok": true,
             "kind": "devices",

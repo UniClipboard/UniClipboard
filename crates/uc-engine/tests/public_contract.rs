@@ -1,9 +1,10 @@
 use uc_engine::{
     CreateSpaceInput, DeviceSummary, EngineConfig, EngineError, EngineErrorCategory, EngineEvent,
-    EngineState, EntrySummary, ExportEntryInput, HostFileHandle, JoinSpaceInput, Operation,
-    OperationKind, OperationResult, QueryHistoryInput, RecoverSessionInput, RefreshReason,
-    ResendEntryInput, SecretString, SendFilesInput, SendImageInput, SendTextInput,
-    SetupInvitationSummary, SetupStateSummary, UnlockSpaceInput,
+    EngineState, EntrySummary, ExportEntryInput, HostFileHandle, JoinSpaceInput,
+    MigrationPhaseSummary, MigrationProgressSummary, Operation, OperationKind, OperationResult,
+    QueryHistoryInput, RecoverSessionInput, RefreshReason, ResendEntryInput, SecretString,
+    SendFilesInput, SendImageInput, SendTextInput, SetupInvitationSummary, SetupStateSummary,
+    UnlockSpaceInput,
 };
 
 #[test]
@@ -54,6 +55,10 @@ fn every_public_operation_has_a_stable_kind() {
         (Operation::CancelInvitation, OperationKind::CancelInvitation),
         (Operation::ResetSpace, OperationKind::ResetSpace),
         (Operation::QuerySetupState, OperationKind::QuerySetupState),
+        (
+            Operation::QueryMigrationProgress,
+            OperationKind::QueryMigrationProgress,
+        ),
         (Operation::ListDevices, OperationKind::ListDevices),
         (
             Operation::SendText(SendTextInput {
@@ -134,6 +139,22 @@ fn setup_state_result_preserves_invitation_and_redacts_user_content() {
     assert!(!debug.contains("NEVER-SHOW"));
     assert!(!debug.contains("Private Device"));
     assert!(debug.contains("setup_state"));
+}
+
+#[test]
+fn migration_progress_result_exposes_only_coarse_phase_and_count() {
+    let result = OperationResult::MigrationProgress(MigrationProgressSummary {
+        phase: Some(MigrationPhaseSummary::HandshakeDone),
+        backup_record_count: 42,
+    });
+
+    assert!(matches!(
+        result,
+        OperationResult::MigrationProgress(MigrationProgressSummary {
+            phase: Some(MigrationPhaseSummary::HandshakeDone),
+            backup_record_count: 42,
+        })
+    ));
 }
 
 #[test]

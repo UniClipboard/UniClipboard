@@ -269,6 +269,28 @@ fn daemon_setup_state_handler_delegates_business_orchestration_to_engine() {
 }
 
 #[test]
+fn daemon_migration_progress_handler_delegates_business_orchestration_to_engine() {
+    let handler =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../crates/uc-webserver/src/api/v2/setup.rs");
+    let source = std::fs::read_to_string(&handler)
+        .unwrap_or_else(|error| panic!("failed to read {}: {error}", handler.display()));
+    let progress_handler = source
+        .split("pub(crate) async fn query_migration_progress(")
+        .nth(1)
+        .expect("migration-progress handler must remain discoverable");
+
+    assert!(
+        !progress_handler.contains(".query_migration_progress(")
+            && !progress_handler.contains("QueryMigrationProgressError"),
+        "daemon migration-progress handler must not own migration business orchestration"
+    );
+    assert!(
+        progress_handler.contains("execute_query_migration_progress("),
+        "daemon migration-progress handler must invoke the uc-engine implementation"
+    );
+}
+
+#[test]
 fn daemon_passphrase_unlock_delegates_business_orchestration_to_engine() {
     let handler = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../crates/uc-webserver/src/api/encryption.rs");

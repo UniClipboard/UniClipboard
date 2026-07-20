@@ -1,7 +1,7 @@
 //! Stateless v2 setup pairing HTTP handlers (Slice4 Phase 3 T3.2).
 //!
-//! Six endpoints under `/v2/setup/*`, each a thin adapter that translates a
-//! stable engine operation or remaining `SpaceSetupFacade` call into the wire
+//! Endpoints under `/v2/setup/*` are thin adapters that translate a
+//! stable engine operation into the wire
 //! DTOs declared in `uc_daemon_contract::api::dto::v2::setup`. Errors map onto
 //! the daemon-wide `ApiError` surface (400 / 409 / 500 / 503).
 
@@ -10,13 +10,11 @@ use axum::http::StatusCode;
 use axum::routing::{get, post};
 use axum::{Json, Router};
 
-use uc_application::facade::space_setup::QueryMigrationProgressError;
-use uc_application::facade::SpaceSetupFacade;
 use uc_daemon_contract::api::dto::envelope::ApiEnvelope;
 use uc_daemon_contract::api::dto::v2::setup::{
     CurrentInvitation, InitializeSpaceRequest, InitializeSpaceResponse, IssueInvitationResponse,
-    MigrationProgressResponse, RedeemRequest, RedeemResponse, SetupStateResponse,
-    SwitchSpaceRequest, SwitchSpaceResponse,
+    MigrationPhaseDto, MigrationProgressResponse, RedeemRequest, RedeemResponse,
+    SetupStateResponse, SwitchSpaceRequest, SwitchSpaceResponse,
 };
 use uc_daemon_contract::constants::http_route_v2;
 use uc_engine::internal::cancel_invitation::{
@@ -37,15 +35,15 @@ use uc_engine::internal::join_space::{
     JOIN_SPACE_SPONSOR_REJECTED_CODE, JOIN_SPACE_SPONSOR_TIMEOUT_CODE,
     JOIN_SPACE_SPONSOR_UNREACHABLE_CODE, JOIN_SPACE_STORAGE_CODE, JOIN_SPACE_TIMEOUT_CODE,
 };
+use uc_engine::internal::migration_progress::execute_query_migration_progress;
 use uc_engine::internal::reset_space::execute_reset_space;
 use uc_engine::internal::setup_state::execute_query_setup_state;
 use uc_engine::{
-    CreateSpaceInput, EngineError, EngineErrorCategory, JoinSpaceInput, OperationResult,
-    SecretString,
+    CreateSpaceInput, EngineError, EngineErrorCategory, JoinSpaceInput, MigrationPhaseSummary,
+    OperationResult, SecretString,
 };
 
 use crate::api::dto::error::{log_facade_failure, ApiError};
-use crate::api::projection::IntoApiDto;
 use crate::api::server::DaemonApiState;
 
 pub fn router() -> Router<DaemonApiState> {
@@ -64,15 +62,6 @@ pub fn router() -> Router<DaemonApiState> {
             http_route_v2::SETUP_MIGRATION_PROGRESS,
             get(query_migration_progress),
         )
-}
-
-fn require_facade(state: &DaemonApiState) -> Result<std::sync::Arc<SpaceSetupFacade>, ApiError> {
-    state
-        .app_facade_or_error()?
-        .space_setup
-        .get()
-        .cloned()
-        .ok_or_else(|| ApiError::service_unavailable("space setup facade not assembled"))
 }
 
 // ---------------------------------------------------------------------------
@@ -668,19 +657,35 @@ fn map_switch_engine_err(err: EngineError) -> ApiError {
 pub(crate) async fn query_migration_progress(
     State(state): State<DaemonApiState>,
 ) -> Result<Json<ApiEnvelope<MigrationProgressResponse>>, ApiError> {
-    let facade = require_facade(&state)?;
-    let progress = facade
-        .query_migration_progress()
+    let app = state.app_facade_or_error()?;
+    let result = execute_query_migration_progress(app.as_ref())
         .await
-        .map_err(map_query_migration_progress_err)?;
-    Ok(Json(ApiEnvelope::now(progress.into_api_dto())))
+        .map_err(map_query_migration_progress_engine_err)?;
+    let OperationResult::MigrationProgress(progress) = result else {
+        return Err(ApiError::internal(
+            "engine returned an unexpected migration-progress result",
+        ));
+    };
+    Ok(Json(ApiEnvelope::now(MigrationProgressResponse {
+        phase: progress.phase.map(|phase| match phase {
+            MigrationPhaseSummary::Prepared => MigrationPhaseDto::Prepared,
+            MigrationPhaseSummary::HandshakeDone => MigrationPhaseDto::HandshakeDone,
+            MigrationPhaseSummary::Swapped => MigrationPhaseDto::Swapped,
+        }),
+        backup_record_count: progress.backup_record_count,
+    })))
 }
 
-fn map_query_migration_progress_err(err: QueryMigrationProgressError) -> ApiError {
-    use QueryMigrationProgressError as E;
-    let (variant, api): (&'static str, ApiError) = match err {
-        E::StorageFailed(msg) => ("storage_failed", ApiError::internal(msg)),
-        E::Internal(msg) => ("internal", ApiError::internal(msg)),
+fn map_query_migration_progress_engine_err(err: EngineError) -> ApiError {
+    let (variant, api): (&'static str, ApiError) = match err.category() {
+        EngineErrorCategory::Unavailable => (
+            "service_unavailable",
+            ApiError::service_unavailable("migration-progress service unavailable"),
+        ),
+        _ => (
+            "internal",
+            ApiError::internal("failed to query migration progress"),
+        ),
     };
     log_facade_failure(
         "space_setup",
@@ -694,11 +699,8 @@ fn map_query_migration_progress_err(err: QueryMigrationProgressError) -> ApiErro
 
 #[cfg(test)]
 mod tests {
-    //! Handler-internal pure-function tests. End-to-end router /
-    //! facade integration is covered downstream once T3.3 wires
-    //! `SpaceSetupFacade` into the daemon assembly: building a real
-    //! `DaemonApiState` requires the full bootstrap path, which is
-    //! out of scope for T3.2.
+    //! Handler-internal error translation tests. Engine behavior and daemon
+    //! boundary ownership are covered in `uc-engine`.
 
     use super::*;
 
@@ -785,6 +787,24 @@ mod tests {
         ));
         assert_eq!(internal.status.as_u16(), 500);
         assert!(!internal.message.contains("1322"));
+    }
+
+    #[test]
+    fn map_migration_progress_engine_err_preserves_unavailable_and_redacts_internal_failure() {
+        let unavailable = map_query_migration_progress_engine_err(EngineError::new(
+            1331,
+            EngineErrorCategory::Unavailable,
+            true,
+        ));
+        assert_eq!(unavailable.status.as_u16(), 503);
+
+        let internal = map_query_migration_progress_engine_err(EngineError::new(
+            1332,
+            EngineErrorCategory::Internal,
+            false,
+        ));
+        assert_eq!(internal.status.as_u16(), 500);
+        assert!(!internal.message.contains("1332"));
     }
 
     #[test]

@@ -542,6 +542,12 @@ fn operation_response(result: OperationResult) -> Value {
             json!({"ok": true, "kind": "space_joined", "space_id": space_id})
         }
         OperationResult::SpaceUnlocked => json!({"ok": true, "kind": "space_unlocked"}),
+        OperationResult::SessionRecovered { unlocked, resumed } => json!({
+            "ok": true,
+            "kind": "session_recovered",
+            "unlocked": unlocked,
+            "resumed": resumed,
+        }),
         OperationResult::InvitationIssued { invitation_code } => json!({
             "ok": true,
             "kind": "invitation_issued",
@@ -669,6 +675,24 @@ mod tests {
         assert_eq!(
             response,
             json!({"ok": true, "kind": "space_joined", "space_id": "space-1"})
+        );
+    }
+
+    #[test]
+    fn operation_response_exposes_session_recovery_state() {
+        let response = operation_response(OperationResult::SessionRecovered {
+            unlocked: true,
+            resumed: false,
+        });
+
+        assert_eq!(
+            response,
+            json!({
+                "ok": true,
+                "kind": "session_recovered",
+                "unlocked": true,
+                "resumed": false,
+            })
         );
     }
 

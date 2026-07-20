@@ -17,6 +17,7 @@ pub mod lifecycle;
 pub mod network_policy;
 pub mod platform;
 pub mod reconcile;
+pub mod reset_space;
 pub(crate) mod runtime;
 pub mod session_recovery;
 pub mod sync_engine;

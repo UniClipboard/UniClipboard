@@ -560,6 +560,7 @@ fn operation_response(result: OperationResult) -> Value {
         OperationResult::InvitationCancelled => {
             json!({"ok": true, "kind": "invitation_cancelled"})
         }
+        OperationResult::SpaceReset => json!({"ok": true, "kind": "space_reset"}),
         OperationResult::Devices(devices) => json!({
             "ok": true,
             "kind": "devices",

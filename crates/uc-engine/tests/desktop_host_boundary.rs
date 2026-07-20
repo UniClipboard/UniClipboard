@@ -224,6 +224,28 @@ fn daemon_cancel_invitation_handler_delegates_business_orchestration_to_engine()
 }
 
 #[test]
+fn daemon_reset_space_handler_delegates_business_orchestration_to_engine() {
+    let handler =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../crates/uc-webserver/src/api/v2/setup.rs");
+    let source = std::fs::read_to_string(&handler)
+        .unwrap_or_else(|error| panic!("failed to read {}: {error}", handler.display()));
+    let reset_handler = source
+        .split("pub(crate) async fn reset(")
+        .nth(1)
+        .and_then(|source| source.split("// GET /v2/setup/state").next())
+        .expect("reset-space handler must remain discoverable");
+
+    assert!(
+        !reset_handler.contains(".reset(") && !reset_handler.contains("ResetSpaceError"),
+        "daemon reset-space handler must not own reset business orchestration"
+    );
+    assert!(
+        reset_handler.contains("execute_reset_space("),
+        "daemon reset-space handler must invoke the uc-engine implementation"
+    );
+}
+
+#[test]
 fn daemon_passphrase_unlock_delegates_business_orchestration_to_engine() {
     let handler = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../crates/uc-webserver/src/api/encryption.rs");

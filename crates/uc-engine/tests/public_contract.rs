@@ -52,6 +52,7 @@ fn every_public_operation_has_a_stable_kind() {
         ),
         (Operation::IssueInvitation, OperationKind::IssueInvitation),
         (Operation::CancelInvitation, OperationKind::CancelInvitation),
+        (Operation::ResetSpace, OperationKind::ResetSpace),
         (Operation::ListDevices, OperationKind::ListDevices),
         (
             Operation::SendText(SendTextInput {
@@ -110,6 +111,11 @@ fn cancel_invitation_has_a_stable_terminal_result() {
         OperationResult::InvitationCancelled,
         OperationResult::InvitationCancelled
     );
+}
+
+#[test]
+fn reset_space_has_a_stable_terminal_result() {
+    assert_eq!(OperationResult::SpaceReset, OperationResult::SpaceReset);
 }
 
 #[test]

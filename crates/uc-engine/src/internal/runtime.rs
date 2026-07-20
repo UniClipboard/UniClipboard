@@ -42,6 +42,7 @@ use crate::internal::host_adapters::{
 use crate::internal::invitation::execute_issue_invitation;
 use crate::internal::join_space::{execute_join_space, JoinSpaceMode};
 use crate::internal::lifecycle::build_daemon_lifecycle;
+use crate::internal::reset_space::execute_reset_space;
 use crate::internal::session_recovery::execute_recover_session;
 use crate::internal::sync_engine::SyncEngineAssembly;
 use crate::internal::unlock::execute_unlock_space;
@@ -259,6 +260,9 @@ impl EngineRuntime for ProductionRuntime {
             }
             Operation::CancelInvitation => {
                 execute_cancel_invitation(self.current_facade().await?.as_ref()).await
+            }
+            Operation::ResetSpace => {
+                execute_reset_space(self.current_facade().await?.as_ref()).await
             }
             Operation::ListDevices => {
                 let entries = self

@@ -11,7 +11,7 @@ use axum::routing::{get, post};
 use axum::{Json, Router};
 
 use uc_application::facade::space_setup::QueryMigrationProgressError;
-use uc_application::facade::{QuerySetupStateError, ResetSpaceError, SpaceSetupFacade};
+use uc_application::facade::{QuerySetupStateError, SpaceSetupFacade};
 use uc_daemon_contract::api::dto::envelope::ApiEnvelope;
 use uc_daemon_contract::api::dto::v2::setup::{
     InitializeSpaceRequest, InitializeSpaceResponse, IssueInvitationResponse,
@@ -37,6 +37,7 @@ use uc_engine::internal::join_space::{
     JOIN_SPACE_SPONSOR_REJECTED_CODE, JOIN_SPACE_SPONSOR_TIMEOUT_CODE,
     JOIN_SPACE_SPONSOR_UNREACHABLE_CODE, JOIN_SPACE_STORAGE_CODE, JOIN_SPACE_TIMEOUT_CODE,
 };
+use uc_engine::internal::reset_space::execute_reset_space;
 use uc_engine::{
     CreateSpaceInput, EngineError, EngineErrorCategory, JoinSpaceInput, OperationResult,
     SecretString,
@@ -417,16 +418,25 @@ fn map_cancel_engine_err(err: EngineError) -> ApiError {
     ),
 )]
 pub(crate) async fn reset(State(state): State<DaemonApiState>) -> Result<StatusCode, ApiError> {
-    let facade = require_facade(&state)?;
-    facade.reset().await.map_err(map_reset_err)?;
+    let app = state.app_facade_or_error()?;
+    let result = execute_reset_space(app.as_ref())
+        .await
+        .map_err(map_reset_engine_err)?;
+    if result != OperationResult::SpaceReset {
+        return Err(ApiError::internal(
+            "engine returned an unexpected reset-space result",
+        ));
+    }
     Ok(StatusCode::NO_CONTENT)
 }
 
-fn map_reset_err(err: ResetSpaceError) -> ApiError {
-    use ResetSpaceError as E;
-    let (variant, api): (&'static str, ApiError) = match err {
-        E::StorageFailed(msg) => ("storage_failed", ApiError::internal(msg)),
-        E::Internal(msg) => ("internal", ApiError::internal(msg)),
+fn map_reset_engine_err(err: EngineError) -> ApiError {
+    let (variant, api): (&'static str, ApiError) = match err.category() {
+        EngineErrorCategory::Unavailable => (
+            "service_unavailable",
+            ApiError::service_unavailable("space reset service unavailable"),
+        ),
+        _ => ("internal", ApiError::internal("failed to reset space")),
     };
     log_facade_failure("space_setup", "reset", variant, api.status, &api.message);
     api
@@ -725,6 +735,21 @@ mod tests {
             map_cancel_engine_err(EngineError::new(1399, EngineErrorCategory::Internal, false));
         assert_eq!(internal.status.as_u16(), 500);
         assert!(!internal.message.contains("1399"));
+    }
+
+    #[test]
+    fn map_reset_engine_err_preserves_unavailable_and_redacts_internal_failure() {
+        let unavailable = map_reset_engine_err(EngineError::new(
+            1311,
+            EngineErrorCategory::Unavailable,
+            true,
+        ));
+        assert_eq!(unavailable.status.as_u16(), 503);
+
+        let internal =
+            map_reset_engine_err(EngineError::new(1312, EngineErrorCategory::Internal, false));
+        assert_eq!(internal.status.as_u16(), 500);
+        assert!(!internal.message.contains("1312"));
     }
 
     #[test]

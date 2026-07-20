@@ -17,6 +17,7 @@ use uc_core::ports::blob::{
     BlobDigest, BlobProgressSink, BlobReferenceRepositoryPort, BlobTicket, BlobTransferPort,
     PlaintextHash,
 };
+use uc_core::ports::security::TransferCipherPort;
 use uc_core::ports::ContentHashPort;
 
 use crate::facade::file_transfer::{
@@ -42,6 +43,7 @@ pub struct BlobTransferDeps {
     pub hash: Arc<dyn ContentHashPort>,
     pub blob_transfer: Arc<dyn BlobTransferPort>,
     pub blob_reference: Arc<dyn BlobReferenceRepositoryPort>,
+    pub transfer_cipher: Arc<dyn TransferCipherPort>,
     /// 可选 host event emitter。提供时,带 `transfer_context` 的 fetch_blob
     /// 会发出 progress 事件;不提供则 fetch_blob 退化为静默拉取。
     /// 状态变更(transferring / completed / failed)统一通过
@@ -303,11 +305,13 @@ impl BlobTransferFacade {
             Arc::clone(&deps.hash),
             Arc::clone(&deps.blob_transfer),
             Arc::clone(&deps.blob_reference),
+            Arc::clone(&deps.transfer_cipher),
         ));
         let fetch_uc = Arc::new(FetchBlobUseCase::new(
             deps.hash,
             Arc::clone(&deps.blob_transfer),
             deps.blob_reference,
+            deps.transfer_cipher,
         ));
         Self {
             publish_uc,
@@ -1077,6 +1081,7 @@ mod tests {
     use tokio::sync::Semaphore;
     use uc_core::clipboard::{ContentHash, HashAlgorithm};
     use uc_core::ports::blob::{BlobError, BlobReferenceError, TagReason};
+    use uc_core::ports::security::{TransferCipherError, TransferCipherPort};
 
     struct TestHash;
 
@@ -1090,6 +1095,19 @@ mod tests {
     }
 
     struct TestReferences;
+
+    struct TestCipher;
+
+    #[async_trait]
+    impl TransferCipherPort for TestCipher {
+        async fn encrypt(&self, plaintext: &[u8]) -> Result<Vec<u8>, TransferCipherError> {
+            Ok(plaintext.to_vec())
+        }
+
+        async fn decrypt(&self, encrypted: &[u8]) -> Result<Vec<u8>, TransferCipherError> {
+            Ok(encrypted.to_vec())
+        }
+    }
 
     #[async_trait]
     impl BlobReferenceRepositoryPort for TestReferences {
@@ -1206,6 +1224,7 @@ mod tests {
             hash: Arc::new(TestHash),
             blob_transfer: transfer.clone(),
             blob_reference: Arc::new(TestReferences),
+            transfer_cipher: Arc::new(TestCipher),
             host_event_emitter: None,
             outbound_progress_reporter: None,
             file_transfer: None,

@@ -9,13 +9,14 @@ use uc_core::ids::EntryId;
 use uc_core::ports::blob::{
     BlobDigest, BlobReferenceRepositoryPort, BlobTicket, BlobTransferPort, PlaintextHash, TagReason,
 };
+use uc_core::ports::security::TransferCipherPort;
 use uc_core::ports::ContentHashPort;
 
-/// publish_blob 的输入 —— 内存 plaintext 与磁盘文件路径两条入口的语义对称。
+/// Input variants for publishing in-memory content and files from disk.
 ///
-/// `Plaintext` 路径用于已经在内存里的 inline payload(小图、文本扩展 rep);
-/// `Path` 路径用于磁盘文件 outbound,走流式入库避免把整文件加载到内存
-/// (GH#487)。两条路径产出的 `PublishBlobOutcome` 在协议层等价。
+/// `Plaintext` is for non-file clipboard content that must be encrypted before
+/// persistence. `Path` is for file payloads covered by the raw-file storage
+/// exception and uses streaming I/O (GH#487).
 #[derive(Debug, Clone)]
 pub(crate) enum PublishBlobInput {
     Plaintext { plaintext: Bytes, entry_id: EntryId },
@@ -35,6 +36,7 @@ pub(crate) struct PublishBlobUseCase {
     hash: Arc<dyn ContentHashPort>,
     blob_transfer: Arc<dyn BlobTransferPort>,
     blob_reference: Arc<dyn BlobReferenceRepositoryPort>,
+    transfer_cipher: Arc<dyn TransferCipherPort>,
 }
 
 impl PublishBlobUseCase {
@@ -42,11 +44,13 @@ impl PublishBlobUseCase {
         hash: Arc<dyn ContentHashPort>,
         blob_transfer: Arc<dyn BlobTransferPort>,
         blob_reference: Arc<dyn BlobReferenceRepositoryPort>,
+        transfer_cipher: Arc<dyn TransferCipherPort>,
     ) -> Self {
         Self {
             hash,
             blob_transfer,
             blob_reference,
+            transfer_cipher,
         }
     }
 
@@ -87,53 +91,17 @@ impl PublishBlobUseCase {
         );
         let hash_ms = hash_start.elapsed().as_millis() as u64;
 
-        let lookup_start = Instant::now();
-        if let Some(digest) = self.find_reusable_digest(&plaintext_hash).await? {
-            let lookup_ms = lookup_start.elapsed().as_millis() as u64;
-
-            let tag_start = Instant::now();
-            self.blob_transfer
-                .tag(&digest, TagReason::ClipboardEntry(entry_id.clone()))
-                .await
-                .map_err(|e| PublishBlobError::Transfer(e.to_string()))?;
-            let tag_ms = tag_start.elapsed().as_millis() as u64;
-
-            let ticket_start = Instant::now();
-            let ticket = self
-                .blob_transfer
-                .issue_ticket(&digest)
-                .await
-                .map_err(|e| PublishBlobError::Transfer(e.to_string()))?;
-            let ticket_ms = ticket_start.elapsed().as_millis() as u64;
-
-            info!(
-                entry_id = %entry_id.as_str(),
-                bytes,
-                reused_existing = true,
-                hash_ms,
-                lookup_ms,
-                tag_ms,
-                ticket_ms,
-                "publish_blob: reused existing digest"
-            );
-
-            return Ok(PublishBlobOutcome {
-                ticket,
-                entry_id,
-                plaintext_hash,
-                digest,
-                reused_existing: true,
-            });
-        }
-        let lookup_ms = lookup_start.elapsed().as_millis() as u64;
-
-        // File blobs go through iroh-blobs as raw bytes — content-addressed by
-        // blake3 of the plaintext, which equals `plaintext_hash`. Application-
-        // layer encryption is intentionally absent: file payloads are opaque
-        // user-chosen content (the user already consented by copying), and any
-        // sensitive *metadata* (filenames, paths, mime, thumbnails) lives on
-        // the clipboard event side and is encrypted there by
-        // `EncryptingClipboardEventWriter`.
+        // In-memory payloads are non-file clipboard content (for example an
+        // oversized image representation). Encrypt before handing bytes to
+        // the persistent transfer store. A plaintext-hash reference may point
+        // to a raw file with identical bytes, so this path must never reuse it.
+        // Disk files use execute_path below and retain the explicit raw-file
+        // exception.
+        let encrypted = self
+            .transfer_cipher
+            .encrypt(&plaintext)
+            .await
+            .map_err(|e| PublishBlobError::Cipher(e.to_string()))?;
         //
         // Phase F: publish 携带业务 reason 一起原子入库。adapter 内部走
         // `with_named_tag`,完成后 blob 已经直接挂在 ClipboardEntry tag 上,
@@ -144,7 +112,10 @@ impl PublishBlobUseCase {
         let publish_start = Instant::now();
         let digest = self
             .blob_transfer
-            .publish(plaintext, TagReason::ClipboardEntry(entry_id.clone()))
+            .publish(
+                Bytes::from(encrypted),
+                TagReason::ClipboardEntry(entry_id.clone()),
+            )
             .await
             .map_err(|e| PublishBlobError::Transfer(e.to_string()))?;
         let publish_ms = publish_start.elapsed().as_millis() as u64;
@@ -169,7 +140,6 @@ impl PublishBlobUseCase {
             bytes,
             reused_existing = false,
             hash_ms,
-            lookup_ms,
             publish_ms,
             save_ref_ms,
             ticket_ms,
@@ -232,7 +202,6 @@ impl PublishBlobUseCase {
 
         info!(
             entry_id = %entry_id.as_str(),
-            path = %path.display(),
             publish_ms,
             save_ref_ms,
             ticket_ms,
@@ -247,27 +216,6 @@ impl PublishBlobUseCase {
             reused_existing: false,
         })
     }
-
-    async fn find_reusable_digest(
-        &self,
-        plaintext_hash: &PlaintextHash,
-    ) -> Result<Option<BlobDigest>, PublishBlobError> {
-        let Some(digest) = self
-            .blob_reference
-            .find_by_plaintext_hash(plaintext_hash)
-            .await
-            .map_err(|e| PublishBlobError::Reference(e.to_string()))?
-        else {
-            return Ok(None);
-        };
-
-        let exists = self
-            .blob_transfer
-            .has(&digest)
-            .await
-            .map_err(|e| PublishBlobError::Transfer(e.to_string()))?;
-        Ok(exists.then_some(digest))
-    }
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -280,4 +228,6 @@ pub(crate) enum PublishBlobError {
     Transfer(String),
     #[error("blob reference failed: {0}")]
     Reference(String),
+    #[error("blob payload encryption failed: {0}")]
+    Cipher(String),
 }

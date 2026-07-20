@@ -8,6 +8,7 @@ use uc_core::ports::blob::{
     BlobDigest, BlobProgressSink, BlobReferenceRepositoryPort, BlobTicket, BlobTransferPort,
     PlaintextHash, TagReason,
 };
+use uc_core::ports::security::TransferCipherPort;
 use uc_core::ports::ContentHashPort;
 
 pub(crate) struct FetchBlobInput {
@@ -55,6 +56,7 @@ pub(crate) struct FetchBlobUseCase {
     hash: Arc<dyn ContentHashPort>,
     blob_transfer: Arc<dyn BlobTransferPort>,
     blob_reference: Arc<dyn BlobReferenceRepositoryPort>,
+    transfer_cipher: Arc<dyn TransferCipherPort>,
 }
 
 impl FetchBlobUseCase {
@@ -62,11 +64,13 @@ impl FetchBlobUseCase {
         hash: Arc<dyn ContentHashPort>,
         blob_transfer: Arc<dyn BlobTransferPort>,
         blob_reference: Arc<dyn BlobReferenceRepositoryPort>,
+        transfer_cipher: Arc<dyn TransferCipherPort>,
     ) -> Self {
         Self {
             hash,
             blob_transfer,
             blob_reference,
+            transfer_cipher,
         }
     }
 
@@ -75,17 +79,21 @@ impl FetchBlobUseCase {
             .blob_transfer
             .digest_of(&input.ticket)
             .map_err(|e| FetchBlobError::Transfer(e.to_string()))?;
-        // File blobs are stored raw on iroh-blobs (see PublishBlobUseCase).
-        // The fetched bytes are already the plaintext; no decrypt step.
         let progress_ref: Option<&dyn BlobProgressSink> = input
             .progress
             .as_ref()
             .map(|p| &**p as &dyn BlobProgressSink);
-        let plaintext_bytes = self
+        let encrypted_bytes = self
             .blob_transfer
             .fetch(&input.ticket, progress_ref)
             .await
             .map_err(|e| FetchBlobError::Transfer(e.to_string()))?;
+        let plaintext_bytes = Bytes::from(
+            self.transfer_cipher
+                .decrypt(&encrypted_bytes)
+                .await
+                .map_err(|e| FetchBlobError::Cipher(e.to_string()))?,
+        );
         let plaintext_hash = PlaintextHash::from_bytes(
             self.hash
                 .hash_bytes(&plaintext_bytes)
@@ -174,4 +182,6 @@ pub(crate) enum FetchBlobError {
     Transfer(String),
     #[error("blob reference failed: {0}")]
     Reference(String),
+    #[error("blob payload decryption failed: {0}")]
+    Cipher(String),
 }

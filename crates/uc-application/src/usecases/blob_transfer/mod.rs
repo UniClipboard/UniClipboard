@@ -1,11 +1,11 @@
-//! Blob 发布 / 拉取用例。
+//! Blob publish and fetch use cases.
 //!
-//! 这里处理应用层编排:明文 hash 去重、iroh-blobs 内容寻址发布/拉取、
-//! 引用标签登记。文件 blob 走 raw bytes 通道,不在应用层加解密——
-//! 敏感元数据(文件名、路径等)由 `EncryptingClipboardEventWriter` 在
-//! clipboard event 的 inline_data 里独立加密。
+//! In-memory non-file content is encrypted before entering the persistent
+//! transfer store and decrypted after fetch. File payloads use the explicit
+//! raw-byte exception; their names, paths, and other metadata remain encrypted
+//! in the clipboard event.
 //!
-//! 外部调用方只通过 facade 进入。
+//! External callers enter through the facade.
 
 mod fetch_blob;
 mod publish_blob;
@@ -16,6 +16,7 @@ pub(crate) use publish_blob::{PublishBlobInput, PublishBlobUseCase};
 #[cfg(test)]
 mod tests {
     use std::collections::HashMap;
+    use std::io::Write;
     use std::sync::{Arc, Mutex};
 
     use async_trait::async_trait;
@@ -25,17 +26,153 @@ mod tests {
         BlobDigest, BlobError, BlobProgressSink, BlobReferenceError, BlobReferenceRepositoryPort,
         BlobTicket, BlobTransferPort, PlaintextHash, TagReason,
     };
+    use uc_core::ports::security::{TransferCipherError, TransferCipherPort};
     use uc_core::ports::ContentHashPort;
     use uc_core::{ContentHash, HashAlgorithm};
 
     use super::{FetchBlobInput, FetchBlobUseCase, PublishBlobInput, PublishBlobUseCase};
 
+    #[derive(Clone, Default)]
+    struct CapturedWriter(Arc<Mutex<Vec<u8>>>);
+
+    impl CapturedWriter {
+        fn dump(&self) -> String {
+            String::from_utf8(self.0.lock().expect("lock captured logs").clone())
+                .expect("captured logs should be UTF-8")
+        }
+    }
+
+    impl Write for CapturedWriter {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            self.0
+                .lock()
+                .expect("lock captured logs")
+                .extend_from_slice(buf);
+            Ok(buf.len())
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    impl<'a> tracing_subscriber::fmt::MakeWriter<'a> for CapturedWriter {
+        type Writer = CapturedWriter;
+
+        fn make_writer(&'a self) -> Self::Writer {
+            self.clone()
+        }
+    }
+
     #[tokio::test]
-    async fn publish_reuses_existing_digest_for_repeated_plaintext() {
+    async fn publish_plaintext_does_not_store_plaintext_transport_bytes() {
         let hash = Arc::new(FakeHash);
         let transfer = Arc::new(FakeBlobTransfer::default());
         let reference = Arc::new(FakeBlobReferenceRepository::default());
-        let usecase = PublishBlobUseCase::new(hash, transfer.clone(), reference.clone());
+        let usecase =
+            PublishBlobUseCase::new(hash, transfer.clone(), reference, Arc::new(FakeCipher));
+
+        let plaintext = Bytes::from_static(b"private image bytes");
+        let outcome = usecase
+            .execute(PublishBlobInput::Plaintext {
+                plaintext: plaintext.clone(),
+                entry_id: EntryId::from("entry-image"),
+            })
+            .await
+            .expect("publish should succeed");
+
+        assert_ne!(
+            transfer.stored_bytes(&outcome.digest),
+            Some(plaintext),
+            "non-file payload reached the transfer store as plaintext"
+        );
+    }
+
+    #[tokio::test]
+    async fn publish_plaintext_does_not_reuse_raw_file_digest() {
+        let hash = Arc::new(FakeHash);
+        let transfer = Arc::new(FakeBlobTransfer::default());
+        let reference = Arc::new(FakeBlobReferenceRepository::default());
+        let usecase = PublishBlobUseCase::new(
+            hash.clone(),
+            transfer.clone(),
+            reference.clone(),
+            Arc::new(FakeCipher),
+        );
+
+        let plaintext = Bytes::from_static(b"same bytes in a file and image");
+        let raw_digest = transfer
+            .publish(
+                plaintext.clone(),
+                TagReason::ClipboardEntry(EntryId::from("entry-file")),
+            )
+            .await
+            .expect("raw file fixture should publish");
+        let plaintext_hash =
+            PlaintextHash::from_bytes(hash.hash_bytes(&plaintext).expect("fixture hash").bytes);
+        reference
+            .save(plaintext_hash, raw_digest)
+            .await
+            .expect("fixture reference should save");
+
+        let outcome = usecase
+            .execute(PublishBlobInput::Plaintext {
+                plaintext,
+                entry_id: EntryId::from("entry-image"),
+            })
+            .await
+            .expect("image publish should succeed");
+
+        assert_ne!(outcome.digest, raw_digest);
+        assert!(!outcome.reused_existing);
+        assert_eq!(transfer.publish_count(), 2);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn publish_path_logs_do_not_include_source_path() {
+        let hash = Arc::new(FakeHash);
+        let transfer = Arc::new(FakeBlobTransfer::default());
+        let reference = Arc::new(FakeBlobReferenceRepository::default());
+        let usecase = PublishBlobUseCase::new(hash, transfer, reference, Arc::new(FakeCipher));
+        let dir = tempfile::tempdir().expect("tempdir");
+        let secret_name = "customer-payroll-private.txt";
+        let path = dir.path().join(secret_name);
+        std::fs::write(&path, b"file payload").expect("write fixture");
+
+        let writer = CapturedWriter::default();
+        let subscriber = tracing_subscriber::fmt()
+            .with_writer(writer.clone())
+            .with_ansi(false)
+            .finish();
+        let dispatch = tracing::Dispatch::new(subscriber);
+        let _guard = tracing::dispatcher::set_default(&dispatch);
+
+        usecase
+            .execute(PublishBlobInput::Path {
+                path,
+                entry_id: EntryId::from("entry-file-log-redaction"),
+            })
+            .await
+            .expect("path publish should succeed");
+
+        let logs = writer.dump();
+        assert!(
+            !logs.contains(secret_name),
+            "source filename leaked into publish logs: {logs}"
+        );
+    }
+
+    #[tokio::test]
+    async fn publish_plaintext_encrypts_each_publication_without_reference_reuse() {
+        let hash = Arc::new(FakeHash);
+        let transfer = Arc::new(FakeBlobTransfer::default());
+        let reference = Arc::new(FakeBlobReferenceRepository::default());
+        let usecase = PublishBlobUseCase::new(
+            hash,
+            transfer.clone(),
+            reference.clone(),
+            Arc::new(FakeCipher),
+        );
 
         let plaintext = Bytes::from_static(b"same file bytes");
         let mut first_digest = None;
@@ -49,25 +186,31 @@ mod tests {
                 .expect("publish should succeed");
             if let Some(first_digest) = first_digest {
                 assert_eq!(outcome.digest, first_digest);
-                assert!(outcome.reused_existing);
+                assert!(!outcome.reused_existing);
             } else {
                 first_digest = Some(outcome.digest);
                 assert!(!outcome.reused_existing);
             }
         }
 
-        assert_eq!(transfer.publish_count(), 1);
+        assert_eq!(transfer.publish_count(), 10);
         assert_eq!(transfer.tag_count(), 10);
-        assert_eq!(reference.save_count(), 1);
+        assert_eq!(reference.save_count(), 10);
     }
 
     #[tokio::test]
-    async fn fetch_reused_digest_with_new_entry_id_returns_plaintext() {
+    async fn fetch_second_plaintext_publication_returns_plaintext() {
         let hash = Arc::new(FakeHash);
         let transfer = Arc::new(FakeBlobTransfer::default());
         let reference = Arc::new(FakeBlobReferenceRepository::default());
-        let publish = PublishBlobUseCase::new(hash.clone(), transfer.clone(), reference.clone());
-        let fetch = FetchBlobUseCase::new(hash, transfer, reference);
+        let cipher = Arc::new(FakeCipher);
+        let publish = PublishBlobUseCase::new(
+            hash.clone(),
+            transfer.clone(),
+            reference.clone(),
+            cipher.clone(),
+        );
+        let fetch = FetchBlobUseCase::new(hash, transfer, reference, cipher);
 
         let plaintext = Bytes::from_static(b"same file bytes");
         let first = publish
@@ -83,10 +226,10 @@ mod tests {
                 entry_id: EntryId::from("entry-two"),
             })
             .await
-            .expect("second publish should reuse digest");
+            .expect("second publish should succeed");
 
         assert_eq!(first.digest, second.digest);
-        assert!(second.reused_existing);
+        assert!(!second.reused_existing);
 
         let outcome = fetch
             .execute(FetchBlobInput {
@@ -95,7 +238,7 @@ mod tests {
                 progress: None,
             })
             .await
-            .expect("reused digest should fetch for the new entry tag");
+            .expect("second digest should fetch for the new entry tag");
 
         assert_eq!(outcome.plaintext, plaintext);
         assert_eq!(outcome.entry_id, EntryId::from("entry-two"));
@@ -106,15 +249,25 @@ mod tests {
         let hash = Arc::new(FakeHash);
         let transfer = Arc::new(FakeBlobTransfer::default());
         let reference = Arc::new(FakeBlobReferenceRepository::default());
-        let usecase = FetchBlobUseCase::new(hash.clone(), transfer.clone(), reference.clone());
+        let cipher = Arc::new(FakeCipher);
+        let usecase = FetchBlobUseCase::new(
+            hash.clone(),
+            transfer.clone(),
+            reference.clone(),
+            cipher.clone(),
+        );
 
         let entry_id = EntryId::new();
         let plaintext = Bytes::from_static(b"remote blob bytes");
         // Phase F: publish 已携带原子 tag,seed 这里随意挂一个非冲突的 reason
         // 即可 —— 真正被测试的是 use case 走 fetch 流程后再补一份业务 tag。
+        let encrypted = cipher
+            .encrypt(&plaintext)
+            .await
+            .expect("fixture encryption should succeed");
         let digest = transfer
             .publish(
-                plaintext.clone(),
+                Bytes::from(encrypted),
                 TagReason::ClipboardEntry(EntryId::from("seed-fixture")),
             )
             .await
@@ -162,6 +315,24 @@ mod tests {
         }
     }
 
+    struct FakeCipher;
+
+    #[async_trait]
+    impl TransferCipherPort for FakeCipher {
+        async fn encrypt(&self, plaintext: &[u8]) -> Result<Vec<u8>, TransferCipherError> {
+            let mut encrypted = b"encrypted:".to_vec();
+            encrypted.extend_from_slice(plaintext);
+            Ok(encrypted)
+        }
+
+        async fn decrypt(&self, encrypted: &[u8]) -> Result<Vec<u8>, TransferCipherError> {
+            encrypted
+                .strip_prefix(b"encrypted:")
+                .map(ToOwned::to_owned)
+                .ok_or(TransferCipherError::InvalidFormat)
+        }
+    }
+
     #[derive(Default)]
     struct FakeBlobTransfer {
         store: Mutex<HashMap<BlobDigest, Bytes>>,
@@ -176,6 +347,10 @@ mod tests {
 
         fn tag_count(&self) -> usize {
             self.tags.lock().expect("lock tags").len()
+        }
+
+        fn stored_bytes(&self, digest: &BlobDigest) -> Option<Bytes> {
+            self.store.lock().expect("lock store").get(digest).cloned()
         }
     }
 

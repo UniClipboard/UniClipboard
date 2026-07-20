@@ -446,6 +446,7 @@ pub async fn build_sync_engine_assembly(
         hash: Arc::clone(&deps.system.hash),
         blob_transfer: Arc::clone(&blob_transfer),
         blob_reference: Arc::clone(&space_setup.blob_reference_repo),
+        transfer_cipher: Arc::clone(&deps.security.transfer_cipher),
         // 共享同一根 host_event_bus —— daemon bootstrap 注册自己的 WS
         // emitter 之后, fetch_blob 自动开始向前端 fan-out progress 事件;
         // CLI 装配走同一 bus 但只挂着 logging emitter, 事件被静默打 log,

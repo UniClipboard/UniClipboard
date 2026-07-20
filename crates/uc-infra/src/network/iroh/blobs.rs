@@ -221,7 +221,7 @@ impl BlobTransferPort for IrohBlobTransferAdapter {
         Ok(Self::core_digest(haf.hash))
     }
 
-    #[instrument(skip_all, fields(path = %path.display()))]
+    #[instrument(skip_all)]
     async fn publish_path(
         &self,
         path: &std::path::Path,
@@ -741,13 +741,47 @@ impl IrohBlobTransferAdapter {
 mod tests {
     use super::*;
 
+    use std::io::Write;
     use std::path::PathBuf;
     use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Mutex;
     use std::time::Duration;
 
     use iroh::{protocol::Router, RelayMode};
     use tempfile::{tempdir, TempDir};
     use uc_core::ids::EntryId;
+
+    #[derive(Clone, Default)]
+    struct CapturedWriter(Arc<Mutex<Vec<u8>>>);
+
+    impl CapturedWriter {
+        fn dump(&self) -> String {
+            String::from_utf8(self.0.lock().expect("lock captured logs").clone())
+                .expect("captured logs should be UTF-8")
+        }
+    }
+
+    impl Write for CapturedWriter {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            self.0
+                .lock()
+                .expect("lock captured logs")
+                .extend_from_slice(buf);
+            Ok(buf.len())
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    impl<'a> tracing_subscriber::fmt::MakeWriter<'a> for CapturedWriter {
+        type Writer = CapturedWriter;
+
+        fn make_writer(&'a self) -> Self::Writer {
+            self.clone()
+        }
+    }
 
     struct Fixture {
         adapter: IrohBlobTransferAdapter,
@@ -979,6 +1013,36 @@ mod tests {
             .await?;
 
         assert_eq!(bytes_digest, path_digest);
+        fixture.shutdown().await?;
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn publish_path_logs_do_not_include_source_path() -> anyhow::Result<()> {
+        let fixture = Fixture::bind().await?;
+        let dir = tempdir()?;
+        let secret_name = "customer-payroll-private.bin";
+        let path = dir.path().join(secret_name);
+        std::fs::write(&path, b"private file payload")?;
+
+        let writer = CapturedWriter::default();
+        let subscriber = tracing_subscriber::fmt()
+            .with_writer(writer.clone())
+            .with_ansi(false)
+            .finish();
+        let dispatch = tracing::Dispatch::new(subscriber);
+        let _guard = tracing::dispatcher::set_default(&dispatch);
+
+        fixture
+            .adapter
+            .publish_path(&path, dummy_reason("publish-path-log-redaction"))
+            .await?;
+
+        let logs = writer.dump();
+        assert!(
+            !logs.contains(secret_name),
+            "source path leaked into adapter logs: {logs}"
+        );
         fixture.shutdown().await?;
         Ok(())
     }

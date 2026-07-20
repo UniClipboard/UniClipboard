@@ -10,13 +10,9 @@ use axum::http::StatusCode;
 use axum::routing::{get, post};
 use axum::{Json, Router};
 
-use uc_application::facade::space_setup::{
-    QueryMigrationProgressError, SwitchSpaceError, SwitchSpaceInput,
-};
-use uc_application::facade::RedeemPairingInvitationInput;
+use uc_application::facade::space_setup::QueryMigrationProgressError;
 use uc_application::facade::{
-    CancelInvitationError, QuerySetupStateError, RedeemPairingInvitationError, ResetSpaceError,
-    SpaceSetupFacade,
+    CancelInvitationError, QuerySetupStateError, ResetSpaceError, SpaceSetupFacade,
 };
 use uc_daemon_contract::api::dto::envelope::ApiEnvelope;
 use uc_daemon_contract::api::dto::v2::setup::{
@@ -30,8 +26,19 @@ use uc_engine::internal::create_space::{
     CREATE_SPACE_DEVICE_NAME_REQUIRED_CODE, CREATE_SPACE_PASSPHRASE_MISMATCH_CODE,
 };
 use uc_engine::internal::invitation::execute_issue_invitation;
+use uc_engine::internal::join_space::{
+    execute_join_space, JoinSpaceMode, JOIN_SPACE_CONNECTION_LOST_CODE,
+    JOIN_SPACE_CORRUPTED_KEY_CODE, JOIN_SPACE_DEVICE_NAME_REQUIRED_CODE,
+    JOIN_SPACE_INVALID_CIPHERTEXT_CODE, JOIN_SPACE_INVITATION_EXPIRED_CODE,
+    JOIN_SPACE_INVITATION_NOT_FOUND_CODE, JOIN_SPACE_NOT_SETUP_CODE, JOIN_SPACE_NOT_UNLOCKED_CODE,
+    JOIN_SPACE_PASSPHRASE_MISMATCH_CODE, JOIN_SPACE_PENDING_MIGRATION_CODE,
+    JOIN_SPACE_SERVICE_UNAVAILABLE_CODE, JOIN_SPACE_SPONSOR_DECLINED_CODE,
+    JOIN_SPACE_SPONSOR_REJECTED_CODE, JOIN_SPACE_SPONSOR_TIMEOUT_CODE,
+    JOIN_SPACE_SPONSOR_UNREACHABLE_CODE, JOIN_SPACE_STORAGE_CODE, JOIN_SPACE_TIMEOUT_CODE,
+};
 use uc_engine::{
-    CreateSpaceInput, EngineError, EngineErrorCategory, OperationResult, SecretString,
+    CreateSpaceInput, EngineError, EngineErrorCategory, JoinSpaceInput, OperationResult,
+    SecretString,
 };
 
 use crate::api::dto::error::{log_facade_failure, ApiError};
@@ -238,74 +245,96 @@ pub(crate) async fn redeem(
     State(state): State<DaemonApiState>,
     Json(req): Json<RedeemRequest>,
 ) -> Result<Json<ApiEnvelope<RedeemResponse>>, ApiError> {
-    let facade = require_facade(&state)?;
-    let input = RedeemPairingInvitationInput {
-        code: req.code,
-        passphrase: req.passphrase,
+    let app = state.app_facade_or_error()?;
+    let result = execute_join_space(
+        app.as_ref(),
+        state.receive_readiness.as_ref(),
+        JoinSpaceInput {
+            invitation_code: req.code,
+            device_name: None,
+            passphrase: SecretString::new(req.passphrase),
+        },
+        JoinSpaceMode::Fresh,
+    )
+    .await
+    .map_err(map_join_engine_err)?;
+    let OperationResult::SpaceJoined {
+        sponsor_device_id,
+        sponsor_identity_fingerprint,
+        space_id,
+        self_device_id,
+        self_identity_fingerprint,
+        migrated_records: None,
+    } = result
+    else {
+        return Err(ApiError::internal(
+            "engine returned an unexpected fresh-join result",
+        ));
     };
-    let out = facade
-        .redeem_pairing_invitation(input)
-        .await
-        .map_err(map_redeem_err)?;
-    Ok(Json(ApiEnvelope::now(out.into_api_dto())))
+    Ok(Json(ApiEnvelope::now(RedeemResponse {
+        sponsor_device_id,
+        sponsor_identity_fingerprint,
+        space_id,
+        self_device_id,
+        self_identity_fingerprint,
+    })))
 }
 
-fn map_redeem_err(err: RedeemPairingInvitationError) -> ApiError {
-    use RedeemPairingInvitationError as E;
-    let (variant, api): (&'static str, ApiError) = match err {
-        E::InvitationNotFound => (
+fn map_join_engine_err(err: EngineError) -> ApiError {
+    let (variant, api): (&'static str, ApiError) = match err.code() {
+        JOIN_SPACE_INVITATION_NOT_FOUND_CODE => (
             "invitation_not_found",
             ApiError::not_found("invitation not found"),
         ),
-        E::InvitationExpired => (
+        JOIN_SPACE_INVITATION_EXPIRED_CODE => (
             "invitation_expired",
             ApiError::not_found("invitation has expired"),
         ),
-        E::SponsorUnreachable => (
+        JOIN_SPACE_SPONSOR_UNREACHABLE_CODE => (
             "sponsor_unreachable",
             ApiError::service_unavailable("sponsor is not reachable"),
         ),
-        E::ServiceUnavailable => (
+        JOIN_SPACE_SERVICE_UNAVAILABLE_CODE => (
             "service_unavailable",
             ApiError::service_unavailable("pairing invitation service unavailable"),
         ),
-        E::PassphraseMismatch => (
+        JOIN_SPACE_PASSPHRASE_MISMATCH_CODE => (
             "passphrase_mismatch",
             ApiError::bad_request("wrong passphrase"),
         ),
-        E::CorruptedKeyMaterial => (
+        JOIN_SPACE_CORRUPTED_KEY_CODE => (
             "corrupted_key_material",
             ApiError::internal("space key material corrupted"),
         ),
-        E::DeviceNameRequired => (
+        JOIN_SPACE_DEVICE_NAME_REQUIRED_CODE => (
             "device_name_required",
             ApiError::bad_request("device name is required"),
         ),
-        E::SponsorRejectedInvitation => (
+        JOIN_SPACE_SPONSOR_REJECTED_CODE => (
             "sponsor_rejected_invitation",
             ApiError::conflict("sponsor did not recognise the invitation code"),
         ),
-        E::SponsorDeclined => (
+        JOIN_SPACE_SPONSOR_DECLINED_CODE => (
             "sponsor_declined",
             ApiError::conflict("sponsor declined the pairing request"),
         ),
-        E::SponsorTimedOut => (
+        JOIN_SPACE_SPONSOR_TIMEOUT_CODE => (
             "sponsor_timed_out",
             ApiError::service_unavailable("sponsor timed out the handshake"),
         ),
-        E::SponsorInternal(msg) => (
-            "sponsor_internal",
-            ApiError::internal(format!("sponsor internal error: {msg}")),
-        ),
-        E::Timeout => (
+        JOIN_SPACE_TIMEOUT_CODE => (
             "timeout",
             ApiError::service_unavailable("pairing handshake timed out"),
         ),
-        E::ConnectionLost => (
+        JOIN_SPACE_CONNECTION_LOST_CODE => (
             "connection_lost",
             ApiError::service_unavailable("connection lost mid-handshake"),
         ),
-        E::Internal(msg) => ("internal", ApiError::internal(msg)),
+        _ if err.category() == EngineErrorCategory::Unavailable => (
+            "service_unavailable",
+            ApiError::service_unavailable("join-space service unavailable"),
+        ),
+        _ => ("internal", ApiError::internal("failed to join space")),
     };
     log_facade_failure(
         "space_setup",
@@ -454,94 +483,121 @@ pub(crate) async fn switch_space(
     State(state): State<DaemonApiState>,
     Json(req): Json<SwitchSpaceRequest>,
 ) -> Result<Json<ApiEnvelope<SwitchSpaceResponse>>, ApiError> {
-    let facade = require_facade(&state)?;
-    let input = SwitchSpaceInput {
-        code: req.code,
-        new_passphrase: req.new_passphrase,
+    let app = state.app_facade_or_error()?;
+    let result = execute_join_space(
+        app.as_ref(),
+        state.receive_readiness.as_ref(),
+        JoinSpaceInput {
+            invitation_code: req.code,
+            device_name: None,
+            passphrase: SecretString::new(req.new_passphrase),
+        },
+        JoinSpaceMode::Switch,
+    )
+    .await
+    .map_err(map_switch_engine_err)?;
+    let OperationResult::SpaceJoined {
+        sponsor_device_id,
+        sponsor_identity_fingerprint,
+        space_id,
+        self_device_id,
+        self_identity_fingerprint,
+        migrated_records: Some(migrated_records),
+    } = result
+    else {
+        return Err(ApiError::internal(
+            "engine returned an unexpected switch-space result",
+        ));
     };
-    let out = facade
-        .switch_space(input)
-        .await
-        .map_err(map_switch_space_err)?;
-    Ok(Json(ApiEnvelope::now(out.into_api_dto())))
+    Ok(Json(ApiEnvelope::now(SwitchSpaceResponse {
+        sponsor_device_id,
+        sponsor_identity_fingerprint,
+        space_id,
+        self_device_id,
+        self_identity_fingerprint,
+        migrated_records,
+    })))
 }
 
-fn map_switch_space_err(err: SwitchSpaceError) -> ApiError {
-    use SwitchSpaceError as E;
-    let (variant, api): (&'static str, ApiError) = match err {
-        E::NotSetup => (
+fn map_switch_engine_err(err: EngineError) -> ApiError {
+    let (variant, api): (&'static str, ApiError) = match err.code() {
+        JOIN_SPACE_NOT_SETUP_CODE => (
             "not_setup",
             ApiError::conflict(
                 "this device has not completed first-time setup yet; use /v2/setup/initialize \
                  or /v2/setup/redeem first",
             ),
         ),
-        E::PendingMigration(_) => (
+        JOIN_SPACE_PENDING_MIGRATION_CODE => (
             "pending_migration",
             ApiError::conflict(
                 "a previous switch-space migration is still in flight; restart the daemon to \
                  auto-resume, or call /v2/setup/reset to abandon",
             ),
         ),
-        E::NotUnlocked => (
+        JOIN_SPACE_NOT_UNLOCKED_CODE => (
             "not_unlocked",
             ApiError::conflict(
                 "space session is locked; unlock the current space before switching",
             ),
         ),
-        E::InvitationNotFound => (
+        JOIN_SPACE_INVITATION_NOT_FOUND_CODE => (
             "invitation_not_found",
             ApiError::not_found("invitation not found"),
         ),
-        E::InvitationExpired => (
+        JOIN_SPACE_INVITATION_EXPIRED_CODE => (
             "invitation_expired",
             ApiError::not_found("invitation has expired"),
         ),
-        E::SponsorUnreachable => (
+        JOIN_SPACE_SPONSOR_UNREACHABLE_CODE => (
             "sponsor_unreachable",
             ApiError::service_unavailable("sponsor is not reachable"),
         ),
-        E::ServiceUnavailable => (
+        JOIN_SPACE_SERVICE_UNAVAILABLE_CODE => (
             "service_unavailable",
             ApiError::service_unavailable("pairing invitation service unavailable"),
         ),
-        E::PassphraseMismatch => (
+        JOIN_SPACE_PASSPHRASE_MISMATCH_CODE => (
             "passphrase_mismatch",
             ApiError::bad_request("wrong passphrase"),
         ),
-        E::CorruptedKeyMaterial => (
+        JOIN_SPACE_CORRUPTED_KEY_CODE => (
             "corrupted_key_material",
             ApiError::internal("space key material corrupted"),
         ),
-        E::DeviceNameRequired => (
+        JOIN_SPACE_DEVICE_NAME_REQUIRED_CODE => (
             "device_name_required",
             ApiError::bad_request("device name is required"),
         ),
-        E::SponsorRejectedInvitation => (
+        JOIN_SPACE_SPONSOR_REJECTED_CODE => (
             "sponsor_rejected_invitation",
             ApiError::conflict("sponsor did not recognise the invitation code"),
         ),
-        E::SponsorDeclined => (
+        JOIN_SPACE_SPONSOR_DECLINED_CODE => (
             "sponsor_declined",
             ApiError::conflict("sponsor declined the pairing request"),
         ),
-        E::Timeout => (
+        JOIN_SPACE_TIMEOUT_CODE => (
             "timeout",
             ApiError::service_unavailable("handshake timed out"),
         ),
-        E::ConnectionLost => (
+        JOIN_SPACE_CONNECTION_LOST_CODE => (
             "connection_lost",
             ApiError::service_unavailable("connection lost mid-handshake"),
         ),
-        E::InvalidCiphertext => (
+        JOIN_SPACE_INVALID_CIPHERTEXT_CODE => (
             "invalid_ciphertext",
             ApiError::internal("backup record decryption failed (corrupted ciphertext)"),
         ),
-        E::Storage(msg) => (
+        JOIN_SPACE_STORAGE_CODE => (
             "storage",
-            ApiError::internal(format!("storage failure: {msg}")),
+            ApiError::internal("storage failure while switching space"),
         ),
-        E::Internal(msg) => ("internal", ApiError::internal(msg)),
+        _ if err.category() == EngineErrorCategory::Unavailable => (
+            "service_unavailable",
+            ApiError::service_unavailable("switch-space service unavailable"),
+        ),
+        _ => ("internal", ApiError::internal("failed to switch space")),
     };
     log_facade_failure(
         "space_setup",
@@ -643,157 +699,108 @@ mod tests {
     }
 
     #[test]
-    fn map_redeem_err_branches() {
-        assert_eq!(
-            map_redeem_err(RedeemPairingInvitationError::InvitationNotFound)
-                .status
-                .as_u16(),
-            404
-        );
-        assert_eq!(
-            map_redeem_err(RedeemPairingInvitationError::InvitationExpired)
-                .status
-                .as_u16(),
-            404
-        );
-        assert_eq!(
-            map_redeem_err(RedeemPairingInvitationError::PassphraseMismatch)
-                .status
-                .as_u16(),
-            400
-        );
-        assert_eq!(
-            map_redeem_err(RedeemPairingInvitationError::SponsorRejectedInvitation)
-                .status
-                .as_u16(),
-            409
-        );
-        assert_eq!(
-            map_redeem_err(RedeemPairingInvitationError::SponsorUnreachable)
-                .status
-                .as_u16(),
-            503
-        );
-        assert_eq!(
-            map_redeem_err(RedeemPairingInvitationError::Internal("boom".into()))
-                .status
-                .as_u16(),
-            500
-        );
+    fn map_join_engine_err_branches() {
+        let cases = [
+            (
+                JOIN_SPACE_INVITATION_NOT_FOUND_CODE,
+                EngineErrorCategory::NotFound,
+                404,
+            ),
+            (
+                JOIN_SPACE_INVITATION_EXPIRED_CODE,
+                EngineErrorCategory::NotFound,
+                404,
+            ),
+            (
+                JOIN_SPACE_PASSPHRASE_MISMATCH_CODE,
+                EngineErrorCategory::Unauthorized,
+                400,
+            ),
+            (
+                JOIN_SPACE_SPONSOR_REJECTED_CODE,
+                EngineErrorCategory::Conflict,
+                409,
+            ),
+            (
+                JOIN_SPACE_SPONSOR_UNREACHABLE_CODE,
+                EngineErrorCategory::Unavailable,
+                503,
+            ),
+            (1299, EngineErrorCategory::Internal, 500),
+        ];
+        for (code, category, expected) in cases {
+            assert_eq!(
+                map_join_engine_err(EngineError::new(code, category, false))
+                    .status
+                    .as_u16(),
+                expected
+            );
+        }
     }
 
     #[test]
-    fn map_switch_space_err_branches() {
-        // Conflict (409) — pre-flight + state-conflict variants.
-        assert_eq!(
-            map_switch_space_err(SwitchSpaceError::NotSetup)
-                .status
-                .as_u16(),
-            409
-        );
-        assert_eq!(
-            map_switch_space_err(SwitchSpaceError::PendingMigration(
-                uc_core::setup::MigrationPhase::Prepared {
-                    run_id: uc_core::setup::MigrationRunId::new("r")
-                }
-            ))
-            .status
-            .as_u16(),
-            409
-        );
-        assert_eq!(
-            map_switch_space_err(SwitchSpaceError::NotUnlocked)
-                .status
-                .as_u16(),
-            409
-        );
-        assert_eq!(
-            map_switch_space_err(SwitchSpaceError::SponsorRejectedInvitation)
-                .status
-                .as_u16(),
-            409
-        );
-        assert_eq!(
-            map_switch_space_err(SwitchSpaceError::SponsorDeclined)
-                .status
-                .as_u16(),
-            409
-        );
-        // 404 — invitation-shape errors.
-        assert_eq!(
-            map_switch_space_err(SwitchSpaceError::InvitationNotFound)
-                .status
-                .as_u16(),
-            404
-        );
-        assert_eq!(
-            map_switch_space_err(SwitchSpaceError::InvitationExpired)
-                .status
-                .as_u16(),
-            404
-        );
-        // 400 — client-fixable input.
-        assert_eq!(
-            map_switch_space_err(SwitchSpaceError::PassphraseMismatch)
-                .status
-                .as_u16(),
-            400
-        );
-        assert_eq!(
-            map_switch_space_err(SwitchSpaceError::DeviceNameRequired)
-                .status
-                .as_u16(),
-            400
-        );
-        // 503 — transient / retry-friendly.
-        assert_eq!(
-            map_switch_space_err(SwitchSpaceError::SponsorUnreachable)
-                .status
-                .as_u16(),
-            503
-        );
-        assert_eq!(
-            map_switch_space_err(SwitchSpaceError::ServiceUnavailable)
-                .status
-                .as_u16(),
-            503
-        );
-        assert_eq!(
-            map_switch_space_err(SwitchSpaceError::Timeout)
-                .status
-                .as_u16(),
-            503
-        );
-        assert_eq!(
-            map_switch_space_err(SwitchSpaceError::ConnectionLost)
-                .status
-                .as_u16(),
-            503
-        );
-        // 500 — corrupted state / internal.
-        assert_eq!(
-            map_switch_space_err(SwitchSpaceError::CorruptedKeyMaterial)
-                .status
-                .as_u16(),
-            500
-        );
-        assert_eq!(
-            map_switch_space_err(SwitchSpaceError::InvalidCiphertext)
-                .status
-                .as_u16(),
-            500
-        );
-        assert_eq!(
-            map_switch_space_err(SwitchSpaceError::Storage("boom".into()))
-                .status
-                .as_u16(),
-            500
-        );
-        assert_eq!(
-            map_switch_space_err(SwitchSpaceError::Internal("boom".into()))
-                .status
-                .as_u16(),
-            500
-        );
+    fn map_switch_engine_err_branches() {
+        let cases = [
+            (
+                JOIN_SPACE_NOT_SETUP_CODE,
+                EngineErrorCategory::InvalidState,
+                409,
+            ),
+            (
+                JOIN_SPACE_PENDING_MIGRATION_CODE,
+                EngineErrorCategory::Conflict,
+                409,
+            ),
+            (
+                JOIN_SPACE_NOT_UNLOCKED_CODE,
+                EngineErrorCategory::InvalidState,
+                409,
+            ),
+            (
+                JOIN_SPACE_SPONSOR_REJECTED_CODE,
+                EngineErrorCategory::Conflict,
+                409,
+            ),
+            (
+                JOIN_SPACE_INVITATION_NOT_FOUND_CODE,
+                EngineErrorCategory::NotFound,
+                404,
+            ),
+            (
+                JOIN_SPACE_PASSPHRASE_MISMATCH_CODE,
+                EngineErrorCategory::Unauthorized,
+                400,
+            ),
+            (
+                JOIN_SPACE_DEVICE_NAME_REQUIRED_CODE,
+                EngineErrorCategory::InvalidInput,
+                400,
+            ),
+            (
+                JOIN_SPACE_SERVICE_UNAVAILABLE_CODE,
+                EngineErrorCategory::Unavailable,
+                503,
+            ),
+            (
+                JOIN_SPACE_TIMEOUT_CODE,
+                EngineErrorCategory::DeadlineExceeded,
+                503,
+            ),
+            (
+                JOIN_SPACE_INVALID_CIPHERTEXT_CODE,
+                EngineErrorCategory::Internal,
+                500,
+            ),
+            (JOIN_SPACE_STORAGE_CODE, EngineErrorCategory::Internal, 500),
+            (1299, EngineErrorCategory::Internal, 500),
+        ];
+        for (code, category, expected) in cases {
+            assert_eq!(
+                map_switch_engine_err(EngineError::new(code, category, false))
+                    .status
+                    .as_u16(),
+                expected
+            );
+        }
     }
 }

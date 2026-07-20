@@ -11,6 +11,7 @@ pub mod file_transfer;
 pub mod host_adapters;
 pub(crate) mod inbound_staging;
 pub mod invitation;
+pub mod join_space;
 pub mod lifecycle;
 pub mod network_policy;
 pub mod platform;

@@ -402,7 +402,7 @@ async fn execute_command(state: &mut ProbeState, command: ProbeCommand) -> Value
                 state,
                 Operation::JoinSpace(JoinSpaceInput {
                     invitation_code,
-                    device_name,
+                    device_name: Some(device_name),
                     passphrase: SecretString::new(passphrase),
                 }),
             )
@@ -538,7 +538,7 @@ fn operation_response(result: OperationResult) -> Value {
         OperationResult::SpaceCreated { space_id, .. } => {
             json!({"ok": true, "kind": "space_created", "space_id": space_id})
         }
-        OperationResult::SpaceJoined { space_id } => {
+        OperationResult::SpaceJoined { space_id, .. } => {
             json!({"ok": true, "kind": "space_joined", "space_id": space_id})
         }
         OperationResult::SpaceUnlocked { space_id } => {
@@ -673,7 +673,12 @@ mod tests {
     #[test]
     fn operation_response_exposes_stable_result_without_debug_output() {
         let response = operation_response(OperationResult::SpaceJoined {
+            sponsor_device_id: "sponsor-1".into(),
+            sponsor_identity_fingerprint: "sponsor-fingerprint".into(),
             space_id: "space-1".into(),
+            self_device_id: "device-1".into(),
+            self_identity_fingerprint: "self-fingerprint".into(),
+            migrated_records: None,
         });
 
         assert_eq!(

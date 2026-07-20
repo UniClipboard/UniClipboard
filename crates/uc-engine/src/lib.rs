@@ -169,7 +169,7 @@ impl fmt::Debug for CreateSpaceInput {
 #[derive(Clone, PartialEq, Eq)]
 pub struct JoinSpaceInput {
     pub invitation_code: String,
-    pub device_name: String,
+    pub device_name: Option<String>,
     pub passphrase: SecretString,
 }
 
@@ -455,7 +455,12 @@ pub enum OperationResult {
         identity_fingerprint: String,
     },
     SpaceJoined {
+        sponsor_device_id: String,
+        sponsor_identity_fingerprint: String,
         space_id: String,
+        self_device_id: String,
+        self_identity_fingerprint: String,
+        migrated_records: Option<u64>,
     },
     SpaceUnlocked {
         space_id: String,

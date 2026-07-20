@@ -526,7 +526,7 @@ async fn engine_start_builds_a_resumable_real_session() {
     let invalid_join = engine
         .execute(uc_engine::Operation::JoinSpace(uc_engine::JoinSpaceInput {
             invitation_code,
-            device_name: "  ".into(),
+            device_name: Some("  ".into()),
             passphrase: uc_engine::SecretString::new("correct horse"),
         }))
         .await

@@ -33,7 +33,7 @@ fn every_public_operation_has_a_stable_kind() {
         (
             Operation::JoinSpace(JoinSpaceInput {
                 invitation_code: "ABCD-EFGH".into(),
-                device_name: "mobile".into(),
+                device_name: Some("mobile".into()),
                 passphrase: SecretString::new("secret"),
             }),
             OperationKind::JoinSpace,
@@ -119,7 +119,7 @@ fn sensitive_operation_debug_output_is_redacted() {
 fn setup_input_debug_output_redacts_user_and_pairing_data() {
     let input = JoinSpaceInput {
         invitation_code: "NEVER-SHOW".into(),
-        device_name: "Private Phone".into(),
+        device_name: Some("Private Phone".into()),
         passphrase: SecretString::new("never-show-passphrase"),
     };
     let debug = format!("{input:?}");
@@ -153,6 +153,40 @@ fn create_space_contract_supports_saved_device_name_and_returns_identity() {
         } if space_id == "space-1"
             && self_device_id == "device-1"
             && identity_fingerprint == "fingerprint-1"
+    ));
+}
+
+#[test]
+fn join_space_contract_supports_saved_device_name_and_returns_both_identities() {
+    let input = JoinSpaceInput {
+        invitation_code: "NEVER-SHOW".into(),
+        device_name: None,
+        passphrase: SecretString::new("never-show-passphrase"),
+    };
+    assert!(input.device_name.is_none());
+
+    let result = OperationResult::SpaceJoined {
+        sponsor_device_id: "sponsor-1".into(),
+        sponsor_identity_fingerprint: "sponsor-fingerprint".into(),
+        space_id: "space-1".into(),
+        self_device_id: "device-1".into(),
+        self_identity_fingerprint: "self-fingerprint".into(),
+        migrated_records: Some(42),
+    };
+    assert!(matches!(
+        result,
+        OperationResult::SpaceJoined {
+            ref sponsor_device_id,
+            ref sponsor_identity_fingerprint,
+            ref space_id,
+            ref self_device_id,
+            ref self_identity_fingerprint,
+            migrated_records: Some(42),
+        } if sponsor_device_id == "sponsor-1"
+            && sponsor_identity_fingerprint == "sponsor-fingerprint"
+            && space_id == "space-1"
+            && self_device_id == "device-1"
+            && self_identity_fingerprint == "self-fingerprint"
     ));
 }
 

@@ -6,17 +6,14 @@ use async_trait::async_trait;
 use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 use tracing::{error, warn};
-use uc_application::facade::space_setup::{SwitchSpaceError, SwitchSpaceInput};
 use uc_application::facade::{
-    AppFacade, ClipboardHistoryError, InMemoryLifecycleStatus, QuerySetupStateError,
-    RedeemPairingInvitationError, RedeemPairingInvitationInput, ResendEntryCommand,
+    AppFacade, ClipboardHistoryError, InMemoryLifecycleStatus, ResendEntryCommand,
     ResendEntryError, ResourceFacadeError, SearchCoordinator, SearchCoordinatorDeps,
     SearchFacadeError, SearchPageView, SearchQueryInput, MAX_INLINE_OUTBOUND_REPRESENTATION_BYTES,
 };
 use uc_application::facade::{
     ClipboardLiveIndexInput, ClipboardOutboundInput, ClipboardOutboundOutcome,
 };
-use uc_application::receive_reconciliation::EnsureReceiveReadyPort;
 use uc_core::ids::{DeviceId, FormatId, RepresentationId};
 use uc_core::ports::ReachabilityState;
 use uc_core::TaskRegistry;
@@ -42,12 +39,11 @@ use crate::internal::host_adapters::{
     wire_host_capabilities_with_emitter, EngineHostEventEmitter, HostWiring,
 };
 use crate::internal::invitation::execute_issue_invitation;
+use crate::internal::join_space::{execute_join_space, JoinSpaceMode};
 use crate::internal::lifecycle::build_daemon_lifecycle;
 use crate::internal::session_recovery::execute_recover_session;
 use crate::internal::sync_engine::SyncEngineAssembly;
 use crate::internal::unlock::execute_unlock_space;
-#[cfg(test)]
-use crate::internal::unlock::UNLOCK_SPACE_FAILED_CODE;
 use crate::{
     DeviceSummary, EngineConfig, EngineError, EngineErrorCategory, EntrySummary, HostCapabilities,
     HostFileAccess, Operation, OperationResult, QueryHistoryInput,
@@ -56,14 +52,6 @@ use crate::{
 const START_FAILED_CODE: u32 = 1101;
 const OPERATION_FAILED_CODE: u32 = 1102;
 const OPERATION_UNAVAILABLE_CODE: u32 = 1103;
-const JOIN_SPACE_INVALID_INPUT_CODE: u32 = 1231;
-const JOIN_SPACE_INVALID_STATE_CODE: u32 = 1232;
-const JOIN_SPACE_UNAUTHORIZED_CODE: u32 = 1233;
-const JOIN_SPACE_NOT_FOUND_CODE: u32 = 1234;
-const JOIN_SPACE_CONFLICT_CODE: u32 = 1235;
-const JOIN_SPACE_UNAVAILABLE_CODE: u32 = 1236;
-const JOIN_SPACE_DEADLINE_CODE: u32 = 1237;
-const JOIN_SPACE_FAILED_CODE: u32 = 1238;
 const QUERY_HISTORY_INVALID_INPUT_CODE: u32 = 1241;
 const QUERY_HISTORY_UNAUTHORIZED_CODE: u32 = 1242;
 const QUERY_HISTORY_UNAVAILABLE_CODE: u32 = 1243;
@@ -257,47 +245,11 @@ impl EngineRuntime for ProductionRuntime {
                 .await
             }
             Operation::JoinSpace(input) => {
-                let device_name = input.device_name.trim().to_owned();
-                if device_name.is_empty() {
-                    return Err(join_invalid_input_error());
-                }
-                let facade = self.current_facade().await?;
-                facade.set_device_name(device_name).await.map_err(|error| {
-                    operation_error_with_code(
-                        JOIN_SPACE_FAILED_CODE,
-                        "save join device name",
-                        error,
-                    )
-                })?;
-                let setup = facade
-                    .query_setup_state()
-                    .await
-                    .map_err(|error| map_query_setup_state_error("route join operation", error))?;
-                let space_id = if setup.has_completed {
-                    facade
-                        .switch_space(SwitchSpaceInput {
-                            code: input.invitation_code,
-                            new_passphrase: input.passphrase.expose().to_owned(),
-                        })
-                        .await
-                        .map_err(map_switch_space_error)?
-                        .space_id
-                } else {
-                    facade
-                        .redeem_pairing_invitation(RedeemPairingInvitationInput {
-                            code: input.invitation_code,
-                            passphrase: input.passphrase.expose().to_owned(),
-                        })
-                        .await
-                        .map_err(map_join_space_error)?
-                        .space_id
-                };
-                ensure_receive_ready_after_space_access(
-                    Ok(OperationResult::SpaceJoined {
-                        space_id: space_id.as_ref().to_string(),
-                    }),
+                execute_join_space(
+                    self.current_facade().await?.as_ref(),
                     self.file_transfer_lifecycle.as_ref(),
-                    JOIN_SPACE_FAILED_CODE,
+                    input,
+                    JoinSpaceMode::Automatic,
                 )
                 .await
             }
@@ -661,19 +613,6 @@ fn send_invalid_input_error() -> EngineError {
     )
 }
 
-async fn ensure_receive_ready_after_space_access<T>(
-    result: Result<T, EngineError>,
-    readiness: &dyn EnsureReceiveReadyPort,
-    error_code: u32,
-) -> Result<T, EngineError> {
-    let value = result?;
-    readiness.ensure_receive_ready().await.map_err(|error| {
-        error!(error = %error, "receive recovery failed after space access");
-        EngineError::new(error_code, EngineErrorCategory::Unavailable, true)
-    })?;
-    Ok(value)
-}
-
 fn send_failed_error() -> EngineError {
     EngineError::new(SEND_FAILED_CODE, EngineErrorCategory::Internal, false)
 }
@@ -886,60 +825,6 @@ fn operation_unavailable_error() -> EngineError {
     )
 }
 
-fn map_query_setup_state_error(context: &'static str, error: QuerySetupStateError) -> EngineError {
-    operation_error_with_code(JOIN_SPACE_FAILED_CODE, context, error)
-}
-
-fn map_join_space_error(error: RedeemPairingInvitationError) -> EngineError {
-    match error {
-        RedeemPairingInvitationError::DeviceNameRequired => join_invalid_input_error(),
-        RedeemPairingInvitationError::PassphraseMismatch => join_unauthorized_error(),
-        RedeemPairingInvitationError::InvitationNotFound
-        | RedeemPairingInvitationError::InvitationExpired => join_not_found_error(),
-        RedeemPairingInvitationError::SponsorRejectedInvitation
-        | RedeemPairingInvitationError::SponsorDeclined => join_conflict_error(),
-        RedeemPairingInvitationError::SponsorUnreachable
-        | RedeemPairingInvitationError::ServiceUnavailable
-        | RedeemPairingInvitationError::ConnectionLost => join_unavailable_error(),
-        RedeemPairingInvitationError::SponsorTimedOut | RedeemPairingInvitationError::Timeout => {
-            join_deadline_error()
-        }
-        RedeemPairingInvitationError::CorruptedKeyMaterial
-        | RedeemPairingInvitationError::SponsorInternal(_)
-        | RedeemPairingInvitationError::Internal(_) => {
-            operation_error_with_code(JOIN_SPACE_FAILED_CODE, "join space", error)
-        }
-    }
-}
-
-fn map_switch_space_error(error: SwitchSpaceError) -> EngineError {
-    match error {
-        SwitchSpaceError::DeviceNameRequired => join_invalid_input_error(),
-        SwitchSpaceError::NotSetup | SwitchSpaceError::NotUnlocked => EngineError::new(
-            JOIN_SPACE_INVALID_STATE_CODE,
-            EngineErrorCategory::InvalidState,
-            false,
-        ),
-        SwitchSpaceError::PassphraseMismatch => join_unauthorized_error(),
-        SwitchSpaceError::InvitationNotFound | SwitchSpaceError::InvitationExpired => {
-            join_not_found_error()
-        }
-        SwitchSpaceError::PendingMigration(_)
-        | SwitchSpaceError::SponsorDeclined
-        | SwitchSpaceError::SponsorRejectedInvitation => join_conflict_error(),
-        SwitchSpaceError::SponsorUnreachable
-        | SwitchSpaceError::ServiceUnavailable
-        | SwitchSpaceError::ConnectionLost => join_unavailable_error(),
-        SwitchSpaceError::Timeout => join_deadline_error(),
-        SwitchSpaceError::CorruptedKeyMaterial
-        | SwitchSpaceError::InvalidCiphertext
-        | SwitchSpaceError::Storage(_)
-        | SwitchSpaceError::Internal(_) => {
-            operation_error_with_code(JOIN_SPACE_FAILED_CODE, "switch space", error)
-        }
-    }
-}
-
 fn map_query_history_error(error: SearchFacadeError) -> EngineError {
     match error {
         SearchFacadeError::InvalidQuery(_) | SearchFacadeError::BadRequest(_) => {
@@ -977,54 +862,6 @@ fn query_history_invalid_input_error() -> EngineError {
     )
 }
 
-fn join_invalid_input_error() -> EngineError {
-    EngineError::new(
-        JOIN_SPACE_INVALID_INPUT_CODE,
-        EngineErrorCategory::InvalidInput,
-        false,
-    )
-}
-
-fn join_unauthorized_error() -> EngineError {
-    EngineError::new(
-        JOIN_SPACE_UNAUTHORIZED_CODE,
-        EngineErrorCategory::Unauthorized,
-        false,
-    )
-}
-
-fn join_not_found_error() -> EngineError {
-    EngineError::new(
-        JOIN_SPACE_NOT_FOUND_CODE,
-        EngineErrorCategory::NotFound,
-        false,
-    )
-}
-
-fn join_conflict_error() -> EngineError {
-    EngineError::new(
-        JOIN_SPACE_CONFLICT_CODE,
-        EngineErrorCategory::Conflict,
-        false,
-    )
-}
-
-fn join_unavailable_error() -> EngineError {
-    EngineError::new(
-        JOIN_SPACE_UNAVAILABLE_CODE,
-        EngineErrorCategory::Unavailable,
-        true,
-    )
-}
-
-fn join_deadline_error() -> EngineError {
-    EngineError::new(
-        JOIN_SPACE_DEADLINE_CODE,
-        EngineErrorCategory::DeadlineExceeded,
-        true,
-    )
-}
-
 fn operation_error_with_code(
     code: u32,
     context: &'static str,
@@ -1036,80 +873,9 @@ fn operation_error_with_code(
 
 #[cfg(test)]
 mod tests {
-    use std::sync::atomic::{AtomicUsize, Ordering};
-
     use uc_application::facade::{SearchPageView, SearchResultView};
-    use uc_application::receive_reconciliation::{
-        EnsureReceiveReadyPort, ReceiveReadinessError, ReceiveReadinessStatus,
-    };
 
     use super::*;
-
-    struct RecordingReceiveReadiness {
-        calls: AtomicUsize,
-        fail: bool,
-    }
-
-    #[async_trait]
-    impl EnsureReceiveReadyPort for RecordingReceiveReadiness {
-        async fn ensure_receive_ready(&self) -> Result<(), ReceiveReadinessError> {
-            self.calls.fetch_add(1, Ordering::SeqCst);
-            if self.fail {
-                Err(ReceiveReadinessError::Recovery("unavailable".into()))
-            } else {
-                Ok(())
-            }
-        }
-
-        fn close_receive_gate(&self) {}
-
-        fn receive_readiness_status(&self) -> ReceiveReadinessStatus {
-            ReceiveReadinessStatus {
-                ready: !self.fail,
-                degraded_reason: self.fail.then(|| "unavailable".into()),
-            }
-        }
-    }
-
-    #[tokio::test]
-    async fn successful_space_access_opens_receive_gate_before_returning() {
-        let readiness = RecordingReceiveReadiness {
-            calls: AtomicUsize::new(0),
-            fail: false,
-        };
-
-        let value = ensure_receive_ready_after_space_access(
-            Ok("space ready"),
-            &readiness,
-            UNLOCK_SPACE_FAILED_CODE,
-        )
-        .await
-        .unwrap();
-
-        assert_eq!(value, "space ready");
-        assert_eq!(readiness.calls.load(Ordering::SeqCst), 1);
-    }
-
-    #[tokio::test]
-    async fn receive_recovery_failure_is_retryable_and_not_reported_as_success() {
-        let readiness = RecordingReceiveReadiness {
-            calls: AtomicUsize::new(0),
-            fail: true,
-        };
-
-        let error = ensure_receive_ready_after_space_access(
-            Ok("space ready"),
-            &readiness,
-            UNLOCK_SPACE_FAILED_CODE,
-        )
-        .await
-        .unwrap_err();
-
-        assert_eq!(error.code(), UNLOCK_SPACE_FAILED_CODE);
-        assert_eq!(error.category(), EngineErrorCategory::Unavailable);
-        assert!(error.is_retryable());
-        assert_eq!(readiness.calls.load(Ordering::SeqCst), 1);
-    }
 
     #[test]
     fn history_search_input_parses_only_versioned_bounded_cursors() {

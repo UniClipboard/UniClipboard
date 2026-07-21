@@ -1,12 +1,13 @@
 //! Member roster boundary projections: per-member sync preferences ↔ DTOs.
 //!
-//! The roster facade has its own `ContentTypesPatch` / `ContentTypesView`
-//! types (distinct from the settings facade's), so the shared
+//! The engine interface has its own content-type patch and summary types
+//! (distinct from the settings facade's), so the shared
 //! `ContentTypesPatchDto` / `ContentTypesDto` carry one impl per target here
 //! in addition to the settings ones.
 
-use uc_application::facade::{
-    ContentTypesPatch, ContentTypesView, MemberSyncPreferencesPatch, MemberSyncPreferencesView,
+use uc_engine::{
+    ContentTypesPatch, ContentTypesSummary, MemberSyncPreferencesPatch,
+    MemberSyncPreferencesSummary,
 };
 
 use super::{IntoApiDto, IntoDomain};
@@ -39,7 +40,7 @@ impl IntoDomain<ContentTypesPatch> for ContentTypesPatchDto {
     }
 }
 
-impl IntoApiDto<ContentTypesDto> for ContentTypesView {
+impl IntoApiDto<ContentTypesDto> for ContentTypesSummary {
     fn into_api_dto(self) -> ContentTypesDto {
         ContentTypesDto {
             text: self.text,
@@ -52,7 +53,7 @@ impl IntoApiDto<ContentTypesDto> for ContentTypesView {
     }
 }
 
-impl IntoApiDto<MemberSyncPreferencesDto> for MemberSyncPreferencesView {
+impl IntoApiDto<MemberSyncPreferencesDto> for MemberSyncPreferencesSummary {
     fn into_api_dto(self) -> MemberSyncPreferencesDto {
         MemberSyncPreferencesDto {
             send_enabled: self.send_enabled,

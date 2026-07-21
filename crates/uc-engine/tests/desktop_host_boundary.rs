@@ -486,6 +486,30 @@ fn daemon_encryption_handlers_delegate_session_ownership_to_engine() {
     );
 }
 
+#[test]
+fn daemon_member_handlers_delegate_roster_ownership_to_engine() {
+    let api_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../crates/uc-webserver/src/api");
+    let member_path = api_root.join("member.rs");
+    let pairing_path = api_root.join("pairing.rs");
+    let member = std::fs::read_to_string(&member_path)
+        .unwrap_or_else(|error| panic!("failed to read {}: {error}", member_path.display()));
+    let pairing = std::fs::read_to_string(&pairing_path)
+        .unwrap_or_else(|error| panic!("failed to read {}: {error}", pairing_path.display()));
+
+    assert!(
+        !member.contains(".member_roster")
+            && member.contains("execute_query_member_sync_preferences(")
+            && member.contains("execute_update_member_sync_preferences("),
+        "daemon member preference handlers must delegate to uc-engine"
+    );
+    assert!(
+        !pairing.contains(".member_roster")
+            && !pairing.contains(".revoke_member(")
+            && pairing.contains("execute_remove_member("),
+        "daemon unpair handler must delegate member removal to uc-engine"
+    );
+}
+
 fn rust_sources(root: &Path) -> Vec<PathBuf> {
     let mut pending = vec![root.to_path_buf()];
     let mut sources = Vec::new();

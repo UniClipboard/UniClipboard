@@ -1,8 +1,7 @@
 //! HTTP route handlers for pairing endpoints.
 //!
-//! Slice 4 P5a-4: 旧 pairing 协议（initiate/accept/reject/verify/sessions/...）
-//! 随 libp2p 一起下线。本文件仅保留 `/pairing/unpair`，前端 DevicesPage 通过
-//! `MemberRepositoryPort` 走本地撤销路径。
+//! Only local member removal remains after the retired pairing protocol. The
+//! engine owns the member, trust, and peer-address cleanup sequence.
 
 use axum::extract::State;
 use axum::http::StatusCode;
@@ -10,7 +9,11 @@ use axum::routing::post;
 use axum::{Json, Router};
 use utoipa;
 
-use uc_application::facade::RosterError;
+use uc_engine::internal::member::{
+    execute_remove_member, MEMBER_INVALID_INPUT_CODE, MEMBER_NOT_FOUND_CODE,
+    MEMBER_UNAVAILABLE_CODE,
+};
+use uc_engine::{EngineError, OperationResult, RemoveMemberInput};
 
 use crate::api::dto::error::{log_facade_failure, ApiError};
 use crate::api::dto::pairing::UnpairDeviceRequest;
@@ -46,52 +49,44 @@ pub(crate) async fn handle_unpair_device(
     Json(payload): Json<UnpairDeviceRequest>,
 ) -> Result<StatusCode, ApiError> {
     let app = state.app_facade_or_error()?;
-    let roster = app
-        .member_roster
-        .get()
-        .cloned()
-        .ok_or_else(|| ApiError::service_unavailable("member roster facade unavailable"))?;
     let peer_id = payload.peer_id;
 
     // Slice 4 P5a-1: 取消配对 = 删除本机成员记录。libp2p 时代的
     // `PairingTransportPort::unpair_device` 通知对端的能力随 libp2p 一同下线；
     // 本地自治模型下不再广播给对端。对端残留的 member/trust 记录不影响
     // 重新配对——admit/trust use case 在重配时显式替换旧记录（#1023）。
-    roster
-        .revoke_member(peer_id.as_str())
-        .await
-        .map_err(|e| map_unpair_err(e, peer_id.as_str()))?;
+    let result = execute_remove_member(
+        app.as_ref(),
+        RemoveMemberInput {
+            device_id: peer_id.to_string(),
+        },
+    )
+    .await
+    .map_err(|error| map_unpair_engine_err(error, peer_id.as_str()))?;
+    if !matches!(result, OperationResult::MemberRemoved) {
+        return Err(ApiError::internal(
+            "engine returned an unexpected member-removal result",
+        ));
+    }
 
     Ok(StatusCode::NO_CONTENT)
 }
 
-fn map_unpair_err(err: RosterError, peer_id: &str) -> ApiError {
-    use RosterError as E;
-    let (variant, api): (&'static str, ApiError) = match err {
-        E::NotFound(_) => (
+fn map_unpair_engine_err(error: EngineError, peer_id: &str) -> ApiError {
+    let (variant, api): (&'static str, ApiError) = match error.code() {
+        MEMBER_INVALID_INPUT_CODE => (
+            "invalid_input",
+            ApiError::bad_request("member device ID must not be empty"),
+        ),
+        MEMBER_NOT_FOUND_CODE => (
             "not_found",
             ApiError::not_found(format!("member `{peer_id}` not found")),
         ),
-        E::MemberRepository(msg) => (
-            "member_repository",
-            ApiError::internal(format!("member repository failure: {msg}")),
-        ),
-        E::LocalIdentity(msg) => (
-            "local_identity",
-            ApiError::internal(format!("local identity failure: {msg}")),
-        ),
-        E::PeerAddressRepository(msg) => (
-            "peer_address_repository",
-            ApiError::internal(format!("peer address repository failure: {msg}")),
-        ),
-        E::TrustedPeerRepository(msg) => (
-            "trusted_peer_repository",
-            ApiError::internal(format!("trusted peer repository failure: {msg}")),
-        ),
-        E::Unavailable => (
+        MEMBER_UNAVAILABLE_CODE => (
             "unavailable",
             ApiError::service_unavailable("member roster facade unavailable"),
         ),
+        _ => ("internal", ApiError::internal("failed to remove member")),
     };
     log_facade_failure("roster", "unpair_device", variant, api.status, &api.message);
     api

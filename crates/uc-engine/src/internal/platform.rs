@@ -73,6 +73,16 @@ impl SystemClipboardLayer {
             wiring,
         }
     }
+
+    pub fn into_parts(
+        self,
+    ) -> (
+        Arc<dyn PlatformClipboardPort>,
+        Arc<dyn SystemClipboardPort>,
+        SystemClipboardWiring,
+    ) {
+        (self.clipboard, self.system_clipboard, self.wiring)
+    }
 }
 
 pub fn create_platform_layer(

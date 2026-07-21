@@ -20,9 +20,9 @@ use crate::layer::platform::create_desktop_system_clipboard;
 use crate::wiring::deps::{BackgroundRuntimeDeps, WiredDependencies, WiringError, WiringResult};
 use crate::wiring::wire::{wire_dependencies_from_inputs, CoreWiringInputs};
 
-struct SecureStoragePrelude {
-    secure_storage: Arc<dyn SecureStoragePort>,
-    legacy_iroh_identity_dir: PathBuf,
+pub(crate) struct SecureStoragePrelude {
+    pub(crate) secure_storage: Arc<dyn SecureStoragePort>,
+    pub(crate) legacy_iroh_identity_dir: PathBuf,
 }
 
 pub(crate) fn build_identity_storage(
@@ -40,7 +40,7 @@ pub(crate) fn build_identity_storage(
 
 /// Prepare secure storage and apply any pending desktop configuration import
 /// before the database is opened.
-fn build_secure_storage_prelude(paths: &AppPaths) -> WiringResult<SecureStoragePrelude> {
+pub(crate) fn build_secure_storage_prelude(paths: &AppPaths) -> WiringResult<SecureStoragePrelude> {
     let app_data_root = paths.app_data_root_dir.clone();
 
     let secure_storage =

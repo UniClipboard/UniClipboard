@@ -3,6 +3,7 @@
 
 pub mod deps;
 pub(crate) mod desktop;
+pub(crate) mod desktop_host;
 pub(crate) mod network_policy;
 pub mod wire;
 

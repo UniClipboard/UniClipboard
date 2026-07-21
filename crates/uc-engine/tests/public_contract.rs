@@ -467,6 +467,47 @@ fn entry_delivery_contract_preserves_full_view_without_debugging_user_content() 
 }
 
 #[test]
+fn resend_contract_preserves_report_and_structured_business_outcomes() {
+    let outcomes = [
+        uc_engine::ResendEntryOutcome::Completed(uc_engine::ResendReportSummary {
+            accepted: 1,
+            duplicate: 2,
+            offline: 3,
+            errored: 4,
+            pending: 5,
+        }),
+        uc_engine::ResendEntryOutcome::EntryNotFound {
+            entry_id: "entry-1".into(),
+        },
+        uc_engine::ResendEntryOutcome::EntryNotResendable {
+            entry_id: "entry-1".into(),
+            reason: uc_engine::EntryNotResendableReason::RemoteOrigin,
+        },
+        uc_engine::ResendEntryOutcome::EntryNotResendable {
+            entry_id: "entry-1".into(),
+            reason: uc_engine::EntryNotResendableReason::PayloadLost,
+        },
+        uc_engine::ResendEntryOutcome::TargetNotTrusted {
+            device_id: "device-1".into(),
+        },
+        uc_engine::ResendEntryOutcome::NoEligibleTargets,
+    ];
+    assert_eq!(outcomes.len(), 6);
+    assert_eq!(
+        uc_engine::OperationResult::EntryResent(outcomes[0].clone()),
+        uc_engine::OperationResult::EntryResent(uc_engine::ResendEntryOutcome::Completed(
+            uc_engine::ResendReportSummary {
+                accepted: 1,
+                duplicate: 2,
+                offline: 3,
+                errored: 4,
+                pending: 5,
+            },
+        ))
+    );
+}
+
+#[test]
 fn search_contract_preserves_fields_without_debugging_user_content() {
     let input = SearchEntriesInput {
         query: "private search query".into(),

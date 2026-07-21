@@ -7,9 +7,9 @@ use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 use tracing::{error, warn};
 use uc_application::facade::{
-    AppFacade, ClipboardHistoryError, InMemoryLifecycleStatus, ResendEntryCommand,
-    ResendEntryError, ResourceFacadeError, SearchCoordinator, SearchCoordinatorDeps,
-    SearchFacadeError, SearchPageView, SearchQueryInput, MAX_INLINE_OUTBOUND_REPRESENTATION_BYTES,
+    AppFacade, ClipboardHistoryError, InMemoryLifecycleStatus, ResourceFacadeError,
+    SearchCoordinator, SearchCoordinatorDeps, SearchFacadeError, SearchPageView, SearchQueryInput,
+    MAX_INLINE_OUTBOUND_REPRESENTATION_BYTES,
 };
 use uc_application::facade::{
     ClipboardLiveIndexInput, ClipboardOutboundInput, ClipboardOutboundOutcome,
@@ -62,6 +62,7 @@ use crate::internal::receive::{
     execute_cancel_entry_receive, execute_cancel_inbound_transfer,
     execute_list_entry_receive_progress, execute_query_entry_receive_progress,
 };
+use crate::internal::resend::execute_resend_entry;
 use crate::internal::reset_space::execute_reset_space;
 use crate::internal::restore::execute_restore_clipboard;
 use crate::internal::search::{
@@ -89,10 +90,6 @@ const MAX_HISTORY_PAGE_SIZE: u32 = 200;
 const SEND_INVALID_INPUT_CODE: u32 = 1251;
 const SEND_FAILED_CODE: u32 = 1252;
 const SEND_SKIPPED_CODE: u32 = 1253;
-const RESEND_NOT_FOUND_CODE: u32 = 1261;
-const RESEND_CONFLICT_CODE: u32 = 1262;
-const RESEND_UNAUTHORIZED_CODE: u32 = 1263;
-const RESEND_FAILED_CODE: u32 = 1264;
 const EXPORT_NOT_FOUND_CODE: u32 = 1271;
 const EXPORT_INVALID_TARGET_CODE: u32 = 1272;
 const EXPORT_UNAUTHORIZED_CODE: u32 = 1273;
@@ -497,23 +494,7 @@ impl EngineRuntime for ProductionRuntime {
                 self.send_snapshot(snapshot, input.target_devices).await
             }
             Operation::ResendEntry(input) => {
-                let entry_id = input.entry_id;
-                let target_filter = (!input.target_devices.is_empty()).then(|| {
-                    input
-                        .target_devices
-                        .into_iter()
-                        .map(DeviceId::new)
-                        .collect()
-                });
-                self.current_facade()
-                    .await?
-                    .resend_entry(ResendEntryCommand {
-                        entry_id: uc_core::ids::EntryId::from(entry_id.as_str()),
-                        target_filter,
-                    })
-                    .await
-                    .map_err(map_resend_error)?;
-                Ok(OperationResult::EntryResent { entry_id })
+                execute_resend_entry(self.current_facade().await?.as_ref(), input).await
             }
             Operation::ExportEntry(input) => {
                 let facade = self.current_facade().await?;
@@ -752,25 +733,6 @@ fn map_send_host_error(error: crate::HostCapabilityError) -> EngineError {
     };
     error!(error = %error, "host file import failed");
     EngineError::new(SEND_FAILED_CODE, category, retryable)
-}
-
-fn map_resend_error(error: ResendEntryError) -> EngineError {
-    match error {
-        ResendEntryError::EntryNotFound(_) => {
-            EngineError::new(RESEND_NOT_FOUND_CODE, EngineErrorCategory::NotFound, false)
-        }
-        ResendEntryError::EntryNotResendable { .. } | ResendEntryError::NoEligibleTargets => {
-            EngineError::new(RESEND_CONFLICT_CODE, EngineErrorCategory::Conflict, false)
-        }
-        ResendEntryError::TargetNotTrusted(_) => EngineError::new(
-            RESEND_UNAUTHORIZED_CODE,
-            EngineErrorCategory::Unauthorized,
-            false,
-        ),
-        ResendEntryError::Storage(_) | ResendEntryError::Dispatch(_) => {
-            operation_error_with_code(RESEND_FAILED_CODE, "resend entry", error)
-        }
-    }
 }
 
 async fn load_export_bytes(facade: &AppFacade, entry_id: &str) -> Result<Vec<u8>, EngineError> {

@@ -26,6 +26,7 @@ pub mod network_policy;
 pub mod platform;
 pub mod receive;
 pub mod reconcile;
+pub mod resend;
 pub mod reset_space;
 pub mod restore;
 pub(crate) mod runtime;

@@ -530,6 +530,39 @@ pub struct ResendEntryInput {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ResendReportSummary {
+    pub accepted: usize,
+    pub duplicate: usize,
+    pub offline: usize,
+    pub errored: usize,
+    pub pending: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", tag = "kind")]
+pub enum ResendEntryOutcome {
+    Completed(ResendReportSummary),
+    EntryNotFound {
+        entry_id: String,
+    },
+    EntryNotResendable {
+        entry_id: String,
+        reason: EntryNotResendableReason,
+    },
+    TargetNotTrusted {
+        device_id: String,
+    },
+    NoEligibleTargets,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EntryNotResendableReason {
+    RemoteOrigin,
+    PayloadLost,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum EngineState {
     Running,
@@ -1025,9 +1058,7 @@ pub enum OperationResult {
     },
     ClipboardRestored(ClipboardRestoreOutcome),
     EntryExported,
-    EntryResent {
-        entry_id: String,
-    },
+    EntryResent(ResendEntryOutcome),
 }
 
 impl fmt::Debug for OperationResult {
@@ -1128,7 +1159,9 @@ impl fmt::Debug for OperationResult {
                 .field("kind", &"clipboard_restored")
                 .field("outcome", outcome),
             Self::EntryExported => debug.field("kind", &"entry_exported"),
-            Self::EntryResent { .. } => debug.field("kind", &"entry_resent"),
+            Self::EntryResent(outcome) => debug
+                .field("kind", &"entry_resent")
+                .field("outcome", outcome),
         };
         debug.finish()
     }

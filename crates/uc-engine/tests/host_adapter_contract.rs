@@ -1085,18 +1085,19 @@ async fn engine_start_builds_a_resumable_real_session() {
         })
     );
 
-    let missing_resend = engine
-        .execute(uc_engine::Operation::ResendEntry(
-            uc_engine::ResendEntryInput {
-                entry_id: "missing-entry".into(),
-                target_devices: Vec::new(),
-            },
-        ))
-        .await
-        .unwrap_err();
     assert_eq!(
-        missing_resend.category(),
-        uc_engine::EngineErrorCategory::NotFound
+        engine
+            .execute(uc_engine::Operation::ResendEntry(
+                uc_engine::ResendEntryInput {
+                    entry_id: "missing-entry".into(),
+                    target_devices: Vec::new(),
+                },
+            ))
+            .await
+            .unwrap(),
+        uc_engine::OperationResult::EntryResent(uc_engine::ResendEntryOutcome::EntryNotFound {
+            entry_id: "missing-entry".into(),
+        },)
     );
 
     assert_eq!(

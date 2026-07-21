@@ -790,9 +790,39 @@ fn operation_response(result: OperationResult) -> Value {
             })
         }
         OperationResult::EntryExported => json!({"ok": true, "kind": "entry_exported"}),
-        OperationResult::EntryResent { entry_id } => {
-            json!({"ok": true, "kind": "entry_resent", "entry_id": entry_id})
-        }
+        OperationResult::EntryResent(outcome) => match outcome {
+            uc_engine::ResendEntryOutcome::Completed(report) => json!({
+                "ok": true,
+                "kind": "entry_resent",
+                "outcome": "completed",
+                "accepted": report.accepted,
+                "duplicate": report.duplicate,
+                "offline": report.offline,
+                "errored": report.errored,
+                "pending": report.pending,
+            }),
+            uc_engine::ResendEntryOutcome::EntryNotFound { .. } => json!({
+                "ok": true,
+                "kind": "entry_resent",
+                "outcome": "entry_not_found",
+            }),
+            uc_engine::ResendEntryOutcome::EntryNotResendable { reason, .. } => json!({
+                "ok": true,
+                "kind": "entry_resent",
+                "outcome": "entry_not_resendable",
+                "reason": reason,
+            }),
+            uc_engine::ResendEntryOutcome::TargetNotTrusted { .. } => json!({
+                "ok": true,
+                "kind": "entry_resent",
+                "outcome": "target_not_trusted",
+            }),
+            uc_engine::ResendEntryOutcome::NoEligibleTargets => json!({
+                "ok": true,
+                "kind": "entry_resent",
+                "outcome": "no_eligible_targets",
+            }),
+        },
     }
 }
 
@@ -896,6 +926,18 @@ mod tests {
             response,
             json!({"ok": true, "kind": "space_joined", "space_id": "space-1"})
         );
+
+        let resend = operation_response(OperationResult::EntryResent(
+            uc_engine::ResendEntryOutcome::Completed(uc_engine::ResendReportSummary {
+                accepted: 1,
+                duplicate: 2,
+                offline: 3,
+                errored: 4,
+                pending: 5,
+            }),
+        ));
+        assert_eq!(resend["accepted"], 1);
+        assert_eq!(resend["pending"], 5);
     }
 
     #[test]

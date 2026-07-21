@@ -118,7 +118,7 @@ rg -n 'CliAppRuntime|pub app_facade|pub .*AppDeps' apps crates/uc-desktop src-ta
 
 ## 完成标准
 
-- [ ] 桌面生产路径只通过 `uc-engine` 使用核心能力。
+- [x] 桌面生产路径只通过 `uc-engine` 使用核心能力。
 - [ ] `uc-application` 不再正式依赖 `uc-infra` 或产品分析实现。
 - [ ] 核心可反复暂停、恢复、关闭和重新启动。
 - [ ] 平台不接触业务明文持久化。

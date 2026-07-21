@@ -81,6 +81,7 @@ Running|Quiescing|Quiesced|Suspended -> ShuttingDown -> Stopped
 | `CancelEntryReceive` | 按记录和尝试编号取消一次远端接收任务 |
 | `CancelInboundTransfer` | 按传输编号和稳定原因取消一次正在进行的文件接收 |
 | `CaptureCurrentClipboard` | 立即读取系统剪贴板并按正常捕获流程保存 |
+| `RestoreClipboard` | 以普通、纯文本或文件路径模式把指定历史记录恢复到系统剪贴板 |
 | `ExportEntry` | 通过宿主文件句柄分块写出主内容 |
 | `ResendEntry` | 重新发送一条本机仍持有内容的历史记录 |
 | `SendFiles` | 从宿主句柄分块导入文件，并按现有文件协议发送 |
@@ -116,6 +117,8 @@ Running|Quiescing|Quiesced|Suspended -> ShuttingDown -> Stopped
 `CancelEntryReceive` 使用记录编号和尝试编号防止过期请求误取消新任务，并明确区分已请求取消、已取消、未在接收、已经太晚、已经结束和已被新尝试取代。`CancelInboundTransfer` 是幂等操作：真实撤销返回 `Cancelled`，没有活动传输或重复取消返回 `NotInflight`。取消原因使用核心稳定枚举，宿主不得传入底层网络或文件系统错误。
 
 `CaptureCurrentClipboard` 通过宿主剪贴板能力读取当前内容，并复用正常捕获、去重、加密历史和搜索更新流程。成功时返回记录编号；当前没有可捕获内容时返回空记录编号，这不是错误。宿主不得自行读取内容后绕过核心保存。
+
+`RestoreClipboard` 的普通模式恢复全部可用格式；纯文本模式优先只恢复纯文本，没有纯文本表示时按既有规则降级为普通模式；文件路径模式只适用于能解析出本机文件路径的记录。成功、内容已经丢失和模式不适用都是稳定业务结果。内容丢失结果保留记录编号、表示编号和状态，模式不适用结果保留稳定原因；记录不存在返回 `NotFound`，真正的恢复故障返回脱敏错误。宿主不得自行复制恢复、触摸最近使用时间或同步广播的顺序。
 
 导出只写宿主传入的目标句柄。核心看不到目标路径，每次最多写 64 KiB，并在全部数据写入后调用完成写入。取消操作时不会在恢复后续写。
 

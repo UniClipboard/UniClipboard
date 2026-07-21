@@ -30,6 +30,10 @@ use uc_daemon_contract::api::dto::envelope::{
 };
 use uc_daemon_contract::api::dto::error::ApiErrorResponse;
 use uc_daemon_contract::constants::http_route;
+use uc_engine::internal::capture::{
+    execute_capture_current_clipboard, CAPTURE_CURRENT_CLIPBOARD_FAILED_CODE,
+};
+use uc_engine::{EngineError, OperationResult};
 
 use crate::api::dto::error::{log_facade_failure, ApiError};
 use crate::api::server::DaemonApiState;
@@ -370,24 +374,31 @@ async fn capture_current_clipboard_handler(
         Err(error) => return error.into_response(),
     };
 
-    match app.clipboard_capture.capture_current().await {
-        Ok(captured) => {
-            let entry_id = captured.map(|view| view.entry_id);
+    match execute_capture_current_clipboard(app.as_ref()).await {
+        Ok(OperationResult::ClipboardCaptured { entry_id }) => {
             tracing::info!(entry_id = ?entry_id, "daemon capture-current request succeeded");
             let (status, body) = capture_current_success_response(entry_id);
             (status, body).into_response()
         }
-        Err(error) => {
-            log_facade_failure(
-                "clipboard_capture",
-                "capture_current",
-                "internal",
-                StatusCode::INTERNAL_SERVER_ERROR,
-                &format!("capture-current failed: {error}"),
-            );
-            ApiError::internal("failed to capture current clipboard".to_string()).into_response()
-        }
+        Ok(_) => ApiError::internal("engine returned an unexpected capture result").into_response(),
+        Err(error) => map_capture_engine_error(error).into_response(),
     }
+}
+
+fn map_capture_engine_error(error: EngineError) -> ApiError {
+    let variant = match error.code() {
+        CAPTURE_CURRENT_CLIPBOARD_FAILED_CODE => "internal",
+        _ => "unexpected_engine_error",
+    };
+    let api = ApiError::internal("failed to capture current clipboard");
+    log_facade_failure(
+        "clipboard_capture",
+        "capture_current",
+        variant,
+        api.status,
+        &api.message,
+    );
+    api
 }
 
 /// Build the canonical 200 success body for a capture-current request.
@@ -519,6 +530,22 @@ fn diagnostics_internal_error(op: &'static str, error: anyhow::Error) -> ApiErro
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn capture_current_result_and_failure_keep_the_existing_http_contract() {
+        let (status, body) = capture_current_success_response(Some("entry-1".into()));
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(body.0.data.entry_id.as_deref(), Some("entry-1"));
+
+        let error = map_capture_engine_error(EngineError::new(
+            CAPTURE_CURRENT_CLIPBOARD_FAILED_CODE,
+            uc_engine::EngineErrorCategory::Internal,
+            false,
+        ));
+        assert_eq!(error.status, StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(error.message, "failed to capture current clipboard");
+        assert!(error.details.is_none());
+    }
 
     #[test]
     fn restore_success_returns_200_with_enveloped_success_true() {

@@ -621,6 +621,30 @@ fn daemon_receive_progress_and_cancellation_delegate_to_engine() {
     );
 }
 
+#[test]
+fn daemon_capture_current_handler_delegates_to_engine() {
+    let handler_path =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../crates/uc-webserver/src/api/routes.rs");
+    let handler = std::fs::read_to_string(&handler_path)
+        .unwrap_or_else(|error| panic!("failed to read {}: {error}", handler_path.display()));
+    let capture_handler = handler
+        .split("async fn capture_current_clipboard_handler(")
+        .nth(1)
+        .and_then(|source| {
+            source
+                .split("/// Build the canonical 200 success body")
+                .next()
+        })
+        .expect("capture-current handler must remain discoverable");
+
+    assert!(
+        !capture_handler.contains(".clipboard_capture")
+            && !capture_handler.contains(".capture_current(")
+            && capture_handler.contains("execute_capture_current_clipboard("),
+        "daemon capture-current handler must delegate clipboard capture to uc-engine"
+    );
+}
+
 fn rust_sources(root: &Path) -> Vec<PathBuf> {
     let mut pending = vec![root.to_path_buf()];
     let mut sources = Vec::new();

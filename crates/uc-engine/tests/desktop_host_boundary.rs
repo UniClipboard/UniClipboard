@@ -645,6 +645,32 @@ fn daemon_capture_current_handler_delegates_to_engine() {
     );
 }
 
+#[test]
+fn daemon_restore_handler_delegates_all_modes_to_engine() {
+    let handler_path =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../crates/uc-webserver/src/api/routes.rs");
+    let handler = std::fs::read_to_string(&handler_path)
+        .unwrap_or_else(|error| panic!("failed to read {}: {error}", handler_path.display()));
+    let restore_handler = handler
+        .split("async fn restore_clipboard_entry_handler(")
+        .nth(1)
+        .and_then(|source| {
+            source
+                .split("/// Build the canonical 200 success body")
+                .next()
+        })
+        .expect("restore handler must remain discoverable");
+
+    assert!(
+        !restore_handler.contains(".clipboard_restore")
+            && !restore_handler.contains(".restore_entry(")
+            && !restore_handler.contains(".restore_entry_as_plain_text(")
+            && !restore_handler.contains(".restore_entry_as_file_paths(")
+            && restore_handler.contains("execute_restore_clipboard("),
+        "daemon restore handler must delegate every restore mode to uc-engine"
+    );
+}
+
 fn rust_sources(root: &Path) -> Vec<PathBuf> {
     let mut pending = vec![root.to_path_buf()];
     let mut sources = Vec::new();

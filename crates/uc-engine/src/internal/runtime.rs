@@ -1384,6 +1384,122 @@ impl EngineRuntime for ProductionRuntime {
         }
     }
 
+    async fn execute_dev(
+        &self,
+        operation: crate::DevOperation,
+        _cancellation: CancellationToken,
+    ) -> Result<crate::DevOperationResult, EngineError> {
+        use tokio_util::bytes::Bytes;
+        use uc_application::facade::{FetchBlobCommand, PublishBlobCommand};
+        use uc_core::ids::EntryId;
+        use uc_core::ports::blob::BlobTicket;
+
+        let facade = self.current_facade().await?;
+        match operation {
+            crate::DevOperation::SeedText { text } => facade
+                .clipboard_history
+                .seed_text_entry(&text)
+                .await
+                .map(|entry_id| crate::DevOperationResult::TextSeeded { entry_id })
+                .map_err(|error| operation_error_with_code(1903, "seed text", error)),
+            crate::DevOperation::CaptureFilePaths { paths } => facade
+                .clipboard_capture
+                .capture_file_paths_for_diagnostics(paths)
+                .await
+                .map(|captured| {
+                    crate::DevOperationResult::FilePathsCaptured(crate::DevCapturedFileSet {
+                        entry_id: captured.entry.entry_id,
+                        deduplicated: captured.entry.deduplicated,
+                        snapshot_hash: captured.entry.snapshot_hash,
+                        directory_structure: captured.directory_structure,
+                        content_digest_count: captured.content_digest_count,
+                        lines: captured
+                            .lines
+                            .into_iter()
+                            .map(|line| crate::DevCapturedFileSetLine {
+                                line_index: line.line_index,
+                                root_index: line.root_index,
+                                root_name: line.root_name,
+                                relative_path: line.relative_path,
+                                member_kind: line.member_kind,
+                                line_kind: line.line_kind,
+                                exclude_reason: line.exclude_reason,
+                            })
+                            .collect(),
+                    })
+                })
+                .map_err(|error| operation_error_with_code(1904, "capture file paths", error)),
+            crate::DevOperation::ListPairingInvitationAddresses => facade
+                .list_pairing_invitation_addresses()
+                .await
+                .map(|addresses| {
+                    crate::DevOperationResult::PairingInvitationAddresses(
+                        addresses
+                            .into_iter()
+                            .map(|address| crate::DevPairingInvitationAddress {
+                                ip: address.ip,
+                                port: address.port,
+                            })
+                            .collect(),
+                    )
+                })
+                .map_err(|error| {
+                    operation_error_with_code(1905, "list invitation addresses", error)
+                }),
+            crate::DevOperation::IssueInvitationForAddress { address } => facade
+                .issue_pairing_invitation_for_address(address)
+                .await
+                .map(|invitation| {
+                    crate::DevOperationResult::InvitationIssued(crate::DevInvitation {
+                        code: invitation.code.to_string(),
+                        expires_at_ms: invitation.expires_at.timestamp_millis(),
+                    })
+                })
+                .map_err(|error| operation_error_with_code(1906, "issue invitation", error)),
+            crate::DevOperation::PublishBlob { bytes } => facade
+                .publish_blob(PublishBlobCommand {
+                    plaintext: Bytes::from(bytes),
+                    entry_id: None,
+                })
+                .await
+                .map(|published| {
+                    crate::DevOperationResult::BlobPublished(crate::DevBlobPublished {
+                        ticket: published.ticket.as_bytes().to_vec(),
+                        entry_id: published.entry_id.to_string(),
+                        plaintext_hash: published.plaintext_hash.as_bytes().to_vec(),
+                        digest: published.digest.as_bytes().to_vec(),
+                        reused_existing: published.reused_existing,
+                    })
+                })
+                .map_err(|error| operation_error_with_code(1907, "publish blob", error)),
+            crate::DevOperation::FetchBlob { ticket, entry_id } => facade
+                .fetch_blob(FetchBlobCommand {
+                    ticket: BlobTicket::from_bytes(ticket),
+                    entry_id: EntryId::from_string(entry_id),
+                    transfer_context: None,
+                })
+                .await
+                .map(|fetched| crate::DevOperationResult::BlobFetched {
+                    bytes: fetched.plaintext.to_vec(),
+                    entry_id: fetched.entry_id.to_string(),
+                    plaintext_hash: fetched.plaintext_hash.as_bytes().to_vec(),
+                    digest: fetched.digest.as_bytes().to_vec(),
+                })
+                .map_err(|error| operation_error_with_code(1910, "fetch blob", error)),
+        }
+    }
+
+    async fn dev_pairing_outcomes(&self) -> Result<crate::DevPairingOutcomeStream, EngineError> {
+        let receiver = self
+            .current_facade()
+            .await?
+            .subscribe_pairing_completion()
+            .map_err(|error| {
+                operation_error_with_code(1911, "subscribe pairing outcomes", error)
+            })?;
+        Ok(crate::DevPairingOutcomeStream::new(receiver))
+    }
+
     async fn suspend(&self) -> Result<(), EngineError> {
         let session = self.session.lock().await.take();
         if let Some(session) = session {

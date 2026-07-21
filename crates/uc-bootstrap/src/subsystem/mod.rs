@@ -7,4 +7,3 @@
 pub mod analytics;
 pub mod blob_tasks;
 pub mod file_transfer;
-pub mod sync_engine;

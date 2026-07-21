@@ -8,10 +8,8 @@
 //!   `POST /v2/setup/issue-invitation`, and blocks until
 //!   an outcome arrives or Ctrl+C.
 //!
-//! * **`run_for_address(ip, verbose)`** — in-process path (dev-only).
-//!   Uses the pre-P5 facade API directly; called from `dev pairing
-//!   issue --addr <ip>`. Stays in-process until P5-3 migrates all
-//!   dev commands.
+//! * **`run_for_address(ip, verbose)`** — unified engine path (dev-only).
+//!   Called from `dev pairing issue --addr <ip>`.
 
 use tokio::select;
 use tokio::signal;
@@ -23,11 +21,9 @@ use std::net::IpAddr;
 use crate::commands::app_session::connect_or_spawn_oneshot_daemon;
 use uc_daemon_client::DaemonClientContext;
 
-// --- in-process path imports (debug builds only) -----------------------------
+// --- engine path imports (debug builds only) ---------------------------------
 #[cfg(feature = "dev-tools")]
-use uc_application::facade::space_setup::{
-    IssuePairingInvitationError, PairingOutcome, TryResumeSessionError,
-};
+use uc_engine::{DevOperation, DevOperationResult, DevPairingOutcome};
 
 #[cfg(feature = "dev-tools")]
 use crate::commands::app_session::{build_app_session, refuse_if_daemon_running};
@@ -155,10 +151,8 @@ async fn run_for_address_inner(selected_ip: IpAddr, verbose: bool) -> i32 {
         Err(code) => return code,
     };
 
-    // Silently resume the in-memory session using the KEK the last
-    // `init`/`unlock` call cached in secure storage.
     let resume_spinner = ui::spinner("Resuming space session...");
-    match cli.app_facade().try_resume_session().await {
+    match cli.recover_session().await {
         Ok(true) => {
             ui::spinner_finish_success(&resume_spinner, "Session resumed");
         }
@@ -170,25 +164,8 @@ async fn run_for_address_inner(selected_ip: IpAddr, verbose: bool) -> i32 {
             cli.shutdown().await;
             return exit_codes::EXIT_ERROR;
         }
-        Err(TryResumeSessionError::CorruptedKeyMaterial) => {
-            ui::spinner_finish_error(
-                &resume_spinner,
-                "Key material is corrupted — consider resetting this profile.",
-            );
-            cli.shutdown().await;
-            return exit_codes::EXIT_ERROR;
-        }
-        Err(TryResumeSessionError::KeyringMiss) => {
-            ui::spinner_finish_error(
-                &resume_spinner,
-                "Keychain cannot silently unlock this space. Run a future \
-                 `uniclip unlock` (not yet shipped) or re-init.",
-            );
-            cli.shutdown().await;
-            return exit_codes::EXIT_ERROR;
-        }
-        Err(TryResumeSessionError::Internal(msg)) => {
-            ui::spinner_finish_error(&resume_spinner, &format!("Resume failed: {msg}"));
+        Err(error) => {
+            ui::spinner_finish_error(&resume_spinner, &format!("Resume failed: {error}"));
             cli.shutdown().await;
             return exit_codes::EXIT_ERROR;
         }
@@ -196,7 +173,7 @@ async fn run_for_address_inner(selected_ip: IpAddr, verbose: bool) -> i32 {
 
     // Subscribe BEFORE issuing so we never miss an outcome that would
     // race between B1 returning and this task subscribing.
-    let mut outcome_rx = match cli.app_facade().subscribe_pairing_completion() {
+    let mut outcome_rx = match cli.engine().dev_pairing_outcomes().await {
         Ok(rx) => rx,
         Err(err) => {
             ui::error(&format!("Failed to subscribe pairing completion: {err}"));
@@ -207,41 +184,40 @@ async fn run_for_address_inner(selected_ip: IpAddr, verbose: bool) -> i32 {
 
     let spinner = ui::spinner("Requesting invitation from rendezvous...");
     let invitation = match cli
-        .app_facade()
-        .issue_pairing_invitation_for_address(selected_ip)
+        .engine()
+        .execute_dev(DevOperation::IssueInvitationForAddress {
+            address: selected_ip,
+        })
         .await
     {
-        Ok(res) => {
+        Ok(DevOperationResult::InvitationIssued(invitation)) => {
             ui::spinner_finish_success(&spinner, "Invitation issued");
-            res
+            invitation
         }
-        Err(IssuePairingInvitationError::NetworkNotStarted) => {
-            ui::spinner_finish_error(&spinner, "Network not started — run `init` first.");
+        Ok(_) => {
+            ui::spinner_finish_error(&spinner, "Unexpected engine response");
             cli.shutdown().await;
             return exit_codes::EXIT_ERROR;
         }
-        Err(IssuePairingInvitationError::AddressNotAvailable(addr)) => {
-            ui::spinner_finish_error(&spinner, &format!("Address is not available: {addr}"));
-            cli.shutdown().await;
-            return exit_codes::EXIT_ERROR;
-        }
-        Err(other) => {
-            ui::spinner_finish_error(&spinner, &format!("{other}"));
+        Err(error) => {
+            ui::spinner_finish_error(&spinner, &format!("{error}"));
             cli.shutdown().await;
             return exit_codes::EXIT_ERROR;
         }
     };
 
     ui::bar();
-    ui::verification_code(invitation.code.as_str());
-    ui::info("expires_at", &invitation.expires_at.to_rfc3339());
+    ui::verification_code(&invitation.code);
+    if let Some(expires_at) = chrono::DateTime::from_timestamp_millis(invitation.expires_at_ms) {
+        ui::info("expires_at", &expires_at.to_rfc3339());
+    }
     ui::bar();
 
     // Machine-readable line on stdout so scripts can capture the code.
     {
         use std::io::Write;
         let mut out = std::io::stdout().lock();
-        let _ = writeln!(out, "INVITATION_CODE={}", invitation.code.as_str());
+        let _ = writeln!(out, "INVITATION_CODE={}", invitation.code);
         let _ = out.flush();
     }
 
@@ -249,18 +225,18 @@ async fn run_for_address_inner(selected_ip: IpAddr, verbose: bool) -> i32 {
 
     let exit = select! {
         outcome = outcome_rx.recv() => match outcome {
-            Ok(PairingOutcome::Success {
+            Ok(DevPairingOutcome::Success {
                 peer_device_id,
                 peer_device_name,
                 peer_fingerprint,
             }) => {
                 ui::spinner_finish_success(&waiting, "Pairing completed");
-                ui::info("peer_device_id", peer_device_id.as_str());
+                ui::info("peer_device_id", &peer_device_id);
                 ui::info("peer_device_name", &peer_device_name);
-                ui::info("peer_fingerprint", &peer_fingerprint.to_string());
+                ui::info("peer_fingerprint", &peer_fingerprint);
                 exit_codes::EXIT_SUCCESS
             }
-            Ok(PairingOutcome::Failure { reason }) => {
+            Ok(DevPairingOutcome::Failure { reason }) => {
                 ui::spinner_finish_error(
                     &waiting,
                     &format!("Pairing failed: {reason}"),

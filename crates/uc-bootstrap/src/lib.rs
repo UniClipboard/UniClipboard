@@ -21,18 +21,14 @@ pub mod wiring;
 // `compose_event_context` 在 `wire_dependencies` 之后由各进程入口调用一次。
 pub use subsystem::analytics::compose_event_context;
 
+pub use entrypoint::cli::{build_cli_engine_runtime, CliEngineRuntime};
 pub use entrypoint::daemon::{build_daemon_lifecycle, DaemonLifecycle};
-pub use entrypoint::non_gui::{
-    build_app_facade_from_deps, build_cli_app_runtime, build_mobile_sync_facade,
-    resolve_clipboard_integration_mode, AppFacadeAssemblyOptions, CliAppRuntime,
-    ClipboardRestoreAssembly,
-};
+pub use entrypoint::non_gui::resolve_clipboard_integration_mode;
 pub use layer::paths::get_storage_paths;
 pub use layer::platform::SystemClipboardWiring;
 pub use observability::tracing::{init_tracing_subscriber, install_panic_logging_hook};
 pub use subsystem::blob_tasks::{spawn_blob_processing_tasks, BlobProcessingPorts};
 pub use subsystem::file_transfer::FileTransferLifecycle;
-pub use subsystem::sync_engine::SyncEngineAssembly;
 pub use wiring::deps::{BackgroundRuntimeDeps, WiredDependencies, WiringError, WiringResult};
 pub use wiring::desktop::wire_dependencies;
 pub use wiring::desktop_host::{

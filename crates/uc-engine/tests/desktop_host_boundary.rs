@@ -953,6 +953,50 @@ fn daemon_binary_resource_handlers_delegate_to_engine() {
     assert!(file_handler.contains("large_blob_semaphore"));
 }
 
+#[test]
+fn cli_dev_tools_do_not_expose_the_legacy_runtime() {
+    let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let cli = manifest.join("../../apps/cli/src");
+    let mut violations = Vec::new();
+
+    for path in rust_sources(&cli) {
+        let source = std::fs::read_to_string(&path)
+            .unwrap_or_else(|error| panic!("failed to read {}: {error}", path.display()));
+        for forbidden in [
+            "CliAppRuntime",
+            "AppFacade",
+            "build_cli_app_runtime",
+            "uc_application::facade",
+        ] {
+            if source.contains(forbidden) {
+                violations.push(format!("{}: {forbidden}", path.display()));
+            }
+        }
+    }
+
+    for relative in [
+        "src/lib.rs",
+        "src/entrypoint/mod.rs",
+        "src/entrypoint/cli.rs",
+        "src/entrypoint/non_gui.rs",
+    ] {
+        let path = manifest.join("../uc-bootstrap").join(relative);
+        let source = std::fs::read_to_string(&path)
+            .unwrap_or_else(|error| panic!("failed to read {}: {error}", path.display()));
+        for forbidden in ["CliAppRuntime", "build_cli_app_runtime"] {
+            if source.contains(forbidden) {
+                violations.push(format!("{}: {forbidden}", path.display()));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "CLI dev-tools must use uc-engine or daemon client entrypoints: {}",
+        violations.join(", ")
+    );
+}
+
 fn rust_sources(root: &Path) -> Vec<PathBuf> {
     let mut pending = vec![root.to_path_buf()];
     let mut sources = Vec::new();

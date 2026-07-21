@@ -7,6 +7,7 @@ use zeroize::Zeroize;
 
 mod config;
 mod config_migration;
+mod dev_tools;
 mod diagnostics;
 mod engine;
 mod event_stream;
@@ -21,6 +22,7 @@ pub mod internal;
 
 pub use config::EngineConfig;
 pub use config_migration::*;
+pub use dev_tools::*;
 pub use diagnostics::*;
 pub use engine::Engine;
 pub use event_stream::EventStream;

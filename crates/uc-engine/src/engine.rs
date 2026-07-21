@@ -12,8 +12,9 @@ use crate::event_stream::EventSender;
 use crate::internal::runtime::ProductionRuntime;
 use crate::EventStream;
 use crate::{
-    EngineConfig, EngineError, EngineErrorCategory, EngineEvent, EngineState, HostCapabilities,
-    Operation, OperationResult, OperationTerminal,
+    DevOperation, DevOperationResult, DevPairingOutcomeStream, EngineConfig, EngineError,
+    EngineErrorCategory, EngineEvent, EngineState, HostCapabilities, Operation, OperationResult,
+    OperationTerminal,
 };
 
 const INVALID_STATE_CODE: u32 = 1001;
@@ -26,6 +27,26 @@ pub(crate) trait EngineRuntime: Send + Sync {
         operation: Operation,
         cancellation: CancellationToken,
     ) -> Result<OperationResult, EngineError>;
+
+    async fn execute_dev(
+        &self,
+        _operation: DevOperation,
+        _cancellation: CancellationToken,
+    ) -> Result<DevOperationResult, EngineError> {
+        Err(EngineError::new(
+            1901,
+            EngineErrorCategory::Unavailable,
+            false,
+        ))
+    }
+
+    async fn dev_pairing_outcomes(&self) -> Result<DevPairingOutcomeStream, EngineError> {
+        Err(EngineError::new(
+            1902,
+            EngineErrorCategory::Unavailable,
+            false,
+        ))
+    }
 
     async fn suspend(&self) -> Result<(), EngineError>;
     async fn resume(&self) -> Result<(), EngineError>;
@@ -135,6 +156,54 @@ impl Engine {
         }
 
         result
+    }
+
+    pub async fn execute_dev(
+        &self,
+        operation: DevOperation,
+    ) -> Result<DevOperationResult, EngineError> {
+        let operation_id = format!(
+            "dev-operation-{}",
+            self.next_operation_id.fetch_add(1, Ordering::Relaxed)
+        );
+        let cancellation = CancellationToken::new();
+        {
+            let mut state = self.state.lock().await;
+            if !state.lifecycle.accepts_operations() {
+                return Err(invalid_state_error());
+            }
+            state
+                .in_flight
+                .insert(operation_id.clone(), cancellation.clone());
+        }
+
+        let result = tokio::select! {
+            _ = cancellation.cancelled() => Err(operation_cancelled_error()),
+            result = self.runtime.execute_dev(operation, cancellation.clone()) => result,
+        };
+
+        let should_emit_terminal = self
+            .state
+            .lock()
+            .await
+            .in_flight
+            .remove(&operation_id)
+            .is_some();
+        if should_emit_terminal {
+            self.events.send(EngineEvent::OperationFinished {
+                operation_id,
+                terminal: terminal_for_result(&result),
+            });
+            self.in_flight_changed.notify_one();
+        }
+        result
+    }
+
+    pub async fn dev_pairing_outcomes(&self) -> Result<DevPairingOutcomeStream, EngineError> {
+        if !self.state.lock().await.lifecycle.accepts_operations() {
+            return Err(invalid_state_error());
+        }
+        self.runtime.dev_pairing_outcomes().await
     }
 
     pub async fn quiesce(&self, deadline: Duration) -> Result<(), EngineError> {
@@ -284,7 +353,7 @@ fn operation_cancelled_error() -> EngineError {
     )
 }
 
-fn terminal_for_result(result: &Result<OperationResult, EngineError>) -> OperationTerminal {
+fn terminal_for_result<T>(result: &Result<T, EngineError>) -> OperationTerminal {
     match result {
         Ok(_) => OperationTerminal::Succeeded,
         Err(error) => OperationTerminal::Failed(error.clone()),

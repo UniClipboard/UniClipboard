@@ -1,6 +1,6 @@
 # PROJECT KNOWLEDGE BASE
 
-**Last refreshed:** 2026-07-20 (auto; 22 workspace crates)
+**Last refreshed:** 2026-07-21 (auto; 25 workspace crates)
 
 ## OVERVIEW
 
@@ -13,7 +13,8 @@ Rust monorepo workspace (root `Cargo.toml`) with strict hexagonal boundaries: li
 |- apps/                 # Runnable binaries
 |  |- cli/                 # `uniclip` CLI (daemon client; heavy deps feature-gated)
 |  |- daemon/              # GUI-agnostic daemon runtime; hosts the `uniclipd` binary
-|- crates/               # Library crates (18)
+|  |- ios-probe-core/      # Physical iOS acceptance host for uc-engine
+|- crates/               # Library crates (20)
 |  # -- Hex core (ADR-005) --
 |  |- uc-core/          # Domain models + Port traits only (no external deps)
 |  |- uc-application/   # Use cases / orchestrators (depends on uc-core ports only)
@@ -34,6 +35,8 @@ Rust monorepo workspace (root `Cargo.toml`) with strict hexagonal boundaries: li
 |  |- p2p-bench/        # Throwaway perf-spike bins (not shipped; publish = false)
 |  # -- Other --
 |  |- uc-content-hash/  # Shared content-identity hashing (blake3v1): the single algorithm every UniClipboard implementation (desktop core, mobile FFI) must use to compute a stable cross-device content hash. Depends on blake3 + std only.
+|  |- uc-engine/        # Stable cross-platform engine interface for UniClipboard hosts
+|  |- uc-observability-contract/ # Portable observability contracts shared by the core engine and host adapters
 |  |- uc-mobile-proto/  # Pure mobile-sync wire-protocol codec leaf crate (connect-uri)
 |  |- uc-mobile/        # UniFFI boundary crate exposing shared Rust to iOS/Android (mobile spike)
 |- src-tauri/            # Desktop GUI app (Tauri packaging shell; dir name pinned by tauri-cli)
@@ -41,7 +44,6 @@ Rust monorepo workspace (root `Cargo.toml`) with strict hexagonal boundaries: li
 |  `- crates/uc-tauri/    # Tauri adapter: commands (via tauri-specta), tray, quick panel, run loop
 `- crates/uc-infra/migrations/ # Active infra (diesel) migrations
 ```
-
 
 ## WHERE TO LOOK
 
@@ -61,12 +63,12 @@ Rust monorepo workspace (root `Cargo.toml`) with strict hexagonal boundaries: li
 
 ## CODE MAP
 
-| Symbol                     | Type       | Location                                   | Role                               |
+| Symbol | Type | Location | Role |
 | -------------------------- | ---------- | ------------------------------------------ | ---------------------------------- |
-| `main`              | fn | `src-tauri/src/main.rs`                 | Process entry; calls `uc_tauri::run`     |
-| `run`               | fn | `src-tauri/crates/uc-tauri/src/run.rs`  | Tauri builder + window/run loop          |
-| `wire_dependencies` | fn | `crates/uc-bootstrap/src/wiring/wire.rs` | Hex boundary composition (port→adapter)  |
-| `build` (specta)    | fn | `src-tauri/crates/uc-tauri/src/specta_builder.rs` | IPC command registration (single source) |
+| `main` | fn | `src-tauri/src/main.rs` | Process entry; calls `uc_tauri::run` |
+| `run` | fn | `src-tauri/crates/uc-tauri/src/run.rs` | Tauri builder + window/run loop |
+| `wire_dependencies` | fn | `crates/uc-bootstrap/src/wiring/wire.rs` | Hex boundary composition (port→adapter) |
+| `build` (specta) | fn | `src-tauri/crates/uc-tauri/src/specta_builder.rs` | IPC command registration (single source) |
 
 ## CONVENTIONS (PROJECT-SPECIFIC)
 

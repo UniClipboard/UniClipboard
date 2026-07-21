@@ -22,6 +22,7 @@ pub mod member;
 pub mod migration_progress;
 pub mod network_policy;
 pub mod platform;
+pub mod receive;
 pub mod reconcile;
 pub mod reset_space;
 pub(crate) mod runtime;

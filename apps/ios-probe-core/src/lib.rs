@@ -712,6 +712,35 @@ fn operation_response(result: OperationResult) -> Value {
             "deleted_count": result.deleted_count,
             "failed_count": result.failed_entry_ids.len(),
         }),
+        OperationResult::EntryReceiveProgress(progress) => json!({
+            "ok": true,
+            "kind": "entry_receive_progress",
+            "progress": progress.map(|progress| json!({
+                "entry_id": progress.entry_id,
+                "attempt_id": progress.attempt_id,
+                "state": progress.state,
+                "total_bytes": progress.total_bytes,
+                "completed_bytes": progress.completed_bytes,
+                "items_total": progress.items_total,
+                "items_completed": progress.items_completed,
+            })),
+        }),
+        OperationResult::EntryReceiveProgressList(progress) => json!({
+            "ok": true,
+            "kind": "entry_receive_progress_list",
+            "count": progress.len(),
+            "states": progress.into_iter().map(|item| item.state).collect::<Vec<_>>(),
+        }),
+        OperationResult::EntryReceiveCancellation(outcome) => json!({
+            "ok": true,
+            "kind": "entry_receive_cancellation",
+            "outcome": outcome,
+        }),
+        OperationResult::InboundTransferCancellation(outcome) => json!({
+            "ok": true,
+            "kind": "inbound_transfer_cancellation",
+            "outcome": outcome,
+        }),
         OperationResult::EntryExported => json!({"ok": true, "kind": "entry_exported"}),
         OperationResult::EntryResent { entry_id } => {
             json!({"ok": true, "kind": "entry_resent", "entry_id": entry_id})

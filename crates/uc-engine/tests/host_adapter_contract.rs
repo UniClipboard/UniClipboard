@@ -675,6 +675,52 @@ async fn engine_start_builds_a_resumable_real_session() {
             next_cursor: None,
         }
     );
+    assert_eq!(
+        engine
+            .execute(uc_engine::Operation::QueryEntryReceiveProgress(
+                uc_engine::EntryReceiveProgressInput {
+                    entry_id: "missing-receive".into(),
+                },
+            ))
+            .await
+            .unwrap(),
+        uc_engine::OperationResult::EntryReceiveProgress(None)
+    );
+    assert_eq!(
+        engine
+            .execute(uc_engine::Operation::ListEntryReceiveProgress)
+            .await
+            .unwrap(),
+        uc_engine::OperationResult::EntryReceiveProgressList(Vec::new())
+    );
+    assert_eq!(
+        engine
+            .execute(uc_engine::Operation::CancelEntryReceive(
+                uc_engine::CancelEntryReceiveInput {
+                    entry_id: "missing-receive".into(),
+                    attempt_id: "attempt-1".into(),
+                },
+            ))
+            .await
+            .unwrap(),
+        uc_engine::OperationResult::EntryReceiveCancellation(
+            uc_engine::EntryReceiveCancellationOutcome::NotReceiving,
+        )
+    );
+    assert_eq!(
+        engine
+            .execute(uc_engine::Operation::CancelInboundTransfer(
+                uc_engine::CancelInboundTransferInput {
+                    transfer_id: "missing-transfer".into(),
+                    reason: uc_engine::TransferCancellationReason::LocalUser,
+                },
+            ))
+            .await
+            .unwrap(),
+        uc_engine::OperationResult::InboundTransferCancellation(
+            uc_engine::InboundTransferCancellationOutcome::NotInflight,
+        )
+    );
     let invalid_cursor = engine
         .execute(uc_engine::Operation::QueryHistory(
             uc_engine::QueryHistoryInput {

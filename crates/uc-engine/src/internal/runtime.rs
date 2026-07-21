@@ -56,6 +56,10 @@ use crate::internal::member::{
     execute_update_member_sync_preferences,
 };
 use crate::internal::migration_progress::execute_query_migration_progress;
+use crate::internal::receive::{
+    execute_cancel_entry_receive, execute_cancel_inbound_transfer,
+    execute_list_entry_receive_progress, execute_query_entry_receive_progress,
+};
 use crate::internal::reset_space::execute_reset_space;
 use crate::internal::search::{
     execute_query_search_status, execute_query_search_tags, execute_rebuild_search_index,
@@ -378,6 +382,19 @@ impl EngineRuntime for ProductionRuntime {
             }
             Operation::ClearHistory => {
                 execute_clear_history(self.current_facade().await?.as_ref()).await
+            }
+            Operation::QueryEntryReceiveProgress(input) => {
+                execute_query_entry_receive_progress(self.current_facade().await?.as_ref(), input)
+                    .await
+            }
+            Operation::ListEntryReceiveProgress => {
+                execute_list_entry_receive_progress(self.current_facade().await?.as_ref()).await
+            }
+            Operation::CancelEntryReceive(input) => {
+                execute_cancel_entry_receive(self.current_facade().await?.as_ref(), input).await
+            }
+            Operation::CancelInboundTransfer(input) => {
+                execute_cancel_inbound_transfer(self.current_facade().await?.as_ref(), input).await
             }
             Operation::SendText(input) => {
                 if input.text.is_empty()

@@ -284,6 +284,82 @@ fn history_management_contract_preserves_results_without_debugging_user_content(
 }
 
 #[test]
+fn receive_progress_and_cancellation_have_stable_operations_and_results() {
+    let operations = [
+        (
+            uc_engine::Operation::QueryEntryReceiveProgress(uc_engine::EntryReceiveProgressInput {
+                entry_id: "entry-1".into(),
+            }),
+            uc_engine::OperationKind::QueryEntryReceiveProgress,
+        ),
+        (
+            uc_engine::Operation::ListEntryReceiveProgress,
+            uc_engine::OperationKind::ListEntryReceiveProgress,
+        ),
+        (
+            uc_engine::Operation::CancelEntryReceive(uc_engine::CancelEntryReceiveInput {
+                entry_id: "entry-1".into(),
+                attempt_id: "attempt-1".into(),
+            }),
+            uc_engine::OperationKind::CancelEntryReceive,
+        ),
+        (
+            uc_engine::Operation::CancelInboundTransfer(uc_engine::CancelInboundTransferInput {
+                transfer_id: "transfer-1".into(),
+                reason: uc_engine::TransferCancellationReason::LocalUser,
+            }),
+            uc_engine::OperationKind::CancelInboundTransfer,
+        ),
+    ];
+    for (operation, expected) in operations {
+        assert_eq!(operation.kind(), expected);
+    }
+
+    let progress = uc_engine::ReceiveProgressSummary {
+        entry_id: "entry-1".into(),
+        attempt_id: "attempt-1".into(),
+        state: "transferring".into(),
+        total_bytes: 100,
+        completed_bytes: 40,
+        items_total: 2,
+        items_completed: 1,
+    };
+    assert_eq!(
+        uc_engine::OperationResult::EntryReceiveProgress(Some(progress.clone())),
+        uc_engine::OperationResult::EntryReceiveProgress(Some(progress.clone()))
+    );
+    assert_eq!(
+        uc_engine::OperationResult::EntryReceiveProgressList(vec![progress]),
+        uc_engine::OperationResult::EntryReceiveProgressList(vec![
+            uc_engine::ReceiveProgressSummary {
+                entry_id: "entry-1".into(),
+                attempt_id: "attempt-1".into(),
+                state: "transferring".into(),
+                total_bytes: 100,
+                completed_bytes: 40,
+                items_total: 2,
+                items_completed: 1,
+            },
+        ])
+    );
+
+    let receive_outcomes = [
+        uc_engine::EntryReceiveCancellationOutcome::CancellationRequested,
+        uc_engine::EntryReceiveCancellationOutcome::Cancelled,
+        uc_engine::EntryReceiveCancellationOutcome::NotReceiving,
+        uc_engine::EntryReceiveCancellationOutcome::TooLate,
+        uc_engine::EntryReceiveCancellationOutcome::AlreadyTerminal,
+        uc_engine::EntryReceiveCancellationOutcome::Superseded,
+    ];
+    assert_eq!(receive_outcomes.len(), 6);
+    let transfer_outcomes = [
+        uc_engine::InboundTransferCancellationOutcome::Cancelled,
+        uc_engine::InboundTransferCancellationOutcome::NotInflight,
+    ];
+    assert_eq!(transfer_outcomes.len(), 2);
+}
+
+#[test]
 fn search_contract_preserves_fields_without_debugging_user_content() {
     let input = SearchEntriesInput {
         query: "private search query".into(),

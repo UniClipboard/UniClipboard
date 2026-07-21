@@ -105,6 +105,10 @@ pub enum OperationKind {
     QueryHistoryStats,
     GetHistoryEntryResource,
     ClearHistory,
+    QueryEntryReceiveProgress,
+    ListEntryReceiveProgress,
+    CancelEntryReceive,
+    CancelInboundTransfer,
     ExportEntry,
     ResendEntry,
 }
@@ -147,6 +151,10 @@ impl fmt::Display for OperationKind {
             Self::QueryHistoryStats => "query_history_stats",
             Self::GetHistoryEntryResource => "get_history_entry_resource",
             Self::ClearHistory => "clear_history",
+            Self::QueryEntryReceiveProgress => "query_entry_receive_progress",
+            Self::ListEntryReceiveProgress => "list_entry_receive_progress",
+            Self::CancelEntryReceive => "cancel_entry_receive",
+            Self::CancelInboundTransfer => "cancel_inbound_transfer",
             Self::ExportEntry => "export_entry",
             Self::ResendEntry => "resend_entry",
         };
@@ -191,6 +199,10 @@ pub enum Operation {
     QueryHistoryStats,
     GetHistoryEntryResource(HistoryEntryInput),
     ClearHistory,
+    QueryEntryReceiveProgress(EntryReceiveProgressInput),
+    ListEntryReceiveProgress,
+    CancelEntryReceive(CancelEntryReceiveInput),
+    CancelInboundTransfer(CancelInboundTransferInput),
     ExportEntry(ExportEntryInput),
     ResendEntry(ResendEntryInput),
 }
@@ -233,6 +245,10 @@ impl Operation {
             Self::QueryHistoryStats => OperationKind::QueryHistoryStats,
             Self::GetHistoryEntryResource(_) => OperationKind::GetHistoryEntryResource,
             Self::ClearHistory => OperationKind::ClearHistory,
+            Self::QueryEntryReceiveProgress(_) => OperationKind::QueryEntryReceiveProgress,
+            Self::ListEntryReceiveProgress => OperationKind::ListEntryReceiveProgress,
+            Self::CancelEntryReceive(_) => OperationKind::CancelEntryReceive,
+            Self::CancelInboundTransfer(_) => OperationKind::CancelInboundTransfer,
             Self::ExportEntry(_) => OperationKind::ExportEntry,
             Self::ResendEntry(_) => OperationKind::ResendEntry,
         }
@@ -435,6 +451,33 @@ pub struct HistoryEntryInput {
 pub struct SetHistoryEntryFavoriteInput {
     pub entry_id: String,
     pub is_favorited: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EntryReceiveProgressInput {
+    pub entry_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CancelEntryReceiveInput {
+    pub entry_id: String,
+    pub attempt_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CancelInboundTransferInput {
+    pub transfer_id: String,
+    pub reason: TransferCancellationReason,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TransferCancellationReason {
+    LocalUser,
+    RemotePeer,
+    Replaced,
+    Timeout,
+    Unknown,
 }
 
 impl fmt::Debug for QueryHistoryInput {
@@ -729,6 +772,35 @@ pub struct HistoryClearSummary {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ReceiveProgressSummary {
+    pub entry_id: String,
+    pub attempt_id: String,
+    pub state: String,
+    pub total_bytes: i64,
+    pub completed_bytes: i64,
+    pub items_total: u32,
+    pub items_completed: u32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EntryReceiveCancellationOutcome {
+    CancellationRequested,
+    Cancelled,
+    NotReceiving,
+    TooLate,
+    AlreadyTerminal,
+    Superseded,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum InboundTransferCancellationOutcome {
+    Cancelled,
+    NotInflight,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TransferProgress {
     pub transfer_id: String,
     pub completed_bytes: u64,
@@ -799,6 +871,10 @@ pub enum OperationResult {
     HistoryStats(HistoryStatsSummary),
     HistoryEntryResource(HistoryEntryResourceSummary),
     HistoryCleared(HistoryClearSummary),
+    EntryReceiveProgress(Option<ReceiveProgressSummary>),
+    EntryReceiveProgressList(Vec<ReceiveProgressSummary>),
+    EntryReceiveCancellation(EntryReceiveCancellationOutcome),
+    InboundTransferCancellation(InboundTransferCancellationOutcome),
     EntryExported,
     EntryResent {
         entry_id: String,
@@ -883,6 +959,18 @@ impl fmt::Debug for OperationResult {
                 .field("kind", &"history_cleared")
                 .field("deleted_count", &result.deleted_count)
                 .field("failed_count", &result.failed_entry_ids.len()),
+            Self::EntryReceiveProgress(progress) => debug
+                .field("kind", &"entry_receive_progress")
+                .field("has_progress", &progress.is_some()),
+            Self::EntryReceiveProgressList(progress) => debug
+                .field("kind", &"entry_receive_progress_list")
+                .field("progress_count", &progress.len()),
+            Self::EntryReceiveCancellation(outcome) => debug
+                .field("kind", &"entry_receive_cancellation")
+                .field("outcome", outcome),
+            Self::InboundTransferCancellation(outcome) => debug
+                .field("kind", &"inbound_transfer_cancellation")
+                .field("outcome", outcome),
             Self::EntryExported => debug.field("kind", &"entry_exported"),
             Self::EntryResent { .. } => debug.field("kind", &"entry_resent"),
         };

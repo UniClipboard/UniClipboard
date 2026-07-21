@@ -510,6 +510,25 @@ fn daemon_member_handlers_delegate_roster_ownership_to_engine() {
     );
 }
 
+#[test]
+fn daemon_search_handlers_delegate_index_ownership_to_engine() {
+    let handler_path =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../crates/uc-webserver/src/api/search.rs");
+    let handler = std::fs::read_to_string(&handler_path)
+        .unwrap_or_else(|error| panic!("failed to read {}: {error}", handler_path.display()));
+
+    assert!(
+        !handler.contains("app\n        .search")
+            && !handler.contains(".encryption.state(")
+            && handler.contains("execute_query_encryption_state(")
+            && handler.contains("execute_search_entries(")
+            && handler.contains("execute_query_search_tags(")
+            && handler.contains("execute_query_search_status(")
+            && handler.contains("execute_rebuild_search_index("),
+        "daemon search handlers must delegate encrypted search ownership to uc-engine"
+    );
+}
+
 fn rust_sources(root: &Path) -> Vec<PathBuf> {
     let mut pending = vec![root.to_path_buf()];
     let mut sources = Vec::new();

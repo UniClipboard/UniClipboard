@@ -80,6 +80,7 @@ Running|Quiescing|Quiesced|Suspended -> ShuttingDown -> Stopped
 | `ListEntryReceiveProgress` | 列出全部尚未结束的远端接收任务进度 |
 | `CancelEntryReceive` | 按记录和尝试编号取消一次远端接收任务 |
 | `CancelInboundTransfer` | 按传输编号和稳定原因取消一次正在进行的文件接收 |
+| `CaptureCurrentClipboard` | 立即读取系统剪贴板并按正常捕获流程保存 |
 | `ExportEntry` | 通过宿主文件句柄分块写出主内容 |
 | `ResendEntry` | 重新发送一条本机仍持有内容的历史记录 |
 | `SendFiles` | 从宿主句柄分块导入文件，并按现有文件协议发送 |
@@ -113,6 +114,8 @@ Running|Quiescing|Quiesced|Suspended -> ShuttingDown -> Stopped
 接收进度只包含记录编号、尝试编号、稳定状态、字节数和项目数，不包含文件名、路径或内容。`QueryEntryReceiveProgress` 在没有活动任务时返回空结果；`ListEntryReceiveProgress` 只返回尚未进入终态的任务。
 
 `CancelEntryReceive` 使用记录编号和尝试编号防止过期请求误取消新任务，并明确区分已请求取消、已取消、未在接收、已经太晚、已经结束和已被新尝试取代。`CancelInboundTransfer` 是幂等操作：真实撤销返回 `Cancelled`，没有活动传输或重复取消返回 `NotInflight`。取消原因使用核心稳定枚举，宿主不得传入底层网络或文件系统错误。
+
+`CaptureCurrentClipboard` 通过宿主剪贴板能力读取当前内容，并复用正常捕获、去重、加密历史和搜索更新流程。成功时返回记录编号；当前没有可捕获内容时返回空记录编号，这不是错误。宿主不得自行读取内容后绕过核心保存。
 
 导出只写宿主传入的目标句柄。核心看不到目标路径，每次最多写 64 KiB，并在全部数据写入后调用完成写入。取消操作时不会在恢复后续写。
 

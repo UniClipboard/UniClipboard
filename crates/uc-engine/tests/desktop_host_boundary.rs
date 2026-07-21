@@ -581,6 +581,46 @@ fn daemon_history_handlers_delegate_history_ownership_to_engine() {
     }
 }
 
+#[test]
+fn daemon_receive_progress_and_cancellation_delegate_to_engine() {
+    let handler_path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../crates/uc-webserver/src/api/clipboard.rs");
+    let handler = std::fs::read_to_string(&handler_path)
+        .unwrap_or_else(|error| panic!("failed to read {}: {error}", handler_path.display()));
+    let receive_handlers = handler
+        .split("pub(crate) async fn get_entry_receive_progress(")
+        .nth(1)
+        .and_then(|source| source.split("/// GET /clipboard/entries?limit").next())
+        .expect("receive progress handlers must remain discoverable");
+
+    for forbidden in [
+        "require_app_facade(",
+        ".get_entry_receive_progress(",
+        ".list_entry_receive_progress(",
+        ".cancel_entry_receive(",
+    ] {
+        assert!(
+            !receive_handlers.contains(forbidden),
+            "daemon receive handler still uses legacy call: {forbidden}"
+        );
+    }
+    for required in [
+        "execute_query_entry_receive_progress(",
+        "execute_list_entry_receive_progress(",
+        "execute_cancel_entry_receive(",
+    ] {
+        assert!(
+            receive_handlers.contains(required),
+            "daemon receive handler must invoke uc-engine operation: {required}"
+        );
+    }
+    assert!(
+        !handler.contains(".cancel_inbound_transfer(")
+            && handler.contains("execute_cancel_inbound_transfer("),
+        "daemon transfer cancellation must delegate to uc-engine"
+    );
+}
+
 fn rust_sources(root: &Path) -> Vec<PathBuf> {
     let mut pending = vec![root.to_path_buf()];
     let mut sources = Vec::new();

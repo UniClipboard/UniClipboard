@@ -26,9 +26,17 @@ use uc_engine::internal::history::{
     execute_set_history_entry_favorite, HISTORY_FAILED_CODE, HISTORY_INVALID_INPUT_CODE,
     HISTORY_NOT_FOUND_CODE, HISTORY_UNSUPPORTED_CONTENT_CODE,
 };
+use uc_engine::internal::receive::{
+    execute_cancel_entry_receive, execute_cancel_inbound_transfer,
+    execute_list_entry_receive_progress, execute_query_entry_receive_progress, RECEIVE_FAILED_CODE,
+    RECEIVE_INVALID_INPUT_CODE, RECEIVE_UNAVAILABLE_CODE, TRANSFER_CANCEL_FAILED_CODE,
+    TRANSFER_CANCEL_UNAVAILABLE_CODE,
+};
 use uc_engine::{
-    EngineError, HistoryEntryInput, ListHistoryEntriesInput, OperationResult,
-    SetHistoryEntryFavoriteInput,
+    CancelEntryReceiveInput, CancelInboundTransferInput, EngineError,
+    EntryReceiveCancellationOutcome, EntryReceiveProgressInput, HistoryEntryInput,
+    InboundTransferCancellationOutcome, ListHistoryEntriesInput, OperationResult,
+    ReceiveProgressSummary, SetHistoryEntryFavoriteInput, TransferCancellationReason,
 };
 use utoipa::IntoParams;
 
@@ -119,12 +127,17 @@ pub(crate) async fn get_entry_receive_progress(
     State(state): State<DaemonApiState>,
     Path(entry_id): Path<String>,
 ) -> Result<Json<ApiEnvelope<Option<EntryReceiveProgressResponse>>>, ApiError> {
-    let app = require_app_facade(&state)?;
-    let progress = app
-        .get_entry_receive_progress(&EntryId::from_string(entry_id))
-        .await
-        .map_err(|error| ApiError::internal(error.to_string()))?
-        .map(receive_progress_response);
+    let app = state.app_facade_or_error()?;
+    let result =
+        execute_query_entry_receive_progress(app.as_ref(), EntryReceiveProgressInput { entry_id })
+            .await
+            .map_err(|error| map_receive_engine_err("get_progress", error))?;
+    let OperationResult::EntryReceiveProgress(progress) = result else {
+        return Err(ApiError::internal(
+            "engine returned an unexpected receive-progress result",
+        ));
+    };
+    let progress = progress.map(receive_progress_response);
     Ok(Json(ApiEnvelope::now(progress)))
 }
 
@@ -141,20 +154,23 @@ pub(crate) async fn get_entry_receive_progress(
 pub(crate) async fn list_entry_receive_progress(
     State(state): State<DaemonApiState>,
 ) -> Result<Json<ApiEnvelope<Vec<EntryReceiveProgressResponse>>>, ApiError> {
-    let app = require_app_facade(&state)?;
-    let progress = app
-        .list_entry_receive_progress()
+    let app = state.app_facade_or_error()?;
+    let result = execute_list_entry_receive_progress(app.as_ref())
         .await
-        .map_err(|error| ApiError::internal(error.to_string()))?
+        .map_err(|error| map_receive_engine_err("list_progress", error))?;
+    let OperationResult::EntryReceiveProgressList(progress) = result else {
+        return Err(ApiError::internal(
+            "engine returned an unexpected receive-progress-list result",
+        ));
+    };
+    let progress = progress
         .into_iter()
         .map(receive_progress_response)
         .collect();
     Ok(Json(ApiEnvelope::now(progress)))
 }
 
-fn receive_progress_response(
-    progress: uc_core::ports::EntryReceiveProgress,
-) -> EntryReceiveProgressResponse {
+fn receive_progress_response(progress: ReceiveProgressSummary) -> EntryReceiveProgressResponse {
     EntryReceiveProgressResponse {
         entry_id: progress.entry_id,
         attempt_id: progress.attempt_id,
@@ -184,27 +200,33 @@ pub(crate) async fn cancel_entry_receive(
     Path(entry_id): Path<String>,
     body: Result<Json<CancelEntryReceiveRequest>, axum::extract::rejection::JsonRejection>,
 ) -> Result<Json<ApiEnvelope<CancelEntryReceiveResponse>>, ApiError> {
-    let app = require_app_facade(&state)?;
     let Json(request) = body.map_err(|error| ApiError::bad_request(error.to_string()))?;
-    let outcome = app
-        .cancel_entry_receive(&EntryId::from_string(entry_id), &request.attempt_id)
-        .await
-        .map_err(|error| ApiError::internal(error.to_string()))?;
+    let app = state.app_facade_or_error()?;
+    let result = execute_cancel_entry_receive(
+        app.as_ref(),
+        CancelEntryReceiveInput {
+            entry_id,
+            attempt_id: request.attempt_id,
+        },
+    )
+    .await
+    .map_err(|error| map_receive_engine_err("cancel_receive", error))?;
+    let OperationResult::EntryReceiveCancellation(outcome) = result else {
+        return Err(ApiError::internal(
+            "engine returned an unexpected receive-cancellation result",
+        ));
+    };
     Ok(Json(ApiEnvelope::now(cancel_receive_response(outcome))))
 }
 
-fn cancel_receive_response(
-    outcome: uc_application::facade::CancelEntryReceiveOutcome,
-) -> CancelEntryReceiveResponse {
+fn cancel_receive_response(outcome: EntryReceiveCancellationOutcome) -> CancelEntryReceiveResponse {
     let outcome = match outcome {
-        uc_application::facade::CancelEntryReceiveOutcome::CancellationRequested => {
-            "cancellation_requested"
-        }
-        uc_application::facade::CancelEntryReceiveOutcome::Cancelled => "cancelled",
-        uc_application::facade::CancelEntryReceiveOutcome::NotReceiving => "not_receiving",
-        uc_application::facade::CancelEntryReceiveOutcome::TooLate => "too_late",
-        uc_application::facade::CancelEntryReceiveOutcome::AlreadyTerminal => "already_terminal",
-        uc_application::facade::CancelEntryReceiveOutcome::Superseded => "superseded",
+        EntryReceiveCancellationOutcome::CancellationRequested => "cancellation_requested",
+        EntryReceiveCancellationOutcome::Cancelled => "cancelled",
+        EntryReceiveCancellationOutcome::NotReceiving => "not_receiving",
+        EntryReceiveCancellationOutcome::TooLate => "too_late",
+        EntryReceiveCancellationOutcome::AlreadyTerminal => "already_terminal",
+        EntryReceiveCancellationOutcome::Superseded => "superseded",
     };
     CancelEntryReceiveResponse {
         outcome: outcome.to_owned(),
@@ -751,12 +773,11 @@ async fn cancel_transfer(
     Path(transfer_id): Path<String>,
     body: Result<Json<CancelTransferRequest>, axum::extract::rejection::JsonRejection>,
 ) -> Result<Json<ApiEnvelope<CancelTransferResponse>>, ApiError> {
-    let app = require_app_facade(&state)?;
     let Json(req) = body.map_err(|e| ApiError::bad_request(e.to_string()))?;
 
     let reason = match req.reason.as_str() {
-        "local_user" => uc_core::FileTransferCancellationReason::LocalUser,
-        "timeout" => uc_core::FileTransferCancellationReason::Timeout,
+        "local_user" => TransferCancellationReason::LocalUser,
+        "timeout" => TransferCancellationReason::Timeout,
         other => {
             return Err(ApiError::bad_request(format!(
                 "unknown cancellation reason: {other}"
@@ -764,23 +785,25 @@ async fn cancel_transfer(
         }
     };
 
-    let outcome = app
-        .cancel_inbound_transfer(&transfer_id, reason)
-        .await
-        .map_err(|e| {
-            log_facade_failure(
-                "clipboard_command",
-                "cancel_transfer",
-                "cancel_error",
-                StatusCode::INTERNAL_SERVER_ERROR,
-                &e.to_string(),
-            );
-            ApiError::internal(e.to_string())
-        })?;
+    let app = state.app_facade_or_error()?;
+    let result = execute_cancel_inbound_transfer(
+        app.as_ref(),
+        CancelInboundTransferInput {
+            transfer_id,
+            reason,
+        },
+    )
+    .await
+    .map_err(|error| map_receive_engine_err("cancel_transfer", error))?;
+    let OperationResult::InboundTransferCancellation(outcome) = result else {
+        return Err(ApiError::internal(
+            "engine returned an unexpected transfer-cancellation result",
+        ));
+    };
 
     let outcome_str = match outcome {
-        uc_application::facade::InboundCancelOutcome::Cancelled => "cancelled",
-        uc_application::facade::InboundCancelOutcome::NotInflight => "not_inflight",
+        InboundTransferCancellationOutcome::Cancelled => "cancelled",
+        InboundTransferCancellationOutcome::NotInflight => "not_inflight",
     };
 
     Ok(Json(ApiEnvelope::now(CancelTransferResponse {
@@ -813,6 +836,34 @@ fn map_history_engine_err(op: &'static str, error: EngineError) -> ApiError {
         ),
     };
     log_facade_failure("clipboard_history", op, variant, api.status, &api.message);
+    api
+}
+
+fn map_receive_engine_err(op: &'static str, error: EngineError) -> ApiError {
+    let (variant, api): (&'static str, ApiError) = match error.code() {
+        RECEIVE_INVALID_INPUT_CODE => (
+            "invalid_input",
+            ApiError::bad_request("invalid receive request"),
+        ),
+        RECEIVE_UNAVAILABLE_CODE => (
+            "unavailable",
+            ApiError::internal("receive operation is unavailable"),
+        ),
+        RECEIVE_FAILED_CODE => ("internal", ApiError::internal("receive operation failed")),
+        TRANSFER_CANCEL_UNAVAILABLE_CODE => (
+            "transfer_unavailable",
+            ApiError::internal("transfer cancellation is unavailable"),
+        ),
+        TRANSFER_CANCEL_FAILED_CODE => (
+            "transfer_internal",
+            ApiError::internal("transfer cancellation failed"),
+        ),
+        _ => (
+            "unexpected_engine_error",
+            ApiError::internal("receive operation failed"),
+        ),
+    };
+    log_facade_failure("clipboard_receive", op, variant, api.status, &api.message);
     api
 }
 
@@ -852,6 +903,40 @@ mod tests {
         assert_eq!(internal.status, StatusCode::INTERNAL_SERVER_ERROR);
         assert_eq!(internal.message, "clipboard history operation failed");
         assert!(!internal.message.contains("path"));
+        assert!(internal.details.is_none());
+    }
+
+    #[test]
+    fn receive_engine_errors_preserve_http_statuses_and_redact_internal_details() {
+        let invalid = map_receive_engine_err(
+            "cancel_receive",
+            EngineError::new(
+                RECEIVE_INVALID_INPUT_CODE,
+                uc_engine::EngineErrorCategory::InvalidInput,
+                false,
+            ),
+        );
+        let unavailable = map_receive_engine_err(
+            "list_progress",
+            EngineError::new(
+                RECEIVE_UNAVAILABLE_CODE,
+                uc_engine::EngineErrorCategory::Unavailable,
+                true,
+            ),
+        );
+        let internal = map_receive_engine_err(
+            "cancel_transfer",
+            EngineError::new(
+                TRANSFER_CANCEL_FAILED_CODE,
+                uc_engine::EngineErrorCategory::Internal,
+                false,
+            ),
+        );
+
+        assert_eq!(invalid.status, StatusCode::BAD_REQUEST);
+        assert_eq!(unavailable.status, StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(internal.status, StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(internal.message, "transfer cancellation failed");
         assert!(internal.details.is_none());
     }
 
@@ -909,10 +994,10 @@ mod tests {
 
     #[test]
     fn receive_progress_and_stale_cancel_use_stable_wire_values() {
-        let response = receive_progress_response(uc_core::ports::EntryReceiveProgress {
+        let response = receive_progress_response(ReceiveProgressSummary {
             entry_id: "entry".to_owned(),
             attempt_id: "attempt-2".to_owned(),
-            state: uc_core::ports::AttemptState::Receiving,
+            state: "receiving".to_owned(),
             total_bytes: 30,
             completed_bytes: 10,
             items_total: 3,
@@ -926,8 +1011,7 @@ mod tests {
         assert_eq!(response.items_total, 3);
         assert_eq!(response.items_completed, 1);
 
-        let cancelled =
-            cancel_receive_response(uc_application::facade::CancelEntryReceiveOutcome::Superseded);
+        let cancelled = cancel_receive_response(EntryReceiveCancellationOutcome::Superseded);
         assert_eq!(cancelled.outcome, "superseded");
     }
 }

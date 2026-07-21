@@ -709,6 +709,54 @@ fn daemon_resend_handler_delegates_to_engine() {
     );
 }
 
+#[test]
+fn daemon_binary_resource_handlers_delegate_to_engine() {
+    let handler_path =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../crates/uc-webserver/src/api/blob.rs");
+    let handler = std::fs::read_to_string(&handler_path)
+        .unwrap_or_else(|error| panic!("failed to read {}: {error}", handler_path.display()));
+
+    for old_call in [
+        ".resource.blob(",
+        ".resource.thumbnail(",
+        ".resource.entry_file(",
+    ] {
+        assert!(
+            !handler.contains(old_call),
+            "daemon binary resource handlers must not call {old_call} directly"
+        );
+    }
+    for engine_call in [
+        "execute_read_blob(",
+        "execute_read_thumbnail(",
+        "execute_read_entry_file(",
+    ] {
+        assert!(
+            handler.contains(engine_call),
+            "daemon binary resource handlers must delegate through {engine_call}"
+        );
+    }
+
+    let blob_handler = handler
+        .split("async fn get_blob(")
+        .nth(1)
+        .and_then(|source| source.split("async fn get_thumbnail(").next())
+        .expect("blob handler must remain discoverable");
+    let thumbnail_handler = handler
+        .split("async fn get_thumbnail(")
+        .nth(1)
+        .and_then(|source| source.split("async fn get_entry_file(").next())
+        .expect("thumbnail handler must remain discoverable");
+    let file_handler = handler
+        .split("async fn get_entry_file(")
+        .nth(1)
+        .and_then(|source| source.split("fn sanitize_disposition_filename(").next())
+        .expect("entry-file handler must remain discoverable");
+    assert!(blob_handler.contains("large_blob_semaphore"));
+    assert!(!thumbnail_handler.contains("large_blob_semaphore"));
+    assert!(file_handler.contains("large_blob_semaphore"));
+}
+
 fn rust_sources(root: &Path) -> Vec<PathBuf> {
     let mut pending = vec![root.to_path_buf()];
     let mut sources = Vec::new();

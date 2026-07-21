@@ -20,10 +20,7 @@ use axum::response::Response;
 use axum::Router;
 use tokio::sync::{broadcast, Semaphore};
 use tokio_util::sync::CancellationToken;
-use uc_application::receive_reconciliation::EnsureReceiveReadyPort;
-use uc_engine::{
-    Engine, HostFileHandle, Operation, OperationResult, PeerConnectionChannelSummary,
-};
+use uc_engine::{Engine, HostFileHandle, Operation, OperationResult, PeerConnectionChannelSummary};
 use uc_observability::analytics::{AnalyticsPort, NoopAnalyticsSink};
 use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
@@ -46,7 +43,6 @@ pub struct DaemonApiState {
     pub auth_token: DaemonAuthToken,
     pub engine: Arc<Engine>,
     pub file_handles: Arc<dyn DaemonFileHandles>,
-    pub lan_interfaces: Arc<dyn DaemonLanInterfaces>,
     pub event_tx: broadcast::Sender<DaemonWsEvent>,
     pub started_at: Instant,
     /// Gate controlling clipboard capture in the daemon.
@@ -54,7 +50,6 @@ pub struct DaemonApiState {
     pub clipboard_capture_gate: Option<Arc<AtomicBool>>,
     /// Notify to trigger deferred service startup (clipboard-watcher, etc.)
     pub deferred_ready_notify: Option<Arc<tokio::sync::Notify>>,
-    pub receive_readiness: Arc<dyn EnsureReceiveReadyPort>,
     /// Security state: JWT secret, PID whitelist, and rate limiter.
     /// Wrapped in Arc so middleware (which receives Arc<DaemonApiState>) can share
     /// the same state with the server without cloning the inner fields.
@@ -118,10 +113,8 @@ impl DaemonApiState {
     pub fn new(
         engine: Arc<Engine>,
         file_handles: Arc<dyn DaemonFileHandles>,
-        lan_interfaces: Arc<dyn DaemonLanInterfaces>,
         auth_token: DaemonAuthToken,
         security: Arc<SecurityState>,
-        receive_readiness: Arc<dyn EnsureReceiveReadyPort>,
     ) -> Self {
         let (event_tx, _) = broadcast::channel(64);
         // ADR-008 P5-L L8c: the quiescing flag and the restart coordinator must
@@ -133,12 +126,10 @@ impl DaemonApiState {
             auth_token,
             engine,
             file_handles,
-            lan_interfaces,
             event_tx,
             started_at: Instant::now(),
             clipboard_capture_gate: None,
             deferred_ready_notify: None,
-            receive_readiness,
             security,
             analytics: Arc::new(NoopAnalyticsSink),
             large_blob_semaphore: Arc::new(Semaphore::new(MAX_CONCURRENT_BLOB_PULLS)),
@@ -177,15 +168,18 @@ impl DaemonApiState {
         self.engine.execute(operation).await
     }
 
-    pub fn health_response(&self) -> HealthResponse {
-        let readiness = self.receive_readiness.receive_readiness_status();
+    pub async fn health_response(&self) -> HealthResponse {
+        let degraded = match self.execute(Operation::QueryReceiveReadiness).await {
+            Ok(OperationResult::ReceiveReadiness(readiness)) => readiness.degraded,
+            Ok(_) | Err(_) => true,
+        };
         HealthResponse {
-            status: if readiness.degraded_reason.is_some() {
+            status: if degraded {
                 "degraded".to_string()
             } else {
                 "ok".to_string()
             },
-            degraded_reason: readiness.degraded_reason,
+            degraded_reason: degraded.then(|| "receive readiness degraded".to_string()),
             ..Self::health_response_for(self.residency)
         }
     }
@@ -300,13 +294,6 @@ impl DaemonApiState {
         self
     }
 
-    pub async fn ensure_receive_ready(&self) -> Result<(), ApiError> {
-        self.receive_readiness
-            .ensure_receive_ready()
-            .await
-            .map_err(|error| ApiError::service_unavailable(error.to_string()))
-    }
-
     pub fn connection_info_for_addr(
         &self,
         listen_addr: SocketAddr,
@@ -325,16 +312,6 @@ pub trait DaemonFileHandles: Send + Sync {
     fn register_input(&self, path: &Path) -> anyhow::Result<HostFileHandle>;
     fn register_output(&self, path: &Path) -> anyhow::Result<HostFileHandle>;
     fn register_diagnostic_output(&self) -> anyhow::Result<(HostFileHandle, String)>;
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct DaemonLanInterface {
-    pub name: String,
-    pub ipv4: String,
-}
-
-pub trait DaemonLanInterfaces: Send + Sync {
-    fn list(&self) -> anyhow::Result<Vec<DaemonLanInterface>>;
 }
 
 fn peer_channel_to_wire(channel: PeerConnectionChannelSummary) -> &'static str {

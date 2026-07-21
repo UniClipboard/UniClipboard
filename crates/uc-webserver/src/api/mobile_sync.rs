@@ -773,11 +773,15 @@ async fn list_mobile_lan_interfaces_handler(
 ) -> Result<Json<ApiEnvelope<Vec<LanInterfaceViewDto>>>, ApiError> {
     let span = info_span!("api.mobile_sync.list_lan_interfaces");
     async move {
-        let interfaces = state.lan_interfaces.list().map_err(|_| {
-            ApiError::from(MobileSyncError::LanProbeFailed {
-                message: "LAN interface probe failed".to_string(),
-            })
-        })?;
+        let result = state
+            .execute(Operation::ListMobileLanInterfaces)
+            .await
+            .map_err(mobile_engine_error_to_api)?;
+        let OperationResult::MobileLanInterfaces(interfaces) = result else {
+            return Err(ApiError::internal(
+                "engine returned an unexpected LAN-interface result",
+            ));
+        };
         Ok(Json(ApiEnvelope::now(
             interfaces
                 .into_iter()

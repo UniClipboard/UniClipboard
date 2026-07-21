@@ -153,7 +153,7 @@ pub fn router_l2_plus(state: DaemonApiState) -> Router<DaemonApiState> {
     security(())
 )]
 async fn health(State(state): State<DaemonApiState>) -> Json<HealthEnvelope> {
-    Json(ApiEnvelope::now(state.health_response()))
+    Json(ApiEnvelope::now(state.health_response().await))
 }
 
 /// Restore endpoint 的可选 query 参数。

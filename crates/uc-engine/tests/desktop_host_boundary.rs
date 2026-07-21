@@ -671,6 +671,25 @@ fn daemon_restore_handler_delegates_all_modes_to_engine() {
     );
 }
 
+#[test]
+fn daemon_delivery_view_handler_delegates_to_engine() {
+    let handler_path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../crates/uc-webserver/src/api/clipboard.rs");
+    let handler = std::fs::read_to_string(&handler_path)
+        .unwrap_or_else(|error| panic!("failed to read {}: {error}", handler_path.display()));
+    let delivery_handler = handler
+        .split("async fn get_entry_delivery_view_handler(")
+        .nth(1)
+        .and_then(|source| source.split("fn map_delivery_view_err(").next())
+        .expect("delivery-view handler must remain discoverable");
+
+    assert!(
+        !delivery_handler.contains(".get_entry_delivery_view(")
+            && delivery_handler.contains("execute_query_entry_delivery("),
+        "daemon delivery-view handler must delegate view assembly to uc-engine"
+    );
+}
+
 fn rust_sources(root: &Path) -> Vec<PathBuf> {
     let mut pending = vec![root.to_path_buf()];
     let mut sources = Vec::new();

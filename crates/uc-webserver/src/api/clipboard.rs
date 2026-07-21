@@ -12,13 +12,15 @@ use axum::routing::{delete, get, post};
 use axum::{Json, Router};
 use serde::Deserialize;
 use serde_json::json;
-use uc_application::facade::GetEntryDeliveryViewError;
 use uc_application::facade::{
     AppFacade, NotResendableReason, ResendEntryCommand, ResendEntryError,
 };
 use uc_core::ids::{DeviceId, EntryId, FormatId, RepresentationId};
 use uc_core::{
     ClipboardChangeOrigin, MimeType, ObservedClipboardRepresentation, SystemClipboardSnapshot,
+};
+use uc_engine::internal::delivery::{
+    execute_query_entry_delivery, ENTRY_DELIVERY_FAILED_CODE, ENTRY_DELIVERY_NOT_FOUND_CODE,
 };
 use uc_engine::internal::history::{
     execute_clear_history, execute_delete_history_entry, execute_get_history_entry,
@@ -723,22 +725,36 @@ async fn get_entry_delivery_view_handler(
     Path(id): Path<String>,
 ) -> Result<Json<ApiEnvelope<EntryDeliveryViewDto>>, ApiError> {
     let app = state.app_facade_or_error()?;
-    let entry = EntryId::from_string(id);
-    let view = app
-        .get_entry_delivery_view(&entry)
-        .await
-        .map_err(map_delivery_view_err)?;
+    let result = execute_query_entry_delivery(
+        app.as_ref(),
+        HistoryEntryInput {
+            entry_id: id.clone(),
+        },
+    )
+    .await
+    .map_err(|error| map_delivery_view_err(error, &id))?;
+    let OperationResult::EntryDelivery(view) = result else {
+        return Err(ApiError::internal(
+            "engine returned an unexpected delivery-view result",
+        ));
+    };
     Ok(Json(ApiEnvelope::now(view.into_api_dto())))
 }
 
-fn map_delivery_view_err(err: GetEntryDeliveryViewError) -> ApiError {
-    use GetEntryDeliveryViewError as E;
-    let (variant, api): (&'static str, ApiError) = match err {
-        E::EntryNotFound(id) => (
+fn map_delivery_view_err(error: EngineError, entry_id: &str) -> ApiError {
+    let (variant, api): (&'static str, ApiError) = match error.code() {
+        ENTRY_DELIVERY_NOT_FOUND_CODE => (
             "entry_not_found",
-            ApiError::not_found(format!("entry not found: {id}")),
+            ApiError::not_found(format!("entry not found: {entry_id}")),
         ),
-        E::Storage(msg) => ("storage", ApiError::internal(msg)),
+        ENTRY_DELIVERY_FAILED_CODE => (
+            "storage",
+            ApiError::internal("failed to load entry delivery view"),
+        ),
+        _ => (
+            "unexpected_engine_error",
+            ApiError::internal("failed to load entry delivery view"),
+        ),
     };
     log_facade_failure(
         "clipboard",
@@ -987,7 +1003,14 @@ mod tests {
     /// Delivery-view: entry-not-found is a normal degraded-render case → plain 404.
     #[test]
     fn delivery_view_entry_not_found_is_404() {
-        let api = map_delivery_view_err(GetEntryDeliveryViewError::EntryNotFound("ent-x".into()));
+        let api = map_delivery_view_err(
+            EngineError::new(
+                ENTRY_DELIVERY_NOT_FOUND_CODE,
+                uc_engine::EngineErrorCategory::NotFound,
+                false,
+            ),
+            "ent-x",
+        );
         assert_eq!(api.status, StatusCode::NOT_FOUND);
         assert_eq!(api.code, "not_found");
     }

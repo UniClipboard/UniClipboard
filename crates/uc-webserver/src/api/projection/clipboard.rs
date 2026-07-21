@@ -4,10 +4,7 @@
 use base64::engine::general_purpose::STANDARD;
 use base64::Engine as _;
 use uc_application::facade::DispatchEntryOutcome;
-use uc_application::facade::{
-    EntryDeliveryStatusView, EntryDeliveryTargetView, EntryDeliveryView, EntrySource, ResendReport,
-};
-use uc_core::clipboard::DeliveryFailureReason;
+use uc_application::facade::ResendReport;
 use uc_core::ports::DispatchAck;
 use uc_daemon_contract::api::dto::clipboard_command::{
     DispatchOutcomeResponse, PerTargetOutcomeDto, ResendResponse,
@@ -17,8 +14,9 @@ use uc_daemon_contract::api::dto::clipboard_delivery::{
     EntrySourceDto,
 };
 use uc_engine::{
-    HistoryClearSummary, HistoryEntryDetailSummary, HistoryEntryResourceSummary,
-    HistoryEntrySummary, HistoryStatsSummary,
+    DeliveryFailureReasonSummary, EntryDeliveryStatusSummary, EntryDeliveryTargetSummary,
+    EntryDeliveryViewSummary, EntrySourceSummary, HistoryClearSummary, HistoryEntryDetailSummary,
+    HistoryEntryResourceSummary, HistoryEntrySummary, HistoryStatsSummary,
 };
 
 use super::IntoApiDto;
@@ -102,10 +100,10 @@ impl IntoApiDto<ClearHistoryResultDto> for HistoryClearSummary {
     }
 }
 
-impl IntoApiDto<EntryDeliveryViewDto> for EntryDeliveryView {
+impl IntoApiDto<EntryDeliveryViewDto> for EntryDeliveryViewSummary {
     fn into_api_dto(self) -> EntryDeliveryViewDto {
         EntryDeliveryViewDto {
-            entry_id: self.entry_id.as_str().to_string(),
+            entry_id: self.entry_id,
             source: self.source.into_api_dto(),
             deliveries: self
                 .deliveries
@@ -116,26 +114,26 @@ impl IntoApiDto<EntryDeliveryViewDto> for EntryDeliveryView {
     }
 }
 
-impl IntoApiDto<EntrySourceDto> for EntrySource {
+impl IntoApiDto<EntrySourceDto> for EntrySourceSummary {
     fn into_api_dto(self) -> EntrySourceDto {
         match self {
-            EntrySource::Local => EntrySourceDto::Local,
-            EntrySource::Remote {
+            EntrySourceSummary::Local => EntrySourceDto::Local,
+            EntrySourceSummary::Remote {
                 device_id,
                 device_name,
             } => EntrySourceDto::Remote {
-                device_id: device_id.as_str().to_string(),
+                device_id,
                 device_name,
             },
-            EntrySource::Historical => EntrySourceDto::Historical,
+            EntrySourceSummary::Historical => EntrySourceDto::Historical,
         }
     }
 }
 
-impl IntoApiDto<EntryDeliveryTargetDto> for EntryDeliveryTargetView {
+impl IntoApiDto<EntryDeliveryTargetDto> for EntryDeliveryTargetSummary {
     fn into_api_dto(self) -> EntryDeliveryTargetDto {
         EntryDeliveryTargetDto {
-            target_device_id: self.target_device_id.as_str().to_string(),
+            target_device_id: self.target_device_id,
             target_device_name: self.target_device_name,
             status: self.status.into_api_dto(),
             reason_detail: self.reason_detail,
@@ -144,27 +142,27 @@ impl IntoApiDto<EntryDeliveryTargetDto> for EntryDeliveryTargetView {
     }
 }
 
-impl IntoApiDto<EntryDeliveryStatusDto> for EntryDeliveryStatusView {
+impl IntoApiDto<EntryDeliveryStatusDto> for EntryDeliveryStatusSummary {
     fn into_api_dto(self) -> EntryDeliveryStatusDto {
         match self {
-            EntryDeliveryStatusView::Pending => EntryDeliveryStatusDto::Pending,
-            EntryDeliveryStatusView::Delivered => EntryDeliveryStatusDto::Delivered,
-            EntryDeliveryStatusView::Duplicate => EntryDeliveryStatusDto::Duplicate,
-            EntryDeliveryStatusView::Unreachable => EntryDeliveryStatusDto::Unreachable,
-            EntryDeliveryStatusView::Failed { reason } => EntryDeliveryStatusDto::Failed {
+            EntryDeliveryStatusSummary::Pending => EntryDeliveryStatusDto::Pending,
+            EntryDeliveryStatusSummary::Delivered => EntryDeliveryStatusDto::Delivered,
+            EntryDeliveryStatusSummary::Duplicate => EntryDeliveryStatusDto::Duplicate,
+            EntryDeliveryStatusSummary::Unreachable => EntryDeliveryStatusDto::Unreachable,
+            EntryDeliveryStatusSummary::Failed { reason } => EntryDeliveryStatusDto::Failed {
                 reason: reason.into_api_dto(),
             },
         }
     }
 }
 
-impl IntoApiDto<DeliveryFailureReasonDto> for DeliveryFailureReason {
+impl IntoApiDto<DeliveryFailureReasonDto> for DeliveryFailureReasonSummary {
     fn into_api_dto(self) -> DeliveryFailureReasonDto {
         match self {
-            DeliveryFailureReason::LocalPolicy => DeliveryFailureReasonDto::LocalPolicy,
-            DeliveryFailureReason::PeerRejected => DeliveryFailureReasonDto::PeerRejected,
-            DeliveryFailureReason::Io => DeliveryFailureReasonDto::Io,
-            DeliveryFailureReason::Internal => DeliveryFailureReasonDto::Internal,
+            DeliveryFailureReasonSummary::LocalPolicy => DeliveryFailureReasonDto::LocalPolicy,
+            DeliveryFailureReasonSummary::PeerRejected => DeliveryFailureReasonDto::PeerRejected,
+            DeliveryFailureReasonSummary::Io => DeliveryFailureReasonDto::Io,
+            DeliveryFailureReasonSummary::Internal => DeliveryFailureReasonDto::Internal,
         }
     }
 }

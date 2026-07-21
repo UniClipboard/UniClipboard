@@ -119,11 +119,11 @@ rg -n 'CliAppRuntime|pub app_facade|pub .*AppDeps' apps crates/uc-desktop src-ta
 ## 完成标准
 
 - [x] 桌面生产路径只通过 `uc-engine` 使用核心能力。
-- [ ] `uc-application` 不再正式依赖 `uc-infra` 或产品分析实现。
-- [ ] 核心可反复暂停、恢复、关闭和重新启动。
-- [ ] 平台不接触业务明文持久化。
-- [ ] 旧的 `CliAppRuntime` 外部路径已删除，而不是并存。
-- [ ] 接口级和现有双节点测试全部通过。
+- [x] `uc-application` 不再正式依赖 `uc-infra` 或产品分析实现。
+- [x] 核心可反复暂停、恢复、关闭和重新启动。
+- [x] 平台不接触业务明文持久化。
+- [x] 旧的 `CliAppRuntime` 外部路径已删除，而不是并存。
+- [x] 接口级和现有双节点测试全部通过。
 
 ## 停止条件
 

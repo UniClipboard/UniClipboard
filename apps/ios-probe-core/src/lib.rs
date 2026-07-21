@@ -671,6 +671,47 @@ fn operation_response(result: OperationResult) -> Value {
             "content_types": entries.into_iter().map(|entry| entry.content_type).collect::<Vec<_>>(),
             "has_next": next_cursor.is_some(),
         }),
+        OperationResult::HistoryEntries(entries) => json!({
+            "ok": true,
+            "kind": "history_entries",
+            "count": entries.len(),
+            "entry_ids": entries.iter().map(|entry| entry.entry_id.clone()).collect::<Vec<_>>(),
+            "content_types": entries.into_iter().map(|entry| entry.content_type).collect::<Vec<_>>(),
+        }),
+        OperationResult::HistoryEntry(entry) => json!({
+            "ok": true,
+            "kind": "history_entry",
+            "entry_id": entry.entry_id,
+            "size_bytes": entry.size_bytes,
+            "mime_type": entry.mime_type,
+        }),
+        OperationResult::HistoryEntryDeleted => {
+            json!({"ok": true, "kind": "history_entry_deleted"})
+        }
+        OperationResult::HistoryEntryFavoriteSet => {
+            json!({"ok": true, "kind": "history_entry_favorite_set"})
+        }
+        OperationResult::HistoryStats(stats) => json!({
+            "ok": true,
+            "kind": "history_stats",
+            "total_items": stats.total_items,
+            "total_size": stats.total_size,
+        }),
+        OperationResult::HistoryEntryResource(resource) => json!({
+            "ok": true,
+            "kind": "history_entry_resource",
+            "has_blob": resource.blob_id.is_some(),
+            "mime_type": resource.mime_type,
+            "size_bytes": resource.size_bytes,
+            "has_url": resource.url.is_some(),
+            "has_inline_data": resource.inline_data.is_some(),
+        }),
+        OperationResult::HistoryCleared(result) => json!({
+            "ok": true,
+            "kind": "history_cleared",
+            "deleted_count": result.deleted_count,
+            "failed_count": result.failed_entry_ids.len(),
+        }),
         OperationResult::EntryExported => json!({"ok": true, "kind": "entry_exported"}),
         OperationResult::EntryResent { entry_id } => {
             json!({"ok": true, "kind": "entry_resent", "entry_id": entry_id})
@@ -852,9 +893,33 @@ mod tests {
             }],
             next_cursor: None,
         });
+        let history_entry = operation_response(OperationResult::HistoryEntry(
+            uc_engine::HistoryEntryDetailSummary {
+                entry_id: "entry-2".into(),
+                content: "private full content".into(),
+                size_bytes: 20,
+                created_at_ms: 1,
+                active_time_ms: 2,
+                mime_type: Some("text/plain".into()),
+            },
+        ));
+        let history_resource = operation_response(OperationResult::HistoryEntryResource(
+            uc_engine::HistoryEntryResourceSummary {
+                blob_id: Some("blob-1".into()),
+                mime_type: Some("text/plain".into()),
+                size_bytes: 20,
+                url: Some("http://private/resource".into()),
+                inline_data: Some(b"private inline content".to_vec()),
+            },
+        ));
 
         assert!(!local.to_string().contains("private local device name"));
         assert!(!devices.to_string().contains("private phone name"));
         assert!(!history.to_string().contains("private payload"));
+        assert!(!history_entry.to_string().contains("private full content"));
+        assert!(!history_resource.to_string().contains("private/resource"));
+        assert!(!history_resource
+            .to_string()
+            .contains("private inline content"));
     }
 }

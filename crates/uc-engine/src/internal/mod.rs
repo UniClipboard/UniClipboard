@@ -12,6 +12,7 @@ pub mod encryption;
 pub mod facade;
 pub mod factory_reset;
 pub mod file_transfer;
+pub mod history;
 pub mod host_adapters;
 pub(crate) mod inbound_staging;
 pub mod invitation;

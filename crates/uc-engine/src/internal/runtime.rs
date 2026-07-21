@@ -40,6 +40,11 @@ use crate::internal::facade::{
 };
 use crate::internal::factory_reset::execute_factory_reset_space;
 use crate::internal::file_transfer::FileTransferLifecycle;
+use crate::internal::history::{
+    execute_clear_history, execute_delete_history_entry, execute_get_history_entry,
+    execute_get_history_entry_resource, execute_list_history_entries, execute_query_history_stats,
+    execute_set_history_entry_favorite,
+};
 use crate::internal::host_adapters::{
     wire_host_capabilities_with_emitter, EngineHostEventEmitter, HostWiring,
 };
@@ -350,6 +355,29 @@ impl EngineRuntime for ProductionRuntime {
                     .await
                     .map_err(map_query_history_error)?;
                 history_page_result(page, offset, limit)
+            }
+            Operation::ListHistoryEntries(input) => {
+                execute_list_history_entries(self.current_facade().await?.as_ref(), input).await
+            }
+            Operation::GetHistoryEntry(input) => {
+                execute_get_history_entry(self.current_facade().await?.as_ref(), input).await
+            }
+            Operation::DeleteHistoryEntry(input) => {
+                execute_delete_history_entry(self.current_facade().await?.as_ref(), input).await
+            }
+            Operation::SetHistoryEntryFavorite(input) => {
+                execute_set_history_entry_favorite(self.current_facade().await?.as_ref(), input)
+                    .await
+            }
+            Operation::QueryHistoryStats => {
+                execute_query_history_stats(self.current_facade().await?.as_ref()).await
+            }
+            Operation::GetHistoryEntryResource(input) => {
+                execute_get_history_entry_resource(self.current_facade().await?.as_ref(), input)
+                    .await
+            }
+            Operation::ClearHistory => {
+                execute_clear_history(self.current_facade().await?.as_ref()).await
             }
             Operation::SendText(input) => {
                 if input.text.is_empty()

@@ -724,6 +724,74 @@ async fn engine_start_builds_a_resumable_real_session() {
         other => panic!("expected sent entry, got {other:?}"),
     };
     assert!(!sent_entry_id.is_empty());
+    let listed = engine
+        .execute(uc_engine::Operation::ListHistoryEntries(
+            uc_engine::ListHistoryEntriesInput {
+                limit: 50,
+                offset: 0,
+            },
+        ))
+        .await
+        .unwrap();
+    assert!(matches!(
+        listed,
+        uc_engine::OperationResult::HistoryEntries(ref entries)
+            if entries.len() == 1
+                && entries[0].entry_id == sent_entry_id
+                && entries[0].preview == "engine text dispatch"
+                && !entries[0].is_favorited
+    ));
+    let detail = engine
+        .execute(uc_engine::Operation::GetHistoryEntry(
+            uc_engine::HistoryEntryInput {
+                entry_id: sent_entry_id.clone(),
+            },
+        ))
+        .await
+        .unwrap();
+    assert!(matches!(
+        detail,
+        uc_engine::OperationResult::HistoryEntry(ref entry)
+            if entry.entry_id == sent_entry_id && entry.content == "engine text dispatch"
+    ));
+    assert_eq!(
+        engine
+            .execute(uc_engine::Operation::SetHistoryEntryFavorite(
+                uc_engine::SetHistoryEntryFavoriteInput {
+                    entry_id: sent_entry_id.clone(),
+                    is_favorited: true,
+                },
+            ))
+            .await
+            .unwrap(),
+        uc_engine::OperationResult::HistoryEntryFavoriteSet
+    );
+    assert!(matches!(
+        engine
+            .execute(uc_engine::Operation::QueryHistoryStats)
+            .await
+            .unwrap(),
+        uc_engine::OperationResult::HistoryStats(uc_engine::HistoryStatsSummary {
+            total_items: 1,
+            total_size,
+        }) if total_size > 0
+    ));
+    assert!(matches!(
+        engine
+            .execute(uc_engine::Operation::GetHistoryEntryResource(
+                uc_engine::HistoryEntryInput {
+                    entry_id: sent_entry_id.clone(),
+                },
+            ))
+            .await
+            .unwrap(),
+        uc_engine::OperationResult::HistoryEntryResource(
+            uc_engine::HistoryEntryResourceSummary {
+                inline_data: Some(ref bytes),
+                ..
+            }
+        ) if bytes == b"engine text dispatch"
+    ));
     let search_page = engine
         .execute(uc_engine::Operation::SearchEntries(
             uc_engine::SearchEntriesInput {
@@ -841,10 +909,53 @@ async fn engine_start_builds_a_resumable_real_session() {
         }))
         .await
         .unwrap();
+    let sent_image_id = match sent_image {
+        uc_engine::OperationResult::EntrySent { entry_id } => entry_id,
+        other => panic!("expected sent image, got {other:?}"),
+    };
+    assert_eq!(
+        engine
+            .execute(uc_engine::Operation::DeleteHistoryEntry(
+                uc_engine::HistoryEntryInput {
+                    entry_id: sent_image_id.clone(),
+                },
+            ))
+            .await
+            .unwrap(),
+        uc_engine::OperationResult::HistoryEntryDeleted
+    );
+    let missing_delete = engine
+        .execute(uc_engine::Operation::DeleteHistoryEntry(
+            uc_engine::HistoryEntryInput {
+                entry_id: sent_image_id,
+            },
+        ))
+        .await
+        .unwrap_err();
+    assert_eq!(
+        missing_delete.category(),
+        uc_engine::EngineErrorCategory::NotFound
+    );
     assert!(matches!(
-        sent_image,
-        uc_engine::OperationResult::EntrySent { ref entry_id } if !entry_id.is_empty()
+        engine
+            .execute(uc_engine::Operation::ClearHistory)
+            .await
+            .unwrap(),
+        uc_engine::OperationResult::HistoryCleared(uc_engine::HistoryClearSummary {
+            deleted_count: 1,
+            ref failed_entry_ids,
+        }) if failed_entry_ids.is_empty()
     ));
+    assert_eq!(
+        engine
+            .execute(uc_engine::Operation::QueryHistoryStats)
+            .await
+            .unwrap(),
+        uc_engine::OperationResult::HistoryStats(uc_engine::HistoryStatsSummary {
+            total_items: 0,
+            total_size: 0,
+        })
+    );
 
     let missing_resend = engine
         .execute(uc_engine::Operation::ResendEntry(

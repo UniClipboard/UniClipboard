@@ -505,15 +505,28 @@ impl ClipboardHistoryFacade {
     }
 
     pub async fn stats(&self) -> Result<ClipboardStatsView, ClipboardHistoryError> {
-        let entries = self
-            .list_uc
-            .execute(10_000, 0)
-            .await
-            .map_err(map_list_error)?;
-        let stats = compute_clipboard_stats(&entries);
+        const BATCH_SIZE: usize = 1000;
+        let mut offset = 0;
+        let mut total_items = 0;
+        let mut total_size = 0;
+        loop {
+            let entries = self
+                .list_uc
+                .execute(BATCH_SIZE, offset)
+                .await
+                .map_err(map_list_error)?;
+            let batch_len = entries.len();
+            let stats = compute_clipboard_stats(&entries);
+            total_items += stats.total_items;
+            total_size += stats.total_size;
+            if batch_len < BATCH_SIZE {
+                break;
+            }
+            offset += batch_len;
+        }
         Ok(ClipboardStatsView {
-            total_items: stats.total_items,
-            total_size: stats.total_size,
+            total_items,
+            total_size,
         })
     }
 

@@ -182,6 +182,108 @@ fn every_public_operation_has_a_stable_kind() {
 }
 
 #[test]
+fn history_management_contract_preserves_results_without_debugging_user_content() {
+    let operations = [
+        (
+            uc_engine::Operation::ListHistoryEntries(uc_engine::ListHistoryEntriesInput {
+                limit: 50,
+                offset: 0,
+            }),
+            uc_engine::OperationKind::ListHistoryEntries,
+        ),
+        (
+            uc_engine::Operation::GetHistoryEntry(uc_engine::HistoryEntryInput {
+                entry_id: "entry-1".into(),
+            }),
+            uc_engine::OperationKind::GetHistoryEntry,
+        ),
+        (
+            uc_engine::Operation::DeleteHistoryEntry(uc_engine::HistoryEntryInput {
+                entry_id: "entry-1".into(),
+            }),
+            uc_engine::OperationKind::DeleteHistoryEntry,
+        ),
+        (
+            uc_engine::Operation::SetHistoryEntryFavorite(
+                uc_engine::SetHistoryEntryFavoriteInput {
+                    entry_id: "entry-1".into(),
+                    is_favorited: true,
+                },
+            ),
+            uc_engine::OperationKind::SetHistoryEntryFavorite,
+        ),
+        (
+            uc_engine::Operation::QueryHistoryStats,
+            uc_engine::OperationKind::QueryHistoryStats,
+        ),
+        (
+            uc_engine::Operation::GetHistoryEntryResource(uc_engine::HistoryEntryInput {
+                entry_id: "entry-1".into(),
+            }),
+            uc_engine::OperationKind::GetHistoryEntryResource,
+        ),
+        (
+            uc_engine::Operation::ClearHistory,
+            uc_engine::OperationKind::ClearHistory,
+        ),
+    ];
+    for (operation, expected) in operations {
+        assert_eq!(operation.kind(), expected);
+    }
+
+    let results = [
+        uc_engine::OperationResult::HistoryEntries(vec![uc_engine::HistoryEntrySummary {
+            entry_id: "entry-1".into(),
+            preview: "private preview".into(),
+            has_detail: true,
+            size_bytes: 10,
+            captured_at_ms: 1,
+            content_type: "text".into(),
+            thumbnail_url: Some("http://private/thumbnail".into()),
+            is_encrypted: true,
+            is_favorited: true,
+            updated_at_ms: 2,
+            active_time_ms: 3,
+            file_transfer_status: None,
+            file_transfer_reason: None,
+            content_tags: vec!["private-tag".into()],
+            link_urls: Some(vec!["https://private.example/secret".into()]),
+            link_domains: Some(vec!["private.example".into()]),
+            file_sizes: Some(vec![10]),
+            image_width: None,
+            image_height: None,
+            payload_state: None,
+        }]),
+        uc_engine::OperationResult::HistoryEntry(uc_engine::HistoryEntryDetailSummary {
+            entry_id: "entry-1".into(),
+            content: "private full content".into(),
+            size_bytes: 20,
+            created_at_ms: 1,
+            active_time_ms: 2,
+            mime_type: Some("text/plain".into()),
+        }),
+        uc_engine::OperationResult::HistoryEntryResource(uc_engine::HistoryEntryResourceSummary {
+            blob_id: Some("blob-1".into()),
+            mime_type: Some("text/plain".into()),
+            size_bytes: 20,
+            url: Some("http://private/resource".into()),
+            inline_data: Some(b"private inline content".to_vec()),
+        }),
+    ];
+    let debug = format!("{results:?}");
+    for secret in [
+        "private preview",
+        "private-tag",
+        "private.example",
+        "private full content",
+        "private/resource",
+        "private inline content",
+    ] {
+        assert!(!debug.contains(secret), "debug output leaked {secret}");
+    }
+}
+
+#[test]
 fn search_contract_preserves_fields_without_debugging_user_content() {
     let input = SearchEntriesInput {
         query: "private search query".into(),

@@ -98,6 +98,13 @@ pub enum OperationKind {
     SendImage,
     SendFiles,
     QueryHistory,
+    ListHistoryEntries,
+    GetHistoryEntry,
+    DeleteHistoryEntry,
+    SetHistoryEntryFavorite,
+    QueryHistoryStats,
+    GetHistoryEntryResource,
+    ClearHistory,
     ExportEntry,
     ResendEntry,
 }
@@ -133,6 +140,13 @@ impl fmt::Display for OperationKind {
             Self::SendImage => "send_image",
             Self::SendFiles => "send_files",
             Self::QueryHistory => "query_history",
+            Self::ListHistoryEntries => "list_history_entries",
+            Self::GetHistoryEntry => "get_history_entry",
+            Self::DeleteHistoryEntry => "delete_history_entry",
+            Self::SetHistoryEntryFavorite => "set_history_entry_favorite",
+            Self::QueryHistoryStats => "query_history_stats",
+            Self::GetHistoryEntryResource => "get_history_entry_resource",
+            Self::ClearHistory => "clear_history",
             Self::ExportEntry => "export_entry",
             Self::ResendEntry => "resend_entry",
         };
@@ -170,6 +184,13 @@ pub enum Operation {
     SendImage(SendImageInput),
     SendFiles(SendFilesInput),
     QueryHistory(QueryHistoryInput),
+    ListHistoryEntries(ListHistoryEntriesInput),
+    GetHistoryEntry(HistoryEntryInput),
+    DeleteHistoryEntry(HistoryEntryInput),
+    SetHistoryEntryFavorite(SetHistoryEntryFavoriteInput),
+    QueryHistoryStats,
+    GetHistoryEntryResource(HistoryEntryInput),
+    ClearHistory,
     ExportEntry(ExportEntryInput),
     ResendEntry(ResendEntryInput),
 }
@@ -205,6 +226,13 @@ impl Operation {
             Self::SendImage(_) => OperationKind::SendImage,
             Self::SendFiles(_) => OperationKind::SendFiles,
             Self::QueryHistory(_) => OperationKind::QueryHistory,
+            Self::ListHistoryEntries(_) => OperationKind::ListHistoryEntries,
+            Self::GetHistoryEntry(_) => OperationKind::GetHistoryEntry,
+            Self::DeleteHistoryEntry(_) => OperationKind::DeleteHistoryEntry,
+            Self::SetHistoryEntryFavorite(_) => OperationKind::SetHistoryEntryFavorite,
+            Self::QueryHistoryStats => OperationKind::QueryHistoryStats,
+            Self::GetHistoryEntryResource(_) => OperationKind::GetHistoryEntryResource,
+            Self::ClearHistory => OperationKind::ClearHistory,
             Self::ExportEntry(_) => OperationKind::ExportEntry,
             Self::ResendEntry(_) => OperationKind::ResendEntry,
         }
@@ -390,6 +418,23 @@ pub struct QueryHistoryInput {
     pub cursor: Option<String>,
     pub limit: u32,
     pub query: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ListHistoryEntriesInput {
+    pub limit: u32,
+    pub offset: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HistoryEntryInput {
+    pub entry_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SetHistoryEntryFavoriteInput {
+    pub entry_id: String,
+    pub is_favorited: bool,
 }
 
 impl fmt::Debug for QueryHistoryInput {
@@ -582,6 +627,107 @@ impl fmt::Debug for EntrySummary {
     }
 }
 
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HistoryEntrySummary {
+    pub entry_id: String,
+    pub preview: String,
+    pub has_detail: bool,
+    pub size_bytes: i64,
+    pub captured_at_ms: i64,
+    pub content_type: String,
+    pub thumbnail_url: Option<String>,
+    pub is_encrypted: bool,
+    pub is_favorited: bool,
+    pub updated_at_ms: i64,
+    pub active_time_ms: i64,
+    pub file_transfer_status: Option<String>,
+    pub file_transfer_reason: Option<String>,
+    pub content_tags: Vec<String>,
+    pub link_urls: Option<Vec<String>>,
+    pub link_domains: Option<Vec<String>>,
+    pub file_sizes: Option<Vec<i64>>,
+    pub image_width: Option<i32>,
+    pub image_height: Option<i32>,
+    pub payload_state: Option<String>,
+}
+
+impl fmt::Debug for HistoryEntrySummary {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("HistoryEntrySummary")
+            .field("entry_id", &self.entry_id)
+            .field("has_preview", &!self.preview.is_empty())
+            .field("has_detail", &self.has_detail)
+            .field("size_bytes", &self.size_bytes)
+            .field("content_type", &self.content_type)
+            .field("has_thumbnail", &self.thumbnail_url.is_some())
+            .field("is_encrypted", &self.is_encrypted)
+            .field("is_favorited", &self.is_favorited)
+            .field("tag_count", &self.content_tags.len())
+            .field("link_count", &self.link_urls.as_ref().map_or(0, Vec::len))
+            .field("has_payload_state", &self.payload_state.is_some())
+            .finish()
+    }
+}
+
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HistoryEntryDetailSummary {
+    pub entry_id: String,
+    pub content: String,
+    pub size_bytes: i64,
+    pub created_at_ms: i64,
+    pub active_time_ms: i64,
+    pub mime_type: Option<String>,
+}
+
+impl fmt::Debug for HistoryEntryDetailSummary {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("HistoryEntryDetailSummary")
+            .field("entry_id", &self.entry_id)
+            .field("has_content", &!self.content.is_empty())
+            .field("size_bytes", &self.size_bytes)
+            .field("created_at_ms", &self.created_at_ms)
+            .field("active_time_ms", &self.active_time_ms)
+            .field("mime_type", &self.mime_type)
+            .finish()
+    }
+}
+
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HistoryEntryResourceSummary {
+    pub blob_id: Option<String>,
+    pub mime_type: Option<String>,
+    pub size_bytes: i64,
+    pub url: Option<String>,
+    pub inline_data: Option<Vec<u8>>,
+}
+
+impl fmt::Debug for HistoryEntryResourceSummary {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("HistoryEntryResourceSummary")
+            .field("has_blob", &self.blob_id.is_some())
+            .field("mime_type", &self.mime_type)
+            .field("size_bytes", &self.size_bytes)
+            .field("has_url", &self.url.is_some())
+            .field("inline_byte_len", &self.inline_data.as_ref().map(Vec::len))
+            .finish()
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HistoryStatsSummary {
+    pub total_items: i64,
+    pub total_size: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HistoryClearSummary {
+    pub deleted_count: u64,
+    pub failed_entry_ids: Vec<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TransferProgress {
     pub transfer_id: String,
@@ -646,6 +792,13 @@ pub enum OperationResult {
         entries: Vec<EntrySummary>,
         next_cursor: Option<String>,
     },
+    HistoryEntries(Vec<HistoryEntrySummary>),
+    HistoryEntry(HistoryEntryDetailSummary),
+    HistoryEntryDeleted,
+    HistoryEntryFavoriteSet,
+    HistoryStats(HistoryStatsSummary),
+    HistoryEntryResource(HistoryEntryResourceSummary),
+    HistoryCleared(HistoryClearSummary),
     EntryExported,
     EntryResent {
         entry_id: String,
@@ -712,6 +865,24 @@ impl fmt::Debug for OperationResult {
                 .field("kind", &"history_page")
                 .field("entry_count", &entries.len())
                 .field("has_next_cursor", &next_cursor.is_some()),
+            Self::HistoryEntries(entries) => debug
+                .field("kind", &"history_entries")
+                .field("entry_count", &entries.len()),
+            Self::HistoryEntry(_) => debug.field("kind", &"history_entry"),
+            Self::HistoryEntryDeleted => debug.field("kind", &"history_entry_deleted"),
+            Self::HistoryEntryFavoriteSet => debug.field("kind", &"history_entry_favorite_set"),
+            Self::HistoryStats(stats) => {
+                debug.field("kind", &"history_stats").field("stats", stats)
+            }
+            Self::HistoryEntryResource(resource) => debug
+                .field("kind", &"history_entry_resource")
+                .field("has_blob", &resource.blob_id.is_some())
+                .field("has_url", &resource.url.is_some())
+                .field("has_inline_data", &resource.inline_data.is_some()),
+            Self::HistoryCleared(result) => debug
+                .field("kind", &"history_cleared")
+                .field("deleted_count", &result.deleted_count)
+                .field("failed_count", &result.failed_entry_ids.len()),
             Self::EntryExported => debug.field("kind", &"entry_exported"),
             Self::EntryResent { .. } => debug.field("kind", &"entry_resent"),
         };

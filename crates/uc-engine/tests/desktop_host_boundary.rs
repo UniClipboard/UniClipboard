@@ -106,6 +106,18 @@ fn engine_session_owns_history_maintenance() {
 }
 
 #[test]
+fn engine_session_owns_peer_keepalive() {
+    let runtime = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/internal/runtime.rs");
+    let source = std::fs::read_to_string(&runtime)
+        .unwrap_or_else(|error| panic!("failed to read {}: {error}", runtime.display()));
+
+    assert!(
+        source.contains("spawn_peer_keepalive_task(Arc::clone"),
+        "engine session must register peer keepalive with its task registry"
+    );
+}
+
+#[test]
 fn daemon_startup_recovery_delegates_business_orchestration_to_engine() {
     let recovery = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../apps/daemon/src/daemon/startup_recovery.rs");

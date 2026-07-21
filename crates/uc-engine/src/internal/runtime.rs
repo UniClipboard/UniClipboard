@@ -63,6 +63,7 @@ use crate::internal::member::{
     execute_update_member_sync_preferences,
 };
 use crate::internal::migration_progress::execute_query_migration_progress;
+use crate::internal::peer_keepalive::spawn_peer_keepalive_task;
 use crate::internal::receive::{
     execute_cancel_entry_receive, execute_cancel_inbound_transfer,
     execute_list_entry_receive_progress, execute_query_entry_receive_progress,
@@ -380,6 +381,7 @@ impl ProductionRuntime {
             },
         );
         spawn_history_maintenance_task(Arc::clone(&facade.clipboard_history), &tasks).await;
+        spawn_peer_keepalive_task(Arc::clone(&facade), &tasks).await;
         spawn_clipboard_runtime_tasks(&clipboard, Arc::clone(&sync_engine.clipboard_sync), &tasks)
             .await;
         tasks

@@ -64,6 +64,14 @@ Running|Quiescing|Quiesced|Suspended -> ShuttingDown -> Stopped
 | `UpdateMobileLanEndpoint` | 由桌面外壳报告 LAN listener 已停止、正在监听或绑定失败 |
 | `RegisterMobileDevice` | 登记一台 LAN 兼容设备并返回一次性连接凭据和二维码内容 |
 | `UpdateMobileDevice` | 修改 LAN 兼容设备的标签、用户名或密码，换密时只返回一次新密码 |
+| `CheckMobileContentAvailable` | 按稳定内容编号确认本机是否仍持有可用内容 |
+| `QueryLatestMobileSyncDocument` | 返回最新内容的 LAN 兼容文档；没有内容时返回空结果 |
+| `ApplyMobileSyncDocument` | 把 LAN 兼容文档交给统一入站、剪贴板、历史和转发流程 |
+| `ReadMobileSyncFile` | 按最新文档中的附件名读取文件或图片字节和媒体类型 |
+| `BeginMobileFileUpload` | 开始一次分块文件上传并返回不透明上传编号 |
+| `AppendMobileFileUpload` | 向同一上传顺序追加一个字节块 |
+| `FinishMobileFileUpload` | 完成临时文件并挂入等待对应文档的入站缓冲区 |
+| `AbortMobileFileUpload` | 放弃未完成上传并释放临时资源；重复放弃返回未找到活动上传 |
 | `QueryEncryptionState` | 查询当前空间是否已初始化、加密会话是否可用 |
 | `LockEncryption` | 清除当前加密会话并关闭接收入口 |
 | `VerifySecureStorageAccess` | 检查宿主安全存储是否可在当前环境中访问 |
@@ -112,6 +120,10 @@ Running|Quiescing|Quiesced|Suspended -> ShuttingDown -> Stopped
 `UpdateMobileSyncSettings` 只校验并保存总开关、LAN 监听开关、广告地址和端口，返回落盘后的目标状态与是否发生变化。桌面外壳根据该结果启动、停止或重新绑定 listener，再用 `UpdateMobileLanEndpoint` 报告实际结果。仅报告监听地址不能代替用户设置：`RegisterMobileDevice` 必须同时确认总开关、LAN 监听开关和实际 listener 均已启用。
 
 登记成功会返回设备编号、标签、用户名、一次性明文密码、安装地址、连接地址和二维码内容。`UpdateMobileDevice` 支持保持密码、自动生成密码或使用宿主提供的新密码；只有发生换密时才返回一次新密码。鉴权成功可以返回标记内容来源所需的设备编号、设备类别和不透明凭据凭证，但设备编号、标签、用户名、地址、二维码、授权头和密码校验材料不得进入调试输出。长连接复查必须回传凭据凭证，宿主不得自行读取或比较持久化的密码散列。
+
+LAN 内容读写复用核心现有的加密历史、系统剪贴板写入、内容去重、活动状态、搜索和对端转发流程，不建立独立内容库。同步文档完整保留类型、正文、附件名、大小、兼容 hash 和稳定 content id 供协议响应使用，但这些字段不得进入调试输出。写入结果明确区分新内容已应用、已有内容重新激活、重复跳过、文档解码失败和附件已缓存等待文档五种状态。
+
+流式上传编号只表示当前核心实例内的一次临时写入，不能解释为路径或底层文件句柄。每个编号只允许串行追加，并且只能完成或放弃一次；伪造、重复使用以及核心暂停后继续使用都会返回找不到。核心暂停或关闭时主动放弃全部未完成上传，恢复后不得继续旧上传。HTTP 请求体大小、媒体类型嗅探和传输进度仍由桌面外壳负责，临时文件落盘、接收关联和最终入站结果由核心负责。
 
 `QueryEncryptionState` 只返回初始化和会话可用状态。`LockEncryption` 成功后必须同时关闭接收入口，避免锁定后继续写入加密业务数据。`VerifySecureStorageAccess` 使用跨平台安全存储语义，宿主接口可按平台显示为 Keychain、Keystore 或对应系统名称。
 

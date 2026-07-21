@@ -12,6 +12,7 @@ mod engine;
 mod event_stream;
 mod host;
 mod mobile_compat;
+mod mobile_content;
 mod settings;
 mod upgrade;
 
@@ -29,6 +30,7 @@ pub use host::{
     HostClipboardSnapshot, HostDirectories, HostFileAccess, HostFileMetadata, HostSecureStorage,
 };
 pub use mobile_compat::*;
+pub use mobile_content::*;
 pub use settings::*;
 pub use upgrade::*;
 
@@ -115,6 +117,14 @@ pub enum OperationKind {
     UpdateMobileLanEndpoint,
     RegisterMobileDevice,
     UpdateMobileDevice,
+    CheckMobileContentAvailable,
+    QueryLatestMobileSyncDocument,
+    ApplyMobileSyncDocument,
+    ReadMobileSyncFile,
+    BeginMobileFileUpload,
+    AppendMobileFileUpload,
+    FinishMobileFileUpload,
+    AbortMobileFileUpload,
     QueryEncryptionState,
     LockEncryption,
     VerifySecureStorageAccess,
@@ -189,6 +199,14 @@ impl fmt::Display for OperationKind {
             Self::UpdateMobileLanEndpoint => "update_mobile_lan_endpoint",
             Self::RegisterMobileDevice => "register_mobile_device",
             Self::UpdateMobileDevice => "update_mobile_device",
+            Self::CheckMobileContentAvailable => "check_mobile_content_available",
+            Self::QueryLatestMobileSyncDocument => "query_latest_mobile_sync_document",
+            Self::ApplyMobileSyncDocument => "apply_mobile_sync_document",
+            Self::ReadMobileSyncFile => "read_mobile_sync_file",
+            Self::BeginMobileFileUpload => "begin_mobile_file_upload",
+            Self::AppendMobileFileUpload => "append_mobile_file_upload",
+            Self::FinishMobileFileUpload => "finish_mobile_file_upload",
+            Self::AbortMobileFileUpload => "abort_mobile_file_upload",
             Self::QueryEncryptionState => "query_encryption_state",
             Self::LockEncryption => "lock_encryption",
             Self::VerifySecureStorageAccess => "verify_secure_storage_access",
@@ -265,6 +283,14 @@ pub enum Operation {
     UpdateMobileLanEndpoint(MobileLanEndpointUpdate),
     RegisterMobileDevice(RegisterMobileDeviceInput),
     UpdateMobileDevice(UpdateMobileDeviceInput),
+    CheckMobileContentAvailable(MobileContentAvailabilityInput),
+    QueryLatestMobileSyncDocument,
+    ApplyMobileSyncDocument(Box<ApplyMobileSyncDocumentInput>),
+    ReadMobileSyncFile(ReadMobileSyncFileInput),
+    BeginMobileFileUpload(BeginMobileFileUploadInput),
+    AppendMobileFileUpload(AppendMobileFileUploadInput),
+    FinishMobileFileUpload(FinishMobileFileUploadInput),
+    AbortMobileFileUpload(AbortMobileFileUploadInput),
     QueryEncryptionState,
     LockEncryption,
     VerifySecureStorageAccess,
@@ -339,6 +365,14 @@ impl Operation {
             Self::UpdateMobileLanEndpoint(_) => OperationKind::UpdateMobileLanEndpoint,
             Self::RegisterMobileDevice(_) => OperationKind::RegisterMobileDevice,
             Self::UpdateMobileDevice(_) => OperationKind::UpdateMobileDevice,
+            Self::CheckMobileContentAvailable(_) => OperationKind::CheckMobileContentAvailable,
+            Self::QueryLatestMobileSyncDocument => OperationKind::QueryLatestMobileSyncDocument,
+            Self::ApplyMobileSyncDocument(_) => OperationKind::ApplyMobileSyncDocument,
+            Self::ReadMobileSyncFile(_) => OperationKind::ReadMobileSyncFile,
+            Self::BeginMobileFileUpload(_) => OperationKind::BeginMobileFileUpload,
+            Self::AppendMobileFileUpload(_) => OperationKind::AppendMobileFileUpload,
+            Self::FinishMobileFileUpload(_) => OperationKind::FinishMobileFileUpload,
+            Self::AbortMobileFileUpload(_) => OperationKind::AbortMobileFileUpload,
             Self::QueryEncryptionState => OperationKind::QueryEncryptionState,
             Self::LockEncryption => OperationKind::LockEncryption,
             Self::VerifySecureStorageAccess => OperationKind::VerifySecureStorageAccess,
@@ -1255,6 +1289,18 @@ pub enum OperationResult {
     MobileLanEndpointUpdated,
     MobileDeviceRegistered(MobileDeviceRegistrationOutcome),
     MobileDeviceUpdated(MobileDeviceUpdateOutcome),
+    MobileContentAvailability {
+        available: bool,
+    },
+    MobileSyncDocument(Option<Box<MobileSyncDocument>>),
+    MobileSyncDocumentApplied(MobileSyncDocumentApplyOutcome),
+    MobileSyncFile(MobileSyncFileReadOutcome),
+    MobileFileUploadStarted(MobileFileUploadHandle),
+    MobileFileUploadChunkAppended,
+    MobileFileUploadFinished(MobileSyncDocumentApplyOutcome),
+    MobileFileUploadAborted {
+        existed: bool,
+    },
     EncryptionState(EncryptionStateSummary),
     EncryptionLocked,
     SecureStorageAccess {
@@ -1390,6 +1436,28 @@ impl fmt::Debug for OperationResult {
             Self::MobileDeviceUpdated(outcome) => debug
                 .field("kind", &"mobile_device_updated")
                 .field("outcome", outcome),
+            Self::MobileContentAvailability { available } => debug
+                .field("kind", &"mobile_content_availability")
+                .field("available", available),
+            Self::MobileSyncDocument(document) => debug
+                .field("kind", &"mobile_sync_document")
+                .field("has_document", &document.is_some()),
+            Self::MobileSyncDocumentApplied(outcome) => debug
+                .field("kind", &"mobile_sync_document_applied")
+                .field("outcome", outcome),
+            Self::MobileSyncFile(outcome) => debug
+                .field("kind", &"mobile_sync_file")
+                .field("outcome", outcome),
+            Self::MobileFileUploadStarted(_) => debug.field("kind", &"mobile_file_upload_started"),
+            Self::MobileFileUploadChunkAppended => {
+                debug.field("kind", &"mobile_file_upload_chunk_appended")
+            }
+            Self::MobileFileUploadFinished(outcome) => debug
+                .field("kind", &"mobile_file_upload_finished")
+                .field("outcome", outcome),
+            Self::MobileFileUploadAborted { existed } => debug
+                .field("kind", &"mobile_file_upload_aborted")
+                .field("existed", existed),
             Self::EncryptionState(state) => debug
                 .field("kind", &"encryption_state")
                 .field("state", state),

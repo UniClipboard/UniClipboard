@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 use std::{fs::OpenOptions, io::Write, path::PathBuf};
@@ -11,13 +12,15 @@ use uc_application::facade::{
     AppFacade, ClipboardHistoryError, ClipboardHostEvent, ClipboardOriginKind, HostEvent,
     HostEventBus, InMemoryLifecycleStatus, ResourceFacadeError, SearchCoordinator,
     SearchCoordinatorDeps, SearchFacadeError, SearchPageView, SearchQueryInput,
-    MAX_INLINE_OUTBOUND_REPRESENTATION_BYTES,
+    SeedReceiverContext, MAX_INLINE_OUTBOUND_REPRESENTATION_BYTES,
 };
 use uc_application::facade::{
     ClipboardLiveIndexInput, ClipboardLiveIndexOutcome, ClipboardOutboundInput,
     ClipboardOutboundOutcome,
 };
 use uc_core::ids::{DeviceId, FormatId, RepresentationId};
+use uc_core::mobile_sync::StagingHandle;
+use uc_core::ports::MobileFileStagingError;
 use uc_core::ports::{SelfWriteLedgerPort, SystemClipboardPort};
 use uc_core::TaskRegistry;
 use uc_core::{
@@ -77,6 +80,11 @@ use crate::internal::mobile_compat::{
     execute_update_mobile_device, execute_update_mobile_lan_endpoint,
     execute_update_mobile_sync_settings,
 };
+use crate::internal::mobile_content::{
+    execute_apply_mobile_sync_document, execute_check_mobile_content_available,
+    execute_query_latest_mobile_sync_document, execute_read_mobile_sync_file, map_apply_error,
+    map_apply_outcome,
+};
 use crate::internal::peer_connections::{
     execute_query_peer_connections, execute_refresh_peer_connections,
 };
@@ -105,9 +113,10 @@ use crate::internal::sync_engine::SyncEngineAssembly;
 use crate::internal::unlock::execute_unlock_space;
 use crate::internal::upgrade::{execute_acknowledge_upgrade, execute_query_upgrade_status};
 use crate::{
-    EngineConfig, EngineError, EngineErrorCategory, EntrySummary, HostCapabilities,
-    HostClipboardChange, HostClipboardChangeStream, HostFileAccess, Operation, OperationResult,
-    QueryHistoryInput,
+    AppendMobileFileUploadInput, BeginMobileFileUploadInput, EngineConfig, EngineError,
+    EngineErrorCategory, EntrySummary, FinishMobileFileUploadInput, HostCapabilities,
+    HostClipboardChange, HostClipboardChangeStream, HostFileAccess, MobileFileUploadHandle,
+    Operation, OperationResult, QueryHistoryInput,
 };
 
 const START_FAILED_CODE: u32 = 1101;
@@ -127,6 +136,9 @@ const EXPORT_UNAUTHORIZED_CODE: u32 = 1273;
 const EXPORT_UNAVAILABLE_CODE: u32 = 1274;
 const EXPORT_FAILED_CODE: u32 = 1275;
 const EXPORT_CHUNK_SIZE: usize = 64 * 1024;
+const MOBILE_UPLOAD_INVALID_INPUT_CODE: u32 = 1446;
+const MOBILE_UPLOAD_INVALID_HANDLE_CODE: u32 = 1447;
+const MOBILE_UPLOAD_FAILED_CODE: u32 = 1448;
 
 pub(crate) struct ProductionRuntime {
     app_version: String,
@@ -138,6 +150,7 @@ pub(crate) struct ProductionRuntime {
     temporary_dir: std::path::PathBuf,
     clipboard_import_root: std::path::PathBuf,
     files: Arc<dyn HostFileAccess>,
+    mobile_file_uploads: Mutex<HashMap<String, ActiveMobileFileUploadState>>,
 }
 
 struct ProductionSession {
@@ -153,6 +166,13 @@ struct ImportedHostFile {
     storage_name: String,
     display_name: String,
 }
+
+struct ActiveMobileFileUpload {
+    staging: StagingHandle,
+    data_name: String,
+}
+
+type ActiveMobileFileUploadState = Arc<Mutex<Option<ActiveMobileFileUpload>>>;
 
 struct HostClipboardChangeRuntime {
     session: Arc<Mutex<Option<ProductionSession>>>,
@@ -364,6 +384,7 @@ impl ProductionRuntime {
             temporary_dir,
             clipboard_import_root,
             files,
+            mobile_file_uploads: Mutex::new(HashMap::new()),
         })
     }
 
@@ -469,6 +490,162 @@ impl ProductionRuntime {
             .as_ref()
             .map(|session| Arc::clone(&session.mobile_sync))
             .ok_or_else(operation_unavailable_error)
+    }
+
+    async fn begin_mobile_file_upload(
+        &self,
+        input: BeginMobileFileUploadInput,
+    ) -> Result<OperationResult, EngineError> {
+        if input.data_name.trim().is_empty() || input.media_type.trim().is_empty() {
+            return Err(mobile_upload_invalid_input_error());
+        }
+        let facade = self.current_mobile_sync().await?;
+        let scope_id = uc_application::facade::mobile_sync_streaming_scope_nonce();
+        let staging = facade
+            .begin_file_upload(&scope_id, &input.data_name, &input.media_type)
+            .await
+            .map_err(map_mobile_upload_error)?;
+        let upload = Arc::new(Mutex::new(Some(ActiveMobileFileUpload {
+            staging,
+            data_name: input.data_name,
+        })));
+        let public_handle = loop {
+            let candidate = new_mobile_file_upload_handle();
+            let mut uploads = self.mobile_file_uploads.lock().await;
+            if !uploads.contains_key(candidate.as_str()) {
+                uploads.insert(candidate.as_str().to_string(), Arc::clone(&upload));
+                break candidate;
+            }
+        };
+        Ok(OperationResult::MobileFileUploadStarted(public_handle))
+    }
+
+    async fn append_mobile_file_upload(
+        &self,
+        input: AppendMobileFileUploadInput,
+    ) -> Result<OperationResult, EngineError> {
+        let facade = self.current_mobile_sync().await?;
+        let upload = self
+            .mobile_file_uploads
+            .lock()
+            .await
+            .get(input.handle.as_str())
+            .cloned()
+            .ok_or_else(mobile_upload_invalid_handle_error)?;
+        let mut active = upload.lock().await;
+        let staging = active
+            .as_ref()
+            .map(|active| active.staging.clone())
+            .ok_or_else(mobile_upload_invalid_handle_error)?;
+        if facade
+            .append_file_chunk(&staging, &input.bytes)
+            .await
+            .is_err()
+        {
+            let failed = active.take();
+            drop(active);
+            let mut uploads = self.mobile_file_uploads.lock().await;
+            if uploads
+                .get(input.handle.as_str())
+                .is_some_and(|registered| Arc::ptr_eq(registered, &upload))
+            {
+                uploads.remove(input.handle.as_str());
+            }
+            drop(uploads);
+            if let Some(failed) = failed {
+                facade.abort_file_upload(failed.staging).await;
+            }
+            return Err(mobile_upload_failed_error());
+        }
+        Ok(OperationResult::MobileFileUploadChunkAppended)
+    }
+
+    async fn finish_mobile_file_upload(
+        &self,
+        input: FinishMobileFileUploadInput,
+    ) -> Result<OperationResult, EngineError> {
+        if input.media_type.trim().is_empty()
+            || input.source_device_id.trim().is_empty()
+            || input.transfer_id.trim().is_empty()
+        {
+            return Err(mobile_upload_invalid_input_error());
+        }
+        let facade = self.current_mobile_sync().await?;
+        let upload = self
+            .mobile_file_uploads
+            .lock()
+            .await
+            .remove(input.handle.as_str())
+            .ok_or_else(mobile_upload_invalid_handle_error)?;
+        let upload = upload
+            .lock()
+            .await
+            .take()
+            .ok_or_else(mobile_upload_invalid_handle_error)?;
+        let peer_id = format!("mobile:{}", input.source_device_id);
+        if self
+            .wired
+            .shared
+            .file_transfer_facade
+            .seed_provisional_receiver_context(SeedReceiverContext {
+                transfer_id: input.transfer_id.clone(),
+                entry_id: String::new(),
+                attempt_id: None,
+                origin_device_id: peer_id,
+                filename: upload.data_name.clone(),
+                file_size: None,
+                cached_path: String::new(),
+            })
+            .await
+            .is_err()
+        {
+            facade.abort_file_upload(upload.staging).await;
+            return Err(mobile_upload_failed_error());
+        }
+        let outcome = facade
+            .finalize_file_upload(
+                upload.staging,
+                upload.data_name,
+                input.media_type,
+                uc_core::mobile_sync::MobileDeviceId::new(input.source_device_id),
+                input.transfer_id,
+            )
+            .await
+            .map_err(map_apply_error)?;
+        Ok(OperationResult::MobileFileUploadFinished(
+            map_apply_outcome(outcome),
+        ))
+    }
+
+    async fn abort_mobile_file_upload(
+        &self,
+        handle: MobileFileUploadHandle,
+    ) -> Result<OperationResult, EngineError> {
+        let facade = self.current_mobile_sync().await?;
+        let upload = self
+            .mobile_file_uploads
+            .lock()
+            .await
+            .remove(handle.as_str());
+        let existed = upload.is_some();
+        if let Some(upload) = upload {
+            if let Some(upload) = upload.lock().await.take() {
+                facade.abort_file_upload(upload.staging).await;
+            }
+        }
+        Ok(OperationResult::MobileFileUploadAborted { existed })
+    }
+
+    async fn abort_all_mobile_file_uploads(
+        &self,
+        facade: &uc_application::facade::MobileSyncFacade,
+    ) {
+        let uploads = std::mem::take(&mut *self.mobile_file_uploads.lock().await);
+        for upload in uploads.into_values() {
+            if let Some(upload) = upload.lock().await.take() {
+                facade.abort_file_upload(upload.staging).await;
+            }
+        }
     }
 }
 
@@ -662,6 +839,36 @@ impl EngineRuntime for ProductionRuntime {
             Operation::UpdateMobileDevice(input) => {
                 execute_update_mobile_device(self.current_mobile_sync().await?.as_ref(), input)
                     .await
+            }
+            Operation::CheckMobileContentAvailable(input) => {
+                execute_check_mobile_content_available(
+                    self.current_mobile_sync().await?.as_ref(),
+                    input,
+                )
+                .await
+            }
+            Operation::QueryLatestMobileSyncDocument => {
+                execute_query_latest_mobile_sync_document(
+                    self.current_mobile_sync().await?.as_ref(),
+                )
+                .await
+            }
+            Operation::ApplyMobileSyncDocument(input) => {
+                execute_apply_mobile_sync_document(
+                    self.current_mobile_sync().await?.as_ref(),
+                    *input,
+                )
+                .await
+            }
+            Operation::ReadMobileSyncFile(input) => {
+                execute_read_mobile_sync_file(self.current_mobile_sync().await?.as_ref(), input)
+                    .await
+            }
+            Operation::BeginMobileFileUpload(input) => self.begin_mobile_file_upload(input).await,
+            Operation::AppendMobileFileUpload(input) => self.append_mobile_file_upload(input).await,
+            Operation::FinishMobileFileUpload(input) => self.finish_mobile_file_upload(input).await,
+            Operation::AbortMobileFileUpload(input) => {
+                self.abort_mobile_file_upload(input.handle).await
             }
             Operation::QueryEncryptionState => {
                 execute_query_encryption_state(self.current_facade().await?.as_ref()).await
@@ -880,6 +1087,8 @@ impl EngineRuntime for ProductionRuntime {
     async fn suspend(&self) -> Result<(), EngineError> {
         let session = self.session.lock().await.take();
         if let Some(session) = session {
+            self.abort_all_mobile_file_uploads(session.mobile_sync.as_ref())
+                .await;
             session.tasks.shutdown(Duration::from_secs(5)).await;
             session.sync_engine.shutdown().await;
         }
@@ -1144,6 +1353,41 @@ fn map_send_host_error(error: crate::HostCapabilityError) -> EngineError {
     EngineError::new(SEND_FAILED_CODE, category, retryable)
 }
 
+fn mobile_upload_invalid_input_error() -> EngineError {
+    EngineError::new(
+        MOBILE_UPLOAD_INVALID_INPUT_CODE,
+        EngineErrorCategory::InvalidInput,
+        false,
+    )
+}
+
+fn new_mobile_file_upload_handle() -> MobileFileUploadHandle {
+    MobileFileUploadHandle::new(format!(
+        "uc-mobile-upload-v1:{}",
+        uuid::Uuid::new_v4().simple()
+    ))
+}
+
+fn mobile_upload_invalid_handle_error() -> EngineError {
+    EngineError::new(
+        MOBILE_UPLOAD_INVALID_HANDLE_CODE,
+        EngineErrorCategory::NotFound,
+        false,
+    )
+}
+
+fn map_mobile_upload_error(_error: MobileFileStagingError) -> EngineError {
+    mobile_upload_failed_error()
+}
+
+fn mobile_upload_failed_error() -> EngineError {
+    EngineError::new(
+        MOBILE_UPLOAD_FAILED_CODE,
+        EngineErrorCategory::Internal,
+        true,
+    )
+}
+
 async fn load_export_bytes(facade: &AppFacade, entry_id: &str) -> Result<Vec<u8>, EngineError> {
     let resource = facade
         .clipboard_history
@@ -1371,6 +1615,23 @@ mod tests {
         QUERY_STORAGE_STATS_FAILED_CODE,
     };
     use crate::StorageStatsSummary;
+
+    #[test]
+    fn mobile_upload_handle_is_owned_by_engine_instead_of_exposing_staging_token() {
+        let staging = StagingHandle::new();
+        let handle = new_mobile_file_upload_handle();
+
+        assert_ne!(handle.as_str(), staging.to_string());
+        assert!(handle.as_str().starts_with("uc-mobile-upload-v1:"));
+    }
+
+    #[test]
+    fn mobile_upload_handles_are_unique() {
+        let first = new_mobile_file_upload_handle();
+        let second = new_mobile_file_upload_handle();
+
+        assert_ne!(first, second);
+    }
 
     #[test]
     fn history_search_input_parses_only_versioned_bounded_cursors() {

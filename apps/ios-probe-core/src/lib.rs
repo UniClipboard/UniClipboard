@@ -865,6 +865,75 @@ fn operation_response(result: OperationResult) -> Value {
                 uc_engine::MobileDeviceUpdateOutcome::PasswordTooLong { .. } => "password_too_long",
             },
         }),
+        OperationResult::MobileContentAvailability { available } => json!({
+            "ok": true,
+            "kind": "mobile_content_availability",
+            "available": available,
+        }),
+        OperationResult::MobileSyncDocument(document) => match document {
+            Some(document) => json!({
+                "ok": true,
+                "kind": "mobile_sync_document",
+                "has_document": true,
+                "item_type": mobile_sync_item_type(document.item_type),
+                "text_bytes": document.text.len(),
+                "has_data_name": document.data_name.is_some(),
+                "has_data": document.has_data,
+                "size": document.size,
+                "has_hash": document.hash.is_some(),
+                "has_content_id": document.content_id.is_some(),
+            }),
+            None => json!({
+                "ok": true,
+                "kind": "mobile_sync_document",
+                "has_document": false,
+            }),
+        },
+        OperationResult::MobileSyncDocumentApplied(outcome) => {
+            let (outcome, os_write_succeeded) = mobile_sync_apply_outcome(outcome);
+            json!({
+                "ok": true,
+                "kind": "mobile_sync_document_applied",
+                "outcome": outcome,
+                "os_write_succeeded": os_write_succeeded,
+            })
+        }
+        OperationResult::MobileSyncFile(outcome) => match outcome {
+            uc_engine::MobileSyncFileReadOutcome::Found(file) => json!({
+                "ok": true,
+                "kind": "mobile_sync_file",
+                "outcome": "found",
+                "has_media_type": !file.media_type.is_empty(),
+                "byte_len": file.bytes.len(),
+            }),
+            uc_engine::MobileSyncFileReadOutcome::NotFound => json!({
+                "ok": true,
+                "kind": "mobile_sync_file",
+                "outcome": "not_found",
+            }),
+        },
+        OperationResult::MobileFileUploadStarted(_) => json!({
+            "ok": true,
+            "kind": "mobile_file_upload_started",
+        }),
+        OperationResult::MobileFileUploadChunkAppended => json!({
+            "ok": true,
+            "kind": "mobile_file_upload_chunk_appended",
+        }),
+        OperationResult::MobileFileUploadFinished(outcome) => {
+            let (outcome, os_write_succeeded) = mobile_sync_apply_outcome(outcome);
+            json!({
+                "ok": true,
+                "kind": "mobile_file_upload_finished",
+                "outcome": outcome,
+                "os_write_succeeded": os_write_succeeded,
+            })
+        }
+        OperationResult::MobileFileUploadAborted { existed } => json!({
+            "ok": true,
+            "kind": "mobile_file_upload_aborted",
+            "existed": existed,
+        }),
         OperationResult::EncryptionState(state) => json!({
             "ok": true,
             "kind": "encryption_state",
@@ -1118,6 +1187,31 @@ fn operation_response(result: OperationResult) -> Value {
                 "outcome": "no_eligible_targets",
             }),
         },
+    }
+}
+
+fn mobile_sync_item_type(item_type: uc_engine::MobileSyncItemType) -> &'static str {
+    match item_type {
+        uc_engine::MobileSyncItemType::Text => "text",
+        uc_engine::MobileSyncItemType::Image => "image",
+        uc_engine::MobileSyncItemType::File => "file",
+        uc_engine::MobileSyncItemType::Group => "group",
+    }
+}
+
+fn mobile_sync_apply_outcome(
+    outcome: uc_engine::MobileSyncDocumentApplyOutcome,
+) -> (&'static str, Option<bool>) {
+    match outcome {
+        uc_engine::MobileSyncDocumentApplyOutcome::Applied { .. } => ("applied", None),
+        uc_engine::MobileSyncDocumentApplyOutcome::Resurfaced {
+            os_write_succeeded, ..
+        } => ("resurfaced", Some(os_write_succeeded)),
+        uc_engine::MobileSyncDocumentApplyOutcome::DuplicateSkipped { .. } => {
+            ("duplicate_skipped", None)
+        }
+        uc_engine::MobileSyncDocumentApplyOutcome::DecodeFailed { .. } => ("decode_failed", None),
+        uc_engine::MobileSyncDocumentApplyOutcome::Buffered => ("buffered", None),
     }
 }
 
@@ -1400,6 +1494,28 @@ mod tests {
                     reason: "private mobile settings rejection".into(),
                 },
             ));
+        let mobile_document = operation_response(OperationResult::MobileSyncDocument(Some(
+            Box::new(uc_engine::MobileSyncDocument {
+                item_type: uc_engine::MobileSyncItemType::File,
+                text: "private mobile text".into(),
+                data_name: Some("private-mobile-file.txt".into()),
+                has_data: true,
+                size: 19,
+                hash: Some("private compatibility hash".into()),
+                content_id: Some("private stable content id".into()),
+            }),
+        )));
+        let mobile_applied = operation_response(OperationResult::MobileSyncDocumentApplied(
+            uc_engine::MobileSyncDocumentApplyOutcome::DecodeFailed {
+                reason: "private decode reason".into(),
+            },
+        ));
+        let mobile_file = operation_response(OperationResult::MobileSyncFile(
+            uc_engine::MobileSyncFileReadOutcome::Found(Box::new(uc_engine::MobileSyncFile {
+                media_type: "text/private".into(),
+                bytes: b"private mobile file bytes".to_vec(),
+            })),
+        ));
         let relay = operation_response(OperationResult::RelayProbed(
             uc_engine::RelayProbeOutcome::Dns {
                 message: "private relay error".into(),
@@ -1494,14 +1610,26 @@ mod tests {
             "private mobile bind failure",
             "private install reason",
             "private mobile settings rejection",
+            "private mobile text",
+            "private-mobile-file.txt",
+            "private compatibility hash",
+            "private stable content id",
+            "private decode reason",
+            "text/private",
+            "private mobile file bytes",
         ] {
             assert!(!settings.to_string().contains(secret));
             assert!(!settings_rejected.to_string().contains(secret));
             assert!(!relay.to_string().contains(secret));
             assert!(!mobile_settings.to_string().contains(secret));
             assert!(!mobile_settings_rejected.to_string().contains(secret));
+            assert!(!mobile_document.to_string().contains(secret));
+            assert!(!mobile_applied.to_string().contains(secret));
+            assert!(!mobile_file.to_string().contains(secret));
         }
         assert_eq!(mobile_settings["shortcut_install_method_count"], 1);
+        assert_eq!(mobile_document["item_type"], "file");
+        assert_eq!(mobile_file["byte_len"], 25);
         assert!(!history.to_string().contains("private payload"));
         assert!(!history_entry.to_string().contains("private full content"));
         assert!(!history_resource.to_string().contains("private/resource"));

@@ -27,6 +27,7 @@ pub mod lifecycle;
 pub mod member;
 pub mod migration_progress;
 pub(crate) mod mobile_compat;
+pub(crate) mod mobile_content;
 pub mod network_policy;
 pub(crate) mod peer_connections;
 pub(crate) mod peer_keepalive;

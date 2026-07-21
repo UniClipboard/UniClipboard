@@ -10412,6 +10412,7 @@ dependencies = [
  "uc-observability",
  "uc-observability-contract",
  "url",
+ "uuid",
  "zeroize",
 ]
 

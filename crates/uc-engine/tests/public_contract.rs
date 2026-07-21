@@ -675,6 +675,127 @@ fn mobile_sync_settings_have_stable_operations_and_redacted_results() {
 }
 
 #[test]
+fn mobile_content_and_streaming_upload_have_stable_redacted_contract() {
+    let document = uc_engine::MobileSyncDocument {
+        item_type: uc_engine::MobileSyncItemType::Text,
+        text: "private mobile text".into(),
+        data_name: Some("private-mobile-file.txt".into()),
+        has_data: true,
+        size: 19,
+        hash: Some("private compatibility hash".into()),
+        content_id: Some("private stable content id".into()),
+    };
+    let operations = [
+        (
+            Operation::CheckMobileContentAvailable(uc_engine::MobileContentAvailabilityInput {
+                snapshot_hash: "private stable content id".into(),
+            }),
+            OperationKind::CheckMobileContentAvailable,
+        ),
+        (
+            Operation::QueryLatestMobileSyncDocument,
+            OperationKind::QueryLatestMobileSyncDocument,
+        ),
+        (
+            Operation::ApplyMobileSyncDocument(Box::new(uc_engine::ApplyMobileSyncDocumentInput {
+                document: document.clone(),
+                source_device_id: "private mobile device".into(),
+            })),
+            OperationKind::ApplyMobileSyncDocument,
+        ),
+        (
+            Operation::ReadMobileSyncFile(uc_engine::ReadMobileSyncFileInput {
+                data_name: "private-mobile-file.txt".into(),
+            }),
+            OperationKind::ReadMobileSyncFile,
+        ),
+        (
+            Operation::BeginMobileFileUpload(uc_engine::BeginMobileFileUploadInput {
+                data_name: "private-mobile-file.txt".into(),
+                media_type: "text/private".into(),
+            }),
+            OperationKind::BeginMobileFileUpload,
+        ),
+    ];
+    for (operation, kind) in operations {
+        assert_eq!(operation.kind(), kind);
+        let debug = format!("{operation:?}");
+        for secret in [
+            "private mobile text",
+            "private-mobile-file.txt",
+            "private compatibility hash",
+            "private stable content id",
+            "private mobile device",
+            "text/private",
+        ] {
+            assert!(!debug.contains(secret));
+        }
+    }
+
+    let build_remaining_upload_operations =
+        |handle: uc_engine::MobileFileUploadHandle| -> Vec<(Operation, OperationKind)> {
+            vec![
+                (
+                    Operation::AppendMobileFileUpload(uc_engine::AppendMobileFileUploadInput {
+                        handle: handle.clone(),
+                        bytes: b"private upload bytes".to_vec(),
+                    }),
+                    OperationKind::AppendMobileFileUpload,
+                ),
+                (
+                    Operation::FinishMobileFileUpload(uc_engine::FinishMobileFileUploadInput {
+                        handle: handle.clone(),
+                        media_type: "text/private-final".into(),
+                        source_device_id: "private mobile device".into(),
+                        transfer_id: "private transfer".into(),
+                    }),
+                    OperationKind::FinishMobileFileUpload,
+                ),
+                (
+                    Operation::AbortMobileFileUpload(uc_engine::AbortMobileFileUploadInput {
+                        handle,
+                    }),
+                    OperationKind::AbortMobileFileUpload,
+                ),
+            ]
+        };
+    let _ = build_remaining_upload_operations;
+
+    let results = [
+        OperationResult::MobileContentAvailability { available: true },
+        OperationResult::MobileSyncDocument(Some(Box::new(document))),
+        OperationResult::MobileSyncDocumentApplied(
+            uc_engine::MobileSyncDocumentApplyOutcome::Applied {
+                entry_id: "private entry".into(),
+                content_id: "private stable content id".into(),
+            },
+        ),
+        OperationResult::MobileSyncFile(uc_engine::MobileSyncFileReadOutcome::Found(Box::new(
+            uc_engine::MobileSyncFile {
+                media_type: "text/private".into(),
+                bytes: b"private file bytes".to_vec(),
+            },
+        ))),
+        OperationResult::MobileFileUploadChunkAppended,
+        OperationResult::MobileFileUploadFinished(
+            uc_engine::MobileSyncDocumentApplyOutcome::Buffered,
+        ),
+        OperationResult::MobileFileUploadAborted { existed: true },
+    ];
+    let debug = format!("{results:?}");
+    for secret in [
+        "private mobile text",
+        "private-mobile-file.txt",
+        "private entry",
+        "private stable content id",
+        "text/private",
+        "private file bytes",
+    ] {
+        assert!(!debug.contains(secret));
+    }
+}
+
+#[test]
 fn receive_progress_and_cancellation_have_stable_operations_and_results() {
     let operations = [
         (

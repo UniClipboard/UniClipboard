@@ -1895,6 +1895,273 @@ async fn engine_start_builds_a_resumable_real_session() {
 }
 
 #[tokio::test]
+async fn engine_mobile_content_round_trips_and_drops_uploads_on_suspend() {
+    let _guard = ENGINE_TEST_LOCK.lock().await;
+    let temp = tempfile::tempdir().unwrap();
+    let host = HostCapabilities::new(
+        HostDirectories::new(
+            temp.path().join("private"),
+            temp.path().join("cache"),
+            temp.path().join("temporary"),
+        ),
+        Box::new(MemoryHostSecureStorage::default()),
+        Box::new(StaticHostClipboard {
+            snapshot: HostClipboardSnapshot {
+                observed_at_ms: 0,
+                representations: Vec::new(),
+            },
+        }),
+        Box::new(EmptyHostFiles),
+    );
+    let (engine, _events) = Engine::start(EngineConfig::new("1.2.3"), host)
+        .await
+        .unwrap();
+    engine
+        .execute(uc_engine::Operation::CreateSpace(
+            uc_engine::CreateSpaceInput {
+                device_name: Some("Mobile Content Device".into()),
+                passphrase: uc_engine::SecretString::new("correct horse"),
+                passphrase_confirmation: uc_engine::SecretString::new("correct horse"),
+            },
+        ))
+        .await
+        .unwrap();
+
+    assert_eq!(
+        engine
+            .execute(uc_engine::Operation::QueryLatestMobileSyncDocument)
+            .await
+            .unwrap(),
+        uc_engine::OperationResult::MobileSyncDocument(None)
+    );
+    let empty_hash = engine
+        .execute(uc_engine::Operation::CheckMobileContentAvailable(
+            uc_engine::MobileContentAvailabilityInput {
+                snapshot_hash: "  ".into(),
+            },
+        ))
+        .await
+        .unwrap_err();
+    assert_eq!(
+        empty_hash.category(),
+        uc_engine::EngineErrorCategory::InvalidInput
+    );
+    assert_eq!(
+        engine
+            .execute(uc_engine::Operation::CheckMobileContentAvailable(
+                uc_engine::MobileContentAvailabilityInput {
+                    snapshot_hash: "blake3v1:missing".into(),
+                },
+            ))
+            .await
+            .unwrap(),
+        uc_engine::OperationResult::MobileContentAvailability { available: false }
+    );
+    assert_eq!(
+        engine
+            .execute(uc_engine::Operation::ReadMobileSyncFile(
+                uc_engine::ReadMobileSyncFileInput {
+                    data_name: "missing.bin".into(),
+                },
+            ))
+            .await
+            .unwrap(),
+        uc_engine::OperationResult::MobileSyncFile(uc_engine::MobileSyncFileReadOutcome::NotFound,)
+    );
+
+    let applied = engine
+        .execute(uc_engine::Operation::ApplyMobileSyncDocument(Box::new(
+            uc_engine::ApplyMobileSyncDocumentInput {
+                document: uc_engine::MobileSyncDocument {
+                    item_type: uc_engine::MobileSyncItemType::Text,
+                    text: "mobile engine text".into(),
+                    data_name: None,
+                    has_data: false,
+                    size: 18,
+                    hash: None,
+                    content_id: None,
+                },
+                source_device_id: "mobile-source".into(),
+            },
+        )))
+        .await
+        .unwrap();
+    let text_content_id = match applied {
+        uc_engine::OperationResult::MobileSyncDocumentApplied(
+            uc_engine::MobileSyncDocumentApplyOutcome::Applied { content_id, .. },
+        ) => content_id,
+        other => panic!("expected applied mobile text, got {other:?}"),
+    };
+    assert!(matches!(
+        engine
+            .execute(uc_engine::Operation::QueryLatestMobileSyncDocument)
+            .await
+            .unwrap(),
+        uc_engine::OperationResult::MobileSyncDocument(Some(ref document))
+            if document.item_type == uc_engine::MobileSyncItemType::Text
+                && document.text == "mobile engine text"
+                && document.content_id.as_deref() == Some(text_content_id.as_str())
+    ));
+    assert_eq!(
+        engine
+            .execute(uc_engine::Operation::CheckMobileContentAvailable(
+                uc_engine::MobileContentAvailabilityInput {
+                    snapshot_hash: text_content_id,
+                },
+            ))
+            .await
+            .unwrap(),
+        uc_engine::OperationResult::MobileContentAvailability { available: true }
+    );
+
+    let upload = engine
+        .execute(uc_engine::Operation::BeginMobileFileUpload(
+            uc_engine::BeginMobileFileUploadInput {
+                data_name: "mobile-file.txt".into(),
+                media_type: "application/octet-stream".into(),
+            },
+        ))
+        .await
+        .unwrap();
+    let upload = match upload {
+        uc_engine::OperationResult::MobileFileUploadStarted(handle) => handle,
+        other => panic!("expected upload handle, got {other:?}"),
+    };
+    assert_eq!(format!("{upload:?}"), "MobileFileUploadHandle([REDACTED])");
+    for bytes in [b"mobile file ".to_vec(), b"payload".to_vec()] {
+        assert_eq!(
+            engine
+                .execute(uc_engine::Operation::AppendMobileFileUpload(
+                    uc_engine::AppendMobileFileUploadInput {
+                        handle: upload.clone(),
+                        bytes,
+                    },
+                ))
+                .await
+                .unwrap(),
+            uc_engine::OperationResult::MobileFileUploadChunkAppended
+        );
+    }
+    assert_eq!(
+        engine
+            .execute(uc_engine::Operation::FinishMobileFileUpload(
+                uc_engine::FinishMobileFileUploadInput {
+                    handle: upload,
+                    media_type: "text/plain".into(),
+                    source_device_id: "mobile-source".into(),
+                    transfer_id: "mobile-transfer-1".into(),
+                },
+            ))
+            .await
+            .unwrap(),
+        uc_engine::OperationResult::MobileFileUploadFinished(
+            uc_engine::MobileSyncDocumentApplyOutcome::Buffered,
+        )
+    );
+    assert!(matches!(
+        engine
+            .execute(uc_engine::Operation::ApplyMobileSyncDocument(Box::new(
+                uc_engine::ApplyMobileSyncDocumentInput {
+                    document: uc_engine::MobileSyncDocument {
+                        item_type: uc_engine::MobileSyncItemType::File,
+                        text: "mobile-file.txt".into(),
+                        data_name: Some("mobile-file.txt".into()),
+                        has_data: true,
+                        size: 19,
+                        hash: None,
+                        content_id: None,
+                    },
+                    source_device_id: "mobile-source".into(),
+                },
+            )))
+            .await
+            .unwrap(),
+        uc_engine::OperationResult::MobileSyncDocumentApplied(
+            uc_engine::MobileSyncDocumentApplyOutcome::Applied { .. }
+        )
+    ));
+    assert!(matches!(
+        engine
+            .execute(uc_engine::Operation::ReadMobileSyncFile(
+                uc_engine::ReadMobileSyncFileInput {
+                    data_name: "mobile-file.txt".into(),
+                },
+            ))
+            .await
+            .unwrap(),
+        uc_engine::OperationResult::MobileSyncFile(
+            uc_engine::MobileSyncFileReadOutcome::Found(ref file)
+        ) if file.media_type == "application/octet-stream"
+            && file.bytes == b"mobile file payload"
+    ));
+
+    let aborted = engine
+        .execute(uc_engine::Operation::BeginMobileFileUpload(
+            uc_engine::BeginMobileFileUploadInput {
+                data_name: "aborted.bin".into(),
+                media_type: "application/octet-stream".into(),
+            },
+        ))
+        .await
+        .unwrap();
+    let uc_engine::OperationResult::MobileFileUploadStarted(aborted) = aborted else {
+        panic!("expected abort upload handle");
+    };
+    assert_eq!(
+        engine
+            .execute(uc_engine::Operation::AbortMobileFileUpload(
+                uc_engine::AbortMobileFileUploadInput {
+                    handle: aborted.clone(),
+                },
+            ))
+            .await
+            .unwrap(),
+        uc_engine::OperationResult::MobileFileUploadAborted { existed: true }
+    );
+    assert_eq!(
+        engine
+            .execute(uc_engine::Operation::AbortMobileFileUpload(
+                uc_engine::AbortMobileFileUploadInput { handle: aborted },
+            ))
+            .await
+            .unwrap(),
+        uc_engine::OperationResult::MobileFileUploadAborted { existed: false }
+    );
+
+    let stale = engine
+        .execute(uc_engine::Operation::BeginMobileFileUpload(
+            uc_engine::BeginMobileFileUploadInput {
+                data_name: "stale.bin".into(),
+                media_type: "application/octet-stream".into(),
+            },
+        ))
+        .await
+        .unwrap();
+    let uc_engine::OperationResult::MobileFileUploadStarted(stale) = stale else {
+        panic!("expected stale upload handle");
+    };
+    engine.suspend().await.unwrap();
+    engine.resume().await.unwrap();
+    let stale_error = engine
+        .execute(uc_engine::Operation::AppendMobileFileUpload(
+            uc_engine::AppendMobileFileUploadInput {
+                handle: stale,
+                bytes: b"must not resume".to_vec(),
+            },
+        ))
+        .await
+        .unwrap_err();
+    assert_eq!(
+        stale_error.category(),
+        uc_engine::EngineErrorCategory::NotFound
+    );
+    engine
+        .shutdown(std::time::Duration::from_secs(15))
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
 async fn engine_send_files_imports_opaque_content_and_exports_after_resume() {
     let _guard = ENGINE_TEST_LOCK.lock().await;
     let temp = tempfile::tempdir().unwrap();

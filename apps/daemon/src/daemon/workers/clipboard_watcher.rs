@@ -297,6 +297,7 @@ impl ClipboardChangeHandler for DaemonClipboardChangeHandler {
                                 errored,
                                 pending,
                                 blob_ref_count,
+                                ..
                             }) => info!(
                                 accepted,
                                 duplicate,

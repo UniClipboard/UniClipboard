@@ -114,7 +114,7 @@ pub struct DispatchEntryInput {
 }
 
 /// Public-facing per-target report.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DispatchEntryPerTarget {
     pub device_id: DeviceId,
     pub outcome: Result<DispatchAck, String>,
@@ -126,7 +126,7 @@ pub struct DispatchEntryPerTarget {
 /// `total_pending` counts peers whose result the main flow did not wait for
 /// because the fan-out deadline was hit; their delivery records will be
 /// written by a background continuation. They are NOT present in `per_target`.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DispatchEntryOutcome {
     pub snapshot_hash: String,
     pub per_target: Vec<DispatchEntryPerTarget>,

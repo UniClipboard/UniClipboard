@@ -26,8 +26,8 @@ use uc_core::trusted_peer::TrustedPeerRepositoryPort;
 use uc_core::{ClipboardChangeOrigin, SystemClipboardSnapshot};
 
 use crate::facade::{
-    BlobTransferError, BlobTransferFacade, ClipboardSyncFacade, PublishBlobCommand,
-    PublishBlobPathCommand, PublishBlobResult,
+    BlobTransferError, BlobTransferFacade, ClipboardSyncFacade, DispatchEntryPerTarget,
+    PublishBlobCommand, PublishBlobPathCommand, PublishBlobResult,
 };
 use crate::sync_planner::{FileCandidate, FileSyncIntent, OutboundSyncPlanner};
 use crate::usecases::clipboard_sync::apply_inbound::{
@@ -96,6 +96,8 @@ pub struct ClipboardOutboundInput {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ClipboardOutboundOutcome {
     Dispatched {
+        snapshot_hash: String,
+        per_target: Vec<DispatchEntryPerTarget>,
         accepted: usize,
         duplicate: usize,
         offline: usize,
@@ -104,6 +106,7 @@ pub enum ClipboardOutboundOutcome {
         /// hit). Their delivery records are being written by a background
         /// continuation; counted here only for observability.
         pending: usize,
+        at_ms: i64,
         blob_ref_count: usize,
     },
     Skipped {
@@ -467,11 +470,14 @@ impl ClipboardOutboundPort for ClipboardOutboundDispatcher {
         );
 
         Ok(ClipboardOutboundOutcome::Dispatched {
+            snapshot_hash: dispatch_result.snapshot_hash,
+            per_target: dispatch_result.per_target,
             accepted: dispatch_result.total_accepted,
             duplicate: dispatch_result.total_duplicate,
             offline: dispatch_result.total_offline,
             errored: dispatch_result.total_errored,
             pending: dispatch_result.total_pending,
+            at_ms: dispatch_result.at_ms,
             blob_ref_count,
         })
     }
@@ -1050,11 +1056,14 @@ mod tests {
                 Some(vec![DeviceId::new("peer-a"), DeviceId::new("peer-b")])
             );
             Ok(ClipboardOutboundOutcome::Dispatched {
+                snapshot_hash: "snapshot-a".to_string(),
+                per_target: Vec::new(),
                 accepted: 1,
                 duplicate: 0,
                 offline: 0,
                 errored: 0,
                 pending: 0,
+                at_ms: 1,
                 blob_ref_count: 0,
             })
         }
@@ -1405,11 +1414,14 @@ mod tests {
         assert_eq!(
             outcome,
             ClipboardOutboundOutcome::Dispatched {
+                snapshot_hash: "snapshot-a".to_string(),
+                per_target: Vec::new(),
                 accepted: 1,
                 duplicate: 0,
                 offline: 0,
                 errored: 0,
                 pending: 0,
+                at_ms: 1,
                 blob_ref_count: 0,
             }
         );

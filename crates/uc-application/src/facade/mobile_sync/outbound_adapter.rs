@@ -101,6 +101,7 @@ impl MobileInboundFanOutPort for ClipboardOutboundFanOutAdapter {
                     errored,
                     pending,
                     blob_ref_count,
+                    ..
                 }) => info!(
                     entry_id = %entry_id_log,
                     source = %source_log,

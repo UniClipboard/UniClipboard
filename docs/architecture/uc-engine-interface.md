@@ -76,6 +76,10 @@ Running|Quiescing|Quiesced|Suspended -> ShuttingDown -> Stopped
 | `QueryHistoryStats` | 返回历史记录总数和总大小 |
 | `GetHistoryEntryResource` | 返回指定记录的资源标识、类型、大小及可用读取方式 |
 | `ClearHistory` | 清空全部历史，并返回删除数量和未删除条目标识 |
+| `QueryEntryReceiveProgress` | 查询指定远端接收任务的当前聚合进度 |
+| `ListEntryReceiveProgress` | 列出全部尚未结束的远端接收任务进度 |
+| `CancelEntryReceive` | 按记录和尝试编号取消一次远端接收任务 |
+| `CancelInboundTransfer` | 按传输编号和稳定原因取消一次正在进行的文件接收 |
 | `ExportEntry` | 通过宿主文件句柄分块写出主内容 |
 | `ResendEntry` | 重新发送一条本机仍持有内容的历史记录 |
 | `SendFiles` | 从宿主句柄分块导入文件，并按现有文件协议发送 |
@@ -105,6 +109,10 @@ Running|Quiescing|Quiesced|Suspended -> ShuttingDown -> Stopped
 `GetHistoryEntry` 只适用于可读取为文本的记录；记录不存在返回 `NotFound`，内容不支持文本详情返回 `Conflict`。`SetHistoryEntryFavorite` 对不存在记录同样返回 `NotFound`，不能把未修改任何记录当作成功。
 
 `DeleteHistoryEntry` 和 `ClearHistory` 由核心统一清理数据库记录、选择、缓存文件、搜索索引和 blob 引用，宿主不得自行复制清理顺序。批量清空发生部分失败时只返回失败条目标识，不返回底层异常、文件路径或用户内容。
+
+接收进度只包含记录编号、尝试编号、稳定状态、字节数和项目数，不包含文件名、路径或内容。`QueryEntryReceiveProgress` 在没有活动任务时返回空结果；`ListEntryReceiveProgress` 只返回尚未进入终态的任务。
+
+`CancelEntryReceive` 使用记录编号和尝试编号防止过期请求误取消新任务，并明确区分已请求取消、已取消、未在接收、已经太晚、已经结束和已被新尝试取代。`CancelInboundTransfer` 是幂等操作：真实撤销返回 `Cancelled`，没有活动传输或重复取消返回 `NotInflight`。取消原因使用核心稳定枚举，宿主不得传入底层网络或文件系统错误。
 
 导出只写宿主传入的目标句柄。核心看不到目标路径，每次最多写 64 KiB，并在全部数据写入后调用完成写入。取消操作时不会在恢复后续写。
 

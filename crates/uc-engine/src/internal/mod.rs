@@ -28,6 +28,7 @@ pub mod receive;
 pub mod reconcile;
 pub mod resend;
 pub mod reset_space;
+pub mod resource;
 pub mod restore;
 pub(crate) mod runtime;
 pub mod search;

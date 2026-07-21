@@ -1253,6 +1253,21 @@ async fn engine_send_files_imports_opaque_content_and_exports_after_resume() {
         uc_engine::OperationResult::EntrySent(report) => report.entry_id,
         other => panic!("expected sent file entry, got {other:?}"),
     };
+    assert!(matches!(
+        engine
+            .execute(uc_engine::Operation::ReadEntryFile(
+                uc_engine::HistoryEntryInput {
+                    entry_id: entry_id.clone(),
+                },
+            ))
+            .await
+            .unwrap(),
+        uc_engine::OperationResult::EntryFileRead(uc_engine::EntryFileResourceSummary {
+            bytes,
+            file_name,
+            ..
+        }) if bytes == file_bytes && !file_name.is_empty()
+    ));
     let history = engine
         .execute(uc_engine::Operation::QueryHistory(
             uc_engine::QueryHistoryInput {

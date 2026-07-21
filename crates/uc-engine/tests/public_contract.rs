@@ -174,6 +174,24 @@ fn every_public_operation_has_a_stable_kind() {
             }),
             OperationKind::ResendEntry,
         ),
+        (
+            Operation::ReadBlob(uc_engine::BlobResourceInput {
+                blob_id: "blob-1".into(),
+            }),
+            OperationKind::ReadBlob,
+        ),
+        (
+            Operation::ReadThumbnail(uc_engine::ThumbnailResourceInput {
+                representation_id: "representation-1".into(),
+            }),
+            OperationKind::ReadThumbnail,
+        ),
+        (
+            Operation::ReadEntryFile(uc_engine::HistoryEntryInput {
+                entry_id: "entry-1".into(),
+            }),
+            OperationKind::ReadEntryFile,
+        ),
     ];
 
     for (operation, expected) in operations {
@@ -545,6 +563,54 @@ fn send_contract_preserves_entry_and_per_target_outcomes_without_debugging_failu
     assert_eq!(report.per_target.len(), 3);
     let debug = format!("{result:?}");
     for hidden in ["private transport detail", "entry-1", "hash-1", "device-1"] {
+        assert!(!debug.contains(hidden));
+    }
+}
+
+#[test]
+fn binary_resource_contract_preserves_bytes_media_type_and_download_name_without_debugging_content()
+{
+    let blob = uc_engine::OperationResult::BlobRead(uc_engine::BinaryResourceSummary {
+        bytes: b"private blob bytes".to_vec(),
+        media_type: Some("image/png".into()),
+    });
+    let thumbnail = uc_engine::OperationResult::ThumbnailRead(uc_engine::BinaryResourceSummary {
+        bytes: b"private thumbnail bytes".to_vec(),
+        media_type: Some("image/webp".into()),
+    });
+    let file = uc_engine::OperationResult::EntryFileRead(uc_engine::EntryFileResourceSummary {
+        bytes: b"private file bytes".to_vec(),
+        media_type: Some("application/pdf".into()),
+        file_name: "private-report.pdf".into(),
+    });
+
+    assert!(matches!(
+        blob,
+        uc_engine::OperationResult::BlobRead(ref resource)
+            if resource.bytes == b"private blob bytes"
+                && resource.media_type.as_deref() == Some("image/png")
+    ));
+    assert!(matches!(
+        thumbnail,
+        uc_engine::OperationResult::ThumbnailRead(ref resource)
+            if resource.bytes == b"private thumbnail bytes"
+                && resource.media_type.as_deref() == Some("image/webp")
+    ));
+    assert!(matches!(
+        file,
+        uc_engine::OperationResult::EntryFileRead(ref resource)
+            if resource.bytes == b"private file bytes"
+                && resource.media_type.as_deref() == Some("application/pdf")
+                && resource.file_name == "private-report.pdf"
+    ));
+
+    let debug = format!("{blob:?} {thumbnail:?} {file:?}");
+    for hidden in [
+        "private blob bytes",
+        "private thumbnail bytes",
+        "private file bytes",
+        "private-report.pdf",
+    ] {
         assert!(!debug.contains(hidden));
     }
 }

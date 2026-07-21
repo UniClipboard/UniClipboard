@@ -714,6 +714,25 @@ fn operation_response(result: OperationResult) -> Value {
             "has_url": resource.url.is_some(),
             "has_inline_data": resource.inline_data.is_some(),
         }),
+        OperationResult::BlobRead(resource) => json!({
+            "ok": true,
+            "kind": "blob_read",
+            "byte_len": resource.bytes.len(),
+            "media_type": resource.media_type,
+        }),
+        OperationResult::ThumbnailRead(resource) => json!({
+            "ok": true,
+            "kind": "thumbnail_read",
+            "byte_len": resource.bytes.len(),
+            "media_type": resource.media_type,
+        }),
+        OperationResult::EntryFileRead(resource) => json!({
+            "ok": true,
+            "kind": "entry_file_read",
+            "byte_len": resource.bytes.len(),
+            "media_type": resource.media_type,
+            "has_file_name": !resource.file_name.is_empty(),
+        }),
         OperationResult::HistoryCleared(result) => json!({
             "ok": true,
             "kind": "history_cleared",
@@ -1039,6 +1058,19 @@ mod tests {
                 inline_data: Some(b"private inline content".to_vec()),
             },
         ));
+        let blob = operation_response(OperationResult::BlobRead(
+            uc_engine::BinaryResourceSummary {
+                bytes: b"private blob bytes".to_vec(),
+                media_type: Some("image/png".into()),
+            },
+        ));
+        let entry_file = operation_response(OperationResult::EntryFileRead(
+            uc_engine::EntryFileResourceSummary {
+                bytes: b"private file bytes".to_vec(),
+                media_type: Some("application/pdf".into()),
+                file_name: "private-report.pdf".into(),
+            },
+        ));
         let payload_unavailable = operation_response(OperationResult::ClipboardRestored(
             uc_engine::ClipboardRestoreOutcome::PayloadUnavailable {
                 entry_id: "private-entry".into(),
@@ -1073,6 +1105,11 @@ mod tests {
         assert!(!history_resource
             .to_string()
             .contains("private inline content"));
+        assert_eq!(blob["byte_len"], 18);
+        assert!(!blob.to_string().contains("private blob bytes"));
+        assert_eq!(entry_file["has_file_name"], true);
+        assert!(!entry_file.to_string().contains("private file bytes"));
+        assert!(!entry_file.to_string().contains("private-report.pdf"));
         assert_eq!(payload_unavailable["outcome"], "payload_unavailable");
         assert_eq!(payload_unavailable["state"], "Lost");
         assert!(!payload_unavailable.to_string().contains("private-entry"));

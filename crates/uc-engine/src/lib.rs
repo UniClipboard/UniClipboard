@@ -104,6 +104,9 @@ pub enum OperationKind {
     SetHistoryEntryFavorite,
     QueryHistoryStats,
     GetHistoryEntryResource,
+    ReadBlob,
+    ReadThumbnail,
+    ReadEntryFile,
     QueryEntryDelivery,
     ClearHistory,
     QueryEntryReceiveProgress,
@@ -153,6 +156,9 @@ impl fmt::Display for OperationKind {
             Self::SetHistoryEntryFavorite => "set_history_entry_favorite",
             Self::QueryHistoryStats => "query_history_stats",
             Self::GetHistoryEntryResource => "get_history_entry_resource",
+            Self::ReadBlob => "read_blob",
+            Self::ReadThumbnail => "read_thumbnail",
+            Self::ReadEntryFile => "read_entry_file",
             Self::QueryEntryDelivery => "query_entry_delivery",
             Self::ClearHistory => "clear_history",
             Self::QueryEntryReceiveProgress => "query_entry_receive_progress",
@@ -204,6 +210,9 @@ pub enum Operation {
     SetHistoryEntryFavorite(SetHistoryEntryFavoriteInput),
     QueryHistoryStats,
     GetHistoryEntryResource(HistoryEntryInput),
+    ReadBlob(BlobResourceInput),
+    ReadThumbnail(ThumbnailResourceInput),
+    ReadEntryFile(HistoryEntryInput),
     QueryEntryDelivery(HistoryEntryInput),
     ClearHistory,
     QueryEntryReceiveProgress(EntryReceiveProgressInput),
@@ -253,6 +262,9 @@ impl Operation {
             Self::SetHistoryEntryFavorite(_) => OperationKind::SetHistoryEntryFavorite,
             Self::QueryHistoryStats => OperationKind::QueryHistoryStats,
             Self::GetHistoryEntryResource(_) => OperationKind::GetHistoryEntryResource,
+            Self::ReadBlob(_) => OperationKind::ReadBlob,
+            Self::ReadThumbnail(_) => OperationKind::ReadThumbnail,
+            Self::ReadEntryFile(_) => OperationKind::ReadEntryFile,
             Self::QueryEntryDelivery(_) => OperationKind::QueryEntryDelivery,
             Self::ClearHistory => OperationKind::ClearHistory,
             Self::QueryEntryReceiveProgress(_) => OperationKind::QueryEntryReceiveProgress,
@@ -511,6 +523,16 @@ pub struct ListHistoryEntriesInput {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HistoryEntryInput {
     pub entry_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BlobResourceInput {
+    pub blob_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ThumbnailResourceInput {
+    pub representation_id: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1038,6 +1060,40 @@ pub struct TransferProgress {
     pub total_bytes: Option<u64>,
 }
 
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BinaryResourceSummary {
+    pub bytes: Vec<u8>,
+    pub media_type: Option<String>,
+}
+
+impl fmt::Debug for BinaryResourceSummary {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("BinaryResourceSummary")
+            .field("byte_len", &self.bytes.len())
+            .field("has_media_type", &self.media_type.is_some())
+            .finish()
+    }
+}
+
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EntryFileResourceSummary {
+    pub bytes: Vec<u8>,
+    pub media_type: Option<String>,
+    pub file_name: String,
+}
+
+impl fmt::Debug for EntryFileResourceSummary {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("EntryFileResourceSummary")
+            .field("byte_len", &self.bytes.len())
+            .field("has_media_type", &self.media_type.is_some())
+            .field("has_file_name", &!self.file_name.is_empty())
+            .finish()
+    }
+}
+
 #[derive(Clone, PartialEq, Eq)]
 pub enum OperationResult {
     SpaceCreated {
@@ -1099,6 +1155,9 @@ pub enum OperationResult {
     HistoryEntryFavoriteSet,
     HistoryStats(HistoryStatsSummary),
     HistoryEntryResource(HistoryEntryResourceSummary),
+    BlobRead(BinaryResourceSummary),
+    ThumbnailRead(BinaryResourceSummary),
+    EntryFileRead(EntryFileResourceSummary),
     EntryDelivery(EntryDeliveryViewSummary),
     HistoryCleared(HistoryClearSummary),
     EntryReceiveProgress(Option<ReceiveProgressSummary>),
@@ -1187,6 +1246,16 @@ impl fmt::Debug for OperationResult {
                 .field("has_blob", &resource.blob_id.is_some())
                 .field("has_url", &resource.url.is_some())
                 .field("has_inline_data", &resource.inline_data.is_some()),
+            Self::BlobRead(resource) => debug
+                .field("kind", &"blob_read")
+                .field("byte_len", &resource.bytes.len()),
+            Self::ThumbnailRead(resource) => debug
+                .field("kind", &"thumbnail_read")
+                .field("byte_len", &resource.bytes.len()),
+            Self::EntryFileRead(resource) => debug
+                .field("kind", &"entry_file_read")
+                .field("byte_len", &resource.bytes.len())
+                .field("has_file_name", &!resource.file_name.is_empty()),
             Self::EntryDelivery(view) => debug.field("kind", &"entry_delivery").field("view", view),
             Self::HistoryCleared(result) => debug
                 .field("kind", &"history_cleared")

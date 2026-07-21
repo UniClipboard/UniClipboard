@@ -64,6 +64,9 @@ use crate::internal::receive::{
 };
 use crate::internal::resend::execute_resend_entry;
 use crate::internal::reset_space::execute_reset_space;
+use crate::internal::resource::{
+    execute_read_blob, execute_read_entry_file, execute_read_thumbnail,
+};
 use crate::internal::restore::execute_restore_clipboard;
 use crate::internal::search::{
     execute_query_search_status, execute_query_search_tags, execute_rebuild_search_index,
@@ -379,6 +382,15 @@ impl EngineRuntime for ProductionRuntime {
             Operation::GetHistoryEntryResource(input) => {
                 execute_get_history_entry_resource(self.current_facade().await?.as_ref(), input)
                     .await
+            }
+            Operation::ReadBlob(input) => {
+                execute_read_blob(self.current_facade().await?.as_ref(), input).await
+            }
+            Operation::ReadThumbnail(input) => {
+                execute_read_thumbnail(self.current_facade().await?.as_ref(), input).await
+            }
+            Operation::ReadEntryFile(input) => {
+                execute_read_entry_file(self.current_facade().await?.as_ref(), input).await
             }
             Operation::QueryEntryDelivery(input) => {
                 execute_query_entry_delivery(self.current_facade().await?.as_ref(), input).await

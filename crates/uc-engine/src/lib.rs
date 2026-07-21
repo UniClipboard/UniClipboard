@@ -109,6 +109,7 @@ pub enum OperationKind {
     ListEntryReceiveProgress,
     CancelEntryReceive,
     CancelInboundTransfer,
+    CaptureCurrentClipboard,
     ExportEntry,
     ResendEntry,
 }
@@ -155,6 +156,7 @@ impl fmt::Display for OperationKind {
             Self::ListEntryReceiveProgress => "list_entry_receive_progress",
             Self::CancelEntryReceive => "cancel_entry_receive",
             Self::CancelInboundTransfer => "cancel_inbound_transfer",
+            Self::CaptureCurrentClipboard => "capture_current_clipboard",
             Self::ExportEntry => "export_entry",
             Self::ResendEntry => "resend_entry",
         };
@@ -203,6 +205,7 @@ pub enum Operation {
     ListEntryReceiveProgress,
     CancelEntryReceive(CancelEntryReceiveInput),
     CancelInboundTransfer(CancelInboundTransferInput),
+    CaptureCurrentClipboard,
     ExportEntry(ExportEntryInput),
     ResendEntry(ResendEntryInput),
 }
@@ -249,6 +252,7 @@ impl Operation {
             Self::ListEntryReceiveProgress => OperationKind::ListEntryReceiveProgress,
             Self::CancelEntryReceive(_) => OperationKind::CancelEntryReceive,
             Self::CancelInboundTransfer(_) => OperationKind::CancelInboundTransfer,
+            Self::CaptureCurrentClipboard => OperationKind::CaptureCurrentClipboard,
             Self::ExportEntry(_) => OperationKind::ExportEntry,
             Self::ResendEntry(_) => OperationKind::ResendEntry,
         }
@@ -875,6 +879,9 @@ pub enum OperationResult {
     EntryReceiveProgressList(Vec<ReceiveProgressSummary>),
     EntryReceiveCancellation(EntryReceiveCancellationOutcome),
     InboundTransferCancellation(InboundTransferCancellationOutcome),
+    ClipboardCaptured {
+        entry_id: Option<String>,
+    },
     EntryExported,
     EntryResent {
         entry_id: String,
@@ -971,6 +978,9 @@ impl fmt::Debug for OperationResult {
             Self::InboundTransferCancellation(outcome) => debug
                 .field("kind", &"inbound_transfer_cancellation")
                 .field("outcome", outcome),
+            Self::ClipboardCaptured { entry_id } => debug
+                .field("kind", &"clipboard_captured")
+                .field("has_entry", &entry_id.is_some()),
             Self::EntryExported => debug.field("kind", &"entry_exported"),
             Self::EntryResent { .. } => debug.field("kind", &"entry_resent"),
         };

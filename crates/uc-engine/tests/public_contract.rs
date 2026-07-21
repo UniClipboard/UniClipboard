@@ -360,6 +360,26 @@ fn receive_progress_and_cancellation_have_stable_operations_and_results() {
 }
 
 #[test]
+fn capture_current_clipboard_has_a_stable_optional_result() {
+    assert_eq!(
+        uc_engine::Operation::CaptureCurrentClipboard.kind(),
+        uc_engine::OperationKind::CaptureCurrentClipboard
+    );
+    assert_eq!(
+        uc_engine::OperationResult::ClipboardCaptured {
+            entry_id: Some("entry-1".into()),
+        },
+        uc_engine::OperationResult::ClipboardCaptured {
+            entry_id: Some("entry-1".into()),
+        }
+    );
+    assert_eq!(
+        uc_engine::OperationResult::ClipboardCaptured { entry_id: None },
+        uc_engine::OperationResult::ClipboardCaptured { entry_id: None }
+    );
+}
+
+#[test]
 fn search_contract_preserves_fields_without_debugging_user_content() {
     let input = SearchEntriesInput {
         query: "private search query".into(),

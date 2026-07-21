@@ -26,6 +26,7 @@ use crate::engine::EngineRuntime;
 use crate::event_stream::EventSender;
 use crate::internal::blob_tasks::{spawn_blob_processing_tasks, BlobProcessingPorts};
 use crate::internal::cancel_invitation::execute_cancel_invitation;
+use crate::internal::capture::execute_capture_current_clipboard;
 use crate::internal::clipboard_runtime::{
     build_clipboard_runtime, spawn_clipboard_runtime_tasks, ClipboardRuntime,
 };
@@ -395,6 +396,9 @@ impl EngineRuntime for ProductionRuntime {
             }
             Operation::CancelInboundTransfer(input) => {
                 execute_cancel_inbound_transfer(self.current_facade().await?.as_ref(), input).await
+            }
+            Operation::CaptureCurrentClipboard => {
+                execute_capture_current_clipboard(self.current_facade().await?.as_ref()).await
             }
             Operation::SendText(input) => {
                 if input.text.is_empty()

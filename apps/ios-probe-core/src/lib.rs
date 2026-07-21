@@ -741,6 +741,11 @@ fn operation_response(result: OperationResult) -> Value {
             "kind": "inbound_transfer_cancellation",
             "outcome": outcome,
         }),
+        OperationResult::ClipboardCaptured { entry_id } => json!({
+            "ok": true,
+            "kind": "clipboard_captured",
+            "entry_id": entry_id,
+        }),
         OperationResult::EntryExported => json!({"ok": true, "kind": "entry_exported"}),
         OperationResult::EntryResent { entry_id } => {
             json!({"ok": true, "kind": "entry_resent", "entry_id": entry_id})

@@ -570,6 +570,13 @@ async fn engine_start_builds_a_resumable_real_session() {
     );
     assert_eq!(
         engine
+            .execute(uc_engine::Operation::CaptureCurrentClipboard)
+            .await
+            .unwrap(),
+        uc_engine::OperationResult::ClipboardCaptured { entry_id: None }
+    );
+    assert_eq!(
+        engine
             .execute(uc_engine::Operation::VerifySecureStorageAccess)
             .await
             .unwrap(),

@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use zeroize::Zeroize;
 
 mod config;
+mod diagnostics;
 mod engine;
 mod event_stream;
 mod host;
@@ -16,6 +17,7 @@ mod upgrade;
 pub mod internal;
 
 pub use config::EngineConfig;
+pub use diagnostics::*;
 pub use engine::Engine;
 pub use event_stream::EventStream;
 pub use host::{
@@ -94,6 +96,9 @@ pub enum OperationKind {
     ProbeRelay,
     QueryUpgradeStatus,
     AcknowledgeUpgrade,
+    QueryDiagnostics,
+    UpdateDebugMode,
+    ExportDiagnosticLogs,
     QueryEncryptionState,
     LockEncryption,
     VerifySecureStorageAccess,
@@ -153,6 +158,9 @@ impl fmt::Display for OperationKind {
             Self::ProbeRelay => "probe_relay",
             Self::QueryUpgradeStatus => "query_upgrade_status",
             Self::AcknowledgeUpgrade => "acknowledge_upgrade",
+            Self::QueryDiagnostics => "query_diagnostics",
+            Self::UpdateDebugMode => "update_debug_mode",
+            Self::ExportDiagnosticLogs => "export_diagnostic_logs",
             Self::QueryEncryptionState => "query_encryption_state",
             Self::LockEncryption => "lock_encryption",
             Self::VerifySecureStorageAccess => "verify_secure_storage_access",
@@ -214,6 +222,9 @@ pub enum Operation {
     ProbeRelay(RelayProbeInput),
     QueryUpgradeStatus,
     AcknowledgeUpgrade,
+    QueryDiagnostics,
+    UpdateDebugMode(UpdateDebugModeInput),
+    ExportDiagnosticLogs(ExportDiagnosticLogsInput),
     QueryEncryptionState,
     LockEncryption,
     VerifySecureStorageAccess,
@@ -273,6 +284,9 @@ impl Operation {
             Self::ProbeRelay(_) => OperationKind::ProbeRelay,
             Self::QueryUpgradeStatus => OperationKind::QueryUpgradeStatus,
             Self::AcknowledgeUpgrade => OperationKind::AcknowledgeUpgrade,
+            Self::QueryDiagnostics => OperationKind::QueryDiagnostics,
+            Self::UpdateDebugMode(_) => OperationKind::UpdateDebugMode,
+            Self::ExportDiagnosticLogs(_) => OperationKind::ExportDiagnosticLogs,
             Self::QueryEncryptionState => OperationKind::QueryEncryptionState,
             Self::LockEncryption => OperationKind::LockEncryption,
             Self::VerifySecureStorageAccess => OperationKind::VerifySecureStorageAccess,
@@ -1171,6 +1185,9 @@ pub enum OperationResult {
     UpgradeAcknowledged {
         version: String,
     },
+    DiagnosticsStatus(DiagnosticsStatusSummary),
+    DebugModeUpdated(DebugModeUpdateSummary),
+    DiagnosticLogsExported(DiagnosticLogsExportSummary),
     EncryptionState(EncryptionStateSummary),
     EncryptionLocked,
     SecureStorageAccess {
@@ -1260,6 +1277,15 @@ impl fmt::Debug for OperationResult {
             Self::UpgradeAcknowledged { version } => debug
                 .field("kind", &"upgrade_acknowledged")
                 .field("version", version),
+            Self::DiagnosticsStatus(status) => debug
+                .field("kind", &"diagnostics_status")
+                .field("status", status),
+            Self::DebugModeUpdated(result) => debug
+                .field("kind", &"debug_mode_updated")
+                .field("result", result),
+            Self::DiagnosticLogsExported(result) => debug
+                .field("kind", &"diagnostic_logs_exported")
+                .field("result", result),
             Self::EncryptionState(state) => debug
                 .field("kind", &"encryption_state")
                 .field("state", state),

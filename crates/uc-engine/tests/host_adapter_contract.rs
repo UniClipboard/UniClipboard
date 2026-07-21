@@ -743,6 +743,65 @@ async fn engine_start_builds_a_resumable_real_session() {
             .unwrap(),
         uc_engine::OperationResult::Devices(Vec::new())
     );
+    assert!(matches!(
+        engine
+            .execute(uc_engine::Operation::QueryDiagnostics)
+            .await
+            .unwrap(),
+        uc_engine::OperationResult::DiagnosticsStatus(uc_engine::DiagnosticsStatusSummary {
+            debug_mode: false,
+            restart_required: false,
+            ..
+        })
+    ));
+    assert_eq!(
+        engine
+            .execute(uc_engine::Operation::UpdateDebugMode(
+                uc_engine::UpdateDebugModeInput { enabled: true },
+            ))
+            .await
+            .unwrap(),
+        uc_engine::OperationResult::DebugModeUpdated(uc_engine::DebugModeUpdateSummary {
+            debug_mode: true,
+            restart_required: true,
+        })
+    );
+    assert!(matches!(
+        engine
+            .execute(uc_engine::Operation::QueryDiagnostics)
+            .await
+            .unwrap(),
+        uc_engine::OperationResult::DiagnosticsStatus(uc_engine::DiagnosticsStatusSummary {
+            debug_mode: true,
+            restart_required: false,
+            ..
+        })
+    ));
+    assert!(matches!(
+        engine
+            .execute(uc_engine::Operation::ExportDiagnosticLogs(
+                uc_engine::ExportDiagnosticLogsInput {
+                    since_hours: Some(1),
+                    destination: HostFileHandle::new("diagnostic-logs"),
+                },
+            ))
+            .await
+            .unwrap(),
+        uc_engine::OperationResult::DiagnosticLogsExported(_)
+    ));
+    assert!(host_files
+        .writes
+        .lock()
+        .unwrap()
+        .iter()
+        .any(|(handle, _, bytes)| handle == "diagnostic-logs" && !bytes.is_empty()));
+    assert!(host_files
+        .finished
+        .lock()
+        .unwrap()
+        .contains(&"diagnostic-logs".to_string()));
+    host_files.writes.lock().unwrap().clear();
+    host_files.finished.lock().unwrap().clear();
     engine.suspend().await.unwrap();
     engine.resume().await.unwrap();
     let mismatch = engine

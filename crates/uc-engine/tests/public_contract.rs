@@ -429,6 +429,32 @@ fn upgrade_contract_uses_the_engine_version_and_preserves_stable_statuses() {
 }
 
 #[test]
+fn diagnostics_contract_exports_through_host_handles_without_debugging_paths() {
+    assert_eq!(
+        Operation::QueryDiagnostics.kind(),
+        OperationKind::QueryDiagnostics
+    );
+    assert_eq!(
+        Operation::UpdateDebugMode(uc_engine::UpdateDebugModeInput { enabled: true }).kind(),
+        OperationKind::UpdateDebugMode
+    );
+    let export = Operation::ExportDiagnosticLogs(uc_engine::ExportDiagnosticLogsInput {
+        since_hours: Some(48),
+        destination: uc_engine::HostFileHandle::new("private diagnostic destination"),
+    });
+    assert_eq!(export.kind(), OperationKind::ExportDiagnosticLogs);
+    assert!(!format!("{export:?}").contains("private diagnostic destination"));
+
+    let result = OperationResult::DiagnosticLogsExported(uc_engine::DiagnosticLogsExportSummary {
+        included_files: vec!["private-log-name.json".into()],
+        since_unix_ms: 1_700_000_000_000,
+    });
+    let debug = format!("{result:?}");
+    assert!(debug.contains("included_file_count"));
+    assert!(!debug.contains("private-log-name.json"));
+}
+
+#[test]
 fn receive_progress_and_cancellation_have_stable_operations_and_results() {
     let operations = [
         (

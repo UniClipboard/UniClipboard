@@ -691,6 +691,25 @@ fn operation_response(result: OperationResult) -> Value {
             "kind": "upgrade_acknowledged",
             "version": version,
         }),
+        OperationResult::DiagnosticsStatus(status) => json!({
+            "ok": true,
+            "kind": "diagnostics_status",
+            "debug_mode": status.debug_mode,
+            "effective_log_profile": status.effective_log_profile,
+            "restart_required": status.restart_required,
+        }),
+        OperationResult::DebugModeUpdated(result) => json!({
+            "ok": true,
+            "kind": "debug_mode_updated",
+            "debug_mode": result.debug_mode,
+            "restart_required": result.restart_required,
+        }),
+        OperationResult::DiagnosticLogsExported(result) => json!({
+            "ok": true,
+            "kind": "diagnostic_logs_exported",
+            "included_file_count": result.included_files.len(),
+            "since_unix_ms": result.since_unix_ms,
+        }),
         OperationResult::EncryptionState(state) => json!({
             "ok": true,
             "kind": "encryption_state",
@@ -1076,6 +1095,15 @@ mod tests {
                 "to": "1.2.0",
             })
         );
+
+        let logs = operation_response(OperationResult::DiagnosticLogsExported(
+            uc_engine::DiagnosticLogsExportSummary {
+                included_files: vec!["private-log-name.json".into()],
+                since_unix_ms: 1_700_000_000_000,
+            },
+        ));
+        assert_eq!(logs["included_file_count"], 1);
+        assert!(!logs.to_string().contains("private-log-name.json"));
     }
 
     #[test]

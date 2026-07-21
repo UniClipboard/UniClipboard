@@ -38,6 +38,9 @@ use crate::internal::create_space::execute_create_space;
 use crate::internal::delivery::execute_query_entry_delivery;
 use crate::internal::deps::WiredDependencies;
 use crate::internal::device::execute_query_local_device;
+use crate::internal::diagnostics::{
+    execute_export_diagnostic_logs, execute_query_diagnostics, execute_update_debug_mode,
+};
 use crate::internal::encryption::{
     execute_lock_encryption, execute_query_encryption_state, execute_verify_secure_storage_access,
 };
@@ -121,7 +124,7 @@ pub(crate) struct ProductionRuntime {
     session: Arc<Mutex<Option<ProductionSession>>>,
     task_registry: Arc<TaskRegistry>,
     file_transfer_lifecycle: Arc<FileTransferLifecycle>,
-    _temporary_dir: std::path::PathBuf,
+    temporary_dir: std::path::PathBuf,
     clipboard_import_root: std::path::PathBuf,
     files: Arc<dyn HostFileAccess>,
 }
@@ -346,7 +349,7 @@ impl ProductionRuntime {
             session,
             task_registry,
             file_transfer_lifecycle,
-            _temporary_dir: temporary_dir,
+            temporary_dir,
             clipboard_import_root,
             files,
         })
@@ -536,6 +539,21 @@ impl EngineRuntime for ProductionRuntime {
                 execute_acknowledge_upgrade(
                     self.current_facade().await?.as_ref(),
                     &self.app_version,
+                )
+                .await
+            }
+            Operation::QueryDiagnostics => {
+                execute_query_diagnostics(self.current_facade().await?.as_ref()).await
+            }
+            Operation::UpdateDebugMode(input) => {
+                execute_update_debug_mode(self.current_facade().await?.as_ref(), input).await
+            }
+            Operation::ExportDiagnosticLogs(input) => {
+                execute_export_diagnostic_logs(
+                    self.current_facade().await?.as_ref(),
+                    self.files.as_ref(),
+                    &self.temporary_dir,
+                    input,
                 )
                 .await
             }

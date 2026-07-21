@@ -6,13 +6,16 @@ use axum::routing::{get, post};
 use axum::{Json, Router};
 use tokio::sync::broadcast::error::SendError;
 use tracing::{debug, info};
-use uc_application::facade::FactoryResetError;
 use uc_daemon_contract::api::dto::envelope::ApiEnvelope;
 use uc_daemon_contract::constants::{ws_event, ws_topic};
 use uc_engine::internal::encryption::{
     execute_lock_encryption, execute_query_encryption_state, execute_verify_secure_storage_access,
     LOCK_ENCRYPTION_FAILED_CODE, QUERY_ENCRYPTION_STATE_FAILED_CODE,
     VERIFY_SECURE_STORAGE_ACCESS_FAILED_CODE,
+};
+use uc_engine::internal::factory_reset::{
+    execute_factory_reset_space, FACTORY_RESET_FAILED_CODE, FACTORY_RESET_KEY_MATERIAL_FAILED_CODE,
+    FACTORY_RESET_STORAGE_FAILED_CODE, FACTORY_RESET_UNAVAILABLE_CODE,
 };
 use uc_engine::internal::session_recovery::{
     execute_recover_session, RECOVER_SESSION_RECEIVE_UNAVAILABLE_CODE,
@@ -67,24 +70,43 @@ pub fn router() -> Router<DaemonApiState> {
         )
 }
 
-/// Map the typed [`FactoryResetError`] onto an [`ApiError`] whose `code` is the
-/// SCREAMING_SNAKE tag the frontend `FactoryResetCommandError` union switches on
-/// (read off `DaemonApiError.details.code`). All variants are infra failures →
-/// 500 with the cause string preserved in `message` (never a secret).
-fn map_factory_reset_err(err: FactoryResetError) -> ApiError {
-    use FactoryResetError as E;
-    let (variant, code, message) = match err {
-        E::KeyMaterialWipeFailed(msg) => {
-            ("key_material_wipe_failed", "KEY_MATERIAL_WIPE_FAILED", msg)
-        }
-        E::StorageFailed(msg) => ("storage_failed", "STORAGE_FAILED", msg),
-        E::Internal(msg) => ("internal", "INTERNAL", msg),
-    };
-    let api = ApiError {
-        status: StatusCode::INTERNAL_SERVER_ERROR,
-        code: code.to_string(),
-        message,
-        details: None,
+fn map_factory_reset_engine_err(error: EngineError) -> ApiError {
+    let (variant, api) = match error.code() {
+        FACTORY_RESET_UNAVAILABLE_CODE => (
+            "unavailable",
+            ApiError::service_unavailable("space setup facade not assembled"),
+        ),
+        FACTORY_RESET_KEY_MATERIAL_FAILED_CODE => (
+            "key_material_wipe_failed",
+            ApiError {
+                status: StatusCode::INTERNAL_SERVER_ERROR,
+                code: "KEY_MATERIAL_WIPE_FAILED".to_string(),
+                message: "failed to wipe key material".to_string(),
+                details: None,
+            },
+        ),
+        FACTORY_RESET_STORAGE_FAILED_CODE => (
+            "storage_failed",
+            ApiError {
+                status: StatusCode::INTERNAL_SERVER_ERROR,
+                code: "STORAGE_FAILED".to_string(),
+                message: "failed to clear setup status".to_string(),
+                details: None,
+            },
+        ),
+        FACTORY_RESET_FAILED_CODE => (
+            "internal",
+            ApiError {
+                status: StatusCode::INTERNAL_SERVER_ERROR,
+                code: "INTERNAL".to_string(),
+                message: "factory reset failed".to_string(),
+                details: None,
+            },
+        ),
+        _ => (
+            "unexpected_engine_error",
+            ApiError::internal("factory reset failed"),
+        ),
     };
     log_facade_failure(
         "space_setup",
@@ -379,8 +401,7 @@ async fn lock_handler(
 
 /// POST /encryption/factory-reset
 /// Wipes key material + clears setup status + cancels pending invitations
-/// (ADR-008 P3-1 / D15). Routes through `SpaceSetupFacade::factory_reset`,
-/// mirroring the former in-process `factory_reset_space` Tauri command.
+/// (ADR-008 P3-1 / D15). Routes through the engine's factory-reset operation.
 #[utoipa::path(
     post,
     path = "/encryption/factory-reset",
@@ -395,16 +416,14 @@ async fn factory_reset_handler(
     State(state): State<DaemonApiState>,
 ) -> Result<Json<ApiEnvelope<EncryptionActionResponse>>, ApiError> {
     let app = state.app_facade_or_error()?;
-    let facade = app
-        .space_setup
-        .get()
-        .cloned()
-        .ok_or_else(|| ApiError::service_unavailable("space setup facade not assembled"))?;
-
-    facade
-        .factory_reset()
+    let result = execute_factory_reset_space(app.as_ref(), state.receive_readiness.as_ref())
         .await
-        .map_err(map_factory_reset_err)?;
+        .map_err(map_factory_reset_engine_err)?;
+    if !matches!(result, OperationResult::SpaceFactoryReset) {
+        return Err(ApiError::internal(
+            "engine returned an unexpected factory-reset result",
+        ));
+    }
 
     info!("space factory-reset completed");
     Ok(Json(ApiEnvelope::now(EncryptionActionResponse {
@@ -601,33 +620,37 @@ mod tests {
         assert_eq!(receive.code, "runtime_unavailable");
     }
 
-    /// Factory-reset variants keep the `FactoryResetCommandError` semantic codes
-    /// (frontend reads `DaemonApiError.details.code`) and preserve the infra
-    /// cause string in `message`.
+    /// Factory-reset variants keep the frontend semantic codes while redacting
+    /// infrastructure details from the public message.
     #[test]
-    fn map_factory_reset_err_keeps_semantic_codes_and_message() {
+    fn map_factory_reset_engine_err_keeps_semantic_codes_and_redacts_details() {
         let cases = [
             (
-                FactoryResetError::KeyMaterialWipeFailed("disk i/o".to_string()),
+                FACTORY_RESET_KEY_MATERIAL_FAILED_CODE,
                 "KEY_MATERIAL_WIPE_FAILED",
-                "disk i/o",
+                "failed to wipe key material",
             ),
             (
-                FactoryResetError::StorageFailed("settings db locked".to_string()),
+                FACTORY_RESET_STORAGE_FAILED_CODE,
                 "STORAGE_FAILED",
-                "settings db locked",
+                "failed to clear setup status",
             ),
             (
-                FactoryResetError::Internal("oops".to_string()),
+                FACTORY_RESET_FAILED_CODE,
                 "INTERNAL",
-                "oops",
+                "factory reset failed",
             ),
         ];
-        for (err, code, message) in cases {
-            let api = map_factory_reset_err(err);
+        for (engine_code, api_code, message) in cases {
+            let api = map_factory_reset_engine_err(EngineError::new(
+                engine_code,
+                EngineErrorCategory::Internal,
+                false,
+            ));
             assert_eq!(api.status, StatusCode::INTERNAL_SERVER_ERROR);
-            assert_eq!(api.code, code);
+            assert_eq!(api.code, api_code);
             assert_eq!(api.message, message);
+            assert!(api.details.is_none());
         }
     }
 }

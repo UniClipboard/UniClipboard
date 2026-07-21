@@ -477,10 +477,12 @@ fn daemon_encryption_handlers_delegate_session_ownership_to_engine() {
         !handler.contains(".encryption\n        .state(")
             && !handler.contains("app.encryption.lock(")
             && !handler.contains("app.encryption.verify_keychain_access(")
+            && !handler.contains(".factory_reset()")
             && handler.contains("execute_query_encryption_state(")
             && handler.contains("execute_lock_encryption(")
-            && handler.contains("execute_verify_secure_storage_access("),
-        "daemon encryption state, lock, and secure-storage handlers must delegate to uc-engine"
+            && handler.contains("execute_verify_secure_storage_access(")
+            && handler.contains("execute_factory_reset_space("),
+        "daemon encryption state, lock, factory-reset, and secure-storage handlers must delegate to uc-engine"
     );
 }
 

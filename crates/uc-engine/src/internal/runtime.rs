@@ -82,6 +82,9 @@ use crate::internal::search::{
     execute_search_entries,
 };
 use crate::internal::session_recovery::execute_recover_session;
+use crate::internal::settings::{
+    execute_probe_relay, execute_query_settings, execute_update_settings,
+};
 use crate::internal::setup_state::execute_query_setup_state;
 use crate::internal::storage::{execute_clear_storage_cache, execute_query_storage_stats};
 use crate::internal::sync_engine::SyncEngineAssembly;
@@ -508,6 +511,15 @@ impl EngineRuntime for ProductionRuntime {
             }
             Operation::RefreshPeerConnections => {
                 execute_refresh_peer_connections(self.current_facade().await?.as_ref()).await
+            }
+            Operation::QuerySettings => {
+                execute_query_settings(self.current_facade().await?.as_ref()).await
+            }
+            Operation::UpdateSettings(patch) => {
+                execute_update_settings(self.current_facade().await?.as_ref(), *patch).await
+            }
+            Operation::ProbeRelay(input) => {
+                execute_probe_relay(self.current_facade().await?.as_ref(), input).await
             }
             Operation::QueryEncryptionState => {
                 execute_query_encryption_state(self.current_facade().await?.as_ref()).await

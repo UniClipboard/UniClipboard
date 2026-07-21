@@ -342,6 +342,58 @@ fn peer_connection_contract_preserves_status_without_debugging_identity_or_addre
 }
 
 #[test]
+fn settings_contract_preserves_updates_and_probe_outcomes_without_debugging_user_values() {
+    assert_eq!(
+        Operation::QuerySettings.kind(),
+        OperationKind::QuerySettings
+    );
+    assert_eq!(
+        Operation::UpdateSettings(Box::default()).kind(),
+        OperationKind::UpdateSettings
+    );
+    assert_eq!(
+        Operation::ProbeRelay(uc_engine::RelayProbeInput {
+            url: "https://private-relay.example".into(),
+        })
+        .kind(),
+        OperationKind::ProbeRelay
+    );
+
+    let mut settings = uc_engine::SettingsSummary::default();
+    settings.general.device_name = Some("Private Mac".into());
+    settings
+        .general
+        .theme_overrides_light
+        .insert("primary".into(), "private-theme-value".into());
+    settings
+        .network
+        .custom_relay_urls
+        .push("https://private-relay.example".into());
+    settings.file_sync.auto_save_dir = Some("/private/export/path".into());
+
+    let values = [
+        OperationResult::Settings(Box::new(settings)),
+        OperationResult::SettingsUpdated(uc_engine::SettingsUpdateOutcome::Rejected {
+            reason: "private validation detail".into(),
+        }),
+        OperationResult::RelayProbed(uc_engine::RelayProbeOutcome::Dns {
+            message: "private dns detail".into(),
+        }),
+    ];
+    let debug = format!("{values:?}");
+    for secret in [
+        "Private Mac",
+        "private-theme-value",
+        "private-relay.example",
+        "/private/export/path",
+        "private validation detail",
+        "private dns detail",
+    ] {
+        assert!(!debug.contains(secret), "debug output leaked {secret}");
+    }
+}
+
+#[test]
 fn receive_progress_and_cancellation_have_stable_operations_and_results() {
     let operations = [
         (

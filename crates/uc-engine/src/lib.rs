@@ -9,6 +9,7 @@ mod config;
 mod engine;
 mod event_stream;
 mod host;
+mod settings;
 
 #[doc(hidden)]
 pub mod internal;
@@ -21,6 +22,7 @@ pub use host::{
     HostClipboardChange, HostClipboardChangeStream, HostClipboardRepresentation,
     HostClipboardSnapshot, HostDirectories, HostFileAccess, HostFileMetadata, HostSecureStorage,
 };
+pub use settings::*;
 
 #[derive(Clone, PartialEq, Eq)]
 pub struct SecretString(Vec<u8>);
@@ -85,6 +87,9 @@ pub enum OperationKind {
     QueryLocalDevice,
     QueryPeerConnections,
     RefreshPeerConnections,
+    QuerySettings,
+    UpdateSettings,
+    ProbeRelay,
     QueryEncryptionState,
     LockEncryption,
     VerifySecureStorageAccess,
@@ -139,6 +144,9 @@ impl fmt::Display for OperationKind {
             Self::QueryLocalDevice => "query_local_device",
             Self::QueryPeerConnections => "query_peer_connections",
             Self::RefreshPeerConnections => "refresh_peer_connections",
+            Self::QuerySettings => "query_settings",
+            Self::UpdateSettings => "update_settings",
+            Self::ProbeRelay => "probe_relay",
             Self::QueryEncryptionState => "query_encryption_state",
             Self::LockEncryption => "lock_encryption",
             Self::VerifySecureStorageAccess => "verify_secure_storage_access",
@@ -195,6 +203,9 @@ pub enum Operation {
     QueryLocalDevice,
     QueryPeerConnections,
     RefreshPeerConnections,
+    QuerySettings,
+    UpdateSettings(Box<SettingsPatch>),
+    ProbeRelay(RelayProbeInput),
     QueryEncryptionState,
     LockEncryption,
     VerifySecureStorageAccess,
@@ -249,6 +260,9 @@ impl Operation {
             Self::QueryLocalDevice => OperationKind::QueryLocalDevice,
             Self::QueryPeerConnections => OperationKind::QueryPeerConnections,
             Self::RefreshPeerConnections => OperationKind::RefreshPeerConnections,
+            Self::QuerySettings => OperationKind::QuerySettings,
+            Self::UpdateSettings(_) => OperationKind::UpdateSettings,
+            Self::ProbeRelay(_) => OperationKind::ProbeRelay,
             Self::QueryEncryptionState => OperationKind::QueryEncryptionState,
             Self::LockEncryption => OperationKind::LockEncryption,
             Self::VerifySecureStorageAccess => OperationKind::VerifySecureStorageAccess,
@@ -1140,6 +1154,9 @@ pub enum OperationResult {
     LocalDevice(LocalDeviceSummary),
     PeerConnections(Vec<PeerConnectionSummary>),
     PeerConnectionsRefreshed(PeerConnectionRefreshSummary),
+    Settings(Box<SettingsSummary>),
+    SettingsUpdated(SettingsUpdateOutcome),
+    RelayProbed(RelayProbeOutcome),
     EncryptionState(EncryptionStateSummary),
     EncryptionLocked,
     SecureStorageAccess {
@@ -1216,6 +1233,13 @@ impl fmt::Debug for OperationResult {
             Self::PeerConnectionsRefreshed(report) => debug
                 .field("kind", &"peer_connections_refreshed")
                 .field("report", report),
+            Self::Settings(_) => debug.field("kind", &"settings"),
+            Self::SettingsUpdated(outcome) => debug
+                .field("kind", &"settings_updated")
+                .field("outcome", outcome),
+            Self::RelayProbed(outcome) => debug
+                .field("kind", &"relay_probed")
+                .field("outcome", outcome),
             Self::EncryptionState(state) => debug
                 .field("kind", &"encryption_state")
                 .field("state", state),

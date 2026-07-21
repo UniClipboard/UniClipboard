@@ -623,6 +623,48 @@ fn operation_response(result: OperationResult) -> Value {
             "offline": report.offline,
             "errors": report.errors,
         }),
+        OperationResult::Settings(settings) => json!({
+            "ok": true,
+            "kind": "settings",
+            "schema_version": settings.schema_version,
+            "auto_sync": settings.sync.auto_sync,
+            "retention_enabled": settings.retention_policy.enabled,
+            "retention_rule_count": settings.retention_policy.rules.len(),
+            "shortcut_count": settings.keyboard_shortcuts.len(),
+            "custom_relay_count": settings.network.custom_relay_urls.len(),
+            "has_auto_save_dir": settings.file_sync.auto_save_dir.is_some(),
+        }),
+        OperationResult::SettingsUpdated(outcome) => match outcome {
+            uc_engine::SettingsUpdateOutcome::Updated(_) => json!({
+                "ok": true,
+                "kind": "settings_updated",
+                "outcome": "updated",
+            }),
+            uc_engine::SettingsUpdateOutcome::Rejected { .. } => json!({
+                "ok": true,
+                "kind": "settings_updated",
+                "outcome": "rejected",
+            }),
+        },
+        OperationResult::RelayProbed(outcome) => {
+            let (outcome, latency_ms) = match outcome {
+                uc_engine::RelayProbeOutcome::Success { latency_ms } => {
+                    ("success", Some(latency_ms))
+                }
+                uc_engine::RelayProbeOutcome::InvalidUrl { .. } => ("invalid_url", None),
+                uc_engine::RelayProbeOutcome::Dns { .. } => ("dns", None),
+                uc_engine::RelayProbeOutcome::Tls { .. } => ("tls", None),
+                uc_engine::RelayProbeOutcome::Handshake { .. } => ("handshake", None),
+                uc_engine::RelayProbeOutcome::Timeout => ("timeout", None),
+                uc_engine::RelayProbeOutcome::Other { .. } => ("other", None),
+            };
+            json!({
+                "ok": true,
+                "kind": "relay_probed",
+                "outcome": outcome,
+                "latency_ms": latency_ms,
+            })
+        }
         OperationResult::EncryptionState(state) => json!({
             "ok": true,
             "kind": "encryption_state",
@@ -1068,6 +1110,24 @@ mod tests {
                 connection_address: Some("private active address".into()),
             },
         ]));
+        let mut settings = uc_engine::SettingsSummary::default();
+        settings.general.device_name = Some("private settings device".into());
+        settings
+            .network
+            .custom_relay_urls
+            .push("https://private-settings-relay.example".into());
+        settings.file_sync.auto_save_dir = Some("/private/settings/path".into());
+        let settings = operation_response(OperationResult::Settings(Box::new(settings)));
+        let settings_rejected = operation_response(OperationResult::SettingsUpdated(
+            uc_engine::SettingsUpdateOutcome::Rejected {
+                reason: "private settings rejection".into(),
+            },
+        ));
+        let relay = operation_response(OperationResult::RelayProbed(
+            uc_engine::RelayProbeOutcome::Dns {
+                message: "private relay error".into(),
+            },
+        ));
         let history = operation_response(OperationResult::HistoryPage {
             entries: vec![uc_engine::EntrySummary {
                 entry_id: "entry-1".into(),
@@ -1145,6 +1205,17 @@ mod tests {
             "private active address",
         ] {
             assert!(!peers.to_string().contains(secret));
+        }
+        for secret in [
+            "private settings device",
+            "private-settings-relay.example",
+            "/private/settings/path",
+            "private settings rejection",
+            "private relay error",
+        ] {
+            assert!(!settings.to_string().contains(secret));
+            assert!(!settings_rejected.to_string().contains(secret));
+            assert!(!relay.to_string().contains(secret));
         }
         assert!(!history.to_string().contains("private payload"));
         assert!(!history_entry.to_string().contains("private full content"));

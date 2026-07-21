@@ -36,6 +36,7 @@ pub mod restore;
 pub(crate) mod runtime;
 pub mod search;
 pub mod session_recovery;
+pub(crate) mod settings;
 pub mod setup_state;
 pub mod storage;
 pub mod sync_engine;

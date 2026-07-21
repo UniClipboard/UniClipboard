@@ -594,6 +594,7 @@ fn mobile_device_management_preserves_one_time_credentials_without_debugging_the
                 device_id: "private mobile device".into(),
                 label: "private phone".into(),
                 client_type: uc_engine::MobileClientTypeSummary::IosShortcut,
+                created_at_ms: 1_700_000_000_000,
                 base_url: "http://private-host:42720".into(),
                 username: "private_user".into(),
                 password: uc_engine::SecretString::new("private password"),
@@ -713,6 +714,9 @@ fn mobile_content_and_streaming_upload_have_stable_redacted_contract() {
             Operation::BeginMobileFileUpload(uc_engine::BeginMobileFileUploadInput {
                 data_name: "private-mobile-file.txt".into(),
                 media_type: "text/private".into(),
+                source_device_id: "private mobile device".into(),
+                transfer_id: "private mobile transfer".into(),
+                total_bytes: Some(7),
             }),
             OperationKind::BeginMobileFileUpload,
         ),
@@ -726,6 +730,7 @@ fn mobile_content_and_streaming_upload_have_stable_redacted_contract() {
             "private compatibility hash",
             "private stable content id",
             "private mobile device",
+            "private mobile transfer",
             "text/private",
         ] {
             assert!(!debug.contains(secret));
@@ -746,8 +751,6 @@ fn mobile_content_and_streaming_upload_have_stable_redacted_contract() {
                     Operation::FinishMobileFileUpload(uc_engine::FinishMobileFileUploadInput {
                         handle: handle.clone(),
                         media_type: "text/private-final".into(),
-                        source_device_id: "private mobile device".into(),
-                        transfer_id: "private transfer".into(),
                     }),
                     OperationKind::FinishMobileFileUpload,
                 ),

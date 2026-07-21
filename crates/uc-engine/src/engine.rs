@@ -94,6 +94,10 @@ impl Engine {
         )
     }
 
+    pub async fn lifecycle_state(&self) -> EngineState {
+        self.state.lock().await.lifecycle
+    }
+
     pub async fn execute(&self, operation: Operation) -> Result<OperationResult, EngineError> {
         let operation_id = format!(
             "operation-{}",
@@ -441,6 +445,7 @@ mod tests {
         operation_started.await;
 
         engine.suspend().await.unwrap();
+        assert_eq!(engine.lifecycle_state().await, EngineState::Suspended);
         let cancelled = tokio::time::timeout(Duration::from_millis(100), execute)
             .await
             .expect("suspended operation did not finish")
@@ -451,6 +456,7 @@ mod tests {
         assert_eq!(runtime.execute_calls.load(Ordering::SeqCst), 1);
 
         engine.resume().await.unwrap();
+        assert_eq!(engine.lifecycle_state().await, EngineState::Running);
         assert_eq!(runtime.resume_calls.load(Ordering::SeqCst), 1);
         assert_eq!(runtime.execute_calls.load(Ordering::SeqCst), 1);
 
@@ -477,6 +483,7 @@ mod tests {
         let (engine, mut events) = Engine::from_runtime(runtime.clone(), 8);
 
         engine.shutdown(Duration::from_millis(50)).await.unwrap();
+        assert_eq!(engine.lifecycle_state().await, EngineState::Stopped);
 
         assert_eq!(runtime.shutdown_calls.load(Ordering::SeqCst), 1);
         let states = tokio::time::timeout(Duration::from_millis(100), async {

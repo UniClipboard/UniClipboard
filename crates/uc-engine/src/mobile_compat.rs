@@ -305,6 +305,7 @@ pub struct MobileDeviceRegistration {
     pub device_id: String,
     pub label: String,
     pub client_type: MobileClientTypeSummary,
+    pub created_at_ms: i64,
     pub base_url: String,
     pub username: String,
     pub password: SecretString,
@@ -320,6 +321,7 @@ impl fmt::Debug for MobileDeviceRegistration {
         formatter
             .debug_struct("MobileDeviceRegistration")
             .field("client_type", &self.client_type)
+            .field("created_at_ms", &self.created_at_ms)
             .field("install_qr_bytes", &self.install_qr_code_png_bytes.len())
             .field("connect_qr_bytes", &self.qr_code_png_bytes.len())
             .finish()

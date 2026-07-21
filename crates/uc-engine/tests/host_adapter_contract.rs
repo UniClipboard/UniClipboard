@@ -12,6 +12,31 @@ use uc_engine::{
 
 static ENGINE_TEST_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
+async fn next_engine_event_matching(
+    events: &mut uc_engine::EventStream,
+    predicate: impl Fn(&EngineEvent) -> bool,
+) -> EngineEvent {
+    tokio::time::timeout(std::time::Duration::from_secs(2), async {
+        loop {
+            let event = events.next().await.expect("engine event stream closed");
+            if predicate(&event) {
+                return event;
+            }
+        }
+    })
+    .await
+    .expect("timed out waiting for engine event")
+}
+
+async fn drain_engine_events(events: &mut uc_engine::EventStream) {
+    loop {
+        match tokio::time::timeout(std::time::Duration::from_millis(1), events.next()).await {
+            Ok(Some(_)) => {}
+            Ok(None) | Err(_) => return,
+        }
+    }
+}
+
 #[derive(Clone, Default)]
 struct MemoryHostSecureStorage {
     values: Arc<Mutex<HashMap<String, Vec<u8>>>>,
@@ -2019,6 +2044,9 @@ async fn engine_mobile_content_round_trips_and_drops_uploads_on_suspend() {
             uc_engine::BeginMobileFileUploadInput {
                 data_name: "mobile-file.txt".into(),
                 media_type: "application/octet-stream".into(),
+                source_device_id: "mobile-source".into(),
+                transfer_id: "mobile-transfer-1".into(),
+                total_bytes: Some(19),
             },
         ))
         .await
@@ -2048,8 +2076,6 @@ async fn engine_mobile_content_round_trips_and_drops_uploads_on_suspend() {
                 uc_engine::FinishMobileFileUploadInput {
                     handle: upload,
                     media_type: "text/plain".into(),
-                    source_device_id: "mobile-source".into(),
-                    transfer_id: "mobile-transfer-1".into(),
                 },
             ))
             .await
@@ -2100,6 +2126,9 @@ async fn engine_mobile_content_round_trips_and_drops_uploads_on_suspend() {
             uc_engine::BeginMobileFileUploadInput {
                 data_name: "aborted.bin".into(),
                 media_type: "application/octet-stream".into(),
+                source_device_id: "mobile-source".into(),
+                transfer_id: "mobile-transfer-aborted".into(),
+                total_bytes: None,
             },
         ))
         .await
@@ -2133,6 +2162,9 @@ async fn engine_mobile_content_round_trips_and_drops_uploads_on_suspend() {
             uc_engine::BeginMobileFileUploadInput {
                 data_name: "stale.bin".into(),
                 media_type: "application/octet-stream".into(),
+                source_device_id: "mobile-source".into(),
+                transfer_id: "mobile-transfer-stale".into(),
+                total_bytes: None,
             },
         ))
         .await
@@ -2155,6 +2187,165 @@ async fn engine_mobile_content_round_trips_and_drops_uploads_on_suspend() {
         stale_error.category(),
         uc_engine::EngineErrorCategory::NotFound
     );
+    engine
+        .shutdown(std::time::Duration::from_secs(15))
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+async fn engine_mobile_upload_owns_transfer_lifecycle_events() {
+    let _guard = ENGINE_TEST_LOCK.lock().await;
+    let temp = tempfile::tempdir().unwrap();
+    let host = HostCapabilities::new(
+        HostDirectories::new(
+            temp.path().join("private"),
+            temp.path().join("cache"),
+            temp.path().join("temporary"),
+        ),
+        Box::new(MemoryHostSecureStorage::default()),
+        Box::new(StaticHostClipboard {
+            snapshot: HostClipboardSnapshot {
+                observed_at_ms: 0,
+                representations: Vec::new(),
+            },
+        }),
+        Box::new(EmptyHostFiles),
+    );
+    let (engine, mut events) = Engine::start(EngineConfig::new("1.2.3"), host)
+        .await
+        .unwrap();
+    engine
+        .execute(uc_engine::Operation::CreateSpace(
+            uc_engine::CreateSpaceInput {
+                device_name: Some("Mobile Upload Device".into()),
+                passphrase: uc_engine::SecretString::new("correct horse"),
+                passphrase_confirmation: uc_engine::SecretString::new("correct horse"),
+            },
+        ))
+        .await
+        .unwrap();
+    drain_engine_events(&mut events).await;
+
+    let upload = engine
+        .execute(uc_engine::Operation::BeginMobileFileUpload(
+            uc_engine::BeginMobileFileUploadInput {
+                data_name: "lifecycle.bin".into(),
+                media_type: "application/octet-stream".into(),
+                source_device_id: "mobile-source".into(),
+                transfer_id: "mobile-transfer-lifecycle".into(),
+                total_bytes: Some(3),
+            },
+        ))
+        .await
+        .unwrap();
+    let uc_engine::OperationResult::MobileFileUploadStarted(upload) = upload else {
+        panic!("expected upload handle");
+    };
+    assert_eq!(
+        next_engine_event_matching(&mut events, |event| matches!(
+            event,
+            EngineEvent::TransferProgress(progress)
+                if progress.transfer_id == "mobile-transfer-lifecycle"
+        ))
+        .await,
+        EngineEvent::TransferProgress(uc_engine::TransferProgress {
+            transfer_id: "mobile-transfer-lifecycle".into(),
+            completed_bytes: 0,
+            total_bytes: Some(3),
+        })
+    );
+
+    tokio::time::sleep(std::time::Duration::from_millis(260)).await;
+    engine
+        .execute(uc_engine::Operation::AppendMobileFileUpload(
+            uc_engine::AppendMobileFileUploadInput {
+                handle: upload.clone(),
+                bytes: b"abc".to_vec(),
+            },
+        ))
+        .await
+        .unwrap();
+    assert_eq!(
+        next_engine_event_matching(&mut events, |event| matches!(
+            event,
+            EngineEvent::TransferProgress(progress)
+                if progress.transfer_id == "mobile-transfer-lifecycle"
+        ))
+        .await,
+        EngineEvent::TransferProgress(uc_engine::TransferProgress {
+            transfer_id: "mobile-transfer-lifecycle".into(),
+            completed_bytes: 3,
+            total_bytes: Some(3),
+        })
+    );
+
+    assert_eq!(
+        engine
+            .execute(uc_engine::Operation::FinishMobileFileUpload(
+                uc_engine::FinishMobileFileUploadInput {
+                    handle: upload,
+                    media_type: "application/octet-stream".into(),
+                },
+            ))
+            .await
+            .unwrap(),
+        uc_engine::OperationResult::MobileFileUploadFinished(
+            uc_engine::MobileSyncDocumentApplyOutcome::Buffered,
+        )
+    );
+    assert_eq!(
+        next_engine_event_matching(&mut events, |event| matches!(
+            event,
+            EngineEvent::TransferProgress(progress)
+                if progress.transfer_id == "mobile-transfer-lifecycle"
+        ))
+        .await,
+        EngineEvent::TransferProgress(uc_engine::TransferProgress {
+            transfer_id: "mobile-transfer-lifecycle".into(),
+            completed_bytes: 3,
+            total_bytes: Some(3),
+        })
+    );
+
+    let aborted = engine
+        .execute(uc_engine::Operation::BeginMobileFileUpload(
+            uc_engine::BeginMobileFileUploadInput {
+                data_name: "aborted-lifecycle.bin".into(),
+                media_type: "application/octet-stream".into(),
+                source_device_id: "mobile-source".into(),
+                transfer_id: "mobile-transfer-aborted-lifecycle".into(),
+                total_bytes: None,
+            },
+        ))
+        .await
+        .unwrap();
+    let uc_engine::OperationResult::MobileFileUploadStarted(aborted) = aborted else {
+        panic!("expected aborted upload handle");
+    };
+    assert_eq!(
+        next_engine_event_matching(&mut events, |event| matches!(
+            event,
+            EngineEvent::TransferProgress(progress)
+                if progress.transfer_id == "mobile-transfer-aborted-lifecycle"
+        ))
+        .await,
+        EngineEvent::TransferProgress(uc_engine::TransferProgress {
+            transfer_id: "mobile-transfer-aborted-lifecycle".into(),
+            completed_bytes: 0,
+            total_bytes: None,
+        })
+    );
+    assert_eq!(
+        engine
+            .execute(uc_engine::Operation::AbortMobileFileUpload(
+                uc_engine::AbortMobileFileUploadInput { handle: aborted },
+            ))
+            .await
+            .unwrap(),
+        uc_engine::OperationResult::MobileFileUploadAborted { existed: true }
+    );
+
     engine
         .shutdown(std::time::Duration::from_secs(15))
         .await

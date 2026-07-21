@@ -173,6 +173,9 @@ impl fmt::Debug for MobileFileUploadHandle {
 pub struct BeginMobileFileUploadInput {
     pub data_name: String,
     pub media_type: String,
+    pub source_device_id: String,
+    pub transfer_id: String,
+    pub total_bytes: Option<u64>,
 }
 
 impl fmt::Debug for BeginMobileFileUploadInput {
@@ -181,6 +184,9 @@ impl fmt::Debug for BeginMobileFileUploadInput {
             .debug_struct("BeginMobileFileUploadInput")
             .field("has_data_name", &!self.data_name.is_empty())
             .field("has_media_type", &!self.media_type.is_empty())
+            .field("has_source_device_id", &!self.source_device_id.is_empty())
+            .field("has_transfer_id", &!self.transfer_id.is_empty())
+            .field("total_bytes", &self.total_bytes)
             .finish()
     }
 }
@@ -205,8 +211,6 @@ impl fmt::Debug for AppendMobileFileUploadInput {
 pub struct FinishMobileFileUploadInput {
     pub handle: MobileFileUploadHandle,
     pub media_type: String,
-    pub source_device_id: String,
-    pub transfer_id: String,
 }
 
 impl fmt::Debug for FinishMobileFileUploadInput {

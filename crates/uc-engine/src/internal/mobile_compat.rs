@@ -108,6 +108,7 @@ pub(crate) async fn execute_register_mobile_device(
                 device_id: output.device.device_id.into_string(),
                 label: output.device.label,
                 client_type: map_client_type(output.device.client_type),
+                created_at_ms: output.device.created_at_ms,
                 base_url: output.base_url,
                 username: output.username,
                 password: crate::SecretString::new(output.password),

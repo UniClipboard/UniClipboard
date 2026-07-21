@@ -34,6 +34,9 @@ use crate::internal::capture::execute_capture_current_clipboard;
 use crate::internal::clipboard_runtime::{
     build_clipboard_runtime, spawn_clipboard_runtime_tasks, ClipboardRuntime,
 };
+use crate::internal::config_migration::{
+    execute_export_config, execute_preview_config_import, execute_stage_config_import,
+};
 use crate::internal::create_space::execute_create_space;
 use crate::internal::delivery::execute_query_entry_delivery;
 use crate::internal::deps::WiredDependencies;
@@ -550,6 +553,33 @@ impl EngineRuntime for ProductionRuntime {
             }
             Operation::ExportDiagnosticLogs(input) => {
                 execute_export_diagnostic_logs(
+                    self.current_facade().await?.as_ref(),
+                    self.files.as_ref(),
+                    &self.temporary_dir,
+                    input,
+                )
+                .await
+            }
+            Operation::ExportConfig(input) => {
+                execute_export_config(
+                    self.current_facade().await?.as_ref(),
+                    self.files.as_ref(),
+                    &self.temporary_dir,
+                    input,
+                )
+                .await
+            }
+            Operation::PreviewConfigImport(input) => {
+                execute_preview_config_import(
+                    self.current_facade().await?.as_ref(),
+                    self.files.as_ref(),
+                    &self.temporary_dir,
+                    input,
+                )
+                .await
+            }
+            Operation::StageConfigImport(input) => {
+                execute_stage_config_import(
                     self.current_facade().await?.as_ref(),
                     self.files.as_ref(),
                     &self.temporary_dir,

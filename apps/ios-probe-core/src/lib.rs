@@ -710,6 +710,60 @@ fn operation_response(result: OperationResult) -> Value {
             "included_file_count": result.included_files.len(),
             "since_unix_ms": result.since_unix_ms,
         }),
+        OperationResult::ConfigExport(outcome) => json!({
+            "ok": true,
+            "kind": "config_export",
+            "outcome": match outcome {
+                uc_engine::ConfigExportOutcome::Exported => "exported",
+                uc_engine::ConfigExportOutcome::Locked => "locked",
+                uc_engine::ConfigExportOutcome::NotInitialized => "not_initialized",
+            },
+        }),
+        OperationResult::ConfigImportPreview(outcome) => match outcome {
+            uc_engine::ConfigImportPreviewOutcome::Ready(preview) => json!({
+                "ok": true,
+                "kind": "config_import_preview",
+                "outcome": "ready",
+                "app_version": preview.app_version,
+                "source_mode": match preview.source_mode {
+                    uc_engine::ConfigSourceModeSummary::Portable => "portable",
+                    uc_engine::ConfigSourceModeSummary::Installed => "installed",
+                },
+                "created_at_unix_ms": preview.created_at_unix_ms,
+                "has_profile_id": !preview.profile_id.is_empty(),
+                "has_device_fingerprint": !preview.device_fingerprint.is_empty(),
+            }),
+            uc_engine::ConfigImportPreviewOutcome::InvalidPasswordOrCorrupt => json!({
+                "ok": true,
+                "kind": "config_import_preview",
+                "outcome": "invalid_password_or_corrupt",
+            }),
+            uc_engine::ConfigImportPreviewOutcome::Incompatible { .. } => json!({
+                "ok": true,
+                "kind": "config_import_preview",
+                "outcome": "incompatible",
+            }),
+        },
+        OperationResult::ConfigImportStaged(outcome) => match outcome {
+            uc_engine::ConfigImportStageOutcome::Staged {
+                unlock_required_after_apply,
+            } => json!({
+                "ok": true,
+                "kind": "config_import_staged",
+                "outcome": "staged",
+                "unlock_required_after_apply": unlock_required_after_apply,
+            }),
+            uc_engine::ConfigImportStageOutcome::InvalidPasswordOrCorrupt => json!({
+                "ok": true,
+                "kind": "config_import_staged",
+                "outcome": "invalid_password_or_corrupt",
+            }),
+            uc_engine::ConfigImportStageOutcome::Incompatible { .. } => json!({
+                "ok": true,
+                "kind": "config_import_staged",
+                "outcome": "incompatible",
+            }),
+        },
         OperationResult::EncryptionState(state) => json!({
             "ok": true,
             "kind": "encryption_state",
@@ -1104,6 +1158,21 @@ mod tests {
         ));
         assert_eq!(logs["included_file_count"], 1);
         assert!(!logs.to_string().contains("private-log-name.json"));
+
+        let config = operation_response(OperationResult::ConfigImportPreview(
+            uc_engine::ConfigImportPreviewOutcome::Ready(uc_engine::ConfigImportPreviewSummary {
+                app_version: "1.2.3".into(),
+                source_mode: uc_engine::ConfigSourceModeSummary::Installed,
+                created_at_unix_ms: 1_700_000_000_000,
+                profile_id: "private profile".into(),
+                device_fingerprint: "private fingerprint".into(),
+            }),
+        ));
+        assert_eq!(config["outcome"], "ready");
+        assert_eq!(config["has_profile_id"], true);
+        assert_eq!(config["has_device_fingerprint"], true);
+        assert!(!config.to_string().contains("private profile"));
+        assert!(!config.to_string().contains("private fingerprint"));
     }
 
     #[test]

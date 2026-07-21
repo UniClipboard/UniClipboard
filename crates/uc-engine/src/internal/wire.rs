@@ -179,6 +179,7 @@ pub struct CoreWiringInputs {
     pub paths: AppPaths,
     pub secure_storage: Arc<dyn SecureStoragePort>,
     pub profile_id: ProfileId,
+    pub app_version: String,
     pub legacy_iroh_identity_dir: PathBuf,
     pub iroh_blob_store_dir: PathBuf,
     pub system_clipboard: SystemClipboardLayer,
@@ -388,6 +389,7 @@ fn build_config_migration_facade(
     clock: &Arc<dyn ClockPort>,
     setup_status: &Arc<dyn SetupStatusPort>,
     space_access_ports: &SpaceAccessPorts,
+    app_version: String,
     migration_paths: ConfigMigrationPaths,
 ) -> Arc<ConfigMigrationFacade> {
     let config_migration_profile = ProfileId::from("default");
@@ -396,14 +398,17 @@ fn build_config_migration_facade(
             secure_storage.clone(),
             Arc::new(Sha256IdentityFingerprintFactory),
         ));
-    let config_migration_adapter = Arc::new(ConfigMigrationAdapter::new(
-        secure_storage.clone(),
-        db_pool_for_config_migration,
-        config_migration_local_identity,
-        clock.clone(),
-        migration_paths,
-        config_migration_profile,
-    ));
+    let config_migration_adapter = Arc::new(
+        ConfigMigrationAdapter::new(
+            secure_storage.clone(),
+            db_pool_for_config_migration,
+            config_migration_local_identity,
+            clock.clone(),
+            migration_paths,
+            config_migration_profile,
+        )
+        .with_app_version(app_version),
+    );
     Arc::new(ConfigMigrationFacade::new(ConfigMigrationDeps {
         export_bundle: config_migration_adapter.clone(),
         preview_import: config_migration_adapter.clone(),
@@ -623,6 +628,7 @@ pub fn wire_dependencies_from_inputs(
         paths,
         secure_storage,
         profile_id,
+        app_version,
         legacy_iroh_identity_dir,
         iroh_blob_store_dir,
         system_clipboard,
@@ -878,6 +884,7 @@ pub fn wire_dependencies_from_inputs(
         &infra.clock,
         &infra.setup_status,
         &space_access_ports,
+        app_version,
         ConfigMigrationPaths {
             db_path: db_path.clone(),
             vault_dir: vault_path.clone(),

@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use zeroize::Zeroize;
 
 mod config;
+mod config_migration;
 mod diagnostics;
 mod engine;
 mod event_stream;
@@ -17,6 +18,7 @@ mod upgrade;
 pub mod internal;
 
 pub use config::EngineConfig;
+pub use config_migration::*;
 pub use diagnostics::*;
 pub use engine::Engine;
 pub use event_stream::EventStream;
@@ -99,6 +101,9 @@ pub enum OperationKind {
     QueryDiagnostics,
     UpdateDebugMode,
     ExportDiagnosticLogs,
+    ExportConfig,
+    PreviewConfigImport,
+    StageConfigImport,
     QueryEncryptionState,
     LockEncryption,
     VerifySecureStorageAccess,
@@ -161,6 +166,9 @@ impl fmt::Display for OperationKind {
             Self::QueryDiagnostics => "query_diagnostics",
             Self::UpdateDebugMode => "update_debug_mode",
             Self::ExportDiagnosticLogs => "export_diagnostic_logs",
+            Self::ExportConfig => "export_config",
+            Self::PreviewConfigImport => "preview_config_import",
+            Self::StageConfigImport => "stage_config_import",
             Self::QueryEncryptionState => "query_encryption_state",
             Self::LockEncryption => "lock_encryption",
             Self::VerifySecureStorageAccess => "verify_secure_storage_access",
@@ -225,6 +233,9 @@ pub enum Operation {
     QueryDiagnostics,
     UpdateDebugMode(UpdateDebugModeInput),
     ExportDiagnosticLogs(ExportDiagnosticLogsInput),
+    ExportConfig(ExportConfigInput),
+    PreviewConfigImport(PreviewConfigImportInput),
+    StageConfigImport(StageConfigImportInput),
     QueryEncryptionState,
     LockEncryption,
     VerifySecureStorageAccess,
@@ -287,6 +298,9 @@ impl Operation {
             Self::QueryDiagnostics => OperationKind::QueryDiagnostics,
             Self::UpdateDebugMode(_) => OperationKind::UpdateDebugMode,
             Self::ExportDiagnosticLogs(_) => OperationKind::ExportDiagnosticLogs,
+            Self::ExportConfig(_) => OperationKind::ExportConfig,
+            Self::PreviewConfigImport(_) => OperationKind::PreviewConfigImport,
+            Self::StageConfigImport(_) => OperationKind::StageConfigImport,
             Self::QueryEncryptionState => OperationKind::QueryEncryptionState,
             Self::LockEncryption => OperationKind::LockEncryption,
             Self::VerifySecureStorageAccess => OperationKind::VerifySecureStorageAccess,
@@ -1188,6 +1202,9 @@ pub enum OperationResult {
     DiagnosticsStatus(DiagnosticsStatusSummary),
     DebugModeUpdated(DebugModeUpdateSummary),
     DiagnosticLogsExported(DiagnosticLogsExportSummary),
+    ConfigExport(ConfigExportOutcome),
+    ConfigImportPreview(ConfigImportPreviewOutcome),
+    ConfigImportStaged(ConfigImportStageOutcome),
     EncryptionState(EncryptionStateSummary),
     EncryptionLocked,
     SecureStorageAccess {
@@ -1286,6 +1303,15 @@ impl fmt::Debug for OperationResult {
             Self::DiagnosticLogsExported(result) => debug
                 .field("kind", &"diagnostic_logs_exported")
                 .field("result", result),
+            Self::ConfigExport(outcome) => debug
+                .field("kind", &"config_export")
+                .field("outcome", outcome),
+            Self::ConfigImportPreview(outcome) => debug
+                .field("kind", &"config_import_preview")
+                .field("outcome", outcome),
+            Self::ConfigImportStaged(outcome) => debug
+                .field("kind", &"config_import_staged")
+                .field("outcome", outcome),
             Self::EncryptionState(state) => debug
                 .field("kind", &"encryption_state")
                 .field("state", state),

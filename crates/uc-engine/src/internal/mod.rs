@@ -6,6 +6,7 @@ pub mod cancel_invitation;
 pub mod capture;
 pub mod clipboard;
 pub(crate) mod clipboard_runtime;
+pub(crate) mod config_migration;
 pub mod create_space;
 pub mod delivery;
 pub mod deps;

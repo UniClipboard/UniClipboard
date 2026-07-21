@@ -375,6 +375,7 @@ pub(crate) fn wire_host_capabilities_with_emitter(
         paths: paths.clone(),
         secure_storage: adapt_secure_storage(secure_storage),
         profile_id: uc_core::ids::ProfileId::from(config.profile_id()),
+        app_version: config.app_version().to_string(),
         legacy_iroh_identity_dir: app_data_root.join("iroh-identity"),
         iroh_blob_store_dir: app_data_root.join("iroh-blobs"),
         system_clipboard: adapt_system_clipboard_layer(

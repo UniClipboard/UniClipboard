@@ -97,6 +97,7 @@ pub struct ConfigMigrationAdapter {
     db_pool: diesel::r2d2::Pool<diesel::r2d2::ConnectionManager<diesel::sqlite::SqliteConnection>>,
     local_identity: Arc<dyn LocalIdentityPort>,
     clock: Arc<dyn ClockPort>,
+    app_version: String,
     paths: ConfigMigrationPaths,
     profile_id: ProfileId,
 }
@@ -128,9 +129,15 @@ impl ConfigMigrationAdapter {
             db_pool,
             local_identity,
             clock,
+            app_version: env!("CARGO_PKG_VERSION").to_string(),
             paths,
             profile_id,
         }
+    }
+
+    pub fn with_app_version(mut self, app_version: impl Into<String>) -> Self {
+        self.app_version = app_version.into();
+        self
     }
 
     /// Read an optional file: `Ok(None)` when absent, `Err` only on a real IO
@@ -465,7 +472,7 @@ impl ExportConfigBundlePort for ConfigMigrationAdapter {
 
         let manifest = BundleManifest {
             schema_ver: MANIFEST_SCHEMA_VER,
-            app_version: env!("CARGO_PKG_VERSION").to_string(),
+            app_version: self.app_version.clone(),
             source_mode: Self::source_mode(),
             created_at_unix_ms,
             profile_id: self.profile_id.inner().clone(),

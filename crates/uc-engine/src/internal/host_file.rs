@@ -1,4 +1,4 @@
-use std::io::Read;
+use std::io::{Read, Write};
 use std::path::Path;
 
 use crate::{HostCapabilityError, HostFileAccess, HostFileHandle};
@@ -34,6 +34,32 @@ pub(crate) async fn copy_path_to_host(
     files
         .finish_write(destination)
         .map_err(HostFileCopyError::Host)
+}
+
+pub(crate) async fn copy_host_to_path(
+    files: &dyn HostFileAccess,
+    source: &HostFileHandle,
+    destination: &Path,
+) -> Result<(), HostFileCopyError> {
+    let metadata = files.metadata(source).map_err(HostFileCopyError::Host)?;
+    let mut output = std::fs::File::create(destination).map_err(|_| HostFileCopyError::SourceIo)?;
+    let mut offset = 0_u64;
+    while offset < metadata.size_bytes {
+        let remaining = metadata.size_bytes - offset;
+        let requested = remaining.min(COPY_CHUNK_SIZE as u64) as u32;
+        let chunk = files
+            .read_chunk(source, offset, requested)
+            .map_err(HostFileCopyError::Host)?;
+        if chunk.is_empty() || chunk.len() > requested as usize {
+            return Err(HostFileCopyError::SourceIo);
+        }
+        output
+            .write_all(&chunk)
+            .map_err(|_| HostFileCopyError::SourceIo)?;
+        offset += chunk.len() as u64;
+        tokio::task::yield_now().await;
+    }
+    output.flush().map_err(|_| HostFileCopyError::SourceIo)
 }
 
 #[cfg(test)]

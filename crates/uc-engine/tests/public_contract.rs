@@ -455,6 +455,54 @@ fn diagnostics_contract_exports_through_host_handles_without_debugging_paths() {
 }
 
 #[test]
+fn config_migration_contract_uses_host_handles_and_redacts_identity_metadata() {
+    let export = Operation::ExportConfig(uc_engine::ExportConfigInput {
+        destination: uc_engine::HostFileHandle::new("private config destination"),
+    });
+    let preview = Operation::PreviewConfigImport(uc_engine::PreviewConfigImportInput {
+        source: uc_engine::HostFileHandle::new("private config source"),
+        password: uc_engine::SecretString::new("private config password"),
+    });
+    let stage = Operation::StageConfigImport(uc_engine::StageConfigImportInput {
+        source: uc_engine::HostFileHandle::new("private config source"),
+        password: uc_engine::SecretString::new("private config password"),
+    });
+    assert_eq!(export.kind(), OperationKind::ExportConfig);
+    assert_eq!(preview.kind(), OperationKind::PreviewConfigImport);
+    assert_eq!(stage.kind(), OperationKind::StageConfigImport);
+    let operations = format!("{export:?}{preview:?}{stage:?}");
+    for secret in [
+        "private config destination",
+        "private config source",
+        "private config password",
+    ] {
+        assert!(!operations.contains(secret));
+    }
+
+    let preview = uc_engine::ConfigImportPreviewSummary {
+        app_version: "1.2.3".into(),
+        source_mode: uc_engine::ConfigSourceModeSummary::Installed,
+        created_at_unix_ms: 1_700_000_000_000,
+        profile_id: "private profile".into(),
+        device_fingerprint: "private fingerprint".into(),
+    };
+    let results = [
+        OperationResult::ConfigImportPreview(uc_engine::ConfigImportPreviewOutcome::Ready(preview)),
+        OperationResult::ConfigImportStaged(uc_engine::ConfigImportStageOutcome::Incompatible {
+            reason: "private incompatibility detail".into(),
+        }),
+    ];
+    let debug = format!("{results:?}");
+    for secret in [
+        "private profile",
+        "private fingerprint",
+        "private incompatibility detail",
+    ] {
+        assert!(!debug.contains(secret));
+    }
+}
+
+#[test]
 fn receive_progress_and_cancellation_have_stable_operations_and_results() {
     let operations = [
         (

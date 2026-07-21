@@ -102,6 +102,7 @@ pub fn wire_dependencies(
         paths,
         secure_storage,
         profile_id: ProfileId::from("default"),
+        app_version: env!("CARGO_PKG_VERSION").to_string(),
         legacy_iroh_identity_dir,
         iroh_blob_store_dir,
         system_clipboard,

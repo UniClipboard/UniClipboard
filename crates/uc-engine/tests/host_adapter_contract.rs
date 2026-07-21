@@ -615,6 +615,7 @@ impl HostFileAccess for ReadableHostFiles {
 struct RecordingHostFilesState {
     writes: Mutex<Vec<(String, u64, Vec<u8>)>>,
     finished: Mutex<Vec<String>>,
+    contents: Mutex<HashMap<String, Vec<u8>>>,
 }
 
 struct RecordingHostFiles {
@@ -622,20 +623,39 @@ struct RecordingHostFiles {
 }
 
 impl HostFileAccess for RecordingHostFiles {
-    fn metadata(&self, _handle: &HostFileHandle) -> Result<HostFileMetadata, HostCapabilityError> {
-        Err(HostCapabilityError::new(
-            uc_engine::HostCapabilityErrorCategory::InvalidHandle,
-            "missing",
-        ))
+    fn metadata(&self, handle: &HostFileHandle) -> Result<HostFileMetadata, HostCapabilityError> {
+        let contents = self.state.contents.lock().unwrap();
+        let bytes = contents.get(handle.as_str()).ok_or_else(|| {
+            HostCapabilityError::new(
+                uc_engine::HostCapabilityErrorCategory::InvalidHandle,
+                "missing",
+            )
+        })?;
+        Ok(HostFileMetadata {
+            display_name: "opaque-host-file".into(),
+            size_bytes: bytes.len() as u64,
+            mime_type: None,
+        })
     }
 
     fn read_chunk(
         &self,
-        _handle: &HostFileHandle,
-        _offset: u64,
-        _max_bytes: u32,
+        handle: &HostFileHandle,
+        offset: u64,
+        max_bytes: u32,
     ) -> Result<Vec<u8>, HostCapabilityError> {
-        Ok(Vec::new())
+        let contents = self.state.contents.lock().unwrap();
+        let bytes = contents.get(handle.as_str()).ok_or_else(|| {
+            HostCapabilityError::new(
+                uc_engine::HostCapabilityErrorCategory::InvalidHandle,
+                "missing",
+            )
+        })?;
+        let start = usize::try_from(offset)
+            .unwrap_or(usize::MAX)
+            .min(bytes.len());
+        let end = start.saturating_add(max_bytes as usize).min(bytes.len());
+        Ok(bytes[start..end].to_vec())
     }
 
     fn write_chunk(
@@ -649,6 +669,15 @@ impl HostFileAccess for RecordingHostFiles {
             offset,
             bytes.to_vec(),
         ));
+        let mut contents = self.state.contents.lock().unwrap();
+        let output = contents.entry(handle.as_str().to_string()).or_default();
+        if output.len() as u64 != offset {
+            return Err(HostCapabilityError::new(
+                uc_engine::HostCapabilityErrorCategory::Io,
+                "non-sequential test write",
+            ));
+        }
+        output.extend_from_slice(bytes);
         Ok(())
     }
 
@@ -742,6 +771,17 @@ async fn engine_start_builds_a_resumable_real_session() {
             .await
             .unwrap(),
         uc_engine::OperationResult::Devices(Vec::new())
+    );
+    assert_eq!(
+        engine
+            .execute(uc_engine::Operation::ExportConfig(
+                uc_engine::ExportConfigInput {
+                    destination: HostFileHandle::new("uninitialized-config"),
+                },
+            ))
+            .await
+            .unwrap(),
+        uc_engine::OperationResult::ConfigExport(uc_engine::ConfigExportOutcome::NotInitialized,)
     );
     assert!(matches!(
         engine
@@ -843,6 +883,78 @@ async fn engine_start_builds_a_resumable_real_session() {
         uc_engine::OperationResult::SpaceCreated { self_device_id, .. } => self_device_id.clone(),
         other => panic!("expected created space, got {other:?}"),
     };
+    assert_eq!(
+        engine
+            .execute(uc_engine::Operation::ExportConfig(
+                uc_engine::ExportConfigInput {
+                    destination: HostFileHandle::new("config-bundle"),
+                },
+            ))
+            .await
+            .unwrap(),
+        uc_engine::OperationResult::ConfigExport(uc_engine::ConfigExportOutcome::Exported)
+    );
+    let preview = engine
+        .execute(uc_engine::Operation::PreviewConfigImport(
+            uc_engine::PreviewConfigImportInput {
+                source: HostFileHandle::new("config-bundle"),
+                password: uc_engine::SecretString::new("correct horse"),
+            },
+        ))
+        .await
+        .unwrap();
+    assert!(matches!(
+        preview,
+        uc_engine::OperationResult::ConfigImportPreview(
+            uc_engine::ConfigImportPreviewOutcome::Ready(
+                uc_engine::ConfigImportPreviewSummary {
+                    ref app_version,
+                    ref source_mode,
+                    ref profile_id,
+                    ref device_fingerprint,
+                    ..
+                }
+            )
+        ) if app_version == "1.2.3"
+            && matches!(
+                source_mode,
+                uc_engine::ConfigSourceModeSummary::Portable
+                    | uc_engine::ConfigSourceModeSummary::Installed
+            )
+            && !profile_id.is_empty()
+            && !device_fingerprint.is_empty()
+    ));
+    assert_eq!(
+        engine
+            .execute(uc_engine::Operation::PreviewConfigImport(
+                uc_engine::PreviewConfigImportInput {
+                    source: HostFileHandle::new("config-bundle"),
+                    password: uc_engine::SecretString::new("wrong password"),
+                },
+            ))
+            .await
+            .unwrap(),
+        uc_engine::OperationResult::ConfigImportPreview(
+            uc_engine::ConfigImportPreviewOutcome::InvalidPasswordOrCorrupt,
+        )
+    );
+    assert!(matches!(
+        engine
+            .execute(uc_engine::Operation::StageConfigImport(
+                uc_engine::StageConfigImportInput {
+                    source: HostFileHandle::new("config-bundle"),
+                    password: uc_engine::SecretString::new("correct horse"),
+                },
+            ))
+            .await
+            .unwrap(),
+        uc_engine::OperationResult::ConfigImportStaged(
+            uc_engine::ConfigImportStageOutcome::Staged { .. }
+        )
+    ));
+    host_files.writes.lock().unwrap().clear();
+    host_files.finished.lock().unwrap().clear();
+    host_files.contents.lock().unwrap().clear();
     let initial_preferences = engine
         .execute(uc_engine::Operation::QueryMemberSyncPreferences(
             uc_engine::QueryMemberSyncPreferencesInput {

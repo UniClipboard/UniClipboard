@@ -774,6 +774,53 @@ async fn engine_start_builds_a_resumable_real_session() {
     );
     assert_eq!(
         engine
+            .execute(uc_engine::Operation::ListMobileDevices)
+            .await
+            .unwrap(),
+        uc_engine::OperationResult::MobileDevices(Vec::new())
+    );
+    assert_eq!(
+        engine
+            .execute(uc_engine::Operation::RevokeMobileDevice(
+                uc_engine::MobileDeviceInput {
+                    device_id: "missing-mobile-device".into(),
+                },
+            ))
+            .await
+            .unwrap(),
+        uc_engine::OperationResult::MobileDeviceRevoked(
+            uc_engine::MobileDeviceRevokeOutcome::NotFound,
+        )
+    );
+    assert_eq!(
+        engine
+            .execute(uc_engine::Operation::AuthenticateMobileRequest(
+                uc_engine::AuthenticateMobileRequestInput {
+                    authorization: uc_engine::SecretString::new("invalid authorization"),
+                },
+            ))
+            .await
+            .unwrap(),
+        uc_engine::OperationResult::MobileAuthentication(
+            uc_engine::MobileAuthenticationOutcome::Rejected,
+        )
+    );
+    assert_eq!(
+        engine
+            .execute(uc_engine::Operation::RevalidateMobileCredential(
+                uc_engine::RevalidateMobileCredentialInput {
+                    credential: uc_engine::MobileCredential::new(
+                        "missing-mobile-device",
+                        "missing-password-proof",
+                    ),
+                },
+            ))
+            .await
+            .unwrap(),
+        uc_engine::OperationResult::MobileCredentialCurrent { current: false }
+    );
+    assert_eq!(
+        engine
             .execute(uc_engine::Operation::ExportConfig(
                 uc_engine::ExportConfigInput {
                     destination: HostFileHandle::new("uninitialized-config"),

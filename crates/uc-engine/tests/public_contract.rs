@@ -503,6 +503,57 @@ fn config_migration_contract_uses_host_handles_and_redacts_identity_metadata() {
 }
 
 #[test]
+fn mobile_credentials_have_stable_operations_and_redacted_results() {
+    let operations = [
+        (
+            Operation::ListMobileDevices,
+            OperationKind::ListMobileDevices,
+        ),
+        (
+            Operation::RevokeMobileDevice(uc_engine::MobileDeviceInput {
+                device_id: "private mobile device".into(),
+            }),
+            OperationKind::RevokeMobileDevice,
+        ),
+        (
+            Operation::AuthenticateMobileRequest(uc_engine::AuthenticateMobileRequestInput {
+                authorization: uc_engine::SecretString::new("private authorization"),
+            }),
+            OperationKind::AuthenticateMobileRequest,
+        ),
+        (
+            Operation::RevalidateMobileCredential(uc_engine::RevalidateMobileCredentialInput {
+                credential: uc_engine::MobileCredential::new(
+                    "private mobile device",
+                    "private password proof",
+                ),
+            }),
+            OperationKind::RevalidateMobileCredential,
+        ),
+    ];
+    for (operation, expected) in operations {
+        assert_eq!(operation.kind(), expected);
+        let debug = format!("{operation:?}");
+        assert!(!debug.contains("private mobile device"));
+        assert!(!debug.contains("private authorization"));
+        assert!(!debug.contains("private password proof"));
+    }
+
+    let result =
+        OperationResult::MobileRequestAuthenticated(uc_engine::MobileAuthenticatedSession {
+            device_id: "private mobile device".into(),
+            client_type: uc_engine::MobileClientTypeSummary::IosShortcut,
+            credential: uc_engine::MobileCredential::new(
+                "private mobile device",
+                "private password proof",
+            ),
+        });
+    let debug = format!("{result:?}");
+    assert!(!debug.contains("private mobile device"));
+    assert!(!debug.contains("private password proof"));
+}
+
+#[test]
 fn receive_progress_and_cancellation_have_stable_operations_and_results() {
     let operations = [
         (

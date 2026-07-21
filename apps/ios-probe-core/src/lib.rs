@@ -764,6 +764,39 @@ fn operation_response(result: OperationResult) -> Value {
                 "outcome": "incompatible",
             }),
         },
+        OperationResult::MobileDevices(devices) => json!({
+            "ok": true,
+            "kind": "mobile_devices",
+            "count": devices.len(),
+        }),
+        OperationResult::MobileDeviceRevoked(outcome) => json!({
+            "ok": true,
+            "kind": "mobile_device_revoked",
+            "outcome": match outcome {
+                uc_engine::MobileDeviceRevokeOutcome::Revoked => "revoked",
+                uc_engine::MobileDeviceRevokeOutcome::NotFound => "not_found",
+            },
+        }),
+        OperationResult::MobileRequestAuthenticated(session) => json!({
+            "ok": true,
+            "kind": "mobile_request_authenticated",
+            "client_type": match session.client_type {
+                uc_engine::MobileClientTypeSummary::IosShortcut => "ios_shortcut",
+            },
+            "has_credential": true,
+        }),
+        OperationResult::MobileAuthentication(outcome) => json!({
+            "ok": true,
+            "kind": "mobile_authentication",
+            "outcome": match outcome {
+                uc_engine::MobileAuthenticationOutcome::Rejected => "rejected",
+            },
+        }),
+        OperationResult::MobileCredentialCurrent { current } => json!({
+            "ok": true,
+            "kind": "mobile_credential_current",
+            "current": current,
+        }),
         OperationResult::EncryptionState(state) => json!({
             "ok": true,
             "kind": "encryption_state",
@@ -1173,6 +1206,21 @@ mod tests {
         assert_eq!(config["has_device_fingerprint"], true);
         assert!(!config.to_string().contains("private profile"));
         assert!(!config.to_string().contains("private fingerprint"));
+
+        let mobile = operation_response(OperationResult::MobileRequestAuthenticated(
+            uc_engine::MobileAuthenticatedSession {
+                device_id: "private mobile device".into(),
+                client_type: uc_engine::MobileClientTypeSummary::IosShortcut,
+                credential: uc_engine::MobileCredential::new(
+                    "private mobile device",
+                    "private password proof",
+                ),
+            },
+        ));
+        assert_eq!(mobile["kind"], "mobile_request_authenticated");
+        assert_eq!(mobile["has_credential"], true);
+        assert!(!mobile.to_string().contains("private mobile device"));
+        assert!(!mobile.to_string().contains("private password proof"));
     }
 
     #[test]

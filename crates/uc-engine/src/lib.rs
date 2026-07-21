@@ -11,6 +11,7 @@ mod diagnostics;
 mod engine;
 mod event_stream;
 mod host;
+mod mobile_compat;
 mod settings;
 mod upgrade;
 
@@ -27,6 +28,7 @@ pub use host::{
     HostClipboardChange, HostClipboardChangeStream, HostClipboardRepresentation,
     HostClipboardSnapshot, HostDirectories, HostFileAccess, HostFileMetadata, HostSecureStorage,
 };
+pub use mobile_compat::*;
 pub use settings::*;
 pub use upgrade::*;
 
@@ -104,6 +106,10 @@ pub enum OperationKind {
     ExportConfig,
     PreviewConfigImport,
     StageConfigImport,
+    ListMobileDevices,
+    RevokeMobileDevice,
+    AuthenticateMobileRequest,
+    RevalidateMobileCredential,
     QueryEncryptionState,
     LockEncryption,
     VerifySecureStorageAccess,
@@ -169,6 +175,10 @@ impl fmt::Display for OperationKind {
             Self::ExportConfig => "export_config",
             Self::PreviewConfigImport => "preview_config_import",
             Self::StageConfigImport => "stage_config_import",
+            Self::ListMobileDevices => "list_mobile_devices",
+            Self::RevokeMobileDevice => "revoke_mobile_device",
+            Self::AuthenticateMobileRequest => "authenticate_mobile_request",
+            Self::RevalidateMobileCredential => "revalidate_mobile_credential",
             Self::QueryEncryptionState => "query_encryption_state",
             Self::LockEncryption => "lock_encryption",
             Self::VerifySecureStorageAccess => "verify_secure_storage_access",
@@ -236,6 +246,10 @@ pub enum Operation {
     ExportConfig(ExportConfigInput),
     PreviewConfigImport(PreviewConfigImportInput),
     StageConfigImport(StageConfigImportInput),
+    ListMobileDevices,
+    RevokeMobileDevice(MobileDeviceInput),
+    AuthenticateMobileRequest(AuthenticateMobileRequestInput),
+    RevalidateMobileCredential(RevalidateMobileCredentialInput),
     QueryEncryptionState,
     LockEncryption,
     VerifySecureStorageAccess,
@@ -301,6 +315,10 @@ impl Operation {
             Self::ExportConfig(_) => OperationKind::ExportConfig,
             Self::PreviewConfigImport(_) => OperationKind::PreviewConfigImport,
             Self::StageConfigImport(_) => OperationKind::StageConfigImport,
+            Self::ListMobileDevices => OperationKind::ListMobileDevices,
+            Self::RevokeMobileDevice(_) => OperationKind::RevokeMobileDevice,
+            Self::AuthenticateMobileRequest(_) => OperationKind::AuthenticateMobileRequest,
+            Self::RevalidateMobileCredential(_) => OperationKind::RevalidateMobileCredential,
             Self::QueryEncryptionState => OperationKind::QueryEncryptionState,
             Self::LockEncryption => OperationKind::LockEncryption,
             Self::VerifySecureStorageAccess => OperationKind::VerifySecureStorageAccess,
@@ -1205,6 +1223,13 @@ pub enum OperationResult {
     ConfigExport(ConfigExportOutcome),
     ConfigImportPreview(ConfigImportPreviewOutcome),
     ConfigImportStaged(ConfigImportStageOutcome),
+    MobileDevices(Vec<MobileDeviceSummary>),
+    MobileDeviceRevoked(MobileDeviceRevokeOutcome),
+    MobileRequestAuthenticated(MobileAuthenticatedSession),
+    MobileAuthentication(MobileAuthenticationOutcome),
+    MobileCredentialCurrent {
+        current: bool,
+    },
     EncryptionState(EncryptionStateSummary),
     EncryptionLocked,
     SecureStorageAccess {
@@ -1312,6 +1337,21 @@ impl fmt::Debug for OperationResult {
             Self::ConfigImportStaged(outcome) => debug
                 .field("kind", &"config_import_staged")
                 .field("outcome", outcome),
+            Self::MobileDevices(devices) => debug
+                .field("kind", &"mobile_devices")
+                .field("device_count", &devices.len()),
+            Self::MobileDeviceRevoked(outcome) => debug
+                .field("kind", &"mobile_device_revoked")
+                .field("outcome", outcome),
+            Self::MobileRequestAuthenticated(session) => debug
+                .field("kind", &"mobile_request_authenticated")
+                .field("session", session),
+            Self::MobileAuthentication(outcome) => debug
+                .field("kind", &"mobile_authentication")
+                .field("outcome", outcome),
+            Self::MobileCredentialCurrent { current } => debug
+                .field("kind", &"mobile_credential_current")
+                .field("current", current),
             Self::EncryptionState(state) => debug
                 .field("kind", &"encryption_state")
                 .field("state", state),

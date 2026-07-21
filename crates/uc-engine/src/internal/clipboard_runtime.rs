@@ -23,6 +23,7 @@ pub(crate) struct ClipboardRuntime {
     pub live_index: Arc<ClipboardLiveIndexFacade>,
     pub outbound: Arc<ClipboardOutboundFacade>,
     pub inbound: Arc<InboundClipboardFacade>,
+    pub apply_inbound: Arc<ApplyInboundClipboardUseCase>,
 }
 
 pub(crate) fn build_clipboard_runtime(
@@ -148,7 +149,8 @@ pub(crate) fn build_clipboard_runtime(
         )),
         live_index: Arc::new(ClipboardLiveIndexFacade::new(search_live_indexer)),
         outbound,
-        inbound: Arc::new(InboundClipboardFacade::new(apply_inbound)),
+        inbound: Arc::new(InboundClipboardFacade::new(apply_inbound.clone())),
+        apply_inbound,
     }
 }
 

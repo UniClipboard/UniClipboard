@@ -55,6 +55,10 @@ Running|Quiescing|Quiesced|Suspended -> ShuttingDown -> Stopped
 | `QueryStorageStats` | 查询数据库、密钥库、缓存和日志占用大小，不返回本机目录 |
 | `ClearStorageCache` | 清理核心缓存并返回实际释放的字节数 |
 | `QueryLocalDevice` | 返回本机设备编号和按设置解析后的显示名 |
+| `ListMobileDevices` | 列出用户显式启用的 LAN 兼容通道所登记的移动设备 |
+| `RevokeMobileDevice` | 撤销一台 LAN 兼容设备的访问凭据 |
+| `AuthenticateMobileRequest` | 校验一次 LAN 兼容请求并返回脱敏凭据凭证 |
+| `RevalidateMobileCredential` | 复查长连接使用的凭据凭证是否仍然有效 |
 | `QueryEncryptionState` | 查询当前空间是否已初始化、加密会话是否可用 |
 | `LockEncryption` | 清除当前加密会话并关闭接收入口 |
 | `VerifySecureStorageAccess` | 检查宿主安全存储是否可在当前环境中访问 |
@@ -97,6 +101,8 @@ Running|Quiescing|Quiesced|Suspended -> ShuttingDown -> Stopped
 `QueryStorageStats` 和 `ClearStorageCache` 由核心执行。宿主只能看到分类后的字节数和实际释放量，不能取得数据库、密钥库、缓存或日志的本机路径。
 
 `QueryLocalDevice` 的显示名由核心统一读取并规范化；设置缺失、读取失败或名称为空时使用稳定默认名称。调试输出不得包含显示名。
+
+四个移动凭据操作只服务于用户显式启用的 LAN HTTP 兼容通道，不会在 P2P 失败时自动触发，也不替代完整节点能力。核心统一拥有设备记录、密码校验和撤销规则；HTTP 监听、网卡选择、端口绑定与重启仍由桌面外壳负责。鉴权成功可以返回标记内容来源所需的设备编号、设备类别和不透明凭据凭证，但设备编号、标签、用户名、授权头和密码校验材料不得进入调试输出。长连接复查必须回传凭据凭证，宿主不得自行读取或比较持久化的密码散列。
 
 `QueryEncryptionState` 只返回初始化和会话可用状态。`LockEncryption` 成功后必须同时关闭接收入口，避免锁定后继续写入加密业务数据。`VerifySecureStorageAccess` 使用跨平台安全存储语义，宿主接口可按平台显示为 Keychain、Keystore 或对应系统名称。
 

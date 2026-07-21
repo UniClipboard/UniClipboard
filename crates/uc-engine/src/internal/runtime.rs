@@ -48,7 +48,8 @@ use crate::internal::encryption::{
     execute_lock_encryption, execute_query_encryption_state, execute_verify_secure_storage_access,
 };
 use crate::internal::facade::{
-    build_app_facade_from_deps, AppFacadeAssemblyOptions, ClipboardRestoreAssembly,
+    build_app_facade_from_deps, build_mobile_sync_facade, AppFacadeAssemblyOptions,
+    ClipboardRestoreAssembly,
 };
 use crate::internal::factory_reset::execute_factory_reset_space;
 use crate::internal::file_transfer::FileTransferLifecycle;
@@ -69,6 +70,10 @@ use crate::internal::member::{
     execute_update_member_sync_preferences,
 };
 use crate::internal::migration_progress::execute_query_migration_progress;
+use crate::internal::mobile_compat::{
+    execute_authenticate_mobile_request, execute_list_mobile_devices,
+    execute_revalidate_mobile_credential, execute_revoke_mobile_device,
+};
 use crate::internal::peer_connections::{
     execute_query_peer_connections, execute_refresh_peer_connections,
 };
@@ -134,6 +139,7 @@ pub(crate) struct ProductionRuntime {
 
 struct ProductionSession {
     facade: Arc<AppFacade>,
+    mobile_sync: Arc<uc_application::facade::MobileSyncFacade>,
     clipboard: ClipboardRuntime,
     sync_engine: SyncEngineAssembly,
     tasks: Arc<TaskRegistry>,
@@ -371,6 +377,15 @@ impl ProductionRuntime {
         sync_engine.attach_restore_broadcast(restore_rx);
         let search_coordinator = build_search_coordinator(&wired.deps);
         let clipboard = build_clipboard_runtime(wired, &sync_engine);
+        let mobile_sync = build_mobile_sync_facade(
+            &wired.deps,
+            paths,
+            Arc::clone(&clipboard.apply_inbound),
+            Some(Arc::clone(&wired.shared.file_transfer_facade)),
+            None,
+            Some(Arc::clone(&clipboard.outbound)),
+            Some(Arc::clone(&sync_engine.active_clipboard)),
+        );
         let tasks = Arc::new(TaskRegistry::new());
         let search = Arc::clone(&search_coordinator);
         let facade = build_app_facade_from_deps(
@@ -426,6 +441,7 @@ impl ProductionRuntime {
 
         Ok(ProductionSession {
             facade,
+            mobile_sync,
             clipboard,
             sync_engine,
             tasks,
@@ -438,6 +454,17 @@ impl ProductionRuntime {
             .await
             .as_ref()
             .map(|session| Arc::clone(&session.facade))
+            .ok_or_else(operation_unavailable_error)
+    }
+
+    async fn current_mobile_sync(
+        &self,
+    ) -> Result<Arc<uc_application::facade::MobileSyncFacade>, EngineError> {
+        self.session
+            .lock()
+            .await
+            .as_ref()
+            .map(|session| Arc::clone(&session.mobile_sync))
             .ok_or_else(operation_unavailable_error)
     }
 }
@@ -583,6 +610,27 @@ impl EngineRuntime for ProductionRuntime {
                     self.current_facade().await?.as_ref(),
                     self.files.as_ref(),
                     &self.temporary_dir,
+                    input,
+                )
+                .await
+            }
+            Operation::ListMobileDevices => {
+                execute_list_mobile_devices(self.current_mobile_sync().await?.as_ref()).await
+            }
+            Operation::RevokeMobileDevice(input) => {
+                execute_revoke_mobile_device(self.current_mobile_sync().await?.as_ref(), input)
+                    .await
+            }
+            Operation::AuthenticateMobileRequest(input) => {
+                execute_authenticate_mobile_request(
+                    self.current_mobile_sync().await?.as_ref(),
+                    input,
+                )
+                .await
+            }
+            Operation::RevalidateMobileCredential(input) => {
+                execute_revalidate_mobile_credential(
+                    self.current_mobile_sync().await?.as_ref(),
                     input,
                 )
                 .await

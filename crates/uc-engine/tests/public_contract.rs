@@ -302,6 +302,46 @@ fn history_management_contract_preserves_results_without_debugging_user_content(
 }
 
 #[test]
+fn peer_connection_contract_preserves_status_without_debugging_identity_or_addresses() {
+    assert_eq!(
+        Operation::QueryPeerConnections.kind(),
+        OperationKind::QueryPeerConnections
+    );
+    assert_eq!(
+        Operation::RefreshPeerConnections.kind(),
+        OperationKind::RefreshPeerConnections
+    );
+
+    let connections = OperationResult::PeerConnections(vec![uc_engine::PeerConnectionSummary {
+        peer_id: "private-peer-id".into(),
+        device_name: Some("Private Mac".into()),
+        addresses: vec!["private-address".into()],
+        is_paired: true,
+        connected: true,
+        pairing_state: "paired".into(),
+        channel: uc_engine::PeerConnectionChannelSummary::Direct,
+        connection_address: Some("private-active-address".into()),
+    }]);
+    let refreshed =
+        OperationResult::PeerConnectionsRefreshed(uc_engine::PeerConnectionRefreshSummary {
+            total: 3,
+            online: 1,
+            offline: 1,
+            errors: 1,
+        });
+
+    let debug = format!("{connections:?} {refreshed:?}");
+    for secret in [
+        "private-peer-id",
+        "Private Mac",
+        "private-address",
+        "private-active-address",
+    ] {
+        assert!(!debug.contains(secret), "debug output leaked {secret}");
+    }
+}
+
+#[test]
 fn receive_progress_and_cancellation_have_stable_operations_and_results() {
     let operations = [
         (

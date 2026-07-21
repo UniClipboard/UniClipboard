@@ -83,6 +83,8 @@ pub enum OperationKind {
     QueryStorageStats,
     ClearStorageCache,
     QueryLocalDevice,
+    QueryPeerConnections,
+    RefreshPeerConnections,
     QueryEncryptionState,
     LockEncryption,
     VerifySecureStorageAccess,
@@ -135,6 +137,8 @@ impl fmt::Display for OperationKind {
             Self::QueryStorageStats => "query_storage_stats",
             Self::ClearStorageCache => "clear_storage_cache",
             Self::QueryLocalDevice => "query_local_device",
+            Self::QueryPeerConnections => "query_peer_connections",
+            Self::RefreshPeerConnections => "refresh_peer_connections",
             Self::QueryEncryptionState => "query_encryption_state",
             Self::LockEncryption => "lock_encryption",
             Self::VerifySecureStorageAccess => "verify_secure_storage_access",
@@ -189,6 +193,8 @@ pub enum Operation {
     QueryStorageStats,
     ClearStorageCache,
     QueryLocalDevice,
+    QueryPeerConnections,
+    RefreshPeerConnections,
     QueryEncryptionState,
     LockEncryption,
     VerifySecureStorageAccess,
@@ -241,6 +247,8 @@ impl Operation {
             Self::QueryStorageStats => OperationKind::QueryStorageStats,
             Self::ClearStorageCache => OperationKind::ClearStorageCache,
             Self::QueryLocalDevice => OperationKind::QueryLocalDevice,
+            Self::QueryPeerConnections => OperationKind::QueryPeerConnections,
+            Self::RefreshPeerConnections => OperationKind::RefreshPeerConnections,
             Self::QueryEncryptionState => OperationKind::QueryEncryptionState,
             Self::LockEncryption => OperationKind::LockEncryption,
             Self::VerifySecureStorageAccess => OperationKind::VerifySecureStorageAccess,
@@ -1130,6 +1138,8 @@ pub enum OperationResult {
         freed_bytes: u64,
     },
     LocalDevice(LocalDeviceSummary),
+    PeerConnections(Vec<PeerConnectionSummary>),
+    PeerConnectionsRefreshed(PeerConnectionRefreshSummary),
     EncryptionState(EncryptionStateSummary),
     EncryptionLocked,
     SecureStorageAccess {
@@ -1200,6 +1210,12 @@ impl fmt::Debug for OperationResult {
             Self::LocalDevice(device) => {
                 debug.field("kind", &"local_device").field("device", device)
             }
+            Self::PeerConnections(peers) => debug
+                .field("kind", &"peer_connections")
+                .field("peer_count", &peers.len()),
+            Self::PeerConnectionsRefreshed(report) => debug
+                .field("kind", &"peer_connections_refreshed")
+                .field("report", report),
             Self::EncryptionState(state) => debug
                 .field("kind", &"encryption_state")
                 .field("state", state),
@@ -1348,6 +1364,50 @@ pub struct StorageStatsSummary {
 pub struct LocalDeviceSummary {
     pub device_id: String,
     pub display_name: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PeerConnectionChannelSummary {
+    Direct,
+    Relay,
+    Offline,
+    Unknown,
+}
+
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PeerConnectionSummary {
+    pub peer_id: String,
+    pub device_name: Option<String>,
+    pub addresses: Vec<String>,
+    pub is_paired: bool,
+    pub connected: bool,
+    pub pairing_state: String,
+    pub channel: PeerConnectionChannelSummary,
+    pub connection_address: Option<String>,
+}
+
+impl fmt::Debug for PeerConnectionSummary {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("PeerConnectionSummary")
+            .field("has_device_name", &self.device_name.is_some())
+            .field("address_count", &self.addresses.len())
+            .field("is_paired", &self.is_paired)
+            .field("connected", &self.connected)
+            .field("has_pairing_state", &!self.pairing_state.is_empty())
+            .field("channel", &self.channel)
+            .field("has_connection_address", &self.connection_address.is_some())
+            .finish()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PeerConnectionRefreshSummary {
+    pub total: u32,
+    pub online: u32,
+    pub offline: u32,
+    pub errors: u32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

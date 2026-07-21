@@ -597,6 +597,32 @@ fn operation_response(result: OperationResult) -> Value {
             "device_id": device.device_id,
             "has_display_name": !device.display_name.is_empty(),
         }),
+        OperationResult::PeerConnections(peers) => {
+            let channels = peers
+                .iter()
+                .map(|peer| match peer.channel {
+                    uc_engine::PeerConnectionChannelSummary::Direct => "direct",
+                    uc_engine::PeerConnectionChannelSummary::Relay => "relay",
+                    uc_engine::PeerConnectionChannelSummary::Offline => "offline",
+                    uc_engine::PeerConnectionChannelSummary::Unknown => "unknown",
+                })
+                .collect::<Vec<_>>();
+            json!({
+                "ok": true,
+                "kind": "peer_connections",
+                "count": peers.len(),
+                "connected_count": peers.iter().filter(|peer| peer.connected).count(),
+                "channels": channels,
+            })
+        }
+        OperationResult::PeerConnectionsRefreshed(report) => json!({
+            "ok": true,
+            "kind": "peer_connections_refreshed",
+            "total": report.total,
+            "online": report.online,
+            "offline": report.offline,
+            "errors": report.errors,
+        }),
         OperationResult::EncryptionState(state) => json!({
             "ok": true,
             "kind": "encryption_state",
@@ -1030,6 +1056,18 @@ mod tests {
                 display_name: "private phone name".into(),
                 online: true,
             }]));
+        let peers = operation_response(OperationResult::PeerConnections(vec![
+            uc_engine::PeerConnectionSummary {
+                peer_id: "private-peer-id".into(),
+                device_name: Some("private peer name".into()),
+                addresses: vec!["private peer address".into()],
+                is_paired: true,
+                connected: true,
+                pairing_state: "trusted".into(),
+                channel: uc_engine::PeerConnectionChannelSummary::Relay,
+                connection_address: Some("private active address".into()),
+            },
+        ]));
         let history = operation_response(OperationResult::HistoryPage {
             entries: vec![uc_engine::EntrySummary {
                 entry_id: "entry-1".into(),
@@ -1099,6 +1137,15 @@ mod tests {
 
         assert!(!local.to_string().contains("private local device name"));
         assert!(!devices.to_string().contains("private phone name"));
+        assert_eq!(peers["channels"][0], "relay");
+        for secret in [
+            "private-peer-id",
+            "private peer name",
+            "private peer address",
+            "private active address",
+        ] {
+            assert!(!peers.to_string().contains(secret));
+        }
         assert!(!history.to_string().contains("private payload"));
         assert!(!history_entry.to_string().contains("private full content"));
         assert!(!history_resource.to_string().contains("private/resource"));

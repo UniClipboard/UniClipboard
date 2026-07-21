@@ -63,6 +63,9 @@ use crate::internal::member::{
     execute_update_member_sync_preferences,
 };
 use crate::internal::migration_progress::execute_query_migration_progress;
+use crate::internal::peer_connections::{
+    execute_query_peer_connections, execute_refresh_peer_connections,
+};
 use crate::internal::peer_keepalive::spawn_peer_keepalive_task;
 use crate::internal::receive::{
     execute_cancel_entry_receive, execute_cancel_inbound_transfer,
@@ -499,6 +502,12 @@ impl EngineRuntime for ProductionRuntime {
             }
             Operation::QueryLocalDevice => {
                 execute_query_local_device(self.current_facade().await?.as_ref()).await
+            }
+            Operation::QueryPeerConnections => {
+                execute_query_peer_connections(self.current_facade().await?.as_ref()).await
+            }
+            Operation::RefreshPeerConnections => {
+                execute_refresh_peer_connections(self.current_facade().await?.as_ref()).await
             }
             Operation::QueryEncryptionState => {
                 execute_query_encryption_state(self.current_facade().await?.as_ref()).await

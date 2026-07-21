@@ -18,11 +18,10 @@ mod thumbnail_generator;
 pub use background_blob_worker::BackgroundBlobWorker;
 pub use broadcasting_advance::BroadcastingAdvance;
 
-/// Builds a new `InMemorySelfWriteLedger` and wraps it in an
-/// `Arc<dyn SelfWriteLedgerPort>`. Used by bootstrap to produce the shared
-/// instance passed to [`init_clipboard_change_origin`]. Callers must not create
-/// multiple independent instances — use [`init_clipboard_change_origin`] /
-/// [`clipboard_change_origin`] to obtain the single shared singleton.
+/// Builds an engine-owned `InMemorySelfWriteLedger`.
+///
+/// Each engine instance must own a separate ledger so self-write attribution
+/// cannot survive shutdown and affect a later engine in the same process.
 pub fn new_in_memory_change_origin(
 ) -> std::sync::Arc<dyn uc_core::ports::clipboard::SelfWriteLedgerPort> {
     std::sync::Arc::new(change_origin::InMemorySelfWriteLedger::new())
@@ -39,30 +38,3 @@ pub use spool_scanner::SpoolScanner;
 pub use staged_reconciler::StagedReconciler;
 pub use thumbnail_generator::InfraThumbnailGenerator;
 pub use uc_core::ports::clipboard::SpoolRequest;
-
-/// Module-level singleton for the shared `SelfWriteLedgerPort` instance.
-static CLIPBOARD_CHANGE_ORIGIN: std::sync::OnceLock<
-    std::sync::Arc<dyn uc_core::ports::clipboard::SelfWriteLedgerPort>,
-> = std::sync::OnceLock::new();
-
-/// Initialize the shared `SelfWriteLedgerPort` singleton.
-///
-/// Idempotent: safe to call multiple times. If already initialized (e.g., by a test
-/// helper), subsequent calls are no-ops. The first call wins.
-pub fn init_clipboard_change_origin(
-    shared: std::sync::Arc<dyn uc_core::ports::clipboard::SelfWriteLedgerPort>,
-) {
-    // If already set (by a test helper or a previous call), do nothing.
-    // Only initialize if not yet set.
-    if CLIPBOARD_CHANGE_ORIGIN.get().is_none() {
-        let _ = CLIPBOARD_CHANGE_ORIGIN.set(shared);
-    }
-}
-
-/// Return a clone of the shared `SelfWriteLedgerPort` singleton.
-///
-/// Returns `None` if [`init_clipboard_change_origin`] has not been called yet.
-pub fn clipboard_change_origin(
-) -> Option<std::sync::Arc<dyn uc_core::ports::clipboard::SelfWriteLedgerPort>> {
-    CLIPBOARD_CHANGE_ORIGIN.get().cloned()
-}

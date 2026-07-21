@@ -470,6 +470,72 @@ async fn host_clipboard_change_is_processed_by_the_engine_and_stops_on_shutdown(
     assert!(stopped.load(Ordering::SeqCst));
 }
 
+#[tokio::test]
+async fn new_engine_does_not_inherit_previous_engine_clipboard_attribution() {
+    let _guard = ENGINE_TEST_LOCK.lock().await;
+    let first_temp = tempfile::tempdir().unwrap();
+    let first = uc_engine::internal::host_adapters::wire_host_capabilities(
+        &EngineConfig::new("1.2.3"),
+        HostCapabilities::new(
+            HostDirectories::new(
+                first_temp.path().join("private"),
+                first_temp.path().join("cache"),
+                first_temp.path().join("temporary"),
+            ),
+            Box::new(MemoryHostSecureStorage::default()),
+            Box::new(StaticHostClipboard {
+                snapshot: HostClipboardSnapshot {
+                    observed_at_ms: 0,
+                    representations: Vec::new(),
+                },
+            }),
+            Box::new(EmptyHostFiles),
+        ),
+    )
+    .unwrap();
+    first
+        .wired
+        .deps
+        .clipboard
+        .clipboard_change_origin
+        .record_self_write(
+            uc_core::ports::clipboard::SelfWriteMatch::ByNextChange("old-write".into()),
+            uc_core::ports::clipboard::SelfWriteAttribution::Remote,
+            std::time::Duration::from_secs(60),
+        )
+        .await;
+
+    let second_temp = tempfile::tempdir().unwrap();
+    let second = uc_engine::internal::host_adapters::wire_host_capabilities(
+        &EngineConfig::new("1.2.3"),
+        HostCapabilities::new(
+            HostDirectories::new(
+                second_temp.path().join("private"),
+                second_temp.path().join("cache"),
+                second_temp.path().join("temporary"),
+            ),
+            Box::new(MemoryHostSecureStorage::default()),
+            Box::new(StaticHostClipboard {
+                snapshot: HostClipboardSnapshot {
+                    observed_at_ms: 0,
+                    representations: Vec::new(),
+                },
+            }),
+            Box::new(EmptyHostFiles),
+        ),
+    )
+    .unwrap();
+    let origin = second
+        .wired
+        .deps
+        .clipboard
+        .clipboard_change_origin
+        .attribute_observed_change("fresh-local-copy")
+        .await;
+
+    assert_eq!(origin, uc_core::ClipboardChangeOrigin::LocalCapture);
+}
+
 #[test]
 fn host_directories_derive_only_private_and_cache_storage_paths() {
     let directories = HostDirectories::new(

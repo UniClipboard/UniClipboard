@@ -32,9 +32,8 @@ use uc_core::ports::clipboard::{RepresentationCachePort, SelfWriteLedgerPort, Sp
 use uc_core::ports::*;
 use uc_infra::blob::BlobRepositoryPort;
 use uc_infra::clipboard::{
-    clipboard_change_origin, init_clipboard_change_origin, new_in_memory_change_origin,
-    ClipboardPayloadResolver, DurableSpoolQueue, InfraThumbnailGenerator, RepresentationCache,
-    SpoolManager,
+    new_in_memory_change_origin, ClipboardPayloadResolver, DurableSpoolQueue,
+    InfraThumbnailGenerator, RepresentationCache, SpoolManager,
 };
 use uc_infra::config::ClipboardStorageConfig;
 use uc_infra::config_migration::{ConfigMigrationAdapter, ConfigMigrationPaths};
@@ -346,13 +345,7 @@ fn build_blob_processing_assembly(
         worker_tx.clone(),
     ));
 
-    // Self-write ledger: a process-global OnceLock initialised here. Kept inside
-    // this bundle so the `clipboard_change_origin()` read never races ahead of
-    // `init_clipboard_change_origin`.
-    let origin_impl = new_in_memory_change_origin();
-    init_clipboard_change_origin(origin_impl.clone());
-    let clipboard_change_origin =
-        clipboard_change_origin().expect("clipboard_change_origin not initialized");
+    let clipboard_change_origin = new_in_memory_change_origin();
 
     // Payload resolver for resolving staged/processing payloads.
     let payload_resolver: Arc<dyn ClipboardPayloadResolverPort> =

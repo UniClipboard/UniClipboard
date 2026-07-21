@@ -819,6 +819,143 @@ async fn engine_start_builds_a_resumable_real_session() {
             .unwrap(),
         uc_engine::OperationResult::MobileCredentialCurrent { current: false }
     );
+    assert!(matches!(
+        engine
+            .execute(uc_engine::Operation::UpdateMobileSyncSettings(Box::new(
+                uc_engine::MobileSyncSettingsPatch {
+                    lan_port: Some(Some(0)),
+                    ..Default::default()
+                },
+            )))
+            .await
+            .unwrap(),
+        uc_engine::OperationResult::MobileSyncSettingsUpdated(
+            uc_engine::MobileSyncSettingsUpdateOutcome::Rejected { .. }
+        )
+    ));
+    assert!(matches!(
+        engine
+            .execute(uc_engine::Operation::QueryMobileSyncSettings)
+            .await
+            .unwrap(),
+        uc_engine::OperationResult::MobileSyncSettings(ref settings)
+            if !settings.enabled && !settings.lan_listen_enabled
+    ));
+    assert!(matches!(
+        engine
+            .execute(uc_engine::Operation::UpdateMobileSyncSettings(Box::new(
+                uc_engine::MobileSyncSettingsPatch {
+                    enabled: Some(true),
+                    lan_listen_enabled: Some(true),
+                    ..Default::default()
+                },
+            )))
+            .await
+            .unwrap(),
+        uc_engine::OperationResult::MobileSyncSettingsUpdated(
+            uc_engine::MobileSyncSettingsUpdateOutcome::Updated(ref settings)
+        ) if settings.enabled && settings.lan_listen_enabled && settings.changed
+    ));
+    assert!(matches!(
+        engine
+            .execute(uc_engine::Operation::UpdateMobileSyncSettings(Box::new(
+                uc_engine::MobileSyncSettingsPatch {
+                    enabled: Some(true),
+                    lan_listen_enabled: Some(true),
+                    ..Default::default()
+                },
+            )))
+            .await
+            .unwrap(),
+        uc_engine::OperationResult::MobileSyncSettingsUpdated(
+            uc_engine::MobileSyncSettingsUpdateOutcome::Updated(ref settings)
+        ) if settings.enabled && settings.lan_listen_enabled && !settings.changed
+    ));
+    assert!(matches!(
+        engine
+            .execute(uc_engine::Operation::QueryMobileSyncSettings)
+            .await
+            .unwrap(),
+        uc_engine::OperationResult::MobileSyncSettings(ref settings)
+            if settings.enabled && settings.lan_listen_enabled
+    ));
+    assert_eq!(
+        engine
+            .execute(uc_engine::Operation::UpdateMobileLanEndpoint(
+                uc_engine::MobileLanEndpointUpdate::Listening {
+                    base_url: "http://127.0.0.1:42720".into(),
+                },
+            ))
+            .await
+            .unwrap(),
+        uc_engine::OperationResult::MobileLanEndpointUpdated
+    );
+    assert_eq!(
+        engine
+            .execute(uc_engine::Operation::RegisterMobileDevice(
+                uc_engine::RegisterMobileDeviceInput {
+                    label: "".into(),
+                    username: None,
+                    password: None,
+                },
+            ))
+            .await
+            .unwrap(),
+        uc_engine::OperationResult::MobileDeviceRegistered(
+            uc_engine::MobileDeviceRegistrationOutcome::LabelEmpty,
+        )
+    );
+    let registered = engine
+        .execute(uc_engine::Operation::RegisterMobileDevice(
+            uc_engine::RegisterMobileDeviceInput {
+                label: "Test Phone".into(),
+                username: Some("test_phone".into()),
+                password: Some(uc_engine::SecretString::new("test-password")),
+            },
+        ))
+        .await
+        .unwrap();
+    let registered_device_id = match registered {
+        uc_engine::OperationResult::MobileDeviceRegistered(
+            uc_engine::MobileDeviceRegistrationOutcome::Registered(registration),
+        ) => {
+            assert_eq!(registration.label, "Test Phone");
+            assert_eq!(registration.username, "test_phone");
+            assert_eq!(registration.password.expose(), "test-password");
+            registration.device_id
+        }
+        other => panic!("expected registered mobile device, got {other:?}"),
+    };
+    let updated = engine
+        .execute(uc_engine::Operation::UpdateMobileDevice(
+            uc_engine::UpdateMobileDeviceInput {
+                device_id: registered_device_id.clone(),
+                label: Some("Renamed Phone".into()),
+                username: None,
+                password: uc_engine::MobilePasswordUpdate::AutoGenerate,
+            },
+        ))
+        .await
+        .unwrap();
+    assert!(matches!(
+        updated,
+        uc_engine::OperationResult::MobileDeviceUpdated(
+            uc_engine::MobileDeviceUpdateOutcome::Updated(ref update)
+        ) if update.device_id == registered_device_id
+            && update.label == "Renamed Phone"
+            && update.username == "test_phone"
+            && update.password.is_some()
+    ));
+    assert!(matches!(
+        engine
+            .execute(uc_engine::Operation::ListMobileDevices)
+            .await
+            .unwrap(),
+        uc_engine::OperationResult::MobileDevices(ref devices)
+            if devices.len() == 1
+                && devices[0].device_id == registered_device_id
+                && devices[0].label == "Renamed Phone"
+    ));
     assert_eq!(
         engine
             .execute(uc_engine::Operation::ExportConfig(

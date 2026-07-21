@@ -110,6 +110,11 @@ pub enum OperationKind {
     RevokeMobileDevice,
     AuthenticateMobileRequest,
     RevalidateMobileCredential,
+    QueryMobileSyncSettings,
+    UpdateMobileSyncSettings,
+    UpdateMobileLanEndpoint,
+    RegisterMobileDevice,
+    UpdateMobileDevice,
     QueryEncryptionState,
     LockEncryption,
     VerifySecureStorageAccess,
@@ -179,6 +184,11 @@ impl fmt::Display for OperationKind {
             Self::RevokeMobileDevice => "revoke_mobile_device",
             Self::AuthenticateMobileRequest => "authenticate_mobile_request",
             Self::RevalidateMobileCredential => "revalidate_mobile_credential",
+            Self::QueryMobileSyncSettings => "query_mobile_sync_settings",
+            Self::UpdateMobileSyncSettings => "update_mobile_sync_settings",
+            Self::UpdateMobileLanEndpoint => "update_mobile_lan_endpoint",
+            Self::RegisterMobileDevice => "register_mobile_device",
+            Self::UpdateMobileDevice => "update_mobile_device",
             Self::QueryEncryptionState => "query_encryption_state",
             Self::LockEncryption => "lock_encryption",
             Self::VerifySecureStorageAccess => "verify_secure_storage_access",
@@ -250,6 +260,11 @@ pub enum Operation {
     RevokeMobileDevice(MobileDeviceInput),
     AuthenticateMobileRequest(AuthenticateMobileRequestInput),
     RevalidateMobileCredential(RevalidateMobileCredentialInput),
+    QueryMobileSyncSettings,
+    UpdateMobileSyncSettings(Box<MobileSyncSettingsPatch>),
+    UpdateMobileLanEndpoint(MobileLanEndpointUpdate),
+    RegisterMobileDevice(RegisterMobileDeviceInput),
+    UpdateMobileDevice(UpdateMobileDeviceInput),
     QueryEncryptionState,
     LockEncryption,
     VerifySecureStorageAccess,
@@ -319,6 +334,11 @@ impl Operation {
             Self::RevokeMobileDevice(_) => OperationKind::RevokeMobileDevice,
             Self::AuthenticateMobileRequest(_) => OperationKind::AuthenticateMobileRequest,
             Self::RevalidateMobileCredential(_) => OperationKind::RevalidateMobileCredential,
+            Self::QueryMobileSyncSettings => OperationKind::QueryMobileSyncSettings,
+            Self::UpdateMobileSyncSettings(_) => OperationKind::UpdateMobileSyncSettings,
+            Self::UpdateMobileLanEndpoint(_) => OperationKind::UpdateMobileLanEndpoint,
+            Self::RegisterMobileDevice(_) => OperationKind::RegisterMobileDevice,
+            Self::UpdateMobileDevice(_) => OperationKind::UpdateMobileDevice,
             Self::QueryEncryptionState => OperationKind::QueryEncryptionState,
             Self::LockEncryption => OperationKind::LockEncryption,
             Self::VerifySecureStorageAccess => OperationKind::VerifySecureStorageAccess,
@@ -1230,6 +1250,11 @@ pub enum OperationResult {
     MobileCredentialCurrent {
         current: bool,
     },
+    MobileSyncSettings(Box<MobileSyncSettingsSummary>),
+    MobileSyncSettingsUpdated(MobileSyncSettingsUpdateOutcome),
+    MobileLanEndpointUpdated,
+    MobileDeviceRegistered(MobileDeviceRegistrationOutcome),
+    MobileDeviceUpdated(MobileDeviceUpdateOutcome),
     EncryptionState(EncryptionStateSummary),
     EncryptionLocked,
     SecureStorageAccess {
@@ -1352,6 +1377,19 @@ impl fmt::Debug for OperationResult {
             Self::MobileCredentialCurrent { current } => debug
                 .field("kind", &"mobile_credential_current")
                 .field("current", current),
+            Self::MobileSyncSettings(settings) => debug
+                .field("kind", &"mobile_sync_settings")
+                .field("settings", settings),
+            Self::MobileSyncSettingsUpdated(outcome) => debug
+                .field("kind", &"mobile_sync_settings_updated")
+                .field("outcome", outcome),
+            Self::MobileLanEndpointUpdated => debug.field("kind", &"mobile_lan_endpoint_updated"),
+            Self::MobileDeviceRegistered(outcome) => debug
+                .field("kind", &"mobile_device_registered")
+                .field("outcome", outcome),
+            Self::MobileDeviceUpdated(outcome) => debug
+                .field("kind", &"mobile_device_updated")
+                .field("outcome", outcome),
             Self::EncryptionState(state) => debug
                 .field("kind", &"encryption_state")
                 .field("state", state),

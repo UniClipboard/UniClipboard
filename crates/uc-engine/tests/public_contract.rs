@@ -554,6 +554,127 @@ fn mobile_credentials_have_stable_operations_and_redacted_results() {
 }
 
 #[test]
+fn mobile_device_management_preserves_one_time_credentials_without_debugging_them() {
+    let endpoint =
+        Operation::UpdateMobileLanEndpoint(uc_engine::MobileLanEndpointUpdate::Listening {
+            base_url: "http://private-host:42720".into(),
+        });
+    let register = Operation::RegisterMobileDevice(uc_engine::RegisterMobileDeviceInput {
+        label: "private phone".into(),
+        username: Some("private_user".into()),
+        password: Some(uc_engine::SecretString::new("private password")),
+    });
+    let update = Operation::UpdateMobileDevice(uc_engine::UpdateMobileDeviceInput {
+        device_id: "private mobile device".into(),
+        label: Some("renamed private phone".into()),
+        username: None,
+        password: uc_engine::MobilePasswordUpdate::Custom(uc_engine::SecretString::new(
+            "new private password",
+        )),
+    });
+    assert_eq!(endpoint.kind(), OperationKind::UpdateMobileLanEndpoint);
+    assert_eq!(register.kind(), OperationKind::RegisterMobileDevice);
+    assert_eq!(update.kind(), OperationKind::UpdateMobileDevice);
+    let operations = format!("{endpoint:?}{register:?}{update:?}");
+    for secret in [
+        "private-host",
+        "private phone",
+        "private_user",
+        "private password",
+        "private mobile device",
+        "renamed private phone",
+        "new private password",
+    ] {
+        assert!(!operations.contains(secret));
+    }
+
+    let result = OperationResult::MobileDeviceRegistered(
+        uc_engine::MobileDeviceRegistrationOutcome::Registered(Box::new(
+            uc_engine::MobileDeviceRegistration {
+                device_id: "private mobile device".into(),
+                label: "private phone".into(),
+                client_type: uc_engine::MobileClientTypeSummary::IosShortcut,
+                base_url: "http://private-host:42720".into(),
+                username: "private_user".into(),
+                password: uc_engine::SecretString::new("private password"),
+                install_url: "https://private-install".into(),
+                install_qr_code_png_bytes: vec![1, 2, 3],
+                connect_uri: "uniclipboard://private-connect".into(),
+                qr_code_png_bytes: vec![4, 5, 6],
+                qr_code_ascii: "private qr".into(),
+            },
+        )),
+    );
+    let debug = format!("{result:?}");
+    for secret in [
+        "private mobile device",
+        "private phone",
+        "private-host",
+        "private_user",
+        "private password",
+        "private-install",
+        "private-connect",
+        "private qr",
+    ] {
+        assert!(!debug.contains(secret));
+    }
+}
+
+#[test]
+fn mobile_sync_settings_have_stable_operations_and_redacted_results() {
+    let query = Operation::QueryMobileSyncSettings;
+    let update =
+        Operation::UpdateMobileSyncSettings(Box::new(uc_engine::MobileSyncSettingsPatch {
+            enabled: Some(true),
+            lan_listen_enabled: Some(true),
+            lan_advertise_ip: Some(Some("192.168.1.23".into())),
+            lan_advertise_base_url: Some(Some("https://private-mobile.example".into())),
+            lan_port: Some(Some(42720)),
+        }));
+    assert_eq!(query.kind(), OperationKind::QueryMobileSyncSettings);
+    assert_eq!(update.kind(), OperationKind::UpdateMobileSyncSettings);
+    let operation_debug = format!("{query:?}{update:?}");
+    assert!(!operation_debug.contains("192.168.1.23"));
+    assert!(!operation_debug.contains("private-mobile.example"));
+
+    let result =
+        OperationResult::MobileSyncSettings(Box::new(uc_engine::MobileSyncSettingsSummary {
+            enabled: true,
+            lan_listen_enabled: true,
+            lan_advertise_ip: Some("192.168.1.23".into()),
+            lan_advertise_base_url: Some("https://private-mobile.example".into()),
+            lan_port: Some(42720),
+            lan_listener_error: Some("private bind failure".into()),
+            shortcut_install_methods: vec![uc_engine::MobileShortcutInstallMethodSummary {
+                method: uc_engine::MobileShortcutInstallMethod::TokenInjected,
+                available: true,
+                disabled_reason: Some("private install reason".into()),
+            }],
+        }));
+    let updated = OperationResult::MobileSyncSettingsUpdated(
+        uc_engine::MobileSyncSettingsUpdateOutcome::Updated(Box::new(
+            uc_engine::MobileSyncSettingsUpdateSummary {
+                enabled: true,
+                lan_listen_enabled: true,
+                lan_advertise_ip: Some("192.168.1.23".into()),
+                lan_advertise_base_url: Some("https://private-mobile.example".into()),
+                lan_port: Some(42720),
+                changed: true,
+            },
+        )),
+    );
+    let debug = format!("{result:?}{updated:?}");
+    for secret in [
+        "192.168.1.23",
+        "private-mobile.example",
+        "private bind failure",
+        "private install reason",
+    ] {
+        assert!(!debug.contains(secret));
+    }
+}
+
+#[test]
 fn receive_progress_and_cancellation_have_stable_operations_and_results() {
     let operations = [
         (

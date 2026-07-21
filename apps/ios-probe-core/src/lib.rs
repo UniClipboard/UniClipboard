@@ -797,6 +797,74 @@ fn operation_response(result: OperationResult) -> Value {
             "kind": "mobile_credential_current",
             "current": current,
         }),
+        OperationResult::MobileSyncSettings(settings) => json!({
+            "ok": true,
+            "kind": "mobile_sync_settings",
+            "enabled": settings.enabled,
+            "lan_listen_enabled": settings.lan_listen_enabled,
+            "has_lan_advertise_ip": settings.lan_advertise_ip.is_some(),
+            "has_lan_advertise_base_url": settings.lan_advertise_base_url.is_some(),
+            "lan_port": settings.lan_port,
+            "has_lan_listener_error": settings.lan_listener_error.is_some(),
+            "shortcut_install_method_count": settings.shortcut_install_methods.len(),
+        }),
+        OperationResult::MobileSyncSettingsUpdated(outcome) => match outcome {
+            uc_engine::MobileSyncSettingsUpdateOutcome::Updated(settings) => json!({
+                "ok": true,
+                "kind": "mobile_sync_settings_updated",
+                "outcome": "updated",
+                "enabled": settings.enabled,
+                "lan_listen_enabled": settings.lan_listen_enabled,
+                "has_lan_advertise_ip": settings.lan_advertise_ip.is_some(),
+                "has_lan_advertise_base_url": settings.lan_advertise_base_url.is_some(),
+                "lan_port": settings.lan_port,
+                "changed": settings.changed,
+            }),
+            uc_engine::MobileSyncSettingsUpdateOutcome::Rejected { .. } => json!({
+                "ok": true,
+                "kind": "mobile_sync_settings_updated",
+                "outcome": "rejected",
+            }),
+        },
+        OperationResult::MobileLanEndpointUpdated => json!({
+            "ok": true,
+            "kind": "mobile_lan_endpoint_updated",
+        }),
+        OperationResult::MobileDeviceRegistered(outcome) => json!({
+            "ok": true,
+            "kind": "mobile_device_registered",
+            "outcome": match outcome {
+                uc_engine::MobileDeviceRegistrationOutcome::Registered(_) => "registered",
+                uc_engine::MobileDeviceRegistrationOutcome::LabelEmpty => "label_empty",
+                uc_engine::MobileDeviceRegistrationOutcome::LabelTooLong => "label_too_long",
+                uc_engine::MobileDeviceRegistrationOutcome::LanListenerDisabled => "lan_listener_disabled",
+                uc_engine::MobileDeviceRegistrationOutcome::UsernameTaken { .. } => "username_taken",
+                uc_engine::MobileDeviceRegistrationOutcome::UsernameTooShort { .. } => "username_too_short",
+                uc_engine::MobileDeviceRegistrationOutcome::UsernameTooLong { .. } => "username_too_long",
+                uc_engine::MobileDeviceRegistrationOutcome::UsernameMustStartWithLetter => "username_must_start_with_letter",
+                uc_engine::MobileDeviceRegistrationOutcome::UsernameContainsForbiddenChars => "username_contains_forbidden_chars",
+                uc_engine::MobileDeviceRegistrationOutcome::PasswordTooShort { .. } => "password_too_short",
+                uc_engine::MobileDeviceRegistrationOutcome::PasswordTooLong { .. } => "password_too_long",
+                uc_engine::MobileDeviceRegistrationOutcome::NoLanInterfaceAvailable => "no_lan_interface_available",
+            },
+        }),
+        OperationResult::MobileDeviceUpdated(outcome) => json!({
+            "ok": true,
+            "kind": "mobile_device_updated",
+            "outcome": match outcome {
+                uc_engine::MobileDeviceUpdateOutcome::Updated(_) => "updated",
+                uc_engine::MobileDeviceUpdateOutcome::NotFound => "not_found",
+                uc_engine::MobileDeviceUpdateOutcome::LabelEmpty => "label_empty",
+                uc_engine::MobileDeviceUpdateOutcome::LabelTooLong => "label_too_long",
+                uc_engine::MobileDeviceUpdateOutcome::UsernameTaken { .. } => "username_taken",
+                uc_engine::MobileDeviceUpdateOutcome::UsernameTooShort { .. } => "username_too_short",
+                uc_engine::MobileDeviceUpdateOutcome::UsernameTooLong { .. } => "username_too_long",
+                uc_engine::MobileDeviceUpdateOutcome::UsernameMustStartWithLetter => "username_must_start_with_letter",
+                uc_engine::MobileDeviceUpdateOutcome::UsernameContainsForbiddenChars => "username_contains_forbidden_chars",
+                uc_engine::MobileDeviceUpdateOutcome::PasswordTooShort { .. } => "password_too_short",
+                uc_engine::MobileDeviceUpdateOutcome::PasswordTooLong { .. } => "password_too_long",
+            },
+        }),
         OperationResult::EncryptionState(state) => json!({
             "ok": true,
             "kind": "encryption_state",
@@ -1311,6 +1379,27 @@ mod tests {
                 reason: "private settings rejection".into(),
             },
         ));
+        let mobile_settings = operation_response(OperationResult::MobileSyncSettings(Box::new(
+            uc_engine::MobileSyncSettingsSummary {
+                enabled: true,
+                lan_listen_enabled: true,
+                lan_advertise_ip: Some("192.168.1.23".into()),
+                lan_advertise_base_url: Some("https://private-mobile.example".into()),
+                lan_port: Some(42720),
+                lan_listener_error: Some("private mobile bind failure".into()),
+                shortcut_install_methods: vec![uc_engine::MobileShortcutInstallMethodSummary {
+                    method: uc_engine::MobileShortcutInstallMethod::IcloudGeneric,
+                    available: false,
+                    disabled_reason: Some("private install reason".into()),
+                }],
+            },
+        )));
+        let mobile_settings_rejected =
+            operation_response(OperationResult::MobileSyncSettingsUpdated(
+                uc_engine::MobileSyncSettingsUpdateOutcome::Rejected {
+                    reason: "private mobile settings rejection".into(),
+                },
+            ));
         let relay = operation_response(OperationResult::RelayProbed(
             uc_engine::RelayProbeOutcome::Dns {
                 message: "private relay error".into(),
@@ -1400,11 +1489,19 @@ mod tests {
             "/private/settings/path",
             "private settings rejection",
             "private relay error",
+            "192.168.1.23",
+            "private-mobile.example",
+            "private mobile bind failure",
+            "private install reason",
+            "private mobile settings rejection",
         ] {
             assert!(!settings.to_string().contains(secret));
             assert!(!settings_rejected.to_string().contains(secret));
             assert!(!relay.to_string().contains(secret));
+            assert!(!mobile_settings.to_string().contains(secret));
+            assert!(!mobile_settings_rejected.to_string().contains(secret));
         }
+        assert_eq!(mobile_settings["shortcut_install_method_count"], 1);
         assert!(!history.to_string().contains("private payload"));
         assert!(!history_entry.to_string().contains("private full content"));
         assert!(!history_resource.to_string().contains("private/resource"));

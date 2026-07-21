@@ -72,7 +72,10 @@ use crate::internal::member::{
 use crate::internal::migration_progress::execute_query_migration_progress;
 use crate::internal::mobile_compat::{
     execute_authenticate_mobile_request, execute_list_mobile_devices,
+    execute_query_mobile_sync_settings, execute_register_mobile_device,
     execute_revalidate_mobile_credential, execute_revoke_mobile_device,
+    execute_update_mobile_device, execute_update_mobile_lan_endpoint,
+    execute_update_mobile_sync_settings,
 };
 use crate::internal::peer_connections::{
     execute_query_peer_connections, execute_refresh_peer_connections,
@@ -634,6 +637,31 @@ impl EngineRuntime for ProductionRuntime {
                     input,
                 )
                 .await
+            }
+            Operation::QueryMobileSyncSettings => {
+                execute_query_mobile_sync_settings(self.current_mobile_sync().await?.as_ref()).await
+            }
+            Operation::UpdateMobileSyncSettings(patch) => {
+                execute_update_mobile_sync_settings(
+                    self.current_mobile_sync().await?.as_ref(),
+                    *patch,
+                )
+                .await
+            }
+            Operation::UpdateMobileLanEndpoint(update) => {
+                execute_update_mobile_lan_endpoint(
+                    self.wired.daemon_runtime.mobile_sync_endpoint_info.as_ref(),
+                    update,
+                )
+                .await
+            }
+            Operation::RegisterMobileDevice(input) => {
+                execute_register_mobile_device(self.current_mobile_sync().await?.as_ref(), input)
+                    .await
+            }
+            Operation::UpdateMobileDevice(input) => {
+                execute_update_mobile_device(self.current_mobile_sync().await?.as_ref(), input)
+                    .await
             }
             Operation::QueryEncryptionState => {
                 execute_query_encryption_state(self.current_facade().await?.as_ref()).await

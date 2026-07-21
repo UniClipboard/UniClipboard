@@ -3,10 +3,7 @@
 
 use base64::engine::general_purpose::STANDARD;
 use base64::Engine as _;
-use uc_application::facade::{
-    ClipboardClearHistoryResultView, ClipboardStatsView, DispatchEntryOutcome, EntryDetailView,
-    EntryProjectionView, EntryResourceView,
-};
+use uc_application::facade::DispatchEntryOutcome;
 use uc_application::facade::{
     EntryDeliveryStatusView, EntryDeliveryTargetView, EntryDeliveryView, EntrySource, ResendReport,
 };
@@ -19,6 +16,10 @@ use uc_daemon_contract::api::dto::clipboard_delivery::{
     DeliveryFailureReasonDto, EntryDeliveryStatusDto, EntryDeliveryTargetDto, EntryDeliveryViewDto,
     EntrySourceDto,
 };
+use uc_engine::{
+    HistoryClearSummary, HistoryEntryDetailSummary, HistoryEntryResourceSummary,
+    HistoryEntrySummary, HistoryStatsSummary,
+};
 
 use super::IntoApiDto;
 use crate::api::dto::clipboard::{
@@ -26,20 +27,20 @@ use crate::api::dto::clipboard::{
     EntryResourceDto,
 };
 
-impl IntoApiDto<EntryProjectionResponseDto> for EntryProjectionView {
+impl IntoApiDto<EntryProjectionResponseDto> for HistoryEntrySummary {
     fn into_api_dto(self) -> EntryProjectionResponseDto {
         EntryProjectionResponseDto {
-            id: self.id,
+            id: self.entry_id,
             preview: self.preview,
             has_detail: self.has_detail,
             size_bytes: self.size_bytes,
-            captured_at: self.captured_at,
+            captured_at: self.captured_at_ms,
             content_type: self.content_type,
             thumbnail_url: self.thumbnail_url,
             is_encrypted: self.is_encrypted,
             is_favorited: self.is_favorited,
-            updated_at: self.updated_at,
-            active_time: self.active_time,
+            updated_at: self.updated_at_ms,
+            active_time: self.active_time_ms,
             file_transfer_status: self.file_transfer_status,
             file_transfer_reason: self.file_transfer_reason,
             content_tags: self.content_tags,
@@ -54,10 +55,10 @@ impl IntoApiDto<EntryProjectionResponseDto> for EntryProjectionView {
     }
 }
 
-impl IntoApiDto<EntryDetailDto> for EntryDetailView {
+impl IntoApiDto<EntryDetailDto> for HistoryEntryDetailSummary {
     fn into_api_dto(self) -> EntryDetailDto {
         EntryDetailDto {
-            id: self.id,
+            id: self.entry_id,
             content: self.content,
             size_bytes: self.size_bytes,
             created_at_ms: self.created_at_ms,
@@ -67,7 +68,7 @@ impl IntoApiDto<EntryDetailDto> for EntryDetailView {
     }
 }
 
-impl IntoApiDto<EntryResourceDto> for EntryResourceView {
+impl IntoApiDto<EntryResourceDto> for HistoryEntryResourceSummary {
     fn into_api_dto(self) -> EntryResourceDto {
         EntryResourceDto {
             blob_id: self.blob_id,
@@ -79,7 +80,7 @@ impl IntoApiDto<EntryResourceDto> for EntryResourceView {
     }
 }
 
-impl IntoApiDto<ClipboardStatsDto> for ClipboardStatsView {
+impl IntoApiDto<ClipboardStatsDto> for HistoryStatsSummary {
     fn into_api_dto(self) -> ClipboardStatsDto {
         ClipboardStatsDto {
             total_items: self.total_items,
@@ -88,11 +89,15 @@ impl IntoApiDto<ClipboardStatsDto> for ClipboardStatsView {
     }
 }
 
-impl IntoApiDto<ClearHistoryResultDto> for ClipboardClearHistoryResultView {
+impl IntoApiDto<ClearHistoryResultDto> for HistoryClearSummary {
     fn into_api_dto(self) -> ClearHistoryResultDto {
         ClearHistoryResultDto {
             deleted_count: self.deleted_count,
-            failed_entries: self.failed_entries,
+            failed_entries: self
+                .failed_entry_ids
+                .into_iter()
+                .map(|entry_id| (entry_id, "entry deletion failed".to_string()))
+                .collect(),
         }
     }
 }

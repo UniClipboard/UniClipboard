@@ -538,6 +538,49 @@ fn daemon_search_handlers_delegate_index_ownership_to_engine() {
     );
 }
 
+#[test]
+fn daemon_history_handlers_delegate_history_ownership_to_engine() {
+    let handler_path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../crates/uc-webserver/src/api/clipboard.rs");
+    let handler = std::fs::read_to_string(&handler_path)
+        .unwrap_or_else(|error| panic!("failed to read {}: {error}", handler_path.display()));
+    let history_handlers = handler
+        .split("async fn list_entries(")
+        .nth(1)
+        .and_then(|source| source.split("// ── Command endpoints").next())
+        .expect("history handlers must remain discoverable");
+
+    for forbidden in [
+        "require_facade(",
+        ".list_entries(",
+        ".get_entry(",
+        ".delete_entry(",
+        ".toggle_favorite(",
+        ".stats(",
+        ".get_entry_resource(",
+        ".clear_history(",
+    ] {
+        assert!(
+            !history_handlers.contains(forbidden),
+            "daemon history handlers still use legacy history call: {forbidden}"
+        );
+    }
+    for required in [
+        "execute_list_history_entries(",
+        "execute_get_history_entry(",
+        "execute_delete_history_entry(",
+        "execute_set_history_entry_favorite(",
+        "execute_query_history_stats(",
+        "execute_get_history_entry_resource(",
+        "execute_clear_history(",
+    ] {
+        assert!(
+            history_handlers.contains(required),
+            "daemon history handlers must invoke uc-engine operation: {required}"
+        );
+    }
+}
+
 fn rust_sources(root: &Path) -> Vec<PathBuf> {
     let mut pending = vec![root.to_path_buf()];
     let mut sources = Vec::new();

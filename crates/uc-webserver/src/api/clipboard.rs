@@ -12,15 +12,23 @@ use axum::routing::{delete, get, post};
 use axum::{Json, Router};
 use serde::Deserialize;
 use serde_json::json;
+use uc_application::facade::GetEntryDeliveryViewError;
 use uc_application::facade::{
     AppFacade, NotResendableReason, ResendEntryCommand, ResendEntryError,
-};
-use uc_application::facade::{
-    ClipboardHistoryError, ClipboardHistoryFacade, ClipboardListInput, GetEntryDeliveryViewError,
 };
 use uc_core::ids::{DeviceId, EntryId, FormatId, RepresentationId};
 use uc_core::{
     ClipboardChangeOrigin, MimeType, ObservedClipboardRepresentation, SystemClipboardSnapshot,
+};
+use uc_engine::internal::history::{
+    execute_clear_history, execute_delete_history_entry, execute_get_history_entry,
+    execute_get_history_entry_resource, execute_list_history_entries, execute_query_history_stats,
+    execute_set_history_entry_favorite, HISTORY_FAILED_CODE, HISTORY_INVALID_INPUT_CODE,
+    HISTORY_NOT_FOUND_CODE, HISTORY_UNSUPPORTED_CONTENT_CODE,
+};
+use uc_engine::{
+    EngineError, HistoryEntryInput, ListHistoryEntriesInput, OperationResult,
+    SetHistoryEntryFavoriteInput,
 };
 use utoipa::IntoParams;
 
@@ -59,12 +67,6 @@ fn default_limit() -> usize {
 fn clamp_limit(limit: usize) -> usize {
     // Prevent unbounded queries — cap at 1000 entries per request
     limit.min(1000)
-}
-
-fn require_facade(
-    state: &DaemonApiState,
-) -> Result<std::sync::Arc<ClipboardHistoryFacade>, ApiError> {
-    Ok(state.app_facade_or_error()?.clipboard_history.clone())
 }
 
 // `list_entries` is `#[deprecated]` (it marks the OpenAPI operation deprecated
@@ -247,15 +249,22 @@ async fn list_entries(
             "deprecated clipboard list endpoint is in use; migrate callers to the unified search endpoint"
         );
     });
-    let facade = require_facade(&state)?;
+    let app = state.app_facade_or_error()?;
     let limit = clamp_limit(params.limit);
-    let entries = facade
-        .list_entries(ClipboardListInput {
-            limit,
-            offset: params.offset,
-        })
-        .await
-        .map_err(|e| map_clipboard_err("list_entries", e))?;
+    let result = execute_list_history_entries(
+        app.as_ref(),
+        ListHistoryEntriesInput {
+            limit: limit as u32,
+            offset: params.offset as u64,
+        },
+    )
+    .await
+    .map_err(|error| map_history_engine_err("list_entries", error))?;
+    let OperationResult::HistoryEntries(entries) = result else {
+        return Err(ApiError::internal(
+            "engine returned an unexpected history-list result",
+        ));
+    };
 
     let response_entries: Vec<EntryProjectionResponseDto> =
         entries.into_iter().map(IntoApiDto::into_api_dto).collect();
@@ -286,11 +295,15 @@ async fn get_entry(
     State(state): State<DaemonApiState>,
     Path(entry_id): Path<String>,
 ) -> Result<Json<ApiEnvelope<EntryDetailDto>>, ApiError> {
-    let facade = require_facade(&state)?;
-    let detail = facade
-        .get_entry(&entry_id)
+    let app = state.app_facade_or_error()?;
+    let result = execute_get_history_entry(app.as_ref(), HistoryEntryInput { entry_id })
         .await
-        .map_err(|e| map_clipboard_err("get_entry", e))?;
+        .map_err(|error| map_history_engine_err("get_entry", error))?;
+    let OperationResult::HistoryEntry(detail) = result else {
+        return Err(ApiError::internal(
+            "engine returned an unexpected history-detail result",
+        ));
+    };
 
     Ok(Json(ApiEnvelope::now(detail.into_api_dto())))
 }
@@ -316,11 +329,15 @@ async fn delete_entry(
     State(state): State<DaemonApiState>,
     Path(entry_id): Path<String>,
 ) -> Result<axum::http::StatusCode, ApiError> {
-    let facade = require_facade(&state)?;
-    facade
-        .delete_entry(&entry_id)
+    let app = state.app_facade_or_error()?;
+    let result = execute_delete_history_entry(app.as_ref(), HistoryEntryInput { entry_id })
         .await
-        .map_err(|e| map_clipboard_err("delete_entry", e))?;
+        .map_err(|error| map_history_engine_err("delete_entry", error))?;
+    if result != OperationResult::HistoryEntryDeleted {
+        return Err(ApiError::internal(
+            "engine returned an unexpected history-delete result",
+        ));
+    }
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -349,17 +366,21 @@ async fn toggle_favorite(
     Path(entry_id): Path<String>,
     body: Result<Json<ToggleFavoriteRequest>, axum::extract::rejection::JsonRejection>,
 ) -> Result<Json<ApiEnvelope<ToggleFavoriteResultDto>>, ApiError> {
-    let facade = require_facade(&state)?;
-
     let Json(body) = body.map_err(|_| ApiError::bad_request("missing isFavorited field"))?;
-
-    let found = facade
-        .toggle_favorite(&entry_id, body.is_favorited)
-        .await
-        .map_err(|e| map_clipboard_err("toggle_favorite", e))?;
-
-    if !found {
-        return Err(ApiError::not_found("entry not found"));
+    let app = state.app_facade_or_error()?;
+    let result = execute_set_history_entry_favorite(
+        app.as_ref(),
+        SetHistoryEntryFavoriteInput {
+            entry_id,
+            is_favorited: body.is_favorited,
+        },
+    )
+    .await
+    .map_err(|error| map_history_engine_err("toggle_favorite", error))?;
+    if result != OperationResult::HistoryEntryFavoriteSet {
+        return Err(ApiError::internal(
+            "engine returned an unexpected history-favorite result",
+        ));
     }
 
     Ok(Json(ApiEnvelope::now(ToggleFavoriteResultDto {
@@ -383,11 +404,15 @@ async fn toggle_favorite(
 async fn get_stats(
     State(state): State<DaemonApiState>,
 ) -> Result<Json<ApiEnvelope<ClipboardStatsDto>>, ApiError> {
-    let facade = require_facade(&state)?;
-    let stats = facade
-        .stats()
+    let app = state.app_facade_or_error()?;
+    let result = execute_query_history_stats(app.as_ref())
         .await
-        .map_err(|e| map_clipboard_err("get_stats", e))?;
+        .map_err(|error| map_history_engine_err("get_stats", error))?;
+    let OperationResult::HistoryStats(stats) = result else {
+        return Err(ApiError::internal(
+            "engine returned an unexpected history-stats result",
+        ));
+    };
 
     Ok(Json(ApiEnvelope::now(stats.into_api_dto())))
 }
@@ -413,11 +438,15 @@ async fn get_entry_resource(
     State(state): State<DaemonApiState>,
     Path(entry_id): Path<String>,
 ) -> Result<Json<ApiEnvelope<EntryResourceDto>>, ApiError> {
-    let facade = require_facade(&state)?;
-    let resource = facade
-        .get_entry_resource(&entry_id)
+    let app = state.app_facade_or_error()?;
+    let result = execute_get_history_entry_resource(app.as_ref(), HistoryEntryInput { entry_id })
         .await
-        .map_err(|e| map_clipboard_err("get_entry_resource", e))?;
+        .map_err(|error| map_history_engine_err("get_entry_resource", error))?;
+    let OperationResult::HistoryEntryResource(resource) = result else {
+        return Err(ApiError::internal(
+            "engine returned an unexpected history-resource result",
+        ));
+    };
 
     Ok(Json(ApiEnvelope::now(resource.into_api_dto())))
 }
@@ -439,11 +468,15 @@ async fn get_entry_resource(
 async fn clear_history(
     State(state): State<DaemonApiState>,
 ) -> Result<Json<ApiEnvelope<ClearHistoryResultDto>>, ApiError> {
-    let facade = require_facade(&state)?;
-    let result = facade
-        .clear_history()
+    let app = state.app_facade_or_error()?;
+    let result = execute_clear_history(app.as_ref())
         .await
-        .map_err(|e| map_clipboard_err("clear_history", e))?;
+        .map_err(|error| map_history_engine_err("clear_history", error))?;
+    let OperationResult::HistoryCleared(result) = result else {
+        return Err(ApiError::internal(
+            "engine returned an unexpected history-clear result",
+        ));
+    };
 
     Ok(Json(ApiEnvelope::now(result.into_api_dto())))
 }
@@ -757,11 +790,11 @@ async fn cancel_transfer(
 
 // ── Clipboard history helpers ────────────────────────────────────
 
-fn map_clipboard_err(op: &'static str, err: ClipboardHistoryError) -> ApiError {
-    use ClipboardHistoryError as E;
-    let (variant, api): (&'static str, ApiError) = match err {
-        E::NotFound => ("not_found", ApiError::not_found("entry not found")),
-        E::UnsupportedContent => (
+fn map_history_engine_err(op: &'static str, error: EngineError) -> ApiError {
+    let (variant, api): (&'static str, ApiError) = match error.code() {
+        HISTORY_INVALID_INPUT_CODE => ("invalid_input", ApiError::bad_request("invalid input")),
+        HISTORY_NOT_FOUND_CODE => ("not_found", ApiError::not_found("entry not found")),
+        HISTORY_UNSUPPORTED_CONTENT_CODE => (
             "unsupported_content",
             ApiError {
                 status: StatusCode::UNPROCESSABLE_ENTITY,
@@ -770,7 +803,14 @@ fn map_clipboard_err(op: &'static str, err: ClipboardHistoryError) -> ApiError {
                 details: None,
             },
         ),
-        E::Internal(message) => ("internal", ApiError::internal(message)),
+        HISTORY_FAILED_CODE => (
+            "internal",
+            ApiError::internal("clipboard history operation failed"),
+        ),
+        _ => (
+            "unexpected_engine_error",
+            ApiError::internal("clipboard history operation failed"),
+        ),
     };
     log_facade_failure("clipboard_history", op, variant, api.status, &api.message);
     api
@@ -779,6 +819,41 @@ fn map_clipboard_err(op: &'static str, err: ClipboardHistoryError) -> ApiError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn history_engine_errors_preserve_http_statuses_and_redact_internal_details() {
+        let missing = map_history_engine_err(
+            "get_entry",
+            EngineError::new(
+                HISTORY_NOT_FOUND_CODE,
+                uc_engine::EngineErrorCategory::NotFound,
+                false,
+            ),
+        );
+        let unsupported = map_history_engine_err(
+            "get_entry",
+            EngineError::new(
+                HISTORY_UNSUPPORTED_CONTENT_CODE,
+                uc_engine::EngineErrorCategory::Conflict,
+                false,
+            ),
+        );
+        let internal = map_history_engine_err(
+            "clear_history",
+            EngineError::new(
+                HISTORY_FAILED_CODE,
+                uc_engine::EngineErrorCategory::Internal,
+                false,
+            ),
+        );
+
+        assert_eq!(missing.status, StatusCode::NOT_FOUND);
+        assert_eq!(unsupported.status, StatusCode::UNPROCESSABLE_ENTITY);
+        assert_eq!(internal.status, StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(internal.message, "clipboard history operation failed");
+        assert!(!internal.message.contains("path"));
+        assert!(internal.details.is_none());
+    }
 
     /// The FE `ResendEntryCommandError` union reconstructs `{ code, ...details }`
     /// off the normalized error body, so each variant must emit its SCREAMING_SNAKE

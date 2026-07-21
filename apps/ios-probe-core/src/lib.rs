@@ -657,9 +657,17 @@ fn operation_response(result: OperationResult) -> Value {
             "kind": "search_rebuild_accepted",
             "accepted": accepted,
         }),
-        OperationResult::EntrySent { entry_id } => {
-            json!({"ok": true, "kind": "entry_sent", "entry_id": entry_id})
-        }
+        OperationResult::EntrySent(report) => json!({
+            "ok": true,
+            "kind": "entry_sent",
+            "entry_id": report.entry_id,
+            "accepted": report.total_accepted,
+            "duplicate": report.total_duplicate,
+            "offline": report.total_offline,
+            "errored": report.total_errored,
+            "pending": report.total_pending,
+            "target_count": report.per_target.len(),
+        }),
         OperationResult::HistoryPage {
             entries,
             next_cursor,

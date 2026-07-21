@@ -773,7 +773,7 @@ async fn engine_start_builds_a_resumable_real_session() {
         .await
         .unwrap();
     let sent_entry_id = match sent {
-        uc_engine::OperationResult::EntrySent { entry_id } => entry_id,
+        uc_engine::OperationResult::EntrySent(report) => report.entry_id,
         other => panic!("expected sent entry, got {other:?}"),
     };
     assert!(!sent_entry_id.is_empty());
@@ -1038,7 +1038,7 @@ async fn engine_start_builds_a_resumable_real_session() {
         .await
         .unwrap();
     let sent_image_id = match sent_image {
-        uc_engine::OperationResult::EntrySent { entry_id } => entry_id,
+        uc_engine::OperationResult::EntrySent(report) => report.entry_id,
         other => panic!("expected sent image, got {other:?}"),
     };
     assert_eq!(
@@ -1250,7 +1250,7 @@ async fn engine_send_files_imports_opaque_content_and_exports_after_resume() {
         .await
         .unwrap();
     let entry_id = match sent {
-        uc_engine::OperationResult::EntrySent { entry_id } => entry_id,
+        uc_engine::OperationResult::EntrySent(report) => report.entry_id,
         other => panic!("expected sent file entry, got {other:?}"),
     };
     let history = engine

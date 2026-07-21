@@ -435,6 +435,60 @@ impl fmt::Debug for SendImageInput {
     }
 }
 
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", tag = "kind")]
+pub enum SendTargetOutcome {
+    Accepted,
+    Duplicate,
+    Error { message: String },
+}
+
+impl fmt::Debug for SendTargetOutcome {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Accepted => formatter.write_str("Accepted"),
+            Self::Duplicate => formatter.write_str("Duplicate"),
+            Self::Error { .. } => formatter
+                .debug_struct("Error")
+                .field("message", &"[REDACTED]")
+                .finish(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SendTargetSummary {
+    pub device_id: String,
+    pub outcome: SendTargetOutcome,
+}
+
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SendReportSummary {
+    pub entry_id: String,
+    pub snapshot_hash: String,
+    pub at_ms: i64,
+    pub total_accepted: usize,
+    pub total_duplicate: usize,
+    pub total_offline: usize,
+    pub total_errored: usize,
+    pub total_pending: usize,
+    pub per_target: Vec<SendTargetSummary>,
+}
+
+impl fmt::Debug for SendReportSummary {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("SendReportSummary")
+            .field("total_accepted", &self.total_accepted)
+            .field("total_duplicate", &self.total_duplicate)
+            .field("total_offline", &self.total_offline)
+            .field("total_errored", &self.total_errored)
+            .field("total_pending", &self.total_pending)
+            .field("target_count", &self.per_target.len())
+            .finish()
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SendFilesInput {
     pub files: Vec<HostFileHandle>,
@@ -1034,9 +1088,7 @@ pub enum OperationResult {
     SearchRebuildAccepted {
         accepted: bool,
     },
-    EntrySent {
-        entry_id: String,
-    },
+    EntrySent(SendReportSummary),
     HistoryPage {
         entries: Vec<EntrySummary>,
         next_cursor: Option<String>,
@@ -1113,7 +1165,7 @@ impl fmt::Debug for OperationResult {
             Self::SearchRebuildAccepted { accepted } => debug
                 .field("kind", &"search_rebuild_accepted")
                 .field("accepted", accepted),
-            Self::EntrySent { .. } => debug.field("kind", &"entry_sent"),
+            Self::EntrySent(report) => debug.field("kind", &"entry_sent").field("report", report),
             Self::HistoryPage {
                 entries,
                 next_cursor,

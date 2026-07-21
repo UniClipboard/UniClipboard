@@ -508,6 +508,48 @@ fn resend_contract_preserves_report_and_structured_business_outcomes() {
 }
 
 #[test]
+fn send_contract_preserves_entry_and_per_target_outcomes_without_debugging_failure_details() {
+    let result = uc_engine::OperationResult::EntrySent(uc_engine::SendReportSummary {
+        entry_id: "entry-1".into(),
+        snapshot_hash: "hash-1".into(),
+        at_ms: 123,
+        total_accepted: 1,
+        total_duplicate: 2,
+        total_offline: 3,
+        total_errored: 4,
+        total_pending: 5,
+        per_target: vec![
+            uc_engine::SendTargetSummary {
+                device_id: "device-1".into(),
+                outcome: uc_engine::SendTargetOutcome::Accepted,
+            },
+            uc_engine::SendTargetSummary {
+                device_id: "device-2".into(),
+                outcome: uc_engine::SendTargetOutcome::Duplicate,
+            },
+            uc_engine::SendTargetSummary {
+                device_id: "device-3".into(),
+                outcome: uc_engine::SendTargetOutcome::Error {
+                    message: "private transport detail".into(),
+                },
+            },
+        ],
+    });
+
+    let uc_engine::OperationResult::EntrySent(report) = &result else {
+        panic!("expected entry-sent result");
+    };
+    assert_eq!(report.entry_id, "entry-1");
+    assert_eq!(report.snapshot_hash, "hash-1");
+    assert_eq!(report.total_pending, 5);
+    assert_eq!(report.per_target.len(), 3);
+    let debug = format!("{result:?}");
+    for hidden in ["private transport detail", "entry-1", "hash-1", "device-1"] {
+        assert!(!debug.contains(hidden));
+    }
+}
+
+#[test]
 fn search_contract_preserves_fields_without_debugging_user_content() {
     let input = SearchEntriesInput {
         query: "private search query".into(),

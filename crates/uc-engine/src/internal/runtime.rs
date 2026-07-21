@@ -631,7 +631,7 @@ impl ProductionRuntime {
                 .map(DeviceId::new)
                 .collect::<Vec<_>>()
         });
-        match outbound
+        let outcome = outbound
             .dispatch_capture_to_targets(
                 ClipboardOutboundInput {
                     entry_id: captured.entry_id.clone(),
@@ -641,18 +641,59 @@ impl ProductionRuntime {
                 target_filter,
             )
             .await
-            .map_err(|error| operation_error_with_code(SEND_FAILED_CODE, "send clipboard", error))?
-        {
-            ClipboardOutboundOutcome::Dispatched { .. } => Ok(OperationResult::EntrySent {
-                entry_id: captured.entry_id,
-            }),
-            ClipboardOutboundOutcome::Skipped { .. } => Err(EngineError::new(
-                SEND_SKIPPED_CODE,
-                EngineErrorCategory::Conflict,
-                false,
-            )),
-        }
+            .map_err(|error| {
+                operation_error_with_code(SEND_FAILED_CODE, "send clipboard", error)
+            })?;
+        send_report_result(captured.entry_id, outcome)
     }
+}
+
+fn send_report_result(
+    entry_id: String,
+    outcome: ClipboardOutboundOutcome,
+) -> Result<OperationResult, EngineError> {
+    let ClipboardOutboundOutcome::Dispatched {
+        snapshot_hash,
+        per_target,
+        accepted,
+        duplicate,
+        offline,
+        errored,
+        pending,
+        at_ms,
+        ..
+    } = outcome
+    else {
+        return Err(EngineError::new(
+            SEND_SKIPPED_CODE,
+            EngineErrorCategory::Conflict,
+            false,
+        ));
+    };
+
+    Ok(OperationResult::EntrySent(crate::SendReportSummary {
+        entry_id,
+        snapshot_hash,
+        at_ms,
+        total_accepted: accepted,
+        total_duplicate: duplicate,
+        total_offline: offline,
+        total_errored: errored,
+        total_pending: pending,
+        per_target: per_target
+            .into_iter()
+            .map(|target| crate::SendTargetSummary {
+                device_id: target.device_id.as_str().to_string(),
+                outcome: match target.outcome {
+                    Ok(uc_core::ports::DispatchAck::Accepted) => crate::SendTargetOutcome::Accepted,
+                    Ok(uc_core::ports::DispatchAck::DuplicateIgnored) => {
+                        crate::SendTargetOutcome::Duplicate
+                    }
+                    Err(message) => crate::SendTargetOutcome::Error { message },
+                },
+            })
+            .collect(),
+    }))
 }
 
 fn valid_host_display_name(display_name: &str) -> bool {
@@ -1053,6 +1094,42 @@ mod tests {
         let rebuilding = map_query_history_error(SearchFacadeError::IndexRebuilding);
         assert_eq!(rebuilding.category(), EngineErrorCategory::Unavailable);
         assert!(rebuilding.is_retryable());
+    }
+
+    #[test]
+    fn send_result_preserves_every_dispatch_field() {
+        let result = send_report_result(
+            "entry-1".into(),
+            ClipboardOutboundOutcome::Dispatched {
+                snapshot_hash: "hash-1".into(),
+                per_target: vec![uc_application::facade::DispatchEntryPerTarget {
+                    device_id: DeviceId::new("device-1"),
+                    outcome: Err("private failure detail".into()),
+                }],
+                accepted: 1,
+                duplicate: 2,
+                offline: 3,
+                errored: 4,
+                pending: 5,
+                at_ms: 123,
+                blob_ref_count: 6,
+            },
+        )
+        .unwrap();
+
+        let OperationResult::EntrySent(report) = result else {
+            panic!("expected entry-sent result");
+        };
+        assert_eq!(report.entry_id, "entry-1");
+        assert_eq!(report.snapshot_hash, "hash-1");
+        assert_eq!(report.at_ms, 123);
+        assert_eq!(report.total_accepted, 1);
+        assert_eq!(report.total_duplicate, 2);
+        assert_eq!(report.total_offline, 3);
+        assert_eq!(report.total_errored, 4);
+        assert_eq!(report.total_pending, 5);
+        assert_eq!(report.per_target.len(), 1);
+        assert!(!format!("{report:?}").contains("private failure detail"));
     }
 
     #[test]

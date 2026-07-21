@@ -1,11 +1,13 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use uc_engine::{
     Engine, EngineConfig, EngineEvent, EngineState, HostCapabilities, HostCapabilityError,
-    HostClipboard, HostClipboardRepresentation, HostClipboardSnapshot, HostDirectories,
-    HostFileAccess, HostFileHandle, HostFileMetadata, HostSecureStorage,
+    HostClipboard, HostClipboardChange, HostClipboardChangeStream, HostClipboardRepresentation,
+    HostClipboardSnapshot, HostDirectories, HostFileAccess, HostFileHandle, HostFileMetadata,
+    HostSecureStorage,
 };
 
 static ENGINE_TEST_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
@@ -110,6 +112,47 @@ impl HostClipboard for StaticHostClipboard {
     }
 
     fn write(&self, _snapshot: HostClipboardSnapshot) -> Result<(), HostCapabilityError> {
+        Ok(())
+    }
+}
+
+struct NotifyingHostClipboard {
+    snapshot: HostClipboardSnapshot,
+    changes: Mutex<Option<Box<dyn HostClipboardChangeStream>>>,
+}
+
+impl HostClipboard for NotifyingHostClipboard {
+    fn read(&self) -> Result<HostClipboardSnapshot, HostCapabilityError> {
+        Ok(self.snapshot.clone())
+    }
+
+    fn write(&self, _snapshot: HostClipboardSnapshot) -> Result<(), HostCapabilityError> {
+        Ok(())
+    }
+
+    fn take_change_stream(
+        &mut self,
+    ) -> Result<Option<Box<dyn HostClipboardChangeStream>>, HostCapabilityError> {
+        Ok(self.changes.lock().unwrap().take())
+    }
+}
+
+struct ChannelClipboardChanges {
+    receiver: tokio::sync::mpsc::UnboundedReceiver<()>,
+    stopped: Arc<AtomicBool>,
+}
+
+#[async_trait::async_trait]
+impl HostClipboardChangeStream for ChannelClipboardChanges {
+    async fn next(&mut self) -> Result<HostClipboardChange, HostCapabilityError> {
+        Ok(match self.receiver.recv().await {
+            Some(()) => HostClipboardChange::Changed,
+            None => HostClipboardChange::Closed,
+        })
+    }
+
+    async fn shutdown(&mut self) -> Result<(), HostCapabilityError> {
+        self.stopped.store(true, Ordering::SeqCst);
         Ok(())
     }
 }
@@ -334,6 +377,97 @@ async fn engine_shutdown_removes_host_clipboard_imports() {
         .unwrap();
 
     assert!(!import_root.exists());
+}
+
+#[tokio::test]
+async fn host_clipboard_change_is_processed_by_the_engine_and_stops_on_shutdown() {
+    let _guard = ENGINE_TEST_LOCK.lock().await;
+    let temp = tempfile::tempdir().unwrap();
+    let private = temp.path().join("private");
+    let cache = temp.path().join("cache");
+    let temporary = temp.path().join("temporary");
+    for directory in [&private, &cache, &temporary] {
+        std::fs::create_dir_all(directory).unwrap();
+    }
+    let probe = "host clipboard change searchable probe".to_string();
+    let (change_tx, change_rx) = tokio::sync::mpsc::unbounded_channel();
+    let stopped = Arc::new(AtomicBool::new(false));
+    let host = HostCapabilities::new(
+        HostDirectories::new(private, cache, temporary),
+        Box::new(MemoryHostSecureStorage::default()),
+        Box::new(NotifyingHostClipboard {
+            snapshot: HostClipboardSnapshot {
+                observed_at_ms: 101,
+                representations: vec![HostClipboardRepresentation::Inline {
+                    format: "text".into(),
+                    mime_type: Some("text/plain".into()),
+                    bytes: probe.as_bytes().to_vec(),
+                }],
+            },
+            changes: Mutex::new(Some(Box::new(ChannelClipboardChanges {
+                receiver: change_rx,
+                stopped: Arc::clone(&stopped),
+            }))),
+        }),
+        Box::new(EmptyHostFiles),
+    );
+    let (engine, mut events) = Engine::start(EngineConfig::new("1.2.3"), host)
+        .await
+        .unwrap();
+    engine
+        .execute(uc_engine::Operation::CreateSpace(
+            uc_engine::CreateSpaceInput {
+                device_name: Some("Clipboard Device".into()),
+                passphrase: uc_engine::SecretString::new("correct horse"),
+                passphrase_confirmation: uc_engine::SecretString::new("correct horse"),
+            },
+        ))
+        .await
+        .unwrap();
+
+    change_tx.send(()).unwrap();
+    let history_entry = tokio::time::timeout(std::time::Duration::from_secs(10), async {
+        loop {
+            let result = engine
+                .execute(uc_engine::Operation::QueryHistory(
+                    uc_engine::QueryHistoryInput {
+                        cursor: None,
+                        limit: 10,
+                        query: Some(probe.clone()),
+                    },
+                ))
+                .await
+                .unwrap();
+            let uc_engine::OperationResult::HistoryPage { entries, .. } = result else {
+                panic!("expected history page");
+            };
+            if let Some(entry) = entries.into_iter().next() {
+                break entry;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        }
+    })
+    .await
+    .unwrap();
+    assert_eq!(history_entry.preview.as_deref(), Some(probe.as_str()));
+
+    let refresh_seen = tokio::time::timeout(std::time::Duration::from_secs(2), async {
+        while let Some(event) = events.next().await {
+            if matches!(event, EngineEvent::RefreshRequired { .. }) {
+                return true;
+            }
+        }
+        false
+    })
+    .await
+    .unwrap();
+    assert!(refresh_seen);
+
+    engine
+        .shutdown(std::time::Duration::from_secs(15))
+        .await
+        .unwrap();
+    assert!(stopped.load(Ordering::SeqCst));
 }
 
 #[test]

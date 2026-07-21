@@ -23,8 +23,8 @@ use crate::internal::platform::SystemClipboardLayer;
 use crate::internal::wire::{wire_dependencies_from_inputs, CoreWiringInputs};
 use crate::{
     EngineConfig, EngineEvent, HostCapabilities, HostCapabilityError, HostCapabilityErrorCategory,
-    HostClipboard, HostClipboardRepresentation, HostDirectories, HostFileAccess, HostSecureStorage,
-    RefreshReason, TransferProgress,
+    HostClipboard, HostClipboardChangeStream, HostClipboardRepresentation, HostDirectories,
+    HostFileAccess, HostSecureStorage, RefreshReason, TransferProgress,
 };
 
 struct HostSecureStorageAdapter {
@@ -337,6 +337,7 @@ pub struct HostWiring {
     pub temporary_dir: std::path::PathBuf,
     pub clipboard_import_root: std::path::PathBuf,
     pub files: Arc<dyn HostFileAccess>,
+    pub clipboard_changes: Option<Box<dyn HostClipboardChangeStream>>,
 }
 
 pub fn wire_host_capabilities(
@@ -351,7 +352,10 @@ pub(crate) fn wire_host_capabilities_with_emitter(
     host: HostCapabilities,
     host_event_emitter: Arc<dyn HostEventEmitterPort>,
 ) -> WiringResult<HostWiring> {
-    let (directories, secure_storage, clipboard, files) = host.into_parts();
+    let (directories, secure_storage, mut clipboard, files) = host.into_parts();
+    let clipboard_changes = clipboard.take_change_stream().map_err(|_| {
+        WiringError::ClipboardInit("failed to open host clipboard change stream".into())
+    })?;
     let paths = derive_app_paths(&directories);
     let temporary_dir = directories.temporary().to_path_buf();
     let clipboard_import_root = temporary_dir.join("clipboard-imports");
@@ -390,6 +394,7 @@ pub(crate) fn wire_host_capabilities_with_emitter(
         temporary_dir,
         clipboard_import_root,
         files,
+        clipboard_changes,
     })
 }
 

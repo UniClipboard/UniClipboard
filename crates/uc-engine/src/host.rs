@@ -1,6 +1,8 @@
 use std::fmt;
 use std::path::{Path, PathBuf};
 
+use async_trait::async_trait;
+
 use crate::HostFileHandle;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -158,6 +160,24 @@ impl fmt::Debug for HostClipboardSnapshot {
 pub trait HostClipboard: Send + Sync {
     fn read(&self) -> Result<HostClipboardSnapshot, HostCapabilityError>;
     fn write(&self, snapshot: HostClipboardSnapshot) -> Result<(), HostCapabilityError>;
+
+    fn take_change_stream(
+        &mut self,
+    ) -> Result<Option<Box<dyn HostClipboardChangeStream>>, HostCapabilityError> {
+        Ok(None)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HostClipboardChange {
+    Changed,
+    Closed,
+}
+
+#[async_trait]
+pub trait HostClipboardChangeStream: Send {
+    async fn next(&mut self) -> Result<HostClipboardChange, HostCapabilityError>;
+    async fn shutdown(&mut self) -> Result<(), HostCapabilityError>;
 }
 
 #[derive(Clone, PartialEq, Eq)]

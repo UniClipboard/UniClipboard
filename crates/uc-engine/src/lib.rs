@@ -18,8 +18,8 @@ pub use engine::Engine;
 pub use event_stream::EventStream;
 pub use host::{
     HostCapabilities, HostCapabilityError, HostCapabilityErrorCategory, HostClipboard,
-    HostClipboardRepresentation, HostClipboardSnapshot, HostDirectories, HostFileAccess,
-    HostFileMetadata, HostSecureStorage,
+    HostClipboardChange, HostClipboardChangeStream, HostClipboardRepresentation,
+    HostClipboardSnapshot, HostDirectories, HostFileAccess, HostFileMetadata, HostSecureStorage,
 };
 
 #[derive(Clone, PartialEq, Eq)]

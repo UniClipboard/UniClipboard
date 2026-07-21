@@ -6,15 +6,19 @@ use async_trait::async_trait;
 use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 use tracing::{error, warn};
+use uc_application::clipboard_write::LocalActiveRegisterAdvancer;
 use uc_application::facade::{
-    AppFacade, ClipboardHistoryError, InMemoryLifecycleStatus, ResourceFacadeError,
-    SearchCoordinator, SearchCoordinatorDeps, SearchFacadeError, SearchPageView, SearchQueryInput,
+    AppFacade, ClipboardHistoryError, ClipboardHostEvent, ClipboardOriginKind, HostEvent,
+    HostEventBus, InMemoryLifecycleStatus, ResourceFacadeError, SearchCoordinator,
+    SearchCoordinatorDeps, SearchFacadeError, SearchPageView, SearchQueryInput,
     MAX_INLINE_OUTBOUND_REPRESENTATION_BYTES,
 };
 use uc_application::facade::{
-    ClipboardLiveIndexInput, ClipboardOutboundInput, ClipboardOutboundOutcome,
+    ClipboardLiveIndexInput, ClipboardLiveIndexOutcome, ClipboardOutboundInput,
+    ClipboardOutboundOutcome,
 };
 use uc_core::ids::{DeviceId, FormatId, RepresentationId};
+use uc_core::ports::{SelfWriteLedgerPort, SystemClipboardPort};
 use uc_core::TaskRegistry;
 use uc_core::{
     ClipboardChangeOrigin, FileDisplayMetadata, FileDisplayMetadataEntry, MimeType,
@@ -78,8 +82,9 @@ use crate::internal::storage::{execute_clear_storage_cache, execute_query_storag
 use crate::internal::sync_engine::SyncEngineAssembly;
 use crate::internal::unlock::execute_unlock_space;
 use crate::{
-    EngineConfig, EngineError, EngineErrorCategory, EntrySummary, HostCapabilities, HostFileAccess,
-    Operation, OperationResult, QueryHistoryInput,
+    EngineConfig, EngineError, EngineErrorCategory, EntrySummary, HostCapabilities,
+    HostClipboardChange, HostClipboardChangeStream, HostFileAccess, Operation, OperationResult,
+    QueryHistoryInput,
 };
 
 const START_FAILED_CODE: u32 = 1101;
@@ -103,7 +108,7 @@ const EXPORT_CHUNK_SIZE: usize = 64 * 1024;
 pub(crate) struct ProductionRuntime {
     wired: WiredDependencies,
     paths: uc_application::facade::AppPaths,
-    session: Mutex<Option<ProductionSession>>,
+    session: Arc<Mutex<Option<ProductionSession>>>,
     task_registry: Arc<TaskRegistry>,
     file_transfer_lifecycle: Arc<FileTransferLifecycle>,
     _temporary_dir: std::path::PathBuf,
@@ -124,6 +129,164 @@ struct ImportedHostFile {
     display_name: String,
 }
 
+struct HostClipboardChangeRuntime {
+    session: Arc<Mutex<Option<ProductionSession>>>,
+    system_clipboard: Arc<dyn SystemClipboardPort>,
+    change_origin: Arc<dyn SelfWriteLedgerPort>,
+    active_register: LocalActiveRegisterAdvancer,
+    host_events: Arc<HostEventBus>,
+}
+
+async fn spawn_host_clipboard_change_task(
+    mut changes: Box<dyn HostClipboardChangeStream>,
+    runtime: HostClipboardChangeRuntime,
+    tasks: Arc<TaskRegistry>,
+) {
+    tasks
+        .spawn("host_clipboard_changes", move |cancel| async move {
+            loop {
+                tokio::select! {
+                    _ = cancel.cancelled() => {
+                        if let Err(error) = changes.shutdown().await {
+                            warn!(error = %error, "host clipboard change stream shutdown failed");
+                        }
+                        return;
+                    }
+                    change = changes.next() => match change {
+                        Ok(HostClipboardChange::Changed) => {
+                            if let Err(error) = runtime.process_change().await {
+                                warn!(error = %error, "host clipboard change processing failed");
+                            }
+                        }
+                        Ok(HostClipboardChange::Closed) => return,
+                        Err(error) => {
+                            warn!(error = %error, "host clipboard change stream failed");
+                            return;
+                        }
+                    }
+                }
+            }
+        })
+        .await;
+}
+
+impl HostClipboardChangeRuntime {
+    async fn process_change(&self) -> anyhow::Result<()> {
+        let session = self.session.lock().await;
+        let Some(session) = session.as_ref() else {
+            return Ok(());
+        };
+        let encryption = session
+            .facade
+            .encryption
+            .state()
+            .await
+            .map_err(|_| anyhow::anyhow!("host clipboard encryption state unavailable"))?;
+        if !encryption.session_ready {
+            return Ok(());
+        }
+
+        let snapshot = self
+            .system_clipboard
+            .read_snapshot()
+            .map_err(|_| anyhow::anyhow!("host clipboard snapshot read failed"))?;
+        if snapshot.is_empty() {
+            return Ok(());
+        }
+        let origin_guard_key = snapshot.origin_guard_key();
+        let origin = self
+            .change_origin
+            .attribute_observed_change(&origin_guard_key)
+            .await;
+        if origin.is_remote_push() {
+            return Ok(());
+        }
+        if origin == ClipboardChangeOrigin::Resend {
+            error!("host clipboard watcher observed an invalid resend origin");
+            return Ok(());
+        }
+
+        let outbound_snapshot = Arc::new(snapshot.clone());
+        let Some(captured) = session
+            .clipboard
+            .capture
+            .capture(snapshot, origin, None)
+            .await
+            .map_err(|_| anyhow::anyhow!("host clipboard capture failed"))?
+        else {
+            return Ok(());
+        };
+        let entry_id = uc_core::ids::EntryId::from(captured.entry_id.as_str());
+        self.active_register
+            .advance_local(captured.snapshot_hash, entry_id)
+            .await;
+        self.host_events
+            .emit_or_warn(HostEvent::Clipboard(ClipboardHostEvent::NewContent {
+                entry_id: captured.entry_id.clone(),
+                attempt_id: None,
+                preview: "New clipboard content".to_string(),
+                origin: ClipboardOriginKind::Local,
+            }));
+
+        if !captured.deduplicated {
+            match session
+                .clipboard
+                .live_index
+                .index_capture(ClipboardLiveIndexInput {
+                    entry_id: captured.entry_id.clone(),
+                    snapshot: Arc::clone(&outbound_snapshot),
+                })
+                .await
+            {
+                Ok(ClipboardLiveIndexOutcome::Indexed) => {}
+                Ok(ClipboardLiveIndexOutcome::Skipped { reason }) => {
+                    tracing::debug!(reason, "host clipboard live index skipped");
+                }
+                Err(error) => warn!(error = %error, "host clipboard live index failed"),
+            }
+        }
+
+        let dispatch_snapshot =
+            Arc::try_unwrap(outbound_snapshot).unwrap_or_else(|shared| (*shared).clone());
+        let outbound = Arc::clone(&session.clipboard.outbound);
+        session
+            .tasks
+            .spawn("host_clipboard_outbound", move |cancel| async move {
+                let outcome = tokio::select! {
+                    _ = cancel.cancelled() => return,
+                    outcome = outbound.dispatch_capture(ClipboardOutboundInput {
+                        entry_id: captured.entry_id,
+                        snapshot: dispatch_snapshot,
+                        origin,
+                    }) => outcome,
+                };
+                match outcome {
+                    Ok(ClipboardOutboundOutcome::Dispatched {
+                        accepted,
+                        duplicate,
+                        offline,
+                        errored,
+                        pending,
+                        ..
+                    }) => tracing::info!(
+                        accepted,
+                        duplicate,
+                        offline,
+                        errored,
+                        pending,
+                        "host clipboard outbound sync completed"
+                    ),
+                    Ok(ClipboardOutboundOutcome::Skipped { reason }) => {
+                        tracing::debug!(reason, "host clipboard outbound sync skipped");
+                    }
+                    Err(error) => warn!(error = %error, "host clipboard outbound sync failed"),
+                }
+            })
+            .await;
+        Ok(())
+    }
+}
+
 impl ProductionRuntime {
     pub(crate) async fn start(
         config: EngineConfig,
@@ -138,6 +301,7 @@ impl ProductionRuntime {
             temporary_dir,
             clipboard_import_root,
             files,
+            clipboard_changes,
         } = wire_host_capabilities_with_emitter(&config, host, emitter)
             .map_err(|error| startup_error("dependency wiring", error))?;
 
@@ -146,11 +310,28 @@ impl ProductionRuntime {
         let task_registry = Arc::new(TaskRegistry::new());
         let blob_ports = BlobProcessingPorts::from_app_deps(&wired.deps);
         spawn_blob_processing_tasks(background, blob_ports, &task_registry).await;
+        let session = Arc::new(Mutex::new(Some(session)));
+        if let Some(changes) = clipboard_changes {
+            let change_runtime = HostClipboardChangeRuntime {
+                session: Arc::clone(&session),
+                system_clipboard: Arc::clone(&wired.deps.clipboard.system_clipboard),
+                change_origin: Arc::clone(&wired.deps.clipboard.clipboard_change_origin),
+                active_register: LocalActiveRegisterAdvancer::new(
+                    Arc::clone(&wired.deps.clipboard.active_register),
+                    Arc::clone(&wired.deps.device.device_identity),
+                    Arc::clone(&wired.deps.system.clock),
+                    wired.deps.clipboard.mobile_consumability.clone(),
+                ),
+                host_events: Arc::clone(&wired.shared.host_event_bus),
+            };
+            spawn_host_clipboard_change_task(changes, change_runtime, Arc::clone(&task_registry))
+                .await;
+        }
 
         Ok(Self {
             wired,
             paths,
-            session: Mutex::new(Some(session)),
+            session,
             task_registry,
             file_transfer_lifecycle,
             _temporary_dir: temporary_dir,

@@ -49,6 +49,7 @@ Running|Quiescing|Quiesced|Suspended -> ShuttingDown -> Stopped
 | `IssueInvitation` | 签发一次配对邀请 |
 | `CancelInvitation` | 取消当前尚未兑换的配对邀请 |
 | `ResetSpace` | 清除当前空间设置，使设备回到未设置状态 |
+| `FactoryResetSpace` | 依次清除密钥材料、空间设置和待处理邀请，使设备可重新初始化 |
 | `QuerySetupState` | 查询设置是否完成、当前邀请和已保存设备名 |
 | `QueryMigrationProgress` | 查询空间切换所处阶段和已备份记录数量 |
 | `QueryStorageStats` | 查询数据库、密钥库、缓存和日志占用大小，不返回本机目录 |
@@ -67,7 +68,7 @@ Running|Quiescing|Quiesced|Suspended -> ShuttingDown -> Stopped
 
 `RecoverSession` 的 `allow_secure_storage_unlock` 由宿主根据当前运行环境决定。值为 `false` 时核心不得尝试从系统安全存储恢复密钥；值为 `true` 时，核心统一完成加密会话、空间会话、搜索和接收能力恢复。
 
-`CancelInvitation` 在没有待取消邀请时返回冲突错误。`ResetSpace` 只清除当前空间设置，不向宿主暴露底层存储步骤。`QuerySetupState` 不返回内部服务状态；`QueryMigrationProgress` 只返回准备、握手完成、切换完成三个稳定阶段，不公开内部运行编号或目标空间。
+`CancelInvitation` 在没有待取消邀请时返回冲突错误。`ResetSpace` 只清除当前空间设置，不向宿主暴露底层存储步骤。`FactoryResetSpace` 则先清除密钥材料，再清除空间设置和待处理邀请；密钥清除失败时不得提前清除设置，成功后必须关闭接收入口。`QuerySetupState` 不返回内部服务状态；`QueryMigrationProgress` 只返回准备、握手完成、切换完成三个稳定阶段，不公开内部运行编号或目标空间。
 
 `QueryStorageStats` 和 `ClearStorageCache` 由核心执行。宿主只能看到分类后的字节数和实际释放量，不能取得数据库、密钥库、缓存或日志的本机路径。
 

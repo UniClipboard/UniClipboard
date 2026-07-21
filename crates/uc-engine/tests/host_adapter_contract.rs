@@ -505,6 +505,59 @@ async fn engine_start_builds_a_resumable_real_session() {
             && !self_device_id.is_empty()
             && !identity_fingerprint.is_empty()
     ));
+    let self_device_id = match &created {
+        uc_engine::OperationResult::SpaceCreated { self_device_id, .. } => self_device_id.clone(),
+        other => panic!("expected created space, got {other:?}"),
+    };
+    let initial_preferences = engine
+        .execute(uc_engine::Operation::QueryMemberSyncPreferences(
+            uc_engine::QueryMemberSyncPreferencesInput {
+                device_id: self_device_id.clone(),
+            },
+        ))
+        .await
+        .unwrap();
+    assert!(matches!(
+        initial_preferences,
+        uc_engine::OperationResult::MemberSyncPreferences(
+            uc_engine::MemberSyncPreferencesSummary {
+                send_enabled: true,
+                receive_enabled: true,
+                ..
+            }
+        )
+    ));
+    let updated_preferences = engine
+        .execute(uc_engine::Operation::UpdateMemberSyncPreferences(
+            uc_engine::UpdateMemberSyncPreferencesInput {
+                device_id: self_device_id.clone(),
+                patch: uc_engine::MemberSyncPreferencesPatch {
+                    send_enabled: Some(false),
+                    send_content_types: Some(uc_engine::ContentTypesPatch {
+                        text: Some(false),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                },
+            },
+        ))
+        .await
+        .unwrap();
+    assert!(matches!(
+        updated_preferences,
+        uc_engine::OperationResult::MemberSyncPreferences(
+            uc_engine::MemberSyncPreferencesSummary {
+                send_enabled: false,
+                receive_enabled: true,
+                send_content_types: uc_engine::ContentTypesSummary {
+                    text: false,
+                    image: true,
+                    ..
+                },
+                ..
+            }
+        )
+    ));
     assert_eq!(
         engine
             .execute(uc_engine::Operation::QueryEncryptionState)
@@ -757,6 +810,30 @@ async fn engine_start_builds_a_resumable_real_session() {
         .unwrap_err();
     assert_eq!(
         missing_resend.category(),
+        uc_engine::EngineErrorCategory::NotFound
+    );
+
+    assert_eq!(
+        engine
+            .execute(uc_engine::Operation::RemoveMember(
+                uc_engine::RemoveMemberInput {
+                    device_id: self_device_id.clone(),
+                },
+            ))
+            .await
+            .unwrap(),
+        uc_engine::OperationResult::MemberRemoved
+    );
+    let missing_member = engine
+        .execute(uc_engine::Operation::RemoveMember(
+            uc_engine::RemoveMemberInput {
+                device_id: self_device_id,
+            },
+        ))
+        .await
+        .unwrap_err();
+    assert_eq!(
+        missing_member.category(),
         uc_engine::EngineErrorCategory::NotFound
     );
 

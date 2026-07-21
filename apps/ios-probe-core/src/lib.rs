@@ -619,6 +619,18 @@ fn operation_response(result: OperationResult) -> Value {
             "online_count": devices.iter().filter(|device| device.online).count(),
             "device_ids": devices.into_iter().map(|device| device.device_id).collect::<Vec<_>>(),
         }),
+        OperationResult::MemberSyncPreferences(preferences) => json!({
+            "ok": true,
+            "kind": "member_sync_preferences",
+            "send_enabled": preferences.send_enabled,
+            "receive_enabled": preferences.receive_enabled,
+            "send_content_types": preferences.send_content_types,
+            "receive_content_types": preferences.receive_content_types,
+        }),
+        OperationResult::MemberRemoved => json!({
+            "ok": true,
+            "kind": "member_removed",
+        }),
         OperationResult::EntrySent { entry_id } => {
             json!({"ok": true, "kind": "entry_sent", "entry_id": entry_id})
         }

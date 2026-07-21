@@ -87,6 +87,9 @@ pub enum OperationKind {
     LockEncryption,
     VerifySecureStorageAccess,
     ListDevices,
+    QueryMemberSyncPreferences,
+    UpdateMemberSyncPreferences,
+    RemoveMember,
     SendText,
     SendImage,
     SendFiles,
@@ -115,6 +118,9 @@ impl fmt::Display for OperationKind {
             Self::LockEncryption => "lock_encryption",
             Self::VerifySecureStorageAccess => "verify_secure_storage_access",
             Self::ListDevices => "list_devices",
+            Self::QueryMemberSyncPreferences => "query_member_sync_preferences",
+            Self::UpdateMemberSyncPreferences => "update_member_sync_preferences",
+            Self::RemoveMember => "remove_member",
             Self::SendText => "send_text",
             Self::SendImage => "send_image",
             Self::SendFiles => "send_files",
@@ -145,6 +151,9 @@ pub enum Operation {
     LockEncryption,
     VerifySecureStorageAccess,
     ListDevices,
+    QueryMemberSyncPreferences(QueryMemberSyncPreferencesInput),
+    UpdateMemberSyncPreferences(UpdateMemberSyncPreferencesInput),
+    RemoveMember(RemoveMemberInput),
     SendText(SendTextInput),
     SendImage(SendImageInput),
     SendFiles(SendFilesInput),
@@ -173,6 +182,9 @@ impl Operation {
             Self::LockEncryption => OperationKind::LockEncryption,
             Self::VerifySecureStorageAccess => OperationKind::VerifySecureStorageAccess,
             Self::ListDevices => OperationKind::ListDevices,
+            Self::QueryMemberSyncPreferences(_) => OperationKind::QueryMemberSyncPreferences,
+            Self::UpdateMemberSyncPreferences(_) => OperationKind::UpdateMemberSyncPreferences,
+            Self::RemoveMember(_) => OperationKind::RemoveMember,
             Self::SendText(_) => OperationKind::SendText,
             Self::SendImage(_) => OperationKind::SendImage,
             Self::SendFiles(_) => OperationKind::SendFiles,
@@ -245,6 +257,40 @@ impl fmt::Debug for UnlockSpaceInput {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RecoverSessionInput {
     pub allow_secure_storage_unlock: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct QueryMemberSyncPreferencesInput {
+    pub device_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UpdateMemberSyncPreferencesInput {
+    pub device_id: String,
+    pub patch: MemberSyncPreferencesPatch,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RemoveMemberInput {
+    pub device_id: String,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MemberSyncPreferencesPatch {
+    pub send_enabled: Option<bool>,
+    pub receive_enabled: Option<bool>,
+    pub send_content_types: Option<ContentTypesPatch>,
+    pub receive_content_types: Option<ContentTypesPatch>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ContentTypesPatch {
+    pub text: Option<bool>,
+    pub image: Option<bool>,
+    pub link: Option<bool>,
+    pub file: Option<bool>,
+    pub code_snippet: Option<bool>,
+    pub rich_text: Option<bool>,
 }
 
 #[derive(Clone, PartialEq, Eq)]
@@ -533,6 +579,8 @@ pub enum OperationResult {
         granted: bool,
     },
     Devices(Vec<DeviceSummary>),
+    MemberSyncPreferences(MemberSyncPreferencesSummary),
+    MemberRemoved,
     EntrySent {
         entry_id: String,
     },
@@ -584,6 +632,10 @@ impl fmt::Debug for OperationResult {
             Self::Devices(devices) => debug
                 .field("kind", &"devices")
                 .field("device_count", &devices.len()),
+            Self::MemberSyncPreferences(preferences) => debug
+                .field("kind", &"member_sync_preferences")
+                .field("preferences", preferences),
+            Self::MemberRemoved => debug.field("kind", &"member_removed"),
             Self::EntrySent { .. } => debug.field("kind", &"entry_sent"),
             Self::HistoryPage {
                 entries,
@@ -693,4 +745,22 @@ impl fmt::Debug for DeviceSummary {
             .field("online", &self.online)
             .finish()
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MemberSyncPreferencesSummary {
+    pub send_enabled: bool,
+    pub receive_enabled: bool,
+    pub send_content_types: ContentTypesSummary,
+    pub receive_content_types: ContentTypesSummary,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ContentTypesSummary {
+    pub text: bool,
+    pub image: bool,
+    pub link: bool,
+    pub file: bool,
+    pub code_snippet: bool,
+    pub rich_text: bool,
 }

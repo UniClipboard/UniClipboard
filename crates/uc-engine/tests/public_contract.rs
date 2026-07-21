@@ -1,10 +1,13 @@
 use uc_engine::{
-    CreateSpaceInput, DeviceSummary, EncryptionStateSummary, EngineConfig, EngineError,
-    EngineErrorCategory, EngineEvent, EngineState, EntrySummary, ExportEntryInput, HostFileHandle,
-    JoinSpaceInput, LocalDeviceSummary, MigrationPhaseSummary, MigrationProgressSummary, Operation,
-    OperationKind, OperationResult, QueryHistoryInput, RecoverSessionInput, RefreshReason,
-    ResendEntryInput, SecretString, SendFilesInput, SendImageInput, SendTextInput,
-    SetupInvitationSummary, SetupStateSummary, StorageStatsSummary, UnlockSpaceInput,
+    ContentTypesPatch, ContentTypesSummary, CreateSpaceInput, DeviceSummary,
+    EncryptionStateSummary, EngineConfig, EngineError, EngineErrorCategory, EngineEvent,
+    EngineState, EntrySummary, ExportEntryInput, HostFileHandle, JoinSpaceInput,
+    LocalDeviceSummary, MemberSyncPreferencesPatch, MemberSyncPreferencesSummary,
+    MigrationPhaseSummary, MigrationProgressSummary, Operation, OperationKind, OperationResult,
+    QueryHistoryInput, QueryMemberSyncPreferencesInput, RecoverSessionInput, RefreshReason,
+    RemoveMemberInput, ResendEntryInput, SecretString, SendFilesInput, SendImageInput,
+    SendTextInput, SetupInvitationSummary, SetupStateSummary, StorageStatsSummary,
+    UnlockSpaceInput, UpdateMemberSyncPreferencesInput,
 };
 
 #[test]
@@ -83,6 +86,25 @@ fn every_public_operation_has_a_stable_kind() {
         ),
         (Operation::ListDevices, OperationKind::ListDevices),
         (
+            Operation::QueryMemberSyncPreferences(QueryMemberSyncPreferencesInput {
+                device_id: "member-1".into(),
+            }),
+            OperationKind::QueryMemberSyncPreferences,
+        ),
+        (
+            Operation::UpdateMemberSyncPreferences(UpdateMemberSyncPreferencesInput {
+                device_id: "member-1".into(),
+                patch: MemberSyncPreferencesPatch::default(),
+            }),
+            OperationKind::UpdateMemberSyncPreferences,
+        ),
+        (
+            Operation::RemoveMember(RemoveMemberInput {
+                device_id: "member-1".into(),
+            }),
+            OperationKind::RemoveMember,
+        ),
+        (
             Operation::SendText(SendTextInput {
                 text: "private text".into(),
                 target_devices: vec!["phone".into()],
@@ -131,6 +153,50 @@ fn every_public_operation_has_a_stable_kind() {
     for (operation, expected) in operations {
         assert_eq!(operation.kind(), expected);
     }
+}
+
+#[test]
+fn member_sync_preferences_preserve_partial_updates_and_stable_results() {
+    let patch = MemberSyncPreferencesPatch {
+        send_enabled: Some(false),
+        receive_enabled: None,
+        send_content_types: Some(ContentTypesPatch {
+            text: Some(true),
+            ..Default::default()
+        }),
+        receive_content_types: None,
+    };
+    assert_eq!(patch.send_enabled, Some(false));
+    assert!(patch.receive_enabled.is_none());
+    assert_eq!(
+        patch.send_content_types.as_ref().and_then(|p| p.text),
+        Some(true)
+    );
+    assert!(patch.receive_content_types.is_none());
+
+    let preferences = OperationResult::MemberSyncPreferences(MemberSyncPreferencesSummary {
+        send_enabled: false,
+        receive_enabled: true,
+        send_content_types: ContentTypesSummary {
+            text: true,
+            image: false,
+            link: false,
+            file: false,
+            code_snippet: false,
+            rich_text: false,
+        },
+        receive_content_types: ContentTypesSummary {
+            text: true,
+            image: true,
+            link: true,
+            file: true,
+            code_snippet: true,
+            rich_text: true,
+        },
+    });
+
+    assert!(format!("{preferences:?}").contains("member_sync_preferences"));
+    assert!(format!("{:?}", OperationResult::MemberRemoved).contains("member_removed"));
 }
 
 #[test]

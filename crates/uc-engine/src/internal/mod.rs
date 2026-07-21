@@ -17,6 +17,7 @@ pub(crate) mod inbound_staging;
 pub mod invitation;
 pub mod join_space;
 pub mod lifecycle;
+pub mod member;
 pub mod migration_progress;
 pub mod network_policy;
 pub mod platform;

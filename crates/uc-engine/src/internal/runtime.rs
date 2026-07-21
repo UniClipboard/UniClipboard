@@ -15,7 +15,6 @@ use uc_application::facade::{
     ClipboardLiveIndexInput, ClipboardOutboundInput, ClipboardOutboundOutcome,
 };
 use uc_core::ids::{DeviceId, FormatId, RepresentationId};
-use uc_core::ports::ReachabilityState;
 use uc_core::TaskRegistry;
 use uc_core::{
     ClipboardChangeOrigin, FileDisplayMetadata, FileDisplayMetadataEntry, MimeType,
@@ -47,6 +46,10 @@ use crate::internal::host_adapters::{
 use crate::internal::invitation::execute_issue_invitation;
 use crate::internal::join_space::{execute_join_space, JoinSpaceMode};
 use crate::internal::lifecycle::build_daemon_lifecycle;
+use crate::internal::member::{
+    execute_list_devices, execute_query_member_sync_preferences, execute_remove_member,
+    execute_update_member_sync_preferences,
+};
 use crate::internal::migration_progress::execute_query_migration_progress;
 use crate::internal::reset_space::execute_reset_space;
 use crate::internal::session_recovery::execute_recover_session;
@@ -55,12 +58,11 @@ use crate::internal::storage::{execute_clear_storage_cache, execute_query_storag
 use crate::internal::sync_engine::SyncEngineAssembly;
 use crate::internal::unlock::execute_unlock_space;
 use crate::{
-    DeviceSummary, EngineConfig, EngineError, EngineErrorCategory, EntrySummary, HostCapabilities,
-    HostFileAccess, Operation, OperationResult, QueryHistoryInput,
+    EngineConfig, EngineError, EngineErrorCategory, EntrySummary, HostCapabilities, HostFileAccess,
+    Operation, OperationResult, QueryHistoryInput,
 };
 
 const START_FAILED_CODE: u32 = 1101;
-const OPERATION_FAILED_CODE: u32 = 1102;
 const OPERATION_UNAVAILABLE_CODE: u32 = 1103;
 const QUERY_HISTORY_INVALID_INPUT_CODE: u32 = 1241;
 const QUERY_HISTORY_UNAUTHORIZED_CODE: u32 = 1242;
@@ -308,22 +310,18 @@ impl EngineRuntime for ProductionRuntime {
                 execute_verify_secure_storage_access(self.current_facade().await?.as_ref()).await
             }
             Operation::ListDevices => {
-                let entries = self
-                    .current_facade()
-                    .await?
-                    .list_roster_entries()
+                execute_list_devices(self.current_facade().await?.as_ref()).await
+            }
+            Operation::QueryMemberSyncPreferences(input) => {
+                execute_query_member_sync_preferences(self.current_facade().await?.as_ref(), input)
                     .await
-                    .map_err(|error| operation_error("list devices", error))?;
-                Ok(OperationResult::Devices(
-                    entries
-                        .into_iter()
-                        .map(|entry| DeviceSummary {
-                            device_id: entry.device_id.as_str().to_string(),
-                            display_name: entry.device_name,
-                            online: entry.state == ReachabilityState::Online,
-                        })
-                        .collect(),
-                ))
+            }
+            Operation::UpdateMemberSyncPreferences(input) => {
+                execute_update_member_sync_preferences(self.current_facade().await?.as_ref(), input)
+                    .await
+            }
+            Operation::RemoveMember(input) => {
+                execute_remove_member(self.current_facade().await?.as_ref(), input).await
             }
             Operation::QueryHistory(input) => {
                 let search_input = history_search_input(input)?;
@@ -861,11 +859,6 @@ fn history_page_result(
 fn startup_error(context: &'static str, error: impl std::fmt::Display) -> EngineError {
     error!(context, error = %error, "engine startup failed");
     EngineError::new(START_FAILED_CODE, EngineErrorCategory::Unavailable, true)
-}
-
-fn operation_error(context: &'static str, error: impl std::fmt::Display) -> EngineError {
-    error!(context, error = %error, "engine operation failed");
-    EngineError::new(OPERATION_FAILED_CODE, EngineErrorCategory::Internal, false)
 }
 
 fn operation_unavailable_error() -> EngineError {

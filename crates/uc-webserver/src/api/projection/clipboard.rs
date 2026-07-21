@@ -4,7 +4,6 @@
 use base64::engine::general_purpose::STANDARD;
 use base64::Engine as _;
 use uc_application::facade::DispatchEntryOutcome;
-use uc_application::facade::ResendReport;
 use uc_core::ports::DispatchAck;
 use uc_daemon_contract::api::dto::clipboard_command::{
     DispatchOutcomeResponse, PerTargetOutcomeDto, ResendResponse,
@@ -16,7 +15,7 @@ use uc_daemon_contract::api::dto::clipboard_delivery::{
 use uc_engine::{
     DeliveryFailureReasonSummary, EntryDeliveryStatusSummary, EntryDeliveryTargetSummary,
     EntryDeliveryViewSummary, EntrySourceSummary, HistoryClearSummary, HistoryEntryDetailSummary,
-    HistoryEntryResourceSummary, HistoryEntrySummary, HistoryStatsSummary,
+    HistoryEntryResourceSummary, HistoryEntrySummary, HistoryStatsSummary, ResendReportSummary,
 };
 
 use super::IntoApiDto;
@@ -198,7 +197,7 @@ impl IntoApiDto<DispatchOutcomeResponse> for DispatchEntryOutcome {
     }
 }
 
-impl IntoApiDto<ResendResponse> for ResendReport {
+impl IntoApiDto<ResendResponse> for ResendReportSummary {
     fn into_api_dto(self) -> ResendResponse {
         ResendResponse {
             accepted: self.accepted,

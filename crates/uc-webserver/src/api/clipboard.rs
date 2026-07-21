@@ -12,10 +12,8 @@ use axum::routing::{delete, get, post};
 use axum::{Json, Router};
 use serde::Deserialize;
 use serde_json::json;
-use uc_application::facade::{
-    AppFacade, NotResendableReason, ResendEntryCommand, ResendEntryError,
-};
-use uc_core::ids::{DeviceId, EntryId, FormatId, RepresentationId};
+use uc_application::facade::AppFacade;
+use uc_core::ids::{DeviceId, FormatId, RepresentationId};
 use uc_core::{
     ClipboardChangeOrigin, MimeType, ObservedClipboardRepresentation, SystemClipboardSnapshot,
 };
@@ -34,11 +32,15 @@ use uc_engine::internal::receive::{
     RECEIVE_INVALID_INPUT_CODE, RECEIVE_UNAVAILABLE_CODE, TRANSFER_CANCEL_FAILED_CODE,
     TRANSFER_CANCEL_UNAVAILABLE_CODE,
 };
+use uc_engine::internal::resend::{
+    execute_resend_entry, RESEND_DISPATCH_FAILED_CODE, RESEND_STORAGE_FAILED_CODE,
+};
 use uc_engine::{
-    CancelEntryReceiveInput, CancelInboundTransferInput, EngineError,
+    CancelEntryReceiveInput, CancelInboundTransferInput, EngineError, EntryNotResendableReason,
     EntryReceiveCancellationOutcome, EntryReceiveProgressInput, HistoryEntryInput,
     InboundTransferCancellationOutcome, ListHistoryEntriesInput, OperationResult,
-    ReceiveProgressSummary, SetHistoryEntryFavoriteInput, TransferCancellationReason,
+    ReceiveProgressSummary, ResendEntryInput, ResendEntryOutcome, SetHistoryEntryFavoriteInput,
+    TransferCancellationReason,
 };
 use utoipa::IntoParams;
 
@@ -603,25 +605,28 @@ async fn resend_entry(
     let app = require_app_facade(&state).map_err(IntoResponse::into_response)?;
     let Json(req) = body.map_err(|e| ApiError::bad_request(e.to_string()).into_response())?;
 
-    let target_filter: Option<Vec<DeviceId>> = req
-        .peers
-        .filter(|p| !p.is_empty())
-        .map(|ids| ids.iter().map(DeviceId::new).collect());
+    let result = execute_resend_entry(
+        app.as_ref(),
+        ResendEntryInput {
+            entry_id: req.entry_id,
+            target_devices: req.peers.unwrap_or_default(),
+        },
+    )
+    .await
+    .map_err(|error| resend_error_to_response(error).into_response())?;
 
-    let cmd = ResendEntryCommand {
-        entry_id: EntryId::from(req.entry_id.as_str()),
-        target_filter,
-    };
-
-    let report = app
-        .resend_entry(cmd)
-        .await
-        .map_err(|e| resend_error_to_response(e).into_response())?;
-
-    Ok(Json(ApiEnvelope::now(report.into_api_dto())))
+    match result {
+        OperationResult::EntryResent(ResendEntryOutcome::Completed(report)) => {
+            Ok(Json(ApiEnvelope::now(report.into_api_dto())))
+        }
+        OperationResult::EntryResent(outcome) => {
+            Err(resend_outcome_to_response(outcome).into_response())
+        }
+        _ => Err(ApiError::internal("engine returned an unexpected resend result").into_response()),
+    }
 }
 
-/// Map the typed [`ResendEntryError`] to (status, canonical `ApiErrorResponse`).
+/// Map structured resend business outcomes to the existing HTTP contract.
 ///
 /// `code` is the SCREAMING_SNAKE tag the frontend `ResendEntryCommandError`
 /// union switches on; the per-variant structured fields ride `details` so the
@@ -630,62 +635,54 @@ async fn resend_entry(
 /// `DaemonApiError.details`, and the FE reconstructs `{ code, ...details }`).
 /// The client-recoverable variants are 4xx (not 5xx) so they neither trip
 /// `callSdk`'s 401 refresh-retry nor escalate to Sentry via `log_facade_failure`.
-fn resend_error_to_response(err: ResendEntryError) -> (StatusCode, Json<ApiErrorResponse>) {
-    use ResendEntryError as E;
+fn resend_outcome_to_response(outcome: ResendEntryOutcome) -> (StatusCode, Json<ApiErrorResponse>) {
     let (status, variant, code, message, details): (
         StatusCode,
         &'static str,
         &'static str,
         String,
         Option<serde_json::Value>,
-    ) = match err {
-        E::EntryNotFound(id) => (
+    ) = match outcome {
+        ResendEntryOutcome::EntryNotFound { entry_id } => (
             StatusCode::NOT_FOUND,
             "entry_not_found",
             "ENTRY_NOT_FOUND",
-            format!("entry not found: {}", id.inner()),
-            Some(json!({ "entryId": id.inner() })),
+            format!("entry not found: {entry_id}"),
+            Some(json!({ "entryId": entry_id })),
         ),
-        E::EntryNotResendable { entry_id, reason } => {
+        ResendEntryOutcome::EntryNotResendable { entry_id, reason } => {
             let reason_tag = match reason {
-                NotResendableReason::RemoteOrigin => "remoteOrigin",
-                NotResendableReason::PayloadLost => "payloadLost",
+                EntryNotResendableReason::RemoteOrigin => "remoteOrigin",
+                EntryNotResendableReason::PayloadLost => "payloadLost",
             };
             (
                 StatusCode::CONFLICT,
                 "entry_not_resendable",
                 "ENTRY_NOT_RESENDABLE",
-                format!("entry {} is not resendable", entry_id.inner()),
-                Some(json!({ "entryId": entry_id.inner(), "reason": reason_tag })),
+                format!("entry {entry_id} is not resendable"),
+                Some(json!({ "entryId": entry_id, "reason": reason_tag })),
             )
         }
-        E::TargetNotTrusted(device_id) => (
+        ResendEntryOutcome::TargetNotTrusted { device_id } => (
             StatusCode::CONFLICT,
             "target_not_trusted",
             "TARGET_NOT_TRUSTED",
-            format!("target device {} is not a trusted peer", device_id.as_str()),
-            Some(json!({ "deviceId": device_id.as_str() })),
+            format!("target device {device_id} is not a trusted peer"),
+            Some(json!({ "deviceId": device_id })),
         ),
-        E::NoEligibleTargets => (
+        ResendEntryOutcome::NoEligibleTargets => (
             StatusCode::CONFLICT,
             "no_eligible_targets",
             "NO_ELIGIBLE_TARGETS",
             "no eligible targets for resend".to_string(),
             None,
         ),
-        E::Storage(msg) => (
+        ResendEntryOutcome::Completed(_) => (
             StatusCode::INTERNAL_SERVER_ERROR,
-            "storage",
-            "STORAGE",
-            msg.clone(),
-            Some(json!({ "message": msg })),
-        ),
-        E::Dispatch(msg) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "dispatch",
-            "DISPATCH",
-            msg.clone(),
-            Some(json!({ "message": msg })),
+            "unexpected_completed_outcome",
+            "INTERNAL",
+            "resend failed".to_string(),
+            None,
         ),
     };
     log_facade_failure(
@@ -700,6 +697,25 @@ fn resend_error_to_response(err: ResendEntryError) -> (StatusCode, Json<ApiError
         None => ApiErrorResponse::new(code, message),
     };
     (status, Json(body))
+}
+
+fn resend_error_to_response(error: EngineError) -> (StatusCode, Json<ApiErrorResponse>) {
+    let (variant, code) = match error.code() {
+        RESEND_STORAGE_FAILED_CODE => ("storage", "STORAGE"),
+        RESEND_DISPATCH_FAILED_CODE => ("dispatch", "DISPATCH"),
+        _ => ("unexpected_engine_error", "INTERNAL"),
+    };
+    log_facade_failure(
+        "clipboard_command",
+        "resend_entry",
+        variant,
+        StatusCode::INTERNAL_SERVER_ERROR,
+        "resend failed",
+    );
+    (
+        StatusCode::INTERNAL_SERVER_ERROR,
+        Json(ApiErrorResponse::new(code, "resend failed")),
+    )
 }
 
 /// GET /clipboard/entries/:id/delivery
@@ -962,15 +978,16 @@ mod tests {
     /// variants must be 4xx (not 5xx → no Sentry escalation, no 401 retry).
     #[test]
     fn resend_error_carries_typed_code_and_structured_details() {
-        let (status, body) =
-            resend_error_to_response(ResendEntryError::TargetNotTrusted(DeviceId::new("dev-x")));
+        let (status, body) = resend_outcome_to_response(ResendEntryOutcome::TargetNotTrusted {
+            device_id: "dev-x".into(),
+        });
         assert_eq!(status, StatusCode::CONFLICT);
         assert_eq!(body.0.code, "TARGET_NOT_TRUSTED");
         assert_eq!(body.0.details.as_ref().unwrap()["deviceId"], "dev-x");
 
-        let (status, body) = resend_error_to_response(ResendEntryError::EntryNotResendable {
-            entry_id: EntryId::from("ent-1"),
-            reason: NotResendableReason::PayloadLost,
+        let (status, body) = resend_outcome_to_response(ResendEntryOutcome::EntryNotResendable {
+            entry_id: "ent-1".into(),
+            reason: EntryNotResendableReason::PayloadLost,
         });
         assert_eq!(status, StatusCode::CONFLICT);
         assert_eq!(body.0.code, "ENTRY_NOT_RESENDABLE");
@@ -978,24 +995,24 @@ mod tests {
         assert_eq!(details["entryId"], "ent-1");
         assert_eq!(details["reason"], "payloadLost");
 
-        let (status, body) = resend_error_to_response(ResendEntryError::EntryNotFound(
-            EntryId::from("ent-missing"),
-        ));
+        let (status, body) = resend_outcome_to_response(ResendEntryOutcome::EntryNotFound {
+            entry_id: "ent-missing".into(),
+        });
         assert_eq!(status, StatusCode::NOT_FOUND);
         assert_eq!(body.0.code, "ENTRY_NOT_FOUND");
         assert_eq!(body.0.details.as_ref().unwrap()["entryId"], "ent-missing");
 
-        let (status, body) = resend_error_to_response(ResendEntryError::Dispatch(
-            "encrypt session locked".to_string(),
+        let (status, body) = resend_error_to_response(EngineError::new(
+            RESEND_DISPATCH_FAILED_CODE,
+            uc_engine::EngineErrorCategory::Internal,
+            false,
         ));
         assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
         assert_eq!(body.0.code, "DISPATCH");
-        assert_eq!(
-            body.0.details.as_ref().unwrap()["message"],
-            "encrypt session locked"
-        );
+        assert_eq!(body.0.message, "resend failed");
+        assert!(body.0.details.is_none());
 
-        let (_, body) = resend_error_to_response(ResendEntryError::NoEligibleTargets);
+        let (_, body) = resend_outcome_to_response(ResendEntryOutcome::NoEligibleTargets);
         assert_eq!(body.0.code, "NO_ELIGIBLE_TARGETS");
         assert!(body.0.details.is_none());
     }

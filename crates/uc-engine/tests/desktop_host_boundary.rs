@@ -690,6 +690,25 @@ fn daemon_delivery_view_handler_delegates_to_engine() {
     );
 }
 
+#[test]
+fn daemon_resend_handler_delegates_to_engine() {
+    let handler_path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../crates/uc-webserver/src/api/clipboard.rs");
+    let handler = std::fs::read_to_string(&handler_path)
+        .unwrap_or_else(|error| panic!("failed to read {}: {error}", handler_path.display()));
+    let resend_handler = handler
+        .split("async fn resend_entry(")
+        .nth(1)
+        .and_then(|source| source.split("fn resend_error_to_response(").next())
+        .expect("resend handler must remain discoverable");
+
+    assert!(
+        !resend_handler.contains(".resend_entry(")
+            && resend_handler.contains("execute_resend_entry("),
+        "daemon resend handler must delegate resend orchestration to uc-engine"
+    );
+}
+
 fn rust_sources(root: &Path) -> Vec<PathBuf> {
     let mut pending = vec![root.to_path_buf()];
     let mut sources = Vec::new();

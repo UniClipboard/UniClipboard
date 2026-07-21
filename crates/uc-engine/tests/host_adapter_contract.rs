@@ -476,17 +476,19 @@ async fn host_clipboard_change_is_processed_by_the_engine_and_stops_on_shutdown(
     .unwrap();
     assert_eq!(history_entry.preview.as_deref(), Some(probe.as_str()));
 
-    let refresh_seen = tokio::time::timeout(std::time::Duration::from_secs(2), async {
-        while let Some(event) = events.next().await {
-            if matches!(event, EngineEvent::RefreshRequired { .. }) {
-                return true;
-            }
-        }
-        false
-    })
-    .await
-    .unwrap();
-    assert!(refresh_seen);
+    assert_eq!(
+        next_engine_event_matching(&mut events, |event| matches!(
+            event,
+            EngineEvent::IncomingEntry(incoming) if incoming.entry_id == history_entry.entry_id
+        ))
+        .await,
+        EngineEvent::IncomingEntry(uc_engine::IncomingEntryEvent {
+            entry_id: history_entry.entry_id,
+            attempt_id: None,
+            preview: "New clipboard content".into(),
+            origin: uc_engine::ClipboardOriginSummary::Local,
+        })
+    );
 
     engine
         .shutdown(std::time::Duration::from_secs(15))
@@ -947,6 +949,17 @@ async fn engine_start_builds_a_resumable_real_session() {
             uc_engine::MobileSyncSettingsUpdateOutcome::Updated(ref settings)
         ) if settings.enabled && settings.lan_listen_enabled && settings.changed
     ));
+    assert_eq!(
+        next_engine_event_matching(&mut events, |event| {
+            matches!(event, EngineEvent::MobileLanSettingsChanged(_))
+        })
+        .await,
+        EngineEvent::MobileLanSettingsChanged(uc_engine::MobileLanSettingsChanged {
+            enabled: true,
+            lan_listen_enabled: true,
+            lan_port: None,
+        })
+    );
     assert!(matches!(
         engine
             .execute(uc_engine::Operation::UpdateMobileSyncSettings(Box::new(
@@ -2251,6 +2264,10 @@ async fn engine_mobile_upload_owns_transfer_lifecycle_events() {
         .await,
         EngineEvent::TransferProgress(uc_engine::TransferProgress {
             transfer_id: "mobile-transfer-lifecycle".into(),
+            entry_id: None,
+            attempt_id: None,
+            peer_id: "mobile:mobile-source".into(),
+            direction: uc_engine::TransferDirectionSummary::Receiving,
             completed_bytes: 0,
             total_bytes: Some(3),
         })
@@ -2275,6 +2292,10 @@ async fn engine_mobile_upload_owns_transfer_lifecycle_events() {
         .await,
         EngineEvent::TransferProgress(uc_engine::TransferProgress {
             transfer_id: "mobile-transfer-lifecycle".into(),
+            entry_id: None,
+            attempt_id: None,
+            peer_id: "mobile:mobile-source".into(),
+            direction: uc_engine::TransferDirectionSummary::Receiving,
             completed_bytes: 3,
             total_bytes: Some(3),
         })
@@ -2303,6 +2324,10 @@ async fn engine_mobile_upload_owns_transfer_lifecycle_events() {
         .await,
         EngineEvent::TransferProgress(uc_engine::TransferProgress {
             transfer_id: "mobile-transfer-lifecycle".into(),
+            entry_id: None,
+            attempt_id: None,
+            peer_id: "mobile:mobile-source".into(),
+            direction: uc_engine::TransferDirectionSummary::Receiving,
             completed_bytes: 3,
             total_bytes: Some(3),
         })
@@ -2332,6 +2357,10 @@ async fn engine_mobile_upload_owns_transfer_lifecycle_events() {
         .await,
         EngineEvent::TransferProgress(uc_engine::TransferProgress {
             transfer_id: "mobile-transfer-aborted-lifecycle".into(),
+            entry_id: None,
+            attempt_id: None,
+            peer_id: "mobile:mobile-source".into(),
+            direction: uc_engine::TransferDirectionSummary::Receiving,
             completed_bytes: 0,
             total_bytes: None,
         })

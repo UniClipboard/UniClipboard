@@ -456,3 +456,18 @@ impl fmt::Debug for MobileDeviceUpdateOutcome {
             .finish()
     }
 }
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MobileLanInterfaceSummary {
+    pub name: String,
+    pub ipv4: String,
+}
+
+impl fmt::Debug for MobileLanInterfaceSummary {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("MobileLanInterfaceSummary")
+            .field("has_name", &!self.name.is_empty())
+            .field("has_ipv4", &!self.ipv4.is_empty())
+            .finish()
+    }
+}

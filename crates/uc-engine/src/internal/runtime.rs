@@ -18,6 +18,7 @@ use uc_application::facade::{
     ClipboardLiveIndexInput, ClipboardLiveIndexOutcome, ClipboardOutboundInput,
     ClipboardOutboundOutcome,
 };
+use uc_application::receive_reconciliation::EnsureReceiveReadyPort;
 use uc_core::ids::{DeviceId, FormatId, RepresentationId};
 use uc_core::mobile_sync::StagingHandle;
 use uc_core::ports::MobileFileStagingError;
@@ -151,6 +152,7 @@ pub(crate) struct ProductionRuntime {
     temporary_dir: std::path::PathBuf,
     clipboard_import_root: std::path::PathBuf,
     files: Arc<dyn HostFileAccess>,
+    events: EventSender,
     mobile_file_uploads: Mutex<HashMap<String, ActiveMobileFileUploadState>>,
 }
 
@@ -186,6 +188,27 @@ struct HostClipboardChangeRuntime {
     change_origin: Arc<dyn SelfWriteLedgerPort>,
     active_register: LocalActiveRegisterAdvancer,
     host_events: Arc<HostEventBus>,
+}
+
+fn engine_event_for_active_clipboard(
+    state: &uc_core::clipboard::ActiveClipboardState,
+) -> crate::EngineEvent {
+    crate::EngineEvent::ActiveClipboardChanged(crate::ActiveClipboardChanged {
+        snapshot_hash: state.snapshot_hash.clone(),
+        entry_id: state.entry_id.as_str().to_string(),
+        activated_at_ms: state.activated_at_ms,
+        activated_by: state.activated_by.as_str().to_string(),
+    })
+}
+
+fn engine_event_for_mobile_settings_update(
+    settings: &crate::MobileSyncSettingsUpdateSummary,
+) -> crate::EngineEvent {
+    crate::EngineEvent::MobileLanSettingsChanged(crate::MobileLanSettingsChanged {
+        enabled: settings.enabled,
+        lan_listen_enabled: settings.lan_listen_enabled,
+        lan_port: settings.lan_port,
+    })
 }
 
 async fn spawn_host_clipboard_change_task(
@@ -345,7 +368,7 @@ impl ProductionRuntime {
         events: EventSender,
     ) -> Result<Self, EngineError> {
         let app_version = config.app_version().to_string();
-        let emitter = Arc::new(EngineHostEventEmitter::new(events));
+        let emitter = Arc::new(EngineHostEventEmitter::new(events.clone()));
         let HostWiring {
             wired,
             background,
@@ -358,7 +381,8 @@ impl ProductionRuntime {
             .map_err(|error| startup_error("dependency wiring", error))?;
 
         let file_transfer_lifecycle = Arc::clone(&background.file_transfer_lifecycle);
-        let session = Self::build_session(&wired, &paths, &file_transfer_lifecycle).await?;
+        let session =
+            Self::build_session(&wired, &paths, &file_transfer_lifecycle, events.clone()).await?;
         let task_registry = Arc::new(TaskRegistry::new());
         let blob_ports = BlobProcessingPorts::from_app_deps(&wired.deps);
         spawn_blob_processing_tasks(background, blob_ports, &task_registry).await;
@@ -390,6 +414,7 @@ impl ProductionRuntime {
             temporary_dir,
             clipboard_import_root,
             files,
+            events,
             mobile_file_uploads: Mutex::new(HashMap::new()),
         })
     }
@@ -398,6 +423,7 @@ impl ProductionRuntime {
         wired: &WiredDependencies,
         paths: &uc_application::facade::AppPaths,
         file_transfer_lifecycle: &Arc<FileTransferLifecycle>,
+        events: EventSender,
     ) -> Result<ProductionSession, EngineError> {
         let lifecycle = build_daemon_lifecycle(&wired.deps, &wired.sync_engine, &wired.shared)
             .await
@@ -417,6 +443,27 @@ impl ProductionRuntime {
             Some(Arc::clone(&sync_engine.active_clipboard)),
         );
         let tasks = Arc::new(TaskRegistry::new());
+        let mut active_clipboard_changes = wired.shared.active_clipboard_sse_source.subscribe();
+        let active_clipboard_events = events.clone();
+        tasks
+            .spawn("active_clipboard_events", move |cancel| async move {
+                loop {
+                    tokio::select! {
+                        _ = cancel.cancelled() => return,
+                        change = active_clipboard_changes.recv() => match change {
+                            Ok(state) => active_clipboard_events
+                                .send(engine_event_for_active_clipboard(&state)),
+                            Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {
+                                active_clipboard_events.send(crate::EngineEvent::RefreshRequired {
+                                    reason: crate::RefreshReason::ConsumerLagged,
+                                });
+                            }
+                            Err(tokio::sync::broadcast::error::RecvError::Closed) => return,
+                        }
+                    }
+                }
+            })
+            .await;
         let search = Arc::clone(&search_coordinator);
         let facade = build_app_facade_from_deps(
             &wired.deps,
@@ -442,9 +489,14 @@ impl ProductionRuntime {
             },
         );
         spawn_history_maintenance_task(Arc::clone(&facade.clipboard_history), &tasks).await;
-        spawn_peer_keepalive_task(Arc::clone(&facade), &tasks).await;
-        spawn_clipboard_runtime_tasks(&clipboard, Arc::clone(&sync_engine.clipboard_sync), &tasks)
-            .await;
+        spawn_peer_keepalive_task(Arc::clone(&facade), &tasks, events.clone()).await;
+        spawn_clipboard_runtime_tasks(
+            &clipboard,
+            Arc::clone(&sync_engine.clipboard_sync),
+            &tasks,
+            events,
+        )
+        .await;
         tasks
             .spawn("search_coordinator", move |cancel| async move {
                 if let Err(error) = search.start(cancel).await {
@@ -1029,15 +1081,40 @@ impl EngineRuntime for ProductionRuntime {
                 )
                 .await
             }
+            Operation::ListMobileLanInterfaces => {
+                let interfaces = self
+                    .current_mobile_sync()
+                    .await?
+                    .list_lan_interfaces()
+                    .await
+                    .map_err(|_| EngineError::new(1450, EngineErrorCategory::Unavailable, true))?;
+                Ok(OperationResult::MobileLanInterfaces(
+                    interfaces
+                        .into_iter()
+                        .map(|interface| crate::MobileLanInterfaceSummary {
+                            name: interface.name,
+                            ipv4: interface.ipv4,
+                        })
+                        .collect(),
+                ))
+            }
             Operation::QueryMobileSyncSettings => {
                 execute_query_mobile_sync_settings(self.current_mobile_sync().await?.as_ref()).await
             }
             Operation::UpdateMobileSyncSettings(patch) => {
-                execute_update_mobile_sync_settings(
+                let result = execute_update_mobile_sync_settings(
                     self.current_mobile_sync().await?.as_ref(),
                     *patch,
                 )
-                .await
+                .await;
+                if let Ok(OperationResult::MobileSyncSettingsUpdated(
+                    crate::MobileSyncSettingsUpdateOutcome::Updated(settings),
+                )) = &result
+                {
+                    self.events
+                        .send(engine_event_for_mobile_settings_update(settings));
+                }
+                result
             }
             Operation::UpdateMobileLanEndpoint(update) => {
                 execute_update_mobile_lan_endpoint(
@@ -1083,6 +1160,15 @@ impl EngineRuntime for ProductionRuntime {
             Operation::FinishMobileFileUpload(input) => self.finish_mobile_file_upload(input).await,
             Operation::AbortMobileFileUpload(input) => {
                 self.abort_mobile_file_upload(input.handle).await
+            }
+            Operation::QueryReceiveReadiness => {
+                let status = self.file_transfer_lifecycle.receive_readiness_status();
+                Ok(OperationResult::ReceiveReadiness(
+                    crate::ReceiveReadinessSummary {
+                        ready: status.ready,
+                        degraded: status.degraded_reason.is_some(),
+                    },
+                ))
             }
             Operation::QueryEncryptionState => {
                 execute_query_encryption_state(self.current_facade().await?.as_ref()).await
@@ -1310,8 +1396,13 @@ impl EngineRuntime for ProductionRuntime {
     }
 
     async fn resume(&self) -> Result<(), EngineError> {
-        let session =
-            Self::build_session(&self.wired, &self.paths, &self.file_transfer_lifecycle).await?;
+        let session = Self::build_session(
+            &self.wired,
+            &self.paths,
+            &self.file_transfer_lifecycle,
+            self.events.clone(),
+        )
+        .await?;
         *self.session.lock().await = Some(session);
         Ok(())
     }
@@ -1833,6 +1924,47 @@ mod tests {
         QUERY_STORAGE_STATS_FAILED_CODE,
     };
     use crate::StorageStatsSummary;
+
+    #[test]
+    fn active_clipboard_event_preserves_mobile_sse_identity() {
+        let state = uc_core::clipboard::ActiveClipboardState::new(
+            "hash-1",
+            uc_core::ids::EntryId::from("entry-1"),
+            42,
+            DeviceId::new("device-1"),
+        );
+
+        assert_eq!(
+            engine_event_for_active_clipboard(&state),
+            crate::EngineEvent::ActiveClipboardChanged(crate::ActiveClipboardChanged {
+                snapshot_hash: "hash-1".into(),
+                entry_id: "entry-1".into(),
+                activated_at_ms: 42,
+                activated_by: "device-1".into(),
+            })
+        );
+    }
+
+    #[test]
+    fn mobile_settings_event_preserves_listener_target() {
+        let settings = crate::MobileSyncSettingsUpdateSummary {
+            enabled: true,
+            lan_listen_enabled: true,
+            lan_advertise_ip: None,
+            lan_advertise_base_url: None,
+            lan_port: Some(51234),
+            changed: true,
+        };
+
+        assert_eq!(
+            engine_event_for_mobile_settings_update(&settings),
+            crate::EngineEvent::MobileLanSettingsChanged(crate::MobileLanSettingsChanged {
+                enabled: true,
+                lan_listen_enabled: true,
+                lan_port: Some(51234),
+            })
+        );
+    }
 
     #[test]
     fn mobile_upload_handle_is_owned_by_engine_instead_of_exposing_staging_token() {

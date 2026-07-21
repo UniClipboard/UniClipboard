@@ -1428,6 +1428,39 @@ fn lagged_consumers_receive_a_refresh_event() {
 }
 
 #[test]
+fn daemon_host_queries_have_stable_public_shapes() {
+    assert_eq!(
+        Operation::ListMobileLanInterfaces.kind(),
+        OperationKind::ListMobileLanInterfaces
+    );
+    assert_eq!(
+        Operation::QueryReceiveReadiness.kind(),
+        OperationKind::QueryReceiveReadiness
+    );
+
+    assert_eq!(
+        OperationResult::MobileLanInterfaces(vec![uc_engine::MobileLanInterfaceSummary {
+            name: "en0".into(),
+            ipv4: "192.168.1.5".into(),
+        }]),
+        OperationResult::MobileLanInterfaces(vec![uc_engine::MobileLanInterfaceSummary {
+            name: "en0".into(),
+            ipv4: "192.168.1.5".into(),
+        }])
+    );
+    assert_eq!(
+        OperationResult::ReceiveReadiness(uc_engine::ReceiveReadinessSummary {
+            ready: false,
+            degraded: true,
+        }),
+        OperationResult::ReceiveReadiness(uc_engine::ReceiveReadinessSummary {
+            ready: false,
+            degraded: true,
+        })
+    );
+}
+
+#[test]
 fn operation_result_debug_output_redacts_user_content() {
     let results = [
         OperationResult::InvitationIssued {

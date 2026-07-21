@@ -1226,8 +1226,18 @@ fn record_event(summary: &Arc<Mutex<EventSummary>>, event: EngineEvent) {
     let mut summary = lock_unpoisoned(summary);
     match event {
         EngineEvent::StateChanged { state } => summary.last_state = Some(format!("{state:?}")),
-        EngineEvent::IncomingEntry { .. } => summary.incoming_entries += 1,
+        EngineEvent::IncomingEntry(_) => summary.incoming_entries += 1,
+        EngineEvent::InboundNotice(_) => summary.incoming_entries += 1,
+        EngineEvent::IncomingPending(_) | EngineEvent::ReceiveAttemptStateChanged(_) => {
+            summary.refresh_requests += 1;
+        }
         EngineEvent::TransferProgress(_) => summary.transfer_updates += 1,
+        EngineEvent::TransferStatusChanged(_) | EngineEvent::DeliveryStatusChanged(_) => {
+            summary.refresh_requests += 1;
+        }
+        EngineEvent::PeerPresenceChanged(_) => summary.refresh_requests += 1,
+        EngineEvent::ActiveClipboardChanged(_) => summary.refresh_requests += 1,
+        EngineEvent::MobileLanSettingsChanged(_) => summary.refresh_requests += 1,
         EngineEvent::RefreshRequired { .. } => summary.refresh_requests += 1,
         EngineEvent::OperationFinished { .. } => summary.completed_operations += 1,
         EngineEvent::Fatal { .. } => summary.fatal_errors += 1,

@@ -12,8 +12,9 @@ use uc_core::clipboard::{
 };
 use uc_core::ids::{FormatId, RepresentationId};
 use uc_core::ports::{
-    EmitError, HostEvent, HostEventEmitterPort, PlatformClipboardPort, SecureStorageError,
-    SecureStoragePort, SystemClipboardPort, TransferHostEvent,
+    ClipboardHostEvent, ClipboardOriginKind, DeliveryHostEvent, EmitError, HostEvent,
+    HostEventEmitterPort, PlatformClipboardPort, SecureStorageError, SecureStoragePort,
+    SystemClipboardPort, TransferHostEvent,
 };
 
 use crate::event_stream::EventSender;
@@ -24,7 +25,7 @@ use crate::internal::wire::{wire_dependencies_from_inputs, CoreWiringInputs};
 use crate::{
     EngineConfig, EngineEvent, HostCapabilities, HostCapabilityError, HostCapabilityErrorCategory,
     HostClipboard, HostClipboardChangeStream, HostClipboardRepresentation, HostDirectories,
-    HostFileAccess, HostSecureStorage, RefreshReason, TransferProgress,
+    HostFileAccess, HostSecureStorage, TransferProgress,
 };
 
 struct HostSecureStorageAdapter {
@@ -311,19 +312,84 @@ impl HostEventEmitterPort for EngineHostEventEmitter {
         let event = match event {
             HostEvent::Transfer(TransferHostEvent::Progress {
                 transfer_id,
+                entry_id,
+                attempt_id,
+                peer_id,
+                direction,
                 bytes_transferred,
                 total_bytes,
-                ..
             }) => EngineEvent::TransferProgress(TransferProgress {
                 transfer_id,
+                entry_id,
+                attempt_id,
+                peer_id,
+                direction: match direction {
+                    uc_core::file_transfer::FileTransferDirection::Sending => {
+                        crate::TransferDirectionSummary::Sending
+                    }
+                    uc_core::file_transfer::FileTransferDirection::Receiving => {
+                        crate::TransferDirectionSummary::Receiving
+                    }
+                },
                 completed_bytes: bytes_transferred,
                 total_bytes,
             }),
-            HostEvent::Clipboard(_)
-            | HostEvent::Transfer(TransferHostEvent::StatusChanged { .. })
-            | HostEvent::Delivery(_) => EngineEvent::RefreshRequired {
-                reason: RefreshReason::StateInvalidated,
-            },
+            HostEvent::Clipboard(ClipboardHostEvent::NewContent {
+                entry_id,
+                attempt_id,
+                preview,
+                origin,
+            }) => EngineEvent::IncomingEntry(crate::IncomingEntryEvent {
+                entry_id,
+                attempt_id,
+                preview,
+                origin: match origin {
+                    ClipboardOriginKind::Local => crate::ClipboardOriginSummary::Local,
+                    ClipboardOriginKind::Remote => crate::ClipboardOriginSummary::Remote,
+                },
+            }),
+            HostEvent::Transfer(TransferHostEvent::StatusChanged {
+                transfer_id,
+                entry_id,
+                attempt_id,
+                status,
+                reason,
+            }) => EngineEvent::TransferStatusChanged(crate::TransferStatusChanged {
+                transfer_id,
+                entry_id,
+                attempt_id,
+                status,
+                reason,
+            }),
+            HostEvent::Delivery(DeliveryHostEvent::StatusChanged {
+                entry_id,
+                target_device_id,
+            }) => EngineEvent::DeliveryStatusChanged(crate::DeliveryStatusChanged {
+                entry_id,
+                target_device_id,
+            }),
+            HostEvent::Clipboard(ClipboardHostEvent::IncomingPending {
+                entry_id,
+                attempt_id,
+                from_device,
+                total_bytes,
+                filenames,
+            }) => EngineEvent::IncomingPending(crate::IncomingPendingEvent {
+                entry_id,
+                attempt_id,
+                from_device,
+                total_bytes,
+                filenames,
+            }),
+            HostEvent::Clipboard(ClipboardHostEvent::ReceiveAttemptStateChanged {
+                entry_id,
+                attempt_id,
+                state,
+            }) => EngineEvent::ReceiveAttemptStateChanged(crate::ReceiveAttemptStateChanged {
+                entry_id,
+                attempt_id,
+                state,
+            }),
         };
         self.events.send(event);
         Ok(())
@@ -405,11 +471,16 @@ mod tests {
 
     use uc_core::file_transfer::FileTransferDirection;
     use uc_core::ports::{
-        ClipboardHostEvent, ClipboardOriginKind, HostEvent, HostEventEmitterPort, TransferHostEvent,
+        ClipboardHostEvent, ClipboardOriginKind, DeliveryHostEvent, HostEvent,
+        HostEventEmitterPort, TransferHostEvent,
     };
 
     use crate::event_stream::event_channel;
-    use crate::{EngineEvent, RefreshReason, TransferProgress};
+    use crate::{
+        ClipboardOriginSummary, DeliveryStatusChanged, EngineEvent, IncomingPendingEvent,
+        ReceiveAttemptStateChanged, TransferDirectionSummary, TransferProgress,
+        TransferStatusChanged,
+    };
 
     use super::EngineHostEventEmitter;
 
@@ -434,6 +505,10 @@ mod tests {
             stream.next().await,
             Some(EngineEvent::TransferProgress(TransferProgress {
                 transfer_id: "transfer-1".into(),
+                entry_id: Some("entry-1".into()),
+                attempt_id: Some("attempt-1".into()),
+                peer_id: "peer-1".into(),
+                direction: TransferDirectionSummary::Receiving,
                 completed_bytes: 64,
                 total_bytes: Some(128),
             }))
@@ -441,7 +516,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn clipboard_change_requests_authoritative_refresh() {
+    async fn engine_event_emitter_preserves_clipboard_change_details() {
         let (events, mut stream) = event_channel(8);
         let emitter = EngineHostEventEmitter::new(events);
 
@@ -456,9 +531,114 @@ mod tests {
 
         assert_eq!(
             stream.next().await,
-            Some(EngineEvent::RefreshRequired {
-                reason: RefreshReason::StateInvalidated,
-            })
+            Some(EngineEvent::IncomingEntry(crate::IncomingEntryEvent {
+                entry_id: "entry-1".into(),
+                attempt_id: None,
+                preview: "placeholder".into(),
+                origin: ClipboardOriginSummary::Remote,
+            }))
+        );
+    }
+
+    #[tokio::test]
+    async fn engine_event_emitter_preserves_transfer_status_details() {
+        let (events, mut stream) = event_channel(8);
+        let emitter = EngineHostEventEmitter::new(events);
+
+        emitter
+            .emit(HostEvent::Transfer(TransferHostEvent::StatusChanged {
+                transfer_id: "transfer-1".into(),
+                entry_id: "entry-1".into(),
+                attempt_id: Some("attempt-1".into()),
+                status: "failed".into(),
+                reason: Some("cancelled".into()),
+            }))
+            .unwrap();
+
+        assert_eq!(
+            stream.next().await,
+            Some(EngineEvent::TransferStatusChanged(TransferStatusChanged {
+                transfer_id: "transfer-1".into(),
+                entry_id: "entry-1".into(),
+                attempt_id: Some("attempt-1".into()),
+                status: "failed".into(),
+                reason: Some("cancelled".into()),
+            }))
+        );
+    }
+
+    #[tokio::test]
+    async fn engine_event_emitter_preserves_delivery_change_details() {
+        let (events, mut stream) = event_channel(8);
+        let emitter = EngineHostEventEmitter::new(events);
+
+        emitter
+            .emit(HostEvent::Delivery(DeliveryHostEvent::StatusChanged {
+                entry_id: "entry-1".into(),
+                target_device_id: "peer-1".into(),
+            }))
+            .unwrap();
+
+        assert_eq!(
+            stream.next().await,
+            Some(EngineEvent::DeliveryStatusChanged(DeliveryStatusChanged {
+                entry_id: "entry-1".into(),
+                target_device_id: "peer-1".into(),
+            }))
+        );
+    }
+
+    #[tokio::test]
+    async fn engine_event_emitter_preserves_incoming_pending_details() {
+        let (events, mut stream) = event_channel(8);
+        let emitter = EngineHostEventEmitter::new(events);
+
+        emitter
+            .emit(HostEvent::Clipboard(ClipboardHostEvent::IncomingPending {
+                entry_id: "entry-1".into(),
+                attempt_id: Some("attempt-1".into()),
+                from_device: "peer-1".into(),
+                total_bytes: Some(128),
+                filenames: vec!["private.txt".into()],
+            }))
+            .unwrap();
+
+        assert_eq!(
+            stream.next().await,
+            Some(EngineEvent::IncomingPending(IncomingPendingEvent {
+                entry_id: "entry-1".into(),
+                attempt_id: Some("attempt-1".into()),
+                from_device: "peer-1".into(),
+                total_bytes: Some(128),
+                filenames: vec!["private.txt".into()],
+            }))
+        );
+    }
+
+    #[tokio::test]
+    async fn engine_event_emitter_preserves_receive_attempt_state() {
+        let (events, mut stream) = event_channel(8);
+        let emitter = EngineHostEventEmitter::new(events);
+
+        emitter
+            .emit(HostEvent::Clipboard(
+                ClipboardHostEvent::ReceiveAttemptStateChanged {
+                    entry_id: "entry-1".into(),
+                    attempt_id: "attempt-1".into(),
+                    state: "failed".into(),
+                },
+            ))
+            .unwrap();
+
+        assert_eq!(
+            stream.next().await,
+            Some(EngineEvent::ReceiveAttemptStateChanged(
+                ReceiveAttemptStateChanged {
+                    entry_id: "entry-1".into(),
+                    attempt_id: "attempt-1".into(),
+                    state: "failed".into(),
+                }
+            ))
         );
     }
 }

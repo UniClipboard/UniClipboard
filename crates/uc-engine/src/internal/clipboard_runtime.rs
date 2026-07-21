@@ -5,8 +5,8 @@ use uc_application::clipboard_capture::CaptureClipboardUseCase;
 use uc_application::facade::{
     ClipboardCaptureFacade, ClipboardLiveIndexDeps, ClipboardLiveIndexFacade,
     ClipboardLiveIndexPort, ClipboardLiveIndexer, ClipboardOutboundDeps, ClipboardOutboundFacade,
-    ClipboardSyncFacade, InboundClipboardApplyOutcome, InboundClipboardFacade,
-    InboundClipboardNoticeInput,
+    ClipboardSyncFacade, InboundAction, InboundClipboardApplyOutcome, InboundClipboardFacade,
+    InboundClipboardNoticeInput, InboundNotice,
 };
 use uc_application::{
     ApplyInboundClipboardUseCase, FileCacheBlobMaterializer, InboundCapture as ApplyInboundCapture,
@@ -15,8 +15,10 @@ use uc_application::{
 use uc_core::TaskRegistry;
 use uc_infra::fs::{FsAtomicPublisher, FsHiddenPathMarker, FsInboundFileTarget};
 
+use crate::event_stream::EventSender;
 use crate::internal::deps::WiredDependencies;
 use crate::internal::sync_engine::SyncEngineAssembly;
+use crate::{EngineEvent, InboundNoticeActionSummary, InboundNoticeEvent};
 
 pub(crate) struct ClipboardRuntime {
     pub capture: Arc<ClipboardCaptureFacade>,
@@ -158,6 +160,7 @@ pub(crate) async fn spawn_clipboard_runtime_tasks(
     runtime: &ClipboardRuntime,
     clipboard_sync: Arc<ClipboardSyncFacade>,
     tasks: &TaskRegistry,
+    events: EventSender,
 ) {
     let inbound = Arc::clone(&runtime.inbound);
     tasks
@@ -168,6 +171,7 @@ pub(crate) async fn spawn_clipboard_runtime_tasks(
                     _ = cancel.cancelled() => return,
                     notice = notices.recv() => match notice {
                         Ok(notice) => {
+                            events.send(engine_event_for_inbound_notice(&notice));
                             let input = InboundClipboardNoticeInput {
                                 from_device: notice.from_device.as_str().to_string(),
                                 snapshot_hash: notice.snapshot_hash,
@@ -203,4 +207,50 @@ pub(crate) async fn spawn_clipboard_runtime_tasks(
             }
         })
         .await;
+}
+
+fn engine_event_for_inbound_notice(notice: &InboundNotice) -> EngineEvent {
+    EngineEvent::InboundNotice(InboundNoticeEvent {
+        from_device: notice.from_device.as_str().to_string(),
+        snapshot_hash: notice.snapshot_hash.clone(),
+        plaintext: notice.plaintext.to_vec(),
+        action: match notice.action {
+            InboundAction::NewEntry => InboundNoticeActionSummary::NewEntry,
+            InboundAction::DuplicateIgnored => InboundNoticeActionSummary::DuplicateIgnored,
+        },
+        at_ms: notice.at_ms,
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use uc_application::facade::{InboundAction, InboundNotice};
+    use uc_core::ids::DeviceId;
+
+    use crate::{EngineEvent, InboundNoticeActionSummary, InboundNoticeEvent};
+
+    use super::engine_event_for_inbound_notice;
+
+    #[test]
+    fn inbound_notice_event_preserves_the_existing_daemon_watch_contract() {
+        let notice = InboundNotice {
+            from_device: DeviceId::new("peer-1"),
+            snapshot_hash: "hash-1".into(),
+            plaintext: vec![1, 2, 3].into(),
+            flow_id: None,
+            action: InboundAction::DuplicateIgnored,
+            at_ms: 42,
+        };
+
+        assert_eq!(
+            engine_event_for_inbound_notice(&notice),
+            EngineEvent::InboundNotice(InboundNoticeEvent {
+                from_device: "peer-1".into(),
+                snapshot_hash: "hash-1".into(),
+                plaintext: vec![1, 2, 3],
+                action: InboundNoticeActionSummary::DuplicateIgnored,
+                at_ms: 42,
+            })
+        );
+    }
 }

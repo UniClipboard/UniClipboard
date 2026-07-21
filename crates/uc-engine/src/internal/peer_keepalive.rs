@@ -13,6 +13,9 @@ use uc_core::ids::DeviceId;
 use uc_core::ports::{PresenceError, ReachabilityState};
 use uc_core::TaskRegistry;
 
+use crate::event_stream::EventSender;
+use crate::{EngineEvent, PeerPresenceChanged};
+
 const BASE_INTERVAL: Duration = Duration::from_secs(25);
 const BACKOFF_LADDER: [Duration; 3] = [
     BASE_INTERVAL,
@@ -84,6 +87,7 @@ impl BackoffState {
 
 struct PeerKeepaliveRuntime {
     facade: Arc<AppFacade>,
+    events: EventSender,
 }
 
 impl PeerKeepaliveRuntime {
@@ -124,6 +128,7 @@ impl PeerKeepaliveRuntime {
                 }
                 event = next_presence_event(&mut presence) => {
                     if let Some(event) = event {
+                        self.events.send(engine_event_for_presence(&event));
                         if let Some(device) = apply_presence_event(&mut backoff, event) {
                             let facade = Arc::clone(&self.facade);
                             wake_dials.spawn(async move {
@@ -354,10 +359,22 @@ fn apply_presence_event(
     Some(DeviceId::new(event.device_id))
 }
 
-pub(crate) async fn spawn_peer_keepalive_task(facade: Arc<AppFacade>, tasks: &Arc<TaskRegistry>) {
+fn engine_event_for_presence(event: &AppPresenceEvent) -> EngineEvent {
+    EngineEvent::PeerPresenceChanged(PeerPresenceChanged {
+        device_id: event.device_id.clone(),
+        state: event.state.clone(),
+        at_ms: event.at_ms,
+    })
+}
+
+pub(crate) async fn spawn_peer_keepalive_task(
+    facade: Arc<AppFacade>,
+    tasks: &Arc<TaskRegistry>,
+    events: EventSender,
+) {
     tasks
         .spawn("peer_keepalive", move |cancel| async move {
-            PeerKeepaliveRuntime { facade }.run(cancel).await;
+            PeerKeepaliveRuntime { facade, events }.run(cancel).await;
         })
         .await;
 }
@@ -365,6 +382,7 @@ pub(crate) async fn spawn_peer_keepalive_task(facade: Arc<AppFacade>, tasks: &Ar
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{EngineEvent, PeerPresenceChanged};
 
     fn failures(state: &BackoffState) -> Option<u32> {
         match state {
@@ -434,5 +452,21 @@ mod tests {
 
         assert!(wake.is_none());
         assert!(backoff.is_empty());
+    }
+
+    #[test]
+    fn presence_event_keeps_the_information_needed_for_peer_refresh() {
+        assert_eq!(
+            engine_event_for_presence(&AppPresenceEvent {
+                device_id: "device-a".to_string(),
+                state: "online".to_string(),
+                at_ms: 42,
+            }),
+            EngineEvent::PeerPresenceChanged(PeerPresenceChanged {
+                device_id: "device-a".to_string(),
+                state: "online".to_string(),
+                at_ms: 42,
+            })
+        );
     }
 }

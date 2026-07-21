@@ -631,6 +631,32 @@ fn operation_response(result: OperationResult) -> Value {
             "ok": true,
             "kind": "member_removed",
         }),
+        OperationResult::SearchPage(page) => json!({
+            "ok": true,
+            "kind": "search_page",
+            "total": page.total,
+            "has_more": page.has_more,
+            "item_count": page.items.len(),
+            "state": page.state,
+        }),
+        OperationResult::SearchTags(tags) => json!({
+            "ok": true,
+            "kind": "search_tags",
+            "tag_count": tags.len(),
+        }),
+        OperationResult::SearchStatus(status) => json!({
+            "ok": true,
+            "kind": "search_status",
+            "state": status.state,
+            "has_reason": status.reason.is_some(),
+            "last_rebuild_started_at_ms": status.last_rebuild_started_at_ms,
+            "last_rebuild_completed_at_ms": status.last_rebuild_completed_at_ms,
+        }),
+        OperationResult::SearchRebuildAccepted { accepted } => json!({
+            "ok": true,
+            "kind": "search_rebuild_accepted",
+            "accepted": accepted,
+        }),
         OperationResult::EntrySent { entry_id } => {
             json!({"ok": true, "kind": "entry_sent", "entry_id": entry_id})
         }

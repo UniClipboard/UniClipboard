@@ -24,6 +24,7 @@ pub mod platform;
 pub mod reconcile;
 pub mod reset_space;
 pub(crate) mod runtime;
+pub mod search;
 pub mod session_recovery;
 pub mod setup_state;
 pub mod storage;

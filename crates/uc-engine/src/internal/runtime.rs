@@ -52,6 +52,10 @@ use crate::internal::member::{
 };
 use crate::internal::migration_progress::execute_query_migration_progress;
 use crate::internal::reset_space::execute_reset_space;
+use crate::internal::search::{
+    execute_query_search_status, execute_query_search_tags, execute_rebuild_search_index,
+    execute_search_entries,
+};
 use crate::internal::session_recovery::execute_recover_session;
 use crate::internal::setup_state::execute_query_setup_state;
 use crate::internal::storage::{execute_clear_storage_cache, execute_query_storage_stats};
@@ -322,6 +326,18 @@ impl EngineRuntime for ProductionRuntime {
             }
             Operation::RemoveMember(input) => {
                 execute_remove_member(self.current_facade().await?.as_ref(), input).await
+            }
+            Operation::SearchEntries(input) => {
+                execute_search_entries(self.current_facade().await?.as_ref(), input).await
+            }
+            Operation::QuerySearchTags => {
+                execute_query_search_tags(self.current_facade().await?.as_ref()).await
+            }
+            Operation::QuerySearchStatus => {
+                execute_query_search_status(self.current_facade().await?.as_ref()).await
+            }
+            Operation::RebuildSearchIndex => {
+                execute_rebuild_search_index(self.current_facade().await?.as_ref()).await
             }
             Operation::QueryHistory(input) => {
                 let search_input = history_search_input(input)?;

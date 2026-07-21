@@ -90,6 +90,10 @@ pub enum OperationKind {
     QueryMemberSyncPreferences,
     UpdateMemberSyncPreferences,
     RemoveMember,
+    SearchEntries,
+    QuerySearchTags,
+    QuerySearchStatus,
+    RebuildSearchIndex,
     SendText,
     SendImage,
     SendFiles,
@@ -121,6 +125,10 @@ impl fmt::Display for OperationKind {
             Self::QueryMemberSyncPreferences => "query_member_sync_preferences",
             Self::UpdateMemberSyncPreferences => "update_member_sync_preferences",
             Self::RemoveMember => "remove_member",
+            Self::SearchEntries => "search_entries",
+            Self::QuerySearchTags => "query_search_tags",
+            Self::QuerySearchStatus => "query_search_status",
+            Self::RebuildSearchIndex => "rebuild_search_index",
             Self::SendText => "send_text",
             Self::SendImage => "send_image",
             Self::SendFiles => "send_files",
@@ -154,6 +162,10 @@ pub enum Operation {
     QueryMemberSyncPreferences(QueryMemberSyncPreferencesInput),
     UpdateMemberSyncPreferences(UpdateMemberSyncPreferencesInput),
     RemoveMember(RemoveMemberInput),
+    SearchEntries(SearchEntriesInput),
+    QuerySearchTags,
+    QuerySearchStatus,
+    RebuildSearchIndex,
     SendText(SendTextInput),
     SendImage(SendImageInput),
     SendFiles(SendFilesInput),
@@ -185,6 +197,10 @@ impl Operation {
             Self::QueryMemberSyncPreferences(_) => OperationKind::QueryMemberSyncPreferences,
             Self::UpdateMemberSyncPreferences(_) => OperationKind::UpdateMemberSyncPreferences,
             Self::RemoveMember(_) => OperationKind::RemoveMember,
+            Self::SearchEntries(_) => OperationKind::SearchEntries,
+            Self::QuerySearchTags => OperationKind::QuerySearchTags,
+            Self::QuerySearchStatus => OperationKind::QuerySearchStatus,
+            Self::RebuildSearchIndex => OperationKind::RebuildSearchIndex,
             Self::SendText(_) => OperationKind::SendText,
             Self::SendImage(_) => OperationKind::SendImage,
             Self::SendFiles(_) => OperationKind::SendFiles,
@@ -291,6 +307,42 @@ pub struct ContentTypesPatch {
     pub file: Option<bool>,
     pub code_snippet: Option<bool>,
     pub rich_text: Option<bool>,
+}
+
+#[derive(Clone, PartialEq, Eq)]
+pub struct SearchEntriesInput {
+    pub query: String,
+    pub operator: Option<String>,
+    pub time_preset: Option<String>,
+    pub from_ms: Option<i64>,
+    pub to_ms: Option<i64>,
+    pub content_types: Option<String>,
+    pub extensions: Option<String>,
+    pub source_devices: Option<String>,
+    pub tags: Option<String>,
+    pub limit: u32,
+    pub offset: u32,
+}
+
+impl fmt::Debug for SearchEntriesInput {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("SearchEntriesInput")
+            .field("has_query", &!self.query.trim().is_empty())
+            .field("has_operator", &self.operator.is_some())
+            .field("has_time_preset", &self.time_preset.is_some())
+            .field(
+                "has_time_range",
+                &(self.from_ms.is_some() || self.to_ms.is_some()),
+            )
+            .field("has_content_types", &self.content_types.is_some())
+            .field("has_extensions", &self.extensions.is_some())
+            .field("has_source_devices", &self.source_devices.is_some())
+            .field("has_tags", &self.tags.is_some())
+            .field("limit", &self.limit)
+            .field("offset", &self.offset)
+            .finish()
+    }
 }
 
 #[derive(Clone, PartialEq, Eq)]
@@ -581,6 +633,12 @@ pub enum OperationResult {
     Devices(Vec<DeviceSummary>),
     MemberSyncPreferences(MemberSyncPreferencesSummary),
     MemberRemoved,
+    SearchPage(SearchPageSummary),
+    SearchTags(Vec<SearchTagSummary>),
+    SearchStatus(SearchStatusSummary),
+    SearchRebuildAccepted {
+        accepted: bool,
+    },
     EntrySent {
         entry_id: String,
     },
@@ -636,6 +694,16 @@ impl fmt::Debug for OperationResult {
                 .field("kind", &"member_sync_preferences")
                 .field("preferences", preferences),
             Self::MemberRemoved => debug.field("kind", &"member_removed"),
+            Self::SearchPage(page) => debug.field("kind", &"search_page").field("page", page),
+            Self::SearchTags(tags) => debug
+                .field("kind", &"search_tags")
+                .field("tag_count", &tags.len()),
+            Self::SearchStatus(status) => debug
+                .field("kind", &"search_status")
+                .field("status", status),
+            Self::SearchRebuildAccepted { accepted } => debug
+                .field("kind", &"search_rebuild_accepted")
+                .field("accepted", accepted),
             Self::EntrySent { .. } => debug.field("kind", &"entry_sent"),
             Self::HistoryPage {
                 entries,
@@ -763,4 +831,102 @@ pub struct ContentTypesSummary {
     pub file: bool,
     pub code_snippet: bool,
     pub rich_text: bool,
+}
+
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SearchPageSummary {
+    pub total: u32,
+    pub has_more: bool,
+    pub items: Vec<SearchResultSummary>,
+    pub state: String,
+}
+
+impl fmt::Debug for SearchPageSummary {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("SearchPageSummary")
+            .field("total", &self.total)
+            .field("has_more", &self.has_more)
+            .field("item_count", &self.items.len())
+            .field("state", &self.state)
+            .finish()
+    }
+}
+
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SearchResultSummary {
+    pub entry_id: String,
+    pub content_type: String,
+    pub active_time_ms: i64,
+    pub tags: Vec<String>,
+    pub text_preview: Option<String>,
+    pub char_count: Option<i64>,
+    pub mime_type: String,
+    pub file_extensions: Vec<String>,
+    pub file_names: Vec<String>,
+    pub file_paths: Vec<String>,
+    pub link_urls: Vec<String>,
+    pub source_device: Option<String>,
+    pub payload_state: Option<String>,
+}
+
+impl fmt::Debug for SearchResultSummary {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("SearchResultSummary")
+            .field("entry_id", &self.entry_id)
+            .field("content_type", &self.content_type)
+            .field("active_time_ms", &self.active_time_ms)
+            .field("tag_count", &self.tags.len())
+            .field("has_text_preview", &self.text_preview.is_some())
+            .field("char_count", &self.char_count)
+            .field("file_count", &self.file_names.len())
+            .field("link_count", &self.link_urls.len())
+            .field("has_source_device", &self.source_device.is_some())
+            .field("has_payload_state", &self.payload_state.is_some())
+            .finish()
+    }
+}
+
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SearchTagSummary {
+    pub tag_id: String,
+    pub count: u32,
+    pub is_builtin: bool,
+}
+
+impl fmt::Debug for SearchTagSummary {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("SearchTagSummary")
+            .field("count", &self.count)
+            .field("is_builtin", &self.is_builtin)
+            .finish()
+    }
+}
+
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SearchStatusSummary {
+    pub state: String,
+    pub reason: Option<String>,
+    pub last_rebuild_started_at_ms: Option<i64>,
+    pub last_rebuild_completed_at_ms: Option<i64>,
+}
+
+impl fmt::Debug for SearchStatusSummary {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("SearchStatusSummary")
+            .field("state", &self.state)
+            .field("has_reason", &self.reason.is_some())
+            .field(
+                "last_rebuild_started_at_ms",
+                &self.last_rebuild_started_at_ms,
+            )
+            .field(
+                "last_rebuild_completed_at_ms",
+                &self.last_rebuild_completed_at_ms,
+            )
+            .finish()
+    }
 }

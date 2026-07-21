@@ -5,9 +5,10 @@ use uc_engine::{
     LocalDeviceSummary, MemberSyncPreferencesPatch, MemberSyncPreferencesSummary,
     MigrationPhaseSummary, MigrationProgressSummary, Operation, OperationKind, OperationResult,
     QueryHistoryInput, QueryMemberSyncPreferencesInput, RecoverSessionInput, RefreshReason,
-    RemoveMemberInput, ResendEntryInput, SecretString, SendFilesInput, SendImageInput,
-    SendTextInput, SetupInvitationSummary, SetupStateSummary, StorageStatsSummary,
-    UnlockSpaceInput, UpdateMemberSyncPreferencesInput,
+    RemoveMemberInput, ResendEntryInput, SearchEntriesInput, SearchPageSummary,
+    SearchResultSummary, SecretString, SendFilesInput, SendImageInput, SendTextInput,
+    SetupInvitationSummary, SetupStateSummary, StorageStatsSummary, UnlockSpaceInput,
+    UpdateMemberSyncPreferencesInput,
 };
 
 #[test]
@@ -105,6 +106,31 @@ fn every_public_operation_has_a_stable_kind() {
             OperationKind::RemoveMember,
         ),
         (
+            Operation::SearchEntries(SearchEntriesInput {
+                query: "private query".into(),
+                operator: None,
+                time_preset: None,
+                from_ms: None,
+                to_ms: None,
+                content_types: None,
+                extensions: None,
+                source_devices: None,
+                tags: None,
+                limit: 50,
+                offset: 0,
+            }),
+            OperationKind::SearchEntries,
+        ),
+        (Operation::QuerySearchTags, OperationKind::QuerySearchTags),
+        (
+            Operation::QuerySearchStatus,
+            OperationKind::QuerySearchStatus,
+        ),
+        (
+            Operation::RebuildSearchIndex,
+            OperationKind::RebuildSearchIndex,
+        ),
+        (
             Operation::SendText(SendTextInput {
                 text: "private text".into(),
                 target_devices: vec!["phone".into()],
@@ -153,6 +179,54 @@ fn every_public_operation_has_a_stable_kind() {
     for (operation, expected) in operations {
         assert_eq!(operation.kind(), expected);
     }
+}
+
+#[test]
+fn search_contract_preserves_fields_without_debugging_user_content() {
+    let input = SearchEntriesInput {
+        query: "private search query".into(),
+        operator: Some("and".into()),
+        time_preset: None,
+        from_ms: None,
+        to_ms: None,
+        content_types: Some("text".into()),
+        extensions: Some("private-extension".into()),
+        source_devices: Some("device-1".into()),
+        tags: Some("private-tag".into()),
+        limit: 50,
+        offset: 0,
+    };
+    let input_debug = format!("{input:?}");
+    assert!(!input_debug.contains("private search query"));
+    assert!(!input_debug.contains("private-extension"));
+    assert!(!input_debug.contains("private-tag"));
+
+    let page = OperationResult::SearchPage(SearchPageSummary {
+        total: 1,
+        has_more: false,
+        state: "ready".into(),
+        items: vec![SearchResultSummary {
+            entry_id: "entry-1".into(),
+            content_type: "text".into(),
+            active_time_ms: 42,
+            tags: vec!["private-tag".into()],
+            text_preview: Some("private preview".into()),
+            char_count: Some(15),
+            mime_type: "text/plain".into(),
+            file_extensions: vec!["private-extension".into()],
+            file_names: vec!["private-name.txt".into()],
+            file_paths: vec!["/private/path/private-name.txt".into()],
+            link_urls: vec!["https://private.example/secret".into()],
+            source_device: Some("device-1".into()),
+            payload_state: None,
+        }],
+    });
+    let page_debug = format!("{page:?}");
+    assert!(page_debug.contains("search_page"));
+    assert!(!page_debug.contains("private preview"));
+    assert!(!page_debug.contains("private-name.txt"));
+    assert!(!page_debug.contains("private.example"));
+    assert!(!page_debug.contains("private-tag"));
 }
 
 #[test]

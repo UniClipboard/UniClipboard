@@ -724,6 +724,53 @@ async fn engine_start_builds_a_resumable_real_session() {
         other => panic!("expected sent entry, got {other:?}"),
     };
     assert!(!sent_entry_id.is_empty());
+    let search_page = engine
+        .execute(uc_engine::Operation::SearchEntries(
+            uc_engine::SearchEntriesInput {
+                query: "engine text dispatch".into(),
+                operator: None,
+                time_preset: None,
+                from_ms: None,
+                to_ms: None,
+                content_types: None,
+                extensions: None,
+                source_devices: None,
+                tags: None,
+                limit: 25,
+                offset: 0,
+            },
+        ))
+        .await
+        .unwrap();
+    assert!(matches!(
+        search_page,
+        uc_engine::OperationResult::SearchPage(uc_engine::SearchPageSummary {
+            total: 1,
+            has_more: false,
+            ref items,
+            ref state,
+        }) if state == "ready"
+            && items.len() == 1
+            && items[0].entry_id == sent_entry_id
+            && items[0].text_preview.as_deref() == Some("engine text dispatch")
+    ));
+    assert!(matches!(
+        engine
+            .execute(uc_engine::Operation::QuerySearchTags)
+            .await
+            .unwrap(),
+        uc_engine::OperationResult::SearchTags(_)
+    ));
+    assert!(matches!(
+        engine
+            .execute(uc_engine::Operation::QuerySearchStatus)
+            .await
+            .unwrap(),
+        uc_engine::OperationResult::SearchStatus(uc_engine::SearchStatusSummary {
+            ref state,
+            ..
+        }) if state == "ready"
+    ));
     assert_eq!(
         engine
             .execute(uc_engine::Operation::ExportEntry(

@@ -69,6 +69,13 @@ Running|Quiescing|Quiesced|Suspended -> ShuttingDown -> Stopped
 | `SendText` | 写入加密历史、更新搜索并发送不超过 64 KiB 的文本 |
 | `SendImage` | 写入加密历史、更新搜索并发送不超过 64 KiB 的图片 |
 | `QueryHistory` | 查询历史并返回稳定分页标记 |
+| `ListHistoryEntries` | 按偏移量返回桌面兼容列表所需的完整历史投影 |
+| `GetHistoryEntry` | 返回指定文本记录的完整详情 |
+| `DeleteHistoryEntry` | 删除指定记录及其关联选择、文件、搜索和 blob 引用 |
+| `SetHistoryEntryFavorite` | 设置指定记录的收藏状态 |
+| `QueryHistoryStats` | 返回历史记录总数和总大小 |
+| `GetHistoryEntryResource` | 返回指定记录的资源标识、类型、大小及可用读取方式 |
+| `ClearHistory` | 清空全部历史，并返回删除数量和未删除条目标识 |
 | `ExportEntry` | 通过宿主文件句柄分块写出主内容 |
 | `ResendEntry` | 重新发送一条本机仍持有内容的历史记录 |
 | `SendFiles` | 从宿主句柄分块导入文件，并按现有文件协议发送 |
@@ -92,6 +99,12 @@ Running|Quiescing|Quiesced|Suspended -> ShuttingDown -> Stopped
 `SendText` 和 `SendImage` 的内容必须为 1 到 64 KiB，大小按实际字节数计算。超出范围返回输入错误，不会写入历史或进入文件传输缓存。更大内容通过文件入口发送。
 
 历史查询每页必须为 1 到 200 条。分页标记是不可解释的稳定字符串，当前版本形如 `uc-history-v1:<offset>`；宿主必须原样回传，不应自行生成或修改。损坏、未知版本或越界输入返回输入错误。
+
+`ListHistoryEntries` 是旧桌面列表接口迁移期间使用的完整投影，每次必须请求 1 到 1000 条，并保留预览、收藏、标签、链接、文件大小、图片尺寸和内容可用状态。它不替代带稳定分页标记的 `QueryHistory`，新宿主仍应优先使用搜索或 `QueryHistory`。列表、详情和资源结果可以正常携带用户内容，但调试输出不得包含预览、正文、链接、缩略图地址或内联字节。
+
+`GetHistoryEntry` 只适用于可读取为文本的记录；记录不存在返回 `NotFound`，内容不支持文本详情返回 `Conflict`。`SetHistoryEntryFavorite` 对不存在记录同样返回 `NotFound`，不能把未修改任何记录当作成功。
+
+`DeleteHistoryEntry` 和 `ClearHistory` 由核心统一清理数据库记录、选择、缓存文件、搜索索引和 blob 引用，宿主不得自行复制清理顺序。批量清空发生部分失败时只返回失败条目标识，不返回底层异常、文件路径或用户内容。
 
 导出只写宿主传入的目标句柄。核心看不到目标路径，每次最多写 64 KiB，并在全部数据写入后调用完成写入。取消操作时不会在恢复后续写。
 

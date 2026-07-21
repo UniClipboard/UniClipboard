@@ -514,8 +514,12 @@ fn daemon_member_handlers_delegate_roster_ownership_to_engine() {
 fn daemon_search_handlers_delegate_index_ownership_to_engine() {
     let handler_path =
         Path::new(env!("CARGO_MANIFEST_DIR")).join("../../crates/uc-webserver/src/api/search.rs");
+    let websocket_path =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../crates/uc-webserver/src/api/ws.rs");
     let handler = std::fs::read_to_string(&handler_path)
         .unwrap_or_else(|error| panic!("failed to read {}: {error}", handler_path.display()));
+    let websocket = std::fs::read_to_string(&websocket_path)
+        .unwrap_or_else(|error| panic!("failed to read {}: {error}", websocket_path.display()));
 
     assert!(
         !handler.contains("app\n        .search")
@@ -526,6 +530,11 @@ fn daemon_search_handlers_delegate_index_ownership_to_engine() {
             && handler.contains("execute_query_search_status(")
             && handler.contains("execute_rebuild_search_index("),
         "daemon search handlers must delegate encrypted search ownership to uc-engine"
+    );
+    assert!(
+        !websocket.contains("app.search.status(")
+            && websocket.contains("execute_query_search_status("),
+        "search websocket snapshots must use the same uc-engine status operation"
     );
 }
 

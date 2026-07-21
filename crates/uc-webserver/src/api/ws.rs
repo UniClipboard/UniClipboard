@@ -22,6 +22,8 @@ use tokio::sync::{mpsc, RwLock};
 use tokio::time::{interval, Instant};
 use tracing::{debug, info, info_span, warn, Instrument};
 use uc_daemon_contract::constants::{ws_event, ws_topic};
+use uc_engine::internal::search::execute_query_search_status;
+use uc_engine::OperationResult;
 use utoipa;
 
 use crate::api::dto::error::ApiError;
@@ -575,7 +577,6 @@ async fn build_snapshot_event(
         }
 
         ws_topic::SEARCH => {
-            // Build a combined snapshot through the application facade.
             let app = match state.app_facade_or_error() {
                 Ok(app) => app,
                 Err(err) => {
@@ -583,12 +584,20 @@ async fn build_snapshot_event(
                     return Ok(None);
                 }
             };
-            let status = match app.search.status().await {
-                Ok(status) => status,
-                Err(err) => {
-                    warn!(error = %err, "search ws snapshot: failed to read status");
+            let result = match execute_query_search_status(app.as_ref()).await {
+                Ok(result) => result,
+                Err(error) => {
+                    warn!(
+                        code = error.code(),
+                        category = %error.category(),
+                        "search ws snapshot: failed to read status"
+                    );
                     return Ok(None);
                 }
+            };
+            let OperationResult::SearchStatus(status) = result else {
+                warn!("search ws snapshot: engine returned unexpected result");
+                return Ok(None);
             };
 
             let payload = crate::api::dto::search::SearchStatusData {

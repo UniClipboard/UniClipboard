@@ -62,6 +62,7 @@ use crate::internal::receive::{
     execute_list_entry_receive_progress, execute_query_entry_receive_progress,
 };
 use crate::internal::reset_space::execute_reset_space;
+use crate::internal::restore::execute_restore_clipboard;
 use crate::internal::search::{
     execute_query_search_status, execute_query_search_tags, execute_rebuild_search_index,
     execute_search_entries,
@@ -399,6 +400,9 @@ impl EngineRuntime for ProductionRuntime {
             }
             Operation::CaptureCurrentClipboard => {
                 execute_capture_current_clipboard(self.current_facade().await?.as_ref()).await
+            }
+            Operation::RestoreClipboard(input) => {
+                execute_restore_clipboard(self.current_facade().await?.as_ref(), input).await
             }
             Operation::SendText(input) => {
                 if input.text.is_empty()

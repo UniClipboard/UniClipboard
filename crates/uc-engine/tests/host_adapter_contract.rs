@@ -807,6 +807,54 @@ async fn engine_start_builds_a_resumable_real_session() {
         uc_engine::OperationResult::HistoryEntry(ref entry)
             if entry.entry_id == sent_entry_id && entry.content == "engine text dispatch"
     ));
+    for mode in [
+        uc_engine::ClipboardRestoreMode::Standard,
+        uc_engine::ClipboardRestoreMode::PlainText,
+    ] {
+        assert_eq!(
+            engine
+                .execute(uc_engine::Operation::RestoreClipboard(
+                    uc_engine::RestoreClipboardInput {
+                        entry_id: sent_entry_id.clone(),
+                        mode,
+                    },
+                ))
+                .await
+                .unwrap(),
+            uc_engine::OperationResult::ClipboardRestored(
+                uc_engine::ClipboardRestoreOutcome::Restored,
+            )
+        );
+    }
+    assert_eq!(
+        engine
+            .execute(uc_engine::Operation::RestoreClipboard(
+                uc_engine::RestoreClipboardInput {
+                    entry_id: sent_entry_id.clone(),
+                    mode: uc_engine::ClipboardRestoreMode::FilePaths,
+                },
+            ))
+            .await
+            .unwrap(),
+        uc_engine::OperationResult::ClipboardRestored(
+            uc_engine::ClipboardRestoreOutcome::NotApplicable {
+                reason: "entry has no restorable file paths".into(),
+            },
+        )
+    );
+    let missing_restore = engine
+        .execute(uc_engine::Operation::RestoreClipboard(
+            uc_engine::RestoreClipboardInput {
+                entry_id: "missing-restore".into(),
+                mode: uc_engine::ClipboardRestoreMode::Standard,
+            },
+        ))
+        .await
+        .unwrap_err();
+    assert_eq!(
+        missing_restore.category(),
+        uc_engine::EngineErrorCategory::NotFound
+    );
     assert_eq!(
         engine
             .execute(uc_engine::Operation::SetHistoryEntryFavorite(

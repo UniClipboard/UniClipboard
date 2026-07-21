@@ -746,6 +746,24 @@ fn operation_response(result: OperationResult) -> Value {
             "kind": "clipboard_captured",
             "entry_id": entry_id,
         }),
+        OperationResult::ClipboardRestored(outcome) => match outcome {
+            uc_engine::ClipboardRestoreOutcome::Restored => json!({
+                "ok": true,
+                "kind": "clipboard_restored",
+                "outcome": "restored",
+            }),
+            uc_engine::ClipboardRestoreOutcome::PayloadUnavailable { state, .. } => json!({
+                "ok": true,
+                "kind": "clipboard_restored",
+                "outcome": "payload_unavailable",
+                "state": state,
+            }),
+            uc_engine::ClipboardRestoreOutcome::NotApplicable { .. } => json!({
+                "ok": true,
+                "kind": "clipboard_restored",
+                "outcome": "not_applicable",
+            }),
+        },
         OperationResult::EntryExported => json!({"ok": true, "kind": "entry_exported"}),
         OperationResult::EntryResent { entry_id } => {
             json!({"ok": true, "kind": "entry_resent", "entry_id": entry_id})
@@ -946,6 +964,13 @@ mod tests {
                 inline_data: Some(b"private inline content".to_vec()),
             },
         ));
+        let payload_unavailable = operation_response(OperationResult::ClipboardRestored(
+            uc_engine::ClipboardRestoreOutcome::PayloadUnavailable {
+                entry_id: "private-entry".into(),
+                representation_id: "private-representation".into(),
+                state: "Lost".into(),
+            },
+        ));
 
         assert!(!local.to_string().contains("private local device name"));
         assert!(!devices.to_string().contains("private phone name"));
@@ -955,5 +980,11 @@ mod tests {
         assert!(!history_resource
             .to_string()
             .contains("private inline content"));
+        assert_eq!(payload_unavailable["outcome"], "payload_unavailable");
+        assert_eq!(payload_unavailable["state"], "Lost");
+        assert!(!payload_unavailable.to_string().contains("private-entry"));
+        assert!(!payload_unavailable
+            .to_string()
+            .contains("private-representation"));
     }
 }

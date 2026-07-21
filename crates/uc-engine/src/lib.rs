@@ -110,6 +110,7 @@ pub enum OperationKind {
     CancelEntryReceive,
     CancelInboundTransfer,
     CaptureCurrentClipboard,
+    RestoreClipboard,
     ExportEntry,
     ResendEntry,
 }
@@ -157,6 +158,7 @@ impl fmt::Display for OperationKind {
             Self::CancelEntryReceive => "cancel_entry_receive",
             Self::CancelInboundTransfer => "cancel_inbound_transfer",
             Self::CaptureCurrentClipboard => "capture_current_clipboard",
+            Self::RestoreClipboard => "restore_clipboard",
             Self::ExportEntry => "export_entry",
             Self::ResendEntry => "resend_entry",
         };
@@ -206,6 +208,7 @@ pub enum Operation {
     CancelEntryReceive(CancelEntryReceiveInput),
     CancelInboundTransfer(CancelInboundTransferInput),
     CaptureCurrentClipboard,
+    RestoreClipboard(RestoreClipboardInput),
     ExportEntry(ExportEntryInput),
     ResendEntry(ResendEntryInput),
 }
@@ -253,6 +256,7 @@ impl Operation {
             Self::CancelEntryReceive(_) => OperationKind::CancelEntryReceive,
             Self::CancelInboundTransfer(_) => OperationKind::CancelInboundTransfer,
             Self::CaptureCurrentClipboard => OperationKind::CaptureCurrentClipboard,
+            Self::RestoreClipboard(_) => OperationKind::RestoreClipboard,
             Self::ExportEntry(_) => OperationKind::ExportEntry,
             Self::ResendEntry(_) => OperationKind::ResendEntry,
         }
@@ -472,6 +476,20 @@ pub struct CancelEntryReceiveInput {
 pub struct CancelInboundTransferInput {
     pub transfer_id: String,
     pub reason: TransferCancellationReason,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RestoreClipboardInput {
+    pub entry_id: String,
+    pub mode: ClipboardRestoreMode,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ClipboardRestoreMode {
+    Standard,
+    PlainText,
+    FilePaths,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -804,6 +822,34 @@ pub enum InboundTransferCancellationOutcome {
     NotInflight,
 }
 
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", tag = "kind")]
+pub enum ClipboardRestoreOutcome {
+    Restored,
+    PayloadUnavailable {
+        entry_id: String,
+        representation_id: String,
+        state: String,
+    },
+    NotApplicable {
+        reason: String,
+    },
+}
+
+impl fmt::Debug for ClipboardRestoreOutcome {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut debug = formatter.debug_struct("ClipboardRestoreOutcome");
+        match self {
+            Self::Restored => debug.field("kind", &"restored"),
+            Self::PayloadUnavailable { state, .. } => debug
+                .field("kind", &"payload_unavailable")
+                .field("state", state),
+            Self::NotApplicable { .. } => debug.field("kind", &"not_applicable"),
+        };
+        debug.finish()
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TransferProgress {
     pub transfer_id: String,
@@ -882,6 +928,7 @@ pub enum OperationResult {
     ClipboardCaptured {
         entry_id: Option<String>,
     },
+    ClipboardRestored(ClipboardRestoreOutcome),
     EntryExported,
     EntryResent {
         entry_id: String,
@@ -981,6 +1028,9 @@ impl fmt::Debug for OperationResult {
             Self::ClipboardCaptured { entry_id } => debug
                 .field("kind", &"clipboard_captured")
                 .field("has_entry", &entry_id.is_some()),
+            Self::ClipboardRestored(outcome) => debug
+                .field("kind", &"clipboard_restored")
+                .field("outcome", outcome),
             Self::EntryExported => debug.field("kind", &"entry_exported"),
             Self::EntryResent { .. } => debug.field("kind", &"entry_resent"),
         };

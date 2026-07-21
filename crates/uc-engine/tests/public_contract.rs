@@ -380,6 +380,41 @@ fn capture_current_clipboard_has_a_stable_optional_result() {
 }
 
 #[test]
+fn clipboard_restore_has_stable_modes_and_business_outcomes() {
+    let modes = [
+        uc_engine::ClipboardRestoreMode::Standard,
+        uc_engine::ClipboardRestoreMode::PlainText,
+        uc_engine::ClipboardRestoreMode::FilePaths,
+    ];
+    for mode in modes {
+        assert_eq!(
+            uc_engine::Operation::RestoreClipboard(uc_engine::RestoreClipboardInput {
+                entry_id: "entry-1".into(),
+                mode,
+            })
+            .kind(),
+            uc_engine::OperationKind::RestoreClipboard
+        );
+    }
+
+    let outcomes = [
+        uc_engine::ClipboardRestoreOutcome::Restored,
+        uc_engine::ClipboardRestoreOutcome::PayloadUnavailable {
+            entry_id: "entry-1".into(),
+            representation_id: "rep-1".into(),
+            state: "Lost".into(),
+        },
+        uc_engine::ClipboardRestoreOutcome::NotApplicable {
+            reason: "entry has no restorable file paths".into(),
+        },
+    ];
+    assert_eq!(outcomes.len(), 3);
+    assert!(format!("{:?}", outcomes[1]).contains("payload_unavailable"));
+    assert!(!format!("{:?}", outcomes[1]).contains("entry-1"));
+    assert!(!format!("{:?}", outcomes[2]).contains("restorable file paths"));
+}
+
+#[test]
 fn search_contract_preserves_fields_without_debugging_user_content() {
     let input = SearchEntriesInput {
         query: "private search query".into(),

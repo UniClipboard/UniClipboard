@@ -84,6 +84,28 @@ fn daemon_process_runtime_does_not_expose_app_facade() {
 }
 
 #[test]
+fn engine_session_owns_history_maintenance() {
+    let runtime = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/internal/runtime.rs");
+    let source = std::fs::read_to_string(&runtime)
+        .unwrap_or_else(|error| panic!("failed to read {}: {error}", runtime.display()));
+
+    assert!(
+        source.contains("spawn_history_maintenance_task("),
+        "engine session must register the history maintenance task"
+    );
+    let maintenance = source
+        .find("spawn_history_maintenance_task(Arc::clone")
+        .expect("history maintenance registration");
+    let clipboard = source
+        .find("spawn_clipboard_runtime_tasks(&clipboard")
+        .expect("clipboard task registration");
+    assert!(
+        maintenance < clipboard,
+        "startup history reconciliation must finish before clipboard tasks can observe storage"
+    );
+}
+
+#[test]
 fn daemon_startup_recovery_delegates_business_orchestration_to_engine() {
     let recovery = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../apps/daemon/src/daemon/startup_recovery.rs");

@@ -51,6 +51,7 @@ use crate::internal::history::{
     execute_get_history_entry_resource, execute_list_history_entries, execute_query_history_stats,
     execute_set_history_entry_favorite,
 };
+use crate::internal::history_maintenance::spawn_history_maintenance_task;
 use crate::internal::host_adapters::{
     wire_host_capabilities_with_emitter, EngineHostEventEmitter, HostWiring,
 };
@@ -354,32 +355,7 @@ impl ProductionRuntime {
         let search_coordinator = build_search_coordinator(&wired.deps);
         let clipboard = build_clipboard_runtime(wired, &sync_engine);
         let tasks = Arc::new(TaskRegistry::new());
-        spawn_clipboard_runtime_tasks(&clipboard, Arc::clone(&sync_engine.clipboard_sync), &tasks)
-            .await;
         let search = Arc::clone(&search_coordinator);
-        tasks
-            .spawn("search_coordinator", move |cancel| async move {
-                if let Err(error) = search.start(cancel).await {
-                    error!(error = %error, "search coordinator stopped with error");
-                }
-            })
-            .await;
-        let lifecycle = Arc::clone(file_transfer_lifecycle);
-        let blob_transfer = Arc::clone(&sync_engine.blob);
-        tasks
-            .spawn("file_transfer_timeout_sweep", move |cancel| async move {
-                let (cancel_tx, cancel_rx) = tokio::sync::watch::channel(false);
-                let mut handle = lifecycle.spawn_timeout_sweep(cancel_rx, blob_transfer);
-                cancel.cancelled().await;
-                let _ = cancel_tx.send(true);
-                if tokio::time::timeout(Duration::from_secs(1), &mut handle)
-                    .await
-                    .is_err()
-                {
-                    handle.abort();
-                }
-            })
-            .await;
         let facade = build_app_facade_from_deps(
             &wired.deps,
             paths,
@@ -403,6 +379,32 @@ impl ProductionRuntime {
                 ..Default::default()
             },
         );
+        spawn_history_maintenance_task(Arc::clone(&facade.clipboard_history), &tasks).await;
+        spawn_clipboard_runtime_tasks(&clipboard, Arc::clone(&sync_engine.clipboard_sync), &tasks)
+            .await;
+        tasks
+            .spawn("search_coordinator", move |cancel| async move {
+                if let Err(error) = search.start(cancel).await {
+                    error!(error = %error, "search coordinator stopped with error");
+                }
+            })
+            .await;
+        let lifecycle = Arc::clone(file_transfer_lifecycle);
+        let blob_transfer = Arc::clone(&sync_engine.blob);
+        tasks
+            .spawn("file_transfer_timeout_sweep", move |cancel| async move {
+                let (cancel_tx, cancel_rx) = tokio::sync::watch::channel(false);
+                let mut handle = lifecycle.spawn_timeout_sweep(cancel_rx, blob_transfer);
+                cancel.cancelled().await;
+                let _ = cancel_tx.send(true);
+                if tokio::time::timeout(Duration::from_secs(1), &mut handle)
+                    .await
+                    .is_err()
+                {
+                    handle.abort();
+                }
+            })
+            .await;
 
         Ok(ProductionSession {
             facade,

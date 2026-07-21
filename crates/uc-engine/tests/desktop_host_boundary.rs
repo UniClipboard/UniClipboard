@@ -5,11 +5,12 @@ fn daemon_production_host_starts_and_stops_only_the_engine() {
     let host = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../apps/daemon/src/daemon/host.rs");
     let source = std::fs::read_to_string(&host)
         .unwrap_or_else(|error| panic!("failed to read {}: {error}", host.display()));
+    let compact = source.split_whitespace().collect::<String>();
 
     assert!(
         source.contains("prepare_desktop_engine_host")
             && source.contains("Engine::start")
-            && source.contains("engine.shutdown"),
+            && compact.contains("engine.shutdown"),
         "daemon host must own one Engine from platform preparation through shutdown"
     );
     assert!(
@@ -113,25 +114,18 @@ fn mobile_lan_production_routes_use_the_shared_engine() {
 #[test]
 fn daemon_does_not_assemble_workers_owned_by_engine() {
     let daemon = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../apps/daemon/src/daemon");
-    let assembly_files = [
-        "app_assembly.rs",
-        "runtime_assembly.rs",
-        "service_assembly.rs",
-        "process_runtime_start.rs",
-    ];
     let forbidden = [
         "CleanupWorker",
         "PeerKeepAliveWorker",
         "FileSyncOrchestratorWorker",
     ];
     let mut violations = Vec::new();
-    for file in assembly_files {
-        let path = daemon.join(file);
+    for path in rust_sources(&daemon) {
         let source = std::fs::read_to_string(&path)
             .unwrap_or_else(|error| panic!("failed to read {}: {error}", path.display()));
         for symbol in forbidden {
             if source.contains(symbol) {
-                violations.push(format!("{file}: {symbol}"));
+                violations.push(format!("{}: {symbol}", path.display()));
             }
         }
     }
@@ -176,12 +170,9 @@ fn daemon_does_not_export_legacy_runtime_fields() {
 fn daemon_run_loop_does_not_depend_on_legacy_application_runtime() {
     let run_loop =
         Path::new(env!("CARGO_MANIFEST_DIR")).join("../../apps/daemon/src/daemon/run_loop.rs");
-    let source = std::fs::read_to_string(&run_loop)
-        .unwrap_or_else(|error| panic!("failed to read {}: {error}", run_loop.display()));
-
     assert!(
-        !source.contains("AppFacade") && !source.contains("AppDeps"),
-        "daemon run loop must only own process run and shutdown ordering"
+        !run_loop.exists(),
+        "the legacy daemon run loop must be deleted after Engine owns shutdown ordering"
     );
 }
 
@@ -204,12 +195,9 @@ fn daemon_library_does_not_export_in_process_legacy_assembly() {
 fn daemon_process_runtime_does_not_expose_task_registry() {
     let runtime = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../apps/daemon/src/daemon/process_runtime.rs");
-    let source = std::fs::read_to_string(&runtime)
-        .unwrap_or_else(|error| panic!("failed to read {}: {error}", runtime.display()));
-
     assert!(
-        !source.contains("fn task_registry("),
-        "daemon process runtime must own background task registration"
+        !runtime.exists(),
+        "legacy daemon process runtime must be deleted"
     );
 }
 
@@ -217,12 +205,9 @@ fn daemon_process_runtime_does_not_expose_task_registry() {
 fn daemon_process_runtime_does_not_expose_app_facade() {
     let runtime = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../apps/daemon/src/daemon/process_runtime.rs");
-    let source = std::fs::read_to_string(&runtime)
-        .unwrap_or_else(|error| panic!("failed to read {}: {error}", runtime.display()));
-
     assert!(
-        !source.contains("fn app_facade("),
-        "daemon process runtime must expose behavior instead of the legacy facade"
+        !runtime.exists(),
+        "legacy daemon process runtime must be deleted"
     );
 }
 
@@ -240,7 +225,7 @@ fn engine_session_owns_history_maintenance() {
         .find("spawn_history_maintenance_task(Arc::clone")
         .expect("history maintenance registration");
     let clipboard = source
-        .find("spawn_clipboard_runtime_tasks(&clipboard")
+        .find("spawn_clipboard_runtime_tasks(")
         .expect("clipboard task registration");
     assert!(
         maintenance < clipboard,
@@ -626,9 +611,25 @@ fn daemon_mobile_sync_http_depends_on_the_mobile_sync_capability() {
             && handler.contains("Operation::RegisterMobileDevice")
             && handler.contains("Operation::UpdateMobileDevice")
             && handler.contains("Operation::RevokeMobileDevice")
+            && handler.contains("Operation::ListMobileLanInterfaces")
             && handler.contains("Operation::QueryMobileSyncSettings")
             && handler.contains("Operation::UpdateMobileSyncSettings"),
         "mobile-sync HTTP handlers must use public Engine operations"
+    );
+}
+
+#[test]
+fn daemon_api_state_does_not_expose_engine_internal_readiness_or_lan_ports() {
+    let state =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../crates/uc-webserver/src/api/server.rs");
+    let source = std::fs::read_to_string(&state)
+        .unwrap_or_else(|error| panic!("failed to read {}: {error}", state.display()));
+
+    assert!(
+        !source.contains("EnsureReceiveReadyPort")
+            && !source.contains("DaemonLanInterfaces")
+            && source.contains("Operation::QueryReceiveReadiness"),
+        "daemon API state must query stable Engine results instead of retaining internal ports"
     );
 }
 

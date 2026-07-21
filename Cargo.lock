@@ -10270,6 +10270,7 @@ dependencies = [
  "async-trait",
  "base64 0.22.1",
  "chrono",
+ "dirs 6.0.0",
  "mockall 0.13.1",
  "objc2",
  "objc2-app-kit",

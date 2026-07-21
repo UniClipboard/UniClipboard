@@ -15,11 +15,9 @@
 //! `apply(target)` 状态对齐契约。调用方传"我希望监听器现在是什么状态"
 //! (Disabled / Enabled{port}),controller 负责把当前实际状态推到那个值。
 //!
-//! daemon 启动期把这个 controller 同时装入两条链路:
-//! 1. application 侧 [`MobileSyncFacade`] 持 `Arc<dyn MobileLanLifecyclePort>`,
-//!    `update_settings` 写盘后立即调 `apply(target)`;
-//! 2. daemon 自身在 `run()` 开始时调 `apply(initial_target)` 起初始监听器,
-//!    退出时调 `apply(Disabled)` 兜底回收端口。
+//! The daemon owns this controller beside the shared [`Engine`]. Startup and
+//! settings changes both reconcile the listener to the desired target, and
+//! shutdown always applies `Disabled` to release the bound port.
 //!
 //! # 内部实现要点
 //!
@@ -27,15 +25,14 @@
 //!   `tokio::sync::Mutex<Option<RunningListener>>` 串行化所有 transition,
 //!   保证并发 `apply` 不会出现"两个 listener 同时占同一端口"或"start
 //!   半路被 stop 打断"。
-//! - The controller cannot directly own [`MobileSyncFacade`] because the facade
-//!   also calls the controller. [`MobileSyncFacadeSlot`] breaks construction
-//!   ordering with a weak reference that is installed before the first `apply`.
+//! - The production spawner owns the same shared [`Engine`] as the loopback API;
+//!   listener restarts never assemble another business runtime.
 //! - bind 失败**不通过返回值上报**,而是写 [`InMemoryMobileSyncEndpointInfoAdapter`]
 //!   的 `BindFailed{reason}` 三态。UI 通过同一 adapter 查询,避免"设置已落盘但
 //!   返回值反悔"的语义割裂。
 
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
-use std::sync::{Arc, OnceLock, Weak};
+use std::sync::Arc;
 
 use async_trait::async_trait;
 use tokio::sync::{broadcast, Mutex};
@@ -43,10 +40,12 @@ use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info, warn};
 
-use uc_application::facade::{FileTransferFacade, MobileSyncFacade, MobileSyncSettingsView};
 use uc_core::clipboard::ActiveClipboardState;
 use uc_core::mobile_sync::LanEndpointInfo;
 use uc_core::ports::{MobileLanLifecyclePort, MobileLanTarget};
+use uc_engine::{
+    Engine, MobileLanEndpointUpdate, MobileSyncSettingsSummary, Operation, OperationResult,
+};
 use uc_infra::mobile_sync::InMemoryMobileSyncEndpointInfoAdapter;
 use uc_webserver::mobile_lan::{start_mobile_lan_server, MobileLanServerHandle};
 
@@ -70,26 +69,6 @@ pub trait LanListenerSpawner: Send + Sync {
     ) -> anyhow::Result<MobileLanServerHandle>;
 }
 
-#[derive(Clone, Default)]
-pub struct MobileSyncFacadeSlot {
-    facade: Arc<OnceLock<Weak<MobileSyncFacade>>>,
-}
-
-impl MobileSyncFacadeSlot {
-    pub fn install(&self, facade: &Arc<MobileSyncFacade>) -> anyhow::Result<()> {
-        self.facade
-            .set(Arc::downgrade(facade))
-            .map_err(|_| anyhow::anyhow!("mobile-sync facade slot already installed"))
-    }
-
-    fn resolve(&self) -> anyhow::Result<Arc<MobileSyncFacade>> {
-        self.facade
-            .get()
-            .and_then(Weak::upgrade)
-            .ok_or_else(|| anyhow::anyhow!("mobile-sync facade is unavailable"))
-    }
-}
-
 /// Production listener spawner backed by the daemon's mobile-sync capability.
 ///
 /// `sse_source` is a process-level singleton (constructed once at wire time;
@@ -99,22 +78,13 @@ impl MobileSyncFacadeSlot {
 /// toggle) reuses the same `Sender`, so there is no need to thread it
 /// through the [`LanListenerSpawner`] trait signature.
 pub struct MobileSyncListenerSpawner {
-    mobile_sync: MobileSyncFacadeSlot,
-    file_transfer: Option<Arc<FileTransferFacade>>,
+    engine: Arc<Engine>,
     sse_source: broadcast::Sender<ActiveClipboardState>,
 }
 
 impl MobileSyncListenerSpawner {
-    pub fn new(
-        mobile_sync: MobileSyncFacadeSlot,
-        file_transfer: Option<Arc<FileTransferFacade>>,
-        sse_source: broadcast::Sender<ActiveClipboardState>,
-    ) -> Self {
-        Self {
-            mobile_sync,
-            file_transfer,
-            sse_source,
-        }
+    pub fn new(engine: Arc<Engine>, sse_source: broadcast::Sender<ActiveClipboardState>) -> Self {
+        Self { engine, sse_source }
     }
 }
 
@@ -125,12 +95,10 @@ impl LanListenerSpawner for MobileSyncListenerSpawner {
         bind: SocketAddr,
         cancel: CancellationToken,
     ) -> anyhow::Result<MobileLanServerHandle> {
-        let facade = self.mobile_sync.resolve()?;
         start_mobile_lan_server(
             bind,
             cancel,
-            facade,
-            self.file_transfer.clone(),
+            Arc::clone(&self.engine),
             self.sse_source.clone(),
         )
         .await
@@ -138,9 +106,74 @@ impl LanListenerSpawner for MobileSyncListenerSpawner {
 }
 
 pub struct MobileLanLifecycleController {
-    endpoint_info: Arc<InMemoryMobileSyncEndpointInfoAdapter>,
+    status_sink: Arc<dyn LanListenerStatusSink>,
     spawner: Arc<dyn LanListenerSpawner>,
     state: Mutex<Option<RunningListener>>,
+}
+
+#[async_trait]
+trait LanListenerStatusSink: Send + Sync {
+    async fn stopped(&self);
+    async fn listening(&self, url: String);
+    async fn bind_failed(&self, reason: String);
+}
+
+struct EngineLanListenerStatusSink {
+    engine: Arc<Engine>,
+}
+
+impl EngineLanListenerStatusSink {
+    async fn update(&self, update: MobileLanEndpointUpdate) {
+        match self
+            .engine
+            .execute(Operation::UpdateMobileLanEndpoint(update))
+            .await
+        {
+            Ok(OperationResult::MobileLanEndpointUpdated) => {}
+            Ok(_) => tracing::warn!("engine returned an unexpected LAN endpoint result"),
+            Err(error) => tracing::warn!(
+                code = error.code(),
+                category = %error.category(),
+                "failed to update engine LAN endpoint status"
+            ),
+        }
+    }
+}
+
+#[async_trait]
+impl LanListenerStatusSink for EngineLanListenerStatusSink {
+    async fn stopped(&self) {
+        self.update(MobileLanEndpointUpdate::Stopped).await;
+    }
+
+    async fn listening(&self, url: String) {
+        self.update(MobileLanEndpointUpdate::Listening { base_url: url })
+            .await;
+    }
+
+    async fn bind_failed(&self, reason: String) {
+        self.update(MobileLanEndpointUpdate::BindFailed { reason })
+            .await;
+    }
+}
+
+struct EndpointInfoStatusSink {
+    endpoint_info: Arc<InMemoryMobileSyncEndpointInfoAdapter>,
+}
+
+#[async_trait]
+impl LanListenerStatusSink for EndpointInfoStatusSink {
+    async fn stopped(&self) {
+        self.endpoint_info.clear().await;
+    }
+
+    async fn listening(&self, url: String) {
+        self.endpoint_info.set(LanEndpointInfo { url }).await;
+    }
+
+    async fn bind_failed(&self, reason: String) {
+        self.endpoint_info.set_bind_failure(reason).await;
+    }
 }
 
 impl MobileLanLifecycleController {
@@ -149,7 +182,22 @@ impl MobileLanLifecycleController {
         spawner: Arc<dyn LanListenerSpawner>,
     ) -> Self {
         Self {
-            endpoint_info,
+            status_sink: Arc::new(EndpointInfoStatusSink { endpoint_info }),
+            spawner,
+            state: Mutex::new(None),
+        }
+    }
+
+    pub fn for_engine(
+        engine: Arc<Engine>,
+        sse_source: broadcast::Sender<ActiveClipboardState>,
+    ) -> Self {
+        let spawner = Arc::new(MobileSyncListenerSpawner::new(
+            Arc::clone(&engine),
+            sse_source,
+        ));
+        Self {
+            status_sink: Arc::new(EngineLanListenerStatusSink { engine }),
             spawner,
             state: Mutex::new(None),
         }
@@ -169,7 +217,7 @@ impl MobileLanLifecycleController {
                     warn!(port = running.port, error = %join_err, "mobile LAN listener task join failed")
                 }
             }
-            self.endpoint_info.clear().await;
+            self.status_sink.stopped().await;
         }
     }
 
@@ -185,9 +233,7 @@ impl MobileLanLifecycleController {
         match self.spawner.spawn(bind, cancel.clone()).await {
             Ok(handle) => {
                 let url = format!("http://{}", handle.bound_addr);
-                self.endpoint_info
-                    .set(LanEndpointInfo { url: url.clone() })
-                    .await;
+                self.status_sink.listening(url.clone()).await;
                 info!(url, "mobile LAN listener started");
                 **guard = Some(RunningListener {
                     port,
@@ -197,7 +243,7 @@ impl MobileLanLifecycleController {
             }
             Err(e) => {
                 let reason = format!("{}", e);
-                self.endpoint_info.set_bind_failure(reason.clone()).await;
+                self.status_sink.bind_failed(reason.clone()).await;
                 error!(
                     bind = %bind,
                     error = %e,
@@ -250,12 +296,24 @@ pub(crate) const DEFAULT_MOBILE_LAN_PORT: u16 = 42720;
 /// ([`DaemonRunMode::ServerHeadless`](crate::daemon::run_mode::DaemonRunMode::ServerHeadless))
 /// 与普通 daemon 起的是同一个手机网关。保持本签名与 run mode 无关,正是这条
 /// 不变量的结构性保证 (issue #899 / ADR-007 §2.3)。
-pub(crate) fn initial_lan_target(view: Option<&MobileSyncSettingsView>) -> MobileLanTarget {
+pub(crate) fn initial_lan_target(view: Option<&MobileSyncSettingsSummary>) -> MobileLanTarget {
     match view {
-        Some(v) if v.enabled && v.lan_listen_enabled => MobileLanTarget::Enabled {
-            port: v.lan_port.unwrap_or(DEFAULT_MOBILE_LAN_PORT),
-        },
+        Some(view) => mobile_lan_target(view.enabled, view.lan_listen_enabled, view.lan_port),
         _ => MobileLanTarget::Disabled,
+    }
+}
+
+pub(crate) fn mobile_lan_target(
+    enabled: bool,
+    lan_listen_enabled: bool,
+    lan_port: Option<u16>,
+) -> MobileLanTarget {
+    if enabled && lan_listen_enabled {
+        MobileLanTarget::Enabled {
+            port: lan_port.unwrap_or(DEFAULT_MOBILE_LAN_PORT),
+        }
+    } else {
+        MobileLanTarget::Disabled
     }
 }
 
@@ -268,8 +326,8 @@ mod tests {
 
     /// 测试用 spawner:起一个空 axum router 服务,可被 cancel。
     ///
-    /// 测试既不依赖 uc-application MobileSyncFacade,也不引入跨 crate 依赖,
-    /// 只验证 controller 的状态机 + endpoint_info 写入。
+    /// This test spawner only verifies controller transitions and endpoint
+    /// status updates; it does not construct an application runtime.
     struct FakeSpawner {
         starts: AtomicU32,
         fail_next_starts: AtomicU32,
@@ -494,8 +552,8 @@ mod tests {
         enabled: bool,
         lan_listen_enabled: bool,
         lan_port: Option<u16>,
-    ) -> MobileSyncSettingsView {
-        MobileSyncSettingsView {
+    ) -> MobileSyncSettingsSummary {
+        MobileSyncSettingsSummary {
             enabled,
             lan_listen_enabled,
             lan_advertise_ip: None,

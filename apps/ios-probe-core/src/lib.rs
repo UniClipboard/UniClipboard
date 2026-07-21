@@ -764,6 +764,31 @@ fn operation_response(result: OperationResult) -> Value {
                 "outcome": "not_applicable",
             }),
         },
+        OperationResult::EntryDelivery(view) => {
+            let source = match view.source {
+                uc_engine::EntrySourceSummary::Local => "local",
+                uc_engine::EntrySourceSummary::Remote { .. } => "remote",
+                uc_engine::EntrySourceSummary::Historical => "historical",
+            };
+            let statuses = view
+                .deliveries
+                .into_iter()
+                .map(|delivery| match delivery.status {
+                    uc_engine::EntryDeliveryStatusSummary::Pending => "pending",
+                    uc_engine::EntryDeliveryStatusSummary::Delivered => "delivered",
+                    uc_engine::EntryDeliveryStatusSummary::Duplicate => "duplicate",
+                    uc_engine::EntryDeliveryStatusSummary::Unreachable => "unreachable",
+                    uc_engine::EntryDeliveryStatusSummary::Failed { .. } => "failed",
+                })
+                .collect::<Vec<_>>();
+            json!({
+                "ok": true,
+                "kind": "entry_delivery",
+                "source": source,
+                "delivery_count": statuses.len(),
+                "statuses": statuses,
+            })
+        }
         OperationResult::EntryExported => json!({"ok": true, "kind": "entry_exported"}),
         OperationResult::EntryResent { entry_id } => {
             json!({"ok": true, "kind": "entry_resent", "entry_id": entry_id})
@@ -971,6 +996,24 @@ mod tests {
                 state: "Lost".into(),
             },
         ));
+        let delivery = operation_response(OperationResult::EntryDelivery(
+            uc_engine::EntryDeliveryViewSummary {
+                entry_id: "private-entry".into(),
+                source: uc_engine::EntrySourceSummary::Remote {
+                    device_id: "private-source-id".into(),
+                    device_name: Some("private source name".into()),
+                },
+                deliveries: vec![uc_engine::EntryDeliveryTargetSummary {
+                    target_device_id: "private-target-id".into(),
+                    target_device_name: Some("private target name".into()),
+                    status: uc_engine::EntryDeliveryStatusSummary::Failed {
+                        reason: uc_engine::DeliveryFailureReasonSummary::Internal,
+                    },
+                    reason_detail: Some("private failure detail".into()),
+                    updated_at_ms: Some(42),
+                }],
+            },
+        ));
 
         assert!(!local.to_string().contains("private local device name"));
         assert!(!devices.to_string().contains("private phone name"));
@@ -986,5 +1029,13 @@ mod tests {
         assert!(!payload_unavailable
             .to_string()
             .contains("private-representation"));
+        assert_eq!(delivery["source"], "remote");
+        assert_eq!(delivery["statuses"][0], "failed");
+        assert!(!delivery.to_string().contains("private-entry"));
+        assert!(!delivery.to_string().contains("private-source-id"));
+        assert!(!delivery.to_string().contains("private source name"));
+        assert!(!delivery.to_string().contains("private-target-id"));
+        assert!(!delivery.to_string().contains("private target name"));
+        assert!(!delivery.to_string().contains("private failure detail"));
     }
 }

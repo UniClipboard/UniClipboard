@@ -104,6 +104,7 @@ pub enum OperationKind {
     SetHistoryEntryFavorite,
     QueryHistoryStats,
     GetHistoryEntryResource,
+    QueryEntryDelivery,
     ClearHistory,
     QueryEntryReceiveProgress,
     ListEntryReceiveProgress,
@@ -152,6 +153,7 @@ impl fmt::Display for OperationKind {
             Self::SetHistoryEntryFavorite => "set_history_entry_favorite",
             Self::QueryHistoryStats => "query_history_stats",
             Self::GetHistoryEntryResource => "get_history_entry_resource",
+            Self::QueryEntryDelivery => "query_entry_delivery",
             Self::ClearHistory => "clear_history",
             Self::QueryEntryReceiveProgress => "query_entry_receive_progress",
             Self::ListEntryReceiveProgress => "list_entry_receive_progress",
@@ -202,6 +204,7 @@ pub enum Operation {
     SetHistoryEntryFavorite(SetHistoryEntryFavoriteInput),
     QueryHistoryStats,
     GetHistoryEntryResource(HistoryEntryInput),
+    QueryEntryDelivery(HistoryEntryInput),
     ClearHistory,
     QueryEntryReceiveProgress(EntryReceiveProgressInput),
     ListEntryReceiveProgress,
@@ -250,6 +253,7 @@ impl Operation {
             Self::SetHistoryEntryFavorite(_) => OperationKind::SetHistoryEntryFavorite,
             Self::QueryHistoryStats => OperationKind::QueryHistoryStats,
             Self::GetHistoryEntryResource(_) => OperationKind::GetHistoryEntryResource,
+            Self::QueryEntryDelivery(_) => OperationKind::QueryEntryDelivery,
             Self::ClearHistory => OperationKind::ClearHistory,
             Self::QueryEntryReceiveProgress(_) => OperationKind::QueryEntryReceiveProgress,
             Self::ListEntryReceiveProgress => OperationKind::ListEntryReceiveProgress,
@@ -793,6 +797,96 @@ pub struct HistoryClearSummary {
     pub failed_entry_ids: Vec<String>,
 }
 
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EntryDeliveryViewSummary {
+    pub entry_id: String,
+    pub source: EntrySourceSummary,
+    pub deliveries: Vec<EntryDeliveryTargetSummary>,
+}
+
+impl fmt::Debug for EntryDeliveryViewSummary {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("EntryDeliveryViewSummary")
+            .field("entry_id", &self.entry_id)
+            .field("source", &self.source)
+            .field("delivery_count", &self.deliveries.len())
+            .finish()
+    }
+}
+
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", tag = "kind")]
+pub enum EntrySourceSummary {
+    Local,
+    Remote {
+        device_id: String,
+        device_name: Option<String>,
+    },
+    Historical,
+}
+
+impl fmt::Debug for EntrySourceSummary {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut debug = formatter.debug_struct("EntrySourceSummary");
+        match self {
+            Self::Local => debug.field("kind", &"local"),
+            Self::Remote {
+                device_id,
+                device_name,
+            } => debug
+                .field("kind", &"remote")
+                .field("device_id", device_id)
+                .field("has_device_name", &device_name.is_some()),
+            Self::Historical => debug.field("kind", &"historical"),
+        };
+        debug.finish()
+    }
+}
+
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EntryDeliveryTargetSummary {
+    pub target_device_id: String,
+    pub target_device_name: Option<String>,
+    pub status: EntryDeliveryStatusSummary,
+    pub reason_detail: Option<String>,
+    pub updated_at_ms: Option<i64>,
+}
+
+impl fmt::Debug for EntryDeliveryTargetSummary {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("EntryDeliveryTargetSummary")
+            .field("target_device_id", &self.target_device_id)
+            .field("has_target_device_name", &self.target_device_name.is_some())
+            .field("status", &self.status)
+            .field("has_reason_detail", &self.reason_detail.is_some())
+            .field("updated_at_ms", &self.updated_at_ms)
+            .finish()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", tag = "kind")]
+pub enum EntryDeliveryStatusSummary {
+    Pending,
+    Delivered,
+    Duplicate,
+    Unreachable,
+    Failed {
+        reason: DeliveryFailureReasonSummary,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DeliveryFailureReasonSummary {
+    LocalPolicy,
+    PeerRejected,
+    Io,
+    Internal,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ReceiveProgressSummary {
     pub entry_id: String,
@@ -920,6 +1014,7 @@ pub enum OperationResult {
     HistoryEntryFavoriteSet,
     HistoryStats(HistoryStatsSummary),
     HistoryEntryResource(HistoryEntryResourceSummary),
+    EntryDelivery(EntryDeliveryViewSummary),
     HistoryCleared(HistoryClearSummary),
     EntryReceiveProgress(Option<ReceiveProgressSummary>),
     EntryReceiveProgressList(Vec<ReceiveProgressSummary>),
@@ -1009,6 +1104,7 @@ impl fmt::Debug for OperationResult {
                 .field("has_blob", &resource.blob_id.is_some())
                 .field("has_url", &resource.url.is_some())
                 .field("has_inline_data", &resource.inline_data.is_some()),
+            Self::EntryDelivery(view) => debug.field("kind", &"entry_delivery").field("view", view),
             Self::HistoryCleared(result) => debug
                 .field("kind", &"history_cleared")
                 .field("deleted_count", &result.deleted_count)

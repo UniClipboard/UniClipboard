@@ -31,6 +31,7 @@ use crate::internal::clipboard_runtime::{
     build_clipboard_runtime, spawn_clipboard_runtime_tasks, ClipboardRuntime,
 };
 use crate::internal::create_space::execute_create_space;
+use crate::internal::delivery::execute_query_entry_delivery;
 use crate::internal::deps::WiredDependencies;
 use crate::internal::device::execute_query_local_device;
 use crate::internal::encryption::{
@@ -381,6 +382,9 @@ impl EngineRuntime for ProductionRuntime {
             Operation::GetHistoryEntryResource(input) => {
                 execute_get_history_entry_resource(self.current_facade().await?.as_ref(), input)
                     .await
+            }
+            Operation::QueryEntryDelivery(input) => {
+                execute_query_entry_delivery(self.current_facade().await?.as_ref(), input).await
             }
             Operation::ClearHistory => {
                 execute_clear_history(self.current_facade().await?.as_ref()).await

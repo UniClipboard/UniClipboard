@@ -807,6 +807,33 @@ async fn engine_start_builds_a_resumable_real_session() {
         uc_engine::OperationResult::HistoryEntry(ref entry)
             if entry.entry_id == sent_entry_id && entry.content == "engine text dispatch"
     ));
+    assert_eq!(
+        engine
+            .execute(uc_engine::Operation::QueryEntryDelivery(
+                uc_engine::HistoryEntryInput {
+                    entry_id: sent_entry_id.clone(),
+                },
+            ))
+            .await
+            .unwrap(),
+        uc_engine::OperationResult::EntryDelivery(uc_engine::EntryDeliveryViewSummary {
+            entry_id: sent_entry_id.clone(),
+            source: uc_engine::EntrySourceSummary::Local,
+            deliveries: Vec::new(),
+        })
+    );
+    let missing_delivery = engine
+        .execute(uc_engine::Operation::QueryEntryDelivery(
+            uc_engine::HistoryEntryInput {
+                entry_id: "missing-delivery".into(),
+            },
+        ))
+        .await
+        .unwrap_err();
+    assert_eq!(
+        missing_delivery.category(),
+        uc_engine::EngineErrorCategory::NotFound
+    );
     for mode in [
         uc_engine::ClipboardRestoreMode::Standard,
         uc_engine::ClipboardRestoreMode::PlainText,

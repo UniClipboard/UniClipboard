@@ -7,6 +7,7 @@ pub mod capture;
 pub mod clipboard;
 pub(crate) mod clipboard_runtime;
 pub mod create_space;
+pub mod delivery;
 pub mod deps;
 pub mod device;
 pub mod encryption;

@@ -415,6 +415,58 @@ fn clipboard_restore_has_stable_modes_and_business_outcomes() {
 }
 
 #[test]
+fn entry_delivery_contract_preserves_full_view_without_debugging_user_content() {
+    assert_eq!(
+        uc_engine::Operation::QueryEntryDelivery(uc_engine::HistoryEntryInput {
+            entry_id: "entry-1".into(),
+        })
+        .kind(),
+        uc_engine::OperationKind::QueryEntryDelivery
+    );
+
+    let result = uc_engine::OperationResult::EntryDelivery(uc_engine::EntryDeliveryViewSummary {
+        entry_id: "entry-1".into(),
+        source: uc_engine::EntrySourceSummary::Remote {
+            device_id: "source-1".into(),
+            device_name: Some("private source name".into()),
+        },
+        deliveries: vec![uc_engine::EntryDeliveryTargetSummary {
+            target_device_id: "target-1".into(),
+            target_device_name: Some("private target name".into()),
+            status: uc_engine::EntryDeliveryStatusSummary::Failed {
+                reason: uc_engine::DeliveryFailureReasonSummary::PeerRejected,
+            },
+            reason_detail: Some("private failure detail".into()),
+            updated_at_ms: Some(42),
+        }],
+    });
+    let debug = format!("{result:?}");
+    assert!(!debug.contains("private source name"));
+    assert!(!debug.contains("private target name"));
+    assert!(!debug.contains("private failure detail"));
+
+    let statuses = [
+        uc_engine::EntryDeliveryStatusSummary::Pending,
+        uc_engine::EntryDeliveryStatusSummary::Delivered,
+        uc_engine::EntryDeliveryStatusSummary::Duplicate,
+        uc_engine::EntryDeliveryStatusSummary::Unreachable,
+        uc_engine::EntryDeliveryStatusSummary::Failed {
+            reason: uc_engine::DeliveryFailureReasonSummary::LocalPolicy,
+        },
+        uc_engine::EntryDeliveryStatusSummary::Failed {
+            reason: uc_engine::DeliveryFailureReasonSummary::PeerRejected,
+        },
+        uc_engine::EntryDeliveryStatusSummary::Failed {
+            reason: uc_engine::DeliveryFailureReasonSummary::Io,
+        },
+        uc_engine::EntryDeliveryStatusSummary::Failed {
+            reason: uc_engine::DeliveryFailureReasonSummary::Internal,
+        },
+    ];
+    assert_eq!(statuses.len(), 8);
+}
+
+#[test]
 fn search_contract_preserves_fields_without_debugging_user_content() {
     let input = SearchEntriesInput {
         query: "private search query".into(),

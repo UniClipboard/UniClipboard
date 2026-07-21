@@ -62,6 +62,10 @@ Running|Quiescing|Quiesced|Suspended -> ShuttingDown -> Stopped
 | `QueryMemberSyncPreferences` | 查询指定成员的发送、接收和内容类型偏好 |
 | `UpdateMemberSyncPreferences` | 局部更新指定成员的同步偏好，未提供字段保持不变 |
 | `RemoveMember` | 删除本机保存的成员及其信任和地址关联记录 |
+| `SearchEntries` | 使用关键词、时间、内容类型、来源设备和标签等条件查询加密搜索索引 |
+| `QuerySearchTags` | 查询当前索引中的标签和条目数量 |
+| `QuerySearchStatus` | 查询索引是否可用及最近重建时间 |
+| `RebuildSearchIndex` | 请求重建当前加密搜索索引 |
 | `SendText` | 写入加密历史、更新搜索并发送不超过 64 KiB 的文本 |
 | `SendImage` | 写入加密历史、更新搜索并发送不超过 64 KiB 的图片 |
 | `QueryHistory` | 查询历史并返回稳定分页标记 |
@@ -80,6 +84,8 @@ Running|Quiescing|Quiesced|Suspended -> ShuttingDown -> Stopped
 `QueryEncryptionState` 只返回初始化和会话可用状态。`LockEncryption` 成功后必须同时关闭接收入口，避免锁定后继续写入加密业务数据。`VerifySecureStorageAccess` 使用跨平台安全存储语义，宿主接口可按平台显示为 Keychain、Keystore 或对应系统名称。
 
 `QueryMemberSyncPreferences` 和 `UpdateMemberSyncPreferences` 只接受稳定设备编号。局部更新中未提供的开关和内容类型必须保持原值。`RemoveMember` 由核心统一删除成员、信任和地址关联记录；宿主不得自行编排这些持久化步骤。
+
+搜索查询、标签、状态和重建都由核心执行。搜索结果可以正常返回预览、文件名、文件路径、链接和自定义标签，但这些用户内容不得出现在调试输出或日志中。加密会话锁定时，宿主不得读取搜索结果、标签或状态，也不得触发重建。
 
 空目标设备列表表示向所有符合条件的可信设备发送；非空列表只会缩小目标范围，不能绕过信任、在线状态和发送设置。
 

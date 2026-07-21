@@ -12,7 +12,6 @@
 //! SyncClipboard 官方历史系统”。
 
 use std::collections::HashMap;
-use std::sync::Arc;
 
 use axum::{
     body::to_bytes,
@@ -27,14 +26,15 @@ use axum::{
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 
-use uc_application::facade::{
-    AuthenticatedDevice, GetLatestMobileSyncDocError, MobileSyncFacade, SyncClipboardItemType,
-    SyncClipboardMeta,
+use uc_engine::{
+    ApplyMobileSyncDocumentInput, MobileAuthenticatedSession, MobileSyncDocument,
+    MobileSyncItemType,
 };
-use uc_core::mobile_sync::StagingHandle;
 
 use super::common::{map_apply_error, FILE_UPLOAD_DISK_SANITY_LIMIT, MAX_FILE_BYTES};
 use super::file::{get_clipboard_file, infer_image_mime, mime_is_unspecific};
+use super::MobileLanState;
+use crate::mobile_lan::core::{MobileLanCore, MobileLanUploadHandle};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -76,12 +76,11 @@ struct ParsedHistoryFile {
     data_name: String,
     mime: String,
     size: u64,
-    handle: StagingHandle,
-    transfer_id: String,
+    handle: MobileLanUploadHandle,
 }
 
 impl HistoryRecordDoc {
-    fn from_meta(meta: SyncClipboardMeta) -> Self {
+    fn from_meta(meta: MobileSyncDocument) -> Self {
         let now = Utc::now().to_rfc3339();
         let hash = meta.hash.unwrap_or_default().trim().to_ascii_uppercase();
         Self {
@@ -147,21 +146,21 @@ impl HistoryRecordDoc {
     }
 }
 
-fn item_type_to_wire(item_type: SyncClipboardItemType) -> &'static str {
+fn item_type_to_wire(item_type: MobileSyncItemType) -> &'static str {
     match item_type {
-        SyncClipboardItemType::Text => "Text",
-        SyncClipboardItemType::Image => "Image",
-        SyncClipboardItemType::File => "File",
-        SyncClipboardItemType::Group => "Group",
+        MobileSyncItemType::Text => "Text",
+        MobileSyncItemType::Image => "Image",
+        MobileSyncItemType::File => "File",
+        MobileSyncItemType::Group => "Group",
     }
 }
 
-fn item_type_from_wire(raw: &str) -> Option<SyncClipboardItemType> {
+fn item_type_from_wire(raw: &str) -> Option<MobileSyncItemType> {
     match raw.trim().to_ascii_lowercase().as_str() {
-        "text" => Some(SyncClipboardItemType::Text),
-        "image" => Some(SyncClipboardItemType::Image),
-        "file" => Some(SyncClipboardItemType::File),
-        "group" => Some(SyncClipboardItemType::Group),
+        "text" => Some(MobileSyncItemType::Text),
+        "image" => Some(MobileSyncItemType::Image),
+        "file" => Some(MobileSyncItemType::File),
+        "group" => Some(MobileSyncItemType::Group),
         _ => None,
     }
 }
@@ -172,7 +171,7 @@ fn parse_bool_field(fields: &HashMap<String, String>, key: &str) -> bool {
         .is_some_and(|v| v.eq_ignore_ascii_case("true"))
 }
 
-fn parse_profile_id(profile_id: &str) -> Option<(SyncClipboardItemType, String)> {
+fn parse_profile_id(profile_id: &str) -> Option<(MobileSyncItemType, String)> {
     let (kind, hash) = profile_id.split_once('-')?;
     let item_type = item_type_from_wire(kind)?;
     if hash.trim().is_empty() {
@@ -181,15 +180,15 @@ fn parse_profile_id(profile_id: &str) -> Option<(SyncClipboardItemType, String)>
     Some((item_type, hash.trim().to_ascii_uppercase()))
 }
 
-fn current_profile_type_allows_hash_drift(item_type: SyncClipboardItemType) -> bool {
+fn current_profile_type_allows_hash_drift(item_type: MobileSyncItemType) -> bool {
     matches!(
         item_type,
-        SyncClipboardItemType::Image | SyncClipboardItemType::File
+        MobileSyncItemType::Image | MobileSyncItemType::File
     )
 }
 
 fn current_profile_hash_is_compatible(
-    item_type: SyncClipboardItemType,
+    item_type: MobileSyncItemType,
     current_hash: Option<&str>,
     requested_hash: &str,
 ) -> bool {
@@ -198,8 +197,8 @@ fn current_profile_hash_is_compatible(
 }
 
 fn current_profile_meta_matches_request(
-    meta: &SyncClipboardMeta,
-    item_type: SyncClipboardItemType,
+    meta: &MobileSyncDocument,
+    item_type: MobileSyncItemType,
     requested_hash: &str,
 ) -> bool {
     meta.item_type == item_type
@@ -208,7 +207,7 @@ fn current_profile_meta_matches_request(
 
 fn current_profile_record_for_request(
     mut record: HistoryRecordDoc,
-    item_type: SyncClipboardItemType,
+    item_type: MobileSyncItemType,
     requested_hash: &str,
 ) -> Option<HistoryRecordDoc> {
     if record.r#type != item_type_to_wire(item_type) {
@@ -255,7 +254,7 @@ fn statistics_from_record(record: &HistoryRecordDoc) -> HistoryStatisticsDoc {
 mod tests {
     use super::*;
 
-    fn record(item_type: SyncClipboardItemType, hash: &str) -> HistoryRecordDoc {
+    fn record(item_type: MobileSyncItemType, hash: &str) -> HistoryRecordDoc {
         HistoryRecordDoc {
             hash: hash.to_string(),
             r#type: item_type_to_wire(item_type).to_string(),
@@ -274,11 +273,11 @@ mod tests {
 
     #[test]
     fn current_profile_record_accepts_mobile_upload_hash_drift() {
-        let current = record(SyncClipboardItemType::Image, "SERVER_RECOMPUTED_HASH");
+        let current = record(MobileSyncItemType::Image, "SERVER_RECOMPUTED_HASH");
 
         let resolved = current_profile_record_for_request(
             current,
-            SyncClipboardItemType::Image,
+            MobileSyncItemType::Image,
             "0B13A2265544DE3C8C1286E4B854D39833A49BDAA3F82114AE19F55B7F08FBB2",
         )
         .expect("same-type current image should satisfy the requested profile");
@@ -291,11 +290,11 @@ mod tests {
 
     #[test]
     fn current_profile_record_rejects_wrong_type() {
-        let current = record(SyncClipboardItemType::Text, "TEXT_HASH");
+        let current = record(MobileSyncItemType::Text, "TEXT_HASH");
 
         assert!(current_profile_record_for_request(
             current,
-            SyncClipboardItemType::Image,
+            MobileSyncItemType::Image,
             "0B13A2265544DE3C8C1286E4B854D39833A49BDAA3F82114AE19F55B7F08FBB2",
         )
         .is_none());
@@ -303,8 +302,8 @@ mod tests {
 
     #[test]
     fn current_profile_meta_accepts_same_type_even_when_hash_drifted() {
-        let meta = SyncClipboardMeta {
-            item_type: SyncClipboardItemType::Image,
+        let meta = MobileSyncDocument {
+            item_type: MobileSyncItemType::Image,
             text: "clipboard_ce8ee62d.jpg".to_string(),
             data_name: Some("clipboard_ce8ee62d.jpg".to_string()),
             has_data: true,
@@ -315,52 +314,49 @@ mod tests {
 
         assert!(current_profile_meta_matches_request(
             &meta,
-            SyncClipboardItemType::Image,
+            MobileSyncItemType::Image,
             "0B13A2265544DE3C8C1286E4B854D39833A49BDAA3F82114AE19F55B7F08FBB2",
         ));
     }
 }
 
-async fn latest_history_record(
-    facade: &MobileSyncFacade,
-) -> Result<Option<HistoryRecordDoc>, Response> {
-    match facade.get_latest_sync_doc().await {
-        Ok(meta) => Ok(Some(HistoryRecordDoc::from_meta(meta))),
-        Err(GetLatestMobileSyncDocError::NotFound) => Ok(None),
-        Err(GetLatestMobileSyncDocError::Port(err)) => {
-            tracing::warn!(error = %err, "GET /api/history: snapshot port failure");
+async fn latest_history_record(core: &MobileLanCore) -> Result<Option<HistoryRecordDoc>, Response> {
+    match core.latest_document().await {
+        Ok(meta) => Ok(meta.map(HistoryRecordDoc::from_meta)),
+        Err(error) => {
+            tracing::warn!(code = error.code(), category = %error.category(), "GET /api/history: snapshot query failed");
             Err(StatusCode::INTERNAL_SERVER_ERROR.into_response())
         }
     }
 }
 
 pub(super) async fn query_history_records(
-    State(facade): State<Arc<MobileSyncFacade>>,
+    State(state): State<MobileLanState>,
 ) -> Result<Json<Vec<HistoryRecordDoc>>, Response> {
-    match latest_history_record(&facade).await? {
+    match latest_history_record(&state.core).await? {
         Some(record) => Ok(Json(vec![record])),
         None => Ok(Json(Vec::new())),
     }
 }
 
 pub(super) async fn get_history_statistics(
-    State(facade): State<Arc<MobileSyncFacade>>,
+    State(state): State<MobileLanState>,
 ) -> Result<Json<HistoryStatisticsDoc>, Response> {
-    match latest_history_record(&facade).await? {
+    match latest_history_record(&state.core).await? {
         Some(record) => Ok(Json(statistics_from_record(&record))),
         None => Ok(Json(empty_history_statistics())),
     }
 }
 
 pub(super) async fn get_history_record(
-    State(facade): State<Arc<MobileSyncFacade>>,
+    State(state): State<MobileLanState>,
     Path(profile_id): Path<String>,
 ) -> Result<Json<HistoryRecordDoc>, Response> {
     let Some((item_type, hash)) = parse_profile_id(&profile_id) else {
         return Err((StatusCode::BAD_REQUEST, "Invalid profileId format").into_response());
     };
 
-    let Some(record) = latest_history_record(&facade).await? else {
+    let Some(record) = latest_history_record(&state.core).await? else {
         return Err(StatusCode::NOT_FOUND.into_response());
     };
     match current_profile_record_for_request(record, item_type, &hash) {
@@ -370,19 +366,19 @@ pub(super) async fn get_history_record(
 }
 
 pub(super) async fn get_history_data(
-    State(facade): State<Arc<MobileSyncFacade>>,
+    State(state): State<MobileLanState>,
     Path(profile_id): Path<String>,
 ) -> Result<Response, Response> {
     let Some((item_type, hash)) = parse_profile_id(&profile_id) else {
         return Err((StatusCode::BAD_REQUEST, "Invalid profileId format").into_response());
     };
-    let meta = match facade.get_latest_sync_doc().await {
-        Ok(meta) => meta,
-        Err(GetLatestMobileSyncDocError::NotFound) => {
+    let meta = match state.core.latest_document().await {
+        Ok(Some(meta)) => meta,
+        Ok(None) => {
             return Err(StatusCode::NOT_FOUND.into_response());
         }
-        Err(GetLatestMobileSyncDocError::Port(err)) => {
-            tracing::warn!(error = %err, "GET /api/history data: snapshot port failure");
+        Err(error) => {
+            tracing::warn!(code = error.code(), category = %error.category(), "GET /api/history data: snapshot query failed");
             return Err(StatusCode::INTERNAL_SERVER_ERROR.into_response());
         }
     };
@@ -392,11 +388,11 @@ pub(super) async fn get_history_data(
     let Some(data_name) = meta.data_name else {
         return Err(StatusCode::NOT_FOUND.into_response());
     };
-    get_clipboard_file(State(facade), Path(data_name)).await
+    get_clipboard_file(State(state), Path(data_name)).await
 }
 
 pub(super) async fn patch_history_record(
-    State(facade): State<Arc<MobileSyncFacade>>,
+    State(state): State<MobileLanState>,
     Path((item_type, hash)): Path<(String, String)>,
 ) -> Result<Json<HistoryRecordDoc>, Response> {
     let item_type = item_type_from_wire(&item_type)
@@ -418,7 +414,7 @@ pub(super) async fn patch_history_record(
             hash.to_ascii_uppercase()
         ),
     };
-    get_history_record(State(facade), Path(profile_id)).await
+    get_history_record(State(state), Path(profile_id)).await
 }
 
 pub(super) async fn clear_history_compat() -> Json<serde_json::Value> {
@@ -426,8 +422,8 @@ pub(super) async fn clear_history_compat() -> Json<serde_json::Value> {
 }
 
 pub(super) async fn post_history_record(
-    State(facade): State<Arc<MobileSyncFacade>>,
-    Extension(authed): Extension<AuthenticatedDevice>,
+    State(state): State<MobileLanState>,
+    Extension(authed): Extension<MobileAuthenticatedSession>,
     request: Request,
 ) -> Result<Json<HistoryRecordDoc>, Response> {
     let content_type = request
@@ -440,7 +436,7 @@ pub(super) async fn post_history_record(
         .to_ascii_lowercase()
         .starts_with("multipart/form-data")
     {
-        parse_history_multipart(request, &facade).await?
+        parse_history_multipart(request, &state.core, &authed.device_id).await?
     } else {
         parse_history_urlencoded(request).await?
     };
@@ -448,14 +444,14 @@ pub(super) async fn post_history_record(
     let item_type_raw = match upload.fields.get("type") {
         Some(value) => value,
         None => {
-            abort_parsed_history_file(&facade, upload.file.take()).await;
+            abort_parsed_history_file(&state.core, upload.file.take()).await;
             return Err((StatusCode::BAD_REQUEST, "type is required").into_response());
         }
     };
     let item_type = match item_type_from_wire(item_type_raw) {
         Some(item_type) => item_type,
         None => {
-            abort_parsed_history_file(&facade, upload.file.take()).await;
+            abort_parsed_history_file(&state.core, upload.file.take()).await;
             return Err((StatusCode::BAD_REQUEST, "invalid type").into_response());
         }
     };
@@ -465,7 +461,7 @@ pub(super) async fn post_history_record(
         .map(|v| v.trim().to_ascii_uppercase())
         .unwrap_or_default();
     if hash.is_empty() {
-        abort_parsed_history_file(&facade, upload.file.take()).await;
+        abort_parsed_history_file(&state.core, upload.file.take()).await;
         return Err((StatusCode::BAD_REQUEST, "hash is required").into_response());
     }
 
@@ -484,30 +480,25 @@ pub(super) async fn post_history_record(
         .or_else(|| upload.fields.get("dataName").cloned());
 
     match (item_type, upload.file) {
-        (SyncClipboardItemType::Text, Some(file)) => {
+        (MobileSyncItemType::Text, Some(file)) => {
             tracing::warn!(
                 data_name = %file.data_name,
                 "POST /api/history: text upload unexpectedly contained file data"
             );
-            facade.abort_file_upload(file.handle).await;
+            let _ = state.core.abort_upload(file.handle).await;
             return Err(
                 (StatusCode::BAD_REQUEST, "Text file part is not supported").into_response()
             );
         }
-        (SyncClipboardItemType::Image | SyncClipboardItemType::File, Some(file)) => {
+        (MobileSyncItemType::Image | MobileSyncItemType::File, Some(file)) => {
             let data_name = file.data_name.clone();
             let size = file.size;
-            facade
-                .finalize_file_upload(
-                    file.handle,
-                    file.data_name,
-                    file.mime,
-                    authed.device.device_id.clone(),
-                    file.transfer_id,
-                )
+            state
+                .core
+                .finish_upload(file.handle, file.mime)
                 .await
                 .map_err(|err| map_apply_error(err, "POST /api/history file"))?;
-            let meta = SyncClipboardMeta {
+            let meta = MobileSyncDocument {
                 item_type,
                 text: record.text.clone(),
                 data_name: Some(data_name),
@@ -519,17 +510,21 @@ pub(super) async fn post_history_record(
                 // the client on inbound.
                 content_id: None,
             };
-            facade
-                .put_sync_doc(meta, authed.device.device_id)
+            state
+                .core
+                .apply_document(ApplyMobileSyncDocumentInput {
+                    document: meta,
+                    source_device_id: authed.device_id,
+                })
                 .await
                 .map_err(|err| map_apply_error(err, "POST /api/history"))?;
         }
-        (SyncClipboardItemType::Group, Some(file)) => {
-            facade.abort_file_upload(file.handle).await;
+        (MobileSyncItemType::Group, Some(file)) => {
+            let _ = state.core.abort_upload(file.handle).await;
             return Err((StatusCode::BAD_REQUEST, "Group is not supported").into_response());
         }
         (_, None) => {
-            let meta = SyncClipboardMeta {
+            let meta = MobileSyncDocument {
                 item_type,
                 text: record.text.clone(),
                 data_name,
@@ -540,8 +535,12 @@ pub(super) async fn post_history_record(
                 // NOT trusted from the client on inbound.
                 content_id: None,
             };
-            facade
-                .put_sync_doc(meta, authed.device.device_id)
+            state
+                .core
+                .apply_document(ApplyMobileSyncDocumentInput {
+                    document: meta,
+                    source_device_id: authed.device_id,
+                })
                 .await
                 .map_err(|err| map_apply_error(err, "POST /api/history"))?;
         }
@@ -562,7 +561,8 @@ async fn parse_history_urlencoded(request: Request) -> Result<ParsedHistoryUploa
 
 async fn parse_history_multipart(
     request: Request,
-    facade: &MobileSyncFacade,
+    core: &MobileLanCore,
+    source_device_id: &str,
 ) -> Result<ParsedHistoryUpload, Response> {
     let mut multipart = Multipart::from_request(request, &()).await.map_err(|err| {
         tracing::warn!(error = %err, "POST /api/history: multipart extractor failed");
@@ -574,7 +574,7 @@ async fn parse_history_multipart(
         let Some(field) = (match multipart.next_field().await {
             Ok(field) => field,
             Err(err) => {
-                abort_parsed_history_file(facade, file.take()).await;
+                abort_parsed_history_file(core, file.take()).await;
                 return Err(map_multipart_error(err, "multipart field read failed"));
             }
         }) else {
@@ -590,9 +590,9 @@ async fn parse_history_multipart(
             let data_name = file_name
                 .or_else(|| fields.get("dataName").cloned())
                 .unwrap_or_else(|| "clipboard.bin".to_string());
-            abort_parsed_history_file(facade, file.take()).await;
+            abort_parsed_history_file(core, file.take()).await;
             file = Some(
-                stage_history_file_field(facade, data_name, mime, field)
+                stage_history_file_field(core, source_device_id, data_name, mime, field)
                     .await
                     .map_err(|err| map_route_error(err, "multipart file stream failed"))?,
             );
@@ -600,7 +600,7 @@ async fn parse_history_multipart(
             let value = match field.text().await {
                 Ok(value) => value,
                 Err(err) => {
-                    abort_parsed_history_file(facade, file.take()).await;
+                    abort_parsed_history_file(core, file.take()).await;
                     return Err(map_multipart_error(err, "multipart text read failed"));
                 }
             };
@@ -611,20 +611,26 @@ async fn parse_history_multipart(
 }
 
 async fn stage_history_file_field(
-    facade: &MobileSyncFacade,
+    core: &MobileLanCore,
+    source_device_id: &str,
     data_name: String,
     mime: String,
     mut field: Field<'_>,
 ) -> Result<ParsedHistoryFile, Response> {
     let transfer_id = format!("mobile-lan-history:{}", uuid::Uuid::new_v4());
-    let scope_id = uc_application::facade::mobile_sync_streaming_scope_nonce();
-    let handle = facade
-        .begin_file_upload(&scope_id, &data_name, &mime)
+    let handle = core
+        .begin_upload(
+            data_name.clone(),
+            mime.clone(),
+            source_device_id.to_string(),
+            transfer_id.clone(),
+            None,
+        )
         .await
         .map_err(|err| {
             tracing::warn!(
-                data_name = %data_name,
-                error = %err,
+                code = err.code(),
+                category = %err.category(),
                 "POST /api/history: begin file staging failed"
             );
             (StatusCode::INTERNAL_SERVER_ERROR, "staging begin failed").into_response()
@@ -637,7 +643,7 @@ async fn stage_history_file_field(
             Ok(Some(chunk)) => chunk,
             Ok(None) => break,
             Err(err) => {
-                facade.abort_file_upload(handle).await;
+                let _ = core.abort_upload(handle.clone()).await;
                 return Err(map_multipart_error(err, "multipart file read failed"));
             }
         };
@@ -647,20 +653,19 @@ async fn stage_history_file_field(
             sniff_window.extend_from_slice(&chunk[..take]);
         }
         if bytes_received > FILE_UPLOAD_DISK_SANITY_LIMIT as u64 {
-            facade.abort_file_upload(handle).await;
+            let _ = core.abort_upload(handle.clone()).await;
             tracing::warn!(
-                data_name = %data_name,
                 bytes_received,
                 limit = FILE_UPLOAD_DISK_SANITY_LIMIT,
                 "POST /api/history: multipart file exceeded disk sanity limit"
             );
             return Err((StatusCode::PAYLOAD_TOO_LARGE, "body too large").into_response());
         }
-        if let Err(err) = facade.append_file_chunk(&handle, &chunk).await {
-            facade.abort_file_upload(handle).await;
+        if let Err(err) = core.append_upload(handle.clone(), chunk.to_vec()).await {
+            let _ = core.abort_upload(handle.clone()).await;
             tracing::warn!(
-                data_name = %data_name,
-                error = %err,
+                code = err.code(),
+                category = %err.category(),
                 "POST /api/history: append file staging chunk failed"
             );
             return Err(
@@ -673,7 +678,6 @@ async fn stage_history_file_field(
         match infer_image_mime(&data_name, &sniff_window) {
             Some(sniffed) => {
                 tracing::info!(
-                    data_name = %data_name,
                     raw_mime = %mime,
                     sniffed_mime = sniffed,
                     "POST /api/history: overrode unspecific multipart image mime"
@@ -691,13 +695,12 @@ async fn stage_history_file_field(
         mime: effective_mime,
         size: bytes_received,
         handle,
-        transfer_id,
     })
 }
 
-async fn abort_parsed_history_file(facade: &MobileSyncFacade, file: Option<ParsedHistoryFile>) {
+async fn abort_parsed_history_file(core: &MobileLanCore, file: Option<ParsedHistoryFile>) {
     if let Some(file) = file {
-        facade.abort_file_upload(file.handle).await;
+        let _ = core.abort_upload(file.handle).await;
     }
 }
 

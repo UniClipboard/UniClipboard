@@ -1,6 +1,7 @@
 //! HTTP server bootstrap for the daemon API.
 
 use std::net::SocketAddr;
+use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
@@ -19,11 +20,10 @@ use axum::response::Response;
 use axum::Router;
 use tokio::sync::{broadcast, Semaphore};
 use tokio_util::sync::CancellationToken;
-use uc_application::facade::{
-    AppFacade, ConfigMigrationFacade, DiagnosticsFacade, MobileSyncFacade, SettingsFacade,
-    UpgradeFacade,
-};
 use uc_application::receive_reconciliation::EnsureReceiveReadyPort;
+use uc_engine::{
+    Engine, HostFileHandle, Operation, OperationResult, PeerConnectionChannelSummary,
+};
 use uc_observability::analytics::{AnalyticsPort, NoopAnalyticsSink};
 use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
@@ -44,12 +44,9 @@ use crate::socket::{try_resolve_daemon_http_addr, DEFAULT_HTTP_HOST};
 #[derive(Clone)]
 pub struct DaemonApiState {
     pub auth_token: DaemonAuthToken,
-    pub app_facade: Arc<AppFacade>,
-    pub config_migration: Arc<ConfigMigrationFacade>,
-    pub diagnostics: Arc<DiagnosticsFacade>,
-    pub mobile_sync: Option<Arc<MobileSyncFacade>>,
-    pub settings: Arc<SettingsFacade>,
-    pub upgrade: Arc<UpgradeFacade>,
+    pub engine: Arc<Engine>,
+    pub file_handles: Arc<dyn DaemonFileHandles>,
+    pub lan_interfaces: Arc<dyn DaemonLanInterfaces>,
     pub event_tx: broadcast::Sender<DaemonWsEvent>,
     pub started_at: Instant,
     /// Gate controlling clipboard capture in the daemon.
@@ -119,17 +116,14 @@ const MAX_CONCURRENT_BLOB_PULLS: usize = 4;
 
 impl DaemonApiState {
     pub fn new(
-        app_facade: Arc<AppFacade>,
+        engine: Arc<Engine>,
+        file_handles: Arc<dyn DaemonFileHandles>,
+        lan_interfaces: Arc<dyn DaemonLanInterfaces>,
         auth_token: DaemonAuthToken,
         security: Arc<SecurityState>,
         receive_readiness: Arc<dyn EnsureReceiveReadyPort>,
     ) -> Self {
         let (event_tx, _) = broadcast::channel(64);
-        let config_migration = Arc::clone(&app_facade.config_migration);
-        let diagnostics = Arc::clone(&app_facade.diagnostics);
-        let mobile_sync = app_facade.mobile_sync.get().cloned();
-        let settings = Arc::clone(&app_facade.settings);
-        let upgrade = Arc::clone(&app_facade.upgrade);
         // ADR-008 P5-L L8c: the quiescing flag and the restart coordinator must
         // share ONE `Arc` — the coordinator is the sole mutator, the L8b gates
         // read `quiescing`. Construct the flag once and hand the SAME `Arc` to
@@ -137,12 +131,9 @@ impl DaemonApiState {
         let quiescing = Arc::new(AtomicBool::new(false));
         Self {
             auth_token,
-            app_facade,
-            config_migration,
-            diagnostics,
-            mobile_sync,
-            settings,
-            upgrade,
+            engine,
+            file_handles,
+            lan_interfaces,
             event_tx,
             started_at: Instant::now(),
             clipboard_capture_gate: None,
@@ -179,8 +170,11 @@ impl DaemonApiState {
         self
     }
 
-    pub fn app_facade_or_error(&self) -> Result<Arc<AppFacade>, ApiError> {
-        Ok(Arc::clone(&self.app_facade))
+    pub async fn execute(
+        &self,
+        operation: Operation,
+    ) -> Result<OperationResult, uc_engine::EngineError> {
+        self.engine.execute(operation).await
     }
 
     pub fn health_response(&self) -> HealthResponse {
@@ -200,7 +194,7 @@ impl DaemonApiState {
     /// [`Self::health_response`] (which just forwards `self.residency`) so the
     /// residency-emission contract — every `DaemonRunMode` surfaces its own
     /// residency in the handshake (ADR-008 P5-L L1) — is unit-testable without
-    /// composing a full `DaemonApiState` (and thus a full `AppFacade`).
+    /// composing a full `DaemonApiState`.
     pub fn health_response_for(residency: DaemonResidency) -> HealthResponse {
         HealthResponse {
             status: "ok".to_string(),
@@ -233,12 +227,14 @@ impl DaemonApiState {
     }
 
     pub async fn peer_snapshots(&self) -> anyhow::Result<Vec<PeerSnapshotDto>> {
-        let peers = self.app_facade.list_peer_snapshots().await?;
+        let result = self.execute(Operation::QueryPeerConnections).await?;
+        let OperationResult::PeerConnections(peers) = result else {
+            anyhow::bail!("engine returned an unexpected peer connection result");
+        };
         Ok(peers
             .into_iter()
             .map(|peer| PeerSnapshotDto {
-                channel: uc_application::facade::connection_channel_to_wire(peer.channel)
-                    .to_string(),
+                channel: peer_channel_to_wire(peer.channel).to_string(),
                 peer_id: peer.peer_id,
                 device_name: peer.device_name,
                 addresses: peer.addresses,
@@ -258,12 +254,15 @@ impl DaemonApiState {
     /// 旧的；离线 peer 拨号失败会立刻 `broadcast(Offline)`，进而触发
     /// `peers.changed` 推送、前端重拉 `/paired-devices`、UI 切灰。
     pub async fn refresh_presence(&self) -> anyhow::Result<PresenceRefreshResponse> {
-        let report = self.app_facade.refresh_presence().await?;
+        let result = self.execute(Operation::RefreshPeerConnections).await?;
+        let OperationResult::PeerConnectionsRefreshed(report) = result else {
+            anyhow::bail!("engine returned an unexpected peer refresh result");
+        };
         Ok(PresenceRefreshResponse {
-            total: report.total as u32,
-            online: report.online as u32,
-            offline: report.offline as u32,
-            errors: report.errors.len() as u32,
+            total: report.total,
+            online: report.online,
+            offline: report.offline,
+            errors: report.errors,
         })
     }
 
@@ -273,12 +272,14 @@ impl DaemonApiState {
         // 反映 IrohPresenceAdapter 中由 ensure_reachable / connection.closed()
         // 维护的 last_state 缓存。list_members() 不查 PresencePort，所以
         // 拿不到 connected。同时 list_peer_snapshots() 已过滤本机。
-        let snapshots = self.app_facade.list_peer_snapshots().await?;
+        let result = self.execute(Operation::QueryPeerConnections).await?;
+        let OperationResult::PeerConnections(snapshots) = result else {
+            anyhow::bail!("engine returned an unexpected peer connection result");
+        };
         Ok(snapshots
             .into_iter()
             .map(|snapshot| SpaceMemberDto {
-                channel: uc_application::facade::connection_channel_to_wire(snapshot.channel)
-                    .to_string(),
+                channel: peer_channel_to_wire(snapshot.channel).to_string(),
                 peer_id: snapshot.peer_id,
                 device_name: snapshot.device_name.unwrap_or_default(),
                 pairing_state: snapshot.pairing_state,
@@ -317,6 +318,31 @@ impl DaemonApiState {
             &self.auth_token,
             client_pid,
         )
+    }
+}
+
+pub trait DaemonFileHandles: Send + Sync {
+    fn register_input(&self, path: &Path) -> anyhow::Result<HostFileHandle>;
+    fn register_output(&self, path: &Path) -> anyhow::Result<HostFileHandle>;
+    fn register_diagnostic_output(&self) -> anyhow::Result<(HostFileHandle, String)>;
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DaemonLanInterface {
+    pub name: String,
+    pub ipv4: String,
+}
+
+pub trait DaemonLanInterfaces: Send + Sync {
+    fn list(&self) -> anyhow::Result<Vec<DaemonLanInterface>>;
+}
+
+fn peer_channel_to_wire(channel: PeerConnectionChannelSummary) -> &'static str {
+    match channel {
+        PeerConnectionChannelSummary::Direct => "direct",
+        PeerConnectionChannelSummary::Relay => "relay",
+        PeerConnectionChannelSummary::Offline => "offline",
+        PeerConnectionChannelSummary::Unknown => "unknown",
     }
 }
 
@@ -573,7 +599,7 @@ mod residency_handshake_tests {
     /// residency the daemon was assembled with. `DaemonApiState` is fed
     /// `DaemonRunMode -> DaemonResidency` at the assembly boundary (uc-daemon),
     /// and the handler bodies copy `self.residency` verbatim — exercised here
-    /// per variant without composing a full `AppFacade`.
+    /// per variant without composing a full API state.
     #[test]
     fn health_and_status_report_each_residency() {
         for residency in [

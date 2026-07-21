@@ -9,11 +9,11 @@ use tracing::{info, instrument};
 
 use uc_daemon_contract::api::dto::envelope::ApiEnvelope;
 use uc_engine::internal::member::{
-    execute_query_member_sync_preferences, execute_update_member_sync_preferences,
     MEMBER_INVALID_INPUT_CODE, MEMBER_NOT_FOUND_CODE, MEMBER_UNAVAILABLE_CODE,
 };
 use uc_engine::{
-    EngineError, OperationResult, QueryMemberSyncPreferencesInput, UpdateMemberSyncPreferencesInput,
+    EngineError, Operation, OperationResult, QueryMemberSyncPreferencesInput,
+    UpdateMemberSyncPreferencesInput,
 };
 
 use crate::api::dto::error::{log_facade_failure, ApiError};
@@ -60,15 +60,16 @@ pub async fn get_member_sync_preferences_handler(
     Path(device_id): Path<String>,
 ) -> Result<Json<ApiEnvelope<crate::api::dto::member::MemberSyncPreferencesDto>>, ApiError> {
     info!("get member sync preferences request received");
-    let app = state.app_facade_or_error()?;
-    let result = execute_query_member_sync_preferences(
-        app.as_ref(),
-        QueryMemberSyncPreferencesInput {
+    let result = state
+        .execute(Operation::QueryMemberSyncPreferences(
+            QueryMemberSyncPreferencesInput {
             device_id: device_id.clone(),
-        },
-    )
-    .await
-    .map_err(|error| map_member_engine_error(&device_id, "get_member_sync_preferences", error))?;
+            },
+        ))
+        .await
+        .map_err(|error| {
+            map_member_engine_error(&device_id, "get_member_sync_preferences", error)
+        })?;
     let OperationResult::MemberSyncPreferences(prefs) = result else {
         return Err(ApiError::internal(
             "engine returned an unexpected member-preferences result",
@@ -123,18 +124,17 @@ pub async fn update_member_sync_preferences_handler(
     Json(payload): Json<MemberSyncPreferencesPatchDto>,
 ) -> Result<Json<ApiEnvelope<MemberSyncResultDto>>, ApiError> {
     info!("update member sync preferences request received");
-    let app = state.app_facade_or_error()?;
-    let result = execute_update_member_sync_preferences(
-        app.as_ref(),
-        UpdateMemberSyncPreferencesInput {
+    let result = state
+        .execute(Operation::UpdateMemberSyncPreferences(
+            UpdateMemberSyncPreferencesInput {
             device_id: device_id.clone(),
             patch: payload.into_domain(),
-        },
-    )
-    .await
-    .map_err(|error| {
-        map_member_engine_error(&device_id, "update_member_sync_preferences", error)
-    })?;
+            },
+        ))
+        .await
+        .map_err(|error| {
+            map_member_engine_error(&device_id, "update_member_sync_preferences", error)
+        })?;
     let OperationResult::MemberSyncPreferences(updated) = result else {
         return Err(ApiError::internal(
             "engine returned an unexpected member-preferences result",

@@ -38,14 +38,15 @@ use tokio::sync::broadcast;
 use tokio::time::{Instant, Interval, MissedTickBehavior};
 use tokio_util::sync::CancellationToken;
 
-use uc_application::facade::{AuthenticatedDevice, MobileSyncFacade};
 use uc_core::clipboard::ActiveClipboardState;
 use uc_core::mobile_sync::MobileDeviceId;
+use uc_engine::{MobileAuthenticatedSession, MobileCredential};
 use uc_mobile_proto::sse_event::{
     SseHello, SseResync, SseUpdate, SSE_EVENT_HELLO, SSE_EVENT_RESYNC, SSE_EVENT_UPDATE,
     SSE_HEARTBEAT_INTERVAL_SECS,
 };
 
+use crate::mobile_lan::core::MobileLanCore;
 use crate::mobile_lan::sse_registry::SseConnectionRegistry;
 
 use super::MobileLanState;
@@ -57,7 +58,7 @@ const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(SSE_HEARTBEAT_INTERVAL_
 
 /// Periodic credential re-check cadence. Each tick verifies the device still
 /// exists and its stored password hash matches the one captured at connect
-/// time ([`MobileSyncFacade::is_device_credential_current`]) — a repo read
+/// time through the shared engine — a repository read
 /// plus a string compare, NOT an Argon2 verify, so this stays cheap per
 /// connection. It does not check the mobile-sync feature toggles, since
 /// those are the listener's cancel-token's job, not this connection-scoped
@@ -114,12 +115,8 @@ struct SseStreamState {
     cancel: CancellationToken,
     heartbeat: Interval,
     revalidate: Interval,
-    facade: Arc<MobileSyncFacade>,
-    device_id: MobileDeviceId,
-    /// The device's Argon2 PHC string as it was at connect time; the periodic
-    /// re-check compares the stored hash against this to detect rotation.
-    connect_password_hash: String,
-    device_username: String,
+    core: MobileLanCore,
+    credential: MobileCredential,
     // Never read — held purely so `Drop` fires exactly when this state
     // (and thus the connection) goes away.
     _registration: RegistrationGuard,
@@ -131,7 +128,7 @@ async fn next_event(mut st: SseStreamState) -> Option<(Result<Event, Infallible>
             biased;
 
             () = st.cancel.cancelled() => {
-                tracing::info!(device = %st.device_username, "mobile_lan sse: cancelled, ending stream");
+                tracing::info!("mobile_lan sse: cancelled, ending stream");
                 return None;
             }
 
@@ -145,12 +142,12 @@ async fn next_event(mut st: SseStreamState) -> Option<(Result<Event, Infallible>
                         return Some((Ok(ev), st));
                     }
                     Err(broadcast::error::RecvError::Lagged(n)) => {
-                        tracing::warn!(device = %st.device_username, lagged = n, "mobile_lan sse: receiver lagged, sending resync");
+                        tracing::warn!(lagged = n, "mobile_lan sse: receiver lagged, sending resync");
                         let ev = event_json(SSE_EVENT_RESYNC, &SseResync { server_time_ms: now_ms() });
                         return Some((Ok(ev), st));
                     }
                     Err(broadcast::error::RecvError::Closed) => {
-                        tracing::warn!(device = %st.device_username, "mobile_lan sse: broadcast source closed, ending stream");
+                        tracing::warn!("mobile_lan sse: broadcast source closed, ending stream");
                         return None;
                     }
                 }
@@ -161,16 +158,16 @@ async fn next_event(mut st: SseStreamState) -> Option<(Result<Event, Infallible>
             }
 
             _ = st.revalidate.tick() => {
-                match st.facade.is_device_credential_current(&st.device_id, &st.connect_password_hash).await {
+                match st.core.revalidate(st.credential.clone()).await {
                     Ok(true) => continue,
                     Ok(false) => {
-                        tracing::info!(device = %st.device_username, "mobile_lan sse: device revoked or credentials rotated, ending stream");
+                        tracing::info!("mobile_lan sse: device revoked or credentials rotated, ending stream");
                         return None;
                     }
                     // Fail closed on a repo error, same as the pre-check
                     // behavior: the client reconnects and re-authenticates.
                     Err(err) => {
-                        tracing::warn!(device = %st.device_username, error = %err, "mobile_lan sse: periodic credential re-check failed, ending stream");
+                        tracing::warn!(code = err.code(), category = %err.category(), "mobile_lan sse: periodic credential re-check failed, ending stream");
                         return None;
                     }
                 }
@@ -181,7 +178,7 @@ async fn next_event(mut st: SseStreamState) -> Option<(Result<Event, Infallible>
 
 pub(super) async fn get_sse_clipboard(
     State(state): State<MobileLanState>,
-    Extension(authed): Extension<AuthenticatedDevice>,
+    Extension(authed): Extension<MobileAuthenticatedSession>,
 ) -> Response {
     // F-4: subscribe strictly before sending `hello` — see module docs.
     let rx = state.sse_source.subscribe();
@@ -189,9 +186,7 @@ pub(super) async fn get_sse_clipboard(
     // registry cancels it directly to evict this connection under the
     // per-device cap.
     let cancel = state.cancel.child_token();
-    let device_id = authed.device.device_id.clone();
-    let device_username = authed.device.username.clone();
-    let connect_password_hash = authed.device.password_hash.clone();
+    let device_id = MobileDeviceId::new(authed.device_id);
 
     let conn_id = state
         .sse_registry
@@ -202,7 +197,7 @@ pub(super) async fn get_sse_clipboard(
         conn_id,
     };
 
-    tracing::info!(device = %device_username, "mobile_lan sse: connection established");
+    tracing::info!(client_type = ?authed.client_type, "mobile_lan sse: connection established");
 
     let hello = event_json(
         SSE_EVENT_HELLO,
@@ -217,11 +212,9 @@ pub(super) async fn get_sse_clipboard(
         cancel,
         heartbeat: periodic(HEARTBEAT_INTERVAL),
         revalidate: periodic(REVALIDATE_INTERVAL),
-        facade: state.mobile_sync.clone(),
+        core: state.core,
         _registration: registration,
-        device_id,
-        connect_password_hash,
-        device_username,
+        credential: authed.credential,
     };
     let body_stream: std::pin::Pin<Box<dyn Stream<Item = Result<Event, Infallible>> + Send>> =
         Box::pin(stream::unfold(body_state, next_event));

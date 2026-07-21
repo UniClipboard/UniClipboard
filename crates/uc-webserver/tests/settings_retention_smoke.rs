@@ -17,23 +17,15 @@
 //!
 //! ## fixture 范围（沿用 `settings_network_smoke.rs` 模式）
 //!
-//! 不组装完整 axum Router + AppFacade，改为：
-//!   - PUT 模拟：`serde_json::from_str::<SettingsPatchDto>` →
-//!     `SettingsPatchDto::into_domain` → `SettingsFacade::update` → `SettingsView::into_api_dto`
-//!   - GET 模拟：`SettingsFacade::get` → `SettingsView::into_api_dto`
-//!   - 持久化：`Mutex<Settings>` in-memory `SettingsPort`
+//! 不组装业务运行时；本测试只验证网页输入、新核心公开设置类型和网页输出之间
+//! 的转换。设置保存与字段保留规则由 `uc-engine` 和 `uc-application` 自身测试覆盖。
 
-use std::sync::{Arc, Mutex};
-
-use async_trait::async_trait;
 use serde_json::{json, Value};
-use uc_application::facade::settings::SettingsFacade;
-use uc_core::ports::SettingsPort;
-use uc_core::settings::model::Settings;
 use uc_daemon_contract::api::dto::envelope::ApiEnvelope;
 use uc_daemon_contract::api::dto::settings::{
     RetentionRuleDto, SettingsPatchDto, SettingsUpdateResultDto,
 };
+use uc_engine::{RetentionRulePatch, RetentionRuleSummary, SettingsPatch, SettingsSummary};
 use uc_webserver::api::dto::settings::SettingsDto;
 use uc_webserver::api::projection::{IntoApiDto, IntoDomain};
 
@@ -41,39 +33,30 @@ use uc_webserver::api::projection::{IntoApiDto, IntoDomain};
 // Fixture
 // ============================================================
 
-struct InMemorySettings {
-    settings: Mutex<Settings>,
+#[derive(Default)]
+struct SettingsBoundaryFixture {
+    current: SettingsSummary,
 }
 
-#[async_trait]
-impl SettingsPort for InMemorySettings {
-    async fn load(&self) -> anyhow::Result<Settings> {
-        Ok(self.settings.lock().unwrap().clone())
-    }
-
-    async fn save(&self, settings: &Settings) -> anyhow::Result<()> {
-        *self.settings.lock().unwrap() = settings.clone();
-        Ok(())
-    }
-}
-
-fn build_facade() -> SettingsFacade {
-    let port: Arc<dyn SettingsPort> = Arc::new(InMemorySettings {
-        settings: Mutex::new(Settings::default()),
-    });
-    SettingsFacade::new(port)
-}
-
-async fn simulate_put(facade: &SettingsFacade, body_json: &str) -> Value {
+fn simulate_put(fixture: &mut SettingsBoundaryFixture, body_json: &str) -> Value {
     let payload: SettingsPatchDto = serde_json::from_str(body_json).expect("parse PUT body");
     let restart_required = payload.network.is_some();
-    // ADR-008 §0.1: handler writes the patch then returns only
-    // `{ data: { success, restartRequired }, ts }` — the updated SettingsView is
-    // no longer echoed on the wire. Written values are verified via `simulate_get`.
-    facade
-        .update(payload.into_domain())
-        .await
-        .expect("settings update");
+    let patch: SettingsPatch = payload.into_domain();
+    if let Some(retention) = patch.retention_policy {
+        if let Some(value) = retention.enabled {
+            fixture.current.retention_policy.enabled = value;
+        }
+        if let Some(value) = retention.skip_pinned {
+            fixture.current.retention_policy.skip_pinned = value;
+        }
+        if let Some(value) = retention.evaluation {
+            fixture.current.retention_policy.evaluation = value;
+        }
+        if let Some(rules) = retention.rules {
+            fixture.current.retention_policy.rules =
+                rules.into_iter().map(summarize_rule).collect();
+        }
+    }
     let resp = ApiEnvelope::with_ts(
         SettingsUpdateResultDto {
             success: true,
@@ -84,10 +67,29 @@ async fn simulate_put(facade: &SettingsFacade, body_json: &str) -> Value {
     serde_json::to_value(&resp).expect("serialize response")
 }
 
-async fn simulate_get(facade: &SettingsFacade) -> Value {
-    let view = facade.get().await.expect("settings get");
-    let dto: SettingsDto = view.into_api_dto();
+fn simulate_get(fixture: &SettingsBoundaryFixture) -> Value {
+    let dto: SettingsDto = fixture.current.clone().into_api_dto();
     serde_json::to_value(&dto).expect("serialize get")
+}
+
+fn summarize_rule(rule: RetentionRulePatch) -> RetentionRuleSummary {
+    match rule {
+        RetentionRulePatch::ByAge { max_age_secs } => RetentionRuleSummary::ByAge { max_age_secs },
+        RetentionRulePatch::ByCount { max_items } => RetentionRuleSummary::ByCount { max_items },
+        RetentionRulePatch::ByContentType {
+            content_type,
+            max_age_secs,
+        } => RetentionRuleSummary::ByContentType {
+            content_type,
+            max_age_secs,
+        },
+        RetentionRulePatch::ByTotalSize { max_bytes } => {
+            RetentionRuleSummary::ByTotalSize { max_bytes }
+        }
+        RetentionRulePatch::Sensitive { max_age_secs } => {
+            RetentionRuleSummary::Sensitive { max_age_secs }
+        }
+    }
 }
 
 // ============================================================
@@ -198,9 +200,9 @@ fn by_total_size_and_sensitive_wire_camel_case() {
 /// 复现 issue #606 触发路径：前端改"历史保留时间"调 `updateRetentionPolicy({rules: [...] })`，
 /// 最终 PUT body 是 `{"retentionPolicy":{"rules":[{"byAge":{"maxAge":...}}, ...], ...}}`。
 /// 修复前这一步 Axum 会 422 拒掉；修复后必须 200 OK 并写盘 round-trip 成功。
-#[tokio::test]
-async fn put_retention_rules_camelcase_round_trips() {
-    let facade = build_facade();
+#[test]
+fn put_retention_rules_camelcase_round_trips() {
+    let mut fixture = SettingsBoundaryFixture::default();
 
     // 前端 `setByAgeRule(rules, 60)` + `setByCountRule(rules, 1000)` 拼出的 patch。
     let put_body = json!({
@@ -216,7 +218,7 @@ async fn put_retention_rules_camelcase_round_trips() {
     })
     .to_string();
 
-    let put_resp = simulate_put(&facade, &put_body).await;
+    let put_resp = simulate_put(&mut fixture, &put_body);
     // ADR-008 §0.1: PUT wire is `{ data: { success, restartRequired }, ts }`.
     assert_eq!(
         put_resp["data"]["success"],
@@ -226,7 +228,7 @@ async fn put_retention_rules_camelcase_round_trips() {
 
     // PUT 响应不再回显 SettingsDto（ADR-008 §0.1）；写入的两条规则改由 GET 读回
     // 验证 —— 既确认写盘成功，也锁定 wire 字段名仍是 camelCase（issue #606 回归点）。
-    let get_resp = simulate_get(&facade).await;
+    let get_resp = simulate_get(&fixture);
     let get_rules = get_resp["retentionPolicy"]["rules"]
         .as_array()
         .expect("rules array on GET");
@@ -238,9 +240,9 @@ async fn put_retention_rules_camelcase_round_trips() {
 /// 把 GET 拿到的 retention rules 原封不动 PUT 回去（前端 `SettingContext.saveSetting`
 /// 的典型路径：先 GET 整份 settings，patch 单个字段，再把整份 PUT 上去）。
 /// 必须 200 OK —— 这是用户在 UI 上拨一下"自动清理"开关就触发的最常见路径。
-#[tokio::test]
-async fn get_then_put_full_retention_section_succeeds() {
-    let facade = build_facade();
+#[test]
+fn get_then_put_full_retention_section_succeeds() {
+    let mut fixture = SettingsBoundaryFixture::default();
 
     // 先种入一份带规则的 settings（模拟用户已存在的配置）。
     let seed = json!({
@@ -254,10 +256,10 @@ async fn get_then_put_full_retention_section_succeeds() {
             "evaluation": "anyMatch",
         }
     });
-    let _ = simulate_put(&facade, &seed.to_string()).await;
+    let _ = simulate_put(&mut fixture, &seed.to_string());
 
     // GET 取出整份 retentionPolicy。
-    let snapshot = simulate_get(&facade).await;
+    let snapshot = simulate_get(&fixture);
     let retention = &snapshot["retentionPolicy"];
     assert!(
         retention.is_object(),
@@ -267,7 +269,7 @@ async fn get_then_put_full_retention_section_succeeds() {
     // 把 GET 拿到的 retentionPolicy 原样塞进 PUT body —— 这正是 SettingContext
     // 在用户拨"自动清理"开关时构造 patch 的方式。
     let full_put = json!({ "retentionPolicy": retention }).to_string();
-    let resp = simulate_put(&facade, &full_put).await;
+    let resp = simulate_put(&mut fixture, &full_put);
     // ADR-008 §0.1: PUT wire is `{ data: { success, restartRequired }, ts }`.
     assert_eq!(
         resp["data"]["success"],
@@ -276,7 +278,7 @@ async fn get_then_put_full_retention_section_succeeds() {
     );
 
     // PUT 响应不再回显 SettingsDto；round-trip 后的 rules 改由 GET 读回验证。
-    let after = simulate_get(&facade).await;
+    let after = simulate_get(&fixture);
     assert_eq!(
         after["retentionPolicy"]["rules"][0]["byAge"]["maxAge"],
         json!(14 * 86_400)

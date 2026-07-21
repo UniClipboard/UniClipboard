@@ -17,17 +17,14 @@ use uc_daemon_contract::api::dto::v2::setup::{
     SetupStateResponse, SwitchSpaceRequest, SwitchSpaceResponse,
 };
 use uc_daemon_contract::constants::http_route_v2;
-use uc_engine::internal::cancel_invitation::{
-    execute_cancel_invitation, CANCEL_INVITATION_NOT_ISSUED_CODE,
-};
+use uc_engine::internal::cancel_invitation::CANCEL_INVITATION_NOT_ISSUED_CODE;
 use uc_engine::internal::create_space::{
-    execute_create_space, CREATE_SPACE_ALREADY_INITIALIZED_CODE, CREATE_SPACE_ALREADY_SETUP_CODE,
+    CREATE_SPACE_ALREADY_INITIALIZED_CODE, CREATE_SPACE_ALREADY_SETUP_CODE,
     CREATE_SPACE_DEVICE_NAME_REQUIRED_CODE, CREATE_SPACE_PASSPHRASE_MISMATCH_CODE,
 };
-use uc_engine::internal::invitation::execute_issue_invitation;
 use uc_engine::internal::join_space::{
-    execute_join_space, JoinSpaceMode, JOIN_SPACE_CONNECTION_LOST_CODE,
-    JOIN_SPACE_CORRUPTED_KEY_CODE, JOIN_SPACE_DEVICE_NAME_REQUIRED_CODE,
+    JOIN_SPACE_CONNECTION_LOST_CODE, JOIN_SPACE_CORRUPTED_KEY_CODE,
+    JOIN_SPACE_DEVICE_NAME_REQUIRED_CODE,
     JOIN_SPACE_INVALID_CIPHERTEXT_CODE, JOIN_SPACE_INVITATION_EXPIRED_CODE,
     JOIN_SPACE_INVITATION_NOT_FOUND_CODE, JOIN_SPACE_NOT_SETUP_CODE, JOIN_SPACE_NOT_UNLOCKED_CODE,
     JOIN_SPACE_PASSPHRASE_MISMATCH_CODE, JOIN_SPACE_PENDING_MIGRATION_CODE,
@@ -35,12 +32,9 @@ use uc_engine::internal::join_space::{
     JOIN_SPACE_SPONSOR_REJECTED_CODE, JOIN_SPACE_SPONSOR_TIMEOUT_CODE,
     JOIN_SPACE_SPONSOR_UNREACHABLE_CODE, JOIN_SPACE_STORAGE_CODE, JOIN_SPACE_TIMEOUT_CODE,
 };
-use uc_engine::internal::migration_progress::execute_query_migration_progress;
-use uc_engine::internal::reset_space::execute_reset_space;
-use uc_engine::internal::setup_state::execute_query_setup_state;
 use uc_engine::{
     CreateSpaceInput, EngineError, EngineErrorCategory, JoinSpaceInput, MigrationPhaseSummary,
-    OperationResult, SecretString,
+    Operation, OperationResult, SecretString,
 };
 
 use crate::api::dto::error::{log_facade_failure, ApiError};
@@ -86,18 +80,14 @@ pub(crate) async fn initialize(
     State(state): State<DaemonApiState>,
     Json(req): Json<InitializeSpaceRequest>,
 ) -> Result<Json<ApiEnvelope<InitializeSpaceResponse>>, ApiError> {
-    let app = state.app_facade_or_error()?;
-    let result = execute_create_space(
-        app.as_ref(),
-        state.receive_readiness.as_ref(),
-        CreateSpaceInput {
+    let result = state
+        .execute(Operation::CreateSpace(CreateSpaceInput {
             passphrase: SecretString::new(req.passphrase),
             passphrase_confirmation: SecretString::new(req.passphrase_confirm),
             device_name: req.device_name,
-        },
-    )
-    .await
-    .map_err(map_create_engine_err)?;
+        }))
+        .await
+        .map_err(map_create_engine_err)?;
     let OperationResult::SpaceCreated {
         space_id,
         self_device_id,
@@ -167,8 +157,8 @@ fn map_create_engine_err(err: EngineError) -> ApiError {
 pub(crate) async fn issue_invitation(
     State(state): State<DaemonApiState>,
 ) -> Result<Json<ApiEnvelope<IssueInvitationResponse>>, ApiError> {
-    let app = state.app_facade_or_error()?;
-    let result = execute_issue_invitation(app.as_ref())
+    let result = state
+        .execute(Operation::IssueInvitation)
         .await
         .map_err(map_issue_engine_err)?;
     let OperationResult::InvitationIssued {
@@ -237,19 +227,14 @@ pub(crate) async fn redeem(
     State(state): State<DaemonApiState>,
     Json(req): Json<RedeemRequest>,
 ) -> Result<Json<ApiEnvelope<RedeemResponse>>, ApiError> {
-    let app = state.app_facade_or_error()?;
-    let result = execute_join_space(
-        app.as_ref(),
-        state.receive_readiness.as_ref(),
-        JoinSpaceInput {
+    let result = state
+        .execute(Operation::JoinSpace(JoinSpaceInput {
             invitation_code: req.code,
             device_name: None,
             passphrase: SecretString::new(req.passphrase),
-        },
-        JoinSpaceMode::Fresh,
-    )
-    .await
-    .map_err(map_join_engine_err)?;
+        }))
+        .await
+        .map_err(map_join_engine_err)?;
     let OperationResult::SpaceJoined {
         sponsor_device_id,
         sponsor_identity_fingerprint,
@@ -355,8 +340,8 @@ fn map_join_engine_err(err: EngineError) -> ApiError {
     ),
 )]
 pub(crate) async fn cancel(State(state): State<DaemonApiState>) -> Result<StatusCode, ApiError> {
-    let app = state.app_facade_or_error()?;
-    let result = execute_cancel_invitation(app.as_ref())
+    let result = state
+        .execute(Operation::CancelInvitation)
         .await
         .map_err(map_cancel_engine_err)?;
     if result != OperationResult::InvitationCancelled {
@@ -408,8 +393,8 @@ fn map_cancel_engine_err(err: EngineError) -> ApiError {
     ),
 )]
 pub(crate) async fn reset(State(state): State<DaemonApiState>) -> Result<StatusCode, ApiError> {
-    let app = state.app_facade_or_error()?;
-    let result = execute_reset_space(app.as_ref())
+    let result = state
+        .execute(Operation::ResetSpace)
         .await
         .map_err(map_reset_engine_err)?;
     if result != OperationResult::SpaceReset {
@@ -450,8 +435,8 @@ fn map_reset_engine_err(err: EngineError) -> ApiError {
 pub(crate) async fn get_state(
     State(state): State<DaemonApiState>,
 ) -> Result<Json<ApiEnvelope<SetupStateResponse>>, ApiError> {
-    let app = state.app_facade_or_error()?;
-    let result = execute_query_setup_state(app.as_ref())
+    let result = state
+        .execute(Operation::QuerySetupState)
         .await
         .map_err(map_query_setup_state_engine_err)?;
     let OperationResult::SetupState(view) = result else {
@@ -513,19 +498,14 @@ pub(crate) async fn switch_space(
     State(state): State<DaemonApiState>,
     Json(req): Json<SwitchSpaceRequest>,
 ) -> Result<Json<ApiEnvelope<SwitchSpaceResponse>>, ApiError> {
-    let app = state.app_facade_or_error()?;
-    let result = execute_join_space(
-        app.as_ref(),
-        state.receive_readiness.as_ref(),
-        JoinSpaceInput {
+    let result = state
+        .execute(Operation::JoinSpace(JoinSpaceInput {
             invitation_code: req.code,
             device_name: None,
             passphrase: SecretString::new(req.new_passphrase),
-        },
-        JoinSpaceMode::Switch,
-    )
-    .await
-    .map_err(map_switch_engine_err)?;
+        }))
+        .await
+        .map_err(map_switch_engine_err)?;
     let OperationResult::SpaceJoined {
         sponsor_device_id,
         sponsor_identity_fingerprint,
@@ -657,8 +637,8 @@ fn map_switch_engine_err(err: EngineError) -> ApiError {
 pub(crate) async fn query_migration_progress(
     State(state): State<DaemonApiState>,
 ) -> Result<Json<ApiEnvelope<MigrationProgressResponse>>, ApiError> {
-    let app = state.app_facade_or_error()?;
-    let result = execute_query_migration_progress(app.as_ref())
+    let result = state
+        .execute(Operation::QueryMigrationProgress)
         .await
         .map_err(map_query_migration_progress_engine_err)?;
     let OperationResult::MigrationProgress(progress) = result else {

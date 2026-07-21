@@ -1,6 +1,149 @@
 use std::path::{Path, PathBuf};
 
 #[test]
+fn daemon_production_host_starts_and_stops_only_the_engine() {
+    let host = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../apps/daemon/src/daemon/host.rs");
+    let source = std::fs::read_to_string(&host)
+        .unwrap_or_else(|error| panic!("failed to read {}: {error}", host.display()));
+
+    assert!(
+        source.contains("prepare_desktop_engine_host")
+            && source.contains("Engine::start")
+            && source.contains("engine.shutdown"),
+        "daemon host must own one Engine from platform preparation through shutdown"
+    );
+    assert!(
+        !source.contains("build_process_runtime") && !source.contains("wire_dependencies"),
+        "daemon host must not start the legacy core assembly"
+    );
+}
+
+#[test]
+fn mobile_upload_lifecycle_is_owned_by_engine_runtime() {
+    let manifest = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let runtime_path = manifest.join("src/internal/runtime.rs");
+    let runtime = std::fs::read_to_string(&runtime_path)
+        .unwrap_or_else(|error| panic!("failed to read {}: {error}", runtime_path.display()));
+    for required in [
+        ".seed_provisional_receiver_context(",
+        ".start(",
+        ".report_progress(",
+        ".fail(",
+    ] {
+        assert!(
+            runtime.contains(required),
+            "engine runtime must own mobile upload lifecycle action {required}"
+        );
+    }
+
+    let file_route_path = manifest.join("../uc-webserver/src/mobile_lan/routes/file.rs");
+    let file_route = std::fs::read_to_string(&file_route_path)
+        .unwrap_or_else(|error| panic!("failed to read {}: {error}", file_route_path.display()));
+    for forbidden in [
+        "FileTransferFacade",
+        "seed_provisional_receiver_context",
+        "report_progress_lifecycle",
+        "fail_lifecycle",
+    ] {
+        assert!(
+            !file_route.contains(forbidden),
+            "mobile LAN route must not own transfer lifecycle detail {forbidden}"
+        );
+    }
+
+    let history_route_path = manifest.join("../uc-webserver/src/mobile_lan/routes/history.rs");
+    let history_route = std::fs::read_to_string(&history_route_path)
+        .unwrap_or_else(|error| panic!("failed to read {}: {error}", history_route_path.display()));
+    assert!(
+        !history_route.contains("data_name = %data_name"),
+        "mobile LAN upload logs must not expose the client file name"
+    );
+}
+
+#[test]
+fn daemon_api_state_owns_engine_instead_of_app_facade() {
+    let state =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../crates/uc-webserver/src/api/server.rs");
+    let source = std::fs::read_to_string(&state)
+        .unwrap_or_else(|error| panic!("failed to read {}: {error}", state.display()));
+
+    assert!(
+        source.contains("Arc<Engine>") && source.contains("engine.execute"),
+        "daemon API state must route core operations through the shared Engine"
+    );
+    assert!(
+        !source.contains("AppFacade") && !source.contains("app_facade_or_error"),
+        "daemon API state must not retain the legacy application facade"
+    );
+}
+
+#[test]
+fn mobile_lan_production_routes_use_the_shared_engine() {
+    let mobile_lan =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../crates/uc-webserver/src/mobile_lan");
+    let production_files = [
+        "middleware.rs",
+        "routes.rs",
+        "server.rs",
+        "routes/content_availability.rs",
+        "routes/file.rs",
+        "routes/history.rs",
+        "routes/sse.rs",
+        "routes/sync_doc.rs",
+    ];
+    let mut violations = Vec::new();
+    for file in production_files {
+        let path = mobile_lan.join(file);
+        let source = std::fs::read_to_string(&path)
+            .unwrap_or_else(|error| panic!("failed to read {}: {error}", path.display()));
+        for symbol in ["MobileSyncFacade", "FileTransferFacade"] {
+            if source.contains(symbol) {
+                violations.push(format!("{file}: {symbol}"));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "mobile LAN production paths must use the shared Engine: {}",
+        violations.join(", ")
+    );
+}
+
+#[test]
+fn daemon_does_not_assemble_workers_owned_by_engine() {
+    let daemon = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../apps/daemon/src/daemon");
+    let assembly_files = [
+        "app_assembly.rs",
+        "runtime_assembly.rs",
+        "service_assembly.rs",
+        "process_runtime_start.rs",
+    ];
+    let forbidden = [
+        "CleanupWorker",
+        "PeerKeepAliveWorker",
+        "FileSyncOrchestratorWorker",
+    ];
+    let mut violations = Vec::new();
+    for file in assembly_files {
+        let path = daemon.join(file);
+        let source = std::fs::read_to_string(&path)
+            .unwrap_or_else(|error| panic!("failed to read {}: {error}", path.display()));
+        for symbol in forbidden {
+            if source.contains(symbol) {
+                violations.push(format!("{file}: {symbol}"));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "daemon must not assemble engine-owned workers: {}",
+        violations.join(", ")
+    );
+}
+
+#[test]
 fn daemon_does_not_export_legacy_runtime_fields() {
     let daemon_source = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../apps/daemon/src");
     let violations = rust_sources(&daemon_source)
@@ -141,8 +284,8 @@ fn daemon_startup_recovery_delegates_business_orchestration_to_engine() {
         violations.join(", ")
     );
     assert!(
-        source.contains("execute_recover_session("),
-        "daemon startup recovery must invoke the uc-engine recovery implementation"
+        source.contains("Operation::RecoverSession"),
+        "daemon startup recovery must use the public uc-engine recovery operation"
     );
 }
 
@@ -159,8 +302,8 @@ fn daemon_invitation_handler_delegates_business_orchestration_to_engine() {
         "daemon invitation HTTP handler must not own invitation business orchestration"
     );
     assert!(
-        source.contains("execute_issue_invitation("),
-        "daemon invitation HTTP handler must invoke the uc-engine invitation implementation"
+        source.contains("Operation::IssueInvitation"),
+        "daemon invitation HTTP handler must use the public uc-engine invitation operation"
     );
 }
 
@@ -182,8 +325,8 @@ fn daemon_create_space_handler_delegates_business_orchestration_to_engine() {
         "daemon create-space handler must not own create-space business orchestration"
     );
     assert!(
-        initialize_handler.contains("execute_create_space("),
-        "daemon create-space handler must invoke the uc-engine create-space implementation"
+        initialize_handler.contains("Operation::CreateSpace"),
+        "daemon create-space handler must use the public uc-engine create-space operation"
     );
 }
 
@@ -205,9 +348,8 @@ fn daemon_join_space_handler_delegates_business_orchestration_to_engine() {
         "daemon join-space handler must not own join-space business orchestration"
     );
     assert!(
-        redeem_handler.contains("execute_join_space(")
-            && redeem_handler.contains("JoinSpaceMode::Fresh"),
-        "daemon join-space handler must invoke the uc-engine fresh-join implementation"
+        redeem_handler.contains("Operation::JoinSpace"),
+        "daemon join-space handler must use the public uc-engine fresh-join operation"
     );
 }
 
@@ -228,9 +370,8 @@ fn daemon_switch_space_handler_delegates_business_orchestration_to_engine() {
         "daemon switch-space handler must not own switch-space business orchestration"
     );
     assert!(
-        switch_handler.contains("execute_join_space(")
-            && switch_handler.contains("JoinSpaceMode::Switch"),
-        "daemon switch-space handler must invoke the uc-engine switch implementation"
+        switch_handler.contains("Operation::JoinSpace"),
+        "daemon switch-space handler must use the public uc-engine switch operation"
     );
 }
 
@@ -252,8 +393,8 @@ fn daemon_cancel_invitation_handler_delegates_business_orchestration_to_engine()
         "daemon cancel-invitation handler must not own invitation business orchestration"
     );
     assert!(
-        cancel_handler.contains("execute_cancel_invitation("),
-        "daemon cancel-invitation handler must invoke the uc-engine implementation"
+        cancel_handler.contains("Operation::CancelInvitation"),
+        "daemon cancel-invitation handler must use the public uc-engine operation"
     );
 }
 
@@ -274,8 +415,8 @@ fn daemon_reset_space_handler_delegates_business_orchestration_to_engine() {
         "daemon reset-space handler must not own reset business orchestration"
     );
     assert!(
-        reset_handler.contains("execute_reset_space("),
-        "daemon reset-space handler must invoke the uc-engine implementation"
+        reset_handler.contains("Operation::ResetSpace"),
+        "daemon reset-space handler must use the public uc-engine operation"
     );
 }
 
@@ -297,8 +438,8 @@ fn daemon_setup_state_handler_delegates_business_orchestration_to_engine() {
         "daemon setup-state handler must not own setup-state business orchestration"
     );
     assert!(
-        state_handler.contains("execute_query_setup_state("),
-        "daemon setup-state handler must invoke the uc-engine implementation"
+        state_handler.contains("Operation::QuerySetupState"),
+        "daemon setup-state handler must use the public uc-engine operation"
     );
 }
 
@@ -319,8 +460,8 @@ fn daemon_migration_progress_handler_delegates_business_orchestration_to_engine(
         "daemon migration-progress handler must not own migration business orchestration"
     );
     assert!(
-        progress_handler.contains("execute_query_migration_progress("),
-        "daemon migration-progress handler must invoke the uc-engine implementation"
+        progress_handler.contains("Operation::QueryMigrationProgress"),
+        "daemon migration-progress handler must use the public uc-engine operation"
     );
 }
 
@@ -343,9 +484,9 @@ fn daemon_passphrase_unlock_delegates_business_orchestration_to_engine() {
         "daemon passphrase unlock must not own engine recovery or repeat session recovery"
     );
     assert!(
-        unlock_handler.contains("execute_unlock_space(")
+        unlock_handler.contains("Operation::UnlockSpace")
             && unlock_handler.contains("broadcast_session_ready("),
-        "daemon passphrase unlock must invoke the engine and only broadcast success"
+        "daemon passphrase unlock must use the public engine operation and only broadcast success"
     );
 }
 
@@ -371,9 +512,9 @@ fn daemon_silent_unlock_delegates_business_orchestration_to_engine() {
         "daemon silent unlock must not own or repeat session recovery"
     );
     assert!(
-        unlock_handler.contains("execute_recover_session(")
+        unlock_handler.contains("Operation::RecoverSession")
             && unlock_handler.contains("broadcast_session_ready("),
-        "daemon silent unlock must invoke the engine and only broadcast success"
+        "daemon silent unlock must use the public engine operation and only broadcast success"
     );
 }
 
@@ -390,8 +531,10 @@ fn daemon_upgrade_paths_depend_on_the_desktop_upgrade_capability() {
         .expect("startup upgrade function must remain discoverable");
 
     assert!(
-        !startup_upgrade.contains("AppFacade") && !startup_upgrade.contains("app_facade"),
-        "daemon startup upgrade detection must depend on UpgradeFacade directly"
+        !startup_upgrade.contains("AppFacade")
+            && !startup_upgrade.contains("app_facade")
+            && startup_upgrade.contains("Operation::QueryUpgradeStatus"),
+        "daemon startup upgrade detection must use the public Engine operation"
     );
 
     let handler_path = manifest.join("../../crates/uc-webserver/src/api/upgrade.rs");
@@ -399,8 +542,10 @@ fn daemon_upgrade_paths_depend_on_the_desktop_upgrade_capability() {
         .unwrap_or_else(|error| panic!("failed to read {}: {error}", handler_path.display()));
 
     assert!(
-        !handler.contains("app_facade_or_error()") && handler.contains("state.upgrade"),
-        "daemon upgrade HTTP handlers must use the desktop upgrade capability directly"
+        !handler.contains("app_facade_or_error()")
+            && handler.contains("Operation::QueryUpgradeStatus")
+            && handler.contains("Operation::AcknowledgeUpgrade"),
+        "daemon upgrade HTTP handlers must use public Engine operations"
     );
 }
 
@@ -412,8 +557,11 @@ fn daemon_diagnostics_paths_depend_on_the_desktop_diagnostics_capability() {
         .unwrap_or_else(|error| panic!("failed to read {}: {error}", handler_path.display()));
 
     assert!(
-        !handler.contains("app_facade_or_error()") && handler.contains("state.diagnostics"),
-        "daemon diagnostics HTTP handlers must use the desktop diagnostics capability directly"
+        !handler.contains("app_facade_or_error()")
+            && handler.contains("Operation::QueryDiagnostics")
+            && handler.contains("Operation::UpdateDebugMode")
+            && handler.contains("Operation::ExportDiagnosticLogs"),
+        "daemon diagnostics HTTP handlers must use public Engine operations"
     );
 }
 
@@ -425,8 +573,11 @@ fn daemon_config_paths_depend_on_the_desktop_config_migration_capability() {
         .unwrap_or_else(|error| panic!("failed to read {}: {error}", handler_path.display()));
 
     assert!(
-        !handler.contains("app_facade_or_error()") && handler.contains("state.config_migration"),
-        "daemon config HTTP handlers must use the desktop config migration capability directly"
+        !handler.contains("app_facade_or_error()")
+            && handler.contains("Operation::ExportConfig")
+            && handler.contains("Operation::PreviewConfigImport")
+            && handler.contains("Operation::StageConfigImport"),
+        "daemon config HTTP handlers must use public Engine operations"
     );
 }
 
@@ -438,8 +589,11 @@ fn daemon_settings_paths_depend_on_the_desktop_settings_capability() {
         .unwrap_or_else(|error| panic!("failed to read {}: {error}", handler_path.display()));
 
     assert!(
-        !handler.contains("app_facade_or_error()") && handler.contains("state.settings"),
-        "daemon settings HTTP handlers must use the desktop settings capability directly"
+        !handler.contains("app_facade_or_error()")
+            && handler.contains("Operation::QuerySettings")
+            && handler.contains("Operation::UpdateSettings")
+            && handler.contains("Operation::ProbeRelay"),
+        "daemon settings HTTP handlers must use public Engine operations"
     );
 }
 
@@ -453,8 +607,9 @@ fn daemon_mobile_lan_lifecycle_depends_only_on_mobile_sync_capability() {
     assert!(
         !lifecycle.contains("AppFacade")
             && !lifecycle.contains("app_facade")
-            && lifecycle.contains("MobileSyncFacade"),
-        "mobile LAN lifecycle must use a dedicated mobile-sync capability slot"
+            && !lifecycle.contains("MobileSyncFacade")
+            && lifecycle.contains("Arc<Engine>"),
+        "mobile LAN lifecycle must use the daemon's shared Engine"
     );
 }
 
@@ -466,8 +621,14 @@ fn daemon_mobile_sync_http_depends_on_the_mobile_sync_capability() {
         .unwrap_or_else(|error| panic!("failed to read {}: {error}", handler_path.display()));
 
     assert!(
-        !handler.contains("app_facade_or_error()") && handler.contains("state.mobile_sync"),
-        "mobile-sync HTTP handlers must use the dedicated compatibility capability"
+        !handler.contains("app_facade_or_error()")
+            && handler.contains("Operation::ListMobileDevices")
+            && handler.contains("Operation::RegisterMobileDevice")
+            && handler.contains("Operation::UpdateMobileDevice")
+            && handler.contains("Operation::RevokeMobileDevice")
+            && handler.contains("Operation::QueryMobileSyncSettings")
+            && handler.contains("Operation::UpdateMobileSyncSettings"),
+        "mobile-sync HTTP handlers must use public Engine operations"
     );
 }
 
@@ -480,8 +641,8 @@ fn daemon_storage_handlers_delegate_storage_ownership_to_engine() {
 
     assert!(
         !handler.contains(".storage\n")
-            && handler.contains("execute_query_storage_stats(")
-            && handler.contains("execute_clear_storage_cache("),
+            && handler.contains("Operation::QueryStorageStats")
+            && handler.contains("Operation::ClearStorageCache"),
         "daemon storage handlers must leave storage ownership to uc-engine"
     );
 }
@@ -495,7 +656,7 @@ fn daemon_local_device_handler_delegates_identity_to_engine() {
 
     assert!(
         !handler.contains(".device.local_device_info(")
-            && handler.contains("execute_query_local_device("),
+            && handler.contains("Operation::QueryLocalDevice"),
         "daemon local-device handler must leave identity ownership to uc-engine"
     );
 }
@@ -512,10 +673,10 @@ fn daemon_encryption_handlers_delegate_session_ownership_to_engine() {
             && !handler.contains("app.encryption.lock(")
             && !handler.contains("app.encryption.verify_keychain_access(")
             && !handler.contains(".factory_reset()")
-            && handler.contains("execute_query_encryption_state(")
-            && handler.contains("execute_lock_encryption(")
-            && handler.contains("execute_verify_secure_storage_access(")
-            && handler.contains("execute_factory_reset_space("),
+            && handler.contains("Operation::QueryEncryptionState")
+            && handler.contains("Operation::LockEncryption")
+            && handler.contains("Operation::VerifySecureStorageAccess")
+            && handler.contains("Operation::FactoryResetSpace"),
         "daemon encryption state, lock, factory-reset, and secure-storage handlers must delegate to uc-engine"
     );
 }
@@ -532,14 +693,14 @@ fn daemon_member_handlers_delegate_roster_ownership_to_engine() {
 
     assert!(
         !member.contains(".member_roster")
-            && member.contains("execute_query_member_sync_preferences(")
-            && member.contains("execute_update_member_sync_preferences("),
+            && member.contains("Operation::QueryMemberSyncPreferences")
+            && member.contains("Operation::UpdateMemberSyncPreferences"),
         "daemon member preference handlers must delegate to uc-engine"
     );
     assert!(
         !pairing.contains(".member_roster")
             && !pairing.contains(".revoke_member(")
-            && pairing.contains("execute_remove_member("),
+            && pairing.contains("Operation::RemoveMember"),
         "daemon unpair handler must delegate member removal to uc-engine"
     );
 }
@@ -558,16 +719,16 @@ fn daemon_search_handlers_delegate_index_ownership_to_engine() {
     assert!(
         !handler.contains("app\n        .search")
             && !handler.contains(".encryption.state(")
-            && handler.contains("execute_query_encryption_state(")
-            && handler.contains("execute_search_entries(")
-            && handler.contains("execute_query_search_tags(")
-            && handler.contains("execute_query_search_status(")
-            && handler.contains("execute_rebuild_search_index("),
+            && handler.contains("Operation::QueryEncryptionState")
+            && handler.contains("Operation::SearchEntries")
+            && handler.contains("Operation::QuerySearchTags")
+            && handler.contains("Operation::QuerySearchStatus")
+            && handler.contains("Operation::RebuildSearchIndex"),
         "daemon search handlers must delegate encrypted search ownership to uc-engine"
     );
     assert!(
         !websocket.contains("app.search.status(")
-            && websocket.contains("execute_query_search_status("),
+            && websocket.contains("Operation::QuerySearchStatus"),
         "search websocket snapshots must use the same uc-engine status operation"
     );
 }
@@ -600,13 +761,13 @@ fn daemon_history_handlers_delegate_history_ownership_to_engine() {
         );
     }
     for required in [
-        "execute_list_history_entries(",
-        "execute_get_history_entry(",
-        "execute_delete_history_entry(",
-        "execute_set_history_entry_favorite(",
-        "execute_query_history_stats(",
-        "execute_get_history_entry_resource(",
-        "execute_clear_history(",
+        "Operation::ListHistoryEntries",
+        "Operation::GetHistoryEntry",
+        "Operation::DeleteHistoryEntry",
+        "Operation::SetHistoryEntryFavorite",
+        "Operation::QueryHistoryStats",
+        "Operation::GetHistoryEntryResource",
+        "Operation::ClearHistory",
     ] {
         assert!(
             history_handlers.contains(required),
@@ -639,9 +800,9 @@ fn daemon_receive_progress_and_cancellation_delegate_to_engine() {
         );
     }
     for required in [
-        "execute_query_entry_receive_progress(",
-        "execute_list_entry_receive_progress(",
-        "execute_cancel_entry_receive(",
+        "Operation::QueryEntryReceiveProgress",
+        "Operation::ListEntryReceiveProgress",
+        "Operation::CancelEntryReceive",
     ] {
         assert!(
             receive_handlers.contains(required),
@@ -650,7 +811,7 @@ fn daemon_receive_progress_and_cancellation_delegate_to_engine() {
     }
     assert!(
         !handler.contains(".cancel_inbound_transfer(")
-            && handler.contains("execute_cancel_inbound_transfer("),
+            && handler.contains("Operation::CancelInboundTransfer"),
         "daemon transfer cancellation must delegate to uc-engine"
     );
 }
@@ -674,7 +835,7 @@ fn daemon_capture_current_handler_delegates_to_engine() {
     assert!(
         !capture_handler.contains(".clipboard_capture")
             && !capture_handler.contains(".capture_current(")
-            && capture_handler.contains("execute_capture_current_clipboard("),
+            && capture_handler.contains("Operation::CaptureCurrentClipboard"),
         "daemon capture-current handler must delegate clipboard capture to uc-engine"
     );
 }
@@ -700,7 +861,7 @@ fn daemon_restore_handler_delegates_all_modes_to_engine() {
             && !restore_handler.contains(".restore_entry(")
             && !restore_handler.contains(".restore_entry_as_plain_text(")
             && !restore_handler.contains(".restore_entry_as_file_paths(")
-            && restore_handler.contains("execute_restore_clipboard("),
+            && restore_handler.contains("Operation::RestoreClipboard"),
         "daemon restore handler must delegate every restore mode to uc-engine"
     );
 }
@@ -719,7 +880,7 @@ fn daemon_delivery_view_handler_delegates_to_engine() {
 
     assert!(
         !delivery_handler.contains(".get_entry_delivery_view(")
-            && delivery_handler.contains("execute_query_entry_delivery("),
+            && delivery_handler.contains("Operation::QueryEntryDelivery"),
         "daemon delivery-view handler must delegate view assembly to uc-engine"
     );
 }
@@ -738,7 +899,7 @@ fn daemon_resend_handler_delegates_to_engine() {
 
     assert!(
         !resend_handler.contains(".resend_entry(")
-            && resend_handler.contains("execute_resend_entry("),
+            && resend_handler.contains("Operation::ResendEntry"),
         "daemon resend handler must delegate resend orchestration to uc-engine"
     );
 }
@@ -761,9 +922,9 @@ fn daemon_binary_resource_handlers_delegate_to_engine() {
         );
     }
     for engine_call in [
-        "execute_read_blob(",
-        "execute_read_thumbnail(",
-        "execute_read_entry_file(",
+        "Operation::ReadBlob",
+        "Operation::ReadThumbnail",
+        "Operation::ReadEntryFile",
     ] {
         assert!(
             handler.contains(engine_call),

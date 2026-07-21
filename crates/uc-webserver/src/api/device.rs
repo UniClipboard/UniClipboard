@@ -14,8 +14,8 @@ use axum::{Json, Router};
 use utoipa;
 
 use uc_daemon_contract::api::dto::envelope::ApiEnvelope;
-use uc_engine::internal::device::{execute_query_local_device, QUERY_LOCAL_DEVICE_FAILED_CODE};
-use uc_engine::{EngineError, OperationResult};
+use uc_engine::internal::device::QUERY_LOCAL_DEVICE_FAILED_CODE;
+use uc_engine::{EngineError, Operation, OperationResult};
 
 use crate::api::dto::device::LocalDeviceInfoDto;
 use crate::api::dto::error::{log_facade_failure, ApiError};
@@ -40,8 +40,8 @@ pub fn router() -> Router<DaemonApiState> {
 async fn get_local_device_info_handler(
     State(state): State<DaemonApiState>,
 ) -> Result<Json<ApiEnvelope<LocalDeviceInfoDto>>, ApiError> {
-    let app = state.app_facade_or_error()?;
-    let result = execute_query_local_device(app.as_ref())
+    let result = state
+        .execute(Operation::QueryLocalDevice)
         .await
         .map_err(map_local_device_engine_error)?;
     let OperationResult::LocalDevice(info) = result else {

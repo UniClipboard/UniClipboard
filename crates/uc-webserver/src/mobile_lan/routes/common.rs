@@ -7,7 +7,7 @@ use axum::{
     http::StatusCode,
     response::{IntoResponse, Response},
 };
-use uc_application::facade::{ApplyIncomingMobileClipError, ApplyIncomingMobileClipOutcome};
+use uc_engine::{EngineError, EngineErrorCategory, MobileSyncDocumentApplyOutcome};
 
 /// `PUT /SyncClipboard.json` 与 `POST /api/history` 元数据上限。
 /// SyncClipboard 协议 meta payload 远小于此(典型 < 1 KB),16 MiB 是
@@ -26,13 +26,13 @@ pub(super) const MAX_FILE_BYTES: usize = 16 * 1024 * 1024;
 pub(super) const FILE_UPLOAD_DISK_SANITY_LIMIT: usize = 10 * 1024 * 1024 * 1024;
 
 /// 把 outcome 翻成日志用的简短串(避免日志里出现 entry id 等敏感字段)。
-pub(super) fn outcome_kind(outcome: &ApplyIncomingMobileClipOutcome) -> &'static str {
+pub(super) fn outcome_kind(outcome: &MobileSyncDocumentApplyOutcome) -> &'static str {
     match outcome {
-        ApplyIncomingMobileClipOutcome::Applied { .. } => "applied",
-        ApplyIncomingMobileClipOutcome::Resurfaced { .. } => "resurfaced",
-        ApplyIncomingMobileClipOutcome::DuplicateSkipped { .. } => "duplicate_skipped",
-        ApplyIncomingMobileClipOutcome::DecodeFailed { .. } => "decode_failed",
-        ApplyIncomingMobileClipOutcome::Buffered => "buffered",
+        MobileSyncDocumentApplyOutcome::Applied { .. } => "applied",
+        MobileSyncDocumentApplyOutcome::Resurfaced { .. } => "resurfaced",
+        MobileSyncDocumentApplyOutcome::DuplicateSkipped { .. } => "duplicate_skipped",
+        MobileSyncDocumentApplyOutcome::DecodeFailed { .. } => "decode_failed",
+        MobileSyncDocumentApplyOutcome::Buffered => "buffered",
     }
 }
 
@@ -40,19 +40,16 @@ pub(super) fn outcome_kind(outcome: &ApplyIncomingMobileClipOutcome) -> &'static
 /// 400,内部错误翻成 500;outcome 维度的 `DecodeFailed` 路由层不直接收
 /// (use case 已经把 decode 错包成 `Ok(DecodeFailed)`),但保留映射以防协议
 /// 演进引入新错误变体。
-pub(super) fn map_apply_error(err: ApplyIncomingMobileClipError, route: &'static str) -> Response {
-    match err {
-        ApplyIncomingMobileClipError::EncodeFailed(msg) => {
-            tracing::warn!(error = %msg, route, "apply_incoming: encode failed");
-            (StatusCode::BAD_REQUEST, msg).into_response()
-        }
-        ApplyIncomingMobileClipError::Inbound(err) => {
-            tracing::warn!(error = %err, route, "apply_incoming: inbound pipeline failure");
-            StatusCode::INTERNAL_SERVER_ERROR.into_response()
-        }
-        ApplyIncomingMobileClipError::Internal(msg) => {
-            tracing::warn!(error = %msg, route, "apply_incoming: internal");
-            StatusCode::INTERNAL_SERVER_ERROR.into_response()
-        }
+pub(super) fn map_apply_error(err: EngineError, route: &'static str) -> Response {
+    tracing::warn!(
+        code = err.code(),
+        category = %err.category(),
+        route,
+        "mobile LAN core operation failed"
+    );
+    if err.category() == EngineErrorCategory::InvalidInput {
+        (StatusCode::BAD_REQUEST, "invalid mobile sync request").into_response()
+    } else {
+        StatusCode::INTERNAL_SERVER_ERROR.into_response()
     }
 }

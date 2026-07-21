@@ -18,8 +18,6 @@
 //! → 5xx) and deliberately avoid `401` so `callSdk` does not fire a spurious
 //! session refresh + retry on a user-recoverable outcome.
 
-use std::sync::Arc;
-
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::routing::{delete, get, post};
@@ -29,17 +27,17 @@ use base64::Engine;
 use serde::Serialize;
 use serde_json::Value;
 use tracing::{info_span, Instrument};
-use uc_application::facade::mobile_sync::{
-    GetMobileSyncSettingsError, LanInterfaceOption, ListLanInterfacesError, ListMobileDevicesError,
-    MobileDevicePasswordEdit, MobileDeviceSummary, MobileSyncFacade, MobileSyncSettingsView,
-    RegisterMobileShortcutDeviceError, RegisterMobileShortcutDeviceInput,
-    RegisterMobileShortcutDeviceOutput, RevokeMobileDeviceError, RevokeMobileDeviceInput,
-    ShortcutInstallMethod, ShortcutInstallMethodOption, UpdateMobileDeviceError,
-    UpdateMobileDeviceInput, UpdateMobileDeviceOutput, UpdateMobileSyncSettingsError,
-    UpdateMobileSyncSettingsInput, UpdateMobileSyncSettingsOutput,
-};
-use uc_core::mobile_sync::{MobileClientType, MobileDeviceId};
 use uc_daemon_contract::api::dto::envelope::ApiEnvelope;
+use uc_engine::{
+    EngineError, EngineErrorCategory, MobileClientTypeSummary, MobileDeviceInput,
+    MobileDeviceRegistration, MobileDeviceRegistrationOutcome, MobileDeviceRevokeOutcome,
+    MobileDeviceSummary as EngineMobileDeviceSummary, MobileDeviceUpdate,
+    MobileDeviceUpdateOutcome, MobilePasswordUpdate, MobileShortcutInstallMethod,
+    MobileShortcutInstallMethodSummary, MobileSyncSettingsPatch, MobileSyncSettingsSummary,
+    MobileSyncSettingsUpdateOutcome, MobileSyncSettingsUpdateSummary, Operation, OperationResult,
+    RegisterMobileDeviceInput, SecretString,
+    UpdateMobileDeviceInput as EngineUpdateMobileDeviceInput,
+};
 use utoipa;
 
 use crate::api::dto::error::{log_facade_failure, ApiError};
@@ -192,150 +190,29 @@ impl From<MobileSyncError> for ApiError {
     }
 }
 
-/// `?`-friendly: collapse a typed facade error → `MobileSyncError` → `ApiError`
-/// in one `.map_err(to_api)`. (`?` cannot chain two `From` conversions.)
-fn to_api<E: Into<MobileSyncError>>(err: E) -> ApiError {
-    ApiError::from(err.into())
-}
-
-// ── facade error → MobileSyncError (verbatim from the former Tauri layer) ───
-
-impl From<RegisterMobileShortcutDeviceError> for MobileSyncError {
-    fn from(err: RegisterMobileShortcutDeviceError) -> Self {
-        use RegisterMobileShortcutDeviceError as E;
-        match err {
-            E::LabelEmpty => Self::LabelEmpty,
-            E::LabelTooLong => Self::LabelTooLong { max: LABEL_MAX_LEN },
-            E::LanListenerDisabled => Self::LanListenerDisabled,
-            E::UsernameTaken(username) => Self::UsernameTaken { username },
-            E::UsernameTooShort { min, got } => Self::UsernameTooShort { min, got },
-            E::UsernameTooLong { max, got } => Self::UsernameTooLong { max, got },
-            E::UsernameMustStartWithLetter => Self::UsernameMustStartWithLetter,
-            E::UsernameContainsForbiddenChars => Self::UsernameContainsForbiddenChars,
-            E::PasswordTooShort { min } => Self::PasswordTooShort { min },
-            E::PasswordTooLong { max } => Self::PasswordTooLong { max },
-            E::PasswordHashFailed(message) => Self::PasswordHashFailed { message },
-            E::PersistenceFailed(message) => Self::PersistenceFailed { message },
-            E::QrRenderFailed(message) => Self::QrRenderFailed { message },
-            E::SettingsLoadFailed(message) => Self::SettingsLoadFailed { message },
-            E::NoLanInterfaceAvailable => Self::NoLanInterfaceAvailable,
-            E::LanInterfaceProbeFailed(message) => Self::LanProbeFailed { message },
-        }
-    }
-}
-
-impl From<RevokeMobileDeviceError> for MobileSyncError {
-    fn from(err: RevokeMobileDeviceError) -> Self {
-        match err {
-            RevokeMobileDeviceError::NotFound(device_id) => Self::DeviceNotFound { device_id },
-            RevokeMobileDeviceError::PersistenceFailed(message) => {
-                Self::PersistenceFailed { message }
-            }
-        }
-    }
-}
-
-impl From<ListMobileDevicesError> for MobileSyncError {
-    fn from(err: ListMobileDevicesError) -> Self {
-        match err {
-            ListMobileDevicesError::PersistenceFailed(message) => {
-                Self::PersistenceFailed { message }
-            }
-        }
-    }
-}
-
-impl From<UpdateMobileDeviceError> for MobileSyncError {
-    fn from(err: UpdateMobileDeviceError) -> Self {
-        match err {
-            UpdateMobileDeviceError::NotFound(id) => Self::DeviceNotFound {
-                device_id: id.into_string(),
-            },
-            UpdateMobileDeviceError::LabelEmpty => Self::LabelEmpty,
-            UpdateMobileDeviceError::LabelTooLong => Self::LabelTooLong { max: LABEL_MAX_LEN },
-            UpdateMobileDeviceError::UsernameTaken(username) => Self::UsernameTaken { username },
-            UpdateMobileDeviceError::UsernameTooShort { min, got } => {
-                Self::UsernameTooShort { min, got }
-            }
-            UpdateMobileDeviceError::UsernameTooLong { max, got } => {
-                Self::UsernameTooLong { max, got }
-            }
-            UpdateMobileDeviceError::UsernameMustStartWithLetter => {
-                Self::UsernameMustStartWithLetter
-            }
-            UpdateMobileDeviceError::UsernameContainsForbiddenChars => {
-                Self::UsernameContainsForbiddenChars
-            }
-            UpdateMobileDeviceError::PasswordTooShort { min } => Self::PasswordTooShort { min },
-            UpdateMobileDeviceError::PasswordTooLong { max } => Self::PasswordTooLong { max },
-            UpdateMobileDeviceError::PasswordHashFailed(message) => {
-                Self::PasswordHashFailed { message }
-            }
-            UpdateMobileDeviceError::PersistenceFailed(message) => {
-                Self::PersistenceFailed { message }
-            }
-        }
-    }
-}
-
-impl From<GetMobileSyncSettingsError> for MobileSyncError {
-    fn from(err: GetMobileSyncSettingsError) -> Self {
-        match err {
-            GetMobileSyncSettingsError::SettingsLoadFailed(message) => {
-                Self::SettingsLoadFailed { message }
-            }
-            GetMobileSyncSettingsError::EndpointInfoFailed(message) => {
-                Self::EndpointInfoFailed { message }
-            }
-        }
-    }
-}
-
-impl From<UpdateMobileSyncSettingsError> for MobileSyncError {
-    fn from(err: UpdateMobileSyncSettingsError) -> Self {
-        match err {
-            UpdateMobileSyncSettingsError::SettingsLoadFailed(message) => {
-                Self::SettingsLoadFailed { message }
-            }
-            UpdateMobileSyncSettingsError::SettingsSaveFailed(message) => {
-                Self::SettingsSaveFailed { message }
-            }
-            UpdateMobileSyncSettingsError::InvalidLanParameter(reason) => {
-                Self::InvalidLanParameter { reason }
-            }
-        }
-    }
-}
-
-impl From<ListLanInterfacesError> for MobileSyncError {
-    fn from(err: ListLanInterfacesError) -> Self {
-        match err {
-            ListLanInterfacesError::ProbeFailed(message) => Self::LanProbeFailed { message },
-        }
-    }
-}
-
 // ============================================================================
 // Domain → contract DTO conversions (free fns: orphan rule forbids `From`
 // between two crate-foreign types)
 // ============================================================================
 
-fn client_type_wire(t: &MobileClientType) -> String {
-    t.as_wire_str().to_string()
+fn engine_client_type_wire(client_type: MobileClientTypeSummary) -> String {
+    match client_type {
+        MobileClientTypeSummary::IosShortcut => "ios_shortcut".to_string(),
+    }
 }
 
 /// Encode the two QR PNGs to base64 daemon-side so the JSON DTO ships strings
 /// the frontend `<img src="data:image/png;base64,...">` renders directly
 /// (ported from the former Tauri boundary conversion).
-fn to_register_dto(out: RegisterMobileShortcutDeviceOutput) -> RegisterMobileDeviceResultDto {
+fn to_register_dto(out: MobileDeviceRegistration) -> RegisterMobileDeviceResultDto {
     RegisterMobileDeviceResultDto {
-        device_id: out.device.device_id.into_string(),
-        label: out.device.label,
-        client_type: client_type_wire(&out.device.client_type),
-        created_at_ms: out.device.created_at_ms,
+        device_id: out.device_id,
+        label: out.label,
+        client_type: engine_client_type_wire(out.client_type),
+        created_at_ms: out.created_at_ms,
         base_url: out.base_url,
         username: out.username,
-        password: out.password,
+        password: out.password.expose().to_string(),
         install_url: out.install_url,
         install_qr_code_png_base64: BASE64.encode(out.install_qr_code_png_bytes),
         connect_uri: out.connect_uri,
@@ -348,28 +225,28 @@ fn to_register_dto(out: RegisterMobileShortcutDeviceOutput) -> RegisterMobileDev
 ///
 /// The rotate endpoint always reissues a plaintext password (it never passes
 /// `Keep`), so `password` is resolved by the caller before reaching here.
-fn to_rotate_dto(out: UpdateMobileDeviceOutput, password: String) -> RotateMobilePasswordResultDto {
+fn to_rotate_dto(out: MobileDeviceUpdate, password: String) -> RotateMobilePasswordResultDto {
     RotateMobilePasswordResultDto {
-        device_id: out.device_id.into_string(),
+        device_id: out.device_id,
         username: out.username,
         password,
     }
 }
 
-fn to_update_device_dto(out: UpdateMobileDeviceOutput) -> UpdateMobileDeviceResultDto {
+fn to_update_device_dto(out: MobileDeviceUpdate) -> UpdateMobileDeviceResultDto {
     UpdateMobileDeviceResultDto {
-        device_id: out.device_id.into_string(),
+        device_id: out.device_id,
         label: out.label,
         username: out.username,
-        password: out.password,
+        password: out.password.map(|password| password.expose().to_string()),
     }
 }
 
-fn to_device_view(s: MobileDeviceSummary) -> MobileDeviceViewDto {
+fn to_device_view(s: EngineMobileDeviceSummary) -> MobileDeviceViewDto {
     MobileDeviceViewDto {
-        device_id: s.device_id.into_string(),
+        device_id: s.device_id,
         label: s.label,
-        client_type: client_type_wire(&s.client_type),
+        client_type: engine_client_type_wire(s.client_type),
         username: s.username,
         created_at_ms: s.created_at_ms,
         last_seen_at_ms: s.last_seen_at_ms,
@@ -379,10 +256,10 @@ fn to_device_view(s: MobileDeviceSummary) -> MobileDeviceViewDto {
     }
 }
 
-fn to_install_method_view(o: ShortcutInstallMethodOption) -> ShortcutInstallMethodViewDto {
+fn to_install_method_view(o: MobileShortcutInstallMethodSummary) -> ShortcutInstallMethodViewDto {
     let method = match o.method {
-        ShortcutInstallMethod::TokenInjected => "tokenInjected",
-        ShortcutInstallMethod::IcloudGeneric => "icloudGeneric",
+        MobileShortcutInstallMethod::TokenInjected => "tokenInjected",
+        MobileShortcutInstallMethod::IcloudGeneric => "icloudGeneric",
     };
     ShortcutInstallMethodViewDto {
         method: method.to_string(),
@@ -391,7 +268,7 @@ fn to_install_method_view(o: ShortcutInstallMethodOption) -> ShortcutInstallMeth
     }
 }
 
-fn to_settings_view(v: MobileSyncSettingsView) -> MobileSyncSettingsViewDto {
+fn to_settings_view(v: MobileSyncSettingsSummary) -> MobileSyncSettingsViewDto {
     MobileSyncSettingsViewDto {
         enabled: v.enabled,
         lan_listen_enabled: v.lan_listen_enabled,
@@ -407,23 +284,115 @@ fn to_settings_view(v: MobileSyncSettingsView) -> MobileSyncSettingsViewDto {
     }
 }
 
-fn to_update_result(o: UpdateMobileSyncSettingsOutput) -> UpdateMobileSyncSettingsResultDto {
+fn to_update_result(o: MobileSyncSettingsUpdateSummary) -> UpdateMobileSyncSettingsResultDto {
     UpdateMobileSyncSettingsResultDto {
         enabled: o.enabled,
         lan_listen_enabled: o.lan_listen_enabled,
         lan_advertise_ip: o.lan_advertise_ip,
         lan_port: o.lan_port,
         lan_advertise_base_url: o.lan_advertise_base_url,
-        restart_required: o.restart_required,
-        lan_listener_bind_error: o.lan_listener_bind_error,
+        restart_required: o.changed,
+        lan_listener_bind_error: None,
     }
 }
 
-fn to_lan_interface_view(o: LanInterfaceOption) -> LanInterfaceViewDto {
-    LanInterfaceViewDto {
-        name: o.name,
-        ipv4: o.ipv4,
+fn mobile_engine_error_to_api(error: EngineError) -> ApiError {
+    match error.category() {
+        EngineErrorCategory::InvalidInput => ApiError::from(MobileSyncError::InvalidLanParameter {
+            reason: "invalid mobile-sync request".to_string(),
+        }),
+        EngineErrorCategory::NotFound => ApiError::not_found("mobile device not found"),
+        EngineErrorCategory::Conflict => ApiError::conflict("mobile-sync request conflicted"),
+        EngineErrorCategory::Unavailable | EngineErrorCategory::DeadlineExceeded => {
+            ApiError::from(MobileSyncError::FacadeUnavailable)
+        }
+        EngineErrorCategory::Unauthorized => {
+            ApiError::unauthorized("mobile-sync request was not authorized")
+        }
+        EngineErrorCategory::InvalidState | EngineErrorCategory::Internal => {
+            ApiError::from(MobileSyncError::PersistenceFailed {
+                message: "mobile-sync operation failed".to_string(),
+            })
+        }
     }
+}
+
+fn mobile_device_registration_result(
+    outcome: MobileDeviceRegistrationOutcome,
+) -> Result<MobileDeviceRegistration, ApiError> {
+    let error = match outcome {
+        MobileDeviceRegistrationOutcome::Registered(registration) => return Ok(*registration),
+        MobileDeviceRegistrationOutcome::LabelEmpty => MobileSyncError::LabelEmpty,
+        MobileDeviceRegistrationOutcome::LabelTooLong => {
+            MobileSyncError::LabelTooLong { max: LABEL_MAX_LEN }
+        }
+        MobileDeviceRegistrationOutcome::LanListenerDisabled => {
+            MobileSyncError::LanListenerDisabled
+        }
+        MobileDeviceRegistrationOutcome::UsernameTaken { username } => {
+            MobileSyncError::UsernameTaken { username }
+        }
+        MobileDeviceRegistrationOutcome::UsernameTooShort { min, got } => {
+            MobileSyncError::UsernameTooShort { min, got }
+        }
+        MobileDeviceRegistrationOutcome::UsernameTooLong { max, got } => {
+            MobileSyncError::UsernameTooLong { max, got }
+        }
+        MobileDeviceRegistrationOutcome::UsernameMustStartWithLetter => {
+            MobileSyncError::UsernameMustStartWithLetter
+        }
+        MobileDeviceRegistrationOutcome::UsernameContainsForbiddenChars => {
+            MobileSyncError::UsernameContainsForbiddenChars
+        }
+        MobileDeviceRegistrationOutcome::PasswordTooShort { min } => {
+            MobileSyncError::PasswordTooShort { min }
+        }
+        MobileDeviceRegistrationOutcome::PasswordTooLong { max } => {
+            MobileSyncError::PasswordTooLong { max }
+        }
+        MobileDeviceRegistrationOutcome::NoLanInterfaceAvailable => {
+            MobileSyncError::NoLanInterfaceAvailable
+        }
+    };
+    Err(ApiError::from(error))
+}
+
+fn mobile_device_update_result(
+    outcome: MobileDeviceUpdateOutcome,
+    requested_device_id: &str,
+) -> Result<MobileDeviceUpdate, ApiError> {
+    let error = match outcome {
+        MobileDeviceUpdateOutcome::Updated(update) => return Ok(*update),
+        MobileDeviceUpdateOutcome::NotFound => MobileSyncError::DeviceNotFound {
+            device_id: requested_device_id.to_string(),
+        },
+        MobileDeviceUpdateOutcome::LabelEmpty => MobileSyncError::LabelEmpty,
+        MobileDeviceUpdateOutcome::LabelTooLong => {
+            MobileSyncError::LabelTooLong { max: LABEL_MAX_LEN }
+        }
+        MobileDeviceUpdateOutcome::UsernameTaken { username } => {
+            MobileSyncError::UsernameTaken { username }
+        }
+        MobileDeviceUpdateOutcome::UsernameTooShort { min, got } => {
+            MobileSyncError::UsernameTooShort { min, got }
+        }
+        MobileDeviceUpdateOutcome::UsernameTooLong { max, got } => {
+            MobileSyncError::UsernameTooLong { max, got }
+        }
+        MobileDeviceUpdateOutcome::UsernameMustStartWithLetter => {
+            MobileSyncError::UsernameMustStartWithLetter
+        }
+        MobileDeviceUpdateOutcome::UsernameContainsForbiddenChars => {
+            MobileSyncError::UsernameContainsForbiddenChars
+        }
+        MobileDeviceUpdateOutcome::PasswordTooShort { min } => {
+            MobileSyncError::PasswordTooShort { min }
+        }
+        MobileDeviceUpdateOutcome::PasswordTooLong { max } => {
+            MobileSyncError::PasswordTooLong { max }
+        }
+    };
+    Err(ApiError::from(error))
 }
 
 // ============================================================================
@@ -477,38 +446,40 @@ async fn update_mobile_device_handler(
     Json(req): Json<UpdateMobileDeviceRequest>,
 ) -> Result<Json<ApiEnvelope<UpdateMobileDeviceResultDto>>, ApiError> {
     let password = match req.password {
-        None => MobileDevicePasswordEdit::Keep,
-        Some(None) => MobileDevicePasswordEdit::AutoGenerate,
-        Some(Some(password)) => MobileDevicePasswordEdit::Custom(password),
+        None => MobilePasswordUpdate::Keep,
+        Some(None) => MobilePasswordUpdate::AutoGenerate,
+        Some(Some(password)) => MobilePasswordUpdate::Custom(SecretString::new(password)),
     };
     let span = info_span!(
         "api.mobile_sync.update_device",
         device_id = %device_id,
         label_changed = req.label.is_some(),
         username_changed = req.username.is_some(),
-        password_changed = !matches!(password, MobileDevicePasswordEdit::Keep),
+        password_changed = !matches!(password, MobilePasswordUpdate::Keep),
     );
     async move {
-        let facade = mobile_sync_facade(&state)?;
-        let out = facade
-            .update_device(UpdateMobileDeviceInput {
-                device_id: MobileDeviceId::new(device_id),
-                label: req.label,
-                username: req.username,
-                password,
-            })
+        let requested_device_id = device_id.clone();
+        let result = state
+            .execute(Operation::UpdateMobileDevice(
+                EngineUpdateMobileDeviceInput {
+                    device_id,
+                    label: req.label,
+                    username: req.username,
+                    password,
+                },
+            ))
             .await
-            .map_err(to_api)?;
+            .map_err(mobile_engine_error_to_api)?;
+        let OperationResult::MobileDeviceUpdated(outcome) = result else {
+            return Err(ApiError::internal(
+                "engine returned an unexpected mobile-device update result",
+            ));
+        };
+        let out = mobile_device_update_result(outcome, &requested_device_id)?;
         Ok(Json(ApiEnvelope::now(to_update_device_dto(out))))
     }
     .instrument(span)
     .await
-}
-
-/// Resolve the daemon-resident mobile-sync facade, or 503 `FACADE_UNAVAILABLE`.
-fn mobile_sync_facade(state: &DaemonApiState) -> Result<Arc<MobileSyncFacade>, ApiError> {
-    let mobile_sync = state.mobile_sync.clone();
-    mobile_sync.ok_or_else(|| ApiError::from(MobileSyncError::FacadeUnavailable))
 }
 
 /// POST /mobile-sync/devices
@@ -532,15 +503,20 @@ async fn register_mobile_device_handler(
 ) -> Result<Json<ApiEnvelope<RegisterMobileDeviceResultDto>>, ApiError> {
     let span = info_span!("api.mobile_sync.register_device");
     async move {
-        let facade = mobile_sync_facade(&state)?;
-        let out = facade
-            .register_device(RegisterMobileShortcutDeviceInput {
+        let result = state
+            .execute(Operation::RegisterMobileDevice(RegisterMobileDeviceInput {
                 label: req.label,
                 username: req.username,
-                password: req.password,
-            })
+                password: req.password.map(SecretString::new),
+            }))
             .await
-            .map_err(to_api)?;
+            .map_err(mobile_engine_error_to_api)?;
+        let OperationResult::MobileDeviceRegistered(outcome) = result else {
+            return Err(ApiError::internal(
+                "engine returned an unexpected mobile-device registration result",
+            ));
+        };
+        let out = mobile_device_registration_result(outcome)?;
         Ok(Json(ApiEnvelope::now(to_register_dto(out))))
     }
     .instrument(span)
@@ -564,8 +540,15 @@ async fn list_mobile_devices_handler(
 ) -> Result<Json<ApiEnvelope<Vec<MobileDeviceViewDto>>>, ApiError> {
     let span = info_span!("api.mobile_sync.list_devices");
     async move {
-        let facade = mobile_sync_facade(&state)?;
-        let devices = facade.list_devices().await.map_err(to_api)?;
+        let result = state
+            .execute(Operation::ListMobileDevices)
+            .await
+            .map_err(mobile_engine_error_to_api)?;
+        let OperationResult::MobileDevices(devices) = result else {
+            return Err(ApiError::internal(
+                "engine returned an unexpected mobile-device list result",
+            ));
+        };
         Ok(Json(ApiEnvelope::now(
             devices.into_iter().map(to_device_view).collect(),
         )))
@@ -594,13 +577,25 @@ async fn revoke_mobile_device_handler(
 ) -> Result<Json<ApiEnvelope<MobileSyncActionResultDto>>, ApiError> {
     let span = info_span!("api.mobile_sync.revoke_device", device_id = %device_id);
     async move {
-        let facade = mobile_sync_facade(&state)?;
-        facade
-            .revoke_device(RevokeMobileDeviceInput {
-                device_id: MobileDeviceId::new(device_id),
-            })
+        let result = state
+            .execute(Operation::RevokeMobileDevice(MobileDeviceInput {
+                device_id: device_id.clone(),
+            }))
             .await
-            .map_err(to_api)?;
+            .map_err(mobile_engine_error_to_api)?;
+        match result {
+            OperationResult::MobileDeviceRevoked(MobileDeviceRevokeOutcome::Revoked) => {}
+            OperationResult::MobileDeviceRevoked(MobileDeviceRevokeOutcome::NotFound) => {
+                return Err(ApiError::from(MobileSyncError::DeviceNotFound {
+                    device_id,
+                }));
+            }
+            _ => {
+                return Err(ApiError::internal(
+                    "engine returned an unexpected mobile-device revoke result",
+                ));
+            }
+        }
         Ok(Json(ApiEnvelope::now(MobileSyncActionResultDto {
             success: true,
         })))
@@ -636,29 +631,42 @@ async fn rotate_mobile_password_handler(
         custom_password = req.password.is_some(),
     );
     async move {
-        let facade = mobile_sync_facade(&state)?;
+        let requested_device_id = device_id.clone();
         let password = match req.password {
-            Some(password) => MobileDevicePasswordEdit::Custom(password),
-            None => MobileDevicePasswordEdit::AutoGenerate,
+            Some(password) => MobilePasswordUpdate::Custom(SecretString::new(password)),
+            None => MobilePasswordUpdate::AutoGenerate,
         };
-        let out = facade
-            .update_device(UpdateMobileDeviceInput {
-                device_id: MobileDeviceId::new(device_id),
-                label: None,
-                username: None,
-                password,
-            })
+        let result = state
+            .execute(Operation::UpdateMobileDevice(
+                EngineUpdateMobileDeviceInput {
+                    device_id,
+                    label: None,
+                    username: None,
+                    password,
+                },
+            ))
             .await
-            .map_err(to_api)?;
+            .map_err(mobile_engine_error_to_api)?;
+        let OperationResult::MobileDeviceUpdated(outcome) = result else {
+            return Err(ApiError::internal(
+                "engine returned an unexpected password-rotation result",
+            ));
+        };
+        let mut out = mobile_device_update_result(outcome, &requested_device_id)?;
         // Invariant: this path always passes `Custom`/`AutoGenerate`, never
         // `Keep`, so `update_device` always reissues a plaintext password. A
         // `None` here is therefore structurally unreachable; map it to an
         // honest internal error rather than panicking.
-        let password = out.password.clone().ok_or_else(|| {
-            ApiError::from(MobileSyncError::PersistenceFailed {
-                message: "rotate must reissue a plaintext password".to_string(),
-            })
-        })?;
+        let password = out
+            .password
+            .take()
+            .ok_or_else(|| {
+                ApiError::from(MobileSyncError::PersistenceFailed {
+                    message: "rotate must reissue a plaintext password".to_string(),
+                })
+            })?
+            .expose()
+            .to_string();
         Ok(Json(ApiEnvelope::now(to_rotate_dto(out, password))))
     }
     .instrument(span)
@@ -682,9 +690,16 @@ async fn get_mobile_sync_settings_handler(
 ) -> Result<Json<ApiEnvelope<MobileSyncSettingsViewDto>>, ApiError> {
     let span = info_span!("api.mobile_sync.get_settings");
     async move {
-        let facade = mobile_sync_facade(&state)?;
-        let view = facade.get_settings().await.map_err(to_api)?;
-        Ok(Json(ApiEnvelope::now(to_settings_view(view))))
+        let result = state
+            .execute(Operation::QueryMobileSyncSettings)
+            .await
+            .map_err(mobile_engine_error_to_api)?;
+        let OperationResult::MobileSyncSettings(view) = result else {
+            return Err(ApiError::internal(
+                "engine returned an unexpected mobile-sync settings result",
+            ));
+        };
+        Ok(Json(ApiEnvelope::now(to_settings_view(*view))))
     }
     .instrument(span)
     .await
@@ -710,17 +725,31 @@ async fn update_mobile_sync_settings_handler(
 ) -> Result<Json<ApiEnvelope<UpdateMobileSyncSettingsResultDto>>, ApiError> {
     let span = info_span!("api.mobile_sync.update_settings");
     async move {
-        let facade = mobile_sync_facade(&state)?;
-        let out = facade
-            .update_settings(UpdateMobileSyncSettingsInput {
-                enabled: req.enabled,
-                lan_listen_enabled: req.lan_listen_enabled,
-                lan_advertise_ip: req.lan_advertise_ip,
-                lan_advertise_base_url: req.lan_advertise_base_url,
-                lan_port: req.lan_port,
-            })
+        let result = state
+            .execute(Operation::UpdateMobileSyncSettings(Box::new(
+                MobileSyncSettingsPatch {
+                    enabled: req.enabled,
+                    lan_listen_enabled: req.lan_listen_enabled,
+                    lan_advertise_ip: req.lan_advertise_ip,
+                    lan_advertise_base_url: req.lan_advertise_base_url,
+                    lan_port: req.lan_port,
+                },
+            )))
             .await
-            .map_err(to_api)?;
+            .map_err(mobile_engine_error_to_api)?;
+        let OperationResult::MobileSyncSettingsUpdated(outcome) = result else {
+            return Err(ApiError::internal(
+                "engine returned an unexpected mobile-sync settings update result",
+            ));
+        };
+        let out = match outcome {
+            MobileSyncSettingsUpdateOutcome::Updated(out) => *out,
+            MobileSyncSettingsUpdateOutcome::Rejected { reason } => {
+                return Err(ApiError::from(MobileSyncError::InvalidLanParameter {
+                    reason,
+                }));
+            }
+        };
         Ok(Json(ApiEnvelope::now(to_update_result(out))))
     }
     .instrument(span)
@@ -744,10 +773,19 @@ async fn list_mobile_lan_interfaces_handler(
 ) -> Result<Json<ApiEnvelope<Vec<LanInterfaceViewDto>>>, ApiError> {
     let span = info_span!("api.mobile_sync.list_lan_interfaces");
     async move {
-        let facade = mobile_sync_facade(&state)?;
-        let interfaces = facade.list_lan_interfaces().await.map_err(to_api)?;
+        let interfaces = state.lan_interfaces.list().map_err(|_| {
+            ApiError::from(MobileSyncError::LanProbeFailed {
+                message: "LAN interface probe failed".to_string(),
+            })
+        })?;
         Ok(Json(ApiEnvelope::now(
-            interfaces.into_iter().map(to_lan_interface_view).collect(),
+            interfaces
+                .into_iter()
+                .map(|interface| LanInterfaceViewDto {
+                    name: interface.name,
+                    ipv4: interface.ipv4,
+                })
+                .collect(),
         )))
     }
     .instrument(span)
@@ -849,12 +887,10 @@ mod tests {
         assert_eq!(api.details.unwrap()["deviceId"], "did_abc");
     }
 
-    /// Facade error translation preserves the LABEL_MAX_LEN constant.
+    /// Engine outcome translation preserves the LABEL_MAX_LEN constant.
     #[test]
     fn label_too_long_translation_uses_constant_max() {
-        let api = ApiError::from(MobileSyncError::from(
-            RegisterMobileShortcutDeviceError::LabelTooLong,
-        ));
+        let api = ApiError::from(MobileSyncError::LabelTooLong { max: LABEL_MAX_LEN });
         assert_eq!(api.details.unwrap()["max"], LABEL_MAX_LEN);
     }
 }

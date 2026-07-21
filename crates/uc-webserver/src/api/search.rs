@@ -18,17 +18,14 @@ use serde::Deserialize;
 use tracing::{debug, info, instrument};
 use uc_daemon_contract::api::dto::envelope::ApiEnvelope;
 use uc_daemon_contract::constants::http_route;
-use uc_engine::internal::encryption::{
-    execute_query_encryption_state, QUERY_ENCRYPTION_STATE_FAILED_CODE,
-};
+use uc_engine::internal::encryption::QUERY_ENCRYPTION_STATE_FAILED_CODE;
 use uc_engine::internal::search::{
-    execute_query_search_status, execute_query_search_tags, execute_rebuild_search_index,
-    execute_search_entries, SEARCH_BAD_REQUEST_CODE, SEARCH_FAILED_CODE,
-    SEARCH_INDEX_NOT_READY_CODE, SEARCH_INDEX_REBUILDING_CODE, SEARCH_INDEX_UNAVAILABLE_CODE,
-    SEARCH_INVALID_QUERY_CODE, SEARCH_REBUILD_ALREADY_RUNNING_CODE,
-    SEARCH_SERVICE_UNAVAILABLE_CODE, SEARCH_SESSION_LOCKED_CODE,
+    SEARCH_BAD_REQUEST_CODE, SEARCH_FAILED_CODE, SEARCH_INDEX_NOT_READY_CODE,
+    SEARCH_INDEX_REBUILDING_CODE, SEARCH_INDEX_UNAVAILABLE_CODE, SEARCH_INVALID_QUERY_CODE,
+    SEARCH_REBUILD_ALREADY_RUNNING_CODE, SEARCH_SERVICE_UNAVAILABLE_CODE,
+    SEARCH_SESSION_LOCKED_CODE,
 };
-use uc_engine::{EngineError, OperationResult, SearchEntriesInput};
+use uc_engine::{EngineError, Operation, OperationResult, SearchEntriesInput};
 use utoipa::IntoParams;
 
 use crate::api::dto::error::{log_facade_failure, ApiError};
@@ -118,8 +115,8 @@ fn search_input_from_params(params: SearchQueryParams) -> SearchEntriesInput {
 
 /// Returns `Err(session_locked ApiError)` if the encryption session is not ready.
 async fn require_encryption_ready(state: &DaemonApiState) -> Result<(), ApiError> {
-    let app = state.app_facade_or_error()?;
-    let result = execute_query_encryption_state(app.as_ref())
+    let result = state
+        .execute(Operation::QueryEncryptionState)
         .await
         .map_err(|error| {
             let variant = if error.code() == QUERY_ENCRYPTION_STATE_FAILED_CODE {
@@ -213,14 +210,14 @@ async fn search_query_handler(
     // — must decrypt each row's render payload, so all require an unlocked
     // session. Returns 423 `session_locked` when locked.
     require_encryption_ready(&state).await?;
-    let app = state.app_facade_or_error()?;
     let input = search_input_from_params(params);
     debug!(
         has_query = !input.query.trim().is_empty(),
         "dispatching search query through engine"
     );
 
-    let result = execute_search_entries(app.as_ref(), input)
+    let result = state
+        .execute(Operation::SearchEntries(input))
         .await
         .map_err(|error| map_search_engine_error("search_query", error))?;
     let OperationResult::SearchPage(page) = result else {
@@ -279,8 +276,8 @@ async fn search_tags_handler(
     // distribution), so the whole endpoint is gated behind an unlocked session
     // — same 423 contract as `query`. No "builtin tags while locked" path.
     require_encryption_ready(&state).await?;
-    let app = state.app_facade_or_error()?;
-    let result = execute_query_search_tags(app.as_ref())
+    let result = state
+        .execute(Operation::QuerySearchTags)
         .await
         .map_err(|error| map_search_engine_error("search_tags", error))?;
     let OperationResult::SearchTags(views) = result else {
@@ -320,8 +317,8 @@ async fn search_status_handler(
 ) -> Result<Json<ApiEnvelope<SearchStatusData>>, ApiError> {
     require_encryption_ready(&state).await?;
 
-    let app = state.app_facade_or_error()?;
-    let result = execute_query_search_status(app.as_ref())
+    let result = state
+        .execute(Operation::QuerySearchStatus)
         .await
         .map_err(|error| map_search_engine_error("search_status", error))?;
     let OperationResult::SearchStatus(view) = result else {
@@ -366,8 +363,8 @@ async fn search_rebuild_handler(
 ) -> Result<(StatusCode, Json<ApiEnvelope<SearchRebuildAcceptedData>>), ApiError> {
     require_encryption_ready(&state).await?;
 
-    let app = state.app_facade_or_error()?;
-    let result = execute_rebuild_search_index(app.as_ref())
+    let result = state
+        .execute(Operation::RebuildSearchIndex)
         .await
         .map_err(|error| map_search_engine_error("search_rebuild", error))?;
     let OperationResult::SearchRebuildAccepted { accepted } = result else {

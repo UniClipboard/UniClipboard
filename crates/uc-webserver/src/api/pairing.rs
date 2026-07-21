@@ -10,10 +10,9 @@ use axum::{Json, Router};
 use utoipa;
 
 use uc_engine::internal::member::{
-    execute_remove_member, MEMBER_INVALID_INPUT_CODE, MEMBER_NOT_FOUND_CODE,
-    MEMBER_UNAVAILABLE_CODE,
+    MEMBER_INVALID_INPUT_CODE, MEMBER_NOT_FOUND_CODE, MEMBER_UNAVAILABLE_CODE,
 };
-use uc_engine::{EngineError, OperationResult, RemoveMemberInput};
+use uc_engine::{EngineError, Operation, OperationResult, RemoveMemberInput};
 
 use crate::api::dto::error::{log_facade_failure, ApiError};
 use crate::api::dto::pairing::UnpairDeviceRequest;
@@ -48,21 +47,18 @@ pub(crate) async fn handle_unpair_device(
     State(state): State<DaemonApiState>,
     Json(payload): Json<UnpairDeviceRequest>,
 ) -> Result<StatusCode, ApiError> {
-    let app = state.app_facade_or_error()?;
     let peer_id = payload.peer_id;
 
     // Slice 4 P5a-1: 取消配对 = 删除本机成员记录。libp2p 时代的
     // `PairingTransportPort::unpair_device` 通知对端的能力随 libp2p 一同下线；
     // 本地自治模型下不再广播给对端。对端残留的 member/trust 记录不影响
     // 重新配对——admit/trust use case 在重配时显式替换旧记录（#1023）。
-    let result = execute_remove_member(
-        app.as_ref(),
-        RemoveMemberInput {
+    let result = state
+        .execute(Operation::RemoveMember(RemoveMemberInput {
             device_id: peer_id.to_string(),
-        },
-    )
-    .await
-    .map_err(|error| map_unpair_engine_err(error, peer_id.as_str()))?;
+        }))
+        .await
+        .map_err(|error| map_unpair_engine_err(error, peer_id.as_str()))?;
     if !matches!(result, OperationResult::MemberRemoved) {
         return Err(ApiError::internal(
             "engine returned an unexpected member-removal result",

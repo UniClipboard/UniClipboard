@@ -28,15 +28,13 @@ use uc_daemon_contract::api::dto::envelope::{
 };
 use uc_daemon_contract::api::dto::error::ApiErrorResponse;
 use uc_daemon_contract::constants::http_route;
-use uc_engine::internal::capture::{
-    execute_capture_current_clipboard, CAPTURE_CURRENT_CLIPBOARD_FAILED_CODE,
-};
+use uc_engine::internal::capture::CAPTURE_CURRENT_CLIPBOARD_FAILED_CODE;
 use uc_engine::internal::restore::{
-    execute_restore_clipboard, RESTORE_CLIPBOARD_FAILED_CODE, RESTORE_CLIPBOARD_NOT_FOUND_CODE,
+    RESTORE_CLIPBOARD_FAILED_CODE, RESTORE_CLIPBOARD_NOT_FOUND_CODE,
     RESTORE_CLIPBOARD_UNAVAILABLE_CODE,
 };
 use uc_engine::{
-    ClipboardRestoreMode, ClipboardRestoreOutcome, EngineError, OperationResult,
+    ClipboardRestoreMode, ClipboardRestoreOutcome, EngineError, Operation, OperationResult,
     RestoreClipboardInput,
 };
 
@@ -206,11 +204,6 @@ async fn restore_clipboard_entry_handler(
     Path(entry_id): Path<String>,
     Query(query): Query<RestoreQuery>,
 ) -> impl IntoResponse {
-    let app = match state.app_facade_or_error() {
-        Ok(app) => app,
-        Err(error) => return error.into_response(),
-    };
-
     tracing::info!(
         entry_id = %entry_id,
         plain = query.plain,
@@ -233,14 +226,12 @@ async fn restore_clipboard_entry_handler(
         ClipboardRestoreMode::Standard
     };
 
-    match execute_restore_clipboard(
-        app.as_ref(),
-        RestoreClipboardInput {
+    match state
+        .execute(Operation::RestoreClipboard(RestoreClipboardInput {
             entry_id: entry_id.clone(),
             mode,
-        },
-    )
-    .await
+        }))
+        .await
     {
         Ok(OperationResult::ClipboardRestored(ClipboardRestoreOutcome::Restored)) => {
             tracing::info!(
@@ -382,12 +373,7 @@ fn restore_engine_error_to_response(
 async fn capture_current_clipboard_handler(
     State(state): State<DaemonApiState>,
 ) -> impl IntoResponse {
-    let app = match state.app_facade_or_error() {
-        Ok(app) => app,
-        Err(error) => return error.into_response(),
-    };
-
-    match execute_capture_current_clipboard(app.as_ref()).await {
+    match state.execute(Operation::CaptureCurrentClipboard).await {
         Ok(OperationResult::ClipboardCaptured { entry_id }) => {
             tracing::info!(entry_id = ?entry_id, "daemon capture-current request succeeded");
             let (status, body) = capture_current_success_response(entry_id);

@@ -4,12 +4,15 @@ use axum::extract::State;
 use axum::routing::{get, post, put};
 use axum::{Json, Router};
 use tracing::{info, instrument};
-use uc_application::facade::DiagnosticsFacadeError;
 use uc_daemon_contract::api::dto::diagnostics::{
     DebugStatusDto, LogExportRequestDto, LogExportResultDto, UpdateDebugModeRequestDto,
     UpdateDebugModeResultDto,
 };
 use uc_daemon_contract::api::dto::envelope::ApiEnvelope;
+use uc_engine::{
+    EngineError, EngineErrorCategory, ExportDiagnosticLogsInput, Operation, OperationResult,
+    UpdateDebugModeInput,
+};
 use utoipa;
 
 use crate::api::dto::error::{log_facade_failure, ApiError};
@@ -36,11 +39,15 @@ pub fn router() -> Router<DaemonApiState> {
 pub async fn get_debug_status_handler(
     State(state): State<DaemonApiState>,
 ) -> Result<Json<ApiEnvelope<DebugStatusDto>>, ApiError> {
-    let diagnostics = state.diagnostics;
-    let status = diagnostics
-        .debug_status()
+    let result = state
+        .execute(Operation::QueryDiagnostics)
         .await
-        .map_err(|err| diagnostics_error_to_api("get_debug_status", err))?;
+        .map_err(|error| diagnostics_error_to_api("get_debug_status", error))?;
+    let OperationResult::DiagnosticsStatus(status) = result else {
+        return Err(ApiError::internal(
+            "engine returned an unexpected diagnostics result",
+        ));
+    };
     Ok(Json(ApiEnvelope::now(DebugStatusDto {
         debug_mode: status.debug_mode,
         effective_log_profile: status.effective_log_profile,
@@ -64,11 +71,17 @@ pub async fn update_debug_mode_handler(
     State(state): State<DaemonApiState>,
     Json(payload): Json<UpdateDebugModeRequestDto>,
 ) -> Result<Json<ApiEnvelope<UpdateDebugModeResultDto>>, ApiError> {
-    let diagnostics = state.diagnostics;
-    let result = diagnostics
-        .set_debug_mode(payload.enabled)
+    let result = state
+        .execute(Operation::UpdateDebugMode(UpdateDebugModeInput {
+            enabled: payload.enabled,
+        }))
         .await
-        .map_err(|err| diagnostics_error_to_api("update_debug_mode", err))?;
+        .map_err(|error| diagnostics_error_to_api("update_debug_mode", error))?;
+    let OperationResult::DebugModeUpdated(result) = result else {
+        return Err(ApiError::internal(
+            "engine returned an unexpected debug-mode result",
+        ));
+    };
     info!(
         debug_mode = result.debug_mode,
         restart_required = result.restart_required,
@@ -96,40 +109,55 @@ pub async fn export_logs_handler(
     State(state): State<DaemonApiState>,
     Json(payload): Json<LogExportRequestDto>,
 ) -> Result<Json<ApiEnvelope<LogExportResultDto>>, ApiError> {
-    let diagnostics = state.diagnostics;
-    let result = diagnostics
-        .export_logs(payload.since_hours)
+    let (destination, path) = state
+        .file_handles
+        .register_diagnostic_output()
+        .map_err(|_| ApiError::internal("Downloads directory is unavailable"))?;
+    let result = state
+        .execute(Operation::ExportDiagnosticLogs(ExportDiagnosticLogsInput {
+            since_hours: payload.since_hours,
+            destination,
+        }))
         .await
-        .map_err(|err| diagnostics_error_to_api("export_logs", err))?;
+        .map_err(|error| diagnostics_error_to_api("export_logs", error))?;
+    let OperationResult::DiagnosticLogsExported(result) = result else {
+        return Err(ApiError::internal(
+            "engine returned an unexpected log-export result",
+        ));
+    };
+    let since = chrono::DateTime::from_timestamp_millis(result.since_unix_ms)
+        .ok_or_else(|| ApiError::internal("engine returned an invalid log-export timestamp"))?;
     info!(
-        path = %result.path,
         included_files = result.included_files.len(),
         "logs exported"
     );
     Ok(Json(ApiEnvelope::now(LogExportResultDto {
-        path: result.path,
+        path,
         included_files: result.included_files,
-        since: result.since,
+        since,
     })))
 }
 
-fn diagnostics_error_to_api(op: &'static str, err: DiagnosticsFacadeError) -> ApiError {
-    let (variant, api): (&'static str, ApiError) = match err {
-        DiagnosticsFacadeError::LoadSettings(msg) => (
-            "load_settings",
-            ApiError::internal(format!("failed to load settings: {msg}")),
+fn diagnostics_error_to_api(op: &'static str, error: EngineError) -> ApiError {
+    let (variant, api): (&'static str, ApiError) = match error.category() {
+        EngineErrorCategory::InvalidInput => (
+            "invalid_input",
+            ApiError::bad_request("invalid diagnostic export destination"),
         ),
-        DiagnosticsFacadeError::SaveSettings(msg) => (
-            "save_settings",
-            ApiError::internal(format!("failed to save settings: {msg}")),
+        EngineErrorCategory::Unauthorized => (
+            "unauthorized",
+            ApiError::unauthorized("diagnostic export destination is not writable"),
         ),
-        DiagnosticsFacadeError::DownloadsUnavailable => (
-            "downloads_unavailable",
-            ApiError::internal("Downloads directory is unavailable"),
+        EngineErrorCategory::Unavailable | EngineErrorCategory::DeadlineExceeded => (
+            "unavailable",
+            ApiError::service_unavailable("diagnostic export destination is unavailable"),
         ),
-        DiagnosticsFacadeError::Export(msg) => (
-            "export",
-            ApiError::internal(format!("failed to export logs: {msg}")),
+        EngineErrorCategory::InvalidState
+        | EngineErrorCategory::NotFound
+        | EngineErrorCategory::Conflict
+        | EngineErrorCategory::Internal => (
+            "operation_failed",
+            ApiError::internal("diagnostics operation failed"),
         ),
     };
     log_facade_failure("diagnostics", op, variant, api.status, &api.message);

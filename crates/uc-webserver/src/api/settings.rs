@@ -9,10 +9,13 @@ use axum::extract::State;
 use axum::routing::{get, post, put};
 use axum::{Json, Router};
 use tracing::{info, instrument};
-use uc_application::facade::settings as app_settings;
 use utoipa;
 
 use uc_daemon_contract::api::dto::envelope::ApiEnvelope;
+use uc_engine::{
+    EngineError, EngineErrorCategory, Operation, OperationResult, RelayProbeInput,
+    RelayProbeOutcome, SettingsUpdateOutcome,
+};
 
 use crate::api::dto::error::{log_facade_failure, ApiError};
 use crate::api::dto::settings::{
@@ -46,14 +49,18 @@ async fn get_settings_handler(
     State(state): State<DaemonApiState>,
 ) -> Result<Json<ApiEnvelope<SettingsDto>>, ApiError> {
     info!("get settings request received");
-    let settings = state.settings;
-    let settings = settings
-        .get()
+    let result = state
+        .execute(Operation::QuerySettings)
         .await
-        .map_err(|e| settings_error_to_api("get_settings", e))?;
+        .map_err(|error| settings_error_to_api("get_settings", error))?;
+    let OperationResult::Settings(settings) = result else {
+        return Err(ApiError::internal(
+            "engine returned an unexpected settings result",
+        ));
+    };
 
     info!("get settings succeeded");
-    Ok(Json(ApiEnvelope::now(settings.into_api_dto())))
+    Ok(Json(ApiEnvelope::now((*settings).into_api_dto())))
 }
 
 /// PUT /settings
@@ -96,7 +103,6 @@ async fn update_settings_handler(
     Json(payload): Json<SettingsPatchDto>,
 ) -> Result<Json<ApiEnvelope<SettingsUpdateResultDto>>, ApiError> {
     info!("update settings request received");
-    let settings = state.settings;
 
     // D-D1：`network` 段非空（任何字段变更）触发 restart_required = true。
     // network 段里的 iroh 相关字段都是 endpoint bind-time 常量，仍走
@@ -131,10 +137,21 @@ async fn update_settings_handler(
     // `restart_required` INTO the payload DTO, so the updated `SettingsView` is
     // no longer echoed back on the wire (the FE re-reads settings via GET). The
     // write must still happen for its side effects and error propagation.
-    settings
-        .update(payload.into_domain())
+    let result = state
+        .execute(Operation::UpdateSettings(Box::new(payload.into_domain())))
         .await
-        .map_err(|e| settings_error_to_api("update_settings", e))?;
+        .map_err(|error| settings_error_to_api("update_settings", error))?;
+    match result {
+        OperationResult::SettingsUpdated(SettingsUpdateOutcome::Updated(_)) => {}
+        OperationResult::SettingsUpdated(SettingsUpdateOutcome::Rejected { reason }) => {
+            return Err(ApiError::bad_request(reason));
+        }
+        _ => {
+            return Err(ApiError::internal(
+                "engine returned an unexpected settings-update result",
+            ));
+        }
+    }
 
     if let Some(enabled) = telemetry_update {
         uc_observability::set_telemetry_enabled(enabled);
@@ -177,14 +194,18 @@ async fn probe_relay_url_handler(
     Json(payload): Json<RelayProbeRequestDto>,
 ) -> Result<Json<ApiEnvelope<RelayProbeOutcomeDto>>, ApiError> {
     info!("relay probe request received");
-    let settings = state.settings;
-
-    let result = settings.probe_relay_url(&payload.url).await;
-    let outcome = probe_result_to_outcome(result)
-        .map_err(|other| settings_error_to_api("relay_probe", other))?;
+    let result = state
+        .execute(Operation::ProbeRelay(RelayProbeInput { url: payload.url }))
+        .await
+        .map_err(|error| settings_error_to_api("relay_probe", error))?;
+    let OperationResult::RelayProbed(outcome) = result else {
+        return Err(ApiError::internal(
+            "engine returned an unexpected relay-probe result",
+        ));
+    };
 
     info!("relay probe completed");
-    Ok(Json(ApiEnvelope::now(outcome)))
+    Ok(Json(ApiEnvelope::now(probe_outcome_to_dto(outcome))))
 }
 
 /// Translate a `probe_relay_url` facade result into the wire outcome.
@@ -194,77 +215,40 @@ async fn probe_relay_url_handler(
 /// Tauri command). A missing relay-diagnostic adapter (`RelayProbeUnavailable`)
 /// or any non-probe variant leaking through is a genuine server-side fault and
 /// is propagated as `Err` for the caller to map to a 500.
-fn probe_result_to_outcome(
-    result: Result<app_settings::RelayProbeReportView, app_settings::SettingsFacadeError>,
-) -> Result<RelayProbeOutcomeDto, app_settings::SettingsFacadeError> {
-    use app_settings::SettingsFacadeError as E;
-    Ok(match result {
-        Ok(report) => RelayProbeOutcomeDto::Success {
-            latency_ms: report.latency_ms,
-        },
-        Err(E::RelayProbeInvalidUrl(message)) => RelayProbeOutcomeDto::InvalidUrl { message },
-        Err(E::RelayProbeDns(message)) => RelayProbeOutcomeDto::Dns { message },
-        Err(E::RelayProbeTls(message)) => RelayProbeOutcomeDto::Tls { message },
-        Err(E::RelayProbeHandshake(message)) => RelayProbeOutcomeDto::Handshake { message },
-        Err(E::RelayProbeTimeout) => RelayProbeOutcomeDto::Timeout,
-        Err(E::RelayProbeOther(message)) => RelayProbeOutcomeDto::Other { message },
-        Err(other) => return Err(other),
-    })
+fn probe_outcome_to_dto(outcome: RelayProbeOutcome) -> RelayProbeOutcomeDto {
+    match outcome {
+        RelayProbeOutcome::Success { latency_ms } => {
+            RelayProbeOutcomeDto::Success { latency_ms }
+        }
+        RelayProbeOutcome::InvalidUrl { message } => RelayProbeOutcomeDto::InvalidUrl { message },
+        RelayProbeOutcome::Dns { message } => RelayProbeOutcomeDto::Dns { message },
+        RelayProbeOutcome::Tls { message } => RelayProbeOutcomeDto::Tls { message },
+        RelayProbeOutcome::Handshake { message } => {
+            RelayProbeOutcomeDto::Handshake { message }
+        }
+        RelayProbeOutcome::Timeout => RelayProbeOutcomeDto::Timeout,
+        RelayProbeOutcome::Other { message } => RelayProbeOutcomeDto::Other { message },
+    }
 }
 
-fn settings_error_to_api(op: &'static str, err: app_settings::SettingsFacadeError) -> ApiError {
-    use app_settings::SettingsFacadeError as E;
-    let (variant, api): (&'static str, ApiError) = match err {
-        E::Load(msg) => (
-            "load",
-            ApiError::internal(format!("failed to load settings: {msg}")),
+fn settings_error_to_api(op: &'static str, error: EngineError) -> ApiError {
+    let (variant, api): (&'static str, ApiError) = match error.category() {
+        EngineErrorCategory::InvalidInput => ("invalid_input", ApiError::bad_request("invalid settings")),
+        EngineErrorCategory::Unavailable | EngineErrorCategory::DeadlineExceeded => (
+            "unavailable",
+            ApiError::service_unavailable("settings service is unavailable"),
         ),
-        E::Save(msg) => (
-            "save",
-            ApiError::internal(format!("failed to save settings: {msg}")),
+        EngineErrorCategory::InvalidState
+        | EngineErrorCategory::Unauthorized
+        | EngineErrorCategory::NotFound
+        | EngineErrorCategory::Conflict
+        | EngineErrorCategory::Internal => (
+            "operation_failed",
+            ApiError::internal("settings operation failed"),
         ),
-        E::Invalid(msg) => ("invalid", ApiError::bad_request(msg)),
-        // These variants cannot come from the get/update handlers. The relay
-        // probe handler translates expected probe failures before reaching
-        // this mapper. Exhaustive matching keeps future facade changes visible
-        // and maps any misplaced probe error to a logged internal failure.
-        E::RelayProbeUnavailable => {
-            relay_probe_unexpected("relay_probe_unavailable", "Unavailable")
-        }
-        E::RelayProbeInvalidUrl(msg) => {
-            relay_probe_unexpected("relay_probe_invalid_url", &format!("InvalidUrl: {msg}"))
-        }
-        E::RelayProbeDns(msg) => relay_probe_unexpected("relay_probe_dns", &format!("Dns: {msg}")),
-        E::RelayProbeTls(msg) => relay_probe_unexpected("relay_probe_tls", &format!("Tls: {msg}")),
-        E::RelayProbeHandshake(msg) => {
-            relay_probe_unexpected("relay_probe_handshake", &format!("Handshake: {msg}"))
-        }
-        E::RelayProbeTimeout => relay_probe_unexpected("relay_probe_timeout", "Timeout"),
-        E::RelayProbeOther(msg) => {
-            relay_probe_unexpected("relay_probe_other", &format!("Other: {msg}"))
-        }
     };
     log_facade_failure("settings", op, variant, api.status, &api.message);
     api
-}
-
-/// Map an unexpected `RelayProbe*` variant to a logged 500. Reaching this means
-/// a probe-emitting use case is now plugged into a handler that doesn't model
-/// probe errors — bug worth tracing, not crashing the request thread.
-fn relay_probe_unexpected(variant: &'static str, detail: &str) -> (&'static str, ApiError) {
-    tracing::error!(
-        variant,
-        detail,
-        "settings_error_to_api received an unexpected RelayProbe* variant; \
-         facade wiring exposed a probe path through this handler"
-    );
-    (
-        variant,
-        ApiError::internal(
-            "settings facade returned an unexpected relay probe error \
-             through a non-probe endpoint",
-        ),
-    )
 }
 
 // All view↔DTO field mappings live in `crate::api::projection::settings`
@@ -273,12 +257,10 @@ fn relay_probe_unexpected(variant: &'static str, detail: &str) -> (&'static str,
 #[cfg(test)]
 mod tests {
     use super::*;
-    use app_settings::{RelayProbeReportView, SettingsFacadeError as E};
 
     #[test]
     fn probe_outcome_maps_success_with_latency() {
-        let out = probe_result_to_outcome(Ok(RelayProbeReportView { latency_ms: 42 }))
-            .expect("success must not be an error");
+        let out = probe_outcome_to_dto(RelayProbeOutcome::Success { latency_ms: 42 });
         assert_eq!(out, RelayProbeOutcomeDto::Success { latency_ms: 42 });
     }
 
@@ -286,57 +268,49 @@ mod tests {
     fn probe_outcome_maps_each_probe_failure_to_200_variant() {
         let cases = [
             (
-                E::RelayProbeInvalidUrl("bad".into()),
+                RelayProbeOutcome::InvalidUrl {
+                    message: "bad".into(),
+                },
                 RelayProbeOutcomeDto::InvalidUrl {
                     message: "bad".into(),
                 },
             ),
             (
-                E::RelayProbeDns("nxdomain".into()),
+                RelayProbeOutcome::Dns {
+                    message: "nxdomain".into(),
+                },
                 RelayProbeOutcomeDto::Dns {
                     message: "nxdomain".into(),
                 },
             ),
             (
-                E::RelayProbeTls("cert".into()),
+                RelayProbeOutcome::Tls {
+                    message: "cert".into(),
+                },
                 RelayProbeOutcomeDto::Tls {
                     message: "cert".into(),
                 },
             ),
             (
-                E::RelayProbeHandshake("nope".into()),
+                RelayProbeOutcome::Handshake {
+                    message: "nope".into(),
+                },
                 RelayProbeOutcomeDto::Handshake {
                     message: "nope".into(),
                 },
             ),
-            (E::RelayProbeTimeout, RelayProbeOutcomeDto::Timeout),
+            (RelayProbeOutcome::Timeout, RelayProbeOutcomeDto::Timeout),
             (
-                E::RelayProbeOther("boom".into()),
+                RelayProbeOutcome::Other {
+                    message: "boom".into(),
+                },
                 RelayProbeOutcomeDto::Other {
                     message: "boom".into(),
                 },
             ),
         ];
-        for (err, expected) in cases {
-            let out = probe_result_to_outcome(Err(err))
-                .expect("probe-failure variants are 200 outcomes, not errors");
-            assert_eq!(out, expected);
+        for (outcome, expected) in cases {
+            assert_eq!(probe_outcome_to_dto(outcome), expected);
         }
-    }
-
-    #[test]
-    fn probe_outcome_propagates_unavailable_as_error() {
-        // Adapter-not-wired is a server-side fault → Err so the handler maps 500.
-        let err = probe_result_to_outcome(Err(E::RelayProbeUnavailable))
-            .expect_err("RelayProbeUnavailable must propagate as an error, not a 200 outcome");
-        assert!(matches!(err, E::RelayProbeUnavailable));
-    }
-
-    #[test]
-    fn probe_outcome_propagates_non_probe_variant_as_error() {
-        // A non-probe variant leaking through this path is a wiring bug → Err.
-        let err = probe_result_to_outcome(Err(E::Load("db".into())))
-            .expect_err("non-probe variants must propagate as errors");
-        assert!(matches!(err, E::Load(_)));
     }
 }

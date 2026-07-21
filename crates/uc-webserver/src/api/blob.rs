@@ -8,12 +8,9 @@ use axum::http::{header, StatusCode};
 use axum::response::IntoResponse;
 use axum::routing::get;
 use axum::Router;
-use uc_engine::internal::resource::{
-    execute_read_blob, execute_read_entry_file, execute_read_thumbnail, BLOB_NOT_FOUND_CODE,
-    ENTRY_FILE_NOT_FOUND_CODE, RESOURCE_READ_FAILED_CODE, THUMBNAIL_NOT_FOUND_CODE,
-};
 use uc_engine::{
-    BlobResourceInput, EngineError, HistoryEntryInput, OperationResult, ThumbnailResourceInput,
+    BlobResourceInput, EngineError, EngineErrorCategory, HistoryEntryInput, Operation,
+    OperationResult, ThumbnailResourceInput,
 };
 
 use crate::api::dto::error::log_facade_failure;
@@ -55,17 +52,6 @@ async fn get_blob(
     State(state): State<DaemonApiState>,
     Path(blob_id): Path<String>,
 ) -> impl IntoResponse {
-    let app = match state.app_facade_or_error() {
-        Ok(app) => app,
-        Err(_) => {
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "daemon application facade unavailable",
-            )
-                .into_response();
-        }
-    };
-
     // D6 (ADR-008 P3-d) interim RSS guard: bound concurrent full-buffer blob
     // materialization until the streaming `BlobReaderPort` lands (see
     // `DaemonApiState::large_blob_semaphore` and the P0 perf spike §4). Held for
@@ -80,7 +66,10 @@ async fn get_blob(
         .await
         .ok();
 
-    match execute_read_blob(app.as_ref(), BlobResourceInput { blob_id }).await {
+    match state
+        .execute(Operation::ReadBlob(BlobResourceInput { blob_id }))
+        .await
+    {
         Ok(OperationResult::BlobRead(result)) => {
             let content_type = result
                 .media_type
@@ -94,7 +83,7 @@ async fn get_blob(
                 .into_response()
         }
         Ok(_) => unexpected_resource_result("get_blob"),
-        Err(error) => map_resource_error("get_blob", error, "blob not found", BLOB_NOT_FOUND_CODE),
+        Err(error) => map_resource_error("get_blob", error, "blob not found"),
     }
 }
 
@@ -128,24 +117,11 @@ async fn get_thumbnail(
     State(state): State<DaemonApiState>,
     Path(rep_id): Path<String>,
 ) -> impl IntoResponse {
-    let app = match state.app_facade_or_error() {
-        Ok(app) => app,
-        Err(_) => {
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "daemon application facade unavailable",
-            )
-                .into_response();
-        }
-    };
-
-    match execute_read_thumbnail(
-        app.as_ref(),
-        ThumbnailResourceInput {
+    match state
+        .execute(Operation::ReadThumbnail(ThumbnailResourceInput {
             representation_id: rep_id,
-        },
-    )
-    .await
+        }))
+        .await
     {
         Ok(OperationResult::ThumbnailRead(result)) => {
             let content_type = result
@@ -160,12 +136,7 @@ async fn get_thumbnail(
                 .into_response()
         }
         Ok(_) => unexpected_resource_result("get_thumbnail"),
-        Err(error) => map_resource_error(
-            "get_thumbnail",
-            error,
-            "thumbnail not found",
-            THUMBNAIL_NOT_FOUND_CODE,
-        ),
+        Err(error) => map_resource_error("get_thumbnail", error, "thumbnail not found"),
     }
 }
 
@@ -203,17 +174,6 @@ async fn get_entry_file(
     State(state): State<DaemonApiState>,
     Path(entry_id): Path<String>,
 ) -> impl IntoResponse {
-    let app = match state.app_facade_or_error() {
-        Ok(app) => app,
-        Err(_) => {
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "daemon application facade unavailable",
-            )
-                .into_response();
-        }
-    };
-
     // Mirror get_blob's interim RSS guard: bound concurrent full-buffer file
     // materialization until the streaming reader lands (ADR-008 P3-d / P5-1b).
     let _permit = state
@@ -223,7 +183,10 @@ async fn get_entry_file(
         .await
         .ok();
 
-    match execute_read_entry_file(app.as_ref(), HistoryEntryInput { entry_id }).await {
+    match state
+        .execute(Operation::ReadEntryFile(HistoryEntryInput { entry_id }))
+        .await
+    {
         Ok(OperationResult::EntryFileRead(result)) => {
             let content_type = result
                 .media_type
@@ -245,12 +208,7 @@ async fn get_entry_file(
                 .into_response()
         }
         Ok(_) => unexpected_resource_result("get_entry_file"),
-        Err(error) => map_resource_error(
-            "get_entry_file",
-            error,
-            "entry file not found",
-            ENTRY_FILE_NOT_FOUND_CODE,
-        ),
+        Err(error) => map_resource_error("get_entry_file", error, "entry file not found"),
     }
 }
 
@@ -273,15 +231,11 @@ fn map_resource_error(
     op: &'static str,
     error: EngineError,
     not_found_message: &'static str,
-    not_found_code: u32,
 ) -> axum::response::Response {
-    let (variant, status, message): (&'static str, StatusCode, &'static str) = match error.code() {
-        code if code == not_found_code => ("not_found", StatusCode::NOT_FOUND, not_found_message),
-        RESOURCE_READ_FAILED_CODE => (
-            "read_failed",
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "internal error",
-        ),
+    let (variant, status, message): (&'static str, StatusCode, &'static str) = match error
+        .category()
+    {
+        EngineErrorCategory::NotFound => ("not_found", StatusCode::NOT_FOUND, not_found_message),
         _ => (
             "internal",
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -316,15 +270,14 @@ mod tests {
     #[tokio::test]
     async fn engine_resource_errors_preserve_specific_not_found_responses() {
         for (code, message) in [
-            (BLOB_NOT_FOUND_CODE, "blob not found"),
-            (THUMBNAIL_NOT_FOUND_CODE, "thumbnail not found"),
-            (ENTRY_FILE_NOT_FOUND_CODE, "entry file not found"),
+            (1, "blob not found"),
+            (2, "thumbnail not found"),
+            (3, "entry file not found"),
         ] {
             let response = map_resource_error(
                 "resource_test",
                 EngineError::new(code, EngineErrorCategory::NotFound, false),
                 message,
-                code,
             );
             assert_eq!(response.status(), StatusCode::NOT_FOUND);
             let body = axum::body::to_bytes(response.into_body(), usize::MAX)
@@ -335,13 +288,8 @@ mod tests {
 
         let response = map_resource_error(
             "resource_test",
-            EngineError::new(
-                RESOURCE_READ_FAILED_CODE,
-                EngineErrorCategory::Internal,
-                false,
-            ),
+            EngineError::new(4, EngineErrorCategory::Internal, false),
             "blob not found",
-            BLOB_NOT_FOUND_CODE,
         );
         assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
         let body = axum::body::to_bytes(response.into_body(), usize::MAX)

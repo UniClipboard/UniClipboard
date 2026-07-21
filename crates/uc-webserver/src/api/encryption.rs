@@ -9,24 +9,21 @@ use tracing::{debug, info};
 use uc_daemon_contract::api::dto::envelope::ApiEnvelope;
 use uc_daemon_contract::constants::{ws_event, ws_topic};
 use uc_engine::internal::encryption::{
-    execute_lock_encryption, execute_query_encryption_state, execute_verify_secure_storage_access,
     LOCK_ENCRYPTION_FAILED_CODE, QUERY_ENCRYPTION_STATE_FAILED_CODE,
     VERIFY_SECURE_STORAGE_ACCESS_FAILED_CODE,
 };
 use uc_engine::internal::factory_reset::{
-    execute_factory_reset_space, FACTORY_RESET_FAILED_CODE, FACTORY_RESET_KEY_MATERIAL_FAILED_CODE,
+    FACTORY_RESET_FAILED_CODE, FACTORY_RESET_KEY_MATERIAL_FAILED_CODE,
     FACTORY_RESET_STORAGE_FAILED_CODE, FACTORY_RESET_UNAVAILABLE_CODE,
 };
-use uc_engine::internal::session_recovery::{
-    execute_recover_session, RECOVER_SESSION_RECEIVE_UNAVAILABLE_CODE,
-};
+use uc_engine::internal::session_recovery::RECOVER_SESSION_RECEIVE_UNAVAILABLE_CODE;
 use uc_engine::internal::unlock::{
-    execute_unlock_space, UNLOCK_SPACE_CORRUPTED_CODE, UNLOCK_SPACE_NOT_INITIALIZED_CODE,
+    UNLOCK_SPACE_CORRUPTED_CODE, UNLOCK_SPACE_NOT_INITIALIZED_CODE,
     UNLOCK_SPACE_SETUP_NOT_COMPLETED_CODE, UNLOCK_SPACE_UNAUTHORIZED_CODE,
 };
 use uc_engine::{
-    EngineError, EngineErrorCategory, OperationResult, RecoverSessionInput, SecretString,
-    UnlockSpaceInput,
+    EngineError, EngineErrorCategory, Operation, OperationResult, RecoverSessionInput,
+    SecretString, UnlockSpaceInput,
 };
 use utoipa;
 
@@ -223,8 +220,8 @@ fn map_recover_engine_err(err: EngineError) -> ApiError {
 async fn get_encryption_state_handler(
     State(state): State<DaemonApiState>,
 ) -> Result<Json<ApiEnvelope<EncryptionStateResponse>>, ApiError> {
-    let app = state.app_facade_or_error()?;
-    let result = execute_query_encryption_state(app.as_ref())
+    let result = state
+        .execute(Operation::QueryEncryptionState)
         .await
         .map_err(|error| {
             map_encryption_engine_error(
@@ -263,16 +260,12 @@ async fn get_encryption_state_handler(
 async fn unlock_handler(
     State(state): State<DaemonApiState>,
 ) -> Result<Json<ApiEnvelope<EncryptionActionResponse>>, ApiError> {
-    let app = state.app_facade_or_error()?;
-    let result = execute_recover_session(
-        app.as_ref(),
-        state.receive_readiness.as_ref(),
-        RecoverSessionInput {
+    let result = state
+        .execute(Operation::RecoverSession(RecoverSessionInput {
             allow_secure_storage_unlock: true,
-        },
-    )
-    .await
-    .map_err(map_recover_engine_err)?;
+        }))
+        .await
+        .map_err(map_recover_engine_err)?;
 
     match result {
         OperationResult::SessionRecovered { unlocked: true, .. } => {
@@ -324,16 +317,12 @@ async fn unlock_with_passphrase_handler(
     State(state): State<DaemonApiState>,
     Json(req): Json<UnlockSpaceRequest>,
 ) -> Result<Json<ApiEnvelope<UnlockSpaceResponse>>, ApiError> {
-    let app = state.app_facade_or_error()?;
-    let result = execute_unlock_space(
-        app.as_ref(),
-        state.receive_readiness.as_ref(),
-        UnlockSpaceInput {
+    let result = state
+        .execute(Operation::UnlockSpace(UnlockSpaceInput {
             passphrase: SecretString::new(req.passphrase),
-        },
-    )
-    .await
-    .map_err(map_unlock_engine_err)?;
+        }))
+        .await
+        .map_err(map_unlock_engine_err)?;
     let OperationResult::SpaceUnlocked { space_id } = result else {
         return Err(ApiError::internal(
             "engine returned an unexpected unlock result",
@@ -376,8 +365,8 @@ fn broadcast_session_ready(state: &DaemonApiState) {
 async fn lock_handler(
     State(state): State<DaemonApiState>,
 ) -> Result<Json<ApiEnvelope<EncryptionActionResponse>>, ApiError> {
-    let app = state.app_facade_or_error()?;
-    let result = execute_lock_encryption(app.as_ref(), state.receive_readiness.as_ref())
+    let result = state
+        .execute(Operation::LockEncryption)
         .await
         .map_err(|error| {
             map_encryption_engine_error(
@@ -415,8 +404,8 @@ async fn lock_handler(
 async fn factory_reset_handler(
     State(state): State<DaemonApiState>,
 ) -> Result<Json<ApiEnvelope<EncryptionActionResponse>>, ApiError> {
-    let app = state.app_facade_or_error()?;
-    let result = execute_factory_reset_space(app.as_ref(), state.receive_readiness.as_ref())
+    let result = state
+        .execute(Operation::FactoryResetSpace)
         .await
         .map_err(map_factory_reset_engine_err)?;
     if !matches!(result, OperationResult::SpaceFactoryReset) {
@@ -447,8 +436,8 @@ async fn factory_reset_handler(
 async fn verify_keychain_access_handler(
     State(state): State<DaemonApiState>,
 ) -> Result<Json<ApiEnvelope<KeychainAccessResponse>>, ApiError> {
-    let app = state.app_facade_or_error()?;
-    let result = execute_verify_secure_storage_access(app.as_ref())
+    let result = state
+        .execute(Operation::VerifySecureStorageAccess)
         .await
         .map_err(|error| {
             map_encryption_engine_error(

@@ -9,65 +9,43 @@
 //!
 //! ## fixture 范围（沿用 `settings_retention_smoke.rs` 模式）
 //!
-//! 不组装完整 axum Router + AppFacade，改为：
-//!   - PUT 模拟：`serde_json::from_str::<SettingsPatchDto>` →
-//!     `SettingsPatchDto::into_domain` → `SettingsFacade::update`
-//!   - GET 模拟：`SettingsFacade::get` → `SettingsView::into_api_dto`
-//!   - 持久化：`Mutex<Settings>` in-memory `SettingsPort`
+//! 不组装业务运行时；本测试只验证网页输入、新核心公开设置类型和网页输出之间
+//! 的转换。设置保存与字段保留规则由 `uc-engine` 和 `uc-application` 自身测试覆盖。
 
-use std::sync::{Arc, Mutex};
-
-use async_trait::async_trait;
 use serde_json::{json, Value};
-use uc_application::facade::settings::SettingsFacade;
-use uc_core::ports::SettingsPort;
-use uc_core::settings::model::Settings;
 use uc_daemon_contract::api::dto::settings::SettingsPatchDto;
+use uc_engine::{SettingsPatch, SettingsSummary};
 use uc_webserver::api::dto::settings::SettingsDto;
 use uc_webserver::api::projection::{IntoApiDto, IntoDomain};
 
-struct InMemorySettings {
-    settings: Mutex<Settings>,
+#[derive(Default)]
+struct SettingsBoundaryFixture {
+    current: SettingsSummary,
 }
 
-#[async_trait]
-impl SettingsPort for InMemorySettings {
-    async fn load(&self) -> anyhow::Result<Settings> {
-        Ok(self.settings.lock().unwrap().clone())
-    }
-
-    async fn save(&self, settings: &Settings) -> anyhow::Result<()> {
-        *self.settings.lock().unwrap() = settings.clone();
-        Ok(())
-    }
-}
-
-fn build_facade() -> SettingsFacade {
-    let port: Arc<dyn SettingsPort> = Arc::new(InMemorySettings {
-        settings: Mutex::new(Settings::default()),
-    });
-    SettingsFacade::new(port)
-}
-
-async fn simulate_put(facade: &SettingsFacade, body_json: &str) {
+fn simulate_put(fixture: &mut SettingsBoundaryFixture, body_json: &str) {
     let payload: SettingsPatchDto = serde_json::from_str(body_json).expect("parse PUT body");
-    facade
-        .update(payload.into_domain())
-        .await
-        .expect("settings update");
+    let patch: SettingsPatch = payload.into_domain();
+    if let Some(sync) = patch.sync {
+        if let Some(value) = sync.auto_sync {
+            fixture.current.sync.auto_sync = value;
+        }
+        if let Some(value) = sync.sync_on_restore {
+            fixture.current.sync.sync_on_restore = value;
+        }
+    }
 }
 
-async fn simulate_get(facade: &SettingsFacade) -> Value {
-    let view = facade.get().await.expect("settings get");
-    let dto: SettingsDto = view.into_api_dto();
+fn simulate_get(fixture: &SettingsBoundaryFixture) -> Value {
+    let dto: SettingsDto = fixture.current.clone().into_api_dto();
     serde_json::to_value(&dto).expect("serialize get")
 }
 
 /// Default is `false` (opt-in): a fresh GET must report `syncOnRestore: false`.
-#[tokio::test]
-async fn sync_on_restore_defaults_to_false_on_wire() {
-    let facade = build_facade();
-    let get = simulate_get(&facade).await;
+#[test]
+fn sync_on_restore_defaults_to_false_on_wire() {
+    let fixture = SettingsBoundaryFixture::default();
+    let get = simulate_get(&fixture);
     assert_eq!(
         get["sync"]["syncOnRestore"],
         Value::Bool(false),
@@ -79,14 +57,14 @@ async fn sync_on_restore_defaults_to_false_on_wire() {
 /// Exercises daemon-contract DTO → app SettingsPatch → apply branch → view →
 /// DTO. If any layer drops the field (notably the app-layer apply branch),
 /// the GET reads back `false` and this fails.
-#[tokio::test]
-async fn sync_on_restore_patch_round_trips() {
-    let facade = build_facade();
+#[test]
+fn sync_on_restore_patch_round_trips() {
+    let mut fixture = SettingsBoundaryFixture::default();
 
     let put_body = json!({ "sync": { "syncOnRestore": true } }).to_string();
-    simulate_put(&facade, &put_body).await;
+    simulate_put(&mut fixture, &put_body);
 
-    let get = simulate_get(&facade).await;
+    let get = simulate_get(&fixture);
     assert_eq!(
         get["sync"]["syncOnRestore"],
         Value::Bool(true),
@@ -96,24 +74,22 @@ async fn sync_on_restore_patch_round_trips() {
 
 /// A `sync` patch that omits `syncOnRestore` must not clobber the stored value:
 /// once turned on, an unrelated `sync` field change (e.g. `autoSync`) leaves it on.
-#[tokio::test]
-async fn omitting_sync_on_restore_preserves_stored_value() {
-    let facade = build_facade();
+#[test]
+fn omitting_sync_on_restore_preserves_stored_value() {
+    let mut fixture = SettingsBoundaryFixture::default();
 
     // Turn it on.
     simulate_put(
-        &facade,
+        &mut fixture,
         &json!({ "sync": { "syncOnRestore": true } }).to_string(),
-    )
-    .await;
+    );
     // Patch a sibling field without mentioning syncOnRestore.
     simulate_put(
-        &facade,
+        &mut fixture,
         &json!({ "sync": { "autoSync": false } }).to_string(),
-    )
-    .await;
+    );
 
-    let get = simulate_get(&facade).await;
+    let get = simulate_get(&fixture);
     assert_eq!(
         get["sync"]["syncOnRestore"],
         Value::Bool(true),

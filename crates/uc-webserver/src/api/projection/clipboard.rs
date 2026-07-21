@@ -3,8 +3,6 @@
 
 use base64::engine::general_purpose::STANDARD;
 use base64::Engine as _;
-use uc_application::facade::DispatchEntryOutcome;
-use uc_core::ports::DispatchAck;
 use uc_daemon_contract::api::dto::clipboard_command::{
     DispatchOutcomeResponse, PerTargetOutcomeDto, ResendResponse,
 };
@@ -16,6 +14,7 @@ use uc_engine::{
     DeliveryFailureReasonSummary, EntryDeliveryStatusSummary, EntryDeliveryTargetSummary,
     EntryDeliveryViewSummary, EntrySourceSummary, HistoryClearSummary, HistoryEntryDetailSummary,
     HistoryEntryResourceSummary, HistoryEntrySummary, HistoryStatsSummary, ResendReportSummary,
+    SendReportSummary, SendTargetOutcome,
 };
 
 use super::IntoApiDto;
@@ -166,19 +165,19 @@ impl IntoApiDto<DeliveryFailureReasonDto> for DeliveryFailureReasonSummary {
     }
 }
 
-impl IntoApiDto<DispatchOutcomeResponse> for DispatchEntryOutcome {
+impl IntoApiDto<DispatchOutcomeResponse> for SendReportSummary {
     fn into_api_dto(self) -> DispatchOutcomeResponse {
         let per_target = self
             .per_target
-            .iter()
+            .into_iter()
             .map(|t| {
-                let (outcome, error) = match &t.outcome {
-                    Ok(DispatchAck::Accepted) => ("accepted", None),
-                    Ok(DispatchAck::DuplicateIgnored) => ("duplicate", None),
-                    Err(msg) => ("error", Some(msg.clone())),
+                let (outcome, error) = match t.outcome {
+                    SendTargetOutcome::Accepted => ("accepted", None),
+                    SendTargetOutcome::Duplicate => ("duplicate", None),
+                    SendTargetOutcome::Error { message } => ("error", Some(message)),
                 };
                 PerTargetOutcomeDto {
-                    device_id: t.device_id.as_str().to_string(),
+                    device_id: t.device_id,
                     outcome: outcome.to_string(),
                     error,
                 }

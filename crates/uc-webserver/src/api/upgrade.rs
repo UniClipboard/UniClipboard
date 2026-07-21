@@ -15,24 +15,18 @@
 //! is NOT a wire change — only the bespoke wrapper structs are collapsed onto
 //! the generic envelope.
 //!
-//! The version string fed to the facade is `env!("CARGO_PKG_VERSION")` of
-//! `uc-webserver`, which is workspace-versioned alongside `uc-desktop`
-//! (the daemon binary). Both crates resolve to the same value.
+//! The running version is owned by the shared engine configuration.
 
 use axum::extract::State;
 use axum::routing::{get, post};
 use axum::{Json, Router};
-use uc_application::facade::{AcknowledgeUpgradeError, DetectUpgradeError};
 use uc_daemon_contract::api::dto::envelope::ApiEnvelope;
 use uc_daemon_contract::api::dto::upgrade::{AckUpgradePayload, UpgradeStatusDto};
+use uc_engine::{EngineError, Operation, OperationResult};
 
 use crate::api::dto::error::{log_facade_failure, ApiError};
 use crate::api::projection::upgrade::upgrade_status_to_dto;
 use crate::api::server::DaemonApiState;
-
-/// Build version reported to the upgrade facade. Workspace-versioned and
-/// matches the `uc-desktop` daemon's own `DAEMON_VERSION`.
-const SERVER_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 pub fn router() -> Router<DaemonApiState> {
     Router::new()
@@ -56,16 +50,17 @@ pub fn router() -> Router<DaemonApiState> {
 async fn get_upgrade_status_handler(
     State(state): State<DaemonApiState>,
 ) -> Result<Json<ApiEnvelope<UpgradeStatusDto>>, ApiError> {
-    let upgrade = state.upgrade;
-    let status = upgrade
-        .detect_on_startup(SERVER_VERSION)
+    let result = state
+        .execute(Operation::QueryUpgradeStatus)
         .await
         .map_err(detect_error_to_api)?;
+    let OperationResult::UpgradeStatus(status) = result else {
+        return Err(ApiError::internal(
+            "engine returned an unexpected upgrade-status result",
+        ));
+    };
 
-    Ok(Json(ApiEnvelope::now(upgrade_status_to_dto(
-        status,
-        SERVER_VERSION,
-    ))))
+    Ok(Json(ApiEnvelope::now(upgrade_status_to_dto(status))))
 }
 
 /// POST /upgrade/ack
@@ -84,33 +79,29 @@ async fn get_upgrade_status_handler(
 async fn ack_upgrade_handler(
     State(state): State<DaemonApiState>,
 ) -> Result<Json<ApiEnvelope<AckUpgradePayload>>, ApiError> {
-    let upgrade = state.upgrade;
-    upgrade
-        .acknowledge(SERVER_VERSION)
+    let result = state
+        .execute(Operation::AcknowledgeUpgrade)
         .await
         .map_err(ack_error_to_api)?;
+    let OperationResult::UpgradeAcknowledged { version } = result else {
+        return Err(ApiError::internal(
+            "engine returned an unexpected upgrade-acknowledgement result",
+        ));
+    };
 
     Ok(Json(ApiEnvelope::now(AckUpgradePayload {
-        acknowledged: SERVER_VERSION.to_string(),
+        acknowledged: version,
     })))
 }
 
-fn detect_error_to_api(err: DetectUpgradeError) -> ApiError {
-    use DetectUpgradeError as E;
-    let (variant, api): (&'static str, ApiError) = match err {
-        E::CurrentVersionMalformed(msg) => (
-            "current_version_malformed",
-            ApiError::internal(format!("current build version malformed: {msg}")),
-        ),
-        E::ReadCursor(msg) => (
-            "read_cursor",
-            ApiError::internal(format!("read app version cursor failed: {msg}")),
-        ),
-        E::ReadSetupStatus(msg) => (
-            "read_setup_status",
-            ApiError::internal(format!("read setup status failed: {msg}")),
-        ),
-    };
+fn detect_error_to_api(error: EngineError) -> ApiError {
+    tracing::error!(
+        code = error.code(),
+        category = %error.category(),
+        "upgrade status query failed"
+    );
+    let variant = "query_failed";
+    let api = ApiError::internal("failed to read upgrade status");
     log_facade_failure(
         "upgrade",
         "detect_on_startup",
@@ -121,18 +112,14 @@ fn detect_error_to_api(err: DetectUpgradeError) -> ApiError {
     api
 }
 
-fn ack_error_to_api(err: AcknowledgeUpgradeError) -> ApiError {
-    use AcknowledgeUpgradeError as E;
-    let (variant, api): (&'static str, ApiError) = match err {
-        E::CurrentVersionMalformed(msg) => (
-            "current_version_malformed",
-            ApiError::internal(format!("current build version malformed: {msg}")),
-        ),
-        E::WriteCursor(msg) => (
-            "write_cursor",
-            ApiError::internal(format!("write app version cursor failed: {msg}")),
-        ),
-    };
+fn ack_error_to_api(error: EngineError) -> ApiError {
+    tracing::error!(
+        code = error.code(),
+        category = %error.category(),
+        "upgrade acknowledgement failed"
+    );
+    let variant = "acknowledge_failed";
+    let api = ApiError::internal("failed to acknowledge upgrade");
     log_facade_failure("upgrade", "acknowledge", variant, api.status, &api.message);
     api
 }

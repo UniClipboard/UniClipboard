@@ -12,10 +12,9 @@ use axum::routing::{get, post};
 use axum::{Json, Router};
 use uc_daemon_contract::api::dto::envelope::ApiEnvelope;
 use uc_engine::internal::storage::{
-    execute_clear_storage_cache, execute_query_storage_stats, CLEAR_STORAGE_CACHE_FAILED_CODE,
-    QUERY_STORAGE_STATS_FAILED_CODE,
+    CLEAR_STORAGE_CACHE_FAILED_CODE, QUERY_STORAGE_STATS_FAILED_CODE,
 };
-use uc_engine::{EngineError, OperationResult};
+use uc_engine::{EngineError, Operation, OperationResult};
 
 // Storage DTOs relocated to the contract crate (ADR-008 §C.4). The handlers keep
 // their current JSON shape; both endpoints are non-breaking (`{ data, ts }`).
@@ -59,9 +58,8 @@ pub fn router() -> Router<DaemonApiState> {
 async fn get_storage_stats_handler(
     State(state): State<DaemonApiState>,
 ) -> Result<Json<ApiEnvelope<StorageStatsDto>>, ApiError> {
-    let app = state.app_facade_or_error()?;
-
-    let result = execute_query_storage_stats(app.as_ref())
+    let result = state
+        .execute(Operation::QueryStorageStats)
         .await
         .map_err(|error| map_storage_engine_err("storage_stats", error))?;
     let OperationResult::StorageStats(result) = result else {
@@ -114,9 +112,8 @@ async fn clear_cache_handler(
 
     debug_assert!(req.confirmed);
 
-    let app = state.app_facade_or_error()?;
-
-    let result = execute_clear_storage_cache(app.as_ref())
+    let result = state
+        .execute(Operation::ClearStorageCache)
         .await
         .map_err(|error| map_storage_engine_err("storage_clear_cache", error))?;
     let OperationResult::StorageCacheCleared { freed_bytes } = result else {

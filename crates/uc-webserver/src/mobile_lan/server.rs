@@ -7,8 +7,7 @@
 //! 的 `SocketAddr`(动态端口分配场景下与传入 bind 不一定相同)交回调用方,
 //! 由调用方(uc-desktop daemon)负责写 `endpoint_info.set(...)`。
 //!
-//! 调用方必须传入已装配好的 `Arc<MobileSyncFacade>` —— 路由层需要它做 Basic
-//! Auth 校验 + clipboard 业务对接。
+//! 调用方必须传入 daemon 唯一的共享 `Engine`。
 //!
 //! ## 生命周期
 //!
@@ -26,9 +25,10 @@ use tokio::sync::broadcast;
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
-use uc_application::facade::{FileTransferFacade, MobileSyncFacade};
 use uc_core::clipboard::ActiveClipboardState;
+use uc_engine::Engine;
 
+use crate::mobile_lan::core::MobileLanCore;
 use crate::mobile_lan::routes::build_router;
 
 /// `start_mobile_lan_server` 的成功返回值。
@@ -51,8 +51,29 @@ pub struct MobileLanServerHandle {
 pub async fn start_mobile_lan_server(
     bind: SocketAddr,
     cancel: CancellationToken,
-    facade: Arc<MobileSyncFacade>,
-    file_transfer: Option<Arc<FileTransferFacade>>,
+    engine: Arc<Engine>,
+    sse_source: broadcast::Sender<ActiveClipboardState>,
+) -> anyhow::Result<MobileLanServerHandle> {
+    start_server(bind, cancel, MobileLanCore::new(engine), sse_source).await
+}
+
+#[cfg(test)]
+pub(crate) async fn start_mobile_lan_test_server<C>(
+    bind: SocketAddr,
+    cancel: CancellationToken,
+    core: C,
+    sse_source: broadcast::Sender<ActiveClipboardState>,
+) -> anyhow::Result<MobileLanServerHandle>
+where
+    C: Into<MobileLanCore>,
+{
+    start_server(bind, cancel, core.into(), sse_source).await
+}
+
+async fn start_server(
+    bind: SocketAddr,
+    cancel: CancellationToken,
+    core: MobileLanCore,
     sse_source: broadcast::Sender<ActiveClipboardState>,
 ) -> anyhow::Result<MobileLanServerHandle> {
     let listener = tokio::net::TcpListener::bind(bind).await?;
@@ -62,14 +83,7 @@ pub async fn start_mobile_lan_server(
         "mobile sync LAN listener listening (SyncClipboard-compat: /SyncClipboard.json + /file/:dataName)"
     );
 
-    if file_transfer.is_none() {
-        tracing::warn!(
-            "mobile sync LAN listener: file_transfer facade not wired — \
-             transfer lifecycle events (status_changed / progress) will be absent \
-             for PUT /file uploads. Check daemon assembly if this is unexpected."
-        );
-    }
-    let router = build_router(facade, file_transfer, sse_source, cancel.clone());
+    let router = build_router(core, None, sse_source, cancel.clone());
     let join_handle = tokio::spawn(async move {
         axum::serve(listener, router)
             .with_graceful_shutdown(cancel.cancelled_owned())

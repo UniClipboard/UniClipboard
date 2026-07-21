@@ -1,7 +1,8 @@
 //! Desktop host preparation for `uc-engine`.
 
 use std::collections::HashMap;
-use std::io::{Read, Seek, SeekFrom};
+use std::fs::OpenOptions;
+use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -28,11 +29,16 @@ pub struct DesktopEngineHost {
     engine_config: EngineConfig,
     capabilities: HostCapabilities,
     storage_paths: uc_application::facade::AppPaths,
+    file_handles: DesktopHostFileHandles,
 }
 
 impl DesktopEngineHost {
     pub fn storage_paths(&self) -> &uc_application::facade::AppPaths {
         &self.storage_paths
+    }
+
+    pub fn file_handles(&self) -> DesktopHostFileHandles {
+        self.file_handles.clone()
     }
 
     pub fn into_engine_start(self) -> (EngineConfig, HostCapabilities) {
@@ -45,7 +51,8 @@ pub fn prepare_desktop_engine_host(config: &AppConfig) -> WiringResult<DesktopEn
     let paths = resolve_app_paths(&platform_dirs, config)?;
     let secure_storage = build_secure_storage_prelude(&paths)?.secure_storage;
     let (_, system_clipboard, clipboard_wiring) = create_desktop_system_clipboard()?.into_parts();
-    let file_registry = Arc::new(DesktopFileRegistry::default());
+    let file_handles = DesktopHostFileHandles::default();
+    let file_registry = Arc::clone(&file_handles.file_registry);
     let pending_snapshot = Arc::new(Mutex::new(None));
     let temporary_dir = paths.cache_dir.join("engine-tmp");
     std::fs::create_dir_all(&temporary_dir).map_err(|error| {
@@ -72,13 +79,14 @@ pub fn prepare_desktop_engine_host(config: &AppConfig) -> WiringResult<DesktopEn
             change_stream_taken: false,
             changes_enabled: clipboard_wiring == SystemClipboardWiring::Real,
         }),
-        Box::new(DesktopFiles { file_registry }),
+        Box::new(file_handles.clone()),
     );
 
     Ok(DesktopEngineHost {
         engine_config,
         capabilities,
         storage_paths: paths,
+        file_handles,
     })
 }
 
@@ -213,7 +221,7 @@ impl DesktopClipboard {
                 bytes,
             }),
             ClipboardPayloadSource::LocalFile { path, size_bytes } => {
-                let handle = self.file_registry.register(path.clone())?;
+                let handle = self.file_registry.register_input(path.clone())?;
                 let display_name = path
                     .file_name()
                     .and_then(|name| name.to_str())
@@ -315,20 +323,42 @@ impl Drop for DesktopClipboardChanges {
 #[derive(Default)]
 struct DesktopFileRegistry {
     next_id: AtomicU64,
-    paths: Mutex<HashMap<String, PathBuf>>,
+    paths: Mutex<HashMap<String, RegisteredDesktopFile>>,
 }
 
 impl DesktopFileRegistry {
-    fn register(&self, path: PathBuf) -> Result<HostFileHandle, HostCapabilityError> {
+    fn register_input(&self, path: PathBuf) -> Result<HostFileHandle, HostCapabilityError> {
+        self.register(path, DesktopFileMode::Input)
+    }
+
+    fn register_output(&self, path: PathBuf) -> Result<HostFileHandle, HostCapabilityError> {
+        OpenOptions::new()
+            .create(true)
+            .truncate(true)
+            .write(true)
+            .open(&path)
+            .map_err(|_| host_io_error("desktop output file creation failed"))?;
+        self.register(path, DesktopFileMode::Output)
+    }
+
+    fn register(
+        &self,
+        path: PathBuf,
+        mode: DesktopFileMode,
+    ) -> Result<HostFileHandle, HostCapabilityError> {
         let id = format!(
             "desktop-file-{}",
             self.next_id.fetch_add(1, Ordering::Relaxed) + 1
         );
-        self.paths().insert(id.clone(), path);
+        self.paths()
+            .insert(id.clone(), RegisteredDesktopFile { path, mode });
         Ok(HostFileHandle::new(id))
     }
 
-    fn resolve(&self, handle: &HostFileHandle) -> Result<PathBuf, HostCapabilityError> {
+    fn resolve(
+        &self,
+        handle: &HostFileHandle,
+    ) -> Result<RegisteredDesktopFile, HostCapabilityError> {
         self.paths().get(handle.as_str()).cloned().ok_or_else(|| {
             HostCapabilityError::new(
                 HostCapabilityErrorCategory::InvalidHandle,
@@ -337,7 +367,7 @@ impl DesktopFileRegistry {
         })
     }
 
-    fn paths(&self) -> MutexGuard<'_, HashMap<String, PathBuf>> {
+    fn paths(&self) -> MutexGuard<'_, HashMap<String, RegisteredDesktopFile>> {
         match self.paths.lock() {
             Ok(paths) => paths,
             Err(poisoned) => poisoned.into_inner(),
@@ -345,17 +375,40 @@ impl DesktopFileRegistry {
     }
 }
 
-struct DesktopFiles {
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum DesktopFileMode {
+    Input,
+    Output,
+}
+
+#[derive(Clone)]
+struct RegisteredDesktopFile {
+    path: PathBuf,
+    mode: DesktopFileMode,
+}
+
+#[derive(Clone, Default)]
+pub struct DesktopHostFileHandles {
     file_registry: Arc<DesktopFileRegistry>,
 }
 
-impl HostFileAccess for DesktopFiles {
+impl DesktopHostFileHandles {
+    pub fn register_input(&self, path: PathBuf) -> Result<HostFileHandle, HostCapabilityError> {
+        self.file_registry.register_input(path)
+    }
+
+    pub fn register_output(&self, path: PathBuf) -> Result<HostFileHandle, HostCapabilityError> {
+        self.file_registry.register_output(path)
+    }
+}
+
+impl HostFileAccess for DesktopHostFileHandles {
     fn metadata(&self, handle: &HostFileHandle) -> Result<HostFileMetadata, HostCapabilityError> {
-        let path = self.file_registry.resolve(handle)?;
-        let metadata =
-            std::fs::metadata(&path).map_err(|_| host_io_error("desktop file metadata failed"))?;
+        let file = self.file_registry.resolve(handle)?;
+        let metadata = std::fs::metadata(&file.path)
+            .map_err(|_| host_io_error("desktop file metadata failed"))?;
         Ok(HostFileMetadata {
-            display_name: display_name(&path),
+            display_name: display_name(&file.path),
             size_bytes: metadata.len(),
             mime_type: None,
         })
@@ -367,9 +420,15 @@ impl HostFileAccess for DesktopFiles {
         offset: u64,
         max_bytes: u32,
     ) -> Result<Vec<u8>, HostCapabilityError> {
-        let path = self.file_registry.resolve(handle)?;
-        let mut file =
-            std::fs::File::open(path).map_err(|_| host_io_error("desktop file open failed"))?;
+        let registered = self.file_registry.resolve(handle)?;
+        if registered.mode != DesktopFileMode::Input {
+            return Err(HostCapabilityError::new(
+                HostCapabilityErrorCategory::InvalidHandle,
+                "desktop output handle cannot be read",
+            ));
+        }
+        let mut file = std::fs::File::open(registered.path)
+            .map_err(|_| host_io_error("desktop file open failed"))?;
         file.seek(SeekFrom::Start(offset))
             .map_err(|_| host_io_error("desktop file seek failed"))?;
         let mut bytes = vec![0; max_bytes as usize];
@@ -382,21 +441,40 @@ impl HostFileAccess for DesktopFiles {
 
     fn write_chunk(
         &self,
-        _handle: &HostFileHandle,
-        _offset: u64,
-        _bytes: &[u8],
+        handle: &HostFileHandle,
+        offset: u64,
+        bytes: &[u8],
     ) -> Result<(), HostCapabilityError> {
-        Err(HostCapabilityError::new(
-            HostCapabilityErrorCategory::InvalidHandle,
-            "desktop export handle is not registered",
-        ))
+        let registered = self.file_registry.resolve(handle)?;
+        if registered.mode != DesktopFileMode::Output {
+            return Err(HostCapabilityError::new(
+                HostCapabilityErrorCategory::InvalidHandle,
+                "desktop input handle cannot be written",
+            ));
+        }
+        let mut file = OpenOptions::new()
+            .write(true)
+            .open(registered.path)
+            .map_err(|_| host_io_error("desktop output file open failed"))?;
+        file.seek(SeekFrom::Start(offset))
+            .map_err(|_| host_io_error("desktop output file seek failed"))?;
+        file.write_all(bytes)
+            .map_err(|_| host_io_error("desktop output file write failed"))
     }
 
-    fn finish_write(&self, _handle: &HostFileHandle) -> Result<(), HostCapabilityError> {
-        Err(HostCapabilityError::new(
-            HostCapabilityErrorCategory::InvalidHandle,
-            "desktop export handle is not registered",
-        ))
+    fn finish_write(&self, handle: &HostFileHandle) -> Result<(), HostCapabilityError> {
+        let registered = self.file_registry.resolve(handle)?;
+        if registered.mode != DesktopFileMode::Output {
+            return Err(HostCapabilityError::new(
+                HostCapabilityErrorCategory::InvalidHandle,
+                "desktop input handle cannot finish an output",
+            ));
+        }
+        OpenOptions::new()
+            .write(true)
+            .open(registered.path)
+            .and_then(|file| file.sync_all())
+            .map_err(|_| host_io_error("desktop output file flush failed"))
     }
 }
 
@@ -477,7 +555,7 @@ mod tests {
             .as_str()
             .contains(temp.path().to_string_lossy().as_ref()));
 
-        let files = DesktopFiles {
+        let files = DesktopHostFileHandles {
             file_registry: registry,
         };
         assert_eq!(files.metadata(handle).unwrap().size_bytes, 18);

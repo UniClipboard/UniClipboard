@@ -35,4 +35,6 @@ pub use subsystem::file_transfer::FileTransferLifecycle;
 pub use subsystem::sync_engine::SyncEngineAssembly;
 pub use wiring::deps::{BackgroundRuntimeDeps, WiredDependencies, WiringError, WiringResult};
 pub use wiring::desktop::wire_dependencies;
-pub use wiring::desktop_host::{prepare_desktop_engine_host, DesktopEngineHost};
+pub use wiring::desktop_host::{
+    prepare_desktop_engine_host, DesktopEngineHost, DesktopHostFileHandles,
+};

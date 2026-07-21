@@ -75,6 +75,7 @@ Running|Quiescing|Quiesced|Suspended -> ShuttingDown -> Stopped
 | `SetHistoryEntryFavorite` | 设置指定记录的收藏状态 |
 | `QueryHistoryStats` | 返回历史记录总数和总大小 |
 | `GetHistoryEntryResource` | 返回指定记录的资源标识、类型、大小及可用读取方式 |
+| `QueryEntryDelivery` | 返回指定记录的来源及每个可信设备的投递状态 |
 | `ClearHistory` | 清空全部历史，并返回删除数量和未删除条目标识 |
 | `QueryEntryReceiveProgress` | 查询指定远端接收任务的当前聚合进度 |
 | `ListEntryReceiveProgress` | 列出全部尚未结束的远端接收任务进度 |
@@ -111,6 +112,8 @@ Running|Quiescing|Quiesced|Suspended -> ShuttingDown -> Stopped
 `GetHistoryEntry` 只适用于可读取为文本的记录；记录不存在返回 `NotFound`，内容不支持文本详情返回 `Conflict`。`SetHistoryEntryFavorite` 对不存在记录同样返回 `NotFound`，不能把未修改任何记录当作成功。
 
 `DeleteHistoryEntry` 和 `ClearHistory` 由核心统一清理数据库记录、选择、缓存文件、搜索索引和 blob 引用，宿主不得自行复制清理顺序。批量清空发生部分失败时只返回失败条目标识，不返回底层异常、文件路径或用户内容。
+
+`QueryEntryDelivery` 由核心合并记录来源、当前可信设备集合和已发生的投递事实。来源明确区分本机、远端和无法追溯的历史记录；每个目标明确区分待处理、已送达、重复、不可达和失败。正常结果可以携带设备显示名和失败补充说明供界面展示，但这些内容不得进入调试输出或日志。记录不存在返回 `NotFound`，存储失败只返回脱敏错误。
 
 接收进度只包含记录编号、尝试编号、稳定状态、字节数和项目数，不包含文件名、路径或内容。`QueryEntryReceiveProgress` 在没有活动任务时返回空结果；`ListEntryReceiveProgress` 只返回尚未进入终态的任务。
 

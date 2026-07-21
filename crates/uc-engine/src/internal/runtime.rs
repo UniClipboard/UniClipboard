@@ -89,6 +89,7 @@ use crate::internal::setup_state::execute_query_setup_state;
 use crate::internal::storage::{execute_clear_storage_cache, execute_query_storage_stats};
 use crate::internal::sync_engine::SyncEngineAssembly;
 use crate::internal::unlock::execute_unlock_space;
+use crate::internal::upgrade::{execute_acknowledge_upgrade, execute_query_upgrade_status};
 use crate::{
     EngineConfig, EngineError, EngineErrorCategory, EntrySummary, HostCapabilities,
     HostClipboardChange, HostClipboardChangeStream, HostFileAccess, Operation, OperationResult,
@@ -114,6 +115,7 @@ const EXPORT_FAILED_CODE: u32 = 1275;
 const EXPORT_CHUNK_SIZE: usize = 64 * 1024;
 
 pub(crate) struct ProductionRuntime {
+    app_version: String,
     wired: WiredDependencies,
     paths: uc_application::facade::AppPaths,
     session: Arc<Mutex<Option<ProductionSession>>>,
@@ -301,6 +303,7 @@ impl ProductionRuntime {
         host: HostCapabilities,
         events: EventSender,
     ) -> Result<Self, EngineError> {
+        let app_version = config.app_version().to_string();
         let emitter = Arc::new(EngineHostEventEmitter::new(events));
         let HostWiring {
             wired,
@@ -337,6 +340,7 @@ impl ProductionRuntime {
         }
 
         Ok(Self {
+            app_version,
             wired,
             paths,
             session,
@@ -520,6 +524,20 @@ impl EngineRuntime for ProductionRuntime {
             }
             Operation::ProbeRelay(input) => {
                 execute_probe_relay(self.current_facade().await?.as_ref(), input).await
+            }
+            Operation::QueryUpgradeStatus => {
+                execute_query_upgrade_status(
+                    self.current_facade().await?.as_ref(),
+                    &self.app_version,
+                )
+                .await
+            }
+            Operation::AcknowledgeUpgrade => {
+                execute_acknowledge_upgrade(
+                    self.current_facade().await?.as_ref(),
+                    &self.app_version,
+                )
+                .await
             }
             Operation::QueryEncryptionState => {
                 execute_query_encryption_state(self.current_facade().await?.as_ref()).await

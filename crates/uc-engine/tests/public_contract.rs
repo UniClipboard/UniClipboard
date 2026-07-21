@@ -394,6 +394,41 @@ fn settings_contract_preserves_updates_and_probe_outcomes_without_debugging_user
 }
 
 #[test]
+fn upgrade_contract_uses_the_engine_version_and_preserves_stable_statuses() {
+    assert_eq!(
+        Operation::QueryUpgradeStatus.kind(),
+        OperationKind::QueryUpgradeStatus
+    );
+    assert_eq!(
+        Operation::AcknowledgeUpgrade.kind(),
+        OperationKind::AcknowledgeUpgrade
+    );
+
+    let statuses = [
+        uc_engine::UpgradeStatusSummary::FreshInstall {
+            current: "1.2.3".into(),
+        },
+        uc_engine::UpgradeStatusSummary::NoChange {
+            current: "1.2.3".into(),
+        },
+        uc_engine::UpgradeStatusSummary::Upgraded {
+            from: Some("1.1.0".into()),
+            to: "1.2.3".into(),
+        },
+        uc_engine::UpgradeStatusSummary::Downgraded {
+            from: "2.0.0".into(),
+            to: "1.2.3".into(),
+        },
+    ];
+    assert_eq!(statuses.len(), 4);
+
+    let result = OperationResult::UpgradeAcknowledged {
+        version: "1.2.3".into(),
+    };
+    assert!(format!("{result:?}").contains("upgrade_acknowledged"));
+}
+
+#[test]
 fn receive_progress_and_cancellation_have_stable_operations_and_results() {
     let operations = [
         (

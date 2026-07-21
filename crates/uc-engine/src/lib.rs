@@ -10,6 +10,7 @@ mod engine;
 mod event_stream;
 mod host;
 mod settings;
+mod upgrade;
 
 #[doc(hidden)]
 pub mod internal;
@@ -23,6 +24,7 @@ pub use host::{
     HostClipboardSnapshot, HostDirectories, HostFileAccess, HostFileMetadata, HostSecureStorage,
 };
 pub use settings::*;
+pub use upgrade::*;
 
 #[derive(Clone, PartialEq, Eq)]
 pub struct SecretString(Vec<u8>);
@@ -90,6 +92,8 @@ pub enum OperationKind {
     QuerySettings,
     UpdateSettings,
     ProbeRelay,
+    QueryUpgradeStatus,
+    AcknowledgeUpgrade,
     QueryEncryptionState,
     LockEncryption,
     VerifySecureStorageAccess,
@@ -147,6 +151,8 @@ impl fmt::Display for OperationKind {
             Self::QuerySettings => "query_settings",
             Self::UpdateSettings => "update_settings",
             Self::ProbeRelay => "probe_relay",
+            Self::QueryUpgradeStatus => "query_upgrade_status",
+            Self::AcknowledgeUpgrade => "acknowledge_upgrade",
             Self::QueryEncryptionState => "query_encryption_state",
             Self::LockEncryption => "lock_encryption",
             Self::VerifySecureStorageAccess => "verify_secure_storage_access",
@@ -206,6 +212,8 @@ pub enum Operation {
     QuerySettings,
     UpdateSettings(Box<SettingsPatch>),
     ProbeRelay(RelayProbeInput),
+    QueryUpgradeStatus,
+    AcknowledgeUpgrade,
     QueryEncryptionState,
     LockEncryption,
     VerifySecureStorageAccess,
@@ -263,6 +271,8 @@ impl Operation {
             Self::QuerySettings => OperationKind::QuerySettings,
             Self::UpdateSettings(_) => OperationKind::UpdateSettings,
             Self::ProbeRelay(_) => OperationKind::ProbeRelay,
+            Self::QueryUpgradeStatus => OperationKind::QueryUpgradeStatus,
+            Self::AcknowledgeUpgrade => OperationKind::AcknowledgeUpgrade,
             Self::QueryEncryptionState => OperationKind::QueryEncryptionState,
             Self::LockEncryption => OperationKind::LockEncryption,
             Self::VerifySecureStorageAccess => OperationKind::VerifySecureStorageAccess,
@@ -1157,6 +1167,10 @@ pub enum OperationResult {
     Settings(Box<SettingsSummary>),
     SettingsUpdated(SettingsUpdateOutcome),
     RelayProbed(RelayProbeOutcome),
+    UpgradeStatus(UpgradeStatusSummary),
+    UpgradeAcknowledged {
+        version: String,
+    },
     EncryptionState(EncryptionStateSummary),
     EncryptionLocked,
     SecureStorageAccess {
@@ -1240,6 +1254,12 @@ impl fmt::Debug for OperationResult {
             Self::RelayProbed(outcome) => debug
                 .field("kind", &"relay_probed")
                 .field("outcome", outcome),
+            Self::UpgradeStatus(status) => debug
+                .field("kind", &"upgrade_status")
+                .field("status", status),
+            Self::UpgradeAcknowledged { version } => debug
+                .field("kind", &"upgrade_acknowledged")
+                .field("version", version),
             Self::EncryptionState(state) => debug
                 .field("kind", &"encryption_state")
                 .field("state", state),

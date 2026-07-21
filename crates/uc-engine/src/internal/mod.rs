@@ -41,6 +41,7 @@ pub mod setup_state;
 pub mod storage;
 pub mod sync_engine;
 pub mod unlock;
+pub(crate) mod upgrade;
 pub mod wire;
 
 #[cfg(test)]

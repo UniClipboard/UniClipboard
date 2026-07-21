@@ -665,6 +665,32 @@ fn operation_response(result: OperationResult) -> Value {
                 "latency_ms": latency_ms,
             })
         }
+        OperationResult::UpgradeStatus(status) => {
+            let (outcome, from, to) = match status {
+                uc_engine::UpgradeStatusSummary::FreshInstall { current } => {
+                    ("fresh_install", None, current)
+                }
+                uc_engine::UpgradeStatusSummary::NoChange { current } => {
+                    ("no_change", None, current)
+                }
+                uc_engine::UpgradeStatusSummary::Upgraded { from, to } => ("upgraded", from, to),
+                uc_engine::UpgradeStatusSummary::Downgraded { from, to } => {
+                    ("downgraded", Some(from), to)
+                }
+            };
+            json!({
+                "ok": true,
+                "kind": "upgrade_status",
+                "outcome": outcome,
+                "from": from,
+                "to": to,
+            })
+        }
+        OperationResult::UpgradeAcknowledged { version } => json!({
+            "ok": true,
+            "kind": "upgrade_acknowledged",
+            "version": version,
+        }),
         OperationResult::EncryptionState(state) => json!({
             "ok": true,
             "kind": "encryption_state",
@@ -1033,6 +1059,23 @@ mod tests {
         ));
         assert_eq!(resend["accepted"], 1);
         assert_eq!(resend["pending"], 5);
+
+        let upgrade = operation_response(OperationResult::UpgradeStatus(
+            uc_engine::UpgradeStatusSummary::Upgraded {
+                from: Some("1.1.0".into()),
+                to: "1.2.0".into(),
+            },
+        ));
+        assert_eq!(
+            upgrade,
+            json!({
+                "ok": true,
+                "kind": "upgrade_status",
+                "outcome": "upgraded",
+                "from": "1.1.0",
+                "to": "1.2.0",
+            })
+        );
     }
 
     #[test]

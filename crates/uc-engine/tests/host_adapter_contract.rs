@@ -116,8 +116,9 @@ impl HostClipboard for StaticHostClipboard {
 
 #[test]
 fn clipboard_adapter_preserves_inline_representation_on_read() {
-    let clipboard =
-        uc_engine::internal::host_adapters::adapt_system_clipboard(Box::new(StaticHostClipboard {
+    let temp = tempfile::tempdir().unwrap();
+    let clipboard = uc_engine::internal::host_adapters::adapt_system_clipboard(
+        Box::new(StaticHostClipboard {
             snapshot: HostClipboardSnapshot {
                 observed_at_ms: 42,
                 representations: vec![HostClipboardRepresentation::Inline {
@@ -126,7 +127,10 @@ fn clipboard_adapter_preserves_inline_representation_on_read() {
                     bytes: vec![0, 1, 2, 255],
                 }],
             },
-        }));
+        }),
+        Arc::new(EmptyHostFiles),
+        temp.path().join("clipboard-imports"),
+    );
 
     let snapshot = clipboard.read_snapshot().unwrap();
     let representation = &snapshot.representations[0];
@@ -164,11 +168,14 @@ fn clipboard_adapter_preserves_inline_representation_on_write() {
     use uc_core::ids::{FormatId, RepresentationId};
 
     let written = Arc::new(Mutex::new(None));
-    let clipboard = uc_engine::internal::host_adapters::adapt_system_clipboard(Box::new(
-        RecordingHostClipboard {
+    let temp = tempfile::tempdir().unwrap();
+    let clipboard = uc_engine::internal::host_adapters::adapt_system_clipboard(
+        Box::new(RecordingHostClipboard {
             written: Arc::clone(&written),
-        },
-    ));
+        }),
+        Arc::new(EmptyHostFiles),
+        temp.path().join("clipboard-imports"),
+    );
     let snapshot = SystemClipboardSnapshot {
         ts_ms: 84,
         representations: vec![ObservedClipboardRepresentation::new(
@@ -193,6 +200,140 @@ fn clipboard_adapter_preserves_inline_representation_on_write() {
             bytes: vec![137, 80, 78, 71],
         }]
     );
+}
+
+#[test]
+fn clipboard_adapter_imports_file_handles_without_exposing_the_display_name_on_disk() {
+    use uc_core::clipboard::{
+        ClipboardPayloadSource, FileDisplayMetadata, FILE_DISPLAY_METADATA_MIME,
+    };
+
+    let temp = tempfile::tempdir().unwrap();
+    let import_root = temp.path().join("clipboard-imports");
+    let display_name = "private quarterly report.txt";
+    let bytes = vec![42; 70 * 1024];
+    let clipboard = uc_engine::internal::host_adapters::adapt_system_clipboard(
+        Box::new(StaticHostClipboard {
+            snapshot: HostClipboardSnapshot {
+                observed_at_ms: 91,
+                representations: vec![HostClipboardRepresentation::File {
+                    format: "files".into(),
+                    handle: HostFileHandle::new("clipboard-file"),
+                    display_name: display_name.into(),
+                    mime_type: Some("application/octet-stream".into()),
+                    size_bytes: bytes.len() as u64,
+                }],
+            },
+        }),
+        Arc::new(ReadableHostFiles {
+            handle: "clipboard-file".into(),
+            display_name: display_name.into(),
+            mime_type: Some("application/octet-stream".into()),
+            bytes: bytes.clone(),
+            state: Arc::new(RecordingHostFilesState::default()),
+        }),
+        import_root.clone(),
+    );
+
+    let snapshot = clipboard.read_snapshot().unwrap();
+    assert_eq!(snapshot.ts_ms, 91);
+    assert_eq!(snapshot.representations.len(), 2);
+    let file = &snapshot.representations[0];
+    let ClipboardPayloadSource::LocalFile { path, size_bytes } = file.source() else {
+        panic!("expected a local file representation");
+    };
+    assert_eq!(file.format_id.as_ref(), "files");
+    assert_eq!(
+        file.mime.as_ref().map(|mime| mime.as_str()),
+        Some("application/octet-stream")
+    );
+    assert_eq!(*size_bytes, bytes.len() as u64);
+    assert!(path.starts_with(&import_root));
+    assert!(!path.to_string_lossy().contains(display_name));
+    assert_eq!(std::fs::read(path).unwrap(), bytes);
+
+    let metadata_representation = &snapshot.representations[1];
+    assert_eq!(
+        metadata_representation
+            .mime
+            .as_ref()
+            .map(|mime| mime.as_str()),
+        Some(FILE_DISPLAY_METADATA_MIME)
+    );
+    let metadata = FileDisplayMetadata::decode(
+        metadata_representation
+            .inline_bytes()
+            .expect("display metadata must remain inline"),
+    )
+    .unwrap();
+    let storage_name = path.file_name().unwrap().to_string_lossy();
+    assert_eq!(metadata.display_name_for(&storage_name), Some(display_name));
+    assert!(!format!("{snapshot:?}").contains(display_name));
+}
+
+#[tokio::test]
+async fn engine_shutdown_removes_host_clipboard_imports() {
+    let _guard = ENGINE_TEST_LOCK.lock().await;
+    let temp = tempfile::tempdir().unwrap();
+    let private = temp.path().join("private");
+    let cache = temp.path().join("cache");
+    let temporary = temp.path().join("temporary");
+    for directory in [&private, &cache, &temporary] {
+        std::fs::create_dir_all(directory).unwrap();
+    }
+    let bytes = b"clipboard file content".to_vec();
+    let host = HostCapabilities::new(
+        HostDirectories::new(private, cache, temporary.clone()),
+        Box::new(MemoryHostSecureStorage::default()),
+        Box::new(StaticHostClipboard {
+            snapshot: HostClipboardSnapshot {
+                observed_at_ms: 97,
+                representations: vec![HostClipboardRepresentation::File {
+                    format: "files".into(),
+                    handle: HostFileHandle::new("clipboard-file"),
+                    display_name: "private report.txt".into(),
+                    mime_type: Some("application/octet-stream".into()),
+                    size_bytes: bytes.len() as u64,
+                }],
+            },
+        }),
+        Box::new(ReadableHostFiles {
+            handle: "clipboard-file".into(),
+            display_name: "private report.txt".into(),
+            mime_type: Some("application/octet-stream".into()),
+            bytes,
+            state: Arc::new(RecordingHostFilesState::default()),
+        }),
+    );
+    let (engine, _events) = Engine::start(EngineConfig::new("1.2.3"), host)
+        .await
+        .unwrap();
+    engine
+        .execute(uc_engine::Operation::CreateSpace(
+            uc_engine::CreateSpaceInput {
+                device_name: Some("Clipboard Device".into()),
+                passphrase: uc_engine::SecretString::new("correct horse"),
+                passphrase_confirmation: uc_engine::SecretString::new("correct horse"),
+            },
+        ))
+        .await
+        .unwrap();
+    assert!(matches!(
+        engine
+            .execute(uc_engine::Operation::CaptureCurrentClipboard)
+            .await
+            .unwrap(),
+        uc_engine::OperationResult::ClipboardCaptured { entry_id: Some(_) }
+    ));
+    let import_root = temporary.join("clipboard-imports");
+    assert!(std::fs::read_dir(&import_root).unwrap().next().is_some());
+
+    engine
+        .shutdown(std::time::Duration::from_secs(15))
+        .await
+        .unwrap();
+
+    assert!(!import_root.exists());
 }
 
 #[test]

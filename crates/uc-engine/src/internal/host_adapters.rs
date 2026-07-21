@@ -1,8 +1,14 @@
+use std::fs::OpenOptions;
+use std::io::Write;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use tracing::warn;
 use uc_core::app_dirs::{AppDirs, AppPaths};
 use uc_core::clipboard::{
-    normalize_wire_mime, ObservedClipboardRepresentation, SystemClipboardSnapshot,
+    normalize_wire_mime, FileDisplayMetadata, FileDisplayMetadataEntry,
+    ObservedClipboardRepresentation, SystemClipboardSnapshot, FILE_DISPLAY_METADATA_FORMAT,
+    FILE_DISPLAY_METADATA_MIME,
 };
 use uc_core::ids::{FormatId, RepresentationId};
 use uc_core::ports::{
@@ -12,7 +18,7 @@ use uc_core::ports::{
 
 use crate::event_stream::EventSender;
 use crate::internal::clipboard::SystemClipboardWiring;
-use crate::internal::deps::{BackgroundRuntimeDeps, WiredDependencies, WiringResult};
+use crate::internal::deps::{BackgroundRuntimeDeps, WiredDependencies, WiringError, WiringResult};
 use crate::internal::platform::SystemClipboardLayer;
 use crate::internal::wire::{wire_dependencies_from_inputs, CoreWiringInputs};
 use crate::{
@@ -58,6 +64,8 @@ pub fn adapt_secure_storage(host: Box<dyn HostSecureStorage>) -> Arc<dyn SecureS
 
 struct HostClipboardAdapter {
     host: Box<dyn HostClipboard>,
+    files: Arc<dyn HostFileAccess>,
+    import_root: PathBuf,
 }
 
 impl SystemClipboardPort for HostClipboardAdapter {
@@ -66,25 +74,35 @@ impl SystemClipboardPort for HostClipboardAdapter {
             .host
             .read()
             .map_err(|error| anyhow::anyhow!(error.to_string()))?;
-        let representations = snapshot
-            .representations
-            .into_iter()
-            .map(|representation| match representation {
-                HostClipboardRepresentation::Inline {
-                    format,
-                    mime_type,
-                    bytes,
-                } => Ok(ObservedClipboardRepresentation::new(
+        let mut representations = Vec::with_capacity(snapshot.representations.len());
+        let mut file_metadata = Vec::new();
+        let operation_dir = self
+            .import_file_representations(
+                snapshot.representations,
+                &mut representations,
+                &mut file_metadata,
+            )
+            .map_err(|error| anyhow::anyhow!("host clipboard file import failed: {error}"))?;
+
+        if !file_metadata.is_empty() {
+            let encoded = FileDisplayMetadata {
+                files: file_metadata,
+            }
+            .encode()
+            .map_err(|_| anyhow::anyhow!("host clipboard metadata encoding failed"));
+            match encoded {
+                Ok(bytes) => representations.push(ObservedClipboardRepresentation::new(
                     RepresentationId::new(),
-                    FormatId::from(format),
-                    normalize_wire_mime(mime_type),
+                    FormatId::from(FILE_DISPLAY_METADATA_FORMAT),
+                    normalize_wire_mime(Some(FILE_DISPLAY_METADATA_MIME.to_string())),
                     bytes,
                 )),
-                HostClipboardRepresentation::File { .. } => Err(anyhow::anyhow!(
-                    "host file clipboard representations require file access"
-                )),
-            })
-            .collect::<anyhow::Result<Vec<_>>>()?;
+                Err(error) => {
+                    cleanup_import_directory(operation_dir.as_deref());
+                    return Err(error);
+                }
+            }
+        }
 
         Ok(SystemClipboardSnapshot {
             ts_ms: snapshot.observed_at_ms,
@@ -124,8 +142,127 @@ impl SystemClipboardPort for HostClipboardAdapter {
     }
 }
 
-pub fn adapt_system_clipboard(host: Box<dyn HostClipboard>) -> Arc<dyn SystemClipboardPort> {
-    Arc::new(HostClipboardAdapter { host })
+impl HostClipboardAdapter {
+    fn import_file_representations(
+        &self,
+        host_representations: Vec<HostClipboardRepresentation>,
+        representations: &mut Vec<ObservedClipboardRepresentation>,
+        file_metadata: &mut Vec<FileDisplayMetadataEntry>,
+    ) -> anyhow::Result<Option<PathBuf>> {
+        let mut operation_dir: Option<PathBuf> = None;
+        for representation in host_representations {
+            let result = match representation {
+                HostClipboardRepresentation::Inline {
+                    format,
+                    mime_type,
+                    bytes,
+                } => {
+                    representations.push(ObservedClipboardRepresentation::new(
+                        RepresentationId::new(),
+                        FormatId::from(format),
+                        normalize_wire_mime(mime_type),
+                        bytes,
+                    ));
+                    Ok(())
+                }
+                HostClipboardRepresentation::File {
+                    format,
+                    handle,
+                    display_name,
+                    mime_type,
+                    size_bytes,
+                } => {
+                    let directory = match operation_dir.as_ref() {
+                        Some(directory) => directory.clone(),
+                        None => {
+                            let directory =
+                                self.import_root.join(RepresentationId::new().to_string());
+                            std::fs::create_dir_all(&directory)?;
+                            operation_dir = Some(directory.clone());
+                            directory
+                        }
+                    };
+                    let storage_name = RepresentationId::new().to_string();
+                    let path = directory.join(&storage_name);
+                    copy_host_clipboard_file(self.files.as_ref(), &handle, size_bytes, &path)?;
+                    representations.push(ObservedClipboardRepresentation::new_local_file(
+                        RepresentationId::new(),
+                        FormatId::from(format),
+                        normalize_wire_mime(mime_type),
+                        path,
+                        size_bytes,
+                    ));
+                    file_metadata.push(FileDisplayMetadataEntry {
+                        storage_name,
+                        display_name,
+                    });
+                    Ok(())
+                }
+            };
+            if let Err(error) = result {
+                cleanup_import_directory(operation_dir.as_deref());
+                return Err(error);
+            }
+        }
+        Ok(operation_dir)
+    }
+}
+
+const HOST_CLIPBOARD_FILE_CHUNK_SIZE: u32 = 64 * 1024;
+
+fn copy_host_clipboard_file(
+    files: &dyn HostFileAccess,
+    handle: &crate::HostFileHandle,
+    size_bytes: u64,
+    destination: &Path,
+) -> anyhow::Result<()> {
+    let metadata = files
+        .metadata(handle)
+        .map_err(|error| anyhow::anyhow!(error.to_string()))?;
+    if metadata.size_bytes != size_bytes {
+        return Err(anyhow::anyhow!("host clipboard file size changed"));
+    }
+    let mut output = OpenOptions::new()
+        .create_new(true)
+        .write(true)
+        .open(destination)?;
+    let mut offset = 0_u64;
+    while offset < size_bytes {
+        let requested = (size_bytes - offset).min(HOST_CLIPBOARD_FILE_CHUNK_SIZE as u64) as u32;
+        let chunk = files
+            .read_chunk(handle, offset, requested)
+            .map_err(|error| anyhow::anyhow!(error.to_string()))?;
+        if chunk.is_empty() || chunk.len() > requested as usize {
+            return Err(anyhow::anyhow!("host clipboard file read was incomplete"));
+        }
+        output.write_all(&chunk)?;
+        offset = offset
+            .checked_add(chunk.len() as u64)
+            .ok_or_else(|| anyhow::anyhow!("host clipboard file offset overflow"))?;
+    }
+    output.sync_all()?;
+    Ok(())
+}
+
+fn cleanup_import_directory(directory: Option<&Path>) {
+    let Some(directory) = directory else {
+        return;
+    };
+    if std::fs::remove_dir_all(directory).is_err() {
+        warn!("failed to remove incomplete host clipboard import");
+    }
+}
+
+pub fn adapt_system_clipboard(
+    host: Box<dyn HostClipboard>,
+    files: Arc<dyn HostFileAccess>,
+    import_root: PathBuf,
+) -> Arc<dyn SystemClipboardPort> {
+    Arc::new(HostClipboardAdapter {
+        host,
+        files,
+        import_root,
+    })
 }
 
 pub fn derive_app_paths(directories: &HostDirectories) -> AppPaths {
@@ -136,8 +273,16 @@ pub fn derive_app_paths(directories: &HostDirectories) -> AppPaths {
     })
 }
 
-fn adapt_system_clipboard_layer(host: Box<dyn HostClipboard>) -> SystemClipboardLayer {
-    let adapter = Arc::new(HostClipboardAdapter { host });
+fn adapt_system_clipboard_layer(
+    host: Box<dyn HostClipboard>,
+    files: Arc<dyn HostFileAccess>,
+    import_root: PathBuf,
+) -> SystemClipboardLayer {
+    let adapter = Arc::new(HostClipboardAdapter {
+        host,
+        files,
+        import_root,
+    });
     let clipboard: Arc<dyn PlatformClipboardPort> = adapter.clone();
     let system_clipboard: Arc<dyn SystemClipboardPort> = adapter;
     SystemClipboardLayer::new(clipboard, system_clipboard, SystemClipboardWiring::Real)
@@ -190,7 +335,8 @@ pub struct HostWiring {
     pub background: BackgroundRuntimeDeps,
     pub paths: AppPaths,
     pub temporary_dir: std::path::PathBuf,
-    pub files: Box<dyn HostFileAccess>,
+    pub clipboard_import_root: std::path::PathBuf,
+    pub files: Arc<dyn HostFileAccess>,
 }
 
 pub fn wire_host_capabilities(
@@ -208,6 +354,18 @@ pub(crate) fn wire_host_capabilities_with_emitter(
     let (directories, secure_storage, clipboard, files) = host.into_parts();
     let paths = derive_app_paths(&directories);
     let temporary_dir = directories.temporary().to_path_buf();
+    let clipboard_import_root = temporary_dir.join("clipboard-imports");
+    if let Err(error) = std::fs::remove_dir_all(&clipboard_import_root) {
+        if error.kind() != std::io::ErrorKind::NotFound {
+            return Err(WiringError::ClipboardInit(
+                "failed to clear stale host clipboard imports".into(),
+            ));
+        }
+    }
+    std::fs::create_dir_all(&clipboard_import_root).map_err(|_| {
+        WiringError::ClipboardInit("failed to create host clipboard import directory".into())
+    })?;
+    let files: Arc<dyn HostFileAccess> = Arc::from(files);
     let app_data_root = paths.app_data_root_dir.clone();
     let (wired, background) = wire_dependencies_from_inputs(CoreWiringInputs {
         paths: paths.clone(),
@@ -215,7 +373,11 @@ pub(crate) fn wire_host_capabilities_with_emitter(
         profile_id: uc_core::ids::ProfileId::from(config.profile_id()),
         legacy_iroh_identity_dir: app_data_root.join("iroh-identity"),
         iroh_blob_store_dir: app_data_root.join("iroh-blobs"),
-        system_clipboard: adapt_system_clipboard_layer(clipboard),
+        system_clipboard: adapt_system_clipboard_layer(
+            clipboard,
+            Arc::clone(&files),
+            clipboard_import_root.clone(),
+        ),
         analytics_sink: Arc::new(uc_observability_contract::analytics::NoopAnalyticsSink),
         analytics_facade: Arc::new(uc_observability_contract::analytics::NoopAnalyticsFacade),
         host_event_emitter,
@@ -226,6 +388,7 @@ pub(crate) fn wire_host_capabilities_with_emitter(
         background,
         paths,
         temporary_dir,
+        clipboard_import_root,
         files,
     })
 }

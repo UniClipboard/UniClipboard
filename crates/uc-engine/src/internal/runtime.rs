@@ -107,7 +107,8 @@ pub(crate) struct ProductionRuntime {
     task_registry: Arc<TaskRegistry>,
     file_transfer_lifecycle: Arc<FileTransferLifecycle>,
     _temporary_dir: std::path::PathBuf,
-    files: Box<dyn HostFileAccess>,
+    clipboard_import_root: std::path::PathBuf,
+    files: Arc<dyn HostFileAccess>,
 }
 
 struct ProductionSession {
@@ -135,6 +136,7 @@ impl ProductionRuntime {
             background,
             paths,
             temporary_dir,
+            clipboard_import_root,
             files,
         } = wire_host_capabilities_with_emitter(&config, host, emitter)
             .map_err(|error| startup_error("dependency wiring", error))?;
@@ -152,6 +154,7 @@ impl ProductionRuntime {
             task_registry,
             file_transfer_lifecycle,
             _temporary_dir: temporary_dir,
+            clipboard_import_root,
             files,
         })
     }
@@ -545,6 +548,11 @@ impl EngineRuntime for ProductionRuntime {
     async fn shutdown(&self, deadline: Duration) -> Result<(), EngineError> {
         self.suspend().await?;
         self.task_registry.shutdown(deadline).await;
+        if let Err(error) = std::fs::remove_dir_all(&self.clipboard_import_root) {
+            if error.kind() != std::io::ErrorKind::NotFound {
+                warn!(error = %error, "failed to remove host clipboard imports");
+            }
+        }
         Ok(())
     }
 }

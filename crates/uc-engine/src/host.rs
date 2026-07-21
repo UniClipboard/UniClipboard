@@ -102,6 +102,7 @@ pub enum HostClipboardRepresentation {
         bytes: Vec<u8>,
     },
     File {
+        format: String,
         handle: HostFileHandle,
         display_name: String,
         mime_type: Option<String>,
@@ -123,11 +124,13 @@ impl fmt::Debug for HostClipboardRepresentation {
                 .field("mime_type", mime_type)
                 .field("byte_len", &bytes.len()),
             Self::File {
+                format,
                 mime_type,
                 size_bytes,
                 ..
             } => debug
                 .field("kind", &"file")
+                .field("format", format)
                 .field("display_name", &"[REDACTED]")
                 .field("mime_type", mime_type)
                 .field("size_bytes", size_bytes),

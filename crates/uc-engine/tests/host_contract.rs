@@ -125,6 +125,7 @@ fn host_boundary_debug_output_redacts_user_content_and_details() {
                 bytes: b"private clipboard text".to_vec(),
             },
             HostClipboardRepresentation::File {
+                format: "files".into(),
                 handle: HostFileHandle::new("private-handle"),
                 display_name: "private.txt".into(),
                 mime_type: Some("text/plain".into()),

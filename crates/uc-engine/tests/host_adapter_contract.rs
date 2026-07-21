@@ -760,6 +760,48 @@ async fn engine_start_builds_a_resumable_real_session() {
         uc_engine::EngineErrorCategory::NotFound
     );
 
+    assert_eq!(
+        engine
+            .execute(uc_engine::Operation::FactoryResetSpace)
+            .await
+            .unwrap(),
+        uc_engine::OperationResult::SpaceFactoryReset
+    );
+    assert_eq!(
+        engine
+            .execute(uc_engine::Operation::QueryEncryptionState)
+            .await
+            .unwrap(),
+        uc_engine::OperationResult::EncryptionState(uc_engine::EncryptionStateSummary {
+            initialized: false,
+            session_ready: false,
+        })
+    );
+    assert!(matches!(
+        engine
+            .execute(uc_engine::Operation::QuerySetupState)
+            .await
+            .unwrap(),
+        uc_engine::OperationResult::SetupState(uc_engine::SetupStateSummary {
+            has_completed: false,
+            current_invitation: None,
+            ..
+        })
+    ));
+    assert!(matches!(
+        engine
+            .execute(uc_engine::Operation::CreateSpace(
+                uc_engine::CreateSpaceInput {
+                    device_name: Some("Reset Device".into()),
+                    passphrase: uc_engine::SecretString::new("new correct horse"),
+                    passphrase_confirmation: uc_engine::SecretString::new("new correct horse"),
+                },
+            ))
+            .await
+            .unwrap(),
+        uc_engine::OperationResult::SpaceCreated { .. }
+    ));
+
     engine.suspend().await.unwrap();
     engine.resume().await.unwrap();
     engine

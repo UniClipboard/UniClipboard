@@ -39,6 +39,7 @@ use crate::internal::encryption::{
 use crate::internal::facade::{
     build_app_facade_from_deps, AppFacadeAssemblyOptions, ClipboardRestoreAssembly,
 };
+use crate::internal::factory_reset::execute_factory_reset_space;
 use crate::internal::file_transfer::FileTransferLifecycle;
 use crate::internal::host_adapters::{
     wire_host_capabilities_with_emitter, EngineHostEventEmitter, HostWiring,
@@ -270,6 +271,13 @@ impl EngineRuntime for ProductionRuntime {
             }
             Operation::ResetSpace => {
                 execute_reset_space(self.current_facade().await?.as_ref()).await
+            }
+            Operation::FactoryResetSpace => {
+                execute_factory_reset_space(
+                    self.current_facade().await?.as_ref(),
+                    self.file_transfer_lifecycle.as_ref(),
+                )
+                .await
             }
             Operation::QuerySetupState => {
                 execute_query_setup_state(self.current_facade().await?.as_ref()).await

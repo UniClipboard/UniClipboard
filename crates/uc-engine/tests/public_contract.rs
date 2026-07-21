@@ -54,6 +54,10 @@ fn every_public_operation_has_a_stable_kind() {
         (Operation::IssueInvitation, OperationKind::IssueInvitation),
         (Operation::CancelInvitation, OperationKind::CancelInvitation),
         (Operation::ResetSpace, OperationKind::ResetSpace),
+        (
+            Operation::FactoryResetSpace,
+            OperationKind::FactoryResetSpace,
+        ),
         (Operation::QuerySetupState, OperationKind::QuerySetupState),
         (
             Operation::QueryMigrationProgress,
@@ -137,10 +141,12 @@ fn encryption_operations_expose_only_stable_state_and_outcomes() {
     });
     let locked = OperationResult::EncryptionLocked;
     let access = OperationResult::SecureStorageAccess { granted: true };
+    let factory_reset = OperationResult::SpaceFactoryReset;
 
     assert!(format!("{state:?}").contains("encryption_state"));
     assert!(format!("{locked:?}").contains("encryption_locked"));
     assert!(format!("{access:?}").contains("secure_storage_access"));
+    assert!(format!("{factory_reset:?}").contains("space_factory_reset"));
 }
 
 #[test]

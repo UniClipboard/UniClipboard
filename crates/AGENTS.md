@@ -1,6 +1,6 @@
 # PROJECT KNOWLEDGE BASE
 
-**Last refreshed:** 2026-07-22 (auto; 26 workspace crates)
+**Last refreshed:** 2026-07-22 (auto; 27 workspace crates)
 
 ## OVERVIEW
 
@@ -14,7 +14,7 @@ Rust monorepo workspace (root `Cargo.toml`) with strict hexagonal boundaries: li
 |  |- cli/                 # `uniclip` CLI (daemon client; heavy deps feature-gated)
 |  |- daemon/              # GUI-agnostic daemon runtime; hosts the `uniclipd` binary
 |  |- mobile-probe-core/   # Mobile acceptance host for uc-engine
-|- crates/               # Library crates (21)
+|- crates/               # Library crates (22)
 |  # -- Hex core (ADR-005) --
 |  |- uc-core/          # Domain models + Port traits only (no external deps)
 |  |- uc-application/   # Use cases / orchestrators (depends on uc-core ports only)
@@ -37,6 +37,7 @@ Rust monorepo workspace (root `Cargo.toml`) with strict hexagonal boundaries: li
 |  |- uc-content-hash/  # Shared content-identity hashing (blake3v1): the single algorithm every UniClipboard implementation (desktop core, mobile FFI) must use to compute a stable cross-device content hash. Depends on blake3 + std only.
 |  |- uc-engine/        # Stable cross-platform engine interface for UniClipboard hosts
 |  |- uc-engine-uniffi/ # UniFFI bindings for the public UniClipboard engine interface
+|  |- uc-ohos-napi/     # HarmonyOS N-API bindings for the public UniClipboard engine interface
 |  |- uc-observability-contract/ # Portable observability contracts shared by the core engine and host adapters
 |  |- uc-mobile-proto/  # Pure mobile-sync wire-protocol codec leaf crate (connect-uri)
 |  |- uc-mobile/        # UniFFI boundary crate exposing shared Rust to iOS/Android (mobile spike)

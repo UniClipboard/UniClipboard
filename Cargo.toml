@@ -17,6 +17,7 @@ members = [
   "crates/uc-infra",
   "crates/uc-engine",
   "crates/uc-engine-uniffi",
+  "crates/uc-ohos-napi",
   "crates/uc-observability",
   "crates/uc-observability-contract",
   "crates/uc-bootstrap",

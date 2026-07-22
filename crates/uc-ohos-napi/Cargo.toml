@@ -1,0 +1,26 @@
+[package]
+name = "uc-ohos-napi"
+version.workspace = true
+license.workspace = true
+edition = "2021"
+description = "HarmonyOS N-API bindings for the public UniClipboard engine interface"
+
+[lib]
+crate-type = ["lib", "cdylib"]
+
+[dependencies]
+napi = { version = "2.16.17", default-features = false, features = ["napi8", "tokio_rt"] }
+napi-derive = "2.16.13"
+tokio = { version = "1", features = ["sync", "time"] }
+uc-engine = { path = "../uc-engine" }
+zeroize = "1.8"
+
+[build-dependencies]
+napi-build = "2.1"
+
+[dev-dependencies]
+napi = { version = "2.16.17", default-features = false, features = ["noop"] }
+napi-derive = { version = "2.16.13", features = ["noop"] }
+
+[lints]
+workspace = true

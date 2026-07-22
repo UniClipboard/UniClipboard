@@ -18,6 +18,43 @@ XCFRAMEWORK_ZIP="$DIST_DIR/UniClipboardEngine.xcframework.zip"
 CHECKSUM_FILE="$DIST_DIR/UniClipboardEngine.checksum.txt"
 CARGO_LOCKED=()
 
+selective_strip_archive() {
+  local archive="$1"
+  local work_dir
+  local members
+  local duplicates
+  local object
+  local load_commands
+  local rebuilt
+  local strip_objects=()
+
+  work_dir="$(mktemp -d "${TMPDIR:-/tmp}/uc-engine-uniffi-strip.XXXXXX")"
+  members="$work_dir/members.txt"
+  rebuilt="$work_dir/rebuilt.a"
+  xcrun ar -t "$archive" > "$members"
+  duplicates="$(sort "$members" | uniq -d)"
+  if [[ -n "$duplicates" ]]; then
+    echo "Cannot safely repack archive with duplicate member names: $archive" >&2
+    rm -rf "$work_dir"
+    return 1
+  fi
+
+  (
+    cd "$work_dir"
+    xcrun ar -x "$archive"
+    for object in ./*.o; do
+      load_commands="$(otool -l "$object")"
+      if [[ "$load_commands" != *"sectname __eh_frame"* ]]; then
+        strip_objects+=("$object")
+      fi
+    done
+    xcrun strip -S "${strip_objects[@]}"
+    xcrun ar rcs "$rebuilt" ./*.o
+  )
+  mv "$rebuilt" "$archive"
+  rm -rf "$work_dir"
+}
+
 if [[ -n "${UC_ENGINE_UNIFFI_BUILD_LOCKED:-}" ]]; then
   CARGO_LOCKED+=(--locked)
 fi
@@ -56,9 +93,9 @@ cp "$TARGET_DIR/aarch64-apple-ios-sim/release/libuc_engine_uniffi.a" \
   "$SIMULATOR_ARM64_DIR/"
 cp "$TARGET_DIR/x86_64-apple-ios/release/libuc_engine_uniffi.a" \
   "$SIMULATOR_X86_64_DIR/"
-xcrun strip -S "$DEVICE_DIR/libuc_engine_uniffi.a"
-xcrun strip -S "$SIMULATOR_ARM64_DIR/libuc_engine_uniffi.a"
-xcrun strip -S "$SIMULATOR_X86_64_DIR/libuc_engine_uniffi.a"
+selective_strip_archive "$DEVICE_DIR/libuc_engine_uniffi.a"
+selective_strip_archive "$SIMULATOR_ARM64_DIR/libuc_engine_uniffi.a"
+selective_strip_archive "$SIMULATOR_X86_64_DIR/libuc_engine_uniffi.a"
 lipo -create \
   "$SIMULATOR_ARM64_DIR/libuc_engine_uniffi.a" \
   "$SIMULATOR_X86_64_DIR/libuc_engine_uniffi.a" \

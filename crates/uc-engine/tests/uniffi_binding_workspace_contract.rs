@@ -74,13 +74,14 @@ fn uniffi_binding_owns_runnable_ios_and_android_packaging() {
         "aarch64-apple-ios-sim",
         "x86_64-apple-ios",
         "--language swift",
-        "strip -S",
+        "selective_strip_archive",
         "xcodebuild -create-xcframework",
         "UniClipboardEngine.xcframework.zip",
         "UniClipboardEngine.checksum.txt",
     ] {
         assert!(ios.contains(required), "iOS packaging missing {required}");
     }
+    assert!(!ios.contains("xcrun strip -S \"$DEVICE_DIR"));
     for required in [
         "cargo ndk",
         "arm64-v8a",

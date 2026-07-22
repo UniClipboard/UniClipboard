@@ -1,12 +1,15 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use napi::bindgen_prelude::Buffer;
 use napi::Status;
 use napi_derive::napi;
 use uc_engine::{
-    CreateSpaceInput, Engine, EngineConfig, EngineError, EngineEvent, EngineState, EventStream,
+    ClipboardRestoreMode, ClipboardRestoreOutcome, CreateSpaceInput, Engine, EngineConfig,
+    EngineError, EngineEvent, EngineState, EventStream, ExportEntryInput, HostFileHandle,
     InvitationAvailability, JoinSpaceInput, Operation, OperationResult, OperationTerminal,
-    RefreshReason, SecretString, SendReportSummary, SendTextInput,
+    RefreshReason, RestoreClipboardInput, SecretString, SendFilesInput, SendImageInput,
+    SendReportSummary, SendTextInput,
 };
 use zeroize::Zeroizing;
 
@@ -148,6 +151,118 @@ impl OhEngine {
     }
 
     #[napi]
+    pub async fn send_image(
+        &self,
+        bytes: Buffer,
+        mime_type: String,
+        target_devices: Vec<String>,
+    ) -> napi::Result<OhSendReport> {
+        let bytes = Zeroizing::new(bytes.to_vec());
+        let result = self
+            .engine
+            .execute(Operation::SendImage(SendImageInput {
+                bytes: bytes.to_vec(),
+                mime_type,
+                target_devices,
+            }))
+            .await
+            .map_err(engine_error)?;
+        match result {
+            OperationResult::EntrySent(report) => send_report(report),
+            _ => Err(unexpected_result()),
+        }
+    }
+
+    #[napi]
+    pub async fn send_files(
+        &self,
+        file_handles: Vec<String>,
+        target_devices: Vec<String>,
+    ) -> napi::Result<OhSendReport> {
+        let file_handles = Zeroizing::new(file_handles);
+        let result = self
+            .engine
+            .execute(Operation::SendFiles(SendFilesInput {
+                files: file_handles
+                    .iter()
+                    .cloned()
+                    .map(HostFileHandle::new)
+                    .collect(),
+                target_devices,
+            }))
+            .await
+            .map_err(engine_error)?;
+        match result {
+            OperationResult::EntrySent(report) => send_report(report),
+            _ => Err(unexpected_result()),
+        }
+    }
+
+    #[napi]
+    pub async fn capture_current_clipboard(&self) -> napi::Result<Option<String>> {
+        let result = self
+            .engine
+            .execute(Operation::CaptureCurrentClipboard)
+            .await
+            .map_err(engine_error)?;
+        match result {
+            OperationResult::ClipboardCaptured { entry_id } => Ok(entry_id),
+            _ => Err(unexpected_result()),
+        }
+    }
+
+    #[napi]
+    pub async fn restore_clipboard(&self, entry_id: String, mode: String) -> napi::Result<String> {
+        let mode = match mode.as_str() {
+            "standard" => ClipboardRestoreMode::Standard,
+            "plain_text" => ClipboardRestoreMode::PlainText,
+            "file_paths" => ClipboardRestoreMode::FilePaths,
+            _ => return Err(invalid_restore_mode()),
+        };
+        let result = self
+            .engine
+            .execute(Operation::RestoreClipboard(RestoreClipboardInput {
+                entry_id,
+                mode,
+            }))
+            .await
+            .map_err(engine_error)?;
+        match result {
+            OperationResult::ClipboardRestored(ClipboardRestoreOutcome::Restored) => {
+                Ok("restored".to_owned())
+            }
+            OperationResult::ClipboardRestored(ClipboardRestoreOutcome::PayloadUnavailable {
+                ..
+            }) => Ok("payload_unavailable".to_owned()),
+            OperationResult::ClipboardRestored(ClipboardRestoreOutcome::NotApplicable {
+                ..
+            }) => Ok("not_applicable".to_owned()),
+            _ => Err(unexpected_result()),
+        }
+    }
+
+    #[napi]
+    pub async fn export_entry(
+        &self,
+        entry_id: String,
+        destination_handle: String,
+    ) -> napi::Result<()> {
+        let destination_handle = Zeroizing::new(destination_handle);
+        let result = self
+            .engine
+            .execute(Operation::ExportEntry(ExportEntryInput {
+                entry_id,
+                destination: HostFileHandle::new(destination_handle.to_string()),
+            }))
+            .await
+            .map_err(engine_error)?;
+        match result {
+            OperationResult::EntryExported => Ok(()),
+            _ => Err(unexpected_result()),
+        }
+    }
+
+    #[napi]
     pub async fn suspend(&self) -> napi::Result<()> {
         self.engine.suspend().await.map_err(engine_error)
     }
@@ -279,6 +394,10 @@ fn map_event_error(error: EngineError, mapped: &mut OhEngineEvent) {
 
 fn unexpected_result() -> napi::Error {
     napi::Error::new(Status::GenericFailure, "UC_ENGINE:UNEXPECTED_RESULT")
+}
+
+fn invalid_restore_mode() -> napi::Error {
+    napi::Error::new(Status::InvalidArg, "OHOS_INVALID_CLIPBOARD_RESTORE_MODE")
 }
 
 #[cfg(test)]

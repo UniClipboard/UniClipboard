@@ -24,6 +24,29 @@ pub struct OhHost {
     pub secure_storage_get: ThreadsafeFunction<String, ErrorStrategy::Fatal>,
     pub secure_storage_set: ThreadsafeFunction<(String, Buffer), ErrorStrategy::Fatal>,
     pub secure_storage_delete: ThreadsafeFunction<String, ErrorStrategy::Fatal>,
+    pub file_metadata: ThreadsafeFunction<String, ErrorStrategy::Fatal>,
+    pub file_read_chunk: ThreadsafeFunction<(String, String, u32), ErrorStrategy::Fatal>,
+    pub file_write_chunk: ThreadsafeFunction<(String, String, Buffer), ErrorStrategy::Fatal>,
+    pub file_finish_write: ThreadsafeFunction<String, ErrorStrategy::Fatal>,
+    pub clipboard_read: ThreadsafeFunction<(), ErrorStrategy::Fatal>,
+    pub clipboard_write: ThreadsafeFunction<OhClipboardSnapshot, ErrorStrategy::Fatal>,
+}
+
+#[napi(object)]
+pub struct OhClipboardRepresentation {
+    pub kind: String,
+    pub format: String,
+    pub mime_type: Option<String>,
+    pub bytes: Option<Buffer>,
+    pub handle: Option<String>,
+    pub display_name: Option<String>,
+    pub size_bytes: Option<String>,
+}
+
+#[napi(object)]
+pub struct OhClipboardSnapshot {
+    pub observed_at_ms: f64,
+    pub representations: Vec<OhClipboardRepresentation>,
 }
 
 #[napi(object)]

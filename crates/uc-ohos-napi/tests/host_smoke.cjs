@@ -14,6 +14,39 @@ async function main() {
 
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'uc-ohos-napi-'));
   const values = new Map();
+  const files = new Map([
+    [
+      'input-file-1',
+      {
+        displayName: 'private-name.txt',
+        mimeType: 'text/plain',
+        bytes: Buffer.from('private HarmonyOS binding file'),
+        finished: false,
+      },
+    ],
+    [
+      'output-file-1',
+      {
+        displayName: 'private-export.txt',
+        mimeType: 'text/plain',
+        bytes: Buffer.alloc(0),
+        finished: false,
+      },
+    ],
+  ]);
+  const privateClipboardText = Buffer.from('private HarmonyOS clipboard text');
+  let clipboard = {
+    observedAtMs: 1_700_000_000_000,
+    representations: [
+      {
+        kind: 'inline',
+        format: 'text/plain',
+        mimeType: 'text/plain',
+        bytes: privateClipboardText,
+      },
+    ],
+  };
+  const clipboardWrites = [];
   const host = {
     privateDataDirectory: path.join(root, 'data'),
     cacheDirectory: path.join(root, 'cache'),
@@ -26,6 +59,40 @@ async function main() {
     },
     secureStorageDelete(key) {
       values.delete(key);
+    },
+    fileMetadata(handle) {
+      const file = requireFile(files, handle);
+      return {
+        displayName: file.displayName,
+        sizeBytes: String(file.bytes.length),
+        mimeType: file.mimeType,
+      };
+    },
+    fileReadChunk(handle, offset, maxBytes) {
+      const file = requireFile(files, handle);
+      const start = Number(offset);
+      return file.bytes.subarray(start, start + maxBytes);
+    },
+    fileWriteChunk(handle, offset, bytes) {
+      const file = requireFile(files, handle);
+      const start = Number(offset);
+      const end = start + bytes.length;
+      if (file.bytes.length < end) {
+        const expanded = Buffer.alloc(end);
+        file.bytes.copy(expanded);
+        file.bytes = expanded;
+      }
+      Buffer.from(bytes).copy(file.bytes, start);
+    },
+    fileFinishWrite(handle) {
+      requireFile(files, handle).finished = true;
+    },
+    clipboardRead() {
+      return clipboard;
+    },
+    clipboardWrite(snapshot) {
+      clipboardWrites.push(snapshot);
+      clipboard = snapshot;
     },
   };
 
@@ -63,6 +130,40 @@ async function main() {
     assert.equal(report.totalErrored, 0);
     assert.equal(report.totalPending, 0);
 
+    const privateImage = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
+    const imageReport = await engine.sendImage(privateImage, 'image/png', []);
+    assert.ok(imageReport.entryId);
+    assert.ok(imageReport.atMs > 0);
+    assert.equal(imageReport.totalAccepted, 0);
+    assert.equal(imageReport.totalPending, 0);
+
+    const fileReport = await engine.sendFiles(['input-file-1'], []);
+    assert.ok(fileReport.entryId);
+    assert.ok(fileReport.atMs > 0);
+    assert.equal(fileReport.totalAccepted, 0);
+    assert.equal(fileReport.totalPending, 0);
+
+    const clipboardEntryId = await engine.captureCurrentClipboard();
+    assert.ok(clipboardEntryId);
+    const restoreOutcome = await engine.restoreClipboard(clipboardEntryId, 'standard');
+    assert.equal(restoreOutcome, 'restored');
+    assert.equal(clipboardWrites.length, 1);
+    assert.equal(clipboardWrites[0].representations.length, 1);
+    assert.deepEqual(
+      Buffer.from(clipboardWrites[0].representations[0].bytes),
+      privateClipboardText
+    );
+    const plainTextOutcome = await engine.restoreClipboard(clipboardEntryId, 'plain_text');
+    assert.equal(plainTextOutcome, 'restored');
+    assert.equal(clipboardWrites.length, 2);
+    const filePathsOutcome = await engine.restoreClipboard(clipboardEntryId, 'file_paths');
+    assert.equal(filePathsOutcome, 'not_applicable');
+    assert.equal(clipboardWrites.length, 2);
+
+    await engine.exportEntry(clipboardEntryId, 'output-file-1');
+    assert.deepEqual(requireFile(files, 'output-file-1').bytes, privateClipboardText);
+    assert.equal(requireFile(files, 'output-file-1').finished, true);
+
     await engine.suspend();
     await waitForState(engine, 'suspended');
     await engine.resume();
@@ -71,6 +172,12 @@ async function main() {
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
+}
+
+function requireFile(files, handle) {
+  const file = files.get(handle);
+  assert.ok(file, `unknown file handle: ${handle}`);
+  return file;
 }
 
 async function waitForState(engine, expected) {

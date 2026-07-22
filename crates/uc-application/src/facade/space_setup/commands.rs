@@ -91,6 +91,15 @@ pub struct UnlockSpaceResult {
 // B1 · IssuePairingInvitation
 // ---------------------------------------------------------------------------
 
+/// Where a successful invitation can be resolved by another device.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InvitationAvailability {
+    /// Directory-issued invitations can be resolved across networks.
+    CrossNetwork,
+    /// Locally minted invitations require both devices on the same LAN.
+    SameLocalNetwork,
+}
+
 /// Output of a successful B1 invitation issuance.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct IssuePairingInvitationResult {
@@ -99,6 +108,8 @@ pub struct IssuePairingInvitationResult {
     /// Server-authoritative expiry; UI should display a countdown from
     /// this value rather than computing its own.
     pub expires_at: DateTime<Utc>,
+    /// Network scope in which the code can be resolved.
+    pub availability: InvitationAvailability,
 }
 
 // ---------------------------------------------------------------------------

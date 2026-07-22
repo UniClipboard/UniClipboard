@@ -35,7 +35,9 @@ use uc_observability_contract::analytics::{
     AnalyticsFacade, Event, InvitationCodeSource, PairingMethod,
 };
 
-use crate::facade::space_setup::{IssuePairingInvitationError, IssuePairingInvitationResult};
+use crate::facade::space_setup::{
+    InvitationAvailability, IssuePairingInvitationError, IssuePairingInvitationResult,
+};
 use crate::pairing_invitation::InMemoryPairingInvitationHolder;
 
 pub(crate) struct IssuePairingInvitationUseCase {
@@ -135,12 +137,22 @@ impl IssuePairingInvitationUseCase {
         // 3-way `CodeOrigin` collapses into a 2-way code source plus a
         // LAN-only flag (intentional LAN-only vs transient directory outage,
         // both yielding a locally-minted code).
-        let (code_source, lan_only_mode) = match issued.code_origin {
-            CodeOrigin::DirectoryIssued => (InvitationCodeSource::DirectoryIssued, false),
-            CodeOrigin::LocallyMintedLanOnly => (InvitationCodeSource::LocallyMinted, true),
-            CodeOrigin::LocallyMintedDirectoryUnreachable => {
-                (InvitationCodeSource::LocallyMinted, false)
-            }
+        let (code_source, lan_only_mode, availability) = match issued.code_origin {
+            CodeOrigin::DirectoryIssued => (
+                InvitationCodeSource::DirectoryIssued,
+                false,
+                InvitationAvailability::CrossNetwork,
+            ),
+            CodeOrigin::LocallyMintedLanOnly => (
+                InvitationCodeSource::LocallyMinted,
+                true,
+                InvitationAvailability::SameLocalNetwork,
+            ),
+            CodeOrigin::LocallyMintedDirectoryUnreachable => (
+                InvitationCodeSource::LocallyMinted,
+                false,
+                InvitationAvailability::SameLocalNetwork,
+            ),
         };
         self.analytics.capture(Event::PairingInvitationIssued {
             code_source,
@@ -158,6 +170,7 @@ impl IssuePairingInvitationUseCase {
         Ok(IssuePairingInvitationResult {
             code: issued.code,
             expires_at: issued.expires_at,
+            availability,
         })
     }
 
@@ -234,11 +247,15 @@ mod tests {
 
     impl FakeInvitationPort {
         fn with_ok(code: &str, expires_at: DateTime<Utc>) -> Self {
+            Self::with_origin(code, expires_at, CodeOrigin::DirectoryIssued)
+        }
+
+        fn with_origin(code: &str, expires_at: DateTime<Utc>, code_origin: CodeOrigin) -> Self {
             Self {
                 next: StdMutex::new(FakeOutcome::Ok(IssuedInvitation {
                     code: InvitationCode::new(code),
                     expires_at,
-                    code_origin: CodeOrigin::DirectoryIssued,
+                    code_origin,
                 })),
                 calls: StdMutex::new(0),
                 selected_calls: StdMutex::new(Vec::new()),
@@ -433,6 +450,10 @@ mod tests {
 
         assert_eq!(result.code.as_str(), "ABCD-1234");
         assert_eq!(result.expires_at, expires_at());
+        assert_eq!(
+            result.availability,
+            crate::facade::space_setup::InvitationAvailability::CrossNetwork
+        );
         assert_eq!(h.invitation_port.calls(), 1);
 
         let stored = h
@@ -450,6 +471,23 @@ mod tests {
 
         // Funnel anchor + issuance outcome: a directory-issued code.
         assert_started_then_issued(&h.analytics, InvitationCodeSource::DirectoryIssued, false);
+    }
+
+    #[tokio::test]
+    async fn locally_minted_invitation_requires_the_same_local_network() {
+        let port = Arc::new(FakeInvitationPort::with_origin(
+            "LOCAL-1234",
+            expires_at(),
+            CodeOrigin::LocallyMintedDirectoryUnreachable,
+        ));
+        let h = build_harness(port);
+
+        let result = h.uc.execute().await.unwrap();
+
+        assert_eq!(
+            result.availability,
+            crate::facade::space_setup::InvitationAvailability::SameLocalNetwork
+        );
     }
 
     #[tokio::test]

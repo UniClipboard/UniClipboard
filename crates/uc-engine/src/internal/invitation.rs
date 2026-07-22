@@ -6,7 +6,7 @@
 use tracing::error;
 use uc_application::facade::{AppFacade, IssuePairingInvitationError};
 
-use crate::{EngineError, EngineErrorCategory, OperationResult};
+use crate::{EngineError, EngineErrorCategory, InvitationAvailability, OperationResult};
 
 const INVITATION_INVALID_STATE_CODE: u32 = 1221;
 const INVITATION_INVALID_INPUT_CODE: u32 = 1222;
@@ -21,6 +21,14 @@ pub async fn execute_issue_invitation(facade: &AppFacade) -> Result<OperationRes
     Ok(OperationResult::InvitationIssued {
         invitation_code: invitation.code.as_str().to_string(),
         expires_at_ms: invitation.expires_at.timestamp_millis(),
+        availability: match invitation.availability {
+            uc_application::facade::space_setup::InvitationAvailability::CrossNetwork => {
+                InvitationAvailability::CrossNetwork
+            }
+            uc_application::facade::space_setup::InvitationAvailability::SameLocalNetwork => {
+                InvitationAvailability::SameLocalNetwork
+            }
+        },
     })
 }
 

@@ -1352,6 +1352,7 @@ async fn engine_start_builds_a_resumable_real_session() {
         uc_engine::OperationResult::InvitationIssued {
             invitation_code,
             expires_at_ms,
+            ..
         } => {
             assert!(
                 expires_at_ms > 0,

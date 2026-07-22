@@ -33,6 +33,7 @@ pub struct SpaceCreated {
 pub struct InvitationIssued {
     pub invitation_code: String,
     pub expires_at_ms: i64,
+    pub availability: InvitationAvailability,
 }
 
 impl std::fmt::Debug for InvitationIssued {
@@ -41,8 +42,15 @@ impl std::fmt::Debug for InvitationIssued {
             .debug_struct("InvitationIssued")
             .field("invitation_code", &"[REDACTED]")
             .field("expires_at_ms", &self.expires_at_ms)
+            .field("availability", &self.availability)
             .finish()
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum InvitationAvailability {
+    CrossNetwork,
+    SameLocalNetwork,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
@@ -749,9 +757,18 @@ fn map_invitation_issued(result: OperationResult) -> Result<InvitationIssued, Bi
         OperationResult::InvitationIssued {
             invitation_code,
             expires_at_ms,
+            availability,
         } => Ok(InvitationIssued {
             invitation_code,
             expires_at_ms,
+            availability: match availability {
+                uc_engine::InvitationAvailability::CrossNetwork => {
+                    InvitationAvailability::CrossNetwork
+                }
+                uc_engine::InvitationAvailability::SameLocalNetwork => {
+                    InvitationAvailability::SameLocalNetwork
+                }
+            },
         }),
         _ => Err(BindingError::UnexpectedResult),
     }
@@ -1095,5 +1112,28 @@ mod tests {
         queue.close();
 
         assert_eq!(queue.next(Duration::MAX), None);
+    }
+
+    #[test]
+    fn invitation_availability_survives_the_mobile_binding() {
+        for (engine_availability, binding_availability) in [
+            (
+                uc_engine::InvitationAvailability::CrossNetwork,
+                InvitationAvailability::CrossNetwork,
+            ),
+            (
+                uc_engine::InvitationAvailability::SameLocalNetwork,
+                InvitationAvailability::SameLocalNetwork,
+            ),
+        ] {
+            let invitation = map_invitation_issued(OperationResult::InvitationIssued {
+                invitation_code: "NEVER-SHOW".to_owned(),
+                expires_at_ms: 1,
+                availability: engine_availability,
+            })
+            .expect("invitation result must map into the mobile binding");
+
+            assert_eq!(invitation.availability, binding_availability);
+        }
     }
 }

@@ -1,8 +1,8 @@
 use uc_engine::{
     ContentTypesPatch, ContentTypesSummary, CreateSpaceInput, DeviceSummary,
     EncryptionStateSummary, EngineConfig, EngineError, EngineErrorCategory, EngineEvent,
-    EngineState, EntrySummary, ExportEntryInput, HostFileHandle, JoinSpaceInput,
-    LocalDeviceSummary, MemberSyncPreferencesPatch, MemberSyncPreferencesSummary,
+    EngineState, EntrySummary, ExportEntryInput, HostFileHandle, InvitationAvailability,
+    JoinSpaceInput, LocalDeviceSummary, MemberSyncPreferencesPatch, MemberSyncPreferencesSummary,
     MigrationPhaseSummary, MigrationProgressSummary, Operation, OperationKind, OperationResult,
     QueryHistoryInput, QueryMemberSyncPreferencesInput, RecoverSessionInput, RefreshReason,
     RemoveMemberInput, ResendEntryInput, SearchEntriesInput, SearchPageSummary,
@@ -1257,6 +1257,23 @@ fn cancel_invitation_has_a_stable_terminal_result() {
 }
 
 #[test]
+fn invitation_result_exposes_where_the_code_can_be_resolved() {
+    let result = OperationResult::InvitationIssued {
+        invitation_code: "NEVER-SHOW".into(),
+        expires_at_ms: 1234,
+        availability: InvitationAvailability::SameLocalNetwork,
+    };
+
+    assert!(matches!(
+        result,
+        OperationResult::InvitationIssued {
+            availability: InvitationAvailability::SameLocalNetwork,
+            ..
+        }
+    ));
+}
+
+#[test]
 fn reset_space_has_a_stable_terminal_result() {
     assert_eq!(OperationResult::SpaceReset, OperationResult::SpaceReset);
 }
@@ -1466,6 +1483,7 @@ fn operation_result_debug_output_redacts_user_content() {
         OperationResult::InvitationIssued {
             invitation_code: "NEVER-SHOW-INVITATION".into(),
             expires_at_ms: 1,
+            availability: InvitationAvailability::CrossNetwork,
         },
         OperationResult::Devices(vec![DeviceSummary {
             device_id: "device-1".into(),

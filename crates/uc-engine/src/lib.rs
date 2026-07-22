@@ -1462,6 +1462,21 @@ impl fmt::Debug for EntryFileResourceSummary {
 }
 
 #[derive(Clone, PartialEq, Eq)]
+pub enum InvitationAvailability {
+    CrossNetwork,
+    SameLocalNetwork,
+}
+
+impl fmt::Debug for InvitationAvailability {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(match self {
+            Self::CrossNetwork => "cross_network",
+            Self::SameLocalNetwork => "same_local_network",
+        })
+    }
+}
+
+#[derive(Clone, PartialEq, Eq)]
 pub enum OperationResult {
     SpaceCreated {
         space_id: String,
@@ -1486,6 +1501,7 @@ pub enum OperationResult {
     InvitationIssued {
         invitation_code: String,
         expires_at_ms: i64,
+        availability: InvitationAvailability,
     },
     InvitationCancelled,
     SpaceReset,

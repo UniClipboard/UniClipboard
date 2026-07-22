@@ -4,7 +4,9 @@
 mod android;
 mod runtime;
 
-pub use runtime::{InvitationIssued, MobileEngine, SendReport, SpaceCreated, SpaceJoined};
+pub use runtime::{
+    InvitationAvailability, InvitationIssued, MobileEngine, SendReport, SpaceCreated, SpaceJoined,
+};
 
 uniffi::setup_scaffolding!();
 

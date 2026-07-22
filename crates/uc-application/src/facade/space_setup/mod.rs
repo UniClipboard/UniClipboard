@@ -16,10 +16,10 @@ mod events;
 mod facade;
 
 pub use commands::{
-    CurrentInvitation, InitializeSpaceInput, InitializeSpaceResult, IssuePairingInvitationResult,
-    MigrationPhaseKind, MigrationProgress, PairingInvitationAddressCandidate,
-    RedeemPairingInvitationInput, RedeemPairingInvitationResult, SetupStateView, SwitchSpaceInput,
-    SwitchSpaceResult, UnlockSpaceInput, UnlockSpaceResult,
+    CurrentInvitation, InitializeSpaceInput, InitializeSpaceResult, InvitationAvailability,
+    IssuePairingInvitationResult, MigrationPhaseKind, MigrationProgress,
+    PairingInvitationAddressCandidate, RedeemPairingInvitationInput, RedeemPairingInvitationResult,
+    SetupStateView, SwitchSpaceInput, SwitchSpaceResult, UnlockSpaceInput, UnlockSpaceResult,
 };
 pub use deps::SpaceSetupDeps;
 pub use errors::{

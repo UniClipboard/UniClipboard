@@ -13,6 +13,8 @@
 - **类别**：migration
 - **计划基线**：`1c229e9e1`，2026-07-19
 
+截至 2026-07-22，本计划已开始执行，先交付 iOS/Android 共用绑定。用户决定跳过剩余实体设备验证；六种设备对的实体设备矩阵继续保留为未通过，不得由模拟器、编译或自动测试结果替代。
+
 ## 为什么必须做
 
 现有 `uc-mobile` 是 LAN HTTP 客户端，不能扩名冒充完整节点。iOS/Android 已有 UniFFI 与 XCFramework/AAR 接入经验，HarmonyOS 社区版已有 N-API 经验；三种 P2P 绑定都只依赖计划 003 的统一入口。移动产品可在独立且用户显式选择的通道中继续支持 LAN HTTP。
@@ -86,6 +88,8 @@ cargo ndk -t arm64-v8a -t x86_64 build -p uc-engine-uniffi --release
 至少覆盖以下设备对：desktop↔iOS、desktop↔Android、desktop↔HarmonyOS、iOS↔Android、iOS↔HarmonyOS、Android↔HarmonyOS。每一对测试创建/加入、文本、图片、文件、relay、换网、暂停恢复和版本混跑。
 
 协议测试必须使用同一组 golden vectors；真实测试报告记录核心版本、设备系统版本和网络路径，不记录用户内容。
+
+当前执行决定：实体设备矩阵按用户要求跳过。本步骤不再阻挡其余可自动验证工作继续推进，但完成标准保持未勾选，计划不能因此标记为全部完成。
 
 ### 6. 统一发布产物
 

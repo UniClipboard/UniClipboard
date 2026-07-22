@@ -10422,6 +10422,8 @@ dependencies = [
 name = "uc-engine-uniffi"
 version = "0.19.1"
 dependencies = [
+ "jni 0.21.1",
+ "ndk-context",
  "tempfile",
  "thiserror 2.0.18",
  "tokio",

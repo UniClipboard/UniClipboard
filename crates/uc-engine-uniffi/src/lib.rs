@@ -1,5 +1,7 @@
 //! UniFFI bindings for the public `uc-engine` interface.
 
+#[cfg(target_os = "android")]
+mod android;
 mod runtime;
 
 pub use runtime::{InvitationIssued, MobileEngine, SendReport, SpaceCreated, SpaceJoined};

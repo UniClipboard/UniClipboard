@@ -10479,19 +10479,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "uc-ios-probe-core"
-version = "0.19.1"
-dependencies = [
- "base64 0.22.1",
- "security-framework 3.7.0",
- "serde",
- "serde_json",
- "tokio",
- "tracing-subscriber",
- "uc-engine",
-]
-
-[[package]]
 name = "uc-mobile"
 version = "0.1.0"
 dependencies = [
@@ -10509,6 +10496,21 @@ dependencies = [
  "uc-mobile-proto",
  "uniffi",
  "url",
+]
+
+[[package]]
+name = "uc-mobile-probe-core"
+version = "0.19.1"
+dependencies = [
+ "base64 0.22.1",
+ "jni 0.21.1",
+ "ndk-context",
+ "security-framework 3.7.0",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing-subscriber",
+ "uc-engine",
 ]
 
 [[package]]

@@ -32,7 +32,7 @@ target.build_configurations.each do |config|
   settings["SWIFT_OBJC_BRIDGING_HEADER"] = "../../apps/ios-probe/EngineProbe/EngineProbe-Bridging-Header.h"
   settings["LIBRARY_SEARCH_PATHS"] = ["$(inherited)", "$(SRCROOT)/../../target/ios-probe-cargo/aarch64-apple-ios/release"]
   settings["OTHER_LDFLAGS"] = [
-    "$(inherited)", "-luc_ios_probe_core", "-framework", "Security",
+    "$(inherited)", "-luc_mobile_probe_core", "-framework", "Security",
     "-framework", "SystemConfiguration", "-framework", "CoreFoundation",
     "-framework", "Network",
     "-lsqlite3", "-lz", "-liconv", "-lresolv",

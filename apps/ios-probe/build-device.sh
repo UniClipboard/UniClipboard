@@ -10,7 +10,7 @@ DEVICE_ID="${1:-00008140-0011499C2650801C}"
 cd "$REPO_ROOT"
 IPHONEOS_DEPLOYMENT_TARGET=17.0 \
   CARGO_TARGET_DIR="$REPO_ROOT/target/ios-probe-cargo" \
-  cargo build -p uc-ios-probe-core --release --target aarch64-apple-ios --locked
+  cargo build -p uc-mobile-probe-core --release --target aarch64-apple-ios --locked
 
 mkdir -p "$(dirname "$GENERATED_PROJECT")"
 GEM_HOME="/opt/homebrew/Cellar/cocoapods/1.16.2_2/libexec" \

@@ -1,13 +1,13 @@
 [package]
-name = "uc-ios-probe-core"
+name = "uc-mobile-probe-core"
 version.workspace = true
 license.workspace = true
 edition = "2021"
 publish = false
-description = "Physical iOS acceptance host for uc-engine"
+description = "Mobile acceptance host for uc-engine"
 
 [lib]
-crate-type = ["lib", "staticlib"]
+crate-type = ["lib", "staticlib", "cdylib"]
 
 [dependencies]
 base64 = "0.22"
@@ -19,6 +19,10 @@ uc-engine = { path = "../../crates/uc-engine" }
 
 [target.'cfg(target_vendor = "apple")'.dependencies]
 security-framework = "3.7"
+
+[target.'cfg(target_os = "android")'.dependencies]
+jni = "0.21"
+ndk-context = "0.1"
 
 [lints]
 workspace = true

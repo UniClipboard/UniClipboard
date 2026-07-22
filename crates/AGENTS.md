@@ -1,6 +1,6 @@
 # PROJECT KNOWLEDGE BASE
 
-**Last refreshed:** 2026-07-21 (auto; 25 workspace crates)
+**Last refreshed:** 2026-07-22 (auto; 25 workspace crates)
 
 ## OVERVIEW
 
@@ -13,7 +13,7 @@ Rust monorepo workspace (root `Cargo.toml`) with strict hexagonal boundaries: li
 |- apps/                 # Runnable binaries
 |  |- cli/                 # `uniclip` CLI (daemon client; heavy deps feature-gated)
 |  |- daemon/              # GUI-agnostic daemon runtime; hosts the `uniclipd` binary
-|  |- ios-probe-core/      # Physical iOS acceptance host for uc-engine
+|  |- mobile-probe-core/   # Mobile acceptance host for uc-engine
 |- crates/               # Library crates (20)
 |  # -- Hex core (ADR-005) --
 |  |- uc-core/          # Domain models + Port traits only (no external deps)

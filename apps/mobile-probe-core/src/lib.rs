@@ -21,7 +21,12 @@ use uc_engine::{
     UnlockSpaceInput,
 };
 
+#[cfg(target_os = "android")]
+mod android;
+
+#[cfg(target_vendor = "apple")]
 const KEYCHAIN_SERVICE: &str = "app.uniclipboard.engine-probe";
+#[cfg(target_vendor = "apple")]
 const ITEM_NOT_FOUND_STATUS: i32 = -25300;
 
 #[derive(Deserialize)]
@@ -89,7 +94,7 @@ impl ProbeClient {
     fn new() -> Result<Self, String> {
         let (requests, receiver) = mpsc::unbounded_channel();
         std::thread::Builder::new()
-            .name("uc-ios-probe-runtime".into())
+            .name("uc-mobile-probe-runtime".into())
             .spawn(move || {
                 let _ = tracing_subscriber::fmt()
                     .with_ansi(false)
@@ -258,52 +263,48 @@ impl HostClipboard for ProbeClipboard {
     }
 }
 
+#[cfg(target_vendor = "apple")]
 struct KeychainStorage;
 
+#[cfg(target_vendor = "apple")]
 impl HostSecureStorage for KeychainStorage {
     fn get(&self, key: &str) -> Result<Option<Vec<u8>>, HostCapabilityError> {
-        #[cfg(target_vendor = "apple")]
-        {
-            match security_framework::passwords::get_generic_password(KEYCHAIN_SERVICE, key) {
-                Ok(value) => Ok(Some(value)),
-                Err(error) if error.code() == ITEM_NOT_FOUND_STATUS => Ok(None),
-                Err(_) => Err(host_error(HostCapabilityErrorCategory::Unavailable)),
-            }
-        }
-        #[cfg(not(target_vendor = "apple"))]
-        {
-            let _ = key;
-            Err(host_error(HostCapabilityErrorCategory::Unavailable))
+        match security_framework::passwords::get_generic_password(KEYCHAIN_SERVICE, key) {
+            Ok(value) => Ok(Some(value)),
+            Err(error) if error.code() == ITEM_NOT_FOUND_STATUS => Ok(None),
+            Err(_) => Err(host_error(HostCapabilityErrorCategory::Unavailable)),
         }
     }
 
     fn set(&self, key: &str, value: &[u8]) -> Result<(), HostCapabilityError> {
-        #[cfg(target_vendor = "apple")]
-        {
-            security_framework::passwords::set_generic_password(KEYCHAIN_SERVICE, key, value)
-                .map_err(|_| host_error(HostCapabilityErrorCategory::Unavailable))
-        }
-        #[cfg(not(target_vendor = "apple"))]
-        {
-            let _ = (key, value);
-            Err(host_error(HostCapabilityErrorCategory::Unavailable))
-        }
+        security_framework::passwords::set_generic_password(KEYCHAIN_SERVICE, key, value)
+            .map_err(|_| host_error(HostCapabilityErrorCategory::Unavailable))
     }
 
     fn delete(&self, key: &str) -> Result<(), HostCapabilityError> {
-        #[cfg(target_vendor = "apple")]
-        {
-            match security_framework::passwords::delete_generic_password(KEYCHAIN_SERVICE, key) {
-                Ok(()) => Ok(()),
-                Err(error) if error.code() == ITEM_NOT_FOUND_STATUS => Ok(()),
-                Err(_) => Err(host_error(HostCapabilityErrorCategory::Unavailable)),
-            }
+        match security_framework::passwords::delete_generic_password(KEYCHAIN_SERVICE, key) {
+            Ok(()) => Ok(()),
+            Err(error) if error.code() == ITEM_NOT_FOUND_STATUS => Ok(()),
+            Err(_) => Err(host_error(HostCapabilityErrorCategory::Unavailable)),
         }
-        #[cfg(not(target_vendor = "apple"))]
-        {
-            let _ = key;
-            Err(host_error(HostCapabilityErrorCategory::Unavailable))
-        }
+    }
+}
+
+#[cfg(not(any(target_vendor = "apple", target_os = "android")))]
+struct UnavailableSecureStorage;
+
+#[cfg(not(any(target_vendor = "apple", target_os = "android")))]
+impl HostSecureStorage for UnavailableSecureStorage {
+    fn get(&self, _key: &str) -> Result<Option<Vec<u8>>, HostCapabilityError> {
+        Err(host_error(HostCapabilityErrorCategory::Unavailable))
+    }
+
+    fn set(&self, _key: &str, _value: &[u8]) -> Result<(), HostCapabilityError> {
+        Err(host_error(HostCapabilityErrorCategory::Unavailable))
+    }
+
+    fn delete(&self, _key: &str) -> Result<(), HostCapabilityError> {
+        Err(host_error(HostCapabilityErrorCategory::Unavailable))
     }
 }
 
@@ -352,7 +353,7 @@ async fn execute_command(state: &mut ProbeState, command: ProbeCommand) -> Value
                     directories[1].clone(),
                     directories[2].clone(),
                 ),
-                Box::new(KeychainStorage),
+                host_secure_storage(),
                 Box::new(ProbeClipboard),
                 Box::new(state.files.clone()),
             );
@@ -797,6 +798,11 @@ fn operation_response(result: OperationResult) -> Value {
             "kind": "mobile_credential_current",
             "current": current,
         }),
+        OperationResult::MobileLanInterfaces(interfaces) => json!({
+            "ok": true,
+            "kind": "mobile_lan_interfaces",
+            "count": interfaces.len(),
+        }),
         OperationResult::MobileSyncSettings(settings) => json!({
             "ok": true,
             "kind": "mobile_sync_settings",
@@ -933,6 +939,12 @@ fn operation_response(result: OperationResult) -> Value {
             "ok": true,
             "kind": "mobile_file_upload_aborted",
             "existed": existed,
+        }),
+        OperationResult::ReceiveReadiness(readiness) => json!({
+            "ok": true,
+            "kind": "receive_readiness",
+            "ready": readiness.ready,
+            "degraded": readiness.degraded,
         }),
         OperationResult::EncryptionState(state) => json!({
             "ok": true,
@@ -1271,6 +1283,33 @@ fn lock_unpoisoned<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
 
 static CLIENT: OnceLock<Result<ProbeClient, String>> = OnceLock::new();
 
+#[cfg(target_vendor = "apple")]
+fn host_secure_storage() -> Box<dyn HostSecureStorage> {
+    Box::new(KeychainStorage)
+}
+
+#[cfg(target_os = "android")]
+fn host_secure_storage() -> Box<dyn HostSecureStorage> {
+    Box::new(android::AndroidSecureStorage)
+}
+
+#[cfg(not(any(target_vendor = "apple", target_os = "android")))]
+fn host_secure_storage() -> Box<dyn HostSecureStorage> {
+    Box::new(UnavailableSecureStorage)
+}
+
+pub(crate) fn probe_command(command: &str) -> String {
+    let command = match serde_json::from_str(command) {
+        Ok(command) => command,
+        Err(_) => return probe_error("invalid_command").to_string(),
+    };
+    let client = CLIENT.get_or_init(ProbeClient::new);
+    match client {
+        Ok(client) => client.execute(command).to_string(),
+        Err(_) => probe_error("runtime_unavailable").to_string(),
+    }
+}
+
 #[no_mangle]
 pub unsafe extern "C" fn uc_ios_probe_command(command: *const c_char) -> *mut c_char {
     if command.is_null() {
@@ -1280,15 +1319,7 @@ pub unsafe extern "C" fn uc_ios_probe_command(command: *const c_char) -> *mut c_
         Ok(input) => input,
         Err(_) => return value_to_c_string(probe_error("invalid_command")),
     };
-    let command = match serde_json::from_str(input) {
-        Ok(command) => command,
-        Err(_) => return value_to_c_string(probe_error("invalid_command")),
-    };
-    let client = CLIENT.get_or_init(ProbeClient::new);
-    match client {
-        Ok(client) => value_to_c_string(client.execute(command)),
-        Err(_) => value_to_c_string(probe_error("runtime_unavailable")),
-    }
+    string_to_c_string(probe_command(input))
 }
 
 #[no_mangle]
@@ -1299,8 +1330,11 @@ pub unsafe extern "C" fn uc_ios_probe_string_free(value: *mut c_char) {
 }
 
 fn value_to_c_string(value: Value) -> *mut c_char {
-    let serialized = value.to_string();
-    match CString::new(serialized) {
+    string_to_c_string(value.to_string())
+}
+
+fn string_to_c_string(value: String) -> *mut c_char {
+    match CString::new(value) {
         Ok(value) => value.into_raw(),
         Err(_) => ptr::null_mut(),
     }

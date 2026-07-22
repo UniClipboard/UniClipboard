@@ -33,6 +33,46 @@ pub struct OhSpaceCreated {
     pub identity_fingerprint: String,
 }
 
+#[napi(object)]
+pub struct OhInvitationIssued {
+    pub invitation_code: String,
+    pub expires_at_ms: f64,
+    pub availability: String,
+}
+
+#[napi(object)]
+pub struct OhSpaceJoined {
+    pub sponsor_device_id: String,
+    pub sponsor_identity_fingerprint: String,
+    pub space_id: String,
+    pub self_device_id: String,
+    pub self_identity_fingerprint: String,
+    pub migrated_records: Option<String>,
+}
+
+#[napi(object)]
+pub struct OhSendReport {
+    pub entry_id: String,
+    pub at_ms: f64,
+    pub total_accepted: u32,
+    pub total_duplicate: u32,
+    pub total_offline: u32,
+    pub total_errored: u32,
+    pub total_pending: u32,
+}
+
+#[napi(object)]
+pub struct OhEngineEvent {
+    pub kind: String,
+    pub state: Option<String>,
+    pub refresh_reason: Option<String>,
+    pub operation_id: Option<String>,
+    pub terminal: Option<String>,
+    pub error_code: Option<u32>,
+    pub error_category: Option<String>,
+    pub retryable: Option<bool>,
+}
+
 pub struct PreparedHost {
     host: Option<OhHost>,
 }

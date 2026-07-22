@@ -1,4 +1,5 @@
 use std::collections::BTreeSet;
+use std::fs;
 use std::path::Path;
 
 use cargo_metadata::{CrateType, DependencyKind, MetadataCommand, TargetKind};
@@ -52,4 +53,51 @@ fn uniffi_binding_is_a_workspace_member_with_a_public_engine_boundary() {
             "binding must not depend directly on {forbidden}"
         );
     }
+}
+
+#[test]
+fn uniffi_binding_owns_runnable_ios_and_android_packaging() {
+    let workspace_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let binding_root = workspace_root.join("crates/uc-engine-uniffi");
+    let ios = fs::read_to_string(binding_root.join("scripts/build-ios-xcframework.sh"))
+        .expect("unified binding must own an iOS packaging script");
+    let android = fs::read_to_string(binding_root.join("scripts/build-android-aar.sh"))
+        .expect("unified binding must own an Android packaging script");
+    let gradle = fs::read_to_string(binding_root.join("android/build.gradle"))
+        .expect("unified binding must own an Android library project");
+    let manifest = fs::read_to_string(binding_root.join("android/src/main/AndroidManifest.xml"))
+        .expect("unified binding Android library must declare a manifest");
+
+    for required in [
+        "cargo build -p uc-engine-uniffi",
+        "aarch64-apple-ios",
+        "aarch64-apple-ios-sim",
+        "x86_64-apple-ios",
+        "--language swift",
+        "strip -S",
+        "xcodebuild -create-xcframework",
+        "UniClipboardEngine.xcframework.zip",
+        "UniClipboardEngine.checksum.txt",
+    ] {
+        assert!(ios.contains(required), "iOS packaging missing {required}");
+    }
+    for required in [
+        "cargo ndk",
+        "arm64-v8a",
+        "x86_64",
+        "--language kotlin",
+        "assembleRelease",
+        "UniClipboardEngine.aar",
+        "UniClipboardEngine.checksum.txt",
+    ] {
+        assert!(
+            android.contains(required),
+            "Android packaging missing {required}"
+        );
+    }
+    assert!(gradle.contains("com.android.library"));
+    assert!(gradle.contains("org.jetbrains.kotlin.android"));
+    assert!(gradle.contains("net.java.dev.jna:jna:5.14.0@aar"));
+    assert!(gradle.contains("namespace \"app.uniclipboard.engine\""));
+    assert!(manifest.contains("android.permission.INTERNET"));
 }

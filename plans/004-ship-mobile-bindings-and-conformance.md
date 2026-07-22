@@ -67,6 +67,8 @@ cargo ndk -t arm64-v8a -t x86_64 build -p uc-engine-uniffi --release
 
 当前第三切片证据（2026-07-22）：同一绑定已增加图片与文件发送、结构化剪贴板捕获与恢复、记录导出，以及宿主文件元数据、分块读写和写入完成回调。宿主只向核心提供不透明文件句柄，真实路径仍由移动系统拥有；图片字节和文件句柄在绑定队列中使用自动清零内存。2 项队列测试、13 项公开接口测试、1 项工作区边界测试和严格静态检查通过；Swift/Kotlin 均从当前同一份本机动态库重新生成并包含全部新入口。iOS ARM64、Android ARM64 和 Android x86_64 发布构建再次退出 0，产物架构正确且都报告 `core-v0.19.1`。最终 XCFramework/AAR 尚未完成，因此本步骤和完成标准继续保持未勾选。
 
+当前第四切片证据（2026-07-22）：新绑定已拥有独立 iOS/Android 打包脚本和 Android 库项目。iOS 实际产出设备 ARM64、模拟器 ARM64+x86_64 的 `UniClipboardEngine.xcframework`、Swift 绑定、压缩包和校验值，Swift 文件在 iOS 17 模拟器目标下与框架头文件共同通过类型检查。Android 实际产出只含 ARM64/x86_64 两份正式库的 `UniClipboardEngine.aar`，Kotlin 绑定已编译进 `classes.jar`，并附 JNA/Kotlin 运行依赖、POM 和校验值。两端均报告 `core-v0.19.1` 和同一来源提交；本地发布干跑不创建标签或 Release。iOS/Android 共用绑定步骤已完成，HarmonyOS 与三平台正式系统接入仍未完成。
+
 ### 2. 建立 HarmonyOS 薄绑定
 
 用 N-API 暴露同一操作和事件。把社区版桥接中的保活循环、入站解析、文件组装和运行任务收回核心。HarmonyOS 只保留系统剪贴板、密钥库、文件句柄、生命周期通知和 ArkTS 类型转换。

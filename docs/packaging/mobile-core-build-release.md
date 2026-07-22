@@ -106,3 +106,29 @@ UC_RUST_REPO=/path/to/uniclipboard Scripts/build-rust-core.sh
 ## 7. Android（旧方案占位，不再实施）
 
 旧 LAN 核心的 Android 交付尚未实现，`crates/uc-mobile/scripts/build-android-aar.sh` 仍是拒绝执行的形态记录。若 Android 提供 LAN 选项，必须作为与完整 P2P 核心独立的显式用户选择通道交付，且不得以该通道替代 `plans/004-ship-mobile-bindings-and-conformance.md` 要求的完整 P2P 核心与四平台验收。
+
+## 8. 四平台共享 P2P 核心的 iOS/Android 干跑产物
+
+Plan 004 的新共享 P2P 绑定与上述 `uc-mobile` LAN 兼容产物完全独立。当前可在仓库根目录执行：
+
+```bash
+UC_ENGINE_UNIFFI_BUILD_LOCKED=1 \
+  crates/uc-engine-uniffi/scripts/build-ios-xcframework.sh
+
+UC_ENGINE_UNIFFI_BUILD_LOCKED=1 \
+  crates/uc-engine-uniffi/scripts/build-android-aar.sh
+```
+
+若根 `target/` 不可用或需要隔离构建，可同时设置 `UC_ENGINE_UNIFFI_TARGET_DIR` 和 `UC_ENGINE_UNIFFI_DIST_DIR`。默认产物位于 `target/uc-engine-uniffi-dist/`：
+
+- `ios/UniClipboardEngine.xcframework`：iOS 设备 ARM64 与模拟器 ARM64+x86_64。
+- `ios/uc_engine_uniffi.swift`：必须与同次构建的 XCFramework 配对。
+- `ios/UniClipboardEngine.xcframework.zip` 与 `UniClipboardEngine.checksum.txt`：供 SwiftPM 或下载校验使用。
+- `android/UniClipboardEngine.aar`：包含 Android ARM64 与 x86_64 原生库和已编译 Kotlin 绑定。
+- `android/uc_engine_uniffi.kt`：同次生成的 Kotlin 接口源码，供审阅和调试。
+- `android/UniClipboardEngine.pom` 与 `runtime-dependencies.txt`：声明 JNA 5.14.0 和 Kotlin 2.1.20 运行依赖。
+- 两端的 `core-version.txt` 与 `source-commit.txt`：用于确认产物来自同一核心版本和提交。
+
+iOS 应用需要把 XCFramework 作为二进制依赖，并编译同目录的 Swift 文件；Android 应用需要通过 Maven 描述或本地 AAR 引入产物，同时满足 `runtime-dependencies.txt`。两端宿主都必须实现生成接口中的安全存储、剪贴板和文件句柄回调：iOS 对接 Keychain，Android 对接 Keystore。XCFramework 和 AAR 是嵌入应用的组件，不是可直接安装的 IPA/APK；最终安装包仍由各自应用工程构建、签名和发布。
+
+当前脚本是 Plan 004 的本地发布干跑，不创建 `core-v*` 标签或公开 Release。首个公开统一核心版本仍只允许在 Plan 005 的唯一核心仓库中发布。

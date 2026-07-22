@@ -83,6 +83,8 @@ fn uniffi_binding_owns_runnable_ios_and_android_packaging() {
         "x86_64-apple-ios",
         "--language swift",
         "CARGO_PROFILE_RELEASE_DEBUG",
+        "UC_ENGINE_UNIFFI_IOS_DEPLOYMENT_TARGET:-16.4",
+        "export IPHONEOS_DEPLOYMENT_TARGET",
         "selective_strip_archive",
         "xcodebuild -create-xcframework",
         "UniClipboardEngine.xcframework.zip",

@@ -6,16 +6,20 @@ use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
 use uc_engine::{
-    CreateSpaceInput, Engine, EngineConfig, HostCapabilities, HostCapabilityError,
-    HostCapabilityErrorCategory, HostClipboard, HostClipboardSnapshot, HostDirectories,
+    ClipboardRestoreMode, ClipboardRestoreOutcome, CreateSpaceInput, Engine, EngineConfig,
+    ExportEntryInput, HostCapabilities, HostCapabilityError, HostCapabilityErrorCategory,
+    HostClipboard, HostClipboardRepresentation, HostClipboardSnapshot, HostDirectories,
     HostFileAccess, HostFileHandle, HostFileMetadata, HostSecureStorage, JoinSpaceInput, Operation,
-    OperationResult, SecretString, SendTextInput,
+    OperationResult, RestoreClipboardInput, SecretString, SendFilesInput, SendImageInput,
+    SendTextInput,
 };
 use zeroize::Zeroizing;
 
 use crate::{
-    BindingConfig, BindingEngineState, BindingError, BindingEvent, BindingFailure, BindingHost,
-    BindingOperationTerminal, BindingRefreshReason, HostBindingError,
+    BindingClipboardRepresentation, BindingClipboardRestoreMode, BindingClipboardRestoreOutcome,
+    BindingClipboardSnapshot, BindingConfig, BindingEngineState, BindingError, BindingEvent,
+    BindingFailure, BindingFileMetadata, BindingHost, BindingOperationTerminal,
+    BindingRefreshReason, HostBindingError,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
@@ -52,7 +56,7 @@ pub struct SpaceJoined {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
-pub struct TextSendReport {
+pub struct SendReport {
     pub entry_id: String,
     pub at_ms: i64,
     pub total_accepted: u64,
@@ -80,7 +84,31 @@ enum WorkerCommand {
     SendText {
         text: Zeroizing<String>,
         target_devices: Vec<String>,
-        response: mpsc::Sender<Result<TextSendReport, BindingError>>,
+        response: mpsc::Sender<Result<SendReport, BindingError>>,
+    },
+    SendImage {
+        bytes: Zeroizing<Vec<u8>>,
+        mime_type: String,
+        target_devices: Vec<String>,
+        response: mpsc::Sender<Result<SendReport, BindingError>>,
+    },
+    SendFiles {
+        file_handles: Zeroizing<Vec<String>>,
+        target_devices: Vec<String>,
+        response: mpsc::Sender<Result<SendReport, BindingError>>,
+    },
+    CaptureCurrentClipboard {
+        response: mpsc::Sender<Result<Option<String>, BindingError>>,
+    },
+    RestoreClipboard {
+        entry_id: String,
+        mode: BindingClipboardRestoreMode,
+        response: mpsc::Sender<Result<BindingClipboardRestoreOutcome, BindingError>>,
+    },
+    ExportEntry {
+        entry_id: String,
+        destination_handle: Zeroizing<String>,
+        response: mpsc::Sender<Result<(), BindingError>>,
     },
     Suspend {
         response: mpsc::Sender<Result<(), BindingError>>,
@@ -265,13 +293,102 @@ impl MobileEngine {
         &self,
         text: String,
         target_devices: Vec<String>,
-    ) -> Result<TextSendReport, BindingError> {
+    ) -> Result<SendReport, BindingError> {
         let commands = self.command_sender()?;
         let (response, result) = mpsc::channel();
         commands
             .send(WorkerCommand::SendText {
                 text: Zeroizing::new(text),
                 target_devices,
+                response,
+            })
+            .map_err(|_| BindingError::RuntimeUnavailable)?;
+        result
+            .recv()
+            .map_err(|_| BindingError::RuntimeUnavailable)?
+    }
+
+    pub fn send_image(
+        &self,
+        bytes: Vec<u8>,
+        mime_type: String,
+        target_devices: Vec<String>,
+    ) -> Result<SendReport, BindingError> {
+        let commands = self.command_sender()?;
+        let (response, result) = mpsc::channel();
+        commands
+            .send(WorkerCommand::SendImage {
+                bytes: Zeroizing::new(bytes),
+                mime_type,
+                target_devices,
+                response,
+            })
+            .map_err(|_| BindingError::RuntimeUnavailable)?;
+        result
+            .recv()
+            .map_err(|_| BindingError::RuntimeUnavailable)?
+    }
+
+    pub fn send_files(
+        &self,
+        file_handles: Vec<String>,
+        target_devices: Vec<String>,
+    ) -> Result<SendReport, BindingError> {
+        let commands = self.command_sender()?;
+        let (response, result) = mpsc::channel();
+        commands
+            .send(WorkerCommand::SendFiles {
+                file_handles: Zeroizing::new(file_handles),
+                target_devices,
+                response,
+            })
+            .map_err(|_| BindingError::RuntimeUnavailable)?;
+        result
+            .recv()
+            .map_err(|_| BindingError::RuntimeUnavailable)?
+    }
+
+    pub fn capture_current_clipboard(&self) -> Result<Option<String>, BindingError> {
+        let commands = self.command_sender()?;
+        let (response, result) = mpsc::channel();
+        commands
+            .send(WorkerCommand::CaptureCurrentClipboard { response })
+            .map_err(|_| BindingError::RuntimeUnavailable)?;
+        result
+            .recv()
+            .map_err(|_| BindingError::RuntimeUnavailable)?
+    }
+
+    pub fn restore_clipboard(
+        &self,
+        entry_id: String,
+        mode: BindingClipboardRestoreMode,
+    ) -> Result<BindingClipboardRestoreOutcome, BindingError> {
+        let commands = self.command_sender()?;
+        let (response, result) = mpsc::channel();
+        commands
+            .send(WorkerCommand::RestoreClipboard {
+                entry_id,
+                mode,
+                response,
+            })
+            .map_err(|_| BindingError::RuntimeUnavailable)?;
+        result
+            .recv()
+            .map_err(|_| BindingError::RuntimeUnavailable)?
+    }
+
+    pub fn export_entry(
+        &self,
+        entry_id: String,
+        destination_handle: String,
+    ) -> Result<(), BindingError> {
+        let commands = self.command_sender()?;
+        let (response, result) = mpsc::channel();
+        commands
+            .send(WorkerCommand::ExportEntry {
+                entry_id,
+                destination_handle: Zeroizing::new(destination_handle),
                 response,
             })
             .map_err(|_| BindingError::RuntimeUnavailable)?;
@@ -457,7 +574,80 @@ async fn run_worker_loop(
                     }))
                     .await
                     .map_err(BindingError::from)
-                    .and_then(map_text_send_report);
+                    .and_then(map_send_report);
+                let _ = response.send(result);
+            }
+            WorkerCommand::SendImage {
+                mut bytes,
+                mime_type,
+                target_devices,
+                response,
+            } => {
+                let result = engine
+                    .execute(Operation::SendImage(SendImageInput {
+                        bytes: std::mem::take(&mut *bytes),
+                        mime_type,
+                        target_devices,
+                    }))
+                    .await
+                    .map_err(BindingError::from)
+                    .and_then(map_send_report);
+                let _ = response.send(result);
+            }
+            WorkerCommand::SendFiles {
+                file_handles,
+                target_devices,
+                response,
+            } => {
+                let result = engine
+                    .execute(Operation::SendFiles(SendFilesInput {
+                        files: file_handles
+                            .iter()
+                            .map(|handle| HostFileHandle::new(handle.to_owned()))
+                            .collect(),
+                        target_devices,
+                    }))
+                    .await
+                    .map_err(BindingError::from)
+                    .and_then(map_send_report);
+                let _ = response.send(result);
+            }
+            WorkerCommand::CaptureCurrentClipboard { response } => {
+                let result = engine
+                    .execute(Operation::CaptureCurrentClipboard)
+                    .await
+                    .map_err(BindingError::from)
+                    .and_then(map_clipboard_captured);
+                let _ = response.send(result);
+            }
+            WorkerCommand::RestoreClipboard {
+                entry_id,
+                mode,
+                response,
+            } => {
+                let result = engine
+                    .execute(Operation::RestoreClipboard(RestoreClipboardInput {
+                        entry_id,
+                        mode: map_restore_mode(mode),
+                    }))
+                    .await
+                    .map_err(BindingError::from)
+                    .and_then(map_clipboard_restored);
+                let _ = response.send(result);
+            }
+            WorkerCommand::ExportEntry {
+                entry_id,
+                destination_handle,
+                response,
+            } => {
+                let result = engine
+                    .execute(Operation::ExportEntry(ExportEntryInput {
+                        entry_id,
+                        destination: HostFileHandle::new(destination_handle.as_str()),
+                    }))
+                    .await
+                    .map_err(BindingError::from)
+                    .and_then(map_entry_exported);
                 let _ = response.send(result);
             }
             WorkerCommand::Suspend { response } => {
@@ -588,9 +778,9 @@ fn map_space_joined(result: OperationResult) -> Result<SpaceJoined, BindingError
     }
 }
 
-fn map_text_send_report(result: OperationResult) -> Result<TextSendReport, BindingError> {
+fn map_send_report(result: OperationResult) -> Result<SendReport, BindingError> {
     match result {
-        OperationResult::EntrySent(report) => Ok(TextSendReport {
+        OperationResult::EntrySent(report) => Ok(SendReport {
             entry_id: report.entry_id,
             at_ms: report.at_ms,
             total_accepted: count_to_u64(report.total_accepted)?,
@@ -599,6 +789,45 @@ fn map_text_send_report(result: OperationResult) -> Result<TextSendReport, Bindi
             total_errored: count_to_u64(report.total_errored)?,
             total_pending: count_to_u64(report.total_pending)?,
         }),
+        _ => Err(BindingError::UnexpectedResult),
+    }
+}
+
+fn map_clipboard_captured(result: OperationResult) -> Result<Option<String>, BindingError> {
+    match result {
+        OperationResult::ClipboardCaptured { entry_id } => Ok(entry_id),
+        _ => Err(BindingError::UnexpectedResult),
+    }
+}
+
+fn map_restore_mode(mode: BindingClipboardRestoreMode) -> ClipboardRestoreMode {
+    match mode {
+        BindingClipboardRestoreMode::Standard => ClipboardRestoreMode::Standard,
+        BindingClipboardRestoreMode::PlainText => ClipboardRestoreMode::PlainText,
+        BindingClipboardRestoreMode::FilePaths => ClipboardRestoreMode::FilePaths,
+    }
+}
+
+fn map_clipboard_restored(
+    result: OperationResult,
+) -> Result<BindingClipboardRestoreOutcome, BindingError> {
+    match result {
+        OperationResult::ClipboardRestored(ClipboardRestoreOutcome::Restored) => {
+            Ok(BindingClipboardRestoreOutcome::Restored)
+        }
+        OperationResult::ClipboardRestored(ClipboardRestoreOutcome::PayloadUnavailable {
+            ..
+        }) => Ok(BindingClipboardRestoreOutcome::PayloadUnavailable),
+        OperationResult::ClipboardRestored(ClipboardRestoreOutcome::NotApplicable { .. }) => {
+            Ok(BindingClipboardRestoreOutcome::NotApplicable)
+        }
+        _ => Err(BindingError::UnexpectedResult),
+    }
+}
+
+fn map_entry_exported(result: OperationResult) -> Result<(), BindingError> {
+    match result {
+        OperationResult::EntryExported => Ok(()),
         _ => Err(BindingError::UnexpectedResult),
     }
 }
@@ -625,8 +854,10 @@ fn host_capabilities(host: Arc<dyn BindingHost>) -> Result<HostCapabilities, Bin
         Box::new(BindingSecureStorage {
             host: Arc::clone(&host),
         }),
-        Box::new(UnavailableClipboard),
-        Box::new(UnavailableFiles),
+        Box::new(BindingClipboard {
+            host: Arc::clone(&host),
+        }),
+        Box::new(BindingFiles { host }),
     ))
 }
 
@@ -677,53 +908,140 @@ impl HostSecureStorage for BindingSecureStorage {
     }
 }
 
-struct UnavailableClipboard;
+struct BindingClipboard {
+    host: Arc<dyn BindingHost>,
+}
 
-impl HostClipboard for UnavailableClipboard {
+impl HostClipboard for BindingClipboard {
     fn read(&self) -> Result<HostClipboardSnapshot, HostCapabilityError> {
-        Err(unavailable_capability())
+        self.host
+            .clipboard_read()
+            .map(|snapshot| HostClipboardSnapshot {
+                observed_at_ms: snapshot.observed_at_ms,
+                representations: snapshot
+                    .representations
+                    .into_iter()
+                    .map(map_clipboard_representation)
+                    .collect(),
+            })
+            .map_err(map_host_capability_error)
     }
 
-    fn write(&self, _snapshot: HostClipboardSnapshot) -> Result<(), HostCapabilityError> {
-        Err(unavailable_capability())
+    fn write(&self, snapshot: HostClipboardSnapshot) -> Result<(), HostCapabilityError> {
+        self.host
+            .clipboard_write(BindingClipboardSnapshot {
+                observed_at_ms: snapshot.observed_at_ms,
+                representations: snapshot
+                    .representations
+                    .into_iter()
+                    .map(map_engine_clipboard_representation)
+                    .collect(),
+            })
+            .map_err(map_host_capability_error)
     }
 }
 
-struct UnavailableFiles;
+fn map_clipboard_representation(
+    representation: BindingClipboardRepresentation,
+) -> HostClipboardRepresentation {
+    match representation {
+        BindingClipboardRepresentation::Inline {
+            format,
+            mime_type,
+            bytes,
+        } => HostClipboardRepresentation::Inline {
+            format,
+            mime_type,
+            bytes,
+        },
+        BindingClipboardRepresentation::File {
+            format,
+            handle,
+            display_name,
+            mime_type,
+            size_bytes,
+        } => HostClipboardRepresentation::File {
+            format,
+            handle: HostFileHandle::new(handle),
+            display_name,
+            mime_type,
+            size_bytes,
+        },
+    }
+}
 
-impl HostFileAccess for UnavailableFiles {
-    fn metadata(&self, _handle: &HostFileHandle) -> Result<HostFileMetadata, HostCapabilityError> {
-        Err(unavailable_capability())
+fn map_engine_clipboard_representation(
+    representation: HostClipboardRepresentation,
+) -> BindingClipboardRepresentation {
+    match representation {
+        HostClipboardRepresentation::Inline {
+            format,
+            mime_type,
+            bytes,
+        } => BindingClipboardRepresentation::Inline {
+            format,
+            mime_type,
+            bytes,
+        },
+        HostClipboardRepresentation::File {
+            format,
+            handle,
+            display_name,
+            mime_type,
+            size_bytes,
+        } => BindingClipboardRepresentation::File {
+            format,
+            handle: handle.as_str().to_owned(),
+            display_name,
+            mime_type,
+            size_bytes,
+        },
+    }
+}
+
+struct BindingFiles {
+    host: Arc<dyn BindingHost>,
+}
+
+impl HostFileAccess for BindingFiles {
+    fn metadata(&self, handle: &HostFileHandle) -> Result<HostFileMetadata, HostCapabilityError> {
+        self.host
+            .file_metadata(handle.as_str().to_owned())
+            .map(|metadata: BindingFileMetadata| HostFileMetadata {
+                display_name: metadata.display_name,
+                size_bytes: metadata.size_bytes,
+                mime_type: metadata.mime_type,
+            })
+            .map_err(map_host_capability_error)
     }
 
     fn read_chunk(
         &self,
-        _handle: &HostFileHandle,
-        _offset: u64,
-        _max_bytes: u32,
+        handle: &HostFileHandle,
+        offset: u64,
+        max_bytes: u32,
     ) -> Result<Vec<u8>, HostCapabilityError> {
-        Err(unavailable_capability())
+        self.host
+            .file_read_chunk(handle.as_str().to_owned(), offset, max_bytes)
+            .map_err(map_host_capability_error)
     }
 
     fn write_chunk(
         &self,
-        _handle: &HostFileHandle,
-        _offset: u64,
-        _bytes: &[u8],
+        handle: &HostFileHandle,
+        offset: u64,
+        bytes: &[u8],
     ) -> Result<(), HostCapabilityError> {
-        Err(unavailable_capability())
+        self.host
+            .file_write_chunk(handle.as_str().to_owned(), offset, bytes.to_vec())
+            .map_err(map_host_capability_error)
     }
 
-    fn finish_write(&self, _handle: &HostFileHandle) -> Result<(), HostCapabilityError> {
-        Err(unavailable_capability())
+    fn finish_write(&self, handle: &HostFileHandle) -> Result<(), HostCapabilityError> {
+        self.host
+            .file_finish_write(handle.as_str().to_owned())
+            .map_err(map_host_capability_error)
     }
-}
-
-fn unavailable_capability() -> HostCapabilityError {
-    HostCapabilityError::new(
-        HostCapabilityErrorCategory::Unavailable,
-        "capability is not exposed by this binding slice",
-    )
 }
 
 fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {

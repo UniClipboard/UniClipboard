@@ -2,7 +2,7 @@
 
 mod runtime;
 
-pub use runtime::{InvitationIssued, MobileEngine, SpaceCreated, SpaceJoined, TextSendReport};
+pub use runtime::{InvitationIssued, MobileEngine, SendReport, SpaceCreated, SpaceJoined};
 
 uniffi::setup_scaffolding!();
 
@@ -110,6 +110,100 @@ pub struct BindingFailure {
     pub retryable: bool,
 }
 
+#[derive(Clone, PartialEq, Eq, uniffi::Record)]
+pub struct BindingFileMetadata {
+    pub display_name: String,
+    pub size_bytes: u64,
+    pub mime_type: Option<String>,
+}
+
+#[derive(Clone, PartialEq, Eq, uniffi::Enum)]
+pub enum BindingClipboardRepresentation {
+    Inline {
+        format: String,
+        mime_type: Option<String>,
+        bytes: Vec<u8>,
+    },
+    File {
+        format: String,
+        handle: String,
+        display_name: String,
+        mime_type: Option<String>,
+        size_bytes: u64,
+    },
+}
+
+impl std::fmt::Debug for BindingClipboardRepresentation {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut debug = formatter.debug_struct("BindingClipboardRepresentation");
+        match self {
+            Self::Inline {
+                format,
+                mime_type,
+                bytes,
+            } => debug
+                .field("kind", &"inline")
+                .field("format", format)
+                .field("mime_type", mime_type)
+                .field("byte_len", &bytes.len()),
+            Self::File {
+                format,
+                mime_type,
+                size_bytes,
+                ..
+            } => debug
+                .field("kind", &"file")
+                .field("format", format)
+                .field("handle", &"[REDACTED]")
+                .field("display_name", &"[REDACTED]")
+                .field("mime_type", mime_type)
+                .field("size_bytes", size_bytes),
+        };
+        debug.finish()
+    }
+}
+
+#[derive(Clone, PartialEq, Eq, uniffi::Record)]
+pub struct BindingClipboardSnapshot {
+    pub observed_at_ms: i64,
+    pub representations: Vec<BindingClipboardRepresentation>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum BindingClipboardRestoreMode {
+    Standard,
+    PlainText,
+    FilePaths,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum BindingClipboardRestoreOutcome {
+    Restored,
+    PayloadUnavailable,
+    NotApplicable,
+}
+
+impl std::fmt::Debug for BindingClipboardSnapshot {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("BindingClipboardSnapshot")
+            .field("observed_at_ms", &self.observed_at_ms)
+            .field("representation_count", &self.representations.len())
+            .finish()
+    }
+}
+
+impl std::fmt::Debug for BindingFileMetadata {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("BindingFileMetadata")
+            .field("display_name", &"[REDACTED]")
+            .field("size_bytes", &self.size_bytes)
+            .field("mime_type", &self.mime_type)
+            .finish()
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
 pub enum BindingOperationTerminal {
     Succeeded,
@@ -152,6 +246,22 @@ pub trait BindingHost: Send + Sync {
     fn secure_storage_get(&self, key: String) -> Result<Option<Vec<u8>>, HostBindingError>;
     fn secure_storage_set(&self, key: String, value: Vec<u8>) -> Result<(), HostBindingError>;
     fn secure_storage_delete(&self, key: String) -> Result<(), HostBindingError>;
+    fn file_metadata(&self, handle: String) -> Result<BindingFileMetadata, HostBindingError>;
+    fn file_read_chunk(
+        &self,
+        handle: String,
+        offset: u64,
+        max_bytes: u32,
+    ) -> Result<Vec<u8>, HostBindingError>;
+    fn file_write_chunk(
+        &self,
+        handle: String,
+        offset: u64,
+        bytes: Vec<u8>,
+    ) -> Result<(), HostBindingError>;
+    fn file_finish_write(&self, handle: String) -> Result<(), HostBindingError>;
+    fn clipboard_read(&self) -> Result<BindingClipboardSnapshot, HostBindingError>;
+    fn clipboard_write(&self, snapshot: BindingClipboardSnapshot) -> Result<(), HostBindingError>;
 }
 
 #[uniffi::export]

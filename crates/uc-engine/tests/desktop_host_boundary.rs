@@ -20,6 +20,20 @@ fn daemon_production_host_starts_and_stops_only_the_engine() {
 }
 
 #[test]
+fn desktop_profile_partition_does_not_change_the_space_key_scope() {
+    let host = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../crates/uc-bootstrap/src/wiring/desktop_host.rs");
+    let source = std::fs::read_to_string(&host)
+        .unwrap_or_else(|error| panic!("failed to read {}: {error}", host.display()));
+
+    assert!(source.contains("EngineConfig::new(env!(\"CARGO_PKG_VERSION\"))"));
+    assert!(
+        !source.contains("with_profile_id"),
+        "desktop profile names already partition paths and secure storage; they must not rewrite the shared space key scope"
+    );
+}
+
+#[test]
 fn mobile_upload_lifecycle_is_owned_by_engine_runtime() {
     let manifest = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let runtime_path = manifest.join("src/internal/runtime.rs");

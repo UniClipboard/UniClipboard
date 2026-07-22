@@ -60,11 +60,7 @@ pub fn prepare_desktop_engine_host(config: &AppConfig) -> WiringResult<DesktopEn
             "failed to create engine temporary directory: {error}"
         ))
     })?;
-    let profile_id = std::env::var("UC_PROFILE")
-        .ok()
-        .filter(|profile| !profile.trim().is_empty())
-        .unwrap_or_else(|| "default".to_string());
-    let engine_config = EngineConfig::new(env!("CARGO_PKG_VERSION")).with_profile_id(profile_id);
+    let engine_config = EngineConfig::new(env!("CARGO_PKG_VERSION"));
     let capabilities = HostCapabilities::new(
         HostDirectories::new(
             paths.app_data_root_dir.clone(),

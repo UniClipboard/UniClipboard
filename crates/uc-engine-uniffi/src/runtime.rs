@@ -1,18 +1,22 @@
+use std::collections::VecDeque;
 use std::path::PathBuf;
 use std::sync::mpsc;
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::thread::JoinHandle;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use uc_engine::{
     CreateSpaceInput, Engine, EngineConfig, HostCapabilities, HostCapabilityError,
     HostCapabilityErrorCategory, HostClipboard, HostClipboardSnapshot, HostDirectories,
-    HostFileAccess, HostFileHandle, HostFileMetadata, HostSecureStorage, Operation,
-    OperationResult, SecretString,
+    HostFileAccess, HostFileHandle, HostFileMetadata, HostSecureStorage, JoinSpaceInput, Operation,
+    OperationResult, SecretString, SendTextInput,
 };
 use zeroize::Zeroizing;
 
-use crate::{BindingConfig, BindingError, BindingHost, HostBindingError};
+use crate::{
+    BindingConfig, BindingEngineState, BindingError, BindingEvent, BindingFailure, BindingHost,
+    BindingOperationTerminal, BindingRefreshReason, HostBindingError,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
 pub struct SpaceCreated {
@@ -21,11 +25,68 @@ pub struct SpaceCreated {
     pub identity_fingerprint: String,
 }
 
+#[derive(Clone, PartialEq, Eq, uniffi::Record)]
+pub struct InvitationIssued {
+    pub invitation_code: String,
+    pub expires_at_ms: i64,
+}
+
+impl std::fmt::Debug for InvitationIssued {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("InvitationIssued")
+            .field("invitation_code", &"[REDACTED]")
+            .field("expires_at_ms", &self.expires_at_ms)
+            .finish()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct SpaceJoined {
+    pub sponsor_device_id: String,
+    pub sponsor_identity_fingerprint: String,
+    pub space_id: String,
+    pub self_device_id: String,
+    pub self_identity_fingerprint: String,
+    pub migrated_records: Option<u64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct TextSendReport {
+    pub entry_id: String,
+    pub at_ms: i64,
+    pub total_accepted: u64,
+    pub total_duplicate: u64,
+    pub total_offline: u64,
+    pub total_errored: u64,
+    pub total_pending: u64,
+}
+
 enum WorkerCommand {
     CreateSpace {
         device_name: Option<String>,
         passphrase: Zeroizing<String>,
         response: mpsc::Sender<Result<SpaceCreated, BindingError>>,
+    },
+    IssueInvitation {
+        response: mpsc::Sender<Result<InvitationIssued, BindingError>>,
+    },
+    JoinSpace {
+        invitation_code: Zeroizing<String>,
+        device_name: Option<String>,
+        passphrase: Zeroizing<String>,
+        response: mpsc::Sender<Result<SpaceJoined, BindingError>>,
+    },
+    SendText {
+        text: Zeroizing<String>,
+        target_devices: Vec<String>,
+        response: mpsc::Sender<Result<TextSendReport, BindingError>>,
+    },
+    Suspend {
+        response: mpsc::Sender<Result<(), BindingError>>,
+    },
+    Resume {
+        response: mpsc::Sender<Result<(), BindingError>>,
     },
     Shutdown {
         deadline: Duration,
@@ -36,7 +97,81 @@ enum WorkerCommand {
 #[derive(uniffi::Object)]
 pub struct MobileEngine {
     commands: Mutex<Option<tokio::sync::mpsc::UnboundedSender<WorkerCommand>>>,
+    events: Arc<EventQueue>,
     worker: Mutex<Option<JoinHandle<()>>>,
+}
+
+struct EventQueueState {
+    events: VecDeque<BindingEvent>,
+    lagged: bool,
+    closed: bool,
+}
+
+struct EventQueue {
+    capacity: usize,
+    state: Mutex<EventQueueState>,
+    ready: Condvar,
+}
+
+impl EventQueue {
+    fn new(capacity: usize) -> Self {
+        Self {
+            capacity: capacity.max(1),
+            state: Mutex::new(EventQueueState {
+                events: VecDeque::new(),
+                lagged: false,
+                closed: false,
+            }),
+            ready: Condvar::new(),
+        }
+    }
+
+    fn push(&self, event: BindingEvent) {
+        let mut state = lock(&self.state);
+        if state.closed {
+            return;
+        }
+        if state.events.len() == self.capacity {
+            state.events.pop_front();
+            state.lagged = true;
+        }
+        state.events.push_back(event);
+        self.ready.notify_one();
+    }
+
+    fn close(&self) {
+        lock(&self.state).closed = true;
+        self.ready.notify_all();
+    }
+
+    fn next(&self, timeout: Duration) -> Option<BindingEvent> {
+        let deadline = Instant::now().checked_add(timeout);
+        let mut state = lock(&self.state);
+        loop {
+            if state.lagged {
+                state.lagged = false;
+                return Some(BindingEvent::RefreshRequired {
+                    reason: BindingRefreshReason::ConsumerLagged,
+                });
+            }
+            if let Some(event) = state.events.pop_front() {
+                return Some(event);
+            }
+            if state.closed || timeout.is_zero() {
+                return None;
+            }
+            let remaining = deadline
+                .map(|deadline| deadline.saturating_duration_since(Instant::now()))
+                .unwrap_or(Duration::from_secs(60));
+            if remaining.is_zero() {
+                return None;
+            }
+            state = match self.ready.wait_timeout(state, remaining) {
+                Ok((state, _)) => state,
+                Err(poisoned) => poisoned.into_inner().0,
+            };
+        }
+    }
 }
 
 #[uniffi::export]
@@ -49,15 +184,18 @@ impl MobileEngine {
         let capabilities = host_capabilities(Arc::clone(&host))?;
         let config = EngineConfig::new(config.app_version).with_profile_id(config.profile_id);
         let (commands, requests) = tokio::sync::mpsc::unbounded_channel();
+        let events = Arc::new(EventQueue::new(256));
         let (started, start_result) = mpsc::channel();
+        let worker_events = Arc::clone(&events);
         let worker = std::thread::Builder::new()
             .name("uc-engine-uniffi".to_owned())
-            .spawn(move || run_worker(config, capabilities, requests, started))
+            .spawn(move || run_worker(config, capabilities, requests, worker_events, started))
             .map_err(|_| BindingError::RuntimeUnavailable)?;
 
         match start_result.recv() {
             Ok(Ok(())) => Ok(Arc::new(Self {
                 commands: Mutex::new(Some(commands)),
+                events,
                 worker: Mutex::new(Some(worker)),
             })),
             Ok(Err(error)) => {
@@ -91,8 +229,85 @@ impl MobileEngine {
             .map_err(|_| BindingError::RuntimeUnavailable)?
     }
 
+    pub fn issue_invitation(&self) -> Result<InvitationIssued, BindingError> {
+        let commands = self.command_sender()?;
+        let (response, result) = mpsc::channel();
+        commands
+            .send(WorkerCommand::IssueInvitation { response })
+            .map_err(|_| BindingError::RuntimeUnavailable)?;
+        result
+            .recv()
+            .map_err(|_| BindingError::RuntimeUnavailable)?
+    }
+
+    pub fn join_space(
+        &self,
+        invitation_code: String,
+        device_name: Option<String>,
+        passphrase: String,
+    ) -> Result<SpaceJoined, BindingError> {
+        let commands = self.command_sender()?;
+        let (response, result) = mpsc::channel();
+        commands
+            .send(WorkerCommand::JoinSpace {
+                invitation_code: Zeroizing::new(invitation_code),
+                device_name,
+                passphrase: Zeroizing::new(passphrase),
+                response,
+            })
+            .map_err(|_| BindingError::RuntimeUnavailable)?;
+        result
+            .recv()
+            .map_err(|_| BindingError::RuntimeUnavailable)?
+    }
+
+    pub fn send_text(
+        &self,
+        text: String,
+        target_devices: Vec<String>,
+    ) -> Result<TextSendReport, BindingError> {
+        let commands = self.command_sender()?;
+        let (response, result) = mpsc::channel();
+        commands
+            .send(WorkerCommand::SendText {
+                text: Zeroizing::new(text),
+                target_devices,
+                response,
+            })
+            .map_err(|_| BindingError::RuntimeUnavailable)?;
+        result
+            .recv()
+            .map_err(|_| BindingError::RuntimeUnavailable)?
+    }
+
     pub fn shutdown(&self, deadline_ms: u64) -> Result<(), BindingError> {
         self.shutdown_inner(Duration::from_millis(deadline_ms), true)
+    }
+
+    pub fn suspend(&self) -> Result<(), BindingError> {
+        let commands = self.command_sender()?;
+        let (response, result) = mpsc::channel();
+        commands
+            .send(WorkerCommand::Suspend { response })
+            .map_err(|_| BindingError::RuntimeUnavailable)?;
+        result
+            .recv()
+            .map_err(|_| BindingError::RuntimeUnavailable)?
+    }
+
+    pub fn resume(&self) -> Result<(), BindingError> {
+        let commands = self.command_sender()?;
+        let (response, result) = mpsc::channel();
+        commands
+            .send(WorkerCommand::Resume { response })
+            .map_err(|_| BindingError::RuntimeUnavailable)?;
+        result
+            .recv()
+            .map_err(|_| BindingError::RuntimeUnavailable)?
+    }
+
+    pub fn next_event(&self, timeout_ms: u64) -> Option<BindingEvent> {
+        self.events.next(Duration::from_millis(timeout_ms))
     }
 }
 
@@ -143,6 +358,7 @@ fn run_worker(
     config: EngineConfig,
     host: HostCapabilities,
     requests: tokio::sync::mpsc::UnboundedReceiver<WorkerCommand>,
+    events: Arc<EventQueue>,
     started: mpsc::Sender<Result<(), BindingError>>,
 ) {
     let runtime = match tokio::runtime::Builder::new_current_thread()
@@ -155,16 +371,17 @@ fn run_worker(
             return;
         }
     };
-    runtime.block_on(run_worker_loop(config, host, requests, started));
+    runtime.block_on(run_worker_loop(config, host, requests, events, started));
 }
 
 async fn run_worker_loop(
     config: EngineConfig,
     host: HostCapabilities,
     mut requests: tokio::sync::mpsc::UnboundedReceiver<WorkerCommand>,
+    events: Arc<EventQueue>,
     started: mpsc::Sender<Result<(), BindingError>>,
 ) {
-    let (engine, _events) = match Engine::start(config, host).await {
+    let (engine, mut engine_events) = match Engine::start(config, host).await {
         Ok(started_engine) => started_engine,
         Err(error) => {
             let _ = started.send(Err(error.into()));
@@ -175,6 +392,15 @@ async fn run_worker_loop(
         let _ = engine.shutdown(Duration::ZERO).await;
         return;
     }
+
+    let event_task = tokio::spawn(async move {
+        while let Some(event) = engine_events.next().await {
+            events.push(map_engine_event(event));
+        }
+        events.close();
+    });
+
+    let mut shutdown_response = None;
 
     while let Some(command) = requests.recv().await {
         match command {
@@ -194,12 +420,122 @@ async fn run_worker_loop(
                     .and_then(map_space_created);
                 let _ = response.send(result);
             }
+            WorkerCommand::IssueInvitation { response } => {
+                let result = engine
+                    .execute(Operation::IssueInvitation)
+                    .await
+                    .map_err(BindingError::from)
+                    .and_then(map_invitation_issued);
+                let _ = response.send(result);
+            }
+            WorkerCommand::JoinSpace {
+                mut invitation_code,
+                device_name,
+                passphrase,
+                response,
+            } => {
+                let result = engine
+                    .execute(Operation::JoinSpace(JoinSpaceInput {
+                        invitation_code: std::mem::take(&mut *invitation_code),
+                        device_name,
+                        passphrase: SecretString::new(passphrase.as_str()),
+                    }))
+                    .await
+                    .map_err(BindingError::from)
+                    .and_then(map_space_joined);
+                let _ = response.send(result);
+            }
+            WorkerCommand::SendText {
+                mut text,
+                target_devices,
+                response,
+            } => {
+                let result = engine
+                    .execute(Operation::SendText(SendTextInput {
+                        text: std::mem::take(&mut *text),
+                        target_devices,
+                    }))
+                    .await
+                    .map_err(BindingError::from)
+                    .and_then(map_text_send_report);
+                let _ = response.send(result);
+            }
+            WorkerCommand::Suspend { response } => {
+                let result = engine.suspend().await.map_err(BindingError::from);
+                let _ = response.send(result);
+            }
+            WorkerCommand::Resume { response } => {
+                let result = engine.resume().await.map_err(BindingError::from);
+                let _ = response.send(result);
+            }
             WorkerCommand::Shutdown { deadline, response } => {
                 let result = engine.shutdown(deadline).await.map_err(BindingError::from);
-                let _ = response.send(result);
+                shutdown_response = Some((response, result));
                 break;
             }
         }
+    }
+    if shutdown_response.is_none() {
+        let _ = engine.shutdown(Duration::ZERO).await;
+    }
+    let _ = event_task.await;
+    if let Some((response, result)) = shutdown_response {
+        let _ = response.send(result);
+    }
+}
+
+fn map_engine_event(event: uc_engine::EngineEvent) -> BindingEvent {
+    match event {
+        uc_engine::EngineEvent::StateChanged { state } => BindingEvent::StateChanged {
+            state: map_engine_state(state),
+        },
+        uc_engine::EngineEvent::OperationFinished {
+            operation_id,
+            terminal,
+        } => {
+            let (terminal, failure) = match terminal {
+                uc_engine::OperationTerminal::Succeeded => {
+                    (BindingOperationTerminal::Succeeded, None)
+                }
+                uc_engine::OperationTerminal::Failed(error) => (
+                    BindingOperationTerminal::Failed,
+                    Some(BindingFailure::from(error)),
+                ),
+                uc_engine::OperationTerminal::Cancelled => {
+                    (BindingOperationTerminal::Cancelled, None)
+                }
+            };
+            BindingEvent::OperationFinished {
+                operation_id,
+                terminal,
+                failure,
+            }
+        }
+        uc_engine::EngineEvent::RefreshRequired { reason } => BindingEvent::RefreshRequired {
+            reason: match reason {
+                uc_engine::RefreshReason::ConsumerLagged => BindingRefreshReason::ConsumerLagged,
+                uc_engine::RefreshReason::StateInvalidated => {
+                    BindingRefreshReason::StateInvalidated
+                }
+            },
+        },
+        uc_engine::EngineEvent::Fatal { error } => BindingEvent::Fatal {
+            failure: BindingFailure::from(error),
+        },
+        other => BindingEvent::Changed {
+            kind: other.kind().to_owned(),
+        },
+    }
+}
+
+fn map_engine_state(state: uc_engine::EngineState) -> BindingEngineState {
+    match state {
+        uc_engine::EngineState::Running => BindingEngineState::Running,
+        uc_engine::EngineState::Quiescing => BindingEngineState::Quiescing,
+        uc_engine::EngineState::Quiesced => BindingEngineState::Quiesced,
+        uc_engine::EngineState::Suspended => BindingEngineState::Suspended,
+        uc_engine::EngineState::ShuttingDown => BindingEngineState::ShuttingDown,
+        uc_engine::EngineState::Stopped => BindingEngineState::Stopped,
     }
 }
 
@@ -216,6 +552,59 @@ fn map_space_created(result: OperationResult) -> Result<SpaceCreated, BindingErr
         }),
         _ => Err(BindingError::UnexpectedResult),
     }
+}
+
+fn map_invitation_issued(result: OperationResult) -> Result<InvitationIssued, BindingError> {
+    match result {
+        OperationResult::InvitationIssued {
+            invitation_code,
+            expires_at_ms,
+        } => Ok(InvitationIssued {
+            invitation_code,
+            expires_at_ms,
+        }),
+        _ => Err(BindingError::UnexpectedResult),
+    }
+}
+
+fn map_space_joined(result: OperationResult) -> Result<SpaceJoined, BindingError> {
+    match result {
+        OperationResult::SpaceJoined {
+            sponsor_device_id,
+            sponsor_identity_fingerprint,
+            space_id,
+            self_device_id,
+            self_identity_fingerprint,
+            migrated_records,
+        } => Ok(SpaceJoined {
+            sponsor_device_id,
+            sponsor_identity_fingerprint,
+            space_id,
+            self_device_id,
+            self_identity_fingerprint,
+            migrated_records,
+        }),
+        _ => Err(BindingError::UnexpectedResult),
+    }
+}
+
+fn map_text_send_report(result: OperationResult) -> Result<TextSendReport, BindingError> {
+    match result {
+        OperationResult::EntrySent(report) => Ok(TextSendReport {
+            entry_id: report.entry_id,
+            at_ms: report.at_ms,
+            total_accepted: count_to_u64(report.total_accepted)?,
+            total_duplicate: count_to_u64(report.total_duplicate)?,
+            total_offline: count_to_u64(report.total_offline)?,
+            total_errored: count_to_u64(report.total_errored)?,
+            total_pending: count_to_u64(report.total_pending)?,
+        }),
+        _ => Err(BindingError::UnexpectedResult),
+    }
+}
+
+fn count_to_u64(value: usize) -> Result<u64, BindingError> {
+    u64::try_from(value).map_err(|_| BindingError::UnexpectedResult)
 }
 
 fn host_capabilities(host: Arc<dyn BindingHost>) -> Result<HostCapabilities, BindingError> {
@@ -341,5 +730,52 @@ fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
     match mutex.lock() {
         Ok(value) => value,
         Err(poisoned) => poisoned.into_inner(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn bounded_event_queue_reports_lag_and_keeps_the_latest_events() {
+        let queue = EventQueue::new(2);
+        queue.push(BindingEvent::Changed {
+            kind: "first".to_owned(),
+        });
+        queue.push(BindingEvent::Changed {
+            kind: "second".to_owned(),
+        });
+        queue.push(BindingEvent::Changed {
+            kind: "third".to_owned(),
+        });
+
+        assert_eq!(
+            queue.next(Duration::ZERO),
+            Some(BindingEvent::RefreshRequired {
+                reason: BindingRefreshReason::ConsumerLagged,
+            })
+        );
+        assert_eq!(
+            queue.next(Duration::ZERO),
+            Some(BindingEvent::Changed {
+                kind: "second".to_owned(),
+            })
+        );
+        assert_eq!(
+            queue.next(Duration::ZERO),
+            Some(BindingEvent::Changed {
+                kind: "third".to_owned(),
+            })
+        );
+        assert_eq!(queue.next(Duration::ZERO), None);
+    }
+
+    #[test]
+    fn event_queue_handles_the_largest_foreign_timeout_without_panicking() {
+        let queue = EventQueue::new(1);
+        queue.close();
+
+        assert_eq!(queue.next(Duration::MAX), None);
     }
 }

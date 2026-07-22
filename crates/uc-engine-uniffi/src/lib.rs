@@ -2,7 +2,7 @@
 
 mod runtime;
 
-pub use runtime::{MobileEngine, SpaceCreated};
+pub use runtime::{InvitationIssued, MobileEngine, SpaceCreated, SpaceJoined, TextSendReport};
 
 uniffi::setup_scaffolding!();
 
@@ -44,23 +44,34 @@ pub enum BindingError {
 
 impl From<uc_engine::EngineError> for BindingError {
     fn from(error: uc_engine::EngineError) -> Self {
-        let category = match error.category() {
-            uc_engine::EngineErrorCategory::InvalidInput => BindingErrorCategory::InvalidInput,
-            uc_engine::EngineErrorCategory::InvalidState => BindingErrorCategory::InvalidState,
-            uc_engine::EngineErrorCategory::Unauthorized => BindingErrorCategory::Unauthorized,
-            uc_engine::EngineErrorCategory::NotFound => BindingErrorCategory::NotFound,
-            uc_engine::EngineErrorCategory::Conflict => BindingErrorCategory::Conflict,
-            uc_engine::EngineErrorCategory::Unavailable => BindingErrorCategory::Unavailable,
-            uc_engine::EngineErrorCategory::DeadlineExceeded => {
-                BindingErrorCategory::DeadlineExceeded
-            }
-            uc_engine::EngineErrorCategory::Internal => BindingErrorCategory::Internal,
-        };
         Self::Engine {
             code: error.code(),
-            category,
+            category: map_error_category(error.category()),
             retryable: error.is_retryable(),
         }
+    }
+}
+
+impl From<uc_engine::EngineError> for BindingFailure {
+    fn from(error: uc_engine::EngineError) -> Self {
+        Self {
+            code: error.code(),
+            category: map_error_category(error.category()),
+            retryable: error.is_retryable(),
+        }
+    }
+}
+
+fn map_error_category(category: uc_engine::EngineErrorCategory) -> BindingErrorCategory {
+    match category {
+        uc_engine::EngineErrorCategory::InvalidInput => BindingErrorCategory::InvalidInput,
+        uc_engine::EngineErrorCategory::InvalidState => BindingErrorCategory::InvalidState,
+        uc_engine::EngineErrorCategory::Unauthorized => BindingErrorCategory::Unauthorized,
+        uc_engine::EngineErrorCategory::NotFound => BindingErrorCategory::NotFound,
+        uc_engine::EngineErrorCategory::Conflict => BindingErrorCategory::Conflict,
+        uc_engine::EngineErrorCategory::Unavailable => BindingErrorCategory::Unavailable,
+        uc_engine::EngineErrorCategory::DeadlineExceeded => BindingErrorCategory::DeadlineExceeded,
+        uc_engine::EngineErrorCategory::Internal => BindingErrorCategory::Internal,
     }
 }
 
@@ -80,6 +91,57 @@ pub enum HostBindingError {
 pub struct BindingConfig {
     pub app_version: String,
     pub profile_id: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum BindingEngineState {
+    Running,
+    Quiescing,
+    Quiesced,
+    Suspended,
+    ShuttingDown,
+    Stopped,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct BindingFailure {
+    pub code: u32,
+    pub category: BindingErrorCategory,
+    pub retryable: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum BindingOperationTerminal {
+    Succeeded,
+    Failed,
+    Cancelled,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum BindingRefreshReason {
+    ConsumerLagged,
+    StateInvalidated,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
+pub enum BindingEvent {
+    StateChanged {
+        state: BindingEngineState,
+    },
+    OperationFinished {
+        operation_id: String,
+        terminal: BindingOperationTerminal,
+        failure: Option<BindingFailure>,
+    },
+    RefreshRequired {
+        reason: BindingRefreshReason,
+    },
+    Fatal {
+        failure: BindingFailure,
+    },
+    Changed {
+        kind: String,
+    },
 }
 
 #[uniffi::export(with_foreign)]

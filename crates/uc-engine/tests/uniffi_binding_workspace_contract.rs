@@ -74,6 +74,7 @@ fn uniffi_binding_owns_runnable_ios_and_android_packaging() {
         "aarch64-apple-ios-sim",
         "x86_64-apple-ios",
         "--language swift",
+        "CARGO_PROFILE_RELEASE_DEBUG",
         "selective_strip_archive",
         "xcodebuild -create-xcframework",
         "UniClipboardEngine.xcframework.zip",

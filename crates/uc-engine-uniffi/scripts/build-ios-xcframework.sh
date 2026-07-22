@@ -65,6 +65,7 @@ if [[ "$(uname -s)" != "Darwin" ]]; then
 fi
 
 export CARGO_TARGET_DIR="$TARGET_DIR"
+export CARGO_PROFILE_RELEASE_DEBUG="${CARGO_PROFILE_RELEASE_DEBUG:-0}"
 cd "$REPO_ROOT"
 rm -rf "$STAGE_DIR" "$DIST_DIR"
 mkdir -p \

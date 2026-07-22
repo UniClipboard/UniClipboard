@@ -45,7 +45,15 @@ fn uniffi_binding_is_a_workspace_member_with_a_public_engine_boundary() {
         .collect::<BTreeSet<_>>();
     assert_eq!(
         dependencies,
-        BTreeSet::from(["thiserror", "tokio", "uc-engine", "uniffi", "zeroize"])
+        BTreeSet::from([
+            "jni",
+            "ndk-context",
+            "thiserror",
+            "tokio",
+            "uc-engine",
+            "uniffi",
+            "zeroize",
+        ])
     );
     for forbidden in ["uc-core", "uc-application", "uc-infra", "uc-bootstrap"] {
         assert!(

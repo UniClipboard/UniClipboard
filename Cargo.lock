@@ -10399,6 +10399,7 @@ version = "0.20.0-alpha.2"
 dependencies = [
  "anyhow",
  "async-trait",
+ "cargo_metadata",
  "chrono",
  "diesel",
  "serde",
@@ -10414,6 +10415,18 @@ dependencies = [
  "uc-observability-contract",
  "url",
  "uuid",
+ "zeroize",
+]
+
+[[package]]
+name = "uc-engine-uniffi"
+version = "0.19.1"
+dependencies = [
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "uc-engine",
+ "uniffi",
  "zeroize",
 ]
 

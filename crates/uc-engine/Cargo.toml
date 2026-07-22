@@ -22,6 +22,7 @@ uc-observability-contract = { path = "../uc-observability-contract" }
 zeroize = "1.8"
 
 [dev-dependencies]
+cargo_metadata = "0.19.2"
 chrono = { version = "0.4", features = ["serde"] }
 diesel = { version = "2.3.5", features = ["sqlite"] }
 tempfile = "3"

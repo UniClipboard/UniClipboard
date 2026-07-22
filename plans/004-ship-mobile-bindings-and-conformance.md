@@ -61,6 +61,8 @@ cargo ndk -t arm64-v8a -t x86_64 build -p uc-engine-uniffi --release
 
 预期均退出 0，且两种产物报告同一个 `core-vX.Y.Z`。
 
+当前第一切片证据（2026-07-22）：已新建只通过公开 `uc-engine` 接入核心的 `uc-engine-uniffi`，固定同一 UniFFI 版本并提供 `lib`、`staticlib`、`cdylib` 三种产物。iOS ARM64、Android ARM64 和 Android x86_64 发布构建均退出 0，三份二进制均报告 `core-v0.19.1`；同一份本机动态库已成功生成 Swift 与 Kotlin 绑定。当前公开范围包括版本、稳定错误、宿主私有目录与安全存储、启动、创建空间和关闭；事件、其余操作、剪贴板、文件接口及最终 XCFramework/AAR 仍未完成，因此本步骤和完成标准保持未勾选。
+
 ### 2. 建立 HarmonyOS 薄绑定
 
 用 N-API 暴露同一操作和事件。把社区版桥接中的保活循环、入站解析、文件组装和运行任务收回核心。HarmonyOS 只保留系统剪贴板、密钥库、文件句柄、生命周期通知和 ArkTS 类型转换。

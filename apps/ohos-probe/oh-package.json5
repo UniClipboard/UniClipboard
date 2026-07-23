@@ -1,0 +1,6 @@
+{
+  "modelVersion": "5.0.0",
+  "description": "UniClipboard HarmonyOS engine acceptance host",
+  "dependencies": {},
+  "devDependencies": {}
+}

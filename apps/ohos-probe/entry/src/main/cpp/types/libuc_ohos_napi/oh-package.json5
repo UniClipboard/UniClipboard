@@ -1,0 +1,6 @@
+{
+  "name": "libuc_ohos_napi.so",
+  "version": "1.0.0",
+  "types": "./index.d.ts",
+  "description": "UniClipboard unified engine N-API declarations"
+}

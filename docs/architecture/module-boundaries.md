@@ -7,10 +7,11 @@ This document defines the **responsibilities and boundaries** for each crate in 
 | Crate              | Core Responsibility                     | May Depend On                         | Must NOT Depend On                |
 | ------------------ | --------------------------------------- | ------------------------------------- | --------------------------------- |
 | `uc-core`          | Domain models + Port trait definitions  | Nothing external                      | ❌ Database, OS, Frameworks        |
-| `uc-application`   | Use cases, facades, orchestration       | `uc-core` + `uc-observability`        | ❌ `uc-infra`, `uc-platform`       |
-| `uc-infra`         | Infrastructure adapters (DB, P2P, crypto)| `uc-core`                            | ❌ `uc-application`, business logic |
+| `uc-application`   | Use cases, facades, orchestration       | `uc-core` + `uc-observability-contract` | ❌ `uc-infra`, `uc-platform`, `uc-app-paths` |
+| `uc-infra`         | Infrastructure adapters (DB, P2P, crypto)| `uc-core` + `uc-observability-contract` | ❌ `uc-application`, `uc-app-paths`, full `uc-observability` |
 | `uc-platform`      | Platform adapters (clipboard, OS, keychain)| `uc-core` + `uc-app-paths`          | ❌ `uc-application`, business logic |
-| `uc-bootstrap`     | **唯一组合根** (DI wiring)              | All core/app/infra/platform/observability | ❌ Business decisions           |
+| `uc-engine`        | 稳定公开入口、跨平台运行与内部组装        | `uc-core` + `uc-application` + `uc-infra` | ❌ 平台、网页服务、后台服务、界面框架 |
+| `uc-bootstrap`     | 桌面宿主准备与平台能力适配                 | `uc-engine` + `uc-platform` + paths/observability | ❌ Business decisions           |
 | `uc-observability` | Tracing, analytics, redaction           | Nothing external (leaf)               | ❌ Domain logic                    |
 | `uc-app-paths`     | Directory layout resolution             | Nothing external (leaf)               | ❌ App-stack logic                 |
 | `uc-daemon-contract`| HTTP API transport types (serde)       | `uc-core`                             | ❌ Infrastructure, GUI frameworks  |
@@ -502,7 +503,7 @@ When reviewing `uc-tauri` code:
                             ↓ wires
 ┌─────────────────────────────────────────────────────────────┐
 │                   uc-application                             │
-│  May depend on: uc-core (Ports) + uc-observability           │
+│  May depend on: uc-core (Ports) + uc-observability-contract  │
 │  Must NOT: uc-infra, uc-platform                             │
 └─────────────────────────────────────────────────────────────┘
                             ↓

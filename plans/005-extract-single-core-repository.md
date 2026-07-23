@@ -1,114 +1,375 @@
 # Plan 005：迁入单一核心仓库并保留可选 LAN 通道
 
-> **执行要求**：只有计划 004 全部完成后才能执行。迁移必须一次切换事实来源，禁止在桌面仓和核心仓长期维护两份源码。
+> **执行要求**：准备工作可以提前进行，但只有计划 004 的统一发布干跑和完成标准全部通过后，才能创建新的事实来源、发布候选版本或切换消费者。若实体设备矩阵继续按用户决定跳过，必须先在计划 004 和本计划中记录明确的风险接受；不得把“跳过”写成“通过”。
 >
-> **漂移检查**：`git diff --stat 1c229e9e1..HEAD -- Cargo.toml Cargo.lock crates apps src-tauri .github/workflows docs`
+> **事实来源规则**：迁移只允许有一个可写事实来源。历史过滤后到消费者切换完成前，desktop 仓中的旧核心目录进入短期只读冻结；禁止在两个仓库同时修改同一源码。
+>
+> **漂移检查**：`git diff --stat 1c229e9e1..HEAD -- Cargo.toml Cargo.lock crates apps src-tauri .github/workflows docs plans`
 
 ## 状态
 
 - **优先级**：P1
-- **工作量**：L
+- **工作量**：XL
 - **风险**：HIGH
 - **依赖**：`plans/004-ship-mobile-bindings-and-conformance.md`
 - **类别**：migration
 - **计划基线**：`1c229e9e1`，2026-07-19
+- **当前状态**：TODO
+- **提前准备进度**：Phase 1 第 5-9 项已完成；尚未创建新仓库、发布版本或切换消费者
 
-## 为什么最后才拆仓
+## 结论
 
-物理拆仓不会自动产生稳定边界。只有桌面和三种移动宿主已经使用统一入口、四平台构建与真机测试能够独立运行后，迁移才只是改变源码和发布的所有权，而不是同时重写架构。
+建立 `UniClipboard/UniClipboardCore`，使用“一个仓库、多个内部 crate、一个稳定入口、一次统一发布”的结构。
 
-## 目标仓库
+- 外部 Rust 调用方只依赖 `uc-engine`。
+- iOS、Android、HarmonyOS 只消费同一提交生成的绑定产物。
+- `uc-core`、`uc-application`、`uc-infra` 等属于仓库内部实现，不单独承诺稳定。
+- 各产品仓继续拥有系统生命周期、安全存储、剪贴板、文件选择和界面接线。
+- LAN HTTP 兼容能力可以放在同一仓库的 `compatibility/` 下，但使用独立版本、独立产物和独立发布线；默认 P2P 核心不启用它。
 
-建立一个 `UniClipboard/UniClipboardCore` 仓库，内部保留多个 crate：
+不能直接把当前目录搬走。当前 desktop 中仍有多个 crate 直接使用 `uc-core`、`uc-application`、`uc-infra` 和 `uc-mobile-proto`，`uc-infra` 也仍依赖完整的 desktop 观测实现。必须先完成依赖收口，再做物理迁移。
 
-- 对外稳定入口：`uc-engine`
-- 内部领域与用例：`uc-core`、`uc-application`
-- 内部存储和网络：从 `uc-infra` 收敛出的实现
-- 平台接入：desktop、Apple、Android、HarmonyOS
-- 绑定：UniFFI、HarmonyOS N-API
-- 一致性测试与发布工具
-- 可选 LAN 兼容目录：旧 LAN 协议、客户端与独立发布线
+## 仓库所有权
 
-内部 crate 使用统一 `core-vX.Y.Z` 版本。外部调用方只依赖 `uc-engine` 或发布的原生产物。
+### 迁入 `UniClipboardCore`
 
-## 范围
+| 范围 | 内容 | 说明 |
+| --- | --- | --- |
+| 稳定入口 | `uc-engine` | 唯一稳定 Rust 接口和行为约定 |
+| 内部实现 | `uc-core`、`uc-application`、`uc-infra` | 全部设为 `publish = false`，不对消费者承诺稳定 |
+| 可移植基础 | `uc-content-hash`、`uc-observability-contract` | 核心和绑定共同需要的叶子能力 |
+| iOS/Android 绑定 | `uc-engine-uniffi` | 生成 XCFramework、AAR、Swift/Kotlin 绑定 |
+| HarmonyOS 绑定 | `uc-ohos-napi` | 生成动态库、HAR 组装输入和 ArkTS 声明 |
+| 持久化 | `uc-infra/migrations/` | 数据格式与核心版本一起演进 |
+| 一致性检查 | 最小宿主、golden vectors、明文探针、升级探针 | 只通过公开入口验证行为 |
+| 发布工具 | 四平台构建脚本、校验、许可证清单、调试符号 | 所有产物来自同一提交 |
+| LAN 兼容 | `uc-mobile-proto`、`uc-mobile` 和后续兼容专用代码 | 放在 `compatibility/`，保持 `uc-mobile-v*` 独立发布 |
 
-**允许修改**：
+### 留在 desktop 仓库
 
-- 新核心仓库及其 CI、发布、文档
-- 当前桌面仓的 workspace、依赖和发布流程
-- 移动客户端与 HarmonyOS 社区仓的核心引用
-- 可选 LAN 通道随核心仓一并迁移并维持独立发布线
+- `uc-platform`、`uc-bootstrap`、`uc-observability`
+- `uc-webserver`、`uc-daemon-*`、`uc-desktop`
+- daemon、CLI、Tauri 和全部桌面打包代码
+- 桌面系统剪贴板、安全存储、自动启动、日志和进程管理
+- HTTP/WS 传输 DTO、桌面界面和产品发布流程
 
-**禁止修改**：
+### 留在各移动产品仓
 
-- 使用 Git subtree、复制目录或生成镜像维持双重事实来源
-- 正式应用使用分支名或浮动主干依赖
-- 将 LAN HTTP 混入 `uc-engine` 或实现 P2P 失败后的自动回退
-- 在迁移时顺便更改协议或持久化格式
+- iOS Keychain、Pasteboard、系统文件出口和生命周期接线
+- Android Keystore、ClipboardManager、前台服务和生命周期接线
+- HarmonyOS Asset Store/HUKS、系统剪贴板、文件选择和生命周期接线
+- Expo、Swift、Kotlin、ArkTS 的产品模块、界面和商店打包
 
-## 步骤
+系统宿主源码不进入核心仓。核心仓只定义它们必须满足的宿主能力，并发布绑定。
 
-### 1. 保留历史创建核心仓库
+## 目标目录
 
-使用可审计的历史过滤迁移核心相关目录，保留原提交作者和许可证。加入根 `AGENTS.md`、`VISION.md` 的核心安全条款、构建说明和贡献规则。内部 crate 默认不单独承诺稳定；唯一稳定入口在文档中明确。
+```text
+UniClipboardCore/
+├── Cargo.toml
+├── Cargo.lock
+├── rust-toolchain.toml
+├── LICENSE
+├── AGENTS.md
+├── README.md
+├── docs/
+│   ├── architecture/
+│   ├── security/
+│   ├── compatibility/
+│   └── release/
+├── crates/
+│   ├── uc-engine/
+│   ├── uc-core/
+│   ├── uc-application/
+│   ├── uc-infra/
+│   ├── uc-content-hash/
+│   └── uc-observability-contract/
+├── bindings/
+│   ├── uc-engine-uniffi/
+│   └── uc-ohos-napi/
+├── compatibility/
+│   ├── uc-mobile-proto/
+│   └── uc-mobile/
+├── tests/
+│   ├── conformance/
+│   ├── migration/
+│   └── persistence-scan/
+└── .github/workflows/
+    ├── pr-check.yml
+    ├── release-core.yml
+    └── release-lan-compat.yml
+```
 
-**验证**：全新检出核心仓库，不依赖桌面仓路径或子模块即可运行 `cargo metadata --locked`、核心测试和四平台干跑构建。
+目录只是所有权表达，不改变对外接口。核心内部仍可保持多个 crate，消费者不需要理解这些内部层次。
 
-### 2. 发布首个候选版本
+## 版本与发布
 
-复用计划 004 已通过的发布干跑流程，在唯一核心仓库生成并公开 `core-v0.1.0-rc.1`。发布清单记录提交、锁文件摘要、协议范围、存储格式、绑定生成工具、产物校验和已验证设备矩阵。
+### 统一核心版本
 
-**验证**：从公开发布资产和源码标签重建，产物校验一致；四个最小宿主只使用发布版本完成互通。
+- 新仓使用独立的 `core-vMAJOR.MINOR.PATCH[-rc.N]` 版本线。
+- 首个公开候选版本为 `core-v0.1.0-rc.1`。
+- `uc-engine`、内部 crate 和三种绑定使用同一个 workspace 版本。
+- 内部 crate 不发布到 crates.io；desktop 通过精确 Git 提交消费 `uc-engine`。
+- desktop 的 `Cargo.lock` 必须记录对应提交，不得依赖分支、浮动 tag 或主干。
 
-### 3. 切换桌面事实来源
+desktop 依赖形态：
 
-桌面仓先固定候选版本，完成全部后端、前端和真实 daemon 验证。在同一迁移序列中删除本地核心 crate 和被替代脚本；不得保留运行时回退。
+```toml
+uc-engine = {
+  git = "https://github.com/UniClipboard/UniClipboardCore.git",
+  rev = "<immutable-commit-sha>"
+}
+```
 
-**验证**：
+`core-v*` 标签必须指向同一提交，并由仓库保护规则禁止移动或覆盖。
+
+### 发布产物
+
+一次 `core-v*` 发布必须从同一提交生成：
+
+- Rust 源码标签、`Cargo.lock` 和依赖许可证清单
+- iOS `UniClipboardEngine.xcframework.zip`、Swift 绑定和 SwiftPM 校验值
+- Android `UniClipboardEngine.aar`、Kotlin 绑定、POM 和运行依赖清单
+- HarmonyOS 动态库、HAR 组装输入、ArkTS 声明和校验值
+- 四平台调试符号
+- `release-manifest.json`
+
+`release-manifest.json` 至少记录：
+
+- 核心版本、完整提交、Rust 工具链和锁文件 SHA-256
+- 每个产物的文件名、目标平台、架构、SHA-256 和大小
+- UniFFI、N-API、Kotlin、Swift、ArkTS 生成工具版本
+- P2P 协议范围、数据库版本、最新迁移和最低支持系统
+- 已完成与明确跳过的设备矩阵，不得把跳过项记为通过
+
+Release 资产不可覆盖。发现坏版本时发布新版本并标记旧版本不可用。
+
+### LAN 兼容版本
+
+- LAN 继续使用 `uc-mobile-vMAJOR.MINOR.PATCH`。
+- LAN 产物不得出现在 `core-v*` 的默认移动包中。
+- LAN 代码不得读取 P2P 失败信号来触发自动切换。
+- LAN 与 P2P 可以位于同一源码仓库，但必须有独立工作流、发布清单和消费者固定版本。
+
+## 跨仓协作规则
+
+1. 核心行为、协议、存储或绑定变化先进入核心仓。
+2. 核心仓发布 RC，产品仓只消费 RC，不复制补丁。
+3. 产品仓发现问题时回到核心仓修复并发布下一 RC。
+4. 系统能力和界面变化留在对应产品仓。
+5. 紧急修复可以固定未发布的精确核心提交，但不得创建产品仓内的核心分叉。
+6. 本地联调使用未跟踪的 Cargo override 或临时构建产物；CI 必须拒绝本地路径依赖。
+
+## 执行阶段
+
+### Phase 0：固定迁移基线
+
+**目的**：避免在脏工作区和变化中的核心上做历史切割。
+
+1. 完成并提交当前 `uc-engine` 结构迁移。
+2. 完成 Plan 004 的统一四平台发布干跑。
+3. 处理实体设备矩阵：要么真实通过，要么由用户明确接受跳过风险并写入两份计划。
+4. 记录 cutover commit、依赖图、发布产物校验和数据库版本。
+5. 将所有核心目录设为短期变更冻结，指定唯一迁移负责人。
+
+**进入条件**：工作区干净；核心、绑定和迁移文件全部已提交；没有未追踪的发布资产。
+
+**验收**：
+
+- `git status --short` 为空。
+- Plan 004 的统一发布干跑来自同一提交。
+- cutover commit 已推送且不可变。
+
+**回退**：未创建新仓库前直接取消冻结，不改变任何消费者。
+
+### Phase 1：建立依赖防火墙
+
+**目的**：让物理拆仓只是改变来源，不再同时重写接口。
+
+1. `uc-webserver` 的正式业务调用全部改为 `Engine::execute` 和 `Engine` 结果类型。
+2. `uc-bootstrap` 只准备宿主能力，不再依赖 `uc-application` 或 `uc-infra`。
+3. `uc-platform` 改用 desktop 自有的系统快照类型，并在宿主组装处转换为 `HostCapabilities`。
+4. daemon contract/client、CLI、Tauri 删除对 `uc-core` 的直接依赖；传输 DTO 由 daemon contract 自己拥有。
+5. `uc-infra` 删除对完整 `uc-observability` 的依赖，后台任务交给核心任务管理或可移植约定。
+6. `uc-application` 和 `uc-infra` 删除对 `uc-app-paths` 的依赖：核心文件布局常量移入核心，portable 状态由宿主配置传入。
+7. engine 检查使用核心仓本地记录器，不依赖 desktop 的观测实现。
+8. 将 `uc-application`、`uc-infra` 和 `uc-engine` 中的 LAN 专用代码放到显式兼容 feature，默认依赖图不再包含 `uc-mobile-proto`。
+9. P2P 移动产物默认不启用 LAN 兼容 feature；兼容发布才显式启用。
+
+**提前完成进度（2026-07-23）**：第 1-9 项已完成。`uc-webserver` 正式业务和 LAN 兼容运行时均只通过 `Engine` 调用核心；`uc-bootstrap` 只准备桌面宿主能力，`uc-platform` 自行拥有平台快照、目录和安全存储类型；daemon、CLI、Tauri 和轻量传输 crate 的正式依赖不再直接引用核心内部 crate。默认核心不再编译 LAN 协议依赖与真实实现，desktop 网页服务显式启用兼容能力，三种移动消费端保持默认关闭。为避免在拆仓准备阶段制造破坏性变更，现有兼容数据格式暂时保留；默认核心收到兼容操作时返回不可用。物理迁移、新仓创建、版本发布和消费者切换均尚未开始。
+
+**验收**：
+
+- desktop 正式依赖中，只有 `uc-engine` 可以指向待迁移核心。
+- `uc-engine` 的普通依赖闭包不包含 `uc-platform`、`uc-bootstrap`、`uc-webserver`、daemon、Tauri 或完整 `uc-observability`。
+- 绑定 crate 的普通依赖只有 `uc-engine` 和各自绑定运行库。
+- 默认 P2P 发布构建不包含 LAN HTTP 客户端或服务器符号。
+
+**停止条件**：任何 desktop 功能仍必须直接调用 `uc-application` facade、`uc-core` port 或 `uc-infra` 实现。
+
+### Phase 2：建立跨仓检查
+
+在搬迁前先把规则变成自动检查：
+
+- core dependency firewall：拒绝任何 desktop 仓路径和平台外壳依赖
+- public surface check：只允许 `uc-engine` 和绑定成为外部入口
+- consumer firewall：desktop 拒绝迁出 crate 的本地路径依赖和内部类型引用
+- binding provenance：二进制、生成代码、版本文件和来源提交必须一致
+- persistence gate：业务负载保持密文，文件内容例外规则不变
+- compatibility gate：P2P 失败不得触发 LAN 请求
+
+这些检查先在 desktop 仓运行，迁移后原样归新仓或消费者仓各自拥有。
+
+**验收**：故意加入一个反向路径依赖、错误绑定版本和自动 LAN 回退时，检查均能准确失败。
+
+### Phase 3：保留历史创建核心仓库
+
+1. 在临时目录克隆 cutover commit。
+2. 安装并记录固定版本的 `git-filter-repo`。
+3. 只保留本计划“迁入”清单中的源码、迁移、文档和发布脚本，并按目标目录重排。
+4. 保留提交作者、时间、许可证和可追溯提交说明。
+5. 加入新根 `Cargo.toml`、`Cargo.lock`、工具链、规则、README、AGENTS 和核心安全底线。
+6. 迁移 root `[patch.crates-io]` 中固定的 `iroh-blobs` 提交，并保留审计说明。
+7. 推送到新仓的受保护迁移分支；此时不发布、不切消费者。
+
+不得用复制目录、subtree、submodule 或定时镜像代替历史过滤。
+
+**验收**：从空目录全新检出后，不访问 desktop/mobile/HarmonyOS 本地路径即可完成：
 
 ```bash
 cargo metadata --locked --format-version 1
-bun run daemon:dev
-cargo test --workspace
-cargo check --workspace
-rg -n 'path = "../uc-(core|application|infra|engine)' Cargo.toml crates apps src-tauri
+cargo check --workspace --all-targets --locked
+cargo test --workspace --locked
 ```
 
-预期前四条通过，最后一条不再指向已迁出的本地核心。
+并完成 iOS、Android、HarmonyOS 发布干跑及持久化明文扫描。
 
-### 4. 切换 HarmonyOS
+**回退**：删除尚未成为事实来源的新仓迁移分支，desktop 解除冻结。消费者尚未变化。
 
-社区仓固定同一核心候选版本，删除复制的 `rust/space-core` 九个 crate。只保留 N-API 与系统适配代码，并把 HarmonyOS 可复用改动回收到核心仓。
+### Phase 4：发布 `core-v0.1.0-rc.1`
 
-**验证**：社区仓的归属文档记录精确核心标签和提交；源码树中不存在复制的核心目录；完整真机矩阵通过。
+1. 从受保护提交触发 `release-core.yml`。
+2. 先做 dry-run，确认所有平台产物和发布清单完整。
+3. 从同一提交重建第二次，比较可复现字段和产物校验。
+4. 创建不可移动的 `core-v0.1.0-rc.1` 标签和预发布 Release。
+5. 从 Release 资产而不是工作区文件建立四个最小宿主。
 
-### 5. 切换 Android 和 iOS
+**验收**：
 
-Android 先切换，iOS 后切换。每个平台必须包含完整 P2P 核心；移动产品可额外提供用户显式选择的 LAN HTTP 兼容通道。两条路径独立发布、独立报告状态，禁止自动回退。
+- 标签、manifest、版本文件和所有产物指向同一提交。
+- iOS/Android 绑定与本地库不能被错误版本混用。
+- HarmonyOS 包能从 Release 资产独立组装。
+- 最小宿主不需要核心仓源码即可启动、恢复身份并执行基础操作。
 
-**验证**：正式包依赖扫描只发现一个核心版本；应用启动、配对、收发、暂停恢复和升级迁移真机通过。
+**回退**：不覆盖 RC；标记为不可用并发布 `rc.2`。
 
-### 6. 保留可选 LAN 通道
+### Phase 5：切换 desktop
 
-LAN HTTP 作为移动产品中用户显式选择的兼容通道迁入核心仓，保留独立协议、客户端与发布线。它不属于 `uc-engine`，不得获取 P2P 失败信号以自动切换，也不得被宣传或测试为完整节点能力的替代品。
+desktop 是第一个消费者，因为它能最早暴露 Rust 依赖泄漏。
 
-**验证**：P2P 与 LAN 分别构建、发布并报告状态；覆盖用户显式选择两条路径的测试，断言 P2P 连接、配对或传输失败不会触发 LAN 请求；完整 P2P 真机矩阵和明文探针仍通过。
+1. 将 `uc-engine` 改为精确 Git commit 依赖。
+2. 更新 `Cargo.lock`，记录对应 `core-v*`。
+3. 删除本地已迁出的 crate、迁移、绑定脚本和重复检查。
+4. 保留 desktop 自己的系统宿主、daemon、Web、CLI 和 Tauri。
+5. LAN 需要时显式启用兼容 feature，不得成为默认或回退。
+6. 在同一个迁移 PR 中完成依赖切换和旧源码删除。
+
+**验收**：
+
+- 全新检出 desktop 能只通过远程固定核心提交构建。
+- workspace 中不存在已迁出 crate 的本地副本。
+- daemon、CLI、Tauri 和 HTTP/WS 真实流程通过。
+- 依赖扫描只发现一个核心提交。
+- P2P 失败不会产生 LAN 请求。
+
+**回退**：在没有不兼容持久化写入时，把 `uc-engine` 固定回上一已知提交；不恢复已删除的本地源码。
+
+### Phase 6：切换 Android 和 iOS
+
+Android 先切，iOS 后切；两端必须消费同一个 RC Release。
+
+1. 更新移动仓的产物下载脚本，按版本下载并校验 Release manifest。
+2. Android 同时采纳 AAR、Kotlin 绑定和运行依赖。
+3. iOS 同时采纳 XCFramework、Swift 绑定和 SwiftPM checksum。
+4. 删除仓库内旧二进制和手工生成绑定，只保留版本与校验记录。
+5. 保留各自 Keystore/Keychain、剪贴板、文件和生命周期实现。
+6. 分别验证升级、暂停恢复和身份不变。
+
+**验收**：正式 APK/IPA 只包含一个核心版本；产物来源提交一致；错误混用绑定时构建必须失败。
+
+**回退**：重新固定上一 Release 的完整产物集合，不允许只回退绑定或只回退本地库。
+
+### Phase 7：切换 HarmonyOS
+
+1. 社区仓固定同一 RC Release 和校验值。
+2. 删除 `rust/space-core` 等复制的核心源码。
+3. 只保留系统适配、ArkTS 产品代码和 Release 产物组装。
+4. 将可复用的 N-API 修改提交回核心仓，不在社区仓保留补丁副本。
+
+**验收**：社区仓没有核心源码副本；完整 HAP 可从固定 Release 独立构建、安装、恢复身份并完成内容流程。
+
+**回退**：固定上一完整 HarmonyOS 资产；不恢复复制源码。
+
+### Phase 8：稳定发布与清理
+
+1. 汇总 desktop、Android、iOS、HarmonyOS 对 RC 的验证记录。
+2. 没有阻断问题时发布稳定 `core-v0.1.0`；有修复则继续 RC 序列。
+3. 删除 desktop 中遗留的核心 CI、文档、脚本和路径例外。
+4. 更新所有仓库的所有权说明、贡献规则和故障定位入口。
+5. 解除迁移冻结，核心改动只在新仓进行。
+6. 记录旧目录最后提交、新仓首个提交和消费者首次固定版本的映射。
+
+**验收**：仓库搜索、Cargo metadata、移动包扫描和发布清单共同证明只有一个事实来源和一个生效核心版本。
+
+## 回退原则
+
+| 阶段 | 可用回退 | 禁止做法 |
+| --- | --- | --- |
+| 新仓创建前 | 取消冻结 | 提前复制源码到消费者 |
+| RC 发布前 | 删除候选迁移分支 | 在两个仓同时修代码 |
+| RC 发布后、消费者切换前 | 发布下一 RC | 覆盖已有 Release |
+| 单个消费者切换后 | 固定回上一完整版本 | 运行时双核心、只回退一半绑定 |
+| 不可逆数据迁移后 | 向前修复并发布新版本 | 降级到不能读取新数据的旧版本 |
+
+任何回退都必须保持持久化密文规则，不得用导出明文或删除用户数据换取降级成功。
+
+## 提交拆分
+
+建议按以下意图独立提交或独立 PR：
+
+1. desktop 依赖防火墙
+2. 可移植观测与路径依赖收口
+3. LAN 兼容 feature 和发布隔离
+4. 自动化跨仓检查
+5. 历史过滤后的核心仓初始提交
+6. 核心仓 CI 和 RC 发布
+7. desktop 固定版本并删除本地源码
+8. Android/iOS 固定发布产物
+9. HarmonyOS 固定发布产物并删除复制源码
+10. 稳定发布与文档清理
+
+不要把依赖收口、物理迁移、协议变化、数据迁移和消费者功能改动混进同一个提交。
 
 ## 完成标准
 
-- [ ] `UniClipboardCore` 是核心源码和发布的唯一事实来源。
-- [ ] 桌面、HarmonyOS、Android、iOS 固定明确核心版本。
-- [ ] 新核心仓库可独立检出、测试、构建和发布。
-- [ ] 社区鸿蒙仓不再复制核心源码。
-- [ ] 正式移动应用中的 P2P 与 LAN 路径可由用户显式选择，且不存在自动回退。
-- [ ] LAN 兼容路径与完整 P2P 核心具有独立、可审计的构建和发布线。
-- [ ] 四平台一致性和明文探针仍是发布门禁。
+- [ ] `UniClipboardCore` 是核心源码、数据库迁移、绑定和发布的唯一事实来源。
+- [ ] 新仓可在全新环境独立检出、检查、测试和生成四平台产物。
+- [ ] desktop 正式代码只通过 `uc-engine` 使用核心，不依赖内部 crate。
+- [ ] desktop、Android、iOS、HarmonyOS 均固定不可变核心版本和校验值。
+- [ ] 各消费者源码树不存在可编辑的核心源码、生成绑定或二进制副本；缓存产物只由固定版本和校验值重新取得。
+- [ ] 一个 `core-v*` Release 的全部产物来自同一提交并有完整 manifest。
+- [ ] 数据库升级、身份恢复、密文持久化和四平台一致性门禁仍有效。
+- [ ] P2P 与 LAN 可由用户明确选择，彼此独立且不存在自动回退。
+- [ ] LAN 兼容路径使用独立 `uc-mobile-v*` 版本、工作流和发布清单。
+- [ ] 旧仓与新仓的提交映射、冻结窗口和消费者切换记录可审计。
 
 ## 停止条件
 
-- 核心仓库仍需要桌面仓中的本地路径、补丁或脚本。
-- 任一消费者无法固定不可变版本和校验值。
-- 桌面切换需要长期保留本地核心副本。
-- 迁移同时要求不兼容协议或数据格式升级。
-- LAN 路径需要接入 `uc-engine` 内部类型、复制 P2P 业务编排，或无法证明不存在自动回退。
+- 核心仓仍需要 desktop/mobile/HarmonyOS 的本地路径、补丁或脚本。
+- desktop 仍必须直接使用 `uc-core`、`uc-application`、`uc-infra` 或 `uc-mobile-proto`。
+- 任一消费者只能依赖分支、浮动主干或可覆盖资产。
+- 新仓需要长期保留 desktop 中的核心副本才能开发或发布。
+- 迁移同时要求不兼容协议、身份或持久化格式升级。
+- 同一应用包中出现两个核心版本或来源提交。
+- LAN 需要读取 P2P 失败信号、接入未公开内部类型或复制 P2P 业务流程。
+- 任何平台无法从同一提交生成可校验的绑定与本地库。

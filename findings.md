@@ -6,6 +6,72 @@
 - 除文件内容外，所有持久化业务内容必须先加密；用户已明确指定文件落盘不加密。仓库现有根规则、产品文档和计划仍有相反表述，必须先统一。
 - 新核心是宿主唯一公开入口，不能暴露旧 facade、内部接口或任务句柄。
 - 暂停后释放节点，恢复时保持身份与事件流，不自动重试已取消工作。
+
+## 2026-07-23 uc-engine 进度同步审计
+
+- 当前有效仓库为 `/Users/mark/MyProjects/uni/desktop`；旧记录中的 ExternalSSD 工作目录当前不存在。
+- `planning-with-files` 的 `session-catchup.py` 在技能声明路径下已不存在；本轮改用当前三份规划文件、Git 历史和工作区状态恢复上下文。
+- 审计时间范围定为 2026-07-19 至 2026-07-23。
+- 当前分支为 `refactor/unified-core-independent-crates`，工作区起点干净，本地比远端多 32 个提交；最新提交是 `71c94f921`（2026-07-23 14:05，记录移动生命周期验收）。
+- Plan 003 已完成：桌面 daemon 已切为单一 `uc-engine` 实例，旧公开入口已删除，CLI 开发工具也已改走统一核心。
+- Plan 004 仍在进行：共用移动绑定、三端系统能力和三端生命周期已完成；六组实体设备矩阵按用户决定跳过，统一发布产物尚未验收。
+- Plan 005 尚未开始：尚未迁入独立核心仓库，也未切换全部消费者或删除重复源码。
+- 2026-07-19 至 2026-07-23 共 198 个仓库提交，按日为 8、53、105、19、13；数量包含文档、外围适配与验收，不等于 198 个核心功能。
+- 当前比远端多出的 32 个提交，集中在 2026-07-22 至 2026-07-23：iOS/Android 共用绑定、打包与接入，HarmonyOS 绑定、系统能力、模拟器验收，以及三端生命周期恢复。
+- Plan 003 的 6 项完成标准已全部勾选；Plan 004 的总完成标准仍全部保持未勾选，说明“主要能力已落地”不能表述成“整体已完成”。
+- Plan 004 当前最明确的剩余交付是统一发布产物验收；实体设备配对与内容矩阵已按用户决定跳过，但不计为通过。
+- 本轮首次实时测试未进入测试阶段：仓库 `target` 和 sccache 缓存都指向当前未挂载的 ExternalSSD；只覆盖 `CARGO_TARGET_DIR` 不足，后续需同时覆盖 `SCCACHE_DIR`。
+- 本轮定向测试在禁用旧 sccache 路径并使用本机临时编译目录后通过：`uc-engine` 81 项单元测试及全部边界、宿主、隐私、公开契约测试通过；UniFFI 14 项公开测试通过；HarmonyOS 绑定 4 项测试和 15 项工程契约通过；整个命令退出 0。
+- 本轮 `cargo check --workspace --locked` 在本机临时编译目录中退出 0，确认最新生命周期事件已经被桌面、daemon、CLI、网页服务、移动探针和三种绑定全部正确消费。
+- 从计划基线 `1c229e9e1` 到当前提交共涉及 393 个唯一文件；其中 `uc-engine` 66 个、移动绑定与验收宿主 78 个、桌面接入 105 个、计划与文档 15 个，其余 129 个分布在内部依赖、平台适配、构建和验证支持。
+- 面向用户的准确结论：统一核心本体与桌面接入已完成；移动阶段 12 项里已完成 10 项；实体设备互通矩阵已跳过且不算通过，统一发布产物待做；独立核心仓迁移尚未开始。
+
+## 2026-07-23 uc-engine 结构迁移审计
+
+- 完成性复核不能只依赖 Phase A-F 的勾选状态；必须重新从当前源码证明入口、职责、依赖、调用方和文档五类要求。
+- `planning-with-files` 声明的恢复脚本在仓库和技能安装目录中均不存在；本轮继续以 `task_plan.md`、`findings.md`、`progress.md`、Git 状态和当前源码为准。
+- 当前生产代码约 1.7 万行，最大文件仍包括 1191 行的运行主干、768 行的同步组装、645 行的最终组装、644 行的宿主适配和 619 行的生命周期入口；这些文件需要按职责内容复核，不能把目录变化直接当作可维护性完成证据。
+- ADR-005 中将旧阶段标为历史，当前执行以 `plans/001-005` 为准；LAN 兼容能力是否允许留在 `uc-engine` 必须按当前执行计划和公开接口说明判断，不能只引用 ADR 的旧背景段落。
+- Plan 003 明确把宿主入口限制为 `start`、`execute`、`quiesce`、`suspend`、`resume` 和 `shutdown`；当前 `Engine` 还无条件公开 `execute_dev` 与 `dev_pairing_outcomes`，crate 根也无条件导出全部开发类型，属于完成性复核发现的真实旁路。
+- `uc-engine` 当前没有 feature；命令行只在自身 `dev-tools` feature 下依赖 `uc-engine`，因此可以把核心开发入口放到同名 feature 后，并由命令行显式传递，不影响正式 daemon、网页服务或移动绑定。
+- LAN 兼容约定虽然在 crate 根稳定导出，但实现已物理集中在 `compatibility/mobile_lan`，具体端点适配只在 `assembly`，运行层只负责统一操作分发；这一点符合当前迁移计划的“独立兼容通道”要求。
+- 13 条正式编译提醒对应三类迁移残留：已无调用方的旧 CLI/Tauri 移动写入回退、组装后重复携带但无人读取的字段、只供 crate 内部检查使用却进入正式构建的帮助入口；它们不是新结构需要长期保留的能力。
+- `HostCapabilities` 公开的是本 crate 自己定义的宿主能力接口，未暴露 `uc-core` port、`AppFacade`、SQLite、iroh、任务句柄或具体平台类型；事件流内部使用 Tokio，但公开返回值仍是稳定 `EngineEvent`。
+- 生产运行仍在内部使用 `AppFacade` 作为既有应用能力组合，但外部调用方无法取得它；本次结构迁移的真实收口点是 `Engine`，后续是否继续拆解内部 facade 属于 `uc-application` 的独立深化工作，不应重新暴露为 engine 接口。
+
+- Phase B 复查结果：workspace 外部对 `uc_engine::internal` 的引用为 0，`internal` 已是 crate 私有模块；`uc-bootstrap` 与 `uc-webserver` 在锁文件同步后通过锁定编译。
+- 当前最大维护热点不是文件数量，而是三个过大的职责集合：crate 根公开定义 2078 行、生产运行 2264 行、组装 1056 行；另有同步组装 768 行和宿主适配 644 行。
+- `lib.rs` 中的操作枚举、全部输入、结果、事件和错误可以拆到不同文件，但调用方不应感知路径变化，因此继续在 crate 根统一重导出。
+- 公开约定已按值对象、操作、生命周期、错误、事件和结果拆成六个文件，crate 根仍统一重导出，`uc-engine` 单包编译通过。
+- `Engine` 的在途操作管理可独立成私有深模块，但不能拥有第二份生命周期状态；操作登记与生命周期切换继续使用同一互斥门，避免暂停过程中混入新操作。
+- 业务操作已按空间、剪贴板、历史、设备和设置五类归属；LAN 设备与内容操作位于独立兼容目录，不再与完整 P2P 操作并列。
+- 生产运行已拆成会话主干、操作路由、宿主文件处理和移动上传；路由只负责把稳定操作交给对应处理，不再承担启动组装。
+- `wire` 已拆成具体基础设施构建与最终组合两层；业务操作、运行层、兼容层和纯长期任务中不再直接引用 `uc-infra` 具体实现。
+- `ProductionRuntime` 不再直接持有并查询总依赖包；会话重建由私有会话工厂负责，运行对象只保留传输、时钟、LAN 更新、文件访问等明确能力。
+- 现有 `internal/mod.rs` 仍写着“临时公开”，与实际私有状态不一致；移除 `internal` 汇总层时一并删除该过时说明。
+- `uc-engine` 当前约 2.3 万行；最大生产文件为 `internal/runtime.rs` 2264 行、`lib.rs` 2074 行、`internal/wire.rs` 1056 行、`internal/sync_engine.rs` 768 行和 `engine.rs` 681 行。
+- `lib.rs` 同时拥有公开操作、结果、事件、错误和大量业务摘要；这些属于同一公开约定，但不应继续存放在单文件中。
+- `internal/runtime.rs` 同时拥有启动、会话构建、操作分发、移动上传、宿主文件导入、生命周期和结果转换，是当前最主要的职责混合点。
+- `internal/wire.rs`、`deps.rs`、`facade.rs`、`sync_engine.rs`、`file_transfer.rs` 和 `host_adapters.rs` 混合了组装、运行句柄和长期任务所有权。
+- `#[doc(hidden)] pub mod internal` 仍是真实公开接口；`uc-bootstrap` 通过六个转发文件继续导出内部组装，`uc-webserver` 多个路由直接引用内部错误编号。
+- workspace 中现有 69 处与 `uc_engine::internal` 或对应公开转发有关的引用，说明收回内部实现必须先迁移消费者。
+- 现有错误编号分散在各操作文件中并存在多组重复值；需要集中登记并明确编号是全局还是按操作解释。
+- `ProductionRuntime` 同时持有进程级任务和会话级任务，但名称没有表达生命周期；重构后必须显式区分 engine lifetime 与 session lifetime。
+- 操作处理应只依赖公开约定和 `uc-application` 的窄职责门面；`uc-infra` 具体类型只能留在组装、宿主适配和必要的基础设施实现范围。
+- LAN HTTP 兼容操作已经进入 engine，而 ADR 仍要求它不与完整 P2P 主路径混合；本次先物理隔离并登记移除方向，不继续把它扩散到主运行结构。
+- `host_adapter_contract.rs` 和 `public_contract.rs` 已成为大型综合测试；Android、HarmonyOS、UniFFI 工程源码检查也放在 engine 下，测试所有权需要重新划分。
+- 目标结构固定为 `contract`、`engine`、`runtime`、`operations`、`subsystems`、`assembly`，另设临时 `compatibility/mobile_lan` 和独立 `dev`。
+- daemon 正式入口只从 `uc-bootstrap` 取得 tracing、desktop host 准备和文件句柄，然后直接调用 `Engine::start`；它不再使用旧 engine 内部装配。
+- CLI 开发运行入口同样通过 `prepare_desktop_engine_host` 和 `Engine::start`，不需要旧 `wire_dependencies` 或 `DaemonLifecycle`。
+- `uc-bootstrap` 中 `entrypoint/daemon.rs`、`wiring/wire.rs`、`wiring/deps.rs`、`subsystem/blob_tasks.rs`、`subsystem/file_transfer.rs`、旧 `wiring/desktop.rs` 目前只维持遗留转发和内部测试，可在迁移对应测试后删除。
+- `uc-webserver` 对 engine 内部的生产依赖全部是错误编号，没有直接调用内部操作实现；将编号提升为正式公开错误目录即可切断该依赖。
+- 稳定错误编号已集中到 `contract/error_codes.rs`；编号按操作解释，同一操作内保持唯一，跨操作允许复用，避免为了全局唯一而制造无意义编号。
+- 桌面宿主、移动探针、UniFFI 和 HarmonyOS 的跨工程检查已经迁回各自拥有者；三条直接读取旧 `src/internal/runtime.rs` 的源码检查已删除。
+- `lib.rs` 现只保留模块声明和稳定重导出；外部 crate 没有引用 `assembly`、`runtime`、`operations`、`subsystems`、`compatibility`、`dev` 或 `testing` 私有路径。
+- `uc-infra` 的生产引用只出现在 `assembly/`；唯一额外命中位于 crate 内部宿主契约检查，不属于生产依赖。
+- `crates/uc-engine/README.md`、核心接口说明、模块边界说明和 crate 导航已按真实目录更新，明确禁止恢复公开 `internal` 或并行旧入口。
+- 最终工作区锁定编译通过；普通编译保留 13 条既有未引用代码提醒，集中在仅供内部检查的宿主适配入口和组装字段，不影响本次结构完成度。
+
 - 每个阶段必须用计划指定的构建、测试和真机结果验收。
 
 ## Research Findings
@@ -559,3 +625,129 @@
 - 最终移动产物来自 `693bb50ffcb02d975e3356ccd42137a1b3e15624`，iOS 与 Android 校验分别为 `57f15f818fc64837005e0b1f749bbcc601071c8c5acf1468888e869d7533df2e` 和 `7496ae3c6a13df3fcce4170c758fff8c546b229d4d2d20c101b809d32f2e2195`。
 - Android P2P 应用后台再前台保持进程 `5504`；签名版 iOS 应用后台再前台保持进程 `66407`；两端定向日志均没有生命周期失败、统一核心启动失败或崩溃。
 - 三种移动生命周期已达到当前环境完成标准；Plan 004 仍因实体设备矩阵和统一发布产物未完成而保持进行中，不进入 Plan 005。
+# 2026-07-23 uc-engine 完成性复核补充
+
+- 最终结构复核确认：目录级职责已建立，但 `runtime/mod.rs` 仍约 1191 行，继续拥有操作路由依赖、宿主剪贴板监听、发送/导出辅助、历史分页转换和移动上传状态细节。
+- 这不是公开接口问题，而是内部所有权问题。最终收束不新增公开层级：操作路由依赖归 `runtime/dispatch.rs`，宿主剪贴板监听独立为 `runtime/host_clipboard.rs`，发送与导出归 `runtime/host_operations.rs`，移动上传状态与错误归 `runtime/mobile_upload.rs`，历史分页转换归历史操作目录。
+- `runtime/mod.rs` 的目标职责限定为生产运行对象、会话建立、后台任务挂接、当前会话访问和生命周期收尾。
+- 子模块中的 `use super::*` 会改为显式依赖，避免父模块导入变化隐式改变子模块编译环境。
+- 最终收束后，`runtime/mod.rs` 从约 1191 行降到约 570 行，其中还包含同文件检查；生产部分只保留生产运行对象、会话建立、后台任务挂接、当前会话访问和通用错误入口。
+- 宿主剪贴板监听已独立为 `runtime/host_clipboard.rs`；发送、文件导入和导出归 `runtime/host_operations.rs`；移动上传的状态、错误和生命周期细节归 `runtime/mobile_upload.rs`；历史分页规则归 `operations/history/search.rs`。
+- `runtime/dispatch.rs`、`runtime/host_operations.rs` 和 `runtime/mobile_upload.rs` 已消除 `use super::*`，路由文件只保留请求分派，发送与导出的具体执行不再内嵌在路由分支。
+- 默认核心编译与启用全部能力的检查代码编译均无提醒通过；这些命令只做编译，没有运行测试用例。
+- 全 workspace 检查首次通过但发现 `uc-bootstrap` 仍有一个迁移后无消费者的测试辅助入口；它只构造已不再由检查使用的空剪贴板层，已直接删除，不保留无移除计划的旧入口。
+- 删除残留入口后，`cargo check --workspace --all-targets --locked` 再次通过且无提醒；`cargo check -p uc-cli --features dev-tools --locked` 与 `cargo check -p uc-daemon --locked` 分别通过。
+- `cargo tree -p uc-daemon -e features,no-dev -i uc-engine --locked` 证明 daemon 只启用 `uc-engine` 默认能力，没有启用 `dev-tools`。
+- 最终静态复核：旧 `internal` 路径引用为 0；正式源码中排除 `testing/` 后，`uc-infra` 引用只存在于 `assembly/`；运行子模块 `use super::*` 为 0；`cargo fmt --all -- --check` 和 `git diff --check` 均通过。
+- 本轮完全没有运行测试用例；`--tests` 只由 `cargo check` 编译检查代码。
+# 2026-07-23 uc-engine 目标关闭审计
+
+- 本次不沿用先前完成结论，重新以 `plans/003-introduce-unified-core-interface.md`、`docs/architecture/adr-005-uc-engine-extraction.md`、crate 文档、当前源码与当前编译结果为权威证据。
+- 关闭目标必须同时证明：对外只有单一 `Engine`；公开约定不泄漏内部 facade、port、任务或并发实现；桌面正式路径只使用新入口；旧 `internal` 与 `CliAppRuntime` 路径删除；`uc-application` 不正式依赖 `uc-infra`/产品分析；`uc-engine` 不依赖具体平台 crate；LAN 兼容和开发能力与正式主路径隔离；文档、检查归属和调用方全部迁移；格式、编译与残留检查通过。
+- 当前 `crates/uc-engine/src/lib.rs` 只有 20 行，内部目录全部私有，仅重导出公开约定、`Engine`/`EventStream`、LAN 稳定约定以及 feature-gated 开发约定。
+- 当前 crate 目录已按 `contract`、`engine`、`runtime`、`operations`、`subsystems`、`assembly`、`compatibility/mobile_lan`、`dev`、`testing` 分层；原 `src/internal/` 仅在 Git 删除集，不再存在于当前文件树。
+# 2026-07-23 uc-engine 完成性复核补充
+
+- daemon 为取得数据根目录、令牌路径和 PID 路径，仍接收完整的旧 `AppPaths`；宿主接口应只返回这三个进程路径。
+- daemon 公开准备入口仍要求调用方构造 `AppConfig::empty()`；默认桌面宿主应在 `uc-bootstrap` 内部完成默认配置选择。
+- LAN 生命周期正式源码仍引用 `uc-infra` 的内存 endpoint adapter，但它只服务同文件检查；应以模块内部状态记录器替代。
+- `MobileLanLifecyclePort` / `MobileLanTarget` 没有第二个正式实现或跨模块调用价值；该 seam 属于 daemon 内部状态机，应收回为固有方法和本地目标类型。
+- `cargo machete --with-metadata apps/daemon` 确认 `base64`、`serde`、`mockall`、`tempfile`、`uc-platform` 未使用；源码扫描另确认 `uc-application` 与 `uc-infra` 各只有一个待移除引用。
+- 收尾后 daemon 只从 `uc-bootstrap` 接收数据根目录、令牌路径和 PID 路径，不再接收完整应用路径对象；默认配置选择也已收回宿主准备内部。
+- LAN 生命周期已改为 daemon 本地目标类型和固有状态对齐方法，正式状态继续写回同一个 `Engine`；检查使用模块内部记录器，不再需要 `uc-infra`。
+- 最终 daemon 依赖扫描和 `cargo machete` 均通过；保留的 `uc-core` 使用只为 LAN 兼容外壳转换剪贴板广播类型，不承担主业务运行入口。
+- 最终格式、定向编译、CLI 开发能力编译、全工作区编译、差异卫生和旧路径扫描全部通过；按用户要求未运行测试用例。
+
+# 2026-07-23 独立核心仓库迁移设计
+
+## 当前迁移闭包
+
+- 不能只迁 `uc-engine`、`uc-core`、`uc-application`、`uc-infra` 四个 crate。当前内部路径依赖还包含 `uc-content-hash`、`uc-mobile-proto`、`uc-app-paths`、`uc-observability-contract`。
+- `uc-engine-uniffi` 和 `uc-ohos-napi` 只依赖公开 `uc-engine`，且拥有 iOS、Android、HarmonyOS 产物构建脚本和契约检查，应随核心仓迁移。
+- `uc-platform`、`uc-bootstrap`、`uc-webserver`、daemon、CLI 和 Tauri 是桌面宿主与产品外壳，应留在 desktop 仓库。
+- `uc-infra` 当前仍直接依赖完整 `uc-observability`，而不是只依赖可移植契约；这是正式拆仓前必须消除的桌面实现耦合。
+- `uc-engine` 的开发依赖也使用 `uc-observability`；测试支持需迁为核心仓内部检查实现，不能让新仓反向依赖 desktop。
+- `uc-mobile` 是 LAN HTTP 兼容客户端，只依赖 `uc-content-hash` 和 `uc-mobile-proto` 两个叶子 crate。它可放在新仓 `compatibility/` 下，但必须保持 `uc-mobile-v*` 独立版本和发布线，不进入 `core-v*` 产物。
+
+## 仓库方向
+
+- 新仓应拥有核心实现、跨平台绑定、可移植检查、数据库迁移和统一发布工具；产品仓只实现 `HostCapabilities` 并消费固定版本。
+- 新仓不是“一个 crate 一个仓库”，而是内部多 crate、对外单一 `Engine`、统一 `core-v*` 发布。
+- 桌面平台实现应保留在 desktop；Apple/Android/HarmonyOS 系统生命周期与界面接线也继续由各产品仓拥有，核心仓只发布绑定和宿主能力接口。
+
+## 拆仓前置门槛
+
+- 当前 desktop 正式依赖中，`uc-bootstrap` 仍依赖 `uc-core`、`uc-application`、`uc-infra`；`uc-webserver` 仍依赖 `uc-core`、`uc-application`、`uc-mobile-proto`；`uc-platform`、daemon contract/client、CLI、Tauri 也仍直接使用 `uc-core`。物理拆仓前必须把这些消费者收口到 `uc-engine`、宿主本地类型或传输 DTO。
+- `uc-app-paths` 不应迁入跨平台核心：应用层只使用接收暂存前缀，应该归核心文件布局；基础设施读取 portable 模式属于桌面宿主事实，应该通过配置传入。
+- 完整 `uc-observability` 不应迁入核心：`uc-infra` 的两处后台任务启动应改用核心拥有的任务管理或可移植契约；engine 检查应使用本地记录器。
+- `uc-engine/src/compatibility/mobile_lan` 当前仍调用应用层 LAN facade，说明兼容能力虽然目录隔离但尚未形成独立发布面。拆仓前至少要用 feature 隔离，默认 `core-v*` 移动产物不编译该能力；长期再收敛为独立兼容 crate。
+- 物理历史迁移建议使用 `git filter-repo`，但当前机器没有可用命令；执行阶段需先安装并记录版本，不能用手工复制替代历史迁移。
+
+## 消费方式
+
+- desktop Rust 消费精确核心提交，Cargo.lock 记录不可变提交；不得使用分支依赖。对应 `core-v*` 标签用于人类识别和发布清单。
+- iOS/Android/HarmonyOS 消费同一 GitHub Release 的二进制产物和生成绑定，并校验 SHA-256；系统宿主源码继续留在产品仓。
+- 本地跨仓调试只允许通过未跟踪的本地 override 或从核心仓生成的临时产物，不得把核心源码复制回消费者仓。
+- `core-v*` 统一核心版本与 `uc-mobile-v*` LAN 兼容版本完全独立，Release 清单必须能证明没有混用。
+
+## 切换与回退
+
+- 历史迁移前短暂停止核心目录变更，以一个已验证提交作为 cutover commit；过滤后的新仓先成为只读候选，发布 RC 后再逐个切消费者。
+- 消费顺序建议 desktop -> Android -> iOS -> HarmonyOS：desktop 最容易暴露 Rust 依赖泄漏，移动共用 UniFFI 随后一次覆盖两端，HarmonyOS 最后处理独立包格式。
+- 每个消费者只允许“旧固定版本”或“新固定版本”二选一，不保留运行时双核心和自动回退。
+- 尚未写入不兼容数据时可回退到上一固定版本；一旦执行不可逆存储迁移，只允许向前修复，不能盲目降级。
+# 2026-07-23 核心仓库依赖防火墙（第一阶段）
+
+- `uc-application` 只因目录接收暂存前缀依赖 `uc-app-paths`；`uc-infra` 同时使用该前缀并在配置迁移中直接读取 portable 状态。
+- 目录接收暂存前缀描述核心接收文件布局，应由核心拥有；portable 检测仍归 desktop 路径模块，但检测结果必须由宿主组装传入核心实现。
+- `uc-infra` 使用的 `spawn_supervised` 实际由 `uc-observability-contract` 实现，完整 `uc-observability` 只做重新导出，因此可以直接依赖可移植约定，不需要新增公开接口。
+- `uc-engine` 的宿主适配检查仅为安装记录器依赖完整 `uc-observability`，可改为本地 `tracing-subscriber`。
+- Plan 004 的统一发布产物仍未验收，实体设备矩阵仍是用户决定跳过；本阶段不得创建新仓、发布核心版本或切换消费者。
+- 当前分支领先远端 32 个提交且包含大量既有未提交的结构迁移变更；所有修改必须增量进行，禁止清理或回退现有工作区。
+- 最终正式依赖树确认 `uc-engine` 不包含 `uc-app-paths`、完整 `uc-observability`、平台、网页服务、daemon 运行层或桌面界面层。
+- 全工作区所有目标编译通过，说明新增启动配置已被桌面、移动绑定、移动探针、daemon、CLI 和 Tauri 正确接受。
+- 本轮遵守用户先前要求，没有运行测试用例；新增依赖防火墙和相关检查只完成了编译验证。
+# 2026-07-23 LAN 兼容依赖隔离
+
+- `uc-mobile-proto` 在待迁移核心闭包中只有 `uc-application` 直接依赖，生产引用集中在移动 Shortcut 注册连接地址的生成；`uc-webserver` 另有独立直接依赖用于 LAN SSE 格式。
+- `uc-engine` 的 LAN 类型与操作已经集中在 `compatibility/mobile_lan`，基础设施实现集中在 `uc-infra/src/mobile_sync`，具备使用同名兼容开关整体隔离的物理基础。
+- desktop 的 `uc-webserver` 是 LAN HTTP 服务的明确消费者，应由它在 `uc-engine` 依赖上开启兼容能力；移动绑定和移动探针保持默认功能集合。
+- 本阶段不新增接口或 adapter；开关是发布选择，不应扩大 `Engine` 的默认公开面。
+# 2026-07-23 LAN 兼容依赖隔离续接核对
+
+- `planning-with-files` 的恢复脚本在当前安装目录不存在；已按现有三份规划文件、交接摘要和 `git diff --stat` 恢复上下文，不再重复尝试脚本。
+- `uc-mobile-proto` 的生产代码引用只位于 `uc-application/src/usecases/mobile_sync/register_device.rs`，但完整 `mobile_sync` facade 贯穿 `AppFacade`、`AppFacadeParts` 和 `DaemonLifecycleFacades`，因此应把整个兼容模块作为一个 feature 管理，而不是只给单个 use case 加条件。
+- `apps/mobile-probe-core` 仍直接匹配 LAN 操作结果、事件和类型；要满足“移动验收宿主默认不启用 LAN”，必须同步删除或条件编译这些兼容分支，不能只调整 Cargo 依赖。
+- `uc-webserver` 的 LAN 路由直接使用 `uc-engine` 的兼容类型，并直接使用 `uc-mobile-proto` 生成 SSE wire 数据；它是应显式开启 `uc-engine/lan-compat` 的桌面兼容宿主。
+- 为避免这一阶段演变成破坏性接口删除，`uc-engine` 继续保留现有兼容数据类型与操作枚举；`lan-compat` 只控制实际实现、组装和依赖。默认核心收到这些兼容操作时返回“不可用”，开启后才执行真实流程。
+- CLI 的常规移动同步命令只走 daemon 客户端，不需要核心兼容 feature；隐藏的 `dev-tools` 调试命令会直接执行移动上传和文档操作，因此 `uc-cli/dev-tools` 必须显式传递 `uc-engine/lan-compat`。
+- 普通剪贴板投递视图会用兼容设备仓库把历史 `mobile_sync:<id>` 来源解析成设备名称。默认核心不应因此保留兼容数据库实现；关闭 `lan-compat` 时注入只返回“未找到”的本地替身，视图按既有规则回退为原标识，开启 feature 时仍使用真实仓库。
+- 早期“移动探针必须删除或条件编译兼容分支”的判断已由完整依赖核对修正：移动探针可以继续识别稳定的兼容数据格式，但不得开启 `lan-compat`，也不会带入协议依赖和真实实现。
+- 最终默认 `uc-engine` 依赖树中 `uc-mobile-proto` 与 `network-interface` 均无命中；显式开启 `lan-compat` 后两者正常进入依赖树。
+- `uc-webserver` 是唯一显式开启 `uc-engine/lan-compat` 的正式 desktop 消费者；UniFFI、HarmonyOS 和移动探针的依赖声明均保持默认关闭。
+- `Cargo.lock` 本轮没有因 feature 隔离产生新的包级变化；当前锁文件差异来自同一拆仓前置工作的路径、观测和消费者依赖清理。
+
+# 2026-07-23 desktop 消费者依赖防火墙
+
+- Plan 005 Phase 1 第 1-4 项仍有真实工作，不只是 manifest 残留：`uc-webserver` 仍直接使用应用层 facade、核心类型和 LAN wire；`uc-bootstrap` 的启动导入仍读取基础设施迁移格式；平台、传输和 Tauri 外壳仍直接引用核心类型。
+- `uc-bootstrap` 的应用层正式依赖初步看不到生产引用，可以先删除；基础设施正式依赖集中在启动期配置导入，应该迁回核心迁移流程或改由稳定接口提供，不能继续让 desktop 启动层理解核心内部存储格式。
+- `uc-webserver` 的普通路由和 LAN 兼容服务必须分开处理：普通业务收口到 `Engine`，LAN wire 与兼容数据继续作为明确兼容通道，不把它们提升成默认核心接口。
+- `uc-platform` 当前是核心 port 的具体实现集合，不能靠批量改路径完成拆仓；需要逐类映射到 `HostCapabilities` 或 desktop 自有快照，并让转换只发生在宿主组装处。
+- daemon contract 中的设置、成员偏好等传输数据仍由核心模型驱动；这些形状应由 transport crate 自己拥有，避免 GUI/CLI 因传输数据而依赖核心实现仓。
+- daemon contract 内原有整套核心设置双向转换已经没有生产调用方；真实转换由 `uc-webserver` 的投影模块负责。删除旧转换后，传输 crate 可以完全不依赖 `uc-core`。
+- daemon client 对核心的唯一引用是文件传输方向。将同样的稳定 wire 枚举归 daemon contract 后，client 的普通依赖树也不再包含 `uc-core`。
+- Tauri 曾隐式依赖 contract 为核心模型实现的 `From` 转换；编译检查暴露五处后，转换已显式收回 Tauri 接线位置。它们仍是后续彻底删除 Tauri 核心依赖时需要继续消除的局部过渡点。
+- CLI 的成员列表只需要 daemon 传输层定义的在线状态，不应把核心领域类型带入命令行外壳。
+- CLI 的 `watch` 过去为了打印预览而自行解析核心二进制内容；摘要现在由 `uc-engine` 在入站事件中生成，经 daemon contract 传递文本预览、内容类型与大小。原始 Base64 字段继续保留，因此旧客户端仍可工作。
+- CLI 默认依赖闭包已经不含 `uc-core`。仅隐藏的 `dev-tools` 探针仍通过可选依赖使用核心剪贴板类型，它应与 `uc-platform` 宿主接口迁移一起删除，避免为一次性诊断路径新增临时公开接口。
+- `uc-platform` 对 `uc-core` 的剩余引用并非业务规则，而是安全存储接口、应用目录值对象以及无人使用的自动启动和观测转发；这些都应由平台 crate 自己拥有。
+- 平台剪贴板已先行完成本地快照迁移；安全存储和应用目录采用同样模式后，`uc-platform` 的正式依赖可以完全删除 `uc-core`，转换只留在 desktop 宿主组装处。
+- `uc-platform` 原有 `specta` feature 只服务已无人使用的观测转发，workspace 没有消费者；随转发一起删除可以避免为不存在的传输职责保留核心依赖。
+- 配置导入暂存格式由 `uc-infra` 写出，启动应用逻辑也应归同一模块；`uc-engine` 在打开数据库前调用，`uc-bootstrap` 不再读取核心内部持久化格式。
+- `uc-bootstrap` 的观测初始化只需在核心启动前读取三个布尔开关；使用桌面局部快照一次读取即可，不需要完整设置仓储和迁移实现。
+- `uc-bootstrap` 和 `uc-platform` 的普通依赖树均不再包含 `uc-core`、`uc-application` 或 `uc-infra`；旧端到端检查仍以开发依赖使用核心实现，不进入正式依赖闭包。
+- CLI 开发探针原本只为剪贴板快照读写依赖 `uc-core`；`uc-platform` 现在按旧字段形状自行完成快照读写，路径型内容仍拒绝序列化，因此可以在不改变诊断文件格式的前提下删除该依赖。
+- daemon 对 `uc-core` 的最后引用只是把 `EngineEvent::ActiveClipboardChanged` 重新组装成内部活动剪贴板对象；LAN SSE 实际只读取内容标识和时间，直接传递 `uc-engine::ActiveClipboardChanged` 后，daemon 不再理解核心标识类型。
+- `uc-webserver` 普通业务早已通过 `Engine`，最后三块应用层引用都是无工作区调用方的旧投影、旧配对广播和旧宿主事件转发器；删除这些平行路径后，现有路由与事件转换仍通过全目标编译。
+- LAN 兼容生产路径也已经只调用 `Engine`；`uc-application` 与 `uc-core` 仅用于旧检查夹具，移入开发依赖后不进入发布依赖图。SSE 连接表只需稳定设备标识字符串，不需要核心值对象。
+- 桌面消费者防回流检查由 `uc-desktop` 拥有：同时检查九个保留 crate 的普通依赖和正式源码语法路径，避免未来把核心内部 crate 或类型重新引入消费者。

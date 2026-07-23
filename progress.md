@@ -183,6 +183,8 @@
 
 | Timestamp | Error | Attempt | Resolution |
 |-----------|-------|---------|------------|
+| 2026-07-23 | 当前 `planning-with-files` 安装目录缺少 `session-catchup.py` | 1 | 不重复尝试；改为核对三份规划文件、交接摘要与 `git diff --stat` 恢复当前阶段 |
+| 2026-07-23 | LAN 进度补丁使用了错误的二级标题格式，未匹配现有记录 | 1 | 读取当前段落后按实际一级标题追加，未重复提交原补丁 |
 | 2026-07-20 | 文件化规划工具未附带恢复脚本 | 1 | 确认无旧记录，依据 Git 和路线图重建 |
 | 2026-07-20 | 拆分后发现纯装配仍计算桌面环境后缀路径 | 1 | 把网络数据目录加入已准备输入 |
 | 2026-07-20 | 身份迁移测试移动补丁未匹配当前代码 | 1 | 重新读取后按实际内容移动 |
@@ -1231,3 +1233,184 @@
 - 移动端最终回归通过：定向 Jest 11 项、完整 Jest 99 组 644 项、Swift 宿主 6 项、Android 设备测试 7 项，以及两端模块和完整应用构建。
 - Android P2P 应用后台再前台保持进程 `5504`；签名版 iOS 应用后台再前台保持进程 `66407`，系统日志未见生命周期失败、统一核心启动失败或崩溃。
 - 已只勾选 Plan 004 的“三种移动生命周期”；Plan 004 保持 `in_progress`，下一步仍是实体设备矩阵或统一发布产物，不进入 Plan 005。
+
+## 2026-07-23 uc-engine 进度同步审计
+
+- 已定位当前有效仓库并确认起点工作区干净。
+- 已确认旧 ExternalSSD 工作目录和技能恢复脚本均不存在，改用现有规划文件与 Git 历史恢复。
+- 已把审计范围定为 2026-07-19 至 2026-07-23。
+- 已核对总计划：Plan 003 为完成，Plan 004 为进行中，Plan 005 为未开始。
+- 已核对最近提交：7 月 19 日至 23 日共 198 个仓库提交，其中当前未推送的 32 个提交集中在移动绑定与三端系统接入。
+- 已确认 Plan 003 的完成标准全部通过；Plan 004 的总完成标准尚未勾选，不能宣称整体完成。
+- 实时验证第 1 次：失败于外置盘 sccache 缓存目录不可写，属于环境阻断，测试尚未开始；下一次改用本机临时缓存目录。
+- 实时验证第 2 次：切换本机编译目录并禁用旧 sccache 后，`cargo test -p uc-engine -p uc-engine-uniffi -p uc-ohos-napi --locked` 退出 0；核心、iOS/Android 共用接口、HarmonyOS 接口及相关边界测试全部通过。
+- 实时验证第 3 次：`cargo check --workspace --locked` 退出 0，完整工作区无遗漏消费者或编译错误。
+- 已完成最终进度判断：Plan 003 完成；Plan 004 完成 10/12 个阶段项，仍缺统一发布产物，实体设备矩阵按决定跳过但不计通过；Plan 005 未开始。
+- 已执行 `git diff --check`，规划记录无格式问题，产品代码未修改。
+- 本次进度同步审计完成，证据和剩余事项已整理完毕。
+
+## 2026-07-23 uc-engine 结构迁移
+
+- 已在恢复上下文后运行 `cargo fmt --all`，格式整理通过。
+- 首次以 `--locked` 复查 `uc-bootstrap` 与 `uc-webserver` 时，Cargo 明确要求同步已删除依赖造成的锁文件变化；下一步改用离线模式更新锁文件后重跑锁定编译。
+- 已离线同步 `Cargo.lock`，随后 `cargo check -p uc-bootstrap -p uc-webserver --locked` 通过。
+- 已扫描 workspace 外部引用，未发现任何 `uc_engine::internal` 使用；Engine Phase B 完成。
+- 已将 crate 根 2000 余行公开约定拆为值对象、操作、生命周期、错误、事件和结果六类，外部名称保持不变；`cargo check -p uc-engine --locked` 通过。
+- 已将操作编号、登记、完成、等待和超时取消抽入独立的在途操作模块；`Engine` 继续唯一拥有生命周期状态，编译检查通过。
+- Engine Phase C 完成，开始迁移生产运行、业务操作和长期任务。
+- 已移除 `src/internal/` 汇总层，将业务操作、长期任务、组装和 LAN 兼容内容迁入明确目录；路径更新后 `cargo check -p uc-engine --locked` 通过。
+- 已从生产运行文件拆出操作路由、移动上传与宿主文件处理，主文件由 2270 行降到约 1180 行；每次拆分后编译检查均通过。
+- Engine Phase D 完成，开始收口具体组装并隔离兼容与开发能力。
+- 已将组装拆成具体实现构建与最终组合两层，并把仍依赖具体数据库、文件系统或网络实现的四个运行构建文件归入组装范围。
+- 已把搜索构建和 LAN 端点具体适配收回组装；生产运行、业务操作、兼容处理和纯长期任务不再直接引用 `uc-infra`。
+- 已让生产运行对象改持会话工厂与窄能力，操作路由不再读取总依赖包；编译检查通过。
+- Engine Phase E 完成，开始调整测试归属、文档和最终审计。
+
+- 用户确认直接完成前述结构迁移，并指定使用 `planning-with-files` 持续记录。
+- 已重读现有计划、发现、进度、仓库架构规则、ADR-005 和当前 `uc-engine` 实现；原 Plan 004/005 状态保持不变。
+- 已固定完成标准：稳定公开入口、收回 `internal`、分离运行职责、收口具体实现、隔离 LAN 兼容、重整测试与文档、迁移全部消费者。
+- 已将迁移拆为 Engine Phase A-F；当前进入 Phase A，先建立目录规则和完整文件映射。
+- 用户明确本轮无需重复执行已有测试；实现完成后的最终审计仍保留必要的格式、编译和覆盖性检查。
+- 已核对 daemon、CLI 和 `uc-bootstrap` 调用关系：正式运行路径均已使用 `Engine::start`，旧内部组装转发没有生产消费者。
+- 已核对 `uc-webserver`：它只为 HTTP 错误转换读取 engine 内部错误编号，可以通过正式错误目录一次迁出。
+- Engine Phase A 完成：目标目录、依赖方向、生命周期所有权和现有文件映射均已固定并写入计划与发现记录。
+- 已新增正式 `uc_engine::error_codes` 入口，`uc-webserver` 全部生产路由已停止引用 engine 内部业务文件。
+- 已把桌面准备错误、安全存储迁移和剪贴板选择收回 `uc-bootstrap` 本地所有，删除六个没有生产消费者的旧 engine 内部转发文件。
+- 当前 workspace 外部 `uc_engine::internal` 引用扫描为 0；engine 自身测试已迁入 crate 内部，公开 `internal` 已关闭。
+- 已把稳定错误编号集中到公开约定，并加入按操作分组的重复检查；跨操作允许复用编号。
+- 已将桌面边界、移动探针、UniFFI 和 HarmonyOS 的跨工程检查迁回各自 crate，删除三条读取旧源码文件的脆弱检查。
+- 已新增 `crates/uc-engine/README.md`，并更新核心接口、模块边界和 crate 导航，文档与实际目录一致。
+- 联合测试目标编译已通过；按用户要求，本轮没有运行测试用例。
+- `cargo check --workspace --locked` 使用本机临时编译目录且禁用旧 sccache 后退出 0；完整工作区全部消费者编译通过。
+- 残留扫描确认 `uc_engine::internal`、`crate::internal` 和 `src/internal` 均为 0；外部 crate 未依赖新的私有目录，`uc-infra` 生产引用只存在于 `assembly/`。
+- Engine Phase F 完成，`uc-engine` 结构迁移达到全部完成标准；原 Plan 004/005 状态未改变。
+- 用户要求继续完成迁移并显式指定 `planning-with-files`；已恢复三份规划文件并启动 Engine Phase G 完成性复核。
+- 恢复脚本在仓库与技能安装目录中均不存在；已改用当前工作区、规划记录和正式设计文档恢复，不把脚本缺失视为迁移阻断。
+- 已从原目标导出入口、职责、依赖、调用方、检查归属、文档和验证七类完成证据；下一步逐类核对当前源码并修复任何真实缺口。
+- 首轮文件规模检查显示运行主干和组装文件仍较大；后续先判断是否仍混合职责，不以行数或目录变化单独下结论。
+- 已核对 Plan 003 的权威公开入口清单，发现开发操作和开发配对事件仍无条件暴露在正式 `Engine` 上；Phase G 保持进行中，下一步将开发能力改为显式开发功能后再继续审计。
+- 已新增 `uc-engine/dev-tools`，并由 CLI 的同名 feature 显式传递；正式核心与开发 CLI 均编译通过，daemon 依赖树未启用开发能力。
+- 继续审计 13 条正式编译提醒后，确认其中包含已无消费者的旧回退和重复组装字段；下一步删除这些迁移残留，并把仅测试帮助入口限制在测试构建。
+# 2026-07-23 uc-engine 完成性复核续作
+
+- 恢复三份规划文件、当前差异和仓库约束；确认继续 Engine Phase G，不改动 Plan 004/005 状态。
+- 复核当前新目录后，确定最后一个主要可读性缺口是 `runtime/mod.rs` 仍承载多类具体业务辅助逻辑。
+- 确定最终收束方案：运行层只保留会话与生命周期，路由、宿主剪贴板、发送/导出、历史分页和移动上传细节回到各自拥有者；保持单一 `Engine` 公开入口。
+- 用户明确要求不运行测试用例；后续只执行格式、编译和残留检查。
+- 新增 `runtime/host_clipboard.rs`，把宿主剪贴板监听和出站任务移出会话文件。
+- 把发送、宿主文件导入和导出规则集中到 `runtime/host_operations.rs`；路由只保留四个调用分支。
+- 把移动上传状态、句柄、错误映射和生命周期辅助集中到 `runtime/mobile_upload.rs`。
+- 把历史分页输入、结果与错误映射迁回 `operations/history/search.rs`。
+- 清理运行子模块的全量父模块导入，`runtime/mod.rs` 由约 1191 行降到约 570 行。
+- `cargo check -p uc-engine --locked` 与 `cargo check -p uc-engine --all-features --tests --locked` 通过，无提醒；未运行测试。
+- `cargo check --workspace --all-targets --locked` 首次通过；发现并删除唯一一个迁移残留的未使用辅助入口，准备重新做最终检查。
+- 删除迁移残留后，workspace 全目标编译再次通过且无提醒。
+- CLI 开发能力编译与 daemon 正式编译分别通过；daemon 依赖树只启用 `uc-engine` 默认能力。
+- 最终格式、差异、旧路径、依赖位置和运行子模块导入检查全部通过。
+- Engine Phase G 已完成；没有运行测试用例，Plan 004/005 状态未改动。
+# 2026-07-23 uc-engine 目标关闭审计
+
+- 按持续目标重新恢复 `planning-with-files`，读取当前计划、发现、进度、Git 状态和目标状态。
+- 从 Plan 003、ADR-005 与当前 crate 文档导出逐项完成要求；目标仍保持 active，尚未用先前结论直接关闭。
+- 已核对当前文件树、crate 根、功能开关和目录可见性；第一阶段证据成立，进入调用方与依赖方向审计。
+- 继续遵守用户要求：不运行测试用例，最终只执行编译、格式和残留检查。
+# 2026-07-23 uc-engine 完成性复核补充
+
+- 恢复脚本在当前 skill 安装目录不存在；已按既有降级方案读取三份规划文件和 Git 状态继续。
+- 重新打开 Engine Phase G：发现 daemon 仍通过完整应用路径对象、旧基础设施测试 adapter 和核心 LAN port 依赖旧层级。
+- 已确认本轮不运行测试，只在修改后执行格式、编译和残留扫描。
+- 首次 `cargo check -p uc-daemon --all-targets --locked` 因依赖删除要求更新锁文件而停止，尚未进入源码编译；下一步离线同步锁文件。
+- 离线同步被仓库根失效 `target` 链接阻断，未进入源码编译；后续使用 `/tmp/uc-engine-structure-check-20260723`，不修改现有链接。
+- 使用独立临时目录完成 `cargo check -p uc-daemon --all-targets --offline`，通过并同步 `Cargo.lock`。
+- `cargo machete --with-metadata apps/daemon` 已无未使用依赖；daemon 源码中的 `uc-application`、`uc-infra`、`uc-platform`、旧 LAN port 和旧路径对象引用均归零。
+- `cargo check -p uc-daemon --all-targets --locked` 通过。
+- `cargo check -p uc-cli --features dev-tools --locked` 通过。
+- `cargo check --workspace --all-targets --locked` 通过。
+- `cargo fmt --all -- --check`、`git diff --check` 通过。
+- 最终扫描确认 `crates/uc-engine/src/internal` 不存在，`lib.rs` 保持 20 行，外部旧路径仅见于历史规划记录，不存在于正式源码。
+- Engine Phase G 完成；全程未运行测试用例。
+
+# 2026-07-23 独立核心仓库迁移设计
+
+- 已启用 `planning-with-files` 与 `codebase-design`，完成标准是形成可执行、可验证、可回退的正式 Plan 005。
+- 恢复脚本仍不存在；已按既有降级方案读取三份规划文件和当前正式计划清单继续。
+- 当前进入 Repository Phase A，先用真实依赖和发布关系确定迁移单位。
+- 已核对 Plan 005、ADR-005、接口文档、发布说明、workspace 和关键 manifest。
+- 初步边界已确定：核心实现与三平台绑定迁移；桌面平台、daemon、Web、CLI、Tauri 和各产品系统接线保留在消费者仓。
+- 发现拆仓前置缺口：`uc-infra` 与 `uc-engine` 检查仍引用 desktop 的完整 `uc-observability`，需要先收口到可移植契约或核心仓本地实现。
+- Repository Phase A-C 已完成：已确定依赖防火墙、目标仓库范围、发布方式、消费者顺序、冻结窗口和回退规则。
+- 当前进入 Repository Phase D，准备把结论完整写入正式 Plan 005；计划状态仍保持 TODO，不代表开始物理迁移。
+- 已重写 `plans/005-extract-single-core-repository.md`：明确迁入/保留范围、目标目录、统一版本、发布清单、跨仓规则、Phase 0-8、回退表、提交拆分、完成与停止条件。
+- `git diff --check` 通过；文档扫描确认所有阶段、关键 crate、版本线、回退和停止条件均已覆盖。
+- Repository Phase D 完成。本轮只完成规划，没有创建新仓、发布版本或切换消费者；Plan 005 状态保持 TODO。
+# 2026-07-23 核心仓库依赖防火墙（第一阶段）
+
+- 从 `task_plan.md`、`findings.md`、`progress.md` 和当前 Git 状态恢复现场；`planning-with-files` 的恢复脚本路径已不存在，未重复尝试。
+- 重新读取产品方向、架构规则、Rust 规则、crate 导航和 Plan 005。
+- 确认本阶段只提前实施 Plan 005 Phase 1 中的路径与观测依赖收口，不推进物理拆仓。
+- 确认直接依赖点：目录暂存前缀两处、portable 状态一处、后台任务两处、engine 检查记录器一处。
+- 首个大补丁因 `assembly/wire/infra.rs` 已改为通过父模块导入而无法匹配，工具整包拒绝且未产生部分修改；随后按当前文件形状拆成小补丁完成。
+- 已将暂存目录规则迁到核心，将 portable 状态改为 desktop 宿主显式传入，并把完整观测依赖替换为可移植约定与核心本地记录器。
+- 已新增依赖防火墙检查，覆盖三个核心实现 crate 的直接依赖和 `uc-engine` 的正式依赖闭包。
+- 首次锁定编译在解析前发现锁文件需同步；离线同步后编译发现配置迁移测试夹具缺少新增的来源模式参数，已补为普通安装模式。
+- 第二次锁定编译发现 desktop 端两个端到端检查夹具也缺少来源模式；两者均明确补为普通安装模式，不为生产构造引入隐式默认值。
+- `cargo check -p uc-core -p uc-application -p uc-infra -p uc-engine -p uc-bootstrap --all-targets --locked --offline` 通过。
+- `cargo check --workspace --all-targets --locked --offline` 通过，覆盖全部桌面、移动绑定和探针目标。
+- `cargo tree -p uc-engine --edges normal --locked --offline` 的实际依赖树中，desktop 专属依赖命中为零。
+- `cargo fmt --all -- --check`、`git diff --check` 和旧依赖引用扫描通过。
+- Firewall Phase A-D 完成；没有创建新仓库、发布版本或切换消费者，也没有运行测试用例。
+# 2026-07-23 LAN 兼容依赖隔离
+
+- 从现有规划文件恢复到 Plan 005 Phase 1 第 8-9 项，继续遵守不创建新仓、不发布、不切换消费者的限制。
+- 重新读取 `planning-with-files`、`codebase-design` 和深模块依赖分类规则。
+- 初步扫描确认协议、应用流程、基础设施实现和 engine 兼容目录已具备集中隔离条件；当前进入 LAN Phase A 的完整引用核对。
+- 已为 `uc-application`、`uc-infra`、`uc-engine` 增加统一 `lan-compat` feature；`uc-webserver` 和 CLI `dev-tools` 显式开启，移动绑定保持默认关闭。
+- 已把移动同步 facade、基础设施实现、数据库适配、engine 组装、运行分发和移动文件上传从默认核心路径移出；兼容数据类型继续保留，默认执行兼容操作时返回不可用。
+- 发现普通投递视图会查询兼容设备名称；默认核心改用“未找到”替身并回退显示原标识，兼容模式仍使用真实设备仓库。
+- `cargo check -p uc-engine --all-targets --locked` 通过；`cargo check -p uc-engine --all-targets --features lan-compat --locked` 通过。按用户要求未运行测试。
+- `cargo check -p uc-webserver -p uc-daemon -p uc-cli --features uc-cli/dev-tools --all-targets --locked` 通过，desktop LAN 兼容入口和 daemon/CLI 消费路径可编译。
+- `cargo check -p uc-engine-uniffi -p uc-ohos-napi -p uc-mobile-probe-core --all-targets --locked` 通过，三种移动消费端默认不启用 LAN 兼容能力。
+- `cargo check --workspace --all-targets --locked` 通过，完整工作区所有目标可编译。
+- 默认 `uc-engine` 依赖树中 `uc-mobile-proto`、`network-interface` 命中为零；开启 `lan-compat` 后两项均正常出现。
+- 依赖防火墙已扩展：拒绝默认核心带入 LAN 依赖，拒绝三种移动消费端开启兼容能力，并要求 `uc-webserver` 显式开启。
+- LAN Phase A-D 已全部完成；Plan 005 提前准备进度更新为 Phase 1 第 5-9 项完成，未创建新仓库、发布版本或切换消费者。
+
+# 2026-07-23 desktop 消费者依赖防火墙
+
+- 从 Plan 005 Phase 1 第 1-4 项继续，完成标准固定为 desktop 保留 crate 不再直接依赖待迁移内部 crate。
+- 已读取产品方向、架构规则、Rust 规则、crate 导航和当前 manifest；继续使用 `planning-with-files` 与 `codebase-design`。
+- 初步依赖清单确认 `uc-webserver`、`uc-bootstrap`、`uc-platform`、daemon contract/client、CLI、daemon 和 Tauri 仍有直接核心依赖；当前进入 Consumer Phase A 完整归类。
+- 本轮继续遵守用户要求，不运行测试用例；修改后只执行编译、格式、依赖树和残留检查。
+- `uc-bootstrap` 正式源码已停止通过 `uc-application` 转发路径类型，五个确认未使用的依赖已删除；离线同步锁文件后，`cargo check -p uc-bootstrap --all-targets --locked` 通过。
+- daemon contract 已自行拥有文件传输方向，并删除未使用的核心设置与成员转换；daemon client 改为复用 contract 类型，两个 crate 的源码与 manifest 均不再引用 `uc-core`。
+- 首次联合编译准确发现 Tauri 依赖五个旧隐式转换；已在 Tauri 接线处改为显式转换，不把核心模型重新放回 transport crate。
+- `cargo check -p uc-daemon-contract -p uc-daemon-client -p uc-webserver -p uc-tauri --all-targets --offline` 通过。
+- `cargo tree -p uc-daemon-contract -p uc-daemon-client --depth 1 --edges normal --locked --offline` 确认两个轻量 crate 的直接依赖均不含 `uc-core`。
+- CLI 成员列表已改用 daemon contract 的在线状态；`watch` 已改为消费 daemon 提供的结构化通知摘要，不再解析核心二进制格式。
+- `uc-engine` 入站通知新增向后兼容的文本预览、内容类型和大小摘要；daemon contract 保留原始 Base64 内容以兼容旧客户端。
+- `cargo check -p uc-engine -p uc-daemon-contract -p uc-daemon-client -p uc-webserver -p uc-cli -p uc-daemon --features uc-cli/dev-tools --all-targets --offline` 通过。
+- `cargo check -p uc-cli --features dev-tools --all-targets --offline` 与 `cargo check -p uc-cli --all-targets --locked` 通过。
+- `cargo machete --with-metadata apps/cli` 通过；CLI 默认直接依赖和深度一依赖树均不含 `uc-core`，仅 `dev-tools` 保留可选探针依赖。
+- Tauri 第一轮定向编译在 `DesktopRuntime::ensure_default_device_name` 暴露出旧函数错误类型不统一；已在桌面宿主接口处完成转换，不让 Tauri 继续理解内部错误形状。
+- Tauri、`uc-desktop` 与平台剪贴板的已完成进度已补回任务计划；Consumer Phase B 完成，Phase C 进入进行中。
+- `uc-platform` 已自行拥有安全存储接口、错误与应用目录类型，删除无人使用的自动启动和观测转发，以及 `uc-core`、`specta` 依赖声明。
+- 平台接口首个整包补丁因导入顺序不一致被完整拒绝；随后按当前文件形状拆成小补丁应用，没有覆盖既有改动。
+- `cargo check -p uc-platform --all-targets --offline` 通过；按用户要求未运行测试。格式检查只剩自动排版差异，等待本阶段统一格式化。
+- 启动路径与安全存储已改为 desktop/platform 自有类型，并在宿主组装处转换为 `HostCapabilities`；`uc-bootstrap` 正式源码不再引用核心 port 或路径对象。
+- 配置导入应用逻辑迁回 `uc-infra` 的暂存格式拥有模块，由 `uc-engine` 在打开数据库前调用；桌面启动层对应模块已删除。
+- 观测启动设置改为一次读取三个必要开关，默认值保持遥测开启、使用分析开启、调试关闭；`uc-bootstrap` 正式依赖已删除 `uc-core`、`uc-application`、`uc-infra`。
+- `cargo check -p uc-infra -p uc-engine -p uc-bootstrap --all-targets --offline` 与随后 `cargo check -p uc-bootstrap --all-targets --offline` 均通过；未运行测试。
+- 普通依赖树确认 `uc-bootstrap` 只通过 `uc-engine` 进入核心闭包，`uc-platform` 不再依赖 `uc-core`；`cargo machete` 对 bootstrap 无提醒，对 platform 只报告待按目标平台核对的既有条件依赖。
+- 恢复阶段尝试运行 `planning-with-files` 会话恢复脚本，但当前 skill 安装目录没有该脚本；已继续使用现有三份规划文件和交接记录，不重复尝试失效路径。
+- 平台接口统一改名为 `AppDirsProvider` 与 `SecureStorageProvider` 后，首次联合编译发现启动设置错误类别不支持字符串输出；已改为结构化调试字段，保留失败回退日志且不泄漏设置内容。
+- CLI `dev-tools` 探针已直接使用 `uc-platform` 剪贴板接口；平台快照补齐与旧 `id / format_id / mime / bytes` 文件形状一致的读写实现，CLI manifest 与源码中的 `uc-core` 引用归零，定向全目标编译通过。
+- daemon 活动剪贴板通知已改为直接传递 `uc-engine::ActiveClipboardChanged`，不再把公开事件重新拼成核心内部对象；首次 daemon/webserver 全目标编译只发现 LAN 检查夹具遗漏新类型导入，正式源码已完成编译。
+- 补齐 LAN 检查夹具导入后，`cargo check -p uc-daemon -p uc-webserver --all-targets --offline` 通过；daemon manifest 与正式源码中的 `uc-core` 引用归零。
+- `uc-webserver` 已删除无调用方的旧 setup 投影、旧配对广播和旧宿主事件转发器；普通 API 只保留 `EngineEvent` 到现有 WebSocket 数据的转换，联合全目标编译通过。
+- LAN 运行时剩余核心值对象已替换为公开摘要和普通设备标识；`uc-application`、`uc-core` 移到 webserver 开发依赖，普通依赖树只通过 `uc-engine` 进入核心闭包。
+- 已在 `uc-desktop` 增加消费者防回流检查，覆盖九个 desktop 保留 crate 的普通依赖和正式源码语法路径；检查目标本身已通过全目标编译，按用户要求没有执行测试。
+- 已更新 `uc-platform/AGENTS.md` 的依赖方向，并将 Plan 005 Phase 1 第 1-9 项同步为提前完成；仍未创建新仓库、发布版本或切换消费者。
+- `cargo check --workspace --all-targets --offline` 使用独立临时目录通过，覆盖全部桌面消费者、核心实现、三种绑定和移动探针目标；没有运行测试用例。
+- 默认 `uc-engine` 依赖树不含 `uc-mobile-proto` 与 `network-interface`，启用 `lan-compat` 后两者按预期出现；九个 desktop 保留 crate 的普通直接依赖均不含 `uc-core`、`uc-application`、`uc-infra`。
+- `cargo fmt --all -- --check`、`git diff --check` 通过；正式源码文本扫描只命中两处注释和一处 tracing target 字符串，没有真实内部类型引用。
+- Consumer Phase A-F 全部完成，Plan 005 Phase 1 依赖防火墙完成；未推进新仓创建、发布或消费者切换。

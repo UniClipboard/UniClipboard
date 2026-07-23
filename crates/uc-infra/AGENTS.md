@@ -639,7 +639,7 @@ panic 就随任务一起消失（runtime 把 panic 转成 `JoinError` 挂在句�
    （如 `pairing/session.rs` recv-pump 持有 `Connection`，提前 abort 会撕断握手），
    就不能用这种写法，改走第 2 种。
 
-2. **`uc_observability::spawn_supervised(name, fut)`（无法/不应被 abort 的任务）**：
+2. **`uc_observability_contract::spawn_supervised(name, fut)`（无法/不应被 abort 的任务）**：
    没有天然句柄持有者、或必须自然跑到结束（如上面的 recv-pump 要靠自己持有的
    `Arc<SessionSlot>` 撑到对端 FIN）的任务，用它包一层——底层任务照常 detached 运行、
    自行退出，任务 panic 会以稳定的 `event = "task.panicked"` + `task = <name>` 记

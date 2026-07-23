@@ -5,12 +5,11 @@ use uc_application::facade::space_setup::{
     MigrationPhaseKind, MigrationProgress, SwitchSpaceResult,
 };
 use uc_application::facade::{
-    InitializeSpaceResult, IssuePairingInvitationResult, RedeemPairingInvitationResult,
-    SetupStateView,
+    InitializeSpaceResult, RedeemPairingInvitationResult, SetupStateView,
 };
 use uc_daemon_contract::api::dto::v2::setup::{
-    CurrentInvitation, InitializeSpaceResponse, IssueInvitationResponse, MigrationPhaseDto,
-    MigrationProgressResponse, RedeemResponse, SetupStateResponse, SwitchSpaceResponse,
+    CurrentInvitation, InitializeSpaceResponse, MigrationPhaseDto, MigrationProgressResponse,
+    RedeemResponse, SetupStateResponse, SwitchSpaceResponse,
 };
 
 use super::IntoApiDto;
@@ -21,15 +20,6 @@ impl IntoApiDto<InitializeSpaceResponse> for InitializeSpaceResult {
             space_id: self.space_id.to_string(),
             self_device_id: self.self_device_id.to_string(),
             fingerprint: self.fingerprint.as_display().to_string(),
-        }
-    }
-}
-
-impl IntoApiDto<IssueInvitationResponse> for IssuePairingInvitationResult {
-    fn into_api_dto(self) -> IssueInvitationResponse {
-        IssueInvitationResponse {
-            code: self.code.as_str().to_string(),
-            expires_at_ms: self.expires_at.timestamp_millis(),
         }
     }
 }
@@ -122,20 +112,6 @@ mod tests {
         assert_eq!(dto.space_id, "space-1");
         assert_eq!(dto.self_device_id, "device-1");
         assert_eq!(dto.fingerprint, "ABCD-EFGH-IJKL-MNOP");
-    }
-
-    #[test]
-    fn issue_to_dto_serialises_expiry_as_epoch_millis() {
-        let expires = DateTime::parse_from_rfc3339("2026-04-25T12:00:00Z")
-            .unwrap()
-            .with_timezone(&Utc);
-        let dto: IssueInvitationResponse = IssuePairingInvitationResult {
-            code: InvitationCode::new("ABCD-1234"),
-            expires_at: expires,
-        }
-        .into_api_dto();
-        assert_eq!(dto.code, "ABCD-1234");
-        assert_eq!(dto.expires_at_ms, expires.timestamp_millis());
     }
 
     #[test]

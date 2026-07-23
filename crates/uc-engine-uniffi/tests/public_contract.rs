@@ -337,6 +337,49 @@ fn mobile_host_observes_suspend_and_resume_state_events() {
         .expect("binding engine must shut down within the deadline");
 }
 
+#[test]
+fn mobile_host_recovers_the_same_identity_after_process_restart() {
+    let _test_guard = engine_test_guard();
+    let root = tempfile::tempdir().expect("temporary host root must be available");
+    let host = Arc::new(MemoryHost::new(root.path()));
+    let config = BindingConfig {
+        app_version: "1.2.3".to_owned(),
+        profile_id: "binding-session-recovery".to_owned(),
+    };
+    let first =
+        MobileEngine::start(config.clone(), host.clone()).expect("first binding engine must start");
+    let created = first
+        .create_space(
+            Some("mobile-recovery-host".to_owned()),
+            "correct horse battery staple".to_owned(),
+        )
+        .expect("first binding engine must create a space");
+    first
+        .shutdown(5_000)
+        .expect("first binding engine must shut down");
+
+    let restarted = MobileEngine::start(config, host).expect("restarted binding engine must start");
+    let recovery = restarted
+        .recover_session(true)
+        .expect("restarted binding engine must recover its persisted session");
+    assert!(recovery.unlocked);
+    assert!(recovery.resumed);
+    let local = restarted
+        .query_local_device()
+        .expect("restarted binding engine must expose its recovered identity");
+    assert_eq!(local.device_id, created.self_device_id);
+    assert_eq!(
+        restarted
+            .lifecycle_state()
+            .expect("restarted binding engine must expose its lifecycle state"),
+        BindingEngineState::Running
+    );
+
+    restarted
+        .shutdown(5_000)
+        .expect("restarted binding engine must shut down");
+}
+
 fn wait_for_state(engine: &MobileEngine, expected: BindingEngineState) {
     for _ in 0..50 {
         if let Some(BindingEvent::StateChanged { state }) = engine.next_event(100) {

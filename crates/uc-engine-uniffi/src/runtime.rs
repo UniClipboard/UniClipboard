@@ -10,16 +10,16 @@ use uc_engine::{
     ExportEntryInput, HostCapabilities, HostCapabilityError, HostCapabilityErrorCategory,
     HostClipboard, HostClipboardRepresentation, HostClipboardSnapshot, HostDirectories,
     HostFileAccess, HostFileHandle, HostFileMetadata, HostSecureStorage, JoinSpaceInput, Operation,
-    OperationResult, RestoreClipboardInput, SecretString, SendFilesInput, SendImageInput,
-    SendTextInput,
+    OperationResult, RecoverSessionInput, RestoreClipboardInput, SecretString, SendFilesInput,
+    SendImageInput, SendTextInput,
 };
 use zeroize::Zeroizing;
 
 use crate::{
     BindingClipboardRepresentation, BindingClipboardRestoreMode, BindingClipboardRestoreOutcome,
     BindingClipboardSnapshot, BindingConfig, BindingEngineState, BindingError, BindingEvent,
-    BindingFailure, BindingFileMetadata, BindingHost, BindingOperationTerminal,
-    BindingRefreshReason, HostBindingError,
+    BindingFailure, BindingFileMetadata, BindingHost, BindingLifecycleAction,
+    BindingOperationTerminal, BindingRefreshReason, HostBindingError,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
@@ -27,6 +27,18 @@ pub struct SpaceCreated {
     pub space_id: String,
     pub self_device_id: String,
     pub identity_fingerprint: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct SessionRecovery {
+    pub unlocked: bool,
+    pub resumed: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct LocalDevice {
+    pub device_id: String,
+    pub display_name: String,
 }
 
 #[derive(Clone, PartialEq, Eq, uniffi::Record)]
@@ -75,6 +87,16 @@ pub struct SendReport {
 }
 
 enum WorkerCommand {
+    RecoverSession {
+        allow_secure_storage_unlock: bool,
+        response: mpsc::Sender<Result<SessionRecovery, BindingError>>,
+    },
+    QueryLocalDevice {
+        response: mpsc::Sender<Result<LocalDevice, BindingError>>,
+    },
+    LifecycleState {
+        response: mpsc::Sender<BindingEngineState>,
+    },
     CreateSpace {
         device_name: Option<String>,
         passphrase: Zeroizing<String>,
@@ -243,6 +265,43 @@ impl MobileEngine {
                 Err(BindingError::RuntimeUnavailable)
             }
         }
+    }
+
+    pub fn recover_session(
+        &self,
+        allow_secure_storage_unlock: bool,
+    ) -> Result<SessionRecovery, BindingError> {
+        let commands = self.command_sender()?;
+        let (response, result) = mpsc::channel();
+        commands
+            .send(WorkerCommand::RecoverSession {
+                allow_secure_storage_unlock,
+                response,
+            })
+            .map_err(|_| BindingError::RuntimeUnavailable)?;
+        result
+            .recv()
+            .map_err(|_| BindingError::RuntimeUnavailable)?
+    }
+
+    pub fn query_local_device(&self) -> Result<LocalDevice, BindingError> {
+        let commands = self.command_sender()?;
+        let (response, result) = mpsc::channel();
+        commands
+            .send(WorkerCommand::QueryLocalDevice { response })
+            .map_err(|_| BindingError::RuntimeUnavailable)?;
+        result
+            .recv()
+            .map_err(|_| BindingError::RuntimeUnavailable)?
+    }
+
+    pub fn lifecycle_state(&self) -> Result<BindingEngineState, BindingError> {
+        let commands = self.command_sender()?;
+        let (response, result) = mpsc::channel();
+        commands
+            .send(WorkerCommand::LifecycleState { response })
+            .map_err(|_| BindingError::RuntimeUnavailable)?;
+        result.recv().map_err(|_| BindingError::RuntimeUnavailable)
     }
 
     pub fn create_space(
@@ -529,6 +588,30 @@ async fn run_worker_loop(
 
     while let Some(command) = requests.recv().await {
         match command {
+            WorkerCommand::RecoverSession {
+                allow_secure_storage_unlock,
+                response,
+            } => {
+                let result = engine
+                    .execute(Operation::RecoverSession(RecoverSessionInput {
+                        allow_secure_storage_unlock,
+                    }))
+                    .await
+                    .map_err(BindingError::from)
+                    .and_then(map_session_recovery);
+                let _ = response.send(result);
+            }
+            WorkerCommand::QueryLocalDevice { response } => {
+                let result = engine
+                    .execute(Operation::QueryLocalDevice)
+                    .await
+                    .map_err(BindingError::from)
+                    .and_then(map_local_device);
+                let _ = response.send(result);
+            }
+            WorkerCommand::LifecycleState { response } => {
+                let _ = response.send(map_engine_state(engine.lifecycle_state().await));
+            }
             WorkerCommand::CreateSpace {
                 device_name,
                 passphrase,
@@ -709,6 +792,15 @@ fn map_engine_event(event: uc_engine::EngineEvent) -> BindingEvent {
                 failure,
             }
         }
+        uc_engine::EngineEvent::LifecycleFailed { action, error } => {
+            BindingEvent::LifecycleFailed {
+                action: match action {
+                    uc_engine::LifecycleAction::Suspend => BindingLifecycleAction::Suspend,
+                    uc_engine::LifecycleAction::Resume => BindingLifecycleAction::Resume,
+                },
+                failure: BindingFailure::from(error),
+            }
+        }
         uc_engine::EngineEvent::RefreshRequired { reason } => BindingEvent::RefreshRequired {
             reason: match reason {
                 uc_engine::RefreshReason::ConsumerLagged => BindingRefreshReason::ConsumerLagged,
@@ -747,6 +839,25 @@ fn map_space_created(result: OperationResult) -> Result<SpaceCreated, BindingErr
             space_id,
             self_device_id,
             identity_fingerprint,
+        }),
+        _ => Err(BindingError::UnexpectedResult),
+    }
+}
+
+fn map_session_recovery(result: OperationResult) -> Result<SessionRecovery, BindingError> {
+    match result {
+        OperationResult::SessionRecovered { unlocked, resumed } => {
+            Ok(SessionRecovery { unlocked, resumed })
+        }
+        _ => Err(BindingError::UnexpectedResult),
+    }
+}
+
+fn map_local_device(result: OperationResult) -> Result<LocalDevice, BindingError> {
+    match result {
+        OperationResult::LocalDevice(device) => Ok(LocalDevice {
+            device_id: device.device_id,
+            display_name: device.display_name,
         }),
         _ => Err(BindingError::UnexpectedResult),
     }
@@ -1135,5 +1246,29 @@ mod tests {
 
             assert_eq!(invitation.availability, binding_availability);
         }
+    }
+
+    #[test]
+    fn lifecycle_failure_keeps_the_action_and_stable_failure() {
+        let event = map_engine_event(uc_engine::EngineEvent::LifecycleFailed {
+            action: uc_engine::LifecycleAction::Suspend,
+            error: uc_engine::EngineError::new(
+                1214,
+                uc_engine::EngineErrorCategory::Unavailable,
+                true,
+            ),
+        });
+
+        assert_eq!(
+            event,
+            BindingEvent::LifecycleFailed {
+                action: BindingLifecycleAction::Suspend,
+                failure: BindingFailure {
+                    code: 1214,
+                    category: crate::BindingErrorCategory::Unavailable,
+                    retryable: true,
+                },
+            }
+        );
     }
 }

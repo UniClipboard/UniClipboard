@@ -5,7 +5,8 @@ mod android;
 mod runtime;
 
 pub use runtime::{
-    InvitationAvailability, InvitationIssued, MobileEngine, SendReport, SpaceCreated, SpaceJoined,
+    InvitationAvailability, InvitationIssued, LocalDevice, MobileEngine, SendReport,
+    SessionRecovery, SpaceCreated, SpaceJoined,
 };
 
 uniffi::setup_scaffolding!();
@@ -105,6 +106,12 @@ pub enum BindingEngineState {
     Suspended,
     ShuttingDown,
     Stopped,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum BindingLifecycleAction {
+    Suspend,
+    Resume,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
@@ -230,6 +237,10 @@ pub enum BindingEvent {
         operation_id: String,
         terminal: BindingOperationTerminal,
         failure: Option<BindingFailure>,
+    },
+    LifecycleFailed {
+        action: BindingLifecycleAction,
+        failure: BindingFailure,
     },
     RefreshRequired {
         reason: BindingRefreshReason,

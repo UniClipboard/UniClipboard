@@ -113,7 +113,7 @@
 
 ## Current Phase
 
-uc-engine 结构迁移 Engine Phase G、Plan 005 Phase 1 依赖防火墙与 Phase 2 跨仓检查已完成。当前按用户明确要求完成统一发布干跑、固定迁移基线并创建独立核心仓库；本阶段不发布核心版本、不切换消费者，实体设备矩阵继续按已接受风险保留为未通过。
+uc-engine 结构迁移、Plan 005 Phase 0 至 Phase 3 已完成。独立核心仓库和受保护迁移分支已经准备完毕；下一阶段是发布候选版本，但尚未开始。本阶段没有发布核心版本、没有切换消费者，实体设备矩阵继续按已接受风险保留为未通过。
 
 ## 2026-07-24 Plan 005 独立核心仓建仓准备
 
@@ -121,36 +121,36 @@ uc-engine 结构迁移 Engine Phase G、Plan 005 Phase 1 依赖防火墙与 Phas
 
 ### 完成标准
 
-- [ ] 当前跨仓检查改动已提交，cutover commit 可追溯且工作区干净
-- [ ] 四平台发布干跑产物记录同一核心版本、来源提交和校验值
-- [ ] Plan 004 与 Plan 005 明确记录实体设备跳过风险，不记为通过
-- [ ] 新仓只包含计划迁入范围，历史作者、时间和提交关系可追溯
-- [ ] 新仓根规则、中文说明、依赖锁定、检查和发布入口完整
-- [ ] 从空目录独立检出后依赖解析、全项目编译和静态检查通过
-- [ ] iOS、Android、HarmonyOS 产物可由新仓同一提交生成
-- [ ] 远端迁移分支已推送并核对；未创建版本标签或切换消费者
+- [x] 当前跨仓检查改动已提交，cutover commit 可追溯且工作区干净
+- [x] 四平台发布干跑产物记录同一核心版本、来源提交和校验值
+- [x] Plan 004 与 Plan 005 明确记录实体设备跳过风险，不记为通过
+- [x] 新仓只包含计划迁入范围，历史作者、时间和提交关系可追溯
+- [x] 新仓根规则、中文说明、依赖锁定、检查和发布入口完整
+- [x] 从空目录独立检出后依赖解析、全项目编译和静态检查通过
+- [x] iOS、Android、HarmonyOS 产物可由新仓同一提交生成
+- [x] 远端迁移分支已推送并核对；未创建版本标签或切换消费者
 
 ### 阶段
 
 #### Core Repository Phase A：固定基线与发布证据
-- [ ] 提交 Phase 2 改动并记录 cutover commit
-- [ ] 完成统一发布干跑和风险记录
-- **Status:** in_progress
+- [x] 提交 Phase 2 改动并记录 cutover commit
+- [x] 完成统一发布干跑和风险记录
+- **Status:** complete
 
 #### Core Repository Phase B：保留历史与整理仓库
-- [ ] 使用固定版本历史过滤工具生成迁移仓库
-- [ ] 按目标目录重排并补齐仓库根文件
-- **Status:** pending
+- [x] 使用固定版本历史过滤工具生成迁移仓库
+- [x] 按目标目录重排并补齐仓库根文件
+- **Status:** complete
 
 #### Core Repository Phase C：独立验证
-- [ ] 从独立检出完成依赖、编译、格式、检查和产物验证
-- [ ] 确认不存在 desktop/mobile/HarmonyOS 本地路径依赖
-- **Status:** pending
+- [x] 从独立检出完成依赖、编译、格式、检查和产物验证
+- [x] 确认不存在 desktop/mobile/HarmonyOS 本地路径依赖
+- **Status:** complete
 
 #### Core Repository Phase D：创建远端与推送
-- [ ] 创建 `UniClipboard/UniClipboardCore`
-- [ ] 推送受保护迁移分支并核对远端
-- **Status:** pending
+- [x] 创建 `UniClipboard/UniClipboardCore`
+- [x] 推送受保护迁移分支并核对远端
+- **Status:** complete
 
 ## 2026-07-24 Plan 005 跨仓检查
 

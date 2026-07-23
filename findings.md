@@ -775,3 +775,8 @@
 - 当前未提交的 Phase 2 跨仓检查属于 cutover 基线的一部分，应先形成独立提交，避免历史过滤遗漏最新防火墙和来源检查。
 - `UniClipboard/UniClipboardCore` 当前不存在，适合在历史过滤和独立验证完成后再创建远端，避免把半成品推成事实来源。
 - 当前环境没有 `git-filter-repo`；迁移必须使用固定版本的临时工具环境并记录版本，不能退回目录复制或普通 `filter-branch`。
+- 迁移最终使用 `git-filter-repo 2.47.0`，来源基线 `12104cbab7a3b167f33f95c5a9d6d7d90fbbfa75` 对应过滤后提交 `f7212ec69e79dea0ed2949288cc3642f493cf210`；新仓保留 348 个相关提交，作者与时间信息可追溯。
+- 新仓最终边界为 11 个核心、绑定、兼容和验收包；desktop、daemon、CLI、Tauri 与各平台产品接线均未迁入，正式依赖中也没有指回 desktop/mobile/HarmonyOS 的本地路径。
+- 新仓当前提交为 `47018f40800f8d3671b960de2ed5911b6f3c76b2`，默认分支为受保护的 `migration/initial-core-import`；远端检查要求、批准、讨论解决、线性历史和禁止强制推送/删除均已生效。
+- 当前提交已重新生成 `core-v0.19.1` 三端资产；统一清单记录并复算 22 项资产，三端来源提交一致。实体设备矩阵均为 `skipped`，没有创建标签或 Release。
+- Plan 005 Phase 0 至 Phase 3 已具备完成证据；Phase 4 发布候选版本和 Phase 5 至 Phase 8 消费者切换仍未开始，因此新仓暂时只是迁移候选事实来源，不能删除 desktop 中的旧核心。

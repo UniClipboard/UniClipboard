@@ -8,14 +8,14 @@ use uc_engine::{
     ClipboardRestoreMode, ClipboardRestoreOutcome, CreateSpaceInput, Engine, EngineConfig,
     EngineError, EngineEvent, EngineState, EventStream, ExportEntryInput, HostFileHandle,
     InvitationAvailability, JoinSpaceInput, Operation, OperationResult, OperationTerminal,
-    RefreshReason, RestoreClipboardInput, SecretString, SendFilesInput, SendImageInput,
-    SendReportSummary, SendTextInput,
+    RecoverSessionInput, RefreshReason, RestoreClipboardInput, SecretString, SendFilesInput,
+    SendImageInput, SendReportSummary, SendTextInput,
 };
 use zeroize::Zeroizing;
 
 use crate::{
-    host, OhEngineConfig, OhEngineEvent, OhHost, OhInvitationIssued, OhSendReport, OhSpaceCreated,
-    OhSpaceJoined,
+    host, OhEngineConfig, OhEngineEvent, OhHost, OhInvitationIssued, OhSendReport,
+    OhSessionRecovery, OhSpaceCreated, OhSpaceJoined,
 };
 
 #[napi]
@@ -66,6 +66,26 @@ impl OhEngine {
                 self_device_id,
                 identity_fingerprint,
             }),
+            _ => Err(unexpected_result()),
+        }
+    }
+
+    #[napi]
+    pub async fn recover_session(
+        &self,
+        allow_secure_storage_unlock: bool,
+    ) -> napi::Result<OhSessionRecovery> {
+        let result = self
+            .engine
+            .execute(Operation::RecoverSession(RecoverSessionInput {
+                allow_secure_storage_unlock,
+            }))
+            .await
+            .map_err(engine_error)?;
+        match result {
+            OperationResult::SessionRecovered { unlocked, resumed } => {
+                Ok(OhSessionRecovery { unlocked, resumed })
+            }
             _ => Err(unexpected_result()),
         }
     }

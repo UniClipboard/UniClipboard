@@ -2,7 +2,7 @@ use std::path::PathBuf;
 use std::sync::mpsc;
 use std::time::Duration;
 
-use napi::bindgen_prelude::{Buffer, FromNapiValue};
+use napi::bindgen_prelude::{Buffer, FromNapiValue, Uint8Array, ValidateNapiValue};
 use napi::threadsafe_function::{ErrorStrategy, ThreadsafeFunction, ThreadsafeFunctionCallMode};
 use napi::{Env, JsObject, Status};
 use uc_engine::{
@@ -70,7 +70,7 @@ fn call_host<T, D>(
 ) -> Result<D, HostCapabilityError>
 where
     T: 'static,
-    D: FromNapiValue + Send + 'static,
+    D: FromNapiValue + ValidateNapiValue + Send + 'static,
 {
     call_host_with(callback, value, Ok)
 }
@@ -82,16 +82,19 @@ fn call_host_with<T, J, D, F>(
 ) -> Result<D, HostCapabilityError>
 where
     T: 'static,
-    J: FromNapiValue + 'static,
+    J: FromNapiValue + ValidateNapiValue + 'static,
     D: Send + 'static,
     F: FnOnce(J) -> Result<D, HostCapabilityError> + 'static,
 {
     let (sender, receiver) = mpsc::sync_channel(1);
-    let status = callback.call_with_return_value::<J, _>(
+    let status = callback.call_with_return_value::<JsObject, _>(
         value,
         ThreadsafeFunctionCallMode::NonBlocking,
         move |returned| {
-            let _ = sender.send(convert(returned));
+            let result = host_result(&returned)
+                .and_then(|()| property::<J>(&returned, "value"))
+                .and_then(convert);
+            let _ = sender.send(result);
             Ok(())
         },
     );
@@ -101,6 +104,46 @@ where
     receiver
         .recv_timeout(HOST_CALLBACK_TIMEOUT)
         .map_err(|_| callback_error())?
+}
+
+fn call_host_unit<T>(
+    callback: &ThreadsafeFunction<T, ErrorStrategy::Fatal>,
+    value: T,
+) -> Result<(), HostCapabilityError>
+where
+    T: 'static,
+{
+    let (sender, receiver) = mpsc::sync_channel(1);
+    let status = callback.call_with_return_value::<JsObject, _>(
+        value,
+        ThreadsafeFunctionCallMode::NonBlocking,
+        move |returned| {
+            let _ = sender.send(host_result(&returned));
+            Ok(())
+        },
+    );
+    if status != Status::Ok {
+        return Err(callback_error());
+    }
+    receiver
+        .recv_timeout(HOST_CALLBACK_TIMEOUT)
+        .map_err(|_| callback_error())?
+}
+
+fn host_result(result: &JsObject) -> Result<(), HostCapabilityError> {
+    if property::<bool>(result, "ok")? {
+        return Ok(());
+    }
+    let category = match property::<String>(result, "errorCategory")?.as_str() {
+        "permission_denied" => HostCapabilityErrorCategory::PermissionDenied,
+        "invalid_handle" => HostCapabilityErrorCategory::InvalidHandle,
+        "unavailable" => HostCapabilityErrorCategory::Unavailable,
+        _ => HostCapabilityErrorCategory::Io,
+    };
+    Err(HostCapabilityError::new(
+        category,
+        "HarmonyOS host capability failed",
+    ))
 }
 
 fn callback_error() -> HostCapabilityError {
@@ -118,16 +161,16 @@ struct OhSecureStorage {
 
 impl HostSecureStorage for OhSecureStorage {
     fn get(&self, key: &str) -> Result<Option<Vec<u8>>, HostCapabilityError> {
-        call_host::<_, Option<Buffer>>(&self.get, key.to_owned())
+        call_host::<_, Option<Uint8Array>>(&self.get, key.to_owned())
             .map(|value| value.map(|bytes| bytes.to_vec()))
     }
 
     fn set(&self, key: &str, value: &[u8]) -> Result<(), HostCapabilityError> {
-        call_host::<_, ()>(&self.set, (key.to_owned(), Buffer::from(value.to_vec())))
+        call_host_unit(&self.set, (key.to_owned(), Buffer::from(value.to_vec())))
     }
 
     fn delete(&self, key: &str) -> Result<(), HostCapabilityError> {
-        call_host::<_, ()>(&self.delete, key.to_owned())
+        call_host_unit(&self.delete, key.to_owned())
     }
 }
 
@@ -142,7 +185,7 @@ impl HostClipboard for OhClipboard {
     }
 
     fn write(&self, snapshot: HostClipboardSnapshot) -> Result<(), HostCapabilityError> {
-        call_host(
+        call_host_unit(
             &self.write,
             OhClipboardSnapshot {
                 observed_at_ms: snapshot.observed_at_ms as f64,
@@ -180,7 +223,7 @@ fn clipboard_representation_from_js(
         "inline" => Ok(HostClipboardRepresentation::Inline {
             format,
             mime_type,
-            bytes: property::<Buffer>(&representation, "bytes")?.to_vec(),
+            bytes: property::<Uint8Array>(&representation, "bytes")?.to_vec(),
         }),
         "file" => Ok(HostClipboardRepresentation::File {
             format,
@@ -277,7 +320,7 @@ impl HostFileAccess for OhFiles {
         offset: u64,
         max_bytes: u32,
     ) -> Result<Vec<u8>, HostCapabilityError> {
-        call_host::<_, Buffer>(
+        call_host::<_, Uint8Array>(
             &self.read_chunk,
             (handle.as_str().to_owned(), offset.to_string(), max_bytes),
         )
@@ -290,7 +333,7 @@ impl HostFileAccess for OhFiles {
         offset: u64,
         bytes: &[u8],
     ) -> Result<(), HostCapabilityError> {
-        call_host(
+        call_host_unit(
             &self.write_chunk,
             (
                 handle.as_str().to_owned(),
@@ -301,7 +344,7 @@ impl HostFileAccess for OhFiles {
     }
 
     fn finish_write(&self, handle: &HostFileHandle) -> Result<(), HostCapabilityError> {
-        call_host(&self.finish_write, handle.as_str().to_owned())
+        call_host_unit(&self.finish_write, handle.as_str().to_owned())
     }
 }
 

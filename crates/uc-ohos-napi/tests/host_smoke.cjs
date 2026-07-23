@@ -52,26 +52,29 @@ async function main() {
     cacheDirectory: path.join(root, 'cache'),
     temporaryDirectory: path.join(root, 'temporary'),
     secureStorageGet(key) {
-      return values.get(key) ?? null;
+      const value = values.get(key);
+      return success(value === undefined ? null : new Uint8Array(value));
     },
     secureStorageSet(key, value) {
       values.set(key, Buffer.from(value));
+      return success();
     },
     secureStorageDelete(key) {
       values.delete(key);
+      return success();
     },
     fileMetadata(handle) {
       const file = requireFile(files, handle);
-      return {
+      return success({
         displayName: file.displayName,
         sizeBytes: String(file.bytes.length),
         mimeType: file.mimeType,
-      };
+      });
     },
     fileReadChunk(handle, offset, maxBytes) {
       const file = requireFile(files, handle);
       const start = Number(offset);
-      return file.bytes.subarray(start, start + maxBytes);
+      return success(new Uint8Array(file.bytes.subarray(start, start + maxBytes)));
     },
     fileWriteChunk(handle, offset, bytes) {
       const file = requireFile(files, handle);
@@ -83,16 +86,27 @@ async function main() {
         file.bytes = expanded;
       }
       Buffer.from(bytes).copy(file.bytes, start);
+      return success();
     },
     fileFinishWrite(handle) {
       requireFile(files, handle).finished = true;
+      return success();
     },
     clipboardRead() {
-      return clipboard;
+      return success({
+        ...clipboard,
+        representations: clipboard.representations.map((representation) => ({
+          ...representation,
+          bytes: representation.bytes === undefined
+            ? undefined
+            : new Uint8Array(representation.bytes),
+        })),
+      });
     },
     clipboardWrite(snapshot) {
       clipboardWrites.push(snapshot);
       clipboard = snapshot;
+      return success();
     },
   };
 
@@ -169,9 +183,35 @@ async function main() {
     await engine.resume();
     await waitForState(engine, 'running');
     await engine.shutdown(5_000);
+
+    const restarted = await addon.startEngine(
+      { appVersion: '1.2.3', profileId: 'ohos-host-smoke' },
+      addon.prepareHost(host)
+    );
+    await assert.rejects(
+      restarted.createSpace('ohos-host-smoke', 'correct horse battery staple'),
+      /UC_ENGINE:1205:conflict:false/
+    );
+    const recovery = await restarted.recoverSession(true);
+    assert.equal(recovery.unlocked, true);
+    assert.equal(recovery.resumed, true);
+
+    const restartText = 'private HarmonyOS restart export';
+    const restartReport = await restarted.sendText(restartText, []);
+    const restartOutput = requireFile(files, 'output-file-1');
+    restartOutput.bytes = Buffer.alloc(0);
+    restartOutput.finished = false;
+    await restarted.exportEntry(restartReport.entryId, 'output-file-1');
+    assert.deepEqual(restartOutput.bytes, Buffer.from(restartText));
+    assert.equal(restartOutput.finished, true);
+    await restarted.shutdown(5_000);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
+}
+
+function success(value) {
+  return { ok: true, value };
 }
 
 function requireFile(files, handle) {

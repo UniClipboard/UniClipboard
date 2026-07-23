@@ -501,3 +501,47 @@
 - HarmonyOS 的原生库页面使用默认模块导入最稳定，DevEco 会把它转换为 `requireNapi("uc_ohos_napi", true, ...)`；绑定完成登记与系统链接后，`engine.coreVersion()` 返回 `core-v0.19.1`。
 - 最终正式版本删除了诊断标记，重新构建、签名、安装和启动后，页面结构与截图都显示 `core-v0.19.1` 和 `Ready`，没有错误详情或布局重叠。
 - HarmonyOS 薄绑定现在具备主机测试、公开边界、ARM64/x86_64 交叉编译、真实 HAP、签名验证和模拟器运行证据；HUKS、系统剪贴板、文件选择器、系统生命周期和真机矩阵仍是后续独立工作。
+- 2026-07-23 本次续作已核对 `task_plan.md`、`progress.md`、Git 状态与最新提交：HarmonyOS 薄绑定已通过模拟器验收并提交，工作区干净；Plan 004 下一项确认为三种移动系统安全存储与文件出口接入。
+- 本阶段不能把绑定层的内存回调或验收宿主当作系统能力证据；完成必须同时覆盖正式移动宿主接入、缺失安全存储时启动失败、文件仅在用户明确导出时写向宿主句柄，以及当前环境可执行的真实构建/运行检查。
+- 正式 Plan 004 已限定本阶段不新增业务状态机：共用绑定和 HarmonyOS 薄绑定均已有安全存储、文件读取/写入与导出入口，当前工作应集中在 iOS Keychain、Android Keystore、HarmonyOS HUKS/Asset Store 及系统文件句柄适配。
+- 阶段验收至少包括：密钥库不可用时返回稳定失败、持久化明文探针通过、HarmonyOS 不长期明文保存文件名/路径/关联元数据；生命周期和统一发布仍是后续独立阶段。
+- 移动应用现有 `modules/uc-engine` 已包含 iOS `AppleEngineHost` 和 Android `AndroidEngineHost`，两端均已出现系统密钥库与宿主文件方法；因此先按计划验收契约审计现状，缺口驱动修改，不重复建立第二套宿主。
+- 正式应用服务已经通过同一个 `uc-engine` 模块启动共用核心；系统能力适配应继续由该模块唯一拥有，界面和 TypeScript 服务不应直接处理密钥或真实文件路径。
+- iOS 正式宿主使用 Keychain 且没有 `UserDefaults` 回退；Android 使用 Android Keystore 中的 AES-GCM 主密钥加密后才写入私有偏好存储，存储键名也先做摘要。两端文件注册表都只把随机句柄交给核心。
+- 当前移动端自动检查主要是源码契约扫描，尚未证明密钥库异常映射和系统文件导出完整流程；本阶段需要增加可执行的原生行为验证，而不只扩充字符串检查。
+- HarmonyOS 验收工程不在最初假设的 `apps/harmony-probe` 路径，需要从仓库真实文件清单重新定位；该路径假设错误未修改任何文件。
+- HarmonyOS 验收工程真实路径是 `apps/ohos-probe`。当前工程只加载绑定并显示版本/就绪状态，还没有用 HUKS/Asset Store 和系统文件选择结果构造真实宿主。
+- iOS/Android 的 `registerOutputFile` 与 `exportEntry` 目前只存在于原生模块和 JavaScript 导出层，产品服务没有调用；现状不会自动把内容写出应用沙箱，但仍缺一次真实系统授权文件目标的行为证明。
+- Android 安全存储的写入路径会把 Keystore 不可用映射为稳定的 `Unavailable`，但读取路径把包括 Keystore 不可用在内的所有异常映射成 `Io`；需要先以原生测试固定预期分类，再修正共同错误映射。
+- HarmonyOS 当前 SDK 同时提供 HUKS 与 Asset Store。对任意长度的小型核心密钥值，Asset Store 直接提供系统级新增、查询、更新和删除，能够避免自建加密文件格式，优先作为正式安全存储适配。
+- HarmonyOS 文件出口应由系统文档选择器产生授权 URI，宿主仅在进程内注册随机句柄；核心继续只接触句柄和分块回调，文件名/路径不写入长期缓存。
+- `uc-ohos-napi` 的宿主回调由核心同步等待，ArkTS 适配必须使用 Asset Store 与文件系统的同步 API；当前 SDK API 24 已提供 `addSync/querySync/updateSync/removeSync` 和同步文件读写，适配无需 Promise 或普通文件回退。
+- HarmonyOS 验收应用应在启动核心前实际完成一次系统安全存储写入、读取和删除探针；文件出口则只能由用户点击后打开系统保存选择器，取得授权 URI 后注册内存句柄并交给核心导出。
+- HarmonyOS 正式宿主契约红灯已验证：原有 5 项工程检查通过，新增 3 项分别准确失败于 Asset Store 适配文件不存在、文件句柄注册表不存在、N-API 完整声明/核心启动调用不存在；失败与工具链无关。
+- Asset Store 查询可用 `RETURN_TYPE = ALL` 返回单条密钥值，访问级别可设为首次解锁后；系统文档保存器返回授权 URI，文件系统同步接口支持按偏移读写和 `fsyncSync`，与现有核心宿主回调完整对应。
+- 首轮真实 HAP 已完成 Rust OHOS 构建、ArkTS 类型检查、原生库处理、打包、签名和反向验签；唯一编译阻断是 AssetMap 类型推断，显式标注后已解决。
+- 当前 HAP 仍有 13 条本轮文件系统/Asset Store“可能抛错”提醒，需要在适配边界统一捕获并转为稳定宿主失败后重建；当前没有在线 HarmonyOS 目标，需启动已有 Pura 90 模拟器继续运行验收。
+- DevEco 模拟器程序仍位于应用包内，`~/.Huawei/Emulator/deployed` 的 Pura 90 API 24 ARM64 配置也仍存在；当前只是模拟器进程退出，无需重新下载镜像或修改全局 SDK。
+- Pura 90 已按原配置冷启动并由 `hdc` 识别为 `127.0.0.1:5555`；旧验收应用已从模拟器卸载以清除旧数据，新签名 HAP 已安装并成功启动，下一步核对真实页面状态和系统保存流程。
+- 新应用进程在 2 秒后以 SIGABRT 退出；系统崩溃记录明确为 N-API `ThreadsafeFunction` 回调把 ArkTS 的 `OHOS_SECURE_STORAGE_UNAVAILABLE` 转成致命错误。Asset Store 确实被调用，根因是绑定使用 fatal 回调策略，宿主不可用无法按稳定错误返回。
+- 该问题不是 HarmonyOS 页面或核心本身崩溃；必须先让宿主回调错误可被核心接收并映射，才能满足“密钥库不可用时启动失败而非进程退出”的验收要求。
+- 当前 `napi` 2.16.17 默认提供 `CalleeHandled` 回调错误策略，调用端以 `Result<T>` 传入；`uc-ohos-napi` 曾主动改用 `Fatal`。修复方向是恢复可处理策略，并用独立 Node 进程验证回调失败只导致启动拒绝而不导致进程中止。
+- 继续阅读当前 `napi` 实现确认：`call_with_return_value` 在 JavaScript 回调抛错或返回值转换失败时仍调用 `napi_fatal_error`，仅切换策略不能根治。必须把宿主回调改为返回结构化成功/失败对象，Rust 绑定读取后映射为 `HostCapabilityError`；该未发布接口可一次切换且不保留旧路径。
+- 结构化宿主结果的独立进程回归和完整正常流程现均通过：宿主能力不可用只会拒绝核心启动，不再触发进程退出；正常的安全存储、剪贴板和文件出口仍保持原行为。
+- 模拟器系统日志证明 Asset Store 的新增、查询和删除都可用；核心启动失败的直接原因是 N-API `Buffer` 到 ArkTS 后不是 Asset Store 要求的标准字节数组，必须在安全存储入口复制为新的 `Uint8Array`，使用后清空该副本。
+- HarmonyOS 的反向边界也必须使用标准字节数组：Asset Store 读回的是 `Uint8Array`，绑定若按 Node `Buffer` 验证会让创建空间在密钥读回时失败。宿主返回的安全存储、文件块和剪贴板字节应统一按 `Uint8Array` 接收，Rust 发往宿主的现有缓冲区路径不变。
+- Rust 发往 HarmonyOS 宿主的文件块与密钥值同样不是系统 API 可直接消费的标准字节数组；文件写入入口也必须复制为新的 `Uint8Array`，写完立即清空副本。系统保存器已正确授予目标 URI，失败与授权无关。
+- 2026-07-23 iOS/Android 原生测试入口复核：移动仓库的 `uc-engine` 模块目前只有正式 Swift/Kotlin 源码，没有模块级 XCTest、Android 本地测试或设备测试目录；现有 TypeScript 测试无法执行 Keychain、Keystore 和系统文档读写。
+- Android `KeystoreSecureStorage.get()` 当前把载荷解析、系统密钥取得和解密的所有异常统一转成普通读写失败；这会让系统 Keystore 不可用时与写入路径的稳定“不可用”分类不一致。文件句柄实现已通过 `ContentResolver` 访问系统授权目标，但尚无真实读写回归。
+- iOS 正式宿主已经直接使用系统 Keychain，且文件句柄只保存在进程内；安全存储错误已有系统状态到稳定错误的映射，文件实现也会对授权 URL 执行分块写入和读回，但当前没有原生行为测试证明不可用映射与完整内容一致性。
+- 当前本机已有启动中的 iPhone 17 Pro 模拟器；移动 iOS 工程真实名称是 `UniClipDev`，并非旧假设的 `UniClipboard`。Android `:uc-engine` 已通过 Expo 自动接入主工程，Gradle 暴露了模块级本地测试和设备测试任务；当前没有在线 Android 设备，但可继续恢复既有模拟器。
+- 原生行为测试应同时覆盖两层证据：真实系统 Keychain/Keystore 的写入、读回、删除，以及可注入的系统不可用返回；文件出口则直接通过宿主的随机句柄注册、分块写入、结束、分块读回和逐字节比对，避免只检查源码文本。
+- iOS 新增的独立原生宿主测试已在 macOS 原生环境真实通过 3 项：系统 Keychain 写入/读回/删除、`errSecNotAvailable` 稳定映射、随机文件句柄分两块写入后完整读回。下一步继续在 iPhone 模拟器运行同一测试，避免只保留 macOS 证据。
+- 当前 Xcode 27 beta 无法联编完整移动 iOS 应用或 `UcEngine` Pod：先命中两个旧 Pod 的最低系统版本，覆盖版本后又失败于既有 `expo-modules-jsi` 的 Swift 6 C 函数指针编译错误。失败发生在依赖源码，尚未编译到本次 `UcEngine` 文件；本阶段改用独立系统宿主包验证本次 Swift 代码，并记录整包联编阻碍。
+- Android Pixel 8 API 34 设备测试最终 3/3 通过：真实 Android Keystore 写入/读回/删除、已存在密文在密钥提供器不可用时稳定返回 `Unavailable`、FileProvider 内容地址通过随机句柄分两块写入并完整读回 32,769 字节。句柄断言确认不包含真实路径。
+- 本机同时安装了 Xcode 26.2 正式版与 Xcode 27 beta；前述完整应用联编失败使用的是 beta。后续优先用正式版重跑，不把测试版编译器与既有 Expo 的兼容问题算作产品缺陷。
+- Android 进一步发现并修复分类边界：损坏的加密载荷此前会在解密初始化阶段被误报为 Keystore 不可用。新增设备测试先准确得到 `Unavailable` 红灯；现仅密钥取得、永久失效和系统提供器失败归为不可用，载荷格式和解密失败保持普通读写错误，单项设备测试已转绿。
+- Android Pixel 8 API 34 最终 4 项设备测试全部通过：真实 Keystore 往返、系统不可用分类、损坏内容分类、系统授权内容地址分块写入与逐字节读回均符合预期。
+- iOS 最终 3 项原生宿主测试全部通过：真实 Keychain 往返、系统不可用分类、文件分块写入与逐字节读回；Xcode 26.2 同时完成正式 `UcEngine` 模块联编。
+- HarmonyOS 最终证据同时覆盖系统安全存储探针、保留数据重启恢复、用户触发系统保存、保存后逐字节读回和应用私有目录明文扫描；应用进程仍存活并显示 `core-v0.19.1`、`Ready` 与 `Export complete`。
+- 三种移动系统安全存储与文件出口已达到本阶段完成标准；Plan 004 仍因移动生命周期、真机矩阵和统一发布产物未完成而保持进行中。

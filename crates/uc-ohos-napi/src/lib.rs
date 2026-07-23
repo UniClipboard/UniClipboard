@@ -57,6 +57,12 @@ pub struct OhSpaceCreated {
 }
 
 #[napi(object)]
+pub struct OhSessionRecovery {
+    pub unlocked: bool,
+    pub resumed: bool,
+}
+
+#[napi(object)]
 pub struct OhInvitationIssued {
     pub invitation_code: String,
     pub expires_at_ms: f64,

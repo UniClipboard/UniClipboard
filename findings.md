@@ -474,3 +474,30 @@
 - 剪贴板表示可用单一结构化对象承载 `inline` 或 `file` 两种类型：前者必须有字节，后者必须有不透明句柄、显示名和大小；不得从字段存在性猜测类型。
 - N-API 空注册测试模式会移除对象派生的全部转换实现；宿主回调返回对象不能直接作为跨线程返回类型，应在 Node 线程内解析为纯 Rust 数据后再交给核心，既保留真实对象契约，也保持普通 Rust 测试不链接 Node。
 - 桌面扩大测试的邀请字段编译失败来自已无生产调用者的旧应用层结果转换；正式 `/v2/setup/issue-invitation` 已直接映射 `Engine` 结果。正确修复是删除重复旧转换与测试，不是继续维护两条邀请投影路径。
+- 用户安装 DevEco Studio 后，仓库内仍只有 `uc-ohos-napi` 绑定，没有 `build-profile.json5`、`module.json5` 或 `hvigor` 工程文件；真实 HarmonyOS 构建仍需建立宿主工程。
+- 当前 Rust 工具链没有 `aarch64-unknown-linux-ohos` 或 `x86_64-unknown-linux-ohos`，但用户目录已出现 `~/Library/Huawei/Sdk/productConfig.json`；需要继续确认 DevEco Studio 实际位置和 SDK 组件是否完整。
+- DevEco Studio 实际安装在 `/Applications/DevEco-Studio.app`，只是未被 Spotlight 返回；当前 `~/Library/Huawei/Sdk` 除设备模板配置外没有任何 SDK 平台、工具链或模拟器镜像，编辑器安装完成但开发环境尚未配置完成。
+- DevEco Studio 版本为 6.1.1，应用包内自带 OpenHarmony/HMS 默认 SDK、`hdc`、`ohpm`、`hvigorw`、Node、Java 和模拟器程序；用户 SDK 目录为空不代表工具链完全缺失，需以这些内置工具的真实运行结果和系统镜像为准。
+- 内置工具实际可运行：HarmonyOS SDK 6.1.1.125、API 24，`hdc` 3.2.0d、`ohpm` 6.1.2.285、`hvigorw` 6.24.3 均正常；`hdc` 当前没有在线目标。
+- `~/.Huawei/Emulator/deployed` 已有 Pura 90、Mate X7、MatePad Pro 13 和 MateBook Pro 四个虚拟设备配置；需要确认对应镜像是否完整并实际启动至少一个手机目标。
+- Pura 90 虚拟设备配置为 HarmonyOS 6.1.1 API 24、ARM64、4 核和 4 GiB 内存，架构适合后续加载 ARM64 原生绑定；实例目录仅保存配置，系统镜像由共享镜像目录提供。
+- DevEco 模拟器提供完整命令行，可查询镜像、许可、实例并直接启动或停止，因此环境验收可重复执行，不依赖手工界面操作。
+- 四个虚拟设备都引用 `~/Library/Huawei/Sdk/system-image/...`，但 `Emulator -imageList -downloaded true` 确认当前没有任何已下载镜像；模拟器因此尚不可启动。
+- 模拟器安装前还有两份许可协议待用户确认；不能由自动化流程代替用户接受，先继续完成不涉及许可的 Rust 和原生工具链核对。
+- Rust 已成功安装 `aarch64-unknown-linux-ohos` 与 `x86_64-unknown-linux-ohos`；DevEco 原生 SDK 提供同名专用编译器包装、LLVM 归档器和三种 OHOS 系统库，可开始真实交叉编译。
+- 显式使用 DevEco ARM64 编译器、归档器和内置 CMake 后，`uc-ohos-napi` 及完整 `uc-engine` 依赖链已为 `aarch64-unknown-linux-ohos` 真实编译成功；这关闭了“鸿蒙目标无法构建”的环境缺口，但尚未证明 HAP 工程加载和运行。
+- 同一依赖链也已为 `x86_64-unknown-linux-ohos` 完整交叉编译成功；当前 Rust 与 DevEco 原生工具链覆盖两种计划目标，下一真实缺口是 DevEco HAP 工程接入和运行。
+- Plan 004 明确要求 HarmonyOS 构建退出 0 后才能完成薄绑定步骤；DevEco Studio 内置完整 `hvigor` 工程模板，可作为非发布验收应用的工程结构来源，宿主只负责系统能力与 ArkTS/N-API 接入。
+- 新验收工程已由 DevEco 成功生成未签名 HAP，包内包含约 77 MB 的 ARM64 `libuc_ohos_napi.so`、编译后的 ArkTS 页面和资源；这是真实 HarmonyOS 工程构建证据，不是主机 Node 冒烟替代。
+- 当前 HAP 尚未签名；DevEco 内置 OpenHarmony 测试密钥，但未发现现成 HarmonyOS 用户签名材料。是否能安装到 HarmonyOS 6.1 模拟器仍取决于签名和待用户接受许可后下载的系统镜像。
+- 用户接受许可后，HarmonyOS 6.1.1 手机镜像已下载，Pura 90 ARM64 模拟器已启动并由 `hdc` 识别为 `127.0.0.1:5557`。
+- 使用 SDK 根证书、中间证书和与测试私钥匹配的应用证书后，HAP 已完成签名、反向验证、安装和启动，证明工程、原生库打包与应用入口均可运行。
+- 页面最初默认导入原生模块时得到空值，改为命名导入后明确报告模块没有导出 `coreVersion`；这排除了页面生命周期和声明文件问题。
+- 动态库包含 `napi_register_module_v1`，所有 `#[napi]` 初始化器也存在于初始化数组中；但 `napi-rs` 默认等待 Node 调用登记入口，HarmonyOS 则要求动态库加载时调用 `napi_module_register` 主动登记。
+- `aarch64-unknown-linux-ohos` 的实际编译条件是 `target_os = "linux"` 与 `target_env = "ohos"`；平台限定必须使用后者。现有 `napi-rs` 导出初始化已因 Linux 条件正确进入 `.init_array`，缺失的只有 OHOS 环境专用模块登记。
+- 当前最小正确修复是在 `uc-ohos-napi` 内仅对 `target_env = "ohos"` 提供加载时登记入口，并复用现有 `napi_register_module_v1` 作为导出初始化回调；不复制任何业务逻辑，也不影响 Node 主机验证路径。
+- 仅主动登记仍不足以加载：原始 OHOS 动态库只声明 `libc.so`，N-API 符号没有所属系统库；标准 HarmonyOS 原生模块还必须链接 `libace_napi.z.so`，否则 `requireNapi` 返回空值且登记回调不会执行。
+- 构建脚本按 `target_env = "ohos"` 链接系统运行库后，最终 ARM64 动态库的依赖列表同时包含 `libace_napi.z.so` 与 `libc.so`；主机和其他目标不受影响。
+- HarmonyOS 的原生库页面使用默认模块导入最稳定，DevEco 会把它转换为 `requireNapi("uc_ohos_napi", true, ...)`；绑定完成登记与系统链接后，`engine.coreVersion()` 返回 `core-v0.19.1`。
+- 最终正式版本删除了诊断标记，重新构建、签名、安装和启动后，页面结构与截图都显示 `core-v0.19.1` 和 `Ready`，没有错误详情或布局重叠。
+- HarmonyOS 薄绑定现在具备主机测试、公开边界、ARM64/x86_64 交叉编译、真实 HAP、签名验证和模拟器运行证据；HUKS、系统剪贴板、文件选择器、系统生命周期和真机矩阵仍是后续独立工作。

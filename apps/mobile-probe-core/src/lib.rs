@@ -140,6 +140,7 @@ struct EventSummary {
     transfer_updates: u64,
     refresh_requests: u64,
     completed_operations: u64,
+    lifecycle_failures: u64,
     fatal_errors: u64,
     last_state: Option<String>,
 }
@@ -511,6 +512,7 @@ async fn execute_command(state: &mut ProbeState, command: ProbeCommand) -> Value
                 "transfer_updates": events.transfer_updates,
                 "refresh_requests": events.refresh_requests,
                 "completed_operations": events.completed_operations,
+                "lifecycle_failures": events.lifecycle_failures,
                 "fatal_errors": events.fatal_errors,
                 "last_state": events.last_state,
             })
@@ -1252,6 +1254,7 @@ fn record_event(summary: &Arc<Mutex<EventSummary>>, event: EngineEvent) {
         EngineEvent::MobileLanSettingsChanged(_) => summary.refresh_requests += 1,
         EngineEvent::RefreshRequired { .. } => summary.refresh_requests += 1,
         EngineEvent::OperationFinished { .. } => summary.completed_operations += 1,
+        EngineEvent::LifecycleFailed { .. } => summary.lifecycle_failures += 1,
         EngineEvent::Fatal { .. } => summary.fatal_errors += 1,
     }
 }
@@ -1343,6 +1346,21 @@ fn string_to_c_string(value: String) -> *mut c_char {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn event_summary_counts_lifecycle_transition_failures() {
+        let summary = Arc::new(Mutex::new(EventSummary::default()));
+
+        record_event(
+            &summary,
+            EngineEvent::LifecycleFailed {
+                action: uc_engine::LifecycleAction::Resume,
+                error: EngineError::new(1214, uc_engine::EngineErrorCategory::Unavailable, true),
+            },
+        );
+
+        assert_eq!(lock_unpoisoned(&summary).lifecycle_failures, 1);
+    }
 
     #[test]
     fn operation_response_exposes_stable_result_without_debug_output() {

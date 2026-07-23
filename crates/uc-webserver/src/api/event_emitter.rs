@@ -174,6 +174,7 @@ pub fn engine_event_to_ws(event: EngineEvent) -> Option<DaemonWsEvent> {
         | EngineEvent::MobileLanSettingsChanged(_)
         | EngineEvent::RefreshRequired { .. }
         | EngineEvent::OperationFinished { .. }
+        | EngineEvent::LifecycleFailed { .. }
         | EngineEvent::Fatal { .. } => return None,
     };
 
@@ -356,7 +357,19 @@ impl HostEventEmitterPort for DaemonApiEventEmitter {
 #[cfg(test)]
 mod engine_event_tests {
     use super::*;
-    use uc_engine::{InboundNoticeEvent, TransferProgress};
+    use uc_engine::{
+        EngineError, EngineErrorCategory, InboundNoticeEvent, LifecycleAction, TransferProgress,
+    };
+
+    #[test]
+    fn lifecycle_failures_stay_on_the_host_event_stream() {
+        let event = EngineEvent::LifecycleFailed {
+            action: LifecycleAction::Suspend,
+            error: EngineError::new(1214, EngineErrorCategory::Unavailable, true),
+        };
+
+        assert!(engine_event_to_ws(event).is_none());
+    }
 
     #[test]
     fn inbound_notice_keeps_the_existing_watch_wire_shape() {

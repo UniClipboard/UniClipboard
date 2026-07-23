@@ -13,8 +13,8 @@ use crate::internal::runtime::ProductionRuntime;
 use crate::EventStream;
 use crate::{
     DevOperation, DevOperationResult, DevPairingOutcomeStream, EngineConfig, EngineError,
-    EngineErrorCategory, EngineEvent, EngineState, HostCapabilities, Operation, OperationResult,
-    OperationTerminal,
+    EngineErrorCategory, EngineEvent, EngineState, HostCapabilities, LifecycleAction, Operation,
+    OperationResult, OperationTerminal,
 };
 
 const INVALID_STATE_CODE: u32 = 1001;
@@ -220,7 +220,7 @@ impl Engine {
             _ => return Err(invalid_state_error()),
         }
 
-        self.runtime.suspend().await?;
+        self.report_lifecycle_result(LifecycleAction::Suspend, self.runtime.suspend().await)?;
         self.state.lock().await.lifecycle = EngineState::Suspended;
         self.events.send(EngineEvent::StateChanged {
             state: EngineState::Suspended,
@@ -234,7 +234,7 @@ impl Engine {
             return Err(invalid_state_error());
         }
 
-        self.runtime.resume().await?;
+        self.report_lifecycle_result(LifecycleAction::Resume, self.runtime.resume().await)?;
         self.state.lock().await.lifecycle = EngineState::Running;
         self.events.send(EngineEvent::StateChanged {
             state: EngineState::Running,
@@ -339,6 +339,20 @@ impl Engine {
         }
         self.in_flight_changed.notify_one();
     }
+
+    fn report_lifecycle_result(
+        &self,
+        action: LifecycleAction,
+        result: Result<(), EngineError>,
+    ) -> Result<(), EngineError> {
+        if let Err(error) = &result {
+            self.events.send(EngineEvent::LifecycleFailed {
+                action,
+                error: error.clone(),
+            });
+        }
+        result
+    }
 }
 
 fn invalid_state_error() -> EngineError {
@@ -389,6 +403,8 @@ mod tests {
         operation_started: Notify,
         suspend_calls: AtomicUsize,
         resume_calls: AtomicUsize,
+        fail_suspend: AtomicBool,
+        fail_resume: AtomicBool,
         shutdown_calls: AtomicUsize,
         fail_shutdown: AtomicBool,
     }
@@ -415,11 +431,25 @@ mod tests {
 
         async fn suspend(&self) -> Result<(), EngineError> {
             self.suspend_calls.fetch_add(1, Ordering::SeqCst);
+            if self.fail_suspend.load(Ordering::SeqCst) {
+                return Err(EngineError::new(
+                    9002,
+                    EngineErrorCategory::Unavailable,
+                    true,
+                ));
+            }
             Ok(())
         }
 
         async fn resume(&self) -> Result<(), EngineError> {
             self.resume_calls.fetch_add(1, Ordering::SeqCst);
+            if self.fail_resume.load(Ordering::SeqCst) {
+                return Err(EngineError::new(
+                    9003,
+                    EngineErrorCategory::Unavailable,
+                    true,
+                ));
+            }
             Ok(())
         }
 
@@ -544,6 +574,53 @@ mod tests {
                 EngineState::Running,
             ]
         );
+    }
+
+    #[tokio::test]
+    async fn suspend_failure_is_reported_on_the_engine_event_stream() {
+        let runtime = Arc::new(FakeRuntime {
+            fail_suspend: AtomicBool::new(true),
+            ..FakeRuntime::default()
+        });
+        let (engine, mut events) = Engine::from_runtime(runtime, 8);
+
+        let error = engine.suspend().await.unwrap_err();
+
+        while let Some(event) = events.next().await {
+            if let EngineEvent::LifecycleFailed {
+                action,
+                error: observed,
+            } = event
+            {
+                assert_eq!(action, crate::LifecycleAction::Suspend);
+                assert_eq!(observed, error);
+                return;
+            }
+        }
+        panic!("suspend failure was not reported before the event stream closed");
+    }
+
+    #[tokio::test]
+    async fn resume_failure_is_reported_on_the_engine_event_stream() {
+        let runtime = Arc::new(FakeRuntime::default());
+        let (engine, mut events) = Engine::from_runtime(runtime.clone(), 8);
+        engine.suspend().await.unwrap();
+        runtime.fail_resume.store(true, Ordering::SeqCst);
+
+        let error = engine.resume().await.unwrap_err();
+
+        while let Some(event) = events.next().await {
+            if let EngineEvent::LifecycleFailed {
+                action,
+                error: observed,
+            } = event
+            {
+                assert_eq!(action, crate::LifecycleAction::Resume);
+                assert_eq!(observed, error);
+                return;
+            }
+        }
+        panic!("resume failure was not reported before the event stream closed");
     }
 
     #[tokio::test]

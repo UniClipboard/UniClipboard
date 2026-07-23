@@ -885,6 +885,13 @@ pub enum RefreshReason {
     StateInvalidated,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LifecycleAction {
+    Suspend,
+    Resume,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EngineEvent {
     StateChanged {
@@ -907,6 +914,10 @@ pub enum EngineEvent {
         operation_id: String,
         terminal: OperationTerminal,
     },
+    LifecycleFailed {
+        action: LifecycleAction,
+        error: EngineError,
+    },
     Fatal {
         error: EngineError,
     },
@@ -928,6 +939,7 @@ impl EngineEvent {
             Self::MobileLanSettingsChanged(_) => "mobile_lan_settings_changed",
             Self::RefreshRequired { .. } => "refresh_required",
             Self::OperationFinished { .. } => "operation_finished",
+            Self::LifecycleFailed { .. } => "lifecycle_failed",
             Self::Fatal { .. } => "fatal",
         }
     }

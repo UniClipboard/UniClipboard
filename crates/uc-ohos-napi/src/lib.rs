@@ -124,3 +124,25 @@ pub async fn start_engine(
     })?;
     OhEngine::start(config, host).await
 }
+
+#[cfg(target_env = "ohos")]
+mod ohos_registration {
+    #[napi::bindgen_prelude::ctor]
+    fn register_ohos_napi_module() {
+        const MODULE_NAME: &[u8] = b"uc_ohos_napi\0";
+        static mut MODULE: napi::sys::napi_module = napi::sys::napi_module {
+            nm_version: 1,
+            nm_flags: 0,
+            nm_filename: std::ptr::null(),
+            nm_register_func: Some(napi::bindgen_prelude::napi_register_module_v1),
+            nm_modname: MODULE_NAME.as_ptr().cast(),
+            nm_priv: std::ptr::null_mut(),
+            reserved: [std::ptr::null_mut(); 4],
+        };
+
+        // HarmonyOS discovers N-API exports through constructor-time registration.
+        unsafe {
+            napi::sys::napi_module_register(&raw mut MODULE);
+        }
+    }
+}

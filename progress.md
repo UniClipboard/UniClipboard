@@ -1440,12 +1440,12 @@
 - 用户明确要求继续并新建仓库、完成全部准备；本轮进入 Plan 004 统一发布干跑与 Plan 005 Phase 3 建仓准备。
 - 完成标准固定为：提交并记录迁移基线、四平台产物同源、历史保留、新仓可独立编译、远端迁移分支可核对；不发布版本、不切换消费者、不把跳过的实体设备矩阵记为通过。
 - 当前 Phase 2 改动仍未提交，必须先作为独立提交固定后再执行历史过滤。
-- 已确认 `UniClipboard/UniClipboardCore` 尚不存在，当前 GitHub 登录账号具备组织仓库操作权限；本地分支已有对应远端，不需要改名。
+- 已确认 `UniClipboard/core` 当时尚不存在，当前 GitHub 登录账号具备组织仓库操作权限；本地分支已有对应远端，不需要改名。
 - 本机没有 `git-filter-repo`；后续使用临时隔离环境安装固定版本，并在迁移记录中保存版本，不污染系统 Python 环境。
 - Plan 005 已补用户明确的实体设备风险接受记录：矩阵保持未通过，只允许建仓准备继续。
 - desktop 建仓基线已固定并推送为 `12104cbab7a3b167f33f95c5a9d6d7d90fbbfa75`，母仓工作区在迁移时保持干净。
 - 使用固定的 `git-filter-repo 2.47.0` 完成历史过滤和目录重排；新仓保存了来源基线到过滤后提交的映射，并保留 348 个相关提交。
-- 已创建公开仓库 `UniClipboard/UniClipboardCore`，推送 `migration/initial-core-import` 并设为默认分支；本地和远端最终提交均为 `47018f40800f8d3671b960de2ed5911b6f3c76b2`。
+- 已创建公开仓库 `UniClipboard/core`，推送 `migration/initial-core-import` 并设为默认分支；本地和远端最终提交均为 `47018f40800f8d3671b960de2ed5911b6f3c76b2`。
 - 新仓根说明、安全规则、历史映射、依赖锁定、核心/LAN 两条独立发布流程和 PR 检查入口均已补齐；`uc-engine` 是唯一稳定 Rust 入口。
 - 独立仓已完成 `cargo metadata --locked --format-version 1`、`cargo check --workspace --all-targets --locked`、`cargo fmt --all -- --check`、仓库边界检查、`git diff --check` 和 `git fsck --full`；按用户要求未运行测试用例。
 - 从最终提交重新生成 iOS 设备 ARM64、模拟器 ARM64+x86_64，Android ARM64+x86_64，以及 HarmonyOS ARM64 动态库、HAR 和签名验签 HAP；三端均记录 `core-v0.19.1` 和同一来源提交。
@@ -1453,3 +1453,14 @@
 - GitHub PR Check `30039492857` 已在最终提交通过。迁移分支保护要求检查基于最新内容并通过、至少一人批准、解决讨论、管理员同样遵守、线性历史，且禁止强制推送和删除。
 - 远端最终核对通过：默认分支正确，本地与远端提交一致，无 `core-v*` 标签和 Release；没有切换 desktop、iOS、Android 或 HarmonyOS 消费者。
 - Plan 004 仅剩六种设备对的实体设备矩阵未通过；Plan 005 Phase 0 至 Phase 3 完成，下一阶段是候选版本发布，尚未开始。
+
+## 2026-07-24 独立核心仓库更名
+
+- 完成标准固定为：GitHub 新地址生效、本地远端同步、正式文档不再指向旧地址、保护规则不丢失、两个仓库提交推送且工作区干净。
+- 已确认 `UniClipboard/core` 当前不存在，原仓库为公开仓库且当前账号拥有管理权限。
+- 已扫描两个仓库的正式引用，确认只修改仓库标识和依赖地址，保留 `UniClipboardCore` 产品及产物名称。
+- GitHub 仓库已更名为 `UniClipboard/core`；公开状态、默认迁移分支、最终提交、远端检查和分支保护均未变化。
+- 本地核心仓 `origin` 已切换到新地址，并从新地址核对到远端提交 `47018f40800f8d3671b960de2ed5911b6f3c76b2`。
+- 核心仓 README 与 desktop Plan 005 的正式仓库标识、目录示例和依赖地址均已更新；产品与产物名称保持不变。
+- 核心仓地址修改提交为 `1fae8f2f442fd0a0869bab9f9421ccf63ec12580`，已推送并创建 PR `https://github.com/UniClipboard/core/pull/1`。
+- PR #1 的完整仓库检查与 CodeRabbit 均通过；当前只等待保护规则要求的一次外部批准，没有绕过或降低保护规则。

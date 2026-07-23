@@ -21,7 +21,7 @@
 
 ## 结论
 
-建立 `UniClipboard/UniClipboardCore`，使用“一个仓库、多个内部 crate、一个稳定入口、一次统一发布”的结构。
+建立 `UniClipboard/core`，使用“一个仓库、多个内部 crate、一个稳定入口、一次统一发布”的结构。
 
 - 外部 Rust 调用方只依赖 `uc-engine`。
 - iOS、Android、HarmonyOS 只消费同一提交生成的绑定产物。
@@ -67,7 +67,7 @@
 ## 目标目录
 
 ```text
-UniClipboardCore/
+core/
 ├── Cargo.toml
 ├── Cargo.lock
 ├── rust-toolchain.toml
@@ -118,7 +118,7 @@ desktop 依赖形态：
 
 ```toml
 uc-engine = {
-  git = "https://github.com/UniClipboard/UniClipboardCore.git",
+  git = "https://github.com/UniClipboard/core.git",
   rev = "<immutable-commit-sha>"
 }
 ```
@@ -252,7 +252,7 @@ cargo test --workspace --locked
 
 **回退**：删除尚未成为事实来源的新仓迁移分支，desktop 解除冻结。消费者尚未变化。
 
-**完成进度（2026-07-24）**：已创建公开仓库 `https://github.com/UniClipboard/UniClipboardCore`。迁移使用 `git-filter-repo 2.47.0`，保留 348 个相关提交，来源基线与过滤后提交映射记录在新仓 `docs/migration/source-history-map.md`。新仓只保留核心、绑定、LAN 兼容线、验收宿主、文档、检查和发布工具，默认分支为 `migration/initial-core-import`。从独立检出完成依赖解析、全项目全部目标编译、格式、仓库边界、差异和仓库完整性检查；按用户要求未重复运行测试用例。三端发布文件已从当前远端提交重新生成并统一归集。远端检查已通过，迁移分支要求最新检查、一人批准和讨论解决，管理员同样遵守，并禁止强制推送、删除和非线性历史。未创建 `core-v*` 标签或 Release，未切换任何消费者。
+**完成进度（2026-07-24）**：已创建公开仓库 `https://github.com/UniClipboard/core`。迁移使用 `git-filter-repo 2.47.0`，保留 348 个相关提交，来源基线与过滤后提交映射记录在新仓 `docs/migration/source-history-map.md`。新仓只保留核心、绑定、LAN 兼容线、验收宿主、文档、检查和发布工具，默认分支为 `migration/initial-core-import`。从独立检出完成依赖解析、全项目全部目标编译、格式、仓库边界、差异和仓库完整性检查；按用户要求未重复运行测试用例。三端发布文件已从当前远端提交重新生成并统一归集。远端检查已通过，迁移分支要求最新检查、一人批准和讨论解决，管理员同样遵守，并禁止强制推送、删除和非线性历史。未创建 `core-v*` 标签或 Release，未切换任何消费者。
 
 ### Phase 4：发布 `core-v0.1.0-rc.1`
 

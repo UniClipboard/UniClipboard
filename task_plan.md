@@ -113,7 +113,42 @@
 
 ## Current Phase
 
-uc-engine 结构迁移、Plan 005 Phase 0 至 Phase 3 已完成。独立核心仓库和受保护迁移分支已经准备完毕；下一阶段是发布候选版本，但尚未开始。本阶段没有发布核心版本、没有切换消费者，实体设备矩阵继续按已接受风险保留为未通过。
+uc-engine 结构迁移、Plan 005 Phase 0 至 Phase 3 和独立仓库更名已完成。核心仓库正式地址为 `https://github.com/UniClipboard/core`；下一阶段仍是发布候选版本，尚未开始。
+
+## 2026-07-24 独立核心仓库更名
+
+**目标：** 将 GitHub 仓库正式名称改为 `UniClipboard/core`，并确保更名后本地、远端、保护规则和文档保持一致。
+
+### 完成标准
+
+- [x] GitHub 仓库新地址可访问，旧名称不再是正式仓库名
+- [x] 本地核心仓 `origin` 使用新地址
+- [x] 两个仓库的正式仓库标识和依赖示例使用新地址
+- [x] `UniClipboardCore` 产品名与产物名不被误改
+- [x] 默认分支、保护规则、远端检查、标签和 Release 状态保持不变
+- [x] 相关改动已提交并推送，两个工作区干净
+
+### 阶段
+
+#### Rename Phase A：核对名称边界
+- [x] 确认新名称无冲突并拥有仓库管理权限
+- [x] 区分仓库地址与产品/产物名称
+- **Status:** complete
+
+#### Rename Phase B：远端与本地更名
+- [x] 将 GitHub 仓库更名为 `UniClipboard/core`
+- [x] 更新本地核心仓 `origin`
+- **Status:** complete
+
+#### Rename Phase C：同步正式记录
+- [x] 更新核心仓 README 与 desktop 正式计划
+- [x] 更新本次发现和进度记录
+- **Status:** complete
+
+#### Rename Phase D：提交与最终核对
+- [x] 提交并推送两个仓库的更名记录
+- [x] 核对新地址、保护规则、提交和工作区状态
+- **Status:** complete
 
 ## 2026-07-24 Plan 005 独立核心仓建仓准备
 
@@ -148,7 +183,7 @@ uc-engine 结构迁移、Plan 005 Phase 0 至 Phase 3 已完成。独立核心�
 - **Status:** complete
 
 #### Core Repository Phase D：创建远端与推送
-- [x] 创建 `UniClipboard/UniClipboardCore`
+- [x] 创建 `UniClipboard/core`
 - [x] 推送受保护迁移分支并核对远端
 - **Status:** complete
 

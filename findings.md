@@ -773,10 +773,19 @@
 - 用户已明确授权创建 `UniClipboardCore` 并完成建仓准备；本轮仍必须先满足统一发布干跑和风险记录，不以授权替代验收证据。
 - 新仓创建只推进到迁移分支和独立验证，不创建 `core-v*` 标签、不发布 Release、不改动 desktop 或移动产品的正式依赖。
 - 当前未提交的 Phase 2 跨仓检查属于 cutover 基线的一部分，应先形成独立提交，避免历史过滤遗漏最新防火墙和来源检查。
-- `UniClipboard/UniClipboardCore` 当前不存在，适合在历史过滤和独立验证完成后再创建远端，避免把半成品推成事实来源。
+- `UniClipboard/core` 当时不存在，适合在历史过滤和独立验证完成后再创建远端，避免把半成品推成事实来源。
 - 当前环境没有 `git-filter-repo`；迁移必须使用固定版本的临时工具环境并记录版本，不能退回目录复制或普通 `filter-branch`。
 - 迁移最终使用 `git-filter-repo 2.47.0`，来源基线 `12104cbab7a3b167f33f95c5a9d6d7d90fbbfa75` 对应过滤后提交 `f7212ec69e79dea0ed2949288cc3642f493cf210`；新仓保留 348 个相关提交，作者与时间信息可追溯。
 - 新仓最终边界为 11 个核心、绑定、兼容和验收包；desktop、daemon、CLI、Tauri 与各平台产品接线均未迁入，正式依赖中也没有指回 desktop/mobile/HarmonyOS 的本地路径。
 - 新仓当前提交为 `47018f40800f8d3671b960de2ed5911b6f3c76b2`，默认分支为受保护的 `migration/initial-core-import`；远端检查要求、批准、讨论解决、线性历史和禁止强制推送/删除均已生效。
 - 当前提交已重新生成 `core-v0.19.1` 三端资产；统一清单记录并复算 22 项资产，三端来源提交一致。实体设备矩阵均为 `skipped`，没有创建标签或 Release。
 - Plan 005 Phase 0 至 Phase 3 已具备完成证据；Phase 4 发布候选版本和 Phase 5 至 Phase 8 消费者切换仍未开始，因此新仓暂时只是迁移候选事实来源，不能删除 desktop 中的旧核心。
+
+# 2026-07-24 独立核心仓库更名
+
+- 用户要求把 GitHub 仓库名从 `UniClipboardCore` 改为 `core`；目标地址为 `https://github.com/UniClipboard/core`，该名称当前没有冲突。
+- 更名只影响仓库标识和依赖地址；`UniClipboardCore` 产品名、源码归档前缀、XCFramework/AAR/HAR 名称与 Rust crate 名均保持不变。
+- 当前正式引用范围为新仓 README 一处和 desktop Plan 005 四处；历史进度记录中的旧地址应保留上下文并追加更名结果，不改写过去事实。
+- GitHub 更名后默认分支、最终提交、远端检查和全部保护规则均保持不变；标签与 Release 仍为空。
+- 本地核心仓 `origin` 已更新为 `https://github.com/UniClipboard/core.git`，新地址可以直接读取迁移分支。
+- 核心 README 地址修改已在 PR #1 通过完整检查和 CodeRabbit 检查；保护规则仍要求一次外部批准，提交者不能自行完成该批准，因此合并请求保持打开。

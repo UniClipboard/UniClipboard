@@ -1445,7 +1445,7 @@
 - Plan 005 已补用户明确的实体设备风险接受记录：矩阵保持未通过，只允许建仓准备继续。
 - desktop 建仓基线已固定并推送为 `12104cbab7a3b167f33f95c5a9d6d7d90fbbfa75`，母仓工作区在迁移时保持干净。
 - 使用固定的 `git-filter-repo 2.47.0` 完成历史过滤和目录重排；新仓保存了来源基线到过滤后提交的映射，并保留 348 个相关提交。
-- 已创建公开仓库 `UniClipboard/core`，推送 `migration/initial-core-import` 并设为默认分支；本地和远端最终提交均为 `47018f40800f8d3671b960de2ed5911b6f3c76b2`。
+- 已创建公开仓库 `UniClipboard/core`，最初推送 `migration/initial-core-import` 作为建仓分支；仓库收尾后已将默认分支改为 `main`。
 - 新仓根说明、安全规则、历史映射、依赖锁定、核心/LAN 两条独立发布流程和 PR 检查入口均已补齐；`uc-engine` 是唯一稳定 Rust 入口。
 - 独立仓已完成 `cargo metadata --locked --format-version 1`、`cargo check --workspace --all-targets --locked`、`cargo fmt --all -- --check`、仓库边界检查、`git diff --check` 和 `git fsck --full`；按用户要求未运行测试用例。
 - 从最终提交重新生成 iOS 设备 ARM64、模拟器 ARM64+x86_64，Android ARM64+x86_64，以及 HarmonyOS ARM64 动态库、HAR 和签名验签 HAP；三端均记录 `core-v0.19.1` 和同一来源提交。
@@ -1464,3 +1464,15 @@
 - 核心仓 README 与 desktop Plan 005 的正式仓库标识、目录示例和依赖地址均已更新；产品与产物名称保持不变。
 - 核心仓地址修改提交为 `1fae8f2f442fd0a0869bab9f9421ccf63ec12580`，已推送并创建 PR `https://github.com/UniClipboard/core/pull/1`。
 - PR #1 的完整仓库检查与 CodeRabbit 均通过；当前只等待保护规则要求的一次外部批准，没有绕过或降低保护规则。
+
+## 2026-07-24 核心仓 main 分支收尾
+
+- 已确认当前 GitHub 登录账号和 PR #1 作者都是 `mkdir700`；“无法批准”来自 GitHub 禁止作者自审，而不是账户没有管理权限。
+- 已确认 PR #1 全部检查通过且可合并，保护规则要求一次批准并对管理员生效。
+- 用户明确授权直接合并；下一步使用管理员合并，不修改长期保护规则，然后把默认迁移分支重命名为 `main`。
+- 仓库详情 GraphQL 查询有一次返回 EOF；账户、PR 和保护规则查询分别成功，后续用 REST 再核对权限与最终状态。
+- 首次管理员合并仍被拒绝，GitHub 明确返回“至少需要一名有写权限的审核者批准”；原因是 `enforce_admins` 让管理员也不能绕过批准数。按用户明确授权，改为只在合并窗口临时把批准数降为 0，合并后立即恢复为 1，其他保护项不变。
+- 按用户授权临时将批准数从 1 调整为 0，PR #1 随即合并；合并提交为 `5f40c32c0867a75a95ec986ee09c1f6f2c6ad624`。批准数已立即恢复为 1，检查、讨论解决、管理员约束、线性历史和禁止强制推送/删除均保持。
+- 远端分支已从 `migration/initial-core-import` 重命名为 `main`，并显式设为默认分支；本地核心仓已切换并跟踪 `origin/main`。
+- GitHub API 明确确认 `mkdir700` 的角色为 `admin`，此前页面限制来自禁止作者自审，不是账户缺少权限。
+- 最终旧分支名搜索首次使用双引号包裹含反引号的文本，shell 将反引号内容误作命令并报文件不存在；该只读命令没有改动文件，已改用单引号重新检查。

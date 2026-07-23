@@ -5,6 +5,11 @@ license.workspace = true
 edition = "2021"
 description = "Stable cross-platform engine interface for UniClipboard hosts"
 
+[features]
+default = []
+dev-tools = []
+lan-compat = ["uc-application/lan-compat", "uc-infra/lan-compat"]
+
 [dependencies]
 anyhow = "1.0"
 async-trait = "0.1"
@@ -26,7 +31,8 @@ cargo_metadata = "0.19.2"
 chrono = { version = "0.4", features = ["serde"] }
 diesel = { version = "2.3.5", features = ["sqlite"] }
 tempfile = "3"
-uc-observability = { path = "../uc-observability" }
+tracing-appender = "0.2"
+tracing-subscriber = "0.3"
 
 [lints]
 workspace = true

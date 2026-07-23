@@ -26,11 +26,11 @@ pub(super) mod x11;
 /// inside it are reachable from every descendant of `linux`.
 mod mime;
 
+use crate::clipboard::SystemClipboard;
+use crate::clipboard::SystemClipboardSnapshot;
 use anyhow::Result;
 use async_trait::async_trait;
 use tracing::{info, warn};
-use uc_core::clipboard::SystemClipboardSnapshot;
-use uc_core::ports::SystemClipboardPort;
 
 use crate::clipboard::event_loop::PlatformClipboardEventLoop;
 
@@ -87,7 +87,7 @@ impl LinuxClipboard {
 }
 
 #[async_trait]
-impl SystemClipboardPort for LinuxClipboard {
+impl SystemClipboard for LinuxClipboard {
     fn read_snapshot(&self) -> Result<SystemClipboardSnapshot> {
         match self {
             Self::Wayland(c) => c.read_snapshot(),

@@ -10,9 +10,9 @@
 //! OS 级别的启动项注册在同一命令内通过 [`AutostartPort`] 应用，确保存储值
 //! 与实际 OS 状态不会分裂。
 
+use crate::commands::TraceMetadata;
 use tauri::{AppHandle, State};
 use tracing::{info_span, Instrument};
-use uc_core::ports::observability::TraceMetadata;
 use uc_daemon_client::{DaemonConnectionState, DaemonSettingsClient};
 use uc_daemon_contract::api::dto::settings::{GeneralSettingsPatchDto, SettingsPatchDto};
 

@@ -16,11 +16,11 @@
 //! keeps the command boundary a pure "stage" operation and lets the UI present
 //! the irreversible device-identity-move confirmation and progress itself.
 
+use crate::commands::TraceMetadata;
 use serde::Serialize;
 use tauri::AppHandle;
 use tauri_plugin_dialog::DialogExt;
 use tracing::{info_span, Instrument};
-use uc_core::ports::observability::TraceMetadata;
 use uc_daemon_client::{DaemonConfigClient, DaemonConnectionState, DaemonRequestError};
 
 use crate::commands::record_trace_fields;

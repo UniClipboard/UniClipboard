@@ -23,6 +23,7 @@ pub mod encryption;
 pub mod file_transfer;
 pub mod host_event;
 pub mod lifecycle;
+#[cfg(feature = "lan-compat")]
 pub mod mobile_sync;
 pub mod resource;
 pub mod roster;
@@ -115,7 +116,9 @@ pub use lifecycle::{
     InMemoryLifecycleStatus, LifecycleFacade, LifecycleFacadeDeps, LifecycleFacadeError,
     LifecycleStateView, LifecycleStatusGateway,
 };
+#[cfg(feature = "lan-compat")]
 pub use mobile_sync::mobile_sync_streaming_scope_nonce;
+#[cfg(feature = "lan-compat")]
 pub use mobile_sync::{
     ApplyIncomingMobileClipError, ApplyIncomingMobileClipInput, ApplyIncomingMobileClipOutcome,
     AuthenticateBasicAuthError, AuthenticateBasicAuthInput, AuthenticatedDevice,

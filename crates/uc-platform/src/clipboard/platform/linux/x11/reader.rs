@@ -22,11 +22,11 @@ use std::cell::Cell;
 use std::os::fd::AsFd;
 use std::time::{Duration, Instant};
 
+use crate::clipboard::RepresentationId;
+use crate::clipboard::{MimeType, ObservedClipboardRepresentation, SystemClipboardSnapshot};
 use anyhow::{Context, Result};
 use rustix::event::{poll, PollFd, PollFlags};
 use tracing::{debug, info, warn};
-use uc_core::clipboard::{MimeType, ObservedClipboardRepresentation, SystemClipboardSnapshot};
-use uc_core::ids::RepresentationId;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::{Atom, AtomEnum, ConnectionExt as _, Property, PropertyNotifyEvent};
 use x11rb::protocol::Event;

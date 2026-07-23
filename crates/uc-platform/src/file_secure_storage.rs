@@ -2,7 +2,7 @@ use std::fs;
 use std::io;
 use std::path::PathBuf;
 
-use uc_core::ports::{SecureStorageError, SecureStoragePort};
+use crate::ports::{SecureStorageError, SecureStorageProvider};
 
 /// File-based secure storage for development or headless environments.
 ///
@@ -43,7 +43,7 @@ impl FileSecureStorage {
     }
 }
 
-impl SecureStoragePort for FileSecureStorage {
+impl SecureStorageProvider for FileSecureStorage {
     fn get(&self, key: &str) -> Result<Option<Vec<u8>>, SecureStorageError> {
         let path = self.file_path(key);
         match fs::read(&path) {

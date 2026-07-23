@@ -31,8 +31,11 @@ use std::path::{Path, PathBuf};
 
 use base64::Engine;
 use serde::{Deserialize, Serialize};
+use tracing::{error, info};
+use uc_core::ports::SecureStoragePort;
 
 use super::archive::BundleArchive;
+use super::secret_keys::SECRETS_MEMBER;
 
 /// Directory name (under the data root) holding the unpacked bundle.
 pub const STAGING_DIR_NAME: &str = "import-staging";
@@ -216,6 +219,186 @@ pub const IROH_IDENTITY_PREFIX: &str = "iroh-identity/";
 /// staging directory. Used by tests and by the boot-time apply step.
 pub fn staged_member_path(data_root: &Path, member: &str) -> PathBuf {
     data_root.join(STAGING_DIR_NAME).join(member)
+}
+
+/// Apply a staged configuration import before any live database connection opens.
+pub fn apply_pending_import(
+    app_data_root: &Path,
+    db_path: &Path,
+    vault_dir: &Path,
+    settings_path: &Path,
+    iroh_identity_dir: &Path,
+    secure_storage: &dyn SecureStoragePort,
+) -> Result<(), PendingImportError> {
+    let layout = StagingLayout::new(app_data_root);
+    let marker_path = layout.marker_path();
+    if !marker_path.exists() {
+        return Ok(());
+    }
+
+    info!("pending config import detected; applying staged bundle on boot");
+    let marker_bytes = std::fs::read(&marker_path).map_err(|_| PendingImportError::ReadMarker)?;
+    let marker: PendingImportMarker =
+        serde_json::from_slice(&marker_bytes).map_err(|_| PendingImportError::ParseMarker)?;
+    if marker.schema_ver != PENDING_IMPORT_SCHEMA_VER {
+        error!(
+            found_schema_ver = marker.schema_ver,
+            expected_schema_ver = PENDING_IMPORT_SCHEMA_VER,
+            "staged import schema version mismatch; skipping apply and preserving staging"
+        );
+        return Ok(());
+    }
+
+    let staging_dir = layout.staging_dir();
+    let secrets_bytes = std::fs::read(staging_dir.join(SECRETS_MEMBER))
+        .map_err(|_| PendingImportError::ReadSecrets)?;
+    let secrets: SecretsFile =
+        serde_json::from_slice(&secrets_bytes).map_err(|_| PendingImportError::ParseSecrets)?;
+    info!(
+        secret_count = secrets.secrets.len(),
+        has_kek = marker.has_kek,
+        "writing staged secrets into current secure-storage backend"
+    );
+
+    for (key, encoded) in &secrets.secrets {
+        let bytes = match decode_secret_value(encoded) {
+            Ok(bytes) => bytes,
+            Err(_) => {
+                error!(
+                    key_class = classify_secret_key(key),
+                    "staged secret value failed to decode; aborting import apply, staging preserved"
+                );
+                return Ok(());
+            }
+        };
+        if let Err(error) = secure_storage.set(key, &bytes) {
+            error!(
+                key_class = classify_secret_key(key),
+                error = %error,
+                "writing staged secret into secure storage failed; aborting import apply, staging preserved"
+            );
+            return Ok(());
+        }
+    }
+
+    info!("staged secrets written; copying staged files into live locations");
+    copy_member(&staging_dir, DB_MEMBER, db_path)?;
+    remove_stale_db_sidecars(db_path)?;
+    copy_member(
+        &staging_dir,
+        KEYSLOT_MEMBER,
+        &vault_dir.join("keyslot.json"),
+    )?;
+    copy_member(
+        &staging_dir,
+        DEVICE_ID_MEMBER,
+        &vault_dir.join("device_id.txt"),
+    )?;
+    copy_member(
+        &staging_dir,
+        SETUP_STATUS_MEMBER,
+        &vault_dir.join(".setup_status"),
+    )?;
+    copy_dir_members(&staging_dir, IROH_IDENTITY_PREFIX, iroh_identity_dir)?;
+    copy_member_if_present(&staging_dir, SETTINGS_MEMBER, settings_path)?;
+    copy_dir_members(
+        &staging_dir,
+        UI_STATE_PREFIX,
+        &app_data_root.join(UI_STATE_PREFIX.trim_end_matches('/')),
+    )?;
+
+    std::fs::remove_dir_all(&staging_dir).map_err(|_| PendingImportError::Cleanup)?;
+    std::fs::remove_file(&marker_path).map_err(|_| PendingImportError::Cleanup)?;
+    info!("staged config import applied; staging cleaned up");
+    Ok(())
+}
+
+fn copy_member(staging_dir: &Path, member: &str, dest: &Path) -> Result<(), PendingImportError> {
+    ensure_parent(dest)?;
+    std::fs::copy(staging_dir.join(member), dest).map_err(|_| PendingImportError::CopyMember)?;
+    Ok(())
+}
+
+fn copy_member_if_present(
+    staging_dir: &Path,
+    member: &str,
+    dest: &Path,
+) -> Result<(), PendingImportError> {
+    let source = staging_dir.join(member);
+    if !source.exists() {
+        return Ok(());
+    }
+    ensure_parent(dest)?;
+    std::fs::copy(source, dest).map_err(|_| PendingImportError::CopyMember)?;
+    Ok(())
+}
+
+fn copy_dir_members(
+    staging_dir: &Path,
+    prefix: &str,
+    dest_dir: &Path,
+) -> Result<(), PendingImportError> {
+    let source_dir = staging_dir.join(prefix.trim_end_matches('/'));
+    if !source_dir.is_dir() {
+        return Ok(());
+    }
+    std::fs::create_dir_all(dest_dir).map_err(|_| PendingImportError::CopyMember)?;
+    for entry in std::fs::read_dir(source_dir).map_err(|_| PendingImportError::CopyMember)? {
+        let entry = entry.map_err(|_| PendingImportError::CopyMember)?;
+        if !entry
+            .file_type()
+            .map(|kind| kind.is_file())
+            .unwrap_or(false)
+        {
+            continue;
+        }
+        std::fs::copy(entry.path(), dest_dir.join(entry.file_name()))
+            .map_err(|_| PendingImportError::CopyMember)?;
+    }
+    Ok(())
+}
+
+fn ensure_parent(dest: &Path) -> Result<(), PendingImportError> {
+    if let Some(parent) = dest.parent().filter(|path| !path.as_os_str().is_empty()) {
+        std::fs::create_dir_all(parent).map_err(|_| PendingImportError::CopyMember)?;
+    }
+    Ok(())
+}
+
+fn remove_stale_db_sidecars(db_path: &Path) -> Result<(), PendingImportError> {
+    for suffix in ["-wal", "-shm"] {
+        let mut name = db_path.as_os_str().to_os_string();
+        name.push(suffix);
+        match std::fs::remove_file(PathBuf::from(name)) {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(_) => return Err(PendingImportError::CopyMember),
+        }
+    }
+    Ok(())
+}
+
+fn classify_secret_key(key: &str) -> &'static str {
+    ["iroh-identity:", "kek:v1:"]
+        .into_iter()
+        .find(|prefix| key.starts_with(prefix))
+        .unwrap_or("unknown")
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum PendingImportError {
+    #[error("failed to read pending-import marker")]
+    ReadMarker,
+    #[error("failed to parse pending-import marker")]
+    ParseMarker,
+    #[error("failed to read staged secrets")]
+    ReadSecrets,
+    #[error("failed to parse staged secrets")]
+    ParseSecrets,
+    #[error("failed to copy a staged member into its live location")]
+    CopyMember,
+    #[error("failed to clean up staging after applying import")]
+    Cleanup,
 }
 
 #[cfg(test)]

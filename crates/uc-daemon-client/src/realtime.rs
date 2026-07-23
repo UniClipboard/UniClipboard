@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use tokio::sync::mpsc;
-use uc_core::file_transfer::FileTransferDirection;
+
+pub use uc_daemon_contract::api::types::FileTransferDirection;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum RealtimeTopic {

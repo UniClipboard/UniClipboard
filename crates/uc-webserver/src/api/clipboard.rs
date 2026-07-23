@@ -10,18 +10,13 @@ use axum::routing::{delete, get, post};
 use axum::{Json, Router};
 use serde::Deserialize;
 use serde_json::json;
-use uc_engine::internal::delivery::{
-    ENTRY_DELIVERY_FAILED_CODE, ENTRY_DELIVERY_NOT_FOUND_CODE,
-};
-use uc_engine::internal::history::{
-    HISTORY_FAILED_CODE, HISTORY_INVALID_INPUT_CODE, HISTORY_NOT_FOUND_CODE,
-    HISTORY_UNSUPPORTED_CONTENT_CODE,
-};
-use uc_engine::internal::receive::{
+use uc_engine::error_codes::{
+    ENTRY_DELIVERY_FAILED_CODE, ENTRY_DELIVERY_NOT_FOUND_CODE, HISTORY_FAILED_CODE,
+    HISTORY_INVALID_INPUT_CODE, HISTORY_NOT_FOUND_CODE, HISTORY_UNSUPPORTED_CONTENT_CODE,
     RECEIVE_FAILED_CODE, RECEIVE_INVALID_INPUT_CODE, RECEIVE_UNAVAILABLE_CODE,
-    TRANSFER_CANCEL_FAILED_CODE, TRANSFER_CANCEL_UNAVAILABLE_CODE,
+    RESEND_DISPATCH_FAILED_CODE, RESEND_STORAGE_FAILED_CODE, TRANSFER_CANCEL_FAILED_CODE,
+    TRANSFER_CANCEL_UNAVAILABLE_CODE,
 };
-use uc_engine::internal::resend::{RESEND_DISPATCH_FAILED_CODE, RESEND_STORAGE_FAILED_CODE};
 use uc_engine::{
     CancelEntryReceiveInput, CancelInboundTransferInput, EngineError, EntryNotResendableReason,
     EntryReceiveCancellationOutcome, EntryReceiveProgressInput, HistoryEntryInput,
@@ -380,8 +375,8 @@ async fn toggle_favorite(
     let result = state
         .execute(Operation::SetHistoryEntryFavorite(
             SetHistoryEntryFavoriteInput {
-            entry_id,
-            is_favorited: body.is_favorited,
+                entry_id,
+                is_favorited: body.is_favorited,
             },
         ))
         .await
@@ -785,8 +780,8 @@ async fn cancel_transfer(
     let result = state
         .execute(Operation::CancelInboundTransfer(
             CancelInboundTransferInput {
-            transfer_id,
-            reason,
+                transfer_id,
+                reason,
             },
         ))
         .await

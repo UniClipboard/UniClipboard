@@ -37,9 +37,6 @@
 
 use std::sync::{Arc, RwLock};
 
-use uc_core::ports::{SettingsPort, SetupStatusPort};
-use uc_core::AppPaths;
-use uc_core::TaskRegistry;
 use uc_desktop::gui_wiring::GuiClientDeps;
 use uc_desktop::DesktopRuntime;
 use uc_observability::analytics::AnalyticsPort;
@@ -114,27 +111,9 @@ impl TauriAppRuntime {
         self.desktop.device_id()
     }
 
-    pub fn settings_port(&self) -> Arc<dyn SettingsPort> {
-        self.desktop.settings_port()
-    }
-
     /// 产品 telemetry sink。Tauri command body / 后台任务直接
     /// `capture(Event::X)`，gate 由 `GatedAnalyticsSink` 守护。
     pub fn analytics(&self) -> Arc<dyn AnalyticsPort> {
         self.desktop.analytics()
-    }
-
-    /// `SetupStatus` 读写端口。`update_scheduler` 启动循环前 poll
-    /// `has_completed`。
-    pub fn setup_status_port(&self) -> Arc<dyn SetupStatusPort> {
-        self.desktop.setup_status_port()
-    }
-
-    pub fn storage_paths(&self) -> &AppPaths {
-        self.desktop.storage_paths()
-    }
-
-    pub fn task_registry(&self) -> &Arc<TaskRegistry> {
-        self.desktop.task_registry()
     }
 }

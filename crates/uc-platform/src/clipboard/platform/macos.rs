@@ -1,5 +1,9 @@
 use super::super::common::CommonClipboardImpl;
 use super::super::payload::rep_bytes;
+use crate::clipboard::SystemClipboard;
+use crate::clipboard::{
+    ImageKind, MimeClass, MimeType, ObservedClipboardRepresentation, SystemClipboardSnapshot,
+};
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use clipboard_rs::ClipboardContext;
@@ -13,10 +17,6 @@ use objc2_app_kit::{
 use objc2_foundation::{NSArray, NSData};
 use std::sync::{Arc, Mutex};
 use tracing::{debug, debug_span, info, warn};
-use uc_core::clipboard::{
-    ImageKind, MimeClass, MimeType, ObservedClipboardRepresentation, SystemClipboardSnapshot,
-};
-use uc_core::ports::SystemClipboardPort;
 
 use crate::clipboard::format_id_mime::format_id_default_mime;
 
@@ -36,7 +36,7 @@ impl MacOSClipboard {
 }
 
 #[async_trait]
-impl SystemClipboardPort for MacOSClipboard {
+impl SystemClipboard for MacOSClipboard {
     fn read_snapshot(&self) -> Result<SystemClipboardSnapshot> {
         let span = debug_span!("platform.macos.read_clipboard");
         span.in_scope(|| {
@@ -556,8 +556,8 @@ pub(crate) fn write_snapshot_multi_macos(snapshot: SystemClipboardSnapshot) -> R
 #[cfg(test)]
 mod tests {
     use super::*;
-    use uc_core::ids::{FormatId, RepresentationId};
-    use uc_core::MimeType;
+    use crate::clipboard::MimeType;
+    use crate::clipboard::{FormatId, RepresentationId};
 
     fn rep(format: &str, mime: Option<&str>) -> ObservedClipboardRepresentation {
         ObservedClipboardRepresentation::new(

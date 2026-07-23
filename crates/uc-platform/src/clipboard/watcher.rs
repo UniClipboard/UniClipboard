@@ -9,8 +9,8 @@ use tracing::{debug, info, warn};
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 use clipboard_rs::ClipboardHandler;
 
-use uc_core::clipboard::SystemClipboardSnapshot;
-use uc_core::ports::SystemClipboardPort;
+use crate::clipboard::SystemClipboard;
+use crate::clipboard::SystemClipboardSnapshot;
 
 /// Minimal platform event type retained for clipboard watcher channel.
 /// Full PlatformEvent (ipc module) was removed in Phase 65; only the
@@ -136,7 +136,7 @@ struct ImageBurst {
 }
 
 pub struct ClipboardWatcher {
-    local_clipboard: Arc<dyn SystemClipboardPort>,
+    local_clipboard: Arc<dyn SystemClipboard>,
     sender: PlatformEventSender,
     /// The most recently emitted meaningful key and when it was emitted.
     /// Drives the re-dedup guard: an identical key re-collapses permanently for
@@ -157,7 +157,7 @@ pub struct ClipboardWatcher {
 }
 
 impl ClipboardWatcher {
-    pub fn new(local_clipboard: Arc<dyn SystemClipboardPort>, sender: PlatformEventSender) -> Self {
+    pub fn new(local_clipboard: Arc<dyn SystemClipboard>, sender: PlatformEventSender) -> Self {
         Self {
             local_clipboard,
             sender,
@@ -169,8 +169,8 @@ impl ClipboardWatcher {
     }
 }
 
-fn is_file_representation(rep: &uc_core::ObservedClipboardRepresentation) -> bool {
-    uc_core::clipboard::is_file_mime_or_format(rep.mime.as_ref(), &rep.format_id)
+fn is_file_representation(rep: &crate::clipboard::ObservedClipboardRepresentation) -> bool {
+    crate::clipboard::model::is_file_mime_or_format(rep.mime.as_ref(), &rep.format_id)
 }
 
 fn dedupe_key(snapshot: &SystemClipboardSnapshot) -> Option<String> {
@@ -263,7 +263,7 @@ impl ClipboardWatcher {
     /// OS notification (Wayland `wlr-data-control` Selection event hands the
     /// caller a `DataControlOffer` plus its mime list — pulling bytes via
     /// `pipe + receive` from the same loop is much cheaper than going back
-    /// through `SystemClipboardPort::read_snapshot`, which would open a
+    /// through `SystemClipboard::read_snapshot`, which would open a
     /// fresh wayland connection round-trip).
     pub fn notify_with_snapshot(&mut self, snapshot: SystemClipboardSnapshot) {
         self.emit_with_dedup(snapshot);
@@ -487,13 +487,13 @@ impl ClipboardHandler for ClipboardWatcher {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use uc_core::clipboard::{MimeType, ObservedClipboardRepresentation};
-    use uc_core::ids::{FormatId, RepresentationId};
+    use crate::clipboard::{FormatId, RepresentationId};
+    use crate::clipboard::{MimeType, ObservedClipboardRepresentation};
 
     /// `local_clipboard` is unused on the `notify_with_snapshot` path that
     /// these tests exercise, so a do-nothing stub suffices.
     struct StubClipboard;
-    impl SystemClipboardPort for StubClipboard {
+    impl SystemClipboard for StubClipboard {
         fn read_snapshot(&self) -> anyhow::Result<SystemClipboardSnapshot> {
             Ok(SystemClipboardSnapshot {
                 ts_ms: 0,

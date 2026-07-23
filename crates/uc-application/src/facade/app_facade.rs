@@ -31,6 +31,7 @@ use tokio::sync::broadcast;
 
 use crate::facade::config_migration::ConfigMigrationFacade;
 use crate::facade::file_transfer::FileTransferFacade;
+#[cfg(feature = "lan-compat")]
 use crate::facade::mobile_sync::MobileSyncFacade;
 use crate::facade::roster::{MemberSummary, PeerSnapshotView, RosterError};
 use crate::facade::settings::{GeneralSettingsPatch, SettingsPatch};
@@ -136,6 +137,7 @@ pub struct AppFacade {
     /// [`Self::install_daemon_lifecycle`] 装入 enhanced 版本 (绑 daemon
     /// worker apply_inbound)。daemon 未启动场景下调用方拿到 `None` 应
     /// 直接给用户报"功能未启用 / daemon 未就绪"。
+    #[cfg(feature = "lan-compat")]
     pub mobile_sync: OnceLock<Arc<MobileSyncFacade>>,
 }
 
@@ -152,6 +154,7 @@ pub struct DaemonLifecycleFacades {
     pub clipboard_sync: Arc<ClipboardSyncFacade>,
     pub blob_transfer: Arc<BlobTransferFacade>,
     pub clipboard_outbound: Arc<ClipboardOutboundFacade>,
+    #[cfg(feature = "lan-compat")]
     pub mobile_sync: Arc<MobileSyncFacade>,
 }
 
@@ -181,6 +184,7 @@ impl AppFacade {
             storage: parts.storage,
             config_migration: parts.config_migration,
             upgrade: parts.upgrade,
+            #[cfg(feature = "lan-compat")]
             mobile_sync: once_lock_from(parts.mobile_sync),
         }
     }
@@ -217,6 +221,7 @@ impl AppFacade {
             .set(facades.clipboard_outbound)
             .map_err(|_| ())
             .expect("clipboard_outbound facade already installed; daemon is process-singleton");
+        #[cfg(feature = "lan-compat")]
         self.mobile_sync
             .set(facades.mobile_sync)
             .map_err(|_| ())
@@ -825,5 +830,6 @@ pub struct AppFacadeParts {
     pub storage: Arc<StorageFacade>,
     pub config_migration: Arc<ConfigMigrationFacade>,
     pub upgrade: Arc<UpgradeFacade>,
+    #[cfg(feature = "lan-compat")]
     pub mobile_sync: Option<Arc<MobileSyncFacade>>,
 }

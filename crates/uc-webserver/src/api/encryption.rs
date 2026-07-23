@@ -8,18 +8,13 @@ use tokio::sync::broadcast::error::SendError;
 use tracing::{debug, info};
 use uc_daemon_contract::api::dto::envelope::ApiEnvelope;
 use uc_daemon_contract::constants::{ws_event, ws_topic};
-use uc_engine::internal::encryption::{
-    LOCK_ENCRYPTION_FAILED_CODE, QUERY_ENCRYPTION_STATE_FAILED_CODE,
-    VERIFY_SECURE_STORAGE_ACCESS_FAILED_CODE,
-};
-use uc_engine::internal::factory_reset::{
+use uc_engine::error_codes::{
     FACTORY_RESET_FAILED_CODE, FACTORY_RESET_KEY_MATERIAL_FAILED_CODE,
-    FACTORY_RESET_STORAGE_FAILED_CODE, FACTORY_RESET_UNAVAILABLE_CODE,
-};
-use uc_engine::internal::session_recovery::RECOVER_SESSION_RECEIVE_UNAVAILABLE_CODE;
-use uc_engine::internal::unlock::{
+    FACTORY_RESET_STORAGE_FAILED_CODE, FACTORY_RESET_UNAVAILABLE_CODE, LOCK_ENCRYPTION_FAILED_CODE,
+    QUERY_ENCRYPTION_STATE_FAILED_CODE, RECOVER_SESSION_RECEIVE_UNAVAILABLE_CODE,
     UNLOCK_SPACE_CORRUPTED_CODE, UNLOCK_SPACE_NOT_INITIALIZED_CODE,
     UNLOCK_SPACE_SETUP_NOT_COMPLETED_CODE, UNLOCK_SPACE_UNAUTHORIZED_CODE,
+    VERIFY_SECURE_STORAGE_ACCESS_FAILED_CODE,
 };
 use uc_engine::{
     EngineError, EngineErrorCategory, Operation, OperationResult, RecoverSessionInput,
@@ -503,7 +498,7 @@ mod tests {
     #[test]
     fn map_engine_unlock_internal_is_500_and_redacted() {
         let api = map_unlock_engine_err(EngineError::new(
-            uc_engine::internal::unlock::UNLOCK_SPACE_FAILED_CODE,
+            uc_engine::error_codes::UNLOCK_SPACE_FAILED_CODE,
             EngineErrorCategory::Internal,
             false,
         ));
@@ -514,7 +509,7 @@ mod tests {
 
     #[test]
     fn map_engine_unlock_errors_preserves_http_contract() {
-        use uc_engine::internal::unlock::{
+        use uc_engine::error_codes::{
             UNLOCK_SPACE_CORRUPTED_CODE, UNLOCK_SPACE_FAILED_CODE,
             UNLOCK_SPACE_NOT_INITIALIZED_CODE, UNLOCK_SPACE_SETUP_NOT_COMPLETED_CODE,
             UNLOCK_SPACE_UNAUTHORIZED_CODE,
@@ -587,7 +582,7 @@ mod tests {
 
     #[test]
     fn map_engine_recovery_errors_preserves_http_statuses() {
-        use uc_engine::internal::session_recovery::{
+        use uc_engine::error_codes::{
             RECOVER_SESSION_RECEIVE_UNAVAILABLE_CODE, RECOVER_SESSION_UNAVAILABLE_CODE,
         };
 

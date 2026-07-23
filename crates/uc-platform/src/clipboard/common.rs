@@ -1,13 +1,13 @@
 use super::payload::rep_bytes;
+#[cfg(target_os = "macos")]
+use crate::clipboard::ImageKind;
+use crate::clipboard::RepresentationId;
+use crate::clipboard::{
+    MimeClass, MimeType, ObservedClipboardRepresentation, SystemClipboardSnapshot,
+};
 use anyhow::{anyhow, Result};
 use clipboard_rs::{common::RustImage, Clipboard, ContentFormat};
 use tracing::{debug, info, warn};
-#[cfg(target_os = "macos")]
-use uc_core::clipboard::ImageKind;
-use uc_core::clipboard::{
-    MimeClass, MimeType, ObservedClipboardRepresentation, SystemClipboardSnapshot,
-};
-use uc_core::ids::RepresentationId;
 
 use crate::clipboard::format_id_mime::format_id_default_mime;
 
@@ -1014,32 +1014,12 @@ impl CommonClipboardImpl {
             not(any(target_os = "windows", target_os = "macos"))
         ))]
         {
-            // 用 V1 policy 选出 paste-priority rep —— 与应用层原 `narrow_to_primary`
-            // 等价。硬编码 V1：当前 uc-core 只有这一个 `SelectRepresentationPolicyPort`
-            // 实现；出现 V2 时再考虑从调用方注入 policy。
-            use uc_core::clipboard::SelectRepresentationPolicyV1;
-            use uc_core::ports::SelectRepresentationPolicyPort;
-
-            let policy = SelectRepresentationPolicyV1::default();
-            let selection = policy
-                .select(&snapshot)
-                .map_err(|e| anyhow!("representation policy failed: {e}"))?;
-            let paste_id = selection.paste_rep_id.clone();
-
-            let chosen_idx = snapshot
-                .representations
-                .iter()
-                .position(|rep| rep.id == paste_id)
-                .ok_or_else(|| {
-                    anyhow!(
-                        "policy selected paste_rep_id {:?} not present in snapshot",
-                        paste_id
-                    )
-                })?;
+            let chosen_idx = crate::clipboard::model::select_paste_representation_index(&snapshot)
+                .ok_or_else(|| anyhow!("no usable clipboard representation"))?;
 
             warn!(
                 rep_count,
-                paste_rep_id = ?paste_id,
+                paste_rep_id = ?snapshot.representations[chosen_idx].id,
                 chosen_format_id = %snapshot.representations[chosen_idx].format_id,
                 "Linux: multi-representation atomic write not yet supported; \
                  falling back to single-rep path via SelectRepresentationPolicyV1 \
@@ -1319,8 +1299,8 @@ mod tests {
 
     mod effective_mime {
         use super::*;
-        use uc_core::clipboard::MimeClass;
-        use uc_core::ids::{FormatId, RepresentationId};
+        use crate::clipboard::MimeClass;
+        use crate::clipboard::{FormatId, RepresentationId};
 
         fn rep(
             format: &str,

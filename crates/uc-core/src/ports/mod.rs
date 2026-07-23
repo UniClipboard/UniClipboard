@@ -74,6 +74,7 @@ pub use device_identity::DeviceIdentityPort;
 pub use directory_publish_log::{
     CleanupDirectoryStagingPort, DirectoryPublishRecord, DirectoryStagingCleanupError,
     GetDirectoryPublishRecordPort, PublishLogError, PublishPhase, RecordDirectoryPublishPort,
+    DIRECTORY_RECEIVE_STAGING_PREFIX,
 };
 pub use entry_receive_attempt::{
     AttemptError, AttemptState, BeginReceiveAttemptPort, BeginReceiveFailureOutcome,

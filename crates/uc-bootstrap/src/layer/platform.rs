@@ -2,24 +2,53 @@
 
 use std::sync::Arc;
 
-use uc_core::ports::{PlatformClipboardPort, SystemClipboardPort};
 #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
 use uc_platform::clipboard::LocalClipboard;
 use uc_platform::clipboard::NoopSystemClipboard;
+use uc_platform::clipboard::SystemClipboard;
 
-use crate::wiring::deps::{WiringError, WiringResult};
-pub use uc_engine::internal::clipboard::SystemClipboardWiring;
-pub(crate) use uc_engine::internal::platform::SystemClipboardLayer;
+use crate::wiring::error::{WiringError, WiringResult};
 
-fn noop_system_clipboard() -> (Arc<dyn PlatformClipboardPort>, Arc<dyn SystemClipboardPort>) {
-    let noop: Arc<NoopSystemClipboard> = Arc::new(NoopSystemClipboard);
-    (noop.clone(), noop)
+/// Whether the desktop host connected the real system clipboard.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SystemClipboardWiring {
+    Real,
+    Noop,
 }
 
-#[cfg(test)]
-pub(crate) fn noop_system_clipboard_layer() -> SystemClipboardLayer {
-    let (clipboard, system_clipboard) = noop_system_clipboard();
-    SystemClipboardLayer::new(clipboard, system_clipboard, SystemClipboardWiring::Noop)
+pub struct SystemClipboardLayer {
+    clipboard: Arc<dyn SystemClipboard>,
+    system_clipboard: Arc<dyn SystemClipboard>,
+    wiring: SystemClipboardWiring,
+}
+
+impl SystemClipboardLayer {
+    fn new(
+        clipboard: Arc<dyn SystemClipboard>,
+        system_clipboard: Arc<dyn SystemClipboard>,
+        wiring: SystemClipboardWiring,
+    ) -> Self {
+        Self {
+            clipboard,
+            system_clipboard,
+            wiring,
+        }
+    }
+
+    pub fn into_parts(
+        self,
+    ) -> (
+        Arc<dyn SystemClipboard>,
+        Arc<dyn SystemClipboard>,
+        SystemClipboardWiring,
+    ) {
+        (self.clipboard, self.system_clipboard, self.wiring)
+    }
+}
+
+fn noop_system_clipboard() -> (Arc<dyn SystemClipboard>, Arc<dyn SystemClipboard>) {
+    let noop: Arc<NoopSystemClipboard> = Arc::new(NoopSystemClipboard);
+    (noop.clone(), noop)
 }
 
 pub fn create_desktop_system_clipboard() -> WiringResult<SystemClipboardLayer> {
@@ -50,28 +79,26 @@ pub fn create_desktop_system_clipboard() -> WiringResult<SystemClipboardLayer> {
         let _ = disable_system_clipboard;
         SystemClipboardWiring::Noop
     };
-    let (clipboard, system_clipboard): (
-        Arc<dyn PlatformClipboardPort>,
-        Arc<dyn SystemClipboardPort>,
-    ) = match system_clipboard_wiring {
-        SystemClipboardWiring::Noop => noop_system_clipboard(),
-        SystemClipboardWiring::Real => {
-            #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
-            {
-                let clipboard_impl = LocalClipboard::new().map_err(|e| {
-                    WiringError::ClipboardInit(format!("Failed to create clipboard: {}", e))
-                })?;
-                let clipboard_impl = Arc::new(clipboard_impl);
-                (clipboard_impl.clone(), clipboard_impl)
+    let (clipboard, system_clipboard): (Arc<dyn SystemClipboard>, Arc<dyn SystemClipboard>) =
+        match system_clipboard_wiring {
+            SystemClipboardWiring::Noop => noop_system_clipboard(),
+            SystemClipboardWiring::Real => {
+                #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+                {
+                    let clipboard_impl = LocalClipboard::new().map_err(|e| {
+                        WiringError::ClipboardInit(format!("Failed to create clipboard: {}", e))
+                    })?;
+                    let clipboard_impl = Arc::new(clipboard_impl);
+                    (clipboard_impl.clone(), clipboard_impl)
+                }
+                #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
+                {
+                    return Err(WiringError::ClipboardInit(
+                        "mobile hosts must inject a clipboard implementation".to_string(),
+                    ));
+                }
             }
-            #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
-            {
-                return Err(WiringError::ClipboardInit(
-                    "mobile hosts must inject a clipboard implementation".to_string(),
-                ));
-            }
-        }
-    };
+        };
 
     Ok(SystemClipboardLayer::new(
         clipboard,

@@ -44,7 +44,8 @@ async fn main() -> anyhow::Result<()> {
     eprintln!("watching X11 CLIPBOARD via x11rb — copy from an X11/XWayland app");
     eprintln!("(DISPLAY={:?})", std::env::var_os("DISPLAY"));
 
-    let clipboard: Arc<dyn uc_core::ports::SystemClipboardPort> = Arc::new(LocalClipboard::new()?);
+    let clipboard: Arc<dyn uc_platform::clipboard::SystemClipboard> =
+        Arc::new(LocalClipboard::new()?);
     let (tx, mut rx) = mpsc::channel::<PlatformEvent>(64);
     let handler = ClipboardWatcher::new(clipboard, tx);
 

@@ -686,8 +686,8 @@ pub(crate) fn auth_header(username: &str, password: &str) -> String {
 /// the handler does at connect time. The capacity only needs to hold a
 /// test's unread sends; a test exercising `Lagged` builds its own
 /// deliberately tiny channel instead.
-pub(crate) fn fake_sse_source(
-) -> tokio::sync::broadcast::Sender<uc_core::clipboard::ActiveClipboardState> {
+pub(crate) fn fake_sse_source() -> tokio::sync::broadcast::Sender<uc_engine::ActiveClipboardChanged>
+{
     let (tx, _rx) = tokio::sync::broadcast::channel(16);
     tx
 }

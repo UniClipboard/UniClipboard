@@ -3,6 +3,9 @@ use std::str::FromStr;
 
 use async_trait::async_trait;
 
+/// Prefix of dedicated transient directory receive areas.
+pub const DIRECTORY_RECEIVE_STAGING_PREFIX: &str = ".uniclip-incoming-";
+
 /// Durable phase of a directory publication attempt.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PublishPhase {

@@ -16,6 +16,7 @@ mod entry_replace_repo;
 mod file_transfer_repo;
 mod inbound_receive_commit_repo;
 mod migration_repo;
+#[cfg(feature = "lan-compat")]
 mod mobile_device_repo;
 mod peer_address_repo;
 mod receive_artifact_cipher;
@@ -40,6 +41,7 @@ pub use entry_replace_repo::*;
 pub use file_transfer_repo::*;
 pub use inbound_receive_commit_repo::*;
 pub use migration_repo::*;
+#[cfg(feature = "lan-compat")]
 pub use mobile_device_repo::*;
 pub use peer_address_repo::*;
 pub use receive_artifact_log_repo::*;

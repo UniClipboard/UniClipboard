@@ -2,14 +2,11 @@ use std::sync::Arc;
 
 use tokio::sync::broadcast;
 use tokio_util::sync::CancellationToken;
-use uc_core::clipboard::ActiveClipboardState;
-use uc_core::ids::{DeviceId, EntryId};
-use uc_core::ports::MobileLanLifecyclePort;
 use uc_daemon_contract::api::types::{DaemonWsEvent, PeerSnapshotDto, PeersChangedFullPayload};
 use uc_daemon_contract::constants::{ws_event, ws_topic};
 use uc_engine::{
-    Engine, EngineEvent, EventStream, Operation, OperationResult, PeerConnectionChannelSummary,
-    PeerConnectionSummary,
+    ActiveClipboardChanged, Engine, EngineEvent, EventStream, Operation, OperationResult,
+    PeerConnectionChannelSummary, PeerConnectionSummary,
 };
 
 use super::mobile_lan_lifecycle::{mobile_lan_target, MobileLanLifecycleController};
@@ -22,7 +19,7 @@ pub(crate) async fn forward_engine_events(
     mut events: EventStream,
     engine: Arc<Engine>,
     event_tx: broadcast::Sender<DaemonWsEvent>,
-    active_clipboard_tx: broadcast::Sender<ActiveClipboardState>,
+    active_clipboard_tx: broadcast::Sender<ActiveClipboardChanged>,
     mobile_lan: Arc<MobileLanLifecycleController>,
     cancel: CancellationToken,
 ) {
@@ -33,19 +30,14 @@ pub(crate) async fn forward_engine_events(
                 let Some(event) = event else { return; };
                 match event {
                     EngineEvent::ActiveClipboardChanged(change) => {
-                        let _ = active_clipboard_tx.send(ActiveClipboardState::new(
-                            change.snapshot_hash,
-                            EntryId::from(change.entry_id.as_str()),
-                            change.activated_at_ms,
-                            DeviceId::new(change.activated_by),
-                        ));
+                        let _ = active_clipboard_tx.send(change);
                     }
                     EngineEvent::PeerPresenceChanged(_) | EngineEvent::RefreshRequired { .. } => {
                         publish_peer_snapshot(&engine, &event_tx).await;
                     }
                     EngineEvent::MobileLanSettingsChanged(settings) => {
                         mobile_lan
-                            .apply(mobile_lan_target(
+                            .reconcile(mobile_lan_target(
                                 settings.enabled,
                                 settings.lan_listen_enabled,
                                 settings.lan_port,
@@ -138,6 +130,8 @@ mod tests {
             from_device: "peer-1".into(),
             snapshot_hash: "hash-1".into(),
             plaintext: vec![1, 2, 3],
+            text_preview: None,
+            representations: Vec::new(),
             action: InboundNoticeActionSummary::DuplicateIgnored,
             at_ms: 42,
         }))

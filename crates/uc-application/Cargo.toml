@@ -4,13 +4,15 @@ version.workspace = true
 license.workspace = true
 edition = "2021"
 
+[features]
+default = []
+lan-compat = ["dep:uc-mobile-proto", "dep:qrcode", "dep:image"]
+
 [dependencies]
-# Shared directory-layout constants
-uc-app-paths = { path = "../uc-app-paths" }
 # Core domain models
 uc-core = { path = "../uc-core" }
 # Mobile-sync wire protocol codec (connect-uri). Leaf crate, zero internal deps.
-uc-mobile-proto = { path = "../uc-mobile-proto" }
+uc-mobile-proto = { path = "../uc-mobile-proto", optional = true }
 # Portable observability contracts (events, flow correlation, stage constants)
 uc-observability-contract = { path = "../uc-observability-contract" }
 
@@ -49,8 +51,8 @@ unicode-normalization = "0.1"
 base64 = "0.22"
 # QR code rendering for SyncClipboard install URL (mobile sync register use case).
 # Used to produce both PNG bytes (frontend img tag) and ASCII art (CLI stdout).
-qrcode = { version = "0.14", default-features = false, features = ["image"] }
-image = { version = "0.25", default-features = false, features = ["png"] }
+qrcode = { version = "0.14", default-features = false, features = ["image"], optional = true }
+image = { version = "0.25", default-features = false, features = ["png"], optional = true }
 # Semver parsing for upgrade-detection use case (`facade::upgrade`).
 # Compares last_seen_version (port-stored String) against current build
 # version to derive `UpgradeStatus`.

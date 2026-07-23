@@ -1,91 +1,53 @@
-//! Directory-layout resolution.
-//!
-//! Resolves the platform `AppDirs` and applies config overrides + the
-//! `UC_PROFILE` suffix to produce the `AppPaths` the rest of wiring consumes.
-//! The authoritative directory layout lives in `uc-app-paths`; this module only
-//! adapts it to the composition root's config-override and profile-suffix rules.
+//! Desktop host path resolution.
 
 use std::path::PathBuf;
 
-use uc_core::config::AppConfig;
 use uc_platform::app_dirs::DirsAppDirsAdapter;
-use uc_platform::ports::AppDirsPort;
+use uc_platform::ports::{AppDirs, AppDirsProvider};
 
-use crate::wiring::deps::{WiringError, WiringResult};
+use crate::wiring::error::{WiringError, WiringResult};
 
-/// Resolves the application's default directories for storing data and configuration.
-pub fn get_default_app_dirs() -> WiringResult<uc_core::app_dirs::AppDirs> {
-    let adapter = DirsAppDirsAdapter::new();
-    adapter
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct DesktopHostPaths {
+    pub(crate) db_path: PathBuf,
+    pub(crate) vault_dir: PathBuf,
+    pub(crate) settings_path: PathBuf,
+    pub(crate) logs_dir: PathBuf,
+    pub(crate) cache_dir: PathBuf,
+    pub(crate) app_data_root_dir: PathBuf,
+}
+
+impl DesktopHostPaths {
+    fn from_app_dirs(dirs: AppDirs) -> Self {
+        let cache_dir = if dirs.app_cache_root == dirs.app_data_root {
+            dirs.app_data_root.join("cache")
+        } else {
+            dirs.app_cache_root
+        };
+
+        Self {
+            db_path: dirs.app_data_root.join("uniclipboard.db"),
+            vault_dir: dirs.app_data_root.join("vault"),
+            settings_path: dirs.app_data_root.join("settings.json"),
+            logs_dir: dirs.app_log_dir,
+            cache_dir,
+            app_data_root_dir: dirs.app_data_root,
+        }
+    }
+
+    pub(crate) fn device_id_path(&self) -> PathBuf {
+        self.vault_dir.join("device_id.txt")
+    }
+}
+
+pub(crate) fn resolve_desktop_host_paths() -> WiringResult<DesktopHostPaths> {
+    DirsAppDirsAdapter::new()
         .get_app_dirs()
-        .map_err(|e| WiringError::ConfigInit(e.to_string()))
+        .map(DesktopHostPaths::from_app_dirs)
+        .map_err(|error| WiringError::ConfigInit(error.to_string()))
 }
 
-/// Get resolved storage paths from configuration.
-pub fn get_storage_paths(
-    config: &uc_core::config::AppConfig,
-) -> WiringResult<uc_application::facade::AppPaths> {
-    let platform_dirs = get_default_app_dirs()?;
-    resolve_app_paths(&platform_dirs, config)
-}
-
-/// Build `AppPaths` from platform dirs and config overrides.
-pub fn resolve_app_paths(
-    platform_dirs: &uc_core::app_dirs::AppDirs,
-    config: &AppConfig,
-) -> WiringResult<uc_application::facade::AppPaths> {
-    let mut paths = uc_application::facade::AppPaths::from_app_dirs(platform_dirs);
-
-    let is_in_memory_db = config.database_path.as_os_str() == ":memory:";
-
-    if is_in_memory_db {
-        paths.db_path = config.database_path.clone();
-    } else if !config.database_path.as_os_str().is_empty() {
-        if config.database_path.is_absolute() {
-            // Absolute path: use as-is. In production the path is already inside
-            // app_data_root_dir; tests use temp dirs and need the full path respected.
-            paths.db_path = config.database_path.clone();
-        } else {
-            let db_file_name = config
-                .database_path
-                .file_name()
-                .map(|name| name.to_os_string())
-                .unwrap_or_else(|| std::ffi::OsString::from("uniclipboard.db"));
-            paths.db_path = paths.app_data_root_dir.join(db_file_name);
-        }
-    }
-
-    if !config.vault_key_path.as_os_str().is_empty() {
-        let configured_vault_root = config
-            .vault_key_path
-            .parent()
-            .unwrap_or(&config.vault_key_path)
-            .to_path_buf();
-
-        if config.database_path.as_os_str().is_empty() {
-            paths.vault_dir = apply_profile_suffix(configured_vault_root);
-        } else {
-            let configured_db_root = config
-                .database_path
-                .parent()
-                .unwrap_or(&config.database_path)
-                .to_path_buf();
-
-            if configured_vault_root.starts_with(&configured_db_root) {
-                let relative = configured_vault_root
-                    .strip_prefix(&configured_db_root)
-                    .unwrap_or(std::path::Path::new(""));
-                paths.vault_dir = paths.app_data_root_dir.join(relative);
-            } else {
-                paths.vault_dir = apply_profile_suffix(configured_vault_root);
-            }
-        }
-    }
-
-    Ok(paths)
-}
-
-pub fn apply_profile_suffix(path: PathBuf) -> PathBuf {
+pub(crate) fn apply_profile_suffix(path: PathBuf) -> PathBuf {
     let profile = match std::env::var("UC_PROFILE") {
         Ok(value) if !value.is_empty() => sanitize_profile(&value),
         _ => return path,
@@ -101,19 +63,13 @@ pub fn apply_profile_suffix(path: PathBuf) -> PathBuf {
     updated
 }
 
-/// Normalize a `UC_PROFILE` value into a filesystem-safe suffix.
-///
-/// Maps every character that is invalid in a Windows filename
-/// (`< > : " / \ | ? *` and ASCII control characters) to `_`, so the profile
-/// can be safely appended to a file name on any platform. Other platforms only
-/// reject `/` (and the NUL byte), so this is a superset of their constraints.
 fn sanitize_profile(value: &str) -> String {
     value
         .chars()
-        .map(|c| match c {
+        .map(|character| match character {
             '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*' => '_',
-            c if c.is_control() => '_',
-            c => c,
+            character if character.is_control() => '_',
+            character => character,
         })
         .collect()
 }

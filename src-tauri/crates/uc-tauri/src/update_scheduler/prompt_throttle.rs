@@ -22,7 +22,7 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 use tokio::fs;
-use uc_core::settings::model::UpdateChannel;
+use uc_daemon_contract::api::dto::settings::UpdateChannelDto as UpdateChannel;
 
 /// Minimum wall-clock gap between two scheduler-triggered prompt windows on
 /// the stable channel.

@@ -13,11 +13,15 @@ use uc_engine::{
 
 #[test]
 fn engine_config_has_stable_profile_and_version_inputs() {
-    let config = EngineConfig::new("1.2.3").with_profile_id("private-profile-name");
+    let config = EngineConfig::new("1.2.3")
+        .with_profile_id("private-profile-name")
+        .with_portable_storage(true);
 
     assert_eq!(config.app_version(), "1.2.3");
     assert_eq!(config.profile_id(), "private-profile-name");
+    assert!(config.uses_portable_storage());
     assert_eq!(EngineConfig::new("1.2.3").profile_id(), "default");
+    assert!(!EngineConfig::new("1.2.3").uses_portable_storage());
 
     let debug = format!("{config:?}");
     assert!(debug.contains("1.2.3"));

@@ -14,7 +14,7 @@
 //! are added, each provides its own translation table — UTType IDs on
 //! iOS map to MIME, Android `ClipDescription` MIMEs are already RFC.
 
-use uc_core::MimeType;
+use crate::clipboard::MimeType;
 
 /// Translate a platform-native format identifier to its default RFC MIME.
 ///

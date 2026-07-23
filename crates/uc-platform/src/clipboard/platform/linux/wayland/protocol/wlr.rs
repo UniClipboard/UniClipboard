@@ -7,7 +7,7 @@
 //! This module owns:
 //! - the watcher (`WlrEventLoop`, drives the [`crate::clipboard::watcher::ClipboardWatcher`]
 //!   pipeline)
-//! - the `SystemClipboardPort` impl (`WlrClipboard`, used by daemon `apply_inbound`
+//! - the `SystemClipboard` impl (`WlrClipboard`, used by daemon `apply_inbound`
 //!   to write to the clipboard and by reads to query the current contents)
 //!
 //! Both halves bind the same `zwlr_data_control_manager_v1` global. The watcher
@@ -22,11 +22,11 @@ use std::sync::Arc;
 use std::thread::JoinHandle;
 use std::time::Duration;
 
+use crate::clipboard::SystemClipboard;
+use crate::clipboard::SystemClipboardSnapshot;
 use anyhow::{Context, Result};
 use rustix::event::{poll, PollFd, PollFlags};
 use tracing::{debug, info, warn};
-use uc_core::clipboard::SystemClipboardSnapshot;
-use uc_core::ports::SystemClipboardPort;
 use wayland_client::backend::ObjectId;
 use wayland_client::{
     event_created_child,
@@ -479,7 +479,7 @@ impl Drop for Inner {
 }
 
 #[async_trait::async_trait]
-impl SystemClipboardPort for WlrClipboard {
+impl SystemClipboard for WlrClipboard {
     fn read_snapshot(&self) -> Result<SystemClipboardSnapshot> {
         let (tx, rx) = sync_channel::<Result<SystemClipboardSnapshot>>(1);
         self.send_request(Request::Read(tx))?;

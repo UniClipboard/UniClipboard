@@ -10,11 +10,9 @@ name = "uc_webserver"
 path = "src/lib.rs"
 
 [dependencies]
-uc-application = { path = "../uc-application" }
-uc-core = { path = "../uc-core" }
 uc-daemon-contract = { path = "../uc-daemon-contract" }
 uc-daemon-local = { path = "../uc-daemon-local" }
-uc-engine = { path = "../uc-engine" }
+uc-engine = { path = "../uc-engine", features = ["lan-compat"] }
 # SSE push-channel wire shapes (event names / payload structs / heartbeat
 # cadence) shared with the uc-mobile client.
 uc-mobile-proto = { path = "../uc-mobile-proto" }
@@ -39,6 +37,8 @@ uuid = { version = "1.10.0", features = ["v4"] }
 
 [dev-dependencies]
 async-trait = "0.1"
+uc-application = { path = "../uc-application" }
+uc-core = { path = "../uc-core" }
 tower = { version = "0.5", features = ["util"] }
 # The /healthz load benchmark only: it drives a real listener over real TCP and
 # needs the *real* Argon2id cost on the control arm — a fake hasher would make

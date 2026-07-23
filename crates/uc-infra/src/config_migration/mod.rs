@@ -42,7 +42,7 @@ mod tests {
     use uc_core::crypto::domain::Passphrase;
     use uc_core::ids::{ProfileId, SpaceId};
     use uc_core::ports::config_migration::{
-        ConfigMigrationError, ExportConfigBundlePort, PreviewConfigImportPort,
+        ConfigMigrationError, ConfigSourceMode, ExportConfigBundlePort, PreviewConfigImportPort,
         StageConfigImportPort,
     };
     use uc_core::ports::space::SpaceAccessStore;
@@ -192,6 +192,7 @@ mod tests {
             Arc::new(FixedClock(1_700_000_000_000)),
             paths,
             ProfileId::from("default".to_string()),
+            ConfigSourceMode::Installed,
         ));
 
         let export_dir = dir.path().join("exports");

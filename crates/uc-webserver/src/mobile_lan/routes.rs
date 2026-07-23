@@ -32,7 +32,7 @@ use axum::{
 use tokio::sync::broadcast;
 use tokio_util::sync::CancellationToken;
 
-use uc_core::clipboard::ActiveClipboardState;
+use uc_engine::ActiveClipboardChanged;
 
 use crate::mobile_lan::core::MobileLanCore;
 use crate::mobile_lan::middleware::basic_auth;
@@ -56,7 +56,7 @@ pub(crate) struct MobileLanState {
     pub core: MobileLanCore,
     /// Fan-out source for active-clipboard register advances; the SSE
     /// handler subscribes once per connection to receive `update` events.
-    pub sse_source: broadcast::Sender<ActiveClipboardState>,
+    pub sse_source: broadcast::Sender<ActiveClipboardChanged>,
     /// Listener-wide cancellation signal. The SSE handler must select on
     /// this directly (not just rely on axum's connection drain) — an SSE
     /// stream never ends on its own, so without an active cancel branch
@@ -96,7 +96,7 @@ pub(crate) struct MobileLanState {
 pub(crate) fn build_router<C>(
     core: C,
     _legacy_file_transfer: Option<()>,
-    sse_source: broadcast::Sender<ActiveClipboardState>,
+    sse_source: broadcast::Sender<ActiveClipboardChanged>,
     cancel: CancellationToken,
 ) -> Router
 where
@@ -122,7 +122,7 @@ fn build_public_router(cancel: CancellationToken) -> Router {
 /// 受保护路由:SyncClipboard 协议面 + 本项目自有扩展,全部经 Basic Auth。
 fn build_protected_router(
     core: MobileLanCore,
-    sse_source: broadcast::Sender<ActiveClipboardState>,
+    sse_source: broadcast::Sender<ActiveClipboardChanged>,
     cancel: CancellationToken,
 ) -> Router {
     let state = MobileLanState {

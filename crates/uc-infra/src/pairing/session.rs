@@ -483,7 +483,7 @@ impl IrohPairingSessionAdapter {
         // early and break the handshake. `spawn_supervised` keeps that exact
         // lifetime while making a pump panic surface as a WARN instead of
         // vanishing silently (see `uc-infra/AGENTS.md §13.3.1`).
-        uc_observability::spawn_supervised("pairing.recv_pump", async move {
+        uc_observability_contract::spawn_supervised("pairing.recv_pump", async move {
             loop {
                 let frame = {
                     let mut recv = slot.recv.lock().await;

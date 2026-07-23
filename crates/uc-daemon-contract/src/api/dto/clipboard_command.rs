@@ -142,8 +142,8 @@ pub struct CaptureCurrentClipboardResponse {
 
 /// Payload for the `clipboard.inbound_notice` WebSocket event.
 ///
-/// Carries the full V3 envelope as base64 so CLI `watch` can decode
-/// content without an extra HTTP round-trip.
+/// Carries the full V3 envelope for older clients plus structured display
+/// summaries so current clients do not need to understand the core envelope.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct InboundNoticeEvent {
@@ -151,9 +151,21 @@ pub struct InboundNoticeEvent {
     pub snapshot_hash: String,
     /// Base64-encoded V3 envelope bytes.
     pub plaintext_base64: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub text_preview: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub representations: Vec<InboundRepresentationSummaryDto>,
     /// `"new_entry"` | `"duplicate_ignored"`.
     pub action: String,
     pub at_ms: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct InboundRepresentationSummaryDto {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mime_type: Option<String>,
+    pub size_bytes: i64,
 }
 
 // ── WS clipboard.new_content payload ─────────────────────────────
@@ -245,6 +257,11 @@ mod tests {
             from_device: "d1".into(),
             snapshot_hash: "h".into(),
             plaintext_base64: "base64data".into(),
+            text_preview: Some("hello".into()),
+            representations: vec![InboundRepresentationSummaryDto {
+                mime_type: Some("text/plain".into()),
+                size_bytes: 5,
+            }],
             action: "new_entry".into(),
             at_ms: 123,
         };
@@ -252,5 +269,7 @@ mod tests {
         assert!(json.get("fromDevice").is_some());
         assert!(json.get("snapshotHash").is_some());
         assert!(json.get("plaintextBase64").is_some());
+        assert!(json.get("textPreview").is_some());
+        assert!(json.get("representations").is_some());
     }
 }

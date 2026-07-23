@@ -20,10 +20,10 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use uc_core::clipboard::{MimeType, ObservedClipboardRepresentation, SystemClipboardSnapshot};
-use uc_core::ids::RepresentationId;
-use uc_core::ports::SystemClipboardPort;
 use uc_platform::clipboard::LocalClipboard;
+use uc_platform::clipboard::RepresentationId;
+use uc_platform::clipboard::SystemClipboard;
+use uc_platform::clipboard::{MimeType, ObservedClipboardRepresentation, SystemClipboardSnapshot};
 
 fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt()
@@ -39,7 +39,7 @@ fn main() -> anyhow::Result<()> {
         std::env::var_os("WAYLAND_DISPLAY")
     );
 
-    let clipboard: Arc<dyn SystemClipboardPort> = Arc::new(LocalClipboard::new()?);
+    let clipboard: Arc<dyn SystemClipboard> = Arc::new(LocalClipboard::new()?);
 
     // ---- Write ----
     let payload = format!(

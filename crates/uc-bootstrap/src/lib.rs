@@ -1,15 +1,11 @@
-//! # uc-bootstrap — Sole Composition Root
+//! # uc-bootstrap — Desktop Host Preparation
 //!
-//! This crate is the single place allowed to depend on
-//! uc-core + uc-application + uc-infra + uc-platform simultaneously.
-//! All entry points (GUI, CLI, daemon) depend on uc-bootstrap
-//! for dependency wiring and initialization.
+//! Prepares desktop paths, platform adapters, observability, and host
+//! capabilities consumed by `uc-engine`.
 
 pub mod entrypoint;
 pub mod layer;
 pub mod observability;
-pub mod startup;
-pub mod subsystem;
 pub mod wiring;
 
 // The top-level re-exports below ARE the crate's external contract: the symbols
@@ -17,20 +13,10 @@ pub mod wiring;
 // this list in sync with that contract — everything else stays crate-internal
 // (`pub(crate)`), reachable only within the composition root.
 
-// Slice 6 / Issue #549 — composition-root analytics 装配入口。
-// `compose_event_context` 在 `wire_dependencies` 之后由各进程入口调用一次。
-pub use subsystem::analytics::compose_event_context;
-
 pub use entrypoint::cli::{build_cli_engine_runtime, CliEngineRuntime};
-pub use entrypoint::daemon::{build_daemon_lifecycle, DaemonLifecycle};
-pub use entrypoint::non_gui::resolve_clipboard_integration_mode;
-pub use layer::paths::get_storage_paths;
 pub use layer::platform::SystemClipboardWiring;
 pub use observability::tracing::{init_tracing_subscriber, install_panic_logging_hook};
-pub use subsystem::blob_tasks::{spawn_blob_processing_tasks, BlobProcessingPorts};
-pub use subsystem::file_transfer::FileTransferLifecycle;
-pub use wiring::deps::{BackgroundRuntimeDeps, WiredDependencies, WiringError, WiringResult};
-pub use wiring::desktop::wire_dependencies;
 pub use wiring::desktop_host::{
-    prepare_desktop_engine_host, DesktopEngineHost, DesktopHostFileHandles,
+    prepare_desktop_engine_host, DesktopEngineHost, DesktopHostFileHandles, DesktopHostProcessPaths,
 };
+pub use wiring::error::{WiringError, WiringResult};

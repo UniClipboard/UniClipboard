@@ -1,17 +1,17 @@
 use super::super::cf_html::strip_cf_html_wrapper;
 use super::super::common::CommonClipboardImpl;
 use super::super::payload::rep_bytes;
+use crate::clipboard::RepresentationId;
+use crate::clipboard::SystemClipboard;
+use crate::clipboard::{
+    ImageKind, MimeClass, MimeType, ObservedClipboardRepresentation, SystemClipboardSnapshot,
+};
 use anyhow::Result;
 use async_trait::async_trait;
 use clipboard_rs::{Clipboard, ClipboardContext};
 use std::ops::Range;
 use std::sync::{Arc, Mutex};
 use tracing::{debug, debug_span, error, info, warn};
-use uc_core::clipboard::{
-    ImageKind, MimeClass, MimeType, ObservedClipboardRepresentation, SystemClipboardSnapshot,
-};
-use uc_core::ids::RepresentationId;
-use uc_core::ports::SystemClipboardPort;
 
 use crate::clipboard::format_id_mime::format_id_default_mime;
 
@@ -766,7 +766,7 @@ impl WindowsClipboard {
 }
 
 #[async_trait]
-impl SystemClipboardPort for WindowsClipboard {
+impl SystemClipboard for WindowsClipboard {
     fn read_snapshot(&self) -> Result<SystemClipboardSnapshot> {
         let span = debug_span!("platform.windows.read_clipboard");
         span.in_scope(|| {
@@ -1338,8 +1338,8 @@ fn set_bytes(to: &mut [u8], from: &[u8], range: Range<usize>) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use uc_core::ids::{FormatId, RepresentationId};
-    use uc_core::MimeType;
+    use crate::clipboard::MimeType;
+    use crate::clipboard::{FormatId, RepresentationId};
 
     fn rep(format: &str, mime: Option<&str>) -> ObservedClipboardRepresentation {
         ObservedClipboardRepresentation::new(

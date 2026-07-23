@@ -9,7 +9,7 @@ use std::{collections::HashMap, io, path::Path};
 
 use serde::{Deserialize, Serialize};
 use tokio::fs;
-use uc_core::settings::model::UpdateChannel;
+use uc_daemon_contract::api::dto::settings::UpdateChannelDto as UpdateChannel;
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(transparent)]

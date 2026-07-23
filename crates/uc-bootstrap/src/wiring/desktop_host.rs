@@ -8,9 +8,6 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use async_trait::async_trait;
-use uc_core::clipboard::{ClipboardPayloadSource, ObservedClipboardRepresentation};
-use uc_core::config::AppConfig;
-use uc_core::ports::{SecureStorageError, SecureStoragePort, SystemClipboardPort};
 use uc_engine::{
     EngineConfig, HostCapabilities, HostCapabilityError, HostCapabilityErrorCategory,
     HostClipboard, HostClipboardChange, HostClipboardChangeStream, HostClipboardRepresentation,
@@ -19,22 +16,27 @@ use uc_engine::{
 };
 use uc_platform::clipboard::watcher::{ClipboardWatcher, PlatformEvent};
 use uc_platform::clipboard::{build_event_loop, shutdown_channel, ShutdownTx};
+use uc_platform::clipboard::{
+    ClipboardPayloadSource, ObservedClipboardRepresentation, SystemClipboard,
+    SystemClipboardSnapshot,
+};
+use uc_platform::ports::{SecureStorageError, SecureStorageProvider};
 
-use crate::layer::paths::{get_default_app_dirs, resolve_app_paths};
+use crate::layer::paths::{resolve_desktop_host_paths, DesktopHostPaths};
 use crate::layer::platform::{create_desktop_system_clipboard, SystemClipboardWiring};
-use crate::wiring::deps::{WiringError, WiringResult};
-use crate::wiring::desktop::build_secure_storage_prelude;
+use crate::wiring::error::{WiringError, WiringResult};
+use crate::wiring::secure_storage::build_secure_storage_prelude;
 
 pub struct DesktopEngineHost {
     engine_config: EngineConfig,
     capabilities: HostCapabilities,
-    storage_paths: uc_application::facade::AppPaths,
+    process_paths: DesktopHostProcessPaths,
     file_handles: DesktopHostFileHandles,
 }
 
 impl DesktopEngineHost {
-    pub fn storage_paths(&self) -> &uc_application::facade::AppPaths {
-        &self.storage_paths
+    pub fn process_paths(&self) -> &DesktopHostProcessPaths {
+        &self.process_paths
     }
 
     pub fn file_handles(&self) -> DesktopHostFileHandles {
@@ -46,9 +48,37 @@ impl DesktopEngineHost {
     }
 }
 
-pub fn prepare_desktop_engine_host(config: &AppConfig) -> WiringResult<DesktopEngineHost> {
-    let platform_dirs = get_default_app_dirs()?;
-    let paths = resolve_app_paths(&platform_dirs, config)?;
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DesktopHostProcessPaths {
+    app_data_root: PathBuf,
+    daemon_token: PathBuf,
+    daemon_pid: PathBuf,
+}
+
+impl DesktopHostProcessPaths {
+    fn from_app_paths(paths: &DesktopHostPaths) -> Self {
+        Self {
+            app_data_root: paths.app_data_root_dir.clone(),
+            daemon_token: paths.app_data_root_dir.join(".daemon-token"),
+            daemon_pid: paths.app_data_root_dir.join(".daemon-pid"),
+        }
+    }
+
+    pub fn app_data_root(&self) -> &Path {
+        &self.app_data_root
+    }
+
+    pub fn daemon_token(&self) -> &Path {
+        &self.daemon_token
+    }
+
+    pub fn daemon_pid(&self) -> PathBuf {
+        self.daemon_pid.clone()
+    }
+}
+
+pub fn prepare_desktop_engine_host() -> WiringResult<DesktopEngineHost> {
+    let paths = resolve_desktop_host_paths()?;
     let secure_storage = build_secure_storage_prelude(&paths)?.secure_storage;
     let (_, system_clipboard, clipboard_wiring) = create_desktop_system_clipboard()?.into_parts();
     let file_handles = DesktopHostFileHandles::default();
@@ -60,7 +90,8 @@ pub fn prepare_desktop_engine_host(config: &AppConfig) -> WiringResult<DesktopEn
             "failed to create engine temporary directory: {error}"
         ))
     })?;
-    let engine_config = EngineConfig::new(env!("CARGO_PKG_VERSION"));
+    let engine_config = EngineConfig::new(env!("CARGO_PKG_VERSION"))
+        .with_portable_storage(uc_app_paths::is_portable());
     let capabilities = HostCapabilities::new(
         HostDirectories::new(
             paths.app_data_root_dir.clone(),
@@ -81,13 +112,13 @@ pub fn prepare_desktop_engine_host(config: &AppConfig) -> WiringResult<DesktopEn
     Ok(DesktopEngineHost {
         engine_config,
         capabilities,
-        storage_paths: paths,
+        process_paths: DesktopHostProcessPaths::from_app_paths(&paths),
         file_handles,
     })
 }
 
 struct DesktopSecureStorage {
-    secure_storage: Arc<dyn SecureStoragePort>,
+    secure_storage: Arc<dyn SecureStorageProvider>,
 }
 
 impl HostSecureStorage for DesktopSecureStorage {
@@ -122,9 +153,9 @@ fn map_secure_storage_error(error: SecureStorageError) -> HostCapabilityError {
 }
 
 struct DesktopClipboard {
-    system_clipboard: Arc<dyn SystemClipboardPort>,
+    system_clipboard: Arc<dyn SystemClipboard>,
     file_registry: Arc<DesktopFileRegistry>,
-    pending_snapshot: Arc<Mutex<Option<uc_core::SystemClipboardSnapshot>>>,
+    pending_snapshot: Arc<Mutex<Option<SystemClipboardSnapshot>>>,
     change_stream_taken: bool,
     changes_enabled: bool,
 }
@@ -159,9 +190,9 @@ impl HostClipboard for DesktopClipboard {
                     mime_type,
                     bytes,
                 } => Ok(ObservedClipboardRepresentation::new(
-                    uc_core::ids::RepresentationId::new(),
-                    uc_core::ids::FormatId::from(format),
-                    mime_type.map(uc_core::MimeType),
+                    uc_platform::clipboard::RepresentationId::new(),
+                    uc_platform::clipboard::FormatId::from(format),
+                    mime_type.map(uc_platform::clipboard::MimeType),
                     bytes,
                 )),
                 HostClipboardRepresentation::File { .. } => Err(HostCapabilityError::new(
@@ -171,7 +202,7 @@ impl HostClipboard for DesktopClipboard {
             })
             .collect::<Result<Vec<_>, _>>()?;
         self.system_clipboard
-            .write_snapshot(uc_core::SystemClipboardSnapshot {
+            .write_snapshot(SystemClipboardSnapshot {
                 ts_ms: snapshot.observed_at_ms,
                 representations,
                 file_content_digests: Vec::new(),
@@ -196,7 +227,7 @@ impl HostClipboard for DesktopClipboard {
 }
 
 impl DesktopClipboard {
-    fn pending_snapshots(&self) -> MutexGuard<'_, Option<uc_core::SystemClipboardSnapshot>> {
+    fn pending_snapshots(&self) -> MutexGuard<'_, Option<SystemClipboardSnapshot>> {
         match self.pending_snapshot.lock() {
             Ok(snapshot) => snapshot,
             Err(poisoned) => poisoned.into_inner(),
@@ -236,8 +267,8 @@ impl DesktopClipboard {
 }
 
 struct DesktopClipboardChanges {
-    system_clipboard: Arc<dyn SystemClipboardPort>,
-    pending_snapshot: Arc<Mutex<Option<uc_core::SystemClipboardSnapshot>>>,
+    system_clipboard: Arc<dyn SystemClipboard>,
+    pending_snapshot: Arc<Mutex<Option<SystemClipboardSnapshot>>>,
     running: Option<RunningDesktopClipboardChanges>,
 }
 
@@ -266,7 +297,7 @@ impl DesktopClipboardChanges {
         Ok(())
     }
 
-    fn pending_snapshots(&self) -> MutexGuard<'_, Option<uc_core::SystemClipboardSnapshot>> {
+    fn pending_snapshots(&self) -> MutexGuard<'_, Option<SystemClipboardSnapshot>> {
         match self.pending_snapshot.lock() {
             Ok(snapshot) => snapshot,
             Err(poisoned) => poisoned.into_inner(),
@@ -488,21 +519,18 @@ fn host_io_error(detail: &'static str) -> HostCapabilityError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use uc_core::ids::{FormatId, RepresentationId};
+    use uc_platform::clipboard::{FormatId, RepresentationId};
 
     struct StaticClipboard {
-        snapshot: uc_core::SystemClipboardSnapshot,
+        snapshot: SystemClipboardSnapshot,
     }
 
-    impl SystemClipboardPort for StaticClipboard {
-        fn read_snapshot(&self) -> anyhow::Result<uc_core::SystemClipboardSnapshot> {
+    impl SystemClipboard for StaticClipboard {
+        fn read_snapshot(&self) -> anyhow::Result<SystemClipboardSnapshot> {
             Ok(self.snapshot.clone())
         }
 
-        fn write_snapshot(
-            &self,
-            _snapshot: uc_core::SystemClipboardSnapshot,
-        ) -> anyhow::Result<()> {
+        fn write_snapshot(&self, _snapshot: SystemClipboardSnapshot) -> anyhow::Result<()> {
             Ok(())
         }
     }
@@ -515,12 +543,12 @@ mod tests {
         let registry = Arc::new(DesktopFileRegistry::default());
         let clipboard = DesktopClipboard {
             system_clipboard: Arc::new(StaticClipboard {
-                snapshot: uc_core::SystemClipboardSnapshot {
+                snapshot: SystemClipboardSnapshot {
                     ts_ms: 1,
                     representations: vec![ObservedClipboardRepresentation::new_local_file(
                         RepresentationId::new(),
                         FormatId::from("files"),
-                        Some(uc_core::MimeType("text/plain".into())),
+                        Some(uc_platform::clipboard::MimeType("text/plain".into())),
                         path.clone(),
                         18,
                     )],
@@ -561,23 +589,23 @@ mod tests {
 
     #[test]
     fn pending_platform_snapshot_is_consumed_before_a_fresh_clipboard_read() {
-        let pending = uc_core::SystemClipboardSnapshot {
+        let pending = SystemClipboardSnapshot {
             ts_ms: 7,
             representations: vec![ObservedClipboardRepresentation::new(
                 RepresentationId::new(),
                 FormatId::from("text"),
-                Some(uc_core::MimeType("text/plain".into())),
+                Some(uc_platform::clipboard::MimeType("text/plain".into())),
                 b"event snapshot".to_vec(),
             )],
             file_content_digests: Vec::new(),
             file_set_v1_component: None,
         };
-        let fresh = uc_core::SystemClipboardSnapshot {
+        let fresh = SystemClipboardSnapshot {
             ts_ms: 8,
             representations: vec![ObservedClipboardRepresentation::new(
                 RepresentationId::new(),
                 FormatId::from("text"),
-                Some(uc_core::MimeType("text/plain".into())),
+                Some(uc_platform::clipboard::MimeType("text/plain".into())),
                 b"fresh snapshot".to_vec(),
             )],
             file_content_digests: Vec::new(),

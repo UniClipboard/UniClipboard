@@ -2,7 +2,6 @@
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use uc_core::file_transfer::FileTransferDirection;
 use utoipa::ToSchema;
 
 /// Daemon residency mode reported in the health/status handshake (ADR-008 P5-L L1).
@@ -123,6 +122,13 @@ pub struct PresenceRefreshResponse {
     pub online: u32,
     pub offline: u32,
     pub errors: u32,
+}
+
+/// File-transfer direction carried by the daemon wire protocol.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+pub enum FileTransferDirection {
+    Sending,
+    Receiving,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

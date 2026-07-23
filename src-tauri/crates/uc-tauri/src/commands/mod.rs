@@ -12,7 +12,14 @@ pub mod updater;
 pub mod window_chrome;
 
 use tracing::Span;
-use uc_core::ports::observability::TraceMetadata;
+
+/// Trace context supplied by the webview for one Tauri command invocation.
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, specta::Type)]
+pub struct TraceMetadata {
+    pub trace_id: uuid::Uuid,
+    #[specta(type = specta_typescript::Number<u64>)]
+    pub timestamp: u64,
+}
 
 /// Get the OS process ID of the Tauri application.
 ///

@@ -86,13 +86,15 @@ where
         saw_any = true;
         match (a.usage(), a.addr()) {
             (iroh::endpoint::TransportAddrUsage::Active, TransportAddr::Ip(s))
-                if !is_filtered_ip(s.ip()) && active_direct.is_none() => {
-                    active_direct = Some(s.to_string());
-                }
+                if !is_filtered_ip(s.ip()) && active_direct.is_none() =>
+            {
+                active_direct = Some(s.to_string());
+            }
             (iroh::endpoint::TransportAddrUsage::Active, TransportAddr::Relay(u))
-                if active_relay.is_none() => {
-                    active_relay = Some(u.to_string());
-                }
+                if active_relay.is_none() =>
+            {
+                active_relay = Some(u.to_string());
+            }
             // Inactive / discovery candidates: do not promote, but keep
             // `saw_any = true` so the empty-set tail returns Offline only
             // when literally nothing is known.

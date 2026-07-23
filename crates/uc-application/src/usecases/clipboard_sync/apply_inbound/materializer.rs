@@ -18,7 +18,6 @@ use async_trait::async_trait;
 use tracing::{debug, info, warn};
 use url::Url;
 
-use uc_app_paths::DIRECTORY_RECEIVE_STAGING_PREFIX;
 use uc_core::clipboard::{
     ContentHash, EntryFileSet, EntryFileSetLine, EntryFileSetLineKind, FileSetMemberKind,
     FileSetMemberLocation, HashAlgorithm,
@@ -33,6 +32,7 @@ use uc_core::ports::{
     AttemptState, ClaimReceiveCommitPort, ClockPort, GetEntryAttemptPort, PublishPhase,
     ReceiveArtifact, ReceiveArtifactOwnership, ReceiveArtifactPhase, ReceiveArtifactRecord,
     ReceiveArtifactResolution, RecordDirectoryPublishPort, RecordReceiveArtifactsPort,
+    DIRECTORY_RECEIVE_STAGING_PREFIX,
 };
 use uc_core::{MimeType, ObservedClipboardRepresentation, SystemClipboardSnapshot};
 

@@ -21,7 +21,6 @@ pub mod clipboard;
 pub mod member;
 pub mod search;
 pub mod settings;
-pub mod setup_v2;
 pub mod upgrade;
 
 /// Pure projection from an application-facade view onto its wire DTO.

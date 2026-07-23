@@ -9,11 +9,7 @@ pub(crate) fn upgrade_status_to_dto(status: UpgradeStatusSummary) -> UpgradeStat
             UpgradeStatusDto::FreshInstall { current }
         }
         UpgradeStatusSummary::NoChange { current } => UpgradeStatusDto::NoChange { current },
-        UpgradeStatusSummary::Upgraded { from, to } => {
-            UpgradeStatusDto::Upgraded { from, to }
-        }
-        UpgradeStatusSummary::Downgraded { from, to } => {
-            UpgradeStatusDto::Downgraded { from, to }
-        }
+        UpgradeStatusSummary::Upgraded { from, to } => UpgradeStatusDto::Upgraded { from, to },
+        UpgradeStatusSummary::Downgraded { from, to } => UpgradeStatusDto::Downgraded { from, to },
     }
 }

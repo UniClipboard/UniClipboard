@@ -14,7 +14,7 @@ use axum::{Json, Router};
 use utoipa;
 
 use uc_daemon_contract::api::dto::envelope::ApiEnvelope;
-use uc_engine::internal::device::QUERY_LOCAL_DEVICE_FAILED_CODE;
+use uc_engine::error_codes::QUERY_LOCAL_DEVICE_FAILED_CODE;
 use uc_engine::{EngineError, Operation, OperationResult};
 
 use crate::api::dto::device::LocalDeviceInfoDto;

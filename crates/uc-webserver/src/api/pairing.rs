@@ -9,7 +9,7 @@ use axum::routing::post;
 use axum::{Json, Router};
 use utoipa;
 
-use uc_engine::internal::member::{
+use uc_engine::error_codes::{
     MEMBER_INVALID_INPUT_CODE, MEMBER_NOT_FOUND_CODE, MEMBER_UNAVAILABLE_CODE,
 };
 use uc_engine::{EngineError, Operation, OperationResult, RemoveMemberInput};

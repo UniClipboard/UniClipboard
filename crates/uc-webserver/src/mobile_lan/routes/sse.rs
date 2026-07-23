@@ -38,9 +38,7 @@ use tokio::sync::broadcast;
 use tokio::time::{Instant, Interval, MissedTickBehavior};
 use tokio_util::sync::CancellationToken;
 
-use uc_core::clipboard::ActiveClipboardState;
-use uc_core::mobile_sync::MobileDeviceId;
-use uc_engine::{MobileAuthenticatedSession, MobileCredential};
+use uc_engine::{ActiveClipboardChanged, MobileAuthenticatedSession, MobileCredential};
 use uc_mobile_proto::sse_event::{
     SseHello, SseResync, SseUpdate, SSE_EVENT_HELLO, SSE_EVENT_RESYNC, SSE_EVENT_UPDATE,
     SSE_HEARTBEAT_INTERVAL_SECS,
@@ -100,7 +98,7 @@ fn periodic(period: Duration) -> Interval {
 /// racing a concurrent eviction is harmless.
 struct RegistrationGuard {
     registry: Arc<SseConnectionRegistry>,
-    device_id: MobileDeviceId,
+    device_id: String,
     conn_id: uuid::Uuid,
 }
 
@@ -111,7 +109,7 @@ impl Drop for RegistrationGuard {
 }
 
 struct SseStreamState {
-    rx: broadcast::Receiver<ActiveClipboardState>,
+    rx: broadcast::Receiver<ActiveClipboardChanged>,
     cancel: CancellationToken,
     heartbeat: Interval,
     revalidate: Interval,
@@ -186,7 +184,7 @@ pub(super) async fn get_sse_clipboard(
     // registry cancels it directly to evict this connection under the
     // per-device cap.
     let cancel = state.cancel.child_token();
-    let device_id = MobileDeviceId::new(authed.device_id);
+    let device_id = authed.device_id;
 
     let conn_id = state
         .sse_registry
@@ -245,7 +243,7 @@ mod tests {
     use futures_util::StreamExt;
     use tower::ServiceExt;
 
-    use uc_core::ids::{DeviceId, EntryId};
+    use uc_engine::ActiveClipboardChanged;
 
     use crate::mobile_lan::routes::build_router;
     use crate::mobile_lan::test_support::{
@@ -298,12 +296,12 @@ mod tests {
         assert!(hello_frame.contains("event: hello"), "got {hello_frame:?}");
         assert!(hello_frame.contains("server_time_ms"));
 
-        let state = uc_core::clipboard::ActiveClipboardState::new(
-            "blake3v1:aa",
-            EntryId::new(),
-            42,
-            DeviceId::new("dev-a"),
-        );
+        let state = ActiveClipboardChanged {
+            snapshot_hash: "blake3v1:aa".into(),
+            entry_id: "entry-a".into(),
+            activated_at_ms: 42,
+            activated_by: "dev-a".into(),
+        };
         sse_source.send(state).unwrap();
 
         let update_frame = next_frame(&mut stream).await;
@@ -425,12 +423,12 @@ mod tests {
         // The handler already subscribed during the request above; these
         // sends overflow the receiver's buffer before it is ever polled.
         for i in 0..5u8 {
-            let state = uc_core::clipboard::ActiveClipboardState::new(
-                format!("blake3v1:{i}"),
-                EntryId::new(),
-                i as i64,
-                DeviceId::new("dev-a"),
-            );
+            let state = ActiveClipboardChanged {
+                snapshot_hash: format!("blake3v1:{i}"),
+                entry_id: format!("entry-{i}"),
+                activated_at_ms: i as i64,
+                activated_by: "dev-a".into(),
+            };
             sse_source.send(state).unwrap();
         }
 

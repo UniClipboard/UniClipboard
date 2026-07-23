@@ -10,6 +10,7 @@
 //! `schema_ver`): serde field names are the on-disk contract.
 
 use serde::{Deserialize, Serialize};
+use uc_core::ports::ConfigSourceMode;
 
 /// Current manifest schema version.
 ///
@@ -31,6 +32,24 @@ pub enum ManifestSourceMode {
     /// Layout that keeps data in the platform's per-user application data
     /// location.
     Installed,
+}
+
+impl From<ConfigSourceMode> for ManifestSourceMode {
+    fn from(value: ConfigSourceMode) -> Self {
+        match value {
+            ConfigSourceMode::Portable => Self::Portable,
+            ConfigSourceMode::Installed => Self::Installed,
+        }
+    }
+}
+
+impl From<ManifestSourceMode> for ConfigSourceMode {
+    fn from(value: ManifestSourceMode) -> Self {
+        match value {
+            ManifestSourceMode::Portable => Self::Portable,
+            ManifestSourceMode::Installed => Self::Installed,
+        }
+    }
 }
 
 /// Descriptive metadata inside a bundle archive.
@@ -84,5 +103,17 @@ mod tests {
     fn source_mode_serializes_to_stable_snake_case() {
         let json = serde_json::to_string(&ManifestSourceMode::Installed).unwrap();
         assert_eq!(json, "\"installed\"");
+    }
+
+    #[test]
+    fn source_mode_maps_to_and_from_the_domain_model() {
+        assert_eq!(
+            ManifestSourceMode::from(ConfigSourceMode::Portable),
+            ManifestSourceMode::Portable
+        );
+        assert_eq!(
+            ConfigSourceMode::from(ManifestSourceMode::Installed),
+            ConfigSourceMode::Installed
+        );
     }
 }

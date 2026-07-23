@@ -1,10 +1,9 @@
 use uc_bootstrap::{prepare_desktop_engine_host, DesktopEngineHost, DesktopHostFileHandles};
-use uc_core::config::AppConfig;
 use uc_engine::HostFileAccess;
 
 #[test]
 fn desktop_engine_host_has_a_single_preparation_entry() {
-    let _prepare: fn(&AppConfig) -> uc_bootstrap::WiringResult<DesktopEngineHost> =
+    let _prepare: fn() -> uc_bootstrap::WiringResult<DesktopEngineHost> =
         prepare_desktop_engine_host;
 }
 

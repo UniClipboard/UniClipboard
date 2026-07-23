@@ -9,6 +9,7 @@ pub mod entry_delivery;
 pub mod entry_file_set;
 pub mod entry_receive_attempt;
 pub mod file_transfer;
+#[cfg(feature = "lan-compat")]
 pub mod mobile_device_row;
 pub mod peer_address_row;
 pub mod receive_artifact_log;
@@ -29,6 +30,7 @@ pub use entry_delivery::{EntryDeliveryRow, NewEntryDeliveryRow};
 pub use entry_file_set::{EntryFileSetRow, NewEntryFileSetRow};
 pub use entry_receive_attempt::{EntryReceiveAttemptRow, NewEntryReceiveAttemptRow};
 pub use file_transfer::{FileTransferRow, NewFileTransferRow};
+#[cfg(feature = "lan-compat")]
 pub use mobile_device_row::{MobileDeviceRow, NewMobileDeviceRow};
 pub use peer_address_row::{NewPeerAddressRow, PeerAddressRow};
 pub use receive_artifact_log::{NewReceiveArtifactLogRow, ReceiveArtifactLogRow};

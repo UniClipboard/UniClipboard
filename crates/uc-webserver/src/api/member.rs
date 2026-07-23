@@ -8,7 +8,7 @@ use axum::{Json, Router};
 use tracing::{info, instrument};
 
 use uc_daemon_contract::api::dto::envelope::ApiEnvelope;
-use uc_engine::internal::member::{
+use uc_engine::error_codes::{
     MEMBER_INVALID_INPUT_CODE, MEMBER_NOT_FOUND_CODE, MEMBER_UNAVAILABLE_CODE,
 };
 use uc_engine::{
@@ -63,7 +63,7 @@ pub async fn get_member_sync_preferences_handler(
     let result = state
         .execute(Operation::QueryMemberSyncPreferences(
             QueryMemberSyncPreferencesInput {
-            device_id: device_id.clone(),
+                device_id: device_id.clone(),
             },
         ))
         .await
@@ -127,8 +127,8 @@ pub async fn update_member_sync_preferences_handler(
     let result = state
         .execute(Operation::UpdateMemberSyncPreferences(
             UpdateMemberSyncPreferencesInput {
-            device_id: device_id.clone(),
-            patch: payload.into_domain(),
+                device_id: device_id.clone(),
+                patch: payload.into_domain(),
             },
         ))
         .await

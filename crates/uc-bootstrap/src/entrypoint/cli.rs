@@ -3,7 +3,6 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use uc_core::config::AppConfig;
 use uc_engine::{Engine, EventStream};
 
 use crate::{prepare_desktop_engine_host, DesktopHostFileHandles};
@@ -39,7 +38,7 @@ pub async fn build_cli_engine_runtime(
     crate::observability::tracing::init_tracing_subscriber()?;
     crate::observability::tracing::install_panic_logging_hook();
 
-    let prepared = prepare_desktop_engine_host(&AppConfig::empty())?;
+    let prepared = prepare_desktop_engine_host()?;
     let file_handles = prepared.file_handles();
     let (config, host) = prepared.into_engine_start();
     let (engine, events) = Engine::start(config, host).await?;

@@ -1,7 +1,6 @@
 use anyhow::Result;
 use tauri::AppHandle;
 use tauri_plugin_autostart::ManagerExt as _;
-use uc_core::ports::AutostartPort;
 
 /// Tauri-specific runtime adapter for autostart functionality.
 ///
@@ -15,22 +14,19 @@ impl TauriAutostart {
     pub(crate) fn new(app_handle: AppHandle) -> Self {
         Self { app_handle }
     }
-}
-
-impl AutostartPort for TauriAutostart {
-    fn is_enabled(&self) -> Result<bool> {
+    pub(crate) fn is_enabled(&self) -> Result<bool> {
         self.app_handle
             .autolaunch()
             .is_enabled()
             .map_err(anyhow::Error::from)
     }
 
-    fn enable(&self) -> Result<()> {
+    pub(crate) fn enable(&self) -> Result<()> {
         self.app_handle.autolaunch().enable()?;
         Ok(())
     }
 
-    fn disable(&self) -> Result<()> {
+    pub(crate) fn disable(&self) -> Result<()> {
         self.app_handle.autolaunch().disable()?;
         Ok(())
     }
@@ -50,7 +46,7 @@ impl AutostartPort for TauriAutostart {
 ///
 /// When disabling, the entry is removed only if it is currently present, so we
 /// never surface a spurious error from removing a registration that isn't there.
-pub(crate) fn reconcile_autostart(port: &dyn AutostartPort, desired: bool) -> Result<()> {
+pub(crate) fn reconcile_autostart(port: &TauriAutostart, desired: bool) -> Result<()> {
     if desired {
         port.enable()?;
         tracing::debug!("OS autostart registration (re)written for current executable");

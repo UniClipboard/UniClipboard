@@ -28,10 +28,9 @@ use uc_daemon_contract::api::dto::envelope::{
 };
 use uc_daemon_contract::api::dto::error::ApiErrorResponse;
 use uc_daemon_contract::constants::http_route;
-use uc_engine::internal::capture::CAPTURE_CURRENT_CLIPBOARD_FAILED_CODE;
-use uc_engine::internal::restore::{
-    RESTORE_CLIPBOARD_FAILED_CODE, RESTORE_CLIPBOARD_NOT_FOUND_CODE,
-    RESTORE_CLIPBOARD_UNAVAILABLE_CODE,
+use uc_engine::error_codes::{
+    CAPTURE_CURRENT_CLIPBOARD_FAILED_CODE, RESTORE_CLIPBOARD_FAILED_CODE,
+    RESTORE_CLIPBOARD_NOT_FOUND_CODE, RESTORE_CLIPBOARD_UNAVAILABLE_CODE,
 };
 use uc_engine::{
     ClipboardRestoreMode, ClipboardRestoreOutcome, EngineError, Operation, OperationResult,

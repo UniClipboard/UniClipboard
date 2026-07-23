@@ -10,11 +10,11 @@
 //! Protocol-agnostic via [`super::backend::OfferLike`]; reused by both
 //! `wlr-data-control` and `ext-data-control`.
 
+use crate::clipboard::RepresentationId;
+use crate::clipboard::{MimeType, ObservedClipboardRepresentation, SystemClipboardSnapshot};
 use anyhow::Result;
 use std::time::Duration;
 use tracing::{debug, warn};
-use uc_core::clipboard::{MimeType, ObservedClipboardRepresentation, SystemClipboardSnapshot};
-use uc_core::ids::RepresentationId;
 use wayland_client::Connection;
 
 use super::super::mime::{

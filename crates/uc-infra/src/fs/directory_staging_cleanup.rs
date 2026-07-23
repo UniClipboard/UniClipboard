@@ -2,8 +2,9 @@ use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
 use async_trait::async_trait;
-use uc_app_paths::DIRECTORY_RECEIVE_STAGING_PREFIX;
-use uc_core::ports::{CleanupDirectoryStagingPort, DirectoryStagingCleanupError};
+use uc_core::ports::{
+    CleanupDirectoryStagingPort, DirectoryStagingCleanupError, DIRECTORY_RECEIVE_STAGING_PREFIX,
+};
 
 #[derive(Debug, Default)]
 pub struct FsDirectoryStagingCleaner;

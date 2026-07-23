@@ -1,35 +1,9 @@
-//! # 为什么需要这个模块
+//! Mobile LAN compatibility listener lifecycle.
 //!
-//! 让用户切换"移动端同步"开关、改监听端口后**立即生效**,不再要求重启
-//! daemon (历史上点一次 toggle = 弹"请重启"横幅 = 整个 GUI 进程重启,
-//! 对首次添加移动设备的用户极不友好,详见 `.planning/quick/260511-mobile-sync-no-restart/findings.md`)。
-//!
-//! 关键约束:LAN 监听器是普通 axum HTTP server,与 iroh `BIND_LOCK`
-//! (Pitfall 3 进程级单次 bind)毫无关系,本来就可以在同一个进程内反复
-//! cancel + rebind。`uc-webserver/tests/graceful_shutdown_port_reuse.rs`
-//! 早就为这一点钉死了契约。本模块就是把这个能力落地。
-//!
-//! # 对外能力
-//!
-//! [`MobileLanLifecycleController`] 实现 [`MobileLanLifecyclePort`] 的
-//! `apply(target)` 状态对齐契约。调用方传"我希望监听器现在是什么状态"
-//! (Disabled / Enabled{port}),controller 负责把当前实际状态推到那个值。
-//!
-//! The daemon owns this controller beside the shared [`Engine`]. Startup and
-//! settings changes both reconcile the listener to the desired target, and
-//! shutdown always applies `Disabled` to release the bound port.
-//!
-//! # 内部实现要点
-//!
-//! - 状态机契约见 [`MobileLanLifecyclePort`] doc-comment。本 adapter 用
-//!   `tokio::sync::Mutex<Option<RunningListener>>` 串行化所有 transition,
-//!   保证并发 `apply` 不会出现"两个 listener 同时占同一端口"或"start
-//!   半路被 stop 打断"。
-//! - The production spawner owns the same shared [`Engine`] as the loopback API;
-//!   listener restarts never assemble another business runtime.
-//! - bind 失败**不通过返回值上报**,而是写 [`InMemoryMobileSyncEndpointInfoAdapter`]
-//!   的 `BindFailed{reason}` 三态。UI 通过同一 adapter 查询,避免"设置已落盘但
-//!   返回值反悔"的语义割裂。
+//! The daemon owns this controller beside the shared [`Engine`]. Startup,
+//! settings changes, and shutdown reconcile one listener to a desired local
+//! target. Listener restarts reuse the same engine and clipboard event stream;
+//! they never assemble another business runtime.
 
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::sync::Arc;
@@ -40,28 +14,20 @@ use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info, warn};
 
-use uc_core::clipboard::ActiveClipboardState;
-use uc_core::mobile_sync::LanEndpointInfo;
-use uc_core::ports::{MobileLanLifecyclePort, MobileLanTarget};
 use uc_engine::{
-    Engine, MobileLanEndpointUpdate, MobileSyncSettingsSummary, Operation, OperationResult,
+    ActiveClipboardChanged, Engine, MobileLanEndpointUpdate, MobileSyncSettingsSummary, Operation,
+    OperationResult,
 };
-use uc_infra::mobile_sync::InMemoryMobileSyncEndpointInfoAdapter;
 use uc_webserver::mobile_lan::{start_mobile_lan_server, MobileLanServerHandle};
 
-/// 当前运行中的 listener 引用 —— 用 cancel token 控制 graceful shutdown,
-/// 用 join handle 等待 axum::serve 任务真正退出(否则下次 bind 同端口可能撞
-/// TIME_WAIT 短暂占用)。
 struct RunningListener {
     port: u16,
     cancel: CancellationToken,
     join: JoinHandle<anyhow::Result<()>>,
 }
 
-/// 如何起一个 LAN listener。抽出来一是为了单测 mock,二是为了把"读 facade"
-/// 与"状态机推进"解耦 —— controller 不需要知道 facade 具体长什么样。
 #[async_trait]
-pub trait LanListenerSpawner: Send + Sync {
+trait LanListenerSpawner: Send + Sync {
     async fn spawn(
         &self,
         bind: SocketAddr,
@@ -77,13 +43,13 @@ pub trait LanListenerSpawner: Send + Sync {
 /// the spawner is long-lived and every listener restart (port change /
 /// toggle) reuses the same `Sender`, so there is no need to thread it
 /// through the [`LanListenerSpawner`] trait signature.
-pub struct MobileSyncListenerSpawner {
+struct MobileSyncListenerSpawner {
     engine: Arc<Engine>,
-    sse_source: broadcast::Sender<ActiveClipboardState>,
+    sse_source: broadcast::Sender<ActiveClipboardChanged>,
 }
 
 impl MobileSyncListenerSpawner {
-    pub fn new(engine: Arc<Engine>, sse_source: broadcast::Sender<ActiveClipboardState>) -> Self {
+    fn new(engine: Arc<Engine>, sse_source: broadcast::Sender<ActiveClipboardChanged>) -> Self {
         Self { engine, sse_source }
     }
 }
@@ -105,7 +71,7 @@ impl LanListenerSpawner for MobileSyncListenerSpawner {
     }
 }
 
-pub struct MobileLanLifecycleController {
+pub(crate) struct MobileLanLifecycleController {
     status_sink: Arc<dyn LanListenerStatusSink>,
     spawner: Arc<dyn LanListenerSpawner>,
     state: Mutex<Option<RunningListener>>,
@@ -157,40 +123,16 @@ impl LanListenerStatusSink for EngineLanListenerStatusSink {
     }
 }
 
-struct EndpointInfoStatusSink {
-    endpoint_info: Arc<InMemoryMobileSyncEndpointInfoAdapter>,
-}
-
-#[async_trait]
-impl LanListenerStatusSink for EndpointInfoStatusSink {
-    async fn stopped(&self) {
-        self.endpoint_info.clear().await;
-    }
-
-    async fn listening(&self, url: String) {
-        self.endpoint_info.set(LanEndpointInfo { url }).await;
-    }
-
-    async fn bind_failed(&self, reason: String) {
-        self.endpoint_info.set_bind_failure(reason).await;
-    }
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum LanListenerTarget {
+    Disabled,
+    Enabled { port: u16 },
 }
 
 impl MobileLanLifecycleController {
-    pub fn new(
-        endpoint_info: Arc<InMemoryMobileSyncEndpointInfoAdapter>,
-        spawner: Arc<dyn LanListenerSpawner>,
-    ) -> Self {
-        Self {
-            status_sink: Arc::new(EndpointInfoStatusSink { endpoint_info }),
-            spawner,
-            state: Mutex::new(None),
-        }
-    }
-
-    pub fn for_engine(
+    pub(crate) fn for_engine(
         engine: Arc<Engine>,
-        sse_source: broadcast::Sender<ActiveClipboardState>,
+        sse_source: broadcast::Sender<ActiveClipboardChanged>,
     ) -> Self {
         let spawner = Arc::new(MobileSyncListenerSpawner::new(
             Arc::clone(&engine),
@@ -203,11 +145,26 @@ impl MobileLanLifecycleController {
         }
     }
 
-    /// 内部:停止当前 listener(若有)。要在持锁状态下调用。
+    #[cfg(test)]
+    fn with_adapters(
+        status_sink: Arc<dyn LanListenerStatusSink>,
+        spawner: Arc<dyn LanListenerSpawner>,
+    ) -> Self {
+        Self {
+            status_sink,
+            spawner,
+            state: Mutex::new(None),
+        }
+    }
+
+    pub(crate) async fn disable(&self) {
+        self.reconcile(LanListenerTarget::Disabled).await;
+    }
+
+    /// Stops the current listener while holding the transition lock.
     async fn stop_locked(&self, guard: &mut tokio::sync::MutexGuard<'_, Option<RunningListener>>) {
         if let Some(running) = guard.take() {
             running.cancel.cancel();
-            // 等 axum::serve 真正退出 —— 否则上层立刻调 start 同端口会撞瞬时占用。
             match running.join.await {
                 Ok(Ok(())) => info!(port = running.port, "mobile LAN listener stopped"),
                 Ok(Err(e)) => {
@@ -221,8 +178,7 @@ impl MobileLanLifecycleController {
         }
     }
 
-    /// 内部:在指定端口起 listener。要在持锁状态下调用。bind 失败把错误写
-    /// endpoint_info 三态,state 保持 None,不返回错误(契约见 trait doc)。
+    /// Starts a listener while holding the transition lock.
     async fn start_locked(
         &self,
         guard: &mut tokio::sync::MutexGuard<'_, Option<RunningListener>>,
@@ -249,31 +205,24 @@ impl MobileLanLifecycleController {
                     error = %e,
                     "mobile LAN listener failed to bind"
                 );
-                // state 保持 None,下次 apply(Enabled) 可重试
+                // Keep the state empty so the next reconciliation can retry.
             }
         }
     }
-}
 
-#[async_trait]
-impl MobileLanLifecyclePort for MobileLanLifecycleController {
-    async fn apply(&self, target: MobileLanTarget) {
+    pub(crate) async fn reconcile(&self, target: LanListenerTarget) {
         let mut guard = self.state.lock().await;
         let current_port = guard.as_ref().map(|r| r.port);
         match (current_port, target) {
-            (None, MobileLanTarget::Disabled) => {
-                // 已经没监听器,no-op
-            }
-            (Some(_), MobileLanTarget::Disabled) => {
+            (None, LanListenerTarget::Disabled) => {}
+            (Some(_), LanListenerTarget::Disabled) => {
                 self.stop_locked(&mut guard).await;
             }
-            (None, MobileLanTarget::Enabled { port }) => {
+            (None, LanListenerTarget::Enabled { port }) => {
                 self.start_locked(&mut guard, port).await;
             }
-            (Some(p), MobileLanTarget::Enabled { port }) if p == port => {
-                // 同端口,no-op
-            }
-            (Some(_), MobileLanTarget::Enabled { port }) => {
+            (Some(p), LanListenerTarget::Enabled { port }) if p == port => {}
+            (Some(_), LanListenerTarget::Enabled { port }) => {
                 self.stop_locked(&mut guard).await;
                 self.start_locked(&mut guard, port).await;
             }
@@ -289,17 +238,17 @@ pub(crate) const DEFAULT_MOBILE_LAN_PORT: u16 = 42720;
 ///
 /// 仅当总开关 (`enabled`) 与 LAN 子开关 (`lan_listen_enabled`) **同时**打开
 /// 时才起监听器;端口缺省取 [`DEFAULT_MOBILE_LAN_PORT`]。`view` 为 `None`
-/// (启动期 settings 读取失败) 时保守返回 [`MobileLanTarget::Disabled`] ——
+/// (启动期 settings 读取失败) 时保守返回 [`LanListenerTarget::Disabled`] ——
 /// 之后仍可经设置变更把监听器拉起。
 ///
 /// **决策只依赖 settings,不接受任何 daemon 运行模式入参**:无头 server 节点
 /// ([`DaemonRunMode::ServerHeadless`](crate::daemon::run_mode::DaemonRunMode::ServerHeadless))
 /// 与普通 daemon 起的是同一个手机网关。保持本签名与 run mode 无关,正是这条
 /// 不变量的结构性保证 (issue #899 / ADR-007 §2.3)。
-pub(crate) fn initial_lan_target(view: Option<&MobileSyncSettingsSummary>) -> MobileLanTarget {
+pub(crate) fn initial_lan_target(view: Option<&MobileSyncSettingsSummary>) -> LanListenerTarget {
     match view {
         Some(view) => mobile_lan_target(view.enabled, view.lan_listen_enabled, view.lan_port),
-        _ => MobileLanTarget::Disabled,
+        _ => LanListenerTarget::Disabled,
     }
 }
 
@@ -307,13 +256,13 @@ pub(crate) fn mobile_lan_target(
     enabled: bool,
     lan_listen_enabled: bool,
     lan_port: Option<u16>,
-) -> MobileLanTarget {
+) -> LanListenerTarget {
     if enabled && lan_listen_enabled {
-        MobileLanTarget::Enabled {
+        LanListenerTarget::Enabled {
             port: lan_port.unwrap_or(DEFAULT_MOBILE_LAN_PORT),
         }
     } else {
-        MobileLanTarget::Disabled
+        LanListenerTarget::Disabled
     }
 }
 
@@ -321,8 +270,44 @@ pub(crate) fn mobile_lan_target(
 mod tests {
     use super::*;
     use std::sync::atomic::{AtomicU32, Ordering};
-    use uc_core::mobile_sync::LanListenerStatus;
-    use uc_core::ports::MobileSyncEndpointInfoPort;
+
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    enum RecordedStatus {
+        Stopped,
+        Listening(String),
+        BindFailed(String),
+    }
+
+    struct RecordingStatusSink {
+        status: Mutex<RecordedStatus>,
+    }
+
+    impl RecordingStatusSink {
+        fn new() -> Self {
+            Self {
+                status: Mutex::new(RecordedStatus::Stopped),
+            }
+        }
+
+        async fn current(&self) -> RecordedStatus {
+            self.status.lock().await.clone()
+        }
+    }
+
+    #[async_trait]
+    impl LanListenerStatusSink for RecordingStatusSink {
+        async fn stopped(&self) {
+            *self.status.lock().await = RecordedStatus::Stopped;
+        }
+
+        async fn listening(&self, url: String) {
+            *self.status.lock().await = RecordedStatus::Listening(url);
+        }
+
+        async fn bind_failed(&self, reason: String) {
+            *self.status.lock().await = RecordedStatus::BindFailed(reason);
+        }
+    }
 
     /// 测试用 spawner:起一个空 axum router 服务,可被 cancel。
     ///
@@ -382,16 +367,13 @@ mod tests {
 
     fn build(
         spawner: Arc<FakeSpawner>,
-    ) -> (
-        Arc<MobileLanLifecycleController>,
-        Arc<InMemoryMobileSyncEndpointInfoAdapter>,
-    ) {
-        let endpoint_info = Arc::new(InMemoryMobileSyncEndpointInfoAdapter::new());
-        let controller = Arc::new(MobileLanLifecycleController::new(
-            endpoint_info.clone(),
+    ) -> (Arc<MobileLanLifecycleController>, Arc<RecordingStatusSink>) {
+        let status = Arc::new(RecordingStatusSink::new());
+        let controller = Arc::new(MobileLanLifecycleController::with_adapters(
+            status.clone(),
             spawner,
         ));
-        (controller, endpoint_info)
+        (controller, status)
     }
 
     /// 测试用固定端口。FakeSpawner 已经不真实 bind, 这里随便选两个不冲突
@@ -406,13 +388,10 @@ mod tests {
         let spawner = Arc::new(FakeSpawner::new());
         let (c, ei) = build(spawner.clone());
 
-        c.apply(MobileLanTarget::Disabled).await;
+        c.reconcile(LanListenerTarget::Disabled).await;
 
         assert_eq!(spawner.starts.load(Ordering::SeqCst), 0);
-        assert_eq!(
-            ei.current_status().await.unwrap(),
-            LanListenerStatus::Stopped
-        );
+        assert_eq!(ei.current().await, RecordedStatus::Stopped);
     }
 
     #[tokio::test]
@@ -420,19 +399,19 @@ mod tests {
         let spawner = Arc::new(FakeSpawner::new());
         let (c, ei) = build(spawner.clone());
 
-        c.apply(MobileLanTarget::Enabled { port: FIXED_PORT_A })
+        c.reconcile(LanListenerTarget::Enabled { port: FIXED_PORT_A })
             .await;
 
         assert_eq!(spawner.starts.load(Ordering::SeqCst), 1);
-        match ei.current_status().await.unwrap() {
-            LanListenerStatus::Listening(ep) => {
-                assert!(ep.url.starts_with("http://"), "got {}", ep.url);
+        match ei.current().await {
+            RecordedStatus::Listening(url) => {
+                assert!(url.starts_with("http://"), "got {url}");
             }
             other => panic!("expected Listening, got {:?}", other),
         }
 
         // cleanup —— 让 axum task 退出, 否则 test runtime 警告
-        c.apply(MobileLanTarget::Disabled).await;
+        c.reconcile(LanListenerTarget::Disabled).await;
     }
 
     #[tokio::test]
@@ -440,15 +419,12 @@ mod tests {
         let spawner = Arc::new(FakeSpawner::new());
         let (c, ei) = build(spawner.clone());
 
-        c.apply(MobileLanTarget::Enabled { port: FIXED_PORT_A })
+        c.reconcile(LanListenerTarget::Enabled { port: FIXED_PORT_A })
             .await;
-        c.apply(MobileLanTarget::Disabled).await;
+        c.reconcile(LanListenerTarget::Disabled).await;
 
         assert_eq!(spawner.starts.load(Ordering::SeqCst), 1);
-        assert_eq!(
-            ei.current_status().await.unwrap(),
-            LanListenerStatus::Stopped
-        );
+        assert_eq!(ei.current().await, RecordedStatus::Stopped);
     }
 
     #[tokio::test]
@@ -459,9 +435,9 @@ mod tests {
         // 起一次固定端口 → 再 apply 同一个固定端口。controller 的 state
         // 字段存的是"请求的 port",所以 (Some(FIXED_PORT_A), Enabled{FIXED_PORT_A})
         // 必须命中 no-op 分支,FakeSpawner 不会被第二次调用。
-        c.apply(MobileLanTarget::Enabled { port: FIXED_PORT_A })
+        c.reconcile(LanListenerTarget::Enabled { port: FIXED_PORT_A })
             .await;
-        c.apply(MobileLanTarget::Enabled { port: FIXED_PORT_A })
+        c.reconcile(LanListenerTarget::Enabled { port: FIXED_PORT_A })
             .await;
 
         assert_eq!(
@@ -476,7 +452,7 @@ mod tests {
             assert_eq!(guard.as_ref().expect("running").port, FIXED_PORT_A);
         }
 
-        c.apply(MobileLanTarget::Disabled).await;
+        c.reconcile(LanListenerTarget::Disabled).await;
     }
 
     #[tokio::test]
@@ -485,12 +461,12 @@ mod tests {
         let (c, ei) = build(spawner.clone());
 
         // 起一次 FIXED_PORT_A
-        c.apply(MobileLanTarget::Enabled { port: FIXED_PORT_A })
+        c.reconcile(LanListenerTarget::Enabled { port: FIXED_PORT_A })
             .await;
         assert_eq!(spawner.starts.load(Ordering::SeqCst), 1);
 
         // 切换到 FIXED_PORT_B → controller 视角是不同 port,触发 stop + start
-        c.apply(MobileLanTarget::Enabled { port: FIXED_PORT_B })
+        c.reconcile(LanListenerTarget::Enabled { port: FIXED_PORT_B })
             .await;
         assert_eq!(
             spawner.starts.load(Ordering::SeqCst),
@@ -498,12 +474,9 @@ mod tests {
             "different-port apply must re-spawn once"
         );
         // 起来后 endpoint_info 还是 Listening(端口取决于 OS,只断言状态种类)
-        assert!(matches!(
-            ei.current_status().await.unwrap(),
-            LanListenerStatus::Listening(_)
-        ));
+        assert!(matches!(ei.current().await, RecordedStatus::Listening(_)));
 
-        c.apply(MobileLanTarget::Disabled).await;
+        c.reconcile(LanListenerTarget::Disabled).await;
     }
 
     #[tokio::test]
@@ -512,7 +485,7 @@ mod tests {
         spawner.arm_bind_failure(1); // 第一次 spawn 失败
         let (c, ei) = build(spawner.clone());
 
-        c.apply(MobileLanTarget::Enabled { port: FIXED_PORT_A })
+        c.reconcile(LanListenerTarget::Enabled { port: FIXED_PORT_A })
             .await;
 
         assert_eq!(spawner.starts.load(Ordering::SeqCst), 1);
@@ -522,8 +495,8 @@ mod tests {
             assert!(guard.is_none(), "state must stay None after bind failure");
         }
         // endpoint_info 写了 BindFailed
-        match ei.current_status().await.unwrap() {
-            LanListenerStatus::BindFailed { reason } => {
+        match ei.current().await {
+            RecordedStatus::BindFailed(reason) => {
                 assert!(reason.contains("simulated bind failure"));
             }
             other => panic!("expected BindFailed, got {:?}", other),
@@ -531,15 +504,12 @@ mod tests {
 
         // 下一次 apply(Enabled) 不应被失败状态阻塞 —— controller 视角仍然
         // 是 (None, Enabled) 应当 spawn,本次 spawner 不再失败 → 成功
-        c.apply(MobileLanTarget::Enabled { port: FIXED_PORT_A })
+        c.reconcile(LanListenerTarget::Enabled { port: FIXED_PORT_A })
             .await;
         assert_eq!(spawner.starts.load(Ordering::SeqCst), 2);
-        assert!(matches!(
-            ei.current_status().await.unwrap(),
-            LanListenerStatus::Listening(_)
-        ));
+        assert!(matches!(ei.current().await, RecordedStatus::Listening(_)));
 
-        c.apply(MobileLanTarget::Disabled).await;
+        c.reconcile(LanListenerTarget::Disabled).await;
     }
 
     // ── initial_lan_target: 启动期 LAN 目标决策 (纯函数, run-mode 无关) ──
@@ -569,7 +539,7 @@ mod tests {
         let v = settings_view(true, true, Some(FIXED_PORT_B));
         assert_eq!(
             initial_lan_target(Some(&v)),
-            MobileLanTarget::Enabled { port: FIXED_PORT_B }
+            LanListenerTarget::Enabled { port: FIXED_PORT_B }
         );
     }
 
@@ -579,7 +549,7 @@ mod tests {
         let v = settings_view(true, true, None);
         assert_eq!(
             initial_lan_target(Some(&v)),
-            MobileLanTarget::Enabled {
+            LanListenerTarget::Enabled {
                 port: DEFAULT_MOBILE_LAN_PORT
             }
         );
@@ -589,20 +559,20 @@ mod tests {
     fn initial_lan_target_master_switch_off_is_disabled() {
         // 总开关关 —— 即便 LAN 子开关开着、端口也设了,也不起监听器。
         let v = settings_view(false, true, Some(FIXED_PORT_B));
-        assert_eq!(initial_lan_target(Some(&v)), MobileLanTarget::Disabled);
+        assert_eq!(initial_lan_target(Some(&v)), LanListenerTarget::Disabled);
     }
 
     #[test]
     fn initial_lan_target_lan_subswitch_off_is_disabled() {
         // 总开关开但 LAN 子开关关 → 不对外暴露 LAN 网关。
         let v = settings_view(true, false, Some(FIXED_PORT_B));
-        assert_eq!(initial_lan_target(Some(&v)), MobileLanTarget::Disabled);
+        assert_eq!(initial_lan_target(Some(&v)), LanListenerTarget::Disabled);
     }
 
     #[test]
     fn initial_lan_target_unreadable_settings_is_disabled() {
         // 启动期 settings 读取失败 (None) → 保守 Disabled,之后可经设置变更拉起。
-        assert_eq!(initial_lan_target(None), MobileLanTarget::Disabled);
+        assert_eq!(initial_lan_target(None), LanListenerTarget::Disabled);
     }
 
     #[test]

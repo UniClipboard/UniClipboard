@@ -7,6 +7,7 @@ description = "Infrastructure utilities and shared components for UniClipboard"
 
 [features]
 default = []
+lan-compat = ["dep:network-interface"]
 # Allows test harnesses to bind sponsor and joiner endpoints in one process.
 # Production builds must not enable it: the runtime lease must reject a second
 # live node. See src/network/iroh/node.rs for the production lifecycle guard.
@@ -15,12 +16,9 @@ test-util = []
 [dependencies]
 # ===== Workspace crates =====
 uc-core = { path = "../uc-core" }
-# Panic-visible background-task spawning (`spawn_supervised`) for detached
-# infra tasks that have no natural handle owner (e.g. the pairing recv-pump).
-uc-observability = { path = "../uc-observability" }
-# Directory-layout authority: config-migration reads `is_portable()` to record
-# the bundle's source storage mode.
-uc-app-paths = { path = "../uc-app-paths" }
+# Portable panic-visible supervision for detached tasks that have no natural
+# handle owner (for example, the pairing receive pump).
+uc-observability-contract = { path = "../uc-observability-contract" }
 
 # Serialization
 serde = { version = "1", features = ["derive"] }
@@ -140,7 +138,7 @@ bytes = "1.7"
 # Mobile-sync v1 LAN interface enumeration (`NetworkInterfaceLanProbe`).
 # Cross-platform wrapper over getifaddrs / GetAdaptersAddresses; we only
 # read IPv4 addresses + interface name, no other features pulled in.
-network-interface = "2.0"
+network-interface = { version = "2.0", optional = true }
 # Config-migration bundle: pack/unpack the plaintext archive that gets sealed
 # inside a `.ucbundle`. Plain (uncompressed) tar — no compression layer, so the
 # AEAD ciphertext does not leak archive structure through compression ratios.

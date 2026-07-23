@@ -1,6 +1,6 @@
 # PROJECT KNOWLEDGE BASE
 
-**Last refreshed:** 2026-07-22 (auto; 27 workspace crates)
+**Last refreshed:** 2026-07-23 (auto; 27 workspace crates)
 
 ## OVERVIEW
 
@@ -53,7 +53,8 @@ Rust monorepo workspace (root `Cargo.toml`) with strict hexagonal boundaries: li
 | -------------------------------- | ------------------------------------------ | ------------------------------------------------------------- |
 | Tauri run loop & setup           | `src-tauri/crates/uc-tauri/src/run.rs`     | `run()` (line ~200); window/lifecycle, `.manage(...)`, `.setup(...)` |
 | IPC command registration         | `src-tauri/crates/uc-tauri/src/specta_builder.rs` | tauri-specta single source of truth (runtime invoke + codegen) |
-| Dependency composition           | `crates/uc-bootstrap/src/wiring/wire.rs`   | `wire_dependencies(...)` orchestrator + InfraLayer construction (composition root) |
+| Engine composition               | `crates/uc-engine/src/assembly/`           | Host adapters, infra construction, sync/transfer wiring                            |
+| Desktop host preparation         | `crates/uc-bootstrap/src/wiring/`          | Desktop paths, secure storage and clipboard selection                              |
 | Runtime/usecase accessors        | `src-tauri/crates/uc-tauri/src/bootstrap/runtime.rs` | `AppRuntime`, `usecases()` factory                            |
 | Tauri commands                   | `src-tauri/crates/uc-tauri/src/commands/`  | Commands call app-layer usecases (or daemon HTTP since ADR-008) |
 | Domain contracts (ports)         | `crates/uc-core/src/ports/`                | Add traits here first                                         |
@@ -69,14 +70,15 @@ Rust monorepo workspace (root `Cargo.toml`) with strict hexagonal boundaries: li
 | -------------------------- | ---------- | ------------------------------------------ | ---------------------------------- |
 | `main` | fn | `src-tauri/src/main.rs` | Process entry; calls `uc_tauri::run` |
 | `run` | fn | `src-tauri/crates/uc-tauri/src/run.rs` | Tauri builder + window/run loop |
-| `wire_dependencies` | fn | `crates/uc-bootstrap/src/wiring/wire.rs` | Hex boundary composition (port→adapter) |
+| `wire_dependencies_from_inputs` | fn | `crates/uc-engine/src/assembly/wire/mod.rs` | Portable engine composition (port→adapter) |
 | `build` (specta) | fn | `src-tauri/crates/uc-tauri/src/specta_builder.rs` | IPC command registration (single source) |
 
 ## CONVENTIONS (PROJECT-SPECIFIC)
 
 - Rust commands run from the repo root (the cargo workspace root); stop if `Cargo.toml` absent.
 - Keep `uc-core` pure; no infra/platform dependencies in core.
-- New external capability flow: `uc-core/ports` trait -> adapter in `uc-infra` or `uc-platform` -> wire in `uc-bootstrap/src/wiring/wire.rs`.
+- New portable engine capability flow: `uc-core/ports` trait -> adapter in `uc-infra` -> wire in `uc-engine/src/assembly/`.
+- Desktop-only capability flow: platform adapter -> `uc-bootstrap/src/wiring/` -> `HostCapabilities` -> `Engine::start`.
 - Tauri command pattern: command -> `runtime.usecases().x()`; avoid direct `deps` access from command layer.
 - Event payloads emitted via `app.emit()` must use `#[serde(rename_all = "camelCase")]`.
 - Use `tracing` structured logs; avoid `println!/eprintln!/log` macros in production.
@@ -101,7 +103,7 @@ Rust monorepo workspace (root `Cargo.toml`) with strict hexagonal boundaries: li
 
 ## COMPLEXITY HOTSPOTS
 
-- `crates/uc-bootstrap/src/wiring/wire.rs` (~1k lines): global hex wiring (port→adapter) — InfraLayer construction + `wire_dependencies` orchestrator, one cohesive unit; smallest safe edits only. (uc-bootstrap is now a subdir tree: `layer/` `wiring/` `subsystem/` `entrypoint/` `startup/` `observability/`; see `docs/architecture/uc-bootstrap-redesign.md`.)
+- `crates/uc-engine/src/assembly/wire/`: portable engine composition; concrete infrastructure construction is isolated in `infra.rs`, final assembly remains in `mod.rs`.
 - `crates/uc-infra/src/network/iroh/` (`node.rs` ~1.7k lines, `presence_adapter.rs` ~1.5k): iroh endpoint/event-loop internals; preserve non-blocking progress, keep business rules out.
 - `crates/uc-platform/src/clipboard/platform/linux/` (X11 + Wayland): most-churned area lately; MIME-alias / self-echo race fixes cluster here.
 - `crates/uc-application/src/usecases/mobile_sync/` (`apply_incoming.rs` ~2.1k lines): large, actively-evolving LAN mobile-sync flows.

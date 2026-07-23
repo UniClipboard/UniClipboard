@@ -18,12 +18,11 @@ use serde::Deserialize;
 use tracing::{debug, info, instrument};
 use uc_daemon_contract::api::dto::envelope::ApiEnvelope;
 use uc_daemon_contract::constants::http_route;
-use uc_engine::internal::encryption::QUERY_ENCRYPTION_STATE_FAILED_CODE;
-use uc_engine::internal::search::{
-    SEARCH_BAD_REQUEST_CODE, SEARCH_FAILED_CODE, SEARCH_INDEX_NOT_READY_CODE,
-    SEARCH_INDEX_REBUILDING_CODE, SEARCH_INDEX_UNAVAILABLE_CODE, SEARCH_INVALID_QUERY_CODE,
-    SEARCH_REBUILD_ALREADY_RUNNING_CODE, SEARCH_SERVICE_UNAVAILABLE_CODE,
-    SEARCH_SESSION_LOCKED_CODE,
+use uc_engine::error_codes::{
+    QUERY_ENCRYPTION_STATE_FAILED_CODE, SEARCH_BAD_REQUEST_CODE, SEARCH_FAILED_CODE,
+    SEARCH_INDEX_NOT_READY_CODE, SEARCH_INDEX_REBUILDING_CODE, SEARCH_INDEX_UNAVAILABLE_CODE,
+    SEARCH_INVALID_QUERY_CODE, SEARCH_REBUILD_ALREADY_RUNNING_CODE,
+    SEARCH_SERVICE_UNAVAILABLE_CODE, SEARCH_SESSION_LOCKED_CODE,
 };
 use uc_engine::{EngineError, Operation, OperationResult, SearchEntriesInput};
 use utoipa::IntoParams;

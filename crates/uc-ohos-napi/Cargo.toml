@@ -19,6 +19,7 @@ zeroize = "1.8"
 napi-build = "2.1"
 
 [dev-dependencies]
+cargo_metadata = "0.19.2"
 napi = { version = "2.16.17", default-features = false, features = ["noop"] }
 napi-derive = { version = "2.16.13", features = ["noop"] }
 

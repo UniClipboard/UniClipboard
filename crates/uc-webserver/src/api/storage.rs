@@ -11,9 +11,7 @@ use axum::http::StatusCode;
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use uc_daemon_contract::api::dto::envelope::ApiEnvelope;
-use uc_engine::internal::storage::{
-    CLEAR_STORAGE_CACHE_FAILED_CODE, QUERY_STORAGE_STATS_FAILED_CODE,
-};
+use uc_engine::error_codes::{CLEAR_STORAGE_CACHE_FAILED_CODE, QUERY_STORAGE_STATS_FAILED_CODE};
 use uc_engine::{EngineError, Operation, OperationResult};
 
 // Storage DTOs relocated to the contract crate (ADR-008 §C.4). The handlers keep

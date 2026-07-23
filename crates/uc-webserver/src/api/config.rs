@@ -212,9 +212,7 @@ async fn preview_import_handler(
         .await
         .map_err(|error| map_config_engine_error("preview_import", error))?;
     let preview = match result {
-        OperationResult::ConfigImportPreview(ConfigImportPreviewOutcome::Ready(preview)) => {
-            preview
-        }
+        OperationResult::ConfigImportPreview(ConfigImportPreviewOutcome::Ready(preview)) => preview,
         OperationResult::ConfigImportPreview(
             ConfigImportPreviewOutcome::InvalidPasswordOrCorrupt,
         ) => return Err(invalid_bundle_error()),
@@ -289,12 +287,12 @@ async fn import_config_handler(
         OperationResult::ConfigImportStaged(ConfigImportStageOutcome::Staged {
             unlock_required_after_apply,
         }) => unlock_required_after_apply,
-        OperationResult::ConfigImportStaged(
-            ConfigImportStageOutcome::InvalidPasswordOrCorrupt,
-        ) => return Err(invalid_bundle_error()),
-        OperationResult::ConfigImportStaged(ConfigImportStageOutcome::Incompatible {
-            reason,
-        }) => return Err(incompatible_bundle_error(reason)),
+        OperationResult::ConfigImportStaged(ConfigImportStageOutcome::InvalidPasswordOrCorrupt) => {
+            return Err(invalid_bundle_error())
+        }
+        OperationResult::ConfigImportStaged(ConfigImportStageOutcome::Incompatible { reason }) => {
+            return Err(incompatible_bundle_error(reason))
+        }
         _ => {
             return Err(ApiError::internal(
                 "engine returned an unexpected config-import result",
@@ -302,10 +300,7 @@ async fn import_config_handler(
         }
     };
 
-    info!(
-        unlock_required_after_apply,
-        "config import staged"
-    );
+    info!(unlock_required_after_apply, "config import staged");
     Ok(Json(ApiEnvelope::now(ImportConfigResponse {
         staged_ok: true,
         unlock_required_after_apply,

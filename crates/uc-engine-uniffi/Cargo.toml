@@ -28,6 +28,7 @@ jni = "0.21"
 ndk-context = "0.1"
 
 [dev-dependencies]
+cargo_metadata = "0.19.2"
 tempfile = "3"
 
 [lints]

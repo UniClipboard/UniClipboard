@@ -25,14 +25,14 @@ use std::sync::Arc;
 use diesel::sql_query;
 use diesel::RunQueryDsl;
 
-use uc_bootstrap::startup::pending_import::apply_pending_import;
 use uc_core::crypto::domain::Passphrase;
 use uc_core::ids::{ProfileId, SpaceId};
 use uc_core::ports::config_migration::{
-    ConfigMigrationError, ExportConfigBundlePort, StageConfigImportPort,
+    ConfigMigrationError, ConfigSourceMode, ExportConfigBundlePort, StageConfigImportPort,
 };
 use uc_core::ports::space::SpaceAccessStore;
-use uc_core::ports::{LocalIdentityPort, SecureStoragePort};
+use uc_core::ports::{LocalIdentityPort, SecureStorageError, SecureStoragePort};
+use uc_infra::config_migration::staging::apply_pending_import;
 use uc_infra::config_migration::staging::StagingLayout;
 use uc_infra::config_migration::{ConfigMigrationAdapter, ConfigMigrationPaths};
 use uc_infra::db::pool::{init_db_pool, DbPool};
@@ -44,6 +44,53 @@ use uc_infra::security::{
 };
 use uc_infra::SystemClock;
 use uc_platform::file_secure_storage::FileSecureStorage;
+use uc_platform::ports::{
+    SecureStorageError as PlatformSecureStorageError,
+    SecureStorageProvider as PlatformSecureStorage,
+};
+
+struct CoreSecureStorageAdapter {
+    inner: Arc<FileSecureStorage>,
+}
+
+impl SecureStoragePort for CoreSecureStorageAdapter {
+    fn get(&self, key: &str) -> Result<Option<Vec<u8>>, SecureStorageError> {
+        self.inner.get(key).map_err(map_platform_storage_error)
+    }
+
+    fn set(&self, key: &str, value: &[u8]) -> Result<(), SecureStorageError> {
+        self.inner
+            .set(key, value)
+            .map_err(map_platform_storage_error)
+    }
+
+    fn delete(&self, key: &str) -> Result<(), SecureStorageError> {
+        self.inner.delete(key).map_err(map_platform_storage_error)
+    }
+}
+
+fn map_platform_storage_error(error: PlatformSecureStorageError) -> SecureStorageError {
+    match error {
+        PlatformSecureStorageError::Unavailable(message) => {
+            SecureStorageError::Unavailable(message)
+        }
+        PlatformSecureStorageError::PermissionDenied(message) => {
+            SecureStorageError::PermissionDenied(message)
+        }
+        PlatformSecureStorageError::Corrupt(message) => SecureStorageError::Corrupt(message),
+        PlatformSecureStorageError::Other(message) => SecureStorageError::Other(message),
+    }
+}
+
+fn file_storage(
+    base_dir: std::path::PathBuf,
+) -> (Arc<dyn SecureStoragePort>, Arc<dyn PlatformSecureStorage>) {
+    let platform = Arc::new(FileSecureStorage::with_base_dir(base_dir));
+    let core: Arc<dyn SecureStoragePort> = Arc::new(CoreSecureStorageAdapter {
+        inner: Arc::clone(&platform),
+    });
+    (core, platform)
+}
 
 /// The single secure-storage key carried as a secret for the `default` profile.
 const KEK_KEY: &str = "kek:v1:profile:default";
@@ -111,8 +158,7 @@ async fn build_source(passphrase: &Passphrase) -> Source {
     // create the dir, so make it first (mirrors production keyring provisioning).
     let kek_keyring_dir = data_root.join("keyring");
     std::fs::create_dir_all(&kek_keyring_dir).unwrap();
-    let kek_storage: Arc<dyn SecureStoragePort> =
-        Arc::new(FileSecureStorage::with_base_dir(kek_keyring_dir));
+    let (kek_storage, _) = file_storage(kek_keyring_dir);
 
     // Real initialization: derives the KEK from `passphrase`, generates and wraps
     // a master key, writes `vault/keyslot.json`, and stores the KEK in the
@@ -141,8 +187,9 @@ async fn build_source(passphrase: &Passphrase) -> Source {
     )
     .unwrap();
 
+    let (identity_storage, _) = file_storage(iroh_identity_dir.clone());
     let local_identity: Arc<dyn LocalIdentityPort> = Arc::new(IrohIdentityStore::new(
-        Arc::new(FileSecureStorage::with_base_dir(iroh_identity_dir.clone())),
+        identity_storage,
         Arc::new(Sha256IdentityFingerprintFactory),
     ));
 
@@ -162,6 +209,7 @@ async fn build_source(passphrase: &Passphrase) -> Source {
         Arc::new(SystemClock),
         paths,
         ProfileId::from("default".to_string()),
+        ConfigSourceMode::Installed,
     );
 
     Source {
@@ -186,7 +234,8 @@ struct Target {
     vault_dir: std::path::PathBuf,
     settings_path: std::path::PathBuf,
     iroh_identity_dir: std::path::PathBuf,
-    secure_storage: Arc<dyn SecureStoragePort>,
+    core_secure_storage: Arc<dyn SecureStoragePort>,
+    secure_storage: Arc<dyn PlatformSecureStorage>,
     adapter: ConfigMigrationAdapter,
 }
 
@@ -214,11 +263,10 @@ fn build_target() -> Target {
     // boot apply step writes the bridged KEK here, so the dir must exist.
     let target_keyring_dir = data_root.join("keyring");
     std::fs::create_dir_all(&target_keyring_dir).unwrap();
-    let secure_storage: Arc<dyn SecureStoragePort> =
-        Arc::new(FileSecureStorage::with_base_dir(target_keyring_dir));
+    let (core_secure_storage, secure_storage) = file_storage(target_keyring_dir);
 
     let local_identity: Arc<dyn LocalIdentityPort> = Arc::new(IrohIdentityStore::new(
-        secure_storage.clone(),
+        core_secure_storage.clone(),
         Arc::new(Sha256IdentityFingerprintFactory),
     ));
 
@@ -231,12 +279,13 @@ fn build_target() -> Target {
     };
 
     let adapter = ConfigMigrationAdapter::new(
-        secure_storage.clone(),
+        core_secure_storage.clone(),
         pool,
         local_identity,
         Arc::new(SystemClock),
         paths,
         ProfileId::from("default".to_string()),
+        ConfigSourceMode::Installed,
     );
 
     Target {
@@ -246,6 +295,7 @@ fn build_target() -> Target {
         vault_dir,
         settings_path: data_root.join("settings.json"),
         iroh_identity_dir,
+        core_secure_storage,
         secure_storage,
         adapter,
     }
@@ -324,7 +374,7 @@ async fn export_stage_apply_round_trip_lands_db_vault_identity_and_kek() {
         &tgt.vault_dir,
         &tgt.settings_path,
         &tgt.iroh_identity_dir,
-        &tgt.secure_storage,
+        tgt.core_secure_storage.as_ref(),
     )
     .expect("apply_pending_import should succeed");
 

@@ -16,6 +16,7 @@ pub(crate) mod clipboard_restore;
 /// for the CLI `watch` command. Items inside keep their `pub(crate)` caps
 /// so the surface stays narrow.
 pub mod clipboard_sync;
+#[cfg(feature = "lan-compat")]
 pub(crate) mod mobile_sync;
 pub(crate) mod pairing;
 pub(crate) mod presence;

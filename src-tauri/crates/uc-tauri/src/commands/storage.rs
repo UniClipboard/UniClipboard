@@ -3,9 +3,9 @@
 
 use crate::commands::error::CommandError;
 use crate::commands::record_trace_fields;
+use crate::commands::TraceMetadata;
 use tauri_plugin_opener::OpenerExt;
 use tracing::{info_span, Instrument};
-use uc_core::ports::observability::TraceMetadata;
 
 /// Open the application data directory in the system file manager.
 /// 在系统文件管理器中打开应用数据目录。
@@ -24,7 +24,7 @@ pub async fn open_data_directory(
     record_trace_fields(&span, &_trace);
 
     async move {
-        let dir = runtime.storage_paths().app_data_root_dir.clone();
+        let dir = runtime.desktop().storage_paths().app_data_root_dir.clone();
         if !dir.exists() {
             return Err(CommandError::NotFound(format!(
                 "Directory does not exist: {}",
@@ -60,7 +60,7 @@ pub async fn open_logs_directory(
     record_trace_fields(&span, &_trace);
 
     async move {
-        let dir = runtime.storage_paths().logs_dir.clone();
+        let dir = runtime.desktop().storage_paths().logs_dir.clone();
         std::fs::create_dir_all(&dir).map_err(|e| {
             CommandError::InternalError(format!(
                 "Failed to create logs directory {}: {e}",

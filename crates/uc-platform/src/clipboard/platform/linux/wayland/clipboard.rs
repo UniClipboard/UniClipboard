@@ -1,11 +1,11 @@
-//! `SystemClipboardPort` facade for the Wayland data-control client.
+//! `SystemClipboard` facade for the Wayland data-control client.
 //!
 //! Delegates to whichever protocol-specific worker was selected at
 //! construction time (see [`super::protocol::try_new_clipboard`]).
 
+use crate::clipboard::SystemClipboard;
+use crate::clipboard::SystemClipboardSnapshot;
 use anyhow::Result;
-use uc_core::clipboard::SystemClipboardSnapshot;
-use uc_core::ports::SystemClipboardPort;
 
 use super::protocol::{ext::ExtClipboard, try_new_clipboard, wlr::WlrClipboard};
 
@@ -31,7 +31,7 @@ impl WaylandClipboard {
 }
 
 #[async_trait::async_trait]
-impl SystemClipboardPort for WaylandClipboard {
+impl SystemClipboard for WaylandClipboard {
     fn read_snapshot(&self) -> Result<SystemClipboardSnapshot> {
         match &self.inner {
             WaylandClipboardInner::Wlr(c) => c.read_snapshot(),

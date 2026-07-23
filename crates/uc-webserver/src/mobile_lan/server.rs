@@ -25,8 +25,7 @@ use tokio::sync::broadcast;
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
-use uc_core::clipboard::ActiveClipboardState;
-use uc_engine::Engine;
+use uc_engine::{ActiveClipboardChanged, Engine};
 
 use crate::mobile_lan::core::MobileLanCore;
 use crate::mobile_lan::routes::build_router;
@@ -52,7 +51,7 @@ pub async fn start_mobile_lan_server(
     bind: SocketAddr,
     cancel: CancellationToken,
     engine: Arc<Engine>,
-    sse_source: broadcast::Sender<ActiveClipboardState>,
+    sse_source: broadcast::Sender<ActiveClipboardChanged>,
 ) -> anyhow::Result<MobileLanServerHandle> {
     start_server(bind, cancel, MobileLanCore::new(engine), sse_source).await
 }
@@ -62,7 +61,7 @@ pub(crate) async fn start_mobile_lan_test_server<C>(
     bind: SocketAddr,
     cancel: CancellationToken,
     core: C,
-    sse_source: broadcast::Sender<ActiveClipboardState>,
+    sse_source: broadcast::Sender<ActiveClipboardChanged>,
 ) -> anyhow::Result<MobileLanServerHandle>
 where
     C: Into<MobileLanCore>,
@@ -74,7 +73,7 @@ async fn start_server(
     bind: SocketAddr,
     cancel: CancellationToken,
     core: MobileLanCore,
-    sse_source: broadcast::Sender<ActiveClipboardState>,
+    sse_source: broadcast::Sender<ActiveClipboardChanged>,
 ) -> anyhow::Result<MobileLanServerHandle> {
     let listener = tokio::net::TcpListener::bind(bind).await?;
     let bound_addr = listener.local_addr()?;

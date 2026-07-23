@@ -3,23 +3,18 @@ name = "uc-bootstrap"
 version.workspace = true
 license.workspace = true
 edition = "2021"
-description = "Composition root — sole crate allowed to depend on uc-core + uc-application + uc-infra + uc-platform simultaneously"
+description = "Desktop host capability preparation for uc-engine"
 
 [dependencies]
-uc-core = { path = "../uc-core", features = ["task-registry"] }
 uc-engine = { path = "../uc-engine" }
-uc-application = { path = "../uc-application" }
-uc-infra = { path = "../uc-infra" }
 uc-platform = { path = "../uc-platform" }
 uc-observability = { path = "../uc-observability" }
-uc-observability-contract = { path = "../uc-observability-contract" }
 # Directory-layout authority: used to locate the superseded `<data>/logs`
 # directory for one-time cleanup after logs moved to the platform-conventional
 # location.
 uc-app-paths = { path = "../uc-app-paths" }
 
 tokio = { version = "1", features = ["full"] }
-tokio-util = "0.7"
 anyhow = "1.0"
 thiserror = "2.0"
 tracing = "0.1"
@@ -45,21 +40,9 @@ sentry = { version = "0.48.1", default-features = false, features = [
   "tracing",
   "logs",
 ] }
-gethostname = "1.1"
-toml = "0.8"
 chrono = { version = "0.4", features = ["serde"] }
 async-trait = "0.1"
-# analytics::compose_event_context hashes the persisted SpaceId into the
-# 16-hex `space_id_hash` carried by every product analytics event. SHA-256
-# is the cheapest stdlib-friendly choice that keeps `space_id` un-recoverable
-# from the published hash (schema doc §6.3).
-sha2 = "0.10"
-# pending_import reads the boot-time staging contract owned by
-# uc-infra::config_migration::staging — the `pending-import.json` marker
-# (`PendingImportMarker`) and `secrets.json` (`SecretsFile`) are public
-# `Deserialize` types, so the composition root decodes them with serde_json
-# while applying a staged config import before the db pool / secure storage are
-# consumed.
+serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
 [features]
@@ -69,11 +52,9 @@ dev-profile = ["uc-platform/dev-profile"]
 [dev-dependencies]
 tempfile = "3"
 tokio = { version = "1", features = ["full"] }
-mockall = "0.13"
 wiremock = "0.6"
-# Slice 2 Phase 2 · T12 — clipboard e2e packs plaintext as `Bytes`
-# for `ClipboardSyncFacade::dispatch_entry`.
-bytes = "1.7"
+uc-application = { path = "../uc-application" }
+uc-core = { path = "../uc-core", features = ["task-registry"] }
 # Pairing E2E runs sponsor and joiner endpoints in one test process. This
 # test-only feature disables the production single-live-node lease.
 uc-infra = { path = "../uc-infra", features = ["test-util"] }

@@ -12,7 +12,7 @@
 //! - [`event_loop::X11EventLoop`] — drives [`crate::clipboard::watcher::ClipboardWatcher`]
 //!   from XFIXES `SELECTION_NOTIFY` events on `CLIPBOARD`. Used by the
 //!   daemon clipboard watcher worker.
-//! - [`clipboard::X11Clipboard`] — implements [`uc_core::ports::SystemClipboardPort`]
+//! - [`clipboard::X11Clipboard`] implements [`crate::clipboard::SystemClipboard`]
 //!   on top of ICCCM selection ownership. The reader half handles `TARGETS`,
 //!   per-mime `convert_selection`, and INCR streaming receive; the writer
 //!   half takes selection ownership and services `SelectionRequest` events

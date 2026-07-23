@@ -12,6 +12,7 @@ pub mod file_transfer;
 pub mod first_sync_state;
 pub mod fs;
 pub mod migration_state;
+#[cfg(feature = "lan-compat")]
 pub mod mobile_sync;
 pub mod network;
 pub mod pairing;

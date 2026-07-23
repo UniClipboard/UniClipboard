@@ -368,8 +368,7 @@ impl ChunkedDecoder {
 /// use single-threaded `zstd::bulk::compress` to avoid thread-pool overhead.
 fn compress_zstd(data: &[u8], level: i32) -> std::io::Result<Vec<u8>> {
     if data.len() < PARALLEL_COMPRESSION_THRESHOLD {
-        return zstd::bulk::compress(data, level)
-            .map_err(std::io::Error::other);
+        return zstd::bulk::compress(data, level).map_err(std::io::Error::other);
     }
     let n_workers = std::thread::available_parallelism()
         .map(|n| n.get() as u32)

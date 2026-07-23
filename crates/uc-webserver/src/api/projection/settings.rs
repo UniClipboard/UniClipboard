@@ -212,12 +212,8 @@ impl IntoApiDto<SettingsDto> for app_settings::SettingsView {
                 allow_overlay_network_addrs: self.network.allow_overlay_network_addrs,
                 custom_relay_urls: self.network.custom_relay_urls,
                 congestion_controller: match self.network.congestion_controller {
-                    app_settings::CongestionControllerView::Cubic => {
-                        CongestionControllerDto::Cubic
-                    }
-                    app_settings::CongestionControllerView::Bbr3 => {
-                        CongestionControllerDto::Bbr3
-                    }
+                    app_settings::CongestionControllerView::Cubic => CongestionControllerDto::Cubic,
+                    app_settings::CongestionControllerView::Bbr3 => CongestionControllerDto::Bbr3,
                 },
             },
             quick_panel: QuickPanelSettingsDto {
@@ -280,11 +276,9 @@ impl IntoApiDto<ContentTypesDto> for app_settings::ContentTypesView {
 impl IntoDomain<app_settings::RetentionRulePatchValue> for RetentionRuleDto {
     fn into_domain(self) -> app_settings::RetentionRulePatchValue {
         match self {
-            RetentionRuleDto::ByAge { max_age } => {
-                app_settings::RetentionRulePatchValue::ByAge {
-                    max_age_secs: max_age.as_secs(),
-                }
-            }
+            RetentionRuleDto::ByAge { max_age } => app_settings::RetentionRulePatchValue::ByAge {
+                max_age_secs: max_age.as_secs(),
+            },
             RetentionRuleDto::ByCount { max_items } => {
                 app_settings::RetentionRulePatchValue::ByCount {
                     max_items: max_items as u64,
@@ -319,16 +313,12 @@ impl IntoDomain<app_settings::RetentionRulePatchValue> for RetentionRuleDto {
 impl IntoApiDto<RetentionRuleDto> for app_settings::RetentionRuleView {
     fn into_api_dto(self) -> RetentionRuleDto {
         match self {
-            app_settings::RetentionRuleView::ByAge { max_age_secs } => {
-                RetentionRuleDto::ByAge {
-                    max_age: Duration::from_secs(max_age_secs),
-                }
-            }
-            app_settings::RetentionRuleView::ByCount { max_items } => {
-                RetentionRuleDto::ByCount {
-                    max_items: usize::try_from(max_items).unwrap_or(usize::MAX),
-                }
-            }
+            app_settings::RetentionRuleView::ByAge { max_age_secs } => RetentionRuleDto::ByAge {
+                max_age: Duration::from_secs(max_age_secs),
+            },
+            app_settings::RetentionRuleView::ByCount { max_items } => RetentionRuleDto::ByCount {
+                max_items: usize::try_from(max_items).unwrap_or(usize::MAX),
+            },
             app_settings::RetentionRuleView::ByContentType {
                 content_type,
                 max_age_secs,

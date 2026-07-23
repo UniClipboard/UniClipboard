@@ -334,6 +334,7 @@ pub struct SystemPorts {
 /// The composition root coerces one Diesel device-repository adapter into each
 /// of these; each consumer takes only the slice it needs, never the whole
 /// aggregate store (see ports.md §8.3).
+#[cfg(feature = "lan-compat")]
 #[derive(Clone)]
 pub struct MobileDevicePorts {
     pub find_by_username: Arc<dyn FindMobileDeviceByUsernamePort>,
@@ -344,6 +345,7 @@ pub struct MobileDevicePorts {
     pub update: Arc<dyn UpdateMobileDevicePort>,
 }
 
+#[cfg(feature = "lan-compat")]
 #[derive(Clone)]
 pub struct MobileSyncPorts {
     pub devices: MobileDevicePorts,
@@ -398,6 +400,7 @@ pub struct AppDeps {
     /// Search-domain ports (index, key derivation, pipeline) / 搜索领域端口
     pub search: SearchPorts,
     /// Mobile-sync 领域端口 / Mobile sync domain ports.
+    #[cfg(feature = "lan-compat")]
     pub mobile_sync: MobileSyncPorts,
     /// 产品 telemetry 上报 sink（横切关注点）。
     ///

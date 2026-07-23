@@ -19,7 +19,6 @@
 //! JSON output: array of `{device_id, device_name, is_local, state}`.
 
 use serde::Serialize;
-use uc_core::ports::ReachabilityState;
 
 use crate::commands::app_session::connect_with_lease;
 use crate::exit_codes;
@@ -84,21 +83,21 @@ pub async fn run(probe: bool, json: bool, verbose: bool) -> i32 {
             device_id: local.peer_id,
             device_name: local.device_name,
             is_local: true,
-            state: format_state(ReachabilityState::Online),
+            state: "online",
         });
     }
 
     for member in &remote_members {
         let state = match member.channel.as_str() {
-            "direct" | "relay" => ReachabilityState::Online,
-            "offline" => ReachabilityState::Offline,
-            _ => ReachabilityState::Unknown,
+            "direct" | "relay" => "online",
+            "offline" => "offline",
+            _ => "unknown",
         };
         entries.push(MemberDto {
             device_id: member.peer_id.clone(),
             device_name: member.device_name.clone(),
             is_local: false,
-            state: format_state(state),
+            state,
         });
     }
 
@@ -122,14 +121,6 @@ fn render_human(entries: &[MemberDto]) {
         }
     }
     ui::bar();
-}
-
-fn format_state(state: ReachabilityState) -> &'static str {
-    match state {
-        ReachabilityState::Online => "online",
-        ReachabilityState::Offline => "offline",
-        ReachabilityState::Unknown => "unknown",
-    }
 }
 
 #[derive(Serialize)]

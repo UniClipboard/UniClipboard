@@ -23,13 +23,17 @@ use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_updater::UpdaterExt as _;
 use tokio::sync::Notify;
 use tracing::{error, info, info_span, warn, Instrument};
-use uc_core::ports::observability::TraceMetadata;
-use uc_core::settings::channel::detect_channel;
-use uc_core::settings::model::UpdateChannel;
+use uc_daemon_client::{DaemonConnectionState, DaemonSettingsClient};
+use uc_daemon_contract::api::dto::settings::{
+    GeneralSettingsPatchDto, SettingsPatchDto, UpdateChannelDto as UpdateChannel,
+};
 use uc_observability::analytics::{
     Event, InstallKind as AnalyticsInstallKind, UpdateAction, UpdateActionOutcome,
     UpdateCheckOutcome, UpdateCheckSource, UpdateFailureKind,
 };
+
+use crate::commands::TraceMetadata;
+use crate::update_scheduler::scheduler::detect_channel;
 
 /// Tauri event channel name for broadcast download progress.
 /// Subscribed by the frontend `UpdateContext` so any window/component can
@@ -462,19 +466,25 @@ pub async fn check_for_update(
             Some(c) => Some(parse_channel(c)),
             None => {
                 let app_version = app.package_info().version.to_string();
-                let ch = match runtime.settings_port().load().await {
-                    Ok(settings) => crate::update_scheduler::scheduler::resolve_channel(
-                        settings.general.update_channel.clone(),
-                        &app_version,
-                    ),
-                    Err(err) => {
-                        warn!(
-                            target: "updater",
-                            error = %err,
-                            "failed to load settings; falling back to version-detected channel"
-                        );
-                        detect_channel(&app_version)
-                    }
+                let settings_client = app
+                    .try_state::<DaemonConnectionState>()
+                    .map(|state| DaemonSettingsClient::new(state.inner().clone()));
+                let ch = match settings_client {
+                    Some(client) => match client.get_settings().await {
+                        Ok(settings) => crate::update_scheduler::scheduler::resolve_channel(
+                            settings.general.update_channel.clone(),
+                            &app_version,
+                        ),
+                        Err(err) => {
+                            warn!(
+                                target: "updater",
+                                error = %err,
+                                "failed to load settings; falling back to version-detected channel"
+                            );
+                            detect_channel(&app_version)
+                        }
+                    },
+                    None => detect_channel(&app_version),
                 };
                 Some(ch)
             }
@@ -545,19 +555,25 @@ pub(crate) async fn perform_manual_check_from_tray(app: &AppHandle) {
     // Channel resolution mirrors the scheduler path:
     // settings-pinned channel wins, otherwise detect from app version.
     let app_version = app.package_info().version.to_string();
-    let resolved_channel = match runtime.settings_port().load().await {
-        Ok(settings) => crate::update_scheduler::scheduler::resolve_channel(
-            settings.general.update_channel.clone(),
-            &app_version,
-        ),
-        Err(err) => {
-            warn!(
-                target: "updater",
-                error = %err,
-                "failed to load settings; falling back to version-detected channel"
-            );
-            detect_channel(&app_version)
-        }
+    let settings_client = app
+        .try_state::<DaemonConnectionState>()
+        .map(|state| DaemonSettingsClient::new(state.inner().clone()));
+    let resolved_channel = match settings_client {
+        Some(client) => match client.get_settings().await {
+            Ok(settings) => crate::update_scheduler::scheduler::resolve_channel(
+                settings.general.update_channel.clone(),
+                &app_version,
+            ),
+            Err(err) => {
+                warn!(
+                    target: "updater",
+                    error = %err,
+                    "failed to load settings; falling back to version-detected channel"
+                );
+                detect_channel(&app_version)
+            }
+        },
+        None => detect_channel(&app_version),
     };
 
     info!(target: "updater", "running tray-initiated update check");
@@ -1268,17 +1284,22 @@ fn detect_install_kind_linux() -> InstallKind {
 pub async fn skip_version(
     app: AppHandle,
     version: String,
-    runtime: State<'_, Arc<TauriAppRuntime>>,
     _trace: Option<TraceMetadata>,
 ) -> Result<(), String> {
     let _ = _trace;
     let app_version = app.package_info().version.to_string();
-    let channel = match runtime.settings_port().load().await {
-        Ok(settings) => crate::update_scheduler::scheduler::resolve_channel(
-            settings.general.update_channel.clone(),
-            &app_version,
-        ),
-        Err(_) => detect_channel(&app_version),
+    let settings_client = app
+        .try_state::<DaemonConnectionState>()
+        .map(|state| DaemonSettingsClient::new(state.inner().clone()));
+    let channel = match settings_client {
+        Some(client) => match client.get_settings().await {
+            Ok(settings) => crate::update_scheduler::scheduler::resolve_channel(
+                settings.general.update_channel.clone(),
+                &app_version,
+            ),
+            Err(_) => detect_channel(&app_version),
+        },
+        None => detect_channel(&app_version),
     };
 
     let Some(ctx) = app.try_state::<Arc<crate::update_scheduler::NotifyContext>>() else {
@@ -1297,13 +1318,12 @@ pub async fn skip_version(
 #[tauri::command]
 #[specta::specta]
 pub async fn get_auto_download_update(
-    runtime: State<'_, Arc<TauriAppRuntime>>,
+    connection_state: State<'_, DaemonConnectionState>,
     _trace: Option<TraceMetadata>,
 ) -> Result<bool, String> {
     let _ = _trace;
-    let settings = runtime
-        .settings_port()
-        .load()
+    let settings = DaemonSettingsClient::new(connection_state.inner().clone())
+        .get_settings()
         .await
         .map_err(|e| format!("failed to load settings: {e}"))?;
     Ok(settings.general.auto_download_update)
@@ -1318,19 +1338,21 @@ pub async fn get_auto_download_update(
 #[specta::specta]
 pub async fn set_auto_download_update(
     enabled: bool,
-    runtime: State<'_, Arc<TauriAppRuntime>>,
+    connection_state: State<'_, DaemonConnectionState>,
     _trace: Option<TraceMetadata>,
 ) -> Result<(), String> {
     let _ = _trace;
-    let port = runtime.settings_port();
-    let mut settings = port
-        .load()
-        .await
-        .map_err(|e| format!("failed to load settings: {e}"))?;
-    settings.general.auto_download_update = enabled;
-    port.save(&settings)
+    DaemonSettingsClient::new(connection_state.inner().clone())
+        .update_settings(SettingsPatchDto {
+            general: Some(GeneralSettingsPatchDto {
+                auto_download_update: Some(enabled),
+                ..Default::default()
+            }),
+            ..Default::default()
+        })
         .await
         .map_err(|e| format!("failed to save settings: {e}"))
+        .map(|_| ())
 }
 
 #[cfg(test)]

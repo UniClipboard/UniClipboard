@@ -1,5 +1,6 @@
 use keyring::Entry;
-use uc_core::ports::{SecureStorageError, SecureStoragePort};
+
+use crate::ports::{SecureStorageError, SecureStorageProvider};
 
 const SERVICE_NAME: &str = "UniClipboard";
 
@@ -109,7 +110,7 @@ impl SystemSecureStorage {
     }
 }
 
-impl SecureStoragePort for SystemSecureStorage {
+impl SecureStorageProvider for SystemSecureStorage {
     fn get(&self, key: &str) -> Result<Option<Vec<u8>>, SecureStorageError> {
         let entry = self.entry_for_key(key)?;
         match entry.get_secret() {

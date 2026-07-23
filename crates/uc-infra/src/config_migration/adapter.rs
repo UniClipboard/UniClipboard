@@ -28,7 +28,7 @@ use crate::security::crypto_model::KeySlotFile;
 use super::archive::{ArchiveError, BundleArchive};
 use super::bundle::{self, Argon2Params, BundleError};
 use super::db_snapshot::{self, DbSnapshotError};
-use super::manifest::{BundleManifest, ManifestSourceMode, MANIFEST_MEMBER, MANIFEST_SCHEMA_VER};
+use super::manifest::{BundleManifest, MANIFEST_MEMBER, MANIFEST_SCHEMA_VER};
 use super::secret_keys::{migratable_secret_keys, MigratableSecretKind, SECRETS_MEMBER};
 use super::staging::{
     PendingImportMarker, SecretsFile, StagingError, StagingLayout, DB_MEMBER, DEVICE_ID_MEMBER,
@@ -100,6 +100,7 @@ pub struct ConfigMigrationAdapter {
     app_version: String,
     paths: ConfigMigrationPaths,
     profile_id: ProfileId,
+    source_mode: ConfigSourceMode,
 }
 
 impl ConfigMigrationAdapter {
@@ -114,6 +115,7 @@ impl ConfigMigrationAdapter {
     ///   timestamp).
     /// * `paths` — resolved filesystem layout.
     /// * `profile_id` — current profile; selects which KEK is enumerated.
+    /// * `source_mode` — storage layout already resolved by the host.
     pub fn new(
         secure_storage: Arc<dyn SecureStoragePort>,
         db_pool: diesel::r2d2::Pool<
@@ -123,6 +125,7 @@ impl ConfigMigrationAdapter {
         clock: Arc<dyn ClockPort>,
         paths: ConfigMigrationPaths,
         profile_id: ProfileId,
+        source_mode: ConfigSourceMode,
     ) -> Self {
         Self {
             secure_storage,
@@ -132,6 +135,7 @@ impl ConfigMigrationAdapter {
             app_version: env!("CARGO_PKG_VERSION").to_string(),
             paths,
             profile_id,
+            source_mode,
         }
     }
 
@@ -225,14 +229,6 @@ impl ConfigMigrationAdapter {
             files.push((format!("{IROH_IDENTITY_PREFIX}{name}"), bytes));
         }
         Ok(files)
-    }
-
-    fn source_mode() -> ManifestSourceMode {
-        if uc_app_paths::is_portable() {
-            ManifestSourceMode::Portable
-        } else {
-            ManifestSourceMode::Installed
-        }
     }
 
     /// Decrypt a bundle file and parse its inner archive + manifest.
@@ -473,7 +469,7 @@ impl ExportConfigBundlePort for ConfigMigrationAdapter {
         let manifest = BundleManifest {
             schema_ver: MANIFEST_SCHEMA_VER,
             app_version: self.app_version.clone(),
-            source_mode: Self::source_mode(),
+            source_mode: self.source_mode.into(),
             created_at_unix_ms,
             profile_id: self.profile_id.inner().clone(),
             device_fingerprint: fingerprint,
@@ -547,10 +543,7 @@ impl PreviewConfigImportPort for ConfigMigrationAdapter {
     ) -> Result<ConfigImportPreview, ConfigMigrationError> {
         let (_, manifest) = self.open_archive(password, source).await?;
 
-        let source_mode = match manifest.source_mode {
-            ManifestSourceMode::Portable => ConfigSourceMode::Portable,
-            ManifestSourceMode::Installed => ConfigSourceMode::Installed,
-        };
+        let source_mode = manifest.source_mode.into();
 
         Ok(ConfigImportPreview {
             app_version: manifest.app_version,

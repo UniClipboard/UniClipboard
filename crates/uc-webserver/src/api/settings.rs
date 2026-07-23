@@ -217,15 +217,11 @@ async fn probe_relay_url_handler(
 /// is propagated as `Err` for the caller to map to a 500.
 fn probe_outcome_to_dto(outcome: RelayProbeOutcome) -> RelayProbeOutcomeDto {
     match outcome {
-        RelayProbeOutcome::Success { latency_ms } => {
-            RelayProbeOutcomeDto::Success { latency_ms }
-        }
+        RelayProbeOutcome::Success { latency_ms } => RelayProbeOutcomeDto::Success { latency_ms },
         RelayProbeOutcome::InvalidUrl { message } => RelayProbeOutcomeDto::InvalidUrl { message },
         RelayProbeOutcome::Dns { message } => RelayProbeOutcomeDto::Dns { message },
         RelayProbeOutcome::Tls { message } => RelayProbeOutcomeDto::Tls { message },
-        RelayProbeOutcome::Handshake { message } => {
-            RelayProbeOutcomeDto::Handshake { message }
-        }
+        RelayProbeOutcome::Handshake { message } => RelayProbeOutcomeDto::Handshake { message },
         RelayProbeOutcome::Timeout => RelayProbeOutcomeDto::Timeout,
         RelayProbeOutcome::Other { message } => RelayProbeOutcomeDto::Other { message },
     }
@@ -233,7 +229,9 @@ fn probe_outcome_to_dto(outcome: RelayProbeOutcome) -> RelayProbeOutcomeDto {
 
 fn settings_error_to_api(op: &'static str, error: EngineError) -> ApiError {
     let (variant, api): (&'static str, ApiError) = match error.category() {
-        EngineErrorCategory::InvalidInput => ("invalid_input", ApiError::bad_request("invalid settings")),
+        EngineErrorCategory::InvalidInput => {
+            ("invalid_input", ApiError::bad_request("invalid settings"))
+        }
         EngineErrorCategory::Unavailable | EngineErrorCategory::DeadlineExceeded => (
             "unavailable",
             ApiError::service_unavailable("settings service is unavailable"),

@@ -5,10 +5,11 @@ use std::sync::{Arc, Mutex};
 
 use serde::Serialize;
 use tracing::{info_span, Instrument};
-use uc_core::ports::observability::TraceMetadata;
 use uc_daemon_client::{DaemonClientContext, DaemonConnectionState};
 use uc_daemon_contract::api::auth::DaemonConnectionInfo;
 use uc_daemon_process::contract::DaemonBootstrapError;
+
+use crate::commands::TraceMetadata;
 
 use crate::commands::record_trace_fields;
 

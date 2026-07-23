@@ -4,8 +4,6 @@
 use serde::{Deserialize, Serialize};
 use tauri::State;
 use tracing::{error, info_span, Instrument};
-use uc_core::ports::observability::TraceMetadata;
-use uc_core::settings::model::{QuickPanelDoubleTapModifier, QuickPanelPosition};
 use uc_daemon_client::{DaemonConnectionState, DaemonSettingsClient};
 use uc_daemon_contract::api::dto::settings::{
     QuickPanelDoubleTapModifierDto, QuickPanelPositionDto, QuickPanelSettingsPatchDto,
@@ -15,11 +13,14 @@ use uc_desktop::modifier_double_tap_monitor::ModifierDoubleTapMonitor;
 use uc_desktop::shortcuts::{self, CurrentShortcuts};
 
 use crate::commands::settings::KeyboardShortcutsUpdateLock;
-use crate::commands::{record_trace_fields, CommandError};
+use crate::commands::{record_trace_fields, CommandError, TraceMetadata};
 use crate::modifier_double_tap_platform::{
     modifier_double_tap_availability, ModifierDoubleTapAvailability,
 };
 use crate::quick_panel;
+
+type QuickPanelDoubleTapModifier = QuickPanelDoubleTapModifierDto;
+type QuickPanelPosition = QuickPanelPositionDto;
 
 /// Quick panel placement preference (Tauri command wire form).
 ///
@@ -210,7 +211,7 @@ pub async fn set_quick_panel_double_tap_modifier(
             .await
             .map_err(CommandError::internal)?;
         let target: QuickPanelDoubleTapModifier = modifier.into();
-        let target_dto = QuickPanelDoubleTapModifierDto::from(target);
+        let target_dto = target;
 
         let persisted_matches = current.quick_panel.double_tap_modifier == target_dto;
         let availability = modifier_double_tap_availability();
@@ -329,15 +330,7 @@ pub async fn set_quick_panel_enabled(
         // shortcuts so we can reuse `resolve_quick_panel_shortcuts`. We only
         // need the `keyboard_shortcuts` field for that helper.
         let target_shortcuts = if enabled {
-            let tmp = uc_core::settings::model::Settings {
-                keyboard_shortcuts: current
-                    .keyboard_shortcuts
-                    .iter()
-                    .map(|(id, key)| (id.clone(), key.clone().into()))
-                    .collect(),
-                ..Default::default()
-            };
-            shortcuts::resolve_quick_panel_shortcuts(&tmp)
+            shortcuts::resolve_quick_panel_shortcuts(&current.keyboard_shortcuts)
         } else {
             Vec::new()
         };
@@ -347,7 +340,7 @@ pub async fn set_quick_panel_enabled(
         let target_modifier = desired_live_modifier(
             enabled,
             modifier_double_tap_availability(),
-            current.quick_panel.double_tap_modifier.into(),
+            current.quick_panel.double_tap_modifier,
         );
         apply_quick_panel_state(
             &app,
@@ -582,7 +575,7 @@ pub async fn set_quick_panel_position(
         let client = DaemonSettingsClient::new(connection_state.inner().clone());
         let patch = SettingsPatchDto {
             quick_panel: Some(QuickPanelSettingsPatchDto {
-                position: Some(QuickPanelPositionDto::from(core_position)),
+                position: Some(core_position),
                 ..Default::default()
             }),
             ..Default::default()

@@ -9,14 +9,11 @@ use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 use uc_bootstrap::{
     init_tracing_subscriber, install_panic_logging_hook, prepare_desktop_engine_host,
-    DesktopHostFileHandles,
+    DesktopHostFileHandles, DesktopHostProcessPaths,
 };
-use uc_core::clipboard::ActiveClipboardState;
-use uc_core::config::AppConfig;
-use uc_core::ports::MobileLanLifecyclePort;
 use uc_daemon_local::crash_marker::{DaemonExitReport, DaemonRunMarker};
 use uc_daemon_local::process_metadata::{DaemonPidManager, DaemonProcessMode};
-use uc_engine::{Engine, HostFileHandle, Operation, OperationResult};
+use uc_engine::{ActiveClipboardChanged, Engine, HostFileHandle, Operation, OperationResult};
 use uc_webserver::api::auth::load_or_create_auth_token;
 use uc_webserver::api::server::{run_http_server, DaemonApiState, DaemonFileHandles};
 use uc_webserver::api::types::{DaemonResidency, DaemonWsEvent};
@@ -80,20 +77,19 @@ async fn run_async(run_mode: DaemonRunMode) -> anyhow::Result<()> {
     init_tracing_subscriber()?;
     install_panic_logging_hook();
 
-    let config = AppConfig::empty();
-    let prepared = prepare_desktop_engine_host(&config)?;
-    let storage_paths = prepared.storage_paths().clone();
+    let prepared = prepare_desktop_engine_host()?;
+    let process_paths = prepared.process_paths().clone();
     let file_handles: Arc<dyn DaemonFileHandles> =
         Arc::new(DesktopDaemonFileHandles::new(prepared.file_handles()));
     let (engine_config, host_capabilities) = prepared.into_engine_start();
 
     let _instance_lock = uc_daemon_local::instance_lock::acquire_with_deadline(
-        &storage_paths.app_data_root_dir,
+        process_paths.app_data_root(),
         uc_daemon_local::timing::LOCK_ACQUIRE_DEADLINE,
     )
     .await
     .map_err(|error| anyhow::anyhow!("{error}"))?;
-    uc_daemon_local::handover::clear(&storage_paths.app_data_root_dir);
+    uc_daemon_local::handover::clear(process_paths.app_data_root());
 
     let (engine, events) = Engine::start(engine_config, host_capabilities)
         .await
@@ -108,7 +104,7 @@ async fn run_async(run_mode: DaemonRunMode) -> anyhow::Result<()> {
         Arc::clone(&engine),
         events,
         file_handles,
-        storage_paths,
+        process_paths,
     )
     .await;
     let shutdown = engine
@@ -124,13 +120,13 @@ async fn run_daemon_surfaces(
     engine: Arc<Engine>,
     events: uc_engine::EventStream,
     file_handles: Arc<dyn DaemonFileHandles>,
-    storage_paths: uc_application::facade::AppPaths,
+    process_paths: DesktopHostProcessPaths,
 ) -> anyhow::Result<()> {
-    let auth_token = load_or_create_auth_token(&storage_paths.daemon_token_path())?;
-    let pid_manager = DaemonPidManager::new(storage_paths.daemon_pid_path());
+    let auth_token = load_or_create_auth_token(process_paths.daemon_token())?;
+    let pid_manager = DaemonPidManager::new(process_paths.daemon_pid());
     let _pid_file_guard = DaemonPidFileGuard::activate(pid_manager, run_mode.process_mode())?;
     let pid = std::process::id();
-    let run_marker = DaemonRunMarker::new(storage_paths.app_data_root_dir.clone());
+    let run_marker = DaemonRunMarker::new(process_paths.app_data_root().to_path_buf());
     log_previous_crash(run_marker.begin_run(pid)?);
 
     let security = Arc::new(SecurityState::new());
@@ -154,7 +150,7 @@ async fn run_daemon_surfaces(
     let mut http_handle = tokio::spawn(run_http_server(api_state, http_cancel));
     let _cleanup_handle = cleanup_rate_limiter_task(security, cleanup_cancel);
 
-    let (active_clipboard_tx, _) = broadcast::channel::<ActiveClipboardState>(64);
+    let (active_clipboard_tx, _) = broadcast::channel::<ActiveClipboardChanged>(64);
     let mobile_lan = Arc::new(MobileLanLifecycleController::for_engine(
         Arc::clone(&engine),
         active_clipboard_tx.clone(),
@@ -205,12 +201,10 @@ async fn run_daemon_surfaces(
     }
 
     if controlled_oneshot_exit {
-        write_handover_if_requested(&restart, &storage_paths.app_data_root_dir);
+        write_handover_if_requested(&restart, process_paths.app_data_root());
     }
     cancel.cancel();
-    mobile_lan
-        .apply(uc_core::ports::MobileLanTarget::Disabled)
-        .await;
+    mobile_lan.disable().await;
     if !http_completed {
         let _ =
             tokio::time::timeout(uc_daemon_local::timing::SHUTDOWN_JOIN_TIMEOUT, http_handle).await;
@@ -233,7 +227,7 @@ async fn apply_initial_mobile_lan_target(
         Ok(_) | Err(_) => None,
     };
     controller
-        .apply(initial_lan_target(settings.as_deref()))
+        .reconcile(initial_lan_target(settings.as_deref()))
         .await;
 }
 

@@ -9,8 +9,6 @@ use tauri::{AppHandle, State};
 use tauri_plugin_dialog::DialogExt;
 use tokio::sync::{Mutex as AsyncMutex, OwnedMutexGuard};
 use tracing::{error, info_span, Instrument};
-use uc_core::ports::observability::TraceMetadata;
-use uc_core::settings::model::ShortcutKey as ShortcutKeyView;
 use uc_daemon_client::{DaemonConnectionState, DaemonSettingsClient};
 use uc_daemon_contract::api::dto::settings::{
     KeyboardShortcutsPatchDto, RelayProbeOutcomeDto, SettingsPatchDto,
@@ -18,8 +16,10 @@ use uc_daemon_contract::api::dto::settings::{
 };
 use uc_desktop::shortcuts::{self, CurrentShortcuts, QUICK_PANEL_SHORTCUT_SETTINGS_KEY};
 
-use crate::commands::{record_trace_fields, CommandError};
+use crate::commands::{record_trace_fields, CommandError, TraceMetadata};
 use crate::quick_panel;
+
+type ShortcutKeyView = ContractShortcutKeyDto;
 
 /// 串行化 [`update_keyboard_shortcuts`] 整段 read→OS 注册→facade 持久化→
 /// 内存 registry replace 的协调流程。并发调用会让 OS 状态、`CurrentShortcuts`、
@@ -278,10 +278,7 @@ fn keyboard_shortcuts_to_dto(
 /// helpers. The orphan rule forbids a `From` impl across both foreign types, so
 /// this is a free function.
 fn shortcut_view_from_contract(value: ContractShortcutKeyDto) -> ShortcutKeyView {
-    match value {
-        ContractShortcutKeyDto::Single(v) => ShortcutKeyView::Single(v),
-        ContractShortcutKeyDto::Multiple(v) => ShortcutKeyView::Multiple(v),
-    }
+    value
 }
 
 /// Convert the inbound Tauri `ShortcutKeyDto` into the daemon-contract wire
@@ -390,7 +387,6 @@ impl From<ShortcutKeyView> for ShortcutKeyDto {
 mod tests {
     use super::*;
     use std::collections::HashMap;
-    use uc_core::settings::model::ShortcutKey as ShortcutKeyView;
 
     #[test]
     fn keyboard_shortcuts_patch_null_removes_existing_override() {

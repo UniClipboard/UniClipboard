@@ -181,6 +181,9 @@ jobs:
           TAURI_CONFIG: '{"bundle":{"externalBin":[]}}'
         run: cargo check --workspace --locked
 
+      - name: Verify core repository extraction rules
+        run: bun run check:core-repository
+
       - name: Verify cross-platform engine lifecycle and persistence privacy
         run: cargo test -p uc-engine --locked
 

@@ -17,7 +17,7 @@ const CONSUMER_PACKAGES: [&str; 9] = [
     "uc-webserver",
 ];
 
-const INTERNAL_PACKAGES: [&str; 3] = ["uc-core", "uc-application", "uc-infra"];
+const INTERNAL_PACKAGES: [&str; 4] = ["uc-core", "uc-application", "uc-infra", "uc-mobile-proto"];
 
 const PRODUCTION_SOURCE_ROOTS: [&str; 9] = [
     "apps/cli/src",

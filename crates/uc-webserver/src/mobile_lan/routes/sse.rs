@@ -21,7 +21,7 @@
 //! 4. never on `Lagged` — a lagged receiver sends a `resync` frame instead
 //!    of tearing down the connection.
 //!
-//! Event names and payload shapes come from [`uc_mobile_proto::sse_event`],
+//! Event names and payload shapes come from [`uc_engine::sse_event`],
 //! the single source of truth shared with the `uc-mobile` client.
 
 use std::convert::Infallible;
@@ -38,11 +38,11 @@ use tokio::sync::broadcast;
 use tokio::time::{Instant, Interval, MissedTickBehavior};
 use tokio_util::sync::CancellationToken;
 
-use uc_engine::{ActiveClipboardChanged, MobileAuthenticatedSession, MobileCredential};
-use uc_mobile_proto::sse_event::{
+use uc_engine::sse_event::{
     SseHello, SseResync, SseUpdate, SSE_EVENT_HELLO, SSE_EVENT_RESYNC, SSE_EVENT_UPDATE,
     SSE_HEARTBEAT_INTERVAL_SECS,
 };
+use uc_engine::{ActiveClipboardChanged, MobileAuthenticatedSession, MobileCredential};
 
 use crate::mobile_lan::core::MobileLanCore;
 use crate::mobile_lan::sse_registry::SseConnectionRegistry;

@@ -13,6 +13,7 @@ rust_cxx="$native_root/llvm/bin/aarch64-unknown-linux-ohos-clang++"
 rust_ar="$native_root/llvm/bin/llvm-ar"
 cmake="$native_root/build-tools/cmake/bin/cmake"
 library_dir="$project_root/entry/libs/arm64-v8a"
+dist_dir="${UC_OHOS_DIST_DIR:-$target_dir/uc-ohos-napi-dist/ohos}"
 
 for executable in "$rust_linker" "$rust_cxx" "$rust_ar" "$cmake"; do
   if [[ ! -x "$executable" ]]; then
@@ -35,6 +36,17 @@ CMAKE="$cmake" \
 
 mkdir -p "$library_dir"
 cp "$target_dir/$target/debug/libuc_ohos_napi.so" "$library_dir/libuc_ohos_napi.so"
+mkdir -p "$dist_dir"
+cp "$library_dir/libuc_ohos_napi.so" "$dist_dir/libuc_ohos_napi.so"
+cp "$project_root/entry/src/main/cpp/types/libuc_ohos_napi/index.d.ts" \
+  "$dist_dir/index.d.ts"
+shasum -a 256 "$dist_dir/libuc_ohos_napi.so" | awk '{print $1}' \
+  > "$dist_dir/uc-ohos-napi.checksum.txt"
+version="$(cargo pkgid --manifest-path "$workspace_root/Cargo.toml" -p uc-ohos-napi)"
+version="${version##*#}"
+commit="$(git -C "$workspace_root" rev-parse HEAD)"
+printf 'core-v%s\n' "$version" > "$dist_dir/core-version.txt"
+printf '%s\n' "$commit" > "$dist_dir/source-commit.txt"
 printf 'sdk.dir=%s\n' "$sdk_root" > "$project_root/local.properties"
 
 cd "$project_root"

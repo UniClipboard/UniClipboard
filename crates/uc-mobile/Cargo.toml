@@ -18,6 +18,7 @@ name = "uc-mobile"
 version = "0.1.0"
 license.workspace = true
 edition = "2021"
+publish = false
 description = "UniFFI boundary crate exposing shared Rust to iOS/Android (mobile spike)"
 
 [lib]

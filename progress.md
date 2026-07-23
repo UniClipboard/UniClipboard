@@ -1414,3 +1414,32 @@
 - 默认 `uc-engine` 依赖树不含 `uc-mobile-proto` 与 `network-interface`，启用 `lan-compat` 后两者按预期出现；九个 desktop 保留 crate 的普通直接依赖均不含 `uc-core`、`uc-application`、`uc-infra`。
 - `cargo fmt --all -- --check`、`git diff --check` 通过；正式源码文本扫描只命中两处注释和一处 tracing target 字符串，没有真实内部类型引用。
 - Consumer Phase A-F 全部完成，Plan 005 Phase 1 依赖防火墙完成；未推进新仓创建、发布或消费者切换。
+
+# 2026-07-24 Plan 005 跨仓检查
+
+- 已重读正式 Plan 005、仓库架构与 Rust 规则，并启用 `planning-with-files` 与 `codebase-design`。
+- 完成标准固定为补齐六类自动检查、证明代表性错误能被准确拒绝、正常工作区静态验证通过；不创建新仓、不发布、不切换消费者。
+- `planning-with-files` 恢复脚本在此前记录中已多次确认不存在，本轮按现有三份规划文件和干净工作区直接续接，不重复无效命令。
+- 当前进入 Cross-repo Phase A，先盘点已有检查和迁移后的所有权；按用户先前要求不运行测试用例。
+- 首轮扫描已定位核心与消费者依赖防火墙、两种绑定 workspace contract、HarmonyOS 工程 contract、明文扫描脚本和现有 CI 接入点。
+- 初步判断应保留现有检查为各自规则的单一事实来源，再增加统一执行入口；下一步逐项核对覆盖缺口和可迁移性。
+- 首次收回 `uc-webserver` 协议依赖的整包补丁未匹配兼容模块的实际声明顺序，工具完整拒绝且未留下代码改动；改为按当前文件形状拆分应用。
+- 统一检查首次运行只失败于 HarmonyOS 提交读取命令带有显式工作目录，检查却绑定了无参数的具体文本；来源记录正确，已将规则改为识别真正要求的 `rev-parse HEAD` 语义。
+- 已新增统一核心仓迁移检查、中文说明和 PR 检查入口；内部实现 crate 明确禁止单独发布。
+- `uc-webserver` 的 LAN SSE 协议类型改由 `uc-engine` 兼容入口提供，直接 `uc-mobile-proto` 依赖删除；desktop 消费者防火墙同步纳入该 crate。
+- iOS、Android 与 HarmonyOS 打包路径都要求记录核心版本、来源提交和校验值；HarmonyOS 构建脚本已补齐动态库、ArkTS 声明和来源文件归档。
+- `bun run check:core-repository` 通过；反向依赖、绑定版本不一致和自动 LAN 回退三个隔离错误样例均被准确拒绝。
+- Cross-repo Phase A-D 完成，Phase E 进入格式、编译和最终静态审计。
+- 新脚本首次 ESLint 检查发现 6 处 `process` 未显式导入；脚本运行结果不受影响，已按项目模块规范补 `node:process` 导入后重跑。
+- `cargo check --workspace --all-targets --offline` 使用独立临时编译目录并禁用旧 sccache 后通过，1258 个构建目标全部完成；没有运行测试用例。
+- `bun run check:core-repository`、新脚本 ESLint、Prettier、`cargo fmt --all -- --check` 与 `git diff --check` 均通过。
+- Cross-repo Phase E 完成，Plan 005 Phase 2 跨仓检查收尾；下一步受 Plan 004 统一发布干跑和实体设备跳过风险记录约束，不创建新仓库。
+
+# 2026-07-24 Plan 005 独立核心仓建仓准备
+
+- 用户明确要求继续并新建仓库、完成全部准备；本轮进入 Plan 004 统一发布干跑与 Plan 005 Phase 3 建仓准备。
+- 完成标准固定为：提交并记录迁移基线、四平台产物同源、历史保留、新仓可独立编译、远端迁移分支可核对；不发布版本、不切换消费者、不把跳过的实体设备矩阵记为通过。
+- 当前 Phase 2 改动仍未提交，必须先作为独立提交固定后再执行历史过滤。
+- 已确认 `UniClipboard/UniClipboardCore` 尚不存在，当前 GitHub 登录账号具备组织仓库操作权限；本地分支已有对应远端，不需要改名。
+- 本机没有 `git-filter-repo`；后续使用临时隔离环境安装固定版本，并在迁移记录中保存版本，不污染系统 Python 环境。
+- Plan 005 已补用户明确的实体设备风险接受记录：矩阵保持未通过，只允许建仓准备继续。

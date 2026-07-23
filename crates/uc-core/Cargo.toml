@@ -4,6 +4,7 @@ version.workspace = true
 license.workspace = true
 edition = "2021"
 description = "Core domain models and business logic for UniClipboard"
+publish = false
 
 [dependencies]
 # Serialization

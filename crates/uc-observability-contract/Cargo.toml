@@ -4,6 +4,7 @@ version.workspace = true
 license.workspace = true
 edition = "2021"
 description = "Portable observability contracts shared by the core engine and host adapters"
+publish = false
 
 [dependencies]
 anyhow = "1.0"

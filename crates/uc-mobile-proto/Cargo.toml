@@ -3,6 +3,7 @@ name = "uc-mobile-proto"
 version.workspace = true
 license.workspace = true
 edition = "2021"
+publish = false
 description = "Pure mobile-sync wire-protocol codec leaf crate (connect-uri)"
 # Leaf crate: pure mobile-sync wire protocol codec (connect-uri today; more to
 # follow). Zero internal workspace deps — depends only on small pure-codec

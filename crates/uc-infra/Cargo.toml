@@ -4,6 +4,7 @@ version.workspace = true
 license.workspace = true
 edition = "2021"
 description = "Infrastructure utilities and shared components for UniClipboard"
+publish = false
 
 [features]
 default = []

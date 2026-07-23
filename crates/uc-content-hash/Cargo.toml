@@ -4,6 +4,7 @@ version.workspace = true
 license.workspace = true
 edition = "2021"
 description = "Shared content-identity hashing (blake3v1): the single algorithm every UniClipboard implementation (desktop core, mobile FFI) must use to compute a stable cross-device content hash. Depends on blake3 + std only."
+publish = false
 
 [lib]
 name = "uc_content_hash"

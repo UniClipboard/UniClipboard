@@ -130,6 +130,7 @@ fn engine_default_dependency_contract_excludes_lan_compat_dependencies() {
 
     assert_feature_enables(application, "lan-compat", "dep:uc-mobile-proto");
     assert_feature_enables(infra, "lan-compat", "dep:network-interface");
+    assert_feature_enables(engine, "lan-compat", "dep:uc-mobile-proto");
     assert_feature_enables(engine, "lan-compat", "uc-application/lan-compat");
     assert_feature_enables(engine, "lan-compat", "uc-infra/lan-compat");
 }

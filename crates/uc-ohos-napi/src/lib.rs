@@ -63,6 +63,12 @@ pub struct OhSessionRecovery {
 }
 
 #[napi(object)]
+pub struct OhLocalDevice {
+    pub device_id: String,
+    pub display_name: String,
+}
+
+#[napi(object)]
 pub struct OhInvitationIssued {
     pub invitation_code: String,
     pub expires_at_ms: f64,
@@ -97,6 +103,7 @@ pub struct OhEngineEvent {
     pub refresh_reason: Option<String>,
     pub operation_id: Option<String>,
     pub terminal: Option<String>,
+    pub lifecycle_action: Option<String>,
     pub error_code: Option<u32>,
     pub error_category: Option<String>,
     pub retryable: Option<bool>,

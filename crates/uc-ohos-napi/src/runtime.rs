@@ -14,7 +14,7 @@ use uc_engine::{
 use zeroize::Zeroizing;
 
 use crate::{
-    host, OhEngineConfig, OhEngineEvent, OhHost, OhInvitationIssued, OhSendReport,
+    host, OhEngineConfig, OhEngineEvent, OhHost, OhInvitationIssued, OhLocalDevice, OhSendReport,
     OhSessionRecovery, OhSpaceCreated, OhSpaceJoined,
 };
 
@@ -86,6 +86,22 @@ impl OhEngine {
             OperationResult::SessionRecovered { unlocked, resumed } => {
                 Ok(OhSessionRecovery { unlocked, resumed })
             }
+            _ => Err(unexpected_result()),
+        }
+    }
+
+    #[napi]
+    pub async fn query_local_device(&self) -> napi::Result<OhLocalDevice> {
+        let result = self
+            .engine
+            .execute(Operation::QueryLocalDevice)
+            .await
+            .map_err(engine_error)?;
+        match result {
+            OperationResult::LocalDevice(device) => Ok(OhLocalDevice {
+                device_id: device.device_id,
+                display_name: device.display_name,
+            }),
             _ => Err(unexpected_result()),
         }
     }
@@ -288,6 +304,11 @@ impl OhEngine {
     }
 
     #[napi]
+    pub async fn lifecycle_state(&self) -> String {
+        engine_state(self.engine.lifecycle_state().await).to_owned()
+    }
+
+    #[napi]
     pub async fn resume(&self) -> napi::Result<()> {
         self.engine.resume().await.map_err(engine_error)
     }
@@ -355,6 +376,7 @@ fn map_event(event: EngineEvent) -> OhEngineEvent {
         refresh_reason: None,
         operation_id: None,
         terminal: None,
+        lifecycle_action: None,
         error_code: None,
         error_category: None,
         retryable: None,
@@ -370,6 +392,16 @@ fn map_event(event: EngineEvent) -> OhEngineEvent {
         } => {
             mapped.operation_id = Some(operation_id);
             map_terminal(terminal, &mut mapped);
+        }
+        EngineEvent::LifecycleFailed { action, error } => {
+            mapped.lifecycle_action = Some(
+                match action {
+                    uc_engine::LifecycleAction::Suspend => "suspend",
+                    uc_engine::LifecycleAction::Resume => "resume",
+                }
+                .to_owned(),
+            );
+            map_event_error(error, &mut mapped);
         }
         EngineEvent::Fatal { error } => map_event_error(error, &mut mapped),
         _ => {}
@@ -454,6 +486,20 @@ mod tests {
         assert_eq!(event.kind, "operation_finished");
         assert_eq!(event.operation_id.as_deref(), Some("operation-1"));
         assert_eq!(event.terminal.as_deref(), Some("failed"));
+        assert_eq!(event.error_code, Some(1214));
+        assert_eq!(event.error_category.as_deref(), Some("unavailable"));
+        assert_eq!(event.retryable, Some(true));
+    }
+
+    #[test]
+    fn lifecycle_failure_event_keeps_the_action_and_stable_error_summary() {
+        let event = map_event(EngineEvent::LifecycleFailed {
+            action: uc_engine::LifecycleAction::Resume,
+            error: EngineError::new(1214, EngineErrorCategory::Unavailable, true),
+        });
+
+        assert_eq!(event.kind, "lifecycle_failed");
+        assert_eq!(event.lifecycle_action.as_deref(), Some("resume"));
         assert_eq!(event.error_code, Some(1214));
         assert_eq!(event.error_category.as_deref(), Some("unavailable"));
         assert_eq!(event.retryable, Some(true));

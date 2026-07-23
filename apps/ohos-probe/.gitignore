@@ -4,6 +4,12 @@
 /entry/build/
 /entry/libs/
 /entry/oh_modules/
+/entry/src/main/cpp/types/libuc_ohos_napi/index.d.ts
+/engine/build/
+/engine/BuildProfile.ets
+/engine/libs/
+/engine/oh_modules/
+/engine/src/main/cpp/types/libuc_ohos_napi/
 /local.properties
 /oh_modules/
 /oh-package-lock.json5

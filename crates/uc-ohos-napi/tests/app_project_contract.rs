@@ -21,6 +21,12 @@ fn ohos_probe_has_a_stage_application_project() {
         "apps/ohos-probe/entry/oh-package.json5",
         "apps/ohos-probe/entry/hvigorfile.ts",
         "apps/ohos-probe/entry/src/main/module.json5",
+        "apps/ohos-probe/engine/build-profile.json5",
+        "apps/ohos-probe/engine/Index.ets",
+        "apps/ohos-probe/engine/oh-package.json5",
+        "apps/ohos-probe/engine/hvigorfile.ts",
+        "apps/ohos-probe/engine/src/main/module.json5",
+        "crates/uc-ohos-napi/ohos/index.d.ts",
     ] {
         assert!(
             workspace_root().join(relative).is_file(),
@@ -42,7 +48,7 @@ fn ohos_probe_declares_the_engine_napi_module() {
     assert!(package.contains("libuc_ohos_napi.so"));
     assert!(package.contains("src/main/cpp/types/libuc_ohos_napi"));
 
-    let declarations = read("apps/ohos-probe/entry/src/main/cpp/types/libuc_ohos_napi/index.d.ts");
+    let declarations = read("crates/uc-ohos-napi/ohos/index.d.ts");
     assert!(declarations.contains("coreVersion(): string"));
 }
 
@@ -52,7 +58,25 @@ fn ohos_probe_builds_the_arm64_binding_before_assembling_the_hap() {
     assert!(script.contains("aarch64-unknown-linux-ohos"));
     assert!(script.contains("libuc_ohos_napi.so"));
     assert!(script.contains("assembleHap"));
+    assert!(script.contains("assembleHar"));
+    assert!(script.contains("UniClipboardEngine.har"));
     assert!(!script.contains("/Users/"));
+}
+
+#[test]
+fn ohos_binding_owns_a_distributable_har_module() {
+    let entry = read("apps/ohos-probe/engine/Index.ets");
+    let module = read("apps/ohos-probe/engine/src/main/module.json5");
+    let package = read("apps/ohos-probe/engine/oh-package.json5");
+    let script = read("apps/ohos-probe/build-emulator.sh");
+
+    assert!(entry.contains("import engine from 'libuc_ohos_napi.so'"));
+    assert!(entry.contains("export default engine"));
+    assert!(module.contains("\"type\": \"har\""));
+    assert!(package.contains("@uniclipboard/engine"));
+    assert!(package.contains("libuc_ohos_napi.so"));
+    assert!(script.contains("crates/uc-ohos-napi/ohos/index.d.ts"));
+    assert!(script.contains("UniClipboardEngine.har.checksum.txt"));
 }
 
 #[test]
@@ -140,7 +164,7 @@ fn ohos_probe_scans_private_directories_for_export_plaintext() {
 
 #[test]
 fn ohos_probe_starts_the_engine_with_real_host_capabilities() {
-    let declarations = read("apps/ohos-probe/entry/src/main/cpp/types/libuc_ohos_napi/index.d.ts");
+    let declarations = read("crates/uc-ohos-napi/ohos/index.d.ts");
     let runtime = read("apps/ohos-probe/entry/src/main/ets/host/EngineRuntime.ets");
 
     assert!(declarations.contains("prepareHost(host: OhHost): PreparedHost"));

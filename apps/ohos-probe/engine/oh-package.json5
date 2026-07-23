@@ -1,0 +1,11 @@
+{
+  name: '@uniclipboard/engine',
+  version: '0.19.1',
+  description: 'UniClipboard unified P2P engine for HarmonyOS',
+  main: 'Index.ets',
+  author: 'UniClipboard',
+  license: 'AGPL-3.0-only',
+  dependencies: {
+    'libuc_ohos_napi.so': 'file:./src/main/cpp/types/libuc_ohos_napi',
+  },
+}

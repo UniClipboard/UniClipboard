@@ -232,6 +232,11 @@ function checkBindingProvenance(metadata, sources) {
       }
     }
   }
+  for (const token of ['assembleHar', 'UniClipboardEngine.har']) {
+    if (!sources.ohosPackaging.includes(token)) {
+      addProblem(problems, 'binding provenance', `HarmonyOS packaging is missing ${token}`)
+    }
+  }
 
   return problems
 }

@@ -1,41 +1,49 @@
 {
-  "app": {
-    "signingConfigs": [],
-    "products": [
+  app: {
+    signingConfigs: [],
+    products: [
       {
-        "name": "default",
-        "compatibleSdkVersion": "6.1.1(24)",
-        "targetSdkVersion": "6.1.1(24)",
-        "runtimeOS": "HarmonyOS",
-        "buildOption": {
-          "strictMode": {
-            "caseSensitiveCheck": true,
-            "useNormalizedOHMUrl": true
-          }
-        }
-      }
+        name: 'default',
+        compatibleSdkVersion: '6.1.1(24)',
+        targetSdkVersion: '6.1.1(24)',
+        runtimeOS: 'HarmonyOS',
+        buildOption: {
+          strictMode: {
+            caseSensitiveCheck: true,
+            useNormalizedOHMUrl: true,
+          },
+        },
+      },
     ],
-    "buildModeSet": [
+    buildModeSet: [
       {
-        "name": "debug"
+        name: 'debug',
       },
       {
-        "name": "release"
-      }
-    ]
+        name: 'release',
+      },
+    ],
   },
-  "modules": [
+  modules: [
     {
-      "name": "entry",
-      "srcPath": "./entry",
-      "targets": [
+      name: 'entry',
+      srcPath: './entry',
+      targets: [
         {
-          "name": "default",
-          "applyToProducts": [
-            "default"
-          ]
-        }
-      ]
-    }
-  ]
+          name: 'default',
+          applyToProducts: ['default'],
+        },
+      ],
+    },
+    {
+      name: 'engine',
+      srcPath: './engine',
+      targets: [
+        {
+          name: 'default',
+          applyToProducts: ['default'],
+        },
+      ],
+    },
+  ],
 }

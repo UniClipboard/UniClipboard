@@ -1,13 +1,6 @@
-import engine from 'libuc_ohos_napi.so';
-import type { OhEngine } from 'libuc_ohos_napi.so';
 import { common } from '@kit.AbilityKit';
-import { util } from '@kit.ArkTS';
-import { picker } from '@kit.CoreFileKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
-import { createEngineHost } from '../host/EngineHost';
-import { FileHandleRegistry } from '../host/FileHandleRegistry';
-import { PrivateStorageProbe } from '../host/PrivateStorageProbe';
-import { SecureAssetStorage } from '../host/SecureAssetStorage';
+import { engineRuntime, EngineRuntimeSnapshot } from '../host/EngineRuntime';
 
 const DOMAIN = 0x5543;
 
@@ -17,87 +10,42 @@ struct Index {
   @State private version: string = 'Loading';
   @State private status: string = 'Checking unified core';
   @State private details: string = '';
+  @State private ready: boolean = false;
   @State private exporting: boolean = false;
-  private readonly storage = new SecureAssetStorage();
-  private readonly files = new FileHandleRegistry();
-  private readonly privateStorage = new PrivateStorageProbe();
-  private activeEngine?: OhEngine;
 
   aboutToAppear(): void {
     this.start().catch((error: Object) => this.fail(error));
   }
 
   private async start(): Promise<void> {
-    try {
-      this.version = engine.coreVersion();
-      this.storage.verifyAccess();
-      const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
-      const preparedHost = engine.prepareHost(createEngineHost(context, this.storage, this.files));
-      this.activeEngine = await engine.startEngine(
-        { appVersion: '1.0.0', profileId: 'ohos-system-host-probe' },
-        preparedHost
-      );
-      const recovery = await this.activeEngine.recoverSession(true);
-      if (recovery.unlocked && !recovery.resumed) {
-        throw new Error('OHOS_SESSION_NOT_RESUMED');
-      }
-      if (!recovery.unlocked) {
-        await this.activeEngine.createSpace('HarmonyOS Probe', 'system-host-acceptance');
-      }
-      this.status = 'Ready';
-    } catch (error) {
-      this.fail(error as Object);
-    }
+    const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
+    this.applySnapshot(await engineRuntime.start(context));
+  }
+
+  private applySnapshot(snapshot: EngineRuntimeSnapshot): void {
+    this.version = snapshot.version;
+    this.status = snapshot.status;
+    this.details = snapshot.details;
+    this.ready = snapshot.ready;
   }
 
   private fail(error: Object): void {
-    this.version = 'Unavailable';
-    this.status = 'Native core failed to load';
-    this.details = String(error);
+    this.applySnapshot(engineRuntime.snapshot());
     hilog.error(DOMAIN, 'EngineProbe', 'Native core load failed: %{public}s', JSON.stringify(error));
   }
 
   private async exportSample(): Promise<void> {
-    const active = this.activeEngine;
-    if (active === undefined || this.exporting) {
+    if (!this.ready || this.exporting) {
       return;
     }
     this.exporting = true;
     this.details = '';
-    let handle: string | undefined;
     try {
       const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
-      const documentPicker = new picker.DocumentViewPicker(context);
-      const exportId = Date.now();
-      const exportText = `UniClipboard HarmonyOS export check ${exportId}`;
-      const uris = await documentPicker.save({
-        newFileNames: [`uniclipboard-export-check-${exportId}.txt`],
-        fileSuffixChoices: ['Text|.txt']
-      });
-      if (uris.length === 0) {
-        return;
-      }
-      handle = this.files.registerOutput(uris[0]);
-      const report = await active.sendText(exportText, []);
-      await active.exportEntry(report.entryId, handle);
-      const expected = new util.TextEncoder().encodeInto(exportText);
-      const actual = this.files.fileReadChunk(handle, '0', expected.byteLength + 1);
-      if (actual.byteLength !== expected.byteLength ||
-        actual.some((value: number, index: number) => value !== expected[index])) {
-        throw new Error('OHOS_EXPORT_VERIFY_FAILED');
-      }
-      this.privateStorage.assertNoPlaintext(
-        [context.filesDir, context.cacheDir, context.tempDir],
-        [exportText, 'uniclipboard-export-check-']
-      );
-      this.details = 'Export complete';
-    } catch (error) {
-      this.details = `Export failed: ${String(error)}`;
-      hilog.error(DOMAIN, 'EngineProbe', 'Export failed: %{public}s', JSON.stringify(error));
+      this.applySnapshot(await engineRuntime.exportSample(context));
+    } catch (_error) {
+      this.applySnapshot(engineRuntime.snapshot());
     } finally {
-      if (handle !== undefined) {
-        this.files.remove(handle);
-      }
       this.exporting = false;
     }
   }
@@ -115,8 +63,8 @@ struct Index {
         .fontWeight(FontWeight.Medium)
       Text(this.status)
         .fontSize(16)
-        .fontColor(this.status === 'Ready' ? '#1F7A5A' : '#B3261E')
-      if (this.status === 'Ready') {
+        .fontColor(this.ready ? '#1F7A5A' : '#B3261E')
+      if (this.ready) {
         Button(this.exporting ? 'Exporting' : 'Export sample')
           .enabled(!this.exporting)
           .onClick(() => this.exportSample())

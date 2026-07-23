@@ -57,6 +57,11 @@ export interface OhSessionRecovery {
   resumed: boolean
 }
 
+export interface OhLocalDevice {
+  deviceId: string
+  displayName: string
+}
+
 export interface OhSpaceCreated {
   spaceId: string
   selfDeviceId: string
@@ -66,6 +71,10 @@ export interface OhSpaceCreated {
 export interface OhEngine {
   createSpace(deviceName: string | null, passphrase: string): Promise<OhSpaceCreated>
   recoverSession(allowSecureStorageUnlock: boolean): Promise<OhSessionRecovery>
+  queryLocalDevice(): Promise<OhLocalDevice>
+  lifecycleState(): Promise<string>
+  suspend(): Promise<void>
+  resume(): Promise<void>
   sendText(text: string, targetDevices: string[]): Promise<OhSendReport>
   exportEntry(entryId: string, destinationHandle: string): Promise<void>
   shutdown(deadlineMs: number): Promise<void>

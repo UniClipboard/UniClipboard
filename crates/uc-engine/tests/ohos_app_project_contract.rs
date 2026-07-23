@@ -57,11 +57,11 @@ fn ohos_probe_builds_the_arm64_binding_before_assembling_the_hap() {
 
 #[test]
 fn ohos_probe_page_loads_the_engine_version_from_napi() {
-    let page = read("apps/ohos-probe/entry/src/main/ets/pages/Index.ets");
-    assert!(page.contains("import engine from 'libuc_ohos_napi.so'"));
-    assert!(page.contains("engine.coreVersion()"));
-    assert!(page.contains("JSON.stringify(error)"));
-    assert!(page.contains("this.details = String(error)"));
+    let runtime = read("apps/ohos-probe/entry/src/main/ets/host/EngineRuntime.ets");
+    assert!(runtime.contains("import engine from 'libuc_ohos_napi.so'"));
+    assert!(runtime.contains("engine.coreVersion()"));
+    assert!(runtime.contains("JSON.stringify(error)"));
+    assert!(runtime.contains("this.details = String(error)"));
 }
 
 #[test]
@@ -89,7 +89,7 @@ fn ohos_probe_normalizes_napi_secret_bytes_for_asset_store() {
 #[test]
 fn ohos_probe_keeps_authorized_file_uris_behind_memory_handles() {
     let registry = read("apps/ohos-probe/entry/src/main/ets/host/FileHandleRegistry.ets");
-    let page = read("apps/ohos-probe/entry/src/main/ets/pages/Index.ets");
+    let runtime = read("apps/ohos-probe/entry/src/main/ets/host/EngineRuntime.ets");
 
     assert!(registry.contains("Map<string, FileEntry>"));
     assert!(registry.contains("registerOutput(uri: string)"));
@@ -97,10 +97,10 @@ fn ohos_probe_keeps_authorized_file_uris_behind_memory_handles() {
     assert!(registry.contains("fileWriteChunk"));
     assert!(registry.contains("fileFinishWrite"));
     assert!(!registry.contains("preferences"));
-    assert!(page.contains("DocumentViewPicker"));
-    assert!(page.contains(".save({"));
-    assert!(page.contains("registerOutput"));
-    assert!(page.contains(".exportEntry("));
+    assert!(runtime.contains("DocumentViewPicker"));
+    assert!(runtime.contains(".save({"));
+    assert!(runtime.contains("registerOutput"));
+    assert!(runtime.contains(".exportEntry("));
 }
 
 #[test]
@@ -113,25 +113,27 @@ fn ohos_probe_normalizes_napi_file_bytes_for_system_writes() {
 
 #[test]
 fn ohos_probe_reads_the_exported_file_back_before_reporting_success() {
-    let page = read("apps/ohos-probe/entry/src/main/ets/pages/Index.ets");
+    let runtime = read("apps/ohos-probe/entry/src/main/ets/host/EngineRuntime.ets");
 
-    assert!(page.contains("const exportId = Date.now()"));
-    assert!(page.contains("const exportText = `UniClipboard HarmonyOS export check ${exportId}`"));
-    assert!(page.contains("uniclipboard-export-check-${exportId}.txt"));
-    assert!(page.contains("this.files.fileReadChunk(handle, '0'"));
-    assert!(page.contains("OHOS_EXPORT_VERIFY_FAILED"));
-    assert!(page.contains("this.details = `Export failed: ${String(error)}`"));
+    assert!(runtime.contains("const exportId = Date.now()"));
+    assert!(
+        runtime.contains("const exportText = `UniClipboard HarmonyOS export check ${exportId}`")
+    );
+    assert!(runtime.contains("uniclipboard-export-check-${exportId}.txt"));
+    assert!(runtime.contains("this.files.fileReadChunk(handle, '0'"));
+    assert!(runtime.contains("OHOS_EXPORT_VERIFY_FAILED"));
+    assert!(runtime.contains("this.details = `Export failed: ${String(error)}`"));
 }
 
 #[test]
 fn ohos_probe_scans_private_directories_for_export_plaintext() {
-    let page = read("apps/ohos-probe/entry/src/main/ets/pages/Index.ets");
+    let runtime = read("apps/ohos-probe/entry/src/main/ets/host/EngineRuntime.ets");
     let probe = read("apps/ohos-probe/entry/src/main/ets/host/PrivateStorageProbe.ets");
 
-    assert!(page.contains("PrivateStorageProbe"));
-    assert!(page.contains("context.filesDir"));
-    assert!(page.contains("context.cacheDir"));
-    assert!(page.contains("context.tempDir"));
+    assert!(runtime.contains("PrivateStorageProbe"));
+    assert!(runtime.contains("context.filesDir"));
+    assert!(runtime.contains("context.cacheDir"));
+    assert!(runtime.contains("context.tempDir"));
     assert!(probe.contains("listFileSync"));
     assert!(probe.contains("OHOS_PRIVATE_STORAGE_PLAINTEXT"));
 }
@@ -139,30 +141,50 @@ fn ohos_probe_scans_private_directories_for_export_plaintext() {
 #[test]
 fn ohos_probe_starts_the_engine_with_real_host_capabilities() {
     let declarations = read("apps/ohos-probe/entry/src/main/cpp/types/libuc_ohos_napi/index.d.ts");
-    let page = read("apps/ohos-probe/entry/src/main/ets/pages/Index.ets");
+    let runtime = read("apps/ohos-probe/entry/src/main/ets/host/EngineRuntime.ets");
 
     assert!(declarations.contains("prepareHost(host: OhHost): PreparedHost"));
-    assert!(declarations.contains("export type PreparedHost = object;"));
+    assert!(declarations.contains("export type PreparedHost = object"));
     assert!(declarations.contains("Promise<OhSpaceCreated>"));
     assert!(declarations.contains("startEngine("));
     assert!(declarations.contains("recoverSession(allowSecureStorageUnlock: boolean)"));
     assert!(declarations.contains("exportEntry(entryId: string, destinationHandle: string)"));
-    assert!(page.contains("createEngineHost"));
-    assert!(page.contains("engine.prepareHost"));
-    assert!(page.contains("engine.startEngine"));
-    assert!(page.contains("this.activeEngine.recoverSession(true)"));
+    assert!(runtime.contains("createEngineHost"));
+    assert!(runtime.contains("engine.prepareHost"));
+    assert!(runtime.contains("engine.startEngine"));
+    assert!(runtime.contains("active.recoverSession(true)"));
 }
 
 #[test]
 fn ohos_probe_recovers_a_persisted_space_before_creating_one() {
+    let runtime = read("apps/ohos-probe/entry/src/main/ets/host/EngineRuntime.ets");
+
+    assert!(runtime.contains("const recovery = await active.recoverSession(true)"));
+    assert!(runtime.contains("if (recovery.unlocked && !recovery.resumed)"));
+    assert!(runtime.contains("if (recovery.unlocked)"));
+    assert!(runtime.contains("await active.createSpace"));
+    assert!(!runtime.contains("EXISTING_SPACE_CONFLICT"));
+    assert!(!runtime.contains("isExistingSpaceConflict"));
+}
+
+#[test]
+fn ohos_system_lifecycle_uses_the_single_engine_runtime() {
+    let runtime = read("apps/ohos-probe/entry/src/main/ets/host/EngineRuntime.ets");
+    let ability = read("apps/ohos-probe/entry/src/main/ets/entryability/EntryAbility.ets");
     let page = read("apps/ohos-probe/entry/src/main/ets/pages/Index.ets");
 
-    assert!(page.contains("const recovery = await this.activeEngine.recoverSession(true)"));
-    assert!(page.contains("if (recovery.unlocked && !recovery.resumed)"));
-    assert!(page.contains("if (!recovery.unlocked)"));
-    assert!(page.contains("await this.activeEngine.createSpace"));
-    assert!(!page.contains("EXISTING_SPACE_CONFLICT"));
-    assert!(!page.contains("isExistingSpaceConflict"));
+    assert!(runtime.contains("export const engineRuntime"));
+    assert!(runtime.contains("recoverSession(true)"));
+    assert!(runtime.contains("lifecycleState()"));
+    assert!(runtime.contains("await active.suspend()"));
+    assert!(runtime.contains("await active.resume()"));
+    assert!(runtime.contains("Lifecycle transition failed"));
+    assert!(ability.contains("onBackground(): void"));
+    assert!(ability.contains("engineRuntime.onBackground()"));
+    assert!(ability.contains("onForeground(): void"));
+    assert!(ability.contains("engineRuntime.onForeground()"));
+    assert!(page.contains("engineRuntime.start(context)"));
+    assert!(!page.contains("private activeEngine?: OhEngine"));
 }
 
 #[test]

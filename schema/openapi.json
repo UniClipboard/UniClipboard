@@ -1485,7 +1485,7 @@
             "$ref": "#/components/schemas/ThemeDto"
           },
           "themeColor": {
-            "description": "旧版\"统一主题预设\"字段（v0.7 之前唯一字段）。新前端不再写入,\n但 wire 仍透传以便老 daemon ↔ 新前端 / 新 daemon ↔ 老前端兼容。\n删除计划见 `uc_core::settings::model::GeneralSettings::theme_color`。",
+            "description": "旧版\"统一主题预设\"字段（v0.7 之前唯一字段）。新前端不再写入,\n但 wire 仍透传以便老 daemon ↔ 新前端 / 新 daemon ↔ 老前端兼容。\n该兼容字段将在旧版客户端支持窗口结束后删除。",
             "nullable": true,
             "type": "string"
           },
@@ -2050,7 +2050,7 @@
         "type": "object"
       },
       "MemberSyncPreferencesPatchDto": {
-        "description": "Partial sync preferences for PATCH /member/:device_id/sync-preferences.\n\n服务器侧 `get → merge → save` 后持久化；未提供的字段保留当前值。\n重置到默认值的调用方应显式传入所有字段的默认值（`MemberSyncPreferences::default()`）。",
+        "description": "Partial sync preferences for PATCH /member/:device_id/sync-preferences.\n\n服务器侧 `get → merge → save` 后持久化；未提供的字段保留当前值。\n重置到默认值的调用方应显式传入所有字段的默认值。",
         "properties": {
           "receiveContentTypes": {
             "allOf": [
@@ -6603,7 +6603,7 @@
     },
     "/encryption/factory-reset": {
       "post": {
-        "description": "Wipes key material + clears setup status + cancels pending invitations\n(ADR-008 P3-1 / D15). Routes through `SpaceSetupFacade::factory_reset`,\nmirroring the former in-process `factory_reset_space` Tauri command.",
+        "description": "Wipes key material + clears setup status + cancels pending invitations\n(ADR-008 P3-1 / D15). Routes through the engine's factory-reset operation.",
         "operationId": "factoryResetSpace",
         "responses": {
           "200": {
@@ -6803,7 +6803,7 @@
     },
     "/encryption/unlock-with-passphrase": {
       "post": {
-        "description": "Unlocks the space with a user-supplied plaintext passphrase (ADR-008 D15).\n\nRoutes through `SpaceSetupFacade::unlock_space`, which (unlike the bare\n`encryption.unlock`) also runs the switch-space migration recovery hook —\nthe same reason the keyring `unlock_handler` above delegates to\n`try_resume_session`. On success it broadcasts `encryption.session_ready`\nso WS subscribers react identically regardless of which unlock path ran.\n\nD14: this endpoint is session-JWT gated (it is NOT in `PUBLIC_PATHS`) and\nthe handler MUST NOT log the request body — there is intentionally no\n`?req` / passphrase field on any span or tracing event here.",
+        "description": "Unlocks the space with a user-supplied plaintext passphrase (ADR-008 D15).\n\nRoutes through the engine unlock operation, which also runs switch-space,\nsearch, receive, clipboard gate, and deferred-service recovery. On success\nthe HTTP layer only broadcasts `encryption.session_ready`.\n\nD14: this endpoint is session-JWT gated (it is NOT in `PUBLIC_PATHS`) and\nthe handler MUST NOT log the request body — there is intentionally no\n`?req` / passphrase field on any span or tracing event here.",
         "operationId": "unlockSpaceWithPassphrase",
         "requestBody": {
           "content": {
@@ -6908,11 +6908,11 @@
     },
     "/lifecycle/ready": {
       "post": {
-        "description": "锁定期 daemon 把剪贴板采集门控住(deferred services);解锁后用本端点\n放行。ADR-008 P3-3 起 daemon 永远是独立进程,GUI 作为纯客户端经 loopback\nHTTP 调它(旧 `GuiInProcess` 同进程模式已删除)。",
+        "description": "创建、加入和解锁操作已经由 `Engine` 在返回成功前完成接收恢复。本端点\n只保留客户端幂等确认，不再持有或重复调用内部接收接口。",
         "operationId": "signalLifecycleReady",
         "responses": {
           "204": {
-            "description": "Ready signal accepted; clipboard capture gate opened"
+            "description": "Ready signal acknowledged"
           }
         },
         "security": [
@@ -6923,7 +6923,7 @@
             "session_header": []
           }
         ],
-        "summary": "通知 daemon：已解锁，可以开始采集剪贴板——打开 clipboard capture 门控。",
+        "summary": "通知 daemon：客户端已经观察到核心完成解锁和接收恢复。",
         "tags": [
           "lifecycle"
         ]
@@ -7946,7 +7946,7 @@
     },
     "/search/query": {
       "get": {
-        "description": "Execute a structured search query against the local encrypted search index.\nThe session-lock decision is query-type-aware (§4.6): filter-only browse is\nserved while locked; a keyword search returns HTTP 423 when the session is\nlocked (the engine cannot derive the search key).\n\nADR-008 wire change: `total`/`hasMore` are no longer top-level siblings of\nthe envelope — they are folded INTO the `data` payload alongside the renamed\n`items` array (`SearchQueryResultDto`). The response is the canonical\n`ApiEnvelope<SearchQueryResultDto>` (`{ data: { items, total, hasMore, state }, ts }`).\n\nIndex-not-ready handling is query-type-aware (§4.7): a filter-less browse\ndegrades to a direct main-store read and returns HTTP 200 with\n`state: \"degraded\"`; a keyword or filtered query instead returns HTTP 503\n`index_rebuilding`.",
+        "description": "Execute a structured search query against the local encrypted search index.\nEvery query requires an unlocked session because result rendering decrypts\nthe encrypted payload.\n\nADR-008 wire change: `total`/`hasMore` are no longer top-level siblings of\nthe envelope — they are folded INTO the `data` payload alongside the renamed\n`items` array (`SearchQueryResultDto`). The response is the canonical\n`ApiEnvelope<SearchQueryResultDto>` (`{ data: { items, total, hasMore, state }, ts }`).\n\nIndex-not-ready handling is query-type-aware (§4.7): a filter-less browse\ndegrades to a direct main-store read and returns HTTP 200 with\n`state: \"degraded\"`; a keyword or filtered query instead returns HTTP 503\n`index_rebuilding`.",
         "operationId": "searchQuery",
         "parameters": [
           {

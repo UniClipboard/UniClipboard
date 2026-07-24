@@ -34,6 +34,7 @@ Desktop Rust workspace (root `Cargo.toml`): system adapters and daemon libraries
 |  `- crates/uc-tauri/    # Tauri adapter: commands (via tauri-specta), tray, quick panel, run loop
 ```
 
+
 ## WHERE TO LOOK
 
 | Task                      | Location                                             | Notes                                                                   |

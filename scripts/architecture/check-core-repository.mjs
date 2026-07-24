@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url'
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url))
 const REPOSITORY_ROOT = resolve(SCRIPT_DIR, '../..')
 const CORE_REPOSITORY = 'https://github.com/UniClipboard/core.git'
-const CORE_REVISION = '127ebce0fc62204ea4dfd593b042e659d87c2761'
+const CORE_REVISION = '5a53c2a08b3c50e148ce87981be53f13497fbd67'
 const DECLARED_CORE_SOURCE = `git+${CORE_REPOSITORY}?rev=${CORE_REVISION}`
 const RESOLVED_CORE_SOURCE = `${DECLARED_CORE_SOURCE}#${CORE_REVISION}`
 

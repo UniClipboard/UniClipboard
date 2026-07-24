@@ -17,7 +17,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use sentry::{ClientOptions, Envelope, TransactionContext, Transport, TransportFactory};
+use sentry::{Envelope, TransactionContext, Transport, TransportFactory, TransportOptions};
 
 /// Baseline transaction sample rate — the **single source of truth**.
 ///
@@ -53,8 +53,9 @@ const MUTED_TRANSACTION_NAMES: &[&str] = &["poll_send", "connect", "QADv4", "tx"
 pub(super) struct TelemetryGatedTransportFactory;
 
 impl TransportFactory for TelemetryGatedTransportFactory {
-    fn create_transport(&self, options: &ClientOptions) -> Arc<dyn Transport> {
-        let inner = sentry::transports::DefaultTransportFactory.create_transport(options);
+    fn create_transport_with_options(&self, options: TransportOptions) -> Arc<dyn Transport> {
+        let inner =
+            sentry::transports::DefaultTransportFactory.create_transport_with_options(options);
         Arc::new(TelemetryGatedTransport::new(inner))
     }
 }
@@ -104,7 +105,7 @@ mod tests {
     use std::sync::{Arc, Mutex};
 
     use sentry::protocol::Envelope;
-    use sentry::Transport;
+    use sentry::{ClientOptions, Transport};
 
     use super::*;
 

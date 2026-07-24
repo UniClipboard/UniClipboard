@@ -61,8 +61,10 @@ Use when:
 ### 2a. Port definition / evolution / refactoring
 Read: `docs/architecture/ports.md`
 
+Port 的可写事实来源现已迁入 `UniClipboard/core`。本仓中的这份文档只作为迁移期参考；不得在 desktop 下重新创建或修改核心包。
+
 Use when:
-- defining new ports in `uc-core`
+- 规划必须在 `UniClipboard/core` 实现的 Port 变更
 - adding methods to existing port traits
 - deciding port granularity or naming
 - refactoring large port interfaces into smaller ones

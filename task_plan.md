@@ -113,7 +113,57 @@
 
 ## Current Phase
 
-uc-engine 结构迁移、Plan 005 Phase 0 至 Phase 4、独立仓库更名、`main` 分支和首个候选版本发布均已完成。下一阶段是 Phase 5 切换 desktop，尚未开始。
+uc-engine 结构迁移、Plan 005 Phase 0 至 Phase 4、独立仓库更名、`main` 分支和首个候选版本发布均已完成。当前进入 Phase 5，切换 desktop 到独立核心仓库。
+
+## 2026-07-24 Plan 005 Phase 5 desktop 切换
+
+**目标：** 将 desktop 的全部核心依赖切换到独立 `UniClipboard/core` 仓库的固定提交，并在同一次迁移中删除 desktop 内迁出的旧源码和重复资产。
+
+### 完成标准
+
+- [ ] desktop 保留项目的全部核心依赖只来自 `https://github.com/UniClipboard/core.git` 的提交 `dcdccb234f020be49884bf92d886f25a0f192188`
+- [ ] 锁文件中只有一份核心来源，干净检出无需 desktop 内的核心源码即可解析依赖
+- [ ] 已删除迁出的 crate、数据库迁移、绑定、移动探针和重复检查，workspace 不再包含其成员
+- [ ] daemon、CLI、Web、Tauri、平台和宿主代码继续由 desktop 拥有
+- [ ] LAN 兼容只在明确需要的 desktop 入口启用，不成为默认能力或自动回退
+- [ ] 锁定依赖、全项目全目标编译、格式、仓库边界、差异和实际入口检查通过
+- [ ] 依赖切换与旧源码删除在同一迁移提交中完成并推送
+
+### 阶段
+
+#### Desktop Cutover Phase A：固定所有权与依赖清单
+- [x] 从核心仓清单和 desktop 元数据确定完整迁出目录
+- [x] 枚举 desktop 保留项目对迁出包的全部直接依赖与功能开关
+- **Status:** complete
+
+#### Desktop Cutover Phase B：切换固定依赖
+- [x] 将全部直接核心依赖切换到同一 Git 地址和固定提交
+- [x] 更新锁文件并证明解析来源唯一
+- **Status:** complete
+
+### Errors Encountered
+
+| Error | Attempt | Resolution |
+| --- | --- | --- |
+| 完整 `cargo metadata --locked` 拒绝旧锁文件 | 1 | `--no-deps` 只验证了清单形状，没有更新完整依赖解析；改用一次非锁定完整元数据刷新锁文件，再重新执行锁定检查 |
+| 消费者检查读取完整依赖图时报 `ENOBUFS` | 1 | 完整元数据超过 Node 默认 1MiB 输出上限；为结构化读取设置 64MiB 上限后重跑 |
+| 已删除绑定目录仍含忽略的 Gradle 缓存 | 1 | `git rm` 不处理忽略文件；确认只有 `.gradle/.kotlin` 可重建缓存后按精确路径清理 |
+| 精确目录 `rm -rf` 被执行环境拒绝 | 1 | 不重试被拒绝命令；改用限定在已核对目录内的深度删除 |
+
+#### Desktop Cutover Phase C：删除旧副本
+- [x] 从 workspace 和仓库删除全部迁出目录与重复资产
+- [x] 更新脚本、检查、文档和路径引用
+- **Status:** complete
+
+#### Desktop Cutover Phase D：验证入口与仓库边界
+- [x] 完成全项目编译、格式、依赖、边界和差异检查
+- [x] 完成 daemon、CLI、Tauri 等可执行入口的实际检查
+- **Status:** complete
+
+#### Desktop Cutover Phase E：审计、提交与推送
+- [ ] 复核完整删除和单一来源，更新正式计划与三份阶段记录
+- [ ] 原子提交、推送并核对远端状态
+- **Status:** in_progress
 
 ## 2026-07-24 Plan 005 Phase 4 核心候选版本
 

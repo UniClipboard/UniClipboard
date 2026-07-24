@@ -34,13 +34,9 @@ function parseWorkspaceMembers() {
 // -- 2. Extract one-line description from each crate's Cargo.toml or lib.rs --
 
 const KNOWN_DESCRIPTIONS = {
-  'uc-core': 'Domain models + Port traits only (no external deps)',
-  'uc-application': 'Use cases / orchestrators (depends on uc-core ports only)',
-  'uc-infra': 'Infra adapters: Diesel repos, iroh P2P, encryption, fs, timers',
   'uc-platform': 'OS adapters: clipboard, secure storage, autostart',
   'uc-observability': 'Dual-output tracing, profile filtering, Sentry/analytics scope',
-  'uc-bootstrap':
-    'Composition root -- the ONLY crate that may depend on core+app+infra+platform at once',
+  'uc-bootstrap': 'Desktop host capability preparation for the independent core engine',
   'uc-app-paths': 'Lightweight directory-layout authority (data/cache/tmp)',
   'uc-webserver': "Daemon's 127.0.0.1 HTTP + WebSocket API (OpenAPI / ApiEnvelope)",
   'uc-daemon-contract': 'Transport DTOs/contracts shared by client + server',
@@ -74,16 +70,8 @@ function getDescription(cratePath) {
 
 const LAYER_ORDER = [
   {
-    comment: 'Hex core (ADR-005)',
-    members: [
-      'uc-core',
-      'uc-application',
-      'uc-infra',
-      'uc-platform',
-      'uc-observability',
-      'uc-app-paths',
-      'uc-bootstrap',
-    ],
+    comment: 'Desktop host adapters',
+    members: ['uc-platform', 'uc-observability', 'uc-app-paths', 'uc-bootstrap'],
   },
   {
     comment: 'Daemon split (ADR-007/008)',
@@ -184,7 +172,6 @@ function generateStructure(members) {
       lines.push(`|  \`- crates/${name}/    # ${getDescription(m)}`)
     }
   }
-  lines.push('`- crates/uc-infra/migrations/ # Active infra (diesel) migrations')
   lines.push('```')
 
   return lines.join('\n')

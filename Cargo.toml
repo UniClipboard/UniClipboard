@@ -1,25 +1,16 @@
 # Root cargo workspace for the UniClipboard monorepo.
 #
 # Layout:
-# - apps/    runnable binaries (cli => uniclip, daemon => uniclipd; future
-#            ios/android core crates)
-# - crates/  library crates (hexagonal core/app/infra/platform + daemon split)
+# - apps/    runnable binaries (cli => uniclip, daemon => uniclipd)
+# - crates/  desktop host, platform, observability, and daemon libraries
 # - src-tauri/  Tauri packaging only: the `uniclipboard` desktop bin package
 #               plus its adapter crate src-tauri/crates/uc-tauri
 
 [workspace]
 members = [
-  "crates/uc-core",
-  "crates/uc-content-hash",
-  "crates/uc-application",
   "crates/uc-platform",
   "crates/uc-app-paths",
-  "crates/uc-infra",
-  "crates/uc-engine",
-  "crates/uc-engine-uniffi",
-  "crates/uc-ohos-napi",
   "crates/uc-observability",
-  "crates/uc-observability-contract",
   "crates/uc-bootstrap",
   "crates/uc-daemon-contract",
   "crates/uc-daemon-process",
@@ -28,12 +19,9 @@ members = [
   "crates/uc-desktop",
   "crates/uc-cli-macros",
   "crates/uc-daemon-client",
-  "crates/uc-mobile-proto",
-  "crates/uc-mobile",
   "crates/p2p-bench",
   "apps/cli",
   "apps/daemon",
-  "apps/mobile-probe-core",
   "src-tauri",
   "src-tauri/crates/uc-tauri",
 ]
@@ -59,8 +47,16 @@ print_stdout = "warn"
 print_stderr = "warn"
 dbg_macro = "warn"
 
-# Dependencies for workspace crates, mainly for tauri plugins
+# Shared dependencies for the immutable core revision and Tauri plugins.
 [workspace.dependencies]
+# All desktop consumers use one immutable core revision. Features remain
+# opt-in at each host boundary so LAN compatibility cannot become a default.
+uc-engine = { git = "https://github.com/UniClipboard/core.git", rev = "127ebce0fc62204ea4dfd593b042e659d87c2761" }
+uc-application = { git = "https://github.com/UniClipboard/core.git", rev = "127ebce0fc62204ea4dfd593b042e659d87c2761" }
+uc-core = { git = "https://github.com/UniClipboard/core.git", rev = "127ebce0fc62204ea4dfd593b042e659d87c2761" }
+uc-infra = { git = "https://github.com/UniClipboard/core.git", rev = "127ebce0fc62204ea4dfd593b042e659d87c2761" }
+uc-observability-contract = { git = "https://github.com/UniClipboard/core.git", rev = "127ebce0fc62204ea4dfd593b042e659d87c2761" }
+
 # tauri 2.11 是 specta rc.25 兼容的最低版本 —— 2.10.x 及之前在
 # `tauri/src/ipc/channel.rs` 用了 `#[specta(remote=..., rename="...")]`
 # 容器级 rename，rc.25 已移除该属性会编译失败。tauri-specta rc.25 通过

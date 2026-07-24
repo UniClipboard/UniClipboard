@@ -1,2 +1,0 @@
-ALTER TABLE active_clipboard_register
-DROP COLUMN consumable_ref_ciphertext;

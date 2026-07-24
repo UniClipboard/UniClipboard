@@ -809,3 +809,47 @@
 - `Cargo.lock`、许可证、源码包、Android AAR 及其校验、POM、生成源码、版本和提交记录逐字节一致；iOS/HarmonyOS 封装包及调试归档因构建期元数据不同而校验值不同，每份包均由各自清单准确记录并独立验证，计划不把它们误写成逐字节可复现。
 - 正式预发布 `core-v0.20.0-rc.1` 指向 `dcdccb2`，共有 23 个 Release 文件；清单声明的 22 个文件与 GitHub 实际名称、大小和 SHA-256 全部一致，另一个文件是清单本身。
 - 新仓 HarmonyOS 构建机 `mark-mac-deveco` 已作为当前用户的登录后台服务运行，标签为 `self-hosted`、`macOS`、`ARM64`、`deveco`，GitHub 状态为在线。
+
+# 2026-07-24 Plan 005 Phase 5 desktop 切换
+
+- desktop 与核心仓当前都干净且已同步；desktop 基线为 `3882527cc7c8fc5992a7cdb998863351dd45d2a5`，核心候选提交为 `dcdccb234f020be49884bf92d886f25a0f192188`。
+- Phase 5 是一次不可拆开的来源切换：必须先让所有 desktop 保留项目的直接核心依赖指向同一固定提交，再在同一迁移中删除 desktop 内旧副本，不能保留两套实现。
+- 架构规则继续要求核心模型、应用逻辑和具体实现的所有权不反转；desktop 只保留 daemon、CLI、Web、Tauri、平台与宿主接线。
+- LAN 兼容只能由明确的 desktop 入口显式启用，默认核心和移动绑定不能因此获得兼容能力，也不能出现 P2P 失败后的自动回退。
+- 本阶段没有新增 Port 或领域行为，目标是物理仓库边界切换；跨仓引用必须通过包依赖和公开入口完成，不能引入源码路径或桌面反向依赖。
+- 正式 Plan 005 明确要求 desktop 固定不可变提交而不是分支或标签，并要求依赖切换与旧源码删除出现在同一个迁移提交中；回退时也不能把已删除旧源码恢复成第二事实来源。
+- desktop crate 导航仍描述拆仓前的 27 个成员和核心目录，Phase 5 删除后必须同步更新，避免后续维护者继续在 desktop 仓寻找核心实现。
+- Phase 5 的验收必须覆盖 daemon、CLI、Tauri 与 HTTP/WS 入口；按用户要求不运行测试用例，因此会以编译、启动和可观察的真实命令流程替代重复测试执行。
+- 核心仓根清单是迁出范围的当前事实来源，共 11 个 workspace 包：`uc-engine`、`uc-core`、`uc-application`、`uc-infra`、`uc-content-hash`、`uc-observability-contract`、`uc-engine-uniffi`、`uc-ohos-napi`、`uc-mobile-proto`、`uc-mobile`、`uc-mobile-probe-core`。
+- 物理目录重排后，两个绑定位于核心仓 `bindings/`，两个 LAN 兼容包位于 `compatibility/`，移动验收宿主位于 `tests/hosts/`；desktop 侧删除时需要按旧目录位置映射，不能按新仓路径直接删除。
+- 核心仓仍固定补丁版 `iroh-blobs`；desktop 切换后必须核对根 `[patch.crates-io]` 的所有权，避免同一补丁从两个位置造成来源冲突或被误删。
+- desktop 根 workspace 当前仍列出全部 11 个迁出包；其统一版本还是 `0.19.1`，而独立核心提交版本为 `0.20.0-rc.1`，切换锁文件后必须区分 desktop 自身版本与核心版本。
+- desktop 保留包的普通核心依赖已经基本收敛：daemon、bootstrap 直接依赖默认 `uc-engine`，webserver 显式依赖 `uc-engine/lan-compat`，CLI 以可选 `uc-engine/dev-tools` 供开发命令使用，`uc-observability` 直接依赖可移植观测约定。
+- bootstrap 和 webserver 仍有 `uc-application`、`uc-core`、`uc-infra` 开发依赖；这些不是正式运行依赖，但本地旧包删除后仍会影响依赖解析，必须逐项判断是迁为固定 Git 开发依赖还是随重复检查删除。
+- `uc-mobile-probe-core` 属于核心仓验收宿主而非 desktop 产品入口，应随旧核心包删除，不能在 desktop 中继续作为第二个核心消费者保留。
+- 清单扫描确认 desktop 保留包只有 10 处需要切换的直接声明：daemon 1、CLI 1、bootstrap 4、webserver 3、observability 1；其中 webserver 的 `lan-compat` 和 CLI 的 `dev-tools`/`lan-compat` 功能必须原样保留。
+- bootstrap 的三个内部包和 webserver 的两个内部包只用于开发检查，正式运行依赖已经收口；Phase 5 不重写这些检查逻辑，先让它们与正式入口一起锁定同一核心提交，后续再根据重复检查清单删除真正由核心仓拥有的部分。
+- `uc-observability-contract` 是 desktop 观测实现与核心之间的可移植约定，不能因“只允许 uc-engine 作为业务入口”而删除；它也必须固定到同一核心提交。
+- 核心仓的历史映射明确列出旧位置：两个绑定原在 `crates/`，两个 LAN 包原在 `crates/`，移动验收宿主原在 `apps/mobile-probe-core`；其余 `uc-engine`、`uc-core`、`uc-application`、`uc-infra`、`uc-content-hash`、`uc-observability-contract` 路径未重排。
+- 核心仓已自行拥有统一仓库检查、密文扫描、三种绑定打包、版本校验和发布清单脚本；desktop 中若保留同用途脚本就会形成重复所有权，应在依赖切换后逐个按调用方确认并删除或改为纯消费者检查。
+- 核心仓检查只负责核心内部边界；desktop 仍必须保留“固定不可变提交、不得回流到内部包、LAN 必须显式”的消费者侧检查，不能把所有跨仓检查一并删除。
+- 从迁移基线 `12104cbab7...` 到 desktop 当前提交，11 个迁出目录没有任何源码漂移；这证明旧副本仍是冻结状态，可以直接删除，不存在需要先回灌核心仓的补丁。
+- desktop 仍有旧的移动核心构建工作流、核心仓统一检查、密文探针和移动核心发布说明；需要沿实际调用关系区分“已迁到 core 的生产者资产”和“desktop 仍需保留的消费者约束/历史说明”。
+- desktop 的 `check:core-repository` 当前仍同时检查核心内部包、绑定打包、密文扫描和 desktop 消费者；删除本地核心后它必然失效，必须改成只检查消费者固定来源、禁止旧目录、默认/LAN 功能边界和自动回退。
+- `.github/workflows/build-mobile-core.yml` 完全从 desktop 本地 `uc-mobile` 源码构建并发布旧 LAN 产物，独立核心仓已经拥有 `release-lan-compat.yml`，因此该工作流属于明确重复生产者，应在 Phase 5 删除。
+- `.github/workflows/pr-check.yml` 仍执行 `bun run check:core-repository`；脚本文件与命令名可以保留以减少 CI 接线变动，但其职责要切换为 desktop 消费者检查。
+- desktop 的核心检查脚本当前读取本地绑定源码、核心内部 feature、移动验收宿主和密文扫描器，并自带三种核心仓负例；这些职责都已迁入 core，消费者版脚本只应读取 desktop 元数据和两处 LAN 接线源码。
+- desktop PR 流程除了统一脚本外还直接运行 `cargo test -p uc-engine`；本地包删除后该包不再是 workspace 成员，此步骤必须移除，核心自身测试由 core 仓 PR 流程负责。
+- `docs/architecture/core-repository-checks.md` 已预先写明拆仓后所有权，但正文仍描述拆仓前检查；需要改成当前 desktop 消费者检查说明。
+- `docs/packaging/mobile-core-build-release.md` 与旧 `.github/workflows/build-mobile-core.yml` 完整绑定，且所有生产命令都指向将删除的源码，已被 core 的 LAN 兼容发布线取代，应从 desktop 操作手册和文档索引移除。
+- 完整锁定元数据现只解析出一条核心 Git 来源：`dcdccb234f020be49884bf92d886f25a0f192188`；实际进入 desktop 闭包的是 7 个包，均为 `0.20.0-rc.1`。绑定、LAN 实现和移动验收宿主不再进入 desktop 依赖图。
+- 锁文件同时清除了只由旧绑定和移动验收包带入的 N-API、打包模板等依赖，这是删除旧 workspace 成员后的预期收缩，不是第三方版本升级。
+- core 与 desktop 之间仍有多份相同架构文档；Plan 005 把全面文档清理放在 Phase 8，本阶段只修正会导致构建或维护走错路径的导航和生产者说明，不提前删除迁移历史文档。
+- 旧源码、数据库迁移、两个绑定、两个 LAN 包、移动验收宿主和旧移动发布工作流现已从 desktop 删除；所有删除目标都有 Git 历史和独立 core 仓双重恢复路径。
+- `scripts/refresh-agents-structure.mjs` 仍会自动生成已删除的核心分层说明和 `uc-infra/migrations` 路径；只改当前 `crates/AGENTS.md` 会被后续钩子覆盖，必须先修生成器再刷新导航。
+- 除迁移计划和历史设计文档外，当前会直接失效的入口主要是 PR 中的本地 `uc-engine` 测试步骤、移动核心生产者手册、明文探针里的本地 engine 命令和 crate 导航；本阶段优先修这些现行入口。
+- 旧绑定目录存在一份未跟踪的 Gradle/Kotlin 缓存，`git rm` 不会删除；清理后消费者检查确认全部 11 个旧目录物理消失。
+- 新消费者检查的三个负例均生效：本地路径、非固定提交和自动 LAN 回退都被准确拒绝；正常依赖图通过。
+- 完整 workspace 全目标编译已经从 Git 缓存路径实际编译 `uc-engine 0.20.0-rc.1` 及其内部闭包，并完成 daemon、CLI、Web、Tauri、平台与宿主项目，证明旧本地源码不参与构建。
+- daemon 二进制没有命令行帮助入口，直接运行会启动真实后台服务；实际冒烟应使用隔离 `UC_PROFILE` 启动后再由 CLI 查询和停止，避免干扰用户当前 profile。
+- 临时 portable profile 的真实 CLI/daemon 流程显示：固定核心能完成空间初始化，状态返回 setup/encryption/search 全部 ready，独立 daemon 可启动并正常停止；说明不只是清单和编译层面通过。

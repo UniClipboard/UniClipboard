@@ -37,7 +37,7 @@ uc-app-paths = { path = "../../crates/uc-app-paths" }
 
 # --- Heavy optional deps (only pulled by `dev-tools` feature) ---------------
 uc-bootstrap = { path = "../../crates/uc-bootstrap", optional = true }
-uc-engine = { path = "../../crates/uc-engine", optional = true, features = ["dev-tools"] }
+uc-engine = { workspace = true, optional = true, features = ["dev-tools"] }
 # Hidden `probe` subcommand group reads/writes the OS clipboard directly
 # (replaces the standalone `clipboard-probe` binary). Diagnostic only.
 uc-platform = { path = "../../crates/uc-platform", optional = true }

@@ -4,8 +4,11 @@ Use this document when changes touch module boundaries, cross-crate types, commi
 
 ## Hexagonal Architecture Boundaries
 
+仓库所有权已经固定：`uc-core`、`uc-application`、`uc-infra`、`uc-engine`、数据库迁移、绑定和 LAN 协议包都属于 `UniClipboard/core`。desktop 不得重新创建这些内容。核心变更必须先在核心仓实现并验证，再由 desktop 更新唯一的固定提交。
+
 - **Layering is fixed:**
-  - `uc-app → uc-core ← uc-infra / uc-platform`
+  - `desktop host → uc-engine → core internals`
+  - `uc-platform → HostCapabilities ← uc-engine`
 - **Core isolation is non-negotiable:**
   - `uc-core` must **not** depend on any external implementations.
 - **All external capabilities go through Ports (no exceptions):**
@@ -24,9 +27,9 @@ When delivering a new capability, **do not start by defining core domain types**
 
 3. **Define core domain types as ports demand.** A port signature pulls in value objects (`DeviceId`, `TokenHash`, `MobileDevice`, etc.). Add them to `uc-core` only when a port or use case forces their existence.
 
-4. **Implement adapters last.** Once ports are stable, implement them in `uc-infra` (DB / FS / network IO over real systems) or `uc-platform` (OS-specific capabilities). Adapters are the leaves; they must not influence port shape.
+4. **Implement adapters last.** Once ports are stable, implement portable DB / FS / network adapters in the core repository's `uc-infra`. Implement OS capabilities in desktop `uc-platform` against the stable host contract. Adapters are the leaves; they must not influence port shape.
 
-5. **Wire in `uc-bootstrap`.** Connect concrete adapters to the use case constructors.
+5. **Wire at the owning boundary.** The core repository wires portable adapters behind `uc-engine`; desktop `uc-bootstrap` prepares `HostCapabilities` and passes them to `Engine::start`.
 
 ### Anti-Patterns
 
@@ -57,8 +60,8 @@ Goal: "let users register an iPhone for clipboard sync via Shortcut".
 | 2c | Use case needs to know the daemon's bound LAN URL → port `MobileSyncEndpointInfo` (returns current `lan_url`, may delegate to a settings reader) | `uc-core` |
 | 3 | `MobileDevice`, `DeviceId`, `TokenHash`, `MobileClientType` value objects materialize because ports / use case signatures reference them | `uc-core` |
 | 4a | `SqliteMobileDeviceRepository` implements `MobileDeviceRepository` | `uc-infra` |
-| 4b | `NetworkInterfaceProbe` (used by a separate `ListLanInterfacesUseCase`) implements `LanInterfaceProbe` | `uc-platform` |
-| 5 | `uc-bootstrap` wires adapters into use case constructors | `uc-bootstrap` |
+| 4b | A desktop system capability implements the public host contract | desktop `uc-platform` |
+| 5 | Portable adapters are hidden by `uc-engine`; desktop prepares host capabilities | core `uc-engine` + desktop `uc-bootstrap` |
 
 If at step 3 you discover you need a field that step 1 did not justify, go back to step 1 and refine the use case first.
 

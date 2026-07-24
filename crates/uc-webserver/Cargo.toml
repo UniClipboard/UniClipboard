@@ -12,7 +12,7 @@ path = "src/lib.rs"
 [dependencies]
 uc-daemon-contract = { path = "../uc-daemon-contract" }
 uc-daemon-local = { path = "../uc-daemon-local" }
-uc-engine = { path = "../uc-engine", features = ["lan-compat"] }
+uc-engine = { workspace = true, features = ["lan-compat"] }
 uc-observability = { path = "../uc-observability" }
 anyhow = "1.0"
 axum = { version = "0.7", features = ["ws", "tokio", "http1", "http2", "multipart"] }
@@ -34,8 +34,8 @@ uuid = { version = "1.10.0", features = ["v4"] }
 
 [dev-dependencies]
 async-trait = "0.1"
-uc-application = { path = "../uc-application" }
-uc-core = { path = "../uc-core" }
+uc-application.workspace = true
+uc-core.workspace = true
 tower = { version = "0.5", features = ["util"] }
 # The /healthz load benchmark only: it drives a real listener over real TCP and
 # needs the *real* Argon2id cost on the control arm — a fake hasher would make

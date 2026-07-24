@@ -1,16 +1,19 @@
 #!/usr/bin/env node
 
-import { execFileSync, spawnSync } from 'node:child_process'
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { execFileSync } from 'node:child_process'
+import { existsSync, readFileSync } from 'node:fs'
 import { dirname, join, relative, resolve } from 'node:path'
 import process from 'node:process'
 import { fileURLToPath } from 'node:url'
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url))
 const REPOSITORY_ROOT = resolve(SCRIPT_DIR, '../..')
+const CORE_REPOSITORY = 'https://github.com/UniClipboard/core.git'
+const CORE_REVISION = 'dcdccb234f020be49884bf92d886f25a0f192188'
+const DECLARED_CORE_SOURCE = `git+${CORE_REPOSITORY}?rev=${CORE_REVISION}`
+const RESOLVED_CORE_SOURCE = `${DECLARED_CORE_SOURCE}#${CORE_REVISION}`
 
-const CORE_REPOSITORY_PACKAGES = new Set([
+const MIGRATED_PACKAGES = new Set([
   'uc-engine',
   'uc-core',
   'uc-application',
@@ -21,123 +24,125 @@ const CORE_REPOSITORY_PACKAGES = new Set([
   'uc-ohos-napi',
   'uc-mobile-proto',
   'uc-mobile',
+  'uc-mobile-probe-core',
 ])
 
-const INTERNAL_PACKAGES = new Set([
+const FORBIDDEN_RUNTIME_PACKAGES = new Set([
   'uc-core',
   'uc-application',
   'uc-infra',
   'uc-content-hash',
-  'uc-observability-contract',
   'uc-mobile-proto',
   'uc-mobile',
 ])
 
-const BINDING_PACKAGES = ['uc-engine-uniffi', 'uc-ohos-napi']
-const P2P_CONSUMERS = ['uc-engine-uniffi', 'uc-ohos-napi', 'uc-mobile-probe-core']
-const DESKTOP_CONSUMERS = [
-  'uc-bootstrap',
-  'uc-cli',
-  'uc-daemon',
-  'uc-daemon-client',
-  'uc-daemon-contract',
-  'uc-desktop',
-  'uc-platform',
-  'uc-tauri',
-  'uc-webserver',
+const MIGRATED_PATHS = [
+  'crates/uc-engine',
+  'crates/uc-core',
+  'crates/uc-application',
+  'crates/uc-infra',
+  'crates/uc-content-hash',
+  'crates/uc-observability-contract',
+  'crates/uc-engine-uniffi',
+  'crates/uc-ohos-napi',
+  'crates/uc-mobile-proto',
+  'crates/uc-mobile',
+  'apps/mobile-probe-core',
 ]
-
-const DESKTOP_ONLY_PACKAGES = new Set([
-  'uc-app-paths',
-  'uc-bootstrap',
-  'uc-daemon-client',
-  'uc-daemon-contract',
-  'uc-daemon-local',
-  'uc-daemon-process',
-  'uc-desktop',
-  'uc-observability',
-  'uc-platform',
-  'uc-tauri',
-  'uc-webserver',
-])
 
 function read(relativePath) {
   return readFileSync(join(REPOSITORY_ROOT, relativePath), 'utf8')
 }
 
 function cargoMetadata() {
-  const output = execFileSync(
-    'cargo',
-    ['metadata', '--no-deps', '--format-version', '1', '--locked', '--offline'],
-    { cwd: REPOSITORY_ROOT, encoding: 'utf8' }
-  )
+  const output = execFileSync('cargo', ['metadata', '--format-version', '1', '--locked'], {
+    cwd: REPOSITORY_ROOT,
+    encoding: 'utf8',
+    maxBuffer: 64 * 1024 * 1024,
+  })
   return JSON.parse(output)
 }
 
-function packageByName(metadata, name) {
-  const found = metadata.packages.find(candidate => candidate.name === name)
+function workspacePackages(metadata) {
+  const members = new Set(metadata.workspace_members)
+  return metadata.packages.filter(candidate => members.has(candidate.id))
+}
+
+function workspacePackageByName(metadata, name) {
+  const found = workspacePackages(metadata).find(candidate => candidate.name === name)
   if (!found) throw new Error(`workspace package is missing: ${name}`)
   return found
 }
 
-function normalDependencies(packageMetadata) {
-  return packageMetadata.dependencies.filter(dependency => dependency.kind === null)
-}
-
-function normalDependency(packageMetadata, dependencyName) {
-  return normalDependencies(packageMetadata).find(dependency => dependency.name === dependencyName)
-}
-
-function featureItems(packageMetadata, featureName) {
-  return packageMetadata.features[featureName] ?? []
+function dependency(packageMetadata, dependencyName, kind = null) {
+  return packageMetadata.dependencies.find(
+    candidate => candidate.name === dependencyName && candidate.kind === kind
+  )
 }
 
 function addProblem(problems, check, message) {
   problems.push(`${check}: ${message}`)
 }
 
-function checkCoreDependencies(metadata) {
+function checkRepositoryBoundary(metadata, { checkPaths = true } = {}) {
   const problems = []
 
-  for (const name of CORE_REPOSITORY_PACKAGES) {
-    const packageMetadata = packageByName(metadata, name)
-    for (const dependency of normalDependencies(packageMetadata)) {
-      if (dependency.path && !CORE_REPOSITORY_PACKAGES.has(dependency.name)) {
+  for (const packageMetadata of workspacePackages(metadata)) {
+    if (MIGRATED_PACKAGES.has(packageMetadata.name)) {
+      addProblem(
+        problems,
+        'repository boundary',
+        `${packageMetadata.name} remains a desktop workspace package`
+      )
+    }
+
+    for (const item of packageMetadata.dependencies) {
+      if (!MIGRATED_PACKAGES.has(item.name)) continue
+      if (item.path) {
         addProblem(
           problems,
-          'core dependency firewall',
-          `${name} has repository-local dependency ${dependency.name}`
+          'repository boundary',
+          `${packageMetadata.name} uses a local path for ${item.name}`
         )
       }
-      if (DESKTOP_ONLY_PACKAGES.has(dependency.name)) {
+      if (item.source !== DECLARED_CORE_SOURCE) {
         addProblem(
           problems,
-          'core dependency firewall',
-          `${name} depends on desktop-owned package ${dependency.name}`
+          'core provenance',
+          `${packageMetadata.name} does not pin ${item.name} to ${CORE_REVISION}`
         )
       }
     }
   }
 
-  const packages = new Map(metadata.packages.map(item => [item.name, item]))
-  const pending = ['uc-engine']
-  const visited = new Set()
-  while (pending.length > 0) {
-    const name = pending.pop()
-    if (visited.has(name)) continue
-    visited.add(name)
-    const packageMetadata = packages.get(name)
-    if (!packageMetadata) continue
-    for (const dependency of normalDependencies(packageMetadata)) {
-      if (packages.has(dependency.name)) pending.push(dependency.name)
+  if (checkPaths) {
+    for (const migratedPath of MIGRATED_PATHS) {
+      if (existsSync(join(REPOSITORY_ROOT, migratedPath))) {
+        addProblem(problems, 'repository boundary', `${migratedPath} still exists in desktop`)
+      }
     }
   }
-  for (const name of visited) {
-    if (DESKTOP_ONLY_PACKAGES.has(name)) {
+
+  const coreSources = new Set(
+    metadata.packages
+      .map(candidate => candidate.source)
+      .filter(source => source?.startsWith(`git+${CORE_REPOSITORY}`))
+  )
+  if (coreSources.size !== 1 || !coreSources.has(RESOLVED_CORE_SOURCE)) {
+    addProblem(
+      problems,
+      'core provenance',
+      `expected one resolved core source at ${CORE_REVISION}; found ${[...coreSources].join(', ')}`
+    )
+  }
+
+  for (const packageMetadata of metadata.packages) {
+    if (!MIGRATED_PACKAGES.has(packageMetadata.name)) continue
+    if (packageMetadata.source !== RESOLVED_CORE_SOURCE) {
       addProblem(
         problems,
-        'core dependency firewall',
-        `uc-engine normal dependency closure contains ${name}`
+        'core provenance',
+        `${packageMetadata.name} resolved outside the pinned core revision`
       )
     }
   }
@@ -148,93 +153,33 @@ function checkCoreDependencies(metadata) {
 function checkPublicSurface(metadata) {
   const problems = []
 
-  for (const name of INTERNAL_PACKAGES) {
-    const packageMetadata = packageByName(metadata, name)
-    if (!Array.isArray(packageMetadata.publish) || packageMetadata.publish.length !== 0) {
-      addProblem(problems, 'public surface', `${name} must set publish = false`)
-    }
-  }
-
-  for (const bindingName of BINDING_PACKAGES) {
-    const binding = packageByName(metadata, bindingName)
-    const localDependencies = normalDependencies(binding)
-      .filter(dependency => dependency.path)
-      .map(dependency => dependency.name)
-      .sort()
-    if (JSON.stringify(localDependencies) !== JSON.stringify(['uc-engine'])) {
-      addProblem(
-        problems,
-        'public surface',
-        `${bindingName} local dependencies must be exactly uc-engine; found ${localDependencies.join(', ')}`
-      )
-    }
-  }
-
-  for (const consumerName of DESKTOP_CONSUMERS) {
-    const consumer = packageByName(metadata, consumerName)
-    const forbidden = normalDependencies(consumer)
-      .map(dependency => dependency.name)
-      .filter(name => INTERNAL_PACKAGES.has(name))
+  for (const packageMetadata of workspacePackages(metadata)) {
+    const forbidden = packageMetadata.dependencies
+      .filter(item => item.kind === null && FORBIDDEN_RUNTIME_PACKAGES.has(item.name))
+      .map(item => item.name)
     if (forbidden.length > 0) {
       addProblem(
         problems,
         'consumer firewall',
-        `${consumerName} directly depends on ${forbidden.join(', ')}`
+        `${packageMetadata.name} directly depends on ${forbidden.join(', ')}`
       )
     }
   }
 
-  return problems
-}
-
-function checkBindingProvenance(metadata, sources) {
-  const problems = []
-  const engineVersion = packageByName(metadata, 'uc-engine').version
-
-  for (const bindingName of BINDING_PACKAGES) {
-    const bindingVersion = packageByName(metadata, bindingName).version
-    if (bindingVersion !== engineVersion) {
-      addProblem(
-        problems,
-        'binding provenance',
-        `${bindingName} version ${bindingVersion} differs from uc-engine ${engineVersion}`
-      )
-    }
-  }
-
-  for (const [name, source] of [
-    ['UniFFI', sources.uniffi],
-    ['HarmonyOS', sources.ohos],
-  ]) {
-    if (!source.includes('format!("core-v{}", env!("CARGO_PKG_VERSION"))')) {
-      addProblem(
-        problems,
-        'binding provenance',
-        `${name} binding version is not derived from its Cargo package version`
-      )
-    }
-  }
-
-  const requiredPackagingTokens = [
-    'core-version.txt',
-    'source-commit.txt',
-    'rev-parse HEAD',
-    'checksum',
+  const requiredDependencies = [
+    ['uc-daemon', 'uc-engine'],
+    ['uc-bootstrap', 'uc-engine'],
+    ['uc-webserver', 'uc-engine'],
+    ['uc-cli', 'uc-engine'],
+    ['uc-observability', 'uc-observability-contract'],
   ]
-  for (const [name, script] of [
-    ['iOS', sources.iosPackaging],
-    ['Android', sources.androidPackaging],
-    ['HarmonyOS', sources.ohosPackaging],
-  ]) {
-    for (const token of requiredPackagingTokens) {
-      if (!script.includes(token)) {
-        addProblem(problems, 'binding provenance', `${name} packaging is missing ${token}`)
-      }
-    }
-  }
-  for (const token of ['assembleHar', 'UniClipboardEngine.har']) {
-    if (!sources.ohosPackaging.includes(token)) {
-      addProblem(problems, 'binding provenance', `HarmonyOS packaging is missing ${token}`)
+  for (const [packageName, dependencyName] of requiredDependencies) {
+    if (!dependency(workspacePackageByName(metadata, packageName), dependencyName)) {
+      addProblem(
+        problems,
+        'consumer firewall',
+        `${packageName} must consume ${dependencyName} from the pinned core revision`
+      )
     }
   }
 
@@ -243,56 +188,36 @@ function checkBindingProvenance(metadata, sources) {
 
 function checkLanIsolation(metadata, sources) {
   const problems = []
-  const engine = packageByName(metadata, 'uc-engine')
-  const application = packageByName(metadata, 'uc-application')
-  const infra = packageByName(metadata, 'uc-infra')
-
-  for (const packageMetadata of [engine, application, infra]) {
-    if (featureItems(packageMetadata, 'default').includes('lan-compat')) {
-      addProblem(
-        problems,
-        'compatibility gate',
-        `${packageMetadata.name} enables lan-compat by default`
-      )
-    }
-  }
-
-  const engineLan = featureItems(engine, 'lan-compat')
-  for (const required of [
-    'dep:uc-mobile-proto',
-    'uc-application/lan-compat',
-    'uc-infra/lan-compat',
-  ]) {
-    if (!engineLan.includes(required)) {
-      addProblem(problems, 'compatibility gate', `uc-engine/lan-compat is missing ${required}`)
-    }
-  }
-
-  const protocol = normalDependency(application, 'uc-mobile-proto')
-  if (!protocol?.optional) {
-    addProblem(problems, 'compatibility gate', 'uc-application must keep uc-mobile-proto optional')
-  }
-  const networkInterface = normalDependency(infra, 'network-interface')
-  if (!networkInterface?.optional) {
-    addProblem(problems, 'compatibility gate', 'uc-infra must keep network-interface optional')
-  }
-
-  for (const consumerName of P2P_CONSUMERS) {
-    const dependency = normalDependency(packageByName(metadata, consumerName), 'uc-engine')
-    if (dependency?.features.includes('lan-compat')) {
-      addProblem(
-        problems,
-        'compatibility gate',
-        `${consumerName} must not enable uc-engine/lan-compat`
-      )
-    }
-  }
-  const webserverEngine = normalDependency(packageByName(metadata, 'uc-webserver'), 'uc-engine')
+  const webserverEngine = dependency(workspacePackageByName(metadata, 'uc-webserver'), 'uc-engine')
   if (!webserverEngine?.features.includes('lan-compat')) {
+    addProblem(problems, 'compatibility gate', 'uc-webserver must enable lan-compat explicitly')
+  }
+
+  for (const packageName of ['uc-daemon', 'uc-bootstrap']) {
+    const engine = dependency(workspacePackageByName(metadata, packageName), 'uc-engine')
+    if (engine?.features.includes('lan-compat')) {
+      addProblem(
+        problems,
+        'compatibility gate',
+        `${packageName} must not enable lan-compat directly`
+      )
+    }
+  }
+
+  const cli = workspacePackageByName(metadata, 'uc-cli')
+  const cliEngine = dependency(cli, 'uc-engine')
+  if (!cliEngine?.optional || !cliEngine.features.includes('dev-tools')) {
     addProblem(
       problems,
       'compatibility gate',
-      'uc-webserver must enable uc-engine/lan-compat explicitly'
+      'uc-cli must keep uc-engine optional and restricted to dev-tools'
+    )
+  }
+  if (!(cli.features['dev-tools'] ?? []).includes('uc-engine/lan-compat')) {
+    addProblem(
+      problems,
+      'compatibility gate',
+      'uc-cli dev-tools must enable LAN compatibility explicitly'
     )
   }
 
@@ -302,7 +227,7 @@ function checkLanIsolation(metadata, sources) {
     addProblem(
       problems,
       'compatibility gate',
-      'initial LAN state must be derived only from explicit mobile-sync settings'
+      'initial LAN state must come only from explicit mobile-sync settings'
     )
   }
   if (!sources.engineEvents.includes('EngineEvent::MobileLanSettingsChanged(settings)')) {
@@ -313,11 +238,7 @@ function checkLanIsolation(metadata, sources) {
     )
   }
   if (sources.engineEvents.includes('fallback_to_lan')) {
-    addProblem(
-      problems,
-      'compatibility gate',
-      'engine event handling contains an automatic LAN fallback'
-    )
+    addProblem(problems, 'compatibility gate', 'engine events contain an automatic LAN fallback')
   }
 
   return problems
@@ -325,65 +246,16 @@ function checkLanIsolation(metadata, sources) {
 
 function repositorySources() {
   return {
-    uniffi: read('crates/uc-engine-uniffi/src/lib.rs'),
-    ohos: read('crates/uc-ohos-napi/src/lib.rs'),
-    iosPackaging: read('crates/uc-engine-uniffi/scripts/build-ios-xcframework.sh'),
-    androidPackaging: read('crates/uc-engine-uniffi/scripts/build-android-aar.sh'),
-    ohosPackaging: read('apps/ohos-probe/build-emulator.sh'),
     mobileLanLifecycle: read('apps/daemon/src/daemon/mobile_lan_lifecycle.rs'),
     engineEvents: read('apps/daemon/src/daemon/engine_events.rs'),
   }
 }
 
-function checkPlaintextScanner() {
-  const problems = []
-  const work = mkdtempSync(join(tmpdir(), 'uc-core-repository-check-'))
-  const probe = join(work, 'probe.txt')
-  const root = join(work, 'storage')
-  const scanner = join(REPOSITORY_ROOT, 'scripts/security/scan-plaintext-probe.sh')
-  const value = 'cross-repository-plaintext-probe-20260724'
-
-  try {
-    mkdirSync(root)
-    writeFileSync(probe, value)
-    writeFileSync(join(root, 'encrypted.db'), 'ciphertext-only')
-    const clean = spawnSync('bash', [scanner, probe, root], { encoding: 'utf8' })
-    if (clean.status !== 0) {
-      addProblem(problems, 'persistence gate', 'plaintext scanner rejected a clean fixture')
-    }
-
-    writeFileSync(join(root, 'leak.db'), value)
-    const leaking = spawnSync('bash', [scanner, probe, root], { encoding: 'utf8' })
-    if (leaking.status === 0) {
-      addProblem(problems, 'persistence gate', 'plaintext scanner accepted a leaking fixture')
-    }
-    const output = `${leaking.stdout}${leaking.stderr}`
-    if (output.includes(value)) {
-      addProblem(problems, 'persistence gate', 'plaintext scanner printed the probe value')
-    }
-  } finally {
-    rmSync(work, { recursive: true, force: true })
-  }
-
-  const rootRules = read('AGENTS.md')
-  if (!rootRules.includes('文件内容本体') || !rootRules.includes('严禁明文落库')) {
-    addProblem(
-      problems,
-      'persistence gate',
-      'repository rules must preserve encrypted persistence and the raw file-content exception'
-    )
-  }
-
-  return problems
-}
-
-function collectProblems(metadata, sources, { includePlaintext = true } = {}) {
+function collectProblems(metadata, sources, options) {
   return [
-    ...checkCoreDependencies(metadata),
+    ...checkRepositoryBoundary(metadata, options),
     ...checkPublicSurface(metadata),
-    ...checkBindingProvenance(metadata, sources),
     ...checkLanIsolation(metadata, sources),
-    ...(includePlaintext ? checkPlaintextScanner() : []),
   ]
 }
 
@@ -395,32 +267,30 @@ function expectRejected(name, mutate, metadata, sources) {
   const changedMetadata = clone(metadata)
   const changedSources = { ...sources }
   mutate(changedMetadata, changedSources)
-  const problems = collectProblems(changedMetadata, changedSources, { includePlaintext: false })
-  if (problems.length === 0) {
-    throw new Error(`negative fixture was not rejected: ${name}`)
-  }
+  const problems = collectProblems(changedMetadata, changedSources, { checkPaths: false })
+  if (problems.length === 0) throw new Error(`negative fixture was not rejected: ${name}`)
   process.stdout.write(`OK negative fixture rejected: ${name}\n`)
 }
 
 function runNegativeFixtures(metadata, sources) {
   expectRejected(
-    'reverse desktop dependency',
+    'local core path dependency',
     changed => {
-      packageByName(changed, 'uc-engine').dependencies.push({
-        name: 'uc-platform',
-        kind: null,
-        path: join(REPOSITORY_ROOT, 'crates/uc-platform'),
-        features: [],
-        optional: false,
-      })
+      const engine = dependency(workspacePackageByName(changed, 'uc-daemon'), 'uc-engine')
+      engine.source = null
+      engine.path = join(REPOSITORY_ROOT, 'crates/uc-engine')
     },
     metadata,
     sources
   )
   expectRejected(
-    'binding version mismatch',
+    'moving core revision',
     changed => {
-      packageByName(changed, 'uc-ohos-napi').version = '999.0.0'
+      const contract = dependency(
+        workspacePackageByName(changed, 'uc-observability'),
+        'uc-observability-contract'
+      )
+      contract.source = `git+${CORE_REPOSITORY}?rev=main`
     },
     metadata,
     sources
@@ -456,7 +326,7 @@ function main() {
   }
 
   runNegativeFixtures(metadata, sources)
-  process.stdout.write('Core repository preflight passed\n')
+  process.stdout.write('Desktop core consumer preflight passed\n')
 }
 
 main()

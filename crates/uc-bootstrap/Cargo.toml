@@ -6,7 +6,7 @@ edition = "2021"
 description = "Desktop host capability preparation for uc-engine"
 
 [dependencies]
-uc-engine = { path = "../uc-engine" }
+uc-engine.workspace = true
 uc-platform = { path = "../uc-platform" }
 uc-observability = { path = "../uc-observability" }
 # Directory-layout authority: used to locate the superseded `<data>/logs`
@@ -53,11 +53,11 @@ dev-profile = ["uc-platform/dev-profile"]
 tempfile = "3"
 tokio = { version = "1", features = ["full"] }
 wiremock = "0.6"
-uc-application = { path = "../uc-application" }
-uc-core = { path = "../uc-core", features = ["task-registry"] }
+uc-application.workspace = true
+uc-core = { workspace = true, features = ["task-registry"] }
 # Pairing E2E runs sponsor and joiner endpoints in one test process. This
 # test-only feature disables the production single-live-node lease.
-uc-infra = { path = "../uc-infra", features = ["test-util"] }
+uc-infra = { workspace = true, features = ["test-util"] }
 # config-migration round-trip e2e seeds a real sqlite db with a probe row and
 # reads it back from the landed snapshot. Version/features mirror uc-infra so no
 # extra build cost is introduced (same compiled diesel + bundled libsqlite3).

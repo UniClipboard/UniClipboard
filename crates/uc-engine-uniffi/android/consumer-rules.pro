@@ -1,2 +1,0 @@
--keep class uniffi.uc_engine_uniffi.** { *; }
--keep class com.sun.jna.** { *; }

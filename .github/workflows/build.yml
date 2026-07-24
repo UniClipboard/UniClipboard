@@ -269,7 +269,14 @@ jobs:
             export TAURI_SIGNING_PRIVATE_KEY_PASSWORD='${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}'
           else
             echo "No TAURI_SIGNING_PRIVATE_KEY, disabling updater artifacts"
-            export TAURI_CONFIG='{"bundle":{"createUpdaterArtifacts":"v1Compatible"},"plugins":{"updater":{"pubkey":""}}}'
+            # Patch tauri.conf.json in place to remove pubkey and disable updater artifacts
+            node -e "
+              const fs = require('fs');
+              const conf = JSON.parse(fs.readFileSync('src-tauri/tauri.conf.json', 'utf8'));
+              if (conf.plugins && conf.plugins.updater) conf.plugins.updater.pubkey = '';
+              if (conf.bundle) conf.bundle.createUpdaterArtifacts = false;
+              fs.writeFileSync('src-tauri/tauri.conf.json', JSON.stringify(conf, null, 2));
+            "
           fi
           bun run tauri build ${{ matrix.args }}
 
@@ -293,7 +300,13 @@ jobs:
             export TAURI_SIGNING_PRIVATE_KEY_PASSWORD='${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}'
           else
             echo "No TAURI_SIGNING_PRIVATE_KEY, disabling updater artifacts"
-            export TAURI_CONFIG='{"bundle":{"createUpdaterArtifacts":"v1Compatible"},"plugins":{"updater":{"pubkey":""}}}'
+            node -e "
+              const fs = require('fs');
+              const conf = JSON.parse(fs.readFileSync('src-tauri/tauri.conf.json', 'utf8'));
+              if (conf.plugins && conf.plugins.updater) conf.plugins.updater.pubkey = '';
+              if (conf.bundle) conf.bundle.createUpdaterArtifacts = false;
+              fs.writeFileSync('src-tauri/tauri.conf.json', JSON.stringify(conf, null, 2));
+            "
           fi
           if [ "${{ matrix.platform }}" = "windows-latest" ]; then
             bun run tauri build ${{ matrix.args }} --bundles nsis

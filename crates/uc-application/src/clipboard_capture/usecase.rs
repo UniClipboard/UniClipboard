@@ -891,9 +891,10 @@ impl CaptureClipboardUseCase {
         if !policy.enabled {
             return None;
         }
-        let is_no_history = policy.rules.iter().any(|rule| {
-            matches!(rule, RetentionRule::ByAge { max_age } if max_age.is_zero())
-        });
+        let is_no_history = policy
+            .rules
+            .iter()
+            .any(|rule| matches!(rule, RetentionRule::ByAge { max_age } if max_age.is_zero()));
         if !is_no_history {
             return None;
         }

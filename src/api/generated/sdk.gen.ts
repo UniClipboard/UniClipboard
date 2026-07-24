@@ -526,8 +526,7 @@ export const exportLogs = <ThrowOnError extends boolean = false>(options: Option
  * POST /encryption/factory-reset
  *
  * Wipes key material + clears setup status + cancels pending invitations
- * (ADR-008 P3-1 / D15). Routes through `SpaceSetupFacade::factory_reset`,
- * mirroring the former in-process `factory_reset_space` Tauri command.
+ * (ADR-008 P3-1 / D15). Routes through the engine's factory-reset operation.
  */
 export const factoryResetSpace = <ThrowOnError extends boolean = false>(options?: Options<FactoryResetSpaceData, ThrowOnError>) => (options?.client ?? client).post<FactoryResetSpaceResponses, FactoryResetSpaceErrors, ThrowOnError>({
     security: [{
@@ -607,11 +606,9 @@ export const unlockEncryptionSession = <ThrowOnError extends boolean = false>(op
  *
  * Unlocks the space with a user-supplied plaintext passphrase (ADR-008 D15).
  *
- * Routes through `SpaceSetupFacade::unlock_space`, which (unlike the bare
- * `encryption.unlock`) also runs the switch-space migration recovery hook —
- * the same reason the keyring `unlock_handler` above delegates to
- * `try_resume_session`. On success it broadcasts `encryption.session_ready`
- * so WS subscribers react identically regardless of which unlock path ran.
+ * Routes through the engine unlock operation, which also runs switch-space,
+ * search, receive, clipboard gate, and deferred-service recovery. On success
+ * the HTTP layer only broadcasts `encryption.session_ready`.
  *
  * D14: this endpoint is session-JWT gated (it is NOT in `PUBLIC_PATHS`) and
  * the handler MUST NOT log the request body — there is intentionally no
@@ -641,11 +638,10 @@ export const unlockSpaceWithPassphrase = <ThrowOnError extends boolean = false>(
 export const getHealth = <ThrowOnError extends boolean = false>(options?: Options<GetHealthData, ThrowOnError>) => (options?.client ?? client).get<GetHealthResponses, unknown, ThrowOnError>({ url: '/health', ...options });
 
 /**
- * 通知 daemon：已解锁，可以开始采集剪贴板——打开 clipboard capture 门控。
+ * 通知 daemon：客户端已经观察到核心完成解锁和接收恢复。
  *
- * 锁定期 daemon 把剪贴板采集门控住(deferred services);解锁后用本端点
- * 放行。ADR-008 P3-3 起 daemon 永远是独立进程,GUI 作为纯客户端经 loopback
- * HTTP 调它(旧 `GuiInProcess` 同进程模式已删除)。
+ * 创建、加入和解锁操作已经由 `Engine` 在返回成功前完成接收恢复。本端点
+ * 只保留客户端幂等确认，不再持有或重复调用内部接收接口。
  */
 export const signalLifecycleReady = <ThrowOnError extends boolean = false>(options?: Options<SignalLifecycleReadyData, ThrowOnError>) => (options?.client ?? client).post<SignalLifecycleReadyResponses, unknown, ThrowOnError>({
     security: [{
@@ -952,9 +948,8 @@ export const refreshPresence = <ThrowOnError extends boolean = false>(options?: 
  * GET /search/query
  *
  * Execute a structured search query against the local encrypted search index.
- * The session-lock decision is query-type-aware (§4.6): filter-only browse is
- * served while locked; a keyword search returns HTTP 423 when the session is
- * locked (the engine cannot derive the search key).
+ * Every query requires an unlocked session because result rendering decrypts
+ * the encrypted payload.
  *
  * ADR-008 wire change: `total`/`hasMore` are no longer top-level siblings of
  * the envelope — they are folded INTO the `data` payload alongside the renamed

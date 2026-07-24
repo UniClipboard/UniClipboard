@@ -925,7 +925,7 @@ export type GeneralSettingsDto = {
     /**
      * 旧版"统一主题预设"字段（v0.7 之前唯一字段）。新前端不再写入,
      * 但 wire 仍透传以便老 daemon ↔ 新前端 / 新 daemon ↔ 老前端兼容。
-     * 删除计划见 `uc_core::settings::model::GeneralSettings::theme_color`。
+     * 该兼容字段将在旧版客户端支持窗口结束后删除。
      */
     themeColor?: string | null;
     /**
@@ -1341,7 +1341,7 @@ export type MemberSyncPreferencesEnvelope = {
  * Partial sync preferences for PATCH /member/:device_id/sync-preferences.
  *
  * 服务器侧 `get → merge → save` 后持久化；未提供的字段保留当前值。
- * 重置到默认值的调用方应显式传入所有字段的默认值（`MemberSyncPreferences::default()`）。
+ * 重置到默认值的调用方应显式传入所有字段的默认值。
  */
 export type MemberSyncPreferencesPatchDto = {
     receiveContentTypes?: ContentTypesPatchDto | null;
@@ -4256,7 +4256,7 @@ export type SignalLifecycleReadyData = {
 
 export type SignalLifecycleReadyResponses = {
     /**
-     * Ready signal accepted; clipboard capture gate opened
+     * Ready signal acknowledged
      */
     204: void;
 };

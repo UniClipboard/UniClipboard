@@ -265,10 +265,19 @@ jobs:
         run: |
           if [ -z "$APPLE_CERTIFICATE" ]; then
             echo "No Apple certificate configured, building without code signing"
-            bun run tauri build ${{ matrix.args }} -- --config '{"bundle":{"macOS":{"signing_identity":null}}}'
-          else
-            bun run tauri build ${{ matrix.args }}
+            # Unset signing-related vars so Tauri skips codesign entirely.
+            unset APPLE_CERTIFICATE
+            unset APPLE_CERTIFICATE_PASSWORD
+            unset APPLE_ID
+            unset APPLE_PASSWORD
+            unset APPLE_TEAM_ID
+            # Also skip updater signing if key is missing.
+            if [ -z "$TAURI_SIGNING_PRIVATE_KEY" ]; then
+              unset TAURI_SIGNING_PRIVATE_KEY
+              unset TAURI_SIGNING_PRIVATE_KEY_PASSWORD
+            fi
           fi
+          bun run tauri build ${{ matrix.args }}
 
       - name: build Tauri app (non-macOS)
         if: matrix.platform != 'macos-latest'

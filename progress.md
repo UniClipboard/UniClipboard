@@ -1528,3 +1528,7 @@
 - 在临时 portable 资料和独立 profile 中完成真实流程：未初始化时启动被正确拒绝，随后创建加密空间、启动 daemon、读取健康状态并停止 daemon全部成功；现有用户资料未被读取或修改。
 - Tauri 桌面程序完成实际链接，生成约 60MiB 的本机可执行文件；没有只停在类型检查。
 - 格式、ESLint、Prettier、已暂存与未暂存差异空白检查全部通过；Phase C 与 Phase D 完成，进入最终审计、提交和远端核对。
+- 迁移提交 `db198c2951ede17104695e6c30c4ffa10f7dc9f8` 已推送到 `origin/refactor/unified-core-independent-crates`；本地、上游记录和 GitHub 远端引用一致。
+- 已从 GitHub 远端分支建立全新临时检出；锁定依赖解析与 desktop 消费者检查通过，11 个迁出目录均不存在。
+- 全新检出的依赖图只包含一条核心来源，7 个核心包全部固定到 `dcdccb234f020be49884bf92d886f25a0f192188`。
+- Phase 5 全部完成；下一阶段为 Phase 6 Android 和 iOS 切换，本轮没有提前开始。

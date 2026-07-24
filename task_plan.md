@@ -113,7 +113,7 @@
 
 ## Current Phase
 
-uc-engine 结构迁移、Plan 005 Phase 0 至 Phase 4、独立仓库更名、`main` 分支和首个候选版本发布均已完成。当前进入 Phase 5，切换 desktop 到独立核心仓库。
+uc-engine 结构迁移、Plan 005 Phase 0 至 Phase 5、独立仓库更名、`main` 分支、首个候选版本发布和 desktop 切换均已完成。下一阶段是 Phase 6，切换 Android 和 iOS；本轮尚未开始。
 
 ## 2026-07-24 Plan 005 Phase 5 desktop 切换
 
@@ -121,13 +121,13 @@ uc-engine 结构迁移、Plan 005 Phase 0 至 Phase 4、独立仓库更名、`ma
 
 ### 完成标准
 
-- [ ] desktop 保留项目的全部核心依赖只来自 `https://github.com/UniClipboard/core.git` 的提交 `dcdccb234f020be49884bf92d886f25a0f192188`
-- [ ] 锁文件中只有一份核心来源，干净检出无需 desktop 内的核心源码即可解析依赖
-- [ ] 已删除迁出的 crate、数据库迁移、绑定、移动探针和重复检查，workspace 不再包含其成员
-- [ ] daemon、CLI、Web、Tauri、平台和宿主代码继续由 desktop 拥有
-- [ ] LAN 兼容只在明确需要的 desktop 入口启用，不成为默认能力或自动回退
-- [ ] 锁定依赖、全项目全目标编译、格式、仓库边界、差异和实际入口检查通过
-- [ ] 依赖切换与旧源码删除在同一迁移提交中完成并推送
+- [x] desktop 保留项目的全部核心依赖只来自 `https://github.com/UniClipboard/core.git` 的提交 `dcdccb234f020be49884bf92d886f25a0f192188`
+- [x] 锁文件中只有一份核心来源，干净检出无需 desktop 内的核心源码即可解析依赖
+- [x] 已删除迁出的 crate、数据库迁移、绑定、移动探针和重复检查，workspace 不再包含其成员
+- [x] daemon、CLI、Web、Tauri、平台和宿主代码继续由 desktop 拥有
+- [x] LAN 兼容只在明确需要的 desktop 入口启用，不成为默认能力或自动回退
+- [x] 锁定依赖、全项目全目标编译、格式、仓库边界、差异和实际入口检查通过
+- [x] 依赖切换与旧源码删除在同一迁移提交中完成并推送
 
 ### 阶段
 
@@ -149,6 +149,7 @@ uc-engine 结构迁移、Plan 005 Phase 0 至 Phase 4、独立仓库更名、`ma
 | 消费者检查读取完整依赖图时报 `ENOBUFS` | 1 | 完整元数据超过 Node 默认 1MiB 输出上限；为结构化读取设置 64MiB 上限后重跑 |
 | 已删除绑定目录仍含忽略的 Gradle 缓存 | 1 | `git rm` 不处理忽略文件；确认只有 `.gradle/.kotlin` 可重建缓存后按精确路径清理 |
 | 精确目录 `rm -rf` 被执行环境拒绝 | 1 | 不重试被拒绝命令；改用限定在已核对目录内的深度删除 |
+| `planning-with-files` 会话恢复脚本不存在 | 1 | 使用现有三份规划文件、正式计划和实时 Git 状态恢复；不重复失效命令 |
 
 #### Desktop Cutover Phase C：删除旧副本
 - [x] 从 workspace 和仓库删除全部迁出目录与重复资产
@@ -161,9 +162,9 @@ uc-engine 结构迁移、Plan 005 Phase 0 至 Phase 4、独立仓库更名、`ma
 - **Status:** complete
 
 #### Desktop Cutover Phase E：审计、提交与推送
-- [ ] 复核完整删除和单一来源，更新正式计划与三份阶段记录
-- [ ] 原子提交、推送并核对远端状态
-- **Status:** in_progress
+- [x] 复核完整删除和单一来源，更新正式计划与三份阶段记录
+- [x] 原子提交、推送并核对远端状态
+- **Status:** complete
 
 ## 2026-07-24 Plan 005 Phase 4 核心候选版本
 

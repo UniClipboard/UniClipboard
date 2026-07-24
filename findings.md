@@ -853,3 +853,5 @@
 - 完整 workspace 全目标编译已经从 Git 缓存路径实际编译 `uc-engine 0.20.0-rc.1` 及其内部闭包，并完成 daemon、CLI、Web、Tauri、平台与宿主项目，证明旧本地源码不参与构建。
 - daemon 二进制没有命令行帮助入口，直接运行会启动真实后台服务；实际冒烟应使用隔离 `UC_PROFILE` 启动后再由 CLI 查询和停止，避免干扰用户当前 profile。
 - 临时 portable profile 的真实 CLI/daemon 流程显示：固定核心能完成空间初始化，状态返回 setup/encryption/search 全部 ready，独立 daemon 可启动并正常停止；说明不只是清单和编译层面通过。
+- 迁移提交 `db198c2951ede17104695e6c30c4ffa10f7dc9f8` 已存在于 GitHub 远端分支；本地、上游记录和远端引用三者一致。
+- 从 GitHub 远端全新检出的 desktop 能在旧核心目录完全不存在时完成锁定依赖解析和消费者检查；依赖图中的 7 个核心包只有 `dcdccb234f020be49884bf92d886f25a0f192188` 这一份来源。

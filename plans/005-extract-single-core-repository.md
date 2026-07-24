@@ -294,7 +294,7 @@ desktop 是第一个消费者，因为它能最早暴露 Rust 依赖泄漏。
 
 **回退**：在没有不兼容持久化写入时，把 `uc-engine` 固定回上一已知提交；不恢复已删除的本地源码。
 
-**完成进度（2026-07-24）**：desktop 的全部核心引用已集中固定到 `UniClipboard/core` 提交 `dcdccb234f020be49884bf92d886f25a0f192188`，锁文件只解析该单一来源。11 个迁出包、数据库迁移、移动绑定、验收宿主和旧移动发布工作流已从 desktop 删除；daemon、CLI、Web、Tauri、平台和宿主代码继续由 desktop 拥有。消费者检查会拒绝本地旧副本、浮动版本、内部运行依赖和自动 LAN 回退，`uc-webserver` 与 CLI 开发入口仍显式启用 LAN 兼容。完整工作区全目标编译、CLI 开发功能编译、daemon/CLI/Tauri 构建、格式和静态检查通过；隔离 portable profile 已实际完成空间初始化、daemon 启动、状态读取和停止。按用户要求没有重复运行测试用例。
+**完成进度（2026-07-24）**：desktop 的全部核心引用已集中固定到 `UniClipboard/core` 提交 `dcdccb234f020be49884bf92d886f25a0f192188`，锁文件只解析该单一来源。11 个迁出包、数据库迁移、移动绑定、验收宿主和旧移动发布工作流已从 desktop 删除；daemon、CLI、Web、Tauri、平台和宿主代码继续由 desktop 拥有。消费者检查会拒绝本地旧副本、浮动版本、内部运行依赖和自动 LAN 回退，`uc-webserver` 与 CLI 开发入口仍显式启用 LAN 兼容。完整工作区全目标编译、CLI 开发功能编译、daemon/CLI/Tauri 构建、格式和静态检查通过；隔离 portable profile 已实际完成空间初始化、daemon 启动、状态读取和停止。迁移提交 `db198c2951ede17104695e6c30c4ffa10f7dc9f8` 已推送；从 GitHub 远端全新检出后，锁定依赖解析、消费者检查、旧目录缺失检查和远端提交一致性核对全部通过。按用户要求没有重复运行测试用例。
 
 ### Phase 6：切换 Android 和 iOS
 

@@ -265,16 +265,17 @@ jobs:
         run: |
           if [ -z "$APPLE_CERTIFICATE" ]; then
             echo "No Apple certificate configured, building without code signing"
-            # Unset signing-related vars so Tauri skips codesign entirely.
             unset APPLE_CERTIFICATE
             unset APPLE_CERTIFICATE_PASSWORD
             unset APPLE_ID
             unset APPLE_PASSWORD
             unset APPLE_TEAM_ID
-            # Also skip updater signing if key is missing.
+            # Also skip updater signing if key is missing — Tauri errors when
+            # pubkey is configured but no private key env var is set.
             if [ -z "$TAURI_SIGNING_PRIVATE_KEY" ]; then
               unset TAURI_SIGNING_PRIVATE_KEY
               unset TAURI_SIGNING_PRIVATE_KEY_PASSWORD
+              export TAURI_CONFIG='{"plugins":{"updater":{"pubkey":""}}}'
             fi
           fi
           bun run tauri build ${{ matrix.args }}
@@ -308,6 +309,7 @@ jobs:
           if [ -z "$TAURI_SIGNING_PRIVATE_KEY" ]; then
             unset TAURI_SIGNING_PRIVATE_KEY
             unset TAURI_SIGNING_PRIVATE_KEY_PASSWORD
+            export TAURI_CONFIG='{"plugins":{"updater":{"pubkey":""}}}'
           fi
           if [ "${{ matrix.platform }}" = "windows-latest" ]; then
             bun run tauri build ${{ matrix.args }} --bundles nsis

@@ -1,6 +1,8 @@
 # 四平台 P2P 核心实施计划
 
-本计划由 2026-07-19 的架构评估生成，基于提交 `1c229e9e1`。目标是让桌面、HarmonyOS、Android、iOS 使用同一套完整 P2P 核心，并在验证稳定后迁入一个独立的 `UniClipboardCore` 仓库。
+本计划由 2026-07-19 的架构评估生成，基于提交 `1c229e9e1`。目标是让 desktop、HarmonyOS、Android、iOS 使用同一套完整 P2P 核心，并由独立的 `UniClipboard/core` 仓库统一维护和发布。
+
+实际执行结果、验证证据、跳过项和剩余风险见 [`core-migration-execution-record.md`](core-migration-execution-record.md)。各计划文件继续作为完成标准和后续工作的事实来源。
 
 执行者开始前必须完整阅读对应计划，逐项运行验证命令。任何计划触发停止条件时，不得用现有 LAN HTTP 移动方案代替完成。
 
@@ -12,11 +14,11 @@
 | 002  | 证明完整节点可在四个平台构建并反复启停 | P0     | L      | 001  | IN PROGRESS |
 | 003  | 建立唯一的跨平台核心入口并让桌面先使用 | P0     | L      | 002  | DONE        |
 | 004  | 交付三种移动绑定并完成四平台真机互通   | P0     | L      | 003  | IN PROGRESS |
-| 005  | 迁入单一核心仓库并保留可选 LAN 通道    | P1     | L      | 004  | TODO        |
+| 005  | 迁入单一核心仓库并保留可选 LAN 通道    | P1     | XL     | 004  | IN PROGRESS |
 
 状态值：`TODO`、`IN PROGRESS`、`DONE`、`BLOCKED`、`REJECTED`。
 
-Plan 002 剩余的 Android 与 HarmonyOS 实体设备验收已按用户决定停止执行，但未通过的完成标准继续保持未勾选，因此状态不能改为 `DONE`。Plan 004 从可自动构建和模拟环境验证的移动绑定开始继续推进；其实体设备互通矩阵同样不计为通过。
+Plan 002 剩余的 Android 与 HarmonyOS 实体设备验收已按用户决定停止执行，但未通过的完成标准继续保持未勾选，因此状态不能改为 `DONE`。Plan 004 的三种绑定、生命周期和统一发布文件已经完成；实体设备互通矩阵仍被跳过且不计为通过。Plan 005 的独立核心仓、候选版本以及 desktop、Android、iOS 切换已经完成，当前处于稳定发布与清理阶段。
 
 ## 依赖说明
 

@@ -855,3 +855,13 @@
 - 临时 portable profile 的真实 CLI/daemon 流程显示：固定核心能完成空间初始化，状态返回 setup/encryption/search 全部 ready，独立 daemon 可启动并正常停止；说明不只是清单和编译层面通过。
 - 迁移提交 `db198c2951ede17104695e6c30c4ffa10f7dc9f8` 已存在于 GitHub 远端分支；本地、上游记录和远端引用三者一致。
 - 从 GitHub 远端全新检出的 desktop 能在旧核心目录完全不存在时完成锁定依赖解析和消费者检查；依赖图中的 7 个核心包只有 `dcdccb234f020be49884bf92d886f25a0f192188` 这一份来源。
+
+## 2026-07-24 Plan 005 Phase 6 Android 和 iOS 切换
+
+- 移动仓固定 `core-v0.20.0-rc.1` 与来源提交 `dcdccb234f020be49884bf92d886f25a0f192188`，组件准备不再依赖 desktop 本机产物目录。
+- Release 清单、Android AAR/POM/Kotlin 绑定/运行依赖、iOS XCFramework/Swift 绑定/SwiftPM 校验值由一个准备入口统一下载和校验。
+- Android 正式构建只生成 ARM64 APK，包内只有一份 ARM64 核心库，版本字符串只出现 `core-v0.20.0-rc.1`。
+- iOS 使用稳定版 Xcode 26.2 完成 Release 模拟器构建，保留 ARM64 与 x86_64，最低系统版本仍为 16.4。
+- 错误 AAR 与错误 Swift 绑定都在正式编译前被准确拒绝；恢复完整 Release 组件后校验重新通过。
+- 移动仓不再跟踪生成绑定和核心二进制；Keystore、Keychain、剪贴板、文件和生命周期宿主没有变化。
+- Phase 6 完成，下一阶段为 HarmonyOS；实体设备矩阵仍为跳过且不计通过。

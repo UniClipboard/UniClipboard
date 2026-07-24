@@ -1532,3 +1532,13 @@
 - 已从 GitHub 远端分支建立全新临时检出；锁定依赖解析与 desktop 消费者检查通过，11 个迁出目录均不存在。
 - 全新检出的依赖图只包含一条核心来源，7 个核心包全部固定到 `dcdccb234f020be49884bf92d886f25a0f192188`。
 - Phase 5 全部完成；下一阶段为 Phase 6 Android 和 iOS 切换，本轮没有提前开始。
+
+## 2026-07-24 Plan 005 Phase 6 Android 和 iOS 切换
+
+- Android 和 iOS 已统一固定到独立核心 Release `core-v0.20.0-rc.1`，来源提交为 `dcdccb234f020be49884bf92d886f25a0f192188`。
+- 移动仓新增固定 Release 下载与校验入口，生成绑定和核心二进制改为忽略的可重建缓存。
+- Android Release POM 已实际带入 JNA `5.14.0` 与 Kotlin `2.1.20`；Android 模块和完整 ARM64 正式包构建成功。
+- iOS CocoaPods 已切换到 `UcEngine 0.20.0-rc.1`；稳定版 Xcode 26.2 Release 模拟器构建成功，最低系统版本保持 16.4。
+- Android 错误 AAR 和 iOS 错误 Swift 绑定都在编译前被拒绝；恢复后来源校验通过。
+- Android 最终输出只有 ARM64 APK，包内只有一份候选核心库且没有旧版本标记。
+- 按用户要求没有运行测试用例；实体设备矩阵继续记录为跳过。Phase 6 完成，下一阶段是 Phase 7 HarmonyOS。

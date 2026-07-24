@@ -113,7 +113,7 @@
 
 ## Current Phase
 
-uc-engine 结构迁移、Plan 005 Phase 0 至 Phase 5、独立仓库更名、`main` 分支、首个候选版本发布和 desktop 切换均已完成。下一阶段是 Phase 6，切换 Android 和 iOS；本轮尚未开始。
+uc-engine 结构迁移、Plan 005 Phase 0 至 Phase 6、独立仓库更名、`main` 分支、首个候选版本发布以及 desktop、Android、iOS 切换均已完成。下一阶段是 Phase 7 HarmonyOS 切换，尚未开始。
 
 ## 2026-07-24 Plan 005 Phase 5 desktop 切换
 
@@ -164,6 +164,43 @@ uc-engine 结构迁移、Plan 005 Phase 0 至 Phase 5、独立仓库更名、`ma
 #### Desktop Cutover Phase E：审计、提交与推送
 - [x] 复核完整删除和单一来源，更新正式计划与三份阶段记录
 - [x] 原子提交、推送并核对远端状态
+- **Status:** complete
+
+## 2026-07-24 Plan 005 Phase 6 Android 和 iOS 切换
+
+**目标：** 让 Android 和 iOS 消费独立核心仓同一个固定 Release，删除移动仓跟踪的生成绑定与二进制事实副本。
+
+### 完成标准
+
+- [x] 两端固定 `core-v0.20.0-rc.1` 和来源提交 `dcdccb234f020be49884bf92d886f25a0f192188`
+- [x] 准备脚本直接下载并校验 Release 清单与完整组件集合
+- [x] Android 通过 Release POM 使用 AAR、Kotlin 绑定和运行依赖
+- [x] iOS 同时使用 XCFramework、Swift 绑定和 SwiftPM 校验值
+- [x] 错误 AAR 与错误 Swift 绑定在正式编译前被拒绝
+- [x] Android 正式包只保留 ARM64 和一个核心版本；iOS Release 模拟器构建成功
+- [x] 生成绑定和核心二进制不再由移动仓跟踪
+- [x] 现有移动宿主能力保持不变，实体设备矩阵仍为跳过
+
+### 阶段
+
+#### Mobile Cutover Phase A：固定来源与准备入口
+- [x] 固定版本、提交、清单和组件校验值
+- [x] 建立下载、校验与准备两端组件的单一入口
+- **Status:** complete
+
+#### Mobile Cutover Phase B：切换 Android
+- [x] 通过 Release POM 接管 AAR 与运行依赖
+- [x] 完成错误混用检查、正式构建和单一版本核对
+- **Status:** complete
+
+#### Mobile Cutover Phase C：切换 iOS
+- [x] 同时准备 XCFramework 与 Swift 绑定
+- [x] 完成错误混用检查、Release 构建和最低系统版本核对
+- **Status:** complete
+
+#### Mobile Cutover Phase D：审计与提交
+- [x] 移除生成产物的版本库跟踪并保留可重建缓存
+- [x] 完成静态检查、记录同步和移动仓原子提交
 - **Status:** complete
 
 ## 2026-07-24 Plan 005 Phase 4 核心候选版本

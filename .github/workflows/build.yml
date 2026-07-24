@@ -240,9 +240,9 @@ jobs:
           APP_ENV: ${{ steps.resolve-env.outputs.app_env }}
         run: node scripts/prepare-daemon-sidecar.mjs ${{ matrix.args }}
 
-      - name: build Tauri app (macOS signed)
+      - name: build Tauri app (macOS)
         if: matrix.platform == 'macos-latest'
-        uses: tauri-apps/tauri-action@v0
+        shell: bash
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
@@ -250,29 +250,25 @@ jobs:
           VITE_APP_VERSION: ${{ steps.app-version.outputs.version }}
           VITE_SENTRY_DSN: ${{ secrets.VITE_SENTRY_DSN }}
           VITE_APP_ENV: ${{ steps.resolve-env.outputs.app_env }}
-          # Backend Sentry DSN — independent Rust project DSN, baked into the
-          # binary at compile time via option_env! in uc-bootstrap/src/tracing.rs.
-          # MUST be a separate Sentry project from VITE_SENTRY_DSN (front-end);
-          # see "阶段 2" decision in the dependency-prune branch discussion.
-          # Empty secret = backend Sentry disabled.
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
           POSTHOG_PROJECT_KEY: ${{ secrets.POSTHOG_PROJECT_KEY }}
           APP_ENV: ${{ steps.resolve-env.outputs.app_env }}
-          # Frontend sourcemap upload via @sentry/vite-plugin during vite build.
-          # VITE_SENTRY_PROJECT is the front-end Sentry project slug — MUST be
-          # different from SENTRY_PROJECT (back-end). Plugin no-ops when token
-          # or project is missing.
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
           SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
           VITE_SENTRY_PROJECT: ${{ secrets.VITE_SENTRY_PROJECT }}
+          # Skip code signing when Apple certificates are not configured (fork builds).
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        with:
-          tauriScript: bun run tauri
-          args: ${{ matrix.args }}
+        run: |
+          if [ -z "$APPLE_CERTIFICATE" ]; then
+            echo "No Apple certificate configured, building without code signing"
+            bun run tauri build ${{ matrix.args }} -- --config '{"bundle":{"macOS":{"signing_identity":null}}}'
+          else
+            bun run tauri build ${{ matrix.args }}
+          fi
 
       - name: build Tauri app (non-macOS)
         if: matrix.platform != 'macos-latest'

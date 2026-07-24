@@ -169,7 +169,7 @@ jobs:
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: ". -> target"
+          workspaces: '. -> target'
           shared-key: pr-check
           # PR 只读 default branch cache,写入由 cache-warmup 统一负责。
           save-if: ${{ github.ref == 'refs/heads/main' }}
@@ -246,7 +246,7 @@ jobs:
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: ". -> target"
+          workspaces: '. -> target'
           shared-key: e2e-macos
           save-if: ${{ github.ref == 'refs/heads/main' }}
 

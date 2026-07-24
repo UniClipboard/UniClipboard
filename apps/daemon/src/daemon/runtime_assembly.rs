@@ -125,7 +125,8 @@ pub fn build_daemon_runtime_workers(
         // lock — preventing a local copy and an inbound delivery of the same
         // content from creating two entries (R5-F3).
         .with_inbound_receive_commit(input.deps.storage.directory_receive.commit_inbound.clone())
-        .with_entry_identity_coordinator(input.deps.clipboard.entry_identity_coordinator.clone()),
+        .with_entry_identity_coordinator(input.deps.clipboard.entry_identity_coordinator.clone())
+        .with_list_entries(input.deps.clipboard.entry_ports.list.clone()),
     );
     let blob_materializer = Arc::new(
         FileCacheBlobMaterializer::new(

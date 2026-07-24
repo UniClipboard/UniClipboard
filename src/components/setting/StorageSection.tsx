@@ -65,6 +65,7 @@ const STORAGE_CATEGORIES = [
 ] as const
 
 const RETENTION_DAYS_OPTIONS = [
+  { value: '0', days: 0 },
   { value: '7', days: 7 },
   { value: '14', days: 14 },
   { value: '30', days: 30 },
@@ -598,7 +599,9 @@ const StorageSection: React.FC = () => {
             <SelectContent>
               {RETENTION_DAYS_OPTIONS.map(opt => (
                 <SelectItem key={opt.value} value={opt.value}>
-                  {t('settings.sections.storage.historyRetention.days', { days: opt.days })}
+                  {opt.days === 0
+                    ? t('settings.sections.storage.historyRetention.disableHistory')
+                    : t('settings.sections.storage.historyRetention.days', { days: opt.days })}
                 </SelectItem>
               ))}
             </SelectContent>

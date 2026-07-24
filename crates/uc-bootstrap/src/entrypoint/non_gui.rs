@@ -201,7 +201,8 @@ fn build_clipboard_capture_facade(deps: &AppDeps) -> Arc<ClipboardCaptureFacade>
             deps.clipboard.entry_ports.replace_content.clone(),
             deps.analytics.clone(),
         )
-        .with_entry_identity_coordinator(deps.clipboard.entry_identity_coordinator.clone()),
+        .with_entry_identity_coordinator(deps.clipboard.entry_identity_coordinator.clone())
+        .with_list_entries(deps.clipboard.entry_ports.list.clone()),
     );
     Arc::new(
         ClipboardCaptureFacade::new(capture_uc, deps.clipboard.clipboard.clone())

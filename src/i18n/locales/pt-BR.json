@@ -444,7 +444,8 @@
         "historyRetention": {
           "label": "Retenção do histórico",
           "description": "Tempo máximo de retenção do histórico da área de transferência",
-          "days": "{{days}} dias"
+          "days": "{{days}} dias",
+          "disableHistory": "Desativar histórico"
         },
         "maxHistoryItems": {
           "label": "Máximo de itens no histórico",

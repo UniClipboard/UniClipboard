@@ -239,7 +239,7 @@ pub(crate) async fn redeem(
         space_id,
         self_device_id,
         self_identity_fingerprint,
-        migrated_records: None,
+        migrated_records: _,
     } = result
     else {
         return Err(ApiError::internal(

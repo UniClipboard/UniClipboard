@@ -40,15 +40,16 @@ use uc_core::clipboard::{
 use crate::facade::clipboard_outbound::{parse_uri_list_line, UriListLineKind};
 use uc_core::ids::{EntryId, EventId};
 use uc_core::ports::clipboard::{
-    EntryFileSetRepositoryPort, FindEntryIdBySnapshotHashPort, ReplaceEntryContentPort,
-    RepresentationCachePort, SaveClipboardEntryPort, SpoolQueuePort, SpoolRequest,
-    TouchClipboardEntryPort,
+    EntryFileSetRepositoryPort, FindEntryIdBySnapshotHashPort, ListClipboardEntriesPort,
+    ReplaceEntryContentPort, RepresentationCachePort, SaveClipboardEntryPort, SpoolQueuePort,
+    SpoolRequest, TouchClipboardEntryPort,
 };
 use uc_core::ports::{
     ClipboardEventWriterPort, ClipboardRepresentationNormalizerPort, CommitInboundReceivePort,
     CompletedReceiveArtifacts, DeviceIdentityPort, InboundReceiveRecord, InboundReceiveSettlement,
     PartialReceiveArtifacts, PartialReceiveTerminal, SelectRepresentationPolicyPort, SettingsPort,
 };
+use uc_core::settings::model::RetentionRule;
 use uc_core::{
     ClipboardChangeOrigin, ClipboardEntry, ClipboardEntryContentCategory, ClipboardEvent,
     ClipboardSelectionDecision, ObservedClipboardRepresentation, PayloadAvailability, SnapshotHash,
@@ -157,6 +158,11 @@ pub struct CaptureClipboardUseCase {
     /// again would deadlock on the non-reentrant mutex. `None` skips locking
     /// (prior behavior; harmless when no concurrent same-content writer exists).
     coordinator: Option<Arc<crate::entry_identity::EntryIdentityCoordinator>>,
+    /// When wired, enables "no-history" mode detection: if the retention policy
+    /// has `ByAge { max_age: 0 }` and is enabled, a local capture replaces the
+    /// most-recent entry instead of creating a new row. `None` disables the
+    /// check (prior behavior — always create).
+    list_entries: Option<Arc<dyn ListClipboardEntriesPort>>,
     /// schema doc §12.1 · outbound 同步链路源头流量信号。
     /// 仅在 `ClipboardChangeOrigin::{LocalCapture, LocalRestore}` 路径 emit；
     /// `RemotePush` 严禁 emit（红线：与入站同步双计会污染 DAU 信号）。
@@ -197,6 +203,7 @@ impl CaptureClipboardUseCase {
             replace_entry,
             inbound_receive_commit: None,
             coordinator: None,
+            list_entries: None,
             analytics,
         }
     }
@@ -218,6 +225,14 @@ impl CaptureClipboardUseCase {
         coordinator: Arc<crate::entry_identity::EntryIdentityCoordinator>,
     ) -> Self {
         self.coordinator = Some(coordinator);
+        self
+    }
+
+    /// Wire the list-entries port so the "no-history" mode can find the latest
+    /// entry to replace. Without this, the mode is never activated even when
+    /// the retention policy says `ByAge { max_age: 0 }`.
+    pub fn with_list_entries(mut self, list_entries: Arc<dyn ListClipboardEntriesPort>) -> Self {
+        self.list_entries = Some(list_entries);
         self
     }
 
@@ -487,6 +502,28 @@ impl CaptureClipboardUseCase {
                     }));
                 }
             }
+
+            // ── No-history mode ────────────────────────────────────────────
+            // When the retention policy is enabled and has `ByAge { max_age: 0 }`
+            // ("disable history"), each local capture replaces the most-recent
+            // entry in place instead of appending a new row. This keeps exactly
+            // one entry in the database at all times.
+            let (commit_mode, preset_entry_id) =
+                if origin == ClipboardChangeOrigin::LocalCapture && commit_mode == CommitMode::Create
+                {
+                    match self.resolve_no_history_target().await {
+                        Some(target_entry_id) => {
+                            info!(
+                                target_entry_id = %target_entry_id,
+                                "No-history mode active; replacing latest entry"
+                            );
+                            (CommitMode::Replace, Some(target_entry_id))
+                        }
+                        None => (commit_mode, preset_entry_id),
+                    }
+                } else {
+                    (commit_mode, preset_entry_id)
+                };
 
             // 1. 生成 event + snapshot representations
             let new_event = ClipboardEvent::new(
@@ -840,6 +877,30 @@ impl CaptureClipboardUseCase {
         }
         .instrument(root)
         .await
+    }
+
+    /// Check whether the retention policy means "no history" (enabled + ByAge
+    /// with max_age == 0) and, if so, return the entry_id of the most-recent
+    /// entry to replace. Returns `None` when the mode is inactive, the port is
+    /// not wired, settings fail to load, or no previous entry exists yet (in
+    /// which case a normal Create is the correct behavior).
+    async fn resolve_no_history_target(&self) -> Option<EntryId> {
+        let list_port = self.list_entries.as_ref()?;
+        let settings = self.settings.load().await.ok()?;
+        let policy = &settings.retention_policy;
+        if !policy.enabled {
+            return None;
+        }
+        let is_no_history = policy
+            .rules
+            .iter()
+            .any(|rule| matches!(rule, RetentionRule::ByAge { max_age } if max_age.is_zero()));
+        if !is_no_history {
+            return None;
+        }
+        // Fetch the most-recent entry to replace.
+        let entries = list_port.list_entries(1, 0).await.ok()?;
+        entries.into_iter().next().map(|e| e.entry_id)
     }
 
     fn has_supported_representation(snapshot: &SystemClipboardSnapshot) -> bool {

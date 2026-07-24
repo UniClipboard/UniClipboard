@@ -444,7 +444,8 @@
         "historyRetention": {
           "label": "Хранение истории",
           "description": "Максимальный срок хранения истории буфера обмена",
-          "days": "{{days}} дн."
+          "days": "{{days}} дн.",
+          "disableHistory": "Отключить историю"
         },
         "maxHistoryItems": {
           "label": "Макс. число записей истории",

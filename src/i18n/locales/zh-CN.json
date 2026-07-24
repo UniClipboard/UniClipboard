@@ -444,7 +444,8 @@
         "historyRetention": {
           "label": "历史保留时间",
           "description": "剪贴板历史的最长保留时间",
-          "days": "{{days}} 天"
+          "days": "{{days}} 天",
+          "disableHistory": "关闭历史"
         },
         "maxHistoryItems": {
           "label": "最大历史条目数",

@@ -444,7 +444,8 @@
         "historyRetention": {
           "label": "History retention",
           "description": "Maximum retention time for clipboard history",
-          "days": "{{days}} days"
+          "days": "{{days}} days",
+          "disableHistory": "Disable history"
         },
         "maxHistoryItems": {
           "label": "Max history items",

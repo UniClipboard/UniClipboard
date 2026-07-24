@@ -444,7 +444,8 @@
         "historyRetention": {
           "label": "履歴の保持",
           "description": "クリップボード履歴の最大保持期間",
-          "days": "{{days}} 日"
+          "days": "{{days}} 日",
+          "disableHistory": "履歴を無効化"
         },
         "maxHistoryItems": {
           "label": "履歴アイテムの最大数",

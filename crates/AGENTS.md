@@ -34,28 +34,27 @@ Desktop Rust workspace (root `Cargo.toml`): system adapters and daemon libraries
 |  `- crates/uc-tauri/    # Tauri adapter: commands (via tauri-specta), tray, quick panel, run loop
 ```
 
-
 ## WHERE TO LOOK
 
-| Task                             | Location                                   | Notes                                                         |
-| -------------------------------- | ------------------------------------------ | ------------------------------------------------------------- |
-| Tauri run loop & setup           | `src-tauri/crates/uc-tauri/src/run.rs`     | `run()` (line ~200); window/lifecycle, `.manage(...)`, `.setup(...)` |
-| IPC command registration         | `src-tauri/crates/uc-tauri/src/specta_builder.rs` | tauri-specta single source of truth (runtime invoke + codegen) |
-| Core revision                    | `Cargo.toml`                                | One immutable `UniClipboard/core` revision for all consumers                       |
-| Desktop host preparation         | `crates/uc-bootstrap/src/wiring/`          | Desktop paths, secure storage and clipboard selection                              |
-| Runtime/usecase accessors        | `src-tauri/crates/uc-tauri/src/bootstrap/runtime.rs` | `AppRuntime`, `usecases()` factory                            |
-| Tauri commands                   | `src-tauri/crates/uc-tauri/src/commands/`  | Commands call app-layer usecases (or daemon HTTP since ADR-008) |
-| Platform adapters                | `crates/uc-platform/src/`                  | clipboard (linux X11/Wayland, windows, macos), secure storage, app dirs |
-| Daemon API surface               | `crates/uc-webserver/src/api/`             | HTTP + WS endpoints; ApiEnvelope normalization                |
-| Legacy reference                 | Removed (2026-02-26)                       | Do not reintroduce legacy module tree                         |
+| Task                      | Location                                             | Notes                                                                   |
+| ------------------------- | ---------------------------------------------------- | ----------------------------------------------------------------------- |
+| Tauri run loop & setup    | `src-tauri/crates/uc-tauri/src/run.rs`               | `run()` (line ~200); window/lifecycle, `.manage(...)`, `.setup(...)`    |
+| IPC command registration  | `src-tauri/crates/uc-tauri/src/specta_builder.rs`    | tauri-specta single source of truth (runtime invoke + codegen)          |
+| Core revision             | `Cargo.toml`                                         | One immutable `UniClipboard/core` revision for all consumers            |
+| Desktop host preparation  | `crates/uc-bootstrap/src/wiring/`                    | Desktop paths, secure storage and clipboard selection                   |
+| Runtime/usecase accessors | `src-tauri/crates/uc-tauri/src/bootstrap/runtime.rs` | `AppRuntime`, `usecases()` factory                                      |
+| Tauri commands            | `src-tauri/crates/uc-tauri/src/commands/`            | Commands call app-layer usecases (or daemon HTTP since ADR-008)         |
+| Platform adapters         | `crates/uc-platform/src/`                            | clipboard (linux X11/Wayland, windows, macos), secure storage, app dirs |
+| Daemon API surface        | `crates/uc-webserver/src/api/`                       | HTTP + WS endpoints; ApiEnvelope normalization                          |
+| Legacy reference          | Removed (2026-02-26)                                 | Do not reintroduce legacy module tree                                   |
 
 ## CODE MAP
 
-| Symbol                     | Type       | Location                                   | Role                               |
-| -------------------------- | ---------- | ------------------------------------------ | ---------------------------------- |
-| `main`              | fn | `src-tauri/src/main.rs`                 | Process entry; calls `uc_tauri::run`     |
-| `run`               | fn | `src-tauri/crates/uc-tauri/src/run.rs`  | Tauri builder + window/run loop          |
-| `build` (specta)    | fn | `src-tauri/crates/uc-tauri/src/specta_builder.rs` | IPC command registration (single source) |
+| Symbol           | Type | Location                                          | Role                                     |
+| ---------------- | ---- | ------------------------------------------------- | ---------------------------------------- |
+| `main`           | fn   | `src-tauri/src/main.rs`                           | Process entry; calls `uc_tauri::run`     |
+| `run`            | fn   | `src-tauri/crates/uc-tauri/src/run.rs`            | Tauri builder + window/run loop          |
+| `build` (specta) | fn   | `src-tauri/crates/uc-tauri/src/specta_builder.rs` | IPC command registration (single source) |
 
 ## CONVENTIONS (PROJECT-SPECIFIC)
 

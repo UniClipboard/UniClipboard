@@ -35,17 +35,17 @@
 
 ### 迁入 `UniClipboard/core`
 
-| 范围 | 内容 | 说明 |
-| --- | --- | --- |
-| 稳定入口 | `uc-engine` | 唯一稳定 Rust 接口和行为约定 |
-| 内部实现 | `uc-core`、`uc-application`、`uc-infra` | 全部设为 `publish = false`，不对消费者承诺稳定 |
-| 可移植基础 | `uc-content-hash`、`uc-observability-contract` | 核心和绑定共同需要的叶子能力 |
-| iOS/Android 绑定 | `uc-engine-uniffi` | 生成 XCFramework、AAR、Swift/Kotlin 绑定 |
-| HarmonyOS 绑定 | `uc-ohos-napi` | 生成动态库、HAR 组装输入和 ArkTS 声明 |
-| 持久化 | `uc-infra/migrations/` | 数据格式与核心版本一起演进 |
-| 一致性检查 | 最小宿主、golden vectors、明文探针、升级探针 | 只通过公开入口验证行为 |
-| 发布工具 | 四平台构建脚本、校验、许可证清单、调试符号 | 所有产物来自同一提交 |
-| LAN 兼容 | `uc-mobile-proto`、`uc-mobile` 和后续兼容专用代码 | 放在 `compatibility/`，保持 `uc-mobile-v*` 独立发布 |
+| 范围             | 内容                                              | 说明                                                |
+| ---------------- | ------------------------------------------------- | --------------------------------------------------- |
+| 稳定入口         | `uc-engine`                                       | 唯一稳定 Rust 接口和行为约定                        |
+| 内部实现         | `uc-core`、`uc-application`、`uc-infra`           | 全部设为 `publish = false`，不对消费者承诺稳定      |
+| 可移植基础       | `uc-content-hash`、`uc-observability-contract`    | 核心和绑定共同需要的叶子能力                        |
+| iOS/Android 绑定 | `uc-engine-uniffi`                                | 生成 XCFramework、AAR、Swift/Kotlin 绑定            |
+| HarmonyOS 绑定   | `uc-ohos-napi`                                    | 生成动态库、HAR 组装输入和 ArkTS 声明               |
+| 持久化           | `uc-infra/migrations/`                            | 数据格式与核心版本一起演进                          |
+| 一致性检查       | 最小宿主、golden vectors、明文探针、升级探针      | 只通过公开入口验证行为                              |
+| 发布工具         | 四平台构建脚本、校验、许可证清单、调试符号        | 所有产物来自同一提交                                |
+| LAN 兼容         | `uc-mobile-proto`、`uc-mobile` 和后续兼容专用代码 | 放在 `compatibility/`，保持 `uc-mobile-v*` 独立发布 |
 
 ### 留在 desktop 仓库
 
@@ -336,13 +336,13 @@ Android 先切，iOS 后切；两端必须消费同一个 RC Release。
 
 ## 回退原则
 
-| 阶段 | 可用回退 | 禁止做法 |
-| --- | --- | --- |
-| 新仓创建前 | 取消冻结 | 提前复制源码到消费者 |
-| RC 发布前 | 删除候选迁移分支 | 在两个仓同时修代码 |
-| RC 发布后、消费者切换前 | 发布下一 RC | 覆盖已有 Release |
-| 单个消费者切换后 | 固定回上一完整版本 | 运行时双核心、只回退一半绑定 |
-| 不可逆数据迁移后 | 向前修复并发布新版本 | 降级到不能读取新数据的旧版本 |
+| 阶段                    | 可用回退             | 禁止做法                     |
+| ----------------------- | -------------------- | ---------------------------- |
+| 新仓创建前              | 取消冻结             | 提前复制源码到消费者         |
+| RC 发布前               | 删除候选迁移分支     | 在两个仓同时修代码           |
+| RC 发布后、消费者切换前 | 发布下一 RC          | 覆盖已有 Release             |
+| 单个消费者切换后        | 固定回上一完整版本   | 运行时双核心、只回退一半绑定 |
+| 不可逆数据迁移后        | 向前修复并发布新版本 | 降级到不能读取新数据的旧版本 |
 
 任何回退都必须保持持久化密文规则，不得用导出明文或删除用户数据换取降级成功。
 

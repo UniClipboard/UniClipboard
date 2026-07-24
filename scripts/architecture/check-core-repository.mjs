@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url'
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url))
 const REPOSITORY_ROOT = resolve(SCRIPT_DIR, '../..')
 const CORE_REPOSITORY = 'https://github.com/UniClipboard/core.git'
-const CORE_REVISION = 'dcdccb234f020be49884bf92d886f25a0f192188'
+const CORE_REVISION = '127ebce0fc62204ea4dfd593b042e659d87c2761'
 const DECLARED_CORE_SOURCE = `git+${CORE_REPOSITORY}?rev=${CORE_REVISION}`
 const RESOLVED_CORE_SOURCE = `${DECLARED_CORE_SOURCE}#${CORE_REVISION}`
 
@@ -60,7 +60,11 @@ function cargoMetadata() {
     encoding: 'utf8',
     maxBuffer: 64 * 1024 * 1024,
   })
-  return JSON.parse(output)
+  try {
+    return JSON.parse(output)
+  } catch (error) {
+    throw new Error(`cargo metadata returned invalid JSON: ${String(error)}`, { cause: error })
+  }
 }
 
 function workspacePackages(metadata) {

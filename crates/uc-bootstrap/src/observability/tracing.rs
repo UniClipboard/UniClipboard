@@ -97,16 +97,9 @@ fn sentry_target_allowed(target: &str) -> bool {
 
 #[derive(Deserialize)]
 #[serde(default)]
+#[derive(Default)]
 struct BootstrapSettings {
     general: BootstrapGeneralSettings,
-}
-
-impl Default for BootstrapSettings {
-    fn default() -> Self {
-        Self {
-            general: BootstrapGeneralSettings::default(),
-        }
-    }
 }
 
 #[derive(Deserialize)]

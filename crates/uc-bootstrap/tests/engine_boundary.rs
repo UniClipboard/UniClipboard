@@ -917,7 +917,6 @@ fn cli_dev_tools_do_not_expose_the_legacy_runtime() {
         "src/lib.rs",
         "src/entrypoint/mod.rs",
         "src/entrypoint/cli.rs",
-        "src/entrypoint/non_gui.rs",
     ] {
         let path = manifest.join("../uc-bootstrap").join(relative);
         let source = std::fs::read_to_string(&path)

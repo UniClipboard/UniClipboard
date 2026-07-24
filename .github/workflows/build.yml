@@ -295,6 +295,11 @@ jobs:
           SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
           VITE_SENTRY_PROJECT: ${{ secrets.VITE_SENTRY_PROJECT }}
         run: |
+          # Skip updater signing when TAURI_SIGNING_PRIVATE_KEY is not configured (fork builds).
+          if [ -z "$TAURI_SIGNING_PRIVATE_KEY" ]; then
+            unset TAURI_SIGNING_PRIVATE_KEY
+            unset TAURI_SIGNING_PRIVATE_KEY_PASSWORD
+          fi
           if [ "${{ matrix.platform }}" = "windows-latest" ]; then
             bun run tauri build ${{ matrix.args }} --bundles nsis
           else

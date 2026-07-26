@@ -979,10 +979,9 @@ impl CommonClipboardImpl {
         ctx: &mut clipboard_rs::ClipboardContext,
         snapshot: SystemClipboardSnapshot,
     ) -> Result<()> {
-        let rep_count = snapshot.representations.len();
-
         #[cfg(target_os = "windows")]
         {
+            let _ = ctx;
             // 把实际实现委托给平台子模块。
             // common.rs 通过 `crate::clipboard::platform::windows::write_snapshot_multi_windows`
             // 调用，不跨 crate 暴露，符合 §4.4 cfg 收敛原则。
@@ -997,7 +996,6 @@ impl CommonClipboardImpl {
             // 不使用传入的 clipboard-rs `ctx`，也不需要 "提前 drop + dummy_ctx" 的绕道
             //（与 Windows 不同：macOS NSPasteboard 不是独占句柄模型）。
             let _ = ctx; // 显式标注未使用，消除 unused-variable warning。
-            let _ = rep_count; // macOS 分支不需要 rep_count，显式忽略。
             crate::clipboard::platform::macos::write_snapshot_multi_macos(snapshot)
         }
 
@@ -1014,6 +1012,7 @@ impl CommonClipboardImpl {
             not(any(target_os = "windows", target_os = "macos"))
         ))]
         {
+            let rep_count = snapshot.representations.len();
             let chosen_idx = crate::clipboard::model::select_paste_representation_index(&snapshot)
                 .ok_or_else(|| anyhow!("no usable clipboard representation"))?;
 

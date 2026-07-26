@@ -1225,7 +1225,7 @@ fn read_image_windows_as_png() -> Result<Vec<u8>> {
 /// (PNG, TIFF, JPEG, BMP, etc.), decodes them, and writes as CF_DIB
 /// (BITMAPINFOHEADER + pixel data, without 14-byte BMP file header).
 fn write_image_windows(bytes: &[u8]) -> Result<()> {
-    use clipboard_win::{formats, Clipboard as ClipboardWin, Setter};
+    use clipboard_win::{formats, Clipboard as ClipboardWin};
 
     // Decode image bytes (supports PNG, TIFF, JPEG, BMP, etc. via `image` crate)
     let img = image::load_from_memory(bytes)

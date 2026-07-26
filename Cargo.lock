@@ -9958,6 +9958,7 @@ dependencies = [
  "uc-daemon-contract",
  "uc-daemon-process",
  "url",
+ "wiremock",
 ]
 
 [[package]]

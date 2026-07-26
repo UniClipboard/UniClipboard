@@ -27,7 +27,7 @@ use tauri::{AppHandle, Manager};
 use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, info, warn};
-use uc_daemon_client::{DaemonSettingsClient, DaemonSetupClient};
+use uc_daemon_client::{DaemonSettingsClient, DaemonSetupV2Client};
 use uc_daemon_contract::api::dto::settings::UpdateChannelDto as UpdateChannel;
 use uc_observability::analytics::{
     Event, UpdateAction, UpdateActionOutcome, UpdateCheckOutcome, UpdateCheckSource,
@@ -76,9 +76,9 @@ pub trait SetupReadiness: Send + Sync {
 }
 
 #[async_trait]
-impl SetupReadiness for DaemonSetupClient {
+impl SetupReadiness for DaemonSetupV2Client {
     async fn is_complete(&self) -> anyhow::Result<bool> {
-        Ok(self.get_setup_state().await?.data.has_completed)
+        Ok(self.get_state().await?.has_completed)
     }
 }
 

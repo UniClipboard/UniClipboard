@@ -281,7 +281,7 @@ sequenceDiagram
   participant QR as 二维码
   participant Mobile as 移动客户端
 
-  User->>Desktop: 点「添加移动设备」
+  User->>Desktop: 点「通过局域网连接手机」
   Desktop->>Desktop: 签发用户名/密码、落盘 MobileDevice
   Desktop->>Desktop: 构造 connect URI（base64url + JSON）
   Desktop->>QR: 把 URI 渲染成二维码

@@ -307,7 +307,7 @@ sequenceDiagram
   participant QR
   participant Mobile as Mobile_Client
 
-  User->>Desktop: Click "Add mobile device"
+  User->>Desktop: Click "Connect a phone over LAN"
   Desktop->>Desktop: Mint username/password, persist MobileDevice
   Desktop->>Desktop: Build connect URI (base64url + JSON)
   Desktop->>QR: Render QR for connect URI

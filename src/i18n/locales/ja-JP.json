@@ -1099,7 +1099,7 @@
       "goToSettings": "設定に移動"
     },
     "mobileSync": {
-      "title": "モバイル同期",
+      "title": "スマートフォンのLAN接続",
       "description": "SyncClipboard プロトコルを使用して LAN 経由でクリップボードをモバイル デバイス (iOS / Android) と同期します",
       "configure": "設定",
       "statusBar": {
@@ -1387,8 +1387,8 @@
       "addMenu": {
         "trigger": "デバイスを追加",
         "triggerShort": "追加",
-        "p2p": "コンピュータをペアリングする",
-        "mobile": "モバイル デバイスを追加する"
+        "p2p": "新しいデバイスをペアリング",
+        "mobile": "LAN経由でスマートフォンを接続"
       }
     },
     "settings": {

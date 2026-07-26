@@ -29,6 +29,8 @@ export default defineConfig({
 
   // Multi-page build: main app + clipboard panel
   build: {
+    target: 'safari15.6',
+    cssTarget: 'safari15.6',
     // 'hidden' generates sourcemaps for upload but strips the
     // //# sourceMappingURL= comment from emitted JS, so the public bundle
     // does not advertise the map location.

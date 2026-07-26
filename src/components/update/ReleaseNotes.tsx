@@ -2,7 +2,6 @@ import { openUrl } from '@tauri-apps/plugin-opener'
 import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import Markdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
 import { createLogger } from '@/lib/logger'
 
 interface ReleaseNotesProps {
@@ -54,9 +53,7 @@ export function ReleaseNotes({ content, fallback }: ReleaseNotesProps) {
                     prose-headings:text-sm prose-headings:font-semibold prose-headings:mt-3 prose-headings:mb-1
                     prose-ul:my-1 prose-li:my-0 prose-p:my-1"
     >
-      <Markdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
-        {displayContent}
-      </Markdown>
+      <Markdown components={markdownComponents}>{displayContent}</Markdown>
     </div>
   )
 }

@@ -812,9 +812,11 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
                     settings_client: uc_daemon_client::DaemonSettingsClient::new(
                         daemon_connection_state.clone(),
                     ),
-                    setup_readiness: Arc::new(uc_daemon_client::DaemonSetupClient::with_conn_state(
-                        daemon_connection_state.clone(),
-                    )),
+                    setup_readiness: Arc::new(
+                        uc_daemon_client::DaemonSetupV2Client::with_conn_state(
+                            daemon_connection_state.clone(),
+                        ),
+                    ),
                     notify: notify_ctx,
                 };
 

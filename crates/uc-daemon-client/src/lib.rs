@@ -23,8 +23,7 @@ pub use http::{
     DaemonAnalyticsClient, DaemonClipboardClient, DaemonConfigClient, DaemonDiagnosticsClient,
     DaemonLifecycleClient, DaemonMobileSyncClient, DaemonPairingClient, DaemonPairingRequestError,
     DaemonQueryClient, DaemonRequestError, DaemonSearchClient, DaemonSettingsClient,
-    DaemonSetupClient, DaemonSetupV2Client, DaemonUpgradeClient, ExchangedSessionToken,
-    SearchQueryRequest,
+    DaemonSetupV2Client, DaemonUpgradeClient, ExchangedSessionToken, SearchQueryRequest,
 };
 pub use http_ws_service::HttpWsDaemonService;
 pub use service::{ControlLeaseGuard, DaemonService, FileExport};
@@ -127,11 +126,11 @@ pub fn resolve_connection_info_from_env() -> Result<DaemonConnectionInfo> {
 /// ```ignore
 /// // For GUI (long-running, caches session tokens):
 /// let ctx = DaemonClientContext::new(connection_info);
-/// let setup = ctx.setup_client();
+/// let setup = ctx.setup_v2_client();
 ///
 /// // For CLI (short-lived, exchanges fresh token each call):
 /// let ctx = DaemonClientContext::from_env()?;
-/// let setup = ctx.setup_client();
+/// let setup = ctx.setup_v2_client();
 /// ```
 #[derive(Clone)]
 pub struct DaemonClientContext {
@@ -182,15 +181,6 @@ impl DaemonClientContext {
             http: Arc::new(reqwest::Client::new()),
             client_type,
         }
-    }
-
-    /// Spawn a [`DaemonSetupClient`] that shares this context's connection state and HTTP client.
-    pub fn setup_client(&self) -> DaemonSetupClient {
-        DaemonSetupClient::with_http_conn_state_and_type(
-            self.http.clone(),
-            self.connection_state.clone(),
-            self.client_type.clone(),
-        )
     }
 
     /// Spawn a [`DaemonSetupV2Client`] that shares this context's connection state and HTTP client.

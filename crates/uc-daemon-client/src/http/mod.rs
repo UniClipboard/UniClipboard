@@ -9,7 +9,6 @@ pub mod pairing;
 pub mod query;
 pub mod search;
 pub mod settings;
-pub mod setup;
 pub mod setup_v2;
 pub mod upgrade;
 
@@ -24,7 +23,6 @@ pub use pairing::{DaemonPairingClient, DaemonPairingRequestError};
 pub use query::DaemonQueryClient;
 pub use search::{DaemonSearchClient, SearchQueryRequest};
 pub use settings::DaemonSettingsClient;
-pub use setup::DaemonSetupClient;
 pub use setup_v2::DaemonSetupV2Client;
 pub use upgrade::DaemonUpgradeClient;
 

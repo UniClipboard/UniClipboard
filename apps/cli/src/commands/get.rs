@@ -55,9 +55,10 @@ pub enum GetKind {
     Link,
 }
 
-/// Classified category of an entry, derived from its MIME type. The list
-/// projection's `content_type` is the raw representation MIME (e.g.
-/// `image/png`, `text/uri-list`, `text/plain`), not a category label.
+/// Classified category of an entry. The current list projection returns
+/// category labels (`text`, `image`, `file`, `rich_text`, or `other`), while
+/// older/raw projections may contain MIME values. Links are text entries with
+/// non-empty `link_urls`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Category {
     Image,
@@ -418,10 +419,13 @@ fn content_unavailable(entry_id: &str) -> i32 {
 // ── Classification helpers ──────────────────────────────────────────
 
 fn classify(entry: &EntryProjectionResponseDto) -> Category {
-    let mime = entry.content_type.to_ascii_lowercase();
-    if mime.starts_with("image/") {
+    let content_type = entry.content_type.to_ascii_lowercase();
+    if content_type == "image" || content_type.starts_with("image/") {
         Category::Image
-    } else if mime == "text/uri-list" || mime == "file/uri-list" {
+    } else if content_type == "file"
+        || content_type == "text/uri-list"
+        || content_type == "file/uri-list"
+    {
         Category::File
     } else if entry
         .link_urls
@@ -539,7 +543,8 @@ struct GetOutcome<'a> {
     entry_id: &'a str,
     /// Classified kind: `text` | `link` | `image` | `file`.
     content_type: &'a str,
-    /// Raw representation MIME, e.g. `image/png`.
+    /// Projection content type: a category label on current daemons, or a
+    /// representation MIME on older daemons.
     mime_type: &'a str,
     /// Absolute path of the written file; null for text or `--out -`.
     path: Option<&'a str>,
@@ -555,6 +560,8 @@ struct GetOutcome<'a> {
 struct ListRow<'a> {
     entry_id: &'a str,
     content_type: &'a str,
+    /// Projection content type: a category label on current daemons, or a
+    /// representation MIME on older daemons.
     mime_type: &'a str,
     captured_at: i64,
     preview: &'a str,
@@ -600,13 +607,23 @@ mod tests {
     }
 
     #[test]
-    fn classify_uses_mime_prefix() {
+    fn classify_uses_projection_category() {
+        assert_eq!(classify(&projection("image")), Category::Image);
+        assert_eq!(classify(&projection("file")), Category::File);
+        assert_eq!(classify(&projection("text")), Category::Text);
+        assert_eq!(classify(&projection("rich_text")), Category::Text);
+        assert_eq!(classify(&projection("other")), Category::Text);
+        // Unknown / empty categories fall back to text.
+        assert_eq!(classify(&projection("unknown")), Category::Text);
+    }
+
+    #[test]
+    fn classify_accepts_raw_mime_for_compatibility() {
         assert_eq!(classify(&projection("image/png")), Category::Image);
         assert_eq!(classify(&projection("image/jpeg")), Category::Image);
         assert_eq!(classify(&projection("text/uri-list")), Category::File);
+        assert_eq!(classify(&projection("file/uri-list")), Category::File);
         assert_eq!(classify(&projection("text/plain")), Category::Text);
-        // Unknown / empty mime falls back to text.
-        assert_eq!(classify(&projection("unknown")), Category::Text);
     }
 
     #[test]
@@ -620,9 +637,28 @@ mod tests {
     }
 
     #[test]
-    fn image_mime_wins_over_link_urls() {
+    fn select_target_matches_projection_category() {
+        let mut text = projection("text");
+        text.id = "ent-text".to_string();
+        let mut image = projection("image");
+        image.id = "ent-image".to_string();
+        let entries = vec![text, image];
+        let args = GetArgs {
+            kind: Some(GetKind::Image),
+            id: None,
+            list: false,
+            limit: None,
+            out: None,
+        };
+
+        let selected = select_target(&entries, &args).expect("image entry should match");
+        assert_eq!(selected.id, "ent-image");
+    }
+
+    #[test]
+    fn image_category_wins_over_link_urls() {
         // An image entry that happens to carry link_urls is still an image.
-        let mut entry = projection("image/png");
+        let mut entry = projection("image");
         entry.link_urls = Some(vec!["https://x".to_string()]);
         assert_eq!(classify(&entry), Category::Image);
     }
@@ -637,7 +673,7 @@ mod tests {
 
     #[test]
     fn is_lost_is_case_insensitive() {
-        let mut entry = projection("image/png");
+        let mut entry = projection("image");
         assert!(!is_lost(&entry));
         entry.payload_state = Some("Lost".to_string());
         assert!(is_lost(&entry));

@@ -4,7 +4,7 @@ Use this document when changes touch module boundaries, cross-crate types, commi
 
 ## Hexagonal Architecture Boundaries
 
-仓库所有权已经固定：`uc-core`、`uc-application`、`uc-infra`、`uc-engine`、数据库迁移、绑定和 LAN 协议包都属于 `UniClipboard/core`。desktop 不得重新创建这些内容。核心变更必须先在核心仓实现并验证，再由 desktop 更新唯一的固定提交。
+仓库所有权已经固定：`uc-core`、`uc-application`、`uc-infra`、`uc-engine`、数据库迁移、绑定和 LAN 协议包都属于 `UniClipboard/core`。desktop 不得重新创建这些内容。核心变更必须先在核心仓实现并验证，再由 desktop 更新唯一的固定发布标签。
 
 - **Layering is fixed:**
   - `desktop host → uc-engine → core internals`

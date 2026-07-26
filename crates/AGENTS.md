@@ -4,7 +4,7 @@
 
 ## OVERVIEW
 
-Desktop Rust workspace (root `Cargo.toml`): system adapters and daemon libraries live in `crates/`, runnable `uniclip` and `uniclipd` binaries live in `apps/`, and Tauri packaging lives in `src-tauri/`. The portable engine is owned by the independent `UniClipboard/core` repository and is consumed here through one immutable Git revision. The GUI and CLI are loopback HTTP+WS clients of the standalone daemon.
+桌面 Rust 工作区以根目录 `Cargo.toml` 为入口：系统适配器和守护进程库位于 `crates/`，`uniclip` 与 `uniclipd` 位于 `apps/`，Tauri 打包位于 `src-tauri/`。可移植引擎由独立的 `UniClipboard/core` 仓库拥有，本仓通过一个固定发布标签使用它。GUI 和 CLI 都通过本机 HTTP 与 WebSocket 访问独立守护进程。
 
 ## STRUCTURE
 
@@ -41,7 +41,7 @@ Desktop Rust workspace (root `Cargo.toml`): system adapters and daemon libraries
 | ------------------------- | ---------------------------------------------------- | ----------------------------------------------------------------------- |
 | Tauri run loop & setup    | `src-tauri/crates/uc-tauri/src/run.rs`               | `run()` (line ~200); window/lifecycle, `.manage(...)`, `.setup(...)`    |
 | IPC command registration  | `src-tauri/crates/uc-tauri/src/specta_builder.rs`    | tauri-specta single source of truth (runtime invoke + codegen)          |
-| Core revision             | `Cargo.toml`                                         | One immutable `UniClipboard/core` revision for all consumers            |
+| Core 发布版本             | `Cargo.toml`                                         | 所有使用方共享一个固定的 `UniClipboard/core` 发布标签                   |
 | Desktop host preparation  | `crates/uc-bootstrap/src/wiring/`                    | Desktop paths, secure storage and clipboard selection                   |
 | Runtime/usecase accessors | `src-tauri/crates/uc-tauri/src/bootstrap/runtime.rs` | `AppRuntime`, `usecases()` factory                                      |
 | Tauri commands            | `src-tauri/crates/uc-tauri/src/commands/`            | Commands call app-layer usecases (or daemon HTTP since ADR-008)         |
@@ -61,7 +61,7 @@ Desktop Rust workspace (root `Cargo.toml`): system adapters and daemon libraries
 
 - Rust commands run from the repo root (the cargo workspace root); stop if `Cargo.toml` absent.
 - Portable engine, protocol, persistence, migration, and binding changes belong in `UniClipboard/core`; never recreate those packages here.
-- Upgrade the engine only by changing the single pinned revision in root `Cargo.toml` and updating `Cargo.lock`.
+- 升级引擎时，只修改根目录 `Cargo.toml` 中唯一的固定发布标签，并同步更新 `Cargo.lock`。
 - Desktop-only capability flow: platform adapter -> `uc-bootstrap/src/wiring/` -> `HostCapabilities` -> `Engine::start`.
 - Tauri command pattern: command -> `runtime.usecases().x()`; avoid direct `deps` access from command layer.
 - Event payloads emitted via `app.emit()` must use `#[serde(rename_all = "camelCase")]`.
@@ -75,7 +75,7 @@ Desktop Rust workspace (root `Cargo.toml`): system adapters and daemon libraries
 ## ANTI-PATTERNS (THIS PROJECT)
 
 - Copying core source, migrations, bindings, or LAN protocol packages back into desktop.
-- Adding a local path, branch, or floating tag for any package owned by `UniClipboard/core`.
+- 对 `UniClipboard/core` 拥有的包使用本地路径、分支或非发布标签。
 - Depending on core implementation packages from desktop production code instead of `uc-engine`.
 - Adding business logic inside `uc-tauri` command handlers or platform adapters.
 - Reintroducing code under any `src-legacy/` path.

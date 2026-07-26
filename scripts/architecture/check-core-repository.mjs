@@ -9,8 +9,9 @@ import { fileURLToPath } from 'node:url'
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url))
 const REPOSITORY_ROOT = resolve(SCRIPT_DIR, '../..')
 const CORE_REPOSITORY = 'https://github.com/UniClipboard/core.git'
+const CORE_TAG = 'core-v0.20.0-rc.5'
 const CORE_REVISION = '59e4339a2e1d7c247e3d33c7ec106bbb16c17c5c'
-const DECLARED_CORE_SOURCE = `git+${CORE_REPOSITORY}?rev=${CORE_REVISION}`
+const DECLARED_CORE_SOURCE = `git+${CORE_REPOSITORY}?tag=${CORE_TAG}`
 const RESOLVED_CORE_SOURCE = `${DECLARED_CORE_SOURCE}#${CORE_REVISION}`
 
 const MIGRATED_PACKAGES = new Set([
@@ -113,7 +114,7 @@ function checkRepositoryBoundary(metadata, { checkPaths = true } = {}) {
         addProblem(
           problems,
           'core provenance',
-          `${packageMetadata.name} does not pin ${item.name} to ${CORE_REVISION}`
+          `${packageMetadata.name} does not pin ${item.name} to ${CORE_TAG}`
         )
       }
     }
@@ -136,7 +137,7 @@ function checkRepositoryBoundary(metadata, { checkPaths = true } = {}) {
     addProblem(
       problems,
       'core provenance',
-      `expected one resolved core source at ${CORE_REVISION}; found ${[...coreSources].join(', ')}`
+      `expected one resolved core source at ${CORE_TAG} (${CORE_REVISION}); found ${[...coreSources].join(', ')}`
     )
   }
 
@@ -146,7 +147,7 @@ function checkRepositoryBoundary(metadata, { checkPaths = true } = {}) {
       addProblem(
         problems,
         'core provenance',
-        `${packageMetadata.name} resolved outside the pinned core revision`
+        `${packageMetadata.name} resolved outside the pinned core release`
       )
     }
   }
@@ -182,7 +183,7 @@ function checkPublicSurface(metadata) {
       addProblem(
         problems,
         'consumer firewall',
-        `${packageName} must consume ${dependencyName} from the pinned core revision`
+        `${packageName} must consume ${dependencyName} from the pinned core release`
       )
     }
   }
@@ -288,13 +289,13 @@ function runNegativeFixtures(metadata, sources) {
     sources
   )
   expectRejected(
-    'moving core revision',
+    'different core tag',
     changed => {
       const contract = dependency(
         workspacePackageByName(changed, 'uc-observability'),
         'uc-observability-contract'
       )
-      contract.source = `git+${CORE_REPOSITORY}?rev=main`
+      contract.source = `git+${CORE_REPOSITORY}?tag=core-v0.20.0-rc.6`
     },
     metadata,
     sources

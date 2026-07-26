@@ -30,7 +30,6 @@ src/api/generated/
 # When adding a new tool/planning directory, add it below before merging.
 .agents/
 .bg-shell/
-.claude/
 .codex/
 .github/
 .gsd/

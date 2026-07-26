@@ -1,0 +1,6 @@
+name = "push_branch"
+description = "Push the current committed branch without editing files, creating commits, or opening a pull request."
+model_reasoning_effort = "low"
+developer_instructions = """
+Push only the current committed branch. Refuse to push main or master. Report uncommitted changes but do not include or modify them. Use the existing upstream when present; otherwise set origin as upstream on the first push. Never force-push, pull, or rebase. On failure, preserve the exact Git error. Report the branch, upstream result, remote URL, and any pull-request link emitted by Git.
+"""

@@ -4,7 +4,8 @@ reviews:
     # 开发自留地：调研笔记、agent skill、一次性诊断 crate 不进入 CodeRabbit 审查。
     # 这些路径的语言/格式不要求与对外文档一致，bot 在这里发的几乎全是噪音。
     - '!.planning/**'
-    - '!.claude/**'
+    - '!.agents/**'
+    - '!.codex/**'
     - '!crates/p2p-bench/**'
   auto_review:
     enabled: true

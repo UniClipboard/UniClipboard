@@ -1,0 +1,4 @@
+interface:
+  display_name: "Generate Changelog"
+  short_description: "Create bilingual release changelogs from Git history"
+  default_prompt: "Use $gen-changelog to generate the changelog for this release."

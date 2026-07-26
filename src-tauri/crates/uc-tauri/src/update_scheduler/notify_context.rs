@@ -10,7 +10,7 @@ use std::{path::PathBuf, sync::Arc};
 use tauri::AppHandle;
 use tokio::sync::Mutex;
 use tracing::{debug, warn};
-use uc_core::settings::model::UpdateChannel;
+use uc_daemon_contract::api::dto::settings::UpdateChannelDto as UpdateChannel;
 use uc_observability::analytics::{
     AnalyticsPort, Event, InstallKind as AnalyticsInstallKind, NotificationDeliveryStatus,
 };

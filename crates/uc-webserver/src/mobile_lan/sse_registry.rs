@@ -1,5 +1,5 @@
-//! Per-listener registry of live SSE connections, keyed by the stable
-//! `MobileDeviceId` (not `username`, which is user-editable and would let a
+//! Per-listener registry of live SSE connections, keyed by the stable device
+//! ID (not `username`, which is user-editable and would let a
 //! rename split one device's connections across two buckets, defeating the
 //! cap).
 //!
@@ -24,13 +24,11 @@ use std::sync::{Mutex, MutexGuard, PoisonError};
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
-use uc_core::mobile_sync::MobileDeviceId;
-
 /// Registered connections per device must never exceed this. See module docs
 /// for why 2 rather than 1.
 const MAX_CONNECTIONS_PER_DEVICE: usize = 2;
 
-type ConnectionMap = HashMap<MobileDeviceId, VecDeque<(Uuid, CancellationToken)>>;
+type ConnectionMap = HashMap<String, VecDeque<(Uuid, CancellationToken)>>;
 
 #[derive(Default)]
 pub(crate) struct SseConnectionRegistry {
@@ -52,7 +50,7 @@ impl SseConnectionRegistry {
     /// the oldest registered connection for that device first if already at
     /// the cap. Returns the `Uuid` handle the caller must pass back to
     /// [`unregister`](Self::unregister) when the connection ends.
-    pub(crate) fn register(&self, device_id: MobileDeviceId, token: CancellationToken) -> Uuid {
+    pub(crate) fn register(&self, device_id: String, token: CancellationToken) -> Uuid {
         let mut map = self.lock();
         let bucket = map.entry(device_id).or_default();
         while bucket.len() >= MAX_CONNECTIONS_PER_DEVICE {
@@ -69,7 +67,7 @@ impl SseConnectionRegistry {
     /// early client disconnect — see [`super::routes::sse`]'s RAII guard).
     /// Idempotent: unregistering an already-absent handle is a no-op, since
     /// eviction in [`register`](Self::register) may have already removed it.
-    pub(crate) fn unregister(&self, device_id: &MobileDeviceId, conn_id: Uuid) {
+    pub(crate) fn unregister(&self, device_id: &str, conn_id: Uuid) {
         let mut map = self.lock();
         if let Some(bucket) = map.get_mut(device_id) {
             bucket.retain(|(id, _)| *id != conn_id);
@@ -80,7 +78,7 @@ impl SseConnectionRegistry {
     }
 
     #[cfg(test)]
-    pub(crate) fn connection_count(&self, device_id: &MobileDeviceId) -> usize {
+    pub(crate) fn connection_count(&self, device_id: &str) -> usize {
         self.lock().get(device_id).map(VecDeque::len).unwrap_or(0)
     }
 }
@@ -89,8 +87,8 @@ impl SseConnectionRegistry {
 mod tests {
     use super::*;
 
-    fn dev(id: &str) -> MobileDeviceId {
-        MobileDeviceId::new(id)
+    fn dev(id: &str) -> String {
+        id.to_string()
     }
 
     #[test]

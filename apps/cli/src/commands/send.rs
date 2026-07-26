@@ -1,5 +1,5 @@
-//! `uniclip send` — clipboard dispatch via daemon (text/resend) or in-process
-//! (file-send, dev-tools only).
+//! `uniclip send` — clipboard dispatch via daemon (text/resend) or the unified
+//! engine (file-send, dev-tools only).
 //!
 //! ## Text / resend mode (always available)
 //!
@@ -7,11 +7,8 @@
 //!
 //! ## File-send mode (`--features dev-tools` only)
 //!
-//! Builds an in-process `CliAppSession`, publishes the blob to the local
-//! iroh-blobs store, dispatches a V3 envelope with a blob-ref extension,
-//! then keeps the iroh router alive (passive provider) until Ctrl-C so
-//! the receiver has time to fetch. Requires the heavy application +
-//! bootstrap stack.
+//! Starts the unified engine, imports the selected file through a host handle,
+//! sends it, and keeps the engine alive until Ctrl-C so receivers can fetch.
 
 use std::io::Read;
 use std::path::PathBuf;
@@ -20,18 +17,7 @@ use std::path::PathBuf;
 use serde::Serialize;
 
 #[cfg(feature = "dev-tools")]
-use uc_application::facade::{
-    BlobTransferError, ClipboardSyncError, DispatchEntryPerTarget, PublishBlobPathCommand,
-    V3BlobRef,
-};
-#[cfg(feature = "dev-tools")]
-use uc_core::ids::{EntryId, FormatId, RepresentationId};
-#[cfg(feature = "dev-tools")]
-use uc_core::ports::DispatchAck;
-#[cfg(feature = "dev-tools")]
-use uc_core::{
-    ClipboardChangeOrigin, MimeType, ObservedClipboardRepresentation, SystemClipboardSnapshot,
-};
+use uc_engine::{Operation, OperationResult, SendFilesInput, SendTargetOutcome, SendTargetSummary};
 
 use uc_daemon_client::DaemonService;
 use uc_daemon_contract::api::dto::clipboard_command::DispatchOutcomeResponse;
@@ -55,8 +41,7 @@ pub struct SendArgs {
     /// CLI keeps the iroh router alive (passive provider) until Ctrl-C
     /// so the receiver has time to fetch.
     pub file: Option<PathBuf>,
-    /// Entry id to **resend**. When set, the command pulls the original
-    /// snapshot from local storage via `AppFacade::resend_entry`.
+    /// Entry id to **resend**. When set, the daemon pulls the original snapshot.
     pub resend: Option<String>,
     /// Optional list of target device IDs. Empty vec means "no filter"
     /// (full fan-out for new entry; derived diff for resend).
@@ -295,31 +280,18 @@ fn short_hash(hash: &str) -> &str {
 // ── File-send (dev-tools only) ────────────────────────────────────────
 
 #[cfg(feature = "dev-tools")]
-fn render_dispatch_error(err: &ClipboardSyncError) -> String {
-    match err {
-        ClipboardSyncError::LockedSpace => {
-            "Space is locked — unlock or re-init before sending.".to_string()
-        }
-        ClipboardSyncError::CipherFailure(msg) => format!("Encryption failed: {msg}"),
-        ClipboardSyncError::Repository(msg) => format!("Peer address lookup failed: {msg}"),
-    }
-}
-
-#[cfg(feature = "dev-tools")]
-fn render_per_target(entry: &DispatchEntryPerTarget) -> String {
+fn render_per_target(entry: &SendTargetSummary) -> String {
     match &entry.outcome {
-        Ok(DispatchAck::Accepted) => "accepted".to_string(),
-        Ok(DispatchAck::DuplicateIgnored) => "duplicate (peer already had it)".to_string(),
-        Err(reason) => format!("failed: {reason}"),
+        SendTargetOutcome::Accepted => "accepted".to_string(),
+        SendTargetOutcome::Duplicate => "duplicate (peer already had it)".to_string(),
+        SendTargetOutcome::Error { message } => format!("failed: {message}"),
     }
 }
 
 /// `send -f <path>` path (requires dev-tools feature).
 ///
-/// Unlike the text path, dispatch returns but the process must stay alive.
-/// `publish_blob_path` adds the file to the local iroh-blobs store + encodes
-/// the ticket into a V3 envelope; the actual bytes transfer happens when the
-/// receiver's fetch task pulls from this CLI acting as passive provider.
+/// Unlike the text path, dispatch returns but the process must stay alive while
+/// the receiver pulls bytes from this engine instance.
 #[cfg(feature = "dev-tools")]
 async fn run_send_file(path: PathBuf, json: bool, verbose: bool) -> i32 {
     if !json {
@@ -366,74 +338,44 @@ async fn run_send_file(path: PathBuf, json: bool, verbose: bool) -> i32 {
         return code;
     }
 
-    let entry_id = EntryId::new();
-    let publish_spinner = ui::spinner(&format!("Publishing '{filename}' to local blob store..."));
-    let publish_result = match cli
-        .app_facade()
-        .publish_blob_path(PublishBlobPathCommand {
-            path: abs_path.clone(),
-            entry_id: Some(entry_id.clone()),
-        })
-        .await
-    {
-        Ok(r) => {
-            ui::spinner_finish_success(&publish_spinner, "Blob published");
-            r
-        }
-        Err(err) => {
-            let msg = match &err {
-                BlobTransferError::Publish(s) | BlobTransferError::Fetch(s) => s.clone(),
-                BlobTransferError::Cancelled => "publish cancelled".to_string(),
-            };
-            ui::spinner_finish_error(&publish_spinner, &format!("Publish failed: {msg}"));
+    let file_handle = match cli.file_handles().register_input(abs_path) {
+        Ok(handle) => handle,
+        Err(error) => {
+            ui::error(&format!("Failed to register file: {error}"));
             cli.shutdown().await;
             return exit_codes::EXIT_ERROR;
         }
     };
 
-    let uri_bytes = format!("file://{}\n", abs_path.display()).into_bytes();
-    let snapshot = SystemClipboardSnapshot {
-        ts_ms: chrono::Utc::now().timestamp_millis(),
-        representations: vec![ObservedClipboardRepresentation::new(
-            RepresentationId::new(),
-            FormatId::from("files"),
-            Some(MimeType("text/uri-list".to_string())),
-            uri_bytes,
-        )],
-        file_content_digests: Vec::new(),
-        file_set_v1_component: None,
-    };
-    let blob_refs = vec![V3BlobRef {
-        ticket: publish_result.ticket,
-        entry_id: publish_result.entry_id.clone(),
-        filename: Some(filename.clone()),
-        mime: None,
-        size_bytes,
-        representation_index: None,
-    }];
-
     let dispatch_spinner = ui::spinner("Dispatching envelope to online peers...");
     let outcome = match cli
-        .app_facade()
-        .dispatch_clipboard_snapshot_with_blob_refs(
-            snapshot,
-            blob_refs,
-            ClipboardChangeOrigin::LocalCapture,
-        )
+        .engine()
+        .execute(Operation::SendFiles(SendFilesInput {
+            files: vec![file_handle],
+            target_devices: Vec::new(),
+        }))
         .await
     {
-        Ok(o) => {
+        Ok(OperationResult::EntrySent(report)) => {
             ui::spinner_finish_success(
                 &dispatch_spinner,
                 &format!(
                     "{} accepted, {} duplicate, {} offline, {} error(s)",
-                    o.total_accepted, o.total_duplicate, o.total_offline, o.total_errored
+                    report.total_accepted,
+                    report.total_duplicate,
+                    report.total_offline,
+                    report.total_errored
                 ),
             );
-            o
+            report
+        }
+        Ok(_) => {
+            ui::spinner_finish_error(&dispatch_spinner, "Unexpected engine response");
+            cli.shutdown().await;
+            return exit_codes::EXIT_ERROR;
         }
         Err(err) => {
-            ui::spinner_finish_error(&dispatch_spinner, &render_dispatch_error(&err));
+            ui::spinner_finish_error(&dispatch_spinner, &format!("File send failed: {err}"));
             cli.shutdown().await;
             return exit_codes::EXIT_ERROR;
         }
@@ -444,7 +386,7 @@ async fn run_send_file(path: PathBuf, json: bool, verbose: bool) -> i32 {
             snapshot_hash: outcome.snapshot_hash.clone(),
             filename: filename.clone(),
             size_bytes,
-            entry_id: entry_id.to_string(),
+            entry_id: outcome.entry_id.clone(),
             total_accepted: outcome.total_accepted,
             total_duplicate: outcome.total_duplicate,
             total_offline: outcome.total_offline,
@@ -470,11 +412,7 @@ async fn run_send_file(path: PathBuf, json: bool, verbose: bool) -> i32 {
             for entry in &outcome.per_target {
                 ui::info(
                     "·",
-                    &format!(
-                        "{} → {}",
-                        entry.device_id.as_str(),
-                        render_per_target(entry),
-                    ),
+                    &format!("{} → {}", entry.device_id, render_per_target(entry),),
                 );
             }
         }
@@ -494,7 +432,7 @@ async fn run_send_file(path: PathBuf, json: bool, verbose: bool) -> i32 {
 #[cfg(feature = "dev-tools")]
 async fn resume_and_probe(cli: &CliAppSession) -> Result<(), i32> {
     let resume_spinner = ui::spinner("Resuming space session...");
-    match cli.app_facade().try_resume_session().await {
+    match cli.recover_session().await {
         Ok(true) => ui::spinner_finish_success(&resume_spinner, "Session resumed"),
         Ok(false) => {
             ui::spinner_finish_error(
@@ -510,17 +448,19 @@ async fn resume_and_probe(cli: &CliAppSession) -> Result<(), i32> {
     }
 
     let probe_spinner = ui::spinner("Probing paired peers...");
-    match cli.app_facade().refresh_presence().await {
-        Ok(report) => ui::spinner_finish_success(
+    match cli
+        .engine()
+        .execute(Operation::RefreshPeerConnections)
+        .await
+    {
+        Ok(OperationResult::PeerConnectionsRefreshed(report)) => ui::spinner_finish_success(
             &probe_spinner,
             &format!(
                 "Probed {} peer(s): {} online, {} offline, {} error(s)",
-                report.total,
-                report.online,
-                report.offline,
-                report.errors.len()
+                report.total, report.online, report.offline, report.errors
             ),
         ),
+        Ok(_) => ui::spinner_finish_error(&probe_spinner, "Unexpected engine response"),
         Err(err) => ui::spinner_finish_error(
             &probe_spinner,
             &format!("Probe round failed: {err} (proceeding)"),

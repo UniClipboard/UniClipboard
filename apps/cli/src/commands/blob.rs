@@ -1,7 +1,6 @@
 //! `uniclip blob` —— 大 payload 发布 / 拉取诊断命令。
 //!
-//! 这组命令走和后续 daemon/UI 相同的应用层门面:先恢复空间会话,再执行
-//! hash 去重、业务加解密和 iroh-blobs 发布/拉取。`publish` 输出 ticket
+//! 这组命令通过统一核心执行 hash 去重、业务加解密和 iroh-blobs 发布/拉取。`publish` 输出 ticket
 //! 与 entry_id,`fetch` 带回二者:ticket 定位内容,entry_id 登记归属。
 
 use std::fmt::Write as _;
@@ -9,14 +8,10 @@ use std::path::{Path, PathBuf};
 
 use base64::engine::general_purpose::STANDARD;
 use base64::Engine as _;
-use bytes::Bytes;
 use clap::Subcommand;
 use serde::Serialize;
 
-use uc_application::facade::space_setup::TryResumeSessionError;
-use uc_application::facade::{FetchBlobCommand, PublishBlobCommand};
-use uc_core::ids::EntryId;
-use uc_core::ports::blob::BlobTicket;
+use uc_engine::{DevOperation, DevOperationResult};
 
 use crate::commands::app_session::{build_app_session, refuse_if_daemon_running, CliAppSession};
 use crate::exit_codes;
@@ -81,11 +76,8 @@ async fn publish(path: PathBuf, json: bool, verbose: bool) -> i32 {
 
     let spinner = ui::spinner("Publishing blob...");
     let result = cli
-        .app_facade()
-        .publish_blob(PublishBlobCommand {
-            plaintext: Bytes::from(plaintext),
-            entry_id: None,
-        })
+        .engine()
+        .execute_dev(DevOperation::PublishBlob { bytes: plaintext })
         .await;
 
     let result = match result {
@@ -100,11 +92,16 @@ async fn publish(path: PathBuf, json: bool, verbose: bool) -> i32 {
         }
     };
 
+    let DevOperationResult::BlobPublished(result) = result else {
+        ui::error("Publish failed: unexpected engine response");
+        cli.shutdown().await;
+        return exit_codes::EXIT_ERROR;
+    };
     let dto = PublishBlobDto {
-        ticket: STANDARD.encode(result.ticket.as_bytes()),
-        entry_id: result.entry_id.to_string(),
-        plaintext_hash: format_hex(result.plaintext_hash.as_bytes()),
-        digest: format_hex(result.digest.as_bytes()),
+        ticket: STANDARD.encode(&result.ticket),
+        entry_id: result.entry_id,
+        plaintext_hash: format_hex(&result.plaintext_hash),
+        digest: format_hex(&result.digest),
         reused_existing: result.reused_existing,
     };
     let code = print_publish(dto, json);
@@ -114,13 +111,13 @@ async fn publish(path: PathBuf, json: bool, verbose: bool) -> i32 {
 
 async fn fetch(ticket: String, entry_id: String, out: PathBuf, json: bool, verbose: bool) -> i32 {
     let ticket = match STANDARD.decode(ticket.trim()) {
-        Ok(bytes) => BlobTicket::from_bytes(bytes),
+        Ok(bytes) => bytes,
         Err(err) => {
             ui::error(&format!("Invalid ticket: {err}"));
             return exit_codes::EXIT_ERROR;
         }
     };
-    let entry_id = EntryId::from_str(entry_id.trim());
+    let entry_id = entry_id.trim().to_string();
 
     let cli = match build_ready_session(verbose).await {
         Ok(cli) => cli,
@@ -129,12 +126,8 @@ async fn fetch(ticket: String, entry_id: String, out: PathBuf, json: bool, verbo
 
     let spinner = ui::spinner("Fetching blob...");
     let result = cli
-        .app_facade()
-        .fetch_blob(FetchBlobCommand {
-            ticket,
-            entry_id,
-            transfer_context: None,
-        })
+        .engine()
+        .execute_dev(DevOperation::FetchBlob { ticket, entry_id })
         .await;
 
     let result = match result {
@@ -154,7 +147,18 @@ async fn fetch(ticket: String, entry_id: String, out: PathBuf, json: bool, verbo
         cli.shutdown().await;
         return exit_codes::EXIT_ERROR;
     }
-    if let Err(err) = tokio::fs::write(&out, &result.plaintext).await {
+    let DevOperationResult::BlobFetched {
+        bytes,
+        entry_id,
+        plaintext_hash,
+        digest,
+    } = result
+    else {
+        ui::error("Fetch failed: unexpected engine response");
+        cli.shutdown().await;
+        return exit_codes::EXIT_ERROR;
+    };
+    if let Err(err) = tokio::fs::write(&out, &bytes).await {
         ui::error(&format!("Failed to write output file: {err}"));
         cli.shutdown().await;
         return exit_codes::EXIT_ERROR;
@@ -162,10 +166,10 @@ async fn fetch(ticket: String, entry_id: String, out: PathBuf, json: bool, verbo
 
     let dto = FetchBlobDto {
         out: out.display().to_string(),
-        entry_id: result.entry_id.to_string(),
-        plaintext_hash: format_hex(result.plaintext_hash.as_bytes()),
-        digest: format_hex(result.digest.as_bytes()),
-        bytes_written: result.plaintext.len(),
+        entry_id,
+        plaintext_hash: format_hex(&plaintext_hash),
+        digest: format_hex(&digest),
+        bytes_written: bytes.len(),
     };
     let code = print_fetch(dto, json);
     cli.shutdown().await;
@@ -175,7 +179,7 @@ async fn fetch(ticket: String, entry_id: String, out: PathBuf, json: bool, verbo
 async fn build_ready_session(verbose: bool) -> Result<CliAppSession, i32> {
     let cli = build_app_session(verbose).await?;
     let resume_spinner = ui::spinner("Resuming space session...");
-    match cli.app_facade().try_resume_session().await {
+    match cli.recover_session().await {
         Ok(true) => {
             ui::spinner_finish_success(&resume_spinner, "Session resumed");
             Ok(cli)
@@ -188,24 +192,8 @@ async fn build_ready_session(verbose: bool) -> Result<CliAppSession, i32> {
             cli.shutdown().await;
             Err(exit_codes::EXIT_ERROR)
         }
-        Err(TryResumeSessionError::CorruptedKeyMaterial) => {
-            ui::spinner_finish_error(
-                &resume_spinner,
-                "Key material is corrupted — consider resetting this profile.",
-            );
-            cli.shutdown().await;
-            Err(exit_codes::EXIT_ERROR)
-        }
-        Err(TryResumeSessionError::KeyringMiss) => {
-            ui::spinner_finish_error(
-                &resume_spinner,
-                "Keychain cannot silently unlock this space.",
-            );
-            cli.shutdown().await;
-            Err(exit_codes::EXIT_ERROR)
-        }
-        Err(TryResumeSessionError::Internal(msg)) => {
-            ui::spinner_finish_error(&resume_spinner, &format!("Resume failed: {msg}"));
+        Err(error) => {
+            ui::spinner_finish_error(&resume_spinner, &format!("Resume failed: {error}"));
             cli.shutdown().await;
             Err(exit_codes::EXIT_ERROR)
         }

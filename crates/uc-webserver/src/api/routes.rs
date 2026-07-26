@@ -19,8 +19,6 @@ use axum::middleware;
 use axum::response::IntoResponse;
 use axum::routing::{get, post};
 use axum::{Json, Router};
-use serde_json::json;
-use uc_application::facade::ClipboardRestoreError;
 use uc_daemon_contract::api::dto::clipboard_command::{
     CaptureCurrentClipboardResponse, RestoreEntryResponse,
 };
@@ -30,6 +28,14 @@ use uc_daemon_contract::api::dto::envelope::{
 };
 use uc_daemon_contract::api::dto::error::ApiErrorResponse;
 use uc_daemon_contract::constants::http_route;
+use uc_engine::error_codes::{
+    CAPTURE_CURRENT_CLIPBOARD_FAILED_CODE, RESTORE_CLIPBOARD_FAILED_CODE,
+    RESTORE_CLIPBOARD_NOT_FOUND_CODE, RESTORE_CLIPBOARD_UNAVAILABLE_CODE,
+};
+use uc_engine::{
+    ClipboardRestoreMode, ClipboardRestoreOutcome, EngineError, Operation, OperationResult,
+    RestoreClipboardInput,
+};
 
 use crate::api::dto::error::{log_facade_failure, ApiError};
 use crate::api::server::DaemonApiState;
@@ -146,7 +152,7 @@ pub fn router_l2_plus(state: DaemonApiState) -> Router<DaemonApiState> {
     security(())
 )]
 async fn health(State(state): State<DaemonApiState>) -> Json<HealthEnvelope> {
-    Json(ApiEnvelope::now(state.health_response()))
+    Json(ApiEnvelope::now(state.health_response().await))
 }
 
 /// Restore endpoint 的可选 query 参数。
@@ -197,27 +203,12 @@ async fn restore_clipboard_entry_handler(
     Path(entry_id): Path<String>,
     Query(query): Query<RestoreQuery>,
 ) -> impl IntoResponse {
-    let app = match state.app_facade_or_error() {
-        Ok(app) => app,
-        Err(error) => return error.into_response(),
-    };
-
     tracing::info!(
         entry_id = %entry_id,
         plain = query.plain,
         file_paths = query.file_paths,
         "daemon restore request received"
     );
-
-    let restore_facade = match app.clipboard_restore.as_ref() {
-        Some(facade) => facade,
-        None => {
-            return ApiError::internal(
-                "clipboard_restore facade unavailable in this entry point".to_string(),
-            )
-            .into_response();
-        }
-    };
 
     let op: &'static str = if query.file_paths {
         "restore_entry_as_file_paths"
@@ -226,16 +217,22 @@ async fn restore_clipboard_entry_handler(
     } else {
         "restore_entry"
     };
-    let result = if query.file_paths {
-        restore_facade.restore_entry_as_file_paths(&entry_id).await
+    let mode = if query.file_paths {
+        ClipboardRestoreMode::FilePaths
     } else if query.plain {
-        restore_facade.restore_entry_as_plain_text(&entry_id).await
+        ClipboardRestoreMode::PlainText
     } else {
-        restore_facade.restore_entry(&entry_id).await
+        ClipboardRestoreMode::Standard
     };
 
-    match result {
-        Ok(()) => {
+    match state
+        .execute(Operation::RestoreClipboard(RestoreClipboardInput {
+            entry_id: entry_id.clone(),
+            mode,
+        }))
+        .await
+    {
+        Ok(OperationResult::ClipboardRestored(ClipboardRestoreOutcome::Restored)) => {
             tracing::info!(
                 entry_id = %entry_id,
                 plain = query.plain,
@@ -244,8 +241,24 @@ async fn restore_clipboard_entry_handler(
             let (status, body) = restore_success_response();
             (status, body).into_response()
         }
+        Ok(OperationResult::ClipboardRestored(ClipboardRestoreOutcome::PayloadUnavailable {
+            entry_id,
+            representation_id,
+            state,
+        })) => {
+            let (status, body) =
+                restore_payload_unavailable_response(entry_id, representation_id, state);
+            (status, body).into_response()
+        }
+        Ok(OperationResult::ClipboardRestored(ClipboardRestoreOutcome::NotApplicable {
+            reason,
+        })) => {
+            let (status, body) = restore_not_applicable_response(&entry_id, reason);
+            (status, body).into_response()
+        }
+        Ok(_) => ApiError::internal("engine returned an unexpected restore result").into_response(),
         Err(error) => {
-            let (status, body) = restore_error_to_response(op, error, &entry_id);
+            let (status, body) = restore_engine_error_to_response(op, error, &entry_id);
             (status, body).into_response()
         }
     }
@@ -263,84 +276,78 @@ fn restore_success_response() -> (StatusCode, Json<RestoreEntryEnvelope>) {
     )
 }
 
-/// Map `ClipboardRestoreError` to (status, canonical `ApiErrorResponse` body).
-///
-/// Free function so the status-code + error-shape contract is unit-testable
-/// without spinning up an axum app or `DaemonApiState`. `code`/`message` are
-/// LOAD-BEARING (consumers substring-match them) and must not be reworded.
-fn restore_error_to_response(
+fn restore_payload_unavailable_response(
+    entry_id: String,
+    representation_id: String,
+    state: String,
+) -> (StatusCode, Json<ApiErrorResponse>) {
+    tracing::info!(
+        entry_id = %entry_id,
+        rep_id = %representation_id,
+        payload_state = %state,
+        "daemon restore: payload unavailable (orphaned/lost)"
+    );
+    (
+        StatusCode::GONE,
+        Json(ApiErrorResponse::with_details(
+            "payload_unavailable",
+            "clipboard entry payload is no longer available",
+            serde_json::json!({
+                "entry_id": entry_id,
+                "rep_id": representation_id,
+                "state": state,
+            }),
+        )),
+    )
+}
+
+fn restore_not_applicable_response(
+    entry_id: &str,
+    reason: String,
+) -> (StatusCode, Json<ApiErrorResponse>) {
+    tracing::info!(
+        entry_id = %entry_id,
+        reason = %reason,
+        "daemon restore: transform not applicable to entry"
+    );
+    (
+        StatusCode::BAD_REQUEST,
+        Json(ApiErrorResponse::new("not_applicable", &reason)),
+    )
+}
+
+fn restore_engine_error_to_response(
     op: &'static str,
-    error: ClipboardRestoreError,
+    error: EngineError,
     entry_id: &str,
 ) -> (StatusCode, Json<ApiErrorResponse>) {
-    use ClipboardRestoreError as E;
-    match error {
-        E::NotFound => {
-            tracing::info!(entry_id = %entry_id, "daemon restore: entry not found");
-            (
-                StatusCode::NOT_FOUND,
-                Json(ApiErrorResponse::new(
-                    "not_found",
-                    "clipboard entry not found",
-                )),
-            )
-        }
-        E::PayloadUnavailable {
-            entry_id: e_id,
-            rep_id,
-            state,
-        } => {
-            // Known business outcome — content has logically vanished.
-            // Use 410 Gone (resource is no longer available) and log at
-            // warn level so this does NOT escalate to a Sentry error.
-            tracing::info!(
-                entry_id = %e_id,
-                rep_id = %rep_id,
-                payload_state = %state,
-                "daemon restore: payload unavailable (orphaned/lost)"
-            );
-            (
-                StatusCode::GONE,
-                Json(ApiErrorResponse::with_details(
-                    "payload_unavailable",
-                    "clipboard entry payload is no longer available",
-                    json!({
-                        "entry_id": e_id,
-                        "rep_id": rep_id,
-                        "state": state,
-                    }),
-                )),
-            )
-        }
-        E::NotApplicable(message) => {
-            // Client asked for a transform this entry can't satisfy (e.g. a
-            // file-path restore of an entry with no file paths). A request
-            // problem, not a server fault — 400, and info-level so it does not
-            // escalate to Sentry.
-            tracing::info!(
-                entry_id = %entry_id,
-                reason = %message,
-                "daemon restore: transform not applicable to entry"
-            );
-            (
-                StatusCode::BAD_REQUEST,
-                Json(ApiErrorResponse::new("not_applicable", &message)),
-            )
-        }
-        E::Internal(message) => {
-            log_facade_failure(
-                "clipboard_restore",
-                op,
-                "internal",
-                StatusCode::INTERNAL_SERVER_ERROR,
-                &format!("entry {entry_id} restore failed: {message}"),
-            );
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ApiErrorResponse::new("internal_error", "internal error")),
-            )
-        }
+    if error.code() == RESTORE_CLIPBOARD_NOT_FOUND_CODE {
+        tracing::info!(entry_id = %entry_id, "daemon restore: entry not found");
+        return (
+            StatusCode::NOT_FOUND,
+            Json(ApiErrorResponse::new(
+                "not_found",
+                "clipboard entry not found",
+            )),
+        );
     }
+
+    let variant = match error.code() {
+        RESTORE_CLIPBOARD_UNAVAILABLE_CODE => "unavailable",
+        RESTORE_CLIPBOARD_FAILED_CODE => "internal",
+        _ => "unexpected_engine_error",
+    };
+    log_facade_failure(
+        "clipboard_restore",
+        op,
+        variant,
+        StatusCode::INTERNAL_SERVER_ERROR,
+        "clipboard restore failed",
+    );
+    (
+        StatusCode::INTERNAL_SERVER_ERROR,
+        Json(ApiErrorResponse::new("internal_error", "internal error")),
+    )
 }
 
 /// POST /clipboard/capture-current
@@ -365,29 +372,31 @@ fn restore_error_to_response(
 async fn capture_current_clipboard_handler(
     State(state): State<DaemonApiState>,
 ) -> impl IntoResponse {
-    let app = match state.app_facade_or_error() {
-        Ok(app) => app,
-        Err(error) => return error.into_response(),
-    };
-
-    match app.clipboard_capture.capture_current().await {
-        Ok(captured) => {
-            let entry_id = captured.map(|view| view.entry_id);
+    match state.execute(Operation::CaptureCurrentClipboard).await {
+        Ok(OperationResult::ClipboardCaptured { entry_id }) => {
             tracing::info!(entry_id = ?entry_id, "daemon capture-current request succeeded");
             let (status, body) = capture_current_success_response(entry_id);
             (status, body).into_response()
         }
-        Err(error) => {
-            log_facade_failure(
-                "clipboard_capture",
-                "capture_current",
-                "internal",
-                StatusCode::INTERNAL_SERVER_ERROR,
-                &format!("capture-current failed: {error}"),
-            );
-            ApiError::internal("failed to capture current clipboard".to_string()).into_response()
-        }
+        Ok(_) => ApiError::internal("engine returned an unexpected capture result").into_response(),
+        Err(error) => map_capture_engine_error(error).into_response(),
     }
+}
+
+fn map_capture_engine_error(error: EngineError) -> ApiError {
+    let variant = match error.code() {
+        CAPTURE_CURRENT_CLIPBOARD_FAILED_CODE => "internal",
+        _ => "unexpected_engine_error",
+    };
+    let api = ApiError::internal("failed to capture current clipboard");
+    log_facade_failure(
+        "clipboard_capture",
+        "capture_current",
+        variant,
+        api.status,
+        &api.message,
+    );
+    api
 }
 
 /// Build the canonical 200 success body for a capture-current request.
@@ -521,6 +530,22 @@ mod tests {
     use super::*;
 
     #[test]
+    fn capture_current_result_and_failure_keep_the_existing_http_contract() {
+        let (status, body) = capture_current_success_response(Some("entry-1".into()));
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(body.0.data.entry_id.as_deref(), Some("entry-1"));
+
+        let error = map_capture_engine_error(EngineError::new(
+            CAPTURE_CURRENT_CLIPBOARD_FAILED_CODE,
+            uc_engine::EngineErrorCategory::Internal,
+            false,
+        ));
+        assert_eq!(error.status, StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(error.message, "failed to capture current clipboard");
+        assert!(error.details.is_none());
+    }
+
+    #[test]
     fn restore_success_returns_200_with_enveloped_success_true() {
         let (status, body) = restore_success_response();
         assert_eq!(status, StatusCode::OK);
@@ -530,8 +555,15 @@ mod tests {
 
     #[test]
     fn restore_not_found_returns_404_with_not_found_code() {
-        let (status, body) =
-            restore_error_to_response("restore_entry", ClipboardRestoreError::NotFound, "entry-1");
+        let (status, body) = restore_engine_error_to_response(
+            "restore_entry",
+            EngineError::new(
+                RESTORE_CLIPBOARD_NOT_FOUND_CODE,
+                uc_engine::EngineErrorCategory::NotFound,
+                false,
+            ),
+            "entry-1",
+        );
         assert_eq!(status, StatusCode::NOT_FOUND);
         // `code` token is LOAD-BEARING and preserved.
         assert_eq!(body.0.code, "not_found");
@@ -540,14 +572,10 @@ mod tests {
 
     #[test]
     fn restore_payload_unavailable_returns_410_with_full_context_in_details() {
-        let (status, body) = restore_error_to_response(
-            "restore_entry",
-            ClipboardRestoreError::PayloadUnavailable {
-                entry_id: "entry-1".to_string(),
-                rep_id: "rep-2".to_string(),
-                state: "Lost".to_string(),
-            },
-            "entry-1",
+        let (status, body) = restore_payload_unavailable_response(
+            "entry-1".to_string(),
+            "rep-2".to_string(),
+            "Lost".to_string(),
         );
         // 410 Gone — known business outcome, never 500
         assert_eq!(status, StatusCode::GONE);
@@ -561,14 +589,10 @@ mod tests {
 
     #[test]
     fn restore_payload_unavailable_with_orphaned_state_uses_state_string_verbatim() {
-        let (status, body) = restore_error_to_response(
-            "restore_entry",
-            ClipboardRestoreError::PayloadUnavailable {
-                entry_id: "e".to_string(),
-                rep_id: "r".to_string(),
-                state: "Staged".to_string(),
-            },
-            "e",
+        let (status, body) = restore_payload_unavailable_response(
+            "e".to_string(),
+            "r".to_string(),
+            "Staged".to_string(),
         );
         assert_eq!(status, StatusCode::GONE);
         let details = body.0.details.expect("410 must carry structured details");
@@ -577,10 +601,9 @@ mod tests {
 
     #[test]
     fn restore_not_applicable_returns_400_with_reason() {
-        let (status, body) = restore_error_to_response(
-            "restore_entry_as_file_paths",
-            ClipboardRestoreError::NotApplicable("entry has no restorable file paths".to_string()),
+        let (status, body) = restore_not_applicable_response(
             "entry-4",
+            "entry has no restorable file paths".to_string(),
         );
         // Client request problem (transform doesn't apply) — 400, never 500.
         assert_eq!(status, StatusCode::BAD_REQUEST);
@@ -590,9 +613,13 @@ mod tests {
 
     #[test]
     fn restore_internal_returns_500_with_generic_body() {
-        let (status, body) = restore_error_to_response(
+        let (status, body) = restore_engine_error_to_response(
             "restore_entry",
-            ClipboardRestoreError::Internal("write coordinator deadlocked".to_string()),
+            EngineError::new(
+                RESTORE_CLIPBOARD_FAILED_CODE,
+                uc_engine::EngineErrorCategory::Internal,
+                false,
+            ),
             "entry-3",
         );
         assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);

@@ -1,13 +1,15 @@
 # Mobile Sync Connect URI — Protocol Specification
 
-> Single source of truth for the `uniclipboard://connect` deep-link protocol used to onboard
-> mobile clients (iOS Shortcut, Android SyncClipboard-compatible clients, future native apps)
+> Single source of truth for the `uniclipboard://connect` deep-link protocol used to maintain
+> supported compatibility clients (iOS Shortcut and Android SyncClipboard-compatible clients)
 > by encoding `base_url`, `username`, `password`, and extensible metadata into a single QR code.
 >
-> **Status**: v1 — accepted. Implemented across `uc-application`, Tauri DTOs, web UI, and
-> client integration templates.
+> **Status**: v1 — accepted for compatibility maintenance only; closed to new product capabilities.
+> Implemented across `uc-application`, Tauri DTOs, web UI, and client integration templates.
 > **Revision 2026-06-11**: additive `urls` multi-candidate field (§3.1a, §7.3) — no
 > version bump; see `docs/planning/mobile-sync-qr-multi-url.md` for the design rationale.
+>
+> **兼容状态（2026-07-19 修订）**：本协议是移动产品可向用户显式提供的 LAN HTTP 兼容通道，并与 `docs/architecture/adr-005-uc-engine-extraction.md` 定义的完整 P2P 核心独立演进。它不属于 `uc-engine`，不得根据 P2P 连接、配对或传输失败自动回退，也不得代替四平台完整 P2P 的验收。协议维持独立版本线；实施顺序见 `plans/README.md`。
 >
 > **Tracking issue**: [#789](https://github.com/UniClipboard/UniClipboard/issues/789)
 
@@ -30,11 +32,11 @@ Design constraints driving the shape below:
 
 - **Single QR**: one scan, no manual fields. QR Version ≤ 20 (≤ ~800 chars URI) so it stays
   easy to scan on common phones in normal lighting.
-- **Versioned**: future fields can be added without breaking v1 clients.
+- **Versioned**: v1 clients can continue rejecting incompatible historical payloads deterministically; this compatibility line is closed to new fields.
 - **Multi-client neutral**: same payload works for iOS Shortcut, Android compatible clients,
-  and any future native UniClipboard app.
+  and native apps that already implemented this compatibility protocol.
 - **Forward-compatible metadata**: `o` (other) is an open key-value bag; **clients ignore
-  unknown keys** so the server can ship new hints without coordinated client releases.
+  unknown keys** so already-issued payloads remain parseable across compatibility releases.
 - **Connectivity unchanged**: HTTP wire protocol stays SyncClipboard-compatible
   (`GET /SyncClipboard.json` + HTTP Basic Auth); the URI only carries credentials and
   metadata, never wire-level behavior.
@@ -43,7 +45,7 @@ Design constraints driving the shape below:
 
 ## 2. URI shape
 
-```
+```text
 uniclipboard://connect?v=1&svc=mobile-sync&p=<PAYLOAD>
 ```
 
@@ -95,12 +97,12 @@ After base64url-decoding `p`, the result is a UTF-8 JSON object:
 
 ### 3.1 Required fields
 
-| Field  | Type    | Semantics                                                                                       |
-| ------ | ------- | ----------------------------------------------------------------------------------------------- |
-| `v`    | integer | Payload schema version. v1 = `1`. Distinct from URI `v` (see §3.4).                             |
-| `url`  | string  | Server base URL, e.g. `http://192.168.1.5:42720`. **No trailing slash.** Scheme MUST be `http` or `https`. |
+| Field  | Type    | Semantics                                                                                                                                  |
+| ------ | ------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `v`    | integer | Payload schema version. v1 = `1`. Distinct from URI `v` (see §3.4).                                                                        |
+| `url`  | string  | Server base URL, e.g. `http://192.168.1.5:42720`. **No trailing slash.** Scheme MUST be `http` or `https`.                                 |
 | `user` | string  | HTTP Basic Auth username. Shape matches `RegisterMobileShortcutDeviceUseCase` rules: ASCII letter first, then `[A-Za-z0-9_]`, length 6–32. |
-| `pwd`  | string  | HTTP Basic Auth **plaintext** password. One-time display only; server retains only the Argon2id hash. |
+| `pwd`  | string  | HTTP Basic Auth **plaintext** password. One-time display only; server retains only the Argon2id hash.                                      |
 
 Clients construct request URLs as `{url}/SyncClipboard.json` and authenticate with
 `Authorization: Basic base64(user:pwd)`.
@@ -121,11 +123,7 @@ Example payload with `urls`:
 {
   "v": 1,
   "url": "https://203-0-113-10.sslip.io",
-  "urls": [
-    "https://203-0-113-10.sslip.io",
-    "http://192.168.1.5:42720",
-    "http://100.64.0.5:42720"
-  ],
+  "urls": ["https://203-0-113-10.sslip.io", "http://192.168.1.5:42720", "http://100.64.0.5:42720"],
   "user": "mobile_aabbccdd",
   "pwd": "AbCdEfGhIjKlMnOpQrSt",
   "o": { "did": "did_0123abcd", "label": "My iPhone", "proto": "syncclipboard" }
@@ -172,15 +170,15 @@ all connectivity comes from `url`/`user`/`pwd`.
 
 **Generator-side allow-list (v1)**: the desktop encoder MAY write only the following keys.
 Implementations MUST NOT serialize any other keys into `o` to prevent field pollution and
-keep the QR compact. Adding a new key requires bumping this allow-list in a follow-up
-spec revision (no payload version bump needed — clients already ignore unknowns).
+keep the QR compact. The allow-list is frozen; new product keys belong to the full P2P
+pairing protocol, not a follow-up revision of this compatibility spec.
 
-| Key       | Example value           | Purpose                                                                |
-| --------- | ----------------------- | ---------------------------------------------------------------------- |
-| `label`   | `"My iPhone"`           | Human-readable device name for client-side UI display.                 |
-| `did`     | `"did_0123abcd"`        | Server-assigned `device_id`, for diagnostics and log correlation.      |
-| `proto`   | `"syncclipboard"`       | Protocol family hint. Future values may include `"uniclipboard-native"`. |
-| `install` | `"shortcut-ex"`         | iOS Shortcut template hint, paired with the iCloud install URL constant. |
+| Key       | Example value     | Purpose                                                                  |
+| --------- | ----------------- | ------------------------------------------------------------------------ |
+| `label`   | `"My iPhone"`     | Human-readable device name for client-side UI display.                   |
+| `did`     | `"did_0123abcd"`  | Server-assigned `device_id`, for diagnostics and log correlation.        |
+| `proto`   | `"syncclipboard"` | Frozen protocol family hint for compatibility clients.                   |
+| `install` | `"shortcut-ex"`   | iOS Shortcut template hint, paired with the iCloud install URL constant. |
 
 **Parser-side**: lenient. Read the keys above when present; ignore everything else without
 failing.
@@ -196,15 +194,15 @@ failing.
 - `pwd` MAY contain any printable Unicode (it survives JSON escaping); however, in practice
   the password mint flow produces ASCII-only values (see `MintedCredentials`).
 
-### 3.4 Why two version numbers?
+### 3.4 Why v1 contains two version numbers
 
-- URI-level `v` (`?v=1`) lets a client reject the URI *before* base64-decoding when the
-  envelope itself is incompatible (e.g. a future v2 wraps `p` differently).
-- Payload `v` (inside JSON) lets a client reject the *contents* when the envelope was
+- URI-level `v` (`?v=1`) lets a client reject the URI _before_ base64-decoding when the
+  envelope is incompatible.
+- Payload `v` (inside JSON) lets a client reject the _contents_ when the envelope was
   understood but field semantics changed.
 
-In v1 they are both `1`. They will diverge if and only if the envelope format ever changes
-in a way that base64url+JSON cannot accommodate.
+In the frozen compatibility protocol they are both `1`. No later envelope version is planned;
+new clients use the full P2P pairing protocol instead.
 
 ---
 
@@ -241,7 +239,7 @@ flowchart TD
 
 ### 4.1 Pseudocode (language-neutral)
 
-```
+```text
 raw = trim(qr_text)
 uri = parse(raw)                              # may throw → INVALID_SCHEME
 require uri.scheme == "uniclipboard"          # else INVALID_SCHEME
@@ -274,14 +272,14 @@ foreach (k, v) in (payload.o or {}):
 
 ### 4.2 Error codes
 
-| Code                    | Trigger                                                | UX hint                                |
-| ----------------------- | ------------------------------------------------------ | -------------------------------------- |
-| `INVALID_SCHEME`        | Scheme ≠ `uniclipboard` or host ≠ `connect`.           | "Not a UniClipboard QR."               |
-| `UNSUPPORTED_VERSION`   | URI `v` ≠ 1 or payload `v` ≠ 1.                        | "Please update your app."              |
-| `UNSUPPORTED_SERVICE`   | URI `svc` ≠ `mobile-sync`.                             | "Service not supported in this build." |
-| `PAYLOAD_DECODE_FAILED` | `p` missing, base64url malformed, or JSON malformed.   | "QR is corrupted — regenerate it."     |
-| `MISSING_FIELD`         | `url`/`user`/`pwd` missing or empty.                   | "QR is incomplete — regenerate it."    |
-| `INVALID_URL`           | `url` doesn't start with `http://` or `https://`.      | "QR contains an invalid server URL."   |
+| Code                    | Trigger                                              | UX hint                                |
+| ----------------------- | ---------------------------------------------------- | -------------------------------------- |
+| `INVALID_SCHEME`        | Scheme ≠ `uniclipboard` or host ≠ `connect`.         | "Not a UniClipboard QR."               |
+| `UNSUPPORTED_VERSION`   | URI `v` ≠ 1 or payload `v` ≠ 1.                      | "Please update your app."              |
+| `UNSUPPORTED_SERVICE`   | URI `svc` ≠ `mobile-sync`.                           | "Service not supported in this build." |
+| `PAYLOAD_DECODE_FAILED` | `p` missing, base64url malformed, or JSON malformed. | "QR is corrupted — regenerate it."     |
+| `MISSING_FIELD`         | `url`/`user`/`pwd` missing or empty.                 | "QR is incomplete — regenerate it."    |
+| `INVALID_URL`           | `url` doesn't start with `http://` or `https://`.    | "QR contains an invalid server URL."   |
 
 ---
 
@@ -352,13 +350,19 @@ suites MUST assert against the exact strings below.
 
 **Payload JSON (minified, fields in spec order):**
 
-```
-{"v":1,"url":"http://192.168.1.5:42720","user":"mobile_aabbccdd","pwd":"AbCdEfGhIjKlMnOpQrSt","o":{"did":"did_0123abcd","label":"Test","proto":"syncclipboard"}}
+```json
+{
+  "v": 1,
+  "url": "http://192.168.1.5:42720",
+  "user": "mobile_aabbccdd",
+  "pwd": "AbCdEfGhIjKlMnOpQrSt",
+  "o": { "did": "did_0123abcd", "label": "Test", "proto": "syncclipboard" }
+}
 ```
 
 **Encoded URI:**
 
-```
+```text
 uniclipboard://connect?v=1&svc=mobile-sync&p=eyJ2IjoxLCJ1cmwiOiJodHRwOi8vMTkyLjE2OC4xLjU6NDI3MjAiLCJ1c2VyIjoibW9iaWxlX2FhYmJjY2RkIiwicHdkIjoiQWJDZEVmR2hJaktsTW5PcFFyU3QiLCJvIjp7ImRpZCI6ImRpZF8wMTIzYWJjZCIsImxhYmVsIjoiVGVzdCIsInByb3RvIjoic3luY2NsaXBib2FyZCJ9fQ
 ```
 
@@ -372,13 +376,20 @@ uniclipboard://connect?v=1&svc=mobile-sync&p=eyJ2IjoxLCJ1cmwiOiJodHRwOi8vMTkyLjE
 
 **Payload JSON (minified, fields in spec order):**
 
-```
-{"v":1,"url":"https://203-0-113-10.sslip.io","urls":["https://203-0-113-10.sslip.io","http://192.168.1.5:42720","http://100.64.0.5:42720"],"user":"mobile_aabbccdd","pwd":"AbCdEfGhIjKlMnOpQrSt","o":{"did":"did_0123abcd","label":"Test","proto":"syncclipboard"}}
+```json
+{
+  "v": 1,
+  "url": "https://203-0-113-10.sslip.io",
+  "urls": ["https://203-0-113-10.sslip.io", "http://192.168.1.5:42720", "http://100.64.0.5:42720"],
+  "user": "mobile_aabbccdd",
+  "pwd": "AbCdEfGhIjKlMnOpQrSt",
+  "o": { "did": "did_0123abcd", "label": "Test", "proto": "syncclipboard" }
+}
 ```
 
 **Encoded URI:**
 
-```
+```text
 uniclipboard://connect?v=1&svc=mobile-sync&p=eyJ2IjoxLCJ1cmwiOiJodHRwczovLzIwMy0wLTExMy0xMC5zc2xpcC5pbyIsInVybHMiOlsiaHR0cHM6Ly8yMDMtMC0xMTMtMTAuc3NsaXAuaW8iLCJodHRwOi8vMTkyLjE2OC4xLjU6NDI3MjAiLCJodHRwOi8vMTAwLjY0LjAuNTo0MjcyMCJdLCJ1c2VyIjoibW9iaWxlX2FhYmJjY2RkIiwicHdkIjoiQWJDZEVmR2hJaktsTW5PcFFyU3QiLCJvIjp7ImRpZCI6ImRpZF8wMTIzYWJjZCIsImxhYmVsIjoiVGVzdCIsInByb3RvIjoic3luY2NsaXBib2FyZCJ9fQ
 ```
 
@@ -389,14 +400,14 @@ byte-identical to pre-`urls` v1 codes.
 
 Each vector below MUST produce the listed error code on parse:
 
-| # | Input                                                                                                         | Expected error          |
-| - | ------------------------------------------------------------------------------------------------------------- | ----------------------- |
-| 1 | `https://example.com/connect?v=1&svc=mobile-sync&p=eyJ2IjoxfQ`                                                | `INVALID_SCHEME`        |
-| 2 | `uniclipboard://connect?v=2&svc=mobile-sync&p=eyJ2IjoxfQ`                                                     | `UNSUPPORTED_VERSION`   |
-| 3 | `uniclipboard://connect?v=1&svc=other&p=eyJ2IjoxfQ`                                                           | `UNSUPPORTED_SERVICE`   |
-| 4 | `uniclipboard://connect?v=1&svc=mobile-sync&p=not-valid-base64!@#`                                            | `PAYLOAD_DECODE_FAILED` |
-| 5 | `uniclipboard://connect?v=1&svc=mobile-sync&p=eyJ2IjoxLCJ1cmwiOiJodHRwOi8vYS5iIiwidXNlciI6InUifQ` (no `pwd`) | `MISSING_FIELD`         |
-| 6 | `uniclipboard://connect?v=1&svc=mobile-sync&p=eyJ2IjoxLCJ1cmwiOiJmdHA6Ly9hLmIiLCJ1c2VyIjoidSIsInB3ZCI6InAifQ` (ftp scheme) | `INVALID_URL` |
+| #   | Input                                                                                                                      | Expected error          |
+| --- | -------------------------------------------------------------------------------------------------------------------------- | ----------------------- |
+| 1   | `https://example.com/connect?v=1&svc=mobile-sync&p=eyJ2IjoxfQ`                                                             | `INVALID_SCHEME`        |
+| 2   | `uniclipboard://connect?v=2&svc=mobile-sync&p=eyJ2IjoxfQ`                                                                  | `UNSUPPORTED_VERSION`   |
+| 3   | `uniclipboard://connect?v=1&svc=other&p=eyJ2IjoxfQ`                                                                        | `UNSUPPORTED_SERVICE`   |
+| 4   | `uniclipboard://connect?v=1&svc=mobile-sync&p=not-valid-base64!@#`                                                         | `PAYLOAD_DECODE_FAILED` |
+| 5   | `uniclipboard://connect?v=1&svc=mobile-sync&p=eyJ2IjoxLCJ1cmwiOiJodHRwOi8vYS5iIiwidXNlciI6InUifQ` (no `pwd`)               | `MISSING_FIELD`         |
+| 6   | `uniclipboard://connect?v=1&svc=mobile-sync&p=eyJ2IjoxLCJ1cmwiOiJmdHA6Ly9hLmIiLCJ1c2VyIjoidSIsInB3ZCI6InAifQ` (ftp scheme) | `INVALID_URL`           |
 
 ---
 
@@ -430,20 +441,18 @@ After first install, every subsequent device add only needs the connect-URI scan
 
 ## 9. Client integration notes
 
-The three paths below are listed in **delivery-priority order**. Path 9.1 is the
-primary onboarding route for new users; 9.2 is the fallback for users who haven't
-installed the native iOS App yet; 9.3 covers third-party clients.
+The three paths below document supported compatibility clients. They are not onboarding
+routes for the new P2P architecture, and their order does not imply future investment.
 
-### 9.1 Native UniClipboard iOS App (primary)
+### 9.1 Native UniClipboard iOS App (compatibility mode)
 
 The iOS App registers the `uniclipboard` URL scheme. When the user points the system
 Camera app at the desktop's QR, iOS surfaces an "Open in UniClipboard?" smart action
 and routes the URL into the App's `.onOpenURL` handler. The App parses per §4 and
 either pre-fills the Add Server form or asks the user to confirm before saving.
 
-`o.proto` distinguishes "SyncClipboard-compatible HTTP" from a possible future native
-protocol family. v1 clients ignore the field; future clients may switch transport
-based on it.
+`o.proto` records that this payload belongs to SyncClipboard-compatible HTTP. It must not
+be used to switch a new client onto another transport.
 
 Step-by-step integration (URL scheme registration, `.onOpenURL` wiring, Swift parser,
 error-code → user-copy mapping, `simctl openurl` test recipe) lives in
@@ -479,9 +488,10 @@ client-specific guides for this path — the spec itself is the contract.
 
 ---
 
-## 10. Forward compatibility and v2 sketch
+## 10. Archived v2 sketch
 
-Not part of v1, but designed-for:
+The following ideas were considered before the compatibility line was frozen. They are not
+planned work and must not be implemented here; replacement pairing belongs to the full P2P core:
 
 - **`o.exp` (expiry)**: Unix-ms timestamp after which a parser should refuse the URI. Lets
   the desktop emit time-bounded onboarding QRs (e.g. valid 10 minutes). v1 parsers ignore;
@@ -495,23 +505,24 @@ Not part of v1, but designed-for:
 - **Per-device push channel hints**: `o.push` for APNs/FCM topic. Pure additive, no
   version bump.
 
-Any change that *removes* or *re-typed* a required v1 field requires bumping payload `v`.
+No v2 will be created in this compatibility line. Security fixes that cannot preserve v1
+must retire the affected flow rather than create a parallel future protocol here.
 
 ---
 
 ## 11. Where this protocol is implemented
 
-| Concern                     | File                                                                                              |
-| --------------------------- | ------------------------------------------------------------------------------------------------- |
-| Rust encoder/decoder        | `src-tauri/crates/uc-application/src/usecases/mobile_sync/connect_uri.rs` (added in Phase 1)      |
-| Use-case integration        | `src-tauri/crates/uc-application/src/usecases/mobile_sync/register_device.rs` (Phase 2)           |
-| Tauri DTO                   | `src-tauri/crates/uc-tauri/src/commands/mobile_sync.rs` — `connectUri` field added (Phase 2)      |
-| TypeScript parser           | `src/lib/mobileSyncConnectUri.ts` (added in Phase 3)                                              |
-| Credential modal            | `src/components/device/MobileSyncCredentialModal.tsx` — primary QR switches to connect URI (Phase 3) |
-| Golden vector (Rust tests)  | `connect_uri.rs::tests` — uses §7 vectors verbatim                                                |
-| Golden vector (TS tests)    | `src/lib/__tests__/mobileSyncConnectUri.test.ts` — uses §7 vectors verbatim                       |
-| iOS App integration guide   | `docs/integrations/ios-app-connect-uri.md` (added in Phase 4 — primary client path)               |
-| iOS Shortcut template doc   | `docs/integrations/ios-shortcut.md` (added in Phase 4 — fallback path)                            |
+| Concern                    | File                                                                                                 |
+| -------------------------- | ---------------------------------------------------------------------------------------------------- |
+| Rust encoder/decoder       | `src-tauri/crates/uc-application/src/usecases/mobile_sync/connect_uri.rs` (added in Phase 1)         |
+| Use-case integration       | `src-tauri/crates/uc-application/src/usecases/mobile_sync/register_device.rs` (Phase 2)              |
+| Tauri DTO                  | `src-tauri/crates/uc-tauri/src/commands/mobile_sync.rs` — `connectUri` field added (Phase 2)         |
+| TypeScript parser          | `src/lib/mobileSyncConnectUri.ts` (added in Phase 3)                                                 |
+| Credential modal           | `src/components/device/MobileSyncCredentialModal.tsx` — primary QR switches to connect URI (Phase 3) |
+| Golden vector (Rust tests) | `connect_uri.rs::tests` — uses §7 vectors verbatim                                                   |
+| Golden vector (TS tests)   | `src/lib/__tests__/mobileSyncConnectUri.test.ts` — uses §7 vectors verbatim                          |
+| iOS App integration guide  | `docs/integrations/ios-app-connect-uri.md` (added in Phase 4 — primary client path)                  |
+| iOS Shortcut template doc  | `docs/integrations/ios-shortcut.md` (added in Phase 4 — fallback path)                               |
 
 The HTTP wire protocol — unchanged from v1 SyncClipboard semantics — remains documented in
 `src-tauri/crates/uc-webserver/src/mobile_lan/mod.rs` and the existing

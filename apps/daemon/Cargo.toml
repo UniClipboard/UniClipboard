@@ -14,11 +14,8 @@ name = "uniclipd"
 path = "src/main.rs"
 
 [dependencies]
-uc-application = { path = "../../crates/uc-application" }
-uc-core = { path = "../../crates/uc-core" }
 uc-bootstrap = { path = "../../crates/uc-bootstrap" }
-uc-infra = { path = "../../crates/uc-infra" }
-uc-platform = { path = "../../crates/uc-platform", features = ["test-helpers"] }
+uc-engine.workspace = true
 uc-observability = { path = "../../crates/uc-observability" }
 uc-daemon-contract = { path = "../../crates/uc-daemon-contract" }
 uc-daemon-local = { path = "../../crates/uc-daemon-local" }
@@ -27,10 +24,9 @@ tokio = { version = "1", features = ["full"] }
 tokio-util = "0.7"
 async-trait = "0.1"
 anyhow = "1.0"
-base64 = "0.22"
-serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 chrono = { version = "0.4", features = ["serde"] }
+dirs = "6"
 tracing = "0.1"
 rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
 
@@ -42,9 +38,7 @@ objc2-app-kit = { version = "0.3", features = ["NSApplication", "NSResponder"] }
 
 [dev-dependencies]
 uc-daemon-local = { path = "../../crates/uc-daemon-local", features = ["test-helpers"] }
-tempfile = "3"
 chrono = { version = "0.4", default-features = true }
-mockall = "0.13"
 
 [lints]
 workspace = true

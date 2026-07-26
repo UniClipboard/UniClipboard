@@ -21,14 +21,14 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use async_trait::async_trait;
 use rand::Rng;
 use tauri::{AppHandle, Manager};
 use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, info, warn};
-use uc_core::ports::{SettingsPort, SetupStatusPort};
-use uc_core::settings::channel::detect_channel;
-use uc_core::settings::model::UpdateChannel;
+use uc_daemon_client::{DaemonSettingsClient, DaemonSetupClient};
+use uc_daemon_contract::api::dto::settings::UpdateChannelDto as UpdateChannel;
 use uc_observability::analytics::{
     Event, UpdateAction, UpdateActionOutcome, UpdateCheckOutcome, UpdateCheckSource,
 };
@@ -65,9 +65,21 @@ pub(crate) const WAKE_MIN_RECHECK_SECS: i64 = 60 * 60;
 /// 与"通知/弹窗/去重"相关的依赖打包在 [`NotifyContext`] 里，scheduler
 /// 主循环和托盘手动检查通过 `Arc<NotifyContext>` 共享同一份。
 pub struct SchedulerDeps {
-    pub settings_port: Arc<dyn SettingsPort>,
-    pub setup_status_port: Arc<dyn SetupStatusPort>,
+    pub settings_client: DaemonSettingsClient,
+    pub setup_readiness: Arc<dyn SetupReadiness>,
     pub notify: Arc<NotifyContext>,
+}
+
+#[async_trait]
+pub trait SetupReadiness: Send + Sync {
+    async fn is_complete(&self) -> anyhow::Result<bool>;
+}
+
+#[async_trait]
+impl SetupReadiness for DaemonSetupClient {
+    async fn is_complete(&self) -> anyhow::Result<bool> {
+        Ok(self.get_setup_state().await?.data.has_completed)
+    }
 }
 
 /// 启动 scheduler 主循环。调用方 `run.rs` 内 `task_registry.spawn` 它，把
@@ -97,7 +109,7 @@ pub async fn run(
         "install kind detected"
     );
 
-    if !wait_for_setup(&deps.setup_status_port, &token).await {
+    if !wait_for_setup(&deps.setup_readiness, &token).await {
         info!(target: "update_scheduler", "cancelled before setup completed");
         return;
     }
@@ -133,10 +145,10 @@ pub(crate) enum IterationOutcome {
     Failure,
 }
 
-async fn wait_for_setup(port: &Arc<dyn SetupStatusPort>, token: &CancellationToken) -> bool {
+async fn wait_for_setup(port: &Arc<dyn SetupReadiness>, token: &CancellationToken) -> bool {
     loop {
-        match port.get_status().await {
-            Ok(status) if status.has_completed => return true,
+        match port.is_complete().await {
+            Ok(true) => return true,
             Ok(_) => debug!(target: "update_scheduler", "setup not yet completed"),
             Err(err) => warn!(
                 target: "update_scheduler",
@@ -244,7 +256,7 @@ async fn run_one_iteration(
     deps: &SchedulerDeps,
     install_kind_raw: InstallKind,
 ) -> IterationOutcome {
-    let settings = match deps.settings_port.load().await {
+    let settings = match deps.settings_client.get_settings().await {
         Ok(s) => s,
         Err(err) => {
             warn!(
@@ -346,6 +358,25 @@ pub(crate) fn resolve_channel(
     settings_channel.unwrap_or_else(|| detect_channel(app_version))
 }
 
+pub(crate) fn detect_channel(version: &str) -> UpdateChannel {
+    let Some(prerelease) = version.split_once('-').map(|(_, prerelease)| prerelease) else {
+        return UpdateChannel::Stable;
+    };
+
+    match prerelease
+        .split('.')
+        .next()
+        .unwrap_or_default()
+        .to_ascii_lowercase()
+        .as_str()
+    {
+        "alpha" => UpdateChannel::Alpha,
+        "beta" => UpdateChannel::Beta,
+        "rc" => UpdateChannel::Rc,
+        _ => UpdateChannel::Stable,
+    }
+}
+
 /// 给定 install kind，决定 scheduler 是否应该自动 in-place 下载新版本。
 ///
 /// 仅 macOS / Windows / AppImage 走 tauri-plugin-updater 的 in-place 流程；
@@ -426,13 +457,10 @@ mod tests {
 
     use async_trait::async_trait;
     use std::sync::atomic::{AtomicUsize, Ordering};
-    use tokio::sync::RwLock;
-    use uc_core::setup::SetupStatus;
 
     /// In-memory `SetupStatusPort` for scheduler unit tests. Flips to
     /// completed after `flip_after_n_reads` `get_status()` calls.
     struct FakeSetupStatus {
-        status: RwLock<SetupStatus>,
         reads: AtomicUsize,
         flip_after_n_reads: usize,
     }
@@ -440,10 +468,6 @@ mod tests {
     impl FakeSetupStatus {
         fn always_completed() -> Arc<Self> {
             Arc::new(Self {
-                status: RwLock::new(SetupStatus {
-                    has_completed: true,
-                    ..SetupStatus::default()
-                }),
                 reads: AtomicUsize::new(0),
                 flip_after_n_reads: 0,
             })
@@ -451,7 +475,6 @@ mod tests {
 
         fn never_completed() -> Arc<Self> {
             Arc::new(Self {
-                status: RwLock::new(SetupStatus::default()),
                 reads: AtomicUsize::new(0),
                 flip_after_n_reads: usize::MAX,
             })
@@ -459,18 +482,10 @@ mod tests {
     }
 
     #[async_trait]
-    impl SetupStatusPort for FakeSetupStatus {
-        async fn get_status(&self) -> anyhow::Result<SetupStatus> {
+    impl SetupReadiness for FakeSetupStatus {
+        async fn is_complete(&self) -> anyhow::Result<bool> {
             let n = self.reads.fetch_add(1, Ordering::SeqCst);
-            if n + 1 >= self.flip_after_n_reads {
-                self.status.write().await.has_completed = true;
-            }
-            Ok(self.status.read().await.clone())
-        }
-
-        async fn set_status(&self, status: &SetupStatus) -> anyhow::Result<()> {
-            *self.status.write().await = status.clone();
-            Ok(())
+            Ok(n + 1 >= self.flip_after_n_reads)
         }
     }
 
@@ -529,18 +544,18 @@ mod tests {
 
     #[tokio::test]
     async fn wait_for_setup_returns_true_when_already_completed() {
-        let port: Arc<dyn SetupStatusPort> = FakeSetupStatus::always_completed();
+        let port: Arc<dyn SetupReadiness> = FakeSetupStatus::always_completed();
         let token = CancellationToken::new();
         assert!(wait_for_setup(&port, &token).await);
     }
 
     #[tokio::test]
     async fn wait_for_setup_returns_false_when_cancelled_before_completion() {
-        let port: Arc<dyn SetupStatusPort> = FakeSetupStatus::never_completed();
+        let port: Arc<dyn SetupReadiness> = FakeSetupStatus::never_completed();
         let token = CancellationToken::new();
         let waiter_token = token.clone();
         let waiter = tokio::spawn(async move {
-            let port: Arc<dyn SetupStatusPort> = FakeSetupStatus::never_completed();
+            let port: Arc<dyn SetupReadiness> = FakeSetupStatus::never_completed();
             wait_for_setup(&port, &waiter_token).await
         });
         // 让 waiter 至少调一次 get_status 并进入 sleep
@@ -633,11 +648,10 @@ mod tests {
     #[tokio::test(start_paused = true)]
     async fn wait_for_setup_picks_up_eventual_completion() {
         let port = Arc::new(FakeSetupStatus {
-            status: RwLock::new(SetupStatus::default()),
             reads: AtomicUsize::new(0),
-            flip_after_n_reads: 3, // 第 3 次 get_status 才置位
+            flip_after_n_reads: 3,
         });
-        let port_dyn: Arc<dyn SetupStatusPort> = port.clone();
+        let port_dyn: Arc<dyn SetupReadiness> = port.clone();
         let token = CancellationToken::new();
         let waiter = tokio::spawn(async move { wait_for_setup(&port_dyn, &token).await });
 

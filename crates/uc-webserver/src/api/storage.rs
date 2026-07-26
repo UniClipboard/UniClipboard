@@ -10,8 +10,9 @@ use axum::extract::{rejection::JsonRejection, State};
 use axum::http::StatusCode;
 use axum::routing::{get, post};
 use axum::{Json, Router};
-use uc_application::facade::StorageFacadeError;
 use uc_daemon_contract::api::dto::envelope::ApiEnvelope;
+use uc_engine::error_codes::{CLEAR_STORAGE_CACHE_FAILED_CODE, QUERY_STORAGE_STATS_FAILED_CODE};
+use uc_engine::{EngineError, Operation, OperationResult};
 
 // Storage DTOs relocated to the contract crate (ADR-008 §C.4). The handlers keep
 // their current JSON shape; both endpoints are non-breaking (`{ data, ts }`).
@@ -22,15 +23,13 @@ use uc_daemon_contract::api::dto::storage::{
 use crate::api::dto::error::{log_facade_failure, ApiError};
 use crate::api::server::DaemonApiState;
 
-/// Map a `StorageFacadeError` onto a 500 `ApiError`, emitting the root-cause
-/// ERROR at the mapping point (per `dto::error` rule). The facade exposes a
-/// typed enum, so `error_variant` reflects the failing operation.
-fn map_storage_err(op: &'static str, err: StorageFacadeError) -> ApiError {
-    let variant = match &err {
-        StorageFacadeError::Stats(_) => "stats",
-        StorageFacadeError::ClearCache(_) => "clear_cache",
+fn map_storage_engine_err(op: &'static str, error: EngineError) -> ApiError {
+    let variant = match error.code() {
+        QUERY_STORAGE_STATS_FAILED_CODE => "stats",
+        CLEAR_STORAGE_CACHE_FAILED_CODE => "clear_cache",
+        _ => "unexpected_engine_error",
     };
-    let api = ApiError::internal(err.to_string());
+    let api = ApiError::internal("storage operation failed");
     log_facade_failure("storage", op, variant, api.status, &api.message);
     api
 }
@@ -57,13 +56,15 @@ pub fn router() -> Router<DaemonApiState> {
 async fn get_storage_stats_handler(
     State(state): State<DaemonApiState>,
 ) -> Result<Json<ApiEnvelope<StorageStatsDto>>, ApiError> {
-    let app = state.app_facade_or_error()?;
-
-    let result = app
-        .storage
-        .stats()
+    let result = state
+        .execute(Operation::QueryStorageStats)
         .await
-        .map_err(|e| map_storage_err("storage_stats", e))?;
+        .map_err(|error| map_storage_engine_err("storage_stats", error))?;
+    let OperationResult::StorageStats(result) = result else {
+        return Err(ApiError::internal(
+            "engine returned an unexpected storage stats result",
+        ));
+    };
 
     Ok(Json(ApiEnvelope::now(StorageStatsDto {
         total_bytes: result.total_bytes,
@@ -109,20 +110,17 @@ async fn clear_cache_handler(
 
     debug_assert!(req.confirmed);
 
-    let app = state.app_facade_or_error()?;
-
-    let result = app
-        .storage
-        .clear_cache()
+    let result = state
+        .execute(Operation::ClearStorageCache)
         .await
-        .map_err(|e| map_storage_err("storage_clear_cache", e))?;
+        .map_err(|error| map_storage_engine_err("storage_clear_cache", error))?;
+    let OperationResult::StorageCacheCleared { freed_bytes } = result else {
+        return Err(ApiError::internal(
+            "engine returned an unexpected clear-cache result",
+        ));
+    };
 
-    tracing::info!(
-        freed_bytes = result.freed_bytes,
-        "Cache cleared via HTTP API"
-    );
+    tracing::info!(freed_bytes, "Cache cleared via HTTP API");
 
-    Ok(Json(ApiEnvelope::now(ClearCacheResponse {
-        freed_bytes: result.freed_bytes,
-    })))
+    Ok(Json(ApiEnvelope::now(ClearCacheResponse { freed_bytes })))
 }

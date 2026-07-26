@@ -11,7 +11,6 @@ path = "src/lib.rs"
 
 [dependencies]
 # Workspace crates
-uc-core = { path = "../uc-core" }
 uc-daemon-contract = { path = "../uc-daemon-contract" }
 # ADR-008 P5-0: depend on the thin process-management crate instead of
 # uc-daemon-local. This severs the uc-application → uc-infra → iroh/diesel edge

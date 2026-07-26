@@ -19,10 +19,10 @@
 
 use std::sync::Arc;
 
-use uc_core::clipboard::{MimeType, ObservedClipboardRepresentation, SystemClipboardSnapshot};
-use uc_core::ids::RepresentationId;
-use uc_core::ports::SystemClipboardPort;
 use uc_platform::clipboard::LocalClipboard;
+use uc_platform::clipboard::RepresentationId;
+use uc_platform::clipboard::SystemClipboard;
+use uc_platform::clipboard::{MimeType, ObservedClipboardRepresentation, SystemClipboardSnapshot};
 
 fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt()
@@ -41,7 +41,7 @@ fn main() -> anyhow::Result<()> {
 
     eprintln!("(DISPLAY={:?})", std::env::var_os("DISPLAY"));
 
-    let clipboard: Arc<dyn SystemClipboardPort> = Arc::new(LocalClipboard::new()?);
+    let clipboard: Arc<dyn SystemClipboard> = Arc::new(LocalClipboard::new()?);
 
     let payload = format!(
         "phase3 x11 verification {}",

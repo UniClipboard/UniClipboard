@@ -25,11 +25,11 @@
 //! 调一次此命令重新生效。
 
 use crate::commands::record_trace_fields;
+use crate::commands::TraceMetadata;
 #[cfg(target_os = "macos")]
 use tauri::Manager;
 use tauri::WebviewWindow;
 use tracing::{info_span, Instrument};
-use uc_core::ports::observability::TraceMetadata;
 
 #[cfg(target_os = "macos")]
 mod imp {

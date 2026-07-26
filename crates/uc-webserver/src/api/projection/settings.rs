@@ -1,6 +1,22 @@
-//! Settings boundary projections: `SettingsFacade` views ↔ settings DTOs.
+//! Settings boundary projections: engine summaries ↔ settings DTOs.
 
-use uc_application::facade::settings as app_settings;
+use std::time::Duration;
+
+mod app_settings {
+    pub use uc_engine::{
+        CongestionControllerSummary as CongestionControllerView, FileSyncSettingsPatch,
+        GeneralSettingsPatch, NetworkSettingsPatch, PairingSettingsPatch,
+        QuickPanelDoubleTapModifierSummary as QuickPanelDoubleTapModifierView,
+        QuickPanelPositionSummary as QuickPanelPositionView, QuickPanelSettingsPatch,
+        RetentionPolicyPatch, RetentionRulePatch as RetentionRulePatchValue,
+        RetentionRuleSummary as RetentionRuleView, RuleEvaluationSummary as RuleEvaluationView,
+        SecuritySettingsPatch, SettingsContentTypes as ContentTypesView,
+        SettingsContentTypesPatch as ContentTypesPatch, SettingsPatch,
+        SettingsSummary as SettingsView, ShortcutKeySummary as ShortcutKeyView,
+        StartupModeSummary as StartupModeView, SyncFrequencySummary as SyncFrequencyView,
+        SyncSettingsPatch, ThemeSummary as ThemeView, UpdateChannelSummary as UpdateChannelView,
+    };
+}
 
 use super::{IntoApiDto, IntoDomain};
 use crate::api::dto::settings::{
@@ -63,9 +79,11 @@ impl IntoDomain<app_settings::SettingsPatch> for SettingsPatchDto {
             pairing: self
                 .pairing
                 .map(|pairing| app_settings::PairingSettingsPatch {
-                    step_timeout: pairing.step_timeout,
-                    user_verification_timeout: pairing.user_verification_timeout,
-                    session_timeout: pairing.session_timeout,
+                    step_timeout_secs: pairing.step_timeout.map(|value| value.as_secs()),
+                    user_verification_timeout_secs: pairing
+                        .user_verification_timeout
+                        .map(|value| value.as_secs()),
+                    session_timeout_secs: pairing.session_timeout.map(|value| value.as_secs()),
                     max_retries: pairing.max_retries,
                 }),
             keyboard_shortcuts: self.keyboard_shortcuts.map(
@@ -97,9 +115,15 @@ impl IntoDomain<app_settings::SettingsPatch> for SettingsPatchDto {
                     allow_relay_fallback: network.allow_relay_fallback,
                     allow_overlay_network_addrs: network.allow_overlay_network_addrs,
                     custom_relay_urls: network.custom_relay_urls,
-                    congestion_controller: network.congestion_controller.map(|cc| {
-                        let core_cc: uc_core::settings::model::CongestionController = cc.into();
-                        app_settings::CongestionControllerView::from(core_cc)
+                    congestion_controller: network.congestion_controller.map(|controller| {
+                        match controller {
+                            CongestionControllerDto::Cubic => {
+                                app_settings::CongestionControllerView::Cubic
+                            }
+                            CongestionControllerDto::Bbr3 => {
+                                app_settings::CongestionControllerView::Bbr3
+                            }
+                        }
                     }),
                 }),
             quick_panel: self.quick_panel.map(|quick_panel| {
@@ -161,9 +185,11 @@ impl IntoApiDto<SettingsDto> for app_settings::SettingsView {
                 auto_unlock_enabled: self.security.auto_unlock_enabled,
             },
             pairing: PairingSettingsDto {
-                step_timeout: self.pairing.step_timeout,
-                user_verification_timeout: self.pairing.user_verification_timeout,
-                session_timeout: self.pairing.session_timeout,
+                step_timeout: Duration::from_secs(self.pairing.step_timeout_secs),
+                user_verification_timeout: Duration::from_secs(
+                    self.pairing.user_verification_timeout_secs,
+                ),
+                session_timeout: Duration::from_secs(self.pairing.session_timeout_secs),
                 max_retries: self.pairing.max_retries,
                 protocol_version: self.pairing.protocol_version,
             },
@@ -185,10 +211,9 @@ impl IntoApiDto<SettingsDto> for app_settings::SettingsView {
                 allow_relay_fallback: self.network.allow_relay_fallback,
                 allow_overlay_network_addrs: self.network.allow_overlay_network_addrs,
                 custom_relay_urls: self.network.custom_relay_urls,
-                congestion_controller: {
-                    let core_cc: uc_core::settings::model::CongestionController =
-                        self.network.congestion_controller.into();
-                    CongestionControllerDto::from(core_cc)
+                congestion_controller: match self.network.congestion_controller {
+                    app_settings::CongestionControllerView::Cubic => CongestionControllerDto::Cubic,
+                    app_settings::CongestionControllerView::Bbr3 => CongestionControllerDto::Bbr3,
                 },
             },
             quick_panel: QuickPanelSettingsDto {
@@ -251,11 +276,13 @@ impl IntoApiDto<ContentTypesDto> for app_settings::ContentTypesView {
 impl IntoDomain<app_settings::RetentionRulePatchValue> for RetentionRuleDto {
     fn into_domain(self) -> app_settings::RetentionRulePatchValue {
         match self {
-            RetentionRuleDto::ByAge { max_age } => {
-                app_settings::RetentionRulePatchValue::ByAge { max_age }
-            }
+            RetentionRuleDto::ByAge { max_age } => app_settings::RetentionRulePatchValue::ByAge {
+                max_age_secs: max_age.as_secs(),
+            },
             RetentionRuleDto::ByCount { max_items } => {
-                app_settings::RetentionRulePatchValue::ByCount { max_items }
+                app_settings::RetentionRulePatchValue::ByCount {
+                    max_items: max_items as u64,
+                }
             }
             RetentionRuleDto::ByContentType {
                 content_type,
@@ -269,13 +296,15 @@ impl IntoDomain<app_settings::RetentionRulePatchValue> for RetentionRuleDto {
                     code_snippet: content_type.code_snippet,
                     rich_text: content_type.rich_text,
                 },
-                max_age,
+                max_age_secs: max_age.as_secs(),
             },
             RetentionRuleDto::ByTotalSize { max_bytes } => {
                 app_settings::RetentionRulePatchValue::ByTotalSize { max_bytes }
             }
             RetentionRuleDto::Sensitive { max_age } => {
-                app_settings::RetentionRulePatchValue::Sensitive { max_age }
+                app_settings::RetentionRulePatchValue::Sensitive {
+                    max_age_secs: max_age.as_secs(),
+                }
             }
         }
     }
@@ -284,24 +313,26 @@ impl IntoDomain<app_settings::RetentionRulePatchValue> for RetentionRuleDto {
 impl IntoApiDto<RetentionRuleDto> for app_settings::RetentionRuleView {
     fn into_api_dto(self) -> RetentionRuleDto {
         match self {
-            app_settings::RetentionRuleView::ByAge { max_age } => {
-                RetentionRuleDto::ByAge { max_age }
-            }
-            app_settings::RetentionRuleView::ByCount { max_items } => {
-                RetentionRuleDto::ByCount { max_items }
-            }
+            app_settings::RetentionRuleView::ByAge { max_age_secs } => RetentionRuleDto::ByAge {
+                max_age: Duration::from_secs(max_age_secs),
+            },
+            app_settings::RetentionRuleView::ByCount { max_items } => RetentionRuleDto::ByCount {
+                max_items: usize::try_from(max_items).unwrap_or(usize::MAX),
+            },
             app_settings::RetentionRuleView::ByContentType {
                 content_type,
-                max_age,
+                max_age_secs,
             } => RetentionRuleDto::ByContentType {
                 content_type: content_type.into_api_dto(),
-                max_age,
+                max_age: Duration::from_secs(max_age_secs),
             },
             app_settings::RetentionRuleView::ByTotalSize { max_bytes } => {
                 RetentionRuleDto::ByTotalSize { max_bytes }
             }
-            app_settings::RetentionRuleView::Sensitive { max_age } => {
-                RetentionRuleDto::Sensitive { max_age }
+            app_settings::RetentionRuleView::Sensitive { max_age_secs } => {
+                RetentionRuleDto::Sensitive {
+                    max_age: Duration::from_secs(max_age_secs),
+                }
             }
         }
     }

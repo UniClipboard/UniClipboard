@@ -1,4 +1,4 @@
-//! `SystemClipboardPort` impl for X11.
+//! `SystemClipboard` impl for X11.
 //!
 //! Mirrors the worker-thread structure of `wayland::protocol::wlr::WlrClipboard`:
 //!
@@ -20,11 +20,11 @@ use std::sync::Mutex;
 use std::thread::JoinHandle;
 use std::time::Duration;
 
+use crate::clipboard::SystemClipboard;
+use crate::clipboard::SystemClipboardSnapshot;
 use anyhow::{Context, Result};
 use rustix::event::{poll, PollFd, PollFlags};
 use tracing::{debug, info, warn};
-use uc_core::clipboard::SystemClipboardSnapshot;
-use uc_core::ports::SystemClipboardPort;
 use x11rb::connection::Connection;
 use x11rb::protocol::Event;
 
@@ -108,7 +108,7 @@ impl Drop for X11Clipboard {
 }
 
 #[async_trait::async_trait]
-impl SystemClipboardPort for X11Clipboard {
+impl SystemClipboard for X11Clipboard {
     fn read_snapshot(&self) -> Result<SystemClipboardSnapshot> {
         let (tx, rx) = sync_channel::<Result<SystemClipboardSnapshot>>(1);
         self.send_request(Request::Read(tx))?;

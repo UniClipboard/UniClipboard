@@ -3,12 +3,10 @@ name = "uc-bootstrap"
 version.workspace = true
 license.workspace = true
 edition = "2021"
-description = "Composition root — sole crate allowed to depend on uc-core + uc-application + uc-infra + uc-platform simultaneously"
+description = "Desktop host capability preparation for uc-engine"
 
 [dependencies]
-uc-core = { path = "../uc-core", features = ["task-registry"] }
-uc-application = { path = "../uc-application" }
-uc-infra = { path = "../uc-infra" }
+uc-engine.workspace = true
 uc-platform = { path = "../uc-platform" }
 uc-observability = { path = "../uc-observability" }
 # Directory-layout authority: used to locate the superseded `<data>/logs`
@@ -17,43 +15,34 @@ uc-observability = { path = "../uc-observability" }
 uc-app-paths = { path = "../uc-app-paths" }
 
 tokio = { version = "1", features = ["full"] }
-tokio-util = "0.7"
 anyhow = "1.0"
 thiserror = "2.0"
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "registry"] }
-sentry = { version = "0.48.1", default-features = false, features = [
-    "backtrace",
-    "contexts",
-    "debug-images",
-    "panic",
-    "release-health",
-    # transport=ureq 而非 reqwest:reqwest 0.13 的 rustls feature 硬绑定
-    # aws-lc-rs (C 库,CMake 编译,musl cross 不友好);ureq 3.x 的 rustls
-    # feature 只走 ring,与 workspace 其他 rustls 用户对齐。这样 uc-cli 走
-    # musl 静态编译时依赖图里没有任何 C 工具链强依赖。sentry 的 HTTP 上报
-    # 本就 fire-and-forget,同步 ureq 在独立 worker 线程跑,不阻塞主程序
-    # async 调度。
-    "ureq",
-    "rustls",
-    "tracing",
-    "logs",
+tracing-subscriber = { version = "0.3", features = [
+  "env-filter",
+  "fmt",
+  "registry",
 ] }
-gethostname = "1.1"
-toml = "0.8"
+sentry = { version = "0.48.1", default-features = false, features = [
+  "backtrace",
+  "contexts",
+  "debug-images",
+  "panic",
+  "release-health",
+  # transport=ureq 而非 reqwest:reqwest 0.13 的 rustls feature 硬绑定
+  # aws-lc-rs (C 库,CMake 编译,musl cross 不友好);ureq 3.x 的 rustls
+  # feature 只走 ring,与 workspace 其他 rustls 用户对齐。这样 uc-cli 走
+  # musl 静态编译时依赖图里没有任何 C 工具链强依赖。sentry 的 HTTP 上报
+  # 本就 fire-and-forget,同步 ureq 在独立 worker 线程跑,不阻塞主程序
+  # async 调度。
+  "ureq",
+  "rustls",
+  "tracing",
+  "logs",
+] }
 chrono = { version = "0.4", features = ["serde"] }
 async-trait = "0.1"
-# analytics::compose_event_context hashes the persisted SpaceId into the
-# 16-hex `space_id_hash` carried by every product analytics event. SHA-256
-# is the cheapest stdlib-friendly choice that keeps `space_id` un-recoverable
-# from the published hash (schema doc §6.3).
-sha2 = "0.10"
-# pending_import reads the boot-time staging contract owned by
-# uc-infra::config_migration::staging — the `pending-import.json` marker
-# (`PendingImportMarker`) and `secrets.json` (`SecretsFile`) are public
-# `Deserialize` types, so the composition root decodes them with serde_json
-# while applying a staged config import before the db pool / secure storage are
-# consumed.
+serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
 [features]
@@ -62,21 +51,6 @@ dev-profile = ["uc-platform/dev-profile"]
 
 [dev-dependencies]
 tempfile = "3"
-tokio = { version = "1", features = ["full"] }
-mockall = "0.13"
-wiremock = "0.6"
-# Slice 2 Phase 2 · T12 — clipboard e2e packs plaintext as `Bytes`
-# for `ClipboardSyncFacade::dispatch_entry`.
-bytes = "1.7"
-# Phase 94 / plan 06 — e2e 测试同 binary 内多次 IrohNodeBuilder::bind
-# sponsor + joiner 双 endpoint；`uc-infra/test-util` feature 在测试构建下
-# elide BIND_LOCK 守护（production build 不启用此 feature，结构性防御依然
-# 生效）。见 uc-infra/src/network/iroh/node.rs BIND_LOCK doc comment。
-uc-infra = { path = "../uc-infra", features = ["test-util"] }
-# config-migration round-trip e2e seeds a real sqlite db with a probe row and
-# reads it back from the landed snapshot. Version/features mirror uc-infra so no
-# extra build cost is introduced (same compiled diesel + bundled libsqlite3).
-diesel = { version = "2.3.5", features = ["sqlite", "r2d2"] }
 
 [lints]
 workspace = true

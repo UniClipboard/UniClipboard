@@ -26,9 +26,9 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use crate::clipboard::SystemClipboardSnapshot;
 use anyhow::{Context, Result};
 use tracing::{debug, warn};
-use uc_core::clipboard::SystemClipboardSnapshot;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::{
     Atom, AtomEnum, ConnectionExt as _, EventMask, PropMode, SelectionNotifyEvent,

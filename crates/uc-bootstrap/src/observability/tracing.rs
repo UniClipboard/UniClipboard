@@ -33,17 +33,16 @@ use sentry::integrations::tracing::{
     breadcrumb_from_event, event_from_event, log_from_event, CombinedEventMapping, EventFilter,
     EventMapping,
 };
+use serde::Deserialize;
 use tracing_subscriber::filter::{filter_fn, FilterExt};
 use tracing_subscriber::prelude::*;
 
 use super::correlation::{self, CorrelationLayer};
 use super::sentry_gate::{transaction_sample_rate, TelemetryGatedTransportFactory};
-use uc_application::facade::AppPaths;
-use uc_infra::settings::repository::load_settings_snapshot;
 use uc_observability::redact::{is_sensitive_key, REDACTED_PLACEHOLDER};
 use uc_observability::{LogProfile, WorkerGuard};
-use uc_platform::app_dirs::DirsAppDirsAdapter;
-use uc_platform::ports::AppDirsPort;
+
+use crate::layer::paths::resolve_desktop_host_paths;
 
 static SENTRY_GUARD: OnceLock<sentry::ClientInitGuard> = OnceLock::new();
 static JSON_GUARD: OnceLock<WorkerGuard> = OnceLock::new();
@@ -96,43 +95,63 @@ fn sentry_target_allowed(target: &str) -> bool {
         .any(|prefix| target.starts_with(prefix))
 }
 
-/// Read the `telemetry_enabled` setting from persisted settings.
-///
-/// Uses the canonical settings repository read path so that defaults,
-/// deserialization rules, and migrations stay in one place.
-///
-/// Falls back to `true` (the model default) if the file doesn't exist
-/// or cannot be loaded.
-fn resolve_telemetry_enabled(settings_path: &Path) -> bool {
-    load_settings_snapshot(settings_path)
-        .unwrap_or_default()
-        .general
-        .telemetry_enabled
+#[derive(Deserialize)]
+#[serde(default)]
+#[derive(Default)]
+struct BootstrapSettings {
+    general: BootstrapGeneralSettings,
 }
 
-/// Read the `usage_analytics_enabled` setting from persisted settings.
-///
-/// 与 [`resolve_telemetry_enabled`] 对称——见 schema doc §6.4 双开关方案。
-/// 落空默认 `true`，与 `core::settings::defaults` 保持一致。
-fn resolve_usage_analytics_enabled(settings_path: &Path) -> bool {
-    load_settings_snapshot(settings_path)
-        .unwrap_or_default()
-        .general
-        .usage_analytics_enabled
+#[derive(Deserialize)]
+#[serde(default)]
+struct BootstrapGeneralSettings {
+    telemetry_enabled: bool,
+    usage_analytics_enabled: bool,
+    debug_mode: bool,
 }
 
-fn resolve_persisted_debug_mode(settings_path: &Path) -> bool {
-    load_settings_snapshot(settings_path)
-        .unwrap_or_default()
-        .general
-        .debug_mode
+impl Default for BootstrapGeneralSettings {
+    fn default() -> Self {
+        Self {
+            telemetry_enabled: true,
+            usage_analytics_enabled: true,
+            debug_mode: false,
+        }
+    }
 }
 
-fn select_log_profile(settings_path: &Path) -> LogProfile {
+fn load_bootstrap_settings(settings_path: &Path) -> BootstrapSettings {
+    let content = match std::fs::read_to_string(settings_path) {
+        Ok(content) => content,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return BootstrapSettings::default();
+        }
+        Err(error) => {
+            ::tracing::warn!(
+                error_kind = ?error.kind(),
+                "Failed to read bootstrap settings; using defaults"
+            );
+            return BootstrapSettings::default();
+        }
+    };
+
+    match serde_json::from_str(&content) {
+        Ok(settings) => settings,
+        Err(error) => {
+            ::tracing::warn!(
+                error_class = ?error.classify(),
+                "Failed to parse bootstrap settings; using defaults"
+            );
+            BootstrapSettings::default()
+        }
+    }
+}
+
+fn select_log_profile(settings: &BootstrapSettings) -> LogProfile {
     if std::env::var("UC_LOG_PROFILE").is_ok() || std::env::var("RUST_LOG").is_ok() {
         return LogProfile::from_env();
     }
-    if resolve_persisted_debug_mode(settings_path) {
+    if settings.general.debug_mode {
         LogProfile::Debug
     } else {
         LogProfile::from_env()
@@ -174,8 +193,7 @@ pub fn init_tracing_subscriber() -> anyhow::Result<()> {
     }
 
     // Step 1: Resolve logs directory
-    let app_dirs = DirsAppDirsAdapter::new().get_app_dirs()?;
-    let paths = AppPaths::from_app_dirs(&app_dirs);
+    let paths = resolve_desktop_host_paths()?;
     std::fs::create_dir_all(&paths.logs_dir)?;
 
     // Step 1a: One-time migration. Logs moved to the platform-conventional
@@ -210,7 +228,8 @@ pub fn init_tracing_subscriber() -> anyhow::Result<()> {
 
     // Step 2: Select log profile. RUST_LOG and UC_LOG_PROFILE remain explicit
     // overrides; persisted Debug Mode only applies when neither env override is set.
-    let profile = select_log_profile(&paths.settings_path);
+    let settings = load_bootstrap_settings(&paths.settings_path);
+    let profile = select_log_profile(&settings);
 
     // Step 2b: Resolve `telemetry_enabled` from persisted settings and push it
     // into the process-wide runtime gate exposed by `uc-observability`.
@@ -226,14 +245,14 @@ pub fn init_tracing_subscriber() -> anyhow::Result<()> {
     // correct: until the daemon side serves any settings update, the gate
     // would otherwise carry its `true` default and ignore a user who had
     // turned telemetry off in a previous session.
-    let telemetry_enabled = resolve_telemetry_enabled(&paths.settings_path);
+    let telemetry_enabled = settings.general.telemetry_enabled;
     uc_observability::set_telemetry_enabled(telemetry_enabled);
 
     // Step 2c: 同样的"读盘 → 推 gate"流程，但作用对象是产品 telemetry
     // 开关（schema doc §6.4 双开关方案）。本调用在 sink 接入前也是无害
     // 的——`uc-observability::analytics_gate` 的初值就是 true，这里只是
     // 把用户上次的选择落到 gate，让首次事件构造时就尊重持久化偏好。
-    let usage_analytics_enabled = resolve_usage_analytics_enabled(&paths.settings_path);
+    let usage_analytics_enabled = settings.general.usage_analytics_enabled;
     uc_observability::set_analytics_enabled(usage_analytics_enabled);
 
     // Step 3: Initialize Sentry whenever a DSN is available.

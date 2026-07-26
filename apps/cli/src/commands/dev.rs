@@ -6,7 +6,7 @@ use std::path::PathBuf;
 
 use clap::Subcommand;
 use serde::Serialize;
-use uc_application::facade::{IssuePairingInvitationError, PairingInvitationAddressCandidate};
+use uc_engine::{DevOperation, DevOperationResult, DevPairingInvitationAddress};
 
 use crate::commands::app_session::{build_app_session, refuse_if_daemon_running};
 use crate::commands::{capture_files, dump_clipboard, invite, seed_clipboard};
@@ -87,8 +87,8 @@ impl fmt::Display for PairingAddressListView {
     }
 }
 
-impl From<PairingInvitationAddressCandidate> for PairingAddressView {
-    fn from(candidate: PairingInvitationAddressCandidate) -> Self {
+impl From<DevPairingInvitationAddress> for PairingAddressView {
+    fn from(candidate: DevPairingInvitationAddress) -> Self {
         let ip = candidate.ip.to_string();
         let socket = format!("{}:{}", candidate.ip, candidate.port);
         Self {
@@ -148,25 +148,19 @@ async fn list_pairing_addrs(json: bool, verbose: bool) -> i32 {
         Err(code) => return code,
     };
 
-    let candidates = match cli.app_facade().list_pairing_invitation_addresses().await {
-        Ok(candidates) => candidates,
-        Err(IssuePairingInvitationError::NetworkNotStarted) => {
-            ui::error("Network not started — run `init` first.");
+    let candidates = match cli
+        .engine()
+        .execute_dev(DevOperation::ListPairingInvitationAddresses)
+        .await
+    {
+        Ok(DevOperationResult::PairingInvitationAddresses(candidates)) => candidates,
+        Ok(_) => {
+            ui::error("Failed to list pairing addresses: unexpected engine response");
             cli.shutdown().await;
             return exit_codes::EXIT_ERROR;
         }
-        Err(IssuePairingInvitationError::AddressNotAvailable(addr)) => {
-            ui::error(&format!("Address is not available: {addr}"));
-            cli.shutdown().await;
-            return exit_codes::EXIT_ERROR;
-        }
-        Err(IssuePairingInvitationError::ServiceUnavailable) => {
-            ui::error("Pairing invitation service unavailable.");
-            cli.shutdown().await;
-            return exit_codes::EXIT_ERROR;
-        }
-        Err(IssuePairingInvitationError::Internal(msg)) => {
-            ui::error(&format!("Failed to list pairing addresses: {msg}"));
+        Err(error) => {
+            ui::error(&format!("Failed to list pairing addresses: {error}"));
             cli.shutdown().await;
             return exit_codes::EXIT_ERROR;
         }

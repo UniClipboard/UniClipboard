@@ -1,15 +1,12 @@
 //! `uniclip dev dump-clipboard` —— 调试 / E2E 测试用：读出最近 N 条剪贴板
 //! 条目的明文 preview。
 //!
-//! 走 `ClipboardHistoryFacade::list_entries`，背后是
-//! `DecryptingClipboardRepresentationRepository`，所以输出的就是用当前
-//! session master_key 解密后的明文。switch-space 之后跑一次能验证旧
+//! 通过统一核心读取解密后的历史预览。switch-space 之后跑一次能验证旧
 //! 数据被正确重加密成新 master_key 加密的密文（解出来明文一致）。
 
 use serde::Serialize;
 
-use uc_application::facade::space_setup::TryResumeSessionError;
-use uc_application::facade::ClipboardListInput;
+use uc_engine::{ListHistoryEntriesInput, Operation, OperationResult};
 
 use crate::commands::app_session::{build_app_session, refuse_if_daemon_running};
 use crate::exit_codes;
@@ -42,40 +39,34 @@ pub async fn run(args: DumpClipboardArgs, json: bool, verbose: bool) -> i32 {
         Err(code) => return code,
     };
 
-    match bundle.app_facade().try_resume_session().await {
+    match bundle.recover_session().await {
         Ok(true) => {}
         Ok(false) => {
             ui::error("This device is not set up yet. Use `uniclip init` or `uniclip join` first.");
             bundle.shutdown().await;
             return exit_codes::EXIT_ERROR;
         }
-        Err(TryResumeSessionError::CorruptedKeyMaterial) => {
-            ui::error("Key material is corrupted — consider resetting this profile.");
-            bundle.shutdown().await;
-            return exit_codes::EXIT_ERROR;
-        }
-        Err(TryResumeSessionError::KeyringMiss) => {
-            ui::error("Keychain cannot silently unlock this space.");
-            bundle.shutdown().await;
-            return exit_codes::EXIT_ERROR;
-        }
-        Err(TryResumeSessionError::Internal(msg)) => {
-            ui::error(&format!("Resume failed: {msg}"));
+        Err(err) => {
+            ui::error(&format!("Resume failed: {err}"));
             bundle.shutdown().await;
             return exit_codes::EXIT_ERROR;
         }
     }
 
     let entries = match bundle
-        .app_facade()
-        .clipboard_history
-        .list_entries(ClipboardListInput {
-            limit: args.limit,
+        .engine()
+        .execute(Operation::ListHistoryEntries(ListHistoryEntriesInput {
+            limit: args.limit.min(u32::MAX as usize) as u32,
             offset: 0,
-        })
+        }))
         .await
     {
-        Ok(v) => v,
+        Ok(OperationResult::HistoryEntries(entries)) => entries,
+        Ok(_) => {
+            ui::error("Failed to list clipboard entries: unexpected engine response");
+            bundle.shutdown().await;
+            return exit_codes::EXIT_ERROR;
+        }
         Err(err) => {
             ui::error(&format!("Failed to list clipboard entries: {err}"));
             bundle.shutdown().await;
@@ -87,10 +78,10 @@ pub async fn run(args: DumpClipboardArgs, json: bool, verbose: bool) -> i32 {
         let dto: Vec<DumpEntryDto<'_>> = entries
             .iter()
             .map(|e| DumpEntryDto {
-                entry_id: &e.id,
+                entry_id: &e.entry_id,
                 preview: &e.preview,
                 size_bytes: e.size_bytes,
-                captured_at: e.captured_at,
+                captured_at: e.captured_at_ms,
                 content_type: &e.content_type,
             })
             .collect();
@@ -108,7 +99,7 @@ pub async fn run(args: DumpClipboardArgs, json: bool, verbose: bool) -> i32 {
             // Each entry as a single grep-friendly line for the e2e shell
             // script: `ENTRY <id>|<preview>`. preview is the decrypted
             // text bytes from `representation_repo.get_representation`.
-            println!("ENTRY {}|{}", entry.id, entry.preview);
+            println!("ENTRY {}|{}", entry.entry_id, entry.preview);
         }
     }
 

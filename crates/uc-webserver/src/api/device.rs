@@ -14,6 +14,8 @@ use axum::{Json, Router};
 use utoipa;
 
 use uc_daemon_contract::api::dto::envelope::ApiEnvelope;
+use uc_engine::error_codes::QUERY_LOCAL_DEVICE_FAILED_CODE;
+use uc_engine::{EngineError, Operation, OperationResult};
 
 use crate::api::dto::device::LocalDeviceInfoDto;
 use crate::api::dto::error::{log_facade_failure, ApiError};
@@ -38,21 +40,34 @@ pub fn router() -> Router<DaemonApiState> {
 async fn get_local_device_info_handler(
     State(state): State<DaemonApiState>,
 ) -> Result<Json<ApiEnvelope<LocalDeviceInfoDto>>, ApiError> {
-    let app = state.app_facade_or_error()?;
-    let info = app.device.local_device_info().await.map_err(|e| {
-        let api = ApiError::internal(e.to_string());
-        log_facade_failure(
-            "device",
-            "local_device_info",
-            "call_failed",
-            api.status,
-            &api.message,
-        );
-        api
-    })?;
+    let result = state
+        .execute(Operation::QueryLocalDevice)
+        .await
+        .map_err(map_local_device_engine_error)?;
+    let OperationResult::LocalDevice(info) = result else {
+        return Err(ApiError::internal(
+            "engine returned an unexpected local-device result",
+        ));
+    };
 
     Ok(Json(ApiEnvelope::now(LocalDeviceInfoDto {
-        peer_id: info.peer_id,
-        device_name: info.device_name,
+        peer_id: info.device_id,
+        device_name: info.display_name,
     })))
+}
+
+fn map_local_device_engine_error(error: EngineError) -> ApiError {
+    let variant = match error.code() {
+        QUERY_LOCAL_DEVICE_FAILED_CODE => "query_failed",
+        _ => "unexpected_engine_error",
+    };
+    let api = ApiError::internal("local device information is unavailable");
+    log_facade_failure(
+        "device",
+        "local_device_info",
+        variant,
+        api.status,
+        &api.message,
+    );
+    api
 }

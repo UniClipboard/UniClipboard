@@ -21,7 +21,7 @@
 //! 4. never on `Lagged` — a lagged receiver sends a `resync` frame instead
 //!    of tearing down the connection.
 //!
-//! Event names and payload shapes come from [`uc_mobile_proto::sse_event`],
+//! Event names and payload shapes come from [`uc_engine::sse_event`],
 //! the single source of truth shared with the `uc-mobile` client.
 
 use std::convert::Infallible;
@@ -38,14 +38,13 @@ use tokio::sync::broadcast;
 use tokio::time::{Instant, Interval, MissedTickBehavior};
 use tokio_util::sync::CancellationToken;
 
-use uc_application::facade::{AuthenticatedDevice, MobileSyncFacade};
-use uc_core::clipboard::ActiveClipboardState;
-use uc_core::mobile_sync::MobileDeviceId;
-use uc_mobile_proto::sse_event::{
+use uc_engine::sse_event::{
     SseHello, SseResync, SseUpdate, SSE_EVENT_HELLO, SSE_EVENT_RESYNC, SSE_EVENT_UPDATE,
     SSE_HEARTBEAT_INTERVAL_SECS,
 };
+use uc_engine::{ActiveClipboardChanged, MobileAuthenticatedSession, MobileCredential};
 
+use crate::mobile_lan::core::MobileLanCore;
 use crate::mobile_lan::sse_registry::SseConnectionRegistry;
 
 use super::MobileLanState;
@@ -57,7 +56,7 @@ const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(SSE_HEARTBEAT_INTERVAL_
 
 /// Periodic credential re-check cadence. Each tick verifies the device still
 /// exists and its stored password hash matches the one captured at connect
-/// time ([`MobileSyncFacade::is_device_credential_current`]) — a repo read
+/// time through the shared engine — a repository read
 /// plus a string compare, NOT an Argon2 verify, so this stays cheap per
 /// connection. It does not check the mobile-sync feature toggles, since
 /// those are the listener's cancel-token's job, not this connection-scoped
@@ -99,7 +98,7 @@ fn periodic(period: Duration) -> Interval {
 /// racing a concurrent eviction is harmless.
 struct RegistrationGuard {
     registry: Arc<SseConnectionRegistry>,
-    device_id: MobileDeviceId,
+    device_id: String,
     conn_id: uuid::Uuid,
 }
 
@@ -110,16 +109,12 @@ impl Drop for RegistrationGuard {
 }
 
 struct SseStreamState {
-    rx: broadcast::Receiver<ActiveClipboardState>,
+    rx: broadcast::Receiver<ActiveClipboardChanged>,
     cancel: CancellationToken,
     heartbeat: Interval,
     revalidate: Interval,
-    facade: Arc<MobileSyncFacade>,
-    device_id: MobileDeviceId,
-    /// The device's Argon2 PHC string as it was at connect time; the periodic
-    /// re-check compares the stored hash against this to detect rotation.
-    connect_password_hash: String,
-    device_username: String,
+    core: MobileLanCore,
+    credential: MobileCredential,
     // Never read — held purely so `Drop` fires exactly when this state
     // (and thus the connection) goes away.
     _registration: RegistrationGuard,
@@ -131,7 +126,7 @@ async fn next_event(mut st: SseStreamState) -> Option<(Result<Event, Infallible>
             biased;
 
             () = st.cancel.cancelled() => {
-                tracing::info!(device = %st.device_username, "mobile_lan sse: cancelled, ending stream");
+                tracing::info!("mobile_lan sse: cancelled, ending stream");
                 return None;
             }
 
@@ -145,12 +140,12 @@ async fn next_event(mut st: SseStreamState) -> Option<(Result<Event, Infallible>
                         return Some((Ok(ev), st));
                     }
                     Err(broadcast::error::RecvError::Lagged(n)) => {
-                        tracing::warn!(device = %st.device_username, lagged = n, "mobile_lan sse: receiver lagged, sending resync");
+                        tracing::warn!(lagged = n, "mobile_lan sse: receiver lagged, sending resync");
                         let ev = event_json(SSE_EVENT_RESYNC, &SseResync { server_time_ms: now_ms() });
                         return Some((Ok(ev), st));
                     }
                     Err(broadcast::error::RecvError::Closed) => {
-                        tracing::warn!(device = %st.device_username, "mobile_lan sse: broadcast source closed, ending stream");
+                        tracing::warn!("mobile_lan sse: broadcast source closed, ending stream");
                         return None;
                     }
                 }
@@ -161,16 +156,16 @@ async fn next_event(mut st: SseStreamState) -> Option<(Result<Event, Infallible>
             }
 
             _ = st.revalidate.tick() => {
-                match st.facade.is_device_credential_current(&st.device_id, &st.connect_password_hash).await {
+                match st.core.revalidate(st.credential.clone()).await {
                     Ok(true) => continue,
                     Ok(false) => {
-                        tracing::info!(device = %st.device_username, "mobile_lan sse: device revoked or credentials rotated, ending stream");
+                        tracing::info!("mobile_lan sse: device revoked or credentials rotated, ending stream");
                         return None;
                     }
                     // Fail closed on a repo error, same as the pre-check
                     // behavior: the client reconnects and re-authenticates.
                     Err(err) => {
-                        tracing::warn!(device = %st.device_username, error = %err, "mobile_lan sse: periodic credential re-check failed, ending stream");
+                        tracing::warn!(code = err.code(), category = %err.category(), "mobile_lan sse: periodic credential re-check failed, ending stream");
                         return None;
                     }
                 }
@@ -181,7 +176,7 @@ async fn next_event(mut st: SseStreamState) -> Option<(Result<Event, Infallible>
 
 pub(super) async fn get_sse_clipboard(
     State(state): State<MobileLanState>,
-    Extension(authed): Extension<AuthenticatedDevice>,
+    Extension(authed): Extension<MobileAuthenticatedSession>,
 ) -> Response {
     // F-4: subscribe strictly before sending `hello` — see module docs.
     let rx = state.sse_source.subscribe();
@@ -189,9 +184,7 @@ pub(super) async fn get_sse_clipboard(
     // registry cancels it directly to evict this connection under the
     // per-device cap.
     let cancel = state.cancel.child_token();
-    let device_id = authed.device.device_id.clone();
-    let device_username = authed.device.username.clone();
-    let connect_password_hash = authed.device.password_hash.clone();
+    let device_id = authed.device_id;
 
     let conn_id = state
         .sse_registry
@@ -202,7 +195,7 @@ pub(super) async fn get_sse_clipboard(
         conn_id,
     };
 
-    tracing::info!(device = %device_username, "mobile_lan sse: connection established");
+    tracing::info!(client_type = ?authed.client_type, "mobile_lan sse: connection established");
 
     let hello = event_json(
         SSE_EVENT_HELLO,
@@ -217,11 +210,9 @@ pub(super) async fn get_sse_clipboard(
         cancel,
         heartbeat: periodic(HEARTBEAT_INTERVAL),
         revalidate: periodic(REVALIDATE_INTERVAL),
-        facade: state.mobile_sync.clone(),
+        core: state.core,
         _registration: registration,
-        device_id,
-        connect_password_hash,
-        device_username,
+        credential: authed.credential,
     };
     let body_stream: std::pin::Pin<Box<dyn Stream<Item = Result<Event, Infallible>> + Send>> =
         Box::pin(stream::unfold(body_state, next_event));
@@ -250,13 +241,16 @@ mod tests {
     use axum::http::{Request, StatusCode};
     use axum::Router;
     use futures_util::StreamExt;
+    use std::sync::Arc;
     use tower::ServiceExt;
 
-    use uc_core::ids::{DeviceId, EntryId};
+    use uc_engine::ActiveClipboardChanged;
 
+    use crate::mobile_lan::core::MobileLanCore;
     use crate::mobile_lan::routes::build_router;
     use crate::mobile_lan::test_support::{
-        auth_header, build_facade_with_seeded_device, fake_cancel_token, fake_sse_source,
+        auth_header, build_test_core_with_seeded_device, fake_cancel_token, fake_sse_source,
+        TestMobileLanBackend,
     };
 
     const TEST_TIMEOUT: Duration = Duration::from_secs(2);
@@ -274,7 +268,7 @@ mod tests {
 
     #[tokio::test]
     async fn hello_then_update_on_advance() {
-        let facade = build_facade_with_seeded_device("mobile_alice", "wonderland").await;
+        let facade = build_test_core_with_seeded_device("mobile_alice", "wonderland").await;
         let sse_source = fake_sse_source();
         let cancel = fake_cancel_token();
         let app = build_router(facade, None, sse_source.clone(), cancel);
@@ -305,12 +299,12 @@ mod tests {
         assert!(hello_frame.contains("event: hello"), "got {hello_frame:?}");
         assert!(hello_frame.contains("server_time_ms"));
 
-        let state = uc_core::clipboard::ActiveClipboardState::new(
-            "blake3v1:aa",
-            EntryId::new(),
-            42,
-            DeviceId::new("dev-a"),
-        );
+        let state = ActiveClipboardChanged {
+            snapshot_hash: "blake3v1:aa".into(),
+            entry_id: "entry-a".into(),
+            activated_at_ms: 42,
+            activated_by: "dev-a".into(),
+        };
         sse_source.send(state).unwrap();
 
         let update_frame = next_frame(&mut stream).await;
@@ -324,7 +318,7 @@ mod tests {
 
     #[tokio::test]
     async fn cancel_ends_the_stream() {
-        let facade = build_facade_with_seeded_device("mobile_alice", "wonderland").await;
+        let facade = build_test_core_with_seeded_device("mobile_alice", "wonderland").await;
         let sse_source = fake_sse_source();
         let cancel = fake_cancel_token();
         let app = build_router(facade, None, sse_source, cancel.clone());
@@ -359,7 +353,7 @@ mod tests {
     /// connect authenticates as the same `device_id`.
     #[tokio::test]
     async fn third_connection_for_same_device_evicts_the_oldest() {
-        let facade = build_facade_with_seeded_device("mobile_alice", "wonderland").await;
+        let facade = build_test_core_with_seeded_device("mobile_alice", "wonderland").await;
         let sse_source = fake_sse_source();
         let cancel = fake_cancel_token();
         let app = build_router(facade, None, sse_source, cancel);
@@ -409,7 +403,7 @@ mod tests {
     /// keeps receiving further `update`s afterward.
     #[tokio::test]
     async fn lagged_receiver_gets_resync_and_stays_connected() {
-        let facade = build_facade_with_seeded_device("mobile_alice", "wonderland").await;
+        let facade = build_test_core_with_seeded_device("mobile_alice", "wonderland").await;
         // Deliberately tiny capacity so a handful of unread sends overflows it.
         let (sse_source, _keep_alive_rx) = tokio::sync::broadcast::channel(2);
         let cancel = fake_cancel_token();
@@ -432,12 +426,12 @@ mod tests {
         // The handler already subscribed during the request above; these
         // sends overflow the receiver's buffer before it is ever polled.
         for i in 0..5u8 {
-            let state = uc_core::clipboard::ActiveClipboardState::new(
-                format!("blake3v1:{i}"),
-                EntryId::new(),
-                i as i64,
-                DeviceId::new("dev-a"),
-            );
+            let state = ActiveClipboardChanged {
+                snapshot_hash: format!("blake3v1:{i}"),
+                entry_id: format!("entry-{i}"),
+                activated_at_ms: i as i64,
+                activated_by: "dev-a".into(),
+            };
             sse_source.send(state).unwrap();
         }
 
@@ -461,14 +455,15 @@ mod tests {
     /// "credentials rotated" from the client's perspective.
     #[tokio::test(start_paused = true)]
     async fn periodic_revalidation_failure_ends_the_stream() {
-        let facade = build_facade_with_seeded_device("mobile_alice", "wonderland").await;
+        let backend = Arc::new(TestMobileLanBackend::seeded("mobile_alice", "wonderland"));
+        let core = MobileLanCore::with_test_backend(backend.clone());
         let sse_source = fake_sse_source();
         let cancel = fake_cancel_token();
         // Keep our own sender clone alive — `build_router`'s copy is dropped
         // once `oneshot()` returns, and a closed broadcast channel would end
         // the stream via `RecvError::Closed` before the timers ever get a
         // chance to fire, which is not what this test is exercising.
-        let app = build_router(facade.clone(), None, sse_source.clone(), cancel);
+        let app = build_router(core, None, sse_source.clone(), cancel);
 
         let resp = app
             .oneshot(
@@ -484,12 +479,7 @@ mod tests {
         let mut stream = resp.into_body().into_data_stream();
         let _hello = next_frame(&mut stream).await;
 
-        facade
-            .revoke_device(uc_application::facade::RevokeMobileDeviceInput {
-                device_id: uc_core::mobile_sync::MobileDeviceId::new("did_seed"),
-            })
-            .await
-            .expect("seeded device revokes");
+        backend.revoke();
 
         // Advance past the heartbeat tick (consumed as a ping) and then past
         // the revalidation tick, which now fails because the device is gone.

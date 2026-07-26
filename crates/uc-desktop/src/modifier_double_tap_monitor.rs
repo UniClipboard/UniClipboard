@@ -3,7 +3,7 @@ use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
 use tracing::{error, warn};
-use uc_core::settings::model::QuickPanelDoubleTapModifier;
+use uc_daemon_contract::api::dto::settings::QuickPanelDoubleTapModifierDto as QuickPanelDoubleTapModifier;
 
 use crate::modifier_double_tap::ModifierDoubleTapDetector;
 

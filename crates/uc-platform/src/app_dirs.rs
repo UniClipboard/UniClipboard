@@ -1,8 +1,6 @@
 use std::path::PathBuf;
 
-use crate::ports::AppDirsPort;
-use uc_core::app_dirs::AppDirs;
-use uc_core::ports::AppDirsError;
+use crate::ports::{AppDirs, AppDirsError, AppDirsProvider};
 
 /// Constructs the application directory name, appending a profile suffix when a profile is resolved.
 ///
@@ -90,7 +88,7 @@ impl DirsAppDirsAdapter {
     }
 }
 
-impl AppDirsPort for DirsAppDirsAdapter {
+impl AppDirsProvider for DirsAppDirsAdapter {
     /// Constructs the application's directories using the system (or overridden) local data directory.
     ///
     /// # Returns
@@ -104,7 +102,7 @@ impl AppDirsPort for DirsAppDirsAdapter {
     /// # Examples
     ///
     /// ```
-    /// use uc_platform::ports::AppDirsPort;
+    /// use uc_platform::ports::AppDirsProvider;
     /// use uc_platform::app_dirs::DirsAppDirsAdapter;
     ///
     /// let adapter = DirsAppDirsAdapter::new();

@@ -10,8 +10,6 @@
 //! `uc-content-hash` crate) instead of a per-request SHA-256 that a server-side re-encode can
 //! invalidate.
 
-use std::sync::Arc;
-
 use axum::{
     extract::{Query, State},
     http::StatusCode,
@@ -20,7 +18,7 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 
-use uc_application::facade::{CheckContentAvailableError, MobileSyncFacade};
+use super::MobileLanState;
 
 #[derive(Debug, Deserialize)]
 pub(super) struct ContentAvailabilityQuery {
@@ -34,24 +32,25 @@ pub(super) struct ContentAvailabilityDoc {
 }
 
 pub(super) async fn get_content_availability(
-    State(facade): State<Arc<MobileSyncFacade>>,
+    State(state): State<MobileLanState>,
     Query(query): Query<ContentAvailabilityQuery>,
 ) -> Result<Json<ContentAvailabilityDoc>, Response> {
     if query.snapshot_hash.trim().is_empty() {
         return Err((StatusCode::BAD_REQUEST, "snapshotHash is required").into_response());
     }
-    match facade.check_content_available(&query.snapshot_hash).await {
+    match state
+        .core
+        .check_content_available(query.snapshot_hash)
+        .await
+    {
         Ok(available) => {
-            tracing::info!(
-                snapshot_hash = %query.snapshot_hash,
-                available,
-                "GET /api/mobile-sync/content-availability: 200"
-            );
+            tracing::info!(available, "GET /api/mobile-sync/content-availability: 200");
             Ok(Json(ContentAvailabilityDoc { available }))
         }
-        Err(CheckContentAvailableError::Repository(err)) => {
+        Err(error) => {
             tracing::warn!(
-                error = %err,
+                code = error.code(),
+                category = %error.category(),
                 "GET /api/mobile-sync/content-availability: lookup failed"
             );
             Err(StatusCode::INTERNAL_SERVER_ERROR.into_response())

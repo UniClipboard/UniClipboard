@@ -3,8 +3,6 @@
 //! All routes are protected by the auth_extractor + rate_limit middleware chain
 //! applied at the router level (see routes::router_l2_plus).
 
-use std::sync::Arc;
-
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
@@ -12,15 +10,19 @@ use axum::routing::{delete, get, post};
 use axum::{Json, Router};
 use serde::Deserialize;
 use serde_json::json;
-use uc_application::facade::{
-    AppFacade, NotResendableReason, ResendEntryCommand, ResendEntryError,
+use uc_engine::error_codes::{
+    ENTRY_DELIVERY_FAILED_CODE, ENTRY_DELIVERY_NOT_FOUND_CODE, HISTORY_FAILED_CODE,
+    HISTORY_INVALID_INPUT_CODE, HISTORY_NOT_FOUND_CODE, HISTORY_UNSUPPORTED_CONTENT_CODE,
+    RECEIVE_FAILED_CODE, RECEIVE_INVALID_INPUT_CODE, RECEIVE_UNAVAILABLE_CODE,
+    RESEND_DISPATCH_FAILED_CODE, RESEND_STORAGE_FAILED_CODE, TRANSFER_CANCEL_FAILED_CODE,
+    TRANSFER_CANCEL_UNAVAILABLE_CODE,
 };
-use uc_application::facade::{
-    ClipboardHistoryError, ClipboardHistoryFacade, ClipboardListInput, GetEntryDeliveryViewError,
-};
-use uc_core::ids::{DeviceId, EntryId, FormatId, RepresentationId};
-use uc_core::{
-    ClipboardChangeOrigin, MimeType, ObservedClipboardRepresentation, SystemClipboardSnapshot,
+use uc_engine::{
+    CancelEntryReceiveInput, CancelInboundTransferInput, EngineError, EntryNotResendableReason,
+    EntryReceiveCancellationOutcome, EntryReceiveProgressInput, HistoryEntryInput,
+    InboundTransferCancellationOutcome, ListHistoryEntriesInput, Operation, OperationResult,
+    ReceiveProgressSummary, ResendEntryInput, ResendEntryOutcome, SendTextInput,
+    SetHistoryEntryFavoriteInput, TransferCancellationReason,
 };
 use utoipa::IntoParams;
 
@@ -59,12 +61,6 @@ fn default_limit() -> usize {
 fn clamp_limit(limit: usize) -> usize {
     // Prevent unbounded queries — cap at 1000 entries per request
     limit.min(1000)
-}
-
-fn require_facade(
-    state: &DaemonApiState,
-) -> Result<std::sync::Arc<ClipboardHistoryFacade>, ApiError> {
-    Ok(state.app_facade_or_error()?.clipboard_history.clone())
 }
 
 // `list_entries` is `#[deprecated]` (it marks the OpenAPI operation deprecated
@@ -117,12 +113,18 @@ pub(crate) async fn get_entry_receive_progress(
     State(state): State<DaemonApiState>,
     Path(entry_id): Path<String>,
 ) -> Result<Json<ApiEnvelope<Option<EntryReceiveProgressResponse>>>, ApiError> {
-    let app = require_app_facade(&state)?;
-    let progress = app
-        .get_entry_receive_progress(&EntryId::from_string(entry_id))
+    let result = state
+        .execute(Operation::QueryEntryReceiveProgress(
+            EntryReceiveProgressInput { entry_id },
+        ))
         .await
-        .map_err(|error| ApiError::internal(error.to_string()))?
-        .map(receive_progress_response);
+        .map_err(|error| map_receive_engine_err("get_progress", error))?;
+    let OperationResult::EntryReceiveProgress(progress) = result else {
+        return Err(ApiError::internal(
+            "engine returned an unexpected receive-progress result",
+        ));
+    };
+    let progress = progress.map(receive_progress_response);
     Ok(Json(ApiEnvelope::now(progress)))
 }
 
@@ -139,20 +141,23 @@ pub(crate) async fn get_entry_receive_progress(
 pub(crate) async fn list_entry_receive_progress(
     State(state): State<DaemonApiState>,
 ) -> Result<Json<ApiEnvelope<Vec<EntryReceiveProgressResponse>>>, ApiError> {
-    let app = require_app_facade(&state)?;
-    let progress = app
-        .list_entry_receive_progress()
+    let result = state
+        .execute(Operation::ListEntryReceiveProgress)
         .await
-        .map_err(|error| ApiError::internal(error.to_string()))?
+        .map_err(|error| map_receive_engine_err("list_progress", error))?;
+    let OperationResult::EntryReceiveProgressList(progress) = result else {
+        return Err(ApiError::internal(
+            "engine returned an unexpected receive-progress-list result",
+        ));
+    };
+    let progress = progress
         .into_iter()
         .map(receive_progress_response)
         .collect();
     Ok(Json(ApiEnvelope::now(progress)))
 }
 
-fn receive_progress_response(
-    progress: uc_core::ports::EntryReceiveProgress,
-) -> EntryReceiveProgressResponse {
+fn receive_progress_response(progress: ReceiveProgressSummary) -> EntryReceiveProgressResponse {
     EntryReceiveProgressResponse {
         entry_id: progress.entry_id,
         attempt_id: progress.attempt_id,
@@ -182,27 +187,30 @@ pub(crate) async fn cancel_entry_receive(
     Path(entry_id): Path<String>,
     body: Result<Json<CancelEntryReceiveRequest>, axum::extract::rejection::JsonRejection>,
 ) -> Result<Json<ApiEnvelope<CancelEntryReceiveResponse>>, ApiError> {
-    let app = require_app_facade(&state)?;
     let Json(request) = body.map_err(|error| ApiError::bad_request(error.to_string()))?;
-    let outcome = app
-        .cancel_entry_receive(&EntryId::from_string(entry_id), &request.attempt_id)
+    let result = state
+        .execute(Operation::CancelEntryReceive(CancelEntryReceiveInput {
+            entry_id,
+            attempt_id: request.attempt_id,
+        }))
         .await
-        .map_err(|error| ApiError::internal(error.to_string()))?;
+        .map_err(|error| map_receive_engine_err("cancel_receive", error))?;
+    let OperationResult::EntryReceiveCancellation(outcome) = result else {
+        return Err(ApiError::internal(
+            "engine returned an unexpected receive-cancellation result",
+        ));
+    };
     Ok(Json(ApiEnvelope::now(cancel_receive_response(outcome))))
 }
 
-fn cancel_receive_response(
-    outcome: uc_application::facade::CancelEntryReceiveOutcome,
-) -> CancelEntryReceiveResponse {
+fn cancel_receive_response(outcome: EntryReceiveCancellationOutcome) -> CancelEntryReceiveResponse {
     let outcome = match outcome {
-        uc_application::facade::CancelEntryReceiveOutcome::CancellationRequested => {
-            "cancellation_requested"
-        }
-        uc_application::facade::CancelEntryReceiveOutcome::Cancelled => "cancelled",
-        uc_application::facade::CancelEntryReceiveOutcome::NotReceiving => "not_receiving",
-        uc_application::facade::CancelEntryReceiveOutcome::TooLate => "too_late",
-        uc_application::facade::CancelEntryReceiveOutcome::AlreadyTerminal => "already_terminal",
-        uc_application::facade::CancelEntryReceiveOutcome::Superseded => "superseded",
+        EntryReceiveCancellationOutcome::CancellationRequested => "cancellation_requested",
+        EntryReceiveCancellationOutcome::Cancelled => "cancelled",
+        EntryReceiveCancellationOutcome::NotReceiving => "not_receiving",
+        EntryReceiveCancellationOutcome::TooLate => "too_late",
+        EntryReceiveCancellationOutcome::AlreadyTerminal => "already_terminal",
+        EntryReceiveCancellationOutcome::Superseded => "superseded",
     };
     CancelEntryReceiveResponse {
         outcome: outcome.to_owned(),
@@ -247,15 +255,19 @@ async fn list_entries(
             "deprecated clipboard list endpoint is in use; migrate callers to the unified search endpoint"
         );
     });
-    let facade = require_facade(&state)?;
     let limit = clamp_limit(params.limit);
-    let entries = facade
-        .list_entries(ClipboardListInput {
-            limit,
-            offset: params.offset,
-        })
+    let result = state
+        .execute(Operation::ListHistoryEntries(ListHistoryEntriesInput {
+            limit: limit as u32,
+            offset: params.offset as u64,
+        }))
         .await
-        .map_err(|e| map_clipboard_err("list_entries", e))?;
+        .map_err(|error| map_history_engine_err("list_entries", error))?;
+    let OperationResult::HistoryEntries(entries) = result else {
+        return Err(ApiError::internal(
+            "engine returned an unexpected history-list result",
+        ));
+    };
 
     let response_entries: Vec<EntryProjectionResponseDto> =
         entries.into_iter().map(IntoApiDto::into_api_dto).collect();
@@ -286,11 +298,15 @@ async fn get_entry(
     State(state): State<DaemonApiState>,
     Path(entry_id): Path<String>,
 ) -> Result<Json<ApiEnvelope<EntryDetailDto>>, ApiError> {
-    let facade = require_facade(&state)?;
-    let detail = facade
-        .get_entry(&entry_id)
+    let result = state
+        .execute(Operation::GetHistoryEntry(HistoryEntryInput { entry_id }))
         .await
-        .map_err(|e| map_clipboard_err("get_entry", e))?;
+        .map_err(|error| map_history_engine_err("get_entry", error))?;
+    let OperationResult::HistoryEntry(detail) = result else {
+        return Err(ApiError::internal(
+            "engine returned an unexpected history-detail result",
+        ));
+    };
 
     Ok(Json(ApiEnvelope::now(detail.into_api_dto())))
 }
@@ -316,11 +332,17 @@ async fn delete_entry(
     State(state): State<DaemonApiState>,
     Path(entry_id): Path<String>,
 ) -> Result<axum::http::StatusCode, ApiError> {
-    let facade = require_facade(&state)?;
-    facade
-        .delete_entry(&entry_id)
+    let result = state
+        .execute(Operation::DeleteHistoryEntry(HistoryEntryInput {
+            entry_id,
+        }))
         .await
-        .map_err(|e| map_clipboard_err("delete_entry", e))?;
+        .map_err(|error| map_history_engine_err("delete_entry", error))?;
+    if result != OperationResult::HistoryEntryDeleted {
+        return Err(ApiError::internal(
+            "engine returned an unexpected history-delete result",
+        ));
+    }
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -349,17 +371,20 @@ async fn toggle_favorite(
     Path(entry_id): Path<String>,
     body: Result<Json<ToggleFavoriteRequest>, axum::extract::rejection::JsonRejection>,
 ) -> Result<Json<ApiEnvelope<ToggleFavoriteResultDto>>, ApiError> {
-    let facade = require_facade(&state)?;
-
     let Json(body) = body.map_err(|_| ApiError::bad_request("missing isFavorited field"))?;
-
-    let found = facade
-        .toggle_favorite(&entry_id, body.is_favorited)
+    let result = state
+        .execute(Operation::SetHistoryEntryFavorite(
+            SetHistoryEntryFavoriteInput {
+                entry_id,
+                is_favorited: body.is_favorited,
+            },
+        ))
         .await
-        .map_err(|e| map_clipboard_err("toggle_favorite", e))?;
-
-    if !found {
-        return Err(ApiError::not_found("entry not found"));
+        .map_err(|error| map_history_engine_err("toggle_favorite", error))?;
+    if result != OperationResult::HistoryEntryFavoriteSet {
+        return Err(ApiError::internal(
+            "engine returned an unexpected history-favorite result",
+        ));
     }
 
     Ok(Json(ApiEnvelope::now(ToggleFavoriteResultDto {
@@ -383,11 +408,15 @@ async fn toggle_favorite(
 async fn get_stats(
     State(state): State<DaemonApiState>,
 ) -> Result<Json<ApiEnvelope<ClipboardStatsDto>>, ApiError> {
-    let facade = require_facade(&state)?;
-    let stats = facade
-        .stats()
+    let result = state
+        .execute(Operation::QueryHistoryStats)
         .await
-        .map_err(|e| map_clipboard_err("get_stats", e))?;
+        .map_err(|error| map_history_engine_err("get_stats", error))?;
+    let OperationResult::HistoryStats(stats) = result else {
+        return Err(ApiError::internal(
+            "engine returned an unexpected history-stats result",
+        ));
+    };
 
     Ok(Json(ApiEnvelope::now(stats.into_api_dto())))
 }
@@ -413,11 +442,17 @@ async fn get_entry_resource(
     State(state): State<DaemonApiState>,
     Path(entry_id): Path<String>,
 ) -> Result<Json<ApiEnvelope<EntryResourceDto>>, ApiError> {
-    let facade = require_facade(&state)?;
-    let resource = facade
-        .get_entry_resource(&entry_id)
+    let result = state
+        .execute(Operation::GetHistoryEntryResource(HistoryEntryInput {
+            entry_id,
+        }))
         .await
-        .map_err(|e| map_clipboard_err("get_entry_resource", e))?;
+        .map_err(|error| map_history_engine_err("get_entry_resource", error))?;
+    let OperationResult::HistoryEntryResource(resource) = result else {
+        return Err(ApiError::internal(
+            "engine returned an unexpected history-resource result",
+        ));
+    };
 
     Ok(Json(ApiEnvelope::now(resource.into_api_dto())))
 }
@@ -439,20 +474,20 @@ async fn get_entry_resource(
 async fn clear_history(
     State(state): State<DaemonApiState>,
 ) -> Result<Json<ApiEnvelope<ClearHistoryResultDto>>, ApiError> {
-    let facade = require_facade(&state)?;
-    let result = facade
-        .clear_history()
+    let result = state
+        .execute(Operation::ClearHistory)
         .await
-        .map_err(|e| map_clipboard_err("clear_history", e))?;
+        .map_err(|error| map_history_engine_err("clear_history", error))?;
+    let OperationResult::HistoryCleared(result) = result else {
+        return Err(ApiError::internal(
+            "engine returned an unexpected history-clear result",
+        ));
+    };
 
     Ok(Json(ApiEnvelope::now(result.into_api_dto())))
 }
 
 // ── Command endpoints (ADR-008 P2.5 / D7) ───────────────────────
-
-fn require_app_facade(state: &DaemonApiState) -> Result<Arc<AppFacade>, ApiError> {
-    state.app_facade_or_error()
-}
 
 /// POST /clipboard/dispatch
 ///
@@ -477,43 +512,33 @@ async fn dispatch_text(
 ) -> Result<Json<ApiEnvelope<DispatchOutcomeResponse>>, ApiError> {
     // ADR-008 P5-L L8b: refuse new clipboard dispatch while a controlled restart drains.
     crate::api::server::ensure_not_quiescing(&state.quiescing)?;
-    let app = require_app_facade(&state)?;
     let Json(req) = body.map_err(|e| ApiError::bad_request(e.to_string()))?;
 
     if req.text.is_empty() {
         return Err(ApiError::bad_request("text must not be empty"));
     }
 
-    let target_filter: Option<Vec<DeviceId>> = req
-        .peers
-        .filter(|p| !p.is_empty())
-        .map(|ids| ids.iter().map(DeviceId::new).collect());
-
-    let snapshot = SystemClipboardSnapshot {
-        ts_ms: chrono::Utc::now().timestamp_millis(),
-        representations: vec![ObservedClipboardRepresentation::new(
-            RepresentationId::new(),
-            FormatId::from("text"),
-            Some(MimeType("text/plain".to_string())),
-            req.text.into_bytes(),
-        )],
-        file_content_digests: Vec::new(),
-        file_set_v1_component: None,
-    };
-
-    let outcome = app
-        .dispatch_clipboard_snapshot(snapshot, ClipboardChangeOrigin::LocalCapture, target_filter)
+    let result = state
+        .execute(Operation::SendText(SendTextInput {
+            text: req.text,
+            target_devices: req.peers.unwrap_or_default(),
+        }))
         .await
-        .map_err(|e| {
+        .map_err(|error| {
             log_facade_failure(
                 "clipboard_command",
                 "dispatch_text",
                 "dispatch_error",
                 StatusCode::INTERNAL_SERVER_ERROR,
-                &e.to_string(),
+                "clipboard dispatch failed",
             );
-            ApiError::internal(e.to_string())
+            ApiError::internal(format!("clipboard dispatch failed ({})", error.code()))
         })?;
+    let OperationResult::EntrySent(outcome) = result else {
+        return Err(ApiError::internal(
+            "engine returned an unexpected dispatch result",
+        ));
+    };
 
     Ok(Json(ApiEnvelope::now(outcome.into_api_dto())))
 }
@@ -543,28 +568,28 @@ async fn resend_entry(
     // ADR-008 P5-L L8b: refuse new clipboard resend while a controlled restart drains.
     crate::api::server::ensure_not_quiescing(&state.quiescing)
         .map_err(IntoResponse::into_response)?;
-    let app = require_app_facade(&state).map_err(IntoResponse::into_response)?;
     let Json(req) = body.map_err(|e| ApiError::bad_request(e.to_string()).into_response())?;
 
-    let target_filter: Option<Vec<DeviceId>> = req
-        .peers
-        .filter(|p| !p.is_empty())
-        .map(|ids| ids.iter().map(DeviceId::new).collect());
-
-    let cmd = ResendEntryCommand {
-        entry_id: EntryId::from(req.entry_id.as_str()),
-        target_filter,
-    };
-
-    let report = app
-        .resend_entry(cmd)
+    let result = state
+        .execute(Operation::ResendEntry(ResendEntryInput {
+            entry_id: req.entry_id,
+            target_devices: req.peers.unwrap_or_default(),
+        }))
         .await
-        .map_err(|e| resend_error_to_response(e).into_response())?;
+        .map_err(|error| resend_error_to_response(error).into_response())?;
 
-    Ok(Json(ApiEnvelope::now(report.into_api_dto())))
+    match result {
+        OperationResult::EntryResent(ResendEntryOutcome::Completed(report)) => {
+            Ok(Json(ApiEnvelope::now(report.into_api_dto())))
+        }
+        OperationResult::EntryResent(outcome) => {
+            Err(resend_outcome_to_response(outcome).into_response())
+        }
+        _ => Err(ApiError::internal("engine returned an unexpected resend result").into_response()),
+    }
 }
 
-/// Map the typed [`ResendEntryError`] to (status, canonical `ApiErrorResponse`).
+/// Map structured resend business outcomes to the existing HTTP contract.
 ///
 /// `code` is the SCREAMING_SNAKE tag the frontend `ResendEntryCommandError`
 /// union switches on; the per-variant structured fields ride `details` so the
@@ -573,62 +598,54 @@ async fn resend_entry(
 /// `DaemonApiError.details`, and the FE reconstructs `{ code, ...details }`).
 /// The client-recoverable variants are 4xx (not 5xx) so they neither trip
 /// `callSdk`'s 401 refresh-retry nor escalate to Sentry via `log_facade_failure`.
-fn resend_error_to_response(err: ResendEntryError) -> (StatusCode, Json<ApiErrorResponse>) {
-    use ResendEntryError as E;
+fn resend_outcome_to_response(outcome: ResendEntryOutcome) -> (StatusCode, Json<ApiErrorResponse>) {
     let (status, variant, code, message, details): (
         StatusCode,
         &'static str,
         &'static str,
         String,
         Option<serde_json::Value>,
-    ) = match err {
-        E::EntryNotFound(id) => (
+    ) = match outcome {
+        ResendEntryOutcome::EntryNotFound { entry_id } => (
             StatusCode::NOT_FOUND,
             "entry_not_found",
             "ENTRY_NOT_FOUND",
-            format!("entry not found: {}", id.inner()),
-            Some(json!({ "entryId": id.inner() })),
+            format!("entry not found: {entry_id}"),
+            Some(json!({ "entryId": entry_id })),
         ),
-        E::EntryNotResendable { entry_id, reason } => {
+        ResendEntryOutcome::EntryNotResendable { entry_id, reason } => {
             let reason_tag = match reason {
-                NotResendableReason::RemoteOrigin => "remoteOrigin",
-                NotResendableReason::PayloadLost => "payloadLost",
+                EntryNotResendableReason::RemoteOrigin => "remoteOrigin",
+                EntryNotResendableReason::PayloadLost => "payloadLost",
             };
             (
                 StatusCode::CONFLICT,
                 "entry_not_resendable",
                 "ENTRY_NOT_RESENDABLE",
-                format!("entry {} is not resendable", entry_id.inner()),
-                Some(json!({ "entryId": entry_id.inner(), "reason": reason_tag })),
+                format!("entry {entry_id} is not resendable"),
+                Some(json!({ "entryId": entry_id, "reason": reason_tag })),
             )
         }
-        E::TargetNotTrusted(device_id) => (
+        ResendEntryOutcome::TargetNotTrusted { device_id } => (
             StatusCode::CONFLICT,
             "target_not_trusted",
             "TARGET_NOT_TRUSTED",
-            format!("target device {} is not a trusted peer", device_id.as_str()),
-            Some(json!({ "deviceId": device_id.as_str() })),
+            format!("target device {device_id} is not a trusted peer"),
+            Some(json!({ "deviceId": device_id })),
         ),
-        E::NoEligibleTargets => (
+        ResendEntryOutcome::NoEligibleTargets => (
             StatusCode::CONFLICT,
             "no_eligible_targets",
             "NO_ELIGIBLE_TARGETS",
             "no eligible targets for resend".to_string(),
             None,
         ),
-        E::Storage(msg) => (
+        ResendEntryOutcome::Completed(_) => (
             StatusCode::INTERNAL_SERVER_ERROR,
-            "storage",
-            "STORAGE",
-            msg.clone(),
-            Some(json!({ "message": msg })),
-        ),
-        E::Dispatch(msg) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "dispatch",
-            "DISPATCH",
-            msg.clone(),
-            Some(json!({ "message": msg })),
+            "unexpected_completed_outcome",
+            "INTERNAL",
+            "resend failed".to_string(),
+            None,
         ),
     };
     log_facade_failure(
@@ -643,6 +660,25 @@ fn resend_error_to_response(err: ResendEntryError) -> (StatusCode, Json<ApiError
         None => ApiErrorResponse::new(code, message),
     };
     (status, Json(body))
+}
+
+fn resend_error_to_response(error: EngineError) -> (StatusCode, Json<ApiErrorResponse>) {
+    let (variant, code) = match error.code() {
+        RESEND_STORAGE_FAILED_CODE => ("storage", "STORAGE"),
+        RESEND_DISPATCH_FAILED_CODE => ("dispatch", "DISPATCH"),
+        _ => ("unexpected_engine_error", "INTERNAL"),
+    };
+    log_facade_failure(
+        "clipboard_command",
+        "resend_entry",
+        variant,
+        StatusCode::INTERNAL_SERVER_ERROR,
+        "resend failed",
+    );
+    (
+        StatusCode::INTERNAL_SERVER_ERROR,
+        Json(ApiErrorResponse::new(code, "resend failed")),
+    )
 }
 
 /// GET /clipboard/entries/:id/delivery
@@ -667,23 +703,34 @@ async fn get_entry_delivery_view_handler(
     State(state): State<DaemonApiState>,
     Path(id): Path<String>,
 ) -> Result<Json<ApiEnvelope<EntryDeliveryViewDto>>, ApiError> {
-    let app = state.app_facade_or_error()?;
-    let entry = EntryId::from_string(id);
-    let view = app
-        .get_entry_delivery_view(&entry)
+    let result = state
+        .execute(Operation::QueryEntryDelivery(HistoryEntryInput {
+            entry_id: id.clone(),
+        }))
         .await
-        .map_err(map_delivery_view_err)?;
+        .map_err(|error| map_delivery_view_err(error, &id))?;
+    let OperationResult::EntryDelivery(view) = result else {
+        return Err(ApiError::internal(
+            "engine returned an unexpected delivery-view result",
+        ));
+    };
     Ok(Json(ApiEnvelope::now(view.into_api_dto())))
 }
 
-fn map_delivery_view_err(err: GetEntryDeliveryViewError) -> ApiError {
-    use GetEntryDeliveryViewError as E;
-    let (variant, api): (&'static str, ApiError) = match err {
-        E::EntryNotFound(id) => (
+fn map_delivery_view_err(error: EngineError, entry_id: &str) -> ApiError {
+    let (variant, api): (&'static str, ApiError) = match error.code() {
+        ENTRY_DELIVERY_NOT_FOUND_CODE => (
             "entry_not_found",
-            ApiError::not_found(format!("entry not found: {id}")),
+            ApiError::not_found(format!("entry not found: {entry_id}")),
         ),
-        E::Storage(msg) => ("storage", ApiError::internal(msg)),
+        ENTRY_DELIVERY_FAILED_CODE => (
+            "storage",
+            ApiError::internal("failed to load entry delivery view"),
+        ),
+        _ => (
+            "unexpected_engine_error",
+            ApiError::internal("failed to load entry delivery view"),
+        ),
     };
     log_facade_failure(
         "clipboard",
@@ -718,12 +765,11 @@ async fn cancel_transfer(
     Path(transfer_id): Path<String>,
     body: Result<Json<CancelTransferRequest>, axum::extract::rejection::JsonRejection>,
 ) -> Result<Json<ApiEnvelope<CancelTransferResponse>>, ApiError> {
-    let app = require_app_facade(&state)?;
     let Json(req) = body.map_err(|e| ApiError::bad_request(e.to_string()))?;
 
     let reason = match req.reason.as_str() {
-        "local_user" => uc_core::FileTransferCancellationReason::LocalUser,
-        "timeout" => uc_core::FileTransferCancellationReason::Timeout,
+        "local_user" => TransferCancellationReason::LocalUser,
+        "timeout" => TransferCancellationReason::Timeout,
         other => {
             return Err(ApiError::bad_request(format!(
                 "unknown cancellation reason: {other}"
@@ -731,23 +777,24 @@ async fn cancel_transfer(
         }
     };
 
-    let outcome = app
-        .cancel_inbound_transfer(&transfer_id, reason)
+    let result = state
+        .execute(Operation::CancelInboundTransfer(
+            CancelInboundTransferInput {
+                transfer_id,
+                reason,
+            },
+        ))
         .await
-        .map_err(|e| {
-            log_facade_failure(
-                "clipboard_command",
-                "cancel_transfer",
-                "cancel_error",
-                StatusCode::INTERNAL_SERVER_ERROR,
-                &e.to_string(),
-            );
-            ApiError::internal(e.to_string())
-        })?;
+        .map_err(|error| map_receive_engine_err("cancel_transfer", error))?;
+    let OperationResult::InboundTransferCancellation(outcome) = result else {
+        return Err(ApiError::internal(
+            "engine returned an unexpected transfer-cancellation result",
+        ));
+    };
 
     let outcome_str = match outcome {
-        uc_application::facade::InboundCancelOutcome::Cancelled => "cancelled",
-        uc_application::facade::InboundCancelOutcome::NotInflight => "not_inflight",
+        InboundTransferCancellationOutcome::Cancelled => "cancelled",
+        InboundTransferCancellationOutcome::NotInflight => "not_inflight",
     };
 
     Ok(Json(ApiEnvelope::now(CancelTransferResponse {
@@ -757,11 +804,11 @@ async fn cancel_transfer(
 
 // ── Clipboard history helpers ────────────────────────────────────
 
-fn map_clipboard_err(op: &'static str, err: ClipboardHistoryError) -> ApiError {
-    use ClipboardHistoryError as E;
-    let (variant, api): (&'static str, ApiError) = match err {
-        E::NotFound => ("not_found", ApiError::not_found("entry not found")),
-        E::UnsupportedContent => (
+fn map_history_engine_err(op: &'static str, error: EngineError) -> ApiError {
+    let (variant, api): (&'static str, ApiError) = match error.code() {
+        HISTORY_INVALID_INPUT_CODE => ("invalid_input", ApiError::bad_request("invalid input")),
+        HISTORY_NOT_FOUND_CODE => ("not_found", ApiError::not_found("entry not found")),
+        HISTORY_UNSUPPORTED_CONTENT_CODE => (
             "unsupported_content",
             ApiError {
                 status: StatusCode::UNPROCESSABLE_ENTITY,
@@ -770,9 +817,44 @@ fn map_clipboard_err(op: &'static str, err: ClipboardHistoryError) -> ApiError {
                 details: None,
             },
         ),
-        E::Internal(message) => ("internal", ApiError::internal(message)),
+        HISTORY_FAILED_CODE => (
+            "internal",
+            ApiError::internal("clipboard history operation failed"),
+        ),
+        _ => (
+            "unexpected_engine_error",
+            ApiError::internal("clipboard history operation failed"),
+        ),
     };
     log_facade_failure("clipboard_history", op, variant, api.status, &api.message);
+    api
+}
+
+fn map_receive_engine_err(op: &'static str, error: EngineError) -> ApiError {
+    let (variant, api): (&'static str, ApiError) = match error.code() {
+        RECEIVE_INVALID_INPUT_CODE => (
+            "invalid_input",
+            ApiError::bad_request("invalid receive request"),
+        ),
+        RECEIVE_UNAVAILABLE_CODE => (
+            "unavailable",
+            ApiError::internal("receive operation is unavailable"),
+        ),
+        RECEIVE_FAILED_CODE => ("internal", ApiError::internal("receive operation failed")),
+        TRANSFER_CANCEL_UNAVAILABLE_CODE => (
+            "transfer_unavailable",
+            ApiError::internal("transfer cancellation is unavailable"),
+        ),
+        TRANSFER_CANCEL_FAILED_CODE => (
+            "transfer_internal",
+            ApiError::internal("transfer cancellation failed"),
+        ),
+        _ => (
+            "unexpected_engine_error",
+            ApiError::internal("receive operation failed"),
+        ),
+    };
+    log_facade_failure("clipboard_receive", op, variant, api.status, &api.message);
     api
 }
 
@@ -780,21 +862,91 @@ fn map_clipboard_err(op: &'static str, err: ClipboardHistoryError) -> ApiError {
 mod tests {
     use super::*;
 
+    #[test]
+    fn history_engine_errors_preserve_http_statuses_and_redact_internal_details() {
+        let missing = map_history_engine_err(
+            "get_entry",
+            EngineError::new(
+                HISTORY_NOT_FOUND_CODE,
+                uc_engine::EngineErrorCategory::NotFound,
+                false,
+            ),
+        );
+        let unsupported = map_history_engine_err(
+            "get_entry",
+            EngineError::new(
+                HISTORY_UNSUPPORTED_CONTENT_CODE,
+                uc_engine::EngineErrorCategory::Conflict,
+                false,
+            ),
+        );
+        let internal = map_history_engine_err(
+            "clear_history",
+            EngineError::new(
+                HISTORY_FAILED_CODE,
+                uc_engine::EngineErrorCategory::Internal,
+                false,
+            ),
+        );
+
+        assert_eq!(missing.status, StatusCode::NOT_FOUND);
+        assert_eq!(unsupported.status, StatusCode::UNPROCESSABLE_ENTITY);
+        assert_eq!(internal.status, StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(internal.message, "clipboard history operation failed");
+        assert!(!internal.message.contains("path"));
+        assert!(internal.details.is_none());
+    }
+
+    #[test]
+    fn receive_engine_errors_preserve_http_statuses_and_redact_internal_details() {
+        let invalid = map_receive_engine_err(
+            "cancel_receive",
+            EngineError::new(
+                RECEIVE_INVALID_INPUT_CODE,
+                uc_engine::EngineErrorCategory::InvalidInput,
+                false,
+            ),
+        );
+        let unavailable = map_receive_engine_err(
+            "list_progress",
+            EngineError::new(
+                RECEIVE_UNAVAILABLE_CODE,
+                uc_engine::EngineErrorCategory::Unavailable,
+                true,
+            ),
+        );
+        let internal = map_receive_engine_err(
+            "cancel_transfer",
+            EngineError::new(
+                TRANSFER_CANCEL_FAILED_CODE,
+                uc_engine::EngineErrorCategory::Internal,
+                false,
+            ),
+        );
+
+        assert_eq!(invalid.status, StatusCode::BAD_REQUEST);
+        assert_eq!(unavailable.status, StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(internal.status, StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(internal.message, "transfer cancellation failed");
+        assert!(internal.details.is_none());
+    }
+
     /// The FE `ResendEntryCommandError` union reconstructs `{ code, ...details }`
     /// off the normalized error body, so each variant must emit its SCREAMING_SNAKE
     /// `code` plus its structured fields in `details`, and the client-recoverable
     /// variants must be 4xx (not 5xx → no Sentry escalation, no 401 retry).
     #[test]
     fn resend_error_carries_typed_code_and_structured_details() {
-        let (status, body) =
-            resend_error_to_response(ResendEntryError::TargetNotTrusted(DeviceId::new("dev-x")));
+        let (status, body) = resend_outcome_to_response(ResendEntryOutcome::TargetNotTrusted {
+            device_id: "dev-x".into(),
+        });
         assert_eq!(status, StatusCode::CONFLICT);
         assert_eq!(body.0.code, "TARGET_NOT_TRUSTED");
         assert_eq!(body.0.details.as_ref().unwrap()["deviceId"], "dev-x");
 
-        let (status, body) = resend_error_to_response(ResendEntryError::EntryNotResendable {
-            entry_id: EntryId::from("ent-1"),
-            reason: NotResendableReason::PayloadLost,
+        let (status, body) = resend_outcome_to_response(ResendEntryOutcome::EntryNotResendable {
+            entry_id: "ent-1".into(),
+            reason: EntryNotResendableReason::PayloadLost,
         });
         assert_eq!(status, StatusCode::CONFLICT);
         assert_eq!(body.0.code, "ENTRY_NOT_RESENDABLE");
@@ -802,24 +954,24 @@ mod tests {
         assert_eq!(details["entryId"], "ent-1");
         assert_eq!(details["reason"], "payloadLost");
 
-        let (status, body) = resend_error_to_response(ResendEntryError::EntryNotFound(
-            EntryId::from("ent-missing"),
-        ));
+        let (status, body) = resend_outcome_to_response(ResendEntryOutcome::EntryNotFound {
+            entry_id: "ent-missing".into(),
+        });
         assert_eq!(status, StatusCode::NOT_FOUND);
         assert_eq!(body.0.code, "ENTRY_NOT_FOUND");
         assert_eq!(body.0.details.as_ref().unwrap()["entryId"], "ent-missing");
 
-        let (status, body) = resend_error_to_response(ResendEntryError::Dispatch(
-            "encrypt session locked".to_string(),
+        let (status, body) = resend_error_to_response(EngineError::new(
+            RESEND_DISPATCH_FAILED_CODE,
+            uc_engine::EngineErrorCategory::Internal,
+            false,
         ));
         assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
         assert_eq!(body.0.code, "DISPATCH");
-        assert_eq!(
-            body.0.details.as_ref().unwrap()["message"],
-            "encrypt session locked"
-        );
+        assert_eq!(body.0.message, "resend failed");
+        assert!(body.0.details.is_none());
 
-        let (_, body) = resend_error_to_response(ResendEntryError::NoEligibleTargets);
+        let (_, body) = resend_outcome_to_response(ResendEntryOutcome::NoEligibleTargets);
         assert_eq!(body.0.code, "NO_ELIGIBLE_TARGETS");
         assert!(body.0.details.is_none());
     }
@@ -827,17 +979,24 @@ mod tests {
     /// Delivery-view: entry-not-found is a normal degraded-render case → plain 404.
     #[test]
     fn delivery_view_entry_not_found_is_404() {
-        let api = map_delivery_view_err(GetEntryDeliveryViewError::EntryNotFound("ent-x".into()));
+        let api = map_delivery_view_err(
+            EngineError::new(
+                ENTRY_DELIVERY_NOT_FOUND_CODE,
+                uc_engine::EngineErrorCategory::NotFound,
+                false,
+            ),
+            "ent-x",
+        );
         assert_eq!(api.status, StatusCode::NOT_FOUND);
         assert_eq!(api.code, "not_found");
     }
 
     #[test]
     fn receive_progress_and_stale_cancel_use_stable_wire_values() {
-        let response = receive_progress_response(uc_core::ports::EntryReceiveProgress {
+        let response = receive_progress_response(ReceiveProgressSummary {
             entry_id: "entry".to_owned(),
             attempt_id: "attempt-2".to_owned(),
-            state: uc_core::ports::AttemptState::Receiving,
+            state: "receiving".to_owned(),
             total_bytes: 30,
             completed_bytes: 10,
             items_total: 3,
@@ -851,8 +1010,7 @@ mod tests {
         assert_eq!(response.items_total, 3);
         assert_eq!(response.items_completed, 1);
 
-        let cancelled =
-            cancel_receive_response(uc_application::facade::CancelEntryReceiveOutcome::Superseded);
+        let cancelled = cancel_receive_response(EntryReceiveCancellationOutcome::Superseded);
         assert_eq!(cancelled.outcome, "superseded");
     }
 }

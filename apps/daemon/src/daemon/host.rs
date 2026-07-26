@@ -1,401 +1,308 @@
-//! Daemon host entry points.
-//!
-//! Provides two interfaces:
-//!
-//! - [`run`]: Synchronous blocking entry for the standalone daemon binary
-//!   (`uniclipd`) — creates its own tokio runtime, internally calls
-//!   [`start_in_process`] and blocks on the returned handle until the main
-//!   loop exits (driven by OS signals).
-//! - [`start_in_process`]: Async assembly core — assembles the process runtime,
-//!   spawns the daemon main loop as a task and returns a [`DaemonHandle`].
-//!   `run` wraps it for the binary; it is the daemon's own assembly body, not a
-//!   GUI entry point (ADR-008 P3-3: the GUI is a pure external-daemon client and
-//!   never hosts a daemon in-process).
-//!
-//! Both share the same assembly + main loop implementation
-//! ([`build_daemon_bootstrap_assembly`] / [`run_daemon_main`]).
-//!
-//! Migrated from `uc-desktop/src/daemon/host.rs` (ADR-008 P2, Slice 2b).
+//! Standalone daemon host for the shared engine.
 
+use std::path::Path;
 use std::sync::Arc;
+use std::time::Duration;
 
+use tokio::sync::broadcast;
 use tokio_util::sync::CancellationToken;
-use uc_application::clipboard_write::{
-    ClipboardWriteCoordinator, RestoreBroadcastRequest, RestoreBroadcastTrigger,
+use tracing::{info, warn};
+use uc_bootstrap::{
+    init_tracing_subscriber, install_panic_logging_hook, prepare_desktop_engine_host,
+    DesktopHostFileHandles, DesktopHostProcessPaths,
 };
-use uc_application::facade::{
-    ActiveClipboardReconcileDeps, ActiveClipboardReconcileFacade, AppFacade, AppPaths,
-    ClipboardSnapshotDeps, FileTransferFacade,
-};
-use uc_application::receive_reconciliation::EnsureReceiveReadyPort;
-use uc_bootstrap::{FileTransferLifecycle, WiredDependencies};
+use uc_daemon_local::crash_marker::{DaemonExitReport, DaemonRunMarker};
+use uc_daemon_local::process_metadata::{DaemonPidManager, DaemonProcessMode};
+use uc_engine::{ActiveClipboardChanged, Engine, HostFileHandle, Operation, OperationResult};
+use uc_webserver::api::auth::load_or_create_auth_token;
+use uc_webserver::api::server::{run_http_server, DaemonApiState, DaemonFileHandles};
+use uc_webserver::api::types::{DaemonResidency, DaemonWsEvent};
+use uc_webserver::security::{cleanup_rate_limiter_task, SecurityState};
 
-use super::app_assembly::{build_daemon_app_instance, DaemonAppAssemblyInput};
-use super::app_facade_assembly::{build_daemon_lifecycle_facades, DaemonLifecycleFacadesInput};
-use super::bootstrap::{build_daemon_bootstrap_assembly, DaemonBootstrapAssembly};
-use super::handle::DaemonHandle;
-use super::mobile_lan_lifecycle::{AppFacadeListenerSpawner, MobileLanLifecycleController};
-use super::process_runtime::DaemonProcessRuntime;
-use super::run_loop::{run_daemon_main, DaemonRunLoopInput};
+use super::engine_events::forward_engine_events;
+use super::mobile_lan_lifecycle::{initial_lan_target, MobileLanLifecycleController};
 use super::run_mode::DaemonRunMode;
-use super::runtime_assembly::{build_daemon_runtime_workers, DaemonRuntimeAssemblyInput};
-use super::runtime_controls::build_daemon_runtime_controls;
-use super::search_assembly::build_daemon_search_assembly;
-use super::service_assembly::build_daemon_service_plan;
-use super::startup_recovery::DaemonReceiveReadinessCoordinator;
+use super::startup_recovery::{record_upgrade_status_at_startup, spawn_startup_recovery};
 use super::tokio_runtime::build_daemon_tokio_runtime;
 
-/// Process-level persistent resource handles passed to the daemon on each spawn.
-///
-/// Daemon-lifecycle resources (iroh node / space_setup / HTTP server / LAN
-/// listener) are rebuilt on each daemon start/stop, but these persistent
-/// resources survive daemon reloads — the sqlite pool etc. are not destroyed
-/// when the daemon restarts.
-///
-/// `Clone` is derived: `wired` internally holds `Arc<dyn Port>` / `PathBuf`,
-/// other fields are also `Arc`, so clone is just a set of `Arc::clone` calls.
-#[derive(Clone)]
-pub struct ProcessRuntimeHandles {
-    pub wired: WiredDependencies,
-    pub storage_paths: AppPaths,
-    pub clipboard_write_coordinator: Arc<ClipboardWriteCoordinator>,
-    pub file_transfer_lifecycle: Arc<FileTransferLifecycle>,
-    pub file_transfer_facade: Arc<FileTransferFacade>,
+const ENGINE_SHUTDOWN_DEADLINE: Duration = Duration::from_secs(15);
+
+struct DesktopDaemonFileHandles {
+    handles: DesktopHostFileHandles,
 }
 
-/// Standalone daemon binary entry: creates its own tokio runtime, starts the
-/// daemon via [`start_in_process`], and blocks until exit.
-pub fn run(run_mode: DaemonRunMode) -> anyhow::Result<()> {
-    let rt = build_daemon_tokio_runtime()?;
-    rt.block_on(async move {
-        let super::process_bootstrap::ProcessRuntimeContext {
-            wired,
-            background,
-            storage_paths,
-            config: _config,
-        } = super::process_bootstrap::build_process_runtime(run_mode).await?;
+impl DesktopDaemonFileHandles {
+    fn new(handles: DesktopHostFileHandles) -> Self {
+        Self { handles }
+    }
+}
 
-        // D22: acquire per-profile instance lock before any port binding.
-        //
-        // ORDERING (ADR-008 P5-L L8a) — load-bearing for P5-L L8 controlled
-        // restart: this guard is held to the END of the `block_on` closure,
-        // i.e. until AFTER `handle.wait()` below returns. `handle.wait()`
-        // encloses the full iroh `endpoint.close()` teardown (via
-        // `run_loop.rs`'s sequential `daemon.run().await` → `…shutdown().await`),
-        // so the lock drops strictly AFTER iroh fully unbinds its socket. A new
-        // daemon must not acquire the lock until the old daemon's iroh socket is
-        // released, otherwise the replacement races `AddrInUse`. Do NOT move
-        // this guard's scope earlier (e.g. into a sub-block).
-        //
-        // Acquisition waits for the lock EVENT-DRIVEN (blocking `flock` on a
-        // detached thread; the kernel wakes us the instant the holder
-        // releases) on EVERY start — not only controlled-restart promotions —
-        // because an exiting predecessor still holds the lock during iroh
-        // teardown (its `/health` goes absent before lock-release). Any
-        // health-probing spawner (CLI/GUI) can hit that window after a plain
-        // stop/start cycle: observed in production (2026-06-12), the spawner
-        // saw `/health` absent ~2s after the predecessor's shutdown signal and
-        // spawned a replacement that lost the then-single-shot `try_acquire`
-        // to a predecessor that needed ~5.4s to release. The deadline
-        // (`timing::LOCK_ACQUIRE_DEADLINE`) is pure hang protection, not a
-        // teardown estimate — a healthy holder costs the waiter nothing
-        // extra, since only a manual double-launch ever waits it out. I/O
-        // errors are still terminal on the first attempt.
-        let _instance_lock = uc_daemon_local::instance_lock::acquire_with_deadline(
-            &storage_paths.app_data_root_dir,
-            uc_daemon_local::timing::LOCK_ACQUIRE_DEADLINE,
-        )
-        .await
-        .map_err(|e| {
-            // Surface the failure in the JSON log: this error otherwise only
-            // reaches stderr via anyhow's Termination in `main`, which is
-            // detached/nulled in production — the log would just stop dead
-            // after bootstrap with no trace of why the process exited.
-            let error_kind = match &e {
-                uc_daemon_local::instance_lock::InstanceLockError::AlreadyRunning { .. } => {
-                    "instance_lock_already_running"
-                }
-                uc_daemon_local::instance_lock::InstanceLockError::Io(_) => "instance_lock_io",
-            };
-            tracing::error!(
-                error_kind,
-                retryable = false,
-                error = %e,
-                "daemon instance lock acquisition failed — exiting"
-            );
-            anyhow::anyhow!("{e}")
-        })?;
+impl DaemonFileHandles for DesktopDaemonFileHandles {
+    fn register_input(&self, path: &Path) -> anyhow::Result<HostFileHandle> {
+        self.handles
+            .register_input(path.to_path_buf())
+            .map_err(anyhow::Error::new)
+    }
 
-        // ADR-008 P5-L L7: now that we hold the instance lock, consume any pending
-        // cross-process handover by clearing it (claim under lock — R8-F1). A
-        // controlled restart (L8) leaves a {target_mode, generation} record in the
-        // lock dir; the new daemon clears it here. No-op in production (no writer yet).
-        uc_daemon_local::handover::clear(&storage_paths.app_data_root_dir);
+    fn register_output(&self, path: &Path) -> anyhow::Result<HostFileHandle> {
+        self.handles
+            .register_output(path.to_path_buf())
+            .map_err(anyhow::Error::new)
+    }
 
-        let clipboard_write_coordinator = background.clipboard_write_coordinator.clone();
-        let file_transfer_lifecycle = background.file_transfer_lifecycle.clone();
-        let file_transfer_facade = wired.shared.file_transfer_facade.clone();
-
-        // Restore-broadcast channel (issue #1017 PR4): the restore use cases
-        // (inside the AppFacade below) hold the sender; the active-clipboard
-        // facade's worker (spawned in `start_in_process` once space setup is
-        // assembled) drains the receiver.
-        let (restore_broadcast_tx, restore_broadcast_rx) =
-            tokio::sync::mpsc::unbounded_channel::<RestoreBroadcastRequest>();
-        let restore_broadcast_trigger = RestoreBroadcastTrigger::new(restore_broadcast_tx);
-
-        let runtime = DaemonProcessRuntime::new(
-            wired.deps.clone(),
-            storage_paths.clone(),
-            clipboard_write_coordinator.clone(),
-            file_transfer_facade.clone(),
-            restore_broadcast_trigger,
+    fn register_diagnostic_output(&self) -> anyhow::Result<(HostFileHandle, String)> {
+        let directory = dirs::download_dir()
+            .ok_or_else(|| anyhow::anyhow!("Downloads directory is unavailable"))?;
+        std::fs::create_dir_all(&directory)?;
+        let filename = format!(
+            "uniclipboard-diagnostics-{}.zip",
+            chrono::Utc::now().format("%Y%m%d-%H%M%S")
         );
-        let app_facade = Arc::clone(runtime.app_facade());
+        let path = directory.join(filename);
+        let handle = self
+            .handles
+            .register_output(path.clone())
+            .map_err(anyhow::Error::new)?;
+        Ok((handle, path.to_string_lossy().into_owned()))
+    }
+}
 
-        let blob_ports = uc_bootstrap::BlobProcessingPorts::from_app_deps(&wired.deps);
-        let task_registry_for_blob = Arc::clone(runtime.task_registry());
-        uc_observability::spawn_supervised("blob.processing_tasks", async move {
-            uc_bootstrap::spawn_blob_processing_tasks(
-                background,
-                blob_ports,
-                &task_registry_for_blob,
-            )
-            .await;
-        });
+/// Standalone daemon binary entry: start one shared engine and block until exit.
+pub fn run(run_mode: DaemonRunMode) -> anyhow::Result<()> {
+    let runtime = build_daemon_tokio_runtime()?;
+    runtime.block_on(run_async(run_mode))
+}
 
-        let handles = ProcessRuntimeHandles {
-            wired,
-            storage_paths,
-            clipboard_write_coordinator,
-            file_transfer_lifecycle,
-            file_transfer_facade,
-        };
-        let handle = start_in_process(run_mode, app_facade, handles, restore_broadcast_rx).await?;
-        let result = handle.wait().await;
-        drop(runtime);
-        result
-    })
+async fn run_async(run_mode: DaemonRunMode) -> anyhow::Result<()> {
+    init_tracing_subscriber()?;
+    install_panic_logging_hook();
+
+    let prepared = prepare_desktop_engine_host()?;
+    let process_paths = prepared.process_paths().clone();
+    let file_handles: Arc<dyn DaemonFileHandles> =
+        Arc::new(DesktopDaemonFileHandles::new(prepared.file_handles()));
+    let (engine_config, host_capabilities) = prepared.into_engine_start();
+
+    let _instance_lock = uc_daemon_local::instance_lock::acquire_with_deadline(
+        process_paths.app_data_root(),
+        uc_daemon_local::timing::LOCK_ACQUIRE_DEADLINE,
+    )
+    .await
+    .map_err(|error| anyhow::anyhow!("{error}"))?;
+    uc_daemon_local::handover::clear(process_paths.app_data_root());
+
+    let (engine, events) = Engine::start(engine_config, host_capabilities)
+        .await
+        .map_err(anyhow::Error::new)?;
+    let engine = Arc::new(engine);
+
+    record_upgrade_status_at_startup(&engine).await;
+    spawn_startup_recovery(run_mode, Arc::clone(&engine));
+
+    let result = run_daemon_surfaces(
+        run_mode,
+        Arc::clone(&engine),
+        events,
+        file_handles,
+        process_paths,
+    )
+    .await;
+    let shutdown = engine
+        .shutdown(ENGINE_SHUTDOWN_DEADLINE)
+        .await
+        .map_err(anyhow::Error::new);
+
+    result.and(shutdown)
+}
+
+async fn run_daemon_surfaces(
+    run_mode: DaemonRunMode,
+    engine: Arc<Engine>,
+    events: uc_engine::EventStream,
+    file_handles: Arc<dyn DaemonFileHandles>,
+    process_paths: DesktopHostProcessPaths,
+) -> anyhow::Result<()> {
+    let auth_token = load_or_create_auth_token(process_paths.daemon_token())?;
+    let pid_manager = DaemonPidManager::new(process_paths.daemon_pid());
+    let _pid_file_guard = DaemonPidFileGuard::activate(pid_manager, run_mode.process_mode())?;
+    let pid = std::process::id();
+    let run_marker = DaemonRunMarker::new(process_paths.app_data_root().to_path_buf());
+    log_previous_crash(run_marker.begin_run(pid)?);
+
+    let security = Arc::new(SecurityState::new());
+    security.register_pid(pid).await;
+    let mut api_state = DaemonApiState::new(
+        Arc::clone(&engine),
+        file_handles,
+        auth_token,
+        Arc::clone(&security),
+    )
+    .with_residency(run_mode.into());
+    let (event_tx, _) = broadcast::channel::<DaemonWsEvent>(64);
+    api_state.event_tx = event_tx.clone();
+
+    let restart = api_state.restart.clone();
+    let lease_registry = api_state.lease_registry.clone();
+    let cancel = CancellationToken::new();
+    let http_cancel = cancel.child_token();
+    let cleanup_cancel = cancel.child_token();
+    let event_cancel = cancel.child_token();
+    let mut http_handle = tokio::spawn(run_http_server(api_state, http_cancel));
+    let _cleanup_handle = cleanup_rate_limiter_task(security, cleanup_cancel);
+
+    let (active_clipboard_tx, _) = broadcast::channel::<ActiveClipboardChanged>(64);
+    let mobile_lan = Arc::new(MobileLanLifecycleController::for_engine(
+        Arc::clone(&engine),
+        active_clipboard_tx.clone(),
+    ));
+    let event_forwarder = tokio::spawn(forward_engine_events(
+        events,
+        Arc::clone(&engine),
+        event_tx,
+        active_clipboard_tx.clone(),
+        Arc::clone(&mobile_lan),
+        event_cancel,
+    ));
+    apply_initial_mobile_lan_target(&engine, mobile_lan.as_ref()).await;
+
+    let residency: DaemonResidency = run_mode.into();
+    let oneshot_terminate = (residency == DaemonResidency::Oneshot).then(CancellationToken::new);
+    if let Some(token) = oneshot_terminate.clone() {
+        tokio::spawn(super::oneshot::run_oneshot_self_terminate_supervisor(
+            lease_registry,
+            restart.clone(),
+            token,
+            cancel.child_token(),
+            super::oneshot::SupervisorTimings::production(),
+        ));
+    }
+
+    info!(?residency, "uniclipboard daemon running on shared engine");
+    let mut http_completed = false;
+    let mut controlled_oneshot_exit = false;
+    tokio::select! {
+        result = wait_for_shutdown_signal(), if run_mode.listens_to_os_signals() => {
+            result?;
+            info!("shutdown signal received");
+        }
+        result = &mut http_handle => {
+            http_completed = true;
+            warn!(?result, "HTTP server exited unexpectedly");
+        }
+        _ = async {
+            match &oneshot_terminate {
+                Some(token) => token.cancelled().await,
+                None => std::future::pending::<()>().await,
+            }
+        } => {
+            controlled_oneshot_exit = true;
+            info!("oneshot control leases drained");
+        }
+    }
+
+    if controlled_oneshot_exit {
+        write_handover_if_requested(&restart, process_paths.app_data_root());
+    }
+    cancel.cancel();
+    mobile_lan.disable().await;
+    if !http_completed {
+        let _ =
+            tokio::time::timeout(uc_daemon_local::timing::SHUTDOWN_JOIN_TIMEOUT, http_handle).await;
+    }
+    let _ = tokio::time::timeout(
+        uc_daemon_local::timing::SHUTDOWN_JOIN_TIMEOUT,
+        event_forwarder,
+    )
+    .await;
+    run_marker.mark_clean_exit()?;
+    Ok(())
+}
+
+async fn apply_initial_mobile_lan_target(
+    engine: &Engine,
+    controller: &MobileLanLifecycleController,
+) {
+    let settings = match engine.execute(Operation::QueryMobileSyncSettings).await {
+        Ok(OperationResult::MobileSyncSettings(settings)) => Some(settings),
+        Ok(_) | Err(_) => None,
+    };
+    controller
+        .reconcile(initial_lan_target(settings.as_deref()))
+        .await;
+}
+
+fn log_previous_crash(previous: Option<DaemonExitReport>) {
+    if let Some(previous) = previous {
+        warn!(
+            prev_pid = previous.pid,
+            prev_started_at_ms = previous.started_at_ms,
+            "previous daemon run exited abnormally"
+        );
+    }
+}
+
+fn write_handover_if_requested(
+    restart: &uc_webserver::api::restart::RestartCoordinator,
+    data_root: &Path,
+) {
+    let Some(request) = restart.pending() else {
+        return;
+    };
+    let record = uc_daemon_local::handover::HandoverRecord {
+        target_mode: super::run_mode::residency_to_run_mode_env(request.target),
+        generation: request.generation,
+    };
+    if let Err(error) = uc_daemon_local::handover::write(data_root, &record) {
+        warn!(error = %error, "failed to write controlled-restart handover record");
+    }
+}
+
+struct DaemonPidFileGuard {
+    manager: DaemonPidManager,
+}
+
+impl DaemonPidFileGuard {
+    fn activate(manager: DaemonPidManager, mode: DaemonProcessMode) -> anyhow::Result<Self> {
+        manager.write_current_pid_with_mode(mode)?;
+        Ok(Self { manager })
+    }
+}
+
+impl Drop for DaemonPidFileGuard {
+    fn drop(&mut self) {
+        if let Err(error) = self.manager.remove_pid_file() {
+            warn!(error = %error, "failed to remove daemon PID metadata");
+        }
+    }
+}
+
+async fn wait_for_shutdown_signal() -> anyhow::Result<()> {
+    #[cfg(unix)]
+    {
+        use tokio::signal::unix::{signal, SignalKind};
+        let mut sigterm = signal(SignalKind::terminate())?;
+        tokio::select! {
+            result = tokio::signal::ctrl_c() => result?,
+            _ = sigterm.recv() => {}
+        }
+    }
+    #[cfg(not(unix))]
+    tokio::signal::ctrl_c().await?;
+    Ok(())
 }
 
 pub use uc_daemon_local::spawn_contract::RUN_MODE_ENV;
 pub use uc_daemon_local::spawn_contract::RUN_MODE_ONESHOT;
 pub use uc_daemon_local::spawn_contract::RUN_MODE_SERVER;
 
-/// Standalone daemon binary entry: parse run mode from environment, then start.
-///
-/// Reads [`RUN_MODE_ENV`]: `"server"` → [`DaemonRunMode::ServerHeadless`]
-/// (headless node, no X11/Wayland); `"oneshot"` → [`DaemonRunMode::Oneshot`]
-/// (ADR-008 P5-L L0 inert skeleton, behavior-identical to standalone and not
-/// emitted by any spawner yet); otherwise → [`DaemonRunMode::Standalone`].
 pub fn run_standalone_from_env() -> anyhow::Result<()> {
     let run_mode = match std::env::var(RUN_MODE_ENV).as_deref() {
         Ok(RUN_MODE_SERVER) => {
             std::env::set_var("UC_DISABLE_SYSTEM_CLIPBOARD", "1");
             DaemonRunMode::ServerHeadless
         }
-        // P5-L L0: Oneshot runs the system clipboard like Standalone, so it
-        // must NOT set UC_DISABLE_SYSTEM_CLIPBOARD. Unreachable in production
-        // (no spawner emits RUN_MODE_ONESHOT); decode only.
         Ok(RUN_MODE_ONESHOT) => DaemonRunMode::Oneshot,
         _ => DaemonRunMode::Standalone,
     };
     run(run_mode)
-}
-
-/// In-process daemon start (async).
-///
-/// Assumes the caller already has an active tokio runtime context. Assembles
-/// the daemon, spawns the main loop as a task, and returns a [`DaemonHandle`]
-/// for explicit shutdown.
-pub async fn start_in_process(
-    run_mode: DaemonRunMode,
-    app_facade: Arc<AppFacade>,
-    handles: ProcessRuntimeHandles,
-    restore_broadcast_rx: tokio::sync::mpsc::UnboundedReceiver<RestoreBroadcastRequest>,
-) -> anyhow::Result<DaemonHandle> {
-    let cancel = CancellationToken::new();
-
-    // ADR-008 D9 (P4-2): strict-unattended self-check — the only hard boundary
-    // for the unlock contract. A daemon launched with no GUI fallback
-    // (autostart / service manager sets UC_DAEMON_UNATTENDED=1, P4-4) cannot
-    // honor `auto_unlock_enabled = false`, so fail fast with a clear log + a
-    // non-zero exit instead of coming up locked and silently doing nothing.
-    // P4-5: also record a machine-readable last-exit report so the next GUI
-    // startup surfaces a red banner instead of a silent refusal.
-    if uc_daemon_local::spawn_contract::unattended_from_env() {
-        let settings = handles.wired.deps.settings.load().await.unwrap_or_default();
-        if let Err(violation) = uc_daemon_local::spawn_contract::validate_unattended_unlock(
-            true,
-            settings.security.auto_unlock_enabled,
-        ) {
-            tracing::error!(%violation, "daemon refusing to start (ADR-008 D9 unlock contract)");
-            let marker = uc_daemon_local::crash_marker::DaemonRunMarker::new(
-                handles.storage_paths.app_data_root_dir.clone(),
-            );
-            if let Err(error) = marker.record_startup_failure(violation.to_string()) {
-                tracing::warn!(error = %error, "failed to record daemon startup-failure marker");
-            }
-            return Err(anyhow::anyhow!("{violation}"));
-        }
-    }
-
-    // Reconcile the persisted active-clipboard register against the live OS
-    // clipboard before any active-clipboard worker is spawned (issue #1017 PR6,
-    // D8). The persisted row is only an untrusted baseline: if it no longer
-    // matches the OS clipboard it is cleared, so a stale activation can neither
-    // win LWW nor be broadcast by the inbound / peer-online-resync workers that
-    // `build_daemon_bootstrap_assembly` spawns next. Best-effort: never writes
-    // the OS clipboard, never broadcasts, never fails startup.
-    {
-        let clipboard = &handles.wired.deps.clipboard;
-        let reconcile = ActiveClipboardReconcileFacade::new(ActiveClipboardReconcileDeps {
-            system_clipboard: clipboard.system_clipboard.clone(),
-            load_register: clipboard.active_register_load.clone(),
-            reset_register: clipboard.active_register_reset.clone(),
-            // Reconstruction ports so reconcile can rebuild the stored entry and
-            // compare it like-for-like against the live OS read.
-            snapshot: ClipboardSnapshotDeps {
-                entry_repo: clipboard.entry_ports.get.clone(),
-                selection_repo: clipboard.selection_repo.clone(),
-                representation_repo: clipboard.representation_ports.get.clone(),
-                rep_processing_repo: clipboard
-                    .representation_ports
-                    .update_processing_result
-                    .clone(),
-                payload_resolver: clipboard.payload_resolver.clone(),
-                blob_store: handles.wired.deps.storage.blob_store.clone(),
-            },
-        });
-        let outcome = reconcile.reconcile().await;
-        tracing::debug!(
-            ?outcome,
-            "active-clipboard register startup reconcile complete"
-        );
-    }
-
-    let DaemonBootstrapAssembly {
-        clipboard_sync_facade,
-        blob_transfer_facade,
-        mut sync_engine_assembly,
-        mobile_sync_endpoint_info,
-    } = build_daemon_bootstrap_assembly(&handles.wired).await?;
-
-    let ProcessRuntimeHandles {
-        wired,
-        storage_paths,
-        clipboard_write_coordinator,
-        file_transfer_lifecycle,
-        file_transfer_facade,
-    } = handles;
-
-    // Start draining the restore-broadcast channel now that the
-    // active-clipboard facade exists. The worker debounces + gates restores
-    // before announcing them to peers; its lifetime is tracked by the
-    // assembly so shutdown aborts it (issue #1017 PR4).
-    sync_engine_assembly.attach_restore_broadcast(restore_broadcast_rx);
-
-    let deps = wired.deps;
-    let host_event_bus = wired.shared.host_event_bus;
-    let settings_port = deps.settings.clone();
-    let runtime_controls = build_daemon_runtime_controls(run_mode);
-    let receive_recovery: Arc<dyn EnsureReceiveReadyPort> = file_transfer_lifecycle.clone();
-    let receive_readiness: Arc<dyn EnsureReceiveReadyPort> =
-        Arc::new(DaemonReceiveReadinessCoordinator::new(
-            receive_recovery,
-            runtime_controls.clipboard_capture_gate.clone(),
-            runtime_controls.deferred_ready_notify.clone(),
-        ));
-
-    let runtime_workers = build_daemon_runtime_workers(DaemonRuntimeAssemblyInput {
-        deps: &deps,
-        run_mode,
-        system_clipboard_wiring: wired.system_clipboard_wiring,
-        event_tx: runtime_controls.event_tx.clone(),
-        clipboard_capture_gate: runtime_controls.clipboard_capture_gate.clone(),
-        clipboard_sync_facade: clipboard_sync_facade.clone(),
-        blob_transfer_facade: blob_transfer_facade.clone(),
-        file_cache_dir: storage_paths.file_cache_dir.clone(),
-        file_transfer_lifecycle: file_transfer_lifecycle.clone(),
-        receive_readiness: wired.shared.receive_readiness.clone(),
-        clipboard_write_coordinator: clipboard_write_coordinator.clone(),
-        host_event_bus: host_event_bus.clone(),
-        entry_delivery_repo: wired.shared.entry_delivery_repo.clone(),
-        clipboard_event_reader_repo: wired.shared.clipboard_event_reader_repo.clone(),
-        trusted_peer_repo: wired.shared.trusted_peer_repo.clone(),
-    })?;
-
-    let search_assembly = build_daemon_search_assembly(&deps, runtime_controls.event_tx.clone());
-
-    let service_plan = build_daemon_service_plan(
-        run_mode,
-        runtime_controls.encryption_unlocked,
-        &runtime_workers,
-        &search_assembly,
-    );
-
-    let storage_paths_for_daemon = storage_paths.clone();
-
-    let mobile_lan_lifecycle: Arc<MobileLanLifecycleController> =
-        Arc::new(MobileLanLifecycleController::new(
-            mobile_sync_endpoint_info.clone(),
-            Arc::new(AppFacadeListenerSpawner::new(
-                Arc::clone(&app_facade),
-                Some(file_transfer_facade.clone()),
-                wired.shared.active_clipboard_sse_source.clone(),
-            )),
-        ));
-
-    let (lifecycle_facades, local_device_id) =
-        build_daemon_lifecycle_facades(DaemonLifecycleFacadesInput {
-            deps: &deps,
-            storage_paths: &storage_paths_for_daemon,
-            sync_engine_assembly: &sync_engine_assembly,
-            clipboard_sync: clipboard_sync_facade.clone(),
-            blob_transfer: blob_transfer_facade.clone(),
-            file_transfer: file_transfer_facade.clone(),
-            mobile_sync_apply_inbound: runtime_workers.apply_inbound.clone(),
-            clipboard_outbound: runtime_workers.clipboard_outbound.clone(),
-            lan_lifecycle: Arc::clone(&mobile_lan_lifecycle)
-                as Arc<dyn uc_core::ports::MobileLanLifecyclePort>,
-        });
-
-    app_facade.install_daemon_lifecycle(lifecycle_facades);
-
-    app_facade
-        .search
-        .set_coordinator(Arc::clone(&search_assembly.coordinator));
-
-    let app_facade_for_daemon = Arc::clone(&app_facade);
-    let daemon = build_daemon_app_instance(DaemonAppAssemblyInput {
-        service_plan,
-        app_facade: Arc::clone(&app_facade_for_daemon),
-        storage_paths: storage_paths_for_daemon,
-        host_event_bus: host_event_bus.clone(),
-        event_tx: runtime_controls.event_tx,
-        encryption_unlocked: runtime_controls.encryption_unlocked,
-        deferred_ready_notify: runtime_controls.deferred_ready_notify.clone(),
-        external_shutdown: Some(cancel.clone()),
-        clipboard_capture_gate: runtime_controls.clipboard_capture_gate.clone(),
-        local_device_id,
-        listens_to_os_signals: run_mode.listens_to_os_signals(),
-        process_mode: run_mode.process_mode(),
-        residency: run_mode.into(),
-        mobile_sync_endpoint_info,
-        mobile_lan_lifecycle: Arc::clone(&mobile_lan_lifecycle),
-        analytics: Arc::clone(&deps.analytics),
-        receive_readiness: Arc::clone(&receive_readiness),
-    });
-
-    let input = DaemonRunLoopInput {
-        run_mode,
-        daemon,
-        app_facade: app_facade_for_daemon,
-        settings: settings_port,
-        sync_engine_assembly,
-        receive_readiness,
-    };
-    let join = tokio::spawn(run_daemon_main(input));
-
-    Ok(DaemonHandle::new(cancel, join))
 }

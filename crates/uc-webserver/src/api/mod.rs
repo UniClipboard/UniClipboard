@@ -22,7 +22,6 @@ pub mod routes;
 pub mod search;
 pub mod server;
 pub mod settings;
-pub mod setup_events;
 pub mod storage;
 pub mod types;
 pub mod upgrade;

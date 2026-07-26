@@ -10,6 +10,7 @@ use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde_json::json;
 use tracing::{info, Instrument};
+use uc_engine::{EngineState, Operation, OperationResult, RecoverSessionInput};
 
 use uc_daemon_contract::api::dto::envelope::{ApiEnvelope, LifecycleStatusEnvelope};
 use uc_daemon_contract::api::types::{DaemonResidency, RestartAccepted, RestartRequest};
@@ -30,26 +31,21 @@ pub fn router() -> Router<DaemonApiState> {
         .route("/lifecycle/restart", post(restart_handler))
 }
 
-/// 通知 daemon：已解锁，可以开始采集剪贴板——打开 clipboard capture 门控。
+/// 通知 daemon：客户端已经观察到核心完成解锁和接收恢复。
 ///
-/// 锁定期 daemon 把剪贴板采集门控住(deferred services);解锁后用本端点
-/// 放行。ADR-008 P3-3 起 daemon 永远是独立进程,GUI 作为纯客户端经 loopback
-/// HTTP 调它(旧 `GuiInProcess` 同进程模式已删除)。
+/// 创建、加入和解锁操作已经由 `Engine` 在返回成功前完成接收恢复。本端点
+/// 只保留客户端幂等确认，不再持有或重复调用内部接收接口。
 #[utoipa::path(
     post,
     path = "/lifecycle/ready",
     tag = "lifecycle",
     operation_id = "signalLifecycleReady",
     responses(
-        (status = 204, description = "Ready signal accepted; clipboard capture gate opened")
+        (status = 204, description = "Ready signal acknowledged")
     )
 )]
-async fn lifecycle_ready_handler(State(state): State<DaemonApiState>) -> impl IntoResponse {
-    if let Err(error) = state.ensure_receive_ready().await {
-        return error.into_response();
-    }
-
-    info!("Receive recovery completed through lifecycle/ready");
+async fn lifecycle_ready_handler(State(_state): State<DaemonApiState>) -> impl IntoResponse {
+    info!("Lifecycle ready signal accepted by the running engine");
     StatusCode::NO_CONTENT.into_response()
 }
 
@@ -70,11 +66,14 @@ async fn lifecycle_ready_handler(State(state): State<DaemonApiState>) -> impl In
 async fn get_lifecycle_status_handler(
     State(state): State<DaemonApiState>,
 ) -> Result<Json<LifecycleStatusEnvelope>, ApiError> {
-    let app = state.app_facade_or_error()?;
-    let current_state = app.lifecycle.status().await;
+    let current_state = match state.engine.lifecycle_state().await {
+        EngineState::Running => "Ready",
+        EngineState::Quiescing | EngineState::Quiesced | EngineState::Suspended => "Pending",
+        EngineState::ShuttingDown | EngineState::Stopped => "Idle",
+    };
 
     Ok(Json(ApiEnvelope::now(LifecycleStatusResponse {
-        state: current_state.as_str().to_string(),
+        state: current_state.to_string(),
     })))
 }
 
@@ -96,19 +95,27 @@ async fn get_lifecycle_status_handler(
     )
 )]
 async fn retry_lifecycle_handler(State(state): State<DaemonApiState>) -> impl IntoResponse {
-    let app = match state.app_facade_or_error() {
-        Ok(app) => app,
-        Err(error) => return error.into_response(),
-    };
-
     let span = tracing::info_span!("daemon.lifecycle.retry");
     async move {
-        if let Err(error) = state.ensure_receive_ready().await {
-            return error.into_response();
-        }
-
-        if let Err(error) = app.lifecycle.retry_to_ready().await {
-            return ApiError::internal(format!("lifecycle retry failed: {error}")).into_response();
+        match state
+            .execute(Operation::RecoverSession(RecoverSessionInput {
+                allow_secure_storage_unlock: true,
+            }))
+            .await
+        {
+            Ok(OperationResult::SessionRecovered { .. }) => {}
+            Ok(_) => {
+                return ApiError::internal("engine returned an unexpected lifecycle-retry result")
+                    .into_response();
+            }
+            Err(error) => {
+                tracing::error!(
+                    code = error.code(),
+                    category = %error.category(),
+                    "lifecycle retry failed"
+                );
+                return ApiError::internal("lifecycle retry failed").into_response();
+            }
         }
 
         info!("Lifecycle retry completed successfully");

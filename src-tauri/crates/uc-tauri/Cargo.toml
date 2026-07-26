@@ -15,9 +15,6 @@ dev-profile = []
 
 [dependencies]
 # Workspace crates
-# `specta-derive` 让 `TraceMetadata`（出现在每个 Tauri command 的 `_trace`
-# 入参里）派生 `specta::Type`，从而能进 tauri-specta 的 binding 生成。
-uc-core = { path = "../../../crates/uc-core", features = ["specta-derive"] }
 uc-desktop = { path = "../../../crates/uc-desktop" }
 uc-observability = { path = "../../../crates/uc-observability" }
 uc-daemon-contract = { path = "../../../crates/uc-daemon-contract" }
@@ -44,11 +41,13 @@ url = "2"
 tokio = { version = "1", features = ["full"] }
 tokio-util = "0.7"
 rand = "0.9"
+async-trait = "0.1"
 
 # Serialization
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 base64 = "0.22"
+uuid = { version = "1", features = ["serde"] }
 
 # tauri-specta 生态 — IPC 类型化客户端 codegen（见 issue #698）。
 # - specta: 提供 `Type` 派生 + `collect_commands!`
@@ -158,7 +157,6 @@ sentry = { version = "0.48.1", default-features = false, features = ["test"] }
 tauri = { workspace = true, features = ["test"] }
 tempfile = "3"
 mockall = "0.13"
-async-trait = "0.1"
 tokio = { version = "1", features = ["full", "test-util"] }
 
 [lints]

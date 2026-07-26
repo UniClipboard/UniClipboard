@@ -14,15 +14,10 @@
 
 use serde::Serialize;
 
-use uc_core::clipboard::normalize_wire_mime;
-use uc_core::ids::{FormatId, RepresentationId};
-use uc_core::network::protocol::ClipboardBinaryPayload;
-use uc_core::{ObservedClipboardRepresentation, SystemClipboardSnapshot};
-
-use base64::engine::general_purpose::STANDARD;
-use base64::Engine as _;
 use uc_daemon_client::DaemonService;
-use uc_daemon_contract::api::dto::clipboard_command::InboundNoticeEvent;
+use uc_daemon_contract::api::dto::clipboard_command::{
+    InboundNoticeEvent, InboundRepresentationSummaryDto,
+};
 
 use crate::commands::app_session::{connect_or_spawn_oneshot_daemon, wait_and_reconnect_daemon};
 use crate::exit_codes;
@@ -103,12 +98,9 @@ async fn run_watch_via_daemon(service: &dyn DaemonService, json: bool) -> i32 {
 }
 
 fn render_daemon_notice(event: &InboundNoticeEvent, json: bool) {
-    let plaintext_bytes = STANDARD.decode(&event.plaintext_base64).ok();
-    let snapshot = plaintext_bytes
-        .as_deref()
-        .and_then(|b| decode_v3_envelope(b).ok());
-    let text_preview = snapshot.as_ref().and_then(first_text_preview);
-    let rep_summary = snapshot.as_ref().map(rep_summary_line);
+    let text_preview = event.text_preview.clone();
+    let rep_summary =
+        (!event.representations.is_empty()).then(|| rep_summary_line(&event.representations));
 
     if json {
         #[derive(Serialize)]
@@ -153,43 +145,19 @@ fn emit_watch_ready() {
     let _ = err.flush();
 }
 
-/// Return the first `text/*`-mime representation's UTF-8 string (if any).
-fn first_text_preview(snapshot: &SystemClipboardSnapshot) -> Option<String> {
-    for rep in &snapshot.representations {
-        let is_text = rep
-            .mime
-            .as_ref()
-            .map(|m| {
-                let s = m.as_str();
-                s.eq_ignore_ascii_case("text/plain")
-                    || s.eq_ignore_ascii_case("public.utf8-plain-text")
-                    || s.to_ascii_lowercase().starts_with("text/")
-            })
-            .unwrap_or(false);
-        if !is_text {
-            continue;
-        }
-        if let Ok(s) = std::str::from_utf8(rep.inline_bytes().unwrap_or(&[])) {
-            return Some(s.to_string());
-        }
-    }
-    None
-}
-
 /// One-line summary when the envelope has only non-text reps (e.g.
 /// image/png). Useful for operator eyeballing; not meant for parsing.
-fn rep_summary_line(snapshot: &SystemClipboardSnapshot) -> String {
-    let parts: Vec<String> = snapshot
-        .representations
+fn rep_summary_line(representations: &[InboundRepresentationSummaryDto]) -> String {
+    let parts: Vec<String> = representations
         .iter()
         .map(|rep| {
-            let mime = rep.mime.as_ref().map(|m| m.as_str()).unwrap_or("?");
-            format!("{}/{}B", mime, rep.size_bytes())
+            let mime = rep.mime_type.as_deref().unwrap_or("?");
+            format!("{}/{}B", mime, rep.size_bytes)
         })
         .collect();
     format!(
         "[envelope:{} rep(s) {}]",
-        snapshot.representations.len(),
+        representations.len(),
         parts.join(", ")
     )
 }
@@ -203,33 +171,4 @@ fn truncate_preview(text: &str) -> String {
     } else {
         single_line
     }
-}
-
-/// Minimal V3 envelope decoder using only `uc-core` types. Avoids pulling
-/// the heavy `uc-application` crate (and its transitive iroh dependency)
-/// just for client-side display rendering.
-fn decode_v3_envelope(bytes: &[u8]) -> anyhow::Result<SystemClipboardSnapshot> {
-    let mut cursor = bytes;
-    let payload = ClipboardBinaryPayload::decode_from(&mut cursor)
-        .map_err(|e| anyhow::anyhow!("decode V3 envelope: {e}"))?;
-
-    let representations = payload
-        .representations
-        .into_iter()
-        .map(|rep| {
-            ObservedClipboardRepresentation::new(
-                RepresentationId::new(),
-                FormatId::from(rep.format_id),
-                normalize_wire_mime(rep.mime),
-                rep.data,
-            )
-        })
-        .collect();
-
-    Ok(SystemClipboardSnapshot {
-        ts_ms: payload.ts_ms,
-        representations,
-        file_content_digests: Vec::new(),
-        file_set_v1_component: None,
-    })
 }

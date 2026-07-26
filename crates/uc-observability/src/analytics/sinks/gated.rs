@@ -1,7 +1,6 @@
 //! `GatedAnalyticsSink` —— 在 `capture` 入口统一查询
 //! [`crate::analytics_gate`] 的 wrapper sink。
 //!
-//! 决策（task_plan.md Decisions Made 表）：`usage_analytics_enabled` 是
 //! 横切关注点，不该污染 sink 实现。`StdoutSink` / 未来 `PosthogSink`
 //! 都不感知 gate；本 wrapper 在它们外面统一守卫一次。
 //!

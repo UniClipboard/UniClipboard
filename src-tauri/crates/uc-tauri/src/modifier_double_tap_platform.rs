@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use serde::Serialize;
-use uc_core::settings::model::QuickPanelDoubleTapModifier;
+use uc_daemon_contract::api::dto::settings::QuickPanelDoubleTapModifierDto as QuickPanelDoubleTapModifier;
 use uc_desktop::modifier_double_tap_monitor::{ModifierKeyState, ModifierKeyStateFactory};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, specta::Type)]

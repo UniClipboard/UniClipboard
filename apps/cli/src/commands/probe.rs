@@ -19,11 +19,9 @@ use anyhow::{anyhow, Result};
 use clap::Subcommand;
 use tokio::sync::mpsc;
 
-use uc_core::ports::SystemClipboardPort;
-use uc_core::{ObservedClipboardRepresentation, SystemClipboardSnapshot};
 use uc_platform::clipboard::{
     build_event_loop, shutdown_channel, watcher::ClipboardWatcher, watcher::PlatformEvent,
-    LocalClipboard,
+    LocalClipboard, ObservedClipboardRepresentation, SystemClipboard, SystemClipboardSnapshot,
 };
 
 use crate::exit_codes;
@@ -96,7 +94,7 @@ fn run_watch(max_events: Option<usize>) -> Result<()> {
     );
     println!("- stop: Ctrl+C");
 
-    let clipboard: Arc<dyn SystemClipboardPort> = Arc::new(LocalClipboard::new()?);
+    let clipboard: Arc<dyn SystemClipboard> = Arc::new(LocalClipboard::new()?);
     match clipboard.read_snapshot() {
         Ok(snapshot) => {
             println!("\ninitial snapshot");

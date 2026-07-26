@@ -24,7 +24,7 @@ use uc_desktop::daemon_probe::{
     bootstrap_daemon_in_process, HEALTH_CHECK_TIMEOUT, HEALTH_POLL_INTERVAL,
     INCOMPATIBLE_DAEMON_EXIT_TIMEOUT,
 };
-use uc_desktop::gui_wiring::{build_gui_client_context, ensure_default_device_name};
+use uc_desktop::gui_wiring::build_gui_client_context;
 use uc_desktop::modifier_double_tap_monitor::ModifierDoubleTapMonitor;
 use uc_desktop::shortcuts::GlobalShortcutRegistry;
 use uc_desktop::{DaemonLaunchOrigin, DaemonOwnership};
@@ -65,58 +65,6 @@ const EXPECTED_PACKAGE_VERSION: &str = env!("CARGO_PKG_VERSION");
 /// (a cold start) versus attached to one already running (a reopen), which
 /// covers both auto-start and manual first launches uniformly (issue #1169).
 const AUTOSTART_LAUNCH_ARG: &str = "--autostart";
-
-/// Translate a daemon-WS [`RealtimeEvent`] into the application-layer
-/// [`HostEvent`] the activity HUD consumes (ADR-008 P3-3 B2'-3).
-///
-/// Only the three HUD-relevant variants map to a `HostEvent`; everything else on
-/// the subscribed topics (e.g. `ClipboardNewContent`) returns `None` and is
-/// ignored by the HUD feed. This is the GUI-side inverse of the daemon's
-/// `DaemonApiEventEmitter` (which serialises `HostEvent` → WS).
-fn realtime_to_host_event(
-    event: uc_daemon_client::realtime::RealtimeEvent,
-) -> Option<uc_core::ports::host_event::HostEvent> {
-    use uc_core::ports::host_event::{ClipboardHostEvent, HostEvent, TransferHostEvent};
-    use uc_daemon_client::realtime::RealtimeEvent as Re;
-
-    match event {
-        Re::FileTransferStatusChanged(e) => {
-            Some(HostEvent::Transfer(TransferHostEvent::StatusChanged {
-                transfer_id: e.transfer_id,
-                entry_id: e.entry_id,
-                attempt_id: e.attempt_id,
-                status: e.status,
-                reason: e.reason,
-            }))
-        }
-        Re::FileTransferProgress(e) => Some(HostEvent::Transfer(TransferHostEvent::Progress {
-            transfer_id: e.transfer_id,
-            entry_id: e.entry_id,
-            attempt_id: e.attempt_id,
-            peer_id: e.peer_id,
-            direction: e.direction,
-            bytes_transferred: e.bytes_transferred,
-            total_bytes: e.total_bytes,
-        })),
-        Re::ClipboardIncomingPending(e) => {
-            Some(HostEvent::Clipboard(ClipboardHostEvent::IncomingPending {
-                entry_id: e.entry_id,
-                attempt_id: e.attempt_id,
-                from_device: e.from_device,
-                total_bytes: e.total_bytes,
-                filenames: e.filenames,
-            }))
-        }
-        Re::ReceiveAttemptStateChanged(e) => Some(HostEvent::Clipboard(
-            ClipboardHostEvent::ReceiveAttemptStateChanged {
-                entry_id: e.entry_id,
-                attempt_id: e.attempt_id,
-                state: e.state,
-            },
-        )),
-        _ => None,
-    }
-}
 
 /// Await the first process-level "terminate this app" signal.
 ///
@@ -293,7 +241,7 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
     let disable_single_instance = std::env::var("UC_DISABLE_SINGLE_INSTANCE").as_deref() == Ok("1");
 
     // Store TaskRegistry reference for exit hook registration
-    let task_registry = runtime.task_registry().clone();
+    let task_registry = runtime.desktop().task_registry().clone();
 
     let builder = tauri::Builder::default()
         // Register TauriAppRuntime for Tauri commands
@@ -421,7 +369,7 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
                 DaemonWsBridgeConfig::default(),
             ));
             let hud_bridge_for_run = std::sync::Arc::clone(&hud_bridge);
-            let hud_bridge_token = runtime.task_registry().token().clone();
+            let hud_bridge_token = runtime.desktop().task_registry().token().clone();
             tauri::async_runtime::spawn(async move {
                 let mut rx = match hud_bridge
                     .subscribe(
@@ -439,10 +387,7 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
                 // 现在有订阅者了,驱动 bridge 连接循环。
                 tauri::async_runtime::spawn(hud_bridge_for_run.run(hud_bridge_token));
                 while let Some(event) = rx.recv().await {
-                    if let Some(host_event) = realtime_to_host_event(event) {
-                        use uc_core::ports::host_event::HostEventEmitterPort;
-                        let _ = hud_emitter.emit(host_event);
-                    }
+                    hud_emitter.emit(event);
                 }
             });
 
@@ -519,10 +464,10 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
                 quick_panel_enabled,
                 quick_panel_double_tap_modifier,
                 auto_start,
+                initial_keyboard_shortcuts,
                 settings_loaded,
             ) = {
-                let settings_port = runtime.settings_port();
-                match tauri::async_runtime::block_on(settings_port.load()) {
+                match tauri::async_runtime::block_on(runtime.desktop().load_shell_settings()) {
                     Ok(settings) => {
                         // Lightweight mode always hides the window at boot,
                         // then decides once the daemon connects (issue #1169):
@@ -534,35 +479,19 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
                         // let the cold-launch task reconcile — hiding avoids a
                         // window flash on the cold-start path, and the reopen
                         // path shows the window a beat later.
-                        let silent_mode = matches!(
-                            settings.general.startup_mode,
-                            uc_core::settings::model::StartupMode::Silent
-                        );
-                        let lightweight_mode = matches!(
-                            settings.general.startup_mode,
-                            uc_core::settings::model::StartupMode::Lightweight
-                        );
-                        let silent = silent_mode || lightweight_mode;
-                        let lang = settings.general.language.unwrap_or_default();
-                        // Phase 96 INDIC-04:反向命名唯一翻译点之一,UI/Tray
-                        // = "LAN-only ON" ⇔ 后端 `allow_relay_fallback = false`。
-                        // 与 NetworkSection.tsx / SpaceMembersPanel.tsx 同源。
-                        let lan_only = !settings.network.allow_relay_fallback;
-                        let quick_panel = settings.quick_panel.enabled;
-                        let quick_panel_modifier = settings.quick_panel.double_tap_modifier;
-                        let auto = settings.general.auto_start;
                         // Seed the cached placement preference so the first
                         // shortcut-triggered show() picks the right position
                         // without an async settings read on the main thread.
-                        quick_panel::set_position(settings.quick_panel.position);
+                        quick_panel::set_position(settings.quick_panel_position);
                         (
-                            silent,
-                            silent_mode,
-                            lang,
-                            lan_only,
-                            quick_panel,
-                            quick_panel_modifier,
-                            auto,
+                            settings.silent_start,
+                            settings.is_silent_mode,
+                            settings.language,
+                            settings.lan_only_active,
+                            settings.quick_panel_enabled,
+                            settings.quick_panel_double_tap_modifier,
+                            settings.auto_start,
+                            settings.keyboard_shortcuts,
                             true,
                         )
                     }
@@ -574,8 +503,9 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
                             "en-US".to_string(),
                             false,
                             false,
-                            uc_core::settings::model::QuickPanelDoubleTapModifier::Disabled,
+                            uc_daemon_contract::api::dto::settings::QuickPanelDoubleTapModifierDto::Disabled,
                             false,
+                            std::collections::HashMap::new(),
                             false,
                         )
                     }
@@ -639,20 +569,9 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
 
                 if quick_panel_enabled {
                     // 从设置读取快捷键覆盖；未配置或为空则回落到桌面层默认。
-                    let shortcuts = {
-                        let settings_port = runtime.settings_port();
-                        match tauri::async_runtime::block_on(settings_port.load()) {
-                            Ok(settings) => {
-                                uc_desktop::shortcuts::resolve_quick_panel_shortcuts(&settings)
-                            }
-                            Err(e) => {
-                                warn!("Failed to load settings for shortcut: {}, using default", e);
-                                vec![
-                                    uc_desktop::shortcuts::DEFAULT_QUICK_PANEL_SHORTCUT.to_string(),
-                                ]
-                            }
-                        }
-                    };
+                    let shortcuts = uc_desktop::shortcuts::resolve_quick_panel_shortcuts(
+                        &initial_keyboard_shortcuts,
+                    );
 
                     // 启动期 setup callback 已在 main thread 上下文，可直接构造 Tauri
                     // 适配器并调注册器。回调闭包绑定 `quick_panel::toggle`，避免桌面
@@ -702,7 +621,7 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
             let startup_monitor = modifier_monitor.clone();
             let update_lock = crate::commands::settings::KeyboardShortcutsUpdateLock::default();
             let startup_guard = if startup_modifier
-                != uc_core::settings::model::QuickPanelDoubleTapModifier::Disabled
+                != uc_daemon_contract::api::dto::settings::QuickPanelDoubleTapModifierDto::Disabled
             {
                 Some(update_lock.reserve_startup().map_err(anyhow::Error::msg)?)
             } else {
@@ -792,7 +711,7 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
                 info!("Starting backend initialization");
 
                 // 0. Ensure device name is initialized (runs on every startup)
-                if let Err(e) = ensure_default_device_name(runtime.settings_port()).await {
+                if let Err(e) = runtime.desktop().ensure_default_device_name().await {
                     warn!("Failed to initialize default device name: {}", e);
                     // Non-fatal: continue startup even if device name initialization fails
                 }
@@ -855,19 +774,22 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
                 // `LastNotifiedUpdateStore` 一次性 load 到 Mutex —— Phase 4B 通知
                 // 去重时通过 `deps.last_notified` 写入并 persist。
                 let last_notified_path =
-                    runtime.storage_paths().last_notified_update_path();
+                    runtime.desktop().storage_paths().last_notified_update_path();
                 let store = crate::update_scheduler::LastNotifiedUpdateStore::load(
                     &last_notified_path,
                 )
                 .await;
                 let skipped_version_path =
-                    runtime.storage_paths().skipped_version_path();
+                    runtime.desktop().storage_paths().skipped_version_path();
                 let skipped_store = crate::update_scheduler::SkippedVersionStore::load(
                     &skipped_version_path,
                 )
                 .await;
                 let prompt_throttle_path =
-                    runtime.storage_paths().update_prompt_throttle_path();
+                    runtime
+                        .desktop()
+                        .storage_paths()
+                        .update_prompt_throttle_path();
                 let throttle_store = crate::update_scheduler::PromptThrottleStore::load(
                     &prompt_throttle_path,
                 )
@@ -887,8 +809,12 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
                 });
                 app_handle_for_startup.manage(notify_ctx.clone());
                 let scheduler_deps = crate::update_scheduler::SchedulerDeps {
-                    settings_port: runtime.settings_port(),
-                    setup_status_port: runtime.setup_status_port(),
+                    settings_client: uc_daemon_client::DaemonSettingsClient::new(
+                        daemon_connection_state.clone(),
+                    ),
+                    setup_readiness: Arc::new(uc_daemon_client::DaemonSetupClient::with_conn_state(
+                        daemon_connection_state.clone(),
+                    )),
                     notify: notify_ctx,
                 };
 
@@ -907,6 +833,7 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
                     crate::update_scheduler::scheduler::SUCCESS_BASE_INTERVAL,
                 );
                 runtime
+                    .desktop()
                     .task_registry()
                     .spawn("update_scheduler", move |token| async move {
                         use tracing::Instrument;

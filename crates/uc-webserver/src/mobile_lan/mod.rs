@@ -11,9 +11,10 @@
 //! * daemon API 始终绑 loopback;mobile LAN 在子步骤 5.5 接 settings 后
 //!   绑用户选定的 LAN IP, 需要独立的"开 / 关"生命周期。
 //!
-//! 本模块依赖 `Arc<MobileSyncFacade>` 用于鉴权 + 业务路由 —— daemon 启动时
-//! 已经把 facade 装配好, 这里只接受现成 Arc 注入, 不感知具体 ports。
+//! 本模块与 loopback API 共享 daemon 启动的同一个 `Engine`；这里只负责
+//! SyncClipboard 协议和 HTTP 生命周期，不另行装配业务运行时。
 
+mod core;
 mod middleware;
 mod routes;
 mod server;

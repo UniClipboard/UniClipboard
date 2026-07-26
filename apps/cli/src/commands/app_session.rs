@@ -17,13 +17,34 @@ use uc_daemon_contract::probe::ProbeOutcome;
 /// [`build_app_session`] 返回的 CLI 会话。
 #[cfg(feature = "dev-tools")]
 pub struct CliAppSession {
-    pub runtime: uc_bootstrap::CliAppRuntime,
+    pub runtime: uc_bootstrap::CliEngineRuntime,
 }
 
 #[cfg(feature = "dev-tools")]
 impl CliAppSession {
-    pub fn app_facade(&self) -> &std::sync::Arc<uc_application::facade::AppFacade> {
-        self.runtime.app_facade()
+    pub fn engine(&self) -> &std::sync::Arc<uc_engine::Engine> {
+        self.runtime.engine()
+    }
+
+    pub fn file_handles(&self) -> &uc_bootstrap::DesktopHostFileHandles {
+        self.runtime.file_handles()
+    }
+
+    pub async fn recover_session(&self) -> Result<bool, uc_engine::EngineError> {
+        match self
+            .engine()
+            .execute(uc_engine::Operation::RecoverSession(
+                uc_engine::RecoverSessionInput {
+                    allow_secure_storage_unlock: true,
+                },
+            ))
+            .await?
+        {
+            uc_engine::OperationResult::SessionRecovered { unlocked, resumed } => {
+                Ok(unlocked && resumed)
+            }
+            _ => Ok(false),
+        }
     }
 
     pub async fn shutdown(self) {
@@ -80,7 +101,7 @@ pub async fn build_app_session(verbose: bool) -> Result<CliAppSession, i32> {
     } else {
         Some(uc_observability::LogProfile::Cli)
     };
-    match uc_bootstrap::build_cli_app_runtime(log_profile).await {
+    match uc_bootstrap::build_cli_engine_runtime(log_profile).await {
         Ok(runtime) => Ok(CliAppSession { runtime }),
         Err(err) => {
             ui::error(&format!("Failed to wire dependencies: {err}"));

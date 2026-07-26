@@ -1,5 +1,6 @@
 use keyring::Entry;
-use uc_core::ports::{SecureStorageError, SecureStoragePort};
+
+use crate::ports::{SecureStorageError, SecureStorageProvider};
 
 const SERVICE_NAME: &str = "UniClipboard";
 
@@ -58,17 +59,6 @@ fn classify_platform_failure(msg: &str) -> SecureStorageError {
 ///
 /// The function appends the `"dev"` suffix when `UNICLIPBOARD_ENV` is set to `"development"` or `"dev"` (case-insensitive).
 /// It also appends a profile suffix taken from `UC_PROFILE` if non-empty, or from `crate::default_profile()` if `UC_PROFILE` is unset or empty.
-///
-/// # Examples
-///
-/// ```
-/// // ensure a deterministic environment for the example
-/// std::env::set_var("UNICLIPBOARD_ENV", "development");
-/// std::env::set_var("UC_PROFILE", "staging");
-/// assert_eq!(resolve_service_name(), format!("{}-dev-staging", SERVICE_NAME));
-/// std::env::remove_var("UNICLIPBOARD_ENV");
-/// std::env::remove_var("UC_PROFILE");
-/// ```
 fn resolve_service_name() -> String {
     let mut suffixes: Vec<String> = Vec::new();
 
@@ -120,7 +110,7 @@ impl SystemSecureStorage {
     }
 }
 
-impl SecureStoragePort for SystemSecureStorage {
+impl SecureStorageProvider for SystemSecureStorage {
     fn get(&self, key: &str) -> Result<Option<Vec<u8>>, SecureStorageError> {
         let entry = self.entry_for_key(key)?;
         match entry.get_secret() {

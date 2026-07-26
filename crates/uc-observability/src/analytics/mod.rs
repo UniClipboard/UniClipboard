@@ -40,13 +40,13 @@ pub use facade::{
     AnalyticsFacade, DefaultAnalyticsFacade, NoopAnalyticsFacade, ResetIdentityError,
     SelfMintedAdoptRequest,
 };
-pub use identity::{
-    hash_space_id_for_telemetry, AdoptOutcome, AnalyticsIdentityError, AnalyticsIdentityPort,
-    LocalAnalyticsIdentity, NoopAnalyticsIdentity, ReleaseOutcome,
-};
+pub use identity::{hash_space_id_for_telemetry, LocalAnalyticsIdentity, NoopAnalyticsIdentity};
 pub use ids::{
     clear_space_person_id, load_or_create as load_or_create_ids, load_space_person_id,
     reset as reset_ids, set_space_person_id, AnalyticsIds,
 };
 pub use port::{AnalyticsPort, GroupIdentifyPayload, IdentifyPayload, NoopAnalyticsSink};
 pub use sinks::{build_event_payload, GatedAnalyticsSink, PosthogSink, StdoutSink};
+pub use uc_observability_contract::analytics::{
+    AdoptOutcome, AnalyticsIdentityError, AnalyticsIdentityPort, ReleaseOutcome,
+};

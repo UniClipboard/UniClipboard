@@ -33,7 +33,7 @@ pub fn detect_storage_capability() -> SecureStorageCapability {
             tracing::warn!("⚠️  macOS dev environment detected. Using file-based secure storage.");
             return SecureStorageCapability::FileBasedKeystore;
         }
-        return SecureStorageCapability::SystemKeyring;
+        SecureStorageCapability::SystemKeyring
     }
 
     // Windows: Always has Credential Manager

@@ -1,15 +1,12 @@
 //! Basic Auth middleware for the mobile LAN listener.
 //!
 //! 把请求头 `Authorization: basic base64(user:pass)` 翻成"哪台已登记 mobile
-//! 设备"的事实, 经 [`MobileSyncFacade::authenticate_basic`] 校验后注入
-//! [`AuthenticatedDevice`] extension 给后续 handler。
+//! 设备"的事实，经共享核心校验后注入已认证会话 extension 给后续 handler。
 //!
 //! ## 设计取舍
 //!
-//! 1. **不在 webserver 层做 base64 / scheme 解析** —— 这部分逻辑落在
-//!    `uc-application::AuthenticateBasicAuthUseCase`(`uc-application/AGENTS.md`
-//!    §11.1 facade 是稳定入口)。本中间件只做 1) 取 `Authorization` 头
-//!    2) 调 facade 3) 翻译错误为 HTTP status。
+//! 1. **不在 webserver 层做 base64 / scheme 解析** —— 本中间件只取
+//!    `Authorization` 头、调用核心并翻译错误为 HTTP status。
 //!
 //! 2. **401 通道**:头缺失 / scheme 不对 / 用户名不存在 / 密码不对, 一律
 //!    `401 Unauthorized`, 响应头带 `WWW-Authenticate: basic realm="..."`
@@ -18,8 +15,6 @@
 //! 3. **500 通道**:仓储不可用 / hasher 内部错误, 返回 `500 Internal Server
 //!    Error`, 响应里不含细节(细节进 tracing)。
 
-use std::sync::Arc;
-
 use axum::{
     extract::{Request, State},
     http::{header, HeaderValue, StatusCode},
@@ -27,24 +22,22 @@ use axum::{
     response::Response,
 };
 
-use uc_application::facade::{
-    AuthenticateBasicAuthError, AuthenticateBasicAuthInput, MobileSyncFacade,
-};
+use crate::mobile_lan::core::MobileLanCore;
 
 /// `WWW-Authenticate` 响应头值。realm 指明这是 mobile sync 的鉴权域,
 /// 让客户端 / curl 在交互式场景能弹合适的密码框。
 const WWW_AUTH_VALUE: &str = "Basic realm=\"uniclipboard-mobile-sync\"";
 
-/// axum middleware: 校验 Basic Auth 头并把 [`AuthenticatedDevice`] 塞进 extensions。
+/// axum middleware: 校验 Basic Auth 头并把已认证会话塞进 extensions。
 ///
 /// 上游路由用法:
 /// ```ignore
 /// Router::new()
 ///     .route("/SyncClipboard.json", get(handler))
-///     .layer(axum::middleware::from_fn_with_state(facade.clone(), basic_auth));
+///     .layer(axum::middleware::from_fn_with_state(core.clone(), basic_auth));
 /// ```
 pub(crate) async fn basic_auth(
-    State(facade): State<Arc<MobileSyncFacade>>,
+    State(core): State<MobileLanCore>,
     mut req: Request,
     next: Next,
 ) -> Result<Response, Response> {
@@ -67,23 +60,18 @@ pub(crate) async fn basic_auth(
         .map(|s| s.to_string())
         .unwrap_or_default();
 
-    match facade
-        .authenticate_basic(AuthenticateBasicAuthInput {
-            authorization_header: header_str,
-        })
-        .await
-    {
-        Ok(authed) => {
+    match core.authenticate(header_str).await {
+        Ok(Some(authed)) => {
             tracing::info!(
                 method = %method,
                 path = %path,
-                username = %authed.device.username,
+                client_type = ?authed.client_type,
                 "mobile_lan: auth ok, dispatching to handler"
             );
             req.extensions_mut().insert(authed);
             Ok(next.run(req).await)
         }
-        Err(AuthenticateBasicAuthError::InvalidCredentials) => {
+        Ok(None) => {
             tracing::warn!(
                 method = %method,
                 path = %path,
@@ -92,12 +80,12 @@ pub(crate) async fn basic_auth(
             );
             Err(unauthorized())
         }
-        Err(AuthenticateBasicAuthError::PersistenceFailed(msg)) => {
-            tracing::warn!(error = %msg, "mobile basic auth: device repo failure");
-            Err(internal_error())
-        }
-        Err(AuthenticateBasicAuthError::Internal(msg)) => {
-            tracing::warn!(error = %msg, "mobile basic auth: hasher internal failure");
+        Err(error) => {
+            tracing::warn!(
+                code = error.code(),
+                category = %error.category(),
+                "mobile basic auth failed"
+            );
             Err(internal_error())
         }
     }
@@ -119,7 +107,7 @@ fn internal_error() -> Response {
     resp
 }
 
-// AuthenticatedDevice 已通过 middleware 注入到 request extensions。当前 4
+// The authenticated session is injected into request extensions. Current
 // 条 SyncClipboard 协议路由还不需要直接读它(只关心鉴权过没过); P5a.3 的
 // `ApplyIncomingMobileClipUseCase` 会通过 `axum::extract::Extension` 拿来
 // 源 device_id, 见下方 `tests::happy_path_inserts_authenticated_device`
@@ -127,7 +115,7 @@ fn internal_error() -> Response {
 
 #[cfg(test)]
 mod tests {
-    //! Middleware 单测。focus 是"happy path 把 [`AuthenticatedDevice`]
+    //! Middleware 单测。focus 是"happy path 把认证会话
     //! 注入 request extensions, 并能被下游 handler 读到", 这是 P5a.3+
     //! 业务 use case 拿 source device_id 的前置契约。
     //!
@@ -142,32 +130,27 @@ mod tests {
     use axum::Router;
     use tower::ServiceExt;
 
-    use uc_application::facade::AuthenticatedDevice;
+    use uc_engine::MobileAuthenticatedSession;
 
-    use crate::mobile_lan::test_support::{auth_header, build_facade_with_seeded_device};
+    use crate::mobile_lan::test_support::{auth_header, build_test_core_with_seeded_device};
 
-    /// 探针 handler: 把 middleware 注入的 [`AuthenticatedDevice`] 取出
-    /// 来, 把 device username 写回 body —— 同时验证两件事:
+    /// Probe handler: read the authenticated session installed by middleware.
     /// 1. middleware 在 happy path 把 extension 真的塞进去了;
     /// 2. 下游 handler 能用 `Extension<AuthenticatedDevice>` 提取出来。
-    async fn echo_username(Extension(authed): Extension<AuthenticatedDevice>) -> String {
-        authed.device.username.clone()
+    async fn echo_device_id(Extension(authed): Extension<MobileAuthenticatedSession>) -> String {
+        authed.device_id
     }
 
-    fn build_probe_app(facade: Arc<MobileSyncFacade>) -> Router {
+    fn build_probe_app(core: MobileLanCore) -> Router {
         Router::new()
-            .route("/__probe", get(echo_username))
-            .layer(axum::middleware::from_fn_with_state(
-                facade.clone(),
-                basic_auth,
-            ))
-            .with_state(facade)
+            .route("/__probe", get(echo_device_id))
+            .layer(axum::middleware::from_fn_with_state(core, basic_auth))
     }
 
     #[tokio::test]
     async fn happy_path_inserts_authenticated_device() {
-        let facade = build_facade_with_seeded_device("mobile_alice", "wonderland").await;
-        let app = build_probe_app(facade);
+        let facade = build_test_core_with_seeded_device("mobile_alice", "wonderland").await;
+        let app = build_probe_app(facade.into());
 
         let resp = app
             .oneshot(
@@ -185,8 +168,8 @@ mod tests {
         let body_bytes = to_bytes(resp.into_body(), 64).await.unwrap();
         assert_eq!(
             body_bytes.as_ref(),
-            b"mobile_alice",
-            "下游 handler 应当能 Extension<AuthenticatedDevice> 取到种子设备 username"
+            b"did_seed",
+            "the downstream handler must receive the authenticated device id"
         );
     }
 }

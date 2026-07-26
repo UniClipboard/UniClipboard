@@ -10,7 +10,6 @@ name = "uc_desktop"
 path = "src/lib.rs"
 
 [dependencies]
-uc-core = { path = "../uc-core", features = ["task-registry"] }
 uc-observability = { path = "../uc-observability" }
 uc-daemon-contract = { path = "../uc-daemon-contract" }
 uc-daemon-process = { path = "../uc-daemon-process" }
@@ -37,6 +36,7 @@ reqwest = { version = "0.12", default-features = false, features = [
 ] }
 
 [dev-dependencies]
+cargo_metadata = "0.19.2"
 uc-daemon-process = { path = "../uc-daemon-process", features = [
   "test-helpers",
 ] }
@@ -44,6 +44,7 @@ tempfile = "3"
 chrono = { version = "0.4", default-features = true }
 diesel = { version = "2.3.5", features = ["sqlite"] }
 mockall = "0.13"
+syn = { version = "2", features = ["full", "visit"] }
 wiremock = "0.6"
 
 [lints]

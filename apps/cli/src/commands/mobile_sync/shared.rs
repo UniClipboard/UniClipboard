@@ -3,19 +3,9 @@
 //! Non-debug commands use the daemon-client path (P5-2b ADR):
 //! [`MobileSyncDaemonCtx`] + [`enter`] / [`finish_daemon_json`] / [`finish_daemon`].
 //!
-//! The hidden `debug` subcommand (debug builds only) still needs in-process
-//! facade access — its legacy lifecycle types are `#[cfg(feature = "dev-tools")]`.
-
-#[cfg(feature = "dev-tools")]
-use std::sync::Arc;
+//! The hidden `debug` subcommand uses the same unified engine entrypoint.
 
 use serde::Serialize;
-
-#[cfg(feature = "dev-tools")]
-use uc_application::facade::{
-    ApplyIncomingMobileClipError, GetLatestMobileSyncDocError, GetMobileSyncFileError,
-    MobileSyncFacade,
-};
 
 use crate::commands::app_session::connect_or_spawn_oneshot_daemon;
 #[cfg(feature = "dev-tools")]
@@ -23,20 +13,15 @@ use crate::commands::app_session::{build_app_session, refuse_if_daemon_running, 
 use crate::exit_codes;
 use crate::ui;
 
-// ── Legacy in-process lifecycle (debug subcommand only) ────────────────
+// ── Unified engine lifecycle (debug subcommand only) ──────────────────
 
 #[cfg(feature = "dev-tools")]
-/// Wired CLI session + a clone of the mobile-sync facade. Built by
-/// [`enter_write`]; consumed by [`finish_json`] / [`finish`].
 pub struct MobileSyncCmdCtx {
     pub cli: CliAppSession,
-    pub facade: Arc<MobileSyncFacade>,
 }
 
 #[cfg(feature = "dev-tools")]
-/// Boilerplate for **write commands** that need in-process facade access
-/// (debug subcommand only). Refuses if daemon is running, then builds a
-/// CLI app session and takes the mobile-sync facade.
+/// Refuse a competing daemon and start one unified engine for a debug command.
 pub async fn enter_write(header: &str, json: bool, verbose: bool) -> Result<MobileSyncCmdCtx, i32> {
     if !json {
         ui::header(header);
@@ -48,12 +33,7 @@ pub async fn enter_write(header: &str, json: bool, verbose: bool) -> Result<Mobi
 #[cfg(feature = "dev-tools")]
 async fn enter_inner(verbose: bool) -> Result<MobileSyncCmdCtx, i32> {
     let cli = build_app_session(verbose).await?;
-    let Some(facade) = cli.app_facade().mobile_sync.get().cloned() else {
-        ui::error("Mobile-sync facade is not wired in this build.");
-        cli.shutdown().await;
-        return Err(exit_codes::EXIT_ERROR);
-    };
-    Ok(MobileSyncCmdCtx { cli, facade })
+    Ok(MobileSyncCmdCtx { cli })
 }
 
 #[cfg(feature = "dev-tools")]
@@ -151,47 +131,4 @@ pub fn read_password_stdin() -> Result<String, String> {
 /// 把 `restart_required=true` 转化为面向用户的提示字符串(英文,人类可读)。
 pub fn restart_hint() -> &'static str {
     "Restart the daemon to apply: `uniclip stop && uniclip start`."
-}
-
-// ── P5a.9 debug subcommand error renderers ──────────────────────────────
-
-#[cfg(feature = "dev-tools")]
-pub fn render_apply_incoming_error(err: &ApplyIncomingMobileClipError) -> String {
-    match err {
-        ApplyIncomingMobileClipError::Inbound(inner) => {
-            format!("Inbound clipboard apply failed: {inner}")
-        }
-        ApplyIncomingMobileClipError::EncodeFailed(msg) => {
-            format!("V3 envelope encode failed: {msg}")
-        }
-        ApplyIncomingMobileClipError::Internal(msg) => {
-            format!("Internal apply error: {msg}")
-        }
-    }
-}
-
-#[cfg(feature = "dev-tools")]
-pub fn render_get_latest_doc_error(err: &GetLatestMobileSyncDocError) -> String {
-    match err {
-        GetLatestMobileSyncDocError::NotFound => {
-            "No clipboard entry yet (404 — same response iPhone would see).".into()
-        }
-        GetLatestMobileSyncDocError::Port(inner) => {
-            format!("Snapshot port failure: {inner}")
-        }
-    }
-}
-
-#[cfg(feature = "dev-tools")]
-pub fn render_get_file_error(err: &GetMobileSyncFileError) -> String {
-    match err {
-        GetMobileSyncFileError::NotFound => "No matching file for this dataName (404).".into(),
-        GetMobileSyncFileError::Port(inner) => {
-            format!("Snapshot port failure: {inner}")
-        }
-        GetMobileSyncFileError::Staging(msg) => {
-            // P5a.3.5: File 出站读 staging 文件 IO 失败(权限 / 中途盘错)。
-            format!("File staging IO failure: {msg}")
-        }
-    }
 }

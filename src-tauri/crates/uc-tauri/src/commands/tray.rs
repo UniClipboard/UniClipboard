@@ -1,10 +1,10 @@
 //! Tray-related Tauri commands
 
 use crate::commands::record_trace_fields;
+use crate::commands::TraceMetadata;
 use crate::tray::TrayState;
 use tauri::State;
 use tracing::info_span;
-use uc_core::ports::observability::TraceMetadata;
 
 /// Update tray menu labels to match the UI language.
 ///

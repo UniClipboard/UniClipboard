@@ -3,11 +3,10 @@
 use std::{fs, path::PathBuf, sync::Arc};
 use tracing::{debug, error, info, warn};
 
-use uc_core::ports::SecureStoragePort;
-
 use crate::{
     capability::{detect_storage_capability, SecureStorageCapability},
     file_secure_storage::FileSecureStorage,
+    ports::SecureStorageProvider,
     system_secure_storage::SystemSecureStorage,
 };
 
@@ -39,7 +38,7 @@ pub enum SecureStorageFactoryError {
 /// `probe_system_storage_integrity` instead; this function is still compiled
 /// for parity / future use, hence the `dead_code` allowance there.
 #[cfg_attr(target_os = "linux", allow(dead_code))]
-fn probe_system_storage_reachable(storage: &dyn SecureStoragePort) -> Result<(), String> {
+fn probe_system_storage_reachable(storage: &dyn SecureStorageProvider) -> Result<(), String> {
     storage
         .get(SYSTEM_STORAGE_PROBE_KEY)
         .map(|_| ())
@@ -68,7 +67,7 @@ fn probe_system_storage_reachable(storage: &dyn SecureStoragePort) -> Result<(),
 /// compiled there so its unit tests (which exercise pure trait-object
 /// behavior) run on every host.
 #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
-fn probe_system_storage_integrity(storage: &dyn SecureStoragePort) -> Result<(), String> {
+fn probe_system_storage_integrity(storage: &dyn SecureStorageProvider) -> Result<(), String> {
     use rand::{rngs::OsRng, TryRngCore};
 
     let mut probe = [0u8; 32];
@@ -170,14 +169,14 @@ where
 
 fn secure_storage_from_capability(
     capability: SecureStorageCapability,
-) -> Result<Arc<dyn SecureStoragePort>, SecureStorageFactoryError> {
+) -> Result<Arc<dyn SecureStorageProvider>, SecureStorageFactoryError> {
     secure_storage_from_capability_with_base_dir(capability, None)
 }
 
 /// Create a secure storage instance matching the provided secure storage capability.
 ///
 /// If `capability` indicates system storage, returns a system-backed implementation wrapped in
-/// `Arc<dyn SecureStoragePort>`. If `capability` is `FileBasedKeystore`, returns a file-backed
+/// `Arc<dyn SecureStorageProvider>`. If `capability` is `FileBasedKeystore`, returns a file-backed
 /// implementation using the provided `base_dir`. If `base_dir` is `None`,
 /// returns `SecureStorageFactoryError::FileBasedInit` with `std::io::ErrorKind::NotFound`.
 /// If `capability` is `Unsupported`, returns `SecureStorageFactoryError::Unsupported` containing
@@ -203,16 +202,16 @@ fn secure_storage_from_capability(
 fn secure_storage_from_capability_with_base_dir(
     capability: SecureStorageCapability,
     base_dir: Option<PathBuf>,
-) -> Result<Arc<dyn SecureStoragePort>, SecureStorageFactoryError> {
+) -> Result<Arc<dyn SecureStorageProvider>, SecureStorageFactoryError> {
     match capability {
         SecureStorageCapability::SystemKeyring => {
-            Ok(Arc::new(SystemSecureStorage::new()) as Arc<dyn SecureStoragePort>)
+            Ok(Arc::new(SystemSecureStorage::new()) as Arc<dyn SecureStorageProvider>)
         }
         SecureStorageCapability::FileBasedKeystore => {
             if let Some(base_dir) = base_dir {
                 fs::create_dir_all(&base_dir)?;
                 Ok(Arc::new(FileSecureStorage::with_base_dir(base_dir))
-                    as Arc<dyn SecureStoragePort>)
+                    as Arc<dyn SecureStorageProvider>)
             } else {
                 Err(SecureStorageFactoryError::FileBasedInit(
                     std::io::Error::new(
@@ -239,7 +238,7 @@ fn secure_storage_from_capability_with_base_dir(
 ///
 /// # Returns
 ///
-/// `Ok(Arc<dyn SecureStoragePort>)` with the selected storage on success; otherwise
+/// `Ok(Arc<dyn SecureStorageProvider>)` with the selected storage on success; otherwise
 /// an appropriate `SecureStorageFactoryError` describing why storage could not be
 /// created (`FileBasedInit` when an app data root is required, or
 /// `Unsupported` when no secure storage is available).
@@ -251,7 +250,7 @@ fn secure_storage_from_capability_with_base_dir(
 /// let _ = create_default_secure_storage();
 /// ```
 pub fn create_default_secure_storage(
-) -> Result<Arc<dyn SecureStoragePort>, SecureStorageFactoryError> {
+) -> Result<Arc<dyn SecureStorageProvider>, SecureStorageFactoryError> {
     let capability = detect_storage_capability();
     debug!(capability = ?capability, "Detected secure storage capability");
 
@@ -280,7 +279,7 @@ pub fn create_default_secure_storage(
 
 /// Create a default secure storage using `app_data_root` when a file-based keystore is required.
 ///
-/// Detects the platform's secure storage capability and returns an appropriate `SecureStoragePort`:
+/// Detects the platform's secure storage capability and returns an appropriate provider:
 /// - If system secure storage is available, returns the system-backed implementation.
 /// - If a file-based keystore is detected, initializes a file-backed implementation rooted at
 ///   `app_data_root`.
@@ -309,7 +308,7 @@ pub fn create_default_secure_storage(
 /// ```
 pub fn create_default_secure_storage_in_app_data_root(
     app_data_root: PathBuf,
-) -> Result<Arc<dyn SecureStoragePort>, SecureStorageFactoryError> {
+) -> Result<Arc<dyn SecureStorageProvider>, SecureStorageFactoryError> {
     // Portable ("green") builds must not write the KEK into a per-user system
     // secret store (Windows Credential Manager / macOS Keychain / Secret
     // Service): that would leave a trace outside the portable folder and break
@@ -319,7 +318,7 @@ pub fn create_default_secure_storage_in_app_data_root(
         info!("Portable mode: storing KEK as a file under the portable data root (skipping system secure storage)");
         return Ok(
             Arc::new(FileSecureStorage::new_in_app_data_root(app_data_root)?)
-                as Arc<dyn SecureStoragePort>,
+                as Arc<dyn SecureStorageProvider>,
         );
     }
 
@@ -363,7 +362,7 @@ pub fn create_default_secure_storage_in_app_data_root(
             match probe_result {
                 Ok(()) => {
                     info!("Using system secure storage");
-                    Ok(Arc::new(system_storage) as Arc<dyn SecureStoragePort>)
+                    Ok(Arc::new(system_storage) as Arc<dyn SecureStorageProvider>)
                 }
                 Err(probe_err) => {
                     warn!(
@@ -376,7 +375,7 @@ pub fn create_default_secure_storage_in_app_data_root(
                     );
                     Ok(
                         Arc::new(FileSecureStorage::new_in_app_data_root(app_data_root)?)
-                            as Arc<dyn SecureStoragePort>,
+                            as Arc<dyn SecureStorageProvider>,
                     )
                 }
             }
@@ -385,7 +384,7 @@ pub fn create_default_secure_storage_in_app_data_root(
             warn!("Using file-based secure storage (insecure dev fallback for WSL/headless environments)");
             Ok(
                 Arc::new(FileSecureStorage::new_in_app_data_root(app_data_root)?)
-                    as Arc<dyn SecureStoragePort>,
+                    as Arc<dyn SecureStorageProvider>,
             )
         }
         SecureStorageCapability::Unsupported => {
@@ -398,18 +397,18 @@ pub fn create_default_secure_storage_in_app_data_root(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ports::SecureStorageError;
     use std::collections::HashMap;
     use std::sync::Mutex;
-    use uc_core::ports::SecureStorageError;
 
-    /// `SecureStoragePort` that preserves bytes verbatim — models a
+    /// `SecureStorageProvider` that preserves bytes verbatim — models a
     /// well-behaved backend like gnome-keyring.
     #[derive(Default)]
     struct HonestStorage {
         map: Mutex<HashMap<String, Vec<u8>>>,
     }
 
-    impl SecureStoragePort for HonestStorage {
+    impl SecureStorageProvider for HonestStorage {
         fn get(&self, key: &str) -> Result<Option<Vec<u8>>, SecureStorageError> {
             Ok(self.map.lock().unwrap().get(key).cloned())
         }
@@ -426,7 +425,7 @@ mod tests {
         }
     }
 
-    /// `SecureStoragePort` that models KWallet's Secret-Service bridge: every
+    /// `SecureStorageProvider` that models KWallet's Secret-Service bridge: every
     /// stored value is funneled through `String::from_utf8_lossy`, replacing
     /// invalid UTF-8 sequences with `U+FFFD` (3 bytes when re-encoded as
     /// UTF-8). Mirrors `kwalletd`'s internal `QString::fromUtf8` round-trip
@@ -436,7 +435,7 @@ mod tests {
         map: Mutex<HashMap<String, Vec<u8>>>,
     }
 
-    impl SecureStoragePort for KWalletLikeStorage {
+    impl SecureStorageProvider for KWalletLikeStorage {
         fn get(&self, key: &str) -> Result<Option<Vec<u8>>, SecureStorageError> {
             Ok(self.map.lock().unwrap().get(key).cloned())
         }
@@ -451,11 +450,11 @@ mod tests {
         }
     }
 
-    /// `SecureStoragePort` whose `set` always fails — models snap AppArmor
+    /// `SecureStorageProvider` whose `set` always fails — models snap AppArmor
     /// refusing `OpenSession` or a locked keyring rejecting writes.
     struct WriteRejectingStorage;
 
-    impl SecureStoragePort for WriteRejectingStorage {
+    impl SecureStorageProvider for WriteRejectingStorage {
         fn get(&self, _key: &str) -> Result<Option<Vec<u8>>, SecureStorageError> {
             Ok(None)
         }

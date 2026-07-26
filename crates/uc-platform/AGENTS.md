@@ -56,7 +56,7 @@
 
 ### 2.2 非职责
 
-以下内容**不属于** `uc-platform`：
+以下内容 **不属于** `uc-platform`：
 
 | 类别        | 示例                                                       |
 | --------- | -------------------------------------------------------- |
@@ -74,27 +74,25 @@
 可以这样理解：
 
 ```text
-UI / CLI / Daemon / Mobile Host
-          ↓
-        uc-app
-          ↓
-       uc-core
-          ↑
-       uc-infra
-          ↑
+CLI / Daemon / Desktop Host
+          |
+     uc-bootstrap
+          |
      uc-platform
+          |
+   OS-specific capabilities
 ```
 
 更准确地说：
 
 * `uc-platform` 是 **平台差异与宿主能力层**
 * `uc-infra` 是 **外部能力实现层**
-* 两者可能协作，但职责不同
+* `uc-bootstrap` 将平台层自有类型转换为 `uc-engine` 的 `HostCapabilities`
 
 ### 强制规则
 
-* `uc-platform` 可以依赖 `uc-core`
-* `uc-platform` 可以被 `uc-infra`、`uc-app`、`uc-bootstrap` 使用
+* `uc-platform` 不得依赖 `uc-core`、`uc-application`、`uc-infra` 或 `uc-engine`
+* `uc-platform` 可以被 `uc-bootstrap` 和显式启用的桌面诊断工具使用
 * `uc-platform` 不可以主导业务规则
 * `uc-platform` 不可以承担应用流程编排
 * `uc-platform` 不可以向上层泄漏原始 OS API 细节

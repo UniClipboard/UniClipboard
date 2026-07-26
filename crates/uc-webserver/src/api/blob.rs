@@ -8,7 +8,10 @@ use axum::http::{header, StatusCode};
 use axum::response::IntoResponse;
 use axum::routing::get;
 use axum::Router;
-use uc_application::facade::ResourceFacadeError;
+use uc_engine::{
+    BlobResourceInput, EngineError, EngineErrorCategory, HistoryEntryInput, Operation,
+    OperationResult, ThumbnailResourceInput,
+};
 
 use crate::api::dto::error::log_facade_failure;
 use crate::api::server::DaemonApiState;
@@ -49,17 +52,6 @@ async fn get_blob(
     State(state): State<DaemonApiState>,
     Path(blob_id): Path<String>,
 ) -> impl IntoResponse {
-    let app = match state.app_facade_or_error() {
-        Ok(app) => app,
-        Err(_) => {
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "daemon application facade unavailable",
-            )
-                .into_response();
-        }
-    };
-
     // D6 (ADR-008 P3-d) interim RSS guard: bound concurrent full-buffer blob
     // materialization until the streaming `BlobReaderPort` lands (see
     // `DaemonApiState::large_blob_semaphore` and the P0 perf spike §4). Held for
@@ -74,10 +66,13 @@ async fn get_blob(
         .await
         .ok();
 
-    match app.resource.blob(&blob_id).await {
-        Ok(result) => {
+    match state
+        .execute(Operation::ReadBlob(BlobResourceInput { blob_id }))
+        .await
+    {
+        Ok(OperationResult::BlobRead(result)) => {
             let content_type = result
-                .mime_type
+                .media_type
                 .as_deref()
                 .unwrap_or("application/octet-stream");
             (
@@ -87,7 +82,8 @@ async fn get_blob(
             )
                 .into_response()
         }
-        Err(err) => map_resource_error("get_blob", err, "blob not found", &blob_id),
+        Ok(_) => unexpected_resource_result("get_blob"),
+        Err(error) => map_resource_error("get_blob", error, "blob not found"),
     }
 }
 
@@ -121,21 +117,15 @@ async fn get_thumbnail(
     State(state): State<DaemonApiState>,
     Path(rep_id): Path<String>,
 ) -> impl IntoResponse {
-    let app = match state.app_facade_or_error() {
-        Ok(app) => app,
-        Err(_) => {
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "daemon application facade unavailable",
-            )
-                .into_response();
-        }
-    };
-
-    match app.resource.thumbnail(&rep_id).await {
-        Ok(result) => {
+    match state
+        .execute(Operation::ReadThumbnail(ThumbnailResourceInput {
+            representation_id: rep_id,
+        }))
+        .await
+    {
+        Ok(OperationResult::ThumbnailRead(result)) => {
             let content_type = result
-                .mime_type
+                .media_type
                 .as_deref()
                 .unwrap_or("application/octet-stream");
             (
@@ -145,7 +135,8 @@ async fn get_thumbnail(
             )
                 .into_response()
         }
-        Err(err) => map_resource_error("get_thumbnail", err, "thumbnail not found", &rep_id),
+        Ok(_) => unexpected_resource_result("get_thumbnail"),
+        Err(error) => map_resource_error("get_thumbnail", error, "thumbnail not found"),
     }
 }
 
@@ -183,17 +174,6 @@ async fn get_entry_file(
     State(state): State<DaemonApiState>,
     Path(entry_id): Path<String>,
 ) -> impl IntoResponse {
-    let app = match state.app_facade_or_error() {
-        Ok(app) => app,
-        Err(_) => {
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "daemon application facade unavailable",
-            )
-                .into_response();
-        }
-    };
-
     // Mirror get_blob's interim RSS guard: bound concurrent full-buffer file
     // materialization until the streaming reader lands (ADR-008 P3-d / P5-1b).
     let _permit = state
@@ -203,13 +183,19 @@ async fn get_entry_file(
         .await
         .ok();
 
-    match app.resource.entry_file(&entry_id).await {
-        Ok(result) => {
-            let content_type = result.mime.as_deref().unwrap_or("application/octet-stream");
+    match state
+        .execute(Operation::ReadEntryFile(HistoryEntryInput { entry_id }))
+        .await
+    {
+        Ok(OperationResult::EntryFileRead(result)) => {
+            let content_type = result
+                .media_type
+                .as_deref()
+                .unwrap_or("application/octet-stream");
             // The facade already sanitized the filename to a bare basename; we
             // additionally drop quotes/control chars so the header value stays
             // well-formed.
-            let header_name = sanitize_disposition_filename(&result.filename);
+            let header_name = sanitize_disposition_filename(&result.file_name);
             let disposition = format!("attachment; filename=\"{header_name}\"");
             (
                 StatusCode::OK,
@@ -221,7 +207,8 @@ async fn get_entry_file(
             )
                 .into_response()
         }
-        Err(err) => map_resource_error("get_entry_file", err, "entry file not found", &entry_id),
+        Ok(_) => unexpected_resource_result("get_entry_file"),
+        Err(error) => map_resource_error("get_entry_file", error, "entry file not found"),
     }
 }
 
@@ -242,33 +229,81 @@ fn sanitize_disposition_filename(name: &str) -> String {
 
 fn map_resource_error(
     op: &'static str,
-    error: ResourceFacadeError,
+    error: EngineError,
     not_found_message: &'static str,
-    resource_id: &str,
 ) -> axum::response::Response {
-    use ResourceFacadeError as E;
-    let (variant, status, message): (&'static str, StatusCode, String) = match error {
-        E::NotFound => (
-            "not_found",
-            StatusCode::NOT_FOUND,
-            not_found_message.to_string(),
-        ),
-        E::Mismatch(detail) => (
-            "mismatch",
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("resource {resource_id} mismatch: {detail}"),
-        ),
-        E::Internal(detail) => (
+    let (variant, status, message): (&'static str, StatusCode, &'static str) = match error
+        .category()
+    {
+        EngineErrorCategory::NotFound => ("not_found", StatusCode::NOT_FOUND, not_found_message),
+        _ => (
             "internal",
             StatusCode::INTERNAL_SERVER_ERROR,
-            format!("resource {resource_id} internal: {detail}"),
+            "internal error",
         ),
     };
-    log_facade_failure("resource", op, variant, status, &message);
+    log_facade_failure("resource", op, variant, status, message);
     let body = if status == StatusCode::NOT_FOUND {
         not_found_message
     } else {
         "internal error"
     };
     (status, body).into_response()
+}
+
+fn unexpected_resource_result(op: &'static str) -> axum::response::Response {
+    log_facade_failure(
+        "resource",
+        op,
+        "unexpected_engine_result",
+        StatusCode::INTERNAL_SERVER_ERROR,
+        "internal error",
+    );
+    (StatusCode::INTERNAL_SERVER_ERROR, "internal error").into_response()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use uc_engine::EngineErrorCategory;
+
+    #[tokio::test]
+    async fn engine_resource_errors_preserve_specific_not_found_responses() {
+        for (code, message) in [
+            (1, "blob not found"),
+            (2, "thumbnail not found"),
+            (3, "entry file not found"),
+        ] {
+            let response = map_resource_error(
+                "resource_test",
+                EngineError::new(code, EngineErrorCategory::NotFound, false),
+                message,
+            );
+            assert_eq!(response.status(), StatusCode::NOT_FOUND);
+            let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+                .await
+                .unwrap();
+            assert_eq!(body.as_ref(), message.as_bytes());
+        }
+
+        let response = map_resource_error(
+            "resource_test",
+            EngineError::new(4, EngineErrorCategory::Internal, false),
+            "blob not found",
+        );
+        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        assert_eq!(body.as_ref(), b"internal error");
+    }
+
+    #[test]
+    fn disposition_filename_removes_header_breaking_characters() {
+        assert_eq!(
+            sanitize_disposition_filename("report\"\\\n.pdf"),
+            "report.pdf"
+        );
+        assert_eq!(sanitize_disposition_filename("\n"), "download.bin");
+    }
 }

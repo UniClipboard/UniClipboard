@@ -1,0 +1,16 @@
+{
+  "string": [
+    {
+      "name": "module_desc",
+      "value": "UniClipboard engine acceptance host"
+    },
+    {
+      "name": "entry_ability_desc",
+      "value": "UniClipboard engine acceptance host"
+    },
+    {
+      "name": "entry_ability_label",
+      "value": "Engine Probe"
+    }
+  ]
+}

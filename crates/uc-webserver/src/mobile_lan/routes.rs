@@ -25,16 +25,16 @@
 use std::sync::Arc;
 
 use axum::{
-    extract::{DefaultBodyLimit, FromRef},
+    extract::DefaultBodyLimit,
     routing::{any, delete, get, post},
     Router,
 };
 use tokio::sync::broadcast;
 use tokio_util::sync::CancellationToken;
 
-use uc_application::facade::{FileTransferFacade, MobileSyncFacade};
-use uc_core::clipboard::ActiveClipboardState;
+use uc_engine::ActiveClipboardChanged;
 
+use crate::mobile_lan::core::MobileLanCore;
 use crate::mobile_lan::middleware::basic_auth;
 use crate::mobile_lan::sse_registry::SseConnectionRegistry;
 
@@ -50,18 +50,13 @@ mod sync_doc;
 #[cfg(test)]
 mod tests;
 
-/// mobile_lan 路由共享 state。`mobile_sync` 是 PUT/GET 业务入口;
-/// `file_transfer` 是 PUT /file 流式接收过程中 handler 用来发
-/// `seed_receiver_context` / `start` / `report_progress` / `fail` 的可选
-/// lifecycle facade —— CLI / fallback 装配可留 `None`,handler 自动降级
-/// 为静默(buffered 阶段不发 lifecycle 事件,SyncDoc 阶段一样不会 link)。
+/// mobile_lan 路由共享 state。所有业务动作都经同一个核心执行器完成。
 #[derive(Clone)]
 pub(crate) struct MobileLanState {
-    pub mobile_sync: Arc<MobileSyncFacade>,
-    pub file_transfer: Option<Arc<FileTransferFacade>>,
+    pub core: MobileLanCore,
     /// Fan-out source for active-clipboard register advances; the SSE
     /// handler subscribes once per connection to receive `update` events.
-    pub sse_source: broadcast::Sender<ActiveClipboardState>,
+    pub sse_source: broadcast::Sender<ActiveClipboardChanged>,
     /// Listener-wide cancellation signal. The SSE handler must select on
     /// this directly (not just rely on axum's connection drain) — an SSE
     /// stream never ends on its own, so without an active cancel branch
@@ -71,18 +66,6 @@ pub(crate) struct MobileLanState {
     /// lifetime like `sse_source` / `cancel` (fresh instance per
     /// `build_router` call — a listener restart naturally resets it).
     pub sse_registry: Arc<SseConnectionRegistry>,
-}
-
-impl FromRef<MobileLanState> for Arc<MobileSyncFacade> {
-    fn from_ref(state: &MobileLanState) -> Self {
-        state.mobile_sync.clone()
-    }
-}
-
-impl FromRef<MobileLanState> for Option<Arc<FileTransferFacade>> {
-    fn from_ref(state: &MobileLanState) -> Self {
-        state.file_transfer.clone()
-    }
 }
 
 /// 构造根路径 SyncClipboard 协议路由。daemon listener 把它挂到 axum app 根。
@@ -110,20 +93,17 @@ impl FromRef<MobileLanState> for Option<Arc<FileTransferFacade>> {
 /// protected 路由都接 Basic Auth middleware, 未登记 / 未带头 / 凭据错的
 /// 请求拿 401 + `WWW-Authenticate: Basic` 头。
 ///
-/// `file_transfer` 是可选的:daemon 入口装配时透传 `app_facade.file_transfer`,
-/// PUT /file handler 用它在收 body 的过程中发 lifecycle 事件
-/// (seed / start / progress / fail);测试 / CLI fallback 可留 `None`,
-/// handler 自动降级为静默(buffered 仍然写 IncomingMobileBuffer,但
-/// `file_transfer` 表里不会有这条 transfer 的 lifecycle 行)。
-pub(crate) fn build_router(
-    facade: Arc<MobileSyncFacade>,
-    file_transfer: Option<Arc<FileTransferFacade>>,
-    sse_source: broadcast::Sender<ActiveClipboardState>,
+pub(crate) fn build_router<C>(
+    core: C,
+    _legacy_file_transfer: Option<()>,
+    sse_source: broadcast::Sender<ActiveClipboardChanged>,
     cancel: CancellationToken,
-) -> Router {
+) -> Router
+where
+    C: Into<MobileLanCore>,
+{
     build_public_router(cancel.clone()).merge(build_protected_router(
-        facade,
-        file_transfer,
+        core.into(),
         sse_source,
         cancel,
     ))
@@ -141,14 +121,12 @@ fn build_public_router(cancel: CancellationToken) -> Router {
 
 /// 受保护路由:SyncClipboard 协议面 + 本项目自有扩展,全部经 Basic Auth。
 fn build_protected_router(
-    facade: Arc<MobileSyncFacade>,
-    file_transfer: Option<Arc<FileTransferFacade>>,
-    sse_source: broadcast::Sender<ActiveClipboardState>,
+    core: MobileLanCore,
+    sse_source: broadcast::Sender<ActiveClipboardChanged>,
     cancel: CancellationToken,
 ) -> Router {
     let state = MobileLanState {
-        mobile_sync: facade.clone(),
-        file_transfer,
+        core: core.clone(),
         sse_source,
         cancel,
         sse_registry: Arc::new(SseConnectionRegistry::new()),
@@ -192,6 +170,6 @@ fn build_protected_router(
             "/api/mobile-sync/content-availability",
             get(content_availability::get_content_availability),
         )
-        .layer(axum::middleware::from_fn_with_state(facade, basic_auth))
+        .layer(axum::middleware::from_fn_with_state(core, basic_auth))
         .with_state(state)
 }

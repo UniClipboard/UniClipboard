@@ -3,9 +3,9 @@
 use std::path::PathBuf;
 
 use serde::Serialize;
-use uc_application::facade::space_setup::TryResumeSessionError;
-use uc_application::facade::{
-    CapturedFileSetLineView, CapturedFileSetView, FileSyncSettingsPatch, SettingsPatch,
+use uc_engine::{
+    DevCapturedFileSet, DevCapturedFileSetLine, DevOperation, DevOperationResult,
+    FileSyncSettingsPatch, Operation, OperationResult, SettingsPatch,
 };
 
 use crate::commands::app_session::{build_app_session, refuse_if_daemon_running, CliAppSession};
@@ -39,11 +39,11 @@ struct CaptureFilesLineOutput {
     exclude_reason: Option<String>,
 }
 
-impl From<CapturedFileSetView> for CaptureFilesOutput {
-    fn from(value: CapturedFileSetView) -> Self {
+impl From<DevCapturedFileSet> for CaptureFilesOutput {
+    fn from(value: DevCapturedFileSet) -> Self {
         Self {
-            entry_id: value.entry.entry_id,
-            deduplicated: value.entry.deduplicated,
+            entry_id: value.entry_id,
+            deduplicated: value.deduplicated,
             directory_structure: value.directory_structure,
             content_digest_count: value.content_digest_count,
             lines: value.lines.into_iter().map(Into::into).collect(),
@@ -51,8 +51,8 @@ impl From<CapturedFileSetView> for CaptureFilesOutput {
     }
 }
 
-impl From<CapturedFileSetLineView> for CaptureFilesLineOutput {
-    fn from(value: CapturedFileSetLineView) -> Self {
+impl From<DevCapturedFileSetLine> for CaptureFilesLineOutput {
+    fn from(value: DevCapturedFileSetLine) -> Self {
         Self {
             line_index: value.line_index,
             root_index: value.root_index,
@@ -82,11 +82,16 @@ pub async fn run(args: CaptureFilesArgs, json: bool, verbose: bool) -> i32 {
         return code;
     }
 
-    let original_caps = match bundle.app_facade().settings.get().await {
-        Ok(settings) => (
+    let original_caps = match bundle.engine().execute(Operation::QuerySettings).await {
+        Ok(OperationResult::Settings(settings)) => (
             settings.file_sync.max_file_set_member_count,
             settings.file_sync.max_file_set_total_bytes,
         ),
+        Ok(_) => {
+            ui::error("Failed to load file-set caps: unexpected engine response");
+            bundle.shutdown().await;
+            return exit_codes::EXIT_ERROR;
+        }
         Err(err) => {
             ui::error(&format!("Failed to load file-set caps: {err}"));
             bundle.shutdown().await;
@@ -103,7 +108,11 @@ pub async fn run(args: CaptureFilesArgs, json: bool, verbose: bool) -> i32 {
             }),
             ..Default::default()
         };
-        if let Err(err) = bundle.app_facade().settings.update(patch).await {
+        if let Err(err) = bundle
+            .engine()
+            .execute(Operation::UpdateSettings(Box::new(patch)))
+            .await
+        {
             ui::error(&format!("Failed to apply temporary file-set caps: {err}"));
             bundle.shutdown().await;
             return exit_codes::EXIT_ERROR;
@@ -111,22 +120,20 @@ pub async fn run(args: CaptureFilesArgs, json: bool, verbose: bool) -> i32 {
     }
 
     let capture = bundle
-        .app_facade()
-        .clipboard_capture
-        .capture_file_paths_for_diagnostics(args.paths)
+        .engine()
+        .execute_dev(DevOperation::CaptureFilePaths { paths: args.paths })
         .await;
     let restore = if overrides_requested {
         bundle
-            .app_facade()
-            .settings
-            .update(SettingsPatch {
+            .engine()
+            .execute(Operation::UpdateSettings(Box::new(SettingsPatch {
                 file_sync: Some(FileSyncSettingsPatch {
                     max_file_set_member_count: Some(original_caps.0),
                     max_file_set_total_bytes: Some(original_caps.1),
                     ..Default::default()
                 }),
                 ..Default::default()
-            })
+            })))
             .await
             .map(|_| ())
     } else {
@@ -134,7 +141,15 @@ pub async fn run(args: CaptureFilesArgs, json: bool, verbose: bool) -> i32 {
     };
 
     let result = match capture {
-        Ok(result) => result,
+        Ok(DevOperationResult::FilePathsCaptured(result)) => result,
+        Ok(_) => {
+            ui::error("Failed to capture file set: unexpected engine response");
+            if let Err(restore_err) = restore {
+                ui::error(&format!("Failed to restore file-set caps: {restore_err}"));
+            }
+            bundle.shutdown().await;
+            return exit_codes::EXIT_ERROR;
+        }
         Err(err) => {
             ui::error(&format!("Failed to capture file set: {err}"));
             if let Err(restore_err) = restore {
@@ -171,22 +186,14 @@ pub async fn run(args: CaptureFilesArgs, json: bool, verbose: bool) -> i32 {
 }
 
 async fn resume_session(bundle: &CliAppSession) -> Result<(), i32> {
-    match bundle.app_facade().try_resume_session().await {
+    match bundle.recover_session().await {
         Ok(true) => Ok(()),
         Ok(false) => {
             ui::error("This device is not set up yet. Use `uniclip init` or `uniclip join` first.");
             Err(exit_codes::EXIT_ERROR)
         }
-        Err(TryResumeSessionError::CorruptedKeyMaterial) => {
-            ui::error("Key material is corrupted - consider resetting this profile.");
-            Err(exit_codes::EXIT_ERROR)
-        }
-        Err(TryResumeSessionError::KeyringMiss) => {
-            ui::error("Secure storage cannot silently unlock this space.");
-            Err(exit_codes::EXIT_ERROR)
-        }
-        Err(TryResumeSessionError::Internal(message)) => {
-            ui::error(&format!("Resume failed: {message}"));
+        Err(error) => {
+            ui::error(&format!("Resume failed: {error}"));
             Err(exit_codes::EXIT_ERROR)
         }
     }

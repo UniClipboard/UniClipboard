@@ -1,7 +1,7 @@
 //! `uniclip mobile debug ...` —— SyncClipboard 协议链路的本地回归命令。
 //!
 //! P5a.9 引入,便于无 iPhone 时手动验证整条 SyncClipboard 协议链路。
-//! 全部 4 个子命令 **绕过 HTTP** 直接调 [`MobileSyncFacade`],模拟 iPhone
+//! 全部 4 个子命令绕过 HTTP，通过统一核心模拟 iPhone
 //! 客户端的 4 条 SyncClipboard 协议路由(`GET/PUT /SyncClipboard.json` 与
 //! `GET/PUT /file/{name}`)。
 //!
@@ -18,28 +18,19 @@
 //! daemon 共享同一份 sqlite,不能并发持有。运行流程:`uniclip stop` →
 //! 跑 debug 命令 → 重启 daemon 看效果。
 //!
-//! ## CLI fallback 装配
-//!
-//! P5a.9 把 [`build_fallback_apply_inbound`][1] 升级为 **真
-//! [`CaptureClipboardUseCase`] + `NoopInboundWrite`**:put-text / put-file
-//! 真能写库,后续 `get-doc` / `get-file` 直接读得到。OS 系统剪贴板写入
-//! 仍是 daemon 的责任,不在 CLI 责任范围。
-//!
-//! [`MobileSyncFacade`]: uc_application::facade::MobileSyncFacade
-//! [`CaptureClipboardUseCase`]: uc_application::clipboard_capture::CaptureClipboardUseCase
-//! [1]: uc_bootstrap::build_app_facade_from_deps
+//! OS 系统剪贴板写入仍是 daemon 的责任，不在 CLI 责任范围。
 
 use std::path::{Path, PathBuf};
 
 use clap::Subcommand;
 use serde::Serialize;
 
-use uc_application::facade::space_setup::TryResumeSessionError;
-use uc_application::facade::{
-    ApplyIncomingMobileClipOutcome, GetMobileSyncFileOutput, SyncClipboardItemType,
-    SyncClipboardMeta,
+use uc_engine::{
+    AppendMobileFileUploadInput, ApplyMobileSyncDocumentInput, BeginMobileFileUploadInput,
+    FinishMobileFileUploadInput, MobileSyncDocument, MobileSyncDocumentApplyOutcome,
+    MobileSyncFileReadOutcome, MobileSyncItemType, Operation, OperationResult,
+    ReadMobileSyncFileInput,
 };
-use uc_core::mobile_sync::MobileDeviceId;
 
 use crate::commands::mobile_sync::shared::{self, MobileSyncCmdCtx};
 use crate::exit_codes;
@@ -89,8 +80,8 @@ pub async fn run(command: DebugCommands, json: bool, verbose: bool) -> i32 {
 /// suffix of the apply_incoming pseudo `DeviceId("mobile_sync:debug-cli")`,
 /// keeping debug-driven entries visually distinguishable from real iPhone
 /// uploads in the event log.
-fn debug_source_device_id() -> MobileDeviceId {
-    MobileDeviceId::new("debug-cli")
+fn debug_source_device_id() -> String {
+    "debug-cli".to_string()
 }
 
 /// Silently resume the encryption session before any debug command that
@@ -103,7 +94,7 @@ fn debug_source_device_id() -> MobileDeviceId {
 /// On error, prints the user-facing message and returns the exit code; the
 /// caller propagates via `shared::finish(ctx, code).await`.
 async fn ensure_session_resumed(ctx: &MobileSyncCmdCtx) -> Result<(), i32> {
-    match ctx.cli.app_facade().try_resume_session().await {
+    match ctx.cli.recover_session().await {
         Ok(true) => Ok(()),
         Ok(false) => {
             ui::error(
@@ -111,18 +102,8 @@ async fn ensure_session_resumed(ctx: &MobileSyncCmdCtx) -> Result<(), i32> {
             );
             Err(exit_codes::EXIT_ERROR)
         }
-        Err(TryResumeSessionError::CorruptedKeyMaterial) => {
-            ui::error("Key material is corrupted — consider resetting this profile.");
-            Err(exit_codes::EXIT_ERROR)
-        }
-        Err(TryResumeSessionError::KeyringMiss) => {
-            ui::error(
-                "Keychain cannot silently unlock this space. Re-run `uniclip init` or `uniclip join`.",
-            );
-            Err(exit_codes::EXIT_ERROR)
-        }
-        Err(TryResumeSessionError::Internal(msg)) => {
-            ui::error(&format!("Resume failed: {msg}"));
+        Err(error) => {
+            ui::error(&format!("Resume failed: {error}"));
             Err(exit_codes::EXIT_ERROR)
         }
     }
@@ -139,10 +120,10 @@ struct PutOutcomeDto {
     decode_reason: Option<String>,
 }
 
-impl From<&ApplyIncomingMobileClipOutcome> for PutOutcomeDto {
-    fn from(o: &ApplyIncomingMobileClipOutcome) -> Self {
+impl From<&MobileSyncDocumentApplyOutcome> for PutOutcomeDto {
+    fn from(o: &MobileSyncDocumentApplyOutcome) -> Self {
         match o {
-            ApplyIncomingMobileClipOutcome::Applied {
+            MobileSyncDocumentApplyOutcome::Applied {
                 entry_id,
                 content_id,
             } => Self {
@@ -152,7 +133,7 @@ impl From<&ApplyIncomingMobileClipOutcome> for PutOutcomeDto {
                 existing_entry_id: None,
                 decode_reason: None,
             },
-            ApplyIncomingMobileClipOutcome::DuplicateSkipped {
+            MobileSyncDocumentApplyOutcome::DuplicateSkipped {
                 snapshot_hash,
                 existing_entry_id,
             } => Self {
@@ -162,14 +143,25 @@ impl From<&ApplyIncomingMobileClipOutcome> for PutOutcomeDto {
                 existing_entry_id: Some(existing_entry_id.to_string()),
                 decode_reason: None,
             },
-            ApplyIncomingMobileClipOutcome::DecodeFailed { reason } => Self {
+            MobileSyncDocumentApplyOutcome::Resurfaced {
+                snapshot_hash,
+                existing_entry_id,
+                ..
+            } => Self {
+                outcome: "resurfaced",
+                entry_id: None,
+                snapshot_hash: Some(snapshot_hash.clone()),
+                existing_entry_id: Some(existing_entry_id.to_string()),
+                decode_reason: None,
+            },
+            MobileSyncDocumentApplyOutcome::DecodeFailed { reason } => Self {
                 outcome: "decode_failed",
                 entry_id: None,
                 snapshot_hash: None,
                 existing_entry_id: None,
                 decode_reason: Some(reason.clone()),
             },
-            ApplyIncomingMobileClipOutcome::Buffered => Self {
+            MobileSyncDocumentApplyOutcome::Buffered => Self {
                 outcome: "buffered",
                 entry_id: None,
                 snapshot_hash: None,
@@ -180,9 +172,9 @@ impl From<&ApplyIncomingMobileClipOutcome> for PutOutcomeDto {
     }
 }
 
-fn print_outcome(label: &str, outcome: &ApplyIncomingMobileClipOutcome) {
+fn print_outcome(label: &str, outcome: &MobileSyncDocumentApplyOutcome) {
     match outcome {
-        ApplyIncomingMobileClipOutcome::Applied {
+        MobileSyncDocumentApplyOutcome::Applied {
             entry_id,
             content_id,
         } => {
@@ -190,7 +182,7 @@ fn print_outcome(label: &str, outcome: &ApplyIncomingMobileClipOutcome) {
             ui::info("entryId", &entry_id.to_string());
             ui::info("contentId", content_id);
         }
-        ApplyIncomingMobileClipOutcome::DuplicateSkipped {
+        MobileSyncDocumentApplyOutcome::DuplicateSkipped {
             snapshot_hash,
             existing_entry_id,
         } => {
@@ -198,11 +190,21 @@ fn print_outcome(label: &str, outcome: &ApplyIncomingMobileClipOutcome) {
             ui::info("snapshotHash", snapshot_hash);
             ui::info("existingEntryId", &existing_entry_id.to_string());
         }
-        ApplyIncomingMobileClipOutcome::DecodeFailed { reason } => {
+        MobileSyncDocumentApplyOutcome::Resurfaced {
+            snapshot_hash,
+            existing_entry_id,
+            os_write_succeeded,
+        } => {
+            ui::info(label, "resurfaced");
+            ui::info("snapshotHash", snapshot_hash);
+            ui::info("existingEntryId", &existing_entry_id.to_string());
+            ui::info("osWriteSucceeded", &os_write_succeeded.to_string());
+        }
+        MobileSyncDocumentApplyOutcome::DecodeFailed { reason } => {
             ui::warn(&format!("{label}: decode_failed"));
             ui::info("reason", reason);
         }
-        ApplyIncomingMobileClipOutcome::Buffered => {
+        MobileSyncDocumentApplyOutcome::Buffered => {
             ui::info(label, "buffered");
         }
     }
@@ -219,8 +221,8 @@ async fn put_text(text: String, json: bool, verbose: bool) -> i32 {
     }
 
     let size = text.len() as u64;
-    let meta = SyncClipboardMeta {
-        item_type: SyncClipboardItemType::Text,
+    let document = MobileSyncDocument {
+        item_type: MobileSyncItemType::Text,
         text,
         data_name: None,
         has_data: false,
@@ -232,11 +234,17 @@ async fn put_text(text: String, json: bool, verbose: bool) -> i32 {
     };
 
     match ctx
-        .facade
-        .put_sync_doc(meta, debug_source_device_id())
+        .cli
+        .engine()
+        .execute(Operation::ApplyMobileSyncDocument(Box::new(
+            ApplyMobileSyncDocumentInput {
+                document,
+                source_device_id: debug_source_device_id(),
+            },
+        )))
         .await
     {
-        Ok(outcome) => {
+        Ok(OperationResult::MobileSyncDocumentApplied(outcome)) => {
             if json {
                 let dto = PutOutcomeDto::from(&outcome);
                 shared::finish_json(ctx, &dto).await
@@ -245,8 +253,12 @@ async fn put_text(text: String, json: bool, verbose: bool) -> i32 {
                 shared::finish(ctx, exit_codes::EXIT_SUCCESS).await
             }
         }
+        Ok(_) => {
+            ui::error("Unexpected engine response");
+            shared::finish(ctx, exit_codes::EXIT_ERROR).await
+        }
         Err(err) => {
-            ui::error(&shared::render_apply_incoming_error(&err));
+            ui::error(&format!("Inbound clipboard apply failed: {err}"));
             shared::finish(ctx, exit_codes::EXIT_ERROR).await
         }
     }
@@ -283,9 +295,9 @@ async fn put_file(path: PathBuf, mime_override: Option<String>, json: bool, verb
     };
     let mime = mime_override.unwrap_or_else(|| infer_mime(&path));
     let item_type = if mime.starts_with("image/") {
-        SyncClipboardItemType::Image
+        MobileSyncItemType::Image
     } else {
-        SyncClipboardItemType::File
+        MobileSyncItemType::File
     };
     let size = bytes.len() as u64;
 
@@ -304,25 +316,74 @@ async fn put_file(path: PathBuf, mime_override: Option<String>, json: bool, verb
     // 走 `apply_incoming` 的 BufferFile 分支自我闭环;handler 端 lifecycle
     // 钩子在生产路径(uc-webserver)里发,本调试入口不参与。
     let transfer_id = format!("mobile-lan:cli-{}", uuid::Uuid::new_v4());
-    let file_outcome = match ctx
-        .facade
-        .put_clipboard_file(
-            data_name.clone(),
-            mime.clone(),
-            bytes,
-            device.clone(),
-            transfer_id,
-        )
+    let upload = match ctx
+        .cli
+        .engine()
+        .execute(Operation::BeginMobileFileUpload(
+            BeginMobileFileUploadInput {
+                data_name: data_name.clone(),
+                media_type: mime.clone(),
+                source_device_id: device.clone(),
+                transfer_id,
+                total_bytes: Some(size),
+            },
+        ))
         .await
     {
-        Ok(o) => o,
+        Ok(OperationResult::MobileFileUploadStarted(handle)) => handle,
+        Ok(_) => {
+            ui::error("Unexpected engine response while starting file upload");
+            return shared::finish(ctx, exit_codes::EXIT_ERROR).await;
+        }
         Err(err) => {
-            ui::error(&shared::render_apply_incoming_error(&err));
+            ui::error(&format!("File upload start failed: {err}"));
+            return shared::finish(ctx, exit_codes::EXIT_ERROR).await;
+        }
+    };
+    match ctx
+        .cli
+        .engine()
+        .execute(Operation::AppendMobileFileUpload(
+            AppendMobileFileUploadInput {
+                handle: upload.clone(),
+                bytes,
+            },
+        ))
+        .await
+    {
+        Ok(OperationResult::MobileFileUploadChunkAppended) => {}
+        Ok(_) => {
+            ui::error("Unexpected engine response while uploading file bytes");
+            return shared::finish(ctx, exit_codes::EXIT_ERROR).await;
+        }
+        Err(err) => {
+            ui::error(&format!("File upload failed: {err}"));
+            return shared::finish(ctx, exit_codes::EXIT_ERROR).await;
+        }
+    }
+    let file_outcome = match ctx
+        .cli
+        .engine()
+        .execute(Operation::FinishMobileFileUpload(
+            FinishMobileFileUploadInput {
+                handle: upload,
+                media_type: mime.clone(),
+            },
+        ))
+        .await
+    {
+        Ok(OperationResult::MobileFileUploadFinished(outcome)) => outcome,
+        Ok(_) => {
+            ui::error("Unexpected engine response while finishing file upload");
+            return shared::finish(ctx, exit_codes::EXIT_ERROR).await;
+        }
+        Err(err) => {
+            ui::error(&format!("File upload finish failed: {err}"));
             return shared::finish(ctx, exit_codes::EXIT_ERROR).await;
         }
     };
 
-    let meta = SyncClipboardMeta {
+    let document = MobileSyncDocument {
         item_type,
         text: data_name.clone(),
         data_name: Some(data_name.clone()),
@@ -333,10 +394,24 @@ async fn put_file(path: PathBuf, mime_override: Option<String>, json: bool, verb
         // the client never supplies it.
         content_id: None,
     };
-    let doc_outcome = match ctx.facade.put_sync_doc(meta, device).await {
-        Ok(o) => o,
+    let doc_outcome = match ctx
+        .cli
+        .engine()
+        .execute(Operation::ApplyMobileSyncDocument(Box::new(
+            ApplyMobileSyncDocumentInput {
+                document,
+                source_device_id: device,
+            },
+        )))
+        .await
+    {
+        Ok(OperationResult::MobileSyncDocumentApplied(outcome)) => outcome,
+        Ok(_) => {
+            ui::error("Unexpected engine response while applying file document");
+            return shared::finish(ctx, exit_codes::EXIT_ERROR).await;
+        }
         Err(err) => {
-            ui::error(&shared::render_apply_incoming_error(&err));
+            ui::error(&format!("File document apply failed: {err}"));
             return shared::finish(ctx, exit_codes::EXIT_ERROR).await;
         }
     };
@@ -390,14 +465,14 @@ struct DocDto {
     hash: Option<String>,
 }
 
-impl From<&SyncClipboardMeta> for DocDto {
-    fn from(m: &SyncClipboardMeta) -> Self {
+impl From<&MobileSyncDocument> for DocDto {
+    fn from(m: &MobileSyncDocument) -> Self {
         Self {
             item_type: match m.item_type {
-                SyncClipboardItemType::Text => "Text",
-                SyncClipboardItemType::Image => "Image",
-                SyncClipboardItemType::File => "File",
-                SyncClipboardItemType::Group => "Group",
+                MobileSyncItemType::Text => "Text",
+                MobileSyncItemType::Image => "Image",
+                MobileSyncItemType::File => "File",
+                MobileSyncItemType::Group => "Group",
             },
             text: m.text.clone(),
             data_name: m.data_name.clone(),
@@ -417,27 +492,40 @@ async fn get_doc(json: bool, verbose: bool) -> i32 {
         return shared::finish(ctx, code).await;
     }
 
-    match ctx.facade.get_latest_sync_doc().await {
-        Ok(meta) => {
+    match ctx
+        .cli
+        .engine()
+        .execute(Operation::QueryLatestMobileSyncDocument)
+        .await
+    {
+        Ok(OperationResult::MobileSyncDocument(Some(document))) => {
             if json {
-                let dto = DocDto::from(&meta);
+                let dto = DocDto::from(document.as_ref());
                 shared::finish_json(ctx, &dto).await
             } else {
-                ui::info("type", DocDto::from(&meta).item_type);
-                ui::info("text", &meta.text);
-                if let Some(name) = &meta.data_name {
+                ui::info("type", DocDto::from(document.as_ref()).item_type);
+                ui::info("text", &document.text);
+                if let Some(name) = &document.data_name {
                     ui::info("dataName", name);
                 }
-                ui::info("hasData", &meta.has_data.to_string());
-                ui::info("size", &meta.size.to_string());
-                if let Some(hash) = &meta.hash {
+                ui::info("hasData", &document.has_data.to_string());
+                ui::info("size", &document.size.to_string());
+                if let Some(hash) = &document.hash {
                     ui::info("hash", hash);
                 }
                 shared::finish(ctx, exit_codes::EXIT_SUCCESS).await
             }
         }
+        Ok(OperationResult::MobileSyncDocument(None)) => {
+            ui::error("No clipboard entry yet (404 — same response iPhone would see).");
+            shared::finish(ctx, exit_codes::EXIT_ERROR).await
+        }
+        Ok(_) => {
+            ui::error("Unexpected engine response");
+            shared::finish(ctx, exit_codes::EXIT_ERROR).await
+        }
         Err(err) => {
-            ui::error(&shared::render_get_latest_doc_error(&err));
+            ui::error(&format!("Snapshot query failed: {err}"));
             shared::finish(ctx, exit_codes::EXIT_ERROR).await
         }
     }
@@ -462,9 +550,17 @@ async fn get_file(data_name: String, output: Option<PathBuf>, json: bool, verbos
         return shared::finish(ctx, code).await;
     }
 
-    match ctx.facade.get_clipboard_file(&data_name).await {
-        Ok(out) => {
-            let GetMobileSyncFileOutput { mime, bytes } = out;
+    match ctx
+        .cli
+        .engine()
+        .execute(Operation::ReadMobileSyncFile(ReadMobileSyncFileInput {
+            data_name: data_name.clone(),
+        }))
+        .await
+    {
+        Ok(OperationResult::MobileSyncFile(MobileSyncFileReadOutcome::Found(file))) => {
+            let mime = file.media_type;
+            let bytes = file.bytes;
             let size = bytes.len() as u64;
             let written_to = match &output {
                 Some(path) => match std::fs::write(path, &bytes) {
@@ -499,8 +595,16 @@ async fn get_file(data_name: String, output: Option<PathBuf>, json: bool, verbos
                 shared::finish(ctx, exit_codes::EXIT_SUCCESS).await
             }
         }
+        Ok(OperationResult::MobileSyncFile(MobileSyncFileReadOutcome::NotFound)) => {
+            ui::error("No matching file for this dataName (404).");
+            shared::finish(ctx, exit_codes::EXIT_ERROR).await
+        }
+        Ok(_) => {
+            ui::error("Unexpected engine response");
+            shared::finish(ctx, exit_codes::EXIT_ERROR).await
+        }
         Err(err) => {
-            ui::error(&shared::render_get_file_error(&err));
+            ui::error(&format!("File read failed: {err}"));
             shared::finish(ctx, exit_codes::EXIT_ERROR).await
         }
     }

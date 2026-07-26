@@ -5,8 +5,6 @@ use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, DurationSeconds};
 use utoipa::ToSchema;
 
-use uc_core::settings::model as core;
-
 // NOTE (ADR-008 §0.1): both bespoke `{data,ts}` wrappers for the settings
 // endpoints have been deleted. `GET /settings` returns the pure generic
 // `ApiEnvelope<SettingsDto>` (alias `SettingsEnvelope`) and `PUT /settings`
@@ -94,7 +92,7 @@ pub struct GeneralSettingsDto {
     pub theme: ThemeDto,
     /// 旧版"统一主题预设"字段（v0.7 之前唯一字段）。新前端不再写入,
     /// 但 wire 仍透传以便老 daemon ↔ 新前端 / 新 daemon ↔ 老前端兼容。
-    /// 删除计划见 `uc_core::settings::model::GeneralSettings::theme_color`。
+    /// 该兼容字段将在旧版客户端支持窗口结束后删除。
     #[serde(default)]
     pub theme_color: Option<String>,
     /// Light 模式下的主题预设名（如 `"zinc"`）；为 `None` 时 daemon 端
@@ -554,356 +552,6 @@ pub struct SettingsPatchDto {
     pub quick_panel: Option<QuickPanelSettingsPatchDto>,
 }
 
-// =========================
-// From<core model> for DTO
-// =========================
-
-impl From<core::Theme> for ThemeDto {
-    fn from(value: core::Theme) -> Self {
-        match value {
-            core::Theme::Light => Self::Light,
-            core::Theme::Dark => Self::Dark,
-            core::Theme::System => Self::System,
-        }
-    }
-}
-
-impl From<core::UpdateChannel> for UpdateChannelDto {
-    fn from(value: core::UpdateChannel) -> Self {
-        match value {
-            core::UpdateChannel::Stable => Self::Stable,
-            core::UpdateChannel::Alpha => Self::Alpha,
-            core::UpdateChannel::Beta => Self::Beta,
-            core::UpdateChannel::Rc => Self::Rc,
-        }
-    }
-}
-
-impl From<core::StartupMode> for StartupModeDto {
-    fn from(value: core::StartupMode) -> Self {
-        match value {
-            core::StartupMode::Normal => Self::Normal,
-            core::StartupMode::Silent => Self::Silent,
-            core::StartupMode::Lightweight => Self::Lightweight,
-        }
-    }
-}
-
-impl From<core::ShortcutKey> for ShortcutKeyDto {
-    fn from(value: core::ShortcutKey) -> Self {
-        match value {
-            core::ShortcutKey::Single(v) => Self::Single(v),
-            core::ShortcutKey::Multiple(v) => Self::Multiple(v),
-        }
-    }
-}
-
-impl From<core::ContentTypes> for ContentTypesDto {
-    fn from(value: core::ContentTypes) -> Self {
-        Self {
-            text: value.text,
-            image: value.image,
-            link: value.link,
-            file: value.file,
-            code_snippet: value.code_snippet,
-            rich_text: value.rich_text,
-        }
-    }
-}
-
-impl From<core::SyncFrequency> for SyncFrequencyDto {
-    fn from(value: core::SyncFrequency) -> Self {
-        match value {
-            core::SyncFrequency::Realtime => Self::Realtime,
-            core::SyncFrequency::Interval => Self::Interval,
-        }
-    }
-}
-
-impl From<core::GeneralSettings> for GeneralSettingsDto {
-    fn from(value: core::GeneralSettings) -> Self {
-        Self {
-            auto_start: value.auto_start,
-            startup_mode: value.startup_mode.into(),
-            restore_last_entry_on_startup: value.restore_last_entry_on_startup,
-            auto_check_update: value.auto_check_update,
-            auto_download_update: value.auto_download_update,
-            theme: value.theme.into(),
-            theme_color: value.theme_color,
-            theme_color_light: value.theme_color_light,
-            theme_color_dark: value.theme_color_dark,
-            theme_overrides_light: value.theme_overrides_light,
-            theme_overrides_dark: value.theme_overrides_dark,
-            language: value.language,
-            device_name: value.device_name,
-            update_channel: value.update_channel.map(Into::into),
-            telemetry_enabled: value.telemetry_enabled,
-            usage_analytics_enabled: value.usage_analytics_enabled,
-            debug_mode: value.debug_mode,
-        }
-    }
-}
-
-impl From<core::SyncSettings> for SyncSettingsDto {
-    fn from(value: core::SyncSettings) -> Self {
-        Self {
-            auto_sync: value.auto_sync,
-            sync_frequency: value.sync_frequency.into(),
-            content_types: value.content_types.into(),
-            sync_on_restore: value.sync_on_restore,
-        }
-    }
-}
-
-impl From<core::RetentionRule> for RetentionRuleDto {
-    fn from(value: core::RetentionRule) -> Self {
-        match value {
-            core::RetentionRule::ByAge { max_age } => Self::ByAge { max_age },
-            core::RetentionRule::ByCount { max_items } => Self::ByCount { max_items },
-            core::RetentionRule::ByContentType {
-                content_type,
-                max_age,
-            } => Self::ByContentType {
-                content_type: content_type.into(),
-                max_age,
-            },
-            core::RetentionRule::ByTotalSize { max_bytes } => Self::ByTotalSize { max_bytes },
-            core::RetentionRule::Sensitive { max_age } => Self::Sensitive { max_age },
-        }
-    }
-}
-
-impl From<core::RuleEvaluation> for RuleEvaluationDto {
-    fn from(value: core::RuleEvaluation) -> Self {
-        match value {
-            core::RuleEvaluation::AnyMatch => Self::AnyMatch,
-            core::RuleEvaluation::AllMatch => Self::AllMatch,
-        }
-    }
-}
-
-impl From<core::RetentionPolicy> for RetentionPolicyDto {
-    fn from(value: core::RetentionPolicy) -> Self {
-        Self {
-            enabled: value.enabled,
-            rules: value.rules.into_iter().map(Into::into).collect(),
-            skip_pinned: value.skip_pinned,
-            evaluation: value.evaluation.into(),
-        }
-    }
-}
-
-impl From<core::SecuritySettings> for SecuritySettingsDto {
-    fn from(value: core::SecuritySettings) -> Self {
-        Self {
-            encryption_enabled: value.encryption_enabled,
-            passphrase_configured: value.passphrase_configured,
-            auto_unlock_enabled: value.auto_unlock_enabled,
-        }
-    }
-}
-
-impl From<core::PairingSettings> for PairingSettingsDto {
-    fn from(value: core::PairingSettings) -> Self {
-        Self {
-            step_timeout: value.step_timeout,
-            user_verification_timeout: value.user_verification_timeout,
-            session_timeout: value.session_timeout,
-            max_retries: value.max_retries,
-            protocol_version: value.protocol_version,
-        }
-    }
-}
-
-impl From<core::FileSyncSettings> for FileSyncSettingsDto {
-    fn from(value: core::FileSyncSettings) -> Self {
-        Self {
-            file_sync_enabled: value.file_sync_enabled,
-            auto_save_dir: value.auto_save_dir,
-            small_file_threshold: value.small_file_threshold,
-            max_file_size: value.max_file_size,
-            file_cache_quota_per_device: value.file_cache_quota_per_device,
-            file_retention_hours: value.file_retention_hours,
-            file_auto_cleanup: value.file_auto_cleanup,
-        }
-    }
-}
-
-impl From<core::NetworkSettings> for NetworkSettingsDto {
-    fn from(value: core::NetworkSettings) -> Self {
-        Self {
-            allow_relay_fallback: value.allow_relay_fallback,
-            allow_overlay_network_addrs: value.allow_overlay_network_addrs,
-            custom_relay_urls: value.custom_relay_urls,
-            congestion_controller: value.congestion_controller.into(),
-        }
-    }
-}
-
-impl From<core::CongestionController> for CongestionControllerDto {
-    fn from(value: core::CongestionController) -> Self {
-        match value {
-            core::CongestionController::Cubic => Self::Cubic,
-            core::CongestionController::Bbr3 => Self::Bbr3,
-        }
-    }
-}
-
-impl From<CongestionControllerDto> for core::CongestionController {
-    fn from(value: CongestionControllerDto) -> Self {
-        match value {
-            CongestionControllerDto::Cubic => Self::Cubic,
-            CongestionControllerDto::Bbr3 => Self::Bbr3,
-        }
-    }
-}
-
-impl From<core::QuickPanelPosition> for QuickPanelPositionDto {
-    fn from(value: core::QuickPanelPosition) -> Self {
-        match value {
-            core::QuickPanelPosition::Center => Self::Center,
-            core::QuickPanelPosition::FollowCursor => Self::FollowCursor,
-        }
-    }
-}
-
-impl From<core::QuickPanelDoubleTapModifier> for QuickPanelDoubleTapModifierDto {
-    fn from(value: core::QuickPanelDoubleTapModifier) -> Self {
-        match value {
-            core::QuickPanelDoubleTapModifier::Disabled => Self::Disabled,
-            core::QuickPanelDoubleTapModifier::Alt => Self::Alt,
-            core::QuickPanelDoubleTapModifier::Control => Self::Control,
-            core::QuickPanelDoubleTapModifier::Meta => Self::Meta,
-        }
-    }
-}
-
-impl From<core::QuickPanelSettings> for QuickPanelSettingsDto {
-    fn from(value: core::QuickPanelSettings) -> Self {
-        Self {
-            enabled: value.enabled,
-            position: value.position.into(),
-            double_tap_modifier: value.double_tap_modifier.into(),
-        }
-    }
-}
-
-// =========================
-// From<Dto> for core model (for merge_settings_patch)
-// =========================
-
-impl From<ThemeDto> for core::Theme {
-    fn from(value: ThemeDto) -> Self {
-        match value {
-            ThemeDto::Light => Self::Light,
-            ThemeDto::Dark => Self::Dark,
-            ThemeDto::System => Self::System,
-        }
-    }
-}
-
-impl From<UpdateChannelDto> for core::UpdateChannel {
-    fn from(value: UpdateChannelDto) -> Self {
-        match value {
-            UpdateChannelDto::Stable => Self::Stable,
-            UpdateChannelDto::Alpha => Self::Alpha,
-            UpdateChannelDto::Beta => Self::Beta,
-            UpdateChannelDto::Rc => Self::Rc,
-        }
-    }
-}
-
-impl From<StartupModeDto> for core::StartupMode {
-    fn from(value: StartupModeDto) -> Self {
-        match value {
-            StartupModeDto::Normal => Self::Normal,
-            StartupModeDto::Silent => Self::Silent,
-            StartupModeDto::Lightweight => Self::Lightweight,
-        }
-    }
-}
-
-impl From<ShortcutKeyDto> for core::ShortcutKey {
-    fn from(value: ShortcutKeyDto) -> Self {
-        match value {
-            ShortcutKeyDto::Single(v) => Self::Single(v),
-            ShortcutKeyDto::Multiple(v) => Self::Multiple(v),
-        }
-    }
-}
-
-impl From<ContentTypesDto> for core::ContentTypes {
-    fn from(value: ContentTypesDto) -> Self {
-        Self {
-            text: value.text,
-            image: value.image,
-            link: value.link,
-            file: value.file,
-            code_snippet: value.code_snippet,
-            rich_text: value.rich_text,
-        }
-    }
-}
-
-impl From<SyncFrequencyDto> for core::SyncFrequency {
-    fn from(value: SyncFrequencyDto) -> Self {
-        match value {
-            SyncFrequencyDto::Realtime => Self::Realtime,
-            SyncFrequencyDto::Interval => Self::Interval,
-        }
-    }
-}
-
-impl From<QuickPanelPositionDto> for core::QuickPanelPosition {
-    fn from(value: QuickPanelPositionDto) -> Self {
-        match value {
-            QuickPanelPositionDto::Center => Self::Center,
-            QuickPanelPositionDto::FollowCursor => Self::FollowCursor,
-        }
-    }
-}
-
-impl From<QuickPanelDoubleTapModifierDto> for core::QuickPanelDoubleTapModifier {
-    fn from(value: QuickPanelDoubleTapModifierDto) -> Self {
-        match value {
-            QuickPanelDoubleTapModifierDto::Disabled => Self::Disabled,
-            QuickPanelDoubleTapModifierDto::Alt => Self::Alt,
-            QuickPanelDoubleTapModifierDto::Control => Self::Control,
-            QuickPanelDoubleTapModifierDto::Meta => Self::Meta,
-        }
-    }
-}
-
-impl From<RuleEvaluationDto> for core::RuleEvaluation {
-    fn from(value: RuleEvaluationDto) -> Self {
-        match value {
-            RuleEvaluationDto::AnyMatch => Self::AnyMatch,
-            RuleEvaluationDto::AllMatch => Self::AllMatch,
-        }
-    }
-}
-
-impl From<core::Settings> for SettingsDto {
-    fn from(value: core::Settings) -> Self {
-        Self {
-            schema_version: value.schema_version,
-            general: value.general.into(),
-            sync: value.sync.into(),
-            retention_policy: value.retention_policy.into(),
-            security: value.security.into(),
-            pairing: value.pairing.into(),
-            keyboard_shortcuts: value
-                .keyboard_shortcuts
-                .into_iter()
-                .map(|(k, v)| (k, v.into()))
-                .collect(),
-            file_sync: value.file_sync.into(),
-            network: value.network.into(),
-            quick_panel: value.quick_panel.into(),
-        }
-    }
-}
-
 #[cfg(test)]
 mod network_dto_tests {
     use super::*;
@@ -943,37 +591,6 @@ mod network_dto_tests {
         assert!(dto.allow_relay_fallback);
         assert!(!dto.allow_overlay_network_addrs);
         assert!(dto.custom_relay_urls.is_empty());
-    }
-
-    #[test]
-    fn from_core_passes_through_business_semantics() {
-        let core_value = core::NetworkSettings {
-            allow_relay_fallback: false,
-            allow_overlay_network_addrs: true,
-            custom_relay_urls: vec!["https://relay.example.com.".to_string()],
-            congestion_controller: core::CongestionController::Bbr3,
-        };
-        let dto: NetworkSettingsDto = core_value.into();
-        assert!(
-            !dto.allow_relay_fallback,
-            "DTO MUST NOT invert semantics (Pitfall 1)"
-        );
-        assert!(dto.allow_overlay_network_addrs);
-        assert_eq!(
-            dto.custom_relay_urls,
-            vec!["https://relay.example.com.".to_string()]
-        );
-        assert_eq!(dto.congestion_controller, CongestionControllerDto::Bbr3);
-    }
-
-    #[test]
-    fn settings_dto_default_includes_network() {
-        let core_settings = core::Settings::default();
-        let dto: SettingsDto = core_settings.into();
-        assert!(
-            dto.network.allow_relay_fallback,
-            "Settings::default network MUST be true"
-        );
     }
 
     #[test]
@@ -1430,7 +1047,7 @@ mod retention_rule_dto_tests {
 /// 前端会瞬间不识别但后端编译过 —— 这些测试是兜底的契约 fence。
 ///
 /// 特别留意 `RuleEvaluationDto` 是 `camelCase`(`anyMatch`),
-/// 而 `uc-core::RuleEvaluation` 是 `snake_case`(`any_match`)。
+/// 这里使用前端约定的 camelCase 字面量，而不是旧内部模型的 snake_case 字面量。
 /// wire 与持久化格式不同,转换在 webserver `rule_evaluation_from_dto` 完成。
 #[cfg(test)]
 mod enum_wire_tests {
@@ -1510,8 +1127,8 @@ mod enum_wire_tests {
         assert!(serde_json::from_str::<SyncFrequencyDto>(r#""real_time""#).is_err());
     }
 
-    /// 关键 fence:`RuleEvaluationDto` 用 camelCase,与 `uc-core` 的 snake_case
-    /// 形态不同。前端 TS 字面量是 `'anyMatch' | 'allMatch'`。
+    /// 关键 fence:`RuleEvaluationDto` 使用前端需要的 camelCase 形态。
+    /// 前端 TS 字面量是 `'anyMatch' | 'allMatch'`。
     #[test]
     fn rule_evaluation_dto_wire_is_camel_case() {
         assert_eq!(
@@ -1527,7 +1144,7 @@ mod enum_wire_tests {
             serde_json::from_str(r#""anyMatch""#).expect("accept 'anyMatch'");
         assert_eq!(parsed, RuleEvaluationDto::AnyMatch);
 
-        // 防御:把 wire 形态改回与 uc-core 同样的 snake_case 会让前端瞬间挂掉。
+        // 防御:把 wire 形态改回旧 snake_case 会让前端瞬间挂掉。
         assert!(
             serde_json::from_str::<RuleEvaluationDto>(r#""any_match""#).is_err(),
             "RuleEvaluationDto wire MUST be camelCase, not snake_case (前端契约)"

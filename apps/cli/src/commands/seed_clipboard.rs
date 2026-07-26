@@ -5,10 +5,9 @@
 //! representation policy / spool 这些链路；只需要"一条已加密的剪贴板
 //! 历史"作为 switch-space 数据完整性测试的种子。
 //!
-//! 必须先 init 或 join 过（session 要被 keyring 静默解锁），否则
-//! `try_resume_session` 会返回 false。
+//! 必须先 init 或 join 过，核心才能从安全存储恢复会话。
 
-use uc_application::facade::space_setup::TryResumeSessionError;
+use uc_engine::{DevOperation, DevOperationResult};
 
 use crate::commands::app_session::{build_app_session, refuse_if_daemon_running};
 use crate::exit_codes;
@@ -31,43 +30,38 @@ pub async fn run(args: SeedClipboardArgs, verbose: bool) -> i32 {
     };
 
     // seed 走 EncryptingClipboardEventWriter，要求 session 已解锁。
-    match bundle.app_facade().try_resume_session().await {
+    match bundle.recover_session().await {
         Ok(true) => {}
         Ok(false) => {
             ui::error("This device is not set up yet. Use `uniclip init` or `uniclip join` first.");
             bundle.shutdown().await;
             return exit_codes::EXIT_ERROR;
         }
-        Err(TryResumeSessionError::CorruptedKeyMaterial) => {
-            ui::error("Key material is corrupted — consider resetting this profile.");
-            bundle.shutdown().await;
-            return exit_codes::EXIT_ERROR;
-        }
-        Err(TryResumeSessionError::KeyringMiss) => {
-            ui::error("Keychain cannot silently unlock this space.");
-            bundle.shutdown().await;
-            return exit_codes::EXIT_ERROR;
-        }
-        Err(TryResumeSessionError::Internal(msg)) => {
-            ui::error(&format!("Resume failed: {msg}"));
+        Err(err) => {
+            ui::error(&format!("Resume failed: {err}"));
             bundle.shutdown().await;
             return exit_codes::EXIT_ERROR;
         }
     }
 
     let result = bundle
-        .app_facade()
-        .clipboard_history
-        .seed_text_entry(&args.text)
+        .engine()
+        .execute_dev(DevOperation::SeedText {
+            text: args.text.clone(),
+        })
         .await;
 
     let exit = match result {
-        Ok(entry_id) => {
+        Ok(DevOperationResult::TextSeeded { entry_id }) => {
             ui::info("entry_id", &entry_id);
             ui::info("size_bytes", &args.text.len().to_string());
             // SEED_ENTRY_ID= grep-friendly line for the e2e shell script.
             println!("SEED_ENTRY_ID={entry_id}");
             exit_codes::EXIT_SUCCESS
+        }
+        Ok(_) => {
+            ui::error("Failed to seed clipboard entry: unexpected engine response");
+            exit_codes::EXIT_ERROR
         }
         Err(err) => {
             ui::error(&format!("Failed to seed clipboard entry: {err}"));

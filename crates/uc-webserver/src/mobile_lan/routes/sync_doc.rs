@@ -3,8 +3,6 @@
 //! `GET` 真实读取 UniClipboard 当前最新剪贴板表示；`PUT` 真实写入现有移动
 //! 同步入站管线。当前没有剪贴板内容时，为兼容官方服务端返回空 Text profile。
 
-use std::sync::Arc;
-
 use axum::{
     body::to_bytes,
     extract::{Extension, Request, State},
@@ -14,12 +12,13 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 
-use uc_application::facade::{
-    ApplyIncomingMobileClipOutcome, AuthenticatedDevice, GetLatestMobileSyncDocError,
-    MobileSyncFacade, SyncClipboardItemType, SyncClipboardMeta,
+use uc_engine::{
+    ApplyMobileSyncDocumentInput, MobileAuthenticatedSession, MobileSyncDocument,
+    MobileSyncDocumentApplyOutcome, MobileSyncItemType,
 };
 
 use super::common::{map_apply_error, outcome_kind, MAX_FILE_BYTES};
+use super::MobileLanState;
 
 // ─── wire DTO ───────────────────────────────────────────────────────────
 
@@ -85,13 +84,13 @@ impl SyncClipboardDoc {
         }
     }
 
-    fn from_meta(meta: SyncClipboardMeta) -> Self {
+    fn from_meta(meta: MobileSyncDocument) -> Self {
         Self {
             r#type: match meta.item_type {
-                SyncClipboardItemType::Text => "Text",
-                SyncClipboardItemType::Image => "Image",
-                SyncClipboardItemType::File => "File",
-                SyncClipboardItemType::Group => "Group",
+                MobileSyncItemType::Text => "Text",
+                MobileSyncItemType::Image => "Image",
+                MobileSyncItemType::File => "File",
+                MobileSyncItemType::Group => "Group",
             }
             .to_string(),
             text: meta.text,
@@ -103,15 +102,15 @@ impl SyncClipboardDoc {
         }
     }
 
-    fn into_meta(self) -> Result<SyncClipboardMeta, &'static str> {
+    fn into_meta(self) -> Result<MobileSyncDocument, &'static str> {
         let item_type = match self.r#type.as_str() {
-            "Text" => SyncClipboardItemType::Text,
-            "Image" => SyncClipboardItemType::Image,
-            "File" => SyncClipboardItemType::File,
-            "Group" => SyncClipboardItemType::Group,
+            "Text" => MobileSyncItemType::Text,
+            "Image" => MobileSyncItemType::Image,
+            "File" => MobileSyncItemType::File,
+            "Group" => MobileSyncItemType::Group,
             _ => return Err("unknown SyncClipboard `type` value"),
         };
-        Ok(SyncClipboardMeta {
+        Ok(MobileSyncDocument {
             item_type,
             text: self.text,
             data_name: self.data_name,
@@ -140,23 +139,23 @@ pub(super) struct SyncClipboardPutAck {
     content_id: Option<String>,
 }
 
-fn put_ack_content_id(outcome: &ApplyIncomingMobileClipOutcome) -> Option<String> {
+fn put_ack_content_id(outcome: &MobileSyncDocumentApplyOutcome) -> Option<String> {
     match outcome {
-        ApplyIncomingMobileClipOutcome::Applied { content_id, .. } => Some(content_id.clone()),
-        ApplyIncomingMobileClipOutcome::Resurfaced { snapshot_hash, .. }
-        | ApplyIncomingMobileClipOutcome::DuplicateSkipped { snapshot_hash, .. } => {
+        MobileSyncDocumentApplyOutcome::Applied { content_id, .. } => Some(content_id.clone()),
+        MobileSyncDocumentApplyOutcome::Resurfaced { snapshot_hash, .. }
+        | MobileSyncDocumentApplyOutcome::DuplicateSkipped { snapshot_hash, .. } => {
             Some(snapshot_hash.clone())
         }
-        ApplyIncomingMobileClipOutcome::DecodeFailed { .. }
-        | ApplyIncomingMobileClipOutcome::Buffered => None,
+        MobileSyncDocumentApplyOutcome::DecodeFailed { .. }
+        | MobileSyncDocumentApplyOutcome::Buffered => None,
     }
 }
 
 pub(super) async fn get_sync_clipboard_json(
-    State(facade): State<Arc<MobileSyncFacade>>,
+    State(state): State<MobileLanState>,
 ) -> Result<Json<SyncClipboardDoc>, Response> {
-    match facade.get_latest_sync_doc().await {
-        Ok(meta) => {
+    match state.core.latest_document().await {
+        Ok(Some(meta)) => {
             tracing::info!(
                 item_type = ?meta.item_type,
                 has_data = meta.has_data,
@@ -165,22 +164,22 @@ pub(super) async fn get_sync_clipboard_json(
             );
             Ok(Json(SyncClipboardDoc::from_meta(meta)))
         }
-        Err(GetLatestMobileSyncDocError::NotFound) => {
+        Ok(None) => {
             tracing::info!(
                 "GET /SyncClipboard.json: 200 empty Text profile (no clipboard entry yet)"
             );
             Ok(Json(SyncClipboardDoc::empty_text()))
         }
-        Err(GetLatestMobileSyncDocError::Port(err)) => {
-            tracing::warn!(error = %err, "GET /SyncClipboard.json: snapshot port failure");
+        Err(error) => {
+            tracing::warn!(code = error.code(), category = %error.category(), "GET /SyncClipboard.json: snapshot query failed");
             Err(StatusCode::INTERNAL_SERVER_ERROR.into_response())
         }
     }
 }
 
 pub(super) async fn put_sync_clipboard_json(
-    State(facade): State<Arc<MobileSyncFacade>>,
-    Extension(authed): Extension<AuthenticatedDevice>,
+    State(state): State<MobileLanState>,
+    Extension(authed): Extension<MobileAuthenticatedSession>,
     request: Request,
 ) -> Result<Json<SyncClipboardPutAck>, Response> {
     // P5a.10 真机诊断:不走 axum `Json<T>` extractor —— 它在 Content-Type
@@ -230,8 +229,14 @@ pub(super) async fn put_sync_clipboard_json(
     // 已经把 snapshot_hash 算好(`encode_snapshot_to_v3_bytes` 的副产物),
     // tracing 字段在 use case 层已经打了。重复算 SHA-256 只浪费 CPU。
 
-    let device_id = authed.device.device_id.clone();
-    match facade.put_sync_doc(meta, device_id).await {
+    match state
+        .core
+        .apply_document(ApplyMobileSyncDocumentInput {
+            document: meta,
+            source_device_id: authed.device_id,
+        })
+        .await
+    {
         Ok(outcome) => {
             tracing::info!(
                 item_type = ?item_type,
@@ -253,9 +258,9 @@ pub(super) async fn put_sync_clipboard_json(
 mod tests {
     use super::*;
 
-    fn meta(content_id: Option<String>) -> SyncClipboardMeta {
-        SyncClipboardMeta {
-            item_type: SyncClipboardItemType::Image,
+    fn meta(content_id: Option<String>) -> MobileSyncDocument {
+        MobileSyncDocument {
+            item_type: MobileSyncItemType::Image,
             text: "image.png".to_string(),
             data_name: Some("image.png".to_string()),
             has_data: true,

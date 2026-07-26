@@ -1,11 +1,11 @@
-//! Search boundary projections: search facade views onto search DTOs.
+//! Search boundary projections: engine summaries onto search DTOs.
 
-use uc_application::facade::{SearchPageView, SearchStatusView, SearchTagView};
+use uc_engine::{SearchPageSummary, SearchStatusSummary, SearchTagSummary};
 
 use super::IntoApiDto;
 use crate::api::dto::search::{SearchResultDto, SearchStatusData, SearchTagDto};
 
-impl IntoApiDto<SearchStatusData> for SearchStatusView {
+impl IntoApiDto<SearchStatusData> for SearchStatusSummary {
     fn into_api_dto(self) -> SearchStatusData {
         SearchStatusData {
             state: self.state,
@@ -16,7 +16,7 @@ impl IntoApiDto<SearchStatusData> for SearchStatusView {
     }
 }
 
-impl IntoApiDto<Vec<SearchResultDto>> for SearchPageView {
+impl IntoApiDto<Vec<SearchResultDto>> for SearchPageSummary {
     fn into_api_dto(self) -> Vec<SearchResultDto> {
         self.items
             .into_iter()
@@ -39,7 +39,7 @@ impl IntoApiDto<Vec<SearchResultDto>> for SearchPageView {
     }
 }
 
-impl IntoApiDto<SearchTagDto> for SearchTagView {
+impl IntoApiDto<SearchTagDto> for SearchTagSummary {
     fn into_api_dto(self) -> SearchTagDto {
         SearchTagDto {
             tag_id: self.tag_id,

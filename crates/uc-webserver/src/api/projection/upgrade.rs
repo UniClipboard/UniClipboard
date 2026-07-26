@@ -1,30 +1,15 @@
-//! Upgrade boundary projection: `UpgradeStatus` onto the wire DTO.
-//!
-//! Context-dependent (needs the running build version for the
-//! `FreshInstall` / `NoChange` variants), so this is an owned mapper function
-//! rather than an `IntoApiDto` impl.
+//! Upgrade boundary projection onto the wire DTO.
 
-use uc_application::facade::UpgradeStatus;
 use uc_daemon_contract::api::dto::upgrade::UpgradeStatusDto;
+use uc_engine::UpgradeStatusSummary;
 
-pub(crate) fn upgrade_status_to_dto(
-    status: UpgradeStatus,
-    current_version: &str,
-) -> UpgradeStatusDto {
+pub(crate) fn upgrade_status_to_dto(status: UpgradeStatusSummary) -> UpgradeStatusDto {
     match status {
-        UpgradeStatus::FreshInstall => UpgradeStatusDto::FreshInstall {
-            current: current_version.to_string(),
-        },
-        UpgradeStatus::NoChange => UpgradeStatusDto::NoChange {
-            current: current_version.to_string(),
-        },
-        UpgradeStatus::Upgraded { from, to } => UpgradeStatusDto::Upgraded {
-            from: from.map(|v| v.to_string()),
-            to: to.to_string(),
-        },
-        UpgradeStatus::Downgraded { from, to } => UpgradeStatusDto::Downgraded {
-            from: from.to_string(),
-            to: to.to_string(),
-        },
+        UpgradeStatusSummary::FreshInstall { current } => {
+            UpgradeStatusDto::FreshInstall { current }
+        }
+        UpgradeStatusSummary::NoChange { current } => UpgradeStatusDto::NoChange { current },
+        UpgradeStatusSummary::Upgraded { from, to } => UpgradeStatusDto::Upgraded { from, to },
+        UpgradeStatusSummary::Downgraded { from, to } => UpgradeStatusDto::Downgraded { from, to },
     }
 }

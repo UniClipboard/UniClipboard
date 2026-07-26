@@ -1,4 +1,4 @@
-//! Headless fallback for [`SystemClipboardPort`].
+//! Headless fallback for [`SystemClipboard`].
 //!
 //! Used when the native clipboard adapter cannot initialize — the usual
 //! trigger on macOS is a non-bundled CLI launched from a shell without a
@@ -16,13 +16,13 @@
 
 use anyhow::Result;
 
-use uc_core::clipboard::SystemClipboardSnapshot;
-use uc_core::ports::SystemClipboardPort;
+use crate::clipboard::SystemClipboard;
+use crate::clipboard::SystemClipboardSnapshot;
 
 #[derive(Debug, Default, Clone, Copy)]
 pub struct NoopSystemClipboard;
 
-impl SystemClipboardPort for NoopSystemClipboard {
+impl SystemClipboard for NoopSystemClipboard {
     fn read_snapshot(&self) -> Result<SystemClipboardSnapshot> {
         Ok(SystemClipboardSnapshot {
             ts_ms: 0,

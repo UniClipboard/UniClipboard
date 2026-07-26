@@ -1,12 +1,10 @@
-//! `HostEventEmitterPort` 实现:把 host event bus 上的事件喂给状态机,
-//! 然后把变化通知到 listener。
+//! 把 daemon 实时事件喂给状态机，然后把变化通知到 listener。
 //!
 //! ## 接入位置
 //!
 //! ADR-008 P3-3 (B2'-3): GUI 已是外部 daemon 的纯客户端,无 in-process
 //! host_event_bus。`run.rs` 用 `DaemonWsBridge` 订阅 daemon WS 的
-//! file-transfer + clipboard topic,把 `RealtimeEvent` 翻成 `HostEvent`
-//! 后调本 emitter 的 [`emit`](HostEventEmitterPort::emit)。本 emitter 只
+//! file-transfer + clipboard topic，并直接交给本 emitter。本 emitter 只
 //! 消费 Transfer + IncomingPending,其它事件类别静默跳过。
 //!
 //! ## 节流
@@ -20,9 +18,7 @@
 use std::sync::{Arc, Mutex};
 
 use tracing::warn;
-use uc_core::ports::host_event::{
-    ClipboardHostEvent, EmitError, HostEvent, HostEventEmitterPort, TransferHostEvent,
-};
+use uc_daemon_client::realtime::RealtimeEvent;
 
 use super::clock::Clock;
 use super::state::{ActivityHudRow, ActivityHudState};
@@ -118,6 +114,52 @@ impl ActivityHudEmitter {
         }
     }
 
+    pub fn emit(&self, event: RealtimeEvent) {
+        match event {
+            RealtimeEvent::FileTransferProgress(event) => {
+                self.apply(|state| {
+                    state.apply_scoped_progress(
+                        &event.transfer_id,
+                        event.entry_id.as_deref(),
+                        event.attempt_id.as_deref(),
+                        &event.peer_id,
+                        event.direction,
+                        event.bytes_transferred,
+                        event.total_bytes,
+                    )
+                });
+            }
+            RealtimeEvent::FileTransferStatusChanged(event) => {
+                if event.attempt_id.is_none() {
+                    self.apply(|state| {
+                        state.apply_scoped_status_changed(
+                            &event.transfer_id,
+                            Some(&event.entry_id),
+                            None,
+                            &event.status,
+                            event.reason,
+                        )
+                    });
+                }
+            }
+            RealtimeEvent::ClipboardIncomingPending(event) => {
+                self.apply(|state| {
+                    state.apply_scoped_incoming_pending(
+                        &event.entry_id,
+                        event.attempt_id.as_deref(),
+                        &event.from_device,
+                        event.filenames,
+                        event.total_bytes,
+                    )
+                });
+            }
+            RealtimeEvent::ReceiveAttemptStateChanged(event) => self.apply(|state| {
+                state.apply_attempt_state(&event.entry_id, &event.attempt_id, &event.state)
+            }),
+            _ => {}
+        }
+    }
+
     /// 内部:拿锁、apply 闭包、判断是否需要通知;期间 listener 不持锁。
     fn apply<F>(&self, f: F)
     where
@@ -144,87 +186,15 @@ impl ActivityHudEmitter {
     }
 }
 
-impl HostEventEmitterPort for ActivityHudEmitter {
-    fn emit(&self, event: HostEvent) -> Result<(), EmitError> {
-        match event {
-            HostEvent::Transfer(TransferHostEvent::Progress {
-                transfer_id,
-                entry_id,
-                attempt_id,
-                peer_id,
-                direction,
-                bytes_transferred,
-                total_bytes,
-            }) => {
-                self.apply(|state| {
-                    state.apply_scoped_progress(
-                        &transfer_id,
-                        entry_id.as_deref(),
-                        attempt_id.as_deref(),
-                        &peer_id,
-                        direction,
-                        bytes_transferred,
-                        total_bytes,
-                    )
-                });
-            }
-            HostEvent::Transfer(TransferHostEvent::StatusChanged {
-                transfer_id,
-                entry_id,
-                attempt_id,
-                status,
-                reason,
-            }) => {
-                if attempt_id.is_none() {
-                    self.apply(|state| {
-                        state.apply_scoped_status_changed(
-                            &transfer_id,
-                            Some(&entry_id),
-                            None,
-                            &status,
-                            reason,
-                        )
-                    });
-                }
-            }
-            HostEvent::Clipboard(ClipboardHostEvent::IncomingPending {
-                entry_id,
-                attempt_id,
-                from_device,
-                total_bytes,
-                filenames,
-            }) => {
-                self.apply(|state| {
-                    state.apply_scoped_incoming_pending(
-                        &entry_id,
-                        attempt_id.as_deref(),
-                        &from_device,
-                        filenames,
-                        total_bytes,
-                    )
-                });
-            }
-            HostEvent::Clipboard(ClipboardHostEvent::ReceiveAttemptStateChanged {
-                entry_id,
-                attempt_id,
-                state: attempt_state,
-            }) => self
-                .apply(|state| state.apply_attempt_state(&entry_id, &attempt_id, &attempt_state)),
-            // 其它事件类别 (Delivery / Clipboard::NewContent) HUD 不消费。
-            HostEvent::Clipboard(_) | HostEvent::Delivery(_) => {}
-        }
-        Ok(())
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use std::sync::Mutex as StdMutex;
 
-    use uc_core::file_transfer::FileTransferDirection;
-    use uc_core::ports::host_event::{
-        ClipboardHostEvent, HostEvent, HostEventEmitterPort, TransferHostEvent,
+    use uc_daemon_client::realtime::{
+        ClipboardIncomingPendingEvent, FileTransferProgressEvent, FileTransferStatusChangedEvent,
+        RealtimeEvent,
     };
+    use uc_daemon_contract::api::types::FileTransferDirection;
 
     use super::super::clock::ManualClock;
     use super::*;
@@ -262,8 +232,8 @@ mod tests {
         direction: FileTransferDirection,
         bytes: u64,
         total: Option<u64>,
-    ) -> HostEvent {
-        HostEvent::Transfer(TransferHostEvent::Progress {
+    ) -> RealtimeEvent {
+        RealtimeEvent::FileTransferProgress(FileTransferProgressEvent {
             transfer_id: transfer_id.into(),
             entry_id: Some(transfer_id.into()),
             attempt_id: None,
@@ -277,15 +247,13 @@ mod tests {
     #[test]
     fn receiving_progress_triggers_listener() {
         let (emitter, recorder, _clock) = make_emitter();
-        emitter
-            .emit(progress_event(
-                "t1",
-                "peer-a",
-                FileTransferDirection::Receiving,
-                100,
-                Some(1000),
-            ))
-            .unwrap();
+        emitter.emit(progress_event(
+            "t1",
+            "peer-a",
+            FileTransferDirection::Receiving,
+            100,
+            Some(1000),
+        ));
         let snaps = recorder.snapshots();
         assert_eq!(snaps.len(), 1);
         assert_eq!(snaps[0].len(), 1);
@@ -295,39 +263,35 @@ mod tests {
     #[test]
     fn sending_progress_does_not_trigger_listener() {
         let (emitter, recorder, _clock) = make_emitter();
-        emitter
-            .emit(progress_event(
-                "t1",
-                "peer-a",
-                FileTransferDirection::Sending,
-                100,
-                Some(1000),
-            ))
-            .unwrap();
+        emitter.emit(progress_event(
+            "t1",
+            "peer-a",
+            FileTransferDirection::Sending,
+            100,
+            Some(1000),
+        ));
         assert!(recorder.snapshots().is_empty());
     }
 
     #[test]
     fn incoming_pending_then_progress_joins_filenames() {
         let (emitter, recorder, _clock) = make_emitter();
-        emitter
-            .emit(HostEvent::Clipboard(ClipboardHostEvent::IncomingPending {
+        emitter.emit(RealtimeEvent::ClipboardIncomingPending(
+            ClipboardIncomingPendingEvent {
                 entry_id: "t1".into(),
                 attempt_id: None,
                 from_device: "win-laptop".into(),
                 total_bytes: Some(2048),
                 filenames: vec!["a.txt".into(), "b.txt".into()],
-            }))
-            .unwrap();
-        emitter
-            .emit(progress_event(
-                "t1",
-                "peer-a",
-                FileTransferDirection::Receiving,
-                100,
-                Some(2048),
-            ))
-            .unwrap();
+            },
+        ));
+        emitter.emit(progress_event(
+            "t1",
+            "peer-a",
+            FileTransferDirection::Receiving,
+            100,
+            Some(2048),
+        ));
         let last = recorder.snapshots().pop().unwrap();
         assert_eq!(
             last[0].filenames,
@@ -338,24 +302,22 @@ mod tests {
     #[test]
     fn status_changed_completed_then_sweep_clears() {
         let (emitter, recorder, clock) = make_emitter();
-        emitter
-            .emit(progress_event(
-                "t1",
-                "peer-a",
-                FileTransferDirection::Receiving,
-                100,
-                Some(100),
-            ))
-            .unwrap();
-        emitter
-            .emit(HostEvent::Transfer(TransferHostEvent::StatusChanged {
+        emitter.emit(progress_event(
+            "t1",
+            "peer-a",
+            FileTransferDirection::Receiving,
+            100,
+            Some(100),
+        ));
+        emitter.emit(RealtimeEvent::FileTransferStatusChanged(
+            FileTransferStatusChangedEvent {
                 transfer_id: "t1".into(),
                 entry_id: "t1".into(),
                 attempt_id: None,
                 status: "completed".into(),
                 reason: None,
-            }))
-            .unwrap();
+            },
+        ));
         clock.advance(super::super::state::COMPLETED_RETAIN_MS + 100);
         emitter.tick();
         let last = recorder.snapshots().pop().unwrap();
@@ -367,15 +329,15 @@ mod tests {
         let (emitter, recorder, _clock) = make_emitter();
         // 没有先发 Progress,所以行不存在 —— StatusChanged 应被丢弃,
         // 不触发 listener。
-        emitter
-            .emit(HostEvent::Transfer(TransferHostEvent::StatusChanged {
+        emitter.emit(RealtimeEvent::FileTransferStatusChanged(
+            FileTransferStatusChangedEvent {
                 transfer_id: "t-outbound".into(),
                 entry_id: "t-outbound".into(),
                 attempt_id: None,
                 status: "cancelled".into(),
                 reason: Some("local_user".into()),
-            }))
-            .unwrap();
+            },
+        ));
         assert!(recorder.snapshots().is_empty());
     }
 }

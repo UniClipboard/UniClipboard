@@ -20,7 +20,7 @@ use std::sync::Mutex;
 use std::time::Instant;
 use tauri::{Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
 use tracing::{debug, error, info, warn};
-use uc_core::settings::model::QuickPanelPosition;
+use uc_daemon_contract::api::dto::settings::QuickPanelPositionDto as QuickPanelPosition;
 
 /// Timestamp of the last `show()` call. Blur events within
 /// [`BLUR_DEBOUNCE_MS`] of this timestamp are ignored to prevent

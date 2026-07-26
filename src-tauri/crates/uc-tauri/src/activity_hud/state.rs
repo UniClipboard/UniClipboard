@@ -24,7 +24,7 @@
 use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
 
-use uc_core::file_transfer::FileTransferDirection;
+use uc_daemon_contract::api::types::FileTransferDirection;
 
 use super::clock::Clock;
 

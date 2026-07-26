@@ -16,9 +16,15 @@ use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde::Deserialize;
 use tracing::{debug, info, instrument};
-use uc_application::facade::{SearchFacadeError, SearchQueryInput};
 use uc_daemon_contract::api::dto::envelope::ApiEnvelope;
 use uc_daemon_contract::constants::http_route;
+use uc_engine::error_codes::{
+    QUERY_ENCRYPTION_STATE_FAILED_CODE, SEARCH_BAD_REQUEST_CODE, SEARCH_FAILED_CODE,
+    SEARCH_INDEX_NOT_READY_CODE, SEARCH_INDEX_REBUILDING_CODE, SEARCH_INDEX_UNAVAILABLE_CODE,
+    SEARCH_INVALID_QUERY_CODE, SEARCH_REBUILD_ALREADY_RUNNING_CODE,
+    SEARCH_SERVICE_UNAVAILABLE_CODE, SEARCH_SESSION_LOCKED_CODE,
+};
+use uc_engine::{EngineError, Operation, OperationResult, SearchEntriesInput};
 use utoipa::IntoParams;
 
 use crate::api::dto::error::{log_facade_failure, ApiError};
@@ -86,8 +92,8 @@ fn default_limit() -> u32 {
 // Parsing
 // ---------------------------------------------------------------------------
 
-fn search_input_from_params(params: SearchQueryParams) -> SearchQueryInput {
-    SearchQueryInput {
+fn search_input_from_params(params: SearchQueryParams) -> SearchEntriesInput {
+    SearchEntriesInput {
         query: params.query,
         operator: params.operator,
         time_preset: params.time_preset,
@@ -108,18 +114,30 @@ fn search_input_from_params(params: SearchQueryParams) -> SearchQueryInput {
 
 /// Returns `Err(session_locked ApiError)` if the encryption session is not ready.
 async fn require_encryption_ready(state: &DaemonApiState) -> Result<(), ApiError> {
-    let app_facade = state.app_facade_or_error()?;
-    let encryption_state = app_facade.encryption.state().await.map_err(|e| {
-        let api = ApiError::internal(format!("encryption state unavailable: {e}"));
-        log_facade_failure(
-            "encryption",
-            "encryption_state_probe",
-            "call_failed",
-            api.status,
-            &api.message,
-        );
-        api
-    })?;
+    let result = state
+        .execute(Operation::QueryEncryptionState)
+        .await
+        .map_err(|error| {
+            let variant = if error.code() == QUERY_ENCRYPTION_STATE_FAILED_CODE {
+                "query_failed"
+            } else {
+                "unexpected_engine_error"
+            };
+            let api = ApiError::internal("encryption state unavailable");
+            log_facade_failure(
+                "encryption",
+                "encryption_state_probe",
+                variant,
+                api.status,
+                &api.message,
+            );
+            api
+        })?;
+    let OperationResult::EncryptionState(encryption_state) = result else {
+        return Err(ApiError::internal(
+            "engine returned an unexpected encryption-state result",
+        ));
+    };
     if !encryption_state.session_ready {
         return Err(ApiError {
             status: StatusCode::LOCKED,
@@ -151,9 +169,8 @@ pub fn router() -> Router<DaemonApiState> {
 /// GET /search/query
 ///
 /// Execute a structured search query against the local encrypted search index.
-/// The session-lock decision is query-type-aware (§4.6): filter-only browse is
-/// served while locked; a keyword search returns HTTP 423 when the session is
-/// locked (the engine cannot derive the search key).
+/// Every query requires an unlocked session because result rendering decrypts
+/// the encrypted payload.
 ///
 /// ADR-008 wire change: `total`/`hasMore` are no longer top-level siblings of
 /// the envelope — they are folded INTO the `data` payload alongside the renamed
@@ -182,7 +199,7 @@ pub fn router() -> Router<DaemonApiState> {
     name = "api.search_query",
     level = "info",
     skip(state, params),
-    fields(query = %params.query, limit = params.limit, offset = params.offset)
+    fields(limit = params.limit, offset = params.offset)
 )]
 async fn search_query_handler(
     State(state): State<DaemonApiState>,
@@ -192,15 +209,21 @@ async fn search_query_handler(
     // — must decrypt each row's render payload, so all require an unlocked
     // session. Returns 423 `session_locked` when locked.
     require_encryption_ready(&state).await?;
-    let app = state.app_facade_or_error()?;
     let input = search_input_from_params(params);
-    debug!(query = %input.query, "dispatching search query through app facade");
+    debug!(
+        has_query = !input.query.trim().is_empty(),
+        "dispatching search query through engine"
+    );
 
-    let page = app
-        .search
-        .query(input)
+    let result = state
+        .execute(Operation::SearchEntries(input))
         .await
-        .map_err(|e| map_search_error("search_query", e))?;
+        .map_err(|error| map_search_engine_error("search_query", error))?;
+    let OperationResult::SearchPage(page) = result else {
+        return Err(ApiError::internal(
+            "engine returned an unexpected search-page result",
+        ));
+    };
 
     let result_count = page.items.len();
     let total = page.total;
@@ -252,12 +275,15 @@ async fn search_tags_handler(
     // distribution), so the whole endpoint is gated behind an unlocked session
     // — same 423 contract as `query`. No "builtin tags while locked" path.
     require_encryption_ready(&state).await?;
-    let app = state.app_facade_or_error()?;
-    let views = app
-        .search
-        .tags()
+    let result = state
+        .execute(Operation::QuerySearchTags)
         .await
-        .map_err(|e| map_search_error("search_tags", e))?;
+        .map_err(|error| map_search_engine_error("search_tags", error))?;
+    let OperationResult::SearchTags(views) = result else {
+        return Err(ApiError::internal(
+            "engine returned an unexpected search-tags result",
+        ));
+    };
 
     let items: Vec<SearchTagDto> = views.into_iter().map(IntoApiDto::into_api_dto).collect();
 
@@ -290,12 +316,15 @@ async fn search_status_handler(
 ) -> Result<Json<ApiEnvelope<SearchStatusData>>, ApiError> {
     require_encryption_ready(&state).await?;
 
-    let app = state.app_facade_or_error()?;
-    let view = app
-        .search
-        .status()
+    let result = state
+        .execute(Operation::QuerySearchStatus)
         .await
-        .map_err(|e| map_search_error("search_status", e))?;
+        .map_err(|error| map_search_engine_error("search_status", error))?;
+    let OperationResult::SearchStatus(view) = result else {
+        return Err(ApiError::internal(
+            "engine returned an unexpected search-status result",
+        ));
+    };
 
     debug!(
         state = %view.state,
@@ -333,19 +362,20 @@ async fn search_rebuild_handler(
 ) -> Result<(StatusCode, Json<ApiEnvelope<SearchRebuildAcceptedData>>), ApiError> {
     require_encryption_ready(&state).await?;
 
-    let app = state.app_facade_or_error()?;
-    let accepted = app
-        .search
-        .request_rebuild()
+    let result = state
+        .execute(Operation::RebuildSearchIndex)
         .await
-        .map_err(|e| map_search_error("search_rebuild", e))?;
+        .map_err(|error| map_search_engine_error("search_rebuild", error))?;
+    let OperationResult::SearchRebuildAccepted { accepted } = result else {
+        return Err(ApiError::internal(
+            "engine returned an unexpected search-rebuild result",
+        ));
+    };
 
     info!("manual search index rebuild accepted");
     Ok((
         StatusCode::ACCEPTED,
-        Json(ApiEnvelope::now(SearchRebuildAcceptedData {
-            accepted: accepted.accepted,
-        })),
+        Json(ApiEnvelope::now(SearchRebuildAcceptedData { accepted })),
     ))
 }
 
@@ -353,28 +383,27 @@ async fn search_rebuild_handler(
 // Error mapping
 // ---------------------------------------------------------------------------
 
-fn map_search_error(op: &'static str, error: SearchFacadeError) -> ApiError {
-    use SearchFacadeError as E;
-    let (variant, api): (&'static str, ApiError) = match error {
-        E::InvalidQuery(message) => (
+fn map_search_engine_error(op: &'static str, error: EngineError) -> ApiError {
+    let (variant, api): (&'static str, ApiError) = match error.code() {
+        SEARCH_INVALID_QUERY_CODE => (
             "invalid_query",
             ApiError {
                 status: StatusCode::BAD_REQUEST,
                 code: "invalid_query".to_string(),
-                message,
+                message: "invalid search query".to_string(),
                 details: None,
             },
         ),
-        E::BadRequest(message) => (
+        SEARCH_BAD_REQUEST_CODE => (
             "bad_request",
             ApiError {
                 status: StatusCode::BAD_REQUEST,
                 code: "bad_request".to_string(),
-                message,
+                message: "invalid search request".to_string(),
                 details: None,
             },
         ),
-        E::SessionLocked => (
+        SEARCH_SESSION_LOCKED_CODE => (
             "session_locked",
             ApiError {
                 status: StatusCode::LOCKED,
@@ -383,7 +412,7 @@ fn map_search_error(op: &'static str, error: SearchFacadeError) -> ApiError {
                 details: None,
             },
         ),
-        E::IndexNotReady => (
+        SEARCH_INDEX_NOT_READY_CODE => (
             "index_not_ready",
             ApiError {
                 status: StatusCode::SERVICE_UNAVAILABLE,
@@ -392,7 +421,7 @@ fn map_search_error(op: &'static str, error: SearchFacadeError) -> ApiError {
                 details: None,
             },
         ),
-        E::IndexRebuilding => (
+        SEARCH_INDEX_REBUILDING_CODE => (
             "index_rebuilding",
             ApiError {
                 status: StatusCode::SERVICE_UNAVAILABLE,
@@ -401,7 +430,7 @@ fn map_search_error(op: &'static str, error: SearchFacadeError) -> ApiError {
                 details: None,
             },
         ),
-        E::IndexUnavailable => (
+        SEARCH_INDEX_UNAVAILABLE_CODE => (
             "index_unavailable",
             ApiError {
                 status: StatusCode::SERVICE_UNAVAILABLE,
@@ -410,11 +439,11 @@ fn map_search_error(op: &'static str, error: SearchFacadeError) -> ApiError {
                 details: None,
             },
         ),
-        E::ServiceUnavailable(message) => (
+        SEARCH_SERVICE_UNAVAILABLE_CODE => (
             "service_unavailable",
-            ApiError::service_unavailable(message),
+            ApiError::service_unavailable("search service unavailable"),
         ),
-        E::RebuildAlreadyRunning => {
+        SEARCH_REBUILD_ALREADY_RUNNING_CODE => {
             debug!("manual rebuild rejected — already in progress");
             (
                 "rebuild_already_running",
@@ -426,7 +455,11 @@ fn map_search_error(op: &'static str, error: SearchFacadeError) -> ApiError {
                 },
             )
         }
-        E::Internal(message) => ("internal", ApiError::internal(message)),
+        SEARCH_FAILED_CODE => ("internal", ApiError::internal("search operation failed")),
+        _ => (
+            "unexpected_engine_error",
+            ApiError::internal("search operation failed"),
+        ),
     };
     log_facade_failure("search", op, variant, api.status, &api.message);
     api
@@ -442,7 +475,14 @@ mod tests {
 
     #[test]
     fn index_rebuilding_maps_to_503_index_rebuilding() {
-        let api = map_search_error("search_query", SearchFacadeError::IndexRebuilding);
+        let api = map_search_engine_error(
+            "search_query",
+            EngineError::new(
+                SEARCH_INDEX_REBUILDING_CODE,
+                uc_engine::EngineErrorCategory::Unavailable,
+                true,
+            ),
+        );
         assert_eq!(api.status, StatusCode::SERVICE_UNAVAILABLE);
         assert_eq!(api.code, "index_rebuilding");
     }

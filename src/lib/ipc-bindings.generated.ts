@@ -753,6 +753,7 @@ export type RelayProbeOutcome = { kind: "success"; latencyMs: number } | { kind:
 
 export type ShortcutKeyDto = string | string[];
 
+/**  Trace context supplied by the webview for one Tauri command invocation. */
 export type TraceMetadata = {
 	trace_id: string,
 	timestamp: number,

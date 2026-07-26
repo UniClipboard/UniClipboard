@@ -39,14 +39,15 @@
 use std::sync::Arc;
 
 use tracing::{debug, info, warn};
-use uc_core::ports::{SecureStorageError, SecureStoragePort};
+
+use crate::ports::{SecureStorageError, SecureStorageProvider};
 
 /// 把 `legacy_fallback` 中白名单 key 一次性搬到 `primary` 的装饰器。
 ///
 /// 详见 module doc。
 pub struct MigratingSecureStorage {
-    primary: Arc<dyn SecureStoragePort>,
-    legacy_fallback: Arc<dyn SecureStoragePort>,
+    primary: Arc<dyn SecureStorageProvider>,
+    legacy_fallback: Arc<dyn SecureStorageProvider>,
     migration_keys: Vec<String>,
 }
 
@@ -54,8 +55,8 @@ impl MigratingSecureStorage {
     /// 构造装饰器。`migration_keys` 是允许从 `legacy_fallback` 迁移的 key
     /// 白名单——只有列在白名单里的 key 才会触发 legacy 查询。
     pub fn new(
-        primary: Arc<dyn SecureStoragePort>,
-        legacy_fallback: Arc<dyn SecureStoragePort>,
+        primary: Arc<dyn SecureStorageProvider>,
+        legacy_fallback: Arc<dyn SecureStorageProvider>,
         migration_keys: Vec<String>,
     ) -> Self {
         Self {
@@ -70,7 +71,7 @@ impl MigratingSecureStorage {
     }
 }
 
-impl SecureStoragePort for MigratingSecureStorage {
+impl SecureStorageProvider for MigratingSecureStorage {
     fn get(&self, key: &str) -> Result<Option<Vec<u8>>, SecureStorageError> {
         if let Some(value) = self.primary.get(key)? {
             return Ok(Some(value));
@@ -182,7 +183,7 @@ mod tests {
         }
     }
 
-    impl SecureStoragePort for InMemoryStore {
+    impl SecureStorageProvider for InMemoryStore {
         fn get(&self, key: &str) -> Result<Option<Vec<u8>>, SecureStorageError> {
             self.counters.lock().unwrap().gets += 1;
             Ok(self.map.lock().unwrap().get(key).cloned())

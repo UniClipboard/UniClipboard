@@ -1,15 +1,20 @@
-//! HTTP handlers for per-member sync preferences (phase 4b).
+//! HTTP handlers for per-member sync preferences.
 //!
-//! 读写 `SpaceMember.sync_preferences`（`MemberRepositoryPort`）；旧
-//! `api::device::{get,update}_device_sync_settings_handler` 已在 PR-4 移除。
+//! Storage access and partial-update semantics stay behind the engine interface.
 
 use axum::extract::{Path, State};
 use axum::routing::{get, patch};
 use axum::{Json, Router};
 use tracing::{info, instrument};
 
-use uc_application::facade::RosterError;
 use uc_daemon_contract::api::dto::envelope::ApiEnvelope;
+use uc_engine::error_codes::{
+    MEMBER_INVALID_INPUT_CODE, MEMBER_NOT_FOUND_CODE, MEMBER_UNAVAILABLE_CODE,
+};
+use uc_engine::{
+    EngineError, Operation, OperationResult, QueryMemberSyncPreferencesInput,
+    UpdateMemberSyncPreferencesInput,
+};
 
 use crate::api::dto::error::{log_facade_failure, ApiError};
 use crate::api::dto::member::{MemberSyncPreferencesPatchDto, MemberSyncResultDto};
@@ -55,16 +60,21 @@ pub async fn get_member_sync_preferences_handler(
     Path(device_id): Path<String>,
 ) -> Result<Json<ApiEnvelope<crate::api::dto::member::MemberSyncPreferencesDto>>, ApiError> {
     info!("get member sync preferences request received");
-    let app = state.app_facade_or_error()?;
-    let roster = app
-        .member_roster
-        .get()
-        .cloned()
-        .ok_or_else(|| ApiError::service_unavailable("member roster facade unavailable"))?;
-    let prefs = roster
-        .get_sync_preferences(&device_id)
+    let result = state
+        .execute(Operation::QueryMemberSyncPreferences(
+            QueryMemberSyncPreferencesInput {
+                device_id: device_id.clone(),
+            },
+        ))
         .await
-        .map_err(|e| map_member_error(&device_id, "get_member_sync_preferences", e))?;
+        .map_err(|error| {
+            map_member_engine_error(&device_id, "get_member_sync_preferences", error)
+        })?;
+    let OperationResult::MemberSyncPreferences(prefs) = result else {
+        return Err(ApiError::internal(
+            "engine returned an unexpected member-preferences result",
+        ));
+    };
 
     info!(
         send_enabled = prefs.send_enabled,
@@ -114,16 +124,22 @@ pub async fn update_member_sync_preferences_handler(
     Json(payload): Json<MemberSyncPreferencesPatchDto>,
 ) -> Result<Json<ApiEnvelope<MemberSyncResultDto>>, ApiError> {
     info!("update member sync preferences request received");
-    let app = state.app_facade_or_error()?;
-    let roster = app
-        .member_roster
-        .get()
-        .cloned()
-        .ok_or_else(|| ApiError::service_unavailable("member roster facade unavailable"))?;
-    let updated = roster
-        .update_sync_preferences(&device_id, payload.into_domain())
+    let result = state
+        .execute(Operation::UpdateMemberSyncPreferences(
+            UpdateMemberSyncPreferencesInput {
+                device_id: device_id.clone(),
+                patch: payload.into_domain(),
+            },
+        ))
         .await
-        .map_err(|e| map_member_error(&device_id, "update_member_sync_preferences", e))?;
+        .map_err(|error| {
+            map_member_engine_error(&device_id, "update_member_sync_preferences", error)
+        })?;
+    let OperationResult::MemberSyncPreferences(updated) = result else {
+        return Err(ApiError::internal(
+            "engine returned an unexpected member-preferences result",
+        ));
+    };
 
     info!(
         send_enabled = updated.send_enabled,
@@ -139,38 +155,21 @@ pub async fn update_member_sync_preferences_handler(
     })))
 }
 
-/// 把 `RosterError` 映射为 HTTP `ApiError`，并在 5xx 路径打根因日志。
-///
-/// `NotFound` → 404（业务可见层面，由请求日志兜底，本函数不再单独打 warn）；
-/// `Unavailable` → 503；其余 repository / identity 故障 → 500。
-/// 5xx 路径统一由 [`log_facade_failure`] 输出 `facade / op / error_variant` 结构化字段。
-fn map_member_error(device_id: &str, op: &'static str, err: RosterError) -> ApiError {
-    use RosterError as E;
-    let (variant, api): (&'static str, ApiError) = match err {
-        E::NotFound(_) => (
+fn map_member_engine_error(device_id: &str, op: &'static str, error: EngineError) -> ApiError {
+    let (variant, api): (&'static str, ApiError) = match error.code() {
+        MEMBER_INVALID_INPUT_CODE => (
+            "invalid_input",
+            ApiError::bad_request("member device ID must not be empty"),
+        ),
+        MEMBER_NOT_FOUND_CODE => (
             "not_found",
             ApiError::not_found(format!("member `{device_id}` not found")),
         ),
-        E::MemberRepository(msg) => (
-            "member_repository",
-            ApiError::internal(format!("member repository failure: {msg}")),
-        ),
-        E::LocalIdentity(msg) => (
-            "local_identity",
-            ApiError::internal(format!("local identity failure: {msg}")),
-        ),
-        E::PeerAddressRepository(msg) => (
-            "peer_address_repository",
-            ApiError::internal(format!("peer address repository failure: {msg}")),
-        ),
-        E::TrustedPeerRepository(msg) => (
-            "trusted_peer_repository",
-            ApiError::internal(format!("trusted peer repository failure: {msg}")),
-        ),
-        E::Unavailable => (
+        MEMBER_UNAVAILABLE_CODE => (
             "unavailable",
             ApiError::service_unavailable("member roster facade unavailable"),
         ),
+        _ => ("internal", ApiError::internal("member operation failed")),
     };
     log_facade_failure("roster", op, variant, api.status, &api.message);
     api

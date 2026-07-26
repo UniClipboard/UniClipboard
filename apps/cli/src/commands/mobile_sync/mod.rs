@@ -14,10 +14,9 @@
 //!
 //! P5-2b (ADR-008): all non-debug commands route through daemon HTTP
 //! endpoints via [`DaemonMobileSyncClient`]. The hidden `debug` subcommand
-//! (P5-3 scope) still uses in-process [`MobileSyncFacade`] directly.
+//! uses the unified engine directly.
 //!
 //! [`DaemonMobileSyncClient`]: uc_daemon_client::http::DaemonMobileSyncClient
-//! [`MobileSyncFacade`]: uc_application::facade::MobileSyncFacade
 
 use clap::Subcommand;
 
@@ -59,8 +58,7 @@ pub enum MobileSyncCommands {
         subcommand: network::NetworkCommands,
     },
     /// Debug helpers that simulate the SyncClipboard protocol locally
-    /// (no iPhone required). Bypasses HTTP and calls `MobileSyncFacade`
-    /// directly. All subcommands require the daemon to be stopped.
+    /// (no iPhone required). All subcommands require the daemon to be stopped.
     ///
     /// `#[command(hide=true)]` keeps these out of the public `--help`
     /// surface — they are dev / E2E only(`scripts/test_mobile_sync_debug_e2e.sh`),

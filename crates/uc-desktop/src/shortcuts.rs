@@ -3,7 +3,7 @@
 //! 本模块承载所有 **不依赖任何 GUI 框架** 的快捷键管理逻辑：
 //!
 //! - 快捷键字符串归一化（前端 `meta+ctrl+v` → 物理键 `super+ctrl+v`）
-//! - 从 [`uc_core::settings::model::Settings`] 中解析出快捷面板要注册的快捷键集合
+//! - 从 daemon 设置快照中解析出快捷面板要注册的快捷键集合
 //! - 当前已注册快捷键集合的状态容器 [`CurrentShortcuts`]
 //! - [`GlobalShortcutRegistry`] trait —— 由具体 GUI shell（例如 `uc-tauri`
 //!   包装 `tauri-plugin-global-shortcut`）实现
@@ -12,11 +12,11 @@
 //! 真正调用 OS 注册 API 的"最后一公里"由 shell 实现，本模块只负责协调与
 //! 状态管理。
 
-use std::sync::Mutex;
+use std::{collections::HashMap, sync::Mutex};
 
 use thiserror::Error;
 use tracing::{error, warn};
-use uc_core::settings::model::{Settings, ShortcutKey};
+use uc_daemon_contract::api::dto::settings::ShortcutKeyDto;
 
 /// 快捷面板默认的全局快捷键（物理键格式，与 `tauri-plugin-global-shortcut`
 /// 接受的字符串格式一致）。
@@ -201,16 +201,15 @@ where
     }
 }
 
-/// 从领域 `Settings` 中解析出"切换快捷面板"快捷键的物理键格式列表。
+/// 从 daemon 设置快照中解析出"切换快捷面板"快捷键的物理键格式列表。
 ///
 /// 未配置 / 配置为空时回落到默认快捷键。
-pub fn resolve_quick_panel_shortcuts(settings: &Settings) -> Vec<String> {
-    match settings
-        .keyboard_shortcuts
-        .get(QUICK_PANEL_SHORTCUT_SETTINGS_KEY)
-    {
-        Some(ShortcutKey::Single(s)) => resolve_shortcut_values(Some(vec![s.as_str()])),
-        Some(ShortcutKey::Multiple(v)) => {
+pub fn resolve_quick_panel_shortcuts(
+    keyboard_shortcuts: &HashMap<String, ShortcutKeyDto>,
+) -> Vec<String> {
+    match keyboard_shortcuts.get(QUICK_PANEL_SHORTCUT_SETTINGS_KEY) {
+        Some(ShortcutKeyDto::Single(s)) => resolve_shortcut_values(Some(vec![s.as_str()])),
+        Some(ShortcutKeyDto::Multiple(v)) => {
             resolve_shortcut_values(Some(v.iter().map(String::as_str).collect::<Vec<_>>()))
         }
         None => resolve_shortcut_values(None::<Vec<&str>>),
@@ -370,30 +369,30 @@ mod tests {
 
     #[test]
     fn resolve_quick_panel_uses_default_when_unset() {
-        let settings = Settings::default();
-        let out = resolve_quick_panel_shortcuts(&settings);
+        let shortcuts = HashMap::new();
+        let out = resolve_quick_panel_shortcuts(&shortcuts);
         assert_eq!(out, vec![DEFAULT_QUICK_PANEL_SHORTCUT.to_string()]);
     }
 
     #[test]
     fn resolve_quick_panel_reads_single_override() {
-        let mut settings = Settings::default();
-        settings.keyboard_shortcuts.insert(
+        let mut shortcuts = HashMap::new();
+        shortcuts.insert(
             QUICK_PANEL_SHORTCUT_SETTINGS_KEY.to_string(),
-            ShortcutKey::Single("meta+shift+v".to_string()),
+            ShortcutKeyDto::Single("meta+shift+v".to_string()),
         );
-        let out = resolve_quick_panel_shortcuts(&settings);
+        let out = resolve_quick_panel_shortcuts(&shortcuts);
         assert_eq!(out, vec!["super+shift+v".to_string()]);
     }
 
     #[test]
     fn resolve_quick_panel_reads_multiple_override() {
-        let mut settings = Settings::default();
-        settings.keyboard_shortcuts.insert(
+        let mut shortcuts = HashMap::new();
+        shortcuts.insert(
             QUICK_PANEL_SHORTCUT_SETTINGS_KEY.to_string(),
-            ShortcutKey::Multiple(vec!["meta+v".into(), "ctrl+alt+v".into()]),
+            ShortcutKeyDto::Multiple(vec!["meta+v".into(), "ctrl+alt+v".into()]),
         );
-        let out = resolve_quick_panel_shortcuts(&settings);
+        let out = resolve_quick_panel_shortcuts(&shortcuts);
         assert_eq!(out, vec!["super+v".to_string(), "ctrl+alt+v".to_string()]);
     }
 

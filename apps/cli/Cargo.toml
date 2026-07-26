@@ -17,14 +17,14 @@ path = "src/main.rs"
 # libsqlite3-sys from the binary.
 dev-tools = [
     "dep:uc-bootstrap",
-    "dep:uc-application",
+    "dep:uc-engine",
+    "uc-engine/lan-compat",
     "dep:uc-platform",
     "dep:uuid",
 ]
 
 [dependencies]
 uc-observability = { path = "../../crates/uc-observability" }
-uc-core = { path = "../../crates/uc-core" }
 uc-daemon-client = { path = "../../crates/uc-daemon-client" }
 uc-daemon-contract = { path = "../../crates/uc-daemon-contract" }
 # ADR-008 P5-0: the process-management primitives (process_metadata / socket /
@@ -37,7 +37,7 @@ uc-app-paths = { path = "../../crates/uc-app-paths" }
 
 # --- Heavy optional deps (only pulled by `dev-tools` feature) ---------------
 uc-bootstrap = { path = "../../crates/uc-bootstrap", optional = true }
-uc-application = { path = "../../crates/uc-application", optional = true }
+uc-engine = { workspace = true, optional = true, features = ["dev-tools"] }
 # Hidden `probe` subcommand group reads/writes the OS clipboard directly
 # (replaces the standalone `clipboard-probe` binary). Diagnostic only.
 uc-platform = { path = "../../crates/uc-platform", optional = true }
@@ -50,7 +50,6 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 anyhow = "1.0"
 base64 = "0.22"
-bytes = "1.7"
 chrono = { version = "0.4", features = ["serde"] }
 tracing = "0.1"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "rustls-tls-webpki-roots"] }
@@ -69,8 +68,6 @@ hostname = "0.4"
 rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
 
 [dev-dependencies]
-axum = { version = "0.7", features = ["ws", "tokio", "http1", "http2"] }
-tower = { version = "0.5", features = ["util"] }
 tempfile = "3"
 tokio = { version = "1", features = ["test-util"] }
 

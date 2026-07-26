@@ -1099,7 +1099,7 @@
       "goToSettings": "Go to Settings"
     },
     "mobileSync": {
-      "title": "Mobile Sync",
+      "title": "Phone LAN Connections",
       "description": "Sync your clipboard with mobile devices (iOS / Android) over LAN using the SyncClipboard protocol",
       "configure": "Configure",
       "statusBar": {
@@ -1387,8 +1387,8 @@
       "addMenu": {
         "trigger": "Add device",
         "triggerShort": "Add",
-        "p2p": "Pair a computer",
-        "mobile": "Add a mobile device"
+        "p2p": "Pair a new device",
+        "mobile": "Connect a phone over LAN"
       }
     },
     "settings": {

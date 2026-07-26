@@ -1098,7 +1098,7 @@
       "goToSettings": "前往設定"
     },
     "mobileSync": {
-      "title": "移動裝置同步",
+      "title": "手機區域網路連線",
       "description": "通過 SyncClipboard 協議在區域網路內與移動裝置（iOS / Android）同步剪貼簿",
       "configure": "設定",
       "statusBar": {
@@ -1386,8 +1386,8 @@
       "addMenu": {
         "trigger": "新增裝置",
         "triggerShort": "新增",
-        "p2p": "配對電腦裝置",
-        "mobile": "新增移動裝置"
+        "p2p": "配對新裝置",
+        "mobile": "透過區域網路連接手機"
       }
     },
     "settings": {

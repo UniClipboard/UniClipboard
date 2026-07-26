@@ -187,7 +187,7 @@ describe('DevicesPage', () => {
   it('renders the list column with the three device sections', () => {
     render(<DevicesPage />)
 
-    // Section labels: 本设备 / 已配对设备 / 移动设备同步 (i18n keys
+    // Section labels: local device / paired devices / phone LAN connections (i18n keys
     // devices.thisDevice.title / devices.pairedDevices.title /
     // devices.mobileSync.title). Assert via the section container so the
     // test stays language-agnostic yet structure-sensitive.

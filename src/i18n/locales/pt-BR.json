@@ -1102,7 +1102,7 @@
       "goToSettings": "Ir para Configurações"
     },
     "mobileSync": {
-      "title": "Sincronização móvel",
+      "title": "Conexões de celular pela rede local",
       "description": "Sincronize sua área de transferência com dispositivos móveis (iOS / Android) pela rede local usando o protocolo SyncClipboard",
       "configure": "Configurar",
       "statusBar": {
@@ -1391,8 +1391,8 @@
       "addMenu": {
         "trigger": "Adicionar dispositivo",
         "triggerShort": "Adicionar",
-        "p2p": "Parear um computador",
-        "mobile": "Adicionar um dispositivo móvel"
+        "p2p": "Parear um novo dispositivo",
+        "mobile": "Conectar um celular pela rede local"
       }
     },
     "settings": {

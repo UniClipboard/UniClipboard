@@ -80,6 +80,41 @@ describe('locale bundle parity', () => {
       }
     }
   })
+
+  it('names device onboarding by connection method in every locale', () => {
+    const expected = {
+      'zh-CN': ['配对新设备', '通过局域网连接手机', '手机局域网连接'],
+      'zh-TW': ['配對新裝置', '透過區域網路連接手機', '手機區域網路連線'],
+      'en-US': ['Pair a new device', 'Connect a phone over LAN', 'Phone LAN Connections'],
+      'ja-JP': [
+        '新しいデバイスをペアリング',
+        'LAN経由でスマートフォンを接続',
+        'スマートフォンのLAN接続',
+      ],
+      'ru-RU': [
+        'Сопрячь новое устройство',
+        'Подключить телефон по локальной сети',
+        'Подключения телефонов по локальной сети',
+      ],
+      'pt-BR': [
+        'Parear um novo dispositivo',
+        'Conectar um celular pela rede local',
+        'Conexões de celular pela rede local',
+      ],
+    }
+
+    for (const [locale, labels] of Object.entries(expected)) {
+      const bundle = bundles[locale]
+      expect(
+        [
+          bundle['devices.panel.addMenu.p2p'],
+          bundle['devices.panel.addMenu.mobile'],
+          bundle['devices.mobileSync.title'],
+        ],
+        `${locale} uses device-type labels instead of connection-method labels`
+      ).toEqual(labels)
+    }
+  })
 })
 
 describe('setup i18n keys', () => {

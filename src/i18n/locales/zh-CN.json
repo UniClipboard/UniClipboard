@@ -1098,7 +1098,7 @@
       "goToSettings": "前往设置"
     },
     "mobileSync": {
-      "title": "移动设备同步",
+      "title": "手机局域网连接",
       "description": "通过 SyncClipboard 协议在局域网内与移动设备（iOS / Android）同步剪贴板",
       "configure": "配置",
       "statusBar": {
@@ -1386,8 +1386,8 @@
       "addMenu": {
         "trigger": "添加设备",
         "triggerShort": "添加",
-        "p2p": "配对电脑设备",
-        "mobile": "添加移动设备"
+        "p2p": "配对新设备",
+        "mobile": "通过局域网连接手机"
       }
     },
     "settings": {

@@ -44,7 +44,6 @@ src-tauri/.app_data_a/
 src-tauri/.app_data_b/
 public/splashscreen.html
 .worktrees/
-.claude/worktrees/
 .env
 .seq-api-key
 target
@@ -106,8 +105,6 @@ snap/.snapcraft/
 # p2p-bench spike runtime store (throwaway diagnostic)
 p2p-bench-store/
 src-tauri/p2p-bench-store/
-.claude/scheduled_tasks.lock
-
 # planning-with-files artifacts (per-session working memory, not project state)
 /task_plan.md
 /progress.md

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Strict Code Review"
+  short_description: "Review the current changes for concrete merge risks"
+  default_prompt: "Use $review-strict to review the current changes strictly."

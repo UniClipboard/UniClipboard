@@ -1,0 +1,27 @@
+{
+  "description": "Project reminders for repository guidance and PR monitoring.",
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "^Bash$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$(git rev-parse --show-toplevel)/.codex/hooks/bash-command-hint.sh\"",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": "^(apply_patch|Edit|Write)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$(git rev-parse --show-toplevel)/.codex/hooks/guide-hint.sh\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}

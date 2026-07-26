@@ -21,7 +21,7 @@ Do not treat this file as a full memory dump. Read only the documents needed for
   - 引用外部规范（RFC、标准库 API 等）时，专有名词保留英文原文。
 - **代码注释**（`//` / `///` / `/* */` / doc comments）使用英文。存量中文注释不强制迁移，新增或修改注释时按英文撰写；踏到旧中文注释可顺手改成英文。
   - 代码标识符（函数、类型、变量名）、Git commit message、PR 标题与描述同样保持英文。
-  - **不强制语言审查的开发自留路径**：`.planning/`（调研/spike 笔记）、`.claude/`（本地 agent skill 与工具）、`publish = false` 的诊断 crate（例如 `crates/p2p-bench`）。这些目录按写作者方便即可，CodeRabbit 也已在 `.coderabbit.yaml` 中跳过。
+  - **不强制语言审查的开发自留路径**：`.planning/`（调研/spike 笔记）、`.agents/`（项目技能）、`.codex/`（Codex 配置与工具）、`publish = false` 的诊断 crate（例如 `crates/p2p-bench`）。这些目录按写作者方便即可，CodeRabbit 也已在 `.coderabbit.yaml` 中跳过。
 - `CLAUDE.md` is only a compatibility entrypoint. This file is the root instruction source.
 
 ## Read-on-Demand Map

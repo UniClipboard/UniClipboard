@@ -2,6 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import process from 'node:process'
 import { fileURLToPath } from 'node:url'
+import { parseAst } from 'vite'
 
 const unsupportedSyntax = [
   { marker: '(?<!', syntax: 'negative regular expression lookbehind' },
@@ -16,13 +17,27 @@ function listJavaScriptFiles(directory) {
     .sort()
 }
 
+function findRegularExpressionPatterns(node, patterns = []) {
+  if (typeof node !== 'object' || node === null) return patterns
+
+  if (node.type === 'Literal' && node.regex?.pattern) patterns.push(node.regex.pattern)
+
+  for (const value of Object.values(node)) findRegularExpressionPatterns(value, patterns)
+
+  return patterns
+}
+
 export function findUnsupportedJavaScript(directory) {
   const findings = []
 
   for (const file of listJavaScriptFiles(directory)) {
     const content = fs.readFileSync(file, 'utf8')
+    const regularExpressionPatterns = findRegularExpressionPatterns(parseAst(content))
+
     for (const { marker, syntax } of unsupportedSyntax) {
-      if (content.includes(marker)) findings.push({ file, syntax })
+      if (regularExpressionPatterns.some(pattern => pattern.includes(marker))) {
+        findings.push({ file, syntax })
+      }
     }
   }
 

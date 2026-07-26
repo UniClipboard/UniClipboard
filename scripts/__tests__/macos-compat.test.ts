@@ -1,6 +1,7 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import { resolveConfig } from 'vite'
 import { afterEach, describe, expect, it } from 'vitest'
 import { findUnsupportedJavaScript } from '../check-macos-compat.mjs'
 
@@ -39,7 +40,7 @@ describe('macOS 12.5 compatibility guard', () => {
     }
   })
 
-  it('reports positive and negative regular expression lookbehind in built JavaScript', () => {
+  it('reports lookbehind only in regular expression literals', () => {
     const distDir = fs.mkdtempSync(path.join(os.tmpdir(), 'macos-compat-'))
     tempDirs.push(distDir)
     fs.mkdirSync(path.join(distDir, 'assets'))
@@ -51,6 +52,15 @@ describe('macOS 12.5 compatibility guard', () => {
     fs.writeFileSync(
       path.join(distDir, 'assets', 'negative.js'),
       'const value = /(?<!hello)world/u\n'
+    )
+    fs.writeFileSync(
+      path.join(distDir, 'assets', 'non-regular-expression.js'),
+      [
+        "const text = '(?<=hello)world'",
+        'const template = `(?<!hello)world`',
+        '// (?<=hello)world',
+        '/* (?<!hello)world */',
+      ].join('\n')
     )
 
     expect(findUnsupportedJavaScript(distDir)).toEqual([
@@ -65,7 +75,7 @@ describe('macOS 12.5 compatibility guard', () => {
     ])
   })
 
-  it('keeps the build and bundle configuration aligned with macOS 12.5', () => {
+  it('keeps the build and bundle configuration aligned with macOS 12.5', async () => {
     const packageJson = requireJsonObject(
       parseProjectJson(path.join(projectRoot, 'package.json')),
       'package.json'
@@ -81,7 +91,11 @@ describe('macOS 12.5 compatibility guard', () => {
     )
     const tauriBundle = requireJsonObject(tauriConfig.bundle, 'tauri.conf.json bundle')
     const macOSBundle = requireJsonObject(tauriBundle.macOS, 'tauri.conf.json macOS bundle')
-    const viteConfig = readProjectFile(path.join(projectRoot, 'vite.config.ts'))
+    const viteConfig = await resolveConfig(
+      { configFile: path.join(projectRoot, 'vite.config.ts') },
+      'build',
+      'production'
+    )
     const releaseNotes = readProjectFile(
       path.join(projectRoot, 'src', 'components', 'update', 'ReleaseNotes.tsx')
     )
@@ -89,8 +103,8 @@ describe('macOS 12.5 compatibility guard', () => {
     expect(packageScripts.build).toContain('node scripts/check-macos-compat.mjs')
     expect(packageDependencies).not.toHaveProperty('remark-gfm')
     expect(macOSBundle.minimumSystemVersion).toBe('12.5')
-    expect(viteConfig).toMatch(/target:\s*'safari15\.6'/)
-    expect(viteConfig).toMatch(/cssTarget:\s*'safari15\.6'/)
+    expect(viteConfig.build.target).toBe('safari15.6')
+    expect(viteConfig.build.cssTarget).toBe('safari15.6')
     expect(releaseNotes).not.toContain('remark-gfm')
   })
 })

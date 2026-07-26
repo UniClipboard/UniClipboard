@@ -9,18 +9,69 @@ use uc_engine::{
     ReadMobileSyncFileInput, RevalidateMobileCredentialInput, SecretString,
 };
 
-#[cfg(test)]
-use tokio::sync::Mutex;
-#[cfg(test)]
-use uc_application::facade::{
-    ApplyIncomingMobileClipOutcome, AuthenticateBasicAuthError, AuthenticateBasicAuthInput,
-    GetLatestMobileSyncDocError, GetMobileSyncFileError, MobileSyncFacade, SyncClipboardItemType,
-    SyncClipboardMeta,
-};
-#[cfg(test)]
-use uc_core::mobile_sync::{MobileClientType, MobileDeviceId, StagingHandle};
-
 const UNEXPECTED_MOBILE_LAN_RESULT_CODE: u32 = 1901;
+
+#[cfg(test)]
+#[async_trait::async_trait]
+pub(crate) trait MobileLanTestBackend: Send + Sync {
+    async fn authenticate(
+        &self,
+        authorization: String,
+    ) -> Result<Option<MobileAuthenticatedSession>, EngineError>;
+
+    async fn revalidate(&self, _credential: MobileCredential) -> Result<bool, EngineError> {
+        Err(unexpected_result())
+    }
+
+    async fn check_content_available(&self, _snapshot_hash: String) -> Result<bool, EngineError> {
+        Err(unexpected_result())
+    }
+
+    async fn latest_document(&self) -> Result<Option<MobileSyncDocument>, EngineError> {
+        Err(unexpected_result())
+    }
+
+    async fn apply_document(
+        &self,
+        _input: ApplyMobileSyncDocumentInput,
+    ) -> Result<MobileSyncDocumentApplyOutcome, EngineError> {
+        Err(unexpected_result())
+    }
+
+    async fn read_file(
+        &self,
+        _data_name: String,
+    ) -> Result<MobileSyncFileReadOutcome, EngineError> {
+        Err(unexpected_result())
+    }
+
+    async fn begin_upload(
+        &self,
+        _data_name: String,
+        _media_type: String,
+        _source_device_id: String,
+        _transfer_id: String,
+        _total_bytes: Option<u64>,
+    ) -> Result<u64, EngineError> {
+        Err(unexpected_result())
+    }
+
+    async fn append_upload(&self, _handle: u64, _bytes: Vec<u8>) -> Result<(), EngineError> {
+        Err(unexpected_result())
+    }
+
+    async fn finish_upload(
+        &self,
+        _handle: u64,
+        _media_type: String,
+    ) -> Result<MobileSyncDocumentApplyOutcome, EngineError> {
+        Err(unexpected_result())
+    }
+
+    async fn abort_upload(&self, _handle: u64) -> Result<bool, EngineError> {
+        Err(unexpected_result())
+    }
+}
 
 #[derive(Clone)]
 pub(crate) struct MobileLanCore {
@@ -31,22 +82,14 @@ pub(crate) struct MobileLanCore {
 enum MobileLanBackend {
     Engine(Arc<Engine>),
     #[cfg(test)]
-    Facade {
-        facade: Arc<MobileSyncFacade>,
-        credential: Arc<Mutex<Option<(String, String)>>>,
-    },
+    Test(Arc<dyn MobileLanTestBackend>),
 }
 
 #[derive(Clone)]
 pub(crate) enum MobileLanUploadHandle {
     Engine(MobileFileUploadHandle),
     #[cfg(test)]
-    Facade {
-        handle: StagingHandle,
-        data_name: String,
-        source_device_id: String,
-        transfer_id: String,
-    },
+    Test(u64),
 }
 
 impl std::fmt::Debug for MobileLanUploadHandle {
@@ -59,6 +102,13 @@ impl MobileLanCore {
     pub(crate) fn new(engine: Arc<Engine>) -> Self {
         Self {
             backend: MobileLanBackend::Engine(engine),
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn with_test_backend(backend: Arc<dyn MobileLanTestBackend>) -> Self {
+        Self {
+            backend: MobileLanBackend::Test(backend),
         }
     }
 
@@ -80,9 +130,7 @@ impl MobileLanCore {
                 _ => Err(unexpected_result()),
             },
             #[cfg(test)]
-            MobileLanBackend::Facade { facade, credential } => {
-                test_authenticate(facade, credential, authorization).await
-            }
+            MobileLanBackend::Test(backend) => backend.authenticate(authorization).await,
         }
     }
 
@@ -101,10 +149,7 @@ impl MobileLanCore {
                 _ => Err(unexpected_result()),
             },
             #[cfg(test)]
-            MobileLanBackend::Facade {
-                facade,
-                credential: stored,
-            } => test_revalidate(facade, stored).await,
+            MobileLanBackend::Test(backend) => backend.revalidate(credential).await,
         }
     }
 
@@ -123,10 +168,7 @@ impl MobileLanCore {
                 _ => Err(unexpected_result()),
             },
             #[cfg(test)]
-            MobileLanBackend::Facade { facade, .. } => facade
-                .check_content_available(&snapshot_hash)
-                .await
-                .map_err(|_| unexpected_result()),
+            MobileLanBackend::Test(backend) => backend.check_content_available(snapshot_hash).await,
         }
     }
 
@@ -144,7 +186,7 @@ impl MobileLanCore {
                 }
             }
             #[cfg(test)]
-            MobileLanBackend::Facade { facade, .. } => test_latest_document(facade).await,
+            MobileLanBackend::Test(backend) => backend.latest_document().await,
         }
     }
 
@@ -161,7 +203,7 @@ impl MobileLanCore {
                 _ => Err(unexpected_result()),
             },
             #[cfg(test)]
-            MobileLanBackend::Facade { facade, .. } => test_apply_document(facade, input).await,
+            MobileLanBackend::Test(backend) => backend.apply_document(input).await,
         }
     }
 
@@ -180,7 +222,7 @@ impl MobileLanCore {
                 _ => Err(unexpected_result()),
             },
             #[cfg(test)]
-            MobileLanBackend::Facade { facade, .. } => test_read_file(facade, data_name).await,
+            MobileLanBackend::Test(backend) => backend.read_file(data_name).await,
         }
     }
 
@@ -211,19 +253,16 @@ impl MobileLanCore {
                 _ => Err(unexpected_result()),
             },
             #[cfg(test)]
-            MobileLanBackend::Facade { facade, .. } => {
-                let scope = uc_application::facade::mobile_sync_streaming_scope_nonce();
-                facade
-                    .begin_file_upload(&scope, &data_name, &media_type)
-                    .await
-                    .map(|handle| MobileLanUploadHandle::Facade {
-                        handle,
-                        data_name,
-                        source_device_id,
-                        transfer_id,
-                    })
-                    .map_err(|_| unexpected_result())
-            }
+            MobileLanBackend::Test(backend) => backend
+                .begin_upload(
+                    data_name,
+                    media_type,
+                    source_device_id,
+                    transfer_id,
+                    total_bytes,
+                )
+                .await
+                .map(MobileLanUploadHandle::Test),
         }
     }
 
@@ -246,13 +285,9 @@ impl MobileLanCore {
                 }
             }
             #[cfg(test)]
-            (
-                MobileLanBackend::Facade { facade, .. },
-                MobileLanUploadHandle::Facade { handle, .. },
-            ) => facade
-                .append_file_chunk(&handle, &bytes)
-                .await
-                .map_err(|_| unexpected_result()),
+            (MobileLanBackend::Test(backend), MobileLanUploadHandle::Test(handle)) => {
+                backend.append_upload(handle, bytes).await
+            }
             _ => Err(unexpected_result()),
         }
     }
@@ -276,25 +311,9 @@ impl MobileLanCore {
                 }
             }
             #[cfg(test)]
-            (
-                MobileLanBackend::Facade { facade, .. },
-                MobileLanUploadHandle::Facade {
-                    handle,
-                    data_name,
-                    source_device_id,
-                    transfer_id,
-                },
-            ) => facade
-                .finalize_file_upload(
-                    handle,
-                    data_name,
-                    media_type,
-                    uc_core::mobile_sync::MobileDeviceId::new(source_device_id),
-                    transfer_id,
-                )
-                .await
-                .map(test_map_apply_outcome)
-                .map_err(|_| unexpected_result()),
+            (MobileLanBackend::Test(backend), MobileLanUploadHandle::Test(handle)) => {
+                backend.finish_upload(handle, media_type).await
+            }
             _ => Err(unexpected_result()),
         }
     }
@@ -317,12 +336,8 @@ impl MobileLanCore {
                 }
             }
             #[cfg(test)]
-            (
-                MobileLanBackend::Facade { facade, .. },
-                MobileLanUploadHandle::Facade { handle, .. },
-            ) => {
-                facade.abort_file_upload(handle).await;
-                Ok(true)
+            (MobileLanBackend::Test(backend), MobileLanUploadHandle::Test(handle)) => {
+                backend.abort_upload(handle).await
             }
             _ => Err(unexpected_result()),
         }
@@ -335,192 +350,48 @@ impl From<Arc<Engine>> for MobileLanCore {
     }
 }
 
-#[cfg(test)]
-impl From<Arc<MobileSyncFacade>> for MobileLanCore {
-    fn from(facade: Arc<MobileSyncFacade>) -> Self {
-        Self {
-            backend: MobileLanBackend::Facade {
-                facade,
-                credential: Arc::new(Mutex::new(None)),
-            },
-        }
-    }
-}
-
-#[cfg(test)]
-async fn test_authenticate(
-    facade: &MobileSyncFacade,
-    stored: &Mutex<Option<(String, String)>>,
-    authorization: String,
-) -> Result<Option<MobileAuthenticatedSession>, EngineError> {
-    match facade
-        .authenticate_basic(AuthenticateBasicAuthInput {
-            authorization_header: authorization,
-        })
-        .await
-    {
-        Ok(authenticated) => {
-            let device = authenticated.device;
-            let device_id = device.device_id.into_string();
-            let password_hash = device.password_hash;
-            *stored.lock().await = Some((device_id.clone(), password_hash.clone()));
-            Ok(Some(MobileAuthenticatedSession {
-                device_id: device_id.clone(),
-                client_type: match device.client_type {
-                    MobileClientType::IosShortcut => {
-                        uc_engine::MobileClientTypeSummary::IosShortcut
-                    }
-                },
-                credential: MobileCredential::new(device_id, password_hash),
-            }))
-        }
-        Err(AuthenticateBasicAuthError::InvalidCredentials) => Ok(None),
-        Err(
-            AuthenticateBasicAuthError::PersistenceFailed(_)
-            | AuthenticateBasicAuthError::Internal(_),
-        ) => Err(unexpected_result()),
-    }
-}
-
-#[cfg(test)]
-async fn test_revalidate(
-    facade: &MobileSyncFacade,
-    stored: &Mutex<Option<(String, String)>>,
-) -> Result<bool, EngineError> {
-    let Some((device_id, password_hash)) = stored.lock().await.clone() else {
-        return Ok(false);
-    };
-    facade
-        .is_device_credential_current(&MobileDeviceId::new(device_id), &password_hash)
-        .await
-        .map_err(|_| unexpected_result())
-}
-
-#[cfg(test)]
-async fn test_latest_document(
-    facade: &MobileSyncFacade,
-) -> Result<Option<MobileSyncDocument>, EngineError> {
-    match facade.get_latest_sync_doc().await {
-        Ok(document) => Ok(Some(test_map_document(document))),
-        Err(GetLatestMobileSyncDocError::NotFound) => Ok(None),
-        Err(GetLatestMobileSyncDocError::Port(_)) => Err(unexpected_result()),
-    }
-}
-
-#[cfg(test)]
-async fn test_apply_document(
-    facade: &MobileSyncFacade,
-    input: ApplyMobileSyncDocumentInput,
-) -> Result<MobileSyncDocumentApplyOutcome, EngineError> {
-    facade
-        .put_sync_doc(
-            test_unmap_document(input.document),
-            MobileDeviceId::new(input.source_device_id),
-        )
-        .await
-        .map(test_map_apply_outcome)
-        .map_err(|_| unexpected_result())
-}
-
-#[cfg(test)]
-async fn test_read_file(
-    facade: &MobileSyncFacade,
-    data_name: String,
-) -> Result<MobileSyncFileReadOutcome, EngineError> {
-    match facade.get_clipboard_file(&data_name).await {
-        Ok(file) => Ok(MobileSyncFileReadOutcome::Found(Box::new(
-            uc_engine::MobileSyncFile {
-                media_type: file.mime,
-                bytes: file.bytes,
-            },
-        ))),
-        Err(GetMobileSyncFileError::NotFound) => Ok(MobileSyncFileReadOutcome::NotFound),
-        Err(GetMobileSyncFileError::Port(_) | GetMobileSyncFileError::Staging(_)) => {
-            Err(unexpected_result())
-        }
-    }
-}
-
-#[cfg(test)]
-fn test_map_document(document: SyncClipboardMeta) -> MobileSyncDocument {
-    MobileSyncDocument {
-        item_type: test_map_item_type(document.item_type),
-        text: document.text,
-        data_name: document.data_name,
-        has_data: document.has_data,
-        size: document.size,
-        hash: document.hash,
-        content_id: document.content_id,
-    }
-}
-
-#[cfg(test)]
-fn test_unmap_document(document: MobileSyncDocument) -> SyncClipboardMeta {
-    SyncClipboardMeta {
-        item_type: match document.item_type {
-            uc_engine::MobileSyncItemType::Text => SyncClipboardItemType::Text,
-            uc_engine::MobileSyncItemType::Image => SyncClipboardItemType::Image,
-            uc_engine::MobileSyncItemType::File => SyncClipboardItemType::File,
-            uc_engine::MobileSyncItemType::Group => SyncClipboardItemType::Group,
-        },
-        text: document.text,
-        data_name: document.data_name,
-        has_data: document.has_data,
-        size: document.size,
-        hash: document.hash,
-        content_id: document.content_id,
-    }
-}
-
-#[cfg(test)]
-fn test_map_item_type(item_type: SyncClipboardItemType) -> uc_engine::MobileSyncItemType {
-    match item_type {
-        SyncClipboardItemType::Text => uc_engine::MobileSyncItemType::Text,
-        SyncClipboardItemType::Image => uc_engine::MobileSyncItemType::Image,
-        SyncClipboardItemType::File => uc_engine::MobileSyncItemType::File,
-        SyncClipboardItemType::Group => uc_engine::MobileSyncItemType::Group,
-    }
-}
-
-#[cfg(test)]
-fn test_map_apply_outcome(
-    outcome: ApplyIncomingMobileClipOutcome,
-) -> MobileSyncDocumentApplyOutcome {
-    match outcome {
-        ApplyIncomingMobileClipOutcome::Applied {
-            entry_id,
-            content_id,
-        } => MobileSyncDocumentApplyOutcome::Applied {
-            entry_id: entry_id.to_string(),
-            content_id,
-        },
-        ApplyIncomingMobileClipOutcome::Resurfaced {
-            snapshot_hash,
-            existing_entry_id,
-            os_write_succeeded,
-        } => MobileSyncDocumentApplyOutcome::Resurfaced {
-            snapshot_hash,
-            existing_entry_id: existing_entry_id.to_string(),
-            os_write_succeeded,
-        },
-        ApplyIncomingMobileClipOutcome::DuplicateSkipped {
-            snapshot_hash,
-            existing_entry_id,
-        } => MobileSyncDocumentApplyOutcome::DuplicateSkipped {
-            snapshot_hash,
-            existing_entry_id: existing_entry_id.to_string(),
-        },
-        ApplyIncomingMobileClipOutcome::DecodeFailed { reason } => {
-            MobileSyncDocumentApplyOutcome::DecodeFailed { reason }
-        }
-        ApplyIncomingMobileClipOutcome::Buffered => MobileSyncDocumentApplyOutcome::Buffered,
-    }
-}
-
 fn unexpected_result() -> EngineError {
     EngineError::new(
         UNEXPECTED_MOBILE_LAN_RESULT_CODE,
         EngineErrorCategory::Internal,
         false,
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    struct AuthenticationOnlyBackend;
+
+    #[async_trait::async_trait]
+    impl MobileLanTestBackend for AuthenticationOnlyBackend {
+        async fn authenticate(
+            &self,
+            authorization: String,
+        ) -> Result<Option<MobileAuthenticatedSession>, EngineError> {
+            Ok(
+                (authorization == "Basic test").then(|| MobileAuthenticatedSession {
+                    device_id: "test-device".into(),
+                    client_type: uc_engine::MobileClientTypeSummary::IosShortcut,
+                    credential: MobileCredential::new("test-device", "test-credential"),
+                }),
+            )
+        }
+    }
+
+    #[tokio::test]
+    async fn test_backend_authenticates_without_core_internal_types() {
+        let core = MobileLanCore::with_test_backend(Arc::new(AuthenticationOnlyBackend));
+
+        let authenticated = core
+            .authenticate("Basic test".into())
+            .await
+            .expect("test backend should return a result");
+
+        assert_eq!(
+            authenticated.map(|session| session.device_id),
+            Some("test-device".into())
+        );
+    }
 }

@@ -34,8 +34,6 @@ uuid = { version = "1.10.0", features = ["v4"] }
 
 [dev-dependencies]
 async-trait = "0.1"
-uc-application.workspace = true
-uc-core.workspace = true
 tower = { version = "0.5", features = ["util"] }
 # The /healthz load benchmark only: it drives a real listener over real TCP and
 # needs the *real* Argon2id cost on the control arm — a fake hasher would make

@@ -51,17 +51,6 @@ dev-profile = ["uc-platform/dev-profile"]
 
 [dev-dependencies]
 tempfile = "3"
-tokio = { version = "1", features = ["full"] }
-wiremock = "0.6"
-uc-application.workspace = true
-uc-core = { workspace = true, features = ["task-registry"] }
-# Pairing E2E runs sponsor and joiner endpoints in one test process. This
-# test-only feature disables the production single-live-node lease.
-uc-infra = { workspace = true, features = ["test-util"] }
-# config-migration round-trip e2e seeds a real sqlite db with a probe row and
-# reads it back from the landed snapshot. Version/features mirror uc-infra so no
-# extra build cost is introduced (same compiled diesel + bundled libsqlite3).
-diesel = { version = "2.3.5", features = ["sqlite", "r2d2"] }
 
 [lints]
 workspace = true

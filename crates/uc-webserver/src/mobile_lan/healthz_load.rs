@@ -43,7 +43,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::mobile_lan::server::start_mobile_lan_test_server;
 use crate::mobile_lan::test_support::{
-    build_facade_with_real_argon2, build_facade_with_seeded_device, fake_sse_source,
+    build_test_core_with_real_argon2, build_test_core_with_seeded_device, fake_sse_source,
 };
 
 const USERNAME: &str = "mobile_alice";
@@ -249,7 +249,7 @@ async fn healthz_load_vs_sync_clipboard_json() {
     // The hasher is irrelevant here by construction: the route never reaches
     // it. That is the property under test.
     let cancel = CancellationToken::new();
-    let facade = build_facade_with_seeded_device(USERNAME, PASSWORD).await;
+    let facade = build_test_core_with_seeded_device(USERNAME, PASSWORD).await;
     let handle = start_mobile_lan_test_server(
         "127.0.0.1:0".parse().unwrap(),
         cancel.clone(),
@@ -272,7 +272,7 @@ async fn healthz_load_vs_sync_clipboard_json() {
 
     // ── Arm 2: /SyncClipboard.json, real Basic Auth, real Argon2id.
     let cancel = CancellationToken::new();
-    let facade = build_facade_with_real_argon2(USERNAME, PASSWORD).await;
+    let facade = build_test_core_with_real_argon2(USERNAME, PASSWORD).await;
     let handle = start_mobile_lan_test_server(
         "127.0.0.1:0".parse().unwrap(),
         cancel.clone(),

@@ -132,7 +132,7 @@ mod tests {
 
     use uc_engine::MobileAuthenticatedSession;
 
-    use crate::mobile_lan::test_support::{auth_header, build_facade_with_seeded_device};
+    use crate::mobile_lan::test_support::{auth_header, build_test_core_with_seeded_device};
 
     /// Probe handler: read the authenticated session installed by middleware.
     /// 1. middleware 在 happy path 把 extension 真的塞进去了;
@@ -149,7 +149,7 @@ mod tests {
 
     #[tokio::test]
     async fn happy_path_inserts_authenticated_device() {
-        let facade = build_facade_with_seeded_device("mobile_alice", "wonderland").await;
+        let facade = build_test_core_with_seeded_device("mobile_alice", "wonderland").await;
         let app = build_probe_app(facade.into());
 
         let resp = app

@@ -241,13 +241,16 @@ mod tests {
     use axum::http::{Request, StatusCode};
     use axum::Router;
     use futures_util::StreamExt;
+    use std::sync::Arc;
     use tower::ServiceExt;
 
     use uc_engine::ActiveClipboardChanged;
 
+    use crate::mobile_lan::core::MobileLanCore;
     use crate::mobile_lan::routes::build_router;
     use crate::mobile_lan::test_support::{
-        auth_header, build_facade_with_seeded_device, fake_cancel_token, fake_sse_source,
+        auth_header, build_test_core_with_seeded_device, fake_cancel_token, fake_sse_source,
+        TestMobileLanBackend,
     };
 
     const TEST_TIMEOUT: Duration = Duration::from_secs(2);
@@ -265,7 +268,7 @@ mod tests {
 
     #[tokio::test]
     async fn hello_then_update_on_advance() {
-        let facade = build_facade_with_seeded_device("mobile_alice", "wonderland").await;
+        let facade = build_test_core_with_seeded_device("mobile_alice", "wonderland").await;
         let sse_source = fake_sse_source();
         let cancel = fake_cancel_token();
         let app = build_router(facade, None, sse_source.clone(), cancel);
@@ -315,7 +318,7 @@ mod tests {
 
     #[tokio::test]
     async fn cancel_ends_the_stream() {
-        let facade = build_facade_with_seeded_device("mobile_alice", "wonderland").await;
+        let facade = build_test_core_with_seeded_device("mobile_alice", "wonderland").await;
         let sse_source = fake_sse_source();
         let cancel = fake_cancel_token();
         let app = build_router(facade, None, sse_source, cancel.clone());
@@ -350,7 +353,7 @@ mod tests {
     /// connect authenticates as the same `device_id`.
     #[tokio::test]
     async fn third_connection_for_same_device_evicts_the_oldest() {
-        let facade = build_facade_with_seeded_device("mobile_alice", "wonderland").await;
+        let facade = build_test_core_with_seeded_device("mobile_alice", "wonderland").await;
         let sse_source = fake_sse_source();
         let cancel = fake_cancel_token();
         let app = build_router(facade, None, sse_source, cancel);
@@ -400,7 +403,7 @@ mod tests {
     /// keeps receiving further `update`s afterward.
     #[tokio::test]
     async fn lagged_receiver_gets_resync_and_stays_connected() {
-        let facade = build_facade_with_seeded_device("mobile_alice", "wonderland").await;
+        let facade = build_test_core_with_seeded_device("mobile_alice", "wonderland").await;
         // Deliberately tiny capacity so a handful of unread sends overflows it.
         let (sse_source, _keep_alive_rx) = tokio::sync::broadcast::channel(2);
         let cancel = fake_cancel_token();
@@ -452,14 +455,15 @@ mod tests {
     /// "credentials rotated" from the client's perspective.
     #[tokio::test(start_paused = true)]
     async fn periodic_revalidation_failure_ends_the_stream() {
-        let facade = build_facade_with_seeded_device("mobile_alice", "wonderland").await;
+        let backend = Arc::new(TestMobileLanBackend::seeded("mobile_alice", "wonderland"));
+        let core = MobileLanCore::with_test_backend(backend.clone());
         let sse_source = fake_sse_source();
         let cancel = fake_cancel_token();
         // Keep our own sender clone alive — `build_router`'s copy is dropped
         // once `oneshot()` returns, and a closed broadcast channel would end
         // the stream via `RecvError::Closed` before the timers ever get a
         // chance to fire, which is not what this test is exercising.
-        let app = build_router(facade.clone(), None, sse_source.clone(), cancel);
+        let app = build_router(core, None, sse_source.clone(), cancel);
 
         let resp = app
             .oneshot(
@@ -475,12 +479,7 @@ mod tests {
         let mut stream = resp.into_body().into_data_stream();
         let _hello = next_frame(&mut stream).await;
 
-        facade
-            .revoke_device(uc_application::facade::RevokeMobileDeviceInput {
-                device_id: uc_core::mobile_sync::MobileDeviceId::new("did_seed"),
-            })
-            .await
-            .expect("seeded device revokes");
+        backend.revoke();
 
         // Advance past the heartbeat tick (consumed as a ping) and then past
         // the revalidation tick, which now fails because the device is gone.

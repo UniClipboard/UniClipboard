@@ -73,29 +73,23 @@ mod tests {
     //! `Router::new().route(...)`, because the property under test is about
     //! how the route is *mounted*, not what the handler returns in isolation.
 
-    use std::sync::Arc;
-
     use axum::body::{to_bytes, Body};
     use axum::http::{Request, StatusCode};
     use tower::ServiceExt;
 
-    use uc_application::facade::MobileSyncFacade;
-
+    use crate::mobile_lan::core::MobileLanCore;
     use crate::mobile_lan::routes::build_router;
     use crate::mobile_lan::test_support::{
-        auth_header, build_facade_with_auth_trap, build_facade_with_seeded_device,
+        auth_header, build_test_core_with_auth_trap, build_test_core_with_seeded_device,
         fake_cancel_token, fake_sse_source,
     };
 
-    fn app_with(
-        facade: Arc<MobileSyncFacade>,
-        cancel: tokio_util::sync::CancellationToken,
-    ) -> axum::Router {
-        build_router(facade, None, fake_sse_source(), cancel)
+    fn app_with(core: MobileLanCore, cancel: tokio_util::sync::CancellationToken) -> axum::Router {
+        build_router(core, None, fake_sse_source(), cancel)
     }
 
     async fn seeded_app() -> axum::Router {
-        let facade = build_facade_with_seeded_device("mobile_alice", "wonderland").await;
+        let facade = build_test_core_with_seeded_device("mobile_alice", "wonderland").await;
         app_with(facade, fake_cancel_token())
     }
 
@@ -159,7 +153,7 @@ mod tests {
     /// past header parsing and into the trapped device lookup.
     #[tokio::test]
     async fn healthz_never_reaches_the_auth_ports() {
-        let resp = app_with(build_facade_with_auth_trap().await, fake_cancel_token())
+        let resp = app_with(build_test_core_with_auth_trap().await, fake_cancel_token())
             .oneshot(
                 Request::builder()
                     .method("GET")
@@ -179,7 +173,7 @@ mod tests {
     /// passing merely because the middleware got dropped entirely.
     #[tokio::test]
     async fn protected_routes_still_reach_the_auth_ports() {
-        let resp = app_with(build_facade_with_auth_trap().await, fake_cancel_token())
+        let resp = app_with(build_test_core_with_auth_trap().await, fake_cancel_token())
             .oneshot(
                 Request::builder()
                     .method("GET")
@@ -201,7 +195,7 @@ mod tests {
     #[tokio::test]
     async fn draining_listener_returns_503_with_retry_after() {
         let cancel = fake_cancel_token();
-        let facade = build_facade_with_seeded_device("mobile_alice", "wonderland").await;
+        let facade = build_test_core_with_seeded_device("mobile_alice", "wonderland").await;
         let app = app_with(facade, cancel.clone());
         cancel.cancel();
 
@@ -294,6 +288,7 @@ mod tests {
     #[tokio::test]
     async fn a_thousand_probes_emit_no_info_or_warn_logs() {
         use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::Arc;
         use tracing::Level;
 
         #[derive(Clone, Default)]

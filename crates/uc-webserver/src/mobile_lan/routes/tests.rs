@@ -12,28 +12,20 @@ use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use tower::ServiceExt;
 
-use uc_application::facade::MobileSyncFacade;
-
 use crate::mobile_lan::test_support::{
-    auth_header, build_facade_with_seeded_device,
-    build_facade_with_seeded_device_and_content_index, fake_cancel_token, fake_sse_source,
+    auth_header, build_test_core_with_content_availability, build_test_core_with_seeded_device,
+    fake_cancel_token, fake_sse_source,
 };
 
 use super::file::{infer_image_mime, mime_is_unspecific};
 
-fn build_app(facade: Arc<MobileSyncFacade>) -> Router {
-    // 测试不装配 `file_transfer` facade,路由会降级为静默 lifecycle:
-    // buffer 仍然写入,但没有 Started / Progress 事件。具体 lifecycle
-    // 行为由 facade / use case 单测覆盖。
-    //
-    // This file only tests the non-SSE routes; `sse_source` / `cancel` have
-    // no actual consumer here, so a standalone fake assembly suffices.
-    build_router(facade, None, fake_sse_source(), fake_cancel_token())
+fn build_app(core: MobileLanCore) -> Router {
+    build_router(core, None, fake_sse_source(), fake_cancel_token())
 }
 
 #[tokio::test]
 async fn unauthenticated_get_returns_401_with_www_authenticate() {
-    let facade = build_facade_with_seeded_device("mobile_alice", "wonderland").await;
+    let facade = build_test_core_with_seeded_device("mobile_alice", "wonderland").await;
     let app = build_app(facade);
 
     let resp = app
@@ -59,7 +51,7 @@ async fn unauthenticated_get_returns_401_with_www_authenticate() {
 
 #[tokio::test]
 async fn wrong_credentials_returns_401() {
-    let facade = build_facade_with_seeded_device("mobile_alice", "wonderland").await;
+    let facade = build_test_core_with_seeded_device("mobile_alice", "wonderland").await;
     let app = build_app(facade);
 
     let resp = app
@@ -78,7 +70,7 @@ async fn wrong_credentials_returns_401() {
 
 #[tokio::test]
 async fn get_with_no_clipboard_entry_returns_empty_text_profile() {
-    let facade = build_facade_with_seeded_device("mobile_alice", "wonderland").await;
+    let facade = build_test_core_with_seeded_device("mobile_alice", "wonderland").await;
     let app = build_app(facade);
 
     let resp = app
@@ -103,7 +95,7 @@ async fn get_with_no_clipboard_entry_returns_empty_text_profile() {
 
 #[tokio::test]
 async fn get_unknown_file_returns_404() {
-    let facade = build_facade_with_seeded_device("mobile_alice", "wonderland").await;
+    let facade = build_test_core_with_seeded_device("mobile_alice", "wonderland").await;
     let app = build_app(facade);
     let resp = app
         .oneshot(
@@ -121,7 +113,7 @@ async fn get_unknown_file_returns_404() {
 
 #[tokio::test]
 async fn api_time_returns_200_for_official_syncclipboard_client_probe() {
-    let facade = build_facade_with_seeded_device("mobile_alice", "wonderland").await;
+    let facade = build_test_core_with_seeded_device("mobile_alice", "wonderland").await;
     let app = build_app(facade);
 
     let resp = app
@@ -140,7 +132,7 @@ async fn api_time_returns_200_for_official_syncclipboard_client_probe() {
 
 #[tokio::test]
 async fn api_version_routes_return_200_for_syncclipboard_clients() {
-    let facade = build_facade_with_seeded_device("mobile_alice", "wonderland").await;
+    let facade = build_test_core_with_seeded_device("mobile_alice", "wonderland").await;
     let app = build_app(facade);
 
     for uri in ["/api/version", "/version"] {
@@ -168,7 +160,7 @@ async fn api_version_routes_return_200_for_syncclipboard_clients() {
 
 #[tokio::test]
 async fn api_history_query_returns_empty_list_when_clipboard_is_empty() {
-    let facade = build_facade_with_seeded_device("mobile_alice", "wonderland").await;
+    let facade = build_test_core_with_seeded_device("mobile_alice", "wonderland").await;
     let app = build_app(facade);
 
     let resp = app
@@ -190,7 +182,7 @@ async fn api_history_query_returns_empty_list_when_clipboard_is_empty() {
 
 #[tokio::test]
 async fn api_history_query_accepts_multipart_form_probe() {
-    let facade = build_facade_with_seeded_device("mobile_alice", "wonderland").await;
+    let facade = build_test_core_with_seeded_device("mobile_alice", "wonderland").await;
     let app = build_app(facade);
 
     let body = "--x\r\nContent-Disposition: form-data; name=\"page\"\r\n\r\n1\r\n--x\r\nContent-Disposition: form-data; name=\"types\"\r\n\r\n15\r\n--x--\r\n";
@@ -213,7 +205,7 @@ async fn api_history_query_accepts_multipart_form_probe() {
 
 #[tokio::test]
 async fn api_history_invalid_profile_id_returns_400_instead_of_route_404() {
-    let facade = build_facade_with_seeded_device("mobile_alice", "wonderland").await;
+    let facade = build_test_core_with_seeded_device("mobile_alice", "wonderland").await;
     let app = build_app(facade);
 
     let resp = app
@@ -232,7 +224,7 @@ async fn api_history_invalid_profile_id_returns_400_instead_of_route_404() {
 
 #[tokio::test]
 async fn api_history_statistics_returns_zero_shape_when_empty() {
-    let facade = build_facade_with_seeded_device("mobile_alice", "wonderland").await;
+    let facade = build_test_core_with_seeded_device("mobile_alice", "wonderland").await;
     let app = build_app(facade);
 
     let resp = app
@@ -257,7 +249,7 @@ async fn api_history_statistics_returns_zero_shape_when_empty() {
 
 #[tokio::test]
 async fn api_history_patch_official_route_reaches_handler() {
-    let facade = build_facade_with_seeded_device("mobile_alice", "wonderland").await;
+    let facade = build_test_core_with_seeded_device("mobile_alice", "wonderland").await;
     let app = build_app(facade);
 
     let resp = app
@@ -277,7 +269,7 @@ async fn api_history_patch_official_route_reaches_handler() {
 
 #[tokio::test]
 async fn api_history_clear_accepts_official_delete_route() {
-    let facade = build_facade_with_seeded_device("mobile_alice", "wonderland").await;
+    let facade = build_test_core_with_seeded_device("mobile_alice", "wonderland").await;
     let app = build_app(facade);
 
     let resp = app
@@ -299,7 +291,7 @@ async fn api_history_clear_accepts_official_delete_route() {
 
 #[tokio::test]
 async fn api_history_upload_text_uses_official_endpoint_shape() {
-    let facade = build_facade_with_seeded_device("mobile_alice", "wonderland").await;
+    let facade = build_test_core_with_seeded_device("mobile_alice", "wonderland").await;
     let app = build_app(facade);
 
     let resp = app
@@ -323,7 +315,7 @@ async fn api_history_upload_text_uses_official_endpoint_shape() {
 
 #[tokio::test]
 async fn api_history_upload_multipart_reaches_official_parser() {
-    let facade = build_facade_with_seeded_device("mobile_alice", "wonderland").await;
+    let facade = build_test_core_with_seeded_device("mobile_alice", "wonderland").await;
     let app = build_app(facade);
 
     let body = "--x\r\nContent-Disposition: form-data; name=\"type\"\r\n\r\nText\r\n--x\r\nContent-Disposition: form-data; name=\"text\"\r\n\r\nhello\r\n--x--\r\n";
@@ -346,7 +338,7 @@ async fn api_history_upload_multipart_reaches_official_parser() {
 
 #[tokio::test]
 async fn api_history_upload_multipart_accepts_mobile_image_larger_than_axum_default() {
-    let facade = build_facade_with_seeded_device("mobile_alice", "wonderland").await;
+    let facade = build_test_core_with_seeded_device("mobile_alice", "wonderland").await;
     let app = build_app(facade);
 
     let file_bytes = vec![0xAB; 2 * 1024 * 1024 + 1];
@@ -388,7 +380,7 @@ async fn api_history_upload_multipart_accepts_mobile_image_larger_than_axum_defa
 
 #[tokio::test]
 async fn file_folder_delete_accepts_official_route() {
-    let facade = build_facade_with_seeded_device("mobile_alice", "wonderland").await;
+    let facade = build_test_core_with_seeded_device("mobile_alice", "wonderland").await;
     let app = build_app(facade);
 
     let resp = app
@@ -407,7 +399,7 @@ async fn file_folder_delete_accepts_official_route() {
 
 #[tokio::test]
 async fn head_file_route_reaches_file_handler() {
-    let facade = build_facade_with_seeded_device("mobile_alice", "wonderland").await;
+    let facade = build_test_core_with_seeded_device("mobile_alice", "wonderland").await;
     let app = build_app(facade);
 
     let resp = app
@@ -430,7 +422,7 @@ async fn head_file_route_reaches_file_handler() {
 async fn put_file_then_buffered_returns_200() {
     // PUT /file/foo —— 走 BufferFile 分支,只塞进 IncomingMobileBuffer,
     // 不触达 ApplyInbound 真链路 → 200 OK。
-    let facade = build_facade_with_seeded_device("mobile_alice", "wonderland").await;
+    let facade = build_test_core_with_seeded_device("mobile_alice", "wonderland").await;
     let app = build_app(facade);
 
     let resp = app
@@ -455,7 +447,7 @@ async fn put_file_with_octet_stream_jpeg_returns_200() {
     // 路由层应吃下,不能 400/500。mime 兜底逻辑 (sniff/扩展名) 会在
     // 内部把 mime 修正为 image/jpeg —— 这条 test 只跨过路由层,确保
     // 接口契约稳定;深层 mime 修正语义靠 `infer_image_mime_*` 单测覆盖。
-    let facade = build_facade_with_seeded_device("mobile_alice", "wonderland").await;
+    let facade = build_test_core_with_seeded_device("mobile_alice", "wonderland").await;
     let app = build_app(facade);
 
     // 真实 JPEG 头(SOI + APP1/Exif marker), 模拟 Xiaomi 14 拍的照片头几字节
@@ -538,7 +530,7 @@ async fn put_sync_doc_with_unknown_type_returns_400() {
     // wire DTO 的 `type` 字段是 SyncClipboard 协议契约,未知值映射不到
     // SyncClipboardItemType → routes 翻 400。这条路径不进入 ApplyInbound,
     // 与 NoOp capture/write 无关。
-    let facade = build_facade_with_seeded_device("mobile_alice", "wonderland").await;
+    let facade = build_test_core_with_seeded_device("mobile_alice", "wonderland").await;
     let app = build_app(facade);
 
     let put_body = serde_json::json!({
@@ -568,7 +560,7 @@ async fn put_sync_doc_with_unknown_type_returns_400() {
 /// —— 这是 schema 兼容回归的关键 pin)。
 #[tokio::test]
 async fn put_sync_doc_accepts_pascal_case_type_field() {
-    let facade = build_facade_with_seeded_device("mobile_alice", "wonderland").await;
+    let facade = build_test_core_with_seeded_device("mobile_alice", "wonderland").await;
     let app = build_app(facade);
 
     let put_body = r#"{"hasData":true,"Type":"File","dataName":"foo.pdf","text":"foo.pdf"}"#;
@@ -602,7 +594,7 @@ async fn put_sync_doc_accepts_pascal_case_type_field() {
 
 #[tokio::test]
 async fn content_availability_unauthenticated_returns_401() {
-    let facade = build_facade_with_seeded_device("mobile_alice", "wonderland").await;
+    let facade = build_test_core_with_seeded_device("mobile_alice", "wonderland").await;
     let app = build_app(facade);
 
     let resp = app
@@ -620,9 +612,9 @@ async fn content_availability_unauthenticated_returns_401() {
 
 #[tokio::test]
 async fn content_availability_returns_false_when_hash_unknown() {
-    // build_facade_with_seeded_device's NoOp find_by_snapshot_hash always
+    // build_test_core_with_seeded_device's NoOp find_by_snapshot_hash always
     // returns None, so any hash reports unavailable — the safe default.
-    let facade = build_facade_with_seeded_device("mobile_alice", "wonderland").await;
+    let facade = build_test_core_with_seeded_device("mobile_alice", "wonderland").await;
     let app = build_app(facade);
 
     let resp = app
@@ -644,37 +636,14 @@ async fn content_availability_returns_false_when_hash_unknown() {
 
 #[tokio::test]
 async fn content_availability_returns_true_when_hash_matches_an_available_entry() {
-    use uc_core::ids::EntryId;
-
-    struct FakeIndex(EntryId);
-    #[async_trait::async_trait]
-    impl uc_core::ports::clipboard::FindEntryIdBySnapshotHashPort for FakeIndex {
-        async fn find_entry_id_by_snapshot_hash(
-            &self,
-            snapshot_hash: &str,
-        ) -> Result<Option<EntryId>, uc_core::clipboard::ClipboardRepositoryError> {
-            Ok((snapshot_hash == "blake3v1:known-photo").then(|| self.0.clone()))
-        }
-    }
-    struct AlwaysAvailable;
-    #[async_trait::async_trait]
-    impl uc_core::ports::clipboard::CheckEntryAvailabilityPort for AlwaysAvailable {
-        async fn is_entry_available(
-            &self,
-            _: &EntryId,
-        ) -> Result<bool, uc_core::clipboard::ClipboardRepositoryError> {
-            Ok(true)
-        }
-    }
-
-    let facade = build_facade_with_seeded_device_and_content_index(
+    let core = build_test_core_with_content_availability(
         "mobile_alice",
         "wonderland",
-        std::sync::Arc::new(FakeIndex(EntryId::from_str("entry-known"))),
-        std::sync::Arc::new(AlwaysAvailable),
+        "blake3v1:known-photo".into(),
+        true,
     )
     .await;
-    let app = build_app(facade);
+    let app = build_app(core);
 
     let resp = app
         .oneshot(
@@ -695,37 +664,14 @@ async fn content_availability_returns_true_when_hash_matches_an_available_entry(
 
 #[tokio::test]
 async fn content_availability_returns_false_when_entry_matched_but_unavailable() {
-    use uc_core::ids::EntryId;
-
-    struct FakeIndex(EntryId);
-    #[async_trait::async_trait]
-    impl uc_core::ports::clipboard::FindEntryIdBySnapshotHashPort for FakeIndex {
-        async fn find_entry_id_by_snapshot_hash(
-            &self,
-            snapshot_hash: &str,
-        ) -> Result<Option<EntryId>, uc_core::clipboard::ClipboardRepositoryError> {
-            Ok((snapshot_hash == "blake3v1:partial-upload").then(|| self.0.clone()))
-        }
-    }
-    struct NeverAvailable;
-    #[async_trait::async_trait]
-    impl uc_core::ports::clipboard::CheckEntryAvailabilityPort for NeverAvailable {
-        async fn is_entry_available(
-            &self,
-            _: &EntryId,
-        ) -> Result<bool, uc_core::clipboard::ClipboardRepositoryError> {
-            Ok(false)
-        }
-    }
-
-    let facade = build_facade_with_seeded_device_and_content_index(
+    let core = build_test_core_with_content_availability(
         "mobile_alice",
         "wonderland",
-        std::sync::Arc::new(FakeIndex(EntryId::from_str("entry-partial"))),
-        std::sync::Arc::new(NeverAvailable),
+        "blake3v1:partial-upload".into(),
+        false,
     )
     .await;
-    let app = build_app(facade);
+    let app = build_app(core);
 
     let resp = app
         .oneshot(
@@ -749,7 +695,7 @@ async fn content_availability_returns_false_when_entry_matched_but_unavailable()
 
 #[tokio::test]
 async fn content_availability_missing_query_param_returns_400() {
-    let facade = build_facade_with_seeded_device("mobile_alice", "wonderland").await;
+    let facade = build_test_core_with_seeded_device("mobile_alice", "wonderland").await;
     let app = build_app(facade);
 
     let resp = app

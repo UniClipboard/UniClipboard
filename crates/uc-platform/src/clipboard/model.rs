@@ -97,6 +97,10 @@ impl MimeType {
         }
     }
 
+    pub fn is_text_plain(&self) -> bool {
+        self.classify() == MimeClass::TextPlain
+    }
+
     pub fn is_uri_list(&self) -> bool {
         self.classify() == MimeClass::UriList
     }
@@ -411,4 +415,15 @@ pub fn select_paste_representation_index(snapshot: &SystemClipboardSnapshot) -> 
             }
         })
         .map(|(index, _)| index)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::MimeType;
+
+    #[test]
+    fn mime_type_text_plain_predicate_accepts_parameters_and_rejects_images() {
+        assert!(MimeType("text/plain;charset=utf-8".into()).is_text_plain());
+        assert!(!MimeType("image/png".into()).is_text_plain());
+    }
 }

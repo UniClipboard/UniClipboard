@@ -58,10 +58,9 @@ pub mod ws_event {
     pub const SEARCH_STATUS_SNAPSHOT: &str = "search.status_snapshot";
     /// Search rebuild progress event (Phase 92).
     pub const SEARCH_REBUILD_PROGRESS: &str = "search.rebuild_progress";
-    /// Inbound clipboard notice with full V3 envelope payload (ADR-008 P2.5).
-    /// Emitted alongside `CLIPBOARD_NEW_CONTENT`; carries base64-encoded
-    /// plaintext so CLI `watch` can decode and render without an extra HTTP
-    /// round-trip.
+    /// Lightweight inbound clipboard notice for CLI `watch` (ADR-008 P2.5).
+    /// Emitted alongside `CLIPBOARD_NEW_CONTENT`; carries only display summaries
+    /// and delivery metadata, never the full clipboard payload.
     pub const CLIPBOARD_INBOUND_NOTICE: &str = "clipboard.inbound_notice";
 }
 

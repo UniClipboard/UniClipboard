@@ -42,6 +42,7 @@ tower = { version = "0.5", features = ["util"] }
 argon2 = "0.5.3"
 libc = "0.2"
 reqwest = { version = "0.12", default-features = false }
+tokio-tungstenite = "0.24"
 
 [lints]
 workspace = true

@@ -6,7 +6,7 @@
  * 这里用 StrictMode 渲染,确保双跑后仍然能拿到邀请码而不是卡在 loading。
  */
 
-import { render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import { StrictMode } from 'react'
 import { I18nextProvider } from 'react-i18next'
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -15,6 +15,14 @@ import i18n from '@/i18n'
 
 const getSetupState = vi.fn()
 const issuePairingInvitation = vi.fn()
+let pairingCompletedHandler:
+  | ((event: {
+      sponsorDeviceId: string
+      joinerDeviceId: string | null
+      success: boolean
+      reason: string | null
+    }) => void)
+  | undefined
 
 vi.mock('@/api/daemon/setupV2', () => ({
   getSetupState: () => getSetupState(),
@@ -23,7 +31,10 @@ vi.mock('@/api/daemon/setupV2', () => ({
 }))
 
 vi.mock('@/api/setupEvents', () => ({
-  onSetupPairingCompleted: vi.fn(() => Promise.resolve(() => undefined)),
+  onSetupPairingCompleted: vi.fn(callback => {
+    pairingCompletedHandler = callback
+    return Promise.resolve(() => undefined)
+  }),
   onSetupInvitationRevoked: vi.fn(() => Promise.resolve(() => undefined)),
 }))
 
@@ -51,6 +62,7 @@ describe('AddDeviceDialog invitation issuing', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
+    pairingCompletedHandler = undefined
     getSetupState.mockResolvedValue({
       hasCompleted: true,
       currentInvitation: null,
@@ -83,5 +95,32 @@ describe('AddDeviceDialog invitation issuing', () => {
       expect(screen.getByLabelText('123456789')).toBeInTheDocument()
     })
     expect(issuePairingInvitation).toHaveBeenCalledTimes(1)
+  })
+
+  it('replaces the invitation with success when pairing completes', async () => {
+    render(
+      <I18nextProvider i18n={i18n}>
+        <AddDeviceDialog open onOpenChange={() => undefined} />
+      </I18nextProvider>
+    )
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('123456789')).toBeInTheDocument()
+      expect(pairingCompletedHandler).toBeTypeOf('function')
+    })
+
+    act(() => {
+      pairingCompletedHandler?.({
+        sponsorDeviceId: 'sponsor-1',
+        joinerDeviceId: 'joiner-2',
+        success: true,
+        reason: null,
+      })
+    })
+
+    await waitFor(() => {
+      expect(screen.queryByLabelText('123456789')).not.toBeInTheDocument()
+      expect(screen.getAllByText(i18n.t('devices.addDevice.success.title'))).not.toHaveLength(0)
+    })
   })
 })

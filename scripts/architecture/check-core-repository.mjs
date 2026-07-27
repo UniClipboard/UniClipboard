@@ -9,8 +9,8 @@ import { fileURLToPath } from 'node:url'
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url))
 const REPOSITORY_ROOT = resolve(SCRIPT_DIR, '../..')
 const CORE_REPOSITORY = 'https://github.com/UniClipboard/core.git'
-const CORE_TAG = 'core-v0.20.0-rc.5'
-const CORE_REVISION = '59e4339a2e1d7c247e3d33c7ec106bbb16c17c5c'
+const CORE_TAG = 'core-v0.20.0-rc.6'
+const CORE_REVISION = 'bd710f635169da0421373be0982f651b159e1e95'
 const DECLARED_CORE_SOURCE = `git+${CORE_REPOSITORY}?tag=${CORE_TAG}`
 const RESOLVED_CORE_SOURCE = `${DECLARED_CORE_SOURCE}#${CORE_REVISION}`
 
@@ -295,7 +295,7 @@ function runNegativeFixtures(metadata, sources) {
         workspacePackageByName(changed, 'uc-observability'),
         'uc-observability-contract'
       )
-      contract.source = `git+${CORE_REPOSITORY}?tag=core-v0.20.0-rc.6`
+      contract.source = `git+${CORE_REPOSITORY}?tag=core-v0.20.0-rc.5`
     },
     metadata,
     sources

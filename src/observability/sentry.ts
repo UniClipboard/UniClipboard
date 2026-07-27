@@ -7,7 +7,7 @@ import {
   matchRoutes,
   useLocation,
   useNavigationType,
-} from 'react-router-dom'
+} from 'react-router'
 import { redactSensitiveArgs } from '@/observability/redaction'
 
 const sentryEnabled = Boolean(import.meta.env.VITE_SENTRY_DSN)
@@ -243,7 +243,7 @@ export function applyDeviceMetaToSentry(meta: SentryDeviceMeta): void {
 }
 
 /**
- * Sentry-instrumented Routes component for React Router v7.
+ * Sentry-instrumented Routes component.
  * Use this instead of `Routes` to get parameterized navigation tracing.
  */
 export const SentryRoutes = Sentry.withSentryReactRouterV7Routing(Routes)

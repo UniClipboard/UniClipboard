@@ -1,7 +1,7 @@
 import { ArrowLeft } from 'lucide-react'
 import type { FC } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router'
 import { SETTINGS_CATEGORIES } from '@/components/setting/settings-config'
 import {
   Sidebar,

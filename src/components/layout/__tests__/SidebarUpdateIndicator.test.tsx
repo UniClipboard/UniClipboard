@@ -1,6 +1,6 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter } from 'react-router'
 import { updateDebugMode } from '@/api/daemon/diagnostics'
 import type { UpdateMetadata } from '@/api/updater'
 import Sidebar from '@/components/layout/Sidebar'

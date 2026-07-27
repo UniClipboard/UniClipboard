@@ -32,10 +32,12 @@ use uc_application::facade::ClipboardHistoryFacade;
 use crate::daemon::service::{DaemonService, ServiceHealth};
 
 /// Interval between cleanup sweeps after the startup pass. Cleanup is
-/// idempotent and cheap when there is nothing to do, so a single shared
-/// cadence for all three jobs keeps this simple rather than giving each job
-/// its own timer.
-const CLEANUP_INTERVAL: std::time::Duration = std::time::Duration::from_secs(300);
+/// idempotent and cheap when there is nothing to do (one settings read +
+/// one DB query that returns zero candidates), so a short cadence is fine.
+/// 30 s ensures that "disable history" (`ByAge { max_age: 0 }`) evicts
+/// inbound-synced entries promptly rather than leaving them visible for
+/// minutes.
+const CLEANUP_INTERVAL: std::time::Duration = std::time::Duration::from_secs(30);
 
 pub struct CleanupWorker {
     history_facade: Arc<ClipboardHistoryFacade>,

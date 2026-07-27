@@ -505,24 +505,32 @@ impl CaptureClipboardUseCase {
 
             // ── No-history mode ────────────────────────────────────────────
             // When the retention policy is enabled and has `ByAge { max_age: 0 }`
-            // ("disable history"), each capture (local OR inbound) replaces the
-            // most-recent entry in place instead of appending a new row. This
-            // keeps exactly one entry in the database at all times.
-            let (commit_mode, preset_entry_id) = if commit_mode == CommitMode::Create {
-                match self.resolve_no_history_target().await {
-                    Some(target_entry_id) => {
-                        info!(
-                            target_entry_id = %target_entry_id,
-                            ?origin,
-                            "No-history mode active; replacing latest entry"
-                        );
-                        (CommitMode::Replace, Some(target_entry_id))
+            // ("disable history"), each local capture replaces the most-recent
+            // entry in place instead of appending a new row. This keeps exactly
+            // one entry in the database at all times.
+            //
+            // Inbound (P2P / mobile) entries are NOT replaced here because the
+            // inbound pipeline binds a pre-allocated `entry_id` to receive-
+            // attempt tracking; overwriting it would break delivery accounting.
+            // Instead, inbound entries are cleaned up by the retention cleanup
+            // task which honours the same `ByAge { max_age: 0 }` policy and
+            // evicts all but the newest entry shortly after capture.
+            let (commit_mode, preset_entry_id) =
+                if origin == ClipboardChangeOrigin::LocalCapture && commit_mode == CommitMode::Create
+                {
+                    match self.resolve_no_history_target().await {
+                        Some(target_entry_id) => {
+                            info!(
+                                target_entry_id = %target_entry_id,
+                                "No-history mode active; replacing latest entry"
+                            );
+                            (CommitMode::Replace, Some(target_entry_id))
+                        }
+                        None => (commit_mode, preset_entry_id),
                     }
-                    None => (commit_mode, preset_entry_id),
-                }
-            } else {
-                (commit_mode, preset_entry_id)
-            };
+                } else {
+                    (commit_mode, preset_entry_id)
+                };
 
             // 1. 生成 event + snapshot representations
             let new_event = ClipboardEvent::new(

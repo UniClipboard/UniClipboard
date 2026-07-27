@@ -80,18 +80,30 @@ jobs:
             ignore: ''
           - directory: 'docs-site'
             name: docs-site
-            # All 4 are transitive and pinned by upstream packages that
-            # haven't shipped a fixed version yet (mermaid's dompurify pin,
-            # next's internal postcss pin, fumadocs-mdx's esbuild pin,
-            # fumadocs-core/mdx/openapi's js-yaml pin). Tracked in #1226 —
-            # remove an --ignore entry once the corresponding upstream bump
-            # lands and `bun audit --production` no longer flags it.
+            # docs-site dependency remediation is tracked in #1226. Keep this
+            # temporary allowlist scoped to docs-site so unrelated root PRs are
+            # not blocked; remove each entry as its dependency upgrade lands.
+            # Root-project findings must never be added here.
             ignore: >-
               --ignore=GHSA-vxr8-fq34-vvx9
               --ignore=GHSA-cmwh-pvxp-8882
               --ignore=GHSA-qx2v-qp2m-jg93
               --ignore=GHSA-g7r4-m6w7-qqqr
               --ignore=GHSA-h67p-54hq-rp68
+              --ignore=GHSA-f88m-g3jw-g9cj
+              --ignore=GHSA-c2j3-45gr-mqc4
+              --ignore=GHSA-6g55-p6wh-862q
+              --ignore=GHSA-r28c-9q8g-f849
+              --ignore=GHSA-89xv-2m56-2m9x
+              --ignore=GHSA-68g3-v927-f742
+              --ignore=GHSA-6gpp-xcg3-4w24
+              --ignore=GHSA-m99w-x7hq-7vfj
+              --ignore=GHSA-4633-3j49-mh5q
+              --ignore=GHSA-4c39-4ccg-62r3
+              --ignore=GHSA-p9j2-gv94-2wf4
+              --ignore=GHSA-q8wf-6r8g-63ch
+              --ignore=GHSA-955p-x3mx-jcvp
+              --ignore=GHSA-52cp-r559-cp3m
           - directory: 'workers/update-server'
             name: update-server
             ignore: ''

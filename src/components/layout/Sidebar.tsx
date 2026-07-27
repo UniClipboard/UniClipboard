@@ -10,7 +10,7 @@ import {
 } from 'lucide-react'
 import React, { useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router'
 import { updateDebugMode } from '@/api/daemon/diagnostics'
 import {
   captureUpdateActionInvoked,

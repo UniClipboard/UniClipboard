@@ -7,7 +7,7 @@ import {
   useLocation,
   useNavigate,
   useOutlet,
-} from 'react-router-dom'
+} from 'react-router'
 import { daemonClient } from '@/api/daemon/client'
 import { signalLifecycleReady } from '@/api/daemon/lifecycle'
 import { unlockEncryptionSession } from '@/api/security'

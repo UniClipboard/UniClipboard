@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useLocation, useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router'
 import InsetSurface from '@/components/layout/InsetSurface'
 import {
   DEFAULT_CATEGORY,

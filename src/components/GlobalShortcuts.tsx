@@ -1,4 +1,4 @@
-import { useLocation, useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router'
 import { useShortcut } from '@/hooks/useShortcut'
 import { adjustUiScale } from '@/lib/ui-scale'
 import { SHORTCUT_DEFINITIONS } from '@/shortcuts/definitions'

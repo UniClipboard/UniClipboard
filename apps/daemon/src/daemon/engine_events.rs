@@ -177,8 +177,8 @@ fn peer_to_dto(peer: PeerConnectionSummary) -> PeerSnapshotDto {
 mod tests {
     use uc_daemon_contract::constants::{ws_event, ws_topic};
     use uc_engine::{
-        EngineEvent, InboundNoticeActionSummary, InboundNoticeEvent, PairingCompletion,
-        TransferDirectionSummary, TransferProgress,
+        EngineEvent, InboundNoticeEvent, PairingCompletion, TransferDirectionSummary,
+        TransferProgress,
     };
 
     use super::{daemon_ws_event, pairing_completion_ws_event};
@@ -221,22 +221,24 @@ mod tests {
 
     #[test]
     fn inbound_notice_keeps_the_existing_watch_wire_shape() {
-        let event = daemon_ws_event(EngineEvent::InboundNotice(InboundNoticeEvent {
-            from_device: "peer-1".into(),
-            snapshot_hash: "hash-1".into(),
-            plaintext: vec![1, 2, 3],
-            text_preview: None,
-            representations: Vec::new(),
-            action: InboundNoticeActionSummary::DuplicateIgnored,
-            at_ms: 42,
+        let notice = serde_json::from_value::<InboundNoticeEvent>(serde_json::json!({
+            "from_device": "peer-1",
+            "snapshot_hash": "hash-1",
+            "plaintext": [1, 2, 3],
+            "text_preview": null,
+            "representations": [],
+            "action": "duplicate_ignored",
+            "at_ms": 42
         }))
-        .expect("inbound notice websocket event");
+        .expect("deserialize inbound notice fixture");
+        let event = daemon_ws_event(EngineEvent::InboundNotice(notice))
+            .expect("inbound notice websocket event");
 
         assert_eq!(event.topic, ws_topic::CLIPBOARD);
         assert_eq!(event.event_type, ws_event::CLIPBOARD_INBOUND_NOTICE);
         assert_eq!(event.payload["fromDevice"], "peer-1");
         assert_eq!(event.payload["snapshotHash"], "hash-1");
-        assert_eq!(event.payload["plaintextBase64"], "AQID");
+        assert!(event.payload.get("plaintextBase64").is_none());
         assert_eq!(event.payload["action"], "duplicate_ignored");
         assert_eq!(event.payload["atMs"], 42);
     }

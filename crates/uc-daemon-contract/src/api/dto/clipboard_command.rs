@@ -142,15 +142,13 @@ pub struct CaptureCurrentClipboardResponse {
 
 /// Payload for the `clipboard.inbound_notice` WebSocket event.
 ///
-/// Carries the full V3 envelope for older clients plus structured display
-/// summaries so current clients do not need to understand the core envelope.
+/// Carries structured display summaries without duplicating the full clipboard
+/// payload that has already travelled through the sync pipeline.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct InboundNoticeEvent {
     pub from_device: String,
     pub snapshot_hash: String,
-    /// Base64-encoded V3 envelope bytes.
-    pub plaintext_base64: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub text_preview: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -256,7 +254,6 @@ mod tests {
         let evt = InboundNoticeEvent {
             from_device: "d1".into(),
             snapshot_hash: "h".into(),
-            plaintext_base64: "base64data".into(),
             text_preview: Some("hello".into()),
             representations: vec![InboundRepresentationSummaryDto {
                 mime_type: Some("text/plain".into()),
@@ -268,7 +265,7 @@ mod tests {
         let json = serde_json::to_value(&evt).unwrap();
         assert!(json.get("fromDevice").is_some());
         assert!(json.get("snapshotHash").is_some());
-        assert!(json.get("plaintextBase64").is_some());
+        assert!(json.get("plaintextBase64").is_none());
         assert!(json.get("textPreview").is_some());
         assert!(json.get("representations").is_some());
     }

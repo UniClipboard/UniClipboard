@@ -120,6 +120,7 @@ pub fn engine_event_to_ws(event: EngineEvent) -> Option<DaemonWsEvent> {
         ),
         EngineEvent::StateChanged { .. }
         | EngineEvent::PeerPresenceChanged(_)
+        | EngineEvent::PairingCompleted(_)
         | EngineEvent::ActiveClipboardChanged(_)
         | EngineEvent::MobileLanSettingsChanged(_)
         | EngineEvent::RefreshRequired { .. }

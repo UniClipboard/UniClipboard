@@ -374,8 +374,9 @@ end-to-end behaviour:
   container for richer handshake details.
 - **Settings round-trip**: the GUI **Settings → Network → Custom
   relay nodes** field shows the URL list currently saved. After you
-  click `Apply & restart`, the "Restart required" banner clearing
-  means the daemon picked up the new value.
+  click **Save relay node**, click **Restart now** in the notice. When
+  that notice disappears, the daemon has restarted and picked up the
+  new value.
 - **End-to-end test**: place two paired devices on networks that
   cannot hole-punch (classic: both behind CGNAT, or far-apart
   geographies) and confirm sync still works. If the server-side

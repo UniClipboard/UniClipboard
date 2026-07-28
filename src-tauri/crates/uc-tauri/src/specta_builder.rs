@@ -84,7 +84,6 @@ pub fn build() -> Builder<tauri::Wry> {
         // ── settings ────────────────────────────────────────────────────────
         crate::commands::settings::update_keyboard_shortcuts,
         crate::commands::settings::pick_directory,
-        crate::commands::settings::probe_relay_url,
         // ── config import/export (issue #1110) ──────────────────────────────
         crate::commands::config::export_config_package,
         crate::commands::config::pick_config_bundle_path,

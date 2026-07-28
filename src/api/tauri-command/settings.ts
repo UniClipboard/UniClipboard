@@ -15,9 +15,9 @@ import type {
   ShortcutKey,
 } from '@/api/daemon/settings'
 import { commands } from '@/lib/ipc'
-import type { ModifierDoubleTapAvailability, RelayProbeOutcome } from '@/lib/ipc-bindings.generated'
+import type { ModifierDoubleTapAvailability } from '@/lib/ipc-bindings.generated'
 
-export type { ModifierDoubleTapAvailability, RelayProbeOutcome }
+export type { ModifierDoubleTapAvailability }
 
 export type KeyboardShortcutsPatch = Record<string, ShortcutKey | null>
 
@@ -106,19 +106,4 @@ export async function setQuickPanelDoubleTapModifier(
  */
 export async function updateAutostart(enabled: boolean): Promise<void> {
   await commands.updateAutostart(enabled)
-}
-
-/**
- * Run a one-shot reachability probe against an iroh relay URL.
- *
- * Returns a discriminated `RelayProbeOutcome` — successful handshakes and
- * predictable failures (invalid URL, DNS error, TLS error, timeout, …) all
- * resolve, so UI code can present targeted messaging without try/catch.
- * The promise itself only rejects when the backend can't run the probe at
- * all (e.g. the adapter isn't wired up in this runtime).
- *
- * Backend: `commands::settings::probe_relay_url`.
- */
-export async function probeRelayUrl(url: string): Promise<RelayProbeOutcome> {
-  return commands.probeRelayUrl(url)
 }

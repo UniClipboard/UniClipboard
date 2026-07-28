@@ -103,6 +103,10 @@ pub mod http_route {
     pub const SETTINGS: &str = "/settings";
     /// POST /settings/relay-probe — probe a candidate relay URL (ADR-008 P3-3 B2'-1)
     pub const SETTINGS_RELAY_PROBE: &str = "/settings/relay-probe";
+    /// POST /settings/relay-credential/status — query URL-scoped credential state.
+    pub const SETTINGS_RELAY_CREDENTIAL_STATUS: &str = "/settings/relay-credential/status";
+    /// PUT /settings/relay — save relay settings and credential together.
+    pub const SETTINGS_RELAY_SAVE: &str = "/settings/relay";
     /// GET/PUT /diagnostics/debug — inspect or update persistent local debug mode.
     pub const DIAGNOSTICS_DEBUG: &str = "/diagnostics/debug";
     /// POST /diagnostics/log-export — export recent GUI/daemon/CLI logs to Downloads.

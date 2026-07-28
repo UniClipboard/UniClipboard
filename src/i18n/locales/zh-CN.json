@@ -397,12 +397,22 @@
         "customRelays": {
           "label": "自定义中继节点",
           "description": "添加一个或多个 iroh relay URL。留空使用默认中继；开启 LAN-only 时此列表会保留但不生效。重启后生效。",
+          "rowLabel": "中继节点 {{index}}",
+          "urlLabel": "地址",
+          "tokenLabel": "访问令牌（可选）",
           "placeholder": "https://relay.example.com.",
           "addButton": "添加中继节点",
+          "testButton": "测试可用性",
+          "testHint": "测试会使用当前填写的访问令牌，但不会保存它。",
+          "saveButton": "保存中继节点",
+          "removeSavedToken": "移除已保存的访问令牌",
+          "cancelRemoveSavedToken": "保留已保存的访问令牌",
+          "pendingTokenRemoval": "保存此中继节点后，已保存的访问令牌才会被移除。",
           "itemAriaLabel": "自定义中继节点 {{index}}",
           "removeAriaLabel": "移除中继节点 {{index}}",
           "saveError": "保存自定义中继失败：{{message}}。已恢复到上一次的设置。",
           "invalidUrl": "无效的中继 URL：{{url}}。请输入 http 或 https URL。",
+          "duplicateUrl": "中继 URL 已重复：{{url}}。",
           "testAriaLabel": "测试中继节点 {{index}}",
           "testing": "正在测试中继节点…",
           "testSuccess": "握手成功（{{latencyMs}} ms）",
@@ -414,6 +424,19 @@
             "timeout": "测试超时，未能在 5 秒内完成握手",
             "other": "测试失败：{{message}}",
             "unavailable": "当前运行环境未启用中继测试能力。"
+          },
+          "credentials": {
+            "loading": "正在检查访问令牌…",
+            "configured": "访问令牌已保存",
+            "notConfigured": "未配置访问令牌",
+            "placeholder": "输入新的访问令牌",
+            "inputAriaLabel": "中继访问令牌 {{index}}",
+            "saveAriaLabel": "保存访问令牌 {{index}}",
+            "deleteAriaLabel": "删除访问令牌 {{index}}",
+            "toggleVisibility": "显示或隐藏访问令牌",
+            "loadError": "无法检查访问令牌：{{message}}",
+            "saveError": "无法保存访问令牌：{{message}}",
+            "deleteError": "无法删除访问令牌：{{message}}"
           }
         },
         "congestionController": {

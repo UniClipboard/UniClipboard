@@ -1,330 +1,201 @@
 ---
-title: Self-hosting an iroh relay
-description: Stand up your own iroh relay and point UniClipboard at it.
+title: Self-host a UniClipboard relay
+description: Deploy the official UniClipboard relay image and connect your devices to it.
 ---
 
-Since 0.7, UniClipboard exposes a custom iroh **relay** URL list under
-**Settings → Network → Custom relay nodes**. Leave it empty to keep
-using the default iroh relays; enter URLs to route through your own
-relay nodes only.
+UniClipboard can use a relay you operate instead of the default public relays. The recommended
+deployment uses the official `ghcr.io/uniclipboard/relay` image with Docker Compose. Caddy provides
+HTTPS automatically, while the relay stays private inside the container network.
 
-This guide covers:
+Each device needs the relay URL and the same access token. Changes take effect after UniClipboard
+restarts its background service.
 
-- What an iroh relay is and isn't
-- Two ways to deploy one on a Linux host (Docker, source build +
-  systemd)
-- TLS options (Let's Encrypt automatic, or bring-your-own cert)
-- Wiring the URL into UniClipboard and confirming traffic actually
-  flows through your relay
+## What a relay does
 
-## What it is and isn't
+A relay forwards encrypted traffic when two devices cannot connect directly. It can observe
+connection metadata and the size and timing of encrypted traffic, but it cannot read clipboard
+content, passphrases, the space MasterKey, or the membership list.
 
-An iroh relay is **not** a place where your clipboard contents are
-ever readable. It is purely a forwarding layer for the moments when
-direct P2P hole-punching fails:
-
-- **Sees**: source / destination node IDs, ciphertext length and
-  timing of QUIC datagrams.
-- **Does not see**: clipboard content (sealed end-to-end with
-  XChaCha20-Poly1305 at the application layer), your passphrase, the
-  space MasterKey, or the space's membership list.
-
-Think of it as an encrypted pipe. Running your own relay buys you
-**reachability and operational ownership** — your devices can still
-find a transit point you control — but it does **not** change the
-confidentiality story compared to the public n0 relays.
+Running your own relay gives you control over its location, availability, and bandwidth. It does
+not replace peer discovery: first-time pairing still uses UniClipboard's rendezvous service.
 
 See
-[Pairing & sync — What the relay sees vs. what peers see](./pairing#what-the-relay-sees-vs-what-your-peers-see)
-for the threat model.
-
-A relay also does **not** do peer discovery. First-time pairing still
-goes through UniClipboard's rendezvous service to exchange node IDs.
-Custom rendezvous discovery is **not** exposed today.
+[Pairing & sync - What the relay sees vs. what your peers see](./pairing#what-the-relay-sees-vs-what-your-peers-see)
+for the complete threat model.
 
 ## Prerequisites
 
-- A Linux host reachable from the public internet. IPv4 is the safe
-  default; pure IPv6 works but client reachability depends on the
-  client's ISP.
-- A **domain name** resolving to that host. Strongly recommended —
-  iroh clients require HTTPS in the default mode, so without TLS
-  cross-network peers won't actually reach the relay.
-- The following inbound ports open:
-  - **TCP/80** — HTTP. Required if you let iroh-relay handle Let's
-    Encrypt (the ACME HTTP-01 challenge runs here).
-  - **TCP/443** — HTTPS. Hosts `/relay`, `/ping`, and
-    `/generate_204`.
-  - **UDP/7842** — QUIC address discovery. Optional, but recommended;
-    iroh uses it for NAT introspection.
-- Rust toolchain (for the source build) or Docker (for the container
-  path).
+- A public Linux server with Docker Engine and Docker Compose v2
+- A domain such as `relay.example.com` whose DNS records point to the server
+- Inbound TCP ports `80` and `443` open in both the host firewall and the cloud firewall
+- OpenSSL, used once to generate the access token
+
+If the domain has an `AAAA` record, the server must also be reachable over IPv6. Remove stale DNS
+records before continuing.
 
 <Callout type="warn">
-  iroh-relay binds 80/443 by default. If nginx / caddy is already on the host, either move
-  iroh-relay to other ports (override `http_bind_addr` / `https_bind_addr`) or proxy `/relay`,
-  `/ping`, `/generate_204`, and `/` through to iroh-relay. Letting iroh-relay own 80/443 directly is
-  the simplest setup.
+  The `.env` file created below contains the relay access token. Keep its permissions at `0600`, do
+  not commit it, and do not share it. Anyone with this token can use your relay.
 </Callout>
 
-## Option A: Docker
+## Deploy
 
-The n0 team publishes `n0computer/iroh-relay` on Docker Hub. This is
-the fastest path.
+### 1. Create the deployment directory and token
 
-<Callout type="warn">
-  **Don't pull `:latest`.** The iroh wire protocol has a breaking
-  change between 0.x and 1.0 (QUIC handshake `authentication failed`).
-  The server tag must match the `iroh-relay` crate version the client
-  ships with.
-
-UniClipboard currently ships **iroh 0.98.x**; the matching Docker
-tag is **`0.98.2-docker2`**. Beware: the similarly named `0.98.2`
-and `0.98.2-docker` images segfault on amd64 — only the `-docker2`
-variant is a working 0.98 image (upstream packaging issue).
-
-To see the version the client is built against, `grep iroh = ` in
-`crates/uc-infra/Cargo.toml` of the UniClipboard source
-tree.
-
-</Callout>
-
-### 1. Write `config.toml`
-
-Drop the following at `/etc/iroh-relay/config.toml`:
-
-```toml
-# /etc/iroh-relay/config.toml
-http_bind_addr = "[::]:80"
-enable_quic_addr_discovery = true
-
-[tls]
-hostname = "relay.example.com"
-cert_mode = "LetsEncrypt"
-contact = "ops@example.com"
-prod_tls = true
-cert_dir = "/var/lib/iroh-relay/certs"
-```
-
-What each field does:
-
-- `hostname` — your relay domain. **Must resolve publicly to this
-  host.**
-- `cert_mode = "LetsEncrypt"` — iroh-relay ships an ACME client that
-  issues and renews certificates automatically. The HTTP-01 challenge
-  needs port 80 reachable from the internet.
-- `contact` — required by Let's Encrypt; revocation and expiry
-  notices land here.
-- `prod_tls = true` — use the production CA. Flip to `false` while
-  iterating to avoid rate limits, but staging certs aren't trusted by
-  default.
-- `cert_dir` — ACME state and cached certificates live here. Make it
-  a volume so it survives container restarts.
-
-### 2. Run the container
+Replace `relay.example.com` with your relay domain, then run:
 
 ```bash
-docker run -d \
-  --name iroh-relay \
-  --restart=unless-stopped \
-  -p 80:80 \
-  -p 443:443 \
-  -p 7842:7842/udp \
-  -v /etc/iroh-relay/config.toml:/etc/iroh-relay/config.toml:ro \
-  -v /var/lib/iroh-relay:/var/lib/iroh-relay \
-  n0computer/iroh-relay:0.98.2-docker2 \
-  --config-path /etc/iroh-relay/config.toml
+mkdir -p uniclipboard-relay
+cd uniclipboard-relay
+umask 077
+printf 'RELAY_DOMAIN=relay.example.com\nUC_RELAY_TOKEN=%s\n' \
+  "$(openssl rand -hex 32)" > .env
+chmod 600 .env
 ```
 
-The first start performs the ACME flow. Tail the logs to confirm it
-completed (the default log level is silent — pass
-`-e RUST_LOG=info,iroh_relay=debug` to see the full handshake):
+### 2. Create `docker-compose.yml`
+
+```yaml
+services:
+  relay:
+    image: ${RELAY_IMAGE:-ghcr.io/uniclipboard/relay:latest}
+    restart: unless-stopped
+    environment:
+      UC_RELAY_TOKEN: ${UC_RELAY_TOKEN:?set UC_RELAY_TOKEN in .env}
+    expose:
+      - '3340'
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      relay:
+        condition: service_healthy
+    environment:
+      RELAY_DOMAIN: ${RELAY_DOMAIN:?set RELAY_DOMAIN in .env}
+    ports:
+      - '80:80'
+      - '443:443'
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+
+volumes:
+  caddy-data:
+  caddy-config:
+```
+
+The relay's port `3340` is only visible to other containers in this Compose project. Only Caddy's
+HTTP and HTTPS ports are exposed publicly.
+
+### 3. Create `Caddyfile`
+
+```text
+{$RELAY_DOMAIN} {
+  reverse_proxy relay:3340
+}
+```
+
+Caddy obtains and renews the certificate automatically. This configuration also supports relay
+WebSocket connections and preserves the `Authorization` header.
+
+### 4. Start the services
 
 ```bash
-docker logs -f iroh-relay
+docker compose config
+docker compose pull
+docker compose up -d
 ```
 
-### 3. Verify
+The first start can take a short time while Caddy obtains the certificate.
 
-From any other machine:
+### 5. Verify the deployment
 
 ```bash
-curl -sS -o /dev/null -w 'http_code=%{http_code}\n' \
-  https://relay.example.com/ping
+docker compose ps
+curl --fail --show-error https://relay.example.com/healthz
+docker compose logs -f relay
 ```
 
-Expect `http_code=200`. Visiting `https://relay.example.com/` in a
-browser shows a simple "Iroh Relay" landing page. Verify the
-certificate chain with:
+Replace the domain in the `curl` command. The health endpoint should return a JSON response with
+`"status":"ok"`, and the relay service should show as healthy in `docker compose ps`.
 
-```bash
-echo | openssl s_client -servername relay.example.com \
-  -connect relay.example.com:443 2>/dev/null \
-  | openssl x509 -noout -subject -issuer -dates
-```
+Press `Ctrl+C` to stop following the logs; the containers keep running.
 
-`issuer` should reference `Let's Encrypt` — that confirms ACME
-succeeded.
+## Connect UniClipboard
 
-## Option B: Source build + systemd
+Repeat these steps on every device:
 
-For when you'd rather not run Docker, or you want to pin a specific
-revision.
+1. Open **Settings -> Network -> Custom relay nodes**.
+2. Add the relay URL, for example `https://relay.example.com`. Do not add a port or path.
+3. Open `.env` on the server and copy the value after `UC_RELAY_TOKEN=` into the access token field.
+4. Click **Test availability**.
+5. Click **Save relay node**, then **Restart now** when prompted.
 
-### 1. Build
-
-```bash
-git clone https://github.com/n0-computer/iroh.git
-cd iroh
-cargo build --release --features=server --bin iroh-relay
-sudo install -m 755 target/release/iroh-relay /usr/local/bin/
-```
-
-### 2. Config file
-
-Same `config.toml` as Option A, at `/etc/iroh-relay/config.toml`.
-
-### 3. systemd unit
-
-`/etc/systemd/system/iroh-relay.service`:
-
-```ini
-[Unit]
-Description=iroh relay server
-After=network-online.target
-Wants=network-online.target
-
-[Service]
-ExecStart=/usr/local/bin/iroh-relay --config-path /etc/iroh-relay/config.toml
-Restart=on-failure
-RestartSec=5s
-# Let iroh-relay bind 80/443 without root by granting the capability
-AmbientCapabilities=CAP_NET_BIND_SERVICE
-CapabilityBoundingSet=CAP_NET_BIND_SERVICE
-DynamicUser=true
-StateDirectory=iroh-relay
-# StateDirectory=iroh-relay creates /var/lib/iroh-relay owned by the
-# dynamic user. Point cert_dir at that path.
-
-[Install]
-WantedBy=multi-user.target
-```
-
-Enable and watch:
-
-```bash
-sudo systemctl daemon-reload
-sudo systemctl enable --now iroh-relay
-sudo journalctl -u iroh-relay -f
-```
-
-## Bring-your-own certificate (no ACME)
-
-If you already have a wildcard or internal-PKI certificate, switch
-`tls.cert_mode` to `Manual`:
-
-```toml
-[tls]
-cert_mode = "Manual"
-manual_cert_path = "/etc/iroh-relay/fullchain.pem"
-manual_key_path = "/etc/iroh-relay/privkey.pem"
-```
-
-You can leave port 80 to other services in this case — ACME isn't
-running. Port 443 and UDP 7842 still need to be open.
-
-For automatic rotation, use `cert_mode = "Reloading"` instead.
-iroh-relay re-reads the PEM files on a `DEFAULT_CERT_RELOAD_INTERVAL`
-cadence without restarting the process.
-
-## Access control (optional)
-
-The default is `access = "everyone"`: any iroh client with a valid
-node ID can use your relay for transit. That is usually **not** what
-you want, since the bandwidth is on you.
-
-Allowlist:
-
-```toml
-[access]
-allowlist = [
-  "abcd1234...64hex",   # laptop's node id
-  "ef567890...64hex",   # desktop's node id
-]
-```
-
-Denylist:
-
-```toml
-[access]
-denylist = ["bad1234...64hex"]
-```
-
-A device's node ID is visible on the GUI **Devices** page (one row
-per paired device).
-
-The local node ID also shows up in the daemon log on startup when
-running with `RUST_LOG=info` — look for the `endpoint id=…` line.
-
-For centralized auth, `access.http` POSTs each new connection's node
-ID to an endpoint you control; see the
-[iroh-relay sources](https://github.com/n0-computer/iroh/tree/main/iroh-relay)
-for the request schema.
-
-## Wire it into UniClipboard
-
-1. On each device, open **Settings → Network → Custom relay nodes**.
-2. Enter one URL per line, e.g.:
-
-   ```
-   https://relay.example.com
-   ```
-
-   No port (443 / 7842 are the defaults), no path. You can list
-   multiple relays — iroh picks the best one.
-
-3. Click `Apply & restart`. The daemon restarts onto the new relay
-   list.
-4. Clear the field to fall back to default iroh relays. That's how
-   you revert.
+UniClipboard does not display a saved token again. To replace it, enter the new token explicitly
+and save the relay again.
 
 <Callout type="info">
-  The custom relay list is **not** synced across devices — set it on each one. Switching relay
-  domains means updating every device.
+  Custom relays are not synced between devices. Configure the URL and token separately on every
+  device. Remove all custom relay entries to return to the default public relays.
 </Callout>
+
+## Update or pin the image
+
+The `latest` tag is not updated on a running server until you pull it:
+
+```bash
+docker compose pull
+docker compose up -d
+docker compose ps
+```
+
+For a reproducible deployment, set `RELAY_IMAGE` in `.env` to an available version tag or image
+digest from the
+[UniClipboard relay package page](https://github.com/UniClipboard/relay/pkgs/container/relay):
+
+```dotenv
+RELAY_IMAGE=ghcr.io/uniclipboard/relay@sha256:YOUR_IMAGE_DIGEST
+```
+
+Then run `docker compose pull` and `docker compose up -d` again.
+
+## Use an existing reverse proxy
+
+You can reuse nginx, Caddy, Traefik, or another HTTPS reverse proxy instead of the Caddy service
+above. The proxy must:
+
+- Terminate HTTPS with a publicly trusted certificate
+- Support WebSocket upgrades
+- Preserve the `Authorization` request header
+- Forward requests to the relay's port `3340`
+
+If the proxy runs directly on the host, replace `expose` on the relay service with a loopback-only
+port mapping:
+
+```yaml
+ports:
+  - '127.0.0.1:3340:3340'
+```
+
+Then proxy to `http://127.0.0.1:3340`. Do not publish `3340` on all network interfaces.
+
+Browser clients put their token in a `token` query parameter because WebSocket requests cannot set
+a custom authorization header. Caddy access logs are disabled by default in the provided
+configuration. If you enable access logging in any proxy, remove or redact the `token` parameter.
 
 ## Direct-connect the relay if you also run a local proxy
 
-If the relay lives overseas (self-hosted on Hetzner / AWS / DO, or
-you're just using the n0 default relays) **and** you run a local
-proxy on the same machine (Clash / Mihomo / Surge / sing-box, etc.),
-the default rules almost certainly forward relay traffic through your
-proxy too. That typically drops sync throughput by an order of
-magnitude.
-
-Why it hurts:
-
-- **One extra hop.** Client → proxy egress → relay. The path is
-  artificially longer.
-- **Capped by the proxy egress bandwidth.** Even if your line to the
-  relay can do 200 Mbps, a 30 Mbps proxy node bottlenecks the whole
-  chain to 30 Mbps.
-- **UDP / QUIC compatibility.** iroh relays use QUIC; many proxies
-  forward UDP poorly, falling back to TCP-over-TLS or dropping
-  packets — latency and jitter get worse together.
-
-**The test** — can the host reach the relay _bypassing_ the proxy?
+A local proxy such as Clash, Mihomo, Surge, or sing-box can add an unnecessary network hop and cap
+relay throughput. First check whether the relay is reachable directly:
 
 ```bash
-curl -sS --noproxy '*' -o /dev/null \
-  -w 'http=%{http_code} time=%{time_total}s\n' \
-  https://relay.example.com/ping
+curl --noproxy '*' --fail --show-error \
+  https://relay.example.com/healthz
 ```
 
-`http=200` means the relay is directly reachable. In that case, add a
-DIRECT rule for the relay domain so the proxy stops touching it.
-
-Clash / Mihomo (prepend to `rules:`):
+If this succeeds, add the relay domain to the direct-connect rules. For Clash or Mihomo:
 
 ```yaml
 rules:
@@ -332,67 +203,32 @@ rules:
   # ... your existing rules
 ```
 
-Surge / Loon / sing-box — same idea, single rule at the top:
+Only bypass the proxy when the relay is directly reachable from that network.
 
-```
-DOMAIN-SUFFIX,relay.example.com,DIRECT
-```
+## Confirm traffic uses your relay
 
-If you're on the n0 default relays (no custom URL set), UniClipboard
-0.11 ships iroh 0.98 whose defaults live at
-`*.relay.n0.iroh-canary.iroh.link` — make the rule
-`DOMAIN-SUFFIX,iroh-canary.iroh.link,DIRECT`. These hostnames move
-with iroh releases; check the `prod` module in the iroh crate's
-`src/defaults.rs` if you want to confirm against the version you ship.
+Use all three checks together:
 
-Only do this for relays that are **directly reachable**. If your
-network genuinely can't reach the relay (firewalled / ISP-blocked),
-the proxy is the only path and the performance hit is unavoidable —
-though the better long-term fix is to pick a relay region your network
-_can_ reach directly (see the deployment sections above).
+- **Availability test:** the URL and token pass **Test availability** in UniClipboard.
+- **Server logs:** run `docker compose logs -f relay` while the devices connect and sync.
+- **End-to-end test:** sync between two paired devices on networks where a direct connection is
+  unavailable, and confirm relay activity appears at the same time.
 
-## Confirm traffic actually goes through your relay
+## Troubleshooting
 
-UniClipboard has **no runtime API** today that exposes the current
-home relay URL (`uniclip status` only prints setup / encryption /
-search fields). Verification has to come from the server side plus
-end-to-end behaviour:
-
-- **Server-side logs**: `docker logs -f iroh-relay` (or
-  `journalctl -u iroh-relay -f`). New client handshakes and relayed
-  traffic show up as connection log entries that include the
-  client's node ID. Two devices using the relay for transit appear
-  as a matched pair. Set `RUST_LOG=info,iroh_relay=debug` on the
-  container for richer handshake details.
-- **Settings round-trip**: the GUI **Settings → Network → Custom
-  relay nodes** field shows the URL list currently saved. After you
-  click `Apply & restart`, the "Restart required" banner clearing
-  means the daemon picked up the new value.
-- **End-to-end test**: place two paired devices on networks that
-  cannot hole-punch (classic: both behind CGNAT, or far-apart
-  geographies) and confirm sync still works. If the server-side
-  logs simultaneously show those two node IDs connected, traffic is
-  going through **your** relay.
-
-If clients log `relay handshake failed: tls: unknown ca`, you're
-probably on Let's Encrypt staging (`prod_tls = false`) but the
-clients trust only system roots. Either flip `prod_tls = true` or
-install the staging chain on the client.
-
-## Common gotchas
-
-| Symptom                           | Where to look                                                                                             |
-| --------------------------------- | --------------------------------------------------------------------------------------------------------- |
-| ACME never gets a cert            | Is port 80 actually reachable from the public internet? Check firewall, cloud security groups, NAT rules. |
-| `tls: handshake failure`          | Does `hostname` match the cert's CN/SAN? Does DNS really resolve to this host?                            |
-| Client keeps using default relays | Did you **restart the daemon**? Settings changes alone don't pick up.                                     |
-| Cross-network latency 200 ms+     | The relay's physical location matters; with a single relay, iroh has no alternative to choose.            |
-| Memory creep                      | Default `key_cache_capacity = 1048576` (~56 MB). Lower it on small hosts.                                 |
+| Symptom                                             | What to check                                                                                                             |
+| --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| Caddy cannot obtain a certificate                   | Confirm DNS points to this server and TCP ports `80` and `443` are publicly reachable. Check `docker compose logs caddy`. |
+| Relay is unhealthy or keeps restarting              | Confirm `.env` contains a non-empty `UC_RELAY_TOKEN`, then check `docker compose logs relay`.                             |
+| Availability test reports an authentication error   | Copy the exact token from `.env` to UniClipboard. If the server token changed, update every device.                       |
+| `/healthz` works locally but not through the domain | Check the reverse proxy target, HTTPS certificate, firewall, and DNS records.                                             |
+| An existing proxy rejects relay connections         | Confirm it supports WebSocket upgrades and preserves the `Authorization` header.                                          |
+| UniClipboard keeps using default relays             | Save the custom relay and choose **Restart now**. The change is not active before restart.                                |
+| Pulling `latest` appears to do nothing              | Run both `docker compose pull` and `docker compose up -d`, then inspect `docker compose ps`.                              |
+| Relay latency is high                               | Choose a server region with good direct routes to all participating devices.                                              |
 
 ## More references
 
-- Upstream sources / issues: https://github.com/n0-computer/iroh/tree/main/iroh-relay
-- iroh concept page on relays: https://docs.iroh.computer/concepts/relays
-- The UniClipboard code that turns the URL list into
-  `RelayMode::Custom`:
-  `crates/uc-infra/src/network/iroh/node.rs`
+- [UniClipboard relay source and deployment notes](https://github.com/UniClipboard/relay)
+- [UniClipboard relay container package](https://github.com/UniClipboard/relay/pkgs/container/relay)
+- [iroh relay concepts](https://docs.iroh.computer/concepts/relays)

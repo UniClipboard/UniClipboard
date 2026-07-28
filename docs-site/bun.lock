@@ -32,6 +32,7 @@
         "@types/react-dom": "^19.2.3",
         "eslint": "^10.4.0",
         "eslint-config-next": "16.2.6",
+        "github-slugger": "2.0.0",
         "postcss": "^8.5.15",
         "tailwindcss": "^4.3.0",
         "typescript": "^6.0.3",

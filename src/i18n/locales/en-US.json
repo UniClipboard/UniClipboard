@@ -397,12 +397,22 @@
         "customRelays": {
           "label": "Custom relay nodes",
           "description": "Add one or more iroh relay URLs. Leave empty to use the default relays. LAN-only Mode preserves this list but does not use it. Takes effect after restart.",
+          "rowLabel": "Relay node {{index}}",
+          "urlLabel": "Address",
+          "tokenLabel": "Access token (optional)",
           "placeholder": "https://relay.example.com.",
           "addButton": "Add relay node",
+          "testButton": "Test availability",
+          "testHint": "The test uses the access token currently entered, without saving it.",
+          "saveButton": "Save relay node",
+          "removeSavedToken": "Remove saved access token",
+          "cancelRemoveSavedToken": "Keep saved access token",
+          "pendingTokenRemoval": "The access token will be removed when you save this relay.",
           "itemAriaLabel": "Custom relay node {{index}}",
           "removeAriaLabel": "Remove relay node {{index}}",
           "saveError": "Failed to save custom relays: {{message}}. Reverted to the previous setting.",
           "invalidUrl": "Invalid relay URL: {{url}}. Enter an http or https URL.",
+          "duplicateUrl": "Relay URL already exists: {{url}}.",
           "testAriaLabel": "Test relay node {{index}}",
           "testing": "Testing relay node…",
           "testSuccess": "Handshake succeeded ({{latencyMs}} ms)",
@@ -414,6 +424,19 @@
             "timeout": "Probe timed out after 5 seconds",
             "other": "Probe failed: {{message}}",
             "unavailable": "Relay testing is not available in this runtime."
+          },
+          "credentials": {
+            "loading": "Checking access token…",
+            "configured": "Access token saved",
+            "notConfigured": "No access token saved",
+            "placeholder": "Enter a new access token",
+            "inputAriaLabel": "Relay access token {{index}}",
+            "saveAriaLabel": "Save access token {{index}}",
+            "deleteAriaLabel": "Delete access token {{index}}",
+            "toggleVisibility": "Show or hide access token",
+            "loadError": "Could not check the access token: {{message}}",
+            "saveError": "Could not save the access token: {{message}}",
+            "deleteError": "Could not delete the access token: {{message}}"
           }
         },
         "congestionController": {

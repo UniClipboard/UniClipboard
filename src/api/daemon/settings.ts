@@ -24,10 +24,20 @@
  */
 
 import {
+  getRelayCredentialStatus as getRelayCredentialStatusSdk,
   getSettings as getSettingsSdk,
+  probeRelayUrl as probeRelayUrlSdk,
+  saveRelay as saveRelaySdk,
   updateSettings as updateSettingsSdk,
 } from '@/api/generated/sdk.gen'
-import type { SettingsPatchDto } from '@/api/generated/types.gen'
+import type {
+  RelayCredentialEditDto,
+  RelayCredentialStatusDto,
+  RelayProbeCredentialDto,
+  RelayProbeOutcomeDto,
+  RelaySaveResultDto,
+  SettingsPatchDto,
+} from '@/api/generated/types.gen'
 import { daemonClient } from './client'
 
 // ── Enums ──────────────────────────────────────────────────────
@@ -62,6 +72,19 @@ export type SyncFrequency = 'realtime' | 'interval'
 
 /** Retention rule evaluation strategy. / 保留规则评估策略。 */
 export type RuleEvaluation = 'anyMatch' | 'allMatch'
+
+export type RelayProbeOutcome =
+  | { kind: 'success'; latencyMs: number }
+  | { kind: 'invalidUrl'; message: string }
+  | { kind: 'dns'; message: string }
+  | { kind: 'tls'; message: string }
+  | { kind: 'handshake'; message: string }
+  | { kind: 'timeout' }
+  | { kind: 'other'; message: string }
+
+export type RelayProbeCredential = RelayProbeCredentialDto
+export type RelayCredentialEdit = RelayCredentialEditDto
+export type RelaySaveResult = Omit<RelaySaveResultDto, 'settings'> & { settings: Settings }
 
 // ── Sub-setting interfaces ─────────────────────────────────────
 
@@ -242,7 +265,8 @@ export interface Settings {
 
 // ── API request shape ──────────────────────────────────────────
 
-interface SettingsPatchRequest {
+export interface SettingsPatchInput {
+  schemaVersion?: number
   general?: Partial<GeneralSettings>
   sync?: Partial<SyncSettings>
   retentionPolicy?: Partial<RetentionPolicy>
@@ -257,15 +281,74 @@ interface SettingsPatchRequest {
     sessionTimeout?: number
     maxRetries?: number
   }
-  keyboardShortcuts?: {
-    shortcuts: Record<string, ShortcutKey>
-  }
+  keyboardShortcuts?: Record<string, ShortcutKey>
   fileSync?: Partial<FileSyncSettings>
   network?: Partial<NetworkSettings>
   quickPanel?: Partial<QuickPanelSettings>
 }
 
+interface SettingsPatchRequest extends Omit<SettingsPatchInput, 'keyboardShortcuts'> {
+  keyboardShortcuts?: { shortcuts: Record<string, ShortcutKey> }
+}
+
 // ── Public API ─────────────────────────────────────────────────
+
+export async function getRelayCredentialStatus(url: string): Promise<RelayCredentialStatusDto> {
+  return daemonClient.callEnveloped(() =>
+    getRelayCredentialStatusSdk({ body: { url }, throwOnError: true })
+  )
+}
+
+export async function saveRelay(
+  settings: SettingsPatchInput,
+  url: string,
+  credential: RelayCredentialEdit
+): Promise<RelaySaveResult> {
+  const patch = toSettingsPatchRequest(settings)
+  const result = await daemonClient.callEnveloped(() =>
+    saveRelaySdk({
+      body: {
+        settings: patch as unknown as SettingsPatchDto,
+        url,
+        credential,
+      },
+      throwOnError: true,
+    })
+  )
+  return result as unknown as RelaySaveResult
+}
+
+export async function probeRelayUrl(
+  url: string,
+  credential: RelayProbeCredential
+): Promise<RelayProbeOutcome> {
+  const outcome = await daemonClient.callEnveloped(() =>
+    probeRelayUrlSdk({
+      body: { url, credential },
+      throwOnError: true,
+    })
+  )
+  return relayProbeOutcomeFromDto(outcome)
+}
+
+function relayProbeOutcomeFromDto(outcome: RelayProbeOutcomeDto): RelayProbeOutcome {
+  switch (outcome.tag) {
+    case 'success':
+      return { kind: 'success', latencyMs: outcome.latencyMs }
+    case 'invalidUrl':
+      return { kind: 'invalidUrl', message: outcome.message }
+    case 'dns':
+      return { kind: 'dns', message: outcome.message }
+    case 'tls':
+      return { kind: 'tls', message: outcome.message }
+    case 'handshake':
+      return { kind: 'handshake', message: outcome.message }
+    case 'timeout':
+      return { kind: 'timeout' }
+    case 'other':
+      return { kind: 'other', message: outcome.message }
+  }
+}
 
 /**
  * Fetch the current application settings from the daemon.
@@ -296,7 +379,7 @@ export async function getSettings(): Promise<Settings> {
  *          certain network-related changes)
  */
 export async function updateSettings(
-  settings: Partial<Settings>
+  settings: SettingsPatchInput
 ): Promise<{ success: boolean; restartRequired: boolean }> {
   const patch = toSettingsPatchRequest(settings)
   // Route through the generated SDK. `success` + `restartRequired` are now folded
@@ -319,7 +402,7 @@ export async function updateSettings(
  * @param settings - A partial Settings object; only top-level sections that are defined will be included in the patch.
  * @returns A SettingsPatchRequest containing the provided sections with their corresponding fields.
  */
-function toSettingsPatchRequest(settings: Partial<Settings>): SettingsPatchRequest {
+function toSettingsPatchRequest(settings: SettingsPatchInput): SettingsPatchRequest {
   const patch: SettingsPatchRequest = {}
 
   if (settings.general) {

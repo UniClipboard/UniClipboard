@@ -11,7 +11,7 @@ import {
 import { useSetting } from '@/hooks/useSetting'
 import { commands } from '@/lib/ipc'
 import { createLogger } from '@/lib/logger'
-import type { CongestionController } from '@/types/setting'
+import type { CongestionController, RelaySaveMutation } from '@/types/setting'
 import { AllowOverlayAddrsDisclosure } from './AllowOverlayAddrsDisclosure'
 import { CustomRelayUrlsField } from './CustomRelayUrlsField'
 import { LanOnlyDisclosure } from './LanOnlyDisclosure'
@@ -37,21 +37,27 @@ function normalizeRelayUrls(urls: string[]): string[] {
   })
 }
 
-function relayUrlListsEqual(a: string[], b: string[]): boolean {
-  return a.length === b.length && a.every((value, index) => value === b[index])
-}
-
-function validateRelayUrls(urls: string[]): string | null {
+function validateRelayUrls(urls: string[]): { duplicateUrl?: string; invalidUrl?: string } {
+  const canonicalUrls = new Set<string>()
   for (const raw of urls) {
     try {
       const url = new URL(raw)
-      if (url.protocol !== 'http:' && url.protocol !== 'https:') return raw
-      if (!url.hostname) return raw
+      if (
+        (url.protocol !== 'http:' && url.protocol !== 'https:') ||
+        !url.hostname ||
+        url.username !== '' ||
+        url.password !== ''
+      ) {
+        return { invalidUrl: raw }
+      }
+      const canonical = url.toString()
+      if (canonicalUrls.has(canonical)) return { duplicateUrl: raw }
+      canonicalUrls.add(canonical)
     } catch {
-      return raw
+      return { invalidUrl: raw }
     }
   }
-  return null
+  return {}
 }
 
 /**
@@ -81,7 +87,7 @@ function validateRelayUrls(urls: string[]): string | null {
  */
 const NetworkSection: React.FC = () => {
   const { t } = useTranslation()
-  const { setting, error, updateNetworkSetting } = useSetting()
+  const { setting, error, saveRelay, updateNetworkSetting } = useSetting()
 
   // 当前持久值（来自 SettingContext，作为 baseline）
   const persistedAllowRelay = setting?.network?.allowRelayFallback ?? true
@@ -110,10 +116,12 @@ const NetworkSection: React.FC = () => {
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const saveErrorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const saveGenerationRef = useRef(0)
+  const pendingNetworkPatchRef = useRef<Partial<NetworkDraft>>({})
 
   useEffect(() => {
     return () => {
       saveGenerationRef.current += 1
+      pendingNetworkPatchRef.current = {}
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
       if (saveErrorTimerRef.current) clearTimeout(saveErrorTimerRef.current)
     }
@@ -135,29 +143,23 @@ const NetworkSection: React.FC = () => {
     setSaveError(null)
     setRestartError(null)
 
-    const payload = { ...next, customRelayUrls: normalizeRelayUrls(next.customRelayUrls) }
-    const invalidRelayUrl = validateRelayUrls(payload.customRelayUrls)
-    if (invalidRelayUrl) {
-      // Keep an already queued valid update alive, but ensure its completion
-      // cannot clear this newer invalid draft.
-      saveGenerationRef.current += 1
-      showSaveError(
-        t('settings.sections.network.customRelays.invalidUrl', { url: invalidRelayUrl })
-      )
-      return
+    const payload: Partial<NetworkDraft> = {
+      ...pendingNetworkPatchRef.current,
+      ...patch,
     }
+    if (payload.customRelayUrls)
+      payload.customRelayUrls = normalizeRelayUrls(payload.customRelayUrls)
+    pendingNetworkPatchRef.current = payload
 
     const generation = saveGenerationRef.current + 1
     saveGenerationRef.current = generation
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
 
-    const relayChanged = next.allowRelayFallback !== persistedAllowRelay
-    const customRelaysChanged = !relayUrlListsEqual(
-      payload.customRelayUrls,
-      persistedCustomRelayUrls
-    )
+    const relayChanged =
+      payload.allowRelayFallback !== undefined && payload.allowRelayFallback !== persistedAllowRelay
     saveTimerRef.current = setTimeout(() => {
       saveTimerRef.current = null
+      pendingNetworkPatchRef.current = {}
       void updateNetworkSetting(payload).then(
         result => {
           if (saveGenerationRef.current !== generation) return
@@ -170,11 +172,9 @@ const NetworkSection: React.FC = () => {
           setDraftOverride(null)
           setPending(false)
           const message = err instanceof Error ? err.message : String(err)
-          const errorKey = customRelaysChanged
-            ? 'settings.sections.network.customRelays.saveError'
-            : relayChanged
-              ? 'settings.sections.network.lanOnly.saveError'
-              : 'settings.sections.network.allowOverlayAddrs.saveError'
+          const errorKey = relayChanged
+            ? 'settings.sections.network.lanOnly.saveError'
+            : 'settings.sections.network.allowOverlayAddrs.saveError'
           showSaveError(t(errorKey, { message }))
         }
       )
@@ -188,8 +188,45 @@ const NetworkSection: React.FC = () => {
     queueNetworkUpdate({ allowRelayFallback: newAllowRelay })
   }
 
-  const handleCustomRelayUrlsChange = (value: string[]) => {
-    queueNetworkUpdate({ customRelayUrls: value }, false)
+  const saveCustomRelay = async (mutation: RelaySaveMutation) => {
+    const nextMutation = {
+      ...mutation,
+      nextUrl: mutation.nextUrl?.trim() || null,
+    }
+    const nextRelayUrls = [...customRelayUrls]
+    if (nextMutation.index === null) {
+      if (nextMutation.nextUrl === null) throw new Error('Invalid relay addition')
+      nextRelayUrls.push(nextMutation.nextUrl)
+    } else if (nextMutation.nextUrl === null) {
+      nextRelayUrls.splice(nextMutation.index, 1)
+    } else {
+      nextRelayUrls[nextMutation.index] = nextMutation.nextUrl
+    }
+
+    const validation = validateRelayUrls(normalizeRelayUrls(nextRelayUrls))
+    if (validation.invalidUrl) {
+      throw new Error(
+        t('settings.sections.network.customRelays.invalidUrl', { url: validation.invalidUrl })
+      )
+    }
+    if (validation.duplicateUrl) {
+      throw new Error(
+        t('settings.sections.network.customRelays.duplicateUrl', {
+          url: validation.duplicateUrl,
+        })
+      )
+    }
+
+    setSaveError(null)
+    setRestartError(null)
+    try {
+      const result = await saveRelay(nextMutation)
+      setPending(result.restartRequired)
+      return result
+    } catch (err) {
+      log.error({ err }, 'Failed to save a custom relay')
+      throw err
+    }
   }
 
   // ── Switch 切换 handler（Allow Overlay — 正向同名，不取反） ─────
@@ -287,7 +324,7 @@ const NetworkSection: React.FC = () => {
           </SelectContent>
         </Select>
       </SettingRow>
-      <CustomRelayUrlsField value={customRelayUrls} onChange={handleCustomRelayUrlsChange} />
+      <CustomRelayUrlsField value={customRelayUrls} onSave={saveCustomRelay} />
       {saveError && (
         <div className="px-4 pb-3 text-xs text-destructive" role="alert">
           {saveError}

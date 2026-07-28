@@ -2,12 +2,13 @@ import '@testing-library/jest-dom/vitest'
 import { render, screen, cleanup, act, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { getRelayCredentialStatus, probeRelayUrl } from '@/api/daemon/settings'
 import NetworkSection from '@/components/setting/NetworkSection'
 import { useSetting } from '@/hooks/useSetting'
 import i18n from '@/i18n'
 import { commands } from '@/lib/ipc'
 import { makeBaseSettings } from '@/test/fixtures/settings'
-import type { Settings, NetworkSettings } from '@/types/setting'
+import type { NetworkSettings, SettingContextType, Settings } from '@/types/setting'
 
 // ============================================================================
 // Mock chain — 使 NetworkSection 完全脱离真实 daemon HTTP / Tauri runtime
@@ -26,8 +27,15 @@ vi.mock('@/hooks/useSetting', () => ({
   useSetting: vi.fn(),
 }))
 
+vi.mock('@/api/daemon/settings', () => ({
+  getRelayCredentialStatus: vi.fn(),
+  probeRelayUrl: vi.fn(),
+}))
+
 const mockRestartDaemon = vi.mocked(commands.restartDaemon)
 const mockUseSetting = vi.mocked(useSetting)
+const mockGetRelayCredentialStatus = vi.mocked(getRelayCredentialStatus)
+const mockProbeRelayUrl = vi.mocked(probeRelayUrl)
 
 // ============================================================================
 // Test fixtures
@@ -39,21 +47,30 @@ const baseSetting: Settings = makeBaseSettings({
 type UpdateNetworkSettingFn = (
   newNetworkSetting: Partial<NetworkSettings>
 ) => Promise<{ restartRequired: boolean }>
+type SaveRelayFn = SettingContextType['saveRelay']
 
 interface SetupArgs {
   setting?: Settings | null
   error?: string | null
   updateNetworkSetting?: ReturnType<typeof vi.fn<UpdateNetworkSettingFn>>
+  saveRelay?: ReturnType<typeof vi.fn<SaveRelayFn>>
 }
 
 const setupSetting = ({
   setting = baseSetting,
   error = null,
   updateNetworkSetting,
+  saveRelay,
 }: SetupArgs = {}) => {
   const mockUpdate =
     updateNetworkSetting ??
     vi.fn<UpdateNetworkSettingFn>().mockResolvedValue({ restartRequired: true })
+  const mockSaveRelay =
+    saveRelay ??
+    vi.fn<SaveRelayFn>().mockResolvedValue({
+      restartRequired: true,
+      credentialStatus: { configured: false },
+    })
   mockUseSetting.mockReturnValue({
     setting,
     loading: false,
@@ -68,9 +85,10 @@ const setupSetting = ({
     updateKeyboardShortcuts: vi.fn(),
     updateFileSyncSetting: vi.fn(),
     updateNetworkSetting: mockUpdate,
+    saveRelay: mockSaveRelay,
     updateQuickPanelSetting: vi.fn().mockResolvedValue({ restartRequired: false }),
   })
-  return { mockUpdate }
+  return { mockSaveRelay, mockUpdate }
 }
 
 const renderWithOverrides = (overrides: Partial<NetworkSettings> = {}) => {
@@ -89,6 +107,8 @@ beforeAll(async () => {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  mockGetRelayCredentialStatus.mockResolvedValue({ configured: false })
+  mockProbeRelayUrl.mockResolvedValue({ kind: 'success', latencyMs: 37 })
 })
 
 afterEach(() => {
@@ -100,6 +120,104 @@ afterEach(() => {
 // 14 个集成测试 — 覆盖 PLAN.md `truths` 8 条 + UI-SPEC interaction contract
 // ============================================================================
 describe('NetworkSection — Phase 95 集成', () => {
+  it('does not store a relay until the user explicitly saves a successful test', async () => {
+    const user = userEvent.setup()
+    const mockSaveRelay = vi.fn<SaveRelayFn>().mockResolvedValue({
+      restartRequired: true,
+      credentialStatus: { configured: true },
+    })
+    setupSetting({ saveRelay: mockSaveRelay })
+    render(<NetworkSection />)
+
+    await user.type(
+      screen.getByRole('textbox', { name: /自定义中继节点 1|Custom relay node 1/ }),
+      'https://relay.example.com'
+    )
+    await user.type(screen.getByLabelText(/中继访问令牌 1|Relay access token 1/), 'draft-token')
+    await user.click(screen.getByRole('button', { name: /测试可用性|Test availability/ }))
+    await waitFor(() => {
+      expect(mockProbeRelayUrl).toHaveBeenCalledWith('https://relay.example.com', {
+        mode: 'override',
+        accessToken: 'draft-token',
+      })
+    })
+
+    expect(mockSaveRelay).not.toHaveBeenCalled()
+    expect(screen.getByRole('button', { name: /保存中继节点|Save relay node/ })).toBeEnabled()
+  })
+
+  it('ignores an older probe result when the token changes for the same URL', async () => {
+    const user = userEvent.setup()
+    let resolveFirstProbe!: (value: { kind: 'success'; latencyMs: number }) => void
+    let resolveSecondProbe!: (value: { kind: 'handshake'; message: string }) => void
+    mockProbeRelayUrl
+      .mockImplementationOnce(
+        () =>
+          new Promise(resolve => {
+            resolveFirstProbe = resolve
+          })
+      )
+      .mockImplementationOnce(
+        () =>
+          new Promise(resolve => {
+            resolveSecondProbe = resolve
+          })
+      )
+    setupSetting()
+    render(<NetworkSection />)
+
+    const urlInput = screen.getByRole('textbox', {
+      name: /自定义中继节点 1|Custom relay node 1/,
+    })
+    const tokenInput = screen.getByLabelText(/中继访问令牌 1|Relay access token 1/)
+    const testButton = screen.getByRole('button', { name: /测试可用性|Test availability/ })
+    const saveButton = screen.getByRole('button', { name: /保存中继节点|Save relay node/ })
+
+    await user.type(urlInput, 'https://relay.example.com')
+    await user.type(tokenInput, 'first-token')
+    await user.click(testButton)
+    await waitFor(() => expect(mockProbeRelayUrl).toHaveBeenCalledTimes(1))
+
+    await user.clear(tokenInput)
+    await user.type(tokenInput, 'second-token')
+    await user.click(testButton)
+    await waitFor(() => expect(mockProbeRelayUrl).toHaveBeenCalledTimes(2))
+
+    await act(async () => resolveFirstProbe({ kind: 'success', latencyMs: 10 }))
+    expect(saveButton).toBeDisabled()
+
+    await act(async () =>
+      resolveSecondProbe({ kind: 'handshake', message: 'second token rejected' })
+    )
+    expect(await screen.findByRole('alert')).toHaveTextContent('second token rejected')
+    expect(saveButton).toBeDisabled()
+  })
+
+  it('waits for the saved credential status before testing an unchanged relay', async () => {
+    mockGetRelayCredentialStatus.mockImplementation(() => new Promise(() => undefined))
+    renderWithOverrides({ customRelayUrls: ['https://relay.example.com'] })
+
+    expect(screen.getByRole('button', { name: /测试可用性|Test availability/ })).toBeDisabled()
+    expect(mockProbeRelayUrl).not.toHaveBeenCalled()
+  })
+
+  it('uses a stored token when an edited URL is canonically unchanged', async () => {
+    const user = userEvent.setup()
+    mockGetRelayCredentialStatus.mockResolvedValue({ configured: true })
+    renderWithOverrides({ customRelayUrls: ['https://relay.example.com'] })
+    await screen.findByText(/访问令牌已保存|Access token saved/)
+
+    const urlInput = screen.getByRole('textbox', {
+      name: /自定义中继节点 1|Custom relay node 1/,
+    })
+    await user.type(urlInput, '/')
+    await user.click(screen.getByRole('button', { name: /测试可用性|Test availability/ }))
+
+    expect(mockProbeRelayUrl).toHaveBeenCalledWith('https://relay.example.com/', {
+      mode: 'stored',
+    })
+  })
+
   it('Test 1: applied OFF 默认态 — Switch=OFF + RestartBanner 不可见', async () => {
     renderWithOverrides({ allowRelayFallback: true })
     const sw = await screen.findByRole('switch', { name: /LAN-only/ })
@@ -153,12 +271,7 @@ describe('NetworkSection — Phase 95 集成', () => {
       vi.advanceTimersByTime(500)
     })
     expect(mockUpdate).toHaveBeenCalledTimes(1)
-    expect(mockUpdate).toHaveBeenCalledWith({
-      allowRelayFallback: false,
-      allowOverlayNetworkAddrs: false,
-      customRelayUrls: [],
-      congestionController: 'cubic',
-    })
+    expect(mockUpdate).toHaveBeenCalledWith({ allowRelayFallback: false })
   })
 
   it('Test 5: 连击 Switch 只 PUT 一次（debounce 合并）', async () => {
@@ -187,12 +300,7 @@ describe('NetworkSection — Phase 95 集成', () => {
     })
     expect(mockUpdate).toHaveBeenCalledTimes(1)
     // 起始 allowRelay=true（OFF）→ click1=false → click2=true → click3=false
-    expect(mockUpdate).toHaveBeenLastCalledWith({
-      allowRelayFallback: false,
-      allowOverlayNetworkAddrs: false,
-      customRelayUrls: [],
-      congestionController: 'cubic',
-    })
+    expect(mockUpdate).toHaveBeenLastCalledWith({ allowRelayFallback: false })
   })
 
   it('Test 6: 点击「立即重启」调 commands.restartDaemon()', async () => {
@@ -332,12 +440,7 @@ describe('NetworkSection — Phase 95 集成', () => {
       vi.advanceTimersByTime(600)
     })
     expect(mockUpdate).toHaveBeenCalledTimes(1)
-    expect(mockUpdate).toHaveBeenCalledWith({
-      allowRelayFallback: true,
-      allowOverlayNetworkAddrs: true,
-      customRelayUrls: [],
-      congestionController: 'cubic',
-    })
+    expect(mockUpdate).toHaveBeenCalledWith({ allowOverlayNetworkAddrs: true })
   })
 
   it('Test 17: 快速切换两个网络开关 — debounce 后保存同一组最终值', async () => {
@@ -364,8 +467,6 @@ describe('NetworkSection — Phase 95 集成', () => {
     expect(mockUpdate).toHaveBeenCalledWith({
       allowRelayFallback: false,
       allowOverlayNetworkAddrs: true,
-      customRelayUrls: [],
-      congestionController: 'cubic',
     })
   })
 
@@ -390,37 +491,62 @@ describe('NetworkSection — Phase 95 集成', () => {
     ).toHaveValue('https://relay-b.example.com.')
   })
 
-  it('Test 20: 添加自定义中继节点 — debounce 后随网络设置一起保存', async () => {
-    vi.useFakeTimers({ shouldAdvanceTime: true })
-    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
-    const mockUpdate = vi.fn().mockResolvedValue({ restartRequired: true })
-    setupSetting({ updateNetworkSetting: mockUpdate })
+  it('Test 20: 保存经过测试的自定义中继节点', async () => {
+    const user = userEvent.setup()
+    const mockSaveRelay = vi.fn<SaveRelayFn>().mockResolvedValue({
+      restartRequired: true,
+      credentialStatus: { configured: false },
+    })
+    setupSetting({ saveRelay: mockSaveRelay })
 
     render(<NetworkSection />)
     const firstInput = await screen.findByRole('textbox', {
       name: /自定义中继节点 1|Custom relay node 1/,
     })
     await user.type(firstInput, 'https://relay-a.example.com.')
-    await user.click(screen.getByRole('button', { name: /添加中继节点|Add relay node/ }))
-    const secondInput = screen.getByRole('textbox', {
-      name: /自定义中继节点 2|Custom relay node 2/,
-    })
-    await user.type(secondInput, 'https://relay-b.example.com.')
+    await user.click(screen.getByRole('button', { name: /测试可用性|Test availability/ }))
+    await user.click(await screen.findByRole('button', { name: /保存中继节点|Save relay node/ }))
 
-    await act(async () => {
-      vi.advanceTimersByTime(600)
-    })
-
-    expect(mockUpdate).toHaveBeenCalledTimes(1)
-    expect(mockUpdate).toHaveBeenCalledWith({
-      allowRelayFallback: true,
-      allowOverlayNetworkAddrs: false,
-      customRelayUrls: ['https://relay-a.example.com.', 'https://relay-b.example.com.'],
-      congestionController: 'cubic',
+    await waitFor(() => {
+      expect(mockSaveRelay).toHaveBeenCalledWith({
+        index: null,
+        previousUrl: null,
+        nextUrl: 'https://relay-a.example.com.',
+        credential: { action: 'keep' },
+      })
     })
   })
 
-  it('keeps a queued valid save when a later relay draft is invalid', async () => {
+  it('removes the selected saved relay node', async () => {
+    const user = userEvent.setup()
+    const mockSaveRelay = vi.fn<SaveRelayFn>().mockResolvedValue({
+      restartRequired: true,
+      credentialStatus: { configured: false },
+    })
+    setupSetting({
+      setting: {
+        ...baseSetting,
+        network: { ...baseSetting.network, customRelayUrls: ['https://relay.example.com'] },
+      },
+      saveRelay: mockSaveRelay,
+    })
+    render(<NetworkSection />)
+
+    await user.click(
+      await screen.findByRole('button', { name: /移除中继节点 1|Remove relay node 1/ })
+    )
+
+    await waitFor(() => {
+      expect(mockSaveRelay).toHaveBeenCalledWith({
+        index: 0,
+        previousUrl: 'https://relay.example.com',
+        nextUrl: null,
+        credential: { action: 'delete' },
+      })
+    })
+  })
+
+  it('keeps a queued switch save when a relay draft is edited', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true })
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
     const mockUpdate = vi.fn().mockResolvedValue({ restartRequired: true })
@@ -431,39 +557,177 @@ describe('NetworkSection — Phase 95 集成', () => {
     const textbox = screen.getByRole('textbox', {
       name: /自定义中继节点 1|Custom relay node 1/,
     })
-    await user.type(textbox, 'ftp://relay.example.com')
+    await user.type(textbox, 'https://relay.example.com')
 
     await act(async () => {
       vi.advanceTimersByTime(600)
     })
 
-    expect(mockUpdate).toHaveBeenCalledWith({
-      allowRelayFallback: false,
-      allowOverlayNetworkAddrs: false,
-      customRelayUrls: [],
-      congestionController: 'cubic',
-    })
-    expect(screen.getByRole('alert').textContent).toMatch(/无效的中继 URL|Invalid relay URL/)
+    expect(mockUpdate).toHaveBeenCalledWith({ allowRelayFallback: false })
   })
 
-  it('Test 21: 自定义中继 URL 非 http(s) 时不保存并显示 inline error', async () => {
-    vi.useFakeTimers({ shouldAdvanceTime: true })
-    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
-    const mockUpdate = vi.fn().mockResolvedValue({ restartRequired: true })
-    setupSetting({ updateNetworkSetting: mockUpdate })
+  it('Test 21: 测试失败时不能保存自定义中继 URL', async () => {
+    const user = userEvent.setup()
+    const mockSaveRelay = vi.fn<SaveRelayFn>().mockResolvedValue({
+      restartRequired: true,
+      credentialStatus: { configured: false },
+    })
+    setupSetting({ saveRelay: mockSaveRelay })
+    mockProbeRelayUrl.mockResolvedValue({ kind: 'invalidUrl', message: 'unsupported scheme' })
 
     render(<NetworkSection />)
     const textbox = await screen.findByRole('textbox', {
       name: /自定义中继节点 1|Custom relay node 1/,
     })
     await user.type(textbox, 'ftp://relay.example.com')
+    await user.click(screen.getByRole('button', { name: /测试可用性|Test availability/ }))
 
-    await act(async () => {
-      vi.advanceTimersByTime(600)
+    expect(mockSaveRelay).not.toHaveBeenCalled()
+    expect(await screen.findByRole('alert')).toHaveTextContent(/无效的中继 URL|Invalid relay URL/)
+    expect(screen.getByRole('button', { name: /保存中继节点|Save relay node/ })).toBeDisabled()
+  })
+
+  it('shows whether an access token is configured without displaying the token', async () => {
+    mockGetRelayCredentialStatus.mockResolvedValue({ configured: true })
+    renderWithOverrides({ customRelayUrls: ['https://relay.example.com'] })
+
+    expect(await screen.findByText(/访问令牌已保存|Access token saved/)).toBeInTheDocument()
+    expect(mockGetRelayCredentialStatus).toHaveBeenCalledWith('https://relay.example.com')
+    expect(screen.queryByDisplayValue(/relay-secret-token/)).toBeNull()
+  })
+
+  it('saves a replacement access token together with a tested relay', async () => {
+    const user = userEvent.setup()
+    const mockSaveRelay = vi.fn<SaveRelayFn>().mockResolvedValue({
+      restartRequired: true,
+      credentialStatus: { configured: true },
     })
+    setupSetting({
+      setting: {
+        ...baseSetting,
+        network: { ...baseSetting.network, customRelayUrls: ['https://relay.example.com'] },
+      },
+      saveRelay: mockSaveRelay,
+    })
+    render(<NetworkSection />)
 
-    expect(mockUpdate).not.toHaveBeenCalled()
-    expect(screen.getByRole('alert').textContent).toMatch(/无效的中继 URL|Invalid relay URL/)
+    const tokenInput = await screen.findByLabelText(/中继访问令牌 1|Relay access token 1/)
+    expect(tokenInput).toHaveAttribute('type', 'password')
+    await user.type(tokenInput, 'replacement-token')
+    await user.click(screen.getByRole('button', { name: /测试可用性|Test availability/ }))
+    expect(mockProbeRelayUrl).toHaveBeenCalledWith('https://relay.example.com', {
+      mode: 'override',
+      accessToken: 'replacement-token',
+    })
+    await user.click(screen.getByRole('button', { name: /保存中继节点|Save relay node/ }))
+
+    await waitFor(() => {
+      expect(mockSaveRelay).toHaveBeenCalledTimes(1)
+      expect(mockSaveRelay).toHaveBeenCalledWith({
+        index: 0,
+        previousUrl: 'https://relay.example.com',
+        nextUrl: 'https://relay.example.com',
+        credential: { action: 'set', accessToken: 'replacement-token' },
+      })
+    })
+    expect(tokenInput).toHaveValue('')
+  })
+
+  it('deletes a configured access token only when the relay is finally saved', async () => {
+    const user = userEvent.setup()
+    mockGetRelayCredentialStatus.mockResolvedValue({ configured: true })
+    const mockSaveRelay = vi.fn<SaveRelayFn>().mockResolvedValue({
+      restartRequired: true,
+      credentialStatus: { configured: false },
+    })
+    setupSetting({
+      setting: {
+        ...baseSetting,
+        network: { ...baseSetting.network, customRelayUrls: ['https://relay.example.com'] },
+      },
+      saveRelay: mockSaveRelay,
+    })
+    render(<NetworkSection />)
+
+    await user.click(
+      await screen.findByRole('button', { name: /移除已保存的访问令牌|Remove saved access token/ })
+    )
+    expect(mockSaveRelay).not.toHaveBeenCalled()
+    expect(
+      screen.getByText(/保存此中继节点后.*才会被移除|will be removed when you save this relay/i)
+    ).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /测试可用性|Test availability/ }))
+    expect(mockProbeRelayUrl).toHaveBeenCalledWith('https://relay.example.com', { mode: 'none' })
+    await user.click(screen.getByRole('button', { name: /保存中继节点|Save relay node/ }))
+
+    await waitFor(() => {
+      expect(mockSaveRelay).toHaveBeenCalledTimes(1)
+      expect(mockSaveRelay).toHaveBeenCalledWith({
+        index: 0,
+        previousUrl: 'https://relay.example.com',
+        nextUrl: 'https://relay.example.com',
+        credential: { action: 'delete' },
+      })
+    })
+    expect(await screen.findByText(/未配置访问令牌|No access token saved/)).toBeInTheDocument()
+  })
+
+  it('rejects a relay URL that canonicalizes to an existing relay', async () => {
+    const user = userEvent.setup()
+    const mockSaveRelay = vi.fn<SaveRelayFn>()
+    setupSetting({
+      setting: {
+        ...baseSetting,
+        network: { ...baseSetting.network, customRelayUrls: ['https://relay.example.com'] },
+      },
+      saveRelay: mockSaveRelay,
+    })
+    render(<NetworkSection />)
+
+    await user.click(screen.getByRole('button', { name: /添加中继节点|Add relay node/ }))
+    await user.type(
+      screen.getByRole('textbox', { name: /自定义中继节点 2|Custom relay node 2/ }),
+      'https://relay.example.com/'
+    )
+    await user.click(screen.getAllByRole('button', { name: /测试可用性|Test availability/ })[1])
+    await user.click(screen.getAllByRole('button', { name: /保存中继节点|Save relay node/ })[1])
+
+    expect(mockSaveRelay).not.toHaveBeenCalled()
+    expect(await screen.findByRole('alert')).toHaveTextContent(/重复|already exists/i)
+  })
+
+  it('updates only the selected item when legacy settings contain exact duplicates', async () => {
+    const user = userEvent.setup()
+    const duplicateUrl = 'https://relay.example.com'
+    const mockSaveRelay = vi.fn<SaveRelayFn>().mockResolvedValue({
+      restartRequired: true,
+      credentialStatus: { configured: false },
+    })
+    setupSetting({
+      setting: {
+        ...baseSetting,
+        network: { ...baseSetting.network, customRelayUrls: [duplicateUrl, duplicateUrl] },
+      },
+      saveRelay: mockSaveRelay,
+    })
+    render(<NetworkSection />)
+
+    const secondUrl = screen.getByRole('textbox', {
+      name: /自定义中继节点 2|Custom relay node 2/,
+    })
+    await user.clear(secondUrl)
+    await user.type(secondUrl, 'https://replacement.example.com')
+    await user.click(screen.getAllByRole('button', { name: /测试可用性|Test availability/ })[1])
+    await user.click(screen.getAllByRole('button', { name: /保存中继节点|Save relay node/ })[1])
+
+    await waitFor(() => {
+      expect(mockSaveRelay).toHaveBeenCalledWith({
+        index: 1,
+        previousUrl: duplicateUrl,
+        nextUrl: 'https://replacement.example.com',
+        credential: { action: 'keep' },
+      })
+    })
   })
 })
 

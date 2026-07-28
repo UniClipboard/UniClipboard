@@ -1,293 +1,194 @@
 ---
-title: 自建 iroh relay
-description: 从零搭一台自己的 iroh relay，并让 UniClipboard 只走这台中继。
+title: 自建 UniClipboard 中继
+description: 使用 UniClipboard 官方中继镜像完成部署，并让自己的设备接入。
 ---
 
-UniClipboard 自 0.7 起在 **设置 → 网络 → 自定义中继节点** 暴露自定义
-iroh **relay** URL。留空时继续用 iroh 默认中继；填了 URL 就只走你自己
-的中继节点。
+UniClipboard 可以使用你自己管理的中继，而不是默认公共中继。推荐方案是通过 Docker
+Compose 部署官方 `ghcr.io/uniclipboard/relay` 镜像，由 Caddy 自动提供 HTTPS，中继本身只在
+容器内部网络开放。
 
-这篇文档解答：
+每台设备都需要填写中继地址和同一个访问令牌。UniClipboard 的后台服务重启后，新配置才会生效。
 
-- iroh relay 到底是什么、不是什么
-- 在一台 Linux 服务器上怎么把它跑起来（裸机二进制 / Docker 两条路径）
-- TLS 证书怎么搞（Let's Encrypt 自动 / 自备证书）
-- UniClipboard 这边怎么填 URL、怎么验证它确实在用你的中继
+## 中继的作用
 
-## 它是什么、不是什么
+两台设备无法直接连接时，中继负责转发已经加密的流量。它能看到连接信息，以及加密流量的大小和
+时间，但无法读取剪贴板内容、口令、空间 MasterKey 或成员列表。
 
-iroh relay **不是** 你的剪贴板内容能看到的地方。它只是 P2P 打洞失败时
-的转发层：
+自建中继可以让你控制服务器的位置、可用性和带宽，但不能替代设备发现。首次配对仍会使用
+UniClipboard 的 rendezvous 服务。
 
-- **能看到**：源 / 目的 node ID、QUIC 数据报的密文长度、连接时间。
-- **看不到**：你的剪贴板内容（应用层 XChaCha20-Poly1305 端到端密封）、
-  口令、MasterKey、空间成员明细。
-
-把 relay 看成"加密水管"。自建的意义在于 **可达性与运维归属** —— 你的
-两台跨网设备总能找到一台你能控制的中转节点，而不是 n0 的公共节点。
-机密性方面，自建 vs 公共并没有差别。
-
-详见 [配对与同步 — 中继看到的 vs. 对端看到的](./pairing#中继看到的-vs-对端看到的)。
-
-iroh relay 也 **不** 提供节点发现（rendezvous）。首次配对仍然走
-UniClipboard 的 rendezvous 服务交换 NodeId。自定义 rendezvous discovery
-目前 **没有** 暴露给用户。
+完整的安全说明见[配对与同步：中继能看到什么](./pairing#中继看到的-vs-对端看到的)。
 
 ## 前置条件
 
-- 一台公网可达的 Linux 主机（虚机也行）。带 IPv4 公网 IP 是稳妥选择；
-  纯 IPv6 也能跑，但客户端到 relay 的连通性就要看运营商。
-- 一个解析到这台主机的 **域名**（强烈推荐）。无域名也能跑（只 HTTP，无
-  TLS），但跨网络的客户端基本连不上 —— iroh 客户端默认要求 HTTPS。
-- 主机上需要开放的入站端口：
-  - **TCP/80** — HTTP（如果用 Let's Encrypt 自动签发，验证流程必须走 80）
-  - **TCP/443** — HTTPS（主流量、`/relay`、`/ping`、`/generate_204`）
-  - **UDP/7842** — QUIC 地址发现（可选，但强烈推荐打开 NAT 探测会用到）
-- Rust 工具链（如果走源码构建）或 Docker（如果走容器）。
+- 一台有公网地址的 Linux 服务器，并已安装 Docker Engine 和 Docker Compose v2
+- 一个指向该服务器的域名，例如 `relay.example.com`
+- 在主机防火墙和云平台防火墙中开放 TCP `80` 和 `443` 端口
+- OpenSSL，只用于生成一次访问令牌
+
+如果域名存在 `AAAA` 记录，服务器也必须能通过 IPv6 访问。继续之前请删除已经失效的 DNS 记录。
 
 <Callout type="warn">
-  iroh-relay 二进制默认监听 80 / 443 这两个 well-known 端口。如果机器 上已经在跑 nginx /
-  caddy，要么换端口（`http_bind_addr` / `https_bind_addr`），要么用反向代理把
-  `/relay`、`/ping`、`/generate_204`、 `/` 透传给 iroh-relay。直接 80/443 由 iroh-relay
-  独占要简单得多。
+  下面创建的 `.env` 文件包含中继访问令牌。请保持其权限为 `0600`，不要提交到仓库，也不要分享给
+  他人。任何拿到令牌的人都可以使用你的中继。
 </Callout>
 
-## 方案 A：Docker
+## 部署
 
-n0 团队在 Docker Hub 维护 `n0computer/iroh-relay` 镜像，这是最快上线
-的方式。
+### 1. 创建部署目录和令牌
 
-<Callout type="warn">
-  **不要直接用 `:latest`**。iroh 协议在 0.x → 1.0 之间有破坏性变更
-  （QUIC handshake `authentication failed`），server 必须和客户端使用的
-  `iroh-relay` crate 版本对得上。
-
-UniClipboard 当前打包的是 **iroh 0.98.x**，对应 Docker tag 是
-**`0.98.2-docker2`**。注意同名前缀的 `0.98.2` / `0.98.2-docker` 在
-amd64 上会直接 segfault，**只有 `-docker2` 是可用的 0.98 镜像**
-（上游打包问题）。
-
-想看当前客户端打包的版本：在 UniClipboard 源码里 `grep iroh = ` 看
-`crates/uc-infra/Cargo.toml`。
-
-</Callout>
-
-### 1. 写 `config.toml`
-
-把下面这份放到主机的 `/etc/iroh-relay/config.toml`：
-
-```toml
-# /etc/iroh-relay/config.toml
-http_bind_addr = "[::]:80"
-enable_quic_addr_discovery = true
-
-[tls]
-hostname = "relay.example.com"
-cert_mode = "LetsEncrypt"
-contact = "ops@example.com"
-prod_tls = true
-cert_dir = "/var/lib/iroh-relay/certs"
-```
-
-字段含义：
-
-- `hostname` —— 你的 relay 域名，**必须能从公网解析到本机**。
-- `cert_mode = "LetsEncrypt"` —— iroh-relay 内置 ACME 客户端，自动签
-  发并续期。需要 80 端口对外可达（ACME HTTP-01 校验）。
-- `contact` —— Let's Encrypt 必填，吊销 / 过期会发到这里。
-- `prod_tls = true` —— 用正式签发服务器。开发测试时改成 `false` 走
-  staging（staging 颁的证书浏览器不认，但能避免触发频次上限）。
-- `cert_dir` —— ACME 状态与证书的缓存目录，挂出来才能在容器重启后
-  保留。
-
-### 2. 启动容器
+先把 `relay.example.com` 换成你的真实域名，再执行：
 
 ```bash
-docker run -d \
-  --name iroh-relay \
-  --restart=unless-stopped \
-  -p 80:80 \
-  -p 443:443 \
-  -p 7842:7842/udp \
-  -v /etc/iroh-relay/config.toml:/etc/iroh-relay/config.toml:ro \
-  -v /var/lib/iroh-relay:/var/lib/iroh-relay \
-  n0computer/iroh-relay:0.98.2-docker2 \
-  --config-path /etc/iroh-relay/config.toml
+mkdir -p uniclipboard-relay
+cd uniclipboard-relay
+umask 077
+printf 'RELAY_DOMAIN=relay.example.com\nUC_RELAY_TOKEN=%s\n' \
+  "$(openssl rand -hex 32)" > .env
+chmod 600 .env
 ```
 
-第一次启动会向 Let's Encrypt 申请证书，看日志确认 ACME 流程通过（默认
-日志级别静默，加 `-e RUST_LOG=info,iroh_relay=debug` 能看到完整握手）：
+### 2. 创建 `docker-compose.yml`
+
+```yaml
+services:
+  relay:
+    image: ${RELAY_IMAGE:-ghcr.io/uniclipboard/relay:latest}
+    restart: unless-stopped
+    environment:
+      UC_RELAY_TOKEN: ${UC_RELAY_TOKEN:?set UC_RELAY_TOKEN in .env}
+    expose:
+      - '3340'
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      relay:
+        condition: service_healthy
+    environment:
+      RELAY_DOMAIN: ${RELAY_DOMAIN:?set RELAY_DOMAIN in .env}
+    ports:
+      - '80:80'
+      - '443:443'
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+
+volumes:
+  caddy-data:
+  caddy-config:
+```
+
+中继的 `3340` 端口只对这个 Compose 项目中的其他容器可见。公网只开放 Caddy 的 HTTP 和 HTTPS
+端口。
+
+### 3. 创建 `Caddyfile`
+
+```text
+{$RELAY_DOMAIN} {
+  reverse_proxy relay:3340
+}
+```
+
+Caddy 会自动申请和续期证书。这份配置同时支持中继所需的 WebSocket 连接，并会保留
+`Authorization` 请求头。
+
+### 4. 启动服务
 
 ```bash
-docker logs -f iroh-relay
+docker compose config
+docker compose pull
+docker compose up -d
 ```
 
-### 3. 验证
+首次启动时，Caddy 需要申请证书，可能要稍等一会儿。
 
-任意机器上跑：
+### 5. 验证部署
 
 ```bash
-curl -sS -o /dev/null -w 'http_code=%{http_code}\n' \
-  https://relay.example.com/ping
+docker compose ps
+curl --fail --show-error https://relay.example.com/healthz
+docker compose logs -f relay
 ```
 
-应该返回 `http_code=200`。访问 `https://relay.example.com/` 会看到一个
-"Iroh Relay" 的简单首页。证书可以这样核：
+请把 `curl` 命令中的域名换成你的真实域名。健康检查应返回带有 `"status":"ok"` 的 JSON，
+`docker compose ps` 中的中继服务应显示为健康。
 
-```bash
-echo | openssl s_client -servername relay.example.com \
-  -connect relay.example.com:443 2>/dev/null \
-  | openssl x509 -noout -subject -issuer -dates
-```
+按 `Ctrl+C` 只会停止查看日志，容器会继续运行。
 
-`issuer` 里能看到 `Let's Encrypt` 就说明 ACME 签发成功。
+## 接入 UniClipboard
 
-## 方案 B：从源码构建 + systemd
+在每台设备上重复以下步骤：
 
-适合不想跑 Docker、或要锁版本 / 改特性的场景。
+1. 打开 **设置 -> 网络 -> 自定义中继节点**。
+2. 添加中继地址，例如 `https://relay.example.com`，不要添加端口或路径。
+3. 在服务器上打开 `.env`，把 `UC_RELAY_TOKEN=` 后面的内容复制到访问令牌输入框。
+4. 点击 **测试可用性**。
+5. 点击 **保存中继节点**，出现提示后再点 **立即重启**。
 
-### 1. 构建
-
-```bash
-git clone https://github.com/n0-computer/iroh.git
-cd iroh
-cargo build --release --features=server --bin iroh-relay
-sudo install -m 755 target/release/iroh-relay /usr/local/bin/
-```
-
-### 2. 配置文件
-
-同方案 A 的 `config.toml`，放到 `/etc/iroh-relay/config.toml`。
-
-### 3. systemd unit
-
-`/etc/systemd/system/iroh-relay.service`：
-
-```ini
-[Unit]
-Description=iroh relay server
-After=network-online.target
-Wants=network-online.target
-
-[Service]
-ExecStart=/usr/local/bin/iroh-relay --config-path /etc/iroh-relay/config.toml
-Restart=on-failure
-RestartSec=5s
-# 让 iroh-relay 自己绑 80/443 —— 不建议用 root，给二进制 cap_net_bind 即可
-AmbientCapabilities=CAP_NET_BIND_SERVICE
-CapabilityBoundingSet=CAP_NET_BIND_SERVICE
-DynamicUser=true
-StateDirectory=iroh-relay
-# StateDirectory=iroh-relay 会创建 /var/lib/iroh-relay 并归属到动态用户
-# 把 cert_dir 指到这里即可
-
-[Install]
-WantedBy=multi-user.target
-```
-
-启用并查看：
-
-```bash
-sudo systemctl daemon-reload
-sudo systemctl enable --now iroh-relay
-sudo journalctl -u iroh-relay -f
-```
-
-## 自备证书（无 ACME）
-
-如果你已经有 wildcard 或自管 PKI 的证书，把 `tls.cert_mode` 改成 `Manual`：
-
-```toml
-[tls]
-cert_mode = "Manual"
-manual_cert_path = "/etc/iroh-relay/fullchain.pem"
-manual_key_path = "/etc/iroh-relay/privkey.pem"
-```
-
-把 80 端口空出来给别的服务也无所谓，因为 ACME 校验不再需要。但 443 与
-UDP/7842 仍然要对外开放。
-
-证书轮换时把 `cert_mode` 换成 `Reloading`，iroh-relay 会按
-`DEFAULT_CERT_RELOAD_INTERVAL` 定期重新加载 PEM 文件，无需重启进程。
-
-## 接入控制（可选）
-
-默认 `access = "everyone"`，意味着任何拿着合法 NodeId 的 iroh 客户端
-都可以用你的中继做转发。这通常是你 **不想要** 的 —— 中继的带宽是你自己
-出的。
-
-允许列表（白名单）：
-
-```toml
-[access]
-allowlist = [
-  "abcd1234...64hex",   # NodeId of laptop
-  "ef567890...64hex",   # NodeId of desktop
-]
-```
-
-或者反过来用黑名单：
-
-```toml
-[access]
-denylist = ["bad1234...64hex"]
-```
-
-对端的 NodeId 在 GUI **设备** 页里能看到（每台已配对设备一行）。
-
-也可以从守护进程日志拿到本机 NodeId —— `RUST_LOG=info` 启动后会有
-`endpoint id=…` 一行。
-
-更高级的场景（中心化鉴权服务）可以用 `access.http`，让 iroh-relay 对
-每个新连接发 HTTP POST 到你的鉴权端点。详见
-[iroh-relay 源码](https://github.com/n0-computer/iroh/tree/main/iroh-relay)。
-
-## 接到 UniClipboard
-
-1. 在每台设备打开 **设置 → 网络 → 自定义中继节点**。
-2. 每行填一个 URL，例如：
-
-   ```
-   https://relay.example.com
-   ```
-
-   不要写端口（443 / 7842 都按默认走）；不要写路径。多台中继换行排开
-   即可，iroh 客户端会在它们之间选最优。
-
-3. 点 `应用并重启`，daemon 会重启并切到自定义中继列表。
-4. 留空字段 = 回退到 iroh 默认中继；这是从自建切回默认的方法。
+UniClipboard 不会再次显示已经保存的令牌。需要更换时，必须明确输入新令牌并重新保存。
 
 <Callout type="info">
-  自定义 relay 列表 **不是** 跨设备同步设置 —— 每台设备各自填。换 relay 域名时要逐台改。
+  自定义中继不会在设备间同步。每台设备都要分别配置地址和令牌。删除全部自定义中继即可恢复使用默认
+  公共中继。
 </Callout>
+
+## 更新或固定镜像
+
+正在运行的服务器不会自动获得 `latest` 的更新，需要手动拉取：
+
+```bash
+docker compose pull
+docker compose up -d
+docker compose ps
+```
+
+如果希望每次部署都使用完全相同的镜像，可以在 `.env` 中把 `RELAY_IMAGE` 设为
+[UniClipboard 中继镜像页面](https://github.com/UniClipboard/relay/pkgs/container/relay)提供的版本标签或
+镜像摘要：
+
+```dotenv
+RELAY_IMAGE=ghcr.io/uniclipboard/relay@sha256:YOUR_IMAGE_DIGEST
+```
+
+修改后再次执行 `docker compose pull` 和 `docker compose up -d`。
+
+## 使用已有反向代理
+
+你也可以复用 nginx、Caddy、Traefik 或其他 HTTPS 反向代理，不运行上面的 Caddy 服务。反向代理
+必须满足以下要求：
+
+- 使用受公网信任的证书提供 HTTPS
+- 支持 WebSocket 升级
+- 保留 `Authorization` 请求头
+- 把请求转发到中继的 `3340` 端口
+
+如果反向代理直接运行在宿主机上，把中继服务中的 `expose` 换成仅本机可访问的端口映射：
+
+```yaml
+ports:
+  - '127.0.0.1:3340:3340'
+```
+
+然后代理到 `http://127.0.0.1:3340`。不要把 `3340` 端口开放到所有网络接口。
+
+浏览器客户端无法为 WebSocket 请求添加自定义鉴权请求头，因此会把令牌放在 `token` 查询参数中。
+本文提供的 Caddy 配置默认不开启访问日志。如果你在任何反向代理中启用访问日志，必须删除或遮蔽
+`token` 参数。
 
 ## 本机有梯子时让 relay 走直连
 
-如果你的 relay 部署在国外（自建到 Hetzner / AWS / DO，或者你压根用的就
-是 n0 公共中继），而本机又开着梯子（Clash / Mihomo / Surge / sing-box
-这类），**默认规则很可能把 relay 流量也丢给代理转发了**。这一刀下去同
-步速度通常会掉一个数量级。
-
-为什么慢：
-
-- **多绕一层**。客户端 → 代理出口 → relay。路径被人为拉长。
-- **带宽被代理出口压住**。家宽到 relay 直连本来 200 Mbps，代理节点只
-  跑 30 Mbps，整条链路就是 30 Mbps。
-- **UDP / QUIC 兼容性差**。iroh 中继走 QUIC，部分代理对 UDP 转发实现
-  孱弱，会回落到 TCP-over-TLS 甚至直接丢包，延迟与抖动一起恶化。
-
-**判断标准**：本机能不能 _绕过代理直连_ relay？跑一下：
+Clash、Mihomo、Surge 或 sing-box 等本机代理可能增加不必要的网络跳转，还可能限制中继速度。
+先检查当前网络能否直接访问中继：
 
 ```bash
-curl -sS --noproxy '*' -o /dev/null \
-  -w 'http=%{http_code} time=%{time_total}s\n' \
-  https://relay.example.com/ping
+curl --noproxy '*' --fail --show-error \
+  https://relay.example.com/healthz
 ```
 
-`http=200` 就说明能直连。这种情况下应当在梯子规则里把 relay 域名加进
-直连列表，**不要** 让代理碰它。
-
-Clash / Mihomo（YAML 节选，放在 `rules:` 最前面）：
+如果检查成功，可以把中继域名加入直连规则。Clash 或 Mihomo 的配置示例：
 
 ```yaml
 rules:
@@ -295,58 +196,31 @@ rules:
   # ... 你原来的规则
 ```
 
-Surge / Loon / sing-box 同理，在规则首位插一条：
+只有当前网络确实能直连中继时，才应绕过代理。
 
-```
-DOMAIN-SUFFIX,relay.example.com,DIRECT
-```
+## 确认流量经过自建中继
 
-如果你没填自定义中继、用的是 n0 公共中继，UniClipboard 0.11（iroh 0.98）
-对应的默认域名是 `*.relay.n0.iroh-canary.iroh.link`，把这一段加成
-`DOMAIN-SUFFIX,iroh-canary.iroh.link,DIRECT` 即可。这套域名会随 iroh
-升级变化，需要确认时去 iroh crate 的 `src/defaults.rs` 看 `prod` 模块。
+请把下面三项结合起来检查：
 
-只对 **能直连** 的 relay 这么做。如果你的网络对该 relay 根本不通（被
-防火墙阻断 / ISP 抽风），走代理就是唯一选择，性能折扣只能认了 —— 但
-这种场景下更合理的做法是换一个本地能直连的 relay 位置（参考前面的自建
-章节）。
+- **可用性测试**：地址和令牌能通过 UniClipboard 的 **测试可用性**。
+- **服务器日志**：设备连接和同步时运行 `docker compose logs -f relay`。
+- **端到端测试**：让两台已配对设备处在无法直接连接的网络中完成同步，同时确认服务器出现中继活动。
 
-## 验证它真的在用你的中继
+## 常见问题
 
-UniClipboard 目前 **没有运行时接口** 暴露"当前 home relay URL"
-（`uniclip status` 只输出 setup / encryption / search 几项），所以验证
-要从服务器侧 + 端到端行为两头看：
+| 现象                                  | 排查方向                                                                                      |
+| ------------------------------------- | --------------------------------------------------------------------------------------------- |
+| Caddy 无法申请证书                    | 确认 DNS 指向当前服务器，TCP `80` 和 `443` 能从公网访问，并查看 `docker compose logs caddy`。 |
+| 中继不健康或反复重启                  | 确认 `.env` 中有非空的 `UC_RELAY_TOKEN`，再查看 `docker compose logs relay`。                 |
+| 可用性测试提示鉴权失败                | 从 `.env` 复制完全一致的令牌。如果服务器令牌已经更换，每台设备都要更新。                      |
+| 本机能访问 `/healthz`，但域名无法访问 | 检查反向代理目标、HTTPS 证书、防火墙和 DNS 记录。                                             |
+| 已有反向代理拒绝中继连接              | 确认它支持 WebSocket 升级，并保留 `Authorization` 请求头。                                    |
+| UniClipboard 仍在使用默认中继         | 保存自定义中继后选择 **立即重启**，重启前配置不会生效。                                       |
+| 拉取 `latest` 后看不到变化            | 同时执行 `docker compose pull` 和 `docker compose up -d`，再查看 `docker compose ps`。        |
+| 中继延迟很高                          | 选择一处到所有参与设备都有良好直连线路的服务器区域。                                          |
 
-- **服务器侧日志**：`docker logs -f iroh-relay`（或
-  `journalctl -u iroh-relay -f`）。客户端首次握手 / 中继转发流量时
-  会出现新连接日志条目，里面带客户端的 NodeId。两台设备如果走中继
-  转发，会成对出现。把 `RUST_LOG=info,iroh_relay=debug` 加到容器环境
-  能拿到更详细的握手过程。
-- **配置回查**：在 GUI **设置 → 网络 → 自定义中继节点** 里能看到当前
-  生效的 URL 列表；保存后看到 "Restart required" 横幅消失就说明 daemon
-  重启完成、新值已生效。
-- **端到端**：把两台已配对设备放到不可能直连的网络组合（典型场景：
-  两边都在 CGNAT 后面、或者一台跨国），同步还能成功 —— 这等价于"中继
-  转发链路通了"。如果同时服务器侧日志里出现这两台 NodeId 的连接条目，
-  就能确认走的是 **你的** 中继。
+## 更多资料
 
-如果客户端日志报 `relay handshake failed: tls: unknown ca`，多半是你
-启用了 Let's Encrypt staging（`prod_tls = false`）但客户端只信任系统
-根。改回 `prod_tls = true` 或把 staging 根证书装到客户端。
-
-## 常见坑
-
-| 症状                     | 排查方向                                                                         |
-| ------------------------ | -------------------------------------------------------------------------------- |
-| ACME 拿不到证书          | 80 端口是否真的从公网可达？防火墙、安全组、云厂 NAT 都要放。                     |
-| `tls: handshake failure` | `hostname` 是否和域名一致？DNS 是否真的指向这台机器？                            |
-| 客户端始终用默认中继     | 客户端有没有 **重启 daemon**？光改设置不重启不会生效。                           |
-| 跨网络打通 200ms+        | 看看 relay 的物理位置是否离两端都太远；iroh 会择优选 relay，但只有一台时没得选。 |
-| 内存涨得快               | 默认 `key_cache_capacity = 1048576`（约 56 MB）。小机器把它调小一点。            |
-
-## 还想知道更多
-
-- 上游源码 / Issues：https://github.com/n0-computer/iroh/tree/main/iroh-relay
-- iroh 关于 relay 的概念性介绍：https://docs.iroh.computer/concepts/relays
-- UniClipboard 这边把 URL 串成 `RelayMode::Custom` 的代码：
-  `crates/uc-infra/src/network/iroh/node.rs`
+- [UniClipboard 中继源码与部署说明](https://github.com/UniClipboard/relay)
+- [UniClipboard 中继镜像](https://github.com/UniClipboard/relay/pkgs/container/relay)
+- [iroh 中继概念](https://docs.iroh.computer/concepts/relays)

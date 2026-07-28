@@ -1,197 +1,117 @@
-import { Check, Loader2, Plus, SignalHigh, Trash2, TriangleAlert } from 'lucide-react'
+import { Plus } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { probeRelayUrl, type RelayProbeOutcome } from '@/api/tauri-command/settings'
-import {
-  Button,
-  Input,
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '@/components/ui'
+import { Button, TooltipProvider } from '@/components/ui'
+import type { RelaySaveContextResult, RelaySaveMutation } from '@/types/setting'
+import { RelayEditor } from './RelayEditor'
 
 interface CustomRelayUrlsFieldProps {
   value: string[]
-  onChange: (value: string[]) => void
+  onSave: (mutation: RelaySaveMutation) => Promise<RelaySaveContextResult>
 }
 
-type ProbeStatus =
-  | { kind: 'idle' }
-  | { kind: 'testing'; pendingUrl: string }
-  | { kind: 'success'; latencyMs: number }
-  | { kind: 'failure'; message: string }
+let nextDraftRowId = 0
 
-const IDLE: ProbeStatus = { kind: 'idle' }
-
-function visibleRows(value: string[]): string[] {
-  return value.length > 0 ? value : ['']
+function allocateDraftRowId(): string {
+  nextDraftRowId += 1
+  return `new-relay-${nextDraftRowId}`
 }
 
-function collapseSingleEmptyRow(value: string[]): string[] {
-  return value.length === 1 && value[0].trim() === '' ? [] : value
-}
-
-let nextRowSeq = 0
-const allocateRowKey = () => `relay-row-${++nextRowSeq}`
-
-export function CustomRelayUrlsField({ value, onChange }: CustomRelayUrlsFieldProps) {
+export function CustomRelayUrlsField({ value, onSave }: CustomRelayUrlsFieldProps) {
   const { t } = useTranslation()
-  const rows = visibleRows(value)
-  const canRemoveOnlyRow = value.length > 0
-  const canAddRow = rows[rows.length - 1]?.trim() !== ''
-  const [statuses, setStatuses] = useState<Record<number, ProbeStatus>>({})
-  // Per-row stable identifiers — independent of array position so reordering or
-  // removal doesn't reuse a sibling's React identity. Lazy-init lets the first
-  // render see a length-matched list without touching state during render.
-  const [rowKeys, setRowKeys] = useState<string[]>(() =>
-    Array.from({ length: rows.length }, allocateRowKey)
+  const [draftRowIds, setDraftRowIds] = useState<string[]>(() =>
+    value.length === 0 ? [allocateDraftRowId()] : []
   )
-  if (rowKeys.length !== rows.length) {
-    setRowKeys(previous => {
-      if (previous.length === rows.length) return previous
-      if (previous.length < rows.length) {
-        const additions = Array.from({ length: rows.length - previous.length }, allocateRowKey)
-        return [...previous, ...additions]
-      }
-      return previous.slice(0, rows.length)
-    })
+  const canAddRelay = draftRowIds.length === 0
+
+  const addRelay = () => {
+    if (!canAddRelay) return
+    setDraftRowIds([allocateDraftRowId()])
   }
 
-  const clearStatusAt = (index: number) => {
-    setStatuses(previous => {
-      if (!(index in previous)) return previous
-      const next = { ...previous }
-      delete next[index]
-      return next
-    })
+  const discardDraft = (draftRowId: string) => {
+    setDraftRowIds(previous => previous.filter(id => id !== draftRowId))
   }
 
-  const handleRowChange = (index: number, nextValue: string) => {
-    const next = [...rows]
-    next[index] = nextValue
-    onChange(collapseSingleEmptyRow(next))
-    // Result is no longer trustworthy once the URL changes.
-    clearStatusAt(index)
+  const saveRelay = async (
+    draftRowId: string | null,
+    mutation: RelaySaveMutation
+  ): Promise<RelaySaveContextResult> => {
+    const result = await onSave(mutation)
+    if (draftRowId) discardDraft(draftRowId)
+    return result
   }
 
-  const handleRemoveRow = (index: number) => {
-    if (!canRemoveOnlyRow && rows.length === 1) return
-    onChange(collapseSingleEmptyRow(rows.filter((_, rowIndex) => rowIndex !== index)))
-    // Drop the stable key for the removed row so the per-row identity tracks
-    // the URL it was first bound to, not whatever happens to sit at the index.
-    setRowKeys(previous => previous.filter((_, rowIndex) => rowIndex !== index))
-    // Indices shift after removal; safest is to drop every cached status so
-    // we never display a result against a different URL than the user tested.
-    setStatuses({})
-  }
-
-  const handleAddRow = () => {
-    if (!canAddRow) return
-    onChange([...value, ''])
-  }
-
-  const handleTestRow = async (index: number, url: string) => {
-    const trimmed = url.trim()
-    if (trimmed.length === 0) return
-    // Tag the probe with the URL it's testing. Either the user edited the row
-    // (clearStatusAt wiped statuses[index]) or kicked off a second probe with
-    // a different value while this one was in flight; in both cases the stale
-    // response must NOT overwrite the visible state. We check that the slot
-    // is still in `testing` for *this* exact URL before applying the outcome.
-    setStatuses(previous => ({
-      ...previous,
-      [index]: { kind: 'testing', pendingUrl: trimmed },
-    }))
-    const isStillPending = (current: ProbeStatus | undefined): boolean =>
-      current?.kind === 'testing' && current.pendingUrl === trimmed
-    try {
-      const outcome = await probeRelayUrl(trimmed)
-      setStatuses(previous => {
-        if (!isStillPending(previous[index])) return previous
-        return { ...previous, [index]: outcomeToStatus(outcome, t) }
-      })
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
-      setStatuses(previous => {
-        if (!isStillPending(previous[index])) return previous
-        return {
-          ...previous,
-          [index]: {
-            kind: 'failure',
-            message: t('settings.sections.network.customRelays.testErrors.unavailable', {
-              defaultValue: message,
-            }),
-          },
-        }
-      })
-    }
-  }
+  const occurrenceCounts = new Map<string, number>()
+  const savedRows = value.map((url, index) => {
+    const occurrence = occurrenceCounts.get(url) ?? 0
+    occurrenceCounts.set(url, occurrence + 1)
+    return { index, key: `${url}\u0000${occurrence}`, url }
+  })
 
   return (
     <TooltipProvider delay={200}>
-      <div className="space-y-3 px-4 py-3">
+      <div className="px-4 py-3">
         <div className="space-y-0.5">
-          <label htmlFor="custom-relay-url-0" className="text-sm font-medium">
+          <h4 className="text-sm font-medium">
             {t('settings.sections.network.customRelays.label')}
-          </label>
+          </h4>
           <p className="text-xs leading-snug text-muted-foreground">
             {t('settings.sections.network.customRelays.description')}
           </p>
         </div>
 
-        <div className="space-y-2">
-          {rows.map((url, index) => {
-            const status = statuses[index] ?? IDLE
-            const canTest = url.trim().length > 0 && status.kind !== 'testing'
-            const rowKey = rowKeys[index] ?? `relay-row-fallback-${index}`
-            return (
-              <div key={rowKey} className="flex min-w-0 items-center gap-2">
-                <Input
-                  id={index === 0 ? 'custom-relay-url-0' : undefined}
-                  type="url"
-                  inputMode="url"
-                  autoComplete="off"
-                  value={url}
-                  placeholder={t('settings.sections.network.customRelays.placeholder')}
-                  aria-label={t('settings.sections.network.customRelays.itemAriaLabel', {
-                    index: index + 1,
-                  })}
-                  className="font-mono text-xs"
-                  onChange={event => handleRowChange(index, event.target.value)}
-                />
-                <ProbeButton
-                  status={status}
-                  disabled={!canTest}
-                  ariaLabel={t('settings.sections.network.customRelays.testAriaLabel', {
-                    index: index + 1,
-                  })}
-                  onClick={() => handleTestRow(index, url)}
-                  tooltip={statusTooltip(status, t)}
-                />
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-sm"
-                  aria-label={t('settings.sections.network.customRelays.removeAriaLabel', {
-                    index: index + 1,
-                  })}
-                  disabled={!canRemoveOnlyRow && rows.length === 1}
-                  onClick={() => handleRemoveRow(index)}
-                >
-                  <Trash2 aria-hidden="true" />
-                </Button>
-              </div>
-            )
-          })}
+        <div className="mt-3 divide-y divide-border/50 border-y border-border/50">
+          {savedRows.map(({ index, key, url }) => (
+            <RelayEditor
+              key={key}
+              index={index}
+              initialUrl={url}
+              onRemove={async () => {
+                await onSave({
+                  index,
+                  previousUrl: url,
+                  nextUrl: null,
+                  credential: { action: 'delete' },
+                })
+              }}
+              onSave={(nextUrl, credential) =>
+                saveRelay(null, {
+                  index,
+                  previousUrl: url,
+                  nextUrl,
+                  credential,
+                })
+              }
+              removable
+            />
+          ))}
+          {draftRowIds.map((draftRowId, draftIndex) => (
+            <RelayEditor
+              key={draftRowId}
+              index={value.length + draftIndex}
+              initialUrl=""
+              onRemove={() => discardDraft(draftRowId)}
+              onSave={(nextUrl, credential) =>
+                saveRelay(draftRowId, {
+                  index: null,
+                  previousUrl: null,
+                  nextUrl,
+                  credential,
+                })
+              }
+              removable={value.length > 0 || draftRowIds.length > 1}
+            />
+          ))}
         </div>
 
         <Button
           type="button"
-          variant="outline"
+          variant="ghost"
           size="sm"
-          disabled={!canAddRow}
-          onClick={handleAddRow}
+          className="mt-2 h-8 px-2 text-muted-foreground hover:text-foreground"
+          disabled={!canAddRelay}
+          onClick={addRelay}
         >
           <Plus aria-hidden="true" />
           {t('settings.sections.network.customRelays.addButton')}
@@ -199,119 +119,4 @@ export function CustomRelayUrlsField({ value, onChange }: CustomRelayUrlsFieldPr
       </div>
     </TooltipProvider>
   )
-}
-
-interface ProbeButtonProps {
-  status: ProbeStatus
-  disabled: boolean
-  ariaLabel: string
-  tooltip: string | null
-  onClick: () => void
-}
-
-function ProbeButton({ status, disabled, ariaLabel, tooltip, onClick }: ProbeButtonProps) {
-  const button = (
-    <Button
-      type="button"
-      variant="ghost"
-      size="icon-sm"
-      aria-label={ariaLabel}
-      disabled={disabled}
-      onClick={onClick}
-      data-probe-status={status.kind}
-      className={
-        status.kind === 'success'
-          ? 'text-emerald-600 hover:text-emerald-700 dark:text-emerald-400'
-          : status.kind === 'failure'
-            ? 'text-destructive hover:text-destructive'
-            : undefined
-      }
-    >
-      {status.kind === 'testing' ? (
-        <Loader2 aria-hidden="true" className="animate-spin" />
-      ) : status.kind === 'success' ? (
-        <Check aria-hidden="true" />
-      ) : status.kind === 'failure' ? (
-        <TriangleAlert aria-hidden="true" />
-      ) : (
-        <SignalHigh aria-hidden="true" />
-      )}
-    </Button>
-  )
-
-  if (!tooltip) return button
-  return (
-    <Tooltip>
-      <TooltipTrigger render={button} />
-      <TooltipContent side="top">{tooltip}</TooltipContent>
-    </Tooltip>
-  )
-}
-
-function statusTooltip(
-  status: ProbeStatus,
-  t: (key: string, opts?: Record<string, unknown>) => string
-): string | null {
-  switch (status.kind) {
-    case 'testing':
-      return t('settings.sections.network.customRelays.testing')
-    case 'success':
-      return t('settings.sections.network.customRelays.testSuccess', {
-        latencyMs: status.latencyMs,
-      })
-    case 'failure':
-      return status.message
-    case 'idle':
-      return null
-  }
-}
-
-function outcomeToStatus(
-  outcome: RelayProbeOutcome,
-  t: (key: string, opts?: Record<string, unknown>) => string
-): ProbeStatus {
-  switch (outcome.kind) {
-    case 'success':
-      return { kind: 'success', latencyMs: outcome.latencyMs }
-    case 'invalidUrl':
-      return {
-        kind: 'failure',
-        message: t('settings.sections.network.customRelays.testErrors.invalidUrl', {
-          message: outcome.message,
-        }),
-      }
-    case 'dns':
-      return {
-        kind: 'failure',
-        message: t('settings.sections.network.customRelays.testErrors.dns', {
-          message: outcome.message,
-        }),
-      }
-    case 'tls':
-      return {
-        kind: 'failure',
-        message: t('settings.sections.network.customRelays.testErrors.tls', {
-          message: outcome.message,
-        }),
-      }
-    case 'handshake':
-      return {
-        kind: 'failure',
-        message: t('settings.sections.network.customRelays.testErrors.handshake', {
-          message: outcome.message,
-        }),
-      }
-    case 'timeout':
-      return {
-        kind: 'failure',
-        message: t('settings.sections.network.customRelays.testErrors.timeout'),
-      }
-    case 'other':
-      return {
-        kind: 'failure',
-        message: t('settings.sections.network.customRelays.testErrors.other', {
-          message: outcome.message,
-        }),
-      }
-  }
 }

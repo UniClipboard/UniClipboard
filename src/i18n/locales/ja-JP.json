@@ -397,12 +397,22 @@
         "customRelays": {
           "label": "カスタム リレー ノード",
           "description": "iroh リレーの URL を 1 つ以上追加します。既定のリレーを使用する場合は空欄のままにしてください。LAN専用モードではこの一覧は保持されますが使用されません。再起動後に有効になります。",
+          "rowLabel": "リレーノード {{index}}",
+          "urlLabel": "アドレス",
+          "tokenLabel": "アクセストークン（任意）",
           "placeholder": "https://relay.example.com.",
           "addButton": "リレー ノードの追加",
+          "testButton": "接続をテスト",
+          "testHint": "テストでは現在入力中のアクセストークンを使用しますが、保存はしません。",
+          "saveButton": "リレーノードを保存",
+          "removeSavedToken": "保存済みアクセストークンを削除",
+          "cancelRemoveSavedToken": "保存済みアクセストークンを保持",
+          "pendingTokenRemoval": "このリレーノードを保存すると、保存済みアクセストークンが削除されます。",
           "itemAriaLabel": "カスタム リレー ノード {{index}}",
           "removeAriaLabel": "リレー ノード {{index}} の削除",
           "saveError": "カスタム リレーの保存に失敗しました: {{message}}。以前の設定に戻りました。",
           "invalidUrl": "無効なリレー URL: {{url}}。 http または https URL を入力します。",
+          "duplicateUrl": "同じリレー URL が既にあります: {{url}}。",
           "testAriaLabel": "テスト リレー ノード {{index}}",
           "testing": "リレー ノードをテストしています…",
           "testSuccess": "ハンドシェイクは成功しました ({{latencyMs}} ミリ秒)",
@@ -414,6 +424,19 @@
             "timeout": "プローブが 5 秒後にタイムアウトしました",
             "other": "プローブが失敗しました: {{message}}",
             "unavailable": "リレー テストはこの環境では利用できませんランタイム。"
+          },
+          "credentials": {
+            "loading": "アクセストークンを確認しています…",
+            "configured": "アクセストークンは保存済みです",
+            "notConfigured": "アクセストークンは未設定です",
+            "placeholder": "新しいアクセストークンを入力",
+            "inputAriaLabel": "リレーアクセストークン {{index}}",
+            "saveAriaLabel": "アクセストークン {{index}} を保存",
+            "deleteAriaLabel": "アクセストークン {{index}} を削除",
+            "toggleVisibility": "アクセストークンの表示を切り替え",
+            "loadError": "アクセストークンを確認できませんでした: {{message}}",
+            "saveError": "アクセストークンを保存できませんでした: {{message}}",
+            "deleteError": "アクセストークンを削除できませんでした: {{message}}"
           }
         },
         "congestionController": {

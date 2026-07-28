@@ -397,12 +397,22 @@
         "customRelays": {
           "label": "自定義中繼節點",
           "description": "新增一個或多個 iroh relay URL。留空使用預設中繼；開啓 LAN-only 時此列表會保留但不生效。重新啟動後生效。",
+          "rowLabel": "中繼節點 {{index}}",
+          "urlLabel": "位址",
+          "tokenLabel": "存取權杖（選填）",
           "placeholder": "https://relay.example.com.",
           "addButton": "新增中繼節點",
+          "testButton": "測試可用性",
+          "testHint": "測試會使用目前填寫的存取權杖，但不會儲存它。",
+          "saveButton": "儲存中繼節點",
+          "removeSavedToken": "移除已儲存的存取權杖",
+          "cancelRemoveSavedToken": "保留已儲存的存取權杖",
+          "pendingTokenRemoval": "儲存此中繼節點後，已儲存的存取權杖才會被移除。",
           "itemAriaLabel": "自定義中繼節點 {{index}}",
           "removeAriaLabel": "移除中繼節點 {{index}}",
           "saveError": "儲存自定義中繼失敗：{{message}}。已恢復到上一次的設定。",
           "invalidUrl": "無效的中繼 URL：{{url}}。請輸入 http 或 https URL。",
+          "duplicateUrl": "中繼 URL 已重複：{{url}}。",
           "testAriaLabel": "測試中繼節點 {{index}}",
           "testing": "正在測試中繼節點…",
           "testSuccess": "握手成功（{{latencyMs}} ms）",
@@ -414,6 +424,19 @@
             "timeout": "測試超時，未能在 5 秒內完成握手",
             "other": "測試失敗：{{message}}",
             "unavailable": "目前運行環境未啓用中繼測試能力。"
+          },
+          "credentials": {
+            "loading": "正在檢查存取權杖…",
+            "configured": "存取權杖已儲存",
+            "notConfigured": "未設定存取權杖",
+            "placeholder": "輸入新的存取權杖",
+            "inputAriaLabel": "中繼存取權杖 {{index}}",
+            "saveAriaLabel": "儲存存取權杖 {{index}}",
+            "deleteAriaLabel": "刪除存取權杖 {{index}}",
+            "toggleVisibility": "顯示或隱藏存取權杖",
+            "loadError": "無法檢查存取權杖：{{message}}",
+            "saveError": "無法儲存存取權杖：{{message}}",
+            "deleteError": "無法刪除存取權杖：{{message}}"
           }
         },
         "congestionController": {

@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::fmt;
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
@@ -29,11 +30,48 @@ pub struct SettingsUpdateResultDto {
 }
 
 /// Request body for `POST /settings/relay-probe`.
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[derive(Clone, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct RelayProbeRequestDto {
     /// Candidate relay URL to probe. Not persisted; the probe is repeatable.
     pub url: String,
+    pub credential: RelayProbeCredentialDto,
+}
+
+impl fmt::Debug for RelayProbeRequestDto {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("RelayProbeRequestDto([REDACTED])")
+    }
+}
+
+#[derive(Clone, Serialize, Deserialize, ToSchema)]
+#[serde(
+    tag = "mode",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
+#[schema(rename_all = "camelCase")]
+pub enum RelayProbeCredentialDto {
+    Stored,
+    None,
+    Override {
+        #[schema(rename = "accessToken")]
+        access_token: String,
+    },
+}
+
+impl fmt::Debug for RelayProbeCredentialDto {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mode = match self {
+            Self::Stored => "stored",
+            Self::None => "none",
+            Self::Override { .. } => "override",
+        };
+        formatter
+            .debug_struct("RelayProbeCredentialDto")
+            .field("mode", &mode)
+            .finish()
+    }
 }
 
 /// Outcome of a relay reachability probe (`POST /settings/relay-probe`).
@@ -45,9 +83,13 @@ pub struct RelayProbeRequestDto {
 /// `ApiError`. The frontend selects user-facing copy off the `tag`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(tag = "tag", rename_all = "camelCase", rename_all_fields = "camelCase")]
+#[schema(rename_all = "camelCase")]
 pub enum RelayProbeOutcomeDto {
     /// Relay reachable; carries end-to-end round-trip latency.
-    Success { latency_ms: u32 },
+    Success {
+        #[schema(rename = "latencyMs")]
+        latency_ms: u32,
+    },
     /// The supplied URL is not a valid relay URL.
     InvalidUrl { message: String },
     /// DNS resolution of the relay host failed.
@@ -60,6 +102,282 @@ pub enum RelayProbeOutcomeDto {
     Timeout,
     /// Any other categorized probe failure.
     Other { message: String },
+}
+
+/// URL-scoped request for querying or deleting a relay credential.
+#[derive(Clone, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct RelayCredentialRequestDto {
+    pub url: String,
+}
+
+impl fmt::Debug for RelayCredentialRequestDto {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("RelayCredentialRequestDto([REDACTED])")
+    }
+}
+
+#[derive(Clone, Serialize, Deserialize, ToSchema)]
+#[serde(
+    tag = "action",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
+#[schema(rename_all = "camelCase")]
+pub enum RelayCredentialEditDto {
+    Keep,
+    Set {
+        #[schema(rename = "accessToken")]
+        access_token: String,
+    },
+    Delete,
+}
+
+impl fmt::Debug for RelayCredentialEditDto {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let action = match self {
+            Self::Keep => "keep",
+            Self::Set { .. } => "set",
+            Self::Delete => "delete",
+        };
+        formatter
+            .debug_struct("RelayCredentialEditDto")
+            .field("action", &action)
+            .finish()
+    }
+}
+
+/// Saves a relay URL list and its URL-scoped credential as one operation.
+#[derive(Clone, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct RelaySaveRequestDto {
+    pub settings: SettingsPatchDto,
+    pub url: String,
+    pub credential: RelayCredentialEditDto,
+}
+
+impl fmt::Debug for RelaySaveRequestDto {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("RelaySaveRequestDto([REDACTED])")
+    }
+}
+
+/// Public relay credential state. The credential value is never returned.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct RelayCredentialStatusDto {
+    pub configured: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct RelaySaveResultDto {
+    pub success: bool,
+    pub restart_required: bool,
+    pub credential_status: RelayCredentialStatusDto,
+    pub settings: SettingsDto,
+}
+
+#[cfg(test)]
+mod relay_credential_wire_tests {
+    use super::*;
+
+    fn settings_with_relay(relay_url: &str) -> SettingsDto {
+        SettingsDto {
+            schema_version: 1,
+            general: GeneralSettingsDto {
+                auto_start: false,
+                startup_mode: StartupModeDto::Normal,
+                restore_last_entry_on_startup: false,
+                auto_check_update: true,
+                auto_download_update: false,
+                theme: ThemeDto::System,
+                theme_color: None,
+                theme_color_light: None,
+                theme_color_dark: None,
+                theme_overrides_light: Default::default(),
+                theme_overrides_dark: Default::default(),
+                language: None,
+                device_name: None,
+                update_channel: None,
+                telemetry_enabled: false,
+                usage_analytics_enabled: true,
+                debug_mode: false,
+            },
+            sync: SyncSettingsDto {
+                auto_sync: true,
+                sync_frequency: SyncFrequencyDto::Realtime,
+                content_types: ContentTypesDto {
+                    text: true,
+                    image: true,
+                    link: true,
+                    file: true,
+                    code_snippet: true,
+                    rich_text: true,
+                },
+                sync_on_restore: false,
+            },
+            retention_policy: RetentionPolicyDto {
+                enabled: true,
+                rules: Vec::new(),
+                skip_pinned: true,
+                evaluation: RuleEvaluationDto::AnyMatch,
+            },
+            security: SecuritySettingsDto {
+                encryption_enabled: true,
+                passphrase_configured: true,
+                auto_unlock_enabled: false,
+            },
+            pairing: PairingSettingsDto {
+                step_timeout: Duration::from_secs(30),
+                user_verification_timeout: Duration::from_secs(60),
+                session_timeout: Duration::from_secs(120),
+                max_retries: 3,
+                protocol_version: "1".to_string(),
+            },
+            keyboard_shortcuts: HashMap::new(),
+            file_sync: FileSyncSettingsDto {
+                file_sync_enabled: true,
+                small_file_threshold: 1024,
+                max_file_size: 2048,
+                file_cache_quota_per_device: 4096,
+                file_retention_hours: 24,
+                file_auto_cleanup: true,
+                auto_save_dir: None,
+            },
+            network: NetworkSettingsDto {
+                allow_relay_fallback: true,
+                allow_overlay_network_addrs: false,
+                custom_relay_urls: vec![relay_url.to_string()],
+                congestion_controller: CongestionControllerDto::Cubic,
+            },
+            quick_panel: QuickPanelSettingsDto::default(),
+        }
+    }
+
+    #[test]
+    fn relay_credential_status_exposes_only_configuration_state() {
+        let value = serde_json::to_value(RelayCredentialStatusDto { configured: true })
+            .expect("serialize relay credential status");
+
+        assert_eq!(value, serde_json::json!({ "configured": true }));
+    }
+
+    #[test]
+    fn relay_credential_requests_redact_urls_and_tokens_from_debug_output() {
+        let url = "https://login:password@relay.example.com";
+        let token = "relay-secret-token";
+        let query = RelayCredentialRequestDto {
+            url: url.to_string(),
+        };
+        let save = RelaySaveRequestDto {
+            settings: SettingsPatchDto::default(),
+            url: url.to_string(),
+            credential: RelayCredentialEditDto::Set {
+                access_token: token.to_string(),
+            },
+        };
+        let probe = RelayProbeRequestDto {
+            url: url.to_string(),
+            credential: RelayProbeCredentialDto::Override {
+                access_token: token.to_string(),
+            },
+        };
+
+        for output in [
+            format!("{query:?}"),
+            format!("{save:?}"),
+            format!("{probe:?}"),
+        ] {
+            assert!(!output.contains(url));
+            assert!(!output.contains("login"));
+            assert!(!output.contains("password"));
+            assert!(!output.contains(token));
+            assert!(output.contains("REDACTED"));
+        }
+    }
+
+    #[test]
+    fn relay_probe_request_sends_a_one_time_access_token_override() {
+        let value = serde_json::to_value(RelayProbeRequestDto {
+            url: "https://relay.example.com".to_string(),
+            credential: RelayProbeCredentialDto::Override {
+                access_token: "draft-relay-token".to_string(),
+            },
+        })
+        .expect("serialize relay probe request");
+
+        assert_eq!(
+            value,
+            serde_json::json!({
+                "url": "https://relay.example.com",
+                "credential": {
+                    "mode": "override",
+                    "accessToken": "draft-relay-token",
+                },
+            })
+        );
+    }
+
+    #[test]
+    fn relay_probe_request_distinguishes_stored_none_and_override_credentials() {
+        let cases = [
+            (
+                RelayProbeCredentialDto::Stored,
+                serde_json::json!({ "mode": "stored" }),
+            ),
+            (
+                RelayProbeCredentialDto::None,
+                serde_json::json!({ "mode": "none" }),
+            ),
+            (
+                RelayProbeCredentialDto::Override {
+                    access_token: "draft-token".to_string(),
+                },
+                serde_json::json!({ "mode": "override", "accessToken": "draft-token" }),
+            ),
+        ];
+
+        for (credential, expected) in cases {
+            let value = serde_json::to_value(RelayProbeRequestDto {
+                url: "https://relay.example.com".to_string(),
+                credential,
+            })
+            .expect("serialize relay probe request");
+            assert_eq!(value["credential"], expected);
+        }
+    }
+
+    #[test]
+    fn relay_probe_success_uses_camel_case_latency_on_the_wire() {
+        let value = serde_json::to_value(RelayProbeOutcomeDto::Success { latency_ms: 42 })
+            .expect("serialize relay probe outcome");
+
+        assert_eq!(
+            value,
+            serde_json::json!({ "tag": "success", "latencyMs": 42 })
+        );
+    }
+
+    #[test]
+    fn relay_save_result_uses_camel_case_and_returns_authoritative_settings() {
+        let relay_url = "https://relay.example.com/";
+        let value = serde_json::to_value(RelaySaveResultDto {
+            success: true,
+            restart_required: true,
+            credential_status: RelayCredentialStatusDto { configured: false },
+            settings: settings_with_relay(relay_url),
+        })
+        .expect("serialize relay save result");
+
+        assert_eq!(value["success"], true);
+        assert_eq!(value["restartRequired"], true);
+        assert_eq!(value["credentialStatus"]["configured"], false);
+        assert_eq!(
+            value["settings"]["network"]["customRelayUrls"],
+            serde_json::json!([relay_url])
+        );
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]

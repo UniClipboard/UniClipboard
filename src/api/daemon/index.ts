@@ -4,7 +4,13 @@ export type { DaemonConfig, SessionToken } from './types'
 export { isSessionExpired } from './types'
 export { DaemonApiError, DaemonErrorCode, mapStatusToErrorCode } from './errors'
 export { signalLifecycleReady, getLifecycleStatus, retryLifecycle } from './lifecycle'
-export { getSettings, updateSettings } from './settings'
+export {
+  getRelayCredentialStatus,
+  getSettings,
+  probeRelayUrl,
+  saveRelay,
+  updateSettings,
+} from './settings'
 export { exportLogs, getDebugStatus, updateDebugMode } from './diagnostics'
 export type { DebugStatus, LogExportResult, UpdateDebugModeResult } from './diagnostics'
 export type {
@@ -22,6 +28,11 @@ export type {
   UpdateChannel,
   SyncFrequency,
   RuleEvaluation,
+  RelayCredentialEdit,
+  RelayProbeCredential,
+  RelayProbeOutcome,
+  RelaySaveResult,
+  SettingsPatchInput,
 } from './settings'
 export { getEncryptionState, unlockEncryption, lockEncryption } from './encryption'
 export type { EncryptionStateResponse } from './encryption'

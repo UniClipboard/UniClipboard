@@ -50,7 +50,9 @@ use crate::api::dto::settings::{
     FileSyncSettingsPatchDto, GeneralSettingsDto, GeneralSettingsPatchDto,
     KeyboardShortcutsPatchDto, NetworkSettingsDto, NetworkSettingsPatchDto, PairingSettingsDto,
     PairingSettingsPatchDto, QuickPanelDoubleTapModifierDto, QuickPanelPositionDto,
-    QuickPanelSettingsDto, QuickPanelSettingsPatchDto, RelayProbeOutcomeDto, RelayProbeRequestDto,
+    QuickPanelSettingsDto, QuickPanelSettingsPatchDto, RelayCredentialEditDto,
+    RelayCredentialRequestDto, RelayCredentialStatusDto, RelayProbeCredentialDto,
+    RelayProbeOutcomeDto, RelayProbeRequestDto, RelaySaveRequestDto, RelaySaveResultDto,
     RetentionPolicyDto, RetentionPolicyPatchDto, RetentionRuleDto, RuleEvaluationDto,
     SecuritySettingsDto, SecuritySettingsPatchDto, SettingsDto, SettingsPatchDto,
     SettingsUpdateResultDto, ShortcutKeyDto, StartupModeDto, SyncFrequencyDto, SyncSettingsDto,
@@ -87,13 +89,14 @@ use uc_daemon_contract::api::dto::envelope::{
     LocalDeviceInfoEnvelope, LogExportEnvelope, MemberSyncPreferencesEnvelope,
     MemberSyncResultEnvelope, MobileDeviceListEnvelope, MobileSyncActionEnvelope,
     MobileSyncSettingsEnvelope, PeerSnapshotListEnvelope, PresenceRefreshEnvelope,
-    PreviewImportEnvelope, RegisterMobileDeviceEnvelope, RelayProbeOutcomeEnvelope, ResendEnvelope,
-    RestartAcceptedEnvelope, RestoreEntryEnvelope, RotateMobilePasswordEnvelope,
-    SearchQueryEnvelope, SearchRebuildEnvelope, SearchStatusEnvelope, SearchTagsEnvelope,
-    SessionTokenEnvelope, SettingsEnvelope, SettingsUpdateResultEnvelope, SetupInitializeEnvelope,
-    SetupIssueInvitationEnvelope, SetupMigrationProgressEnvelope, SetupRedeemEnvelope,
-    SetupStateEnvelope, SetupSwitchSpaceEnvelope, SpaceMemberListEnvelope, StatusEnvelope,
-    StorageStatsEnvelope, ToggleFavoriteEnvelope, UnlockSpaceEnvelope, UpdateDebugModeEnvelope,
+    PreviewImportEnvelope, RegisterMobileDeviceEnvelope, RelayCredentialStatusEnvelope,
+    RelayProbeOutcomeEnvelope, RelaySaveResultEnvelope, ResendEnvelope, RestartAcceptedEnvelope,
+    RestoreEntryEnvelope, RotateMobilePasswordEnvelope, SearchQueryEnvelope, SearchRebuildEnvelope,
+    SearchStatusEnvelope, SearchTagsEnvelope, SessionTokenEnvelope, SettingsEnvelope,
+    SettingsUpdateResultEnvelope, SetupInitializeEnvelope, SetupIssueInvitationEnvelope,
+    SetupMigrationProgressEnvelope, SetupRedeemEnvelope, SetupStateEnvelope,
+    SetupSwitchSpaceEnvelope, SpaceMemberListEnvelope, StatusEnvelope, StorageStatsEnvelope,
+    ToggleFavoriteEnvelope, UnlockSpaceEnvelope, UpdateDebugModeEnvelope,
     UpdateMobileDeviceEnvelope, UpdateMobileSyncSettingsEnvelope, UpgradeStatusEnvelope,
 };
 use uc_daemon_contract::api::dto::storage::{
@@ -201,6 +204,8 @@ impl Modify for ContractMeta {
         crate::api::settings::get_settings_handler,
         crate::api::settings::update_settings_handler,
         crate::api::settings::probe_relay_url_handler,
+        crate::api::settings::get_relay_credential_handler,
+        crate::api::settings::save_relay_handler,
         crate::api::diagnostics::get_debug_status_handler,
         crate::api::diagnostics::update_debug_mode_handler,
         crate::api::diagnostics::export_logs_handler,
@@ -354,10 +359,18 @@ impl Modify for ContractMeta {
             SettingsEnvelope,
             SettingsUpdateResultEnvelope,
             RelayProbeOutcomeEnvelope,
+            RelayCredentialStatusEnvelope,
+            RelaySaveResultEnvelope,
             SettingsDto,
             SettingsUpdateResultDto,
             RelayProbeRequestDto,
+            RelayProbeCredentialDto,
             RelayProbeOutcomeDto,
+            RelayCredentialRequestDto,
+            RelayCredentialEditDto,
+            RelayCredentialStatusDto,
+            RelaySaveRequestDto,
+            RelaySaveResultDto,
             SettingsPatchDto,
             GeneralSettingsDto,
             SyncSettingsDto,
@@ -580,7 +593,8 @@ mod assembly_smoke_tests {
         // `GET /search/tags`: +1 path, +1 operation → 63 / 70. Issue #1169
         // added `POST /clipboard/capture-current`: +1 path, +1 operation
         // → 64 / 71. Unified receive attempts add list, exact progress, and
-        // exact cancellation: +3 paths, +3 operations → 67 / 74.)
+        // exact cancellation: +3 paths, +3 operations → 67 / 74. Relay credential
+        // status and atomic save add two paths and two operations → 69 / 76.)
         const HTTP_METHODS: [&str; 7] =
             ["get", "put", "post", "delete", "patch", "head", "options"];
         let paths = value
@@ -589,8 +603,8 @@ mod assembly_smoke_tests {
             .expect("OpenAPI doc must declare paths");
         assert_eq!(
             paths.len(),
-            67,
-            "expected exactly 67 path templates, found {}: {:?}",
+            69,
+            "expected exactly 69 path templates, found {}: {:?}",
             paths.len(),
             paths.keys().collect::<Vec<_>>()
         );
@@ -604,8 +618,8 @@ mod assembly_smoke_tests {
             })
             .sum();
         assert_eq!(
-            operation_count, 74,
-            "expected exactly 74 operations across all paths, found {operation_count}"
+            operation_count, 76,
+            "expected exactly 76 operations across all paths, found {operation_count}"
         );
 
         // A few frozen operationIds (§D) must be present somewhere in the doc.

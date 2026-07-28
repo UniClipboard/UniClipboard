@@ -196,6 +196,23 @@ export interface NetworkSettings {
   congestionController: CongestionController
 }
 
+export type RelayCredentialEdit =
+  | { action: 'keep' }
+  | { action: 'set'; accessToken: string }
+  | { action: 'delete' }
+
+export interface RelaySaveMutation {
+  index: number | null
+  previousUrl: string | null
+  nextUrl: string | null
+  credential: RelayCredentialEdit
+}
+
+export interface RelaySaveContextResult {
+  restartRequired: boolean
+  credentialStatus: { configured: boolean }
+}
+
 /**
  * 快捷面板（Spotlight 风格）功能开关 - 对应 Rust QuickPanelSettings
  *
@@ -309,6 +326,7 @@ export interface SettingContextType {
   updateNetworkSetting: (
     newNetworkSetting: Partial<NetworkSettings>
   ) => Promise<{ restartRequired: boolean }>
+  saveRelay: (mutation: RelaySaveMutation) => Promise<RelaySaveContextResult>
   updateQuickPanelSetting: (
     newQuickPanelSetting: Partial<QuickPanelSettings>
   ) => Promise<{ restartRequired: boolean }>

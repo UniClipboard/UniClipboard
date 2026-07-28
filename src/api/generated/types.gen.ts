@@ -1835,6 +1835,61 @@ export type RegisterMobileDeviceResultDto = {
     username: string;
 };
 
+export type RelayCredentialEditDto = {
+    action: 'keep';
+} | {
+    accessToken: string;
+    action: 'set';
+} | {
+    action: 'delete';
+};
+
+/**
+ * URL-scoped request for querying or deleting a relay credential.
+ */
+export type RelayCredentialRequestDto = {
+    url: string;
+};
+
+/**
+ * Public relay credential state. The credential value is never returned.
+ */
+export type RelayCredentialStatusDto = {
+    configured: boolean;
+};
+
+/**
+ * Canonical success envelope: `{ "data": T, "ts": <unix millis i64> }`.
+ *
+ * `ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler
+ * via [`ApiEnvelope::now`] (the contract carries only the type + the clock
+ * helper, not a hard dependency on when the handler reads the clock).
+ * `rename_all = "camelCase"` is a no-op for the single-word fields here but is
+ * declared for forward-compat.
+ *
+ * IMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named
+ * OpenAPI component is declared in the `#[aliases(...)]` block below. Add a new
+ * alias line whenever a new payload type needs enveloping. NEVER register the
+ * bare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare
+ * generic, and an un-aliased generic inlines an anonymous schema.
+ */
+export type RelayCredentialStatusEnvelope = {
+    data: RelayCredentialStatusDto;
+    /**
+     * Server time when the response was built (unix epoch milliseconds).
+     */
+    ts: number;
+};
+
+export type RelayProbeCredentialDto = {
+    mode: 'stored';
+} | {
+    mode: 'none';
+} | {
+    accessToken: string;
+    mode: 'override';
+};
+
 /**
  * Outcome of a relay reachability probe (`POST /settings/relay-probe`).
  *
@@ -1845,7 +1900,7 @@ export type RegisterMobileDeviceResultDto = {
  * `ApiError`. The frontend selects user-facing copy off the `tag`.
  */
 export type RelayProbeOutcomeDto = {
-    latency_ms: number;
+    latencyMs: number;
     tag: 'success';
 } | {
     message: string;
@@ -1893,10 +1948,50 @@ export type RelayProbeOutcomeEnvelope = {
  * Request body for `POST /settings/relay-probe`.
  */
 export type RelayProbeRequestDto = {
+    credential: RelayProbeCredentialDto;
     /**
      * Candidate relay URL to probe. Not persisted; the probe is repeatable.
      */
     url: string;
+};
+
+/**
+ * Saves a relay URL list and its URL-scoped credential as one operation.
+ */
+export type RelaySaveRequestDto = {
+    credential: RelayCredentialEditDto;
+    settings: SettingsPatchDto;
+    url: string;
+};
+
+export type RelaySaveResultDto = {
+    credentialStatus: RelayCredentialStatusDto;
+    restartRequired: boolean;
+    settings: SettingsDto;
+    success: boolean;
+};
+
+/**
+ * Canonical success envelope: `{ "data": T, "ts": <unix millis i64> }`.
+ *
+ * `ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler
+ * via [`ApiEnvelope::now`] (the contract carries only the type + the clock
+ * helper, not a hard dependency on when the handler reads the clock).
+ * `rename_all = "camelCase"` is a no-op for the single-word fields here but is
+ * declared for forward-compat.
+ *
+ * IMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named
+ * OpenAPI component is declared in the `#[aliases(...)]` block below. Add a new
+ * alias line whenever a new payload type needs enveloping. NEVER register the
+ * bare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare
+ * generic, and an un-aliased generic inlines an anonymous schema.
+ */
+export type RelaySaveResultEnvelope = {
+    data: RelaySaveResultDto;
+    /**
+     * Server time when the response was built (unix epoch milliseconds).
+     */
+    ts: number;
 };
 
 /**
@@ -5046,6 +5141,72 @@ export type UpdateSettingsResponses = {
 
 export type UpdateSettingsResponse = UpdateSettingsResponses[keyof UpdateSettingsResponses];
 
+export type SaveRelayData = {
+    body: RelaySaveRequestDto;
+    path?: never;
+    query?: never;
+    url: '/settings/relay';
+};
+
+export type SaveRelayErrors = {
+    /**
+     * Invalid relay URL, duplicate URL, or access token
+     */
+    400: ApiErrorResponse;
+    /**
+     * Relay settings save failed
+     */
+    500: ApiErrorResponse;
+    /**
+     * Credential storage unavailable
+     */
+    503: ApiErrorResponse;
+};
+
+export type SaveRelayError = SaveRelayErrors[keyof SaveRelayErrors];
+
+export type SaveRelayResponses = {
+    /**
+     * Relay settings and credential saved
+     */
+    200: RelaySaveResultEnvelope;
+};
+
+export type SaveRelayResponse = SaveRelayResponses[keyof SaveRelayResponses];
+
+export type GetRelayCredentialStatusData = {
+    body: RelayCredentialRequestDto;
+    path?: never;
+    query?: never;
+    url: '/settings/relay-credential/status';
+};
+
+export type GetRelayCredentialStatusErrors = {
+    /**
+     * Invalid relay URL
+     */
+    400: ApiErrorResponse;
+    /**
+     * Credential storage failed
+     */
+    500: ApiErrorResponse;
+    /**
+     * Credential storage unavailable
+     */
+    503: ApiErrorResponse;
+};
+
+export type GetRelayCredentialStatusError = GetRelayCredentialStatusErrors[keyof GetRelayCredentialStatusErrors];
+
+export type GetRelayCredentialStatusResponses = {
+    /**
+     * Relay credential configuration state
+     */
+    200: RelayCredentialStatusEnvelope;
+};
+
+export type GetRelayCredentialStatusResponse = GetRelayCredentialStatusResponses[keyof GetRelayCredentialStatusResponses];
+
 export type ProbeRelayUrlData = {
     body: RelayProbeRequestDto;
     path?: never;
@@ -5055,9 +5216,13 @@ export type ProbeRelayUrlData = {
 
 export type ProbeRelayUrlErrors = {
     /**
-     * Relay-diagnostic adapter unavailable / internal error
+     * Relay-diagnostic internal error
      */
     500: ApiErrorResponse;
+    /**
+     * Relay-diagnostic adapter unavailable
+     */
+    503: ApiErrorResponse;
 };
 
 export type ProbeRelayUrlError = ProbeRelayUrlErrors[keyof ProbeRelayUrlErrors];

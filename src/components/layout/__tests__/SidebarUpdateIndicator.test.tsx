@@ -88,6 +88,10 @@ function renderSidebar(state: UpdateState, setting: Settings = baseSetting) {
         updateKeyboardShortcuts: vi.fn(),
         updateFileSyncSetting: vi.fn(),
         updateNetworkSetting: vi.fn().mockResolvedValue({ restartRequired: false }),
+        saveRelay: vi.fn().mockResolvedValue({
+          restartRequired: false,
+          credentialStatus: { configured: false },
+        }),
         updateQuickPanelSetting: vi.fn().mockResolvedValue({ restartRequired: false }),
       }}
     >
@@ -117,6 +121,10 @@ function renderSidebarAt(pathname: string) {
         updateKeyboardShortcuts: vi.fn(),
         updateFileSyncSetting: vi.fn(),
         updateNetworkSetting: vi.fn().mockResolvedValue({ restartRequired: false }),
+        saveRelay: vi.fn().mockResolvedValue({
+          restartRequired: false,
+          credentialStatus: { configured: false },
+        }),
         updateQuickPanelSetting: vi.fn().mockResolvedValue({ restartRequired: false }),
       }}
     >

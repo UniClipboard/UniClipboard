@@ -38,7 +38,10 @@ use crate::api::dto::mobile_sync::{
 use crate::api::dto::search::{
     SearchQueryResultDto, SearchRebuildAcceptedData, SearchStatusData, SearchTagDto,
 };
-use crate::api::dto::settings::{RelayProbeOutcomeDto, SettingsDto, SettingsUpdateResultDto};
+use crate::api::dto::settings::{
+    RelayCredentialStatusDto, RelayProbeOutcomeDto, RelaySaveResultDto, SettingsDto,
+    SettingsUpdateResultDto,
+};
 use crate::api::dto::storage::{ClearCacheResponse, StorageStatsDto};
 use crate::api::dto::upgrade::{AckUpgradePayload, UpgradeStatusDto};
 use crate::api::dto::v2::setup::{
@@ -87,6 +90,8 @@ use crate::api::types::{
     SettingsEnvelope = ApiEnvelope<SettingsDto>,
     SettingsUpdateResultEnvelope = ApiEnvelope<SettingsUpdateResultDto>,
     RelayProbeOutcomeEnvelope = ApiEnvelope<RelayProbeOutcomeDto>,
+    RelayCredentialStatusEnvelope = ApiEnvelope<RelayCredentialStatusDto>,
+    RelaySaveResultEnvelope = ApiEnvelope<RelaySaveResultDto>,
     DebugStatusEnvelope = ApiEnvelope<DebugStatusDto>,
     UpdateDebugModeEnvelope = ApiEnvelope<UpdateDebugModeResultDto>,
     LogExportEnvelope = ApiEnvelope<LogExportResultDto>,

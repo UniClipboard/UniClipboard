@@ -101,6 +101,10 @@ function renderWithSetting(setting: Settings, children: React.ReactNode) {
         updateKeyboardShortcuts: vi.fn(),
         updateFileSyncSetting: vi.fn(),
         updateNetworkSetting: vi.fn().mockResolvedValue({ restartRequired: false }),
+        saveRelay: vi.fn().mockResolvedValue({
+          restartRequired: false,
+          credentialStatus: { configured: false },
+        }),
         updateQuickPanelSetting: vi.fn().mockResolvedValue({ restartRequired: false }),
       }}
     >
@@ -300,6 +304,10 @@ describe('UpdateProvider', () => {
           updateKeyboardShortcuts: vi.fn(),
           updateFileSyncSetting: vi.fn(),
           updateNetworkSetting: vi.fn().mockResolvedValue({ restartRequired: false }),
+          saveRelay: vi.fn().mockResolvedValue({
+            restartRequired: false,
+            credentialStatus: { configured: false },
+          }),
           updateQuickPanelSetting: vi.fn().mockResolvedValue({ restartRequired: false }),
         }}
       >

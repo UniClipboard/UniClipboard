@@ -31,6 +31,7 @@ url = "2"
 utoipa = { version = "4", features = ["uuid", "chrono", "url"] }
 utoipa-swagger-ui = { version = "7", features = ["axum"] }
 uuid = { version = "1.10.0", features = ["v4"] }
+zeroize = "1"
 
 [dev-dependencies]
 async-trait = "0.1"

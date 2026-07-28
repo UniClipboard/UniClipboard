@@ -3,8 +3,7 @@ use std::sync::Arc;
 use anyhow::Result;
 use reqwest::Method;
 use uc_daemon_contract::api::dto::settings::{
-    RelayProbeOutcomeDto, RelayProbeRequestDto, SettingsDto, SettingsPatchDto,
-    SettingsUpdateResultDto,
+    SettingsDto, SettingsPatchDto, SettingsUpdateResultDto,
 };
 use uc_daemon_contract::constants::http_route;
 
@@ -71,25 +70,6 @@ impl DaemonSettingsClient {
             Method::PUT,
             http_route::SETTINGS,
             |r| r.json(&patch),
-        )
-        .await?)
-    }
-
-    /// `POST /settings/relay-probe` — probe a candidate relay URL. A probe that
-    /// fails to reach the relay is a NORMAL categorized 200 outcome (carried on
-    /// `RelayProbeOutcomeDto`), not an error; only adapter-missing / transport
-    /// faults surface as `Err`.
-    pub async fn probe_relay_url(&self, url: &str) -> Result<RelayProbeOutcomeDto> {
-        let req_body = RelayProbeRequestDto {
-            url: url.to_string(),
-        };
-        Ok(enveloped_request(
-            &self.http,
-            &self.connection_state,
-            &self.client_type,
-            Method::POST,
-            http_route::SETTINGS_RELAY_PROBE,
-            |r| r.json(&req_body),
         )
         .await?)
     }

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState, type ReactNode } from 'react'
-import { getSettings, updateSettings } from '@/api/daemon'
+import { getSettings, saveRelay as persistRelay, updateSettings } from '@/api/daemon'
 import {
   updateKeyboardShortcuts as persistKeyboardShortcuts,
   setQuickPanelDoubleTapModifier as persistQuickPanelDoubleTapModifier,
@@ -16,10 +16,23 @@ import { emitSettingsChanged } from '@/lib/settings-events'
 import { applyThemeOverrides, applyThemePreset } from '@/lib/theme-engine'
 import { startThemeTransition } from '@/lib/theme-transition'
 import { setFrontendSentryEnabled } from '@/observability/sentry'
-import type { SettingContextType, Settings } from '@/types/setting'
+import type {
+  RelaySaveContextResult,
+  RelaySaveMutation,
+  SettingContextType,
+  Settings,
+} from '@/types/setting'
 import { SettingContext } from './setting-context'
 
 const log = createLogger('setting-context')
+
+function relayUrlsMatch(left: string, right: string): boolean {
+  try {
+    return new URL(left.trim()).toString() === new URL(right.trim()).toString()
+  } catch {
+    return left.trim() === right.trim()
+  }
+}
 
 // 设置提供者属性接口
 interface SettingProviderProps {
@@ -218,6 +231,59 @@ export const SettingProvider: React.FC<SettingProviderProps> = ({ children }) =>
         ...newNetworkSetting,
       },
     }))
+  }
+
+  const saveRelay = async (mutation: RelaySaveMutation): Promise<RelaySaveContextResult> => {
+    try {
+      return await enqueueSettingMutation(async current => {
+        const customRelayUrls = [...current.network.customRelayUrls]
+        let credentialUrl: string
+
+        if (mutation.index === null) {
+          if (mutation.previousUrl !== null || mutation.nextUrl === null) {
+            throw new Error('Invalid relay addition')
+          }
+          customRelayUrls.push(mutation.nextUrl)
+          credentialUrl = mutation.nextUrl
+        } else {
+          if (
+            mutation.index < 0 ||
+            mutation.index >= customRelayUrls.length ||
+            customRelayUrls[mutation.index] !== mutation.previousUrl
+          ) {
+            throw new Error('Relay settings changed before the save could run')
+          }
+          credentialUrl = mutation.nextUrl ?? mutation.previousUrl
+          if (mutation.nextUrl === null) customRelayUrls.splice(mutation.index, 1)
+          else customRelayUrls[mutation.index] = mutation.nextUrl
+        }
+
+        const credential =
+          mutation.nextUrl === null &&
+          mutation.credential.action === 'delete' &&
+          customRelayUrls.some(url => relayUrlsMatch(url, credentialUrl))
+            ? { action: 'keep' as const }
+            : mutation.credential
+        const result = await persistRelay(
+          { network: { customRelayUrls } },
+          credentialUrl,
+          credential
+        )
+        if (!result.success) throw new Error('Relay settings update was rejected')
+
+        return {
+          next: result.settings,
+          result: {
+            restartRequired: result.restartRequired,
+            credentialStatus: result.credentialStatus,
+          },
+        }
+      })
+    } catch (err) {
+      log.error({ err }, 'Failed to save relay settings')
+      setError(`保存设置失败: ${err}`)
+      throw err
+    }
   }
 
   // Update quick panel settings.
@@ -424,6 +490,7 @@ export const SettingProvider: React.FC<SettingProviderProps> = ({ children }) =>
     updateKeyboardShortcuts,
     updateFileSyncSetting,
     updateNetworkSetting,
+    saveRelay,
     updateQuickPanelSetting,
   }
 

@@ -10,17 +10,20 @@ use axum::routing::{get, post, put};
 use axum::{Json, Router};
 use tracing::{info, instrument};
 use utoipa;
+use zeroize::Zeroize;
 
 use uc_daemon_contract::api::dto::envelope::ApiEnvelope;
 use uc_engine::{
-    EngineError, EngineErrorCategory, Operation, OperationResult, RelayProbeInput,
-    RelayProbeOutcome, SettingsUpdateOutcome,
+    EngineError, EngineErrorCategory, Operation, OperationResult, RelayCredentialEdit,
+    RelayCredentialInput, RelayCredentialStatus, RelayProbeCredential, RelayProbeInput,
+    RelayProbeOutcome, SaveRelayInput, SaveRelayOutcome, SecretString, SettingsUpdateOutcome,
 };
 
 use crate::api::dto::error::{log_facade_failure, ApiError};
 use crate::api::dto::settings::{
-    RelayProbeOutcomeDto, RelayProbeRequestDto, SettingsDto, SettingsPatchDto,
-    SettingsUpdateResultDto,
+    RelayCredentialEditDto, RelayCredentialRequestDto, RelayCredentialStatusDto,
+    RelayProbeCredentialDto, RelayProbeOutcomeDto, RelayProbeRequestDto, RelaySaveRequestDto,
+    RelaySaveResultDto, SettingsDto, SettingsPatchDto, SettingsUpdateResultDto,
 };
 use crate::api::projection::{IntoApiDto, IntoDomain};
 use crate::api::server::DaemonApiState;
@@ -30,6 +33,11 @@ pub fn router() -> Router<DaemonApiState> {
         .route("/settings", get(get_settings_handler))
         .route("/settings", put(update_settings_handler))
         .route("/settings/relay-probe", post(probe_relay_url_handler))
+        .route(
+            "/settings/relay-credential/status",
+            post(get_relay_credential_handler),
+        )
+        .route("/settings/relay", put(save_relay_handler))
 }
 
 /// GET /settings
@@ -172,8 +180,8 @@ async fn update_settings_handler(
 
 /// POST /settings/relay-probe
 ///
-/// Probes a candidate relay URL for reachability. Reads/writes no persisted
-/// settings, so it is safe to call repeatedly ("test before save"). A probe
+/// Probes a candidate relay URL for reachability. An optional one-time access
+/// token is used only for this probe and is never persisted. A probe
 /// that fails to reach the relay is a NORMAL categorized outcome returned 200
 /// (mirrors the Tauri command contract) — only a missing relay-diagnostic
 /// adapter (server misconfiguration) becomes a 500 `ApiError`.
@@ -185,17 +193,34 @@ async fn update_settings_handler(
     request_body = RelayProbeRequestDto,
     responses(
         (status = 200, description = "Relay probe outcome (reachable or a categorized failure)", body = RelayProbeOutcomeEnvelope),
-        (status = 500, description = "Relay-diagnostic adapter unavailable / internal error", body = ApiErrorResponse)
+        (status = 500, description = "Relay-diagnostic internal error", body = ApiErrorResponse),
+        (status = 503, description = "Relay-diagnostic adapter unavailable", body = ApiErrorResponse)
     )
 )]
-#[instrument(name = "api.settings.relay_probe", level = "info", skip(state, payload), fields(relay_url = %payload.url))]
+#[instrument(
+    name = "api.settings.relay_probe",
+    level = "info",
+    skip(state, payload)
+)]
 async fn probe_relay_url_handler(
     State(state): State<DaemonApiState>,
     Json(payload): Json<RelayProbeRequestDto>,
 ) -> Result<Json<ApiEnvelope<RelayProbeOutcomeDto>>, ApiError> {
     info!("relay probe request received");
+    let credential = match payload.credential {
+        RelayProbeCredentialDto::Stored => RelayProbeCredential::Stored,
+        RelayProbeCredentialDto::None => RelayProbeCredential::None,
+        RelayProbeCredentialDto::Override { mut access_token } => {
+            let secret = SecretString::new(&access_token);
+            access_token.zeroize();
+            RelayProbeCredential::Override(secret)
+        }
+    };
     let result = state
-        .execute(Operation::ProbeRelay(RelayProbeInput { url: payload.url }))
+        .execute(Operation::ProbeRelay(RelayProbeInput {
+            url: payload.url,
+            credential,
+        }))
         .await
         .map_err(|error| settings_error_to_api("relay_probe", error))?;
     let OperationResult::RelayProbed(outcome) = result else {
@@ -206,6 +231,127 @@ async fn probe_relay_url_handler(
 
     info!("relay probe completed");
     Ok(Json(ApiEnvelope::now(probe_outcome_to_dto(outcome))))
+}
+
+/// POST /settings/relay-credential/status
+/// Returns only whether a credential exists for the relay URL.
+#[utoipa::path(
+    post,
+    path = "/settings/relay-credential/status",
+    tag = "settings",
+    operation_id = "getRelayCredentialStatus",
+    request_body = RelayCredentialRequestDto,
+    responses(
+        (status = 200, description = "Relay credential configuration state", body = RelayCredentialStatusEnvelope),
+        (status = 400, description = "Invalid relay URL", body = ApiErrorResponse),
+        (status = 500, description = "Credential storage failed", body = ApiErrorResponse),
+        (status = 503, description = "Credential storage unavailable", body = ApiErrorResponse)
+    )
+)]
+#[instrument(
+    name = "api.settings.relay_credential.get",
+    level = "info",
+    skip(state, payload)
+)]
+async fn get_relay_credential_handler(
+    State(state): State<DaemonApiState>,
+    Json(payload): Json<RelayCredentialRequestDto>,
+) -> Result<Json<ApiEnvelope<RelayCredentialStatusDto>>, ApiError> {
+    info!("relay credential status request received");
+    let result = state
+        .execute(Operation::QueryRelayCredential(RelayCredentialInput {
+            url: payload.url,
+        }))
+        .await
+        .map_err(|error| relay_credential_error_to_api("query", error))?;
+    let OperationResult::RelayCredentialStatus(status) = result else {
+        return Err(ApiError::internal(
+            "engine returned an unexpected relay-credential result",
+        ));
+    };
+
+    info!(
+        configured = status.configured,
+        "relay credential status returned"
+    );
+    Ok(Json(ApiEnvelope::now(relay_credential_status_to_dto(
+        status,
+    ))))
+}
+
+/// PUT /settings/relay
+/// Saves the relay URL list and its credential as one recoverable operation.
+#[utoipa::path(
+    put,
+    path = "/settings/relay",
+    tag = "settings",
+    operation_id = "saveRelay",
+    request_body = RelaySaveRequestDto,
+    responses(
+        (status = 200, description = "Relay settings and credential saved", body = RelaySaveResultEnvelope),
+        (status = 400, description = "Invalid relay URL, duplicate URL, or access token", body = ApiErrorResponse),
+        (status = 500, description = "Relay settings save failed", body = ApiErrorResponse),
+        (status = 503, description = "Credential storage unavailable", body = ApiErrorResponse)
+    )
+)]
+#[instrument(name = "api.settings.relay.save", level = "info", skip(state, payload))]
+async fn save_relay_handler(
+    State(state): State<DaemonApiState>,
+    Json(payload): Json<RelaySaveRequestDto>,
+) -> Result<Json<ApiEnvelope<RelaySaveResultDto>>, ApiError> {
+    info!("relay settings save request received");
+    let RelaySaveRequestDto {
+        settings,
+        url,
+        credential,
+    } = payload;
+    let credential = match credential {
+        RelayCredentialEditDto::Keep => RelayCredentialEdit::Keep { url },
+        RelayCredentialEditDto::Set { mut access_token } => {
+            let secret = SecretString::new(&access_token);
+            access_token.zeroize();
+            RelayCredentialEdit::Set {
+                url,
+                access_token: secret,
+            }
+        }
+        RelayCredentialEditDto::Delete => RelayCredentialEdit::Delete { url },
+    };
+    let result = state
+        .execute(Operation::SaveRelay(Box::new(SaveRelayInput {
+            settings: settings.into_domain(),
+            credential,
+        })))
+        .await
+        .map_err(|error| relay_credential_error_to_api("save", error))?;
+    let (settings, status) = match result {
+        OperationResult::RelaySaved(SaveRelayOutcome::Saved {
+            settings,
+            credential_status,
+        }) => ((*settings).into_api_dto(), credential_status),
+        OperationResult::RelaySaved(SaveRelayOutcome::Rejected { reason }) => {
+            return Err(ApiError::bad_request(reason));
+        }
+        _ => {
+            return Err(ApiError::internal(
+                "engine returned an unexpected relay-save result",
+            ));
+        }
+    };
+
+    info!(configured = status.configured, "relay settings saved");
+    Ok(Json(ApiEnvelope::now(RelaySaveResultDto {
+        success: true,
+        restart_required: true,
+        credential_status: relay_credential_status_to_dto(status),
+        settings,
+    })))
+}
+
+fn relay_credential_status_to_dto(status: RelayCredentialStatus) -> RelayCredentialStatusDto {
+    RelayCredentialStatusDto {
+        configured: status.configured,
+    }
 }
 
 /// Translate a `probe_relay_url` facade result into the wire outcome.
@@ -243,6 +389,29 @@ fn settings_error_to_api(op: &'static str, error: EngineError) -> ApiError {
         | EngineErrorCategory::Internal => (
             "operation_failed",
             ApiError::internal("settings operation failed"),
+        ),
+    };
+    log_facade_failure("settings", op, variant, api.status, &api.message);
+    api
+}
+
+fn relay_credential_error_to_api(op: &'static str, error: EngineError) -> ApiError {
+    let (variant, api): (&'static str, ApiError) = match error.category() {
+        EngineErrorCategory::InvalidInput => (
+            "invalid_input",
+            ApiError::bad_request("invalid relay credential"),
+        ),
+        EngineErrorCategory::Unavailable | EngineErrorCategory::DeadlineExceeded => (
+            "unavailable",
+            ApiError::service_unavailable("relay credential storage is unavailable"),
+        ),
+        EngineErrorCategory::InvalidState
+        | EngineErrorCategory::Unauthorized
+        | EngineErrorCategory::NotFound
+        | EngineErrorCategory::Conflict
+        | EngineErrorCategory::Internal => (
+            "operation_failed",
+            ApiError::internal("relay credential operation failed"),
         ),
     };
     log_facade_failure("settings", op, variant, api.status, &api.message);
@@ -310,5 +479,14 @@ mod tests {
         for (outcome, expected) in cases {
             assert_eq!(probe_outcome_to_dto(outcome), expected);
         }
+    }
+
+    #[test]
+    fn relay_credential_status_projection_never_contains_a_secret() {
+        let dto = relay_credential_status_to_dto(RelayCredentialStatus { configured: true });
+        assert_eq!(
+            serde_json::to_value(dto).expect("serialize relay credential status"),
+            serde_json::json!({ "configured": true })
+        );
     }
 }

@@ -2830,6 +2830,154 @@
         ],
         "type": "object"
       },
+      "RelayCredentialEditDto": {
+        "discriminator": {
+          "propertyName": "action"
+        },
+        "oneOf": [
+          {
+            "properties": {
+              "action": {
+                "enum": [
+                  "keep"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "action"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "accessToken": {
+                "type": "string"
+              },
+              "action": {
+                "enum": [
+                  "set"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "accessToken",
+              "action"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "action": {
+                "enum": [
+                  "delete"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "action"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "RelayCredentialRequestDto": {
+        "description": "URL-scoped request for querying or deleting a relay credential.",
+        "properties": {
+          "url": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "url"
+        ],
+        "type": "object"
+      },
+      "RelayCredentialStatusDto": {
+        "description": "Public relay credential state. The credential value is never returned.",
+        "properties": {
+          "configured": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "configured"
+        ],
+        "type": "object"
+      },
+      "RelayCredentialStatusEnvelope": {
+        "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/RelayCredentialStatusDto"
+          },
+          "ts": {
+            "description": "Server time when the response was built (unix epoch milliseconds).",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "data",
+          "ts"
+        ],
+        "type": "object"
+      },
+      "RelayProbeCredentialDto": {
+        "discriminator": {
+          "propertyName": "mode"
+        },
+        "oneOf": [
+          {
+            "properties": {
+              "mode": {
+                "enum": [
+                  "stored"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "mode"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "mode": {
+                "enum": [
+                  "none"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "mode"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "accessToken": {
+                "type": "string"
+              },
+              "mode": {
+                "enum": [
+                  "override"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "accessToken",
+              "mode"
+            ],
+            "type": "object"
+          }
+        ]
+      },
       "RelayProbeOutcomeDto": {
         "description": "Outcome of a relay reachability probe (`POST /settings/relay-probe`).\n\nMirrors the desktop `RelayProbeOutcome` Tauri DTO: a probe that fails to\nreach the relay is a NORMAL categorized outcome (returned 200), not an HTTP\nerror — the daemon is healthy, the *relay* is the subject under test. Only a\nmissing relay-diagnostic adapter (server misconfiguration) surfaces as an\n`ApiError`. The frontend selects user-facing copy off the `tag`.",
         "discriminator": {
@@ -2839,7 +2987,7 @@
           {
             "description": "Relay reachable; carries end-to-end round-trip latency.",
             "properties": {
-              "latency_ms": {
+              "latencyMs": {
                 "format": "int32",
                 "minimum": 0,
                 "type": "integer"
@@ -2852,7 +3000,7 @@
               }
             },
             "required": [
-              "latency_ms",
+              "latencyMs",
               "tag"
             ],
             "type": "object"
@@ -2989,13 +3137,78 @@
       "RelayProbeRequestDto": {
         "description": "Request body for `POST /settings/relay-probe`.",
         "properties": {
+          "credential": {
+            "$ref": "#/components/schemas/RelayProbeCredentialDto"
+          },
           "url": {
             "description": "Candidate relay URL to probe. Not persisted; the probe is repeatable.",
             "type": "string"
           }
         },
         "required": [
-          "url"
+          "url",
+          "credential"
+        ],
+        "type": "object"
+      },
+      "RelaySaveRequestDto": {
+        "description": "Saves a relay URL list and its URL-scoped credential as one operation.",
+        "properties": {
+          "credential": {
+            "$ref": "#/components/schemas/RelayCredentialEditDto"
+          },
+          "settings": {
+            "$ref": "#/components/schemas/SettingsPatchDto"
+          },
+          "url": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "settings",
+          "url",
+          "credential"
+        ],
+        "type": "object"
+      },
+      "RelaySaveResultDto": {
+        "properties": {
+          "credentialStatus": {
+            "$ref": "#/components/schemas/RelayCredentialStatusDto"
+          },
+          "restartRequired": {
+            "type": "boolean"
+          },
+          "settings": {
+            "$ref": "#/components/schemas/SettingsDto"
+          },
+          "success": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "success",
+          "restartRequired",
+          "credentialStatus",
+          "settings"
+        ],
+        "type": "object"
+      },
+      "RelaySaveResultEnvelope": {
+        "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/RelaySaveResultDto"
+          },
+          "ts": {
+            "description": "Server time when the response was built (unix epoch milliseconds).",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "data",
+          "ts"
         ],
         "type": "object"
       },
@@ -8417,9 +8630,149 @@
         ]
       }
     },
+    "/settings/relay": {
+      "put": {
+        "description": "Saves the relay URL list and its credential as one recoverable operation.",
+        "operationId": "saveRelay",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RelaySaveRequestDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RelaySaveResultEnvelope"
+                }
+              }
+            },
+            "description": "Relay settings and credential saved"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Invalid relay URL, duplicate URL, or access token"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Relay settings save failed"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Credential storage unavailable"
+          }
+        },
+        "security": [
+          {
+            "session_query": []
+          },
+          {
+            "session_header": []
+          }
+        ],
+        "summary": "PUT /settings/relay",
+        "tags": [
+          "settings"
+        ]
+      }
+    },
+    "/settings/relay-credential/status": {
+      "post": {
+        "description": "Returns only whether a credential exists for the relay URL.",
+        "operationId": "getRelayCredentialStatus",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RelayCredentialRequestDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RelayCredentialStatusEnvelope"
+                }
+              }
+            },
+            "description": "Relay credential configuration state"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Invalid relay URL"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Credential storage failed"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Credential storage unavailable"
+          }
+        },
+        "security": [
+          {
+            "session_query": []
+          },
+          {
+            "session_header": []
+          }
+        ],
+        "summary": "POST /settings/relay-credential/status",
+        "tags": [
+          "settings"
+        ]
+      }
+    },
     "/settings/relay-probe": {
       "post": {
-        "description": "Probes a candidate relay URL for reachability. Reads/writes no persisted\nsettings, so it is safe to call repeatedly (\"test before save\"). A probe\nthat fails to reach the relay is a NORMAL categorized outcome returned 200\n(mirrors the Tauri command contract) — only a missing relay-diagnostic\nadapter (server misconfiguration) becomes a 500 `ApiError`.",
+        "description": "Probes a candidate relay URL for reachability. An optional one-time access\ntoken is used only for this probe and is never persisted. A probe\nthat fails to reach the relay is a NORMAL categorized outcome returned 200\n(mirrors the Tauri command contract) — only a missing relay-diagnostic\nadapter (server misconfiguration) becomes a 500 `ApiError`.",
         "operationId": "probeRelayUrl",
         "requestBody": {
           "content": {
@@ -8450,7 +8803,17 @@
                 }
               }
             },
-            "description": "Relay-diagnostic adapter unavailable / internal error"
+            "description": "Relay-diagnostic internal error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Relay-diagnostic adapter unavailable"
           }
         },
         "security": [

@@ -11,8 +11,7 @@ use tokio::sync::{Mutex as AsyncMutex, OwnedMutexGuard};
 use tracing::{error, info_span, Instrument};
 use uc_daemon_client::{DaemonConnectionState, DaemonSettingsClient};
 use uc_daemon_contract::api::dto::settings::{
-    KeyboardShortcutsPatchDto, RelayProbeOutcomeDto, SettingsPatchDto,
-    ShortcutKeyDto as ContractShortcutKeyDto,
+    KeyboardShortcutsPatchDto, SettingsPatchDto, ShortcutKeyDto as ContractShortcutKeyDto,
 };
 use uc_desktop::shortcuts::{self, CurrentShortcuts, QUICK_PANEL_SHORTCUT_SETTINGS_KEY};
 
@@ -288,81 +287,6 @@ fn contract_shortcut_from_local(value: ShortcutKeyDto) -> ContractShortcutKeyDto
         ShortcutKeyDto::Single(v) => ContractShortcutKeyDto::Single(v),
         ShortcutKeyDto::Multiple(v) => ContractShortcutKeyDto::Multiple(v),
     }
-}
-
-/// 一次 `probe_relay_url` 调用的细分结果。
-///
-/// 探测失败属于"用户可以理解的预期场景"(URL 写错、对端 DNS 不可达、TLS
-/// 不可信等),所以这些状态以 `Ok(outcome)` 的形式返回,让前端可以在不抛
-/// 异常的前提下区分文案。系统级故障(facade 缺失装配、trace 解析失败等)
-/// 仍然走 [`CommandError`]。
-#[derive(Debug, Clone, Serialize, specta::Type)]
-#[serde(
-    tag = "kind",
-    rename_all = "camelCase",
-    rename_all_fields = "camelCase"
-)]
-pub enum RelayProbeOutcome {
-    Success { latency_ms: u32 },
-    InvalidUrl { message: String },
-    Dns { message: String },
-    Tls { message: String },
-    Handshake { message: String },
-    Timeout,
-    Other { message: String },
-}
-
-impl From<RelayProbeOutcomeDto> for RelayProbeOutcome {
-    fn from(value: RelayProbeOutcomeDto) -> Self {
-        match value {
-            RelayProbeOutcomeDto::Success { latency_ms } => {
-                RelayProbeOutcome::Success { latency_ms }
-            }
-            RelayProbeOutcomeDto::InvalidUrl { message } => {
-                RelayProbeOutcome::InvalidUrl { message }
-            }
-            RelayProbeOutcomeDto::Dns { message } => RelayProbeOutcome::Dns { message },
-            RelayProbeOutcomeDto::Tls { message } => RelayProbeOutcome::Tls { message },
-            RelayProbeOutcomeDto::Handshake { message } => RelayProbeOutcome::Handshake { message },
-            RelayProbeOutcomeDto::Timeout => RelayProbeOutcome::Timeout,
-            RelayProbeOutcomeDto::Other { message } => RelayProbeOutcome::Other { message },
-        }
-    }
-}
-
-/// 对单个候选中继 URL 发起一次握手探测。
-///
-/// 不读取也不修改任何持久化设置;UI 可以重复调用以做"在保存前先试一下"。
-/// 探测失败映射到 [`RelayProbeOutcome`] 的细分变体,系统级故障(adapter
-/// 未装配等)走 [`CommandError`]。
-#[tauri::command]
-#[specta::specta]
-pub async fn probe_relay_url(
-    connection_state: State<'_, DaemonConnectionState>,
-    url: String,
-    _trace: Option<TraceMetadata>,
-) -> Result<RelayProbeOutcome, CommandError> {
-    let span = info_span!(
-        "command.settings.probe_relay_url",
-        trace_id = tracing::field::Empty,
-        trace_ts = tracing::field::Empty,
-    );
-    record_trace_fields(&span, &_trace);
-
-    async move {
-        // ADR-008 P3-3 B2': route through the daemon over loopback HTTP instead
-        // of the in-process facade. The daemon already maps probe failures to
-        // 200 `RelayProbeOutcomeDto` variants (parity with the old facade
-        // mapping), so a non-Ok here is a genuine transport / adapter fault.
-        let client = DaemonSettingsClient::new(connection_state.inner().clone());
-        let outcome = client
-            .probe_relay_url(&url)
-            .await
-            .map_err(CommandError::internal)?;
-        Ok(RelayProbeOutcome::from(outcome))
-    }
-    .instrument(span)
-    .await
 }
 
 impl From<ShortcutKeyDto> for ShortcutKeyView {

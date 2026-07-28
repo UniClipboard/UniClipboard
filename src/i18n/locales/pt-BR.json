@@ -397,12 +397,22 @@
         "customRelays": {
           "label": "Nós de relay personalizados",
           "description": "Adicione uma ou mais URLs de relay do iroh. Deixe vazio para usar os relays padrão. O LAN-only Mode preserva esta lista, mas não a utiliza. Tem efeito após reiniciar.",
+          "rowLabel": "Nó de relay {{index}}",
+          "urlLabel": "Endereço",
+          "tokenLabel": "Token de acesso (opcional)",
           "placeholder": "https://relay.example.com.",
           "addButton": "Adicionar nó de relay",
+          "testButton": "Testar disponibilidade",
+          "testHint": "O teste usa o token de acesso preenchido, sem salvá-lo.",
+          "saveButton": "Salvar nó de relay",
+          "removeSavedToken": "Remover token de acesso salvo",
+          "cancelRemoveSavedToken": "Manter token de acesso salvo",
+          "pendingTokenRemoval": "O token de acesso será removido quando você salvar este relay.",
           "itemAriaLabel": "Nó de relay personalizado {{index}}",
           "removeAriaLabel": "Remover o nó de relay {{index}}",
           "saveError": "Falha ao salvar os relays personalizados: {{message}}. A configuração anterior foi restaurada.",
           "invalidUrl": "URL de relay inválida: {{url}}. Informe uma URL http ou https.",
+          "duplicateUrl": "A URL de relay já existe: {{url}}.",
           "testAriaLabel": "Testar o nó de relay {{index}}",
           "testing": "Testando o nó de relay…",
           "testSuccess": "Handshake bem-sucedido ({{latencyMs}} ms)",
@@ -414,6 +424,19 @@
             "timeout": "O teste expirou depois de 5 segundos",
             "other": "Falha no teste: {{message}}",
             "unavailable": "O teste de relay não está disponível neste ambiente de execução."
+          },
+          "credentials": {
+            "loading": "Verificando o token de acesso…",
+            "configured": "Token de acesso salvo",
+            "notConfigured": "Nenhum token de acesso salvo",
+            "placeholder": "Digite um novo token de acesso",
+            "inputAriaLabel": "Token de acesso do relay {{index}}",
+            "saveAriaLabel": "Salvar token de acesso {{index}}",
+            "deleteAriaLabel": "Excluir token de acesso {{index}}",
+            "toggleVisibility": "Mostrar ou ocultar token de acesso",
+            "loadError": "Não foi possível verificar o token de acesso: {{message}}",
+            "saveError": "Não foi possível salvar o token de acesso: {{message}}",
+            "deleteError": "Não foi possível excluir o token de acesso: {{message}}"
           }
         },
         "congestionController": {

@@ -14,7 +14,7 @@ use axum::http::header::{
 use axum::http::HeaderMap;
 use axum::http::Method;
 use axum::http::Request;
-use axum::http::StatusCode;
+use axum::http::{StatusCode, Uri};
 use axum::middleware::{self, Next};
 use axum::response::Response;
 use axum::Router;
@@ -459,7 +459,10 @@ fn redact_query_secrets(query: Option<&str>) -> String {
     };
     url::form_urlencoded::parse(q.as_bytes())
         .map(|(k, v)| {
-            if k == "auth" || k == "token" || k == "session" {
+            if ["auth", "token", "session", "url"]
+                .iter()
+                .any(|secret| k.eq_ignore_ascii_case(secret))
+            {
                 format!("{k}=<redacted>")
             } else {
                 format!("{k}={v}")
@@ -469,10 +472,21 @@ fn redact_query_secrets(query: Option<&str>) -> String {
         .join("&")
 }
 
+fn sanitize_uri_for_log(uri: &Uri) -> String {
+    let path = uri.path();
+    let query = redact_query_secrets(uri.query());
+    if query.is_empty() {
+        path.to_string()
+    } else {
+        format!("{path}?{query}")
+    }
+}
+
 pub(crate) async fn cors_middleware(request: Request<Body>, next: Next) -> Response {
+    let request_target = sanitize_uri_for_log(request.uri());
     tracing::debug!(
         method = %request.method(),
-        uri = %request.uri(),
+        uri = %request_target,
         has_origin = request.headers().contains_key(ORIGIN),
         has_preflight_method = request.headers().contains_key(ACCESS_CONTROL_REQUEST_METHOD),
         "daemon cors middleware received request"
@@ -537,6 +551,40 @@ fn is_allowed_cors_origin(origin: &str) -> bool {
         || origin.starts_with("http://localhost:")
         || origin.starts_with("http://127.0.0.1:")
         || origin.starts_with("http://[::1]:")
+}
+
+#[cfg(test)]
+mod request_log_redaction_tests {
+    use axum::http::Uri;
+
+    use super::{redact_query_secrets, sanitize_uri_for_log};
+
+    #[test]
+    fn redacts_relay_urls_and_all_credential_query_values() {
+        let query = "url=https%3A%2F%2Flogin%3Apassword%40relay.example.com%2Fprivate%3Fkey%3Dsecret&auth=session-secret&token=relay-token&session=session-id&safe=value";
+
+        let redacted = redact_query_secrets(Some(query));
+
+        assert_eq!(
+            redacted,
+            "url=<redacted>&auth=<redacted>&token=<redacted>&session=<redacted>&safe=value"
+        );
+        for secret in ["login", "password", "private", "secret", "relay-token"] {
+            assert!(!redacted.contains(secret));
+        }
+    }
+
+    #[test]
+    fn cors_and_request_logs_share_the_same_sanitized_target() {
+        let uri: Uri = "/settings/relay-credential?url=https%3A%2F%2Flogin%3Apassword%40relay.example.com&safe=value"
+            .parse()
+            .expect("valid URI");
+
+        assert_eq!(
+            sanitize_uri_for_log(&uri),
+            "/settings/relay-credential?url=<redacted>&safe=value"
+        );
+    }
 }
 
 pub async fn run_http_server(

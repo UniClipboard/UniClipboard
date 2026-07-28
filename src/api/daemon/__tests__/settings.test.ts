@@ -9,8 +9,20 @@
  */
 
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
-import { updateSettings, type Settings } from '@/api/daemon/settings'
-import { updateSettings as updateSettingsSdk } from '@/api/generated/sdk.gen'
+import {
+  getRelayCredentialStatus,
+  probeRelayUrl,
+  saveRelay,
+  updateSettings,
+  type Settings,
+} from '@/api/daemon/settings'
+import {
+  getRelayCredentialStatus as getRelayCredentialStatusSdk,
+  probeRelayUrl as probeRelayUrlSdk,
+  saveRelay as saveRelaySdk,
+  updateSettings as updateSettingsSdk,
+} from '@/api/generated/sdk.gen'
+import { makeBaseSettings } from '@/test/fixtures/settings'
 
 // ADR-008 P6: settings 走生成的 SDK + daemonClient.callSdk。
 // - `@/api/daemon/client` 的 callSdk 被 mock 成"直接调用 thunk 并解包 { data }"，
@@ -31,14 +43,25 @@ vi.mock('@/api/daemon/client', () => ({
 
 vi.mock('@/api/generated/sdk.gen', () => ({
   getSettings: vi.fn(),
+  getRelayCredentialStatus: vi.fn(),
+  probeRelayUrl: vi.fn(),
+  saveRelay: vi.fn(),
   updateSettings: vi.fn(),
 }))
 
 // 类型化的 mock 引用，方便 mockResolvedValue / 访问 mock.calls。
 const updateSdkMock = updateSettingsSdk as unknown as ReturnType<typeof vi.fn>
+const getRelayCredentialStatusSdkMock = getRelayCredentialStatusSdk as unknown as ReturnType<
+  typeof vi.fn
+>
+const probeRelayUrlSdkMock = probeRelayUrlSdk as unknown as ReturnType<typeof vi.fn>
+const saveRelaySdkMock = saveRelaySdk as unknown as ReturnType<typeof vi.fn>
 
 beforeEach(() => {
   updateSdkMock.mockReset()
+  getRelayCredentialStatusSdkMock.mockReset()
+  probeRelayUrlSdkMock.mockReset()
+  saveRelaySdkMock.mockReset()
 })
 
 afterEach(() => {
@@ -184,6 +207,86 @@ describe('settings api — updateSettings restartRequired signal', () => {
     expect(updateSdkMock).toHaveBeenCalledTimes(1)
     const [options] = updateSdkMock.mock.calls[0]
     expect(options.body.network).toEqual({ allowRelayFallback: false })
+  })
+})
+
+describe('settings api — relay credentials', () => {
+  const url = 'https://relay.example.com'
+
+  it('queries only whether a relay access token is configured', async () => {
+    getRelayCredentialStatusSdkMock.mockResolvedValueOnce({
+      data: { data: { configured: true }, ts: 0 },
+    })
+
+    await expect(getRelayCredentialStatus(url)).resolves.toEqual({ configured: true })
+    expect(getRelayCredentialStatusSdkMock).toHaveBeenCalledWith({
+      body: { url },
+      throwOnError: true,
+    })
+  })
+
+  it('saves relay settings and its replacement token in one request', async () => {
+    const savedSettings = makeBaseSettings({
+      network: {
+        allowRelayFallback: true,
+        allowOverlayNetworkAddrs: false,
+        customRelayUrls: [`${url}/`],
+        congestionController: 'cubic',
+      },
+    })
+    saveRelaySdkMock.mockResolvedValueOnce({
+      data: {
+        data: {
+          success: true,
+          restartRequired: true,
+          credentialStatus: { configured: true },
+          settings: savedSettings,
+        },
+        ts: 0,
+      },
+    })
+
+    await expect(
+      saveRelay({ network: { customRelayUrls: [url] } }, url, {
+        action: 'set',
+        accessToken: 'replacement-token',
+      })
+    ).resolves.toEqual({
+      success: true,
+      restartRequired: true,
+      credentialStatus: { configured: true },
+      settings: savedSettings,
+    })
+    expect(saveRelaySdkMock).toHaveBeenCalledWith({
+      body: {
+        settings: { network: { customRelayUrls: [url] } },
+        url,
+        credential: { action: 'set', accessToken: 'replacement-token' },
+      },
+      throwOnError: true,
+    })
+  })
+
+  it.each([
+    [{ mode: 'stored' } as const, { mode: 'stored' }],
+    [{ mode: 'none' } as const, { mode: 'none' }],
+    [
+      { mode: 'override', accessToken: 'draft-token' } as const,
+      { mode: 'override', accessToken: 'draft-token' },
+    ],
+  ])('sends the selected probe credential mode %#', async (credential, expected) => {
+    probeRelayUrlSdkMock.mockResolvedValueOnce({
+      data: { data: { tag: 'success', latencyMs: 37 }, ts: 0 },
+    })
+
+    await expect(probeRelayUrl(url, credential)).resolves.toEqual({
+      kind: 'success',
+      latencyMs: 37,
+    })
+    expect(probeRelayUrlSdkMock).toHaveBeenCalledWith({
+      body: { url, credential: expected },
+      throwOnError: true,
+    })
   })
 })
 

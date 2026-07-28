@@ -98,6 +98,10 @@ function setup() {
     updateKeyboardShortcuts: vi.fn(),
     updateFileSyncSetting: vi.fn(),
     updateNetworkSetting: vi.fn().mockResolvedValue({ restartRequired: false }),
+    saveRelay: vi.fn().mockResolvedValue({
+      restartRequired: false,
+      credentialStatus: { configured: false },
+    }),
     updateQuickPanelSetting,
   })
 

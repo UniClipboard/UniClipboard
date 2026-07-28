@@ -55,8 +55,10 @@ use uc_webserver::api::openapi::ApiDoc;
 /// +1 operation → 63 / 70.
 /// Issue #1169 added `POST /clipboard/capture-current`: +1 path,
 /// +1 operation → 64 / 71.
-const EXPECTED_PATHS: usize = 67;
-const EXPECTED_OPERATIONS: usize = 74;
+/// Protected relay credentials add a status query and one atomic save:
+/// +2 paths, +2 operations.
+const EXPECTED_PATHS: usize = 69;
+const EXPECTED_OPERATIONS: usize = 76;
 const SCHEMA_PREFIX: &str = "#/components/schemas/";
 const HTTP_METHODS: [&str; 7] = ["get", "put", "post", "delete", "patch", "head", "options"];
 

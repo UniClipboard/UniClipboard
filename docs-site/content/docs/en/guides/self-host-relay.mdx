@@ -6,7 +6,8 @@ description: Stand up your own iroh relay and point UniClipboard at it.
 Since 0.7, UniClipboard exposes a custom iroh **relay** URL list under
 **Settings → Network → Custom relay nodes**. Leave it empty to keep
 using the default iroh relays; enter URLs to route through your own
-relay nodes only.
+relay nodes only. Each relay can also store an optional access token
+and be tested before saving. Changes take effect after a restart.
 
 This guide covers:
 
@@ -276,17 +277,24 @@ for the request schema.
 1. On each device, open **Settings → Network → Custom relay nodes**.
 2. Enter one URL per line, e.g.:
 
-   ```
+   ```text
    https://relay.example.com
    ```
 
    No port (443 / 7842 are the defaults), no path. You can list
    multiple relays — iroh picks the best one.
 
-3. Click `Apply & restart`. The daemon restarts onto the new relay
-   list.
-4. Clear the field to fall back to default iroh relays. That's how
-   you revert.
+3. If the relay requires one, enter its access token. Leave this field
+   empty for relays without token authentication. UniClipboard never
+   displays a saved token again; it only shows whether one is configured.
+4. Click **Test availability** to verify the current URL and token. The
+   test uses the token in the form but does not save it.
+5. Click **Save relay node**. The URL and any token change are saved
+   together.
+6. Click **Restart now** in the notice that appears. The daemon starts
+   using the saved relay list after the restart.
+7. Remove every custom relay node to fall back to the default iroh
+   relays.
 
 <Callout type="info">
   The custom relay list is **not** synced across devices — set it on each one. Switching relay

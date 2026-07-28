@@ -265,7 +265,8 @@ async fn get_relay_credential_handler(
         .await
         .map_err(|error| relay_credential_error_to_api("query", error))?;
     let OperationResult::RelayCredentialStatus(status) = result else {
-        return Err(ApiError::internal(
+        return Err(relay_credential_unexpected_result_to_api(
+            "query",
             "engine returned an unexpected relay-credential result",
         ));
     };
@@ -333,7 +334,8 @@ async fn save_relay_handler(
             return Err(ApiError::bad_request(reason));
         }
         _ => {
-            return Err(ApiError::internal(
+            return Err(relay_credential_unexpected_result_to_api(
+                "save",
                 "engine returned an unexpected relay-save result",
             ));
         }
@@ -352,6 +354,18 @@ fn relay_credential_status_to_dto(status: RelayCredentialStatus) -> RelayCredent
     RelayCredentialStatusDto {
         configured: status.configured,
     }
+}
+
+fn relay_credential_unexpected_result_to_api(op: &'static str, message: &'static str) -> ApiError {
+    let api = ApiError::internal(message);
+    log_facade_failure(
+        "settings",
+        op,
+        "unexpected_result",
+        api.status,
+        &api.message,
+    );
+    api
 }
 
 /// Translate a `probe_relay_url` facade result into the wire outcome.

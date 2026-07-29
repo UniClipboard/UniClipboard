@@ -40,7 +40,7 @@ function fileItem(overrides: Partial<DisplayClipboardItem>): DisplayClipboardIte
 
 function renderWithTransfer(
   item: DisplayClipboardItem,
-  transfer: { direction: 'Sending' | 'Receiving'; bytes: number; total: number }
+  transfer: { direction: 'sending' | 'receiving'; bytes: number; total: number }
 ) {
   const store = configureStore({ reducer: { fileTransfer: fileTransferReducer } })
   store.dispatch(
@@ -73,7 +73,7 @@ function renderWithTransfer(
 describe('HistoryCard directory send progress (issue #1330)', () => {
   it('renders status only (no percentage) for a directory send', () => {
     renderWithTransfer(fileItem({ isDirectory: true }), {
-      direction: 'Sending',
+      direction: 'sending',
       bytes: 50,
       total: 100,
     })
@@ -85,7 +85,7 @@ describe('HistoryCard directory send progress (issue #1330)', () => {
 
   it('keeps the byte percentage for a single-file send', () => {
     renderWithTransfer(fileItem({ isDirectory: false }), {
-      direction: 'Sending',
+      direction: 'sending',
       bytes: 50,
       total: 100,
     })
@@ -98,7 +98,7 @@ describe('HistoryCard directory send progress (issue #1330)', () => {
     // Receiving directories aggregate real per-member progress, so their
     // percentage is meaningful and must not be suppressed.
     renderWithTransfer(fileItem({ isDirectory: true }), {
-      direction: 'Receiving',
+      direction: 'receiving',
       bytes: 50,
       total: 100,
     })

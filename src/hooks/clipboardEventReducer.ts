@@ -14,6 +14,7 @@ import {
   normalizeCancelReason,
   setEntryTransferStatus,
   setReceiveAttemptState,
+  type TransferDirection,
   updateTransferProgress,
 } from '@/store/slices/fileTransferSlice'
 
@@ -84,7 +85,7 @@ interface FileTransferProgressEvent {
   entryId?: string | null
   attemptId?: string | null
   peerId: string
-  direction: 'Sending' | 'Receiving'
+  direction: TransferDirection
   bytesTransferred: number
   totalBytes?: number | null
 }

@@ -39,16 +39,16 @@ const TransferProgressBar: React.FC<TransferProgressBarProps> = ({
       ? formatDuration(progress.estimatedRemainingSeconds)
       : null
 
-  const DirectionIcon = progress.direction === 'Sending' ? ArrowUpFromLine : ArrowDownToLine
+  const DirectionIcon = progress.direction === 'sending' ? ArrowUpFromLine : ArrowDownToLine
   const directionLabel =
-    progress.direction === 'Sending'
+    progress.direction === 'sending'
       ? t('clipboard.transfer.sending')
       : t('clipboard.transfer.receiving')
 
   // Cancel control is only meaningful on inbound (Receiving) transfers
   // while still active — the sender side has no torn-down state to clean.
   const showCancel =
-    !!onCancel && progress.direction === 'Receiving' && progress.status === 'active'
+    !!onCancel && progress.direction === 'receiving' && progress.status === 'active'
 
   if (variant === 'minimal') {
     return (

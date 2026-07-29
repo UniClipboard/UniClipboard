@@ -31,7 +31,7 @@
     "format": "prettier --write .",
     "prepare": "husky",
     "test:coverage": "cargo llvm-cov --html --workspace",
-    "check:core-repository": "node scripts/architecture/check-core-repository.mjs",
+    "check:engine-repository": "node scripts/architecture/check-engine-repository.mjs",
     "e2e:wdio": "wdio run e2e/wdio.conf.mjs",
     "e2e:card": "scripts/e2e/run-card.sh",
     "doctor": "npx react-doctor@latest"

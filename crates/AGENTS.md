@@ -1,10 +1,10 @@
 # PROJECT KNOWLEDGE BASE
 
-**Last refreshed:** 2026-07-28 (auto; 16 workspace crates)
+**Last refreshed:** 2026-07-29 (auto; 16 workspace crates)
 
 ## OVERVIEW
 
-桌面 Rust 工作区以根目录 `Cargo.toml` 为入口：系统适配器和守护进程库位于 `crates/`，`uniclip` 与 `uniclipd` 位于 `apps/`，Tauri 打包位于 `src-tauri/`。可移植引擎由独立的 `UniClipboard/core` 仓库拥有，本仓通过一个固定发布标签使用它。GUI 和 CLI 都通过本机 HTTP 与 WebSocket 访问独立守护进程。
+桌面 Rust 工作区以根目录 `Cargo.toml` 为入口：系统适配器和守护进程库位于 `crates/`，`uniclip` 与 `uniclipd` 位于 `apps/`，Tauri 打包位于 `src-tauri/`。可移植引擎由独立的 `UniClipboard/Engine` 仓库拥有，本仓通过一个固定发布标签使用它。GUI 和 CLI 都通过本机 HTTP 与 WebSocket 访问独立守护进程。
 
 ## STRUCTURE
 
@@ -41,7 +41,7 @@
 | ------------------------- | ---------------------------------------------------- | ----------------------------------------------------------------------- |
 | Tauri run loop & setup    | `src-tauri/crates/uc-tauri/src/run.rs`               | `run()` (line ~200); window/lifecycle, `.manage(...)`, `.setup(...)`    |
 | IPC command registration  | `src-tauri/crates/uc-tauri/src/specta_builder.rs`    | tauri-specta single source of truth (runtime invoke + codegen)          |
-| Core 发布版本             | `Cargo.toml`                                         | 所有使用方共享一个固定的 `UniClipboard/core` 发布标签                   |
+| Engine 发布版本           | `Cargo.toml`                                         | 所有使用方共享一个固定的 `UniClipboard/Engine` 发布标签                 |
 | Desktop host preparation  | `crates/uc-bootstrap/src/wiring/`                    | Desktop paths, secure storage and clipboard selection                   |
 | Runtime/usecase accessors | `src-tauri/crates/uc-tauri/src/bootstrap/runtime.rs` | `AppRuntime`, `usecases()` factory                                      |
 | Tauri commands            | `src-tauri/crates/uc-tauri/src/commands/`            | Commands call app-layer usecases (or daemon HTTP since ADR-008)         |
@@ -60,7 +60,7 @@
 ## CONVENTIONS (PROJECT-SPECIFIC)
 
 - Rust commands run from the repo root (the cargo workspace root); stop if `Cargo.toml` absent.
-- Portable engine, protocol, persistence, migration, and binding changes belong in `UniClipboard/core`; never recreate those packages here.
+- Portable engine, protocol, persistence, migration, and binding changes belong in `UniClipboard/Engine`; never recreate those packages here.
 - 升级引擎时，只修改根目录 `Cargo.toml` 中唯一的固定发布标签，并同步更新 `Cargo.lock`。
 - Desktop-only capability flow: platform adapter -> `uc-bootstrap/src/wiring/` -> `HostCapabilities` -> `Engine::start`.
 - Tauri command pattern: command -> `runtime.usecases().x()`; avoid direct `deps` access from command layer.
@@ -75,7 +75,7 @@
 ## ANTI-PATTERNS (THIS PROJECT)
 
 - Copying core source, migrations, bindings, or LAN protocol packages back into desktop.
-- 对 `UniClipboard/core` 拥有的包使用本地路径、分支或非发布标签。
+- 对 `UniClipboard/Engine` 拥有的包使用本地路径、分支或非发布标签。
 - Depending on core implementation packages from desktop production code instead of `uc-engine`.
 - Adding business logic inside `uc-tauri` command handlers or platform adapters.
 - Reintroducing code under any `src-legacy/` path.
@@ -116,7 +116,7 @@ bun run test:coverage
 - `src-legacy/` was removed on 2026-02-26; treat any references as historical context only.
 - Root `AGENTS.md` is the navigation index; this file is the Rust-workspace knowledge base covering `crates/`, `apps/`, and `src-tauri/`. Tauri packaging details live in `src-tauri/AGENTS.md`.
 - Any change touching `crates/uc-platform/src/clipboard/` (especially the Linux X11/Wayland adapters) should run the package's focused validation before merge.
-- Core and LAN compatibility releases are produced only by `UniClipboard/core`; desktop keeps no mobile binding source or release workflow.
+- Engine and LAN compatibility releases are produced only by `UniClipboard/Engine`; desktop keeps no mobile binding source or release workflow.
 - Log files live in the platform-conventional log location (separate from the data root since the logs split). Single source of truth: `uc_app_paths::app_log_dir()`. Per-role files `uniclipboard-{gui,daemon,cli}.json.<date>`, daily rotation, 7-day retention (older pruned on start).
 - macOS: `~/Library/Logs/app.uniclipboard.desktop[-<profile>]/`
 - Linux: `~/.local/state/app.uniclipboard.desktop[-<profile>]/logs/`

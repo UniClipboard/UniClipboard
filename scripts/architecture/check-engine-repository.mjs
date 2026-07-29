@@ -8,11 +8,11 @@ import { fileURLToPath } from 'node:url'
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url))
 const REPOSITORY_ROOT = resolve(SCRIPT_DIR, '../..')
-const CORE_REPOSITORY = 'https://github.com/UniClipboard/core.git'
-const CORE_TAG = 'core-v0.20.0-rc.11'
-const CORE_REVISION = 'b742208f230b779cc4bc741e5b190cb7134d18db'
-const DECLARED_CORE_SOURCE = `git+${CORE_REPOSITORY}?tag=${CORE_TAG}`
-const RESOLVED_CORE_SOURCE = `${DECLARED_CORE_SOURCE}#${CORE_REVISION}`
+const ENGINE_REPOSITORY = 'https://github.com/UniClipboard/Engine.git'
+const ENGINE_TAG = 'v0.20.0-rc.11'
+const ENGINE_REVISION = '8f9d09789cbe14d3d6bd328edca17fa6a0b14ef9'
+const DECLARED_ENGINE_SOURCE = `git+${ENGINE_REPOSITORY}?tag=${ENGINE_TAG}`
+const RESOLVED_ENGINE_SOURCE = `${DECLARED_ENGINE_SOURCE}#${ENGINE_REVISION}`
 
 const MIGRATED_PACKAGES = new Set([
   'uc-engine',
@@ -110,11 +110,11 @@ function checkRepositoryBoundary(metadata, { checkPaths = true } = {}) {
           `${packageMetadata.name} uses a local path for ${item.name}`
         )
       }
-      if (item.source !== DECLARED_CORE_SOURCE) {
+      if (item.source !== DECLARED_ENGINE_SOURCE) {
         addProblem(
           problems,
-          'core provenance',
-          `${packageMetadata.name} does not pin ${item.name} to ${CORE_TAG}`
+          'engine provenance',
+          `${packageMetadata.name} does not pin ${item.name} to ${ENGINE_TAG}`
         )
       }
     }
@@ -128,26 +128,26 @@ function checkRepositoryBoundary(metadata, { checkPaths = true } = {}) {
     }
   }
 
-  const coreSources = new Set(
+  const engineSources = new Set(
     metadata.packages
       .map(candidate => candidate.source)
-      .filter(source => source?.startsWith(`git+${CORE_REPOSITORY}`))
+      .filter(source => source?.startsWith(`git+${ENGINE_REPOSITORY}`))
   )
-  if (coreSources.size !== 1 || !coreSources.has(RESOLVED_CORE_SOURCE)) {
+  if (engineSources.size !== 1 || !engineSources.has(RESOLVED_ENGINE_SOURCE)) {
     addProblem(
       problems,
-      'core provenance',
-      `expected one resolved core source at ${CORE_TAG} (${CORE_REVISION}); found ${[...coreSources].join(', ')}`
+      'engine provenance',
+      `expected one resolved Engine source at ${ENGINE_TAG} (${ENGINE_REVISION}); found ${[...engineSources].join(', ')}`
     )
   }
 
   for (const packageMetadata of metadata.packages) {
     if (!MIGRATED_PACKAGES.has(packageMetadata.name)) continue
-    if (packageMetadata.source !== RESOLVED_CORE_SOURCE) {
+    if (packageMetadata.source !== RESOLVED_ENGINE_SOURCE) {
       addProblem(
         problems,
-        'core provenance',
-        `${packageMetadata.name} resolved outside the pinned core release`
+        'engine provenance',
+        `${packageMetadata.name} resolved outside the pinned Engine release`
       )
     }
   }
@@ -183,7 +183,7 @@ function checkPublicSurface(metadata) {
       addProblem(
         problems,
         'consumer firewall',
-        `${packageName} must consume ${dependencyName} from the pinned core release`
+        `${packageName} must consume ${dependencyName} from the pinned Engine release`
       )
     }
   }
@@ -289,13 +289,13 @@ function runNegativeFixtures(metadata, sources) {
     sources
   )
   expectRejected(
-    'different core tag',
+    'different Engine tag',
     changed => {
       const contract = dependency(
         workspacePackageByName(changed, 'uc-observability'),
         'uc-observability-contract'
       )
-      contract.source = `git+${CORE_REPOSITORY}?tag=core-v0.20.0-rc.5`
+      contract.source = `git+${ENGINE_REPOSITORY}?tag=v0.20.0-rc.5`
     },
     metadata,
     sources
@@ -331,7 +331,7 @@ function main() {
   }
 
   runNegativeFixtures(metadata, sources)
-  process.stdout.write('Desktop core consumer preflight passed\n')
+  process.stdout.write('Desktop Engine consumer preflight passed\n')
 }
 
 main()

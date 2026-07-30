@@ -63,7 +63,7 @@ const HistoryCard: React.FC<HistoryCardProps> = ({
   // byte percentage resets on each member switch — it is meaningless. Render
   // status only for those rows. Receiving directories keep their real
   // per-member aggregate percentage; single-file / flat sends are unaffected.
-  const hideByteProgress = (item.isDirectory ?? false) && transfer?.direction === 'Sending'
+  const hideByteProgress = (item.isDirectory ?? false) && transfer?.direction === 'sending'
 
   // Reveal the action bar on keyboard focus too, not just mouse hover — its
   // buttons are otherwise untabbable, so keyboard users could never reach

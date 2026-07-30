@@ -5,6 +5,7 @@ import { createLogger } from '@/lib/logger'
 import { useAppDispatch } from '@/store/hooks'
 import { addPendingEntry } from '@/store/slices/clipboardSlice'
 import { hydrateReceiveAttempts } from '@/store/slices/fileTransferSlice'
+import type { TransferDirection } from '@/store/slices/fileTransferSlice'
 import { createClipboardEventReducer } from './clipboardEventReducer'
 import type { ClipboardRealtimeEvent } from './clipboardEventReducer'
 
@@ -74,7 +75,7 @@ export function useTransferProgress(): void {
           transferId: string
           entryId?: string | null
           peerId: string
-          direction: 'Sending' | 'Receiving'
+          direction: TransferDirection
           bytesTransferred: number
           totalBytes?: number | null
         }

@@ -126,6 +126,7 @@ pub struct PresenceRefreshResponse {
 
 /// File-transfer direction carried by the daemon wire protocol.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "lowercase")]
 pub enum FileTransferDirection {
     Sending,
     Receiving,
@@ -263,6 +264,26 @@ pub use crate::api::dto::setup::{
     GetSetupStateResponse, SetupActionResponse, SetupResetResponse, SetupSelectPeerRequest,
     SetupStateResponse, SetupStateResponseDto, SetupSubmitPassphraseRequest,
 };
+
+#[cfg(test)]
+mod file_transfer_direction_wire_tests {
+    use super::*;
+
+    #[test]
+    fn direction_variants_round_trip_lowercase() {
+        for (variant, wire) in [
+            (FileTransferDirection::Sending, "sending"),
+            (FileTransferDirection::Receiving, "receiving"),
+        ] {
+            let json = serde_json::to_value(variant).unwrap();
+            assert_eq!(json, serde_json::Value::String(wire.to_string()));
+
+            let decoded: FileTransferDirection =
+                serde_json::from_value(serde_json::Value::String(wire.to_string())).unwrap();
+            assert_eq!(decoded, variant);
+        }
+    }
+}
 
 #[cfg(test)]
 mod residency_backward_tolerance_tests {

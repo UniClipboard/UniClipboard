@@ -1,12 +1,14 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit'
 import type { RootState } from '../index'
 
+export type TransferDirection = 'sending' | 'receiving'
+
 export interface TransferProgressInfo {
   transferId: string
   entryId: string | null
   attemptId?: string | null
   peerId: string
-  direction: 'Sending' | 'Receiving'
+  direction: TransferDirection
   bytesTransferred: number
   totalBytes: number | null
   status: 'active' | 'completed' | 'failed' | 'cancelled'
@@ -53,7 +55,7 @@ interface UpdateTransferProgressPayload {
   entryId?: string | null
   attemptId?: string | null
   peerId: string
-  direction: 'Sending' | 'Receiving'
+  direction: TransferDirection
   bytesTransferred: number
   totalBytes?: number | null
   eventTs?: number
@@ -293,7 +295,7 @@ const fileTransferSlice = createSlice({
           entryId: receive.entryId,
           attemptId: receive.attemptId,
           peerId: '',
-          direction: 'Receiving',
+          direction: 'receiving',
           bytesTransferred: receive.completedBytes,
           totalBytes: receive.totalBytes || null,
           status: 'active',

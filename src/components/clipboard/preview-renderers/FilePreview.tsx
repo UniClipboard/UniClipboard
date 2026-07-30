@@ -78,9 +78,9 @@ const StatusBadge: React.FC<StatusBadgeProps> = ({ effectiveStatus, transfer }) 
       {effectiveStatus === 'transferring' && (
         <div className="flex items-center gap-1.5 rounded-full bg-primary/15 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-primary backdrop-blur-md ring-1 ring-primary/30">
           <Loader2 size={10} className="animate-spin" />
-          {transfer?.direction === 'Sending'
+          {transfer?.direction === 'sending'
             ? t('clipboard.transfer.sending')
-            : transfer?.direction === 'Receiving'
+            : transfer?.direction === 'receiving'
               ? t('clipboard.transfer.receiving')
               : t('clipboard.transfer.transferring')}
         </div>

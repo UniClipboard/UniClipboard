@@ -185,7 +185,7 @@ describe('useTransferProgress', () => {
           transferId: 'tx-progress',
           entryId: 'entry-progress',
           peerId: 'peer-1',
-          direction: 'Receiving',
+          direction: 'receiving',
           bytesTransferred: 2048,
           totalBytes: 10240,
         })
@@ -196,7 +196,7 @@ describe('useTransferProgress', () => {
       expect(state.activeTransfers['tx-progress']).toMatchObject({
         entryId: 'entry-progress',
         peerId: 'peer-1',
-        direction: 'Receiving',
+        direction: 'receiving',
         bytesTransferred: 2048,
         totalBytes: 10240,
         status: 'active',

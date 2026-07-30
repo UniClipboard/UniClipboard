@@ -8,7 +8,7 @@ const progress: TransferProgressInfo = {
   entryId: 'entry-1',
   attemptId: 'attempt-1',
   peerId: 'peer-1',
-  direction: 'Receiving',
+  direction: 'receiving',
   bytesTransferred: 38,
   totalBytes: 100,
   status: 'active',

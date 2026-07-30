@@ -63,7 +63,7 @@ function HistoryCardHeader({
         : null,
     [item]
   )
-  const DirectionIcon = transfer?.direction === 'Sending' ? ArrowUpFromLine : ArrowDownToLine
+  const DirectionIcon = transfer?.direction === 'sending' ? ArrowUpFromLine : ArrowDownToLine
   const speedLabel = transfer?.bytesPerSecond
     ? formatFileSize(transfer.bytesPerSecond) + '/s'
     : null

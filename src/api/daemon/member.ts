@@ -15,10 +15,18 @@
 
 import {
   getMemberSyncPreferences as getMemberSyncPreferencesSdk,
+  getSpaceProtection as getSpaceProtectionSdk,
+  secureRemoveLegacyMember as secureRemoveLegacyMemberSdk,
   updateMemberSyncPreferences as updateMemberSyncPreferencesSdk,
 } from '@/api/generated/sdk.gen'
-import type { MemberSyncPreferencesPatchDto } from '@/api/generated/types.gen'
+import type {
+  LegacyBootstrapDto,
+  MemberSyncPreferencesPatchDto,
+  SecureLegacyRemovalDto,
+  SpaceProtectionDto,
+} from '@/api/generated/types.gen'
 import { daemonClient } from './client'
+import { DaemonApiError } from './errors'
 
 // ── Value objects ───────────────────────────────────────────────
 
@@ -64,6 +72,38 @@ export interface MemberSyncPreferencesPatch {
   receiveContentTypes?: ContentTypesPatch
 }
 
+export type SpaceProtectionMode = 'legacy' | 'migrating' | 'ready'
+export type MemberProtectionStatus =
+  | 'legacy_unprotected'
+  | 'protected'
+  | 'awaiting_readmission'
+  | 'requires_readmission'
+  | 'recovery_required'
+export type LegacyBootstrapOutcome = 'awaiting_readmission' | 'complete' | 'recovery_required'
+
+export interface LegacyBootstrap {
+  bootstrapId: string
+  outcome: LegacyBootstrapOutcome
+  pendingReadmission: number
+}
+
+export interface MemberProtection {
+  deviceId: string
+  status: MemberProtectionStatus
+}
+
+/** Engine-authoritative protection snapshot for the active space. */
+export interface SpaceProtection {
+  mode: SpaceProtectionMode
+  members: MemberProtection[]
+  legacyBootstrap: LegacyBootstrap | null
+}
+
+/** Result of beginning an Engine-owned secure Legacy member removal. */
+export interface SecureLegacyRemoval {
+  bootstrap: LegacyBootstrap
+}
+
 // ── Public API ──────────────────────────────────────────────────
 
 export async function getMemberSyncPreferences(deviceId: string): Promise<MemberSyncPreferences> {
@@ -76,6 +116,40 @@ export async function getMemberSyncPreferences(deviceId: string): Promise<Member
     getMemberSyncPreferencesSdk({ path: { device_id: deviceId }, throwOnError: true })
   )
   return data as unknown as MemberSyncPreferences
+}
+
+export async function getSpaceProtection(): Promise<SpaceProtection> {
+  const data: SpaceProtectionDto = await daemonClient.callEnveloped(() =>
+    getSpaceProtectionSdk({ throwOnError: true })
+  )
+  return {
+    mode: data.mode,
+    members: data.members.map(member => ({ deviceId: member.deviceId, status: member.status })),
+    legacyBootstrap: data.legacyBootstrap ? toLegacyBootstrap(data.legacyBootstrap) : null,
+  }
+}
+
+export async function secureRemoveLegacyMember(deviceId: string): Promise<SecureLegacyRemoval> {
+  const data: SecureLegacyRemovalDto = await daemonClient.callEnveloped(() =>
+    secureRemoveLegacyMemberSdk({ path: { device_id: deviceId }, throwOnError: true })
+  )
+  return { bootstrap: toLegacyBootstrap(data.bootstrap) }
+}
+
+function toLegacyBootstrap(bootstrap: LegacyBootstrapDto): LegacyBootstrap {
+  return {
+    bootstrapId: bootstrap.bootstrapId,
+    outcome: bootstrap.outcome,
+    pendingReadmission: bootstrap.pendingReadmission,
+  }
+}
+
+/** True only when the Engine refused an unsafe Legacy local-only removal. */
+export function isLegacyBootstrapRequired(error: unknown): boolean {
+  if (!(error instanceof DaemonApiError) || !error.details || typeof error.details !== 'object') {
+    return false
+  }
+  return (error.details as { code?: unknown }).code === 'legacy_bootstrap_required'
 }
 
 export async function updateMemberSyncPreferences(

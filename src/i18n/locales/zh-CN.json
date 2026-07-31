@@ -1075,6 +1075,24 @@
       "confirmTitle": "取消配对",
       "confirmDescription": "确定要取消与 {{deviceName}} 的配对吗？取消后需要重新配对才能同步剪贴板内容。"
     },
+    "protection": {
+      "label": "保护状态",
+      "bootstrap": {
+        "awaiting_readmission": "安全升级正在等待 {{count}} 个成员重新准入。",
+        "recovery_required": "安全升级需要恢复，成员暂时无法同步。"
+      },
+      "errors": {
+        "removeFailed": "无法移除该设备。",
+        "statusFailed": "无法加载空间保护状态。"
+      },
+      "status": {
+        "legacy_unprotected": "需要安全升级",
+        "protected": "已受保护",
+        "awaiting_readmission": "等待重新准入",
+        "requires_readmission": "需要重新准入",
+        "recovery_required": "需要恢复"
+      }
+    },
     "tabs": {
       "connected": "已连接设备",
       "requests": "配对请求"
@@ -1694,6 +1712,7 @@
     "failureReason": {
       "localPolicy": "本地策略阻断",
       "peerRejected": "对端拒收",
+      "peerIncompatible": "对端版本不兼容",
       "io": "网络错误",
       "internal": "内部错误"
     },

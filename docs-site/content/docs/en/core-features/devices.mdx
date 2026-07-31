@@ -143,23 +143,26 @@ machine** — the gate is enforced at the scheduler. So:
 confirms twice). After unpairing:
 
 - The peer disappears from "Space members".
-- Future traffic from that node ID is rejected by this device.
+- Once removal completes, future traffic from that node ID is rejected by the protected space.
 - **Local history is untouched** — clips that already synced over stay.
 
-To bring the device back later, just run a fresh `invite` + `join`
-round — unpairing is one-sided, and any records the other side still
-holds are replaced by the new handshake instead of blocking it.
+Removing a member is enforced by the space's protected membership. If
+the space still uses legacy protection, `Unpair` first starts a security
+upgrade and excludes the selected device from the replacement group.
+The Devices page shows each member's **Protection** status and a banner
+with the number of remaining devices waiting for readmission.
 
-To remove a **lost or stolen** device from the space cleanly:
+Bring each retained device back through a fresh `invite` + `join` round
+until the banner clears. A **Recovery required** status means the
+upgrade did not finish automatically and the target may not have been
+removed; recover or rebuild the space first. You do not need to repeat
+`Unpair` on every remaining device.
 
-1. Run `Unpair` against it from another online, trusted device.
-2. To be safe, repeat from every remaining device (revocation is
-   maintained per-device today; a distributed-revocation primitive is
-   on the roadmap).
-3. If you're worried that the lost device still holds decryptable
-   history, consider rebuilding the space (see
-   [FAQ — Can I recover a forgotten passphrase?](../help/faq#can-i-recover-a-forgotten-passphrase)).
-   That forces every device to re-pair.
+Removal cannot erase history that was already stored on a lost or
+stolen device. Treat that local copy as still accessible.
+
+To bring the removed device back later, run a fresh `invite` + `join`
+round after the protection upgrade has completed.
 
 ## Mobile sync devices
 

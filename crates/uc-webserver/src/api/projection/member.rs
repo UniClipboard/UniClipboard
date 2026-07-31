@@ -6,12 +6,16 @@
 //! in addition to the settings ones.
 
 use uc_engine::{
-    ContentTypesPatch, ContentTypesSummary, MemberSyncPreferencesPatch,
-    MemberSyncPreferencesSummary,
+    ContentTypesPatch, ContentTypesSummary, LegacyBootstrapOutcome, LegacyBootstrapSummary,
+    MemberProtectionStatusSummary, MemberProtectionSummary, MemberSyncPreferencesPatch,
+    MemberSyncPreferencesSummary, SpaceProtectionModeSummary, SpaceProtectionSummary,
 };
 
 use super::{IntoApiDto, IntoDomain};
-use crate::api::dto::member::MemberSyncPreferencesDto;
+use crate::api::dto::member::{
+    LegacyBootstrapDto, LegacyBootstrapOutcomeDto, MemberProtectionDto, MemberProtectionStatusDto,
+    MemberSyncPreferencesDto, SpaceProtectionDto, SpaceProtectionModeDto,
+};
 use crate::api::dto::settings::{ContentTypesDto, ContentTypesPatchDto};
 
 impl IntoDomain<MemberSyncPreferencesPatch>
@@ -60,6 +64,65 @@ impl IntoApiDto<MemberSyncPreferencesDto> for MemberSyncPreferencesSummary {
             receive_enabled: self.receive_enabled,
             send_content_types: self.send_content_types.into_api_dto(),
             receive_content_types: self.receive_content_types.into_api_dto(),
+        }
+    }
+}
+
+impl IntoApiDto<LegacyBootstrapDto> for LegacyBootstrapSummary {
+    fn into_api_dto(self) -> LegacyBootstrapDto {
+        LegacyBootstrapDto {
+            bootstrap_id: self.bootstrap_id,
+            outcome: match self.outcome {
+                LegacyBootstrapOutcome::AwaitingReadmission => {
+                    LegacyBootstrapOutcomeDto::AwaitingReadmission
+                }
+                LegacyBootstrapOutcome::Complete => LegacyBootstrapOutcomeDto::Complete,
+                LegacyBootstrapOutcome::RecoveryRequired => {
+                    LegacyBootstrapOutcomeDto::RecoveryRequired
+                }
+            },
+            pending_readmission: self.pending_readmission,
+        }
+    }
+}
+
+impl IntoApiDto<MemberProtectionDto> for MemberProtectionSummary {
+    fn into_api_dto(self) -> MemberProtectionDto {
+        MemberProtectionDto {
+            device_id: self.device_id,
+            status: match self.status {
+                MemberProtectionStatusSummary::LegacyUnprotected => {
+                    MemberProtectionStatusDto::LegacyUnprotected
+                }
+                MemberProtectionStatusSummary::Protected => MemberProtectionStatusDto::Protected,
+                MemberProtectionStatusSummary::AwaitingReadmission => {
+                    MemberProtectionStatusDto::AwaitingReadmission
+                }
+                MemberProtectionStatusSummary::RequiresReadmission => {
+                    MemberProtectionStatusDto::RequiresReadmission
+                }
+                MemberProtectionStatusSummary::RecoveryRequired => {
+                    MemberProtectionStatusDto::RecoveryRequired
+                }
+            },
+        }
+    }
+}
+
+impl IntoApiDto<SpaceProtectionDto> for SpaceProtectionSummary {
+    fn into_api_dto(self) -> SpaceProtectionDto {
+        SpaceProtectionDto {
+            mode: match self.mode {
+                SpaceProtectionModeSummary::Legacy => SpaceProtectionModeDto::Legacy,
+                SpaceProtectionModeSummary::Migrating => SpaceProtectionModeDto::Migrating,
+                SpaceProtectionModeSummary::Ready => SpaceProtectionModeDto::Ready,
+            },
+            members: self
+                .members
+                .into_iter()
+                .map(IntoApiDto::into_api_dto)
+                .collect(),
+            legacy_bootstrap: self.legacy_bootstrap.map(IntoApiDto::into_api_dto),
         }
     }
 }

@@ -59,7 +59,7 @@ pub(crate) async fn handle_unpair_device(
         }))
         .await
         .map_err(|error| map_unpair_engine_err(error, peer_id.as_str()))?;
-    if !matches!(result, OperationResult::MemberRemoved) {
+    if !matches!(result, OperationResult::MemberRemoved(_)) {
         return Err(ApiError::internal(
             "engine returned an unexpected member-removal result",
         ));

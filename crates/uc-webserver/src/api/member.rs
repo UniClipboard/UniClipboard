@@ -188,10 +188,16 @@ pub async fn get_space_protection_handler(
         .await
         .map_err(|error| map_member_engine_error("", "get_space_protection", error))?;
     let OperationResult::SpaceProtection(snapshot) = result else {
+        tracing::error!(
+            error_kind = "unexpected_operation_result",
+            operation = "get_space_protection",
+            "engine returned unexpected result"
+        );
         return Err(ApiError::internal(
             "engine returned an unexpected space-protection result",
         ));
     };
+    info!("get space protection succeeded");
     Ok(Json(ApiEnvelope::now(snapshot.into_api_dto())))
 }
 
@@ -231,10 +237,16 @@ pub async fn secure_remove_legacy_member_handler(
         .await
         .map_err(|error| map_member_engine_error(&device_id, "secure_remove_legacy", error))?;
     let OperationResult::LegacyMemberRemoval(bootstrap) = result else {
+        tracing::error!(
+            error_kind = "unexpected_operation_result",
+            operation = "secure_remove_legacy",
+            "engine returned unexpected result"
+        );
         return Err(ApiError::internal(
             "engine returned an unexpected legacy-removal result",
         ));
     };
+    info!("secure legacy member removal started");
     Ok(Json(ApiEnvelope::now(SecureLegacyRemovalDto {
         bootstrap: bootstrap.into_api_dto(),
     })))

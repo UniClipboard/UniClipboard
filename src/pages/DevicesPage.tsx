@@ -40,7 +40,7 @@ import {
 } from '@/api/tauri-command/mobile_sync'
 import AddDeviceDialog from '@/components/device/AddDeviceDialog'
 import AddMobileSyncDeviceDialog from '@/components/device/AddMobileSyncDeviceDialog'
-import { deriveBadgeKind } from '@/components/device/connection-channel-utils'
+import { derivePeerStatusTone } from '@/components/device/connection-channel-utils'
 import EnableMobileSyncDialog from '@/components/device/EnableMobileSyncDialog'
 import LocalDevicePanel from '@/components/device/LocalDevicePanel'
 import MobileDevicePanel from '@/components/device/MobileDevicePanel'
@@ -379,7 +379,7 @@ const DevicesPage: React.FC = () => {
               <DeviceListItem
                 key={peer.peerId}
                 name={peer.deviceName || t('devices.list.labels.unknownDevice')}
-                tone={peerDotTone(peer, lanOnlyActive)}
+                tone={peerDotTone(peer)}
                 dimmed={!peer.connected}
                 selected={
                   effectiveSelection.kind === 'peer' && effectiveSelection.id === peer.peerId
@@ -656,10 +656,8 @@ const LocalPanelSkeleton: React.FC = () => (
 // Presence helpers
 // ────────────────────────────────────────────────────────────────
 
-function peerDotTone(peer: SpaceMember, lanOnlyActive: boolean): StatusDotTone {
-  if (!peer.connected) return 'off'
-  const kind = deriveBadgeKind(peer.channel ?? 'unknown', lanOnlyActive)
-  return kind === 'relay' ? 'warning' : 'success'
+function peerDotTone(peer: SpaceMember): StatusDotTone {
+  return derivePeerStatusTone(peer.channel ?? 'unknown', peer.connected)
 }
 
 function mobileDotTone(mobile: MobileDeviceView, now: number): StatusDotTone {

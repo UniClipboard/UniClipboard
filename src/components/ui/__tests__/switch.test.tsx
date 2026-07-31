@@ -1,7 +1,13 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import React from 'react'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { Switch } from '@/components/ui/switch'
+
+const soundMocks = vi.hoisted(() => ({
+  playUiSound: vi.fn(),
+}))
+
+vi.mock('@/lib/ui-sound', () => soundMocks)
 
 vi.mock('framer-motion', async () => {
   const ReactModule = await import('react')
@@ -39,6 +45,42 @@ vi.mock('framer-motion', async () => {
 })
 
 describe('Switch', () => {
+  beforeEach(() => {
+    soundMocks.playUiSound.mockClear()
+  })
+
+  it('plays toggle feedback for an accepted click', () => {
+    const onCheckedChange = vi.fn()
+    render(<Switch checked={false} onCheckedChange={onCheckedChange} aria-label="Sync" />)
+
+    fireEvent.click(screen.getByRole('switch', { name: 'Sync' }))
+
+    expect(soundMocks.playUiSound).toHaveBeenCalledOnce()
+    expect(soundMocks.playUiSound).toHaveBeenCalledWith('toggle')
+  })
+
+  it('does not play toggle feedback when disabled', () => {
+    render(<Switch checked={false} disabled onCheckedChange={vi.fn()} aria-label="Sync" />)
+
+    fireEvent.click(screen.getByRole('switch', { name: 'Sync' }))
+
+    expect(soundMocks.playUiSound).not.toHaveBeenCalled()
+  })
+
+  it('keeps the unchecked track visible on dark backgrounds', () => {
+    render(<Switch checked={false} aria-label="Sync" />)
+
+    expect(screen.getByRole('switch', { name: 'Sync' })).toHaveClass('dark:bg-foreground/20')
+  })
+
+  it('uses the contrasting theme color for the checked thumb', () => {
+    render(<Switch checked aria-label="Sync" />)
+
+    expect(screen.getByRole('switch', { name: 'Sync' }).firstElementChild).toHaveClass(
+      'bg-primary-foreground'
+    )
+  })
+
   it('limits thumb motion to the horizontal toggle axis', () => {
     const onCheckedChange = vi.fn()
     const { rerender } = render(

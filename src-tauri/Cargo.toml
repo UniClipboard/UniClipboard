@@ -49,6 +49,12 @@ cargo-clippy = []
 # 启用后默认使用 "dev" profile（数据目录后缀 `-dev`、keychain service 后缀 `-dev`）。
 # 仅供 `bun tauri:build:dev` 使用，避免本地 dev 构建产物覆盖 prod 安装的数据。
 dev-profile = ["uc-tauri/dev-profile"]
+# Enables the WebDriver plugins only in the dedicated debug E2E build.
+e2e = [
+  "uc-tauri/e2e",
+  "dep:tauri-plugin-wdio",
+  "dep:tauri-plugin-wdio-webdriver",
+]
 # Tauri 的 production webview 加载开关：开了才会用 `tauri://localhost` 协议从
 # 嵌入的 `frontendDist` 读 index.html / assets；关掉的话即便 cargo `--release`
 # 也仍走 `devUrl`（tauri.conf.json 里是 http://localhost:1420），结果是 snap
@@ -57,6 +63,16 @@ dev-profile = ["uc-tauri/dev-profile"]
 # 绕过 tauri-cli 直接 cargo build，因此必须在这里手动通过
 # `--features custom-protocol` 启用。
 custom-protocol = ["tauri/custom-protocol"]
+
+# Direct optional dependencies let tauri-build discover plugin permissions
+# when the E2E feature is enabled. Runtime registration lives in uc-tauri.
+[dependencies.tauri-plugin-wdio]
+version = "1"
+optional = true
+
+[dependencies.tauri-plugin-wdio-webdriver]
+version = "1"
+optional = true
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-autostart = "2"

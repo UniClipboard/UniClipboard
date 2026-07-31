@@ -142,7 +142,12 @@ function applyInvitationRevoked(_event: SetupInvitationRevokedEvent) {
 }
 
 function applyPairingCompleted(event: SetupPairingCompletedEvent) {
-  if (!event.success) return
+  if (!event.success) {
+    // A matched invitation is one-time even when the handshake fails.
+    // Refresh so the sponsor does not keep displaying the consumed code.
+    void refreshFromServer()
+    return
+  }
 
   const currentCompletion = completionFromFlow(snapshot.flow)
   const sponsorWasWaiting = snapshot.flow.kind === 'invitation_pending'

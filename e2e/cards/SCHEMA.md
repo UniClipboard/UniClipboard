@@ -4,7 +4,7 @@
 
 `e2e/cards/` 是 living test corpus：每张卡片描述一个独立、可重放的真机场景。
 
-卡片不是测试代码，而是测试 **契约**。执行器（webdriverio + tauri-driver）读卡片决定怎么操作两台 Tauri 实例；编排 agent 读卡片决定 PR diff 命中哪些场景；归因 agent 读卡片的"已知失败模式"做先验。
+卡片不是测试代码，而是测试 **契约**。执行器（WebdriverIO + Tauri 应用内驱动）读卡片决定怎么操作两台 Tauri 实例；编排 agent 读卡片决定 PR diff 命中哪些场景；归因 agent 读卡片的"已知失败模式"做先验。
 
 ## 命名
 
@@ -21,7 +21,7 @@
 | `id` | string | 与文件名（不含 `.md`）一致，全局唯一 |
 | `title` | string | 一句话场景描述 |
 | `topology` | enum | `single` / `dual-device` / `daemon-only` / `in-process-stack` |
-| `runtime` | array | 当前只支持 `[linux, windows]`；macOS 因 tauri-driver 不支持被排除 |
+| `runtime` | array | 支持 `linux`、`windows`、`macos`；按场景已实际验证的平台填写 |
 | `modules` | array | 文件 / 目录路径，agent 用 PR diff 与之求交集做选片 |
 | `selectors` | map | 命名 → CSS 选择器；断言层只走这些确定性锚点，不用视觉判定 |
 | `budget_ms` | number | 主要断言的时间预算，超时即失败 |
@@ -68,7 +68,7 @@ uniclipboard UI 用 Radix UI 的 HoverCard / Popover / Dialog / Tooltip。这些
 - 不写实现细节——卡片是黑盒场景，描述用户能看到 / 系统能观测到的事实
 - 不内联具体 PR 号 / commit hash——卡片是 living，PR 是历史
 - 不把多个场景塞进同一张卡片——拆开命中率才准
-- 不写 macOS 专属场景——目前 tauri-driver 不支持 macOS，相关 case 暂挂 README 的 TODO 表
+- macOS 的 Tauri 窗口交互可直接写卡片；Finder、系统权限弹窗、全局快捷键等系统界面场景必须另行声明自动化方式或专用夹具
 
 ## 卡片与 spec 的映射
 

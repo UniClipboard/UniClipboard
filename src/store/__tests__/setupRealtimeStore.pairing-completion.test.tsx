@@ -1,5 +1,5 @@
 import { act, renderHook, waitFor } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { SetupPairingCompletedEvent } from '@/api/setupEvents'
 
 const mocks = vi.hoisted(() => ({
@@ -29,6 +29,12 @@ vi.mock('@/api/setupEvents', () => ({
 }))
 
 describe('setupRealtimeStore pairing completion', () => {
+  beforeEach(() => {
+    vi.resetModules()
+    mocks.getSetupState.mockReset()
+    mocks.pairingCompleted = null
+  })
+
   it('leaves the invitation screen immediately when pairing succeeds', async () => {
     const invitationState = {
       hasCompleted: true,
@@ -60,6 +66,42 @@ describe('setupRealtimeStore pairing completion', () => {
         sponsorDeviceId: 'host-id',
         peerDeviceId: 'new-device-id',
       },
+    })
+  })
+
+  it('leaves a consumed invitation screen when pairing fails', async () => {
+    const completedState = {
+      hasCompleted: true,
+      currentInvitation: null,
+      deviceName: 'Host Mac',
+    }
+    mocks.getSetupState.mockResolvedValue(completedState)
+
+    const { applyIssuedInvitation, applyServerSetupState, useSetupRealtimeStore } =
+      await import('@/store/setupRealtimeStore')
+    const { result } = renderHook(() => useSetupRealtimeStore())
+
+    await waitFor(() => expect(mocks.pairingCompleted).toBeTypeOf('function'))
+    act(() => {
+      applyServerSetupState(completedState, { kind: 'space_ready' })
+      applyIssuedInvitation({ code: 'ABC123', expiresAtMs: 123_456 })
+    })
+    expect(result.current.flow.kind).toBe('invitation_pending')
+
+    act(() => {
+      mocks.pairingCompleted?.({
+        sponsorDeviceId: 'host-id',
+        joinerDeviceId: null,
+        success: false,
+        reason: 'passphrase_mismatch',
+      })
+    })
+
+    await waitFor(() => expect(mocks.getSetupState).toHaveBeenCalledTimes(2))
+    expect(result.current.flow).toEqual({
+      kind: 'completed',
+      deviceName: 'Host Mac',
+      completion: { kind: 'space_ready' },
     })
   })
 })

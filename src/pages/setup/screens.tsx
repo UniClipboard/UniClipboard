@@ -492,7 +492,12 @@ export function ShowInvitationScreen({
       subtitle={t('subtitle')}
       hint={expired ? t('hintExpired') : t('hint')}
       footer={
-        <Button variant="outline" onClick={onCancel} disabled={loading}>
+        <Button
+          variant="outline"
+          data-testid="setup-invitation-cancel"
+          onClick={onCancel}
+          disabled={loading}
+        >
           {loading ? (
             <Loader2 className="mr-2 size-4 animate-spin" />
           ) : (
@@ -504,7 +509,10 @@ export function ShowInvitationScreen({
       centered
     >
       <div className="mt-8 flex flex-col items-center gap-6 sm:mt-10">
-        <div className="rounded-xl border border-border/50 bg-muted/30 px-6 py-5 font-mono text-3xl font-semibold tracking-[0.4em] text-foreground sm:text-4xl">
+        <div
+          data-testid="setup-invitation-code"
+          className="rounded-xl border border-border/50 bg-muted/30 px-6 py-5 font-mono text-3xl font-semibold tracking-[0.4em] text-foreground sm:text-4xl"
+        >
           {display}
         </div>
         <div
@@ -594,18 +602,15 @@ export function RedeemInvitationScreen({
     const res = await onSubmit({ code, passphrase: pass })
     if (!res.ok) {
       setErrorKind(res.kind)
-      // 邀请码已废类——原 code 必然 404,清掉让用户必须输入新邀请码。
-      // 口令错——保留 code,清 pass,焦点跳回口令框。
+      // These failures all consume or invalidate the one-time invitation.
       if (
         res.kind === 'invitation_not_found' ||
         res.kind === 'invitation_expired' ||
-        res.kind === 'sponsor_rejected'
+        res.kind === 'sponsor_rejected' ||
+        res.kind === 'passphrase_mismatch'
       ) {
         setCode('')
         setPass('')
-      } else if (res.kind === 'passphrase_mismatch') {
-        setPass('')
-        passInputRef.current?.focus()
       }
     }
   }
@@ -793,7 +798,7 @@ export function PairingCompleteScreen({
       }
       centered
     >
-      <div className="mt-4 flex justify-center">
+      <div data-testid="setup-pairing-complete" className="mt-4 flex justify-center">
         <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-3 py-1 text-xs font-medium text-emerald-600 dark:text-emerald-400">
           <CheckCircle2 className="size-3.5" />
           {t('connected')}
@@ -840,7 +845,10 @@ export function PairingCompleteScreen({
             <span className="size-2 rounded-full bg-emerald-500 shadow-[0_0_0_3px_oklch(0.72_0.16_158_/_0.12)]" />
             {t('devices.peer')}
           </div>
-          <div className="mt-0.5 truncate font-mono text-xs text-muted-foreground">
+          <div
+            data-testid="setup-complete-peer-id"
+            className="mt-0.5 truncate font-mono text-xs text-muted-foreground"
+          >
             {shortDeviceId(peerDeviceId)}
           </div>
         </div>

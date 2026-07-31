@@ -1902,7 +1902,7 @@
       "errors": {
         "invitationNotFound": "邀請碼已被使用或失效，請讓對方重新生成一個。",
         "invitationExpired": "邀請碼已過期，請讓對方重新生成一個。",
-        "passphraseMismatch": "口令錯誤，請重試。",
+        "passphraseMismatch": "口令錯誤，此邀請碼已被使用，請讓對方重新產生一個。",
         "sponsorUnreachable": "暫時無法連接對方裝置，請確認兩台裝置都在線。",
         "sponsorRejected": "對方未識別該邀請碼，請讓對方重新生成。",
         "sponsorDeclined": "對方拒絕了本次配對請求。",

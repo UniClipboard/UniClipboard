@@ -4,6 +4,9 @@
 //!
 //! This crate contains the Tauri shell, application bootstrap, and command handlers.
 
+#[cfg(all(feature = "e2e", not(debug_assertions)))]
+compile_error!("the e2e feature is restricted to debug builds");
+
 pub mod activity_hud;
 pub mod adapters;
 pub mod analytics_forward;

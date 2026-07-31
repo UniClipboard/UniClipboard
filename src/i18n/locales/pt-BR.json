@@ -1908,7 +1908,7 @@
       "errors": {
         "invitationNotFound": "Este código de convite já foi usado ou não é mais válido. Peça um novo código ao dispositivo anfitrião.",
         "invitationExpired": "Este convite expirou. Peça um novo código ao dispositivo anfitrião.",
-        "passphraseMismatch": "A frase secreta não confere. Tente novamente.",
+        "passphraseMismatch": "A frase secreta não confere. Este convite já foi usado; peça ao anfitrião para criar outro.",
         "sponsorUnreachable": "Não foi possível alcançar o dispositivo anfitrião agora. Verifique se os dois dispositivos estão online.",
         "sponsorRejected": "O dispositivo anfitrião não reconheceu este código. Peça um novo.",
         "sponsorDeclined": "O dispositivo anfitrião recusou a solicitação de pareamento.",

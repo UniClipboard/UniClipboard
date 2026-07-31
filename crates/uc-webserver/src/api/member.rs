@@ -272,3 +272,44 @@ fn map_member_engine_error(device_id: &str, op: &'static str, error: EngineError
     log_facade_failure("roster", op, variant, api.status, &api.message);
     api
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::http::StatusCode;
+    use uc_engine::EngineErrorCategory;
+
+    fn engine_error(code: u32) -> EngineError {
+        EngineError::new(code, EngineErrorCategory::Internal, false)
+    }
+
+    #[test]
+    fn legacy_required_error_is_a_stable_conflict_for_the_legacy_client_path() {
+        let api = map_member_engine_error(
+            "peer-1",
+            "get_member_sync_preferences",
+            engine_error(MEMBER_LEGACY_BOOTSTRAP_REQUIRED_CODE),
+        );
+
+        assert_eq!(api.status, StatusCode::CONFLICT);
+        assert_eq!(api.code, "legacy_bootstrap_required");
+        assert_eq!(
+            api.message,
+            "legacy Space member removal requires secure bootstrap"
+        );
+    }
+
+    #[test]
+    fn secure_removal_and_protection_failures_do_not_expose_engine_detail() {
+        for code in [
+            MEMBER_LEGACY_BOOTSTRAP_FAILED_CODE,
+            SPACE_PROTECTION_FAILED_CODE,
+        ] {
+            let api = map_member_engine_error("peer-1", "secure_remove_legacy", engine_error(code));
+
+            assert_eq!(api.status, StatusCode::INTERNAL_SERVER_ERROR);
+            assert_eq!(api.code, "internal_error");
+            assert!(api.details.is_none());
+        }
+    }
+}

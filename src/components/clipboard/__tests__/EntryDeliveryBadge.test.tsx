@@ -450,11 +450,12 @@ describe('EntryDeliveryBadge', () => {
     })
   })
 
-  it('maps all four failure reasons to their i18n labels in popover', async () => {
+  it('maps every failure reason to its i18n label in popover', async () => {
     const user = userEvent.setup()
     const reasons: ReadonlyArray<DeliveryFailureReason> = [
       'localPolicy',
       'peerRejected',
+      'peerIncompatible',
       'io',
       'internal',
     ]

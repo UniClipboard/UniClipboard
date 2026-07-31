@@ -444,7 +444,7 @@ export type DebugStatusEnvelope = {
  * Note: "peer offline" is NOT in this enum — it is represented as
  * `EntryDeliveryStatusDto::Unreachable` (a separate status, not a failure).
  */
-export type DeliveryFailureReasonDto = 'localPolicy' | 'peerRejected' | 'io' | 'internal';
+export type DeliveryFailureReasonDto = 'localPolicy' | 'peerRejected' | 'peerIncompatible' | 'io' | 'internal';
 
 /**
  * Canonical success envelope: `{ "data": T, "ts": <unix millis i64> }`.
@@ -1185,6 +1185,17 @@ export type LanInterfaceViewDto = {
     name: string;
 };
 
+export type LegacyBootstrapDto = {
+    bootstrapId: string;
+    outcome: LegacyBootstrapOutcomeDto;
+    pendingReadmission: number;
+};
+
+/**
+ * Recoverable Legacy bootstrap progress, owned and persisted by the Engine.
+ */
+export type LegacyBootstrapOutcomeDto = 'awaiting_readmission' | 'complete' | 'recovery_required';
+
 /**
  * Canonical success envelope: `{ "data": T, "ts": <unix millis i64> }`.
  *
@@ -1303,6 +1314,16 @@ export type LogExportResultDto = {
     path: string;
     since: string;
 };
+
+export type MemberProtectionDto = {
+    deviceId: string;
+    status: MemberProtectionStatusDto;
+};
+
+/**
+ * Protection state of one roster member in the current space.
+ */
+export type MemberProtectionStatusDto = 'legacy_unprotected' | 'protected' | 'awaiting_readmission' | 'requires_readmission' | 'recovery_required';
 
 /**
  * Sync preferences recorded for a space member.
@@ -2411,6 +2432,36 @@ export type SearchTagsEnvelope = {
     ts: number;
 };
 
+/**
+ * Result of starting a secure Legacy member removal.
+ */
+export type SecureLegacyRemovalDto = {
+    bootstrap: LegacyBootstrapDto;
+};
+
+/**
+ * Canonical success envelope: `{ "data": T, "ts": <unix millis i64> }`.
+ *
+ * `ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler
+ * via [`ApiEnvelope::now`] (the contract carries only the type + the clock
+ * helper, not a hard dependency on when the handler reads the clock).
+ * `rename_all = "camelCase"` is a no-op for the single-word fields here but is
+ * declared for forward-compat.
+ *
+ * IMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named
+ * OpenAPI component is declared in the `#[aliases(...)]` block below. Add a new
+ * alias line whenever a new payload type needs enveloping. NEVER register the
+ * bare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare
+ * generic, and an un-aliased generic inlines an anonymous schema.
+ */
+export type SecureLegacyRemovalEnvelope = {
+    data: SecureLegacyRemovalDto;
+    /**
+     * Server time when the response was built (unix epoch milliseconds).
+     */
+    ts: number;
+};
+
 export type SecuritySettingsDto = {
     /**
      * 是否启用启动时自动解锁
@@ -2787,6 +2838,40 @@ export type SpaceMemberListEnvelope = {
      */
     ts: number;
 };
+
+export type SpaceProtectionDto = {
+    legacyBootstrap?: LegacyBootstrapDto | null;
+    members: Array<MemberProtectionDto>;
+    mode: SpaceProtectionModeDto;
+};
+
+/**
+ * Canonical success envelope: `{ "data": T, "ts": <unix millis i64> }`.
+ *
+ * `ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler
+ * via [`ApiEnvelope::now`] (the contract carries only the type + the clock
+ * helper, not a hard dependency on when the handler reads the clock).
+ * `rename_all = "camelCase"` is a no-op for the single-word fields here but is
+ * declared for forward-compat.
+ *
+ * IMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named
+ * OpenAPI component is declared in the `#[aliases(...)]` block below. Add a new
+ * alias line whenever a new payload type needs enveloping. NEVER register the
+ * bare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare
+ * generic, and an un-aliased generic inlines an anonymous schema.
+ */
+export type SpaceProtectionEnvelope = {
+    data: SpaceProtectionDto;
+    /**
+     * Server time when the response was built (unix epoch milliseconds).
+     */
+    ts: number;
+};
+
+/**
+ * Engine-authoritative state of a Legacy-to-MLS space protection upgrade.
+ */
+export type SpaceProtectionModeDto = 'legacy' | 'migrating' | 'ready';
 
 export type StartupModeDto = 'normal' | 'silent' | 'lightweight';
 
@@ -4440,6 +4525,71 @@ export type GetLifecycleStatusResponses = {
 };
 
 export type GetLifecycleStatusResponse = GetLifecycleStatusResponses[keyof GetLifecycleStatusResponses];
+
+export type GetSpaceProtectionData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/member/protection';
+};
+
+export type GetSpaceProtectionErrors = {
+    /**
+     * Internal server error
+     */
+    500: ApiErrorResponse;
+    /**
+     * Runtime unavailable
+     */
+    503: ApiErrorResponse;
+};
+
+export type GetSpaceProtectionError = GetSpaceProtectionErrors[keyof GetSpaceProtectionErrors];
+
+export type GetSpaceProtectionResponses = {
+    200: SpaceProtectionEnvelope;
+};
+
+export type GetSpaceProtectionResponse = GetSpaceProtectionResponses[keyof GetSpaceProtectionResponses];
+
+export type SecureRemoveLegacyMemberData = {
+    body?: never;
+    path: {
+        /**
+         * Legacy Space member to exclude
+         */
+        device_id: string;
+    };
+    query?: never;
+    url: '/member/{device_id}/secure-remove';
+};
+
+export type SecureRemoveLegacyMemberErrors = {
+    /**
+     * Invalid device ID
+     */
+    400: ApiErrorResponse;
+    /**
+     * Member not found
+     */
+    404: ApiErrorResponse;
+    /**
+     * Bootstrap failed
+     */
+    500: ApiErrorResponse;
+    /**
+     * Runtime unavailable
+     */
+    503: ApiErrorResponse;
+};
+
+export type SecureRemoveLegacyMemberError = SecureRemoveLegacyMemberErrors[keyof SecureRemoveLegacyMemberErrors];
+
+export type SecureRemoveLegacyMemberResponses = {
+    200: SecureLegacyRemovalEnvelope;
+};
+
+export type SecureRemoveLegacyMemberResponse = SecureRemoveLegacyMemberResponses[keyof SecureRemoveLegacyMemberResponses];
 
 export type GetMemberSyncPreferencesData = {
     body?: never;

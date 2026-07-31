@@ -1079,6 +1079,24 @@
       "confirmTitle": "Desparear dispositivo",
       "confirmDescription": "Tem certeza de que deseja desparear {{deviceName}}? Você precisará parear novamente para sincronizar o conteúdo da área de transferência."
     },
+    "protection": {
+      "label": "Proteção",
+      "bootstrap": {
+        "awaiting_readmission": "A atualização de segurança aguarda a readmissão de {{count}} membro.",
+        "recovery_required": "A atualização de segurança precisa ser recuperada antes da sincronização dos membros."
+      },
+      "errors": {
+        "removeFailed": "Não foi possível remover o dispositivo.",
+        "statusFailed": "Não foi possível carregar o status de proteção do espaço."
+      },
+      "status": {
+        "legacy_unprotected": "Atualização de segurança necessária",
+        "protected": "Protegido",
+        "awaiting_readmission": "Aguardando readmissão",
+        "requires_readmission": "Readmissão necessária",
+        "recovery_required": "Recuperação necessária"
+      }
+    },
     "tabs": {
       "connected": "Dispositivos conectados",
       "requests": "Solicitações de pareamento"
@@ -1700,6 +1718,7 @@
     "failureReason": {
       "localPolicy": "bloqueado pela política local",
       "peerRejected": "recusado pelo dispositivo",
+      "peerIncompatible": "a versão do dispositivo é incompatível",
       "io": "erro de rede",
       "internal": "erro interno"
     },

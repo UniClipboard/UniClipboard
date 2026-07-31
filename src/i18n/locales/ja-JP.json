@@ -1076,6 +1076,24 @@
       "confirmTitle": "デバイスのペアリングを解除します",
       "confirmDescription": "本当に {{deviceName}} のペアリングを解除してもよろしいですか？クリップボードのコンテンツを同期するには、再度ペアリングする必要があります。"
     },
+    "protection": {
+      "label": "保護状態",
+      "bootstrap": {
+        "awaiting_readmission": "セキュリティ更新は {{count}} 台のデバイスの再参加を待機しています。",
+        "recovery_required": "メンバーが同期する前にセキュリティ更新を復旧する必要があります。"
+      },
+      "errors": {
+        "removeFailed": "デバイスを削除できませんでした。",
+        "statusFailed": "スペースの保護状態を読み込めませんでした。"
+      },
+      "status": {
+        "legacy_unprotected": "セキュリティの更新が必要です",
+        "protected": "保護済み",
+        "awaiting_readmission": "再参加を待機中",
+        "requires_readmission": "再参加が必要です",
+        "recovery_required": "復旧が必要です"
+      }
+    },
     "tabs": {
       "connected": "接続されたデバイス",
       "requests": "ペアリング リクエスト"
@@ -1695,6 +1713,7 @@
     "failureReason": {
       "localPolicy": "ローカル ポリシーによってブロックされています",
       "peerRejected": "ピア拒否されました",
+      "peerIncompatible": "相手のバージョンに互換性がありません",
       "io": "ネットワーク エラー",
       "internal": "内部エラー"
     },

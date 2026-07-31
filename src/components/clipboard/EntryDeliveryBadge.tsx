@@ -49,6 +49,7 @@ type SyncSummary = 'synced' | 'syncing' | 'partial' | 'failed' | 'waiting' | 'pe
 const FAILURE_REASON_KEYS: Record<DeliveryFailureReason, string> = {
   localPolicy: 'delivery.failureReason.localPolicy',
   peerRejected: 'delivery.failureReason.peerRejected',
+  peerIncompatible: 'delivery.failureReason.peerIncompatible',
   io: 'delivery.failureReason.io',
   internal: 'delivery.failureReason.internal',
 }

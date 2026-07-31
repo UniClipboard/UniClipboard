@@ -15,6 +15,7 @@ interface UnpairAlertDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   deviceName: string
+  busy: boolean
   onConfirm: () => void
 }
 
@@ -22,6 +23,7 @@ const UnpairAlertDialog: React.FC<UnpairAlertDialogProps> = ({
   open,
   onOpenChange,
   deviceName,
+  busy,
   onConfirm,
 }) => {
   const { t } = useTranslation()
@@ -36,8 +38,8 @@ const UnpairAlertDialog: React.FC<UnpairAlertDialogProps> = ({
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel>{t('clipboard.cancelLabel')}</AlertDialogCancel>
-          <AlertDialogAction variant="destructive" onClick={onConfirm}>
+          <AlertDialogCancel disabled={busy}>{t('clipboard.cancelLabel')}</AlertDialogCancel>
+          <AlertDialogAction variant="destructive" disabled={busy} onClick={onConfirm}>
             {t('devices.list.actions.unpair')}
           </AlertDialogAction>
         </AlertDialogFooter>

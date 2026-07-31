@@ -10,7 +10,8 @@ use axum::{Json, Router};
 use utoipa;
 
 use uc_engine::error_codes::{
-    MEMBER_INVALID_INPUT_CODE, MEMBER_NOT_FOUND_CODE, MEMBER_UNAVAILABLE_CODE,
+    MEMBER_INVALID_INPUT_CODE, MEMBER_LEGACY_BOOTSTRAP_REQUIRED_CODE, MEMBER_NOT_FOUND_CODE,
+    MEMBER_UNAVAILABLE_CODE,
 };
 use uc_engine::{EngineError, Operation, OperationResult, RemoveMemberInput};
 
@@ -82,8 +83,38 @@ fn map_unpair_engine_err(error: EngineError, peer_id: &str) -> ApiError {
             "unavailable",
             ApiError::service_unavailable("member roster facade unavailable"),
         ),
+        MEMBER_LEGACY_BOOTSTRAP_REQUIRED_CODE => (
+            "legacy_bootstrap_required",
+            ApiError::conflict("legacy Space member removal requires secure bootstrap")
+                .with_code("legacy_bootstrap_required"),
+        ),
         _ => ("internal", ApiError::internal("failed to remove member")),
     };
     log_facade_failure("roster", "unpair_device", variant, api.status, &api.message);
     api
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use uc_engine::EngineErrorCategory;
+
+    #[test]
+    fn legacy_unpair_requires_secure_bootstrap_with_stable_conflict_code() {
+        let api = map_unpair_engine_err(
+            EngineError::new(
+                MEMBER_LEGACY_BOOTSTRAP_REQUIRED_CODE,
+                EngineErrorCategory::Internal,
+                false,
+            ),
+            "peer-1",
+        );
+
+        assert_eq!(api.status, StatusCode::CONFLICT);
+        assert_eq!(api.code, "legacy_bootstrap_required");
+        assert_eq!(
+            api.message,
+            "legacy Space member removal requires secure bootstrap"
+        );
+    }
 }

@@ -57,8 +57,10 @@ use uc_webserver::api::openapi::ApiDoc;
 /// +1 operation → 64 / 71.
 /// Protected relay credentials add a status query and one atomic save:
 /// +2 paths, +2 operations.
-const EXPECTED_PATHS: usize = 69;
-const EXPECTED_OPERATIONS: usize = 76;
+/// Engine-owned member protection adds GET `/member/protection` and POST
+/// `/member/{device_id}/secure-remove`: +2 paths, +2 operations.
+const EXPECTED_PATHS: usize = 71;
+const EXPECTED_OPERATIONS: usize = 78;
 const SCHEMA_PREFIX: &str = "#/components/schemas/";
 const HTTP_METHODS: [&str; 7] = ["get", "put", "post", "delete", "patch", "head", "options"];
 

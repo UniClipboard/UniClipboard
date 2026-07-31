@@ -1,6 +1,13 @@
-import { describe, it, expect } from 'vitest'
+import { configureStore } from '@reduxjs/toolkit'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { getSpaceProtection, type SpaceProtection } from '@/api/daemon/member'
 import type { SpaceMember } from '@/api/daemon/members'
-import devicesReducer, { setSpaceMembers } from '../devicesSlice'
+import devicesReducer, { fetchSpaceProtection, setSpaceMembers } from '../devicesSlice'
+
+vi.mock('@/api/daemon/member', async importOriginal => ({
+  ...(await importOriginal<typeof import('@/api/daemon/member')>()),
+  getSpaceProtection: vi.fn(),
+}))
 
 function makeMember(peerId: string, overrides?: Partial<SpaceMember>): SpaceMember {
   return {
@@ -45,5 +52,42 @@ describe('devicesSlice setSpaceMembers', () => {
     const first = stateWith([makeMember('a'), makeMember('b')])
     const second = devicesReducer(first, setSpaceMembers([makeMember('a'), makeMember('c')]))
     expect(second.spaceMembers.map(m => m.peerId).sort()).toEqual(['a', 'c'])
+  })
+})
+
+describe('devicesSlice fetchSpaceProtection', () => {
+  const protection: SpaceProtection = {
+    mode: 'migrating',
+    members: [{ deviceId: 'peer-a', status: 'awaiting_readmission' }],
+    legacyBootstrap: {
+      bootstrapId: 'bootstrap-1',
+      outcome: 'awaiting_readmission',
+      pendingReadmission: 1,
+    },
+  }
+
+  beforeEach(() => {
+    vi.mocked(getSpaceProtection).mockReset()
+  })
+
+  it('stores the Engine-authoritative protection snapshot', async () => {
+    vi.mocked(getSpaceProtection).mockResolvedValue(protection)
+    const store = configureStore({ reducer: { devices: devicesReducer } })
+
+    await store.dispatch(fetchSpaceProtection())
+
+    expect(store.getState().devices.spaceProtection).toEqual(protection)
+    expect(store.getState().devices.spaceProtectionError).toBeNull()
+  })
+
+  it('stores a translation key when the status request fails', async () => {
+    vi.mocked(getSpaceProtection).mockRejectedValue(new Error('offline'))
+    const store = configureStore({ reducer: { devices: devicesReducer } })
+
+    await store.dispatch(fetchSpaceProtection())
+
+    expect(store.getState().devices.spaceProtectionError).toBe(
+      'devices.protection.errors.statusFailed'
+    )
   })
 })

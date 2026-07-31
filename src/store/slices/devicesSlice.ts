@@ -1,9 +1,11 @@
 import { createAsyncThunk, createSlice, type PayloadAction } from '@reduxjs/toolkit'
 import {
   getMemberSyncPreferences,
+  getSpaceProtection,
   updateMemberSyncPreferences as updateMemberSyncPreferencesApi,
   type MemberSyncPreferences,
   type MemberSyncPreferencesPatch,
+  type SpaceProtection,
 } from '@/api/daemon/member'
 import {
   getLocalDeviceInfo,
@@ -22,6 +24,12 @@ interface DevicesState {
   spaceMembers: SpaceMember[]
   spaceMembersLoading: boolean
   spaceMembersError: string | null
+
+  // Engine-authoritative space protection snapshot. The UI never persists or
+  // derives bootstrap progress independently of this value.
+  spaceProtection: SpaceProtection | null
+  spaceProtectionLoading: boolean
+  spaceProtectionError: string | null
 
   // 每成员同步偏好（phase 4b PR-3：从 DeviceSyncSettings 切换到 MemberSyncPreferences）
   memberSyncPreferences: Record<string, MemberSyncPreferences>
@@ -88,6 +96,9 @@ const initialState: DevicesState = {
   spaceMembers: [],
   spaceMembersLoading: false,
   spaceMembersError: null,
+  spaceProtection: null,
+  spaceProtectionLoading: false,
+  spaceProtectionError: null,
   memberSyncPreferences: {},
   memberSyncPreferencesLoading: {},
 }
@@ -111,6 +122,17 @@ export const fetchSpaceMembers = createAsyncThunk(
       return await getPairedPeersWithStatus()
     } catch {
       return rejectWithValue('获取空间成员失败')
+    }
+  }
+)
+
+export const fetchSpaceProtection = createAsyncThunk(
+  'devices/fetchSpaceProtection',
+  async (_, { rejectWithValue }) => {
+    try {
+      return await getSpaceProtection()
+    } catch {
+      return rejectWithValue('devices.protection.errors.statusFailed')
     }
   }
 )
@@ -203,6 +225,21 @@ const devicesSlice = createSlice({
       .addCase(fetchSpaceMembers.rejected, (state, action) => {
         state.spaceMembersLoading = false
         state.spaceMembersError = action.payload as string
+      })
+
+    // Space protection
+    builder
+      .addCase(fetchSpaceProtection.pending, state => {
+        state.spaceProtectionLoading = state.spaceProtection === null
+        state.spaceProtectionError = null
+      })
+      .addCase(fetchSpaceProtection.fulfilled, (state, action) => {
+        state.spaceProtectionLoading = false
+        state.spaceProtection = action.payload
+      })
+      .addCase(fetchSpaceProtection.rejected, (state, action) => {
+        state.spaceProtectionLoading = false
+        state.spaceProtectionError = action.payload as string
       })
 
     // Member sync preferences

@@ -11,7 +11,7 @@
 import { AlignLeft, FileIcon, ImageIcon, Link2, Type, type LucideIcon } from 'lucide-react'
 import React, { useCallback, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
-import type { ContentTypes } from '@/api/daemon/member'
+import type { ContentTypes, MemberProtectionStatus } from '@/api/daemon/member'
 import { DEFAULT_SEND_CONTENT_TYPES } from '@/api/daemon/member'
 import type { SpaceMember } from '@/api/daemon/members'
 import { deriveBadgeKind } from '@/components/device/connection-channel-utils'
@@ -65,6 +65,10 @@ const PeerDetailPanel: React.FC<PeerDetailPanelProps> = ({
   const preferences = useAppSelector(state => state.devices.memberSyncPreferences[deviceId])
   const isLoading = useAppSelector(
     state => state.devices.memberSyncPreferencesLoading[deviceId] ?? false
+  )
+  const protectionStatus = useAppSelector(
+    state =>
+      state.devices.spaceProtection?.members.find(member => member.deviceId === deviceId)?.status
   )
 
   useEffect(() => {
@@ -190,6 +194,13 @@ const PeerDetailPanel: React.FC<PeerDetailPanelProps> = ({
         <PanelFactRow label={t('devices.settings.fields.channel')}>
           <span className="text-xs font-medium">{channelLabel}</span>
         </PanelFactRow>
+        {protectionStatus && (
+          <PanelFactRow label={t('devices.protection.label')}>
+            <Badge variant="outline" className={protectionBadgeClass(protectionStatus)}>
+              {t(`devices.protection.status.${protectionStatus}`)}
+            </Badge>
+          </PanelFactRow>
+        )}
         {device?.connectionAddress && (
           <PanelFactRow label={t('devices.settings.fields.address')}>
             <span className="truncate font-mono text-xs font-medium">
@@ -293,6 +304,19 @@ const PeerDetailPanel: React.FC<PeerDetailPanelProps> = ({
 }
 
 export default PeerDetailPanel
+
+function protectionBadgeClass(status: MemberProtectionStatus): string {
+  switch (status) {
+    case 'protected':
+      return 'border-success/30 bg-success/10 text-success'
+    case 'awaiting_readmission':
+    case 'requires_readmission':
+      return 'border-warning/30 bg-warning/10 text-warning'
+    case 'legacy_unprotected':
+    case 'recovery_required':
+      return 'border-destructive/30 bg-destructive/10 text-destructive'
+  }
+}
 
 // ────────────────────────────────────────────────────────────────
 // Local helpers (file-private)

@@ -1076,6 +1076,24 @@
       "confirmTitle": "Unpair Device",
       "confirmDescription": "Are you sure you want to unpair {{deviceName}}? You will need to pair again to sync clipboard content."
     },
+    "protection": {
+      "label": "Protection",
+      "bootstrap": {
+        "awaiting_readmission": "Security upgrade is waiting for {{count}} member to be readmitted.",
+        "recovery_required": "Security upgrade needs recovery before members can sync."
+      },
+      "errors": {
+        "removeFailed": "Could not remove the device.",
+        "statusFailed": "Could not load space protection status."
+      },
+      "status": {
+        "legacy_unprotected": "Security upgrade required",
+        "protected": "Protected",
+        "awaiting_readmission": "Awaiting readmission",
+        "requires_readmission": "Readmission required",
+        "recovery_required": "Recovery required"
+      }
+    },
     "tabs": {
       "connected": "Connected Devices",
       "requests": "Pairing Requests"
@@ -1695,6 +1713,7 @@
     "failureReason": {
       "localPolicy": "blocked by local policy",
       "peerRejected": "peer rejected",
+      "peerIncompatible": "peer version is incompatible",
       "io": "network error",
       "internal": "internal error"
     },

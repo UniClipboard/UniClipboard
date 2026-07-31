@@ -1075,6 +1075,24 @@
       "confirmTitle": "取消配對",
       "confirmDescription": "確定要取消與 {{deviceName}} 的配對嗎？取消後需要重新配對才能同步剪貼簿內容。"
     },
+    "protection": {
+      "label": "保護狀態",
+      "bootstrap": {
+        "awaiting_readmission": "安全升級正在等待 {{count}} 個成員重新准入。",
+        "recovery_required": "安全升級需要恢復，成員暫時無法同步。"
+      },
+      "errors": {
+        "removeFailed": "無法移除此裝置。",
+        "statusFailed": "無法載入空間保護狀態。"
+      },
+      "status": {
+        "legacy_unprotected": "需要安全升級",
+        "protected": "已受保護",
+        "awaiting_readmission": "等待重新准入",
+        "requires_readmission": "需要重新准入",
+        "recovery_required": "需要恢復"
+      }
+    },
     "tabs": {
       "connected": "已連接裝置",
       "requests": "配對請求"
@@ -1694,6 +1712,7 @@
     "failureReason": {
       "localPolicy": "本地策略阻斷",
       "peerRejected": "對端拒收",
+      "peerIncompatible": "對端版本不相容",
       "io": "網路錯誤",
       "internal": "內部錯誤"
     },

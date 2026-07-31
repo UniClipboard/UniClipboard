@@ -25,6 +25,7 @@ import { Plus, Settings2 } from 'lucide-react'
 import React, { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { refreshPresence } from '@/api/daemon'
+import { isLegacyBootstrapRequired, secureRemoveLegacyMember } from '@/api/daemon/member'
 import type { SpaceMember } from '@/api/daemon/members'
 import { unpairDevice } from '@/api/daemon/members'
 import {
@@ -79,6 +80,7 @@ import {
   clearLocalDeviceError,
   clearSpaceMembersError,
   fetchLocalDeviceInfo,
+  fetchSpaceProtection,
   fetchSpaceMembers,
   setSpaceMembers,
 } from '@/store/slices/devicesSlice'
@@ -104,12 +106,15 @@ const DevicesPage: React.FC = () => {
     localDeviceError,
     spaceMembers: rawSpaceMembers,
     spaceMembersError,
+    spaceProtection,
+    spaceProtectionError,
   } = useAppSelector(state => state.devices)
 
   const peers = localDevice
     ? rawSpaceMembers.filter(d => d.peerId !== localDevice.peerId)
     : rawSpaceMembers
   const onlineCount = peers.filter(p => p.connected).length
+  const legacyBootstrap = spaceProtection?.legacyBootstrap ?? null
 
   const { setting } = useSetting()
   const syncActive = setting?.sync.autoSync !== false
@@ -120,6 +125,7 @@ const DevicesPage: React.FC = () => {
   useEffect(() => {
     dispatch(fetchLocalDeviceInfo())
     dispatch(fetchSpaceMembers())
+    dispatch(fetchSpaceProtection())
 
     // Presence awareness is push-driven by the daemon's PeerKeepAliveWorker
     // (inbound presence Online → outbound dial → peers.changed ws). The
@@ -137,6 +143,7 @@ const DevicesPage: React.FC = () => {
     const onVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
         probe()
+        dispatch(fetchSpaceProtection())
       }
     }
     document.addEventListener('visibilitychange', onVisibilityChange)
@@ -195,6 +202,7 @@ const DevicesPage: React.FC = () => {
   const [addP2PDialogOpen, setAddP2PDialogOpen] = useState(false)
   const [unpairDialogOpen, setUnpairDialogOpen] = useState(false)
   const [unpairTargetId, setUnpairTargetId] = useState<string | null>(null)
+  const [unpairBusy, setUnpairBusy] = useState(false)
 
   const handleUnpairRequest = (peerId: string) => {
     setUnpairTargetId(peerId)
@@ -202,14 +210,33 @@ const DevicesPage: React.FC = () => {
   }
 
   const handleUnpairConfirm = async () => {
-    if (!unpairTargetId) return
+    if (!unpairTargetId || unpairBusy) return
+    setUnpairBusy(true)
     try {
-      await unpairDevice(unpairTargetId)
+      try {
+        await unpairDevice(unpairTargetId)
+      } catch (error) {
+        if (!isLegacyBootstrapRequired(error)) {
+          log.error({ err: error }, 'failed to remove device')
+          toast.error(t('devices.protection.errors.removeFailed'))
+          return
+        }
+        try {
+          await secureRemoveLegacyMember(unpairTargetId)
+        } catch (bootstrapError) {
+          log.error({ err: bootstrapError }, 'failed to start secure legacy removal')
+          toast.error(t('devices.protection.errors.removeFailed'))
+          return
+        }
+      }
+
       dispatch(fetchSpaceMembers())
+      dispatch(fetchSpaceProtection())
+      setSelection({ kind: 'local' })
       setUnpairDialogOpen(false)
       setUnpairTargetId(null)
-    } catch (error) {
-      log.error({ err: error }, 'failed to unpair device')
+    } finally {
+      setUnpairBusy(false)
     }
   }
 
@@ -268,10 +295,14 @@ const DevicesPage: React.FC = () => {
 
         <ScrollArea className="min-h-0 flex-1">
           <div className="flex flex-col px-2 pb-3">
-            {(spaceMembersError || mobileDevicesError) && (
+            {(spaceMembersError || mobileDevicesError || spaceProtectionError) && (
               <Alert variant="destructive" className="mx-1 my-2">
                 <AlertDescription className="flex flex-col gap-2 text-xs">
-                  <span>{spaceMembersError ?? mobileDevicesError}</span>
+                  <span>
+                    {spaceMembersError ??
+                      mobileDevicesError ??
+                      (spaceProtectionError ? t(spaceProtectionError) : null)}
+                  </span>
                   <Button
                     variant="outline"
                     size="sm"
@@ -281,6 +312,9 @@ const DevicesPage: React.FC = () => {
                         dispatch(clearSpaceMembersError())
                         dispatch(fetchSpaceMembers())
                       }
+                      if (spaceProtectionError) {
+                        dispatch(fetchSpaceProtection())
+                      }
                       if (mobileDevicesError) {
                         mobileActions.reload()
                       }
@@ -288,6 +322,16 @@ const DevicesPage: React.FC = () => {
                   >
                     {t('devices.list.actions.retry')}
                   </Button>
+                </AlertDescription>
+              </Alert>
+            )}
+
+            {legacyBootstrap && legacyBootstrap.outcome !== 'complete' && (
+              <Alert className="mx-1 my-2 border-warning/30 bg-warning/10 text-warning">
+                <AlertDescription className="text-xs">
+                  {t(`devices.protection.bootstrap.${legacyBootstrap.outcome}`, {
+                    count: legacyBootstrap.pendingReadmission,
+                  })}
                 </AlertDescription>
               </Alert>
             )}
@@ -452,6 +496,7 @@ const DevicesPage: React.FC = () => {
         open={unpairDialogOpen}
         onOpenChange={setUnpairDialogOpen}
         deviceName={unpairTargetDevice?.deviceName || t('devices.list.labels.unknownDevice')}
+        busy={unpairBusy}
         onConfirm={handleUnpairConfirm}
       />
       <MobileSyncSettingsDialog

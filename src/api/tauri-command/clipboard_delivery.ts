@@ -38,7 +38,12 @@ export type EntrySourceView =
   | { tag: 'historical' }
 
 /** 失败原因细分,与 i18n key `delivery.failureReason.<variant>` 对应。 */
-export type DeliveryFailureReason = 'localPolicy' | 'peerRejected' | 'io' | 'internal'
+export type DeliveryFailureReason =
+  | 'localPolicy'
+  | 'peerRejected'
+  | 'peerIncompatible'
+  | 'io'
+  | 'internal'
 
 /** 单条投递状态。`Pending` 来自视图层合成 (trusted_peer ∖ 已尝试)。 */
 export type EntryDeliveryStatusView =

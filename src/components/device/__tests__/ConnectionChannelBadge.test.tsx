@@ -1,7 +1,7 @@
 import '@testing-library/jest-dom/vitest'
 import { render, screen, cleanup } from '@testing-library/react'
 import { afterEach, beforeAll, describe, expect, it } from 'vitest'
-import { deriveBadgeKind } from '@/components/device/connection-channel-utils'
+import { deriveBadgeKind, derivePeerStatusTone } from '@/components/device/connection-channel-utils'
 import ConnectionChannelBadge from '@/components/device/ConnectionChannelBadge'
 import i18n from '@/i18n'
 
@@ -39,6 +39,18 @@ describe('deriveBadgeKind — Phase 96 INDIC-01 truth-table', () => {
   it('unknown ⇒ unknown,永远不被合成为其他态(Pitfall 4)', () => {
     expect(deriveBadgeKind('unknown', false)).toBe('unknown')
     expect(deriveBadgeKind('unknown', true)).toBe('unknown')
+  })
+})
+
+describe('derivePeerStatusTone', () => {
+  it('uses green for direct connections and blue for relay connections', () => {
+    expect(derivePeerStatusTone('direct', true)).toBe('success')
+    expect(derivePeerStatusTone('relay', true)).toBe('info')
+  })
+
+  it('keeps disconnected and unknown channels neutral', () => {
+    expect(derivePeerStatusTone('direct', false)).toBe('off')
+    expect(derivePeerStatusTone('unknown', true)).toBe('off')
   })
 })
 

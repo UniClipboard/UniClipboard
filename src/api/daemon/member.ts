@@ -8,9 +8,8 @@
  * - `GET /member/:device_id/sync-preferences`
  * - `PATCH /member/:device_id/sync-preferences`
  *
- * 本阶段前端 UX 只展示 send 列；receive 字段不露出,由后端默认值保持
- * (`MemberSyncPreferences::default()`: `send/receive = true`,两套 `ContentTypes` 全开)。
- * 未来若要暴露接收开关,直接扩展本模块与 `DeviceSettingsSheet` 即可。
+ * The device detail UI exposes both directions. Updates remain partial so the
+ * daemon and Engine own merge semantics and the authoritative full value.
  */
 
 import {

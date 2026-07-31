@@ -1455,12 +1455,31 @@
       },
       "sync": {
         "title": "Configurações de sincronização",
+        "helpLabel": "Sobre enviar e receber",
+        "help": "Enviar controla o que este computador pode sincronizar com este dispositivo. Receber controla o que este computador pode aceitar deste dispositivo.",
         "restoreDefaults": "Restaurar padrões",
+        "updateFailed": "Não foi possível atualizar as configurações de sincronização. Tente novamente.",
         "contentTypes": "Tipos de conteúdo",
+        "columns": {
+          "send": "Enviar",
+          "receive": "Receber"
+        },
+        "typeLabels": {
+          "text": "Texto",
+          "image": "Imagens",
+          "file": "Arquivos",
+          "link": "Links",
+          "richText": "Texto formatado"
+        },
+        "toggleLabel": "{{direction}}: {{contentType}}",
         "rules": {
           "sendEnabled": {
             "title": "Enviar para este dispositivo",
-            "description": "Quando ativado, o conteúdo da área de transferência deste computador é enviado para o dispositivo selecionado. Por enquanto, o recebimento fica sempre ativo; uma opção dedicada para recebimento chegará em uma versão futura."
+            "description": "Quando ativado, o conteúdo da área de transferência deste computador é enviado para o dispositivo selecionado."
+          },
+          "receiveEnabled": {
+            "title": "Receber deste dispositivo",
+            "description": "Quando ativado, este computador pode receber novos conteúdos da área de transferência do dispositivo selecionado."
           },
           "syncText": {
             "title": "Sincronizar texto",

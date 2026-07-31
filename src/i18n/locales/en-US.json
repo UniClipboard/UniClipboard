@@ -1451,12 +1451,31 @@
       },
       "sync": {
         "title": "Sync Settings",
+        "helpLabel": "About send and receive",
+        "help": "Send controls what this computer can sync to this device. Receive controls what this computer can accept from this device.",
         "restoreDefaults": "Restore defaults",
+        "updateFailed": "Couldn't update sync settings. Try again.",
         "contentTypes": "Content types",
+        "columns": {
+          "send": "Send",
+          "receive": "Receive"
+        },
+        "typeLabels": {
+          "text": "Text",
+          "image": "Images",
+          "file": "Files",
+          "link": "Links",
+          "richText": "Rich text"
+        },
+        "toggleLabel": "{{direction}}: {{contentType}}",
         "rules": {
           "sendEnabled": {
             "title": "Send to this device",
-            "description": "When on, clipboard content from this computer is sent to the selected device. Receiving is always on for now; a dedicated receive toggle will arrive in a later release."
+            "description": "When on, clipboard content from this computer is sent to the selected device."
+          },
+          "receiveEnabled": {
+            "title": "Receive from this device",
+            "description": "When on, new clipboard content from the selected device can be received on this computer."
           },
           "syncText": {
             "title": "Sync Text",

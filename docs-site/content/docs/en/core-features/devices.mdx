@@ -95,7 +95,7 @@ controls below.
 - **Connection info** section lists rounded InfoRows for `Channel`
   (Direct / Relay / Offline / Out of LAN) and, when known, `Address`.
 
-### Send master switch
+### Send and receive controls
 
 <Feature since="0.7.0">
   Per-peer **outbound gate** + **content-type allowlist** are now enforced at the dispatcher
@@ -103,34 +103,38 @@ controls below.
 </Feature>
 
 `Send to this device`: when off, clips produced on this machine never
-leave for this peer. **Receive remains on** regardless — the peer can
-still push clips to you. A dedicated _receive_ toggle is **not wired
-up yet** and is planned for a later release. The switch is
-per-peer-outbound, not space-wide.
+leave for this peer. The switch is per-peer-outbound, not space-wide.
+
+`Receive from this device`: when off, future clips from this peer are
+rejected locally before they enter history, overwrite the system
+clipboard, or get re-broadcast. The preference belongs to this machine;
+it is not copied to the peer, and turning it back on only affects future
+content.
 
 ### Content-type allowlist
 
-When the send switch is on, a 2-column pill grid lists every content
+Below each direction switch, a 2-column pill grid lists every content
 type — each cell is an icon + label + a small Switch:
 
 - Text
 - Image
 - Link
 - File
-- Code (snippet, tagged "Coming soon")
-- Rich text (HTML / RTF, tagged "Coming soon")
+- Rich text (HTML / RTF)
 
-Active toggles get a primary border + tinted background; turning the
-send master switch off dims and disables the whole grid.
+Active toggles get a primary border + tinted background; turning a
+direction's master switch off dims and disables that direction's grid.
 
-Any type that's off, the bytes for that type **never leave this
-machine** — the gate is enforced at the scheduler. So:
+For the send allowlist, a disabled type **never leaves this machine** —
+the gate is enforced at the scheduler. For the receive allowlist, a
+disabled type is rejected locally before it enters history or the
+system clipboard. So:
 
 - Off for "File" → stops eating that peer's file-cache budget.
 - Off for "Image" → screenshots stop competing for bandwidth.
 - `Restore defaults` is a ghost button at the top-right of the "Sync
-  settings" section (not in the footer) — one click puts every toggle
-  back to its default.
+  settings" section (not in the footer) — one click puts both directions
+  and every content type back to their defaults.
 
 <Callout type="info">
   Rules apply per-peer. With multiple peers, you can configure them separately — e.g. send only text

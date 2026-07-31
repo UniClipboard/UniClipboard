@@ -18,7 +18,7 @@
 
 | 来源 PR | 阻塞原因 |
 |---------|----------|
-| #748 macOS Finder 图片摄取 | 三条手动场景全部依赖 macOS Finder 复制；tauri-driver 不支持 macOS，需先确定 macOS 自动化方案（AppleScript / pasteboard CLI / 替代 driver）再翻译为卡片 |
+| #748 macOS Finder 图片摄取 | 应用内驱动只能操作 Tauri 窗口，三条手动场景还依赖 Finder 与系统剪贴板；需补 macOS 系统界面自动化或专用夹具后再翻译为卡片 |
 
 ## 卡片如何被消费
 

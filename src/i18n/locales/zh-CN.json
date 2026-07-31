@@ -1921,7 +1921,7 @@
       "errors": {
         "invitationNotFound": "邀请码已被使用或失效，请让对方重新生成一个。",
         "invitationExpired": "邀请码已过期，请让对方重新生成一个。",
-        "passphraseMismatch": "口令错误，请重试。",
+        "passphraseMismatch": "口令错误，此邀请码已被使用，请让对方重新生成一个。",
         "sponsorUnreachable": "暂时无法连接对方设备，请确认两台设备都在线。",
         "sponsorRejected": "对方未识别该邀请码，请让对方重新生成。",
         "sponsorDeclined": "对方拒绝了本次配对请求。",

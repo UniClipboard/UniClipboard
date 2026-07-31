@@ -12,16 +12,23 @@ import {
 
 describe('setup screens e2e selectors', () => {
   beforeAll(() => {
-    if ('ResizeObserver' in globalThis) return
+    if (!('ResizeObserver' in globalThis)) {
+      Object.defineProperty(globalThis, 'ResizeObserver', {
+        configurable: true,
+        value: class ResizeObserver {
+          observe() {}
+          unobserve() {}
+          disconnect() {}
+        },
+      })
+    }
 
-    Object.defineProperty(globalThis, 'ResizeObserver', {
-      configurable: true,
-      value: class ResizeObserver {
-        observe() {}
-        unobserve() {}
-        disconnect() {}
-      },
-    })
+    if (!document.elementFromPoint) {
+      Object.defineProperty(document, 'elementFromPoint', {
+        configurable: true,
+        value: vi.fn(() => document.body),
+      })
+    }
   })
 
   // input-otp@1.4.2 schedules three unguarded setTimeouts (0/10/50ms) from a
@@ -82,6 +89,30 @@ describe('setup screens e2e selectors', () => {
     expect(onInvite).not.toHaveBeenCalled()
   })
 
+  it('clears the consumed invitation after a wrong passphrase', async () => {
+    const user = userEvent.setup()
+    const onSubmit = vi.fn().mockResolvedValue({
+      ok: false,
+      kind: 'passphrase_mismatch',
+      raw: 'wrong passphrase',
+    })
+
+    render(<RedeemInvitationScreen onSubmit={onSubmit} onBack={vi.fn()} />)
+
+    const codeInput = screen.getByLabelText('Invitation code')
+    await user.type(codeInput, 'ABCD1234')
+    const passphraseInput = await screen.findByLabelText('Space passphrase')
+    await user.type(passphraseInput, 'wrong passphrase')
+    await user.click(screen.getByTestId('setup-redeem-submit'))
+
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1))
+    expect(codeInput).toHaveValue('')
+    expect(screen.queryByLabelText('Space passphrase')).not.toBeInTheDocument()
+
+    await user.type(codeInput, 'WXYZ5678')
+    expect(await screen.findByLabelText('Space passphrase')).toHaveValue('')
+  })
+
   it('exposes stable controls for the real-window setup smoke test', () => {
     const noop = vi.fn()
 
@@ -98,5 +129,15 @@ describe('setup screens e2e selectors', () => {
     expect(screen.getByTestId('setup-redeem-back')).toBeInTheDocument()
     expect(screen.getByTestId('setup-redeem-code')).toBeInTheDocument()
     expect(screen.getByTestId('setup-redeem-submit')).toBeInTheDocument()
+
+    rerender(
+      <ShowInvitationScreen code="ABCD1234" expiresAtMs={Date.now() + 60_000} onCancel={noop} />
+    )
+    expect(screen.getByTestId('setup-invitation-code')).toHaveTextContent('ABCD-1234')
+    expect(screen.getByTestId('setup-invitation-cancel')).toBeInTheDocument()
+
+    rerender(<PairingCompleteScreen peerDeviceId="peer-device-id" onDone={noop} />)
+    expect(screen.getByTestId('setup-pairing-complete')).toBeInTheDocument()
+    expect(screen.getByTestId('setup-complete-peer-id')).toHaveTextContent('peer-device-id')
   })
 })

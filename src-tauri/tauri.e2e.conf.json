@@ -1,0 +1,22 @@
+{
+  "$schema": "https://schema.tauri.app/config",
+  "build": {
+    "beforeBuildCommand": "bun run build:e2e"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "security": {
+      "capabilities": [
+        "default",
+        "desktop-capability",
+        "updater",
+        {
+          "identifier": "e2e-wdio",
+          "description": "WebdriverIO permissions for the dedicated E2E build",
+          "windows": ["main", "quick-panel"],
+          "permissions": ["wdio:default"]
+        }
+      ]
+    }
+  }
+}

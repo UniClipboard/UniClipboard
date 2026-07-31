@@ -12,6 +12,8 @@ description = "Tauri adapter layer for UniClipboard"
 # feature only matters for the daemon binary (uc-daemon crate). Kept as a no-op
 # so the existing feature chain (workspace root -> uc-tauri) doesn't break.
 dev-profile = []
+# Test-only WebDriver plugins. Release builds are rejected in lib.rs.
+e2e = ["dep:tauri-plugin-wdio", "dep:tauri-plugin-wdio-webdriver"]
 
 [dependencies]
 # Workspace crates
@@ -35,6 +37,8 @@ tauri-plugin-single-instance = "2"
 # dialogs are driven from Rust commands (`app.dialog().file()`), not the JS
 # guest bindings, so no `@tauri-apps/plugin-dialog` npm package is needed.
 tauri-plugin-dialog = "2"
+tauri-plugin-wdio = { version = "1", optional = true }
+tauri-plugin-wdio-webdriver = { version = "1", optional = true }
 url = "2"
 
 # Async

@@ -15,6 +15,7 @@ import {
   type RedeemResponse,
 } from '@/api/daemon/setupV2'
 import { createLogger } from '@/lib/logger'
+import { recordWdioE2eEvent } from '@/lib/wdio-test-bridge'
 import {
   acknowledgeSetupCompletion,
   applyIssuedInvitation,
@@ -156,14 +157,18 @@ export function useSetupFlow(): UseSetupFlowReturn {
 
   const handleIssue = useCallback(async () => {
     setLoading(true)
+    recordWdioE2eEvent('setup.issue.started')
     try {
       const out = await issuePairingInvitation()
+      recordWdioE2eEvent('setup.issue.returned')
       // The response is already authoritative. The matching WebSocket event
       // may arrive before or after it, and both converge through the store's
       // single invitation transition.
       applyIssuedInvitation(out)
+      recordWdioE2eEvent('setup.issue.applied')
       return { ok: true } as const
     } catch (err) {
+      recordWdioE2eEvent('setup.issue.failed', String(err))
       if (err instanceof SetupV2Error) {
         log.warn({ kind: err.kind, raw: err.raw }, 'issuePairingInvitation failed')
         return { ok: false, kind: err.kind as IssueInvitationErrorKind, raw: err.raw } as const
@@ -172,6 +177,7 @@ export function useSetupFlow(): UseSetupFlowReturn {
       toast.error(t('errors.operationFailed'))
       return { ok: false, kind: 'internal' as IssueInvitationErrorKind, raw: String(err) } as const
     } finally {
+      recordWdioE2eEvent('setup.issue.finished')
       setLoading(false)
     }
   }, [t])

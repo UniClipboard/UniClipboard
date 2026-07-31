@@ -104,4 +104,48 @@ describe('setupRealtimeStore pairing completion', () => {
       completion: { kind: 'space_ready' },
     })
   })
+
+  it('does not let a stale failure refresh replace a newly issued invitation', async () => {
+    const completedState = {
+      hasCompleted: true,
+      currentInvitation: null,
+      deviceName: 'Host Mac',
+    }
+    let resolveFailureRefresh: ((state: typeof completedState) => void) | undefined
+    const failureRefresh = new Promise<typeof completedState>(resolve => {
+      resolveFailureRefresh = resolve
+    })
+    mocks.getSetupState.mockResolvedValueOnce(completedState).mockReturnValueOnce(failureRefresh)
+
+    const { applyIssuedInvitation, useSetupRealtimeStore } =
+      await import('@/store/setupRealtimeStore')
+    const { result } = renderHook(() => useSetupRealtimeStore())
+
+    await waitFor(() => expect(mocks.pairingCompleted).toBeTypeOf('function'))
+    act(() => {
+      mocks.pairingCompleted?.({
+        sponsorDeviceId: 'host-id',
+        joinerDeviceId: null,
+        success: false,
+        reason: 'invitation_mismatch',
+      })
+    })
+    await waitFor(() => expect(mocks.getSetupState).toHaveBeenCalledTimes(2))
+
+    act(() => {
+      applyIssuedInvitation({ code: 'NEW12345', expiresAtMs: 456_789 })
+    })
+    await act(async () => {
+      resolveFailureRefresh?.(completedState)
+      await failureRefresh
+    })
+
+    expect(result.current.flow).toEqual({
+      kind: 'invitation_pending',
+      code: 'NEW12345',
+      expiresAtMs: 456_789,
+      deviceName: 'Host Mac',
+      completion: null,
+    })
+  })
 })

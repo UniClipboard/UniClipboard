@@ -14,9 +14,52 @@ async function click(instance, selector) {
 }
 
 async function invitationCode(instance) {
-  const display = await element(instance, '[data-testid="setup-invitation-code"]', {
-    timeout: 60000,
-  })
+  let display
+  try {
+    display = await element(instance, '[data-testid="setup-invitation-code"]', {
+      timeout: 60000,
+    })
+  } catch (error) {
+    const state = await instance.execute(async () => {
+      const setupRequests = performance
+        .getEntriesByType('resource')
+        .filter(entry => entry.name.includes('/v2/setup/'))
+        .map(entry => {
+          const url = new URL(entry.name)
+          return {
+            path: url.pathname,
+            duration: entry.duration,
+            responseEnd: entry.responseEnd,
+          }
+        })
+      const issueRequest = performance
+        .getEntriesByType('resource')
+        .find(entry => entry.name.includes('/v2/setup/issue-invitation'))
+      let stateProbe = null
+      if (issueRequest) {
+        const stateUrl = new URL(issueRequest.name)
+        stateUrl.pathname = '/v2/setup/state'
+        const response = await fetch(stateUrl, { signal: AbortSignal.timeout(5000) })
+        const body = await response.json()
+        stateProbe = {
+          status: response.status,
+          hasCompleted: body?.data?.hasCompleted,
+          hasInvitation: body?.data?.currentInvitation != null,
+        }
+      }
+      return {
+        text: document.body?.innerText ?? '',
+        testIds: Array.from(document.querySelectorAll('[data-testid]'), node =>
+          node.getAttribute('data-testid')
+        ),
+        setupRequests,
+        stateProbe,
+        events: window.__WDIO_E2E_EVENTS__ ?? [],
+      }
+    })
+    console.error('Sponsor invitation screen diagnostics:', state)
+    throw error
+  }
   const code = (await display.getText()).replace(/[^A-Z0-9]/g, '')
   expect(code).toHaveLength(8)
   return code
@@ -29,6 +72,24 @@ async function enterInvitation(instance, code, passphrase) {
   const passphraseInput = await element(instance, '#join-pass')
   expect(await passphraseInput.getValue()).toBe('')
   await passphraseInput.setValue(passphrase)
+}
+
+async function pairingComplete(instance, label) {
+  try {
+    return await element(instance, '[data-testid="setup-pairing-complete"]', {
+      timeout: 90000,
+    })
+  } catch (error) {
+    const state = await instance.execute(() => ({
+      text: document.body?.innerText ?? '',
+      testIds: Array.from(document.querySelectorAll('[data-testid]'), node =>
+        node.getAttribute('data-testid')
+      ),
+      events: window.__WDIO_E2E_EVENTS__ ?? [],
+    }))
+    console.error(`${label} pairing completion diagnostics:`, state)
+    throw error
+  }
 }
 
 dualDescribe('同机双客户端首次配对', () => {
@@ -81,8 +142,8 @@ dualDescribe('同机双客户端首次配对', () => {
     await click(joiner, '[data-testid="setup-redeem-submit"]')
 
     const [sponsorComplete, joinerComplete] = await Promise.all([
-      element(sponsor, '[data-testid="setup-pairing-complete"]', { timeout: 90000 }),
-      element(joiner, '[data-testid="setup-pairing-complete"]', { timeout: 90000 }),
+      pairingComplete(sponsor, 'Sponsor'),
+      pairingComplete(joiner, 'Joiner'),
     ])
     await expect(sponsorComplete).toExist()
     await expect(joinerComplete).toExist()

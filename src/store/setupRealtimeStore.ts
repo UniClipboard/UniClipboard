@@ -16,6 +16,7 @@ import {
 } from '@/api/setupEvents'
 import { connectDaemonWs } from '@/lib/daemon-ws-bootstrap'
 import { createLogger } from '@/lib/logger'
+import { recordWdioE2eEvent } from '@/lib/wdio-test-bridge'
 
 const log = createLogger('setup-realtime-store')
 
@@ -104,6 +105,10 @@ function flowFromState(
 }
 
 function update(flow: SetupFlow, hydrated = true) {
+  recordWdioE2eEvent('setup.flow.updated', {
+    kind: flow.kind,
+    code: flow.kind === 'invitation_pending' ? flow.code : undefined,
+  })
   snapshot = { flow, hydrated }
   emitChange()
 }
@@ -174,14 +179,8 @@ async function refreshFromServer(completion: SetupCompletion | null = null) {
   const revision = completionRevision
   try {
     const next = await getSetupState()
-    if (generation !== syncGeneration) return
-    const completionChangedWhileLoading = completionRevision !== revision
-    let latestCompletion = completion
-    if (completionChangedWhileLoading) {
-      latestCompletion = completionFromFlow(snapshot.flow)
-    } else {
-      latestCompletion = completionFromFlow(snapshot.flow) ?? latestCompletion
-    }
+    if (generation !== syncGeneration || completionRevision !== revision) return
+    const latestCompletion = completionFromFlow(snapshot.flow) ?? completion
     update(flowFromState(next, latestCompletion))
   } catch (err) {
     if (err instanceof SetupV2Error) {

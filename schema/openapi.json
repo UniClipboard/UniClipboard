@@ -653,6 +653,7 @@
         "enum": [
           "localPolicy",
           "peerRejected",
+          "peerIncompatible",
           "io",
           "internal"
         ],
@@ -1870,6 +1871,36 @@
         ],
         "type": "object"
       },
+      "LegacyBootstrapDto": {
+        "properties": {
+          "bootstrapId": {
+            "type": "string"
+          },
+          "outcome": {
+            "$ref": "#/components/schemas/LegacyBootstrapOutcomeDto"
+          },
+          "pendingReadmission": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "bootstrapId",
+          "outcome",
+          "pendingReadmission"
+        ],
+        "type": "object"
+      },
+      "LegacyBootstrapOutcomeDto": {
+        "description": "Recoverable Legacy bootstrap progress, owned and persisted by the Engine.",
+        "enum": [
+          "awaiting_readmission",
+          "complete",
+          "recovery_required"
+        ],
+        "type": "string"
+      },
       "LifecycleStatusEnvelope": {
         "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
         "properties": {
@@ -2006,6 +2037,32 @@
           "since"
         ],
         "type": "object"
+      },
+      "MemberProtectionDto": {
+        "properties": {
+          "deviceId": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/MemberProtectionStatusDto"
+          }
+        },
+        "required": [
+          "deviceId",
+          "status"
+        ],
+        "type": "object"
+      },
+      "MemberProtectionStatusDto": {
+        "description": "Protection state of one roster member in the current space.",
+        "enum": [
+          "legacy_unprotected",
+          "protected",
+          "awaiting_readmission",
+          "requires_readmission",
+          "recovery_required"
+        ],
+        "type": "string"
       },
       "MemberSyncPreferencesDto": {
         "description": "Sync preferences recorded for a space member.",
@@ -3841,6 +3898,36 @@
         ],
         "type": "object"
       },
+      "SecureLegacyRemovalDto": {
+        "description": "Result of starting a secure Legacy member removal.",
+        "properties": {
+          "bootstrap": {
+            "$ref": "#/components/schemas/LegacyBootstrapDto"
+          }
+        },
+        "required": [
+          "bootstrap"
+        ],
+        "type": "object"
+      },
+      "SecureLegacyRemovalEnvelope": {
+        "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/SecureLegacyRemovalDto"
+          },
+          "ts": {
+            "description": "Server time when the response was built (unix epoch milliseconds).",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "data",
+          "ts"
+        ],
+        "type": "object"
+      },
       "SecuritySettingsDto": {
         "properties": {
           "autoUnlockEnabled": {
@@ -4330,6 +4417,59 @@
           "ts"
         ],
         "type": "object"
+      },
+      "SpaceProtectionDto": {
+        "properties": {
+          "legacyBootstrap": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/LegacyBootstrapDto"
+              }
+            ],
+            "nullable": true
+          },
+          "members": {
+            "items": {
+              "$ref": "#/components/schemas/MemberProtectionDto"
+            },
+            "type": "array"
+          },
+          "mode": {
+            "$ref": "#/components/schemas/SpaceProtectionModeDto"
+          }
+        },
+        "required": [
+          "mode",
+          "members"
+        ],
+        "type": "object"
+      },
+      "SpaceProtectionEnvelope": {
+        "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/SpaceProtectionDto"
+          },
+          "ts": {
+            "description": "Server time when the response was built (unix epoch milliseconds).",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "data",
+          "ts"
+        ],
+        "type": "object"
+      },
+      "SpaceProtectionModeDto": {
+        "description": "Engine-authoritative state of a Legacy-to-MLS space protection upgrade.",
+        "enum": [
+          "legacy",
+          "migrating",
+          "ready"
+        ],
+        "type": "string"
       },
       "StartupModeDto": {
         "enum": [
@@ -7282,6 +7422,137 @@
         "summary": "GET /lifecycle/status",
         "tags": [
           "lifecycle"
+        ]
+      }
+    },
+    "/member/protection": {
+      "get": {
+        "description": "Projects the Engine's current protection authority. The daemon does not\ninfer or persist bootstrap progress; callers refresh this snapshot.",
+        "operationId": "getSpaceProtection",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SpaceProtectionEnvelope"
+                }
+              }
+            },
+            "description": ""
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal server error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Runtime unavailable"
+          }
+        },
+        "security": [
+          {
+            "session_query": []
+          },
+          {
+            "session_header": []
+          }
+        ],
+        "summary": "GET /member/protection",
+        "tags": [
+          "member"
+        ]
+      }
+    },
+    "/member/{device_id}/secure-remove": {
+      "post": {
+        "description": "Starts the Engine-owned Legacy Space bootstrap that safely excludes a member\nonly after a replacement MLS state is activated. The returned summary is a\nstatus snapshot, not a daemon-owned operation handle.",
+        "operationId": "secureRemoveLegacyMember",
+        "parameters": [
+          {
+            "description": "Legacy Space member to exclude",
+            "in": "path",
+            "name": "device_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SecureLegacyRemovalEnvelope"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Invalid device ID"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Member not found"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Bootstrap failed"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Runtime unavailable"
+          }
+        },
+        "security": [
+          {
+            "session_query": []
+          },
+          {
+            "session_header": []
+          }
+        ],
+        "summary": "POST /member/{device_id}/secure-remove",
+        "tags": [
+          "member"
         ]
       }
     },

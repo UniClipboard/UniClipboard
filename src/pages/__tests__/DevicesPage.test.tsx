@@ -15,10 +15,12 @@
  * survive a locale switch, matching the language-agnostic style below.
  */
 
-import { act, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { refreshPresence } from '@/api/daemon'
+import { isLegacyBootstrapRequired, secureRemoveLegacyMember } from '@/api/daemon/member'
+import { unpairDevice } from '@/api/daemon/members'
 import {
   getMobileSyncSettings,
   listMobileDevices,
@@ -93,20 +95,23 @@ vi.mock('@/components/device/MobileDevicePanel', () => ({
 }))
 
 const dispatchMock = vi.fn()
+const devicesState = {
+  localDevice: null as null | Record<string, unknown>,
+  localDeviceLoading: false,
+  localDeviceError: null as string | null,
+  spaceMembers: [] as Array<Record<string, unknown>>,
+  spaceMembersError: null as string | null,
+  spaceProtection: null as null | Record<string, unknown>,
+  spaceProtectionError: null as string | null,
+  memberSyncPreferences: {},
+  memberSyncPreferencesLoading: {},
+}
 
 vi.mock('@/store/hooks', () => ({
   useAppDispatch: () => dispatchMock,
   useAppSelector: (selector: (s: unknown) => unknown) =>
     selector({
-      devices: {
-        localDevice: null,
-        localDeviceLoading: false,
-        localDeviceError: null,
-        spaceMembers: [],
-        spaceMembersError: null,
-        memberSyncPreferences: {},
-        memberSyncPreferencesLoading: {},
-      },
+      devices: devicesState,
     }),
 }))
 
@@ -115,6 +120,7 @@ vi.mock('@/store/slices/devicesSlice', () => ({
   fetchSpaceMembers: vi.fn(() => ({ type: 'devices/fetchSpaceMembers' })),
   clearLocalDeviceError: vi.fn(() => ({ type: 'devices/clearLocalDeviceError' })),
   clearSpaceMembersError: vi.fn(() => ({ type: 'devices/clearSpaceMembersError' })),
+  fetchSpaceProtection: vi.fn(() => ({ type: 'devices/fetchSpaceProtection' })),
   fetchMemberSyncPreferences: vi.fn(() => ({ type: 'devices/fetchMemberSyncPreferences' })),
   updateMemberSyncPreferences: vi.fn(() => ({ type: 'devices/updateMemberSyncPreferences' })),
 }))
@@ -125,6 +131,11 @@ vi.mock('@/api/daemon', () => ({
 
 vi.mock('@/api/daemon/members', () => ({
   unpairDevice: vi.fn(),
+}))
+
+vi.mock('@/api/daemon/member', () => ({
+  isLegacyBootstrapRequired: vi.fn(),
+  secureRemoveLegacyMember: vi.fn(),
 }))
 
 vi.mock('@/api/tauri-command/mobile_sync', () => ({
@@ -174,6 +185,15 @@ describe('DevicesPage', () => {
   afterEach(() => {
     vi.mocked(refreshPresence).mockClear()
     vi.useRealTimers()
+    devicesState.localDevice = null
+    devicesState.localDeviceError = null
+    devicesState.spaceMembers = []
+    devicesState.spaceMembersError = null
+    devicesState.spaceProtection = null
+    devicesState.spaceProtectionError = null
+    vi.mocked(unpairDevice).mockReset()
+    vi.mocked(isLegacyBootstrapRequired).mockReset()
+    vi.mocked(secureRemoveLegacyMember).mockReset()
   })
 
   it('dispatches fetchLocalDeviceInfo and fetchSpaceMembers on mount', () => {
@@ -182,6 +202,16 @@ describe('DevicesPage', () => {
 
     expect(dispatchMock).toHaveBeenCalledWith({ type: 'devices/fetchLocalDeviceInfo' })
     expect(dispatchMock).toHaveBeenCalledWith({ type: 'devices/fetchSpaceMembers' })
+    expect(dispatchMock).toHaveBeenCalledWith({ type: 'devices/fetchSpaceProtection' })
+  })
+
+  it('translates a space protection status failure', () => {
+    devicesState.spaceProtectionError = 'devices.protection.errors.statusFailed'
+
+    render(<DevicesPage />)
+
+    expect(screen.getByText(i18n.t('devices.protection.errors.statusFailed'))).toBeInTheDocument()
+    expect(screen.queryByText('devices.protection.errors.statusFailed')).not.toBeInTheDocument()
   })
 
   it('renders the list column with the three device sections', () => {
@@ -232,6 +262,150 @@ describe('DevicesPage', () => {
       document.dispatchEvent(new Event('visibilitychange'))
     })
     expect(refreshPresence).toHaveBeenCalledTimes(2)
+  })
+})
+
+describe('DevicesPage secure legacy removal', () => {
+  const localDevice = {
+    peerId: 'local-peer',
+    deviceName: 'Local Mac',
+    deviceId: 'local-device',
+    platform: 'macos',
+    version: '0.20.0',
+  }
+  const remoteMember = {
+    peerId: 'remote-peer',
+    deviceName: 'Old Desktop',
+    pairingState: 'Trusted',
+    lastSeenAtMs: null,
+    connected: true,
+    channel: 'direct',
+    connectionAddress: '127.0.0.1:5000',
+  }
+
+  beforeEach(() => {
+    devicesState.localDevice = localDevice
+    devicesState.spaceMembers = [localDevice, remoteMember]
+    devicesState.spaceProtectionError = null
+    vi.mocked(unpairDevice).mockReset()
+    vi.mocked(isLegacyBootstrapRequired).mockReset()
+    vi.mocked(secureRemoveLegacyMember).mockReset()
+  })
+
+  afterEach(() => {
+    devicesState.localDevice = null
+    devicesState.spaceMembers = []
+  })
+
+  async function openUnpairConfirmation() {
+    const user = userEvent.setup()
+    await user.click(screen.getByRole('button', { name: remoteMember.deviceName }))
+    await user.click(screen.getByRole('button', { name: i18n.t('devices.list.actions.unpair') }))
+    return user
+  }
+
+  it('starts the secure upgrade only for the legacy-space conflict', async () => {
+    const legacyError = new Error('legacy removal blocked')
+    vi.mocked(unpairDevice).mockRejectedValue(legacyError)
+    vi.mocked(isLegacyBootstrapRequired).mockImplementation(error => error === legacyError)
+    vi.mocked(secureRemoveLegacyMember).mockResolvedValue({
+      bootstrap: {
+        bootstrapId: 'bootstrap-1',
+        outcome: 'awaiting_readmission',
+        pendingReadmission: 1,
+      },
+    })
+    render(<DevicesPage />)
+    const user = await openUnpairConfirmation()
+
+    await user.click(screen.getByRole('button', { name: i18n.t('devices.list.actions.unpair') }))
+
+    await waitFor(() => expect(secureRemoveLegacyMember).toHaveBeenCalledWith(remoteMember.peerId))
+    expect(toast.error).not.toHaveBeenCalled()
+  })
+
+  it('does not start the secure upgrade for an unrelated removal failure', async () => {
+    const unrelatedError = new Error('daemon unavailable')
+    vi.mocked(unpairDevice).mockRejectedValue(unrelatedError)
+    vi.mocked(isLegacyBootstrapRequired).mockReturnValue(false)
+    render(<DevicesPage />)
+    const user = await openUnpairConfirmation()
+
+    await user.click(screen.getByRole('button', { name: i18n.t('devices.list.actions.unpair') }))
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalled())
+    expect(secureRemoveLegacyMember).not.toHaveBeenCalled()
+  })
+
+  it('disables the confirmation while removal is in progress', async () => {
+    let finishRemoval: (() => void) | undefined
+    vi.mocked(unpairDevice).mockImplementation(
+      () => new Promise<void>(resolve => (finishRemoval = resolve))
+    )
+    render(<DevicesPage />)
+    const user = await openUnpairConfirmation()
+    const confirm = screen.getByRole('button', { name: i18n.t('devices.list.actions.unpair') })
+
+    await user.click(confirm)
+
+    expect(confirm).toBeDisabled()
+    finishRemoval?.()
+    await waitFor(() => expect(confirm).not.toBeInTheDocument())
+  })
+
+  it('keeps the confirmation open when dismissal is requested during removal', async () => {
+    let finishRemoval: (() => void) | undefined
+    vi.mocked(unpairDevice).mockImplementation(
+      () => new Promise<void>(resolve => (finishRemoval = resolve))
+    )
+    render(<DevicesPage />)
+    const user = await openUnpairConfirmation()
+    const confirm = screen.getByRole('button', { name: i18n.t('devices.list.actions.unpair') })
+
+    await user.click(confirm)
+    await user.keyboard('{Escape}')
+
+    expect(confirm).toBeInTheDocument()
+    finishRemoval?.()
+    await waitFor(() => expect(confirm).not.toBeInTheDocument())
+  })
+
+  it('keeps the original target when another removal is requested during removal', async () => {
+    const secondRemoteMember = {
+      ...remoteMember,
+      peerId: 'second-remote-peer',
+      deviceName: 'Second Desktop',
+    }
+    devicesState.spaceMembers = [localDevice, remoteMember, secondRemoteMember]
+    let finishRemoval: (() => void) | undefined
+    vi.mocked(unpairDevice).mockImplementation(
+      () => new Promise<void>(resolve => (finishRemoval = resolve))
+    )
+    render(<DevicesPage />)
+    const secondDeviceButton = screen.getByRole('button', { name: secondRemoteMember.deviceName })
+    const user = await openUnpairConfirmation()
+    const confirm = screen.getByRole('button', { name: i18n.t('devices.list.actions.unpair') })
+
+    await user.click(confirm)
+    fireEvent.click(secondDeviceButton)
+    const secondUnpairRequest = screen
+      .getAllByRole('button', { name: i18n.t('devices.list.actions.unpair'), hidden: true })
+      .find(button => button !== confirm && !(button as HTMLButtonElement).disabled)
+    expect(secondUnpairRequest).toBeDefined()
+    fireEvent.click(secondUnpairRequest!)
+
+    expect(
+      screen.getByText(
+        i18n.t('devices.unpair.confirmDescription', { deviceName: remoteMember.deviceName })
+      )
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByText(
+        i18n.t('devices.unpair.confirmDescription', { deviceName: secondRemoteMember.deviceName })
+      )
+    ).not.toBeInTheDocument()
+    finishRemoval?.()
+    await waitFor(() => expect(confirm).not.toBeInTheDocument())
   })
 })
 

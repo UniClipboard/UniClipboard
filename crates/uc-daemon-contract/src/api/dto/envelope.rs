@@ -29,7 +29,9 @@ use crate::api::dto::diagnostics::{DebugStatusDto, LogExportResultDto, UpdateDeb
 use crate::api::dto::encryption::{
     EncryptionActionResponse, EncryptionStateResponse, KeychainAccessResponse, UnlockSpaceResponse,
 };
-use crate::api::dto::member::{MemberSyncPreferencesDto, MemberSyncResultDto};
+use crate::api::dto::member::{
+    MemberSyncPreferencesDto, MemberSyncResultDto, SecureLegacyRemovalDto, SpaceProtectionDto,
+};
 use crate::api::dto::mobile_sync::{
     LanInterfaceViewDto, MobileDeviceViewDto, MobileSyncActionResultDto, MobileSyncSettingsViewDto,
     RegisterMobileDeviceResultDto, RotateMobilePasswordResultDto, UpdateMobileDeviceResultDto,
@@ -99,6 +101,8 @@ use crate::api::types::{
     LocalDeviceInfoEnvelope = ApiEnvelope<LocalDeviceInfoDto>,
     MemberSyncPreferencesEnvelope = ApiEnvelope<MemberSyncPreferencesDto>,
     MemberSyncResultEnvelope = ApiEnvelope<MemberSyncResultDto>,
+    SpaceProtectionEnvelope = ApiEnvelope<SpaceProtectionDto>,
+    SecureLegacyRemovalEnvelope = ApiEnvelope<SecureLegacyRemovalDto>,
     // ── mobile sync ────────────────────────────────────────────────
     RegisterMobileDeviceEnvelope = ApiEnvelope<RegisterMobileDeviceResultDto>,
     RotateMobilePasswordEnvelope = ApiEnvelope<RotateMobilePasswordResultDto>,

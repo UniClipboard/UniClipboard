@@ -3,21 +3,25 @@
 //! Storage access and partial-update semantics stay behind the engine interface.
 
 use axum::extract::{Path, State};
-use axum::routing::{get, patch};
+use axum::routing::{get, patch, post};
 use axum::{Json, Router};
 use tracing::{info, instrument};
 
 use uc_daemon_contract::api::dto::envelope::ApiEnvelope;
 use uc_engine::error_codes::{
-    MEMBER_INVALID_INPUT_CODE, MEMBER_NOT_FOUND_CODE, MEMBER_UNAVAILABLE_CODE,
+    MEMBER_INVALID_INPUT_CODE, MEMBER_LEGACY_BOOTSTRAP_FAILED_CODE,
+    MEMBER_LEGACY_BOOTSTRAP_REQUIRED_CODE, MEMBER_NOT_FOUND_CODE, MEMBER_UNAVAILABLE_CODE,
+    SPACE_PROTECTION_FAILED_CODE,
 };
 use uc_engine::{
-    EngineError, Operation, OperationResult, QueryMemberSyncPreferencesInput,
+    EngineError, Operation, OperationResult, QueryMemberSyncPreferencesInput, RemoveMemberInput,
     UpdateMemberSyncPreferencesInput,
 };
 
 use crate::api::dto::error::{log_facade_failure, ApiError};
-use crate::api::dto::member::{MemberSyncPreferencesPatchDto, MemberSyncResultDto};
+use crate::api::dto::member::{
+    MemberSyncPreferencesPatchDto, MemberSyncResultDto, SecureLegacyRemovalDto, SpaceProtectionDto,
+};
 use crate::api::projection::{IntoApiDto, IntoDomain};
 use crate::api::server::DaemonApiState;
 
@@ -30,6 +34,11 @@ pub fn router() -> Router<DaemonApiState> {
         .route(
             "/member/:device_id/sync-preferences",
             patch(update_member_sync_preferences_handler),
+        )
+        .route("/member/protection", get(get_space_protection_handler))
+        .route(
+            "/member/:device_id/secure-remove",
+            post(secure_remove_legacy_member_handler),
         )
 }
 
@@ -155,6 +164,99 @@ pub async fn update_member_sync_preferences_handler(
     })))
 }
 
+/// GET /member/protection
+///
+/// Projects the Engine's current protection authority. The daemon does not
+/// infer or persist bootstrap progress; callers refresh this snapshot.
+#[utoipa::path(
+    get,
+    path = "/member/protection",
+    tag = "member",
+    operation_id = "getSpaceProtection",
+    responses(
+        (status = 200, body = SpaceProtectionEnvelope),
+        (status = 503, description = "Runtime unavailable", body = ApiErrorResponse),
+        (status = 500, description = "Internal server error", body = ApiErrorResponse)
+    )
+)]
+#[instrument(name = "api.member.get_protection", level = "info", skip(state))]
+pub async fn get_space_protection_handler(
+    State(state): State<DaemonApiState>,
+) -> Result<Json<ApiEnvelope<SpaceProtectionDto>>, ApiError> {
+    let result = state
+        .execute(Operation::QuerySpaceProtection)
+        .await
+        .map_err(|error| map_member_engine_error("", "get_space_protection", error))?;
+    let OperationResult::SpaceProtection(snapshot) = result else {
+        tracing::error!(
+            error_kind = "unexpected_operation_result",
+            operation = "get_space_protection",
+            "engine returned unexpected result"
+        );
+        return Err(ApiError::internal(
+            "engine returned an unexpected space-protection result",
+        ));
+    };
+    info!("get space protection succeeded");
+    Ok(Json(ApiEnvelope::now(snapshot.into_api_dto())))
+}
+
+/// POST /member/{device_id}/secure-remove
+///
+/// Starts the Engine-owned Legacy Space bootstrap that safely excludes a member
+/// only after a replacement MLS state is activated. The returned summary is a
+/// status snapshot, not a daemon-owned operation handle.
+#[utoipa::path(
+    post,
+    path = "/member/{device_id}/secure-remove",
+    tag = "member",
+    operation_id = "secureRemoveLegacyMember",
+    params(("device_id" = String, Path, description = "Legacy Space member to exclude")),
+    responses(
+        (status = 200, body = SecureLegacyRemovalEnvelope),
+        (status = 400, description = "Invalid device ID", body = ApiErrorResponse),
+        (status = 404, description = "Member not found", body = ApiErrorResponse),
+        (status = 503, description = "Runtime unavailable", body = ApiErrorResponse),
+        (status = 500, description = "Bootstrap failed", body = ApiErrorResponse)
+    )
+)]
+#[instrument(
+    name = "api.member.secure_remove_legacy",
+    level = "info",
+    skip(state),
+    fields(device_id = %device_id)
+)]
+pub async fn secure_remove_legacy_member_handler(
+    State(state): State<DaemonApiState>,
+    Path(device_id): Path<String>,
+) -> Result<Json<ApiEnvelope<SecureLegacyRemovalDto>>, ApiError> {
+    let result = state
+        .execute(Operation::SecureRemoveLegacyMember(RemoveMemberInput {
+            device_id: device_id.clone(),
+        }))
+        .await
+        .map_err(|error| map_member_engine_error(&device_id, "secure_remove_legacy", error))?;
+    let OperationResult::LegacyMemberRemoval(bootstrap) = result else {
+        tracing::error!(
+            error_kind = "unexpected_operation_result",
+            operation = "secure_remove_legacy",
+            "engine returned unexpected result"
+        );
+        return Err(ApiError::internal(
+            "engine returned an unexpected legacy-removal result",
+        ));
+    };
+    info!("secure legacy member removal started");
+    Ok(Json(ApiEnvelope::now(SecureLegacyRemovalDto {
+        bootstrap: bootstrap.into_api_dto(),
+    })))
+}
+
+pub(crate) fn legacy_bootstrap_required_error() -> ApiError {
+    ApiError::conflict("legacy Space member removal requires secure bootstrap")
+        .with_code("legacy_bootstrap_required")
+}
+
 fn map_member_engine_error(device_id: &str, op: &'static str, error: EngineError) -> ApiError {
     let (variant, api): (&'static str, ApiError) = match error.code() {
         MEMBER_INVALID_INPUT_CODE => (
@@ -169,8 +271,73 @@ fn map_member_engine_error(device_id: &str, op: &'static str, error: EngineError
             "unavailable",
             ApiError::service_unavailable("member roster facade unavailable"),
         ),
+        MEMBER_LEGACY_BOOTSTRAP_REQUIRED_CODE => (
+            "legacy_bootstrap_required",
+            legacy_bootstrap_required_error(),
+        ),
+        MEMBER_LEGACY_BOOTSTRAP_FAILED_CODE => (
+            "legacy_bootstrap_failed",
+            ApiError::internal("secure legacy member removal failed"),
+        ),
+        SPACE_PROTECTION_FAILED_CODE => (
+            "space_protection_failed",
+            ApiError::internal("space protection status is unavailable"),
+        ),
         _ => ("internal", ApiError::internal("member operation failed")),
     };
     log_facade_failure("roster", op, variant, api.status, &api.message);
     api
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::http::StatusCode;
+    use uc_engine::EngineErrorCategory;
+
+    fn engine_error(code: u32) -> EngineError {
+        EngineError::new(code, EngineErrorCategory::Internal, false)
+    }
+
+    #[test]
+    fn legacy_required_error_is_a_stable_conflict_for_the_legacy_client_path() {
+        let api = map_member_engine_error(
+            "peer-1",
+            "get_member_sync_preferences",
+            engine_error(MEMBER_LEGACY_BOOTSTRAP_REQUIRED_CODE),
+        );
+
+        assert_eq!(api.status, StatusCode::CONFLICT);
+        assert_eq!(api.code, "legacy_bootstrap_required");
+        assert_eq!(
+            api.message,
+            "legacy Space member removal requires secure bootstrap"
+        );
+    }
+
+    #[test]
+    fn legacy_bootstrap_required_error_preserves_the_shared_contract() {
+        let api = legacy_bootstrap_required_error();
+
+        assert_eq!(api.status, StatusCode::CONFLICT);
+        assert_eq!(api.code, "legacy_bootstrap_required");
+        assert_eq!(
+            api.message,
+            "legacy Space member removal requires secure bootstrap"
+        );
+    }
+
+    #[test]
+    fn secure_removal_and_protection_failures_do_not_expose_engine_detail() {
+        for code in [
+            MEMBER_LEGACY_BOOTSTRAP_FAILED_CODE,
+            SPACE_PROTECTION_FAILED_CODE,
+        ] {
+            let api = map_member_engine_error("peer-1", "secure_remove_legacy", engine_error(code));
+
+            assert_eq!(api.status, StatusCode::INTERNAL_SERVER_ERROR);
+            assert_eq!(api.code, "internal_error");
+            assert!(api.details.is_none());
+        }
+    }
 }

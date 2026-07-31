@@ -79,6 +79,20 @@ pub enum EntryDeliveryStatusDto {
 pub enum DeliveryFailureReasonDto {
     LocalPolicy,
     PeerRejected,
+    PeerIncompatible,
     Io,
     Internal,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn peer_incompatible_failure_reason_has_a_stable_wire_value() {
+        assert_eq!(
+            serde_json::to_string(&DeliveryFailureReasonDto::PeerIncompatible).unwrap(),
+            "\"peerIncompatible\""
+        );
+    }
 }

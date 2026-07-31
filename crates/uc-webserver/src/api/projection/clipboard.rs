@@ -159,6 +159,9 @@ impl IntoApiDto<DeliveryFailureReasonDto> for DeliveryFailureReasonSummary {
         match self {
             DeliveryFailureReasonSummary::LocalPolicy => DeliveryFailureReasonDto::LocalPolicy,
             DeliveryFailureReasonSummary::PeerRejected => DeliveryFailureReasonDto::PeerRejected,
+            DeliveryFailureReasonSummary::PeerIncompatible => {
+                DeliveryFailureReasonDto::PeerIncompatible
+            }
             DeliveryFailureReasonSummary::Io => DeliveryFailureReasonDto::Io,
             DeliveryFailureReasonSummary::Internal => DeliveryFailureReasonDto::Internal,
         }
@@ -205,5 +208,21 @@ impl IntoApiDto<ResendResponse> for ResendReportSummary {
             errored: self.errored,
             pending: self.pending,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use uc_daemon_contract::api::dto::clipboard_delivery::DeliveryFailureReasonDto;
+    use uc_engine::DeliveryFailureReasonSummary;
+
+    use super::IntoApiDto;
+
+    #[test]
+    fn maps_peer_incompatible_delivery_failure_reason() {
+        assert!(matches!(
+            DeliveryFailureReasonSummary::PeerIncompatible.into_api_dto(),
+            DeliveryFailureReasonDto::PeerIncompatible
+        ));
     }
 }

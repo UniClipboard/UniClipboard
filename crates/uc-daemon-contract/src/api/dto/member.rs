@@ -43,3 +43,62 @@ pub struct MemberSyncPreferencesPatchDto {
 pub struct MemberSyncResultDto {
     pub success: bool,
 }
+
+/// Engine-authoritative state of a Legacy-to-MLS space protection upgrade.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum SpaceProtectionModeDto {
+    Legacy,
+    Migrating,
+    Ready,
+}
+
+/// Protection state of one roster member in the current space.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum MemberProtectionStatusDto {
+    LegacyUnprotected,
+    Protected,
+    AwaitingReadmission,
+    RequiresReadmission,
+    RecoveryRequired,
+}
+
+/// Recoverable Legacy bootstrap progress, owned and persisted by the Engine.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum LegacyBootstrapOutcomeDto {
+    AwaitingReadmission,
+    Complete,
+    RecoveryRequired,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct LegacyBootstrapDto {
+    pub bootstrap_id: String,
+    pub outcome: LegacyBootstrapOutcomeDto,
+    pub pending_readmission: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct MemberProtectionDto {
+    pub device_id: String,
+    pub status: MemberProtectionStatusDto,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct SpaceProtectionDto {
+    pub mode: SpaceProtectionModeDto,
+    pub members: Vec<MemberProtectionDto>,
+    pub legacy_bootstrap: Option<LegacyBootstrapDto>,
+}
+
+/// Result of starting a secure Legacy member removal.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct SecureLegacyRemovalDto {
+    pub bootstrap: LegacyBootstrapDto,
+}

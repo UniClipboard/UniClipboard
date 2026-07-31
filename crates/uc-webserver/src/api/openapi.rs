@@ -31,7 +31,9 @@ use crate::api::dto::encryption::{
 };
 use crate::api::dto::error::ApiErrorResponse;
 use crate::api::dto::member::{
+    LegacyBootstrapDto, LegacyBootstrapOutcomeDto, MemberProtectionDto, MemberProtectionStatusDto,
     MemberSyncPreferencesDto, MemberSyncPreferencesPatchDto, MemberSyncResultDto,
+    SecureLegacyRemovalDto, SpaceProtectionDto, SpaceProtectionModeDto,
 };
 use crate::api::dto::mobile_sync::{
     LanInterfaceViewDto, MobileDeviceViewDto, MobileSyncActionResultDto, MobileSyncSettingsViewDto,
@@ -92,12 +94,13 @@ use uc_daemon_contract::api::dto::envelope::{
     PreviewImportEnvelope, RegisterMobileDeviceEnvelope, RelayCredentialStatusEnvelope,
     RelayProbeOutcomeEnvelope, RelaySaveResultEnvelope, ResendEnvelope, RestartAcceptedEnvelope,
     RestoreEntryEnvelope, RotateMobilePasswordEnvelope, SearchQueryEnvelope, SearchRebuildEnvelope,
-    SearchStatusEnvelope, SearchTagsEnvelope, SessionTokenEnvelope, SettingsEnvelope,
-    SettingsUpdateResultEnvelope, SetupInitializeEnvelope, SetupIssueInvitationEnvelope,
-    SetupMigrationProgressEnvelope, SetupRedeemEnvelope, SetupStateEnvelope,
-    SetupSwitchSpaceEnvelope, SpaceMemberListEnvelope, StatusEnvelope, StorageStatsEnvelope,
-    ToggleFavoriteEnvelope, UnlockSpaceEnvelope, UpdateDebugModeEnvelope,
-    UpdateMobileDeviceEnvelope, UpdateMobileSyncSettingsEnvelope, UpgradeStatusEnvelope,
+    SearchStatusEnvelope, SearchTagsEnvelope, SecureLegacyRemovalEnvelope, SessionTokenEnvelope,
+    SettingsEnvelope, SettingsUpdateResultEnvelope, SetupInitializeEnvelope,
+    SetupIssueInvitationEnvelope, SetupMigrationProgressEnvelope, SetupRedeemEnvelope,
+    SetupStateEnvelope, SetupSwitchSpaceEnvelope, SpaceMemberListEnvelope, SpaceProtectionEnvelope,
+    StatusEnvelope, StorageStatsEnvelope, ToggleFavoriteEnvelope, UnlockSpaceEnvelope,
+    UpdateDebugModeEnvelope, UpdateMobileDeviceEnvelope, UpdateMobileSyncSettingsEnvelope,
+    UpgradeStatusEnvelope,
 };
 use uc_daemon_contract::api::dto::storage::{
     ClearCacheRequest, ClearCacheResponse, StorageStatsDto,
@@ -182,6 +185,8 @@ impl Modify for ContractMeta {
         // ── member ─────────────────────────────────────────────────
         crate::api::member::get_member_sync_preferences_handler,
         crate::api::member::update_member_sync_preferences_handler,
+        crate::api::member::get_space_protection_handler,
+        crate::api::member::secure_remove_legacy_member_handler,
         // ── mobile-sync ────────────────────────────────────────────
         crate::api::mobile_sync::register_mobile_device_handler,
         crate::api::mobile_sync::list_mobile_devices_handler,
@@ -316,9 +321,18 @@ impl Modify for ContractMeta {
             // ── member ─────────────────────────────────────────────
             MemberSyncPreferencesEnvelope,
             MemberSyncResultEnvelope,
+            SpaceProtectionEnvelope,
+            SecureLegacyRemovalEnvelope,
             MemberSyncPreferencesDto,
             MemberSyncResultDto,
             MemberSyncPreferencesPatchDto,
+            SpaceProtectionDto,
+            SpaceProtectionModeDto,
+            MemberProtectionDto,
+            MemberProtectionStatusDto,
+            LegacyBootstrapDto,
+            LegacyBootstrapOutcomeDto,
+            SecureLegacyRemovalDto,
             ContentTypesDto,
             ContentTypesPatchDto,
             // ── mobile-sync ────────────────────────────────────────
@@ -594,7 +608,10 @@ mod assembly_smoke_tests {
         // added `POST /clipboard/capture-current`: +1 path, +1 operation
         // → 64 / 71. Unified receive attempts add list, exact progress, and
         // exact cancellation: +3 paths, +3 operations → 67 / 74. Relay credential
-        // status and atomic save add two paths and two operations → 69 / 76.)
+        // status and atomic save add two paths and two operations → 69 / 76.
+        // Engine-owned space protection adds GET /member/protection and
+        // POST /member/{device_id}/secure-remove: +2 paths, +2 operations
+        // → 71 / 78.)
         const HTTP_METHODS: [&str; 7] =
             ["get", "put", "post", "delete", "patch", "head", "options"];
         let paths = value
@@ -603,8 +620,8 @@ mod assembly_smoke_tests {
             .expect("OpenAPI doc must declare paths");
         assert_eq!(
             paths.len(),
-            69,
-            "expected exactly 69 path templates, found {}: {:?}",
+            71,
+            "expected exactly 71 path templates, found {}: {:?}",
             paths.len(),
             paths.keys().collect::<Vec<_>>()
         );
@@ -618,8 +635,8 @@ mod assembly_smoke_tests {
             })
             .sum();
         assert_eq!(
-            operation_count, 76,
-            "expected exactly 76 operations across all paths, found {operation_count}"
+            operation_count, 78,
+            "expected exactly 78 operations across all paths, found {operation_count}"
         );
 
         // A few frozen operationIds (§D) must be present somewhere in the doc.
@@ -633,6 +650,8 @@ mod assembly_smoke_tests {
             "listEntryReceiveProgress",
             "getEntryReceiveProgress",
             "cancelEntryReceive",
+            "getSpaceProtection",
+            "secureRemoveLegacyMember",
         ] {
             assert!(
                 json.contains(&format!("\"{op}\"")),

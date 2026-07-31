@@ -252,6 +252,11 @@ pub async fn secure_remove_legacy_member_handler(
     })))
 }
 
+pub(crate) fn legacy_bootstrap_required_error() -> ApiError {
+    ApiError::conflict("legacy Space member removal requires secure bootstrap")
+        .with_code("legacy_bootstrap_required")
+}
+
 fn map_member_engine_error(device_id: &str, op: &'static str, error: EngineError) -> ApiError {
     let (variant, api): (&'static str, ApiError) = match error.code() {
         MEMBER_INVALID_INPUT_CODE => (
@@ -268,8 +273,7 @@ fn map_member_engine_error(device_id: &str, op: &'static str, error: EngineError
         ),
         MEMBER_LEGACY_BOOTSTRAP_REQUIRED_CODE => (
             "legacy_bootstrap_required",
-            ApiError::conflict("legacy Space member removal requires secure bootstrap")
-                .with_code("legacy_bootstrap_required"),
+            legacy_bootstrap_required_error(),
         ),
         MEMBER_LEGACY_BOOTSTRAP_FAILED_CODE => (
             "legacy_bootstrap_failed",
@@ -302,6 +306,18 @@ mod tests {
             "get_member_sync_preferences",
             engine_error(MEMBER_LEGACY_BOOTSTRAP_REQUIRED_CODE),
         );
+
+        assert_eq!(api.status, StatusCode::CONFLICT);
+        assert_eq!(api.code, "legacy_bootstrap_required");
+        assert_eq!(
+            api.message,
+            "legacy Space member removal requires secure bootstrap"
+        );
+    }
+
+    #[test]
+    fn legacy_bootstrap_required_error_preserves_the_shared_contract() {
+        let api = legacy_bootstrap_required_error();
 
         assert_eq!(api.status, StatusCode::CONFLICT);
         assert_eq!(api.code, "legacy_bootstrap_required");

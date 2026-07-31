@@ -15,7 +15,7 @@
  * survive a locale switch, matching the language-agnostic style below.
  */
 
-import { act, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { refreshPresence } from '@/api/daemon'
@@ -349,6 +349,61 @@ describe('DevicesPage secure legacy removal', () => {
     await user.click(confirm)
 
     expect(confirm).toBeDisabled()
+    finishRemoval?.()
+    await waitFor(() => expect(confirm).not.toBeInTheDocument())
+  })
+
+  it('keeps the confirmation open when dismissal is requested during removal', async () => {
+    let finishRemoval: (() => void) | undefined
+    vi.mocked(unpairDevice).mockImplementation(
+      () => new Promise<void>(resolve => (finishRemoval = resolve))
+    )
+    render(<DevicesPage />)
+    const user = await openUnpairConfirmation()
+    const confirm = screen.getByRole('button', { name: i18n.t('devices.list.actions.unpair') })
+
+    await user.click(confirm)
+    await user.keyboard('{Escape}')
+
+    expect(confirm).toBeInTheDocument()
+    finishRemoval?.()
+    await waitFor(() => expect(confirm).not.toBeInTheDocument())
+  })
+
+  it('keeps the original target when another removal is requested during removal', async () => {
+    const secondRemoteMember = {
+      ...remoteMember,
+      peerId: 'second-remote-peer',
+      deviceName: 'Second Desktop',
+    }
+    devicesState.spaceMembers = [localDevice, remoteMember, secondRemoteMember]
+    let finishRemoval: (() => void) | undefined
+    vi.mocked(unpairDevice).mockImplementation(
+      () => new Promise<void>(resolve => (finishRemoval = resolve))
+    )
+    render(<DevicesPage />)
+    const secondDeviceButton = screen.getByRole('button', { name: secondRemoteMember.deviceName })
+    const user = await openUnpairConfirmation()
+    const confirm = screen.getByRole('button', { name: i18n.t('devices.list.actions.unpair') })
+
+    await user.click(confirm)
+    fireEvent.click(secondDeviceButton)
+    const secondUnpairRequest = screen
+      .getAllByRole('button', { name: i18n.t('devices.list.actions.unpair'), hidden: true })
+      .find(button => button !== confirm && !(button as HTMLButtonElement).disabled)
+    expect(secondUnpairRequest).toBeDefined()
+    fireEvent.click(secondUnpairRequest!)
+
+    expect(
+      screen.getByText(
+        i18n.t('devices.unpair.confirmDescription', { deviceName: remoteMember.deviceName })
+      )
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByText(
+        i18n.t('devices.unpair.confirmDescription', { deviceName: secondRemoteMember.deviceName })
+      )
+    ).not.toBeInTheDocument()
     finishRemoval?.()
     await waitFor(() => expect(confirm).not.toBeInTheDocument())
   })

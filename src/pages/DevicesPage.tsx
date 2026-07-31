@@ -22,7 +22,7 @@
  */
 
 import { Plus, Settings2 } from 'lucide-react'
-import React, { useCallback, useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { refreshPresence } from '@/api/daemon'
 import { isLegacyBootstrapRequired, secureRemoveLegacyMember } from '@/api/daemon/member'
@@ -203,14 +203,23 @@ const DevicesPage: React.FC = () => {
   const [unpairDialogOpen, setUnpairDialogOpen] = useState(false)
   const [unpairTargetId, setUnpairTargetId] = useState<string | null>(null)
   const [unpairBusy, setUnpairBusy] = useState(false)
+  const unpairBusyRef = useRef(false)
 
   const handleUnpairRequest = (peerId: string) => {
+    if (unpairBusyRef.current) return
     setUnpairTargetId(peerId)
     setUnpairDialogOpen(true)
   }
 
+  const handleUnpairDialogOpenChange = (open: boolean) => {
+    if (!open && unpairBusyRef.current) return
+    setUnpairDialogOpen(open)
+    if (!open) setUnpairTargetId(null)
+  }
+
   const handleUnpairConfirm = async () => {
-    if (!unpairTargetId || unpairBusy) return
+    if (!unpairTargetId || unpairBusyRef.current) return
+    unpairBusyRef.current = true
     setUnpairBusy(true)
     try {
       try {
@@ -236,6 +245,7 @@ const DevicesPage: React.FC = () => {
       setUnpairDialogOpen(false)
       setUnpairTargetId(null)
     } finally {
+      unpairBusyRef.current = false
       setUnpairBusy(false)
     }
   }
@@ -494,7 +504,7 @@ const DevicesPage: React.FC = () => {
       <AddDeviceDialog open={addP2PDialogOpen} onOpenChange={setAddP2PDialogOpen} />
       <UnpairAlertDialog
         open={unpairDialogOpen}
-        onOpenChange={setUnpairDialogOpen}
+        onOpenChange={handleUnpairDialogOpenChange}
         deviceName={unpairTargetDevice?.deviceName || t('devices.list.labels.unknownDevice')}
         busy={unpairBusy}
         onConfirm={handleUnpairConfirm}

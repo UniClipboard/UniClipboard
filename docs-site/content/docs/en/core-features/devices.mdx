@@ -152,17 +152,22 @@ upgrade and excludes the selected device from the replacement group.
 The Devices page shows each member's **Protection** status and a banner
 with the number of remaining devices waiting for readmission.
 
-Bring each retained device back through a fresh `invite` + `join` round
-until the banner clears. A **Recovery required** status means the
-upgrade did not finish automatically and the target may not have been
-removed; recover or rebuild the space first. You do not need to repeat
-`Unpair` on every remaining device.
+**Readmit retained devices:** For each retained device that is waiting
+for readmission, create a fresh `invite` on the sponsoring device and
+run `join` on that retained device. Continue until the banner clears.
+You do not need to repeat `Unpair` on the retained devices.
+
+**Handle Recovery required:** If the sponsoring device shows
+**Recovery required**, the upgrade did not finish automatically and the
+target device may not have been removed. Recover or rebuild the space
+before relying on the removal.
 
 Removal cannot erase history that was already stored on a lost or
 stolen device. Treat that local copy as still accessible.
 
-To bring the removed device back later, run a fresh `invite` + `join`
-round after the protection upgrade has completed.
+**Re-pair the removed device:** After the protection upgrade has
+completed, create a fresh `invite` on a trusted retained device and run
+`join` on the removed device.
 
 ## Mobile sync devices
 

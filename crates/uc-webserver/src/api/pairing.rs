@@ -17,6 +17,7 @@ use uc_engine::{EngineError, Operation, OperationResult, RemoveMemberInput};
 
 use crate::api::dto::error::{log_facade_failure, ApiError};
 use crate::api::dto::pairing::UnpairDeviceRequest;
+use crate::api::member::legacy_bootstrap_required_error;
 use crate::api::server::DaemonApiState;
 
 pub fn router() -> Router<DaemonApiState> {
@@ -85,8 +86,7 @@ fn map_unpair_engine_err(error: EngineError, peer_id: &str) -> ApiError {
         ),
         MEMBER_LEGACY_BOOTSTRAP_REQUIRED_CODE => (
             "legacy_bootstrap_required",
-            ApiError::conflict("legacy Space member removal requires secure bootstrap")
-                .with_code("legacy_bootstrap_required"),
+            legacy_bootstrap_required_error(),
         ),
         _ => ("internal", ApiError::internal("failed to remove member")),
     };

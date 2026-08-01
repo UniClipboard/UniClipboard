@@ -77,6 +77,15 @@ impl DesktopHostProcessPaths {
     }
 }
 
+fn host_directories(paths: &DesktopHostPaths, temporary_dir: PathBuf) -> HostDirectories {
+    HostDirectories::new(
+        paths.app_data_root_dir.clone(),
+        paths.cache_dir.clone(),
+        temporary_dir,
+        paths.logs_dir.clone(),
+    )
+}
+
 pub fn prepare_desktop_engine_host() -> WiringResult<DesktopEngineHost> {
     let paths = resolve_desktop_host_paths()?;
     let secure_storage = build_secure_storage_prelude(&paths)?.secure_storage;
@@ -93,11 +102,7 @@ pub fn prepare_desktop_engine_host() -> WiringResult<DesktopEngineHost> {
     let engine_config = EngineConfig::new(env!("CARGO_PKG_VERSION"))
         .with_portable_storage(uc_app_paths::is_portable());
     let capabilities = HostCapabilities::new(
-        HostDirectories::new(
-            paths.app_data_root_dir.clone(),
-            paths.cache_dir.clone(),
-            temporary_dir,
-        ),
+        host_directories(&paths, temporary_dir),
         Box::new(DesktopSecureStorage { secure_storage }),
         Box::new(DesktopClipboard {
             system_clipboard,
@@ -533,6 +538,22 @@ mod tests {
         fn write_snapshot(&self, _snapshot: SystemClipboardSnapshot) -> anyhow::Result<()> {
             Ok(())
         }
+    }
+
+    #[test]
+    fn engine_directories_use_the_resolved_log_directory() {
+        let paths = DesktopHostPaths {
+            db_path: "/host/private/uniclipboard.db".into(),
+            vault_dir: "/host/private/vault".into(),
+            settings_path: "/host/private/settings.json".into(),
+            logs_dir: "/host/platform-logs".into(),
+            cache_dir: "/host/cache".into(),
+            app_data_root_dir: "/host/private".into(),
+        };
+
+        let directories = host_directories(&paths, "/host/temporary".into());
+
+        assert_eq!(directories.logs(), Path::new("/host/platform-logs"));
     }
 
     #[test]

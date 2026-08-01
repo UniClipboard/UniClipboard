@@ -8,7 +8,7 @@ Do not treat this file as a full memory dump. Read only the documents needed for
 
 ## Always Apply
 
-- **持久化默认密文（不可打破的基石）**：任何写入持久化存储的业务负载——SQLite 数据库列、磁盘缓存、搜索索引——默认必须先经 MasterKey AEAD 加密，**严禁明文落库**（剪贴板正文、标题、预览、搜索渲染字段、标签名、文件名和文件路径等一切用户内容）。例外仅有内容类型分类枚举（text/image/file/link 等）和文件内容本体；文件内容允许由 blob store 或核心导入目录按原始字节落盘，但文件名、路径及关联元数据仍须加密。新增其他持久化列/文件默认加密，主张明文需在 PR 中论证并获批。详见 `VISION.md`「安全与隐私底线」与「绝对禁区」。
+- **持久化默认密文（不可打破的基石）**：任何写入持久化存储的业务负载——SQLite 数据库列、磁盘缓存、搜索索引——默认必须先经 MasterKey AEAD 加密，**严禁明文落库**（剪贴板正文、标题、预览、搜索渲染字段、标签名、文件名和文件路径等一切用户内容）。例外包括内容类型分类枚举（text/image/file/link 等）、文件内容本体，以及入站文件在受管文件缓存中的经安全清理的原始文件名；该文件名只能作为实际缓存文件的 basename，原始目录路径、数据库/搜索字段、日志及关联元数据仍须加密或脱敏。新增其他持久化列/文件默认加密，主张明文需在 PR 中论证并获批。详见 `VISION.md`「安全与隐私底线」与「绝对禁区」。
 - Fix root causes, not symptoms.
 - Use the standard, established terminology of software engineering and computer science. If a metaphor or coined expression is unavoidable, also give the corresponding standard term; never invent new words for the sake of novelty.
 - Preserve single source of truth and clear ownership.

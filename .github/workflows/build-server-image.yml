@@ -71,8 +71,6 @@ jobs:
         uses: actions/checkout@v6
         with:
           ref: ${{ inputs.ref || github.ref }}
-          # The musl build needs the vendored iroh-blobs submodule.
-          submodules: recursive
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -89,7 +87,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           # Context is the repo root so the Dockerfile reaches the root cargo
-          # workspace + the vendored submodule. .dockerignore trims it.
+          # workspace. .dockerignore trims it.
           context: .
           file: deploy/vps/Dockerfile
           platforms: ${{ matrix.platform }}

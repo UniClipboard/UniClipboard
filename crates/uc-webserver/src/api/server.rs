@@ -1,10 +1,11 @@
 //! HTTP server bootstrap for the daemon API.
 
+use std::io;
 use std::net::SocketAddr;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use axum::body::Body;
 use axum::http::header::{
@@ -37,6 +38,9 @@ use crate::api::types::{
 use crate::api::ws;
 use crate::security::SecurityState;
 use crate::socket::{try_resolve_daemon_http_addr, DEFAULT_HTTP_HOST};
+
+const HTTP_BIND_RETRY_TIMEOUT: Duration = Duration::from_secs(5);
+const HTTP_BIND_RETRY_INTERVAL: Duration = Duration::from_millis(100);
 
 #[derive(Clone)]
 pub struct DaemonApiState {
@@ -593,6 +597,9 @@ pub async fn run_http_server(
 ) -> anyhow::Result<()> {
     let addr = try_resolve_daemon_http_addr()?;
     let connection_info = state.connection_info_for_addr(addr, std::process::id());
+    let listener =
+        bind_http_listener_with_retry(addr, HTTP_BIND_RETRY_TIMEOUT, HTTP_BIND_RETRY_INTERVAL)
+            .await?;
     tracing::info!(
         base_url = %connection_info.base_url,
         ws_url = %connection_info.ws_url,
@@ -607,13 +614,85 @@ pub async fn run_http_server(
     // independently. IP-based rate limiting works correctly in production.
     let make_service = build_router(state).into_make_service_with_connect_info::<SocketAddr>();
 
-    let listener = tokio::net::TcpListener::bind(addr).await?;
-
     axum::serve(listener, make_service)
         .with_graceful_shutdown(cancel.cancelled_owned())
         .await?;
 
     Ok(())
+}
+
+async fn bind_http_listener_with_retry(
+    addr: SocketAddr,
+    retry_timeout: Duration,
+    retry_interval: Duration,
+) -> io::Result<tokio::net::TcpListener> {
+    let started_at = tokio::time::Instant::now();
+    let deadline = started_at + retry_timeout;
+    let mut retry_count = 0_u32;
+
+    loop {
+        match tokio::net::TcpListener::bind(addr).await {
+            Ok(listener) => {
+                if retry_count > 0 {
+                    tracing::info!(
+                        addr = %addr,
+                        retry_count,
+                        elapsed_ms = started_at.elapsed().as_millis(),
+                        "daemon HTTP API port became available"
+                    );
+                }
+                return Ok(listener);
+            }
+            Err(error)
+                if error.kind() == io::ErrorKind::AddrInUse
+                    && tokio::time::Instant::now() < deadline =>
+            {
+                retry_count += 1;
+                if retry_count == 1 {
+                    tracing::warn!(
+                        addr = %addr,
+                        retry_count,
+                        retry_timeout_ms = retry_timeout.as_millis(),
+                        error_kind = "http_bind_addr_in_use",
+                        retryable = true,
+                        error = %error,
+                        "daemon HTTP API port is temporarily unavailable; retrying"
+                    );
+                }
+                let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+                tokio::time::sleep(retry_interval.min(remaining)).await;
+            }
+            Err(error) => return Err(error),
+        }
+    }
+}
+
+#[cfg(test)]
+mod http_listener_bind_tests {
+    use std::net::{Ipv4Addr, TcpListener};
+    use std::time::Duration;
+
+    use super::bind_http_listener_with_retry;
+
+    #[tokio::test(start_paused = true)]
+    async fn retries_until_a_transiently_occupied_port_is_released() {
+        let blocker = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).expect("bind blocker");
+        let addr = blocker.local_addr().expect("read blocker address");
+        let started_at = tokio::time::Instant::now();
+        let bind =
+            bind_http_listener_with_retry(addr, Duration::from_secs(1), Duration::from_millis(10));
+        let release = async move {
+            tokio::time::sleep(Duration::from_millis(60)).await;
+            drop(blocker);
+        };
+
+        let (listener, ()) = tokio::join!(bind, release);
+        let listener =
+            listener.expect("listener should bind after the transient owner releases the port");
+
+        assert_eq!(listener.local_addr().expect("read listener address"), addr);
+        assert!(started_at.elapsed() >= Duration::from_millis(60));
+    }
 }
 
 #[cfg(test)]

@@ -59,6 +59,28 @@ describe('updateCargoToml', () => {
       '[package]\nname = "uniclipboard"\nversion = "0.20.0-alpha.6"\n\n[dependencies.tauri-plugin-wdio]\nversion = "1"\noptional = true\n\n[dependencies.tauri-plugin-wdio-webdriver]\nversion = "1"\noptional = true\n'
     )
   })
+
+  it('updates only the workspace package version', () => {
+    const repoDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bump-version-'))
+    tempDirs.push(repoDir)
+    const manifestPath = path.join(repoDir, 'Cargo.toml')
+    fs.writeFileSync(
+      manifestPath,
+      '[workspace.package]\nversion = "0.20.0-alpha.5"\n\n[dependencies.release-helper]\nversion = "2"\n',
+      'utf8'
+    )
+
+    updateCargoToml(
+      '0.20.0-alpha.6',
+      false,
+      path.relative(process.cwd(), manifestPath),
+      'workspace.package'
+    )
+
+    expect(fs.readFileSync(manifestPath, 'utf8')).toBe(
+      '[workspace.package]\nversion = "0.20.0-alpha.6"\n\n[dependencies.release-helper]\nversion = "2"\n'
+    )
+  })
 })
 
 describe('updateCargoLock', () => {

@@ -80,21 +80,41 @@ export function updateTauriConfig(newVersion, dryRun) {
 export function updateCargoToml(
   newVersion,
   dryRun,
-  relativePath = path.join('src-tauri', 'Cargo.toml')
+  relativePath = path.join('src-tauri', 'Cargo.toml'),
+  section = 'package'
 ) {
   const cargoPath = path.join(process.cwd(), relativePath)
   const content = fs.readFileSync(cargoPath, 'utf8')
+  const lines = content.split('\n')
+  let currentSection = null
+  let versionLineIndex = -1
+  let oldVersion = null
 
-  // Match ALL lines with version = "..." — covers [package] and [workspace.package]
-  const versionLineRegex = /^version\s*=\s*"[^"]+"/gm
-  const matches = content.match(versionLineRegex)
+  for (const [index, line] of lines.entries()) {
+    const sectionMatch = line.match(/^\s*\[([^\]]+)\]\s*(?:#.*)?$/)
+    if (sectionMatch) {
+      currentSection = sectionMatch[1]
+      continue
+    }
 
-  if (!matches || matches.length === 0) {
-    throw new Error('Could not find version in Cargo.toml')
+    if (currentSection !== section) {
+      continue
+    }
+
+    const versionMatch = line.match(/^(\s*version\s*=\s*)"([^"]+)"(.*)$/)
+    if (versionMatch) {
+      versionLineIndex = index
+      oldVersion = versionMatch[2]
+      lines[index] = `${versionMatch[1]}"${newVersion}"${versionMatch[3]}`
+      break
+    }
   }
 
-  const oldVersion = matches[0].match(/^version\s*=\s*"([^"]+)"/)[1]
-  const newContent = content.replace(versionLineRegex, `version = "${newVersion}"`)
+  if (versionLineIndex === -1 || oldVersion === null) {
+    throw new Error(`Could not find version in [${section}] of ${relativePath}`)
+  }
+
+  const newContent = lines.join('\n')
 
   if (!dryRun) {
     fs.writeFileSync(cargoPath, newContent, 'utf8')
@@ -208,7 +228,12 @@ export function run(options = parseArgs()) {
 
   // Root workspace manifest: [workspace.package] version, inherited by all
   // workspace member crates via `version.workspace = true`.
-  const rootCargoResult = updateCargoToml(newVersion, options.dryRun, 'Cargo.toml')
+  const rootCargoResult = updateCargoToml(
+    newVersion,
+    options.dryRun,
+    'Cargo.toml',
+    'workspace.package'
+  )
   console.log(`${options.dryRun ? '[DRY RUN]' : '✓'} ${rootCargoResult.path}`)
   console.log(`  ${rootCargoResult.old} → ${rootCargoResult.new}`)
 

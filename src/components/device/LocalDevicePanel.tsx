@@ -75,23 +75,22 @@ const LocalDevicePanel: React.FC<LocalDevicePanelProps> = ({ localDevice, member
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-8 py-8">
-      {/* ── header ─────────────────────────────────────────────── */}
-      <div className="flex items-start gap-4">
-        <div className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-success/10 text-success">
+    <div className="@container flex min-h-full w-full flex-col bg-background">
+      <header className="flex items-center gap-3 border-b border-border/40 bg-card/40 px-5 py-4 @md:px-6">
+        <div className="flex size-10 shrink-0 items-center justify-center rounded-lg border bg-success/10 text-success">
           {/* eslint-disable-next-line react-hooks/static-components -- `getDeviceIcon` returns a stable lucide icon reference keyed on deviceName, not a freshly-created component */}
-          <Icon className="size-6" />
+          <Icon className="size-5" />
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <h3 className="truncate text-xl font-semibold tracking-tight text-foreground">
+            <h3 className="truncate text-lg font-semibold text-foreground">
               {localDevice.deviceName}
             </h3>
-            <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+            <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[9px] font-medium text-muted-foreground">
               {t('devices.panel.localBadge')}
             </span>
           </div>
-          <p className="mt-1.5 flex items-center gap-2 text-xs">
+          <p className="mt-1 flex items-center gap-2 text-[11px]">
             <StatusDot tone={syncActive ? 'success' : 'off'} />
             <span
               className={cn('font-medium', syncActive ? 'text-success' : 'text-muted-foreground')}
@@ -101,67 +100,76 @@ const LocalDevicePanel: React.FC<LocalDevicePanelProps> = ({ localDevice, member
           </p>
         </div>
         <Button
-          variant="outline"
+          variant="ghost"
           size="sm"
           className="shrink-0"
+          aria-label={t('devices.switchSpace.button')}
+          title={t('devices.switchSpace.button')}
           onClick={() => setSwitchSpaceOpen(true)}
         >
           <ArrowRightLeft className="size-3.5" />
-          {t('devices.switchSpace.button')}
+          <span className="hidden @lg:inline">{t('devices.switchSpace.button')}</span>
         </Button>
+      </header>
+
+      <div className="grid min-w-0 content-start @3xl:flex-1 @3xl:content-stretch @3xl:grid-cols-[minmax(16rem,0.82fr)_minmax(22rem,1.18fr)]">
+        <section className="min-w-0 px-5 pt-5 pb-3 @md:px-6 @3xl:py-5">
+          <h4 className="text-xs font-semibold text-foreground/80">
+            {t('devices.panel.profile.title')}
+          </h4>
+          <div className="mt-2.5 flex flex-col gap-0.5 [&>div]:border-0 [&>div]:py-2">
+            <PanelFactRow label={t('devices.panel.fields.peerId')}>
+              <span className="inline-flex min-w-0 max-w-full items-center gap-1">
+                <span
+                  className="min-w-0 truncate font-mono text-xs font-medium"
+                  title={localDevice.peerId}
+                >
+                  {localDevice.peerId}
+                </span>
+                <CopyIconButton value={localDevice.peerId} />
+              </span>
+            </PanelFactRow>
+            {platformLabel && (
+              <PanelFactRow label={t('devices.panel.profile.platform')}>
+                <span className="text-xs font-medium">{platformLabel}</span>
+              </PanelFactRow>
+            )}
+            {appVersion && (
+              <PanelFactRow label={t('devices.panel.profile.version')}>
+                <span className="font-mono text-xs font-medium">v{appVersion}</span>
+              </PanelFactRow>
+            )}
+            <PanelFactRow label={t('devices.panel.profile.space')}>
+              <span className="text-xs font-medium">
+                {t('devices.panel.profile.memberCount', { count: memberCount })}
+              </span>
+            </PanelFactRow>
+          </div>
+        </section>
+
+        <section className="min-w-0 px-5 pt-3 pb-5 @md:px-6 @3xl:py-5">
+          <div className="flex h-7 items-center">
+            <h4 className="text-[13px] font-semibold text-foreground/90">
+              {t('devices.panel.policies.title')}
+            </h4>
+          </div>
+          <div className="mt-2.5 flex flex-col gap-1">
+            <ToggleRow
+              title={t('devices.panel.policies.autoSync.title')}
+              description={t('devices.panel.policies.autoSync.description')}
+              checked={autoSyncEnabled}
+              onCheckedChange={handleAutoSyncChange}
+            />
+            <ToggleRow
+              title={t('devices.panel.policies.fileSync.title')}
+              description={t('devices.panel.policies.fileSync.description')}
+              checked={autoSyncEnabled && fileSyncEnabled}
+              onCheckedChange={handleFileSyncChange}
+              disabled={!autoSyncEnabled}
+            />
+          </div>
+        </section>
       </div>
-
-      {/* ── identity profile ───────────────────────────────────── */}
-      <section>
-        <h4 className="pb-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-          {t('devices.panel.profile.title')}
-        </h4>
-        <div className="flex flex-col border-y border-border/50">
-          <PanelFactRow label={t('devices.panel.fields.peerId')}>
-            <span className="truncate font-mono text-xs font-medium" title={localDevice.peerId}>
-              {localDevice.peerId}
-            </span>
-            <CopyIconButton value={localDevice.peerId} />
-          </PanelFactRow>
-          {platformLabel && (
-            <PanelFactRow label={t('devices.panel.profile.platform')}>
-              <span className="text-xs font-medium">{platformLabel}</span>
-            </PanelFactRow>
-          )}
-          {appVersion && (
-            <PanelFactRow label={t('devices.panel.profile.version')}>
-              <span className="font-mono text-xs font-medium">v{appVersion}</span>
-            </PanelFactRow>
-          )}
-          <PanelFactRow label={t('devices.panel.profile.space')}>
-            <span className="text-xs font-medium">
-              {t('devices.panel.profile.memberCount', { count: memberCount })}
-            </span>
-          </PanelFactRow>
-        </div>
-      </section>
-
-      {/* ── global sync policies ───────────────────────────────── */}
-      <section>
-        <h4 className="pb-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-          {t('devices.panel.policies.title')}
-        </h4>
-        <div className="flex flex-col">
-          <ToggleRow
-            title={t('devices.panel.policies.autoSync.title')}
-            description={t('devices.panel.policies.autoSync.description')}
-            checked={autoSyncEnabled}
-            onCheckedChange={handleAutoSyncChange}
-          />
-          <ToggleRow
-            title={t('devices.panel.policies.fileSync.title')}
-            description={t('devices.panel.policies.fileSync.description')}
-            checked={autoSyncEnabled && fileSyncEnabled}
-            onCheckedChange={handleFileSyncChange}
-            disabled={!autoSyncEnabled}
-          />
-        </div>
-      </section>
 
       <SwitchSpaceDialog open={switchSpaceOpen} onOpenChange={setSwitchSpaceOpen} />
     </div>
@@ -197,13 +205,21 @@ const ToggleRow: React.FC<ToggleRowProps> = ({
   onCheckedChange,
   disabled,
 }) => (
-  <div className="flex items-center gap-4 border-b border-border/40 py-3 last:border-b-0">
+  <div
+    className={cn(
+      'flex min-h-14 min-w-0 items-center gap-4 rounded-md p-3.5 transition-colors hover:bg-muted/20',
+      disabled && 'opacity-55'
+    )}
+  >
     <div className="min-w-0 flex-1">
       <p className="text-sm font-medium text-foreground">{title}</p>
-      <p className="mt-0.5 truncate text-[11px] leading-snug text-muted-foreground">
-        {description}
-      </p>
+      <p className="mt-0.5 text-[11px] leading-snug text-muted-foreground">{description}</p>
     </div>
-    <Switch checked={checked} onCheckedChange={onCheckedChange} disabled={disabled} />
+    <Switch
+      className="shrink-0"
+      checked={checked}
+      onCheckedChange={onCheckedChange}
+      disabled={disabled}
+    />
   </div>
 )

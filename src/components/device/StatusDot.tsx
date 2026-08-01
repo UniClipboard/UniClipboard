@@ -5,8 +5,8 @@ export type StatusDotTone = 'success' | 'warning' | 'info' | 'off'
 
 /**
  * Glowing presence dot used across the devices master-detail layout.
- * Tone encodes the connection channel: success = LAN direct, warning =
- * relay/degraded, info = mobile-sync activity, off = offline/idle.
+ * Tone encodes the connection channel: success = direct, info = relay or
+ * mobile-sync activity, warning = degraded, off = offline/idle.
  * The glow is built from the semantic theme tokens so it adapts to
  * light/dark and theme presets without per-tone hex values.
  */

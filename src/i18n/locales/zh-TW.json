@@ -1450,12 +1450,31 @@
       },
       "sync": {
         "title": "同步設定",
+        "helpLabel": "瞭解傳送和接收",
+        "help": "傳送決定本機可以向這台裝置同步哪些內容；接收決定本機可以從這台裝置接收哪些內容。",
         "restoreDefaults": "恢復預設",
+        "updateFailed": "同步設定更新失敗，請重試。",
         "contentTypes": "內容類型",
+        "columns": {
+          "send": "發送",
+          "receive": "接收"
+        },
+        "typeLabels": {
+          "text": "文字",
+          "image": "圖片",
+          "file": "檔案",
+          "link": "連結",
+          "richText": "格式化文字"
+        },
+        "toggleLabel": "{{direction}}：{{contentType}}",
         "rules": {
           "sendEnabled": {
             "title": "發送到此裝置",
-            "description": "開啓後，本機的剪貼簿內容會同步給此裝置。接收方向目前始終開啓，獨立的接收開關將在後續版本中開放。"
+            "description": "開啓後，本機的剪貼簿內容會同步給此裝置。"
+          },
+          "receiveEnabled": {
+            "title": "從此裝置接收",
+            "description": "開啓後，本機可以接收此裝置之後傳來的剪貼簿內容。"
           },
           "syncText": {
             "title": "同步文字",

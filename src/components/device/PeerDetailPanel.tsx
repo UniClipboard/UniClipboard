@@ -8,21 +8,23 @@
  * labels, a glowing status dot, and hover-quiet secondary actions.
  */
 
-import { AlignLeft, FileIcon, ImageIcon, Link2, Type, type LucideIcon } from 'lucide-react'
+import { CircleHelp, RotateCcw, Unlink } from 'lucide-react'
 import React, { useCallback, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { ContentTypes, MemberProtectionStatus } from '@/api/daemon/member'
 import { DEFAULT_SEND_CONTENT_TYPES } from '@/api/daemon/member'
 import type { SpaceMember } from '@/api/daemon/members'
-import { deriveBadgeKind } from '@/components/device/connection-channel-utils'
+import { deriveBadgeKind, derivePeerStatusTone } from '@/components/device/connection-channel-utils'
 import CopyIconButton from '@/components/device/CopyIconButton'
-import { contentTypeEntries, getDeviceIcon } from '@/components/device/device-utils'
+import { getDeviceIcon } from '@/components/device/device-utils'
 import PanelFactRow from '@/components/device/PanelFactRow'
 import StatusDot from '@/components/device/StatusDot'
+import SyncSettingsTable from '@/components/device/SyncSettingsTable'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
-import { Switch } from '@/components/ui/switch'
+import { toast } from '@/components/ui/toast'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { createLogger } from '@/lib/logger'
 import { cn } from '@/lib/utils'
 import { useAppDispatch, useAppSelector } from '@/store/hooks'
@@ -41,14 +43,6 @@ interface PeerDetailPanelProps {
   /** Whether LAN-only mode is active (drives the derived channel label). */
   lanOnlyActive: boolean
   onUnpair: (peerId: string) => void
-}
-
-const CONTENT_TYPE_ICONS: Partial<Record<keyof ContentTypes, LucideIcon>> = {
-  text: Type,
-  image: ImageIcon,
-  file: FileIcon,
-  link: Link2,
-  richText: AlignLeft,
 }
 
 const PeerDetailPanel: React.FC<PeerDetailPanelProps> = ({
@@ -83,16 +77,24 @@ const PeerDetailPanel: React.FC<PeerDetailPanelProps> = ({
     dispatch(fetchMemberSyncPreferences(deviceId))
   }, [dispatch, deviceId])
 
+  const handlePreferenceUpdateFailure = useCallback(
+    (err: unknown, message: string, fields: Record<string, unknown> = {}) => {
+      log.error({ err, ...fields }, message)
+      toast.error(t('devices.settings.sync.updateFailed'))
+      reconcileAfterFailure()
+    },
+    [reconcileAfterFailure, t]
+  )
+
   const handleSendEnabledToggle = useCallback(
     (checked: boolean) => {
       dispatch(updateMemberSyncPreferences({ deviceId, patch: { sendEnabled: checked } }))
         .unwrap()
         .catch(err => {
-          log.error({ err }, 'failed to update send-enabled preference')
-          reconcileAfterFailure()
+          handlePreferenceUpdateFailure(err, 'failed to update send-enabled preference')
         })
     },
-    [dispatch, deviceId, reconcileAfterFailure]
+    [dispatch, deviceId, handlePreferenceUpdateFailure]
   )
 
   const handleSendContentTypeToggle = useCallback(
@@ -102,29 +104,61 @@ const PeerDetailPanel: React.FC<PeerDetailPanelProps> = ({
       )
         .unwrap()
         .catch(err => {
-          log.error({ err, field }, 'failed to update send content-type preference')
-          reconcileAfterFailure()
+          handlePreferenceUpdateFailure(err, 'failed to update send content-type preference', {
+            field,
+          })
         })
     },
-    [dispatch, deviceId, reconcileAfterFailure]
+    [dispatch, deviceId, handlePreferenceUpdateFailure]
+  )
+
+  const handleReceiveEnabledToggle = useCallback(
+    (checked: boolean) => {
+      dispatch(updateMemberSyncPreferences({ deviceId, patch: { receiveEnabled: checked } }))
+        .unwrap()
+        .catch(err => {
+          handlePreferenceUpdateFailure(err, 'failed to update receive-enabled preference')
+        })
+    },
+    [dispatch, deviceId, handlePreferenceUpdateFailure]
+  )
+
+  const handleReceiveContentTypeToggle = useCallback(
+    (field: keyof ContentTypes, checked: boolean) => {
+      dispatch(
+        updateMemberSyncPreferences({
+          deviceId,
+          patch: { receiveContentTypes: { [field]: checked } },
+        })
+      )
+        .unwrap()
+        .catch(err => {
+          handlePreferenceUpdateFailure(err, 'failed to update receive content-type preference', {
+            field,
+          })
+        })
+    },
+    [dispatch, deviceId, handlePreferenceUpdateFailure]
   )
 
   const handleRestoreDefaults = useCallback(async () => {
-    // UX only exposes the send column, so restore resets send fields only;
-    // receive fields keep their current server values.
     try {
       await dispatch(
         updateMemberSyncPreferences({
           deviceId,
-          patch: { sendEnabled: true, sendContentTypes: DEFAULT_SEND_CONTENT_TYPES },
+          patch: {
+            sendEnabled: true,
+            receiveEnabled: true,
+            sendContentTypes: DEFAULT_SEND_CONTENT_TYPES,
+            receiveContentTypes: DEFAULT_SEND_CONTENT_TYPES,
+          },
         })
       ).unwrap()
       dispatch(fetchMemberSyncPreferences(deviceId))
     } catch (err) {
-      log.error({ err }, 'failed to restore default sync preferences')
-      reconcileAfterFailure()
+      handlePreferenceUpdateFailure(err, 'failed to restore default sync preferences')
     }
-  }, [dispatch, deviceId, reconcileAfterFailure])
+  }, [dispatch, deviceId, handlePreferenceUpdateFailure])
 
   if (!deviceId) return null
 
@@ -132,39 +166,36 @@ const PeerDetailPanel: React.FC<PeerDetailPanelProps> = ({
   const connected = device?.connected ?? false
   const channelKind = deriveBadgeKind(device?.channel ?? 'unknown', lanOnlyActive)
   const channelLabel = t(`devices.list.channel.${channelKind}`)
-  const dotTone = !connected ? 'off' : channelKind === 'relay' ? 'warning' : 'success'
+  const dotTone = derivePeerStatusTone(device?.channel ?? 'unknown', connected)
   const sendEnabled = preferences?.sendEnabled ?? true
-  const sendDisabled = !sendEnabled || globalAutoSyncOff || isLoading
+  const receiveEnabled = preferences?.receiveEnabled ?? true
   const showSkeleton = isLoading && !preferences
   const Icon = getDeviceIcon(device?.deviceName)
 
   return (
-    <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-8 py-8">
-      {/* ── header ─────────────────────────────────────────────── */}
-      <div className="flex items-start gap-4">
+    <div className="@container flex min-h-full w-full flex-col bg-background">
+      <header className="flex items-center gap-3 border-b border-border/40 bg-card/40 px-5 py-4 @md:px-6">
         <div
           className={cn(
-            'flex size-12 shrink-0 items-center justify-center rounded-xl',
+            'flex size-10 shrink-0 items-center justify-center rounded-lg border',
             connected ? 'bg-success/10 text-success' : 'bg-muted text-muted-foreground'
           )}
         >
           {/* eslint-disable-next-line react-hooks/static-components -- `getDeviceIcon` returns a stable lucide icon reference keyed on deviceName, not a freshly-created component */}
-          <Icon className="size-6" />
+          <Icon className="size-5" />
         </div>
         <div className="min-w-0 flex-1">
-          <h3 className="truncate text-xl font-semibold tracking-tight text-foreground">
-            {deviceName}
-          </h3>
-          <p className="mt-1.5 flex items-center gap-2 text-xs">
+          <h3 className="truncate text-lg font-semibold text-foreground">{deviceName}</h3>
+          <p className="mt-1 flex items-center gap-2 text-[11px]">
             <StatusDot tone={dotTone} />
             <span
               className={cn(
                 'font-medium',
-                connected
-                  ? channelKind === 'relay'
-                    ? 'text-warning'
-                    : 'text-success'
-                  : 'text-muted-foreground'
+                connected && device?.channel === 'relay'
+                  ? 'text-info'
+                  : connected && device?.channel === 'direct'
+                    ? 'text-success'
+                    : 'text-muted-foreground'
               )}
             >
               {connected ? t('devices.list.status.online') : t('devices.list.status.offline')}
@@ -174,131 +205,118 @@ const PeerDetailPanel: React.FC<PeerDetailPanelProps> = ({
           </p>
         </div>
         <Button
-          variant="outline"
+          variant="ghost"
           size="sm"
-          className="shrink-0 border-destructive/30 text-destructive hover:border-destructive/50 hover:bg-destructive/10 hover:text-destructive"
+          aria-label={t('devices.list.actions.unpair')}
+          title={t('devices.list.actions.unpair')}
+          className="shrink-0 text-destructive hover:bg-destructive/10 hover:text-destructive"
           onClick={() => onUnpair(deviceId)}
         >
-          {t('devices.list.actions.unpair')}
+          <Unlink className="size-3.5" />
+          <span className="hidden @sm:inline">{t('devices.list.actions.unpair')}</span>
         </Button>
-      </div>
+      </header>
 
-      {/* ── connection facts (same row layout as LocalDevicePanel) ── */}
-      <div className="flex flex-col border-y border-border/50">
-        <PanelFactRow label={t('devices.panel.fields.peerId')}>
-          <span className="truncate font-mono text-xs font-medium" title={device?.peerId}>
-            {device?.peerId ?? deviceId}
-          </span>
-          <CopyIconButton value={device?.peerId ?? deviceId} />
-        </PanelFactRow>
-        <PanelFactRow label={t('devices.settings.fields.channel')}>
-          <span className="text-xs font-medium">{channelLabel}</span>
-        </PanelFactRow>
-        {protectionStatus && (
-          <PanelFactRow label={t('devices.protection.label')}>
-            <Badge variant="outline" className={protectionBadgeClass(protectionStatus)}>
-              {t(`devices.protection.status.${protectionStatus}`)}
-            </Badge>
-          </PanelFactRow>
-        )}
-        {device?.connectionAddress && (
-          <PanelFactRow label={t('devices.settings.fields.address')}>
-            <span className="truncate font-mono text-xs font-medium">
-              {device.connectionAddress}
-            </span>
-          </PanelFactRow>
-        )}
-      </div>
-
-      {/* ── sync settings ──────────────────────────────────────── */}
-      <section>
-        <div className="flex items-center justify-between pb-1">
-          <h4 className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-            {t('devices.settings.sync.title')}
+      <div className="grid content-start @3xl:flex-1 @3xl:content-stretch @3xl:grid-cols-[minmax(16rem,0.82fr)_minmax(24rem,1.18fr)]">
+        <section className="px-5 pt-5 pb-3 @md:px-6 @3xl:py-5">
+          <h4 className="text-xs font-semibold text-foreground/80">
+            {t('devices.settings.sections.connection')}
           </h4>
-          <button
-            type="button"
-            onClick={handleRestoreDefaults}
-            disabled={globalAutoSyncOff || isLoading}
-            className="text-[11px] font-medium text-muted-foreground transition-colors hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {t('devices.settings.sync.restoreDefaults')}
-          </button>
-        </div>
+          <div className="mt-2.5 flex flex-col gap-0.5 [&>div]:border-0 [&>div]:py-2">
+            <PanelFactRow label={t('devices.panel.fields.peerId')}>
+              <span className="inline-flex min-w-0 max-w-full items-center gap-1">
+                <span
+                  className="min-w-0 truncate font-mono text-xs font-medium"
+                  title={device?.peerId}
+                >
+                  {device?.peerId ?? deviceId}
+                </span>
+                <CopyIconButton value={device?.peerId ?? deviceId} />
+              </span>
+            </PanelFactRow>
+            <PanelFactRow label={t('devices.settings.fields.channel')}>
+              <span className="text-xs font-medium">{channelLabel}</span>
+            </PanelFactRow>
+            {protectionStatus && (
+              <PanelFactRow label={t('devices.protection.label')}>
+                <Badge variant="outline" className={protectionBadgeClass(protectionStatus)}>
+                  {t(`devices.protection.status.${protectionStatus}`)}
+                </Badge>
+              </PanelFactRow>
+            )}
+            {device?.connectionAddress && (
+              <PanelFactRow label={t('devices.settings.fields.address')}>
+                <span className="truncate font-mono text-xs font-medium">
+                  {device.connectionAddress}
+                </span>
+              </PanelFactRow>
+            )}
+          </div>
+        </section>
 
-        {showSkeleton ? (
-          <SyncSettingsSkeleton />
-        ) : (
-          <>
-            <div className="flex items-start justify-between gap-3 border-b border-border/40 py-3.5">
-              <div className="min-w-0 flex-1">
-                <p className="text-sm font-medium text-foreground">
-                  {t('devices.settings.sync.rules.sendEnabled.title')}
-                </p>
-                <p className="mt-0.5 text-[11px] leading-snug text-muted-foreground">
-                  {t('devices.settings.sync.rules.sendEnabled.description')}
-                </p>
-              </div>
-              <Switch
-                checked={sendEnabled}
-                onCheckedChange={handleSendEnabledToggle}
-                disabled={globalAutoSyncOff || isLoading}
-              />
+        <section className="px-5 pt-3 pb-5 @md:px-6 @3xl:py-5">
+          <div className="flex h-7 items-center justify-between">
+            <div className="flex items-center gap-1.5">
+              <h4 className="text-[13px] font-semibold text-foreground/90">
+                {t('devices.settings.sync.title')}
+              </h4>
+              <TooltipProvider delay={250}>
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <button
+                        type="button"
+                        aria-label={t('devices.settings.sync.helpLabel')}
+                        className="flex size-5 items-center justify-center rounded text-muted-foreground/65 transition-colors hover:bg-muted/40 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
+                      />
+                    }
+                  >
+                    <CircleHelp className="size-3.5" />
+                  </TooltipTrigger>
+                  <TooltipContent
+                    side="top"
+                    sideOffset={6}
+                    align="start"
+                    className="max-w-64 text-left leading-relaxed whitespace-normal"
+                  >
+                    {t('devices.settings.sync.help')}
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
             </div>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              aria-label={t('devices.settings.sync.restoreDefaults')}
+              title={t('devices.settings.sync.restoreDefaults')}
+              onClick={handleRestoreDefaults}
+              disabled={globalAutoSyncOff || isLoading}
+              className="text-muted-foreground hover:text-foreground"
+            >
+              <RotateCcw className="size-3.5" />
+            </Button>
+          </div>
 
-            <div className="pt-4">
-              <p className="pb-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-                {t('devices.settings.sync.contentTypes')}
-              </p>
-              <div
-                className={cn(
-                  'grid grid-cols-2 gap-2 transition-opacity',
-                  sendDisabled && 'pointer-events-none opacity-50'
-                )}
-              >
-                {CONTENT_TYPE_FIELDS.map(({ field, i18nKey, status }) => {
-                  const isComingSoon = status === 'coming_soon'
-                  const isGlobalFileSyncDisabled = field === 'file' && globalFileSyncOff
-                  const disabled = isComingSoon || isGlobalFileSyncDisabled || sendDisabled
-
-                  let suffix: React.ReactNode = null
-                  if (isComingSoon) {
-                    suffix = (
-                      <Badge variant="secondary" className="px-1.5 py-0 text-[9px]">
-                        {t('devices.settings.badges.comingSoon')}
-                      </Badge>
-                    )
-                  } else if (isGlobalFileSyncDisabled) {
-                    suffix = (
-                      <Badge
-                        variant="outline"
-                        className="border-warning/20 bg-warning/10 px-1.5 py-0 text-[9px] text-warning"
-                      >
-                        {t('devices.settings.badges.globalFileSyncOff')}
-                      </Badge>
-                    )
-                  }
-
-                  return (
-                    <ContentTypeToggle
-                      key={field}
-                      // `CONTENT_TYPE_FIELDS` excludes codeSnippet, so `field`
-                      // only hits the 5 mapped keys; assert past the Partial
-                      // index signature.
-                      icon={CONTENT_TYPE_ICONS[field]!}
-                      label={t(`devices.settings.sync.rules.${i18nKey}.title`)}
-                      checked={preferences?.sendContentTypes[field] ?? true}
-                      onChange={checked => handleSendContentTypeToggle(field, checked)}
-                      disabled={disabled}
-                      suffix={suffix}
-                    />
-                  )
-                })}
-              </div>
-            </div>
-          </>
-        )}
-      </section>
+          {showSkeleton ? (
+            <SyncSettingsSkeleton />
+          ) : (
+            <SyncSettingsTable
+              sendEnabled={sendEnabled}
+              receiveEnabled={receiveEnabled}
+              sendContentTypes={preferences?.sendContentTypes}
+              receiveContentTypes={preferences?.receiveContentTypes}
+              globalAutoSyncOff={globalAutoSyncOff}
+              globalFileSyncOff={globalFileSyncOff}
+              isLoading={isLoading}
+              onSendEnabledChange={handleSendEnabledToggle}
+              onReceiveEnabledChange={handleReceiveEnabledToggle}
+              onSendContentTypeChange={handleSendContentTypeToggle}
+              onReceiveContentTypeChange={handleReceiveContentTypeToggle}
+            />
+          )}
+        </section>
+      </div>
     </div>
   )
 }
@@ -318,52 +336,13 @@ function protectionBadgeClass(status: MemberProtectionStatus): string {
   }
 }
 
-// ────────────────────────────────────────────────────────────────
-// Local helpers (file-private)
-// ────────────────────────────────────────────────────────────────
-
-const CONTENT_TYPE_FIELDS = contentTypeEntries
-
-const ContentTypeToggle: React.FC<{
-  icon: LucideIcon
-  label: string
-  checked: boolean
-  disabled?: boolean
-  suffix?: React.ReactNode
-  onChange: (v: boolean) => void
-}> = ({ icon: Icon, label, checked, disabled, suffix, onChange }) => (
-  <label
-    className={cn(
-      'flex items-center gap-2 rounded-lg border px-3 py-2 transition-colors',
-      disabled
-        ? 'cursor-not-allowed border-border/60 bg-card/30'
-        : checked
-          ? 'cursor-pointer border-primary/40 bg-primary/5'
-          : 'cursor-pointer border-border/60 bg-card/50 hover:bg-muted/30'
-    )}
-  >
-    <Icon
-      className={cn(
-        'size-3.5 shrink-0',
-        checked && !disabled ? 'text-primary' : 'text-muted-foreground'
-      )}
-    />
-    <span className="flex-1 truncate text-xs font-medium text-foreground">{label}</span>
-    {suffix}
-    <Switch size="sm" checked={checked} onCheckedChange={onChange} disabled={disabled} />
-  </label>
-)
-
 const SyncSettingsSkeleton: React.FC = () => (
-  <div className="space-y-3 pt-2">
-    <Skeleton className="h-[58px] w-full rounded-lg" />
-    <div className="space-y-2">
-      <Skeleton className="h-3 w-16 rounded-md" />
-      <div className="grid grid-cols-2 gap-2">
-        {[0, 1, 2, 3].map(i => (
-          <Skeleton key={i} className="h-[34px] rounded-lg" />
-        ))}
-      </div>
+  <div className="mt-3 space-y-2">
+    <Skeleton className="h-10 w-full rounded-md" />
+    <div className="space-y-1">
+      {[0, 1, 2, 3, 4].map(i => (
+        <Skeleton key={i} className="h-10 w-full rounded-md" />
+      ))}
     </div>
   </div>
 )

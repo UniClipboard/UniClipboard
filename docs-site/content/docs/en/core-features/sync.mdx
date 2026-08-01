@@ -71,19 +71,21 @@ the transition.
 ## Per-device sync gates
 
 Every paired device exposes a small set of toggles that bound what
-**this** machine will send to that peer:
+**this** machine will send to and receive from that peer:
 
 - **Send to this device** — outbound master switch, per peer. When
-  off, clips produced here never leave for that peer; receiving
-  remains on. A dedicated _receive_ toggle is **not** wired up yet —
-  it is planned for a later release.
-- **Content-type allowlist** — when send is on, you can disable
-  individual types (text, image, link, file, code, HTML/rich text)
+  off, clips produced here never leave for that peer.
+- **Receive from this device** — inbound master switch, per peer.
+  When off, future clips from that peer do not enter this machine's
+  history or system clipboard.
+- **Content-type allowlists** — for each direction, you can disable
+  individual types (text, image, link, file, HTML/rich text)
   per peer.
 
-Toggles are enforced at the **sending side's** dispatcher, so any
-type you disable for a peer never has its bytes leave this machine in
-the first place. See the **Devices** page in the GUI; equivalent CLI
+Send toggles are enforced at the **sending side's** dispatcher, so a
+disabled type never leaves this machine. Receive toggles are enforced
+locally before accepted content reaches history, the system clipboard,
+or re-broadcast. See the **Devices** page in the GUI; equivalent CLI
 config commands are on the roadmap.
 
 ## Mobile sync (companion mode)

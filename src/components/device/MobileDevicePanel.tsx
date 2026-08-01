@@ -50,6 +50,7 @@ import {
 import { BaseUrlChip } from '@/components/device/MobileSyncBaseUrlChip'
 import { MobileSyncInstallHelper } from '@/components/device/MobileSyncInstallHelper'
 import PanelFactRow from '@/components/device/PanelFactRow'
+import StatusDot from '@/components/device/StatusDot'
 import { Button } from '@/components/ui/button'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { Input } from '@/components/ui/input'
@@ -285,40 +286,38 @@ const MobileDevicePanel: React.FC<Props> = ({
   const pairing = view === 'info' && credentialResult?.password != null
 
   return (
-    <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-8 py-8">
-      {/* ── header ──────────────────────────────────────────────── */}
-      <div className="flex items-start gap-4">
-        <div className="flex size-13 shrink-0 items-center justify-center rounded-2xl bg-info/10 text-info ring-1 ring-inset ring-info/20">
-          <Smartphone className="size-6" />
+    <div className="@container flex min-h-full w-full flex-col bg-background">
+      <header className="flex items-center gap-3 border-b border-border/40 bg-card/40 px-5 py-4 @md:px-6">
+        <div className="flex size-10 shrink-0 items-center justify-center rounded-lg border bg-info/10 text-info">
+          <Smartphone className="size-5" />
         </div>
         <div className="min-w-0 flex-1">
           {pairing ? (
             <>
-              <h3 className="truncate text-xl font-semibold tracking-tight text-foreground">
+              <h3 className="truncate text-lg font-semibold text-foreground">
                 {t('devices.mobileSync.deviceDialog.connectTitle', { label: visibleLabel })}
               </h3>
-              <p className="mt-1 text-xs text-muted-foreground">
+              <p className="mt-1 truncate text-[11px] text-muted-foreground">
                 {t('devices.mobileSync.deviceDialog.connectSubtitle')}
               </p>
             </>
           ) : view === 'edit' ? (
             <>
-              <h3 className="truncate text-xl font-semibold tracking-tight text-foreground">
+              <h3 className="truncate text-lg font-semibold text-foreground">
                 {t('devices.mobileSync.edit.title')}
               </h3>
-              <p className="mt-1 text-xs text-muted-foreground">
+              <p className="mt-1 truncate text-[11px] text-muted-foreground">
                 {t('devices.mobileSync.edit.subtitle')}
               </p>
             </>
           ) : (
             <>
-              <h3 className="truncate text-xl font-semibold tracking-tight text-foreground">
-                {visibleLabel}
-              </h3>
-              <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1">
-                <span className="truncate font-mono text-xs text-muted-foreground">
+              <h3 className="truncate text-lg font-semibold text-foreground">{visibleLabel}</h3>
+              <div className="mt-1 flex min-w-0 items-center gap-2 text-[11px]">
+                <span className="min-w-0 truncate font-mono text-muted-foreground">
                   {visibleUsername}
                 </span>
+                <span className="shrink-0 text-muted-foreground/50">·</span>
                 <DeviceStatusPill lastSeenAtMs={device.lastSeenAtMs} />
               </div>
             </>
@@ -328,23 +327,31 @@ const MobileDevicePanel: React.FC<Props> = ({
           <div className="flex shrink-0 gap-2">
             {/* No "edit" during the pairing moment — keep the focus on scanning. */}
             {!pairing && (
-              <Button variant="outline" size="sm" onClick={() => handleOpenEdit()}>
+              <Button
+                variant="ghost"
+                size="sm"
+                aria-label={t('devices.mobileSync.edit.button')}
+                title={t('devices.mobileSync.edit.button')}
+                onClick={() => handleOpenEdit()}
+              >
                 <Pencil className="size-3.5" />
-                {t('devices.mobileSync.edit.button')}
+                <span className="hidden @lg:inline">{t('devices.mobileSync.edit.button')}</span>
               </Button>
             )}
             <Button
-              variant="outline"
+              variant="ghost"
               size="sm"
-              className="border-destructive/30 text-destructive hover:border-destructive/50 hover:bg-destructive/10 hover:text-destructive"
+              aria-label={t('devices.mobileSync.revoke.confirm')}
+              title={t('devices.mobileSync.revoke.confirm')}
+              className="text-destructive hover:bg-destructive/10 hover:text-destructive"
               onClick={() => onRevoke(device)}
             >
               <Trash2 className="size-3.5" />
-              {t('devices.mobileSync.revoke.confirm')}
+              <span className="hidden @lg:inline">{t('devices.mobileSync.revoke.confirm')}</span>
             </Button>
           </div>
         )}
-      </div>
+      </header>
 
       {view === 'info' ? (
         <InfoView
@@ -365,7 +372,7 @@ const MobileDevicePanel: React.FC<Props> = ({
           onRepair={() => handleOpenEdit(true)}
         />
       ) : (
-        <>
+        <div className="flex w-full max-w-2xl flex-col px-5 py-5 @md:px-6">
           <EditView
             labelInput={labelInput}
             usernameInput={usernameInput}
@@ -394,7 +401,7 @@ const MobileDevicePanel: React.FC<Props> = ({
               clearFieldError('password')
             }}
           />
-          <div className="flex justify-end gap-2 border-t border-border/50 pt-4">
+          <div className="mt-6 flex justify-end gap-2">
             <Button variant="ghost" size="sm" onClick={() => setView('info')} disabled={submitting}>
               {t('devices.mobileSync.edit.cancel')}
             </Button>
@@ -407,7 +414,7 @@ const MobileDevicePanel: React.FC<Props> = ({
               {submitting ? t('devices.mobileSync.edit.saving') : t('devices.mobileSync.edit.save')}
             </Button>
           </div>
-        </>
+        </div>
       )}
     </div>
   )
@@ -427,8 +434,8 @@ const DeviceStatusPill: React.FC<{ lastSeenAtMs: number | null | undefined }> = 
 
   if (lastSeenAtMs == null) {
     return (
-      <span className="inline-flex items-center gap-1.5 rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
-        <span className="size-1.5 rounded-full bg-current opacity-60" />
+      <span className="inline-flex shrink-0 items-center gap-1.5 font-medium text-muted-foreground">
+        <StatusDot tone="off" />
         {t('devices.mobileSync.deviceDialog.status.neverSeen')}
       </span>
     )
@@ -437,17 +444,19 @@ const DeviceStatusPill: React.FC<{ lastSeenAtMs: number | null | undefined }> = 
   const online = now - lastSeenAtMs <= ONLINE_WINDOW_MS
   if (online) {
     return (
-      <span className="inline-flex items-center gap-1.5 rounded-full bg-success/12 px-2 py-0.5 text-[11px] font-medium text-success">
-        <span className="size-1.5 rounded-full bg-current" />
+      <span className="inline-flex shrink-0 items-center gap-1.5 font-medium text-success">
+        <StatusDot tone="success" />
         {t('devices.mobileSync.deviceDialog.status.online')}
       </span>
     )
   }
   return (
-    <span className="inline-flex items-center gap-1.5 rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
-      <span className="size-1.5 rounded-full bg-current opacity-60" />
-      {t('devices.mobileSync.deviceDialog.status.offline')} ·{' '}
-      {formatRelativeTime(lastSeenAtMs, now, t)}
+    <span className="inline-flex min-w-0 items-center gap-1.5 truncate font-medium text-muted-foreground">
+      <StatusDot tone="off" />
+      <span className="truncate">
+        {t('devices.mobileSync.deviceDialog.status.offline')} ·{' '}
+        {formatRelativeTime(lastSeenAtMs, now, t)}
+      </span>
     </span>
   )
 }
@@ -512,21 +521,21 @@ const InfoView: React.FC<InfoViewProps> = ({
     // scan path stays uncluttered. If the connect URI failed to build, open the
     // manual credentials by default so the user can still finish by hand.
     return (
-      <>
+      <div className="flex w-full flex-col gap-3 px-5 py-5 @md:px-6">
         {connectUri !== null && (
-          <section className="flex flex-col items-center gap-4 rounded-2xl border border-border/60 bg-card p-6 shadow-sm">
-            <div className="rounded-2xl bg-white p-4 shadow-lg ring-1 ring-black/5">
+          <section className="mx-auto flex w-full max-w-xl flex-col items-center gap-4 rounded-lg border border-border/60 bg-card p-5">
+            <div className="rounded-md border border-black/10 bg-white p-3">
               <QRCodeSVG
                 value={connectUri}
-                size={200}
+                size={184}
                 aria-label={t('devices.mobileSync.credential.pair.qrAlt')}
               />
             </div>
-            <p className="max-w-[34ch] text-center text-[15px] font-medium leading-snug text-balance text-foreground">
+            <p className="max-w-[34ch] text-center text-sm font-medium leading-snug text-balance text-foreground">
               {t('devices.mobileSync.deviceDialog.scanInstruction')}
             </p>
-            <div className="flex w-full flex-col items-center gap-2 pt-1">
-              <span className="text-[10px] font-semibold tracking-[0.12em] text-muted-foreground uppercase">
+            <div className="flex w-full flex-col items-center gap-2">
+              <span className="text-[11px] font-medium text-muted-foreground">
                 {t('devices.mobileSync.deviceDialog.sections.serverAddress')}
               </span>
               {addressChip}
@@ -554,38 +563,40 @@ const InfoView: React.FC<InfoViewProps> = ({
           backupCopied={backupCopied}
           onBackup={onBackup}
         />
-      </>
+      </div>
     )
   }
 
   // ── steady state: facts first, then address + honest re-pair CTA ──
   return (
-    <>
+    <div className="grid content-start @3xl:flex-1 @3xl:content-stretch @3xl:grid-cols-[minmax(16rem,0.82fr)_minmax(22rem,1.18fr)]">
       <DeviceDetails device={device} />
 
-      <Section title={t('devices.mobileSync.deviceDialog.sections.serverAddress')}>
-        {addressChip}
-      </Section>
+      <div className="flex flex-col gap-6 px-5 pt-3 pb-5 @md:px-6 @3xl:py-5">
+        <Section title={t('devices.mobileSync.deviceDialog.sections.serverAddress')}>
+          {addressChip}
+        </Section>
 
-      <Section title={t('devices.mobileSync.deviceDialog.sections.pairing')}>
-        <div className="flex items-center gap-4 rounded-xl border border-border/60 bg-muted/40 p-4">
-          <div className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-border/60 bg-card text-muted-foreground">
-            <QrCode className="size-5" />
+        <Section title={t('devices.mobileSync.deviceDialog.sections.pairing')}>
+          <div className="flex items-center gap-3 rounded-lg bg-muted/25 p-3.5">
+            <div className="flex size-9 shrink-0 items-center justify-center rounded-md bg-background text-muted-foreground">
+              <QrCode className="size-4.5" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-[13px] font-medium text-foreground">
+                {t('devices.mobileSync.deviceDialog.repair.title')}
+              </p>
+              <p className="mt-0.5 text-[11px] leading-snug text-muted-foreground">
+                {t('devices.mobileSync.deviceDialog.repair.description')}
+              </p>
+            </div>
+            <Button variant="ghost" size="sm" className="shrink-0" onClick={onRepair}>
+              {t('devices.mobileSync.deviceDialog.repair.action')}
+            </Button>
           </div>
-          <div className="min-w-0 flex-1">
-            <p className="text-sm font-medium text-foreground">
-              {t('devices.mobileSync.deviceDialog.repair.title')}
-            </p>
-            <p className="mt-0.5 text-[11.5px] leading-snug text-muted-foreground">
-              {t('devices.mobileSync.deviceDialog.repair.description')}
-            </p>
-          </div>
-          <Button variant="outline" size="sm" className="shrink-0" onClick={onRepair}>
-            {t('devices.mobileSync.deviceDialog.repair.action')}
-          </Button>
-        </div>
-      </Section>
-    </>
+        </Section>
+      </div>
+    </div>
   )
 }
 
@@ -708,8 +719,11 @@ const DeviceDetails: React.FC<{ device: MobileDeviceView }> = ({ device }) => {
       : t('devices.mobileSync.list.lastSeen.never')
 
   return (
-    <Section title={t('devices.mobileSync.deviceDialog.sections.info')}>
-      <div className="flex flex-col border-y border-border/50">
+    <Section
+      title={t('devices.mobileSync.deviceDialog.sections.info')}
+      className="px-5 pt-5 pb-3 @md:px-6 @3xl:py-5"
+    >
+      <div className="flex flex-col gap-0.5 [&>div]:border-0 [&>div]:py-2">
         <PanelFactRow label={t('devices.mobileSync.deviceDialog.fields.createdAt')}>
           <span className="text-xs font-medium">{createdAt}</span>
         </PanelFactRow>
@@ -896,12 +910,11 @@ const EditView: React.FC<EditViewProps> = ({
 const Section: React.FC<{
   title: string
   children: React.ReactNode
-}> = ({ title, children }) => (
-  <section className="space-y-2">
-    <h5 className="text-[10px] font-semibold tracking-[0.12em] text-muted-foreground uppercase">
-      {title}
-    </h5>
-    <div className="space-y-2">{children}</div>
+  className?: string
+}> = ({ title, children, className }) => (
+  <section className={cn('space-y-2.5', className)}>
+    <h4 className="text-xs font-semibold text-foreground/80">{title}</h4>
+    <div className="space-y-2.5">{children}</div>
   </section>
 )
 

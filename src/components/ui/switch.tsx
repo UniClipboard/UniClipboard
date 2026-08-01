@@ -1,5 +1,6 @@
 import { MotionConfig, m, useReducedMotion } from 'framer-motion'
 import * as React from 'react'
+import { playUiSound } from '@/lib/ui-sound'
 import { cn } from '@/lib/utils'
 
 // Motion feel ported from beui.dev/components/motion/switch: a heavy, deliberate
@@ -63,9 +64,11 @@ function Switch({
         data-slot="switch"
         data-size={size}
         data-state={checked ? 'checked' : 'unchecked'}
-        // cuelume plays a toggle sound on click of [data-cuelume-toggle] (see lib/ui-sound.ts).
-        data-cuelume-toggle=""
-        onClick={() => !disabled && onCheckedChange?.(!checked)}
+        onClick={() => {
+          if (disabled) return
+          playUiSound('toggle')
+          onCheckedChange?.(!checked)
+        }}
         onPointerDown={e => {
           setIsPressed(true)
           setIsPointer(e.type.startsWith('pointer'))
@@ -79,7 +82,7 @@ function Switch({
           'focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background',
           'disabled:cursor-not-allowed disabled:opacity-50',
           dims.track,
-          checked ? 'bg-primary' : 'bg-input dark:bg-input/80',
+          checked ? 'bg-primary' : 'bg-input dark:bg-foreground/20',
           className
         )}
       >
@@ -87,7 +90,8 @@ function Switch({
           initial={false}
           animate={{ x: checked ? dims.travel : 0, scale: squish ? 0.9 : 1 }}
           className={cn(
-            'pointer-events-none block rounded-full bg-background shadow-sm dark:bg-foreground',
+            'pointer-events-none block rounded-full shadow-sm',
+            checked ? 'bg-primary-foreground' : 'bg-background dark:bg-foreground',
             dims.thumb
           )}
         />

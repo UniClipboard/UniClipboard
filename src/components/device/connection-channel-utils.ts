@@ -1,6 +1,7 @@
 import type { ConnectionChannel } from '@/api/daemon/members'
 
 export type DerivedBadgeKind = 'lan' | 'relay' | 'offline' | 'unknown' | 'outOfLan'
+export type PeerStatusTone = 'success' | 'info' | 'off'
 
 /**
  * `channel + lanOnlyActive` ⇒ 5 derived UI states. Pure function for testability.
@@ -24,5 +25,23 @@ export function deriveBadgeKind(
     case 'unknown':
     default:
       return 'unknown'
+  }
+}
+
+export function derivePeerStatusTone(
+  channel: ConnectionChannel,
+  connected: boolean
+): PeerStatusTone {
+  if (!connected) return 'off'
+
+  switch (channel) {
+    case 'direct':
+      return 'success'
+    case 'relay':
+      return 'info'
+    case 'offline':
+    case 'unknown':
+    default:
+      return 'off'
   }
 }

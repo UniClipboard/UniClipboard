@@ -65,11 +65,9 @@ docker compose pull
 Track `:latest` by default, or pin a release in `.env` with
 `UC_IMAGE=ghcr.io/uniclipboard/uniclipboard-server:vX.Y.Z`.
 
-**Option B — build from source.** Requires the repository checked out **with
-submodules** (the build needs the vendored `iroh-blobs` fork) and ~4 GB RAM:
+**Option B — build from source.** Requires ~4 GB RAM:
 
 ```bash
-git submodule update --init --recursive   # or: git clone --recursive <repo-url>
 docker compose build
 ```
 

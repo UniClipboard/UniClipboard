@@ -116,12 +116,9 @@ Pin a release in `.env` with
 `UC_IMAGE=ghcr.io/uniclipboard/uniclipboard-server:vX.Y.Z` (defaults to
 `:latest`).
 
-**Option B — build from source.** Needs the repo checked out **with
-submodules** (the build uses the vendored `iroh-blobs` fork) and ~4 GB
-of RAM:
+**Option B — build from source.** Needs ~4 GB of RAM:
 
 ```bash
-git submodule update --init --recursive
 docker compose build
 ```
 

@@ -10,8 +10,7 @@
 #                 user with HOME=/data anchoring all state on a mounted volume.
 #
 # Build context is the repository ROOT (see deploy/vps/docker-compose.yml),
-# so paths below are repo-relative. Initialize submodules before building:
-#   git submodule update --init --recursive
+# so paths below are repo-relative.
 
 # ── builder ──────────────────────────────────────────────────────────────────
 # uc-cli's dependency graph is ring + rustls (no openssl-sys / aws-lc-sys), so
@@ -30,16 +29,13 @@ RUN echo 'Acquire::Retries "5";' > /etc/apt/apt.conf.d/80-retries \
 
 WORKDIR /build
 
-# The Rust workspace lives at the repo root. The vendored iroh-blobs fork
-# (vendor/iroh-blobs) is consumed via [patch.crates-io] and must be present
-# in the context — that is why submodules must be initialized first.
-# src-tauri/ is still copied because the workspace member list includes the
-# Tauri packages; only manifests are parsed, the GUI is not compiled here.
+# The Rust workspace lives at the repo root. src-tauri/ is still copied because
+# the workspace member list includes the Tauri packages; only manifests are
+# parsed, the GUI is not compiled here.
 COPY Cargo.toml Cargo.lock rust-toolchain.toml clippy.toml ./
 COPY .cargo/ ./.cargo/
 COPY crates/ ./crates/
 COPY apps/ ./apps/
-COPY vendor/ ./vendor/
 COPY src-tauri/ ./src-tauri/
 
 # Pick the musl target matching the build host arch (native compile, no cross).

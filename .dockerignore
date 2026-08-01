@@ -5,8 +5,8 @@
 # keeps the context transfer small and avoids shipping huge artifact trees
 # (Rust `target/`, node_modules) into the daemon.
 #
-# IMPORTANT: do NOT exclude `crates/`, `apps/`, `src-tauri/` or `vendor/` —
-# the build needs the workspace and the vendored `iroh-blobs` submodule.
+# IMPORTANT: do NOT exclude `crates/`, `apps/` or `src-tauri/` — the build
+# needs their workspace manifests and sources.
 
 .git
 .github

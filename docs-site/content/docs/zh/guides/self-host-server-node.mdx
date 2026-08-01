@@ -101,11 +101,9 @@ docker compose pull
 想锁版本就在 `.env` 里写
 `UC_IMAGE=ghcr.io/uniclipboard/uniclipboard-server:vX.Y.Z`（默认 `:latest`）。
 
-**方案 B —— 源码构建。** 需要带 submodule 检出仓库（构建用到 vendored 的
-`iroh-blobs` 分支）和约 4 GB 内存：
+**方案 B —— 源码构建。** 需要约 4 GB 内存：
 
 ```bash
-git submodule update --init --recursive
 docker compose build
 ```
 

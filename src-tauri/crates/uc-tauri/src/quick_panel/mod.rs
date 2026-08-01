@@ -743,6 +743,7 @@ pub fn paste(app: &tauri::AppHandle) -> Result<(), String> {
     }
 }
 
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 fn hide_panel(app: &tauri::AppHandle) {
     if let Some(window) = app.get_webview_window(PANEL_LABEL) {
         let _ = window.hide();

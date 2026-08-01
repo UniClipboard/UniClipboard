@@ -150,16 +150,18 @@ confirms twice). After unpairing:
 - Once removal completes, future traffic from that node ID is rejected by the protected space.
 - **Local history is untouched** — clips that already synced over stay.
 
-Removing a member is enforced by the space's protected membership. If
-the space still uses legacy protection, `Unpair` first starts a security
-upgrade and excludes the selected device from the replacement group.
-The Devices page shows each member's **Protection** status and a banner
-with the number of remaining devices waiting for readmission.
+Removing a member is enforced by the space's protected membership.
+Legacy-protected spaces upgrade automatically, and `Unpair` excludes
+the selected device from the replacement group. The Devices page shows
+each member's **Protection** status and a banner with the number of
+remaining devices waiting for readmission.
 
-**Readmit retained devices:** For each retained device that is waiting
-for readmission, create a fresh `invite` on the sponsoring device and
-run `join` on that retained device. Continue until the banner clears.
-You do not need to repeat `Unpair` on the retained devices.
+**Automatically readmit retained devices:** A device running a supported
+version immediately tries to join the same protected group when it starts
+or comes back online. You do not need to unpair it, create a fresh `invite`,
+or run `join` manually. Devices that are still offline or have not been
+updated remain in **Awaiting readmission** and cannot sync with upgraded
+devices; each one recovers automatically after it is updated and comes online.
 
 **Handle Recovery required:** If the sponsoring device shows
 **Recovery required**, the upgrade did not finish automatically and the

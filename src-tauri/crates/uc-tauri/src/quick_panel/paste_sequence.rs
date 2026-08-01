@@ -4,6 +4,12 @@ pub(super) enum SimulatedKeyEvent {
     KeyUp(u16),
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum SimulatedUnicodeEvent {
+    KeyDown(u16),
+    KeyUp(u16),
+}
+
 pub(super) const VK_CONTROL_CODE: u16 = 0x11;
 pub(super) const VK_MENU_CODE: u16 = 0x12;
 pub(super) const VK_V_CODE: u16 = 0x56;
@@ -27,9 +33,39 @@ pub(super) fn ctrl_v_sequence(neutralize_alt: bool) -> Vec<SimulatedKeyEvent> {
     events
 }
 
+pub(super) fn unicode_text_sequence(text: &str) -> Vec<SimulatedUnicodeEvent> {
+    text.encode_utf16()
+        .flat_map(|unit| {
+            [
+                SimulatedUnicodeEvent::KeyDown(unit),
+                SimulatedUnicodeEvent::KeyUp(unit),
+            ]
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn unicode_text_sequence_emits_key_pairs_for_every_utf16_unit() {
+        assert_eq!(
+            unicode_text_sequence("A\n文🌍"),
+            "A\n文🌍"
+                .encode_utf16()
+                .flat_map(|unit| [
+                    SimulatedUnicodeEvent::KeyDown(unit),
+                    SimulatedUnicodeEvent::KeyUp(unit),
+                ])
+                .collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn unicode_text_sequence_is_empty_for_empty_text() {
+        assert!(unicode_text_sequence("").is_empty());
+    }
 
     #[test]
     fn ctrl_v_sequence_without_alt_sends_plain_ctrl_v() {

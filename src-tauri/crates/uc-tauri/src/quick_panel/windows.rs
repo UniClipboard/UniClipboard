@@ -11,13 +11,15 @@
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
-use super::paste_sequence::{ctrl_v_sequence, SimulatedKeyEvent};
+use super::paste_sequence::{
+    ctrl_v_sequence, unicode_text_sequence, SimulatedKeyEvent, SimulatedUnicodeEvent,
+};
 use tracing::{debug, warn};
 use windows::Win32::Foundation::HWND;
 use windows::Win32::System::Threading::{AttachThreadInput, GetCurrentThreadId};
 use windows::Win32::UI::Input::KeyboardAndMouse::{
-    GetAsyncKeyState, SendInput, SetFocus, INPUT, INPUT_KEYBOARD, KEYEVENTF_KEYUP, VIRTUAL_KEY,
-    VK_MENU,
+    GetAsyncKeyState, SendInput, SetFocus, INPUT, INPUT_KEYBOARD, KEYEVENTF_KEYUP,
+    KEYEVENTF_UNICODE, VIRTUAL_KEY, VK_MENU,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     GetForegroundWindow, GetGUIThreadInfo, GetWindowThreadProcessId, IsIconic, IsWindow,
@@ -141,6 +143,29 @@ pub fn simulate_paste() -> Result<(), String> {
     Ok(())
 }
 
+/// Enter Unicode text directly into the focused control without using the clipboard.
+pub fn simulate_text_input(text: &str) -> Result<(), String> {
+    if text.is_empty() {
+        return Err("Cannot enter empty text".into());
+    }
+
+    std::thread::sleep(RESTORE_SETTLE_MS);
+    let events = unicode_text_sequence(text);
+    let inputs = keyboard_inputs_for_unicode_events(&events);
+
+    unsafe {
+        let sent = SendInput(&inputs, std::mem::size_of::<INPUT>() as _);
+        if sent != inputs.len() as u32 {
+            return Err(format!(
+                "SendInput sent {sent} text events, expected {}",
+                inputs.len()
+            ));
+        }
+    }
+
+    Ok(())
+}
+
 fn wait_for_alt_release() -> bool {
     if !is_key_down(VK_MENU) {
         return true;
@@ -176,6 +201,28 @@ fn keyboard_inputs_for_events(events: &[SimulatedKeyEvent]) -> Vec<INPUT> {
             if is_key_up {
                 input.Anonymous.ki.dwFlags = KEYEVENTF_KEYUP;
             }
+            input
+        })
+        .collect()
+}
+
+fn keyboard_inputs_for_unicode_events(events: &[SimulatedUnicodeEvent]) -> Vec<INPUT> {
+    events
+        .iter()
+        .map(|event| {
+            let (unit, is_key_up) = match *event {
+                SimulatedUnicodeEvent::KeyDown(unit) => (unit, false),
+                SimulatedUnicodeEvent::KeyUp(unit) => (unit, true),
+            };
+
+            let mut input: INPUT = unsafe { std::mem::zeroed() };
+            input.r#type = INPUT_KEYBOARD;
+            input.Anonymous.ki.wScan = unit;
+            input.Anonymous.ki.dwFlags = if is_key_up {
+                KEYEVENTF_UNICODE | KEYEVENTF_KEYUP
+            } else {
+                KEYEVENTF_UNICODE
+            };
             input
         })
         .collect()

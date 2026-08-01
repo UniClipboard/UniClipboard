@@ -3,7 +3,7 @@
 
 use serde::{Deserialize, Serialize};
 use tauri::State;
-use tracing::{error, info_span, Instrument};
+use tracing::{error, info, info_span, Instrument};
 use uc_daemon_client::{DaemonConnectionState, DaemonSettingsClient};
 use uc_daemon_contract::api::dto::settings::{
     QuickPanelDoubleTapModifierDto, QuickPanelPositionDto, QuickPanelSettingsPatchDto,
@@ -71,6 +71,13 @@ pub enum QuickPanelExpandSide {
     Left,
 }
 
+/// File paths to enter into the application that was focused before Quick Panel opened.
+#[derive(Clone, Deserialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct FilePathInputRequest {
+    pub file_paths: Vec<String>,
+}
+
 impl From<quick_panel::ExpandSide> for QuickPanelExpandSide {
     fn from(value: quick_panel::ExpandSide) -> Self {
         match value {
@@ -134,6 +141,69 @@ pub async fn paste_to_previous_app(
         .map_err(|e| format!("Failed to dispatch to main thread: {e}"))?;
         rx.await
             .map_err(|_| "Main thread dropped result".to_string())?
+    }
+    .instrument(span)
+    .await
+}
+
+/// Hide Quick Panel, restore the previous app, and enter file paths without using the clipboard.
+#[tauri::command]
+#[specta::specta]
+pub async fn type_file_paths_to_previous_app(
+    app: tauri::AppHandle,
+    request: FilePathInputRequest,
+    _trace: Option<TraceMetadata>,
+) -> Result<(), String> {
+    let path_count = request.file_paths.len();
+    let span = info_span!(
+        "command.quick_panel.type_file_paths",
+        trace_id = tracing::field::Empty,
+        trace_ts = tracing::field::Empty,
+        path_count,
+    );
+    record_trace_fields(&span, &_trace);
+
+    async {
+        let handle = app.clone();
+        let file_paths = request.file_paths;
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        app.run_on_main_thread(move || {
+            let result = quick_panel::type_file_paths(&handle, &file_paths);
+            let _ = tx.send(result);
+        })
+        .map_err(|error| {
+            error!(
+                error_kind = "main_thread_dispatch_failed",
+                retryable = true,
+                error = %error,
+                "Quick panel file path input could not start"
+            );
+            format!("Failed to dispatch to main thread: {error}")
+        })?;
+
+        match rx.await {
+            Ok(Ok(())) => {
+                info!("Quick panel file path input completed");
+                Ok(())
+            }
+            Ok(Err(error)) => {
+                error!(
+                    error_kind = "direct_text_input_failed",
+                    retryable = true,
+                    error = %error,
+                    "Quick panel file path input failed"
+                );
+                Err(error)
+            }
+            Err(_) => {
+                error!(
+                    error_kind = "main_thread_result_dropped",
+                    retryable = true,
+                    "Quick panel file path input result was dropped"
+                );
+                Err("Main thread dropped result".into())
+            }
+        }
     }
     .instrument(span)
     .await

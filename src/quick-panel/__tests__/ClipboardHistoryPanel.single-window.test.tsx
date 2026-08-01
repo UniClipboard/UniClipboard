@@ -87,10 +87,10 @@ vi.mock('../hooks/useHistorySearch', () => ({
         id: 'entry-file',
         type: 'file',
         content: {
-          file_names: ['report.pdf'],
-          file_sizes: [10],
-          file_paths: ['/tmp/report.pdf'],
-          file_missing: [false],
+          file_names: ['report.pdf', 'missing.txt', '设计.txt'],
+          file_sizes: [10, 20, 30],
+          file_paths: ['/tmp/report.pdf', '/tmp/missing.txt', '/tmp/设计.txt'],
+          file_missing: [false, true, false],
         },
         activeTime: Date.now() - 2000,
         isUnavailable: false,
@@ -411,10 +411,14 @@ describe('ClipboardHistoryPanel row context menu', () => {
     )
 
     await waitFor(() => {
-      expect(restoreClipboardEntry).toHaveBeenCalledWith('entry-file', { filePathsOnly: true })
-      expect(invokeMock).toHaveBeenCalledWith('paste_to_previous_app', expect.any(Object))
+      expect(invokeMock).toHaveBeenCalledWith('type_file_paths_to_previous_app', {
+        request: { filePaths: ['/tmp/report.pdf', '/tmp/设计.txt'] },
+        trace: expect.any(Object),
+      })
       expect(playUiSound).toHaveBeenCalledWith('success')
     })
+    expect(restoreClipboardEntry).not.toHaveBeenCalled()
+    expect(invokeMock).not.toHaveBeenCalledWith('paste_to_previous_app', expect.any(Object))
   })
 
   it('keeps copy failures silent', async () => {

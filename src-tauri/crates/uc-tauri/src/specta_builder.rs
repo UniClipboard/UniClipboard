@@ -73,6 +73,7 @@ pub fn build() -> Builder<tauri::Wry> {
         crate::commands::storage::reveal_path,
         // ── quick panel ─────────────────────────────────────────────────────
         crate::commands::quick_panel::paste_to_previous_app,
+        crate::commands::quick_panel::type_file_paths_to_previous_app,
         crate::commands::quick_panel::dismiss_quick_panel,
         crate::commands::quick_panel::set_quick_panel_layout,
         crate::commands::quick_panel::finalize_quick_panel_show,

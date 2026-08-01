@@ -317,6 +317,11 @@ export const commands = {
 	trace_id: string,
 	timestamp: number,
 } | null) => typedError<null, string>(__TAURI_INVOKE("paste_to_previous_app", { trace })),
+	/**  Hide Quick Panel, restore the previous app, and enter file paths without using the clipboard. */
+	typeFilePathsToPreviousApp: (request: FilePathInputRequest, trace: {
+	trace_id: string,
+	timestamp: number,
+} | null) => typedError<null, string>(__TAURI_INVOKE("type_file_paths_to_previous_app", { request, trace })),
 	/**
 	 *  Dismiss the quick panel and return focus to the previous app (no paste).
 	 * 
@@ -683,6 +688,11 @@ export type DownloadProgressSnapshot = {
 export type ExportConfigResult = {
 	/**  Absolute path the bundle was written to. */
 	path: string,
+};
+
+/**  File paths to enter into the application that was focused before Quick Panel opened. */
+export type FilePathInputRequest = {
+	filePaths: string[],
 };
 
 /**  Result of [`import_config_package`]. */

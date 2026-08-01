@@ -47,12 +47,12 @@ print_stdout = "warn"
 print_stderr = "warn"
 dbg_macro = "warn"
 
-# Shared dependencies for the immutable Engine release and Tauri plugins.
+# Shared dependencies for the pinned Engine revision and Tauri plugins.
 [workspace.dependencies]
-# All desktop consumers use one immutable Engine release tag. Features remain
+# All desktop consumers use one immutable Engine revision. Features remain
 # opt-in at each host boundary so LAN compatibility cannot become a default.
-uc-engine = { git = "https://github.com/UniClipboard/Engine.git", tag = "v0.20.0-rc.15" }
-uc-observability-contract = { git = "https://github.com/UniClipboard/Engine.git", tag = "v0.20.0-rc.15" }
+uc-engine = { git = "https://github.com/UniClipboard/Engine.git", rev = "cf0c74bf41047e40128807000b31994ebb9729eb" }
+uc-observability-contract = { git = "https://github.com/UniClipboard/Engine.git", rev = "cf0c74bf41047e40128807000b31994ebb9729eb" }
 
 # tauri 2.11 是 specta rc.25 兼容的最低版本 —— 2.10.x 及之前在
 # `tauri/src/ipc/channel.rs` 用了 `#[specta(remote=..., rename="...")]`

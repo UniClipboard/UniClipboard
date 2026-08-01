@@ -9,9 +9,8 @@ import { fileURLToPath } from 'node:url'
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url))
 const REPOSITORY_ROOT = resolve(SCRIPT_DIR, '../..')
 const ENGINE_REPOSITORY = 'https://github.com/UniClipboard/Engine.git'
-const ENGINE_TAG = 'v0.20.0-rc.15'
-const ENGINE_REVISION = '781c568106a735e54e277994fb96b4613391e2f2'
-const DECLARED_ENGINE_SOURCE = `git+${ENGINE_REPOSITORY}?tag=${ENGINE_TAG}`
+const ENGINE_REVISION = 'cf0c74bf41047e40128807000b31994ebb9729eb'
+const DECLARED_ENGINE_SOURCE = `git+${ENGINE_REPOSITORY}?rev=${ENGINE_REVISION}`
 const RESOLVED_ENGINE_SOURCE = `${DECLARED_ENGINE_SOURCE}#${ENGINE_REVISION}`
 
 const MIGRATED_PACKAGES = new Set([
@@ -114,7 +113,7 @@ function checkRepositoryBoundary(metadata, { checkPaths = true } = {}) {
         addProblem(
           problems,
           'engine provenance',
-          `${packageMetadata.name} does not pin ${item.name} to ${ENGINE_TAG}`
+          `${packageMetadata.name} does not pin ${item.name} to ${ENGINE_REVISION}`
         )
       }
     }
@@ -137,7 +136,7 @@ function checkRepositoryBoundary(metadata, { checkPaths = true } = {}) {
     addProblem(
       problems,
       'engine provenance',
-      `expected one resolved Engine source at ${ENGINE_TAG} (${ENGINE_REVISION}); found ${[...engineSources].join(', ')}`
+      `expected one resolved Engine source at revision ${ENGINE_REVISION}; found ${[...engineSources].join(', ')}`
     )
   }
 
@@ -147,7 +146,7 @@ function checkRepositoryBoundary(metadata, { checkPaths = true } = {}) {
       addProblem(
         problems,
         'engine provenance',
-        `${packageMetadata.name} resolved outside the pinned Engine release`
+        `${packageMetadata.name} resolved outside the pinned Engine revision`
       )
     }
   }
@@ -183,7 +182,7 @@ function checkPublicSurface(metadata) {
       addProblem(
         problems,
         'consumer firewall',
-        `${packageName} must consume ${dependencyName} from the pinned Engine release`
+        `${packageName} must consume ${dependencyName} from the pinned Engine revision`
       )
     }
   }
@@ -289,7 +288,7 @@ function runNegativeFixtures(metadata, sources) {
     sources
   )
   expectRejected(
-    'different Engine tag',
+    'tagged Engine dependency',
     changed => {
       const contract = dependency(
         workspacePackageByName(changed, 'uc-observability'),

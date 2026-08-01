@@ -24,6 +24,20 @@ describe('redactSensitiveArgs', () => {
     })
   })
 
+  it('masks file paths passed to native commands', () => {
+    expect(
+      redactSensitiveArgs({
+        arg0: {
+          filePaths: ['/Users/mark/Documents/private.txt'],
+        },
+      })
+    ).toEqual({
+      arg0: {
+        filePaths: '[REDACTED]',
+      },
+    })
+  })
+
   it('passes through primitive and null values', () => {
     expect(redactSensitiveArgs(null)).toBeNull()
     expect(redactSensitiveArgs(undefined)).toBeUndefined()

@@ -232,3 +232,22 @@ pub fn simulate_paste() -> Result<(), String> {
 
     Ok(())
 }
+
+/// Enter Unicode text directly into the focused control without using the clipboard.
+pub fn simulate_text_input(text: &str) -> Result<(), String> {
+    if text.is_empty() {
+        return Err("Cannot enter empty text".into());
+    }
+
+    let source = CGEventSource::new(CGEventSourceStateID::HIDSystemState)
+        .map_err(|e| format!("Failed to create CGEventSource: {e:?}"))?;
+    let key_down = CGEvent::new_keyboard_event(source.clone(), 0, true)
+        .map_err(|e| format!("Failed to create text key-down CGEvent: {e:?}"))?;
+    key_down.set_string(text);
+    let key_up = CGEvent::new_keyboard_event(source, 0, false)
+        .map_err(|e| format!("Failed to create text key-up CGEvent: {e:?}"))?;
+
+    key_down.post(core_graphics::event::CGEventTapLocation::HID);
+    key_up.post(core_graphics::event::CGEventTapLocation::HID);
+    Ok(())
+}

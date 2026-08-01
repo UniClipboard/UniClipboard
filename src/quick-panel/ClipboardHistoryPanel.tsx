@@ -16,6 +16,7 @@ import { useDebounce } from '@/hooks/useDebounce'
 import { useHistorySourceOptions } from '@/hooks/useHistorySourceOptions'
 import { useSearchTags } from '@/hooks/useSearchTags'
 import { useThemeSync } from '@/hooks/useThemeSync'
+import { pasteableFilePaths } from '@/lib/clipboard-utils'
 import { commands } from '@/lib/ipc'
 import { createLogger } from '@/lib/logger'
 import { readStoredUiScale, subscribeUiScaleChanges } from '@/lib/ui-scale'
@@ -442,16 +443,21 @@ const ClipboardHistoryPanelSession: React.FC<ClipboardHistoryPanelProps> = ({
 
   const handlePasteFilePaths = useCallback(
     async (id: string) => {
+      const item = previewItems.find(candidate => candidate.id === id)
+      const filePaths = pasteableFilePaths(item?.content ?? null)
+      if (filePaths.length === 0) {
+        toast.error(t('clipboard.errors.copyFailed'))
+        return
+      }
       try {
-        await restoreClipboardEntry(id, { filePathsOnly: true })
-        await pasteToApp()
+        await commands.typeFilePathsToPreviousApp({ filePaths })
         playUiSound('success')
       } catch (err) {
         log.error({ err }, 'Failed to paste file paths')
         toast.error(t('clipboard.errors.copyFailed'))
       }
     },
-    [t]
+    [previewItems, t]
   )
 
   const handleContextToggleFavorite = useCallback(

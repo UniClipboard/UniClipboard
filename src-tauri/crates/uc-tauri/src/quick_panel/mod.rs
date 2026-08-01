@@ -708,9 +708,7 @@ pub fn paste(app: &tauri::AppHandle) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
         // Hide the panel first so it stops being the key window.
-        if let Some(window) = app.get_webview_window(PANEL_LABEL) {
-            let _ = window.hide();
-        }
+        hide_panel(app);
         // Explicitly send focus back to the previously frontmost app and wait
         // until it is observed as frontmost. Relying on NonactivatingPanel
         // alone races: when show_panel() called makeKeyWindow(), key status
@@ -731,9 +729,7 @@ pub fn paste(app: &tauri::AppHandle) -> Result<(), String> {
 
     #[cfg(target_os = "windows")]
     {
-        if let Some(window) = app.get_webview_window(PANEL_LABEL) {
-            let _ = window.hide();
-        }
+        hide_panel(app);
 
         windows::restore_previous_foreground()?;
         windows::simulate_paste()?;
@@ -744,6 +740,51 @@ pub fn paste(app: &tauri::AppHandle) -> Result<(), String> {
     {
         dismiss(app);
         Err("Paste to previous app is not yet supported on this platform".into())
+    }
+}
+
+fn hide_panel(app: &tauri::AppHandle) {
+    if let Some(window) = app.get_webview_window(PANEL_LABEL) {
+        let _ = window.hide();
+    }
+}
+
+/// Enter file paths into the previously focused app without touching the clipboard.
+pub fn type_file_paths(app: &tauri::AppHandle, file_paths: &[String]) -> Result<(), String> {
+    if file_paths.is_empty() || file_paths.iter().any(|path| path.is_empty()) {
+        return Err("No valid file paths were provided".into());
+    }
+    let text = file_paths.join("\n");
+
+    #[cfg(target_os = "macos")]
+    {
+        hide_panel(app);
+        let result = if macos::restore_previous_app() {
+            macos::simulate_text_input(&text)
+        } else {
+            Err("Previous app focus could not be confirmed".into())
+        };
+        if result.is_err() {
+            show(app);
+        }
+        result
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        hide_panel(app);
+        let result = windows::restore_previous_foreground()
+            .and_then(|_| windows::simulate_text_input(&text));
+        if result.is_err() {
+            show(app);
+        }
+        result
+    }
+
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    {
+        let _ = (app, text);
+        Err("Direct file path input is not yet supported on this platform".into())
     }
 }
 

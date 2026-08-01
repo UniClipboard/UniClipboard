@@ -123,15 +123,19 @@ export function parseFileItemsFromUriList(uriList: string): Array<{
  * one file opens the containing folder with it selected.
  */
 export function firstRevealableFilePath(content: ClipboardEntryContent | null): string | null {
-  if (!content || !('file_paths' in content)) return null
+  return pasteableFilePaths(content)[0] ?? null
+}
+
+/**
+ * Native paths that can be entered into another app, preserving file order and
+ * excluding cancelled or undecodable entries.
+ */
+export function pasteableFilePaths(content: ClipboardEntryContent | null): string[] {
+  if (!content || !('file_paths' in content)) return []
   const paths = content.file_paths
-  if (!paths) return null
+  if (!paths) return []
   const missing = content.file_missing
-  for (let i = 0; i < paths.length; i++) {
-    const path = paths[i]
-    if (path && !missing?.[i]) return path
-  }
-  return null
+  return paths.flatMap((path, index) => (path && !missing?.[index] ? [path] : []))
 }
 
 /**

@@ -55,6 +55,8 @@ pub struct DeviceMeta {
     pub platform: String,
     pub app_version: String,
     pub app_channel: String,
+    pub runtime_profile: String,
+    pub development_mode: bool,
 }
 
 /// Returns the full device + app meta to the webview.
@@ -84,6 +86,8 @@ pub async fn get_device_meta(
             .unwrap_or(env!("CARGO_PKG_VERSION"))
             .to_string(),
         app_channel: scope.map(|s| s.app_channel).unwrap_or("dev").to_string(),
+        runtime_profile: crate::runtime_environment::runtime_profile(),
+        development_mode: crate::runtime_environment::development_mode(),
     })
 }
 
@@ -116,6 +120,8 @@ mod tests {
             platform: "macos".to_string(),
             app_version: "1.2.3".to_string(),
             app_channel: "dev".to_string(),
+            runtime_profile: "alpha".to_string(),
+            development_mode: true,
         };
 
         let json = serde_json::to_value(meta).expect("DeviceMeta serializes");
@@ -124,9 +130,13 @@ mod tests {
         assert_eq!(json["deviceRole"], "gui-host");
         assert_eq!(json["appVersion"], "1.2.3");
         assert_eq!(json["appChannel"], "dev");
+        assert_eq!(json["runtimeProfile"], "alpha");
+        assert_eq!(json["developmentMode"], true);
         assert!(json.get("device_id").is_none());
         assert!(json.get("device_role").is_none());
         assert!(json.get("app_version").is_none());
         assert!(json.get("app_channel").is_none());
+        assert!(json.get("runtime_profile").is_none());
+        assert!(json.get("development_mode").is_none());
     }
 }

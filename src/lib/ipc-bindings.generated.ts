@@ -626,6 +626,8 @@ export type DeviceMeta = {
 	platform: string,
 	appVersion: string,
 	appChannel: string,
+	runtimeProfile: string,
+	developmentMode: boolean,
 };
 
 /**

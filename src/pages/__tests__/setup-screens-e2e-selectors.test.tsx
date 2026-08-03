@@ -1,6 +1,7 @@
 import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
+import i18n from '@/i18n'
 import {
   EntryScreen,
   InitializeSpaceScreen,
@@ -111,6 +112,30 @@ describe('setup screens e2e selectors', () => {
 
     await user.type(codeInput, 'WXYZ5678')
     expect(await screen.findByLabelText('Space passphrase')).toHaveValue('')
+  })
+
+  it('keeps the invitation and passphrase when the other device needs an update', async () => {
+    const user = userEvent.setup()
+    const onSubmit = vi.fn().mockResolvedValue({
+      ok: false,
+      kind: 'sponsor_upgrade_required',
+      raw: 'sponsor must upgrade before pairing',
+    })
+
+    render(<RedeemInvitationScreen onSubmit={onSubmit} onBack={vi.fn()} />)
+
+    const codeInput = screen.getByLabelText('Invitation code')
+    await user.type(codeInput, 'ABCD1234')
+    const passphraseInput = await screen.findByLabelText('Space passphrase')
+    await user.type(passphraseInput, 'correct passphrase')
+    await user.click(screen.getByTestId('setup-redeem-submit'))
+
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1))
+    expect(codeInput).toHaveValue('ABCD1234')
+    expect(passphraseInput).toHaveValue('correct passphrase')
+    expect(
+      screen.getByText(i18n.t('setup.redeemInvitation.errors.sponsorUpgradeRequired'))
+    ).toBeInTheDocument()
   })
 
   it('exposes stable controls for the real-window setup smoke test', () => {

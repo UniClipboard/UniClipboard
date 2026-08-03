@@ -11,6 +11,7 @@ use uc_daemon_contract::api::dto::envelope::ApiEnvelope;
 use uc_engine::error_codes::{
     MEMBER_INVALID_INPUT_CODE, MEMBER_LEGACY_BOOTSTRAP_FAILED_CODE,
     MEMBER_LEGACY_BOOTSTRAP_REQUIRED_CODE, MEMBER_NOT_FOUND_CODE, MEMBER_UNAVAILABLE_CODE,
+    QUERY_MEMBERSHIP_CONVERGENCE_FAILED_CODE, QUERY_MEMBERSHIP_CONVERGENCE_UNAVAILABLE_CODE,
     SPACE_PROTECTION_FAILED_CODE,
 };
 use uc_engine::{
@@ -20,7 +21,8 @@ use uc_engine::{
 
 use crate::api::dto::error::{log_facade_failure, ApiError};
 use crate::api::dto::member::{
-    MemberSyncPreferencesPatchDto, MemberSyncResultDto, SecureLegacyRemovalDto, SpaceProtectionDto,
+    MemberSyncPreferencesPatchDto, MemberSyncResultDto, MembershipConvergenceDto,
+    SecureLegacyRemovalDto, SpaceProtectionDto,
 };
 use crate::api::projection::{IntoApiDto, IntoDomain};
 use crate::api::server::DaemonApiState;
@@ -36,6 +38,10 @@ pub fn router() -> Router<DaemonApiState> {
             patch(update_member_sync_preferences_handler),
         )
         .route("/member/protection", get(get_space_protection_handler))
+        .route(
+            "/member/convergence",
+            get(get_membership_convergence_handler),
+        )
         .route(
             "/member/:device_id/secure-remove",
             post(secure_remove_legacy_member_handler),
@@ -201,6 +207,43 @@ pub async fn get_space_protection_handler(
     Ok(Json(ApiEnvelope::now(snapshot.into_api_dto())))
 }
 
+/// GET /member/convergence
+///
+/// Returns the Engine-owned connection state for the active space. The daemon
+/// deliberately omits protocol counters because the product has no action for
+/// them and must not mirror Engine retry state.
+#[utoipa::path(
+    get,
+    path = "/member/convergence",
+    tag = "member",
+    operation_id = "getMembershipConvergence",
+    responses(
+        (status = 200, body = MembershipConvergenceEnvelope),
+        (status = 503, description = "Runtime unavailable", body = ApiErrorResponse),
+        (status = 500, description = "Internal server error", body = ApiErrorResponse)
+    )
+)]
+#[instrument(name = "api.member.get_convergence", level = "info", skip(state))]
+pub async fn get_membership_convergence_handler(
+    State(state): State<DaemonApiState>,
+) -> Result<Json<ApiEnvelope<MembershipConvergenceDto>>, ApiError> {
+    let result = state
+        .execute(Operation::QueryMembershipConvergence)
+        .await
+        .map_err(|error| map_member_engine_error("", "get_membership_convergence", error))?;
+    let OperationResult::MembershipConvergence(snapshot) = result else {
+        tracing::error!(
+            error_kind = "unexpected_operation_result",
+            operation = "get_membership_convergence",
+            "engine returned unexpected result"
+        );
+        return Err(ApiError::internal(
+            "engine returned an unexpected membership-convergence result",
+        ));
+    };
+    Ok(Json(ApiEnvelope::now(snapshot.into_api_dto())))
+}
+
 /// POST /member/{device_id}/secure-remove
 ///
 /// Starts the Engine-owned Legacy Space bootstrap that safely excludes a member
@@ -282,6 +325,14 @@ fn map_member_engine_error(device_id: &str, op: &'static str, error: EngineError
         SPACE_PROTECTION_FAILED_CODE => (
             "space_protection_failed",
             ApiError::internal("space protection status is unavailable"),
+        ),
+        QUERY_MEMBERSHIP_CONVERGENCE_UNAVAILABLE_CODE => (
+            "membership_convergence_unavailable",
+            ApiError::service_unavailable("space connection status is unavailable"),
+        ),
+        QUERY_MEMBERSHIP_CONVERGENCE_FAILED_CODE => (
+            "membership_convergence_failed",
+            ApiError::internal("failed to query space connection status"),
         ),
         _ => ("internal", ApiError::internal("member operation failed")),
     };

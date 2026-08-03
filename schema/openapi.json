@@ -2166,6 +2166,46 @@
         ],
         "type": "object"
       },
+      "MembershipConvergenceDto": {
+        "description": "Product-facing connection status. Engine-internal counters stay private.",
+        "properties": {
+          "state": {
+            "$ref": "#/components/schemas/MembershipConvergenceStateDto"
+          }
+        },
+        "required": [
+          "state"
+        ],
+        "type": "object"
+      },
+      "MembershipConvergenceEnvelope": {
+        "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/MembershipConvergenceDto"
+          },
+          "ts": {
+            "description": "Server time when the response was built (unix epoch milliseconds).",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "data",
+          "ts"
+        ],
+        "type": "object"
+      },
+      "MembershipConvergenceStateDto": {
+        "description": "Coarse connection state for the active space.",
+        "enum": [
+          "complete",
+          "converging",
+          "waiting_for_upgrade",
+          "blocked"
+        ],
+        "type": "string"
+      },
       "MigrationPhaseDto": {
         "description": "Coarse-grained migration phase exposed to the UI. The internal\n`MigrationPhase` carries `run_id` / `target_space_id`; those are\nimplementation detail and not surfaced over the wire.",
         "enum": [
@@ -7422,6 +7462,56 @@
         "summary": "GET /lifecycle/status",
         "tags": [
           "lifecycle"
+        ]
+      }
+    },
+    "/member/convergence": {
+      "get": {
+        "description": "Returns the Engine-owned connection state for the active space. The daemon\ndeliberately omits protocol counters because the product has no action for\nthem and must not mirror Engine retry state.",
+        "operationId": "getMembershipConvergence",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MembershipConvergenceEnvelope"
+                }
+              }
+            },
+            "description": ""
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal server error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Runtime unavailable"
+          }
+        },
+        "security": [
+          {
+            "session_query": []
+          },
+          {
+            "session_header": []
+          }
+        ],
+        "summary": "GET /member/convergence",
+        "tags": [
+          "member"
         ]
       }
     },

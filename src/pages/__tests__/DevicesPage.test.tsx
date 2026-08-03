@@ -103,6 +103,7 @@ const devicesState = {
   spaceMembersError: null as string | null,
   spaceProtection: null as null | Record<string, unknown>,
   spaceProtectionError: null as string | null,
+  membershipConvergence: null as null | { state: string },
   memberSyncPreferences: {},
   memberSyncPreferencesLoading: {},
 }
@@ -121,6 +122,7 @@ vi.mock('@/store/slices/devicesSlice', () => ({
   clearLocalDeviceError: vi.fn(() => ({ type: 'devices/clearLocalDeviceError' })),
   clearSpaceMembersError: vi.fn(() => ({ type: 'devices/clearSpaceMembersError' })),
   fetchSpaceProtection: vi.fn(() => ({ type: 'devices/fetchSpaceProtection' })),
+  fetchMembershipConvergence: vi.fn(() => ({ type: 'devices/fetchMembershipConvergence' })),
   fetchMemberSyncPreferences: vi.fn(() => ({ type: 'devices/fetchMemberSyncPreferences' })),
   updateMemberSyncPreferences: vi.fn(() => ({ type: 'devices/updateMemberSyncPreferences' })),
 }))
@@ -191,6 +193,7 @@ describe('DevicesPage', () => {
     devicesState.spaceMembersError = null
     devicesState.spaceProtection = null
     devicesState.spaceProtectionError = null
+    devicesState.membershipConvergence = null
     vi.mocked(unpairDevice).mockReset()
     vi.mocked(isLegacyBootstrapRequired).mockReset()
     vi.mocked(secureRemoveLegacyMember).mockReset()
@@ -203,6 +206,7 @@ describe('DevicesPage', () => {
     expect(dispatchMock).toHaveBeenCalledWith({ type: 'devices/fetchLocalDeviceInfo' })
     expect(dispatchMock).toHaveBeenCalledWith({ type: 'devices/fetchSpaceMembers' })
     expect(dispatchMock).toHaveBeenCalledWith({ type: 'devices/fetchSpaceProtection' })
+    expect(dispatchMock).toHaveBeenCalledWith({ type: 'devices/fetchMembershipConvergence' })
   })
 
   it('translates a space protection status failure', () => {
@@ -262,6 +266,72 @@ describe('DevicesPage', () => {
       document.dispatchEvent(new Event('visibilitychange'))
     })
     expect(refreshPresence).toHaveBeenCalledTimes(2)
+  })
+
+  it('shows a compact status while the space is still connecting', () => {
+    devicesState.membershipConvergence = { state: 'converging' }
+
+    render(<DevicesPage />)
+
+    expect(screen.getByText(i18n.t('devices.convergence.converging'))).toBeInTheDocument()
+  })
+
+  it('hides the connection status when convergence is complete', () => {
+    devicesState.membershipConvergence = { state: 'complete' }
+
+    render(<DevicesPage />)
+
+    expect(screen.queryByText(i18n.t('devices.convergence.converging'))).not.toBeInTheDocument()
+    expect(
+      screen.queryByText(i18n.t('devices.convergence.waitingForUpgrade'))
+    ).not.toBeInTheDocument()
+    expect(screen.queryByText(i18n.t('devices.convergence.blocked'))).not.toBeInTheDocument()
+  })
+
+  it('suppresses a duplicate upgrade status during the existing security upgrade', () => {
+    devicesState.membershipConvergence = { state: 'waiting_for_upgrade' }
+    devicesState.spaceProtection = {
+      mode: 'migrating',
+      members: [],
+      legacyBootstrap: {
+        bootstrapId: 'bootstrap-1',
+        outcome: 'awaiting_readmission',
+        pendingReadmission: 1,
+      },
+    }
+
+    render(<DevicesPage />)
+
+    expect(
+      screen.queryByText(i18n.t('devices.convergence.waitingForUpgrade'))
+    ).not.toBeInTheDocument()
+    expect(
+      screen.getByText(i18n.t('devices.protection.bootstrap.awaiting_readmission', { count: 1 }))
+    ).toBeInTheDocument()
+  })
+
+  it('polls a converging space for at most thirty seconds', () => {
+    vi.useFakeTimers()
+    devicesState.membershipConvergence = { state: 'converging' }
+    dispatchMock.mockClear()
+
+    render(<DevicesPage />)
+
+    const convergenceDispatches = () =>
+      dispatchMock.mock.calls.filter(
+        ([action]) => action.type === 'devices/fetchMembershipConvergence'
+      )
+    expect(convergenceDispatches()).toHaveLength(1)
+
+    act(() => {
+      vi.advanceTimersByTime(30_000)
+    })
+    expect(convergenceDispatches()).toHaveLength(16)
+
+    act(() => {
+      vi.advanceTimersByTime(30_000)
+    })
+    expect(convergenceDispatches()).toHaveLength(16)
   })
 })
 

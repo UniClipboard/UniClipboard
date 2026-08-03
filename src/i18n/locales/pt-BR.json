@@ -1039,6 +1039,11 @@
     "pairedDevices": {
       "title": "Dispositivos pareados"
     },
+    "convergence": {
+      "converging": "Conectando aos outros dispositivos deste Espaço",
+      "waitingForUpgrade": "Alguns dispositivos precisam ser atualizados para se conectarem automaticamente",
+      "blocked": "Alguns dispositivos não conseguem concluir a conexão agora"
+    },
     "addDevice": {
       "title": "Convidar um novo dispositivo",
       "subtitle": "Digite este código no dispositivo que vai entrar",
@@ -1560,6 +1565,7 @@
           "not_unlocked": "A sessão do Espaço está bloqueada. Reinicie o app para que o keychain a desbloqueie novamente.",
           "sponsor_rejected": "O anfitrião não reconheceu o código de convite. Peça que ele gere um novo.",
           "sponsor_declined": "O anfitrião recusou o pareamento.",
+          "sponsor_upgrade_required": "O outro dispositivo está usando uma versão antiga. Atualize o UniClipboard nele e gere um novo código de convite.",
           "invitation_not_found": "O código de convite já foi usado ou não é mais válido. Peça ao anfitrião que gere um novo.",
           "invitation_expired": "Convite expirado. Peça ao anfitrião que gere um novo.",
           "passphrase_mismatch": "Frase secreta incorreta — tente novamente.",
@@ -1951,6 +1957,7 @@
         "sponsorUnreachable": "Não foi possível alcançar o dispositivo anfitrião agora. Verifique se os dois dispositivos estão online.",
         "sponsorRejected": "O dispositivo anfitrião não reconheceu este código. Peça um novo.",
         "sponsorDeclined": "O dispositivo anfitrião recusou a solicitação de pareamento.",
+        "sponsorUpgradeRequired": "O outro dispositivo está usando uma versão antiga. Atualize o UniClipboard nele e gere um novo código de convite.",
         "timeout": "O handshake de pareamento expirou. Tente novamente.",
         "connectionLost": "A conexão caiu durante o handshake. Tente novamente.",
         "serviceUnavailable": "O daemon ainda não está pronto. Tente novamente em instantes.",

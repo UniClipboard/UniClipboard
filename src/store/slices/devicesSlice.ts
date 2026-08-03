@@ -1,10 +1,12 @@
 import { createAsyncThunk, createSlice, type PayloadAction } from '@reduxjs/toolkit'
 import {
+  getMembershipConvergence,
   getMemberSyncPreferences,
   getSpaceProtection,
   updateMemberSyncPreferences as updateMemberSyncPreferencesApi,
   type MemberSyncPreferences,
   type MemberSyncPreferencesPatch,
+  type MembershipConvergence,
   type SpaceProtection,
 } from '@/api/daemon/member'
 import {
@@ -30,6 +32,11 @@ interface DevicesState {
   spaceProtection: SpaceProtection | null
   spaceProtectionLoading: boolean
   spaceProtectionError: string | null
+
+  // Engine-authoritative connection state for the active space. Query errors
+  // stay separate from page-level failures because this status is advisory.
+  membershipConvergence: MembershipConvergence | null
+  membershipConvergenceError: string | null
 
   // 每成员同步偏好（phase 4b PR-3：从 DeviceSyncSettings 切换到 MemberSyncPreferences）
   memberSyncPreferences: Record<string, MemberSyncPreferences>
@@ -99,6 +106,8 @@ const initialState: DevicesState = {
   spaceProtection: null,
   spaceProtectionLoading: false,
   spaceProtectionError: null,
+  membershipConvergence: null,
+  membershipConvergenceError: null,
   memberSyncPreferences: {},
   memberSyncPreferencesLoading: {},
 }
@@ -133,6 +142,17 @@ export const fetchSpaceProtection = createAsyncThunk(
       return await getSpaceProtection()
     } catch {
       return rejectWithValue('devices.protection.errors.statusFailed')
+    }
+  }
+)
+
+export const fetchMembershipConvergence = createAsyncThunk(
+  'devices/fetchMembershipConvergence',
+  async (_, { rejectWithValue }) => {
+    try {
+      return await getMembershipConvergence()
+    } catch {
+      return rejectWithValue('Failed to fetch membership convergence')
     }
   }
 )
@@ -240,6 +260,20 @@ const devicesSlice = createSlice({
       .addCase(fetchSpaceProtection.rejected, (state, action) => {
         state.spaceProtectionLoading = false
         state.spaceProtectionError = action.payload as string
+      })
+
+    // Space membership convergence. A failed refresh preserves the last
+    // Engine snapshot so an advisory query never blanks or breaks the page.
+    builder
+      .addCase(fetchMembershipConvergence.pending, state => {
+        state.membershipConvergenceError = null
+      })
+      .addCase(fetchMembershipConvergence.fulfilled, (state, action) => {
+        state.membershipConvergence = action.payload
+        state.membershipConvergenceError = null
+      })
+      .addCase(fetchMembershipConvergence.rejected, (state, action) => {
+        state.membershipConvergenceError = action.payload as string
       })
 
     // Member sync preferences

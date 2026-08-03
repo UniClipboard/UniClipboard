@@ -1,11 +1,21 @@
 import { configureStore } from '@reduxjs/toolkit'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { getSpaceProtection, type SpaceProtection } from '@/api/daemon/member'
+import {
+  getMembershipConvergence,
+  getSpaceProtection,
+  type MembershipConvergence,
+  type SpaceProtection,
+} from '@/api/daemon/member'
 import type { SpaceMember } from '@/api/daemon/members'
-import devicesReducer, { fetchSpaceProtection, setSpaceMembers } from '../devicesSlice'
+import devicesReducer, {
+  fetchMembershipConvergence,
+  fetchSpaceProtection,
+  setSpaceMembers,
+} from '../devicesSlice'
 
 vi.mock('@/api/daemon/member', async importOriginal => ({
   ...(await importOriginal<typeof import('@/api/daemon/member')>()),
+  getMembershipConvergence: vi.fn(),
   getSpaceProtection: vi.fn(),
 }))
 
@@ -88,6 +98,39 @@ describe('devicesSlice fetchSpaceProtection', () => {
 
     expect(store.getState().devices.spaceProtectionError).toBe(
       'devices.protection.errors.statusFailed'
+    )
+  })
+})
+
+describe('devicesSlice fetchMembershipConvergence', () => {
+  const convergence: MembershipConvergence = { state: 'converging' }
+
+  beforeEach(() => {
+    vi.mocked(getMembershipConvergence).mockReset()
+  })
+
+  it('stores the Engine-authoritative space connection state', async () => {
+    vi.mocked(getMembershipConvergence).mockResolvedValue(convergence)
+    const store = configureStore({ reducer: { devices: devicesReducer } })
+
+    await store.dispatch(fetchMembershipConvergence())
+
+    expect(store.getState().devices.membershipConvergence).toEqual(convergence)
+    expect(store.getState().devices.membershipConvergenceError).toBeNull()
+  })
+
+  it('keeps the last status when a refresh fails', async () => {
+    vi.mocked(getMembershipConvergence)
+      .mockResolvedValueOnce(convergence)
+      .mockRejectedValueOnce(new Error('offline'))
+    const store = configureStore({ reducer: { devices: devicesReducer } })
+
+    await store.dispatch(fetchMembershipConvergence())
+    await store.dispatch(fetchMembershipConvergence())
+
+    expect(store.getState().devices.membershipConvergence).toEqual(convergence)
+    expect(store.getState().devices.membershipConvergenceError).toBe(
+      'Failed to fetch membership convergence'
     )
   })
 })

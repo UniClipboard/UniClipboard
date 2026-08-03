@@ -634,8 +634,9 @@ fn daemon_member_handlers_delegate_roster_ownership_to_engine() {
     assert!(
         !member.contains(".member_roster")
             && member.contains("Operation::QueryMemberSyncPreferences")
-            && member.contains("Operation::UpdateMemberSyncPreferences"),
-        "daemon member preference handlers must delegate to uc-engine"
+            && member.contains("Operation::UpdateMemberSyncPreferences")
+            && member.contains("Operation::QueryMembershipConvergence"),
+        "daemon member preference and convergence handlers must delegate to uc-engine"
     );
     assert!(
         !pairing.contains(".member_roster")

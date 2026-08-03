@@ -1036,6 +1036,11 @@
     "pairedDevices": {
       "title": "Paired devices"
     },
+    "convergence": {
+      "converging": "Connecting to other devices in this space",
+      "waitingForUpgrade": "Some devices need an update before they can connect automatically",
+      "blocked": "Some devices cannot finish connecting right now"
+    },
     "addDevice": {
       "title": "Invite a new device",
       "subtitle": "Enter this code on the joining device",
@@ -1555,6 +1560,7 @@
           "not_unlocked": "Space session is locked. Restart the app so the keychain re-unlocks it.",
           "sponsor_rejected": "Sponsor did not recognise the invitation code. Ask them to issue a fresh one.",
           "sponsor_declined": "Sponsor declined the pairing.",
+          "sponsor_upgrade_required": "The other device is using an older version. Update UniClipboard on that device, then create a new invitation code.",
           "invitation_not_found": "Invitation code has already been used or is no longer valid. Ask the sponsor to issue a fresh one.",
           "invitation_expired": "Invitation expired. Ask the sponsor to issue a fresh one.",
           "passphrase_mismatch": "Wrong passphrase — please retry.",
@@ -1946,6 +1952,7 @@
         "sponsorUnreachable": "The host device is not reachable right now. Make sure both devices are online.",
         "sponsorRejected": "The host did not recognise this code. Ask them to issue a new one.",
         "sponsorDeclined": "The host declined the pairing request.",
+        "sponsorUpgradeRequired": "The other device is using an older version. Update UniClipboard on that device, then create a new invitation code.",
         "timeout": "The pairing handshake timed out. Please try again.",
         "connectionLost": "The connection dropped mid-handshake. Please try again.",
         "serviceUnavailable": "The daemon is not ready yet. Please try again in a moment.",

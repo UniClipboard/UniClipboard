@@ -27,7 +27,8 @@ use uc_engine::error_codes::{
     JOIN_SPACE_PASSPHRASE_MISMATCH_CODE, JOIN_SPACE_PENDING_MIGRATION_CODE,
     JOIN_SPACE_SERVICE_UNAVAILABLE_CODE, JOIN_SPACE_SPONSOR_DECLINED_CODE,
     JOIN_SPACE_SPONSOR_REJECTED_CODE, JOIN_SPACE_SPONSOR_TIMEOUT_CODE,
-    JOIN_SPACE_SPONSOR_UNREACHABLE_CODE, JOIN_SPACE_STORAGE_CODE, JOIN_SPACE_TIMEOUT_CODE,
+    JOIN_SPACE_SPONSOR_UNREACHABLE_CODE, JOIN_SPACE_SPONSOR_UPGRADE_REQUIRED_CODE,
+    JOIN_SPACE_STORAGE_CODE, JOIN_SPACE_TIMEOUT_CODE,
 };
 use uc_engine::{
     CreateSpaceInput, EngineError, EngineErrorCategory, JoinSpaceInput, MigrationPhaseSummary,
@@ -268,6 +269,11 @@ fn map_join_engine_err(err: EngineError) -> ApiError {
         JOIN_SPACE_SPONSOR_UNREACHABLE_CODE => (
             "sponsor_unreachable",
             ApiError::service_unavailable("sponsor is not reachable"),
+        ),
+        JOIN_SPACE_SPONSOR_UPGRADE_REQUIRED_CODE => (
+            "sponsor_upgrade_required",
+            ApiError::conflict("sponsor must upgrade before pairing")
+                .with_code("sponsor_upgrade_required"),
         ),
         JOIN_SPACE_SERVICE_UNAVAILABLE_CODE => (
             "service_unavailable",
@@ -561,6 +567,11 @@ fn map_switch_engine_err(err: EngineError) -> ApiError {
             "sponsor_unreachable",
             ApiError::service_unavailable("sponsor is not reachable"),
         ),
+        JOIN_SPACE_SPONSOR_UPGRADE_REQUIRED_CODE => (
+            "sponsor_upgrade_required",
+            ApiError::conflict("sponsor must upgrade before pairing")
+                .with_code("sponsor_upgrade_required"),
+        ),
         JOIN_SPACE_SERVICE_UNAVAILABLE_CODE => (
             "service_unavailable",
             ApiError::service_unavailable("pairing invitation service unavailable"),
@@ -822,6 +833,25 @@ mod tests {
                     .as_u16(),
                 expected
             );
+        }
+    }
+
+    #[test]
+    fn sponsor_upgrade_required_is_a_stable_conflict_for_join_and_switch() {
+        for api in [
+            map_join_engine_err(EngineError::new(
+                JOIN_SPACE_SPONSOR_UPGRADE_REQUIRED_CODE,
+                EngineErrorCategory::Conflict,
+                false,
+            )),
+            map_switch_engine_err(EngineError::new(
+                JOIN_SPACE_SPONSOR_UPGRADE_REQUIRED_CODE,
+                EngineErrorCategory::Conflict,
+                false,
+            )),
+        ] {
+            assert_eq!(api.status.as_u16(), 409);
+            assert_eq!(api.code, "sponsor_upgrade_required");
         }
     }
 

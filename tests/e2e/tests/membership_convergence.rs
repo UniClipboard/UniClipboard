@@ -129,11 +129,17 @@ impl WatchSession {
         loop {
             match ready_rx.try_recv() {
                 Ok(()) => break,
-                Err(TryRecvError::Disconnected) => panic!("watch exited before WATCH_READY"),
+                Err(TryRecvError::Disconnected) => {
+                    terminate_child(&mut child);
+                    panic!("watch exited before WATCH_READY");
+                }
                 Err(TryRecvError::Empty) if tokio::time::Instant::now() < deadline => {
                     tokio::time::sleep(Duration::from_millis(50)).await;
                 }
-                Err(TryRecvError::Empty) => panic!("watch did not emit WATCH_READY within 15s"),
+                Err(TryRecvError::Empty) => {
+                    terminate_child(&mut child);
+                    panic!("watch did not emit WATCH_READY within 15s");
+                }
             }
         }
 
@@ -164,6 +170,11 @@ impl WatchSession {
             }
         }
     }
+}
+
+fn terminate_child(child: &mut Child) {
+    let _ = child.kill();
+    let _ = child.wait();
 }
 
 impl Drop for WatchSession {

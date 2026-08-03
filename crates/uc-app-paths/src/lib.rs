@@ -197,12 +197,27 @@ pub fn app_cache_root() -> Option<PathBuf> {
 ///
 /// Returns `None` only when the underlying base directory is unavailable.
 pub fn app_log_dir() -> Option<PathBuf> {
+    let profile = resolve_profile(None);
+    app_log_dir_for_profile(profile.as_deref())
+}
+
+/// Resolve the log directory for an explicit profile without reading
+/// `UC_PROFILE`.
+///
+/// This is intended for callers such as isolated test harnesses that launch a
+/// child process with a profile different from the current process. Passing
+/// `None` resolves the unprofiled application directory.
+pub fn app_log_dir_for_profile(profile: Option<&str>) -> Option<PathBuf> {
     // Portable ("green") builds keep logs next to the executable, alongside the
     // rest of the data, so the app leaves no trace in the system log location.
     if let Some(portable_root) = portable_data_root() {
         return Some(portable_root.join("logs"));
     }
-    platform_log_dir(&resolved_app_dir_name(None))
+    let app_dir_name = match profile {
+        Some(profile) if !profile.is_empty() => format!("{APP_DIR_NAME}-{profile}"),
+        _ => APP_DIR_NAME.to_string(),
+    };
+    platform_log_dir(&app_dir_name)
 }
 
 #[cfg(target_os = "macos")]
@@ -348,6 +363,22 @@ mod tests {
                     "log dir must include the app directory name: {dir:?}"
                 );
             }
+        }
+    }
+
+    #[test]
+    fn explicit_profile_log_dir_does_not_depend_on_process_profile() {
+        let explicit = app_log_dir_for_profile(Some("e2e-isolated")).expect("log directory");
+        if let Some(portable_root) = portable_data_root() {
+            assert_eq!(explicit, portable_root.join("logs"));
+        } else {
+            assert!(
+                explicit
+                    .to_string_lossy()
+                    .contains("app.uniclipboard.desktop-e2e-isolated"),
+                "explicit profile missing from {}",
+                explicit.display()
+            );
         }
     }
 

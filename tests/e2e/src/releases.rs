@@ -1,5 +1,6 @@
 use std::io::Cursor;
 use std::path::{Component, Path};
+use std::time::Duration;
 
 use sha2::{Digest, Sha256};
 
@@ -46,11 +47,7 @@ pub fn fixed_legacy_release_asset(os: &str, arch: &str) -> Result<ReleaseAsset, 
             "uniclipboard-cli-0.20.0-alpha.6-x86_64-pc-windows-msvc.zip",
             ArchiveFormat::Zip,
         ),
-        _ => {
-            return Err(format!(
-                "unsupported legacy release target: {os}/{arch}"
-            ))
-        }
+        _ => return Err(format!("unsupported legacy release target: {os}/{arch}")),
     };
     Ok(ReleaseAsset { filename, format })
 }
@@ -108,6 +105,7 @@ pub async fn prepare_fixed_legacy_release_from(
 
     let client = reqwest::Client::builder()
         .user_agent(format!("uc-e2e-tests/{LEGACY_RELEASE_VERSION}"))
+        .timeout(Duration::from_secs(60))
         .build()
         .map_err(|error| format!("build release download client failed: {error}"))?;
     let base_url = format!(
@@ -117,12 +115,7 @@ pub async fn prepare_fixed_legacy_release_from(
     );
     let manifest = download(&client, &format!("{base_url}/SHA256SUMS.txt")).await?;
     let archive = download(&client, &format!("{base_url}/{}", asset.filename)).await?;
-    verify_release_payload(
-        &manifest,
-        expected_manifest_sha256,
-        &archive,
-        asset,
-    )?;
+    verify_release_payload(&manifest, expected_manifest_sha256, &archive, asset)?;
 
     let parent = output_dir
         .parent()
@@ -157,12 +150,7 @@ fn load_verified_release(
         .map_err(|error| format!("read cached checksum manifest failed: {error}"))?;
     let archive = std::fs::read(output_dir.join(asset.filename))
         .map_err(|error| format!("read cached release archive failed: {error}"))?;
-    verify_release_payload(
-        &manifest,
-        expected_manifest_sha256,
-        &archive,
-        asset,
-    )?;
+    verify_release_payload(&manifest, expected_manifest_sha256, &archive, asset)?;
     NodeBinarySet::fixed_release_dir(LEGACY_RELEASE_VERSION, output_dir)
 }
 

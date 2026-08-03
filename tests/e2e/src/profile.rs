@@ -73,32 +73,8 @@ impl TestProfile {
     }
 
     fn resolve_log_dir(profile: &str) -> PathBuf {
-        let app_dir = format!("app.uniclipboard.desktop-{profile}");
-        #[cfg(target_os = "macos")]
-        {
-            return dirs_next::home_dir()
-                .unwrap_or_else(|| PathBuf::from("/tmp"))
-                .join("Library/Logs")
-                .join(app_dir);
-        }
-        #[cfg(target_os = "linux")]
-        {
-            let state_root = std::env::var_os("XDG_STATE_HOME")
-                .map(PathBuf::from)
-                .unwrap_or_else(|| {
-                    dirs_next::home_dir()
-                        .unwrap_or_else(|| PathBuf::from("/tmp"))
-                        .join(".local/state")
-                });
-            return state_root.join(app_dir).join("logs");
-        }
-        #[cfg(target_os = "windows")]
-        {
-            return dirs_next::data_local_dir()
-                .unwrap_or_else(|| PathBuf::from("C:\\Temp"))
-                .join(app_dir)
-                .join("logs");
-        }
+        uc_app_paths::app_log_dir_for_profile(Some(profile))
+            .expect("the platform must provide an E2E log directory")
     }
 
     /// Remove every directory this profile's daemon may have created.

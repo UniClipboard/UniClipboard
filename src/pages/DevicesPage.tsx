@@ -127,6 +127,7 @@ const DevicesPage: React.FC = () => {
     spaceProtection,
     spaceProtectionError,
     membershipConvergence,
+    membershipConvergenceError,
   } = useAppSelector(state => state.devices)
 
   const peers = localDevice
@@ -187,12 +188,14 @@ const DevicesPage: React.FC = () => {
         // redundant HTTP refetch on every presence flip (issue #1129).
         const payload = event.payload as PeersChangedPayload
         dispatch(setSpaceMembers(payload.peers.map(peerSnapshotToMember)))
-        dispatch(fetchMembershipConvergence())
+        if (documentVisible) {
+          dispatch(fetchMembershipConvergence())
+        }
       }
     }
     const unsub = daemonWs.subscribe(['peers'], handler)
     return unsub
-  }, [dispatch])
+  }, [dispatch, documentVisible])
 
   // ── mobile devices state ──────────────────────────────────────
   const {
@@ -278,15 +281,14 @@ const DevicesPage: React.FC = () => {
   }
 
   const unpairTargetDevice = peers.find(d => d.peerId === unpairTargetId)
-  const hasPageError = Boolean(
-    localDeviceError || spaceMembersError || mobileDevicesError || spaceProtectionError
-  )
   const hideDuplicateUpgrade =
     membershipConvergence?.state === 'waiting_for_upgrade' &&
     legacyBootstrap !== null &&
     legacyBootstrap.outcome !== 'complete'
   const visibleConvergenceState =
-    hasPageError || hideDuplicateUpgrade ? 'complete' : (membershipConvergence?.state ?? 'complete')
+    membershipConvergenceError || hideDuplicateUpgrade
+      ? 'complete'
+      : (membershipConvergence?.state ?? 'complete')
 
   return (
     <div className="flex h-full">

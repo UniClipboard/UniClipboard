@@ -53,10 +53,8 @@ run_case() {
   cargo_args+=(--test "$test_target" "$test_name" -- --exact --ignored --nocapture)
 
   echo "==> $case_id ($effective_classification)"
-  set +e
   cargo "${cargo_args[@]}" 2>&1 | tee "$log_file"
   local test_status=${PIPESTATUS[0]}
-  set -e
 
   if [[ $test_status -eq 0 ]]; then
     printf '%s\t%s\t%s\tpassed\n' "$case_id" "$TIER" "$effective_classification" >> "$RESULTS"
@@ -84,9 +82,11 @@ else
   run_case C3 diagnostic membership-diagnostics membership_convergence c3_recovered_membership_survives_restart_without_duplicates
 
   if [[ -z "${UC_E2E_LEGACY_RELEASE_DIR:-}" ]]; then
+    echo "UC_E2E_LEGACY_RELEASE_DIR is not set; H1-H4 cannot run" >&2
     for case_id in H1 H2 H3 H4; do
       record_skip "$case_id" "legacy-release-unavailable"
     done
+    printf '\n> UC_E2E_LEGACY_RELEASE_DIR is not set; H1-H4 were required but could not run.\n' >> "$SUMMARY"
     FAILED=1
   else
     run_case H1 required historical-membership membership_compatibility h1_current_joiner_rejects_legacy_sponsor_without_partial_setup

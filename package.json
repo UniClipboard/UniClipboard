@@ -37,6 +37,7 @@
     "prepare": "husky",
     "test:coverage": "cargo llvm-cov --html --workspace",
     "check:engine-repository": "node scripts/architecture/check-engine-repository.mjs",
+    "check:cargo-audit-exceptions": "node scripts/architecture/check-cargo-audit-exceptions.mjs",
     "e2e:wdio": "node e2e/run.mjs",
     "e2e:wdio:dual": "node e2e/run.mjs --dual-peer",
     "e2e:card": "scripts/e2e/run-card.sh",

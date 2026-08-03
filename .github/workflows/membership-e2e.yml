@@ -91,7 +91,8 @@ jobs:
           UC_E2E_KEEP_PROFILES: '1'
           UC_E2E_LEGACY_RELEASE_DIR: ${{ runner.temp }}/legacy-release
           UC_E2E_RUST_LOG: info
-        run: bash scripts/e2e/run-membership-matrix.sh "${{ inputs.tier || 'nightly' }}"
+          MEMBERSHIP_TIER: ${{ inputs.tier || 'nightly' }}
+        run: bash scripts/e2e/run-membership-matrix.sh "$MEMBERSHIP_TIER"
 
       - name: Upload matrix results and isolated profiles
         if: always()

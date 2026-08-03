@@ -104,7 +104,7 @@ pub fn prepare_desktop_engine_host() -> WiringResult<DesktopEngineHost> {
     #[cfg(feature = "e2e-rendezvous")]
     let engine_config = match std::env::var("UC_E2E_RENDEZVOUS_BASE_URL") {
         Ok(base_url) if !base_url.trim().is_empty() => {
-            engine_config.with_rendezvous_base_url(base_url)
+            engine_config.with_rendezvous_base_url(base_url.trim().to_string())
         }
         _ => engine_config,
     };

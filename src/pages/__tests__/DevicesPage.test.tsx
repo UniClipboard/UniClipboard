@@ -95,6 +95,10 @@ vi.mock('@/components/device/MobileDevicePanel', () => ({
 }))
 
 const dispatchMock = vi.fn()
+type DaemonEventHandler = (event: { topic: string; eventType: string; payload: unknown }) => void
+const daemonWsMocks = vi.hoisted(() => ({
+  subscribe: vi.fn((_topics: string[], _handler: DaemonEventHandler) => () => undefined),
+}))
 const devicesState = {
   localDevice: null as null | Record<string, unknown>,
   localDeviceLoading: false,
@@ -104,6 +108,7 @@ const devicesState = {
   spaceProtection: null as null | Record<string, unknown>,
   spaceProtectionError: null as string | null,
   membershipConvergence: null as null | { state: string },
+  membershipConvergenceError: null as string | null,
   memberSyncPreferences: {},
   memberSyncPreferencesLoading: {},
 }
@@ -123,6 +128,7 @@ vi.mock('@/store/slices/devicesSlice', () => ({
   clearSpaceMembersError: vi.fn(() => ({ type: 'devices/clearSpaceMembersError' })),
   fetchSpaceProtection: vi.fn(() => ({ type: 'devices/fetchSpaceProtection' })),
   fetchMembershipConvergence: vi.fn(() => ({ type: 'devices/fetchMembershipConvergence' })),
+  setSpaceMembers: vi.fn((members: unknown[]) => ({ type: 'devices/setSpaceMembers', members })),
   fetchMemberSyncPreferences: vi.fn(() => ({ type: 'devices/fetchMemberSyncPreferences' })),
   updateMemberSyncPreferences: vi.fn(() => ({ type: 'devices/updateMemberSyncPreferences' })),
 }))
@@ -162,7 +168,7 @@ vi.mock('@/api/tauri-command/mobile_sync', () => ({
 }))
 
 vi.mock('@/lib/daemon-ws', () => ({
-  daemonWs: { subscribe: () => () => undefined },
+  daemonWs: { subscribe: daemonWsMocks.subscribe },
 }))
 
 vi.mock('@/components/ui/toast', () => ({
@@ -194,6 +200,14 @@ describe('DevicesPage', () => {
     devicesState.spaceProtection = null
     devicesState.spaceProtectionError = null
     devicesState.membershipConvergence = null
+    devicesState.membershipConvergenceError = null
+    daemonWsMocks.subscribe.mockClear()
+    vi.mocked(listMobileDevices).mockReset()
+    vi.mocked(listMobileDevices).mockResolvedValue([])
+    Object.defineProperty(document, 'visibilityState', {
+      configurable: true,
+      get: () => 'visible',
+    })
     vi.mocked(unpairDevice).mockReset()
     vi.mocked(isLegacyBootstrapRequired).mockReset()
     vi.mocked(secureRemoveLegacyMember).mockReset()
@@ -268,6 +282,24 @@ describe('DevicesPage', () => {
     expect(refreshPresence).toHaveBeenCalledTimes(2)
   })
 
+  it('does not refresh convergence from websocket events while hidden', () => {
+    Object.defineProperty(document, 'visibilityState', {
+      configurable: true,
+      get: () => 'hidden',
+    })
+    render(<DevicesPage />)
+    const handler = daemonWsMocks.subscribe.mock.calls.at(-1)?.[1]
+    expect(handler).toBeTypeOf('function')
+    dispatchMock.mockClear()
+
+    act(() => {
+      handler?.({ topic: 'peers', eventType: 'peers.changed', payload: { peers: [] } })
+    })
+
+    expect(dispatchMock).toHaveBeenCalledWith({ type: 'devices/setSpaceMembers', members: [] })
+    expect(dispatchMock).not.toHaveBeenCalledWith({ type: 'devices/fetchMembershipConvergence' })
+  })
+
   it('shows a compact status while the space is still connecting', () => {
     devicesState.membershipConvergence = { state: 'converging' }
 
@@ -285,6 +317,24 @@ describe('DevicesPage', () => {
     expect(
       screen.queryByText(i18n.t('devices.convergence.waitingForUpgrade'))
     ).not.toBeInTheDocument()
+    expect(screen.queryByText(i18n.t('devices.convergence.blocked'))).not.toBeInTheDocument()
+  })
+
+  it('keeps a blocked connection visible when the mobile device query fails', async () => {
+    devicesState.membershipConvergence = { state: 'blocked' }
+    vi.mocked(listMobileDevices).mockRejectedValueOnce(new Error('mobile query failed'))
+
+    render(<DevicesPage />)
+
+    expect(await screen.findByText(i18n.t('devices.convergence.blocked'))).toBeInTheDocument()
+  })
+
+  it('hides stale connection status only when its own request fails', () => {
+    devicesState.membershipConvergence = { state: 'blocked' }
+    devicesState.membershipConvergenceError = 'membership query failed'
+
+    render(<DevicesPage />)
+
     expect(screen.queryByText(i18n.t('devices.convergence.blocked'))).not.toBeInTheDocument()
   })
 

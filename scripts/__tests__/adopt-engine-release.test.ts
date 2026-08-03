@@ -130,6 +130,11 @@ describe('desktop Engine release adoption', () => {
     expect(workflow).not.toContain('run: node scripts/adopt-engine-release.mjs')
     expect(workflow).toContain('changed: ${{ steps.change.outputs.changed }}')
     expect(workflow).toContain("if: ${{ needs.validate.outputs.changed == 'true' }}")
+    expect(workflow).toContain(
+      'git diff --no-exit-code --binary HEAD -- Cargo.toml Cargo.lock > engine-adoption.patch'
+    )
+    expect(workflow).toContain('if [ -s engine-adoption.patch ]; then')
+    expect(workflow).not.toContain('git diff --quiet -- Cargo.toml Cargo.lock')
     expect(workflow).toContain('--state all')
     expect(workflow).toContain('gh pr reopen')
     expect(workflow).toMatch(

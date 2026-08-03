@@ -1,0 +1,109 @@
+name: 'Membership E2E'
+run-name: "membership-e2e-${{ inputs.tier || 'nightly' }}-${{ github.run_number }}"
+
+on:
+  schedule:
+    - cron: '23 18 * * *'
+  workflow_dispatch:
+    inputs:
+      tier:
+        description: '测试层级'
+        required: true
+        type: choice
+        options:
+          - nightly
+          - release
+        default: nightly
+      ref:
+        description: '要测试的分支、标签或提交'
+        required: false
+        type: string
+        default: ''
+  workflow_call:
+    inputs:
+      tier:
+        description: '测试层级'
+        required: true
+        type: string
+      ref:
+        description: '要测试的分支、标签或提交'
+        required: false
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  membership:
+    name: "${{ matrix.name }} / ${{ inputs.tier || 'nightly' }}"
+    runs-on: ${{ matrix.runner }}
+    container: ${{ matrix.container || null }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS
+            runner: macos-latest
+          - name: Linux
+            runner: ubuntu-22.04
+            container: ghcr.io/uniclipboard/build-bookworm:latest
+          - name: Windows
+            runner: windows-latest
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+          submodules: recursive
+
+      - name: Install pinned Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.95.0
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: '. -> target'
+          shared-key: membership-e2e-${{ runner.os }}
+          save-if: ${{ github.event_name == 'schedule' }}
+
+      - name: Build daemon and CLI
+        run: cargo build -p uc-daemon -p uc-cli --features uc-daemon/e2e-rendezvous
+
+      - name: Verify fixed release preparation
+        run: cargo test --manifest-path tests/e2e/Cargo.toml --test release_assets
+
+      - name: Prepare fixed legacy release
+        shell: bash
+        run: >-
+          cargo run --manifest-path tests/e2e/Cargo.toml
+          --bin prepare-legacy-release --
+          --output "$RUNNER_TEMP/legacy-release"
+
+      - name: Run membership matrix
+        shell: bash
+        env:
+          UC_E2E_ARTIFACT_DIR: ${{ runner.temp }}/membership-e2e
+          UC_E2E_KEEP_PROFILES: '1'
+          UC_E2E_LEGACY_RELEASE_DIR: ${{ runner.temp }}/legacy-release
+          UC_E2E_RUST_LOG: info
+        run: bash scripts/e2e/run-membership-matrix.sh "${{ inputs.tier || 'nightly' }}"
+
+      - name: Upload matrix results and isolated profiles
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: membership-e2e-${{ matrix.name }}-${{ inputs.tier || 'nightly' }}
+          if-no-files-found: warn
+          retention-days: 14
+          path: |
+            ${{ runner.temp }}/membership-e2e/**
+            ~/Library/Application Support/app.uniclipboard.desktop-e2e-membership-*/**
+            ~/Library/Logs/app.uniclipboard.desktop-e2e-membership-*/**
+            ~/.local/share/app.uniclipboard.desktop-e2e-membership-*/**
+            ~/.local/state/app.uniclipboard.desktop-e2e-membership-*/**
+            ~/AppData/Local/app.uniclipboard.desktop-e2e-membership-*/**

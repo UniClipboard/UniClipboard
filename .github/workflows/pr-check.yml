@@ -28,6 +28,8 @@ on:
       - 'public/**'
       - '.github/docker/build-bookworm.Dockerfile'
       - '.github/workflows/pr-check.yml'
+      - '.github/workflows/membership-e2e.yml'
+      - 'scripts/e2e/run-membership-matrix.sh'
 
 permissions:
   contents: read
@@ -67,6 +69,8 @@ jobs:
               - 'clippy.toml'
               - '.github/docker/build-bookworm.Dockerfile'
               - '.github/workflows/pr-check.yml'
+              - '.github/workflows/membership-e2e.yml'
+              - 'scripts/e2e/run-membership-matrix.sh'
 
   frontend:
     name: Frontend Type Check
@@ -251,7 +255,7 @@ jobs:
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Build daemon and CLI binaries
-        run: cargo build -p uc-daemon -p uc-cli
+        run: cargo build -p uc-daemon -p uc-cli --features uc-daemon/e2e-rendezvous
 
       - name: Run E2E tests
         run: cargo test --manifest-path tests/e2e/Cargo.toml -- --ignored

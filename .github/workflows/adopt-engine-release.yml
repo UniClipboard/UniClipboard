@@ -1,0 +1,151 @@
+name: Adopt Engine release
+
+on:
+  repository_dispatch:
+    types: [engine_release_published]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: adopt-engine-${{ github.event.client_payload.version }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: Verify and check Engine update
+    if: ${{ github.event.client_payload.repository == 'UniClipboard/Engine' }}
+    runs-on: ubuntu-latest
+    outputs:
+      base_sha: ${{ steps.base.outputs.sha }}
+      changed: ${{ steps.change.outputs.changed }}
+    container:
+      image: ghcr.io/uniclipboard/build-bookworm:latest
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - id: base
+        name: Record the validated base
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Verify release and update the Engine pin
+        env:
+          ENGINE_VERSION: ${{ github.event.client_payload.version }}
+          ENGINE_COMMIT: ${{ github.event.client_payload.source_commit }}
+        run: node scripts/adopt-engine-release.mjs --version "$ENGINE_VERSION" --source-commit "$ENGINE_COMMIT"
+
+      - name: Refresh the Rust lockfile
+        env:
+          ENGINE_COMMIT: ${{ github.event.client_payload.source_commit }}
+        run: cargo update -p uc-engine --precise "$ENGINE_COMMIT"
+
+      - name: Check the desktop workspace
+        env:
+          TAURI_CONFIG: '{"bundle":{"externalBin":[]}}'
+        run: cargo check --workspace --locked
+
+      - name: Verify Engine repository boundaries
+        run: bun run check:engine-repository
+
+      - id: change
+        name: Detect the proposed update
+        run: |
+          if git diff --quiet -- Cargo.toml Cargo.lock; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            git diff --binary -- Cargo.toml Cargo.lock > engine-adoption.patch
+          fi
+
+      - uses: actions/upload-artifact@v4
+        if: ${{ steps.change.outputs.changed == 'true' }}
+        with:
+          name: engine-adoption-patch
+          path: engine-adoption.patch
+          if-no-files-found: error
+          retention-days: 1
+
+  create-pull-request:
+    name: Create or update adoption pull request
+    needs: validate
+    if: ${{ needs.validate.outputs.changed == 'true' }}
+    runs-on: ubuntu-latest
+    env:
+      BRANCH: automation/adopt-engine-${{ github.event.client_payload.version }}
+      ENGINE_VERSION: ${{ github.event.client_payload.version }}
+      ENGINE_COMMIT: ${{ github.event.client_payload.source_commit }}
+    steps:
+      - id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.ENGINE_RELEASE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.ENGINE_RELEASE_APP_PRIVATE_KEY }}
+          owner: UniClipboard
+          repositories: UniClipboard
+          permission-contents: write
+          permission-pull-requests: write
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.validate.outputs.base_sha }}
+          fetch-depth: 0
+          token: ${{ steps.app-token.outputs.token }}
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: engine-adoption-patch
+
+      - name: Apply the validated update
+        run: git apply --index engine-adoption.patch
+
+      - name: Push the deterministic branch
+        run: |
+          git config user.name "uniclipboard-engine-release[bot]"
+          git config user.email "uniclipboard-engine-release[bot]@users.noreply.github.com"
+          git checkout -B "$BRANCH"
+          git commit -m "chore(engine): adopt $ENGINE_VERSION"
+          if git ls-remote --exit-code --heads origin "$BRANCH" >/dev/null 2>&1; then
+            git fetch origin "refs/heads/$BRANCH:refs/remotes/origin/$BRANCH"
+            lease=$(git rev-parse "refs/remotes/origin/$BRANCH")
+            git push --force-with-lease="refs/heads/$BRANCH:$lease" origin "HEAD:refs/heads/$BRANCH"
+          else
+            git push origin "HEAD:refs/heads/$BRANCH"
+          fi
+
+      - name: Create or update the pull request
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          title="chore(engine): adopt $ENGINE_VERSION"
+          body=$(cat <<EOF
+          Adopt Engine $ENGINE_VERSION from source commit $ENGINE_COMMIT.
+
+          Verified before this pull request was created:
+          - public Engine release manifest and source archive
+          - Rust lockfile refresh
+          - desktop workspace check
+          - Engine repository boundary check
+          EOF
+          )
+          record=$(gh pr list --head "$BRANCH" --state all --json number,state --jq '.[0] | "\(.number // "") \(.state // "")"')
+          read -r number state <<<"$record"
+          if [[ "$state" == "OPEN" ]]; then
+            gh pr edit "$number" --title "$title" --body "$body"
+          elif [[ "$state" == "CLOSED" ]]; then
+            gh pr reopen "$number"
+            gh pr edit "$number" --title "$title" --body "$body"
+          else
+            gh pr create --base main --head "$BRANCH" --title "$title" --body "$body"
+          fi

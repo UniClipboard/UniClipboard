@@ -124,14 +124,18 @@ describe('desktop Engine release adoption', () => {
     expect(workflow).toMatch(/create-pull-request:[\s\S]*needs:\s*validate/)
     expect(workflow).toContain('cargo check --workspace --locked')
     expect(workflow).toContain('bun run check:engine-repository')
+    expect(workflow).toContain(
+      'run: bun scripts/adopt-engine-release.mjs --version "$ENGINE_VERSION" --source-commit "$ENGINE_COMMIT"'
+    )
+    expect(workflow).not.toContain('run: node scripts/adopt-engine-release.mjs')
     expect(workflow).toContain('changed: ${{ steps.change.outputs.changed }}')
     expect(workflow).toContain("if: ${{ needs.validate.outputs.changed == 'true' }}")
     expect(workflow).toContain('--state all')
     expect(workflow).toContain('gh pr reopen')
-    expect(workflow).toContain('actions/create-github-app-token@v3')
-    expect(workflow).toContain('permission-pull-requests: write')
-    expect(workflow).toContain('repositories: UniClipboard')
-    expect(workflow).toContain('GH_TOKEN: ${{ steps.app-token.outputs.token }}')
+    expect(workflow).toContain('token: ${{ secrets.REPO_BOT_TOKEN }}')
+    expect(workflow).toContain('GH_TOKEN: ${{ secrets.REPO_BOT_TOKEN }}')
+    expect(workflow).not.toContain('actions/create-github-app-token')
+    expect(workflow).not.toContain('ENGINE_RELEASE_APP_')
     expect(workflow).not.toContain('GH_TOKEN: ${{ github.token }}')
   })
 

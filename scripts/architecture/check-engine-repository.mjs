@@ -9,9 +9,6 @@ import { fileURLToPath } from 'node:url'
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url))
 const REPOSITORY_ROOT = resolve(SCRIPT_DIR, '../..')
 const ENGINE_REPOSITORY = 'https://github.com/UniClipboard/Engine.git'
-const ENGINE_REVISION = 'e5101db6f470e6b2e539d314d1e3581538dcec62'
-const DECLARED_ENGINE_SOURCE = `git+${ENGINE_REPOSITORY}?rev=${ENGINE_REVISION}`
-const RESOLVED_ENGINE_SOURCE = `${DECLARED_ENGINE_SOURCE}#${ENGINE_REVISION}`
 
 const MIGRATED_PACKAGES = new Set([
   'uc-engine',
@@ -88,8 +85,24 @@ function addProblem(problems, check, message) {
   problems.push(`${check}: ${message}`)
 }
 
+function resolveEnginePin(metadata) {
+  const engine = dependency(workspacePackageByName(metadata, 'uc-daemon'), 'uc-engine')
+  const match = engine?.source?.match(
+    new RegExp(`^git\\+${ENGINE_REPOSITORY.replaceAll('.', '\\.')}\\?rev=([0-9a-f]{40})$`)
+  )
+  if (!match) throw new Error('uc-daemon must declare one full Engine Git revision')
+  const revision = match[1]
+  const declaredSource = `git+${ENGINE_REPOSITORY}?rev=${revision}`
+  return {
+    revision,
+    declaredSource,
+    resolvedSource: `${declaredSource}#${revision}`,
+  }
+}
+
 function checkRepositoryBoundary(metadata, { checkPaths = true } = {}) {
   const problems = []
+  const enginePin = resolveEnginePin(metadata)
 
   for (const packageMetadata of workspacePackages(metadata)) {
     if (MIGRATED_PACKAGES.has(packageMetadata.name)) {
@@ -109,11 +122,11 @@ function checkRepositoryBoundary(metadata, { checkPaths = true } = {}) {
           `${packageMetadata.name} uses a local path for ${item.name}`
         )
       }
-      if (item.source !== DECLARED_ENGINE_SOURCE) {
+      if (item.source !== enginePin.declaredSource) {
         addProblem(
           problems,
           'engine provenance',
-          `${packageMetadata.name} does not pin ${item.name} to ${ENGINE_REVISION}`
+          `${packageMetadata.name} does not pin ${item.name} to ${enginePin.revision}`
         )
       }
     }
@@ -132,17 +145,17 @@ function checkRepositoryBoundary(metadata, { checkPaths = true } = {}) {
       .map(candidate => candidate.source)
       .filter(source => source?.startsWith(`git+${ENGINE_REPOSITORY}`))
   )
-  if (engineSources.size !== 1 || !engineSources.has(RESOLVED_ENGINE_SOURCE)) {
+  if (engineSources.size !== 1 || !engineSources.has(enginePin.resolvedSource)) {
     addProblem(
       problems,
       'engine provenance',
-      `expected one resolved Engine source at revision ${ENGINE_REVISION}; found ${[...engineSources].join(', ')}`
+      `expected one resolved Engine source at revision ${enginePin.revision}; found ${[...engineSources].join(', ')}`
     )
   }
 
   for (const packageMetadata of metadata.packages) {
     if (!MIGRATED_PACKAGES.has(packageMetadata.name)) continue
-    if (packageMetadata.source !== RESOLVED_ENGINE_SOURCE) {
+    if (packageMetadata.source !== enginePin.resolvedSource) {
       addProblem(
         problems,
         'engine provenance',
@@ -256,11 +269,15 @@ function repositorySources() {
 }
 
 function collectProblems(metadata, sources, options) {
-  return [
-    ...checkRepositoryBoundary(metadata, options),
-    ...checkPublicSurface(metadata),
-    ...checkLanIsolation(metadata, sources),
-  ]
+  try {
+    return [
+      ...checkRepositoryBoundary(metadata, options),
+      ...checkPublicSurface(metadata),
+      ...checkLanIsolation(metadata, sources),
+    ]
+  } catch (error) {
+    return [`engine provenance: ${error instanceof Error ? error.message : String(error)}`]
+  }
 }
 
 function clone(value) {

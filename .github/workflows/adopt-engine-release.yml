@@ -33,7 +33,10 @@ jobs:
 
       - id: base
         name: Record the validated base
-        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+        run: |
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          cp Cargo.toml "$RUNNER_TEMP/Cargo.toml.base"
+          cp Cargo.lock "$RUNNER_TEMP/Cargo.lock.base"
 
       - uses: dtolnay/rust-toolchain@stable
 
@@ -63,18 +66,20 @@ jobs:
       - id: change
         name: Detect the proposed update
         run: |
-          git diff --binary HEAD -- Cargo.toml Cargo.lock > engine-adoption.patch
-          if [ -s engine-adoption.patch ]; then
-            echo "changed=true" >> "$GITHUB_OUTPUT"
-          else
+          if cmp -s "$RUNNER_TEMP/Cargo.toml.base" Cargo.toml &&
+            cmp -s "$RUNNER_TEMP/Cargo.lock.base" Cargo.lock; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
           fi
 
       - uses: actions/upload-artifact@v4
         if: ${{ steps.change.outputs.changed == 'true' }}
         with:
-          name: engine-adoption-patch
-          path: engine-adoption.patch
+          name: engine-adoption-files
+          path: |
+            Cargo.toml
+            Cargo.lock
           if-no-files-found: error
           retention-days: 1
 
@@ -97,10 +102,14 @@ jobs:
 
       - uses: actions/download-artifact@v4
         with:
-          name: engine-adoption-patch
+          name: engine-adoption-files
+          path: engine-adoption-files
 
       - name: Apply the validated update
-        run: git apply --index engine-adoption.patch
+        run: |
+          cp engine-adoption-files/Cargo.toml Cargo.toml
+          cp engine-adoption-files/Cargo.lock Cargo.lock
+          git add Cargo.toml Cargo.lock
 
       - name: Push the deterministic branch
         env:

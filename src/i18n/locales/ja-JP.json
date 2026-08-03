@@ -1078,6 +1078,7 @@
     },
     "protection": {
       "label": "保護状態",
+      "upgradePeerHelp": "相手側のデバイスの UniClipboard を最新バージョンに更新してください。",
       "bootstrap": {
         "awaiting_readmission": "セキュリティ更新は {{count}} 台のデバイスの再参加を待機しています。",
         "recovery_required": "メンバーが同期する前にセキュリティ更新を復旧する必要があります。"

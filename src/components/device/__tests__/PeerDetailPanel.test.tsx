@@ -2,7 +2,7 @@ import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { I18nextProvider } from 'react-i18next'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { MemberSyncPreferences } from '@/api/daemon/member'
+import type { MemberProtectionStatus, MemberSyncPreferences } from '@/api/daemon/member'
 import type { SpaceMember } from '@/api/daemon/members'
 import PeerDetailPanel from '@/components/device/PeerDetailPanel'
 import i18n from '@/i18n'
@@ -47,7 +47,9 @@ const state = {
   devices: {
     memberSyncPreferences: { 'peer-1': preferences },
     memberSyncPreferencesLoading: { 'peer-1': false },
-    spaceProtection: null,
+    spaceProtection: null as null | {
+      members: Array<{ deviceId: string; status: MemberProtectionStatus }>
+    },
   },
 }
 
@@ -108,6 +110,7 @@ describe('PeerDetailPanel receive controls', () => {
     mocks.updateMemberSyncPreferences.mockClear()
     mocks.toastError.mockReset()
     mocks.dispatch.mockReturnValue({ unwrap: () => Promise.resolve(preferences) })
+    state.devices.spaceProtection = null
   })
 
   it('shows send and receive settings in one content-type table', () => {
@@ -128,6 +131,20 @@ describe('PeerDetailPanel receive controls', () => {
     renderPanel()
 
     expect(screen.getByRole('button', { name: 'About send and receive' })).toBeInTheDocument()
+  })
+
+  it('explains that a peer awaiting readmission needs its client updated', () => {
+    state.devices.spaceProtection = {
+      members: [{ deviceId: 'peer-1', status: 'awaiting_readmission' }],
+    }
+
+    renderPanel()
+
+    expect(
+      screen.getByRole('button', {
+        name: 'Update UniClipboard on the other device to the latest version.',
+      })
+    ).toBeInTheDocument()
   })
 
   it('updates only the receive master switch when the user disables receiving', async () => {

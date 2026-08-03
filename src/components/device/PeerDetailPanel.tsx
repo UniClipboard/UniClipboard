@@ -242,6 +242,30 @@ const PeerDetailPanel: React.FC<PeerDetailPanelProps> = ({
                 <Badge variant="outline" className={protectionBadgeClass(protectionStatus)}>
                   {t(`devices.protection.status.${protectionStatus}`)}
                 </Badge>
+                {protectionStatus === 'awaiting_readmission' && (
+                  <TooltipProvider delay={200}>
+                    <Tooltip>
+                      <TooltipTrigger
+                        render={
+                          <button
+                            type="button"
+                            aria-label={t('devices.protection.upgradePeerHelp')}
+                            className="flex size-5 shrink-0 items-center justify-center rounded text-warning/80 transition-colors hover:bg-warning/10 hover:text-warning focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
+                          />
+                        }
+                      >
+                        <CircleHelp className="size-3.5" />
+                      </TooltipTrigger>
+                      <TooltipContent
+                        side="top"
+                        sideOffset={6}
+                        className="max-w-64 text-left leading-relaxed whitespace-normal"
+                      >
+                        {t('devices.protection.upgradePeerHelp')}
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                )}
               </PanelFactRow>
             )}
             {device?.connectionAddress && (

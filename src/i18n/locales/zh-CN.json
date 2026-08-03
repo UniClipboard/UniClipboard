@@ -1077,6 +1077,7 @@
     },
     "protection": {
       "label": "保护状态",
+      "upgradePeerHelp": "请将另一台设备上的 UniClipboard 升级到最新版本。",
       "bootstrap": {
         "awaiting_readmission": "安全升级正在等待 {{count}} 个成员重新准入。",
         "recovery_required": "安全升级需要恢复，成员暂时无法同步。"

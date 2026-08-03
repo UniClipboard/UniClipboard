@@ -63,11 +63,11 @@ jobs:
       - id: change
         name: Detect the proposed update
         run: |
-          if git diff --quiet -- Cargo.toml Cargo.lock; then
-            echo "changed=false" >> "$GITHUB_OUTPUT"
-          else
+          git diff --no-exit-code --binary HEAD -- Cargo.toml Cargo.lock > engine-adoption.patch
+          if [ -s engine-adoption.patch ]; then
             echo "changed=true" >> "$GITHUB_OUTPUT"
-            git diff --binary -- Cargo.toml Cargo.lock > engine-adoption.patch
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
           fi
 
       - uses: actions/upload-artifact@v4

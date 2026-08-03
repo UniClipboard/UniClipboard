@@ -21,12 +21,11 @@ export default function SpaceConnectionStatus({ state }: SpaceConnectionStatusPr
         : t('devices.convergence.blocked')
 
   return (
-    <div
+    <output
       className={cn(
         'mt-1.5 flex items-start gap-1.5 text-[11px] leading-4',
         warning ? 'text-warning' : 'text-muted-foreground'
       )}
-      role="status"
     >
       {warning ? (
         <TriangleAlert className="mt-0.5 size-3 shrink-0" aria-hidden="true" />
@@ -34,6 +33,6 @@ export default function SpaceConnectionStatus({ state }: SpaceConnectionStatusPr
         <LoaderCircle className="mt-0.5 size-3 shrink-0 animate-spin" aria-hidden="true" />
       )}
       <span>{label}</span>
-    </div>
+    </output>
   )
 }

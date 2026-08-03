@@ -22,7 +22,9 @@ describe('membership E2E hardening', () => {
   it('preserves aggregate failures and explains a missing legacy release', () => {
     const script = read('scripts/e2e/run-membership-matrix.sh')
 
-    expect(script).not.toMatch(/^\s*set [+-]e\s*$/m)
+    expect(script).not.toMatch(
+      /^\s*set\b.*(?:\s-[A-Za-z]*e[A-Za-z]*(?:\s|$)|\s-o\s+errexit(?:\s|$))/m
+    )
     expect(script).toContain('UC_E2E_LEGACY_RELEASE_DIR is not set; H1-H4 cannot run')
     expect(script).toContain('H1-H4 were required but could not run')
   })
@@ -61,5 +63,9 @@ describe('membership E2E hardening', () => {
     expect(workflow).toContain('run: bun run check:cargo-audit-exceptions')
     expect(guard).not.toContain("run('git'")
     expect(guard).toContain("const RUST_SOURCE_ROOTS = ['apps', 'crates', 'src-tauri']")
+    expect(guard).toContain("'x86_64-unknown-linux-gnu'")
+    expect(guard).toContain("'x86_64-pc-windows-msvc'")
+    expect(guard).toContain("'x86_64-apple-darwin'")
+    expect(guard).toContain("'wasm32-unknown-unknown'")
   })
 })

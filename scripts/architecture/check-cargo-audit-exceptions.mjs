@@ -31,6 +31,12 @@ const INACTIVE_PRODUCTION_CRATES = ['libcrux-aesgcm', 'libcrux-chacha20poly1305'
 const ACTIVE_REVIEWED_CRATES = ['libcrux-sha3 v0.0.8', 'libcrux-secrets v0.0.5']
 const DIRECT_API_PATTERN = /\blibcrux_(?:aesgcm|chacha20poly1305|secrets|sha3)\b/
 const RUST_SOURCE_ROOTS = ['apps', 'crates', 'src-tauri']
+const PRODUCTION_TARGETS = [
+  'x86_64-unknown-linux-gnu',
+  'x86_64-pc-windows-msvc',
+  'x86_64-apple-darwin',
+  'wasm32-unknown-unknown',
+]
 
 function run(command, args) {
   return execFileSync(command, args, {
@@ -69,26 +75,37 @@ function checkVersions(metadata, problems) {
 }
 
 function checkProductionFeatures(problems) {
-  const tree = run('cargo', [
-    'tree',
-    '--workspace',
-    '--locked',
-    '-e',
-    'features,no-dev',
-    '--prefix',
-    'none',
-  ])
+  const tree = PRODUCTION_TARGETS.map(target =>
+    run('cargo', [
+      'tree',
+      '--workspace',
+      '--locked',
+      '-e',
+      'features,no-dev',
+      '--prefix',
+      'none',
+      '--target',
+      target,
+    ])
+  ).join('\n')
 
   for (const crate of INACTIVE_PRODUCTION_CRATES) {
-    if (tree.includes(crate)) {
+    if (hasExactPackage(tree, crate)) {
       addProblem(problems, 'production feature graph', `${crate} became active`)
     }
   }
   for (const crate of ACTIVE_REVIEWED_CRATES) {
-    if (!tree.includes(crate)) {
+    const [name, version] = crate.split(' v')
+    if (!hasExactPackage(tree, name, version)) {
       addProblem(problems, 'production feature graph', `${crate} is no longer on the reviewed path`)
     }
   }
+}
+
+function hasExactPackage(tree, name, version) {
+  const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const escapedVersion = version?.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') ?? '\\S+'
+  return new RegExp(`^${escapedName} v${escapedVersion}(?: \\(\\*\\))?$`, 'm').test(tree)
 }
 
 function checkDirectApiUse(metadata, problems) {

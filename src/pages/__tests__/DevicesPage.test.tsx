@@ -292,12 +292,52 @@ describe('DevicesPage', () => {
     expect(handler).toBeTypeOf('function')
     dispatchMock.mockClear()
 
+    const peer = {
+      peerId: 'peer-1',
+      deviceName: 'Remote Mac',
+      connected: true,
+      pairingState: 'Trusted',
+      channel: 'direct' as const,
+      connectionAddress: '192.0.2.10:443',
+    }
+
+    act(() => {
+      handler?.({ topic: 'peers', eventType: 'peers.changed', payload: { peers: [peer] } })
+    })
+
+    expect(dispatchMock).toHaveBeenCalledWith({
+      type: 'devices/setSpaceMembers',
+      members: [
+        {
+          peerId: peer.peerId,
+          deviceName: peer.deviceName,
+          pairingState: peer.pairingState,
+          lastSeenAtMs: null,
+          connected: true,
+          channel: peer.channel,
+          connectionAddress: peer.connectionAddress,
+        },
+      ],
+    })
+    expect(dispatchMock).not.toHaveBeenCalledWith({ type: 'devices/fetchMembershipConvergence' })
+  })
+
+  it('refreshes convergence from websocket events while visible', () => {
+    Object.defineProperty(document, 'visibilityState', {
+      configurable: true,
+      get: () => 'visible',
+    })
+    render(<DevicesPage />)
+    const handler = daemonWsMocks.subscribe.mock.calls.at(-1)?.[1]
+    expect(handler).toBeTypeOf('function')
+    dispatchMock.mockClear()
+
     act(() => {
       handler?.({ topic: 'peers', eventType: 'peers.changed', payload: { peers: [] } })
     })
 
     expect(dispatchMock).toHaveBeenCalledWith({ type: 'devices/setSpaceMembers', members: [] })
-    expect(dispatchMock).not.toHaveBeenCalledWith({ type: 'devices/fetchMembershipConvergence' })
+    expect(dispatchMock).toHaveBeenCalledWith({ type: 'devices/fetchMembershipConvergence' })
   })
 
   it('shows a compact status while the space is still connecting', () => {
@@ -305,7 +345,9 @@ describe('DevicesPage', () => {
 
     render(<DevicesPage />)
 
-    expect(screen.getByText(i18n.t('devices.convergence.converging'))).toBeInTheDocument()
+    const status = screen.getByText(i18n.t('devices.convergence.converging'))
+    expect(status).toBeInTheDocument()
+    expect(status.parentElement?.tagName).toBe('OUTPUT')
   })
 
   it('hides the connection status when convergence is complete', () => {
@@ -382,6 +424,44 @@ describe('DevicesPage', () => {
       vi.advanceTimersByTime(30_000)
     })
     expect(convergenceDispatches()).toHaveLength(16)
+  })
+
+  it('stops convergence polling when complete or hidden', () => {
+    vi.useFakeTimers()
+    devicesState.membershipConvergence = { state: 'converging' }
+    dispatchMock.mockClear()
+
+    const { rerender } = render(<DevicesPage />)
+    const convergenceDispatches = () =>
+      dispatchMock.mock.calls.filter(
+        ([action]) => action.type === 'devices/fetchMembershipConvergence'
+      )
+
+    act(() => {
+      vi.advanceTimersByTime(2_000)
+    })
+    expect(convergenceDispatches()).toHaveLength(2)
+
+    devicesState.membershipConvergence = { state: 'complete' }
+    rerender(<DevicesPage />)
+    act(() => {
+      vi.advanceTimersByTime(30_000)
+    })
+    expect(convergenceDispatches()).toHaveLength(2)
+
+    devicesState.membershipConvergence = { state: 'converging' }
+    act(() => {
+      Object.defineProperty(document, 'visibilityState', {
+        configurable: true,
+        get: () => 'hidden',
+      })
+      document.dispatchEvent(new Event('visibilitychange'))
+    })
+    rerender(<DevicesPage />)
+    act(() => {
+      vi.advanceTimersByTime(30_000)
+    })
+    expect(convergenceDispatches()).toHaveLength(2)
   })
 })
 

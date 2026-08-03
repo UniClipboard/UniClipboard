@@ -45,7 +45,7 @@ jobs:
         env:
           ENGINE_VERSION: ${{ github.event.client_payload.version }}
           ENGINE_COMMIT: ${{ github.event.client_payload.source_commit }}
-        run: node scripts/adopt-engine-release.mjs --version "$ENGINE_VERSION" --source-commit "$ENGINE_COMMIT"
+        run: bun scripts/adopt-engine-release.mjs --version "$ENGINE_VERSION" --source-commit "$ENGINE_COMMIT"
 
       - name: Refresh the Rust lockfile
         env:
@@ -88,21 +88,12 @@ jobs:
       ENGINE_VERSION: ${{ github.event.client_payload.version }}
       ENGINE_COMMIT: ${{ github.event.client_payload.source_commit }}
     steps:
-      - id: app-token
-        uses: actions/create-github-app-token@v3
-        with:
-          client-id: ${{ vars.ENGINE_RELEASE_APP_CLIENT_ID }}
-          private-key: ${{ secrets.ENGINE_RELEASE_APP_PRIVATE_KEY }}
-          owner: UniClipboard
-          repositories: UniClipboard
-          permission-contents: write
-          permission-pull-requests: write
-
       - uses: actions/checkout@v4
         with:
           ref: ${{ needs.validate.outputs.base_sha }}
           fetch-depth: 0
-          token: ${{ steps.app-token.outputs.token }}
+          token: ${{ secrets.REPO_BOT_TOKEN }}
+          persist-credentials: false
 
       - uses: actions/download-artifact@v4
         with:
@@ -112,22 +103,27 @@ jobs:
         run: git apply --index engine-adoption.patch
 
       - name: Push the deterministic branch
+        env:
+          GH_TOKEN: ${{ secrets.REPO_BOT_TOKEN }}
         run: |
+          git_auth() {
+            git -c credential.helper= -c credential.helper='!f() { echo "username=x-access-token"; echo "password=$GH_TOKEN"; }; f' "$@"
+          }
           git config user.name "uniclipboard-engine-release[bot]"
           git config user.email "uniclipboard-engine-release[bot]@users.noreply.github.com"
           git checkout -B "$BRANCH"
           git commit -m "chore(engine): adopt $ENGINE_VERSION"
-          if git ls-remote --exit-code --heads origin "$BRANCH" >/dev/null 2>&1; then
-            git fetch origin "refs/heads/$BRANCH:refs/remotes/origin/$BRANCH"
+          if git_auth ls-remote --exit-code --heads origin "$BRANCH" >/dev/null 2>&1; then
+            git_auth fetch origin "refs/heads/$BRANCH:refs/remotes/origin/$BRANCH"
             lease=$(git rev-parse "refs/remotes/origin/$BRANCH")
-            git push --force-with-lease="refs/heads/$BRANCH:$lease" origin "HEAD:refs/heads/$BRANCH"
+            git_auth push --force-with-lease="refs/heads/$BRANCH:$lease" origin "HEAD:refs/heads/$BRANCH"
           else
-            git push origin "HEAD:refs/heads/$BRANCH"
+            git_auth push origin "HEAD:refs/heads/$BRANCH"
           fi
 
       - name: Create or update the pull request
         env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          GH_TOKEN: ${{ secrets.REPO_BOT_TOKEN }}
         run: |
           title="chore(engine): adopt $ENGINE_VERSION"
           body=$(cat <<EOF

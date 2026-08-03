@@ -124,14 +124,29 @@ describe('desktop Engine release adoption', () => {
     expect(workflow).toMatch(/create-pull-request:[\s\S]*needs:\s*validate/)
     expect(workflow).toContain('cargo check --workspace --locked')
     expect(workflow).toContain('bun run check:engine-repository')
+    expect(workflow).toContain(
+      'run: bun scripts/adopt-engine-release.mjs --version "$ENGINE_VERSION" --source-commit "$ENGINE_COMMIT"'
+    )
+    expect(workflow).not.toContain('run: node scripts/adopt-engine-release.mjs')
     expect(workflow).toContain('changed: ${{ steps.change.outputs.changed }}')
     expect(workflow).toContain("if: ${{ needs.validate.outputs.changed == 'true' }}")
     expect(workflow).toContain('--state all')
     expect(workflow).toContain('gh pr reopen')
-    expect(workflow).toContain('actions/create-github-app-token@v3')
-    expect(workflow).toContain('permission-pull-requests: write')
-    expect(workflow).toContain('repositories: UniClipboard')
-    expect(workflow).toContain('GH_TOKEN: ${{ steps.app-token.outputs.token }}')
+    expect(workflow).toMatch(
+      /- uses: actions\/checkout@v4\s+with:\s+ref: \$\{\{ needs\.validate\.outputs\.base_sha \}\}\s+fetch-depth: 0\s+token: \$\{\{ secrets\.REPO_BOT_TOKEN \}\}\s+persist-credentials: false/
+    )
+    const pushStep =
+      workflow.match(
+        / {6}- name: Push the deterministic branch\n[\s\S]*?(?=\n {6}- name: |$)/
+      )?.[0] ?? ''
+    expect(pushStep).toContain('GH_TOKEN: ${{ secrets.REPO_BOT_TOKEN }}')
+    expect(pushStep).toContain("git -c credential.helper= -c credential.helper='!f()")
+    expect(pushStep).toContain('git_auth push')
+    expect(workflow).toMatch(
+      /- name: Create or update the pull request\s+env:\s+GH_TOKEN: \$\{\{ secrets\.REPO_BOT_TOKEN \}\}/
+    )
+    expect(workflow).not.toContain('actions/create-github-app-token')
+    expect(workflow).not.toContain('ENGINE_RELEASE_APP_')
     expect(workflow).not.toContain('GH_TOKEN: ${{ github.token }}')
   })
 

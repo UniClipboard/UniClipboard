@@ -175,7 +175,10 @@ describe('desktop Engine release adoption', () => {
   it('stops the pending invitation immediately when the joiner fails', () => {
     const root = mkdtempSync(join(tmpdir(), 'desktop-engine-interop-failure-'))
     roots.push(root)
+    const fakeBin = join(root, 'bin')
+    const fakeUname = join(fakeBin, 'uname')
     const fakeCli = join(root, 'fake-uniclip')
+    write(fakeUname, '#!/usr/bin/env bash\necho Darwin\n')
     write(
       fakeCli,
       `#!/usr/bin/env bash
@@ -190,6 +193,7 @@ fi
 exit 0
 `
     )
+    chmodSync(fakeUname, 0o755)
     chmodSync(fakeCli, 0o755)
 
     const startedAt = Date.now()
@@ -204,6 +208,7 @@ exit 0
         BOB_CLI: fakeCli,
         PROFILE_PREFIX: 'join-failure-test',
         WAIT_SECS: '1',
+        PATH: `${fakeBin}:${process.env.PATH ?? ''}`,
       },
     })
 

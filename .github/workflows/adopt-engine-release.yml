@@ -93,6 +93,7 @@ jobs:
           ref: ${{ needs.validate.outputs.base_sha }}
           fetch-depth: 0
           token: ${{ secrets.REPO_BOT_TOKEN }}
+          persist-credentials: false
 
       - uses: actions/download-artifact@v4
         with:
@@ -102,17 +103,22 @@ jobs:
         run: git apply --index engine-adoption.patch
 
       - name: Push the deterministic branch
+        env:
+          GH_TOKEN: ${{ secrets.REPO_BOT_TOKEN }}
         run: |
+          git_auth() {
+            git -c credential.helper= -c credential.helper='!f() { echo "username=x-access-token"; echo "password=$GH_TOKEN"; }; f' "$@"
+          }
           git config user.name "uniclipboard-engine-release[bot]"
           git config user.email "uniclipboard-engine-release[bot]@users.noreply.github.com"
           git checkout -B "$BRANCH"
           git commit -m "chore(engine): adopt $ENGINE_VERSION"
-          if git ls-remote --exit-code --heads origin "$BRANCH" >/dev/null 2>&1; then
-            git fetch origin "refs/heads/$BRANCH:refs/remotes/origin/$BRANCH"
+          if git_auth ls-remote --exit-code --heads origin "$BRANCH" >/dev/null 2>&1; then
+            git_auth fetch origin "refs/heads/$BRANCH:refs/remotes/origin/$BRANCH"
             lease=$(git rev-parse "refs/remotes/origin/$BRANCH")
-            git push --force-with-lease="refs/heads/$BRANCH:$lease" origin "HEAD:refs/heads/$BRANCH"
+            git_auth push --force-with-lease="refs/heads/$BRANCH:$lease" origin "HEAD:refs/heads/$BRANCH"
           else
-            git push origin "HEAD:refs/heads/$BRANCH"
+            git_auth push origin "HEAD:refs/heads/$BRANCH"
           fi
 
       - name: Create or update the pull request

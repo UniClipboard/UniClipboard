@@ -132,8 +132,16 @@ describe('desktop Engine release adoption', () => {
     expect(workflow).toContain("if: ${{ needs.validate.outputs.changed == 'true' }}")
     expect(workflow).toContain('--state all')
     expect(workflow).toContain('gh pr reopen')
-    expect(workflow).toContain('token: ${{ secrets.REPO_BOT_TOKEN }}')
-    expect(workflow).toContain('GH_TOKEN: ${{ secrets.REPO_BOT_TOKEN }}')
+    expect(workflow).toMatch(
+      /- uses: actions\/checkout@v4\s+with:\s+ref: \$\{\{ needs\.validate\.outputs\.base_sha \}\}\s+fetch-depth: 0\s+token: \$\{\{ secrets\.REPO_BOT_TOKEN \}\}\s+persist-credentials: false/
+    )
+    expect(workflow).toMatch(
+      /- name: Push the deterministic branch\s+env:\s+GH_TOKEN: \$\{\{ secrets\.REPO_BOT_TOKEN \}\}/
+    )
+    expect(workflow).toMatch(
+      /- name: Create or update the pull request\s+env:\s+GH_TOKEN: \$\{\{ secrets\.REPO_BOT_TOKEN \}\}/
+    )
+    expect(workflow).toContain("git -c credential.helper= -c credential.helper='!f()")
     expect(workflow).not.toContain('actions/create-github-app-token')
     expect(workflow).not.toContain('ENGINE_RELEASE_APP_')
     expect(workflow).not.toContain('GH_TOKEN: ${{ github.token }}')

@@ -119,6 +119,7 @@ describe('desktop Engine release adoption', () => {
     expect(existsSync(workflowPath)).toBe(true)
     const workflow = existsSync(workflowPath) ? readFileSync(workflowPath, 'utf8') : ''
     expect(workflow).toContain('types: [engine_release_published]')
+    expect(workflow).toMatch(/permissions:\s*\n\s+contents: read\s*\n\s+packages: read/)
     expect(workflow).toContain('automation/adopt-engine-${{ github.event.client_payload.version }}')
     expect(workflow).toMatch(/create-pull-request:[\s\S]*needs:\s*validate/)
     expect(workflow).toContain('cargo check --workspace --locked')

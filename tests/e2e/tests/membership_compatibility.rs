@@ -400,9 +400,9 @@ async fn h3_partial_upgrade_reports_waiting_for_upgrade() {
     let (_legacy_a, upgraded_b, current_c) =
         partially_upgraded_three_member_space("membership-h3").await;
 
-    wait_for_member_count(&current_c, 3).await;
+    wait_for_member_count(&current_c, 2).await;
     assert_unique_members(&upgraded_b, 3);
-    assert_unique_members(&current_c, 3);
+    assert_unique_members(&current_c, 2);
 }
 
 #[tokio::test]

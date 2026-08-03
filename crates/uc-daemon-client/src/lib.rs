@@ -21,9 +21,10 @@ use uc_daemon_process::socket::resolve_daemon_http_addr;
 pub use connection::DaemonConnectionState;
 pub use http::{
     DaemonAnalyticsClient, DaemonClipboardClient, DaemonConfigClient, DaemonDiagnosticsClient,
-    DaemonLifecycleClient, DaemonMobileSyncClient, DaemonPairingClient, DaemonPairingRequestError,
-    DaemonQueryClient, DaemonRequestError, DaemonSearchClient, DaemonSettingsClient,
-    DaemonSetupV2Client, DaemonUpgradeClient, ExchangedSessionToken, SearchQueryRequest,
+    DaemonLifecycleClient, DaemonMemberClient, DaemonMobileSyncClient, DaemonPairingClient,
+    DaemonPairingRequestError, DaemonQueryClient, DaemonRequestError, DaemonSearchClient,
+    DaemonSettingsClient, DaemonSetupV2Client, DaemonUpgradeClient, ExchangedSessionToken,
+    SearchQueryRequest,
 };
 pub use http_ws_service::HttpWsDaemonService;
 pub use service::{ControlLeaseGuard, DaemonService, FileExport};
@@ -249,6 +250,15 @@ impl DaemonClientContext {
     /// Spawn a [`DaemonSearchClient`] that shares this context's connection state and HTTP client.
     pub fn search_client(&self) -> DaemonSearchClient {
         DaemonSearchClient::with_http_conn_state_and_type(
+            self.http.clone(),
+            self.connection_state.clone(),
+            self.client_type.clone(),
+        )
+    }
+
+    /// Spawn a [`DaemonMemberClient`] that shares this context's connection state and HTTP client.
+    pub fn member_client(&self) -> DaemonMemberClient {
+        DaemonMemberClient::with_http_conn_state_and_type(
             self.http.clone(),
             self.connection_state.clone(),
             self.client_type.clone(),

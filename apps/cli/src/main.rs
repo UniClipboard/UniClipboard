@@ -401,6 +401,7 @@ fn main() -> anyhow::Result<()> {
                         switch,
                         yes,
                     },
+                    cli.json,
                     cli.verbose,
                 )
                 .await

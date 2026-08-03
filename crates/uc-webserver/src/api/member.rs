@@ -241,6 +241,10 @@ pub async fn get_membership_convergence_handler(
             "engine returned an unexpected membership-convergence result",
         ));
     };
+    info!(
+        state = ?snapshot.state,
+        "get membership convergence succeeded"
+    );
     Ok(Json(ApiEnvelope::now(snapshot.into_api_dto())))
 }
 

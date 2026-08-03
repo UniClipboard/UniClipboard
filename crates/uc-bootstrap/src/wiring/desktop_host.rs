@@ -114,8 +114,7 @@ pub fn prepare_desktop_engine_host() -> WiringResult<DesktopEngineHost> {
         }
         _ => engine_config,
     };
-    let analytics = DesktopHostAnalytics::new(paths.app_data_root_dir.join("analytics"))
-        .map_err(|_| WiringError::ConfigInit("failed to prepare product analytics".into()))?;
+    let analytics = DesktopHostAnalytics::new(paths.app_data_root_dir.join("analytics"));
     let capabilities = HostCapabilities::new(
         host_directories(&paths, temporary_dir),
         Box::new(DesktopSecureStorage { secure_storage }),

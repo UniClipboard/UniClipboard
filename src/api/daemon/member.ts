@@ -13,6 +13,7 @@
  */
 
 import {
+  getMembershipConvergence as getMembershipConvergenceSdk,
   getMemberSyncPreferences as getMemberSyncPreferencesSdk,
   getSpaceProtection as getSpaceProtectionSdk,
   secureRemoveLegacyMember as secureRemoveLegacyMemberSdk,
@@ -21,6 +22,7 @@ import {
 import type {
   LegacyBootstrapDto,
   MemberSyncPreferencesPatchDto,
+  MembershipConvergenceDto,
   SecureLegacyRemovalDto,
   SpaceProtectionDto,
 } from '@/api/generated/types.gen'
@@ -79,6 +81,11 @@ export type MemberProtectionStatus =
   | 'requires_readmission'
   | 'recovery_required'
 export type LegacyBootstrapOutcome = 'awaiting_readmission' | 'complete' | 'recovery_required'
+export type MembershipConvergenceState =
+  | 'complete'
+  | 'converging'
+  | 'waiting_for_upgrade'
+  | 'blocked'
 
 export interface LegacyBootstrap {
   bootstrapId: string
@@ -96,6 +103,11 @@ export interface SpaceProtection {
   mode: SpaceProtectionMode
   members: MemberProtection[]
   legacyBootstrap: LegacyBootstrap | null
+}
+
+/** Engine-authoritative connection state for the active space. */
+export interface MembershipConvergence {
+  state: MembershipConvergenceState
 }
 
 /** Result of beginning an Engine-owned secure Legacy member removal. */
@@ -126,6 +138,13 @@ export async function getSpaceProtection(): Promise<SpaceProtection> {
     members: data.members.map(member => ({ deviceId: member.deviceId, status: member.status })),
     legacyBootstrap: data.legacyBootstrap ? toLegacyBootstrap(data.legacyBootstrap) : null,
   }
+}
+
+export async function getMembershipConvergence(): Promise<MembershipConvergence> {
+  const data: MembershipConvergenceDto = await daemonClient.callEnveloped(() =>
+    getMembershipConvergenceSdk({ throwOnError: true })
+  )
+  return { state: data.state }
 }
 
 export async function secureRemoveLegacyMember(deviceId: string): Promise<SecureLegacyRemoval> {

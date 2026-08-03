@@ -10,6 +10,7 @@ pub struct TestProfile {
     pub name: String,
     data_dir: PathBuf,
     cache_dir: PathBuf,
+    log_dir: PathBuf,
 }
 
 impl TestProfile {
@@ -18,10 +19,12 @@ impl TestProfile {
         let unique = format!("e2e-{}-{}", test_name, uuid::Uuid::new_v4().as_simple());
         let data_dir = Self::resolve_data_dir(&unique);
         let cache_dir = Self::resolve_cache_dir(&unique);
+        let log_dir = Self::resolve_log_dir(&unique);
         Self {
             name: unique,
             data_dir,
             cache_dir,
+            log_dir,
         }
     }
 
@@ -52,6 +55,14 @@ impl TestProfile {
         &self.data_dir
     }
 
+    pub fn log_dir(&self) -> &PathBuf {
+        &self.log_dir
+    }
+
+    pub fn process_log_path(&self) -> PathBuf {
+        self.data_dir.join("e2e-daemon-process.log")
+    }
+
     /// Resolve the cache directory for the given profile name. The daemon writes
     /// a cache dir (clipboard spool, blobs) separate from the data dir, under
     /// the OS cache root.
@@ -61,13 +72,18 @@ impl TestProfile {
             .join(format!("app.uniclipboard.desktop-{}", profile))
     }
 
+    fn resolve_log_dir(profile: &str) -> PathBuf {
+        uc_app_paths::app_log_dir_for_profile(Some(profile))
+            .expect("the platform must provide an E2E log directory")
+    }
+
     /// Remove every directory this profile's daemon may have created.
     ///
     /// The daemon writes BOTH a data dir and a separate cache dir (spool /
     /// blobs). Cleaning only the data dir leaked one cache dir per test run
     /// (`~/Library/Caches/...` on macOS), which accumulated unbounded.
     pub fn cleanup(&self) {
-        for dir in [&self.data_dir, &self.cache_dir] {
+        for dir in [&self.data_dir, &self.cache_dir, &self.log_dir] {
             if dir.exists() {
                 let _ = std::fs::remove_dir_all(dir);
             }
@@ -77,6 +93,8 @@ impl TestProfile {
 
 impl Drop for TestProfile {
     fn drop(&mut self) {
-        self.cleanup();
+        if std::env::var_os("UC_E2E_KEEP_PROFILES").is_none() {
+            self.cleanup();
+        }
     }
 }

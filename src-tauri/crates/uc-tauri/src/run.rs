@@ -238,7 +238,13 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
 
     let runtime = Arc::new(TauriAppRuntime::new(client_deps));
 
-    let disable_single_instance = std::env::var("UC_DISABLE_SINGLE_INSTANCE").as_deref() == Ok("1");
+    let explicit_single_instance_disable = std::env::var("UC_DISABLE_SINGLE_INSTANCE").ok();
+    let development_mode = crate::runtime_environment::development_mode();
+    let disable_gui_single_instance =
+        crate::runtime_environment::should_disable_gui_single_instance(
+            explicit_single_instance_disable.as_deref(),
+            development_mode,
+        );
 
     // Store TaskRegistry reference for exit hook registration
     let task_registry = runtime.desktop().task_registry().clone();
@@ -311,8 +317,12 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
         .plugin(tauri_plugin_wdio_webdriver::init())
         .plugin(tauri_plugin_wdio::init());
 
-    let builder = if disable_single_instance {
-        info!("UC_DISABLE_SINGLE_INSTANCE=1 set; skipping single-instance plugin registration");
+    let builder = if disable_gui_single_instance {
+        info!(
+            development_mode,
+            explicit_override = explicit_single_instance_disable.as_deref() == Some("1"),
+            "GUI single-instance plugin disabled"
+        );
         builder
     } else {
         // A second launch means the user wants the window — surface it

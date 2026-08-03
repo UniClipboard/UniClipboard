@@ -1,40 +1,32 @@
 //! TestCli — ergonomic command builder for `uniclip` with profile isolation.
 
+use std::path::PathBuf;
 use std::process::{Command, Output};
 
-use crate::profile::TestProfile;
+use crate::{NodeBinarySet, TestProfile};
 
 /// Builder for running `uniclip` commands against a specific test profile.
 pub struct TestCli {
-    binary: String,
+    binary: PathBuf,
     pub profile_name: String,
 }
 
 impl TestCli {
     /// Create a CLI helper bound to the given profile.
     pub fn new(profile: &TestProfile) -> Self {
+        Self::with_binaries(profile, &NodeBinarySet::current())
+    }
+
+    pub fn with_binaries(profile: &TestProfile, binaries: &NodeBinarySet) -> Self {
         Self {
-            binary: Self::resolve_binary_path(),
+            binary: binaries.cli.clone(),
             profile_name: profile.name.clone(),
         }
     }
 
     /// Path to the `uniclip` binary.
-    pub fn binary_path(&self) -> &str {
+    pub fn binary_path(&self) -> &std::path::Path {
         &self.binary
-    }
-
-    fn resolve_binary_path() -> String {
-        let target_dir = std::env::var("CARGO_TARGET_DIR").unwrap_or_else(|_| {
-            let manifest = env!("CARGO_MANIFEST_DIR");
-            format!("{}/../../target", manifest)
-        });
-        let bin_name = if cfg!(windows) {
-            "uniclip.exe"
-        } else {
-            "uniclip"
-        };
-        format!("{}/debug/{}", target_dir, bin_name)
     }
 
     /// Run a uniclip command with the test profile automatically set.
@@ -42,6 +34,7 @@ impl TestCli {
     pub fn run(&self, args: &[&str]) -> std::io::Result<Output> {
         Command::new(&self.binary)
             .env("UC_PROFILE", &self.profile_name)
+            .env("UNICLIPBOARD_ENV", "development")
             .args(args)
             .output()
     }

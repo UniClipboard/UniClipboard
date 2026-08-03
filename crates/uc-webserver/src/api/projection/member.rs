@@ -8,13 +8,15 @@
 use uc_engine::{
     ContentTypesPatch, ContentTypesSummary, LegacyBootstrapOutcome, LegacyBootstrapSummary,
     MemberProtectionStatusSummary, MemberProtectionSummary, MemberSyncPreferencesPatch,
-    MemberSyncPreferencesSummary, SpaceProtectionModeSummary, SpaceProtectionSummary,
+    MemberSyncPreferencesSummary, MembershipConvergenceStateSummary, MembershipConvergenceSummary,
+    SpaceProtectionModeSummary, SpaceProtectionSummary,
 };
 
 use super::{IntoApiDto, IntoDomain};
 use crate::api::dto::member::{
     LegacyBootstrapDto, LegacyBootstrapOutcomeDto, MemberProtectionDto, MemberProtectionStatusDto,
-    MemberSyncPreferencesDto, SpaceProtectionDto, SpaceProtectionModeDto,
+    MemberSyncPreferencesDto, MembershipConvergenceDto, MembershipConvergenceStateDto,
+    SpaceProtectionDto, SpaceProtectionModeDto,
 };
 use crate::api::dto::settings::{ContentTypesDto, ContentTypesPatchDto};
 
@@ -127,6 +129,27 @@ impl IntoApiDto<SpaceProtectionDto> for SpaceProtectionSummary {
     }
 }
 
+impl IntoApiDto<MembershipConvergenceDto> for MembershipConvergenceSummary {
+    fn into_api_dto(self) -> MembershipConvergenceDto {
+        MembershipConvergenceDto {
+            state: match self.state {
+                MembershipConvergenceStateSummary::Complete => {
+                    MembershipConvergenceStateDto::Complete
+                }
+                MembershipConvergenceStateSummary::Converging => {
+                    MembershipConvergenceStateDto::Converging
+                }
+                MembershipConvergenceStateSummary::WaitingForUpgrade => {
+                    MembershipConvergenceStateDto::WaitingForUpgrade
+                }
+                MembershipConvergenceStateSummary::Blocked => {
+                    MembershipConvergenceStateDto::Blocked
+                }
+            },
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -167,5 +190,29 @@ mod tests {
         let send = mapped.send_content_types.expect("send patch");
         assert_eq!(send.text, Some(true));
         assert_eq!(send.image, None);
+    }
+
+    #[test]
+    fn convergence_mapping_exposes_only_the_coarse_state() {
+        let summary = MembershipConvergenceSummary {
+            state: MembershipConvergenceStateSummary::WaitingForUpgrade,
+            pending_count: 7,
+            waiting_for_peer_count: 2,
+            waiting_for_update_count: 1,
+            version_incompatible_count: 3,
+            blocked_count: 0,
+            rejected_count: 1,
+        };
+
+        let mapped: MembershipConvergenceDto = summary.into_api_dto();
+
+        assert_eq!(
+            mapped.state,
+            MembershipConvergenceStateDto::WaitingForUpgrade
+        );
+        assert_eq!(
+            serde_json::to_value(mapped).expect("serialize convergence DTO"),
+            serde_json::json!({ "state": "waiting_for_upgrade" })
+        );
     }
 }

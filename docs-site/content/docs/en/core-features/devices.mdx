@@ -22,6 +22,15 @@ head to [Settings → General](../guides/settings#general) and
 [Settings → Sync](../guides/settings#sync). The "Switch space" chip opens its
 own dialog.
 
+The device summary also reports the active space's connection state while it
+needs attention:
+
+- **Connecting devices** — membership changes are still converging; while the page is visible, it polls this status briefly and also refreshes it when peer updates arrive.
+- **Some devices need an update** — older or offline devices cannot reconnect automatically until they are updated and come online.
+- **Connection blocked** — automatic convergence stopped and the affected devices need manual recovery.
+
+No marker is shown once the space is fully connected, and the short polling period stops.
+
 For setting up mobile sync end to end (LAN listener, iOS Shortcut,
 credentials), see the dedicated [Mobile sync](./mobile-sync) guide.
 

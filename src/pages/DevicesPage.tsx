@@ -22,7 +22,7 @@
  */
 
 import { Plus, Settings2 } from 'lucide-react'
-import React, { useCallback, useEffect, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { useTranslation } from 'react-i18next'
 import { refreshPresence } from '@/api/daemon'
 import { isLegacyBootstrapRequired, secureRemoveLegacyMember } from '@/api/daemon/member'
@@ -46,6 +46,7 @@ import LocalDevicePanel from '@/components/device/LocalDevicePanel'
 import MobileDevicePanel from '@/components/device/MobileDevicePanel'
 import MobileSyncSettingsDialog from '@/components/device/MobileSyncSettingsDialog'
 import PeerDetailPanel from '@/components/device/PeerDetailPanel'
+import SpaceConnectionStatus from '@/components/device/SpaceConnectionStatus'
 import StatusDot, { type StatusDotTone } from '@/components/device/StatusDot'
 import UnpairAlertDialog from '@/components/device/UnpairAlertDialog'
 import { Alert, AlertDescription } from '@/components/ui/alert'
@@ -80,6 +81,7 @@ import {
   clearLocalDeviceError,
   clearSpaceMembersError,
   fetchLocalDeviceInfo,
+  fetchMembershipConvergence,
   fetchSpaceProtection,
   fetchSpaceMembers,
   setSpaceMembers,
@@ -94,11 +96,27 @@ type Selection =
 
 /** A mobile device counts as "recently active" within this window. */
 const MOBILE_ACTIVE_WINDOW_MS = 10 * 60 * 1000
+const CONVERGENCE_POLL_MS = 2_000
+const CONVERGENCE_POLL_ATTEMPTS = 15
+
+function subscribeDocumentVisibility(onStoreChange: () => void): () => void {
+  document.addEventListener('visibilitychange', onStoreChange)
+  return () => document.removeEventListener('visibilitychange', onStoreChange)
+}
+
+function getDocumentVisible(): boolean {
+  return document.visibilityState === 'visible'
+}
 
 const DevicesPage: React.FC = () => {
   const { t } = useTranslation()
   const dispatch = useAppDispatch()
   const now = useNow()
+  const documentVisible = useSyncExternalStore(
+    subscribeDocumentVisibility,
+    getDocumentVisible,
+    () => true
+  )
 
   const {
     localDevice,
@@ -108,6 +126,8 @@ const DevicesPage: React.FC = () => {
     spaceMembersError,
     spaceProtection,
     spaceProtectionError,
+    membershipConvergence,
+    membershipConvergenceError,
   } = useAppSelector(state => state.devices)
 
   const peers = localDevice
@@ -125,7 +145,12 @@ const DevicesPage: React.FC = () => {
   useEffect(() => {
     dispatch(fetchLocalDeviceInfo())
     dispatch(fetchSpaceMembers())
+  }, [dispatch])
+
+  useEffect(() => {
+    if (!documentVisible) return
     dispatch(fetchSpaceProtection())
+    dispatch(fetchMembershipConvergence())
 
     // Presence awareness is push-driven by the daemon's PeerKeepAliveWorker
     // (inbound presence Online → outbound dial → peers.changed ws). The
@@ -139,18 +164,20 @@ const DevicesPage: React.FC = () => {
       })
     }
     probe()
+  }, [dispatch, documentVisible])
 
-    const onVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        probe()
-        dispatch(fetchSpaceProtection())
-      }
-    }
-    document.addEventListener('visibilitychange', onVisibilityChange)
-    return () => {
-      document.removeEventListener('visibilitychange', onVisibilityChange)
-    }
-  }, [dispatch])
+  useEffect(() => {
+    if (membershipConvergence?.state !== 'converging' || !documentVisible) return
+
+    let attempts = 0
+    const timer = window.setInterval(() => {
+      attempts += 1
+      dispatch(fetchMembershipConvergence())
+      if (attempts >= CONVERGENCE_POLL_ATTEMPTS) window.clearInterval(timer)
+    }, CONVERGENCE_POLL_MS)
+
+    return () => window.clearInterval(timer)
+  }, [dispatch, documentVisible, membershipConvergence?.state])
 
   useEffect(() => {
     const handler = (event: { topic: string; eventType: string; payload: unknown }) => {
@@ -161,11 +188,14 @@ const DevicesPage: React.FC = () => {
         // redundant HTTP refetch on every presence flip (issue #1129).
         const payload = event.payload as PeersChangedPayload
         dispatch(setSpaceMembers(payload.peers.map(peerSnapshotToMember)))
+        if (documentVisible) {
+          dispatch(fetchMembershipConvergence())
+        }
       }
     }
     const unsub = daemonWs.subscribe(['peers'], handler)
     return unsub
-  }, [dispatch])
+  }, [dispatch, documentVisible])
 
   // ── mobile devices state ──────────────────────────────────────
   const {
@@ -251,6 +281,14 @@ const DevicesPage: React.FC = () => {
   }
 
   const unpairTargetDevice = peers.find(d => d.peerId === unpairTargetId)
+  const hideDuplicateUpgrade =
+    membershipConvergence?.state === 'waiting_for_upgrade' &&
+    legacyBootstrap !== null &&
+    legacyBootstrap.outcome !== 'complete'
+  const visibleConvergenceState =
+    membershipConvergenceError || hideDuplicateUpgrade
+      ? 'complete'
+      : (membershipConvergence?.state ?? 'complete')
 
   return (
     <div className="flex h-full">
@@ -301,6 +339,7 @@ const DevicesPage: React.FC = () => {
               mobile: mobileDevices.length,
             })}
           </p>
+          <SpaceConnectionStatus state={visibleConvergenceState} />
         </div>
 
         <ScrollArea className="min-h-0 flex-1">

@@ -16,10 +16,11 @@
 //! space must redeem, not migrate. Both paths handle Ctrl+C for clean
 //! cancellation.
 
+use serde::Serialize;
 use tokio::select;
 use tokio::signal;
 
-use uc_daemon_client::DaemonClientContext;
+use uc_daemon_client::{DaemonClientContext, DaemonRequestError};
 use uc_daemon_contract::api::dto::settings::{GeneralSettingsPatchDto, SettingsPatchDto};
 use uc_daemon_contract::api::dto::v2::setup::{RedeemRequest, SwitchSpaceRequest};
 
@@ -67,8 +68,10 @@ pub struct JoinArgs {
     pub yes: bool,
 }
 
-pub async fn run(args: JoinArgs, verbose: bool) -> i32 {
-    ui::header("Join a space");
+pub async fn run(args: JoinArgs, json: bool, verbose: bool) -> i32 {
+    if !json {
+        ui::header("Join a space");
+    }
 
     // Collect invitation code: --code wins; otherwise prompt. Shared by both
     // the redeem and switch paths (both are rendezvous lookup keys, so both
@@ -122,10 +125,62 @@ pub async fn run(args: JoinArgs, verbose: bool) -> i32 {
         if args.device_name.is_some() {
             ui::warn("--device-name is ignored when switching spaces");
         }
-        return run_switch(code_str, passphrase_str, args.yes, verbose).await;
+        return run_switch(code_str, passphrase_str, args.yes, json, verbose).await;
     }
 
-    run_redeem(code_str, passphrase_str, args.device_name, verbose).await
+    run_redeem(code_str, passphrase_str, args.device_name, json, verbose).await
+}
+
+#[derive(Serialize)]
+struct JoinErrorOutput {
+    ok: bool,
+    code: String,
+    message: String,
+}
+
+#[derive(Serialize)]
+struct JoinSuccessOutput<'a> {
+    ok: bool,
+    space_id: &'a str,
+    self_device_id: &'a str,
+    self_device_name: Option<&'a str>,
+    self_fingerprint: &'a str,
+    sponsor_device_id: &'a str,
+    sponsor_fingerprint: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    migrated_records: Option<u64>,
+}
+
+fn join_error_output(err: &anyhow::Error) -> JoinErrorOutput {
+    let request_error = err.downcast_ref::<DaemonRequestError>();
+    JoinErrorOutput {
+        ok: false,
+        code: request_error
+            .and_then(DaemonRequestError::code)
+            .unwrap_or("unknown")
+            .to_string(),
+        message: request_error
+            .and_then(DaemonRequestError::message)
+            .map(str::to_string)
+            .unwrap_or_else(|| err.to_string()),
+    }
+}
+
+fn render_join_error(prefix: &str, err: &anyhow::Error, json: bool) -> i32 {
+    if json {
+        match serde_json::to_string(&join_error_output(err)) {
+            Ok(value) => eprintln!("{value}"),
+            Err(serialize_err) => ui::error(&format!(
+                "Failed to serialize join error response: {serialize_err}"
+            )),
+        }
+    } else {
+        ui::error(&format!(
+            "{prefix}: {}",
+            crate::commands::daemon_error_message(err)
+        ));
+    }
+    exit_codes::EXIT_ERROR
 }
 
 /// First-time join: redeem an invitation and adopt the sponsor's space.
@@ -133,6 +188,7 @@ async fn run_redeem(
     code_str: String,
     passphrase_str: String,
     device_name_arg: Option<String>,
+    json: bool,
     verbose: bool,
 ) -> i32 {
     // Determine device name.
@@ -198,21 +254,35 @@ async fn run_redeem(
     select! {
         result = &mut redeem_fut => match result {
             Ok(resp) => {
-                ui::spinner_finish_success(&spinner, "Joined space");
-                ui::info("space_id", &resp.space_id);
-                ui::info("self_device_id", &resp.self_device_id);
-                ui::info("self_device_name", &device_name);
-                ui::info("self_fingerprint", &resp.self_identity_fingerprint);
-                ui::info("sponsor_device_id", &resp.sponsor_device_id);
-                ui::info("sponsor_fingerprint", &resp.sponsor_identity_fingerprint);
-                exit_codes::EXIT_SUCCESS
+                if json {
+                    spinner.finish_and_clear();
+                    crate::output::emit_json(
+                        &JoinSuccessOutput {
+                            ok: true,
+                            space_id: &resp.space_id,
+                            self_device_id: &resp.self_device_id,
+                            self_device_name: Some(&device_name),
+                            self_fingerprint: &resp.self_identity_fingerprint,
+                            sponsor_device_id: &resp.sponsor_device_id,
+                            sponsor_fingerprint: &resp.sponsor_identity_fingerprint,
+                            migrated_records: None,
+                        },
+                        "join response",
+                    )
+                } else {
+                    ui::spinner_finish_success(&spinner, "Joined space");
+                    ui::info("space_id", &resp.space_id);
+                    ui::info("self_device_id", &resp.self_device_id);
+                    ui::info("self_device_name", &device_name);
+                    ui::info("self_fingerprint", &resp.self_identity_fingerprint);
+                    ui::info("sponsor_device_id", &resp.sponsor_device_id);
+                    ui::info("sponsor_fingerprint", &resp.sponsor_identity_fingerprint);
+                    exit_codes::EXIT_SUCCESS
+                }
             }
             Err(err) => {
-                ui::spinner_finish_error(
-                    &spinner,
-                    &format!("Join failed: {}", crate::commands::daemon_error_message(&err)),
-                );
-                exit_codes::EXIT_ERROR
+                spinner.finish_and_clear();
+                render_join_error("Join failed", &err, json)
             }
         },
         _ = signal::ctrl_c() => {
@@ -228,11 +298,19 @@ async fn run_redeem(
 /// Destructive, so we confirm first unless `--yes` was passed. The daemon
 /// drives the migration internally and persists `MigrationStatePort`, so a
 /// crash mid-run auto-resumes on the next `uniclip` invocation.
-async fn run_switch(code_str: String, new_passphrase: String, yes: bool, verbose: bool) -> i32 {
-    ui::warn(
-        "This device is already in a space. Switching will re-encrypt all local \
-         clipboard history under the new space's master key.",
-    );
+async fn run_switch(
+    code_str: String,
+    new_passphrase: String,
+    yes: bool,
+    json: bool,
+    verbose: bool,
+) -> i32 {
+    if !json {
+        ui::warn(
+            "This device is already in a space. Switching will re-encrypt all local \
+             clipboard history under the new space's master key.",
+        );
+    }
     if !yes {
         match ui::confirm("Switch to the new space now?", false) {
             Ok(true) => {}
@@ -269,24 +347,35 @@ async fn run_switch(code_str: String, new_passphrase: String, yes: bool, verbose
     select! {
         result = &mut switch_fut => match result {
             Ok(resp) => {
-                ui::spinner_finish_success(&spinner, "Switched space");
-                ui::info("space_id", &resp.space_id);
-                ui::info("self_device_id", &resp.self_device_id);
-                ui::info("self_fingerprint", &resp.self_identity_fingerprint);
-                ui::info("sponsor_device_id", &resp.sponsor_device_id);
-                ui::info("sponsor_fingerprint", &resp.sponsor_identity_fingerprint);
-                ui::info("migrated_records", &resp.migrated_records.to_string());
-                exit_codes::EXIT_SUCCESS
+                if json {
+                    spinner.finish_and_clear();
+                    crate::output::emit_json(
+                        &JoinSuccessOutput {
+                            ok: true,
+                            space_id: &resp.space_id,
+                            self_device_id: &resp.self_device_id,
+                            self_device_name: None,
+                            self_fingerprint: &resp.self_identity_fingerprint,
+                            sponsor_device_id: &resp.sponsor_device_id,
+                            sponsor_fingerprint: &resp.sponsor_identity_fingerprint,
+                            migrated_records: Some(resp.migrated_records),
+                        },
+                        "switch-space response",
+                    )
+                } else {
+                    ui::spinner_finish_success(&spinner, "Switched space");
+                    ui::info("space_id", &resp.space_id);
+                    ui::info("self_device_id", &resp.self_device_id);
+                    ui::info("self_fingerprint", &resp.self_identity_fingerprint);
+                    ui::info("sponsor_device_id", &resp.sponsor_device_id);
+                    ui::info("sponsor_fingerprint", &resp.sponsor_identity_fingerprint);
+                    ui::info("migrated_records", &resp.migrated_records.to_string());
+                    exit_codes::EXIT_SUCCESS
+                }
             }
             Err(err) => {
-                ui::spinner_finish_error(
-                    &spinner,
-                    &format!(
-                        "Switch-space failed: {}",
-                        crate::commands::daemon_error_message(&err)
-                    ),
-                );
-                exit_codes::EXIT_ERROR
+                spinner.finish_and_clear();
+                render_join_error("Switch-space failed", &err, json)
             }
         },
         _ = signal::ctrl_c() => {
@@ -302,7 +391,9 @@ async fn run_switch(code_str: String, new_passphrase: String, yes: bool, verbose
 
 #[cfg(test)]
 mod tests {
-    use super::normalize_invitation_code;
+    use super::{join_error_output, normalize_invitation_code};
+    use reqwest::StatusCode;
+    use uc_daemon_client::DaemonRequestError;
 
     #[test]
     fn already_canonical_code_is_unchanged() {
@@ -318,6 +409,23 @@ mod tests {
     fn hyphenless_eight_chars_get_canonical_hyphen() {
         assert_eq!(normalize_invitation_code("abcd1234"), "ABCD-1234");
         assert_eq!(normalize_invitation_code("ABCD1234"), "ABCD-1234");
+    }
+
+    #[test]
+    fn json_error_preserves_daemon_error_code() {
+        let err = anyhow::Error::new(DaemonRequestError::Status {
+            path: "/v2/setup/redeem".to_string(),
+            status: StatusCode::CONFLICT,
+            code: Some("sponsor_upgrade_required".to_string()),
+            message: "Sponsor must be upgraded".to_string(),
+        });
+
+        let output = join_error_output(&err);
+        let value = serde_json::to_value(output).expect("serialize join error");
+
+        assert_eq!(value["ok"], false);
+        assert_eq!(value["code"], "sponsor_upgrade_required");
+        assert_eq!(value["message"], "Sponsor must be upgraded");
     }
 
     #[test]

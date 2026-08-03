@@ -1407,6 +1407,41 @@ export type MemberSyncResultEnvelope = {
 };
 
 /**
+ * Product-facing connection status. Engine-internal counters stay private.
+ */
+export type MembershipConvergenceDto = {
+    state: MembershipConvergenceStateDto;
+};
+
+/**
+ * Canonical success envelope: `{ "data": T, "ts": <unix millis i64> }`.
+ *
+ * `ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler
+ * via [`ApiEnvelope::now`] (the contract carries only the type + the clock
+ * helper, not a hard dependency on when the handler reads the clock).
+ * `rename_all = "camelCase"` is a no-op for the single-word fields here but is
+ * declared for forward-compat.
+ *
+ * IMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named
+ * OpenAPI component is declared in the `#[aliases(...)]` block below. Add a new
+ * alias line whenever a new payload type needs enveloping. NEVER register the
+ * bare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare
+ * generic, and an un-aliased generic inlines an anonymous schema.
+ */
+export type MembershipConvergenceEnvelope = {
+    data: MembershipConvergenceDto;
+    /**
+     * Server time when the response was built (unix epoch milliseconds).
+     */
+    ts: number;
+};
+
+/**
+ * Coarse connection state for the active space.
+ */
+export type MembershipConvergenceStateDto = 'complete' | 'converging' | 'waiting_for_upgrade' | 'blocked';
+
+/**
  * Coarse-grained migration phase exposed to the UI. The internal
  * `MigrationPhase` carries `run_id` / `target_space_id`; those are
  * implementation detail and not surfaced over the wire.
@@ -4525,6 +4560,32 @@ export type GetLifecycleStatusResponses = {
 };
 
 export type GetLifecycleStatusResponse = GetLifecycleStatusResponses[keyof GetLifecycleStatusResponses];
+
+export type GetMembershipConvergenceData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/member/convergence';
+};
+
+export type GetMembershipConvergenceErrors = {
+    /**
+     * Internal server error
+     */
+    500: ApiErrorResponse;
+    /**
+     * Runtime unavailable
+     */
+    503: ApiErrorResponse;
+};
+
+export type GetMembershipConvergenceError = GetMembershipConvergenceErrors[keyof GetMembershipConvergenceErrors];
+
+export type GetMembershipConvergenceResponses = {
+    200: MembershipConvergenceEnvelope;
+};
+
+export type GetMembershipConvergenceResponse = GetMembershipConvergenceResponses[keyof GetMembershipConvergenceResponses];
 
 export type GetSpaceProtectionData = {
     body?: never;

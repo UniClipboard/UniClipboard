@@ -5,15 +5,26 @@
 //! can run in parallel without interference.
 
 mod auth;
+mod binaries;
 mod cli;
 mod daemon;
 mod pairing;
 mod profile;
+mod releases;
+mod rendezvous;
 
 pub use auth::{get_session_token, read_daemon_file_token};
+pub use binaries::NodeBinarySet;
 pub use cli::{CapturedOutput, TestCli};
 pub use daemon::TestDaemon;
 pub use pairing::{
     invite_join_round, invite_switch_round, pair_two_nodes, setup_initialized_node, InviteSession,
 };
 pub use profile::TestProfile;
+pub use releases::{
+    checksum_for_asset, extract_release_archive, fixed_legacy_release_asset,
+    prepare_fixed_legacy_release_from, verify_release_payload, ArchiveFormat, ReleaseAsset,
+    LEGACY_RELEASE_BASE_URL, LEGACY_RELEASE_TAG, LEGACY_RELEASE_VERSION,
+    LEGACY_SHA256SUMS_SHA256,
+};
+pub use rendezvous::LocalRendezvous;

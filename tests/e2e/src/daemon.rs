@@ -1,9 +1,11 @@
 //! TestDaemon — spawn, health-wait, and kill a `uniclipd` process for testing.
 
+use std::fs::OpenOptions;
+use std::path::PathBuf;
 use std::process::{Child, Command};
 use std::time::Duration;
 
-use crate::profile::TestProfile;
+use crate::{NodeBinarySet, TestProfile};
 
 const PROFILE_HTTP_PORT_START: u16 = 42719;
 
@@ -12,23 +14,11 @@ pub struct TestDaemon {
     child: Option<Child>,
     pub profile: TestProfile,
     port: u16,
+    binary: PathBuf,
+    rendezvous_base_url: Option<String>,
 }
 
 impl TestDaemon {
-    /// Locate the `uniclipd` binary. Assumes `cargo build -p uc-daemon` has run.
-    fn binary_path() -> String {
-        let target_dir = std::env::var("CARGO_TARGET_DIR").unwrap_or_else(|_| {
-            let manifest = env!("CARGO_MANIFEST_DIR");
-            format!("{}/../../target", manifest)
-        });
-        let bin_name = if cfg!(windows) {
-            "uniclipd.exe"
-        } else {
-            "uniclipd"
-        };
-        format!("{}/debug/{}", target_dir, bin_name)
-    }
-
     /// Derive the deterministic HTTP port for a profile name (mirrors
     /// `uc-daemon-process/src/socket.rs` resolve logic).
     fn port_for_profile(profile: &str) -> u16 {
@@ -57,17 +47,21 @@ impl TestDaemon {
         profile: TestProfile,
         configure: impl FnOnce(&mut Command),
     ) -> std::io::Result<Self> {
-        let binary = Self::binary_path();
+        let binaries = NodeBinarySet::current();
+        Self::spawn_clean_with(profile, &binaries, None, configure)
+    }
+
+    pub fn spawn_clean_with(
+        profile: TestProfile,
+        binaries: &NodeBinarySet,
+        rendezvous_base_url: Option<&str>,
+        configure: impl FnOnce(&mut Command),
+    ) -> std::io::Result<Self> {
         let port = Self::port_for_profile(&profile.name);
-
         profile.cleanup();
-
-        let mut command = Command::new(&binary);
-        command
-            .env("UC_PROFILE", &profile.name)
-            .env("RUST_LOG", "warn")
-            .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::piped());
+        let binary = binaries.daemon.clone();
+        let rendezvous_base_url = rendezvous_base_url.map(str::to_string);
+        let mut command = Self::command(&profile, &binary, rendezvous_base_url.as_deref())?;
         configure(&mut command);
         let child = command.spawn()?;
 
@@ -75,16 +69,85 @@ impl TestDaemon {
             child: Some(child),
             profile,
             port,
+            binary,
+            rendezvous_base_url,
         })
+    }
+
+    fn command(
+        profile: &TestProfile,
+        binary: &PathBuf,
+        rendezvous_base_url: Option<&str>,
+    ) -> std::io::Result<Command> {
+        std::fs::create_dir_all(profile.data_dir())?;
+        let log = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(profile.process_log_path())?;
+        let stderr = log.try_clone()?;
+        let rust_log = std::env::var("UC_E2E_RUST_LOG").unwrap_or_else(|_| "warn".to_string());
+        let mut command = Command::new(binary);
+        command
+            .env("UC_PROFILE", &profile.name)
+            .env("UNICLIPBOARD_ENV", "development")
+            .env("UC_DAEMON_RUN_MODE", "server")
+            .env("RUST_LOG", rust_log)
+            .stdout(log)
+            .stderr(stderr);
+        if let Some(base_url) = rendezvous_base_url {
+            command.env("UC_E2E_RENDEZVOUS_BASE_URL", base_url);
+        }
+        Ok(command)
     }
 
     /// Spawn and wait until the daemon reports healthy AND the `.daemon-token`
     /// file is written (or timeout).
     pub async fn start(profile: TestProfile) -> Result<Self, String> {
-        let mut daemon = Self::spawn(profile).map_err(|e| format!("spawn failed: {e}"))?;
+        Self::start_clean_with(profile, &NodeBinarySet::current(), None).await
+    }
+
+    pub async fn start_clean_with(
+        profile: TestProfile,
+        binaries: &NodeBinarySet,
+        rendezvous_base_url: Option<&str>,
+    ) -> Result<Self, String> {
+        let mut daemon = Self::spawn_clean_with(profile, binaries, rendezvous_base_url, |_| {})
+            .map_err(|e| format!("spawn failed: {e}"))?;
         daemon.wait_healthy(Duration::from_secs(30)).await?;
         daemon.wait_for_token(Duration::from_secs(10)).await?;
         Ok(daemon)
+    }
+
+    pub async fn restart_preserving(&mut self) -> Result<(), String> {
+        self.kill();
+        self.start_configured().await
+    }
+
+    pub async fn restart_preserving_with(
+        &mut self,
+        binaries: &NodeBinarySet,
+        rendezvous_base_url: Option<&str>,
+    ) -> Result<(), String> {
+        self.kill();
+        self.binary = binaries.daemon.clone();
+        self.rendezvous_base_url = rendezvous_base_url.map(str::to_string);
+        self.start_configured().await
+    }
+
+    async fn start_configured(&mut self) -> Result<(), String> {
+        let mut command = Self::command(
+            &self.profile,
+            &self.binary,
+            self.rendezvous_base_url.as_deref(),
+        )
+        .map_err(|e| format!("prepare restart failed: {e}"))?;
+        self.child = Some(
+            command
+                .spawn()
+                .map_err(|e| format!("restart spawn failed: {e}"))?,
+        );
+        self.wait_healthy(Duration::from_secs(30)).await?;
+        self.wait_for_token(Duration::from_secs(10)).await
     }
 
     /// Poll the daemon's health endpoint until it responds 200, or timeout.
@@ -165,6 +228,11 @@ impl TestDaemon {
             Some(child) => child.try_wait().ok().flatten().is_none(),
             None => false,
         }
+    }
+
+    pub fn diagnostic_log(&self) -> String {
+        std::fs::read_to_string(self.profile.process_log_path())
+            .unwrap_or_else(|error| format!("<failed to read daemon process log: {error}>"))
     }
 }
 

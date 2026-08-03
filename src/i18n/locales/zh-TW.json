@@ -1035,6 +1035,11 @@
     "pairedDevices": {
       "title": "已配對裝置"
     },
+    "convergence": {
+      "converging": "正在連接空間內的其他裝置",
+      "waitingForUpgrade": "部分裝置需要升級後才能自動連接",
+      "blocked": "部分裝置暫時無法完成連接"
+    },
     "addDevice": {
       "title": "邀請新裝置",
       "subtitle": "在新裝置上輸入此邀請碼",
@@ -1554,6 +1559,7 @@
           "not_unlocked": "空間會話未解鎖，請重新啟動應用程式讓 keychain 重新解鎖。",
           "sponsor_rejected": "對方未識別這個邀請碼，請讓對方重新生成。",
           "sponsor_declined": "對方拒絕了配對請求。",
+          "sponsor_upgrade_required": "對方裝置版本過舊，請先在對方裝置上更新 UniClipboard，然後重新生成邀請碼。",
           "invitation_not_found": "邀請碼已被使用或失效，請讓對方重新生成一個。",
           "invitation_expired": "邀請碼已過期，請讓對方重新生成一個。",
           "passphrase_mismatch": "口令錯誤，請重試。",
@@ -1945,6 +1951,7 @@
         "sponsorUnreachable": "暫時無法連接對方裝置，請確認兩台裝置都在線。",
         "sponsorRejected": "對方未識別該邀請碼，請讓對方重新生成。",
         "sponsorDeclined": "對方拒絕了本次配對請求。",
+        "sponsorUpgradeRequired": "對方裝置版本過舊，請先在對方裝置上更新 UniClipboard，然後重新生成邀請碼。",
         "timeout": "配對握手超時，請重試。",
         "connectionLost": "配對過程中連接中斷，請重試。",
         "serviceUnavailable": "守護進程尚未就緒，請稍後重試。",

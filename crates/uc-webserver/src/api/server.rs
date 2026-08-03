@@ -265,6 +265,14 @@ impl DaemonApiState {
     }
 
     pub async fn paired_devices(&self) -> anyhow::Result<Vec<SpaceMemberDto>> {
+        let setup = self.execute(Operation::QuerySetupState).await?;
+        let OperationResult::SetupState(setup) = setup else {
+            anyhow::bail!("engine returned an unexpected setup-state result");
+        };
+        if !setup.has_completed {
+            return Ok(Vec::new());
+        }
+
         // 通过 list_peer_snapshots() 获取真实在线状态：
         // 该方法走 list_with_presence()，会聚合 PresencePort.current_state()，
         // 反映 IrohPresenceAdapter 中由 ensure_reachable / connection.closed()

@@ -549,6 +549,8 @@ function redeemErrorMessage(
       return t('errors.sponsorRejected')
     case 'sponsor_declined':
       return t('errors.sponsorDeclined')
+    case 'sponsor_upgrade_required':
+      return t('errors.sponsorUpgradeRequired')
     case 'timeout':
       return t('errors.timeout')
     case 'connection_lost':

@@ -59,8 +59,9 @@ use uc_webserver::api::openapi::ApiDoc;
 /// +2 paths, +2 operations.
 /// Engine-owned member protection adds GET `/member/protection` and POST
 /// `/member/{device_id}/secure-remove`: +2 paths, +2 operations.
-const EXPECTED_PATHS: usize = 71;
-const EXPECTED_OPERATIONS: usize = 78;
+/// Membership convergence adds GET `/member/convergence`: +1 path, +1 operation.
+const EXPECTED_PATHS: usize = 72;
+const EXPECTED_OPERATIONS: usize = 79;
 const SCHEMA_PREFIX: &str = "#/components/schemas/";
 const HTTP_METHODS: [&str; 7] = ["get", "put", "post", "delete", "patch", "head", "options"];
 

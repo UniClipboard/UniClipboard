@@ -41,6 +41,8 @@ uniclip status --json     # 字段稳定，方便比对
 - `network.endpoint` —— 本机 iroh node ID。换 Wi-Fi 不会变，**变了说明换了 profile 或 keyslot**。
 - `network.relay` —— 当前选用的中继域名；`null` 说明走的是直连。
 - `peers[].reachability` —— 对每个已配对设备的可达性快照。
+- `membership_convergence` —— 当前空间是否已完全连接，可能为 `complete`、
+  `converging`、`waiting_for_upgrade` 或 `blocked`。
 
 如果 `daemon.running = false` 但 `uniclip start` 又秒退，先用前台模式抓栈：
 

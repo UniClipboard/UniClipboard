@@ -21,4 +21,22 @@ ignore = [
   # upstream crates bump to quick-xml >=0.41.
   "RUSTSEC-2026-0194",
   "RUSTSEC-2026-0195",
+  # libcrux AES-GCM and ChaCha20-Poly1305 advisories. These crates are only
+  # present in Cargo.lock through hpke-rs-libcrux's optional backend; the
+  # active OpenMLS backend does not enable or compile them. Upstream hpke-rs
+  # 0.6.1 pins the affected versions. Track removal in #1464, #1465, and
+  # #1466 when the OpenMLS dependency chain can move to the fixed releases.
+  "RUSTSEC-2026-0211",
+  "RUSTSEC-2026-0209",
+  "RUSTSEC-2026-0124",
+  # libcrux-secrets is pulled in by libcrux-sha3 through its digest traits,
+  # but UniClipboard's hpke-rs path does not call the affected Select or Swap
+  # operations. hpke-rs 0.6.1 pins this transitive version; track #1467.
+  "RUSTSEC-2026-0212",
+  # hpke-rs uses libcrux-sha3 only through the one-shot portable shake256
+  # function with fixed 32- or 64-byte outputs. The affected incremental
+  # multi-squeeze and AVX2 x4 APIs are not called. hpke-rs 0.6.1 pins 0.0.8;
+  # track #1468 and #1469 until the upstream dependency can be upgraded.
+  "RUSTSEC-2026-0207",
+  "RUSTSEC-2026-0208",
 ]

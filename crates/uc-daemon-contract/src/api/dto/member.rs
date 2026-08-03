@@ -96,6 +96,23 @@ pub struct SpaceProtectionDto {
     pub legacy_bootstrap: Option<LegacyBootstrapDto>,
 }
 
+/// Coarse connection state for the active space.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum MembershipConvergenceStateDto {
+    Complete,
+    Converging,
+    WaitingForUpgrade,
+    Blocked,
+}
+
+/// Product-facing connection status. Engine-internal counters stay private.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct MembershipConvergenceDto {
+    pub state: MembershipConvergenceStateDto,
+}
+
 /// Result of starting a secure Legacy member removal.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]

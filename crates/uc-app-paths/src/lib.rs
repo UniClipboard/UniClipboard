@@ -197,12 +197,40 @@ pub fn app_cache_root() -> Option<PathBuf> {
 ///
 /// Returns `None` only when the underlying base directory is unavailable.
 pub fn app_log_dir() -> Option<PathBuf> {
+    let profile = resolve_profile(None);
+    app_log_dir_for_profile(profile.as_deref())
+}
+
+/// Resolve the log directory for an explicit profile without reading
+/// `UC_PROFILE`.
+///
+/// This is intended for callers such as isolated test harnesses that launch a
+/// child process with a profile different from the current process. Passing
+/// `None` or an empty profile resolves the unprofiled application directory.
+/// Non-empty profiles may contain only ASCII letters, digits, `-`, and `_` so
+/// they always remain one portable path component.
+pub fn app_log_dir_for_profile(profile: Option<&str>) -> Option<PathBuf> {
+    if matches!(profile, Some(profile) if !profile.is_empty() && !is_safe_profile_component(profile))
+    {
+        return None;
+    }
     // Portable ("green") builds keep logs next to the executable, alongside the
     // rest of the data, so the app leaves no trace in the system log location.
     if let Some(portable_root) = portable_data_root() {
         return Some(portable_root.join("logs"));
     }
-    platform_log_dir(&resolved_app_dir_name(None))
+    let app_dir_name = match profile {
+        Some(profile) if is_safe_profile_component(profile) => format!("{APP_DIR_NAME}-{profile}"),
+        _ => APP_DIR_NAME.to_string(),
+    };
+    platform_log_dir(&app_dir_name)
+}
+
+fn is_safe_profile_component(profile: &str) -> bool {
+    !profile.is_empty()
+        && profile
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
 }
 
 #[cfg(target_os = "macos")]
@@ -249,6 +277,8 @@ pub fn legacy_logs_dir() -> Option<PathBuf> {
 mod tests {
     use super::*;
 
+    static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
     #[test]
     fn not_portable_without_marker_or_env() {
         let tmp = std::env::temp_dir().join("uc_app_paths_portable_test_none");
@@ -292,7 +322,6 @@ mod tests {
     #[test]
     fn app_dir_name_has_no_profile_suffix_by_default() {
         // Guard against an ambient UC_PROFILE leaking into the assertion.
-        static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
         let _env = ENV_LOCK.lock().unwrap();
         let prev = std::env::var("UC_PROFILE").ok();
         std::env::remove_var("UC_PROFILE");
@@ -348,6 +377,50 @@ mod tests {
                     "log dir must include the app directory name: {dir:?}"
                 );
             }
+        }
+    }
+
+    #[test]
+    fn explicit_profile_log_dir_does_not_depend_on_process_profile() {
+        let _env = ENV_LOCK.lock().unwrap();
+        let previous = std::env::var("UC_PROFILE").ok();
+        std::env::set_var("UC_PROFILE", "ambient-profile");
+        let explicit = app_log_dir_for_profile(Some("e2e-isolated")).expect("log directory");
+        match previous {
+            Some(value) => std::env::set_var("UC_PROFILE", value),
+            None => std::env::remove_var("UC_PROFILE"),
+        }
+
+        if let Some(portable_root) = portable_data_root() {
+            assert_eq!(explicit, portable_root.join("logs"));
+        } else {
+            let app_dir = if explicit.file_name().and_then(|name| name.to_str()) == Some("logs") {
+                explicit.parent().and_then(Path::file_name)
+            } else {
+                explicit.file_name()
+            };
+            assert_eq!(
+                app_dir.and_then(|name| name.to_str()),
+                Some("app.uniclipboard.desktop-e2e-isolated")
+            );
+        }
+    }
+
+    #[test]
+    fn explicit_profile_log_dir_rejects_unsafe_path_components() {
+        for profile in [
+            "../escape",
+            "nested/name",
+            "nested\\name",
+            "bad:name",
+            "space name",
+            ".",
+        ] {
+            assert_eq!(
+                app_log_dir_for_profile(Some(profile)),
+                None,
+                "unsafe profile must be rejected: {profile}"
+            );
         }
     }
 

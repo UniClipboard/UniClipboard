@@ -50,6 +50,8 @@ Key fields:
   keyslot**.
 - `network.relay` — relay domain in use; `null` means direct.
 - `peers[].reachability` — per-peer reachability snapshot.
+- `membership_convergence` — whether the active space is fully connected:
+  `complete`, `converging`, `waiting_for_upgrade`, or `blocked`.
 
 If `daemon.running = false` but `uniclip start` exits immediately, run
 it in the foreground to capture the trace:

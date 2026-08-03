@@ -127,6 +127,7 @@ export type RedeemInvitationErrorKind =
   | 'device_name_required' // 400 (rare in v2: backend auto-fills)
   | 'sponsor_rejected' // 409
   | 'sponsor_declined' // 409
+  | 'sponsor_upgrade_required' // 409
   | 'sponsor_unreachable' // 503
   | 'timeout' // 503
   | 'connection_lost' // 503
@@ -157,6 +158,7 @@ export type SwitchSpaceErrorKind =
   | 'not_unlocked' // 409 — current space session is locked
   | 'sponsor_rejected' // 409 — sponsor did not recognise the invitation code
   | 'sponsor_declined' // 409 — sponsor declined the pairing
+  | 'sponsor_upgrade_required' // 409 — sponsor uses an older pairing protocol
   | 'invitation_not_found' // 404
   | 'invitation_expired' // 404
   | 'passphrase_mismatch' // 400 — wrong new passphrase
@@ -242,6 +244,9 @@ function classifyInitializeError(err: unknown): SetupV2Error<InitializeSpaceErro
 function classifyRedeemError(err: unknown): SetupV2Error<RedeemInvitationErrorKind> {
   const status = pickStatus(err)
   const raw = rawMessage(err)
+  if (pickBody(err).code === 'sponsor_upgrade_required') {
+    return new SetupV2Error('sponsor_upgrade_required', raw, status)
+  }
   const lower = raw.toLowerCase()
   if (status === 404) {
     if (lower.includes('expired')) return new SetupV2Error('invitation_expired', raw, status)
@@ -302,6 +307,9 @@ function classifyQueryError(err: unknown): SetupV2Error<QuerySetupStateErrorKind
 function classifySwitchSpaceError(err: unknown): SetupV2Error<SwitchSpaceErrorKind> {
   const status = pickStatus(err)
   const raw = rawMessage(err)
+  if (pickBody(err).code === 'sponsor_upgrade_required') {
+    return new SetupV2Error('sponsor_upgrade_required', raw, status)
+  }
   const lower = raw.toLowerCase()
   if (status === 404) {
     if (lower.includes('expired')) return new SetupV2Error('invitation_expired', raw, status)

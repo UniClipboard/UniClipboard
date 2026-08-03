@@ -95,6 +95,10 @@ vi.mock('@/components/device/MobileDevicePanel', () => ({
 }))
 
 const dispatchMock = vi.fn()
+type DaemonEventHandler = (event: { topic: string; eventType: string; payload: unknown }) => void
+const daemonWsMocks = vi.hoisted(() => ({
+  subscribe: vi.fn((_topics: string[], _handler: DaemonEventHandler) => () => undefined),
+}))
 const devicesState = {
   localDevice: null as null | Record<string, unknown>,
   localDeviceLoading: false,
@@ -103,6 +107,8 @@ const devicesState = {
   spaceMembersError: null as string | null,
   spaceProtection: null as null | Record<string, unknown>,
   spaceProtectionError: null as string | null,
+  membershipConvergence: null as null | { state: string },
+  membershipConvergenceError: null as string | null,
   memberSyncPreferences: {},
   memberSyncPreferencesLoading: {},
 }
@@ -121,6 +127,8 @@ vi.mock('@/store/slices/devicesSlice', () => ({
   clearLocalDeviceError: vi.fn(() => ({ type: 'devices/clearLocalDeviceError' })),
   clearSpaceMembersError: vi.fn(() => ({ type: 'devices/clearSpaceMembersError' })),
   fetchSpaceProtection: vi.fn(() => ({ type: 'devices/fetchSpaceProtection' })),
+  fetchMembershipConvergence: vi.fn(() => ({ type: 'devices/fetchMembershipConvergence' })),
+  setSpaceMembers: vi.fn((members: unknown[]) => ({ type: 'devices/setSpaceMembers', members })),
   fetchMemberSyncPreferences: vi.fn(() => ({ type: 'devices/fetchMemberSyncPreferences' })),
   updateMemberSyncPreferences: vi.fn(() => ({ type: 'devices/updateMemberSyncPreferences' })),
 }))
@@ -160,7 +168,7 @@ vi.mock('@/api/tauri-command/mobile_sync', () => ({
 }))
 
 vi.mock('@/lib/daemon-ws', () => ({
-  daemonWs: { subscribe: () => () => undefined },
+  daemonWs: { subscribe: daemonWsMocks.subscribe },
 }))
 
 vi.mock('@/components/ui/toast', () => ({
@@ -191,6 +199,15 @@ describe('DevicesPage', () => {
     devicesState.spaceMembersError = null
     devicesState.spaceProtection = null
     devicesState.spaceProtectionError = null
+    devicesState.membershipConvergence = null
+    devicesState.membershipConvergenceError = null
+    daemonWsMocks.subscribe.mockClear()
+    vi.mocked(listMobileDevices).mockReset()
+    vi.mocked(listMobileDevices).mockResolvedValue([])
+    Object.defineProperty(document, 'visibilityState', {
+      configurable: true,
+      get: () => 'visible',
+    })
     vi.mocked(unpairDevice).mockReset()
     vi.mocked(isLegacyBootstrapRequired).mockReset()
     vi.mocked(secureRemoveLegacyMember).mockReset()
@@ -203,6 +220,7 @@ describe('DevicesPage', () => {
     expect(dispatchMock).toHaveBeenCalledWith({ type: 'devices/fetchLocalDeviceInfo' })
     expect(dispatchMock).toHaveBeenCalledWith({ type: 'devices/fetchSpaceMembers' })
     expect(dispatchMock).toHaveBeenCalledWith({ type: 'devices/fetchSpaceProtection' })
+    expect(dispatchMock).toHaveBeenCalledWith({ type: 'devices/fetchMembershipConvergence' })
   })
 
   it('translates a space protection status failure', () => {
@@ -262,6 +280,188 @@ describe('DevicesPage', () => {
       document.dispatchEvent(new Event('visibilitychange'))
     })
     expect(refreshPresence).toHaveBeenCalledTimes(2)
+  })
+
+  it('does not refresh convergence from websocket events while hidden', () => {
+    Object.defineProperty(document, 'visibilityState', {
+      configurable: true,
+      get: () => 'hidden',
+    })
+    render(<DevicesPage />)
+    const handler = daemonWsMocks.subscribe.mock.calls.at(-1)?.[1]
+    expect(handler).toBeTypeOf('function')
+    dispatchMock.mockClear()
+
+    const peer = {
+      peerId: 'peer-1',
+      deviceName: 'Remote Mac',
+      connected: true,
+      pairingState: 'Trusted',
+      channel: 'direct' as const,
+      connectionAddress: '192.0.2.10:443',
+    }
+
+    act(() => {
+      handler?.({ topic: 'peers', eventType: 'peers.changed', payload: { peers: [peer] } })
+    })
+
+    expect(dispatchMock).toHaveBeenCalledWith({
+      type: 'devices/setSpaceMembers',
+      members: [
+        {
+          peerId: peer.peerId,
+          deviceName: peer.deviceName,
+          pairingState: peer.pairingState,
+          lastSeenAtMs: null,
+          connected: true,
+          channel: peer.channel,
+          connectionAddress: peer.connectionAddress,
+        },
+      ],
+    })
+    expect(dispatchMock).not.toHaveBeenCalledWith({ type: 'devices/fetchMembershipConvergence' })
+  })
+
+  it('refreshes convergence from websocket events while visible', () => {
+    Object.defineProperty(document, 'visibilityState', {
+      configurable: true,
+      get: () => 'visible',
+    })
+    render(<DevicesPage />)
+    const handler = daemonWsMocks.subscribe.mock.calls.at(-1)?.[1]
+    expect(handler).toBeTypeOf('function')
+    dispatchMock.mockClear()
+
+    act(() => {
+      handler?.({ topic: 'peers', eventType: 'peers.changed', payload: { peers: [] } })
+    })
+
+    expect(dispatchMock).toHaveBeenCalledWith({ type: 'devices/setSpaceMembers', members: [] })
+    expect(dispatchMock).toHaveBeenCalledWith({ type: 'devices/fetchMembershipConvergence' })
+  })
+
+  it('shows a compact status while the space is still connecting', () => {
+    devicesState.membershipConvergence = { state: 'converging' }
+
+    render(<DevicesPage />)
+
+    const status = screen.getByText(i18n.t('devices.convergence.converging'))
+    expect(status).toBeInTheDocument()
+    expect(status.parentElement?.tagName).toBe('OUTPUT')
+  })
+
+  it('hides the connection status when convergence is complete', () => {
+    devicesState.membershipConvergence = { state: 'complete' }
+
+    render(<DevicesPage />)
+
+    expect(screen.queryByText(i18n.t('devices.convergence.converging'))).not.toBeInTheDocument()
+    expect(
+      screen.queryByText(i18n.t('devices.convergence.waitingForUpgrade'))
+    ).not.toBeInTheDocument()
+    expect(screen.queryByText(i18n.t('devices.convergence.blocked'))).not.toBeInTheDocument()
+  })
+
+  it('keeps a blocked connection visible when the mobile device query fails', async () => {
+    devicesState.membershipConvergence = { state: 'blocked' }
+    vi.mocked(listMobileDevices).mockRejectedValueOnce(new Error('mobile query failed'))
+
+    render(<DevicesPage />)
+
+    expect(await screen.findByText(i18n.t('devices.convergence.blocked'))).toBeInTheDocument()
+  })
+
+  it('hides stale connection status only when its own request fails', () => {
+    devicesState.membershipConvergence = { state: 'blocked' }
+    devicesState.membershipConvergenceError = 'membership query failed'
+
+    render(<DevicesPage />)
+
+    expect(screen.queryByText(i18n.t('devices.convergence.blocked'))).not.toBeInTheDocument()
+  })
+
+  it('suppresses a duplicate upgrade status during the existing security upgrade', () => {
+    devicesState.membershipConvergence = { state: 'waiting_for_upgrade' }
+    devicesState.spaceProtection = {
+      mode: 'migrating',
+      members: [],
+      legacyBootstrap: {
+        bootstrapId: 'bootstrap-1',
+        outcome: 'awaiting_readmission',
+        pendingReadmission: 1,
+      },
+    }
+
+    render(<DevicesPage />)
+
+    expect(
+      screen.queryByText(i18n.t('devices.convergence.waitingForUpgrade'))
+    ).not.toBeInTheDocument()
+    expect(
+      screen.getByText(i18n.t('devices.protection.bootstrap.awaiting_readmission', { count: 1 }))
+    ).toBeInTheDocument()
+  })
+
+  it('polls a converging space for at most thirty seconds', () => {
+    vi.useFakeTimers()
+    devicesState.membershipConvergence = { state: 'converging' }
+    dispatchMock.mockClear()
+
+    render(<DevicesPage />)
+
+    const convergenceDispatches = () =>
+      dispatchMock.mock.calls.filter(
+        ([action]) => action.type === 'devices/fetchMembershipConvergence'
+      )
+    expect(convergenceDispatches()).toHaveLength(1)
+
+    act(() => {
+      vi.advanceTimersByTime(30_000)
+    })
+    expect(convergenceDispatches()).toHaveLength(16)
+
+    act(() => {
+      vi.advanceTimersByTime(30_000)
+    })
+    expect(convergenceDispatches()).toHaveLength(16)
+  })
+
+  it('stops convergence polling when complete or hidden', () => {
+    vi.useFakeTimers()
+    devicesState.membershipConvergence = { state: 'converging' }
+    dispatchMock.mockClear()
+
+    const { rerender } = render(<DevicesPage />)
+    const convergenceDispatches = () =>
+      dispatchMock.mock.calls.filter(
+        ([action]) => action.type === 'devices/fetchMembershipConvergence'
+      )
+
+    act(() => {
+      vi.advanceTimersByTime(2_000)
+    })
+    expect(convergenceDispatches()).toHaveLength(2)
+
+    devicesState.membershipConvergence = { state: 'complete' }
+    rerender(<DevicesPage />)
+    act(() => {
+      vi.advanceTimersByTime(30_000)
+    })
+    expect(convergenceDispatches()).toHaveLength(2)
+
+    devicesState.membershipConvergence = { state: 'converging' }
+    act(() => {
+      Object.defineProperty(document, 'visibilityState', {
+        configurable: true,
+        get: () => 'hidden',
+      })
+      document.dispatchEvent(new Event('visibilitychange'))
+    })
+    rerender(<DevicesPage />)
+    act(() => {
+      vi.advanceTimersByTime(30_000)
+    })
+    expect(convergenceDispatches()).toHaveLength(2)
   })
 })
 

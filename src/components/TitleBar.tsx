@@ -5,6 +5,7 @@ import { usePlatform } from '@/hooks/usePlatform'
 import { commands } from '@/lib/ipc'
 import { createLogger } from '@/lib/logger'
 import { cn } from '@/lib/utils'
+import { DevProfileIndicator } from './DevProfileIndicator'
 
 const log = createLogger('title-bar')
 
@@ -190,6 +191,7 @@ export const TitleBar = ({ className, isSetupActive = false, rightSlot }: TitleB
             }}
             tabIndex={-1}
           />
+          <DevProfileIndicator />
         </div>
         {rightSlot && (
           <div className="relative z-10 flex items-center pr-2" data-tauri-drag-region="false">

@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 
 import { execFileSync } from 'node:child_process'
-import { readFileSync } from 'node:fs'
-import { dirname, join, resolve } from 'node:path'
+import { readFileSync, readdirSync } from 'node:fs'
+import { dirname, join, relative, resolve } from 'node:path'
 import process from 'node:process'
 import { fileURLToPath } from 'node:url'
 
@@ -30,6 +30,7 @@ const EXPECTED_ADVISORIES = [
 const INACTIVE_PRODUCTION_CRATES = ['libcrux-aesgcm', 'libcrux-chacha20poly1305']
 const ACTIVE_REVIEWED_CRATES = ['libcrux-sha3 v0.0.8', 'libcrux-secrets v0.0.5']
 const DIRECT_API_PATTERN = /\blibcrux_(?:aesgcm|chacha20poly1305|secrets|sha3)\b/
+const RUST_SOURCE_ROOTS = ['apps', 'crates', 'src-tauri']
 
 function run(command, args) {
   return execFileSync(command, args, {
@@ -104,11 +105,22 @@ function checkDirectApiUse(metadata, problems) {
     }
   }
 
-  const rustFiles = run('git', ['ls-files', '*.rs']).trim().split('\n').filter(Boolean)
-  for (const relativePath of rustFiles) {
-    const source = readFileSync(join(REPOSITORY_ROOT, relativePath), 'utf8')
-    if (DIRECT_API_PATTERN.test(source)) {
-      addProblem(problems, 'affected API use', `${relativePath} directly references libcrux APIs`)
+  const pendingDirectories = RUST_SOURCE_ROOTS.map(root => join(REPOSITORY_ROOT, root))
+  while (pendingDirectories.length > 0) {
+    const directory = pendingDirectories.pop()
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      const absolutePath = join(directory, entry.name)
+      if (entry.isDirectory()) {
+        pendingDirectories.push(absolutePath)
+        continue
+      }
+      if (!entry.isFile() || !entry.name.endsWith('.rs')) continue
+
+      const source = readFileSync(absolutePath, 'utf8')
+      const relativePath = relative(REPOSITORY_ROOT, absolutePath)
+      if (DIRECT_API_PATTERN.test(source)) {
+        addProblem(problems, 'affected API use', `${relativePath} directly references libcrux APIs`)
+      }
     }
   }
 }

@@ -48,6 +48,7 @@ describe('membership E2E hardening', () => {
   it('runs the cargo audit exception guard in CI', () => {
     const packageJson = JSON.parse(read('package.json')) as { scripts: Record<string, string> }
     const workflow = read('.github/workflows/pr-check.yml')
+    const guard = read('scripts/architecture/check-cargo-audit-exceptions.mjs')
     const guardPath = path.join(
       projectRoot,
       'scripts/architecture/check-cargo-audit-exceptions.mjs'
@@ -58,5 +59,7 @@ describe('membership E2E hardening', () => {
       'node scripts/architecture/check-cargo-audit-exceptions.mjs'
     )
     expect(workflow).toContain('run: bun run check:cargo-audit-exceptions')
+    expect(guard).not.toContain("run('git'")
+    expect(guard).toContain("const RUST_SOURCE_ROOTS = ['apps', 'crates', 'src-tauri']")
   })
 })

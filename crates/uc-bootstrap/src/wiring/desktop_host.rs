@@ -24,6 +24,7 @@ use uc_platform::ports::{SecureStorageError, SecureStorageProvider};
 
 use crate::layer::paths::{resolve_desktop_host_paths, DesktopHostPaths};
 use crate::layer::platform::{create_desktop_system_clipboard, SystemClipboardWiring};
+use crate::wiring::analytics::DesktopHostAnalytics;
 use crate::wiring::error::{WiringError, WiringResult};
 use crate::wiring::secure_storage::build_secure_storage_prelude;
 
@@ -32,6 +33,7 @@ pub struct DesktopEngineHost {
     capabilities: HostCapabilities,
     process_paths: DesktopHostProcessPaths,
     file_handles: DesktopHostFileHandles,
+    analytics: DesktopHostAnalytics,
 }
 
 impl DesktopEngineHost {
@@ -41,6 +43,10 @@ impl DesktopEngineHost {
 
     pub fn file_handles(&self) -> DesktopHostFileHandles {
         self.file_handles.clone()
+    }
+
+    pub fn analytics(&self) -> DesktopHostAnalytics {
+        self.analytics.clone()
     }
 
     pub fn into_engine_start(self) -> (EngineConfig, HostCapabilities) {
@@ -108,6 +114,7 @@ pub fn prepare_desktop_engine_host() -> WiringResult<DesktopEngineHost> {
         }
         _ => engine_config,
     };
+    let analytics = DesktopHostAnalytics::new(paths.app_data_root_dir.join("analytics"));
     let capabilities = HostCapabilities::new(
         host_directories(&paths, temporary_dir),
         Box::new(DesktopSecureStorage { secure_storage }),
@@ -119,13 +126,15 @@ pub fn prepare_desktop_engine_host() -> WiringResult<DesktopEngineHost> {
             changes_enabled: clipboard_wiring == SystemClipboardWiring::Real,
         }),
         Box::new(file_handles.clone()),
-    );
+    )
+    .with_analytics(analytics.sink(), analytics.identity());
 
     Ok(DesktopEngineHost {
         engine_config,
         capabilities,
         process_paths: DesktopHostProcessPaths::from_app_paths(&paths),
         file_handles,
+        analytics,
     })
 }
 

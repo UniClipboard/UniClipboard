@@ -16,6 +16,7 @@ pub mod wiring;
 pub use entrypoint::cli::{build_cli_engine_runtime, CliEngineRuntime};
 pub use layer::platform::SystemClipboardWiring;
 pub use observability::tracing::{init_tracing_subscriber, install_panic_logging_hook};
+pub use wiring::analytics::{initialize_analytics_context, DesktopHostAnalytics};
 pub use wiring::desktop_host::{
     prepare_desktop_engine_host, DesktopEngineHost, DesktopHostFileHandles, DesktopHostProcessPaths,
 };

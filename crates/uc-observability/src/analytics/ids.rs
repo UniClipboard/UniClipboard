@@ -69,6 +69,17 @@ pub struct AnalyticsIds {
     pub is_first_run: bool,
 }
 
+impl AnalyticsIds {
+    /// Create process-local IDs without reading or writing persistent storage.
+    pub fn ephemeral() -> Self {
+        Self {
+            anonymous_user_id: Uuid::now_v7(),
+            analytics_device_id: Uuid::now_v7(),
+            is_first_run: false,
+        }
+    }
+}
+
 /// 读取或首次生成两个 ID。
 ///
 /// 行为表：

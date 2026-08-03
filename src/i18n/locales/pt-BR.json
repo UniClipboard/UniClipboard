@@ -1081,6 +1081,7 @@
     },
     "protection": {
       "label": "Proteção",
+      "upgradePeerHelp": "Atualize o UniClipboard no outro dispositivo para a versão mais recente.",
       "bootstrap": {
         "awaiting_readmission": "A atualização de segurança aguarda a readmissão de {{count}} membro.",
         "recovery_required": "A atualização de segurança precisa ser recuperada antes da sincronização dos membros."

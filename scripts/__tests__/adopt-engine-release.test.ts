@@ -130,11 +130,41 @@ describe('desktop Engine release adoption', () => {
     expect(workflow).not.toContain('run: node scripts/adopt-engine-release.mjs')
     expect(workflow).toContain('changed: ${{ steps.change.outputs.changed }}')
     expect(workflow).toContain("if: ${{ needs.validate.outputs.changed == 'true' }}")
-    expect(workflow).toContain(
-      'git diff --no-exit-code --binary HEAD -- Cargo.toml Cargo.lock > engine-adoption.patch'
-    )
+    const patchCommand = workflow.match(/^\s*(git diff .* > engine-adoption\.patch)$/m)?.[1]
+    expect(patchCommand).toBeDefined()
+    expect(patchCommand).not.toContain('--no-exit-code')
     expect(workflow).toContain('if [ -s engine-adoption.patch ]; then')
     expect(workflow).not.toContain('git diff --quiet -- Cargo.toml Cargo.lock')
+
+    const diffRoot = mkdtempSync(join(tmpdir(), 'desktop-engine-patch-command-'))
+    roots.push(diffRoot)
+    write(join(diffRoot, 'Cargo.toml'), '[workspace]\n')
+    write(join(diffRoot, 'Cargo.lock'), 'version = 4\n')
+    execFileSync('git', ['init'], { cwd: diffRoot })
+    execFileSync('git', ['add', 'Cargo.toml', 'Cargo.lock'], { cwd: diffRoot })
+    execFileSync(
+      'git',
+      [
+        '-c',
+        'user.name=Engine adoption test',
+        '-c',
+        'user.email=engine-adoption-test@example.invalid',
+        'commit',
+        '-m',
+        'fixture',
+      ],
+      { cwd: diffRoot }
+    )
+    write(join(diffRoot, 'Cargo.toml'), '[workspace]\nresolver = "2"\n')
+
+    const patchResult = spawnSync('sh', ['-c', patchCommand ?? 'exit 2'], {
+      cwd: diffRoot,
+      encoding: 'utf8',
+    })
+    expect(patchResult.status).toBe(0)
+    expect(readFileSync(join(diffRoot, 'engine-adoption.patch'), 'utf8')).toContain(
+      'resolver = "2"'
+    )
     expect(workflow).toContain('--state all')
     expect(workflow).toContain('gh pr reopen')
     expect(workflow).toMatch(

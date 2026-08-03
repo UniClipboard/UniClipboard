@@ -63,7 +63,7 @@ jobs:
       - id: change
         name: Detect the proposed update
         run: |
-          git diff --no-exit-code --binary HEAD -- Cargo.toml Cargo.lock > engine-adoption.patch
+          git diff --binary HEAD -- Cargo.toml Cargo.lock > engine-adoption.patch
           if [ -s engine-adoption.patch ]; then
             echo "changed=true" >> "$GITHUB_OUTPUT"
           else

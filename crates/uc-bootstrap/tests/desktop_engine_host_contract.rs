@@ -15,6 +15,25 @@ fn desktop_engine_host_preparation_does_not_assemble_the_core() {
 }
 
 #[test]
+fn daemon_runtime_connects_host_analytics_end_to_end() {
+    let desktop_host = include_str!("../src/wiring/desktop_host.rs");
+    let daemon_host = include_str!("../../../apps/daemon/src/daemon/host.rs");
+
+    assert!(
+        desktop_host.contains(".with_analytics("),
+        "desktop host capabilities must inject the host-owned analytics sink and identity"
+    );
+    assert!(
+        daemon_host.contains("initialize_analytics_context("),
+        "daemon startup must install the analytics event context before events are emitted"
+    );
+    assert!(
+        daemon_host.contains(".with_analytics(analytics_sink)"),
+        "daemon HTTP analytics events must use the same authoritative sink"
+    );
+}
+
+#[test]
 fn desktop_host_file_handles_share_opaque_input_and_output_paths() {
     let temp = tempfile::tempdir().unwrap();
     let input_path = temp.path().join("private-input.txt");

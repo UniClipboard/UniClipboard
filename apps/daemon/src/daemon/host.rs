@@ -8,12 +8,13 @@ use tokio::sync::broadcast;
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 use uc_bootstrap::{
-    init_tracing_subscriber, install_panic_logging_hook, prepare_desktop_engine_host,
-    DesktopHostFileHandles, DesktopHostProcessPaths,
+    init_tracing_subscriber, initialize_analytics_context, install_panic_logging_hook,
+    prepare_desktop_engine_host, DesktopHostFileHandles, DesktopHostProcessPaths,
 };
 use uc_daemon_local::crash_marker::{DaemonExitReport, DaemonRunMarker};
 use uc_daemon_local::process_metadata::{DaemonPidManager, DaemonProcessMode};
 use uc_engine::{ActiveClipboardChanged, Engine, HostFileHandle, Operation, OperationResult};
+use uc_observability::analytics::AnalyticsPort;
 use uc_webserver::api::auth::load_or_create_auth_token;
 use uc_webserver::api::server::{run_http_server, DaemonApiState, DaemonFileHandles};
 use uc_webserver::api::types::{DaemonResidency, DaemonWsEvent};
@@ -79,6 +80,7 @@ async fn run_async(run_mode: DaemonRunMode) -> anyhow::Result<()> {
 
     let prepared = prepare_desktop_engine_host()?;
     let process_paths = prepared.process_paths().clone();
+    let analytics = prepared.analytics();
     let file_handles: Arc<dyn DaemonFileHandles> =
         Arc::new(DesktopDaemonFileHandles::new(prepared.file_handles()));
     let (engine_config, host_capabilities) = prepared.into_engine_start();
@@ -96,6 +98,13 @@ async fn run_async(run_mode: DaemonRunMode) -> anyhow::Result<()> {
         .map_err(anyhow::Error::new)?;
     let engine = Arc::new(engine);
 
+    initialize_analytics_context(
+        &analytics,
+        &engine,
+        run_mode.suppresses_device_presence_analytics(),
+    )
+    .await;
+
     record_upgrade_status_at_startup(&engine).await;
     spawn_startup_recovery(run_mode, Arc::clone(&engine));
 
@@ -105,6 +114,7 @@ async fn run_async(run_mode: DaemonRunMode) -> anyhow::Result<()> {
         events,
         file_handles,
         process_paths,
+        analytics.sink(),
     )
     .await;
     let shutdown = engine
@@ -121,6 +131,7 @@ async fn run_daemon_surfaces(
     events: uc_engine::EventStream,
     file_handles: Arc<dyn DaemonFileHandles>,
     process_paths: DesktopHostProcessPaths,
+    analytics_sink: Arc<dyn AnalyticsPort>,
 ) -> anyhow::Result<()> {
     let auth_token = load_or_create_auth_token(process_paths.daemon_token())?;
     let pid_manager = DaemonPidManager::new(process_paths.daemon_pid());
@@ -137,7 +148,8 @@ async fn run_daemon_surfaces(
         auth_token,
         Arc::clone(&security),
     )
-    .with_residency(run_mode.into());
+    .with_residency(run_mode.into())
+    .with_analytics(analytics_sink);
     let (event_tx, _) = broadcast::channel::<DaemonWsEvent>(64);
     api_state.event_tx = event_tx.clone();
 

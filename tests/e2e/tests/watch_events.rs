@@ -176,64 +176,27 @@ async fn watch_ctrl_c_exits_cleanly() {
     }
 }
 
-/// Start daemon without init, run `watch`. Assert it exits non-zero
-/// within a reasonable timeout (watch requires a daemon session which
-/// requires setup completion).
-///
-/// We use a spawned process with timeout instead of `run_capture` because
-/// `watch` may block if the session acquisition hangs.
+/// Start a daemon without initialization and verify that the diagnostic event
+/// stream can subscribe without reading or mutating setup-protected content.
 #[tokio::test]
 #[ignore]
-async fn watch_before_init_fails() {
+async fn watch_before_init_emits_ready_signal() {
     let profile = TestProfile::new("watch-noinit");
     let _daemon = TestDaemon::start(profile)
         .await
         .expect("daemon start failed");
     let cli = TestCli::new(&_daemon.profile);
 
-    let binary = cli.binary_path().to_string();
-    let profile_name = cli.profile_name.clone();
+    let mut child = spawn_watch(&cli);
+    let stderr = child.stderr.take().expect("stderr not captured");
+    let result = wait_for_watch_ready(stderr, Duration::from_secs(15)).await;
 
-    // Spawn watch and wait with a timeout
-    let result = tokio::time::timeout(Duration::from_secs(15), async {
-        tokio::task::spawn_blocking(move || {
-            Command::new(&binary)
-                .env("UC_PROFILE", &profile_name)
-                .args(["watch"])
-                .stdout(Stdio::piped())
-                .stderr(Stdio::piped())
-                .output()
-        })
-        .await
-        .expect("join error")
-    })
-    .await;
+    let _ = child.kill();
+    let _ = child.wait();
 
-    match result {
-        Ok(Ok(output)) => {
-            // Process exited within timeout — verify it failed
-            assert!(
-                !output.status.success(),
-                "watch before init should fail but got exit=0; stdout={}, stderr={}",
-                String::from_utf8_lossy(&output.stdout),
-                String::from_utf8_lossy(&output.stderr)
-            );
-        }
-        Ok(Err(e)) => {
-            // IO error spawning — still a failure, which is expected
-            eprintln!("NOTE: watch spawn failed with IO error: {e}");
-        }
-        Err(_) => {
-            // Timed out — watch is blocking, which means it didn't exit
-            // promptly with an error. This is a softer failure mode: the
-            // watch command connected to the daemon but is stuck waiting.
-            // Kill any lingering processes and note this behavior.
-            eprintln!(
-                "NOTE: watch before init did not exit within 15s. \
-                 The command may be blocking on session acquisition. \
-                 This is acceptable — the important thing is it doesn't \
-                 succeed (exit 0) before init."
-            );
-        }
-    }
+    assert!(
+        result.is_ok(),
+        "WATCH_READY not received before init: {}",
+        result.unwrap_err()
+    );
 }

@@ -101,6 +101,13 @@ pub fn prepare_desktop_engine_host() -> WiringResult<DesktopEngineHost> {
     })?;
     let engine_config = EngineConfig::new(env!("CARGO_PKG_VERSION"))
         .with_portable_storage(uc_app_paths::is_portable());
+    #[cfg(feature = "e2e-rendezvous")]
+    let engine_config = match std::env::var("UC_E2E_RENDEZVOUS_BASE_URL") {
+        Ok(base_url) if !base_url.trim().is_empty() => {
+            engine_config.with_rendezvous_base_url(base_url)
+        }
+        _ => engine_config,
+    };
     let capabilities = HostCapabilities::new(
         host_directories(&paths, temporary_dir),
         Box::new(DesktopSecureStorage { secure_storage }),

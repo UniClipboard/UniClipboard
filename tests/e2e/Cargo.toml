@@ -6,6 +6,14 @@ edition = "2021"
 publish = false
 description = "Black-box CLI end-to-end tests for uniclip + uniclipd"
 
+[[bin]]
+name = "prepare-legacy-release"
+path = "src/bin/prepare_legacy_release.rs"
+
+[features]
+membership-diagnostics = []
+historical-membership = []
+
 [dependencies]
 # Harness utilities (re-exported for integration tests)
 tokio = { version = "1", features = ["full"] }
@@ -16,6 +24,11 @@ tempfile = "3"
 uuid = { version = "1", features = ["v4"] }
 dirs-next = "2"
 libc = "0.2"
+wiremock = "0.6"
+flate2 = "1"
+sha2 = "0.10"
+tar = "0.4"
+zip = { version = "2.4.2", default-features = false, features = ["deflate"] }
 
 [dev-dependencies]
 assert_cmd = "2"

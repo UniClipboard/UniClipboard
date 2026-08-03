@@ -241,6 +241,24 @@ async fn stop_then_start_background() {
         tokio::time::sleep(Duration::from_millis(300)).await;
     }
     assert!(healthy, "daemon did not become healthy after restart");
+
+    let cleanup_out = cli.run_capture(&["--json", "stop"]);
+    assert!(
+        cleanup_out.success(),
+        "cleanup stop failed (exit={}): stdout={}, stderr={}",
+        cleanup_out.exit_code,
+        cleanup_out.stdout,
+        cleanup_out.stderr
+    );
+
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+    while tokio::time::Instant::now() < deadline {
+        if client.get(&health_url).send().await.is_err() {
+            return;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    panic!("daemon remained healthy after test cleanup");
 }
 
 // ---------------------------------------------------------------------------
@@ -328,7 +346,7 @@ async fn start_foreground_streams_logs() {
 
     // Remember the profile name and binary path before killing.
     let profile_name = temp_daemon.profile.name.clone();
-    let binary = cli.binary_path().to_string();
+    let binary = cli.binary_path().to_string_lossy().into_owned();
 
     // Kill the temp daemon so foreground can bind the port.
     temp_daemon.kill();

@@ -48,6 +48,7 @@ serde_json = "1"
 [features]
 # Forward to uc-platform; activated by uc-tauri/dev-profile for `bun tauri:build:dev`.
 dev-profile = ["uc-platform/dev-profile"]
+e2e-rendezvous = ["uc-engine/dev-tools"]
 
 [dev-dependencies]
 tempfile = "3"

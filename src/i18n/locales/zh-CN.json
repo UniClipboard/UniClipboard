@@ -1532,7 +1532,8 @@
         "cancel": "取消",
         "close": "关闭",
         "retry": "重试",
-        "useNewCode": "重新输入邀请码"
+        "useNewCode": "重新输入邀请码",
+        "preserveAndContinue": "保留无法读取的历史并继续"
       },
       "migrating": {
         "title": "迁移剪贴板历史",
@@ -1548,7 +1549,8 @@
         "title": "切换成功",
         "subtitle_one": "已用新主密钥迁移 1 条剪贴板记录。",
         "subtitle_other": "已用新主密钥迁移 {{count}} 条剪贴板记录。",
-        "subtitle_zero": "无剪贴板历史需要迁移。"
+        "subtitle_zero": "无剪贴板历史需要迁移。",
+        "preservedUnreadable": "已保留 {{count}} 条无法在新空间读取的加密记录。"
       },
       "failed": {
         "title": "切换失败",
@@ -1560,6 +1562,7 @@
           "sponsor_rejected": "对方未识别这个邀请码，请让对方重新生成。",
           "sponsor_declined": "对方拒绝了配对请求。",
           "sponsor_upgrade_required": "对方设备版本过旧，请先在对方设备上更新 UniClipboard，然后重新生成邀请码。",
+          "unreadable_history_confirmation_required": "部分本地历史无法用当前密钥读取。只有在你同意保留这些加密记录、且接受它们无法在新空间使用时才继续。",
           "invitation_not_found": "邀请码已被使用或失效，请让对方重新生成一个。",
           "invitation_expired": "邀请码已过期，请让对方重新生成一个。",
           "passphrase_mismatch": "口令错误，请重试。",

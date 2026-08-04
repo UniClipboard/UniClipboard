@@ -10,6 +10,13 @@ function sponsorUpgradeRequiredError(path: string): DaemonApiError {
   })
 }
 
+function unreadableHistoryConfirmationError(path: string): DaemonApiError {
+  return new DaemonApiError(DaemonErrorCode.INTERNAL_ERROR, `409 on ${path}`, {
+    code: 'unreadable_history_confirmation_required',
+    message: 'explicit confirmation is required',
+  })
+}
+
 describe('setup v2 sponsor upgrade errors', () => {
   afterEach(() => {
     vi.restoreAllMocks()
@@ -32,6 +39,16 @@ describe('setup v2 sponsor upgrade errors', () => {
 
     await expect(switchSpace({ code: 'ABCD1234', newPassphrase: 'secret' })).rejects.toMatchObject({
       kind: 'sponsor_upgrade_required',
+    })
+  })
+
+  it('keeps unreadable-history confirmation distinct from a generic switch failure', async () => {
+    vi.spyOn(daemonClient, 'callEnveloped').mockRejectedValue(
+      unreadableHistoryConfirmationError('/v2/setup/switch-space')
+    )
+
+    await expect(switchSpace({ code: 'ABCD1234', newPassphrase: 'secret' })).rejects.toMatchObject({
+      kind: 'unreadable_history_confirmation_required',
     })
   })
 })

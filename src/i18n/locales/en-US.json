@@ -1533,7 +1533,8 @@
         "cancel": "Cancel",
         "close": "Close",
         "retry": "Retry",
-        "useNewCode": "Enter a new code"
+        "useNewCode": "Enter a new code",
+        "preserveAndContinue": "Keep unreadable history and continue"
       },
       "migrating": {
         "title": "Migrating clipboard history",
@@ -1549,7 +1550,8 @@
         "title": "Switched space",
         "subtitle_one": "Migrated 1 clipboard record under the new master key.",
         "subtitle_other": "Migrated {{count}} clipboard records under the new master key.",
-        "subtitle_zero": "No clipboard history needed migration."
+        "subtitle_zero": "No clipboard history needed migration.",
+        "preservedUnreadable": "Kept {{count}} encrypted record that cannot be read in the new space."
       },
       "failed": {
         "title": "Switch space failed",
@@ -1561,6 +1563,7 @@
           "sponsor_rejected": "Sponsor did not recognise the invitation code. Ask them to issue a fresh one.",
           "sponsor_declined": "Sponsor declined the pairing.",
           "sponsor_upgrade_required": "The other device is using an older version. Update UniClipboard on that device, then create a new invitation code.",
+          "unreadable_history_confirmation_required": "Some local history cannot be read with the current key. Continue only if you want to keep those encrypted records without making them available in the new space.",
           "invitation_not_found": "Invitation code has already been used or is no longer valid. Ask the sponsor to issue a fresh one.",
           "invitation_expired": "Invitation expired. Ask the sponsor to issue a fresh one.",
           "passphrase_mismatch": "Wrong passphrase — please retry.",

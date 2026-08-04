@@ -115,15 +115,7 @@ pub fn engine_event_to_ws(event: EngineEvent) -> Option<DaemonWsEvent> {
                 "targetDeviceId": event.target_device_id,
             }),
         ),
-        EngineEvent::StateChanged { .. }
-        | EngineEvent::PeerPresenceChanged(_)
-        | EngineEvent::PairingCompleted(_)
-        | EngineEvent::ActiveClipboardChanged(_)
-        | EngineEvent::MobileLanSettingsChanged(_)
-        | EngineEvent::RefreshRequired { .. }
-        | EngineEvent::OperationFinished { .. }
-        | EngineEvent::LifecycleFailed { .. }
-        | EngineEvent::Fatal { .. } => return None,
+        _ => return None,
     };
 
     Some(DaemonWsEvent {

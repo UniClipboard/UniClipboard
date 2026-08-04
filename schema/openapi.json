@@ -4632,6 +4632,9 @@
           },
           "newPassphrase": {
             "type": "string"
+          },
+          "preserveUnreadableHistory": {
+            "type": "boolean"
           }
         },
         "required": [
@@ -4644,6 +4647,11 @@
         "description": "Response body for `POST /v2/setup/switch-space`. Mirrors\n`SwitchSpaceResult` flattened to wire-friendly strings, plus\n`migrated_records` so the UI can show \"迁移了 N 条历史\".",
         "properties": {
           "migratedRecords": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "preservedUnreadableRecords": {
             "format": "int64",
             "minimum": 0,
             "type": "integer"
@@ -4670,7 +4678,8 @@
           "spaceId",
           "selfDeviceId",
           "selfIdentityFingerprint",
-          "migratedRecords"
+          "migratedRecords",
+          "preservedUnreadableRecords"
         ],
         "type": "object"
       },

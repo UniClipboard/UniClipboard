@@ -145,6 +145,11 @@ enum Commands {
         /// non-interactively. Only meaningful together with `--switch`.
         #[arg(long)]
         yes: bool,
+        /// Keep local history records that cannot be read during a space
+        /// switch. This requires explicit confirmation and is never implied
+        /// by `--yes`.
+        #[arg(long, requires = "switch")]
+        preserve_unreadable_history: bool,
     },
     /// List members of this space: the local device plus paired peers.
     ///
@@ -392,6 +397,7 @@ fn main() -> anyhow::Result<()> {
                 device_name,
                 switch,
                 yes,
+                preserve_unreadable_history,
             } => {
                 commands::join::run(
                     commands::join::JoinArgs {
@@ -400,6 +406,7 @@ fn main() -> anyhow::Result<()> {
                         device_name,
                         switch,
                         yes,
+                        preserve_unreadable_history,
                     },
                     cli.json,
                     cli.verbose,
@@ -532,7 +539,7 @@ mod tests {
     }
 
     #[test]
-    fn join_accepts_switch_and_yes_flags() {
+    fn join_accepts_switch_and_confirmation_flags() {
         // `--switch` opts into the destructive migration path; `--yes` skips
         // its confirmation in non-interactive contexts.
         let cli = Cli::try_parse_from([
@@ -544,13 +551,24 @@ mod tests {
             "pw",
             "--switch",
             "--yes",
+            "--preserve-unreadable-history",
         ])
-        .expect("join must accept --switch and --yes");
-        let Some(Commands::Join { switch, yes, .. }) = cli.command else {
+        .expect("join must accept switch confirmation flags");
+        let Some(Commands::Join {
+            switch,
+            yes,
+            preserve_unreadable_history,
+            ..
+        }) = cli.command
+        else {
             panic!("expected Join command");
         };
         assert!(switch, "--switch must parse into the Join command");
         assert!(yes, "--yes must parse into the Join command");
+        assert!(
+            preserve_unreadable_history,
+            "explicit preservation confirmation must parse into the Join command"
+        );
     }
 
     #[test]

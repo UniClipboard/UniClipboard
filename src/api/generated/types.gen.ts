@@ -2984,6 +2984,7 @@ export type StorageStatsEnvelope = {
 export type SwitchSpaceRequest = {
     code: string;
     newPassphrase: string;
+    preserveUnreadableHistory?: boolean;
 };
 
 /**
@@ -2993,6 +2994,7 @@ export type SwitchSpaceRequest = {
  */
 export type SwitchSpaceResponse = {
     migratedRecords: number;
+    preservedUnreadableRecords: number;
     selfDeviceId: string;
     selfIdentityFingerprint: string;
     spaceId: string;

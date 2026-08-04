@@ -1,12 +1,14 @@
 import { createAsyncThunk, createSlice, type PayloadAction } from '@reduxjs/toolkit'
 import {
   getMembershipConvergence,
+  getCurrentMemberRemoval,
   getMemberSyncPreferences,
   getSpaceProtection,
   updateMemberSyncPreferences as updateMemberSyncPreferencesApi,
   type MemberSyncPreferences,
   type MemberSyncPreferencesPatch,
   type MembershipConvergence,
+  type MemberRemoval,
   type SpaceProtection,
 } from '@/api/daemon/member'
 import {
@@ -37,6 +39,9 @@ interface DevicesState {
   // stay separate from page-level failures because this status is advisory.
   membershipConvergence: MembershipConvergence | null
   membershipConvergenceError: string | null
+
+  memberRemoval: MemberRemoval | null
+  memberRemovalError: string | null
 
   // 每成员同步偏好（phase 4b PR-3：从 DeviceSyncSettings 切换到 MemberSyncPreferences）
   memberSyncPreferences: Record<string, MemberSyncPreferences>
@@ -108,6 +113,8 @@ const initialState: DevicesState = {
   spaceProtectionError: null,
   membershipConvergence: null,
   membershipConvergenceError: null,
+  memberRemoval: null,
+  memberRemovalError: null,
   memberSyncPreferences: {},
   memberSyncPreferencesLoading: {},
 }
@@ -153,6 +160,17 @@ export const fetchMembershipConvergence = createAsyncThunk(
       return await getMembershipConvergence()
     } catch {
       return rejectWithValue('Failed to fetch membership convergence')
+    }
+  }
+)
+
+export const fetchCurrentMemberRemoval = createAsyncThunk(
+  'devices/fetchCurrentMemberRemoval',
+  async (_, { rejectWithValue }) => {
+    try {
+      return await getCurrentMemberRemoval()
+    } catch {
+      return rejectWithValue('devices.memberRemoval.errors.statusFailed')
     }
   }
 )
@@ -209,6 +227,10 @@ const devicesSlice = createSlice({
       })
       state.spaceMembersLoading = false
       state.spaceMembersError = null
+    },
+    setMemberRemoval: (state, action: PayloadAction<MemberRemoval | null>) => {
+      state.memberRemoval = action.payload
+      state.memberRemovalError = null
     },
   },
   extraReducers: builder => {
@@ -276,6 +298,15 @@ const devicesSlice = createSlice({
         state.membershipConvergenceError = action.payload as string
       })
 
+    builder
+      .addCase(fetchCurrentMemberRemoval.fulfilled, (state, action) => {
+        state.memberRemoval = action.payload
+        state.memberRemovalError = null
+      })
+      .addCase(fetchCurrentMemberRemoval.rejected, (state, action) => {
+        state.memberRemovalError = action.payload as string
+      })
+
     // Member sync preferences
     builder
       .addCase(fetchMemberSyncPreferences.pending, (state, action) => {
@@ -320,6 +351,6 @@ const devicesSlice = createSlice({
   },
 })
 
-export const { clearLocalDeviceError, clearSpaceMembersError, setSpaceMembers } =
+export const { clearLocalDeviceError, clearSpaceMembersError, setMemberRemoval, setSpaceMembers } =
   devicesSlice.actions
 export default devicesSlice.reducer

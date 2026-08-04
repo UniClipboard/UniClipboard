@@ -7,16 +7,17 @@
 
 use uc_engine::{
     ContentTypesPatch, ContentTypesSummary, LegacyBootstrapOutcome, LegacyBootstrapSummary,
-    MemberProtectionStatusSummary, MemberProtectionSummary, MemberSyncPreferencesPatch,
-    MemberSyncPreferencesSummary, MembershipConvergenceStateSummary, MembershipConvergenceSummary,
-    SpaceProtectionModeSummary, SpaceProtectionSummary,
+    MemberProtectionStatusSummary, MemberProtectionSummary, MemberRevocationOutcome,
+    MemberRevocationSummary, MemberSyncPreferencesPatch, MemberSyncPreferencesSummary,
+    MembershipConvergenceStateSummary, MembershipConvergenceSummary, SpaceProtectionModeSummary,
+    SpaceProtectionSummary,
 };
 
 use super::{IntoApiDto, IntoDomain};
 use crate::api::dto::member::{
     LegacyBootstrapDto, LegacyBootstrapOutcomeDto, MemberProtectionDto, MemberProtectionStatusDto,
-    MemberSyncPreferencesDto, MembershipConvergenceDto, MembershipConvergenceStateDto,
-    SpaceProtectionDto, SpaceProtectionModeDto,
+    MemberRemovalDto, MemberRemovalOutcomeDto, MemberSyncPreferencesDto, MembershipConvergenceDto,
+    MembershipConvergenceStateDto, SpaceProtectionDto, SpaceProtectionModeDto,
 };
 use crate::api::dto::settings::{ContentTypesDto, ContentTypesPatchDto};
 
@@ -150,10 +151,32 @@ impl IntoApiDto<MembershipConvergenceDto> for MembershipConvergenceSummary {
     }
 }
 
+impl IntoApiDto<MemberRemovalDto> for MemberRevocationSummary {
+    fn into_api_dto(self) -> MemberRemovalDto {
+        MemberRemovalDto {
+            revocation_id: self.revocation_id,
+            outcome: match self.outcome {
+                MemberRevocationOutcome::LocalOnly => MemberRemovalOutcomeDto::LocalOnly,
+                MemberRevocationOutcome::Applied => MemberRemovalOutcomeDto::Applied,
+                MemberRevocationOutcome::Complete => MemberRemovalOutcomeDto::Complete,
+                MemberRevocationOutcome::RecoveryRequired => {
+                    MemberRemovalOutcomeDto::RecoveryRequired
+                }
+            },
+            pending_recipients: self.pending_recipients,
+            removed_device_ids: self.removed_device_ids,
+            pending_recipient_device_ids: self.pending_recipient_device_ids,
+            updated_at_ms: self.updated_at_ms,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::api::dto::member::MemberSyncPreferencesPatchDto;
+    use crate::api::dto::member::{
+        MemberRemovalDto, MemberRemovalOutcomeDto, MemberSyncPreferencesPatchDto,
+    };
 
     #[test]
     fn patch_mapping_preserves_omitted_fields_as_none() {
@@ -214,5 +237,23 @@ mod tests {
             serde_json::to_value(mapped).expect("serialize convergence DTO"),
             serde_json::json!({ "state": "waiting_for_upgrade" })
         );
+    }
+
+    #[test]
+    fn member_removal_mapping_keeps_pending_devices_and_timestamp() {
+        let summary = MemberRevocationSummary {
+            revocation_id: Some("removal-1".into()),
+            outcome: MemberRevocationOutcome::Applied,
+            pending_recipients: 1,
+            removed_device_ids: vec!["removed-device".into()],
+            pending_recipient_device_ids: vec!["retained-device".into()],
+            updated_at_ms: 42,
+        };
+
+        let mapped: MemberRemovalDto = summary.into_api_dto();
+
+        assert_eq!(mapped.outcome, MemberRemovalOutcomeDto::Applied);
+        assert_eq!(mapped.pending_recipient_device_ids, vec!["retained-device"]);
+        assert_eq!(mapped.updated_at_ms, 42);
     }
 }

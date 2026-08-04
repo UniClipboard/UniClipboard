@@ -119,3 +119,30 @@ pub struct MembershipConvergenceDto {
 pub struct SecureLegacyRemovalDto {
     pub bootstrap: LegacyBootstrapDto,
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum MemberRemovalOutcomeDto {
+    LocalOnly,
+    Applied,
+    Complete,
+    RecoveryRequired,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct MemberRemovalDto {
+    pub revocation_id: Option<String>,
+    pub outcome: MemberRemovalOutcomeDto,
+    pub pending_recipients: u64,
+    pub removed_device_ids: Vec<String>,
+    pub pending_recipient_device_ids: Vec<String>,
+    pub updated_at_ms: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ContinueMemberRemovalRequest {
+    pub revocation_id: String,
+    pub permanently_lost_device_ids: Vec<String>,
+}

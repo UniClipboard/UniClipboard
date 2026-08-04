@@ -115,7 +115,28 @@ pub fn engine_event_to_ws(event: EngineEvent) -> Option<DaemonWsEvent> {
                 "targetDeviceId": event.target_device_id,
             }),
         ),
-        _ => return None,
+        EngineEvent::MemberRevocationChanged(event) => (
+            ws_topic::MEMBER_REMOVAL,
+            ws_event::MEMBER_REMOVAL_CHANGED,
+            event.updated_at_ms,
+            serde_json::json!({
+                "revocationId": event.revocation_id,
+                "outcome": event.outcome,
+                "pendingRecipients": event.pending_recipients,
+                "removedDeviceIds": event.removed_device_ids,
+                "pendingRecipientDeviceIds": event.pending_recipient_device_ids,
+                "updatedAtMs": event.updated_at_ms,
+            }),
+        ),
+        EngineEvent::StateChanged { .. }
+        | EngineEvent::PeerPresenceChanged(_)
+        | EngineEvent::PairingCompleted(_)
+        | EngineEvent::ActiveClipboardChanged(_)
+        | EngineEvent::MobileLanSettingsChanged(_)
+        | EngineEvent::RefreshRequired { .. }
+        | EngineEvent::OperationFinished { .. }
+        | EngineEvent::LifecycleFailed { .. }
+        | EngineEvent::Fatal { .. } => return None,
     };
 
     Some(DaemonWsEvent {
@@ -132,7 +153,8 @@ mod engine_event_tests {
     use super::*;
     use serde::Serialize;
     use uc_engine::{
-        EngineError, EngineErrorCategory, InboundNoticeEvent, LifecycleAction, TransferProgress,
+        EngineError, EngineErrorCategory, InboundNoticeEvent, LifecycleAction,
+        MemberRevocationOutcome, MemberRevocationSummary, TransferProgress,
     };
 
     #[derive(Serialize)]
@@ -239,5 +261,29 @@ mod engine_event_tests {
         assert_eq!(event.payload["direction"], "receiving");
         assert_eq!(event.payload["bytesTransferred"], 64);
         assert_eq!(event.payload["totalBytes"], 128);
+    }
+
+    #[test]
+    fn member_removal_changes_notify_device_screens_with_full_progress() {
+        let event = engine_event_to_ws(EngineEvent::MemberRevocationChanged(
+            MemberRevocationSummary {
+                revocation_id: Some("removal-1".into()),
+                outcome: MemberRevocationOutcome::Applied,
+                pending_recipients: 1,
+                removed_device_ids: vec!["removed-device".into()],
+                pending_recipient_device_ids: vec!["retained-device".into()],
+                updated_at_ms: 42,
+            },
+        ))
+        .expect("member removal websocket event");
+
+        assert_eq!(event.topic, "member-removal");
+        assert_eq!(event.event_type, "member-removal.changed");
+        assert_eq!(event.payload["revocationId"], "removal-1");
+        assert_eq!(event.payload["outcome"], "applied");
+        assert_eq!(
+            event.payload["pendingRecipientDeviceIds"],
+            serde_json::json!(["retained-device"])
+        );
     }
 }

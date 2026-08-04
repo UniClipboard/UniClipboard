@@ -4,21 +4,20 @@
 //! engine owns the member, trust, and peer-address cleanup sequence.
 
 use axum::extract::State;
-use axum::http::StatusCode;
 use axum::routing::post;
 use axum::{Json, Router};
 use utoipa;
 
-use uc_engine::error_codes::{
-    MEMBER_INVALID_INPUT_CODE, MEMBER_LEGACY_BOOTSTRAP_REQUIRED_CODE, MEMBER_NOT_FOUND_CODE,
-    MEMBER_UNAVAILABLE_CODE,
-};
+use uc_engine::error_codes::MEMBER_LEGACY_BOOTSTRAP_REQUIRED_CODE;
 use uc_engine::{EngineError, Operation, OperationResult, RemoveMemberInput};
 
-use crate::api::dto::error::{log_facade_failure, ApiError};
+use crate::api::dto::error::ApiError;
+use crate::api::dto::member::MemberRemovalDto;
 use crate::api::dto::pairing::UnpairDeviceRequest;
-use crate::api::member::legacy_bootstrap_required_error;
+use crate::api::member::{legacy_bootstrap_required_error, map_member_engine_error};
+use crate::api::projection::IntoApiDto;
 use crate::api::server::DaemonApiState;
+use uc_daemon_contract::api::dto::envelope::ApiEnvelope;
 
 pub fn router() -> Router<DaemonApiState> {
     Router::new().route("/pairing/unpair", post(handle_unpair_device))
@@ -26,12 +25,10 @@ pub fn router() -> Router<DaemonApiState> {
 
 /// POST /pairing/unpair
 ///
-/// Revokes the local member record for the given peer. Success is signalled by
-/// `204 No Content` with no body (ADR-008 §B Rule 3 — 204 endpoints are NOT
-/// enveloped). Errors flow through the shared `ApiError` carrier and therefore
-/// serialize to `ApiErrorResponse { code, message, details? }` on the wire —
-/// the dedicated `PairingApiErrorResponse` contract only covers the retired
-/// libp2p pairing routes, not this revoke path.
+/// Revokes the local member record for the given peer and returns the
+/// Engine-owned removal progress. Errors flow through the shared `ApiError`
+/// carrier and therefore serialize to `ApiErrorResponse { code, message,
+/// details? }` on the wire.
 #[utoipa::path(
     post,
     path = "/pairing/unpair",
@@ -39,7 +36,7 @@ pub fn router() -> Router<DaemonApiState> {
     operation_id = "unpairDevice",
     request_body = UnpairDeviceRequest,
     responses(
-        (status = 204, description = "Device unpaired (no body)"),
+        (status = 200, body = MemberRemovalEnvelope),
         (status = 404, description = "Member not found", body = ApiErrorResponse),
         (status = 503, description = "Runtime unavailable", body = ApiErrorResponse),
         (status = 500, description = "Internal server error", body = ApiErrorResponse),
@@ -48,7 +45,7 @@ pub fn router() -> Router<DaemonApiState> {
 pub(crate) async fn handle_unpair_device(
     State(state): State<DaemonApiState>,
     Json(payload): Json<UnpairDeviceRequest>,
-) -> Result<StatusCode, ApiError> {
+) -> Result<Json<ApiEnvelope<MemberRemovalDto>>, ApiError> {
     let peer_id = payload.peer_id;
 
     // Slice 4 P5a-1: 取消配对 = 删除本机成员记录。libp2p 时代的
@@ -61,42 +58,27 @@ pub(crate) async fn handle_unpair_device(
         }))
         .await
         .map_err(|error| map_unpair_engine_err(error, peer_id.as_str()))?;
-    if !matches!(result, OperationResult::MemberRemoved(_)) {
+    let OperationResult::MemberRemoved(removal) = result else {
         return Err(ApiError::internal(
             "engine returned an unexpected member-removal result",
         ));
-    }
+    };
 
-    Ok(StatusCode::NO_CONTENT)
+    Ok(Json(ApiEnvelope::now(removal.into_api_dto())))
 }
 
 fn map_unpair_engine_err(error: EngineError, peer_id: &str) -> ApiError {
-    let (variant, api): (&'static str, ApiError) = match error.code() {
-        MEMBER_INVALID_INPUT_CODE => (
-            "invalid_input",
-            ApiError::bad_request("member device ID must not be empty"),
-        ),
-        MEMBER_NOT_FOUND_CODE => (
-            "not_found",
-            ApiError::not_found(format!("member `{peer_id}` not found")),
-        ),
-        MEMBER_UNAVAILABLE_CODE => (
-            "unavailable",
-            ApiError::service_unavailable("member roster facade unavailable"),
-        ),
-        MEMBER_LEGACY_BOOTSTRAP_REQUIRED_CODE => (
-            "legacy_bootstrap_required",
-            legacy_bootstrap_required_error(),
-        ),
-        _ => ("internal", ApiError::internal("failed to remove member")),
-    };
-    log_facade_failure("roster", "unpair_device", variant, api.status, &api.message);
-    api
+    if error.code() == MEMBER_LEGACY_BOOTSTRAP_REQUIRED_CODE {
+        legacy_bootstrap_required_error()
+    } else {
+        map_member_engine_error(peer_id, "unpair_device", error)
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use axum::http::StatusCode;
     use uc_engine::EngineErrorCategory;
 
     #[test]

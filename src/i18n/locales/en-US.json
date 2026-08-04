@@ -1100,6 +1100,30 @@
         "recovery_required": "Recovery required"
       }
     },
+    "memberRemoval": {
+      "pending": {
+        "title": "Device removal is still in progress",
+        "description": "Waiting for {{count}} retained device to confirm the security update."
+      },
+      "recovery": {
+        "title": "Device removal needs recovery",
+        "description": "Confirm only devices that are permanently unavailable before continuing."
+      },
+      "complete": {
+        "title": "Device removal complete",
+        "description": "Every retained device has confirmed the security update."
+      },
+      "permanentLoss": {
+        "action": "Mark pending devices as permanently lost",
+        "title": "Confirm permanent device loss",
+        "description": "Only continue when these pending devices cannot be recovered. This cannot be undone.",
+        "confirm": "Confirm permanent loss"
+      },
+      "errors": {
+        "statusFailed": "Could not load device-removal progress.",
+        "continueFailed": "Could not continue device removal."
+      }
+    },
     "tabs": {
       "connected": "Connected Devices",
       "requests": "Pairing Requests"

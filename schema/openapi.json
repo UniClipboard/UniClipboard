@@ -557,6 +557,24 @@
         },
         "type": "object"
       },
+      "ContinueMemberRemovalRequest": {
+        "properties": {
+          "permanentlyLostDeviceIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "revocationId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "revocationId",
+          "permanentlyLostDeviceIds"
+        ],
+        "type": "object"
+      },
       "CurrentInvitation": {
         "description": "Companion to [`SetupStateResponse::current_invitation`].",
         "properties": {
@@ -571,6 +589,28 @@
         "required": [
           "code",
           "expiresAtMs"
+        ],
+        "type": "object"
+      },
+      "CurrentMemberRemovalEnvelope": {
+        "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
+        "properties": {
+          "data": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MemberRemovalDto"
+              }
+            ],
+            "nullable": true
+          },
+          "ts": {
+            "description": "Server time when the response was built (unix epoch milliseconds).",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "ts"
         ],
         "type": "object"
       },
@@ -2060,6 +2100,73 @@
           "protected",
           "awaiting_readmission",
           "requires_readmission",
+          "recovery_required"
+        ],
+        "type": "string"
+      },
+      "MemberRemovalDto": {
+        "properties": {
+          "outcome": {
+            "$ref": "#/components/schemas/MemberRemovalOutcomeDto"
+          },
+          "pendingRecipientDeviceIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "pendingRecipients": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "removedDeviceIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "revocationId": {
+            "nullable": true,
+            "type": "string"
+          },
+          "updatedAtMs": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "outcome",
+          "pendingRecipients",
+          "removedDeviceIds",
+          "pendingRecipientDeviceIds",
+          "updatedAtMs"
+        ],
+        "type": "object"
+      },
+      "MemberRemovalEnvelope": {
+        "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/MemberRemovalDto"
+          },
+          "ts": {
+            "description": "Server time when the response was built (unix epoch milliseconds).",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "data",
+          "ts"
+        ],
+        "type": "object"
+      },
+      "MemberRemovalOutcomeDto": {
+        "enum": [
+          "local_only",
+          "applied",
+          "complete",
           "recovery_required"
         ],
         "type": "string"
@@ -7574,6 +7681,132 @@
         ]
       }
     },
+    "/member/removal/continue": {
+      "post": {
+        "operationId": "continueMemberRemoval",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ContinueMemberRemovalRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberRemovalEnvelope"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session_query": []
+          },
+          {
+            "session_header": []
+          }
+        ],
+        "tags": [
+          "member"
+        ]
+      }
+    },
+    "/member/removal/current": {
+      "get": {
+        "operationId": "getCurrentMemberRemoval",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CurrentMemberRemovalEnvelope"
+                }
+              }
+            },
+            "description": ""
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session_query": []
+          },
+          {
+            "session_header": []
+          }
+        ],
+        "tags": [
+          "member"
+        ]
+      }
+    },
     "/member/{device_id}/secure-remove": {
       "post": {
         "description": "Starts the Engine-owned Legacy Space bootstrap that safely excludes a member\nonly after a replacement MLS state is activated. The returned summary is a\nstatus snapshot, not a daemon-owned operation handle.",
@@ -8386,7 +8619,7 @@
     },
     "/pairing/unpair": {
       "post": {
-        "description": "Revokes the local member record for the given peer. Success is signalled by\n`204 No Content` with no body (ADR-008 §B Rule 3 — 204 endpoints are NOT\nenveloped). Errors flow through the shared `ApiError` carrier and therefore\nserialize to `ApiErrorResponse { code, message, details? }` on the wire —\nthe dedicated `PairingApiErrorResponse` contract only covers the retired\nlibp2p pairing routes, not this revoke path.",
+        "description": "Revokes the local member record for the given peer and returns the\nEngine-owned removal progress. Errors flow through the shared `ApiError`\ncarrier and therefore serialize to `ApiErrorResponse { code, message,\ndetails? }` on the wire.",
         "operationId": "unpairDevice",
         "requestBody": {
           "content": {
@@ -8399,8 +8632,15 @@
           "required": true
         },
         "responses": {
-          "204": {
-            "description": "Device unpaired (no body)"
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberRemovalEnvelope"
+                }
+              }
+            },
+            "description": ""
           },
           "404": {
             "content": {

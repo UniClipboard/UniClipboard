@@ -19,6 +19,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { refreshPresence } from '@/api/daemon'
+import type { MemberRemoval } from '@/api/daemon/member'
 import { isLegacyBootstrapRequired, secureRemoveLegacyMember } from '@/api/daemon/member'
 import { unpairDevice } from '@/api/daemon/members'
 import {
@@ -109,6 +110,7 @@ const devicesState = {
   spaceProtectionError: null as string | null,
   membershipConvergence: null as null | { state: string },
   membershipConvergenceError: null as string | null,
+  memberRemoval: null as MemberRemoval | null,
   memberSyncPreferences: {},
   memberSyncPreferencesLoading: {},
 }
@@ -128,7 +130,9 @@ vi.mock('@/store/slices/devicesSlice', () => ({
   clearSpaceMembersError: vi.fn(() => ({ type: 'devices/clearSpaceMembersError' })),
   fetchSpaceProtection: vi.fn(() => ({ type: 'devices/fetchSpaceProtection' })),
   fetchMembershipConvergence: vi.fn(() => ({ type: 'devices/fetchMembershipConvergence' })),
+  fetchCurrentMemberRemoval: vi.fn(() => ({ type: 'devices/fetchCurrentMemberRemoval' })),
   setSpaceMembers: vi.fn((members: unknown[]) => ({ type: 'devices/setSpaceMembers', members })),
+  setMemberRemoval: vi.fn((removal: unknown) => ({ type: 'devices/setMemberRemoval', removal })),
   fetchMemberSyncPreferences: vi.fn(() => ({ type: 'devices/fetchMemberSyncPreferences' })),
   updateMemberSyncPreferences: vi.fn(() => ({ type: 'devices/updateMemberSyncPreferences' })),
 }))
@@ -142,7 +146,10 @@ vi.mock('@/api/daemon/members', () => ({
 }))
 
 vi.mock('@/api/daemon/member', () => ({
+  continueMemberRemoval: vi.fn(),
+  getCurrentMemberRemoval: vi.fn(),
   isLegacyBootstrapRequired: vi.fn(),
+  isMemberRemovalInProgress: vi.fn(),
   secureRemoveLegacyMember: vi.fn(),
 }))
 
@@ -201,6 +208,7 @@ describe('DevicesPage', () => {
     devicesState.spaceProtectionError = null
     devicesState.membershipConvergence = null
     devicesState.membershipConvergenceError = null
+    devicesState.memberRemoval = null
     daemonWsMocks.subscribe.mockClear()
     vi.mocked(listMobileDevices).mockReset()
     vi.mocked(listMobileDevices).mockResolvedValue([])
@@ -242,6 +250,26 @@ describe('DevicesPage', () => {
     const list = screen.getByRole('complementary')
     expect(list).toBeInTheDocument()
     expect(screen.getByRole('heading', { level: 2 })).toBeInTheDocument()
+  })
+
+  it('keeps an active device removal at the bottom of the device list', () => {
+    devicesState.memberRemoval = {
+      revocationId: 'removal-1',
+      outcome: 'applied',
+      pendingRecipients: 1,
+      removedDeviceIds: ['removed-device'],
+      pendingRecipientDeviceIds: ['retained-device'],
+      updatedAtMs: 1_700_000_000_000,
+    }
+
+    render(<DevicesPage />)
+
+    const status = screen
+      .getByText(i18n.t('devices.memberRemoval.pending.title'))
+      .closest('section')
+    expect(status).not.toBeNull()
+    expect(screen.getByRole('complementary')).toContainElement(status)
+    expect(status?.parentElement).toHaveClass('absolute', 'bottom-0')
   })
 
   it('calls refreshPresence exactly once on mount and does not poll on a timer', () => {
@@ -338,6 +366,19 @@ describe('DevicesPage', () => {
 
     expect(dispatchMock).toHaveBeenCalledWith({ type: 'devices/setSpaceMembers', members: [] })
     expect(dispatchMock).toHaveBeenCalledWith({ type: 'devices/fetchMembershipConvergence' })
+  })
+
+  it('refreshes member-removal progress and devices after a removal status notification', () => {
+    render(<DevicesPage />)
+    const handler = daemonWsMocks.subscribe.mock.calls.at(-1)?.[1]
+    dispatchMock.mockClear()
+
+    act(() => {
+      handler?.({ topic: 'member-removal', eventType: 'member-removal.changed', payload: {} })
+    })
+
+    expect(dispatchMock).toHaveBeenCalledWith({ type: 'devices/fetchCurrentMemberRemoval' })
+    expect(dispatchMock).toHaveBeenCalledWith({ type: 'devices/fetchSpaceMembers' })
   })
 
   it('shows a compact status while the space is still connecting', () => {
@@ -540,7 +581,7 @@ describe('DevicesPage secure legacy removal', () => {
   it('disables the confirmation while removal is in progress', async () => {
     let finishRemoval: (() => void) | undefined
     vi.mocked(unpairDevice).mockImplementation(
-      () => new Promise<void>(resolve => (finishRemoval = resolve))
+      () => new Promise<never>(resolve => (finishRemoval = () => resolve(undefined as never)))
     )
     render(<DevicesPage />)
     const user = await openUnpairConfirmation()
@@ -556,7 +597,7 @@ describe('DevicesPage secure legacy removal', () => {
   it('keeps the confirmation open when dismissal is requested during removal', async () => {
     let finishRemoval: (() => void) | undefined
     vi.mocked(unpairDevice).mockImplementation(
-      () => new Promise<void>(resolve => (finishRemoval = resolve))
+      () => new Promise<never>(resolve => (finishRemoval = () => resolve(undefined as never)))
     )
     render(<DevicesPage />)
     const user = await openUnpairConfirmation()
@@ -579,7 +620,7 @@ describe('DevicesPage secure legacy removal', () => {
     devicesState.spaceMembers = [localDevice, remoteMember, secondRemoteMember]
     let finishRemoval: (() => void) | undefined
     vi.mocked(unpairDevice).mockImplementation(
-      () => new Promise<void>(resolve => (finishRemoval = resolve))
+      () => new Promise<never>(resolve => (finishRemoval = () => resolve(undefined as never)))
     )
     render(<DevicesPage />)
     const secondDeviceButton = screen.getByRole('button', { name: secondRemoteMember.deviceName })

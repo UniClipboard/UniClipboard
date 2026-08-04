@@ -25,7 +25,14 @@ import { Plus, Settings2 } from 'lucide-react'
 import React, { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { useTranslation } from 'react-i18next'
 import { refreshPresence } from '@/api/daemon'
-import { isLegacyBootstrapRequired, secureRemoveLegacyMember } from '@/api/daemon/member'
+import {
+  continueMemberRemoval,
+  getCurrentMemberRemoval,
+  isLegacyBootstrapRequired,
+  isMemberRemovalInProgress,
+  secureRemoveLegacyMember,
+  type MemberRemoval,
+} from '@/api/daemon/member'
 import type { SpaceMember } from '@/api/daemon/members'
 import { unpairDevice } from '@/api/daemon/members'
 import {
@@ -43,6 +50,7 @@ import AddMobileSyncDeviceDialog from '@/components/device/AddMobileSyncDeviceDi
 import { derivePeerStatusTone } from '@/components/device/connection-channel-utils'
 import EnableMobileSyncDialog from '@/components/device/EnableMobileSyncDialog'
 import LocalDevicePanel from '@/components/device/LocalDevicePanel'
+import MemberRemovalStatus from '@/components/device/MemberRemovalStatus'
 import MobileDevicePanel from '@/components/device/MobileDevicePanel'
 import MobileSyncSettingsDialog from '@/components/device/MobileSyncSettingsDialog'
 import PeerDetailPanel from '@/components/device/PeerDetailPanel'
@@ -82,9 +90,11 @@ import {
   clearSpaceMembersError,
   fetchLocalDeviceInfo,
   fetchMembershipConvergence,
+  fetchCurrentMemberRemoval,
   fetchSpaceProtection,
   fetchSpaceMembers,
   setSpaceMembers,
+  setMemberRemoval,
 } from '@/store/slices/devicesSlice'
 
 const log = createLogger('devices-page')
@@ -128,6 +138,7 @@ const DevicesPage: React.FC = () => {
     spaceProtectionError,
     membershipConvergence,
     membershipConvergenceError,
+    memberRemoval,
   } = useAppSelector(state => state.devices)
 
   const peers = localDevice
@@ -145,6 +156,7 @@ const DevicesPage: React.FC = () => {
   useEffect(() => {
     dispatch(fetchLocalDeviceInfo())
     dispatch(fetchSpaceMembers())
+    dispatch(fetchCurrentMemberRemoval())
   }, [dispatch])
 
   useEffect(() => {
@@ -181,6 +193,11 @@ const DevicesPage: React.FC = () => {
 
   useEffect(() => {
     const handler = (event: { topic: string; eventType: string; payload: unknown }) => {
+      if (event.topic === 'member-removal' && event.eventType === 'member-removal.changed') {
+        dispatch(fetchCurrentMemberRemoval())
+        dispatch(fetchSpaceMembers())
+        return
+      }
       if (event.topic !== 'peers') return
       if (event.eventType === 'peers.changed') {
         // The event carries the full member snapshot (same source as
@@ -193,7 +210,7 @@ const DevicesPage: React.FC = () => {
         }
       }
     }
-    const unsub = daemonWs.subscribe(['peers'], handler)
+    const unsub = daemonWs.subscribe(['peers', 'member-removal'], handler)
     return unsub
   }, [dispatch, documentVisible])
 
@@ -233,6 +250,9 @@ const DevicesPage: React.FC = () => {
   const [unpairDialogOpen, setUnpairDialogOpen] = useState(false)
   const [unpairTargetId, setUnpairTargetId] = useState<string | null>(null)
   const [unpairBusy, setUnpairBusy] = useState(false)
+  const [permanentLossRemoval, setPermanentLossRemoval] = useState<MemberRemoval | null>(null)
+  const [permanentLossDeviceIds, setPermanentLossDeviceIds] = useState<string[]>([])
+  const [permanentLossBusy, setPermanentLossBusy] = useState(false)
   const unpairBusyRef = useRef(false)
 
   const handleUnpairRequest = (peerId: string) => {
@@ -253,8 +273,16 @@ const DevicesPage: React.FC = () => {
     setUnpairBusy(true)
     try {
       try {
-        await unpairDevice(unpairTargetId)
+        const removal = await unpairDevice(unpairTargetId)
+        dispatch(setMemberRemoval(removal))
       } catch (error) {
+        if (isMemberRemovalInProgress(error)) {
+          const current = await getCurrentMemberRemoval()
+          dispatch(setMemberRemoval(current))
+          setUnpairDialogOpen(false)
+          setUnpairTargetId(null)
+          return
+        }
         if (!isLegacyBootstrapRequired(error)) {
           log.error({ err: error }, 'failed to remove device')
           toast.error(t('devices.protection.errors.removeFailed'))
@@ -289,11 +317,35 @@ const DevicesPage: React.FC = () => {
     membershipConvergenceError || hideDuplicateUpgrade
       ? 'complete'
       : (membershipConvergence?.state ?? 'complete')
+  const deviceNames = new Map(rawSpaceMembers.map(device => [device.peerId, device.deviceName]))
+  const handlePermanentLoss = (removal: MemberRemoval, deviceIds: string[]) => {
+    setPermanentLossRemoval(removal)
+    setPermanentLossDeviceIds(deviceIds)
+  }
+  const confirmPermanentLoss = async () => {
+    if (!permanentLossRemoval?.revocationId || permanentLossBusy) return
+    setPermanentLossBusy(true)
+    try {
+      const next = await continueMemberRemoval(
+        permanentLossRemoval.revocationId,
+        permanentLossDeviceIds
+      )
+      dispatch(setMemberRemoval(next))
+      dispatch(fetchSpaceMembers())
+      setPermanentLossRemoval(null)
+      setPermanentLossDeviceIds([])
+    } catch (error) {
+      log.error({ err: error }, 'failed to continue member removal')
+      toast.error(t('devices.memberRemoval.errors.continueFailed'))
+    } finally {
+      setPermanentLossBusy(false)
+    }
+  }
 
   return (
     <div className="flex h-full">
       {/* ── list column ───────────────────────────────────────── */}
-      <aside className="flex w-60 shrink-0 flex-col border-r border-border/50">
+      <aside className="relative flex w-60 shrink-0 flex-col border-r border-border/50">
         {/* The add button shares a row with the title only, so the counts
             line below keeps the full column width instead of wrapping in a
             long locale (ru). */}
@@ -480,6 +532,16 @@ const DevicesPage: React.FC = () => {
             )}
           </div>
         </ScrollArea>
+        {memberRemoval && (
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 p-3">
+            <MemberRemovalStatus
+              className="pointer-events-auto"
+              removal={memberRemoval}
+              deviceNames={deviceNames}
+              onPermanentLoss={handlePermanentLoss}
+            />
+          </div>
+        )}
       </aside>
 
       {/* ── detail pane ───────────────────────────────────────── */}
@@ -548,6 +610,36 @@ const DevicesPage: React.FC = () => {
         busy={unpairBusy}
         onConfirm={handleUnpairConfirm}
       />
+      <AlertDialog
+        open={permanentLossRemoval !== null}
+        onOpenChange={open => {
+          if (!open && !permanentLossBusy) {
+            setPermanentLossRemoval(null)
+            setPermanentLossDeviceIds([])
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('devices.memberRemoval.permanentLoss.title')}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t('devices.memberRemoval.permanentLoss.description')}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={permanentLossBusy}>
+              {t('clipboard.cancelLabel')}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              disabled={permanentLossBusy}
+              onClick={confirmPermanentLoss}
+            >
+              {t('devices.memberRemoval.permanentLoss.confirm')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       <MobileSyncSettingsDialog
         open={settingsSheetOpen}
         onOpenChange={mobileActions.setSettingsSheetOpen}

@@ -24,7 +24,7 @@
     "fumadocs-ui": "16.9.1",
     "lucide-react": "^1.16.0",
     "mermaid": "^11.15.0",
-    "next": "16.2.6",
+    "next": "16.3.0",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
     "shiki": "^4.1.0",
@@ -32,16 +32,16 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@tailwindcss/postcss": "^4.3.0",
+    "@tailwindcss/postcss": "^4.3.3",
     "@types/mdx": "^2.0.13",
     "@types/node": "^25.9.1",
     "@types/react": "^19.2.15",
     "@types/react-dom": "^19.2.3",
     "eslint": "^10.4.0",
-    "eslint-config-next": "16.2.6",
+    "eslint-config-next": "16.3.0",
     "github-slugger": "2.0.0",
-    "postcss": "^8.5.15",
-    "tailwindcss": "^4.3.0",
+    "postcss": "^8.5.25",
+    "tailwindcss": "^4.3.3",
     "typescript": "^6.0.3"
   }
 }

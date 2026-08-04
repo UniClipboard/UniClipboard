@@ -37,6 +37,7 @@ pub fn router() -> Router<DaemonApiState> {
     request_body = UnpairDeviceRequest,
     responses(
         (status = 200, body = MemberRemovalEnvelope),
+        (status = 409, description = "Member removal already in progress", body = ApiErrorResponse),
         (status = 404, description = "Member not found", body = ApiErrorResponse),
         (status = 503, description = "Runtime unavailable", body = ApiErrorResponse),
         (status = 500, description = "Internal server error", body = ApiErrorResponse),

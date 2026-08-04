@@ -1044,7 +1044,7 @@
     "memberRemoval": {
       "pending": {
         "title": "デバイスの削除はまだ進行中です",
-        "description": "{{count}} 台の残っているデバイスがセキュリティ更新を確認するのを待っています。"
+        "description_other": "{{count}} 台の残っているデバイスがセキュリティ更新を確認するのを待っています。"
       },
       "recovery": {
         "title": "デバイス削除の復旧が必要です",

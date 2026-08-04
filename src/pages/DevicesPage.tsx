@@ -139,6 +139,7 @@ const DevicesPage: React.FC = () => {
     membershipConvergence,
     membershipConvergenceError,
     memberRemoval,
+    memberRemovalError,
   } = useAppSelector(state => state.devices)
 
   const peers = localDevice
@@ -277,7 +278,14 @@ const DevicesPage: React.FC = () => {
         dispatch(setMemberRemoval(removal))
       } catch (error) {
         if (isMemberRemovalInProgress(error)) {
-          const current = await getCurrentMemberRemoval()
+          let current: MemberRemoval | null
+          try {
+            current = await getCurrentMemberRemoval()
+          } catch (statusError) {
+            log.error({ err: statusError }, 'failed to load active member removal')
+            toast.error(t('devices.memberRemoval.errors.statusFailed'))
+            return
+          }
           dispatch(setMemberRemoval(current))
           setUnpairDialogOpen(false)
           setUnpairTargetId(null)
@@ -396,13 +404,20 @@ const DevicesPage: React.FC = () => {
 
         <ScrollArea className="min-h-0 flex-1">
           <div className="flex flex-col px-2 pb-3">
-            {(spaceMembersError || mobileDevicesError || spaceProtectionError) && (
+            {(spaceMembersError ||
+              mobileDevicesError ||
+              spaceProtectionError ||
+              memberRemovalError) && (
               <Alert variant="destructive" className="mx-1 my-2">
                 <AlertDescription className="flex flex-col gap-2 text-xs">
                   <span>
                     {spaceMembersError ??
                       mobileDevicesError ??
-                      (spaceProtectionError ? t(spaceProtectionError) : null)}
+                      (spaceProtectionError
+                        ? t(spaceProtectionError)
+                        : memberRemovalError
+                          ? t(memberRemovalError)
+                          : null)}
                   </span>
                   <Button
                     variant="outline"
@@ -418,6 +433,9 @@ const DevicesPage: React.FC = () => {
                       }
                       if (mobileDevicesError) {
                         mobileActions.reload()
+                      }
+                      if (memberRemovalError) {
+                        dispatch(fetchCurrentMemberRemoval())
                       }
                     }}
                   >
@@ -633,7 +651,10 @@ const DevicesPage: React.FC = () => {
             <AlertDialogAction
               variant="destructive"
               disabled={permanentLossBusy}
-              onClick={confirmPermanentLoss}
+              onClick={event => {
+                event.preventDefault()
+                void confirmPermanentLoss()
+              }}
             >
               {t('devices.memberRemoval.permanentLoss.confirm')}
             </AlertDialogAction>

@@ -1043,7 +1043,7 @@
     "memberRemoval": {
       "pending": {
         "title": "裝置移除仍在進行",
-        "description": "正在等待 {{count}} 台保留裝置確認安全更新。"
+        "description_other": "正在等待 {{count}} 台保留裝置確認安全更新。"
       },
       "recovery": {
         "title": "裝置移除需要恢復",

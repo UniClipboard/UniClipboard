@@ -1047,7 +1047,9 @@
     "memberRemoval": {
       "pending": {
         "title": "A remoção do dispositivo ainda está em andamento",
-        "description": "Aguardando {{count}} dispositivo mantido confirmar a atualização de segurança."
+        "description_one": "Aguardando {{count}} dispositivo mantido confirmar a atualização de segurança.",
+        "description_many": "Aguardando {{count}} dispositivos mantidos confirmarem a atualização de segurança.",
+        "description_other": "Aguardando {{count}} dispositivos mantidos confirmarem a atualização de segurança."
       },
       "recovery": {
         "title": "A remoção do dispositivo precisa de recuperação",

@@ -1,20 +1,25 @@
 import { configureStore } from '@reduxjs/toolkit'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
+  getCurrentMemberRemoval,
   getMembershipConvergence,
   getSpaceProtection,
+  type MemberRemoval,
   type MembershipConvergence,
   type SpaceProtection,
 } from '@/api/daemon/member'
 import type { SpaceMember } from '@/api/daemon/members'
 import devicesReducer, {
+  fetchCurrentMemberRemoval,
   fetchMembershipConvergence,
   fetchSpaceProtection,
+  setMemberRemoval,
   setSpaceMembers,
 } from '../devicesSlice'
 
 vi.mock('@/api/daemon/member', async importOriginal => ({
   ...(await importOriginal<typeof import('@/api/daemon/member')>()),
+  getCurrentMemberRemoval: vi.fn(),
   getMembershipConvergence: vi.fn(),
   getSpaceProtection: vi.fn(),
 }))
@@ -132,5 +137,36 @@ describe('devicesSlice fetchMembershipConvergence', () => {
     expect(store.getState().devices.membershipConvergenceError).toBe(
       'Failed to fetch membership convergence'
     )
+  })
+})
+
+describe('devicesSlice fetchCurrentMemberRemoval', () => {
+  const removal: MemberRemoval = {
+    revocationId: 'removal-1',
+    outcome: 'applied',
+    pendingRecipients: 1,
+    removedDeviceIds: ['removed-device'],
+    pendingRecipientDeviceIds: ['retained-device'],
+    updatedAtMs: 1_700_000_000_000,
+  }
+
+  beforeEach(() => {
+    vi.mocked(getCurrentMemberRemoval).mockReset()
+  })
+
+  it('keeps a newer removal snapshot when an older refresh returns null', async () => {
+    let resolveRefresh: ((value: MemberRemoval | null) => void) | undefined
+    vi.mocked(getCurrentMemberRemoval).mockImplementation(
+      () => new Promise<MemberRemoval | null>(resolve => (resolveRefresh = resolve))
+    )
+    const store = configureStore({ reducer: { devices: devicesReducer } })
+
+    const refresh = store.dispatch(fetchCurrentMemberRemoval())
+    store.dispatch(setMemberRemoval(removal))
+    resolveRefresh?.(null)
+    await refresh
+
+    expect(store.getState().devices.memberRemoval).toEqual(removal)
+    expect(store.getState().devices.memberRemovalError).toBeNull()
   })
 })

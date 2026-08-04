@@ -42,6 +42,7 @@ interface DevicesState {
 
   memberRemoval: MemberRemoval | null
   memberRemovalError: string | null
+  memberRemovalRequestId: string | null
 
   // 每成员同步偏好（phase 4b PR-3：从 DeviceSyncSettings 切换到 MemberSyncPreferences）
   memberSyncPreferences: Record<string, MemberSyncPreferences>
@@ -115,6 +116,7 @@ const initialState: DevicesState = {
   membershipConvergenceError: null,
   memberRemoval: null,
   memberRemovalError: null,
+  memberRemovalRequestId: null,
   memberSyncPreferences: {},
   memberSyncPreferencesLoading: {},
 }
@@ -231,6 +233,7 @@ const devicesSlice = createSlice({
     setMemberRemoval: (state, action: PayloadAction<MemberRemoval | null>) => {
       state.memberRemoval = action.payload
       state.memberRemovalError = null
+      state.memberRemovalRequestId = null
     },
   },
   extraReducers: builder => {
@@ -299,12 +302,20 @@ const devicesSlice = createSlice({
       })
 
     builder
-      .addCase(fetchCurrentMemberRemoval.fulfilled, (state, action) => {
-        state.memberRemoval = action.payload
+      .addCase(fetchCurrentMemberRemoval.pending, (state, action) => {
+        state.memberRemovalRequestId = action.meta.requestId
         state.memberRemovalError = null
       })
+      .addCase(fetchCurrentMemberRemoval.fulfilled, (state, action) => {
+        if (state.memberRemovalRequestId !== action.meta.requestId) return
+        state.memberRemoval = action.payload
+        state.memberRemovalError = null
+        state.memberRemovalRequestId = null
+      })
       .addCase(fetchCurrentMemberRemoval.rejected, (state, action) => {
+        if (state.memberRemovalRequestId !== action.meta.requestId) return
         state.memberRemovalError = action.payload as string
+        state.memberRemovalRequestId = null
       })
 
     // Member sync preferences

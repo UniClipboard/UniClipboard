@@ -1104,7 +1104,8 @@
     "memberRemoval": {
       "pending": {
         "title": "Device removal is still in progress",
-        "description": "Waiting for {{count}} retained device to confirm the security update."
+        "description_one": "Waiting for {{count}} retained device to confirm the security update.",
+        "description_other": "Waiting for {{count}} retained devices to confirm the security update."
       },
       "recovery": {
         "title": "Device removal needs recovery",

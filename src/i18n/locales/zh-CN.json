@@ -1103,7 +1103,7 @@
     "memberRemoval": {
       "pending": {
         "title": "设备移除仍在进行",
-        "description": "正在等待 {{count}} 台保留设备确认安全更新。"
+        "description_other": "正在等待 {{count}} 台保留设备确认安全更新。"
       },
       "recovery": {
         "title": "设备移除需要恢复",

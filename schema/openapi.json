@@ -8652,6 +8652,16 @@
             },
             "description": "Member not found"
           },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Member removal already in progress"
+          },
           "500": {
             "content": {
               "application/json": {

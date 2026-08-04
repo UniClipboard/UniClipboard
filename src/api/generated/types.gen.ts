@@ -5145,6 +5145,10 @@ export type UnpairDeviceErrors = {
      */
     404: ApiErrorResponse;
     /**
+     * Member removal already in progress
+     */
+    409: ApiErrorResponse;
+    /**
      * Internal server error
      */
     500: ApiErrorResponse;

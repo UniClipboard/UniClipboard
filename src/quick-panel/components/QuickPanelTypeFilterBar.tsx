@@ -1,7 +1,7 @@
 import { useTranslation } from 'react-i18next'
-import { QUICK_FILTER_ORDER } from '../constants'
 import { Filter } from '@/api/clipboardItems'
 import { cn } from '@/lib/utils'
+import { QUICK_FILTER_ORDER } from '../constants'
 
 interface QuickPanelTypeFilterBarProps {
   activeFilter: Filter
@@ -12,7 +12,10 @@ function QuickPanelTypeFilterBar({ activeFilter, onChange }: QuickPanelTypeFilte
   const { t } = useTranslation()
 
   return (
-    <div className="flex flex-wrap items-center gap-1 px-3 pb-2" aria-label={t('history.composite.dimension.type')}>
+    <div
+      className="flex flex-wrap items-center gap-1 px-3 pb-2"
+      aria-label={t('history.composite.dimension.type')}
+    >
       {QUICK_FILTER_ORDER.map(filter => {
         const active = activeFilter === filter
         const label = filter === Filter.All ? t('history.filter.all') : t(`history.type.${filter}`)

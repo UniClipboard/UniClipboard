@@ -1,8 +1,8 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
-import QuickPanelTypeFilterBar from '../QuickPanelTypeFilterBar'
 import { Filter } from '@/api/clipboardItems'
+import QuickPanelTypeFilterBar from '../QuickPanelTypeFilterBar'
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({

@@ -1,6 +1,11 @@
 import { Loader2, Lock, Search, Unlock } from 'lucide-react'
 import React, { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
+import { Filter } from '@/api/clipboardItems'
+import { CompositeSearchBar, type SourceOption } from '@/components/history/composite-search'
+import type { DisplayClipboardItem } from '@/lib/clipboard-entry'
+import type { SearchTagOption } from '@/lib/search-tags'
+import { cn } from '@/lib/utils'
 import { quickCardClassName } from '../constants'
 import {
   peekQuickPanelImageAspectRatio,
@@ -13,11 +18,6 @@ import PanelItem from './PanelItem'
 import PanelItemContextMenu from './PanelItemContextMenu'
 import QuickPanelTagFilterBar from './QuickPanelTagFilterBar'
 import QuickPanelTypeFilterBar from './QuickPanelTypeFilterBar'
-import { Filter } from '@/api/clipboardItems'
-import { CompositeSearchBar, type SourceOption } from '@/components/history/composite-search'
-import type { DisplayClipboardItem } from '@/lib/clipboard-entry'
-import type { SearchTagOption } from '@/lib/search-tags'
-import { cn } from '@/lib/utils'
 
 interface HistoryPaneProps {
   filteredItems: DisplayItem[]

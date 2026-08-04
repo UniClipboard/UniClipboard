@@ -1,8 +1,8 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
-import QuickPanelTagFilterBar from '../QuickPanelTagFilterBar'
 import type { SearchTagOption } from '@/lib/search-tags'
+import QuickPanelTagFilterBar from '../QuickPanelTagFilterBar'
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
@@ -42,7 +42,9 @@ describe('QuickPanelTagFilterBar', () => {
     await user.click(screen.getByRole('button', { name: 'Code' }))
     expect(onChange).toHaveBeenCalledWith('code')
 
-    rerender(<QuickPanelTagFilterBar tagFilter="code" tagOptions={tagOptions} onChange={onChange} />)
+    rerender(
+      <QuickPanelTagFilterBar tagFilter="code" tagOptions={tagOptions} onChange={onChange} />
+    )
     await user.click(screen.getByRole('button', { name: 'Code' }))
 
     expect(onChange).toHaveBeenLastCalledWith(null)

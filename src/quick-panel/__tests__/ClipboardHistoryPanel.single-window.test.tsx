@@ -3,13 +3,13 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import type { ReactElement } from 'react'
 import { Provider } from 'react-redux'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import ClipboardHistoryPanel from '../ClipboardHistoryPanel'
-import { useHistorySearch } from '../hooks/useHistorySearch'
 import { deleteClipboardEntry, restoreClipboardEntry } from '@/api/daemon'
 import { __resetResendActionStoreForTests } from '@/hooks/useResendAction'
 import i18n from '@/i18n'
 import { playUiSound } from '@/lib/ui-sound'
 import devicesReducer from '@/store/slices/devicesSlice'
+import ClipboardHistoryPanel from '../ClipboardHistoryPanel'
+import { useHistorySearch } from '../hooks/useHistorySearch'
 
 const invokeMock = vi.fn()
 
@@ -200,7 +200,9 @@ describe('ClipboardHistoryPanel single-window preview', () => {
     expect(
       screen.queryByRole('button', { name: i18n.t('history.composite.openFilters') })
     ).not.toBeInTheDocument()
-    expect(screen.queryByText(i18n.t('quickPanel.history.status.navigatePaste'))).not.toBeInTheDocument()
+    expect(
+      screen.queryByText(i18n.t('quickPanel.history.status.navigatePaste'))
+    ).not.toBeInTheDocument()
   })
 
   it('keeps history and preview panes flexible when the inline preview opens', async () => {

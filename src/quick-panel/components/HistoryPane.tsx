@@ -1,11 +1,6 @@
 import { Loader2, Lock, Search, Unlock } from 'lucide-react'
 import React, { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Filter } from '@/api/clipboardItems'
-import { CompositeSearchBar, type SourceOption } from '@/components/history/composite-search'
-import type { DisplayClipboardItem } from '@/lib/clipboard-entry'
-import type { SearchTagOption } from '@/lib/search-tags'
-import { cn } from '@/lib/utils'
 import { quickCardClassName } from '../constants'
 import {
   peekQuickPanelImageAspectRatio,
@@ -16,6 +11,13 @@ import type { DisplayItem, QuickPanelContextMenuActions, TimeRangePreset } from 
 import ImageGridItem from './ImageGridItem'
 import PanelItem from './PanelItem'
 import PanelItemContextMenu from './PanelItemContextMenu'
+import QuickPanelTagFilterBar from './QuickPanelTagFilterBar'
+import QuickPanelTypeFilterBar from './QuickPanelTypeFilterBar'
+import { Filter } from '@/api/clipboardItems'
+import { CompositeSearchBar, type SourceOption } from '@/components/history/composite-search'
+import type { DisplayClipboardItem } from '@/lib/clipboard-entry'
+import type { SearchTagOption } from '@/lib/search-tags'
+import { cn } from '@/lib/utils'
 
 interface HistoryPaneProps {
   filteredItems: DisplayItem[]
@@ -34,7 +36,6 @@ interface HistoryPaneProps {
   onContextMenuSelect: (index: number) => void
   onUnlock: () => void
   searchInputRef: React.RefObject<HTMLInputElement | null>
-  searchQuery: string
   selectedIndex: number
   setHoveredIndex: React.Dispatch<React.SetStateAction<number | null>>
   setIsKeyboardNav: React.Dispatch<React.SetStateAction<boolean>>
@@ -101,7 +102,6 @@ const HistoryPane: React.FC<HistoryPaneProps> = React.memo(
     onContextMenuSelect,
     onUnlock,
     searchInputRef,
-    searchQuery,
     selectedIndex,
     setHoveredIndex,
     setIsKeyboardNav,
@@ -203,10 +203,10 @@ const HistoryPane: React.FC<HistoryPaneProps> = React.memo(
                 onUnhandledKeyDown={onKeyDown}
                 clearShortcutEnabled={false}
                 suggestionActivation="intentional"
-                showFilterPanelButton
                 className="w-full"
               />
             </div>
+            <QuickPanelTypeFilterBar activeFilter={activeFilter} onChange={setActiveFilter} />
 
             {/* --- SCROLLABLE LIST --- */}
             {/* role="listbox" 给下面 PanelItem 的 role="option" 提供合法父级。
@@ -298,24 +298,11 @@ const HistoryPane: React.FC<HistoryPaneProps> = React.memo(
               )}
             </div>
 
-            {/* --- MULTI-FUNCTION STATUS BAR --- */}
-            <div className="flex items-center justify-between gap-3 border-t border-border/50 bg-muted/5 px-4 py-1.5 text-[11px] text-muted-foreground">
-              <div className="flex items-center" />
-
-              <div className="flex items-center gap-2">
-                {(searchQuery ||
-                  activeFilter !== Filter.All ||
-                  tagFilter !== null ||
-                  sourceFilter !== null ||
-                  extensionFilter !== null ||
-                  timeRange !== 'all_time') && (
-                  <span className="font-mono text-[10px] bg-muted/50 px-1.5 py-0.5 rounded leading-none">
-                    {isSearching ? '…' : (searchTotal ?? filteredItems.length)}
-                  </span>
-                )}
-                <span className="truncate opacity-60">{t('status.navigatePaste')}</span>
-              </div>
-            </div>
+            <QuickPanelTagFilterBar
+              tagFilter={tagFilter}
+              tagOptions={searchableTags}
+              onChange={setTagFilter}
+            />
           </>
         )}
       </div>

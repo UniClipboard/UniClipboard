@@ -8,6 +8,17 @@ import React, {
   useState,
 } from 'react'
 import { useTranslation } from 'react-i18next'
+import ClipboardPreviewPane from './ClipboardPreviewPane'
+import HistoryPane from './components/HistoryPane'
+import { PREVIEW_OPEN_DELAY_MS, PREVIEW_SWITCH_DELAY_MS, QUICK_FILTER_ORDER } from './constants'
+import { useHistorySearch } from './hooks/useHistorySearch'
+import type {
+  PreviewAction,
+  PreviewSide,
+  PreviewState,
+  QuickPanelContextMenuActions,
+  TimeRangePreset,
+} from './types'
 import { Filter, favoriteClipboardItem, unfavoriteClipboardItem } from '@/api/clipboardItems'
 import { deleteClipboardEntry, restoreClipboardEntry } from '@/api/daemon'
 import { unlockEncryptionSession } from '@/api/security'
@@ -24,17 +35,6 @@ import { playUiSound } from '@/lib/ui-sound'
 import { cn } from '@/lib/utils'
 import { useAppDispatch } from '@/store/hooks'
 import { fetchSpaceMembers } from '@/store/slices/devicesSlice'
-import ClipboardPreviewPane from './ClipboardPreviewPane'
-import HistoryPane from './components/HistoryPane'
-import { PREVIEW_OPEN_DELAY_MS, PREVIEW_SWITCH_DELAY_MS, QUICK_FILTER_ORDER } from './constants'
-import { useHistorySearch } from './hooks/useHistorySearch'
-import type {
-  PreviewAction,
-  PreviewSide,
-  PreviewState,
-  QuickPanelContextMenuActions,
-  TimeRangePreset,
-} from './types'
 
 const log = createLogger('clipboard-history-panel')
 
@@ -679,7 +679,6 @@ const ClipboardHistoryPanelSession: React.FC<ClipboardHistoryPanelProps> = ({
           onContextMenuSelect={handleContextMenuSelect}
           onUnlock={handleUnlock}
           searchInputRef={searchInputRef}
-          searchQuery={searchQuery}
           selectedIndex={selectedIndex}
           setHoveredIndex={setHoveredIndex}
           setIsKeyboardNav={setIsKeyboardNav}

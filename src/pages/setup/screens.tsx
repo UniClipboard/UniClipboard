@@ -620,6 +620,7 @@ export function RedeemInvitationScreen({
   return (
     <ScreenShell
       title={t('title')}
+      subtitle={t('subtitle')}
       error={errorMessage}
       hint={t('hint')}
       footer={
@@ -652,19 +653,21 @@ export function RedeemInvitationScreen({
       }
       centered
     >
-      <div className="mx-auto mt-10 w-full max-w-sm space-y-1 sm:mt-12">
-        <Label htmlFor="join-code" className="sr-only">
-          {t('labels.code')}
-        </Label>
-        <div data-testid="setup-redeem-code">
-          <InvitationCodeInput
-            id="join-code"
-            value={code}
-            onChange={setCode}
-            disabled={loading}
-            invalid={codeInvalid}
-            autoFocus
-          />
+      <div className="mx-auto mt-8 w-full max-w-sm space-y-6 sm:mt-9">
+        <div className="mx-auto w-fit space-y-2">
+          <Label htmlFor="join-code" className="text-xs font-medium text-muted-foreground">
+            {t('labels.code')}
+          </Label>
+          <div data-testid="setup-redeem-code">
+            <InvitationCodeInput
+              id="join-code"
+              value={code}
+              onChange={setCode}
+              disabled={loading}
+              invalid={codeInvalid}
+              autoFocus
+            />
+          </div>
         </div>
 
         <AnimatePresence initial={false}>
@@ -677,8 +680,8 @@ export function RedeemInvitationScreen({
               transition={{ duration: 0.22, ease: [0.22, 0.61, 0.36, 1] }}
               className="overflow-hidden"
             >
-              <div className="pt-6">
-                <Label htmlFor="join-pass" className="sr-only">
+              <div className="mx-auto w-[calc(100%-0.25rem)] space-y-2">
+                <Label htmlFor="join-pass" className="text-xs font-medium text-muted-foreground">
                   {t('labels.passphrase')}
                 </Label>
                 <div className="relative">
@@ -689,7 +692,7 @@ export function RedeemInvitationScreen({
                     value={pass}
                     onChange={e => setPass(e.target.value)}
                     disabled={loading}
-                    className="h-11 border-0 border-b border-border/60 bg-transparent px-0 pr-10 text-center text-base shadow-none focus-visible:border-primary focus-visible:ring-0"
+                    className="h-10 rounded-md bg-card pr-10 text-base shadow-xs"
                     placeholder={t('placeholders.passphrase')}
                     onKeyDown={e => e.key === 'Enter' && handleSubmit()}
                   />

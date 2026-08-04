@@ -1078,7 +1078,8 @@
     },
     "unpair": {
       "confirmTitle": "取消配对",
-      "confirmDescription": "确定要取消与 {{deviceName}} 的配对吗？取消后需要重新配对才能同步剪贴板内容。"
+      "confirmDescription": "确定要取消与 {{deviceName}} 的配对吗？取消后需要重新配对才能同步剪贴板内容。",
+      "cancelling": "正在取消配对..."
     },
     "protection": {
       "label": "保护状态",

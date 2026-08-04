@@ -1079,7 +1079,8 @@
     },
     "unpair": {
       "confirmTitle": "Unpair Device",
-      "confirmDescription": "Are you sure you want to unpair {{deviceName}}? You will need to pair again to sync clipboard content."
+      "confirmDescription": "Are you sure you want to unpair {{deviceName}}? You will need to pair again to sync clipboard content.",
+      "cancelling": "Unpairing..."
     },
     "protection": {
       "label": "Protection",

@@ -1,3 +1,4 @@
+import { Loader2 } from 'lucide-react'
 import React from 'react'
 import { useTranslation } from 'react-i18next'
 import {
@@ -39,8 +40,14 @@ const UnpairAlertDialog: React.FC<UnpairAlertDialogProps> = ({
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel disabled={busy}>{t('clipboard.cancelLabel')}</AlertDialogCancel>
-          <AlertDialogAction variant="destructive" disabled={busy} onClick={onConfirm}>
-            {t('devices.list.actions.unpair')}
+          <AlertDialogAction
+            variant="destructive"
+            disabled={busy}
+            aria-busy={busy}
+            onClick={onConfirm}
+          >
+            {busy && <Loader2 aria-hidden="true" className="size-4 animate-spin" />}
+            {busy ? t('devices.unpair.cancelling') : t('devices.list.actions.unpair')}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

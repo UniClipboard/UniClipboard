@@ -590,6 +590,10 @@ describe('DevicesPage secure legacy removal', () => {
     await user.click(confirm)
 
     expect(confirm).toBeDisabled()
+    expect(
+      screen.getByRole('button', { name: i18n.t('devices.unpair.cancelling') })
+    ).toHaveAttribute('aria-busy', 'true')
+    expect(document.querySelector('svg.animate-spin')).toBeInTheDocument()
     finishRemoval?.()
     await waitFor(() => expect(confirm).not.toBeInTheDocument())
   })

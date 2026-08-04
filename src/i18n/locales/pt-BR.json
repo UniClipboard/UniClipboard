@@ -1106,7 +1106,8 @@
     },
     "unpair": {
       "confirmTitle": "Desparear dispositivo",
-      "confirmDescription": "Tem certeza de que deseja desparear {{deviceName}}? Você precisará parear novamente para sincronizar o conteúdo da área de transferência."
+      "confirmDescription": "Tem certeza de que deseja desparear {{deviceName}}? Você precisará parear novamente para sincronizar o conteúdo da área de transferência.",
+      "cancelling": "Desparelhando..."
     },
     "protection": {
       "label": "Proteção",

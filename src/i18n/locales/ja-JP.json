@@ -1103,7 +1103,8 @@
     },
     "unpair": {
       "confirmTitle": "デバイスのペアリングを解除します",
-      "confirmDescription": "本当に {{deviceName}} のペアリングを解除してもよろしいですか？クリップボードのコンテンツを同期するには、再度ペアリングする必要があります。"
+      "confirmDescription": "本当に {{deviceName}} のペアリングを解除してもよろしいですか？クリップボードのコンテンツを同期するには、再度ペアリングする必要があります。",
+      "cancelling": "ペアリングを解除しています..."
     },
     "protection": {
       "label": "保護状態",

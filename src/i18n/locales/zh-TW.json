@@ -1102,7 +1102,8 @@
     },
     "unpair": {
       "confirmTitle": "取消配對",
-      "confirmDescription": "確定要取消與 {{deviceName}} 的配對嗎？取消後需要重新配對才能同步剪貼簿內容。"
+      "confirmDescription": "確定要取消與 {{deviceName}} 的配對嗎？取消後需要重新配對才能同步剪貼簿內容。",
+      "cancelling": "正在取消配對..."
     },
     "protection": {
       "label": "保護狀態",

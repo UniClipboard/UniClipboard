@@ -124,7 +124,10 @@ function SwitchSpaceDialogInner({ open, onOpenChange }: SwitchSpaceDialogProps) 
   }, [step, dispatch])
 
   const handleSubmit = async (preserveUnreadableHistory = false) => {
-    if (!canSubmit) return
+    // Validate inputs independently from step check
+    if (!codeComplete || pass.length === 0) return
+    // Allow submission when in 'input' step OR when preserveUnreadableHistory retry is triggered
+    if (step !== 'input' && !preserveUnreadableHistory) return
     setErrorKind(null)
     setErrorRaw(null)
     setStep('migrating')

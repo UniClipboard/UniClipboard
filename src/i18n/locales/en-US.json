@@ -1551,7 +1551,8 @@
         "subtitle_one": "Migrated 1 clipboard record under the new master key.",
         "subtitle_other": "Migrated {{count}} clipboard records under the new master key.",
         "subtitle_zero": "No clipboard history needed migration.",
-        "preservedUnreadable": "Kept {{count}} encrypted record that cannot be read in the new space."
+        "preservedUnreadable_one": "Kept {{count}} encrypted record that cannot be read in the new space.",
+        "preservedUnreadable_other": "Kept {{count}} encrypted records that cannot be read in the new space."
       },
       "failed": {
         "title": "Switch space failed",

@@ -137,6 +137,12 @@ pub async fn run(args: JoinArgs, json: bool, verbose: bool) -> i32 {
         .await;
     }
 
+    // Validate that preserve_unreadable_history is only accepted with --switch
+    if args.preserve_unreadable_history {
+        ui::error("--preserve-unreadable-history requires --switch");
+        return exit_codes::EXIT_ERROR;
+    }
+
     run_redeem(code_str, passphrase_str, args.device_name, json, verbose).await
 }
 

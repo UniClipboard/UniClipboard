@@ -127,7 +127,7 @@ jobs:
           components: rustfmt
 
       - name: Refresh Cargo.lock for workspace members
-        run: cargo update -p uc-cli
+        run: cargo update --workspace
 
       - name: Generate changelog skeleton
         run: |

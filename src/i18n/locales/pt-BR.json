@@ -1557,6 +1557,7 @@
         "subtitle_many": "{{count}} registros da área de transferência migrados com a nova chave mestra.",
         "subtitle_zero": "Nenhum histórico da área de transferência precisou de migração.",
         "preservedUnreadable_one": "Foi mantido {{count}} registro criptografado que não pode ser lido no novo espaço.",
+        "preservedUnreadable_many": "Foram mantidos {{count}} registros criptografados que não podem ser lidos no novo espaço.",
         "preservedUnreadable_other": "Foram mantidos {{count}} registros criptografados que não podem ser lidos no novo espaço."
       },
       "failed": {

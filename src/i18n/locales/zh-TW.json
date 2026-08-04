@@ -1550,7 +1550,7 @@
         "subtitle_one": "已用新主密鑰遷移 1 條剪貼簿記錄。",
         "subtitle_other": "已用新主密鑰遷移 {{count}} 條剪貼簿記錄。",
         "subtitle_zero": "無剪貼簿歷史需要遷移。",
-        "preservedUnreadable": "已保留 {{count}} 筆無法在新空間讀取的加密記錄。"
+        "preservedUnreadable_other": "已保留 {{count}} 筆無法在新空間讀取的加密記錄。"
       },
       "failed": {
         "title": "切換失敗",

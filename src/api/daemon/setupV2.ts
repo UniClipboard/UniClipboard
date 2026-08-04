@@ -77,6 +77,7 @@ export interface SetupStateResponse {
 export interface SwitchSpaceRequest {
   code: string
   newPassphrase: string
+  preserveUnreadableHistory?: boolean
 }
 
 export interface SwitchSpaceResponse {
@@ -86,6 +87,7 @@ export interface SwitchSpaceResponse {
   selfDeviceId: string
   selfIdentityFingerprint: string
   migratedRecords: number
+  preservedUnreadableRecords: number
 }
 
 export type MigrationPhase = 'prepared' | 'handshake_done' | 'swapped'
@@ -159,6 +161,7 @@ export type SwitchSpaceErrorKind =
   | 'sponsor_rejected' // 409 — sponsor did not recognise the invitation code
   | 'sponsor_declined' // 409 — sponsor declined the pairing
   | 'sponsor_upgrade_required' // 409 — sponsor uses an older pairing protocol
+  | 'unreadable_history_confirmation_required' // 409 — requires explicit user choice
   | 'invitation_not_found' // 404
   | 'invitation_expired' // 404
   | 'passphrase_mismatch' // 400 — wrong new passphrase
@@ -307,8 +310,12 @@ function classifyQueryError(err: unknown): SetupV2Error<QuerySetupStateErrorKind
 function classifySwitchSpaceError(err: unknown): SetupV2Error<SwitchSpaceErrorKind> {
   const status = pickStatus(err)
   const raw = rawMessage(err)
-  if (pickBody(err).code === 'sponsor_upgrade_required') {
+  const code = pickBody(err).code
+  if (code === 'sponsor_upgrade_required') {
     return new SetupV2Error('sponsor_upgrade_required', raw, status)
+  }
+  if (code === 'unreadable_history_confirmation_required') {
+    return new SetupV2Error('unreadable_history_confirmation_required', raw, status)
   }
   const lower = raw.toLowerCase()
   if (status === 404) {
@@ -466,6 +473,7 @@ export async function switchSpace(body: SwitchSpaceRequest): Promise<SwitchSpace
         body: {
           ...body,
           code: normalizeInvitationCode(body.code),
+          preserveUnreadableHistory: body.preserveUnreadableHistory ?? false,
         } as unknown as SwitchSpaceRequestDto,
         throwOnError: true,
       })

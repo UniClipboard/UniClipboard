@@ -123,13 +123,16 @@ function SwitchSpaceDialogInner({ open, onOpenChange }: SwitchSpaceDialogProps) 
     return () => clearTimeout(id)
   }, [step, dispatch])
 
-  const handleSubmit = async () => {
-    if (!canSubmit) return
+  const handleSubmit = async (preserveUnreadableHistory = false) => {
+    // Validate inputs independently from step check
+    if (!codeComplete || pass.length === 0) return
+    // Allow submission when in 'input' step OR when preserveUnreadableHistory retry is triggered
+    if (step !== 'input' && !preserveUnreadableHistory) return
     setErrorKind(null)
     setErrorRaw(null)
     setStep('migrating')
     try {
-      const res = await switchSpace({ code, newPassphrase: pass })
+      const res = await switchSpace({ code, newPassphrase: pass, preserveUnreadableHistory })
       setResult(res)
       setStep('success')
     } catch (err) {
@@ -271,6 +274,11 @@ function SwitchSpaceDialogInner({ open, onOpenChange }: SwitchSpaceDialogProps) 
               values={{ count: result.migratedRecords }}
             />
           </p>
+          {result.preservedUnreadableRecords > 0 && (
+            <p className="mt-2 text-sm text-muted-foreground">
+              {t('success.preservedUnreadable', { count: result.preservedUnreadableRecords })}
+            </p>
+          )}
         </div>
       </div>
     )
@@ -296,7 +304,7 @@ function SwitchSpaceDialogInner({ open, onOpenChange }: SwitchSpaceDialogProps) 
         <Button variant="ghost" onClick={() => onOpenChange(false)}>
           {t('actions.cancel')}
         </Button>
-        <Button onClick={handleSubmit} disabled={!canSubmit} className="min-w-28">
+        <Button onClick={() => void handleSubmit()} disabled={!canSubmit} className="min-w-28">
           <ArrowRightLeft className={cn('mr-2 size-4', !canSubmit && 'opacity-50')} />
           {t('actions.switch')}
         </Button>
@@ -317,7 +325,13 @@ function SwitchSpaceDialogInner({ open, onOpenChange }: SwitchSpaceDialogProps) 
         <Button variant="outline" onClick={() => onOpenChange(false)}>
           {t('actions.close')}
         </Button>
-        <Button onClick={handleRetry}>{retryLabel}</Button>
+        {errorKind === 'unreadable_history_confirmation_required' ? (
+          <Button onClick={() => void handleSubmit(true)}>
+            {t('actions.preserveAndContinue')}
+          </Button>
+        ) : (
+          <Button onClick={handleRetry}>{retryLabel}</Button>
+        )}
       </>
     )
   }

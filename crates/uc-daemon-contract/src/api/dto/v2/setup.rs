@@ -108,6 +108,8 @@ pub struct CurrentInvitation {
 pub struct SwitchSpaceRequest {
     pub code: String,
     pub new_passphrase: String,
+    #[serde(default)]
+    pub preserve_unreadable_history: bool,
 }
 
 /// Response body for `POST /v2/setup/switch-space`. Mirrors
@@ -122,6 +124,7 @@ pub struct SwitchSpaceResponse {
     pub self_device_id: String,
     pub self_identity_fingerprint: String,
     pub migrated_records: u64,
+    pub preserved_unreadable_records: u64,
 }
 
 // ---------------------------------------------------------------------------
@@ -247,13 +250,22 @@ mod tests {
         let req = SwitchSpaceRequest {
             code: "ABCD-1234".to_string(),
             new_passphrase: "newpass22newpass".to_string(),
+            preserve_unreadable_history: false,
         };
         let json = serde_json::to_value(&req).unwrap();
         assert_eq!(json["code"], "ABCD-1234");
         assert_eq!(json["newPassphrase"], "newpass22newpass");
+        assert_eq!(json["preserveUnreadableHistory"], false);
         assert!(json.get("new_passphrase").is_none());
         let decoded: SwitchSpaceRequest = serde_json::from_value(json).unwrap();
         assert_eq!(decoded, req);
+
+        let legacy: SwitchSpaceRequest = serde_json::from_value(serde_json::json!({
+            "code": "ABCD-1234",
+            "newPassphrase": "newpass22newpass",
+        }))
+        .unwrap();
+        assert!(!legacy.preserve_unreadable_history);
     }
 
     #[test]
@@ -265,12 +277,14 @@ mod tests {
             self_device_id: "joiner-2".to_string(),
             self_identity_fingerprint: "FPJOINER".to_string(),
             migrated_records: 7,
+            preserved_unreadable_records: 2,
         };
         let json = serde_json::to_value(&resp).unwrap();
         assert_eq!(json["sponsorDeviceId"], "sponsor-1");
         assert_eq!(json["spaceId"], "space-1");
         assert_eq!(json["selfDeviceId"], "joiner-2");
         assert_eq!(json["migratedRecords"], 7);
+        assert_eq!(json["preservedUnreadableRecords"], 2);
     }
 
     #[test]

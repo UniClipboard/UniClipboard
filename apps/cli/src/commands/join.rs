@@ -66,6 +66,7 @@ pub struct JoinArgs {
     pub device_name: Option<String>,
     pub switch: bool,
     pub yes: bool,
+    pub preserve_unreadable_history: bool,
 }
 
 pub async fn run(args: JoinArgs, json: bool, verbose: bool) -> i32 {
@@ -125,7 +126,21 @@ pub async fn run(args: JoinArgs, json: bool, verbose: bool) -> i32 {
         if args.device_name.is_some() {
             ui::warn("--device-name is ignored when switching spaces");
         }
-        return run_switch(code_str, passphrase_str, args.yes, json, verbose).await;
+        return run_switch(
+            code_str,
+            passphrase_str,
+            args.yes,
+            args.preserve_unreadable_history,
+            json,
+            verbose,
+        )
+        .await;
+    }
+
+    // Validate that preserve_unreadable_history is only accepted with --switch
+    if args.preserve_unreadable_history {
+        ui::error("--preserve-unreadable-history requires --switch");
+        return exit_codes::EXIT_ERROR;
     }
 
     run_redeem(code_str, passphrase_str, args.device_name, json, verbose).await
@@ -302,6 +317,7 @@ async fn run_switch(
     code_str: String,
     new_passphrase: String,
     yes: bool,
+    preserve_unreadable_history: bool,
     json: bool,
     verbose: bool,
 ) -> i32 {
@@ -338,6 +354,7 @@ async fn run_switch(
     let req = SwitchSpaceRequest {
         code: code_str,
         new_passphrase,
+        preserve_unreadable_history,
     };
 
     let setup_client = ctx.setup_v2_client();

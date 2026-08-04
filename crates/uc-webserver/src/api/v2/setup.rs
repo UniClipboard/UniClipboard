@@ -29,6 +29,7 @@ use uc_engine::error_codes::{
     JOIN_SPACE_SPONSOR_REJECTED_CODE, JOIN_SPACE_SPONSOR_TIMEOUT_CODE,
     JOIN_SPACE_SPONSOR_UNREACHABLE_CODE, JOIN_SPACE_SPONSOR_UPGRADE_REQUIRED_CODE,
     JOIN_SPACE_STORAGE_CODE, JOIN_SPACE_TIMEOUT_CODE,
+    JOIN_SPACE_UNREADABLE_HISTORY_REQUIRES_CONFIRMATION_CODE,
 };
 use uc_engine::{
     CreateSpaceInput, EngineError, EngineErrorCategory, JoinSpaceInput, MigrationPhaseSummary,
@@ -231,6 +232,7 @@ pub(crate) async fn redeem(
             invitation_code: req.code,
             device_name: None,
             passphrase: SecretString::new(req.passphrase),
+            preserve_unreadable_history: false,
         }))
         .await
         .map_err(map_join_engine_err)?;
@@ -241,6 +243,7 @@ pub(crate) async fn redeem(
         self_device_id,
         self_identity_fingerprint,
         migrated_records: _,
+        ..
     } = result
     else {
         return Err(ApiError::internal(
@@ -507,6 +510,7 @@ pub(crate) async fn switch_space(
             invitation_code: req.code,
             device_name: None,
             passphrase: SecretString::new(req.new_passphrase),
+            preserve_unreadable_history: req.preserve_unreadable_history,
         }))
         .await
         .map_err(map_switch_engine_err)?;
@@ -517,6 +521,7 @@ pub(crate) async fn switch_space(
         self_device_id,
         self_identity_fingerprint,
         migrated_records: Some(migrated_records),
+        preserved_unreadable_records: Some(preserved_unreadable_records),
     } = result
     else {
         return Err(ApiError::internal(
@@ -530,6 +535,7 @@ pub(crate) async fn switch_space(
         self_device_id,
         self_identity_fingerprint,
         migrated_records,
+        preserved_unreadable_records,
     })))
 }
 
@@ -554,6 +560,14 @@ fn map_switch_engine_err(err: EngineError) -> ApiError {
             ApiError::conflict(
                 "space session is locked; unlock the current space before switching",
             ),
+        ),
+        JOIN_SPACE_UNREADABLE_HISTORY_REQUIRES_CONFIRMATION_CODE => (
+            "unreadable_history_confirmation_required",
+            ApiError::conflict(
+                "some local history cannot be read; explicitly confirm preserving those records \
+                 before switching",
+            )
+            .with_code("unreadable_history_confirmation_required"),
         ),
         JOIN_SPACE_INVITATION_NOT_FOUND_CODE => (
             "invitation_not_found",
@@ -874,6 +888,11 @@ mod tests {
                 409,
             ),
             (
+                JOIN_SPACE_UNREADABLE_HISTORY_REQUIRES_CONFIRMATION_CODE,
+                EngineErrorCategory::Conflict,
+                409,
+            ),
+            (
                 JOIN_SPACE_SPONSOR_REJECTED_CODE,
                 EngineErrorCategory::Conflict,
                 409,
@@ -919,5 +938,12 @@ mod tests {
                 expected
             );
         }
+
+        let api = map_switch_engine_err(EngineError::new(
+            JOIN_SPACE_UNREADABLE_HISTORY_REQUIRES_CONFIRMATION_CODE,
+            EngineErrorCategory::Conflict,
+            false,
+        ));
+        assert_eq!(api.code, "unreadable_history_confirmation_required");
     }
 }

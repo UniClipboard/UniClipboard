@@ -309,11 +309,6 @@ export default function UnlockPage({ onUnlockSucceeded, onResetSucceeded }: Unlo
         className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-muted/20"
       />
 
-      <div
-        data-uc-decorative-effect="true"
-        className="absolute -bottom-24 -right-16 size-96 rounded-full bg-primary/5 blur-3xl"
-      />
-
       <div className="relative z-10 flex w-full max-w-sm flex-col items-center gap-y-8 text-center">
         <div className="relative flex size-24 items-center justify-center rounded-3xl bg-muted/30 shadow-inner ring-1 ring-border/50">
           <div className="absolute inset-0 rounded-3xl bg-gradient-to-br from-primary/10 to-transparent opacity-50" />

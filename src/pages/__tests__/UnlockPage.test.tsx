@@ -41,6 +41,12 @@ describe('UnlockPage', () => {
     vi.mocked(verifyKeychainAccess).mockResolvedValue(true)
   })
 
+  it('does not render the lower-right blurred decorative effect', () => {
+    const { container } = render(<UnlockPage />)
+
+    expect(container.querySelector('[data-uc-decorative-effect].blur-3xl')).toBeNull()
+  })
+
   it('notifies parent immediately when silent unlock succeeds', async () => {
     const onUnlockSucceeded = vi.fn()
     vi.mocked(unlockEncryptionSession).mockResolvedValue(true)

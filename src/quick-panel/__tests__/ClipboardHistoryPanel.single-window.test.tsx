@@ -192,6 +192,19 @@ describe('ClipboardHistoryPanel single-window preview', () => {
     expect(invokeMock).not.toHaveBeenCalledWith('show_preview_panel', expect.anything())
   })
 
+  it('keeps type filters visible and replaces the shortcut hint with the tag bar', () => {
+    renderPanel()
+
+    expect(screen.getByRole('button', { name: i18n.t('history.filter.all') })).toBeInTheDocument()
+    expect(screen.getByTestId('quick-panel-tag-filter-list')).toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: i18n.t('history.composite.openFilters') })
+    ).not.toBeInTheDocument()
+    expect(
+      screen.queryByText(i18n.t('quickPanel.history.status.navigatePaste'))
+    ).not.toBeInTheDocument()
+  })
+
   it('keeps history and preview panes flexible when the inline preview opens', async () => {
     const { container } = renderPanel()
 

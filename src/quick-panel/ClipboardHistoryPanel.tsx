@@ -679,7 +679,6 @@ const ClipboardHistoryPanelSession: React.FC<ClipboardHistoryPanelProps> = ({
           onContextMenuSelect={handleContextMenuSelect}
           onUnlock={handleUnlock}
           searchInputRef={searchInputRef}
-          searchQuery={searchQuery}
           selectedIndex={selectedIndex}
           setHoveredIndex={setHoveredIndex}
           setIsKeyboardNav={setIsKeyboardNav}

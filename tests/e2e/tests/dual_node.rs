@@ -50,7 +50,7 @@ fn remote_member_id(cli: &TestCli) -> String {
 }
 
 /// One-sided unpair via the daemon HTTP API (the CLI has no unpair command
-/// yet). Asserts the endpoint answers `204 No Content`.
+/// yet). Asserts the endpoint returns the member-removal progress.
 async fn unpair_via_api(daemon: &TestDaemon, peer_id: &str) {
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(10))
@@ -68,8 +68,8 @@ async fn unpair_via_api(daemon: &TestDaemon, peer_id: &str) {
 
     assert_eq!(
         resp.status().as_u16(),
-        204,
-        "unpair should answer 204, got {}",
+        200,
+        "unpair should return removal progress, got {}",
         resp.status()
     );
 }

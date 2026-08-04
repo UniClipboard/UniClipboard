@@ -201,6 +201,7 @@ function SwitchSpaceDialogInner({ open, onOpenChange }: SwitchSpaceDialogProps) 
             onChange={setCode}
             invalid={errorKind === 'invitation_not_found' || errorKind === 'invitation_expired'}
             autoFocus
+            className="relative w-full justify-between gap-0 before:absolute before:left-1/2 before:top-1/2 before:-translate-x-1/2 before:-translate-y-1/2 before:font-mono before:text-lg before:font-semibold before:text-muted-foreground before:content-['-']"
           />
         </div>
 

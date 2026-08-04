@@ -9,20 +9,21 @@ use tracing::{info, instrument};
 
 use uc_daemon_contract::api::dto::envelope::ApiEnvelope;
 use uc_engine::error_codes::{
-    MEMBER_INVALID_INPUT_CODE, MEMBER_LEGACY_BOOTSTRAP_FAILED_CODE,
-    MEMBER_LEGACY_BOOTSTRAP_REQUIRED_CODE, MEMBER_NOT_FOUND_CODE, MEMBER_UNAVAILABLE_CODE,
-    QUERY_MEMBERSHIP_CONVERGENCE_FAILED_CODE, QUERY_MEMBERSHIP_CONVERGENCE_UNAVAILABLE_CODE,
-    SPACE_PROTECTION_FAILED_CODE,
+    MEMBER_INVALID_INPUT_CODE, MEMBER_INVALID_PERMANENT_LOSS_SELECTION_CODE,
+    MEMBER_LEGACY_BOOTSTRAP_FAILED_CODE, MEMBER_LEGACY_BOOTSTRAP_REQUIRED_CODE,
+    MEMBER_NOT_FOUND_CODE, MEMBER_REMOVAL_IN_PROGRESS_CODE, MEMBER_REMOVAL_RECOVERY_REQUIRED_CODE,
+    MEMBER_UNAVAILABLE_CODE, QUERY_MEMBERSHIP_CONVERGENCE_FAILED_CODE,
+    QUERY_MEMBERSHIP_CONVERGENCE_UNAVAILABLE_CODE, SPACE_PROTECTION_FAILED_CODE,
 };
 use uc_engine::{
-    EngineError, Operation, OperationResult, QueryMemberSyncPreferencesInput, RemoveMemberInput,
-    UpdateMemberSyncPreferencesInput,
+    ContinueMemberRevocationInput, EngineError, Operation, OperationResult,
+    QueryMemberSyncPreferencesInput, RemoveMemberInput, UpdateMemberSyncPreferencesInput,
 };
 
 use crate::api::dto::error::{log_facade_failure, ApiError};
 use crate::api::dto::member::{
-    MemberSyncPreferencesPatchDto, MemberSyncResultDto, MembershipConvergenceDto,
-    SecureLegacyRemovalDto, SpaceProtectionDto,
+    ContinueMemberRemovalRequest, MemberRemovalDto, MemberSyncPreferencesPatchDto,
+    MemberSyncResultDto, MembershipConvergenceDto, SecureLegacyRemovalDto, SpaceProtectionDto,
 };
 use crate::api::projection::{IntoApiDto, IntoDomain};
 use crate::api::server::DaemonApiState;
@@ -45,6 +46,14 @@ pub fn router() -> Router<DaemonApiState> {
         .route(
             "/member/:device_id/secure-remove",
             post(secure_remove_legacy_member_handler),
+        )
+        .route(
+            "/member/removal/current",
+            get(get_current_member_removal_handler),
+        )
+        .route(
+            "/member/removal/continue",
+            post(continue_member_removal_handler),
         )
 }
 
@@ -299,12 +308,67 @@ pub async fn secure_remove_legacy_member_handler(
     })))
 }
 
+#[utoipa::path(get, path = "/member/removal/current", tag = "member", operation_id = "getCurrentMemberRemoval", responses((status = 200, body = CurrentMemberRemovalEnvelope), (status = 503, body = ApiErrorResponse), (status = 500, body = ApiErrorResponse)))]
+#[instrument(name = "api.member.get_current_removal", level = "info", skip(state))]
+pub async fn get_current_member_removal_handler(
+    State(state): State<DaemonApiState>,
+) -> Result<Json<ApiEnvelope<Option<MemberRemovalDto>>>, ApiError> {
+    let result = state
+        .execute(Operation::QueryCurrentMemberRevocation)
+        .await
+        .map_err(|error| map_member_engine_error("current", "get_current_removal", error))?;
+    let OperationResult::MemberRevocationStatus(removal) = result else {
+        return Err(ApiError::internal(
+            "engine returned an unexpected member-removal status",
+        ));
+    };
+    info!(
+        has_removal = removal.is_some(),
+        "current member removal loaded"
+    );
+    Ok(Json(ApiEnvelope::now(
+        removal.map(IntoApiDto::into_api_dto),
+    )))
+}
+
+#[utoipa::path(post, path = "/member/removal/continue", tag = "member", operation_id = "continueMemberRemoval", request_body = ContinueMemberRemovalRequest, responses((status = 200, body = MemberRemovalEnvelope), (status = 400, body = ApiErrorResponse), (status = 409, body = ApiErrorResponse), (status = 503, body = ApiErrorResponse), (status = 500, body = ApiErrorResponse)))]
+#[instrument(name = "api.member.continue_removal", level = "info", skip(state, payload), fields(revocation_id = %payload.revocation_id, permanently_lost_count = payload.permanently_lost_device_ids.len()))]
+pub async fn continue_member_removal_handler(
+    State(state): State<DaemonApiState>,
+    Json(payload): Json<ContinueMemberRemovalRequest>,
+) -> Result<Json<ApiEnvelope<MemberRemovalDto>>, ApiError> {
+    let revocation_id = payload.revocation_id.clone();
+    let result = state
+        .execute(Operation::ContinueMemberRevocation(
+            ContinueMemberRevocationInput {
+                revocation_id: revocation_id.clone(),
+                permanently_lost_device_ids: payload.permanently_lost_device_ids,
+            },
+        ))
+        .await
+        .map_err(|error| map_member_engine_error(&revocation_id, "continue_removal", error))?;
+    let OperationResult::MemberRevocationStatus(Some(removal)) = result else {
+        return Err(ApiError::internal(
+            "engine returned an unexpected member-removal continuation",
+        ));
+    };
+    info!(
+        revocation_id,
+        "member removal continued after permanent-loss confirmation"
+    );
+    Ok(Json(ApiEnvelope::now(removal.into_api_dto())))
+}
+
 pub(crate) fn legacy_bootstrap_required_error() -> ApiError {
     ApiError::conflict("legacy Space member removal requires secure bootstrap")
         .with_code("legacy_bootstrap_required")
 }
 
-fn map_member_engine_error(device_id: &str, op: &'static str, error: EngineError) -> ApiError {
+pub(crate) fn map_member_engine_error(
+    device_id: &str,
+    op: &'static str,
+    error: EngineError,
+) -> ApiError {
     let (variant, api): (&'static str, ApiError) = match error.code() {
         MEMBER_INVALID_INPUT_CODE => (
             "invalid_input",
@@ -325,6 +389,21 @@ fn map_member_engine_error(device_id: &str, op: &'static str, error: EngineError
         MEMBER_LEGACY_BOOTSTRAP_FAILED_CODE => (
             "legacy_bootstrap_failed",
             ApiError::internal("secure legacy member removal failed"),
+        ),
+        MEMBER_REMOVAL_IN_PROGRESS_CODE => (
+            "member_removal_in_progress",
+            ApiError::conflict("another member removal is already in progress")
+                .with_code("member_removal_in_progress"),
+        ),
+        MEMBER_REMOVAL_RECOVERY_REQUIRED_CODE => (
+            "member_removal_recovery_required",
+            ApiError::conflict("member removal requires permanent-loss recovery")
+                .with_code("member_removal_recovery_required"),
+        ),
+        MEMBER_INVALID_PERMANENT_LOSS_SELECTION_CODE => (
+            "invalid_permanent_loss_selection",
+            ApiError::bad_request("selected device is not awaiting member-removal confirmation")
+                .with_code("invalid_permanent_loss_selection"),
         ),
         SPACE_PROTECTION_FAILED_CODE => (
             "space_protection_failed",

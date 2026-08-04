@@ -1079,7 +1079,8 @@
     },
     "unpair": {
       "confirmTitle": "Unpair Device",
-      "confirmDescription": "Are you sure you want to unpair {{deviceName}}? You will need to pair again to sync clipboard content."
+      "confirmDescription": "Are you sure you want to unpair {{deviceName}}? You will need to pair again to sync clipboard content.",
+      "cancelling": "Unpairing..."
     },
     "protection": {
       "label": "Protection",
@@ -1098,6 +1099,31 @@
         "awaiting_readmission": "Awaiting readmission",
         "requires_readmission": "Readmission required",
         "recovery_required": "Recovery required"
+      }
+    },
+    "memberRemoval": {
+      "pending": {
+        "title": "Device removal is still in progress",
+        "description_one": "Waiting for {{count}} retained device to confirm the security update.",
+        "description_other": "Waiting for {{count}} retained devices to confirm the security update."
+      },
+      "recovery": {
+        "title": "Device removal needs recovery",
+        "description": "Confirm only devices that are permanently unavailable before continuing."
+      },
+      "complete": {
+        "title": "Device removal complete",
+        "description": "Every retained device has confirmed the security update."
+      },
+      "permanentLoss": {
+        "action": "Mark pending devices as permanently lost",
+        "title": "Confirm permanent device loss",
+        "description": "Only continue when these pending devices cannot be recovered. This cannot be undone.",
+        "confirm": "Confirm permanent loss"
+      },
+      "errors": {
+        "statusFailed": "Could not load device-removal progress.",
+        "continueFailed": "Could not continue device removal."
       }
     },
     "tabs": {

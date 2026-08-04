@@ -13,6 +13,8 @@
  */
 
 import {
+  continueMemberRemoval as continueMemberRemovalSdk,
+  getCurrentMemberRemoval as getCurrentMemberRemovalSdk,
   getMembershipConvergence as getMembershipConvergenceSdk,
   getMemberSyncPreferences as getMemberSyncPreferencesSdk,
   getSpaceProtection as getSpaceProtectionSdk,
@@ -21,6 +23,7 @@ import {
 } from '@/api/generated/sdk.gen'
 import type {
   LegacyBootstrapDto,
+  MemberRemovalDto,
   MemberSyncPreferencesPatchDto,
   MembershipConvergenceDto,
   SecureLegacyRemovalDto,
@@ -115,6 +118,40 @@ export interface SecureLegacyRemoval {
   bootstrap: LegacyBootstrap
 }
 
+export type MemberRemovalOutcome = 'local_only' | 'applied' | 'complete' | 'recovery_required'
+
+/** Engine-owned removal progress for the active space. */
+export interface MemberRemoval {
+  revocationId: string | null
+  outcome: MemberRemovalOutcome
+  pendingRecipients: number
+  removedDeviceIds: string[]
+  pendingRecipientDeviceIds: string[]
+  updatedAtMs: number
+}
+
+/** Reads the Engine-owned removal that remains active across daemon restarts. */
+export async function getCurrentMemberRemoval(): Promise<MemberRemoval | null> {
+  const envelope = await daemonClient.callSdk(() =>
+    getCurrentMemberRemovalSdk({ throwOnError: true })
+  )
+  return envelope.data ? toMemberRemoval(envelope.data) : null
+}
+
+/** Continues an active removal after the user explicitly confirms permanent loss. */
+export async function continueMemberRemoval(
+  revocationId: string,
+  permanentlyLostDeviceIds: string[]
+): Promise<MemberRemoval> {
+  const removal = await daemonClient.callEnveloped(() =>
+    continueMemberRemovalSdk({
+      body: { revocationId, permanentlyLostDeviceIds },
+      throwOnError: true,
+    })
+  )
+  return toMemberRemoval(removal)
+}
+
 // ── Public API ──────────────────────────────────────────────────
 
 export async function getMemberSyncPreferences(deviceId: string): Promise<MemberSyncPreferences> {
@@ -162,12 +199,31 @@ function toLegacyBootstrap(bootstrap: LegacyBootstrapDto): LegacyBootstrap {
   }
 }
 
+export function toMemberRemoval(removal: MemberRemovalDto): MemberRemoval {
+  return {
+    revocationId: removal.revocationId ?? null,
+    outcome: removal.outcome,
+    pendingRecipients: removal.pendingRecipients,
+    removedDeviceIds: removal.removedDeviceIds,
+    pendingRecipientDeviceIds: removal.pendingRecipientDeviceIds,
+    updatedAtMs: removal.updatedAtMs,
+  }
+}
+
 /** True only when the Engine refused an unsafe Legacy local-only removal. */
 export function isLegacyBootstrapRequired(error: unknown): boolean {
   if (!(error instanceof DaemonApiError) || !error.details || typeof error.details !== 'object') {
     return false
   }
   return (error.details as { code?: unknown }).code === 'legacy_bootstrap_required'
+}
+
+/** True only when an active Engine-owned removal must be displayed to the user. */
+export function isMemberRemovalInProgress(error: unknown): boolean {
+  if (!(error instanceof DaemonApiError) || !error.details || typeof error.details !== 'object') {
+    return false
+  }
+  return (error.details as { code?: unknown }).code === 'member_removal_in_progress'
 }
 
 export async function updateMemberSyncPreferences(

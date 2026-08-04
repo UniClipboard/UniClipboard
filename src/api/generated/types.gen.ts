@@ -370,12 +370,40 @@ export type ContentTypesPatchDto = {
     text?: boolean | null;
 };
 
+export type ContinueMemberRemovalRequest = {
+    permanentlyLostDeviceIds: Array<string>;
+    revocationId: string;
+};
+
 /**
  * Companion to [`SetupStateResponse::current_invitation`].
  */
 export type CurrentInvitation = {
     code: string;
     expiresAtMs: number;
+};
+
+/**
+ * Canonical success envelope: `{ "data": T, "ts": <unix millis i64> }`.
+ *
+ * `ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler
+ * via [`ApiEnvelope::now`] (the contract carries only the type + the clock
+ * helper, not a hard dependency on when the handler reads the clock).
+ * `rename_all = "camelCase"` is a no-op for the single-word fields here but is
+ * declared for forward-compat.
+ *
+ * IMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named
+ * OpenAPI component is declared in the `#[aliases(...)]` block below. Add a new
+ * alias line whenever a new payload type needs enveloping. NEVER register the
+ * bare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare
+ * generic, and an un-aliased generic inlines an anonymous schema.
+ */
+export type CurrentMemberRemovalEnvelope = {
+    data?: MemberRemovalDto | null;
+    /**
+     * Server time when the response was built (unix epoch milliseconds).
+     */
+    ts: number;
 };
 
 /**
@@ -1324,6 +1352,40 @@ export type MemberProtectionDto = {
  * Protection state of one roster member in the current space.
  */
 export type MemberProtectionStatusDto = 'legacy_unprotected' | 'protected' | 'awaiting_readmission' | 'requires_readmission' | 'recovery_required';
+
+export type MemberRemovalDto = {
+    outcome: MemberRemovalOutcomeDto;
+    pendingRecipientDeviceIds: Array<string>;
+    pendingRecipients: number;
+    removedDeviceIds: Array<string>;
+    revocationId?: string | null;
+    updatedAtMs: number;
+};
+
+/**
+ * Canonical success envelope: `{ "data": T, "ts": <unix millis i64> }`.
+ *
+ * `ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler
+ * via [`ApiEnvelope::now`] (the contract carries only the type + the clock
+ * helper, not a hard dependency on when the handler reads the clock).
+ * `rename_all = "camelCase"` is a no-op for the single-word fields here but is
+ * declared for forward-compat.
+ *
+ * IMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named
+ * OpenAPI component is declared in the `#[aliases(...)]` block below. Add a new
+ * alias line whenever a new payload type needs enveloping. NEVER register the
+ * bare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare
+ * generic, and an un-aliased generic inlines an anonymous schema.
+ */
+export type MemberRemovalEnvelope = {
+    data: MemberRemovalDto;
+    /**
+     * Server time when the response was built (unix epoch milliseconds).
+     */
+    ts: number;
+};
+
+export type MemberRemovalOutcomeDto = 'local_only' | 'applied' | 'complete' | 'recovery_required';
 
 /**
  * Sync preferences recorded for a space member.
@@ -4615,6 +4677,48 @@ export type GetSpaceProtectionResponses = {
 
 export type GetSpaceProtectionResponse = GetSpaceProtectionResponses[keyof GetSpaceProtectionResponses];
 
+export type ContinueMemberRemovalData = {
+    body: ContinueMemberRemovalRequest;
+    path?: never;
+    query?: never;
+    url: '/member/removal/continue';
+};
+
+export type ContinueMemberRemovalErrors = {
+    400: ApiErrorResponse;
+    409: ApiErrorResponse;
+    500: ApiErrorResponse;
+    503: ApiErrorResponse;
+};
+
+export type ContinueMemberRemovalError = ContinueMemberRemovalErrors[keyof ContinueMemberRemovalErrors];
+
+export type ContinueMemberRemovalResponses = {
+    200: MemberRemovalEnvelope;
+};
+
+export type ContinueMemberRemovalResponse = ContinueMemberRemovalResponses[keyof ContinueMemberRemovalResponses];
+
+export type GetCurrentMemberRemovalData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/member/removal/current';
+};
+
+export type GetCurrentMemberRemovalErrors = {
+    500: ApiErrorResponse;
+    503: ApiErrorResponse;
+};
+
+export type GetCurrentMemberRemovalError = GetCurrentMemberRemovalErrors[keyof GetCurrentMemberRemovalErrors];
+
+export type GetCurrentMemberRemovalResponses = {
+    200: CurrentMemberRemovalEnvelope;
+};
+
+export type GetCurrentMemberRemovalResponse = GetCurrentMemberRemovalResponses[keyof GetCurrentMemberRemovalResponses];
+
 export type SecureRemoveLegacyMemberData = {
     body?: never;
     path: {
@@ -5041,6 +5145,10 @@ export type UnpairDeviceErrors = {
      */
     404: ApiErrorResponse;
     /**
+     * Member removal already in progress
+     */
+    409: ApiErrorResponse;
+    /**
      * Internal server error
      */
     500: ApiErrorResponse;
@@ -5053,10 +5161,7 @@ export type UnpairDeviceErrors = {
 export type UnpairDeviceError = UnpairDeviceErrors[keyof UnpairDeviceErrors];
 
 export type UnpairDeviceResponses = {
-    /**
-     * Device unpaired (no body)
-     */
-    204: void;
+    200: MemberRemovalEnvelope;
 };
 
 export type UnpairDeviceResponse = UnpairDeviceResponses[keyof UnpairDeviceResponses];

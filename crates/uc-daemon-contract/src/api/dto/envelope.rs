@@ -30,7 +30,7 @@ use crate::api::dto::encryption::{
     EncryptionActionResponse, EncryptionStateResponse, KeychainAccessResponse, UnlockSpaceResponse,
 };
 use crate::api::dto::member::{
-    MemberSyncPreferencesDto, MemberSyncResultDto, MembershipConvergenceDto,
+    MemberRemovalDto, MemberSyncPreferencesDto, MemberSyncResultDto, MembershipConvergenceDto,
     SecureLegacyRemovalDto, SpaceProtectionDto,
 };
 use crate::api::dto::mobile_sync::{
@@ -105,6 +105,8 @@ use crate::api::types::{
     SpaceProtectionEnvelope = ApiEnvelope<SpaceProtectionDto>,
     MembershipConvergenceEnvelope = ApiEnvelope<MembershipConvergenceDto>,
     SecureLegacyRemovalEnvelope = ApiEnvelope<SecureLegacyRemovalDto>,
+    MemberRemovalEnvelope = ApiEnvelope<MemberRemovalDto>,
+    CurrentMemberRemovalEnvelope = ApiEnvelope<Option<MemberRemovalDto>>,
     // ── mobile sync ────────────────────────────────────────────────
     RegisterMobileDeviceEnvelope = ApiEnvelope<RegisterMobileDeviceResultDto>,
     RotateMobilePasswordEnvelope = ApiEnvelope<RotateMobilePasswordResultDto>,

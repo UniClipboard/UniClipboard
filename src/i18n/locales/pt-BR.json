@@ -1044,6 +1044,32 @@
       "waitingForUpgrade": "Alguns dispositivos precisam ser atualizados para se conectarem automaticamente",
       "blocked": "Alguns dispositivos não conseguem concluir a conexão agora"
     },
+    "memberRemoval": {
+      "pending": {
+        "title": "A remoção do dispositivo ainda está em andamento",
+        "description_one": "Aguardando {{count}} dispositivo mantido confirmar a atualização de segurança.",
+        "description_many": "Aguardando {{count}} dispositivos mantidos confirmarem a atualização de segurança.",
+        "description_other": "Aguardando {{count}} dispositivos mantidos confirmarem a atualização de segurança."
+      },
+      "recovery": {
+        "title": "A remoção do dispositivo precisa de recuperação",
+        "description": "Confirme apenas os dispositivos permanentemente indisponíveis antes de continuar."
+      },
+      "complete": {
+        "title": "Remoção do dispositivo concluída",
+        "description": "Todos os dispositivos mantidos confirmaram a atualização de segurança."
+      },
+      "permanentLoss": {
+        "action": "Marcar dispositivos pendentes como perdidos permanentemente",
+        "title": "Confirmar perda permanente do dispositivo",
+        "description": "Continue apenas quando esses dispositivos pendentes não puderem ser recuperados. Esta ação não pode ser desfeita.",
+        "confirm": "Confirmar perda permanente"
+      },
+      "errors": {
+        "statusFailed": "Não foi possível carregar o andamento da remoção do dispositivo.",
+        "continueFailed": "Não foi possível continuar a remoção do dispositivo."
+      }
+    },
     "addDevice": {
       "title": "Convidar um novo dispositivo",
       "subtitle": "Digite este código no dispositivo que vai entrar",
@@ -1082,7 +1108,8 @@
     },
     "unpair": {
       "confirmTitle": "Desparear dispositivo",
-      "confirmDescription": "Tem certeza de que deseja desparear {{deviceName}}? Você precisará parear novamente para sincronizar o conteúdo da área de transferência."
+      "confirmDescription": "Tem certeza de que deseja desparear {{deviceName}}? Você precisará parear novamente para sincronizar o conteúdo da área de transferência.",
+      "cancelling": "Desparelhando..."
     },
     "protection": {
       "label": "Proteção",

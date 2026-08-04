@@ -1040,6 +1040,30 @@
       "waitingForUpgrade": "部分裝置需要升級後才能自動連接",
       "blocked": "部分裝置暫時無法完成連接"
     },
+    "memberRemoval": {
+      "pending": {
+        "title": "裝置移除仍在進行",
+        "description_other": "正在等待 {{count}} 台保留裝置確認安全更新。"
+      },
+      "recovery": {
+        "title": "裝置移除需要恢復",
+        "description": "僅在待確認裝置已永久無法使用時，才確認並繼續。"
+      },
+      "complete": {
+        "title": "裝置移除完成",
+        "description": "所有保留裝置都已確認安全更新。"
+      },
+      "permanentLoss": {
+        "action": "將待確認裝置標記為永久丟失",
+        "title": "確認裝置已永久丟失",
+        "description": "僅在這些待確認裝置確定無法恢復時繼續。此操作無法復原。",
+        "confirm": "確認永久丟失"
+      },
+      "errors": {
+        "statusFailed": "無法讀取裝置移除進度。",
+        "continueFailed": "無法繼續移除裝置。"
+      }
+    },
     "addDevice": {
       "title": "邀請新裝置",
       "subtitle": "在新裝置上輸入此邀請碼",
@@ -1078,7 +1102,8 @@
     },
     "unpair": {
       "confirmTitle": "取消配對",
-      "confirmDescription": "確定要取消與 {{deviceName}} 的配對嗎？取消後需要重新配對才能同步剪貼簿內容。"
+      "confirmDescription": "確定要取消與 {{deviceName}} 的配對嗎？取消後需要重新配對才能同步剪貼簿內容。",
+      "cancelling": "正在取消配對..."
     },
     "protection": {
       "label": "保護狀態",

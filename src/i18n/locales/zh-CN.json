@@ -1078,7 +1078,8 @@
     },
     "unpair": {
       "confirmTitle": "取消配对",
-      "confirmDescription": "确定要取消与 {{deviceName}} 的配对吗？取消后需要重新配对才能同步剪贴板内容。"
+      "confirmDescription": "确定要取消与 {{deviceName}} 的配对吗？取消后需要重新配对才能同步剪贴板内容。",
+      "cancelling": "正在取消配对..."
     },
     "protection": {
       "label": "保护状态",
@@ -1097,6 +1098,30 @@
         "awaiting_readmission": "等待重新准入",
         "requires_readmission": "需要重新准入",
         "recovery_required": "需要恢复"
+      }
+    },
+    "memberRemoval": {
+      "pending": {
+        "title": "设备移除仍在进行",
+        "description_other": "正在等待 {{count}} 台保留设备确认安全更新。"
+      },
+      "recovery": {
+        "title": "设备移除需要恢复",
+        "description": "仅在待确认设备已永久无法使用时，才确认并继续。"
+      },
+      "complete": {
+        "title": "设备移除完成",
+        "description": "所有保留设备都已确认安全更新。"
+      },
+      "permanentLoss": {
+        "action": "将待确认设备标记为永久丢失",
+        "title": "确认设备已永久丢失",
+        "description": "仅在这些待确认设备确定无法恢复时继续。此操作无法撤销。",
+        "confirm": "确认永久丢失"
+      },
+      "errors": {
+        "statusFailed": "无法读取设备移除进度。",
+        "continueFailed": "无法继续移除设备。"
       }
     },
     "tabs": {

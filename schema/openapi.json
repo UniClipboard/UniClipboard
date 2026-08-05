@@ -910,6 +910,20 @@
           },
           {
             "properties": {
+              "tag": {
+                "enum": [
+                  "superseded"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "tag"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
               "reason": {
                 "$ref": "#/components/schemas/DeliveryFailureReasonDto"
               },

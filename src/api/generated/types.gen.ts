@@ -606,6 +606,8 @@ export type EntryDeliveryStatusDto = {
 } | {
     tag: 'unreachable';
 } | {
+    tag: 'superseded';
+} | {
     reason: DeliveryFailureReasonDto;
     tag: 'failed';
 };

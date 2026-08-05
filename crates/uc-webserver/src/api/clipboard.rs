@@ -205,7 +205,6 @@ pub(crate) async fn cancel_entry_receive(
 
 fn cancel_receive_response(outcome: EntryReceiveCancellationOutcome) -> CancelEntryReceiveResponse {
     let outcome = match outcome {
-        EntryReceiveCancellationOutcome::CancellationRequested => "cancellation_requested",
         EntryReceiveCancellationOutcome::Cancelled => "cancelled",
         EntryReceiveCancellationOutcome::NotReceiving => "not_receiving",
         EntryReceiveCancellationOutcome::TooLate => "too_late",

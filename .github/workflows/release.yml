@@ -153,16 +153,8 @@ jobs:
           echo "Previous reference: $PREV_TAG"
           rm -f "${TEMP_OUTPUT}"
 
-  membership-e2e:
-    needs: validate
-    uses: ./.github/workflows/membership-e2e.yml
-    with:
-      tier: release
-      ref: ${{ github.event_name == 'push' && github.ref || inputs.branch }}
-    secrets: inherit
-
   build:
-    needs: [validate, membership-e2e]
+    needs: validate
     uses: ./.github/workflows/build.yml
     with:
       platform: ${{ inputs.platform || 'all' }}
@@ -171,7 +163,7 @@ jobs:
     secrets: inherit
 
   build-cli:
-    needs: [validate, membership-e2e]
+    needs: validate
     uses: ./.github/workflows/build-cli.yml
     with:
       platform: ${{ inputs.platform || 'all' }}

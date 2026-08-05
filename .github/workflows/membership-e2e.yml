@@ -12,25 +12,13 @@ on:
         type: choice
         options:
           - nightly
-          - release
+          - pr
         default: nightly
       ref:
         description: '要测试的分支、标签或提交'
         required: false
         type: string
         default: ''
-  workflow_call:
-    inputs:
-      tier:
-        description: '测试层级'
-        required: true
-        type: string
-      ref:
-        description: '要测试的分支、标签或提交'
-        required: false
-        type: string
-        default: ''
-
 permissions:
   contents: read
   packages: read

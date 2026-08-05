@@ -78,8 +78,9 @@ _Avoid_: synced、has delivery
 
 **Transient sync semantics**：
 本项目的同步契约——内容仅在设备在线时尽力投递，不排队、不重发历史、也不追求最终
-一致。离线是预期状态而非错误；但对既有设备，自动同步开启时，恢复在线会补送最新一条
-本机未送达内容一次，较早内容标记为 `Superseded`，不形成消息队列。
+一致。离线是预期状态而非错误；但对既有设备，自动同步开启时，每台恢复在线的设备只会
+补送该设备最新一条本机未送达内容一次，并只将该设备较早的未送达内容标记为 `Superseded`，
+不形成消息队列。
 _Avoid_: eventual consistency、message queue、store-and-forward
 
 **Network recovery**：
@@ -119,8 +120,8 @@ _Avoid_: relay-only、server mode
   解锁后以 **ActiveSpace** 句柄表达
 - 发送侧每条 entry 对每台对端设备各记一条 **EntryDeliveryRecord**；接收侧对应的
   是 **Receiver-side file transfer projection**（两侧各自为本地投影，不互为真相源）
-- 上述投递全部遵循 **Transient sync semantics**；仅最新一条离线未送达内容会在既有
-  设备恢复在线时补送一次
+- 上述投递全部遵循 **Transient sync semantics**；每台恢复在线的既有设备独立评估，
+  仅补送该设备最新一条离线未送达内容一次
 
 ## Language — Active clipboard（跨设备活跃剪贴板）
 

@@ -114,6 +114,20 @@ describe('EntryDeliveryBadge', () => {
     ).not.toBeInTheDocument()
   })
 
+  it('shows when an entry was replaced by newer content', () => {
+    const delivery: EntryDeliveryView = {
+      entryId: 'entry-superseded',
+      source: { tag: 'local' },
+      deliveries: [target('did_peer_aaaa', 'Mac', { tag: 'superseded' })],
+    }
+
+    render(<EntryDeliveryBadge delivery={delivery} />)
+
+    const trigger = screen.getByRole('button', { name: i18n.t('delivery.popover.ariaTrigger') })
+    expect(trigger).toHaveAttribute('data-summary', 'superseded')
+    expect(trigger).toHaveTextContent(i18n.t('delivery.summary.superseded'))
+  })
+
   it('renders remote source with truncated device id when name is missing', () => {
     const delivery: EntryDeliveryView = {
       entryId: 'entry-remote',

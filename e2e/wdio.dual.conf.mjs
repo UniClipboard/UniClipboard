@@ -13,7 +13,7 @@ const applicationPath =
     process.platform === 'win32' ? 'uniclipboard.exe' : 'uniclipboard'
   )
 
-function instance(profile) {
+function instance(profile, extraEnv = {}) {
   return {
     capabilities: {
       browserName: 'tauri',
@@ -29,6 +29,7 @@ function instance(profile) {
           UC_PROFILE: profile,
           UC_DISABLE_SINGLE_INSTANCE: '1',
           UC_CLIPBOARD_MODE: 'passive',
+          ...extraEnv,
         },
       },
     },
@@ -55,7 +56,9 @@ export const config = {
   ],
   capabilities: {
     sponsor: instance(process.env.E2E_UC_SPONSOR_PROFILE ?? 'wdio-sponsor'),
-    joiner: instance(process.env.E2E_UC_JOINER_PROFILE ?? 'wdio-joiner'),
+    joiner: instance(process.env.E2E_UC_JOINER_PROFILE ?? 'wdio-joiner', {
+      UC_DISABLE_SYSTEM_CLIPBOARD: '1',
+    }),
   },
   reporters: ['spec'],
   framework: 'mocha',

@@ -51,6 +51,7 @@ export type EntryDeliveryStatusView =
   | { tag: 'delivered' }
   | { tag: 'duplicate' }
   | { tag: 'unreachable' }
+  | { tag: 'superseded' }
   | { tag: 'failed'; reason: DeliveryFailureReason }
 
 /** 单个对端的当前同步状态。 */

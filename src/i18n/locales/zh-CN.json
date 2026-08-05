@@ -1749,6 +1749,7 @@
       "duplicate": "已接收(去重)",
       "pending": "未尝试",
       "unreachable": "对端离线",
+      "superseded": "已被新内容替代",
       "failedWithReason": "失败 · {{reason}}"
     },
     "summary": {
@@ -1757,6 +1758,7 @@
       "syncing": "同步中",
       "failed": "同步失败",
       "waiting": "对端离线",
+      "superseded": "已被新内容替代",
       "pending": "等待同步"
     },
     "popover": {

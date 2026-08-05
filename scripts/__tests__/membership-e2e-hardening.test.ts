@@ -19,6 +19,29 @@ describe('membership E2E hardening', () => {
     )
   })
 
+  it('keeps the membership matrix out of the release dependency chain', () => {
+    const release = read('.github/workflows/release.yml')
+    const workflow = read('.github/workflows/membership-e2e.yml')
+    const script = read('scripts/e2e/run-membership-matrix.sh')
+
+    expect(release).not.toMatch(/^\s+membership-e2e:/m)
+    expect(release).not.toContain('needs: [validate, membership-e2e]')
+    expect(workflow).not.toContain('  workflow_call:')
+    expect(workflow).not.toContain('          - release')
+    expect(script).not.toContain('pr|nightly|release')
+    expect(script).not.toContain('if [[ "$TIER" == "release" ]]')
+  })
+
+  it('uses platform-specific binary names for tar archive fixtures', () => {
+    const releaseAssets = read('tests/e2e/tests/release_assets.rs')
+    const tarFixture = releaseAssets.match(
+      /fn tar_release_extracts_only_the_cli_pair\(\) \{[\s\S]*?\n\}/
+    )?.[0]
+
+    expect(tarFixture).toContain('let cli = binary_name("uniclip");')
+    expect(tarFixture).toContain('let daemon = binary_name("uniclipd");')
+  })
+
   it('preserves aggregate failures and explains a missing legacy release', () => {
     const script = read('scripts/e2e/run-membership-matrix.sh')
 

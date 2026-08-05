@@ -105,9 +105,11 @@ fn release_payload_verification_rejects_tampered_inputs() {
 
 #[test]
 fn tar_release_extracts_only_the_cli_pair() {
+    let cli = binary_name("uniclip");
+    let daemon = binary_name("uniclipd");
     let archive = tar_gz(&[
-        ("uniclip", b"cli"),
-        ("uniclipd", b"daemon"),
+        (&cli, b"cli"),
+        (&daemon, b"daemon"),
         ("ignored.txt", b"ignored"),
     ]);
     let output = tempfile::tempdir().expect("output tempdir");

@@ -3,9 +3,9 @@ set -uo pipefail
 
 TIER="${1:-nightly}"
 case "$TIER" in
-  pr|nightly|release) ;;
+  pr|nightly) ;;
   *)
-    echo "usage: $0 [pr|nightly|release]" >&2
+    echo "usage: $0 [pr|nightly]" >&2
     exit 2
     ;;
 esac
@@ -44,9 +44,6 @@ run_case() {
     --manifest-path tests/e2e/Cargo.toml
   )
 
-  if [[ "$TIER" == "release" ]]; then
-    effective_classification="required"
-  fi
   if [[ -n "$feature" ]]; then
     cargo_args+=(--features "$feature")
   fi

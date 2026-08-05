@@ -21,7 +21,10 @@ use axum::response::Response;
 use axum::Router;
 use tokio::sync::{broadcast, Semaphore};
 use tokio_util::sync::CancellationToken;
-use uc_engine::{Engine, HostFileHandle, Operation, OperationResult, PeerConnectionChannelSummary};
+use uc_engine::{
+    Engine, HostFileHandle, NetworkRecoveryPhaseSummary, NetworkRecoveryStatusSummary, Operation,
+    OperationResult, PeerConnectionChannelSummary,
+};
 use uc_observability::analytics::{AnalyticsPort, NoopAnalyticsSink};
 use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
@@ -32,8 +35,9 @@ use crate::api::dto::error::ApiError;
 use crate::api::openapi::ApiDoc;
 use crate::api::routes;
 use crate::api::types::{
-    DaemonResidency, DaemonWsEvent, HealthResponse, PeerSnapshotDto, PresenceRefreshResponse,
-    SpaceMemberDto, StatusResponse,
+    DaemonResidency, DaemonWsEvent, HealthResponse, NetworkRecoveryPhase,
+    NetworkRecoveryStatusResponse, PeerSnapshotDto, PresenceRefreshResponse, SpaceMemberDto,
+    StatusResponse,
 };
 use crate::api::ws;
 use crate::security::SecurityState;
@@ -41,6 +45,21 @@ use crate::socket::{try_resolve_daemon_http_addr, DEFAULT_HTTP_HOST};
 
 const HTTP_BIND_RETRY_TIMEOUT: Duration = Duration::from_secs(5);
 const HTTP_BIND_RETRY_INTERVAL: Duration = Duration::from_millis(100);
+
+fn network_recovery_status_response(
+    status: NetworkRecoveryStatusSummary,
+) -> NetworkRecoveryStatusResponse {
+    NetworkRecoveryStatusResponse {
+        phase: match status.phase {
+            NetworkRecoveryPhaseSummary::Idle => NetworkRecoveryPhase::Idle,
+            NetworkRecoveryPhaseSummary::Recovering => NetworkRecoveryPhase::Recovering,
+            NetworkRecoveryPhaseSummary::RetryScheduled => NetworkRecoveryPhase::RetryScheduled,
+            NetworkRecoveryPhaseSummary::Failed => NetworkRecoveryPhase::Failed,
+        },
+        retryable: status.retryable,
+        next_retry_in_ms: status.next_retry_in_ms,
+    }
+}
 
 #[derive(Clone)]
 pub struct DaemonApiState {
@@ -262,6 +281,22 @@ impl DaemonApiState {
             offline: report.offline,
             errors: report.errors,
         })
+    }
+
+    pub async fn network_recovery_status(&self) -> anyhow::Result<NetworkRecoveryStatusResponse> {
+        let result = self.execute(Operation::QueryNetworkRecoveryStatus).await?;
+        let OperationResult::NetworkRecoveryStatus(status) = result else {
+            anyhow::bail!("engine returned an unexpected network recovery status result");
+        };
+        Ok(network_recovery_status_response(status))
+    }
+
+    pub async fn recover_network(&self) -> anyhow::Result<NetworkRecoveryStatusResponse> {
+        let result = self.execute(Operation::RecoverNetwork).await?;
+        if !matches!(result, OperationResult::NetworkRecovered) {
+            anyhow::bail!("engine returned an unexpected network recovery result");
+        }
+        self.network_recovery_status().await
     }
 
     pub async fn paired_devices(&self) -> anyhow::Result<Vec<SpaceMemberDto>> {

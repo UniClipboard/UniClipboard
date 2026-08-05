@@ -17,6 +17,11 @@ import {
   type LocalDeviceInfo,
   type SpaceMember,
 } from '@/api/daemon/members'
+import {
+  getNetworkRecoveryStatus,
+  recoverNetwork as recoverNetworkApi,
+  type NetworkRecoveryStatus,
+} from '@/api/daemon/network-recovery'
 
 interface DevicesState {
   // 当前设备
@@ -39,6 +44,10 @@ interface DevicesState {
   // stay separate from page-level failures because this status is advisory.
   membershipConvergence: MembershipConvergence | null
   membershipConvergenceError: string | null
+
+  networkRecovery: NetworkRecoveryStatus | null
+  networkRecoveryError: string | null
+  networkRecoveryRequestId: string | null
 
   memberRemoval: MemberRemoval | null
   memberRemovalError: string | null
@@ -114,6 +123,9 @@ const initialState: DevicesState = {
   spaceProtectionError: null,
   membershipConvergence: null,
   membershipConvergenceError: null,
+  networkRecovery: null,
+  networkRecoveryError: null,
+  networkRecoveryRequestId: null,
   memberRemoval: null,
   memberRemovalError: null,
   memberRemovalRequestId: null,
@@ -162,6 +174,28 @@ export const fetchMembershipConvergence = createAsyncThunk(
       return await getMembershipConvergence()
     } catch {
       return rejectWithValue('Failed to fetch membership convergence')
+    }
+  }
+)
+
+export const fetchNetworkRecoveryStatus = createAsyncThunk(
+  'devices/fetchNetworkRecoveryStatus',
+  async (_, { rejectWithValue }) => {
+    try {
+      return await getNetworkRecoveryStatus()
+    } catch {
+      return rejectWithValue('devices.networkRecovery.errors.statusFailed')
+    }
+  }
+)
+
+export const requestNetworkRecovery = createAsyncThunk(
+  'devices/requestNetworkRecovery',
+  async (_, { rejectWithValue }) => {
+    try {
+      return await recoverNetworkApi()
+    } catch {
+      return rejectWithValue('devices.networkRecovery.errors.requestFailed')
     }
   }
 )
@@ -299,6 +333,40 @@ const devicesSlice = createSlice({
       })
       .addCase(fetchMembershipConvergence.rejected, (state, action) => {
         state.membershipConvergenceError = action.payload as string
+      })
+
+    builder
+      .addCase(fetchNetworkRecoveryStatus.pending, (state, action) => {
+        state.networkRecoveryRequestId = action.meta.requestId
+        state.networkRecoveryError = null
+      })
+      .addCase(fetchNetworkRecoveryStatus.fulfilled, (state, action) => {
+        if (state.networkRecoveryRequestId !== action.meta.requestId) return
+        state.networkRecovery = action.payload
+        state.networkRecoveryError = null
+        state.networkRecoveryRequestId = null
+      })
+      .addCase(fetchNetworkRecoveryStatus.rejected, (state, action) => {
+        if (state.networkRecoveryRequestId !== action.meta.requestId) return
+        state.networkRecoveryError = action.payload as string
+        state.networkRecoveryRequestId = null
+      })
+
+    builder
+      .addCase(requestNetworkRecovery.pending, (state, action) => {
+        state.networkRecoveryRequestId = action.meta.requestId
+        state.networkRecoveryError = null
+      })
+      .addCase(requestNetworkRecovery.fulfilled, (state, action) => {
+        if (state.networkRecoveryRequestId !== action.meta.requestId) return
+        state.networkRecovery = action.payload
+        state.networkRecoveryError = null
+        state.networkRecoveryRequestId = null
+      })
+      .addCase(requestNetworkRecovery.rejected, (state, action) => {
+        if (state.networkRecoveryRequestId !== action.meta.requestId) return
+        state.networkRecoveryError = action.payload as string
+        state.networkRecoveryRequestId = null
       })
 
     builder

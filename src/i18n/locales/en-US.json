@@ -1041,6 +1041,16 @@
       "waitingForUpgrade": "Some devices need an update before they can connect automatically",
       "blocked": "Some devices cannot finish connecting right now"
     },
+    "networkRecovery": {
+      "recovering": "Restoring the connection",
+      "retryScheduled": "The connection will be tried again automatically",
+      "failed": "The connection could not be restored",
+      "retry": "Try again",
+      "errors": {
+        "statusFailed": "Connection recovery status is temporarily unavailable",
+        "requestFailed": "Could not start connection recovery"
+      }
+    },
     "addDevice": {
       "title": "Invite a new device",
       "subtitle": "Enter this code on the joining device",

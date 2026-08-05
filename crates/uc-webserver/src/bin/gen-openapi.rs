@@ -62,9 +62,10 @@ use uc_webserver::api::openapi::ApiDoc;
 /// Membership convergence adds GET `/member/convergence`: +1 path, +1 operation
 /// → 72 / 79. Reliable member removal recovery adds GET
 /// `/member/removal/current` and POST `/member/removal/continue`: +2 paths,
-/// +2 operations → 74 / 81.
-const EXPECTED_PATHS: usize = 74;
-const EXPECTED_OPERATIONS: usize = 81;
+/// +2 operations → 74 / 81. Network recovery adds GET+POST
+/// `/network/recovery`: +1 path, +2 operations → 75 / 83.
+const EXPECTED_PATHS: usize = 75;
+const EXPECTED_OPERATIONS: usize = 83;
 const SCHEMA_PREFIX: &str = "#/components/schemas/";
 const HTTP_METHODS: [&str; 7] = ["get", "put", "post", "delete", "patch", "head", "options"];
 

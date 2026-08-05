@@ -147,6 +147,7 @@ impl IntoApiDto<EntryDeliveryStatusDto> for EntryDeliveryStatusSummary {
             EntryDeliveryStatusSummary::Delivered => EntryDeliveryStatusDto::Delivered,
             EntryDeliveryStatusSummary::Duplicate => EntryDeliveryStatusDto::Duplicate,
             EntryDeliveryStatusSummary::Unreachable => EntryDeliveryStatusDto::Unreachable,
+            EntryDeliveryStatusSummary::Superseded => EntryDeliveryStatusDto::Superseded,
             EntryDeliveryStatusSummary::Failed { reason } => EntryDeliveryStatusDto::Failed {
                 reason: reason.into_api_dto(),
             },

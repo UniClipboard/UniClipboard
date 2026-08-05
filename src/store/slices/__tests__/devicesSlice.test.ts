@@ -9,9 +9,11 @@ import {
   type SpaceProtection,
 } from '@/api/daemon/member'
 import type { SpaceMember } from '@/api/daemon/members'
+import { getNetworkRecoveryStatus, type NetworkRecoveryStatus } from '@/api/daemon/network-recovery'
 import devicesReducer, {
   fetchCurrentMemberRemoval,
   fetchMembershipConvergence,
+  fetchNetworkRecoveryStatus,
   fetchSpaceProtection,
   setMemberRemoval,
   setSpaceMembers,
@@ -22,6 +24,10 @@ vi.mock('@/api/daemon/member', async importOriginal => ({
   getCurrentMemberRemoval: vi.fn(),
   getMembershipConvergence: vi.fn(),
   getSpaceProtection: vi.fn(),
+}))
+
+vi.mock('@/api/daemon/network-recovery', () => ({
+  getNetworkRecoveryStatus: vi.fn(),
 }))
 
 function makeMember(peerId: string, overrides?: Partial<SpaceMember>): SpaceMember {
@@ -136,6 +142,42 @@ describe('devicesSlice fetchMembershipConvergence', () => {
     expect(store.getState().devices.membershipConvergence).toEqual(convergence)
     expect(store.getState().devices.membershipConvergenceError).toBe(
       'Failed to fetch membership convergence'
+    )
+  })
+})
+
+describe('devicesSlice fetchNetworkRecoveryStatus', () => {
+  const failed: NetworkRecoveryStatus = {
+    phase: 'failed',
+    retryable: true,
+  }
+
+  beforeEach(() => {
+    vi.mocked(getNetworkRecoveryStatus).mockReset()
+  })
+
+  it('stores the Engine-authoritative recovery snapshot', async () => {
+    vi.mocked(getNetworkRecoveryStatus).mockResolvedValue(failed)
+    const store = configureStore({ reducer: { devices: devicesReducer } })
+
+    await store.dispatch(fetchNetworkRecoveryStatus())
+
+    expect(store.getState().devices.networkRecovery).toEqual(failed)
+    expect(store.getState().devices.networkRecoveryError).toBeNull()
+  })
+
+  it('keeps the last recovery snapshot when the status read fails', async () => {
+    vi.mocked(getNetworkRecoveryStatus)
+      .mockResolvedValueOnce(failed)
+      .mockRejectedValueOnce(new Error('offline'))
+    const store = configureStore({ reducer: { devices: devicesReducer } })
+
+    await store.dispatch(fetchNetworkRecoveryStatus())
+    await store.dispatch(fetchNetworkRecoveryStatus())
+
+    expect(store.getState().devices.networkRecovery).toEqual(failed)
+    expect(store.getState().devices.networkRecoveryError).toBe(
+      'devices.networkRecovery.errors.statusFailed'
     )
   })
 })

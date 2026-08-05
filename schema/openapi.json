@@ -910,6 +910,20 @@
           },
           {
             "properties": {
+              "tag": {
+                "enum": [
+                  "superseded"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "tag"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
               "reason": {
                 "$ref": "#/components/schemas/DeliveryFailureReasonDto"
               },
@@ -2498,6 +2512,56 @@
           "enabled",
           "lanListenEnabled",
           "shortcutInstallMethods"
+        ],
+        "type": "object"
+      },
+      "NetworkRecoveryPhase": {
+        "description": "Stable phase of a network-recovery run.",
+        "enum": [
+          "idle",
+          "recovering",
+          "retryScheduled",
+          "failed"
+        ],
+        "type": "string"
+      },
+      "NetworkRecoveryStatusEnvelope": {
+        "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/NetworkRecoveryStatusResponse"
+          },
+          "ts": {
+            "description": "Server time when the response was built (unix epoch milliseconds).",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "data",
+          "ts"
+        ],
+        "type": "object"
+      },
+      "NetworkRecoveryStatusResponse": {
+        "description": "Current Engine-owned network-recovery state.",
+        "properties": {
+          "nextRetryInMs": {
+            "format": "int64",
+            "minimum": 0,
+            "nullable": true,
+            "type": "integer"
+          },
+          "phase": {
+            "$ref": "#/components/schemas/NetworkRecoveryPhase"
+          },
+          "retryable": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "phase",
+          "retryable"
         ],
         "type": "object"
       },
@@ -8574,6 +8638,82 @@
         "summary": "PATCH /mobile-sync/settings",
         "tags": [
           "mobile-sync"
+        ]
+      }
+    },
+    "/network/recovery": {
+      "get": {
+        "operationId": "getNetworkRecoveryStatus",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NetworkRecoveryStatusEnvelope"
+                }
+              }
+            },
+            "description": "Current network recovery state"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Network recovery state is unavailable"
+          }
+        },
+        "security": [
+          {
+            "session_query": []
+          },
+          {
+            "session_header": []
+          }
+        ],
+        "summary": "GET /network/recovery",
+        "tags": [
+          "system"
+        ]
+      },
+      "post": {
+        "operationId": "recoverNetwork",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NetworkRecoveryStatusEnvelope"
+                }
+              }
+            },
+            "description": "Network recovery completed"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Network recovery could not be started"
+          }
+        },
+        "security": [
+          {
+            "session_query": []
+          },
+          {
+            "session_header": []
+          }
+        ],
+        "summary": "POST /network/recovery",
+        "tags": [
+          "system"
         ]
       }
     },

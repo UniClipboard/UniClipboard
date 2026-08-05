@@ -21,7 +21,7 @@
  * daemon-pushed `peers.changed` ws events.
  */
 
-import { Plus, Settings2 } from 'lucide-react'
+import { Plus, RefreshCw, Settings2 } from 'lucide-react'
 import React, { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { useTranslation } from 'react-i18next'
 import { refreshPresence } from '@/api/daemon'
@@ -90,9 +90,11 @@ import {
   clearSpaceMembersError,
   fetchLocalDeviceInfo,
   fetchMembershipConvergence,
+  fetchNetworkRecoveryStatus,
   fetchCurrentMemberRemoval,
   fetchSpaceProtection,
   fetchSpaceMembers,
+  requestNetworkRecovery,
   setSpaceMembers,
   setMemberRemoval,
 } from '@/store/slices/devicesSlice'
@@ -138,6 +140,9 @@ const DevicesPage: React.FC = () => {
     spaceProtectionError,
     membershipConvergence,
     membershipConvergenceError,
+    networkRecovery,
+    networkRecoveryError,
+    networkRecoveryRequestId,
     memberRemoval,
     memberRemovalError,
   } = useAppSelector(state => state.devices)
@@ -164,6 +169,7 @@ const DevicesPage: React.FC = () => {
     if (!documentVisible) return
     dispatch(fetchSpaceProtection())
     dispatch(fetchMembershipConvergence())
+    dispatch(fetchNetworkRecoveryStatus())
 
     // Presence awareness is push-driven by the daemon's PeerKeepAliveWorker
     // (inbound presence Online → outbound dial → peers.changed ws). The
@@ -199,6 +205,10 @@ const DevicesPage: React.FC = () => {
         dispatch(fetchSpaceMembers())
         return
       }
+      if (event.topic === 'network-recovery' && event.eventType === 'network-recovery.changed') {
+        dispatch(fetchNetworkRecoveryStatus())
+        return
+      }
       if (event.topic !== 'peers') return
       if (event.eventType === 'peers.changed') {
         // The event carries the full member snapshot (same source as
@@ -211,7 +221,7 @@ const DevicesPage: React.FC = () => {
         }
       }
     }
-    const unsub = daemonWs.subscribe(['peers', 'member-removal'], handler)
+    const unsub = daemonWs.subscribe(['peers', 'member-removal', 'network-recovery'], handler)
     return unsub
   }, [dispatch, documentVisible])
 
@@ -325,6 +335,16 @@ const DevicesPage: React.FC = () => {
     membershipConvergenceError || hideDuplicateUpgrade
       ? 'complete'
       : (membershipConvergence?.state ?? 'complete')
+  const networkRecoveryVisible =
+    networkRecoveryError !== null || (networkRecovery !== null && networkRecovery.phase !== 'idle')
+  const canRetryNetworkRecovery =
+    networkRecovery?.phase === 'failed' &&
+    networkRecovery.retryable &&
+    networkRecoveryRequestId === null
+  const requestNetworkRecoveryNow = () => {
+    if (!canRetryNetworkRecovery) return
+    void dispatch(requestNetworkRecovery())
+  }
   const deviceNames = new Map(rawSpaceMembers.map(device => [device.peerId, device.deviceName]))
   const handlePermanentLoss = (removal: MemberRemoval, deviceIds: string[]) => {
     setPermanentLossRemoval(removal)
@@ -400,6 +420,29 @@ const DevicesPage: React.FC = () => {
             })}
           </p>
           <SpaceConnectionStatus state={visibleConvergenceState} />
+          {networkRecoveryVisible && (
+            <Alert className="mt-2 border-warning/30 bg-warning/10 text-warning">
+              <AlertDescription className="flex flex-col gap-2 text-xs">
+                <span>
+                  {networkRecoveryError
+                    ? t(networkRecoveryError)
+                    : t(`devices.networkRecovery.${networkRecovery?.phase}`)}
+                </span>
+                {canRetryNetworkRecovery && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="self-start"
+                    onClick={requestNetworkRecoveryNow}
+                  >
+                    <RefreshCw />
+                    {t('devices.networkRecovery.retry')}
+                  </Button>
+                )}
+              </AlertDescription>
+            </Alert>
+          )}
         </div>
 
         <ScrollArea className="min-h-0 flex-1">

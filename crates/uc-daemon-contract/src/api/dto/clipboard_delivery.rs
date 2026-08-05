@@ -65,6 +65,7 @@ pub enum EntryDeliveryStatusDto {
     /// Peer was unreachable (offline or dial failure). Not a fault — the peer
     /// is simply not online right now.
     Unreachable,
+    Superseded,
     Failed {
         reason: DeliveryFailureReasonDto,
     },

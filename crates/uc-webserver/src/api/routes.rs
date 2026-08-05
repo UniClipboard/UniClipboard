@@ -23,8 +23,9 @@ use uc_daemon_contract::api::dto::clipboard_command::{
     CaptureCurrentClipboardResponse, RestoreEntryResponse,
 };
 use uc_daemon_contract::api::dto::envelope::{
-    ApiEnvelope, CaptureCurrentClipboardEnvelope, HealthEnvelope, PeerSnapshotListEnvelope,
-    PresenceRefreshEnvelope, RestoreEntryEnvelope, SpaceMemberListEnvelope, StatusEnvelope,
+    ApiEnvelope, CaptureCurrentClipboardEnvelope, HealthEnvelope, NetworkRecoveryStatusEnvelope,
+    PeerSnapshotListEnvelope, PresenceRefreshEnvelope, RestoreEntryEnvelope,
+    SpaceMemberListEnvelope, StatusEnvelope,
 };
 use uc_daemon_contract::api::dto::error::ApiErrorResponse;
 use uc_daemon_contract::constants::http_route;
@@ -107,6 +108,10 @@ pub fn router_l2_plus(state: DaemonApiState) -> Router<DaemonApiState> {
         .route("/peers", get(peers))
         .route("/paired-devices", get(paired_devices))
         .route("/presence/refresh", post(refresh_presence))
+        .route(
+            http_route::NETWORK_RECOVERY,
+            get(network_recovery_status).post(recover_network),
+        )
         .merge(crate::api::lifecycle::router())
         .route(
             &format!("{}/:entry_id", http_route::CLIPBOARD_RESTORE),
@@ -508,6 +513,48 @@ async fn refresh_presence(
     Ok(Json(ApiEnvelope::now(response)))
 }
 
+/// GET /network/recovery
+#[utoipa::path(
+    get,
+    path = "/network/recovery",
+    operation_id = "getNetworkRecoveryStatus",
+    tag = "system",
+    responses(
+        (status = 200, description = "Current network recovery state", body = NetworkRecoveryStatusEnvelope),
+        (status = 503, description = "Network recovery state is unavailable", body = ApiErrorResponse)
+    )
+)]
+async fn network_recovery_status(
+    State(state): State<DaemonApiState>,
+) -> Result<Json<NetworkRecoveryStatusEnvelope>, ApiError> {
+    let response = state
+        .network_recovery_status()
+        .await
+        .map_err(|error| network_recovery_error("network_recovery_status", error))?;
+    Ok(Json(ApiEnvelope::now(response)))
+}
+
+/// POST /network/recovery
+#[utoipa::path(
+    post,
+    path = "/network/recovery",
+    operation_id = "recoverNetwork",
+    tag = "system",
+    responses(
+        (status = 200, description = "Network recovery completed", body = NetworkRecoveryStatusEnvelope),
+        (status = 503, description = "Network recovery could not be started", body = ApiErrorResponse)
+    )
+)]
+async fn recover_network(
+    State(state): State<DaemonApiState>,
+) -> Result<Json<NetworkRecoveryStatusEnvelope>, ApiError> {
+    let response = state
+        .recover_network()
+        .await
+        .map_err(|error| network_recovery_error("recover_network", error))?;
+    Ok(Json(ApiEnvelope::now(response)))
+}
+
 /// Map a diagnostics-handler `anyhow::Error` onto a canonical 500 `ApiError`,
 /// preserving the structured `facade / op` Sentry signal previously emitted by
 /// the legacy `internal_error` helper. Used by the `system` topology handlers
@@ -523,6 +570,17 @@ fn diagnostics_internal_error(op: &'static str, error: anyhow::Error) -> ApiErro
         &error.to_string(),
     );
     ApiError::internal(error.to_string())
+}
+
+fn network_recovery_error(op: &'static str, error: anyhow::Error) -> ApiError {
+    log_facade_failure(
+        "daemon_api",
+        op,
+        "unavailable",
+        StatusCode::SERVICE_UNAVAILABLE,
+        &error.to_string(),
+    );
+    ApiError::service_unavailable("network recovery is unavailable")
 }
 
 #[cfg(test)]

@@ -1044,6 +1044,16 @@
       "waitingForUpgrade": "Alguns dispositivos precisam ser atualizados para se conectarem automaticamente",
       "blocked": "Alguns dispositivos não conseguem concluir a conexão agora"
     },
+    "networkRecovery": {
+      "recovering": "Restaurando a conexão",
+      "retryScheduled": "A conexão será tentada novamente automaticamente",
+      "failed": "Não foi possível restaurar a conexão",
+      "retry": "Tentar novamente",
+      "errors": {
+        "statusFailed": "O estado de recuperação da conexão está temporariamente indisponível",
+        "requestFailed": "Não foi possível iniciar a recuperação da conexão"
+      }
+    },
     "memberRemoval": {
       "pending": {
         "title": "A remoção do dispositivo ainda está em andamento",

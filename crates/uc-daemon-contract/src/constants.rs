@@ -15,6 +15,7 @@ pub mod ws_topic {
     /// Search index events topic (Phase 92).
     pub const SEARCH: &str = "search";
     pub const MEMBER_REMOVAL: &str = "member-removal";
+    pub const NETWORK_RECOVERY: &str = "network-recovery";
 }
 
 /// WebSocket event type names emitted within topics.
@@ -60,6 +61,7 @@ pub mod ws_event {
     /// Search rebuild progress event (Phase 92).
     pub const SEARCH_REBUILD_PROGRESS: &str = "search.rebuild_progress";
     pub const MEMBER_REMOVAL_CHANGED: &str = "member-removal.changed";
+    pub const NETWORK_RECOVERY_CHANGED: &str = "network-recovery.changed";
     /// Lightweight inbound clipboard notice for CLI `watch` (ADR-008 P2.5).
     /// Emitted alongside `CLIPBOARD_NEW_CONTENT`; carries only display summaries
     /// and delivery metadata, never the full clipboard payload.
@@ -152,6 +154,8 @@ pub mod http_route {
     pub const CLIPBOARD_CANCEL_TRANSFER: &str = "/clipboard/cancel-transfer";
     /// POST /lifecycle/restart — request a controlled restart/promotion (ADR-008 P5-L L8d-1)
     pub const LIFECYCLE_RESTART: &str = "/lifecycle/restart";
+    /// GET/POST /network/recovery — query or manually request network recovery.
+    pub const NETWORK_RECOVERY: &str = "/network/recovery";
     /// POST /config/export — export the current configuration to an encrypted `.ucbundle` (issue #1110)
     pub const CONFIG_EXPORT: &str = "/config/export";
     /// POST /config/import/preview — decrypt only the bundle manifest for operator confirmation (issue #1110)

@@ -606,6 +606,8 @@ export type EntryDeliveryStatusDto = {
 } | {
     tag: 'unreachable';
 } | {
+    tag: 'superseded';
+} | {
     reason: DeliveryFailureReasonDto;
     tag: 'failed';
 };
@@ -1629,6 +1631,43 @@ export type MobileSyncSettingsViewDto = {
     lanListenerError?: string | null;
     lanPort?: number | null;
     shortcutInstallMethods: Array<ShortcutInstallMethodViewDto>;
+};
+
+/**
+ * Stable phase of a network-recovery run.
+ */
+export type NetworkRecoveryPhase = 'idle' | 'recovering' | 'retryScheduled' | 'failed';
+
+/**
+ * Canonical success envelope: `{ "data": T, "ts": <unix millis i64> }`.
+ *
+ * `ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler
+ * via [`ApiEnvelope::now`] (the contract carries only the type + the clock
+ * helper, not a hard dependency on when the handler reads the clock).
+ * `rename_all = "camelCase"` is a no-op for the single-word fields here but is
+ * declared for forward-compat.
+ *
+ * IMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named
+ * OpenAPI component is declared in the `#[aliases(...)]` block below. Add a new
+ * alias line whenever a new payload type needs enveloping. NEVER register the
+ * bare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare
+ * generic, and an un-aliased generic inlines an anonymous schema.
+ */
+export type NetworkRecoveryStatusEnvelope = {
+    data: NetworkRecoveryStatusResponse;
+    /**
+     * Server time when the response was built (unix epoch milliseconds).
+     */
+    ts: number;
+};
+
+/**
+ * Current Engine-owned network-recovery state.
+ */
+export type NetworkRecoveryStatusResponse = {
+    nextRetryInMs?: number | null;
+    phase: NetworkRecoveryPhase;
+    retryable: boolean;
 };
 
 /**
@@ -5106,6 +5145,56 @@ export type UpdateMobileSyncSettingsResponses = {
 };
 
 export type UpdateMobileSyncSettingsResponse = UpdateMobileSyncSettingsResponses[keyof UpdateMobileSyncSettingsResponses];
+
+export type GetNetworkRecoveryStatusData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/network/recovery';
+};
+
+export type GetNetworkRecoveryStatusErrors = {
+    /**
+     * Network recovery state is unavailable
+     */
+    503: ApiErrorResponse;
+};
+
+export type GetNetworkRecoveryStatusError = GetNetworkRecoveryStatusErrors[keyof GetNetworkRecoveryStatusErrors];
+
+export type GetNetworkRecoveryStatusResponses = {
+    /**
+     * Current network recovery state
+     */
+    200: NetworkRecoveryStatusEnvelope;
+};
+
+export type GetNetworkRecoveryStatusResponse = GetNetworkRecoveryStatusResponses[keyof GetNetworkRecoveryStatusResponses];
+
+export type RecoverNetworkData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/network/recovery';
+};
+
+export type RecoverNetworkErrors = {
+    /**
+     * Network recovery could not be started
+     */
+    503: ApiErrorResponse;
+};
+
+export type RecoverNetworkError = RecoverNetworkErrors[keyof RecoverNetworkErrors];
+
+export type RecoverNetworkResponses = {
+    /**
+     * Network recovery completed
+     */
+    200: NetworkRecoveryStatusEnvelope;
+};
+
+export type RecoverNetworkResponse = RecoverNetworkResponses[keyof RecoverNetworkResponses];
 
 export type ListPairedDevicesData = {
     body?: never;

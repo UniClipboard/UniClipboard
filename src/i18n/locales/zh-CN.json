@@ -1040,6 +1040,16 @@
       "waitingForUpgrade": "部分设备需要升级后才能自动连接",
       "blocked": "部分设备暂时无法完成连接"
     },
+    "networkRecovery": {
+      "recovering": "正在恢复连接",
+      "retryScheduled": "连接将自动再次尝试",
+      "failed": "暂时无法恢复连接",
+      "retry": "重试恢复",
+      "errors": {
+        "statusFailed": "暂时无法读取连接恢复状态",
+        "requestFailed": "无法开始恢复连接"
+      }
+    },
     "addDevice": {
       "title": "邀请新设备",
       "subtitle": "在新设备上输入此邀请码",

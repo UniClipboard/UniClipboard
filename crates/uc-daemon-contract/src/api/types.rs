@@ -124,6 +124,26 @@ pub struct PresenceRefreshResponse {
     pub errors: u32,
 }
 
+/// Current Engine-owned network-recovery state.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct NetworkRecoveryStatusResponse {
+    pub phase: NetworkRecoveryPhase,
+    pub retryable: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub next_retry_in_ms: Option<u64>,
+}
+
+/// Stable phase of a network-recovery run.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub enum NetworkRecoveryPhase {
+    Idle,
+    Recovering,
+    RetryScheduled,
+    Failed,
+}
+
 /// File-transfer direction carried by the daemon wire protocol.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "lowercase")]

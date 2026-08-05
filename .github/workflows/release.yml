@@ -376,6 +376,19 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Dispatch verification reminder for Alpha release
+        if: needs.validate.outputs.channel == 'alpha'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.validate.outputs.version }}
+        run: |
+          gh api \
+            --method POST \
+            "repos/${{ github.repository }}/dispatches" \
+            -f "event_type=issue-lifecycle-release" \
+            -f "client_payload[tag_name]=v${VERSION}" \
+            -f "client_payload[html_url]=https://github.com/${{ github.repository }}/releases/tag/v${VERSION}"
+
       - name: Upload artifacts to R2
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}

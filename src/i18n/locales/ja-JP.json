@@ -1041,6 +1041,16 @@
       "waitingForUpgrade": "一部のデバイスは、自動接続する前に更新が必要です",
       "blocked": "一部のデバイスは現在接続を完了できません"
     },
+    "networkRecovery": {
+      "recovering": "接続を復旧しています",
+      "retryScheduled": "接続は自動的にもう一度試行されます",
+      "failed": "接続を復旧できませんでした",
+      "retry": "もう一度試す",
+      "errors": {
+        "statusFailed": "接続の復旧状態を一時的に取得できません",
+        "requestFailed": "接続の復旧を開始できません"
+      }
+    },
     "memberRemoval": {
       "pending": {
         "title": "デバイスの削除はまだ進行中です",

@@ -52,8 +52,8 @@ use crate::api::dto::v2::setup::{
     SetupStateResponse, SwitchSpaceResponse,
 };
 use crate::api::types::{
-    HealthResponse, LifecycleStatusResponse, PeerSnapshotDto, PresenceRefreshResponse,
-    RestartAccepted, SpaceMemberDto, StatusResponse,
+    HealthResponse, LifecycleStatusResponse, NetworkRecoveryStatusResponse, PeerSnapshotDto,
+    PresenceRefreshResponse, RestartAccepted, SpaceMemberDto, StatusResponse,
 };
 
 /// Canonical success envelope: `{ "data": T, "ts": <unix millis i64> }`.
@@ -147,6 +147,7 @@ use crate::api::types::{
     PeerSnapshotListEnvelope = ApiEnvelope<Vec<PeerSnapshotDto>>,
     SpaceMemberListEnvelope = ApiEnvelope<Vec<SpaceMemberDto>>,
     PresenceRefreshEnvelope = ApiEnvelope<PresenceRefreshResponse>,
+    NetworkRecoveryStatusEnvelope = ApiEnvelope<NetworkRecoveryStatusResponse>,
     // ── auth/connect (newly enveloped, §H) ─────────────────────────
     SessionTokenEnvelope = ApiEnvelope<SessionTokenResponse>,
     // ── setup-v2 (all 6 bodies newly enveloped, §H) ────────────────

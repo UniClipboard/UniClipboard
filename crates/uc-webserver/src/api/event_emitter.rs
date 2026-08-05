@@ -3,7 +3,8 @@ use uc_daemon_contract::api::dto::clipboard_command::{
 };
 use uc_daemon_contract::constants::{ws_event, ws_topic};
 use uc_engine::{
-    ClipboardOriginSummary, EngineEvent, InboundNoticeActionSummary, TransferDirectionSummary,
+    ClipboardOriginSummary, EngineEvent, InboundNoticeActionSummary, NetworkRecoveryPhaseSummary,
+    TransferDirectionSummary,
 };
 
 use crate::api::types::DaemonWsEvent;
@@ -128,6 +129,21 @@ pub fn engine_event_to_ws(event: EngineEvent) -> Option<DaemonWsEvent> {
                 "updatedAtMs": event.updated_at_ms,
             }),
         ),
+        EngineEvent::NetworkRecoveryChanged(status) => (
+            ws_topic::NETWORK_RECOVERY,
+            ws_event::NETWORK_RECOVERY_CHANGED,
+            now_ms(),
+            serde_json::json!({
+                "phase": match status.phase {
+                    NetworkRecoveryPhaseSummary::Idle => "idle",
+                    NetworkRecoveryPhaseSummary::Recovering => "recovering",
+                    NetworkRecoveryPhaseSummary::RetryScheduled => "retryScheduled",
+                    NetworkRecoveryPhaseSummary::Failed => "failed",
+                },
+                "retryable": status.retryable,
+                "nextRetryInMs": status.next_retry_in_ms,
+            }),
+        ),
         EngineEvent::StateChanged { .. }
         | EngineEvent::PeerPresenceChanged(_)
         | EngineEvent::PairingCompleted(_)
@@ -154,7 +170,8 @@ mod engine_event_tests {
     use serde::Serialize;
     use uc_engine::{
         EngineError, EngineErrorCategory, InboundNoticeEvent, LifecycleAction,
-        MemberRevocationOutcome, MemberRevocationSummary, TransferProgress,
+        MemberRevocationOutcome, MemberRevocationSummary, NetworkRecoveryStatusSummary,
+        TransferProgress,
     };
 
     #[derive(Serialize)]
@@ -261,6 +278,24 @@ mod engine_event_tests {
         assert_eq!(event.payload["direction"], "receiving");
         assert_eq!(event.payload["bytesTransferred"], 64);
         assert_eq!(event.payload["totalBytes"], 128);
+    }
+
+    #[test]
+    fn network_recovery_event_uses_the_stable_camel_case_wire_shape() {
+        let event = engine_event_to_ws(EngineEvent::NetworkRecoveryChanged(
+            NetworkRecoveryStatusSummary {
+                phase: NetworkRecoveryPhaseSummary::RetryScheduled,
+                retryable: true,
+                next_retry_in_ms: Some(2_000),
+            },
+        ))
+        .expect("network recovery websocket event");
+
+        assert_eq!(event.topic, ws_topic::NETWORK_RECOVERY);
+        assert_eq!(event.event_type, ws_event::NETWORK_RECOVERY_CHANGED);
+        assert_eq!(event.payload["phase"], "retryScheduled");
+        assert_eq!(event.payload["nextRetryInMs"], 2_000);
+        assert!(event.payload.get("next_retry_in_ms").is_none());
     }
 
     #[test]

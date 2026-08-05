@@ -65,8 +65,9 @@ _Avoid_: format、payload、blob
 
 **EntryDeliveryRecord**：
 发送侧为「某条 entry 投递到某台对端设备」维护的结果记录，状态为 `Delivered`
-（对端 ack）/ `Duplicate`（对端已另有同内容）/ `Failed`（带失败分类）。是发送方的
-本地投递视图，区别于接收侧的 **Tracked inbound file transfer**。
+（对端 ack）/ `Duplicate`（对端已另有同内容）/ `Unreachable`（对端暂时不可达）/
+`Superseded`（已被更新的内容替代）/ `Failed`（带失败分类）。`Superseded` 是正常终态，
+不是失败。它是发送方的本地投递视图，区别于接收侧的 **Tracked inbound file transfer**。
 _Avoid_: ack、receipt、transfer
 
 **delivery_tracked**：
@@ -76,10 +77,17 @@ _Avoid_: ack、receipt、transfer
 _Avoid_: synced、has delivery
 
 **Transient sync semantics**：
-本项目的同步契约——内容仅在设备在线时尽力投递，失败即报告，**不排队、不重发、
-不追求最终一致**。离线是预期状态而非错误；自动恢复属协作工具语义，与「多设备
-服务一个人」定位冲突。
+本项目的同步契约——内容仅在设备在线时尽力投递，不排队、不重发历史、也不追求最终
+一致。离线是预期状态而非错误；但对既有设备，自动同步开启时，每台恢复在线的设备只会
+补送该设备最新一条本机未送达内容一次，并只将该设备较早的未送达内容标记为 `Superseded`，
+不形成消息队列。
 _Avoid_: eventual consistency、message queue、store-and-forward
+
+**Network recovery**：
+核心统一拥有网络会话的完整恢复、自动重试与并发合并。状态为 `Idle`、`Recovering`、
+`RetryScheduled`、`Failed`；状态通知遗漏时，宿主重新读取当前状态。手动恢复仅在
+`Failed` 且可重试时作为最后兜底，不自行实现恢复步骤。
+_Avoid_: reconnect loop、client-side recovery
 
 **ActiveClipboardState**：
 「Space 内当前哪一条内容是活跃剪贴板」的可复制轻量指针（`content_hash`、
@@ -112,7 +120,8 @@ _Avoid_: relay-only、server mode
   解锁后以 **ActiveSpace** 句柄表达
 - 发送侧每条 entry 对每台对端设备各记一条 **EntryDeliveryRecord**；接收侧对应的
   是 **Receiver-side file transfer projection**（两侧各自为本地投影，不互为真相源）
-- 上述投递全部遵循 **Transient sync semantics**——失败不重试，由用户手动重发
+- 上述投递全部遵循 **Transient sync semantics**；自动同步开启时，每台恢复在线的既有
+  设备独立评估，仅补送该设备最新一条离线未送达内容一次
 
 ## Language — Active clipboard（跨设备活跃剪贴板）
 

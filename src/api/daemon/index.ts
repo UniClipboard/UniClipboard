@@ -91,6 +91,8 @@ export {
 export type { LocalDeviceInfo, SpaceMember } from './members'
 export { refreshPresence } from './presence'
 export type { PresenceRefreshResult } from './presence'
+export { getNetworkRecoveryStatus, recoverNetwork } from './network-recovery'
+export type { NetworkRecoveryPhase, NetworkRecoveryStatus } from './network-recovery'
 export { classifyPairingError } from './events'
 export type { PairingErrorKind } from './events'
 export { querySearch, getSearchStatus, getSearchTags, triggerSearchRebuild } from './search'

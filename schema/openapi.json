@@ -2515,6 +2515,56 @@
         ],
         "type": "object"
       },
+      "NetworkRecoveryPhase": {
+        "description": "Stable phase of a network-recovery run.",
+        "enum": [
+          "idle",
+          "recovering",
+          "retryScheduled",
+          "failed"
+        ],
+        "type": "string"
+      },
+      "NetworkRecoveryStatusEnvelope": {
+        "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/NetworkRecoveryStatusResponse"
+          },
+          "ts": {
+            "description": "Server time when the response was built (unix epoch milliseconds).",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "data",
+          "ts"
+        ],
+        "type": "object"
+      },
+      "NetworkRecoveryStatusResponse": {
+        "description": "Current Engine-owned network-recovery state.",
+        "properties": {
+          "nextRetryInMs": {
+            "format": "int64",
+            "minimum": 0,
+            "nullable": true,
+            "type": "integer"
+          },
+          "phase": {
+            "$ref": "#/components/schemas/NetworkRecoveryPhase"
+          },
+          "retryable": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "phase",
+          "retryable"
+        ],
+        "type": "object"
+      },
       "NetworkSettingsDto": {
         "description": "LAN-only Mode（v0.7.0）DTO 镜像。\n\n反向命名规则（Pitfall 1）：业务正向语义 `allow_relay_fallback`，\n不在此层重命名为 `lan_only` 或类似镜像。wire 字段 = `allowRelayFallback`\n（camelCase 自动转换）。取反唯一发生在 `uc-bootstrap/src/network_policy.rs`。\n\n`allow_overlay_network_addrs` 控制是否把 VPN/overlay 类虚拟网卡 IP（CGNAT\n100.64.0.0/10、Tailscale ULA fd7a:115c:a1e0::/48）作为 iroh 直连候选发布\n给对端。默认 `false`（过滤）。专业用户在两端都接入同一 VPN 时可开启。\n\n`custom_relay_urls` 为空时继续使用 iroh 默认 relay；非空时只使用这些\n用户配置的 relay URL。LAN-only 模式关闭 relay 时该列表保留但不生效。",
         "properties": {
@@ -8588,6 +8638,82 @@
         "summary": "PATCH /mobile-sync/settings",
         "tags": [
           "mobile-sync"
+        ]
+      }
+    },
+    "/network/recovery": {
+      "get": {
+        "operationId": "getNetworkRecoveryStatus",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NetworkRecoveryStatusEnvelope"
+                }
+              }
+            },
+            "description": "Current network recovery state"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Network recovery state is unavailable"
+          }
+        },
+        "security": [
+          {
+            "session_query": []
+          },
+          {
+            "session_header": []
+          }
+        ],
+        "summary": "GET /network/recovery",
+        "tags": [
+          "system"
+        ]
+      },
+      "post": {
+        "operationId": "recoverNetwork",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NetworkRecoveryStatusEnvelope"
+                }
+              }
+            },
+            "description": "Network recovery completed"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Network recovery could not be started"
+          }
+        },
+        "security": [
+          {
+            "session_query": []
+          },
+          {
+            "session_header": []
+          }
+        ],
+        "summary": "POST /network/recovery",
+        "tags": [
+          "system"
         ]
       }
     },

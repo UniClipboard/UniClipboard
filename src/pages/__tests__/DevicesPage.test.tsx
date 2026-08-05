@@ -125,6 +125,9 @@ const devicesState = {
   spaceProtectionError: null as string | null,
   membershipConvergence: null as null | { state: string },
   membershipConvergenceError: null as string | null,
+  networkRecovery: null as null | { phase: string; retryable: boolean },
+  networkRecoveryError: null as string | null,
+  networkRecoveryRequestId: null as string | null,
   memberRemoval: null as MemberRemoval | null,
   memberRemovalError: null as string | null,
   memberSyncPreferences: {},
@@ -146,7 +149,9 @@ vi.mock('@/store/slices/devicesSlice', () => ({
   clearSpaceMembersError: vi.fn(() => ({ type: 'devices/clearSpaceMembersError' })),
   fetchSpaceProtection: vi.fn(() => ({ type: 'devices/fetchSpaceProtection' })),
   fetchMembershipConvergence: vi.fn(() => ({ type: 'devices/fetchMembershipConvergence' })),
+  fetchNetworkRecoveryStatus: vi.fn(() => ({ type: 'devices/fetchNetworkRecoveryStatus' })),
   fetchCurrentMemberRemoval: vi.fn(() => ({ type: 'devices/fetchCurrentMemberRemoval' })),
+  requestNetworkRecovery: vi.fn(() => ({ type: 'devices/requestNetworkRecovery' })),
   setSpaceMembers: vi.fn((members: unknown[]) => ({ type: 'devices/setSpaceMembers', members })),
   setMemberRemoval: vi.fn((removal: unknown) => ({ type: 'devices/setMemberRemoval', removal })),
   fetchMemberSyncPreferences: vi.fn(() => ({ type: 'devices/fetchMemberSyncPreferences' })),
@@ -167,6 +172,10 @@ vi.mock('@/api/daemon/member', () => ({
   isLegacyBootstrapRequired: vi.fn(),
   isMemberRemovalInProgress: vi.fn(),
   secureRemoveLegacyMember: vi.fn(),
+}))
+
+vi.mock('@/api/daemon/network-recovery', () => ({
+  recoverNetwork: vi.fn(),
 }))
 
 vi.mock('@/api/tauri-command/mobile_sync', () => ({
@@ -224,6 +233,9 @@ describe('DevicesPage', () => {
     devicesState.spaceProtectionError = null
     devicesState.membershipConvergence = null
     devicesState.membershipConvergenceError = null
+    devicesState.networkRecovery = null
+    devicesState.networkRecoveryError = null
+    devicesState.networkRecoveryRequestId = null
     devicesState.memberRemoval = null
     devicesState.memberRemovalError = null
     daemonWsMocks.subscribe.mockClear()
@@ -251,6 +263,7 @@ describe('DevicesPage', () => {
     expect(dispatchMock).toHaveBeenCalledWith({ type: 'devices/fetchCurrentMemberRemoval' })
     expect(dispatchMock).toHaveBeenCalledWith({ type: 'devices/fetchSpaceProtection' })
     expect(dispatchMock).toHaveBeenCalledWith({ type: 'devices/fetchMembershipConvergence' })
+    expect(dispatchMock).toHaveBeenCalledWith({ type: 'devices/fetchNetworkRecoveryStatus' })
   })
 
   it('translates a space protection status failure', () => {
@@ -407,6 +420,27 @@ describe('DevicesPage', () => {
 
     expect(dispatchMock).toHaveBeenCalledWith({ type: 'devices/fetchCurrentMemberRemoval' })
     expect(dispatchMock).toHaveBeenCalledWith({ type: 'devices/fetchSpaceMembers' })
+  })
+
+  it('only offers manual recovery after a retryable final failure', async () => {
+    devicesState.networkRecovery = { phase: 'failed', retryable: true }
+    const user = userEvent.setup()
+    render(<DevicesPage />)
+
+    expect(screen.getByText(i18n.t('devices.networkRecovery.failed'))).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: i18n.t('devices.networkRecovery.retry') }))
+
+    expect(dispatchMock).toHaveBeenCalledWith({ type: 'devices/requestNetworkRecovery' })
+  })
+
+  it('keeps the manual recovery action hidden while an automatic retry is scheduled', () => {
+    devicesState.networkRecovery = { phase: 'retryScheduled', retryable: true }
+    render(<DevicesPage />)
+
+    expect(screen.getByText(i18n.t('devices.networkRecovery.retryScheduled'))).toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: i18n.t('devices.networkRecovery.retry') })
+    ).not.toBeInTheDocument()
   })
 
   it('shows a compact status while the space is still connecting', () => {

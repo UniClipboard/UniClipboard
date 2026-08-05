@@ -1040,6 +1040,16 @@
       "waitingForUpgrade": "部分裝置需要升級後才能自動連接",
       "blocked": "部分裝置暫時無法完成連接"
     },
+    "networkRecovery": {
+      "recovering": "正在恢復連接",
+      "retryScheduled": "連接將自動再次嘗試",
+      "failed": "暫時無法恢復連接",
+      "retry": "重試恢復",
+      "errors": {
+        "statusFailed": "暫時無法讀取連接恢復狀態",
+        "requestFailed": "無法開始恢復連接"
+      }
+    },
     "memberRemoval": {
       "pending": {
         "title": "裝置移除仍在進行",

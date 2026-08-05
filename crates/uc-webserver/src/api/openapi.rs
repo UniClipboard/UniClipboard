@@ -93,17 +93,17 @@ use uc_daemon_contract::api::dto::envelope::{
     LifecycleStatusEnvelope, ListEntriesEnvelope, LocalDeviceInfoEnvelope, LogExportEnvelope,
     MemberRemovalEnvelope, MemberSyncPreferencesEnvelope, MemberSyncResultEnvelope,
     MembershipConvergenceEnvelope, MobileDeviceListEnvelope, MobileSyncActionEnvelope,
-    MobileSyncSettingsEnvelope, PeerSnapshotListEnvelope, PresenceRefreshEnvelope,
-    PreviewImportEnvelope, RegisterMobileDeviceEnvelope, RelayCredentialStatusEnvelope,
-    RelayProbeOutcomeEnvelope, RelaySaveResultEnvelope, ResendEnvelope, RestartAcceptedEnvelope,
-    RestoreEntryEnvelope, RotateMobilePasswordEnvelope, SearchQueryEnvelope, SearchRebuildEnvelope,
-    SearchStatusEnvelope, SearchTagsEnvelope, SecureLegacyRemovalEnvelope, SessionTokenEnvelope,
-    SettingsEnvelope, SettingsUpdateResultEnvelope, SetupInitializeEnvelope,
-    SetupIssueInvitationEnvelope, SetupMigrationProgressEnvelope, SetupRedeemEnvelope,
-    SetupStateEnvelope, SetupSwitchSpaceEnvelope, SpaceMemberListEnvelope, SpaceProtectionEnvelope,
-    StatusEnvelope, StorageStatsEnvelope, ToggleFavoriteEnvelope, UnlockSpaceEnvelope,
-    UpdateDebugModeEnvelope, UpdateMobileDeviceEnvelope, UpdateMobileSyncSettingsEnvelope,
-    UpgradeStatusEnvelope,
+    MobileSyncSettingsEnvelope, NetworkRecoveryStatusEnvelope, PeerSnapshotListEnvelope,
+    PresenceRefreshEnvelope, PreviewImportEnvelope, RegisterMobileDeviceEnvelope,
+    RelayCredentialStatusEnvelope, RelayProbeOutcomeEnvelope, RelaySaveResultEnvelope,
+    ResendEnvelope, RestartAcceptedEnvelope, RestoreEntryEnvelope, RotateMobilePasswordEnvelope,
+    SearchQueryEnvelope, SearchRebuildEnvelope, SearchStatusEnvelope, SearchTagsEnvelope,
+    SecureLegacyRemovalEnvelope, SessionTokenEnvelope, SettingsEnvelope,
+    SettingsUpdateResultEnvelope, SetupInitializeEnvelope, SetupIssueInvitationEnvelope,
+    SetupMigrationProgressEnvelope, SetupRedeemEnvelope, SetupStateEnvelope,
+    SetupSwitchSpaceEnvelope, SpaceMemberListEnvelope, SpaceProtectionEnvelope, StatusEnvelope,
+    StorageStatsEnvelope, ToggleFavoriteEnvelope, UnlockSpaceEnvelope, UpdateDebugModeEnvelope,
+    UpdateMobileDeviceEnvelope, UpdateMobileSyncSettingsEnvelope, UpgradeStatusEnvelope,
 };
 use uc_daemon_contract::api::dto::storage::{
     ClearCacheRequest, ClearCacheResponse, StorageStatsDto,
@@ -117,9 +117,9 @@ use uc_daemon_contract::api::dto::v2::setup::{
 use uc_daemon_contract::api::dto::ws::{WsErrorResponse, WsSubscribeRequest};
 use uc_daemon_contract::api::types::DaemonWsEvent;
 use uc_daemon_contract::api::types::{
-    DaemonResidency, HealthResponse, LifecycleStatusResponse, PeerSnapshotDto,
-    PresenceRefreshResponse, RestartAccepted, RestartRequest, SpaceMemberDto, StatusResponse,
-    WorkerStatusDto,
+    DaemonResidency, HealthResponse, LifecycleStatusResponse, NetworkRecoveryPhase,
+    NetworkRecoveryStatusResponse, PeerSnapshotDto, PresenceRefreshResponse, RestartAccepted,
+    RestartRequest, SpaceMemberDto, StatusResponse, WorkerStatusDto,
 };
 
 /// Applies the contract-owned cross-cutting OpenAPI metadata (info-adjacent
@@ -236,6 +236,8 @@ impl Modify for ContractMeta {
         crate::api::routes::peers,
         crate::api::routes::paired_devices,
         crate::api::routes::refresh_presence,
+        crate::api::routes::network_recovery_status,
+        crate::api::routes::recover_network,
         crate::api::ws::router,
         // ── auth (L1/public bootstrap, system tag) ─────────────────
         crate::security::connect::connect_handler,
@@ -463,6 +465,7 @@ impl Modify for ContractMeta {
             PeerSnapshotListEnvelope,
             SpaceMemberListEnvelope,
             PresenceRefreshEnvelope,
+            NetworkRecoveryStatusEnvelope,
             HealthResponse,
             StatusResponse,
             DebugStatusDto,
@@ -475,6 +478,8 @@ impl Modify for ContractMeta {
             PeerSnapshotDto,
             SpaceMemberDto,
             PresenceRefreshResponse,
+            NetworkRecoveryPhase,
+            NetworkRecoveryStatusResponse,
             // ── websocket protocol schemas ─────────────────────────
             DaemonWsEvent,
             WsSubscribeRequest,
@@ -628,7 +633,8 @@ mod assembly_smoke_tests {
         // → 71 / 78. Membership convergence adds GET /member/convergence:
         // +1 path, +1 operation → 72 / 79. Reliable member-removal recovery
         // adds GET /member/removal/current and POST /member/removal/continue:
-        // +2 paths, +2 operations → 74 / 81.)
+        // +2 paths, +2 operations → 74 / 81. Network recovery adds GET+POST
+        // /network/recovery: +1 path, +2 operations → 75 / 83.)
         const HTTP_METHODS: [&str; 7] =
             ["get", "put", "post", "delete", "patch", "head", "options"];
         let paths = value
@@ -637,8 +643,8 @@ mod assembly_smoke_tests {
             .expect("OpenAPI doc must declare paths");
         assert_eq!(
             paths.len(),
-            74,
-            "expected exactly 74 path templates, found {}: {:?}",
+            75,
+            "expected exactly 75 path templates, found {}: {:?}",
             paths.len(),
             paths.keys().collect::<Vec<_>>()
         );
@@ -652,8 +658,8 @@ mod assembly_smoke_tests {
             })
             .sum();
         assert_eq!(
-            operation_count, 81,
-            "expected exactly 81 operations across all paths, found {operation_count}"
+            operation_count, 83,
+            "expected exactly 83 operations across all paths, found {operation_count}"
         );
 
         // A few frozen operationIds (§D) must be present somewhere in the doc.

@@ -1769,6 +1769,7 @@
       "duplicate": "entregue (duplicado)",
       "pending": "não tentado",
       "unreachable": "dispositivo offline",
+      "superseded": "substituído por conteúdo mais recente",
       "failedWithReason": "falhou · {{reason}}"
     },
     "summary": {
@@ -1777,6 +1778,7 @@
       "syncing": "Sincronizando",
       "failed": "Falha na sincronização",
       "waiting": "Dispositivo offline",
+      "superseded": "Substituído por conteúdo mais recente",
       "pending": "Aguardando sincronização"
     },
     "popover": {

@@ -65,6 +65,7 @@ pub enum EntryDeliveryStatusDto {
     /// Peer was unreachable (offline or dial failure). Not a fault — the peer
     /// is simply not online right now.
     Unreachable,
+    /// A newer local clipboard entry replaced this older offline delivery.
     Superseded,
     Failed {
         reason: DeliveryFailureReasonDto,
@@ -94,6 +95,14 @@ mod tests {
         assert_eq!(
             serde_json::to_string(&DeliveryFailureReasonDto::PeerIncompatible).unwrap(),
             "\"peerIncompatible\""
+        );
+    }
+
+    #[test]
+    fn superseded_delivery_status_has_a_stable_wire_value() {
+        assert_eq!(
+            serde_json::to_value(EntryDeliveryStatusDto::Superseded).unwrap(),
+            serde_json::json!({ "tag": "superseded" })
         );
     }
 }

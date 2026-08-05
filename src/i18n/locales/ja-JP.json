@@ -1760,6 +1760,7 @@
       "duplicate": "配信済み（重複）",
       "pending": "未試行",
       "unreachable": "ピアがオフライン",
+      "superseded": "新しい内容に置き換え済み",
       "failedWithReason": "失敗 · {{reason}}"
     },
     "summary": {
@@ -1768,6 +1769,7 @@
       "syncing": "同期中",
       "failed": "同期失敗",
       "waiting": "オフラインのピア",
+      "superseded": "新しい内容に置き換え済み",
       "pending": "同期待機中"
     },
     "popover": {

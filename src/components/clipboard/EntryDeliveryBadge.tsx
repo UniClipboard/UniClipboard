@@ -44,7 +44,14 @@ interface EntryDeliveryBadgeProps {
   delivery: EntryDeliveryView | null
 }
 
-type SyncSummary = 'synced' | 'syncing' | 'partial' | 'failed' | 'waiting' | 'pending'
+type SyncSummary =
+  | 'synced'
+  | 'syncing'
+  | 'partial'
+  | 'failed'
+  | 'waiting'
+  | 'superseded'
+  | 'pending'
 
 const FAILURE_REASON_KEYS: Record<DeliveryFailureReason, string> = {
   localPolicy: 'delivery.failureReason.localPolicy',
@@ -70,6 +77,7 @@ function summarize(targets: readonly EntryDeliveryTargetView[]): SyncSummary | n
   let delivered = 0
   let failed = 0
   let unreachable = 0
+  let superseded = 0
   let pending = 0
   for (const t of targets) {
     switch (t.status.tag) {
@@ -83,6 +91,9 @@ function summarize(targets: readonly EntryDeliveryTargetView[]): SyncSummary | n
       case 'unreachable':
         unreachable += 1
         break
+      case 'superseded':
+        superseded += 1
+        break
       case 'pending':
         pending += 1
         break
@@ -91,6 +102,8 @@ function summarize(targets: readonly EntryDeliveryTargetView[]): SyncSummary | n
   if (delivered === targets.length) return 'synced'
   if (failed === targets.length) return 'failed'
   if (failed > 0) return 'partial'
+  if (superseded === targets.length) return 'superseded'
+  if (superseded > 0) return 'partial'
   if (unreachable > 0 && delivered > 0) return 'partial'
   if (unreachable === targets.length) return 'waiting'
   if (delivered > 0 && pending > 0) return 'syncing'
@@ -243,6 +256,13 @@ const SyncBadge: React.FC<SyncBadgeProps> = ({
           tone: 'text-muted-foreground/70',
           spin: false,
         }
+      case 'superseded':
+        return {
+          Icon: History,
+          label: t('delivery.summary.superseded'),
+          tone: 'text-muted-foreground/70',
+          spin: false,
+        }
       case 'pending':
         return {
           Icon: CircleDashed,
@@ -331,6 +351,7 @@ const DeliveryRow: React.FC<DeliveryRowProps> = ({ target, resendable, entryId, 
     resendable &&
     (target.status.tag === 'failed' ||
       target.status.tag === 'unreachable' ||
+      target.status.tag === 'superseded' ||
       target.status.tag === 'pending')
 
   return (
@@ -458,6 +479,8 @@ const StatusIcon: React.FC<{ status: EntryDeliveryStatusView }> = ({ status }) =
       return <CircleDashed className="size-3" />
     case 'unreachable':
       return <CircleDashed className="size-3" />
+    case 'superseded':
+      return <History className="size-3" />
     case 'failed':
       return <X className="size-3" />
   }
@@ -476,6 +499,8 @@ function getStatusLabel(
       return t('delivery.status.pending')
     case 'unreachable':
       return t('delivery.status.unreachable')
+    case 'superseded':
+      return t('delivery.status.superseded')
     case 'failed':
       return t('delivery.status.failedWithReason', {
         reason: t(FAILURE_REASON_KEYS[status.reason]),
@@ -497,6 +522,8 @@ function renderStatusTone(status: EntryDeliveryStatusView): StatusTone {
     case 'pending':
       return { icon: 'text-muted-foreground/60', label: 'text-muted-foreground' }
     case 'unreachable':
+      return { icon: 'text-muted-foreground/60', label: 'text-muted-foreground' }
+    case 'superseded':
       return { icon: 'text-muted-foreground/60', label: 'text-muted-foreground' }
     case 'failed':
       return { icon: 'text-destructive', label: 'text-destructive' }

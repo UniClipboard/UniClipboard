@@ -437,9 +437,15 @@ async fn handle_client_message(
     }
 
     for topic in normalized_topics {
-        if let Some(snapshot) = build_snapshot_event(state, &topic).await? {
-            if outbound_tx.send(snapshot).await.is_err() {
-                break;
+        match build_snapshot_event(state, &topic).await {
+            Ok(Some(snapshot)) => {
+                if outbound_tx.send(snapshot).await.is_err() {
+                    break;
+                }
+            }
+            Ok(None) => {}
+            Err(error) => {
+                warn!(%topic, error = %error, "skipping unavailable websocket topic snapshot");
             }
         }
     }

@@ -1762,6 +1762,7 @@
       "duplicate": "delivered (duplicate)",
       "pending": "not attempted",
       "unreachable": "peer offline",
+      "superseded": "replaced by newer content",
       "failedWithReason": "failed · {{reason}}"
     },
     "summary": {
@@ -1770,6 +1771,7 @@
       "syncing": "Syncing",
       "failed": "Sync failed",
       "waiting": "Peer offline",
+      "superseded": "Replaced by newer content",
       "pending": "Awaiting sync"
     },
     "popover": {

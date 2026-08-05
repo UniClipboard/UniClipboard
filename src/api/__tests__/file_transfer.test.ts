@@ -54,10 +54,10 @@ describe('cancelFileTransfer', () => {
 describe('cancelEntryReceive', () => {
   it('sends both the entry and expected attempt identity', async () => {
     cancelEntrySdkMock.mockResolvedValueOnce({
-      data: { data: { outcome: 'cancellation_requested' }, ts: 1 },
+      data: { data: { outcome: 'cancelled' }, ts: 1 },
     })
 
-    await expect(cancelEntryReceive('entry-1', 'attempt-2')).resolves.toBe('cancellation_requested')
+    await expect(cancelEntryReceive('entry-1', 'attempt-2')).resolves.toBe('cancelled')
     expect(cancelEntrySdkMock).toHaveBeenCalledWith({
       path: { id: 'entry-1' },
       body: { attemptId: 'attempt-2' },

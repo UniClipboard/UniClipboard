@@ -103,6 +103,7 @@ const SetupScreen: React.FC<SetupScreenProps> = ({
 export default function SetupPage({ onCompleteSetup }: SetupPageProps = {}) {
   const { isMac } = usePlatform()
   const navigate = useNavigate()
+  const isE2e = import.meta.env.VITE_E2E === '1'
   const {
     screen,
     loading,
@@ -125,6 +126,23 @@ export default function SetupPage({ onCompleteSetup }: SetupPageProps = {}) {
 
   const stepKey = screen.kind
   const pairingComplete = screen.kind === 'pairing_complete'
+  const screenContent = (
+    <div key={stepKey} className="w-full">
+      <SetupScreen
+        screen={screen}
+        loading={loading}
+        goEntry={goEntry}
+        startCreateSpace={startCreateSpace}
+        startJoinSpace={startJoinSpace}
+        startImportConfig={startImportConfig}
+        initializeSpace={initializeSpace}
+        issueInvitation={issueInvitation}
+        cancelInvitation={cancelInvitation}
+        redeemInvitation={redeemInvitation}
+        onDone={handleDone}
+      />
+    </div>
+  )
 
   return (
     <div
@@ -146,23 +164,13 @@ export default function SetupPage({ onCompleteSetup }: SetupPageProps = {}) {
 
         <div className="flex min-h-0 flex-1 items-center overflow-y-auto px-8 pb-12 sm:px-14">
           <div className={cn('mx-auto min-w-0 w-full', pairingComplete ? 'max-w-xl' : 'max-w-md')}>
-            <AnimatePresence mode="wait" initial={false}>
-              <div key={stepKey} className="w-full">
-                <SetupScreen
-                  screen={screen}
-                  loading={loading}
-                  goEntry={goEntry}
-                  startCreateSpace={startCreateSpace}
-                  startJoinSpace={startJoinSpace}
-                  startImportConfig={startImportConfig}
-                  initializeSpace={initializeSpace}
-                  issueInvitation={issueInvitation}
-                  cancelInvitation={cancelInvitation}
-                  redeemInvitation={redeemInvitation}
-                  onDone={handleDone}
-                />
-              </div>
-            </AnimatePresence>
+            {isE2e ? (
+              screenContent
+            ) : (
+              <AnimatePresence mode="wait" initial={false}>
+                {screenContent}
+              </AnimatePresence>
+            )}
           </div>
         </div>
       </main>

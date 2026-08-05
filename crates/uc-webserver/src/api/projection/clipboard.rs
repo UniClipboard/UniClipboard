@@ -214,8 +214,10 @@ impl IntoApiDto<ResendResponse> for ResendReportSummary {
 
 #[cfg(test)]
 mod tests {
-    use uc_daemon_contract::api::dto::clipboard_delivery::DeliveryFailureReasonDto;
-    use uc_engine::DeliveryFailureReasonSummary;
+    use uc_daemon_contract::api::dto::clipboard_delivery::{
+        DeliveryFailureReasonDto, EntryDeliveryStatusDto,
+    };
+    use uc_engine::{DeliveryFailureReasonSummary, EntryDeliveryStatusSummary};
 
     use super::IntoApiDto;
 
@@ -224,6 +226,14 @@ mod tests {
         assert!(matches!(
             DeliveryFailureReasonSummary::PeerIncompatible.into_api_dto(),
             DeliveryFailureReasonDto::PeerIncompatible
+        ));
+    }
+
+    #[test]
+    fn maps_superseded_delivery_status() {
+        assert!(matches!(
+            EntryDeliveryStatusSummary::Superseded.into_api_dto(),
+            EntryDeliveryStatusDto::Superseded
         ));
     }
 }

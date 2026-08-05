@@ -4,7 +4,8 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { browser, expect } from '@wdio/globals'
 
-const dualDescribe = browser.isMultiremote ? describe : describe.skip
+const dualDescribe =
+  browser.isMultiremote && process.platform === 'darwin' ? describe : describe.skip
 
 async function element(instance, selector, { timeout = 30000 } = {}) {
   const target = await instance.$(selector)

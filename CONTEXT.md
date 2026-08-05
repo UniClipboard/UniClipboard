@@ -120,8 +120,8 @@ _Avoid_: relay-only、server mode
   解锁后以 **ActiveSpace** 句柄表达
 - 发送侧每条 entry 对每台对端设备各记一条 **EntryDeliveryRecord**；接收侧对应的
   是 **Receiver-side file transfer projection**（两侧各自为本地投影，不互为真相源）
-- 上述投递全部遵循 **Transient sync semantics**；每台恢复在线的既有设备独立评估，
-  仅补送该设备最新一条离线未送达内容一次
+- 上述投递全部遵循 **Transient sync semantics**；自动同步开启时，每台恢复在线的既有
+  设备独立评估，仅补送该设备最新一条离线未送达内容一次
 
 ## Language — Active clipboard（跨设备活跃剪贴板）
 

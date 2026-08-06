@@ -16,6 +16,7 @@ function parseArgs(argv = process.argv.slice(2)) {
     output: null,
     docsBaseUrl: null,
     generatedNotesFile: null,
+    mobileAndroidReleaseUrl: null,
   }
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -51,6 +52,9 @@ function parseArgs(argv = process.argv.slice(2)) {
       index += 1
     } else if (arg === '--generated-notes-file' && next) {
       options.generatedNotesFile = next
+      index += 1
+    } else if (arg === '--mobile-android-release-url' && next) {
+      options.mobileAndroidReleaseUrl = next
       index += 1
     }
   }
@@ -101,17 +105,21 @@ function findFirstFile(artifactsDir, predicate) {
 }
 
 // Mobile apps live in the companion repo (UniClipboard/UniClip) and ship on
-// their own cadence, independent of this desktop release. These links always
-// resolve to the latest mobile build, so every desktop release advertises the
-// current iOS public beta and Android APK without being pinned to this tag.
+// their own cadence, independent of this desktop release. The release workflow
+// resolves the Android URL for prereleases so its channel matches desktop.
 const MOBILE_REPO = 'UniClipboard/UniClip'
 const MOBILE_IOS_TESTFLIGHT_URL = 'https://testflight.apple.com/join/nyNQ8dQe'
 const MOBILE_ANDROID_LATEST_URL = `https://github.com/${MOBILE_REPO}/releases/latest`
 
-// Fixed, always-latest external rows for the App download matrix. Unlike the
-// desktop rows these are not scanned from artifactsDir, so the download cell is
-// a full URL rather than `baseUrl/fileName`.
-export function buildMobileInstallerRows() {
+// Mobile rows are external to artifactsDir, so their download cells use full
+// URLs rather than `baseUrl/fileName`.
+export function buildMobileInstallerRows({ channel = 'stable', androidReleaseUrl } = {}) {
+  const isPrerelease = channel !== 'stable'
+  const androidUrl = androidReleaseUrl || MOBILE_ANDROID_LATEST_URL
+  if (isPrerelease && !androidReleaseUrl) {
+    throw new Error('A mobile Android preview release URL is required for prerelease notes.')
+  }
+
   const makeRow = (platform, target, label, url) =>
     `| ${platform} | ${target} | [${label}](${url}) |`
   return [
@@ -119,13 +127,18 @@ export function buildMobileInstallerRows() {
     makeRow(
       'Android',
       'APK (arm64-v8a / armeabi-v7a / x86_64 / universal)',
-      'Latest release',
-      MOBILE_ANDROID_LATEST_URL
+      isPrerelease ? 'Latest preview release' : 'Latest release',
+      androidUrl
     ),
   ]
 }
 
-export function buildInstallerTable({ artifactsDir, baseUrl }) {
+export function buildInstallerTable({
+  artifactsDir,
+  baseUrl,
+  channel = 'stable',
+  androidReleaseUrl,
+}) {
   // Tauri v2 Linux 产物命名约定:
   //   .deb       — `<lower-product>_<version>_<amd64|arm64>.deb`        (Debian arch)
   //   .rpm       — `<ProductName>-<version>-1.<x86_64|aarch64>.rpm`     (RPM arch)
@@ -183,7 +196,7 @@ export function buildInstallerTable({ artifactsDir, baseUrl }) {
   if (windowsPortableArm) rows.push(makeRow('Windows', 'ARM64 (Portable)', windowsPortableArm))
 
   const header = '| Platform | Architecture | Download |\n| --- | --- | --- |\n'
-  const mobileRows = buildMobileInstallerRows()
+  const mobileRows = buildMobileInstallerRows({ channel, androidReleaseUrl })
 
   if (rows.length === 0) {
     // No desktop installer artifacts detected (anomalous — a normal release
@@ -373,7 +386,12 @@ export function generateReleaseNotes(options) {
     emitWarning(`Chinese release changelog file not found for version ${version}`, chinesePath)
   }
 
-  const installerTable = buildInstallerTable({ artifactsDir, baseUrl })
+  const installerTable = buildInstallerTable({
+    artifactsDir,
+    baseUrl,
+    channel: options.channel,
+    androidReleaseUrl: options.mobileAndroidReleaseUrl,
+  })
   const cliInstallerTable = buildCliInstallerTable({ artifactsDir, baseUrl })
   const template = fs.readFileSync(templatePath, 'utf8')
   const rendered =

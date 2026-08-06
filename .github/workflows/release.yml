@@ -350,6 +350,26 @@ jobs:
           echo "Preview of GitHub-generated notes:"
           head -80 generated-notes.md || true
 
+      - name: Resolve mobile app download
+        id: mobile-release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CHANNEL: ${{ needs.validate.outputs.channel }}
+        run: |
+          if [ "$CHANNEL" = "stable" ]; then
+            echo "android_release_url=https://github.com/UniClipboard/UniClip/releases/latest" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          MOBILE_URL="$(gh api -X GET 'repos/UniClipboard/UniClip/releases?per_page=100' \
+            --jq 'map(select(.prerelease == true and .draft == false)) | .[0].html_url // empty')"
+          if [ -z "$MOBILE_URL" ]; then
+            echo "No published mobile preview release is available for the $CHANNEL desktop release." >&2
+            exit 1
+          fi
+
+          echo "android_release_url=$MOBILE_URL" >> "$GITHUB_OUTPUT"
+
       - name: Generate release notes
         id: release-notes
         run: |
@@ -359,6 +379,7 @@ jobs:
             --previous-tag "${{ needs.validate.outputs.previous_tag }}" \
             --channel "${{ needs.validate.outputs.channel }}" \
             --is-prerelease "${{ needs.validate.outputs.is_prerelease }}" \
+            --mobile-android-release-url "${{ steps.mobile-release.outputs.android_release_url }}" \
             --artifacts-dir "release-assets" \
             --template ".github/release-notes/release.md.tmpl" \
             --generated-notes-file "generated-notes.md" \

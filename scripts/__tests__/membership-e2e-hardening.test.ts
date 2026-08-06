@@ -12,11 +12,30 @@ describe('membership E2E hardening', () => {
   it('passes the workflow tier through a quoted environment variable', () => {
     const workflow = read('.github/workflows/membership-e2e.yml')
 
-    expect(workflow).toContain("MEMBERSHIP_TIER: ${{ inputs.tier || 'nightly' }}")
+    expect(workflow).toContain(
+      "MEMBERSHIP_TIER: ${{ inputs.tier || (github.event_name == 'pull_request' && 'pr') || 'nightly' }}"
+    )
     expect(workflow).toContain('run: bash scripts/e2e/run-membership-matrix.sh "$MEMBERSHIP_TIER"')
     expect(workflow).not.toContain(
       'run: bash scripts/e2e/run-membership-matrix.sh "${{ inputs.tier'
     )
+  })
+
+  it('runs permanent-loss recovery before merge and keeps cancellation under the frontend test gate', () => {
+    const workflow = read('.github/workflows/membership-e2e.yml')
+    const script = read('scripts/e2e/run-membership-matrix.sh')
+    const prCheck = read('.github/workflows/pr-check.yml')
+
+    expect(workflow).toMatch(/^\s{2}pull_request:/m)
+    expect(workflow).toContain("github.event_name == 'pull_request'")
+    expect(workflow).toContain('if [[ "$EVENT_NAME" == "pull_request" ]]; then')
+    expect(workflow).toContain('matrix=[{"name":"Linux","runner":"ubuntu-22.04"')
+    expect(workflow).toContain('matrix=[{"name":"macOS","runner":"macos-latest"')
+    expect(script).toContain(
+      'run_case R2 required membership-diagnostics membership_convergence r2_permanent_loss_unblocks_an_offline_retained_member'
+    )
+    expect(script).not.toContain('h5_offline_readmission_can_be_cancelled')
+    expect(prCheck).toContain('run: bun run test -- --run')
   })
 
   it('keeps the membership matrix out of the release dependency chain', () => {

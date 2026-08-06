@@ -4,6 +4,8 @@ use std::sync::mpsc::{self, Receiver, TryRecvError};
 use std::time::Duration;
 
 use serde_json::Value;
+#[cfg(feature = "membership-diagnostics")]
+use uc_e2e_tests::get_session_token;
 use uc_e2e_tests::{
     InviteSession, LocalRendezvous, NodeBinarySet, TestCli, TestDaemon, TestProfile,
 };
@@ -272,6 +274,85 @@ fn remote_device_id(cli: &TestCli, name: &str) -> String {
         .unwrap_or_else(|| panic!("member {name} not found"))
 }
 
+#[cfg(feature = "membership-diagnostics")]
+async fn authenticated_client(daemon: &TestDaemon) -> (reqwest::Client, String) {
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(30))
+        .build()
+        .expect("build API client");
+    let token = get_session_token(daemon, &client).await;
+    (client, token)
+}
+
+#[cfg(feature = "membership-diagnostics")]
+async fn unpair_via_api(daemon: &TestDaemon, device_id: &str) -> Value {
+    let (client, token) = authenticated_client(daemon).await;
+    let response = client
+        .post(format!("{}/pairing/unpair", daemon.base_url()))
+        .header("Authorization", format!("Session {token}"))
+        .json(&serde_json::json!({ "peerId": device_id }))
+        .send()
+        .await
+        .expect("unpair request");
+    let status = response.status();
+    let body: Value = response.json().await.expect("unpair response JSON");
+    assert!(status.is_success(), "unpair returned {status}: {body}");
+    body.get("data").cloned().unwrap_or(body)
+}
+
+#[cfg(feature = "membership-diagnostics")]
+async fn current_removal_via_api(daemon: &TestDaemon) -> Option<Value> {
+    let (client, token) = authenticated_client(daemon).await;
+    let response = client
+        .get(format!("{}/member/removal/current", daemon.base_url()))
+        .header("Authorization", format!("Session {token}"))
+        .send()
+        .await
+        .expect("current removal request");
+    let status = response.status();
+    let body: Value = response
+        .json()
+        .await
+        .expect("current removal response JSON");
+    assert!(
+        status.is_success(),
+        "current removal returned {status}: {body}"
+    );
+    match body.get("data") {
+        Some(Value::Null) | None => None,
+        Some(data) => Some(data.clone()),
+    }
+}
+
+#[cfg(feature = "membership-diagnostics")]
+async fn continue_removal_via_api(
+    daemon: &TestDaemon,
+    revocation_id: &str,
+    device_id: &str,
+) -> Value {
+    let (client, token) = authenticated_client(daemon).await;
+    let response = client
+        .post(format!("{}/member/removal/continue", daemon.base_url()))
+        .header("Authorization", format!("Session {token}"))
+        .json(&serde_json::json!({
+            "revocationId": revocation_id,
+            "permanentlyLostDeviceIds": [device_id],
+        }))
+        .send()
+        .await
+        .expect("continue removal request");
+    let status = response.status();
+    let body: Value = response
+        .json()
+        .await
+        .expect("continue removal response JSON");
+    assert!(
+        status.is_success(),
+        "continue removal returned {status}: {body}"
+    );
+    body.get("data").cloned().unwrap_or(body)
+}
+
 fn try_convergence(cli: &TestCli) -> Result<String, String> {
     let output = cli.run_capture(&["--json", "status"]);
     if !output.success() {
@@ -507,4 +588,100 @@ async fn c3_recovered_membership_survives_restart_without_duplicates() {
     );
     assert_exact_delivery(&a, &c, "node-c", "c3-a-to-c").await;
     assert_exact_delivery(&c, &a, "node-a", "c3-c-to-a").await;
+}
+
+/// A ready three-member space must recover when one retained member is
+/// permanently lost after another member is removed. The current operation is
+/// queried from the running daemon rather than reconstructed in the client.
+#[tokio::test]
+#[ignore]
+#[cfg(feature = "membership-diagnostics")]
+async fn r2_permanent_loss_unblocks_an_offline_retained_member() {
+    let binaries = NodeBinarySet::current();
+    let rendezvous = LocalRendezvous::start().await;
+    let mut a = Node::initialized("membership-r2-a", "node-a", &binaries, &rendezvous).await;
+    let b = Node::fresh("membership-r2-b", &binaries, &rendezvous).await;
+    join(&a, &b, "node-b").await;
+    let mut c = Node::fresh("membership-r2-c", &binaries, &rendezvous).await;
+    join(&a, &c, "node-c").await;
+
+    for node in [&a, &b, &c] {
+        wait_for_convergence(node, "complete").await;
+        wait_for_member_count(node, 3).await;
+    }
+
+    let b_id = remote_device_id(&a.cli, "node-b");
+    let c_id = remote_device_id(&a.cli, "node-c");
+    c.stop().await;
+
+    let removal = unpair_via_api(&a.daemon, &b_id).await;
+    assert_eq!(
+        removal.get("outcome").and_then(Value::as_str),
+        Some("applied"),
+        "offline retained member must leave an active removal: {removal}"
+    );
+    assert!(
+        removal
+            .get("pendingRecipientDeviceIds")
+            .and_then(Value::as_array)
+            .is_some_and(|pending| pending.iter().any(|id| id.as_str() == Some(&c_id))),
+        "the offline retained member must be named by the removal: {removal}"
+    );
+
+    let current = current_removal_via_api(&a.daemon)
+        .await
+        .expect("active removal must be readable without a client-side ID cache");
+    let revocation_id = current
+        .get("revocationId")
+        .and_then(Value::as_str)
+        .expect("active removal must have an id")
+        .to_owned();
+    assert_eq!(
+        current
+            .get("pendingRecipientDeviceIds")
+            .and_then(Value::as_array)
+            .map(|pending| pending.as_slice()),
+        Some([Value::String(c_id.clone())].as_slice()),
+        "current removal must preserve the exact pending member: {current}"
+    );
+
+    let continued = continue_removal_via_api(&a.daemon, &revocation_id, &c_id).await;
+    assert_eq!(
+        continued.get("outcome").and_then(Value::as_str),
+        Some("complete"),
+        "explicit permanent loss must finish the active removal: {continued}"
+    );
+    assert_eq!(
+        continued.get("pendingRecipients").and_then(Value::as_u64),
+        Some(0),
+        "completed removal must not retain pending recipients: {continued}"
+    );
+    assert!(
+        continued
+            .get("removedDeviceIds")
+            .and_then(Value::as_array)
+            .is_some_and(|removed| {
+                removed.iter().any(|id| id.as_str() == Some(&b_id))
+                    && removed.iter().any(|id| id.as_str() == Some(&c_id))
+            }),
+        "the original and permanently lost members must both be excluded: {continued}"
+    );
+
+    wait_for_member_count(&a, 1).await;
+    a.restart().await;
+    assert!(
+        current_removal_via_api(&a.daemon).await.is_none(),
+        "restart must not restore a completed removal"
+    );
+    wait_for_convergence(&a, "complete").await;
+    wait_for_member_count(&a, 1).await;
+
+    let d = Node::fresh("membership-r2-d", &binaries, &rendezvous).await;
+    join(&a, &d, "node-d").await;
+    for node in [&a, &d] {
+        wait_for_convergence(node, "complete").await;
+        wait_for_member_count(node, 2).await;
+    }
+    assert_exact_delivery(&a, &d, "node-d", "r2-recovered-a-to-d").await;
+    assert_exact_delivery(&d, &a, "node-a", "r2-recovered-d-to-a").await;
 }

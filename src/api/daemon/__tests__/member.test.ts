@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { DaemonApiError, DaemonErrorCode } from '@/api/daemon/errors'
-import { isLegacyBootstrapRequired, isMemberRemovalInProgress } from '@/api/daemon/member'
+import { isLegacyBootstrapRequired, isMemberRemovalBlocked } from '@/api/daemon/member'
 
 describe('isLegacyBootstrapRequired', () => {
   it('recognizes the normalized daemon conflict body', () => {
@@ -26,23 +26,24 @@ describe('isLegacyBootstrapRequired', () => {
   })
 })
 
-describe('isMemberRemovalInProgress', () => {
-  it('recognizes the stable conflict returned while a removal is pending', () => {
-    const error = new DaemonApiError(DaemonErrorCode.INTERNAL_ERROR, '409 on /pairing/unpair', {
-      code: 'member_removal_in_progress',
+describe('isMemberRemovalBlocked', () => {
+  it.each(['member_removal_in_progress', 'member_removal_recovery_required'])(
+    'recognizes the stable conflict %s returned while another removal blocks cancellation',
+    code => {
+      const error = new DaemonApiError(DaemonErrorCode.INTERNAL_ERROR, '409 on /pairing/unpair', {
+        code,
+      })
+
+      expect(isMemberRemovalBlocked(error)).toBe(true)
+    }
+  )
+
+  it('rejects unrelated errors', () => {
+    const unrelated = new DaemonApiError(DaemonErrorCode.INTERNAL_ERROR, '409 on /pairing/unpair', {
+      code: 'legacy_bootstrap_required',
     })
 
-    expect(isMemberRemovalInProgress(error)).toBe(true)
-  })
-
-  it('does not treat other removal errors as a recoverable conflict', () => {
-    const recoveryRequired = new DaemonApiError(
-      DaemonErrorCode.INTERNAL_ERROR,
-      '409 on /pairing/unpair',
-      { code: 'member_removal_recovery_required' }
-    )
-
-    expect(isMemberRemovalInProgress(recoveryRequired)).toBe(false)
-    expect(isMemberRemovalInProgress(new Error('member_removal_in_progress'))).toBe(false)
+    expect(isMemberRemovalBlocked(unrelated)).toBe(false)
+    expect(isMemberRemovalBlocked(new Error('member_removal_in_progress'))).toBe(false)
   })
 })

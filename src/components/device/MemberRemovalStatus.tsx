@@ -22,6 +22,7 @@ const MemberRemovalStatus: React.FC<MemberRemovalStatusProps> = ({
   const isComplete = removal.outcome === 'complete'
   const requiresRecovery = removal.outcome === 'recovery_required'
   const pendingDeviceIds = removal.pendingRecipientDeviceIds
+  const canMarkPermanentlyLost = removal.outcome === 'applied' && pendingDeviceIds.length > 0
 
   return (
     <section
@@ -88,18 +89,17 @@ const MemberRemovalStatus: React.FC<MemberRemovalStatusProps> = ({
               </li>
             ))}
           </ul>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className={cn(
-              'mt-2 h-auto min-h-7 w-full border-current bg-card/50 px-2 py-1 text-[11px] font-medium leading-4 whitespace-normal hover:bg-current/10 hover:text-current',
-              requiresRecovery ? 'text-destructive' : 'text-warning'
-            )}
-            onClick={() => onPermanentLoss(removal, pendingDeviceIds)}
-          >
-            {t('devices.memberRemoval.permanentLoss.action')}
-          </Button>
+          {canMarkPermanentlyLost && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="mt-2 h-auto min-h-7 w-full border-current bg-card/50 px-2 py-1 text-[11px] font-medium leading-4 whitespace-normal text-warning hover:bg-current/10 hover:text-current"
+              onClick={() => onPermanentLoss(removal, pendingDeviceIds)}
+            >
+              {t('devices.memberRemoval.permanentLoss.action')}
+            </Button>
+          )}
         </div>
       )}
     </section>

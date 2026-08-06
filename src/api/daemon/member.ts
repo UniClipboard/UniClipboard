@@ -218,12 +218,13 @@ export function isLegacyBootstrapRequired(error: unknown): boolean {
   return (error.details as { code?: unknown }).code === 'legacy_bootstrap_required'
 }
 
-/** True only when an active Engine-owned removal must be displayed to the user. */
-export function isMemberRemovalInProgress(error: unknown): boolean {
+/** True when the Engine requires the current removal to be shown before another can begin. */
+export function isMemberRemovalBlocked(error: unknown): boolean {
   if (!(error instanceof DaemonApiError) || !error.details || typeof error.details !== 'object') {
     return false
   }
-  return (error.details as { code?: unknown }).code === 'member_removal_in_progress'
+  const code = (error.details as { code?: unknown }).code
+  return code === 'member_removal_in_progress' || code === 'member_removal_recovery_required'
 }
 
 export async function updateMemberSyncPreferences(

@@ -55,27 +55,27 @@ bun run version:bump --type patch --channel alpha --dry-run
 ### Stable（稳定版）
 
 - **用途**: 正式发布版本，推荐给所有用户使用
-- **版本格式**: `X.Y.Z` (例如: `1.0.0`)
+- **版本格式**: `X.Y.Z` (例如：`1.0.0`)
 - **GitHub Release**: 标记为正式版本（非 prerelease）
 
 ### Alpha（内测版）
 
 - **用途**: 早期功能测试，可能包含未完成的功能或已知问题
-- **版本格式**: `X.Y.Z-alpha.N` (例如: `0.1.0-alpha.1`)
+- **版本格式**: `X.Y.Z-alpha.N` (例如：`0.1.0-alpha.1`)
 - **GitHub Release**: 标记为 prerelease，带有警告说明
 - **建议**: 仅供开发者和高级用户测试使用
 
 ### Beta（公测版）
 
 - **用途**: 功能基本完成，进行更广泛的测试
-- **版本格式**: `X.Y.Z-beta.N` (例如: `0.1.0-beta.1`)
+- **版本格式**: `X.Y.Z-beta.N` (例如：`0.1.0-beta.1`)
 - **GitHub Release**: 标记为 prerelease
 - **建议**: 可供愿意帮助测试的用户使用
 
 ### RC（候选版）
 
 - **用途**: 发布候选版，即将成为稳定版
-- **版本格式**: `X.Y.Z-rc.N` (例如: `1.0.0-rc.1`)
+- **版本格式**: `X.Y.Z-rc.N` (例如：`1.0.0-rc.1`)
 - **GitHub Release**: 标记为 prerelease
 - **建议**: 适合最终验证和回归测试
 
@@ -121,7 +121,7 @@ bun run version:bump --type patch --channel alpha --dry-run
 
 3. **创建发布 (create-release)**
    - 创建 Git 标签
-   - 生成发布说明（含桌面端直接下载链接，以及移动端仓库 [UniClipboard/UniClip](https://github.com/UniClipboard/UniClip) 的 iOS 公测与安卓最新版下载链接）
+   - 生成发布说明（含桌面端直接下载链接，以及移动端仓库 [UniClipboard/UniClip](https://github.com/UniClipboard/UniClip) 的 iOS 公测与安卓下载链接；桌面预发布会链接到移动端最新预览版，正式发布会链接到移动端最新正式版）
    - 上传所有构建产物
    - 创建 GitHub Release 草稿
 
@@ -186,7 +186,7 @@ git push
 # channel: alpha
 ```
 
-结果: `0.1.0` -> `0.1.0-alpha.1`
+结果：`0.1.0` -> `0.1.0-alpha.1`
 
 ### 场景 2: 继续发布 alpha 版本
 
@@ -196,7 +196,7 @@ git push
 bun run version:bump --type patch --channel alpha
 ```
 
-结果: `0.1.0-alpha.1` -> `0.1.0-alpha.2`
+结果：`0.1.0-alpha.1` -> `0.1.0-alpha.2`
 
 如果希望从稳定版直接到指定预发布号（例如 `0.1.0` -> `0.1.0-alpha.2`）：
 
@@ -210,7 +210,7 @@ bun run version:bump --to 0.1.0-alpha.2
 bun run version:bump --type patch --channel stable
 ```
 
-结果: `0.1.0-alpha.5` -> `0.1.0`
+结果：`0.1.0-alpha.5` -> `0.1.0`
 
 ### 场景 4: 发布新的 minor 版本
 
@@ -218,7 +218,7 @@ bun run version:bump --type patch --channel stable
 bun run version:bump --type minor --channel stable
 ```
 
-结果: `0.1.5` -> `0.2.0`
+结果：`0.1.5` -> `0.2.0`
 
 ## 安装包命名规则
 
@@ -238,8 +238,8 @@ bun run version:bump --type minor --channel stable
 
 确保版本号符合语义化版本规范：
 
-- 稳定版: `X.Y.Z` (例如 `1.0.0`)
-- 预发布: `X.Y.Z-channel.N` (例如 `1.0.0-alpha.1`)
+- 稳定版：`X.Y.Z` (例如 `1.0.0`)
+- 预发布：`X.Y.Z-channel.N` (例如 `1.0.0-alpha.1`)
 
 ### 标签已存在
 
@@ -254,9 +254,9 @@ bun run version:bump --type minor --channel stable
 
 ## 相关文件
 
-- 版本管理脚本: [`scripts/bump-version.js`](../scripts/bump-version.js)
-- Codex changelog 提示词: [`.github/prompts/release-changelog.codex.md`](../.github/prompts/release-changelog.codex.md)
-- Changelog 写作规则: [`docs/CHANGELOG_TEMPLATE.md`](./CHANGELOG_TEMPLATE.md)
-- 发布工作流: [`.github/workflows/release.yml`](../.github/workflows/release.yml)
-- 预发布准备工作流: [`.github/workflows/prepare-release.yml`](../.github/workflows/prepare-release.yml)
-- 构建工作流: [`.github/workflows/build.yml`](../.github/workflows/build.yml)
+- 版本管理脚本：[`scripts/bump-version.js`](../scripts/bump-version.js)
+- Codex changelog 提示词：[`.github/prompts/release-changelog.codex.md`](../.github/prompts/release-changelog.codex.md)
+- Changelog 写作规则：[`docs/CHANGELOG_TEMPLATE.md`](./CHANGELOG_TEMPLATE.md)
+- 发布工作流：[`.github/workflows/release.yml`](../.github/workflows/release.yml)
+- 预发布准备工作流：[`.github/workflows/prepare-release.yml`](../.github/workflows/prepare-release.yml)
+- 构建工作流：[`.github/workflows/build.yml`](../.github/workflows/build.yml)

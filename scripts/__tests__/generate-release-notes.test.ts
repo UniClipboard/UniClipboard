@@ -68,7 +68,7 @@ describe('buildInstallerTable Windows rows', () => {
 })
 
 describe('buildInstallerTable mobile rows', () => {
-  it('always advertises the latest iOS beta and Android APK links', () => {
+  it('links stable desktop releases to the latest stable Android release', () => {
     seed(['UniClipboard_0.13.0_aarch64.dmg'])
 
     const table = buildInstallerTable({ artifactsDir, baseUrl: BASE_URL })
@@ -81,6 +81,28 @@ describe('buildInstallerTable mobile rows', () => {
     )
     // Mobile links point at the companion repo / TestFlight, never this release's baseUrl.
     expect(table).not.toContain(`${BASE_URL}/https`)
+  })
+
+  it('links prerelease desktop releases to the resolved Android preview release', () => {
+    seed(['UniClipboard_0.13.0-alpha.4_aarch64.dmg'])
+
+    const table = buildInstallerTable({
+      artifactsDir,
+      baseUrl: BASE_URL,
+      channel: 'alpha',
+      androidReleaseUrl: 'https://github.com/UniClipboard/UniClip/releases/tag/v1.3.0.173-alpha.1',
+    })
+
+    expect(table).toContain(
+      '[Latest preview release](https://github.com/UniClipboard/UniClip/releases/tag/v1.3.0.173-alpha.1)'
+    )
+    expect(table).not.toContain('https://github.com/UniClipboard/UniClip/releases/latest')
+  })
+
+  it('rejects prerelease notes without a mobile preview release URL', () => {
+    expect(() => buildInstallerTable({ artifactsDir, baseUrl: BASE_URL, channel: 'beta' })).toThrow(
+      'A mobile Android preview release URL is required for prerelease notes.'
+    )
   })
 
   it('still surfaces mobile downloads when no desktop artifacts are present', () => {

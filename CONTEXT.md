@@ -47,6 +47,13 @@ _Avoid_: peer、trusted peer、user
 `recovery_required`，等待以可信活跃设备重建，而非作为可重试失败继续尝试。
 _Avoid_: retryable removal、member status update
 
+**Readmission**：
+旧版 Space 安全升级时，成员重新进入安全组的 Engine 持久状态。成员处于
+`awaiting_readmission` 或 `requires_readmission` 时，安全升级会等待其重新准入；在
+`awaiting_readmission` 阶段，用户可以直接移除不再使用的设备，结束对该设备的等待。
+它不是网络连接状态，也不由客户端本地状态决定。
+_Avoid_: reconnect、client-side retry、temporary pairing state
+
 **ClipboardEvent**：
 一次剪贴板捕获动作的领域事件（`event_id`、捕获时刻、源设备 `DeviceId`、
 `snapshot_hash`）。它记录的是「在某台设备上发生了一次复制」，是同步与去重的

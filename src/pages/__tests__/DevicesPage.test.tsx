@@ -15,7 +15,7 @@
  * survive a locale switch, matching the language-agnostic style below.
  */
 
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { refreshPresence } from '@/api/daemon'
@@ -24,7 +24,7 @@ import {
   continueMemberRemoval,
   getCurrentMemberRemoval,
   isLegacyBootstrapRequired,
-  isMemberRemovalInProgress,
+  isMemberRemovalBlocked,
   secureRemoveLegacyMember,
 } from '@/api/daemon/member'
 import { unpairDevice } from '@/api/daemon/members'
@@ -170,7 +170,7 @@ vi.mock('@/api/daemon/member', () => ({
   continueMemberRemoval: vi.fn(),
   getCurrentMemberRemoval: vi.fn(),
   isLegacyBootstrapRequired: vi.fn(),
-  isMemberRemovalInProgress: vi.fn(),
+  isMemberRemovalBlocked: vi.fn(),
   secureRemoveLegacyMember: vi.fn(),
 }))
 
@@ -249,7 +249,7 @@ describe('DevicesPage', () => {
     vi.mocked(continueMemberRemoval).mockReset()
     vi.mocked(getCurrentMemberRemoval).mockReset()
     vi.mocked(isLegacyBootstrapRequired).mockReset()
-    vi.mocked(isMemberRemovalInProgress).mockReset()
+    vi.mocked(isMemberRemovalBlocked).mockReset()
     vi.mocked(secureRemoveLegacyMember).mockReset()
     vi.mocked(toast.error).mockClear()
   })
@@ -594,7 +594,7 @@ describe('DevicesPage secure legacy removal', () => {
     vi.mocked(continueMemberRemoval).mockReset()
     vi.mocked(getCurrentMemberRemoval).mockReset()
     vi.mocked(isLegacyBootstrapRequired).mockReset()
-    vi.mocked(isMemberRemovalInProgress).mockReset()
+    vi.mocked(isMemberRemovalBlocked).mockReset()
     vi.mocked(secureRemoveLegacyMember).mockReset()
     vi.mocked(toast.error).mockClear()
   })
@@ -602,6 +602,7 @@ describe('DevicesPage secure legacy removal', () => {
   afterEach(() => {
     devicesState.localDevice = null
     devicesState.spaceMembers = []
+    devicesState.spaceProtection = null
   })
 
   async function openUnpairConfirmation() {
@@ -647,7 +648,7 @@ describe('DevicesPage secure legacy removal', () => {
   it('recovers the active removal when another removal is already in progress', async () => {
     const inProgress = new Error('member removal in progress')
     vi.mocked(unpairDevice).mockRejectedValue(inProgress)
-    vi.mocked(isMemberRemovalInProgress).mockReturnValue(true)
+    vi.mocked(isMemberRemovalBlocked).mockReturnValue(true)
     vi.mocked(getCurrentMemberRemoval).mockResolvedValue(memberRemoval)
     render(<DevicesPage />)
     const user = await openUnpairConfirmation()
@@ -665,7 +666,7 @@ describe('DevicesPage secure legacy removal', () => {
   it('shows an error when active-removal recovery cannot load its status', async () => {
     const inProgress = new Error('member removal in progress')
     vi.mocked(unpairDevice).mockRejectedValue(inProgress)
-    vi.mocked(isMemberRemovalInProgress).mockReturnValue(true)
+    vi.mocked(isMemberRemovalBlocked).mockReturnValue(true)
     vi.mocked(getCurrentMemberRemoval).mockRejectedValue(new Error('offline'))
     render(<DevicesPage />)
     const user = await openUnpairConfirmation()
@@ -675,6 +676,81 @@ describe('DevicesPage secure legacy removal', () => {
     await waitFor(() =>
       expect(toast.error).toHaveBeenCalledWith(i18n.t('devices.memberRemoval.errors.statusFailed'))
     )
+  })
+
+  it('loads the blocked removal when it requires security recovery', async () => {
+    const recoveryRequired = new Error('member removal requires recovery')
+    const blockedRemoval = { ...memberRemoval, outcome: 'recovery_required' as const }
+    vi.mocked(unpairDevice).mockRejectedValue(recoveryRequired)
+    vi.mocked(isMemberRemovalBlocked).mockReturnValue(true)
+    vi.mocked(getCurrentMemberRemoval).mockResolvedValue(blockedRemoval)
+    render(<DevicesPage />)
+    const user = await openUnpairConfirmation()
+
+    await user.click(screen.getByRole('button', { name: i18n.t('devices.list.actions.unpair') }))
+
+    await waitFor(() => expect(getCurrentMemberRemoval).toHaveBeenCalled())
+    expect(dispatchMock).toHaveBeenCalledWith({
+      type: 'devices/setMemberRemoval',
+      removal: blockedRemoval,
+    })
+    expect(toast.error).not.toHaveBeenCalled()
+  })
+
+  it('cancels an offline readmission directly from the security-upgrade status', async () => {
+    const requiresReadmissionMember = {
+      ...remoteMember,
+      peerId: 'requires-readmission-peer',
+      deviceName: 'New Desktop',
+    }
+    devicesState.spaceMembers = [localDevice, remoteMember, requiresReadmissionMember]
+    devicesState.spaceProtection = {
+      mode: 'ready',
+      members: [
+        { deviceId: remoteMember.peerId, status: 'awaiting_readmission' },
+        { deviceId: requiresReadmissionMember.peerId, status: 'requires_readmission' },
+      ],
+      legacyBootstrap: {
+        bootstrapId: 'bootstrap-1',
+        outcome: 'awaiting_readmission',
+        pendingReadmission: 2,
+      },
+    }
+    const completedRemoval: MemberRemoval = {
+      ...memberRemoval,
+      revocationId: null,
+      outcome: 'complete',
+      pendingRecipients: 0,
+      pendingRecipientDeviceIds: [],
+    }
+    vi.mocked(unpairDevice).mockResolvedValue(completedRemoval)
+    render(<DevicesPage />)
+    const user = userEvent.setup()
+    const upgradeAlert = screen.getByRole('alert')
+
+    expect(within(upgradeAlert).getByText(remoteMember.deviceName)).toBeInTheDocument()
+    expect(within(upgradeAlert).getByText(requiresReadmissionMember.deviceName)).toBeInTheDocument()
+    await user.click(
+      within(upgradeAlert).getAllByRole('button', {
+        name: i18n.t('devices.list.actions.unpair'),
+      })[0]
+    )
+
+    expect(
+      screen.getByText(
+        i18n.t('devices.unpair.confirmDescription', { deviceName: remoteMember.deviceName })
+      )
+    ).toBeInTheDocument()
+    const dialog = screen.getByRole('alertdialog')
+    await user.click(
+      within(dialog).getByRole('button', { name: i18n.t('devices.list.actions.unpair') })
+    )
+
+    await waitFor(() => expect(unpairDevice).toHaveBeenCalledWith(remoteMember.peerId))
+    expect(dispatchMock).toHaveBeenCalledWith({
+      type: 'devices/setMemberRemoval',
+      removal: completedRemoval,
+    })
   })
 
   it('disables the confirmation while removal is in progress', async () => {

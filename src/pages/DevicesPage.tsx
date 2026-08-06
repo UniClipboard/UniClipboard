@@ -21,7 +21,7 @@
  * daemon-pushed `peers.changed` ws events.
  */
 
-import { Plus, RefreshCw, Settings2 } from 'lucide-react'
+import { Plus, RefreshCw, Settings2, Unlink } from 'lucide-react'
 import React, { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { useTranslation } from 'react-i18next'
 import { refreshPresence } from '@/api/daemon'
@@ -29,7 +29,7 @@ import {
   continueMemberRemoval,
   getCurrentMemberRemoval,
   isLegacyBootstrapRequired,
-  isMemberRemovalInProgress,
+  isMemberRemovalBlocked,
   secureRemoveLegacyMember,
   type MemberRemoval,
 } from '@/api/daemon/member'
@@ -152,6 +152,17 @@ const DevicesPage: React.FC = () => {
     : rawSpaceMembers
   const onlineCount = peers.filter(p => p.connected).length
   const legacyBootstrap = spaceProtection?.legacyBootstrap ?? null
+  const readmissionMemberIds = new Set(
+    spaceProtection?.members.flatMap(member =>
+      member.status === 'awaiting_readmission' || member.status === 'requires_readmission'
+        ? [member.deviceId]
+        : []
+    )
+  )
+  const cancellableReadmissionPeers =
+    legacyBootstrap?.outcome === 'awaiting_readmission'
+      ? peers.filter(peer => readmissionMemberIds.has(peer.peerId))
+      : []
 
   const { setting } = useSetting()
   const syncActive = setting?.sync.autoSync !== false
@@ -287,7 +298,7 @@ const DevicesPage: React.FC = () => {
         const removal = await unpairDevice(unpairTargetId)
         dispatch(setMemberRemoval(removal))
       } catch (error) {
-        if (isMemberRemovalInProgress(error)) {
+        if (isMemberRemovalBlocked(error)) {
           let current: MemberRemoval | null
           try {
             current = await getCurrentMemberRemoval()
@@ -490,10 +501,34 @@ const DevicesPage: React.FC = () => {
 
             {legacyBootstrap && legacyBootstrap.outcome !== 'complete' && (
               <Alert className="mx-1 my-2 border-warning/30 bg-warning/10 text-warning">
-                <AlertDescription className="text-xs">
+                <AlertDescription className="flex flex-col gap-2 text-xs">
                   {t(`devices.protection.bootstrap.${legacyBootstrap.outcome}`, {
                     count: legacyBootstrap.pendingReadmission,
                   })}
+                  {cancellableReadmissionPeers.length > 0 && (
+                    <ul className="flex flex-col gap-1.5">
+                      {cancellableReadmissionPeers.map(peer => (
+                        <li
+                          key={peer.peerId}
+                          className="flex min-w-0 items-center justify-between gap-2"
+                        >
+                          <span className="min-w-0 truncate font-medium text-foreground">
+                            {peer.deviceName || t('devices.list.labels.unknownDevice')}
+                          </span>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="xs"
+                            className="shrink-0 border-warning/30 bg-card/70 text-warning hover:bg-warning/10 hover:text-warning"
+                            onClick={() => handleUnpairRequest(peer.peerId)}
+                          >
+                            <Unlink />
+                            {t('devices.list.actions.unpair')}
+                          </Button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                 </AlertDescription>
               </Alert>
             )}

@@ -62,6 +62,9 @@ describe('MemberRemovalStatus', () => {
     expect(
       screen.getByText(i18n.t('devices.memberRemoval.recovery.description'))
     ).toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: i18n.t('devices.memberRemoval.permanentLoss.action') })
+    ).not.toBeInTheDocument()
   })
 
   it('does not offer permanent-loss recovery after completion', () => {

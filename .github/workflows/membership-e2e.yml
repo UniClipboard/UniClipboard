@@ -1,7 +1,22 @@
 name: 'Membership E2E'
-run-name: "membership-e2e-${{ inputs.tier || 'nightly' }}-${{ github.run_number }}"
+run-name: "membership-e2e-${{ inputs.tier || (github.event_name == 'pull_request' && 'pr') || 'nightly' }}-${{ github.run_number }}"
 
 on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+    paths:
+      - 'crates/**'
+      - 'apps/**'
+      - 'tests/e2e/**'
+      - 'vendor/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'rust-toolchain.toml'
+      - '.github/docker/build-bookworm.Dockerfile'
+      - '.github/workflows/membership-e2e.yml'
+      - 'scripts/e2e/run-membership-matrix.sh'
+      - 'scripts/__tests__/membership-e2e-hardening.test.ts'
   schedule:
     - cron: '23 18 * * *'
   workflow_dispatch:
@@ -24,22 +39,33 @@ permissions:
   packages: read
 
 jobs:
+  setup-matrix:
+    name: Select membership platforms
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+      - name: Select Linux for pull requests and all platforms otherwise
+        id: set-matrix
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          if [[ "$EVENT_NAME" == "pull_request" ]]; then
+            echo 'matrix=[{"name":"Linux","runner":"ubuntu-22.04","container":"ghcr.io/uniclipboard/build-bookworm:latest"}]' >> "$GITHUB_OUTPUT"
+          else
+            echo 'matrix=[{"name":"macOS","runner":"macos-latest"},{"name":"Linux","runner":"ubuntu-22.04","container":"ghcr.io/uniclipboard/build-bookworm:latest"},{"name":"Windows","runner":"windows-latest"}]' >> "$GITHUB_OUTPUT"
+          fi
+
   membership:
-    name: "${{ matrix.name }} / ${{ inputs.tier || 'nightly' }}"
+    needs: setup-matrix
+    name: "${{ matrix.name }} / ${{ inputs.tier || (github.event_name == 'pull_request' && 'pr') || 'nightly' }}"
     runs-on: ${{ matrix.runner }}
     container: ${{ matrix.container || null }}
     timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - name: macOS
-            runner: macos-latest
-          - name: Linux
-            runner: ubuntu-22.04
-            container: ghcr.io/uniclipboard/build-bookworm:latest
-          - name: Windows
-            runner: windows-latest
+        include: ${{ fromJSON(needs.setup-matrix.outputs.matrix) }}
 
     steps:
       - uses: actions/checkout@v6
@@ -79,14 +105,14 @@ jobs:
           UC_E2E_KEEP_PROFILES: '1'
           UC_E2E_LEGACY_RELEASE_DIR: ${{ runner.temp }}/legacy-release
           UC_E2E_RUST_LOG: info
-          MEMBERSHIP_TIER: ${{ inputs.tier || 'nightly' }}
+          MEMBERSHIP_TIER: ${{ inputs.tier || (github.event_name == 'pull_request' && 'pr') || 'nightly' }}
         run: bash scripts/e2e/run-membership-matrix.sh "$MEMBERSHIP_TIER"
 
       - name: Upload matrix results and isolated profiles
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: membership-e2e-${{ matrix.name }}-${{ inputs.tier || 'nightly' }}
+          name: membership-e2e-${{ matrix.name }}-${{ inputs.tier || (github.event_name == 'pull_request' && 'pr') || 'nightly' }}
           if-no-files-found: warn
           retention-days: 14
           path: |

@@ -41,6 +41,12 @@ _Avoid_: device name、machine id、peer id
 活跃成员。
 _Avoid_: peer、trusted peer、user
 
+**Member revocation**：
+用户确认某台设备永久丢失后的成员移除收尾流程。若目标设备已不在安全组中，直接完成
+移除，不再创建新的移除代次；若当前安全组无法读取，则流程进入终态
+`recovery_required`，等待以可信活跃设备重建，而非作为可重试失败继续尝试。
+_Avoid_: retryable removal、member status update
+
 **ClipboardEvent**：
 一次剪贴板捕获动作的领域事件（`event_id`、捕获时刻、源设备 `DeviceId`、
 `snapshot_hash`）。它记录的是「在某台设备上发生了一次复制」，是同步与去重的

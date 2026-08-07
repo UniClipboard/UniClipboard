@@ -89,6 +89,19 @@ function emitChanged(requestId: string) {
   })
 }
 
+/** Fires the global signal used when an event consumer has missed updates. */
+function emitRefreshRequired() {
+  const handler = wsHandlers.subscribe.mock.calls.at(-1)?.[1]
+  expect(handler).toBeTypeOf('function')
+  act(() => {
+    handler?.({
+      topic: 'system',
+      eventType: 'system.refresh_required',
+      payload: {},
+    })
+  })
+}
+
 /** Fires the latest reconnect callback registered by the hook. */
 function emitReconnect() {
   const handler = wsHandlers.onReconnect.mock.calls.at(-1)?.[0]
@@ -364,6 +377,27 @@ describe('useSharedDeviceRefresh', () => {
     )
   })
 
+  it('re-queries after the daemon reports that realtime updates were missed', async () => {
+    const { result } = renderRefresh()
+
+    act(() => {
+      void result.current.startRefresh()
+    })
+    await waitFor(() => expect(result.current.snapshot).not.toBeNull())
+    await settleQueries()
+    const callsBefore = vi.mocked(getSharedDeviceRefresh).mock.calls.length
+    expect(wsHandlers.subscribe).toHaveBeenLastCalledWith(
+      ['shared-device-refresh', 'system'],
+      expect.any(Function)
+    )
+
+    emitRefreshRequired()
+
+    await waitFor(() =>
+      expect(vi.mocked(getSharedDeviceRefresh).mock.calls.length).toBeGreaterThan(callsBefore)
+    )
+  })
+
   it('re-queries when the document becomes visible again', async () => {
     const props = { onDevicesConnected: vi.fn(), onStartFailed: vi.fn(), documentVisible: true }
     const { result, rerender } = renderHook(useSharedDeviceRefresh, { initialProps: props })
@@ -456,6 +490,94 @@ describe('useSharedDeviceRefresh', () => {
 
     await waitFor(() => expect(onDevicesConnected).toHaveBeenCalledTimes(1))
     expect(result.current.snapshot?.devices[0].state).toBe('connected')
+  })
+
+  it.each(['waiting_for_peer', 'waiting_for_update'] as const)(
+    'keeps following a completed round while a device is %s',
+    async waitingState => {
+      vi.mocked(getSharedDeviceRefresh).mockResolvedValue(
+        makeSnapshot({
+          phase: 'round_completed',
+          devices: [device('peer-1', waitingState)],
+          totalCount: 1,
+          waitingForPeerCount: waitingState === 'waiting_for_peer' ? 1 : 0,
+          waitingForUpdateCount: waitingState === 'waiting_for_update' ? 1 : 0,
+        })
+      )
+      const { result, onDevicesConnected } = renderRefresh()
+
+      act(() => {
+        void result.current.startRefresh()
+      })
+      await waitFor(() => expect(result.current.snapshot?.phase).toBe('round_completed'))
+
+      act(() => {
+        result.current.closeRefresh()
+      })
+      expect(result.current.open).toBe(false)
+      expect(result.current.requestId).toBe('refresh-1')
+
+      vi.mocked(getSharedDeviceRefresh).mockResolvedValue(
+        makeSnapshot({
+          phase: 'round_completed',
+          devices: [device('peer-1', 'connected')],
+          totalCount: 1,
+          connectedCount: 1,
+        })
+      )
+      emitChanged('refresh-1')
+
+      await waitFor(() => expect(onDevicesConnected).toHaveBeenCalledTimes(1))
+      expect(result.current.snapshot?.devices[0].state).toBe('connected')
+    }
+  )
+
+  it('keeps the new round serialized when an old-round query finishes late', async () => {
+    type PendingQuery = {
+      requestId: string
+      resolve: (snapshot: SharedDeviceRefreshSnapshot) => void
+    }
+    const pending: PendingQuery[] = []
+    vi.mocked(getSharedDeviceRefresh).mockImplementation(
+      requestId =>
+        new Promise<SharedDeviceRefreshSnapshot>(resolve => pending.push({ requestId, resolve }))
+    )
+    const { result } = renderRefresh()
+
+    act(() => {
+      void result.current.startRefresh()
+    })
+    await waitFor(() => expect(pending).toHaveLength(1))
+    act(() => {
+      pending.shift()?.resolve(makeSnapshot({ phase: 'round_completed' }))
+    })
+    await waitFor(() => expect(result.current.snapshot?.phase).toBe('round_completed'))
+
+    emitChanged('refresh-1')
+    await waitFor(() => expect(pending).toHaveLength(1))
+
+    act(() => {
+      result.current.closeRefresh()
+    })
+    vi.mocked(startSharedDeviceRefresh).mockResolvedValue('refresh-2')
+    act(() => {
+      void result.current.startRefresh()
+    })
+    await waitFor(() =>
+      expect(pending.filter(query => query.requestId === 'refresh-2')).toHaveLength(1)
+    )
+
+    emitChanged('refresh-2')
+    const oldQuery = pending.find(query => query.requestId === 'refresh-1')
+    act(() => {
+      oldQuery?.resolve(makeSnapshot({ requestId: 'refresh-1', phase: 'round_completed' }))
+    })
+    await settleQueries()
+
+    emitChanged('refresh-2')
+    await settleQueries()
+
+    expect(pending.filter(query => query.requestId === 'refresh-2')).toHaveLength(1)
   })
 
   it('reopens the same window when closed mid-round and the entry is clicked', async () => {

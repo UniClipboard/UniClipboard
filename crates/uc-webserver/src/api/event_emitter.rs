@@ -152,12 +152,12 @@ pub fn engine_event_to_ws(event: EngineEvent) -> Option<DaemonWsEvent> {
                 "nextRetryInMs": status.next_retry_in_ms,
             }),
         ),
+        EngineEvent::RefreshRequired { .. } => return Some(refresh_required_ws_event()),
         EngineEvent::StateChanged { .. }
         | EngineEvent::PeerPresenceChanged(_)
         | EngineEvent::PairingCompleted(_)
         | EngineEvent::ActiveClipboardChanged(_)
         | EngineEvent::MobileLanSettingsChanged(_)
-        | EngineEvent::RefreshRequired { .. }
         | EngineEvent::OperationFinished { .. }
         | EngineEvent::LifecycleFailed { .. }
         | EngineEvent::Fatal { .. } => return None,
@@ -172,6 +172,17 @@ pub fn engine_event_to_ws(event: EngineEvent) -> Option<DaemonWsEvent> {
     })
 }
 
+/// Builds the process-wide notification used at every incremental-event lag boundary.
+pub fn refresh_required_ws_event() -> DaemonWsEvent {
+    DaemonWsEvent {
+        topic: ws_topic::SYSTEM.to_string(),
+        event_type: ws_event::SYSTEM_REFRESH_REQUIRED.to_string(),
+        session_id: None,
+        ts: now_ms(),
+        payload: serde_json::json!({}),
+    }
+}
+
 #[cfg(test)]
 mod engine_event_tests {
     use super::*;
@@ -179,7 +190,8 @@ mod engine_event_tests {
     use uc_engine::{
         EngineError, EngineErrorCategory, InboundNoticeEvent, LifecycleAction,
         MemberRevocationOutcome, MemberRevocationSummary, NetworkRecoveryStatusSummary,
-        SharedDeviceRefreshDeviceStateSummary, SharedDeviceRefreshDeviceSummary,
+        RefreshReason,
+        RefreshReason, SharedDeviceRefreshDeviceStateSummary, SharedDeviceRefreshDeviceSummary,
         SharedDeviceRefreshPhaseSummary, SharedDeviceRefreshSummary, TransferProgress,
     };
 
@@ -222,6 +234,17 @@ mod engine_event_tests {
     }
 
     #[test]
+    fn refresh_required_becomes_a_global_resync_notification() {
+        let event = engine_event_to_ws(EngineEvent::RefreshRequired {
+            reason: RefreshReason::ConsumerLagged,
+        })
+        .expect("global refresh-required websocket event");
+
+        assert_eq!(event.topic, ws_topic::SYSTEM);
+        assert_eq!(event.event_type, ws_event::SYSTEM_REFRESH_REQUIRED);
+        assert_eq!(event.payload, serde_json::json!({}));
+    }
+
     #[test]
     fn inbound_notice_keeps_the_existing_watch_wire_shape() {
         let event = engine_event_to_ws(EngineEvent::InboundNotice(inbound_notice_with_payload(

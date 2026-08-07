@@ -2,6 +2,8 @@
 
 /// WebSocket topic names used to subscribe to event streams.
 pub mod ws_topic {
+    /// Process-wide control notifications that ask consumers to refresh read models.
+    pub const SYSTEM: &str = "system";
     pub const STATUS: &str = "status";
     pub const PEERS: &str = "peers";
     pub const PAIRED_DEVICES: &str = "paired-devices";
@@ -21,6 +23,8 @@ pub mod ws_topic {
 
 /// WebSocket event type names emitted within topics.
 pub mod ws_event {
+    /// A consumer missed incremental events and must re-query any active read models.
+    pub const SYSTEM_REFRESH_REQUIRED: &str = "system.refresh_required";
     pub const STATUS_SNAPSHOT: &str = "status.snapshot";
     pub const STATUS_UPDATED: &str = "status.updated";
     pub const PEERS_SNAPSHOT: &str = "peers.snapshot";

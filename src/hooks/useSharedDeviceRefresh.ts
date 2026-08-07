@@ -33,6 +33,17 @@ const INITIAL_STATE: SharedDeviceRefreshState = {
   queryFailure: null,
 }
 
+function hasDeferredDevices(snapshot: SharedDeviceRefreshSnapshot): boolean {
+  return snapshot.devices.some(
+    device => device.state === 'waiting_for_peer' || device.state === 'waiting_for_update'
+  )
+}
+
+function isTerminal(state: SharedDeviceRefreshState): boolean {
+  if (state.queryFailure === 'notFound') return true
+  return state.snapshot?.phase === 'round_completed' && !hasDeferredDevices(state.snapshot)
+}
+
 function reducer(
   state: SharedDeviceRefreshState,
   action: SharedDeviceRefreshAction
@@ -60,7 +71,7 @@ function reducer(
       }
       return { ...state, queryFailure: 'temporary' }
     case 'close':
-      if (state.snapshot?.phase === 'round_completed' || state.queryFailure === 'notFound') {
+      if (isTerminal(state)) {
         return INITIAL_STATE
       }
       return { ...state, open: false }
@@ -90,8 +101,11 @@ export function useSharedDeviceRefresh({
 
   const requestIdRef = useRef<string | null>(null)
   const startingRef = useRef(false)
-  const queryInFlightRef = useRef(false)
-  const queryQueuedRef = useRef(false)
+  const queryRoundRef = useRef<{
+    requestId: string
+    inFlight: boolean
+    queued: boolean
+  } | null>(null)
   const connectedIdsRef = useRef<ReadonlySet<string>>(new Set())
   const onDevicesConnectedRef = useRef(onDevicesConnected)
   const onStartFailedRef = useRef(onStartFailed)
@@ -107,12 +121,18 @@ export function useSharedDeviceRefresh({
       const requestId = requestIdRef.current
       if (!requestId) return
 
-      if (queryInFlightRef.current) {
-        queryQueuedRef.current = true
+      let queryRound = queryRoundRef.current
+      if (!queryRound || queryRound.requestId !== requestId) {
+        queryRound = { requestId, inFlight: false, queued: false }
+        queryRoundRef.current = queryRound
+      }
+
+      if (queryRound.inFlight) {
+        queryRound.queued = true
         return
       }
 
-      queryInFlightRef.current = true
+      queryRound.inFlight = true
       try {
         const snapshot = await getSharedDeviceRefresh(requestId)
         if (requestIdRef.current !== requestId) return
@@ -137,9 +157,13 @@ export function useSharedDeviceRefresh({
           failure: isSharedDeviceRefreshNotFound(error) ? 'notFound' : 'temporary',
         })
       } finally {
-        queryInFlightRef.current = false
-        if (queryQueuedRef.current && requestIdRef.current === requestId) {
-          queryQueuedRef.current = false
+        queryRound.inFlight = false
+        if (
+          queryRound.queued &&
+          requestIdRef.current === requestId &&
+          queryRoundRef.current === queryRound
+        ) {
+          queryRound.queued = false
           void runQueryRef.current()
         }
       }
@@ -150,7 +174,7 @@ export function useSharedDeviceRefresh({
     if (startingRef.current) return
 
     if (requestIdRef.current) {
-      const activeRound = state.snapshot == null || state.snapshot.phase !== 'round_completed'
+      const activeRound = !isTerminal(state)
       if (activeRound) {
         dispatch({ type: 'open' })
         return
@@ -162,15 +186,13 @@ export function useSharedDeviceRefresh({
     try {
       const requestId = await startSharedDeviceRefresh()
       requestIdRef.current = requestId
-      queryInFlightRef.current = false
-      queryQueuedRef.current = false
+      queryRoundRef.current = { requestId, inFlight: false, queued: false }
       connectedIdsRef.current = new Set()
       dispatch({ type: 'started', requestId })
       await runQueryRef.current()
     } catch {
       requestIdRef.current = null
-      queryInFlightRef.current = false
-      queryQueuedRef.current = false
+      queryRoundRef.current = null
       connectedIdsRef.current = new Set()
       dispatch({ type: 'close' })
       onStartFailedRef.current()
@@ -180,24 +202,29 @@ export function useSharedDeviceRefresh({
   }
 
   const closeRefresh = () => {
-    const terminal =
-      state.snapshot?.phase === 'round_completed' || state.queryFailure === 'notFound'
+    const terminal = isTerminal(state)
     dispatch({ type: 'close' })
     if (terminal) {
       requestIdRef.current = null
-      queryInFlightRef.current = false
-      queryQueuedRef.current = false
+      queryRoundRef.current = null
       connectedIdsRef.current = new Set()
     }
   }
 
   useEffect(() => {
     if (!state.requestId) return
-    return daemonWs.subscribe<{ requestId?: string }>(['shared-device-refresh'], event => {
-      if (event.eventType !== 'shared-device-refresh.changed') return
-      if (event.payload?.requestId !== requestIdRef.current) return
-      void runQueryRef.current()
-    })
+    return daemonWs.subscribe<{ requestId?: string }>(
+      ['shared-device-refresh', 'system'],
+      event => {
+        if (event.eventType === 'system.refresh_required') {
+          void runQueryRef.current()
+          return
+        }
+        if (event.eventType !== 'shared-device-refresh.changed') return
+        if (event.payload?.requestId !== requestIdRef.current) return
+        void runQueryRef.current()
+      }
+    )
   }, [state.requestId])
 
   useEffect(() => {

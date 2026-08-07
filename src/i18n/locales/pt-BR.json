@@ -1039,6 +1039,28 @@
     "pairedDevices": {
       "title": "Dispositivos pareados"
     },
+    "sharedDeviceRefresh": {
+      "refresh": "Atualizar dispositivos compartilhados",
+      "searching": "Procurando dispositivos conectáveis",
+      "connecting": "Conectando aos dispositivos encontrados",
+      "roundCompleted": "Esta rodada foi concluída",
+      "empty": "Nenhum dispositivo conectável encontrado",
+      "unavailableSources": "Alguns dispositivos pareados estão indisponíveis no momento",
+      "startFailed": "Não foi possível iniciar a atualização de dispositivos compartilhados",
+      "updateFailed": "Não foi possível atualizar o status agora",
+      "ended": "Esta atualização terminou. Inicie uma nova atualização.",
+      "unknownDevice": "Dispositivo sem nome",
+      "deviceStates": {
+        "discovered": "Descoberto, preparando conexão",
+        "connecting": "Conectando automaticamente",
+        "connected": "Conectado automaticamente",
+        "already_present": "Já está neste dispositivo",
+        "waiting_for_peer": "Aguardando o dispositivo ficar online; continuaremos tentando",
+        "waiting_for_update": "Aguardando atualização do perfil; continuaremos tentando",
+        "version_incompatible": "Versão incompatível",
+        "rejected": "Não foi possível conectar"
+      }
+    },
     "convergence": {
       "converging": "Conectando aos outros dispositivos deste Espaço",
       "waitingForUpgrade": "Alguns dispositivos precisam ser atualizados para se conectarem automaticamente",
@@ -1055,34 +1077,22 @@
       }
     },
     "memberRemoval": {
-      "pending": {
-        "title": "A remoção do dispositivo ainda está em andamento",
-        "description_one": "Aguardando {{count}} dispositivo mantido confirmar a atualização de segurança.",
-        "description_many": "Aguardando {{count}} dispositivos mantidos confirmarem a atualização de segurança.",
-        "description_other": "Aguardando {{count}} dispositivos mantidos confirmarem a atualização de segurança."
-      },
       "recovering": {
-        "title": "Recuperando a remoção do dispositivo",
-        "description": "A remoção interrompida do dispositivo está sendo recuperada com segurança. Aguarde."
-      },
-      "recovery": {
-        "title": "A remoção do dispositivo precisa de recuperação",
-        "description": "Confirme apenas os dispositivos permanentemente indisponíveis antes de continuar."
-      },
-      "complete": {
-        "title": "Remoção do dispositivo concluída",
-        "description": "Todos os dispositivos mantidos confirmaram a atualização de segurança."
+        "title": "Restaurando a remoção do dispositivo",
+        "description": "A remoção interrompida do dispositivo está sendo restaurada com segurança. Aguarde."
       },
       "permanentLoss": {
-        "action": "Marcar dispositivos pendentes como perdidos permanentemente",
         "title": "Confirmar perda permanente do dispositivo",
         "description": "Continue apenas quando esses dispositivos pendentes não puderem ser recuperados. Esta ação não pode ser desfeita.",
-        "confirm": "Confirmar perda permanente"
+        "confirm": "Confirmar perda permanente",
+        "markLost": "Marcar como perdido"
       },
       "errors": {
         "statusFailed": "Não foi possível carregar o andamento da remoção do dispositivo.",
         "continueFailed": "Não foi possível continuar a remoção do dispositivo."
-      }
+      },
+      "pendingDeviceHint": "Dispositivo offline; precisa ficar online para concluir a atualização de segurança",
+      "securityUpdateLabel": "Atualização de segurança"
     },
     "addDevice": {
       "title": "Convidar um novo dispositivo",

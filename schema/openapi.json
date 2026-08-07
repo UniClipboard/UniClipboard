@@ -4537,6 +4537,181 @@
         ],
         "type": "object"
       },
+      "SharedDeviceRefreshDeviceDto": {
+        "description": "One device row in a shared-device refresh snapshot.",
+        "properties": {
+          "deviceId": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "state": {
+            "$ref": "#/components/schemas/SharedDeviceRefreshDeviceStateDto"
+          }
+        },
+        "required": [
+          "deviceId",
+          "displayName",
+          "state"
+        ],
+        "type": "object"
+      },
+      "SharedDeviceRefreshDeviceStateDto": {
+        "description": "Stable per-device state produced by the Engine.",
+        "enum": [
+          "discovered",
+          "connecting",
+          "connected",
+          "already_present",
+          "waiting_for_peer",
+          "waiting_for_update",
+          "version_incompatible",
+          "rejected"
+        ],
+        "type": "string"
+      },
+      "SharedDeviceRefreshDto": {
+        "description": "Complete Engine-owned result for one shared-device refresh request.\n\nCounts are mirrored verbatim from the Engine. The daemon and frontend must\nnot derive or correct device states from counts.",
+        "properties": {
+          "alreadyPresentCount": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "connectedCount": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "connectingCount": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "devices": {
+            "items": {
+              "$ref": "#/components/schemas/SharedDeviceRefreshDeviceDto"
+            },
+            "type": "array"
+          },
+          "discoveredCount": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "phase": {
+            "$ref": "#/components/schemas/SharedDeviceRefreshPhaseDto"
+          },
+          "rejectedCount": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "requestId": {
+            "type": "string"
+          },
+          "totalCount": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "unavailableSourceCount": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "versionIncompatibleCount": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "waitingForPeerCount": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "waitingForUpdateCount": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "requestId",
+          "phase",
+          "devices",
+          "totalCount",
+          "discoveredCount",
+          "connectingCount",
+          "connectedCount",
+          "alreadyPresentCount",
+          "waitingForPeerCount",
+          "waitingForUpdateCount",
+          "versionIncompatibleCount",
+          "rejectedCount",
+          "unavailableSourceCount"
+        ],
+        "type": "object"
+      },
+      "SharedDeviceRefreshEnvelope": {
+        "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/SharedDeviceRefreshDto"
+          },
+          "ts": {
+            "description": "Server time when the response was built (unix epoch milliseconds).",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "data",
+          "ts"
+        ],
+        "type": "object"
+      },
+      "SharedDeviceRefreshPhaseDto": {
+        "description": "Current phase of an Engine-owned shared-device refresh round.",
+        "enum": [
+          "started",
+          "discovering",
+          "connecting",
+          "round_completed"
+        ],
+        "type": "string"
+      },
+      "SharedDeviceRefreshStartedDto": {
+        "description": "Result of starting a shared-device refresh round.",
+        "properties": {
+          "requestId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "requestId"
+        ],
+        "type": "object"
+      },
+      "SharedDeviceRefreshStartedEnvelope": {
+        "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/SharedDeviceRefreshStartedDto"
+          },
+          "ts": {
+            "description": "Server time when the response was built (unix epoch milliseconds).",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "data",
+          "ts"
+        ],
+        "type": "object"
+      },
       "ShortcutInstallMethodViewDto": {
         "description": "One shortcut-install method option (`tokenInjected` / `icloudGeneric`).",
         "properties": {
@@ -7867,6 +8042,127 @@
             "session_header": []
           }
         ],
+        "tags": [
+          "member"
+        ]
+      }
+    },
+    "/member/shared-device-refresh": {
+      "post": {
+        "description": "Starts one shared-device refresh round in the active Space. The Engine owns\ndeduplication while the first round is still in progress and returns the\nsame `requestId` for repeated starts.",
+        "operationId": "startSharedDeviceRefresh",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SharedDeviceRefreshStartedEnvelope"
+                }
+              }
+            },
+            "description": ""
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal server error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Runtime unavailable"
+          }
+        },
+        "security": [
+          {
+            "session_query": []
+          },
+          {
+            "session_header": []
+          }
+        ],
+        "summary": "POST /member/shared-device-refresh",
+        "tags": [
+          "member"
+        ]
+      }
+    },
+    "/member/shared-device-refresh/{request_id}": {
+      "get": {
+        "description": "Returns the complete current snapshot for one refresh round. Unknown or\nexpired requests return a stable `shared_device_refresh_not_found` error.",
+        "operationId": "getSharedDeviceRefresh",
+        "parameters": [
+          {
+            "description": "Shared-device refresh request ID",
+            "in": "path",
+            "name": "request_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SharedDeviceRefreshEnvelope"
+                }
+              }
+            },
+            "description": ""
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Request not found"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal server error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Runtime unavailable"
+          }
+        },
+        "security": [
+          {
+            "session_query": []
+          },
+          {
+            "session_header": []
+          }
+        ],
+        "summary": "GET /member/shared-device-refresh/{request_id}",
         "tags": [
           "member"
         ]

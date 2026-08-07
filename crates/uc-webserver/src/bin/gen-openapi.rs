@@ -64,8 +64,10 @@ use uc_webserver::api::openapi::ApiDoc;
 /// `/member/removal/current` and POST `/member/removal/continue`: +2 paths,
 /// +2 operations → 74 / 81. Network recovery adds GET+POST
 /// `/network/recovery`: +1 path, +2 operations → 75 / 83.
-const EXPECTED_PATHS: usize = 75;
-const EXPECTED_OPERATIONS: usize = 83;
+/// Shared-device refresh adds POST `/member/shared-device-refresh` and GET
+/// `/member/shared-device-refresh/{request_id}`: +2 paths, +2 operations → 77 / 85.
+const EXPECTED_PATHS: usize = 77;
+const EXPECTED_OPERATIONS: usize = 85;
 const SCHEMA_PREFIX: &str = "#/components/schemas/";
 const HTTP_METHODS: [&str; 7] = ["get", "put", "post", "delete", "patch", "head", "options"];
 

@@ -489,6 +489,9 @@ fn is_supported_topic(topic: &str) -> bool {
             | ws_topic::FILE_TRANSFER
             | ws_topic::ENCRYPTION
             | ws_topic::SEARCH
+            | ws_topic::MEMBER_REMOVAL
+            | ws_topic::NETWORK_RECOVERY
+            | ws_topic::SHARED_DEVICE_REFRESH
     )
 }
 
@@ -575,6 +578,7 @@ async fn build_snapshot_event(
         ws_topic::SETUP => Ok(None),
         ws_topic::CLIPBOARD => Ok(None),
         ws_topic::FILE_TRANSFER => Ok(None),
+        ws_topic::SHARED_DEVICE_REFRESH => Ok(None),
 
         ws_topic::ENCRYPTION => {
             // No snapshot for encryption — only an event is emitted on session_ready.

@@ -1035,6 +1035,28 @@
     "pairedDevices": {
       "title": "已配對裝置"
     },
+    "sharedDeviceRefresh": {
+      "refresh": "重新整理共用裝置",
+      "searching": "正在尋找可連接裝置",
+      "connecting": "正在自動連接已發現的裝置",
+      "roundCompleted": "本輪尋找完成",
+      "empty": "未發現可自動連接的裝置",
+      "unavailableSources": "部分已配對裝置目前無法使用",
+      "startFailed": "暫時無法開始重新整理",
+      "updateFailed": "暫時無法更新重新整理狀態",
+      "ended": "重新整理狀態已結束，請重新整理",
+      "unknownDevice": "未命名裝置",
+      "deviceStates": {
+        "discovered": "已發現，正在準備連接",
+        "connecting": "正在自動連接",
+        "connected": "已自動連接",
+        "already_present": "已在本機裝置中",
+        "waiting_for_peer": "等待裝置上線，會繼續嘗試",
+        "waiting_for_update": "等待資料更新，會繼續嘗試",
+        "version_incompatible": "版本不相容",
+        "rejected": "無法連接"
+      }
+    },
     "convergence": {
       "converging": "正在連接空間內的其他裝置",
       "waitingForUpgrade": "部分裝置需要升級後才能自動連接",
@@ -1051,32 +1073,22 @@
       }
     },
     "memberRemoval": {
-      "pending": {
-        "title": "裝置移除仍在進行",
-        "description_other": "正在等待 {{count}} 台保留裝置確認安全更新。"
-      },
       "recovering": {
-        "title": "正在復原裝置移除",
-        "description": "正在安全地復原先前中斷的裝置移除，請稍候。"
-      },
-      "recovery": {
-        "title": "裝置移除需要恢復",
-        "description": "僅在待確認裝置已永久無法使用時，才確認並繼續。"
-      },
-      "complete": {
-        "title": "裝置移除完成",
-        "description": "所有保留裝置都已確認安全更新。"
+        "title": "正在恢復裝置移除",
+        "description": "已中斷的裝置移除正在安全恢復，請稍候。"
       },
       "permanentLoss": {
-        "action": "將待確認裝置標記為永久丟失",
         "title": "確認裝置已永久丟失",
         "description": "僅在這些待確認裝置確定無法恢復時繼續。此操作無法復原。",
-        "confirm": "確認永久丟失"
+        "confirm": "確認永久丟失",
+        "markLost": "標記為遺失"
       },
       "errors": {
         "statusFailed": "無法讀取裝置移除進度。",
         "continueFailed": "無法繼續移除裝置。"
-      }
+      },
+      "pendingDeviceHint": "裝置離線，需上線完成安全更新",
+      "securityUpdateLabel": "安全更新"
     },
     "addDevice": {
       "title": "邀請新裝置",

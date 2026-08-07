@@ -19,13 +19,16 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { refreshPresence } from '@/api/daemon'
-import type { MemberRemoval } from '@/api/daemon/member'
+import type { MemberRemoval, SharedDeviceRefreshSnapshot } from '@/api/daemon/member'
 import {
   continueMemberRemoval,
   getCurrentMemberRemoval,
+  getSharedDeviceRefresh,
   isLegacyBootstrapRequired,
   isMemberRemovalBlocked,
+  isSharedDeviceRefreshNotFound,
   secureRemoveLegacyMember,
+  startSharedDeviceRefresh,
 } from '@/api/daemon/member'
 import { unpairDevice } from '@/api/daemon/members'
 import {
@@ -114,6 +117,7 @@ const dispatchMock = vi.fn()
 type DaemonEventHandler = (event: { topic: string; eventType: string; payload: unknown }) => void
 const daemonWsMocks = vi.hoisted(() => ({
   subscribe: vi.fn((_topics: string[], _handler: DaemonEventHandler) => () => undefined),
+  onReconnect: vi.fn(() => () => undefined),
 }))
 const devicesState = {
   localDevice: null as null | Record<string, unknown>,
@@ -169,9 +173,12 @@ vi.mock('@/api/daemon/members', () => ({
 vi.mock('@/api/daemon/member', () => ({
   continueMemberRemoval: vi.fn(),
   getCurrentMemberRemoval: vi.fn(),
+  getSharedDeviceRefresh: vi.fn(),
   isLegacyBootstrapRequired: vi.fn(),
   isMemberRemovalBlocked: vi.fn(),
+  isSharedDeviceRefreshNotFound: vi.fn(() => false),
   secureRemoveLegacyMember: vi.fn(),
+  startSharedDeviceRefresh: vi.fn(),
 }))
 
 vi.mock('@/api/daemon/network-recovery', () => ({
@@ -200,7 +207,7 @@ vi.mock('@/api/tauri-command/mobile_sync', () => ({
 }))
 
 vi.mock('@/lib/daemon-ws', () => ({
-  daemonWs: { subscribe: daemonWsMocks.subscribe },
+  daemonWs: { subscribe: daemonWsMocks.subscribe, onReconnect: daemonWsMocks.onReconnect },
 }))
 
 vi.mock('@/components/ui/toast', () => ({
@@ -239,6 +246,7 @@ describe('DevicesPage', () => {
     devicesState.memberRemoval = null
     devicesState.memberRemovalError = null
     daemonWsMocks.subscribe.mockClear()
+    daemonWsMocks.onReconnect.mockClear()
     vi.mocked(listMobileDevices).mockReset()
     vi.mocked(listMobileDevices).mockResolvedValue([])
     Object.defineProperty(document, 'visibilityState', {
@@ -248,9 +256,11 @@ describe('DevicesPage', () => {
     vi.mocked(unpairDevice).mockReset()
     vi.mocked(continueMemberRemoval).mockReset()
     vi.mocked(getCurrentMemberRemoval).mockReset()
+    vi.mocked(getSharedDeviceRefresh).mockReset()
     vi.mocked(isLegacyBootstrapRequired).mockReset()
     vi.mocked(isMemberRemovalBlocked).mockReset()
     vi.mocked(secureRemoveLegacyMember).mockReset()
+    vi.mocked(startSharedDeviceRefresh).mockReset()
     vi.mocked(toast.error).mockClear()
   })
 
@@ -298,19 +308,6 @@ describe('DevicesPage', () => {
     const list = screen.getByRole('complementary')
     expect(list).toBeInTheDocument()
     expect(screen.getByRole('heading', { level: 2 })).toBeInTheDocument()
-  })
-
-  it('keeps an active device removal at the bottom of the device list', () => {
-    devicesState.memberRemoval = memberRemoval
-
-    render(<DevicesPage />)
-
-    const status = screen
-      .getByText(i18n.t('devices.memberRemoval.pending.title'))
-      .closest('section')
-    expect(status).not.toBeNull()
-    expect(screen.getByRole('complementary')).toContainElement(status)
-    expect(status?.parentElement).toHaveClass('absolute', 'bottom-0')
   })
 
   it('calls refreshPresence exactly once on mount and does not poll on a timer', () => {
@@ -443,14 +440,12 @@ describe('DevicesPage', () => {
     ).not.toBeInTheDocument()
   })
 
-  it('shows a compact status while the space is still connecting', () => {
+  it('keeps routine convergence invisible while it is still connecting', () => {
     devicesState.membershipConvergence = { state: 'converging' }
 
     render(<DevicesPage />)
 
-    const status = screen.getByText(i18n.t('devices.convergence.converging'))
-    expect(status).toBeInTheDocument()
-    expect(status.parentElement?.tagName).toBe('OUTPUT')
+    expect(screen.queryByText(i18n.t('devices.convergence.converging'))).not.toBeInTheDocument()
   })
 
   it('hides the connection status when convergence is complete', () => {
@@ -830,15 +825,19 @@ describe('DevicesPage secure legacy removal', () => {
 
   it('keeps permanent-loss confirmation open while continuing removal', async () => {
     let finishContinuation: ((value: MemberRemoval) => void) | undefined
-    devicesState.memberRemoval = memberRemoval
+    devicesState.memberRemoval = {
+      ...memberRemoval,
+      pendingRecipientDeviceIds: ['remote-peer'],
+    }
     vi.mocked(continueMemberRemoval).mockImplementation(
       () => new Promise<MemberRemoval>(resolve => (finishContinuation = resolve))
     )
     render(<DevicesPage />)
     const user = userEvent.setup()
 
+    await user.click(screen.getByRole('button', { name: remoteMember.deviceName }))
     await user.click(
-      screen.getByRole('button', { name: i18n.t('devices.memberRemoval.permanentLoss.action') })
+      screen.getByRole('button', { name: i18n.t('devices.memberRemoval.permanentLoss.markLost') })
     )
     const confirm = screen.getByRole('button', {
       name: i18n.t('devices.memberRemoval.permanentLoss.confirm'),
@@ -846,7 +845,7 @@ describe('DevicesPage secure legacy removal', () => {
     await user.click(confirm)
 
     await waitFor(() =>
-      expect(continueMemberRemoval).toHaveBeenCalledWith('removal-1', ['retained-device'])
+      expect(continueMemberRemoval).toHaveBeenCalledWith('removal-1', ['remote-peer'])
     )
     expect(
       screen.getByText(i18n.t('devices.memberRemoval.permanentLoss.title'))
@@ -861,13 +860,17 @@ describe('DevicesPage secure legacy removal', () => {
   })
 
   it('shows an error and keeps permanent-loss confirmation open when continuing fails', async () => {
-    devicesState.memberRemoval = memberRemoval
+    devicesState.memberRemoval = {
+      ...memberRemoval,
+      pendingRecipientDeviceIds: ['remote-peer'],
+    }
     vi.mocked(continueMemberRemoval).mockRejectedValue(new Error('offline'))
     render(<DevicesPage />)
     const user = userEvent.setup()
 
+    await user.click(screen.getByRole('button', { name: remoteMember.deviceName }))
     await user.click(
-      screen.getByRole('button', { name: i18n.t('devices.memberRemoval.permanentLoss.action') })
+      screen.getByRole('button', { name: i18n.t('devices.memberRemoval.permanentLoss.markLost') })
     )
     await user.click(
       screen.getByRole('button', { name: i18n.t('devices.memberRemoval.permanentLoss.confirm') })
@@ -881,6 +884,38 @@ describe('DevicesPage secure legacy removal', () => {
     expect(
       screen.getByText(i18n.t('devices.memberRemoval.permanentLoss.title'))
     ).toBeInTheDocument()
+  })
+
+  it('closes the permanent-loss dialog when the store reports the removal complete', async () => {
+    devicesState.memberRemoval = {
+      ...memberRemoval,
+      pendingRecipientDeviceIds: ['remote-peer'],
+    }
+    let finishContinuation: ((value: MemberRemoval) => void) | undefined
+    vi.mocked(continueMemberRemoval).mockImplementation(
+      () => new Promise<MemberRemoval>(resolve => (finishContinuation = resolve))
+    )
+    const { rerender } = render(<DevicesPage />)
+    const user = userEvent.setup()
+
+    await user.click(screen.getByRole('button', { name: remoteMember.deviceName }))
+    await user.click(
+      screen.getByRole('button', { name: i18n.t('devices.memberRemoval.permanentLoss.markLost') })
+    )
+    expect(screen.getByRole('alertdialog')).toBeInTheDocument()
+
+    // The Engine completes the revocation and the ws-driven store update lands
+    // before the continue request returns — the dialog must close immediately.
+    devicesState.memberRemoval = {
+      ...memberRemoval,
+      outcome: 'complete',
+      pendingRecipients: 0,
+      pendingRecipientDeviceIds: [],
+    }
+    rerender(<DevicesPage />)
+
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument())
+    expect(finishContinuation).toBeUndefined()
   })
 })
 
@@ -984,5 +1019,402 @@ describe('DevicesPage mobile add flow', () => {
     const panel = await screen.findByTestId('mobile-panel')
     expect(panel).toHaveAttribute('data-device-id', REGISTERED.deviceId)
     expect(panel).toHaveTextContent('has-credential')
+  })
+})
+
+describe('DevicesPage shared-device refresh', () => {
+  const localDevice = {
+    peerId: 'local-peer',
+    deviceName: 'Local Mac',
+    deviceId: 'local-device',
+    platform: 'macos',
+    version: '0.20.0',
+  }
+  const remoteMember = {
+    peerId: 'remote-peer',
+    deviceName: 'Old Desktop',
+    pairingState: 'Trusted',
+    lastSeenAtMs: null,
+    connected: true,
+    channel: 'direct',
+    connectionAddress: '127.0.0.1:5000',
+  }
+
+  const refreshSnapshot = (
+    overrides: Partial<SharedDeviceRefreshSnapshot> = {}
+  ): SharedDeviceRefreshSnapshot => ({
+    requestId: 'refresh-1',
+    phase: 'connecting',
+    devices: [],
+    totalCount: 0,
+    discoveredCount: 0,
+    connectingCount: 0,
+    connectedCount: 0,
+    alreadyPresentCount: 0,
+    waitingForPeerCount: 0,
+    waitingForUpdateCount: 0,
+    versionIncompatibleCount: 0,
+    rejectedCount: 0,
+    unavailableSourceCount: 0,
+    ...overrides,
+  })
+
+  beforeEach(() => {
+    vi.mocked(startSharedDeviceRefresh).mockReset()
+    vi.mocked(getSharedDeviceRefresh).mockReset()
+    devicesState.localDevice = localDevice
+    devicesState.spaceMembers = [localDevice, remoteMember]
+    vi.mocked(startSharedDeviceRefresh).mockResolvedValue('refresh-1')
+    vi.mocked(getSharedDeviceRefresh).mockResolvedValue(refreshSnapshot())
+    vi.mocked(isSharedDeviceRefreshNotFound).mockReturnValue(false)
+    dispatchMock.mockClear()
+  })
+
+  afterEach(() => {
+    devicesState.localDevice = null
+    devicesState.spaceMembers = []
+    vi.mocked(toast.error).mockClear()
+    vi.mocked(startSharedDeviceRefresh).mockReset()
+    vi.mocked(getSharedDeviceRefresh).mockReset()
+  })
+
+  it('hides the refresh entry when there are no paired devices', () => {
+    devicesState.spaceMembers = [localDevice]
+    render(<DevicesPage />)
+
+    expect(
+      screen.queryByRole('button', { name: i18n.t('devices.sharedDeviceRefresh.refresh') })
+    ).not.toBeInTheDocument()
+  })
+
+  it('shows the refresh entry when at least one paired device exists', () => {
+    render(<DevicesPage />)
+
+    expect(
+      screen.getByRole('button', { name: i18n.t('devices.sharedDeviceRefresh.refresh') })
+    ).toBeInTheDocument()
+  })
+
+  it('starts the refresh and opens the result window on click', async () => {
+    let resolveStart: (() => void) | undefined
+    vi.mocked(startSharedDeviceRefresh).mockImplementation(
+      () =>
+        new Promise(resolve => {
+          resolveStart = () => resolve('refresh-1')
+        })
+    )
+    const user = userEvent.setup()
+    render(<DevicesPage />)
+
+    await user.click(
+      screen.getByRole('button', { name: i18n.t('devices.sharedDeviceRefresh.refresh') })
+    )
+
+    expect(startSharedDeviceRefresh).toHaveBeenCalledTimes(1)
+    expect(
+      await screen.findByText(i18n.t('devices.sharedDeviceRefresh.searching'))
+    ).toBeInTheDocument()
+
+    act(() => resolveStart?.())
+    expect(
+      await screen.findByText(i18n.t('devices.sharedDeviceRefresh.connecting'))
+    ).toBeInTheDocument()
+  })
+
+  it('reuses the same request while the first round is still active', async () => {
+    const user = userEvent.setup()
+    render(<DevicesPage />)
+    const entry = () =>
+      screen.getByRole('button', { name: i18n.t('devices.sharedDeviceRefresh.refresh') })
+
+    await user.click(entry())
+    await waitFor(() => expect(startSharedDeviceRefresh).toHaveBeenCalledTimes(1))
+    await waitFor(() =>
+      expect(screen.getByText(i18n.t('devices.sharedDeviceRefresh.connecting'))).toBeInTheDocument()
+    )
+
+    // Close the window; the request stays alive and the next click reopens
+    // the same round instead of starting a second one.
+    await user.keyboard('{Escape}')
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    await user.click(entry())
+
+    await waitFor(() => expect(startSharedDeviceRefresh).toHaveBeenCalledTimes(1))
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+  })
+
+  it('renders every device state with its copy', async () => {
+    vi.mocked(getSharedDeviceRefresh).mockResolvedValue(
+      refreshSnapshot({
+        phase: 'connecting',
+        devices: [
+          { deviceId: 'd-1', displayName: '', state: 'discovered' },
+          { deviceId: 'd-2', displayName: 'Peer A', state: 'connecting' },
+          { deviceId: 'd-3', displayName: 'Peer B', state: 'connected' },
+          { deviceId: 'd-4', displayName: 'Peer C', state: 'already_present' },
+          { deviceId: 'd-5', displayName: 'Peer D', state: 'waiting_for_peer' },
+          { deviceId: 'd-6', displayName: 'Peer E', state: 'waiting_for_update' },
+          { deviceId: 'd-7', displayName: 'Peer F', state: 'version_incompatible' },
+          { deviceId: 'd-8', displayName: 'Peer G', state: 'rejected' },
+        ],
+        totalCount: 8,
+      })
+    )
+    const user = userEvent.setup()
+    render(<DevicesPage />)
+
+    await user.click(
+      screen.getByRole('button', { name: i18n.t('devices.sharedDeviceRefresh.refresh') })
+    )
+
+    await waitFor(() =>
+      expect(
+        screen.getByText(i18n.t('devices.sharedDeviceRefresh.deviceStates.connected'))
+      ).toBeInTheDocument()
+    )
+    expect(screen.getByText('Peer B')).toBeInTheDocument()
+    expect(
+      screen.getByText(i18n.t('devices.sharedDeviceRefresh.deviceStates.discovered'))
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText(i18n.t('devices.sharedDeviceRefresh.deviceStates.connecting'))
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText(i18n.t('devices.sharedDeviceRefresh.deviceStates.already_present'))
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText(i18n.t('devices.sharedDeviceRefresh.deviceStates.waiting_for_peer'))
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText(i18n.t('devices.sharedDeviceRefresh.deviceStates.waiting_for_update'))
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText(i18n.t('devices.sharedDeviceRefresh.deviceStates.version_incompatible'))
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText(i18n.t('devices.sharedDeviceRefresh.deviceStates.rejected'))
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText(i18n.t('devices.sharedDeviceRefresh.unknownDevice'))
+    ).toBeInTheDocument()
+  })
+
+  it('shows the explicit empty result after a completed round', async () => {
+    vi.mocked(getSharedDeviceRefresh).mockResolvedValue(
+      refreshSnapshot({ phase: 'round_completed', devices: [] })
+    )
+    const user = userEvent.setup()
+    render(<DevicesPage />)
+
+    await user.click(
+      screen.getByRole('button', { name: i18n.t('devices.sharedDeviceRefresh.refresh') })
+    )
+
+    expect(await screen.findByText(i18n.t('devices.sharedDeviceRefresh.empty'))).toBeInTheDocument()
+    expect(
+      screen.getByText(i18n.t('devices.sharedDeviceRefresh.roundCompleted'))
+    ).toBeInTheDocument()
+  })
+
+  it('shows only the summary when a query source is unavailable', async () => {
+    vi.mocked(getSharedDeviceRefresh).mockResolvedValue(
+      refreshSnapshot({ phase: 'connecting', unavailableSourceCount: 1 })
+    )
+    const user = userEvent.setup()
+    render(<DevicesPage />)
+
+    await user.click(
+      screen.getByRole('button', { name: i18n.t('devices.sharedDeviceRefresh.refresh') })
+    )
+
+    expect(
+      await screen.findByText(i18n.t('devices.sharedDeviceRefresh.unavailableSources'))
+    ).toBeInTheDocument()
+  })
+
+  it('re-reads the authoritative device list when a device first connects', async () => {
+    vi.mocked(getSharedDeviceRefresh).mockResolvedValue(
+      refreshSnapshot({
+        phase: 'connecting',
+        devices: [{ deviceId: 'new-peer', displayName: 'New Peer', state: 'connected' }],
+        connectedCount: 1,
+      })
+    )
+    dispatchMock.mockClear()
+    const user = userEvent.setup()
+    render(<DevicesPage />)
+
+    await user.click(
+      screen.getByRole('button', { name: i18n.t('devices.sharedDeviceRefresh.refresh') })
+    )
+
+    await waitFor(() =>
+      expect(dispatchMock).toHaveBeenCalledWith({ type: 'devices/fetchSpaceMembers' })
+    )
+  })
+
+  it('shows a toast and closes the window when starting fails', async () => {
+    vi.mocked(startSharedDeviceRefresh).mockRejectedValue(new Error('daemon offline'))
+    const user = userEvent.setup()
+    render(<DevicesPage />)
+
+    await user.click(
+      screen.getByRole('button', { name: i18n.t('devices.sharedDeviceRefresh.refresh') })
+    )
+
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith(i18n.t('devices.sharedDeviceRefresh.startFailed'))
+    )
+    expect(
+      screen.queryByRole('button', { name: i18n.t('devices.sharedDeviceRefresh.refresh') })
+    ).toBeInTheDocument()
+  })
+
+  it('keeps querying in the background after the window is closed mid-round', async () => {
+    const user = userEvent.setup()
+    render(<DevicesPage />)
+
+    await user.click(
+      screen.getByRole('button', { name: i18n.t('devices.sharedDeviceRefresh.refresh') })
+    )
+    await waitFor(() => expect(getSharedDeviceRefresh).toHaveBeenCalled())
+    const callsAfterOpen = vi.mocked(getSharedDeviceRefresh).mock.calls.length
+
+    await user.keyboard('{Escape}')
+    await waitFor(() =>
+      expect(
+        screen.queryByText(i18n.t('devices.sharedDeviceRefresh.searching'))
+      ).not.toBeInTheDocument()
+    )
+
+    const handler = daemonWsMocks.subscribe.mock.calls.at(-1)?.[1]
+    expect(handler).toBeTypeOf('function')
+    act(() => {
+      handler?.({
+        topic: 'shared-device-refresh',
+        eventType: 'shared-device-refresh.changed',
+        payload: { requestId: 'refresh-1' },
+      })
+    })
+
+    await waitFor(() =>
+      expect(vi.mocked(getSharedDeviceRefresh).mock.calls.length).toBeGreaterThan(callsAfterOpen)
+    )
+  })
+
+  it('shows the ended message when the request no longer exists', async () => {
+    vi.mocked(getSharedDeviceRefresh).mockRejectedValue(new Error('not found'))
+    vi.mocked(isSharedDeviceRefreshNotFound).mockReturnValue(true)
+    const user = userEvent.setup()
+    render(<DevicesPage />)
+
+    await user.click(
+      screen.getByRole('button', { name: i18n.t('devices.sharedDeviceRefresh.refresh') })
+    )
+
+    expect(await screen.findByText(i18n.t('devices.sharedDeviceRefresh.ended'))).toBeInTheDocument()
+  })
+})
+
+describe('DevicesPage pending-removal device marks', () => {
+  const localDevice = {
+    peerId: 'local-peer',
+    deviceName: 'Local Mac',
+    deviceId: 'local-device',
+    platform: 'macos',
+    version: '0.20.0',
+  }
+  const remoteMember = {
+    peerId: 'remote-peer',
+    deviceName: 'Old Desktop',
+    pairingState: 'Trusted',
+    lastSeenAtMs: null,
+    connected: true,
+    channel: 'direct',
+    connectionAddress: '127.0.0.1:5000',
+  }
+
+  beforeEach(() => {
+    devicesState.localDevice = localDevice
+    devicesState.spaceMembers = [localDevice, remoteMember]
+  })
+
+  afterEach(() => {
+    devicesState.localDevice = null
+    devicesState.spaceMembers = []
+    devicesState.memberRemoval = null
+  })
+
+  it('marks retained devices that must come online with a warning icon', () => {
+    devicesState.memberRemoval = {
+      ...memberRemoval,
+      outcome: 'applied',
+      pendingRecipientDeviceIds: ['remote-peer'],
+    }
+
+    render(<DevicesPage />)
+
+    expect(
+      screen.getByLabelText(i18n.t('devices.memberRemoval.pendingDeviceHint'))
+    ).toBeInTheDocument()
+  })
+
+  it('shows recovery progress while an interrupted removal is being restored', () => {
+    devicesState.memberRemoval = {
+      ...memberRemoval,
+      outcome: 'recovering',
+      pendingRecipientDeviceIds: [],
+    }
+
+    render(<DevicesPage />)
+
+    expect(screen.getByText(i18n.t('devices.memberRemoval.recovering.title'))).toBeInTheDocument()
+    expect(
+      screen.getByText(i18n.t('devices.memberRemoval.recovering.description'))
+    ).toBeInTheDocument()
+  })
+
+  it('explains the warning on hover', async () => {
+    devicesState.memberRemoval = {
+      ...memberRemoval,
+      outcome: 'applied',
+      pendingRecipientDeviceIds: ['remote-peer'],
+    }
+    const user = userEvent.setup()
+    render(<DevicesPage />)
+
+    await user.hover(screen.getByLabelText(i18n.t('devices.memberRemoval.pendingDeviceHint')))
+
+    expect(
+      await screen.findByText(i18n.t('devices.memberRemoval.pendingDeviceHint'))
+    ).toBeInTheDocument()
+  })
+
+  it('does not mark devices once the removal completes', () => {
+    devicesState.memberRemoval = {
+      ...memberRemoval,
+      outcome: 'complete',
+      pendingRecipientDeviceIds: ['remote-peer'],
+    }
+
+    render(<DevicesPage />)
+
+    expect(
+      screen.queryByLabelText(i18n.t('devices.memberRemoval.pendingDeviceHint'))
+    ).not.toBeInTheDocument()
+  })
+
+  it('does not mark unrelated devices', () => {
+    devicesState.memberRemoval = {
+      ...memberRemoval,
+      outcome: 'applied',
+      pendingRecipientDeviceIds: ['some-other-device'],
+    }
+
+    render(<DevicesPage />)
+
+    expect(
+      screen.queryByLabelText(i18n.t('devices.memberRemoval.pendingDeviceHint'))
+    ).not.toBeInTheDocument()
   })
 })

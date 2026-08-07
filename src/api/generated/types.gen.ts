@@ -2918,6 +2918,100 @@ export type SetupSwitchSpaceEnvelope = {
 };
 
 /**
+ * One device row in a shared-device refresh snapshot.
+ */
+export type SharedDeviceRefreshDeviceDto = {
+    deviceId: string;
+    displayName: string;
+    state: SharedDeviceRefreshDeviceStateDto;
+};
+
+/**
+ * Stable per-device state produced by the Engine.
+ */
+export type SharedDeviceRefreshDeviceStateDto = 'discovered' | 'connecting' | 'connected' | 'already_present' | 'waiting_for_peer' | 'waiting_for_update' | 'version_incompatible' | 'rejected';
+
+/**
+ * Complete Engine-owned result for one shared-device refresh request.
+ *
+ * Counts are mirrored verbatim from the Engine. The daemon and frontend must
+ * not derive or correct device states from counts.
+ */
+export type SharedDeviceRefreshDto = {
+    alreadyPresentCount: number;
+    connectedCount: number;
+    connectingCount: number;
+    devices: Array<SharedDeviceRefreshDeviceDto>;
+    discoveredCount: number;
+    phase: SharedDeviceRefreshPhaseDto;
+    rejectedCount: number;
+    requestId: string;
+    totalCount: number;
+    unavailableSourceCount: number;
+    versionIncompatibleCount: number;
+    waitingForPeerCount: number;
+    waitingForUpdateCount: number;
+};
+
+/**
+ * Canonical success envelope: `{ "data": T, "ts": <unix millis i64> }`.
+ *
+ * `ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler
+ * via [`ApiEnvelope::now`] (the contract carries only the type + the clock
+ * helper, not a hard dependency on when the handler reads the clock).
+ * `rename_all = "camelCase"` is a no-op for the single-word fields here but is
+ * declared for forward-compat.
+ *
+ * IMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named
+ * OpenAPI component is declared in the `#[aliases(...)]` block below. Add a new
+ * alias line whenever a new payload type needs enveloping. NEVER register the
+ * bare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare
+ * generic, and an un-aliased generic inlines an anonymous schema.
+ */
+export type SharedDeviceRefreshEnvelope = {
+    data: SharedDeviceRefreshDto;
+    /**
+     * Server time when the response was built (unix epoch milliseconds).
+     */
+    ts: number;
+};
+
+/**
+ * Current phase of an Engine-owned shared-device refresh round.
+ */
+export type SharedDeviceRefreshPhaseDto = 'started' | 'discovering' | 'connecting' | 'round_completed';
+
+/**
+ * Result of starting a shared-device refresh round.
+ */
+export type SharedDeviceRefreshStartedDto = {
+    requestId: string;
+};
+
+/**
+ * Canonical success envelope: `{ "data": T, "ts": <unix millis i64> }`.
+ *
+ * `ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler
+ * via [`ApiEnvelope::now`] (the contract carries only the type + the clock
+ * helper, not a hard dependency on when the handler reads the clock).
+ * `rename_all = "camelCase"` is a no-op for the single-word fields here but is
+ * declared for forward-compat.
+ *
+ * IMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named
+ * OpenAPI component is declared in the `#[aliases(...)]` block below. Add a new
+ * alias line whenever a new payload type needs enveloping. NEVER register the
+ * bare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare
+ * generic, and an un-aliased generic inlines an anonymous schema.
+ */
+export type SharedDeviceRefreshStartedEnvelope = {
+    data: SharedDeviceRefreshStartedDto;
+    /**
+     * Server time when the response was built (unix epoch milliseconds).
+     */
+    ts: number;
+};
+
+/**
  * One shortcut-install method option (`tokenInjected` / `icloudGeneric`).
  */
 export type ShortcutInstallMethodViewDto = {
@@ -4757,6 +4851,67 @@ export type GetCurrentMemberRemovalResponses = {
 };
 
 export type GetCurrentMemberRemovalResponse = GetCurrentMemberRemovalResponses[keyof GetCurrentMemberRemovalResponses];
+
+export type StartSharedDeviceRefreshData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/member/shared-device-refresh';
+};
+
+export type StartSharedDeviceRefreshErrors = {
+    /**
+     * Internal server error
+     */
+    500: ApiErrorResponse;
+    /**
+     * Runtime unavailable
+     */
+    503: ApiErrorResponse;
+};
+
+export type StartSharedDeviceRefreshError = StartSharedDeviceRefreshErrors[keyof StartSharedDeviceRefreshErrors];
+
+export type StartSharedDeviceRefreshResponses = {
+    200: SharedDeviceRefreshStartedEnvelope;
+};
+
+export type StartSharedDeviceRefreshResponse = StartSharedDeviceRefreshResponses[keyof StartSharedDeviceRefreshResponses];
+
+export type GetSharedDeviceRefreshData = {
+    body?: never;
+    path: {
+        /**
+         * Shared-device refresh request ID
+         */
+        request_id: string;
+    };
+    query?: never;
+    url: '/member/shared-device-refresh/{request_id}';
+};
+
+export type GetSharedDeviceRefreshErrors = {
+    /**
+     * Request not found
+     */
+    404: ApiErrorResponse;
+    /**
+     * Internal server error
+     */
+    500: ApiErrorResponse;
+    /**
+     * Runtime unavailable
+     */
+    503: ApiErrorResponse;
+};
+
+export type GetSharedDeviceRefreshError = GetSharedDeviceRefreshErrors[keyof GetSharedDeviceRefreshErrors];
+
+export type GetSharedDeviceRefreshResponses = {
+    200: SharedDeviceRefreshEnvelope;
+};
+
+export type GetSharedDeviceRefreshResponse = GetSharedDeviceRefreshResponses[keyof GetSharedDeviceRefreshResponses];
 
 export type SecureRemoveLegacyMemberData = {
     body?: never;

@@ -73,7 +73,7 @@ fn resolve_token_path() -> Result<PathBuf> {
         }
     }
 
-    uc_daemon_process::socket::resolve_daemon_token_path().map_err(anyhow::Error::from)
+    uc_daemon_process::socket::resolve_daemon_token_path()
 }
 
 /// Resolve the daemon connection info from environment for CLI clients.

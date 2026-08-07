@@ -9,15 +9,19 @@ use uc_engine::{
     ContentTypesPatch, ContentTypesSummary, LegacyBootstrapOutcome, LegacyBootstrapSummary,
     MemberProtectionStatusSummary, MemberProtectionSummary, MemberRevocationOutcome,
     MemberRevocationSummary, MemberSyncPreferencesPatch, MemberSyncPreferencesSummary,
-    MembershipConvergenceStateSummary, MembershipConvergenceSummary, SpaceProtectionModeSummary,
-    SpaceProtectionSummary,
+    MembershipConvergenceStateSummary, MembershipConvergenceSummary,
+    SharedDeviceRefreshDeviceStateSummary, SharedDeviceRefreshDeviceSummary,
+    SharedDeviceRefreshPhaseSummary, SharedDeviceRefreshStartedSummary, SharedDeviceRefreshSummary,
+    SpaceProtectionModeSummary, SpaceProtectionSummary,
 };
 
 use super::{IntoApiDto, IntoDomain};
 use crate::api::dto::member::{
     LegacyBootstrapDto, LegacyBootstrapOutcomeDto, MemberProtectionDto, MemberProtectionStatusDto,
     MemberRemovalDto, MemberRemovalOutcomeDto, MemberSyncPreferencesDto, MembershipConvergenceDto,
-    MembershipConvergenceStateDto, SpaceProtectionDto, SpaceProtectionModeDto,
+    MembershipConvergenceStateDto, SharedDeviceRefreshDeviceDto, SharedDeviceRefreshDeviceStateDto,
+    SharedDeviceRefreshDto, SharedDeviceRefreshPhaseDto, SharedDeviceRefreshStartedDto,
+    SpaceProtectionDto, SpaceProtectionModeDto,
 };
 use crate::api::dto::settings::{ContentTypesDto, ContentTypesPatchDto};
 
@@ -151,6 +155,80 @@ impl IntoApiDto<MembershipConvergenceDto> for MembershipConvergenceSummary {
     }
 }
 
+impl IntoApiDto<SharedDeviceRefreshStartedDto> for SharedDeviceRefreshStartedSummary {
+    fn into_api_dto(self) -> SharedDeviceRefreshStartedDto {
+        SharedDeviceRefreshStartedDto {
+            request_id: self.request_id,
+        }
+    }
+}
+
+impl IntoApiDto<SharedDeviceRefreshDto> for SharedDeviceRefreshSummary {
+    fn into_api_dto(self) -> SharedDeviceRefreshDto {
+        SharedDeviceRefreshDto {
+            request_id: self.request_id,
+            phase: match self.phase {
+                SharedDeviceRefreshPhaseSummary::Started => SharedDeviceRefreshPhaseDto::Started,
+                SharedDeviceRefreshPhaseSummary::Discovering => {
+                    SharedDeviceRefreshPhaseDto::Discovering
+                }
+                SharedDeviceRefreshPhaseSummary::Connecting => {
+                    SharedDeviceRefreshPhaseDto::Connecting
+                }
+                SharedDeviceRefreshPhaseSummary::RoundCompleted => {
+                    SharedDeviceRefreshPhaseDto::RoundCompleted
+                }
+            },
+            devices: self
+                .devices
+                .into_iter()
+                .map(
+                    |device: SharedDeviceRefreshDeviceSummary| SharedDeviceRefreshDeviceDto {
+                        device_id: device.device_id,
+                        display_name: device.display_name,
+                        state: match device.state {
+                            SharedDeviceRefreshDeviceStateSummary::Discovered => {
+                                SharedDeviceRefreshDeviceStateDto::Discovered
+                            }
+                            SharedDeviceRefreshDeviceStateSummary::Connecting => {
+                                SharedDeviceRefreshDeviceStateDto::Connecting
+                            }
+                            SharedDeviceRefreshDeviceStateSummary::Connected => {
+                                SharedDeviceRefreshDeviceStateDto::Connected
+                            }
+                            SharedDeviceRefreshDeviceStateSummary::AlreadyPresent => {
+                                SharedDeviceRefreshDeviceStateDto::AlreadyPresent
+                            }
+                            SharedDeviceRefreshDeviceStateSummary::WaitingForPeer => {
+                                SharedDeviceRefreshDeviceStateDto::WaitingForPeer
+                            }
+                            SharedDeviceRefreshDeviceStateSummary::WaitingForUpdate => {
+                                SharedDeviceRefreshDeviceStateDto::WaitingForUpdate
+                            }
+                            SharedDeviceRefreshDeviceStateSummary::VersionIncompatible => {
+                                SharedDeviceRefreshDeviceStateDto::VersionIncompatible
+                            }
+                            SharedDeviceRefreshDeviceStateSummary::Rejected => {
+                                SharedDeviceRefreshDeviceStateDto::Rejected
+                            }
+                        },
+                    },
+                )
+                .collect(),
+            total_count: self.total_count,
+            discovered_count: self.discovered_count,
+            connecting_count: self.connecting_count,
+            connected_count: self.connected_count,
+            already_present_count: self.already_present_count,
+            waiting_for_peer_count: self.waiting_for_peer_count,
+            waiting_for_update_count: self.waiting_for_update_count,
+            version_incompatible_count: self.version_incompatible_count,
+            rejected_count: self.rejected_count,
+            unavailable_source_count: self.unavailable_source_count,
+        }
+    }
+}
+
 impl IntoApiDto<MemberRemovalDto> for MemberRevocationSummary {
     fn into_api_dto(self) -> MemberRemovalDto {
         MemberRemovalDto {
@@ -177,6 +255,8 @@ mod tests {
     use super::*;
     use crate::api::dto::member::{
         MemberRemovalDto, MemberRemovalOutcomeDto, MemberSyncPreferencesPatchDto,
+        SharedDeviceRefreshDeviceDto, SharedDeviceRefreshDeviceStateDto, SharedDeviceRefreshDto,
+        SharedDeviceRefreshPhaseDto, SharedDeviceRefreshStartedDto,
     };
 
     #[test]
@@ -238,6 +318,51 @@ mod tests {
             serde_json::to_value(mapped).expect("serialize convergence DTO"),
             serde_json::json!({ "state": "waiting_for_upgrade" })
         );
+    }
+
+    #[test]
+    fn shared_device_refresh_mapping_preserves_engine_order_and_counts() {
+        let started: SharedDeviceRefreshStartedDto = SharedDeviceRefreshStartedSummary {
+            request_id: "refresh-1".into(),
+        }
+        .into_api_dto();
+        assert_eq!(started.request_id, "refresh-1");
+
+        let summary = SharedDeviceRefreshSummary {
+            request_id: "refresh-1".into(),
+            phase: SharedDeviceRefreshPhaseSummary::RoundCompleted,
+            devices: vec![SharedDeviceRefreshDeviceSummary {
+                device_id: "peer-1".into(),
+                display_name: "Windows workstation".into(),
+                state: SharedDeviceRefreshDeviceStateSummary::Connected,
+            }],
+            total_count: 1,
+            discovered_count: 0,
+            connecting_count: 0,
+            connected_count: 1,
+            already_present_count: 0,
+            waiting_for_peer_count: 0,
+            waiting_for_update_count: 0,
+            version_incompatible_count: 0,
+            rejected_count: 0,
+            unavailable_source_count: 0,
+        };
+
+        let mapped: SharedDeviceRefreshDto = summary.into_api_dto();
+
+        assert_eq!(mapped.phase, SharedDeviceRefreshPhaseDto::RoundCompleted);
+        assert_eq!(mapped.devices.len(), 1);
+        assert_eq!(
+            mapped.devices,
+            vec![SharedDeviceRefreshDeviceDto {
+                device_id: "peer-1".into(),
+                display_name: "Windows workstation".into(),
+                state: SharedDeviceRefreshDeviceStateDto::Connected,
+            }]
+        );
+        assert_eq!(mapped.total_count, 1);
+        assert_eq!(mapped.connected_count, 1);
+        assert_eq!(mapped.unavailable_source_count, 0);
     }
 
     #[test]

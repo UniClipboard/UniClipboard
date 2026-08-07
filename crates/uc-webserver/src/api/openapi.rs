@@ -35,7 +35,9 @@ use crate::api::dto::member::{
     MemberProtectionDto, MemberProtectionStatusDto, MemberRemovalDto, MemberRemovalOutcomeDto,
     MemberSyncPreferencesDto, MemberSyncPreferencesPatchDto, MemberSyncResultDto,
     MembershipConvergenceDto, MembershipConvergenceStateDto, SecureLegacyRemovalDto,
-    SpaceProtectionDto, SpaceProtectionModeDto,
+    SharedDeviceRefreshDeviceDto, SharedDeviceRefreshDeviceStateDto, SharedDeviceRefreshDto,
+    SharedDeviceRefreshPhaseDto, SharedDeviceRefreshStartedDto, SpaceProtectionDto,
+    SpaceProtectionModeDto,
 };
 use crate::api::dto::mobile_sync::{
     LanInterfaceViewDto, MobileDeviceViewDto, MobileSyncActionResultDto, MobileSyncSettingsViewDto,
@@ -101,8 +103,9 @@ use uc_daemon_contract::api::dto::envelope::{
     SecureLegacyRemovalEnvelope, SessionTokenEnvelope, SettingsEnvelope,
     SettingsUpdateResultEnvelope, SetupInitializeEnvelope, SetupIssueInvitationEnvelope,
     SetupMigrationProgressEnvelope, SetupRedeemEnvelope, SetupStateEnvelope,
-    SetupSwitchSpaceEnvelope, SpaceMemberListEnvelope, SpaceProtectionEnvelope, StatusEnvelope,
-    StorageStatsEnvelope, ToggleFavoriteEnvelope, UnlockSpaceEnvelope, UpdateDebugModeEnvelope,
+    SetupSwitchSpaceEnvelope, SharedDeviceRefreshEnvelope, SharedDeviceRefreshStartedEnvelope,
+    SpaceMemberListEnvelope, SpaceProtectionEnvelope, StatusEnvelope, StorageStatsEnvelope,
+    ToggleFavoriteEnvelope, UnlockSpaceEnvelope, UpdateDebugModeEnvelope,
     UpdateMobileDeviceEnvelope, UpdateMobileSyncSettingsEnvelope, UpgradeStatusEnvelope,
 };
 use uc_daemon_contract::api::dto::storage::{
@@ -190,6 +193,8 @@ impl Modify for ContractMeta {
         crate::api::member::update_member_sync_preferences_handler,
         crate::api::member::get_space_protection_handler,
         crate::api::member::get_membership_convergence_handler,
+        crate::api::member::start_shared_device_refresh_handler,
+        crate::api::member::get_shared_device_refresh_handler,
         crate::api::member::secure_remove_legacy_member_handler,
         crate::api::member::get_current_member_removal_handler,
         crate::api::member::continue_member_removal_handler,
@@ -334,10 +339,17 @@ impl Modify for ContractMeta {
             SecureLegacyRemovalEnvelope,
             MemberRemovalEnvelope,
             CurrentMemberRemovalEnvelope,
+            SharedDeviceRefreshStartedEnvelope,
+            SharedDeviceRefreshEnvelope,
             MemberSyncPreferencesDto,
             MemberSyncResultDto,
             MemberSyncPreferencesPatchDto,
             SpaceProtectionDto,
+            SharedDeviceRefreshStartedDto,
+            SharedDeviceRefreshDto,
+            SharedDeviceRefreshDeviceDto,
+            SharedDeviceRefreshPhaseDto,
+            SharedDeviceRefreshDeviceStateDto,
             SpaceProtectionModeDto,
             MembershipConvergenceDto,
             MembershipConvergenceStateDto,
@@ -634,7 +646,10 @@ mod assembly_smoke_tests {
         // +1 path, +1 operation → 72 / 79. Reliable member-removal recovery
         // adds GET /member/removal/current and POST /member/removal/continue:
         // +2 paths, +2 operations → 74 / 81. Network recovery adds GET+POST
-        // /network/recovery: +1 path, +2 operations → 75 / 83.)
+        // /network/recovery: +1 path, +2 operations → 75 / 83. Shared-device
+        // refresh adds POST /member/shared-device-refresh and GET
+        // /member/shared-device-refresh/{request_id}: +2 paths, +2 operations
+        // → 77 / 85.)
         const HTTP_METHODS: [&str; 7] =
             ["get", "put", "post", "delete", "patch", "head", "options"];
         let paths = value
@@ -643,8 +658,8 @@ mod assembly_smoke_tests {
             .expect("OpenAPI doc must declare paths");
         assert_eq!(
             paths.len(),
-            75,
-            "expected exactly 75 path templates, found {}: {:?}",
+            77,
+            "expected exactly 77 path templates, found {}: {:?}",
             paths.len(),
             paths.keys().collect::<Vec<_>>()
         );
@@ -658,8 +673,8 @@ mod assembly_smoke_tests {
             })
             .sum();
         assert_eq!(
-            operation_count, 83,
-            "expected exactly 83 operations across all paths, found {operation_count}"
+            operation_count, 85,
+            "expected exactly 85 operations across all paths, found {operation_count}"
         );
 
         // A few frozen operationIds (§D) must be present somewhere in the doc.

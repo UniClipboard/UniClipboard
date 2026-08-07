@@ -16,14 +16,16 @@ use uc_engine::error_codes::{
     QUERY_MEMBERSHIP_CONVERGENCE_UNAVAILABLE_CODE, SPACE_PROTECTION_FAILED_CODE,
 };
 use uc_engine::{
-    ContinueMemberRevocationInput, EngineError, Operation, OperationResult,
-    QueryMemberSyncPreferencesInput, RemoveMemberInput, UpdateMemberSyncPreferencesInput,
+    ContinueMemberRevocationInput, EngineError, EngineErrorCategory, Operation, OperationResult,
+    QueryMemberSyncPreferencesInput, QuerySharedDeviceRefreshInput, RemoveMemberInput,
+    UpdateMemberSyncPreferencesInput,
 };
 
 use crate::api::dto::error::{log_facade_failure, ApiError};
 use crate::api::dto::member::{
     ContinueMemberRemovalRequest, MemberRemovalDto, MemberSyncPreferencesPatchDto,
-    MemberSyncResultDto, MembershipConvergenceDto, SecureLegacyRemovalDto, SpaceProtectionDto,
+    MemberSyncResultDto, MembershipConvergenceDto, SecureLegacyRemovalDto, SharedDeviceRefreshDto,
+    SharedDeviceRefreshStartedDto, SpaceProtectionDto,
 };
 use crate::api::projection::{IntoApiDto, IntoDomain};
 use crate::api::server::DaemonApiState;
@@ -42,6 +44,14 @@ pub fn router() -> Router<DaemonApiState> {
         .route(
             "/member/convergence",
             get(get_membership_convergence_handler),
+        )
+        .route(
+            "/member/shared-device-refresh",
+            post(start_shared_device_refresh_handler),
+        )
+        .route(
+            "/member/shared-device-refresh/:request_id",
+            get(get_shared_device_refresh_handler),
         )
         .route(
             "/member/:device_id/secure-remove",
@@ -257,6 +267,95 @@ pub async fn get_membership_convergence_handler(
     Ok(Json(ApiEnvelope::now(snapshot.into_api_dto())))
 }
 
+/// POST /member/shared-device-refresh
+///
+/// Starts one shared-device refresh round in the active Space. The Engine owns
+/// deduplication while the first round is still in progress and returns the
+/// same `requestId` for repeated starts.
+#[utoipa::path(
+    post,
+    path = "/member/shared-device-refresh",
+    tag = "member",
+    operation_id = "startSharedDeviceRefresh",
+    responses(
+        (status = 200, body = SharedDeviceRefreshStartedEnvelope),
+        (status = 503, description = "Runtime unavailable", body = ApiErrorResponse),
+        (status = 500, description = "Internal server error", body = ApiErrorResponse)
+    )
+)]
+#[instrument(
+    name = "api.member.start_shared_device_refresh",
+    level = "info",
+    skip(state)
+)]
+pub async fn start_shared_device_refresh_handler(
+    State(state): State<DaemonApiState>,
+) -> Result<Json<ApiEnvelope<SharedDeviceRefreshStartedDto>>, ApiError> {
+    let result = state
+        .execute(Operation::RefreshSharedDevices)
+        .await
+        .map_err(|error| map_shared_device_refresh_error("start", error))?;
+    let OperationResult::SharedDeviceRefreshStarted(started) = result else {
+        return Err(ApiError::internal(
+            "engine returned an unexpected shared-device-refresh result",
+        ));
+    };
+    info!(
+        request_id = %started.request_id,
+        "shared device refresh started"
+    );
+    Ok(Json(ApiEnvelope::now(started.into_api_dto())))
+}
+
+/// GET /member/shared-device-refresh/{request_id}
+///
+/// Returns the complete current snapshot for one refresh round. Unknown or
+/// expired requests return a stable `shared_device_refresh_not_found` error.
+#[utoipa::path(
+    get,
+    path = "/member/shared-device-refresh/{request_id}",
+    tag = "member",
+    operation_id = "getSharedDeviceRefresh",
+    params(("request_id" = String, Path, description = "Shared-device refresh request ID")),
+    responses(
+        (status = 200, body = SharedDeviceRefreshEnvelope),
+        (status = 404, description = "Request not found", body = ApiErrorResponse),
+        (status = 503, description = "Runtime unavailable", body = ApiErrorResponse),
+        (status = 500, description = "Internal server error", body = ApiErrorResponse)
+    )
+)]
+#[instrument(name = "api.member.get_shared_device_refresh", level = "info", skip(state), fields(request_id = %request_id))]
+pub async fn get_shared_device_refresh_handler(
+    State(state): State<DaemonApiState>,
+    Path(request_id): Path<String>,
+) -> Result<Json<ApiEnvelope<SharedDeviceRefreshDto>>, ApiError> {
+    let result = state
+        .execute(Operation::QuerySharedDeviceRefresh(
+            QuerySharedDeviceRefreshInput {
+                request_id: request_id.clone(),
+            },
+        ))
+        .await
+        .map_err(|error| map_shared_device_refresh_error("get", error))?;
+    let OperationResult::SharedDeviceRefresh(Some(snapshot)) = result else {
+        let api = ApiError::not_found("shared device refresh not found")
+            .with_code("shared_device_refresh_not_found");
+        tracing::info!(
+            request_id,
+            error_variant = "not_found",
+            "shared device refresh query returned no active request"
+        );
+        return Err(api);
+    };
+    info!(
+        request_id = %snapshot.request_id,
+        phase = ?snapshot.phase,
+        device_count = snapshot.devices.len(),
+        "shared device refresh query succeeded"
+    );
+    Ok(Json(ApiEnvelope::now(snapshot.into_api_dto())))
+}
+
 /// POST /member/{device_id}/secure-remove
 ///
 /// Starts the Engine-owned Legacy Space bootstrap that safely excludes a member
@@ -364,6 +463,18 @@ pub(crate) fn legacy_bootstrap_required_error() -> ApiError {
         .with_code("legacy_bootstrap_required")
 }
 
+fn map_shared_device_refresh_error(op: &'static str, error: EngineError) -> ApiError {
+    if error.category() == EngineErrorCategory::Unavailable {
+        let api = ApiError::service_unavailable("shared device refresh is unavailable")
+            .with_code("shared_device_refresh_unavailable");
+        log_facade_failure("roster", op, "unavailable", api.status, &api.message);
+        return api;
+    }
+    let api = ApiError::internal("shared device refresh failed");
+    log_facade_failure("roster", op, "internal", api.status, &api.message);
+    api
+}
+
 pub(crate) fn map_member_engine_error(
     device_id: &str,
     op: &'static str,
@@ -459,6 +570,25 @@ mod tests {
             api.message,
             "legacy Space member removal requires secure bootstrap"
         );
+    }
+
+    #[test]
+    fn shared_device_refresh_errors_use_stable_categories_without_leaking_details() {
+        let unavailable = map_shared_device_refresh_error(
+            "start",
+            EngineError::new(1103, EngineErrorCategory::Unavailable, false),
+        );
+        assert_eq!(unavailable.status, StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(unavailable.code, "shared_device_refresh_unavailable");
+        assert!(!unavailable.message.contains("1103"));
+
+        let failed = map_shared_device_refresh_error(
+            "get",
+            EngineError::new(1393, EngineErrorCategory::Internal, true),
+        );
+        assert_eq!(failed.status, StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(failed.code, "internal_error");
+        assert!(failed.details.is_none());
     }
 
     #[test]

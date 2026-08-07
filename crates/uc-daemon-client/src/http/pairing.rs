@@ -173,7 +173,7 @@ impl DaemonPairingClient {
             .get()
             .ok_or_else(|| anyhow!("daemon connection info is not available"))?;
         authorized_daemon_request_with_type(
-            &*self.http,
+            &self.http,
             &self.connection_state,
             method,
             path,

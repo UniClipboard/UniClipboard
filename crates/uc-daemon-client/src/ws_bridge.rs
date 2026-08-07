@@ -152,7 +152,7 @@ impl DaemonWsBridge {
 
         while let Some(events) = connector.next_connection().await {
             self.set_state(BridgeState::Connecting);
-            connector.record_connect(format!("Session test-session-token"));
+            connector.record_connect("Session test-session-token".to_string());
             self.set_state(BridgeState::Subscribing);
             connector.record_subscribe(topics.clone());
             self.set_state(BridgeState::Ready);
@@ -352,8 +352,7 @@ impl DaemonWsBridge {
                         "action": "subscribe",
                         "topics": topics,
                     })
-                    .to_string()
-                    .into(),
+                    .to_string(),
                 ))
                 .await
                 .context("failed to subscribe daemon websocket topics")?;

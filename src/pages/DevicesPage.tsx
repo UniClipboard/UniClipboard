@@ -21,7 +21,7 @@
  * daemon-pushed `peers.changed` ws events.
  */
 
-import { Plus, RefreshCw, Settings2, Unlink } from 'lucide-react'
+import { Plus, RefreshCw, Settings2, TriangleAlert, Unlink } from 'lucide-react'
 import React, { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { useTranslation } from 'react-i18next'
 import { refreshPresence } from '@/api/daemon'
@@ -50,14 +50,14 @@ import AddMobileSyncDeviceDialog from '@/components/device/AddMobileSyncDeviceDi
 import { derivePeerStatusTone } from '@/components/device/connection-channel-utils'
 import EnableMobileSyncDialog from '@/components/device/EnableMobileSyncDialog'
 import LocalDevicePanel from '@/components/device/LocalDevicePanel'
-import MemberRemovalStatus from '@/components/device/MemberRemovalStatus'
 import MobileDevicePanel from '@/components/device/MobileDevicePanel'
 import MobileSyncSettingsDialog from '@/components/device/MobileSyncSettingsDialog'
 import PeerDetailPanel from '@/components/device/PeerDetailPanel'
+import SharedDeviceRefreshDialog from '@/components/device/SharedDeviceRefreshDialog'
 import SpaceConnectionStatus from '@/components/device/SpaceConnectionStatus'
 import StatusDot, { type StatusDotTone } from '@/components/device/StatusDot'
 import UnpairAlertDialog from '@/components/device/UnpairAlertDialog'
-import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -78,9 +78,11 @@ import {
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Skeleton } from '@/components/ui/skeleton'
 import { toast } from '@/components/ui/toast'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import type { PeerSnapshotPayloadItem, PeersChangedPayload } from '@/hooks/useDaemonEvents'
 import { useNow } from '@/hooks/useRelativeTime'
 import { useSetting } from '@/hooks/useSetting'
+import { useSharedDeviceRefresh } from '@/hooks/useSharedDeviceRefresh'
 import { daemonWs } from '@/lib/daemon-ws'
 import { createLogger } from '@/lib/logger'
 import { cn } from '@/lib/utils'
@@ -166,6 +168,14 @@ const DevicesPage: React.FC = () => {
 
   const { setting } = useSetting()
   const syncActive = setting?.sync.autoSync !== false
+  const sharedRefresh = useSharedDeviceRefresh({
+    onDevicesConnected: () => dispatch(fetchSpaceMembers()),
+    onStartFailed: () => toast.error(t('devices.sharedDeviceRefresh.startFailed')),
+    documentVisible,
+  })
+  const sharedRefreshActive =
+    sharedRefresh.requestId != null &&
+    (sharedRefresh.snapshot == null || sharedRefresh.snapshot.phase !== 'round_completed')
   const globalAutoSyncOff = setting?.sync.autoSync === false
   const globalFileSyncOff = setting?.fileSync?.fileSyncEnabled === false
   const lanOnlyActive = setting?.network?.allowRelayFallback === false
@@ -356,11 +366,25 @@ const DevicesPage: React.FC = () => {
     if (!canRetryNetworkRecovery) return
     void dispatch(requestNetworkRecovery())
   }
-  const deviceNames = new Map(rawSpaceMembers.map(device => [device.peerId, device.deviceName]))
+  const pendingRemovalDeviceIds = new Set(
+    memberRemoval && memberRemoval.outcome !== 'complete'
+      ? memberRemoval.pendingRecipientDeviceIds
+      : []
+  )
   const handlePermanentLoss = (removal: MemberRemoval, deviceIds: string[]) => {
     setPermanentLossRemoval(removal)
     setPermanentLossDeviceIds(deviceIds)
   }
+
+  // The Engine may complete the revocation (and emit the store update) before
+  // the continue request returns. Close the dialog as soon as the authoritative
+  // removal state is gone or complete instead of waiting on the slow request.
+  useEffect(() => {
+    if (permanentLossRemoval && (!memberRemoval || memberRemoval.outcome === 'complete')) {
+      setPermanentLossRemoval(null)
+      setPermanentLossDeviceIds([])
+    }
+  }, [permanentLossRemoval, memberRemoval])
   const confirmPermanentLoss = async () => {
     if (!permanentLossRemoval?.revocationId || permanentLossBusy) return
     setPermanentLossBusy(true)
@@ -431,6 +455,15 @@ const DevicesPage: React.FC = () => {
             })}
           </p>
           <SpaceConnectionStatus state={visibleConvergenceState} />
+          {memberRemoval?.outcome === 'recovering' && (
+            <Alert className="mt-2 border-warning/30 bg-warning/10 text-warning">
+              <TriangleAlert />
+              <AlertTitle>{t('devices.memberRemoval.recovering.title')}</AlertTitle>
+              <AlertDescription>
+                {t('devices.memberRemoval.recovering.description')}
+              </AlertDescription>
+            </Alert>
+          )}
           {networkRecoveryVisible && (
             <Alert className="mt-2 border-warning/30 bg-warning/10 text-warning">
               <AlertDescription className="flex flex-col gap-2 text-xs">
@@ -561,7 +594,34 @@ const DevicesPage: React.FC = () => {
               </div>
             )}
 
-            <SectionLabel label={t('devices.pairedDevices.title')} />
+            <SectionLabel
+              label={t('devices.pairedDevices.title')}
+              trailing={
+                peers.length > 0 ? (
+                  <TooltipProvider delay={0}>
+                    <Tooltip>
+                      <TooltipTrigger
+                        render={
+                          <button
+                            type="button"
+                            aria-label={t('devices.sharedDeviceRefresh.refresh')}
+                            className="rounded-md p-0.5 text-muted-foreground/70 transition-colors hover:text-foreground"
+                            onClick={() => void sharedRefresh.startRefresh()}
+                          />
+                        }
+                      >
+                        <RefreshCw
+                          className={cn('size-3.5', sharedRefreshActive && 'animate-spin')}
+                        />
+                      </TooltipTrigger>
+                      <TooltipContent side="right" align="center" className="font-medium">
+                        <p>{t('devices.sharedDeviceRefresh.refresh')}</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                ) : undefined
+              }
+            />
             {peers.map(peer => (
               <DeviceListItem
                 key={peer.peerId}
@@ -570,6 +630,11 @@ const DevicesPage: React.FC = () => {
                 dimmed={!peer.connected}
                 selected={
                   effectiveSelection.kind === 'peer' && effectiveSelection.id === peer.peerId
+                }
+                needsSync={
+                  pendingRemovalDeviceIds.has(peer.peerId)
+                    ? t('devices.memberRemoval.pendingDeviceHint')
+                    : undefined
                 }
                 onSelect={() => setSelection({ kind: 'peer', id: peer.peerId })}
               />
@@ -628,16 +693,6 @@ const DevicesPage: React.FC = () => {
             )}
           </div>
         </ScrollArea>
-        {memberRemoval && (
-          <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 p-3">
-            <MemberRemovalStatus
-              className="pointer-events-auto"
-              removal={memberRemoval}
-              deviceNames={deviceNames}
-              onPermanentLoss={handlePermanentLoss}
-            />
-          </div>
-        )}
       </aside>
 
       {/* ── detail pane ───────────────────────────────────────── */}
@@ -677,6 +732,9 @@ const DevicesPage: React.FC = () => {
               globalFileSyncOff={globalFileSyncOff}
               lanOnlyActive={lanOnlyActive}
               onUnpair={handleUnpairRequest}
+              onMarkLost={deviceId => {
+                if (memberRemoval) handlePermanentLoss(memberRemoval, [deviceId])
+              }}
             />
           )}
 
@@ -739,6 +797,14 @@ const DevicesPage: React.FC = () => {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      <SharedDeviceRefreshDialog
+        open={sharedRefresh.open}
+        snapshot={sharedRefresh.snapshot}
+        queryFailure={sharedRefresh.queryFailure}
+        onOpenChange={open => {
+          if (!open) sharedRefresh.closeRefresh()
+        }}
+      />
       <MobileSyncSettingsDialog
         open={settingsSheetOpen}
         onOpenChange={mobileActions.setSettingsSheetOpen}
@@ -839,6 +905,7 @@ interface DeviceListItemProps {
   selected: boolean
   dimmed?: boolean
   trailing?: string
+  needsSync?: string
   onSelect: () => void
 }
 
@@ -848,25 +915,55 @@ const DeviceListItem: React.FC<DeviceListItemProps> = ({
   selected,
   dimmed,
   trailing,
+  needsSync,
   onSelect,
 }) => (
-  <button
-    type="button"
-    onClick={onSelect}
+  <div
     className={cn(
-      'flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm transition-colors',
-      selected
-        ? 'bg-muted font-semibold text-foreground'
-        : 'font-medium text-foreground hover:bg-muted/60',
-      dimmed && !selected && 'opacity-60'
+      'group/item flex w-full items-center gap-1 rounded-lg px-2.5 py-2 transition-colors',
+      selected ? 'bg-muted' : 'hover:bg-muted/60'
     )}
   >
-    <StatusDot tone={tone} />
-    <span className="min-w-0 flex-1 truncate">{name}</span>
-    {trailing && (
-      <span className="shrink-0 text-[10px] font-normal text-muted-foreground">{trailing}</span>
+    <button
+      type="button"
+      onClick={onSelect}
+      className={cn(
+        'flex min-w-0 flex-1 items-center gap-2.5 text-left text-sm transition-colors',
+        selected ? 'font-semibold text-foreground' : 'font-medium text-foreground',
+        dimmed && !selected && 'opacity-60'
+      )}
+    >
+      <StatusDot tone={tone} />
+      <span className="min-w-0 flex-1 truncate">{name}</span>
+      {trailing && (
+        <span className="shrink-0 text-[10px] font-normal text-muted-foreground">{trailing}</span>
+      )}
+    </button>
+    {needsSync && (
+      <TooltipProvider delay={200}>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <button
+                type="button"
+                aria-label={needsSync}
+                className="flex size-5 shrink-0 items-center justify-center rounded text-warning/80 transition-colors hover:bg-warning/10 hover:text-warning focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
+              />
+            }
+          >
+            <TriangleAlert className="size-3.5" aria-hidden="true" />
+          </TooltipTrigger>
+          <TooltipContent
+            side="right"
+            align="center"
+            className="max-w-52 text-left leading-relaxed whitespace-normal"
+          >
+            <p>{needsSync}</p>
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
     )}
-  </button>
+  </div>
 )
 
 const LocalPanelSkeleton: React.FC = () => (

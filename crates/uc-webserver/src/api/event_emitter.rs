@@ -129,6 +129,14 @@ pub fn engine_event_to_ws(event: EngineEvent) -> Option<DaemonWsEvent> {
                 "updatedAtMs": event.updated_at_ms,
             }),
         ),
+        EngineEvent::SharedDeviceRefreshChanged(summary) => (
+            ws_topic::SHARED_DEVICE_REFRESH,
+            ws_event::SHARED_DEVICE_REFRESH_CHANGED,
+            now_ms(),
+            serde_json::json!({
+                "requestId": summary.request_id,
+            }),
+        ),
         EngineEvent::NetworkRecoveryChanged(status) => (
             ws_topic::NETWORK_RECOVERY,
             ws_event::NETWORK_RECOVERY_CHANGED,
@@ -144,13 +152,12 @@ pub fn engine_event_to_ws(event: EngineEvent) -> Option<DaemonWsEvent> {
                 "nextRetryInMs": status.next_retry_in_ms,
             }),
         ),
+        EngineEvent::RefreshRequired { .. } => return Some(refresh_required_ws_event()),
         EngineEvent::StateChanged { .. }
         | EngineEvent::PeerPresenceChanged(_)
         | EngineEvent::PairingCompleted(_)
-        | EngineEvent::SharedDeviceRefreshChanged(_)
         | EngineEvent::ActiveClipboardChanged(_)
         | EngineEvent::MobileLanSettingsChanged(_)
-        | EngineEvent::RefreshRequired { .. }
         | EngineEvent::OperationFinished { .. }
         | EngineEvent::LifecycleFailed { .. }
         | EngineEvent::Fatal { .. } => return None,
@@ -165,6 +172,17 @@ pub fn engine_event_to_ws(event: EngineEvent) -> Option<DaemonWsEvent> {
     })
 }
 
+/// Builds the process-wide notification used at every incremental-event lag boundary.
+pub fn refresh_required_ws_event() -> DaemonWsEvent {
+    DaemonWsEvent {
+        topic: ws_topic::SYSTEM.to_string(),
+        event_type: ws_event::SYSTEM_REFRESH_REQUIRED.to_string(),
+        session_id: None,
+        ts: now_ms(),
+        payload: serde_json::json!({}),
+    }
+}
+
 #[cfg(test)]
 mod engine_event_tests {
     use super::*;
@@ -172,6 +190,7 @@ mod engine_event_tests {
     use uc_engine::{
         EngineError, EngineErrorCategory, InboundNoticeEvent, LifecycleAction,
         MemberRevocationOutcome, MemberRevocationSummary, NetworkRecoveryStatusSummary,
+        RefreshReason, SharedDeviceRefreshDeviceStateSummary, SharedDeviceRefreshDeviceSummary,
         SharedDeviceRefreshPhaseSummary, SharedDeviceRefreshSummary, TransferProgress,
     };
 
@@ -214,24 +233,15 @@ mod engine_event_tests {
     }
 
     #[test]
-    fn shared_device_refresh_stays_on_the_host_event_stream() {
-        let event = EngineEvent::SharedDeviceRefreshChanged(SharedDeviceRefreshSummary {
-            request_id: "refresh-1".into(),
-            phase: SharedDeviceRefreshPhaseSummary::Started,
-            devices: Vec::new(),
-            total_count: 0,
-            discovered_count: 0,
-            connecting_count: 0,
-            connected_count: 0,
-            already_present_count: 0,
-            waiting_for_peer_count: 0,
-            waiting_for_update_count: 0,
-            version_incompatible_count: 0,
-            rejected_count: 0,
-            unavailable_source_count: 0,
-        });
+    fn refresh_required_becomes_a_global_resync_notification() {
+        let event = engine_event_to_ws(EngineEvent::RefreshRequired {
+            reason: RefreshReason::ConsumerLagged,
+        })
+        .expect("global refresh-required websocket event");
 
-        assert!(engine_event_to_ws(event).is_none());
+        assert_eq!(event.topic, ws_topic::SYSTEM);
+        assert_eq!(event.event_type, ws_event::SYSTEM_REFRESH_REQUIRED);
+        assert_eq!(event.payload, serde_json::json!({}));
     }
 
     #[test]
@@ -318,6 +328,39 @@ mod engine_event_tests {
         assert_eq!(event.payload["phase"], "retryScheduled");
         assert_eq!(event.payload["nextRetryInMs"], 2_000);
         assert!(event.payload.get("next_retry_in_ms").is_none());
+    }
+
+    #[test]
+    fn shared_device_refresh_changes_notify_only_the_request_id() {
+        let event = engine_event_to_ws(EngineEvent::SharedDeviceRefreshChanged(
+            SharedDeviceRefreshSummary {
+                request_id: "request-1".into(),
+                phase: SharedDeviceRefreshPhaseSummary::Connecting,
+                devices: vec![SharedDeviceRefreshDeviceSummary {
+                    device_id: "peer-1".into(),
+                    display_name: "Windows workstation".into(),
+                    state: SharedDeviceRefreshDeviceStateSummary::Connecting,
+                }],
+                total_count: 1,
+                discovered_count: 0,
+                connecting_count: 1,
+                connected_count: 0,
+                already_present_count: 0,
+                waiting_for_peer_count: 0,
+                waiting_for_update_count: 0,
+                version_incompatible_count: 0,
+                rejected_count: 0,
+                unavailable_source_count: 0,
+            },
+        ))
+        .expect("shared device refresh websocket event");
+
+        assert_eq!(event.topic, "shared-device-refresh");
+        assert_eq!(event.event_type, "shared-device-refresh.changed");
+        assert_eq!(
+            event.payload,
+            serde_json::json!({ "requestId": "request-1" })
+        );
     }
 
     #[test]

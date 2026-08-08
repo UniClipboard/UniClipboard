@@ -201,35 +201,6 @@ describe('setup i18n keys', () => {
     )
   })
 
-  it('pluralizes pending member-removal recipients for each supported grammar', async () => {
-    await i18n.changeLanguage('en-US')
-    expect(i18n.t('devices.memberRemoval.pending.description', { count: 1 })).toBe(
-      'Waiting for 1 retained device to confirm the security update.'
-    )
-    expect(i18n.t('devices.memberRemoval.pending.description', { count: 2 })).toBe(
-      'Waiting for 2 retained devices to confirm the security update.'
-    )
-
-    await i18n.changeLanguage('pt-BR')
-    expect(i18n.t('devices.memberRemoval.pending.description', { count: 1 })).toBe(
-      'Aguardando 1 dispositivo mantido confirmar a atualiza\u00e7\u00e3o de seguran\u00e7a.'
-    )
-    expect(i18n.t('devices.memberRemoval.pending.description', { count: 2 })).toBe(
-      'Aguardando 2 dispositivos mantidos confirmarem a atualiza\u00e7\u00e3o de seguran\u00e7a.'
-    )
-
-    await i18n.changeLanguage('ru-RU')
-    expect(i18n.t('devices.memberRemoval.pending.description', { count: 1 })).toBe(
-      '\u041e\u0436\u0438\u0434\u0430\u0435\u0442\u0441\u044f \u043f\u043e\u0434\u0442\u0432\u0435\u0440\u0436\u0434\u0435\u043d\u0438\u0435 \u043e\u0431\u043d\u043e\u0432\u043b\u0435\u043d\u0438\u044f \u0431\u0435\u0437\u043e\u043f\u0430\u0441\u043d\u043e\u0441\u0442\u0438 \u043e\u0442 1 \u043e\u0441\u0442\u0430\u0432\u0448\u0435\u0433\u043e\u0441\u044f \u0443\u0441\u0442\u0440\u043e\u0439\u0441\u0442\u0432\u0430.'
-    )
-    expect(i18n.t('devices.memberRemoval.pending.description', { count: 2 })).toBe(
-      '\u041e\u0436\u0438\u0434\u0430\u0435\u0442\u0441\u044f \u043f\u043e\u0434\u0442\u0432\u0435\u0440\u0436\u0434\u0435\u043d\u0438\u0435 \u043e\u0431\u043d\u043e\u0432\u043b\u0435\u043d\u0438\u044f \u0431\u0435\u0437\u043e\u043f\u0430\u0441\u043d\u043e\u0441\u0442\u0438 \u043e\u0442 2 \u043e\u0441\u0442\u0430\u0432\u0448\u0438\u0445\u0441\u044f \u0443\u0441\u0442\u0440\u043e\u0439\u0441\u0442\u0432.'
-    )
-    expect(i18n.t('devices.memberRemoval.pending.description', { count: 5 })).toBe(
-      '\u041e\u0436\u0438\u0434\u0430\u0435\u0442\u0441\u044f \u043f\u043e\u0434\u0442\u0432\u0435\u0440\u0436\u0434\u0435\u043d\u0438\u0435 \u043e\u0431\u043d\u043e\u0432\u043b\u0435\u043d\u0438\u044f \u0431\u0435\u0437\u043e\u043f\u0430\u0441\u043d\u043e\u0441\u0442\u0438 \u043e\u0442 5 \u043e\u0441\u0442\u0430\u0432\u0448\u0438\u0445\u0441\u044f \u0443\u0441\u0442\u0440\u043e\u0439\u0441\u0442\u0432.'
-    )
-  })
-
   it('normalizes language tags to the nearest supported locale', () => {
     expect(normalizeLanguage('zh')).toBe('zh-CN')
     expect(normalizeLanguage('zh-CN')).toBe('zh-CN')

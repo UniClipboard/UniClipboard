@@ -31,7 +31,8 @@ use crate::api::dto::encryption::{
 };
 use crate::api::dto::member::{
     MemberRemovalDto, MemberSyncPreferencesDto, MemberSyncResultDto, MembershipConvergenceDto,
-    SecureLegacyRemovalDto, SpaceProtectionDto,
+    SecureLegacyRemovalDto, SharedDeviceRefreshDto, SharedDeviceRefreshStartedDto,
+    SpaceProtectionDto,
 };
 use crate::api::dto::mobile_sync::{
     LanInterfaceViewDto, MobileDeviceViewDto, MobileSyncActionResultDto, MobileSyncSettingsViewDto,
@@ -104,6 +105,8 @@ use crate::api::types::{
     MemberSyncResultEnvelope = ApiEnvelope<MemberSyncResultDto>,
     SpaceProtectionEnvelope = ApiEnvelope<SpaceProtectionDto>,
     MembershipConvergenceEnvelope = ApiEnvelope<MembershipConvergenceDto>,
+    SharedDeviceRefreshStartedEnvelope = ApiEnvelope<SharedDeviceRefreshStartedDto>,
+    SharedDeviceRefreshEnvelope = ApiEnvelope<SharedDeviceRefreshDto>,
     SecureLegacyRemovalEnvelope = ApiEnvelope<SecureLegacyRemovalDto>,
     MemberRemovalEnvelope = ApiEnvelope<MemberRemovalDto>,
     CurrentMemberRemovalEnvelope = ApiEnvelope<Option<MemberRemovalDto>>,

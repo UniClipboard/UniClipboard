@@ -29,6 +29,21 @@ impl NodeBinarySet {
         }
     }
 
+    /// Current daemon paired with a CLI built for hidden development commands.
+    ///
+    /// CI keeps the default CLI for the broad E2E suite and supplies its
+    /// separately built development CLI through `UC_E2E_DEV_CLI`. Local runs
+    /// that build `uc-cli` with `dev-tools` in the normal target directory do
+    /// not need the override.
+    pub fn current_dev_cli() -> Self {
+        let mut binaries = Self::current();
+        if let Some(cli) = std::env::var_os("UC_E2E_DEV_CLI") {
+            binaries.cli = cli.into();
+        }
+        binaries.version = "current-dev-cli".to_string();
+        binaries
+    }
+
     pub fn fixed(
         version: impl Into<String>,
         cli: impl Into<PathBuf>,

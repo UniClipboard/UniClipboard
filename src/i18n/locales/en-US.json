@@ -1036,6 +1036,28 @@
     "pairedDevices": {
       "title": "Paired devices"
     },
+    "sharedDeviceRefresh": {
+      "refresh": "Refresh shared devices",
+      "searching": "Searching for connectable devices",
+      "connecting": "Connecting to discovered devices",
+      "roundCompleted": "This round is complete",
+      "empty": "No connectable devices found",
+      "unavailableSources": "Some paired devices are currently unavailable",
+      "startFailed": "Could not start refreshing shared devices",
+      "updateFailed": "Could not update refresh status right now",
+      "ended": "This refresh has ended. Start a new refresh.",
+      "unknownDevice": "Unnamed device",
+      "deviceStates": {
+        "discovered": "Discovered, preparing to connect",
+        "connecting": "Connecting automatically",
+        "connected": "Connected automatically",
+        "already_present": "Already on this device",
+        "waiting_for_peer": "Waiting for device to come online; will keep trying",
+        "waiting_for_update": "Waiting for profile update; will keep trying",
+        "version_incompatible": "Version incompatible",
+        "rejected": "Unable to connect"
+      }
+    },
     "convergence": {
       "converging": "Connecting to other devices in this space",
       "waitingForUpgrade": "Some devices need an update before they can connect automatically",
@@ -1112,33 +1134,22 @@
       }
     },
     "memberRemoval": {
-      "pending": {
-        "title": "Device removal is still in progress",
-        "description_one": "Waiting for {{count}} retained device to confirm the security update.",
-        "description_other": "Waiting for {{count}} retained devices to confirm the security update."
-      },
       "recovering": {
         "title": "Restoring device removal",
         "description": "The interrupted device removal is being safely restored. Please wait."
       },
-      "recovery": {
-        "title": "Device removal needs recovery",
-        "description": "Confirm only devices that are permanently unavailable before continuing."
-      },
-      "complete": {
-        "title": "Device removal complete",
-        "description": "Every retained device has confirmed the security update."
-      },
       "permanentLoss": {
-        "action": "Mark pending devices as permanently lost",
         "title": "Confirm permanent device loss",
         "description": "Only continue when these pending devices cannot be recovered. This cannot be undone.",
-        "confirm": "Confirm permanent loss"
+        "confirm": "Confirm permanent loss",
+        "markLost": "Mark as lost"
       },
       "errors": {
         "statusFailed": "Could not load device-removal progress.",
         "continueFailed": "Could not continue device removal."
-      }
+      },
+      "pendingDeviceHint": "Device is offline; must come online to complete the security update",
+      "securityUpdateLabel": "Security update"
     },
     "tabs": {
       "connected": "Connected Devices",

@@ -33,7 +33,13 @@ pub(crate) async fn forward_engine_events(
                     EngineEvent::ActiveClipboardChanged(change) => {
                         let _ = active_clipboard_tx.send(change);
                     }
-                    EngineEvent::PeerPresenceChanged(_) | EngineEvent::RefreshRequired { .. } => {
+                    EngineEvent::PeerPresenceChanged(_) => {
+                        publish_peer_snapshot(&engine, &event_tx).await;
+                    }
+                    EngineEvent::RefreshRequired { .. } => {
+                        if let Some(event) = daemon_ws_event(event) {
+                            let _ = event_tx.send(event);
+                        }
                         publish_peer_snapshot(&engine, &event_tx).await;
                     }
                     EngineEvent::PairingCompleted(completion) => {

@@ -18,7 +18,7 @@ use axum::Json;
 use axum::Router;
 use futures_util::{SinkExt, StreamExt};
 use serde::Serialize;
-use tokio::sync::{mpsc, RwLock};
+use tokio::sync::{broadcast, mpsc, RwLock};
 use tokio::time::{interval, Instant};
 use tracing::{debug, info, info_span, warn, Instrument};
 use uc_daemon_contract::constants::{ws_event, ws_topic};
@@ -27,6 +27,7 @@ use utoipa;
 
 use crate::api::dto::error::ApiError;
 use crate::api::dto::ws::{WsErrorResponse, WsSubscribeRequest};
+use crate::api::event_emitter::refresh_required_ws_event;
 use crate::api::server::DaemonApiState;
 use crate::api::types::{
     DaemonWsEvent, PairingFailurePayload, PairingSessionChangedPayload, PairingSessionSummaryDto,
@@ -38,6 +39,51 @@ use crate::security::claims::SessionTokenClaims;
 use crate::security::rate_limiter::{RateLimitDecision, AUTHENTICATED_MAX_REQUESTS};
 
 type ClientTopics = Arc<RwLock<HashSet<String>>>;
+
+async fn forward_broadcast_events(
+    mut broadcast_rx: broadcast::Receiver<DaemonWsEvent>,
+    fanout_topics: ClientTopics,
+    fanout_tx: mpsc::Sender<DaemonWsEvent>,
+) {
+    loop {
+        match broadcast_rx.recv().await {
+            Ok(event) => {
+                let matched_topics = {
+                    let guard = fanout_topics.read().await;
+                    guard
+                        .iter()
+                        .filter(|topic| topic_matches(topic, event.topic.as_str()))
+                        .cloned()
+                        .collect::<Vec<_>>()
+                };
+
+                if !matched_topics.is_empty() {
+                    let event = bridge_verification_event(event);
+                    info!(
+                        event_topic = %event.topic,
+                        event_type = %event.event_type,
+                        session_id = event.session_id.as_deref().unwrap_or(""),
+                        matched_topics = ?matched_topics,
+                        "forwarding daemon websocket event to subscribed client"
+                    );
+                    if fanout_tx.send(event).await.is_err() {
+                        break;
+                    }
+                }
+            }
+            Err(broadcast::error::RecvError::Lagged(skipped)) => {
+                warn!(
+                    skipped,
+                    "websocket client lagged behind daemon event stream; requesting refresh"
+                );
+                if fanout_tx.send(refresh_required_ws_event()).await.is_err() {
+                    break;
+                }
+            }
+            Err(broadcast::error::RecvError::Closed) => break,
+        }
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Heartbeat constants
@@ -223,48 +269,16 @@ async fn handle_connection(socket: WebSocket, state: DaemonApiState, claims: Ses
         let _control_lease = state.lease_registry.acquire();
 
         let (outbound_tx, mut outbound_rx) = mpsc::channel::<DaemonWsEvent>(32);
-        let mut broadcast_rx = state.event_tx.subscribe();
+        let broadcast_rx = state.event_tx.subscribe();
         let fanout_topics = Arc::clone(&topics);
         let fanout_tx = outbound_tx.clone();
 
         // Fanout task: receives daemon events and forwards them to the client via outbound_tx.
-        let fanout_task = tokio::spawn(async move {
-            loop {
-                match broadcast_rx.recv().await {
-                    Ok(event) => {
-                        let matched_topics = {
-                            let guard = fanout_topics.read().await;
-                            guard
-                                .iter()
-                                .filter(|topic| topic_matches(topic, event.topic.as_str()))
-                                .cloned()
-                                .collect::<Vec<_>>()
-                        };
-
-                        if !matched_topics.is_empty() {
-                            let event = bridge_verification_event(event);
-                            info!(
-                                event_topic = %event.topic,
-                                event_type = %event.event_type,
-                                session_id = event.session_id.as_deref().unwrap_or(""),
-                                matched_topics = ?matched_topics,
-                                "forwarding daemon websocket event to subscribed client"
-                            );
-                            if fanout_tx.send(event).await.is_err() {
-                                break;
-                            }
-                        }
-                    }
-                    Err(tokio::sync::broadcast::error::RecvError::Lagged(skipped)) => {
-                        debug!(
-                            skipped,
-                            "websocket client lagged behind daemon event stream"
-                        );
-                    }
-                    Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
-                }
-            }
-        });
+        let fanout_task = tokio::spawn(forward_broadcast_events(
+            broadcast_rx,
+            fanout_topics,
+            fanout_tx,
+        ));
 
         // Heartbeat channel: the heartbeat task signals `Stale` when the client
         // fails to respond to a ping within CLIENT_TIMEOUT.
@@ -478,7 +492,8 @@ fn normalize_topics(topics: Vec<String>) -> Vec<String> {
 fn is_supported_topic(topic: &str) -> bool {
     matches!(
         topic,
-        ws_topic::STATUS
+        ws_topic::SYSTEM
+            | ws_topic::STATUS
             | ws_topic::PEERS
             | ws_topic::PAIRED_DEVICES
             | ws_topic::PAIRING
@@ -489,6 +504,9 @@ fn is_supported_topic(topic: &str) -> bool {
             | ws_topic::FILE_TRANSFER
             | ws_topic::ENCRYPTION
             | ws_topic::SEARCH
+            | ws_topic::MEMBER_REMOVAL
+            | ws_topic::NETWORK_RECOVERY
+            | ws_topic::SHARED_DEVICE_REFRESH
     )
 }
 
@@ -572,9 +590,10 @@ async fn build_snapshot_event(
         // 推送 snapshot。setup-v2 流程通过 SETUP topic 自有事件回报。
         ws_topic::PAIRING | ws_topic::PAIRING_SESSION | ws_topic::PAIRING_VERIFICATION => Ok(None),
 
-        ws_topic::SETUP => Ok(None),
+        ws_topic::SYSTEM | ws_topic::SETUP => Ok(None),
         ws_topic::CLIPBOARD => Ok(None),
         ws_topic::FILE_TRANSFER => Ok(None),
+        ws_topic::SHARED_DEVICE_REFRESH => Ok(None),
 
         ws_topic::ENCRYPTION => {
             // No snapshot for encryption — only an event is emitted on session_ready.
@@ -710,4 +729,48 @@ fn _event_type_markers(
             connected: false,
         },
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tokio::time::timeout;
+
+    fn test_event(event_type: &str) -> DaemonWsEvent {
+        DaemonWsEvent {
+            topic: ws_topic::SHARED_DEVICE_REFRESH.to_string(),
+            event_type: event_type.to_string(),
+            session_id: None,
+            ts: 1,
+            payload: serde_json::json!({}),
+        }
+    }
+
+    #[tokio::test]
+    async fn lagged_websocket_client_receives_global_refresh_required() {
+        let topics = Arc::new(RwLock::new(HashSet::from([
+            ws_topic::SHARED_DEVICE_REFRESH.to_string(),
+        ])));
+        let (event_tx, _) = tokio::sync::broadcast::channel(1);
+        let broadcast_rx = event_tx.subscribe();
+        let (outbound_tx, mut outbound_rx) = mpsc::channel(4);
+
+        event_tx
+            .send(test_event("first"))
+            .expect("send first event");
+        event_tx
+            .send(test_event("second"))
+            .expect("send second event");
+
+        let task = tokio::spawn(forward_broadcast_events(broadcast_rx, topics, outbound_tx));
+
+        let event = timeout(Duration::from_secs(1), outbound_rx.recv())
+            .await
+            .expect("refresh-required notification timeout")
+            .expect("refresh-required notification");
+        assert_eq!(event.topic, ws_topic::SYSTEM);
+        assert_eq!(event.event_type, ws_event::SYSTEM_REFRESH_REQUIRED);
+
+        task.abort();
+    }
 }

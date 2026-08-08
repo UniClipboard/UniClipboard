@@ -17,8 +17,10 @@ import {
   getCurrentMemberRemoval as getCurrentMemberRemovalSdk,
   getMembershipConvergence as getMembershipConvergenceSdk,
   getMemberSyncPreferences as getMemberSyncPreferencesSdk,
+  getSharedDeviceRefresh as getSharedDeviceRefreshSdk,
   getSpaceProtection as getSpaceProtectionSdk,
   secureRemoveLegacyMember as secureRemoveLegacyMemberSdk,
+  startSharedDeviceRefresh as startSharedDeviceRefreshSdk,
   updateMemberSyncPreferences as updateMemberSyncPreferencesSdk,
 } from '@/api/generated/sdk.gen'
 import type {
@@ -90,6 +92,40 @@ export type MembershipConvergenceState =
   | 'waiting_for_upgrade'
   | 'blocked'
 
+export type SharedDeviceRefreshPhase = 'started' | 'discovering' | 'connecting' | 'round_completed'
+export type SharedDeviceRefreshDeviceState =
+  | 'discovered'
+  | 'connecting'
+  | 'connected'
+  | 'already_present'
+  | 'waiting_for_peer'
+  | 'waiting_for_update'
+  | 'version_incompatible'
+  | 'rejected'
+
+export interface SharedDeviceRefreshDevice {
+  deviceId: string
+  displayName: string
+  state: SharedDeviceRefreshDeviceState
+}
+
+/** Complete Engine-owned result for one shared-device refresh request. */
+export interface SharedDeviceRefreshSnapshot {
+  requestId: string
+  phase: SharedDeviceRefreshPhase
+  devices: SharedDeviceRefreshDevice[]
+  totalCount: number
+  discoveredCount: number
+  connectingCount: number
+  connectedCount: number
+  alreadyPresentCount: number
+  waitingForPeerCount: number
+  waitingForUpdateCount: number
+  versionIncompatibleCount: number
+  rejectedCount: number
+  unavailableSourceCount: number
+}
+
 export interface LegacyBootstrap {
   bootstrapId: string
   outcome: LegacyBootstrapOutcome
@@ -133,6 +169,33 @@ export interface MemberRemoval {
   removedDeviceIds: string[]
   pendingRecipientDeviceIds: string[]
   updatedAtMs: number
+}
+
+/** Starts a shared-device refresh round and returns its Engine-owned request ID. */
+export async function startSharedDeviceRefresh(): Promise<string> {
+  const started = await daemonClient.callEnveloped(() =>
+    startSharedDeviceRefreshSdk({ throwOnError: true })
+  )
+  return started.requestId
+}
+
+/** Reads the complete current snapshot for one shared-device refresh request. */
+export async function getSharedDeviceRefresh(
+  requestId: string
+): Promise<SharedDeviceRefreshSnapshot> {
+  const data = await daemonClient.callEnveloped(() =>
+    getSharedDeviceRefreshSdk({ path: { request_id: requestId }, throwOnError: true })
+  )
+  return data as unknown as SharedDeviceRefreshSnapshot
+}
+
+/** True when the daemon reports that the refresh request no longer exists. */
+export function isSharedDeviceRefreshNotFound(error: unknown): boolean {
+  if (!(error instanceof DaemonApiError)) return false
+  if (error.details && typeof error.details === 'object') {
+    return (error.details as { code?: unknown }).code === 'shared_device_refresh_not_found'
+  }
+  return false
 }
 
 /** Reads the Engine-owned removal that remains active across daemon restarts. */

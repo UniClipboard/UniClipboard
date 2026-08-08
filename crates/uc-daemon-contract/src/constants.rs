@@ -2,6 +2,8 @@
 
 /// WebSocket topic names used to subscribe to event streams.
 pub mod ws_topic {
+    /// Process-wide control notifications that ask consumers to refresh read models.
+    pub const SYSTEM: &str = "system";
     pub const STATUS: &str = "status";
     pub const PEERS: &str = "peers";
     pub const PAIRED_DEVICES: &str = "paired-devices";
@@ -16,10 +18,13 @@ pub mod ws_topic {
     pub const SEARCH: &str = "search";
     pub const MEMBER_REMOVAL: &str = "member-removal";
     pub const NETWORK_RECOVERY: &str = "network-recovery";
+    pub const SHARED_DEVICE_REFRESH: &str = "shared-device-refresh";
 }
 
 /// WebSocket event type names emitted within topics.
 pub mod ws_event {
+    /// A consumer missed incremental events and must re-query any active read models.
+    pub const SYSTEM_REFRESH_REQUIRED: &str = "system.refresh_required";
     pub const STATUS_SNAPSHOT: &str = "status.snapshot";
     pub const STATUS_UPDATED: &str = "status.updated";
     pub const PEERS_SNAPSHOT: &str = "peers.snapshot";
@@ -62,6 +67,8 @@ pub mod ws_event {
     pub const SEARCH_REBUILD_PROGRESS: &str = "search.rebuild_progress";
     pub const MEMBER_REMOVAL_CHANGED: &str = "member-removal.changed";
     pub const NETWORK_RECOVERY_CHANGED: &str = "network-recovery.changed";
+    /// Engine shared-device refresh progress changed; clients must re-query the full snapshot.
+    pub const SHARED_DEVICE_REFRESH_CHANGED: &str = "shared-device-refresh.changed";
     /// Lightweight inbound clipboard notice for CLI `watch` (ADR-008 P2.5).
     /// Emitted alongside `CLIPBOARD_NEW_CONTENT`; carries only display summaries
     /// and delivery metadata, never the full clipboard payload.

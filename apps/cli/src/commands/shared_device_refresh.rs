@@ -6,7 +6,9 @@
 
 use serde::Serialize;
 use uc_daemon_client::DaemonRequestError;
-use uc_daemon_contract::api::dto::member::SharedDeviceRefreshDeviceStateDto;
+use uc_daemon_contract::api::dto::member::{
+    SharedDeviceRefreshDeviceStateDto, SharedDeviceRefreshPhaseDto,
+};
 
 use crate::commands::app_session::connect_with_lease;
 use crate::{exit_codes, output, ui};
@@ -29,6 +31,15 @@ fn state_label(state: &SharedDeviceRefreshDeviceStateDto) -> &'static str {
         SharedDeviceRefreshDeviceStateDto::WaitingForUpdate => "waiting_for_update",
         SharedDeviceRefreshDeviceStateDto::VersionIncompatible => "version_incompatible",
         SharedDeviceRefreshDeviceStateDto::Rejected => "rejected",
+    }
+}
+
+fn phase_label(phase: &SharedDeviceRefreshPhaseDto) -> &'static str {
+    match phase {
+        SharedDeviceRefreshPhaseDto::Started => "started",
+        SharedDeviceRefreshPhaseDto::Discovering => "discovering",
+        SharedDeviceRefreshPhaseDto::Connecting => "connecting",
+        SharedDeviceRefreshPhaseDto::RoundCompleted => "round_completed",
     }
 }
 
@@ -75,7 +86,7 @@ pub async fn run_status(request_id: &str, json: bool, verbose: bool) -> i32 {
                 return output::emit_json(&snapshot, "shared-device-refresh status");
             }
             ui::info("request", &snapshot.request_id);
-            ui::info("phase", &format!("{:?}", snapshot.phase).to_lowercase());
+            ui::info("phase", phase_label(&snapshot.phase));
             for device in &snapshot.devices {
                 ui::info(
                     "device",
@@ -94,12 +105,7 @@ pub async fn run_status(request_id: &str, json: bool, verbose: bool) -> i32 {
                         error: "shared_device_refresh_not_found",
                         request_id: request_id.to_string(),
                     };
-                    match serde_json::to_string_pretty(&error) {
-                        Ok(rendered) => println!("{rendered}"),
-                        Err(err) => {
-                            ui::error(&format!("Failed to serialize error response: {err}"));
-                        }
-                    }
+                    output::emit_json(&error, "shared-device-refresh status error");
                 } else {
                     ui::error(&format!(
                         "Shared-device-refresh request {request_id} no longer exists"
@@ -110,5 +116,31 @@ pub async fn run_status(request_id: &str, json: bool, verbose: bool) -> i32 {
             ui::error(&format!("Failed to query shared-device refresh: {err}"));
             exit_codes::EXIT_ERROR
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::phase_label;
+    use uc_daemon_contract::api::dto::member::SharedDeviceRefreshPhaseDto;
+
+    #[test]
+    fn phase_labels_match_the_api_contract() {
+        assert_eq!(
+            phase_label(&SharedDeviceRefreshPhaseDto::Started),
+            "started"
+        );
+        assert_eq!(
+            phase_label(&SharedDeviceRefreshPhaseDto::Discovering),
+            "discovering"
+        );
+        assert_eq!(
+            phase_label(&SharedDeviceRefreshPhaseDto::Connecting),
+            "connecting"
+        );
+        assert_eq!(
+            phase_label(&SharedDeviceRefreshPhaseDto::RoundCompleted),
+            "round_completed"
+        );
     }
 }

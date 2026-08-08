@@ -190,7 +190,6 @@ mod engine_event_tests {
     use uc_engine::{
         EngineError, EngineErrorCategory, InboundNoticeEvent, LifecycleAction,
         MemberRevocationOutcome, MemberRevocationSummary, NetworkRecoveryStatusSummary,
-        RefreshReason,
         RefreshReason, SharedDeviceRefreshDeviceStateSummary, SharedDeviceRefreshDeviceSummary,
         SharedDeviceRefreshPhaseSummary, SharedDeviceRefreshSummary, TransferProgress,
     };

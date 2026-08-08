@@ -43,8 +43,10 @@ _Avoid_: peer、trusted peer、user
 
 **Member revocation**：
 用户确认某台设备永久丢失后的成员移除收尾流程。若目标设备已不在安全组中，直接完成
-移除，不再创建新的移除代次；若当前安全组无法读取，则流程进入终态
-`recovery_required`，等待以可信活跃设备重建，而非作为可重试失败继续尝试。
+移除，不再创建新的移除代次；已记录、但尚未形成安全更新的移除处于 `recovering`，由
+Engine 自动收束，它不是普通等待状态，期间不应让用户确认永久丢失。若当前安全组无法
+读取，则流程进入终态 `recovery_required`，等待以可信活跃设备重建，而非作为可重试失败
+继续尝试。
 _Avoid_: retryable removal、member status update
 
 **Readmission**：

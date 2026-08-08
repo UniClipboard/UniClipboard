@@ -56,6 +56,14 @@ _Avoid_: retryable removal、member status update
 它不是网络连接状态，也不由客户端本地状态决定。
 _Avoid_: reconnect、client-side retry、temporary pairing state
 
+**Shared-device refresh round**：
+由 Engine 管理的一次短期成员关系补全过程，从当前 Space 的已配对设备学习其他已知
+成员；它不传输剪贴板内容。每轮由 `requestId` 标识，Engine 的完整快照是唯一事实来源，
+客户端只读取该快照，不自行合并或推断设备状态。首轮未结束时的重复发起复用同一轮；
+`round_completed` 只表示首轮已结束，等待中的设备仍会继续处理；守护进程重启后该轮查询
+失效。只有状态为 `connected` 且权威设备列表已包含目标设备，才表示新设备已经连接。
+_Avoid_: clipboard recovery、client-side device merge、refresh retry loop
+
 **ClipboardEvent**：
 一次剪贴板捕获动作的领域事件（`event_id`、捕获时刻、源设备 `DeviceId`、
 `snapshot_hash`）。它记录的是「在某台设备上发生了一次复制」，是同步与去重的
@@ -129,6 +137,8 @@ _Avoid_: relay-only、server mode
 ### 关系
 
 - 一台设备以 `DeviceId` 立身，被接纳进 **Space** 后成为一条 **SpaceMember**
+- **Shared-device refresh round** 只补全 **SpaceMember** 之间的已知关系，不改变
+  **Transient sync semantics**，也不补传历史剪贴板内容
 - 一次复制产生一个 **ClipboardEvent**，落地为一条对用户可见的 **ClipboardEntry**；
   原始字节来自该 event 的 **SystemClipboardSnapshot**，拆成多条 **Representation**
 - **MasterKey** 由 **Passphrase** 经 KEK 解包，是 **Space** 内一切密文的根密钥；

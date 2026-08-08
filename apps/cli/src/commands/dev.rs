@@ -9,7 +9,9 @@ use serde::Serialize;
 use uc_engine::{DevOperation, DevOperationResult, DevPairingInvitationAddress};
 
 use crate::commands::app_session::{build_app_session, refuse_if_daemon_running};
-use crate::commands::{capture_files, dump_clipboard, invite, seed_clipboard};
+use crate::commands::{
+    capture_files, dump_clipboard, invite, seed_clipboard, shared_device_refresh,
+};
 use crate::exit_codes;
 use crate::output;
 use crate::ui;
@@ -48,6 +50,27 @@ pub enum DevCommands {
         /// Temporarily override the whole-set byte cap for this capture.
         #[arg(long)]
         max_bytes: Option<u64>,
+    },
+    /// Start or query the Engine-owned shared-device refresh round through the
+    /// running daemon. Development and E2E testing only.
+    SharedDeviceRefresh {
+        #[command(subcommand)]
+        subcommand: SharedDeviceRefreshCommands,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum SharedDeviceRefreshCommands {
+    /// Start (or reuse the in-flight round of) one shared-device refresh and
+    /// print its request id. The round runs in the daemon and survives this
+    /// process exiting.
+    Start,
+    /// Query the complete current snapshot for one refresh round. A round
+    /// that no longer exists fails with `shared_device_refresh_not_found`.
+    Status {
+        /// Request id printed by `start`.
+        #[arg(long)]
+        request_id: String,
     },
 }
 
@@ -124,6 +147,14 @@ pub async fn run(command: DevCommands, json: bool, verbose: bool) -> i32 {
             )
             .await
         }
+        DevCommands::SharedDeviceRefresh { subcommand } => match subcommand {
+            SharedDeviceRefreshCommands::Start => {
+                shared_device_refresh::run_start(json, verbose).await
+            }
+            SharedDeviceRefreshCommands::Status { request_id } => {
+                shared_device_refresh::run_status(&request_id, json, verbose).await
+            }
+        },
     }
 }
 

@@ -976,6 +976,45 @@ mod tests {
 
     #[cfg(feature = "dev-tools")]
     #[test]
+    fn dev_shared_device_refresh_commands_parse() {
+        // The E2E driver uses these commands to control daemon-owned refresh rounds.
+        let start = Cli::try_parse_from(["uniclip", "dev", "shared-device-refresh", "start"])
+            .expect("expected `dev shared-device-refresh start` to parse");
+        assert!(matches!(
+            start.command,
+            Some(Commands::Dev {
+                subcommand: commands::dev::DevCommands::SharedDeviceRefresh { .. }
+            })
+        ));
+
+        let status = Cli::try_parse_from([
+            "uniclip",
+            "dev",
+            "shared-device-refresh",
+            "status",
+            "--request-id",
+            "refresh-1",
+        ])
+        .expect("expected `dev shared-device-refresh status --request-id` to parse");
+        let Some(Commands::Dev {
+            subcommand:
+                commands::dev::DevCommands::SharedDeviceRefresh {
+                    subcommand: commands::dev::SharedDeviceRefreshCommands::Status { request_id },
+                },
+        }) = status.command
+        else {
+            panic!("expected dev shared-device-refresh status")
+        };
+        assert_eq!(request_id, "refresh-1");
+
+        assert!(
+            Cli::try_parse_from(["uniclip", "dev", "shared-device-refresh", "status"]).is_err(),
+            "status must require --request-id"
+        );
+    }
+
+    #[cfg(feature = "dev-tools")]
+    #[test]
     fn top_level_clipboard_seed_and_dump_are_removed() {
         // 迁移到 `dev` 组后,顶层路径必须消失,避免两套入口并存,
         // 也确保它们不再出现在公开 help 契约里。

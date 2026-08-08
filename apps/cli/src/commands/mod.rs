@@ -21,6 +21,8 @@ pub mod search;
 #[cfg(feature = "dev-tools")]
 pub mod seed_clipboard;
 pub mod send;
+#[cfg(feature = "dev-tools")]
+pub mod shared_device_refresh;
 pub mod start;
 pub mod status;
 pub mod stop;

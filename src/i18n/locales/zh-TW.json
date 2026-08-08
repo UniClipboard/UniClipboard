@@ -1055,6 +1055,10 @@
         "title": "裝置移除仍在進行",
         "description_other": "正在等待 {{count}} 台保留裝置確認安全更新。"
       },
+      "recovering": {
+        "title": "正在復原裝置移除",
+        "description": "正在安全地復原先前中斷的裝置移除，請稍候。"
+      },
       "recovery": {
         "title": "裝置移除需要恢復",
         "description": "僅在待確認裝置已永久無法使用時，才確認並繼續。"

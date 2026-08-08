@@ -21,6 +21,7 @@ const MemberRemovalStatus: React.FC<MemberRemovalStatusProps> = ({
   const { t } = useTranslation()
   const isComplete = removal.outcome === 'complete'
   const requiresRecovery = removal.outcome === 'recovery_required'
+  const isRecovering = removal.outcome === 'recovering'
   const pendingDeviceIds = removal.pendingRecipientDeviceIds
   const canMarkPermanentlyLost = removal.outcome === 'applied' && pendingDeviceIds.length > 0
 
@@ -60,16 +61,20 @@ const MemberRemovalStatus: React.FC<MemberRemovalStatusProps> = ({
               ? t('devices.memberRemoval.complete.title')
               : requiresRecovery
                 ? t('devices.memberRemoval.recovery.title')
-                : t('devices.memberRemoval.pending.title')}
+                : isRecovering
+                  ? t('devices.memberRemoval.recovering.title')
+                  : t('devices.memberRemoval.pending.title')}
           </h3>
           <p className="mt-1 text-[11px] leading-4 text-muted-foreground">
             {isComplete
               ? t('devices.memberRemoval.complete.description')
               : requiresRecovery
                 ? t('devices.memberRemoval.recovery.description')
-                : t('devices.memberRemoval.pending.description', {
-                    count: removal.pendingRecipients,
-                  })}
+                : isRecovering
+                  ? t('devices.memberRemoval.recovering.description')
+                  : t('devices.memberRemoval.pending.description', {
+                      count: removal.pendingRecipients,
+                    })}
           </p>
         </div>
       </div>

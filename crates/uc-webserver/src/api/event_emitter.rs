@@ -147,6 +147,7 @@ pub fn engine_event_to_ws(event: EngineEvent) -> Option<DaemonWsEvent> {
         EngineEvent::StateChanged { .. }
         | EngineEvent::PeerPresenceChanged(_)
         | EngineEvent::PairingCompleted(_)
+        | EngineEvent::SharedDeviceRefreshChanged(_)
         | EngineEvent::ActiveClipboardChanged(_)
         | EngineEvent::MobileLanSettingsChanged(_)
         | EngineEvent::RefreshRequired { .. }
@@ -171,7 +172,7 @@ mod engine_event_tests {
     use uc_engine::{
         EngineError, EngineErrorCategory, InboundNoticeEvent, LifecycleAction,
         MemberRevocationOutcome, MemberRevocationSummary, NetworkRecoveryStatusSummary,
-        TransferProgress,
+        SharedDeviceRefreshPhaseSummary, SharedDeviceRefreshSummary, TransferProgress,
     };
 
     #[derive(Serialize)]
@@ -208,6 +209,27 @@ mod engine_event_tests {
             action: LifecycleAction::Suspend,
             error: EngineError::new(1214, EngineErrorCategory::Unavailable, true),
         };
+
+        assert!(engine_event_to_ws(event).is_none());
+    }
+
+    #[test]
+    fn shared_device_refresh_stays_on_the_host_event_stream() {
+        let event = EngineEvent::SharedDeviceRefreshChanged(SharedDeviceRefreshSummary {
+            request_id: "refresh-1".into(),
+            phase: SharedDeviceRefreshPhaseSummary::Started,
+            devices: Vec::new(),
+            total_count: 0,
+            discovered_count: 0,
+            connecting_count: 0,
+            connected_count: 0,
+            already_present_count: 0,
+            waiting_for_peer_count: 0,
+            waiting_for_update_count: 0,
+            version_incompatible_count: 0,
+            rejected_count: 0,
+            unavailable_source_count: 0,
+        });
 
         assert!(engine_event_to_ws(event).is_none());
     }
@@ -319,6 +341,27 @@ mod engine_event_tests {
         assert_eq!(
             event.payload["pendingRecipientDeviceIds"],
             serde_json::json!(["retained-device"])
+        );
+    }
+
+    #[test]
+    fn recovering_member_removal_changes_notify_device_screens_with_recovering_outcome() {
+        let event = engine_event_to_ws(EngineEvent::MemberRevocationChanged(
+            MemberRevocationSummary {
+                revocation_id: Some("removal-prepared".into()),
+                outcome: MemberRevocationOutcome::Recovering,
+                pending_recipients: 0,
+                removed_device_ids: vec!["removed-device".into()],
+                pending_recipient_device_ids: Vec::new(),
+                updated_at_ms: 42,
+            },
+        ))
+        .expect("member removal websocket event");
+
+        assert_eq!(event.payload["outcome"], "recovering");
+        assert_eq!(
+            event.payload["pendingRecipientDeviceIds"],
+            serde_json::json!([])
         );
     }
 }

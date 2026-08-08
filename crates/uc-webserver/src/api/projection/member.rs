@@ -157,6 +157,7 @@ impl IntoApiDto<MemberRemovalDto> for MemberRevocationSummary {
             revocation_id: self.revocation_id,
             outcome: match self.outcome {
                 MemberRevocationOutcome::LocalOnly => MemberRemovalOutcomeDto::LocalOnly,
+                MemberRevocationOutcome::Recovering => MemberRemovalOutcomeDto::Recovering,
                 MemberRevocationOutcome::Applied => MemberRemovalOutcomeDto::Applied,
                 MemberRevocationOutcome::Complete => MemberRemovalOutcomeDto::Complete,
                 MemberRevocationOutcome::RecoveryRequired => {
@@ -255,5 +256,24 @@ mod tests {
         assert_eq!(mapped.outcome, MemberRemovalOutcomeDto::Applied);
         assert_eq!(mapped.pending_recipient_device_ids, vec!["retained-device"]);
         assert_eq!(mapped.updated_at_ms, 42);
+    }
+
+    #[test]
+    fn member_removal_mapping_exposes_recovering_without_pending_devices() {
+        let summary = MemberRevocationSummary {
+            revocation_id: Some("removal-recovering".into()),
+            outcome: MemberRevocationOutcome::Recovering,
+            pending_recipients: 0,
+            removed_device_ids: vec!["removed-device".into()],
+            pending_recipient_device_ids: Vec::new(),
+            updated_at_ms: 42,
+        };
+
+        let mapped: MemberRemovalDto = summary.into_api_dto();
+
+        assert_eq!(
+            serde_json::to_value(mapped).expect("serialize member removal")["outcome"],
+            "recovering"
+        );
     }
 }

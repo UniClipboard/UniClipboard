@@ -1387,7 +1387,7 @@ export type MemberRemovalEnvelope = {
     ts: number;
 };
 
-export type MemberRemovalOutcomeDto = 'local_only' | 'applied' | 'complete' | 'recovery_required';
+export type MemberRemovalOutcomeDto = 'local_only' | 'recovering' | 'applied' | 'complete' | 'recovery_required';
 
 /**
  * Sync preferences recorded for a space member.

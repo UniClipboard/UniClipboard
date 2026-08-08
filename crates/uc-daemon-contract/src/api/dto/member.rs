@@ -124,6 +124,7 @@ pub struct SecureLegacyRemovalDto {
 #[serde(rename_all = "snake_case")]
 pub enum MemberRemovalOutcomeDto {
     LocalOnly,
+    Recovering,
     Applied,
     Complete,
     RecoveryRequired,

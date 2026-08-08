@@ -118,7 +118,12 @@ export interface SecureLegacyRemoval {
   bootstrap: LegacyBootstrap
 }
 
-export type MemberRemovalOutcome = 'local_only' | 'applied' | 'complete' | 'recovery_required'
+export type MemberRemovalOutcome =
+  | 'local_only'
+  | 'recovering'
+  | 'applied'
+  | 'complete'
+  | 'recovery_required'
 
 /** Engine-owned removal progress for the active space. */
 export interface MemberRemoval {

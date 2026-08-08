@@ -1115,6 +1115,10 @@
         "title": "设备移除仍在进行",
         "description_other": "正在等待 {{count}} 台保留设备确认安全更新。"
       },
+      "recovering": {
+        "title": "正在恢复设备移除",
+        "description": "正在安全地恢复之前中断的设备移除，请稍候。"
+      },
       "recovery": {
         "title": "设备移除需要恢复",
         "description": "仅在待确认设备已永久无法使用时，才确认并继续。"

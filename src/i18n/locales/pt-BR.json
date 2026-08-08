@@ -1061,6 +1061,10 @@
         "description_many": "Aguardando {{count}} dispositivos mantidos confirmarem a atualização de segurança.",
         "description_other": "Aguardando {{count}} dispositivos mantidos confirmarem a atualização de segurança."
       },
+      "recovering": {
+        "title": "Recuperando a remoção do dispositivo",
+        "description": "A remoção interrompida do dispositivo está sendo recuperada com segurança. Aguarde."
+      },
       "recovery": {
         "title": "A remoção do dispositivo precisa de recuperação",
         "description": "Confirme apenas os dispositivos permanentemente indisponíveis antes de continuar."

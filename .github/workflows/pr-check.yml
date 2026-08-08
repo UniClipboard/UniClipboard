@@ -260,5 +260,10 @@ jobs:
       - name: Build daemon and CLI binaries
         run: cargo build -p uc-daemon -p uc-cli --features uc-daemon/e2e-rendezvous
 
+      - name: Build development CLI for shared-device E2E tests
+        run: CARGO_TARGET_DIR=target/e2e-dev cargo build -p uc-cli --features uc-cli/dev-tools
+
       - name: Run E2E tests
-        run: cargo test --manifest-path tests/e2e/Cargo.toml -- --ignored
+        run: >-
+          UC_E2E_DEV_CLI="$GITHUB_WORKSPACE/target/e2e-dev/debug/uniclip"
+          cargo test --manifest-path tests/e2e/Cargo.toml -- --ignored

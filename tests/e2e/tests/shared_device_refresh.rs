@@ -400,7 +400,7 @@ async fn restart_b_ignorant_of_c(
 #[tokio::test]
 #[ignore]
 async fn refresh_connects_third_device_after_cli_exits() {
-    let binaries = NodeBinarySet::current();
+    let binaries = NodeBinarySet::current_dev_cli();
     let rendezvous = LocalRendezvous::start().await;
     let (_a, b, _c) = restart_b_ignorant_of_c("sdr1", &binaries, &rendezvous, false).await;
 
@@ -417,7 +417,7 @@ async fn refresh_connects_third_device_after_cli_exits() {
 #[tokio::test]
 #[ignore]
 async fn offline_device_recovers_without_new_refresh() {
-    let binaries = NodeBinarySet::current();
+    let binaries = NodeBinarySet::current_dev_cli();
     let rendezvous = LocalRendezvous::start().await;
     let (_a, b, mut c) = restart_b_ignorant_of_c("sdr2", &binaries, &rendezvous, true).await;
 
@@ -435,7 +435,7 @@ async fn offline_device_recovers_without_new_refresh() {
 #[tokio::test]
 #[ignore]
 async fn daemon_restart_invalidates_old_request() {
-    let binaries = NodeBinarySet::current();
+    let binaries = NodeBinarySet::current_dev_cli();
     let rendezvous = LocalRendezvous::start().await;
     let (_a, mut b, _c) = restart_b_ignorant_of_c("sdr3", &binaries, &rendezvous, false).await;
 
@@ -477,7 +477,7 @@ async fn daemon_restart_invalidates_old_request() {
 #[tokio::test]
 #[ignore]
 async fn refresh_with_no_new_candidates_completes_empty() {
-    let binaries = NodeBinarySet::current();
+    let binaries = NodeBinarySet::current_dev_cli();
     let rendezvous = LocalRendezvous::start().await;
     let (_a, b, _c) = restart_b_ignorant_of_c("sdr4", &binaries, &rendezvous, false).await;
 
@@ -519,7 +519,7 @@ async fn refresh_with_no_new_candidates_completes_empty() {
 #[tokio::test]
 #[ignore]
 async fn concurrent_start_reuses_active_request() {
-    let binaries = NodeBinarySet::current();
+    let binaries = NodeBinarySet::current_dev_cli();
     let rendezvous = LocalRendezvous::start().await;
     let (_a, b, mut c) = restart_b_ignorant_of_c("sdr5", &binaries, &rendezvous, true).await;
 

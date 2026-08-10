@@ -3,6 +3,8 @@ import test from 'node:test'
 
 import config from '../next.config.mjs'
 
-test('disables immutable static assets for the path-mounted deployment', () => {
-  assert.equal(config.supportsImmutableAssets, false)
+test('serves the independent documentation site from the domain root', () => {
+  assert.equal(config.basePath, undefined)
+  assert.equal(config.assetPrefix, undefined)
+  assert.equal(config.supportsImmutableAssets, undefined)
 })

@@ -8,9 +8,8 @@ const withMDX = createMDX()
 
 // Old documentation URLs kept alive after the 2026 category restructure:
 // guides/* split into core-features/* and help/*, and the CLI page was
-// promoted to a top-level /cli group. `source` is matched after `basePath`
-// (/docs) is stripped, so paths are written without the /docs prefix. Each
-// move needs an en variant (default locale, no prefix) and a zh variant.
+// promoted to a top-level /cli group. Each move needs an en variant (default
+// locale, no prefix) and a zh variant.
 // Pages that did not move (guides/pairing, guides/settings,
 // guides/self-host-relay, reference/mobile-api, reference/mobile-connect-uri,
 // reference/search-internals, getting-started/*) are intentionally absent.
@@ -35,10 +34,6 @@ const docRedirects = docPageMoves.flatMap(([from, to]) => [
 /** @type {import('next').NextConfig} */
 const config = {
   reactStrictMode: true,
-  basePath: '/docs',
-  assetPrefix: '/docs',
-  // The main-site rewrite cannot serve Next.js 16.3 immutable assets.
-  supportsImmutableAssets: false,
   async redirects() {
     return docRedirects
   },

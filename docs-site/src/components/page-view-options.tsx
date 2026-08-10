@@ -6,7 +6,6 @@ import { ChevronDown, ExternalLinkIcon, TextIcon } from 'lucide-react'
 import { usePathname } from 'next/navigation'
 import { useMemo, type ReactNode } from 'react'
 import { twMerge as cn } from 'tailwind-merge'
-import { docsBasePath } from '@/lib/shared'
 
 type Props = {
   markdownUrl?: string
@@ -15,19 +14,15 @@ type Props = {
   children?: ReactNode
 }
 
-// Mirrors fumadocs' ViewOptionsPopover but builds the AI prompt URL
-// from `docsBasePath + pathname` so the prompt sent to ChatGPT / Claude /
-// Cursor / Scira resolves under the `/docs` basePath. fumadocs uses
-// `usePathname()` directly, which strips basePath in Next.js.
+// Mirrors fumadocs' ViewOptionsPopover while keeping AI prompt links absolute.
 export function PageViewOptions({ markdownUrl, githubUrl, className, children }: Props) {
   const pathname = usePathname()
 
   const items = useMemo(() => {
-    const fullPath = `${docsBasePath}${pathname}`
     const target =
       typeof window === 'undefined'
-        ? fullPath
-        : new URL(fullPath, window.location.origin).toString()
+        ? pathname
+        : new URL(pathname, window.location.origin).toString()
     const q = `Read ${target}, I want to ask questions about it.`
 
     return [

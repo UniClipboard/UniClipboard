@@ -1092,7 +1092,7 @@
     },
     "addDevice": {
       "title": "邀請新裝置",
-      "subtitle": "在新裝置上輸入此邀請碼",
+      "subtitle": "在要加入的電腦或手機上輸入此邀請碼",
       "expiresIn": "{{remaining}} 後過期",
       "expired": "邀請碼已過期",
       "passphraseHint": "新裝置還需輸入空間口令完成配對",
@@ -1115,6 +1115,7 @@
         "title": "配對失敗",
         "unknown": "對方裝置未能成功加入",
         "fallback": "配對失敗：{{reason}}",
+        "networkHint": "請確認兩台裝置的網路連線正常，然後重試",
         "reasons": {
           "cancelled": "邀請已取消",
           "expired": "邀請已過期",
@@ -1196,8 +1197,10 @@
       "goToSettings": "前往設定"
     },
     "mobileSync": {
-      "title": "手機區域網路連線",
+      "title": "區域網路移動同步",
       "description": "通過 SyncClipboard 協議在區域網路內與移動裝置（iOS / Android）同步剪貼簿",
+      "deprecated": "即將棄用",
+      "deprecatedTooltip": "此通道將在未來版本移除，建議透過安裝行動端 App 並配對裝置使用完整功能",
       "configure": "設定",
       "statusBar": {
         "bindFailed": "無法啟動監聽:{{reason}}"
@@ -1482,9 +1485,8 @@
         }
       },
       "addMenu": {
-        "trigger": "新增裝置",
-        "triggerShort": "新增",
-        "p2p": "配對新裝置",
+        "trigger": "邀請裝置",
+        "otherWays": "其他新增方式",
         "mobile": "透過區域網路連接手機"
       }
     },

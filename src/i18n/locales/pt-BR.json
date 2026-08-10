@@ -1096,7 +1096,7 @@
     },
     "addDevice": {
       "title": "Convidar um novo dispositivo",
-      "subtitle": "Digite este código no dispositivo que vai entrar",
+      "subtitle": "Digite este código no computador ou celular que você está adicionando",
       "expiresIn": "Expira em {{remaining}}",
       "expired": "Convite expirado",
       "passphraseHint": "O dispositivo que vai entrar também precisa da frase secreta do Espaço para concluir o pareamento",
@@ -1119,6 +1119,7 @@
         "title": "Falha no pareamento",
         "unknown": "O outro dispositivo não conseguiu entrar",
         "fallback": "Falha no pareamento: {{reason}}",
+        "networkHint": "Verifique se os dois dispositivos estão com conexão de rede funcionando e tente novamente",
         "reasons": {
           "cancelled": "O convite foi cancelado",
           "expired": "Convite expirado",
@@ -1200,8 +1201,10 @@
       "goToSettings": "Ir para Configurações"
     },
     "mobileSync": {
-      "title": "Conexões de celular pela rede local",
+      "title": "Sincronização móvel pela rede local",
       "description": "Sincronize sua área de transferência com dispositivos móveis (iOS / Android) pela rede local usando o protocolo SyncClipboard",
+      "deprecated": "Será removido",
+      "deprecatedTooltip": "Este canal será removido em uma versão futura. Para usar todos os recursos, instale o app móvel e pareie seu dispositivo",
       "configure": "Configurar",
       "statusBar": {
         "bindFailed": "Falha ao iniciar o listener: {{reason}}"
@@ -1487,9 +1490,8 @@
         }
       },
       "addMenu": {
-        "trigger": "Adicionar dispositivo",
-        "triggerShort": "Adicionar",
-        "p2p": "Parear um novo dispositivo",
+        "trigger": "Convidar dispositivo",
+        "otherWays": "Outras formas de adicionar",
         "mobile": "Conectar um celular pela rede local"
       }
     },

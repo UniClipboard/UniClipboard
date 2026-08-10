@@ -8,6 +8,7 @@
     "start": "next start",
     "types:check": "fumadocs-mdx && next typegen && tsc --noEmit",
     "check:docs": "node scripts/check-docs.mjs",
+    "test:config": "node --test test/next-config.test.mjs",
     "postinstall": "fumadocs-mdx",
     "lint": "eslint"
   },
@@ -23,7 +24,7 @@
     "fumadocs-openapi": "^10.9.0",
     "fumadocs-ui": "16.9.1",
     "lucide-react": "^1.16.0",
-    "mermaid": "^11.15.0",
+    "mermaid": "^11.16.1",
     "next": "16.3.0",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
@@ -43,5 +44,9 @@
     "postcss": "^8.5.25",
     "tailwindcss": "^4.3.3",
     "typescript": "^6.0.3"
+  },
+  "overrides": {
+    "dompurify": "3.4.13",
+    "js-yaml": "4.3.1"
   }
 }

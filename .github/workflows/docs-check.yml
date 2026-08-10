@@ -41,6 +41,9 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      - name: Deployment configuration check
+        run: bun run test:config
+
       - name: Consistency check (mirror + anchors + autolink)
         run: bun run check:docs
 

@@ -37,6 +37,8 @@ const config = {
   reactStrictMode: true,
   basePath: '/docs',
   assetPrefix: '/docs',
+  // The main-site rewrite cannot serve Next.js 16.3 immutable assets.
+  supportsImmutableAssets: false,
   async redirects() {
     return docRedirects
   },

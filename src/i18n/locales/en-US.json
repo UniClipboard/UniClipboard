@@ -1075,7 +1075,7 @@
     },
     "addDevice": {
       "title": "Invite a new device",
-      "subtitle": "Enter this code on the joining device",
+      "subtitle": "Enter this code on the computer or phone you're adding",
       "expiresIn": "Expires in {{remaining}}",
       "expired": "Invitation expired",
       "passphraseHint": "The joining device also needs the space passphrase to finish pairing",
@@ -1098,6 +1098,7 @@
         "title": "Pairing failed",
         "unknown": "The other device couldn't join",
         "fallback": "Pairing failed: {{reason}}",
+        "networkHint": "Make sure both devices have a working network connection, then try again",
         "reasons": {
           "cancelled": "Invitation was cancelled",
           "expired": "Invitation expired",
@@ -1197,8 +1198,10 @@
       "goToSettings": "Go to Settings"
     },
     "mobileSync": {
-      "title": "Phone LAN Connections",
+      "title": "LAN Mobile Sync",
       "description": "Sync your clipboard with mobile devices (iOS / Android) over LAN using the SyncClipboard protocol",
+      "deprecated": "Deprecating",
+      "deprecatedTooltip": "This channel will be removed in a future version. For full functionality, install the mobile app and pair your device.",
       "configure": "Configure",
       "statusBar": {
         "bindFailed": "Failed to start listener: {{reason}}"
@@ -1483,9 +1486,8 @@
         }
       },
       "addMenu": {
-        "trigger": "Add device",
-        "triggerShort": "Add",
-        "p2p": "Pair a new device",
+        "trigger": "Invite Device",
+        "otherWays": "Other ways to add",
         "mobile": "Connect a phone over LAN"
       }
     },

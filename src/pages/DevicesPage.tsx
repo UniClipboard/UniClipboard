@@ -21,7 +21,7 @@
  * daemon-pushed `peers.changed` ws events.
  */
 
-import { Plus, RefreshCw, Settings2, TriangleAlert, Unlink } from 'lucide-react'
+import { ChevronDown, Plus, RefreshCw, Settings2, TriangleAlert, Unlink } from 'lucide-react'
 import React, { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { useTranslation } from 'react-i18next'
 import { refreshPresence } from '@/api/daemon'
@@ -48,6 +48,7 @@ import {
 import AddDeviceDialog from '@/components/device/AddDeviceDialog'
 import AddMobileSyncDeviceDialog from '@/components/device/AddMobileSyncDeviceDialog'
 import { derivePeerStatusTone } from '@/components/device/connection-channel-utils'
+import { DeprecatedBadge } from '@/components/device/DeprecatedBadge'
 import EnableMobileSyncDialog from '@/components/device/EnableMobileSyncDialog'
 import LocalDevicePanel from '@/components/device/LocalDevicePanel'
 import MobileDevicePanel from '@/components/device/MobileDevicePanel'
@@ -68,6 +69,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -417,35 +419,13 @@ const DevicesPage: React.FC = () => {
             <h2 className="min-w-0 truncate text-base font-semibold tracking-tight text-foreground">
               {t('devices.panel.listTitle')}
             </h2>
-            {/* The button shows `triggerShort` but announces the full
-                `trigger` wording. WCAG 2.5.3 (Label in Name) requires the
-                accessible name to contain the visible text, so every locale
-                must keep triggerShort a substring of trigger. */}
-            <DropdownMenu>
-              <DropdownMenuTrigger
-                render={
-                  <Button
-                    variant="outline"
-                    size="xs"
-                    aria-label={t('devices.panel.addMenu.trigger')}
-                  />
-                }
-              >
-                <Plus />
-                {t('devices.panel.addMenu.triggerShort')}
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-52">
-                <DropdownMenuItem onClick={() => setAddP2PDialogOpen(true)}>
-                  {t('devices.panel.addMenu.p2p')}
-                </DropdownMenuItem>
-                {/* Not disabled on `lanListenerError`: `handleAddClick` owns
-                    that gate and explains the failure via toast. A disabled
-                    item would block the only path to that explanation. */}
-                <DropdownMenuItem onClick={mobileActions.handleAddClick}>
-                  {t('devices.panel.addMenu.mobile')}
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+            {/* Primary add path: inviting a device is the one first-class way
+                to grow the space, so it gets a direct button instead of a
+                menu. The LAN mobile channel is demoted to a secondary link. */}
+            <Button variant="outline" size="xs" onClick={() => setAddP2PDialogOpen(true)}>
+              <Plus />
+              {t('devices.panel.addMenu.trigger')}
+            </Button>
           </div>
           <p className="mt-0.5 text-[11px] text-muted-foreground">
             {t('devices.panel.counts', {
@@ -454,6 +434,31 @@ const DevicesPage: React.FC = () => {
               mobile: mobileDevices.length,
             })}
           </p>
+          {/* Secondary add path: LAN mobile sync, kept for existing users but
+              visually demoted behind a muted disclosure link. */}
+          <div className="mt-1">
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={
+                  <button
+                    type="button"
+                    className="flex items-center gap-0.5 text-xs text-muted-foreground/70 transition-colors hover:text-foreground"
+                  />
+                }
+              >
+                {t('devices.panel.addMenu.otherWays')}
+                <ChevronDown className="size-3" aria-hidden="true" />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-64">
+                <DropdownMenuItem onClick={mobileActions.handleAddClick}>
+                  <span className="flex-1">{t('devices.panel.addMenu.mobile')}</span>
+                  <Badge variant="outline" className="border-border/60 text-muted-foreground">
+                    {t('devices.mobileSync.deprecated')}
+                  </Badge>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
           <SpaceConnectionStatus state={visibleConvergenceState} />
           {memberRemoval?.outcome === 'recovering' && (
             <Alert className="mt-2 border-warning/30 bg-warning/10 text-warning">
@@ -641,13 +646,14 @@ const DevicesPage: React.FC = () => {
             ))}
             {peers.length === 0 && !spaceMembersError && (
               <EmptyAddRow
-                label={t('devices.panel.addMenu.p2p')}
+                label={t('devices.panel.addMenu.trigger')}
                 onClick={() => setAddP2PDialogOpen(true)}
               />
             )}
 
             <SectionLabel
               label={t('devices.mobileSync.title')}
+              labelTrailing={<DeprecatedBadge />}
               trailing={
                 <button
                   type="button"
@@ -689,6 +695,7 @@ const DevicesPage: React.FC = () => {
               <EmptyAddRow
                 label={t('devices.panel.addMenu.mobile')}
                 onClick={mobileActions.handleAddClick}
+                dimmed
               />
             )}
           </div>
@@ -868,14 +875,18 @@ export default DevicesPage
 // List column pieces
 // ────────────────────────────────────────────────────────────────
 
-const SectionLabel: React.FC<{ label: string; trailing?: React.ReactNode }> = ({
-  label,
-  trailing,
-}) => (
+const SectionLabel: React.FC<{
+  label: string
+  labelTrailing?: React.ReactNode
+  trailing?: React.ReactNode
+}> = ({ label, labelTrailing, trailing }) => (
   <div className="flex items-center justify-between px-2.5 pb-1 pt-4">
-    <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground/80">
-      {label}
-    </span>
+    <div className="flex min-w-0 items-center gap-1.5">
+      <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground/80">
+        {label}
+      </span>
+      {labelTrailing}
+    </div>
     {trailing}
   </div>
 )
@@ -885,14 +896,24 @@ const SectionLabel: React.FC<{ label: string; trailing?: React.ReactNode }> = ({
  * devices to list, the space is better spent on a labelled target than on a
  * dead "nothing here" line. The header's `＋` stays the steady-state shortcut.
  *
+ * `dimmed` marks a legacy entry that stays reachable for existing users but is
+ * no longer presented as onboarding guidance (LAN mobile sync).
+ *
  * Deliberately never disabled - the click handler owns any gating and can say
  * why it refused, which a greyed-out row cannot.
  */
-const EmptyAddRow: React.FC<{ label: string; onClick: () => void }> = ({ label, onClick }) => (
+const EmptyAddRow: React.FC<{ label: string; onClick: () => void; dimmed?: boolean }> = ({
+  label,
+  onClick,
+  dimmed,
+}) => (
   <button
     type="button"
     onClick={onClick}
-    className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-left text-[11px] text-muted-foreground/70 transition-colors hover:bg-muted/60 hover:text-foreground"
+    className={cn(
+      'flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-left text-[11px] text-muted-foreground/70 transition-colors hover:bg-muted/60 hover:text-foreground',
+      dimmed && 'opacity-60 hover:bg-transparent hover:text-muted-foreground/70'
+    )}
   >
     <Plus className="size-3" />
     {label}

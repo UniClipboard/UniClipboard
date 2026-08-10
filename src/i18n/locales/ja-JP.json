@@ -1093,7 +1093,7 @@
     },
     "addDevice": {
       "title": "新しいデバイスを招待",
-      "subtitle": "参加デバイスにこのコードを入力してください",
+      "subtitle": "追加するコンピューターまたはスマートフォンでこのコードを入力してください",
       "expiresIn": "有効期限は {{remaining}}",
       "expired": "招待の有効期限が切れました",
       "passphraseHint": "参加デバイスでもペアリングを完了するにはスペース パスフレーズが必要です",
@@ -1116,6 +1116,7 @@
         "title": "ペアリングに失敗しました",
         "unknown": "他のデバイスは参加できませんでした",
         "fallback": "ペアリングが失敗しました: {{reason}}",
+        "networkHint": "両方のデバイスのネットワーク接続を確認してから、もう一度お試しください",
         "reasons": {
           "cancelled": "招待がキャンセルされました",
           "expired": "招待の有効期限が切れました",
@@ -1197,8 +1198,10 @@
       "goToSettings": "設定に移動"
     },
     "mobileSync": {
-      "title": "スマートフォンのLAN接続",
+      "title": "LANモバイル同期",
       "description": "SyncClipboard プロトコルを使用して LAN 経由でクリップボードをモバイル デバイス (iOS / Android) と同期します",
+      "deprecated": "廃止予定",
+      "deprecatedTooltip": "このチャネルは将来のバージョンで削除される予定です。完全な機能を利用するには、モバイル アプリをインストールしてデバイスをペアリングしてください",
       "configure": "設定",
       "statusBar": {
         "bindFailed": "リスナーの開始に失敗しました: {{reason}}"
@@ -1483,9 +1486,8 @@
         }
       },
       "addMenu": {
-        "trigger": "デバイスを追加",
-        "triggerShort": "追加",
-        "p2p": "新しいデバイスをペアリング",
+        "trigger": "デバイスを招待",
+        "otherWays": "他の追加方法",
         "mobile": "LAN経由でスマートフォンを接続"
       }
     },

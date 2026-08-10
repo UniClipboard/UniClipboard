@@ -1074,7 +1074,7 @@
     },
     "addDevice": {
       "title": "邀请新设备",
-      "subtitle": "在新设备上输入此邀请码",
+      "subtitle": "在要加入的电脑或手机上输入此邀请码",
       "expiresIn": "{{remaining}} 后过期",
       "expired": "邀请码已过期",
       "passphraseHint": "新设备还需输入空间口令完成配对",
@@ -1097,6 +1097,7 @@
         "title": "配对失败",
         "unknown": "对方设备未能成功加入",
         "fallback": "配对失败：{{reason}}",
+        "networkHint": "请确认两台设备的网络连接正常，然后重试",
         "reasons": {
           "cancelled": "邀请已取消",
           "expired": "邀请已过期",
@@ -1196,8 +1197,10 @@
       "goToSettings": "前往设置"
     },
     "mobileSync": {
-      "title": "手机局域网连接",
+      "title": "局域网移动同步",
       "description": "通过 SyncClipboard 协议在局域网内与移动设备（iOS / Android）同步剪贴板",
+      "deprecated": "即将弃用",
+      "deprecatedTooltip": "此通道将在未来版本移除，推荐通过安装移动端 App 并配对设备使用完整功能",
       "configure": "配置",
       "statusBar": {
         "bindFailed": "无法启动监听:{{reason}}"
@@ -1482,9 +1485,8 @@
         }
       },
       "addMenu": {
-        "trigger": "添加设备",
-        "triggerShort": "添加",
-        "p2p": "配对新设备",
+        "trigger": "邀请设备",
+        "otherWays": "其他添加方式",
         "mobile": "通过局域网连接手机"
       }
     },

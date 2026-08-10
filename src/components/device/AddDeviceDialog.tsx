@@ -272,6 +272,9 @@ function AddDeviceDialogInner({ open, onOpenChange }: AddDeviceDialogProps) {
             {t('devices.addDevice.failed.title')}
           </p>
           <p className="mt-1 text-sm text-muted-foreground">{failureMessage}</p>
+          <p className="mt-3 text-xs text-muted-foreground/70">
+            {t('devices.addDevice.failed.networkHint')}
+          </p>
         </div>
       </div>
     )

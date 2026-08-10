@@ -96,6 +96,14 @@ vi.mock('@/components/device/AddMobileSyncDeviceDialog', () => ({
     ) : null,
 }))
 
+// The invite dialog would issue a real pairing invitation against the daemon;
+// its state machine is covered by AddDeviceDialog's own unit tests, so here it
+// is reduced to an open marker.
+vi.mock('@/components/device/AddDeviceDialog', () => ({
+  default: ({ open }: { open: boolean }) =>
+    open ? <div data-testid="stub-invite-dialog" /> : null,
+}))
+
 // The panel is stubbed for the same reason: its fresh-state QR + credential
 // rendering is its own suite's job. Here we only need to see which device the
 // page selected and whether the one-time credential reached the panel.
@@ -926,29 +934,45 @@ describe('DevicesPage add-device entry points', () => {
     vi.mocked(getMobileSyncSettings).mockResolvedValue(settingsFixture())
   })
 
-  it('opens the header menu with both add paths', async () => {
+  it('opens the invite dialog from the primary button', async () => {
     const user = userEvent.setup()
     render(<DevicesPage />)
 
-    // The trigger shows the short label but announces the full wording.
-    await user.click(screen.getByRole('button', { name: i18n.t('devices.panel.addMenu.trigger') }))
+    // The primary button now opens the invite dialog directly, no menu. The
+    // paired-devices empty row shares its wording, so the header button is the
+    // first match in document order.
+    await user.click(
+      screen.getAllByRole('button', { name: i18n.t('devices.panel.addMenu.trigger') })[0]
+    )
 
+    expect(screen.getByTestId('stub-invite-dialog')).toBeInTheDocument()
+  })
+
+  it('offers the LAN mobile path via the secondary menu', async () => {
+    const user = userEvent.setup()
+    render(<DevicesPage />)
+
+    await user.click(
+      screen.getByRole('button', { name: i18n.t('devices.panel.addMenu.otherWays') })
+    )
+
+    // The menuitem carries the mobile label plus a "deprecating" badge, so
+    // match on the label prefix.
     expect(
-      await screen.findByRole('menuitem', { name: i18n.t('devices.panel.addMenu.p2p') })
-    ).toBeInTheDocument()
-    expect(
-      screen.getByRole('menuitem', { name: i18n.t('devices.panel.addMenu.mobile') })
+      await screen.findByRole('menuitem', {
+        name: name => name.startsWith(i18n.t('devices.panel.addMenu.mobile')),
+      })
     ).toBeInTheDocument()
   })
 
   it('offers an add entry in each empty section', async () => {
     render(<DevicesPage />)
 
-    // Both sections are empty under this suite's mocks (no peers, no mobile
-    // devices), so each renders its labelled add row instead of a dead line.
+    // The paired-devices empty row shares the primary button's wording; the
+    // header button always renders alongside it, so both are present.
     expect(
-      await screen.findByRole('button', { name: i18n.t('devices.panel.addMenu.p2p') })
-    ).toBeEnabled()
+      await screen.findAllByRole('button', { name: i18n.t('devices.panel.addMenu.trigger') })
+    ).not.toHaveLength(0)
     expect(
       screen.getByRole('button', { name: i18n.t('devices.panel.addMenu.mobile') })
     ).toBeEnabled()

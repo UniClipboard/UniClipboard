@@ -83,23 +83,19 @@ describe('locale bundle parity', () => {
 
   it('names device onboarding by connection method in every locale', () => {
     const expected = {
-      'zh-CN': ['配对新设备', '通过局域网连接手机', '手机局域网连接'],
-      'zh-TW': ['配對新裝置', '透過區域網路連接手機', '手機區域網路連線'],
-      'en-US': ['Pair a new device', 'Connect a phone over LAN', 'Phone LAN Connections'],
-      'ja-JP': [
-        '新しいデバイスをペアリング',
-        'LAN経由でスマートフォンを接続',
-        'スマートフォンのLAN接続',
-      ],
+      'zh-CN': ['邀请设备', '通过局域网连接手机', '局域网移动同步'],
+      'zh-TW': ['邀請裝置', '透過區域網路連接手機', '區域網路移動同步'],
+      'en-US': ['Invite Device', 'Connect a phone over LAN', 'LAN Mobile Sync'],
+      'ja-JP': ['デバイスを招待', 'LAN経由でスマートフォンを接続', 'LANモバイル同期'],
       'ru-RU': [
-        'Сопрячь новое устройство',
+        'Пригласить устройство',
         'Подключить телефон по локальной сети',
-        'Подключения телефонов по локальной сети',
+        'Локальная мобильная синхронизация',
       ],
       'pt-BR': [
-        'Parear um novo dispositivo',
+        'Convidar dispositivo',
         'Conectar um celular pela rede local',
-        'Conexões de celular pela rede local',
+        'Sincronização móvel pela rede local',
       ],
     }
 
@@ -107,7 +103,7 @@ describe('locale bundle parity', () => {
       const bundle = bundles[locale]
       expect(
         [
-          bundle['devices.panel.addMenu.p2p'],
+          bundle['devices.panel.addMenu.trigger'],
           bundle['devices.panel.addMenu.mobile'],
           bundle['devices.mobileSync.title'],
         ],

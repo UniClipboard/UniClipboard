@@ -127,9 +127,10 @@ uniclip members
 UniClipboard 还提供一种 **实验性的 HTTP 伴侣** 模式，用于在桌面与手机
 之间互相粘贴。移动端走的是和桌面 **不同** 的配对路径 —— 它不加入空间的
 iroh 信任网络、不分配 node ID。默认在 LAN 下与桌面互通，需要跨网络时
-可经自建 server 节点或 Tailscale。
+可经自建 server 节点或 Tailscale。该 LAN 通道正在被弃用：推荐改为安装
+移动端 App 并作为普通设备配对，以使用完整功能。
 
-1. 在桌面端打开 **设备 → 添加 → 通过局域网连接手机**，给这台设备起一个标签。
+1. 在桌面端打开 **设备 → 其他添加方式 → 通过局域网连接手机**，给这台设备起一个标签。
 2. 凭据弹窗里按 **接入方式** 拆成两个 tab：
    - **扫码接入（Scan to add）** —— 一个 connect-URI 二维码。在
      UniClipboard iOS App（或任意兼容 SyncClipboard 协议的客户端，

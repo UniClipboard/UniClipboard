@@ -21,7 +21,6 @@ import {
 import type { ChatUIMessage, SearchTool } from '@/app/api/chat/route'
 import { Markdown } from '@/components/markdown'
 import { cn } from '@/lib/cn'
-import { docsBasePath } from '@/lib/shared'
 
 type AILocale = 'en' | 'zh'
 
@@ -364,7 +363,7 @@ export function AISearch({ children, locale = 'en' }: { children: ReactNode; loc
   const chat = useChat<ChatUIMessage>({
     id: 'search',
     transport: new DefaultChatTransport({
-      api: `${docsBasePath}/api/chat`,
+      api: '/api/chat',
     }),
   })
 

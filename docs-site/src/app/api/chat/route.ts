@@ -10,7 +10,6 @@ import {
 } from 'ai'
 import { z } from 'zod'
 import { docsSearchServer } from '@/lib/docs-search'
-import { docsBasePath } from '@/lib/shared'
 
 type DocsLocale = 'en' | 'zh'
 type AIProvider = 'openai' | 'anthropic'
@@ -58,11 +57,6 @@ function createChatModel() {
   return openai.chat(requireEnv('OPENAI_MODEL'))
 }
 
-function withDocsBasePath(url: string) {
-  if (url === '/') return docsBasePath
-  return `${docsBasePath}${url}`
-}
-
 function getClientLocale(messages: ChatUIMessage[]): DocsLocale {
   for (const message of messages.toReversed()) {
     for (const part of message.parts ?? []) {
@@ -70,7 +64,7 @@ function getClientLocale(messages: ChatUIMessage[]): DocsLocale {
 
       try {
         const pathname = new URL(part.data.location).pathname
-        if (pathname === `${docsBasePath}/zh` || pathname.startsWith(`${docsBasePath}/zh/`)) {
+        if (pathname === '/zh' || pathname.startsWith('/zh/')) {
           return 'zh'
         }
       } catch {
@@ -97,7 +91,7 @@ function createSearchTool(defaultLocale: DocsLocale) {
       })
       return results.map(result => ({
         ...result,
-        url: withDocsBasePath(result.url),
+        url: result.url,
       }))
     },
   })

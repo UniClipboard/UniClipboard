@@ -2,11 +2,8 @@
 
 import { RootProvider } from 'fumadocs-ui/provider/next'
 import type { ReactNode } from 'react'
-import { docsBasePath } from '@/lib/shared'
 
-// fetch() in the search client doesn't honor Next.js `basePath`, so we must
-// pin the API URL to the prefixed route registered by `app/api/search/route.ts`.
-const SEARCH_API = `${docsBasePath}/api/search`
+const SEARCH_API = '/api/search'
 
 type I18nProp = Parameters<typeof RootProvider>[0]['i18n']
 

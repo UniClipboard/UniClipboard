@@ -8,6 +8,7 @@
     "start": "next start",
     "types:check": "fumadocs-mdx && next typegen && tsc --noEmit",
     "check:docs": "node scripts/check-docs.mjs",
+    "test:config": "node --test test/next-config.test.mjs",
     "postinstall": "fumadocs-mdx",
     "lint": "eslint"
   },

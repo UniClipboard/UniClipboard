@@ -9,6 +9,24 @@ use std::time::Duration;
 
 use crate::contract::{DaemonBootstrapError, ProbeOutcome};
 
+/// Liveness of a freshly-spawned daemon child process, as observed by
+/// [`wait_for_daemon_health_watching_child`].
+///
+/// Transport-neutral by design — it carries no `std::process` types — so the
+/// wait loop stays decoupled from the spawn primitive and can be unit-tested
+/// with a scripted poller. The bridge from a real [`std::process::Child`] lives
+/// in [`crate::spawn::poll_child_liveness`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ChildLiveness {
+    /// The child is still running, or its liveness could not be determined
+    /// (treated as "keep waiting" — the health timeout still bounds the loop).
+    Running,
+    /// The child has exited with the given process exit code, if the OS
+    /// reported one. On Windows this surfaces the NTSTATUS (e.g. `0xC0000135`
+    /// STATUS_DLL_NOT_FOUND for a missing dependency — issue #1259).
+    Exited { code: Option<i32> },
+}
+
 /// 轮询 daemon 健康端点，直到 daemon 报告兼容、或超时、或观测到不兼容。
 ///
 /// - `Compatible` → 返回 `Ok(())`
@@ -31,6 +49,60 @@ where
             ProbeOutcome::Incompatible { details, .. } => {
                 return Err(DaemonBootstrapError::IncompatibleDaemon { details });
             }
+        }
+
+        if tokio::time::Instant::now() >= deadline {
+            return Err(DaemonBootstrapError::StartupTimeout {
+                timeout_ms: timeout.as_millis() as u64,
+            });
+        }
+
+        tokio::time::sleep(poll_interval).await;
+    }
+}
+
+/// Like [`wait_for_daemon_health`] but ALSO watches the freshly-spawned child
+/// process: if it exits before `/health` reports healthy, fail fast with
+/// [`DaemonBootstrapError::SpawnExitedEarly`] instead of spinning until the
+/// (long) startup timeout.
+///
+/// This is what distinguishes "the daemon binary crashed on launch" (e.g. a
+/// missing `vcruntime140.dll` on Windows, where `Command::spawn` still returns
+/// `Ok` — issue #1259) from "the daemon is merely slow to start". `poll_child`
+/// reports the child's [`ChildLiveness`]; production wraps
+/// [`crate::spawn::poll_child_liveness`], tests script it.
+///
+/// Ordering within each iteration is **probe first, then liveness**: a daemon
+/// that has genuinely come up wins even in the rare race where our spawned
+/// child has exited but a healthy daemon is reachable (e.g. another actor's).
+/// Connection-refused probes return `Absent` immediately, so probe-first adds
+/// no latency to detecting a crash — the exit is caught on the next iteration.
+pub async fn wait_for_daemon_health_watching_child<Probe, ProbeFuture, ChildPoll>(
+    probe: &mut Probe,
+    poll_child: &mut ChildPoll,
+    timeout: Duration,
+    poll_interval: Duration,
+) -> Result<(), DaemonBootstrapError>
+where
+    Probe: FnMut() -> ProbeFuture,
+    ProbeFuture: Future<Output = Result<ProbeOutcome, DaemonBootstrapError>>,
+    ChildPoll: FnMut() -> ChildLiveness,
+{
+    let deadline = tokio::time::Instant::now() + timeout;
+    loop {
+        match probe().await? {
+            ProbeOutcome::Compatible(_) => return Ok(()),
+            ProbeOutcome::Absent => {}
+            ProbeOutcome::Incompatible { details, .. } => {
+                return Err(DaemonBootstrapError::IncompatibleDaemon { details });
+            }
+        }
+
+        // The child exited before serving `/health` — a dead process can never
+        // turn healthy, so surface the crash (with its exit code) now rather
+        // than after the full startup timeout.
+        if let ChildLiveness::Exited { code } = poll_child() {
+            return Err(DaemonBootstrapError::SpawnExitedEarly { code });
         }
 
         if tokio::time::Instant::now() >= deadline {
@@ -291,5 +363,113 @@ mod tests {
             1,
             "must not retry through probe errors"
         );
+    }
+
+    // ---- wait_for_daemon_health_watching_child: early-exit detection ----
+
+    /// A scripted child poller mirroring `scripted_probe`: returns successive
+    /// `ChildLiveness` values, then repeats the last one forever.
+    fn scripted_child(script: Vec<ChildLiveness>) -> impl FnMut() -> ChildLiveness {
+        let mut n = 0usize;
+        move || {
+            let idx = n.min(script.len().saturating_sub(1));
+            n += 1;
+            script[idx]
+        }
+    }
+
+    #[tokio::test]
+    async fn watching_child_fails_fast_when_child_exits_before_health() {
+        // The issue #1259 case: the daemon binary launches but its process
+        // dies before `/health` ever comes up. We must surface the exit code,
+        // not wait out the full startup timeout.
+        let (mut probe, probe_calls) = scripted_probe(vec![ProbeOutcome::Absent]);
+        // First poll: still starting; second poll: dead with a DLL-load code.
+        let mut poll_child = scripted_child(vec![
+            ChildLiveness::Running,
+            ChildLiveness::Exited {
+                code: Some(0xC000_0135u32 as i32),
+            },
+        ]);
+
+        let err = wait_for_daemon_health_watching_child(
+            &mut probe,
+            &mut poll_child,
+            Duration::from_secs(30),
+            Duration::from_millis(1),
+        )
+        .await
+        .expect_err("a child that exits before health must fail fast");
+
+        match err {
+            DaemonBootstrapError::SpawnExitedEarly { code } => {
+                assert_eq!(code, Some(0xC000_0135u32 as i32));
+            }
+            other => panic!("expected SpawnExitedEarly, got: {other}"),
+        }
+        // Must NOT have spun for the full timeout — a couple of polls, no more.
+        assert!(
+            probe_calls.load(Ordering::SeqCst) <= 2,
+            "must fail on the exit, not exhaust the startup budget"
+        );
+    }
+
+    #[tokio::test]
+    async fn watching_child_succeeds_when_daemon_becomes_healthy() {
+        // Child stays alive and the daemon eventually serves `/health`.
+        let (mut probe, _) = scripted_probe(vec![
+            ProbeOutcome::Absent,
+            ProbeOutcome::Compatible(ok_health()),
+        ]);
+        let mut poll_child = scripted_child(vec![ChildLiveness::Running]);
+
+        wait_for_daemon_health_watching_child(
+            &mut probe,
+            &mut poll_child,
+            Duration::from_secs(5),
+            Duration::from_millis(1),
+        )
+        .await
+        .expect("a live child that becomes healthy must resolve Ok");
+    }
+
+    #[tokio::test]
+    async fn watching_child_prefers_compatible_over_a_racing_exit() {
+        // Probe-first ordering: if `/health` is already healthy, a same-tick
+        // child exit (e.g. a different, healthy daemon owns the port) must not
+        // mask success.
+        let (mut probe, _) = scripted_probe(vec![ProbeOutcome::Compatible(ok_health())]);
+        let mut poll_child = scripted_child(vec![ChildLiveness::Exited { code: Some(1) }]);
+
+        wait_for_daemon_health_watching_child(
+            &mut probe,
+            &mut poll_child,
+            Duration::from_secs(5),
+            Duration::from_millis(1),
+        )
+        .await
+        .expect("a healthy probe must win over a racing child exit");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn watching_child_still_times_out_when_child_lingers_unhealthy() {
+        // A child that stays alive but never serves `/health` must still hit
+        // the startup timeout — liveness watching only shortcuts a real crash.
+        let (mut probe, _) = scripted_probe(vec![ProbeOutcome::Absent]);
+        let mut poll_child = scripted_child(vec![ChildLiveness::Running]);
+
+        let err = wait_for_daemon_health_watching_child(
+            &mut probe,
+            &mut poll_child,
+            Duration::from_millis(100),
+            Duration::from_millis(10),
+        )
+        .await
+        .expect_err("a lingering-but-unhealthy child must time out");
+
+        assert!(matches!(
+            err,
+            DaemonBootstrapError::StartupTimeout { timeout_ms: 100 }
+        ));
     }
 }

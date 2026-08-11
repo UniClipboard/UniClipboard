@@ -22,12 +22,14 @@ use uc_daemon_contract::probe::{
 use uc_daemon_process::contract::{
     terminate_local_daemon_pid, DaemonBootstrapError, TerminateDaemonError,
 };
-use uc_daemon_process::health_wait::{wait_for_daemon_health, wait_for_endpoint_absent};
+use uc_daemon_process::health_wait::{
+    wait_for_daemon_health_watching_child, wait_for_endpoint_absent,
+};
 use uc_daemon_process::process_metadata::{
     find_pid_by_port, read_pid_metadata, DaemonPidMetadata, DaemonProcessMode, DaemonSpawnOrigin,
 };
 use uc_daemon_process::socket::try_resolve_daemon_http_addr;
-use uc_daemon_process::spawn::spawn_detached_daemon;
+use uc_daemon_process::spawn::{poll_child_liveness, spawn_detached_daemon_returning_child};
 
 use crate::daemon::{DaemonLaunchOrigin, DaemonOwnership};
 
@@ -122,7 +124,7 @@ pub fn load_daemon_connection_info() -> Result<DaemonConnectionInfo, DaemonBoots
 ///
 /// ADR-008 P3-3 (B2'-3): GUI 是外部 `uniclipd` 的纯客户端。不再有 in-process
 /// daemon —— 没有 daemon 时拉起的是一个 **detached 外部进程**
-/// ([`spawn_detached_daemon`])。
+/// ([`spawn_detached_daemon_returning_child`])。
 ///
 /// 行为：
 /// 1. 探测本机 daemon HTTP 端点；
@@ -248,17 +250,40 @@ async fn spawn_external_and_wait_health(
 ) -> Result<(), DaemonBootstrapError> {
     // ADR-008 D3: tag the spawn as GUI-owned so its PID file records
     // `spawned_by = gui` — this (or another) GUI may stop it on full quit.
-    spawn_detached_daemon(DaemonSpawnOrigin::Gui, None).map_err(|error| {
-        DaemonBootstrapError::Spawn(
-            anyhow::Error::new(error).context("detached daemon spawn failed"),
-        )
-    })?;
+    //
+    // Keep the child handle so the wait loop can watch for an early exit: on
+    // Windows `Command::spawn` returns `Ok` even when the image loader later
+    // fails to resolve a dependency DLL (e.g. a missing `vcruntime140.dll`,
+    // issue #1259) and the process dies within milliseconds. Without watching
+    // the child, that hard crash is indistinguishable from a slow start until
+    // the (long) `health_check_timeout` elapses.
+    let mut child =
+        spawn_detached_daemon_returning_child(DaemonSpawnOrigin::Gui, None).map_err(|error| {
+            DaemonBootstrapError::Spawn(
+                anyhow::Error::new(error).context("detached daemon spawn failed"),
+            )
+        })?;
     ownership.set_external();
     // This launch spawned the daemon — a genuine cold start (issue #1169).
     launch_origin.mark_spawned();
 
     let mut probe_fn = || async { probe_daemon_health(client, expected_package_version).await };
-    wait_for_daemon_health(&mut probe_fn, health_check_timeout, health_poll_interval).await
+    let mut poll_child = || poll_child_liveness(&mut child);
+    let result = wait_for_daemon_health_watching_child(
+        &mut probe_fn,
+        &mut poll_child,
+        health_check_timeout,
+        health_poll_interval,
+    )
+    .await;
+
+    // Drop the handle now the outcome is known: on success this detaches the
+    // healthy daemon (it keeps running independently); on failure the process
+    // is already gone. Dropping neither kills nor reaps it — see
+    // `spawn_detached_daemon_returning_child`.
+    drop(poll_child);
+    drop(child);
+    result
 }
 
 /// 终止 PID 文件指向的不兼容 daemon——但**绝不**对 in-process daemon 动手。
@@ -628,16 +653,32 @@ pub async fn restart_local_daemon(
     }
 
     // ── 4. spawn 新 daemon ────────────────────────────────────────
+    // Hold the child handle so step 5 can fail fast if the freshly-spawned
+    // daemon exits on launch (e.g. a broken build with a missing dependency
+    // DLL) instead of waiting out the full startup timeout — issue #1259.
     tracing::info!("restart_local_daemon: spawning new daemon");
-    spawn_detached_daemon(DaemonSpawnOrigin::Gui, None).map_err(|e| {
-        DaemonBootstrapError::Spawn(
-            anyhow::Error::new(e).context("restart_local_daemon: failed to spawn new daemon"),
-        )
-    })?;
+    let mut child =
+        spawn_detached_daemon_returning_child(DaemonSpawnOrigin::Gui, None).map_err(|e| {
+            DaemonBootstrapError::Spawn(
+                anyhow::Error::new(e).context("restart_local_daemon: failed to spawn new daemon"),
+            )
+        })?;
 
     // ── 5. 等待新 daemon 就绪 ────────────────────────────────────
     let mut probe_fn = || async { probe_daemon_health(&client, expected_package_version).await };
-    wait_for_daemon_health(&mut probe_fn, HEALTH_CHECK_TIMEOUT, HEALTH_POLL_INTERVAL).await?;
+    let mut poll_child = || poll_child_liveness(&mut child);
+    let wait_result = wait_for_daemon_health_watching_child(
+        &mut probe_fn,
+        &mut poll_child,
+        HEALTH_CHECK_TIMEOUT,
+        HEALTH_POLL_INTERVAL,
+    )
+    .await;
+    // Detach the healthy daemon (or release the handle of a crashed one) before
+    // returning — dropping neither kills nor reaps it.
+    drop(poll_child);
+    drop(child);
+    wait_result?;
 
     // ── 6. 返回新连接信息 ────────────────────────────────────────
     let info = load_daemon_connection_info()?;

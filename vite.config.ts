@@ -86,7 +86,17 @@ export default defineConfig({
     environment: 'jsdom',
     globals: true,
     setupFiles: './src/test/setup.ts',
-    exclude: ['**/node_modules/**', '**/dist/**', '**/.worktrees/**', '**/worktrees/**'],
+    // docs-site/ 有独立的 CI job（docs-check.yml 的 test:config）与自己的
+    // 工具链（node:test + 独立 vitest 环境）；根 vitest 的默认 include 会把
+    // docs-site/test/next-config.test.mjs 卷进来，导致 "Cannot bundle Node.js
+    // built-in node:test"（根环境无法 bundle node:test）。
+    exclude: [
+      '**/node_modules/**',
+      '**/dist/**',
+      '**/.worktrees/**',
+      '**/worktrees/**',
+      '**/docs-site/**',
+    ],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'lcov'],

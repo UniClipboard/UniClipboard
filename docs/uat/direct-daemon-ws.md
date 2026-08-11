@@ -30,7 +30,7 @@ This runbook verifies the end-to-end WebSocket path from the browser (React fron
 
 ## Prerequisites
 
-1. **Daemon must be running** with a valid `daemon.token` file
+1. **Daemon must be running** with a valid `daemon.conn` connection file (ADR-011)
 2. **`scripts/verify-direct-daemon-ws.mjs`** must exist and be executable
 3. **Node.js ≥ 18** (for native `fetch` and `WebSocket`)
 4. **Known daemon base URL and bearer token**
@@ -41,22 +41,27 @@ The bearer token is stored in the daemon's data directory:
 
 ```bash
 # Find the token file
-find ~/Library/Application\ Support/uniclipboard -name "daemon.token" 2>/dev/null
+find ~/Library/Application\ Support/app.uniclipboard.desktop -name "daemon.conn" 2>/dev/null
 
-# Read the token (keep it private!)
-cat ~/Library/Application\ Support/uniclipboard/daemon.token
+# Read the token from daemon.conn (keep it private!)
+cat ~/Library/Application\ Support/app.uniclipboard.desktop/daemon.conn
 ```
+
+> **ADR-011 之后**：daemon 绑定 **ephemeral loopback 端口**，把 host/port/token/pid
+> 发布在 `<app_data_root>/daemon.conn`（`0o600`，原子写）。下文示例中的
+> `42715` / `daemon.token` 均为旧固定端口时代的写法，现只作格式示意；
+> 实际端口以 `daemon.conn` 为准。
 
 ### Finding the Daemon Port
 
-The daemon listens on an ephemeral port (chosen at startup). The Tauri app emits it via `daemon://connection-info`:
+The daemon binds an ephemeral port and publishes it in `daemon.conn`:
 
 ```bash
-# Look for the daemon port in recent logs
-grep -r "listening" ~/Library/Application\ Support/uniclipboard/logs/ 2>/dev/null | tail -5
+# Read the published connection info
+cat ~/Library/Application\ Support/app.uniclipboard.desktop/daemon.conn
 
-# Or look for the HTTP server binding
-grep -r "127.0.0.1:" ~/Library/Application\ Support/uniclipboard/logs/ 2>/dev/null | grep -v "442\|443" | tail -10
+# Or look for the HTTP server binding in logs
+grep -r "daemon HTTP API listening" ~/Library/Logs/app.uniclipboard.desktop/ 2>/dev/null | tail -5
 ```
 
 ---
@@ -80,7 +85,7 @@ VERIFICATION: Direct Daemon WS — Self-Test Mode
 [AUTH        ] Simulating bearer→session exchange...
 [AUTH        ] ✅ Session exchange shape valid (expiresInSecs=300)
 [WS_OPEN     ] Testing WebSocket URL with ?auth= query param...
-[WS_OPEN     ] ✅ WS URL construction valid (base=ws://127.0.0.1:42715/ws)
+[WS_OPEN     ] ✅ WS URL construction valid (base=ws://127.0.0.1:43127/ws)
 [SUBSCRIBE   ] Testing subscribe message envelope...
 [SUBSCRIBE   ] ✅ Subscribe envelope valid (topics=clipboard,peers)
 [SNAPSHOT    ] Testing event envelope parsing...
@@ -111,14 +116,14 @@ Requires a running daemon with valid credentials:
 
 ```bash
 DAEMON_BASE_URL=http://127.0.0.1:<port> \
-DAEMON_TOKEN=$(cat ~/Library/Application\ Support/uniclipboard/daemon.token) \
+DAEMON_TOKEN=$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["token"])' ~/Library/Application\ Support/app.uniclipboard.desktop/daemon.conn) \
 DAEMON_PID=$(pgrep -f "uniclipboard" | head -1) \
 node scripts/verify-direct-daemon-ws.mjs --live
 ```
 
 **Example with real values:**
 ```bash
-DAEMON_BASE_URL=http://127.0.0.1:42715 \
+DAEMON_BASE_URL=http://127.0.0.1:<port-from-daemon.conn> \
 DAEMON_TOKEN=3f4a9c2e1b7d... \
 node scripts/verify-direct-daemon-ws.mjs --live
 ```
@@ -129,11 +134,11 @@ node scripts/verify-direct-daemon-ws.mjs --live
 VERIFICATION: Direct Daemon WS — Live Mode
 ============================================================
 
-[CONFIG      ] DAEMON_BASE_URL=http://127.0.0.1:42715
+[CONFIG      ] DAEMON_BASE_URL=http://127.0.0.1:43127
 [CONFIG      ] DAEMON_PID=12345
-[CONFIG      ] ✅ Config valid (host=127.0.0.1:42715)
+[CONFIG      ] ✅ Config valid (host=127.0.0.1:43127)
 [AUTH        ] Exchanging bearer→session...
-[AUTH        ]    POST http://127.0.0.1:42715/auth/connect
+[AUTH        ]    POST http://127.0.0.1:43127/auth/connect
 [AUTH        ] ✅ Auth success (sessionToken=[redacted], expiresIn=300s, latency=12ms)
 [WS_OPEN     ] Opening WebSocket...
 [WS_OPEN     ] ✅ WebSocket open (latency=8ms)
@@ -186,11 +191,11 @@ Evidence:
 ```bash
 # Regenerate token by restarting the daemon (the app does this automatically)
 # Check token file permissions
-ls -la ~/Library/Application\ Support/uniclipboard/daemon.token
+ls -la ~/Library/Application\ Support/app.uniclipboard.desktop/daemon.conn
 # Should show: -rw------- (600)
 
 # Get fresh token
-cat ~/Library/Application\ Support/uniclipboard/daemon.token
+cat ~/Library/Application\ Support/app.uniclipboard.desktop/daemon.conn
 ```
 
 ### Invalid Session Token (WS 401)
@@ -265,7 +270,7 @@ The proof harness must NOT print raw bearer or session tokens:
 
 ```bash
 # Run live mode and capture output
-DAEMON_BASE_URL=http://127.0.0.1:42715 \
+DAEMON_BASE_URL=http://127.0.0.1:<port-from-daemon.conn> \
 DAEMON_TOKEN=test-secret-abc123 \
 node scripts/verify-direct-daemon-ws.mjs --live 2>&1 | grep -i token
 
@@ -279,10 +284,10 @@ node scripts/verify-direct-daemon-ws.mjs --live 2>&1 | grep -i token
 # Send 101 rapid auth requests — the 101st should get 429
 for i in $(seq 1 101); do
   STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
-    -H "Authorization: Bearer $(cat ~/Library/Application\ Support/uniclipboard/daemon.token)" \
+    -H "Authorization: Bearer $(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["token"])' ~/Library/Application\ Support/app.uniclipboard.desktop/daemon.conn)" \
     -H "Content-Type: application/json" \
     -d '{"pid":1234,"clientType":"gui"}' \
-    http://127.0.0.1:42715/auth/connect)
+    http://127.0.0.1:<port-from-daemon.conn>/auth/connect)
   echo "Request $i: HTTP $STATUS"
 done
 

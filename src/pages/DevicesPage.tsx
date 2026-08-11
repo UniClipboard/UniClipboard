@@ -379,6 +379,7 @@ const DevicesPage: React.FC = () => {
                 render={
                   <button
                     type="button"
+                    aria-label={t('devices.panel.addMenu.otherWays')}
                     className="flex items-center gap-0.5 text-xs text-muted-foreground/70 transition-colors hover:text-foreground"
                   />
                 }

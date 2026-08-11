@@ -315,9 +315,8 @@ async fn r01_two_devices_online_removal_converges_to_complete() {
     let a_status = wait_for_phase(&a.cli, "complete").await;
     assert_eq!(intent_count_of(&a_status), 1, "A must keep one intent: {a_status}");
     assert_eq!(effective_member_count_of(&a_status), 1, "B must no longer count: {a_status}");
-    let b_status = removal_status(&b.cli);
+    let b_status = wait_for_removed(&b.cli, true).await;
     assert_eq!(intent_count_of(&b_status), 0, "removed target observes no intent: {b_status}");
-    assert!(removed_of(&b_status), "removed target must observe itself removed: {b_status}");
 }
 
 // ── R02 ──────────────────────────────────────────────────────────────
@@ -342,7 +341,7 @@ async fn r02_target_offline_removal_converges_after_restart() {
     assert_eq!(effective_member_count_of(&a_status), 1, "A must exclude B: {a_status}");
 
     b.restart().await;
-    let b_status = removal_status(&b.cli);
+    let b_status = wait_for_removed(&b.cli, true).await;
     assert_eq!(intent_count_of(&b_status), 0, "restarted target observes no intent: {b_status}");
     let a_after = wait_for_phase(&a.cli, "complete").await;
     assert_eq!(effective_member_count_of(&a_after), 1, "A must stay converged: {a_after}");
@@ -588,7 +587,7 @@ async fn r10_offline_online_cycles_stay_complete() {
     for _ in 0..3 {
         b.stop().await;
         b.restart().await;
-        let b_status = removal_status(&b.cli);
+        let b_status = wait_for_removed(&b.cli, true).await;
         assert_eq!(intent_count_of(&b_status), 0, "removed target observes no intent: {b_status}");
         let a_status = wait_for_phase(&a.cli, "complete").await;
         assert_eq!(intent_count_of(&a_status), 1, "cycle must not grow intents: {a_status}");

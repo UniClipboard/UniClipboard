@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { hasNewPairedMember } from '../pairing-success-utils'
+import { hasNewPairedMember } from '@/components/device/pairing-success-utils'
 
 describe('hasNewPairedMember', () => {
   it('recognizes a newly admitted device after workspace convergence changes', () => {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { isRemovalInProgress, isWaitingForDeviceUpdate } from '../device-status-utils'
+import { isRemovalInProgress, isWaitingForDeviceUpdate } from '@/pages/device-status-utils'
 
 describe('isRemovalInProgress', () => {
   it('does not treat ordinary admission convergence as member removal', () => {

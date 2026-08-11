@@ -15,6 +15,25 @@
 use std::time::Duration;
 
 use uc_e2e_tests::{TestCli, TestDaemon, TestProfile};
+use uc_daemon_process::socket::read_daemon_conn_file_at;
+
+fn base_url_from_connection_file(profile: &TestProfile) -> String {
+    let conn_path = profile.data_dir().join("daemon.conn");
+    let conn = read_daemon_conn_file_at(&conn_path)
+        .unwrap_or_else(|error| {
+            panic!(
+                "failed to read daemon connection file at {}: {error}",
+                conn_path.display()
+            )
+        })
+        .unwrap_or_else(|| {
+            panic!(
+                "daemon connection file was absent after start at {}",
+                conn_path.display()
+            )
+        });
+    format!("http://{}:{}", conn.host, conn.port)
+}
 
 /// Helper: start a daemon and run `init`, returning (daemon, cli).
 async fn setup_initialized_node(name: &str) -> (TestDaemon, TestCli) {
@@ -228,19 +247,31 @@ async fn stop_then_start_background() {
         "expected status='started', got '{start_status}'. full json: {start_json}"
     );
 
-    // Wait for the daemon to become healthy.
+    // A daemon chooses a new ephemeral port on every process start. Resolve
+    // its post-restart address from the current connection file instead of
+    // polling the first process's now-closed listener.
+    let restarted_health_url = format!("{}/health", base_url_from_connection_file(&daemon.profile));
+
+    // Wait for the restarted daemon to become healthy.
     let deadline = tokio::time::Instant::now() + Duration::from_secs(15);
     let mut healthy = false;
+    let mut last_health_result = None;
     while tokio::time::Instant::now() < deadline {
-        if let Ok(resp) = client.get(&health_url).send().await {
-            if resp.status().is_success() {
+        match client.get(&restarted_health_url).send().await {
+            Ok(response) if response.status().is_success() => {
                 healthy = true;
                 break;
             }
+            Ok(response) => last_health_result = Some(format!("HTTP {}", response.status())),
+            Err(error) => last_health_result = Some(error.to_string()),
         }
         tokio::time::sleep(Duration::from_millis(300)).await;
     }
-    assert!(healthy, "daemon did not become healthy after restart");
+    assert!(
+        healthy,
+        "daemon did not become healthy after restart at {restarted_health_url}; last result: {}",
+        last_health_result.unwrap_or_else(|| "no health request was made".to_string())
+    );
 
     let cleanup_out = cli.run_capture(&["--json", "stop"]);
     assert!(
@@ -253,7 +284,7 @@ async fn stop_then_start_background() {
 
     let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
     while tokio::time::Instant::now() < deadline {
-        if client.get(&health_url).send().await.is_err() {
+        if client.get(&restarted_health_url).send().await.is_err() {
             return;
         }
         tokio::time::sleep(Duration::from_millis(100)).await;

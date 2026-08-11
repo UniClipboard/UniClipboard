@@ -438,6 +438,22 @@ fn run_cli(binary: &Path, profile: &str, args: &[&str], stdin: Option<&str>) -> 
     Ok(output)
 }
 
+/// Wait for the isolated daemon's `daemon.conn` to appear and return its
+/// `/health` URL (ADR-011: the daemon publishes an ephemeral port there).
+async fn wait_for_daemon_health_url(timeout: Duration) -> Result<String> {
+    let deadline = Instant::now() + timeout;
+    loop {
+        if let Some(conn) = uc_daemon_process::socket::read_daemon_conn_file()? {
+            return Ok(format!("http://{}:{}/health", conn.host, conn.port));
+        }
+        ensure!(
+            Instant::now() < deadline,
+            "timed out waiting for daemon.conn to appear"
+        );
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+}
+
 async fn wait_for_status(
     daemon: &mut DaemonChild,
     client: &reqwest::Client,
@@ -743,8 +759,6 @@ async fn main() -> Result<()> {
 
     let daemon_binary = sibling_binary(cli.daemon_bin, "uniclipd")?;
     let cli_binary = sibling_binary(cli.cli_bin, "uniclip")?;
-    let main_addr = uc_daemon_process::socket::try_resolve_daemon_http_addr()
-        .context("resolve isolated daemon HTTP address")?;
 
     println!(
         "=== mobile LAN process-isolated health benchmark ===\n\
@@ -775,7 +789,9 @@ async fn main() -> Result<()> {
         .build()
         .context("build benchmark HTTP client")?;
     let mut daemon = DaemonChild::spawn(&daemon_binary, &profile, &log_file)?;
-    let daemon_health = format!("http://{main_addr}/health");
+    // ADR-011: the daemon binds an ephemeral port and publishes it in
+    // `daemon.conn`; wait for the connection file to appear and use its URL.
+    let daemon_health = wait_for_daemon_health_url(Duration::from_secs(30)).await?;
     wait_for_status(
         &mut daemon,
         &client,

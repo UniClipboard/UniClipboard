@@ -264,7 +264,7 @@ node scripts/verify-direct-daemon-ws.mjs --self-test
 
 # Live mode (requires running daemon)
 DAEMON_BASE_URL=http://127.0.0.1:<port> \
-DAEMON_TOKEN=$(cat ~/Library/Application\ Support/uniclipboard/daemon.token) \
+DAEMON_TOKEN=$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["token"])' ~/Library/Application\ Support/app.uniclipboard.desktop/daemon.conn) \
 node scripts/verify-direct-daemon-ws.mjs --live
 ```
 

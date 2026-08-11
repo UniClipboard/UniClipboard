@@ -16,7 +16,6 @@ pub mod ws_bridge;
 
 use anyhow::{Context, Result};
 use uc_daemon_contract::api::auth::DaemonConnectionInfo;
-use uc_daemon_process::socket::resolve_daemon_http_addr;
 
 pub use connection::DaemonConnectionState;
 pub use http::{
@@ -33,87 +32,98 @@ pub use ws_bridge::{BridgeState, DaemonWsBridge, DaemonWsBridgeConfig, DaemonWsB
 const ENV_BASE_URL: &str = "UNICLIPBOARD_DAEMON_BASE_URL";
 const ENV_TOKEN_PATH: &str = "UNICLIPBOARD_DAEMON_TOKEN_PATH";
 
-/// Resolve the daemon base URL for client connections.
-///
-/// Checks `UNICLIPBOARD_DAEMON_BASE_URL` env var first, then falls back to
-/// resolving the profile-aware loopback HTTP address from the daemon socket.
-fn resolve_base_url() -> Result<String> {
-    if let Ok(value) = std::env::var(ENV_BASE_URL) {
-        let trimmed = value.trim();
-        if !trimmed.is_empty() {
-            return Ok(trimmed.trim_end_matches('/').to_string());
-        }
-    }
-
-    // resolve_daemon_http_addr() returns SocketAddr directly (panics on error)
-    let addr = resolve_daemon_http_addr();
-    Ok(format!("http://{}:{}", addr.ip(), addr.port()))
-}
-
-/// Resolve the filesystem path to the daemon authentication token.
-///
-/// Checks the `UNICLIPBOARD_DAEMON_TOKEN_PATH` environment variable first (if set and non-empty);
-/// otherwise uses the platform/profile-aware daemon token location.
-///
-/// # Returns
-///
-/// The resolved `PathBuf` pointing to the daemon token on success.
-///
-/// # Examples
-///
-/// ```ignore
-/// let path = uc_daemon_client::resolve_token_path().unwrap();
-/// eprintln!("daemon token path: {}", path.display());
-/// ```
-fn resolve_token_path() -> Result<PathBuf> {
-    if let Ok(value) = std::env::var(ENV_TOKEN_PATH) {
-        let trimmed = value.trim();
-        if !trimmed.is_empty() {
-            return Ok(PathBuf::from(trimmed));
-        }
-    }
-
-    uc_daemon_process::socket::resolve_daemon_token_path()
-}
-
 /// Resolve the daemon connection info from environment for CLI clients.
 ///
 /// This is the CLI equivalent of what the GUI gets from the daemon lifecycle manager.
-/// Reads bearer token from daemon.token file and resolves the HTTP base URL.
+///
+/// Resolution order (ADR-011):
+/// 1. Explicit `UNICLIPBOARD_DAEMON_BASE_URL` / `UNICLIPBOARD_DAEMON_TOKEN_PATH`
+///    overrides (CI / tests / manual runs) — unchanged legacy contract.
+/// 2. The `daemon.conn` connection file — the single source of truth for the
+///    loopback address and bearer token of the running daemon. Missing file or
+///    an unsupported format means the daemon is not reachable / incompatible.
 pub fn resolve_connection_info_from_env() -> Result<DaemonConnectionInfo> {
-    let base_url = resolve_base_url()?;
-    let token_path = resolve_token_path()?;
+    let env_base_url = non_empty_env(ENV_BASE_URL);
+    let env_token_path = non_empty_env(ENV_TOKEN_PATH);
 
-    let token = std::fs::read_to_string(&token_path).with_context(|| {
-        if token_path.exists() {
-            format!(
-                "failed to read daemon auth token at {}",
-                token_path.display()
-            )
-        } else {
-            format!(
-                "daemon auth token not found at {} (is the daemon running?)",
-                token_path.display()
-            )
-        }
-    })?;
-    let token = token.trim().to_string();
-    if token.is_empty() {
-        anyhow::bail!("daemon auth token at {} is empty", token_path.display());
+    if env_base_url.is_some() || env_token_path.is_some() {
+        return resolve_connection_info_env_only(env_base_url, env_token_path);
     }
 
-    let cli_pid = std::process::id();
+    let conn = uc_daemon_process::socket::read_daemon_conn_file()?
+        .with_context(|| "daemon connection file not found (is the daemon running?)")?;
+    let base_url = format!("http://{}:{}", conn.host, conn.port);
+    let ws_url = format!(
+        "{}/ws",
+        base_url
+            .replacen("http://", "ws://", 1)
+            .replacen("https://", "wss://", 1)
+    );
+    Ok(DaemonConnectionInfo {
+        base_url,
+        ws_url,
+        token: conn.token,
+        pid: std::process::id(),
+    })
+}
+
+/// Resolve connection info from explicit env overrides only.
+///
+/// `UNICLIPBOARD_DAEMON_BASE_URL` pins the base URL; the bearer token comes
+/// from `UNICLIPBOARD_DAEMON_TOKEN_PATH` (a plain token file) when set, else
+/// from the `daemon.conn` connection file. Kept for the CI/test contract that
+/// points at mock daemons.
+fn resolve_connection_info_env_only(
+    env_base_url: Option<String>,
+    env_token_path: Option<String>,
+) -> Result<DaemonConnectionInfo> {
+    let base_url = env_base_url.ok_or_else(|| {
+        anyhow::anyhow!(
+            "{ENV_BASE_URL} must be set when using env-based daemon connection overrides"
+        )
+    })?;
+
+    let token = match env_token_path {
+        Some(path) => {
+            let path = PathBuf::from(path);
+            let token = std::fs::read_to_string(&path).with_context(|| {
+                if path.exists() {
+                    format!("failed to read daemon auth token at {}", path.display())
+                } else {
+                    format!(
+                        "daemon auth token not found at {} (is the daemon running?)",
+                        path.display()
+                    )
+                }
+            })?;
+            let token = token.trim().to_string();
+            if token.is_empty() {
+                anyhow::bail!("daemon auth token at {} is empty", path.display());
+            }
+            token
+        }
+        None => {
+            uc_daemon_process::socket::read_daemon_conn_file()?
+                .context("daemon connection file not found (is the daemon running?)")?
+                .token
+        }
+    };
+
     Ok(DaemonConnectionInfo {
         base_url: base_url.clone(),
-        ws_url: format!(
-            "{}/ws",
-            base_url
-                .replacen("http://", "ws://", 1)
-                .replacen("https://", "wss://", 1)
-        ),
+        ws_url: base_url
+            .replacen("http://", "ws://", 1)
+            .replacen("https://", "wss://", 1),
         token,
-        pid: cli_pid,
+        pid: std::process::id(),
     })
+}
+
+fn non_empty_env(name: &str) -> Option<String> {
+    match std::env::var(name) {
+        Ok(value) if !value.trim().is_empty() => Some(value.trim().to_string()),
+        _ => None,
+    }
 }
 
 /// Shared context for all daemon HTTP clients.
@@ -157,7 +167,8 @@ impl DaemonClientContext {
 
     /// Create a CLI context by resolving connection info from environment.
     ///
-    /// Reads the bearer token from `daemon.token` and resolves the HTTP base URL
+    /// Reads the bearer token from `daemon.conn` and resolves the HTTP base URL
+    /// (ADR-011); env overrides bypass the file for CI/mock scenarios.
     /// via the same profile-aware logic the daemon uses for its socket.
     ///
     /// Uses `"cli"` as the client type — each HTTP request exchanges a fresh

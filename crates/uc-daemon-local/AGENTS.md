@@ -39,7 +39,7 @@ detached spawn 原语从 `uc-cli` 下沉到此处由 CLI 与 GUI shell 共用。
 
 | 模块 | 职责 |
 |---|---|
-| `auth.rs` | daemon bearer token 文件持久化（`load_or_create_auth_token`） |
+| `auth.rs` | daemon bearer token 管理（`load_or_create_auth_token_from_conn`，token 随 `daemon.conn` 持久化，ADR-011） |
 | `contract.rs` | `ProbeOutcome` / `DaemonBootstrapError` / `terminate_local_daemon_pid` |
 | `health_wait.rs` | probe-only 的健康轮询（`wait_for_daemon_health`、`wait_for_endpoint_absent`） |
 
@@ -50,7 +50,7 @@ detached spawn 原语从 `uc-cli` 下沉到此处由 CLI 与 GUI shell 共用。
 | 模块（re-export 自 `uc-daemon-process`） | 职责 |
 |---|---|
 | `process_metadata` | PID 文件读写 + `DaemonProcessMode` |
-| `socket` | IPC/HTTP socket 路径解析（`try_resolve_daemon_http_addr`） |
+| `socket` | `daemon.conn` 连接文件路径解析与读写（ADR-011，替代固定端口 hash 解析与 `.daemon-token`） |
 | `spawn` | `uniclipd` detached spawn + 二进制解析（`spawn_detached_daemon`、`resolve_daemon_exe_path`） |
 | `spawn_contract` | CLI→daemon run-mode / unattended-unlock 环境契约 |
 | `handover` | 跨进程受控重启交接存储（`HandoverRecord{target_mode,generation}` 落锁目录，read/write/clear；ADR-008 P5-L L7） |

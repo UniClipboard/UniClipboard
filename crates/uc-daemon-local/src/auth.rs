@@ -1,10 +1,8 @@
 //! Daemon-local auth token persistence and helpers.
 
-use std::fs::{self, OpenOptions};
-use std::io::Write;
 use std::path::Path;
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use rand::RngCore;
 use subtle::ConstantTimeEq;
 use tracing::debug;
@@ -20,10 +18,10 @@ impl DaemonAuthToken {
     /// # Examples
     ///
     /// ```
-    /// use uc_daemon_local::auth::load_or_create_auth_token;
+    /// use uc_daemon_local::auth::load_or_create_auth_token_from_conn;
     ///
     /// let tmp = tempfile::tempdir().unwrap();
-    /// let token = load_or_create_auth_token(&tmp.path().join("daemon.token")).unwrap();
+    /// let token = load_or_create_auth_token_from_conn(&tmp.path().join("daemon.conn")).unwrap();
     /// assert_eq!(token.as_str().len(), 64);
     /// ```
     pub fn as_str(&self) -> &str {
@@ -45,52 +43,65 @@ impl DaemonAuthToken {
     }
 }
 
-/// Ensure a daemon authentication token exists at the provided path and return it.
+/// Ensure a daemon bearer token exists and return it (ADR-011).
 ///
-/// If a non-empty token file exists at `token_path`, the function repairs its permissions (on Unix)
-/// and returns the contained token. If the file is missing or contains no token, a new
-/// cryptographically-random token is generated, persisted to `token_path`, and returned. On Unix,
-/// persisted token files are created with permission mode `0o600`.
+/// The token now lives inside the `daemon.conn` connection file, which is the
+/// single source of truth for the daemon's connection info. If a non-empty
+/// token can be read from an existing connection file, it is returned
+/// (token persists across daemon restarts); otherwise a fresh
+/// cryptographically-random token is generated. The token is NOT persisted
+/// here — the HTTP server publishes it as part of the connection file once
+/// the loopback listener is bound.
 ///
 /// # Parameters
 ///
-/// - `token_path`: Filesystem path where the daemon token is read from or written to.
+/// - `conn_path`: Filesystem path of the `daemon.conn` connection file.
 ///
 /// # Returns
 ///
-/// `DaemonAuthToken` containing the token read from disk or the newly generated token.
+/// `DaemonAuthToken` containing the token read from disk or a newly generated token.
 ///
 /// # Examples
 ///
 /// ```
-/// use uc_daemon_local::auth::load_or_create_auth_token;
+/// use uc_daemon_local::auth::load_or_create_auth_token_from_conn;
 ///
 /// let tmp = tempfile::tempdir().unwrap();
-/// let path = tmp.path().join("daemon.token");
-/// let token = load_or_create_auth_token(&path).unwrap();
+/// let path = tmp.path().join("daemon.conn");
+/// let token = load_or_create_auth_token_from_conn(&path).unwrap();
 /// assert_eq!(token.as_str().len(), 64);
-/// // A second call reads the persisted token back.
-/// assert_eq!(load_or_create_auth_token(&path).unwrap(), token);
+/// // A second call on an existing connection file reads the persisted token.
+/// uc_daemon_process::socket::write_daemon_conn_file_at(
+///     &path,
+///     &uc_daemon_process::socket::DaemonConnFile::new("127.0.0.1", 43127, token.as_str(), 42),
+/// )
+/// .unwrap();
+/// assert_eq!(load_or_create_auth_token_from_conn(&path).unwrap(), token);
 /// ```
-pub fn load_or_create_auth_token(token_path: &Path) -> Result<DaemonAuthToken> {
-    debug!(token_path = %token_path.display(), token_path_exists = token_path.exists(), "load_or_create_auth_token: entering");
-    if token_path.exists() {
-        let existing = fs::read_to_string(token_path).with_context(|| {
-            format!(
-                "failed to read daemon auth token at {}",
-                token_path.display()
-            )
-        })?;
-        let token = existing.trim().to_string();
-        if !token.is_empty() {
-            repair_token_permissions(token_path)?;
-            return Ok(DaemonAuthToken(token));
+pub fn load_or_create_auth_token_from_conn(conn_path: &Path) -> Result<DaemonAuthToken> {
+    debug!(conn_path = %conn_path.display(), conn_path_exists = conn_path.exists(), "load_or_create_auth_token_from_conn: entering");
+    if conn_path.exists() {
+        // A corrupt / unsupported connection file is NOT fatal: the daemon
+        // will overwrite the file on this very start, so falling back to a
+        // fresh token self-heals (and every client re-reads the file anyway).
+        match uc_daemon_process::socket::read_daemon_conn_file_at(conn_path) {
+            Ok(Some(conn)) => {
+                let token = conn.token.trim().to_string();
+                if !token.is_empty() {
+                    return Ok(DaemonAuthToken(token));
+                }
+            }
+            Ok(None) => {}
+            Err(error) => {
+                tracing::warn!(
+                    error = %error,
+                    "existing daemon connection file is unreadable; generating a fresh token"
+                );
+            }
         }
     }
 
-    let token = generate_auth_token();
-    persist_auth_token(token_path, &token)?;
-    Ok(DaemonAuthToken(token))
+    Ok(DaemonAuthToken(generate_auth_token()))
 }
 
 /// Constructs connection metadata for the local daemon.
@@ -104,10 +115,12 @@ pub fn load_or_create_auth_token(token_path: &Path) -> Result<DaemonAuthToken> {
 /// # Examples
 ///
 /// ```
-/// use uc_daemon_local::auth::{build_connection_info, load_or_create_auth_token};
+/// use uc_daemon_local::auth::{
+///     build_connection_info, load_or_create_auth_token_from_conn,
+/// };
 ///
 /// let tmp = tempfile::tempdir().unwrap();
-/// let token = load_or_create_auth_token(&tmp.path().join("daemon.token")).unwrap();
+/// let token = load_or_create_auth_token_from_conn(&tmp.path().join("daemon.conn")).unwrap();
 /// let info = build_connection_info("127.0.0.1", 8080, &token, 12345);
 /// assert_eq!(info.base_url, "http://127.0.0.1:8080");
 /// assert_eq!(info.ws_url, "ws://127.0.0.1:8080/ws");
@@ -177,108 +190,6 @@ fn generate_auth_token() -> String {
     let mut bytes = [0_u8; 32];
     rand::rngs::OsRng.fill_bytes(&mut bytes);
     bytes.iter().map(|byte| format!("{byte:02x}")).collect()
-}
-
-/// Persists the daemon auth token to disk, creating parent directories if needed and restricting file permissions.
-///
-/// Writes `token` to `token_path`, truncating any existing file, flushes the file, and (on Unix) ensures the file mode is set to `0o600`. This function will create any missing parent directories before writing.
-///
-/// # Errors
-///
-/// Returns an error if creating directories, opening the file, writing, flushing, or repairing file permissions fails.
-///
-/// # Examples
-///
-/// Private helper — not importable from doctests; behavior is covered by the
-/// `persist_auth_token_*` unit tests below.
-///
-/// ```ignore
-/// let tmp = tempfile::tempdir().unwrap();
-/// let path = tmp.path().join("auth_token");
-/// persist_auth_token(&path, "0123abcd").unwrap();
-/// assert!(path.exists());
-/// ```
-fn persist_auth_token(token_path: &Path, token: &str) -> Result<()> {
-    if let Some(parent) = token_path.parent() {
-        fs::create_dir_all(parent).with_context(|| {
-            format!(
-                "failed to create daemon auth token directory {}",
-                parent.display()
-            )
-        })?;
-    }
-
-    #[cfg(unix)]
-    use std::os::unix::fs::OpenOptionsExt;
-
-    let mut options = OpenOptions::new();
-    options.create(true).truncate(true).write(true);
-
-    #[cfg(unix)]
-    options.mode(0o600);
-
-    let mut file = options.open(token_path).with_context(|| {
-        format!(
-            "failed to open daemon auth token file {}",
-            token_path.display()
-        )
-    })?;
-
-    file.write_all(token.as_bytes()).with_context(|| {
-        format!(
-            "failed to write daemon auth token file {}",
-            token_path.display()
-        )
-    })?;
-    file.flush().with_context(|| {
-        format!(
-            "failed to flush daemon auth token file {}",
-            token_path.display()
-        )
-    })?;
-
-    repair_token_permissions(token_path)?;
-    Ok(())
-}
-
-/// Ensure the token file has restrictive Unix permissions (mode `0o600`) when running on Unix; on non-Unix platforms this is a no-op.
-///
-/// Attempts to read the file metadata and, if the file's permission bits are not `0o600`, set them to `0o600`. Errors are returned with contextual messages if metadata cannot be read or permissions cannot be changed.
-///
-/// # Examples
-///
-/// Private helper — not importable from doctests; behavior is covered by the
-/// `repair_token_permissions_*` unit tests below.
-///
-/// ```ignore
-/// use std::path::Path;
-/// // After creating or writing the token file:
-/// repair_token_permissions(Path::new("/path/to/daemon_token")).unwrap();
-/// ```
-fn repair_token_permissions(token_path: &Path) -> Result<()> {
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-
-        let metadata = fs::metadata(token_path).with_context(|| {
-            format!(
-                "failed to read daemon auth token metadata {}",
-                token_path.display()
-            )
-        })?;
-        let current_mode = metadata.permissions().mode() & 0o777;
-        if current_mode != 0o600 {
-            let permissions = std::fs::Permissions::from_mode(0o600);
-            fs::set_permissions(token_path, permissions).with_context(|| {
-                format!(
-                    "failed to repair daemon auth token permissions {}",
-                    token_path.display()
-                )
-            })?;
-        }
-    }
-
-    Ok(())
 }
 
 #[cfg(test)]
@@ -383,145 +294,68 @@ mod tests {
         assert_eq!(info.pid, 12345);
     }
 
-    // ── persist_auth_token ───────────────────────────────────────────────
+    // ── load_or_create_auth_token_from_conn (ADR-011) ────────────────────
 
     #[test]
-    fn persist_auth_token_creates_missing_parent_dirs() {
+    fn load_or_create_from_conn_generates_fresh_token_when_missing() {
         let tmp = tempfile::tempdir().unwrap();
-        let path = tmp
-            .path()
-            .join("nested")
-            .join("deeper")
-            .join("daemon.token");
-        persist_auth_token(&path, "0123abcd").unwrap();
-        assert_eq!(fs::read_to_string(&path).unwrap(), "0123abcd");
-    }
+        let path = tmp.path().join("daemon.conn");
+        assert!(!path.exists());
 
-    #[cfg(unix)]
-    #[test]
-    fn persist_auth_token_writes_file_as_0600() {
-        let tmp = tempfile::tempdir().unwrap();
-        let path = tmp.path().join("daemon.token");
-        persist_auth_token(&path, "secret").unwrap();
-        assert_eq!(
-            mode_of(&path),
-            0o600,
-            "freshly persisted token must be 0600"
+        let token = load_or_create_auth_token_from_conn(&path).unwrap();
+        assert_eq!(token.as_str().len(), 64);
+        // The token is NOT persisted here — the HTTP server publishes it
+        // inside the connection file after binding.
+        assert!(
+            !path.exists(),
+            "token must not be persisted by load-or-create"
         );
     }
 
-    // ── repair_token_permissions ─────────────────────────────────────────
-
-    #[cfg(unix)]
     #[test]
-    fn repair_token_permissions_tightens_world_readable_file() {
-        use std::os::unix::fs::PermissionsExt;
+    fn load_or_create_from_conn_reads_existing_token() {
         let tmp = tempfile::tempdir().unwrap();
-        let path = tmp.path().join("loose.token");
-        fs::write(&path, "tok").unwrap();
-        fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
-        assert_eq!(mode_of(&path), 0o644);
+        let path = tmp.path().join("daemon.conn");
+        uc_daemon_process::socket::write_daemon_conn_file_at(
+            &path,
+            &uc_daemon_process::socket::DaemonConnFile::new(
+                "127.0.0.1",
+                43127,
+                "persisted-token",
+                7,
+            ),
+        )
+        .unwrap();
 
-        repair_token_permissions(&path).unwrap();
-        assert_eq!(mode_of(&path), 0o600, "0644 must be tightened to 0600");
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn repair_token_permissions_is_noop_when_already_0600() {
-        use std::os::unix::fs::PermissionsExt;
-        let tmp = tempfile::tempdir().unwrap();
-        let path = tmp.path().join("ok.token");
-        fs::write(&path, "tok").unwrap();
-        fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).unwrap();
-        repair_token_permissions(&path).unwrap();
-        assert_eq!(mode_of(&path), 0o600);
-    }
-
-    // ── load_or_create_auth_token ────────────────────────────────────────
-
-    #[test]
-    fn load_or_create_generates_and_persists_when_missing() {
-        let tmp = tempfile::tempdir().unwrap();
-        let path = tmp.path().join("daemon.token");
-        assert!(!path.exists());
-
-        let token = load_or_create_auth_token(&path).unwrap();
-        assert_eq!(token.as_str().len(), 64);
-        assert!(path.exists(), "token must be persisted on first creation");
-        assert_eq!(fs::read_to_string(&path).unwrap(), token.as_str());
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn load_or_create_persists_new_token_as_0600() {
-        let tmp = tempfile::tempdir().unwrap();
-        let path = tmp.path().join("daemon.token");
-        let _ = load_or_create_auth_token(&path).unwrap();
-        assert_eq!(mode_of(&path), 0o600);
+        let token = load_or_create_auth_token_from_conn(&path).unwrap();
+        assert_eq!(token.as_str(), "persisted-token");
     }
 
     #[test]
-    fn load_or_create_is_idempotent_returning_same_token() {
+    fn load_or_create_from_conn_is_idempotent_returning_same_token() {
         let tmp = tempfile::tempdir().unwrap();
-        let path = tmp.path().join("daemon.token");
-        let first = load_or_create_auth_token(&path).unwrap();
-        let second = load_or_create_auth_token(&path).unwrap();
+        let path = tmp.path().join("daemon.conn");
+        uc_daemon_process::socket::write_daemon_conn_file_at(
+            &path,
+            &uc_daemon_process::socket::DaemonConnFile::new("127.0.0.1", 43127, "tok", 7),
+        )
+        .unwrap();
+
+        let first = load_or_create_auth_token_from_conn(&path).unwrap();
+        let second = load_or_create_auth_token_from_conn(&path).unwrap();
         assert_eq!(first, second, "second call must read the persisted token");
     }
 
     #[test]
-    fn load_or_create_trims_surrounding_whitespace_in_existing_file() {
+    fn load_or_create_from_conn_regenerates_on_corrupt_file() {
+        // A corrupt / unknown-format connection file must not block daemon
+        // startup: the daemon overwrites the file on this very start, so a
+        // fresh token self-heals.
         let tmp = tempfile::tempdir().unwrap();
-        let path = tmp.path().join("daemon.token");
-        fs::write(&path, "  padded-token\n").unwrap();
-        let token = load_or_create_auth_token(&path).unwrap();
-        assert_eq!(token.as_str(), "padded-token");
-    }
+        let path = tmp.path().join("daemon.conn");
+        std::fs::write(&path, "not-json").unwrap();
 
-    #[test]
-    fn load_or_create_regenerates_when_existing_file_is_empty() {
-        let tmp = tempfile::tempdir().unwrap();
-        let path = tmp.path().join("daemon.token");
-        fs::write(&path, "").unwrap();
-        let token = load_or_create_auth_token(&path).unwrap();
-        assert_eq!(
-            token.as_str().len(),
-            64,
-            "an empty token file must be replaced with a fresh token"
-        );
-    }
-
-    #[test]
-    fn load_or_create_regenerates_when_existing_file_is_whitespace_only() {
-        let tmp = tempfile::tempdir().unwrap();
-        let path = tmp.path().join("daemon.token");
-        fs::write(&path, "   \n\t").unwrap();
-        let token = load_or_create_auth_token(&path).unwrap();
+        let token = load_or_create_auth_token_from_conn(&path).unwrap();
         assert_eq!(token.as_str().len(), 64);
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn load_or_create_repairs_permissions_on_existing_loose_file() {
-        use std::os::unix::fs::PermissionsExt;
-        let tmp = tempfile::tempdir().unwrap();
-        let path = tmp.path().join("daemon.token");
-        fs::write(&path, "existing-token").unwrap();
-        fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
-
-        let token = load_or_create_auth_token(&path).unwrap();
-        assert_eq!(token.as_str(), "existing-token");
-        assert_eq!(
-            mode_of(&path),
-            0o600,
-            "loading an existing token must tighten its perms"
-        );
-    }
-
-    #[cfg(unix)]
-    fn mode_of(path: &Path) -> u32 {
-        use std::os::unix::fs::PermissionsExt;
-        fs::metadata(path).unwrap().permissions().mode() & 0o777
     }
 }

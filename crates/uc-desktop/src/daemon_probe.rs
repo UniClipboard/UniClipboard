@@ -24,9 +24,8 @@ use uc_daemon_process::contract::{
 };
 use uc_daemon_process::health_wait::{wait_for_daemon_health, wait_for_endpoint_absent};
 use uc_daemon_process::process_metadata::{
-    find_pid_by_port, read_pid_metadata, DaemonPidMetadata, DaemonProcessMode, DaemonSpawnOrigin,
+    read_pid_metadata, DaemonPidMetadata, DaemonProcessMode, DaemonSpawnOrigin,
 };
-use uc_daemon_process::socket::try_resolve_daemon_http_addr;
 use uc_daemon_process::spawn::spawn_detached_daemon;
 
 use crate::daemon::{DaemonLaunchOrigin, DaemonOwnership};
@@ -50,16 +49,61 @@ pub const INCOMPATIBLE_DAEMON_EXIT_TIMEOUT: Duration = Duration::from_millis(150
 /// `expected_package_version` 由调用方传入——典型情况是 shell crate 自己的
 /// `env!("CARGO_PKG_VERSION")`，因为 `uc-desktop` 的 cargo 版本号未必和 GUI
 /// shell 想校验的一致。
+///
+/// ADR-011: the probe address comes from `daemon.conn` (PID-verified so a
+/// leftover file from a crashed daemon is not treated as a live one), with the
+/// legacy hash-derived address as a P1 fallback for old daemons. Re-resolving
+/// on every call keeps the health-wait loops self-healing across daemon
+/// restarts that change the port.
 pub async fn probe_daemon_health(
     client: &reqwest::Client,
     expected_package_version: &str,
 ) -> Result<ProbeOutcome, DaemonBootstrapError> {
-    let addr = try_resolve_daemon_http_addr().map_err(|error| {
+    let Some(addr) = resolve_probe_addr().map_err(|error| {
         DaemonBootstrapError::Probe(
-            error.context("failed to resolve profile-aware daemon HTTP address"),
+            error.context("failed to resolve daemon HTTP address from connection file"),
         )
-    })?;
+    })?
+    else {
+        // No connection file and no legacy address → no daemon to talk to.
+        return Ok(ProbeOutcome::Absent);
+    };
     probe_daemon_health_at(client, addr, expected_package_version).await
+}
+
+/// Resolve the address the health probe should target (ADR-011).
+///
+/// Reads `daemon.conn` and accepts it only when its recorded PID passes the
+/// D22 identity check (liveness + daemon binary name). A stale PID means the
+/// daemon is gone; the leftover file must not masquerade as a live daemon.
+///
+/// Returns `Ok(None)` when there is nothing to probe (no connection file) —
+/// callers classify that as `ProbeOutcome::Absent`.
+fn resolve_probe_addr() -> anyhow::Result<Option<std::net::SocketAddr>> {
+    use uc_daemon_process::process_metadata::{verify_pid_identity, PidVerification};
+
+    let Some(conn) = uc_daemon_process::socket::read_daemon_conn_file()? else {
+        return Ok(None);
+    };
+    let synthetic = DaemonPidMetadata {
+        pid: conn.pid,
+        mode: DaemonProcessMode::Standalone,
+        started_at_ms: conn.started_at_ms,
+        spawned_by: DaemonSpawnOrigin::Unknown,
+        // Unused by `verify_pid_identity` (liveness + exe name only).
+        package_version: String::new(),
+    };
+    if !matches!(verify_pid_identity(&synthetic), PidVerification::Active) {
+        tracing::info!(
+            pid = conn.pid,
+            "daemon.conn PID is stale — treating the daemon as absent"
+        );
+        return Ok(None);
+    }
+    let host: std::net::IpAddr = conn.host.parse().map_err(|error| {
+        anyhow::anyhow!("daemon.conn host {:?} is not an IP: {error}", conn.host)
+    })?;
+    Ok(Some(std::net::SocketAddr::new(host, conn.port)))
 }
 
 pub async fn probe_daemon_health_at(
@@ -293,76 +337,72 @@ pub fn terminate_incompatible_daemon_from_pid_file() -> Result<(), DaemonBootstr
     terminate_incompatible_daemon_with(|| Ok(Some(metadata)), terminate_local_daemon_pid)
 }
 
-/// Terminate an incompatible daemon: PID file first, port-based PID lookup as fallback.
+/// Terminate an incompatible daemon: PID file first, `daemon.conn`-based PID
+/// lookup as fallback.
 ///
 /// The PID-file path preserves all safety checks (InProcess refusal, D22
-/// identity verification). The port-based fallback fires only when the PID
+/// identity verification). The conn-file fallback fires only when the PID
 /// file is missing or unreadable — a scenario observed in the wild when a
 /// daemon from an older/different installation runs without leaving a PID
-/// file, blocking the current GUI from starting.
+/// file, blocking the current GUI from starting. The daemon's own connection
+/// file records its PID (ADR-011), replacing the old port-based lookup.
 fn terminate_incompatible_daemon() -> Result<(), DaemonBootstrapError> {
     match read_pid_metadata() {
         Ok(Some(_)) => terminate_incompatible_daemon_from_pid_file(),
         Ok(None) => {
-            tracing::warn!("daemon PID file missing; trying port-based PID lookup");
-            terminate_incompatible_daemon_by_port()
+            tracing::warn!("daemon PID file missing; trying daemon.conn-based PID lookup");
+            terminate_incompatible_daemon_by_conn_file()
         }
         Err(error) => {
-            tracing::warn!(%error, "daemon PID file unreadable; trying port-based PID lookup");
-            terminate_incompatible_daemon_by_port()
+            tracing::warn!(%error, "daemon PID file unreadable; trying daemon.conn-based PID lookup");
+            terminate_incompatible_daemon_by_conn_file()
         }
     }
 }
 
-/// Port-based fallback: resolve the daemon's configured port, find the
-/// listening PID via OS tools (`netstat` / `lsof`), verify identity (D22),
-/// and terminate.
-fn terminate_incompatible_daemon_by_port() -> Result<(), DaemonBootstrapError> {
+/// `daemon.conn`-based fallback: read the daemon's recorded PID, verify
+/// identity (D22), and terminate (ADR-011).
+fn terminate_incompatible_daemon_by_conn_file() -> Result<(), DaemonBootstrapError> {
     use uc_daemon_process::process_metadata::{verify_pid_identity, PidVerification};
 
-    let addr = try_resolve_daemon_http_addr().map_err(|error| {
-        DaemonBootstrapError::IncompatibleDaemon {
-            details: format!("port fallback: failed to resolve daemon address: {error}"),
-        }
-    })?;
-    let port = addr.port();
+    let conn = uc_daemon_process::socket::read_daemon_conn_file()
+        .map_err(|error| DaemonBootstrapError::IncompatibleDaemon {
+            details: format!("daemon.conn fallback: failed to read connection file: {error}"),
+        })?
+        .ok_or_else(|| DaemonBootstrapError::IncompatibleDaemon {
+            details: "incompatible daemon has no PID file and no daemon.conn; cannot identify it"
+                .to_string(),
+        })?;
 
-    let pid = find_pid_by_port(port).ok_or_else(|| DaemonBootstrapError::IncompatibleDaemon {
-        details: format!(
-            "incompatible daemon has no PID file and no process found listening on port {port}"
-        ),
-    })?;
-
-    tracing::info!(
-        pid,
-        port,
-        "found incompatible daemon PID via port lookup (PID file missing)"
-    );
-
-    // D22: verify PID identity before signaling. Construct synthetic metadata
-    // assuming Standalone mode — an InProcess daemon would have a PID file
-    // from the hosting GUI, so reaching this fallback implies Standalone.
     let synthetic = DaemonPidMetadata {
-        pid,
+        pid: conn.pid,
         mode: DaemonProcessMode::Standalone,
-        started_at_ms: 0,
+        started_at_ms: conn.started_at_ms,
         spawned_by: DaemonSpawnOrigin::Unknown,
         // Unused by `verify_pid_identity` (liveness + exe name only); the real
-        // version is not knowable from a port lookup with no PID file.
+        // version is not knowable from a connection file lookup.
         package_version: String::new(),
     };
 
     if let PidVerification::Stale(reason) = verify_pid_identity(&synthetic) {
         tracing::info!(
-            pid,
+            pid = conn.pid,
             %reason,
-            "port-based daemon PID is stale — skipping terminate"
+            "daemon.conn-based daemon PID is stale — skipping terminate"
         );
         return Ok(());
     }
 
-    terminate_local_daemon_pid(pid).map_err(|e| DaemonBootstrapError::IncompatibleDaemon {
-        details: format!("failed to terminate daemon (pid {pid}, found via port {port}): {e}"),
+    tracing::info!(
+        pid = conn.pid,
+        "found incompatible daemon PID via daemon.conn (PID file missing)"
+    );
+
+    terminate_local_daemon_pid(conn.pid).map_err(|e| DaemonBootstrapError::IncompatibleDaemon {
+        details: format!(
+            "failed to terminate daemon (pid {}, found via daemon.conn): {e}",
+            conn.pid
+        ),
     })
 }
 

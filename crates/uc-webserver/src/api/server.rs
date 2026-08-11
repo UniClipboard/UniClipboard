@@ -1,12 +1,12 @@
 //! HTTP server bootstrap for the daemon API.
 
-use std::io;
 use std::net::SocketAddr;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
+use anyhow::Context;
 use axum::body::Body;
 use axum::http::header::{
     HeaderName, HeaderValue, ACCESS_CONTROL_ALLOW_HEADERS, ACCESS_CONTROL_ALLOW_METHODS,
@@ -41,10 +41,7 @@ use crate::api::types::{
 };
 use crate::api::ws;
 use crate::security::SecurityState;
-use crate::socket::{try_resolve_daemon_http_addr, DEFAULT_HTTP_HOST};
-
-const HTTP_BIND_RETRY_TIMEOUT: Duration = Duration::from_secs(5);
-const HTTP_BIND_RETRY_INTERVAL: Duration = Duration::from_millis(100);
+use crate::socket::{DaemonConnFile, DEFAULT_HTTP_HOST};
 
 fn network_recovery_status_response(
     status: NetworkRecoveryStatusSummary,
@@ -638,11 +635,28 @@ pub async fn run_http_server(
     state: DaemonApiState,
     cancel: CancellationToken,
 ) -> anyhow::Result<()> {
-    let addr = try_resolve_daemon_http_addr()?;
-    let connection_info = state.connection_info_for_addr(addr, std::process::id());
-    let listener =
-        bind_http_listener_with_retry(addr, HTTP_BIND_RETRY_TIMEOUT, HTTP_BIND_RETRY_INTERVAL)
-            .await?;
+    // ADR-011: bind an ephemeral loopback port — the kernel picks a free one,
+    // so no fixed port can ever collide with unrelated local services. The
+    // actual port is published in `daemon.conn` for local clients.
+    let bind_addr = SocketAddr::new(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST), 0);
+    let listener = tokio::net::TcpListener::bind(bind_addr)
+        .await
+        .context("failed to bind daemon HTTP listener on 127.0.0.1")?;
+    // ADR-011: publish `daemon.conn` AFTER the bind so a client that reads the
+    // file can connect immediately. Hard failure — without the file no client
+    // can discover the daemon.
+    let bound_addr = listener
+        .local_addr()
+        .context("failed to read bound daemon listener address")?;
+    let connection_info = state.connection_info_for_addr(bound_addr, std::process::id());
+    let conn = DaemonConnFile::new(
+        DEFAULT_HTTP_HOST,
+        bound_addr.port(),
+        state.auth_token.as_str(),
+        std::process::id(),
+    );
+    uc_daemon_local::socket::write_daemon_conn_file(&conn)
+        .context("failed to publish daemon connection file")?;
     tracing::info!(
         base_url = %connection_info.base_url,
         ws_url = %connection_info.ws_url,
@@ -662,80 +676,6 @@ pub async fn run_http_server(
         .await?;
 
     Ok(())
-}
-
-async fn bind_http_listener_with_retry(
-    addr: SocketAddr,
-    retry_timeout: Duration,
-    retry_interval: Duration,
-) -> io::Result<tokio::net::TcpListener> {
-    let started_at = tokio::time::Instant::now();
-    let deadline = started_at + retry_timeout;
-    let mut retry_count = 0_u32;
-
-    loop {
-        match tokio::net::TcpListener::bind(addr).await {
-            Ok(listener) => {
-                if retry_count > 0 {
-                    tracing::info!(
-                        addr = %addr,
-                        retry_count,
-                        elapsed_ms = started_at.elapsed().as_millis(),
-                        "daemon HTTP API port became available"
-                    );
-                }
-                return Ok(listener);
-            }
-            Err(error)
-                if error.kind() == io::ErrorKind::AddrInUse
-                    && tokio::time::Instant::now() < deadline =>
-            {
-                retry_count += 1;
-                if retry_count == 1 {
-                    tracing::warn!(
-                        addr = %addr,
-                        retry_count,
-                        retry_timeout_ms = retry_timeout.as_millis(),
-                        error_kind = "http_bind_addr_in_use",
-                        retryable = true,
-                        error = %error,
-                        "daemon HTTP API port is temporarily unavailable; retrying"
-                    );
-                }
-                let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
-                tokio::time::sleep(retry_interval.min(remaining)).await;
-            }
-            Err(error) => return Err(error),
-        }
-    }
-}
-
-#[cfg(test)]
-mod http_listener_bind_tests {
-    use std::net::{Ipv4Addr, TcpListener};
-    use std::time::Duration;
-
-    use super::bind_http_listener_with_retry;
-
-    #[tokio::test(start_paused = true)]
-    async fn retries_until_a_transiently_occupied_port_is_released() {
-        let blocker = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).expect("bind blocker");
-        let addr = blocker.local_addr().expect("read blocker address");
-        let started_at = tokio::time::Instant::now();
-        let bind =
-            bind_http_listener_with_retry(addr, Duration::from_secs(1), Duration::from_millis(10));
-        let release = async move {
-            tokio::time::sleep(Duration::from_millis(60)).await;
-            drop(blocker);
-        };
-
-        let (listener, ()) = tokio::join!(bind, release);
-        let listener =
-            listener.expect("listener should bind after the transient owner releases the port");
-
-        assert_eq!(listener.local_addr().expect("read listener address"), addr);
-        assert!(started_at.elapsed() >= Duration::from_millis(60));
-    }
 }
 
 #[cfg(test)]

@@ -155,7 +155,7 @@ async fn connect_handler(
     // Step 3: Register PID in whitelist
     //
     // NOTE: The PID from the request body is trusted because:
-    // 1. The bearer token (from daemon.token file) has already been validated above
+    // 1. The bearer token (from daemon.conn, ADR-011) has already been validated above
     // 2. The frontend runs on the same machine as the daemon
     // 3. PID verification is defense-in-depth against local malware, not a hard security boundary
     // 4. The bearer token file has filesystem permissions (600)

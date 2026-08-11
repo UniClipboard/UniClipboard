@@ -135,26 +135,29 @@ function daemonConnection(profile) {
     'Application Support',
     `app.uniclipboard.desktop-${profile}`
   )
-  return {
-    baseUrl: `http://127.0.0.1:${daemonPortForProfile(profile)}`,
-    token: readFileSync(path.join(dataDir, '.daemon-token'), 'utf8').trim(),
-    sessionToken: null,
+  // ADR-011: the daemon binds an ephemeral port and publishes port + token in
+  // `daemon.conn`; retry until the file appears.
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    try {
+      const conn = JSON.parse(readFileSync(path.join(dataDir, 'daemon.conn'), 'utf8'))
+      if (conn.port && conn.token) {
+        return {
+          baseUrl: `http://${conn.host ?? '127.0.0.1'}:${conn.port}`,
+          token: conn.token.trim(),
+          sessionToken: null,
+        }
+      }
+    } catch {
+      // not published yet — keep polling
+    }
+    sleepSync(200)
   }
+  throw new Error(`daemon.conn not published for profile ${profile} at ${dataDir}`)
 }
 
-function daemonPortForProfile(profile) {
-  const normalized = profile.trim().toLowerCase()
-  if (normalized === 'a') return 42716
-  if (normalized === 'b') return 42717
-  if (normalized === 'dev') return 42718
-
-  let hash = 0xcbf29ce484222325n
-  for (const byte of Buffer.from(profile)) {
-    hash = BigInt.asUintN(64, (hash ^ BigInt(byte)) * 0x100000001b3n)
-  }
-  const firstProfilePort = 42719n
-  const profilePortCount = 65535n - firstProfilePort + 1n
-  return Number(firstProfilePort + (hash % profilePortCount))
+function sleepSync(ms) {
+  const buffer = new SharedArrayBuffer(4)
+  Atomics.wait(new Int32Array(buffer), 0, 0, ms)
 }
 
 async function daemonRequest(connection, requestPath, options = {}) {

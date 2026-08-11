@@ -9,7 +9,6 @@ use uc_daemon_contract::probe::{
     classify_health_response, running_daemon_is_strictly_newer, ProbeOutcome,
 };
 use uc_daemon_process::process_metadata::DaemonSpawnOrigin;
-use uc_daemon_process::socket::try_resolve_daemon_http_addr;
 use uc_daemon_process::spawn::{spawn_detached_daemon, SpawnDaemonError};
 
 const HEALTH_PATH: &str = "/health";
@@ -194,8 +193,7 @@ pub async fn probe_running() -> Result<ProbeOutcome, LocalDaemonError> {
         .timeout(PROBE_TIMEOUT)
         .build()
         .map_err(|error| LocalDaemonError::ProbeClient(error.into()))?;
-    let base_url = resolve_base_url()?;
-    probe_daemon_health(&client, &base_url).await
+    probe_daemon_health(&client).await
 }
 
 /// Probe-then-reuse-or-spawn entry used by the `#[autostop]` business-command
@@ -211,15 +209,14 @@ pub async fn ensure_local_daemon_running() -> Result<LocalDaemonSession, LocalDa
         .timeout(PROBE_TIMEOUT)
         .build()
         .map_err(|error| LocalDaemonError::ProbeClient(error.into()))?;
-    let base_url = resolve_base_url()?;
 
     // Classify the daemon (if any) already bound to this profile (ADR-008 P5-L
     // L2). Compatible → reuse it; Incompatible → clear error (do NOT spawn a
     // competitor or kill it — restart/takeover is L8); Absent → spawn below.
-    match probe_daemon_health(&client, &base_url).await? {
+    match probe_daemon_health(&client).await? {
         ProbeOutcome::Compatible(_) => {
             return Ok(LocalDaemonSession {
-                base_url,
+                base_url: resolve_base_url()?,
                 spawned: false,
             });
         }
@@ -233,7 +230,7 @@ pub async fn ensure_local_daemon_running() -> Result<LocalDaemonSession, LocalDa
         ProbeOutcome::Absent => {}
     }
 
-    spawn_and_wait_healthy(&client, &base_url).await
+    spawn_and_wait_healthy(&client).await
 }
 
 /// The action [`ensure_or_promote_local_daemon`] takes for a probed daemon
@@ -283,16 +280,15 @@ pub async fn ensure_or_promote_local_daemon(
         .timeout(PROBE_TIMEOUT)
         .build()
         .map_err(|error| LocalDaemonError::ProbeClient(error.into()))?;
-    let base_url = resolve_base_url()?;
 
-    let outcome = probe_daemon_health(&client, &base_url).await?;
+    let outcome = probe_daemon_health(&client).await?;
     match classify_probe_action(&outcome) {
-        ProbeAction::Promote => promote_oneshot_daemon(&client, &base_url, target).await,
+        ProbeAction::Promote => promote_oneshot_daemon(&client, target).await,
         ProbeAction::Reuse => Ok(LocalDaemonSession {
-            base_url,
+            base_url: resolve_base_url()?,
             spawned: false,
         }),
-        ProbeAction::Spawn => spawn_and_wait_healthy(&client, &base_url).await,
+        ProbeAction::Spawn => spawn_and_wait_healthy(&client).await,
         ProbeAction::Incompatible => match outcome {
             ProbeOutcome::Incompatible {
                 details,
@@ -317,12 +313,11 @@ pub async fn spawn_oneshot_and_wait() -> Result<LocalDaemonSession, LocalDaemonE
         .timeout(PROBE_TIMEOUT)
         .build()
         .map_err(|error| LocalDaemonError::ProbeClient(error.into()))?;
-    let base_url = resolve_base_url()?;
     std::env::set_var(
         uc_daemon_process::spawn_contract::RUN_MODE_ENV,
         uc_daemon_process::spawn_contract::RUN_MODE_ONESHOT,
     );
-    spawn_and_wait_healthy(&client, &base_url).await
+    spawn_and_wait_healthy(&client).await
 }
 
 /// Promote a transient `Oneshot` daemon to a persistent `target` residency via a
@@ -342,7 +337,6 @@ pub async fn spawn_oneshot_and_wait() -> Result<LocalDaemonSession, LocalDaemonE
 /// is never reached (residency is always `Standalone`/`ServerHeadless`).
 async fn promote_oneshot_daemon(
     client: &Client,
-    base_url: &str,
     target: DaemonResidency,
 ) -> Result<LocalDaemonSession, LocalDaemonError> {
     // Spinner spans the whole promotion — including the restart round-trip — so
@@ -371,10 +365,12 @@ async fn promote_oneshot_daemon(
         "controlled restart accepted; promoting daemon"
     );
 
-    // (2) Wait for the old daemon to exit (endpoint goes absent).
-    let mut probe = || probe_daemon_health(client, base_url);
+    // (2) Wait for the old daemon to exit (endpoint goes absent). The probe
+    // re-resolves `daemon.conn` on every call (ADR-011), so the drain-wait
+    // survives the old daemon deleting its connection file on exit.
+    let mut probe = || probe_daemon_health(client);
     if let Err(error) =
-        wait_for_endpoint_absent(&mut probe, PROMOTE_DRAIN_TIMEOUT, POLL_INTERVAL, base_url).await
+        wait_for_endpoint_absent(&mut probe, PROMOTE_DRAIN_TIMEOUT, POLL_INTERVAL).await
     {
         crate::ui::spinner_finish_error(&spinner, "Daemon did not drain for promotion");
         return Err(error);
@@ -391,20 +387,14 @@ async fn promote_oneshot_daemon(
 
     // (4) Wait until the replacement is healthy AND reports the requested target
     // residency (not merely "any Compatible") before claiming success.
-    let mut probe = || probe_daemon_health(client, base_url);
-    match wait_for_daemon_health(
-        &mut probe,
-        STARTUP_TIMEOUT,
-        POLL_INTERVAL,
-        base_url,
-        Some(target),
-    )
-    .await
-    {
+    let mut probe = || probe_daemon_health(client);
+    match wait_for_daemon_health(&mut probe, STARTUP_TIMEOUT, POLL_INTERVAL, Some(target)).await {
         Ok(()) => {
             crate::ui::spinner_finish_success(&spinner, "Daemon promoted");
             Ok(LocalDaemonSession {
-                base_url: base_url.into(),
+                // The replacement binds a fresh ephemeral port — resolve its
+                // connection file rather than reusing the pre-restart URL.
+                base_url: resolve_base_url()?,
                 spawned: true,
             })
         }
@@ -419,10 +409,7 @@ async fn promote_oneshot_daemon(
 /// [`ensure_or_promote_local_daemon`]: spawn a detached daemon and wait for it to
 /// become healthy. Returns `spawned:true`. Show a spinner so the user sees
 /// progress — daemon cold start can take many seconds in debug builds.
-async fn spawn_and_wait_healthy(
-    client: &Client,
-    base_url: &str,
-) -> Result<LocalDaemonSession, LocalDaemonError> {
+async fn spawn_and_wait_healthy(client: &Client) -> Result<LocalDaemonSession, LocalDaemonError> {
     let spinner = crate::ui::spinner("Starting local daemon…");
 
     if let Err(error) =
@@ -435,12 +422,14 @@ async fn spawn_and_wait_healthy(
     // leader / process group — the CLI is no longer holding a wait-able
     // handle. The probe loop below is the only proof of life.
 
-    let mut probe = || probe_daemon_health(client, base_url);
-    match wait_for_daemon_health(&mut probe, STARTUP_TIMEOUT, POLL_INTERVAL, base_url, None).await {
+    let mut probe = || probe_daemon_health(client);
+    match wait_for_daemon_health(&mut probe, STARTUP_TIMEOUT, POLL_INTERVAL, None).await {
         Ok(()) => {
             crate::ui::spinner_finish_success(&spinner, "Local daemon ready");
             Ok(LocalDaemonSession {
-                base_url: base_url.into(),
+                // Resolve fresh — the spawned daemon may have bound a port
+                // different from any pre-existing connection file (ADR-011).
+                base_url: resolve_base_url()?,
                 spawned: true,
             })
         }
@@ -454,6 +443,9 @@ async fn spawn_and_wait_healthy(
 /// Poll `/health` until the daemon reports Compatible, or time out, or observe
 /// an Incompatible daemon.
 ///
+/// The probe closure re-resolves the daemon address on every call (ADR-011),
+/// so the loop tracks a daemon restart that changes the ephemeral port.
+///
 /// `expected_residency` is `None` for the plain spawn path (any `Compatible`
 /// daemon is "ready" — byte-identical to the pre-L8d-2 behaviour) and
 /// `Some(target)` for the controlled-restart promotion path, where a `Compatible`
@@ -464,7 +456,6 @@ async fn wait_for_daemon_health<Probe, ProbeFuture>(
     probe: &mut Probe,
     startup_timeout: Duration,
     poll_interval: Duration,
-    base_url: &str,
     expected_residency: Option<DaemonResidency>,
 ) -> Result<(), LocalDaemonError>
 where
@@ -500,7 +491,7 @@ where
             return Err(LocalDaemonError::StartupTimeout {
                 timeout_ms: startup_timeout.as_millis() as u64,
                 profile: std::env::var("UC_PROFILE").ok(),
-                base_url: base_url.to_string(),
+                base_url: resolve_base_url().unwrap_or_default(),
             });
         }
 
@@ -523,7 +514,6 @@ async fn wait_for_endpoint_absent<Probe, ProbeFuture>(
     probe: &mut Probe,
     timeout: Duration,
     poll_interval: Duration,
-    base_url: &str,
 ) -> Result<(), LocalDaemonError>
 where
     Probe: FnMut() -> ProbeFuture,
@@ -540,7 +530,7 @@ where
             return Err(LocalDaemonError::PromoteDrainTimeout {
                 timeout_ms: timeout.as_millis() as u64,
                 profile: std::env::var("UC_PROFILE").ok(),
-                base_url: base_url.to_string(),
+                base_url: resolve_base_url().unwrap_or_default(),
             });
         }
 
@@ -590,13 +580,26 @@ pub(crate) fn incompatible_outcome_error(outcome: ProbeOutcome) -> LocalDaemonEr
 
 /// Probe `/health` and classify the running daemon (ADR-008 P5-L L2).
 ///
+/// Resolves the daemon address fresh on every call (ADR-011): `daemon.conn`
+/// first, with the legacy profile-hash address as a P1 fallback for old
+/// daemons. No connection file in the single-track regime → `Absent`.
+///
 /// Connect/timeout errors map to [`ProbeOutcome::Absent`] (no daemon to talk
 /// to); a non-2xx response or an undecodable / version-mismatched body maps to
 /// [`ProbeOutcome::Incompatible`]; a healthy, version-matched daemon maps to
 /// [`ProbeOutcome::Compatible`]. The version/contract decision is delegated to
 /// the shared `uc-daemon-contract::probe::classify_health_response` so the CLI
 /// and GUI host classify byte-identically.
-async fn probe_daemon_health(
+async fn probe_daemon_health(client: &Client) -> Result<ProbeOutcome, LocalDaemonError> {
+    let Some(base_url) = resolve_probe_base_url()? else {
+        return Ok(ProbeOutcome::Absent);
+    };
+    probe_daemon_health_at(client, &base_url).await
+}
+
+/// Probe `/health` at an explicit base URL (HTTP part of
+/// [`probe_daemon_health`]).
+async fn probe_daemon_health_at(
     client: &Client,
     base_url: &str,
 ) -> Result<ProbeOutcome, LocalDaemonError> {
@@ -646,13 +649,30 @@ async fn probe_daemon_health(
     Ok(classify_health_response(health, EXPECTED_PACKAGE_VERSION))
 }
 
+/// Resolve the base URL a probe should target (ADR-011).
+///
+/// `daemon.conn` is the single source of truth. Returns `Ok(None)` when no
+/// connection file exists — callers classify that as `ProbeOutcome::Absent`.
+fn resolve_probe_base_url() -> Result<Option<String>, LocalDaemonError> {
+    let Some(conn) = uc_daemon_process::socket::read_daemon_conn_file().map_err(|error| {
+        LocalDaemonError::ResolveAddress(error.context("failed to read daemon connection file"))
+    })?
+    else {
+        return Ok(None);
+    };
+    Ok(Some(format!("http://{}:{}", conn.host, conn.port)))
+}
+
+/// Resolve the base URL of the running daemon for session handoff (ADR-011).
+///
+/// Same resolution as [`resolve_probe_base_url`], but an error when no daemon
+/// is discoverable — used when a session must carry a concrete URL.
 fn resolve_base_url() -> Result<String, LocalDaemonError> {
-    let addr = try_resolve_daemon_http_addr().map_err(|error| {
-        LocalDaemonError::ResolveAddress(
-            error.context("failed to resolve profile-aware daemon HTTP address"),
-        )
-    })?;
-    Ok(format!("http://{}:{}", addr.ip(), addr.port()))
+    resolve_probe_base_url()?.ok_or_else(|| {
+        LocalDaemonError::ResolveAddress(anyhow::anyhow!(
+            "daemon connection file not found (is the daemon running?)"
+        ))
+    })
 }
 
 /// Detached daemon spawn + binary resolution now live in the shared
@@ -758,7 +778,6 @@ mod tests {
             &mut probe,
             Duration::from_secs(5),
             Duration::from_millis(1),
-            "http://test",
             None,
         )
         .await
@@ -793,7 +812,6 @@ mod tests {
             &mut probe,
             Duration::from_secs(5),
             Duration::from_millis(1),
-            "http://test",
             None,
         )
         .await
@@ -824,7 +842,6 @@ mod tests {
             &mut probe,
             Duration::from_secs(5),
             Duration::from_millis(1),
-            "http://test",
             None,
         )
         .await
@@ -852,7 +869,6 @@ mod tests {
             &mut probe,
             Duration::from_millis(500),
             Duration::from_millis(50),
-            "http://example:1234",
             None,
         )
         .await
@@ -868,7 +884,13 @@ mod tests {
             } => {
                 assert_eq!(timeout_ms, 500);
                 assert_eq!(profile.as_deref(), Some("ci-profile"));
-                assert_eq!(base_url, "http://example:1234");
+                // ADR-011: the diagnostic URL is the live-resolved base URL —
+                // empty when no daemon is discoverable (no conn file), or the
+                // loopback URL of the daemon.conn when one is running.
+                assert!(
+                    base_url.is_empty() || base_url.starts_with("http://127.0.0.1:"),
+                    "unexpected base URL: {base_url}"
+                );
             }
             other => panic!("expected StartupTimeout, got {other:?}"),
         }
@@ -890,7 +912,6 @@ mod tests {
             &mut probe,
             Duration::from_secs(5),
             Duration::from_millis(1),
-            "http://test",
             None,
         )
         .await
@@ -926,7 +947,6 @@ mod tests {
             &mut probe,
             Duration::from_secs(5),
             Duration::from_millis(1),
-            "http://test",
             Some(DaemonResidency::ServerHeadless),
         )
         .await
@@ -959,7 +979,6 @@ mod tests {
             &mut probe,
             Duration::from_secs(5),
             Duration::from_millis(1),
-            "http://test",
             Some(DaemonResidency::Standalone),
         )
         .await
@@ -984,7 +1003,6 @@ mod tests {
             &mut probe,
             Duration::from_millis(100),
             Duration::from_millis(10),
-            "http://test",
             Some(DaemonResidency::Standalone),
         )
         .await
@@ -1013,14 +1031,9 @@ mod tests {
             }
         };
 
-        wait_for_endpoint_absent(
-            &mut probe,
-            Duration::from_secs(5),
-            Duration::from_millis(1),
-            "http://test",
-        )
-        .await
-        .expect("Absent must resolve the waiter");
+        wait_for_endpoint_absent(&mut probe, Duration::from_secs(5), Duration::from_millis(1))
+            .await
+            .expect("Absent must resolve the waiter");
         assert!(calls.load(Ordering::SeqCst) >= 3);
     }
 
@@ -1033,7 +1046,6 @@ mod tests {
             &mut probe,
             Duration::from_millis(100),
             Duration::from_millis(10),
-            "http://test",
         )
         .await
         .expect_err("an endpoint that never goes absent must time out");

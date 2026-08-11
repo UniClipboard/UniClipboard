@@ -3,7 +3,7 @@
 //! `GET/PUT /file/:dataName`), 接受 iPhone SyncClipboard shortcut 客户端
 //! 的 LAN 直连。
 //!
-//! 与现有 `crate::api::server`(`127.0.0.1:42715` 的 daemon API)是**两个**
+//! 与现有 `crate::api::server`(`127.0.0.1` 动态端口的 daemon API,ADR-011)是**两个**
 //! 独立 listener, 互不共享 router / 中间件。理由(SPEC §3.1):
 //!
 //! * daemon API 走 JWT + PID 白名单中间件;mobile LAN 走 Basic Auth(v3

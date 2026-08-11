@@ -10,6 +10,7 @@
   "scripts": {
     "dev": "cross-env UNICLIPBOARD_ENV=development vite",
     "dev:sweep": "node -e \"try{require('child_process').execSync('cargo sweep --time 3 --target target',{stdio:'ignore'})}catch{}\"",
+    "dev:sweep-port": "node scripts/sweep-dev-port.mjs",
     "build": "tsc && vite build && node scripts/check-macos-compat.mjs",
     "build:e2e": "cross-env VITE_E2E=1 bun run build",
     "preview": "vite preview",

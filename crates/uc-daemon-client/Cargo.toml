@@ -16,7 +16,8 @@ uc-daemon-contract = { path = "../uc-daemon-contract" }
 # uc-daemon-local. This severs the uc-application → uc-infra → iroh/diesel edge
 # from the daemon-client stack — the only symbols this crate used from
 # uc-daemon-local were socket::{resolve_daemon_http_addr, resolve_daemon_token_path},
-# both of which now live in uc-daemon-process.
+# both of which now live in uc-daemon-process (and the token file was
+# retired into the `daemon.conn` connection file, ADR-011).
 uc-daemon-process = { path = "../uc-daemon-process" }
 
 # HTTP + WebSocket

@@ -128,6 +128,7 @@ export type NotResendableReasonDto = 'remoteOrigin' | 'payloadLost'
  * 与后端 `resend_error_to_response` 的 `code` + `details` 形态一致。
  */
 export type ResendEntryCommandError =
+  | { code: 'SYNCHRONIZATION_DISABLED' }
   | { code: 'ENTRY_NOT_FOUND'; entryId: string }
   | { code: 'ENTRY_NOT_RESENDABLE'; entryId: string; reason: NotResendableReasonDto }
   | { code: 'TARGET_NOT_TRUSTED'; deviceId: string }
@@ -158,6 +159,7 @@ export interface ResendEntryArgs {
  * `isResendEntryError narrows known codes only` 会守住这条契约。
  */
 const RESEND_ERROR_CODES: ReadonlySet<ResendEntryCommandError['code']> = new Set([
+  'SYNCHRONIZATION_DISABLED',
   'ENTRY_NOT_FOUND',
   'ENTRY_NOT_RESENDABLE',
   'TARGET_NOT_TRUSTED',

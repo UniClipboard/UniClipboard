@@ -246,9 +246,13 @@
       },
       "sync": {
         "title": "同步设置",
+        "syncEnabled": {
+          "label": "启用同步",
+          "description": "允许设备之间同步内容。"
+        },
         "autoSync": {
           "label": "自动同步",
-          "description": "控制所有设备的剪贴板同步。关闭后停止向所有设备同步内容。"
+          "description": "自动将新的剪贴板内容发送到其他设备。"
         },
         "syncOnRestore": {
           "label": "恢复时同步",
@@ -1453,6 +1457,10 @@
       },
       "policies": {
         "title": "全局同步策略",
+        "syncEnabled": {
+          "title": "启用同步",
+          "description": "允许设备之间同步内容"
+        },
         "autoSync": {
           "title": "自动同步剪贴板",
           "description": "复制内容后自动推送给所有已配对设备"
@@ -1791,6 +1799,7 @@
         "summary": "已触发重发 · {{accepted}}/{{total}} 接收"
       },
       "error": {
+        "synchronizationDisabled": "同步已关闭。请先开启同步，再重发内容。",
         "notResendable": {
           "remoteOrigin": "条目 {{entryIdShort}} 来自其他设备,无法从本机重发。",
           "payloadLost": "条目 {{entryIdShort}} 在本机已不可用。"

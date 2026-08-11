@@ -246,9 +246,13 @@
       },
       "sync": {
         "title": "同期",
+        "syncEnabled": {
+          "label": "同期を有効にする",
+          "description": "デバイス間でコンテンツを同期できるようにします。"
+        },
         "autoSync": {
           "label": "自動sync",
-          "description": "すべてのデバイス間でクリップボードの同期を制御します。無効にすると、コンテンツはどのデバイスにも同期されなくなります。"
+          "description": "新しいクリップボードの内容を他のデバイスへ自動的に送信します。"
         },
         "syncOnRestore": {
           "label": "復元時に同期",
@@ -1454,6 +1458,10 @@
       },
       "policies": {
         "title": "グローバル同期ポリシー",
+        "syncEnabled": {
+          "title": "同期を有効にする",
+          "description": "デバイス間でコンテンツを同期できるようにします"
+        },
         "autoSync": {
           "title": "クリップボードの自動同期",
           "description": "新しいクリップボードの内容を、ペアリング済みのすべてのデバイスへ自動的に送信します。"
@@ -1792,6 +1800,7 @@
         "summary": "再送信しました · {{accepted}}/{{total}} 件を受け付けました"
       },
       "error": {
+        "synchronizationDisabled": "同期が無効です。コンテンツを再送するには同期を有効にしてください。",
         "notResendable": {
           "remoteOrigin": "エントリ{{entryIdShort}} は別のデバイスで送信されたため、ここから再送信できません。",
           "payloadLost": "エントリ {{entryIdShort}} はこのデバイスでは利用できなくなりました。"

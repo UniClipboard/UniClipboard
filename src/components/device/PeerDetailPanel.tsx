@@ -38,7 +38,7 @@ const log = createLogger('peer-detail-panel')
 interface PeerDetailPanelProps {
   deviceId: string
   device: SpaceMember | undefined
-  globalAutoSyncOff: boolean
+  globalSyncOff: boolean
   globalFileSyncOff: boolean
   /** Whether LAN-only mode is active (drives the derived channel label). */
   lanOnlyActive: boolean
@@ -48,7 +48,7 @@ interface PeerDetailPanelProps {
 const PeerDetailPanel: React.FC<PeerDetailPanelProps> = ({
   deviceId,
   device,
-  globalAutoSyncOff,
+  globalSyncOff,
   globalFileSyncOff,
   lanOnlyActive,
   onUnpair,
@@ -315,7 +315,7 @@ const PeerDetailPanel: React.FC<PeerDetailPanelProps> = ({
               aria-label={t('devices.settings.sync.restoreDefaults')}
               title={t('devices.settings.sync.restoreDefaults')}
               onClick={handleRestoreDefaults}
-              disabled={globalAutoSyncOff || isLoading}
+              disabled={globalSyncOff || isLoading}
               className="text-muted-foreground hover:text-foreground"
             >
               <RotateCcw className="size-3.5" />
@@ -330,7 +330,7 @@ const PeerDetailPanel: React.FC<PeerDetailPanelProps> = ({
               receiveEnabled={receiveEnabled}
               sendContentTypes={preferences?.sendContentTypes}
               receiveContentTypes={preferences?.receiveContentTypes}
-              globalAutoSyncOff={globalAutoSyncOff}
+              globalSyncOff={globalSyncOff}
               globalFileSyncOff={globalFileSyncOff}
               isLoading={isLoading}
               onSendEnabledChange={handleSendEnabledToggle}

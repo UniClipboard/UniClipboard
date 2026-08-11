@@ -27,8 +27,11 @@ fn simulate_put(fixture: &mut SettingsBoundaryFixture, body_json: &str) {
     let payload: SettingsPatchDto = serde_json::from_str(body_json).expect("parse PUT body");
     let patch: SettingsPatch = payload.into_domain();
     if let Some(sync) = patch.sync {
-        if let Some(value) = sync.auto_sync {
-            fixture.current.sync.auto_sync = value;
+        if let Some(value) = sync.sync_enabled {
+            fixture.current.sync.sync_enabled = value;
+        }
+        if let Some(value) = sync.auto_sync_enabled {
+            fixture.current.sync.auto_sync_enabled = value;
         }
         if let Some(value) = sync.sync_on_restore {
             fixture.current.sync.sync_on_restore = value;
@@ -73,7 +76,7 @@ fn sync_on_restore_patch_round_trips() {
 }
 
 /// A `sync` patch that omits `syncOnRestore` must not clobber the stored value:
-/// once turned on, an unrelated `sync` field change (e.g. `autoSync`) leaves it on.
+/// once turned on, an unrelated `sync` field change (e.g. `autoSyncEnabled`) leaves it on.
 #[test]
 fn omitting_sync_on_restore_preserves_stored_value() {
     let mut fixture = SettingsBoundaryFixture::default();
@@ -86,7 +89,7 @@ fn omitting_sync_on_restore_preserves_stored_value() {
     // Patch a sibling field without mentioning syncOnRestore.
     simulate_put(
         &mut fixture,
-        &json!({ "sync": { "autoSync": false } }).to_string(),
+        &json!({ "sync": { "autoSyncEnabled": false } }).to_string(),
     );
 
     let get = simulate_get(&fixture);
@@ -95,5 +98,5 @@ fn omitting_sync_on_restore_preserves_stored_value() {
         Value::Bool(true),
         "an unrelated sync patch must not reset syncOnRestore (None = leave unchanged)"
     );
-    assert_eq!(get["sync"]["autoSync"], Value::Bool(false));
+    assert_eq!(get["sync"]["autoSyncEnabled"], Value::Bool(false));
 }

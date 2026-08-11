@@ -605,6 +605,13 @@ fn resend_outcome_to_response(outcome: ResendEntryOutcome) -> (StatusCode, Json<
         String,
         Option<serde_json::Value>,
     ) = match outcome {
+        ResendEntryOutcome::SynchronizationDisabled => (
+            StatusCode::CONFLICT,
+            "synchronization_disabled",
+            "SYNCHRONIZATION_DISABLED",
+            "synchronization is disabled".to_string(),
+            None,
+        ),
         ResendEntryOutcome::EntryNotFound { entry_id } => (
             StatusCode::NOT_FOUND,
             "entry_not_found",
@@ -936,6 +943,12 @@ mod tests {
     /// variants must be 4xx (not 5xx → no Sentry escalation, no 401 retry).
     #[test]
     fn resend_error_carries_typed_code_and_structured_details() {
+        let (status, body) =
+            resend_outcome_to_response(ResendEntryOutcome::SynchronizationDisabled);
+        assert_eq!(status, StatusCode::CONFLICT);
+        assert_eq!(body.0.code, "SYNCHRONIZATION_DISABLED");
+        assert!(body.0.details.is_none());
+
         let (status, body) = resend_outcome_to_response(ResendEntryOutcome::TargetNotTrusted {
             device_id: "dev-x".into(),
         });

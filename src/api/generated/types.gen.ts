@@ -2979,14 +2979,16 @@ export type SwitchSpaceResponse = {
 export type SyncFrequencyDto = 'realtime' | 'interval';
 
 export type SyncSettingsDto = {
-    autoSync: boolean;
+    syncEnabled: boolean;
+    autoSyncEnabled: boolean;
     contentTypes: ContentTypesDto;
     syncFrequency: SyncFrequencyDto;
     syncOnRestore: boolean;
 };
 
 export type SyncSettingsPatchDto = {
-    autoSync?: boolean | null;
+    syncEnabled?: boolean | null;
+    autoSyncEnabled?: boolean | null;
     contentTypes?: ContentTypesPatchDto | null;
     syncFrequency?: SyncFrequencyDto | null;
     syncOnRestore?: boolean | null;

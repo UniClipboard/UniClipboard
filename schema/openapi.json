@@ -4686,7 +4686,10 @@
       },
       "SyncSettingsDto": {
         "properties": {
-          "autoSync": {
+          "syncEnabled": {
+            "type": "boolean"
+          },
+          "autoSyncEnabled": {
             "type": "boolean"
           },
           "contentTypes": {
@@ -4700,7 +4703,8 @@
           }
         },
         "required": [
-          "autoSync",
+          "syncEnabled",
+          "autoSyncEnabled",
           "syncFrequency",
           "contentTypes",
           "syncOnRestore"
@@ -4709,7 +4713,11 @@
       },
       "SyncSettingsPatchDto": {
         "properties": {
-          "autoSync": {
+          "syncEnabled": {
+            "nullable": true,
+            "type": "boolean"
+          },
+          "autoSyncEnabled": {
             "nullable": true,
             "type": "boolean"
           },

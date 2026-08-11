@@ -246,9 +246,13 @@
       },
       "sync": {
         "title": "Sync",
+        "syncEnabled": {
+          "label": "Enable sync",
+          "description": "Allow content to be synchronized between devices."
+        },
         "autoSync": {
           "label": "Auto sync",
-          "description": "Control clipboard sync across all devices. When disabled, no content will be synced to any device."
+          "description": "Automatically send new clipboard content to your other devices."
         },
         "syncOnRestore": {
           "label": "Sync on restore",
@@ -1454,6 +1458,10 @@
       },
       "policies": {
         "title": "Global sync policies",
+        "syncEnabled": {
+          "title": "Enable sync",
+          "description": "Allow content to be synchronized between devices"
+        },
         "autoSync": {
           "title": "Auto-sync clipboard",
           "description": "Push new clipboard content to all paired devices automatically"
@@ -1793,6 +1801,7 @@
         "summary": "Resend dispatched · {{accepted}}/{{total}} accepted"
       },
       "error": {
+        "synchronizationDisabled": "Sync is disabled. Turn it on to resend content.",
         "notResendable": {
           "remoteOrigin": "Entry {{entryIdShort}} originated on another device and cannot be resent from here.",
           "payloadLost": "Entry {{entryIdShort}} is no longer available on this device."

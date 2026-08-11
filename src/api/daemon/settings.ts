@@ -137,7 +137,8 @@ export interface ContentTypes {
 
 /** Sync behaviour settings. / 同步行为设置。 */
 export interface SyncSettings {
-  autoSync: boolean
+  syncEnabled: boolean
+  autoSyncEnabled: boolean
   syncFrequency: SyncFrequency
   contentTypes: ContentTypes
   /** Announce a restored history entry as the active clipboard to peers. */
@@ -451,9 +452,11 @@ function toSettingsPatchRequest(settings: SettingsPatchInput): SettingsPatchRequ
   }
 
   if (settings.sync) {
-    const { autoSync, syncFrequency, contentTypes, syncOnRestore } = settings.sync
+    const { syncEnabled, autoSyncEnabled, syncFrequency, contentTypes, syncOnRestore } =
+      settings.sync
     patch.sync = {
-      autoSync,
+      syncEnabled,
+      autoSyncEnabled,
       syncFrequency,
       contentTypes,
       syncOnRestore,

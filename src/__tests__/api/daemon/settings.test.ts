@@ -110,7 +110,8 @@ describe('Settings API', () => {
     it('sync settings expose all content type toggles', async () => {
       const settings = makeSettingsDto({
         sync: {
-          autoSync: true,
+          syncEnabled: true,
+          autoSyncEnabled: true,
           syncFrequency: 'interval',
           contentTypes: {
             text: true,

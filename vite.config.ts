@@ -63,7 +63,9 @@ export default defineConfig({
   //
   // 1. prevent vite from obscuring rust errors
   clearScreen: false,
-  // 2. tauri expects a fixed port, fail if that port is not available
+  // 2. tauri expects the fixed devUrl port; stale listeners from crashed dev
+  //    sessions are swept by `scripts/sweep-dev-port.mjs` (beforeDevCommand)
+  //    instead of auto-incrementing, which Tauri cannot follow.
   server: {
     port: 1420,
     strictPort: true,

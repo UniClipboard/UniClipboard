@@ -8,6 +8,8 @@ mod auth;
 mod binaries;
 mod cli;
 mod daemon;
+#[cfg(test)]
+mod member_removal;
 mod pairing;
 mod profile;
 mod releases;

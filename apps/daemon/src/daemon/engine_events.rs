@@ -2,12 +2,11 @@ use std::sync::Arc;
 
 use tokio::sync::broadcast;
 use tokio_util::sync::CancellationToken;
-use uc_daemon_contract::api::dto::setup_events::SetupPairingCompletedEvent;
 use uc_daemon_contract::api::types::{DaemonWsEvent, PeerSnapshotDto, PeersChangedFullPayload};
 use uc_daemon_contract::constants::{ws_event, ws_topic};
 use uc_engine::{
     ActiveClipboardChanged, Engine, EngineEvent, EventStream, Operation, OperationResult,
-    PairingCompletion, PeerConnectionChannelSummary, PeerConnectionSummary,
+    PeerConnectionChannelSummary, PeerConnectionSummary,
 };
 
 use super::mobile_lan_lifecycle::{mobile_lan_target, MobileLanLifecycleController};
@@ -42,9 +41,6 @@ pub(crate) async fn forward_engine_events(
                         }
                         publish_peer_snapshot(&engine, &event_tx).await;
                     }
-                    EngineEvent::PairingCompleted(completion) => {
-                        publish_pairing_completion(&engine, &event_tx, completion).await;
-                    }
                     EngineEvent::MobileLanSettingsChanged(settings) => {
                         mobile_lan
                             .reconcile(mobile_lan_target(
@@ -68,61 +64,6 @@ pub(crate) async fn forward_engine_events(
             }
         }
     }
-}
-
-async fn publish_pairing_completion(
-    engine: &Engine,
-    event_tx: &broadcast::Sender<DaemonWsEvent>,
-    completion: PairingCompletion,
-) {
-    let local_device = match engine.execute(Operation::QueryLocalDevice).await {
-        Ok(OperationResult::LocalDevice(local_device)) => local_device,
-        Ok(_) => {
-            tracing::warn!("engine returned an unexpected local-device result");
-            return;
-        }
-        Err(error) => {
-            tracing::warn!(
-                code = error.code(),
-                category = %error.category(),
-                "failed to resolve the sponsor device for pairing completion"
-            );
-            return;
-        }
-    };
-
-    let event = match pairing_completion_ws_event(local_device.device_id, completion) {
-        Ok(event) => event,
-        Err(error) => {
-            tracing::warn!(error = %error, "failed to serialize pairing completion");
-            return;
-        }
-    };
-    let _ = event_tx.send(event);
-}
-
-fn pairing_completion_ws_event(
-    sponsor_device_id: String,
-    completion: PairingCompletion,
-) -> Result<DaemonWsEvent, serde_json::Error> {
-    let (joiner_device_id, success, reason) = match completion {
-        PairingCompletion::Success { peer_device_id } => (Some(peer_device_id), true, None),
-        PairingCompletion::Failure { reason } => (None, false, Some(reason)),
-    };
-    let payload = serde_json::to_value(SetupPairingCompletedEvent {
-        sponsor_device_id,
-        joiner_device_id,
-        success,
-        reason,
-    })?;
-
-    Ok(DaemonWsEvent {
-        topic: ws_topic::SETUP.to_string(),
-        event_type: ws_event::SETUP_PAIRING_COMPLETED.to_string(),
-        session_id: None,
-        ts: chrono::Utc::now().timestamp_millis(),
-        payload,
-    })
 }
 
 async fn publish_peer_snapshot(engine: &Engine, event_tx: &broadcast::Sender<DaemonWsEvent>) {
@@ -182,48 +123,9 @@ fn peer_to_dto(peer: PeerConnectionSummary) -> PeerSnapshotDto {
 #[cfg(test)]
 mod tests {
     use uc_daemon_contract::constants::{ws_event, ws_topic};
-    use uc_engine::{
-        EngineEvent, InboundNoticeEvent, PairingCompletion, TransferDirectionSummary,
-        TransferProgress,
-    };
+    use uc_engine::{EngineEvent, InboundNoticeEvent, TransferDirectionSummary, TransferProgress};
 
-    use super::{daemon_ws_event, pairing_completion_ws_event};
-
-    #[test]
-    fn pairing_success_becomes_setup_completion_event() {
-        let event = pairing_completion_ws_event(
-            "sponsor-1".into(),
-            PairingCompletion::Success {
-                peer_device_id: "joiner-2".into(),
-            },
-        )
-        .expect("pairing completion websocket event");
-
-        assert_eq!(event.topic, ws_topic::SETUP);
-        assert_eq!(event.event_type, ws_event::SETUP_PAIRING_COMPLETED);
-        assert_eq!(event.payload["sponsorDeviceId"], "sponsor-1");
-        assert_eq!(event.payload["joinerDeviceId"], "joiner-2");
-        assert_eq!(event.payload["success"], true);
-        assert!(event.payload["reason"].is_null());
-    }
-
-    #[test]
-    fn pairing_failure_becomes_setup_completion_event() {
-        let event = pairing_completion_ws_event(
-            "sponsor-1".into(),
-            PairingCompletion::Failure {
-                reason: "passphrase_mismatch".into(),
-            },
-        )
-        .expect("pairing completion websocket event");
-
-        assert_eq!(event.topic, ws_topic::SETUP);
-        assert_eq!(event.event_type, ws_event::SETUP_PAIRING_COMPLETED);
-        assert_eq!(event.payload["sponsorDeviceId"], "sponsor-1");
-        assert!(event.payload["joinerDeviceId"].is_null());
-        assert_eq!(event.payload["success"], false);
-        assert_eq!(event.payload["reason"], "passphrase_mismatch");
-    }
+    use super::daemon_ws_event;
 
     #[test]
     fn inbound_notice_keeps_the_existing_watch_wire_shape() {

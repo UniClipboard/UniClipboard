@@ -1039,6 +1039,10 @@
     "sharedDeviceRefresh": {
       "refresh": "共有デバイスを再読み込み",
       "searching": "接続できるデバイスを探しています",
+      "viewProgress": "進捗を見る",
+      "discoveredNotice": "新しいデバイスを {{count}} 台見つけました",
+      "viewDiscovered": "新しいデバイスを見る",
+      "discoveredTitle": "新しいデバイスを発見",
       "connecting": "見つかったデバイスに自動接続しています",
       "roundCompleted": "この検索ラウンドは完了しました",
       "empty": "自動接続できるデバイスは見つかりませんでした",
@@ -1046,6 +1050,7 @@
       "startFailed": "共有デバイスの再読み込みを開始できません",
       "updateFailed": "現在は再読み込み状態を更新できません",
       "ended": "再読み込み状態は終了しました。新しい再読み込みを開始してください",
+      "connectedNotice": "{{count}} 台のデバイスを接続しました: {{devices}}",
       "unknownDevice": "名前のないデバイス",
       "deviceStates": {
         "discovered": "検出済み、接続準備中",
@@ -1060,8 +1065,8 @@
     },
     "convergence": {
       "converging": "このスペース内の他のデバイスに接続しています",
-      "waitingForUpgrade": "一部のデバイスは、自動接続する前に更新が必要です",
-      "blocked": "一部のデバイスは現在接続を完了できません"
+      "waitingForOfflineMember": "オフラインのデバイスがスペースデータを更新するのを待っています",
+      "recoveryRequired": "スペースデータの復旧が必要です"
     },
     "networkRecovery": {
       "recovering": "接続を復旧しています",
@@ -1074,22 +1079,22 @@
       }
     },
     "memberRemoval": {
-      "recovering": {
-        "title": "デバイス削除を復元中",
-        "description": "中断されたデバイス削除を安全に復元しています。お待ちください。"
-      },
-      "permanentLoss": {
-        "title": "デバイスの永久的な喪失を確認",
-        "description": "これらの保留中のデバイスを復旧できない場合にのみ続行してください。この操作は元に戻せません。",
-        "confirm": "永久的な喪失を確認",
-        "markLost": "紛失としてマーク"
+      "deviceRemoved": {
+        "title": "このデバイスは削除されました",
+        "description": "このデバイスはこのスペースに所属していません。招待を使って再ペアリングしてください。"
       },
       "errors": {
         "statusFailed": "デバイス削除の進行状況を読み込めませんでした。",
-        "continueFailed": "デバイスの削除を続行できませんでした。"
+        "removeFailed": "デバイスを削除できませんでした。"
       },
-      "pendingDeviceHint": "デバイスがオフラインです。オンライン化してセキュリティ更新を完了する必要があります",
-      "securityUpdateLabel": "セキュリティ更新"
+      "converging": {
+        "title": "デバイスを削除中",
+        "description": "削除はすべての残存デバイスに伝播しています。一部のデバイスがオフラインの場合は時間がかかることがあります。"
+      },
+      "recoveryRequired": {
+        "title": "スペースの再構築が必要です",
+        "description": "メンバーの削除を安全に検証できませんでした。信頼できるデバイスからスペースを再構築して続行してください。"
+      }
     },
     "addDevice": {
       "title": "新しいデバイスを招待",

@@ -13,26 +13,18 @@
  */
 
 import {
-  continueMemberRemoval as continueMemberRemovalSdk,
-  getCurrentMemberRemoval as getCurrentMemberRemovalSdk,
-  getMembershipConvergence as getMembershipConvergenceSdk,
   getMemberSyncPreferences as getMemberSyncPreferencesSdk,
-  getSharedDeviceRefresh as getSharedDeviceRefreshSdk,
   getSpaceProtection as getSpaceProtectionSdk,
-  secureRemoveLegacyMember as secureRemoveLegacyMemberSdk,
-  startSharedDeviceRefresh as startSharedDeviceRefreshSdk,
+  getWorkspaceConvergence as getWorkspaceConvergenceSdk,
   updateMemberSyncPreferences as updateMemberSyncPreferencesSdk,
 } from '@/api/generated/sdk.gen'
 import type {
   LegacyBootstrapDto,
-  MemberRemovalDto,
   MemberSyncPreferencesPatchDto,
-  MembershipConvergenceDto,
-  SecureLegacyRemovalDto,
   SpaceProtectionDto,
+  WorkspaceConvergenceDto,
 } from '@/api/generated/types.gen'
 import { daemonClient } from './client'
-import { DaemonApiError } from './errors'
 
 // ── Value objects ───────────────────────────────────────────────
 
@@ -86,46 +78,6 @@ export type MemberProtectionStatus =
   | 'requires_readmission'
   | 'recovery_required'
 export type LegacyBootstrapOutcome = 'awaiting_readmission' | 'complete' | 'recovery_required'
-export type MembershipConvergenceState =
-  | 'complete'
-  | 'converging'
-  | 'waiting_for_upgrade'
-  | 'blocked'
-
-export type SharedDeviceRefreshPhase = 'started' | 'discovering' | 'connecting' | 'round_completed'
-export type SharedDeviceRefreshDeviceState =
-  | 'discovered'
-  | 'connecting'
-  | 'connected'
-  | 'already_present'
-  | 'waiting_for_peer'
-  | 'waiting_for_update'
-  | 'version_incompatible'
-  | 'rejected'
-
-export interface SharedDeviceRefreshDevice {
-  deviceId: string
-  displayName: string
-  state: SharedDeviceRefreshDeviceState
-}
-
-/** Complete Engine-owned result for one shared-device refresh request. */
-export interface SharedDeviceRefreshSnapshot {
-  requestId: string
-  phase: SharedDeviceRefreshPhase
-  devices: SharedDeviceRefreshDevice[]
-  totalCount: number
-  discoveredCount: number
-  connectingCount: number
-  connectedCount: number
-  alreadyPresentCount: number
-  waitingForPeerCount: number
-  waitingForUpdateCount: number
-  versionIncompatibleCount: number
-  rejectedCount: number
-  unavailableSourceCount: number
-}
-
 export interface LegacyBootstrap {
   bootstrapId: string
   outcome: LegacyBootstrapOutcome
@@ -144,80 +96,11 @@ export interface SpaceProtection {
   legacyBootstrap: LegacyBootstrap | null
 }
 
-/** Engine-authoritative connection state for the active space. */
-export interface MembershipConvergence {
-  state: MembershipConvergenceState
-}
+export type WorkspaceConvergence = WorkspaceConvergenceDto
 
-/** Result of beginning an Engine-owned secure Legacy member removal. */
-export interface SecureLegacyRemoval {
-  bootstrap: LegacyBootstrap
-}
-
-export type MemberRemovalOutcome =
-  | 'local_only'
-  | 'recovering'
-  | 'applied'
-  | 'complete'
-  | 'recovery_required'
-
-/** Engine-owned removal progress for the active space. */
-export interface MemberRemoval {
-  revocationId: string | null
-  outcome: MemberRemovalOutcome
-  pendingRecipients: number
-  removedDeviceIds: string[]
-  pendingRecipientDeviceIds: string[]
-  updatedAtMs: number
-}
-
-/** Starts a shared-device refresh round and returns its Engine-owned request ID. */
-export async function startSharedDeviceRefresh(): Promise<string> {
-  const started = await daemonClient.callEnveloped(() =>
-    startSharedDeviceRefreshSdk({ throwOnError: true })
-  )
-  return started.requestId
-}
-
-/** Reads the complete current snapshot for one shared-device refresh request. */
-export async function getSharedDeviceRefresh(
-  requestId: string
-): Promise<SharedDeviceRefreshSnapshot> {
-  const data = await daemonClient.callEnveloped(() =>
-    getSharedDeviceRefreshSdk({ path: { request_id: requestId }, throwOnError: true })
-  )
-  return data as unknown as SharedDeviceRefreshSnapshot
-}
-
-/** True when the daemon reports that the refresh request no longer exists. */
-export function isSharedDeviceRefreshNotFound(error: unknown): boolean {
-  if (!(error instanceof DaemonApiError)) return false
-  if (error.details && typeof error.details === 'object') {
-    return (error.details as { code?: unknown }).code === 'shared_device_refresh_not_found'
-  }
-  return false
-}
-
-/** Reads the Engine-owned removal that remains active across daemon restarts. */
-export async function getCurrentMemberRemoval(): Promise<MemberRemoval | null> {
-  const envelope = await daemonClient.callSdk(() =>
-    getCurrentMemberRemovalSdk({ throwOnError: true })
-  )
-  return envelope.data ? toMemberRemoval(envelope.data) : null
-}
-
-/** Continues an active removal after the user explicitly confirms permanent loss. */
-export async function continueMemberRemoval(
-  revocationId: string,
-  permanentlyLostDeviceIds: string[]
-): Promise<MemberRemoval> {
-  const removal = await daemonClient.callEnveloped(() =>
-    continueMemberRemovalSdk({
-      body: { revocationId, permanentlyLostDeviceIds },
-      throwOnError: true,
-    })
-  )
-  return toMemberRemoval(removal)
+/** Reads the complete Engine-owned convergence state for the active space. */
+export async function getWorkspaceConvergence(): Promise<WorkspaceConvergence> {
+  return daemonClient.callEnveloped(() => getWorkspaceConvergenceSdk({ throwOnError: true }))
 }
 
 // ── Public API ──────────────────────────────────────────────────
@@ -245,54 +128,12 @@ export async function getSpaceProtection(): Promise<SpaceProtection> {
   }
 }
 
-export async function getMembershipConvergence(): Promise<MembershipConvergence> {
-  const data: MembershipConvergenceDto = await daemonClient.callEnveloped(() =>
-    getMembershipConvergenceSdk({ throwOnError: true })
-  )
-  return { state: data.state }
-}
-
-export async function secureRemoveLegacyMember(deviceId: string): Promise<SecureLegacyRemoval> {
-  const data: SecureLegacyRemovalDto = await daemonClient.callEnveloped(() =>
-    secureRemoveLegacyMemberSdk({ path: { device_id: deviceId }, throwOnError: true })
-  )
-  return { bootstrap: toLegacyBootstrap(data.bootstrap) }
-}
-
 function toLegacyBootstrap(bootstrap: LegacyBootstrapDto): LegacyBootstrap {
   return {
     bootstrapId: bootstrap.bootstrapId,
     outcome: bootstrap.outcome,
     pendingReadmission: bootstrap.pendingReadmission,
   }
-}
-
-export function toMemberRemoval(removal: MemberRemovalDto): MemberRemoval {
-  return {
-    revocationId: removal.revocationId ?? null,
-    outcome: removal.outcome,
-    pendingRecipients: removal.pendingRecipients,
-    removedDeviceIds: removal.removedDeviceIds,
-    pendingRecipientDeviceIds: removal.pendingRecipientDeviceIds,
-    updatedAtMs: removal.updatedAtMs,
-  }
-}
-
-/** True only when the Engine refused an unsafe Legacy local-only removal. */
-export function isLegacyBootstrapRequired(error: unknown): boolean {
-  if (!(error instanceof DaemonApiError) || !error.details || typeof error.details !== 'object') {
-    return false
-  }
-  return (error.details as { code?: unknown }).code === 'legacy_bootstrap_required'
-}
-
-/** True when the Engine requires the current removal to be shown before another can begin. */
-export function isMemberRemovalBlocked(error: unknown): boolean {
-  if (!(error instanceof DaemonApiError) || !error.details || typeof error.details !== 'object') {
-    return false
-  }
-  const code = (error.details as { code?: unknown }).code
-  return code === 'member_removal_in_progress' || code === 'member_removal_recovery_required'
 }
 
 export async function updateMemberSyncPreferences(

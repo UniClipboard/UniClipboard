@@ -1,14 +1,12 @@
 import { createAsyncThunk, createSlice, type PayloadAction } from '@reduxjs/toolkit'
 import {
-  getMembershipConvergence,
-  getCurrentMemberRemoval,
+  getWorkspaceConvergence,
   getMemberSyncPreferences,
   getSpaceProtection,
   updateMemberSyncPreferences as updateMemberSyncPreferencesApi,
   type MemberSyncPreferences,
   type MemberSyncPreferencesPatch,
-  type MembershipConvergence,
-  type MemberRemoval,
+  type WorkspaceConvergence,
   type SpaceProtection,
 } from '@/api/daemon/member'
 import {
@@ -42,16 +40,12 @@ interface DevicesState {
 
   // Engine-authoritative connection state for the active space. Query errors
   // stay separate from page-level failures because this status is advisory.
-  membershipConvergence: MembershipConvergence | null
+  membershipConvergence: WorkspaceConvergence | null
   membershipConvergenceError: string | null
 
   networkRecovery: NetworkRecoveryStatus | null
   networkRecoveryError: string | null
   networkRecoveryRequestId: string | null
-
-  memberRemoval: MemberRemoval | null
-  memberRemovalError: string | null
-  memberRemovalRequestId: string | null
 
   // 每成员同步偏好（phase 4b PR-3：从 DeviceSyncSettings 切换到 MemberSyncPreferences）
   memberSyncPreferences: Record<string, MemberSyncPreferences>
@@ -126,9 +120,6 @@ const initialState: DevicesState = {
   networkRecovery: null,
   networkRecoveryError: null,
   networkRecoveryRequestId: null,
-  memberRemoval: null,
-  memberRemovalError: null,
-  memberRemovalRequestId: null,
   memberSyncPreferences: {},
   memberSyncPreferencesLoading: {},
 }
@@ -171,7 +162,7 @@ export const fetchMembershipConvergence = createAsyncThunk(
   'devices/fetchMembershipConvergence',
   async (_, { rejectWithValue }) => {
     try {
-      return await getMembershipConvergence()
+      return await getWorkspaceConvergence()
     } catch {
       return rejectWithValue('Failed to fetch membership convergence')
     }
@@ -196,17 +187,6 @@ export const requestNetworkRecovery = createAsyncThunk(
       return await recoverNetworkApi()
     } catch {
       return rejectWithValue('devices.networkRecovery.errors.requestFailed')
-    }
-  }
-)
-
-export const fetchCurrentMemberRemoval = createAsyncThunk(
-  'devices/fetchCurrentMemberRemoval',
-  async (_, { rejectWithValue }) => {
-    try {
-      return await getCurrentMemberRemoval()
-    } catch {
-      return rejectWithValue('devices.memberRemoval.errors.statusFailed')
     }
   }
 )
@@ -263,11 +243,6 @@ const devicesSlice = createSlice({
       })
       state.spaceMembersLoading = false
       state.spaceMembersError = null
-    },
-    setMemberRemoval: (state, action: PayloadAction<MemberRemoval | null>) => {
-      state.memberRemoval = action.payload
-      state.memberRemovalError = null
-      state.memberRemovalRequestId = null
     },
   },
   extraReducers: builder => {
@@ -369,23 +344,6 @@ const devicesSlice = createSlice({
         state.networkRecoveryRequestId = null
       })
 
-    builder
-      .addCase(fetchCurrentMemberRemoval.pending, (state, action) => {
-        state.memberRemovalRequestId = action.meta.requestId
-        state.memberRemovalError = null
-      })
-      .addCase(fetchCurrentMemberRemoval.fulfilled, (state, action) => {
-        if (state.memberRemovalRequestId !== action.meta.requestId) return
-        state.memberRemoval = action.payload
-        state.memberRemovalError = null
-        state.memberRemovalRequestId = null
-      })
-      .addCase(fetchCurrentMemberRemoval.rejected, (state, action) => {
-        if (state.memberRemovalRequestId !== action.meta.requestId) return
-        state.memberRemovalError = action.payload as string
-        state.memberRemovalRequestId = null
-      })
-
     // Member sync preferences
     builder
       .addCase(fetchMemberSyncPreferences.pending, (state, action) => {
@@ -430,6 +388,6 @@ const devicesSlice = createSlice({
   },
 })
 
-export const { clearLocalDeviceError, clearSpaceMembersError, setMemberRemoval, setSpaceMembers } =
+export const { clearLocalDeviceError, clearSpaceMembersError, setSpaceMembers } =
   devicesSlice.actions
 export default devicesSlice.reducer

@@ -21,18 +21,19 @@
  * daemon-pushed `peers.changed` ws events.
  */
 
-import { ChevronDown, Plus, RefreshCw, Settings2, TriangleAlert, Unlink } from 'lucide-react'
+import {
+  ChevronDown,
+  CircleCheck,
+  CircleOff,
+  Plus,
+  RefreshCw,
+  Settings2,
+  TriangleAlert,
+  Unlink,
+} from 'lucide-react'
 import React, { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { useTranslation } from 'react-i18next'
 import { refreshPresence } from '@/api/daemon'
-import {
-  continueMemberRemoval,
-  getCurrentMemberRemoval,
-  isLegacyBootstrapRequired,
-  isMemberRemovalBlocked,
-  secureRemoveLegacyMember,
-  type MemberRemoval,
-} from '@/api/daemon/member'
 import type { SpaceMember } from '@/api/daemon/members'
 import { unpairDevice } from '@/api/daemon/members'
 import {
@@ -54,11 +55,9 @@ import LocalDevicePanel from '@/components/device/LocalDevicePanel'
 import MobileDevicePanel from '@/components/device/MobileDevicePanel'
 import MobileSyncSettingsDialog from '@/components/device/MobileSyncSettingsDialog'
 import PeerDetailPanel from '@/components/device/PeerDetailPanel'
-import SharedDeviceRefreshDialog from '@/components/device/SharedDeviceRefreshDialog'
-import SpaceConnectionStatus from '@/components/device/SpaceConnectionStatus'
 import StatusDot, { type StatusDotTone } from '@/components/device/StatusDot'
 import UnpairAlertDialog from '@/components/device/UnpairAlertDialog'
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
+import { Alert, AlertDescription } from '@/components/ui/alert'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -84,10 +83,10 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import type { PeerSnapshotPayloadItem, PeersChangedPayload } from '@/hooks/useDaemonEvents'
 import { useNow } from '@/hooks/useRelativeTime'
 import { useSetting } from '@/hooks/useSetting'
-import { useSharedDeviceRefresh } from '@/hooks/useSharedDeviceRefresh'
 import { daemonWs } from '@/lib/daemon-ws'
 import { createLogger } from '@/lib/logger'
 import { cn } from '@/lib/utils'
+import { isRemovalInProgress, isWaitingForDeviceUpdate } from '@/pages/device-status-utils'
 import { useAppDispatch, useAppSelector } from '@/store/hooks'
 import {
   clearLocalDeviceError,
@@ -95,12 +94,10 @@ import {
   fetchLocalDeviceInfo,
   fetchMembershipConvergence,
   fetchNetworkRecoveryStatus,
-  fetchCurrentMemberRemoval,
   fetchSpaceProtection,
   fetchSpaceMembers,
   requestNetworkRecovery,
   setSpaceMembers,
-  setMemberRemoval,
 } from '@/store/slices/devicesSlice'
 
 const log = createLogger('devices-page')
@@ -143,12 +140,9 @@ const DevicesPage: React.FC = () => {
     spaceProtection,
     spaceProtectionError,
     membershipConvergence,
-    membershipConvergenceError,
     networkRecovery,
     networkRecoveryError,
     networkRecoveryRequestId,
-    memberRemoval,
-    memberRemovalError,
   } = useAppSelector(state => state.devices)
 
   const peers = localDevice
@@ -170,14 +164,28 @@ const DevicesPage: React.FC = () => {
 
   const { setting } = useSetting()
   const syncActive = setting?.sync.autoSync !== false
-  const sharedRefresh = useSharedDeviceRefresh({
-    onDevicesConnected: () => dispatch(fetchSpaceMembers()),
-    onStartFailed: () => toast.error(t('devices.sharedDeviceRefresh.startFailed')),
-    documentVisible,
-  })
-  const sharedRefreshActive =
-    sharedRefresh.requestId != null &&
-    (sharedRefresh.snapshot == null || sharedRefresh.snapshot.phase !== 'round_completed')
+  const localDeviceStatus: DeviceRowStatus = membershipConvergence?.removed
+    ? {
+        kind: 'removed',
+        label: t('devices.memberRemoval.deviceRemoved.title'),
+        description: t('devices.memberRemoval.deviceRemoved.description'),
+      }
+    : membershipConvergence?.phase === 'recovery_required'
+      ? {
+          kind: 'recovery_required',
+          label: t('devices.memberRemoval.recoveryRequired.title'),
+          description: t('devices.memberRemoval.recoveryRequired.description'),
+        }
+      : membershipConvergence && isRemovalInProgress(membershipConvergence)
+        ? {
+            kind: 'removing',
+            label: t('devices.memberRemoval.converging.title'),
+            description: t('devices.memberRemoval.converging.description'),
+          }
+        : {
+            kind: syncActive ? 'online' : 'offline',
+            label: t(`devices.list.status.${syncActive ? 'online' : 'offline'}`),
+          }
   const globalAutoSyncOff = setting?.sync.autoSync === false
   const globalFileSyncOff = setting?.fileSync?.fileSyncEnabled === false
   const lanOnlyActive = setting?.network?.allowRelayFallback === false
@@ -185,7 +193,6 @@ const DevicesPage: React.FC = () => {
   useEffect(() => {
     dispatch(fetchLocalDeviceInfo())
     dispatch(fetchSpaceMembers())
-    dispatch(fetchCurrentMemberRemoval())
   }, [dispatch])
 
   useEffect(() => {
@@ -209,7 +216,7 @@ const DevicesPage: React.FC = () => {
   }, [dispatch, documentVisible])
 
   useEffect(() => {
-    if (membershipConvergence?.state !== 'converging' || !documentVisible) return
+    if (membershipConvergence?.phase !== 'converging' || !documentVisible) return
 
     let attempts = 0
     const timer = window.setInterval(() => {
@@ -219,12 +226,15 @@ const DevicesPage: React.FC = () => {
     }, CONVERGENCE_POLL_MS)
 
     return () => window.clearInterval(timer)
-  }, [dispatch, documentVisible, membershipConvergence?.state])
+  }, [dispatch, documentVisible, membershipConvergence?.phase])
 
   useEffect(() => {
     const handler = (event: { topic: string; eventType: string; payload: unknown }) => {
-      if (event.topic === 'member-removal' && event.eventType === 'member-removal.changed') {
-        dispatch(fetchCurrentMemberRemoval())
+      if (
+        event.topic === 'workspace-convergence' &&
+        event.eventType === 'workspace-convergence.changed'
+      ) {
+        dispatch(fetchMembershipConvergence())
         dispatch(fetchSpaceMembers())
         return
       }
@@ -244,7 +254,10 @@ const DevicesPage: React.FC = () => {
         }
       }
     }
-    const unsub = daemonWs.subscribe(['peers', 'member-removal', 'network-recovery'], handler)
+    const unsub = daemonWs.subscribe(
+      ['peers', 'workspace-convergence', 'network-recovery'],
+      handler
+    )
     return unsub
   }, [dispatch, documentVisible])
 
@@ -284,9 +297,6 @@ const DevicesPage: React.FC = () => {
   const [unpairDialogOpen, setUnpairDialogOpen] = useState(false)
   const [unpairTargetId, setUnpairTargetId] = useState<string | null>(null)
   const [unpairBusy, setUnpairBusy] = useState(false)
-  const [permanentLossRemoval, setPermanentLossRemoval] = useState<MemberRemoval | null>(null)
-  const [permanentLossDeviceIds, setPermanentLossDeviceIds] = useState<string[]>([])
-  const [permanentLossBusy, setPermanentLossBusy] = useState(false)
   const unpairBusyRef = useRef(false)
 
   const handleUnpairRequest = (peerId: string) => {
@@ -306,43 +316,16 @@ const DevicesPage: React.FC = () => {
     unpairBusyRef.current = true
     setUnpairBusy(true)
     try {
-      try {
-        const removal = await unpairDevice(unpairTargetId)
-        dispatch(setMemberRemoval(removal))
-      } catch (error) {
-        if (isMemberRemovalBlocked(error)) {
-          let current: MemberRemoval | null
-          try {
-            current = await getCurrentMemberRemoval()
-          } catch (statusError) {
-            log.error({ err: statusError }, 'failed to load active member removal')
-            toast.error(t('devices.memberRemoval.errors.statusFailed'))
-            return
-          }
-          dispatch(setMemberRemoval(current))
-          setUnpairDialogOpen(false)
-          setUnpairTargetId(null)
-          return
-        }
-        if (!isLegacyBootstrapRequired(error)) {
-          log.error({ err: error }, 'failed to remove device')
-          toast.error(t('devices.protection.errors.removeFailed'))
-          return
-        }
-        try {
-          await secureRemoveLegacyMember(unpairTargetId)
-        } catch (bootstrapError) {
-          log.error({ err: bootstrapError }, 'failed to start secure legacy removal')
-          toast.error(t('devices.protection.errors.removeFailed'))
-          return
-        }
-      }
-
+      await unpairDevice(unpairTargetId)
+      dispatch(fetchMembershipConvergence())
       dispatch(fetchSpaceMembers())
       dispatch(fetchSpaceProtection())
       setSelection({ kind: 'local' })
       setUnpairDialogOpen(false)
       setUnpairTargetId(null)
+    } catch (error) {
+      log.error({ err: error }, 'failed to remove device')
+      toast.error(t('devices.memberRemoval.errors.removeFailed'))
     } finally {
       unpairBusyRef.current = false
       setUnpairBusy(false)
@@ -350,14 +333,6 @@ const DevicesPage: React.FC = () => {
   }
 
   const unpairTargetDevice = peers.find(d => d.peerId === unpairTargetId)
-  const hideDuplicateUpgrade =
-    membershipConvergence?.state === 'waiting_for_upgrade' &&
-    legacyBootstrap !== null &&
-    legacyBootstrap.outcome !== 'complete'
-  const visibleConvergenceState =
-    membershipConvergenceError || hideDuplicateUpgrade
-      ? 'complete'
-      : (membershipConvergence?.state ?? 'complete')
   const networkRecoveryVisible =
     networkRecoveryError !== null || (networkRecovery !== null && networkRecovery.phase !== 'idle')
   const canRetryNetworkRecovery =
@@ -367,44 +342,6 @@ const DevicesPage: React.FC = () => {
   const requestNetworkRecoveryNow = () => {
     if (!canRetryNetworkRecovery) return
     void dispatch(requestNetworkRecovery())
-  }
-  const pendingRemovalDeviceIds = new Set(
-    memberRemoval && memberRemoval.outcome !== 'complete'
-      ? memberRemoval.pendingRecipientDeviceIds
-      : []
-  )
-  const handlePermanentLoss = (removal: MemberRemoval, deviceIds: string[]) => {
-    setPermanentLossRemoval(removal)
-    setPermanentLossDeviceIds(deviceIds)
-  }
-
-  // The Engine may complete the revocation (and emit the store update) before
-  // the continue request returns. Close the dialog as soon as the authoritative
-  // removal state is gone or complete instead of waiting on the slow request.
-  useEffect(() => {
-    if (permanentLossRemoval && (!memberRemoval || memberRemoval.outcome === 'complete')) {
-      setPermanentLossRemoval(null)
-      setPermanentLossDeviceIds([])
-    }
-  }, [permanentLossRemoval, memberRemoval])
-  const confirmPermanentLoss = async () => {
-    if (!permanentLossRemoval?.revocationId || permanentLossBusy) return
-    setPermanentLossBusy(true)
-    try {
-      const next = await continueMemberRemoval(
-        permanentLossRemoval.revocationId,
-        permanentLossDeviceIds
-      )
-      dispatch(setMemberRemoval(next))
-      dispatch(fetchSpaceMembers())
-      setPermanentLossRemoval(null)
-      setPermanentLossDeviceIds([])
-    } catch (error) {
-      log.error({ err: error }, 'failed to continue member removal')
-      toast.error(t('devices.memberRemoval.errors.continueFailed'))
-    } finally {
-      setPermanentLossBusy(false)
-    }
   }
 
   return (
@@ -459,16 +396,6 @@ const DevicesPage: React.FC = () => {
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
-          <SpaceConnectionStatus state={visibleConvergenceState} />
-          {memberRemoval?.outcome === 'recovering' && (
-            <Alert className="mt-2 border-warning/30 bg-warning/10 text-warning">
-              <TriangleAlert />
-              <AlertTitle>{t('devices.memberRemoval.recovering.title')}</AlertTitle>
-              <AlertDescription>
-                {t('devices.memberRemoval.recovering.description')}
-              </AlertDescription>
-            </Alert>
-          )}
           {networkRecoveryVisible && (
             <Alert className="mt-2 border-warning/30 bg-warning/10 text-warning">
               <AlertDescription className="flex flex-col gap-2 text-xs">
@@ -496,20 +423,13 @@ const DevicesPage: React.FC = () => {
 
         <ScrollArea className="min-h-0 flex-1">
           <div className="flex flex-col px-2 pb-3">
-            {(spaceMembersError ||
-              mobileDevicesError ||
-              spaceProtectionError ||
-              memberRemovalError) && (
+            {(spaceMembersError || mobileDevicesError || spaceProtectionError || false) && (
               <Alert variant="destructive" className="mx-1 my-2">
                 <AlertDescription className="flex flex-col gap-2 text-xs">
                   <span>
                     {spaceMembersError ??
                       mobileDevicesError ??
-                      (spaceProtectionError
-                        ? t(spaceProtectionError)
-                        : memberRemovalError
-                          ? t(memberRemovalError)
-                          : null)}
+                      (spaceProtectionError ? t(spaceProtectionError) : null)}
                   </span>
                   <Button
                     variant="outline"
@@ -525,9 +445,6 @@ const DevicesPage: React.FC = () => {
                       }
                       if (mobileDevicesError) {
                         mobileActions.reload()
-                      }
-                      if (memberRemovalError) {
-                        dispatch(fetchCurrentMemberRemoval())
                       }
                     }}
                   >
@@ -575,8 +492,14 @@ const DevicesPage: React.FC = () => {
             {localDevice ? (
               <DeviceListItem
                 name={localDevice.deviceName}
-                tone={syncActive ? 'success' : 'off'}
-                trailing={t('devices.panel.localBadge')}
+                tone={
+                  localDeviceStatus.kind === 'online'
+                    ? 'success'
+                    : localDeviceStatus.kind === 'offline'
+                      ? 'off'
+                      : 'warning'
+                }
+                status={localDeviceStatus}
                 selected={effectiveSelection.kind === 'local'}
                 onSelect={() => setSelection({ kind: 'local' })}
               />
@@ -599,47 +522,27 @@ const DevicesPage: React.FC = () => {
               </div>
             )}
 
-            <SectionLabel
-              label={t('devices.pairedDevices.title')}
-              trailing={
-                peers.length > 0 ? (
-                  <TooltipProvider delay={0}>
-                    <Tooltip>
-                      <TooltipTrigger
-                        render={
-                          <button
-                            type="button"
-                            aria-label={t('devices.sharedDeviceRefresh.refresh')}
-                            className="rounded-md p-0.5 text-muted-foreground/70 transition-colors hover:text-foreground"
-                            onClick={() => void sharedRefresh.startRefresh()}
-                          />
-                        }
-                      >
-                        <RefreshCw
-                          className={cn('size-3.5', sharedRefreshActive && 'animate-spin')}
-                        />
-                      </TooltipTrigger>
-                      <TooltipContent side="right" align="center" className="font-medium">
-                        <p>{t('devices.sharedDeviceRefresh.refresh')}</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                ) : undefined
-              }
-            />
+            <SectionLabel label={t('devices.pairedDevices.title')} />
             {peers.map(peer => (
               <DeviceListItem
                 key={peer.peerId}
                 name={peer.deviceName || t('devices.list.labels.unknownDevice')}
                 tone={peerDotTone(peer)}
+                status={
+                  membershipConvergence &&
+                  isWaitingForDeviceUpdate(membershipConvergence, peer.peerId)
+                    ? {
+                        kind: 'waiting_for_update',
+                        label: t('devices.convergence.waitingForOfflineMember'),
+                      }
+                    : {
+                        kind: peer.connected ? 'online' : 'offline',
+                        label: t(`devices.list.status.${peer.connected ? 'online' : 'offline'}`),
+                      }
+                }
                 dimmed={!peer.connected}
                 selected={
                   effectiveSelection.kind === 'peer' && effectiveSelection.id === peer.peerId
-                }
-                needsSync={
-                  pendingRemovalDeviceIds.has(peer.peerId)
-                    ? t('devices.memberRemoval.pendingDeviceHint')
-                    : undefined
                 }
                 onSelect={() => setSelection({ kind: 'peer', id: peer.peerId })}
               />
@@ -673,6 +576,10 @@ const DevicesPage: React.FC = () => {
                   key={mobile.deviceId}
                   name={mobile.label}
                   tone={tone}
+                  status={{
+                    kind: tone === 'off' ? 'offline' : 'online',
+                    label: t(`devices.list.status.${tone === 'off' ? 'offline' : 'online'}`),
+                  }}
                   dimmed={tone === 'off'}
                   selected={
                     effectiveSelection.kind === 'mobile' &&
@@ -739,9 +646,6 @@ const DevicesPage: React.FC = () => {
               globalFileSyncOff={globalFileSyncOff}
               lanOnlyActive={lanOnlyActive}
               onUnpair={handleUnpairRequest}
-              onMarkLost={deviceId => {
-                if (memberRemoval) handlePermanentLoss(memberRemoval, [deviceId])
-              }}
             />
           )}
 
@@ -770,47 +674,6 @@ const DevicesPage: React.FC = () => {
         deviceName={unpairTargetDevice?.deviceName || t('devices.list.labels.unknownDevice')}
         busy={unpairBusy}
         onConfirm={handleUnpairConfirm}
-      />
-      <AlertDialog
-        open={permanentLossRemoval !== null}
-        onOpenChange={open => {
-          if (!open && !permanentLossBusy) {
-            setPermanentLossRemoval(null)
-            setPermanentLossDeviceIds([])
-          }
-        }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t('devices.memberRemoval.permanentLoss.title')}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {t('devices.memberRemoval.permanentLoss.description')}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={permanentLossBusy}>
-              {t('clipboard.cancelLabel')}
-            </AlertDialogCancel>
-            <AlertDialogAction
-              variant="destructive"
-              disabled={permanentLossBusy}
-              onClick={event => {
-                event.preventDefault()
-                void confirmPermanentLoss()
-              }}
-            >
-              {t('devices.memberRemoval.permanentLoss.confirm')}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-      <SharedDeviceRefreshDialog
-        open={sharedRefresh.open}
-        snapshot={sharedRefresh.snapshot}
-        queryFailure={sharedRefresh.queryFailure}
-        onOpenChange={open => {
-          if (!open) sharedRefresh.closeRefresh()
-        }}
       />
       <MobileSyncSettingsDialog
         open={settingsSheetOpen}
@@ -923,20 +786,24 @@ const EmptyAddRow: React.FC<{ label: string; onClick: () => void; dimmed?: boole
 interface DeviceListItemProps {
   name: string
   tone: StatusDotTone
+  status: DeviceRowStatus
   selected: boolean
   dimmed?: boolean
-  trailing?: string
-  needsSync?: string
   onSelect: () => void
+}
+
+type DeviceRowStatus = {
+  kind: 'online' | 'offline' | 'waiting_for_update' | 'removing' | 'recovery_required' | 'removed'
+  label: string
+  description?: string
 }
 
 const DeviceListItem: React.FC<DeviceListItemProps> = ({
   name,
   tone,
+  status,
   selected,
   dimmed,
-  trailing,
-  needsSync,
   onSelect,
 }) => (
   <div
@@ -956,36 +823,50 @@ const DeviceListItem: React.FC<DeviceListItemProps> = ({
     >
       <StatusDot tone={tone} />
       <span className="min-w-0 flex-1 truncate">{name}</span>
-      {trailing && (
-        <span className="shrink-0 text-[10px] font-normal text-muted-foreground">{trailing}</span>
-      )}
     </button>
-    {needsSync && (
-      <TooltipProvider delay={200}>
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <button
-                type="button"
-                aria-label={needsSync}
-                className="flex size-5 shrink-0 items-center justify-center rounded text-warning/80 transition-colors hover:bg-warning/10 hover:text-warning focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
-              />
-            }
-          >
-            <TriangleAlert className="size-3.5" aria-hidden="true" />
-          </TooltipTrigger>
-          <TooltipContent
-            side="right"
-            align="center"
-            className="max-w-52 text-left leading-relaxed whitespace-normal"
-          >
-            <p>{needsSync}</p>
-          </TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
-    )}
+    <DeviceRowStatusIcon name={name} status={status} />
   </div>
 )
+
+const DeviceRowStatusIcon: React.FC<{ name: string; status: DeviceRowStatus }> = ({
+  name,
+  status,
+}) => {
+  const Icon =
+    status.kind === 'online' ? CircleCheck : status.kind === 'offline' ? CircleOff : TriangleAlert
+  const colorClass =
+    status.kind === 'removed' || status.kind === 'recovery_required'
+      ? 'text-destructive'
+      : status.kind === 'removing' || status.kind === 'waiting_for_update'
+        ? 'text-warning'
+        : status.kind === 'online'
+          ? 'text-success'
+          : 'text-muted-foreground'
+  const label = `${name}: ${status.label}`
+
+  return (
+    <TooltipProvider delay={200}>
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <span
+              aria-label={label}
+              className={cn('flex size-5 shrink-0 items-center justify-center', colorClass)}
+            />
+          }
+        >
+          <Icon className="size-3.5" aria-hidden="true" />
+        </TooltipTrigger>
+        <TooltipContent side="right" align="center">
+          <p className={status.description ? 'font-medium' : undefined}>{status.label}</p>
+          {status.description && (
+            <p className="mt-1 max-w-56 text-muted-foreground">{status.description}</p>
+          )}
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  )
+}
 
 const LocalPanelSkeleton: React.FC = () => (
   <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-8 py-8">

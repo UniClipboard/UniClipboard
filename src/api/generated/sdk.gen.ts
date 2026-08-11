@@ -2,7 +2,7 @@
 
 import type { Client, Options as Options2, TDataShape } from './client';
 import { client } from './client.gen';
-import type { AcknowledgeUpgradeData, AcknowledgeUpgradeErrors, AcknowledgeUpgradeResponses, AuthConnectData, AuthConnectErrors, AuthConnectResponses, CancelClipboardTransferData, CancelClipboardTransferErrors, CancelClipboardTransferResponses, CancelEntryReceiveData, CancelEntryReceiveErrors, CancelEntryReceiveResponses, CaptureCurrentClipboardData, CaptureCurrentClipboardErrors, CaptureCurrentClipboardResponses, CaptureUiEventData, CaptureUiEventResponses, ClearClipboardHistoryData, ClearClipboardHistoryErrors, ClearClipboardHistoryResponses, ClearStorageCacheData, ClearStorageCacheErrors, ClearStorageCacheResponses, ContinueMemberRemovalData, ContinueMemberRemovalErrors, ContinueMemberRemovalResponses, DeleteClipboardEntryData, DeleteClipboardEntryErrors, DeleteClipboardEntryResponses, DispatchClipboardTextData, DispatchClipboardTextErrors, DispatchClipboardTextResponses, ExportConfigData, ExportConfigErrors, ExportConfigResponses, ExportLogsData, ExportLogsErrors, ExportLogsResponses, FactoryResetSpaceData, FactoryResetSpaceErrors, FactoryResetSpaceResponses, GetClipboardBlobData, GetClipboardBlobErrors, GetClipboardBlobResponses, GetClipboardEntryData, GetClipboardEntryDeliveryData, GetClipboardEntryDeliveryErrors, GetClipboardEntryDeliveryResponses, GetClipboardEntryErrors, GetClipboardEntryFileData, GetClipboardEntryFileErrors, GetClipboardEntryFileResponses, GetClipboardEntryResourceData, GetClipboardEntryResourceErrors, GetClipboardEntryResourceResponses, GetClipboardEntryResponses, GetClipboardStatsData, GetClipboardStatsErrors, GetClipboardStatsResponses, GetClipboardThumbnailData, GetClipboardThumbnailErrors, GetClipboardThumbnailResponses, GetCurrentMemberRemovalData, GetCurrentMemberRemovalErrors, GetCurrentMemberRemovalResponses, GetDebugStatusData, GetDebugStatusErrors, GetDebugStatusResponses, GetEncryptionStateData, GetEncryptionStateErrors, GetEncryptionStateResponses, GetEntryReceiveProgressData, GetEntryReceiveProgressErrors, GetEntryReceiveProgressResponses, GetHealthData, GetHealthResponses, GetLifecycleStatusData, GetLifecycleStatusErrors, GetLifecycleStatusResponses, GetLocalDeviceInfoData, GetLocalDeviceInfoErrors, GetLocalDeviceInfoResponses, GetMembershipConvergenceData, GetMembershipConvergenceErrors, GetMembershipConvergenceResponses, GetMemberSyncPreferencesData, GetMemberSyncPreferencesErrors, GetMemberSyncPreferencesResponses, GetMobileSyncSettingsData, GetMobileSyncSettingsErrors, GetMobileSyncSettingsResponses, GetNetworkRecoveryStatusData, GetNetworkRecoveryStatusErrors, GetNetworkRecoveryStatusResponses, GetRelayCredentialStatusData, GetRelayCredentialStatusErrors, GetRelayCredentialStatusResponses, GetSearchStatusData, GetSearchStatusErrors, GetSearchStatusResponses, GetSearchTagsData, GetSearchTagsErrors, GetSearchTagsResponses, GetSettingsData, GetSettingsErrors, GetSettingsResponses, GetSharedDeviceRefreshData, GetSharedDeviceRefreshErrors, GetSharedDeviceRefreshResponses, GetSpaceProtectionData, GetSpaceProtectionErrors, GetSpaceProtectionResponses, GetStatusData, GetStatusResponses, GetStorageStatsData, GetStorageStatsErrors, GetStorageStatsResponses, GetUpgradeStatusData, GetUpgradeStatusErrors, GetUpgradeStatusResponses, ImportConfigData, ImportConfigErrors, ImportConfigResponses, ListClipboardEntriesData, ListClipboardEntriesErrors, ListClipboardEntriesResponses, ListEntryReceiveProgressData, ListEntryReceiveProgressErrors, ListEntryReceiveProgressResponses, ListMobileDevicesData, ListMobileDevicesErrors, ListMobileDevicesResponses, ListMobileLanInterfacesData, ListMobileLanInterfacesErrors, ListMobileLanInterfacesResponses, ListPairedDevicesData, ListPairedDevicesErrors, ListPairedDevicesResponses, ListPeersData, ListPeersErrors, ListPeersResponses, LockEncryptionSessionData, LockEncryptionSessionErrors, LockEncryptionSessionResponses, PreviewConfigImportData, PreviewConfigImportErrors, PreviewConfigImportResponses, ProbeRelayUrlData, ProbeRelayUrlErrors, ProbeRelayUrlResponses, RebuildSearchIndexData, RebuildSearchIndexErrors, RebuildSearchIndexResponses, RecoverNetworkData, RecoverNetworkErrors, RecoverNetworkResponses, RefreshPresenceData, RefreshPresenceErrors, RefreshPresenceResponses, RegisterMobileDeviceData, RegisterMobileDeviceErrors, RegisterMobileDeviceResponses, RequestLifecycleRestartData, RequestLifecycleRestartErrors, RequestLifecycleRestartResponses, ResendClipboardEntryData, ResendClipboardEntryErrors, ResendClipboardEntryResponses, RestoreClipboardEntryData, RestoreClipboardEntryErrors, RestoreClipboardEntryResponses, RetryLifecycleData, RetryLifecycleErrors, RetryLifecycleResponses, RevokeMobileDeviceData, RevokeMobileDeviceErrors, RevokeMobileDeviceResponses, RotateMobilePasswordData, RotateMobilePasswordErrors, RotateMobilePasswordResponses, SaveRelayData, SaveRelayErrors, SaveRelayResponses, SearchQueryData, SearchQueryErrors, SearchQueryResponses, SecureRemoveLegacyMemberData, SecureRemoveLegacyMemberErrors, SecureRemoveLegacyMemberResponses, SetupV2CancelData, SetupV2CancelErrors, SetupV2CancelResponses, SetupV2GetMigrationProgressData, SetupV2GetMigrationProgressErrors, SetupV2GetMigrationProgressResponses, SetupV2GetStateData, SetupV2GetStateErrors, SetupV2GetStateResponses, SetupV2InitializeData, SetupV2InitializeErrors, SetupV2InitializeResponses, SetupV2IssueInvitationData, SetupV2IssueInvitationErrors, SetupV2IssueInvitationResponses, SetupV2RedeemData, SetupV2RedeemErrors, SetupV2RedeemResponses, SetupV2ResetData, SetupV2ResetErrors, SetupV2ResetResponses, SetupV2SwitchSpaceData, SetupV2SwitchSpaceErrors, SetupV2SwitchSpaceResponses, SignalLifecycleReadyData, SignalLifecycleReadyResponses, StartSharedDeviceRefreshData, StartSharedDeviceRefreshErrors, StartSharedDeviceRefreshResponses, ToggleClipboardEntryFavoriteData, ToggleClipboardEntryFavoriteErrors, ToggleClipboardEntryFavoriteResponses, UnlockEncryptionSessionData, UnlockEncryptionSessionErrors, UnlockEncryptionSessionResponses, UnlockSpaceWithPassphraseData, UnlockSpaceWithPassphraseErrors, UnlockSpaceWithPassphraseResponses, UnpairDeviceData, UnpairDeviceErrors, UnpairDeviceResponses, UpdateDebugModeData, UpdateDebugModeErrors, UpdateDebugModeResponses, UpdateMemberSyncPreferencesData, UpdateMemberSyncPreferencesErrors, UpdateMemberSyncPreferencesResponses, UpdateMobileDeviceData, UpdateMobileDeviceErrors, UpdateMobileDeviceResponses, UpdateMobileSyncSettingsData, UpdateMobileSyncSettingsErrors, UpdateMobileSyncSettingsResponses, UpdateSettingsData, UpdateSettingsErrors, UpdateSettingsResponses, VerifyKeychainAccessData, VerifyKeychainAccessErrors, VerifyKeychainAccessResponses, WebsocketUpgradeData, WebsocketUpgradeErrors } from './types.gen';
+import type { AcknowledgeUpgradeData, AcknowledgeUpgradeErrors, AcknowledgeUpgradeResponses, AuthConnectData, AuthConnectErrors, AuthConnectResponses, CancelClipboardTransferData, CancelClipboardTransferErrors, CancelClipboardTransferResponses, CancelEntryReceiveData, CancelEntryReceiveErrors, CancelEntryReceiveResponses, CaptureCurrentClipboardData, CaptureCurrentClipboardErrors, CaptureCurrentClipboardResponses, CaptureUiEventData, CaptureUiEventResponses, ClearClipboardHistoryData, ClearClipboardHistoryErrors, ClearClipboardHistoryResponses, ClearStorageCacheData, ClearStorageCacheErrors, ClearStorageCacheResponses, DeleteClipboardEntryData, DeleteClipboardEntryErrors, DeleteClipboardEntryResponses, DispatchClipboardTextData, DispatchClipboardTextErrors, DispatchClipboardTextResponses, ExportConfigData, ExportConfigErrors, ExportConfigResponses, ExportLogsData, ExportLogsErrors, ExportLogsResponses, FactoryResetSpaceData, FactoryResetSpaceErrors, FactoryResetSpaceResponses, GetClipboardBlobData, GetClipboardBlobErrors, GetClipboardBlobResponses, GetClipboardEntryData, GetClipboardEntryDeliveryData, GetClipboardEntryDeliveryErrors, GetClipboardEntryDeliveryResponses, GetClipboardEntryErrors, GetClipboardEntryFileData, GetClipboardEntryFileErrors, GetClipboardEntryFileResponses, GetClipboardEntryResourceData, GetClipboardEntryResourceErrors, GetClipboardEntryResourceResponses, GetClipboardEntryResponses, GetClipboardStatsData, GetClipboardStatsErrors, GetClipboardStatsResponses, GetClipboardThumbnailData, GetClipboardThumbnailErrors, GetClipboardThumbnailResponses, GetDebugStatusData, GetDebugStatusErrors, GetDebugStatusResponses, GetEncryptionStateData, GetEncryptionStateErrors, GetEncryptionStateResponses, GetEntryReceiveProgressData, GetEntryReceiveProgressErrors, GetEntryReceiveProgressResponses, GetHealthData, GetHealthResponses, GetLifecycleStatusData, GetLifecycleStatusErrors, GetLifecycleStatusResponses, GetLocalDeviceInfoData, GetLocalDeviceInfoErrors, GetLocalDeviceInfoResponses, GetMemberSyncPreferencesData, GetMemberSyncPreferencesErrors, GetMemberSyncPreferencesResponses, GetMobileSyncSettingsData, GetMobileSyncSettingsErrors, GetMobileSyncSettingsResponses, GetNetworkRecoveryStatusData, GetNetworkRecoveryStatusErrors, GetNetworkRecoveryStatusResponses, GetRelayCredentialStatusData, GetRelayCredentialStatusErrors, GetRelayCredentialStatusResponses, GetSearchStatusData, GetSearchStatusErrors, GetSearchStatusResponses, GetSearchTagsData, GetSearchTagsErrors, GetSearchTagsResponses, GetSettingsData, GetSettingsErrors, GetSettingsResponses, GetSpaceProtectionData, GetSpaceProtectionErrors, GetSpaceProtectionResponses, GetStatusData, GetStatusResponses, GetStorageStatsData, GetStorageStatsErrors, GetStorageStatsResponses, GetUpgradeStatusData, GetUpgradeStatusErrors, GetUpgradeStatusResponses, GetWorkspaceConvergenceData, GetWorkspaceConvergenceErrors, GetWorkspaceConvergenceResponses, ImportConfigData, ImportConfigErrors, ImportConfigResponses, ListClipboardEntriesData, ListClipboardEntriesErrors, ListClipboardEntriesResponses, ListEntryReceiveProgressData, ListEntryReceiveProgressErrors, ListEntryReceiveProgressResponses, ListMobileDevicesData, ListMobileDevicesErrors, ListMobileDevicesResponses, ListMobileLanInterfacesData, ListMobileLanInterfacesErrors, ListMobileLanInterfacesResponses, ListPairedDevicesData, ListPairedDevicesErrors, ListPairedDevicesResponses, ListPeersData, ListPeersErrors, ListPeersResponses, LockEncryptionSessionData, LockEncryptionSessionErrors, LockEncryptionSessionResponses, PreviewConfigImportData, PreviewConfigImportErrors, PreviewConfigImportResponses, ProbeRelayUrlData, ProbeRelayUrlErrors, ProbeRelayUrlResponses, RebuildSearchIndexData, RebuildSearchIndexErrors, RebuildSearchIndexResponses, RecoverNetworkData, RecoverNetworkErrors, RecoverNetworkResponses, RefreshPresenceData, RefreshPresenceErrors, RefreshPresenceResponses, RegisterMobileDeviceData, RegisterMobileDeviceErrors, RegisterMobileDeviceResponses, RequestLifecycleRestartData, RequestLifecycleRestartErrors, RequestLifecycleRestartResponses, ResendClipboardEntryData, ResendClipboardEntryErrors, ResendClipboardEntryResponses, RestoreClipboardEntryData, RestoreClipboardEntryErrors, RestoreClipboardEntryResponses, RetryLifecycleData, RetryLifecycleErrors, RetryLifecycleResponses, RevokeMobileDeviceData, RevokeMobileDeviceErrors, RevokeMobileDeviceResponses, RotateMobilePasswordData, RotateMobilePasswordErrors, RotateMobilePasswordResponses, SaveRelayData, SaveRelayErrors, SaveRelayResponses, SearchQueryData, SearchQueryErrors, SearchQueryResponses, SetupV2CancelData, SetupV2CancelErrors, SetupV2CancelResponses, SetupV2GetMigrationProgressData, SetupV2GetMigrationProgressErrors, SetupV2GetMigrationProgressResponses, SetupV2GetStateData, SetupV2GetStateErrors, SetupV2GetStateResponses, SetupV2InitializeData, SetupV2InitializeErrors, SetupV2InitializeResponses, SetupV2IssueInvitationData, SetupV2IssueInvitationErrors, SetupV2IssueInvitationResponses, SetupV2RedeemData, SetupV2RedeemErrors, SetupV2RedeemResponses, SetupV2ResetData, SetupV2ResetErrors, SetupV2ResetResponses, SetupV2SwitchSpaceData, SetupV2SwitchSpaceErrors, SetupV2SwitchSpaceResponses, SignalLifecycleReadyData, SignalLifecycleReadyResponses, ToggleClipboardEntryFavoriteData, ToggleClipboardEntryFavoriteErrors, ToggleClipboardEntryFavoriteResponses, UnlockEncryptionSessionData, UnlockEncryptionSessionErrors, UnlockEncryptionSessionResponses, UnlockSpaceWithPassphraseData, UnlockSpaceWithPassphraseErrors, UnlockSpaceWithPassphraseResponses, UnpairDeviceData, UnpairDeviceErrors, UnpairDeviceResponses, UpdateDebugModeData, UpdateDebugModeErrors, UpdateDebugModeResponses, UpdateMemberSyncPreferencesData, UpdateMemberSyncPreferencesErrors, UpdateMemberSyncPreferencesResponses, UpdateMobileDeviceData, UpdateMobileDeviceErrors, UpdateMobileDeviceResponses, UpdateMobileSyncSettingsData, UpdateMobileSyncSettingsErrors, UpdateMobileSyncSettingsResponses, UpdateSettingsData, UpdateSettingsErrors, UpdateSettingsResponses, VerifyKeychainAccessData, VerifyKeychainAccessErrors, VerifyKeychainAccessResponses, WebsocketUpgradeData, WebsocketUpgradeErrors } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -714,23 +714,6 @@ export const getLifecycleStatus = <ThrowOnError extends boolean = false>(options
 });
 
 /**
- * GET /member/convergence
- *
- * Returns the Engine-owned connection state for the active space. The daemon
- * deliberately omits protocol counters because the product has no action for
- * them and must not mirror Engine retry state.
- */
-export const getMembershipConvergence = <ThrowOnError extends boolean = false>(options?: Options<GetMembershipConvergenceData, ThrowOnError>) => (options?.client ?? client).get<GetMembershipConvergenceResponses, GetMembershipConvergenceErrors, ThrowOnError>({
-    security: [{
-            in: 'query',
-            name: 'auth',
-            type: 'apiKey'
-        }, { name: 'Authorization', type: 'apiKey' }],
-    url: '/member/convergence',
-    ...options
-});
-
-/**
  * GET /member/protection
  *
  * Projects the Engine's current protection authority. The daemon does not
@@ -746,77 +729,19 @@ export const getSpaceProtection = <ThrowOnError extends boolean = false>(options
     ...options
 });
 
-export const continueMemberRemoval = <ThrowOnError extends boolean = false>(options: Options<ContinueMemberRemovalData, ThrowOnError>) => (options.client ?? client).post<ContinueMemberRemovalResponses, ContinueMemberRemovalErrors, ThrowOnError>({
-    security: [{
-            in: 'query',
-            name: 'auth',
-            type: 'apiKey'
-        }, { name: 'Authorization', type: 'apiKey' }],
-    url: '/member/removal/continue',
-    ...options,
-    headers: {
-        'Content-Type': 'application/json',
-        ...options.headers
-    }
-});
-
-export const getCurrentMemberRemoval = <ThrowOnError extends boolean = false>(options?: Options<GetCurrentMemberRemovalData, ThrowOnError>) => (options?.client ?? client).get<GetCurrentMemberRemovalResponses, GetCurrentMemberRemovalErrors, ThrowOnError>({
-    security: [{
-            in: 'query',
-            name: 'auth',
-            type: 'apiKey'
-        }, { name: 'Authorization', type: 'apiKey' }],
-    url: '/member/removal/current',
-    ...options
-});
-
 /**
- * POST /member/shared-device-refresh
+ * GET /member/workspace-convergence
  *
- * Starts one shared-device refresh round in the active Space. The Engine owns
- * deduplication while the first round is still in progress and returns the
- * same `requestId` for repeated starts.
+ * Returns the complete Engine-owned workspace convergence state for the
+ * active space. The daemon does not derive per-feature status from it.
  */
-export const startSharedDeviceRefresh = <ThrowOnError extends boolean = false>(options?: Options<StartSharedDeviceRefreshData, ThrowOnError>) => (options?.client ?? client).post<StartSharedDeviceRefreshResponses, StartSharedDeviceRefreshErrors, ThrowOnError>({
+export const getWorkspaceConvergence = <ThrowOnError extends boolean = false>(options?: Options<GetWorkspaceConvergenceData, ThrowOnError>) => (options?.client ?? client).get<GetWorkspaceConvergenceResponses, GetWorkspaceConvergenceErrors, ThrowOnError>({
     security: [{
             in: 'query',
             name: 'auth',
             type: 'apiKey'
         }, { name: 'Authorization', type: 'apiKey' }],
-    url: '/member/shared-device-refresh',
-    ...options
-});
-
-/**
- * GET /member/shared-device-refresh/{request_id}
- *
- * Returns the complete current snapshot for one refresh round. Unknown or
- * expired requests return a stable `shared_device_refresh_not_found` error.
- */
-export const getSharedDeviceRefresh = <ThrowOnError extends boolean = false>(options: Options<GetSharedDeviceRefreshData, ThrowOnError>) => (options.client ?? client).get<GetSharedDeviceRefreshResponses, GetSharedDeviceRefreshErrors, ThrowOnError>({
-    security: [{
-            in: 'query',
-            name: 'auth',
-            type: 'apiKey'
-        }, { name: 'Authorization', type: 'apiKey' }],
-    url: '/member/shared-device-refresh/{request_id}',
-    ...options
-});
-
-/**
- * POST /member/{device_id}/secure-remove
- *
- * Starts the Engine-owned Legacy Space bootstrap that safely excludes a member
- * only after a replacement MLS state is activated. The returned summary is a
- * status snapshot, not a daemon-owned operation handle.
- */
-export const secureRemoveLegacyMember = <ThrowOnError extends boolean = false>(options: Options<SecureRemoveLegacyMemberData, ThrowOnError>) => (options.client ?? client).post<SecureRemoveLegacyMemberResponses, SecureRemoveLegacyMemberErrors, ThrowOnError>({
-    security: [{
-            in: 'query',
-            name: 'auth',
-            type: 'apiKey'
-        }, { name: 'Authorization', type: 'apiKey' }],
-    url: '/member/{device_id}/secure-remove',
+    url: '/member/workspace-convergence',
     ...options
 });
 
@@ -1023,7 +948,7 @@ export const listPairedDevices = <ThrowOnError extends boolean = false>(options?
  * POST /pairing/unpair
  *
  * Revokes the local member record for the given peer and returns the
- * Engine-owned removal progress. Errors flow through the shared `ApiError`
+ * Engine-owned workspace convergence state. Errors flow through the shared `ApiError`
  * carrier and therefore serialize to `ApiErrorResponse { code, message,
  * details? }` on the wire.
  */

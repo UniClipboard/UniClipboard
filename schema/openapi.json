@@ -557,24 +557,6 @@
         },
         "type": "object"
       },
-      "ContinueMemberRemovalRequest": {
-        "properties": {
-          "permanentlyLostDeviceIds": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
-          },
-          "revocationId": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "revocationId",
-          "permanentlyLostDeviceIds"
-        ],
-        "type": "object"
-      },
       "CurrentInvitation": {
         "description": "Companion to [`SetupStateResponse::current_invitation`].",
         "properties": {
@@ -589,28 +571,6 @@
         "required": [
           "code",
           "expiresAtMs"
-        ],
-        "type": "object"
-      },
-      "CurrentMemberRemovalEnvelope": {
-        "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
-        "properties": {
-          "data": {
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/MemberRemovalDto"
-              }
-            ],
-            "nullable": true
-          },
-          "ts": {
-            "description": "Server time when the response was built (unix epoch milliseconds).",
-            "format": "int64",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "ts"
         ],
         "type": "object"
       },
@@ -2118,74 +2078,6 @@
         ],
         "type": "string"
       },
-      "MemberRemovalDto": {
-        "properties": {
-          "outcome": {
-            "$ref": "#/components/schemas/MemberRemovalOutcomeDto"
-          },
-          "pendingRecipientDeviceIds": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
-          },
-          "pendingRecipients": {
-            "format": "int64",
-            "minimum": 0,
-            "type": "integer"
-          },
-          "removedDeviceIds": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
-          },
-          "revocationId": {
-            "nullable": true,
-            "type": "string"
-          },
-          "updatedAtMs": {
-            "format": "int64",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "outcome",
-          "pendingRecipients",
-          "removedDeviceIds",
-          "pendingRecipientDeviceIds",
-          "updatedAtMs"
-        ],
-        "type": "object"
-      },
-      "MemberRemovalEnvelope": {
-        "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
-        "properties": {
-          "data": {
-            "$ref": "#/components/schemas/MemberRemovalDto"
-          },
-          "ts": {
-            "description": "Server time when the response was built (unix epoch milliseconds).",
-            "format": "int64",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "data",
-          "ts"
-        ],
-        "type": "object"
-      },
-      "MemberRemovalOutcomeDto": {
-        "enum": [
-          "local_only",
-          "recovering",
-          "applied",
-          "complete",
-          "recovery_required"
-        ],
-        "type": "string"
-      },
       "MemberSyncPreferencesDto": {
         "description": "Sync preferences recorded for a space member.",
         "properties": {
@@ -2287,46 +2179,6 @@
           "ts"
         ],
         "type": "object"
-      },
-      "MembershipConvergenceDto": {
-        "description": "Product-facing connection status. Engine-internal counters stay private.",
-        "properties": {
-          "state": {
-            "$ref": "#/components/schemas/MembershipConvergenceStateDto"
-          }
-        },
-        "required": [
-          "state"
-        ],
-        "type": "object"
-      },
-      "MembershipConvergenceEnvelope": {
-        "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
-        "properties": {
-          "data": {
-            "$ref": "#/components/schemas/MembershipConvergenceDto"
-          },
-          "ts": {
-            "description": "Server time when the response was built (unix epoch milliseconds).",
-            "format": "int64",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "data",
-          "ts"
-        ],
-        "type": "object"
-      },
-      "MembershipConvergenceStateDto": {
-        "description": "Coarse connection state for the active space.",
-        "enum": [
-          "complete",
-          "converging",
-          "waiting_for_upgrade",
-          "blocked"
-        ],
-        "type": "string"
       },
       "MigrationPhaseDto": {
         "description": "Coarse-grained migration phase exposed to the UI. The internal\n`MigrationPhase` carries `run_id` / `target_space_id`; those are\nimplementation detail and not surfaced over the wire.",
@@ -4110,36 +3962,6 @@
         ],
         "type": "object"
       },
-      "SecureLegacyRemovalDto": {
-        "description": "Result of starting a secure Legacy member removal.",
-        "properties": {
-          "bootstrap": {
-            "$ref": "#/components/schemas/LegacyBootstrapDto"
-          }
-        },
-        "required": [
-          "bootstrap"
-        ],
-        "type": "object"
-      },
-      "SecureLegacyRemovalEnvelope": {
-        "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
-        "properties": {
-          "data": {
-            "$ref": "#/components/schemas/SecureLegacyRemovalDto"
-          },
-          "ts": {
-            "description": "Server time when the response was built (unix epoch milliseconds).",
-            "format": "int64",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "data",
-          "ts"
-        ],
-        "type": "object"
-      },
       "SecuritySettingsDto": {
         "properties": {
           "autoUnlockEnabled": {
@@ -4524,181 +4346,6 @@
         "properties": {
           "data": {
             "$ref": "#/components/schemas/SwitchSpaceResponse"
-          },
-          "ts": {
-            "description": "Server time when the response was built (unix epoch milliseconds).",
-            "format": "int64",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "data",
-          "ts"
-        ],
-        "type": "object"
-      },
-      "SharedDeviceRefreshDeviceDto": {
-        "description": "One device row in a shared-device refresh snapshot.",
-        "properties": {
-          "deviceId": {
-            "type": "string"
-          },
-          "displayName": {
-            "type": "string"
-          },
-          "state": {
-            "$ref": "#/components/schemas/SharedDeviceRefreshDeviceStateDto"
-          }
-        },
-        "required": [
-          "deviceId",
-          "displayName",
-          "state"
-        ],
-        "type": "object"
-      },
-      "SharedDeviceRefreshDeviceStateDto": {
-        "description": "Stable per-device state produced by the Engine.",
-        "enum": [
-          "discovered",
-          "connecting",
-          "connected",
-          "already_present",
-          "waiting_for_peer",
-          "waiting_for_update",
-          "version_incompatible",
-          "rejected"
-        ],
-        "type": "string"
-      },
-      "SharedDeviceRefreshDto": {
-        "description": "Complete Engine-owned result for one shared-device refresh request.\n\nCounts are mirrored verbatim from the Engine. The daemon and frontend must\nnot derive or correct device states from counts.",
-        "properties": {
-          "alreadyPresentCount": {
-            "format": "int64",
-            "minimum": 0,
-            "type": "integer"
-          },
-          "connectedCount": {
-            "format": "int64",
-            "minimum": 0,
-            "type": "integer"
-          },
-          "connectingCount": {
-            "format": "int64",
-            "minimum": 0,
-            "type": "integer"
-          },
-          "devices": {
-            "items": {
-              "$ref": "#/components/schemas/SharedDeviceRefreshDeviceDto"
-            },
-            "type": "array"
-          },
-          "discoveredCount": {
-            "format": "int64",
-            "minimum": 0,
-            "type": "integer"
-          },
-          "phase": {
-            "$ref": "#/components/schemas/SharedDeviceRefreshPhaseDto"
-          },
-          "rejectedCount": {
-            "format": "int64",
-            "minimum": 0,
-            "type": "integer"
-          },
-          "requestId": {
-            "type": "string"
-          },
-          "totalCount": {
-            "format": "int64",
-            "minimum": 0,
-            "type": "integer"
-          },
-          "unavailableSourceCount": {
-            "format": "int64",
-            "minimum": 0,
-            "type": "integer"
-          },
-          "versionIncompatibleCount": {
-            "format": "int64",
-            "minimum": 0,
-            "type": "integer"
-          },
-          "waitingForPeerCount": {
-            "format": "int64",
-            "minimum": 0,
-            "type": "integer"
-          },
-          "waitingForUpdateCount": {
-            "format": "int64",
-            "minimum": 0,
-            "type": "integer"
-          }
-        },
-        "required": [
-          "requestId",
-          "phase",
-          "devices",
-          "totalCount",
-          "discoveredCount",
-          "connectingCount",
-          "connectedCount",
-          "alreadyPresentCount",
-          "waitingForPeerCount",
-          "waitingForUpdateCount",
-          "versionIncompatibleCount",
-          "rejectedCount",
-          "unavailableSourceCount"
-        ],
-        "type": "object"
-      },
-      "SharedDeviceRefreshEnvelope": {
-        "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
-        "properties": {
-          "data": {
-            "$ref": "#/components/schemas/SharedDeviceRefreshDto"
-          },
-          "ts": {
-            "description": "Server time when the response was built (unix epoch milliseconds).",
-            "format": "int64",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "data",
-          "ts"
-        ],
-        "type": "object"
-      },
-      "SharedDeviceRefreshPhaseDto": {
-        "description": "Current phase of an Engine-owned shared-device refresh round.",
-        "enum": [
-          "started",
-          "discovering",
-          "connecting",
-          "round_completed"
-        ],
-        "type": "string"
-      },
-      "SharedDeviceRefreshStartedDto": {
-        "description": "Result of starting a shared-device refresh round.",
-        "properties": {
-          "requestId": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "requestId"
-        ],
-        "type": "object"
-      },
-      "SharedDeviceRefreshStartedEnvelope": {
-        "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
-        "properties": {
-          "data": {
-            "$ref": "#/components/schemas/SharedDeviceRefreshStartedDto"
           },
           "ts": {
             "description": "Server time when the response was built (unix epoch milliseconds).",
@@ -5610,6 +5257,125 @@
           "health"
         ],
         "type": "object"
+      },
+      "WorkspaceConvergenceDto": {
+        "description": "Complete Engine-owned workspace convergence state for the active space.",
+        "properties": {
+          "changeCount": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "confirmedMemberCount": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "convergenceDigest": {
+            "nullable": true,
+            "type": "string"
+          },
+          "effectiveMemberCount": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "failureCategory": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/WorkspaceConvergenceFailureCategoryDto"
+              }
+            ],
+            "nullable": true
+          },
+          "phase": {
+            "$ref": "#/components/schemas/WorkspaceConvergencePhaseDto"
+          },
+          "removalIntentCount": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "removed": {
+            "type": "boolean"
+          },
+          "revision": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "updatedAtMs": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "waitingMemberCount": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "waitingMemberDeviceIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "phase",
+          "revision",
+          "changeCount",
+          "removalIntentCount",
+          "effectiveMemberCount",
+          "confirmedMemberCount",
+          "waitingMemberDeviceIds",
+          "waitingMemberCount",
+          "updatedAtMs",
+          "removed"
+        ],
+        "type": "object"
+      },
+      "WorkspaceConvergenceEnvelope": {
+        "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/WorkspaceConvergenceDto"
+          },
+          "ts": {
+            "description": "Server time when the response was built (unix epoch milliseconds).",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "data",
+          "ts"
+        ],
+        "type": "object"
+      },
+      "WorkspaceConvergenceFailureCategoryDto": {
+        "description": "Stable failure category for workspace convergence.",
+        "enum": [
+          "space_mismatch",
+          "continuity_gap",
+          "identity_mismatch",
+          "digest_conflict",
+          "unauthorized",
+          "version_incompatible",
+          "no_effective_members",
+          "storage"
+        ],
+        "type": "string"
+      },
+      "WorkspaceConvergencePhaseDto": {
+        "description": "Current phase of the Engine-owned workspace convergence.",
+        "enum": [
+          "locally_applied",
+          "converging",
+          "waiting_for_offline_member",
+          "complete",
+          "recovery_required"
+        ],
+        "type": "string"
       },
       "WsErrorResponse": {
         "description": "Error response sent via HTTP status + JSON body when the WebSocket upgrade fails.",
@@ -7821,56 +7587,6 @@
         ]
       }
     },
-    "/member/convergence": {
-      "get": {
-        "description": "Returns the Engine-owned connection state for the active space. The daemon\ndeliberately omits protocol counters because the product has no action for\nthem and must not mirror Engine retry state.",
-        "operationId": "getMembershipConvergence",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/MembershipConvergenceEnvelope"
-                }
-              }
-            },
-            "description": ""
-          },
-          "500": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponse"
-                }
-              }
-            },
-            "description": "Internal server error"
-          },
-          "503": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponse"
-                }
-              }
-            },
-            "description": "Runtime unavailable"
-          }
-        },
-        "security": [
-          {
-            "session_query": []
-          },
-          {
-            "session_header": []
-          }
-        ],
-        "summary": "GET /member/convergence",
-        "tags": [
-          "member"
-        ]
-      }
-    },
     "/member/protection": {
       "get": {
         "description": "Projects the Engine's current protection authority. The daemon does not\ninfer or persist bootstrap progress; callers refresh this snapshot.",
@@ -7921,142 +7637,16 @@
         ]
       }
     },
-    "/member/removal/continue": {
-      "post": {
-        "operationId": "continueMemberRemoval",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ContinueMemberRemovalRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/MemberRemovalEnvelope"
-                }
-              }
-            },
-            "description": ""
-          },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponse"
-                }
-              }
-            },
-            "description": ""
-          },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponse"
-                }
-              }
-            },
-            "description": ""
-          },
-          "500": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponse"
-                }
-              }
-            },
-            "description": ""
-          },
-          "503": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponse"
-                }
-              }
-            },
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "session_query": []
-          },
-          {
-            "session_header": []
-          }
-        ],
-        "tags": [
-          "member"
-        ]
-      }
-    },
-    "/member/removal/current": {
+    "/member/workspace-convergence": {
       "get": {
-        "operationId": "getCurrentMemberRemoval",
+        "description": "Returns the complete Engine-owned workspace convergence state for the\nactive space. The daemon does not derive per-feature status from it.",
+        "operationId": "getWorkspaceConvergence",
         "responses": {
           "200": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/CurrentMemberRemovalEnvelope"
-                }
-              }
-            },
-            "description": ""
-          },
-          "500": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponse"
-                }
-              }
-            },
-            "description": ""
-          },
-          "503": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponse"
-                }
-              }
-            },
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "session_query": []
-          },
-          {
-            "session_header": []
-          }
-        ],
-        "tags": [
-          "member"
-        ]
-      }
-    },
-    "/member/shared-device-refresh": {
-      "post": {
-        "description": "Starts one shared-device refresh round in the active Space. The Engine owns\ndeduplication while the first round is still in progress and returns the\nsame `requestId` for repeated starts.",
-        "operationId": "startSharedDeviceRefresh",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SharedDeviceRefreshStartedEnvelope"
+                  "$ref": "#/components/schemas/WorkspaceConvergenceEnvelope"
                 }
               }
             },
@@ -8091,159 +7681,7 @@
             "session_header": []
           }
         ],
-        "summary": "POST /member/shared-device-refresh",
-        "tags": [
-          "member"
-        ]
-      }
-    },
-    "/member/shared-device-refresh/{request_id}": {
-      "get": {
-        "description": "Returns the complete current snapshot for one refresh round. Unknown or\nexpired requests return a stable `shared_device_refresh_not_found` error.",
-        "operationId": "getSharedDeviceRefresh",
-        "parameters": [
-          {
-            "description": "Shared-device refresh request ID",
-            "in": "path",
-            "name": "request_id",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SharedDeviceRefreshEnvelope"
-                }
-              }
-            },
-            "description": ""
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponse"
-                }
-              }
-            },
-            "description": "Request not found"
-          },
-          "500": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponse"
-                }
-              }
-            },
-            "description": "Internal server error"
-          },
-          "503": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponse"
-                }
-              }
-            },
-            "description": "Runtime unavailable"
-          }
-        },
-        "security": [
-          {
-            "session_query": []
-          },
-          {
-            "session_header": []
-          }
-        ],
-        "summary": "GET /member/shared-device-refresh/{request_id}",
-        "tags": [
-          "member"
-        ]
-      }
-    },
-    "/member/{device_id}/secure-remove": {
-      "post": {
-        "description": "Starts the Engine-owned Legacy Space bootstrap that safely excludes a member\nonly after a replacement MLS state is activated. The returned summary is a\nstatus snapshot, not a daemon-owned operation handle.",
-        "operationId": "secureRemoveLegacyMember",
-        "parameters": [
-          {
-            "description": "Legacy Space member to exclude",
-            "in": "path",
-            "name": "device_id",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SecureLegacyRemovalEnvelope"
-                }
-              }
-            },
-            "description": ""
-          },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponse"
-                }
-              }
-            },
-            "description": "Invalid device ID"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponse"
-                }
-              }
-            },
-            "description": "Member not found"
-          },
-          "500": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponse"
-                }
-              }
-            },
-            "description": "Bootstrap failed"
-          },
-          "503": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponse"
-                }
-              }
-            },
-            "description": "Runtime unavailable"
-          }
-        },
-        "security": [
-          {
-            "session_query": []
-          },
-          {
-            "session_header": []
-          }
-        ],
-        "summary": "POST /member/{device_id}/secure-remove",
+        "summary": "GET /member/workspace-convergence",
         "tags": [
           "member"
         ]
@@ -9056,7 +8494,7 @@
     },
     "/pairing/unpair": {
       "post": {
-        "description": "Revokes the local member record for the given peer and returns the\nEngine-owned removal progress. Errors flow through the shared `ApiError`\ncarrier and therefore serialize to `ApiErrorResponse { code, message,\ndetails? }` on the wire.",
+        "description": "Revokes the local member record for the given peer and returns the\nEngine-owned workspace convergence state. Errors flow through the shared `ApiError`\ncarrier and therefore serialize to `ApiErrorResponse { code, message,\ndetails? }` on the wire.",
         "operationId": "unpairDevice",
         "requestBody": {
           "content": {
@@ -9073,7 +8511,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/MemberRemovalEnvelope"
+                  "$ref": "#/components/schemas/WorkspaceConvergenceEnvelope"
                 }
               }
             },
@@ -9088,16 +8526,6 @@
               }
             },
             "description": "Member not found"
-          },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponse"
-                }
-              }
-            },
-            "description": "Member removal already in progress"
           },
           "500": {
             "content": {

@@ -370,40 +370,12 @@ export type ContentTypesPatchDto = {
     text?: boolean | null;
 };
 
-export type ContinueMemberRemovalRequest = {
-    permanentlyLostDeviceIds: Array<string>;
-    revocationId: string;
-};
-
 /**
  * Companion to [`SetupStateResponse::current_invitation`].
  */
 export type CurrentInvitation = {
     code: string;
     expiresAtMs: number;
-};
-
-/**
- * Canonical success envelope: `{ "data": T, "ts": <unix millis i64> }`.
- *
- * `ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler
- * via [`ApiEnvelope::now`] (the contract carries only the type + the clock
- * helper, not a hard dependency on when the handler reads the clock).
- * `rename_all = "camelCase"` is a no-op for the single-word fields here but is
- * declared for forward-compat.
- *
- * IMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named
- * OpenAPI component is declared in the `#[aliases(...)]` block below. Add a new
- * alias line whenever a new payload type needs enveloping. NEVER register the
- * bare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare
- * generic, and an un-aliased generic inlines an anonymous schema.
- */
-export type CurrentMemberRemovalEnvelope = {
-    data?: MemberRemovalDto | null;
-    /**
-     * Server time when the response was built (unix epoch milliseconds).
-     */
-    ts: number;
 };
 
 /**
@@ -1355,40 +1327,6 @@ export type MemberProtectionDto = {
  */
 export type MemberProtectionStatusDto = 'legacy_unprotected' | 'protected' | 'awaiting_readmission' | 'requires_readmission' | 'recovery_required';
 
-export type MemberRemovalDto = {
-    outcome: MemberRemovalOutcomeDto;
-    pendingRecipientDeviceIds: Array<string>;
-    pendingRecipients: number;
-    removedDeviceIds: Array<string>;
-    revocationId?: string | null;
-    updatedAtMs: number;
-};
-
-/**
- * Canonical success envelope: `{ "data": T, "ts": <unix millis i64> }`.
- *
- * `ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler
- * via [`ApiEnvelope::now`] (the contract carries only the type + the clock
- * helper, not a hard dependency on when the handler reads the clock).
- * `rename_all = "camelCase"` is a no-op for the single-word fields here but is
- * declared for forward-compat.
- *
- * IMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named
- * OpenAPI component is declared in the `#[aliases(...)]` block below. Add a new
- * alias line whenever a new payload type needs enveloping. NEVER register the
- * bare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare
- * generic, and an un-aliased generic inlines an anonymous schema.
- */
-export type MemberRemovalEnvelope = {
-    data: MemberRemovalDto;
-    /**
-     * Server time when the response was built (unix epoch milliseconds).
-     */
-    ts: number;
-};
-
-export type MemberRemovalOutcomeDto = 'local_only' | 'recovering' | 'applied' | 'complete' | 'recovery_required';
-
 /**
  * Sync preferences recorded for a space member.
  */
@@ -1469,41 +1407,6 @@ export type MemberSyncResultEnvelope = {
      */
     ts: number;
 };
-
-/**
- * Product-facing connection status. Engine-internal counters stay private.
- */
-export type MembershipConvergenceDto = {
-    state: MembershipConvergenceStateDto;
-};
-
-/**
- * Canonical success envelope: `{ "data": T, "ts": <unix millis i64> }`.
- *
- * `ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler
- * via [`ApiEnvelope::now`] (the contract carries only the type + the clock
- * helper, not a hard dependency on when the handler reads the clock).
- * `rename_all = "camelCase"` is a no-op for the single-word fields here but is
- * declared for forward-compat.
- *
- * IMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named
- * OpenAPI component is declared in the `#[aliases(...)]` block below. Add a new
- * alias line whenever a new payload type needs enveloping. NEVER register the
- * bare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare
- * generic, and an un-aliased generic inlines an anonymous schema.
- */
-export type MembershipConvergenceEnvelope = {
-    data: MembershipConvergenceDto;
-    /**
-     * Server time when the response was built (unix epoch milliseconds).
-     */
-    ts: number;
-};
-
-/**
- * Coarse connection state for the active space.
- */
-export type MembershipConvergenceStateDto = 'complete' | 'converging' | 'waiting_for_upgrade' | 'blocked';
 
 /**
  * Coarse-grained migration phase exposed to the UI. The internal
@@ -2568,36 +2471,6 @@ export type SearchTagsEnvelope = {
     ts: number;
 };
 
-/**
- * Result of starting a secure Legacy member removal.
- */
-export type SecureLegacyRemovalDto = {
-    bootstrap: LegacyBootstrapDto;
-};
-
-/**
- * Canonical success envelope: `{ "data": T, "ts": <unix millis i64> }`.
- *
- * `ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler
- * via [`ApiEnvelope::now`] (the contract carries only the type + the clock
- * helper, not a hard dependency on when the handler reads the clock).
- * `rename_all = "camelCase"` is a no-op for the single-word fields here but is
- * declared for forward-compat.
- *
- * IMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named
- * OpenAPI component is declared in the `#[aliases(...)]` block below. Add a new
- * alias line whenever a new payload type needs enveloping. NEVER register the
- * bare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare
- * generic, and an un-aliased generic inlines an anonymous schema.
- */
-export type SecureLegacyRemovalEnvelope = {
-    data: SecureLegacyRemovalDto;
-    /**
-     * Server time when the response was built (unix epoch milliseconds).
-     */
-    ts: number;
-};
-
 export type SecuritySettingsDto = {
     /**
      * 是否启用启动时自动解锁
@@ -2911,100 +2784,6 @@ export type SetupStateResponse = {
  */
 export type SetupSwitchSpaceEnvelope = {
     data: SwitchSpaceResponse;
-    /**
-     * Server time when the response was built (unix epoch milliseconds).
-     */
-    ts: number;
-};
-
-/**
- * One device row in a shared-device refresh snapshot.
- */
-export type SharedDeviceRefreshDeviceDto = {
-    deviceId: string;
-    displayName: string;
-    state: SharedDeviceRefreshDeviceStateDto;
-};
-
-/**
- * Stable per-device state produced by the Engine.
- */
-export type SharedDeviceRefreshDeviceStateDto = 'discovered' | 'connecting' | 'connected' | 'already_present' | 'waiting_for_peer' | 'waiting_for_update' | 'version_incompatible' | 'rejected';
-
-/**
- * Complete Engine-owned result for one shared-device refresh request.
- *
- * Counts are mirrored verbatim from the Engine. The daemon and frontend must
- * not derive or correct device states from counts.
- */
-export type SharedDeviceRefreshDto = {
-    alreadyPresentCount: number;
-    connectedCount: number;
-    connectingCount: number;
-    devices: Array<SharedDeviceRefreshDeviceDto>;
-    discoveredCount: number;
-    phase: SharedDeviceRefreshPhaseDto;
-    rejectedCount: number;
-    requestId: string;
-    totalCount: number;
-    unavailableSourceCount: number;
-    versionIncompatibleCount: number;
-    waitingForPeerCount: number;
-    waitingForUpdateCount: number;
-};
-
-/**
- * Canonical success envelope: `{ "data": T, "ts": <unix millis i64> }`.
- *
- * `ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler
- * via [`ApiEnvelope::now`] (the contract carries only the type + the clock
- * helper, not a hard dependency on when the handler reads the clock).
- * `rename_all = "camelCase"` is a no-op for the single-word fields here but is
- * declared for forward-compat.
- *
- * IMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named
- * OpenAPI component is declared in the `#[aliases(...)]` block below. Add a new
- * alias line whenever a new payload type needs enveloping. NEVER register the
- * bare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare
- * generic, and an un-aliased generic inlines an anonymous schema.
- */
-export type SharedDeviceRefreshEnvelope = {
-    data: SharedDeviceRefreshDto;
-    /**
-     * Server time when the response was built (unix epoch milliseconds).
-     */
-    ts: number;
-};
-
-/**
- * Current phase of an Engine-owned shared-device refresh round.
- */
-export type SharedDeviceRefreshPhaseDto = 'started' | 'discovering' | 'connecting' | 'round_completed';
-
-/**
- * Result of starting a shared-device refresh round.
- */
-export type SharedDeviceRefreshStartedDto = {
-    requestId: string;
-};
-
-/**
- * Canonical success envelope: `{ "data": T, "ts": <unix millis i64> }`.
- *
- * `ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler
- * via [`ApiEnvelope::now`] (the contract carries only the type + the clock
- * helper, not a hard dependency on when the handler reads the clock).
- * `rename_all = "camelCase"` is a no-op for the single-word fields here but is
- * declared for forward-compat.
- *
- * IMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named
- * OpenAPI component is declared in the `#[aliases(...)]` block below. Add a new
- * alias line whenever a new payload type needs enveloping. NEVER register the
- * bare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare
- * generic, and an un-aliased generic inlines an anonymous schema.
- */
-export type SharedDeviceRefreshStartedEnvelope = {
-    data: SharedDeviceRefreshStartedDto;
     /**
      * Server time when the response was built (unix epoch milliseconds).
      */
@@ -3572,6 +3351,57 @@ export type WorkerStatusDto = {
     health: string;
     name: string;
 };
+
+/**
+ * Complete Engine-owned workspace convergence state for the active space.
+ */
+export type WorkspaceConvergenceDto = {
+    changeCount: number;
+    confirmedMemberCount: number;
+    convergenceDigest?: string | null;
+    effectiveMemberCount: number;
+    failureCategory?: WorkspaceConvergenceFailureCategoryDto | null;
+    phase: WorkspaceConvergencePhaseDto;
+    removalIntentCount: number;
+    removed: boolean;
+    revision: number;
+    updatedAtMs: number;
+    waitingMemberCount: number;
+    waitingMemberDeviceIds: Array<string>;
+};
+
+/**
+ * Canonical success envelope: `{ "data": T, "ts": <unix millis i64> }`.
+ *
+ * `ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler
+ * via [`ApiEnvelope::now`] (the contract carries only the type + the clock
+ * helper, not a hard dependency on when the handler reads the clock).
+ * `rename_all = "camelCase"` is a no-op for the single-word fields here but is
+ * declared for forward-compat.
+ *
+ * IMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named
+ * OpenAPI component is declared in the `#[aliases(...)]` block below. Add a new
+ * alias line whenever a new payload type needs enveloping. NEVER register the
+ * bare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare
+ * generic, and an un-aliased generic inlines an anonymous schema.
+ */
+export type WorkspaceConvergenceEnvelope = {
+    data: WorkspaceConvergenceDto;
+    /**
+     * Server time when the response was built (unix epoch milliseconds).
+     */
+    ts: number;
+};
+
+/**
+ * Stable failure category for workspace convergence.
+ */
+export type WorkspaceConvergenceFailureCategoryDto = 'space_mismatch' | 'continuity_gap' | 'identity_mismatch' | 'digest_conflict' | 'unauthorized' | 'version_incompatible' | 'no_effective_members' | 'storage';
+
+/**
+ * Current phase of the Engine-owned workspace convergence.
+ */
+export type WorkspaceConvergencePhaseDto = 'locally_applied' | 'converging' | 'waiting_for_offline_member' | 'complete' | 'recovery_required';
 
 /**
  * Error response sent via HTTP status + JSON body when the WebSocket upgrade fails.
@@ -4758,32 +4588,6 @@ export type GetLifecycleStatusResponses = {
 
 export type GetLifecycleStatusResponse = GetLifecycleStatusResponses[keyof GetLifecycleStatusResponses];
 
-export type GetMembershipConvergenceData = {
-    body?: never;
-    path?: never;
-    query?: never;
-    url: '/member/convergence';
-};
-
-export type GetMembershipConvergenceErrors = {
-    /**
-     * Internal server error
-     */
-    500: ApiErrorResponse;
-    /**
-     * Runtime unavailable
-     */
-    503: ApiErrorResponse;
-};
-
-export type GetMembershipConvergenceError = GetMembershipConvergenceErrors[keyof GetMembershipConvergenceErrors];
-
-export type GetMembershipConvergenceResponses = {
-    200: MembershipConvergenceEnvelope;
-};
-
-export type GetMembershipConvergenceResponse = GetMembershipConvergenceResponses[keyof GetMembershipConvergenceResponses];
-
 export type GetSpaceProtectionData = {
     body?: never;
     path?: never;
@@ -4810,56 +4614,14 @@ export type GetSpaceProtectionResponses = {
 
 export type GetSpaceProtectionResponse = GetSpaceProtectionResponses[keyof GetSpaceProtectionResponses];
 
-export type ContinueMemberRemovalData = {
-    body: ContinueMemberRemovalRequest;
-    path?: never;
-    query?: never;
-    url: '/member/removal/continue';
-};
-
-export type ContinueMemberRemovalErrors = {
-    400: ApiErrorResponse;
-    409: ApiErrorResponse;
-    500: ApiErrorResponse;
-    503: ApiErrorResponse;
-};
-
-export type ContinueMemberRemovalError = ContinueMemberRemovalErrors[keyof ContinueMemberRemovalErrors];
-
-export type ContinueMemberRemovalResponses = {
-    200: MemberRemovalEnvelope;
-};
-
-export type ContinueMemberRemovalResponse = ContinueMemberRemovalResponses[keyof ContinueMemberRemovalResponses];
-
-export type GetCurrentMemberRemovalData = {
+export type GetWorkspaceConvergenceData = {
     body?: never;
     path?: never;
     query?: never;
-    url: '/member/removal/current';
+    url: '/member/workspace-convergence';
 };
 
-export type GetCurrentMemberRemovalErrors = {
-    500: ApiErrorResponse;
-    503: ApiErrorResponse;
-};
-
-export type GetCurrentMemberRemovalError = GetCurrentMemberRemovalErrors[keyof GetCurrentMemberRemovalErrors];
-
-export type GetCurrentMemberRemovalResponses = {
-    200: CurrentMemberRemovalEnvelope;
-};
-
-export type GetCurrentMemberRemovalResponse = GetCurrentMemberRemovalResponses[keyof GetCurrentMemberRemovalResponses];
-
-export type StartSharedDeviceRefreshData = {
-    body?: never;
-    path?: never;
-    query?: never;
-    url: '/member/shared-device-refresh';
-};
-
-export type StartSharedDeviceRefreshErrors = {
+export type GetWorkspaceConvergenceErrors = {
     /**
      * Internal server error
      */
@@ -4870,87 +4632,13 @@ export type StartSharedDeviceRefreshErrors = {
     503: ApiErrorResponse;
 };
 
-export type StartSharedDeviceRefreshError = StartSharedDeviceRefreshErrors[keyof StartSharedDeviceRefreshErrors];
+export type GetWorkspaceConvergenceError = GetWorkspaceConvergenceErrors[keyof GetWorkspaceConvergenceErrors];
 
-export type StartSharedDeviceRefreshResponses = {
-    200: SharedDeviceRefreshStartedEnvelope;
+export type GetWorkspaceConvergenceResponses = {
+    200: WorkspaceConvergenceEnvelope;
 };
 
-export type StartSharedDeviceRefreshResponse = StartSharedDeviceRefreshResponses[keyof StartSharedDeviceRefreshResponses];
-
-export type GetSharedDeviceRefreshData = {
-    body?: never;
-    path: {
-        /**
-         * Shared-device refresh request ID
-         */
-        request_id: string;
-    };
-    query?: never;
-    url: '/member/shared-device-refresh/{request_id}';
-};
-
-export type GetSharedDeviceRefreshErrors = {
-    /**
-     * Request not found
-     */
-    404: ApiErrorResponse;
-    /**
-     * Internal server error
-     */
-    500: ApiErrorResponse;
-    /**
-     * Runtime unavailable
-     */
-    503: ApiErrorResponse;
-};
-
-export type GetSharedDeviceRefreshError = GetSharedDeviceRefreshErrors[keyof GetSharedDeviceRefreshErrors];
-
-export type GetSharedDeviceRefreshResponses = {
-    200: SharedDeviceRefreshEnvelope;
-};
-
-export type GetSharedDeviceRefreshResponse = GetSharedDeviceRefreshResponses[keyof GetSharedDeviceRefreshResponses];
-
-export type SecureRemoveLegacyMemberData = {
-    body?: never;
-    path: {
-        /**
-         * Legacy Space member to exclude
-         */
-        device_id: string;
-    };
-    query?: never;
-    url: '/member/{device_id}/secure-remove';
-};
-
-export type SecureRemoveLegacyMemberErrors = {
-    /**
-     * Invalid device ID
-     */
-    400: ApiErrorResponse;
-    /**
-     * Member not found
-     */
-    404: ApiErrorResponse;
-    /**
-     * Bootstrap failed
-     */
-    500: ApiErrorResponse;
-    /**
-     * Runtime unavailable
-     */
-    503: ApiErrorResponse;
-};
-
-export type SecureRemoveLegacyMemberError = SecureRemoveLegacyMemberErrors[keyof SecureRemoveLegacyMemberErrors];
-
-export type SecureRemoveLegacyMemberResponses = {
-    200: SecureLegacyRemovalEnvelope;
-};
-
-export type SecureRemoveLegacyMemberResponse = SecureRemoveLegacyMemberResponses[keyof SecureRemoveLegacyMemberResponses];
+export type GetWorkspaceConvergenceResponse = GetWorkspaceConvergenceResponses[keyof GetWorkspaceConvergenceResponses];
 
 export type GetMemberSyncPreferencesData = {
     body?: never;
@@ -5389,10 +5077,6 @@ export type UnpairDeviceErrors = {
      */
     404: ApiErrorResponse;
     /**
-     * Member removal already in progress
-     */
-    409: ApiErrorResponse;
-    /**
      * Internal server error
      */
     500: ApiErrorResponse;
@@ -5405,7 +5089,7 @@ export type UnpairDeviceErrors = {
 export type UnpairDeviceError = UnpairDeviceErrors[keyof UnpairDeviceErrors];
 
 export type UnpairDeviceResponses = {
-    200: MemberRemovalEnvelope;
+    200: WorkspaceConvergenceEnvelope;
 };
 
 export type UnpairDeviceResponse = UnpairDeviceResponses[keyof UnpairDeviceResponses];

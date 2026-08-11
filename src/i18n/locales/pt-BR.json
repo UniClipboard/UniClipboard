@@ -1042,6 +1042,10 @@
     "sharedDeviceRefresh": {
       "refresh": "Atualizar dispositivos compartilhados",
       "searching": "Procurando dispositivos conectáveis",
+      "viewProgress": "Ver progresso",
+      "discoveredNotice": "{{count}} novo dispositivo encontrado",
+      "viewDiscovered": "Ver novos dispositivos",
+      "discoveredTitle": "Novos dispositivos encontrados",
       "connecting": "Conectando aos dispositivos encontrados",
       "roundCompleted": "Esta rodada foi concluída",
       "empty": "Nenhum dispositivo conectável encontrado",
@@ -1049,6 +1053,7 @@
       "startFailed": "Não foi possível iniciar a atualização de dispositivos compartilhados",
       "updateFailed": "Não foi possível atualizar o status agora",
       "ended": "Esta atualização terminou. Inicie uma nova atualização.",
+      "connectedNotice": "{{count}} dispositivo conectado: {{devices}}",
       "unknownDevice": "Dispositivo sem nome",
       "deviceStates": {
         "discovered": "Descoberto, preparando conexão",
@@ -1063,8 +1068,8 @@
     },
     "convergence": {
       "converging": "Conectando aos outros dispositivos deste Espaço",
-      "waitingForUpgrade": "Alguns dispositivos precisam ser atualizados para se conectarem automaticamente",
-      "blocked": "Alguns dispositivos não conseguem concluir a conexão agora"
+      "waitingForOfflineMember": "Aguardando dispositivos offline atualizarem os dados do Espaço",
+      "recoveryRequired": "Os dados do Espaço precisam de recuperação"
     },
     "networkRecovery": {
       "recovering": "Restaurando a conexão",
@@ -1077,22 +1082,22 @@
       }
     },
     "memberRemoval": {
-      "recovering": {
-        "title": "Restaurando a remoção do dispositivo",
-        "description": "A remoção interrompida do dispositivo está sendo restaurada com segurança. Aguarde."
-      },
-      "permanentLoss": {
-        "title": "Confirmar perda permanente do dispositivo",
-        "description": "Continue apenas quando esses dispositivos pendentes não puderem ser recuperados. Esta ação não pode ser desfeita.",
-        "confirm": "Confirmar perda permanente",
-        "markLost": "Marcar como perdido"
+      "deviceRemoved": {
+        "title": "Este dispositivo foi removido",
+        "description": "Este dispositivo não faz mais parte do espaço. Faça o pareamento novamente com um convite para entrar."
       },
       "errors": {
         "statusFailed": "Não foi possível carregar o andamento da remoção do dispositivo.",
-        "continueFailed": "Não foi possível continuar a remoção do dispositivo."
+        "removeFailed": "Não foi possível remover o dispositivo."
       },
-      "pendingDeviceHint": "Dispositivo offline; precisa ficar online para concluir a atualização de segurança",
-      "securityUpdateLabel": "Atualização de segurança"
+      "converging": {
+        "title": "Removendo dispositivo",
+        "description": "A remoção está sendo propagada para todos os dispositivos restantes. Isso pode levar algum tempo quando alguns dispositivos estão offline."
+      },
+      "recoveryRequired": {
+        "title": "Recuperação do espaço necessária",
+        "description": "A remoção do membro não pôde ser verificada com segurança. Reconstrua o espaço a partir de um dispositivo confiável para continuar."
+      }
     },
     "addDevice": {
       "title": "Convidar um novo dispositivo",

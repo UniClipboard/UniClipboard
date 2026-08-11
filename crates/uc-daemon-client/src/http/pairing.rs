@@ -4,7 +4,9 @@ use anyhow::{anyhow, Context, Result};
 use reqwest::{Method, RequestBuilder, StatusCode};
 
 use crate::http::authorized_daemon_request_with_type;
+use crate::http::enveloped::enveloped_request;
 use crate::DaemonConnectionState;
+use uc_daemon_contract::api::dto::member::WorkspaceConvergenceDto;
 use uc_daemon_contract::api::dto::pairing::{
     AckedPairingCommandResponse, InitiatePairingRequest, InitiatePairingResponse,
     PairingApiErrorResponse, PairingSessionCommandRequest, SetPairingDiscoverabilityRequest,
@@ -158,13 +160,16 @@ impl DaemonPairingClient {
         .await
     }
 
-    pub async fn unpair_device(&self, peer_id: String) -> Result<()> {
-        self.send_json_no_content(
+    pub async fn unpair_device(&self, peer_id: String) -> Result<WorkspaceConvergenceDto> {
+        Ok(enveloped_request(
+            &self.http,
+            &self.connection_state,
+            &self.client_type,
             Method::POST,
             "/pairing/unpair",
-            &UnpairDeviceRequest { peer_id },
+            |request| request.json(&UnpairDeviceRequest { peer_id }),
         )
-        .await
+        .await?)
     }
 
     async fn authorized_request(&self, method: Method, path: &str) -> Result<RequestBuilder> {

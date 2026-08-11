@@ -31,13 +31,10 @@ use crate::api::dto::encryption::{
 };
 use crate::api::dto::error::ApiErrorResponse;
 use crate::api::dto::member::{
-    ContinueMemberRemovalRequest, LegacyBootstrapDto, LegacyBootstrapOutcomeDto,
-    MemberProtectionDto, MemberProtectionStatusDto, MemberRemovalDto, MemberRemovalOutcomeDto,
+    LegacyBootstrapDto, LegacyBootstrapOutcomeDto, MemberProtectionDto, MemberProtectionStatusDto,
     MemberSyncPreferencesDto, MemberSyncPreferencesPatchDto, MemberSyncResultDto,
-    MembershipConvergenceDto, MembershipConvergenceStateDto, SecureLegacyRemovalDto,
-    SharedDeviceRefreshDeviceDto, SharedDeviceRefreshDeviceStateDto, SharedDeviceRefreshDto,
-    SharedDeviceRefreshPhaseDto, SharedDeviceRefreshStartedDto, SpaceProtectionDto,
-    SpaceProtectionModeDto,
+    SpaceProtectionDto, SpaceProtectionModeDto, WorkspaceConvergenceDto,
+    WorkspaceConvergenceFailureCategoryDto, WorkspaceConvergencePhaseDto,
 };
 use crate::api::dto::mobile_sync::{
     LanInterfaceViewDto, MobileDeviceViewDto, MobileSyncActionResultDto, MobileSyncSettingsViewDto,
@@ -87,26 +84,24 @@ use uc_daemon_contract::api::dto::config::{
 use uc_daemon_contract::api::dto::envelope::{
     AckUpgradeEnvelope, CancelEntryReceiveEnvelope, CancelTransferEnvelope,
     CaptureCurrentClipboardEnvelope, CaptureUiEventEnvelope, ClearCacheEnvelope,
-    ClearHistoryEnvelope, ClipboardStatsEnvelope, CurrentMemberRemovalEnvelope,
-    DebugStatusEnvelope, DispatchOutcomeEnvelope, EncryptionActionEnvelope,
-    EncryptionStateEnvelope, EntryDeliveryViewEnvelope, EntryDetailEnvelope,
-    EntryReceiveProgressEnvelope, EntryReceiveProgressListEnvelope, EntryResourceEnvelope,
-    ExportConfigEnvelope, ImportConfigEnvelope, KeychainAccessEnvelope, LanInterfaceListEnvelope,
-    LifecycleStatusEnvelope, ListEntriesEnvelope, LocalDeviceInfoEnvelope, LogExportEnvelope,
-    MemberRemovalEnvelope, MemberSyncPreferencesEnvelope, MemberSyncResultEnvelope,
-    MembershipConvergenceEnvelope, MobileDeviceListEnvelope, MobileSyncActionEnvelope,
+    ClearHistoryEnvelope, ClipboardStatsEnvelope, DebugStatusEnvelope, DispatchOutcomeEnvelope,
+    EncryptionActionEnvelope, EncryptionStateEnvelope, EntryDeliveryViewEnvelope,
+    EntryDetailEnvelope, EntryReceiveProgressEnvelope, EntryReceiveProgressListEnvelope,
+    EntryResourceEnvelope, ExportConfigEnvelope, ImportConfigEnvelope, KeychainAccessEnvelope,
+    LanInterfaceListEnvelope, LifecycleStatusEnvelope, ListEntriesEnvelope,
+    LocalDeviceInfoEnvelope, LogExportEnvelope, MemberSyncPreferencesEnvelope,
+    MemberSyncResultEnvelope, MobileDeviceListEnvelope, MobileSyncActionEnvelope,
     MobileSyncSettingsEnvelope, NetworkRecoveryStatusEnvelope, PeerSnapshotListEnvelope,
     PresenceRefreshEnvelope, PreviewImportEnvelope, RegisterMobileDeviceEnvelope,
     RelayCredentialStatusEnvelope, RelayProbeOutcomeEnvelope, RelaySaveResultEnvelope,
     ResendEnvelope, RestartAcceptedEnvelope, RestoreEntryEnvelope, RotateMobilePasswordEnvelope,
     SearchQueryEnvelope, SearchRebuildEnvelope, SearchStatusEnvelope, SearchTagsEnvelope,
-    SecureLegacyRemovalEnvelope, SessionTokenEnvelope, SettingsEnvelope,
-    SettingsUpdateResultEnvelope, SetupInitializeEnvelope, SetupIssueInvitationEnvelope,
-    SetupMigrationProgressEnvelope, SetupRedeemEnvelope, SetupStateEnvelope,
-    SetupSwitchSpaceEnvelope, SharedDeviceRefreshEnvelope, SharedDeviceRefreshStartedEnvelope,
-    SpaceMemberListEnvelope, SpaceProtectionEnvelope, StatusEnvelope, StorageStatsEnvelope,
-    ToggleFavoriteEnvelope, UnlockSpaceEnvelope, UpdateDebugModeEnvelope,
-    UpdateMobileDeviceEnvelope, UpdateMobileSyncSettingsEnvelope, UpgradeStatusEnvelope,
+    SessionTokenEnvelope, SettingsEnvelope, SettingsUpdateResultEnvelope, SetupInitializeEnvelope,
+    SetupIssueInvitationEnvelope, SetupMigrationProgressEnvelope, SetupRedeemEnvelope,
+    SetupStateEnvelope, SetupSwitchSpaceEnvelope, SpaceMemberListEnvelope, SpaceProtectionEnvelope,
+    StatusEnvelope, StorageStatsEnvelope, ToggleFavoriteEnvelope, UnlockSpaceEnvelope,
+    UpdateDebugModeEnvelope, UpdateMobileDeviceEnvelope, UpdateMobileSyncSettingsEnvelope,
+    UpgradeStatusEnvelope, WorkspaceConvergenceEnvelope,
 };
 use uc_daemon_contract::api::dto::storage::{
     ClearCacheRequest, ClearCacheResponse, StorageStatsDto,
@@ -192,12 +187,7 @@ impl Modify for ContractMeta {
         crate::api::member::get_member_sync_preferences_handler,
         crate::api::member::update_member_sync_preferences_handler,
         crate::api::member::get_space_protection_handler,
-        crate::api::member::get_membership_convergence_handler,
-        crate::api::member::start_shared_device_refresh_handler,
-        crate::api::member::get_shared_device_refresh_handler,
-        crate::api::member::secure_remove_legacy_member_handler,
-        crate::api::member::get_current_member_removal_handler,
-        crate::api::member::continue_member_removal_handler,
+        crate::api::member::get_workspace_convergence_handler,
         // ── mobile-sync ────────────────────────────────────────────
         crate::api::mobile_sync::register_mobile_device_handler,
         crate::api::mobile_sync::list_mobile_devices_handler,
@@ -335,32 +325,19 @@ impl Modify for ContractMeta {
             MemberSyncPreferencesEnvelope,
             MemberSyncResultEnvelope,
             SpaceProtectionEnvelope,
-            MembershipConvergenceEnvelope,
-            SecureLegacyRemovalEnvelope,
-            MemberRemovalEnvelope,
-            CurrentMemberRemovalEnvelope,
-            SharedDeviceRefreshStartedEnvelope,
-            SharedDeviceRefreshEnvelope,
+            WorkspaceConvergenceEnvelope,
             MemberSyncPreferencesDto,
             MemberSyncResultDto,
             MemberSyncPreferencesPatchDto,
             SpaceProtectionDto,
-            SharedDeviceRefreshStartedDto,
-            SharedDeviceRefreshDto,
-            SharedDeviceRefreshDeviceDto,
-            SharedDeviceRefreshPhaseDto,
-            SharedDeviceRefreshDeviceStateDto,
             SpaceProtectionModeDto,
-            MembershipConvergenceDto,
-            MembershipConvergenceStateDto,
+            WorkspaceConvergenceDto,
+            WorkspaceConvergencePhaseDto,
+            WorkspaceConvergenceFailureCategoryDto,
             MemberProtectionDto,
             MemberProtectionStatusDto,
             LegacyBootstrapDto,
             LegacyBootstrapOutcomeDto,
-            SecureLegacyRemovalDto,
-            MemberRemovalDto,
-            MemberRemovalOutcomeDto,
-            ContinueMemberRemovalRequest,
             ContentTypesDto,
             ContentTypesPatchDto,
             // ── mobile-sync ────────────────────────────────────────
@@ -640,16 +617,10 @@ mod assembly_smoke_tests {
         // → 64 / 71. Unified receive attempts add list, exact progress, and
         // exact cancellation: +3 paths, +3 operations → 67 / 74. Relay credential
         // status and atomic save add two paths and two operations → 69 / 76.
-        // Engine-owned space protection adds GET /member/protection and
-        // POST /member/{device_id}/secure-remove: +2 paths, +2 operations
-        // → 71 / 78. Membership convergence adds GET /member/convergence:
-        // +1 path, +1 operation → 72 / 79. Reliable member-removal recovery
-        // adds GET /member/removal/current and POST /member/removal/continue:
-        // +2 paths, +2 operations → 74 / 81. Network recovery adds GET+POST
-        // /network/recovery: +1 path, +2 operations → 75 / 83. Shared-device
-        // refresh adds POST /member/shared-device-refresh and GET
-        // /member/shared-device-refresh/{request_id}: +2 paths, +2 operations
-        // → 77 / 85.)
+        // Engine-owned space protection adds GET /member/protection and the
+        // workspace convergence migration replaces the former member-removal,
+        // convergence, and shared-device-refresh routes with one
+        // GET /member/workspace-convergence endpoint: 72 paths / 80 operations.
         const HTTP_METHODS: [&str; 7] =
             ["get", "put", "post", "delete", "patch", "head", "options"];
         let paths = value
@@ -658,8 +629,8 @@ mod assembly_smoke_tests {
             .expect("OpenAPI doc must declare paths");
         assert_eq!(
             paths.len(),
-            77,
-            "expected exactly 77 path templates, found {}: {:?}",
+            72,
+            "expected exactly 72 path templates, found {}: {:?}",
             paths.len(),
             paths.keys().collect::<Vec<_>>()
         );
@@ -673,8 +644,8 @@ mod assembly_smoke_tests {
             })
             .sum();
         assert_eq!(
-            operation_count, 85,
-            "expected exactly 85 operations across all paths, found {operation_count}"
+            operation_count, 80,
+            "expected exactly 80 operations across all paths, found {operation_count}"
         );
 
         // A few frozen operationIds (§D) must be present somewhere in the doc.
@@ -689,10 +660,7 @@ mod assembly_smoke_tests {
             "getEntryReceiveProgress",
             "cancelEntryReceive",
             "getSpaceProtection",
-            "getMembershipConvergence",
-            "secureRemoveLegacyMember",
-            "getCurrentMemberRemoval",
-            "continueMemberRemoval",
+            "getWorkspaceConvergence",
         ] {
             assert!(
                 json.contains(&format!("\"{op}\"")),

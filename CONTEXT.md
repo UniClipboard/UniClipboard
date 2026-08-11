@@ -41,13 +41,12 @@ _Avoid_: device name、machine id、peer id
 活跃成员。
 _Avoid_: peer、trusted peer、user
 
-**Member revocation**：
-用户确认某台设备永久丢失后的成员移除收尾流程。若目标设备已不在安全组中，直接完成
-移除，不再创建新的移除代次；已记录、但尚未形成安全更新的移除处于 `recovering`，由
-Engine 自动收束，它不是普通等待状态，期间不应让用户确认永久丢失。若当前安全组无法
-读取，则流程进入终态 `recovery_required`，等待以可信活跃设备重建，而非作为可重试失败
-继续尝试。
-_Avoid_: retryable removal、member status update
+**Workspace convergence**：
+Engine 持久拥有的 Space 成员变更收敛状态，统一表达成员加入、移除与离线成员等待；阶段为
+`locally_applied`、`converging`、`waiting_for_offline_member`、`complete`、
+`recovery_required`。等待阶段由 Engine 给出确切的 `waiting_member_device_ids`，客户端只能
+据此标记对应设备，不得从在线状态推断。`removed` 是独立的本机长期事实，重新加入后才清除。
+_Avoid_: member revocation、client-side convergence、offline inference
 
 **Readmission**：
 旧版 Space 安全升级时，成员重新进入安全组的 Engine 持久状态。成员处于
@@ -55,14 +54,6 @@ _Avoid_: retryable removal、member status update
 `awaiting_readmission` 阶段，用户可以直接移除不再使用的设备，结束对该设备的等待。
 它不是网络连接状态，也不由客户端本地状态决定。
 _Avoid_: reconnect、client-side retry、temporary pairing state
-
-**Shared-device refresh round**：
-由 Engine 管理的一次短期成员关系补全过程，从当前 Space 的已配对设备学习其他已知
-成员；它不传输剪贴板内容。每轮由 `requestId` 标识，Engine 的完整快照是唯一事实来源，
-客户端只读取该快照，不自行合并或推断设备状态。首轮未结束时的重复发起复用同一轮；
-`round_completed` 只表示首轮已结束，等待中的设备仍会继续处理；守护进程重启后该轮查询
-失效。只有状态为 `connected` 且权威设备列表已包含目标设备，才表示新设备已经连接。
-_Avoid_: clipboard recovery、client-side device merge、refresh retry loop
 
 **ClipboardEvent**：
 一次剪贴板捕获动作的领域事件（`event_id`、捕获时刻、源设备 `DeviceId`、
@@ -137,8 +128,8 @@ _Avoid_: relay-only、server mode
 ### 关系
 
 - 一台设备以 `DeviceId` 立身，被接纳进 **Space** 后成为一条 **SpaceMember**
-- **Shared-device refresh round** 只补全 **SpaceMember** 之间的已知关系，不改变
-  **Transient sync semantics**，也不补传历史剪贴板内容
+- **Workspace convergence** 是成员关系的唯一收敛事实来源；等待名单只表示需要上线以完成
+  当前成员变更，不改变 **Transient sync semantics**，也不补传历史剪贴板内容
 - 一次复制产生一个 **ClipboardEvent**，落地为一条对用户可见的 **ClipboardEntry**；
   原始字节来自该 event 的 **SystemClipboardSnapshot**，拆成多条 **Representation**
 - **MasterKey** 由 **Passphrase** 经 KEK 解包，是 **Space** 内一切密文的根密钥；

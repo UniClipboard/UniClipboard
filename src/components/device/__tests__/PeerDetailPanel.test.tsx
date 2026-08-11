@@ -20,7 +20,6 @@ const mocks = vi.hoisted(() => ({
     })
   ),
   toastError: vi.fn(),
-  onMarkLost: vi.fn(),
 }))
 
 const preferences: MemberSyncPreferences = {
@@ -52,8 +51,8 @@ const state = {
       members: Array<{ deviceId: string; status: MemberProtectionStatus }>
     },
     memberRemoval: null as null | {
-      outcome: string
-      pendingRecipientDeviceIds: string[]
+      phase: string
+      intentCount: number
     },
   },
 }
@@ -92,7 +91,6 @@ function renderPanel() {
         globalFileSyncOff={false}
         lanOnlyActive={false}
         onUnpair={vi.fn()}
-        onMarkLost={mocks.onMarkLost}
       />
     </I18nextProvider>
   )
@@ -115,7 +113,6 @@ describe('PeerDetailPanel receive controls', () => {
     mocks.fetchMemberSyncPreferences.mockClear()
     mocks.updateMemberSyncPreferences.mockClear()
     mocks.toastError.mockReset()
-    mocks.onMarkLost.mockReset()
     mocks.dispatch.mockReturnValue({ unwrap: () => Promise.resolve(preferences) })
     state.devices.spaceProtection = null
     state.devices.memberRemoval = null
@@ -218,34 +215,5 @@ describe('PeerDetailPanel receive controls', () => {
       expect(mocks.toastError).toHaveBeenCalledWith("Couldn't update sync settings. Try again.")
       expect(mocks.fetchMemberSyncPreferences).toHaveBeenCalledTimes(2)
     })
-  })
-
-  it('offers a mark-as-lost action while the device awaits the security update', async () => {
-    state.devices.memberRemoval = {
-      outcome: 'applied',
-      pendingRecipientDeviceIds: ['peer-1'],
-    }
-    const user = userEvent.setup()
-    renderPanel()
-
-    await user.click(
-      screen.getByRole('button', { name: i18n.t('devices.memberRemoval.permanentLoss.markLost') })
-    )
-
-    expect(mocks.onMarkLost).toHaveBeenCalledWith('peer-1')
-  })
-
-  it('hides the mark-as-lost action once the removal completes', () => {
-    state.devices.memberRemoval = {
-      outcome: 'complete',
-      pendingRecipientDeviceIds: ['peer-1'],
-    }
-    renderPanel()
-
-    expect(
-      screen.queryByRole('button', {
-        name: i18n.t('devices.memberRemoval.permanentLoss.markLost'),
-      })
-    ).not.toBeInTheDocument()
   })
 })

@@ -2,7 +2,7 @@
 
 use serde::Serialize;
 use std::fmt;
-use uc_daemon_contract::api::dto::member::MembershipConvergenceStateDto;
+use uc_daemon_contract::api::dto::member::WorkspaceConvergencePhaseDto;
 
 use crate::commands::app_session::connect_with_lease;
 use crate::exit_codes;
@@ -15,7 +15,7 @@ struct StatusOutput {
     encryption_ready: bool,
     search_state: String,
     search_reason: Option<String>,
-    membership_convergence: MembershipConvergenceStateDto,
+    workspace_convergence: WorkspaceConvergencePhaseDto,
 }
 
 impl fmt::Display for StatusOutput {
@@ -30,8 +30,8 @@ impl fmt::Display for StatusOutput {
         writeln!(f, "Search reason: {reason}")?;
         write!(
             f,
-            "Membership convergence: {}",
-            membership_convergence_label(self.membership_convergence)
+            "Workspace convergence: {}",
+            workspace_convergence_label(self.workspace_convergence)
         )?;
         Ok(())
     }
@@ -60,11 +60,11 @@ pub async fn run(json: bool, verbose: bool) -> i32 {
         }
     };
 
-    let membership_convergence = match ctx.member_client().convergence().await {
-        Ok(status) => status.state,
+    let workspace_convergence = match ctx.member_client().workspace_convergence().await {
+        Ok(status) => status.phase,
         Err(err) => {
             ui::error(&format!(
-                "Failed to query membership convergence status: {err}"
+                "Failed to query workspace convergence status: {err}"
             ));
             return exit_codes::EXIT_ERROR;
         }
@@ -75,7 +75,7 @@ pub async fn run(json: bool, verbose: bool) -> i32 {
         encryption_ready,
         search_state,
         search_reason,
-        membership_convergence,
+        workspace_convergence,
     };
 
     if let Err(err) = output::print_result(&result, json) {
@@ -86,12 +86,13 @@ pub async fn run(json: bool, verbose: bool) -> i32 {
     exit_codes::EXIT_SUCCESS
 }
 
-fn membership_convergence_label(state: MembershipConvergenceStateDto) -> &'static str {
+fn workspace_convergence_label(state: WorkspaceConvergencePhaseDto) -> &'static str {
     match state {
-        MembershipConvergenceStateDto::Complete => "complete",
-        MembershipConvergenceStateDto::Converging => "converging",
-        MembershipConvergenceStateDto::WaitingForUpgrade => "waiting_for_upgrade",
-        MembershipConvergenceStateDto::Blocked => "blocked",
+        WorkspaceConvergencePhaseDto::LocallyApplied => "locally_applied",
+        WorkspaceConvergencePhaseDto::Converging => "converging",
+        WorkspaceConvergencePhaseDto::WaitingForOfflineMember => "waiting_for_offline_member",
+        WorkspaceConvergencePhaseDto::Complete => "complete",
+        WorkspaceConvergencePhaseDto::RecoveryRequired => "recovery_required",
     }
 }
 
@@ -99,19 +100,19 @@ fn membership_convergence_label(state: MembershipConvergenceStateDto) -> &'stati
 mod tests {
     use super::StatusOutput;
     use serde_json::json;
-    use uc_daemon_contract::api::dto::member::MembershipConvergenceStateDto;
+    use uc_daemon_contract::api::dto::member::WorkspaceConvergencePhaseDto;
 
     #[test]
-    fn json_includes_membership_convergence_state() {
+    fn json_includes_workspace_convergence_phase() {
         let output = StatusOutput {
             setup_completed: true,
             encryption_ready: true,
             search_state: "ready".to_string(),
             search_reason: None,
-            membership_convergence: MembershipConvergenceStateDto::Converging,
+            workspace_convergence: WorkspaceConvergencePhaseDto::Converging,
         };
 
         let value = serde_json::to_value(output).expect("serialize status output");
-        assert_eq!(value["membership_convergence"], json!("converging"));
+        assert_eq!(value["workspace_convergence"], json!("converging"));
     }
 }

@@ -9,20 +9,17 @@ import {
   RefreshCw,
   XCircle,
 } from 'lucide-react'
-import { useEffect, useEffectEvent, useMemo, useState } from 'react'
+import { useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { getPairedPeers } from '@/api/daemon/members'
 import {
   cancelInvitation,
   getSetupState,
   issuePairingInvitation,
   type CurrentInvitation,
 } from '@/api/daemon/setupV2'
-import {
-  onSetupInvitationRevoked,
-  onSetupPairingCompleted,
-  type SetupInvitationRevokedEvent,
-  type SetupPairingCompletedEvent,
-} from '@/api/setupEvents'
+import { onSetupInvitationRevoked, type SetupInvitationRevokedEvent } from '@/api/setupEvents'
+import { hasNewPairedMember } from '@/components/device/pairing-success-utils'
 import { formatInvitationCode } from '@/components/invitation-code-utils'
 import { Button } from '@/components/ui/button'
 import {
@@ -34,10 +31,9 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Progress } from '@/components/ui/progress'
+import { daemonWs } from '@/lib/daemon-ws'
 import { createLogger } from '@/lib/logger'
 import { cn } from '@/lib/utils'
-import { useAppDispatch } from '@/store/hooks'
-import { fetchSpaceMembers } from '@/store/slices/devicesSlice'
 
 const log = createLogger('add-device-dialog')
 
@@ -62,7 +58,6 @@ function formatRemaining(ms: number): string {
 
 function AddDeviceDialogInner({ open, onOpenChange }: AddDeviceDialogProps) {
   const { t } = useTranslation()
-  const dispatch = useAppDispatch()
   const [invitation, setInvitation] = useState<CurrentInvitation | null>(null)
   const [issuedAtMs, setIssuedAtMs] = useState<number | null>(null)
   const [loading, setLoading] = useState(false)
@@ -71,6 +66,7 @@ function AddDeviceDialogInner({ open, onOpenChange }: AddDeviceDialogProps) {
   const [copied, setCopied] = useState(false)
   const [step, setStep] = useState<Step>('invitation')
   const [failureReason, setFailureReason] = useState<string | null>(null)
+  const initialMemberCountRef = useRef<number | null>(null)
 
   // 倒计时 tick — 仅在邀请态 + 有邀请时启动
   useEffect(() => {
@@ -97,6 +93,11 @@ function AddDeviceDialogInner({ open, onOpenChange }: AddDeviceDialogProps) {
       setLoading(true)
       setError(null)
       try {
+        try {
+          initialMemberCountRef.current = (await getPairedPeers()).length
+        } catch (err) {
+          log.warn({ err }, 'failed to record member count before issuing invitation')
+        }
         const state = await getSetupState()
         if (cancelled) return
         if (state.currentInvitation) {
@@ -121,18 +122,21 @@ function AddDeviceDialogInner({ open, onOpenChange }: AddDeviceDialogProps) {
     }
   }, [open])
 
-  // 订阅 setup.pairingCompleted / setup.invitationRevoked — 后端在配对成功 /
-  // 失败 / 邀请被撤销时会推送，对话框据此切换状态机
-  const handlePairingCompleted = useEffectEvent((evt: SetupPairingCompletedEvent) => {
-    if (step !== 'invitation') return
-    if (evt.success) {
-      setStep('success')
-      dispatch(fetchSpaceMembers())
-    } else {
-      setFailureReason(evt.reason)
-      setStep('failed')
+  // Pairing completion is represented by workspace convergence plus the
+  // authoritative member list, because the Engine deliberately no longer
+  // exposes a pairing-session terminal event.
+  const handleWorkspaceConvergence = useEffectEvent(async () => {
+    if (step !== 'invitation' || initialMemberCountRef.current === null) return
+    try {
+      const currentMemberCount = (await getPairedPeers()).length
+      if (hasNewPairedMember(initialMemberCountRef.current, currentMemberCount)) {
+        setStep('success')
+      }
+    } catch (err) {
+      log.warn({ err }, 'failed to verify admitted member after convergence changed')
     }
   })
+
   const handleInvitationRevoked = useEffectEvent((evt: SetupInvitationRevokedEvent) => {
     if (step !== 'invitation' || loading) return
     setFailureReason(evt.reason)
@@ -143,17 +147,6 @@ function AddDeviceDialogInner({ open, onOpenChange }: AddDeviceDialogProps) {
     if (!open) return
     let mounted = true
     const unsubs: Array<() => void> = []
-
-    void onSetupPairingCompleted(evt => {
-      if (!mounted) return
-      handlePairingCompleted(evt)
-    }).then(
-      fn => {
-        if (mounted) unsubs.push(fn)
-        else fn()
-      },
-      err => log.warn({ err }, 'subscribe pairingCompleted failed')
-    )
 
     void onSetupInvitationRevoked(evt => {
       if (!mounted) return
@@ -166,11 +159,18 @@ function AddDeviceDialogInner({ open, onOpenChange }: AddDeviceDialogProps) {
       err => log.warn({ err }, 'subscribe invitationRevoked failed')
     )
 
+    const unsubscribeWorkspace = daemonWs.subscribe(['workspace-convergence'], event => {
+      if (event.eventType === 'workspace-convergence.changed') {
+        void handleWorkspaceConvergence()
+      }
+    })
+    unsubs.push(unsubscribeWorkspace)
+
     return () => {
       mounted = false
       unsubs.forEach(fn => fn())
     }
-  }, [open, dispatch])
+  }, [open])
 
   // 成功态自动关闭。把 onOpenChange 包成 useEffectEvent 移出依赖，避免父级
   // 重渲染导致 setTimeout 被反复重建。

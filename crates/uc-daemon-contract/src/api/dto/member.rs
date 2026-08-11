@@ -96,116 +96,45 @@ pub struct SpaceProtectionDto {
     pub legacy_bootstrap: Option<LegacyBootstrapDto>,
 }
 
-/// Coarse connection state for the active space.
+/// Current phase of the Engine-owned workspace convergence.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
-pub enum MembershipConvergenceStateDto {
-    Complete,
+pub enum WorkspaceConvergencePhaseDto {
+    LocallyApplied,
     Converging,
-    WaitingForUpgrade,
-    Blocked,
-}
-
-/// Product-facing connection status. Engine-internal counters stay private.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
-#[serde(rename_all = "camelCase")]
-pub struct MembershipConvergenceDto {
-    pub state: MembershipConvergenceStateDto,
-}
-
-/// Result of starting a shared-device refresh round.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
-#[serde(rename_all = "camelCase")]
-pub struct SharedDeviceRefreshStartedDto {
-    pub request_id: String,
-}
-
-/// Current phase of an Engine-owned shared-device refresh round.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum SharedDeviceRefreshPhaseDto {
-    Started,
-    Discovering,
-    Connecting,
-    RoundCompleted,
-}
-
-/// Stable per-device state produced by the Engine.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum SharedDeviceRefreshDeviceStateDto {
-    Discovered,
-    Connecting,
-    Connected,
-    AlreadyPresent,
-    WaitingForPeer,
-    WaitingForUpdate,
-    VersionIncompatible,
-    Rejected,
-}
-
-/// One device row in a shared-device refresh snapshot.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
-#[serde(rename_all = "camelCase")]
-pub struct SharedDeviceRefreshDeviceDto {
-    pub device_id: String,
-    pub display_name: String,
-    pub state: SharedDeviceRefreshDeviceStateDto,
-}
-
-/// Complete Engine-owned result for one shared-device refresh request.
-///
-/// Counts are mirrored verbatim from the Engine. The daemon and frontend must
-/// not derive or correct device states from counts.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
-#[serde(rename_all = "camelCase")]
-pub struct SharedDeviceRefreshDto {
-    pub request_id: String,
-    pub phase: SharedDeviceRefreshPhaseDto,
-    pub devices: Vec<SharedDeviceRefreshDeviceDto>,
-    pub total_count: u64,
-    pub discovered_count: u64,
-    pub connecting_count: u64,
-    pub connected_count: u64,
-    pub already_present_count: u64,
-    pub waiting_for_peer_count: u64,
-    pub waiting_for_update_count: u64,
-    pub version_incompatible_count: u64,
-    pub rejected_count: u64,
-    pub unavailable_source_count: u64,
-}
-
-/// Result of starting a secure Legacy member removal.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
-#[serde(rename_all = "camelCase")]
-pub struct SecureLegacyRemovalDto {
-    pub bootstrap: LegacyBootstrapDto,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum MemberRemovalOutcomeDto {
-    LocalOnly,
-    Recovering,
-    Applied,
+    WaitingForOfflineMember,
     Complete,
     RecoveryRequired,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
-#[serde(rename_all = "camelCase")]
-pub struct MemberRemovalDto {
-    pub revocation_id: Option<String>,
-    pub outcome: MemberRemovalOutcomeDto,
-    pub pending_recipients: u64,
-    pub removed_device_ids: Vec<String>,
-    pub pending_recipient_device_ids: Vec<String>,
-    pub updated_at_ms: i64,
+/// Stable failure category for workspace convergence.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum WorkspaceConvergenceFailureCategoryDto {
+    SpaceMismatch,
+    ContinuityGap,
+    IdentityMismatch,
+    DigestConflict,
+    Unauthorized,
+    VersionIncompatible,
+    NoEffectiveMembers,
+    Storage,
 }
 
+/// Complete Engine-owned workspace convergence state for the active space.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
-pub struct ContinueMemberRemovalRequest {
-    pub revocation_id: String,
-    pub permanently_lost_device_ids: Vec<String>,
+pub struct WorkspaceConvergenceDto {
+    pub phase: WorkspaceConvergencePhaseDto,
+    pub revision: u64,
+    pub change_count: u64,
+    pub removal_intent_count: u64,
+    pub effective_member_count: u64,
+    pub confirmed_member_count: u64,
+    pub waiting_member_device_ids: Vec<String>,
+    pub waiting_member_count: u64,
+    pub convergence_digest: Option<String>,
+    pub updated_at_ms: i64,
+    pub removed: bool,
+    pub failure_category: Option<WorkspaceConvergenceFailureCategoryDto>,
 }

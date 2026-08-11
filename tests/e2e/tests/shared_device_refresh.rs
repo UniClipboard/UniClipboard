@@ -429,6 +429,31 @@ async fn offline_device_recovers_without_new_refresh() {
     wait_for_member_named(&b, DEVICE_C).await;
 }
 
+/// B and C are each paired with A but not with one another. C returns from an
+/// offline restart and unlocks its existing space. Without a manual refresh,
+/// the Engine must automatically discover the other shared member and finish
+/// the mutual membership convergence.
+///
+/// This is the product red case for the reported unlock flow: both B and C
+/// must expose each other in their authoritative member lists. A refresh
+/// snapshot alone is not sufficient evidence of success.
+#[tokio::test]
+#[ignore]
+async fn unlocking_offline_member_automatically_discovers_other_shared_member() {
+    let binaries = NodeBinarySet::current_dev_cli();
+    let rendezvous = LocalRendezvous::start().await;
+    let (_a, b, mut c) = restart_b_ignorant_of_c("sdr6", &binaries, &rendezvous, true).await;
+
+    c.restart().await;
+
+    wait_for_member_named(&b, DEVICE_C).await;
+    wait_for_member_named(&c, DEVICE_B).await;
+    wait_for_member_count(&b, 3).await;
+    wait_for_member_count(&c, 3).await;
+    wait_for_convergence(&b, "complete").await;
+    wait_for_convergence(&c, "complete").await;
+}
+
 /// A refresh round is not persisted in the daemon: after a daemon restart the
 /// old request id must be reported gone with a stable error, and a new round
 /// must be startable right away.

@@ -57,17 +57,11 @@ use uc_webserver::api::openapi::ApiDoc;
 /// +1 operation → 64 / 71.
 /// Protected relay credentials add a status query and one atomic save:
 /// +2 paths, +2 operations.
-/// Engine-owned member protection adds GET `/member/protection` and POST
-/// `/member/{device_id}/secure-remove`: +2 paths, +2 operations.
-/// Membership convergence adds GET `/member/convergence`: +1 path, +1 operation
-/// → 72 / 79. Reliable member removal recovery adds GET
-/// `/member/removal/current` and POST `/member/removal/continue`: +2 paths,
-/// +2 operations → 74 / 81. Network recovery adds GET+POST
-/// `/network/recovery`: +1 path, +2 operations → 75 / 83.
-/// Shared-device refresh adds POST `/member/shared-device-refresh` and GET
-/// `/member/shared-device-refresh/{request_id}`: +2 paths, +2 operations → 77 / 85.
-const EXPECTED_PATHS: usize = 77;
-const EXPECTED_OPERATIONS: usize = 85;
+/// Engine-owned member protection adds GET `/member/protection`. Workspace
+/// convergence then replaces the former convergence, removal, and refresh
+/// endpoints with GET `/member/workspace-convergence`: 72 paths / 80 operations.
+const EXPECTED_PATHS: usize = 72;
+const EXPECTED_OPERATIONS: usize = 80;
 const SCHEMA_PREFIX: &str = "#/components/schemas/";
 const HTTP_METHODS: [&str; 7] = ["get", "put", "post", "delete", "patch", "head", "options"];
 

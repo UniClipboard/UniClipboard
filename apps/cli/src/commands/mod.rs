@@ -12,6 +12,7 @@ pub mod get;
 pub mod init;
 pub mod invite;
 pub mod join;
+pub mod member;
 pub mod members;
 pub mod mobile_sync;
 #[cfg(feature = "dev-tools")]
@@ -21,8 +22,6 @@ pub mod search;
 #[cfg(feature = "dev-tools")]
 pub mod seed_clipboard;
 pub mod send;
-#[cfg(feature = "dev-tools")]
-pub mod shared_device_refresh;
 pub mod start;
 pub mod status;
 pub mod stop;

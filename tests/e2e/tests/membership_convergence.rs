@@ -4,8 +4,6 @@ use std::sync::mpsc::{self, Receiver, TryRecvError};
 use std::time::Duration;
 
 use serde_json::Value;
-#[cfg(feature = "membership-diagnostics")]
-use uc_e2e_tests::get_session_token;
 use uc_e2e_tests::{
     InviteSession, LocalRendezvous, NodeBinarySet, TestCli, TestDaemon, TestProfile,
 };
@@ -285,10 +283,10 @@ fn try_convergence(cli: &TestCli) -> Result<String, String> {
     let value: Value = serde_json::from_str(output.stdout.trim())
         .map_err(|error| format!("status output is not JSON: {error}\n{}", output.stdout))?;
     value
-        .get("membership_convergence")
+        .get("workspace_convergence")
         .and_then(Value::as_str)
         .map(str::to_string)
-        .ok_or_else(|| format!("membership_convergence missing: {value}"))
+        .ok_or_else(|| format!("workspace_convergence missing: {value}"))
 }
 
 async fn wait_for_convergence(node: &Node, expected: &str) {
@@ -302,6 +300,33 @@ async fn wait_for_convergence(node: &Node, expected: &str) {
         if tokio::time::Instant::now() >= deadline {
             panic!(
                 "{} did not reach {expected}; last={last}; members={:?}; log={}",
+                node.cli.profile_name,
+                try_members(&node.cli),
+                node.daemon.diagnostic_log()
+            );
+        }
+        tokio::time::sleep(CLI_POLL_INTERVAL).await;
+    }
+}
+
+async fn wait_for_healthy_convergence(node: &Node) {
+    let deadline = tokio::time::Instant::now() + WAIT_TIMEOUT;
+    loop {
+        let last = match try_convergence(&node.cli) {
+            Ok(state)
+                if matches!(
+                    state.as_str(),
+                    "locally_applied" | "converging" | "complete"
+                ) =>
+            {
+                return;
+            }
+            Ok(state) => state,
+            Err(error) => error,
+        };
+        if tokio::time::Instant::now() >= deadline {
+            panic!(
+                "{} did not report healthy convergence; last={last}; members={:?}; log={}",
                 node.cli.profile_name,
                 try_members(&node.cli),
                 node.daemon.diagnostic_log()
@@ -412,12 +437,12 @@ async fn setup_three_nodes_with_a_offline(
 
 #[tokio::test]
 #[ignore]
-async fn c0_single_node_reports_complete() {
+async fn c0_single_node_reports_locally_applied() {
     let binaries = NodeBinarySet::current();
     let rendezvous = LocalRendezvous::start().await;
     let node = Node::initialized("membership-c0", "node-a", &binaries, &rendezvous).await;
 
-    wait_for_convergence(&node, "complete").await;
+    wait_for_convergence(&node, "locally_applied").await;
     assert_eq!(members(&node.cli).len(), 1);
 }
 
@@ -433,7 +458,7 @@ async fn c1_online_sponsor_chain_converges_and_syncs_directly() {
     join(&b, &c, "node-c").await;
 
     for node in [&a, &b, &c] {
-        wait_for_convergence(node, "complete").await;
+        wait_for_healthy_convergence(node).await;
         wait_for_member_count(node, 3).await;
     }
     assert_exact_delivery(&a, &c, "node-c", "c1-a-to-c").await;

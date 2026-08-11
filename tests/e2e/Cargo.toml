@@ -24,6 +24,7 @@ tempfile = "3"
 uuid = { version = "1", features = ["v4"] }
 dirs-next = "2"
 uc-app-paths = { path = "../../crates/uc-app-paths" }
+uc-daemon-process = { path = "../../crates/uc-daemon-process" }
 libc = "0.2"
 wiremock = "0.6"
 flate2 = "1"

@@ -15,7 +15,7 @@ use uc_daemon_local::crash_marker::{DaemonExitReport, DaemonRunMarker};
 use uc_daemon_local::process_metadata::{DaemonPidManager, DaemonProcessMode};
 use uc_engine::{ActiveClipboardChanged, Engine, HostFileHandle, Operation, OperationResult};
 use uc_observability::analytics::AnalyticsPort;
-use uc_webserver::api::auth::load_or_create_auth_token;
+use uc_webserver::api::auth::load_or_create_auth_token_from_conn;
 use uc_webserver::api::server::{run_http_server, DaemonApiState, DaemonFileHandles};
 use uc_webserver::api::types::{DaemonResidency, DaemonWsEvent};
 use uc_webserver::security::{cleanup_rate_limiter_task, SecurityState};
@@ -133,7 +133,10 @@ async fn run_daemon_surfaces(
     process_paths: DesktopHostProcessPaths,
     analytics_sink: Arc<dyn AnalyticsPort>,
 ) -> anyhow::Result<()> {
-    let auth_token = load_or_create_auth_token(process_paths.daemon_token())?;
+    // ADR-011: the bearer token lives inside `daemon.conn` (load-or-create);
+    // the HTTP server publishes the full connection file once it has bound.
+    let conn_path = uc_daemon_local::socket::resolve_daemon_conn_path()?;
+    let auth_token = load_or_create_auth_token_from_conn(&conn_path)?;
     let pid_manager = DaemonPidManager::new(process_paths.daemon_pid());
     let _pid_file_guard = DaemonPidFileGuard::activate(pid_manager, run_mode.process_mode())?;
     let pid = std::process::id();
@@ -220,6 +223,12 @@ async fn run_daemon_surfaces(
     if !http_completed {
         let _ =
             tokio::time::timeout(uc_daemon_local::timing::SHUTDOWN_JOIN_TIMEOUT, http_handle).await;
+    }
+    // ADR-011: a graceful exit must not leave a stale connection file behind —
+    // clients probe it and would otherwise see a dead PID until their identity
+    // check kicks in. Crash leftovers are still handled by that PID check.
+    if let Err(error) = uc_daemon_local::socket::remove_daemon_conn_file() {
+        warn!(error = %error, "failed to remove daemon connection file on shutdown");
     }
     let _ = tokio::time::timeout(
         uc_daemon_local::timing::SHUTDOWN_JOIN_TIMEOUT,

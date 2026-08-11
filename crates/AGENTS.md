@@ -68,7 +68,7 @@
 - Use `tracing` structured logs; avoid `println!/eprintln!/log` macros in production.
 - 做产品/架构方向判断前先读根目录 `VISION.md`。
 
-- Daemon HTTP port is deterministic from `UC_PROFILE` via FNV-1a hash (see `uc-daemon-process/src/socket.rs`); no port file exists.
+- Daemon binds an ephemeral loopback port and publishes host/port/token/pid in `<app_data_root>/daemon.conn` (`0o600`, atomic write; ADR-011). Clients discover the daemon through this file only; the legacy `UC_PROFILE`-hash fixed port is retired.
 - Daemon auth flow: Bearer file-token → `POST /auth/connect` `{"pid":N,"clientType":"cli"}` → Session JWT; use `Session <jwt>` header afterward.
 - `POST /clipboard/dispatch` sends to peers only; dispatched content does NOT appear in sender's `/clipboard/entries` (entries come from OS clipboard captures).
 

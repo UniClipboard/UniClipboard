@@ -57,7 +57,6 @@ impl DesktopEngineHost {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DesktopHostProcessPaths {
     app_data_root: PathBuf,
-    daemon_token: PathBuf,
     daemon_pid: PathBuf,
 }
 
@@ -65,17 +64,12 @@ impl DesktopHostProcessPaths {
     fn from_app_paths(paths: &DesktopHostPaths) -> Self {
         Self {
             app_data_root: paths.app_data_root_dir.clone(),
-            daemon_token: paths.app_data_root_dir.join(".daemon-token"),
             daemon_pid: paths.app_data_root_dir.join(".daemon-pid"),
         }
     }
 
     pub fn app_data_root(&self) -> &Path {
         &self.app_data_root
-    }
-
-    pub fn daemon_token(&self) -> &Path {
-        &self.daemon_token
     }
 
     pub fn daemon_pid(&self) -> PathBuf {

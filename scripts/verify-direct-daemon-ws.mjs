@@ -170,7 +170,9 @@ async function runSelfTest() {
   try {
     log(STAGE.WS_OPEN, 'Testing WebSocket URL with ?auth= query param...')
 
-    const baseWsUrl = 'ws://127.0.0.1:42715/ws'
+    // ADR-011: the daemon binds an ephemeral port; the exact port is
+    // irrelevant to this construction test (any loopback port works).
+    const baseWsUrl = 'ws://127.0.0.1:43127/ws'
     const sessionToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.test.signature'
 
     // This mirrors daemonWs.ts _openSocket() logic
@@ -349,8 +351,9 @@ async function runSelfTest() {
  * Live mode: connect to a real daemon and exercise the full WS path.
  *
  * Required env vars:
- *   DAEMON_BASE_URL  — e.g. http://127.0.0.1:42715
- *   DAEMON_TOKEN     — bearer token from daemon.token file
+ *   DAEMON_BASE_URL  — e.g. http://127.0.0.1:43127 (the ephemeral port is
+ *   published in <app_data_root>/daemon.conn, ADR-011)
+ *   DAEMON_TOKEN     — bearer token from daemon.conn (ADR-011)
  *   DAEMON_PID       — PID of the GUI client (for /auth/connect body)
  *
  * Optional:

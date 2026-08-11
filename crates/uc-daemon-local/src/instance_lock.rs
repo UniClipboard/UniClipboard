@@ -77,7 +77,7 @@ impl DaemonInstanceLock {
     /// Try to acquire the per-profile instance lock.
     ///
     /// `data_dir` is the profile's `app_data_root_dir` (same directory that
-    /// holds `.daemon-pid` and `.daemon-token`).
+    /// holds `.daemon-pid` and `daemon.conn`).
     ///
     /// Returns `Err(AlreadyRunning)` immediately (non-blocking) if another
     /// process already holds the lock.

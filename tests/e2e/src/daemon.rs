@@ -5,9 +5,25 @@ use std::path::PathBuf;
 use std::process::{Child, Command};
 use std::time::Duration;
 
+use serde::Deserialize;
+use uc_daemon_process::socket::DAEMON_CONN_FORMAT;
+
 use crate::{NodeBinarySet, TestProfile};
 
-const PROFILE_HTTP_PORT_START: u16 = 42719;
+/// The `daemon.conn` payload the daemon publishes (ADR-011) — the single
+/// source of truth for the ephemeral port and bearer token.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DaemonConn {
+    format: u32,
+    #[allow(dead_code)]
+    host: String,
+    port: u16,
+    token: String,
+    pid: u32,
+    #[allow(dead_code)]
+    started_at_ms: u64,
+}
 
 /// Manages a `uniclipd` daemon process for a single test.
 pub struct TestDaemon {
@@ -19,23 +35,6 @@ pub struct TestDaemon {
 }
 
 impl TestDaemon {
-    /// Derive the deterministic HTTP port for a profile name (mirrors
-    /// `uc-daemon-process/src/socket.rs` resolve logic).
-    fn port_for_profile(profile: &str) -> u16 {
-        let slot_count = u32::from(u16::MAX) - u32::from(PROFILE_HTTP_PORT_START) + 1;
-        let hash = Self::fnv1a(profile);
-        let offset = (hash % u64::from(slot_count)) as u16;
-        PROFILE_HTTP_PORT_START + offset
-    }
-
-    fn fnv1a(s: &str) -> u64 {
-        const OFFSET: u64 = 0xcbf29ce484222325;
-        const PRIME: u64 = 0x100000001b3;
-        s.as_bytes()
-            .iter()
-            .fold(OFFSET, |h, b| (h ^ u64::from(*b)).wrapping_mul(PRIME))
-    }
-
     /// Spawn a new daemon with the given profile. Does NOT wait for health.
     pub fn spawn(profile: TestProfile) -> std::io::Result<Self> {
         Self::spawn_with(profile, |_| {})
@@ -57,7 +56,6 @@ impl TestDaemon {
         rendezvous_base_url: Option<&str>,
         configure: impl FnOnce(&mut Command),
     ) -> std::io::Result<Self> {
-        let port = Self::port_for_profile(&profile.name);
         profile.cleanup();
         let binary = binaries.daemon.clone();
         let rendezvous_base_url = rendezvous_base_url.map(str::to_string);
@@ -68,7 +66,9 @@ impl TestDaemon {
         Ok(Self {
             child: Some(child),
             profile,
-            port,
+            // Populated by `wait_for_conn`; unknown until the daemon publishes
+            // `daemon.conn` (ADR-011 ephemeral port).
+            port: 0,
             binary,
             rendezvous_base_url,
         })
@@ -100,8 +100,8 @@ impl TestDaemon {
         Ok(command)
     }
 
-    /// Spawn and wait until the daemon reports healthy AND the `.daemon-token`
-    /// file is written (or timeout).
+    /// Spawn and wait until the daemon publishes `daemon.conn` and reports
+    /// healthy (or timeout).
     pub async fn start(profile: TestProfile) -> Result<Self, String> {
         Self::start_clean_with(profile, &NodeBinarySet::current(), None).await
     }
@@ -113,8 +113,8 @@ impl TestDaemon {
     ) -> Result<Self, String> {
         let mut daemon = Self::spawn_clean_with(profile, binaries, rendezvous_base_url, |_| {})
             .map_err(|e| format!("spawn failed: {e}"))?;
+        daemon.wait_for_conn(Duration::from_secs(30)).await?;
         daemon.wait_healthy(Duration::from_secs(30)).await?;
-        daemon.wait_for_token(Duration::from_secs(10)).await?;
         Ok(daemon)
     }
 
@@ -146,8 +146,43 @@ impl TestDaemon {
                 .spawn()
                 .map_err(|e| format!("restart spawn failed: {e}"))?,
         );
-        self.wait_healthy(Duration::from_secs(30)).await?;
-        self.wait_for_token(Duration::from_secs(10)).await
+        self.wait_for_conn(Duration::from_secs(30)).await?;
+        self.wait_healthy(Duration::from_secs(30)).await
+    }
+
+    /// Poll until the daemon has published `daemon.conn` (ADR-011) and record
+    /// its port.
+    ///
+    /// The connection file is accepted only when its recorded PID matches the
+    /// spawned child process — a leftover `daemon.conn` from a previously
+    /// killed daemon (same profile) must not be mistaken for the new daemon's
+    /// publish.
+    pub async fn wait_for_conn(&mut self, timeout: Duration) -> Result<(), String> {
+        let conn_path = self.profile.data_dir().join("daemon.conn");
+        let expected_pid = self.child.as_ref().map(|child| child.id());
+        let deadline = tokio::time::Instant::now() + timeout;
+        loop {
+            if let Ok(content) = std::fs::read_to_string(&conn_path) {
+                if let Ok(conn) = serde_json::from_str::<DaemonConn>(&content) {
+                    let pid_matches = expected_pid.is_none_or(|pid| conn.pid == pid);
+                    if pid_matches
+                        && conn.format == DAEMON_CONN_FORMAT
+                        && !conn.token.is_empty()
+                    {
+                        self.port = conn.port;
+                        return Ok(());
+                    }
+                }
+            }
+            if tokio::time::Instant::now() >= deadline {
+                return Err(format!(
+                    "daemon.conn not published within {}s at {:?}",
+                    timeout.as_secs(),
+                    conn_path
+                ));
+            }
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
     }
 
     /// Poll the daemon's health endpoint until it responds 200, or timeout.
@@ -182,33 +217,12 @@ impl TestDaemon {
         }
     }
 
-    /// Poll until the `.daemon-token` file exists and is non-empty.
-    pub async fn wait_for_token(&self, timeout: Duration) -> Result<(), String> {
-        let token_path = self.profile.data_dir().join(".daemon-token");
-        let deadline = tokio::time::Instant::now() + timeout;
-        loop {
-            if let Ok(token) = std::fs::read_to_string(&token_path) {
-                if !token.trim().is_empty() {
-                    return Ok(());
-                }
-            }
-            if tokio::time::Instant::now() >= deadline {
-                return Err(format!(
-                    "daemon token not written within {}s at {:?}",
-                    timeout.as_secs(),
-                    token_path
-                ));
-            }
-            tokio::time::sleep(Duration::from_millis(100)).await;
-        }
-    }
-
     /// The base URL for daemon HTTP API.
     pub fn base_url(&self) -> String {
         format!("http://127.0.0.1:{}", self.port)
     }
 
-    /// The HTTP port this daemon is expected to bind.
+    /// The HTTP port this daemon is bound to (from `daemon.conn`).
     pub fn port(&self) -> u16 {
         self.port
     }

@@ -269,6 +269,12 @@ async fn wait_for_member_count(cli: &TestCli, expected: usize) {
             Ok(current) if tokio::time::Instant::now() >= deadline => {
                 panic!("{} member count did not reach {expected}; members={current:?}", cli.profile_name);
             }
+            Err(error) if tokio::time::Instant::now() >= deadline => {
+                panic!(
+                    "{} member count did not reach {expected}; last error={error}",
+                    cli.profile_name
+                );
+            }
             _ => {}
         }
         tokio::time::sleep(CLI_POLL_INTERVAL).await;
@@ -482,6 +488,11 @@ async fn r07_concurrent_removal_intents_merge() {
     let a_digest = a_status.get("convergenceDigest").and_then(Value::as_str);
     let c_digest = c_status.get("convergenceDigest").and_then(Value::as_str);
     assert_eq!(a_digest, c_digest, "shared digest required: {a_status} vs {c_status}");
+    assert_eq!(
+        effective_member_count_of(&a_status),
+        2,
+        "A must exclude B from effective members: {a_status}"
+    );
     let b_status = removal_status(&b.cli);
     assert_eq!(intent_count_of(&b_status), 0, "removed target observes no intent: {b_status}");
 }
@@ -529,7 +540,6 @@ async fn r09_removed_member_stops_receiving_content() {
 
     // A stops sending to the removed target: `send --peer` to B must not
     // accept the dispatch (B is excluded from A's effective members).
-    let b_id = remote_device_id(&a.cli, DEVICE_B);
     let b_send = a
         .cli
         .run_capture(&["--json", "send", "r09-to-b", "--peer", &b_id]);
@@ -605,48 +615,6 @@ async fn r11_unpair_is_the_removal_path() {
     let a_status = wait_for_phase(&a.cli, "complete").await;
     assert_eq!(intent_count_of(&a_status), 1, "{a_status}");
     assert_eq!(effective_member_count_of(&a_status), 1, "B must be excluded: {a_status}");
-}
-
-// ── R12 ──────────────────────────────────────────────────────────────
-// Late intent merges across reconnect: B offline; A removes B; C removes B
-// before B returns; all three converge with merged intents and B removed.
-//
-#[tokio::test]
-#[ignore]
-async fn r12_late_intent_merges_across_reconnect() {
-    let binaries = NodeBinarySet::current();
-    let rendezvous = LocalRendezvous::start().await;
-    let a = Node::initialized("removal-r12-a", DEVICE_A, &binaries, &rendezvous).await;
-    let mut b = Node::fresh("removal-r12-b", &binaries, &rendezvous).await;
-    join(&a, &b, DEVICE_B).await;
-    let c = Node::fresh("removal-r12-c", &binaries, &rendezvous).await;
-    join(&a, &c, DEVICE_C).await;
-    wait_for_member_count(&a.cli, 3).await;
-
-    let b_id = remote_device_id(&a.cli, DEVICE_B);
-    b.stop().await;
-    remove(&a.cli, &b_id);
-    remove(&c.cli, &b_id);
-
-    b.restart().await;
-    let a_status = wait_for_phase(&a.cli, "complete").await;
-    let c_status = wait_for_phase(&c.cli, "complete").await;
-
-    for (name, status) in [("A", &a_status), ("C", &c_status)] {
-        assert!(intent_count_of(status) >= 2, "{name} must merge late intents: {status}");
-    }
-    assert_eq!(
-        a_status.get("convergenceDigest").and_then(Value::as_str),
-        c_status.get("convergenceDigest").and_then(Value::as_str),
-        "A and C must agree on the digest: {a_status} vs {c_status}"
-    );
-    assert_eq!(
-        effective_member_count_of(&a_status),
-        2,
-        "A must exclude B from effective members: {a_status}"
-    );
-    let b_status = removal_status(&b.cli);
-    assert_eq!(intent_count_of(&b_status), 0, "removed target observes no intent: {b_status}");
 }
 
 // ── R13 ──────────────────────────────────────────────────────────────

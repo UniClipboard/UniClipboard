@@ -1,7 +1,7 @@
 //! Status 命令:通过 daemon 显示应用状态。
 
 use serde::Serialize;
-use std::fmt;
+use uc_daemon_client::{DaemonService, HttpWsDaemonService};
 use uc_daemon_contract::api::dto::member::WorkspaceConvergencePhaseDto;
 
 use crate::commands::app_session::connect_with_lease;
@@ -16,25 +16,6 @@ struct StatusOutput {
     search_state: String,
     search_reason: Option<String>,
     workspace_convergence: WorkspaceConvergencePhaseDto,
-}
-
-impl fmt::Display for StatusOutput {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let setup = if self.setup_completed { "yes" } else { "no" };
-        let encryption = if self.encryption_ready { "yes" } else { "no" };
-        let reason = self.search_reason.as_deref().unwrap_or("none");
-
-        writeln!(f, "Setup completed: {setup}")?;
-        writeln!(f, "Encryption ready: {encryption}")?;
-        writeln!(f, "Search state: {}", self.search_state)?;
-        writeln!(f, "Search reason: {reason}")?;
-        write!(
-            f,
-            "Workspace convergence: {}",
-            workspace_convergence_label(self.workspace_convergence)
-        )?;
-        Ok(())
-    }
 }
 
 pub async fn run(json: bool, verbose: bool) -> i32 {
@@ -60,7 +41,8 @@ pub async fn run(json: bool, verbose: bool) -> i32 {
         }
     };
 
-    let workspace_convergence = match ctx.member_client().workspace_convergence().await {
+    let facade = HttpWsDaemonService::new(ctx);
+    let workspace_convergence = match facade.workspace_convergence().await {
         Ok(status) => status.phase,
         Err(err) => {
             ui::error(&format!(
@@ -78,10 +60,27 @@ pub async fn run(json: bool, verbose: bool) -> i32 {
         workspace_convergence,
     };
 
-    if let Err(err) = output::print_result(&result, json) {
-        ui::error(&err);
-        return exit_codes::EXIT_ERROR;
+    if json {
+        return output::emit_json(&result, "status response");
     }
+
+    ui::info(
+        "Setup completed",
+        if result.setup_completed { "yes" } else { "no" },
+    );
+    ui::info(
+        "Encryption ready",
+        if result.encryption_ready { "yes" } else { "no" },
+    );
+    ui::info("Search state", &result.search_state);
+    ui::info(
+        "Search reason",
+        result.search_reason.as_deref().unwrap_or("none"),
+    );
+    ui::info(
+        "Workspace convergence",
+        workspace_convergence_label(result.workspace_convergence),
+    );
 
     exit_codes::EXIT_SUCCESS
 }

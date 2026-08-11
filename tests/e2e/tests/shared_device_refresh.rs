@@ -442,6 +442,7 @@ async fn offline_device_recovers_without_new_refresh() {
 async fn unlocking_offline_member_automatically_discovers_other_shared_member() {
     let binaries = NodeBinarySet::current_dev_cli();
     let rendezvous = LocalRendezvous::start().await;
+    // `_a` retains A's Node so its daemon stays alive for the whole test.
     let (_a, b, mut c) = restart_b_ignorant_of_c("sdr6", &binaries, &rendezvous, true).await;
 
     c.restart().await;

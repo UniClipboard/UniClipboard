@@ -22,19 +22,21 @@
 use chrono::{DateTime, Local, TimeZone};
 use uc_daemon_contract::api::dto::member::{WorkspaceConvergenceDto, WorkspaceConvergencePhaseDto};
 
-use crate::commands::app_session::connect_with_lease;
+use crate::commands::app_session::connect_facade_with_lease;
 use crate::exit_codes;
 use crate::output;
 use crate::ui;
 
 pub async fn remove(peer_id: String, json: bool, verbose: bool) -> i32 {
-    ui::header("Member removal");
+    if !json {
+        ui::header("Member removal");
+    }
 
-    let (_lease, ctx) = match connect_with_lease(verbose).await {
+    let (_lease, facade) = match connect_facade_with_lease(verbose).await {
         Ok(pair) => pair,
         Err(code) => return code,
     };
-    let removal = match ctx.pairing_client().unpair_device(peer_id).await {
+    let removal = match facade.remove_member(peer_id).await {
         Ok(removal) => removal,
         Err(err) => {
             ui::error(&format!("Failed to remove member: {err}"));
@@ -46,13 +48,15 @@ pub async fn remove(peer_id: String, json: bool, verbose: bool) -> i32 {
 }
 
 pub async fn removal_status(json: bool, verbose: bool) -> i32 {
-    ui::header("Member removal status");
+    if !json {
+        ui::header("Member removal status");
+    }
 
-    let (_lease, ctx) = match connect_with_lease(verbose).await {
+    let (_lease, facade) = match connect_facade_with_lease(verbose).await {
         Ok(pair) => pair,
         Err(code) => return code,
     };
-    let convergence = match ctx.member_client().workspace_convergence().await {
+    let convergence = match facade.workspace_convergence().await {
         Ok(convergence) => convergence,
         Err(err) => {
             ui::error(&format!("Failed to query member removal: {err}"));

@@ -1035,33 +1035,6 @@
     "pairedDevices": {
       "title": "已配對裝置"
     },
-    "sharedDeviceRefresh": {
-      "refresh": "重新整理共用裝置",
-      "searching": "正在尋找可連接裝置",
-      "viewProgress": "查看進度",
-      "discoveredNotice": "發現 {{count}} 台新裝置",
-      "viewDiscovered": "查看新裝置",
-      "discoveredTitle": "發現新裝置",
-      "connecting": "正在自動連接已發現的裝置",
-      "roundCompleted": "本輪尋找完成",
-      "empty": "未發現可自動連接的裝置",
-      "unavailableSources": "部分已配對裝置目前無法使用",
-      "startFailed": "暫時無法開始重新整理",
-      "updateFailed": "暫時無法更新重新整理狀態",
-      "ended": "重新整理狀態已結束，請重新整理",
-      "connectedNotice": "已連接 {{count}} 台裝置：{{devices}}",
-      "unknownDevice": "未命名裝置",
-      "deviceStates": {
-        "discovered": "已發現，正在準備連接",
-        "connecting": "正在自動連接",
-        "connected": "已自動連接",
-        "already_present": "已在本機裝置中",
-        "waiting_for_peer": "等待裝置上線，會繼續嘗試",
-        "waiting_for_update": "等待資料更新，會繼續嘗試",
-        "version_incompatible": "版本不相容",
-        "rejected": "無法連接"
-      }
-    },
     "convergence": {
       "converging": "正在連接空間內的其他裝置",
       "waitingForOfflineMember": "正在等待離線裝置完成資料更新",

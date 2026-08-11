@@ -7,6 +7,7 @@ use uc_engine::{
     TransferDirectionSummary,
 };
 
+use crate::api::projection::IntoApiDto;
 use crate::api::types::DaemonWsEvent;
 
 fn now_ms() -> i64 {
@@ -116,25 +117,16 @@ pub fn engine_event_to_ws(event: EngineEvent) -> Option<DaemonWsEvent> {
                 "targetDeviceId": event.target_device_id,
             }),
         ),
-        EngineEvent::WorkspaceConvergenceChanged(summary) => (
-            ws_topic::WORKSPACE_CONVERGENCE,
-            ws_event::WORKSPACE_CONVERGENCE_CHANGED,
-            summary.updated_at_ms,
-            serde_json::json!({
-                "phase": summary.phase,
-                "revision": summary.revision,
-                "changeCount": summary.change_count,
-                "removalIntentCount": summary.removal_intent_count,
-                "effectiveMemberCount": summary.effective_member_count,
-                "confirmedMemberCount": summary.confirmed_member_count,
-                "waitingMemberDeviceIds": summary.waiting_member_device_ids,
-                "waitingMemberCount": summary.waiting_member_count,
-                "convergenceDigest": summary.convergence_digest,
-                "updatedAtMs": summary.updated_at_ms,
-                "removed": summary.removed,
-                "failureCategory": summary.failure_category,
-            }),
-        ),
+        EngineEvent::WorkspaceConvergenceChanged(summary) => {
+            let updated_at_ms = summary.updated_at_ms;
+            let dto = summary.into_api_dto();
+            (
+                ws_topic::WORKSPACE_CONVERGENCE,
+                ws_event::WORKSPACE_CONVERGENCE_CHANGED,
+                updated_at_ms,
+                serde_json::to_value(dto).ok()?,
+            )
+        }
         EngineEvent::NetworkRecoveryChanged(status) => (
             ws_topic::NETWORK_RECOVERY,
             ws_event::NETWORK_RECOVERY_CHANGED,
@@ -350,12 +342,19 @@ mod engine_event_tests {
         assert_eq!(event.topic, "workspace-convergence");
         assert_eq!(event.event_type, "workspace-convergence.changed");
         assert_eq!(event.payload["phase"], "waiting_for_offline_member");
+        assert_eq!(event.payload["revision"], 4);
+        assert_eq!(event.payload["changeCount"], 2);
+        assert_eq!(event.payload["removalIntentCount"], 1);
+        assert_eq!(event.payload["effectiveMemberCount"], 3);
         assert_eq!(event.payload["confirmedMemberCount"], 2);
         assert_eq!(
             event.payload["waitingMemberDeviceIds"],
             serde_json::json!(["device-b"])
         );
         assert_eq!(event.payload["waitingMemberCount"], 1);
+        assert_eq!(event.payload["convergenceDigest"], "digest-1");
+        assert_eq!(event.payload["updatedAtMs"], 42);
+        assert_eq!(event.payload["removed"], false);
         assert_eq!(event.payload["failureCategory"], "storage");
     }
 }

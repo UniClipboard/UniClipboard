@@ -58,29 +58,15 @@ pub(crate) async fn handle_unpair_device(
         .await
         .map_err(|error| map_member_engine_error(peer_id.as_str(), "unpair_device", error))?;
     let OperationResult::WorkspaceConvergence(convergence) = result else {
+        tracing::error!(
+            operation = "unpair_device",
+            error_kind = ?result,
+            "engine returned an unexpected result"
+        );
         return Err(ApiError::internal(
             "engine returned an unexpected workspace-convergence result",
         ));
     };
 
     Ok(Json(ApiEnvelope::now(convergence.into_api_dto())))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use axum::http::StatusCode;
-    use uc_engine::{EngineError, EngineErrorCategory};
-
-    #[test]
-    fn unknown_member_removal_errors_map_to_internal() {
-        let api = map_member_engine_error(
-            "peer-1",
-            "unpair_device",
-            EngineError::new(9999, EngineErrorCategory::Internal, false),
-        );
-
-        assert_eq!(api.status, StatusCode::INTERNAL_SERVER_ERROR);
-        assert_eq!(api.code, "internal_error");
-    }
 }

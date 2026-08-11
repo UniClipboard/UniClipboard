@@ -1036,33 +1036,6 @@
     "pairedDevices": {
       "title": "ペアリングされたデバイス"
     },
-    "sharedDeviceRefresh": {
-      "refresh": "共有デバイスを再読み込み",
-      "searching": "接続できるデバイスを探しています",
-      "viewProgress": "進捗を見る",
-      "discoveredNotice": "新しいデバイスを {{count}} 台見つけました",
-      "viewDiscovered": "新しいデバイスを見る",
-      "discoveredTitle": "新しいデバイスを発見",
-      "connecting": "見つかったデバイスに自動接続しています",
-      "roundCompleted": "この検索ラウンドは完了しました",
-      "empty": "自動接続できるデバイスは見つかりませんでした",
-      "unavailableSources": "一部のペアリング済みデバイスは現在利用できません",
-      "startFailed": "共有デバイスの再読み込みを開始できません",
-      "updateFailed": "現在は再読み込み状態を更新できません",
-      "ended": "再読み込み状態は終了しました。新しい再読み込みを開始してください",
-      "connectedNotice": "{{count}} 台のデバイスを接続しました: {{devices}}",
-      "unknownDevice": "名前のないデバイス",
-      "deviceStates": {
-        "discovered": "検出済み、接続準備中",
-        "connecting": "自動接続中",
-        "connected": "自動接続済み",
-        "already_present": "このデバイスに既にあります",
-        "waiting_for_peer": "デバイスのオンライン化を待っています。継続して試行します",
-        "waiting_for_update": "プロフィール更新を待っています。継続して試行します",
-        "version_incompatible": "バージョン互換性がありません",
-        "rejected": "接続できません"
-      }
-    },
     "convergence": {
       "converging": "このスペース内の他のデバイスに接続しています",
       "waitingForOfflineMember": "オフラインのデバイスがスペースデータを更新するのを待っています",

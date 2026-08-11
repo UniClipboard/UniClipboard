@@ -93,11 +93,7 @@ function AddDeviceDialogInner({ open, onOpenChange }: AddDeviceDialogProps) {
       setLoading(true)
       setError(null)
       try {
-        try {
-          initialMemberCountRef.current = (await getPairedPeers()).length
-        } catch (err) {
-          log.warn({ err }, 'failed to record member count before issuing invitation')
-        }
+        initialMemberCountRef.current = (await getPairedPeers()).length
         const state = await getSetupState()
         if (cancelled) return
         if (state.currentInvitation) {
@@ -219,6 +215,7 @@ function AddDeviceDialogInner({ open, onOpenChange }: AddDeviceDialogProps) {
     setStep('invitation')
     setFailureReason(null)
     try {
+      initialMemberCountRef.current = (await getPairedPeers()).length
       try {
         await cancelInvitation()
       } catch (err) {

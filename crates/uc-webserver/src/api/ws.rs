@@ -593,6 +593,7 @@ async fn build_snapshot_event(
         ws_topic::CLIPBOARD => Ok(None),
         ws_topic::FILE_TRANSFER => Ok(None),
         ws_topic::WORKSPACE_CONVERGENCE => Ok(None),
+        ws_topic::NETWORK_RECOVERY => Ok(None),
 
         ws_topic::ENCRYPTION => {
             // No snapshot for encryption — only an event is emitted on session_ready.

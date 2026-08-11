@@ -1039,33 +1039,6 @@
     "pairedDevices": {
       "title": "Dispositivos pareados"
     },
-    "sharedDeviceRefresh": {
-      "refresh": "Atualizar dispositivos compartilhados",
-      "searching": "Procurando dispositivos conectáveis",
-      "viewProgress": "Ver progresso",
-      "discoveredNotice": "{{count}} novo dispositivo encontrado",
-      "viewDiscovered": "Ver novos dispositivos",
-      "discoveredTitle": "Novos dispositivos encontrados",
-      "connecting": "Conectando aos dispositivos encontrados",
-      "roundCompleted": "Esta rodada foi concluída",
-      "empty": "Nenhum dispositivo conectável encontrado",
-      "unavailableSources": "Alguns dispositivos pareados estão indisponíveis no momento",
-      "startFailed": "Não foi possível iniciar a atualização de dispositivos compartilhados",
-      "updateFailed": "Não foi possível atualizar o status agora",
-      "ended": "Esta atualização terminou. Inicie uma nova atualização.",
-      "connectedNotice": "{{count}} dispositivo conectado: {{devices}}",
-      "unknownDevice": "Dispositivo sem nome",
-      "deviceStates": {
-        "discovered": "Descoberto, preparando conexão",
-        "connecting": "Conectando automaticamente",
-        "connected": "Conectado automaticamente",
-        "already_present": "Já está neste dispositivo",
-        "waiting_for_peer": "Aguardando o dispositivo ficar online; continuaremos tentando",
-        "waiting_for_update": "Aguardando atualização do perfil; continuaremos tentando",
-        "version_incompatible": "Versão incompatível",
-        "rejected": "Não foi possível conectar"
-      }
-    },
     "convergence": {
       "converging": "Conectando aos outros dispositivos deste Espaço",
       "waitingForOfflineMember": "Aguardando dispositivos offline atualizarem os dados do Espaço",

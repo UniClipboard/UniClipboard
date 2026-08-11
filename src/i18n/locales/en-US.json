@@ -1036,33 +1036,6 @@
     "pairedDevices": {
       "title": "Paired devices"
     },
-    "sharedDeviceRefresh": {
-      "refresh": "Refresh shared devices",
-      "searching": "Searching for connectable devices",
-      "viewProgress": "View progress",
-      "discoveredNotice": "Found {{count}} new device",
-      "viewDiscovered": "View new devices",
-      "discoveredTitle": "New devices found",
-      "connecting": "Connecting to discovered devices",
-      "roundCompleted": "This round is complete",
-      "empty": "No connectable devices found",
-      "unavailableSources": "Some paired devices are currently unavailable",
-      "startFailed": "Could not start refreshing shared devices",
-      "updateFailed": "Could not update refresh status right now",
-      "ended": "This refresh has ended. Start a new refresh.",
-      "connectedNotice": "Connected devices ({{count}}): {{devices}}",
-      "unknownDevice": "Unnamed device",
-      "deviceStates": {
-        "discovered": "Discovered, preparing to connect",
-        "connecting": "Connecting automatically",
-        "connected": "Connected automatically",
-        "already_present": "Already on this device",
-        "waiting_for_peer": "Waiting for device to come online; will keep trying",
-        "waiting_for_update": "Waiting for profile update; will keep trying",
-        "version_incompatible": "Version incompatible",
-        "rejected": "Unable to connect"
-      }
-    },
     "convergence": {
       "converging": "Connecting to other devices in this space",
       "waitingForOfflineMember": "Waiting for offline devices to update their space data",

@@ -164,11 +164,7 @@ enum Commands {
         #[arg(long)]
         probe: bool,
     },
-    /// Remove a space member (offline-first removal intent, ADR-015).
-    ///
-    /// Records an irreversible removal intent for the peer and immediately
-    /// stops sending new content to it. Prints the full Engine-owned removal
-    /// state; pass `--json` for the raw DTO.
+    /// Manage space member removal and inspect workspace convergence.
     Member {
         #[command(subcommand)]
         command: MemberCommands,
@@ -345,7 +341,10 @@ enum Commands {
 
 #[derive(Subcommand)]
 enum MemberCommands {
-    /// Record a removal intent for one member.
+    /// Record an irreversible, offline-first removal intent for one member.
+    ///
+    /// Immediately stops sending new content to the peer and prints the full
+    /// Engine-owned convergence state. Pass `--json` for the raw DTO.
     Remove {
         /// Peer device ID to remove.
         #[arg(value_name = "PEER-ID")]

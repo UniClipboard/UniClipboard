@@ -1035,33 +1035,6 @@
     "pairedDevices": {
       "title": "已配对设备"
     },
-    "sharedDeviceRefresh": {
-      "refresh": "刷新共享设备",
-      "searching": "正在查找可连接设备",
-      "viewProgress": "查看进度",
-      "discoveredNotice": "发现 {{count}} 台新设备",
-      "viewDiscovered": "查看新设备",
-      "discoveredTitle": "发现新设备",
-      "connecting": "正在自动连接已发现的设备",
-      "roundCompleted": "本轮查找完成",
-      "empty": "未发现可自动连接的设备",
-      "unavailableSources": "部分已配对设备目前不可用",
-      "startFailed": "暂时无法开始刷新",
-      "updateFailed": "暂时无法更新刷新状态",
-      "ended": "刷新状态已结束，请重新刷新",
-      "connectedNotice": "已连接 {{count}} 台设备：{{devices}}",
-      "unknownDevice": "未命名设备",
-      "deviceStates": {
-        "discovered": "已发现，正在准备连接",
-        "connecting": "正在自动连接",
-        "connected": "已自动连接",
-        "already_present": "已在本机设备中",
-        "waiting_for_peer": "等待设备上线，会继续尝试",
-        "waiting_for_update": "等待资料更新，会继续尝试",
-        "version_incompatible": "版本不兼容",
-        "rejected": "无法连接"
-      }
-    },
     "convergence": {
       "converging": "正在连接空间内的其他设备",
       "waitingForOfflineMember": "正在等待离线设备完成资料更新",

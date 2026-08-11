@@ -255,9 +255,16 @@ mod tests {
             mapped.phase,
             WorkspaceConvergencePhaseDto::WaitingForOfflineMember
         );
+        assert_eq!(mapped.revision, 4);
+        assert_eq!(mapped.change_count, 2);
+        assert_eq!(mapped.removal_intent_count, 1);
+        assert_eq!(mapped.effective_member_count, 3);
         assert_eq!(mapped.confirmed_member_count, 2);
         assert_eq!(mapped.waiting_member_device_ids, vec!["device-b"]);
         assert_eq!(mapped.waiting_member_count, 1);
+        assert_eq!(mapped.convergence_digest.as_deref(), Some("d1"));
+        assert_eq!(mapped.updated_at_ms, 42);
+        assert!(!mapped.removed);
         assert_eq!(
             mapped.failure_category,
             Some(WorkspaceConvergenceFailureCategoryDto::Storage)

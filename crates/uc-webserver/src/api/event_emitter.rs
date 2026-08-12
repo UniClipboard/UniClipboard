@@ -7,6 +7,7 @@ use uc_engine::{
     TransferDirectionSummary,
 };
 
+use crate::api::projection::IntoApiDto;
 use crate::api::types::DaemonWsEvent;
 
 fn now_ms() -> i64 {
@@ -116,27 +117,16 @@ pub fn engine_event_to_ws(event: EngineEvent) -> Option<DaemonWsEvent> {
                 "targetDeviceId": event.target_device_id,
             }),
         ),
-        EngineEvent::MemberRevocationChanged(event) => (
-            ws_topic::MEMBER_REMOVAL,
-            ws_event::MEMBER_REMOVAL_CHANGED,
-            event.updated_at_ms,
-            serde_json::json!({
-                "revocationId": event.revocation_id,
-                "outcome": event.outcome,
-                "pendingRecipients": event.pending_recipients,
-                "removedDeviceIds": event.removed_device_ids,
-                "pendingRecipientDeviceIds": event.pending_recipient_device_ids,
-                "updatedAtMs": event.updated_at_ms,
-            }),
-        ),
-        EngineEvent::SharedDeviceRefreshChanged(summary) => (
-            ws_topic::SHARED_DEVICE_REFRESH,
-            ws_event::SHARED_DEVICE_REFRESH_CHANGED,
-            now_ms(),
-            serde_json::json!({
-                "requestId": summary.request_id,
-            }),
-        ),
+        EngineEvent::WorkspaceConvergenceChanged(summary) => {
+            let updated_at_ms = summary.updated_at_ms;
+            let dto = summary.into_api_dto();
+            (
+                ws_topic::WORKSPACE_CONVERGENCE,
+                ws_event::WORKSPACE_CONVERGENCE_CHANGED,
+                updated_at_ms,
+                serde_json::to_value(dto).ok()?,
+            )
+        }
         EngineEvent::NetworkRecoveryChanged(status) => (
             ws_topic::NETWORK_RECOVERY,
             ws_event::NETWORK_RECOVERY_CHANGED,
@@ -155,7 +145,6 @@ pub fn engine_event_to_ws(event: EngineEvent) -> Option<DaemonWsEvent> {
         EngineEvent::RefreshRequired { .. } => return Some(refresh_required_ws_event()),
         EngineEvent::StateChanged { .. }
         | EngineEvent::PeerPresenceChanged(_)
-        | EngineEvent::PairingCompleted(_)
         | EngineEvent::ActiveClipboardChanged(_)
         | EngineEvent::MobileLanSettingsChanged(_)
         | EngineEvent::OperationFinished { .. }
@@ -189,9 +178,9 @@ mod engine_event_tests {
     use serde::Serialize;
     use uc_engine::{
         EngineError, EngineErrorCategory, InboundNoticeEvent, LifecycleAction,
-        MemberRevocationOutcome, MemberRevocationSummary, NetworkRecoveryStatusSummary,
-        RefreshReason, SharedDeviceRefreshDeviceStateSummary, SharedDeviceRefreshDeviceSummary,
-        SharedDeviceRefreshPhaseSummary, SharedDeviceRefreshSummary, TransferProgress,
+        NetworkRecoveryStatusSummary, RefreshReason, TransferProgress,
+        WorkspaceConvergenceFailureCategorySummary, WorkspaceConvergencePhaseSummary,
+        WorkspaceConvergenceSummary,
     };
 
     #[derive(Serialize)]
@@ -331,80 +320,41 @@ mod engine_event_tests {
     }
 
     #[test]
-    fn shared_device_refresh_changes_notify_only_the_request_id() {
-        let event = engine_event_to_ws(EngineEvent::SharedDeviceRefreshChanged(
-            SharedDeviceRefreshSummary {
-                request_id: "request-1".into(),
-                phase: SharedDeviceRefreshPhaseSummary::Connecting,
-                devices: vec![SharedDeviceRefreshDeviceSummary {
-                    device_id: "peer-1".into(),
-                    display_name: "Windows workstation".into(),
-                    state: SharedDeviceRefreshDeviceStateSummary::Connecting,
-                }],
-                total_count: 1,
-                discovered_count: 0,
-                connecting_count: 1,
-                connected_count: 0,
-                already_present_count: 0,
-                waiting_for_peer_count: 0,
-                waiting_for_update_count: 0,
-                version_incompatible_count: 0,
-                rejected_count: 0,
-                unavailable_source_count: 0,
-            },
-        ))
-        .expect("shared device refresh websocket event");
-
-        assert_eq!(event.topic, "shared-device-refresh");
-        assert_eq!(event.event_type, "shared-device-refresh.changed");
-        assert_eq!(
-            event.payload,
-            serde_json::json!({ "requestId": "request-1" })
-        );
-    }
-
-    #[test]
-    fn member_removal_changes_notify_device_screens_with_full_progress() {
-        let event = engine_event_to_ws(EngineEvent::MemberRevocationChanged(
-            MemberRevocationSummary {
-                revocation_id: Some("removal-1".into()),
-                outcome: MemberRevocationOutcome::Applied,
-                pending_recipients: 1,
-                removed_device_ids: vec!["removed-device".into()],
-                pending_recipient_device_ids: vec!["retained-device".into()],
+    fn workspace_convergence_changes_include_the_complete_engine_state() {
+        let event = engine_event_to_ws(EngineEvent::WorkspaceConvergenceChanged(
+            WorkspaceConvergenceSummary {
+                phase: WorkspaceConvergencePhaseSummary::WaitingForOfflineMember,
+                revision: 4,
+                change_count: 2,
+                removal_intent_count: 1,
+                effective_member_count: 3,
+                confirmed_member_count: 2,
+                waiting_member_device_ids: vec!["device-b".into()],
+                waiting_member_count: 1,
+                convergence_digest: Some("digest-1".into()),
                 updated_at_ms: 42,
+                removed: false,
+                failure_category: Some(WorkspaceConvergenceFailureCategorySummary::Storage),
             },
         ))
-        .expect("member removal websocket event");
+        .expect("workspace convergence websocket event");
 
-        assert_eq!(event.topic, "member-removal");
-        assert_eq!(event.event_type, "member-removal.changed");
-        assert_eq!(event.payload["revocationId"], "removal-1");
-        assert_eq!(event.payload["outcome"], "applied");
+        assert_eq!(event.topic, "workspace-convergence");
+        assert_eq!(event.event_type, "workspace-convergence.changed");
+        assert_eq!(event.payload["phase"], "waiting_for_offline_member");
+        assert_eq!(event.payload["revision"], 4);
+        assert_eq!(event.payload["changeCount"], 2);
+        assert_eq!(event.payload["removalIntentCount"], 1);
+        assert_eq!(event.payload["effectiveMemberCount"], 3);
+        assert_eq!(event.payload["confirmedMemberCount"], 2);
         assert_eq!(
-            event.payload["pendingRecipientDeviceIds"],
-            serde_json::json!(["retained-device"])
+            event.payload["waitingMemberDeviceIds"],
+            serde_json::json!(["device-b"])
         );
-    }
-
-    #[test]
-    fn recovering_member_removal_changes_notify_device_screens_with_recovering_outcome() {
-        let event = engine_event_to_ws(EngineEvent::MemberRevocationChanged(
-            MemberRevocationSummary {
-                revocation_id: Some("removal-prepared".into()),
-                outcome: MemberRevocationOutcome::Recovering,
-                pending_recipients: 0,
-                removed_device_ids: vec!["removed-device".into()],
-                pending_recipient_device_ids: Vec::new(),
-                updated_at_ms: 42,
-            },
-        ))
-        .expect("member removal websocket event");
-
-        assert_eq!(event.payload["outcome"], "recovering");
-        assert_eq!(
-            event.payload["pendingRecipientDeviceIds"],
-            serde_json::json!([])
-        );
+        assert_eq!(event.payload["waitingMemberCount"], 1);
+        assert_eq!(event.payload["convergenceDigest"], "digest-1");
+        assert_eq!(event.payload["updatedAtMs"], 42);
+        assert_eq!(event.payload["removed"], false);
+        assert_eq!(event.payload["failureCategory"], "storage");
     }
 }

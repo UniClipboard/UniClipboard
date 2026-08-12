@@ -15,6 +15,7 @@ use uc_daemon_contract::api::dto::clipboard_command::{
     CancelTransferResponse, DispatchOutcomeResponse, InboundEntryEvent, InboundNoticeEvent,
     ResendResponse,
 };
+use uc_daemon_contract::api::dto::member::WorkspaceConvergenceDto;
 use uc_daemon_contract::api::dto::setup_events::SetupPairingCompletedEvent;
 
 /// A free-file exported from the daemon (ADR-008 P5-1b).
@@ -30,6 +31,10 @@ pub struct FileExport {
 
 #[async_trait]
 pub trait DaemonService: Send + Sync {
+    async fn remove_member(&self, peer_id: String) -> Result<WorkspaceConvergenceDto>;
+
+    async fn workspace_convergence(&self) -> Result<WorkspaceConvergenceDto>;
+
     async fn dispatch_text(
         &self,
         text: &str,

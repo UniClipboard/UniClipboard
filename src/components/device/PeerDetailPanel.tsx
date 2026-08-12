@@ -8,7 +8,7 @@
  * labels, a glowing status dot, and hover-quiet secondary actions.
  */
 
-import { CircleHelp, RotateCcw, Trash2, Unlink } from 'lucide-react'
+import { CircleHelp, RotateCcw, Unlink } from 'lucide-react'
 import React, { useCallback, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { ContentTypes, MemberProtectionStatus } from '@/api/daemon/member'
@@ -43,8 +43,6 @@ interface PeerDetailPanelProps {
   /** Whether LAN-only mode is active (drives the derived channel label). */
   lanOnlyActive: boolean
   onUnpair: (peerId: string) => void
-  /** Called when the user marks this device as permanently lost. */
-  onMarkLost: (deviceId: string) => void
 }
 
 const PeerDetailPanel: React.FC<PeerDetailPanelProps> = ({
@@ -54,7 +52,6 @@ const PeerDetailPanel: React.FC<PeerDetailPanelProps> = ({
   globalFileSyncOff,
   lanOnlyActive,
   onUnpair,
-  onMarkLost,
 }) => {
   const { t } = useTranslation()
   const dispatch = useAppDispatch()
@@ -67,14 +64,6 @@ const PeerDetailPanel: React.FC<PeerDetailPanelProps> = ({
     state =>
       state.devices.spaceProtection?.members.find(member => member.deviceId === deviceId)?.status
   )
-  const awaitingSecurityUpdate = useAppSelector(state => {
-    const removal = state.devices.memberRemoval
-    return (
-      removal != null &&
-      removal.outcome !== 'complete' &&
-      removal.pendingRecipientDeviceIds.includes(deviceId)
-    )
-  })
 
   useEffect(() => {
     if (deviceId) {
@@ -277,38 +266,6 @@ const PeerDetailPanel: React.FC<PeerDetailPanelProps> = ({
                     </Tooltip>
                   </TooltipProvider>
                 )}
-              </PanelFactRow>
-            )}
-            {awaitingSecurityUpdate && (
-              <PanelFactRow label={t('devices.memberRemoval.securityUpdateLabel')}>
-                <Badge variant="outline" className="border-warning/30 bg-warning/10 text-warning">
-                  {t('devices.memberRemoval.pendingDeviceHint')}
-                </Badge>
-                <TooltipProvider delay={200}>
-                  <Tooltip>
-                    <TooltipTrigger
-                      render={
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon-sm"
-                          aria-label={t('devices.memberRemoval.permanentLoss.markLost')}
-                          className="shrink-0 text-destructive/70 hover:bg-destructive/10 hover:text-destructive"
-                          onClick={() => onMarkLost(deviceId)}
-                        />
-                      }
-                    >
-                      <Trash2 className="size-3.5" />
-                    </TooltipTrigger>
-                    <TooltipContent
-                      side="top"
-                      sideOffset={6}
-                      className="max-w-64 text-left leading-relaxed whitespace-normal"
-                    >
-                      {t('devices.memberRemoval.permanentLoss.markLost')}
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
               </PanelFactRow>
             )}
             {device?.connectionAddress && (

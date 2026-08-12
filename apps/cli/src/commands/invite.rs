@@ -16,6 +16,8 @@ use tokio::signal;
 
 #[cfg(feature = "dev-tools")]
 use std::net::IpAddr;
+#[cfg(feature = "dev-tools")]
+use std::time::Duration;
 
 // --- daemon path imports (P5-2b) -------------------------------------------
 use crate::commands::app_session::connect_or_spawn_oneshot_daemon;
@@ -23,7 +25,7 @@ use uc_daemon_client::DaemonClientContext;
 
 // --- engine path imports (debug builds only) ---------------------------------
 #[cfg(feature = "dev-tools")]
-use uc_engine::{DevOperation, DevOperationResult, DevPairingOutcome};
+use uc_engine::{DevOperation, DevOperationResult, Operation, OperationResult};
 
 #[cfg(feature = "dev-tools")]
 use crate::commands::app_session::{build_app_session, refuse_if_daemon_running};
@@ -171,12 +173,10 @@ async fn run_for_address_inner(selected_ip: IpAddr, verbose: bool) -> i32 {
         }
     }
 
-    // Subscribe BEFORE issuing so we never miss an outcome that would
-    // race between B1 returning and this task subscribing.
-    let mut outcome_rx = match cli.engine().dev_pairing_outcomes().await {
-        Ok(rx) => rx,
-        Err(err) => {
-            ui::error(&format!("Failed to subscribe pairing completion: {err}"));
+    let baseline_revision = match workspace_convergence_revision(&cli).await {
+        Ok(revision) => revision,
+        Err(error) => {
+            ui::error(&format!("Failed to read workspace convergence: {error}"));
             cli.shutdown().await;
             return exit_codes::EXIT_ERROR;
         }
@@ -223,32 +223,36 @@ async fn run_for_address_inner(selected_ip: IpAddr, verbose: bool) -> i32 {
 
     let waiting = ui::spinner("Waiting for joiner to complete handshake (Ctrl+C to cancel)...");
 
+    let wait_for_pairing = async {
+        let expires_in = invitation
+            .expires_at_ms
+            .saturating_sub(chrono::Utc::now().timestamp_millis())
+            .max(0);
+        let deadline = tokio::time::Instant::now() + Duration::from_millis(expires_in as u64);
+
+        loop {
+            if tokio::time::Instant::now() >= deadline {
+                return Err("Invitation expired before pairing completed".to_string());
+            }
+            tokio::time::sleep(Duration::from_millis(200)).await;
+            match workspace_convergence_revision(&cli).await {
+                Ok(revision) if revision > baseline_revision => return Ok(()),
+                Ok(_) => {}
+                Err(error) => return Err(format!("Failed to read workspace convergence: {error}")),
+            }
+        }
+    };
+
     let exit = select! {
-        outcome = outcome_rx.recv() => match outcome {
-            Ok(DevPairingOutcome::Success {
-                peer_device_id,
-                peer_device_name,
-                peer_fingerprint,
-            }) => {
+        outcome = wait_for_pairing => match outcome {
+            Ok(()) => {
                 ui::spinner_finish_success(&waiting, "Pairing completed");
-                ui::info("peer_device_id", &peer_device_id);
-                ui::info("peer_device_name", &peer_device_name);
-                ui::info("peer_fingerprint", &peer_fingerprint);
                 exit_codes::EXIT_SUCCESS
             }
-            Ok(DevPairingOutcome::Failure { reason }) => {
+            Err(reason) => {
                 ui::spinner_finish_error(
                     &waiting,
                     &format!("Pairing failed: {reason}"),
-                );
-                exit_codes::EXIT_ERROR
-            }
-            // broadcast Lagged/Closed: facade torn down or subscriber
-            // starved. Neither state is recoverable at this point.
-            Err(err) => {
-                ui::spinner_finish_error(
-                    &waiting,
-                    &format!("Outcome stream ended: {err}"),
                 );
                 exit_codes::EXIT_ERROR
             }
@@ -261,4 +265,19 @@ async fn run_for_address_inner(selected_ip: IpAddr, verbose: bool) -> i32 {
 
     cli.shutdown().await;
     exit
+}
+
+#[cfg(feature = "dev-tools")]
+async fn workspace_convergence_revision(
+    cli: &crate::commands::app_session::CliAppSession,
+) -> Result<u64, String> {
+    match cli
+        .engine()
+        .execute(Operation::QueryWorkspaceConvergence)
+        .await
+        .map_err(|error| error.to_string())?
+    {
+        OperationResult::WorkspaceConvergence(summary) => Ok(summary.revision),
+        result => Err(format!("unexpected engine response: {result:?}")),
+    }
 }

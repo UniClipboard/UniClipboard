@@ -15,14 +15,8 @@ import i18n from '@/i18n'
 
 const getSetupState = vi.fn()
 const issuePairingInvitation = vi.fn()
-let pairingCompletedHandler:
-  | ((event: {
-      sponsorDeviceId: string
-      joinerDeviceId: string | null
-      success: boolean
-      reason: string | null
-    }) => void)
-  | undefined
+const getPairedPeers = vi.fn()
+let workspaceConvergenceHandler: (() => void) | undefined
 
 vi.mock('@/api/daemon/setupV2', () => ({
   getSetupState: () => getSetupState(),
@@ -30,12 +24,21 @@ vi.mock('@/api/daemon/setupV2', () => ({
   cancelInvitation: vi.fn(() => Promise.resolve()),
 }))
 
+vi.mock('@/api/daemon/members', () => ({
+  getPairedPeers: () => getPairedPeers(),
+}))
+
 vi.mock('@/api/setupEvents', () => ({
-  onSetupPairingCompleted: vi.fn(callback => {
-    pairingCompletedHandler = callback
-    return Promise.resolve(() => undefined)
-  }),
   onSetupInvitationRevoked: vi.fn(() => Promise.resolve(() => undefined)),
+}))
+
+vi.mock('@/lib/daemon-ws', () => ({
+  daemonWs: {
+    subscribe: vi.fn((_topics, callback) => {
+      workspaceConvergenceHandler = () => callback({ eventType: 'workspace-convergence.changed' })
+      return () => undefined
+    }),
+  },
 }))
 
 vi.mock('@/store/hooks', () => ({
@@ -62,12 +65,13 @@ describe('AddDeviceDialog invitation issuing', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
-    pairingCompletedHandler = undefined
+    workspaceConvergenceHandler = undefined
     getSetupState.mockResolvedValue({
       hasCompleted: true,
       currentInvitation: null,
       deviceName: 'test',
     })
+    getPairedPeers.mockResolvedValue([])
     issuePairingInvitation.mockResolvedValue({
       code: '123456789',
       expiresAtMs: Date.now() + 300_000,
@@ -97,7 +101,23 @@ describe('AddDeviceDialog invitation issuing', () => {
     expect(issuePairingInvitation).toHaveBeenCalledTimes(1)
   })
 
+  it('does not issue an invitation without a member-count baseline', async () => {
+    getPairedPeers.mockRejectedValue(new Error('member list unavailable'))
+
+    render(
+      <I18nextProvider i18n={i18n}>
+        <AddDeviceDialog open onOpenChange={() => undefined} />
+      </I18nextProvider>
+    )
+
+    await waitFor(() => {
+      expect(screen.getByText(i18n.t('devices.addDevice.errors.issueFailed'))).toBeInTheDocument()
+    })
+    expect(issuePairingInvitation).not.toHaveBeenCalled()
+  })
+
   it('replaces the invitation with success when pairing completes', async () => {
+    getPairedPeers.mockResolvedValueOnce([]).mockResolvedValueOnce([{}])
     render(
       <I18nextProvider i18n={i18n}>
         <AddDeviceDialog open onOpenChange={() => undefined} />
@@ -106,16 +126,11 @@ describe('AddDeviceDialog invitation issuing', () => {
 
     await waitFor(() => {
       expect(screen.getByLabelText('123456789')).toBeInTheDocument()
-      expect(pairingCompletedHandler).toBeTypeOf('function')
+      expect(workspaceConvergenceHandler).toBeTypeOf('function')
     })
 
     act(() => {
-      pairingCompletedHandler?.({
-        sponsorDeviceId: 'sponsor-1',
-        joinerDeviceId: 'joiner-2',
-        success: true,
-        reason: null,
-      })
+      workspaceConvergenceHandler?.()
     })
 
     await waitFor(() => {

@@ -10489,7 +10489,7 @@ dependencies = [
 [[package]]
 name = "uc-application"
 version = "1.0.0-rc.6"
-source = "git+https://github.com/UniClipboard/Engine.git?rev=8aa1f08b7397ce1a916433200f789088527abd38#8aa1f08b7397ce1a916433200f789088527abd38"
+source = "git+https://github.com/UniClipboard/Engine.git?rev=983fb2562f55fca3838a927f7831ae51eaadf885#983fb2562f55fca3838a927f7831ae51eaadf885"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -10501,10 +10501,8 @@ dependencies = [
  "futures",
  "hex",
  "hmac",
- "image",
  "libc",
  "moka",
- "qrcode",
  "semver",
  "serde",
  "serde_json",
@@ -10514,7 +10512,6 @@ dependencies = [
  "tokio-util",
  "tracing",
  "uc-core",
- "uc-mobile-proto",
  "uc-observability-contract",
  "unicode-normalization",
  "url",
@@ -10587,7 +10584,7 @@ dependencies = [
 [[package]]
 name = "uc-content-hash"
 version = "1.0.0-rc.6"
-source = "git+https://github.com/UniClipboard/Engine.git?rev=8aa1f08b7397ce1a916433200f789088527abd38#8aa1f08b7397ce1a916433200f789088527abd38"
+source = "git+https://github.com/UniClipboard/Engine.git?rev=983fb2562f55fca3838a927f7831ae51eaadf885#983fb2562f55fca3838a927f7831ae51eaadf885"
 dependencies = [
  "blake3",
  "hex",
@@ -10596,7 +10593,7 @@ dependencies = [
 [[package]]
 name = "uc-core"
 version = "1.0.0-rc.6"
-source = "git+https://github.com/UniClipboard/Engine.git?rev=8aa1f08b7397ce1a916433200f789088527abd38#8aa1f08b7397ce1a916433200f789088527abd38"
+source = "git+https://github.com/UniClipboard/Engine.git?rev=983fb2562f55fca3838a927f7831ae51eaadf885#983fb2562f55fca3838a927f7831ae51eaadf885"
 dependencies = [
  "anyhow",
  "arrayvec",
@@ -10609,6 +10606,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_with",
+ "sha2 0.10.9",
  "thiserror 2.0.19",
  "tokio",
  "tokio-util",
@@ -10746,7 +10744,7 @@ dependencies = [
 [[package]]
 name = "uc-engine"
 version = "1.0.0-rc.6"
-source = "git+https://github.com/UniClipboard/Engine.git?rev=8aa1f08b7397ce1a916433200f789088527abd38#8aa1f08b7397ce1a916433200f789088527abd38"
+source = "git+https://github.com/UniClipboard/Engine.git?rev=983fb2562f55fca3838a927f7831ae51eaadf885#983fb2562f55fca3838a927f7831ae51eaadf885"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -10755,9 +10753,11 @@ dependencies = [
  "tokio",
  "tokio-util",
  "tracing",
+ "tracing-subscriber",
  "uc-application",
  "uc-core",
  "uc-infra",
+ "uc-mobile-lan",
  "uc-mobile-proto",
  "uc-observability-contract",
  "url",
@@ -10768,7 +10768,7 @@ dependencies = [
 [[package]]
 name = "uc-infra"
 version = "1.0.0-rc.6"
-source = "git+https://github.com/UniClipboard/Engine.git?rev=8aa1f08b7397ce1a916433200f789088527abd38#8aa1f08b7397ce1a916433200f789088527abd38"
+source = "git+https://github.com/UniClipboard/Engine.git?rev=983fb2562f55fca3838a927f7831ae51eaadf885#983fb2562f55fca3838a927f7831ae51eaadf885"
 dependencies = [
  "anyhow",
  "argon2",
@@ -10828,9 +10828,33 @@ dependencies = [
 ]
 
 [[package]]
+name = "uc-mobile-lan"
+version = "1.0.0-rc.6"
+source = "git+https://github.com/UniClipboard/Engine.git?rev=983fb2562f55fca3838a927f7831ae51eaadf885#983fb2562f55fca3838a927f7831ae51eaadf885"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "base64 0.22.1",
+ "hex",
+ "image",
+ "qrcode",
+ "serde",
+ "sha2 0.10.9",
+ "thiserror 2.0.19",
+ "tokio",
+ "tracing",
+ "uc-application",
+ "uc-core",
+ "uc-mobile-proto",
+ "uc-observability-contract",
+ "url",
+ "uuid",
+]
+
+[[package]]
 name = "uc-mobile-proto"
 version = "1.0.0-rc.6"
-source = "git+https://github.com/UniClipboard/Engine.git?rev=8aa1f08b7397ce1a916433200f789088527abd38#8aa1f08b7397ce1a916433200f789088527abd38"
+source = "git+https://github.com/UniClipboard/Engine.git?rev=983fb2562f55fca3838a927f7831ae51eaadf885#983fb2562f55fca3838a927f7831ae51eaadf885"
 dependencies = [
  "base64 0.22.1",
  "chrono",
@@ -10865,7 +10889,7 @@ dependencies = [
 [[package]]
 name = "uc-observability-contract"
 version = "1.0.0-rc.6"
-source = "git+https://github.com/UniClipboard/Engine.git?rev=8aa1f08b7397ce1a916433200f789088527abd38#8aa1f08b7397ce1a916433200f789088527abd38"
+source = "git+https://github.com/UniClipboard/Engine.git?rev=983fb2562f55fca3838a927f7831ae51eaadf885#983fb2562f55fca3838a927f7831ae51eaadf885"
 dependencies = [
  "anyhow",
  "chrono",

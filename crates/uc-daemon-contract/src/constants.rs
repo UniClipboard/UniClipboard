@@ -16,9 +16,8 @@ pub mod ws_topic {
     pub const ENCRYPTION: &str = "encryption";
     /// Search index events topic (Phase 92).
     pub const SEARCH: &str = "search";
-    pub const MEMBER_REMOVAL: &str = "member-removal";
+    pub const WORKSPACE_CONVERGENCE: &str = "workspace-convergence";
     pub const NETWORK_RECOVERY: &str = "network-recovery";
-    pub const SHARED_DEVICE_REFRESH: &str = "shared-device-refresh";
 }
 
 /// WebSocket event type names emitted within topics.
@@ -65,10 +64,8 @@ pub mod ws_event {
     pub const SEARCH_STATUS_SNAPSHOT: &str = "search.status_snapshot";
     /// Search rebuild progress event (Phase 92).
     pub const SEARCH_REBUILD_PROGRESS: &str = "search.rebuild_progress";
-    pub const MEMBER_REMOVAL_CHANGED: &str = "member-removal.changed";
+    pub const WORKSPACE_CONVERGENCE_CHANGED: &str = "workspace-convergence.changed";
     pub const NETWORK_RECOVERY_CHANGED: &str = "network-recovery.changed";
-    /// Engine shared-device refresh progress changed; clients must re-query the full snapshot.
-    pub const SHARED_DEVICE_REFRESH_CHANGED: &str = "shared-device-refresh.changed";
     /// Lightweight inbound clipboard notice for CLI `watch` (ADR-008 P2.5).
     /// Emitted alongside `CLIPBOARD_NEW_CONTENT`; carries only display summaries
     /// and delivery metadata, never the full clipboard payload.

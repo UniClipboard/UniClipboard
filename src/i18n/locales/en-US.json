@@ -1036,32 +1036,10 @@
     "pairedDevices": {
       "title": "Paired devices"
     },
-    "sharedDeviceRefresh": {
-      "refresh": "Refresh shared devices",
-      "searching": "Searching for connectable devices",
-      "connecting": "Connecting to discovered devices",
-      "roundCompleted": "This round is complete",
-      "empty": "No connectable devices found",
-      "unavailableSources": "Some paired devices are currently unavailable",
-      "startFailed": "Could not start refreshing shared devices",
-      "updateFailed": "Could not update refresh status right now",
-      "ended": "This refresh has ended. Start a new refresh.",
-      "unknownDevice": "Unnamed device",
-      "deviceStates": {
-        "discovered": "Discovered, preparing to connect",
-        "connecting": "Connecting automatically",
-        "connected": "Connected automatically",
-        "already_present": "Already on this device",
-        "waiting_for_peer": "Waiting for device to come online; will keep trying",
-        "waiting_for_update": "Waiting for profile update; will keep trying",
-        "version_incompatible": "Version incompatible",
-        "rejected": "Unable to connect"
-      }
-    },
     "convergence": {
       "converging": "Connecting to other devices in this space",
-      "waitingForUpgrade": "Some devices need an update before they can connect automatically",
-      "blocked": "Some devices cannot finish connecting right now"
+      "waitingForOfflineMember": "Waiting for offline devices to update their space data",
+      "recoveryRequired": "Space data needs recovery"
     },
     "networkRecovery": {
       "recovering": "Restoring the connection",
@@ -1135,22 +1113,22 @@
       }
     },
     "memberRemoval": {
-      "recovering": {
-        "title": "Restoring device removal",
-        "description": "The interrupted device removal is being safely restored. Please wait."
-      },
-      "permanentLoss": {
-        "title": "Confirm permanent device loss",
-        "description": "Only continue when these pending devices cannot be recovered. This cannot be undone.",
-        "confirm": "Confirm permanent loss",
-        "markLost": "Mark as lost"
+      "deviceRemoved": {
+        "title": "This device was removed",
+        "description": "This device is no longer part of the space. Re-pair with an invitation to rejoin."
       },
       "errors": {
         "statusFailed": "Could not load device-removal progress.",
-        "continueFailed": "Could not continue device removal."
+        "removeFailed": "Could not remove the device."
       },
-      "pendingDeviceHint": "Device is offline; must come online to complete the security update",
-      "securityUpdateLabel": "Security update"
+      "converging": {
+        "title": "Removing device",
+        "description": "The removal is propagating to all retained devices. This can take a while when some devices are offline."
+      },
+      "recoveryRequired": {
+        "title": "Space recovery required",
+        "description": "Member removal could not be verified safely. Rebuild the space from a trusted device to continue."
+      }
     },
     "tabs": {
       "connected": "Connected Devices",

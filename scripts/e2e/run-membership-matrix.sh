@@ -66,7 +66,7 @@ run_case() {
   fi
 }
 
-run_case C0 required "" membership_convergence c0_single_node_reports_complete
+run_case C0 required "" membership_convergence c0_single_node_reports_locally_applied
 run_case C1 required "" membership_convergence c1_online_sponsor_chain_converges_and_syncs_directly
 run_case R2 required membership-diagnostics membership_convergence r2_permanent_loss_unblocks_an_offline_retained_member
 

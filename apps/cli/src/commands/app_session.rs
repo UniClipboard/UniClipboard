@@ -179,6 +179,19 @@ pub async fn connect_with_lease(
     Ok((lease, ctx))
 }
 
+/// Connect to the daemon through the transport-agnostic application facade
+/// while retaining a control lease for the command lifetime.
+pub async fn connect_facade_with_lease(
+    verbose: bool,
+) -> Result<(ControlLeaseGuard, Box<dyn DaemonService>), i32> {
+    let service = connect_or_spawn_oneshot_daemon(verbose).await?;
+    let lease = service.hold_control_lease().await.map_err(|err| {
+        ui::error(&format!("Failed to hold daemon session lease: {err}"));
+        exit_codes::EXIT_ERROR
+    })?;
+    Ok((lease, service))
+}
+
 fn build_daemon_client_service() -> Result<Box<dyn DaemonService>, i32> {
     match DaemonClientContext::from_env() {
         Ok(ctx) => Ok(Box::new(HttpWsDaemonService::new(ctx))),

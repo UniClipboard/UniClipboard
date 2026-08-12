@@ -9,10 +9,8 @@ import {
 import {
   onSetupInvitationIssued,
   onSetupInvitationRevoked,
-  onSetupPairingCompleted,
   type SetupInvitationIssuedEvent,
   type SetupInvitationRevokedEvent,
-  type SetupPairingCompletedEvent,
 } from '@/api/setupEvents'
 import { connectDaemonWs } from '@/lib/daemon-ws-bootstrap'
 import { createLogger } from '@/lib/logger'
@@ -146,34 +144,6 @@ function applyInvitationRevoked(_event: SetupInvitationRevokedEvent) {
   void refreshFromServer()
 }
 
-function applyPairingCompleted(event: SetupPairingCompletedEvent) {
-  if (!event.success) {
-    // A matched invitation is one-time even when the handshake fails.
-    // Refresh so the sponsor does not keep displaying the consumed code.
-    void refreshFromServer()
-    return
-  }
-
-  const currentCompletion = completionFromFlow(snapshot.flow)
-  const sponsorWasWaiting = snapshot.flow.kind === 'invitation_pending'
-  const sponsorWasReady = currentCompletion?.kind === 'space_ready'
-  if (!sponsorWasWaiting && !sponsorWasReady) return
-
-  // The completion event is authoritative. Move the sponsor forward before
-  // the invitation-revoked event or a potentially stale setup-state refresh.
-  completionRevision += 1
-  update({
-    kind: 'completed',
-    deviceName: deviceNameFromFlow(snapshot.flow),
-    completion: {
-      kind: 'pairing_succeeded',
-      role: 'sponsor',
-      sponsorDeviceId: event.sponsorDeviceId,
-      peerDeviceId: event.joinerDeviceId,
-    },
-  })
-}
-
 async function refreshFromServer(completion: SetupCompletion | null = null) {
   const generation = syncGeneration
   const revision = completionRevision
@@ -226,19 +196,10 @@ export async function ensureSetupRealtimeSync(): Promise<void> {
         offRevoked()
         return
       }
-      const offCompleted = await onSetupPairingCompleted(applyPairingCompleted)
-      if (generation !== syncGeneration) {
-        offIssued()
-        offRevoked()
-        offCompleted()
-        return
-      }
-
       // Stash unlisten handles in the closure-rooted symbols so they survive
       // the lifetime of the singleton store; we never tear them down.
       void offIssued
       void offRevoked
-      void offCompleted
       syncPhase = 'running'
     } catch (err) {
       if (generation !== syncGeneration) return

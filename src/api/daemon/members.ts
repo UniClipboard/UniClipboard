@@ -24,9 +24,8 @@ import {
   listPairedDevices as listPairedDevicesSdk,
   unpairDevice as unpairDeviceSdk,
 } from '@/api/generated/sdk.gen'
-import type { MemberRemovalDto } from '@/api/generated/types.gen'
+import type { WorkspaceConvergenceDto } from '@/api/generated/types.gen'
 import { daemonClient } from './client'
-import { toMemberRemoval, type MemberRemoval } from './member'
 
 export interface LocalDeviceInfo {
   peerId: string
@@ -102,9 +101,6 @@ export async function getPairedPeersWithStatus(): Promise<SpaceMember[]> {
  *
  * 取消配对：从本机成员仓库移除该设备。
  */
-export async function unpairDevice(peerId: string): Promise<MemberRemoval> {
-  const removal: MemberRemovalDto = await daemonClient.callEnveloped(() =>
-    unpairDeviceSdk({ body: { peerId }, throwOnError: true })
-  )
-  return toMemberRemoval(removal)
+export async function unpairDevice(peerId: string): Promise<WorkspaceConvergenceDto> {
+  return daemonClient.callEnveloped(() => unpairDeviceSdk({ body: { peerId }, throwOnError: true }))
 }

@@ -22,24 +22,16 @@ head to [Settings → General](../guides/settings#general) and
 [Settings → Sync](../guides/settings#sync). The "Switch space" chip opens its
 own dialog.
 
-The device summary also reports the active space's connection state while it
-needs attention:
+## Membership updates
 
-- **Connecting devices** — membership changes are still converging; while the page is visible, it polls this status briefly and also refreshes it when peer updates arrive.
-- **Some devices need an update** — older or offline devices cannot reconnect automatically until they are updated and come online.
-- **Connection blocked** — automatic convergence stopped and the affected devices need manual recovery.
+When a membership change needs one of your devices to come online, only that
+device's card shows a **Waiting for update** warning icon. The icon is not a
+general offline indicator: another offline device without the icon is not
+blocking the current update. When the named device comes online, the update
+continues automatically and the warning disappears after it finishes.
 
-No marker is shown once the space is fully connected, and the short polling period stops.
-
-## Refresh shared devices
-
-Use the refresh icon beside **Paired devices** when a device already in your
-space knows another device that is not listed here. This refresh only fills in
-those device relationships; it never transfers clipboard history or content.
-
-The progress dialog shows each discovered device as it is checked. A device is
-added to the list only after it shows **Connected**. If a device is offline,
-leave the refresh running: it continues when that device comes back online.
+If this device has been removed from the space, its own card shows that fact.
+Rejoin the space from a trusted remaining device to use it again.
 
 For setting up mobile sync end to end (LAN listener, iOS Shortcut,
 credentials), see the dedicated [Mobile sync](./mobile-sync) guide.
@@ -54,6 +46,8 @@ Top to bottom on each card:
 - **Device name** — what that device named itself; truncated if long.
 - **Status line** — `● Online` / `○ Offline`, plus the connection
   address (mono) when one is known.
+- **Update warning** — when present at the end of a card, this exact device
+  must come online for a membership update to finish.
 - **Channel chip** — the transport channel badge at the card footer
   (see below).
 - **Click the card** — opens the centered "Device settings" modal.
@@ -169,45 +163,19 @@ confirms twice). After unpairing:
 - Once removal completes, future traffic from that node ID is rejected by the protected space.
 - **Local history is untouched** — clips that already synced over stay.
 
-Removing a member is enforced by the space's protected membership.
-Legacy-protected spaces upgrade automatically, and `Unpair` excludes
-the selected device from the replacement group. The Devices page shows
-each member's **Protection** status and a banner with the number of
-remaining devices waiting for readmission.
+Member removal is completed by the space itself. It continues across app or
+background-service restarts. When another device must come online before the
+change can finish, that device alone shows the **Waiting for update** icon;
+there is no separate refresh flow or permanent-loss confirmation.
 
-**Automatically readmit retained devices:** A device running a supported
-version immediately tries to join the same protected group when it starts
-or comes back online. You do not need to unpair it, create a fresh `invite`,
-or run `join` manually. Devices that are still offline or have not been
-updated remain in **Awaiting readmission** and cannot sync with upgraded
-devices; each one recovers automatically after it is updated and comes online.
-If an awaiting device will not be used again, choose **Unpair** next to it in
-the banner. This removes the device and stops the upgrade from waiting for its
-readmission.
-
-**Wait for retained devices to confirm:** The Devices page keeps the active
-removal visible after the app or daemon restarts and lists the retained devices
-that still need to confirm. This is not a completed removal. The page refreshes
-when their progress changes, and only shows completion after every retained
-device has confirmed.
-
-**Confirm permanent loss only when necessary:** If a listed pending device is
-definitely lost and cannot come back, choose **Mark pending devices as
-permanently lost** and confirm the warning. Do not use this for a device that is
-merely offline. The confirmation is irreversible; after it is accepted, the
-page refreshes the current removal progress.
-
-**Handle Recovery required:** If the sponsoring device shows
-**Recovery required**, check the listed pending devices before relying on the
-removal. Let devices that can return come online and rejoin. Use the
-permanent-loss action only for a listed device that is known to be gone.
+If recovery is required, use a trusted remaining device to restore or rejoin
+the space. Do not treat an ordinary offline device as removed.
 
 Removal cannot erase history that was already stored on a lost or
 stolen device. Treat that local copy as still accessible.
 
-**Re-pair the removed device:** After the protection upgrade has
-completed, create a fresh `invite` on a trusted retained device and run
-`join` on the removed device.
+**Re-pair the removed device:** Create a fresh `invite` on a trusted remaining
+device and join from the removed device.
 
 ## Mobile sync devices
 

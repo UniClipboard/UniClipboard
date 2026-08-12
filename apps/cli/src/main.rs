@@ -164,6 +164,11 @@ enum Commands {
         #[arg(long)]
         probe: bool,
     },
+    /// Manage space member removal and inspect workspace convergence.
+    Member {
+        #[command(subcommand)]
+        command: MemberCommands,
+    },
     /// Dispatch one clipboard payload to paired peers.
     ///
     /// Self-contained direct mode. Two input modes, mutually exclusive:
@@ -334,6 +339,21 @@ enum Commands {
     },
 }
 
+#[derive(Subcommand)]
+enum MemberCommands {
+    /// Record an irreversible, offline-first removal intent for one member.
+    ///
+    /// Immediately stops sending new content to the peer and prints the full
+    /// Engine-owned convergence state. Pass `--json` for the raw DTO.
+    Remove {
+        /// Peer device ID to remove.
+        #[arg(value_name = "PEER-ID")]
+        peer_id: String,
+    },
+    /// Query the current space-wide member removal state.
+    RemovalStatus,
+}
+
 fn main() -> anyhow::Result<()> {
     init_macos_appkit();
 
@@ -416,6 +436,14 @@ fn main() -> anyhow::Result<()> {
             Commands::Members { probe } => {
                 commands::members::run(probe, cli.json, cli.verbose).await
             }
+            Commands::Member { command } => match command {
+                MemberCommands::Remove { peer_id } => {
+                    commands::member::remove(peer_id, cli.json, cli.verbose).await
+                }
+                MemberCommands::RemovalStatus => {
+                    commands::member::removal_status(cli.json, cli.verbose).await
+                }
+            },
             Commands::Send {
                 text,
                 file,
@@ -817,6 +845,25 @@ mod tests {
     }
 
     #[test]
+    fn member_remove_requires_peer_id() {
+        // `member remove` 的 peer_id 必填 —— 没有它无法记录移除意图。
+        let missing = Cli::try_parse_from(["uniclip", "member", "remove"]);
+        assert!(
+            missing.is_err(),
+            "expected `member remove` to require a peer ID"
+        );
+        let ok = Cli::try_parse_from(["uniclip", "member", "remove", "peer_abc"]);
+        assert!(ok.is_ok(), "expected `member remove <peer-id>` to parse");
+    }
+
+    #[test]
+    fn member_removal_status_parses() {
+        // `member removal-status` 无参数即可查询空间级移除状态。
+        let ok = Cli::try_parse_from(["uniclip", "member", "removal-status"]);
+        assert!(ok.is_ok(), "expected `member removal-status` to parse");
+    }
+
+    #[test]
     fn mobile_sync_legacy_command_groups_are_removed() {
         // 干净删除(无 deprecation 周期):旧分组 `lan` / `devices` /
         // `settings` 已不再解析 —— 改用 `network` / 顶层 `add`·`revoke` /
@@ -972,45 +1019,6 @@ mod tests {
             let result = Cli::try_parse_from(args.clone());
             assert!(result.is_ok(), "expected `{args:?}` to parse");
         }
-    }
-
-    #[cfg(feature = "dev-tools")]
-    #[test]
-    fn dev_shared_device_refresh_commands_parse() {
-        // The E2E driver uses these commands to control daemon-owned refresh rounds.
-        let start = Cli::try_parse_from(["uniclip", "dev", "shared-device-refresh", "start"])
-            .expect("expected `dev shared-device-refresh start` to parse");
-        assert!(matches!(
-            start.command,
-            Some(Commands::Dev {
-                subcommand: commands::dev::DevCommands::SharedDeviceRefresh { .. }
-            })
-        ));
-
-        let status = Cli::try_parse_from([
-            "uniclip",
-            "dev",
-            "shared-device-refresh",
-            "status",
-            "--request-id",
-            "refresh-1",
-        ])
-        .expect("expected `dev shared-device-refresh status --request-id` to parse");
-        let Some(Commands::Dev {
-            subcommand:
-                commands::dev::DevCommands::SharedDeviceRefresh {
-                    subcommand: commands::dev::SharedDeviceRefreshCommands::Status { request_id },
-                },
-        }) = status.command
-        else {
-            panic!("expected dev shared-device-refresh status")
-        };
-        assert_eq!(request_id, "refresh-1");
-
-        assert!(
-            Cli::try_parse_from(["uniclip", "dev", "shared-device-refresh", "status"]).is_err(),
-            "status must require --request-id"
-        );
     }
 
     #[cfg(feature = "dev-tools")]

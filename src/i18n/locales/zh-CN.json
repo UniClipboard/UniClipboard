@@ -1035,32 +1035,10 @@
     "pairedDevices": {
       "title": "已配对设备"
     },
-    "sharedDeviceRefresh": {
-      "refresh": "刷新共享设备",
-      "searching": "正在查找可连接设备",
-      "connecting": "正在自动连接已发现的设备",
-      "roundCompleted": "本轮查找完成",
-      "empty": "未发现可自动连接的设备",
-      "unavailableSources": "部分已配对设备目前不可用",
-      "startFailed": "暂时无法开始刷新",
-      "updateFailed": "暂时无法更新刷新状态",
-      "ended": "刷新状态已结束，请重新刷新",
-      "unknownDevice": "未命名设备",
-      "deviceStates": {
-        "discovered": "已发现，正在准备连接",
-        "connecting": "正在自动连接",
-        "connected": "已自动连接",
-        "already_present": "已在本机设备中",
-        "waiting_for_peer": "等待设备上线，会继续尝试",
-        "waiting_for_update": "等待资料更新，会继续尝试",
-        "version_incompatible": "版本不兼容",
-        "rejected": "无法连接"
-      }
-    },
     "convergence": {
       "converging": "正在连接空间内的其他设备",
-      "waitingForUpgrade": "部分设备需要升级后才能自动连接",
-      "blocked": "部分设备暂时无法完成连接"
+      "waitingForOfflineMember": "正在等待离线设备完成资料更新",
+      "recoveryRequired": "空间资料需要恢复"
     },
     "networkRecovery": {
       "recovering": "正在恢复连接",
@@ -1134,22 +1112,22 @@
       }
     },
     "memberRemoval": {
-      "recovering": {
-        "title": "正在恢复设备移除",
-        "description": "已中断的设备移除正在安全恢复，请稍候。"
-      },
-      "pendingDeviceHint": "设备离线，需上线完成安全更新",
-      "permanentLoss": {
-        "title": "确认设备已永久丢失",
-        "description": "仅在这些待确认设备确定无法恢复时继续。此操作无法撤销。",
-        "confirm": "确认永久丢失",
-        "markLost": "标记为丢失"
+      "deviceRemoved": {
+        "title": "此设备已被移除",
+        "description": "此设备已不属于当前空间。请使用邀请重新配对以加入。"
       },
       "errors": {
         "statusFailed": "无法读取设备移除进度。",
-        "continueFailed": "无法继续移除设备。"
+        "removeFailed": "无法移除该设备。"
       },
-      "securityUpdateLabel": "安全更新"
+      "converging": {
+        "title": "正在移除设备",
+        "description": "移除操作正在向所有保留设备传播。部分设备离线时可能需要一些时间。"
+      },
+      "recoveryRequired": {
+        "title": "需要重建空间",
+        "description": "成员移除无法被安全验证。请从受信任的设备重建空间以继续。"
+      }
     },
     "tabs": {
       "connected": "已连接设备",

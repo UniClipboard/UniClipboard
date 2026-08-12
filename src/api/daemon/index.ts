@@ -89,17 +89,6 @@ export {
   unpairDevice,
 } from './members'
 export type { LocalDeviceInfo, SpaceMember } from './members'
-export {
-  getSharedDeviceRefresh,
-  isSharedDeviceRefreshNotFound,
-  startSharedDeviceRefresh,
-} from './member'
-export type {
-  SharedDeviceRefreshDevice,
-  SharedDeviceRefreshDeviceState,
-  SharedDeviceRefreshPhase,
-  SharedDeviceRefreshSnapshot,
-} from './member'
 export { refreshPresence } from './presence'
 export type { PresenceRefreshResult } from './presence'
 export { getNetworkRecoveryStatus, recoverNetwork } from './network-recovery'

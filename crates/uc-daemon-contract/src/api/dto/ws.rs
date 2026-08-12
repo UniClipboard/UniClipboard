@@ -47,5 +47,5 @@ pub const WS_SUPPORTED_TOPICS: &[&str] = &[
     ws_topic::FILE_TRANSFER,
     ws_topic::ENCRYPTION,
     ws_topic::SEARCH,
-    ws_topic::MEMBER_REMOVAL,
+    ws_topic::WORKSPACE_CONVERGENCE,
 ];

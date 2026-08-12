@@ -42,6 +42,8 @@ cargo build -p uc-cli
 | `uniclip invite` | 作为 sponsor 发起配对邀请。 |
 | `uniclip join` | 用邀请码加入空间。默认走非破坏性的赎回 / 重新配对分支（首次加入，以及在「同一空间」单侧解除配对后重新配对——见 issue #1023）。加 `--switch` 才切换到「另一个」sponsor 的空间并重加密迁移本地历史（破坏性，会先确认，再加 `--yes` 在非交互场景跳过确认）。 |
 | `uniclip members` | 列出空间成员（本机 + 已配对设备）及在线状态；加 `--probe` 主动探测刷新状态。`devices` 是其别名。 |
+| `uniclip member remove <PEER-ID>` | 移除一个空间成员；即使对方离线也会立即记录并停止向它发送新内容。 |
+| `uniclip member removal-status` | 查看当前空间的成员移除与收敛状态。 |
 | `uniclip send [TEXT]` | 向在线配对设备发送一段文本；省略 `TEXT` 时从 stdin 读取。 |
 | `uniclip watch` | 监听并打印收到的剪贴板 payload；不会写入系统剪贴板。 |
 | `uniclip recv` | 阻塞等待 **下一个** 入站文件并落盘；不会写入系统剪贴板。 |

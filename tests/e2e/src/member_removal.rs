@@ -574,6 +574,7 @@ async fn r09_removed_member_stops_receiving_content() {
     let b_id = remote_device_id(&a.cli, DEVICE_B);
     remove(&a.cli, &b_id);
     wait_for_effective_member_count(&a.cli, 2).await;
+    wait_for_effective_member_count(&c.cli, 2).await;
 
     // A stops sending to the removed target: `send --peer` to B must not
     // accept the dispatch (B is excluded from A's effective members).

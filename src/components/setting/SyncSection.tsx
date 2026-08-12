@@ -23,9 +23,14 @@ const SyncSection: React.FC = () => {
   // Use setting context
   const { setting, error, updateSyncSetting, updateFileSyncSetting } = useSetting()
 
-  const [autoSync, setAutoSync] = useOptimisticSetting(
-    setting?.sync.autoSync ?? true,
-    next => updateSyncSetting({ autoSync: next }),
+  const [syncEnabled, setSyncEnabled] = useOptimisticSetting(
+    setting?.sync.syncEnabled ?? true,
+    next => updateSyncSetting({ syncEnabled: next }),
+    { failureLog: 'Failed to change sync setting' }
+  )
+  const [autoSyncEnabled, setAutoSyncEnabled] = useOptimisticSetting(
+    setting?.sync.autoSyncEnabled ?? true,
+    next => updateSyncSetting({ autoSyncEnabled: next }),
     { failureLog: 'Failed to change auto-sync setting' }
   )
   const [syncOnRestore, setSyncOnRestore] = useOptimisticSetting(
@@ -253,10 +258,22 @@ const SyncSection: React.FC = () => {
     <>
       <SettingGroup title={t('settings.categories.sync')}>
         <SettingRow
+          label={t('settings.sections.sync.syncEnabled.label')}
+          description={t('settings.sections.sync.syncEnabled.description')}
+        >
+          <Switch id="sync-enabled" checked={syncEnabled} onCheckedChange={setSyncEnabled} />
+        </SettingRow>
+
+        <SettingRow
           label={t('settings.sections.sync.autoSync.label')}
           description={t('settings.sections.sync.autoSync.description')}
         >
-          <Switch id="auto-sync" checked={autoSync} onCheckedChange={setAutoSync} />
+          <Switch
+            id="auto-sync"
+            checked={autoSyncEnabled}
+            onCheckedChange={setAutoSyncEnabled}
+            disabled={!syncEnabled}
+          />
         </SettingRow>
 
         <SettingRow
@@ -267,7 +284,7 @@ const SyncSection: React.FC = () => {
             id="sync-on-restore"
             checked={syncOnRestore}
             onCheckedChange={setSyncOnRestore}
-            disabled={!autoSync}
+            disabled={!syncEnabled}
           />
         </SettingRow>
 
@@ -297,7 +314,7 @@ const SyncSection: React.FC = () => {
               id="file-sync-enabled"
               checked={fileSyncEnabled}
               onCheckedChange={setFileSyncEnabled}
-              disabled={!autoSync}
+              disabled={!syncEnabled}
             />
           </SettingRow>
 
@@ -324,7 +341,7 @@ const SyncSection: React.FC = () => {
                   variant="outline"
                   size="sm"
                   onClick={handlePickAutoSaveDir}
-                  disabled={savingAutoSaveDir}
+                  disabled={!syncEnabled || !fileSyncEnabled || savingAutoSaveDir}
                 >
                   {t('settings.sections.sync.fileSync.autoSaveDir.choose')}
                 </Button>
@@ -333,7 +350,7 @@ const SyncSection: React.FC = () => {
                     variant="ghost"
                     size="sm"
                     onClick={handleClearAutoSaveDir}
-                    disabled={savingAutoSaveDir}
+                    disabled={!syncEnabled || !fileSyncEnabled || savingAutoSaveDir}
                   >
                     {t('settings.sections.sync.fileSync.autoSaveDir.clear')}
                   </Button>
@@ -354,7 +371,7 @@ const SyncSection: React.FC = () => {
                   value={smallFileThresholdValue}
                   onChange={handleSmallFileThresholdChange}
                   className={smallFileThresholdError ? 'border-red-500 w-32' : 'w-32'}
-                  disabled={!autoSync || !fileSyncEnabled}
+                  disabled={!syncEnabled || !fileSyncEnabled}
                 />
                 <span className="text-sm text-muted-foreground">
                   {t('settings.sections.sync.fileSync.smallFileThreshold.unit')}
@@ -378,7 +395,7 @@ const SyncSection: React.FC = () => {
                   value={maxFileSizeLimitValue}
                   onChange={handleMaxFileSizeLimitChange}
                   className={maxFileSizeLimitError ? 'border-red-500 w-32' : 'w-32'}
-                  disabled={!autoSync || !fileSyncEnabled}
+                  disabled={!syncEnabled || !fileSyncEnabled}
                 />
                 <span className="text-sm text-muted-foreground">
                   {t('settings.sections.sync.fileSync.maxFileSize.unit')}
@@ -402,7 +419,7 @@ const SyncSection: React.FC = () => {
                   value={cacheQuotaValue}
                   onChange={handleCacheQuotaChange}
                   className={cacheQuotaError ? 'border-red-500 w-32' : 'w-32'}
-                  disabled={!autoSync || !fileSyncEnabled}
+                  disabled={!syncEnabled || !fileSyncEnabled}
                 />
                 <span className="text-sm text-muted-foreground">
                   {t('settings.sections.sync.fileSync.cacheQuota.unit')}
@@ -424,7 +441,7 @@ const SyncSection: React.FC = () => {
                   value={retentionHoursValue}
                   onChange={handleRetentionHoursChange}
                   className={retentionHoursError ? 'border-red-500 w-32' : 'w-32'}
-                  disabled={!autoSync || !fileSyncEnabled}
+                  disabled={!syncEnabled || !fileSyncEnabled}
                 />
                 <span className="text-sm text-muted-foreground">
                   {t('settings.sections.sync.fileSync.retentionPeriod.unit')}
@@ -443,7 +460,7 @@ const SyncSection: React.FC = () => {
               id="file-auto-cleanup"
               checked={fileAutoCleanup}
               onCheckedChange={setFileAutoCleanup}
-              disabled={!autoSync || !fileSyncEnabled}
+              disabled={!syncEnabled || !fileSyncEnabled}
             />
           </SettingRow>
         </SettingGroup>

@@ -97,6 +97,17 @@ _Avoid_: synced、has delivery
 不形成消息队列。
 _Avoid_: eventual consistency、message queue、store-and-forward
 
+**Global synchronization**：
+由 `sync_enabled` 控制的同步总开关。关闭后不进行任何入站、出站、文件规划、恢复、
+恢复时广播或手动重发；它与 **Automatic synchronization**、文件同步开关共同决定某项
+具体同步是否可执行。
+_Avoid_: auto-sync、receive-only mode
+
+**Automatic synchronization**：
+由 `auto_sync_enabled` 控制的自动发送与恢复时同步开关。关闭时不妨碍在 **Global
+synchronization** 与文件同步均开启时执行明确的手动重发。
+_Avoid_: global synchronization、manual resend gate
+
 **Network recovery**：
 核心统一拥有网络会话的完整恢复、自动重试与并发合并。状态为 `Idle`、`Recovering`、
 `RetryScheduled`、`Failed`；状态通知遗漏时，宿主重新读取当前状态。手动恢复仅在
@@ -136,8 +147,9 @@ _Avoid_: relay-only、server mode
   解锁后以 **ActiveSpace** 句柄表达
 - 发送侧每条 entry 对每台对端设备各记一条 **EntryDeliveryRecord**；接收侧对应的
   是 **Receiver-side file transfer projection**（两侧各自为本地投影，不互为真相源）
-- 上述投递全部遵循 **Transient sync semantics**；自动同步开启时，每台恢复在线的既有
-  设备独立评估，仅补送该设备最新一条离线未送达内容一次
+- 上述投递全部遵循 **Transient sync semantics**；在 **Global synchronization** 与
+  **Automatic synchronization** 均开启时，每台恢复在线的既有设备独立评估，仅补送该设备
+  最新一条离线未送达内容一次
 
 ## Language — Active clipboard（跨设备活跃剪贴板）
 

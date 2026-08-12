@@ -4,10 +4,9 @@
  *
  * Two sections under the identity header:
  *  - 身份档案: full peer id (copyable), platform, app version, space size.
- *  - 全局同步策略: the two most-used global switches (auto sync, file
- *    sync) as inline toggles that write directly through the setting
- *    context — no jump into Settings. File sync depends on auto sync, so
- *    its toggle is disabled while auto sync is off (mirrors SyncSection).
+ *  - 全局同步策略: the two most-used global switches (sync, file sync) as
+ *    inline toggles that write directly through the setting context — no jump
+ *    into Settings. File sync depends on global sync (mirrors SyncSection).
  */
 
 import { getVersion } from '@tauri-apps/api/app'
@@ -56,15 +55,15 @@ const LocalDevicePanel: React.FC<LocalDevicePanelProps> = ({ localDevice, member
     }
   }, [])
 
-  const autoSyncEnabled = setting?.sync.autoSync !== false
+  const syncEnabled = setting?.sync.syncEnabled !== false
   const fileSyncEnabled = setting?.fileSync?.fileSyncEnabled !== false
-  const syncActive = autoSyncEnabled
+  const syncActive = syncEnabled
   const platformLabel = getPlatformLabel()
   const Icon = getDeviceIcon(localDevice.deviceName)
 
-  const handleAutoSyncChange = (checked: boolean) => {
-    updateSyncSetting({ autoSync: checked }).catch(err => {
-      log.error({ err }, 'failed to update auto sync setting')
+  const handleSyncChange = (checked: boolean) => {
+    updateSyncSetting({ syncEnabled: checked }).catch(err => {
+      log.error({ err }, 'failed to update sync setting')
     })
   }
 
@@ -155,17 +154,17 @@ const LocalDevicePanel: React.FC<LocalDevicePanelProps> = ({ localDevice, member
           </div>
           <div className="mt-2.5 flex flex-col gap-1">
             <ToggleRow
-              title={t('devices.panel.policies.autoSync.title')}
-              description={t('devices.panel.policies.autoSync.description')}
-              checked={autoSyncEnabled}
-              onCheckedChange={handleAutoSyncChange}
+              title={t('devices.panel.policies.syncEnabled.title')}
+              description={t('devices.panel.policies.syncEnabled.description')}
+              checked={syncEnabled}
+              onCheckedChange={handleSyncChange}
             />
             <ToggleRow
               title={t('devices.panel.policies.fileSync.title')}
               description={t('devices.panel.policies.fileSync.description')}
-              checked={autoSyncEnabled && fileSyncEnabled}
+              checked={syncEnabled && fileSyncEnabled}
               onCheckedChange={handleFileSyncChange}
-              disabled={!autoSyncEnabled}
+              disabled={!syncEnabled}
             />
           </div>
         </section>

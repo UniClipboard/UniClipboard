@@ -99,7 +99,8 @@ export type SyncFrequency = 'realtime' | 'interval'
  * 同步设置 - 对应 Rust SyncSettings
  */
 export interface SyncSettings {
-  autoSync: boolean
+  syncEnabled: boolean
+  autoSyncEnabled: boolean
   syncFrequency: SyncFrequency
   contentTypes: ContentTypes
   /** Announce a restored history entry as the active clipboard to peers. */

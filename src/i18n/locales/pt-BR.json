@@ -246,9 +246,13 @@
       },
       "sync": {
         "title": "Sincronização",
+        "syncEnabled": {
+          "label": "Ativar sincronização",
+          "description": "Permitir a sincronização de conteúdo entre dispositivos."
+        },
         "autoSync": {
           "label": "Sincronização automática",
-          "description": "Controla a sincronização da área de transferência entre todos os dispositivos. Quando desativada, nenhum conteúdo é sincronizado para nenhum dispositivo."
+          "description": "Enviar automaticamente o novo conteúdo da área de transferência para os outros dispositivos."
         },
         "syncOnRestore": {
           "label": "Sincronizar ao restaurar",
@@ -1458,6 +1462,10 @@
       },
       "policies": {
         "title": "Políticas globais de sincronização",
+        "syncEnabled": {
+          "title": "Ativar sincronização",
+          "description": "Permitir a sincronização de conteúdo entre dispositivos"
+        },
         "autoSync": {
           "title": "Sincronização automática",
           "description": "Envia automaticamente o novo conteúdo da área de transferência para todos os dispositivos pareados"
@@ -1799,6 +1807,7 @@
         "summary": "Reenvio despachado · {{accepted}}/{{total}} aceitos"
       },
       "error": {
+        "synchronizationDisabled": "A sincronização está desativada. Ative-a para reenviar o conteúdo.",
         "notResendable": {
           "remoteOrigin": "A entrada {{entryIdShort}} foi criada em outro dispositivo e não pode ser reenviada daqui.",
           "payloadLost": "A entrada {{entryIdShort}} não está mais disponível neste dispositivo."

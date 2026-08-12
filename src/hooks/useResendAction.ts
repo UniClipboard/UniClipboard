@@ -251,6 +251,8 @@ function translateResendError(
   if (isResendEntryError(err)) {
     const e: ResendEntryCommandError = err
     switch (e.code) {
+      case 'SYNCHRONIZATION_DISABLED':
+        return t('delivery.resend.error.synchronizationDisabled')
       case 'ENTRY_NOT_FOUND':
         return t('delivery.resend.error.entryNotFound', {
           entryIdShort: shortenEntryId(e.entryId),

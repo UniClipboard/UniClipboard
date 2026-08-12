@@ -246,9 +246,13 @@
       },
       "sync": {
         "title": "同步設定",
+        "syncEnabled": {
+          "label": "啟用同步",
+          "description": "允許裝置之間同步內容。"
+        },
         "autoSync": {
           "label": "自動同步",
-          "description": "控制所有裝置的剪貼簿同步。關閉後停止向所有裝置同步內容。"
+          "description": "自動將新的剪貼簿內容傳送到其他裝置。"
         },
         "syncOnRestore": {
           "label": "恢復時同步",
@@ -1453,6 +1457,10 @@
       },
       "policies": {
         "title": "全局同步策略",
+        "syncEnabled": {
+          "title": "啟用同步",
+          "description": "允許裝置之間同步內容"
+        },
         "autoSync": {
           "title": "自動同步剪貼簿",
           "description": "複製內容後自動推送給所有已配對裝置"
@@ -1791,6 +1799,7 @@
         "summary": "已觸發重發 · {{accepted}}/{{total}} 接收"
       },
       "error": {
+        "synchronizationDisabled": "同步已關閉。請先開啟同步，再重發內容。",
         "notResendable": {
           "remoteOrigin": "條目 {{entryIdShort}} 來自其他裝置,無法從本機重發。",
           "payloadLost": "條目 {{entryIdShort}} 在本機已不可用。"

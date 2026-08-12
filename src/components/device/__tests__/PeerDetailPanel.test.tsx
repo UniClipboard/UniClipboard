@@ -87,7 +87,7 @@ function renderPanel() {
       <PeerDetailPanel
         deviceId="peer-1"
         device={device}
-        globalAutoSyncOff={false}
+        globalSyncOff={false}
         globalFileSyncOff={false}
         lanOnlyActive={false}
         onUnpair={vi.fn()}

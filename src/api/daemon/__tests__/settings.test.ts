@@ -182,7 +182,8 @@ describe('settings api — updateSettings restartRequired signal', () => {
     mockUpdateOk(false)
     const result = await updateSettings({
       sync: {
-        autoSync: true,
+        syncEnabled: true,
+        autoSyncEnabled: true,
         syncFrequency: 'realtime',
         contentTypes: {
           text: true,

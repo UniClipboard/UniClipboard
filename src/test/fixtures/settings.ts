@@ -42,7 +42,8 @@ export function makeBaseSettings(overrides: BaseSettingsOverrides = {}): Setting
       ...generalOverrides,
     },
     sync: {
-      autoSync: true,
+      syncEnabled: true,
+      autoSyncEnabled: true,
       syncFrequency: 'realtime',
       contentTypes: {
         text: true,

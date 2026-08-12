@@ -189,7 +189,8 @@ export function makeSettingsDto(overrides: Partial<Settings> = {}): Settings {
       debugMode: false,
     },
     sync: {
-      autoSync: true,
+      syncEnabled: true,
+      autoSyncEnabled: true,
       syncFrequency: 'realtime',
       contentTypes: {
         text: true,

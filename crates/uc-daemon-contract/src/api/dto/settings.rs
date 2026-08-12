@@ -205,7 +205,8 @@ mod relay_credential_wire_tests {
                 debug_mode: false,
             },
             sync: SyncSettingsDto {
-                auto_sync: true,
+                sync_enabled: true,
+                auto_sync_enabled: true,
                 sync_frequency: SyncFrequencyDto::Realtime,
                 content_types: ContentTypesDto {
                     text: true,
@@ -501,7 +502,8 @@ pub struct ContentTypesDto {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct SyncSettingsDto {
-    pub auto_sync: bool,
+    pub sync_enabled: bool,
+    pub auto_sync_enabled: bool,
     pub sync_frequency: SyncFrequencyDto,
     pub content_types: ContentTypesDto,
     pub sync_on_restore: bool,
@@ -765,7 +767,8 @@ pub struct ContentTypesPatchDto {
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct SyncSettingsPatchDto {
-    pub auto_sync: Option<bool>,
+    pub sync_enabled: Option<bool>,
+    pub auto_sync_enabled: Option<bool>,
     pub sync_frequency: Option<SyncFrequencyDto>,
     pub content_types: Option<ContentTypesPatchDto>,
     pub sync_on_restore: Option<bool>,

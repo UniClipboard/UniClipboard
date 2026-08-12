@@ -10,6 +10,7 @@ describe('isResendEntryError — typed error guard', () => {
   // "SCREAMING_SNAKE_CASE")]` 变体名变更时,这里要一起改 —— 守卫的白名单
   // 是该契约的前端镜像。
   it.each([
+    { code: 'SYNCHRONIZATION_DISABLED' },
     { code: 'ENTRY_NOT_FOUND', entryId: 'ent-1' },
     { code: 'ENTRY_NOT_RESENDABLE', entryId: 'ent-2', reason: 'remoteOrigin' },
     { code: 'ENTRY_NOT_RESENDABLE', entryId: 'ent-3', reason: 'payloadLost' },

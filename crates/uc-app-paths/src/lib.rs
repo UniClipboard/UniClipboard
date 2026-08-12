@@ -426,6 +426,7 @@ mod tests {
 
     #[test]
     fn legacy_logs_dir_is_none_when_it_equals_current() {
+        let _env = ENV_LOCK.lock().unwrap();
         // On any platform where `app_log_dir()` resolves to the old
         // `<app_data_root>/logs` location (Windows / portable), there is
         // nothing to clean up, so `legacy_logs_dir()` must report `None`.

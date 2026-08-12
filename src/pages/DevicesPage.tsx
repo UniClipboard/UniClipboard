@@ -163,7 +163,7 @@ const DevicesPage: React.FC = () => {
       : []
 
   const { setting } = useSetting()
-  const syncActive = setting?.sync.autoSync !== false
+  const syncActive = setting?.sync.syncEnabled !== false
   const localDeviceStatus: DeviceRowStatus = membershipConvergence?.removed
     ? {
         kind: 'removed',
@@ -186,7 +186,7 @@ const DevicesPage: React.FC = () => {
             kind: syncActive ? 'online' : 'offline',
             label: t(`devices.list.status.${syncActive ? 'online' : 'offline'}`),
           }
-  const globalAutoSyncOff = setting?.sync.autoSync === false
+  const globalSyncOff = setting?.sync.syncEnabled === false
   const globalFileSyncOff = setting?.fileSync?.fileSyncEnabled === false
   const lanOnlyActive = setting?.network?.allowRelayFallback === false
 
@@ -643,7 +643,7 @@ const DevicesPage: React.FC = () => {
               key={selectedPeer.peerId}
               deviceId={selectedPeer.peerId}
               device={selectedPeer}
-              globalAutoSyncOff={globalAutoSyncOff}
+              globalSyncOff={globalSyncOff}
               globalFileSyncOff={globalFileSyncOff}
               lanOnlyActive={lanOnlyActive}
               onUnpair={handleUnpairRequest}

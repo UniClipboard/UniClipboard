@@ -55,7 +55,8 @@ impl IntoDomain<app_settings::SettingsPatch> for SettingsPatchDto {
                     debug_mode: general.debug_mode,
                 }),
             sync: self.sync.map(|sync| app_settings::SyncSettingsPatch {
-                auto_sync: sync.auto_sync,
+                sync_enabled: sync.sync_enabled,
+                auto_sync_enabled: sync.auto_sync_enabled,
                 sync_frequency: sync.sync_frequency.map(IntoDomain::into_domain),
                 content_types: sync.content_types.map(IntoDomain::into_domain),
                 sync_on_restore: sync.sync_on_restore,
@@ -163,7 +164,8 @@ impl IntoApiDto<SettingsDto> for app_settings::SettingsView {
                 debug_mode: self.general.debug_mode,
             },
             sync: SyncSettingsDto {
-                auto_sync: self.sync.auto_sync,
+                sync_enabled: self.sync.sync_enabled,
+                auto_sync_enabled: self.sync.auto_sync_enabled,
                 sync_frequency: self.sync.sync_frequency.into_api_dto(),
                 content_types: self.sync.content_types.into_api_dto(),
                 sync_on_restore: self.sync.sync_on_restore,

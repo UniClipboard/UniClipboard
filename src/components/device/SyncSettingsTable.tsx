@@ -21,7 +21,7 @@ interface SyncSettingsTableProps {
   receiveEnabled: boolean
   sendContentTypes?: ContentTypes
   receiveContentTypes?: ContentTypes
-  globalAutoSyncOff: boolean
+  globalSyncOff: boolean
   globalFileSyncOff: boolean
   isLoading: boolean
   onSendEnabledChange: (checked: boolean) => void
@@ -35,7 +35,7 @@ export default function SyncSettingsTable({
   receiveEnabled,
   sendContentTypes,
   receiveContentTypes,
-  globalAutoSyncOff,
+  globalSyncOff,
   globalFileSyncOff,
   isLoading,
   onSendEnabledChange,
@@ -44,8 +44,8 @@ export default function SyncSettingsTable({
   onReceiveContentTypeChange,
 }: SyncSettingsTableProps) {
   const { t } = useTranslation()
-  const sendControlsDisabled = !sendEnabled || globalAutoSyncOff || isLoading
-  const receiveControlsDisabled = !receiveEnabled || globalAutoSyncOff || isLoading
+  const sendControlsDisabled = !sendEnabled || globalSyncOff || isLoading
+  const receiveControlsDisabled = !receiveEnabled || globalSyncOff || isLoading
   const sendLabel = t('devices.settings.sync.columns.send')
   const receiveLabel = t('devices.settings.sync.columns.receive')
 
@@ -75,7 +75,7 @@ export default function SyncSettingsTable({
                   size="sm"
                   aria-label={t('devices.settings.sync.rules.sendEnabled.title')}
                   checked={sendEnabled}
-                  disabled={globalAutoSyncOff || isLoading}
+                  disabled={globalSyncOff || isLoading}
                   onCheckedChange={onSendEnabledChange}
                 />
               </div>
@@ -87,7 +87,7 @@ export default function SyncSettingsTable({
                   size="sm"
                   aria-label={t('devices.settings.sync.rules.receiveEnabled.title')}
                   checked={receiveEnabled}
-                  disabled={globalAutoSyncOff || isLoading}
+                  disabled={globalSyncOff || isLoading}
                   onCheckedChange={onReceiveEnabledChange}
                 />
               </div>

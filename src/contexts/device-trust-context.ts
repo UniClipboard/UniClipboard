@@ -1,4 +1,4 @@
-import { createContext, useContext } from 'react'
+import { createContext } from 'react'
 import type { DeviceTrustChoice, DeviceTrustSnapshot } from '@/api/daemon/device-trust'
 
 export interface DeviceTrustContextValue {
@@ -11,9 +11,3 @@ export interface DeviceTrustContextValue {
 }
 
 export const DeviceTrustContext = createContext<DeviceTrustContextValue | null>(null)
-
-export function useDeviceTrust(): DeviceTrustContextValue {
-  const value = useContext(DeviceTrustContext)
-  if (!value) throw new Error('useDeviceTrust must be used within DeviceTrustProvider')
-  return value
-}

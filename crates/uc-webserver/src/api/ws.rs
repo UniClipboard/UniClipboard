@@ -505,6 +505,7 @@ fn is_supported_topic(topic: &str) -> bool {
             | ws_topic::ENCRYPTION
             | ws_topic::SEARCH
             | ws_topic::WORKSPACE_CONVERGENCE
+            | ws_topic::DEVICE_TRUST
             | ws_topic::NETWORK_RECOVERY
     )
 }
@@ -593,6 +594,7 @@ async fn build_snapshot_event(
         ws_topic::CLIPBOARD => Ok(None),
         ws_topic::FILE_TRANSFER => Ok(None),
         ws_topic::WORKSPACE_CONVERGENCE => Ok(None),
+        ws_topic::DEVICE_TRUST => Ok(None),
         ws_topic::NETWORK_RECOVERY => Ok(None),
 
         ws_topic::ENCRYPTION => {
@@ -744,6 +746,14 @@ mod tests {
             ts: 1,
             payload: serde_json::json!({}),
         }
+    }
+
+    #[test]
+    fn device_trust_topic_is_subscribable() {
+        assert_eq!(
+            normalize_topics(vec![ws_topic::DEVICE_TRUST.to_string()]),
+            vec![ws_topic::DEVICE_TRUST.to_string()]
+        );
     }
 
     #[tokio::test]

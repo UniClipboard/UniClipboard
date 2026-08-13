@@ -18,8 +18,11 @@ import {
   issuePairingInvitation,
   type CurrentInvitation,
 } from '@/api/daemon/setupV2'
-import { onSetupInvitationRevoked, type SetupInvitationRevokedEvent } from '@/api/setupEvents'
-import { hasNewPairedMember } from '@/components/device/pairing-success-utils'
+import {
+  onSetupInvitationRevoked,
+  onSetupPairingCompleted,
+  type SetupInvitationRevokedEvent,
+} from '@/api/setupEvents'
 import { formatInvitationCode } from '@/components/invitation-code-utils'
 import { Button } from '@/components/ui/button'
 import {
@@ -31,7 +34,6 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Progress } from '@/components/ui/progress'
-import { daemonWs } from '@/lib/daemon-ws'
 import { createLogger } from '@/lib/logger'
 import { cn } from '@/lib/utils'
 
@@ -118,18 +120,8 @@ function AddDeviceDialogInner({ open, onOpenChange }: AddDeviceDialogProps) {
     }
   }, [open])
 
-  // The trust-change event only invalidates local read models. Pairing success
-  // is still verified from the authoritative member list.
-  const handleDeviceTrustChange = useEffectEvent(async () => {
-    if (step !== 'invitation' || initialMemberCountRef.current === null) return
-    try {
-      const currentMemberCount = (await getPairedPeers()).length
-      if (hasNewPairedMember(initialMemberCountRef.current, currentMemberCount)) {
-        setStep('success')
-      }
-    } catch (err) {
-      log.warn({ err }, 'failed to verify admitted member after device trust changed')
-    }
+  const handlePairingCompleted = useEffectEvent((success: boolean) => {
+    if (step === 'invitation' && success) setStep('success')
   })
 
   const handleInvitationRevoked = useEffectEvent((evt: SetupInvitationRevokedEvent) => {
@@ -154,12 +146,16 @@ function AddDeviceDialogInner({ open, onOpenChange }: AddDeviceDialogProps) {
       err => log.warn({ err }, 'subscribe invitationRevoked failed')
     )
 
-    const unsubscribeDeviceTrust = daemonWs.subscribe(['device-trust'], event => {
-      if (event.eventType === 'device-trust.changed') {
-        void handleDeviceTrustChange()
-      }
-    })
-    unsubs.push(unsubscribeDeviceTrust)
+    void onSetupPairingCompleted(evt => {
+      if (!mounted) return
+      handlePairingCompleted(evt.success)
+    }).then(
+      fn => {
+        if (mounted) unsubs.push(fn)
+        else fn()
+      },
+      err => log.warn({ err }, 'subscribe pairingCompleted failed')
+    )
 
     return () => {
       mounted = false

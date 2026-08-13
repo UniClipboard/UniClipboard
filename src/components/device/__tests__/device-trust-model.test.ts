@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { DeviceTrustSnapshot } from '@/api/daemon/device-trust'
-import { getDeviceLabel, getPendingDecisionView } from '../device-trust-model'
+import { getDeviceLabel, getPendingDecisionView } from '@/components/device/device-trust-model'
 
 const snapshot: DeviceTrustSnapshot = {
   revision: 7,

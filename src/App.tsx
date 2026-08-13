@@ -13,19 +13,20 @@ import { signalLifecycleReady } from '@/api/daemon/lifecycle'
 import { unlockEncryptionSession } from '@/api/security'
 import { checkForUpdate, openUpdaterWindow } from '@/api/updater'
 import { TitleBar } from '@/components'
+import { DeviceTrustDialog } from '@/components/device/DeviceTrustDialog'
 import { GlobalShortcuts } from '@/components/GlobalShortcuts'
 import StartupModals from '@/components/StartupModals'
 import { Button } from '@/components/ui/button'
 import { Toaster } from '@/components/ui/sonner'
+import { DeviceTrustProvider } from '@/contexts/DeviceTrustContext'
 import { SearchProvider } from '@/contexts/SearchContext'
 import { SettingProvider } from '@/contexts/SettingContext'
 import { ShortcutProvider } from '@/contexts/ShortcutContext'
 import { TitleBarSlotContext } from '@/contexts/titlebar-slot-context'
 import { UpdateProvider } from '@/contexts/UpdateContext'
-import { useDeviceTrust } from '@/device-trust/device-trust-context'
-import { DeviceTrustModal } from '@/device-trust/DeviceTrustModal'
-import { DeviceTrustProvider } from '@/device-trust/DeviceTrustProvider'
 import { useEncryptionState } from '@/hooks/useDaemonEvents'
+import { useDeviceTrust } from '@/hooks/useDeviceTrust'
+import { useDeviceTrustDesktopEffects } from '@/hooks/useDeviceTrustDesktopEffects'
 import { usePlatform } from '@/hooks/usePlatform'
 import { useUINavigateListener } from '@/hooks/useUINavigateListener'
 import { MainLayout, SettingsFullLayout, WindowShell } from '@/layouts'
@@ -397,15 +398,16 @@ const AppContent = ({
       </SentryRoutes>
       <Toaster />
       <StartupModals />
-      <DeviceTrustModalHost />
+      <DeviceTrustDialogHost />
     </DeviceTrustProvider>
   )
 }
 
-const DeviceTrustModalHost = () => {
+const DeviceTrustDialogHost = () => {
   const { snapshot, decisionBusy, decisionError, decide } = useDeviceTrust()
+  useDeviceTrustDesktopEffects(snapshot)
   return snapshot?.currentChange ? (
-    <DeviceTrustModal
+    <DeviceTrustDialog
       snapshot={snapshot}
       busy={decisionBusy}
       error={decisionError}

@@ -229,11 +229,7 @@ pub async fn get_device_trust_handler(
         ));
     };
     let revision = snapshot.revision;
-    let dto = serde_json::from_value(
-        serde_json::to_value(snapshot)
-            .map_err(|_| ApiError::internal("failed to encode device trust result"))?,
-    )
-    .map_err(|_| ApiError::internal("failed to decode device trust result"))?;
+    let dto = snapshot.into_api_dto();
     info!(revision, "device trust query completed");
     Ok(Json(ApiEnvelope::now(dto)))
 }
@@ -283,11 +279,7 @@ pub async fn decide_device_trust_handler(
             "engine returned an unexpected device trust decision result",
         ));
     };
-    let dto = serde_json::from_value(
-        serde_json::to_value(decision)
-            .map_err(|_| ApiError::internal("failed to encode device trust decision"))?,
-    )
-    .map_err(|_| ApiError::internal("failed to decode device trust decision"))?;
+    let dto = decision.into_api_dto();
     info!(result = "completed", "device trust decision completed");
     Ok(Json(ApiEnvelope::now(dto)))
 }

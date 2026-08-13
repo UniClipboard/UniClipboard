@@ -46,30 +46,3 @@ pub(crate) fn resolve_desktop_host_paths() -> WiringResult<DesktopHostPaths> {
         .map(DesktopHostPaths::from_app_dirs)
         .map_err(|error| WiringError::ConfigInit(error.to_string()))
 }
-
-pub(crate) fn apply_profile_suffix(path: PathBuf) -> PathBuf {
-    let profile = match std::env::var("UC_PROFILE") {
-        Ok(value) if !value.is_empty() => sanitize_profile(&value),
-        _ => return path,
-    };
-
-    let file_name = match path.file_name().and_then(|name| name.to_str()) {
-        Some(name) => name.to_string(),
-        None => return path,
-    };
-
-    let mut updated = path;
-    updated.set_file_name(format!("{file_name}_{profile}"));
-    updated
-}
-
-fn sanitize_profile(value: &str) -> String {
-    value
-        .chars()
-        .map(|character| match character {
-            '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*' => '_',
-            character if character.is_control() => '_',
-            character => character,
-        })
-        .collect()
-}

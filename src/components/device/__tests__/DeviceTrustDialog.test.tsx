@@ -1,8 +1,8 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import type { DeviceTrustSnapshot } from '@/api/daemon/device-trust'
+import { DeviceTrustDialog } from '@/components/device/DeviceTrustDialog'
 import i18n from '@/i18n'
-import { DeviceTrustModal } from '../DeviceTrustModal'
 
 const snapshot = {
   revision: 2,
@@ -60,10 +60,10 @@ const snapshot = {
   updatedAtMs: 1,
 } satisfies DeviceTrustSnapshot
 
-describe('DeviceTrustModal', () => {
+describe('DeviceTrustDialog', () => {
   it('selects an option from the cards and confirms it with the only footer button', () => {
     const decide = vi.fn()
-    render(<DeviceTrustModal snapshot={snapshot} busy={false} error={null} onDecide={decide} />)
+    render(<DeviceTrustDialog snapshot={snapshot} busy={false} error={null} onDecide={decide} />)
     expect(screen.queryByRole('button', { name: /close/i })).not.toBeInTheDocument()
     const options = screen.getAllByRole('radio')
     expect(screen.getByText(i18n.t('deviceTrust.modal.title'))).toBeInTheDocument()
@@ -96,7 +96,7 @@ describe('DeviceTrustModal', () => {
       },
     }
     render(
-      <DeviceTrustModal
+      <DeviceTrustDialog
         snapshot={localRemovalSnapshot}
         busy={false}
         error={null}
@@ -111,5 +111,50 @@ describe('DeviceTrustModal', () => {
     ).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: i18n.t('deviceTrust.actions.confirm') }))
     expect(decide).toHaveBeenCalledWith('apply_change', true)
+  })
+
+  it('resets the selected choice when the pending change changes', () => {
+    const decide = vi.fn()
+    const { rerender } = render(
+      <DeviceTrustDialog snapshot={snapshot} busy={false} error={null} onDecide={decide} />
+    )
+    fireEvent.click(screen.getAllByRole('radio')[1])
+
+    rerender(
+      <DeviceTrustDialog
+        snapshot={{
+          ...snapshot,
+          currentChange: { ...snapshot.currentChange, changeId: 'change-2' },
+        }}
+        busy={false}
+        error={null}
+        onDecide={decide}
+      />
+    )
+
+    expect(screen.getAllByRole('radio')[0]).toHaveAttribute('aria-checked', 'true')
+  })
+
+  it('only shows choices allowed by the current change', () => {
+    const decide = vi.fn()
+    render(
+      <DeviceTrustDialog
+        snapshot={{
+          ...snapshot,
+          currentChange: {
+            ...snapshot.currentChange,
+            allowedChoices: ['keep_current_device_group'],
+          },
+        }}
+        busy={false}
+        error={null}
+        onDecide={decide}
+      />
+    )
+
+    expect(screen.getAllByRole('radio')).toHaveLength(1)
+    expect(screen.getByRole('radio')).toHaveAccessibleName(
+      new RegExp(i18n.t('deviceTrust.modal.keepTitle'))
+    )
   })
 })

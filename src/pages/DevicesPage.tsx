@@ -34,7 +34,6 @@ import {
 import React, { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { useTranslation } from 'react-i18next'
 import { refreshPresence } from '@/api/daemon'
-import type { DeviceTrustRelationship } from '@/api/daemon/device-trust'
 import type { SpaceMember } from '@/api/daemon/members'
 import { unpairDevice } from '@/api/daemon/members'
 import {
@@ -51,6 +50,11 @@ import AddDeviceDialog from '@/components/device/AddDeviceDialog'
 import AddMobileSyncDeviceDialog from '@/components/device/AddMobileSyncDeviceDialog'
 import { derivePeerStatusTone } from '@/components/device/connection-channel-utils'
 import { DeprecatedBadge } from '@/components/device/DeprecatedBadge'
+import {
+  buildDeviceTrustListView,
+  getDeviceTrustStatus,
+  type DeviceRowStatus,
+} from '@/components/device/device-trust-view'
 import EnableMobileSyncDialog from '@/components/device/EnableMobileSyncDialog'
 import LocalDevicePanel from '@/components/device/LocalDevicePanel'
 import MobileDevicePanel from '@/components/device/MobileDevicePanel'
@@ -81,8 +85,8 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Skeleton } from '@/components/ui/skeleton'
 import { toast } from '@/components/ui/toast'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
-import { useDeviceTrust } from '@/device-trust/device-trust-context'
 import type { PeerSnapshotPayloadItem, PeersChangedPayload } from '@/hooks/useDaemonEvents'
+import { useDeviceTrust } from '@/hooks/useDeviceTrust'
 import { useNow } from '@/hooks/useRelativeTime'
 import { useSetting } from '@/hooks/useSetting'
 import { daemonWs } from '@/lib/daemon-ws'
@@ -146,26 +150,8 @@ const DevicesPage: React.FC = () => {
   const admittedPeers = localDevice
     ? rawSpaceMembers.filter(d => d.peerId !== localDevice.peerId)
     : rawSpaceMembers
-  const admittedIds = new Set(admittedPeers.map(peer => peer.peerId))
-  const retainedTrustPeers: SpaceMember[] = (deviceTrust?.devices ?? [])
-    .filter(
-      device =>
-        !device.isLocal &&
-        !admittedIds.has(device.deviceId) &&
-        (device.groupRelationship === 'diverged' ||
-          device.groupRelationship === 'unverifiable' ||
-          device.compatibility === 'upgrade_required')
-    )
-    .map(device => ({
-      peerId: device.deviceId,
-      deviceName: device.displayName,
-      pairingState: 'retained_trust_relationship',
-      lastSeenAtMs: null,
-      connected: device.reachability === 'online',
-      channel: 'unknown',
-      connectionAddress: null,
-    }))
-  const peers = [...admittedPeers, ...retainedTrustPeers]
+  const trustListView = buildDeviceTrustListView(admittedPeers, deviceTrust)
+  const peers = trustListView.peers
   const onlineCount = peers.filter(p => p.connected).length
   const legacyBootstrap = spaceProtection?.legacyBootstrap ?? null
   const readmissionMemberIds = new Set(
@@ -182,7 +168,7 @@ const DevicesPage: React.FC = () => {
 
   const { setting } = useSetting()
   const syncActive = setting?.sync.syncEnabled !== false
-  const localTrust = deviceTrust?.devices.find(device => device.isLocal)
+  const localTrust = trustListView.localRelationship
   const localDeviceStatus: DeviceRowStatus =
     deviceTrust?.localMembership === 'removed'
       ? {
@@ -517,8 +503,8 @@ const DevicesPage: React.FC = () => {
 
             <SectionLabel label={t('devices.pairedDevices.title')} />
             {peers.map(peer => {
-              const trust = deviceTrust?.devices.find(device => device.deviceId === peer.peerId)
-              const trustStatus = trust ? deviceTrustStatus(trust, t) : null
+              const trust = trustListView.relationshipsByDeviceId.get(peer.peerId)
+              const trustStatus = trust ? getDeviceTrustStatus(trust, t) : null
               return (
                 <DeviceListItem
                   key={peer.peerId}
@@ -783,19 +769,6 @@ interface DeviceListItemProps {
   onSelect: () => void
 }
 
-type DeviceRowStatus = {
-  kind:
-    | 'online'
-    | 'offline'
-    | 'waiting_for_update'
-    | 'removing'
-    | 'recovery_required'
-    | 'removed'
-    | 'diverged'
-  label: string
-  description?: string
-}
-
 const DeviceListItem: React.FC<DeviceListItemProps> = ({
   name,
   tone,
@@ -885,34 +858,6 @@ const LocalPanelSkeleton: React.FC = () => (
 
 function peerDotTone(peer: SpaceMember): StatusDotTone {
   return derivePeerStatusTone(peer.channel ?? 'unknown', peer.connected)
-}
-
-function deviceTrustStatus(
-  device: DeviceTrustRelationship,
-  t: (key: string) => string
-): { tone: StatusDotTone; status: DeviceRowStatus } | null {
-  if (device.groupRelationship === 'diverged') {
-    return {
-      tone: 'warning',
-      status: { kind: 'diverged', label: t('deviceTrust.status.diverged') },
-    }
-  }
-  if (device.groupRelationship === 'unverifiable') {
-    return {
-      tone: 'warning',
-      status: { kind: 'recovery_required', label: t('deviceTrust.status.unverifiable') },
-    }
-  }
-  if (device.compatibility === 'upgrade_required') {
-    return {
-      tone: 'warning',
-      status: { kind: 'waiting_for_update', label: t('deviceTrust.status.upgrade') },
-    }
-  }
-  if (device.groupRelationship === 'pending_local_decision') {
-    return { tone: 'warning', status: { kind: 'removing', label: t('deviceTrust.status.pending') } }
-  }
-  return null
 }
 
 function mobileDotTone(mobile: MobileDeviceView, now: number): StatusDotTone {

@@ -28,32 +28,9 @@ export function buildDeviceTrustListView(
   const relationshipsByDeviceId = new Map(
     (snapshot?.devices ?? []).map(device => [device.deviceId, device])
   )
-  const admittedIds = new Set(admittedPeers.map(peer => peer.peerId))
-  const retainedPeers: SpaceMember[] = []
-
-  for (const device of snapshot?.devices ?? []) {
-    if (
-      device.isLocal ||
-      admittedIds.has(device.deviceId) ||
-      (device.groupRelationship !== 'diverged' &&
-        device.groupRelationship !== 'unverifiable' &&
-        device.compatibility !== 'upgrade_required')
-    ) {
-      continue
-    }
-    retainedPeers.push({
-      peerId: device.deviceId,
-      deviceName: device.displayName,
-      pairingState: 'retained_trust_relationship',
-      lastSeenAtMs: null,
-      connected: device.reachability === 'online',
-      channel: 'unknown',
-      connectionAddress: null,
-    })
-  }
 
   return {
-    peers: [...admittedPeers, ...retainedPeers],
+    peers: admittedPeers,
     relationshipsByDeviceId,
     localRelationship: snapshot?.devices.find(device => device.isLocal) ?? null,
   }

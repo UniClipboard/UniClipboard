@@ -63,11 +63,12 @@ const snapshot: DeviceTrustSnapshot = {
 }
 
 describe('device trust list view', () => {
-  it('indexes relationships and appends only retained relationships missing from membership', () => {
+  it('indexes relationships without adding devices missing from current membership', () => {
     const view = buildDeviceTrustListView([admittedPeer], snapshot)
 
-    expect(view.peers.map(peer => peer.peerId)).toEqual(['peer-a', 'peer-b'])
+    expect(view.peers.map(peer => peer.peerId)).toEqual(['peer-a'])
     expect(view.relationshipsByDeviceId.get('peer-a')?.displayName).toBe('Peer A')
+    expect(view.relationshipsByDeviceId.get('peer-b')?.displayName).toBe('Peer B')
     expect(view.localRelationship?.deviceId).toBe('local')
   })
 })

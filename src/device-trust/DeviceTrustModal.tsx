@@ -1,9 +1,9 @@
-import { ShieldAlert } from 'lucide-react'
+import { Check, Link2, Loader2, ShieldAlert, Unlink } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { DeviceTrustChoice, DeviceTrustSnapshot } from '@/api/daemon/device-trust'
 import { Button } from '@/components/ui/button'
-import { Checkbox } from '@/components/ui/checkbox'
+import { cn } from '@/lib/utils'
 import { getPendingDecisionView } from './device-trust-model'
 
 export function DeviceTrustModal({
@@ -19,13 +19,13 @@ export function DeviceTrustModal({
 }) {
   const { t } = useTranslation()
   const view = useMemo(() => getPendingDecisionView(snapshot), [snapshot])
-  const [confirmingKeep, setConfirmingKeep] = useState(false)
-  const [confirmingExit, setConfirmingExit] = useState(false)
-  const [removeTargets, setRemoveTargets] = useState(true)
+  const [choice, setChoice] = useState<DeviceTrustChoice>('apply_change')
   if (!view || !snapshot.currentChange) return null
 
   const names = (items: typeof view.targets) =>
-    items.map(item => item.label).join(t('deviceTrust.listSeparator'))
+    items.length > 0
+      ? items.map(item => item.label).join(t('deviceTrust.listSeparator'))
+      : t('deviceTrust.modal.noDevices')
 
   return (
     <div
@@ -37,7 +37,7 @@ export function DeviceTrustModal({
         aria-modal="true"
         aria-labelledby="device-trust-title"
         aria-describedby="device-trust-description"
-        className="max-h-[calc(100vh-2rem)] w-full max-w-xl overflow-y-auto rounded-lg border border-border bg-card text-card-foreground shadow-2xl"
+        className="max-h-[calc(100vh-2rem)] min-w-0 w-full max-w-xl overflow-y-auto rounded-lg border border-border bg-card text-card-foreground shadow-2xl"
       >
         <header className="flex items-start gap-3 border-b border-border px-5 py-4">
           <span className="flex size-9 shrink-0 items-center justify-center rounded-md bg-destructive/10 text-destructive">
@@ -48,30 +48,41 @@ export function DeviceTrustModal({
               {t('deviceTrust.modal.title')}
             </h2>
             <p id="device-trust-description" className="mt-1 text-sm text-muted-foreground">
-              {t('deviceTrust.modal.summary', {
-                proposer: view.proposer.label,
-                targets: names(view.targets),
-              })}
+              {view.includesLocalDevice
+                ? t('deviceTrust.modal.localSummary', { proposer: view.proposer.label })
+                : t('deviceTrust.modal.summary', {
+                    proposer: view.proposer.label,
+                    targets: names(view.targets),
+                  })}
             </p>
           </div>
         </header>
 
         <div className="space-y-4 px-5 py-4">
-          <div className="grid gap-3 sm:grid-cols-2">
-            <Impact
-              title={t('deviceTrust.modal.applyTitle')}
-              body={t('deviceTrust.modal.applyBody', {
-                usable: names(view.apply.usable),
-                removed: names(view.targets),
-              })}
+          <div className="grid min-w-0 gap-3" role="radiogroup">
+            <ChoiceCard
+              selected={choice === 'apply_change'}
+              disabled={busy}
+              onSelect={() => setChoice('apply_change')}
+              title={t(
+                view.includesLocalDevice
+                  ? 'deviceTrust.modal.leaveTitle'
+                  : 'deviceTrust.modal.applyTitle'
+              )}
+              continuesWith={names(view.apply.continuesWith)}
+              stopsWith={names(view.apply.stopsWith)}
             />
-            <Impact
-              tone="danger"
-              title={t('deviceTrust.modal.keepTitle')}
-              body={t('deviceTrust.modal.keepBody', {
-                usable: names(view.keepCurrent.usable),
-                paused: names(view.keepCurrent.paused),
-              })}
+            <ChoiceCard
+              selected={choice === 'keep_current_device_group'}
+              disabled={busy}
+              onSelect={() => setChoice('keep_current_device_group')}
+              title={t(
+                view.includesLocalDevice
+                  ? 'deviceTrust.modal.stayTitle'
+                  : 'deviceTrust.modal.keepTitle'
+              )}
+              continuesWith={names(view.keepCurrent.continuesWith)}
+              stopsWith={names(view.keepCurrent.stopsWith)}
             />
           </div>
           {error && (
@@ -81,102 +92,104 @@ export function DeviceTrustModal({
                 : t('deviceTrust.modal.failed')}
             </p>
           )}
-          {confirmingKeep && (
-            <div className="rounded-md border border-destructive/20 bg-destructive/5 p-3 text-sm">
-              <p className="font-medium">{t('deviceTrust.modal.keepConfirmTitle')}</p>
-              <p className="mt-1 text-muted-foreground">{t('deviceTrust.modal.keepConfirmBody')}</p>
-            </div>
-          )}
-          {confirmingExit && (
-            <div className="rounded-md border border-destructive/20 bg-destructive/5 p-3 text-sm">
-              <p className="font-medium">{t('deviceTrust.modal.exitConfirmTitle')}</p>
-              <p className="mt-1 text-muted-foreground">{t('deviceTrust.modal.exitConfirmBody')}</p>
-            </div>
-          )}
-          {!view.includesLocalDevice && !confirmingKeep && !confirmingExit && (
-            <label className="flex items-start gap-2 text-sm">
-              <Checkbox
-                checked={removeTargets}
-                onCheckedChange={checked => setRemoveTargets(checked === true)}
-              />
-              <span>{t('deviceTrust.modal.removeTargets', { targets: names(view.targets) })}</span>
-            </label>
-          )}
         </div>
 
-        <footer className="flex flex-col-reverse gap-2 border-t border-border bg-muted/40 px-5 py-4 sm:flex-row sm:justify-end">
-          {confirmingKeep ? (
-            <>
-              <Button variant="outline" disabled={busy} onClick={() => setConfirmingKeep(false)}>
-                {t('deviceTrust.actions.back')}
-              </Button>
-              <Button
-                variant="destructive"
-                disabled={busy}
-                onClick={() => onDecide('keep_current_device_group', false)}
-              >
-                {t('deviceTrust.actions.confirmKeep')}
-              </Button>
-            </>
-          ) : confirmingExit ? (
-            <>
-              <Button variant="outline" disabled={busy} onClick={() => setConfirmingExit(false)}>
-                {t('deviceTrust.actions.back')}
-              </Button>
-              <Button
-                variant="destructive"
-                disabled={busy}
-                onClick={() => onDecide('apply_change', true)}
-              >
-                {t('deviceTrust.actions.confirmExit')}
-              </Button>
-            </>
-          ) : (
-            <>
-              <Button variant="outline" disabled={busy} onClick={() => setConfirmingKeep(true)}>
-                {t('deviceTrust.actions.keep')}
-              </Button>
-              <Button
-                disabled={busy}
-                onClick={() => {
-                  if (view.includesLocalDevice) setConfirmingExit(true)
-                  else if (removeTargets) onDecide('apply_change', false)
-                  else setConfirmingKeep(true)
-                }}
-              >
-                {view.includesLocalDevice
-                  ? t('deviceTrust.actions.exit')
-                  : removeTargets
-                    ? t('deviceTrust.actions.apply')
-                    : t('deviceTrust.actions.keep')}
-              </Button>
-            </>
-          )}
+        <footer className="flex justify-end border-t border-border bg-muted/40 px-5 py-4">
+          <Button
+            className="min-w-24"
+            disabled={busy}
+            onClick={() => onDecide(choice, choice === 'apply_change' && view.includesLocalDevice)}
+          >
+            {busy && <Loader2 className="animate-spin" aria-hidden="true" />}
+            {t('deviceTrust.actions.confirm')}
+          </Button>
         </footer>
       </section>
     </div>
   )
 }
 
-function Impact({
+function ChoiceCard({
   title,
-  body,
-  tone = 'normal',
+  continuesWith,
+  stopsWith,
+  selected,
+  disabled,
+  onSelect,
 }: {
   title: string
-  body: string
-  tone?: 'normal' | 'danger'
+  continuesWith: string
+  stopsWith: string
+  selected: boolean
+  disabled: boolean
+  onSelect: () => void
+}) {
+  const { t } = useTranslation()
+  return (
+    <button
+      type="button"
+      role="radio"
+      aria-checked={selected}
+      disabled={disabled}
+      onClick={onSelect}
+      className={cn(
+        'group relative min-w-0 rounded-md border p-4 text-left outline-none transition-colors',
+        'hover:border-primary/50 hover:bg-primary/5 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50',
+        'disabled:cursor-not-allowed disabled:opacity-50',
+        selected ? 'border-primary bg-primary/5 ring-1 ring-primary/20' : 'border-border bg-card'
+      )}
+    >
+      <span
+        className={cn(
+          'absolute top-3 right-3 flex size-5 items-center justify-center rounded-full border transition-colors',
+          selected
+            ? 'border-primary bg-primary text-primary-foreground'
+            : 'border-muted-foreground/40 bg-background group-hover:border-primary/60'
+        )}
+        aria-hidden="true"
+      >
+        {selected && <Check className="size-3.5" strokeWidth={3} />}
+      </span>
+      <span className="block pr-7 text-sm font-semibold">{title}</span>
+      <span className="mt-3 grid gap-2">
+        <OutcomeRow
+          icon={Link2}
+          label={t('deviceTrust.modal.continueSyncing')}
+          devices={continuesWith}
+          tone="success"
+        />
+        <OutcomeRow
+          icon={Unlink}
+          label={t('deviceTrust.modal.stopSyncing')}
+          devices={stopsWith}
+          tone="danger"
+        />
+      </span>
+    </button>
+  )
+}
+
+function OutcomeRow({
+  icon: Icon,
+  label,
+  devices,
+  tone,
+}: {
+  icon: typeof Link2
+  label: string
+  devices: string
+  tone: 'success' | 'danger'
 }) {
   return (
-    <div
-      className={
-        tone === 'danger'
-          ? 'rounded-md border border-destructive/20 p-3'
-          : 'rounded-md border border-border p-3'
-      }
+    <span
+      className={cn(
+        'grid min-w-0 grid-cols-[1rem_5rem_minmax(0,1fr)] items-start gap-2 text-xs leading-5',
+        tone === 'success' ? 'text-emerald-600 dark:text-emerald-400' : 'text-destructive'
+      )}
     >
-      <h3 className="text-sm font-semibold">{title}</h3>
-      <p className="mt-1 text-xs leading-5 text-muted-foreground">{body}</p>
-    </div>
+      <Icon className="mt-0.5 size-4" aria-hidden="true" />
+      <span>{label}</span>
+      <span className="break-words font-medium">{devices}</span>
+    </span>
   )
 }

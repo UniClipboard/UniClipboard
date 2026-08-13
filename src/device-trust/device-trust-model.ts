@@ -1,8 +1,4 @@
-import type {
-  DeviceTrustImpact,
-  DeviceTrustRelationship,
-  DeviceTrustSnapshot,
-} from '@/api/daemon/device-trust'
+import type { DeviceTrustRelationship, DeviceTrustSnapshot } from '@/api/daemon/device-trust'
 
 export interface DeviceTrustDisplayDevice {
   deviceId: string
@@ -10,18 +6,17 @@ export interface DeviceTrustDisplayDevice {
   relationship: DeviceTrustRelationship | null
 }
 
-export interface DeviceTrustImpactView {
-  usable: DeviceTrustDisplayDevice[]
-  paused: DeviceTrustDisplayDevice[]
-  requiresRejoin: DeviceTrustDisplayDevice[]
+export interface DeviceTrustChoiceView {
+  continuesWith: DeviceTrustDisplayDevice[]
+  stopsWith: DeviceTrustDisplayDevice[]
 }
 
 export interface PendingDeviceTrustDecisionView {
   proposer: DeviceTrustDisplayDevice
   targets: DeviceTrustDisplayDevice[]
   includesLocalDevice: boolean
-  apply: DeviceTrustImpactView
-  keepCurrent: DeviceTrustImpactView
+  apply: DeviceTrustChoiceView
+  keepCurrent: DeviceTrustChoiceView
 }
 
 export function getDeviceLabel(displayName: string, deviceId: string): string {
@@ -37,25 +32,42 @@ export function getPendingDecisionView(
   if (!change) return null
 
   const byId = new Map(snapshot.devices.map(device => [device.deviceId, device]))
+  const nameCounts = new Map<string, number>()
+  for (const device of snapshot.devices) {
+    const name = device.displayName.trim().toLocaleLowerCase()
+    if (name) nameCounts.set(name, (nameCounts.get(name) ?? 0) + 1)
+  }
   const display = (deviceId: string): DeviceTrustDisplayDevice => {
     const relationship = byId.get(deviceId) ?? null
+    const displayName = relationship?.displayName.trim() ?? ''
+    const hasDuplicateName = displayName
+      ? (nameCounts.get(displayName.toLocaleLowerCase()) ?? 0) > 1
+      : false
     return {
       deviceId,
-      label: getDeviceLabel(relationship?.displayName ?? '', deviceId),
+      label: displayName && !hasDuplicateName ? displayName : getDeviceLabel(displayName, deviceId),
       relationship,
     }
   }
-  const impact = (value: DeviceTrustImpact): DeviceTrustImpactView => ({
-    usable: value.usableDeviceIds.map(display),
-    paused: value.pausedDeviceIds.map(display),
-    requiresRejoin: value.requiresRejoinDeviceIds.map(display),
-  })
+  const otherDevices = (deviceIds: string[]) =>
+    deviceIds.flatMap(deviceId => (deviceId === snapshot.localDeviceId ? [] : [display(deviceId)]))
+  const localDeviceWillBeRemoved = change.applyImpact.localDeviceOutcome === 'removed'
 
   return {
     proposer: display(change.proposedByDeviceId),
     targets: change.targetDeviceIds.map(display),
     includesLocalDevice: change.includesLocalDevice,
-    apply: impact(change.applyImpact),
-    keepCurrent: impact(change.keepCurrentImpact),
+    apply: {
+      continuesWith: localDeviceWillBeRemoved
+        ? []
+        : otherDevices(change.applyImpact.usableDeviceIds),
+      stopsWith: localDeviceWillBeRemoved
+        ? otherDevices(change.applyImpact.usableDeviceIds)
+        : otherDevices(change.targetDeviceIds),
+    },
+    keepCurrent: {
+      continuesWith: otherDevices(change.keepCurrentImpact.usableDeviceIds),
+      stopsWith: otherDevices(change.keepCurrentImpact.pausedDeviceIds),
+    },
   }
 }

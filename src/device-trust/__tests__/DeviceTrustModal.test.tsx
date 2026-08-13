@@ -61,13 +61,55 @@ const snapshot = {
 } satisfies DeviceTrustSnapshot
 
 describe('DeviceTrustModal', () => {
-  it('cannot be dismissed and requires confirmation before keeping the current space', () => {
+  it('selects an option from the cards and confirms it with the only footer button', () => {
     const decide = vi.fn()
     render(<DeviceTrustModal snapshot={snapshot} busy={false} error={null} onDecide={decide} />)
     expect(screen.queryByRole('button', { name: /close/i })).not.toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: i18n.t('deviceTrust.actions.keep') }))
-    expect(decide).not.toHaveBeenCalled()
-    fireEvent.click(screen.getByRole('button', { name: i18n.t('deviceTrust.actions.confirmKeep') }))
+    const options = screen.getAllByRole('radio')
+    expect(screen.getByText(i18n.t('deviceTrust.modal.title'))).toBeInTheDocument()
+    expect(screen.getAllByText(i18n.t('deviceTrust.modal.continueSyncing'))).toHaveLength(2)
+    expect(screen.getAllByText(i18n.t('deviceTrust.modal.stopSyncing'))).toHaveLength(2)
+    expect(
+      screen.getAllByText(i18n.t('deviceTrust.modal.continueSyncing'))[0].parentElement
+    ).toHaveClass('text-emerald-600')
+    expect(
+      screen.getAllByText(i18n.t('deviceTrust.modal.stopSyncing'))[0].parentElement
+    ).toHaveClass('text-destructive')
+    expect(screen.queryByText(/Windows/)).not.toBeInTheDocument()
+    expect(options[0]).toHaveAttribute('aria-checked', 'true')
+    fireEvent.click(options[1])
+    expect(options[1]).toHaveAttribute('aria-checked', 'true')
+    const confirm = screen.getByRole('button', { name: i18n.t('deviceTrust.actions.confirm') })
+    expect(screen.getAllByRole('button')).toHaveLength(1)
+    fireEvent.click(confirm)
     expect(decide).toHaveBeenCalledWith('keep_current_device_group', false)
+  })
+
+  it('confirms local removal when applying a change that includes this device', () => {
+    const decide = vi.fn()
+    const localRemovalSnapshot: DeviceTrustSnapshot = {
+      ...snapshot,
+      currentChange: {
+        ...snapshot.currentChange,
+        includesLocalDevice: true,
+        applyImpact: { ...snapshot.currentChange.applyImpact, localDeviceOutcome: 'removed' },
+      },
+    }
+    render(
+      <DeviceTrustModal
+        snapshot={localRemovalSnapshot}
+        busy={false}
+        error={null}
+        onDecide={decide}
+      />
+    )
+    expect(
+      screen.getByRole('radio', { name: new RegExp(i18n.t('deviceTrust.modal.leaveTitle')) })
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('radio', { name: new RegExp(i18n.t('deviceTrust.modal.stayTitle')) })
+    ).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: i18n.t('deviceTrust.actions.confirm') }))
+    expect(decide).toHaveBeenCalledWith('apply_change', true)
   })
 })

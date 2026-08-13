@@ -74,10 +74,47 @@ describe('device trust product model', () => {
   it('uses Engine impact facts for both user choices', () => {
     const view = getPendingDecisionView(snapshot)
 
+    expect(view?.proposer.label).toBe('Mac')
+    expect(view?.targets.map(device => device.label)).toEqual(['Phone'])
+    expect(view?.apply.continuesWith.map(device => device.label)).toEqual(['Mac'])
+    expect(view?.apply.stopsWith.map(device => device.label)).toEqual(['Phone'])
+    expect(view?.keepCurrent.continuesWith.map(device => device.label)).toEqual(['Phone'])
+    expect(view?.keepCurrent.stopsWith.map(device => device.label)).toEqual(['Mac'])
+  })
+
+  it('adds device suffixes only when display names are duplicated', () => {
+    const duplicateNames: DeviceTrustSnapshot = {
+      ...snapshot,
+      devices: snapshot.devices.map(device =>
+        device.deviceId === 'device-phone-B4D9' ? { ...device, displayName: 'Mac' } : device
+      ),
+    }
+
+    const view = getPendingDecisionView(duplicateNames)
+
     expect(view?.proposer.label).toBe('Mac · A7C2')
-    expect(view?.targets.map(device => device.label)).toEqual(['Phone · B4D9'])
-    expect(view?.apply.usable.map(device => device.label)).toEqual(['Mac · A7C2', 'Windows · 8F31'])
-    expect(view?.keepCurrent.paused.map(device => device.label)).toEqual(['Mac · A7C2'])
+    expect(view?.targets.map(device => device.label)).toEqual(['Mac · B4D9'])
+  })
+
+  it('shows no continuing peers when applying a change removes the local device', () => {
+    const localRemoval: DeviceTrustSnapshot = {
+      ...snapshot,
+      currentChange: {
+        ...snapshot.currentChange!,
+        targetDeviceIds: [snapshot.localDeviceId],
+        includesLocalDevice: true,
+        applyImpact: {
+          ...snapshot.currentChange!.applyImpact,
+          usableDeviceIds: ['device-mac-A7C2', 'device-phone-B4D9'],
+          localDeviceOutcome: 'removed',
+        },
+      },
+    }
+
+    const view = getPendingDecisionView(localRemoval)
+
+    expect(view?.apply.continuesWith).toEqual([])
+    expect(view?.apply.stopsWith.map(device => device.label)).toEqual(['Mac', 'Phone'])
   })
 
   it('falls back to an unnamed label without persisting another identity', () => {

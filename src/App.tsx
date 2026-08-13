@@ -22,6 +22,9 @@ import { SettingProvider } from '@/contexts/SettingContext'
 import { ShortcutProvider } from '@/contexts/ShortcutContext'
 import { TitleBarSlotContext } from '@/contexts/titlebar-slot-context'
 import { UpdateProvider } from '@/contexts/UpdateContext'
+import { useDeviceTrust } from '@/device-trust/device-trust-context'
+import { DeviceTrustModal } from '@/device-trust/DeviceTrustModal'
+import { DeviceTrustProvider } from '@/device-trust/DeviceTrustProvider'
 import { useEncryptionState } from '@/hooks/useDaemonEvents'
 import { usePlatform } from '@/hooks/usePlatform'
 import { useUINavigateListener } from '@/hooks/useUINavigateListener'
@@ -379,7 +382,7 @@ const AppContent = ({
   }
 
   return (
-    <>
+    <DeviceTrustProvider enabled>
       <GlobalShortcuts />
       <SentryRoutes>
         <Route element={<AuthenticatedLayout />}>
@@ -394,8 +397,21 @@ const AppContent = ({
       </SentryRoutes>
       <Toaster />
       <StartupModals />
-    </>
+      <DeviceTrustModalHost />
+    </DeviceTrustProvider>
   )
+}
+
+const DeviceTrustModalHost = () => {
+  const { snapshot, decisionBusy, decisionError, decide } = useDeviceTrust()
+  return snapshot?.currentChange ? (
+    <DeviceTrustModal
+      snapshot={snapshot}
+      busy={decisionBusy}
+      error={decisionError}
+      onDecide={(choice, confirm) => void decide(choice, confirm)}
+    />
+  ) : null
 }
 
 export default function App() {

@@ -89,7 +89,6 @@ fn workspace_convergence_label(state: WorkspaceConvergencePhaseDto) -> &'static 
     match state {
         WorkspaceConvergencePhaseDto::LocallyApplied => "locally_applied",
         WorkspaceConvergencePhaseDto::Converging => "converging",
-        WorkspaceConvergencePhaseDto::WaitingForOfflineMember => "waiting_for_offline_member",
         WorkspaceConvergencePhaseDto::Complete => "complete",
         WorkspaceConvergencePhaseDto::RecoveryRequired => "recovery_required",
     }

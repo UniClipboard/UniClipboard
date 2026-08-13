@@ -140,9 +140,6 @@ impl IntoApiDto<WorkspaceConvergenceDto> for WorkspaceConvergenceSummary {
                 WorkspaceConvergencePhaseSummary::Converging => {
                     WorkspaceConvergencePhaseDto::Converging
                 }
-                WorkspaceConvergencePhaseSummary::WaitingForOfflineMember => {
-                    WorkspaceConvergencePhaseDto::WaitingForOfflineMember
-                }
                 WorkspaceConvergencePhaseSummary::Complete => {
                     WorkspaceConvergencePhaseDto::Complete
                 }
@@ -151,12 +148,12 @@ impl IntoApiDto<WorkspaceConvergenceDto> for WorkspaceConvergenceSummary {
                 }
             },
             revision: self.revision,
-            change_count: self.change_count,
-            removal_intent_count: self.removal_intent_count,
+            history_event_count: self.history_event_count,
             effective_member_count: self.effective_member_count,
-            confirmed_member_count: self.confirmed_member_count,
-            waiting_member_device_ids: self.waiting_member_device_ids,
-            waiting_member_count: self.waiting_member_count,
+            pending_removal_decision_device_ids: self.pending_removal_decision_device_ids,
+            pending_removal_decision_event_id: self.pending_removal_decision_event_id,
+            diverged_peer_device_ids: self.diverged_peer_device_ids,
+            upgrade_required_peer_device_ids: self.upgrade_required_peer_device_ids,
             convergence_digest: self.convergence_digest,
             updated_at_ms: self.updated_at_ms,
             removed: self.removed,
@@ -230,44 +227,5 @@ mod tests {
         let send = mapped.send_content_types.expect("send patch");
         assert_eq!(send.text, Some(true));
         assert_eq!(send.image, None);
-    }
-
-    #[test]
-    fn workspace_convergence_mapping_preserves_complete_engine_state() {
-        let summary = WorkspaceConvergenceSummary {
-            phase: WorkspaceConvergencePhaseSummary::WaitingForOfflineMember,
-            revision: 4,
-            change_count: 2,
-            removal_intent_count: 1,
-            effective_member_count: 3,
-            confirmed_member_count: 2,
-            waiting_member_device_ids: vec!["device-b".into()],
-            waiting_member_count: 1,
-            convergence_digest: Some("d1".into()),
-            updated_at_ms: 42,
-            removed: false,
-            failure_category: Some(WorkspaceConvergenceFailureCategorySummary::Storage),
-        };
-
-        let mapped: WorkspaceConvergenceDto = summary.into_api_dto();
-
-        assert_eq!(
-            mapped.phase,
-            WorkspaceConvergencePhaseDto::WaitingForOfflineMember
-        );
-        assert_eq!(mapped.revision, 4);
-        assert_eq!(mapped.change_count, 2);
-        assert_eq!(mapped.removal_intent_count, 1);
-        assert_eq!(mapped.effective_member_count, 3);
-        assert_eq!(mapped.confirmed_member_count, 2);
-        assert_eq!(mapped.waiting_member_device_ids, vec!["device-b"]);
-        assert_eq!(mapped.waiting_member_count, 1);
-        assert_eq!(mapped.convergence_digest.as_deref(), Some("d1"));
-        assert_eq!(mapped.updated_at_ms, 42);
-        assert!(!mapped.removed);
-        assert_eq!(
-            mapped.failure_category,
-            Some(WorkspaceConvergenceFailureCategoryDto::Storage)
-        );
     }
 }

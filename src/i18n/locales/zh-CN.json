@@ -1,4 +1,41 @@
 {
+  "deviceTrust": {
+    "listSeparator": "、",
+    "notification": {
+      "title": "设备关系需要查看",
+      "decision": "设备组发生了变化，请在 UniClipboard 中处理。",
+      "status": "部分设备的同步关系已改变，请打开 UniClipboard 查看。"
+    },
+    "modal": {
+      "title": "确认设备变化",
+      "summary": "{{proposer}} 提议移除 {{targets}}。在继续使用主窗口前，请选择这台设备如何处理。",
+      "applyTitle": "跟随这项变化",
+      "applyBody": "此设备将继续与 {{usable}} 同步，并移除 {{removed}}。",
+      "keepTitle": "保留当前空间",
+      "keepBody": "此设备将继续与 {{usable}} 同步，并与 {{paused}} 分成不同空间。",
+      "removeTargets": "也从此设备移除 {{targets}}（默认）",
+      "keepConfirmTitle": "确认分成不同空间？",
+      "keepConfirmBody": "双方以后不会再分享新的剪贴板内容，但各自可以继续独立使用和邀请其他设备。",
+      "exitConfirmTitle": "确认退出这个空间？",
+      "exitConfirmBody": "这台设备会停止与原空间同步，但本地历史、复制和粘贴仍可继续使用。",
+      "stateChanged": "设备状态已经变化，已为你显示最新情况。",
+      "failed": "暂时无法保存选择。请检查后台服务后重试。"
+    },
+    "actions": {
+      "back": "返回",
+      "keep": "保留当前空间",
+      "apply": "也从此设备移除目标设备",
+      "exit": "退出这个空间",
+      "confirmKeep": "确认保留并分开",
+      "confirmExit": "确认退出"
+    },
+    "status": {
+      "diverged": "不同空间",
+      "upgrade": "需要更新",
+      "unverifiable": "无法验证设备资料",
+      "pending": "需要确认设备变化"
+    }
+  },
   "common": {
     "loading": "加载中...",
     "unknownSize": "未知大小",

@@ -3,7 +3,7 @@
 //! Storage access and partial-update semantics stay behind the engine interface.
 
 use axum::extract::{Path, State};
-use axum::routing::{get, patch};
+use axum::routing::{get, patch, post};
 use axum::{Json, Router};
 use tracing::{info, instrument};
 
@@ -14,13 +14,14 @@ use uc_engine::error_codes::{
     QUERY_WORKSPACE_CONVERGENCE_UNAVAILABLE_CODE, SPACE_PROTECTION_FAILED_CODE,
 };
 use uc_engine::{
-    EngineError, Operation, OperationResult, QueryMemberSyncPreferencesInput,
-    UpdateMemberSyncPreferencesInput,
+    DecideDeviceTrustChangeInput, DeviceTrustChoiceSummary, EngineError, Operation,
+    OperationResult, QueryMemberSyncPreferencesInput, UpdateMemberSyncPreferencesInput,
 };
 
 use crate::api::dto::error::{log_facade_failure, ApiError};
 use crate::api::dto::member::{
-    MemberSyncPreferencesPatchDto, MemberSyncResultDto, SpaceProtectionDto, WorkspaceConvergenceDto,
+    DecideDeviceTrustRequestDto, DeviceTrustDecisionDto, DeviceTrustSnapshotDto,
+    MemberSyncPreferencesPatchDto, MemberSyncResultDto, SpaceProtectionDto,
 };
 use crate::api::projection::{IntoApiDto, IntoDomain};
 use crate::api::server::DaemonApiState;
@@ -36,9 +37,10 @@ pub fn router() -> Router<DaemonApiState> {
             patch(update_member_sync_preferences_handler),
         )
         .route("/member/protection", get(get_space_protection_handler))
+        .route("/member/device-trust", get(get_device_trust_handler))
         .route(
-            "/member/workspace-convergence",
-            get(get_workspace_convergence_handler),
+            "/member/device-trust/decision",
+            post(decide_device_trust_handler),
         )
 }
 
@@ -201,49 +203,93 @@ pub async fn get_space_protection_handler(
     Ok(Json(ApiEnvelope::now(snapshot.into_api_dto())))
 }
 
-/// GET /member/workspace-convergence
-///
-/// Returns the complete Engine-owned workspace convergence state for the
-/// active space. The daemon does not derive per-feature status from it.
+#[instrument(name = "api.member.get_device_trust", level = "info", skip(state))]
 #[utoipa::path(
     get,
-    path = "/member/workspace-convergence",
+    path = "/member/device-trust",
     tag = "member",
-    operation_id = "getWorkspaceConvergence",
-    responses(
-        (status = 200, body = WorkspaceConvergenceEnvelope),
-        (status = 503, description = "Runtime unavailable", body = ApiErrorResponse),
-        (status = 500, description = "Internal server error", body = ApiErrorResponse)
-    )
+    operation_id = "getDeviceTrust",
+    responses((status = 200, body = DeviceTrustEnvelope))
 )]
-#[instrument(
-    name = "api.member.get_workspace_convergence",
-    level = "info",
-    skip(state)
-)]
-pub async fn get_workspace_convergence_handler(
+pub async fn get_device_trust_handler(
     State(state): State<DaemonApiState>,
-) -> Result<Json<ApiEnvelope<WorkspaceConvergenceDto>>, ApiError> {
+) -> Result<Json<ApiEnvelope<DeviceTrustSnapshotDto>>, ApiError> {
     let result = state
-        .execute(Operation::QueryWorkspaceConvergence)
+        .execute(Operation::QueryDeviceTrust)
         .await
-        .map_err(|error| map_member_engine_error("", "get_workspace_convergence", error))?;
-    let OperationResult::WorkspaceConvergence(snapshot) = result else {
+        .map_err(|error| map_member_engine_error("", "get_device_trust", error))?;
+    let OperationResult::DeviceTrust(snapshot) = result else {
         tracing::error!(
             error_kind = "unexpected_operation_result",
-            operation = "get_workspace_convergence",
-            "engine returned unexpected result"
+            operation = "get_device_trust",
+            "engine returned an unexpected device trust result"
         );
         return Err(ApiError::internal(
-            "engine returned an unexpected workspace-convergence result",
+            "engine returned an unexpected device trust result",
         ));
     };
-    info!(
-        phase = ?snapshot.phase,
-        revision = snapshot.revision,
-        "get workspace convergence succeeded"
-    );
-    Ok(Json(ApiEnvelope::now(snapshot.into_api_dto())))
+    let revision = snapshot.revision;
+    let dto = serde_json::from_value(
+        serde_json::to_value(snapshot)
+            .map_err(|_| ApiError::internal("failed to encode device trust result"))?,
+    )
+    .map_err(|_| ApiError::internal("failed to decode device trust result"))?;
+    info!(revision, "device trust query completed");
+    Ok(Json(ApiEnvelope::now(dto)))
+}
+
+#[instrument(
+    name = "api.member.decide_device_trust",
+    level = "info",
+    skip(state, request)
+)]
+#[utoipa::path(
+    post,
+    path = "/member/device-trust/decision",
+    tag = "member",
+    operation_id = "decideDeviceTrust",
+    request_body = DecideDeviceTrustRequestDto,
+    responses((status = 200, body = DeviceTrustDecisionEnvelope))
+)]
+pub async fn decide_device_trust_handler(
+    State(state): State<DaemonApiState>,
+    Json(request): Json<DecideDeviceTrustRequestDto>,
+) -> Result<Json<ApiEnvelope<DeviceTrustDecisionDto>>, ApiError> {
+    let choice = match request.choice {
+        crate::api::dto::member::DeviceTrustChoiceDto::ApplyChange => {
+            DeviceTrustChoiceSummary::ApplyChange
+        }
+        crate::api::dto::member::DeviceTrustChoiceDto::KeepCurrentDeviceGroup => {
+            DeviceTrustChoiceSummary::KeepCurrentDeviceGroup
+        }
+    };
+    let result = state
+        .execute(Operation::DecideDeviceTrustChange(
+            DecideDeviceTrustChangeInput {
+                change_id: request.change_id,
+                choice,
+                confirm_local_removal: request.confirm_local_removal,
+            },
+        ))
+        .await
+        .map_err(|error| map_member_engine_error("", "decide_device_trust", error))?;
+    let OperationResult::DeviceTrustDecision(decision) = result else {
+        tracing::error!(
+            error_kind = "unexpected_operation_result",
+            operation = "decide_device_trust",
+            "engine returned an unexpected device trust decision result"
+        );
+        return Err(ApiError::internal(
+            "engine returned an unexpected device trust decision result",
+        ));
+    };
+    let dto = serde_json::from_value(
+        serde_json::to_value(decision)
+            .map_err(|_| ApiError::internal("failed to encode device trust decision"))?,
+    )
+    .map_err(|_| ApiError::internal("failed to decode device trust decision"))?;
+    info!(result = "completed", "device trust decision completed");
+    Ok(Json(ApiEnvelope::now(dto)))
 }
 
 pub(crate) fn map_member_engine_error(

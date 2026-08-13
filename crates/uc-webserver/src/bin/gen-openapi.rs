@@ -58,10 +58,10 @@ use uc_webserver::api::openapi::ApiDoc;
 /// Protected relay credentials add a status query and one atomic save:
 /// +2 paths, +2 operations.
 /// Engine-owned member protection adds GET `/member/protection`. Workspace
-/// convergence then replaces the former convergence, removal, and refresh
-/// endpoints with GET `/member/workspace-convergence`: 72 paths / 80 operations.
-const EXPECTED_PATHS: usize = 72;
-const EXPECTED_OPERATIONS: usize = 80;
+/// Device trust replaces the product-facing convergence query with one complete
+/// query and one decision endpoint: 73 paths / 81 operations.
+const EXPECTED_PATHS: usize = 73;
+const EXPECTED_OPERATIONS: usize = 81;
 const SCHEMA_PREFIX: &str = "#/components/schemas/";
 const HTTP_METHODS: [&str; 7] = ["get", "put", "post", "delete", "patch", "head", "options"];
 

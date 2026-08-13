@@ -102,7 +102,6 @@ pub struct SpaceProtectionDto {
 pub enum WorkspaceConvergencePhaseDto {
     LocallyApplied,
     Converging,
-    WaitingForOfflineMember,
     Complete,
     RecoveryRequired,
 }
@@ -127,14 +126,178 @@ pub enum WorkspaceConvergenceFailureCategoryDto {
 pub struct WorkspaceConvergenceDto {
     pub phase: WorkspaceConvergencePhaseDto,
     pub revision: u64,
-    pub change_count: u64,
-    pub removal_intent_count: u64,
+    pub history_event_count: u64,
     pub effective_member_count: u64,
-    pub confirmed_member_count: u64,
-    pub waiting_member_device_ids: Vec<String>,
-    pub waiting_member_count: u64,
+    pub pending_removal_decision_device_ids: Vec<String>,
+    pub pending_removal_decision_event_id: Option<String>,
+    pub diverged_peer_device_ids: Vec<String>,
+    pub upgrade_required_peer_device_ids: Vec<String>,
     pub convergence_digest: Option<String>,
     pub updated_at_ms: i64,
     pub removed: bool,
     pub failure_category: Option<WorkspaceConvergenceFailureCategoryDto>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum DeviceMembershipDto {
+    Active,
+    Removed,
+    Unavailable,
+    Unknown,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum DeviceReachabilityDto {
+    Online,
+    Offline,
+    Unknown,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum DeviceGroupRelationshipDto {
+    Consistent,
+    PendingLocalDecision,
+    Diverged,
+    Unverifiable,
+    Unknown,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum DeviceCompatibilityDto {
+    Compatible,
+    UpgradeRequired,
+    Unknown,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum DeviceSyncRelationshipDto {
+    Usable,
+    WaitingForLocalDecision,
+    PausedGroupDiverged,
+    PausedUpgradeRequired,
+    PausedUnverifiable,
+    RemovedLocalDevice,
+    RemovedPeerDevice,
+    Unknown,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum DeviceTrustChoiceDto {
+    ApplyChange,
+    KeepCurrentDeviceGroup,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum DeviceTrustActionDto {
+    ApplyCurrentChange,
+    KeepCurrentDeviceGroup,
+    ConfirmApplyRemovesLocalDevice,
+    RejoinDeviceGroup,
+    UpdateThisDevice,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum DeviceTrustUnavailableReasonDto {
+    NoCurrentChange,
+    ChangeNoLongerCurrent,
+    LocalDeviceConfirmationRequired,
+    LocalDeviceRemoved,
+    RecoveryNotAvailableInThisVersion,
+    PeerUpgradeRequired,
+    DeviceFactsUnverifiable,
+    EngineUnavailable,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct DeviceTrustImpactDto {
+    pub usable_device_ids: Vec<String>,
+    pub paused_device_ids: Vec<String>,
+    pub local_device_outcome: DeviceMembershipDto,
+    pub requires_rejoin_device_ids: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct DeviceTrustChangeDto {
+    pub change_id: String,
+    pub proposed_by_device_id: String,
+    pub target_device_ids: Vec<String>,
+    pub includes_local_device: bool,
+    pub apply_impact: DeviceTrustImpactDto,
+    pub keep_current_impact: DeviceTrustImpactDto,
+    pub allowed_choices: Vec<DeviceTrustChoiceDto>,
+    pub blocked_reason: Option<DeviceTrustUnavailableReasonDto>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct DeviceTrustRelationshipDto {
+    pub device_id: String,
+    pub display_name: String,
+    pub is_local: bool,
+    pub reachability: DeviceReachabilityDto,
+    pub membership: DeviceMembershipDto,
+    pub group_relationship: DeviceGroupRelationshipDto,
+    pub compatibility: DeviceCompatibilityDto,
+    pub sync_relationship: DeviceSyncRelationshipDto,
+    pub available_actions: Vec<DeviceTrustActionDto>,
+    pub blocked_reason: Option<DeviceTrustUnavailableReasonDto>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct DeviceTrustSnapshotDto {
+    pub revision: u64,
+    pub local_device_id: String,
+    pub local_membership: DeviceMembershipDto,
+    pub current_change: Option<DeviceTrustChangeDto>,
+    pub devices: Vec<DeviceTrustRelationshipDto>,
+    pub recovery: String,
+    pub allowed_actions: Vec<DeviceTrustActionDto>,
+    pub blocked_reason: Option<DeviceTrustUnavailableReasonDto>,
+    pub updated_at_ms: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct DecideDeviceTrustRequestDto {
+    pub change_id: String,
+    pub choice: DeviceTrustChoiceDto,
+    #[serde(default)]
+    pub confirm_local_removal: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case", tag = "kind")]
+pub enum DeviceTrustDecisionDto {
+    Applied {
+        change_id: String,
+        snapshot: DeviceTrustSnapshotDto,
+    },
+    KeptCurrentDeviceGroup {
+        change_id: String,
+        snapshot: DeviceTrustSnapshotDto,
+    },
+    AlreadyCompleted {
+        change_id: String,
+        completed_choice: DeviceTrustChoiceDto,
+        snapshot: DeviceTrustSnapshotDto,
+    },
+    StateChanged {
+        current_change_id: Option<String>,
+        snapshot: DeviceTrustSnapshotDto,
+    },
+    LocalDeviceConfirmationRequired {
+        change_id: String,
+        snapshot: DeviceTrustSnapshotDto,
+    },
 }

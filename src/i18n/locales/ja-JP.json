@@ -1,4 +1,41 @@
 {
+  "deviceTrust": {
+    "listSeparator": "、",
+    "notification": {
+      "title": "デバイス関係の確認",
+      "decision": "デバイスグループが変更されました。UniClipboard で対応してください。",
+      "status": "デバイスの同期関係が変わりました。UniClipboard で確認してください。"
+    },
+    "modal": {
+      "title": "デバイス変更を確認",
+      "summary": "{{proposer}} が {{targets}} の削除を提案しました。メイン画面を使う前に、このデバイスでの対応を選んでください。",
+      "applyTitle": "変更を反映",
+      "applyBody": "{{usable}} との同期を続け、{{removed}} を削除します。",
+      "keepTitle": "現在のスペースを維持",
+      "keepBody": "{{usable}} との同期を続け、{{paused}} とは別のスペースになります。",
+      "removeTargets": "このデバイスからも {{targets}} を削除（既定）",
+      "keepConfirmTitle": "別のスペースを維持しますか？",
+      "keepConfirmBody": "今後、新しいクリップボード内容は共有されません。それぞれ独立して利用し、他のデバイスを招待できます。",
+      "exitConfirmTitle": "このスペースから退出しますか？",
+      "exitConfirmBody": "元のスペースとの同期は停止します。ローカル履歴、コピー、貼り付けは引き続き利用できます。",
+      "stateChanged": "デバイス状態が変わりました。最新の状態を表示しています。",
+      "failed": "選択を保存できませんでした。バックグラウンドサービスを確認して再試行してください。"
+    },
+    "actions": {
+      "back": "戻る",
+      "keep": "現在のスペースを維持",
+      "apply": "対象デバイスをこちらからも削除",
+      "exit": "このスペースから退出",
+      "confirmKeep": "別のスペースを維持",
+      "confirmExit": "退出を確認"
+    },
+    "status": {
+      "diverged": "別のスペース",
+      "upgrade": "更新が必要",
+      "unverifiable": "デバイス情報を確認できません",
+      "pending": "デバイス変更の確認が必要"
+    }
+  },
   "common": {
     "loading": "読み込み中...",
     "unknownSize": "不明なサイズ",

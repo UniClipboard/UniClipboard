@@ -34,6 +34,7 @@ import {
 import React, { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { useTranslation } from 'react-i18next'
 import { refreshPresence } from '@/api/daemon'
+import type { DeviceTrustRelationship } from '@/api/daemon/device-trust'
 import type { SpaceMember } from '@/api/daemon/members'
 import { unpairDevice } from '@/api/daemon/members'
 import {
@@ -80,19 +81,18 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Skeleton } from '@/components/ui/skeleton'
 import { toast } from '@/components/ui/toast'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+import { useDeviceTrust } from '@/device-trust/device-trust-context'
 import type { PeerSnapshotPayloadItem, PeersChangedPayload } from '@/hooks/useDaemonEvents'
 import { useNow } from '@/hooks/useRelativeTime'
 import { useSetting } from '@/hooks/useSetting'
 import { daemonWs } from '@/lib/daemon-ws'
 import { createLogger } from '@/lib/logger'
 import { cn } from '@/lib/utils'
-import { isRemovalInProgress, isWaitingForDeviceUpdate } from '@/pages/device-status-utils'
 import { useAppDispatch, useAppSelector } from '@/store/hooks'
 import {
   clearLocalDeviceError,
   clearSpaceMembersError,
   fetchLocalDeviceInfo,
-  fetchMembershipConvergence,
   fetchNetworkRecoveryStatus,
   fetchSpaceProtection,
   fetchSpaceMembers,
@@ -109,8 +109,6 @@ type Selection =
 
 /** A mobile device counts as "recently active" within this window. */
 const MOBILE_ACTIVE_WINDOW_MS = 10 * 60 * 1000
-const CONVERGENCE_POLL_MS = 2_000
-const CONVERGENCE_POLL_ATTEMPTS = 15
 
 function subscribeDocumentVisibility(onStoreChange: () => void): () => void {
   document.addEventListener('visibilitychange', onStoreChange)
@@ -139,15 +137,35 @@ const DevicesPage: React.FC = () => {
     spaceMembersError,
     spaceProtection,
     spaceProtectionError,
-    membershipConvergence,
     networkRecovery,
     networkRecoveryError,
     networkRecoveryRequestId,
   } = useAppSelector(state => state.devices)
+  const { snapshot: deviceTrust, refresh: refreshDeviceTrust } = useDeviceTrust()
 
-  const peers = localDevice
+  const admittedPeers = localDevice
     ? rawSpaceMembers.filter(d => d.peerId !== localDevice.peerId)
     : rawSpaceMembers
+  const admittedIds = new Set(admittedPeers.map(peer => peer.peerId))
+  const retainedTrustPeers: SpaceMember[] = (deviceTrust?.devices ?? [])
+    .filter(
+      device =>
+        !device.isLocal &&
+        !admittedIds.has(device.deviceId) &&
+        (device.groupRelationship === 'diverged' ||
+          device.groupRelationship === 'unverifiable' ||
+          device.compatibility === 'upgrade_required')
+    )
+    .map(device => ({
+      peerId: device.deviceId,
+      deviceName: device.displayName,
+      pairingState: 'retained_trust_relationship',
+      lastSeenAtMs: null,
+      connected: device.reachability === 'online',
+      channel: 'unknown',
+      connectionAddress: null,
+    }))
+  const peers = [...admittedPeers, ...retainedTrustPeers]
   const onlineCount = peers.filter(p => p.connected).length
   const legacyBootstrap = spaceProtection?.legacyBootstrap ?? null
   const readmissionMemberIds = new Set(
@@ -164,28 +182,30 @@ const DevicesPage: React.FC = () => {
 
   const { setting } = useSetting()
   const syncActive = setting?.sync.syncEnabled !== false
-  const localDeviceStatus: DeviceRowStatus = membershipConvergence?.removed
-    ? {
-        kind: 'removed',
-        label: t('devices.memberRemoval.deviceRemoved.title'),
-        description: t('devices.memberRemoval.deviceRemoved.description'),
-      }
-    : membershipConvergence?.phase === 'recovery_required'
+  const localTrust = deviceTrust?.devices.find(device => device.isLocal)
+  const localDeviceStatus: DeviceRowStatus =
+    deviceTrust?.localMembership === 'removed'
       ? {
-          kind: 'recovery_required',
-          label: t('devices.memberRemoval.recoveryRequired.title'),
-          description: t('devices.memberRemoval.recoveryRequired.description'),
+          kind: 'removed',
+          label: t('devices.memberRemoval.deviceRemoved.title'),
+          description: t('devices.memberRemoval.deviceRemoved.description'),
         }
-      : membershipConvergence && isRemovalInProgress(membershipConvergence)
+      : localTrust?.groupRelationship === 'unverifiable'
         ? {
-            kind: 'removing',
-            label: t('devices.memberRemoval.converging.title'),
-            description: t('devices.memberRemoval.converging.description'),
+            kind: 'recovery_required',
+            label: t('devices.memberRemoval.recoveryRequired.title'),
+            description: t('devices.memberRemoval.recoveryRequired.description'),
           }
-        : {
-            kind: syncActive ? 'online' : 'offline',
-            label: t(`devices.list.status.${syncActive ? 'online' : 'offline'}`),
-          }
+        : localTrust?.groupRelationship === 'pending_local_decision'
+          ? {
+              kind: 'removing',
+              label: t('devices.memberRemoval.converging.title'),
+              description: t('devices.memberRemoval.converging.description'),
+            }
+          : {
+              kind: syncActive ? 'online' : 'offline',
+              label: t(`devices.list.status.${syncActive ? 'online' : 'offline'}`),
+            }
   const globalSyncOff = setting?.sync.syncEnabled === false
   const globalFileSyncOff = setting?.fileSync?.fileSyncEnabled === false
   const lanOnlyActive = setting?.network?.allowRelayFallback === false
@@ -198,7 +218,6 @@ const DevicesPage: React.FC = () => {
   useEffect(() => {
     if (!documentVisible) return
     dispatch(fetchSpaceProtection())
-    dispatch(fetchMembershipConvergence())
     dispatch(fetchNetworkRecoveryStatus())
 
     // Presence awareness is push-driven by the daemon's PeerKeepAliveWorker
@@ -216,28 +235,7 @@ const DevicesPage: React.FC = () => {
   }, [dispatch, documentVisible])
 
   useEffect(() => {
-    if (membershipConvergence?.phase !== 'converging' || !documentVisible) return
-
-    let attempts = 0
-    const timer = window.setInterval(() => {
-      attempts += 1
-      dispatch(fetchMembershipConvergence())
-      if (attempts >= CONVERGENCE_POLL_ATTEMPTS) window.clearInterval(timer)
-    }, CONVERGENCE_POLL_MS)
-
-    return () => window.clearInterval(timer)
-  }, [dispatch, documentVisible, membershipConvergence?.phase])
-
-  useEffect(() => {
     const handler = (event: { topic: string; eventType: string; payload: unknown }) => {
-      if (
-        event.topic === 'workspace-convergence' &&
-        event.eventType === 'workspace-convergence.changed'
-      ) {
-        dispatch(fetchMembershipConvergence())
-        dispatch(fetchSpaceMembers())
-        return
-      }
       if (event.topic === 'network-recovery' && event.eventType === 'network-recovery.changed') {
         dispatch(fetchNetworkRecoveryStatus())
         return
@@ -249,15 +247,9 @@ const DevicesPage: React.FC = () => {
         // redundant HTTP refetch on every presence flip (issue #1129).
         const payload = event.payload as PeersChangedPayload
         dispatch(setSpaceMembers(payload.peers.map(peerSnapshotToMember)))
-        if (documentVisible) {
-          dispatch(fetchMembershipConvergence())
-        }
       }
     }
-    const unsub = daemonWs.subscribe(
-      ['peers', 'workspace-convergence', 'network-recovery'],
-      handler
-    )
+    const unsub = daemonWs.subscribe(['peers', 'network-recovery'], handler)
     return unsub
   }, [dispatch, documentVisible])
 
@@ -317,7 +309,7 @@ const DevicesPage: React.FC = () => {
     setUnpairBusy(true)
     try {
       await unpairDevice(unpairTargetId)
-      dispatch(fetchMembershipConvergence())
+      await refreshDeviceTrust()
       dispatch(fetchSpaceMembers())
       dispatch(fetchSpaceProtection())
       setSelection({ kind: 'local' })
@@ -524,30 +516,28 @@ const DevicesPage: React.FC = () => {
             )}
 
             <SectionLabel label={t('devices.pairedDevices.title')} />
-            {peers.map(peer => (
-              <DeviceListItem
-                key={peer.peerId}
-                name={peer.deviceName || t('devices.list.labels.unknownDevice')}
-                tone={peerDotTone(peer)}
-                status={
-                  membershipConvergence &&
-                  isWaitingForDeviceUpdate(membershipConvergence, peer.peerId)
-                    ? {
-                        kind: 'waiting_for_update',
-                        label: t('devices.convergence.waitingForOfflineMember'),
-                      }
-                    : {
-                        kind: peer.connected ? 'online' : 'offline',
-                        label: t(`devices.list.status.${peer.connected ? 'online' : 'offline'}`),
-                      }
-                }
-                dimmed={!peer.connected}
-                selected={
-                  effectiveSelection.kind === 'peer' && effectiveSelection.id === peer.peerId
-                }
-                onSelect={() => setSelection({ kind: 'peer', id: peer.peerId })}
-              />
-            ))}
+            {peers.map(peer => {
+              const trust = deviceTrust?.devices.find(device => device.deviceId === peer.peerId)
+              const trustStatus = trust ? deviceTrustStatus(trust, t) : null
+              return (
+                <DeviceListItem
+                  key={peer.peerId}
+                  name={peer.deviceName || t('devices.list.labels.unknownDevice')}
+                  tone={trustStatus?.tone ?? peerDotTone(peer)}
+                  status={
+                    trustStatus?.status ?? {
+                      kind: peer.connected ? 'online' : 'offline',
+                      label: t(`devices.list.status.${peer.connected ? 'online' : 'offline'}`),
+                    }
+                  }
+                  dimmed={!peer.connected && !trustStatus}
+                  selected={
+                    effectiveSelection.kind === 'peer' && effectiveSelection.id === peer.peerId
+                  }
+                  onSelect={() => setSelection({ kind: 'peer', id: peer.peerId })}
+                />
+              )
+            })}
             {peers.length === 0 && !spaceMembersError && (
               <EmptyAddRow
                 label={t('devices.panel.addMenu.trigger')}
@@ -794,7 +784,14 @@ interface DeviceListItemProps {
 }
 
 type DeviceRowStatus = {
-  kind: 'online' | 'offline' | 'waiting_for_update' | 'removing' | 'recovery_required' | 'removed'
+  kind:
+    | 'online'
+    | 'offline'
+    | 'waiting_for_update'
+    | 'removing'
+    | 'recovery_required'
+    | 'removed'
+    | 'diverged'
   label: string
   description?: string
 }
@@ -836,7 +833,7 @@ const DeviceRowStatusIcon: React.FC<{ name: string; status: DeviceRowStatus }> =
   const Icon =
     status.kind === 'online' ? CircleCheck : status.kind === 'offline' ? CircleOff : TriangleAlert
   const colorClass =
-    status.kind === 'removed' || status.kind === 'recovery_required'
+    status.kind === 'removed' || status.kind === 'recovery_required' || status.kind === 'diverged'
       ? 'text-destructive'
       : status.kind === 'removing' || status.kind === 'waiting_for_update'
         ? 'text-warning'
@@ -888,6 +885,34 @@ const LocalPanelSkeleton: React.FC = () => (
 
 function peerDotTone(peer: SpaceMember): StatusDotTone {
   return derivePeerStatusTone(peer.channel ?? 'unknown', peer.connected)
+}
+
+function deviceTrustStatus(
+  device: DeviceTrustRelationship,
+  t: (key: string) => string
+): { tone: StatusDotTone; status: DeviceRowStatus } | null {
+  if (device.groupRelationship === 'diverged') {
+    return {
+      tone: 'warning',
+      status: { kind: 'diverged', label: t('deviceTrust.status.diverged') },
+    }
+  }
+  if (device.groupRelationship === 'unverifiable') {
+    return {
+      tone: 'warning',
+      status: { kind: 'recovery_required', label: t('deviceTrust.status.unverifiable') },
+    }
+  }
+  if (device.compatibility === 'upgrade_required') {
+    return {
+      tone: 'warning',
+      status: { kind: 'waiting_for_update', label: t('deviceTrust.status.upgrade') },
+    }
+  }
+  if (device.groupRelationship === 'pending_local_decision') {
+    return { tone: 'warning', status: { kind: 'removing', label: t('deviceTrust.status.pending') } }
+  }
+  return null
 }
 
 function mobileDotTone(mobile: MobileDeviceView, now: number): StatusDotTone {

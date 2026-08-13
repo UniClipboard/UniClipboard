@@ -15,14 +15,12 @@
 import {
   getMemberSyncPreferences as getMemberSyncPreferencesSdk,
   getSpaceProtection as getSpaceProtectionSdk,
-  getWorkspaceConvergence as getWorkspaceConvergenceSdk,
   updateMemberSyncPreferences as updateMemberSyncPreferencesSdk,
 } from '@/api/generated/sdk.gen'
 import type {
   LegacyBootstrapDto,
   MemberSyncPreferencesPatchDto,
   SpaceProtectionDto,
-  WorkspaceConvergenceDto,
 } from '@/api/generated/types.gen'
 import { daemonClient } from './client'
 
@@ -94,13 +92,6 @@ export interface SpaceProtection {
   mode: SpaceProtectionMode
   members: MemberProtection[]
   legacyBootstrap: LegacyBootstrap | null
-}
-
-export type WorkspaceConvergence = WorkspaceConvergenceDto
-
-/** Reads the complete Engine-owned convergence state for the active space. */
-export async function getWorkspaceConvergence(): Promise<WorkspaceConvergence> {
-  return daemonClient.callEnveloped(() => getWorkspaceConvergenceSdk({ throwOnError: true }))
 }
 
 // ── Public API ──────────────────────────────────────────────────

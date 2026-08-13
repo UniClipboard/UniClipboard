@@ -83,12 +83,12 @@ mod tests {
                 "data": {
                     "phase": "converging",
                     "revision": 3,
-                    "changeCount": 2,
-                    "removalIntentCount": 1,
+                    "historyEventCount": 2,
                     "effectiveMemberCount": 3,
-                    "confirmedMemberCount": 2,
-                    "waitingMemberDeviceIds": ["device-b"],
-                    "waitingMemberCount": 1,
+                    "pendingRemovalDecisionDeviceIds": ["device-b"],
+                    "pendingRemovalDecisionEventId": "event-1",
+                    "divergedPeerDeviceIds": ["device-c"],
+                    "upgradeRequiredPeerDeviceIds": ["device-d"],
                     "convergenceDigest": "digest-1",
                     "updatedAtMs": 42,
                     "removed": false,
@@ -115,8 +115,13 @@ mod tests {
             .expect("workspace convergence request");
 
         assert_eq!(status.phase, WorkspaceConvergencePhaseDto::Converging);
-        assert_eq!(status.confirmed_member_count, 2);
-        assert_eq!(status.waiting_member_device_ids, vec!["device-b"]);
-        assert_eq!(status.waiting_member_count, 1);
+        assert_eq!(status.history_event_count, 2);
+        assert_eq!(status.pending_removal_decision_device_ids, vec!["device-b"]);
+        assert_eq!(
+            status.pending_removal_decision_event_id.as_deref(),
+            Some("event-1")
+        );
+        assert_eq!(status.diverged_peer_device_ids, vec!["device-c"]);
+        assert_eq!(status.upgrade_required_peer_device_ids, vec!["device-d"]);
     }
 }

@@ -16,7 +16,7 @@ import i18n from '@/i18n'
 const getSetupState = vi.fn()
 const issuePairingInvitation = vi.fn()
 const getPairedPeers = vi.fn()
-let workspaceConvergenceHandler: (() => void) | undefined
+let deviceTrustHandler: (() => void) | undefined
 
 vi.mock('@/api/daemon/setupV2', () => ({
   getSetupState: () => getSetupState(),
@@ -35,7 +35,7 @@ vi.mock('@/api/setupEvents', () => ({
 vi.mock('@/lib/daemon-ws', () => ({
   daemonWs: {
     subscribe: vi.fn((_topics, callback) => {
-      workspaceConvergenceHandler = () => callback({ eventType: 'workspace-convergence.changed' })
+      deviceTrustHandler = () => callback({ eventType: 'device-trust.changed' })
       return () => undefined
     }),
   },
@@ -65,7 +65,7 @@ describe('AddDeviceDialog invitation issuing', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
-    workspaceConvergenceHandler = undefined
+    deviceTrustHandler = undefined
     getSetupState.mockResolvedValue({
       hasCompleted: true,
       currentInvitation: null,
@@ -126,11 +126,11 @@ describe('AddDeviceDialog invitation issuing', () => {
 
     await waitFor(() => {
       expect(screen.getByLabelText('123456789')).toBeInTheDocument()
-      expect(workspaceConvergenceHandler).toBeTypeOf('function')
+      expect(deviceTrustHandler).toBeTypeOf('function')
     })
 
     act(() => {
-      workspaceConvergenceHandler?.()
+      deviceTrustHandler?.()
     })
 
     await waitFor(() => {

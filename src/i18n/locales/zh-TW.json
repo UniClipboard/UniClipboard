@@ -1,4 +1,41 @@
 {
+  "deviceTrust": {
+    "listSeparator": "、",
+    "notification": {
+      "title": "裝置關係需要查看",
+      "decision": "裝置群組發生變化，請在 UniClipboard 中處理。",
+      "status": "部分裝置的同步關係已改變，請開啟 UniClipboard 查看。"
+    },
+    "modal": {
+      "title": "確認裝置變化",
+      "summary": "{{proposer}} 提議移除 {{targets}}。繼續使用主視窗前，請選擇這台裝置如何處理。",
+      "applyTitle": "跟隨這項變化",
+      "applyBody": "此裝置將繼續與 {{usable}} 同步，並移除 {{removed}}。",
+      "keepTitle": "保留目前空間",
+      "keepBody": "此裝置將繼續與 {{usable}} 同步，並與 {{paused}} 分成不同空間。",
+      "removeTargets": "也從此裝置移除 {{targets}}（預設）",
+      "keepConfirmTitle": "確認分成不同空間？",
+      "keepConfirmBody": "雙方以後不會再分享新的剪貼簿內容，但各自可以繼續獨立使用和邀請其他裝置。",
+      "exitConfirmTitle": "確認退出這個空間？",
+      "exitConfirmBody": "這台裝置會停止與原空間同步，但本機歷史、複製和貼上仍可繼續使用。",
+      "stateChanged": "裝置狀態已經變化，已為你顯示最新情況。",
+      "failed": "暫時無法儲存選擇，請檢查背景服務後重試。"
+    },
+    "actions": {
+      "back": "返回",
+      "keep": "保留目前空間",
+      "apply": "也從此裝置移除目標裝置",
+      "exit": "退出這個空間",
+      "confirmKeep": "確認保留並分開",
+      "confirmExit": "確認退出"
+    },
+    "status": {
+      "diverged": "不同空間",
+      "upgrade": "需要更新",
+      "unverifiable": "無法驗證裝置資料",
+      "pending": "需要確認裝置變化"
+    }
+  },
   "common": {
     "loading": "載入中...",
     "unknownSize": "未知大小",

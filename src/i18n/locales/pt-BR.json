@@ -1,4 +1,41 @@
 {
+  "deviceTrust": {
+    "listSeparator": ", ",
+    "notification": {
+      "title": "Revise a relação dos dispositivos",
+      "decision": "O grupo de dispositivos mudou. Abra o UniClipboard para decidir o que fazer.",
+      "status": "Uma relação de sincronização mudou. Abra o UniClipboard para revisar."
+    },
+    "modal": {
+      "title": "Revisar alteração de dispositivo",
+      "summary": "{{proposer}} propôs remover {{targets}}. Escolha como este dispositivo deve continuar antes de usar a janela principal.",
+      "applyTitle": "Aplicar a alteração",
+      "applyBody": "Este dispositivo continuará sincronizando com {{usable}} e removerá {{removed}}.",
+      "keepTitle": "Manter este espaço",
+      "keepBody": "Este dispositivo continuará sincronizando com {{usable}} e ficará em um espaço separado de {{paused}}.",
+      "removeTargets": "Também remover {{targets}} deste dispositivo (padrão)",
+      "keepConfirmTitle": "Manter espaços separados?",
+      "keepConfirmBody": "Os espaços deixarão de compartilhar novos itens. Cada um poderá continuar independente e convidar outros dispositivos.",
+      "exitConfirmTitle": "Sair deste espaço?",
+      "exitConfirmBody": "Este dispositivo deixará de sincronizar com o espaço antigo. O histórico local, copiar e colar continuarão disponíveis.",
+      "stateChanged": "O estado dos dispositivos mudou. A situação mais recente está sendo exibida.",
+      "failed": "Não foi possível salvar sua escolha. Verifique o serviço em segundo plano e tente novamente."
+    },
+    "actions": {
+      "back": "Voltar",
+      "keep": "Manter espaço atual",
+      "apply": "Também remover o dispositivo de destino",
+      "exit": "Sair deste espaço",
+      "confirmKeep": "Manter espaços separados",
+      "confirmExit": "Confirmar saída"
+    },
+    "status": {
+      "diverged": "Espaço diferente",
+      "upgrade": "Atualização necessária",
+      "unverifiable": "Não foi possível verificar o dispositivo",
+      "pending": "Alteração precisa de revisão"
+    }
+  },
   "common": {
     "loading": "Carregando...",
     "unknownSize": "Tamanho desconhecido",

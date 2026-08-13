@@ -11,8 +11,10 @@
 //! ```text
 //!   Member removal
 //!     phase: converging
-//!     pending changes: 1
-//!     confirmed members: 2
+//!     history events: 2
+//!     pending local decisions: 1
+//!     diverged peers: 0
+//!     peers requiring update: 0
 //!     digest: <convergenceDigest 或 "-">
 //!     updated: 2026-08-08 12:34:56
 //! ```
@@ -77,7 +79,9 @@ fn emit_convergence(convergence: WorkspaceConvergenceDto, json: bool) -> i32 {
     }
 
     if convergence.phase == WorkspaceConvergencePhaseDto::Complete
-        && convergence.removal_intent_count == 0
+        && convergence.pending_removal_decision_device_ids.is_empty()
+        && convergence.diverged_peer_device_ids.is_empty()
+        && convergence.upgrade_required_peer_device_ids.is_empty()
         && !convergence.removed
     {
         ui::info("·", "No member removal in progress.");
@@ -103,10 +107,27 @@ fn render_human(convergence: &WorkspaceConvergenceDto) {
     ui::bar();
     let phase = serde_json::to_string(&convergence.phase).unwrap_or_else(|_| "?".to_string());
     ui::info("phase", phase.trim_matches('"'));
-    ui::info("pending changes", &convergence.change_count.to_string());
     ui::info(
-        "confirmed members",
-        &convergence.confirmed_member_count.to_string(),
+        "history events",
+        &convergence.history_event_count.to_string(),
+    );
+    ui::info(
+        "pending local decisions",
+        &convergence
+            .pending_removal_decision_device_ids
+            .len()
+            .to_string(),
+    );
+    ui::info(
+        "diverged peers",
+        &convergence.diverged_peer_device_ids.len().to_string(),
+    );
+    ui::info(
+        "peers requiring update",
+        &convergence
+            .upgrade_required_peer_device_ids
+            .len()
+            .to_string(),
     );
     ui::info("digest", digest);
     ui::info("updated", &updated);

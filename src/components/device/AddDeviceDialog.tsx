@@ -118,10 +118,9 @@ function AddDeviceDialogInner({ open, onOpenChange }: AddDeviceDialogProps) {
     }
   }, [open])
 
-  // Pairing completion is represented by workspace convergence plus the
-  // authoritative member list, because the Engine deliberately no longer
-  // exposes a pairing-session terminal event.
-  const handleWorkspaceConvergence = useEffectEvent(async () => {
+  // The trust-change event only invalidates local read models. Pairing success
+  // is still verified from the authoritative member list.
+  const handleDeviceTrustChange = useEffectEvent(async () => {
     if (step !== 'invitation' || initialMemberCountRef.current === null) return
     try {
       const currentMemberCount = (await getPairedPeers()).length
@@ -129,7 +128,7 @@ function AddDeviceDialogInner({ open, onOpenChange }: AddDeviceDialogProps) {
         setStep('success')
       }
     } catch (err) {
-      log.warn({ err }, 'failed to verify admitted member after convergence changed')
+      log.warn({ err }, 'failed to verify admitted member after device trust changed')
     }
   })
 
@@ -155,12 +154,12 @@ function AddDeviceDialogInner({ open, onOpenChange }: AddDeviceDialogProps) {
       err => log.warn({ err }, 'subscribe invitationRevoked failed')
     )
 
-    const unsubscribeWorkspace = daemonWs.subscribe(['workspace-convergence'], event => {
-      if (event.eventType === 'workspace-convergence.changed') {
-        void handleWorkspaceConvergence()
+    const unsubscribeDeviceTrust = daemonWs.subscribe(['device-trust'], event => {
+      if (event.eventType === 'device-trust.changed') {
+        void handleDeviceTrustChange()
       }
     })
-    unsubs.push(unsubscribeWorkspace)
+    unsubs.push(unsubscribeDeviceTrust)
 
     return () => {
       mounted = false

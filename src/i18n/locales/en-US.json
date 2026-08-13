@@ -1,4 +1,41 @@
 {
+  "deviceTrust": {
+    "listSeparator": ", ",
+    "notification": {
+      "title": "Review device relationship",
+      "decision": "Your device group changed. Open UniClipboard to decide what to do.",
+      "status": "A device sync relationship changed. Open UniClipboard to review it."
+    },
+    "modal": {
+      "title": "Review device change",
+      "summary": "{{proposer}} proposed removing {{targets}}. Choose how this device should proceed before using the main window.",
+      "applyTitle": "Follow this change",
+      "applyBody": "This device will keep syncing with {{usable}} and remove {{removed}}.",
+      "keepTitle": "Keep this space",
+      "keepBody": "This device will keep syncing with {{usable}} and move into a separate space from {{paused}}.",
+      "removeTargets": "Also remove {{targets}} from this device (default)",
+      "keepConfirmTitle": "Keep separate spaces?",
+      "keepConfirmBody": "The two spaces will stop sharing new clipboard content. Each can keep working independently and invite other devices.",
+      "exitConfirmTitle": "Leave this space?",
+      "exitConfirmBody": "This device will stop syncing with the old space. Local history, copy, and paste will remain available.",
+      "stateChanged": "The device state changed. The latest situation is now shown.",
+      "failed": "Your choice could not be saved. Check the background service and try again."
+    },
+    "actions": {
+      "back": "Back",
+      "keep": "Keep current space",
+      "apply": "Also remove the target device",
+      "exit": "Leave this space",
+      "confirmKeep": "Keep separate spaces",
+      "confirmExit": "Confirm leaving"
+    },
+    "status": {
+      "diverged": "Different space",
+      "upgrade": "Update required",
+      "unverifiable": "Device details cannot be verified",
+      "pending": "Device change needs review"
+    }
+  },
   "common": {
     "loading": "Loading...",
     "unknownSize": "Unknown size",

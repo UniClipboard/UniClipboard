@@ -11,7 +11,9 @@
 //   laptop sleep while `tauri dev` was running) leaves the Vite process alive;
 //   the next `tauri dev` then hard-fails on the occupied port.
 //
-// Scope: only the dev-server ports (1420, plus 1421 for HMR in host mode).
+// Scope: only the default dev-server ports (1420 and 1421). Profile-specific
+// servers fail safely when their port is occupied instead of killing an
+// unrelated listener.
 // The daemon's own ports are never touched. No-op when nothing is listening.
 //
 // Platform strategy:
@@ -20,6 +22,11 @@
 
 import { execFileSync } from 'node:child_process'
 import process from 'node:process'
+
+if (process.env.UC_DEV_SERVER_PORT) {
+  console.log(`[dev-port-sweep] preserving profile-specific port ${process.env.UC_DEV_SERVER_PORT}`)
+  process.exit(0)
+}
 
 const DEV_PORTS = [1420, 1421]
 

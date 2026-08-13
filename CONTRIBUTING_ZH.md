@@ -127,6 +127,15 @@ bun tauri:dev:peerB
 
 两个 peer 使用不同的 `UC_PROFILE`，所以它们的数据、密钥库、日志互不冲突。
 
+需要单独启动其他开发实例时，可以指定 profile：
+
+```bash
+bun tauri:dev:profile a
+bun tauri:dev:profile b
+```
+
+每个 profile 会使用独立的前端开发服务，数据、前端缓存和热更新互不影响。
+
 ### 构建发行包
 
 ```bash

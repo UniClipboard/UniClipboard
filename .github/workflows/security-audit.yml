@@ -126,7 +126,7 @@ jobs:
         run: bun install --frozen-lockfile
 
       # `--production` scopes the gate to what actually ships (runtime
-      # dependencies). Dev tooling (vite, vitest, eslint, wdio, ...) has its
+      # dependencies). Dev tooling (vite, vitest, oxlint, wdio, ...) has its
       # own, much noisier advisory surface that never reaches a build
       # artifact — gating on it would fail CI on unrelated tooling churn
       # instead of on dependencies that could ship a known vulnerability.

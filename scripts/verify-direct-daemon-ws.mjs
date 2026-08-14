@@ -34,9 +34,6 @@
  * 5  Malformed response (bad JSON, unexpected envelope shape)
  */
 
-import http from 'http'
-import { WebSocketServer } from 'ws'
-
 // ── Helpers ────────────────────────────────────────────────────
 
 /** Redact a string so only the first 4 and last 4 chars are visible. */
@@ -427,7 +424,9 @@ async function runLiveMode() {
       let bodyText = ''
       try {
         bodyText = await response.text()
-      } catch {}
+      } catch {
+        // Ignore unreadable error bodies and report the HTTP status instead.
+      }
 
       if (status === 401) {
         const err = new Error(`Auth failed: 401 Unauthorized (bearer token invalid or expired)`)
@@ -488,7 +487,7 @@ async function runLiveMode() {
         clearTimeout(timer)
         resolve()
       })
-      ws.addEventListener('error', event => {
+      ws.addEventListener('error', () => {
         clearTimeout(timer)
         reject(new Error('WebSocket error (connection refused, 401, 403, or 429)'))
       })
@@ -504,7 +503,6 @@ async function runLiveMode() {
   }
 
   // ── Stage 4: Subscribe ─────────────────────────────────────────
-  let subscribed = false
   try {
     log(STAGE.SUBSCRIBE, 'Subscribing to clipboard topic...')
 
@@ -519,7 +517,6 @@ async function runLiveMode() {
     }
 
     ws.send(JSON.stringify(subscribeMsg))
-    subscribed = true
     log(STAGE.SUBSCRIBE, `✅ Subscribe sent (nonce=${subscribeMsg.nonce})`)
   } catch (err) {
     logError(STAGE.SUBSCRIBE, err)
@@ -529,7 +526,6 @@ async function runLiveMode() {
   }
 
   // ── Stage 5: Snapshot/event receipt ────────────────────────────
-  let snapshotReceived = false
   let snapshotPayload = null
   try {
     log(STAGE.SNAPSHOT, 'Waiting for snapshot event (timeout=' + stageTimeout + 'ms)...')
@@ -549,7 +545,6 @@ async function runLiveMode() {
 
           // Accept either snake_case (from daemon) or camelCase (normalized)
           if (raw.topic === 'clipboard' || raw.topic === 'clipboard') {
-            snapshotReceived = true
             snapshotPayload = raw.payload || raw.payload
             clearTimeout(timer)
             resolve()

@@ -21,12 +21,11 @@ on:
       - 'tsconfig*.json'
       - 'vite.config.ts'
       - 'tailwind.config.js'
-      - 'eslint.config.js'
+      - '.oxlintrc.json'
       - 'index.html'
       - 'quick-panel.html'
       - 'public/**'
-      - '.prettierrc*'
-      - 'prettier.config.*'
+      - '.oxfmtrc.json'
       - '.github/workflows/format.yml'
 
 permissions:
@@ -78,7 +77,7 @@ jobs:
       - name: Run cargo fmt
         run: cargo fmt --all
 
-      - name: Run prettier
+      - name: Run oxfmt
         run: bun run format
 
       - name: Check for format changes

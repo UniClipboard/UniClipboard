@@ -11,18 +11,15 @@ import {
 } from 'lucide-react'
 import { useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { getPairedPeers } from '@/api/daemon/members'
+import { getDeviceTrust } from '@/api/daemon/device-trust'
 import {
   cancelInvitation,
   getSetupState,
   issuePairingInvitation,
   type CurrentInvitation,
 } from '@/api/daemon/setupV2'
-import {
-  onSetupInvitationRevoked,
-  onSetupPairingCompleted,
-  type SetupInvitationRevokedEvent,
-} from '@/api/setupEvents'
+import type { SetupInvitationRevokedEvent } from '@/api/setupEvents'
+import { activeDeviceIds, findNewActiveDeviceId } from '@/components/device/pairing-success-utils'
 import { formatInvitationCode } from '@/components/invitation-code-utils'
 import { Button } from '@/components/ui/button'
 import {
@@ -34,6 +31,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Progress } from '@/components/ui/progress'
+import { daemonWs } from '@/lib/daemon-ws'
 import { createLogger } from '@/lib/logger'
 import { cn } from '@/lib/utils'
 
@@ -68,7 +66,7 @@ function AddDeviceDialogInner({ open, onOpenChange }: AddDeviceDialogProps) {
   const [copied, setCopied] = useState(false)
   const [step, setStep] = useState<Step>('invitation')
   const [failureReason, setFailureReason] = useState<string | null>(null)
-  const initialMemberCountRef = useRef<number | null>(null)
+  const initialDeviceIdsRef = useRef<ReadonlySet<string> | null>(null)
 
   // 倒计时 tick — 仅在邀请态 + 有邀请时启动
   useEffect(() => {
@@ -95,7 +93,7 @@ function AddDeviceDialogInner({ open, onOpenChange }: AddDeviceDialogProps) {
       setLoading(true)
       setError(null)
       try {
-        initialMemberCountRef.current = (await getPairedPeers()).length
+        initialDeviceIdsRef.current = activeDeviceIds(await getDeviceTrust())
         const state = await getSetupState()
         if (cancelled) return
         if (state.currentInvitation) {
@@ -120,8 +118,20 @@ function AddDeviceDialogInner({ open, onOpenChange }: AddDeviceDialogProps) {
     }
   }, [open])
 
-  const handlePairingCompleted = useEffectEvent((success: boolean) => {
-    if (step === 'invitation' && success) setStep('success')
+  const confirmPairingCompleted = useEffectEvent(async () => {
+    if (step !== 'invitation' || initialDeviceIdsRef.current === null) return
+    try {
+      const [state, trust] = await Promise.all([getSetupState(), getDeviceTrust()])
+      const peerDeviceId = findNewActiveDeviceId(
+        initialDeviceIdsRef.current,
+        activeDeviceIds(trust)
+      )
+      if (state.currentInvitation === null && peerDeviceId !== null) {
+        setStep('success')
+      }
+    } catch (err) {
+      log.warn({ err }, 'failed to verify completed invitation')
+    }
   })
 
   const handleInvitationRevoked = useEffectEvent((evt: SetupInvitationRevokedEvent) => {
@@ -132,34 +142,18 @@ function AddDeviceDialogInner({ open, onOpenChange }: AddDeviceDialogProps) {
 
   useEffect(() => {
     if (!open) return
-    let mounted = true
-    const unsubs: Array<() => void> = []
-
-    void onSetupInvitationRevoked(evt => {
-      if (!mounted) return
-      handleInvitationRevoked(evt)
-    }).then(
-      fn => {
-        if (mounted) unsubs.push(fn)
-        else fn()
-      },
-      err => log.warn({ err }, 'subscribe invitationRevoked failed')
-    )
-
-    void onSetupPairingCompleted(evt => {
-      if (!mounted) return
-      handlePairingCompleted(evt.success)
-    }).then(
-      fn => {
-        if (mounted) unsubs.push(fn)
-        else fn()
-      },
-      err => log.warn({ err }, 'subscribe pairingCompleted failed')
-    )
+    const unsubscribeEvents = daemonWs.subscribe(['device-trust', 'setup'], event => {
+      if (event.eventType === 'device-trust.changed') {
+        void confirmPairingCompleted()
+      } else if (event.eventType === 'setup.invitationRevoked') {
+        handleInvitationRevoked(event.payload as SetupInvitationRevokedEvent)
+      }
+    })
+    const unsubscribeReconnect = daemonWs.onReconnect(() => void confirmPairingCompleted())
 
     return () => {
-      mounted = false
-      unsubs.forEach(fn => fn())
+      unsubscribeEvents()
+      unsubscribeReconnect()
     }
   }, [open])
 
@@ -210,7 +204,7 @@ function AddDeviceDialogInner({ open, onOpenChange }: AddDeviceDialogProps) {
     setStep('invitation')
     setFailureReason(null)
     try {
-      initialMemberCountRef.current = (await getPairedPeers()).length
+      initialDeviceIdsRef.current = activeDeviceIds(await getDeviceTrust())
       try {
         await cancelInvitation()
       } catch (err) {

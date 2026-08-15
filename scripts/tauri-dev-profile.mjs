@@ -38,10 +38,20 @@ export function createTauriDevInvocation(args, currentEnv = process.env) {
   const profileConfig = JSON.stringify({
     build: { devUrl: `http://localhost:${devServerPort}` },
   })
+  const separatorIndex = tauriArgs.indexOf('--')
+  const configuredTauriArgs =
+    separatorIndex === -1
+      ? [...tauriArgs, '--config', profileConfig]
+      : [
+          ...tauriArgs.slice(0, separatorIndex),
+          '--config',
+          profileConfig,
+          ...tauriArgs.slice(separatorIndex),
+        ]
 
   return {
     command: 'bun',
-    args: ['run', 'tauri', '--', 'dev', ...tauriArgs, '--config', profileConfig],
+    args: ['run', 'tauri', '--', 'dev', ...configuredTauriArgs],
     env: {
       ...currentEnv,
       UNICLIPBOARD_ENV: 'development',

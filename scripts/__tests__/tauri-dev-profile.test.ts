@@ -105,6 +105,16 @@ describe('custom-profile Tauri development command', () => {
     ])
   })
 
+  it('inserts the generated config before forwarded runner and application arguments', () => {
+    const invocation = createInvocation(['alice', '--', '--', '--app-arg'])
+    const generatedConfigIndex = invocation.args.lastIndexOf('--config')
+    const forwardedSeparatorIndex = invocation.args.indexOf('--', 3)
+
+    expect(generatedConfigIndex).toBeGreaterThan(-1)
+    expect(generatedConfigIndex).toBeLessThan(forwardedSeparatorIndex)
+    expect(invocation.args.slice(forwardedSeparatorIndex)).toEqual(['--', '--app-arg'])
+  })
+
   it('prints usage without starting Tauri when help is requested', () => {
     const result = spawnSync(process.execPath, [scriptPath, '--help'], { encoding: 'utf8' })
 

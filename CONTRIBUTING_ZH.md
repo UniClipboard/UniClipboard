@@ -258,9 +258,10 @@ chore(observability): silence swarm_discovery::socket EHOSTUNREACH spam
 JavaScript / TypeScript：
 
 ```bash
-bun run lint        # eslint
-bun run lint:fix    # eslint --fix
-bun run format      # prettier --write .
+bun run lint          # oxlint
+bun run lint:fix      # oxlint --fix
+bun run format        # oxfmt --write .
+bun run format:check  # oxfmt --check .
 ```
 
 Rust（在 `src-tauri/` 目录下执行）：
@@ -270,7 +271,7 @@ cargo fmt --all
 cargo clippy --workspace --all-targets -- -D warnings
 ```
 
-通过 Husky 与 lint-staged 配置的 pre-commit 钩子，会在暂存文件上自动跑 `eslint`、`prettier`、`cargo fmt`。**不要随意使用 `--no-verify` 跳过钩子**，除非有清晰的理由并写进 PR 说明。
+通过 Husky 与 lint-staged 配置的 pre-commit 钩子，会在暂存文件上自动跑 `oxlint`、`oxfmt`、`cargo fmt`。**不要随意使用 `--no-verify` 跳过钩子**，除非有清晰的理由并写进 PR 说明。
 
 ### 风格约定
 

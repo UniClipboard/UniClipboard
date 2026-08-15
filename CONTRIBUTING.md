@@ -252,9 +252,10 @@ If you accumulate many local changes, the [`atomic-commits`](https://docs.anthro
 JavaScript/TypeScript:
 
 ```bash
-bun run lint        # eslint
-bun run lint:fix    # eslint --fix
-bun run format      # prettier --write .
+bun run lint          # oxlint
+bun run lint:fix      # oxlint --fix
+bun run format        # oxfmt --write .
+bun run format:check  # oxfmt --check .
 ```
 
 Rust (run inside `src-tauri/`):
@@ -264,7 +265,7 @@ cargo fmt --all
 cargo clippy --workspace --all-targets -- -D warnings
 ```
 
-Pre-commit hooks (via Husky and lint-staged) automatically run `eslint`, `prettier`, and `cargo fmt` on staged files. Do not bypass hooks (`--no-verify`) without a documented reason.
+Pre-commit hooks (via Husky and lint-staged) automatically run `oxlint`, `oxfmt`, and `cargo fmt` on staged files. Do not bypass hooks (`--no-verify`) without a documented reason.
 
 ### Style Guidelines
 

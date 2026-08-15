@@ -41,7 +41,10 @@ uc-daemon-local = { path = "../../crates/uc-daemon-local", features = ["test-hel
 chrono = { version = "0.4", default-features = true }
 
 [features]
-e2e-rendezvous = ["uc-bootstrap/e2e-rendezvous"]
+e2e-rendezvous = [
+  "uc-bootstrap/e2e-rendezvous",
+  "uc-webserver/e2e-rendezvous",
+]
 
 [lints]
 workspace = true

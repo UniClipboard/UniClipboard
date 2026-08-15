@@ -116,6 +116,13 @@ pub fn engine_event_to_ws(event: EngineEvent) -> Option<DaemonWsEvent> {
                 "targetDeviceId": event.target_device_id,
             }),
         ),
+        #[cfg(feature = "e2e-rendezvous")]
+        EngineEvent::WorkspaceConvergenceChanged(summary) => (
+            ws_topic::DEVICE_TRUST,
+            ws_event::DEVICE_TRUST_CHANGED,
+            now_ms(),
+            serde_json::json!({ "revision": summary.revision }),
+        ),
         EngineEvent::DeviceTrustChanged { revision } => (
             ws_topic::DEVICE_TRUST,
             ws_event::DEVICE_TRUST_CHANGED,
@@ -175,6 +182,8 @@ mod engine_event_tests {
         EngineError, EngineErrorCategory, InboundNoticeEvent, LifecycleAction,
         NetworkRecoveryStatusSummary, RefreshReason, TransferProgress,
     };
+    #[cfg(feature = "e2e-rendezvous")]
+    use uc_engine::{WorkspaceConvergencePhaseSummary, WorkspaceConvergenceSummary};
 
     #[derive(Serialize)]
     struct InboundNoticeFixture {
@@ -316,6 +325,32 @@ mod engine_event_tests {
     fn device_trust_changes_only_invalidate_the_complete_snapshot() {
         let event = engine_event_to_ws(EngineEvent::DeviceTrustChanged { revision: 4 })
             .expect("device trust websocket event");
+        assert_eq!(event.topic, "device-trust");
+        assert_eq!(event.event_type, "device-trust.changed");
+        assert_eq!(event.payload, serde_json::json!({ "revision": 4 }));
+    }
+
+    #[cfg(feature = "e2e-rendezvous")]
+    #[test]
+    fn legacy_workspace_convergence_changes_invalidate_the_complete_snapshot() {
+        let event = engine_event_to_ws(EngineEvent::WorkspaceConvergenceChanged(
+            WorkspaceConvergenceSummary {
+                phase: WorkspaceConvergencePhaseSummary::Converging,
+                revision: 4,
+                history_event_count: 2,
+                effective_member_count: 3,
+                pending_removal_decision_device_ids: vec!["device-b".into()],
+                pending_removal_decision_event_id: Some("event-1".into()),
+                diverged_peer_device_ids: Vec::new(),
+                upgrade_required_peer_device_ids: Vec::new(),
+                convergence_digest: Some("digest-1".into()),
+                updated_at_ms: 42,
+                removed: false,
+                failure_category: None,
+            },
+        ))
+        .expect("device trust websocket event");
+
         assert_eq!(event.topic, "device-trust");
         assert_eq!(event.event_type, "device-trust.changed");
         assert_eq!(event.payload, serde_json::json!({ "revision": 4 }));

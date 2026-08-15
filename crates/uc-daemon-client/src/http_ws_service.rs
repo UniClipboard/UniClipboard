@@ -13,7 +13,7 @@ use uc_daemon_contract::api::dto::clipboard_command::{
     CancelTransferResponse, DispatchOutcomeResponse, InboundEntryEvent, InboundNoticeEvent,
     ResendResponse,
 };
-use uc_daemon_contract::api::dto::member::WorkspaceConvergenceDto;
+use uc_daemon_contract::api::dto::member::{DeviceTrustSnapshotDto, WorkspaceConvergenceDto};
 use uc_daemon_contract::api::dto::setup_events::SetupPairingCompletedEvent;
 use uc_daemon_contract::constants::{ws_event, ws_topic};
 
@@ -35,6 +35,10 @@ impl HttpWsDaemonService {
 impl DaemonService for HttpWsDaemonService {
     async fn remove_member(&self, peer_id: String) -> Result<WorkspaceConvergenceDto> {
         self.ctx.pairing_client().unpair_device(peer_id).await
+    }
+
+    async fn device_trust(&self) -> Result<DeviceTrustSnapshotDto> {
+        self.ctx.member_client().device_trust().await
     }
 
     async fn workspace_convergence(&self) -> Result<WorkspaceConvergenceDto> {

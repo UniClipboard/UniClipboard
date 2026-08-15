@@ -1,8 +1,9 @@
 use uc_e2e_tests::{
     checksum_for_asset, extract_release_archive, fixed_legacy_release_asset,
-    prepare_fixed_legacy_release_from, verify_release_payload, ArchiveFormat, NodeBinarySet,
-    ReleaseAsset, LEGACY_RELEASE_BASE_URL, LEGACY_RELEASE_TAG, LEGACY_RELEASE_VERSION,
-    LEGACY_SHA256SUMS_SHA256,
+    prepare_fixed_legacy_release_from, v0_19_1_release_asset, verify_release_payload,
+    ArchiveFormat, NodeBinarySet, ReleaseAsset, LEGACY_RELEASE_BASE_URL, LEGACY_RELEASE_TAG,
+    LEGACY_RELEASE_VERSION, LEGACY_SHA256SUMS_SHA256, V0_19_1_RELEASE_TAG, V0_19_1_RELEASE_VERSION,
+    V0_19_1_SHA256SUMS_SHA256,
 };
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -19,6 +20,33 @@ fn legacy_release_identity_is_immutable() {
         LEGACY_SHA256SUMS_SHA256,
         "905876044fbe05128b155c6be35908ec214fd61eace1ee3a871d1f58585da4ca"
     );
+}
+
+#[test]
+fn v0_19_1_release_identity_is_immutable() {
+    assert_eq!(V0_19_1_RELEASE_VERSION, "0.19.1");
+    assert_eq!(V0_19_1_RELEASE_TAG, "v0.19.1");
+    assert_eq!(
+        V0_19_1_SHA256SUMS_SHA256,
+        "c572d2c25f98f6bdf18216a33e88a5dcce0c77dba06b0283855def77650f55af"
+    );
+}
+
+#[test]
+fn v0_19_1_release_asset_matches_supported_host_targets() {
+    let mac = v0_19_1_release_asset("macos", "aarch64").expect("macOS ARM asset");
+    assert_eq!(
+        mac.filename,
+        "uniclipboard-cli-0.19.1-aarch64-apple-darwin.tar.gz"
+    );
+    assert_eq!(mac.format, ArchiveFormat::TarGz);
+
+    let windows = v0_19_1_release_asset("windows", "x86_64").expect("Windows x64 asset");
+    assert_eq!(
+        windows.filename,
+        "uniclipboard-cli-0.19.1-x86_64-pc-windows-msvc.zip"
+    );
+    assert_eq!(windows.format, ArchiveFormat::Zip);
 }
 
 #[test]

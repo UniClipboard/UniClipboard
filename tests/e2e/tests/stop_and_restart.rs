@@ -14,8 +14,8 @@
 
 use std::time::Duration;
 
-use uc_e2e_tests::{TestCli, TestDaemon, TestProfile};
 use uc_daemon_process::socket::read_daemon_conn_file_at;
+use uc_e2e_tests::{TestCli, TestDaemon, TestProfile};
 
 fn base_url_from_connection_file(profile: &TestProfile) -> String {
     let conn_path = profile.data_dir().join("daemon.conn");

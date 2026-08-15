@@ -2,7 +2,8 @@
 
 use serde::Serialize;
 use uc_daemon_client::{DaemonService, HttpWsDaemonService};
-use uc_daemon_contract::api::dto::member::WorkspaceConvergencePhaseDto;
+use uc_daemon_contract::api::dto::member::DeviceCompatibilityDto;
+use uc_daemon_contract::api::dto::member::{DeviceMembershipDto, DeviceTrustUnavailableReasonDto};
 
 use crate::commands::app_session::connect_with_lease;
 use crate::exit_codes;
@@ -15,7 +16,15 @@ struct StatusOutput {
     encryption_ready: bool,
     search_state: String,
     search_reason: Option<String>,
-    workspace_convergence: WorkspaceConvergencePhaseDto,
+    device_trust: DeviceTrustStatus,
+}
+
+#[derive(Serialize)]
+struct DeviceTrustStatus {
+    local_membership: DeviceMembershipDto,
+    current_change_id: Option<String>,
+    upgrade_required_device_ids: Vec<String>,
+    blocked_reason: Option<DeviceTrustUnavailableReasonDto>,
 }
 
 pub async fn run(json: bool, verbose: bool) -> i32 {
@@ -42,12 +51,20 @@ pub async fn run(json: bool, verbose: bool) -> i32 {
     };
 
     let facade = HttpWsDaemonService::new(ctx);
-    let workspace_convergence = match facade.workspace_convergence().await {
-        Ok(status) => status.phase,
+    let device_trust = match facade.device_trust().await {
+        Ok(snapshot) => DeviceTrustStatus {
+            local_membership: snapshot.local_membership,
+            current_change_id: snapshot.current_change.map(|change| change.change_id),
+            upgrade_required_device_ids: snapshot
+                .devices
+                .into_iter()
+                .filter(|device| device.compatibility == DeviceCompatibilityDto::UpgradeRequired)
+                .map(|device| device.device_id)
+                .collect(),
+            blocked_reason: snapshot.blocked_reason,
+        },
         Err(err) => {
-            ui::error(&format!(
-                "Failed to query workspace convergence status: {err}"
-            ));
+            ui::error(&format!("Failed to query device trust status: {err}"));
             return exit_codes::EXIT_ERROR;
         }
     };
@@ -57,7 +74,7 @@ pub async fn run(json: bool, verbose: bool) -> i32 {
         encryption_ready,
         search_state,
         search_reason,
-        workspace_convergence,
+        device_trust,
     };
 
     if json {
@@ -78,39 +95,68 @@ pub async fn run(json: bool, verbose: bool) -> i32 {
         result.search_reason.as_deref().unwrap_or("none"),
     );
     ui::info(
-        "Workspace convergence",
-        workspace_convergence_label(result.workspace_convergence),
+        "Device membership",
+        membership_label(result.device_trust.local_membership),
+    );
+    ui::info(
+        "Device trust change",
+        result
+            .device_trust
+            .current_change_id
+            .as_deref()
+            .unwrap_or("none"),
+    );
+    ui::info(
+        "Devices requiring update",
+        &result
+            .device_trust
+            .upgrade_required_device_ids
+            .len()
+            .to_string(),
     );
 
     exit_codes::EXIT_SUCCESS
 }
 
-fn workspace_convergence_label(state: WorkspaceConvergencePhaseDto) -> &'static str {
+fn membership_label(state: DeviceMembershipDto) -> &'static str {
     match state {
-        WorkspaceConvergencePhaseDto::LocallyApplied => "locally_applied",
-        WorkspaceConvergencePhaseDto::Converging => "converging",
-        WorkspaceConvergencePhaseDto::Complete => "complete",
-        WorkspaceConvergencePhaseDto::RecoveryRequired => "recovery_required",
+        DeviceMembershipDto::Active => "active",
+        DeviceMembershipDto::Removed => "removed",
+        DeviceMembershipDto::Unavailable => "unavailable",
+        DeviceMembershipDto::Unknown => "unknown",
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::StatusOutput;
+    use super::{DeviceTrustStatus, StatusOutput};
     use serde_json::json;
-    use uc_daemon_contract::api::dto::member::WorkspaceConvergencePhaseDto;
+    use uc_daemon_contract::api::dto::member::DeviceMembershipDto;
 
     #[test]
-    fn json_includes_workspace_convergence_phase() {
+    fn json_includes_device_trust_status() {
         let output = StatusOutput {
             setup_completed: true,
             encryption_ready: true,
             search_state: "ready".to_string(),
             search_reason: None,
-            workspace_convergence: WorkspaceConvergencePhaseDto::Converging,
+            device_trust: DeviceTrustStatus {
+                local_membership: DeviceMembershipDto::Active,
+                current_change_id: Some("change-1".to_string()),
+                upgrade_required_device_ids: vec!["device-b".to_string()],
+                blocked_reason: None,
+            },
         };
 
         let value = serde_json::to_value(output).expect("serialize status output");
-        assert_eq!(value["workspace_convergence"], json!("converging"));
+        assert_eq!(value["device_trust"]["local_membership"], json!("active"));
+        assert_eq!(
+            value["device_trust"]["current_change_id"],
+            json!("change-1")
+        );
+        assert_eq!(
+            value["device_trust"]["upgrade_required_device_ids"],
+            json!(["device-b"])
+        );
     }
 }

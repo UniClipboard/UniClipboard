@@ -59,6 +59,12 @@ Engine 持久保存、等待本机用户决定的一次设备组移除变化，�
 重复提交或状态已经变化时，由 Engine 返回明确结果，客户端不得自行补算。
 _Avoid_: pending removal flag、local dialog state、client-side decision
 
+**Membership divergence**：
+用户选择保留当前设备组后形成的长期设备组分歧。分歧双方停止互相同步，各自设备组继续独立
+使用；它不是离线、失败或待处理状态，当前版本也不会自动合并或恢复。客户端只展示 Engine
+给出的关系，不得自行推断双方已经恢复为同一设备组。
+_Avoid_: temporary split、sync failure、pending recovery
+
 **Current member device list**：
 设备页展示的当前 Space 成员集合，只以 **SpaceMember** 为准；历史设备关系仍可用于安全判断
 和待决定流程，但不同空间或已移除的设备不得因此重新进入设备列表。

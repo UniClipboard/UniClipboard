@@ -23,8 +23,8 @@
 
 use std::time::Duration;
 
-use serde_json::Value;
 use crate::{InviteSession, LocalRendezvous, NodeBinarySet, TestCli, TestDaemon, TestProfile};
+use serde_json::Value;
 
 const PASSPHRASE: &str = "member-removal-e2e-passphrase";
 const WAIT_TIMEOUT: Duration = Duration::from_secs(120);
@@ -172,8 +172,12 @@ fn try_removal_status(cli: &TestCli) -> Result<Value, String> {
             output.stdout, output.stderr
         ));
     }
-    serde_json::from_str(output.stdout.trim())
-        .map_err(|error| format!("removal-status output is not JSON: {error}\n{}", output.stdout))
+    serde_json::from_str(output.stdout.trim()).map_err(|error| {
+        format!(
+            "removal-status output is not JSON: {error}\n{}",
+            output.stdout
+        )
+    })
 }
 
 fn removal_status(cli: &TestCli) -> Value {
@@ -303,7 +307,10 @@ async fn wait_for_member_count(cli: &TestCli, expected: usize) {
         match try_members(cli) {
             Ok(current) if current.len() == expected => return,
             Ok(current) if tokio::time::Instant::now() >= deadline => {
-                panic!("{} member count did not reach {expected}; members={current:?}", cli.profile_name);
+                panic!(
+                    "{} member count did not reach {expected}; members={current:?}",
+                    cli.profile_name
+                );
             }
             Err(error) if tokio::time::Instant::now() >= deadline => {
                 panic!(
@@ -326,8 +333,12 @@ fn remove(cli: &TestCli, peer_id: &str) -> Value {
         output.stdout,
         output.stderr
     );
-    serde_json::from_str(output.stdout.trim())
-        .unwrap_or_else(|error| panic!("member remove output is not JSON: {error}\n{}", output.stdout))
+    serde_json::from_str(output.stdout.trim()).unwrap_or_else(|error| {
+        panic!(
+            "member remove output is not JSON: {error}\n{}",
+            output.stdout
+        )
+    })
 }
 
 // ── R01 ──────────────────────────────────────────────────────────────
@@ -349,10 +360,22 @@ async fn r01_two_devices_online_removal_converges_to_complete() {
     assert_healthy_phase(&removal);
 
     let a_status = wait_for_effective_member_count(&a.cli, 1).await;
-    assert_eq!(intent_count_of(&a_status), 1, "A must keep one intent: {a_status}");
-    assert_eq!(effective_member_count_of(&a_status), 1, "B must no longer count: {a_status}");
+    assert_eq!(
+        intent_count_of(&a_status),
+        1,
+        "A must keep one intent: {a_status}"
+    );
+    assert_eq!(
+        effective_member_count_of(&a_status),
+        1,
+        "B must no longer count: {a_status}"
+    );
     let b_status = wait_for_removed(&b.cli, true).await;
-    assert_eq!(intent_count_of(&b_status), 0, "removed target observes no intent: {b_status}");
+    assert_eq!(
+        intent_count_of(&b_status),
+        0,
+        "removed target observes no intent: {b_status}"
+    );
 }
 
 // ── R02 ──────────────────────────────────────────────────────────────
@@ -374,13 +397,25 @@ async fn r02_target_offline_removal_converges_after_restart() {
     assert_healthy_phase(&removal);
 
     let a_status = wait_for_effective_member_count(&a.cli, 1).await;
-    assert_eq!(effective_member_count_of(&a_status), 1, "A must exclude B: {a_status}");
+    assert_eq!(
+        effective_member_count_of(&a_status),
+        1,
+        "A must exclude B: {a_status}"
+    );
 
     b.restart().await;
     let b_status = wait_for_removed(&b.cli, true).await;
-    assert_eq!(intent_count_of(&b_status), 0, "restarted target observes no intent: {b_status}");
+    assert_eq!(
+        intent_count_of(&b_status),
+        0,
+        "restarted target observes no intent: {b_status}"
+    );
     let a_after = wait_for_effective_member_count(&a.cli, 1).await;
-    assert_eq!(effective_member_count_of(&a_after), 1, "A must stay converged: {a_after}");
+    assert_eq!(
+        effective_member_count_of(&a_after),
+        1,
+        "A must stay converged: {a_after}"
+    );
 }
 
 // ── R03 ──────────────────────────────────────────────────────────────
@@ -402,7 +437,11 @@ async fn r03_initiator_offline_removal_survives_restart() {
 
     a.restart().await;
     let status = wait_for_effective_member_count(&a.cli, 1).await;
-    assert_eq!(intent_count_of(&status), 1, "restart must preserve the intent: {status}");
+    assert_eq!(
+        intent_count_of(&status),
+        1,
+        "restart must preserve the intent: {status}"
+    );
 }
 
 // ── R04 ──────────────────────────────────────────────────────────────
@@ -423,12 +462,28 @@ async fn r04_three_devices_removal_converges_on_witness() {
     remove(&a.cli, &b_id);
 
     let a_status = wait_for_effective_member_count(&a.cli, 2).await;
-    assert_eq!(effective_member_count_of(&a_status), 2, "A excludes B only: {a_status}");
+    assert_eq!(
+        effective_member_count_of(&a_status),
+        2,
+        "A excludes B only: {a_status}"
+    );
     let c_status = wait_for_effective_member_count(&c.cli, 2).await;
-    assert_eq!(intent_count_of(&c_status), 1, "C must observe the witness intent: {c_status}");
-    assert_eq!(effective_member_count_of(&c_status), 2, "C must exclude B: {c_status}");
+    assert_eq!(
+        intent_count_of(&c_status),
+        1,
+        "C must observe the witness intent: {c_status}"
+    );
+    assert_eq!(
+        effective_member_count_of(&c_status),
+        2,
+        "C must exclude B: {c_status}"
+    );
     let b_status = removal_status(&b.cli);
-    assert_eq!(intent_count_of(&b_status), 0, "removed target observes no intent: {b_status}");
+    assert_eq!(
+        intent_count_of(&b_status),
+        0,
+        "removed target observes no intent: {b_status}"
+    );
 }
 
 // ── R05 ──────────────────────────────────────────────────────────────
@@ -462,7 +517,10 @@ async fn r05_removed_member_rejoins_with_new_instance() {
         1,
         "rejoin must not re-record a removal for the new instance: {a_status}"
     );
-    assert!(has_member_named(&members(&a.cli), DEVICE_B), "B must be listed again");
+    assert!(
+        has_member_named(&members(&a.cli), DEVICE_B),
+        "B must be listed again"
+    );
 }
 
 // ── R06 ──────────────────────────────────────────────────────────────
@@ -485,10 +543,22 @@ async fn r06_multi_target_removal_converges() {
     remove(&a.cli, &c_id);
 
     let a_status = wait_for_effective_member_count(&a.cli, 1).await;
-    assert_eq!(intent_count_of(&a_status), 2, "two intents must merge: {a_status}");
-    assert_eq!(effective_member_count_of(&a_status), 1, "only A remains: {a_status}");
+    assert_eq!(
+        intent_count_of(&a_status),
+        2,
+        "two intents must merge: {a_status}"
+    );
+    assert_eq!(
+        effective_member_count_of(&a_status),
+        1,
+        "only A remains: {a_status}"
+    );
     let b_status = removal_status(&b.cli);
-    assert_eq!(intent_count_of(&b_status), 0, "removed target observes no intent: {b_status}");
+    assert_eq!(
+        intent_count_of(&b_status),
+        0,
+        "removed target observes no intent: {b_status}"
+    );
 }
 
 // ── R07 ──────────────────────────────────────────────────────────────
@@ -520,18 +590,28 @@ async fn r07_concurrent_removal_intents_merge() {
     let c_status = wait_for_intent_count(&c.cli, 2).await;
 
     for (name, status) in [("A", &a_status), ("C", &c_status)] {
-        assert!(intent_count_of(status) >= 2, "{name} must see both intents: {status}");
+        assert!(
+            intent_count_of(status) >= 2,
+            "{name} must see both intents: {status}"
+        );
     }
     let a_digest = a_status.get("convergenceDigest").and_then(Value::as_str);
     let c_digest = c_status.get("convergenceDigest").and_then(Value::as_str);
-    assert_eq!(a_digest, c_digest, "shared digest required: {a_status} vs {c_status}");
+    assert_eq!(
+        a_digest, c_digest,
+        "shared digest required: {a_status} vs {c_status}"
+    );
     assert_eq!(
         effective_member_count_of(&a_status),
         2,
         "A must exclude B from effective members: {a_status}"
     );
     let b_status = removal_status(&b.cli);
-    assert_eq!(intent_count_of(&b_status), 0, "removed target observes no intent: {b_status}");
+    assert_eq!(
+        intent_count_of(&b_status),
+        0,
+        "removed target observes no intent: {b_status}"
+    );
 }
 
 // ── R08 ──────────────────────────────────────────────────────────────
@@ -553,7 +633,11 @@ async fn r08_initiator_restart_recovers_removal_state() {
 
     a.restart().await;
     let status = wait_for_effective_member_count(&a.cli, 1).await;
-    assert_eq!(intent_count_of(&status), 1, "intent survives restart: {status}");
+    assert_eq!(
+        intent_count_of(&status),
+        1,
+        "intent survives restart: {status}"
+    );
 }
 
 // ── R09 ──────────────────────────────────────────────────────────────
@@ -583,8 +667,7 @@ async fn r09_removed_member_stops_receiving_content() {
         .run_capture(&["--json", "send", "r09-to-b", "--peer", &b_id]);
     let b_outcome: Value = serde_json::from_str(b_send.stdout.trim()).unwrap_or_default();
     assert!(
-        b_outcome.get("totalAccepted").and_then(Value::as_u64) == Some(0)
-            || b_send.exit_code != 0,
+        b_outcome.get("totalAccepted").and_then(Value::as_u64) == Some(0) || b_send.exit_code != 0,
         "send to a removed target must not be accepted: {b_outcome} exit={}",
         b_send.exit_code
     );
@@ -602,7 +685,10 @@ async fn r09_removed_member_stops_receiving_content() {
     );
     let outcome: Value = serde_json::from_str(output.stdout.trim())
         .unwrap_or_else(|error| panic!("send output is not JSON: {error}\n{}", output.stdout));
-    assert_eq!(outcome["totalAccepted"], 1, "retained member must accept: {outcome}");
+    assert_eq!(
+        outcome["totalAccepted"], 1,
+        "retained member must accept: {outcome}"
+    );
 }
 
 // ── R10 ──────────────────────────────────────────────────────────────
@@ -621,15 +707,27 @@ async fn r10_offline_online_cycles_stay_complete() {
     let b_id = remote_device_id(&a.cli, DEVICE_B);
     remove(&a.cli, &b_id);
     let a_status = wait_for_effective_member_count(&a.cli, 1).await;
-    assert_eq!(intent_count_of(&a_status), 1, "cycle must not grow intents: {a_status}");
+    assert_eq!(
+        intent_count_of(&a_status),
+        1,
+        "cycle must not grow intents: {a_status}"
+    );
 
     for _ in 0..3 {
         b.stop().await;
         b.restart().await;
         let b_status = wait_for_removed(&b.cli, true).await;
-        assert_eq!(intent_count_of(&b_status), 0, "removed target observes no intent: {b_status}");
+        assert_eq!(
+            intent_count_of(&b_status),
+            0,
+            "removed target observes no intent: {b_status}"
+        );
         let a_status = wait_for_effective_member_count(&a.cli, 1).await;
-        assert_eq!(intent_count_of(&a_status), 1, "cycle must not grow intents: {a_status}");
+        assert_eq!(
+            intent_count_of(&a_status),
+            1,
+            "cycle must not grow intents: {a_status}"
+        );
     }
 }
 
@@ -652,7 +750,11 @@ async fn r11_unpair_is_the_removal_path() {
 
     let a_status = wait_for_effective_member_count(&a.cli, 1).await;
     assert_eq!(intent_count_of(&a_status), 1, "{a_status}");
-    assert_eq!(effective_member_count_of(&a_status), 1, "B must be excluded: {a_status}");
+    assert_eq!(
+        effective_member_count_of(&a_status),
+        1,
+        "B must be excluded: {a_status}"
+    );
 }
 
 // ── R13 ──────────────────────────────────────────────────────────────
@@ -670,7 +772,11 @@ async fn r13_empty_space_reports_applied_zero_intents() {
         "locally_applied",
         "empty space must report local application: {status}"
     );
-    assert_eq!(intent_count_of(&status), 0, "empty space must have zero intents: {status}");
+    assert_eq!(
+        intent_count_of(&status),
+        0,
+        "empty space must have zero intents: {status}"
+    );
 }
 
 // ── R14 ──────────────────────────────────────────────────────────────
@@ -687,7 +793,11 @@ async fn r14_duplicate_removal_is_idempotent() {
 
     let b_id = remote_device_id(&a.cli, DEVICE_B);
     let first = remove(&a.cli, &b_id);
-    assert_eq!(intent_count_of(&first), 1, "first removal records one intent: {first}");
+    assert_eq!(
+        intent_count_of(&first),
+        1,
+        "first removal records one intent: {first}"
+    );
 
     let second = remove(&a.cli, &b_id);
     assert!(
@@ -706,13 +816,17 @@ async fn r15_removing_local_or_unknown_device_fails() {
     let a = Node::initialized("removal-r15-a", DEVICE_A, &binaries, &rendezvous).await;
 
     let local_id = remote_device_id(&a.cli, DEVICE_A);
-    let local_out = a.cli.run_capture(&["--json", "member", "remove", &local_id]);
+    let local_out = a
+        .cli
+        .run_capture(&["--json", "member", "remove", &local_id]);
     assert!(
         !local_out.success(),
         "removing the local device must fail: {local_out:?}"
     );
 
-    let unknown_out = a.cli.run_capture(&["--json", "member", "remove", "unknown-peer-id"]);
+    let unknown_out = a
+        .cli
+        .run_capture(&["--json", "member", "remove", "unknown-peer-id"]);
     assert!(
         !unknown_out.success(),
         "removing an unknown device must fail: {unknown_out:?}"
@@ -735,10 +849,17 @@ async fn r16_removed_target_observes_self_removed_flag() {
     let b_id = remote_device_id(&a.cli, DEVICE_B);
     remove(&a.cli, &b_id);
     let a_status = wait_for_effective_member_count(&a.cli, 1).await;
-    assert!(!removed_of(&a_status), "initiator must not be marked removed: {a_status}");
+    assert!(
+        !removed_of(&a_status),
+        "initiator must not be marked removed: {a_status}"
+    );
 
     let b_status = wait_for_removed(&b.cli, true).await;
-    assert_eq!(intent_count_of(&b_status), 0, "self-removal stays independent: {b_status}");
+    assert_eq!(
+        intent_count_of(&b_status),
+        0,
+        "self-removal stays independent: {b_status}"
+    );
 }
 
 // ── R17 ──────────────────────────────────────────────────────────────
@@ -761,11 +882,19 @@ async fn r17_removed_notice_is_idempotent_and_replay_safe() {
 
     b.restart().await;
     let first = wait_for_removed(&b.cli, true).await;
-    assert_eq!(intent_count_of(&first), 0, "notice must not create intents: {first}");
+    assert_eq!(
+        intent_count_of(&first),
+        0,
+        "notice must not create intents: {first}"
+    );
 
     b.restart().await;
     let replayed = wait_for_removed(&b.cli, true).await;
-    assert_eq!(intent_count_of(&replayed), 0, "replayed notice must stay idempotent: {replayed}");
+    assert_eq!(
+        intent_count_of(&replayed),
+        0,
+        "replayed notice must stay idempotent: {replayed}"
+    );
 }
 
 // ── R18 ──────────────────────────────────────────────────────────────

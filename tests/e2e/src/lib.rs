@@ -25,8 +25,9 @@ pub use pairing::{
 pub use profile::TestProfile;
 pub use releases::{
     checksum_for_asset, extract_release_archive, fixed_legacy_release_asset,
-    prepare_fixed_legacy_release_from, verify_release_payload, ArchiveFormat, ReleaseAsset,
-    LEGACY_RELEASE_BASE_URL, LEGACY_RELEASE_TAG, LEGACY_RELEASE_VERSION,
-    LEGACY_SHA256SUMS_SHA256,
+    prepare_fixed_legacy_release_from, prepare_v0_19_1_release_from, v0_19_1_release_asset,
+    verify_release_payload, ArchiveFormat, ReleaseAsset, LEGACY_RELEASE_BASE_URL,
+    LEGACY_RELEASE_TAG, LEGACY_RELEASE_VERSION, LEGACY_SHA256SUMS_SHA256, V0_19_1_RELEASE_TAG,
+    V0_19_1_RELEASE_VERSION, V0_19_1_SHA256SUMS_SHA256,
 };
 pub use rendezvous::LocalRendezvous;

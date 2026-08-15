@@ -10,9 +10,14 @@ description = "Black-box CLI end-to-end tests for uniclip + uniclipd"
 name = "prepare-legacy-release"
 path = "src/bin/prepare_legacy_release.rs"
 
+[[bin]]
+name = "prepare-v0-19-1-release"
+path = "src/bin/prepare_v0_19_1_release.rs"
+
 [features]
 membership-diagnostics = []
 historical-membership = []
+v0-19-1-upgrade = []
 
 [dependencies]
 # Harness utilities (re-exported for integration tests)
@@ -25,6 +30,8 @@ uuid = { version = "1", features = ["v4"] }
 dirs-next = "2"
 uc-app-paths = { path = "../../crates/uc-app-paths" }
 uc-daemon-process = { path = "../../crates/uc-daemon-process" }
+uc-platform = { path = "../../crates/uc-platform" }
+image = { version = "0.25", default-features = false, features = ["png", "tiff"] }
 libc = "0.2"
 wiremock = "0.6"
 flate2 = "1"

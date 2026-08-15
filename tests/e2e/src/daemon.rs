@@ -6,9 +6,12 @@ use std::process::{Child, Command};
 use std::time::Duration;
 
 use serde::Deserialize;
+use uc_daemon_process::process_metadata::{DaemonSpawnOrigin, SPAWN_ORIGIN_ENV};
 use uc_daemon_process::socket::DAEMON_CONN_FORMAT;
 
 use crate::{NodeBinarySet, TestProfile};
+
+const LEGACY_PROFILE_HTTP_PORT_START: u16 = 42719;
 
 /// The `daemon.conn` payload the daemon publishes (ADR-011) — the single
 /// source of truth for the ephemeral port and bearer token.
@@ -31,6 +34,7 @@ pub struct TestDaemon {
     pub profile: TestProfile,
     port: u16,
     binary: PathBuf,
+    uses_legacy_fixed_port: bool,
     rendezvous_base_url: Option<String>,
 }
 
@@ -70,6 +74,7 @@ impl TestDaemon {
             // `daemon.conn` (ADR-011 ephemeral port).
             port: 0,
             binary,
+            uses_legacy_fixed_port: binaries.version == "0.19.1",
             rendezvous_base_url,
         })
     }
@@ -111,9 +116,18 @@ impl TestDaemon {
         binaries: &NodeBinarySet,
         rendezvous_base_url: Option<&str>,
     ) -> Result<Self, String> {
-        let mut daemon = Self::spawn_clean_with(profile, binaries, rendezvous_base_url, |_| {})
+        Self::start_clean_configured_with(profile, binaries, rendezvous_base_url, |_| {}).await
+    }
+
+    pub async fn start_clean_configured_with(
+        profile: TestProfile,
+        binaries: &NodeBinarySet,
+        rendezvous_base_url: Option<&str>,
+        configure: impl FnOnce(&mut Command),
+    ) -> Result<Self, String> {
+        let mut daemon = Self::spawn_clean_with(profile, binaries, rendezvous_base_url, configure)
             .map_err(|e| format!("spawn failed: {e}"))?;
-        daemon.wait_for_conn(Duration::from_secs(30)).await?;
+        daemon.wait_for_endpoint(Duration::from_secs(30)).await?;
         daemon.wait_healthy(Duration::from_secs(30)).await?;
         Ok(daemon)
     }
@@ -123,6 +137,24 @@ impl TestDaemon {
         self.start_configured().await
     }
 
+    pub async fn restart_preserving_with_system_clipboard(&mut self) -> Result<(), String> {
+        self.kill();
+        let mut command = Self::command(
+            &self.profile,
+            &self.binary,
+            self.rendezvous_base_url.as_deref(),
+        )
+        .map_err(|e| format!("prepare desktop restart failed: {e}"))?;
+        command.env_remove("UC_DAEMON_RUN_MODE");
+        self.child = Some(
+            command
+                .spawn()
+                .map_err(|e| format!("desktop restart spawn failed: {e}"))?,
+        );
+        self.wait_for_endpoint(Duration::from_secs(30)).await?;
+        self.wait_healthy(Duration::from_secs(30)).await
+    }
+
     pub async fn restart_preserving_with(
         &mut self,
         binaries: &NodeBinarySet,
@@ -130,8 +162,31 @@ impl TestDaemon {
     ) -> Result<(), String> {
         self.kill();
         self.binary = binaries.daemon.clone();
+        self.uses_legacy_fixed_port = binaries.version == "0.19.1";
         self.rendezvous_base_url = rendezvous_base_url.map(str::to_string);
         self.start_configured().await
+    }
+
+    pub async fn restart_preserving_as_gui_with(
+        &mut self,
+        binaries: &NodeBinarySet,
+    ) -> Result<(), String> {
+        self.kill();
+        self.binary = binaries.daemon.clone();
+        self.uses_legacy_fixed_port = binaries.version == "0.19.1";
+        self.rendezvous_base_url = None;
+        let mut command = Self::command(&self.profile, &self.binary, None)
+            .map_err(|e| format!("prepare GUI-origin restart failed: {e}"))?;
+        command
+            .env_remove("UC_DAEMON_RUN_MODE")
+            .env(SPAWN_ORIGIN_ENV, DaemonSpawnOrigin::Gui.as_env_str());
+        self.child = Some(
+            command
+                .spawn()
+                .map_err(|e| format!("GUI-origin restart spawn failed: {e}"))?,
+        );
+        self.wait_for_endpoint(Duration::from_secs(30)).await?;
+        self.wait_healthy(Duration::from_secs(30)).await
     }
 
     async fn start_configured(&mut self) -> Result<(), String> {
@@ -146,8 +201,16 @@ impl TestDaemon {
                 .spawn()
                 .map_err(|e| format!("restart spawn failed: {e}"))?,
         );
-        self.wait_for_conn(Duration::from_secs(30)).await?;
+        self.wait_for_endpoint(Duration::from_secs(30)).await?;
         self.wait_healthy(Duration::from_secs(30)).await
+    }
+
+    async fn wait_for_endpoint(&mut self, timeout: Duration) -> Result<(), String> {
+        if self.uses_legacy_fixed_port {
+            self.port = legacy_port_for_profile(&self.profile.name);
+            return Ok(());
+        }
+        self.wait_for_conn(timeout).await
     }
 
     /// Poll until the daemon has published `daemon.conn` (ADR-011) and record
@@ -165,10 +228,7 @@ impl TestDaemon {
             if let Ok(content) = std::fs::read_to_string(&conn_path) {
                 if let Ok(conn) = serde_json::from_str::<DaemonConn>(&content) {
                     let pid_matches = expected_pid.is_none_or(|pid| conn.pid == pid);
-                    if pid_matches
-                        && conn.format == DAEMON_CONN_FORMAT
-                        && !conn.token.is_empty()
-                    {
+                    if pid_matches && conn.format == DAEMON_CONN_FORMAT && !conn.token.is_empty() {
                         self.port = conn.port;
                         return Ok(());
                     }
@@ -247,6 +307,29 @@ impl TestDaemon {
     pub fn diagnostic_log(&self) -> String {
         std::fs::read_to_string(self.profile.process_log_path())
             .unwrap_or_else(|error| format!("<failed to read daemon process log: {error}>"))
+    }
+}
+
+fn legacy_port_for_profile(profile: &str) -> u16 {
+    let slot_count = u32::from(u16::MAX) - u32::from(LEGACY_PROFILE_HTTP_PORT_START) + 1;
+    let hash = profile
+        .as_bytes()
+        .iter()
+        .fold(0xcbf29ce484222325_u64, |current, byte| {
+            (current ^ u64::from(*byte)).wrapping_mul(0x100000001b3)
+        });
+    LEGACY_PROFILE_HTTP_PORT_START + (hash % u64::from(slot_count)) as u16
+}
+
+#[cfg(test)]
+mod tests {
+    use super::legacy_port_for_profile;
+
+    #[test]
+    fn legacy_profile_port_is_stable_and_in_reserved_range() {
+        let port = legacy_port_for_profile("dev-upgrade-v0191-u01-fixed");
+        assert_eq!(port, legacy_port_for_profile("dev-upgrade-v0191-u01-fixed"));
+        assert!(port >= 42719);
     }
 }
 

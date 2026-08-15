@@ -12,6 +12,10 @@ pub const LEGACY_RELEASE_BASE_URL: &str =
     "https://github.com/UniClipboard/UniClipboard/releases/download";
 pub const LEGACY_SHA256SUMS_SHA256: &str =
     "905876044fbe05128b155c6be35908ec214fd61eace1ee3a871d1f58585da4ca";
+pub const V0_19_1_RELEASE_VERSION: &str = "0.19.1";
+pub const V0_19_1_RELEASE_TAG: &str = "v0.19.1";
+pub const V0_19_1_SHA256SUMS_SHA256: &str =
+    "c572d2c25f98f6bdf18216a33e88a5dcce0c77dba06b0283855def77650f55af";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ArchiveFormat {
@@ -48,6 +52,33 @@ pub fn fixed_legacy_release_asset(os: &str, arch: &str) -> Result<ReleaseAsset, 
             ArchiveFormat::Zip,
         ),
         _ => return Err(format!("unsupported legacy release target: {os}/{arch}")),
+    };
+    Ok(ReleaseAsset { filename, format })
+}
+
+pub fn v0_19_1_release_asset(os: &str, arch: &str) -> Result<ReleaseAsset, String> {
+    let (filename, format) = match (os, arch) {
+        ("macos", "aarch64") => (
+            "uniclipboard-cli-0.19.1-aarch64-apple-darwin.tar.gz",
+            ArchiveFormat::TarGz,
+        ),
+        ("macos", "x86_64") => (
+            "uniclipboard-cli-0.19.1-x86_64-apple-darwin.tar.gz",
+            ArchiveFormat::TarGz,
+        ),
+        ("linux", "aarch64") => (
+            "uniclipboard-cli-0.19.1-aarch64-unknown-linux-musl.tar.gz",
+            ArchiveFormat::TarGz,
+        ),
+        ("linux", "x86_64") => (
+            "uniclipboard-cli-0.19.1-x86_64-unknown-linux-musl.tar.gz",
+            ArchiveFormat::TarGz,
+        ),
+        ("windows", "x86_64") => (
+            "uniclipboard-cli-0.19.1-x86_64-pc-windows-msvc.zip",
+            ArchiveFormat::Zip,
+        ),
+        _ => return Err(format!("unsupported v0.19.1 release target: {os}/{arch}")),
     };
     Ok(ReleaseAsset { filename, format })
 }
@@ -99,20 +130,54 @@ pub async fn prepare_fixed_legacy_release_from(
     expected_manifest_sha256: &str,
 ) -> Result<NodeBinarySet, String> {
     let asset = fixed_legacy_release_asset(os, arch)?;
+    prepare_release_from(
+        release_base_url,
+        output_dir,
+        LEGACY_RELEASE_VERSION,
+        LEGACY_RELEASE_TAG,
+        asset,
+        expected_manifest_sha256,
+    )
+    .await
+}
+
+pub async fn prepare_v0_19_1_release_from(
+    release_base_url: &str,
+    output_dir: &Path,
+    os: &str,
+    arch: &str,
+    expected_manifest_sha256: &str,
+) -> Result<NodeBinarySet, String> {
+    let asset = v0_19_1_release_asset(os, arch)?;
+    prepare_release_from(
+        release_base_url,
+        output_dir,
+        V0_19_1_RELEASE_VERSION,
+        V0_19_1_RELEASE_TAG,
+        asset,
+        expected_manifest_sha256,
+    )
+    .await
+}
+
+async fn prepare_release_from(
+    release_base_url: &str,
+    output_dir: &Path,
+    version: &str,
+    tag: &str,
+    asset: ReleaseAsset,
+    expected_manifest_sha256: &str,
+) -> Result<NodeBinarySet, String> {
     if output_dir.exists() {
-        return load_verified_release(output_dir, asset, expected_manifest_sha256);
+        return load_verified_release(output_dir, version, asset, expected_manifest_sha256);
     }
 
     let client = reqwest::Client::builder()
-        .user_agent(format!("uc-e2e-tests/{LEGACY_RELEASE_VERSION}"))
+        .user_agent(format!("uc-e2e-tests/{version}"))
         .timeout(Duration::from_secs(60))
         .build()
         .map_err(|error| format!("build release download client failed: {error}"))?;
-    let base_url = format!(
-        "{}/{}",
-        release_base_url.trim_end_matches('/'),
-        LEGACY_RELEASE_TAG
-    );
+    let base_url = format!("{}/{}", release_base_url.trim_end_matches('/'), tag);
     let manifest = download(&client, &format!("{base_url}/SHA256SUMS.txt")).await?;
     let archive = download(&client, &format!("{base_url}/{}", asset.filename)).await?;
     verify_release_payload(&manifest, expected_manifest_sha256, &archive, asset)?;
@@ -131,18 +196,19 @@ pub async fn prepare_fixed_legacy_release_from(
     std::fs::write(staging.path().join(asset.filename), &archive)
         .map_err(|error| format!("write release archive failed: {error}"))?;
     extract_release_archive(asset.format, &archive, staging.path())?;
-    NodeBinarySet::fixed_release_dir(LEGACY_RELEASE_VERSION, staging.path())?;
+    NodeBinarySet::fixed_release_dir(version, staging.path())?;
 
     let staging_path = staging.keep();
     if let Err(error) = std::fs::rename(&staging_path, output_dir) {
         let _ = std::fs::remove_dir_all(&staging_path);
         return Err(format!("promote verified release failed: {error}"));
     }
-    NodeBinarySet::fixed_release_dir(LEGACY_RELEASE_VERSION, output_dir)
+    NodeBinarySet::fixed_release_dir(version, output_dir)
 }
 
 fn load_verified_release(
     output_dir: &Path,
+    version: &str,
     asset: ReleaseAsset,
     expected_manifest_sha256: &str,
 ) -> Result<NodeBinarySet, String> {
@@ -151,7 +217,7 @@ fn load_verified_release(
     let archive = std::fs::read(output_dir.join(asset.filename))
         .map_err(|error| format!("read cached release archive failed: {error}"))?;
     verify_release_payload(&manifest, expected_manifest_sha256, &archive, asset)?;
-    NodeBinarySet::fixed_release_dir(LEGACY_RELEASE_VERSION, output_dir)
+    NodeBinarySet::fixed_release_dir(version, output_dir)
 }
 
 async fn download(client: &reqwest::Client, url: &str) -> Result<Vec<u8>, String> {

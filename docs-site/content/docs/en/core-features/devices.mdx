@@ -22,16 +22,25 @@ head to [Settings → General](../guides/settings#general) and
 [Settings → Sync](../guides/settings#sync). The "Switch space" chip opens its
 own dialog.
 
-## Membership updates
+## Device trust changes
 
-When a membership change needs one of your devices to come online, only that
-device's card shows a **Waiting for update** warning icon. The icon is not a
-general offline indicator: another offline device without the icon is not
-blocking the current update. When the named device comes online, the update
-continues automatically and the warning disappears after it finishes.
+When another device proposes a membership change, UniClipboard opens a required
+decision dialog and sends a system notification. The dialog cannot be dismissed
+until you choose one of the outcomes shown by the app:
 
-If this device has been removed from the space, its own card shows that fact.
-Rejoin the space from a trusted remaining device to use it again.
+- **Apply the change** adopts the proposed membership on this device.
+- **Keep the current space** preserves this device's current group. Devices that
+  accepted the other outcome move into a different space and stop sharing new
+  clipboard content with this group.
+
+Leaving the current space and keeping a group split both require an additional
+confirmation. A split is a supported long-term result, not an offline or failed
+state, and UniClipboard does not merge the groups automatically.
+
+Only when the background service confirms that a device version is too old does
+its card show **Update required**. Offline status alone never means that an
+update is required. If this device has been removed, rejoin from a trusted
+remaining device to use the space again.
 
 For setting up mobile sync end to end (LAN listener, iOS Shortcut,
 credentials), see the dedicated [Mobile sync](./mobile-sync) guide.

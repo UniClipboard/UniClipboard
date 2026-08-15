@@ -51,8 +51,8 @@ dbg_macro = "warn"
 [workspace.dependencies]
 # All desktop consumers use one immutable Engine revision. Features remain
 # opt-in at each host boundary so LAN compatibility cannot become a default.
-uc-engine = { git = "https://github.com/UniClipboard/Engine.git", rev = "236ca1fc8b475ff4bb6699ea671aa2c960d15333" }
-uc-observability-contract = { git = "https://github.com/UniClipboard/Engine.git", rev = "236ca1fc8b475ff4bb6699ea671aa2c960d15333" }
+uc-engine = { git = "https://github.com/UniClipboard/Engine.git", rev = "49976d5ea21c5d448d9ef5df2c581b77abeb52cf" }
+uc-observability-contract = { git = "https://github.com/UniClipboard/Engine.git", rev = "49976d5ea21c5d448d9ef5df2c581b77abeb52cf" }
 
 # tauri 2.11 是 specta rc.25 兼容的最低版本 —— 2.10.x 及之前在
 # `tauri/src/ipc/channel.rs` 用了 `#[specta(remote=..., rename="...")]`
@@ -131,3 +131,8 @@ opt-level = "z"   # Optimize for binary size
 debug = "line-tables-only"
 split-debuginfo = "packed" # macOS → .dSYM bundle, Linux → .dwp;Windows MSVC 自带 .pdb
 strip = "symbols"          # binary 内嵌符号 strip 干净,独立 debug 文件保留
+
+# Proc macros and build scripts are loaded by rustc during the build. Stripping
+# their dylibs makes current rustc releases reject otherwise valid artifacts.
+[profile.release.build-override]
+strip = "none"

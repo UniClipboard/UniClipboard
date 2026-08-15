@@ -42,11 +42,33 @@ _Avoid_: device name、machine id、peer id
 _Avoid_: peer、trusted peer、user
 
 **Workspace convergence**：
-Engine 持久拥有的 Space 成员变更收敛状态，统一表达成员加入、移除与离线成员等待；阶段为
-`locally_applied`、`converging`、`waiting_for_offline_member`、`complete`、
-`recovery_required`。等待阶段由 Engine 给出确切的 `waiting_member_device_ids`，客户端只能
-据此标记对应设备，不得从在线状态推断。`removed` 是独立的本机长期事实，重新加入后才清除。
+Engine 持久拥有的 Space 成员变更收敛状态，统一表达本机已应用、正在收敛、完成、
+需要用户决定或无法自动恢复；它分别给出待决定的移除、设备组不一致、需要升级的设备，
+以及当前有效成员数量。客户端只能展示和重新查询这些事实，不得从在线状态、设备数量或
+消息到达顺序自行推断。`removed` 是独立的本机长期事实，重新加入后才清除。
 _Avoid_: member revocation、client-side convergence、offline inference
+
+**Device trust relationship**：
+Engine 对一台已知设备给出的完整关系视图，由成员资格、在线情况、设备组关系、版本兼容性
+和同步关系五个彼此独立的事实组成；任何一项都不得被客户端用来推断另一项。
+_Avoid_: device status、peer state、client-side trust inference
+
+**Pending device change**：
+Engine 持久保存、等待本机用户决定的一次设备组移除变化，包含稳定编号、提出设备、移除目标
+以及两种选择的影响预览；用户只能应用变化或保留当前设备组，涉及移除本机时必须再次确认。
+重复提交或状态已经变化时，由 Engine 返回明确结果，客户端不得自行补算。
+_Avoid_: pending removal flag、local dialog state、client-side decision
+
+**Membership divergence**：
+用户选择保留当前设备组后形成的长期设备组分歧。分歧双方停止互相同步，各自设备组继续独立
+使用；它不是离线、失败或待处理状态，当前版本也不会自动合并或恢复。客户端只展示 Engine
+给出的关系，不得自行推断双方已经恢复为同一设备组。
+_Avoid_: temporary split、sync failure、pending recovery
+
+**Current member device list**：
+设备页展示的当前 Space 成员集合，只以 **SpaceMember** 为准；历史设备关系仍可用于安全判断
+和待决定流程，但不同空间或已移除的设备不得因此重新进入设备列表。
+_Avoid_: trusted peer list、relationship history、all known devices
 
 **Readmission**：
 旧版 Space 安全升级时，成员重新进入安全组的 Engine 持久状态。成员处于
@@ -139,8 +161,10 @@ _Avoid_: relay-only、server mode
 ### 关系
 
 - 一台设备以 `DeviceId` 立身，被接纳进 **Space** 后成为一条 **SpaceMember**
-- **Workspace convergence** 是成员关系的唯一收敛事实来源；等待名单只表示需要上线以完成
-  当前成员变更，不改变 **Transient sync semantics**，也不补传历史剪贴板内容
+- **Workspace convergence** 是成员关系的唯一收敛事实来源；客户端只展示它给出的待决定变化、
+  不一致设备和升级要求，不改变 **Transient sync semantics**，也不补传历史剪贴板内容
+- **Current member device list** 只由 **SpaceMember** 构成；**Device trust relationship**
+  是独立的安全判断视图，不是设备列表的补充来源
 - 一次复制产生一个 **ClipboardEvent**，落地为一条对用户可见的 **ClipboardEntry**；
   原始字节来自该 event 的 **SystemClipboardSnapshot**，拆成多条 **Representation**
 - **MasterKey** 由 **Passphrase** 经 KEK 解包，是 **Space** 内一切密文的根密钥；

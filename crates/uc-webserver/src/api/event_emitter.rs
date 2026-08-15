@@ -7,7 +7,6 @@ use uc_engine::{
     TransferDirectionSummary,
 };
 
-use crate::api::projection::IntoApiDto;
 use crate::api::types::DaemonWsEvent;
 
 fn now_ms() -> i64 {
@@ -117,16 +116,19 @@ pub fn engine_event_to_ws(event: EngineEvent) -> Option<DaemonWsEvent> {
                 "targetDeviceId": event.target_device_id,
             }),
         ),
-        EngineEvent::WorkspaceConvergenceChanged(summary) => {
-            let updated_at_ms = summary.updated_at_ms;
-            let dto = summary.into_api_dto();
-            (
-                ws_topic::WORKSPACE_CONVERGENCE,
-                ws_event::WORKSPACE_CONVERGENCE_CHANGED,
-                updated_at_ms,
-                serde_json::to_value(dto).ok()?,
-            )
-        }
+        #[cfg(feature = "e2e-rendezvous")]
+        EngineEvent::WorkspaceConvergenceChanged(summary) => (
+            ws_topic::DEVICE_TRUST,
+            ws_event::DEVICE_TRUST_CHANGED,
+            now_ms(),
+            serde_json::json!({ "revision": summary.revision }),
+        ),
+        EngineEvent::DeviceTrustChanged { revision } => (
+            ws_topic::DEVICE_TRUST,
+            ws_event::DEVICE_TRUST_CHANGED,
+            now_ms(),
+            serde_json::json!({ "revision": revision }),
+        ),
         EngineEvent::NetworkRecoveryChanged(status) => (
             ws_topic::NETWORK_RECOVERY,
             ws_event::NETWORK_RECOVERY_CHANGED,
@@ -179,9 +181,9 @@ mod engine_event_tests {
     use uc_engine::{
         EngineError, EngineErrorCategory, InboundNoticeEvent, LifecycleAction,
         NetworkRecoveryStatusSummary, RefreshReason, TransferProgress,
-        WorkspaceConvergenceFailureCategorySummary, WorkspaceConvergencePhaseSummary,
-        WorkspaceConvergenceSummary,
     };
+    #[cfg(feature = "e2e-rendezvous")]
+    use uc_engine::{WorkspaceConvergencePhaseSummary, WorkspaceConvergenceSummary};
 
     #[derive(Serialize)]
     struct InboundNoticeFixture {
@@ -320,41 +322,37 @@ mod engine_event_tests {
     }
 
     #[test]
-    fn workspace_convergence_changes_include_the_complete_engine_state() {
+    fn device_trust_changes_only_invalidate_the_complete_snapshot() {
+        let event = engine_event_to_ws(EngineEvent::DeviceTrustChanged { revision: 4 })
+            .expect("device trust websocket event");
+        assert_eq!(event.topic, "device-trust");
+        assert_eq!(event.event_type, "device-trust.changed");
+        assert_eq!(event.payload, serde_json::json!({ "revision": 4 }));
+    }
+
+    #[cfg(feature = "e2e-rendezvous")]
+    #[test]
+    fn legacy_workspace_convergence_changes_invalidate_the_complete_snapshot() {
         let event = engine_event_to_ws(EngineEvent::WorkspaceConvergenceChanged(
             WorkspaceConvergenceSummary {
-                phase: WorkspaceConvergencePhaseSummary::WaitingForOfflineMember,
+                phase: WorkspaceConvergencePhaseSummary::Converging,
                 revision: 4,
-                change_count: 2,
-                removal_intent_count: 1,
+                history_event_count: 2,
                 effective_member_count: 3,
-                confirmed_member_count: 2,
-                waiting_member_device_ids: vec!["device-b".into()],
-                waiting_member_count: 1,
+                pending_removal_decision_device_ids: vec!["device-b".into()],
+                pending_removal_decision_event_id: Some("event-1".into()),
+                diverged_peer_device_ids: Vec::new(),
+                upgrade_required_peer_device_ids: Vec::new(),
                 convergence_digest: Some("digest-1".into()),
                 updated_at_ms: 42,
                 removed: false,
-                failure_category: Some(WorkspaceConvergenceFailureCategorySummary::Storage),
+                failure_category: None,
             },
         ))
-        .expect("workspace convergence websocket event");
+        .expect("device trust websocket event");
 
-        assert_eq!(event.topic, "workspace-convergence");
-        assert_eq!(event.event_type, "workspace-convergence.changed");
-        assert_eq!(event.payload["phase"], "waiting_for_offline_member");
-        assert_eq!(event.payload["revision"], 4);
-        assert_eq!(event.payload["changeCount"], 2);
-        assert_eq!(event.payload["removalIntentCount"], 1);
-        assert_eq!(event.payload["effectiveMemberCount"], 3);
-        assert_eq!(event.payload["confirmedMemberCount"], 2);
-        assert_eq!(
-            event.payload["waitingMemberDeviceIds"],
-            serde_json::json!(["device-b"])
-        );
-        assert_eq!(event.payload["waitingMemberCount"], 1);
-        assert_eq!(event.payload["convergenceDigest"], "digest-1");
-        assert_eq!(event.payload["updatedAtMs"], 42);
-        assert_eq!(event.payload["removed"], false);
-        assert_eq!(event.payload["failureCategory"], "storage");
+        assert_eq!(event.topic, "device-trust");
+        assert_eq!(event.event_type, "device-trust.changed");
+        assert_eq!(event.payload, serde_json::json!({ "revision": 4 }));
     }
 }

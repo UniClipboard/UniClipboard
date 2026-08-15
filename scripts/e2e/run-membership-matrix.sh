@@ -52,6 +52,10 @@ run_case() {
   echo "==> $case_id ($effective_classification)"
   cargo "${cargo_args[@]}" 2>&1 | tee "$log_file"
   local test_status=${PIPESTATUS[0]}
+  if [[ $test_status -eq 0 ]] && ! grep -Eq 'test result: ok\. 1 passed;' "$log_file"; then
+    echo "$case_id did not execute exactly one test" | tee -a "$log_file" >&2
+    test_status=1
+  fi
 
   if [[ $test_status -eq 0 ]]; then
     printf '%s\t%s\t%s\tpassed\n' "$case_id" "$TIER" "$effective_classification" >> "$RESULTS"
@@ -66,9 +70,8 @@ run_case() {
   fi
 }
 
-run_case C0 required "" membership_convergence c0_single_node_reports_locally_applied
+run_case C0 required "" membership_convergence c0_single_node_reports_healthy_device_trust
 run_case C1 required "" membership_convergence c1_online_sponsor_chain_converges_and_syncs_directly
-run_case R2 required membership-diagnostics membership_convergence r2_permanent_loss_unblocks_an_offline_retained_member
 
 if [[ "$TIER" == "pr" ]]; then
   for case_id in C2-control C2 C3 H1 H2 H3 H4; do

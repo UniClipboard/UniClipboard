@@ -9,14 +9,14 @@
 import { act, render, screen, waitFor } from '@testing-library/react'
 import { StrictMode } from 'react'
 import { I18nextProvider } from 'react-i18next'
-import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import AddDeviceDialog from '@/components/device/AddDeviceDialog'
 import i18n from '@/i18n'
 
 const getSetupState = vi.fn()
 const issuePairingInvitation = vi.fn()
 const getPairedPeers = vi.fn()
-let workspaceConvergenceHandler: (() => void) | undefined
+let pairingCompletedHandler: ((event: { success: boolean }) => void) | undefined
 
 vi.mock('@/api/daemon/setupV2', () => ({
   getSetupState: () => getSetupState(),
@@ -30,15 +30,10 @@ vi.mock('@/api/daemon/members', () => ({
 
 vi.mock('@/api/setupEvents', () => ({
   onSetupInvitationRevoked: vi.fn(() => Promise.resolve(() => undefined)),
-}))
-
-vi.mock('@/lib/daemon-ws', () => ({
-  daemonWs: {
-    subscribe: vi.fn((_topics, callback) => {
-      workspaceConvergenceHandler = () => callback({ eventType: 'workspace-convergence.changed' })
-      return () => undefined
-    }),
-  },
+  onSetupPairingCompleted: vi.fn(callback => {
+    pairingCompletedHandler = callback
+    return Promise.resolve(() => undefined)
+  }),
 }))
 
 vi.mock('@/store/hooks', () => ({
@@ -65,7 +60,7 @@ describe('AddDeviceDialog invitation issuing', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
-    workspaceConvergenceHandler = undefined
+    pairingCompletedHandler = undefined
     getSetupState.mockResolvedValue({
       hasCompleted: true,
       currentInvitation: null,
@@ -76,6 +71,10 @@ describe('AddDeviceDialog invitation issuing', () => {
       code: '123456789',
       expiresAtMs: Date.now() + 300_000,
     })
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
   })
 
   it('issues and renders an invitation when opened under StrictMode', async () => {
@@ -126,16 +125,54 @@ describe('AddDeviceDialog invitation issuing', () => {
 
     await waitFor(() => {
       expect(screen.getByLabelText('123456789')).toBeInTheDocument()
-      expect(workspaceConvergenceHandler).toBeTypeOf('function')
+      expect(pairingCompletedHandler).toBeTypeOf('function')
     })
 
     act(() => {
-      workspaceConvergenceHandler?.()
+      pairingCompletedHandler?.({ success: true })
     })
 
     await waitFor(() => {
       expect(screen.queryByLabelText('123456789')).not.toBeInTheDocument()
       expect(screen.getAllByText(i18n.t('devices.addDevice.success.title'))).not.toHaveLength(0)
     })
+  })
+
+  it('keeps the success state visible briefly, then closes automatically', async () => {
+    const onOpenChange = vi.fn()
+    getPairedPeers.mockResolvedValueOnce([]).mockResolvedValueOnce([{}])
+
+    render(
+      <I18nextProvider i18n={i18n}>
+        <AddDeviceDialog open onOpenChange={onOpenChange} />
+      </I18nextProvider>
+    )
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('123456789')).toBeInTheDocument()
+      expect(pairingCompletedHandler).toBeTypeOf('function')
+    })
+
+    vi.useFakeTimers()
+    act(() => {
+      pairingCompletedHandler?.({ success: true })
+    })
+
+    await act(async () => {
+      await Promise.resolve()
+    })
+    expect(screen.getAllByText(i18n.t('devices.addDevice.success.title'))).not.toHaveLength(0)
+    expect(onOpenChange).not.toHaveBeenCalled()
+
+    act(() => {
+      vi.advanceTimersByTime(1999)
+    })
+    expect(onOpenChange).not.toHaveBeenCalled()
+
+    act(() => {
+      vi.advanceTimersByTime(1)
+    })
+    expect(onOpenChange).toHaveBeenCalledOnce()
+    expect(onOpenChange).toHaveBeenCalledWith(false)
   })
 })

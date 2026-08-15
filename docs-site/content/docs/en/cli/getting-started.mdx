@@ -37,7 +37,7 @@ different `--profile` value.
 | `uniclip start --foreground` | Run the daemon in the foreground; logs go to the TTY.                                                                                               |
 | `uniclip start --server`     | Run as a headless server node: no system clipboard or clipboard watcher; syncs over iroh as a normal member. For a VPS / container with no display. |
 | `uniclip stop`               | Stop the running daemon.                                                                                                                            |
-| `uniclip status`             | Show daemon health, pairing state, and presence.                                                                                                    |
+| `uniclip status`             | Show daemon health and a device-trust summary, including local membership, pending changes, and devices that need an update.                        |
 
 The daemon starts automatically when you run a command that needs it,
 so explicit `start` is mostly for log-streaming setups and headless

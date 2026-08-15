@@ -1,4 +1,42 @@
 {
+  "deviceTrust": {
+    "listSeparator": ", ",
+    "notification": {
+      "title": "Revise a relação dos dispositivos",
+      "decision": "O grupo de dispositivos mudou. Abra o UniClipboard para decidir o que fazer.",
+      "status": "Uma relação de sincronização mudou. Abra o UniClipboard para revisar."
+    },
+    "modal": {
+      "title": "Escolha com quais dispositivos continuar sincronizando",
+      "summary": "{{proposer}} quer remover {{targets}}",
+      "localSummary": "{{proposer}} quer remover este dispositivo",
+      "applyTitle": "Aceitar esta remoção",
+      "keepTitle": "Recusar e manter os dispositivos originais",
+      "leaveTitle": "Sair do grupo de dispositivos",
+      "stayTitle": "Permanecer no grupo atual",
+      "continueSyncing": "Continuar sincronizando",
+      "stopSyncing": "Parar de sincronizar",
+      "noDevices": "Nenhum",
+      "confirmLocalRemoval": "Isso remove este dispositivo do espaço e interrompe a sincronização nele. Confirme novamente para continuar.",
+      "stateChanged": "O estado dos dispositivos mudou. A situação mais recente está sendo exibida.",
+      "failed": "Não foi possível salvar sua escolha. Verifique o serviço em segundo plano e tente novamente."
+    },
+    "actions": {
+      "confirm": "Confirmar",
+      "back": "Voltar",
+      "keep": "Manter espaço atual",
+      "apply": "Também remover o dispositivo de destino",
+      "exit": "Sair deste espaço",
+      "confirmKeep": "Manter espaços separados",
+      "confirmExit": "Confirmar saída"
+    },
+    "status": {
+      "diverged": "Espaço diferente",
+      "upgrade": "Atualização necessária",
+      "unverifiable": "Não foi possível verificar o dispositivo",
+      "pending": "Alteração precisa de revisão"
+    }
+  },
   "common": {
     "loading": "Carregando...",
     "unknownSize": "Tamanho desconhecido",

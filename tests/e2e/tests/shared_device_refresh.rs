@@ -20,7 +20,9 @@
 use std::time::Duration;
 
 use serde_json::Value;
-use uc_e2e_tests::{InviteSession, LocalRendezvous, NodeBinarySet, TestCli, TestDaemon, TestProfile};
+use uc_e2e_tests::{
+    InviteSession, LocalRendezvous, NodeBinarySet, TestCli, TestDaemon, TestProfile,
+};
 
 const PASSPHRASE: &str = "shared-device-refresh-e2e-passphrase";
 const WAIT_TIMEOUT: Duration = Duration::from_secs(120);

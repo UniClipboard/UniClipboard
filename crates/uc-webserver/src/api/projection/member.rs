@@ -6,7 +6,12 @@
 //! in addition to the settings ones.
 
 use uc_engine::{
-    ContentTypesPatch, ContentTypesSummary, LegacyBootstrapOutcome, LegacyBootstrapSummary,
+    ContentTypesPatch, ContentTypesSummary, DeviceCompatibilitySummary,
+    DeviceGroupRelationshipSummary, DeviceMembershipSummary, DeviceReachabilitySummary,
+    DeviceSyncRelationshipSummary, DeviceTrustActionSummary, DeviceTrustChangeSummary,
+    DeviceTrustChoiceSummary, DeviceTrustDecisionSummary, DeviceTrustImpactSummary,
+    DeviceTrustRecoverySummary, DeviceTrustRelationshipSummary, DeviceTrustSnapshotSummary,
+    DeviceTrustUnavailableReasonSummary, LegacyBootstrapOutcome, LegacyBootstrapSummary,
     MemberProtectionStatusSummary, MemberProtectionSummary, MemberSyncPreferencesPatch,
     MemberSyncPreferencesSummary, SpaceProtectionModeSummary, SpaceProtectionSummary,
     WorkspaceConvergenceFailureCategorySummary, WorkspaceConvergencePhaseSummary,
@@ -15,7 +20,11 @@ use uc_engine::{
 
 use super::{IntoApiDto, IntoDomain};
 use crate::api::dto::member::{
-    LegacyBootstrapDto, LegacyBootstrapOutcomeDto, MemberProtectionDto, MemberProtectionStatusDto,
+    DeviceCompatibilityDto, DeviceGroupRelationshipDto, DeviceMembershipDto, DeviceReachabilityDto,
+    DeviceSyncRelationshipDto, DeviceTrustActionDto, DeviceTrustChangeDto, DeviceTrustChoiceDto,
+    DeviceTrustDecisionDto, DeviceTrustImpactDto, DeviceTrustRelationshipDto,
+    DeviceTrustSnapshotDto, DeviceTrustUnavailableReasonDto, LegacyBootstrapDto,
+    LegacyBootstrapOutcomeDto, MemberProtectionDto, MemberProtectionStatusDto,
     MemberSyncPreferencesDto, SpaceProtectionDto, SpaceProtectionModeDto, WorkspaceConvergenceDto,
     WorkspaceConvergenceFailureCategoryDto, WorkspaceConvergencePhaseDto,
 };
@@ -140,9 +149,6 @@ impl IntoApiDto<WorkspaceConvergenceDto> for WorkspaceConvergenceSummary {
                 WorkspaceConvergencePhaseSummary::Converging => {
                     WorkspaceConvergencePhaseDto::Converging
                 }
-                WorkspaceConvergencePhaseSummary::WaitingForOfflineMember => {
-                    WorkspaceConvergencePhaseDto::WaitingForOfflineMember
-                }
                 WorkspaceConvergencePhaseSummary::Complete => {
                     WorkspaceConvergencePhaseDto::Complete
                 }
@@ -151,12 +157,12 @@ impl IntoApiDto<WorkspaceConvergenceDto> for WorkspaceConvergenceSummary {
                 }
             },
             revision: self.revision,
-            change_count: self.change_count,
-            removal_intent_count: self.removal_intent_count,
+            history_event_count: self.history_event_count,
             effective_member_count: self.effective_member_count,
-            confirmed_member_count: self.confirmed_member_count,
-            waiting_member_device_ids: self.waiting_member_device_ids,
-            waiting_member_count: self.waiting_member_count,
+            pending_removal_decision_device_ids: self.pending_removal_decision_device_ids,
+            pending_removal_decision_event_id: self.pending_removal_decision_event_id,
+            diverged_peer_device_ids: self.diverged_peer_device_ids,
+            upgrade_required_peer_device_ids: self.upgrade_required_peer_device_ids,
             convergence_digest: self.convergence_digest,
             updated_at_ms: self.updated_at_ms,
             removed: self.removed,
@@ -190,10 +196,233 @@ impl IntoApiDto<WorkspaceConvergenceDto> for WorkspaceConvergenceSummary {
     }
 }
 
+impl IntoApiDto<DeviceTrustSnapshotDto> for DeviceTrustSnapshotSummary {
+    fn into_api_dto(self) -> DeviceTrustSnapshotDto {
+        DeviceTrustSnapshotDto {
+            revision: self.revision,
+            local_device_id: self.local_device_id,
+            local_membership: device_membership(self.local_membership),
+            current_change: self.current_change.map(device_trust_change),
+            devices: self
+                .devices
+                .into_iter()
+                .map(device_trust_relationship)
+                .collect(),
+            recovery: match self.recovery {
+                DeviceTrustRecoverySummary::NotAvailableInThisVersion => {
+                    "not_available_in_this_version".to_string()
+                }
+            },
+            allowed_actions: self
+                .allowed_actions
+                .into_iter()
+                .map(device_trust_action)
+                .collect(),
+            blocked_reason: self.blocked_reason.map(device_trust_unavailable_reason),
+            updated_at_ms: self.updated_at_ms,
+        }
+    }
+}
+
+impl IntoApiDto<DeviceTrustDecisionDto> for DeviceTrustDecisionSummary {
+    fn into_api_dto(self) -> DeviceTrustDecisionDto {
+        match self {
+            DeviceTrustDecisionSummary::Applied {
+                change_id,
+                snapshot,
+            } => DeviceTrustDecisionDto::Applied {
+                change_id,
+                snapshot: snapshot.into_api_dto(),
+            },
+            DeviceTrustDecisionSummary::KeptCurrentDeviceGroup {
+                change_id,
+                snapshot,
+            } => DeviceTrustDecisionDto::KeptCurrentDeviceGroup {
+                change_id,
+                snapshot: snapshot.into_api_dto(),
+            },
+            DeviceTrustDecisionSummary::AlreadyCompleted {
+                change_id,
+                completed_choice,
+                snapshot,
+            } => DeviceTrustDecisionDto::AlreadyCompleted {
+                change_id,
+                completed_choice: device_trust_choice(completed_choice),
+                snapshot: snapshot.into_api_dto(),
+            },
+            DeviceTrustDecisionSummary::StateChanged {
+                current_change_id,
+                snapshot,
+            } => DeviceTrustDecisionDto::StateChanged {
+                current_change_id,
+                snapshot: snapshot.into_api_dto(),
+            },
+            DeviceTrustDecisionSummary::LocalDeviceConfirmationRequired {
+                change_id,
+                snapshot,
+            } => DeviceTrustDecisionDto::LocalDeviceConfirmationRequired {
+                change_id,
+                snapshot: snapshot.into_api_dto(),
+            },
+        }
+    }
+}
+
+fn device_trust_change(change: DeviceTrustChangeSummary) -> DeviceTrustChangeDto {
+    DeviceTrustChangeDto {
+        change_id: change.change_id,
+        proposed_by_device_id: change.proposed_by_device_id,
+        target_device_ids: change.target_device_ids,
+        includes_local_device: change.includes_local_device,
+        apply_impact: device_trust_impact(change.apply_impact),
+        keep_current_impact: device_trust_impact(change.keep_current_impact),
+        allowed_choices: change
+            .allowed_choices
+            .into_iter()
+            .map(device_trust_choice)
+            .collect(),
+        blocked_reason: change.blocked_reason.map(device_trust_unavailable_reason),
+    }
+}
+
+fn device_trust_impact(impact: DeviceTrustImpactSummary) -> DeviceTrustImpactDto {
+    DeviceTrustImpactDto {
+        usable_device_ids: impact.usable_device_ids,
+        paused_device_ids: impact.paused_device_ids,
+        local_device_outcome: device_membership(impact.local_device_outcome),
+        requires_rejoin_device_ids: impact.requires_rejoin_device_ids,
+    }
+}
+
+fn device_trust_relationship(
+    relationship: DeviceTrustRelationshipSummary,
+) -> DeviceTrustRelationshipDto {
+    DeviceTrustRelationshipDto {
+        device_id: relationship.device_id,
+        display_name: relationship.display_name,
+        is_local: relationship.is_local,
+        reachability: match relationship.reachability {
+            DeviceReachabilitySummary::Online => DeviceReachabilityDto::Online,
+            DeviceReachabilitySummary::Offline => DeviceReachabilityDto::Offline,
+            DeviceReachabilitySummary::Unknown => DeviceReachabilityDto::Unknown,
+        },
+        membership: device_membership(relationship.membership),
+        group_relationship: match relationship.group_relationship {
+            DeviceGroupRelationshipSummary::Consistent => DeviceGroupRelationshipDto::Consistent,
+            DeviceGroupRelationshipSummary::PendingLocalDecision => {
+                DeviceGroupRelationshipDto::PendingLocalDecision
+            }
+            DeviceGroupRelationshipSummary::Diverged => DeviceGroupRelationshipDto::Diverged,
+            DeviceGroupRelationshipSummary::Unverifiable => {
+                DeviceGroupRelationshipDto::Unverifiable
+            }
+            DeviceGroupRelationshipSummary::Unknown => DeviceGroupRelationshipDto::Unknown,
+        },
+        compatibility: match relationship.compatibility {
+            DeviceCompatibilitySummary::Compatible => DeviceCompatibilityDto::Compatible,
+            DeviceCompatibilitySummary::UpgradeRequired => DeviceCompatibilityDto::UpgradeRequired,
+            DeviceCompatibilitySummary::Unknown => DeviceCompatibilityDto::Unknown,
+        },
+        sync_relationship: match relationship.sync_relationship {
+            DeviceSyncRelationshipSummary::Usable => DeviceSyncRelationshipDto::Usable,
+            DeviceSyncRelationshipSummary::WaitingForLocalDecision => {
+                DeviceSyncRelationshipDto::WaitingForLocalDecision
+            }
+            DeviceSyncRelationshipSummary::PausedGroupDiverged => {
+                DeviceSyncRelationshipDto::PausedGroupDiverged
+            }
+            DeviceSyncRelationshipSummary::PausedUpgradeRequired => {
+                DeviceSyncRelationshipDto::PausedUpgradeRequired
+            }
+            DeviceSyncRelationshipSummary::PausedUnverifiable => {
+                DeviceSyncRelationshipDto::PausedUnverifiable
+            }
+            DeviceSyncRelationshipSummary::RemovedLocalDevice => {
+                DeviceSyncRelationshipDto::RemovedLocalDevice
+            }
+            DeviceSyncRelationshipSummary::RemovedPeerDevice => {
+                DeviceSyncRelationshipDto::RemovedPeerDevice
+            }
+            DeviceSyncRelationshipSummary::Unknown => DeviceSyncRelationshipDto::Unknown,
+        },
+        available_actions: relationship
+            .available_actions
+            .into_iter()
+            .map(device_trust_action)
+            .collect(),
+        blocked_reason: relationship
+            .blocked_reason
+            .map(device_trust_unavailable_reason),
+    }
+}
+
+fn device_membership(value: DeviceMembershipSummary) -> DeviceMembershipDto {
+    match value {
+        DeviceMembershipSummary::Active => DeviceMembershipDto::Active,
+        DeviceMembershipSummary::Removed => DeviceMembershipDto::Removed,
+        DeviceMembershipSummary::Unavailable => DeviceMembershipDto::Unavailable,
+        DeviceMembershipSummary::Unknown => DeviceMembershipDto::Unknown,
+    }
+}
+
+fn device_trust_choice(value: DeviceTrustChoiceSummary) -> DeviceTrustChoiceDto {
+    match value {
+        DeviceTrustChoiceSummary::ApplyChange => DeviceTrustChoiceDto::ApplyChange,
+        DeviceTrustChoiceSummary::KeepCurrentDeviceGroup => {
+            DeviceTrustChoiceDto::KeepCurrentDeviceGroup
+        }
+    }
+}
+
+fn device_trust_action(value: DeviceTrustActionSummary) -> DeviceTrustActionDto {
+    match value {
+        DeviceTrustActionSummary::ApplyCurrentChange => DeviceTrustActionDto::ApplyCurrentChange,
+        DeviceTrustActionSummary::KeepCurrentDeviceGroup => {
+            DeviceTrustActionDto::KeepCurrentDeviceGroup
+        }
+        DeviceTrustActionSummary::ConfirmApplyRemovesLocalDevice => {
+            DeviceTrustActionDto::ConfirmApplyRemovesLocalDevice
+        }
+        DeviceTrustActionSummary::RejoinDeviceGroup => DeviceTrustActionDto::RejoinDeviceGroup,
+        DeviceTrustActionSummary::UpdateThisDevice => DeviceTrustActionDto::UpdateThisDevice,
+    }
+}
+
+fn device_trust_unavailable_reason(
+    value: DeviceTrustUnavailableReasonSummary,
+) -> DeviceTrustUnavailableReasonDto {
+    match value {
+        DeviceTrustUnavailableReasonSummary::NoCurrentChange => {
+            DeviceTrustUnavailableReasonDto::NoCurrentChange
+        }
+        DeviceTrustUnavailableReasonSummary::ChangeNoLongerCurrent => {
+            DeviceTrustUnavailableReasonDto::ChangeNoLongerCurrent
+        }
+        DeviceTrustUnavailableReasonSummary::LocalDeviceConfirmationRequired => {
+            DeviceTrustUnavailableReasonDto::LocalDeviceConfirmationRequired
+        }
+        DeviceTrustUnavailableReasonSummary::LocalDeviceRemoved => {
+            DeviceTrustUnavailableReasonDto::LocalDeviceRemoved
+        }
+        DeviceTrustUnavailableReasonSummary::RecoveryNotAvailableInThisVersion => {
+            DeviceTrustUnavailableReasonDto::RecoveryNotAvailableInThisVersion
+        }
+        DeviceTrustUnavailableReasonSummary::PeerUpgradeRequired => {
+            DeviceTrustUnavailableReasonDto::PeerUpgradeRequired
+        }
+        DeviceTrustUnavailableReasonSummary::DeviceFactsUnverifiable => {
+            DeviceTrustUnavailableReasonDto::DeviceFactsUnverifiable
+        }
+        DeviceTrustUnavailableReasonSummary::EngineUnavailable => {
+            DeviceTrustUnavailableReasonDto::EngineUnavailable
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::api::dto::member::MemberSyncPreferencesPatchDto;
+    use crate::api::dto::member::{DeviceTrustSnapshotDto, MemberSyncPreferencesPatchDto};
 
     #[test]
     fn patch_mapping_preserves_omitted_fields_as_none() {
@@ -233,41 +462,56 @@ mod tests {
     }
 
     #[test]
-    fn workspace_convergence_mapping_preserves_complete_engine_state() {
-        let summary = WorkspaceConvergenceSummary {
-            phase: WorkspaceConvergencePhaseSummary::WaitingForOfflineMember,
-            revision: 4,
-            change_count: 2,
-            removal_intent_count: 1,
-            effective_member_count: 3,
-            confirmed_member_count: 2,
-            waiting_member_device_ids: vec!["device-b".into()],
-            waiting_member_count: 1,
-            convergence_digest: Some("d1".into()),
+    fn device_trust_snapshot_preserves_engine_wire_fields() {
+        let summary = DeviceTrustSnapshotSummary {
+            revision: 7,
+            local_device_id: "device-local".to_string(),
+            local_membership: DeviceMembershipSummary::Active,
+            current_change: Some(DeviceTrustChangeSummary {
+                change_id: "change-1".to_string(),
+                proposed_by_device_id: "device-d".to_string(),
+                target_device_ids: vec!["device-local".to_string()],
+                includes_local_device: true,
+                apply_impact: DeviceTrustImpactSummary {
+                    usable_device_ids: vec!["device-d".to_string()],
+                    paused_device_ids: Vec::new(),
+                    local_device_outcome: DeviceMembershipSummary::Removed,
+                    requires_rejoin_device_ids: vec!["device-local".to_string()],
+                },
+                keep_current_impact: DeviceTrustImpactSummary {
+                    usable_device_ids: vec!["device-local".to_string()],
+                    paused_device_ids: vec!["device-d".to_string()],
+                    local_device_outcome: DeviceMembershipSummary::Active,
+                    requires_rejoin_device_ids: Vec::new(),
+                },
+                allowed_choices: vec![
+                    DeviceTrustChoiceSummary::ApplyChange,
+                    DeviceTrustChoiceSummary::KeepCurrentDeviceGroup,
+                ],
+                blocked_reason: Some(
+                    DeviceTrustUnavailableReasonSummary::LocalDeviceConfirmationRequired,
+                ),
+            }),
+            devices: Vec::new(),
+            recovery: DeviceTrustRecoverySummary::NotAvailableInThisVersion,
+            allowed_actions: vec![DeviceTrustActionSummary::KeepCurrentDeviceGroup],
+            blocked_reason: Some(
+                DeviceTrustUnavailableReasonSummary::LocalDeviceConfirmationRequired,
+            ),
             updated_at_ms: 42,
-            removed: false,
-            failure_category: Some(WorkspaceConvergenceFailureCategorySummary::Storage),
         };
 
-        let mapped: WorkspaceConvergenceDto = summary.into_api_dto();
+        let mapped: DeviceTrustSnapshotDto = summary.into_api_dto();
 
+        assert_eq!(mapped.local_device_id, "device-local");
+        assert_eq!(mapped.revision, 7);
+        let change = mapped.current_change.expect("pending device trust change");
+        assert_eq!(change.change_id, "change-1");
+        assert!(change.includes_local_device);
+        assert_eq!(change.target_device_ids, vec!["device-local"]);
         assert_eq!(
-            mapped.phase,
-            WorkspaceConvergencePhaseDto::WaitingForOfflineMember
-        );
-        assert_eq!(mapped.revision, 4);
-        assert_eq!(mapped.change_count, 2);
-        assert_eq!(mapped.removal_intent_count, 1);
-        assert_eq!(mapped.effective_member_count, 3);
-        assert_eq!(mapped.confirmed_member_count, 2);
-        assert_eq!(mapped.waiting_member_device_ids, vec!["device-b"]);
-        assert_eq!(mapped.waiting_member_count, 1);
-        assert_eq!(mapped.convergence_digest.as_deref(), Some("d1"));
-        assert_eq!(mapped.updated_at_ms, 42);
-        assert!(!mapped.removed);
-        assert_eq!(
-            mapped.failure_category,
-            Some(WorkspaceConvergenceFailureCategoryDto::Storage)
+            change.apply_impact.local_device_outcome,
+            DeviceMembershipDto::Removed
         );
     }
 }

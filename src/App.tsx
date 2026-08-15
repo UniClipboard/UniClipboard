@@ -13,16 +13,20 @@ import { signalLifecycleReady } from '@/api/daemon/lifecycle'
 import { unlockEncryptionSession } from '@/api/security'
 import { checkForUpdate, openUpdaterWindow } from '@/api/updater'
 import { TitleBar } from '@/components'
+import { DeviceTrustDialog } from '@/components/device/DeviceTrustDialog'
 import { GlobalShortcuts } from '@/components/GlobalShortcuts'
 import StartupModals from '@/components/StartupModals'
 import { Button } from '@/components/ui/button'
 import { Toaster } from '@/components/ui/sonner'
+import { DeviceTrustProvider } from '@/contexts/DeviceTrustContext'
 import { SearchProvider } from '@/contexts/SearchContext'
 import { SettingProvider } from '@/contexts/SettingContext'
 import { ShortcutProvider } from '@/contexts/ShortcutContext'
 import { TitleBarSlotContext } from '@/contexts/titlebar-slot-context'
 import { UpdateProvider } from '@/contexts/UpdateContext'
 import { useEncryptionState } from '@/hooks/useDaemonEvents'
+import { useDeviceTrust } from '@/hooks/useDeviceTrust'
+import { useDeviceTrustDesktopEffects } from '@/hooks/useDeviceTrustDesktopEffects'
 import { usePlatform } from '@/hooks/usePlatform'
 import { useUINavigateListener } from '@/hooks/useUINavigateListener'
 import { MainLayout, SettingsFullLayout, WindowShell } from '@/layouts'
@@ -379,7 +383,7 @@ const AppContent = ({
   }
 
   return (
-    <>
+    <DeviceTrustProvider enabled>
       <GlobalShortcuts />
       <SentryRoutes>
         <Route element={<AuthenticatedLayout />}>
@@ -394,8 +398,24 @@ const AppContent = ({
       </SentryRoutes>
       <Toaster />
       <StartupModals />
-    </>
+      <DeviceTrustDialogHost />
+    </DeviceTrustProvider>
   )
+}
+
+const DeviceTrustDialogHost = () => {
+  const { snapshot, decisionBusy, decisionError, localRemovalConfirmationChangeId, decide } =
+    useDeviceTrust()
+  useDeviceTrustDesktopEffects(snapshot)
+  return snapshot?.currentChange ? (
+    <DeviceTrustDialog
+      snapshot={snapshot}
+      busy={decisionBusy}
+      error={decisionError}
+      localRemovalConfirmationChangeId={localRemovalConfirmationChangeId}
+      onDecide={(choice, confirm) => void decide(choice, confirm)}
+    />
+  ) : null
 }
 
 export default function App() {

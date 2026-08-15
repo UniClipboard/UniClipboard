@@ -1,4 +1,42 @@
 {
+  "deviceTrust": {
+    "listSeparator": "、",
+    "notification": {
+      "title": "デバイス関係の確認",
+      "decision": "デバイスグループが変更されました。UniClipboard で対応してください。",
+      "status": "デバイスの同期関係が変わりました。UniClipboard で確認してください。"
+    },
+    "modal": {
+      "title": "このデバイスが同期を続ける相手を選択",
+      "summary": "{{proposer}} が {{targets}} を削除しようとしています",
+      "localSummary": "{{proposer}} がこのデバイスを削除しようとしています",
+      "applyTitle": "削除を受け入れる",
+      "keepTitle": "拒否して元のデバイスを維持",
+      "leaveTitle": "デバイスグループから退出",
+      "stayTitle": "現在のデバイスグループに残る",
+      "continueSyncing": "同期を継続",
+      "stopSyncing": "同期を停止",
+      "noDevices": "なし",
+      "confirmLocalRemoval": "このデバイスはスペースから削除され、ここでの同期が停止します。続行するにはもう一度確認してください。",
+      "stateChanged": "デバイス状態が変わりました。最新の状態を表示しています。",
+      "failed": "選択を保存できませんでした。バックグラウンドサービスを確認して再試行してください。"
+    },
+    "actions": {
+      "confirm": "確定",
+      "back": "戻る",
+      "keep": "現在のスペースを維持",
+      "apply": "対象デバイスをこちらからも削除",
+      "exit": "このスペースから退出",
+      "confirmKeep": "別のスペースを維持",
+      "confirmExit": "退出を確認"
+    },
+    "status": {
+      "diverged": "別のスペース",
+      "upgrade": "更新が必要",
+      "unverifiable": "デバイス情報を確認できません",
+      "pending": "デバイス変更の確認が必要"
+    }
+  },
   "common": {
     "loading": "読み込み中...",
     "unknownSize": "不明なサイズ",

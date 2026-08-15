@@ -17,6 +17,20 @@ impl TestProfile {
     /// Create a new test profile with a unique name derived from `test_name`.
     pub fn new(test_name: &str) -> Self {
         let unique = format!("e2e-{}-{}", test_name, uuid::Uuid::new_v4().as_simple());
+        Self::from_unique_name(unique)
+    }
+
+    /// Create a fresh development profile for v0.19.1 upgrade compatibility tests.
+    pub fn new_v0_19_1_upgrade(test_name: &str) -> Self {
+        let unique = format!(
+            "dev-upgrade-v0191-{}-{}",
+            test_name,
+            uuid::Uuid::new_v4().as_simple()
+        );
+        Self::from_unique_name(unique)
+    }
+
+    fn from_unique_name(unique: String) -> Self {
         let data_dir = Self::resolve_data_dir(&unique);
         let cache_dir = Self::resolve_cache_dir(&unique);
         let log_dir = Self::resolve_log_dir(&unique);

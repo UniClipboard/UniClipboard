@@ -1,4 +1,42 @@
 {
+  "deviceTrust": {
+    "listSeparator": ", ",
+    "notification": {
+      "title": "Review device relationship",
+      "decision": "Your device group changed. Open UniClipboard to decide what to do.",
+      "status": "A device sync relationship changed. Open UniClipboard to review it."
+    },
+    "modal": {
+      "title": "Choose which devices to keep syncing with",
+      "summary": "{{proposer}} wants to remove {{targets}}",
+      "localSummary": "{{proposer}} wants to remove this device",
+      "applyTitle": "Accept this removal",
+      "keepTitle": "Decline and keep the original devices",
+      "leaveTitle": "Leave the device group",
+      "stayTitle": "Stay in the current device group",
+      "continueSyncing": "Keep syncing",
+      "stopSyncing": "Stop syncing",
+      "noDevices": "None",
+      "confirmLocalRemoval": "This removes this device from the space and stops syncing here. Confirm again to continue.",
+      "stateChanged": "The device state changed. The latest situation is now shown.",
+      "failed": "Your choice could not be saved. Check the background service and try again."
+    },
+    "actions": {
+      "confirm": "Confirm",
+      "back": "Back",
+      "keep": "Keep current space",
+      "apply": "Also remove the target device",
+      "exit": "Leave this space",
+      "confirmKeep": "Keep separate spaces",
+      "confirmExit": "Confirm leaving"
+    },
+    "status": {
+      "diverged": "Different space",
+      "upgrade": "Update required",
+      "unverifiable": "Device details cannot be verified",
+      "pending": "Device change needs review"
+    }
+  },
   "common": {
     "loading": "Loading...",
     "unknownSize": "Unknown size",

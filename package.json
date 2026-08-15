@@ -51,14 +51,14 @@
     ],
     "*.{js,jsx,ts,tsx}": [
       "oxlint --fix",
-      "oxfmt --write"
+      "oxfmt --write --no-error-on-unmatched-pattern"
     ],
     "*.md": [
       "node scripts/fix-md-cjk-emphasis.mjs",
       "autocorrect --fix"
     ],
     "*.{json,css,html}": [
-      "oxfmt --write"
+      "oxfmt --write --no-error-on-unmatched-pattern"
     ],
     "{apps,crates,src-tauri}/**/*.rs": [
       "rustfmt --edition 2021"

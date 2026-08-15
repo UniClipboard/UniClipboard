@@ -59,15 +59,34 @@ describe('custom-profile Tauri development command', () => {
   it('sets the development profile and preserves the existing environment', () => {
     const invocation = createInvocation(['alice'], { EXISTING_VALUE: 'kept' })
 
-    expect(invocation).toEqual({
-      command: 'bun',
-      args: ['run', 'tauri', '--', 'dev'],
-      env: {
-        EXISTING_VALUE: 'kept',
-        UNICLIPBOARD_ENV: 'development',
-        UC_PROFILE: 'alice',
-      },
+    expect(invocation.command).toBe('bun')
+    expect(invocation.env).toMatchObject({
+      EXISTING_VALUE: 'kept',
+      UNICLIPBOARD_ENV: 'development',
+      UC_PROFILE: 'alice',
     })
+  })
+
+  it('assigns each profile its own frontend server and Tauri dev URL', () => {
+    const alice = createInvocation(['alice'])
+    const bob = createInvocation(['bob'])
+
+    expect(alice.env.UC_DEV_SERVER_PORT).toMatch(/^\d+$/)
+    expect(bob.env.UC_DEV_SERVER_PORT).toMatch(/^\d+$/)
+    expect(alice.env.UC_DEV_SERVER_PORT).not.toBe(bob.env.UC_DEV_SERVER_PORT)
+
+    const configIndex = alice.args.indexOf('--config')
+    expect(configIndex).toBeGreaterThan(-1)
+    const config = JSON.parse(alice.args[configIndex + 1] ?? '') as {
+      build: { devUrl: string }
+    }
+    expect(config.build.devUrl).toBe(`http://localhost:${alice.env.UC_DEV_SERVER_PORT}`)
+  })
+
+  it('keeps a profile on the same frontend port across launches', () => {
+    expect(createInvocation(['alice']).env.UC_DEV_SERVER_PORT).toBe(
+      createInvocation(['alice']).env.UC_DEV_SERVER_PORT
+    )
   })
 
   it('removes an optional separator and forwards Tauri arguments in order', () => {
@@ -81,7 +100,19 @@ describe('custom-profile Tauri development command', () => {
       '--no-dev-server-wait',
       '--config',
       '{}',
+      '--config',
+      expect.any(String),
     ])
+  })
+
+  it('inserts the generated config before forwarded runner and application arguments', () => {
+    const invocation = createInvocation(['alice', '--', '--', '--app-arg'])
+    const generatedConfigIndex = invocation.args.lastIndexOf('--config')
+    const forwardedSeparatorIndex = invocation.args.indexOf('--', 3)
+
+    expect(generatedConfigIndex).toBeGreaterThan(-1)
+    expect(generatedConfigIndex).toBeLessThan(forwardedSeparatorIndex)
+    expect(invocation.args.slice(forwardedSeparatorIndex)).toEqual(['--', '--app-arg'])
   })
 
   it('prints usage without starting Tauri when help is requested', () => {

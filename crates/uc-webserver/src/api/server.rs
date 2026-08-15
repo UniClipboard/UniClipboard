@@ -405,7 +405,8 @@ pub fn build_router(state: DaemonApiState) -> Router {
 }
 
 /// Global HTTP request tracing — logs entry, status, and elapsed for every
-/// route. Auth query param is redacted so session tokens never appear in logs.
+/// route. Query values are redacted so user content and credentials never
+/// appear in logs.
 pub(crate) async fn request_tracing_middleware(request: Request<Body>, next: Next) -> Response {
     let method = request.method().clone();
     let path = request.uri().path().to_string();
@@ -494,23 +495,16 @@ pub(crate) async fn request_tracing_middleware(request: Request<Body>, next: Nex
     response
 }
 
-/// Redact secrets from a query string before logging. `auth=...` carries
-/// session tokens via query (used by `<img src>` blob loads); we replace its
-/// value with `<redacted>` so it never reaches log files.
+/// Redact every query value before logging. Query parameters can carry both
+/// credentials and user-entered content, so only parameter names are safe.
 fn redact_query_secrets(query: Option<&str>) -> String {
     let Some(q) = query else {
         return String::new();
     };
     url::form_urlencoded::parse(q.as_bytes())
-        .map(|(k, v)| {
-            if ["auth", "token", "session", "url"]
-                .iter()
-                .any(|secret| k.eq_ignore_ascii_case(secret))
-            {
-                format!("{k}=<redacted>")
-            } else {
-                format!("{k}={v}")
-            }
+        .map(|(key, _)| {
+            let escaped_key: String = key.chars().flat_map(char::escape_default).collect();
+            format!("{escaped_key}=<redacted>")
         })
         .collect::<Vec<_>>()
         .join("&")
@@ -604,18 +598,35 @@ mod request_log_redaction_tests {
     use super::{redact_query_secrets, sanitize_uri_for_log};
 
     #[test]
-    fn redacts_relay_urls_and_all_credential_query_values() {
-        let query = "url=https%3A%2F%2Flogin%3Apassword%40relay.example.com%2Fprivate%3Fkey%3Dsecret&auth=session-secret&token=relay-token&session=session-id&safe=value";
+    fn redacts_all_query_values() {
+        let query = "url=https%3A%2F%2Flogin%3Apassword%40relay.example.com%2Fprivate%3Fkey%3Dsecret&auth=session-secret&token=relay-token&session=session-id&query=private-clipboard-text&safe=value";
 
         let redacted = redact_query_secrets(Some(query));
 
         assert_eq!(
             redacted,
-            "url=<redacted>&auth=<redacted>&token=<redacted>&session=<redacted>&safe=value"
+            "url=<redacted>&auth=<redacted>&token=<redacted>&session=<redacted>&query=<redacted>&safe=<redacted>"
         );
-        for secret in ["login", "password", "private", "secret", "relay-token"] {
+        for secret in [
+            "login",
+            "password",
+            "private",
+            "secret",
+            "relay-token",
+            "clipboard-text",
+            "value",
+        ] {
             assert!(!redacted.contains(secret));
         }
+    }
+
+    #[test]
+    fn escapes_control_characters_in_query_keys() {
+        let redacted = redact_query_secrets(Some("%0Aforged=1&tab%09key=2"));
+
+        assert_eq!(redacted, "\\nforged=<redacted>&tab\\tkey=<redacted>");
+        assert!(!redacted.contains('\n'));
+        assert!(!redacted.contains('\t'));
     }
 
     #[test]
@@ -626,7 +637,7 @@ mod request_log_redaction_tests {
 
         assert_eq!(
             sanitize_uri_for_log(&uri),
-            "/settings/relay-credential?url=<redacted>&safe=value"
+            "/settings/relay-credential?url=<redacted>&safe=<redacted>"
         );
     }
 }

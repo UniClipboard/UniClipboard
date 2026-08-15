@@ -18,8 +18,11 @@ import {
   issuePairingInvitation,
   type CurrentInvitation,
 } from '@/api/daemon/setupV2'
-import { onSetupInvitationRevoked, type SetupInvitationRevokedEvent } from '@/api/setupEvents'
-import { hasNewPairedMember } from '@/components/device/pairing-success-utils'
+import {
+  onSetupInvitationRevoked,
+  onSetupPairingCompleted,
+  type SetupInvitationRevokedEvent,
+} from '@/api/setupEvents'
 import { formatInvitationCode } from '@/components/invitation-code-utils'
 import { Button } from '@/components/ui/button'
 import {
@@ -31,7 +34,6 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Progress } from '@/components/ui/progress'
-import { daemonWs } from '@/lib/daemon-ws'
 import { createLogger } from '@/lib/logger'
 import { cn } from '@/lib/utils'
 
@@ -118,19 +120,8 @@ function AddDeviceDialogInner({ open, onOpenChange }: AddDeviceDialogProps) {
     }
   }, [open])
 
-  // Pairing completion is represented by workspace convergence plus the
-  // authoritative member list, because the Engine deliberately no longer
-  // exposes a pairing-session terminal event.
-  const handleWorkspaceConvergence = useEffectEvent(async () => {
-    if (step !== 'invitation' || initialMemberCountRef.current === null) return
-    try {
-      const currentMemberCount = (await getPairedPeers()).length
-      if (hasNewPairedMember(initialMemberCountRef.current, currentMemberCount)) {
-        setStep('success')
-      }
-    } catch (err) {
-      log.warn({ err }, 'failed to verify admitted member after convergence changed')
-    }
+  const handlePairingCompleted = useEffectEvent((success: boolean) => {
+    if (step === 'invitation' && success) setStep('success')
   })
 
   const handleInvitationRevoked = useEffectEvent((evt: SetupInvitationRevokedEvent) => {
@@ -155,12 +146,16 @@ function AddDeviceDialogInner({ open, onOpenChange }: AddDeviceDialogProps) {
       err => log.warn({ err }, 'subscribe invitationRevoked failed')
     )
 
-    const unsubscribeWorkspace = daemonWs.subscribe(['workspace-convergence'], event => {
-      if (event.eventType === 'workspace-convergence.changed') {
-        void handleWorkspaceConvergence()
-      }
-    })
-    unsubs.push(unsubscribeWorkspace)
+    void onSetupPairingCompleted(evt => {
+      if (!mounted) return
+      handlePairingCompleted(evt.success)
+    }).then(
+      fn => {
+        if (mounted) unsubs.push(fn)
+        else fn()
+      },
+      err => log.warn({ err }, 'subscribe pairingCompleted failed')
+    )
 
     return () => {
       mounted = false

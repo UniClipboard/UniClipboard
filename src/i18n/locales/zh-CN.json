@@ -1,4 +1,42 @@
 {
+  "deviceTrust": {
+    "listSeparator": "、",
+    "notification": {
+      "title": "设备关系需要查看",
+      "decision": "设备组发生了变化，请在 UniClipboard 中处理。",
+      "status": "部分设备的同步关系已改变，请打开 UniClipboard 查看。"
+    },
+    "modal": {
+      "title": "选择这台设备继续与谁同步",
+      "summary": "{{proposer}} 想要移除 {{targets}}",
+      "localSummary": "{{proposer}} 想要移除这台设备",
+      "applyTitle": "接受这次移除",
+      "keepTitle": "不接受，保留原来的设备",
+      "leaveTitle": "退出设备组",
+      "stayTitle": "留在当前设备组",
+      "continueSyncing": "继续同步",
+      "stopSyncing": "停止同步",
+      "noDevices": "无",
+      "confirmLocalRemoval": "这会将本机移出空间，并停止在本机同步。请再次确认后继续。",
+      "stateChanged": "设备状态已经变化，已为你显示最新情况。",
+      "failed": "暂时无法保存选择。请检查后台服务后重试。"
+    },
+    "actions": {
+      "confirm": "确定",
+      "back": "返回",
+      "keep": "保留当前空间",
+      "apply": "也从此设备移除目标设备",
+      "exit": "退出这个空间",
+      "confirmKeep": "确认保留并分开",
+      "confirmExit": "确认退出"
+    },
+    "status": {
+      "diverged": "不同空间",
+      "upgrade": "需要更新",
+      "unverifiable": "无法验证设备资料",
+      "pending": "需要确认设备变化"
+    }
+  },
   "common": {
     "loading": "加载中...",
     "unknownSize": "未知大小",

@@ -4,11 +4,12 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use reqwest::Method;
-use uc_daemon_contract::api::dto::member::WorkspaceConvergenceDto;
+use uc_daemon_contract::api::dto::member::{DeviceTrustSnapshotDto, WorkspaceConvergenceDto};
 
 use crate::http::enveloped::enveloped_request;
 use crate::DaemonConnectionState;
 
+const DEVICE_TRUST_PATH: &str = "/member/device-trust";
 const WORKSPACE_CONVERGENCE_PATH: &str = "/member/workspace-convergence";
 
 #[derive(Clone)]
@@ -39,6 +40,18 @@ impl DaemonMemberClient {
         }
     }
 
+    pub async fn device_trust(&self) -> Result<DeviceTrustSnapshotDto> {
+        Ok(enveloped_request(
+            &self.http,
+            &self.connection_state,
+            &self.client_type,
+            Method::GET,
+            DEVICE_TRUST_PATH,
+            |request| request,
+        )
+        .await?)
+    }
+
     pub async fn workspace_convergence(&self) -> Result<WorkspaceConvergenceDto> {
         Ok(enveloped_request(
             &self.http,
@@ -56,12 +69,14 @@ impl DaemonMemberClient {
 mod tests {
     use super::*;
     use uc_daemon_contract::api::auth::DaemonConnectionInfo;
-    use uc_daemon_contract::api::dto::member::WorkspaceConvergencePhaseDto;
+    use uc_daemon_contract::api::dto::member::{
+        DeviceGroupRelationshipDto, DeviceMembershipDto, DeviceSyncRelationshipDto,
+    };
     use wiremock::matchers::{header, method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
     #[tokio::test]
-    async fn workspace_convergence_uses_current_route_and_decodes_envelope() {
+    async fn device_trust_uses_current_route_and_decodes_envelope() {
         let server = MockServer::start().await;
         Mock::given(method("POST"))
             .and(path("/auth/connect"))
@@ -77,22 +92,30 @@ mod tests {
             .mount(&server)
             .await;
         Mock::given(method("GET"))
-            .and(path(WORKSPACE_CONVERGENCE_PATH))
+            .and(path(DEVICE_TRUST_PATH))
             .and(header("authorization", "Session test-session"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "data": {
-                    "phase": "converging",
                     "revision": 3,
-                    "changeCount": 2,
-                    "removalIntentCount": 1,
-                    "effectiveMemberCount": 3,
-                    "confirmedMemberCount": 2,
-                    "waitingMemberDeviceIds": ["device-b"],
-                    "waitingMemberCount": 1,
-                    "convergenceDigest": "digest-1",
-                    "updatedAtMs": 42,
-                    "removed": false,
-                    "failureCategory": null
+                    "localDeviceId": "device-a",
+                    "localMembership": "active",
+                    "currentChange": null,
+                    "devices": [{
+                        "deviceId": "device-a",
+                        "displayName": "A",
+                        "isLocal": true,
+                        "reachability": "online",
+                        "membership": "active",
+                        "groupRelationship": "consistent",
+                        "compatibility": "compatible",
+                        "syncRelationship": "usable",
+                        "availableActions": [],
+                        "blockedReason": null
+                    }],
+                    "recovery": "not_available_in_this_version",
+                    "allowedActions": [],
+                    "blockedReason": null,
+                    "updatedAtMs": 42
                 },
                 "ts": 2
             })))
@@ -109,14 +132,17 @@ mod tests {
         });
         let client = DaemonMemberClient::new(connection_state);
 
-        let status = client
-            .workspace_convergence()
-            .await
-            .expect("workspace convergence request");
+        let status = client.device_trust().await.expect("device trust request");
 
-        assert_eq!(status.phase, WorkspaceConvergencePhaseDto::Converging);
-        assert_eq!(status.confirmed_member_count, 2);
-        assert_eq!(status.waiting_member_device_ids, vec!["device-b"]);
-        assert_eq!(status.waiting_member_count, 1);
+        assert_eq!(status.local_device_id, "device-a");
+        assert_eq!(status.local_membership, DeviceMembershipDto::Active);
+        assert_eq!(
+            status.devices[0].group_relationship,
+            DeviceGroupRelationshipDto::Consistent
+        );
+        assert_eq!(
+            status.devices[0].sync_relationship,
+            DeviceSyncRelationshipDto::Usable
+        );
     }
 }

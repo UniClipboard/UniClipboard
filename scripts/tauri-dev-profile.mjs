@@ -1,9 +1,17 @@
 import { spawnSync } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import path from 'node:path'
 import process from 'node:process'
 import { fileURLToPath } from 'node:url'
 
 const PROFILE_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/
+const PROFILE_PORT_BASE = 20_000
+const PROFILE_PORT_RANGE = 20_000
+
+export function devServerPortForProfile(profile) {
+  const digest = createHash('sha256').update(profile).digest()
+  return PROFILE_PORT_BASE + (digest.readUInt32BE(0) % PROFILE_PORT_RANGE)
+}
 
 export const USAGE = `Usage: bun tauri:dev:profile <profile> [-- <tauri arguments...>]
 
@@ -26,14 +34,29 @@ export function createTauriDevInvocation(args, currentEnv = process.env) {
   }
 
   const tauriArgs = remainingArgs[0] === '--' ? remainingArgs.slice(1) : remainingArgs
+  const devServerPort = devServerPortForProfile(profile)
+  const profileConfig = JSON.stringify({
+    build: { devUrl: `http://localhost:${devServerPort}` },
+  })
+  const separatorIndex = tauriArgs.indexOf('--')
+  const configuredTauriArgs =
+    separatorIndex === -1
+      ? [...tauriArgs, '--config', profileConfig]
+      : [
+          ...tauriArgs.slice(0, separatorIndex),
+          '--config',
+          profileConfig,
+          ...tauriArgs.slice(separatorIndex),
+        ]
 
   return {
     command: 'bun',
-    args: ['run', 'tauri', '--', 'dev', ...tauriArgs],
+    args: ['run', 'tauri', '--', 'dev', ...configuredTauriArgs],
     env: {
       ...currentEnv,
       UNICLIPBOARD_ENV: 'development',
       UC_PROFILE: profile,
+      UC_DEV_SERVER_PORT: String(devServerPort),
     },
   }
 }

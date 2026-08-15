@@ -5,6 +5,8 @@ import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vitest/config'
 
 const host = process.env.TAURI_DEV_HOST
+const devServerPort = Number(process.env.UC_DEV_SERVER_PORT ?? 1420)
+const hmrPort = process.env.UC_DEV_SERVER_PORT ? devServerPort : 1421
 const sentryAuthToken = process.env.SENTRY_AUTH_TOKEN
 const sentryOrg = process.env.SENTRY_ORG
 const sentryProject = process.env.VITE_SENTRY_PROJECT
@@ -67,14 +69,14 @@ export default defineConfig({
   //    sessions are swept by `scripts/sweep-dev-port.mjs` (beforeDevCommand)
   //    instead of auto-incrementing, which Tauri cannot follow.
   server: {
-    port: 1420,
+    port: devServerPort,
     strictPort: true,
     host: host || false,
     hmr: host
       ? {
           protocol: 'ws',
           host,
-          port: 1421,
+          port: hmrPort,
         }
       : undefined,
     watch: {

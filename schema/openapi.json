@@ -648,6 +648,24 @@
         ],
         "type": "object"
       },
+      "DecideDeviceTrustRequestDto": {
+        "properties": {
+          "changeId": {
+            "type": "string"
+          },
+          "choice": {
+            "$ref": "#/components/schemas/DeviceTrustChoiceDto"
+          },
+          "confirmLocalRemoval": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "changeId",
+          "choice"
+        ],
+        "type": "object"
+      },
       "DeliveryFailureReasonDto": {
         "description": "Failure reason. i18n key convention: `delivery.failureReason.<variant>`.\n\nNote: \"peer offline\" is NOT in this enum — it is represented as\n`EntryDeliveryStatusDto::Unreachable` (a separate status, not a failure).",
         "enum": [
@@ -656,6 +674,436 @@
           "peerIncompatible",
           "io",
           "internal"
+        ],
+        "type": "string"
+      },
+      "DeviceCompatibilityDto": {
+        "enum": [
+          "compatible",
+          "upgrade_required",
+          "unknown"
+        ],
+        "type": "string"
+      },
+      "DeviceGroupRelationshipDto": {
+        "enum": [
+          "consistent",
+          "pending_local_decision",
+          "diverged",
+          "unverifiable",
+          "unknown"
+        ],
+        "type": "string"
+      },
+      "DeviceMembershipDto": {
+        "enum": [
+          "active",
+          "removed",
+          "unavailable",
+          "unknown"
+        ],
+        "type": "string"
+      },
+      "DeviceReachabilityDto": {
+        "enum": [
+          "online",
+          "offline",
+          "unknown"
+        ],
+        "type": "string"
+      },
+      "DeviceSyncRelationshipDto": {
+        "enum": [
+          "usable",
+          "waiting_for_local_decision",
+          "paused_group_diverged",
+          "paused_upgrade_required",
+          "paused_unverifiable",
+          "removed_local_device",
+          "removed_peer_device",
+          "unknown"
+        ],
+        "type": "string"
+      },
+      "DeviceTrustActionDto": {
+        "enum": [
+          "apply_current_change",
+          "keep_current_device_group",
+          "confirm_apply_removes_local_device",
+          "rejoin_device_group",
+          "update_this_device"
+        ],
+        "type": "string"
+      },
+      "DeviceTrustChangeDto": {
+        "properties": {
+          "allowedChoices": {
+            "items": {
+              "$ref": "#/components/schemas/DeviceTrustChoiceDto"
+            },
+            "type": "array"
+          },
+          "applyImpact": {
+            "$ref": "#/components/schemas/DeviceTrustImpactDto"
+          },
+          "blockedReason": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/DeviceTrustUnavailableReasonDto"
+              }
+            ],
+            "nullable": true
+          },
+          "changeId": {
+            "type": "string"
+          },
+          "includesLocalDevice": {
+            "type": "boolean"
+          },
+          "keepCurrentImpact": {
+            "$ref": "#/components/schemas/DeviceTrustImpactDto"
+          },
+          "proposedByDeviceId": {
+            "type": "string"
+          },
+          "targetDeviceIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "changeId",
+          "proposedByDeviceId",
+          "targetDeviceIds",
+          "includesLocalDevice",
+          "applyImpact",
+          "keepCurrentImpact",
+          "allowedChoices"
+        ],
+        "type": "object"
+      },
+      "DeviceTrustChoiceDto": {
+        "enum": [
+          "apply_change",
+          "keep_current_device_group"
+        ],
+        "type": "string"
+      },
+      "DeviceTrustDecisionDto": {
+        "discriminator": {
+          "propertyName": "kind"
+        },
+        "oneOf": [
+          {
+            "properties": {
+              "changeId": {
+                "type": "string"
+              },
+              "kind": {
+                "enum": [
+                  "applied"
+                ],
+                "type": "string"
+              },
+              "snapshot": {
+                "$ref": "#/components/schemas/DeviceTrustSnapshotDto"
+              }
+            },
+            "required": [
+              "changeId",
+              "snapshot",
+              "kind"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "changeId": {
+                "type": "string"
+              },
+              "kind": {
+                "enum": [
+                  "kept_current_device_group"
+                ],
+                "type": "string"
+              },
+              "snapshot": {
+                "$ref": "#/components/schemas/DeviceTrustSnapshotDto"
+              }
+            },
+            "required": [
+              "changeId",
+              "snapshot",
+              "kind"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "changeId": {
+                "type": "string"
+              },
+              "completedChoice": {
+                "$ref": "#/components/schemas/DeviceTrustChoiceDto"
+              },
+              "kind": {
+                "enum": [
+                  "already_completed"
+                ],
+                "type": "string"
+              },
+              "snapshot": {
+                "$ref": "#/components/schemas/DeviceTrustSnapshotDto"
+              }
+            },
+            "required": [
+              "changeId",
+              "completedChoice",
+              "snapshot",
+              "kind"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "currentChangeId": {
+                "nullable": true,
+                "type": "string"
+              },
+              "kind": {
+                "enum": [
+                  "state_changed"
+                ],
+                "type": "string"
+              },
+              "snapshot": {
+                "$ref": "#/components/schemas/DeviceTrustSnapshotDto"
+              }
+            },
+            "required": [
+              "snapshot",
+              "kind"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "changeId": {
+                "type": "string"
+              },
+              "kind": {
+                "enum": [
+                  "local_device_confirmation_required"
+                ],
+                "type": "string"
+              },
+              "snapshot": {
+                "$ref": "#/components/schemas/DeviceTrustSnapshotDto"
+              }
+            },
+            "required": [
+              "changeId",
+              "snapshot",
+              "kind"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "DeviceTrustDecisionEnvelope": {
+        "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/DeviceTrustDecisionDto"
+          },
+          "ts": {
+            "description": "Server time when the response was built (unix epoch milliseconds).",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "data",
+          "ts"
+        ],
+        "type": "object"
+      },
+      "DeviceTrustEnvelope": {
+        "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/DeviceTrustSnapshotDto"
+          },
+          "ts": {
+            "description": "Server time when the response was built (unix epoch milliseconds).",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "data",
+          "ts"
+        ],
+        "type": "object"
+      },
+      "DeviceTrustImpactDto": {
+        "properties": {
+          "localDeviceOutcome": {
+            "$ref": "#/components/schemas/DeviceMembershipDto"
+          },
+          "pausedDeviceIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "requiresRejoinDeviceIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "usableDeviceIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "usableDeviceIds",
+          "pausedDeviceIds",
+          "localDeviceOutcome",
+          "requiresRejoinDeviceIds"
+        ],
+        "type": "object"
+      },
+      "DeviceTrustRelationshipDto": {
+        "properties": {
+          "availableActions": {
+            "items": {
+              "$ref": "#/components/schemas/DeviceTrustActionDto"
+            },
+            "type": "array"
+          },
+          "blockedReason": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/DeviceTrustUnavailableReasonDto"
+              }
+            ],
+            "nullable": true
+          },
+          "compatibility": {
+            "$ref": "#/components/schemas/DeviceCompatibilityDto"
+          },
+          "deviceId": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "groupRelationship": {
+            "$ref": "#/components/schemas/DeviceGroupRelationshipDto"
+          },
+          "isLocal": {
+            "type": "boolean"
+          },
+          "membership": {
+            "$ref": "#/components/schemas/DeviceMembershipDto"
+          },
+          "reachability": {
+            "$ref": "#/components/schemas/DeviceReachabilityDto"
+          },
+          "syncRelationship": {
+            "$ref": "#/components/schemas/DeviceSyncRelationshipDto"
+          }
+        },
+        "required": [
+          "deviceId",
+          "displayName",
+          "isLocal",
+          "reachability",
+          "membership",
+          "groupRelationship",
+          "compatibility",
+          "syncRelationship",
+          "availableActions"
+        ],
+        "type": "object"
+      },
+      "DeviceTrustSnapshotDto": {
+        "properties": {
+          "allowedActions": {
+            "items": {
+              "$ref": "#/components/schemas/DeviceTrustActionDto"
+            },
+            "type": "array"
+          },
+          "blockedReason": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/DeviceTrustUnavailableReasonDto"
+              }
+            ],
+            "nullable": true
+          },
+          "currentChange": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/DeviceTrustChangeDto"
+              }
+            ],
+            "nullable": true
+          },
+          "devices": {
+            "items": {
+              "$ref": "#/components/schemas/DeviceTrustRelationshipDto"
+            },
+            "type": "array"
+          },
+          "localDeviceId": {
+            "type": "string"
+          },
+          "localMembership": {
+            "$ref": "#/components/schemas/DeviceMembershipDto"
+          },
+          "recovery": {
+            "type": "string"
+          },
+          "revision": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "updatedAtMs": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "revision",
+          "localDeviceId",
+          "localMembership",
+          "devices",
+          "recovery",
+          "allowedActions",
+          "updatedAtMs"
+        ],
+        "type": "object"
+      },
+      "DeviceTrustUnavailableReasonDto": {
+        "enum": [
+          "no_current_change",
+          "change_no_longer_current",
+          "local_device_confirmation_required",
+          "local_device_removed",
+          "recovery_not_available_in_this_version",
+          "peer_upgrade_required",
+          "device_facts_unverifiable",
+          "engine_unavailable"
         ],
         "type": "string"
       },
@@ -5269,19 +5717,15 @@
       "WorkspaceConvergenceDto": {
         "description": "Complete Engine-owned workspace convergence state for the active space.",
         "properties": {
-          "changeCount": {
-            "format": "int64",
-            "minimum": 0,
-            "type": "integer"
-          },
-          "confirmedMemberCount": {
-            "format": "int64",
-            "minimum": 0,
-            "type": "integer"
-          },
           "convergenceDigest": {
             "nullable": true,
             "type": "string"
+          },
+          "divergedPeerDeviceIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
           },
           "effectiveMemberCount": {
             "format": "int64",
@@ -5296,13 +5740,23 @@
             ],
             "nullable": true
           },
-          "phase": {
-            "$ref": "#/components/schemas/WorkspaceConvergencePhaseDto"
-          },
-          "removalIntentCount": {
+          "historyEventCount": {
             "format": "int64",
             "minimum": 0,
             "type": "integer"
+          },
+          "pendingRemovalDecisionDeviceIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "pendingRemovalDecisionEventId": {
+            "nullable": true,
+            "type": "string"
+          },
+          "phase": {
+            "$ref": "#/components/schemas/WorkspaceConvergencePhaseDto"
           },
           "removed": {
             "type": "boolean"
@@ -5316,12 +5770,7 @@
             "format": "int64",
             "type": "integer"
           },
-          "waitingMemberCount": {
-            "format": "int64",
-            "minimum": 0,
-            "type": "integer"
-          },
-          "waitingMemberDeviceIds": {
+          "upgradeRequiredPeerDeviceIds": {
             "items": {
               "type": "string"
             },
@@ -5331,12 +5780,11 @@
         "required": [
           "phase",
           "revision",
-          "changeCount",
-          "removalIntentCount",
+          "historyEventCount",
           "effectiveMemberCount",
-          "confirmedMemberCount",
-          "waitingMemberDeviceIds",
-          "waitingMemberCount",
+          "pendingRemovalDecisionDeviceIds",
+          "divergedPeerDeviceIds",
+          "upgradeRequiredPeerDeviceIds",
           "updatedAtMs",
           "removed"
         ],
@@ -5379,7 +5827,6 @@
         "enum": [
           "locally_applied",
           "converging",
-          "waiting_for_offline_member",
           "complete",
           "recovery_required"
         ],
@@ -7595,6 +8042,72 @@
         ]
       }
     },
+    "/member/device-trust": {
+      "get": {
+        "operationId": "getDeviceTrust",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceTrustEnvelope"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session_query": []
+          },
+          {
+            "session_header": []
+          }
+        ],
+        "tags": [
+          "member"
+        ]
+      }
+    },
+    "/member/device-trust/decision": {
+      "post": {
+        "operationId": "decideDeviceTrust",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DecideDeviceTrustRequestDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceTrustDecisionEnvelope"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session_query": []
+          },
+          {
+            "session_header": []
+          }
+        ],
+        "tags": [
+          "member"
+        ]
+      }
+    },
     "/member/protection": {
       "get": {
         "description": "Projects the Engine's current protection authority. The daemon does not\ninfer or persist bootstrap progress; callers refresh this snapshot.",
@@ -7640,56 +8153,6 @@
           }
         ],
         "summary": "GET /member/protection",
-        "tags": [
-          "member"
-        ]
-      }
-    },
-    "/member/workspace-convergence": {
-      "get": {
-        "description": "Returns the complete Engine-owned workspace convergence state for the\nactive space. The daemon does not derive per-feature status from it.",
-        "operationId": "getWorkspaceConvergence",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/WorkspaceConvergenceEnvelope"
-                }
-              }
-            },
-            "description": ""
-          },
-          "500": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponse"
-                }
-              }
-            },
-            "description": "Internal server error"
-          },
-          "503": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponse"
-                }
-              }
-            },
-            "description": "Runtime unavailable"
-          }
-        },
-        "security": [
-          {
-            "session_query": []
-          },
-          {
-            "session_header": []
-          }
-        ],
-        "summary": "GET /member/workspace-convergence",
         "tags": [
           "member"
         ]

@@ -478,24 +478,24 @@ export type DeviceTrustChangeDto = {
 export type DeviceTrustChoiceDto = 'apply_change' | 'keep_current_device_group';
 
 export type DeviceTrustDecisionDto = {
-    change_id: string;
+    changeId: string;
     kind: 'applied';
     snapshot: DeviceTrustSnapshotDto;
 } | {
-    change_id: string;
+    changeId: string;
     kind: 'kept_current_device_group';
     snapshot: DeviceTrustSnapshotDto;
 } | {
-    change_id: string;
-    completed_choice: DeviceTrustChoiceDto;
+    changeId: string;
+    completedChoice: DeviceTrustChoiceDto;
     kind: 'already_completed';
     snapshot: DeviceTrustSnapshotDto;
 } | {
-    current_change_id?: string | null;
+    currentChangeId?: string | null;
     kind: 'state_changed';
     snapshot: DeviceTrustSnapshotDto;
 } | {
-    change_id: string;
+    changeId: string;
     kind: 'local_device_confirmation_required';
     snapshot: DeviceTrustSnapshotDto;
 };

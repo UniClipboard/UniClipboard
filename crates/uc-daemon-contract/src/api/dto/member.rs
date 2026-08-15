@@ -277,27 +277,79 @@ pub struct DecideDeviceTrustRequestDto {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
-#[serde(rename_all = "snake_case", tag = "kind")]
+#[serde(
+    rename_all = "snake_case",
+    rename_all_fields = "camelCase",
+    tag = "kind"
+)]
 pub enum DeviceTrustDecisionDto {
     Applied {
+        #[schema(rename = "changeId")]
         change_id: String,
         snapshot: DeviceTrustSnapshotDto,
     },
     KeptCurrentDeviceGroup {
+        #[schema(rename = "changeId")]
         change_id: String,
         snapshot: DeviceTrustSnapshotDto,
     },
     AlreadyCompleted {
+        #[schema(rename = "changeId")]
         change_id: String,
+        #[schema(rename = "completedChoice")]
         completed_choice: DeviceTrustChoiceDto,
         snapshot: DeviceTrustSnapshotDto,
     },
     StateChanged {
+        #[schema(rename = "currentChangeId")]
         current_change_id: Option<String>,
         snapshot: DeviceTrustSnapshotDto,
     },
     LocalDeviceConfirmationRequired {
+        #[schema(rename = "changeId")]
         change_id: String,
         snapshot: DeviceTrustSnapshotDto,
     },
+}
+
+#[cfg(test)]
+mod device_trust_decision_dto_tests {
+    use serde_json::json;
+
+    use super::*;
+
+    fn snapshot() -> DeviceTrustSnapshotDto {
+        DeviceTrustSnapshotDto {
+            revision: 1,
+            local_device_id: "local-device".to_string(),
+            local_membership: DeviceMembershipDto::Active,
+            current_change: None,
+            devices: Vec::new(),
+            recovery: "not_available_in_this_version".to_string(),
+            allowed_actions: Vec::new(),
+            blocked_reason: None,
+            updated_at_ms: 1,
+        }
+    }
+
+    #[test]
+    fn serializes_struct_variant_fields_in_camel_case() {
+        let value = serde_json::to_value(DeviceTrustDecisionDto::AlreadyCompleted {
+            change_id: "change-1".to_string(),
+            completed_choice: DeviceTrustChoiceDto::ApplyChange,
+            snapshot: snapshot(),
+        })
+        .expect("serialize device trust decision");
+
+        assert_eq!(value["changeId"], json!("change-1"));
+        assert_eq!(value["completedChoice"], json!("apply_change"));
+        assert!(
+            value.get("change_id").is_none(),
+            "legacy snake_case field leaked: {value}"
+        );
+        assert!(
+            value.get("completed_choice").is_none(),
+            "legacy snake_case field leaked: {value}"
+        );
+    }
 }

@@ -290,6 +290,10 @@ pub(crate) fn map_member_engine_error(
     error: EngineError,
 ) -> ApiError {
     let (variant, api): (&'static str, ApiError) = match error.code() {
+        MEMBER_INVALID_INPUT_CODE if op == "decide_device_trust" => (
+            "invalid_change_id",
+            ApiError::bad_request("device trust change ID must be valid hexadecimal"),
+        ),
         MEMBER_INVALID_INPUT_CODE => (
             "invalid_input",
             ApiError::bad_request("member device ID must not be empty"),
@@ -332,6 +336,21 @@ mod tests {
 
     fn engine_error(code: u32) -> EngineError {
         EngineError::new(code, EngineErrorCategory::Internal, false)
+    }
+
+    #[test]
+    fn invalid_device_trust_change_id_has_a_specific_message() {
+        let api = map_member_engine_error(
+            "",
+            "decide_device_trust",
+            engine_error(MEMBER_INVALID_INPUT_CODE),
+        );
+
+        assert_eq!(api.status, StatusCode::BAD_REQUEST);
+        assert_eq!(
+            api.message,
+            "device trust change ID must be valid hexadecimal"
+        );
     }
 
     #[test]

@@ -77,16 +77,16 @@ export interface DeviceTrustSnapshot {
 }
 
 export type DeviceTrustDecision =
-  | { kind: 'applied'; change_id: string; snapshot: DeviceTrustSnapshot }
-  | { kind: 'kept_current_device_group'; change_id: string; snapshot: DeviceTrustSnapshot }
+  | { kind: 'applied'; changeId: string; snapshot: DeviceTrustSnapshot }
+  | { kind: 'kept_current_device_group'; changeId: string; snapshot: DeviceTrustSnapshot }
   | {
       kind: 'already_completed'
-      change_id: string
-      completed_choice: DeviceTrustChoice
+      changeId: string
+      completedChoice: DeviceTrustChoice
       snapshot: DeviceTrustSnapshot
     }
-  | { kind: 'state_changed'; current_change_id?: string | null; snapshot: DeviceTrustSnapshot }
-  | { kind: 'local_device_confirmation_required'; change_id: string; snapshot: DeviceTrustSnapshot }
+  | { kind: 'state_changed'; currentChangeId?: string | null; snapshot: DeviceTrustSnapshot }
+  | { kind: 'local_device_confirmation_required'; changeId: string; snapshot: DeviceTrustSnapshot }
 
 import {
   decideDeviceTrust as decideDeviceTrustSdk,

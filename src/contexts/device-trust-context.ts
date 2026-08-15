@@ -6,6 +6,7 @@ export interface DeviceTrustContextValue {
   loading: boolean
   decisionBusy: boolean
   decisionError: string | null
+  localRemovalConfirmationChangeId: string | null
   refresh: () => Promise<void>
   decide: (choice: DeviceTrustChoice, confirmLocalRemoval: boolean) => Promise<void>
 }

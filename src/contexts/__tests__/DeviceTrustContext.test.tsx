@@ -61,6 +61,25 @@ describe('DeviceTrustProvider', () => {
     expect(result.current.decisionError).toBeTruthy()
   })
 
+  it('exposes the engine request for a second local-removal confirmation', async () => {
+    const pending = {
+      ...emptySnapshot,
+      currentChange: { changeId: 'change-1', allowedChoices: ['apply_change'] },
+    }
+    getDeviceTrust.mockResolvedValue(pending)
+    decideDeviceTrust.mockResolvedValue({
+      kind: 'local_device_confirmation_required',
+      changeId: 'change-1',
+      snapshot: pending,
+    })
+    const { result } = renderHook(() => useDeviceTrust(), { wrapper })
+    await waitFor(() => expect(result.current.snapshot).toEqual(pending))
+
+    await act(async () => result.current.decide('apply_change', false))
+
+    expect(Reflect.get(result.current, 'localRemovalConfirmationChangeId')).toBe('change-1')
+  })
+
   it('does not let an older refresh overwrite a newer snapshot', async () => {
     let resolveFirst!: (snapshot: DeviceTrustSnapshot) => void
     let resolveSecond!: (snapshot: DeviceTrustSnapshot) => void
@@ -115,7 +134,7 @@ describe('DeviceTrustProvider', () => {
 
     const decided = { ...emptySnapshot, revision: 3, updatedAtMs: 3 }
     await act(async () =>
-      resolveDecision({ kind: 'applied', change_id: 'change-1', snapshot: decided })
+      resolveDecision({ kind: 'applied', changeId: 'change-1', snapshot: decided })
     )
     await decisionPromise
     expect(result.current.snapshot).toEqual(decided)

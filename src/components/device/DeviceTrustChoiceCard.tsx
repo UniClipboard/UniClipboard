@@ -24,6 +24,7 @@ export function DeviceTrustChoiceCard({
       type="button"
       role="radio"
       aria-checked={selected}
+      tabIndex={selected ? 0 : -1}
       disabled={disabled}
       onClick={onSelect}
       className={cn(

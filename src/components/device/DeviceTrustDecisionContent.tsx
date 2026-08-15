@@ -1,5 +1,5 @@
 import { Loader2, ShieldAlert } from 'lucide-react'
-import { useState } from 'react'
+import { useState, type KeyboardEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { DeviceTrustChoice, DeviceTrustSnapshot } from '@/api/daemon/device-trust'
 import { getPendingDecisionView } from '@/components/device/device-trust-model'
@@ -13,15 +13,31 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 
+function moveChoice(event: KeyboardEvent<HTMLDivElement>) {
+  if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(event.key)) return
+  const options = Array.from(
+    event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="radio"]:not(:disabled)')
+  )
+  const currentIndex = options.indexOf(document.activeElement as HTMLButtonElement)
+  if (currentIndex === -1 || options.length < 2) return
+  event.preventDefault()
+  const offset = event.key === 'ArrowUp' || event.key === 'ArrowLeft' ? -1 : 1
+  const next = options[(currentIndex + offset + options.length) % options.length]
+  next.click()
+  next.focus()
+}
+
 export function DeviceTrustDecisionContent({
   snapshot,
   busy,
   error,
+  localRemovalConfirmationChangeId,
   onDecide,
 }: {
   snapshot: DeviceTrustSnapshot
   busy: boolean
   error: string | null
+  localRemovalConfirmationChangeId: string | null
   onDecide: (choice: DeviceTrustChoice, confirmLocalRemoval: boolean) => void
 }) {
   const { t } = useTranslation()
@@ -33,6 +49,10 @@ export function DeviceTrustDecisionContent({
   )
   if (!view || !change || choices.length === 0) return null
   const choice = choices.includes(selectedChoice) ? selectedChoice : choices[0]
+  const confirmingLocalRemoval =
+    localRemovalConfirmationChangeId === change.changeId &&
+    choice === 'apply_change' &&
+    view.includesLocalDevice
 
   const names = (items: typeof view.targets) =>
     items.length > 0
@@ -58,7 +78,7 @@ export function DeviceTrustDecisionContent({
         </span>
       </DialogHeader>
       <DialogBody className="space-y-4 py-1">
-        <div className="grid min-w-0 gap-3" role="radiogroup">
+        <div className="grid min-w-0 gap-3" role="radiogroup" onKeyDown={moveChoice}>
           {choices.includes('apply_change') && (
             <DeviceTrustChoiceCard
               selected={choice === 'apply_change'}
@@ -95,15 +115,24 @@ export function DeviceTrustDecisionContent({
               : t('deviceTrust.modal.failed')}
           </p>
         )}
+        {confirmingLocalRemoval && (
+          <p className="rounded-md border border-destructive/20 bg-destructive/10 px-3 py-2 text-sm font-medium text-destructive">
+            {t('deviceTrust.modal.confirmLocalRemoval')}
+          </p>
+        )}
       </DialogBody>
       <DialogFooter>
         <Button
           className="min-w-24"
           disabled={busy}
-          onClick={() => onDecide(choice, choice === 'apply_change' && view.includesLocalDevice)}
+          onClick={() => onDecide(choice, confirmingLocalRemoval)}
         >
           {busy && <Loader2 className="animate-spin" aria-hidden="true" />}
-          {t('deviceTrust.actions.confirm')}
+          {t(
+            confirmingLocalRemoval
+              ? 'deviceTrust.actions.confirmExit'
+              : 'deviceTrust.actions.confirm'
+          )}
         </Button>
       </DialogFooter>
     </>

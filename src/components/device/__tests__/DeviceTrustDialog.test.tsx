@@ -85,7 +85,7 @@ describe('DeviceTrustDialog', () => {
     expect(decide).toHaveBeenCalledWith('keep_current_device_group', false)
   })
 
-  it('confirms local removal when applying a change that includes this device', () => {
+  it('requires two explicit confirmations before removing this device', () => {
     const decide = vi.fn()
     const localRemovalSnapshot: DeviceTrustSnapshot = {
       ...snapshot,
@@ -95,7 +95,7 @@ describe('DeviceTrustDialog', () => {
         applyImpact: { ...snapshot.currentChange.applyImpact, localDeviceOutcome: 'removed' },
       },
     }
-    render(
+    const { rerender } = render(
       <DeviceTrustDialog
         snapshot={localRemovalSnapshot}
         busy={false}
@@ -110,7 +110,33 @@ describe('DeviceTrustDialog', () => {
       screen.getByRole('radio', { name: new RegExp(i18n.t('deviceTrust.modal.stayTitle')) })
     ).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: i18n.t('deviceTrust.actions.confirm') }))
-    expect(decide).toHaveBeenCalledWith('apply_change', true)
+    expect(decide).toHaveBeenCalledWith('apply_change', false)
+
+    rerender(
+      <DeviceTrustDialog
+        snapshot={localRemovalSnapshot}
+        busy={false}
+        error={null}
+        localRemovalConfirmationChangeId="change-1"
+        onDecide={decide}
+      />
+    )
+    expect(screen.getByText(i18n.t('deviceTrust.modal.confirmLocalRemoval'))).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: i18n.t('deviceTrust.actions.confirmExit') }))
+    expect(decide).toHaveBeenLastCalledWith('apply_change', true)
+  })
+
+  it('uses one tab stop and arrow keys to move between choices', () => {
+    render(<DeviceTrustDialog snapshot={snapshot} busy={false} error={null} onDecide={vi.fn()} />)
+    const options = screen.getAllByRole('radio')
+
+    expect(options[0]).toHaveAttribute('tabindex', '0')
+    expect(options[1]).toHaveAttribute('tabindex', '-1')
+    options[0].focus()
+    fireEvent.keyDown(options[0], { key: 'ArrowDown' })
+
+    expect(options[1]).toHaveAttribute('aria-checked', 'true')
+    expect(options[1]).toHaveFocus()
   })
 
   it('resets the selected choice when the pending change changes', () => {

@@ -6,11 +6,13 @@ export function DeviceTrustDialog({
   snapshot,
   busy,
   error,
+  localRemovalConfirmationChangeId = null,
   onDecide,
 }: {
   snapshot: DeviceTrustSnapshot
   busy: boolean
   error: string | null
+  localRemovalConfirmationChangeId?: string | null
   onDecide: (choice: DeviceTrustChoice, confirmLocalRemoval: boolean) => void
 }) {
   const changeId = snapshot.currentChange?.changeId
@@ -28,6 +30,7 @@ export function DeviceTrustDialog({
           snapshot={snapshot}
           busy={busy}
           error={error}
+          localRemovalConfirmationChangeId={localRemovalConfirmationChangeId}
           onDecide={onDecide}
         />
       </DialogContent>

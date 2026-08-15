@@ -13,6 +13,7 @@ interface DeviceTrustState {
   loading: boolean
   decisionBusy: boolean
   decisionError: string | null
+  localRemovalConfirmationChangeId: string | null
 }
 
 type DeviceTrustStateAction =
@@ -20,7 +21,12 @@ type DeviceTrustStateAction =
   | { type: 'refresh_finished'; snapshot: DeviceTrustSnapshot }
   | { type: 'refresh_failed'; error: string }
   | { type: 'decision_started' }
-  | { type: 'decision_finished'; snapshot: DeviceTrustSnapshot; stateChanged: boolean }
+  | {
+      type: 'decision_finished'
+      snapshot: DeviceTrustSnapshot
+      stateChanged: boolean
+      localRemovalConfirmationChangeId: string | null
+    }
   | { type: 'decision_failed'; error: string }
 
 const initialState: DeviceTrustState = {
@@ -28,14 +34,24 @@ const initialState: DeviceTrustState = {
   loading: false,
   decisionBusy: false,
   decisionError: null,
+  localRemovalConfirmationChangeId: null,
 }
 
 function stateReducer(state: DeviceTrustState, action: DeviceTrustStateAction): DeviceTrustState {
   switch (action.type) {
     case 'refresh_started':
       return { ...state, loading: true }
-    case 'refresh_finished':
-      return { ...state, snapshot: action.snapshot, loading: false, decisionError: null }
+    case 'refresh_finished': {
+      const currentChangeId = action.snapshot.currentChange?.changeId ?? null
+      return {
+        ...state,
+        snapshot: action.snapshot,
+        loading: false,
+        decisionError: null,
+        localRemovalConfirmationChangeId:
+          state.localRemovalConfirmationChangeId === currentChangeId ? currentChangeId : null,
+      }
+    }
     case 'refresh_failed':
       return { ...state, loading: false, decisionError: action.error }
     case 'decision_started':
@@ -47,6 +63,7 @@ function stateReducer(state: DeviceTrustState, action: DeviceTrustStateAction): 
         loading: false,
         decisionBusy: false,
         decisionError: action.stateChanged ? 'device_state_changed' : null,
+        localRemovalConfirmationChangeId: action.localRemovalConfirmationChangeId,
       }
     case 'decision_failed':
       return { ...state, decisionBusy: false, decisionError: action.error }
@@ -114,6 +131,8 @@ export function DeviceTrustProvider({
           type: 'decision_finished',
           snapshot: result.snapshot,
           stateChanged: result.kind === 'state_changed',
+          localRemovalConfirmationChangeId:
+            result.kind === 'local_device_confirmation_required' ? result.changeId : null,
         })
       } catch (error) {
         await refresh()

@@ -17,6 +17,7 @@
       "continueSyncing": "Keep syncing",
       "stopSyncing": "Stop syncing",
       "noDevices": "None",
+      "confirmLocalRemoval": "This removes this device from the space and stops syncing here. Confirm again to continue.",
       "stateChanged": "The device state changed. The latest situation is now shown.",
       "failed": "Your choice could not be saved. Check the background service and try again."
     },

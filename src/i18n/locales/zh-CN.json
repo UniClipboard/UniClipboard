@@ -17,6 +17,7 @@
       "continueSyncing": "继续同步",
       "stopSyncing": "停止同步",
       "noDevices": "无",
+      "confirmLocalRemoval": "这会将本机移出空间，并停止在本机同步。请再次确认后继续。",
       "stateChanged": "设备状态已经变化，已为你显示最新情况。",
       "failed": "暂时无法保存选择。请检查后台服务后重试。"
     },

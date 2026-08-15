@@ -49,6 +49,15 @@ const PreviewContent: React.FC<PreviewContentProps> = ({
   const textItem = item.content as ClipboardTextItem | null
   const hasCodeTag = item.contentTags?.includes('code') ?? false
   const hasLinkTag = item.contentTags?.includes('link') ?? false
+  if ((item.type === 'text' || item.type === 'richtext') && !textItem) {
+    return (
+      <div className="p-8 text-center font-medium italic text-muted-foreground opacity-40">
+        {t(
+          item.isUnavailable ? 'clipboard.errors.unavailableBadge' : 'clipboard.item.unknownContent'
+        )}
+      </div>
+    )
+  }
   switch (item.type) {
     case 'text': {
       if (hasCodeTag && textItem) {
@@ -141,6 +150,7 @@ const ClipboardPreview: React.FC<ClipboardPreviewProps> = ({ item, actions }) =>
 
   const isLargeText =
     (item.type === 'text' || item.type === 'richtext') &&
+    item.content !== null &&
     isLargeTextPreview(item.content as ClipboardTextItem, preview, loading)
   // Code renders as an editor-like pane that fills the available height and owns
   // its own scrolling, so it skips the auto-height ScrollArea wrapper.

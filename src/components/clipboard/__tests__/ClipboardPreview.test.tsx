@@ -236,4 +236,20 @@ describe('ClipboardPreview', () => {
     expect(link).not.toHaveClass('rounded-xl', 'border', 'bg-muted/10', 'p-4')
     expect(screen.queryByText('example.com')).not.toBeInTheDocument()
   })
+
+  it('renders an unavailable message when a text result has no content', () => {
+    render(
+      <ClipboardPreview
+        item={{
+          id: 'lost-text-entry',
+          type: 'text',
+          activeTime: 1710000000000,
+          content: null,
+          isUnavailable: true,
+        }}
+      />
+    )
+
+    expect(screen.getByText('Content unavailable')).toBeInTheDocument()
+  })
 })

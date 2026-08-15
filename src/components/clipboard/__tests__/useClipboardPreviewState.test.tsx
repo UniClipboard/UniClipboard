@@ -70,4 +70,20 @@ describe('useClipboardPreviewState', () => {
     expect(result.current.preview).toBeNull()
     expect(cacheGetMock).not.toHaveBeenCalled()
   })
+
+  it('stays idle when a selected text item has no content', () => {
+    const item: DisplayClipboardItem = {
+      id: 'lost-text-entry',
+      type: 'text',
+      activeTime: Date.now(),
+      content: null,
+      isUnavailable: true,
+    }
+
+    const { result } = renderHook(() => useClipboardPreviewState(item))
+
+    expect(result.current.loading).toBe(false)
+    expect(result.current.preview).toBeNull()
+    expect(cacheGetMock).not.toHaveBeenCalled()
+  })
 })

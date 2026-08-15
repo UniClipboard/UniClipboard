@@ -272,7 +272,7 @@ fn remote_device_id(cli: &TestCli, name: &str) -> String {
         .unwrap_or_else(|| panic!("member {name} not found"))
 }
 
-fn try_convergence(cli: &TestCli) -> Result<String, String> {
+fn try_device_trust(cli: &TestCli) -> Result<Value, String> {
     let output = cli.run_capture(&["--json", "status"]);
     if !output.success() {
         return Err(format!(
@@ -283,50 +283,32 @@ fn try_convergence(cli: &TestCli) -> Result<String, String> {
     let value: Value = serde_json::from_str(output.stdout.trim())
         .map_err(|error| format!("status output is not JSON: {error}\n{}", output.stdout))?;
     value
-        .get("workspace_convergence")
-        .and_then(Value::as_str)
-        .map(str::to_string)
-        .ok_or_else(|| format!("workspace_convergence missing: {value}"))
+        .get("device_trust")
+        .cloned()
+        .ok_or_else(|| format!("device_trust missing: {value}"))
 }
 
-async fn wait_for_convergence(node: &Node, expected: &str) {
+fn is_healthy_device_trust(status: &Value) -> bool {
+    status["local_membership"] == serde_json::json!("active")
+        && status["current_change_id"].is_null()
+        && status["upgrade_required_device_ids"] == serde_json::json!([])
+        && matches!(
+            status["blocked_reason"].as_str(),
+            None | Some("no_current_change")
+        )
+}
+
+async fn wait_for_healthy_device_trust(node: &Node) {
     let deadline = tokio::time::Instant::now() + WAIT_TIMEOUT;
     loop {
-        let last = match try_convergence(&node.cli) {
-            Ok(state) if state == expected => return,
-            Ok(state) => state,
+        let last = match try_device_trust(&node.cli) {
+            Ok(status) if is_healthy_device_trust(&status) => return,
+            Ok(status) => status.to_string(),
             Err(error) => error,
         };
         if tokio::time::Instant::now() >= deadline {
             panic!(
-                "{} did not reach {expected}; last={last}; members={:?}; log={}",
-                node.cli.profile_name,
-                try_members(&node.cli),
-                node.daemon.diagnostic_log()
-            );
-        }
-        tokio::time::sleep(CLI_POLL_INTERVAL).await;
-    }
-}
-
-async fn wait_for_healthy_convergence(node: &Node) {
-    let deadline = tokio::time::Instant::now() + WAIT_TIMEOUT;
-    loop {
-        let last = match try_convergence(&node.cli) {
-            Ok(state)
-                if matches!(
-                    state.as_str(),
-                    "locally_applied" | "converging" | "complete"
-                ) =>
-            {
-                return;
-            }
-            Ok(state) => state,
-            Err(error) => error,
-        };
-        if tokio::time::Instant::now() >= deadline {
-            panic!(
-                "{} did not report healthy convergence; last={last}; members={:?}; log={}",
+                "{} did not report healthy device trust; last={last}; members={:?}; log={}",
                 node.cli.profile_name,
                 try_members(&node.cli),
                 node.daemon.diagnostic_log()
@@ -425,24 +407,25 @@ async fn setup_three_nodes_with_a_offline(
     let mut a = Node::initialized(&format!("{prefix}-a"), "node-a", binaries, rendezvous).await;
     let b = Node::fresh(&format!("{prefix}-b"), binaries, rendezvous).await;
     join(&a, &b, "node-b").await;
-    wait_for_convergence(&a, "complete").await;
-    wait_for_convergence(&b, "complete").await;
+    wait_for_healthy_device_trust(&a).await;
+    wait_for_healthy_device_trust(&b).await;
     a.stop().await;
 
     let c = Node::fresh(&format!("{prefix}-c"), binaries, rendezvous).await;
     join(&b, &c, "node-c").await;
-    wait_for_convergence(&c, "converging").await;
+    wait_for_member_count(&c, 3).await;
+    wait_for_healthy_device_trust(&c).await;
     (a, b, c)
 }
 
 #[tokio::test]
 #[ignore]
-async fn c0_single_node_reports_locally_applied() {
+async fn c0_single_node_reports_healthy_device_trust() {
     let binaries = NodeBinarySet::current();
     let rendezvous = LocalRendezvous::start().await;
     let node = Node::initialized("membership-c0", "node-a", &binaries, &rendezvous).await;
 
-    wait_for_convergence(&node, "locally_applied").await;
+    wait_for_healthy_device_trust(&node).await;
     assert_eq!(members(&node.cli).len(), 1);
 }
 
@@ -458,7 +441,7 @@ async fn c1_online_sponsor_chain_converges_and_syncs_directly() {
     join(&b, &c, "node-c").await;
 
     for node in [&a, &b, &c] {
-        wait_for_healthy_convergence(node).await;
+        wait_for_healthy_device_trust(node).await;
         wait_for_member_count(node, 3).await;
     }
     assert_exact_delivery(&a, &c, "node-c", "c1-a-to-c").await;
@@ -477,8 +460,8 @@ async fn c2_offline_member_recovers_without_sponsor() {
     c.restart().await;
     a.restart().await;
 
-    wait_for_convergence(&a, "complete").await;
-    wait_for_convergence(&c, "complete").await;
+    wait_for_healthy_device_trust(&a).await;
+    wait_for_healthy_device_trust(&c).await;
     wait_for_member_count(&a, 3).await;
     wait_for_member_count(&c, 3).await;
     assert_exact_delivery(&a, &c, "node-c", "c2-a-to-c").await;
@@ -496,8 +479,8 @@ async fn c2_control_recovers_when_joiner_stays_running() {
     b.stop().await;
     a.restart().await;
 
-    wait_for_convergence(&a, "complete").await;
-    wait_for_convergence(&c, "complete").await;
+    wait_for_healthy_device_trust(&a).await;
+    wait_for_healthy_device_trust(&c).await;
     wait_for_member_count(&a, 3).await;
     wait_for_member_count(&c, 3).await;
     assert_exact_delivery(&a, &c, "node-c", "c2-control-a-to-c").await;
@@ -515,13 +498,13 @@ async fn c3_recovered_membership_survives_restart_without_duplicates() {
     b.stop().await;
     c.restart().await;
     a.restart().await;
-    wait_for_convergence(&a, "complete").await;
-    wait_for_convergence(&c, "complete").await;
+    wait_for_healthy_device_trust(&a).await;
+    wait_for_healthy_device_trust(&c).await;
 
     a.restart().await;
     c.restart().await;
-    wait_for_convergence(&a, "complete").await;
-    wait_for_convergence(&c, "complete").await;
+    wait_for_healthy_device_trust(&a).await;
+    wait_for_healthy_device_trust(&c).await;
     assert_eq!(
         members(&a.cli).len(),
         3,

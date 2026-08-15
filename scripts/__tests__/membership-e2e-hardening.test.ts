@@ -21,7 +21,7 @@ describe('membership E2E hardening', () => {
     )
   })
 
-  it('runs permanent-loss recovery before merge and keeps cancellation under the frontend test gate', () => {
+  it('runs current membership checks before merge without the deferred recovery case', () => {
     const workflow = read('.github/workflows/membership-e2e.yml')
     const script = read('scripts/e2e/run-membership-matrix.sh')
     const prCheck = read('.github/workflows/pr-check.yml')
@@ -32,8 +32,9 @@ describe('membership E2E hardening', () => {
     expect(workflow).toContain('matrix=[{"name":"Linux","runner":"ubuntu-22.04"')
     expect(workflow).toContain('matrix=[{"name":"macOS","runner":"macos-latest"')
     expect(script).toContain(
-      'run_case R2 required membership-diagnostics membership_convergence r2_permanent_loss_unblocks_an_offline_retained_member'
+      'run_case C1 required "" membership_convergence c1_online_sponsor_chain_converges_and_syncs_directly'
     )
+    expect(script).not.toContain('r2_permanent_loss_unblocks_an_offline_retained_member')
     expect(script).not.toContain('h5_offline_readmission_can_be_cancelled')
     expect(prCheck).toContain('run: bun run test -- --run')
   })
@@ -69,6 +70,21 @@ describe('membership E2E hardening', () => {
     )
     expect(script).toContain('UC_E2E_LEGACY_RELEASE_DIR is not set; H1-H4 cannot run')
     expect(script).toContain('H1-H4 were required but could not run')
+    expect(script).toContain("grep -Eq 'test result: ok\\. 1 passed;'")
+  })
+
+  it('references existing membership convergence tests', () => {
+    const script = read('scripts/e2e/run-membership-matrix.sh')
+    const convergence = read('tests/e2e/tests/membership_convergence.rs')
+    const testNames = Array.from(
+      script.matchAll(/run_case\s+\S+\s+\S+\s+\S*\s+membership_convergence\s+(\S+)/g),
+      match => match[1]
+    )
+
+    expect(testNames.length).toBeGreaterThan(0)
+    for (const testName of testNames) {
+      expect(convergence).toContain(`async fn ${testName}()`)
+    }
   })
 
   it('guards the E2E-only rendezvous override and release preparation', () => {

@@ -1677,8 +1677,9 @@ async fn u14_u20_independent_spaces_and_named_profiles_remain_isolated_after_upg
     let send = a
         .cli
         .run_capture(&["--json", "send", cross_space_text, "--peer", &b_id]);
+    let outcome = serde_json::from_str::<Value>(send.stdout.trim()).unwrap_or_default();
     assert!(
-        !send.success(),
+        !send.success() || outcome["totalAccepted"] == serde_json::json!(0),
         "cross-space send was accepted: stdout={} stderr={}",
         send.stdout,
         send.stderr

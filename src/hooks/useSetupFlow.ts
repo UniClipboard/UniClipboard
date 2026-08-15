@@ -1,6 +1,7 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useEffectEvent, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
+import { getDeviceTrust } from '@/api/daemon/device-trust'
 import {
   cancelInvitation,
   getSetupState,
@@ -14,6 +15,8 @@ import {
   type InitializeSpaceErrorKind,
   type RedeemResponse,
 } from '@/api/daemon/setupV2'
+import { activeDeviceIds, findNewActiveDeviceId } from '@/components/device/pairing-success-utils'
+import { daemonWs } from '@/lib/daemon-ws'
 import { createLogger } from '@/lib/logger'
 import { recordWdioE2eEvent } from '@/lib/wdio-test-bridge'
 import {
@@ -93,6 +96,7 @@ export function useSetupFlow(): UseSetupFlowReturn {
   const { t } = useTranslation(undefined, { keyPrefix: 'setup.page' })
   const [pageScreen, setPageScreen] = useState<SetupScreen | null>(null)
   const [loading, setLoading] = useState(false)
+  const invitationDeviceIdsRef = useRef<ReadonlySet<string> | null>(null)
 
   const screen: SetupScreen = (() => {
     if (flow.kind === 'loading') return { kind: 'loading' }
@@ -121,6 +125,38 @@ export function useSetupFlow(): UseSetupFlowReturn {
   const startCreateSpace = useCallback(() => setPageScreen({ kind: 'initialize_space' }), [])
   const startJoinSpace = useCallback(() => setPageScreen({ kind: 'redeem_invitation' }), [])
   const startImportConfig = useCallback(() => setPageScreen({ kind: 'import_config' }), [])
+
+  const confirmSponsorPairing = useEffectEvent(async () => {
+    if (flow.kind !== 'invitation_pending' || invitationDeviceIdsRef.current === null) return
+    try {
+      const [state, trust] = await Promise.all([getSetupState(), getDeviceTrust()])
+      const peerDeviceId = findNewActiveDeviceId(
+        invitationDeviceIdsRef.current,
+        activeDeviceIds(trust)
+      )
+      if (state.currentInvitation !== null || peerDeviceId === null) return
+      applyServerSetupState(state, {
+        kind: 'pairing_succeeded',
+        role: 'sponsor',
+        sponsorDeviceId: trust.localDeviceId,
+        peerDeviceId,
+      })
+    } catch (err) {
+      log.warn({ err }, 'failed to verify completed sponsor invitation')
+    }
+  })
+
+  useEffect(() => {
+    if (flow.kind !== 'invitation_pending') return
+    const unsubscribeDeviceTrust = daemonWs.subscribe(['device-trust'], event => {
+      if (event.eventType === 'device-trust.changed') void confirmSponsorPairing()
+    })
+    const unsubscribeReconnect = daemonWs.onReconnect(() => void confirmSponsorPairing())
+    return () => {
+      unsubscribeDeviceTrust()
+      unsubscribeReconnect()
+    }
+  }, [flow.kind])
 
   const handleInitialize = useCallback(
     async (input: { passphrase: string; passphraseConfirm: string; deviceName: string }) => {
@@ -159,6 +195,7 @@ export function useSetupFlow(): UseSetupFlowReturn {
     setLoading(true)
     recordWdioE2eEvent('setup.issue.started')
     try {
+      invitationDeviceIdsRef.current = activeDeviceIds(await getDeviceTrust())
       const out = await issuePairingInvitation()
       recordWdioE2eEvent('setup.issue.returned')
       // The response is already authoritative. The matching WebSocket event

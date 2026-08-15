@@ -502,7 +502,10 @@ fn redact_query_secrets(query: Option<&str>) -> String {
         return String::new();
     };
     url::form_urlencoded::parse(q.as_bytes())
-        .map(|(key, _)| format!("{key}=<redacted>"))
+        .map(|(key, _)| {
+            let escaped_key: String = key.chars().flat_map(char::escape_default).collect();
+            format!("{escaped_key}=<redacted>")
+        })
         .collect::<Vec<_>>()
         .join("&")
 }
@@ -615,6 +618,15 @@ mod request_log_redaction_tests {
         ] {
             assert!(!redacted.contains(secret));
         }
+    }
+
+    #[test]
+    fn escapes_control_characters_in_query_keys() {
+        let redacted = redact_query_secrets(Some("%0Aforged=1&tab%09key=2"));
+
+        assert_eq!(redacted, "\\nforged=<redacted>&tab\\tkey=<redacted>");
+        assert!(!redacted.contains('\n'));
+        assert!(!redacted.contains('\t'));
     }
 
     #[test]

@@ -10,6 +10,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Kbd } from '@/components/ui/kbd'
 import { useShortcut } from '@/hooks/useShortcut'
 import { useShortcutLayer } from '@/hooks/useShortcutLayer'
@@ -17,7 +18,7 @@ import { useShortcutLayer } from '@/hooks/useShortcutLayer'
 interface DeleteConfirmDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  onConfirm: () => void | Promise<void>
+  onConfirm: (skipFutureConfirmation: boolean) => void | Promise<void>
   count: number
 }
 
@@ -29,6 +30,7 @@ const DeleteConfirmDialog: React.FC<DeleteConfirmDialogProps> = ({
 }) => {
   const { t } = useTranslation()
   const [isDeleting, setIsDeleting] = useState(false)
+  const [skipFutureConfirmation, setSkipFutureConfirmation] = useState(false)
 
   // 当对话框打开时，激活 modal 作用域
   useShortcutLayer({
@@ -37,11 +39,16 @@ const DeleteConfirmDialog: React.FC<DeleteConfirmDialogProps> = ({
     enabled: open,
   })
 
+  const handleOpenChange = (nextOpen: boolean) => {
+    if (!nextOpen) setSkipFutureConfirmation(false)
+    onOpenChange(nextOpen)
+  }
+
   const handleConfirm = async () => {
     setIsDeleting(true)
     try {
-      await onConfirm()
-      onOpenChange(false)
+      await onConfirm(skipFutureConfirmation)
+      handleOpenChange(false)
     } finally {
       setIsDeleting(false)
     }
@@ -49,7 +56,7 @@ const DeleteConfirmDialog: React.FC<DeleteConfirmDialogProps> = ({
 
   const handleCancel = () => {
     if (!isDeleting) {
-      onOpenChange(false)
+      handleOpenChange(false)
     }
   }
 
@@ -77,7 +84,7 @@ const DeleteConfirmDialog: React.FC<DeleteConfirmDialogProps> = ({
   })
 
   return (
-    <AlertDialog open={open} onOpenChange={onOpenChange}>
+    <AlertDialog open={open} onOpenChange={handleOpenChange}>
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>{t('clipboard.confirmDeleteTitle')}</AlertDialogTitle>
@@ -85,6 +92,14 @@ const DeleteConfirmDialog: React.FC<DeleteConfirmDialogProps> = ({
             {t('clipboard.confirmDeleteDescription', { count })}
           </AlertDialogDescription>
         </AlertDialogHeader>
+        <label className="flex cursor-pointer items-center gap-2 text-sm text-muted-foreground">
+          <Checkbox
+            checked={skipFutureConfirmation}
+            onCheckedChange={setSkipFutureConfirmation}
+            disabled={isDeleting}
+          />
+          <span>{t('clipboard.skipDeleteConfirmationLabel')}</span>
+        </label>
         <AlertDialogFooter>
           <AlertDialogCancel disabled={isDeleting} onClick={handleCancel}>
             <span className="flex items-center gap-1.5">

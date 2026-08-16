@@ -521,6 +521,10 @@
           "label": "跳過已我的最愛條目",
           "description": "已我的最愛的條目不會被自動清理"
         },
+        "confirmBeforeDelete": {
+          "label": "刪除前確認",
+          "description": "刪除單筆歷史記錄前先詢問確認"
+        },
         "clearHistory": {
           "label": "清除歷史",
           "description": "刪除所有剪貼簿歷史並釋放存儲空間",
@@ -1056,6 +1060,7 @@
       }
     },
     "confirmDeleteTitle": "確認刪除",
+    "skipDeleteConfirmationLabel": "不再詢問",
     "confirmDeleteDescription_one": "確定要刪除選中的項目嗎？此操作無法撤銷。",
     "confirmDeleteDescription_other": "確定要刪除選中的 {{count}} 項嗎？此操作無法撤銷。",
     "cancelLabel": "取消",

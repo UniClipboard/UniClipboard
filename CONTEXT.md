@@ -88,6 +88,12 @@ _Avoid_: change、update、message
 是历史列表与 Quick Panel 展示的单位，区别于触发它的 `ClipboardEvent`。
 _Avoid_: item、clip、record
 
+**Delete confirmation preference**：
+删除单条 **ClipboardEntry** 前是否要求用户确认的持久偏好，默认开启；用户可在设置页
+关闭，也可在确认框选择“不再询问”来关闭。它只影响单条历史记录，清空全部历史始终
+必须再次确认。
+_Avoid_: clear-history confirmation、delete-without-warning
+
 **SystemClipboardSnapshot**：
 从系统剪贴板一次性读到的原始多格式快照（一个时刻、多条 representation）。是
 捕获管线的入站原料，尚未做内联 / blob 落盘决策。

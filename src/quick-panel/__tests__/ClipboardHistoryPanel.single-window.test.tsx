@@ -1,5 +1,6 @@
 import { configureStore } from '@reduxjs/toolkit'
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import type { ReactElement } from 'react'
 import { Provider } from 'react-redux'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -104,6 +105,14 @@ vi.mock('../hooks/useHistorySearch', () => ({
   })),
 }))
 
+const defaultHistorySearchImplementation = vi.mocked(useHistorySearch).getMockImplementation()
+
+beforeEach(() => {
+  if (defaultHistorySearchImplementation) {
+    vi.mocked(useHistorySearch).mockImplementation(defaultHistorySearchImplementation)
+  }
+})
+
 vi.mock('@/api/daemon', () => ({
   restoreClipboardEntry: vi.fn(),
   deleteClipboardEntry: vi.fn(),
@@ -203,6 +212,12 @@ describe('ClipboardHistoryPanel single-window preview', () => {
     expect(
       screen.queryByText(i18n.t('quickPanel.history.status.navigatePaste'))
     ).not.toBeInTheDocument()
+  })
+
+  it('does not render a divider below the search area', () => {
+    renderPanel()
+
+    expect(screen.getByRole('combobox').closest('.border-b')).toBeNull()
   })
 
   it('keeps history and preview panes flexible when the inline preview opens', async () => {
@@ -557,6 +572,93 @@ describe('ClipboardHistoryPanel hover/focus keyboard shortcuts', () => {
     await waitFor(() => {
       expect(invokeMock).toHaveBeenCalledWith('paste_to_previous_app', expect.any(Object))
     })
+  })
+
+  it('returns keyboard control to the results and resets selection after clicking a tag', async () => {
+    const user = userEvent.setup()
+    renderPanel()
+    const input = searchBox()
+    fireEvent.keyDown(input, { key: 'ArrowDown' })
+
+    await user.click(
+      within(screen.getByTestId('quick-panel-tag-filter-list')).getByRole('button', {
+        name: i18n.t('history.type.code'),
+      })
+    )
+
+    expect(input).toHaveFocus()
+    await user.keyboard('{Enter}')
+    await waitFor(() => {
+      expect(restoreClipboardEntry).toHaveBeenCalledWith('entry-1', undefined)
+    })
+  })
+
+  it('returns keyboard control to the results and resets selection after clicking a type', async () => {
+    const user = userEvent.setup()
+    renderPanel()
+    const input = searchBox()
+    fireEvent.keyDown(input, { key: 'ArrowDown' })
+
+    await user.click(screen.getByRole('button', { name: i18n.t('history.type.file') }))
+
+    expect(input).toHaveFocus()
+    await user.keyboard('{Enter}')
+    await waitFor(() => {
+      expect(restoreClipboardEntry).toHaveBeenCalledWith('entry-1', undefined)
+    })
+  })
+
+  it('does not expose or paste stale results while a filter is loading', () => {
+    vi.mocked(useHistorySearch).mockReturnValue({
+      filteredItems: [
+        {
+          id: 'stale-entry',
+          type: 'text',
+          preview: 'Stale preview title',
+          activeTime: Date.now(),
+          isUnavailable: false,
+        },
+      ],
+      previewItems: [],
+      isSearching: true,
+      searchTotal: null,
+      loading: false,
+      isLocked: false,
+      removeItem: vi.fn(),
+    })
+    renderPanel()
+
+    expect(screen.queryByText('Stale preview title')).not.toBeInTheDocument()
+    fireEvent.keyDown(searchBox(), { key: 'Enter' })
+
+    expect(restoreClipboardEntry).not.toHaveBeenCalled()
+  })
+
+  it('keeps native query copy available while a filter is loading', () => {
+    vi.mocked(useHistorySearch).mockReturnValue({
+      filteredItems: [],
+      previewItems: [],
+      isSearching: true,
+      searchTotal: null,
+      loading: false,
+      isLocked: false,
+      removeItem: vi.fn(),
+    })
+    renderPanel()
+    const input = searchBox()
+    fireEvent.change(input, { target: { value: 'abc' } })
+    input.setSelectionRange(0, 3)
+    const copyEvent = new KeyboardEvent('keydown', {
+      key: 'c',
+      metaKey: true,
+      bubbles: true,
+      cancelable: true,
+    })
+
+    fireEvent(input, copyEvent)
+
+    expect(copyEvent.defaultPrevented).toBe(false)
+    expect(restoreClipboardEntry).not.toHaveBeenCalled()
   })
 
   it('does not hijack Ctrl/Cmd+V once the search query is non-empty', async () => {

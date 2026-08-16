@@ -2,6 +2,7 @@ import type { PlatformInfo } from '@/lib/platform'
 
 export const WINDOW_FRAME_STORAGE_KEY = 'uniclipboard.useSystemWindowFrame'
 const WINDOW_FRAME_CHANGED_EVENT = 'uniclipboard:window-frame-changed'
+let sessionUseSystemWindowFrame: boolean | undefined
 
 type WindowFramePlatform = Pick<PlatformInfo, 'isWindows' | 'isMac' | 'isLinux' | 'isTauri'>
 
@@ -24,6 +25,8 @@ const getStorage = (): Storage | null => {
 }
 
 export const readUseSystemWindowFrame = (): boolean => {
+  if (sessionUseSystemWindowFrame !== undefined) return sessionUseSystemWindowFrame
+
   try {
     return getStorage()?.getItem(WINDOW_FRAME_STORAGE_KEY) === 'true'
   } catch {
@@ -32,10 +35,18 @@ export const readUseSystemWindowFrame = (): boolean => {
 }
 
 export const setStoredUseSystemWindowFrame = (enabled: boolean): void => {
-  try {
-    getStorage()?.setItem(WINDOW_FRAME_STORAGE_KEY, String(enabled))
-  } catch {
-    // A storage failure must not prevent the current window from changing frame mode.
+  const storage = getStorage()
+
+  if (!storage) {
+    sessionUseSystemWindowFrame = enabled
+  } else {
+    try {
+      storage.setItem(WINDOW_FRAME_STORAGE_KEY, String(enabled))
+      sessionUseSystemWindowFrame = undefined
+    } catch {
+      // A storage failure must not prevent the current window from changing frame mode.
+      sessionUseSystemWindowFrame = enabled
+    }
   }
 
   if (typeof window !== 'undefined') {

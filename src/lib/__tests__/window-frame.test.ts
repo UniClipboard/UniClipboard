@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
   readUseSystemWindowFrame,
   resolveWindowFrameMode,
@@ -14,8 +14,16 @@ const linuxPlatform = {
 }
 
 describe('window frame preference', () => {
+  const originalLocalStorageDescriptor = Object.getOwnPropertyDescriptor(window, 'localStorage')
+
   beforeEach(() => {
     localStorage.clear()
+  })
+
+  afterEach(() => {
+    if (originalLocalStorageDescriptor) {
+      Object.defineProperty(window, 'localStorage', originalLocalStorageDescriptor)
+    }
   })
 
   it('defaults to the custom frame', () => {
@@ -43,6 +51,24 @@ describe('window frame preference', () => {
     setStoredUseSystemWindowFrame(true)
 
     expect(localStorage.getItem(WINDOW_FRAME_STORAGE_KEY)).toBe('true')
+    expect(readUseSystemWindowFrame()).toBe(true)
+  })
+
+  it('keeps the selected window frame for the current session when storage fails', () => {
+    Object.defineProperty(window, 'localStorage', {
+      configurable: true,
+      value: {
+        getItem: () => {
+          throw new Error('Storage is unavailable')
+        },
+        setItem: () => {
+          throw new Error('Storage is unavailable')
+        },
+      },
+    })
+
+    setStoredUseSystemWindowFrame(true)
+
     expect(readUseSystemWindowFrame()).toBe(true)
   })
 

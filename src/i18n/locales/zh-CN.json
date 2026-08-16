@@ -521,6 +521,10 @@
           "label": "跳过已收藏条目",
           "description": "已收藏的条目不会被自动清理"
         },
+        "confirmBeforeDelete": {
+          "label": "删除前确认",
+          "description": "删除单条历史记录前先询问确认"
+        },
         "clearHistory": {
           "label": "清除历史",
           "description": "删除所有剪贴板历史并释放存储空间",
@@ -1056,6 +1060,7 @@
       }
     },
     "confirmDeleteTitle": "确认删除",
+    "skipDeleteConfirmationLabel": "不再询问",
     "confirmDeleteDescription_one": "确定要删除选中的项目吗？此操作无法撤销。",
     "confirmDeleteDescription_other": "确定要删除选中的 {{count}} 项吗？此操作无法撤销。",
     "cancelLabel": "取消",

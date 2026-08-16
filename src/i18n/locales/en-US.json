@@ -521,6 +521,10 @@
           "label": "Skip pinned items",
           "description": "Pinned items are excluded from automatic cleanup"
         },
+        "confirmBeforeDelete": {
+          "label": "Confirm before deleting",
+          "description": "Ask for confirmation before deleting a single history item"
+        },
         "clearHistory": {
           "label": "Clear history",
           "description": "Delete all clipboard history and free up storage space",
@@ -1057,6 +1061,7 @@
       }
     },
     "confirmDeleteTitle": "Confirm Delete",
+    "skipDeleteConfirmationLabel": "Don't ask again",
     "confirmDeleteDescription_one": "Are you sure you want to delete the selected item? This action cannot be undone.",
     "confirmDeleteDescription_other": "Are you sure you want to delete the {{count}} selected items? This action cannot be undone.",
     "cancelLabel": "Cancel",

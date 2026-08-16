@@ -62,6 +62,16 @@ vi.mock('@/hooks/useShortcut', () => ({
   useShortcut: vi.fn(),
 }))
 
+const deleteConfirmationPreference = vi.hoisted(() => ({
+  read: vi.fn(() => true),
+  set: vi.fn(),
+}))
+
+vi.mock('@/lib/delete-confirmation-preference', () => ({
+  readDeleteConfirmationEnabled: deleteConfirmationPreference.read,
+  setDeleteConfirmationEnabled: deleteConfirmationPreference.set,
+}))
+
 const mockUseSetting = vi.mocked(useSetting)
 const mockGetSearchStatus = vi.mocked(getSearchStatus)
 const mockGetStorageStats = vi.mocked(storageApi.getStorageStats)
@@ -148,6 +158,7 @@ beforeAll(async () => {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  deleteConfirmationPreference.read.mockReturnValue(true)
   mockGetStorageStats.mockResolvedValue({
     totalBytes: 100,
     databaseBytes: 25,
@@ -163,6 +174,32 @@ beforeEach(() => {
       lastRebuildCompletedAtMs: null,
     },
     ts: Date.now(),
+  })
+})
+
+describe('StorageSection delete confirmation setting', () => {
+  it('shows the persisted default and saves changes', async () => {
+    const user = userEvent.setup()
+    setupSetting()
+    render(<StorageSection />)
+
+    const toggle = await screen.findByRole('switch', { name: 'Confirm before deleting' })
+    expect(toggle).toBeChecked()
+
+    await user.click(toggle)
+
+    expect(deleteConfirmationPreference.set).toHaveBeenCalledWith(false)
+  })
+
+  it('still confirms before clearing all history when single-item confirmation is disabled', async () => {
+    deleteConfirmationPreference.read.mockReturnValue(false)
+    const user = userEvent.setup()
+    setupSetting()
+    render(<StorageSection />)
+
+    await user.click(await screen.findByRole('button', { name: 'Clear all' }))
+
+    expect(await screen.findByRole('alertdialog')).toHaveTextContent('Confirm clear history')
   })
 })
 

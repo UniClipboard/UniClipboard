@@ -17,6 +17,10 @@ import {
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { useSetting } from '@/hooks/useSetting'
+import {
+  readDeleteConfirmationEnabled,
+  setDeleteConfirmationEnabled,
+} from '@/lib/delete-confirmation-preference'
 import { createLogger } from '@/lib/logger'
 import type { RetentionPolicy, RetentionRule } from '@/types/setting'
 import ClearHistoryDialog from './ClearHistoryDialog'
@@ -325,6 +329,9 @@ const StorageSection: React.FC = () => {
   const [clearingCache, setClearingCache] = useState(false)
   const [clearingHistory, setClearingHistory] = useState(false)
   const [showClearHistoryDialog, setShowClearHistoryDialog] = useState(false)
+  const [confirmBeforeDelete, setConfirmBeforeDelete] = useState(() =>
+    readDeleteConfirmationEnabled()
+  )
 
   // ── Load storage stats ───────────────────────────────────────────
 
@@ -639,6 +646,20 @@ const StorageSection: React.FC = () => {
 
       {/* ── Data Management ── */}
       <SettingGroup title={t('settings.sections.storage.dataDirectory.label')}>
+        <SettingRow
+          label={t('settings.sections.storage.confirmBeforeDelete.label')}
+          description={t('settings.sections.storage.confirmBeforeDelete.description')}
+        >
+          <Switch
+            aria-label={t('settings.sections.storage.confirmBeforeDelete.label')}
+            checked={confirmBeforeDelete}
+            onCheckedChange={checked => {
+              setConfirmBeforeDelete(checked)
+              setDeleteConfirmationEnabled(checked)
+            }}
+          />
+        </SettingRow>
+
         <SettingRow
           label={t('settings.sections.storage.clearCache.label')}
           description={t('settings.sections.storage.clearCache.description')}

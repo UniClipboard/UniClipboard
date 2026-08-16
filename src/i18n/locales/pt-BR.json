@@ -521,6 +521,10 @@
           "label": "Ignorar itens fixados",
           "description": "Os itens fixados ficam de fora da limpeza automática"
         },
+        "confirmBeforeDelete": {
+          "label": "Confirmar antes de excluir",
+          "description": "Pedir confirmação antes de excluir um item do histórico"
+        },
         "clearHistory": {
           "label": "Limpar histórico",
           "description": "Excluir todo o histórico da área de transferência e liberar espaço de armazenamento",
@@ -1058,6 +1062,7 @@
       }
     },
     "confirmDeleteTitle": "Confirmar exclusão",
+    "skipDeleteConfirmationLabel": "Não perguntar novamente",
     "confirmDeleteDescription_one": "Tem certeza de que deseja excluir o item selecionado? Esta ação não pode ser desfeita.",
     "confirmDeleteDescription_other": "Tem certeza de que deseja excluir os {{count}} itens selecionados? Esta ação não pode ser desfeita.",
     "confirmDeleteDescription_many": "Tem certeza de que deseja excluir os {{count}} itens selecionados? Esta ação não pode ser desfeita.",

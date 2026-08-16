@@ -521,6 +521,10 @@
           "label": "ピン留めされたアイテムをスキップ",
           "description": "ピン留めされたアイテムは自動クリーンアップから除外されます"
         },
+        "confirmBeforeDelete": {
+          "label": "削除前に確認",
+          "description": "履歴項目を1件削除する前に確認します"
+        },
         "clearHistory": {
           "label": "履歴をクリア",
           "description": "クリップボード履歴をすべて削除すると無料になりますストレージ容量を増やす",
@@ -1057,6 +1061,7 @@
       }
     },
     "confirmDeleteTitle": "削除の確認",
+    "skipDeleteConfirmationLabel": "次回から確認しない",
     "confirmDeleteDescription_one": "選択したアイテムを削除してもよろしいですか?この操作は元に戻すことができません。",
     "confirmDeleteDescription_other": "選択した {{count}} 個のアイテムを削除してもよろしいですか?この操作は元に戻すことができません。",
     "cancelLabel": "キャンセル",

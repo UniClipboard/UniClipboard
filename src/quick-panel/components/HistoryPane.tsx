@@ -182,7 +182,7 @@ const HistoryPane: React.FC<HistoryPaneProps> = React.memo(
         ) : (
           <>
             {/* --- SPOTLIGHT STYLE TOP BAR --- */}
-            <div className="border-b border-border/50 px-3 py-2">
+            <div className="px-3 py-2">
               <CompositeSearchBar
                 contentFilter={activeFilter}
                 tagFilter={tagFilter}
@@ -232,7 +232,7 @@ const HistoryPane: React.FC<HistoryPaneProps> = React.memo(
                   <Loader2 className="size-4 animate-spin mr-2" />
                   {t('status.loading')}
                 </div>
-              ) : isSearching && filteredItems.length === 0 ? (
+              ) : isSearching ? (
                 <div className="flex h-full items-center justify-center text-[13px] text-muted-foreground">
                   <Loader2 className="size-4 animate-spin mr-2" />
                   {t('status.searching')}

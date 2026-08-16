@@ -520,6 +520,31 @@ const ClipboardHistoryPanelSession: React.FC<ClipboardHistoryPanelProps> = ({
     setSearchQuery(value)
   }, [])
 
+  const prepareForFilterChange = useCallback(() => {
+    dispatchPreview({ type: 'suppress', value: false })
+    dispatchPreview({ type: 'set-focus-source', source: 'selection' })
+    setHoveredIndex(null)
+    setIsKeyboardNav(true)
+    setSelectedIndex(0)
+    searchInputRef.current?.focus()
+  }, [])
+
+  const handleActiveFilterChange = useCallback(
+    (filter: Filter) => {
+      setActiveFilter(filter)
+      prepareForFilterChange()
+    },
+    [prepareForFilterChange]
+  )
+
+  const handleTagFilterChange = useCallback(
+    (tag: string | null) => {
+      setTagFilter(tag)
+      prepareForFilterChange()
+    },
+    [prepareForFilterChange]
+  )
+
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLInputElement>) => {
       if (isLocked) {
@@ -527,6 +552,49 @@ const ClipboardHistoryPanelSession: React.FC<ClipboardHistoryPanelProps> = ({
           e.preventDefault()
           void handleUnlock()
         }
+        return
+      }
+
+      // Tab changes the type filter even while another filter request is in
+      // flight. It must stay ahead of the pending-results guard below so focus
+      // remains in the launcher instead of moving onto the filter buttons.
+      if (e.key === 'Tab') {
+        e.preventDefault()
+        dispatchPreview({ type: 'suppress', value: false })
+        dispatchPreview({ type: 'set-focus-source', source: 'selection' })
+        setIsKeyboardNav(true)
+        setHoveredIndex(null)
+        setSelectedIndex(0)
+        setActiveFilter(prev => {
+          const count = QUICK_FILTER_ORDER.length
+          // A filter outside the cycle (e.g. Favorited) maps to All as the base.
+          const base = Math.max(0, QUICK_FILTER_ORDER.indexOf(prev))
+          const next = e.shiftKey ? (base - 1 + count) % count : (base + 1) % count
+          return QUICK_FILTER_ORDER[next]
+        })
+        return
+      }
+
+      // A narrowed query retains its previous rows while the daemon responds.
+      // Keep those stale rows completely inert so a fast Enter/copy/delete
+      // cannot act on content from the previous filter.
+      if (loading || isSearching) {
+        const input = e.currentTarget
+        const hasTextSelection = input.selectionStart !== input.selectionEnd
+        const usesCopyOnResult =
+          (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'c' && !hasTextSelection
+        const usesPasteOnResult =
+          (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'v' && input.value === ''
+        const isResultShortcut =
+          e.key === 'Enter' ||
+          e.key === 'ArrowDown' ||
+          e.key === 'ArrowUp' ||
+          (e.altKey && e.key === 'Backspace') ||
+          (e.ctrlKey && (e.key === 'n' || e.key === 'p')) ||
+          ((e.metaKey || e.ctrlKey) && e.key >= '0' && e.key <= '9') ||
+          usesCopyOnResult ||
+          usesPasteOnResult
+        if (isResultShortcut) e.preventDefault()
         return
       }
 
@@ -587,24 +655,6 @@ const ClipboardHistoryPanelSession: React.FC<ClipboardHistoryPanelProps> = ({
         return
       }
 
-      // Tab / Shift+Tab cycle the content-type filter without moving focus off
-      // the search input. The shared search box forwards unhandled Tab here, and
-      // the shortcut writes into the same content-filter register as `type:`.
-      if (e.key === 'Tab') {
-        e.preventDefault()
-        dispatchPreview({ type: 'suppress', value: false })
-        dispatchPreview({ type: 'set-focus-source', source: 'selection' })
-        setHoveredIndex(null)
-        setActiveFilter(prev => {
-          const count = QUICK_FILTER_ORDER.length
-          // A filter outside the cycle (e.g. Favorited) maps to All as the base.
-          const base = Math.max(0, QUICK_FILTER_ORDER.indexOf(prev))
-          const next = e.shiftKey ? (base - 1 + count) % count : (base + 1) % count
-          return QUICK_FILTER_ORDER[next]
-        })
-        return
-      }
-
       switch (e.key) {
         case 'ArrowDown':
         case 'ArrowUp':
@@ -632,7 +682,9 @@ const ClipboardHistoryPanelSession: React.FC<ClipboardHistoryPanelProps> = ({
       handleSelect,
       handleUnlock,
       hoveredIndex,
+      isSearching,
       isLocked,
+      loading,
       selectedIndex,
       visibleUnlocking,
     ]
@@ -685,9 +737,9 @@ const ClipboardHistoryPanelSession: React.FC<ClipboardHistoryPanelProps> = ({
           unlocking={visibleUnlocking}
           unlockError={visibleUnlockError}
           activeFilter={activeFilter}
-          setActiveFilter={setActiveFilter}
+          setActiveFilter={handleActiveFilterChange}
           tagFilter={tagFilter}
-          setTagFilter={setTagFilter}
+          setTagFilter={handleTagFilterChange}
           sourceFilter={sourceFilter}
           setSourceFilter={setSourceFilter}
           extensionFilter={extensionFilter}

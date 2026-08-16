@@ -2,6 +2,7 @@ import { getCurrentWindow } from '@tauri-apps/api/window'
 import { Minus, Square, X } from 'lucide-react'
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { usePlatform } from '@/hooks/usePlatform'
+import { useWindowFrame } from '@/hooks/useWindowFrame'
 import { commands } from '@/lib/ipc'
 import { createLogger } from '@/lib/logger'
 import { cn } from '@/lib/utils'
@@ -59,8 +60,8 @@ const TitleBarButton = ({
 export const TitleBar = ({ className, isSetupActive = false, rightSlot }: TitleBarProps) => {
   const [isMaximized, setIsMaximized] = useState(false)
 
-  // 使用 usePlatform hook 获取平台信息
-  const { isWindows, isMac, isTauri } = usePlatform()
+  const { isMac, isTauri } = usePlatform()
+  const { hasCustomWindowControls } = useWindowFrame()
   const windowRef = useMemo(() => (isTauri ? getCurrentWindow() : null), [isTauri])
 
   // Setup 页面隐藏 TitleBar 保持沉浸感
@@ -179,11 +180,11 @@ export const TitleBar = ({ className, isSetupActive = false, rightSlot }: TitleB
             aria-label="Toggle window maximize"
             className="absolute inset-0 z-0 cursor-default bg-transparent"
             onDoubleClick={() => {
-              if (!isWindows) return
+              if (!hasCustomWindowControls) return
               handleToggleMaximize()
             }}
             onKeyDown={event => {
-              if (!isWindows) return
+              if (!hasCustomWindowControls) return
               if (event.key === 'Enter' || event.key === ' ') {
                 event.preventDefault()
                 handleToggleMaximize()
@@ -198,7 +199,7 @@ export const TitleBar = ({ className, isSetupActive = false, rightSlot }: TitleB
             {rightSlot}
           </div>
         )}
-        {isWindows && (
+        {hasCustomWindowControls && (
           <div className="flex items-center h-full bg-transparent" data-tauri-drag-region="false">
             <TitleBarButton aria-label="最小化" onClick={handleMinimize}>
               <Minus className="size-4" />

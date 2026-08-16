@@ -10,6 +10,14 @@ const controller = vi.hoisted(() => ({
   current: null as unknown,
 }))
 
+const windowFrame = vi.hoisted(() => ({
+  searchInTitleBar: true,
+}))
+
+const titleBarSlot = vi.hoisted(() => ({
+  host: null as HTMLElement | null,
+}))
+
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
     t: (key: string) => key,
@@ -45,12 +53,12 @@ vi.mock('framer-motion', async () => {
   }
 })
 
-vi.mock('@/hooks/usePlatform', () => ({
-  usePlatform: () => ({ isMac: false }),
+vi.mock('@/hooks/useWindowFrame', () => ({
+  useWindowFrame: () => ({ searchInTitleBar: windowFrame.searchInTitleBar }),
 }))
 
 vi.mock('@/contexts/titlebar-slot-context', () => ({
-  useTitleBarSlot: () => ({ setRightSlot: vi.fn() }),
+  useTitleBarSlot: () => ({ rightSlotHost: titleBarSlot.host }),
 }))
 
 vi.mock('@/hooks/useHistoryController', () => ({
@@ -166,6 +174,26 @@ function makeControllerState(
 describe('HistoryPage', () => {
   beforeEach(() => {
     controller.current = makeControllerState()
+    windowFrame.searchInTitleBar = true
+    titleBarSlot.host = document.createElement('div')
+    document.body.appendChild(titleBarSlot.host)
+  })
+
+  it('puts search in the title bar when the custom frame is active', () => {
+    render(<HistoryPage />)
+
+    expect(titleBarSlot.host).toContainElement(screen.getByTestId('search-bar'))
+    expect(screen.queryByText('history.filter.all')).not.toBeInTheDocument()
+  })
+
+  it('keeps search in the page when the system frame is active', () => {
+    windowFrame.searchInTitleBar = false
+
+    render(<HistoryPage />)
+
+    expect(titleBarSlot.host).toBeEmptyDOMElement()
+    expect(screen.getByText('history.filter.all')).toBeInTheDocument()
+    expect(screen.getByTestId('search-bar')).toBeInTheDocument()
   })
 
   it('animates the preview pane shortly after history rows start entering', () => {

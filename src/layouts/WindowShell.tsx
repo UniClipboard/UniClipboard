@@ -1,4 +1,6 @@
 import React, { ReactNode } from 'react'
+import { useWindowFrame } from '@/hooks/useWindowFrame'
+import { cn } from '@/lib/utils'
 
 interface WindowShellProps {
   titleBar: ReactNode
@@ -19,8 +21,15 @@ interface WindowShellProps {
  * 4. Content area (Sidebar + Main) sits below titlebar in document flow
  */
 export const WindowShell: React.FC<WindowShellProps> = ({ titleBar, children }) => {
+  const { hasRoundedWindow } = useWindowFrame()
+
   return (
-    <div className="relative h-screen flex flex-col overflow-hidden bg-[#F2F2F7] dark:bg-[#09090B] text-foreground transition-colors duration-500">
+    <div
+      className={cn(
+        'relative h-screen flex flex-col overflow-hidden bg-[#F2F2F7] dark:bg-[#09090B] text-foreground transition-colors duration-500',
+        hasRoundedWindow && 'rounded-xl'
+      )}
+    >
       {/* Dynamic Background Accents */}
       <div
         data-uc-decorative-effect="true"

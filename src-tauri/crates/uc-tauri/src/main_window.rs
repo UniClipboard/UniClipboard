@@ -179,17 +179,23 @@ fn create_main_window(
     Ok(window)
 }
 
-/// Windows: the config uses `titleBarStyle: Overlay` for macOS; on Windows the
-/// native decorations must be turned off after creation instead. This must run
-/// on every (re)creation, not just at startup.
-#[cfg(target_os = "windows")]
+/// Windows and Linux use the React titlebar controls, so their native window
+/// decorations must be disabled after every main-window creation. Keeping the
+/// Linux client-side decorations beneath the webview drag region makes KDE and
+/// other Wayland compositors route clicks away from the native controls.
+#[cfg(any(target_os = "windows", target_os = "linux"))]
 fn configure_for_platform(window: &tauri::WebviewWindow) {
     if let Err(error) = window.set_decorations(false) {
-        warn!(error = %error, "Failed to disable Windows main window decorations");
+        warn!(
+            error = %error,
+            error_kind = "window_decorations_disable_failed",
+            retryable = false,
+            "Failed to disable native main window decorations"
+        );
     }
 }
 
-#[cfg(not(target_os = "windows"))]
+#[cfg(not(any(target_os = "windows", target_os = "linux")))]
 fn configure_for_platform(_window: &tauri::WebviewWindow) {}
 
 /// macOS: force the Dock to repaint this app's icon after flipping back to the

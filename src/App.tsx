@@ -29,6 +29,7 @@ import { useDeviceTrust } from '@/hooks/useDeviceTrust'
 import { useDeviceTrustDesktopEffects } from '@/hooks/useDeviceTrustDesktopEffects'
 import { usePlatform } from '@/hooks/usePlatform'
 import { useUINavigateListener } from '@/hooks/useUINavigateListener'
+import { useWindowFrame } from '@/hooks/useWindowFrame'
 import { MainLayout, SettingsFullLayout, WindowShell } from '@/layouts'
 import { isSetupGateActive, resolveEncryptionStatus } from '@/lib/app-state'
 import { DaemonBootstrapFailedError } from '@/lib/daemon-connection-info'
@@ -452,8 +453,7 @@ export const AppContentWithBar = () => {
   // WindowShell provides the correct window-level structure:
   // - TitleBar: Window chrome layer (full-width, drag region)
   // - Content: App layout layer (Sidebar + Main via routes)
-  const { isMac, isTauri, isWindows } = usePlatform()
-  const showCustomTitleBar = !isTauri || isMac || isWindows
+  const { hasCustomTitleBar } = useWindowFrame()
   const { hydrated, flow } = useSetupRealtimeStore()
   const isSetupActive = isSetupGateActive(flow, hydrated)
 
@@ -482,12 +482,12 @@ export const AppContentWithBar = () => {
   // (jsx-no-jsx-as-prop) — only rebuild when its inputs actually change.
   const titleBar = useMemo(
     () =>
-      showCustomTitleBar ? (
+      hasCustomTitleBar ? (
         <TitleBarSlotContext value={slotValue}>
           <TitleBarWithSearch isSetupActive={isSetupActive} rightSlot={rightSlot} />
         </TitleBarSlotContext>
       ) : null,
-    [showCustomTitleBar, slotValue, isSetupActive, rightSlot]
+    [hasCustomTitleBar, slotValue, isSetupActive, rightSlot]
   )
 
   return (

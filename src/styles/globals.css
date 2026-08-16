@@ -592,6 +592,12 @@ html[data-uc-low-effects='true']::view-transition-new(root) {
   }
 }
 
+html[data-uc-custom-window-frame='true'],
+html[data-uc-custom-window-frame='true'] body,
+html[data-uc-custom-window-frame='true'] #root {
+  background-color: transparent;
+}
+
 .dark {
   --sidebar: oklch(0.205 0 0);
   --sidebar-foreground: oklch(0.985 0 0);

@@ -2,6 +2,7 @@ import React, { ReactNode } from 'react'
 import { Sidebar } from '@/components'
 import InsetSurface from '@/components/layout/InsetSurface'
 import { usePlatform } from '@/hooks/usePlatform'
+import { useWindowFrame } from '@/hooks/useWindowFrame'
 
 interface MainLayoutProps {
   children: ReactNode
@@ -10,7 +11,8 @@ interface MainLayoutProps {
 /**
  * Linux 系统标题栏布局。
  *
- * Linux/Tauri 当前使用系统窗口标题栏，主内容区不再模拟 macOS/Windows 的内嵌圆角面板。
+ * When the Linux system frame is enabled, the content uses a flat layout
+ * instead of duplicating native window chrome with an inset panel.
  */
 const LinuxMainLayout: React.FC<MainLayoutProps> = ({ children }) => {
   return (
@@ -27,7 +29,8 @@ const LinuxMainLayout: React.FC<MainLayoutProps> = ({ children }) => {
 /**
  * 自定义标题栏布局。
  *
- * macOS/Windows 继续使用内嵌内容面板，和自绘窗口标题栏保持一致。
+ * The app-rendered frame uses one continuous shell background around the
+ * sidebar and inset content panel on every desktop platform.
  */
 const InsetMainLayout: React.FC<MainLayoutProps> = ({ children }) => {
   return (
@@ -43,8 +46,9 @@ const InsetMainLayout: React.FC<MainLayoutProps> = ({ children }) => {
 
 const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
   const { isLinux, isTauri } = usePlatform()
+  const { useSystemWindowFrame } = useWindowFrame()
 
-  if (isLinux && isTauri) {
+  if (isLinux && isTauri && useSystemWindowFrame) {
     return <LinuxMainLayout>{children}</LinuxMainLayout>
   }
 

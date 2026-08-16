@@ -275,6 +275,11 @@
           "modified": "已自定義",
           "hexInputLabel": "十六進制顏色值"
         },
+        "windowFrame": {
+          "title": "視窗外觀",
+          "useSystem": "使用系統視窗框",
+          "description": "開啟後使用桌面系統的標題列和視窗按鈕，搜尋框將移回頁面。"
+        },
         "zoom": {
           "title": "介面縮放",
           "description": "縮放會同時影響主視窗和快捷面板，也會和快捷鍵保持同步。",

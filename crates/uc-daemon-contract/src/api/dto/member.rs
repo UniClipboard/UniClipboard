@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
 use super::settings::{ContentTypesDto, ContentTypesPatchDto};
+use super::v2::setup::JoinSpaceResponse;
 
 /// Sync preferences recorded for a space member.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
@@ -255,11 +256,20 @@ pub struct DeviceTrustRelationshipDto {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
+pub struct PendingInboundMemberDto {
+    pub device_id: String,
+    pub display_name: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
 pub struct DeviceTrustSnapshotDto {
     pub revision: u64,
     pub local_device_id: String,
     pub local_membership: DeviceMembershipDto,
     pub current_change: Option<DeviceTrustChangeDto>,
+    pub current_join: Option<JoinSpaceResponse>,
+    pub pending_inbound_member: Option<PendingInboundMemberDto>,
     pub devices: Vec<DeviceTrustRelationshipDto>,
     pub recovery: String,
     pub allowed_actions: Vec<DeviceTrustActionDto>,
@@ -324,6 +334,8 @@ mod device_trust_decision_dto_tests {
             local_device_id: "local-device".to_string(),
             local_membership: DeviceMembershipDto::Active,
             current_change: None,
+            current_join: None,
+            pending_inbound_member: None,
             devices: Vec::new(),
             recovery: "not_available_in_this_version".to_string(),
             allowed_actions: Vec::new(),

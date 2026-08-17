@@ -12,28 +12,29 @@ use axum::{Json, Router};
 
 use uc_daemon_contract::api::dto::envelope::ApiEnvelope;
 use uc_daemon_contract::api::dto::v2::setup::{
-    CurrentInvitation, InitializeSpaceRequest, InitializeSpaceResponse, IssueInvitationResponse,
-    MigrationPhaseDto, MigrationProgressResponse, RedeemRequest, RedeemResponse,
-    SetupStateResponse, SwitchSpaceRequest, SwitchSpaceResponse,
+    CancelJoinSpaceRequest, CurrentInvitation, InitializeSpaceRequest, InitializeSpaceResponse,
+    IssueInvitationResponse, JoinSpaceRejectionReason, JoinSpaceResponse, JoinedSpaceResponse,
+    RedeemRequest, SetupStateResponse, SwitchSpaceRequest,
 };
 use uc_daemon_contract::constants::http_route_v2;
 use uc_engine::error_codes::{
-    CANCEL_INVITATION_NOT_ISSUED_CODE, CREATE_SPACE_ALREADY_INITIALIZED_CODE,
-    CREATE_SPACE_ALREADY_SETUP_CODE, CREATE_SPACE_DEVICE_NAME_REQUIRED_CODE,
-    CREATE_SPACE_PASSPHRASE_MISMATCH_CODE, JOIN_SPACE_CONNECTION_LOST_CODE,
-    JOIN_SPACE_CORRUPTED_KEY_CODE, JOIN_SPACE_DEVICE_NAME_REQUIRED_CODE,
-    JOIN_SPACE_INVALID_CIPHERTEXT_CODE, JOIN_SPACE_INVITATION_EXPIRED_CODE,
-    JOIN_SPACE_INVITATION_NOT_FOUND_CODE, JOIN_SPACE_NOT_SETUP_CODE, JOIN_SPACE_NOT_UNLOCKED_CODE,
-    JOIN_SPACE_PASSPHRASE_MISMATCH_CODE, JOIN_SPACE_PENDING_MIGRATION_CODE,
-    JOIN_SPACE_SERVICE_UNAVAILABLE_CODE, JOIN_SPACE_SPONSOR_DECLINED_CODE,
-    JOIN_SPACE_SPONSOR_REJECTED_CODE, JOIN_SPACE_SPONSOR_TIMEOUT_CODE,
-    JOIN_SPACE_SPONSOR_UNREACHABLE_CODE, JOIN_SPACE_SPONSOR_UPGRADE_REQUIRED_CODE,
-    JOIN_SPACE_STORAGE_CODE, JOIN_SPACE_TIMEOUT_CODE,
+    CANCEL_INVITATION_NOT_ISSUED_CODE, CANCEL_JOIN_SPACE_NOT_FOUND_CODE,
+    CREATE_SPACE_ALREADY_INITIALIZED_CODE, CREATE_SPACE_ALREADY_SETUP_CODE,
+    CREATE_SPACE_DEVICE_NAME_REQUIRED_CODE, CREATE_SPACE_PASSPHRASE_MISMATCH_CODE,
+    JOIN_SPACE_CONNECTION_LOST_CODE, JOIN_SPACE_CORRUPTED_KEY_CODE,
+    JOIN_SPACE_DEVICE_NAME_REQUIRED_CODE, JOIN_SPACE_INVALID_CIPHERTEXT_CODE,
+    JOIN_SPACE_INVITATION_EXPIRED_CODE, JOIN_SPACE_INVITATION_NOT_FOUND_CODE,
+    JOIN_SPACE_NOT_SETUP_CODE, JOIN_SPACE_NOT_UNLOCKED_CODE, JOIN_SPACE_PASSPHRASE_MISMATCH_CODE,
+    JOIN_SPACE_PENDING_MIGRATION_CODE, JOIN_SPACE_SERVICE_UNAVAILABLE_CODE,
+    JOIN_SPACE_SPONSOR_DECLINED_CODE, JOIN_SPACE_SPONSOR_REJECTED_CODE,
+    JOIN_SPACE_SPONSOR_TIMEOUT_CODE, JOIN_SPACE_SPONSOR_UNREACHABLE_CODE,
+    JOIN_SPACE_SPONSOR_UPGRADE_REQUIRED_CODE, JOIN_SPACE_STORAGE_CODE, JOIN_SPACE_TIMEOUT_CODE,
     JOIN_SPACE_UNREADABLE_HISTORY_REQUIRES_CONFIRMATION_CODE,
 };
 use uc_engine::{
-    CreateSpaceInput, EngineError, EngineErrorCategory, JoinSpaceInput, MigrationPhaseSummary,
-    Operation, OperationResult, SecretString,
+    CancelJoinSpaceInput, CreateSpaceInput, EngineError, EngineErrorCategory, JoinSpaceInput,
+    JoinSpaceRejectionReasonSummary, JoinSpaceStatusSummary, Operation, OperationResult,
+    SecretString,
 };
 
 use crate::api::dto::error::{log_facade_failure, ApiError};
@@ -51,10 +52,7 @@ pub fn router() -> Router<DaemonApiState> {
         .route(http_route_v2::SETUP_RESET, post(reset))
         .route(http_route_v2::SETUP_STATE, get(get_state))
         .route(http_route_v2::SETUP_SWITCH_SPACE, post(switch_space))
-        .route(
-            http_route_v2::SETUP_MIGRATION_PROGRESS,
-            get(query_migration_progress),
-        )
+        .route(http_route_v2::SETUP_CANCEL_JOIN, post(cancel_join))
 }
 
 // ---------------------------------------------------------------------------
@@ -226,7 +224,7 @@ fn map_issue_engine_err(err: EngineError) -> ApiError {
 pub(crate) async fn redeem(
     State(state): State<DaemonApiState>,
     Json(req): Json<RedeemRequest>,
-) -> Result<Json<ApiEnvelope<RedeemResponse>>, ApiError> {
+) -> Result<Json<ApiEnvelope<JoinSpaceResponse>>, ApiError> {
     let result = state
         .execute(Operation::JoinSpace(JoinSpaceInput {
             invitation_code: req.code,
@@ -236,27 +234,12 @@ pub(crate) async fn redeem(
         }))
         .await
         .map_err(map_join_engine_err)?;
-    let OperationResult::SpaceJoined {
-        sponsor_device_id,
-        sponsor_identity_fingerprint,
-        space_id,
-        self_device_id,
-        self_identity_fingerprint,
-        migrated_records: _,
-        ..
-    } = result
-    else {
+    let OperationResult::JoinSpace(status) = result else {
         return Err(ApiError::internal(
             "engine returned an unexpected fresh-join result",
         ));
     };
-    Ok(Json(ApiEnvelope::now(RedeemResponse {
-        sponsor_device_id,
-        sponsor_identity_fingerprint,
-        space_id,
-        self_device_id,
-        self_identity_fingerprint,
-    })))
+    Ok(Json(ApiEnvelope::now(join_space_response(status))))
 }
 
 fn map_join_engine_err(err: EngineError) -> ApiError {
@@ -504,7 +487,7 @@ fn map_query_setup_state_engine_err(err: EngineError) -> ApiError {
 pub(crate) async fn switch_space(
     State(state): State<DaemonApiState>,
     Json(req): Json<SwitchSpaceRequest>,
-) -> Result<Json<ApiEnvelope<SwitchSpaceResponse>>, ApiError> {
+) -> Result<Json<ApiEnvelope<JoinSpaceResponse>>, ApiError> {
     let result = state
         .execute(Operation::JoinSpace(JoinSpaceInput {
             invitation_code: req.code,
@@ -514,29 +497,12 @@ pub(crate) async fn switch_space(
         }))
         .await
         .map_err(map_switch_engine_err)?;
-    let OperationResult::SpaceJoined {
-        sponsor_device_id,
-        sponsor_identity_fingerprint,
-        space_id,
-        self_device_id,
-        self_identity_fingerprint,
-        migrated_records: Some(migrated_records),
-        preserved_unreadable_records: Some(preserved_unreadable_records),
-    } = result
-    else {
+    let OperationResult::JoinSpace(status) = result else {
         return Err(ApiError::internal(
             "engine returned an unexpected switch-space result",
         ));
     };
-    Ok(Json(ApiEnvelope::now(SwitchSpaceResponse {
-        sponsor_device_id,
-        sponsor_identity_fingerprint,
-        space_id,
-        self_device_id,
-        self_identity_fingerprint,
-        migrated_records,
-        preserved_unreadable_records,
-    })))
+    Ok(Json(ApiEnvelope::now(join_space_response(status))))
 }
 
 fn map_switch_engine_err(err: EngineError) -> ApiError {
@@ -642,62 +608,113 @@ fn map_switch_engine_err(err: EngineError) -> ApiError {
     api
 }
 
-// ---------------------------------------------------------------------------
-// GET /v2/setup/migration-progress
-// ---------------------------------------------------------------------------
-
 #[utoipa::path(
-    get,
-    path = "/v2/setup/migration-progress",
+    post,
+    path = "/v2/setup/cancel-join",
     tag = "setup-v2",
-    operation_id = "setupV2GetMigrationProgress",
+    operation_id = "setupV2CancelJoin",
+    request_body = CancelJoinSpaceRequest,
     responses(
-        (status = 200, description = "Migration progress snapshot", body = SetupMigrationProgressEnvelope),
-        (status = 503, description = "Facade not assembled", body = ApiErrorResponse),
-        (status = 500, description = "Storage failure", body = ApiErrorResponse),
+        (status = 200, description = "Updated durable admission", body = SetupCancelJoinEnvelope),
+        (status = 404, description = "Join attempt not found", body = ApiErrorResponse),
+        (status = 500, description = "Internal error", body = ApiErrorResponse),
     ),
 )]
-pub(crate) async fn query_migration_progress(
+pub(crate) async fn cancel_join(
     State(state): State<DaemonApiState>,
-) -> Result<Json<ApiEnvelope<MigrationProgressResponse>>, ApiError> {
+    Json(request): Json<CancelJoinSpaceRequest>,
+) -> Result<Json<ApiEnvelope<JoinSpaceResponse>>, ApiError> {
     let result = state
-        .execute(Operation::QueryMigrationProgress)
+        .execute(Operation::CancelJoinSpace(CancelJoinSpaceInput {
+            join_id: request.join_id,
+        }))
         .await
-        .map_err(map_query_migration_progress_engine_err)?;
-    let OperationResult::MigrationProgress(progress) = result else {
+        .map_err(map_cancel_join_engine_err)?;
+    let OperationResult::JoinSpace(status) = result else {
         return Err(ApiError::internal(
-            "engine returned an unexpected migration-progress result",
+            "engine returned an unexpected cancel-join result",
         ));
     };
-    Ok(Json(ApiEnvelope::now(MigrationProgressResponse {
-        phase: progress.phase.map(|phase| match phase {
-            MigrationPhaseSummary::Prepared => MigrationPhaseDto::Prepared,
-            MigrationPhaseSummary::HandshakeDone => MigrationPhaseDto::HandshakeDone,
-            MigrationPhaseSummary::Swapped => MigrationPhaseDto::Swapped,
-        }),
-        backup_record_count: progress.backup_record_count,
-    })))
+    Ok(Json(ApiEnvelope::now(join_space_response(status))))
 }
 
-fn map_query_migration_progress_engine_err(err: EngineError) -> ApiError {
-    let (variant, api): (&'static str, ApiError) = match err.category() {
-        EngineErrorCategory::Unavailable => (
-            "service_unavailable",
-            ApiError::service_unavailable("migration-progress service unavailable"),
-        ),
-        _ => (
-            "internal",
-            ApiError::internal("failed to query migration progress"),
-        ),
+fn map_cancel_join_engine_err(err: EngineError) -> ApiError {
+    let api = if err.code() == CANCEL_JOIN_SPACE_NOT_FOUND_CODE {
+        ApiError::not_found("join attempt not found")
+    } else {
+        ApiError::internal("failed to cancel join attempt")
     };
     log_facade_failure(
         "space_setup",
-        "query_migration_progress",
-        variant,
+        "cancel_join",
+        "failed",
         api.status,
         &api.message,
     );
     api
+}
+
+pub(crate) fn join_space_response(status: JoinSpaceStatusSummary) -> JoinSpaceResponse {
+    match status {
+        JoinSpaceStatusSummary::Active {
+            join_id,
+            joined_space,
+        } => JoinSpaceResponse::Active {
+            join_id,
+            joined_space: JoinedSpaceResponse {
+                sponsor_device_id: joined_space.sponsor_device_id,
+                sponsor_identity_fingerprint: joined_space.sponsor_identity_fingerprint,
+                space_id: joined_space.space_id,
+                self_device_id: joined_space.self_device_id,
+                self_identity_fingerprint: joined_space.self_identity_fingerprint,
+                migrated_records: joined_space.migrated_records,
+                preserved_unreadable_records: joined_space.preserved_unreadable_records,
+            },
+        },
+        JoinSpaceStatusSummary::Pending {
+            join_id,
+            target_space_id,
+            sponsor_device_id,
+            sponsor_identity_fingerprint,
+            cancel_requested,
+        } => JoinSpaceResponse::Pending {
+            join_id,
+            target_space_id,
+            sponsor_device_id,
+            sponsor_identity_fingerprint,
+            cancel_requested,
+        },
+        JoinSpaceStatusSummary::Rejected { join_id, reason } => JoinSpaceResponse::Rejected {
+            join_id,
+            reason: match reason {
+                JoinSpaceRejectionReasonSummary::InvitationUnavailable => {
+                    JoinSpaceRejectionReason::InvitationUnavailable
+                }
+                JoinSpaceRejectionReasonSummary::AuthenticationRejected => {
+                    JoinSpaceRejectionReason::AuthenticationRejected
+                }
+                JoinSpaceRejectionReasonSummary::IdentityConflict => {
+                    JoinSpaceRejectionReason::IdentityConflict
+                }
+                JoinSpaceRejectionReasonSummary::BaseHistoryChanged => {
+                    JoinSpaceRejectionReason::BaseHistoryChanged
+                }
+                JoinSpaceRejectionReasonSummary::JoinerHistoryAhead => {
+                    JoinSpaceRejectionReason::JoinerHistoryAhead
+                }
+                JoinSpaceRejectionReasonSummary::HistoryConflict => {
+                    JoinSpaceRejectionReason::HistoryConflict
+                }
+                JoinSpaceRejectionReasonSummary::PeerUpgradeRequired => {
+                    JoinSpaceRejectionReason::PeerUpgradeRequired
+                }
+                JoinSpaceRejectionReasonSummary::Cancelled => JoinSpaceRejectionReason::Cancelled,
+                JoinSpaceRejectionReasonSummary::RemovedBeforeActivation => {
+                    JoinSpaceRejectionReason::RemovedBeforeActivation
+                }
+            },
+        },
+    }
 }
 
 #[cfg(test)]
@@ -790,24 +807,6 @@ mod tests {
         ));
         assert_eq!(internal.status.as_u16(), 500);
         assert!(!internal.message.contains("1322"));
-    }
-
-    #[test]
-    fn map_migration_progress_engine_err_preserves_unavailable_and_redacts_internal_failure() {
-        let unavailable = map_query_migration_progress_engine_err(EngineError::new(
-            1331,
-            EngineErrorCategory::Unavailable,
-            true,
-        ));
-        assert_eq!(unavailable.status.as_u16(), 503);
-
-        let internal = map_query_migration_progress_engine_err(EngineError::new(
-            1332,
-            EngineErrorCategory::Internal,
-            false,
-        ));
-        assert_eq!(internal.status.as_u16(), 500);
-        assert!(!internal.message.contains("1332"));
     }
 
     #[test]

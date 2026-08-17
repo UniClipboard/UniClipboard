@@ -91,6 +91,13 @@ export type CancelEntryReceiveResponse = {
 };
 
 /**
+ * Request body for `POST /v2/setup/cancel-join`.
+ */
+export type CancelJoinSpaceRequest = {
+    joinId: string;
+};
+
+/**
  * Canonical success envelope: `{ "data": T, "ts": <unix millis i64> }`.
  *
  * `ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler
@@ -570,9 +577,11 @@ export type DeviceTrustSnapshotDto = {
     allowedActions: Array<DeviceTrustActionDto>;
     blockedReason?: DeviceTrustUnavailableReasonDto | null;
     currentChange?: DeviceTrustChangeDto | null;
+    currentJoin?: JoinSpaceResponse | null;
     devices: Array<DeviceTrustRelationshipDto>;
     localDeviceId: string;
     localMembership: DeviceMembershipDto;
+    pendingInboundMember?: PendingInboundMemberDto | null;
     recovery: string;
     revision: number;
     updatedAtMs: number;
@@ -1251,6 +1260,38 @@ export type IssueInvitationResponse = {
     expiresAtMs: number;
 };
 
+export type JoinSpaceRejectionReason = 'invitation_unavailable' | 'authentication_rejected' | 'identity_conflict' | 'base_history_changed' | 'joiner_history_ahead' | 'history_conflict' | 'peer_upgrade_required' | 'cancelled' | 'removed_before_activation';
+
+/**
+ * Stable outcome of a durable space admission.
+ */
+export type JoinSpaceResponse = {
+    joinId: string;
+    joinedSpace: JoinedSpaceResponse;
+    status: 'active';
+} | {
+    cancelRequested: boolean;
+    joinId: string;
+    sponsorDeviceId?: string | null;
+    sponsorIdentityFingerprint?: string | null;
+    status: 'pending';
+    targetSpaceId?: string | null;
+} | {
+    joinId: string;
+    reason: JoinSpaceRejectionReason;
+    status: 'rejected';
+};
+
+export type JoinedSpaceResponse = {
+    migratedRecords?: number | null;
+    preservedUnreadableRecords?: number | null;
+    selfDeviceId: string;
+    selfIdentityFingerprint: string;
+    spaceId: string;
+    sponsorDeviceId: string;
+    sponsorIdentityFingerprint: string;
+};
+
 export type KeyboardShortcutsPatchDto = {
     shortcuts: {
         [key: string]: ShortcutKeyDto;
@@ -1543,24 +1584,6 @@ export type MemberSyncResultEnvelope = {
 };
 
 /**
- * Coarse-grained migration phase exposed to the UI. The internal
- * `MigrationPhase` carries `run_id` / `target_space_id`; those are
- * implementation detail and not surfaced over the wire.
- */
-export type MigrationPhaseDto = 'prepared' | 'handshake_done' | 'swapped';
-
-/**
- * Response body for `GET /v2/setup/migration-progress`. Mirrors
- * `MigrationProgress`. `phase = null` means no migration is in
- * flight (idle / completed); polling clients should stop their loop
- * when they observe this transition while `backup_record_count == 0`.
- */
-export type MigrationProgressResponse = {
-    backupRecordCount: number;
-    phase?: MigrationPhaseDto | null;
-};
-
-/**
  * Canonical success envelope: `{ "data": T, "ts": <unix millis i64> }`.
  *
  * `ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler
@@ -1798,6 +1821,11 @@ export type PeerSnapshotListEnvelope = {
     ts: number;
 };
 
+export type PendingInboundMemberDto = {
+    deviceId: string;
+    displayName: string;
+};
+
 /**
  * Per-target delivery outcome in the dispatch response.
  */
@@ -1947,18 +1975,6 @@ export type QuickPanelSettingsPatchDto = {
 export type RedeemRequest = {
     code: string;
     passphrase: string;
-};
-
-/**
- * Response body for `POST /v2/setup/redeem`. Mirrors
- * `RedeemPairingInvitationResult` flattened to wire-friendly strings.
- */
-export type RedeemResponse = {
-    selfDeviceId: string;
-    selfIdentityFingerprint: string;
-    spaceId: string;
-    sponsorDeviceId: string;
-    sponsorIdentityFingerprint: string;
 };
 
 /**
@@ -2792,6 +2808,29 @@ export type SettingsUpdateResultEnvelope = {
  * bare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare
  * generic, and an un-aliased generic inlines an anonymous schema.
  */
+export type SetupCancelJoinEnvelope = {
+    data: JoinSpaceResponse;
+    /**
+     * Server time when the response was built (unix epoch milliseconds).
+     */
+    ts: number;
+};
+
+/**
+ * Canonical success envelope: `{ "data": T, "ts": <unix millis i64> }`.
+ *
+ * `ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler
+ * via [`ApiEnvelope::now`] (the contract carries only the type + the clock
+ * helper, not a hard dependency on when the handler reads the clock).
+ * `rename_all = "camelCase"` is a no-op for the single-word fields here but is
+ * declared for forward-compat.
+ *
+ * IMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named
+ * OpenAPI component is declared in the `#[aliases(...)]` block below. Add a new
+ * alias line whenever a new payload type needs enveloping. NEVER register the
+ * bare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare
+ * generic, and an un-aliased generic inlines an anonymous schema.
+ */
 export type SetupInitializeEnvelope = {
     data: InitializeSpaceResponse;
     /**
@@ -2838,31 +2877,8 @@ export type SetupIssueInvitationEnvelope = {
  * bare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare
  * generic, and an un-aliased generic inlines an anonymous schema.
  */
-export type SetupMigrationProgressEnvelope = {
-    data: MigrationProgressResponse;
-    /**
-     * Server time when the response was built (unix epoch milliseconds).
-     */
-    ts: number;
-};
-
-/**
- * Canonical success envelope: `{ "data": T, "ts": <unix millis i64> }`.
- *
- * `ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler
- * via [`ApiEnvelope::now`] (the contract carries only the type + the clock
- * helper, not a hard dependency on when the handler reads the clock).
- * `rename_all = "camelCase"` is a no-op for the single-word fields here but is
- * declared for forward-compat.
- *
- * IMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named
- * OpenAPI component is declared in the `#[aliases(...)]` block below. Add a new
- * alias line whenever a new payload type needs enveloping. NEVER register the
- * bare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare
- * generic, and an un-aliased generic inlines an anonymous schema.
- */
 export type SetupRedeemEnvelope = {
-    data: RedeemResponse;
+    data: JoinSpaceResponse;
     /**
      * Server time when the response was built (unix epoch milliseconds).
      */
@@ -2917,7 +2933,7 @@ export type SetupStateResponse = {
  * generic, and an un-aliased generic inlines an anonymous schema.
  */
 export type SetupSwitchSpaceEnvelope = {
-    data: SwitchSpaceResponse;
+    data: JoinSpaceResponse;
     /**
      * Server time when the response was built (unix epoch milliseconds).
      */
@@ -3093,21 +3109,6 @@ export type SwitchSpaceRequest = {
     code: string;
     newPassphrase: string;
     preserveUnreadableHistory?: boolean;
-};
-
-/**
- * Response body for `POST /v2/setup/switch-space`. Mirrors
- * `SwitchSpaceResult` flattened to wire-friendly strings, plus
- * `migrated_records` so the UI can show "迁移了 N 条历史".
- */
-export type SwitchSpaceResponse = {
-    migratedRecords: number;
-    preservedUnreadableRecords: number;
-    selfDeviceId: string;
-    selfIdentityFingerprint: string;
-    spaceId: string;
-    sponsorDeviceId: string;
-    sponsorIdentityFingerprint: string;
 };
 
 export type SyncFrequencyDto = 'realtime' | 'interval';
@@ -5771,6 +5772,35 @@ export type SetupV2CancelResponses = {
 
 export type SetupV2CancelResponse = SetupV2CancelResponses[keyof SetupV2CancelResponses];
 
+export type SetupV2CancelJoinData = {
+    body: CancelJoinSpaceRequest;
+    path?: never;
+    query?: never;
+    url: '/v2/setup/cancel-join';
+};
+
+export type SetupV2CancelJoinErrors = {
+    /**
+     * Join attempt not found
+     */
+    404: ApiErrorResponse;
+    /**
+     * Internal error
+     */
+    500: ApiErrorResponse;
+};
+
+export type SetupV2CancelJoinError = SetupV2CancelJoinErrors[keyof SetupV2CancelJoinErrors];
+
+export type SetupV2CancelJoinResponses = {
+    /**
+     * Updated durable admission
+     */
+    200: SetupCancelJoinEnvelope;
+};
+
+export type SetupV2CancelJoinResponse = SetupV2CancelJoinResponses[keyof SetupV2CancelJoinResponses];
+
 export type SetupV2InitializeData = {
     body: InitializeSpaceRequest;
     path?: never;
@@ -5836,35 +5866,6 @@ export type SetupV2IssueInvitationResponses = {
 };
 
 export type SetupV2IssueInvitationResponse = SetupV2IssueInvitationResponses[keyof SetupV2IssueInvitationResponses];
-
-export type SetupV2GetMigrationProgressData = {
-    body?: never;
-    path?: never;
-    query?: never;
-    url: '/v2/setup/migration-progress';
-};
-
-export type SetupV2GetMigrationProgressErrors = {
-    /**
-     * Storage failure
-     */
-    500: ApiErrorResponse;
-    /**
-     * Facade not assembled
-     */
-    503: ApiErrorResponse;
-};
-
-export type SetupV2GetMigrationProgressError = SetupV2GetMigrationProgressErrors[keyof SetupV2GetMigrationProgressErrors];
-
-export type SetupV2GetMigrationProgressResponses = {
-    /**
-     * Migration progress snapshot
-     */
-    200: SetupMigrationProgressEnvelope;
-};
-
-export type SetupV2GetMigrationProgressResponse = SetupV2GetMigrationProgressResponses[keyof SetupV2GetMigrationProgressResponses];
 
 export type SetupV2RedeemData = {
     body: RedeemRequest;

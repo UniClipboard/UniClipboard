@@ -48,8 +48,7 @@ use crate::api::dto::settings::{
 use crate::api::dto::storage::{ClearCacheResponse, StorageStatsDto};
 use crate::api::dto::upgrade::{AckUpgradePayload, UpgradeStatusDto};
 use crate::api::dto::v2::setup::{
-    InitializeSpaceResponse, IssueInvitationResponse, MigrationProgressResponse, RedeemResponse,
-    SetupStateResponse, SwitchSpaceResponse,
+    InitializeSpaceResponse, IssueInvitationResponse, JoinSpaceResponse, SetupStateResponse,
 };
 use crate::api::types::{
     HealthResponse, LifecycleStatusResponse, NetworkRecoveryStatusResponse, PeerSnapshotDto,
@@ -152,10 +151,10 @@ use crate::api::types::{
     // ── setup-v2 (all 6 bodies newly enveloped, §H) ────────────────
     SetupInitializeEnvelope = ApiEnvelope<InitializeSpaceResponse>,
     SetupIssueInvitationEnvelope = ApiEnvelope<IssueInvitationResponse>,
-    SetupRedeemEnvelope = ApiEnvelope<RedeemResponse>,
+    SetupRedeemEnvelope = ApiEnvelope<JoinSpaceResponse>,
     SetupStateEnvelope = ApiEnvelope<SetupStateResponse>,
-    SetupSwitchSpaceEnvelope = ApiEnvelope<SwitchSpaceResponse>,
-    SetupMigrationProgressEnvelope = ApiEnvelope<MigrationProgressResponse>,
+    SetupSwitchSpaceEnvelope = ApiEnvelope<JoinSpaceResponse>,
+    SetupCancelJoinEnvelope = ApiEnvelope<JoinSpaceResponse>,
 )]
 pub struct ApiEnvelope<T> {
     pub data: T,

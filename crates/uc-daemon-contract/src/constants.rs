@@ -191,9 +191,8 @@ pub mod http_route_v2 {
     /// POST /v2/setup/switch-space — already-setup device joins another sponsor's
     /// space, running the 4-phase clipboard re-encryption migration.
     pub const SETUP_SWITCH_SPACE: &str = "/v2/setup/switch-space";
-    /// GET /v2/setup/migration-progress — coarse progress snapshot for UI polling
-    /// during a switch-space migration. Returns `phase = null` when idle.
-    pub const SETUP_MIGRATION_PROGRESS: &str = "/v2/setup/migration-progress";
+    /// POST /v2/setup/cancel-join — cancel one durable admission attempt.
+    pub const SETUP_CANCEL_JOIN: &str = "/v2/setup/cancel-join";
 }
 
 /// HTTP route paths for daemon auth endpoints.

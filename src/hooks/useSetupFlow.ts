@@ -11,9 +11,9 @@ import {
   resetSetup,
   SetupV2Error,
   type IssueInvitationErrorKind,
+  type ActiveJoinSpaceResponse,
   type RedeemInvitationErrorKind,
   type InitializeSpaceErrorKind,
-  type RedeemResponse,
 } from '@/api/daemon/setupV2'
 import { activeDeviceIds, findNewActiveDeviceId } from '@/components/device/pairing-success-utils'
 import { daemonWs } from '@/lib/daemon-ws'
@@ -78,7 +78,7 @@ export interface UseSetupFlowReturn {
     code: string
     passphrase: string
   }) => Promise<
-    | { ok: true; redeem: RedeemResponse }
+    | { ok: true; redeem: ActiveJoinSpaceResponse }
     | { ok: false; kind: RedeemInvitationErrorKind; raw: string }
   >
   finishPairing: () => void
@@ -109,7 +109,7 @@ export function useSetupFlow(): UseSetupFlowReturn {
         ? {
             kind: 'pairing_complete',
             localDeviceName: flow.deviceName,
-            peerDeviceId: flow.completion.redeem.sponsorDeviceId,
+            peerDeviceId: flow.completion.redeem.joinedSpace.sponsorDeviceId,
           }
         : {
             kind: 'pairing_complete',
@@ -244,6 +244,13 @@ export function useSetupFlow(): UseSetupFlowReturn {
       setLoading(true)
       try {
         const redeem = await redeemInvitation({ code: input.code, passphrase: input.passphrase })
+        if (redeem.status !== 'active') {
+          return {
+            ok: false,
+            kind: 'internal' as RedeemInvitationErrorKind,
+            raw: redeem.status === 'pending' ? 'join is pending' : redeem.reason,
+          } as const
+        }
         const next = await getSetupState()
         applyServerSetupState(next, { kind: 'pairing_succeeded', role: 'joiner', redeem })
         return { ok: true, redeem } as const

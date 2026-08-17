@@ -34,11 +34,17 @@ const completedState: SetupStateResponse = {
 }
 
 const redeem: RedeemResponse = {
-  sponsorDeviceId: 'sponsor-id',
-  sponsorIdentityFingerprint: 'sponsor-fingerprint',
-  spaceId: 'space-id',
-  selfDeviceId: 'self-id',
-  selfIdentityFingerprint: 'self-fingerprint',
+  status: 'active',
+  joinId: 'join-id',
+  joinedSpace: {
+    sponsorDeviceId: 'sponsor-id',
+    sponsorIdentityFingerprint: 'sponsor-fingerprint',
+    spaceId: 'space-id',
+    selfDeviceId: 'self-id',
+    selfIdentityFingerprint: 'self-fingerprint',
+    migratedRecords: null,
+    preservedUnreadableRecords: null,
+  },
 }
 
 describe('setupRealtimeStore completion ownership', () => {

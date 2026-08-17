@@ -27,7 +27,7 @@ import type {
   InitializeSpaceErrorKind,
   IssueInvitationErrorKind,
   RedeemInvitationErrorKind,
-  RedeemResponse,
+  ActiveJoinSpaceResponse,
 } from '@/api/daemon/setupV2'
 import { INVITATION_CODE_LENGTH, formatInvitationCode } from '@/components/invitation-code-utils'
 import { InvitationCodeInput } from '@/components/InvitationCodeInput'
@@ -574,7 +574,7 @@ export function RedeemInvitationScreen({
     code: string
     passphrase: string
   }) => Promise<
-    | { ok: true; redeem: RedeemResponse }
+    | { ok: true; redeem: ActiveJoinSpaceResponse }
     | { ok: false; kind: RedeemInvitationErrorKind; raw: string }
   >
   onBack: () => void

@@ -58,16 +58,63 @@ pub struct RedeemRequest {
     pub passphrase: String,
 }
 
-/// Response body for `POST /v2/setup/redeem`. Mirrors
-/// `RedeemPairingInvitationResult` flattened to wire-friendly strings.
+/// Stable outcome of a durable space admission.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(
+    rename_all = "snake_case",
+    rename_all_fields = "camelCase",
+    tag = "status"
+)]
+pub enum JoinSpaceResponse {
+    Active {
+        #[schema(rename = "joinId")]
+        join_id: String,
+        #[schema(rename = "joinedSpace")]
+        joined_space: JoinedSpaceResponse,
+    },
+    Pending {
+        #[schema(rename = "joinId")]
+        join_id: String,
+        #[schema(rename = "targetSpaceId")]
+        target_space_id: Option<String>,
+        #[schema(rename = "sponsorDeviceId")]
+        sponsor_device_id: Option<String>,
+        #[schema(rename = "sponsorIdentityFingerprint")]
+        sponsor_identity_fingerprint: Option<String>,
+        #[schema(rename = "cancelRequested")]
+        cancel_requested: bool,
+    },
+    Rejected {
+        #[schema(rename = "joinId")]
+        join_id: String,
+        reason: JoinSpaceRejectionReason,
+    },
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
-pub struct RedeemResponse {
+pub struct JoinedSpaceResponse {
     pub sponsor_device_id: String,
     pub sponsor_identity_fingerprint: String,
     pub space_id: String,
     pub self_device_id: String,
     pub self_identity_fingerprint: String,
+    pub migrated_records: Option<u64>,
+    pub preserved_unreadable_records: Option<u64>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum JoinSpaceRejectionReason {
+    InvitationUnavailable,
+    AuthenticationRejected,
+    IdentityConflict,
+    BaseHistoryChanged,
+    JoinerHistoryAhead,
+    HistoryConflict,
+    PeerUpgradeRequired,
+    Cancelled,
+    RemovedBeforeActivation,
 }
 
 // ---------------------------------------------------------------------------
@@ -112,45 +159,11 @@ pub struct SwitchSpaceRequest {
     pub preserve_unreadable_history: bool,
 }
 
-/// Response body for `POST /v2/setup/switch-space`. Mirrors
-/// `SwitchSpaceResult` flattened to wire-friendly strings, plus
-/// `migrated_records` so the UI can show "迁移了 N 条历史".
+/// Request body for `POST /v2/setup/cancel-join`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
-pub struct SwitchSpaceResponse {
-    pub sponsor_device_id: String,
-    pub sponsor_identity_fingerprint: String,
-    pub space_id: String,
-    pub self_device_id: String,
-    pub self_identity_fingerprint: String,
-    pub migrated_records: u64,
-    pub preserved_unreadable_records: u64,
-}
-
-// ---------------------------------------------------------------------------
-// GET /v2/setup/migration-progress
-// ---------------------------------------------------------------------------
-
-/// Coarse-grained migration phase exposed to the UI. The internal
-/// `MigrationPhase` carries `run_id` / `target_space_id`; those are
-/// implementation detail and not surfaced over the wire.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum MigrationPhaseDto {
-    Prepared,
-    HandshakeDone,
-    Swapped,
-}
-
-/// Response body for `GET /v2/setup/migration-progress`. Mirrors
-/// `MigrationProgress`. `phase = null` means no migration is in
-/// flight (idle / completed); polling clients should stop their loop
-/// when they observe this transition while `backup_record_count == 0`.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
-#[serde(rename_all = "camelCase")]
-pub struct MigrationProgressResponse {
-    pub phase: Option<MigrationPhaseDto>,
-    pub backup_record_count: u64,
+pub struct CancelJoinSpaceRequest {
+    pub join_id: String,
 }
 
 #[cfg(test)]
@@ -209,20 +222,24 @@ mod tests {
     }
 
     #[test]
-    fn redeem_response_carries_both_sides() {
-        let resp = RedeemResponse {
-            sponsor_device_id: "sponsor-1".to_string(),
-            sponsor_identity_fingerprint: "FPSPONSOR".to_string(),
-            space_id: "space-1".to_string(),
-            self_device_id: "joiner-2".to_string(),
-            self_identity_fingerprint: "FPJOINER".to_string(),
+    fn join_space_active_response_carries_both_sides() {
+        let resp = JoinSpaceResponse::Active {
+            join_id: "join-1".to_string(),
+            joined_space: JoinedSpaceResponse {
+                sponsor_device_id: "sponsor-1".to_string(),
+                sponsor_identity_fingerprint: "FPSPONSOR".to_string(),
+                space_id: "space-1".to_string(),
+                self_device_id: "joiner-2".to_string(),
+                self_identity_fingerprint: "FPJOINER".to_string(),
+                migrated_records: Some(7),
+                preserved_unreadable_records: Some(2),
+            },
         };
         let json = serde_json::to_value(&resp).unwrap();
-        assert_eq!(json["sponsorDeviceId"], "sponsor-1");
-        assert_eq!(json["sponsorIdentityFingerprint"], "FPSPONSOR");
-        assert_eq!(json["spaceId"], "space-1");
-        assert_eq!(json["selfDeviceId"], "joiner-2");
-        assert_eq!(json["selfIdentityFingerprint"], "FPJOINER");
+        assert_eq!(json["status"], "active");
+        assert_eq!(json["joinId"], "join-1");
+        assert_eq!(json["joinedSpace"]["sponsorDeviceId"], "sponsor-1");
+        assert_eq!(json["joinedSpace"]["spaceId"], "space-1");
     }
 
     #[test]
@@ -269,49 +286,6 @@ mod tests {
     }
 
     #[test]
-    fn switch_space_response_carries_migrated_records() {
-        let resp = SwitchSpaceResponse {
-            sponsor_device_id: "sponsor-1".to_string(),
-            sponsor_identity_fingerprint: "FPSPONSOR".to_string(),
-            space_id: "space-1".to_string(),
-            self_device_id: "joiner-2".to_string(),
-            self_identity_fingerprint: "FPJOINER".to_string(),
-            migrated_records: 7,
-            preserved_unreadable_records: 2,
-        };
-        let json = serde_json::to_value(&resp).unwrap();
-        assert_eq!(json["sponsorDeviceId"], "sponsor-1");
-        assert_eq!(json["spaceId"], "space-1");
-        assert_eq!(json["selfDeviceId"], "joiner-2");
-        assert_eq!(json["migratedRecords"], 7);
-        assert_eq!(json["preservedUnreadableRecords"], 2);
-    }
-
-    #[test]
-    fn migration_progress_idle_serializes_phase_null() {
-        let resp = MigrationProgressResponse {
-            phase: None,
-            backup_record_count: 0,
-        };
-        let json = serde_json::to_value(&resp).unwrap();
-        assert!(json["phase"].is_null());
-        assert_eq!(json["backupRecordCount"], 0);
-    }
-
-    #[test]
-    fn migration_progress_in_flight_serializes_snake_case_phase() {
-        let resp = MigrationProgressResponse {
-            phase: Some(MigrationPhaseDto::HandshakeDone),
-            backup_record_count: 42,
-        };
-        let json = serde_json::to_value(&resp).unwrap();
-        // The phase enum is the wire contract — UI clients pattern-match
-        // on these strings, so the snake_case rendering is ironclad.
-        assert_eq!(json["phase"], "handshake_done");
-        assert_eq!(json["backupRecordCount"], 42);
-    }
-
-    #[test]
     fn state_response_fresh_install_serializes_nulls() {
         let resp = SetupStateResponse {
             has_completed: false,
@@ -322,5 +296,25 @@ mod tests {
         assert_eq!(json["hasCompleted"], false);
         assert!(json["currentInvitation"].is_null());
         assert!(json["deviceName"].is_null());
+    }
+
+    #[test]
+    fn join_space_pending_response_preserves_the_join_id_and_camel_case_fields() {
+        let response = JoinSpaceResponse::Pending {
+            join_id: "join-1".to_string(),
+            target_space_id: Some("space-1".to_string()),
+            sponsor_device_id: Some("sponsor-1".to_string()),
+            sponsor_identity_fingerprint: Some("fingerprint-1".to_string()),
+            cancel_requested: false,
+        };
+
+        let json = serde_json::to_value(response).unwrap();
+        assert_eq!(json["status"], "pending");
+        assert_eq!(json["joinId"], "join-1");
+        assert_eq!(json["targetSpaceId"], "space-1");
+        assert_eq!(json["sponsorDeviceId"], "sponsor-1");
+        assert_eq!(json["sponsorIdentityFingerprint"], "fingerprint-1");
+        assert_eq!(json["cancelRequested"], false);
+        assert!(json.get("join_id").is_none());
     }
 }

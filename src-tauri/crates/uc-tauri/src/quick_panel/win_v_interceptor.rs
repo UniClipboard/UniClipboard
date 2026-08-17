@@ -13,6 +13,13 @@ const VK_LWIN: u32 = 0x5B;
 const VK_RWIN: u32 = 0x5C;
 #[cfg(any(target_os = "windows", test))]
 const VK_V: u32 = b'V' as u32;
+#[cfg(any(target_os = "windows", test))]
+const UNICLIPBOARD_INPUT_MARKER: usize = 0x5543_5756;
+
+#[cfg(any(target_os = "windows", test))]
+fn should_ignore_input(extra_info: usize) -> bool {
+    extra_info == UNICLIPBOARD_INPUT_MARKER
+}
 
 #[cfg(any(target_os = "windows", test))]
 #[derive(Default)]
@@ -329,8 +336,7 @@ unsafe extern "system" fn low_level_keyboard_proc(
     use windows::Win32::{
         Foundation::LRESULT,
         UI::WindowsAndMessaging::{
-            CallNextHookEx, KBDLLHOOKSTRUCT, LLKHF_INJECTED, WM_KEYDOWN, WM_KEYUP, WM_SYSKEYDOWN,
-            WM_SYSKEYUP,
+            CallNextHookEx, KBDLLHOOKSTRUCT, WM_KEYDOWN, WM_KEYUP, WM_SYSKEYDOWN, WM_SYSKEYUP,
         },
     };
 
@@ -339,7 +345,7 @@ unsafe extern "system" fn low_level_keyboard_proc(
     }
 
     let keyboard = unsafe { &*(lparam.0 as *const KBDLLHOOKSTRUCT) };
-    if keyboard.flags.contains(LLKHF_INJECTED) {
+    if should_ignore_input(keyboard.dwExtraInfo) {
         return unsafe { CallNextHookEx(None, code, wparam, lparam) };
     }
 
@@ -421,6 +427,7 @@ fn mask_windows_key_release() -> Result<(), String> {
     key_up.r#type = INPUT_KEYBOARD;
     key_up.Anonymous.ki.wVk = MENU_MASK_KEY;
     key_up.Anonymous.ki.dwFlags = KEYEVENTF_KEYUP;
+    key_up.Anonymous.ki.dwExtraInfo = UNICLIPBOARD_INPUT_MARKER;
 
     let inputs = [key_up];
     let sent = unsafe { SendInput(&inputs, std::mem::size_of::<INPUT>() as _) };
@@ -437,6 +444,16 @@ fn mask_windows_key_release() -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn accepts_injected_input_without_our_marker() {
+        assert!(!should_ignore_input(0));
+    }
+
+    #[test]
+    fn ignores_input_generated_by_this_interceptor() {
+        assert!(should_ignore_input(UNICLIPBOARD_INPUT_MARKER));
+    }
 
     #[test]
     fn intercepts_v_only_while_a_windows_key_is_held() {

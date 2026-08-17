@@ -37,7 +37,7 @@ use crate::api::dto::member::{
     DeviceTrustRelationshipDto, DeviceTrustSnapshotDto, DeviceTrustUnavailableReasonDto,
     LegacyBootstrapDto, LegacyBootstrapOutcomeDto, MemberProtectionDto, MemberProtectionStatusDto,
     MemberSyncPreferencesDto, MemberSyncPreferencesPatchDto, MemberSyncResultDto,
-    SpaceProtectionDto, SpaceProtectionModeDto, WorkspaceConvergenceDto,
+    PendingInboundMemberDto, SpaceProtectionDto, SpaceProtectionModeDto, WorkspaceConvergenceDto,
     WorkspaceConvergenceFailureCategoryDto, WorkspaceConvergencePhaseDto,
 };
 use crate::api::dto::mobile_sync::{
@@ -101,7 +101,7 @@ use uc_daemon_contract::api::dto::envelope::{
     RelaySaveResultEnvelope, ResendEnvelope, RestartAcceptedEnvelope, RestoreEntryEnvelope,
     RotateMobilePasswordEnvelope, SearchQueryEnvelope, SearchRebuildEnvelope, SearchStatusEnvelope,
     SearchTagsEnvelope, SessionTokenEnvelope, SettingsEnvelope, SettingsUpdateResultEnvelope,
-    SetupInitializeEnvelope, SetupIssueInvitationEnvelope, SetupMigrationProgressEnvelope,
+    SetupCancelJoinEnvelope, SetupInitializeEnvelope, SetupIssueInvitationEnvelope,
     SetupRedeemEnvelope, SetupStateEnvelope, SetupSwitchSpaceEnvelope, SpaceMemberListEnvelope,
     SpaceProtectionEnvelope, StatusEnvelope, StorageStatsEnvelope, ToggleFavoriteEnvelope,
     UnlockSpaceEnvelope, UpdateDebugModeEnvelope, UpdateMobileDeviceEnvelope,
@@ -112,9 +112,9 @@ use uc_daemon_contract::api::dto::storage::{
 };
 use uc_daemon_contract::api::dto::upgrade::{AckUpgradePayload, UpgradeStatusDto};
 use uc_daemon_contract::api::dto::v2::setup::{
-    CurrentInvitation, InitializeSpaceRequest, InitializeSpaceResponse, IssueInvitationResponse,
-    MigrationPhaseDto, MigrationProgressResponse, RedeemRequest, RedeemResponse,
-    SetupStateResponse, SwitchSpaceRequest, SwitchSpaceResponse,
+    CancelJoinSpaceRequest, CurrentInvitation, InitializeSpaceRequest, InitializeSpaceResponse,
+    IssueInvitationResponse, JoinSpaceRejectionReason, JoinSpaceResponse, JoinedSpaceResponse,
+    RedeemRequest, SetupStateResponse, SwitchSpaceRequest,
 };
 use uc_daemon_contract::api::dto::ws::{WsErrorResponse, WsSubscribeRequest};
 use uc_daemon_contract::api::types::DaemonWsEvent;
@@ -249,7 +249,7 @@ impl Modify for ContractMeta {
         crate::api::v2::setup::reset,
         crate::api::v2::setup::get_state,
         crate::api::v2::setup::switch_space,
-        crate::api::v2::setup::query_migration_progress,
+        crate::api::v2::setup::cancel_join,
     ),
     components(
         schemas(
@@ -355,6 +355,7 @@ impl Modify for ContractMeta {
             DeviceTrustRelationshipDto,
             DeviceTrustSnapshotDto,
             DeviceTrustDecisionDto,
+            PendingInboundMemberDto,
             MemberProtectionDto,
             MemberProtectionStatusDto,
             LegacyBootstrapDto,
@@ -504,17 +505,17 @@ impl Modify for ContractMeta {
             SetupRedeemEnvelope,
             SetupStateEnvelope,
             SetupSwitchSpaceEnvelope,
-            SetupMigrationProgressEnvelope,
+            SetupCancelJoinEnvelope,
             InitializeSpaceRequest,
             InitializeSpaceResponse,
             IssueInvitationResponse,
             RedeemRequest,
-            RedeemResponse,
+            JoinSpaceResponse,
+            JoinedSpaceResponse,
+            JoinSpaceRejectionReason,
             SetupStateResponse,
             SwitchSpaceRequest,
-            SwitchSpaceResponse,
-            MigrationProgressResponse,
-            MigrationPhaseDto,
+            CancelJoinSpaceRequest,
             CurrentInvitation,
         )
     ),

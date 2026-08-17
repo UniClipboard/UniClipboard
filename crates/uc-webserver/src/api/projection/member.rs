@@ -25,8 +25,8 @@ use crate::api::dto::member::{
     DeviceTrustDecisionDto, DeviceTrustImpactDto, DeviceTrustRelationshipDto,
     DeviceTrustSnapshotDto, DeviceTrustUnavailableReasonDto, LegacyBootstrapDto,
     LegacyBootstrapOutcomeDto, MemberProtectionDto, MemberProtectionStatusDto,
-    MemberSyncPreferencesDto, SpaceProtectionDto, SpaceProtectionModeDto, WorkspaceConvergenceDto,
-    WorkspaceConvergenceFailureCategoryDto, WorkspaceConvergencePhaseDto,
+    MemberSyncPreferencesDto, PendingInboundMemberDto, SpaceProtectionDto, SpaceProtectionModeDto,
+    WorkspaceConvergenceDto, WorkspaceConvergenceFailureCategoryDto, WorkspaceConvergencePhaseDto,
 };
 use crate::api::dto::settings::{ContentTypesDto, ContentTypesPatchDto};
 
@@ -203,6 +203,15 @@ impl IntoApiDto<DeviceTrustSnapshotDto> for DeviceTrustSnapshotSummary {
             local_device_id: self.local_device_id,
             local_membership: device_membership(self.local_membership),
             current_change: self.current_change.map(device_trust_change),
+            current_join: self
+                .current_join
+                .map(crate::api::v2::setup::join_space_response),
+            pending_inbound_member: self.pending_inbound_member.map(|member| {
+                PendingInboundMemberDto {
+                    device_id: member.device_id,
+                    display_name: member.display_name,
+                }
+            }),
             devices: self
                 .devices
                 .into_iter()
@@ -492,6 +501,8 @@ mod tests {
                     DeviceTrustUnavailableReasonSummary::LocalDeviceConfirmationRequired,
                 ),
             }),
+            current_join: None,
+            pending_inbound_member: None,
             devices: Vec::new(),
             recovery: DeviceTrustRecoverySummary::NotAvailableInThisVersion,
             allowed_actions: vec![DeviceTrustActionSummary::KeepCurrentDeviceGroup],

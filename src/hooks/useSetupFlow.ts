@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { getDeviceTrust } from '@/api/daemon/device-trust'
 import {
+  cancelJoinSpace,
   cancelInvitation,
   getSetupState,
   initializeSpace,
@@ -11,11 +12,14 @@ import {
   resetSetup,
   SetupV2Error,
   type IssueInvitationErrorKind,
+  type ActiveJoinSpaceResponse,
   type RedeemInvitationErrorKind,
   type InitializeSpaceErrorKind,
-  type RedeemResponse,
+  type JoinSpaceResponse,
+  type JoinSpaceRejectionReason,
 } from '@/api/daemon/setupV2'
 import { activeDeviceIds, findNewActiveDeviceId } from '@/components/device/pairing-success-utils'
+import { useJoinAdmission } from '@/hooks/useJoinAdmission'
 import { daemonWs } from '@/lib/daemon-ws'
 import { createLogger } from '@/lib/logger'
 import { recordWdioE2eEvent } from '@/lib/wdio-test-bridge'
@@ -48,6 +52,10 @@ export type SetupScreen =
   | { kind: 'show_invitation'; code: string; expiresAtMs: number }
   /** S4 — joiner: paste invitation code + passphrase. */
   | { kind: 'redeem_invitation' }
+  /** S4a — joiner: durable admission is waiting for its final outcome. */
+  | { kind: 'join_pending'; joinId: string }
+  /** S4b — joiner: durable admission was rejected. */
+  | { kind: 'join_rejected'; reason: JoinSpaceRejectionReason }
   /** Sponsor Space is ready and can issue its first invitation. */
   | { kind: 'space_ready' }
   /** S5 — both: post-handshake summary. */
@@ -78,9 +86,10 @@ export interface UseSetupFlowReturn {
     code: string
     passphrase: string
   }) => Promise<
-    | { ok: true; redeem: RedeemResponse }
+    | { ok: true; redeem: ActiveJoinSpaceResponse | null }
     | { ok: false; kind: RedeemInvitationErrorKind; raw: string }
   >
+  cancelJoin: (joinId: string) => Promise<void>
   finishPairing: () => void
   resetSetup: () => Promise<void>
 }
@@ -101,7 +110,11 @@ export function useSetupFlow(): UseSetupFlowReturn {
   const screen: SetupScreen = (() => {
     if (flow.kind === 'loading') return { kind: 'loading' }
     if (flow.kind === 'invitation_pending') {
-      return { kind: 'show_invitation', code: flow.code, expiresAtMs: flow.expiresAtMs }
+      return {
+        kind: 'show_invitation',
+        code: flow.code,
+        expiresAtMs: flow.expiresAtMs,
+      }
     }
     if (flow.kind === 'completed' && flow.completion) {
       if (flow.completion.kind === 'space_ready') return { kind: 'space_ready' }
@@ -109,7 +122,7 @@ export function useSetupFlow(): UseSetupFlowReturn {
         ? {
             kind: 'pairing_complete',
             localDeviceName: flow.deviceName,
-            peerDeviceId: flow.completion.redeem.sponsorDeviceId,
+            peerDeviceId: flow.completion.redeem.joinedSpace.sponsorDeviceId,
           }
         : {
             kind: 'pairing_complete',
@@ -146,6 +159,29 @@ export function useSetupFlow(): UseSetupFlowReturn {
     }
   })
 
+  const resolveJoinAdmission = useCallback(
+    async (result: Exclude<JoinSpaceResponse, { status: 'pending' }>) => {
+      if (result.status === 'rejected') {
+        setPageScreen({ kind: 'join_rejected', reason: result.reason })
+        return
+      }
+      try {
+        const next = await getSetupState()
+        applyServerSetupState(next, {
+          kind: 'pairing_succeeded',
+          role: 'joiner',
+          redeem: result,
+        })
+      } catch (err) {
+        log.warn({ err }, 'failed to apply completed durable admission')
+      }
+    },
+    []
+  )
+
+  const pendingJoinId = pageScreen?.kind === 'join_pending' ? pageScreen.joinId : null
+  useJoinAdmission(pendingJoinId, resolveJoinAdmission)
+
   useEffect(() => {
     if (flow.kind !== 'invitation_pending') return
     const unsubscribeDeviceTrust = daemonWs.subscribe(['device-trust'], event => {
@@ -175,7 +211,11 @@ export function useSetupFlow(): UseSetupFlowReturn {
       } catch (err) {
         if (err instanceof SetupV2Error) {
           log.warn({ kind: err.kind, raw: err.raw }, 'initializeSpace failed')
-          return { ok: false, kind: err.kind as InitializeSpaceErrorKind, raw: err.raw } as const
+          return {
+            ok: false,
+            kind: err.kind as InitializeSpaceErrorKind,
+            raw: err.raw,
+          } as const
         }
         log.error({ err }, 'initializeSpace failed unexpectedly')
         toast.error(t('errors.operationFailed'))
@@ -208,11 +248,19 @@ export function useSetupFlow(): UseSetupFlowReturn {
       recordWdioE2eEvent('setup.issue.failed', String(err))
       if (err instanceof SetupV2Error) {
         log.warn({ kind: err.kind, raw: err.raw }, 'issuePairingInvitation failed')
-        return { ok: false, kind: err.kind as IssueInvitationErrorKind, raw: err.raw } as const
+        return {
+          ok: false,
+          kind: err.kind as IssueInvitationErrorKind,
+          raw: err.raw,
+        } as const
       }
       log.error({ err }, 'issuePairingInvitation failed unexpectedly')
       toast.error(t('errors.operationFailed'))
-      return { ok: false, kind: 'internal' as IssueInvitationErrorKind, raw: String(err) } as const
+      return {
+        ok: false,
+        kind: 'internal' as IssueInvitationErrorKind,
+        raw: String(err),
+      } as const
     } finally {
       recordWdioE2eEvent('setup.issue.finished')
       setLoading(false)
@@ -243,14 +291,37 @@ export function useSetupFlow(): UseSetupFlowReturn {
     async (input: { code: string; passphrase: string }) => {
       setLoading(true)
       try {
-        const redeem = await redeemInvitation({ code: input.code, passphrase: input.passphrase })
+        const redeem = await redeemInvitation({
+          code: input.code,
+          passphrase: input.passphrase,
+        })
+        if (redeem.status === 'pending') {
+          setPageScreen({ kind: 'join_pending', joinId: redeem.joinId })
+          return { ok: true, redeem: null } as const
+        }
+        if (redeem.status === 'rejected') {
+          setPageScreen({ kind: 'join_rejected', reason: redeem.reason })
+          return {
+            ok: false,
+            kind: 'internal' as RedeemInvitationErrorKind,
+            raw: redeem.reason,
+          } as const
+        }
         const next = await getSetupState()
-        applyServerSetupState(next, { kind: 'pairing_succeeded', role: 'joiner', redeem })
+        applyServerSetupState(next, {
+          kind: 'pairing_succeeded',
+          role: 'joiner',
+          redeem,
+        })
         return { ok: true, redeem } as const
       } catch (err) {
         if (err instanceof SetupV2Error) {
           log.warn({ kind: err.kind, raw: err.raw }, 'redeemInvitation failed')
-          return { ok: false, kind: err.kind as RedeemInvitationErrorKind, raw: err.raw } as const
+          return {
+            ok: false,
+            kind: err.kind as RedeemInvitationErrorKind,
+            raw: err.raw,
+          } as const
         }
         log.error({ err }, 'redeemInvitation failed unexpectedly')
         toast.error(t('errors.operationFailed'))
@@ -259,6 +330,22 @@ export function useSetupFlow(): UseSetupFlowReturn {
           kind: 'internal' as RedeemInvitationErrorKind,
           raw: String(err),
         } as const
+      } finally {
+        setLoading(false)
+      }
+    },
+    [t]
+  )
+
+  const handleCancelJoin = useCallback(
+    async (joinId: string) => {
+      setLoading(true)
+      try {
+        const result = await cancelJoinSpace(joinId)
+        if (result.status !== 'pending') await resolveJoinAdmission(result)
+      } catch (err) {
+        log.error({ err, joinId }, 'cancelJoinSpace failed')
+        toast.error(t('errors.operationFailed'))
       } finally {
         setLoading(false)
       }
@@ -296,6 +383,7 @@ export function useSetupFlow(): UseSetupFlowReturn {
     issueInvitation: handleIssue,
     cancelInvitation: handleCancel,
     redeemInvitation: handleRedeem,
+    cancelJoin: handleCancelJoin,
     finishPairing,
     resetSetup: handleReset,
   }

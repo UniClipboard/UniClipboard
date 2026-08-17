@@ -6,6 +6,7 @@ import type { SetupFlow } from '@/store/setupRealtimeStore'
 const getDeviceTrust = vi.hoisted(() => vi.fn())
 const getSetupState = vi.hoisted(() => vi.fn())
 const issuePairingInvitation = vi.hoisted(() => vi.fn())
+const redeemInvitation = vi.hoisted(() => vi.fn())
 const applyIssuedInvitation = vi.hoisted(() => vi.fn())
 const applyServerSetupState = vi.hoisted(() => vi.fn())
 const subscribe = vi.hoisted(() => vi.fn())
@@ -34,7 +35,7 @@ vi.mock('@/api/daemon/setupV2', () => ({
   getSetupState: () => getSetupState(),
   initializeSpace: vi.fn(),
   issuePairingInvitation: () => issuePairingInvitation(),
-  redeemInvitation: vi.fn(),
+  redeemInvitation: (...args: unknown[]) => redeemInvitation(...args),
   resetSetup: vi.fn(),
   SetupV2Error: class SetupV2Error extends Error {},
 }))
@@ -83,7 +84,10 @@ describe('useSetupFlow sponsor pairing completion', () => {
       currentInvitation: null,
       deviceName: 'MacBook',
     })
-    issuePairingInvitation.mockResolvedValue({ code: '123456789', expiresAtMs: 123_456 })
+    issuePairingInvitation.mockResolvedValue({
+      code: '123456789',
+      expiresAtMs: 123_456,
+    })
   })
 
   it('moves the sponsor to pairing complete after the issued invitation admits a device', async () => {
@@ -149,5 +153,73 @@ describe('useSetupFlow sponsor pairing completion', () => {
     act(() => reconnectHandler?.())
 
     await waitFor(() => expect(applyServerSetupState).toHaveBeenCalledTimes(1))
+  })
+})
+
+describe('useSetupFlow joiner admission', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    flow = { kind: 'entry' }
+    redeemInvitation.mockResolvedValue({
+      status: 'pending',
+      joinId: 'join-123',
+      targetSpaceId: 'space-123',
+      sponsorDeviceId: 'sponsor-123',
+      sponsorIdentityFingerprint: 'fingerprint',
+      cancelRequested: false,
+    })
+  })
+
+  it('keeps a pending admission visible with its join id', async () => {
+    const { result } = renderHook(() => useSetupFlow())
+
+    act(() => result.current.startJoinSpace())
+    await act(async () => {
+      await result.current.redeemInvitation({
+        code: 'ABCD1234',
+        passphrase: 'passphrase',
+      })
+    })
+
+    expect(result.current.screen).toEqual({
+      kind: 'join_pending',
+      joinId: 'join-123',
+    })
+  })
+
+  it('uses the matching durable admission result after a device-trust update', async () => {
+    const { result } = renderHook(() => useSetupFlow())
+    act(() => result.current.startJoinSpace())
+    await act(async () => {
+      await result.current.redeemInvitation({
+        code: 'ABCD1234',
+        passphrase: 'passphrase',
+      })
+    })
+    getDeviceTrust.mockResolvedValue({
+      currentJoin: {
+        status: 'active',
+        joinId: 'join-123',
+        joinedSpace: {
+          sponsorDeviceId: 'sponsor-123',
+          sponsorIdentityFingerprint: 'fingerprint',
+          spaceId: 'space-123',
+          selfDeviceId: 'local-123',
+          selfIdentityFingerprint: 'local-fingerprint',
+          migratedRecords: null,
+          preservedUnreadableRecords: null,
+        },
+      },
+    })
+
+    await waitFor(() => expect(deviceTrustHandler).toBeTypeOf('function'))
+    act(() => deviceTrustHandler?.({ eventType: 'device-trust.changed' }))
+
+    await waitFor(() => {
+      expect(applyServerSetupState).toHaveBeenCalledWith(
+        expect.objectContaining({ hasCompleted: true }),
+        expect.objectContaining({ kind: 'pairing_succeeded', role: 'joiner' })
+      )
+    })
   })
 })

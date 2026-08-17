@@ -1637,6 +1637,10 @@
         },
         "recordsHint": "{{count}} registros na tabela de backup"
       },
+      "pending": {
+        "title": "Aguardando confirmação",
+        "subtitle": "Aguardando o outro dispositivo confirmar esta troca."
+      },
       "success": {
         "title": "Espaço alterado",
         "subtitle_one": "1 registro da área de transferência migrado com a nova chave mestra.",
@@ -2064,6 +2068,25 @@
         "back": "Voltar",
         "joining": "Entrando...",
         "submit": "Entrar no Espaço"
+      }
+    },
+    "joinPending": {
+      "title": "Aguardando confirmação",
+      "subtitle": "Aguardando o resultado da entrada.",
+      "actions": { "cancel": "Cancelar entrada", "back": "Voltar" },
+      "rejected": {
+        "title": "Não foi possível entrar no espaço",
+        "reasons": {
+          "invitation_unavailable": "O convite não está mais disponível.",
+          "authentication_rejected": "A senha ou identidade não foi aceita.",
+          "identity_conflict": "A identidade deste dispositivo está em conflito.",
+          "base_history_changed": "O espaço do anfitrião mudou. Obtenha um novo convite.",
+          "joiner_history_ahead": "O histórico deste dispositivo não pode entrar no espaço.",
+          "history_conflict": "Os dois históricos não podem ser combinados.",
+          "peer_upgrade_required": "O outro dispositivo precisa atualizar o UniClipboard.",
+          "cancelled": "Esta entrada foi cancelada.",
+          "removed_before_activation": "O outro dispositivo removeu este dispositivo antes da confirmação."
+        }
       }
     },
     "spaceReady": {

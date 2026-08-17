@@ -6,8 +6,8 @@ use reqwest::Method;
 use crate::http::enveloped::enveloped_request;
 use crate::DaemonConnectionState;
 use uc_daemon_contract::api::dto::v2::setup::{
-    InitializeSpaceRequest, InitializeSpaceResponse, IssueInvitationResponse, RedeemRequest,
-    RedeemResponse, SetupStateResponse, SwitchSpaceRequest, SwitchSpaceResponse,
+    InitializeSpaceRequest, InitializeSpaceResponse, IssueInvitationResponse, JoinSpaceResponse,
+    RedeemRequest, SetupStateResponse, SwitchSpaceRequest,
 };
 use uc_daemon_contract::constants::http_route_v2;
 
@@ -78,7 +78,7 @@ impl DaemonSetupV2Client {
         .await?)
     }
 
-    pub async fn redeem_invitation(&self, req: &RedeemRequest) -> Result<RedeemResponse> {
+    pub async fn redeem_invitation(&self, req: &RedeemRequest) -> Result<JoinSpaceResponse> {
         Ok(enveloped_request(
             &self.http,
             &self.connection_state,
@@ -90,7 +90,7 @@ impl DaemonSetupV2Client {
         .await?)
     }
 
-    pub async fn switch_space(&self, req: &SwitchSpaceRequest) -> Result<SwitchSpaceResponse> {
+    pub async fn switch_space(&self, req: &SwitchSpaceRequest) -> Result<JoinSpaceResponse> {
         Ok(enveloped_request(
             &self.http,
             &self.connection_state,

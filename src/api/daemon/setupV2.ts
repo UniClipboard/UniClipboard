@@ -8,7 +8,7 @@
 
 import {
   setupV2Cancel,
-  setupV2GetMigrationProgress,
+  setupV2CancelJoin,
   setupV2GetState,
   setupV2Initialize,
   setupV2IssueInvitation,
@@ -17,6 +17,7 @@ import {
   setupV2SwitchSpace,
 } from '@/api/generated/sdk.gen'
 import type {
+  CancelJoinSpaceRequest as CancelJoinSpaceRequestDto,
   InitializeSpaceRequest as InitializeSpaceRequestDto,
   RedeemRequest as RedeemRequestDto,
   SwitchSpaceRequest as SwitchSpaceRequestDto,
@@ -55,13 +56,41 @@ export interface RedeemRequest {
   passphrase: string
 }
 
-export interface RedeemResponse {
+export interface JoinedSpaceResponse {
   sponsorDeviceId: string
   sponsorIdentityFingerprint: string
   spaceId: string
   selfDeviceId: string
   selfIdentityFingerprint: string
+  migratedRecords: number | null
+  preservedUnreadableRecords: number | null
 }
+
+export type JoinSpaceRejectionReason =
+  | 'invitation_unavailable'
+  | 'authentication_rejected'
+  | 'identity_conflict'
+  | 'base_history_changed'
+  | 'joiner_history_ahead'
+  | 'history_conflict'
+  | 'peer_upgrade_required'
+  | 'cancelled'
+  | 'removed_before_activation'
+
+export type JoinSpaceResponse =
+  | { status: 'active'; joinId: string; joinedSpace: JoinedSpaceResponse }
+  | {
+      status: 'pending'
+      joinId: string
+      targetSpaceId: string | null
+      sponsorDeviceId: string | null
+      sponsorIdentityFingerprint: string | null
+      cancelRequested: boolean
+    }
+  | { status: 'rejected'; joinId: string; reason: JoinSpaceRejectionReason }
+
+export type RedeemResponse = JoinSpaceResponse
+export type ActiveJoinSpaceResponse = Extract<JoinSpaceResponse, { status: 'active' }>
 
 export interface CurrentInvitation {
   code: string
@@ -80,22 +109,7 @@ export interface SwitchSpaceRequest {
   preserveUnreadableHistory?: boolean
 }
 
-export interface SwitchSpaceResponse {
-  sponsorDeviceId: string
-  sponsorIdentityFingerprint: string
-  spaceId: string
-  selfDeviceId: string
-  selfIdentityFingerprint: string
-  migratedRecords: number
-  preservedUnreadableRecords: number
-}
-
-export type MigrationPhase = 'prepared' | 'handshake_done' | 'swapped'
-
-export interface MigrationProgressResponse {
-  phase: MigrationPhase | null
-  backupRecordCount: number
-}
+export type SwitchSpaceResponse = JoinSpaceResponse
 
 // ── Transport (ADR-008 P7) ──────────────────────────────────────────────────
 //
@@ -146,6 +160,11 @@ export type CancelInvitationErrorKind =
   | 'service_unavailable' // 503
   | 'internal' // 500
 
+export type CancelJoinErrorKind =
+  | 'not_pending' // 409
+  | 'service_unavailable' // 503
+  | 'internal' // 500
+
 export type ResetErrorKind =
   | 'service_unavailable' // 503
   | 'internal' // 500
@@ -172,10 +191,6 @@ export type SwitchSpaceErrorKind =
   | 'connection_lost' // 503
   | 'corrupted_key_material' // 500
   | 'invalid_ciphertext' // 500 — backup record could not be decrypted
-  | 'internal' // 500
-
-export type QueryMigrationProgressErrorKind =
-  | 'service_unavailable' // 503
   | 'internal' // 500
 
 export class SetupV2Error<K extends string> extends Error {
@@ -293,6 +308,14 @@ function classifyCancelError(err: unknown): SetupV2Error<CancelInvitationErrorKi
   return new SetupV2Error('internal', raw, status)
 }
 
+function classifyCancelJoinError(err: unknown): SetupV2Error<CancelJoinErrorKind> {
+  const status = pickStatus(err)
+  const raw = rawMessage(err)
+  if (status === 409) return new SetupV2Error('not_pending', raw, status)
+  if (status === 503) return new SetupV2Error('service_unavailable', raw, status)
+  return new SetupV2Error('internal', raw, status)
+}
+
 function classifyResetError(err: unknown): SetupV2Error<ResetErrorKind> {
   const status = pickStatus(err)
   const raw = rawMessage(err)
@@ -361,15 +384,6 @@ function classifySwitchSpaceError(err: unknown): SetupV2Error<SwitchSpaceErrorKi
   return new SetupV2Error('internal', raw, status)
 }
 
-function classifyMigrationProgressError(
-  err: unknown
-): SetupV2Error<QueryMigrationProgressErrorKind> {
-  const status = pickStatus(err)
-  const raw = rawMessage(err)
-  if (status === 503) return new SetupV2Error('service_unavailable', raw, status)
-  return new SetupV2Error('internal', raw, status)
-}
-
 // ── HTTP calls ──────────────────────────────────────────────────────────────
 //
 // Endpoint paths (`/v2/setup/*`) now live inside the generated SDK fns
@@ -381,7 +395,10 @@ export async function initializeSpace(
 ): Promise<InitializeSpaceResponse> {
   try {
     const data = await daemonClient.callEnveloped(() =>
-      setupV2Initialize({ body: body as unknown as InitializeSpaceRequestDto, throwOnError: true })
+      setupV2Initialize({
+        body: body as unknown as InitializeSpaceRequestDto,
+        throwOnError: true,
+      })
     )
     return data as unknown as InitializeSpaceResponse
   } catch (err) {
@@ -417,7 +434,10 @@ export async function redeemInvitation(body: RedeemRequest): Promise<RedeemRespo
   try {
     const data = await daemonClient.callEnveloped(() =>
       setupV2Redeem({
-        body: { ...body, code: normalizeInvitationCode(body.code) } as unknown as RedeemRequestDto,
+        body: {
+          ...body,
+          code: normalizeInvitationCode(body.code),
+        } as unknown as RedeemRequestDto,
         throwOnError: true,
       })
     )
@@ -432,6 +452,20 @@ export async function cancelInvitation(): Promise<void> {
     await daemonClient.callSdk(() => setupV2Cancel({ throwOnError: true }))
   } catch (err) {
     throw classifyCancelError(err)
+  }
+}
+
+export async function cancelJoinSpace(joinId: string): Promise<JoinSpaceResponse> {
+  try {
+    const data = await daemonClient.callEnveloped(() =>
+      setupV2CancelJoin({
+        body: { joinId } as CancelJoinSpaceRequestDto,
+        throwOnError: true,
+      })
+    )
+    return data as JoinSpaceResponse
+  } catch (err) {
+    throw classifyCancelJoinError(err)
   }
 }
 
@@ -453,8 +487,7 @@ export async function getSetupState(): Promise<SetupStateResponse> {
 }
 
 /**
- * Switch this device to another sponsor's space, re-encrypting the local
- * clipboard history under the new master key (4-phase migration).
+ * Switch this device to another sponsor's space.
  *
  * Pre-conditions enforced by the backend (surface as `not_setup` /
  * `pending_migration` / `not_unlocked` errors):
@@ -463,8 +496,7 @@ export async function getSetupState(): Promise<SetupStateResponse> {
  *  * No previous migration may be in flight (otherwise `pending_migration`;
  *    restart the daemon to auto-resume, or `resetSetup` to abandon).
  *
- * The call blocks until all four phases complete; UI should show a
- * spinner. Mid-flight progress is observable via `queryMigrationProgress`.
+ * The returned status is authoritative: active, pending, or rejected.
  */
 export async function switchSpace(body: SwitchSpaceRequest): Promise<SwitchSpaceResponse> {
   try {
@@ -481,22 +513,5 @@ export async function switchSpace(body: SwitchSpaceRequest): Promise<SwitchSpace
     return data as unknown as SwitchSpaceResponse
   } catch (err) {
     throw classifySwitchSpaceError(err)
-  }
-}
-
-/**
- * Read the coarse-grained switch-space migration progress. Returns
- * `phase = null` when no migration is in flight (idle / completed). UI
- * polls this during a `switchSpace()` call to render which of the 4
- * phases is currently running.
- */
-export async function queryMigrationProgress(): Promise<MigrationProgressResponse> {
-  try {
-    const data = await daemonClient.callEnveloped(() =>
-      setupV2GetMigrationProgress({ throwOnError: true })
-    )
-    return data as unknown as MigrationProgressResponse
-  } catch (err) {
-    throw classifyMigrationProgressError(err)
   }
 }

@@ -1,11 +1,11 @@
 import { AlertCircle, ArrowRightLeft, CheckCircle2, Eye, EyeOff, Loader2 } from 'lucide-react'
-import { useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
 import { Trans, useTranslation } from 'react-i18next'
 import {
-  queryMigrationProgress,
   SetupV2Error,
+  cancelJoinSpace,
   switchSpace,
-  type MigrationPhase,
+  type JoinSpaceResponse,
   type SwitchSpaceErrorKind,
   type SwitchSpaceResponse,
 } from '@/api/daemon/setupV2'
@@ -22,6 +22,7 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { useJoinAdmission } from '@/hooks/useJoinAdmission'
 import { createLogger } from '@/lib/logger'
 import { cn } from '@/lib/utils'
 import { useAppDispatch } from '@/store/hooks'
@@ -29,10 +30,10 @@ import { fetchLocalDeviceInfo, fetchSpaceMembers } from '@/store/slices/devicesS
 
 const log = createLogger('switch-space-dialog')
 
-const PROGRESS_POLL_MS = 1000
 const SUCCESS_AUTO_CLOSE_MS = 2500
 
-type Step = 'input' | 'migrating' | 'success' | 'failed'
+type Step = 'input' | 'migrating' | 'pending' | 'success' | 'failed'
+type ActiveJoinSpaceResponse = Extract<SwitchSpaceResponse, { status: 'active' }>
 
 interface SwitchSpaceDialogProps {
   open: boolean
@@ -72,9 +73,8 @@ function SwitchSpaceDialogInner({ open, onOpenChange }: SwitchSpaceDialogProps) 
   const [showPass, setShowPass] = useState(false)
   const [errorKind, setErrorKind] = useState<SwitchSpaceErrorKind | null>(null)
   const [errorRaw, setErrorRaw] = useState<string | null>(null)
-  const [phase, setPhase] = useState<MigrationPhase | null>(null)
-  const [backupCount, setBackupCount] = useState(0)
-  const [result, setResult] = useState<SwitchSpaceResponse | null>(null)
+  const [result, setResult] = useState<ActiveJoinSpaceResponse | null>(null)
+  const [pendingJoinId, setPendingJoinId] = useState<string | null>(null)
   const passInputRef = useRef<HTMLInputElement>(null)
 
   const codeComplete = code.length === INVITATION_CODE_LENGTH
@@ -84,30 +84,6 @@ function SwitchSpaceDialogInner({ open, onOpenChange }: SwitchSpaceDialogProps) 
   useEffect(() => {
     if (codeComplete && step === 'input') passInputRef.current?.focus()
   }, [codeComplete, step])
-
-  // 迁移进度轮询：phase 显示哪一步、backup_record_count 提示规模
-  useEffect(() => {
-    if (step !== 'migrating') return
-    let cancelled = false
-    const tick = async () => {
-      try {
-        const p = await queryMigrationProgress()
-        if (cancelled) return
-        setPhase(p.phase)
-        setBackupCount(p.backupRecordCount)
-      } catch (err) {
-        log.warn({ err }, 'queryMigrationProgress failed (will retry)')
-      }
-    }
-    void tick()
-    const id = setInterval(() => {
-      void tick()
-    }, PROGRESS_POLL_MS)
-    return () => {
-      cancelled = true
-      clearInterval(id)
-    }
-  }, [step])
 
   // success 自动关闭 + 刷新 devices state
   //
@@ -123,6 +99,23 @@ function SwitchSpaceDialogInner({ open, onOpenChange }: SwitchSpaceDialogProps) 
     return () => clearTimeout(id)
   }, [step, dispatch])
 
+  const resolveJoinAdmission = useCallback(
+    (result: Exclude<JoinSpaceResponse, { status: 'pending' }>) => {
+      if (result.status === 'active') {
+        setResult(result)
+        setPendingJoinId(null)
+        setStep('success')
+        return
+      }
+      setPendingJoinId(null)
+      setErrorKind('internal')
+      setErrorRaw(result.reason)
+      setStep('failed')
+    },
+    []
+  )
+  useJoinAdmission(pendingJoinId, resolveJoinAdmission)
+
   const handleSubmit = async (preserveUnreadableHistory = false) => {
     // Validate inputs independently from step check
     if (!codeComplete || pass.length === 0) return
@@ -132,9 +125,22 @@ function SwitchSpaceDialogInner({ open, onOpenChange }: SwitchSpaceDialogProps) 
     setErrorRaw(null)
     setStep('migrating')
     try {
-      const res = await switchSpace({ code, newPassphrase: pass, preserveUnreadableHistory })
-      setResult(res)
-      setStep('success')
+      const res = await switchSpace({
+        code,
+        newPassphrase: pass,
+        preserveUnreadableHistory,
+      })
+      if (res.status === 'active') {
+        setResult(res)
+        setStep('success')
+      } else if (res.status === 'pending') {
+        setPendingJoinId(res.joinId)
+        setStep('pending')
+      } else if (res.status === 'rejected') {
+        setErrorKind('internal')
+        setErrorRaw(res.reason)
+        setStep('failed')
+      }
     } catch (err) {
       log.error({ err }, 'switchSpace failed')
       if (err instanceof SetupV2Error) {
@@ -167,6 +173,19 @@ function SwitchSpaceDialogInner({ open, onOpenChange }: SwitchSpaceDialogProps) 
     setStep('input')
   }
 
+  const handleCancelPending = async () => {
+    if (!pendingJoinId) return
+    try {
+      const result = await cancelJoinSpace(pendingJoinId)
+      if (result.status !== 'pending') resolveJoinAdmission(result)
+    } catch (err) {
+      log.error({ err, joinId: pendingJoinId }, 'cancelJoinSpace failed')
+      setErrorKind('internal')
+      setErrorRaw(err instanceof Error ? err.message : String(err))
+      setStep('failed')
+    }
+  }
+
   const retryLabel = isCodeDead ? t('actions.useNewCode') : t('actions.retry')
 
   const failureMessage = useMemo(() => {
@@ -176,15 +195,6 @@ function SwitchSpaceDialogInner({ open, onOpenChange }: SwitchSpaceDialogProps) 
     if (translated !== key) return translated
     return t('failed.fallback', { reason: errorRaw ?? errorKind })
   }, [errorKind, errorRaw, t])
-
-  const phaseLabel = useMemo(() => {
-    // phase=null 代表轮询尚未拿到首个进度（switchSpace 已发出但 backend
-    // 还没写 Prepared）——按"准备中"语义对待。
-    if (phase === null) return t('migrating.phase.preparing')
-    if (phase === 'prepared') return t('migrating.phase.prepared')
-    if (phase === 'handshake_done') return t('migrating.phase.handshakeDone')
-    return t('migrating.phase.swapped')
-  }, [phase, t])
 
   // ── 主体内容 ─────────────────────────────────────────
   let body: React.ReactNode
@@ -250,12 +260,19 @@ function SwitchSpaceDialogInner({ open, onOpenChange }: SwitchSpaceDialogProps) 
         </div>
         <div className="text-center">
           <p className="text-base font-semibold text-foreground">{t('migrating.title')}</p>
-          <p className="mt-1 text-sm text-muted-foreground">{phaseLabel}</p>
-          {backupCount > 0 && (
-            <p className="mt-2 text-xs text-muted-foreground">
-              {t('migrating.recordsHint', { count: backupCount })}
-            </p>
-          )}
+          <p className="mt-1 text-sm text-muted-foreground">{t('migrating.phase.preparing')}</p>
+        </div>
+      </div>
+    )
+  } else if (step === 'pending') {
+    body = (
+      <div className="flex flex-col items-center gap-4 py-8">
+        <div className="flex size-14 items-center justify-center rounded-full bg-primary/10 text-primary">
+          <Loader2 className="size-7 animate-spin" />
+        </div>
+        <div className="text-center">
+          <p className="text-base font-semibold text-foreground">{t('pending.title')}</p>
+          <p className="mt-1 text-sm text-muted-foreground">{t('pending.subtitle')}</p>
         </div>
       </div>
     )
@@ -271,13 +288,15 @@ function SwitchSpaceDialogInner({ open, onOpenChange }: SwitchSpaceDialogProps) 
             <Trans
               t={t}
               i18nKey="success.subtitle"
-              count={result.migratedRecords}
-              values={{ count: result.migratedRecords }}
+              count={result.joinedSpace.migratedRecords ?? 0}
+              values={{ count: result.joinedSpace.migratedRecords ?? 0 }}
             />
           </p>
-          {result.preservedUnreadableRecords > 0 && (
+          {(result.joinedSpace.preservedUnreadableRecords ?? 0) > 0 && (
             <p className="mt-2 text-sm text-muted-foreground">
-              {t('success.preservedUnreadable', { count: result.preservedUnreadableRecords })}
+              {t('success.preservedUnreadable', {
+                count: result.joinedSpace.preservedUnreadableRecords ?? 0,
+              })}
             </p>
           )}
         </div>
@@ -320,6 +339,12 @@ function SwitchSpaceDialogInner({ open, onOpenChange }: SwitchSpaceDialogProps) 
         {t('actions.switching')}
       </Button>
     )
+  } else if (step === 'pending') {
+    footer = (
+      <Button variant="outline" onClick={() => void handleCancelPending()}>
+        {t('actions.cancel')}
+      </Button>
+    )
   } else if (step === 'failed') {
     footer = (
       <>
@@ -359,7 +384,9 @@ function SwitchSpaceDialogInner({ open, onOpenChange }: SwitchSpaceDialogProps) 
                 ? t('failed.title')
                 : step === 'migrating'
                   ? t('migrating.title')
-                  : t('title')}
+                  : step === 'pending'
+                    ? t('pending.title')
+                    : t('title')}
           </DialogTitle>
           {step === 'input' && <DialogDescription>{t('subtitle')}</DialogDescription>}
         </DialogHeader>

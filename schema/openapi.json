@@ -91,6 +91,18 @@
         ],
         "type": "object"
       },
+      "CancelJoinSpaceRequest": {
+        "description": "Request body for `POST /v2/setup/cancel-join`.",
+        "properties": {
+          "joinId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "joinId"
+        ],
+        "type": "object"
+      },
       "CancelTransferEnvelope": {
         "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
         "properties": {
@@ -1058,6 +1070,14 @@
             ],
             "nullable": true
           },
+          "currentJoin": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/JoinSpaceResponse"
+              }
+            ],
+            "nullable": true
+          },
           "devices": {
             "items": {
               "$ref": "#/components/schemas/DeviceTrustRelationshipDto"
@@ -1069,6 +1089,14 @@
           },
           "localMembership": {
             "$ref": "#/components/schemas/DeviceMembershipDto"
+          },
+          "pendingInboundMember": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PendingInboundMemberDto"
+              }
+            ],
+            "nullable": true
           },
           "recovery": {
             "type": "string"
@@ -2251,6 +2279,145 @@
         ],
         "type": "object"
       },
+      "JoinSpaceRejectionReason": {
+        "enum": [
+          "invitation_unavailable",
+          "authentication_rejected",
+          "identity_conflict",
+          "base_history_changed",
+          "joiner_history_ahead",
+          "history_conflict",
+          "peer_upgrade_required",
+          "cancelled",
+          "removed_before_activation"
+        ],
+        "type": "string"
+      },
+      "JoinSpaceResponse": {
+        "description": "Stable outcome of a durable space admission.",
+        "discriminator": {
+          "propertyName": "status"
+        },
+        "oneOf": [
+          {
+            "properties": {
+              "joinId": {
+                "type": "string"
+              },
+              "joinedSpace": {
+                "$ref": "#/components/schemas/JoinedSpaceResponse"
+              },
+              "status": {
+                "enum": [
+                  "active"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "joinId",
+              "joinedSpace",
+              "status"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "cancelRequested": {
+                "type": "boolean"
+              },
+              "joinId": {
+                "type": "string"
+              },
+              "sponsorDeviceId": {
+                "nullable": true,
+                "type": "string"
+              },
+              "sponsorIdentityFingerprint": {
+                "nullable": true,
+                "type": "string"
+              },
+              "status": {
+                "enum": [
+                  "pending"
+                ],
+                "type": "string"
+              },
+              "targetSpaceId": {
+                "nullable": true,
+                "type": "string"
+              }
+            },
+            "required": [
+              "joinId",
+              "cancelRequested",
+              "status"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "joinId": {
+                "type": "string"
+              },
+              "reason": {
+                "$ref": "#/components/schemas/JoinSpaceRejectionReason"
+              },
+              "status": {
+                "enum": [
+                  "rejected"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "joinId",
+              "reason",
+              "status"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "JoinedSpaceResponse": {
+        "properties": {
+          "migratedRecords": {
+            "format": "int64",
+            "minimum": 0,
+            "nullable": true,
+            "type": "integer"
+          },
+          "preservedUnreadableRecords": {
+            "format": "int64",
+            "minimum": 0,
+            "nullable": true,
+            "type": "integer"
+          },
+          "selfDeviceId": {
+            "type": "string"
+          },
+          "selfIdentityFingerprint": {
+            "type": "string"
+          },
+          "spaceId": {
+            "type": "string"
+          },
+          "sponsorDeviceId": {
+            "type": "string"
+          },
+          "sponsorIdentityFingerprint": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "sponsorDeviceId",
+          "sponsorIdentityFingerprint",
+          "spaceId",
+          "selfDeviceId",
+          "selfIdentityFingerprint"
+        ],
+        "type": "object"
+      },
       "KeyboardShortcutsPatchDto": {
         "properties": {
           "shortcuts": {
@@ -2625,37 +2792,6 @@
         "required": [
           "data",
           "ts"
-        ],
-        "type": "object"
-      },
-      "MigrationPhaseDto": {
-        "description": "Coarse-grained migration phase exposed to the UI. The internal\n`MigrationPhase` carries `run_id` / `target_space_id`; those are\nimplementation detail and not surfaced over the wire.",
-        "enum": [
-          "prepared",
-          "handshake_done",
-          "swapped"
-        ],
-        "type": "string"
-      },
-      "MigrationProgressResponse": {
-        "description": "Response body for `GET /v2/setup/migration-progress`. Mirrors\n`MigrationProgress`. `phase = null` means no migration is in\nflight (idle / completed); polling clients should stop their loop\nwhen they observe this transition while `backup_record_count == 0`.",
-        "properties": {
-          "backupRecordCount": {
-            "format": "int64",
-            "minimum": 0,
-            "type": "integer"
-          },
-          "phase": {
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/MigrationPhaseDto"
-              }
-            ],
-            "nullable": true
-          }
-        },
-        "required": [
-          "backupRecordCount"
         ],
         "type": "object"
       },
@@ -3048,6 +3184,21 @@
         ],
         "type": "object"
       },
+      "PendingInboundMemberDto": {
+        "properties": {
+          "deviceId": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "deviceId",
+          "displayName"
+        ],
+        "type": "object"
+      },
       "PerTargetOutcomeDto": {
         "description": "Per-target delivery outcome in the dispatch response.",
         "properties": {
@@ -3269,34 +3420,6 @@
         "required": [
           "code",
           "passphrase"
-        ],
-        "type": "object"
-      },
-      "RedeemResponse": {
-        "description": "Response body for `POST /v2/setup/redeem`. Mirrors\n`RedeemPairingInvitationResult` flattened to wire-friendly strings.",
-        "properties": {
-          "selfDeviceId": {
-            "type": "string"
-          },
-          "selfIdentityFingerprint": {
-            "type": "string"
-          },
-          "spaceId": {
-            "type": "string"
-          },
-          "sponsorDeviceId": {
-            "type": "string"
-          },
-          "sponsorIdentityFingerprint": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "sponsorDeviceId",
-          "sponsorIdentityFingerprint",
-          "spaceId",
-          "selfDeviceId",
-          "selfIdentityFingerprint"
         ],
         "type": "object"
       },
@@ -4675,6 +4798,24 @@
         ],
         "type": "object"
       },
+      "SetupCancelJoinEnvelope": {
+        "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/JoinSpaceResponse"
+          },
+          "ts": {
+            "description": "Server time when the response was built (unix epoch milliseconds).",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "data",
+          "ts"
+        ],
+        "type": "object"
+      },
       "SetupInitializeEnvelope": {
         "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
         "properties": {
@@ -4711,29 +4852,11 @@
         ],
         "type": "object"
       },
-      "SetupMigrationProgressEnvelope": {
-        "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
-        "properties": {
-          "data": {
-            "$ref": "#/components/schemas/MigrationProgressResponse"
-          },
-          "ts": {
-            "description": "Server time when the response was built (unix epoch milliseconds).",
-            "format": "int64",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "data",
-          "ts"
-        ],
-        "type": "object"
-      },
       "SetupRedeemEnvelope": {
         "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
         "properties": {
           "data": {
-            "$ref": "#/components/schemas/RedeemResponse"
+            "$ref": "#/components/schemas/JoinSpaceResponse"
           },
           "ts": {
             "description": "Server time when the response was built (unix epoch milliseconds).",
@@ -4793,7 +4916,7 @@
         "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
         "properties": {
           "data": {
-            "$ref": "#/components/schemas/SwitchSpaceResponse"
+            "$ref": "#/components/schemas/JoinSpaceResponse"
           },
           "ts": {
             "description": "Server time when the response was built (unix epoch milliseconds).",
@@ -5082,46 +5205,6 @@
         "required": [
           "code",
           "newPassphrase"
-        ],
-        "type": "object"
-      },
-      "SwitchSpaceResponse": {
-        "description": "Response body for `POST /v2/setup/switch-space`. Mirrors\n`SwitchSpaceResult` flattened to wire-friendly strings, plus\n`migrated_records` so the UI can show \"迁移了 N 条历史\".",
-        "properties": {
-          "migratedRecords": {
-            "format": "int64",
-            "minimum": 0,
-            "type": "integer"
-          },
-          "preservedUnreadableRecords": {
-            "format": "int64",
-            "minimum": 0,
-            "type": "integer"
-          },
-          "selfDeviceId": {
-            "type": "string"
-          },
-          "selfIdentityFingerprint": {
-            "type": "string"
-          },
-          "spaceId": {
-            "type": "string"
-          },
-          "sponsorDeviceId": {
-            "type": "string"
-          },
-          "sponsorIdentityFingerprint": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "sponsorDeviceId",
-          "sponsorIdentityFingerprint",
-          "spaceId",
-          "selfDeviceId",
-          "selfIdentityFingerprint",
-          "migratedRecords",
-          "preservedUnreadableRecords"
         ],
         "type": "object"
       },
@@ -10047,6 +10130,64 @@
         ]
       }
     },
+    "/v2/setup/cancel-join": {
+      "post": {
+        "operationId": "setupV2CancelJoin",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CancelJoinSpaceRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SetupCancelJoinEnvelope"
+                }
+              }
+            },
+            "description": "Updated durable admission"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Join attempt not found"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "security": [
+          {
+            "session_query": []
+          },
+          {
+            "session_header": []
+          }
+        ],
+        "tags": [
+          "setup-v2"
+        ]
+      }
+    },
     "/v2/setup/initialize": {
       "post": {
         "operationId": "setupV2Initialize",
@@ -10158,54 +10299,6 @@
               }
             },
             "description": "Facade not assembled or network not started"
-          }
-        },
-        "security": [
-          {
-            "session_query": []
-          },
-          {
-            "session_header": []
-          }
-        ],
-        "tags": [
-          "setup-v2"
-        ]
-      }
-    },
-    "/v2/setup/migration-progress": {
-      "get": {
-        "operationId": "setupV2GetMigrationProgress",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SetupMigrationProgressEnvelope"
-                }
-              }
-            },
-            "description": "Migration progress snapshot"
-          },
-          "500": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponse"
-                }
-              }
-            },
-            "description": "Storage failure"
-          },
-          "503": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponse"
-                }
-              }
-            },
-            "description": "Facade not assembled"
           }
         },
         "security": [

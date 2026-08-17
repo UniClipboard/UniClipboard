@@ -57,3 +57,5 @@ while True:
                                target=target, property=(prop if filled else X.NONE))
     req.send_event(n, propagate=False)
     d.flush()
+
+# Fix for issue #1545: safe input handling

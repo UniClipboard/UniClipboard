@@ -5,7 +5,7 @@ use std::{
 };
 
 #[cfg(target_os = "windows")]
-use tracing::{error, warn};
+use tracing::{debug, error, info, warn};
 
 #[cfg(any(target_os = "windows", test))]
 const VK_LWIN: u32 = 0x5B;
@@ -314,6 +314,7 @@ fn run_hook_thread(ready: SyncSender<Result<u32, String>>) {
         let _ = unsafe { UnhookWindowsHookEx(hook) };
         return;
     }
+    info!(thread_id, "Win+V input listener installed");
 
     while unsafe { GetMessageW(&mut message, None, 0, 0) }.0 > 0 {}
 
@@ -355,6 +356,7 @@ unsafe extern "system" fn low_level_keyboard_proc(
                 let mut key_state = lock_or_recover(&context.key_state);
                 match key_state.handle_key_down(keyboard.vkCode) {
                     KeyDownAction::TriggerPanel => {
+                        debug!("Win+V input listener received shortcut");
                         let dispatched = match context.sender.try_send(()) {
                             Ok(()) | Err(std::sync::mpsc::TrySendError::Full(())) => true,
                             Err(std::sync::mpsc::TrySendError::Disconnected(())) => {

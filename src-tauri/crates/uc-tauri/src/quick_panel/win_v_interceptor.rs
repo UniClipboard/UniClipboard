@@ -329,8 +329,8 @@ unsafe extern "system" fn low_level_keyboard_proc(
     use windows::Win32::{
         Foundation::LRESULT,
         UI::WindowsAndMessaging::{
-            CallNextHookEx, KBDLLHOOKSTRUCT, LLKHF_INJECTED, WM_KEYDOWN, WM_KEYUP, WM_SYSKEYDOWN,
-            WM_SYSKEYUP,
+            CallNextHookEx, KBDLLHOOKSTRUCT, LLKHF_INJECTED, LLKHF_LOWER_IL_INJECTED, WM_KEYDOWN,
+            WM_KEYUP, WM_SYSKEYDOWN, WM_SYSKEYUP,
         },
     };
 
@@ -339,6 +339,17 @@ unsafe extern "system" fn low_level_keyboard_proc(
     }
 
     let keyboard = unsafe { &*(lparam.0 as *const KBDLLHOOKSTRUCT) };
+    if matches!(keyboard.vkCode, VK_LWIN | VK_RWIN | VK_V) {
+        info!(
+            code,
+            message = wparam.0,
+            virtual_key = keyboard.vkCode,
+            injected = keyboard.flags.contains(LLKHF_INJECTED),
+            lower_integrity_injected = keyboard.flags.contains(LLKHF_LOWER_IL_INJECTED),
+            flags = ?keyboard.flags,
+            "[DEBUG-WINV-A17] low-level keyboard event received"
+        );
+    }
     if keyboard.flags.contains(LLKHF_INJECTED) {
         return unsafe { CallNextHookEx(None, code, wparam, lparam) };
     }

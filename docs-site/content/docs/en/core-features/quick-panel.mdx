@@ -28,6 +28,14 @@ hold focus indefinitely.
   Panel](../guides/settings#quick-panel) — that unregisters the hotkey immediately.
 </Callout>
 
+On native Wayland sessions whose compositor cannot provide global hotkeys, bind this command in
+the compositor instead. It opens the panel when UniClipboard is not running yet, and toggles the
+existing panel otherwise:
+
+```bash
+uniclipboard --quick-panel
+```
+
 ## Keyboard controls
 
 The panel is meant to be driven entirely by keyboard. The full set:

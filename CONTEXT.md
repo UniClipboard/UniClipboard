@@ -41,6 +41,12 @@ _Avoid_: device name、machine id、peer id
 活跃成员。
 _Avoid_: peer、trusted peer、user
 
+**Durable admission**：
+Engine 持久拥有的一次加入 Space 尝试，以稳定 `join_id` 标识，结果只能是等待中、已生效或
+被拒绝；取消请求也作为该尝试的持久事实。等待中的设备尚不是 **SpaceMember**，只能在
+加入结果生效后进入成员集合；历史冲突、取消或生效前被移除都会形成明确的拒绝结果。
+_Avoid_: temporary pairing state、client-side join status、pending member
+
 **Workspace convergence**：
 Engine 持久拥有的 Space 成员变更收敛状态，统一表达本机已应用、正在收敛、完成、
 需要用户决定或无法自动恢复；它分别给出待决定的移除、设备组不一致、需要升级的设备，
@@ -67,7 +73,7 @@ _Avoid_: temporary split、sync failure、pending recovery
 
 **Current member device list**：
 设备页展示的当前 Space 成员集合，只以 **SpaceMember** 为准；历史设备关系仍可用于安全判断
-和待决定流程，但不同空间或已移除的设备不得因此重新进入设备列表。
+和待决定流程，但不同空间、等待加入或已移除的设备不得因此进入或重新进入设备列表。
 _Avoid_: trusted peer list、relationship history、all known devices
 
 **Readmission**：

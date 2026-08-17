@@ -180,7 +180,7 @@ const ClipboardHistoryPanelSession: React.FC<ClipboardHistoryPanelProps> = ({
   const itemRefs = useRef<Map<number, HTMLDivElement>>(new Map())
   const previewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const previewLayoutTokenRef = useRef(0)
-  const [skipTransition, setSkipTransition] = useState(false)
+  const [skipTransition, setSkipTransition] = useState(showRequestId !== 0)
   const previewExpanded = previewState.mode === 'expanded'
   const previewReservingSpace = previewState.mode === 'reserving'
   const previewEntryId = previewState.entryId
@@ -228,7 +228,6 @@ const ClipboardHistoryPanelSession: React.FC<ClipboardHistoryPanelProps> = ({
   })
   useEffect(() => {
     if (showRequestId === 0) return
-    setSkipTransition(true)
 
     const focusTimer = setTimeout(() => {
       setSkipTransition(false)

@@ -266,7 +266,6 @@ impl Drop for WinVInterceptor {
 #[cfg(target_os = "windows")]
 fn run_hook_thread(ready: SyncSender<Result<u32, String>>) {
     use windows::Win32::{
-        Foundation::HINSTANCE,
         System::Threading::GetCurrentThreadId,
         UI::WindowsAndMessaging::{
             GetMessageW, PeekMessageW, SetWindowsHookExW, UnhookWindowsHookEx, MSG, PM_NOREMOVE,
@@ -280,12 +279,7 @@ fn run_hook_thread(ready: SyncSender<Result<u32, String>>) {
     let _ = unsafe { PeekMessageW(&mut message, None, 0, 0, PM_NOREMOVE) };
 
     let hook = match unsafe {
-        SetWindowsHookExW(
-            WH_KEYBOARD_LL,
-            Some(low_level_keyboard_proc),
-            Some(HINSTANCE::default()),
-            0,
-        )
+        SetWindowsHookExW(WH_KEYBOARD_LL, Some(low_level_keyboard_proc), None, 0)
     } {
         Ok(hook) => hook,
         Err(error) => {
@@ -398,20 +392,16 @@ fn mask_windows_key_release() -> Result<(), String> {
         SendInput, INPUT, INPUT_KEYBOARD, KEYEVENTF_KEYUP, VIRTUAL_KEY,
     };
 
-    // VK_E8 is an unassigned virtual key. This is the standard menu-mask pattern
-    // used by keyboard-hook tools for suppressed Windows-key shortcuts.
-    const MENU_MASK_KEY: VIRTUAL_KEY = VIRTUAL_KEY(0xE8);
-
-    let mut key_down: INPUT = unsafe { std::mem::zeroed() };
-    key_down.r#type = INPUT_KEYBOARD;
-    key_down.Anonymous.ki.wVk = MENU_MASK_KEY;
-
+    // PowerToys uses the reserved 0xFF virtual key's release event to mark the
+    // Windows key as part of a handled shortcut, preventing Start from opening
+    // when the key is released.
+    const MENU_MASK_KEY: VIRTUAL_KEY = VIRTUAL_KEY(0xFF);
     let mut key_up: INPUT = unsafe { std::mem::zeroed() };
     key_up.r#type = INPUT_KEYBOARD;
     key_up.Anonymous.ki.wVk = MENU_MASK_KEY;
     key_up.Anonymous.ki.dwFlags = KEYEVENTF_KEYUP;
 
-    let inputs = [key_down, key_up];
+    let inputs = [key_up];
     let sent = unsafe { SendInput(&inputs, std::mem::size_of::<INPUT>() as _) };
     if sent == inputs.len() as u32 {
         Ok(())

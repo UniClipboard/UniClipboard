@@ -44,13 +44,13 @@ url = "2"
 # Async
 tokio = { version = "1", features = ["full"] }
 tokio-util = "0.7"
-rand = "0.9"
+rand = "0.10"
 async-trait = "0.1"
 
 # Serialization
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-base64 = "0.22"
+base64 = "0.23"
 uuid = { version = "1", features = ["serde"] }
 
 # tauri-specta 生态 — IPC 类型化客户端 codegen（见 issue #698）。
@@ -87,12 +87,12 @@ tracing = "0.1"
 # TrayIconBuilder::build 之前用 libloading 自己探一遍 4 个候选 .so，
 # 没一个能加载就跳过 tray init 而不是让上游 panic 撂倒整个进程。
 # 版本钉到 0.7 — 与 Cargo.lock 现有的间接依赖对齐避免双版本膨胀。
-libloading = "0.7"
+libloading = "0.9"
 # Dynamically load Xlib for modifier snapshots without adding a hard link-time dependency.
 x11-dl = "2.21"
 
 [target.'cfg(target_os = "windows")'.dependencies]
-windows = { version = "0.61", features = [
+windows = { version = "0.62", features = [
   "Win32_Foundation",
   "Win32_UI_WindowsAndMessaging",
   "Win32_UI_Input_KeyboardAndMouse",
@@ -142,7 +142,7 @@ objc2-core-graphics = { version = "0.3", features = [
   "CGRemoteOperation",
 ] }
 objc2-quartz-core = { version = "0.3", features = ["CALayer"] }
-core-graphics = "0.24"
+core-graphics = "0.25"
 objc2-foundation = { version = "0.3", features = [
   "NSBundle",
   "NSGeometry",
@@ -157,10 +157,10 @@ objc2-foundation = { version = "0.3", features = [
 block2 = "0.6"
 
 [dev-dependencies]
-sentry = { version = "0.48.1", default-features = false, features = ["test"] }
+sentry = { version = "0.49.1", default-features = false, features = ["test"] }
 tauri = { workspace = true, features = ["test"] }
 tempfile = "3"
-mockall = "0.13"
+mockall = "0.15"
 tokio = { version = "1", features = ["full", "test-util"] }
 
 [lints]

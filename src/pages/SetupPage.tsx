@@ -10,6 +10,8 @@ import {
   EntryScreen,
   ImportConfigScreen,
   InitializeSpaceScreen,
+  JoinPendingScreen,
+  JoinRejectedScreen,
   PairingCompleteScreen,
   RedeemInvitationScreen,
   SetupBrandPanel,
@@ -34,6 +36,7 @@ interface SetupScreenProps {
   issueInvitation: SetupFlow['issueInvitation']
   cancelInvitation: SetupFlow['cancelInvitation']
   redeemInvitation: SetupFlow['redeemInvitation']
+  cancelJoin: SetupFlow['cancelJoin']
   onDone: () => void
 }
 
@@ -48,6 +51,7 @@ const SetupScreen: React.FC<SetupScreenProps> = ({
   issueInvitation,
   cancelInvitation,
   redeemInvitation,
+  cancelJoin,
   onDone,
 }) => {
   const { t } = useTranslation(undefined, { keyPrefix: 'setup.page' })
@@ -87,6 +91,10 @@ const SetupScreen: React.FC<SetupScreenProps> = ({
       return (
         <RedeemInvitationScreen onSubmit={redeemInvitation} onBack={goEntry} loading={loading} />
       )
+    case 'join_pending':
+      return <JoinPendingScreen onCancel={() => void cancelJoin(screen.joinId)} loading={loading} />
+    case 'join_rejected':
+      return <JoinRejectedScreen reason={screen.reason} onBack={startJoinSpace} />
     case 'space_ready':
       return <SpaceReadyScreen onInvite={issueInvitation} onDone={onDone} loading={loading} />
     case 'pairing_complete':
@@ -115,6 +123,7 @@ export default function SetupPage({ onCompleteSetup }: SetupPageProps = {}) {
     issueInvitation,
     cancelInvitation,
     redeemInvitation,
+    cancelJoin,
     finishPairing,
   } = useSetupFlow()
 
@@ -139,6 +148,7 @@ export default function SetupPage({ onCompleteSetup }: SetupPageProps = {}) {
         issueInvitation={issueInvitation}
         cancelInvitation={cancelInvitation}
         redeemInvitation={redeemInvitation}
+        cancelJoin={cancelJoin}
         onDone={handleDone}
       />
     </div>

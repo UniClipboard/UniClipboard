@@ -1633,6 +1633,10 @@
         },
         "recordsHint": "{{count}} records in backup table"
       },
+      "pending": {
+        "title": "Waiting for confirmation",
+        "subtitle": "Waiting for the other device to confirm this switch."
+      },
       "success": {
         "title": "Switched space",
         "subtitle_one": "Migrated 1 clipboard record under the new master key.",
@@ -2058,6 +2062,25 @@
         "back": "Back",
         "joining": "Joining...",
         "submit": "Join space"
+      }
+    },
+    "joinPending": {
+      "title": "Waiting for confirmation",
+      "subtitle": "Waiting for the join result.",
+      "actions": { "cancel": "Cancel join", "back": "Back" },
+      "rejected": {
+        "title": "Could not join the space",
+        "reasons": {
+          "invitation_unavailable": "The invitation is no longer available.",
+          "authentication_rejected": "The passphrase or identity was not accepted.",
+          "identity_conflict": "This device identity conflicts with the space.",
+          "base_history_changed": "The host space changed. Get a new invitation and try again.",
+          "joiner_history_ahead": "This device history cannot join the space.",
+          "history_conflict": "The two histories cannot be merged.",
+          "peer_upgrade_required": "The other device must update UniClipboard.",
+          "cancelled": "This join was cancelled.",
+          "removed_before_activation": "The other device removed this device before confirmation."
+        }
       }
     },
     "spaceReady": {

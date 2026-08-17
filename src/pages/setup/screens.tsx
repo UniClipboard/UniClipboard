@@ -26,6 +26,7 @@ import { getSettings } from '@/api/daemon/settings'
 import type {
   InitializeSpaceErrorKind,
   IssueInvitationErrorKind,
+  JoinSpaceRejectionReason,
   RedeemInvitationErrorKind,
   ActiveJoinSpaceResponse,
 } from '@/api/daemon/setupV2'
@@ -295,7 +296,9 @@ export function InitializeSpaceScreen({
   onBack: () => void
   loading?: boolean
 }) {
-  const { t } = useTranslation(undefined, { keyPrefix: 'setup.initializeSpace' })
+  const { t } = useTranslation(undefined, {
+    keyPrefix: 'setup.initializeSpace',
+  })
   const [deviceName, setDeviceName] = useState('')
   const [pass1, setPass1] = useState('')
   const [pass2, setPass2] = useState('')
@@ -463,7 +466,9 @@ export function ShowInvitationScreen({
   onCancel: () => void
   loading?: boolean
 }) {
-  const { t } = useTranslation(undefined, { keyPrefix: 'setup.showInvitation' })
+  const { t } = useTranslation(undefined, {
+    keyPrefix: 'setup.showInvitation',
+  })
   const [now, setNow] = useState(() => Date.now())
 
   useEffect(() => {
@@ -574,13 +579,15 @@ export function RedeemInvitationScreen({
     code: string
     passphrase: string
   }) => Promise<
-    | { ok: true; redeem: ActiveJoinSpaceResponse }
+    | { ok: true; redeem: ActiveJoinSpaceResponse | null }
     | { ok: false; kind: RedeemInvitationErrorKind; raw: string }
   >
   onBack: () => void
   loading?: boolean
 }) {
-  const { t } = useTranslation(undefined, { keyPrefix: 'setup.redeemInvitation' })
+  const { t } = useTranslation(undefined, {
+    keyPrefix: 'setup.redeemInvitation',
+  })
   const [code, setCode] = useState('')
   const [pass, setPass] = useState('')
   const [showPass, setShowPass] = useState(false)
@@ -714,6 +721,54 @@ export function RedeemInvitationScreen({
   )
 }
 
+export function JoinPendingScreen({
+  onCancel,
+  loading = false,
+}: {
+  onCancel: () => void
+  loading?: boolean
+}) {
+  const { t } = useTranslation(undefined, { keyPrefix: 'setup.joinPending' })
+  return (
+    <ScreenShell
+      title={t('title')}
+      subtitle={t('subtitle')}
+      footer={
+        <Button variant="outline" onClick={onCancel} disabled={loading}>
+          {t('actions.cancel')}
+        </Button>
+      }
+      centered
+    >
+      <div className="mt-8 flex justify-center">
+        <Loader2 className="size-12 animate-spin text-primary" />
+      </div>
+    </ScreenShell>
+  )
+}
+
+export function JoinRejectedScreen({
+  reason,
+  onBack,
+}: {
+  reason: JoinSpaceRejectionReason
+  onBack: () => void
+}) {
+  const { t } = useTranslation(undefined, { keyPrefix: 'setup.joinPending' })
+  return (
+    <ScreenShell
+      title={t('rejected.title')}
+      subtitle={t(`rejected.reasons.${reason}`)}
+      footer={<Button onClick={onBack}>{t('actions.back')}</Button>}
+      centered
+    >
+      <div className="mt-8 flex justify-center">
+        <XCircle className="size-12 text-destructive" />
+      </div>
+    </ScreenShell>
+  )
+}
+
 // ── Sponsor Space ready ────────────────────────────────────────────────────
 
 export function SpaceReadyScreen({
@@ -790,7 +845,9 @@ export function PairingCompleteScreen({
   peerDeviceId?: string | null
   onDone: () => void
 }) {
-  const { t } = useTranslation(undefined, { keyPrefix: 'setup.pairingComplete' })
+  const { t } = useTranslation(undefined, {
+    keyPrefix: 'setup.pairingComplete',
+  })
 
   return (
     <ScreenShell

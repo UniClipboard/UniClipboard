@@ -1632,6 +1632,10 @@
         },
         "recordsHint": "備份表中已有 {{count}} 條記錄"
       },
+      "pending": {
+        "title": "等待對方確認",
+        "subtitle": "正在等待對方確認這次切換。"
+      },
       "success": {
         "title": "切換成功",
         "subtitle_one": "已用新主密鑰遷移 1 條剪貼簿記錄。",
@@ -2056,6 +2060,25 @@
         "back": "返回",
         "joining": "正在加入...",
         "submit": "加入空間"
+      }
+    },
+    "joinPending": {
+      "title": "等待確認",
+      "subtitle": "正在等待加入結果。",
+      "actions": { "cancel": "取消加入", "back": "返回" },
+      "rejected": {
+        "title": "無法加入空間",
+        "reasons": {
+          "invitation_unavailable": "邀請碼已失效。",
+          "authentication_rejected": "口令或身分驗證未通過。",
+          "identity_conflict": "裝置身分存在衝突。",
+          "base_history_changed": "對方空間已發生變化，請重新取得邀請碼。",
+          "joiner_history_ahead": "本機歷史無法加入該空間。",
+          "history_conflict": "兩邊的歷史無法合併。",
+          "peer_upgrade_required": "對方裝置需要更新 UniClipboard。",
+          "cancelled": "本次加入已取消。",
+          "removed_before_activation": "對方在確認前取消了這台裝置。"
+        }
       }
     },
     "spaceReady": {

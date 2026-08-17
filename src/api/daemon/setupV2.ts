@@ -8,6 +8,7 @@
 
 import {
   setupV2Cancel,
+  setupV2CancelJoin,
   setupV2GetState,
   setupV2Initialize,
   setupV2IssueInvitation,
@@ -16,6 +17,7 @@ import {
   setupV2SwitchSpace,
 } from '@/api/generated/sdk.gen'
 import type {
+  CancelJoinSpaceRequest as CancelJoinSpaceRequestDto,
   InitializeSpaceRequest as InitializeSpaceRequestDto,
   RedeemRequest as RedeemRequestDto,
   SwitchSpaceRequest as SwitchSpaceRequestDto,
@@ -155,6 +157,11 @@ export type IssueInvitationErrorKind =
 
 export type CancelInvitationErrorKind =
   | 'not_issued' // 409
+  | 'service_unavailable' // 503
+  | 'internal' // 500
+
+export type CancelJoinErrorKind =
+  | 'not_pending' // 409
   | 'service_unavailable' // 503
   | 'internal' // 500
 
@@ -301,6 +308,14 @@ function classifyCancelError(err: unknown): SetupV2Error<CancelInvitationErrorKi
   return new SetupV2Error('internal', raw, status)
 }
 
+function classifyCancelJoinError(err: unknown): SetupV2Error<CancelJoinErrorKind> {
+  const status = pickStatus(err)
+  const raw = rawMessage(err)
+  if (status === 409) return new SetupV2Error('not_pending', raw, status)
+  if (status === 503) return new SetupV2Error('service_unavailable', raw, status)
+  return new SetupV2Error('internal', raw, status)
+}
+
 function classifyResetError(err: unknown): SetupV2Error<ResetErrorKind> {
   const status = pickStatus(err)
   const raw = rawMessage(err)
@@ -380,7 +395,10 @@ export async function initializeSpace(
 ): Promise<InitializeSpaceResponse> {
   try {
     const data = await daemonClient.callEnveloped(() =>
-      setupV2Initialize({ body: body as unknown as InitializeSpaceRequestDto, throwOnError: true })
+      setupV2Initialize({
+        body: body as unknown as InitializeSpaceRequestDto,
+        throwOnError: true,
+      })
     )
     return data as unknown as InitializeSpaceResponse
   } catch (err) {
@@ -416,7 +434,10 @@ export async function redeemInvitation(body: RedeemRequest): Promise<RedeemRespo
   try {
     const data = await daemonClient.callEnveloped(() =>
       setupV2Redeem({
-        body: { ...body, code: normalizeInvitationCode(body.code) } as unknown as RedeemRequestDto,
+        body: {
+          ...body,
+          code: normalizeInvitationCode(body.code),
+        } as unknown as RedeemRequestDto,
         throwOnError: true,
       })
     )
@@ -431,6 +452,20 @@ export async function cancelInvitation(): Promise<void> {
     await daemonClient.callSdk(() => setupV2Cancel({ throwOnError: true }))
   } catch (err) {
     throw classifyCancelError(err)
+  }
+}
+
+export async function cancelJoinSpace(joinId: string): Promise<JoinSpaceResponse> {
+  try {
+    const data = await daemonClient.callEnveloped(() =>
+      setupV2CancelJoin({
+        body: { joinId } as CancelJoinSpaceRequestDto,
+        throwOnError: true,
+      })
+    )
+    return data as JoinSpaceResponse
+  } catch (err) {
+    throw classifyCancelJoinError(err)
   }
 }
 

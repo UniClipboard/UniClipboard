@@ -1,3 +1,5 @@
+import type { JoinSpaceResponse } from '@/api/daemon/setupV2'
+
 export type DeviceMembership = 'active' | 'removed' | 'unavailable' | 'unknown'
 export type DeviceReachability = 'online' | 'offline' | 'unknown'
 export type DeviceGroupRelationship =
@@ -64,11 +66,18 @@ export interface DeviceTrustRelationship {
   blockedReason: DeviceTrustUnavailableReason | null
 }
 
+export interface PendingInboundMember {
+  deviceId: string
+  displayName: string
+}
+
 export interface DeviceTrustSnapshot {
   revision: number
   localDeviceId: string
   localMembership: DeviceMembership
   currentChange: DeviceTrustChange | null
+  currentJoin?: JoinSpaceResponse | null
+  pendingInboundMember?: PendingInboundMember | null
   devices: DeviceTrustRelationship[]
   recovery: 'not_available_in_this_version'
   allowedActions: DeviceTrustAction[]
@@ -78,15 +87,27 @@ export interface DeviceTrustSnapshot {
 
 export type DeviceTrustDecision =
   | { kind: 'applied'; changeId: string; snapshot: DeviceTrustSnapshot }
-  | { kind: 'kept_current_device_group'; changeId: string; snapshot: DeviceTrustSnapshot }
+  | {
+      kind: 'kept_current_device_group'
+      changeId: string
+      snapshot: DeviceTrustSnapshot
+    }
   | {
       kind: 'already_completed'
       changeId: string
       completedChoice: DeviceTrustChoice
       snapshot: DeviceTrustSnapshot
     }
-  | { kind: 'state_changed'; currentChangeId?: string | null; snapshot: DeviceTrustSnapshot }
-  | { kind: 'local_device_confirmation_required'; changeId: string; snapshot: DeviceTrustSnapshot }
+  | {
+      kind: 'state_changed'
+      currentChangeId?: string | null
+      snapshot: DeviceTrustSnapshot
+    }
+  | {
+      kind: 'local_device_confirmation_required'
+      changeId: string
+      snapshot: DeviceTrustSnapshot
+    }
 
 import {
   decideDeviceTrust as decideDeviceTrustSdk,

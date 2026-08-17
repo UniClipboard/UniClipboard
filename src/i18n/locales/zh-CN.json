@@ -1632,6 +1632,10 @@
         },
         "recordsHint": "备份表中已有 {{count}} 条记录"
       },
+      "pending": {
+        "title": "等待对方确认",
+        "subtitle": "正在等待对方确认这次切换。"
+      },
       "success": {
         "title": "切换成功",
         "subtitle_one": "已用新主密钥迁移 1 条剪贴板记录。",
@@ -2056,6 +2060,25 @@
         "back": "返回",
         "joining": "正在加入...",
         "submit": "加入空间"
+      }
+    },
+    "joinPending": {
+      "title": "等待对方确认",
+      "subtitle": "正在等待加入结果。",
+      "actions": { "cancel": "取消加入", "back": "返回" },
+      "rejected": {
+        "title": "未能加入空间",
+        "reasons": {
+          "invitation_unavailable": "邀请码已失效。",
+          "authentication_rejected": "口令或身份验证未通过。",
+          "identity_conflict": "设备身份存在冲突。",
+          "base_history_changed": "对方空间已发生变化，请重新获取邀请码。",
+          "joiner_history_ahead": "本机历史无法加入该空间。",
+          "history_conflict": "两边的历史无法合并。",
+          "peer_upgrade_required": "对方设备需要更新 UniClipboard。",
+          "cancelled": "本次加入已取消。",
+          "removed_before_activation": "对方在确认前取消了这台设备。"
+        }
       }
     },
     "spaceReady": {

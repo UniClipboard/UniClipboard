@@ -1,9 +1,11 @@
 import { AlertCircle, ArrowRightLeft, CheckCircle2, Eye, EyeOff, Loader2 } from 'lucide-react'
-import { useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
 import { Trans, useTranslation } from 'react-i18next'
 import {
   SetupV2Error,
+  cancelJoinSpace,
   switchSpace,
+  type JoinSpaceResponse,
   type SwitchSpaceErrorKind,
   type SwitchSpaceResponse,
 } from '@/api/daemon/setupV2'
@@ -20,6 +22,7 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { useJoinAdmission } from '@/hooks/useJoinAdmission'
 import { createLogger } from '@/lib/logger'
 import { cn } from '@/lib/utils'
 import { useAppDispatch } from '@/store/hooks'
@@ -29,7 +32,7 @@ const log = createLogger('switch-space-dialog')
 
 const SUCCESS_AUTO_CLOSE_MS = 2500
 
-type Step = 'input' | 'migrating' | 'success' | 'failed'
+type Step = 'input' | 'migrating' | 'pending' | 'success' | 'failed'
 type ActiveJoinSpaceResponse = Extract<SwitchSpaceResponse, { status: 'active' }>
 
 interface SwitchSpaceDialogProps {
@@ -71,6 +74,7 @@ function SwitchSpaceDialogInner({ open, onOpenChange }: SwitchSpaceDialogProps) 
   const [errorKind, setErrorKind] = useState<SwitchSpaceErrorKind | null>(null)
   const [errorRaw, setErrorRaw] = useState<string | null>(null)
   const [result, setResult] = useState<ActiveJoinSpaceResponse | null>(null)
+  const [pendingJoinId, setPendingJoinId] = useState<string | null>(null)
   const passInputRef = useRef<HTMLInputElement>(null)
 
   const codeComplete = code.length === INVITATION_CODE_LENGTH
@@ -95,6 +99,23 @@ function SwitchSpaceDialogInner({ open, onOpenChange }: SwitchSpaceDialogProps) 
     return () => clearTimeout(id)
   }, [step, dispatch])
 
+  const resolveJoinAdmission = useCallback(
+    (result: Exclude<JoinSpaceResponse, { status: 'pending' }>) => {
+      if (result.status === 'active') {
+        setResult(result)
+        setPendingJoinId(null)
+        setStep('success')
+        return
+      }
+      setPendingJoinId(null)
+      setErrorKind('internal')
+      setErrorRaw(result.reason)
+      setStep('failed')
+    },
+    []
+  )
+  useJoinAdmission(pendingJoinId, resolveJoinAdmission)
+
   const handleSubmit = async (preserveUnreadableHistory = false) => {
     // Validate inputs independently from step check
     if (!codeComplete || pass.length === 0) return
@@ -104,10 +125,17 @@ function SwitchSpaceDialogInner({ open, onOpenChange }: SwitchSpaceDialogProps) 
     setErrorRaw(null)
     setStep('migrating')
     try {
-      const res = await switchSpace({ code, newPassphrase: pass, preserveUnreadableHistory })
+      const res = await switchSpace({
+        code,
+        newPassphrase: pass,
+        preserveUnreadableHistory,
+      })
       if (res.status === 'active') {
         setResult(res)
         setStep('success')
+      } else if (res.status === 'pending') {
+        setPendingJoinId(res.joinId)
+        setStep('pending')
       } else if (res.status === 'rejected') {
         setErrorKind('internal')
         setErrorRaw(res.reason)
@@ -143,6 +171,19 @@ function SwitchSpaceDialogInner({ open, onOpenChange }: SwitchSpaceDialogProps) 
     setErrorKind(null)
     setErrorRaw(null)
     setStep('input')
+  }
+
+  const handleCancelPending = async () => {
+    if (!pendingJoinId) return
+    try {
+      const result = await cancelJoinSpace(pendingJoinId)
+      if (result.status !== 'pending') resolveJoinAdmission(result)
+    } catch (err) {
+      log.error({ err, joinId: pendingJoinId }, 'cancelJoinSpace failed')
+      setErrorKind('internal')
+      setErrorRaw(err instanceof Error ? err.message : String(err))
+      setStep('failed')
+    }
   }
 
   const retryLabel = isCodeDead ? t('actions.useNewCode') : t('actions.retry')
@@ -223,6 +264,18 @@ function SwitchSpaceDialogInner({ open, onOpenChange }: SwitchSpaceDialogProps) 
         </div>
       </div>
     )
+  } else if (step === 'pending') {
+    body = (
+      <div className="flex flex-col items-center gap-4 py-8">
+        <div className="flex size-14 items-center justify-center rounded-full bg-primary/10 text-primary">
+          <Loader2 className="size-7 animate-spin" />
+        </div>
+        <div className="text-center">
+          <p className="text-base font-semibold text-foreground">{t('pending.title')}</p>
+          <p className="mt-1 text-sm text-muted-foreground">{t('pending.subtitle')}</p>
+        </div>
+      </div>
+    )
   } else if (step === 'success' && result) {
     body = (
       <div className="flex flex-col items-center gap-3 py-8">
@@ -286,6 +339,12 @@ function SwitchSpaceDialogInner({ open, onOpenChange }: SwitchSpaceDialogProps) 
         {t('actions.switching')}
       </Button>
     )
+  } else if (step === 'pending') {
+    footer = (
+      <Button variant="outline" onClick={() => void handleCancelPending()}>
+        {t('actions.cancel')}
+      </Button>
+    )
   } else if (step === 'failed') {
     footer = (
       <>
@@ -325,7 +384,9 @@ function SwitchSpaceDialogInner({ open, onOpenChange }: SwitchSpaceDialogProps) 
                 ? t('failed.title')
                 : step === 'migrating'
                   ? t('migrating.title')
-                  : t('title')}
+                  : step === 'pending'
+                    ? t('pending.title')
+                    : t('title')}
           </DialogTitle>
           {step === 'input' && <DialogDescription>{t('subtitle')}</DialogDescription>}
         </DialogHeader>

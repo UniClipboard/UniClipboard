@@ -1633,6 +1633,10 @@
         },
         "recordsHint": "バックアップ テーブル内の {{count}} 個のレコード"
       },
+      "pending": {
+        "title": "確認待ち",
+        "subtitle": "相手のデバイスによる切り替え確認を待っています。"
+      },
       "success": {
         "title": "スペースを切り替えました",
         "subtitle_one": "新しいマスター キーの下に 1 つのクリップボード レコードを移行しました。",
@@ -2057,6 +2061,25 @@
         "back": "戻る",
         "joining": "参加中...",
         "submit": "スペースに参加"
+      }
+    },
+    "joinPending": {
+      "title": "確認待ち",
+      "subtitle": "参加結果を待っています。",
+      "actions": { "cancel": "参加を取り消す", "back": "戻る" },
+      "rejected": {
+        "title": "スペースに参加できませんでした",
+        "reasons": {
+          "invitation_unavailable": "招待コードは利用できなくなりました。",
+          "authentication_rejected": "パスフレーズまたは本人確認が拒否されました。",
+          "identity_conflict": "このデバイスの識別情報が競合しています。",
+          "base_history_changed": "相手のスペースが変更されました。新しい招待コードを取得してください。",
+          "joiner_history_ahead": "このデバイスの履歴はスペースに参加できません。",
+          "history_conflict": "両方の履歴を統合できません。",
+          "peer_upgrade_required": "相手のデバイスで UniClipboard の更新が必要です。",
+          "cancelled": "この参加は取り消されました。",
+          "removed_before_activation": "確認前に相手がこのデバイスを削除しました。"
+        }
       }
     },
     "spaceReady": {

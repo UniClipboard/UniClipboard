@@ -34,12 +34,12 @@ import {
   QUICK_FILTER_ORDER,
 } from './constants'
 import { useHistorySearch } from './hooks/useHistorySearch'
+import { useQuickPanelNavigation, useQuickPanelSearchFilters } from './hooks/useQuickPanelState'
 import type {
   PreviewAction,
   PreviewSide,
   PreviewState,
   QuickPanelContextMenuActions,
-  TimeRangePreset,
 } from './types'
 
 const log = createLogger('clipboard-history-panel')
@@ -146,29 +146,29 @@ const ClipboardHistoryPanelSession: React.FC<ClipboardHistoryPanelProps> = ({
       })
   }, [dispatch])
 
-  const [searchQuery, setSearchQuery] = useState('')
+  const {
+    filters,
+    setQuery,
+    setActiveFilter,
+    setTagFilter,
+    setSourceFilter,
+    setExtensionFilter,
+    setTimeRange,
+    cycleActiveFilter,
+  } = useQuickPanelSearchFilters()
   // Debounce typing only; clearing must hit the data layer immediately so the
   // list does not keep showing matches for ~300ms after the box is empty. The
   // `.trim()` here only gates empty-vs-not (whitespace-only reads as cleared);
   // `useHistorySearch` owns the actual query normalization for the daemon call.
-  const debouncedSearchQuery = useDebounce(searchQuery, 300)
-  const activeSearchQuery = searchQuery.trim() === '' ? '' : debouncedSearchQuery
-  const [activeFilter, setActiveFilter] = useState<Filter>(Filter.All)
-  const [tagFilter, setTagFilter] = useState<string | null>(null)
-  const [sourceFilter, setSourceFilter] = useState<string | null>(null)
-  const [extensionFilter, setExtensionFilter] = useState<string | null>(null)
-  const [timeRange, setTimeRange] = useState<TimeRangePreset>('all_time')
+  const debouncedSearchQuery = useDebounce(filters.query, 300)
+  const activeSearchQuery = filters.query.trim() === '' ? '' : debouncedSearchQuery
   const searchableTags = useSearchTags()
   const sourceOptions = useHistorySourceOptions()
 
-  const [selectedIndex, setSelectedIndex] = useState(0)
-  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null)
-  const [isKeyboardNav, setIsKeyboardNav] = useState(true)
   const [unlocking, setUnlocking] = useState(false)
   const [unlockError, setUnlockError] = useState<string | null>(null)
   const [uiScale, setUiScale] = useState(() => readStoredUiScale())
   const [previewState, dispatchPreview] = useReducer(previewReducer, initialPreviewState)
-  const [hasPointerMovedSinceShow, setHasPointerMovedSinceShow] = useState(false)
   // Optimistic favorite overrides keyed by entry id, mirroring the history
   // controller: the live list does not re-fetch on toggle, so a flip is
   // reflected here immediately (and reverted if the backend call fails) — this
@@ -177,7 +177,7 @@ const ClipboardHistoryPanelSession: React.FC<ClipboardHistoryPanelProps> = ({
 
   const searchInputRef = useRef<HTMLInputElement>(null)
   const historyPaneRef = useRef<HTMLDivElement>(null)
-  const itemRefs = useRef<Map<number, HTMLDivElement>>(new Map())
+  const [itemRefs] = useState(() => new Map<number, HTMLDivElement>())
   const previewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const previewLayoutTokenRef = useRef(0)
   const [skipTransition, setSkipTransition] = useState(showRequestId !== 0)
@@ -193,16 +193,24 @@ const ClipboardHistoryPanelSession: React.FC<ClipboardHistoryPanelProps> = ({
   const { filteredItems, previewItems, isSearching, searchTotal, loading, isLocked, removeItem } =
     useHistorySearch({
       searchQuery: activeSearchQuery,
-      activeFilter,
-      tagFilter,
-      sourceFilter,
-      extensionFilter,
-      timeRange,
+      activeFilter: filters.activeFilter,
+      tagFilter: filters.tagFilter,
+      sourceFilter: filters.sourceFilter,
+      extensionFilter: filters.extensionFilter,
+      timeRange: filters.timeRange,
     })
   const visibleUnlocking = isLocked && unlocking
   const visibleUnlockError = isLocked ? unlockError : null
-  const [previousFilteredCount, setPreviousFilteredCount] = useState(filteredItems.length)
-  const [preserveSelectionOnNextListChange, setPreserveSelectionOnNextListChange] = useState(false)
+  const {
+    navigation,
+    select: selectIndex,
+    move: moveSelection,
+    setHoveredIndex,
+    activateKeyboard,
+    notePointerMoved,
+    preserveSelection,
+  } = useQuickPanelNavigation(filteredItems.length)
+  const { selectedIndex, hoveredIndex, isKeyboardNav, hasPointerMovedSinceShow } = navigation
 
   const clearPreviewTimer = useCallback(() => {
     if (previewTimerRef.current) {
@@ -261,7 +269,7 @@ const ClipboardHistoryPanelSession: React.FC<ClipboardHistoryPanelProps> = ({
 
     window.addEventListener('keydown', handleWindowKeyDown)
     return () => window.removeEventListener('keydown', handleWindowKeyDown)
-  }, [])
+  }, [setHoveredIndex])
 
   const handleUnlock = useCallback(async () => {
     setUnlocking(true)
@@ -281,21 +289,10 @@ const ClipboardHistoryPanelSession: React.FC<ClipboardHistoryPanelProps> = ({
     if (isLocked) closePreview(false)
   }, [closePreview, isLocked])
 
-  // Reset selectedIndex in the same render that receives a different visible
-  // result count, so a new filter never paints the stale selected row.
-  if (previousFilteredCount !== filteredItems.length) {
-    setPreviousFilteredCount(filteredItems.length)
-    if (preserveSelectionOnNextListChange) {
-      setPreserveSelectionOnNextListChange(false)
-    } else if (selectedIndex !== 0) {
-      setSelectedIndex(0)
-    }
-  }
-
   useEffect(() => {
-    const el = itemRefs.current.get(selectedIndex)
+    const el = itemRefs.get(selectedIndex)
     el?.scrollIntoView?.({ block: 'nearest' })
-  }, [selectedIndex])
+  }, [itemRefs, selectedIndex])
 
   const selectedItem = filteredItems[selectedIndex] ?? null
   const hoveredItem = hoveredIndex != null ? (filteredItems[hoveredIndex] ?? null) : null
@@ -398,7 +395,7 @@ const ClipboardHistoryPanelSession: React.FC<ClipboardHistoryPanelProps> = ({
       dispatchPreview({ type: 'set-focus-source', source: 'hover' })
       setHoveredIndex(index)
     },
-    [filteredItems, hasPointerMovedSinceShow, isKeyboardNav]
+    [filteredItems, hasPointerMovedSinceShow, isKeyboardNav, setHoveredIndex]
   )
 
   const handleDelete = useCallback(
@@ -407,20 +404,20 @@ const ClipboardHistoryPanelSession: React.FC<ClipboardHistoryPanelProps> = ({
       if (!item) return
       try {
         await deleteClipboardEntry(item.id)
-        setPreserveSelectionOnNextListChange(true)
+        preserveSelection()
         clearPreviewTimer()
         setHoveredIndex(null)
         dispatchPreview({ type: 'suppress', value: false })
         dispatchPreview({ type: 'set-focus-source', source: 'selection' })
         const remainingItems = filteredItems.filter((_, i) => i !== index)
         const nextIndex = remainingItems.length > 0 ? Math.min(index, remainingItems.length - 1) : 0
-        setSelectedIndex(nextIndex)
+        selectIndex(nextIndex)
         removeItem(item.id)
       } catch (err) {
         log.error({ err }, 'Failed to delete clipboard entry')
       }
     },
-    [clearPreviewTimer, filteredItems, removeItem]
+    [clearPreviewTimer, filteredItems, preserveSelection, removeItem, selectIndex, setHoveredIndex]
   )
 
   // ── Right-click context menu (reuses the history menu) ──────────────
@@ -495,12 +492,15 @@ const ClipboardHistoryPanelSession: React.FC<ClipboardHistoryPanelProps> = ({
   // always the one the menu acts on (otherwise the keyboard-selected row stays
   // highlighted while the menu targets a different, right-clicked row). Preview
   // follows the selection; Base UI opens the menu on the same event.
-  const handleContextMenuSelect = useCallback((index: number) => {
-    dispatchPreview({ type: 'suppress', value: false })
-    dispatchPreview({ type: 'set-focus-source', source: 'selection' })
-    setHoveredIndex(null)
-    setSelectedIndex(index)
-  }, [])
+  const handleContextMenuSelect = useCallback(
+    (index: number) => {
+      dispatchPreview({ type: 'suppress', value: false })
+      dispatchPreview({ type: 'set-focus-source', source: 'selection' })
+      setHoveredIndex(null)
+      selectIndex(index)
+    },
+    [selectIndex, setHoveredIndex]
+  )
 
   // Rich items backing the menu, index-aligned with `filteredItems` (both derive
   // from the same live list), with optimistic favorite flips applied on top.
@@ -521,28 +521,31 @@ const ClipboardHistoryPanelSession: React.FC<ClipboardHistoryPanelProps> = ({
     [handleContextCopy, handleContextDelete, handleContextToggleFavorite, handlePasteFilePaths]
   )
 
-  const handleSearchChange = useCallback((value: string) => {
-    dispatchPreview({ type: 'suppress', value: false })
-    dispatchPreview({ type: 'set-focus-source', source: 'selection' })
-    setHoveredIndex(null)
-    setSearchQuery(value)
-  }, [])
+  const handleSearchChange = useCallback(
+    (value: string) => {
+      dispatchPreview({ type: 'suppress', value: false })
+      dispatchPreview({ type: 'set-focus-source', source: 'selection' })
+      setHoveredIndex(null)
+      setQuery(value)
+    },
+    [setHoveredIndex, setQuery]
+  )
 
   const prepareForFilterChange = useCallback(() => {
     dispatchPreview({ type: 'suppress', value: false })
     dispatchPreview({ type: 'set-focus-source', source: 'selection' })
     setHoveredIndex(null)
-    setIsKeyboardNav(true)
-    setSelectedIndex(0)
+    activateKeyboard()
+    selectIndex(0)
     searchInputRef.current?.focus()
-  }, [])
+  }, [activateKeyboard, selectIndex, setHoveredIndex])
 
   const handleActiveFilterChange = useCallback(
     (filter: Filter) => {
       setActiveFilter(filter)
       prepareForFilterChange()
     },
-    [prepareForFilterChange]
+    [prepareForFilterChange, setActiveFilter]
   )
 
   const handleTagFilterChange = useCallback(
@@ -550,7 +553,7 @@ const ClipboardHistoryPanelSession: React.FC<ClipboardHistoryPanelProps> = ({
       setTagFilter(tag)
       prepareForFilterChange()
     },
-    [prepareForFilterChange]
+    [prepareForFilterChange, setTagFilter]
   )
 
   const handleKeyDown = useCallback(
@@ -570,16 +573,10 @@ const ClipboardHistoryPanelSession: React.FC<ClipboardHistoryPanelProps> = ({
         e.preventDefault()
         dispatchPreview({ type: 'suppress', value: false })
         dispatchPreview({ type: 'set-focus-source', source: 'selection' })
-        setIsKeyboardNav(true)
+        activateKeyboard()
         setHoveredIndex(null)
-        setSelectedIndex(0)
-        setActiveFilter(prev => {
-          const count = QUICK_FILTER_ORDER.length
-          // A filter outside the cycle (e.g. Favorited) maps to All as the base.
-          const base = Math.max(0, QUICK_FILTER_ORDER.indexOf(prev))
-          const next = e.shiftKey ? (base - 1 + count) % count : (base + 1) % count
-          return QUICK_FILTER_ORDER[next]
-        })
+        selectIndex(0)
+        cycleActiveFilter(QUICK_FILTER_ORDER, e.shiftKey)
         return
       }
 
@@ -655,11 +652,9 @@ const ClipboardHistoryPanelSession: React.FC<ClipboardHistoryPanelProps> = ({
         e.preventDefault()
         dispatchPreview({ type: 'suppress', value: false })
         dispatchPreview({ type: 'set-focus-source', source: 'selection' })
-        setIsKeyboardNav(true)
+        activateKeyboard()
         setHoveredIndex(null)
-        setSelectedIndex(prev =>
-          e.key === 'n' ? Math.min(prev + 1, filteredItems.length - 1) : Math.max(prev - 1, 0)
-        )
+        moveSelection(e.key === 'n' ? 1 : -1)
         return
       }
 
@@ -669,13 +664,9 @@ const ClipboardHistoryPanelSession: React.FC<ClipboardHistoryPanelProps> = ({
           e.preventDefault()
           dispatchPreview({ type: 'suppress', value: false })
           dispatchPreview({ type: 'set-focus-source', source: 'selection' })
-          setIsKeyboardNav(true)
+          activateKeyboard()
           setHoveredIndex(null)
-          setSelectedIndex(prev =>
-            e.key === 'ArrowDown'
-              ? Math.min(prev + 1, filteredItems.length - 1)
-              : Math.max(prev - 1, 0)
-          )
+          moveSelection(e.key === 'ArrowDown' ? 1 : -1)
           break
         case 'Enter':
           e.preventDefault()
@@ -693,12 +684,17 @@ const ClipboardHistoryPanelSession: React.FC<ClipboardHistoryPanelProps> = ({
       isSearching,
       isLocked,
       loading,
+      activateKeyboard,
+      cycleActiveFilter,
+      moveSelection,
       selectedIndex,
+      selectIndex,
+      setHoveredIndex,
       visibleUnlocking,
     ]
   )
 
-  const handleHistoryMouseMove = useCallback(() => setHasPointerMovedSinceShow(true), [])
+  const handleHistoryMouseMove = notePointerMoved
 
   return (
     <div
@@ -725,9 +721,7 @@ const ClipboardHistoryPanelSession: React.FC<ClipboardHistoryPanelProps> = ({
       >
         <HistoryPane
           filteredItems={filteredItems}
-          hasPointerMovedSinceShow={hasPointerMovedSinceShow}
-          isKeyboardNav={isKeyboardNav}
-          isLocked={isLocked}
+          interaction={{ hasPointerMovedSinceShow, isKeyboardNav, isLocked, selectedIndex }}
           isSearching={isSearching}
           searchTotal={searchTotal}
           itemRefs={itemRefs}
@@ -739,20 +733,18 @@ const ClipboardHistoryPanelSession: React.FC<ClipboardHistoryPanelProps> = ({
           onContextMenuSelect={handleContextMenuSelect}
           onUnlock={handleUnlock}
           searchInputRef={searchInputRef}
-          selectedIndex={selectedIndex}
           setHoveredIndex={setHoveredIndex}
-          setIsKeyboardNav={setIsKeyboardNav}
           unlocking={visibleUnlocking}
           unlockError={visibleUnlockError}
-          activeFilter={activeFilter}
+          activeFilter={filters.activeFilter}
           setActiveFilter={handleActiveFilterChange}
-          tagFilter={tagFilter}
+          tagFilter={filters.tagFilter}
           setTagFilter={handleTagFilterChange}
-          sourceFilter={sourceFilter}
+          sourceFilter={filters.sourceFilter}
           setSourceFilter={setSourceFilter}
-          extensionFilter={extensionFilter}
+          extensionFilter={filters.extensionFilter}
           setExtensionFilter={setExtensionFilter}
-          timeRange={timeRange}
+          timeRange={filters.timeRange}
           setTimeRange={setTimeRange}
           searchableTags={searchableTags}
           sourceOptions={sourceOptions}

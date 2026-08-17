@@ -22,12 +22,15 @@ import QuickPanelTypeFilterBar from './QuickPanelTypeFilterBar'
 
 interface HistoryPaneProps {
   filteredItems: DisplayItem[]
-  hasPointerMovedSinceShow: boolean
-  isKeyboardNav: boolean
-  isLocked: boolean
+  interaction: {
+    hasPointerMovedSinceShow: boolean
+    isKeyboardNav: boolean
+    isLocked: boolean
+    selectedIndex: number
+  }
   isSearching: boolean
   searchTotal: number | null
-  itemRefs: React.MutableRefObject<Map<number, HTMLDivElement>>
+  itemRefs: Map<number, HTMLDivElement>
   loading: boolean
   onHover: (index: number) => void
   onHistoryMouseMove: () => void
@@ -37,9 +40,7 @@ interface HistoryPaneProps {
   onContextMenuSelect: (index: number) => void
   onUnlock: () => void
   searchInputRef: React.RefObject<HTMLInputElement | null>
-  selectedIndex: number
-  setHoveredIndex: React.Dispatch<React.SetStateAction<number | null>>
-  setIsKeyboardNav: React.Dispatch<React.SetStateAction<boolean>>
+  setHoveredIndex: (index: number | null) => void
   unlocking: boolean
   unlockError: string | null
   activeFilter: Filter
@@ -77,21 +78,19 @@ function getShortcutKey(index: number): string | undefined {
  * arrow-key navigation can `scrollIntoView` the selected row (see
  * `ClipboardHistoryPanel`'s `itemRefs`-keyed effect). */
 function makeItemRef(
-  itemRefs: React.MutableRefObject<Map<number, HTMLDivElement>>,
+  itemRefs: Map<number, HTMLDivElement>,
   index: number
 ): (el: HTMLDivElement | null) => void {
   return el => {
-    if (el) itemRefs.current.set(index, el)
-    else itemRefs.current.delete(index)
+    if (el) itemRefs.set(index, el)
+    else itemRefs.delete(index)
   }
 }
 
 const HistoryPane: React.FC<HistoryPaneProps> = React.memo(
   ({
     filteredItems,
-    hasPointerMovedSinceShow,
-    isKeyboardNav,
-    isLocked,
+    interaction,
     isSearching,
     searchTotal,
     itemRefs,
@@ -103,9 +102,7 @@ const HistoryPane: React.FC<HistoryPaneProps> = React.memo(
     onContextMenuSelect,
     onUnlock,
     searchInputRef,
-    selectedIndex,
     setHoveredIndex,
-    setIsKeyboardNav,
     unlocking,
     unlockError,
     activeFilter,
@@ -124,6 +121,7 @@ const HistoryPane: React.FC<HistoryPaneProps> = React.memo(
     contextItems,
     contextActions,
   }) => {
+    const { hasPointerMovedSinceShow, isKeyboardNav, isLocked, selectedIndex } = interaction
     const { t } = useTranslation(undefined, { keyPrefix: 'quickPanel.history' })
     const { isLinux, isTauri } = usePlatform()
     const aspectRatioEpoch = useQuickPanelImageAspectRatioEpoch()
@@ -224,8 +222,7 @@ const HistoryPane: React.FC<HistoryPaneProps> = React.memo(
                 showImageWall && 'overflow-y-scroll px-2 py-2 [scrollbar-gutter:stable]'
               )}
               onMouseMove={() => {
-                if (!hasPointerMovedSinceShow) onHistoryMouseMove()
-                if (isKeyboardNav) setIsKeyboardNav(false)
+                if (!hasPointerMovedSinceShow || isKeyboardNav) onHistoryMouseMove()
               }}
               onMouseLeave={() => setHoveredIndex(null)}
             >

@@ -348,6 +348,11 @@ export const commands = {
 	trace_id: string,
 	timestamp: number,
 } | null) => typedError<null, string>(__TAURI_INVOKE("finalize_quick_panel_show", { trace })),
+	/**  Mark the quick-panel frontend ready to receive a queued toggle request. */
+	markQuickPanelReady: (trace: {
+	trace_id: string,
+	timestamp: number,
+} | null) => typedError<null, string>(__TAURI_INVOKE("mark_quick_panel_ready", { trace })),
 	/**  Return the current platform capability for global modifier observation. */
 	getQuickPanelDoubleTapAvailability: (trace: {
 	trace_id: string,

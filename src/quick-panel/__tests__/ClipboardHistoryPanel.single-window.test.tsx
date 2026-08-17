@@ -2,6 +2,7 @@ import { configureStore } from '@reduxjs/toolkit'
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ReactElement } from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
 import { Provider } from 'react-redux'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { deleteClipboardEntry, restoreClipboardEntry } from '@/api/daemon'
@@ -179,6 +180,17 @@ describe('ClipboardHistoryPanel single-window preview', () => {
     vi.clearAllMocks()
     invokeMock.mockResolvedValue(undefined)
     Element.prototype.scrollIntoView = vi.fn()
+  })
+
+  it('starts a shown session without a preview transition', () => {
+    const store = configureStore({ reducer: { devices: devicesReducer } })
+    const markup = renderToStaticMarkup(
+      <Provider store={store}>
+        <ClipboardHistoryPanel showRequestId={1} />
+      </Provider>
+    )
+
+    expect(markup).not.toContain('transition-[opacity,transform]')
   })
 
   it('renders preview content inside the same panel and requests expanded mode', async () => {

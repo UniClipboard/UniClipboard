@@ -10,19 +10,15 @@ import { commands } from '@/lib/ipc'
 import { createLogger } from '@/lib/logger'
 import { readStoredUiScale } from '@/lib/ui-scale'
 import ClipboardHistoryPanel from './ClipboardHistoryPanel'
+import { getQuickPanelLayoutClassNames } from './constants'
 
 const log = createLogger('quick-panel-app')
 const SHOW_FALLBACK_DELAY_MS = 50
 
-const loadingClassName =
-  'flex h-screen w-screen items-center justify-center bg-transparent text-[13px] text-muted-foreground'
-
-const errorClassName =
-  'flex h-screen w-screen items-center justify-center bg-transparent px-6 text-center text-[13px] text-destructive'
-
 const QuickPanelApp: React.FC = () => {
   const { t } = useTranslation(undefined, { keyPrefix: 'quickPanel' })
-  const { reduceVisualEffects } = usePlatform()
+  const { isLinux, isTauri, reduceVisualEffects } = usePlatform()
+  const layoutClassNames = getQuickPanelLayoutClassNames(isLinux && isTauri)
   const [daemonReady, setDaemonReady] = useState(daemonClient.initialized)
   const [bootstrapError, setBootstrapError] = useState<string | null>(null)
   const [showRequestId, setShowRequestId] = useState(0)
@@ -72,7 +68,18 @@ const QuickPanelApp: React.FC = () => {
       }, SHOW_FALLBACK_DELAY_MS)
     })
 
+    let active = true
+    void unlistenPrepare
+      .then(() => {
+        if (!active) return
+        return commands.markQuickPanelReady()
+      })
+      .catch(err => {
+        log.warn({ err }, 'failed to mark quick panel ready')
+      })
+
     return () => {
+      active = false
       clearFinalizeTimer()
       unlistenPrepare.then(fn => fn())
     }
@@ -105,9 +112,17 @@ const QuickPanelApp: React.FC = () => {
   let content: React.ReactNode
   if (!daemonReady) {
     content = bootstrapError ? (
-      <div className={errorClassName}>{t('unavailable')}</div>
+      <div
+        className={`flex h-screen w-screen items-center justify-center ${layoutClassNames.statusSurface} px-6 text-center text-[13px] text-destructive`}
+      >
+        {t('unavailable')}
+      </div>
     ) : (
-      <div className={loadingClassName}>{t('loading')}</div>
+      <div
+        className={`flex h-screen w-screen items-center justify-center ${layoutClassNames.statusSurface} text-[13px] text-muted-foreground`}
+      >
+        {t('loading')}
+      </div>
     )
   } else {
     content = <ClipboardHistoryPanel showRequestId={showRequestId} onShowPrepared={finalizeShow} />

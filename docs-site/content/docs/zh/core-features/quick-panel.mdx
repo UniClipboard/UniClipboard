@@ -22,6 +22,12 @@ import { Tab, Tabs } from 'fumadocs-ui/components/tabs'
   快捷面板](../guides/settings#快捷面板) 里整体关掉它 —— 关闭即时反注册全局快捷键。
 </Callout>
 
+原生 Wayland 桌面环境如果无法提供全局快捷键，可以在窗口管理器中绑定下面的命令。程序尚未运行时会启动并打开面板；程序已运行时会切换面板的显示状态：
+
+```bash
+uniclipboard --quick-panel
+```
+
 ## 键盘操作
 
 面板设计为完全用键盘驱动。下面这套键位可在打开后立即用：

@@ -70,6 +70,19 @@ describe('QuickPanelApp', () => {
     })
   })
 
+  it('announces readiness after subscribing to show requests', async () => {
+    connectDaemonWsMock.mockReturnValue(deferred().promise)
+
+    render(<QuickPanelApp />)
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith(
+        'mark_quick_panel_ready',
+        expect.objectContaining({ trace: expect.any(Object) })
+      )
+    })
+  })
+
   it('finalizes show events even while daemon bootstrap is still pending', async () => {
     const pendingBootstrap = deferred()
     connectDaemonWsMock.mockReturnValue(pendingBootstrap.promise)

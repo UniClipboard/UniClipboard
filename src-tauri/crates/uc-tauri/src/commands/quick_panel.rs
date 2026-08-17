@@ -2,7 +2,7 @@
 //! 快捷面板相关的 Tauri 命令
 
 use serde::{Deserialize, Serialize};
-use tauri::State;
+use tauri::{Manager, State};
 use tracing::{error, info, info_span, Instrument};
 use uc_daemon_client::{DaemonConnectionState, DaemonSettingsClient};
 use uc_daemon_contract::api::dto::settings::{
@@ -237,6 +237,38 @@ pub async fn finalize_quick_panel_show(
     .await
 }
 
+/// Mark the quick-panel frontend ready to receive a queued toggle request.
+#[tauri::command]
+#[specta::specta]
+pub async fn mark_quick_panel_ready(
+    app: tauri::AppHandle,
+    _trace: Option<TraceMetadata>,
+) -> Result<(), String> {
+    let span = info_span!(
+        "command.quick_panel.mark_ready",
+        trace_id = tracing::field::Empty,
+        trace_ts = tracing::field::Empty,
+    );
+    record_trace_fields(&span, &_trace);
+
+    async {
+        if app
+            .state::<quick_panel::QuickPanelToggleController>()
+            .mark_panel_ready()
+        {
+            let handle = app.clone();
+            app.run_on_main_thread(move || quick_panel::toggle(&handle))
+                .map_err(|error| {
+                    format!("Failed to dispatch quick panel toggle to main thread: {error}")
+                })?;
+            info!("Applied queued quick panel toggle after frontend readiness");
+        }
+        Ok(())
+    }
+    .instrument(span)
+    .await
+}
+
 /// Return the current platform capability for global modifier observation.
 #[tauri::command]
 #[specta::specta]
@@ -434,6 +466,8 @@ pub async fn set_quick_panel_enabled(
         match client.update_settings(patch).await {
             Ok(_) => {
                 shortcut_registry.replace(target_shortcuts);
+                app.state::<quick_panel::QuickPanelToggleController>()
+                    .set_enabled(enabled);
                 Ok(())
             }
             Err(err) => {
@@ -561,7 +595,7 @@ async fn apply_global_shortcuts_on_main_thread(
             let toggle_handle = handle.clone();
             let registry =
                 quick_panel::TauriGlobalShortcutRegistry::new(handle.clone(), move || {
-                    quick_panel::toggle(&toggle_handle)
+                    quick_panel::request_toggle(&toggle_handle)
                 });
             shortcuts::update_shortcuts(&registry, &old, &new)
                 .map_err(|e| CommandError::Conflict(e.to_string()))?;

@@ -248,10 +248,10 @@ async fn update_global_shortcuts_on_main_thread(
 
     app.run_on_main_thread(move || {
         // 在 main thread 闭包内构造 registry：捕获 AppHandle 用作回调上下文，
-        // 回调闭包绑定 `quick_panel::toggle`（GUI shell 自身的具体动作）。
+        // 回调闭包绑定 `quick_panel::request_toggle`（GUI shell 自身的具体动作）。
         let toggle_handle = handle.clone();
         let registry = quick_panel::TauriGlobalShortcutRegistry::new(handle.clone(), move || {
-            quick_panel::toggle(&toggle_handle)
+            quick_panel::request_toggle(&toggle_handle)
         });
         let result = shortcuts::update_shortcuts(&registry, &old, &new);
         let _ = tx.send(result);

@@ -68,12 +68,138 @@ const PANEL_GAP: f64 = 8.0;
 const MIN_UI_SCALE: f64 = 0.8;
 const MAX_UI_SCALE: f64 = 1.5;
 
-/// Space (logical pixels) reserved around the cards for shadows and rounded corners.
-/// This padding is included in the window size but remains transparent in the UI.
+/// Space (logical pixels) reserved around floating cards on macOS and Windows.
+#[cfg(not(target_os = "linux"))]
 const WINDOW_PADDING: f64 = 16.0;
 
 /// Tauri window label for the quick panel.
 pub(crate) const PANEL_LABEL: &str = "quick-panel";
+
+#[derive(Default)]
+pub(crate) struct QuickPanelToggleController {
+    state: Mutex<QuickPanelToggleState>,
+}
+
+#[derive(Default)]
+struct QuickPanelToggleState {
+    configured: bool,
+    enabled: bool,
+    panel_ready: bool,
+    pending_toggle: bool,
+}
+
+impl QuickPanelToggleController {
+    pub(crate) fn configure(&self, enabled: bool) -> bool {
+        let mut state = self.lock_state();
+        state.configured = true;
+        state.enabled = enabled;
+        if !enabled {
+            state.pending_toggle = false;
+            return false;
+        }
+        if state.panel_ready {
+            return std::mem::take(&mut state.pending_toggle);
+        }
+        false
+    }
+
+    pub(crate) fn set_enabled(&self, enabled: bool) {
+        let mut state = self.lock_state();
+        state.configured = true;
+        state.enabled = enabled;
+        if !enabled {
+            state.pending_toggle = false;
+        }
+    }
+
+    pub(crate) fn request_toggle(&self) -> bool {
+        let mut state = self.lock_state();
+        if state.configured && !state.enabled {
+            return false;
+        }
+        if !state.configured || !state.panel_ready {
+            state.pending_toggle = !state.pending_toggle;
+            return false;
+        }
+        true
+    }
+
+    pub(crate) fn mark_panel_ready(&self) -> bool {
+        let mut state = self.lock_state();
+        state.panel_ready = true;
+        if state.enabled {
+            return std::mem::take(&mut state.pending_toggle);
+        }
+        false
+    }
+
+    fn lock_state(&self) -> std::sync::MutexGuard<'_, QuickPanelToggleState> {
+        match self.state.lock() {
+            Ok(state) => state,
+            Err(poisoned) => {
+                error!("Quick panel toggle controller lock was poisoned; recovering state");
+                poisoned.into_inner()
+            }
+        }
+    }
+}
+
+/// Request a quick-panel toggle after the user-visible panel is ready.
+///
+/// Requests arriving during startup are preserved as toggle parity so repeated
+/// presses before readiness have the same result as repeated presses after it.
+pub(crate) fn request_toggle(app: &tauri::AppHandle) {
+    if app.state::<QuickPanelToggleController>().request_toggle() {
+        let handle = app.clone();
+        if let Err(error) = app.run_on_main_thread(move || toggle(&handle)) {
+            error!(error = %error, "Failed to dispatch quick panel toggle to main thread");
+        }
+    }
+}
+
+#[cfg(test)]
+mod toggle_controller_tests {
+    use super::QuickPanelToggleController;
+
+    #[test]
+    fn defers_a_toggle_until_settings_and_panel_are_ready() {
+        let controller = QuickPanelToggleController::default();
+
+        assert!(!controller.request_toggle());
+        assert!(!controller.mark_panel_ready());
+        assert!(controller.configure(true));
+    }
+
+    #[test]
+    fn ignores_toggles_when_the_panel_is_disabled() {
+        let controller = QuickPanelToggleController::default();
+
+        assert!(!controller.configure(false));
+        assert!(!controller.request_toggle());
+        controller.set_enabled(true);
+        assert!(!controller.mark_panel_ready());
+    }
+
+    #[test]
+    fn stops_accepting_toggles_when_disabled_after_startup() {
+        let controller = QuickPanelToggleController::default();
+
+        assert!(!controller.configure(true));
+        assert!(!controller.mark_panel_ready());
+        controller.set_enabled(false);
+        assert!(!controller.request_toggle());
+    }
+
+    #[test]
+    fn two_deferred_toggles_cancel_each_other() {
+        let controller = QuickPanelToggleController::default();
+
+        assert!(!controller.request_toggle());
+        assert!(!controller.request_toggle());
+        assert!(!controller.configure(true));
+        assert!(!controller.mark_panel_ready());
+    }
+}
 
 // ── Cross-platform helpers ─────────────────────────────────────────────
 
@@ -364,18 +490,42 @@ fn normalize_ui_scale(scale: f64) -> f64 {
 }
 
 fn panel_dimensions(scale: f64, preview_expanded: bool) -> (f64, f64) {
+    panel_dimensions_for_window_padding(scale, preview_expanded, window_padding())
+}
+
+fn panel_dimensions_for_window_padding(
+    scale: f64,
+    preview_expanded: bool,
+    window_padding: f64,
+) -> (f64, f64) {
     let normalized_scale = normalize_ui_scale(scale);
     let width = if preview_expanded {
         (BASE_PANEL_WIDTH + PANEL_GAP + BASE_PREVIEW_WIDTH) * normalized_scale
-            + (WINDOW_PADDING * 2.0)
+            + (window_padding * 2.0)
     } else {
-        (BASE_PANEL_WIDTH * normalized_scale) + (WINDOW_PADDING * 2.0)
+        (BASE_PANEL_WIDTH * normalized_scale) + (window_padding * 2.0)
     };
 
     (
         width,
-        (BASE_PANEL_HEIGHT * normalized_scale) + (WINDOW_PADDING * 2.0),
+        (BASE_PANEL_HEIGHT * normalized_scale) + (window_padding * 2.0),
     )
+}
+
+fn window_padding() -> f64 {
+    #[cfg(target_os = "linux")]
+    {
+        0.0
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    {
+        WINDOW_PADDING
+    }
+}
+
+fn uses_transparent_window() -> bool {
+    !cfg!(target_os = "linux")
 }
 
 fn remember_panel_origin(x: f64, y: f64) {
@@ -443,7 +593,7 @@ pub fn pre_create(app: &tauri::AppHandle) {
         .inner_size(initial_width, initial_height)
         .position(-9999.0, -9999.0)
         .decorations(false)
-        .transparent(true)
+        .transparent(uses_transparent_window())
         .shadow(false)
         .always_on_top(true)
         .visible(false)
@@ -792,6 +942,23 @@ pub fn type_file_paths(app: &tauri::AppHandle, file_paths: &[String]) -> Result<
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn linux_dimensions_do_not_reserve_transparent_outer_padding() {
+        assert_eq!(
+            panel_dimensions_for_window_padding(1.0, false, 0.0),
+            (360.0, 420.0)
+        );
+        assert_eq!(
+            panel_dimensions_for_window_padding(1.0, true, 0.0),
+            (728.0, 420.0)
+        );
+    }
+
+    #[test]
+    fn window_transparency_matches_the_current_platform() {
+        assert_eq!(uses_transparent_window(), !cfg!(target_os = "linux"));
+    }
 
     // Monitor spanning logical [0, 1000) on each axis for readability.
     const MON_ORIGIN: f64 = 0.0;

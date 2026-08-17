@@ -6,6 +6,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { Provider } from 'react-redux'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { deleteClipboardEntry, restoreClipboardEntry } from '@/api/daemon'
+import { usePlatform } from '@/hooks/usePlatform'
 import { __resetResendActionStoreForTests } from '@/hooks/useResendAction'
 import i18n from '@/i18n'
 import { playUiSound } from '@/lib/ui-sound'
@@ -40,6 +41,7 @@ vi.mock('@tauri-apps/api/event', () => ({
 vi.mock('@/hooks/useThemeSync', () => ({ useThemeSync: vi.fn() }))
 vi.mock('@/hooks/useHistorySourceOptions', () => ({ useHistorySourceOptions: () => [] }))
 vi.mock('@/hooks/useShortcut', () => ({ useShortcut: vi.fn() }))
+vi.mock('@/hooks/usePlatform', () => ({ usePlatform: vi.fn() }))
 vi.mock('@/lib/ui-sound', () => ({ playUiSound: vi.fn() }))
 
 // The panel now sources its list from the unified live browse/search hook; mock
@@ -179,6 +181,13 @@ describe('ClipboardHistoryPanel single-window preview', () => {
     vi.useRealTimers()
     vi.clearAllMocks()
     invokeMock.mockResolvedValue(undefined)
+    vi.mocked(usePlatform).mockReturnValue({
+      isWindows: false,
+      isMac: true,
+      isLinux: false,
+      isTauri: true,
+      reduceVisualEffects: false,
+    })
     Element.prototype.scrollIntoView = vi.fn()
   })
 
@@ -584,6 +593,22 @@ describe('ClipboardHistoryPanel hover/focus keyboard shortcuts', () => {
     await waitFor(() => {
       expect(invokeMock).toHaveBeenCalledWith('paste_to_previous_app', expect.any(Object))
     })
+  })
+
+  it('does not treat the Windows Win+V opener as a paste command', () => {
+    vi.mocked(usePlatform).mockReturnValue({
+      isWindows: true,
+      isMac: false,
+      isLinux: false,
+      isTauri: true,
+      reduceVisualEffects: true,
+    })
+    renderPanel()
+
+    fireEvent.keyDown(searchBox(), { key: 'v', metaKey: true })
+
+    expect(restoreClipboardEntry).not.toHaveBeenCalled()
+    expect(invokeMock).not.toHaveBeenCalledWith('paste_to_previous_app', expect.any(Object))
   })
 
   it('returns keyboard control to the results and resets selection after clicking a tag', async () => {

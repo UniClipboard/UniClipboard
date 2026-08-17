@@ -130,7 +130,7 @@ const ClipboardHistoryPanelSession: React.FC<ClipboardHistoryPanelProps> = ({
 }) => {
   const { t } = useTranslation()
   const dispatch = useAppDispatch()
-  const { isLinux, isTauri } = usePlatform()
+  const { isLinux, isMac, isTauri } = usePlatform()
   const isLinuxQuickPanel = isLinux && isTauri
 
   // Refresh the paired-device list so the row context menu's "send to device"
@@ -589,7 +589,7 @@ const ClipboardHistoryPanelSession: React.FC<ClipboardHistoryPanelProps> = ({
         const usesCopyOnResult =
           (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'c' && !hasTextSelection
         const usesPasteOnResult =
-          (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'v' && input.value === ''
+          (e.ctrlKey || (isMac && e.metaKey)) && e.key.toLowerCase() === 'v' && input.value === ''
         const isResultShortcut =
           e.key === 'Enter' ||
           e.key === 'ArrowDown' ||
@@ -641,7 +641,7 @@ const ClipboardHistoryPanelSession: React.FC<ClipboardHistoryPanelProps> = ({
       // foreground app via the same `handleSelect` path. Only takes over when
       // the search input is empty — once the user has typed a query, Cmd/Ctrl+V
       // is expected to paste text into the search box, not act on a row.
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'v') {
+      if ((e.ctrlKey || (isMac && e.metaKey)) && e.key.toLowerCase() === 'v') {
         if (e.currentTarget.value !== '') return
         e.preventDefault()
         void handleSelect(activeIndex, e.altKey)
@@ -681,6 +681,7 @@ const ClipboardHistoryPanelSession: React.FC<ClipboardHistoryPanelProps> = ({
       handleSelect,
       handleUnlock,
       hoveredIndex,
+      isMac,
       isSearching,
       isLocked,
       loading,

@@ -227,7 +227,7 @@ impl Drop for WinVInterceptor {
 fn run_hook_thread(ready: SyncSender<Result<u32, String>>) {
     use windows::Win32::{
         Foundation::HINSTANCE,
-        System::Threading::GetCurrentThreadId,
+        System::{LibraryLoader::GetModuleHandleW, Threading::GetCurrentThreadId},
         UI::WindowsAndMessaging::{
             GetMessageW, PeekMessageW, SetWindowsHookExW, UnhookWindowsHookEx, MSG, PM_NOREMOVE,
             WH_KEYBOARD_LL,
@@ -239,11 +239,24 @@ fn run_hook_thread(ready: SyncSender<Result<u32, String>>) {
     // can reliably post WM_QUIT immediately after startup.
     let _ = unsafe { PeekMessageW(&mut message, None, 0, 0, PM_NOREMOVE) };
 
+    // A desktop-wide hook needs the module that contains its callback. Passing
+    // a default HINSTANCE is a null handle and causes installation to fail on
+    // Windows 11, leaving Win+V to the shell.
+    let module = match unsafe { GetModuleHandleW(None) } {
+        Ok(module) => HINSTANCE(module.0),
+        Err(error) => {
+            let _ = ready.send(Err(format!(
+                "failed to get module handle for Win+V input listener: {error}"
+            )));
+            return;
+        }
+    };
+
     let hook = match unsafe {
         SetWindowsHookExW(
             WH_KEYBOARD_LL,
             Some(low_level_keyboard_proc),
-            Some(HINSTANCE::default()),
+            Some(module),
             0,
         )
     } {

@@ -19,6 +19,7 @@ const VK_V: u32 = b'V' as u32;
 struct WinVKeyState {
     windows_key_down: bool,
     v_key_down: bool,
+    windows_menu_mask_pending: bool,
 }
 
 #[cfg(any(target_os = "windows", test))]
@@ -32,6 +33,7 @@ impl WinVKeyState {
         if virtual_key == VK_V {
             let should_intercept = self.windows_key_down && !self.v_key_down;
             self.v_key_down = true;
+            self.windows_menu_mask_pending = should_intercept;
             return should_intercept;
         }
 
@@ -45,6 +47,10 @@ impl WinVKeyState {
         if virtual_key == VK_V {
             self.v_key_down = false;
         }
+    }
+
+    fn take_windows_menu_mask(&mut self) -> bool {
+        std::mem::take(&mut self.windows_menu_mask_pending)
     }
 }
 
@@ -295,7 +301,16 @@ unsafe extern "system" fn low_level_keyboard_proc(
             .is_some_and(|context| {
                 let mut key_state = lock_or_recover(&context.key_state);
                 if key_state.handle_key_down(keyboard.vkCode) {
-                    context.sender.try_send(()).is_ok()
+                    let sent = context.sender.try_send(()).is_ok();
+                    let should_mask_windows_menu = sent && key_state.take_windows_menu_mask();
+                    drop(key_state);
+
+                    if should_mask_windows_menu {
+                        if let Err(error) = mask_windows_key_release() {
+                            warn!(error = %error, "Failed to mask Windows key release after Win+V takeover");
+                        }
+                    }
+                    sent
                 } else {
                     false
                 }
@@ -314,6 +329,38 @@ unsafe extern "system" fn low_level_keyboard_proc(
     }
 
     unsafe { CallNextHookEx(None, code, wparam, lparam) }
+}
+
+/// Prevent the shell from treating the later Windows-key release as a standalone press.
+#[cfg(target_os = "windows")]
+fn mask_windows_key_release() -> Result<(), String> {
+    use windows::Win32::UI::Input::KeyboardAndMouse::{
+        SendInput, INPUT, INPUT_KEYBOARD, KEYEVENTF_KEYUP, VIRTUAL_KEY,
+    };
+
+    // VK_E8 is an unassigned virtual key. This is the standard menu-mask pattern
+    // used by keyboard-hook tools for suppressed Windows-key shortcuts.
+    const MENU_MASK_KEY: VIRTUAL_KEY = VIRTUAL_KEY(0xE8);
+
+    let mut key_down: INPUT = unsafe { std::mem::zeroed() };
+    key_down.r#type = INPUT_KEYBOARD;
+    key_down.Anonymous.ki.wVk = MENU_MASK_KEY;
+
+    let mut key_up: INPUT = unsafe { std::mem::zeroed() };
+    key_up.r#type = INPUT_KEYBOARD;
+    key_up.Anonymous.ki.wVk = MENU_MASK_KEY;
+    key_up.Anonymous.ki.dwFlags = KEYEVENTF_KEYUP;
+
+    let inputs = [key_down, key_up];
+    let sent = unsafe { SendInput(&inputs, std::mem::size_of::<INPUT>() as _) };
+    if sent == inputs.len() as u32 {
+        Ok(())
+    } else {
+        Err(format!(
+            "SendInput sent {sent} menu-mask events, expected {}",
+            inputs.len()
+        ))
+    }
 }
 
 #[cfg(test)]
@@ -358,5 +405,16 @@ mod tests {
 
         state.handle_key_up(VK_V);
         assert!(state.handle_key_down(VK_V));
+    }
+
+    #[test]
+    fn requests_a_menu_mask_for_an_intercepted_win_v() {
+        let mut state = WinVKeyState::default();
+
+        state.handle_key_down(VK_LWIN);
+        assert!(state.handle_key_down(VK_V));
+
+        assert!(state.take_windows_menu_mask());
+        assert!(!state.take_windows_menu_mask());
     }
 }

@@ -400,6 +400,7 @@ pub async fn set_quick_panel_enabled(
     app: tauri::AppHandle,
     connection_state: State<'_, DaemonConnectionState>,
     shortcut_registry: State<'_, CurrentShortcuts>,
+    win_v_interceptor: State<'_, quick_panel::WinVInterceptor>,
     modifier_monitor: State<'_, ModifierDoubleTapMonitor>,
     update_lock: State<'_, KeyboardShortcutsUpdateLock>,
     enabled: bool,
@@ -436,8 +437,10 @@ pub async fn set_quick_panel_enabled(
         } else {
             Vec::new()
         };
+        let (target_os_shortcuts, _) = quick_panel::split_windows_win_v_shortcut(&target_shortcuts);
 
         let old_shortcuts = shortcut_registry.current();
+        let previous_win_v_interception = win_v_interceptor.is_enabled();
         let old_modifier = current_modifier_nonblocking(&modifier_monitor).await?;
         let target_modifier = desired_live_modifier(
             enabled,
@@ -446,6 +449,7 @@ pub async fn set_quick_panel_enabled(
         );
         apply_quick_panel_state(
             &app,
+            &win_v_interceptor,
             &modifier_monitor,
             enabled,
             &old_shortcuts,
@@ -465,7 +469,7 @@ pub async fn set_quick_panel_enabled(
 
         match client.update_settings(patch).await {
             Ok(_) => {
-                shortcut_registry.replace(target_shortcuts);
+                shortcut_registry.replace(target_os_shortcuts);
                 app.state::<quick_panel::QuickPanelToggleController>()
                     .set_enabled(enabled);
                 Ok(())
@@ -477,6 +481,7 @@ pub async fn set_quick_panel_enabled(
                 // rollback re-enables (re-registers shortcuts + pre-creates).
                 if let Err(rollback_err) = apply_quick_panel_state(
                     &app,
+                    &win_v_interceptor,
                     &modifier_monitor,
                     !enabled,
                     &target_shortcuts,
@@ -490,6 +495,9 @@ pub async fn set_quick_panel_enabled(
                         error = %rollback_err,
                         "Failed to roll back quick panel side effects after settings save failure"
                     );
+                }
+                if let Err(rollback_error) = win_v_interceptor.set_enabled(previous_win_v_interception) {
+                    error!(error = %rollback_error, "Failed to restore Win+V takeover after settings save failure");
                 }
                 Err(CommandError::internal(err))
             }
@@ -513,6 +521,7 @@ pub(crate) fn desired_live_modifier(
 
 async fn apply_quick_panel_state(
     app: &tauri::AppHandle,
+    win_v_interceptor: &quick_panel::WinVInterceptor,
     modifier_monitor: &ModifierDoubleTapMonitor,
     target_enabled: bool,
     old_shortcuts: &[String],
@@ -520,14 +529,32 @@ async fn apply_quick_panel_state(
     old_modifier: QuickPanelDoubleTapModifier,
     new_modifier: QuickPanelDoubleTapModifier,
 ) -> Result<(), CommandError> {
-    apply_global_shortcuts_on_main_thread(app, target_enabled, old_shortcuts, new_shortcuts)
+    let (os_shortcuts, intercept_win_v) = quick_panel::split_windows_win_v_shortcut(new_shortcuts);
+    let old_win_v_interception = win_v_interceptor.is_enabled();
+
+    apply_global_shortcuts_on_main_thread(app, target_enabled, old_shortcuts, &os_shortcuts)
         .await?;
+
+    let target_win_v_interception = target_enabled && intercept_win_v;
+    if let Err(error) = win_v_interceptor.set_enabled(target_win_v_interception) {
+        if let Err(rollback_error) = apply_global_shortcuts_on_main_thread(
+            app,
+            !target_enabled,
+            &os_shortcuts,
+            old_shortcuts,
+        )
+        .await
+        {
+            error!(error = %rollback_error, "Failed to rollback global shortcuts after Win+V takeover failure");
+        }
+        return Err(CommandError::Conflict(error));
+    }
 
     if let Err(error) = set_modifier_nonblocking(modifier_monitor, new_modifier).await {
         if let Err(rollback_error) = apply_global_shortcuts_on_main_thread(
             app,
             !target_enabled,
-            new_shortcuts,
+            &os_shortcuts,
             old_shortcuts,
         )
         .await
@@ -536,6 +563,9 @@ async fn apply_quick_panel_state(
                 error = %rollback_error,
                 "Failed to rollback global shortcuts after modifier listener failure"
             );
+        }
+        if let Err(rollback_error) = win_v_interceptor.set_enabled(old_win_v_interception) {
+            error!(error = %rollback_error, "Failed to rollback Win+V takeover after modifier listener failure");
         }
         if let Err(rollback_error) = set_modifier_nonblocking(modifier_monitor, old_modifier).await
         {

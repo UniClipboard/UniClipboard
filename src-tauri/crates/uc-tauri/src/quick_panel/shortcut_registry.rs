@@ -23,6 +23,34 @@ use uc_desktop::shortcuts::{chord_segments, GlobalShortcutRegistry, ShortcutErro
 /// chord 第二段必须在 leader 之后这个时间窗内按下。与前端 `CHORD_WINDOW_MS` 对齐。
 const CHORD_WINDOW: Duration = Duration::from_millis(1000);
 
+const WINDOWS_WIN_V_SHORTCUT: &str = "super+v";
+
+/// Separates the Windows `Win+V` takeover binding from regular OS shortcuts.
+/// The caller uses the boolean to manage the Windows-only input interceptor.
+pub fn split_windows_win_v_shortcut(shortcuts: &[String]) -> (Vec<String>, bool) {
+    split_windows_win_v_shortcut_for_platform(shortcuts, cfg!(target_os = "windows"))
+}
+
+fn split_windows_win_v_shortcut_for_platform(
+    shortcuts: &[String],
+    is_windows: bool,
+) -> (Vec<String>, bool) {
+    if !is_windows {
+        return (shortcuts.to_vec(), false);
+    }
+
+    let intercept_win_v = shortcuts
+        .iter()
+        .any(|shortcut| shortcut == WINDOWS_WIN_V_SHORTCUT);
+    let os_shortcuts = shortcuts
+        .iter()
+        .filter(|shortcut| shortcut.as_str() != WINDOWS_WIN_V_SHORTCUT)
+        .cloned()
+        .collect();
+
+    (os_shortcuts, intercept_win_v)
+}
+
 /// 正在等待第二段的 chord 状态。同一时刻只可能有一个 chord 在进行，所以是
 /// 单个 `Option` 而非 per-key map。
 struct PendingChord {
@@ -191,5 +219,39 @@ fn handle_second(
         drop(guard);
         info!(shortcut = %second, "Global chord (leader+key) triggered");
         on_pressed();
+    }
+}
+
+#[cfg(test)]
+mod windows_win_v_tests {
+    use super::*;
+
+    #[test]
+    fn separates_win_v_from_other_global_shortcuts_on_windows() {
+        let (os_shortcuts, intercept_win_v) = split_windows_win_v_shortcut_for_platform(
+            &["super+v".to_string(), "ctrl+alt+v".to_string()],
+            true,
+        );
+
+        assert_eq!(os_shortcuts, vec!["ctrl+alt+v"]);
+        assert!(intercept_win_v);
+    }
+
+    #[test]
+    fn leaves_all_shortcuts_registered_when_win_v_is_not_configured() {
+        let (os_shortcuts, intercept_win_v) =
+            split_windows_win_v_shortcut_for_platform(&["ctrl+alt+v".to_string()], true);
+
+        assert_eq!(os_shortcuts, vec!["ctrl+alt+v"]);
+        assert!(!intercept_win_v);
+    }
+
+    #[test]
+    fn keeps_win_v_in_the_regular_registry_off_windows() {
+        let (os_shortcuts, intercept_win_v) =
+            split_windows_win_v_shortcut_for_platform(&["super+v".to_string()], false);
+
+        assert_eq!(os_shortcuts, vec!["super+v"]);
+        assert!(!intercept_win_v);
     }
 }

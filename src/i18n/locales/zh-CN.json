@@ -678,6 +678,10 @@
           "windows": "Windows",
           "super": "Super"
         },
+        "winV": {
+          "label": "接管 Win+V",
+          "description": "按下 Win+V 时打开快捷面板，不显示 Windows 剪贴板历史。"
+        },
         "restartHint": "快捷面板已停用。建议重启应用以彻底释放后台进程。"
       },
       "about": {

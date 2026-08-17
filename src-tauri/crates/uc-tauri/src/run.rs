@@ -629,6 +629,11 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
             // 打开开关时,plugin 已就绪,可直接复用同样的注册流程。
             let mut registered_quick_panel_shortcuts = Vec::new();
 
+            let win_v_toggle_handle = app.handle().clone();
+            app.manage(quick_panel::WinVInterceptor::new(move || {
+                quick_panel::request_toggle(&win_v_toggle_handle)
+            }));
+
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
             {
                 app.handle()
@@ -639,6 +644,17 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
                     let shortcuts = uc_desktop::shortcuts::resolve_quick_panel_shortcuts(
                         &initial_keyboard_shortcuts,
                     );
+                    let (os_shortcuts, intercept_win_v) =
+                        quick_panel::split_windows_win_v_shortcut(&shortcuts);
+
+                    if intercept_win_v {
+                        if let Err(error) = app
+                            .state::<quick_panel::WinVInterceptor>()
+                            .set_enabled(true)
+                        {
+                            error!(error = %error, "Failed to enable Win+V quick panel takeover during startup");
+                        }
+                    }
 
                     // 启动期 setup callback 已在 main thread 上下文，可直接构造 Tauri
                     // 适配器并调注册器。回调闭包绑定 `quick_panel::request_toggle`，避免桌面
@@ -648,7 +664,7 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
                         app.handle().clone(),
                         move || quick_panel::request_toggle(&toggle_handle),
                     );
-                    for shortcut_str in &shortcuts {
+                    for shortcut_str in &os_shortcuts {
                         if let Err(e) = registry.register(shortcut_str) {
                             tracing::error!(error = %e, shortcut = %shortcut_str, "Failed to register global shortcut during startup");
                         } else {

@@ -73,13 +73,15 @@ beforeEach(() => {
   })
 })
 
-function setup() {
+function setup(keyboardShortcuts: Record<string, string | string[]> = {}) {
   const updateQuickPanelSetting = vi
     .fn<SettingContextType['updateQuickPanelSetting']>()
     .mockResolvedValue({ restartRequired: false })
+  const updateKeyboardShortcuts = vi.fn()
 
   mockUseSetting.mockReturnValue({
     setting: makeBaseSettings({
+      keyboardShortcuts,
       quickPanel: {
         enabled: true,
         position: 'center',
@@ -95,7 +97,7 @@ function setup() {
     updateSyncSetting: vi.fn(),
     updateSecuritySetting: vi.fn(),
     updateRetentionPolicy: vi.fn(),
-    updateKeyboardShortcuts: vi.fn(),
+    updateKeyboardShortcuts,
     updateFileSyncSetting: vi.fn(),
     updateNetworkSetting: vi.fn().mockResolvedValue({ restartRequired: false }),
     saveRelay: vi.fn().mockResolvedValue({
@@ -106,7 +108,7 @@ function setup() {
   })
 
   render(<QuickPanelSection />)
-  return { updateQuickPanelSetting }
+  return { updateKeyboardShortcuts, updateQuickPanelSetting }
 }
 
 describe('QuickPanelSection modifier double-tap trigger', () => {
@@ -162,6 +164,85 @@ describe('QuickPanelSection modifier double-tap trigger', () => {
 
     await waitFor(() => {
       expect(updateQuickPanelSetting).toHaveBeenCalledWith({ doubleTapModifier: 'meta' })
+    })
+  })
+})
+
+describe('QuickPanelSection Windows Win+V shortcut', () => {
+  it('shows the Win+V setting only on Windows', () => {
+    setup()
+    expect(
+      screen.queryByRole('switch', {
+        name: 'settings.sections.quickPanel.winV.label',
+      })
+    ).not.toBeInTheDocument()
+
+    mockUsePlatform.mockReturnValue({
+      isWindows: true,
+      isMac: false,
+      isLinux: false,
+      isTauri: true,
+      reduceVisualEffects: true,
+    })
+    setup()
+    expect(
+      screen.getByRole('switch', {
+        name: 'settings.sections.quickPanel.winV.label',
+      })
+    ).toBeInTheDocument()
+  })
+
+  it('adds Win+V without replacing the recorded quick panel shortcut', async () => {
+    const user = userEvent.setup()
+    mockUsePlatform.mockReturnValue({
+      isWindows: true,
+      isMac: false,
+      isLinux: false,
+      isTauri: true,
+      reduceVisualEffects: true,
+    })
+    const { updateKeyboardShortcuts } = setup({
+      'global.toggleQuickPanel': 'ctrl+shift+space',
+    })
+
+    await user.click(
+      screen.getByRole('switch', {
+        name: 'settings.sections.quickPanel.winV.label',
+      })
+    )
+
+    await waitFor(() => {
+      expect(updateKeyboardShortcuts).toHaveBeenCalledWith(
+        { 'global.toggleQuickPanel': 'ctrl+shift+space' },
+        { 'global.toggleQuickPanel': ['ctrl+shift+space', 'meta+v'] }
+      )
+    })
+  })
+
+  it('removes only Win+V when disabled', async () => {
+    const user = userEvent.setup()
+    mockUsePlatform.mockReturnValue({
+      isWindows: true,
+      isMac: false,
+      isLinux: false,
+      isTauri: true,
+      reduceVisualEffects: true,
+    })
+    const { updateKeyboardShortcuts } = setup({
+      'global.toggleQuickPanel': ['ctrl+shift+space', 'meta+v'],
+    })
+
+    await user.click(
+      screen.getByRole('switch', {
+        name: 'settings.sections.quickPanel.winV.label',
+      })
+    )
+
+    await waitFor(() => {
+      expect(updateKeyboardShortcuts).toHaveBeenCalledWith(
+        { 'global.toggleQuickPanel': ['ctrl+shift+space', 'meta+v'] },
+        { 'global.toggleQuickPanel': 'ctrl+shift+space' }
+      )
     })
   })
 })

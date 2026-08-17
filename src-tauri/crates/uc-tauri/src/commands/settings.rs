@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Manager, State};
 use tauri_plugin_dialog::DialogExt;
 use tokio::sync::{Mutex as AsyncMutex, OwnedMutexGuard};
 use tracing::{error, info_span, Instrument};
@@ -145,11 +145,13 @@ pub async fn update_keyboard_shortcuts(
         // 快捷面板关闭时,即使快捷键被修改也不向 OS 注册——OS 视角应保持空,
         // 与 quick_panel.enabled = false 的语义一致。用户重新打开开关时,
         // `set_quick_panel_enabled` 命令会根据当前 keyboard_shortcuts 注册。
-        let new_registered_shortcuts = if quick_panel_enabled {
+        let requested_shortcuts = if quick_panel_enabled {
             quick_panel_shortcuts_from_keyboard_shortcuts(&next_keyboard_shortcuts)
         } else {
             Vec::new()
         };
+        let (new_registered_shortcuts, intercept_win_v) =
+            quick_panel::split_windows_win_v_shortcut(&requested_shortcuts);
 
         if old_registered_shortcuts != new_registered_shortcuts {
             update_global_shortcuts_on_main_thread(
@@ -158,6 +160,25 @@ pub async fn update_keyboard_shortcuts(
                 new_registered_shortcuts.clone(),
             )
             .await?;
+        }
+
+        let win_v_interceptor = app.state::<quick_panel::WinVInterceptor>();
+        let previous_win_v_interception = win_v_interceptor.is_enabled();
+        if previous_win_v_interception != intercept_win_v {
+            if let Err(error) = win_v_interceptor.set_enabled(intercept_win_v) {
+                if old_registered_shortcuts != new_registered_shortcuts {
+                    if let Err(rollback_error) = update_global_shortcuts_on_main_thread(
+                        &app,
+                        new_registered_shortcuts.clone(),
+                        old_registered_shortcuts.clone(),
+                    )
+                    .await
+                    {
+                        error!(error = %rollback_error, "Failed to rollback global shortcuts after Win+V takeover update failure");
+                    }
+                }
+                return Err(CommandError::Conflict(error));
+            }
         }
 
         let patch = SettingsPatchDto {
@@ -181,6 +202,11 @@ pub async fn update_keyboard_shortcuts(
                 })
             }
             Err(err) => {
+                if previous_win_v_interception != intercept_win_v {
+                    if let Err(rollback_error) = win_v_interceptor.set_enabled(previous_win_v_interception) {
+                        error!(error = %rollback_error, "Failed to rollback Win+V takeover after settings save failure");
+                    }
+                }
                 if old_registered_shortcuts != new_registered_shortcuts {
                     if let Err(rollback_err) = update_global_shortcuts_on_main_thread(
                         &app,

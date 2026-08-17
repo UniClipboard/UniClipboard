@@ -31,6 +31,7 @@ import { useOptimisticSetting } from './useOptimisticSetting'
 const log = createLogger('quick-panel-section')
 
 const QUICK_PANEL_SHORTCUT_ID = 'global.toggleQuickPanel'
+const WIN_V_SHORTCUT = 'meta+v'
 const MACOS_ACCESSIBILITY_SETTINGS_URL =
   'x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility'
 
@@ -179,6 +180,16 @@ export default function QuickPanelSection() {
 
   const isModified = (defId: string): boolean => defId in overrides
 
+  const quickPanelShortcutKeys = useMemo(() => {
+    if (!quickPanelDef) return []
+
+    const override = overrides[quickPanelDef.id]
+    if (override != null) return Array.isArray(override) ? override : [override]
+
+    return Array.isArray(quickPanelDef.key) ? quickPanelDef.key : [quickPanelDef.key]
+  }, [overrides, quickPanelDef])
+  const winVEnabled = quickPanelShortcutKeys.includes(WIN_V_SHORTCUT)
+
   const shortcutsById = useMemo(() => new Map(SHORTCUT_DEFINITIONS.map(d => [d.id, d])), [])
 
   const handleOverrideChange = useCallback(
@@ -220,6 +231,35 @@ export default function QuickPanelSection() {
       }
     },
     [overrides, updateKeyboardShortcuts]
+  )
+
+  const handleWinVChange = useCallback(
+    async (next: boolean) => {
+      if (!quickPanelDef) return
+
+      const nextKeys = next
+        ? [...new Set([...quickPanelShortcutKeys, WIN_V_SHORTCUT])]
+        : quickPanelShortcutKeys.filter(key => key !== WIN_V_SHORTCUT)
+      const defaultKeys = Array.isArray(quickPanelDef.key) ? quickPanelDef.key : [quickPanelDef.key]
+      const newOverrides = { ...overrides }
+
+      if (
+        nextKeys.length === 0 ||
+        (nextKeys.length === defaultKeys.length &&
+          nextKeys.every((key, index) => key === defaultKeys[index]))
+      ) {
+        delete newOverrides[quickPanelDef.id]
+      } else {
+        newOverrides[quickPanelDef.id] = nextKeys.length === 1 ? nextKeys[0]! : nextKeys
+      }
+
+      try {
+        await updateKeyboardShortcuts(overrides, newOverrides)
+      } catch (err) {
+        log.error({ err }, 'Failed to update Win+V quick panel shortcut')
+      }
+    },
+    [overrides, quickPanelDef, quickPanelShortcutKeys, updateKeyboardShortcuts]
   )
 
   return (
@@ -301,6 +341,18 @@ export default function QuickPanelSection() {
               </Select>
             </div>
           </SettingRow>
+          {isWindows && (
+            <SettingRow
+              label={t('settings.sections.quickPanel.winV.label')}
+              description={t('settings.sections.quickPanel.winV.description')}
+            >
+              <Switch
+                checked={winVEnabled}
+                onCheckedChange={handleWinVChange}
+                aria-label={t('settings.sections.quickPanel.winV.label')}
+              />
+            </SettingRow>
+          )}
           <ShortcutRow
             definition={quickPanelDef}
             currentKey={getCurrentKey(quickPanelDef)}

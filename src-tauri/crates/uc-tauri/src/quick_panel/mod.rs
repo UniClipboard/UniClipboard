@@ -11,10 +11,13 @@ mod macos;
 #[cfg(any(target_os = "windows", test))]
 mod paste_sequence;
 mod shortcut_registry;
+mod win_v_interceptor;
 #[cfg(target_os = "windows")]
 mod windows;
 
+pub(crate) use shortcut_registry::split_windows_win_v_shortcut;
 pub use shortcut_registry::TauriGlobalShortcutRegistry;
+pub(crate) use win_v_interceptor::WinVInterceptor;
 
 use std::sync::Mutex;
 use std::time::Instant;

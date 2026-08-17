@@ -25,7 +25,7 @@ struct WinVKeyState {
 }
 
 #[cfg(any(target_os = "windows", test))]
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum KeyDownAction {
     PassThrough,
     Suppress,
@@ -266,7 +266,8 @@ impl Drop for WinVInterceptor {
 #[cfg(target_os = "windows")]
 fn run_hook_thread(ready: SyncSender<Result<u32, String>>) {
     use windows::Win32::{
-        System::Threading::GetCurrentThreadId,
+        Foundation::HINSTANCE,
+        System::{LibraryLoader::GetModuleHandleW, Threading::GetCurrentThreadId},
         UI::WindowsAndMessaging::{
             GetMessageW, PeekMessageW, SetWindowsHookExW, UnhookWindowsHookEx, MSG, PM_NOREMOVE,
             WH_KEYBOARD_LL,
@@ -278,8 +279,23 @@ fn run_hook_thread(ready: SyncSender<Result<u32, String>>) {
     // can reliably post WM_QUIT immediately after startup.
     let _ = unsafe { PeekMessageW(&mut message, None, 0, 0, PM_NOREMOVE) };
 
+    let module = match unsafe { GetModuleHandleW(None) } {
+        Ok(module) => HINSTANCE(module.0),
+        Err(error) => {
+            let _ = ready.send(Err(format!(
+                "failed to get module handle for Win+V input listener: {error}"
+            )));
+            return;
+        }
+    };
+
     let hook = match unsafe {
-        SetWindowsHookExW(WH_KEYBOARD_LL, Some(low_level_keyboard_proc), None, 0)
+        SetWindowsHookExW(
+            WH_KEYBOARD_LL,
+            Some(low_level_keyboard_proc),
+            Some(module),
+            0,
+        )
     } {
         Ok(hook) => hook,
         Err(error) => {
@@ -335,7 +351,12 @@ unsafe extern "system" fn low_level_keyboard_proc(
             .and_then(|context| context.as_ref().cloned())
             .is_some_and(|context| {
                 let mut key_state = lock_or_recover(&context.key_state);
-                match key_state.handle_key_down(keyboard.vkCode) {
+                let action = key_state.handle_key_down(keyboard.vkCode);
+                if keyboard.vkCode == VK_V {
+                    info!(?action, "Win+V input listener received V key");
+                }
+
+                match action {
                     KeyDownAction::TriggerPanel => {
                         debug!("Win+V input listener received shortcut");
                         let dispatched = match context.sender.try_send(()) {

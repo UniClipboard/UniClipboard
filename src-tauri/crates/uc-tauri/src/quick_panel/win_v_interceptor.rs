@@ -17,36 +17,80 @@ const VK_V: u32 = b'V' as u32;
 #[cfg(any(target_os = "windows", test))]
 #[derive(Default)]
 struct WinVKeyState {
-    windows_key_down: bool,
+    left_windows_key_down: bool,
+    right_windows_key_down: bool,
     v_key_down: bool,
+    suppressed_v_key_down: bool,
     windows_menu_mask_pending: bool,
 }
 
 #[cfg(any(target_os = "windows", test))]
+#[derive(Debug, Eq, PartialEq)]
+enum KeyDownAction {
+    PassThrough,
+    Suppress,
+    TriggerPanel,
+}
+
+#[cfg(any(target_os = "windows", test))]
 impl WinVKeyState {
-    fn handle_key_down(&mut self, virtual_key: u32) -> bool {
-        if is_windows_key(virtual_key) {
-            self.windows_key_down = true;
-            return false;
+    fn handle_key_down(&mut self, virtual_key: u32) -> KeyDownAction {
+        match virtual_key {
+            VK_LWIN => {
+                self.left_windows_key_down = true;
+                return KeyDownAction::PassThrough;
+            }
+            VK_RWIN => {
+                self.right_windows_key_down = true;
+                return KeyDownAction::PassThrough;
+            }
+            _ => {}
         }
 
         if virtual_key == VK_V {
-            let should_intercept = self.windows_key_down && !self.v_key_down;
+            if self.v_key_down {
+                return if self.suppressed_v_key_down {
+                    KeyDownAction::Suppress
+                } else {
+                    KeyDownAction::PassThrough
+                };
+            }
+
+            let should_intercept = self.windows_key_down();
             self.v_key_down = true;
+            self.suppressed_v_key_down = should_intercept;
             self.windows_menu_mask_pending = should_intercept;
-            return should_intercept;
+            return if should_intercept {
+                KeyDownAction::TriggerPanel
+            } else {
+                KeyDownAction::PassThrough
+            };
+        }
+
+        KeyDownAction::PassThrough
+    }
+
+    fn handle_key_up(&mut self, virtual_key: u32) -> bool {
+        match virtual_key {
+            VK_LWIN => self.left_windows_key_down = false,
+            VK_RWIN => self.right_windows_key_down = false,
+            VK_V => {
+                self.v_key_down = false;
+                return std::mem::take(&mut self.suppressed_v_key_down);
+            }
+            _ => {}
         }
 
         false
     }
 
-    fn handle_key_up(&mut self, virtual_key: u32) {
-        if is_windows_key(virtual_key) {
-            self.windows_key_down = false;
-        }
-        if virtual_key == VK_V {
-            self.v_key_down = false;
-        }
+    fn cancel_v_interception(&mut self) {
+        self.suppressed_v_key_down = false;
+        self.windows_menu_mask_pending = false;
+    }
+
+    fn windows_key_down(&self) -> bool {
+        self.left_windows_key_down || self.right_windows_key_down
     }
 
     fn take_windows_menu_mask(&mut self) -> bool {
@@ -55,10 +99,6 @@ impl WinVKeyState {
 }
 
 #[cfg(any(target_os = "windows", test))]
-fn is_windows_key(virtual_key: u32) -> bool {
-    matches!(virtual_key, VK_LWIN | VK_RWIN)
-}
-
 /// Owns the Windows-only interception of `Win+V`.
 ///
 /// The hook callback does only key recognition plus a non-blocking signal. The
@@ -313,24 +353,42 @@ unsafe extern "system" fn low_level_keyboard_proc(
             .and_then(|context| context.as_ref().cloned())
             .is_some_and(|context| {
                 let mut key_state = lock_or_recover(&context.key_state);
-                if key_state.handle_key_down(keyboard.vkCode) {
-                    let sent = context.sender.try_send(()).is_ok();
-                    let should_mask_windows_menu = sent && key_state.take_windows_menu_mask();
-                    drop(key_state);
+                match key_state.handle_key_down(keyboard.vkCode) {
+                    KeyDownAction::TriggerPanel => {
+                        let dispatched = match context.sender.try_send(()) {
+                            Ok(()) | Err(std::sync::mpsc::TrySendError::Full(())) => true,
+                            Err(std::sync::mpsc::TrySendError::Disconnected(())) => {
+                                key_state.cancel_v_interception();
+                                warn!(
+                                    error_kind = "win_v_dispatch_disconnected",
+                                    retryable = false,
+                                    "Win+V input listener lost its panel dispatcher"
+                                );
+                                false
+                            }
+                        };
+                        let should_mask_windows_menu =
+                            dispatched && key_state.take_windows_menu_mask();
+                        drop(key_state);
 
-                    if should_mask_windows_menu {
-                        if let Err(error) = mask_windows_key_release() {
-                            warn!(error = %error, "Failed to mask Windows key release after Win+V takeover");
+                        if should_mask_windows_menu {
+                            if let Err(error) = mask_windows_key_release() {
+                                warn!(error = %error, "Failed to mask Windows key release after Win+V takeover");
+                            }
                         }
+                        dispatched
                     }
-                    sent
-                } else {
-                    false
+                    KeyDownAction::Suppress => true,
+                    KeyDownAction::PassThrough => false,
                 }
             }),
         WM_KEYUP | WM_SYSKEYUP => {
             if let Some(context) = lock_or_recover(active_hook_context()).as_ref().cloned() {
-                lock_or_recover(&context.key_state).handle_key_up(keyboard.vkCode);
+                return if lock_or_recover(&context.key_state).handle_key_up(keyboard.vkCode) {
+                    LRESULT(1)
+                } else {
+                    unsafe { CallNextHookEx(None, code, wparam, lparam) }
+                };
             }
             false
         }
@@ -384,8 +442,8 @@ mod tests {
     fn intercepts_v_only_while_a_windows_key_is_held() {
         let mut state = WinVKeyState::default();
 
-        assert!(!state.handle_key_down(VK_LWIN));
-        assert!(state.handle_key_down(VK_V));
+        assert_eq!(state.handle_key_down(VK_LWIN), KeyDownAction::PassThrough);
+        assert_eq!(state.handle_key_down(VK_V), KeyDownAction::TriggerPanel);
     }
 
     #[test]
@@ -395,7 +453,18 @@ mod tests {
         state.handle_key_down(VK_RWIN);
         state.handle_key_up(VK_RWIN);
 
-        assert!(!state.handle_key_down(VK_V));
+        assert_eq!(state.handle_key_down(VK_V), KeyDownAction::PassThrough);
+    }
+
+    #[test]
+    fn keeps_intercepting_while_either_windows_key_is_held() {
+        let mut state = WinVKeyState::default();
+
+        state.handle_key_down(VK_LWIN);
+        state.handle_key_down(VK_RWIN);
+        state.handle_key_up(VK_LWIN);
+
+        assert_eq!(state.handle_key_down(VK_V), KeyDownAction::TriggerPanel);
     }
 
     #[test]
@@ -404,7 +473,10 @@ mod tests {
 
         state.handle_key_down(VK_LWIN);
 
-        assert!(!state.handle_key_down(b'C' as u32));
+        assert_eq!(
+            state.handle_key_down(b'C' as u32),
+            KeyDownAction::PassThrough
+        );
     }
 
     #[test]
@@ -413,11 +485,11 @@ mod tests {
 
         state.handle_key_down(VK_LWIN);
 
-        assert!(state.handle_key_down(VK_V));
-        assert!(!state.handle_key_down(VK_V));
+        assert_eq!(state.handle_key_down(VK_V), KeyDownAction::TriggerPanel);
+        assert_eq!(state.handle_key_down(VK_V), KeyDownAction::Suppress);
 
         state.handle_key_up(VK_V);
-        assert!(state.handle_key_down(VK_V));
+        assert_eq!(state.handle_key_down(VK_V), KeyDownAction::TriggerPanel);
     }
 
     #[test]
@@ -425,9 +497,28 @@ mod tests {
         let mut state = WinVKeyState::default();
 
         state.handle_key_down(VK_LWIN);
-        assert!(state.handle_key_down(VK_V));
+        assert_eq!(state.handle_key_down(VK_V), KeyDownAction::TriggerPanel);
 
         assert!(state.take_windows_menu_mask());
         assert!(!state.take_windows_menu_mask());
+    }
+
+    #[test]
+    fn suppresses_the_v_key_release_after_taking_over_win_v() {
+        let mut state = WinVKeyState::default();
+
+        state.handle_key_down(VK_LWIN);
+        state.handle_key_down(VK_V);
+
+        assert!(state.handle_key_up(VK_V));
+    }
+
+    #[test]
+    fn passes_through_a_v_key_release_that_was_not_taken_over() {
+        let mut state = WinVKeyState::default();
+
+        state.handle_key_down(VK_V);
+
+        assert!(!state.handle_key_up(VK_V));
     }
 }

@@ -3,10 +3,11 @@ import React, { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Filter } from '@/api/clipboardItems'
 import { CompositeSearchBar, type SourceOption } from '@/components/history/composite-search'
+import { usePlatform } from '@/hooks/usePlatform'
 import type { DisplayClipboardItem } from '@/lib/clipboard-entry'
 import type { SearchTagOption } from '@/lib/search-tags'
 import { cn } from '@/lib/utils'
-import { quickCardClassName } from '../constants'
+import { getQuickPanelLayoutClassNames } from '../constants'
 import {
   peekQuickPanelImageAspectRatio,
   useQuickPanelImageAspectRatioEpoch,
@@ -124,6 +125,7 @@ const HistoryPane: React.FC<HistoryPaneProps> = React.memo(
     contextActions,
   }) => {
     const { t } = useTranslation(undefined, { keyPrefix: 'quickPanel.history' })
+    const { isLinux, isTauri } = usePlatform()
     const aspectRatioEpoch = useQuickPanelImageAspectRatioEpoch()
 
     const showImageWall = activeFilter === Filter.Image
@@ -140,7 +142,7 @@ const HistoryPane: React.FC<HistoryPaneProps> = React.memo(
     }, [filteredItems, showImageWall, aspectRatioEpoch])
 
     return (
-      <div className={quickCardClassName}>
+      <div className={getQuickPanelLayoutClassNames(isLinux && isTauri).card}>
         {isLocked && !loading ? (
           <>
             <div className="flex flex-1 flex-col items-center justify-center gap-4 px-6">

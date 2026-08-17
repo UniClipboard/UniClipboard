@@ -14,6 +14,7 @@ import { unlockEncryptionSession } from '@/api/security'
 import { toast } from '@/components/ui/toast'
 import { useDebounce } from '@/hooks/useDebounce'
 import { useHistorySourceOptions } from '@/hooks/useHistorySourceOptions'
+import { usePlatform } from '@/hooks/usePlatform'
 import { useSearchTags } from '@/hooks/useSearchTags'
 import { useThemeSync } from '@/hooks/useThemeSync'
 import { pasteableFilePaths } from '@/lib/clipboard-utils'
@@ -26,7 +27,12 @@ import { useAppDispatch } from '@/store/hooks'
 import { fetchSpaceMembers } from '@/store/slices/devicesSlice'
 import ClipboardPreviewPane from './ClipboardPreviewPane'
 import HistoryPane from './components/HistoryPane'
-import { PREVIEW_OPEN_DELAY_MS, PREVIEW_SWITCH_DELAY_MS, QUICK_FILTER_ORDER } from './constants'
+import {
+  getQuickPanelLayoutClassNames,
+  PREVIEW_OPEN_DELAY_MS,
+  PREVIEW_SWITCH_DELAY_MS,
+  QUICK_FILTER_ORDER,
+} from './constants'
 import { useHistorySearch } from './hooks/useHistorySearch'
 import type {
   PreviewAction,
@@ -124,6 +130,8 @@ const ClipboardHistoryPanelSession: React.FC<ClipboardHistoryPanelProps> = ({
 }) => {
   const { t } = useTranslation()
   const dispatch = useAppDispatch()
+  const { isLinux, isTauri } = usePlatform()
+  const isLinuxQuickPanel = isLinux && isTauri
 
   // Refresh the paired-device list so the row context menu's "send to device"
   // submenu shows current names and connection state. The quick panel is a
@@ -178,8 +186,9 @@ const ClipboardHistoryPanelSession: React.FC<ClipboardHistoryPanelProps> = ({
   const previewEntryId = previewState.entryId
   const previewSuppressed = previewState.suppressed
   const historyLockedWidth = previewState.historyLockedWidth
-  const previewFocusSource = previewState.focusSource
   const previewSide = previewState.side
+  const layoutClassNames = getQuickPanelLayoutClassNames(isLinuxQuickPanel, previewSide === 'left')
+  const previewFocusSource = previewState.focusSource
 
   const { filteredItems, previewItems, isSearching, searchTotal, loading, isLocked, removeItem } =
     useHistorySearch({
@@ -695,7 +704,7 @@ const ClipboardHistoryPanelSession: React.FC<ClipboardHistoryPanelProps> = ({
   return (
     <div
       className={cn(
-        'flex h-screen w-screen overflow-hidden bg-transparent p-4',
+        layoutClassNames.container,
         // Open the preview to the left of the history pane near the right edge.
         // Reversing the row keeps the history pane (now the last child) pinned
         // at its anchor while the preview occupies the freed space on the left.
@@ -757,23 +766,28 @@ const ClipboardHistoryPanelSession: React.FC<ClipboardHistoryPanelProps> = ({
       <div
         className={cn(
           'min-w-0',
-          // Gap between preview and history. With `flex-row-reverse` (preview
-          // on the left) the gap must sit on the preview's right edge instead.
+          // Linux uses a one-pixel divider; floating-card platforms retain the
+          // existing outer gap. With `flex-row-reverse`, the divider moves to
+          // the preview's right edge.
           previewExpanded
             ? cn(
-                previewSide === 'left' ? 'mr-2' : 'ml-2',
-                'flex-1 basis-0 opacity-100 translate-x-0'
+                !isLinuxQuickPanel && (previewSide === 'left' ? 'mr-2' : 'ml-2'),
+                layoutClassNames.previewExpanded
               )
             : previewReservingSpace && historyLockedWidth != null
               ? cn(
-                  previewSide === 'left' ? 'mr-2' : 'ml-2',
-                  'shrink-0 opacity-0 translate-x-0 pointer-events-none'
+                  !isLinuxQuickPanel && (previewSide === 'left' ? 'mr-2' : 'ml-2'),
+                  layoutClassNames.previewReserved
                 )
               : 'ml-0 w-0 opacity-0 translate-x-2 pointer-events-none'
         )}
         style={
           previewReservingSpace && historyLockedWidth != null
-            ? { width: `max(0px, calc(100% - ${historyLockedWidth}px - 0.5rem))` }
+            ? {
+                width: `max(0px, calc(100% - ${historyLockedWidth}px - ${
+                  isLinuxQuickPanel ? '1px' : '0.5rem'
+                }))`,
+              }
             : undefined
         }
         aria-hidden={!previewExpanded}

@@ -16,8 +16,31 @@ export const typeIcons: Record<ClipboardEntryType, React.ElementType> = {
   unknown: FileText,
 }
 
-export const quickCardClassName =
-  'flex h-full w-full min-w-0 flex-col overflow-hidden rounded-xl border border-border/50 bg-background/95 shadow-xl backdrop-blur-xl'
+export function getQuickPanelLayoutClassNames(isLinux: boolean, previewOnLeft = false) {
+  if (isLinux) {
+    const dividerClassName = previewOnLeft ? 'border-r' : 'border-l'
+
+    return {
+      container: 'flex h-screen w-screen overflow-hidden bg-background p-0',
+      statusSurface: 'bg-background',
+      card: 'flex h-full w-full min-w-0 flex-col overflow-hidden border border-border/50 bg-background',
+      previewCard:
+        'flex h-full w-full min-w-0 flex-col overflow-hidden border border-border/50 bg-card text-card-foreground',
+      previewExpanded: `flex-1 basis-0 ${dividerClassName} border-border/50 opacity-100 translate-x-0`,
+      previewReserved: `shrink-0 ${dividerClassName} border-border/50 opacity-0 translate-x-0 pointer-events-none`,
+    }
+  }
+
+  return {
+    container: 'flex h-screen w-screen overflow-hidden bg-transparent p-4',
+    statusSurface: 'bg-transparent',
+    card: 'flex h-full w-full min-w-0 flex-col overflow-hidden rounded-xl border border-border/50 bg-background/95 shadow-xl backdrop-blur-xl',
+    previewCard:
+      'flex h-full w-full min-w-0 flex-col overflow-hidden rounded-xl border border-border/50 bg-card text-card-foreground shadow-xl backdrop-blur-xl',
+    previewExpanded: 'flex-1 basis-0 opacity-100 translate-x-0',
+    previewReserved: 'shrink-0 opacity-0 translate-x-0 pointer-events-none',
+  }
+}
 
 /**
  * Aspect-ratio clamp for the image-wall masonry. Extreme portrait/landscape

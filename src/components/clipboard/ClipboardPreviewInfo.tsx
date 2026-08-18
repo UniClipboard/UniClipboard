@@ -10,6 +10,7 @@ import type {
 import type { ClipboardPreviewData } from '@/lib/clipboard-preview-cache'
 import { formatFileSize } from '@/utils'
 import EntryDeliveryBadge from './EntryDeliveryBadge'
+import { countCodeLines, resolveCodePreviewText } from './preview-renderers/codePreviewUtils'
 
 interface ClipboardPreviewInfoProps {
   imageDimensions: { width: number; height: number } | null
@@ -29,7 +30,8 @@ function buildInfoRows(
   imageDimensions: { width: number; height: number } | null,
   t: (key: string, options?: Record<string, unknown>) => string
 ): InfoRow[] {
-  const rows: InfoRow[] = [{ id: 'type', value: t('header.filters.' + item.type) }]
+  const displayType = item.contentTags?.includes('code') ? 'code' : item.type
+  const rows: InfoRow[] = [{ id: 'type', value: t('header.filters.' + displayType) }]
 
   if ((item.type === 'text' || item.type === 'richtext') && item.content) {
     const textItem = item.content as ClipboardTextItem
@@ -42,6 +44,13 @@ function buildInfoRows(
       id: 'text-chars',
       value: t('clipboard.preview.charactersCount', { count: charCount }),
     })
+    if (displayType === 'code') {
+      const code = resolveCodePreviewText(textItem.display_text, preview)
+      rows.push({
+        id: 'code-lines',
+        value: t('clipboard.preview.linesCount', { count: countCodeLines(code) }),
+      })
+    }
     if (textItem.size > 0) rows.push({ id: 'text-size', value: formatFileSize(textItem.size) })
   }
 

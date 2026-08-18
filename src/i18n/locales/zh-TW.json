@@ -989,6 +989,7 @@
       "contentType": "內容類型",
       "characters": "字符數",
       "charactersCount": "{{count}} 字符",
+      "linesCount": "{{count}} 行",
       "words": "詞數",
       "size": "大小",
       "dimensions": "分辨率",

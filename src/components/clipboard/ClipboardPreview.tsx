@@ -11,6 +11,7 @@ import type {
   DisplayClipboardItem,
 } from '@/lib/clipboard-entry'
 import { linkItemFromTextContent } from '@/lib/clipboard-utils'
+import { cn } from '@/lib/utils'
 import { reportError } from '@/observability/errors'
 import ClipboardPreviewInfo from './ClipboardPreviewInfo'
 import CodePreview from './preview-renderers/CodePreview'
@@ -161,9 +162,10 @@ const ClipboardPreview: React.FC<ClipboardPreviewProps> = ({ item, actions }) =>
     (item.type === 'text' || item.type === 'richtext') &&
     item.content !== null &&
     isLargeTextPreview(item.content as ClipboardTextItem, preview, loading)
+  const isCode = item.contentTags?.includes('code') === true
   // Code renders as an editor-like pane that fills the available height and owns
   // its own scrolling, so it skips the auto-height ScrollArea wrapper.
-  const fillsParent = isLargeText || item.contentTags?.includes('code') === true
+  const fillsParent = isLargeText || isCode
 
   const content = (
     <PreviewContent
@@ -178,7 +180,10 @@ const ClipboardPreview: React.FC<ClipboardPreviewProps> = ({ item, actions }) =>
   )
 
   return (
-    <div className="flex h-full flex-1 min-h-0 flex-col bg-card" data-testid="clipboard-detail">
+    <div
+      className={cn('flex h-full flex-1 min-h-0 flex-col', isCode ? 'bg-muted/15' : 'bg-card')}
+      data-testid="clipboard-detail"
+    >
       <ClipboardPreviewInfo
         item={item}
         preview={preview}
@@ -197,7 +202,12 @@ const ClipboardPreview: React.FC<ClipboardPreviewProps> = ({ item, actions }) =>
       </div>
 
       {(effectiveStatus === 'transferring' || actions) && (
-        <div className="flex min-h-[64px] shrink-0 items-center justify-between bg-card px-6 py-4">
+        <div
+          className={cn(
+            'flex min-h-[64px] shrink-0 items-center justify-between px-6 py-4',
+            isCode ? 'bg-transparent' : 'bg-card'
+          )}
+        >
           <div className="mr-8 min-w-0 flex-1">
             {effectiveStatus === 'transferring' && transfer && transfer.status === 'active' && (
               <div className="max-w-[280px]">

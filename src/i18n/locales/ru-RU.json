@@ -992,6 +992,7 @@
       "contentType": "Тип содержимого",
       "characters": "Символов",
       "charactersCount": "Символов: {{count}}",
+      "linesCount": "Строк: {{count}}",
       "words": "Слов",
       "size": "Размер",
       "dimensions": "Разрешение",

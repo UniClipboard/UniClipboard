@@ -66,6 +66,20 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Label RustSec issues
+        if: github.event_name == 'schedule'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          LABEL: security-audit
+        run: |
+          set -euo pipefail
+          gh issue list --state all --limit 10000 --json number,title,labels \
+            --jq '.[] | select(.title | startswith("RUSTSEC-")) | select((.labels | map(.name) | index("security-audit")) == null) | .number' |
+            while IFS= read -r issue_number; do
+              [ -z "$issue_number" ] && continue
+              gh issue edit "$issue_number" --add-label "$LABEL"
+            done
+
   bun-audit:
     name: bun audit (${{ matrix.project.directory }})
     runs-on: ubuntu-latest

@@ -7,12 +7,14 @@ import CompositeSearchBar from '../CompositeSearchBar'
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
-    t: (key: string, opts?: string | Record<string, unknown>) =>
-      typeof opts === 'string'
+    t: (key: string, opts?: string | Record<string, unknown>) => {
+      if (key === 'history.type.link') return '链接'
+      return typeof opts === 'string'
         ? opts
         : typeof opts?.defaultValue === 'string'
           ? opts.defaultValue
-          : key,
+          : key
+    },
   }),
 }))
 
@@ -123,10 +125,37 @@ describe('CompositeSearchBar quick window usage', () => {
     expect(input).toHaveAttribute('aria-expanded', 'true')
     expect(screen.getByRole('listbox', { name: 'history.composite.title' })).toBeInTheDocument()
 
-    await user.keyboard('{ArrowDown}{Enter}')
+    await user.keyboard('{Enter}')
 
     expect(onContentFilterChange).toHaveBeenCalledWith(Filter.Text)
     expect(input).toHaveAttribute('aria-expanded', 'false')
     expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
+  })
+
+  it('highlights the first tag as soon as the tag token opens', async () => {
+    const user = userEvent.setup()
+    renderSearchBar({ tagOptions: [{ id: 'code', count: 3, isBuiltin: true }] })
+
+    await user.type(screen.getByRole('combobox', { name: 'history.composite.title' }), '#')
+
+    expect(screen.getByRole('option', { name: 'code' })).toHaveAttribute('aria-selected', 'true')
+  })
+
+  it('confirms a localized tag match with Tab', async () => {
+    const user = userEvent.setup()
+    const onTagFilterChange = vi.fn()
+    renderSearchBar({
+      onTagFilterChange,
+      tagOptions: [{ id: 'link', count: 3, isBuiltin: true }],
+    })
+
+    await user.type(screen.getByRole('combobox', { name: 'history.composite.title' }), '#链')
+
+    expect(screen.getByRole('option', { name: '链接' })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.queryByRole('option', { name: 'link' })).not.toBeInTheDocument()
+
+    await user.keyboard('{Tab}')
+
+    expect(onTagFilterChange).toHaveBeenCalledWith('link')
   })
 })

@@ -249,10 +249,17 @@ export function buildSyntaxSuggestions(partial: string, t: Translate): SyntaxSug
   )
 }
 
-function matches(partial: string, ...haystacks: string[]): boolean {
-  if (!partial) return true
+function matchRank(partial: string, ...haystacks: string[]): number | null {
+  if (!partial) return 0
   const needle = partial.toLowerCase()
-  return haystacks.some(h => h.toLowerCase().includes(needle))
+  if (haystacks.some(haystack => haystack.toLowerCase() === needle)) return 0
+  if (haystacks.some(haystack => haystack.toLowerCase().startsWith(needle))) return 1
+  if (haystacks.some(haystack => haystack.toLowerCase().includes(needle))) return 2
+  return null
+}
+
+function matches(partial: string, ...haystacks: string[]): boolean {
+  return matchRank(partial, ...haystacks) !== null
 }
 
 /** Candidate values for one dimension, narrowed by the typed `partial`. */
@@ -284,21 +291,21 @@ export function buildCandidates(
           : []
       })
     case 'tag':
-      return ctx.tagOptions.flatMap(tag => {
-        const label = ctx.t(`history.type.${tag.id}`, { defaultValue: tag.id })
-        return matches(partial, tag.id, label)
-          ? [
-              {
-                id: `cand-tag-${tag.id}`,
-                dimension,
-                value: tag.id,
-                label,
-                icon: TYPE_ICONS[tag.id] ?? Hash,
-                isActive: ctx.current.tag === tag.id,
-              },
-            ]
-          : []
-      })
+      return ctx.tagOptions
+        .flatMap((tag, index) => {
+          const label = ctx.t(`history.type.${tag.id}`, { defaultValue: tag.id })
+          const rank = matchRank(partial, tag.id, label)
+          return rank === null ? [] : [{ tag, label, rank, index }]
+        })
+        .sort((a, b) => a.rank - b.rank || b.tag.count - a.tag.count || a.index - b.index)
+        .map(({ tag, label }) => ({
+          id: `cand-tag-${tag.id}`,
+          dimension,
+          value: tag.id,
+          label,
+          icon: TYPE_ICONS[tag.id] ?? Hash,
+          isActive: ctx.current.tag === tag.id,
+        }))
     case 'source':
       return ctx.sourceOptions.flatMap(opt =>
         matches(partial, opt.name, opt.id)
@@ -393,7 +400,7 @@ export function buildChips(ctx: {
     const opt = ctx.tagOptions.find(o => o.id === tag)
     chips.push({
       dimension: 'tag',
-      label: ctx.t(`history.type.${tag}`, { defaultValue: tag }),
+      label: `#${ctx.t(`history.type.${tag}`, { defaultValue: tag })}`,
       icon: TYPE_ICONS[opt?.id ?? tag] ?? Hash,
     })
   }

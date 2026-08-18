@@ -3,6 +3,7 @@ use std::sync::Arc;
 use anyhow::Result;
 use reqwest::Method;
 
+use crate::http::encode_path_segment;
 use crate::http::enveloped::enveloped_request;
 use crate::DaemonConnectionState;
 use uc_daemon_contract::api::dto::mobile_sync::{
@@ -86,6 +87,7 @@ impl DaemonMobileSyncClient {
 
     /// DELETE /mobile-sync/devices/{device_id}
     pub async fn revoke_device(&self, device_id: &str) -> Result<MobileSyncActionResultDto> {
+        let device_id = encode_path_segment(device_id)?;
         let path = format!("/mobile-sync/devices/{device_id}");
         self.enveloped(Method::DELETE, &path).await
     }
@@ -96,6 +98,7 @@ impl DaemonMobileSyncClient {
         device_id: &str,
         req: &UpdateMobileDeviceRequest,
     ) -> Result<UpdateMobileDeviceResultDto> {
+        let device_id = encode_path_segment(device_id)?;
         let path = format!("/mobile-sync/devices/{device_id}");
         Ok(enveloped_request(
             &self.http,

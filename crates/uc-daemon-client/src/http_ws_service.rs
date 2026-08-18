@@ -13,8 +13,13 @@ use uc_daemon_contract::api::dto::clipboard_command::{
     CancelTransferResponse, DispatchOutcomeResponse, InboundEntryEvent, InboundNoticeEvent,
     ResendResponse,
 };
-use uc_daemon_contract::api::dto::member::{DeviceTrustSnapshotDto, WorkspaceConvergenceDto};
+use uc_daemon_contract::api::dto::member::{
+    DecideDeviceTrustRequestDto, DeviceTrustDecisionDto, DeviceTrustSnapshotDto,
+    MemberSyncPreferencesDto, MemberSyncPreferencesPatchDto, MemberSyncResultDto,
+    WorkspaceConvergenceDto,
+};
 use uc_daemon_contract::api::dto::setup_events::SetupPairingCompletedEvent;
+use uc_daemon_contract::api::dto::v2::setup::JoinSpaceResponse;
 use uc_daemon_contract::constants::{ws_event, ws_topic};
 
 use crate::http::exchange_session_token;
@@ -39,6 +44,35 @@ impl DaemonService for HttpWsDaemonService {
 
     async fn device_trust(&self) -> Result<DeviceTrustSnapshotDto> {
         self.ctx.member_client().device_trust().await
+    }
+
+    async fn cancel_join(&self, join_id: &str) -> Result<JoinSpaceResponse> {
+        self.ctx.setup_v2_client().cancel_join(join_id).await
+    }
+
+    async fn decide_device_trust(
+        &self,
+        request: &DecideDeviceTrustRequestDto,
+    ) -> Result<DeviceTrustDecisionDto> {
+        self.ctx.member_client().decide_device_trust(request).await
+    }
+
+    async fn member_sync_preferences(&self, device_id: &str) -> Result<MemberSyncPreferencesDto> {
+        self.ctx
+            .member_client()
+            .member_sync_preferences(device_id)
+            .await
+    }
+
+    async fn update_member_sync_preferences(
+        &self,
+        device_id: &str,
+        patch: &MemberSyncPreferencesPatchDto,
+    ) -> Result<MemberSyncResultDto> {
+        self.ctx
+            .member_client()
+            .update_member_sync_preferences(device_id, patch)
+            .await
     }
 
     async fn workspace_convergence(&self) -> Result<WorkspaceConvergenceDto> {

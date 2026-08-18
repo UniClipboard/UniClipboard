@@ -70,6 +70,16 @@ uniclip members
 `join` 在不带 `--passphrase` 时会提示输入。口令通过 PAKE 在本地验证 —— 输错会立即失败，
 不会把口令值发给 sponsor。
 
+`join` 默认等待请求被接受或拒绝。加 `--no-wait` 可在等待请求记录成功后立即返回，
+之后可继续查看或取消同一个请求：
+
+```bash
+uniclip join status
+uniclip join cancel
+```
+
+按 Ctrl-C 只会停止本地等待，不会取消加入请求。
+
 </Tab>
 
 </Tabs>

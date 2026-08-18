@@ -13,6 +13,8 @@ pub mod init;
 pub mod invite;
 pub mod join;
 pub mod member;
+pub mod member_sync;
+pub mod member_trust;
 pub mod members;
 pub mod mobile_sync;
 #[cfg(feature = "dev-tools")]

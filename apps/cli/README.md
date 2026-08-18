@@ -6,7 +6,7 @@
 
 ## 运行方式
 
-所有 Cargo 命令都从 `src-tauri/` 目录执行：
+所有 Cargo 命令都从仓库根目录执行：
 
 ```bash
 cargo run -p uc-cli -- --help
@@ -23,31 +23,39 @@ cargo build -p uc-cli
 
 ## 全局参数
 
-| 参数 | 说明 |
-| --- | --- |
-| `--json` | 用 JSON 输出结果，适合脚本调用。 |
-| `-v`, `--verbose` | 打开更详细的诊断日志。 |
+| 参数               | 说明                                                                   |
+| ------------------ | ---------------------------------------------------------------------- |
+| `--json`           | 用 JSON 输出结果，适合脚本调用。                                       |
+| `-v`, `--verbose`  | 打开更详细的诊断日志。                                                 |
 | `--profile <NAME>` | 使用独立 profile，隔离本地数据、密钥和网络身份；常用于单机模拟多设备。 |
-| `--dev` | 开发模式下使用，避免依赖系统 keychain。 |
+| `--dev`            | 开发模式下使用，避免依赖系统 keychain。                                |
 
 ## 常用命令
 
-| 命令 | 用途 |
-| --- | --- |
-| `uniclip start` | 启动本机 daemon。默认后台运行。 |
-| `uniclip start --foreground` | 前台启动 daemon，并把日志输出到终端。 |
-| `uniclip stop` | 停止本机 daemon。 |
-| `uniclip status` | 查看当前应用状态。 |
-| `uniclip init` | 在当前 profile 创建新的加密空间。 |
-| `uniclip invite` | 作为 sponsor 发起配对邀请。 |
-| `uniclip join` | 用邀请码加入空间。默认走非破坏性的赎回 / 重新配对分支（首次加入，以及在「同一空间」单侧解除配对后重新配对——见 issue #1023）。加 `--switch` 才切换到「另一个」sponsor 的空间并重加密迁移本地历史（破坏性，会先确认，再加 `--yes` 在非交互场景跳过确认）。 |
-| `uniclip members` | 列出空间成员（本机 + 已配对设备）及在线状态；加 `--probe` 主动探测刷新状态。`devices` 是其别名。 |
-| `uniclip member remove <PEER-ID>` | 移除一个空间成员；即使对方离线也会立即记录并停止向它发送新内容。 |
-| `uniclip member removal-status` | 查看当前空间的成员移除与收敛状态。 |
-| `uniclip send [TEXT]` | 向在线配对设备发送一段文本；省略 `TEXT` 时从 stdin 读取。 |
-| `uniclip watch` | 监听并打印收到的剪贴板 payload；不会写入系统剪贴板。 |
-| `uniclip recv` | 阻塞等待 **下一个** 入站文件并落盘；不会写入系统剪贴板。 |
-| `uniclip get` | 读取 **已同步** 的剪贴板条目并立即返回（headless / 脚本 / agent 友好）。 |
+| 命令                                | 用途                                                                                                                                                                                                                                                     |
+| ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `uniclip start`                     | 启动本机 daemon。默认后台运行。                                                                                                                                                                                                                          |
+| `uniclip start --foreground`        | 前台启动 daemon，并把日志输出到终端。                                                                                                                                                                                                                    |
+| `uniclip stop`                      | 停止本机 daemon。                                                                                                                                                                                                                                        |
+| `uniclip status`                    | 查看当前应用状态。                                                                                                                                                                                                                                       |
+| `uniclip init`                      | 在当前 profile 创建新的加密空间。                                                                                                                                                                                                                        |
+| `uniclip invite`                    | 作为 sponsor 发起配对邀请。                                                                                                                                                                                                                              |
+| `uniclip join`                      | 用邀请码加入空间。默认走非破坏性的赎回 / 重新配对分支（首次加入，以及在「同一空间」单侧解除配对后重新配对——见 issue #1023）。加 `--switch` 才切换到「另一个」sponsor 的空间并重加密迁移本地历史（破坏性，会先确认，再加 `--yes` 在非交互场景跳过确认）。 |
+| `uniclip join --no-wait`            | 发起加入后，如果请求仍在等待，只报告当前状态并立即返回。                                                                                                                                                                                                 |
+| `uniclip join status`               | 查看 Engine 保存的当前加入状态。                                                                                                                                                                                                                         |
+| `uniclip join cancel`               | 取消当前仍在等待的加入请求。                                                                                                                                                                                                                             |
+| `uniclip members`                   | 列出空间成员（本机 + 已配对设备）及在线状态；加 `--probe` 主动探测刷新状态。`devices` 是其别名。                                                                                                                                                         |
+| `uniclip member remove <PEER-ID>`   | 移除一个空间成员；即使对方离线也会立即记录并停止向它发送新内容。                                                                                                                                                                                         |
+| `uniclip member removal-status`     | 查看当前空间的成员移除与收敛状态。                                                                                                                                                                                                                       |
+| `uniclip member trust status`       | 查看当前设备组变化及两种选择的影响。                                                                                                                                                                                                                     |
+| `uniclip member trust apply`        | 应用当前设备组变化；脚本调用必须指定变化编号。                                                                                                                                                                                                           |
+| `uniclip member trust keep`         | 保留当前设备组；脚本调用必须指定变化编号。                                                                                                                                                                                                               |
+| `uniclip member sync show <DEVICE>` | 查看一个成员的发送、接收和内容类型设置。                                                                                                                                                                                                                 |
+| `uniclip member sync set <DEVICE>`  | 只修改明确给出的成员同步设置。                                                                                                                                                                                                                           |
+| `uniclip send [TEXT]`               | 向在线配对设备发送一段文本；省略 `TEXT` 时从 stdin 读取。                                                                                                                                                                                                |
+| `uniclip watch`                     | 监听并打印收到的剪贴板 payload；不会写入系统剪贴板。                                                                                                                                                                                                     |
+| `uniclip recv`                      | 阻塞等待 **下一个** 入站文件并落盘；不会写入系统剪贴板。                                                                                                                                                                                                 |
+| `uniclip get`                       | 读取 **已同步** 的剪贴板条目并立即返回（headless / 脚本 / agent 友好）。                                                                                                                                                                                 |
 
 ## 取回已同步内容（`get`）
 

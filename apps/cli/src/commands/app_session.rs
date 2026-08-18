@@ -10,7 +10,7 @@ use crate::ui;
 use uc_daemon_client::{
     ControlLeaseGuard, DaemonClientContext, DaemonService, HttpWsDaemonService,
 };
-use uc_daemon_contract::probe::ProbeOutcome;
+use uc_daemon_contract::probe::{ProbeOutcome, DEGRADED_HEALTH_INCOMPATIBILITY_DETAILS};
 
 // ── In-process session (dev-tools only) ────────────────────────────────
 
@@ -123,7 +123,7 @@ pub async fn build_app_session(verbose: bool) -> Result<CliAppSession, i32> {
 pub async fn connect_or_spawn_oneshot_daemon(verbose: bool) -> Result<Box<dyn DaemonService>, i32> {
     let _ = verbose; // reserved; the daemon path builds no in-process session.
     match probe_running().await {
-        Ok(ProbeOutcome::Compatible(_)) => build_daemon_client_service(),
+        Ok(ProbeOutcome::Compatible(_)) => build_daemon_client_service(true),
         Ok(outcome @ ProbeOutcome::Incompatible { .. }) => {
             ui::error(&crate::local_daemon::incompatible_outcome_error(outcome).to_string());
             Err(exit_codes::EXIT_DAEMON_UNREACHABLE)
@@ -137,7 +137,7 @@ pub async fn connect_or_spawn_oneshot_daemon(verbose: bool) -> Result<Box<dyn Da
                 return Err(exit_codes::EXIT_ERROR);
             }
             match crate::local_daemon::spawn_oneshot_and_wait().await {
-                Ok(_session) => build_daemon_client_service(),
+                Ok(_session) => build_daemon_client_service(true),
                 Err(err) => {
                     ui::error(&err.to_string());
                     Err(exit_codes::EXIT_ERROR)
@@ -197,21 +197,48 @@ pub async fn connect_facade_with_lease(
 pub async fn connect_setup_facade_with_lease(
     verbose: bool,
 ) -> Result<(ControlLeaseGuard, Box<dyn DaemonService>), i32> {
-    let service = ensure_daemon_for_setup(verbose).await?;
+    connect_setup_facade_with_lease_inner(verbose, true).await
+}
+
+pub async fn reconnect_setup_facade_with_lease(
+    verbose: bool,
+) -> Result<(ControlLeaseGuard, Box<dyn DaemonService>), i32> {
+    connect_setup_facade_with_lease_inner(verbose, false).await
+}
+
+async fn connect_setup_facade_with_lease_inner(
+    verbose: bool,
+    report_errors: bool,
+) -> Result<(ControlLeaseGuard, Box<dyn DaemonService>), i32> {
+    let service = ensure_daemon_for_setup_inner(verbose, report_errors).await?;
     let lease = service.hold_control_lease().await.map_err(|err| {
-        ui::error(&format!("Failed to hold daemon session lease: {err}"));
+        report_daemon_connection_error(
+            format!("Failed to hold daemon session lease: {err}"),
+            report_errors,
+        );
         exit_codes::EXIT_ERROR
     })?;
     Ok((lease, service))
 }
 
-fn build_daemon_client_service() -> Result<Box<dyn DaemonService>, i32> {
+fn build_daemon_client_service(report_errors: bool) -> Result<Box<dyn DaemonService>, i32> {
     match DaemonClientContext::from_env() {
         Ok(ctx) => Ok(Box::new(HttpWsDaemonService::new(ctx))),
         Err(err) => {
-            ui::error(&format!("Daemon is running but failed to connect: {err}"));
+            report_daemon_connection_error(
+                format!("Daemon is running but failed to connect: {err}"),
+                report_errors,
+            );
             Err(exit_codes::EXIT_ERROR)
         }
+    }
+}
+
+fn report_daemon_connection_error(message: String, report_errors: bool) {
+    if report_errors {
+        ui::error(&message);
+    } else {
+        tracing::debug!(error = %message, "daemon reconnect attempt failed");
     }
 }
 
@@ -222,26 +249,41 @@ fn build_daemon_client_service() -> Result<Box<dyn DaemonService>, i32> {
 /// `POST /v2/setup/redeem`, but the profile has no space yet so the setup gate
 /// would reject them.
 pub async fn ensure_daemon_for_setup(verbose: bool) -> Result<Box<dyn DaemonService>, i32> {
+    ensure_daemon_for_setup_inner(verbose, true).await
+}
+
+async fn ensure_daemon_for_setup_inner(
+    verbose: bool,
+    report_errors: bool,
+) -> Result<Box<dyn DaemonService>, i32> {
     let _ = verbose; // reserved; the daemon path builds no in-process session.
     match probe_running().await {
-        Ok(ProbeOutcome::Compatible(_)) => build_daemon_client_service(),
-        Ok(outcome) if setup_control_contract_matches(&outcome) => build_daemon_client_service(),
+        Ok(ProbeOutcome::Compatible(_)) => build_daemon_client_service(report_errors),
+        Ok(outcome) if setup_control_contract_matches(&outcome) => {
+            build_daemon_client_service(report_errors)
+        }
         Ok(outcome @ ProbeOutcome::Incompatible { .. }) => {
-            ui::error(&crate::local_daemon::incompatible_outcome_error(outcome).to_string());
+            report_daemon_connection_error(
+                crate::local_daemon::incompatible_outcome_error(outcome).to_string(),
+                report_errors,
+            );
             Err(exit_codes::EXIT_DAEMON_UNREACHABLE)
         }
         Ok(ProbeOutcome::Absent) => {
             // No setup gate — we ARE the setup command.
             match crate::local_daemon::spawn_oneshot_and_wait().await {
-                Ok(_session) => build_daemon_client_service(),
+                Ok(_session) => build_daemon_client_service(report_errors),
                 Err(err) => {
-                    ui::error(&err.to_string());
+                    report_daemon_connection_error(err.to_string(), report_errors);
                     Err(exit_codes::EXIT_ERROR)
                 }
             }
         }
         Err(err) => {
-            ui::error(&format!("Failed to probe local daemon: {err}"));
+            report_daemon_connection_error(
+                format!("Failed to probe local daemon: {err}"),
+                report_errors,
+            );
             Err(exit_codes::EXIT_DAEMON_UNREACHABLE)
         }
     }
@@ -255,7 +297,7 @@ fn setup_control_contract_matches(outcome: &ProbeOutcome) -> bool {
             observed_package_version: Some(package_version),
             observed_api_revision: Some(api_revision),
             ..
-        } if details == "daemon reported unhealthy status degraded"
+        } if details == DEGRADED_HEALTH_INCOMPATIBILITY_DETAILS
             && package_version == env!("CARGO_PKG_VERSION")
             && api_revision == uc_daemon_contract::DAEMON_API_REVISION
     )
@@ -271,7 +313,7 @@ pub async fn wait_and_reconnect_daemon(
     let poll_interval = std::time::Duration::from_millis(200);
     loop {
         match probe_running().await {
-            Ok(ProbeOutcome::Compatible(_)) => return build_daemon_client_service(),
+            Ok(ProbeOutcome::Compatible(_)) => return build_daemon_client_service(true),
             Ok(ProbeOutcome::Incompatible { .. }) | Ok(ProbeOutcome::Absent) | Err(_) => {}
         }
         if tokio::time::Instant::now() >= deadline {
@@ -301,11 +343,15 @@ pub fn default_device_name() -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::setup_control_contract_matches;
-    use uc_daemon_contract::probe::ProbeOutcome;
+    use uc_daemon_contract::probe::{ProbeOutcome, DEGRADED_HEALTH_INCOMPATIBILITY_DETAILS};
 
     fn incompatible(status: &str, package_version: &str, api_revision: &str) -> ProbeOutcome {
         ProbeOutcome::Incompatible {
-            details: format!("daemon reported unhealthy status {status}"),
+            details: if status == "degraded" {
+                DEGRADED_HEALTH_INCOMPATIBILITY_DETAILS.to_string()
+            } else {
+                format!("daemon reported unhealthy status {status}")
+            },
             observed_package_version: Some(package_version.to_string()),
             observed_api_revision: Some(api_revision.to_string()),
         }

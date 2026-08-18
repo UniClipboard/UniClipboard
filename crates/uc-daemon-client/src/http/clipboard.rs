@@ -12,6 +12,7 @@ use uc_daemon_contract::api::dto::clipboard_command::{
 };
 use uc_daemon_contract::constants::http_route;
 
+use crate::http::encode_path_segment;
 use crate::http::enveloped::{empty_request, enveloped_request, send_checked, DaemonRequestError};
 use crate::service::FileExport;
 use crate::DaemonConnectionState;
@@ -49,6 +50,7 @@ impl DaemonClipboardClient {
     /// occurs because CaptureClipboardUseCase skips capture for LocalRestore origin.
     /// A 404 surfaces as `DaemonRequestError::Status` (downcastable from anyhow).
     pub async fn restore_clipboard_entry(&self, entry_id: &str) -> Result<()> {
+        let entry_id = encode_path_segment(entry_id)?;
         let path = format!("{}/{entry_id}", http_route::CLIPBOARD_RESTORE);
         empty_request(
             &self.http,
@@ -123,6 +125,7 @@ impl DaemonClipboardClient {
         transfer_id: &str,
         reason: &str,
     ) -> Result<CancelTransferResponse> {
+        let transfer_id = encode_path_segment(transfer_id)?;
         let path = format!("{}/{transfer_id}", http_route::CLIPBOARD_CANCEL_TRANSFER);
         let req_body = CancelTransferRequest {
             reason: reason.to_string(),
@@ -142,7 +145,7 @@ impl DaemonClipboardClient {
         &self,
         entry_id: &str,
     ) -> Result<Option<EntryReceiveProgressResponse>> {
-        let path = entry_receive_progress_path(entry_id);
+        let path = entry_receive_progress_path(entry_id)?;
         Ok(enveloped_request(
             &self.http,
             &self.connection_state,
@@ -159,7 +162,7 @@ impl DaemonClipboardClient {
         entry_id: &str,
         attempt_id: &str,
     ) -> Result<CancelEntryReceiveResponse> {
-        let path = cancel_entry_receive_path(entry_id);
+        let path = cancel_entry_receive_path(entry_id)?;
         let body = CancelEntryReceiveRequest {
             attempt_id: attempt_id.to_owned(),
         };
@@ -197,7 +200,8 @@ impl DaemonClipboardClient {
     pub async fn export_entry_file(&self, entry_id: &str) -> Result<Option<FileExport>> {
         // The entry-file endpoint is `GET /clipboard/entries/:id/file`; build it
         // off the shared entries base so the route lives in one place.
-        let path = format!("{}/{entry_id}/file", http_route::CLIPBOARD_ENTRIES);
+        let encoded_entry_id = encode_path_segment(entry_id)?;
+        let path = format!("{}/{encoded_entry_id}/file", http_route::CLIPBOARD_ENTRIES);
         let response = match send_checked(
             &self.http,
             &self.connection_state,
@@ -262,6 +266,7 @@ impl DaemonClipboardClient {
     /// `Ok(None)` on 404 (no such entry), and `Err` for any other status
     /// (notably 422 when the entry is not text content) or transport failure.
     pub async fn entry_detail(&self, entry_id: &str) -> Result<Option<EntryDetailDto>> {
+        let entry_id = encode_path_segment(entry_id)?;
         let path = format!("{}/{entry_id}", http_route::CLIPBOARD_ENTRIES);
         match enveloped_request::<EntryDetailDto>(
             &self.http,
@@ -287,6 +292,7 @@ impl DaemonClipboardClient {
     /// to fetch the bytes with [`fetch_blob`](Self::fetch_blob). Returns
     /// `Ok(None)` on 404.
     pub async fn entry_resource(&self, entry_id: &str) -> Result<Option<EntryResourceDto>> {
+        let entry_id = encode_path_segment(entry_id)?;
         let path = format!("{}/{entry_id}/resource", http_route::CLIPBOARD_ENTRIES);
         match enveloped_request::<EntryResourceDto>(
             &self.http,
@@ -310,6 +316,7 @@ impl DaemonClipboardClient {
     /// exempt from the JSON envelope). Returns `Ok(Some(_))` on 200,
     /// `Ok(None)` on 404, and `Err` on any other status / transport failure.
     pub async fn fetch_blob(&self, blob_id: &str) -> Result<Option<Vec<u8>>> {
+        let blob_id = encode_path_segment(blob_id)?;
         let path = format!("{}/{blob_id}", http_route::CLIPBOARD_BLOBS);
         let response = match send_checked(
             &self.http,
@@ -352,12 +359,14 @@ fn filename_from_content_disposition(header: &str) -> Option<String> {
     None
 }
 
-fn entry_receive_progress_path(entry_id: &str) -> String {
-    format!("/clipboard/entries/{entry_id}/receive")
+fn entry_receive_progress_path(entry_id: &str) -> Result<String> {
+    let entry_id = encode_path_segment(entry_id)?;
+    Ok(format!("/clipboard/entries/{entry_id}/receive"))
 }
 
-fn cancel_entry_receive_path(entry_id: &str) -> String {
-    format!("/clipboard/entries/{entry_id}/receive/cancel")
+fn cancel_entry_receive_path(entry_id: &str) -> Result<String> {
+    let entry_id = encode_path_segment(entry_id)?;
+    Ok(format!("/clipboard/entries/{entry_id}/receive/cancel"))
 }
 
 #[cfg(test)]
@@ -388,11 +397,11 @@ mod tests {
     #[test]
     fn receive_request_paths_and_cancel_body_are_exact() {
         assert_eq!(
-            entry_receive_progress_path("entry-1"),
+            entry_receive_progress_path("entry-1").expect("progress path"),
             "/clipboard/entries/entry-1/receive"
         );
         assert_eq!(
-            cancel_entry_receive_path("entry-1"),
+            cancel_entry_receive_path("entry-1").expect("cancel path"),
             "/clipboard/entries/entry-1/receive/cancel"
         );
         assert_eq!(

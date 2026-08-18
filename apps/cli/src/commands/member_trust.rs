@@ -35,6 +35,10 @@ fn requires_local_removal_confirmation(change: &DeviceTrustChangeDto) -> bool {
     change.apply_impact.local_device_outcome == DeviceMembershipDto::Removed
 }
 
+fn choice_is_allowed(change: &DeviceTrustChangeDto, choice: DeviceTrustChoiceDto) -> bool {
+    change.allowed_choices.contains(&choice)
+}
+
 #[derive(Serialize)]
 struct TrustStatusOutput<'a> {
     ok: bool,
@@ -176,6 +180,15 @@ pub async fn decide(
             )
         }
     };
+
+    if !choice_is_allowed(change, choice) {
+        return emit_error(
+            json,
+            "choice_not_allowed",
+            "The selected decision is not available for this device trust change.",
+            Some(&change.change_id),
+        );
+    }
 
     if interactive {
         render_change(change);
@@ -436,7 +449,8 @@ fn emit_error(json: bool, code: &str, message: &str, current_change_id: Option<&
 #[cfg(test)]
 mod tests {
     use super::{
-        requires_local_removal_confirmation, select_change, status_output, SelectChangeError,
+        choice_is_allowed, requires_local_removal_confirmation, select_change, status_output,
+        SelectChangeError,
     };
     use uc_daemon_contract::api::dto::member::{
         DeviceMembershipDto, DeviceTrustChangeDto, DeviceTrustChoiceDto, DeviceTrustImpactDto,
@@ -510,6 +524,21 @@ mod tests {
         assert!(!requires_local_removal_confirmation(&change(
             "change-1", false
         )));
+    }
+
+    #[test]
+    fn trust_decision_must_be_allowed_by_the_current_change() {
+        let mut current = change("change-1", false);
+        current.allowed_choices = vec![DeviceTrustChoiceDto::KeepCurrentDeviceGroup];
+
+        assert!(!choice_is_allowed(
+            &current,
+            DeviceTrustChoiceDto::ApplyChange
+        ));
+        assert!(choice_is_allowed(
+            &current,
+            DeviceTrustChoiceDto::KeepCurrentDeviceGroup
+        ));
     }
 
     #[test]

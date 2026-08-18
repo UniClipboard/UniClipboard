@@ -3,8 +3,8 @@ use std::sync::Arc;
 use anyhow::{anyhow, Context, Result};
 use reqwest::{Method, RequestBuilder, StatusCode};
 
-use crate::http::authorized_daemon_request_with_type;
 use crate::http::enveloped::enveloped_request;
+use crate::http::{authorized_daemon_request_with_type, encode_path_segment};
 use crate::DaemonConnectionState;
 use uc_daemon_contract::api::dto::member::WorkspaceConvergenceDto;
 use uc_daemon_contract::api::dto::pairing::{
@@ -116,6 +116,7 @@ impl DaemonPairingClient {
         session_id: &str,
         pin_matches: bool,
     ) -> Result<AckedPairingCommandResponse> {
+        let session_id = encode_path_segment(session_id)?;
         self.send_json(
             Method::POST,
             &format!("/pairing/sessions/{session_id}/verify"),

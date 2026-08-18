@@ -30,12 +30,18 @@ use uc_daemon_contract::api::dto::v2::setup::{
 
 use crate::commands::app_session::{
     connect_setup_facade_with_lease, connect_with_lease, default_device_name,
+    reconnect_setup_facade_with_lease,
 };
 use crate::exit_codes;
 use crate::ui;
 
 const EXIT_SIGINT: i32 = 130;
 const JOIN_POLL_INTERVAL: std::time::Duration = std::time::Duration::from_millis(250);
+const JOIN_RECONNECT_MAX_INTERVAL: std::time::Duration = std::time::Duration::from_secs(5);
+
+fn next_reconnect_delay(current: std::time::Duration) -> std::time::Duration {
+    current.saturating_mul(2).min(JOIN_RECONNECT_MAX_INTERVAL)
+}
 
 /// Number of base32 chars in an invitation-code body (the `XXXX-XXXX`
 /// shape carries 8 chars plus one middle hyphen).
@@ -272,6 +278,21 @@ enum JoinResponseIntent {
     Cancel,
 }
 
+#[derive(Debug, PartialEq, Eq)]
+enum JoinCancelDecision<'a> {
+    None,
+    Cancel(&'a str),
+    Report(&'a JoinSpaceResponse),
+}
+
+fn join_cancel_decision(current: Option<&JoinSpaceResponse>) -> JoinCancelDecision<'_> {
+    match current {
+        Some(JoinSpaceResponse::Pending { join_id, .. }) => JoinCancelDecision::Cancel(join_id),
+        Some(response) => JoinCancelDecision::Report(response),
+        None => JoinCancelDecision::None,
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct JoinResponseOutcome {
     ok: bool,
@@ -491,6 +512,7 @@ async fn wait_for_join(
 ) -> i32 {
     spinner.set_message("Join request pending; waiting for final status...");
     let mut reconnecting = false;
+    let mut reconnect_delay = JOIN_POLL_INTERVAL;
     loop {
         select! {
             _ = signal::ctrl_c() => {
@@ -518,12 +540,28 @@ async fn wait_for_join(
                     spinner.set_message("Daemon connection interrupted; reconnecting...");
                     reconnecting = true;
                 }
-                match connect_setup_facade_with_lease(context.verbose).await {
-                    Ok((new_lease, new_service)) => {
-                        _lease = new_lease;
-                        service = new_service;
+                loop {
+                    select! {
+                        _ = signal::ctrl_c() => {
+                            spinner.finish_and_clear();
+                            return emit_join_error(
+                                context.json,
+                                "interrupted",
+                                "Stopped waiting; join request is still pending.",
+                                EXIT_SIGINT,
+                            );
+                        }
+                        _ = tokio::time::sleep(reconnect_delay) => {}
                     }
-                    Err(_) => continue,
+                    match reconnect_setup_facade_with_lease(context.verbose).await {
+                        Ok((new_lease, new_service)) => {
+                            _lease = new_lease;
+                            service = new_service;
+                            reconnect_delay = JOIN_POLL_INTERVAL;
+                            break;
+                        }
+                        Err(_) => reconnect_delay = next_reconnect_delay(reconnect_delay),
+                    }
                 }
                 continue;
             }
@@ -623,8 +661,22 @@ pub async fn cancel(json: bool, verbose: bool) -> i32 {
             );
         }
     };
-    let Some(JoinSpaceResponse::Pending { join_id, .. }) = snapshot.current_join else {
-        return render_no_current_join(json, "No pending join request to cancel.");
+    let join_id = match join_cancel_decision(snapshot.current_join.as_ref()) {
+        JoinCancelDecision::Cancel(join_id) => join_id,
+        JoinCancelDecision::Report(response) => {
+            let spinner = indicatif::ProgressBar::hidden();
+            return render_join_response(
+                response,
+                &spinner,
+                "Join completed",
+                None,
+                json,
+                JoinResponseIntent::Status,
+            );
+        }
+        JoinCancelDecision::None => {
+            return render_no_current_join(json, "No pending join request to cancel.")
+        }
     };
     let response = match service.cancel_join(&join_id).await {
         Ok(response) => response,
@@ -881,9 +933,10 @@ async fn run_switch(
 #[cfg(test)]
 mod tests {
     use super::{
-        join_error_output, join_poll_decision, join_response_outcome, normalize_invitation_code,
-        should_wait_for_join, JoinPendingOutput, JoinPollDecision, JoinRejectedOutput,
-        JoinResponseIntent,
+        join_cancel_decision, join_error_output, join_poll_decision, join_response_outcome,
+        next_reconnect_delay, normalize_invitation_code, should_wait_for_join, JoinCancelDecision,
+        JoinPendingOutput, JoinPollDecision, JoinRejectedOutput, JoinResponseIntent,
+        JOIN_POLL_INTERVAL, JOIN_RECONNECT_MAX_INTERVAL,
     };
     use crate::exit_codes;
     use reqwest::StatusCode;
@@ -891,6 +944,47 @@ mod tests {
     use uc_daemon_contract::api::dto::v2::setup::{
         JoinSpaceRejectionReason, JoinSpaceResponse, JoinedSpaceResponse,
     };
+
+    #[test]
+    fn reconnect_delay_doubles_until_the_maximum() {
+        assert_eq!(
+            next_reconnect_delay(JOIN_POLL_INTERVAL),
+            JOIN_POLL_INTERVAL * 2
+        );
+        assert_eq!(
+            next_reconnect_delay(JOIN_RECONNECT_MAX_INTERVAL),
+            JOIN_RECONNECT_MAX_INTERVAL
+        );
+    }
+
+    #[test]
+    fn cancel_reports_active_and_rejected_current_join_states() {
+        let active = JoinSpaceResponse::Active {
+            join_id: "join-active".to_string(),
+            joined_space: JoinedSpaceResponse {
+                sponsor_device_id: "sponsor".to_string(),
+                sponsor_identity_fingerprint: "sponsor-fingerprint".to_string(),
+                space_id: "space".to_string(),
+                self_device_id: "self".to_string(),
+                self_identity_fingerprint: "self-fingerprint".to_string(),
+                migrated_records: None,
+                preserved_unreadable_records: None,
+            },
+        };
+        let rejected = JoinSpaceResponse::Rejected {
+            join_id: "join-rejected".to_string(),
+            reason: JoinSpaceRejectionReason::AuthenticationRejected,
+        };
+
+        assert_eq!(
+            join_cancel_decision(Some(&active)),
+            JoinCancelDecision::Report(&active)
+        );
+        assert_eq!(
+            join_cancel_decision(Some(&rejected)),
+            JoinCancelDecision::Report(&rejected)
+        );
+    }
 
     #[test]
     fn start_outcome_distinguishes_completed_pending_and_rejected_admission() {

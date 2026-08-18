@@ -34,6 +34,18 @@ use reqwest::header::AUTHORIZATION;
 use reqwest::{Method, RequestBuilder};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+pub(super) fn encode_path_segment(segment: &str) -> Result<String> {
+    if matches!(segment, "." | "..") {
+        anyhow::bail!("dynamic URL path segment cannot be `.` or `..`");
+    }
+    const PATH_SEGMENT: &percent_encoding::AsciiSet = &percent_encoding::NON_ALPHANUMERIC
+        .remove(b'-')
+        .remove(b'.')
+        .remove(b'_')
+        .remove(b'~');
+    Ok(percent_encoding::utf8_percent_encode(segment, PATH_SEGMENT).to_string())
+}
+
 /// Cache for the daemon session token (JWT) exchanged from the bearer token.
 ///
 /// The session token has a TTL of 300 seconds. The cache stores the token along

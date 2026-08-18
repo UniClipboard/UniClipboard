@@ -266,6 +266,21 @@ async fn join_commands_report_none_then_real_active_join() {
     assert_eq!(status["status"], "active");
     assert_eq!(status["join_id"], join_id);
 
+    let cancel_requests_before =
+        daemon_request_count(&joiner, "POST", "/v2/setup/cancel-join");
+    let cancel = joiner.cli.run_capture(&["--json", "join", "cancel"]);
+    assert!(cancel.success(), "active join cancel failed: {cancel:?}");
+    let cancel = json(&cancel);
+    assert_eq!(cancel["status"], "active");
+    assert_eq!(cancel["join_id"], join_id);
+    assert_request_delta(
+        &joiner,
+        "POST",
+        "/v2/setup/cancel-join",
+        cancel_requests_before,
+        0,
+    );
+
     let human_status = joiner.cli.run_capture(&["join", "status"]);
     assert!(
         human_status.success(),

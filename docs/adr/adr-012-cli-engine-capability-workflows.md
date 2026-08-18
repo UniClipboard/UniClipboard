@@ -3,8 +3,8 @@
 - **状态**：已实施
 - **日期**：2026-08-18
 - **相关决策**：
-  - [`ADR-008`](../architecture/adr-008-uniclipd-split-gui-as-client.md)
-  - [`ADR-011`](./adr-011-offline-first-member-removal-integration.md)
+  - [`ADR-008`](docs/architecture/adr-008-uniclipd-split-gui-as-client.md)
+  - [`ADR-011`](docs/adr/adr-011-offline-first-member-removal-integration.md)
 - **当前 Engine 基线**：`94b21aac9db2fa0fb89bc9027f0e05e545ecc1f5`
 - **实施日期**：2026-08-19
 
@@ -199,6 +199,8 @@ uniclip member sync set <device> \
 - 内容类型接受逗号分隔的 `text`、`image`、`file`、`link`、`rich-text`、
   `code-snippet`，并支持 `all` 和 `none`。CLI 将输入转换为 Engine 已有的内容类型集合，不
   定义新的内容分类。
+- `all` 和 `none` 都必须单独使用，二者不能组合，也不能与具体内容类型组合。重复的具体内容
+  类型按一个处理。
 - 更新成功后重新读取设置，并展示 Engine 实际保存的结果。
 - 交互式终端可传无歧义的设备名；名称重复时必须要求设备 ID，不能自行选择。
 - JSON 和其他非交互场景必须传设备 ID，并始终返回设备 ID，避免设备改名使脚本指向不同

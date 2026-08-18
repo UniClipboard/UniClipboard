@@ -10,6 +10,7 @@ use uc_daemon_contract::api::dto::member::{
     WorkspaceConvergenceDto,
 };
 
+use crate::http::encode_path_segment;
 use crate::http::enveloped::enveloped_request;
 use crate::DaemonConnectionState;
 
@@ -88,7 +89,7 @@ impl DaemonMemberClient {
         &self,
         device_id: &str,
     ) -> Result<MemberSyncPreferencesDto> {
-        let path = member_sync_preferences_path(device_id);
+        let path = member_sync_preferences_path(device_id)?;
         Ok(enveloped_request(
             &self.http,
             &self.connection_state,
@@ -105,7 +106,7 @@ impl DaemonMemberClient {
         device_id: &str,
         patch: &MemberSyncPreferencesPatchDto,
     ) -> Result<MemberSyncResultDto> {
-        let path = member_sync_preferences_path(device_id);
+        let path = member_sync_preferences_path(device_id)?;
         Ok(enveloped_request(
             &self.http,
             &self.connection_state,
@@ -118,8 +119,9 @@ impl DaemonMemberClient {
     }
 }
 
-fn member_sync_preferences_path(device_id: &str) -> String {
-    format!("/member/{device_id}/sync-preferences")
+fn member_sync_preferences_path(device_id: &str) -> Result<String> {
+    let device_id = encode_path_segment(device_id)?;
+    Ok(format!("/member/{device_id}/sync-preferences"))
 }
 
 #[cfg(test)]
@@ -133,6 +135,20 @@ mod tests {
     };
     use wiremock::matchers::{header, method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    #[test]
+    fn member_sync_path_encodes_dynamic_device_id() {
+        assert_eq!(
+            member_sync_preferences_path("device/a?mode=unsafe").expect("encoded member path"),
+            "/member/device%2Fa%3Fmode%3Dunsafe/sync-preferences"
+        );
+    }
+
+    #[test]
+    fn member_sync_path_rejects_dot_segments() {
+        assert!(member_sync_preferences_path(".").is_err());
+        assert!(member_sync_preferences_path("..").is_err());
+    }
 
     #[tokio::test]
     async fn device_trust_uses_current_route_and_decodes_envelope() {

@@ -10652,6 +10652,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "futures-util",
+ "percent-encoding",
  "reqwest 0.12.28",
  "serde",
  "serde_json",

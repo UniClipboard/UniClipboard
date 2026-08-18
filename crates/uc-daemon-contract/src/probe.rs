@@ -21,6 +21,9 @@ use semver::Version;
 use crate::api::types::HealthResponse;
 use crate::DAEMON_API_REVISION;
 
+pub const DEGRADED_HEALTH_INCOMPATIBILITY_DETAILS: &str =
+    "daemon reported unhealthy status degraded";
+
 /// 一次健康探测的分类结果。
 ///
 /// Lifted verbatim from `uc-daemon-local::contract` (ADR-008 P5-L L2). It is a
@@ -52,8 +55,13 @@ pub fn classify_health_response(
     let observed_api_revision = Some(health.api_revision.clone());
 
     if health.status != "ok" {
+        let details = if health.status == "degraded" {
+            DEGRADED_HEALTH_INCOMPATIBILITY_DETAILS.to_string()
+        } else {
+            format!("daemon reported unhealthy status {}", health.status)
+        };
         return ProbeOutcome::Incompatible {
-            details: format!("daemon reported unhealthy status {}", health.status),
+            details,
             observed_package_version,
             observed_api_revision,
         };

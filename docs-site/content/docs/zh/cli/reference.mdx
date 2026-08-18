@@ -27,23 +27,23 @@ description: uniclip 全部子命令 —— 成员、发送/监听、搜索、bl
 
 ### 设备信任变化
 
-| 命令                          | 作用                                                   |
-| ----------------------------- | ------------------------------------------------------ |
-| `uniclip member trust status` | 查看当前设备组变化、变化编号以及每种选择的影响。       |
-| `uniclip member trust apply`  | 确认后应用等待处理的设备组变化。                       |
-| `uniclip member trust keep`   | 保留当前设备组，不应用等待处理的变化。                 |
+| 命令                          | 作用                                             |
+| ----------------------------- | ------------------------------------------------ |
+| `uniclip member trust status` | 查看当前设备组变化、变化 ID 以及每种选择的影响。 |
+| `uniclip member trust apply`  | 确认后应用等待处理的设备组变化。                 |
+| `uniclip member trust keep`   | 保留当前设备组，不应用等待处理的变化。           |
 
 脚本和 JSON 调用必须传入 `--change <CHANGE-ID>`，确保选择对应刚刚查看的变化。
 如果应用变化会移除本机，还必须传入 `--confirm-local-removal`。
 
 ### 按成员设置同步
 
-| 命令                                         | 作用                                         |
-| -------------------------------------------- | -------------------------------------------- |
-| `uniclip member sync show <DEVICE>`          | 查看一个成员的发送、接收和内容类型设置。     |
-| `uniclip member sync set <DEVICE> [OPTIONS]` | 只修改命令中明确给出的设置。                 |
+| 命令                                         | 作用                                     |
+| -------------------------------------------- | ---------------------------------------- |
+| `uniclip member sync show <DEVICE>`          | 查看一个成员的发送、接收和内容类型设置。 |
+| `uniclip member sync set <DEVICE> [OPTIONS]` | 只修改命令中明确给出的设置。             |
 
-`<DEVICE>` 可以是设备编号；在交互终端中也可以使用没有歧义的设备名称。
+`<DEVICE>` 可以是设备 ID；在交互终端中也可以使用没有歧义的设备名称。
 `set` 支持 `--send on|off`、`--receive on|off`，以及逗号分隔的
 `--send-types` / `--receive-types`；用 `all` 或 `none` 表示全部类型或不选任何类型。
 

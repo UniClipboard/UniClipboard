@@ -80,13 +80,17 @@ fn resolve_device<'a>(
     if let Some(device) = devices.iter().find(|device| device.device_id == selector) {
         return Ok(device);
     }
-    if !interactive {
-        return Err(ResolveDeviceError::DeviceIdRequired);
-    }
     let matches = devices
         .iter()
         .filter(|device| device.display_name.eq_ignore_ascii_case(selector))
         .collect::<Vec<_>>();
+    if !interactive {
+        return if matches.is_empty() {
+            Err(ResolveDeviceError::NotFound)
+        } else {
+            Err(ResolveDeviceError::DeviceIdRequired)
+        };
+    }
     match matches.as_slice() {
         [] => Err(ResolveDeviceError::NotFound),
         [device] => Ok(*device),
@@ -433,6 +437,14 @@ mod tests {
     }
 
     #[test]
+    fn duplicate_content_types_are_normalized() {
+        let patch = parse_content_types("text,text,image").expect("duplicate content types");
+        assert_eq!(patch.text, Some(true));
+        assert_eq!(patch.image, Some(true));
+        assert_eq!(patch.file, Some(false));
+    }
+
+    #[test]
     fn content_type_parser_rejects_unknown_and_mixed_sentinels() {
         assert!(parse_content_types("text,video").is_err());
         assert!(parse_content_types("all,text").is_err());
@@ -451,6 +463,10 @@ mod tests {
                 .expect("exact device ID")
                 .device_id,
             "device-a"
+        );
+        assert_eq!(
+            resolve_device(&devices, "missing-device", false),
+            Err(ResolveDeviceError::NotFound)
         );
     }
 

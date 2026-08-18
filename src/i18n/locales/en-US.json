@@ -990,6 +990,7 @@
       "contentType": "Content Type",
       "characters": "Characters",
       "charactersCount": "{{count}} chars",
+      "linesCount": "{{count}} lines",
       "words": "Words",
       "size": "Size",
       "dimensions": "Dimensions",

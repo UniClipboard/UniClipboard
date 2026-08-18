@@ -135,7 +135,7 @@ export function useCompositeSearchBar({
     // trailing colon (`type:`). Seeding `#:` would make `parseBuffer` treat `:`
     // as the partial tag text and surface no useful matches.
     setBuffer(dimension === 'tag' ? SYNTAX_KEYS.tag : `${SYNTAX_KEYS[dimension]}:`)
-    setHighlight(-1)
+    setHighlight(0)
     onQueryChange('')
     inputRef.current?.focus()
     setOpen(true)
@@ -153,7 +153,7 @@ export function useCompositeSearchBar({
     const next = e.target.value
     const p = parseBuffer(next)
     setBuffer(next)
-    setHighlight(-1)
+    setHighlight(p.kind === 'token' ? 0 : -1)
     setOpen(suggestionActivation === 'focus' || p.kind === 'token')
     if (p.kind === 'query') {
       onQueryChange(next)
@@ -209,6 +209,11 @@ export function useCompositeSearchBar({
       setHighlight(h =>
         h < 0 ? (delta > 0 ? 0 : options.length - 1) : (h + delta + options.length) % options.length
       )
+      return
+    }
+    if (e.key === 'Tab' && !e.shiftKey && expanded && inToken) {
+      e.preventDefault()
+      selectOption(clampedHighlight >= 0 ? clampedHighlight : 0)
       return
     }
     if (e.key === 'Enter') {

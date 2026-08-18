@@ -28,4 +28,10 @@ describe('WindowShell', () => {
 
     expect(container.firstElementChild).not.toHaveClass('rounded-xl')
   })
+
+  it('does not render the circular window background accent', () => {
+    const { container } = render(<WindowShell titleBar={null}>body</WindowShell>)
+
+    expect(container.querySelector('[data-uc-decorative-effect].rounded-full')).toBeNull()
+  })
 })

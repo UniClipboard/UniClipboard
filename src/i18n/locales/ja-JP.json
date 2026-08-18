@@ -990,6 +990,7 @@
       "contentType": "コンテンツ タイプ",
       "characters": "文字数",
       "charactersCount": "{{count}} 文字",
+      "linesCount": "{{count}} 行",
       "words": "単語",
       "size": "サイズ",
       "dimensions": "寸法",

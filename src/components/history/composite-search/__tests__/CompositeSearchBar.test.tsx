@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { Filter } from '@/api/clipboardItems'
 import type { TimeRangePreset } from '@/api/daemon/search'
 import CompositeSearchBar from '../CompositeSearchBar'
@@ -47,6 +47,10 @@ function renderSearchBar(overrides: Partial<React.ComponentProps<typeof Composit
 }
 
 describe('CompositeSearchBar', () => {
+  beforeEach(() => {
+    Element.prototype.scrollIntoView = vi.fn()
+  })
+
   it('submits free text with Enter when no suggestion is highlighted', async () => {
     const user = userEvent.setup()
     const props = renderSearchBar()

@@ -253,4 +253,40 @@ describe('ClipboardPreview', () => {
 
     expect(screen.getByText('Content unavailable')).toBeInTheDocument()
   })
+
+  it('renders code as a full-bleed scrollable canvas without a nested card', () => {
+    const code = 'const first = 1\nconst second = 2'
+    previewMock.value = {
+      entryId: 'code-entry',
+      contentType: 'text',
+      sizeBytes: code.length,
+      textContent: code,
+    }
+
+    render(
+      <ClipboardPreview
+        item={{
+          id: 'code-entry',
+          type: 'text',
+          activeTime: 1710000000000,
+          contentTags: ['code'],
+          content: {
+            display_text: code,
+            has_detail: false,
+            size: code.length,
+            char_count: code.length,
+          },
+        }}
+      />
+    )
+
+    const codePreview = screen.getByTestId('code-preview')
+    const detail = screen.getByTestId('clipboard-detail')
+    expect(codePreview).toHaveClass('h-full', 'overflow-auto')
+    expect(codePreview).not.toHaveClass('p-6')
+    expect(codePreview.querySelector('.rounded-xl')).not.toBeInTheDocument()
+    expect(detail).toHaveClass('bg-muted/15')
+    expect(codePreview).toHaveClass('bg-transparent', 'text-foreground/85')
+    expect(codePreview.className).not.toContain('bg-[#0d1117]')
+  })
 })

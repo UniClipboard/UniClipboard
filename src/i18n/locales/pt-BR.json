@@ -991,6 +991,7 @@
       "contentType": "Tipo de conteúdo",
       "characters": "Caracteres",
       "charactersCount": "{{count}} caracteres",
+      "linesCount": "{{count}} linhas",
       "words": "Palavras",
       "size": "Tamanho",
       "dimensions": "Dimensões",

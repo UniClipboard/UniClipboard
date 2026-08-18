@@ -166,7 +166,11 @@ mod tests {
             token: "test-bearer".to_string(),
             pid: 42,
         });
-        let client = DaemonSetupV2Client::with_conn_state(connection_state);
+        let client = DaemonSetupV2Client::with_http_conn_state_and_type(
+            Arc::new(reqwest::Client::new()),
+            connection_state,
+            "test".to_string(),
+        );
 
         let state = client.get_state().await.expect("setup state request");
 
@@ -215,7 +219,11 @@ mod tests {
             token: "test-bearer".to_string(),
             pid: 42,
         });
-        let client = DaemonSetupV2Client::with_conn_state(connection_state);
+        let client = DaemonSetupV2Client::with_http_conn_state_and_type(
+            Arc::new(reqwest::Client::new()),
+            connection_state,
+            "test".to_string(),
+        );
 
         let status = client.cancel_join("join-1").await.expect("cancel join");
 

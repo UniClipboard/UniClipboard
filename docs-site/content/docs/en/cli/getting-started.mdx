@@ -80,6 +80,17 @@ uniclip members
 passphrase is verified locally via PAKE — a wrong value fails fast
 without leaking the guess to the sponsor.
 
+By default, `join` waits until the request is accepted or rejected. Use
+`--no-wait` to return as soon as the pending request is recorded, then inspect
+or cancel that same request later:
+
+```bash
+uniclip join status
+uniclip join cancel
+```
+
+Pressing Ctrl-C only stops the local wait. It does not cancel the join request.
+
 </Tab>
 
 </Tabs>

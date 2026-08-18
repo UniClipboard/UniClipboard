@@ -16,6 +16,41 @@ Start with the [CLI overview](../cli/getting-started).
 `uniclip devices` is an alias for `uniclip members`. Both honour `--json`
 for scripting.
 
+### Join requests
+
+| Command                  | Effect                                                                                  |
+| ------------------------ | --------------------------------------------------------------------------------------- |
+| `uniclip join --no-wait` | Record a pending join and return without waiting for its final result.                  |
+| `uniclip join status`    | Show the current join request and its Engine-owned status.                              |
+| `uniclip join cancel`    | Request cancellation of the current pending join.                                      |
+
+Without `--no-wait`, `uniclip join` waits for a final result. Ctrl-C stops only
+that local wait; use `join cancel` when the request itself should be cancelled.
+
+### Device trust changes
+
+| Command                                       | Effect                                                                                     |
+| --------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| `uniclip member trust status`                 | Show the current device-group change, its identifier, and the effect of each choice.      |
+| `uniclip member trust apply`                  | Apply the pending device-group change after confirmation.                                 |
+| `uniclip member trust keep`                   | Keep the current device group instead of applying the pending change.                     |
+
+Scripts and JSON callers must pass `--change <CHANGE-ID>` to bind the choice to
+the change they inspected. Applying a change that removes the local device also
+requires `--confirm-local-removal`.
+
+### Per-member sync
+
+| Command                                        | Effect                                                                  |
+| ---------------------------------------------- | ----------------------------------------------------------------------- |
+| `uniclip member sync show <DEVICE>`            | Show send, receive, and content-type preferences for one member.        |
+| `uniclip member sync set <DEVICE> [OPTIONS]`   | Change only the preferences explicitly supplied on the command line.    |
+
+`<DEVICE>` can be a device ID, or an unambiguous device name in an interactive
+terminal. `set` accepts `--send on|off`, `--receive on|off`, and comma-separated
+`--send-types` / `--receive-types` values; use `all` or `none` for every type or
+no types.
+
 ## Sending and watching
 
 ```bash

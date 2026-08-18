@@ -21,15 +21,15 @@
 
 ## Completion audit
 
-| ADR requirement | Current evidence | Audit result |
-| --- | --- | --- |
-| Default wait, Ctrl-C detaches, status remains queryable | Real pending E2E observes the same join ID before and after Ctrl-C | Proven |
-| Explicit cancel and empty cancel | Real E2E plus exact daemon-client route coverage | Proven |
-| CLI and daemon restart preserve authoritative status | Real active and pending joins remain visible after daemon restart | Proven |
-| Trust status/apply/keep/local removal/stale change | Three-daemon E2E plus focused checks in human and JSON modes | Proven |
-| Sync show/partial set/reread | Two-daemon E2E in human and JSON modes plus controlled reread-failure coverage | Proven |
-| Human and JSON state matrix | Real workflows plus focused output-shape and selection tests | Proven |
-| One expected user action per command | Real-daemon request-log deltas plus exact HTTP client tests | Proven |
+| ADR requirement                                         | Current evidence                                                               | Audit result |
+| ------------------------------------------------------- | ------------------------------------------------------------------------------ | ------------ |
+| Default wait, Ctrl-C detaches, status remains queryable | Real pending E2E observes the same join ID before and after Ctrl-C             | Proven       |
+| Explicit cancel and empty cancel                        | Real E2E plus exact daemon-client route coverage                               | Proven       |
+| CLI and daemon restart preserve authoritative status    | Real active and pending joins remain visible after daemon restart              | Proven       |
+| Trust status/apply/keep/local removal/stale change      | Three-daemon E2E plus focused checks in human and JSON modes                   | Proven       |
+| Sync show/partial set/reread                            | Two-daemon E2E in human and JSON modes plus controlled reread-failure coverage | Proven       |
+| Human and JSON state matrix                             | Real workflows plus focused output-shape and selection tests                   | Proven       |
+| One expected user action per command                    | Real-daemon request-log deltas plus exact HTTP client tests                    | Proven       |
 
 - Engine `94b21aac9db2fa0fb89bc9027f0e05e545ecc1f5` returns the durable current join even when trust details are temporarily unavailable during a session transition. The commit is available on remote branch `fix/current-join-visible-during-transition`.
 - Passphrase mismatch is rejected by the sponsor before Candidate and does not leave a public rejected projection on the joiner. The CLI correctly reports the immediate request failure; subsequent `join status` is `none`.

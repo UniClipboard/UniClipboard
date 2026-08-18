@@ -470,6 +470,22 @@ async fn pending_join_survives_ctrl_c_and_daemon_restart_then_can_be_cancelled()
         1,
     );
 
+    let cancelled_again = joiner.cli.run_capture(&["--json", "join", "cancel"]);
+    assert!(
+        cancelled_again.success(),
+        "repeated pending cancel failed: {cancelled_again:?}"
+    );
+    let cancelled_again = json(&cancelled_again);
+    assert_eq!(cancelled_again["join_id"], join_id);
+    assert_eq!(cancelled_again["cancel_requested"], true);
+    assert_request_delta(
+        &joiner,
+        "POST",
+        "/v2/setup/cancel-join",
+        cancel_requests_before,
+        1,
+    );
+
     drop(session);
 }
 

@@ -282,11 +282,18 @@ enum JoinResponseIntent {
 enum JoinCancelDecision<'a> {
     None,
     Cancel(&'a str),
+    AlreadyRequested(&'a JoinSpaceResponse),
     Report(&'a JoinSpaceResponse),
 }
 
 fn join_cancel_decision(current: Option<&JoinSpaceResponse>) -> JoinCancelDecision<'_> {
     match current {
+        Some(
+            response @ JoinSpaceResponse::Pending {
+                cancel_requested: true,
+                ..
+            },
+        ) => JoinCancelDecision::AlreadyRequested(response),
         Some(JoinSpaceResponse::Pending { join_id, .. }) => JoinCancelDecision::Cancel(join_id),
         Some(response) => JoinCancelDecision::Report(response),
         None => JoinCancelDecision::None,
@@ -663,6 +670,17 @@ pub async fn cancel(json: bool, verbose: bool) -> i32 {
     };
     let join_id = match join_cancel_decision(snapshot.current_join.as_ref()) {
         JoinCancelDecision::Cancel(join_id) => join_id,
+        JoinCancelDecision::AlreadyRequested(response) => {
+            let spinner = indicatif::ProgressBar::hidden();
+            return render_join_response(
+                response,
+                &spinner,
+                "Join cancellation requested",
+                None,
+                json,
+                JoinResponseIntent::Cancel,
+            );
+        }
         JoinCancelDecision::Report(response) => {
             let spinner = indicatif::ProgressBar::hidden();
             return render_join_response(
@@ -983,6 +1001,22 @@ mod tests {
         assert_eq!(
             join_cancel_decision(Some(&rejected)),
             JoinCancelDecision::Report(&rejected)
+        );
+    }
+
+    #[test]
+    fn cancel_does_not_resubmit_when_cancellation_is_already_requested() {
+        let pending = JoinSpaceResponse::Pending {
+            join_id: "join-pending".to_string(),
+            target_space_id: None,
+            sponsor_device_id: None,
+            sponsor_identity_fingerprint: None,
+            cancel_requested: true,
+        };
+
+        assert_eq!(
+            join_cancel_decision(Some(&pending)),
+            JoinCancelDecision::AlreadyRequested(&pending)
         );
     }
 

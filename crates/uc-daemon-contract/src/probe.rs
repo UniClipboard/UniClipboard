@@ -167,7 +167,7 @@ mod tests {
                 observed_package_version,
                 observed_api_revision,
             } => {
-                assert!(details.contains("degraded"));
+                assert_eq!(details, DEGRADED_HEALTH_INCOMPATIBILITY_DETAILS);
                 assert_eq!(
                     observed_package_version.as_deref(),
                     Some(TEST_PACKAGE_VERSION)

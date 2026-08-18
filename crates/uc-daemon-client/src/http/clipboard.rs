@@ -405,6 +405,18 @@ mod tests {
             "/clipboard/entries/entry-1/receive/cancel"
         );
         assert_eq!(
+            entry_receive_progress_path("a/b").expect("encoded progress path"),
+            "/clipboard/entries/a%2Fb/receive"
+        );
+        assert_eq!(
+            cancel_entry_receive_path("a/b").expect("encoded cancel path"),
+            "/clipboard/entries/a%2Fb/receive/cancel"
+        );
+        for dot_segment in [".", ".."] {
+            assert!(entry_receive_progress_path(dot_segment).is_err());
+            assert!(cancel_entry_receive_path(dot_segment).is_err());
+        }
+        assert_eq!(
             serde_json::to_value(CancelEntryReceiveRequest {
                 attempt_id: "attempt-2".to_owned(),
             })

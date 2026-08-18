@@ -24,7 +24,7 @@
         "hiddenTitle": true,
         "transparent": true,
         "visible": false,
-        "devtools": true,
+        "devtools": false,
         "windowEffects": {
           "effects": ["hudWindow"],
           "state": "active",

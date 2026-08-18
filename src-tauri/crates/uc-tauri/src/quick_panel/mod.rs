@@ -596,6 +596,7 @@ pub fn pre_create(app: &tauri::AppHandle) {
         .transparent(uses_transparent_window())
         .shadow(false)
         .always_on_top(true)
+        .devtools(crate::runtime_environment::development_mode())
         .visible(false)
         .resizable(false)
         .skip_taskbar(true)

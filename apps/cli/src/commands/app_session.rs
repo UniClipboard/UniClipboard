@@ -192,6 +192,19 @@ pub async fn connect_facade_with_lease(
     Ok((lease, service))
 }
 
+/// Connect to the daemon for setup and admission workflows without requiring
+/// the profile to have completed setup.
+pub async fn connect_setup_facade_with_lease(
+    verbose: bool,
+) -> Result<(ControlLeaseGuard, Box<dyn DaemonService>), i32> {
+    let service = ensure_daemon_for_setup(verbose).await?;
+    let lease = service.hold_control_lease().await.map_err(|err| {
+        ui::error(&format!("Failed to hold daemon session lease: {err}"));
+        exit_codes::EXIT_ERROR
+    })?;
+    Ok((lease, service))
+}
+
 fn build_daemon_client_service() -> Result<Box<dyn DaemonService>, i32> {
     match DaemonClientContext::from_env() {
         Ok(ctx) => Ok(Box::new(HttpWsDaemonService::new(ctx))),
@@ -212,6 +225,7 @@ pub async fn ensure_daemon_for_setup(verbose: bool) -> Result<Box<dyn DaemonServ
     let _ = verbose; // reserved; the daemon path builds no in-process session.
     match probe_running().await {
         Ok(ProbeOutcome::Compatible(_)) => build_daemon_client_service(),
+        Ok(outcome) if setup_control_contract_matches(&outcome) => build_daemon_client_service(),
         Ok(outcome @ ProbeOutcome::Incompatible { .. }) => {
             ui::error(&crate::local_daemon::incompatible_outcome_error(outcome).to_string());
             Err(exit_codes::EXIT_DAEMON_UNREACHABLE)
@@ -231,6 +245,20 @@ pub async fn ensure_daemon_for_setup(verbose: bool) -> Result<Box<dyn DaemonServ
             Err(exit_codes::EXIT_DAEMON_UNREACHABLE)
         }
     }
+}
+
+fn setup_control_contract_matches(outcome: &ProbeOutcome) -> bool {
+    matches!(
+        outcome,
+        ProbeOutcome::Incompatible {
+            details,
+            observed_package_version: Some(package_version),
+            observed_api_revision: Some(api_revision),
+            ..
+        } if details == "daemon reported unhealthy status degraded"
+            && package_version == env!("CARGO_PKG_VERSION")
+            && api_revision == uc_daemon_contract::DAEMON_API_REVISION
+    )
 }
 
 /// ADR-008 P5-1c: wait for the daemon to come back after a controlled restart,
@@ -267,5 +295,48 @@ pub fn default_device_name() -> Option<String> {
     match std::env::var("UC_PROFILE") {
         Ok(p) if !p.is_empty() => Some(format!("{trimmed} ({p})")),
         _ => Some(trimmed),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::setup_control_contract_matches;
+    use uc_daemon_contract::probe::ProbeOutcome;
+
+    fn incompatible(status: &str, package_version: &str, api_revision: &str) -> ProbeOutcome {
+        ProbeOutcome::Incompatible {
+            details: format!("daemon reported unhealthy status {status}"),
+            observed_package_version: Some(package_version.to_string()),
+            observed_api_revision: Some(api_revision.to_string()),
+        }
+    }
+
+    #[test]
+    fn setup_control_can_attach_to_matching_degraded_daemon() {
+        assert!(setup_control_contract_matches(&incompatible(
+            "degraded",
+            env!("CARGO_PKG_VERSION"),
+            uc_daemon_contract::DAEMON_API_REVISION,
+        )));
+    }
+
+    #[test]
+    fn setup_control_rejects_mismatched_daemon_contracts() {
+        assert!(!setup_control_contract_matches(&incompatible(
+            "degraded",
+            "0.0.0",
+            uc_daemon_contract::DAEMON_API_REVISION,
+        )));
+        assert!(!setup_control_contract_matches(&incompatible(
+            "degraded",
+            env!("CARGO_PKG_VERSION"),
+            "future-api",
+        )));
+        assert!(!setup_control_contract_matches(&incompatible(
+            "failed",
+            env!("CARGO_PKG_VERSION"),
+            uc_daemon_contract::DAEMON_API_REVISION,
+        )));
+        assert!(!setup_control_contract_matches(&ProbeOutcome::Absent));
     }
 }

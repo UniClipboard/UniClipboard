@@ -10,10 +10,14 @@ use crate::ui;
 /// Use this for the common `if json { ... }` branch; the human-readable branch
 /// stays in the command (each command renders its own layout).
 pub fn emit_json<T: Serialize>(value: &T, context: &str) -> i32 {
+    emit_json_with_code(value, context, exit_codes::EXIT_SUCCESS)
+}
+
+pub fn emit_json_with_code<T: Serialize>(value: &T, context: &str, exit_code: i32) -> i32 {
     match serde_json::to_string_pretty(value) {
         Ok(rendered) => {
             println!("{rendered}");
-            exit_codes::EXIT_SUCCESS
+            exit_code
         }
         Err(err) => {
             ui::error(&format!("Failed to serialize {context}: {err}"));
@@ -38,4 +42,14 @@ pub fn print_result<T: Serialize + std::fmt::Display>(value: &T, json: bool) -> 
         println!("{}", value);
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn emit_json_with_code_preserves_requested_process_result() {
+        let code =
+            super::emit_json_with_code(&serde_json::json!({ "ok": false }), "test response", 17);
+        assert_eq!(code, 17);
+    }
 }

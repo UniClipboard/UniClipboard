@@ -20,17 +20,22 @@ use serde::Serialize;
 use tokio::select;
 use tokio::signal;
 
-use uc_daemon_client::{DaemonClientContext, DaemonRequestError};
+use uc_daemon_client::{
+    ControlLeaseGuard, DaemonClientContext, DaemonRequestError, DaemonService, HttpWsDaemonService,
+};
 use uc_daemon_contract::api::dto::settings::{GeneralSettingsPatchDto, SettingsPatchDto};
-use uc_daemon_contract::api::dto::v2::setup::{RedeemRequest, SwitchSpaceRequest};
+use uc_daemon_contract::api::dto::v2::setup::{
+    JoinSpaceResponse, RedeemRequest, SwitchSpaceRequest,
+};
 
 use crate::commands::app_session::{
-    connect_with_lease, default_device_name, ensure_daemon_for_setup,
+    connect_setup_facade_with_lease, connect_with_lease, default_device_name,
 };
 use crate::exit_codes;
 use crate::ui;
 
 const EXIT_SIGINT: i32 = 130;
+const JOIN_POLL_INTERVAL: std::time::Duration = std::time::Duration::from_millis(250);
 
 /// Number of base32 chars in an invitation-code body (the `XXXX-XXXX`
 /// shape carries 8 chars plus one middle hyphen).
@@ -67,6 +72,7 @@ pub struct JoinArgs {
     pub switch: bool,
     pub yes: bool,
     pub preserve_unreadable_history: bool,
+    pub no_wait: bool,
 }
 
 pub async fn run(args: JoinArgs, json: bool, verbose: bool) -> i32 {
@@ -131,6 +137,7 @@ pub async fn run(args: JoinArgs, json: bool, verbose: bool) -> i32 {
             passphrase_str,
             args.yes,
             args.preserve_unreadable_history,
+            args.no_wait,
             json,
             verbose,
         )
@@ -143,7 +150,15 @@ pub async fn run(args: JoinArgs, json: bool, verbose: bool) -> i32 {
         return exit_codes::EXIT_ERROR;
     }
 
-    run_redeem(code_str, passphrase_str, args.device_name, json, verbose).await
+    run_redeem(
+        code_str,
+        passphrase_str,
+        args.device_name,
+        args.no_wait,
+        json,
+        verbose,
+    )
+    .await
 }
 
 #[derive(Serialize)]
@@ -156,6 +171,8 @@ struct JoinErrorOutput {
 #[derive(Serialize)]
 struct JoinSuccessOutput<'a> {
     ok: bool,
+    status: &'static str,
+    join_id: &'a str,
     space_id: &'a str,
     self_device_id: &'a str,
     self_device_name: Option<&'a str>,
@@ -164,6 +181,474 @@ struct JoinSuccessOutput<'a> {
     sponsor_fingerprint: &'a str,
     #[serde(skip_serializing_if = "Option::is_none")]
     migrated_records: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    preserved_unreadable_records: Option<u64>,
+}
+
+#[derive(Serialize)]
+struct JoinPendingOutput<'a> {
+    ok: bool,
+    status: &'static str,
+    join_id: &'a str,
+    target_space_id: Option<&'a str>,
+    sponsor_device_id: Option<&'a str>,
+    sponsor_fingerprint: Option<&'a str>,
+    cancel_requested: bool,
+}
+
+#[derive(Serialize)]
+struct JoinRejectedOutput<'a> {
+    ok: bool,
+    status: &'static str,
+    join_id: &'a str,
+    reason: &'a str,
+}
+
+#[derive(Serialize)]
+struct JoinNoneOutput {
+    ok: bool,
+    status: &'static str,
+}
+
+fn emit_join_error(json: bool, code: &str, message: impl Into<String>, exit_code: i32) -> i32 {
+    let message = message.into();
+    if json {
+        crate::output::emit_json_with_code(
+            &JoinErrorOutput {
+                ok: false,
+                code: code.to_string(),
+                message,
+            },
+            "join error",
+            exit_code,
+        )
+    } else {
+        ui::error(&message);
+        exit_code
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum JoinPollDecision {
+    Continue,
+    Finished(JoinSpaceResponse),
+    Missing,
+    Replaced,
+}
+
+fn join_id(response: &JoinSpaceResponse) -> &str {
+    match response {
+        JoinSpaceResponse::Active { join_id, .. }
+        | JoinSpaceResponse::Pending { join_id, .. }
+        | JoinSpaceResponse::Rejected { join_id, .. } => join_id,
+    }
+}
+
+fn should_wait_for_join(response: &JoinSpaceResponse, no_wait: bool) -> bool {
+    !no_wait && matches!(response, JoinSpaceResponse::Pending { .. })
+}
+
+fn join_poll_decision(
+    expected_join_id: &str,
+    current: Option<JoinSpaceResponse>,
+) -> JoinPollDecision {
+    let Some(current) = current else {
+        return JoinPollDecision::Missing;
+    };
+    if join_id(&current) != expected_join_id {
+        return JoinPollDecision::Replaced;
+    }
+    if matches!(current, JoinSpaceResponse::Pending { .. }) {
+        JoinPollDecision::Continue
+    } else {
+        JoinPollDecision::Finished(current)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum JoinResponseIntent {
+    Start,
+    Status,
+    Cancel,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct JoinResponseOutcome {
+    ok: bool,
+    exit_code: i32,
+}
+
+fn join_response_outcome(
+    response: &JoinSpaceResponse,
+    intent: JoinResponseIntent,
+) -> JoinResponseOutcome {
+    let ok = match intent {
+        JoinResponseIntent::Start => !matches!(response, JoinSpaceResponse::Rejected { .. }),
+        JoinResponseIntent::Status => true,
+        JoinResponseIntent::Cancel => matches!(
+            response,
+            JoinSpaceResponse::Pending {
+                cancel_requested: true,
+                ..
+            } | JoinSpaceResponse::Rejected {
+                reason:
+                    uc_daemon_contract::api::dto::v2::setup::JoinSpaceRejectionReason::Cancelled,
+                ..
+            }
+        ),
+    };
+    JoinResponseOutcome {
+        ok,
+        exit_code: if ok {
+            exit_codes::EXIT_SUCCESS
+        } else {
+            exit_codes::EXIT_ERROR
+        },
+    }
+}
+
+fn render_join_response(
+    response: &JoinSpaceResponse,
+    spinner: &indicatif::ProgressBar,
+    completed_message: &str,
+    device_name: Option<&str>,
+    json: bool,
+    intent: JoinResponseIntent,
+) -> i32 {
+    let outcome = join_response_outcome(response, intent);
+    match response {
+        JoinSpaceResponse::Active {
+            join_id,
+            joined_space,
+        } => {
+            if json {
+                spinner.finish_and_clear();
+                crate::output::emit_json_with_code(
+                    &JoinSuccessOutput {
+                        ok: outcome.ok,
+                        status: "active",
+                        join_id,
+                        space_id: &joined_space.space_id,
+                        self_device_id: &joined_space.self_device_id,
+                        self_device_name: device_name,
+                        self_fingerprint: &joined_space.self_identity_fingerprint,
+                        sponsor_device_id: &joined_space.sponsor_device_id,
+                        sponsor_fingerprint: &joined_space.sponsor_identity_fingerprint,
+                        migrated_records: joined_space.migrated_records,
+                        preserved_unreadable_records: joined_space.preserved_unreadable_records,
+                    },
+                    "join response",
+                    outcome.exit_code,
+                )
+            } else {
+                if outcome.ok {
+                    ui::spinner_finish_success(spinner, completed_message);
+                } else {
+                    ui::spinner_finish_error(spinner, "Join request was not cancelled");
+                }
+                ui::info("join_id", join_id);
+                ui::info("space_id", &joined_space.space_id);
+                ui::info("self_device_id", &joined_space.self_device_id);
+                if let Some(device_name) = device_name {
+                    ui::info("self_device_name", device_name);
+                }
+                ui::info("self_fingerprint", &joined_space.self_identity_fingerprint);
+                ui::info("sponsor_device_id", &joined_space.sponsor_device_id);
+                ui::info(
+                    "sponsor_fingerprint",
+                    &joined_space.sponsor_identity_fingerprint,
+                );
+                if let Some(migrated_records) = joined_space.migrated_records {
+                    ui::info("migrated_records", &migrated_records.to_string());
+                }
+                if let Some(preserved) = joined_space.preserved_unreadable_records {
+                    ui::info("preserved_unreadable_records", &preserved.to_string());
+                }
+                outcome.exit_code
+            }
+        }
+        JoinSpaceResponse::Pending {
+            join_id,
+            target_space_id,
+            sponsor_device_id,
+            sponsor_identity_fingerprint,
+            cancel_requested,
+        } => {
+            if json {
+                spinner.finish_and_clear();
+                crate::output::emit_json_with_code(
+                    &JoinPendingOutput {
+                        ok: outcome.ok,
+                        status: "pending",
+                        join_id,
+                        target_space_id: target_space_id.as_deref(),
+                        sponsor_device_id: sponsor_device_id.as_deref(),
+                        sponsor_fingerprint: sponsor_identity_fingerprint.as_deref(),
+                        cancel_requested: *cancel_requested,
+                    },
+                    "join response",
+                    outcome.exit_code,
+                )
+            } else {
+                if outcome.ok {
+                    ui::spinner_finish_success(
+                        spinner,
+                        if intent == JoinResponseIntent::Cancel {
+                            "Join cancellation requested"
+                        } else {
+                            "Join request is pending"
+                        },
+                    );
+                } else {
+                    ui::spinner_finish_error(spinner, "Join request was not cancelled");
+                }
+                ui::info("join_id", join_id);
+                if let Some(space_id) = target_space_id {
+                    ui::info("target_space_id", space_id);
+                }
+                if let Some(sponsor_device_id) = sponsor_device_id {
+                    ui::info("sponsor_device_id", sponsor_device_id);
+                }
+                if let Some(sponsor_fingerprint) = sponsor_identity_fingerprint {
+                    ui::info("sponsor_fingerprint", sponsor_fingerprint);
+                }
+                ui::info("cancel_requested", &cancel_requested.to_string());
+                outcome.exit_code
+            }
+        }
+        JoinSpaceResponse::Rejected { join_id, reason } => {
+            let reason = match reason {
+                uc_daemon_contract::api::dto::v2::setup::JoinSpaceRejectionReason::InvitationUnavailable => "invitation_unavailable",
+                uc_daemon_contract::api::dto::v2::setup::JoinSpaceRejectionReason::AuthenticationRejected => "authentication_rejected",
+                uc_daemon_contract::api::dto::v2::setup::JoinSpaceRejectionReason::IdentityConflict => "identity_conflict",
+                uc_daemon_contract::api::dto::v2::setup::JoinSpaceRejectionReason::BaseHistoryChanged => "base_history_changed",
+                uc_daemon_contract::api::dto::v2::setup::JoinSpaceRejectionReason::JoinerHistoryAhead => "joiner_history_ahead",
+                uc_daemon_contract::api::dto::v2::setup::JoinSpaceRejectionReason::HistoryConflict => "history_conflict",
+                uc_daemon_contract::api::dto::v2::setup::JoinSpaceRejectionReason::PeerUpgradeRequired => "peer_upgrade_required",
+                uc_daemon_contract::api::dto::v2::setup::JoinSpaceRejectionReason::Cancelled => "cancelled",
+                uc_daemon_contract::api::dto::v2::setup::JoinSpaceRejectionReason::RemovedBeforeActivation => "removed_before_activation",
+            };
+            if json {
+                spinner.finish_and_clear();
+                crate::output::emit_json_with_code(
+                    &JoinRejectedOutput {
+                        ok: outcome.ok,
+                        status: "rejected",
+                        join_id,
+                        reason,
+                    },
+                    "join response",
+                    outcome.exit_code,
+                )
+            } else {
+                match (intent, outcome.ok) {
+                    (JoinResponseIntent::Cancel, true) => {
+                        ui::spinner_finish_success(spinner, "Join cancelled");
+                    }
+                    (JoinResponseIntent::Status, true) => {
+                        spinner.finish_and_clear();
+                        ui::info("status", "rejected");
+                    }
+                    _ => ui::spinner_finish_error(spinner, "Join request was rejected"),
+                }
+                ui::info("join_id", join_id);
+                ui::info("reason", reason);
+                outcome.exit_code
+            }
+        }
+    }
+}
+
+fn render_no_current_join(json: bool, message: &str) -> i32 {
+    if json {
+        crate::output::emit_json(
+            &JoinNoneOutput {
+                ok: true,
+                status: "none",
+            },
+            "join status",
+        )
+    } else {
+        ui::info("status", "none");
+        ui::end(message);
+        exit_codes::EXIT_SUCCESS
+    }
+}
+
+struct JoinWaitContext<'a> {
+    expected_join_id: String,
+    completed_message: &'a str,
+    device_name: Option<&'a str>,
+    json: bool,
+    verbose: bool,
+}
+
+async fn wait_for_join(
+    mut _lease: ControlLeaseGuard,
+    mut service: Box<dyn DaemonService>,
+    spinner: &indicatif::ProgressBar,
+    context: JoinWaitContext<'_>,
+) -> i32 {
+    spinner.set_message("Join request pending; waiting for final status...");
+    let mut reconnecting = false;
+    loop {
+        select! {
+            _ = signal::ctrl_c() => {
+                spinner.finish_and_clear();
+                return emit_join_error(
+                    context.json,
+                    "interrupted",
+                    "Stopped waiting; join request is still pending.",
+                    EXIT_SIGINT,
+                );
+            }
+            _ = tokio::time::sleep(JOIN_POLL_INTERVAL) => {}
+        }
+
+        let snapshot = match service.device_trust().await {
+            Ok(snapshot) => {
+                if reconnecting {
+                    spinner.set_message("Join request pending; waiting for final status...");
+                    reconnecting = false;
+                }
+                snapshot
+            }
+            Err(_) => {
+                if !reconnecting {
+                    spinner.set_message("Daemon connection interrupted; reconnecting...");
+                    reconnecting = true;
+                }
+                match connect_setup_facade_with_lease(context.verbose).await {
+                    Ok((new_lease, new_service)) => {
+                        _lease = new_lease;
+                        service = new_service;
+                    }
+                    Err(_) => continue,
+                }
+                continue;
+            }
+        };
+
+        match join_poll_decision(&context.expected_join_id, snapshot.current_join) {
+            JoinPollDecision::Continue => {}
+            JoinPollDecision::Finished(response) => {
+                return render_join_response(
+                    &response,
+                    spinner,
+                    context.completed_message,
+                    context.device_name,
+                    context.json,
+                    JoinResponseIntent::Start,
+                );
+            }
+            JoinPollDecision::Missing => {
+                spinner.finish_and_clear();
+                return emit_join_error(
+                    context.json,
+                    "join_status_missing",
+                    "The pending join is no longer available. Run `uniclip join status`.",
+                    exit_codes::EXIT_ERROR,
+                );
+            }
+            JoinPollDecision::Replaced => {
+                spinner.finish_and_clear();
+                return emit_join_error(
+                    context.json,
+                    "join_replaced",
+                    "A newer join request replaced this one. Run `uniclip join status`.",
+                    exit_codes::EXIT_ERROR,
+                );
+            }
+        }
+    }
+}
+
+pub async fn status(json: bool, verbose: bool) -> i32 {
+    if !json {
+        ui::header("Join status");
+    }
+    let (_lease, service) = match connect_setup_facade_with_lease(verbose).await {
+        Ok(session) => session,
+        Err(code) => return code,
+    };
+    let snapshot = match service.device_trust().await {
+        Ok(snapshot) => snapshot,
+        Err(err) => {
+            return emit_join_error(
+                json,
+                "join_status_unavailable",
+                format!(
+                    "Failed to query join status: {}",
+                    crate::commands::daemon_error_message(&err)
+                ),
+                exit_codes::EXIT_ERROR,
+            );
+        }
+    };
+    match snapshot.current_join {
+        Some(response) => {
+            let spinner = indicatif::ProgressBar::hidden();
+            render_join_response(
+                &response,
+                &spinner,
+                "Join completed",
+                None,
+                json,
+                JoinResponseIntent::Status,
+            )
+        }
+        None => render_no_current_join(json, "No current join request."),
+    }
+}
+
+pub async fn cancel(json: bool, verbose: bool) -> i32 {
+    if !json {
+        ui::header("Cancel join");
+    }
+    let (_lease, service) = match connect_setup_facade_with_lease(verbose).await {
+        Ok(session) => session,
+        Err(code) => return code,
+    };
+    let snapshot = match service.device_trust().await {
+        Ok(snapshot) => snapshot,
+        Err(err) => {
+            return emit_join_error(
+                json,
+                "join_status_unavailable",
+                format!(
+                    "Failed to query join status: {}",
+                    crate::commands::daemon_error_message(&err)
+                ),
+                exit_codes::EXIT_ERROR,
+            );
+        }
+    };
+    let Some(JoinSpaceResponse::Pending { join_id, .. }) = snapshot.current_join else {
+        return render_no_current_join(json, "No pending join request to cancel.");
+    };
+    let response = match service.cancel_join(&join_id).await {
+        Ok(response) => response,
+        Err(err) => {
+            return emit_join_error(
+                json,
+                "join_cancel_failed",
+                format!(
+                    "Failed to cancel join: {}",
+                    crate::commands::daemon_error_message(&err)
+                ),
+                exit_codes::EXIT_ERROR,
+            );
+        }
+    };
+    let spinner = indicatif::ProgressBar::hidden();
+    render_join_response(
+        &response,
+        &spinner,
+        "Join cancelled",
+        None,
+        json,
+        JoinResponseIntent::Cancel,
+    )
 }
 
 fn join_error_output(err: &anyhow::Error) -> JoinErrorOutput {
@@ -183,19 +668,18 @@ fn join_error_output(err: &anyhow::Error) -> JoinErrorOutput {
 
 fn render_join_error(prefix: &str, err: &anyhow::Error, json: bool) -> i32 {
     if json {
-        match serde_json::to_string(&join_error_output(err)) {
-            Ok(value) => eprintln!("{value}"),
-            Err(serialize_err) => ui::error(&format!(
-                "Failed to serialize join error response: {serialize_err}"
-            )),
-        }
-    } else {
-        ui::error(&format!(
-            "{prefix}: {}",
-            crate::commands::daemon_error_message(err)
-        ));
+        return crate::output::emit_json_with_code(
+            &join_error_output(err),
+            "join error response",
+            exit_codes::EXIT_ERROR,
+        );
     }
-    exit_codes::EXIT_ERROR
+    emit_join_error(
+        false,
+        "join_failed",
+        format!("{prefix}: {}", crate::commands::daemon_error_message(err)),
+        exit_codes::EXIT_ERROR,
+    )
 }
 
 /// First-time join: redeem an invitation and adopt the sponsor's space.
@@ -203,6 +687,7 @@ async fn run_redeem(
     code_str: String,
     passphrase_str: String,
     device_name_arg: Option<String>,
+    no_wait: bool,
     json: bool,
     verbose: bool,
 ) -> i32 {
@@ -222,16 +707,9 @@ async fn run_redeem(
     };
 
     // Ensure daemon is running (no setup gate — we ARE the setup command).
-    let service = match ensure_daemon_for_setup(verbose).await {
-        Ok(s) => s,
+    let (_lease, service) = match connect_setup_facade_with_lease(verbose).await {
+        Ok(session) => session,
         Err(code) => return code,
-    };
-    let _lease = match service.hold_control_lease().await {
-        Ok(g) => g,
-        Err(err) => {
-            ui::error(&format!("Failed to acquire control lease: {err}"));
-            return exit_codes::EXIT_ERROR;
-        }
     };
 
     let ctx = match DaemonClientContext::from_env() {
@@ -268,41 +746,39 @@ async fn run_redeem(
 
     select! {
         result = &mut redeem_fut => match result {
-            Ok(resp) => {
-                if json {
-                    spinner.finish_and_clear();
-                    crate::output::emit_json(
-                        &JoinSuccessOutput {
-                            ok: true,
-                            space_id: &resp.space_id,
-                            self_device_id: &resp.self_device_id,
-                            self_device_name: Some(&device_name),
-                            self_fingerprint: &resp.self_identity_fingerprint,
-                            sponsor_device_id: &resp.sponsor_device_id,
-                            sponsor_fingerprint: &resp.sponsor_identity_fingerprint,
-                            migrated_records: None,
-                        },
-                        "join response",
-                    )
-                } else {
-                    ui::spinner_finish_success(&spinner, "Joined space");
-                    ui::info("space_id", &resp.space_id);
-                    ui::info("self_device_id", &resp.self_device_id);
-                    ui::info("self_device_name", &device_name);
-                    ui::info("self_fingerprint", &resp.self_identity_fingerprint);
-                    ui::info("sponsor_device_id", &resp.sponsor_device_id);
-                    ui::info("sponsor_fingerprint", &resp.sponsor_identity_fingerprint);
-                    exit_codes::EXIT_SUCCESS
-                }
-            }
+            Ok(resp) if should_wait_for_join(&resp, no_wait) => wait_for_join(
+                _lease,
+                service,
+                &spinner,
+                JoinWaitContext {
+                    expected_join_id: join_id(&resp).to_string(),
+                    completed_message: "Joined space",
+                    device_name: Some(&device_name),
+                    json,
+                    verbose,
+                },
+            ).await,
+            Ok(resp) => render_join_response(
+                &resp,
+                &spinner,
+                "Joined space",
+                Some(&device_name),
+                json,
+                JoinResponseIntent::Start,
+            ),
             Err(err) => {
                 spinner.finish_and_clear();
                 render_join_error("Join failed", &err, json)
             }
         },
         _ = signal::ctrl_c() => {
-            ui::spinner_finish_error(&spinner, "Interrupted by user");
-            EXIT_SIGINT
+            spinner.finish_and_clear();
+            emit_join_error(
+                json,
+                "interrupted",
+                "Stopped waiting; the join operation may still continue in Engine.",
+                EXIT_SIGINT,
+            )
         }
     }
 }
@@ -318,6 +794,7 @@ async fn run_switch(
     new_passphrase: String,
     yes: bool,
     preserve_unreadable_history: bool,
+    no_wait: bool,
     json: bool,
     verbose: bool,
 ) -> i32 {
@@ -346,6 +823,7 @@ async fn run_switch(
         Ok(pair) => pair,
         Err(code) => return code,
     };
+    let service: Box<dyn DaemonService> = Box::new(HttpWsDaemonService::new(ctx.clone()));
 
     let spinner = ui::spinner(
         "Migrating local clipboard history to the new space (4 phases \u{2014} this may take a while)...",
@@ -363,54 +841,213 @@ async fn run_switch(
 
     select! {
         result = &mut switch_fut => match result {
-            Ok(resp) => {
-                if json {
-                    spinner.finish_and_clear();
-                    crate::output::emit_json(
-                        &JoinSuccessOutput {
-                            ok: true,
-                            space_id: &resp.space_id,
-                            self_device_id: &resp.self_device_id,
-                            self_device_name: None,
-                            self_fingerprint: &resp.self_identity_fingerprint,
-                            sponsor_device_id: &resp.sponsor_device_id,
-                            sponsor_fingerprint: &resp.sponsor_identity_fingerprint,
-                            migrated_records: Some(resp.migrated_records),
-                        },
-                        "switch-space response",
-                    )
-                } else {
-                    ui::spinner_finish_success(&spinner, "Switched space");
-                    ui::info("space_id", &resp.space_id);
-                    ui::info("self_device_id", &resp.self_device_id);
-                    ui::info("self_fingerprint", &resp.self_identity_fingerprint);
-                    ui::info("sponsor_device_id", &resp.sponsor_device_id);
-                    ui::info("sponsor_fingerprint", &resp.sponsor_identity_fingerprint);
-                    ui::info("migrated_records", &resp.migrated_records.to_string());
-                    exit_codes::EXIT_SUCCESS
-                }
-            }
+            Ok(resp) if should_wait_for_join(&resp, no_wait) => wait_for_join(
+                _lease,
+                service,
+                &spinner,
+                JoinWaitContext {
+                    expected_join_id: join_id(&resp).to_string(),
+                    completed_message: "Switched space",
+                    device_name: None,
+                    json,
+                    verbose,
+                },
+            ).await,
+            Ok(resp) => render_join_response(
+                &resp,
+                &spinner,
+                "Switched space",
+                None,
+                json,
+                JoinResponseIntent::Start,
+            ),
             Err(err) => {
                 spinner.finish_and_clear();
                 render_join_error("Switch-space failed", &err, json)
             }
         },
         _ = signal::ctrl_c() => {
-            ui::spinner_finish_error(&spinner, "Interrupted by user");
-            ui::info(
-                "note",
-                "Migration may be partially complete. Restart `uniclip` to auto-resume.",
-            );
-            EXIT_SIGINT
+            spinner.finish_and_clear();
+            emit_join_error(
+                json,
+                "interrupted",
+                "Stopped waiting; the space migration may still continue in Engine.",
+                EXIT_SIGINT,
+            )
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{join_error_output, normalize_invitation_code};
+    use super::{
+        join_error_output, join_poll_decision, join_response_outcome, normalize_invitation_code,
+        should_wait_for_join, JoinPendingOutput, JoinPollDecision, JoinRejectedOutput,
+        JoinResponseIntent,
+    };
+    use crate::exit_codes;
     use reqwest::StatusCode;
     use uc_daemon_client::DaemonRequestError;
+    use uc_daemon_contract::api::dto::v2::setup::{
+        JoinSpaceRejectionReason, JoinSpaceResponse, JoinedSpaceResponse,
+    };
+
+    #[test]
+    fn start_outcome_distinguishes_completed_pending_and_rejected_admission() {
+        let active = JoinSpaceResponse::Active {
+            join_id: "join-active".to_string(),
+            joined_space: JoinedSpaceResponse {
+                sponsor_device_id: "sponsor".to_string(),
+                sponsor_identity_fingerprint: "sponsor-fingerprint".to_string(),
+                space_id: "space".to_string(),
+                self_device_id: "self".to_string(),
+                self_identity_fingerprint: "self-fingerprint".to_string(),
+                migrated_records: None,
+                preserved_unreadable_records: None,
+            },
+        };
+        let pending = JoinSpaceResponse::Pending {
+            join_id: "join-pending".to_string(),
+            target_space_id: None,
+            sponsor_device_id: None,
+            sponsor_identity_fingerprint: None,
+            cancel_requested: false,
+        };
+        let rejected = JoinSpaceResponse::Rejected {
+            join_id: "join-rejected".to_string(),
+            reason: JoinSpaceRejectionReason::AuthenticationRejected,
+        };
+
+        assert_eq!(
+            join_response_outcome(&active, JoinResponseIntent::Start).exit_code,
+            exit_codes::EXIT_SUCCESS
+        );
+        assert_eq!(
+            join_response_outcome(&pending, JoinResponseIntent::Start).exit_code,
+            exit_codes::EXIT_SUCCESS
+        );
+        assert_eq!(
+            join_response_outcome(&rejected, JoinResponseIntent::Start).exit_code,
+            exit_codes::EXIT_ERROR
+        );
+    }
+
+    #[test]
+    fn status_query_treats_rejected_join_as_observed_state() {
+        let rejected = JoinSpaceResponse::Rejected {
+            join_id: "join-rejected".to_string(),
+            reason: JoinSpaceRejectionReason::AuthenticationRejected,
+        };
+
+        let outcome = join_response_outcome(&rejected, JoinResponseIntent::Status);
+
+        assert!(outcome.ok);
+        assert_eq!(outcome.exit_code, exit_codes::EXIT_SUCCESS);
+    }
+
+    #[test]
+    fn cancel_succeeds_only_after_engine_accepts_cancellation() {
+        let cancelled = JoinSpaceResponse::Rejected {
+            join_id: "join-cancelled".to_string(),
+            reason: JoinSpaceRejectionReason::Cancelled,
+        };
+        let active = JoinSpaceResponse::Active {
+            join_id: "join-active".to_string(),
+            joined_space: JoinedSpaceResponse {
+                sponsor_device_id: "sponsor".to_string(),
+                sponsor_identity_fingerprint: "sponsor-fingerprint".to_string(),
+                space_id: "space".to_string(),
+                self_device_id: "self".to_string(),
+                self_identity_fingerprint: "self-fingerprint".to_string(),
+                migrated_records: None,
+                preserved_unreadable_records: None,
+            },
+        };
+
+        let cancelled_outcome = join_response_outcome(&cancelled, JoinResponseIntent::Cancel);
+        let active_outcome = join_response_outcome(&active, JoinResponseIntent::Cancel);
+
+        assert!(cancelled_outcome.ok);
+        assert_eq!(cancelled_outcome.exit_code, exit_codes::EXIT_SUCCESS);
+        assert!(!active_outcome.ok);
+        assert_eq!(active_outcome.exit_code, exit_codes::EXIT_ERROR);
+    }
+
+    #[test]
+    fn join_json_shapes_use_stable_snake_case_fields() {
+        let pending = serde_json::to_value(JoinPendingOutput {
+            ok: true,
+            status: "pending",
+            join_id: "join-1",
+            target_space_id: Some("space-1"),
+            sponsor_device_id: Some("device-a"),
+            sponsor_fingerprint: Some("fingerprint-a"),
+            cancel_requested: false,
+        })
+        .expect("serialize pending join");
+        assert_eq!(pending["join_id"], "join-1");
+        assert_eq!(pending["target_space_id"], "space-1");
+        assert!(pending.get("joinId").is_none());
+
+        let rejected = serde_json::to_value(JoinRejectedOutput {
+            ok: false,
+            status: "rejected",
+            join_id: "join-2",
+            reason: "cancelled",
+        })
+        .expect("serialize rejected join");
+        assert_eq!(rejected["reason"], "cancelled");
+    }
+
+    #[test]
+    fn no_wait_only_detaches_from_pending_join() {
+        let pending = JoinSpaceResponse::Pending {
+            join_id: "join-pending".to_string(),
+            target_space_id: None,
+            sponsor_device_id: None,
+            sponsor_identity_fingerprint: None,
+            cancel_requested: false,
+        };
+        assert!(should_wait_for_join(&pending, false));
+        assert!(!should_wait_for_join(&pending, true));
+
+        let rejected = JoinSpaceResponse::Rejected {
+            join_id: "join-rejected".to_string(),
+            reason: JoinSpaceRejectionReason::AuthenticationRejected,
+        };
+        assert!(!should_wait_for_join(&rejected, false));
+    }
+
+    #[test]
+    fn polling_never_attaches_to_a_different_join_attempt() {
+        let same_pending = JoinSpaceResponse::Pending {
+            join_id: "join-1".to_string(),
+            target_space_id: None,
+            sponsor_device_id: None,
+            sponsor_identity_fingerprint: None,
+            cancel_requested: false,
+        };
+        assert_eq!(
+            join_poll_decision("join-1", Some(same_pending)),
+            JoinPollDecision::Continue
+        );
+
+        let replaced = JoinSpaceResponse::Pending {
+            join_id: "join-2".to_string(),
+            target_space_id: None,
+            sponsor_device_id: None,
+            sponsor_identity_fingerprint: None,
+            cancel_requested: false,
+        };
+        assert_eq!(
+            join_poll_decision("join-1", Some(replaced)),
+            JoinPollDecision::Replaced
+        );
+        assert_eq!(
+            join_poll_decision("join-1", None),
+            JoinPollDecision::Missing
+        );
+    }
 
     #[test]
     fn already_canonical_code_is_unchanged() {

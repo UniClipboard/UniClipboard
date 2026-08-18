@@ -10,7 +10,7 @@ mod output;
 mod setup_check;
 mod ui;
 
-use clap::{CommandFactory, Parser, Subcommand};
+use clap::{CommandFactory, Parser, Subcommand, ValueEnum};
 
 /// Initialise AppKit enough for headless macOS CLI invocations.
 ///
@@ -117,6 +117,7 @@ enum Commands {
     /// for confirmation; pass `--yes` to skip the prompt in non-interactive
     /// contexts. A daemon crash mid-migration auto-resumes on the next
     /// `uniclip` invocation thanks to `MigrationStatePort` persistence.
+    #[command(args_conflicts_with_subcommands = true)]
     Join {
         /// Invitation code printed by the sponsor's `invite`. Prompted
         /// interactively when omitted.
@@ -150,6 +151,11 @@ enum Commands {
         /// by `--yes`.
         #[arg(long, requires = "switch")]
         preserve_unreadable_history: bool,
+        /// Return after Engine accepts a pending join instead of waiting for a final result.
+        #[arg(long)]
+        no_wait: bool,
+        #[command(subcommand)]
+        command: Option<JoinCommands>,
     },
     /// List members of this space: the local device plus paired peers.
     ///
@@ -352,6 +358,83 @@ enum MemberCommands {
     },
     /// Query the current space-wide member removal state.
     RemovalStatus,
+    /// Inspect or decide the current Engine-owned device trust change.
+    Trust {
+        #[command(subcommand)]
+        command: MemberTrustCommands,
+    },
+    /// Inspect or update one member's sync preferences.
+    Sync {
+        #[command(subcommand)]
+        command: MemberSyncCommands,
+    },
+}
+
+#[derive(Subcommand)]
+enum JoinCommands {
+    /// Show the current Engine-owned join status.
+    Status,
+    /// Cancel the current pending join request.
+    Cancel,
+}
+
+#[derive(Subcommand)]
+enum MemberTrustCommands {
+    /// Show the current device trust state and pending change.
+    Status,
+    /// Apply the current device group change.
+    Apply {
+        /// Expected change ID. Required for JSON and non-interactive use.
+        #[arg(long, value_name = "CHANGE-ID")]
+        change: Option<String>,
+        /// Explicitly allow this device to be removed by the change.
+        #[arg(long)]
+        confirm_local_removal: bool,
+    },
+    /// Keep the current device group instead of applying the change.
+    Keep {
+        /// Expected change ID. Required for JSON and non-interactive use.
+        #[arg(long, value_name = "CHANGE-ID")]
+        change: Option<String>,
+    },
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+enum OnOff {
+    On,
+    Off,
+}
+
+impl From<OnOff> for bool {
+    fn from(value: OnOff) -> Self {
+        matches!(value, OnOff::On)
+    }
+}
+
+#[derive(Subcommand)]
+enum MemberSyncCommands {
+    /// Show one member's current sync preferences.
+    Show {
+        /// Device ID, or an unambiguous device name in an interactive terminal.
+        device: String,
+    },
+    /// Partially update one member's sync preferences.
+    Set {
+        /// Device ID, or an unambiguous device name in an interactive terminal.
+        device: String,
+        /// Enable or disable sending to this member.
+        #[arg(long, value_enum)]
+        send: Option<OnOff>,
+        /// Enable or disable receiving from this member.
+        #[arg(long, value_enum)]
+        receive: Option<OnOff>,
+        /// Comma-separated send types, or `all` / `none`.
+        #[arg(long, value_name = "TYPES")]
+        send_types: Option<String>,
+        /// Comma-separated receive types, or `all` / `none`.
+        #[arg(long, value_name = "TYPES")]
+        receive_types: Option<String>,
+    },
 }
 
 fn main() -> anyhow::Result<()> {
@@ -418,20 +501,33 @@ fn main() -> anyhow::Result<()> {
                 switch,
                 yes,
                 preserve_unreadable_history,
+                no_wait,
+                command,
             } => {
-                commands::join::run(
-                    commands::join::JoinArgs {
-                        code,
-                        passphrase,
-                        device_name,
-                        switch,
-                        yes,
-                        preserve_unreadable_history,
-                    },
-                    cli.json,
-                    cli.verbose,
-                )
-                .await
+                match command {
+                    Some(JoinCommands::Status) => {
+                        commands::join::status(cli.json, cli.verbose).await
+                    }
+                    Some(JoinCommands::Cancel) => {
+                        commands::join::cancel(cli.json, cli.verbose).await
+                    }
+                    None => {
+                        commands::join::run(
+                            commands::join::JoinArgs {
+                                code,
+                                passphrase,
+                                device_name,
+                                switch,
+                                yes,
+                                preserve_unreadable_history,
+                                no_wait,
+                            },
+                            cli.json,
+                            cli.verbose,
+                        )
+                        .await
+                    }
+                }
             }
             Commands::Members { probe } => {
                 commands::members::run(probe, cli.json, cli.verbose).await
@@ -443,6 +539,57 @@ fn main() -> anyhow::Result<()> {
                 MemberCommands::RemovalStatus => {
                     commands::member::removal_status(cli.json, cli.verbose).await
                 }
+                MemberCommands::Trust { command } => match command {
+                    MemberTrustCommands::Status => {
+                        commands::member_trust::status(cli.json, cli.verbose).await
+                    }
+                    MemberTrustCommands::Apply {
+                        change,
+                        confirm_local_removal,
+                    } => {
+                        commands::member_trust::decide(
+                            uc_daemon_contract::api::dto::member::DeviceTrustChoiceDto::ApplyChange,
+                            change,
+                            confirm_local_removal,
+                            cli.json,
+                            cli.verbose,
+                        )
+                        .await
+                    }
+                    MemberTrustCommands::Keep { change } => {
+                        commands::member_trust::decide(
+                            uc_daemon_contract::api::dto::member::DeviceTrustChoiceDto::KeepCurrentDeviceGroup,
+                            change,
+                            false,
+                            cli.json,
+                            cli.verbose,
+                        )
+                        .await
+                    }
+                },
+                MemberCommands::Sync { command } => match command {
+                    MemberSyncCommands::Show { device } => {
+                        commands::member_sync::show(device, cli.json, cli.verbose).await
+                    }
+                    MemberSyncCommands::Set {
+                        device,
+                        send,
+                        receive,
+                        send_types,
+                        receive_types,
+                    } => {
+                        commands::member_sync::set(
+                            device,
+                            send,
+                            receive,
+                            send_types,
+                            receive_types,
+                            cli.json,
+                            cli.verbose,
+                        )
+                        .await
+                    }
+                },
             },
             Commands::Send {
                 text,
@@ -524,7 +671,10 @@ fn main() -> anyhow::Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::{commands, Cli, Commands};
+    use super::{
+        commands, Cli, Commands, JoinCommands, MemberCommands, MemberSyncCommands,
+        MemberTrustCommands,
+    };
     use clap::{CommandFactory, Parser};
 
     #[test]
@@ -616,6 +766,129 @@ mod tests {
             panic!("expected Join command");
         };
         assert!(!switch, "join must default to re-pair, not switch");
+    }
+
+    #[test]
+    fn join_no_wait_parses_on_start_flow() {
+        let cli = Cli::try_parse_from([
+            "uniclip",
+            "join",
+            "--code",
+            "ABCD-1234",
+            "--passphrase",
+            "pw",
+            "--no-wait",
+        ])
+        .expect("join --no-wait must parse");
+        let Some(Commands::Join {
+            no_wait,
+            command: None,
+            ..
+        }) = cli.command
+        else {
+            panic!("expected join start command")
+        };
+        assert!(no_wait);
+    }
+
+    #[test]
+    fn join_status_and_cancel_parse_without_join_inputs() {
+        let status =
+            Cli::try_parse_from(["uniclip", "join", "status"]).expect("join status must parse");
+        assert!(matches!(
+            status.command,
+            Some(Commands::Join {
+                command: Some(JoinCommands::Status),
+                ..
+            })
+        ));
+
+        let cancel =
+            Cli::try_parse_from(["uniclip", "join", "cancel"]).expect("join cancel must parse");
+        assert!(matches!(
+            cancel.command,
+            Some(Commands::Join {
+                command: Some(JoinCommands::Cancel),
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn join_subcommands_reject_join_inputs() {
+        let result = Cli::try_parse_from(["uniclip", "join", "status", "--code", "ABCD-1234"]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn member_trust_commands_parse_expected_safety_flags() {
+        let status = Cli::try_parse_from(["uniclip", "member", "trust", "status"])
+            .expect("member trust status must parse");
+        assert!(matches!(
+            status.command,
+            Some(Commands::Member {
+                command: MemberCommands::Trust {
+                    command: MemberTrustCommands::Status
+                }
+            })
+        ));
+
+        let apply = Cli::try_parse_from([
+            "uniclip",
+            "member",
+            "trust",
+            "apply",
+            "--change",
+            "change-1",
+            "--confirm-local-removal",
+        ])
+        .expect("member trust apply flags must parse");
+        assert!(matches!(
+            apply.command,
+            Some(Commands::Member {
+                command: MemberCommands::Trust {
+                    command: MemberTrustCommands::Apply {
+                        change: Some(_),
+                        confirm_local_removal: true,
+                    }
+                }
+            })
+        ));
+    }
+
+    #[test]
+    fn member_sync_show_and_partial_set_parse() {
+        let show = Cli::try_parse_from(["uniclip", "member", "sync", "show", "device-a"])
+            .expect("member sync show must parse");
+        assert!(matches!(
+            show.command,
+            Some(Commands::Member {
+                command: MemberCommands::Sync {
+                    command: MemberSyncCommands::Show { .. }
+                }
+            })
+        ));
+
+        let set = Cli::try_parse_from([
+            "uniclip",
+            "member",
+            "sync",
+            "set",
+            "device-a",
+            "--send",
+            "off",
+            "--receive-types",
+            "text,image",
+        ])
+        .expect("member sync partial set must parse");
+        assert!(matches!(
+            set.command,
+            Some(Commands::Member {
+                command: MemberCommands::Sync {
+                    command: MemberSyncCommands::Set { .. }
+                }
+            })
+        ));
     }
 
     #[test]

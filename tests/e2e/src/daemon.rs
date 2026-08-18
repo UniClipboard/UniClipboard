@@ -137,6 +137,27 @@ impl TestDaemon {
         self.start_configured().await
     }
 
+    pub async fn restart_preserving_configured_with(
+        &mut self,
+        configure: impl FnOnce(&mut Command),
+    ) -> Result<(), String> {
+        self.kill();
+        let mut command = Self::command(
+            &self.profile,
+            &self.binary,
+            self.rendezvous_base_url.as_deref(),
+        )
+        .map_err(|e| format!("prepare configured restart failed: {e}"))?;
+        configure(&mut command);
+        self.child = Some(
+            command
+                .spawn()
+                .map_err(|e| format!("configured restart spawn failed: {e}"))?,
+        );
+        self.wait_for_endpoint(Duration::from_secs(30)).await?;
+        self.wait_healthy(Duration::from_secs(30)).await
+    }
+
     pub async fn restart_preserving_with_system_clipboard(&mut self) -> Result<(), String> {
         self.kill();
         let mut command = Self::command(
@@ -285,6 +306,19 @@ impl TestDaemon {
     /// The HTTP port this daemon is bound to (from `daemon.conn`).
     pub fn port(&self) -> u16 {
         self.port
+    }
+
+    /// Suspend the daemon process owned by this harness instance.
+    #[cfg(unix)]
+    pub fn suspend(&mut self) -> std::io::Result<()> {
+        let child = self.child.as_mut().ok_or_else(|| {
+            std::io::Error::new(std::io::ErrorKind::NotFound, "daemon is not running")
+        })?;
+        if unsafe { libc::kill(child.id() as i32, libc::SIGSTOP) } == 0 {
+            Ok(())
+        } else {
+            Err(std::io::Error::last_os_error())
+        }
     }
 
     /// Kill the daemon process.

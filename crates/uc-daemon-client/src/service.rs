@@ -15,8 +15,13 @@ use uc_daemon_contract::api::dto::clipboard_command::{
     CancelTransferResponse, DispatchOutcomeResponse, InboundEntryEvent, InboundNoticeEvent,
     ResendResponse,
 };
-use uc_daemon_contract::api::dto::member::{DeviceTrustSnapshotDto, WorkspaceConvergenceDto};
+use uc_daemon_contract::api::dto::member::{
+    DecideDeviceTrustRequestDto, DeviceTrustDecisionDto, DeviceTrustSnapshotDto,
+    MemberSyncPreferencesDto, MemberSyncPreferencesPatchDto, MemberSyncResultDto,
+    WorkspaceConvergenceDto,
+};
 use uc_daemon_contract::api::dto::setup_events::SetupPairingCompletedEvent;
+use uc_daemon_contract::api::dto::v2::setup::JoinSpaceResponse;
 
 /// A free-file exported from the daemon (ADR-008 P5-1b).
 ///
@@ -34,6 +39,21 @@ pub trait DaemonService: Send + Sync {
     async fn remove_member(&self, peer_id: String) -> Result<WorkspaceConvergenceDto>;
 
     async fn device_trust(&self) -> Result<DeviceTrustSnapshotDto>;
+
+    async fn cancel_join(&self, join_id: &str) -> Result<JoinSpaceResponse>;
+
+    async fn decide_device_trust(
+        &self,
+        request: &DecideDeviceTrustRequestDto,
+    ) -> Result<DeviceTrustDecisionDto>;
+
+    async fn member_sync_preferences(&self, device_id: &str) -> Result<MemberSyncPreferencesDto>;
+
+    async fn update_member_sync_preferences(
+        &self,
+        device_id: &str,
+        patch: &MemberSyncPreferencesPatchDto,
+    ) -> Result<MemberSyncResultDto>;
 
     async fn workspace_convergence(&self) -> Result<WorkspaceConvergenceDto>;
 

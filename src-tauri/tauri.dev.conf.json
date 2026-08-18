@@ -2,6 +2,29 @@
   "$schema": "https://schema.tauri.app/config",
   "productName": "UniClipboard Dev",
   "identifier": "app.uniclipboard.desktop.dev",
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "create": false,
+        "title": "UniClipboard",
+        "width": 800,
+        "height": 600,
+        "minWidth": 990,
+        "minHeight": 660,
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true,
+        "transparent": true,
+        "visible": false,
+        "devtools": true,
+        "windowEffects": {
+          "effects": ["hudWindow"],
+          "state": "active",
+          "radius": 16
+        }
+      }
+    ]
+  },
   "plugins": {
     "updater": {
       "endpoints": []

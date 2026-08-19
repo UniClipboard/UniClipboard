@@ -144,7 +144,9 @@ pub fn engine_event_to_ws(event: EngineEvent) -> Option<DaemonWsEvent> {
                 "nextRetryInMs": status.next_retry_in_ms,
             }),
         ),
-        EngineEvent::RefreshRequired { .. } => return Some(refresh_required_ws_event()),
+        EngineEvent::RePairingRequired { .. } | EngineEvent::RefreshRequired { .. } => {
+            return Some(refresh_required_ws_event());
+        }
         EngineEvent::StateChanged { .. }
         | EngineEvent::PeerPresenceChanged(_)
         | EngineEvent::ActiveClipboardChanged(_)
@@ -180,7 +182,7 @@ mod engine_event_tests {
     use serde::Serialize;
     use uc_engine::{
         EngineError, EngineErrorCategory, InboundNoticeEvent, LifecycleAction,
-        NetworkRecoveryStatusSummary, RefreshReason, TransferProgress,
+        NetworkRecoveryStatusSummary, RePairingScope, RefreshReason, TransferProgress,
     };
     #[cfg(feature = "e2e-rendezvous")]
     use uc_engine::{WorkspaceConvergencePhaseSummary, WorkspaceConvergenceSummary};
@@ -229,6 +231,18 @@ mod engine_event_tests {
             reason: RefreshReason::ConsumerLagged,
         })
         .expect("global refresh-required websocket event");
+
+        assert_eq!(event.topic, ws_topic::SYSTEM);
+        assert_eq!(event.event_type, ws_event::SYSTEM_REFRESH_REQUIRED);
+        assert_eq!(event.payload, serde_json::json!({}));
+    }
+
+    #[test]
+    fn re_pairing_required_becomes_a_global_resync_notification() {
+        let event = engine_event_to_ws(EngineEvent::RePairingRequired {
+            scope: RePairingScope::AllDevices,
+        })
+        .expect("re-pairing-required websocket event");
 
         assert_eq!(event.topic, ws_topic::SYSTEM);
         assert_eq!(event.event_type, ws_event::SYSTEM_REFRESH_REQUIRED);

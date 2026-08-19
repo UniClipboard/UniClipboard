@@ -2500,36 +2500,6 @@
         ],
         "type": "object"
       },
-      "LegacyBootstrapDto": {
-        "properties": {
-          "bootstrapId": {
-            "type": "string"
-          },
-          "outcome": {
-            "$ref": "#/components/schemas/LegacyBootstrapOutcomeDto"
-          },
-          "pendingReadmission": {
-            "format": "int64",
-            "minimum": 0,
-            "type": "integer"
-          }
-        },
-        "required": [
-          "bootstrapId",
-          "outcome",
-          "pendingReadmission"
-        ],
-        "type": "object"
-      },
-      "LegacyBootstrapOutcomeDto": {
-        "description": "Recoverable Legacy bootstrap progress, owned and persisted by the Engine.",
-        "enum": [
-          "awaiting_readmission",
-          "complete",
-          "recovery_required"
-        ],
-        "type": "string"
-      },
       "LifecycleStatusEnvelope": {
         "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
         "properties": {
@@ -4905,10 +4875,14 @@
           },
           "hasCompleted": {
             "type": "boolean"
+          },
+          "rePairingRequired": {
+            "type": "boolean"
           }
         },
         "required": [
-          "hasCompleted"
+          "hasCompleted",
+          "rePairingRequired"
         ],
         "type": "object"
       },
@@ -5025,14 +4999,6 @@
       },
       "SpaceProtectionDto": {
         "properties": {
-          "legacyBootstrap": {
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/LegacyBootstrapDto"
-              }
-            ],
-            "nullable": true
-          },
           "members": {
             "items": {
               "$ref": "#/components/schemas/MemberProtectionDto"

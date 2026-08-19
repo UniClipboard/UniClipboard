@@ -25,12 +25,14 @@ const entryState: SetupStateResponse = {
   hasCompleted: false,
   currentInvitation: null,
   deviceName: null,
+  rePairingRequired: false,
 }
 
 const completedState: SetupStateResponse = {
   hasCompleted: true,
   currentInvitation: null,
   deviceName: 'MacBook',
+  rePairingRequired: false,
 }
 
 const redeem: RedeemResponse = {

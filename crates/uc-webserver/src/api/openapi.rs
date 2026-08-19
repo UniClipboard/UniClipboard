@@ -35,9 +35,9 @@ use crate::api::dto::member::{
     DeviceMembershipDto, DeviceReachabilityDto, DeviceSyncRelationshipDto, DeviceTrustActionDto,
     DeviceTrustChangeDto, DeviceTrustChoiceDto, DeviceTrustDecisionDto, DeviceTrustImpactDto,
     DeviceTrustRelationshipDto, DeviceTrustSnapshotDto, DeviceTrustUnavailableReasonDto,
-    LegacyBootstrapDto, LegacyBootstrapOutcomeDto, MemberProtectionDto, MemberProtectionStatusDto,
-    MemberSyncPreferencesDto, MemberSyncPreferencesPatchDto, MemberSyncResultDto,
-    PendingInboundMemberDto, SpaceProtectionDto, SpaceProtectionModeDto, WorkspaceConvergenceDto,
+    MemberProtectionDto, MemberProtectionStatusDto, MemberSyncPreferencesDto,
+    MemberSyncPreferencesPatchDto, MemberSyncResultDto, PendingInboundMemberDto,
+    SpaceProtectionDto, SpaceProtectionModeDto, WorkspaceConvergenceDto,
     WorkspaceConvergenceFailureCategoryDto, WorkspaceConvergencePhaseDto,
 };
 use crate::api::dto::mobile_sync::{
@@ -358,8 +358,6 @@ impl Modify for ContractMeta {
             PendingInboundMemberDto,
             MemberProtectionDto,
             MemberProtectionStatusDto,
-            LegacyBootstrapDto,
-            LegacyBootstrapOutcomeDto,
             ContentTypesDto,
             ContentTypesPatchDto,
             // ── mobile-sync ────────────────────────────────────────

@@ -65,23 +65,6 @@ pub enum MemberProtectionStatusDto {
     RecoveryRequired,
 }
 
-/// Recoverable Legacy bootstrap progress, owned and persisted by the Engine.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum LegacyBootstrapOutcomeDto {
-    AwaitingReadmission,
-    Complete,
-    RecoveryRequired,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
-#[serde(rename_all = "camelCase")]
-pub struct LegacyBootstrapDto {
-    pub bootstrap_id: String,
-    pub outcome: LegacyBootstrapOutcomeDto,
-    pub pending_readmission: u64,
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct MemberProtectionDto {
@@ -94,7 +77,6 @@ pub struct MemberProtectionDto {
 pub struct SpaceProtectionDto {
     pub mode: SpaceProtectionModeDto,
     pub members: Vec<MemberProtectionDto>,
-    pub legacy_bootstrap: Option<LegacyBootstrapDto>,
 }
 
 /// Current phase of the Engine-owned workspace convergence.

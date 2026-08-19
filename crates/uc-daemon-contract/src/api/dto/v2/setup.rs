@@ -128,6 +128,7 @@ pub struct SetupStateResponse {
     pub has_completed: bool,
     pub current_invitation: Option<CurrentInvitation>,
     pub device_name: Option<String>,
+    pub re_pairing_required: bool,
 }
 
 /// Companion to [`SetupStateResponse::current_invitation`].

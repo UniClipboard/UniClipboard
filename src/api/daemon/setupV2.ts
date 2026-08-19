@@ -101,6 +101,7 @@ export interface SetupStateResponse {
   hasCompleted: boolean
   currentInvitation: CurrentInvitation | null
   deviceName: string | null
+  rePairingRequired: boolean
 }
 
 export interface SwitchSpaceRequest {

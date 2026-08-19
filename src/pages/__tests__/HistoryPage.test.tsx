@@ -103,8 +103,29 @@ vi.mock('@/components/ui/resizable', async () => {
   const ReactModule = await import('react')
   return {
     ResizableHandle: () => ReactModule.createElement('div', { 'data-testid': 'resize-handle' }),
-    ResizablePanel: ({ children }: { children: React.ReactNode }) =>
-      ReactModule.createElement('section', null, children),
+    ResizablePanel: ({
+      children,
+      id,
+      defaultSize,
+      minSize,
+      maxSize,
+    }: {
+      children: React.ReactNode
+      id?: string
+      defaultSize?: string
+      minSize?: string
+      maxSize?: string
+    }) =>
+      ReactModule.createElement(
+        'section',
+        {
+          'data-testid': id ? `${id}-panel` : undefined,
+          'data-default-size': defaultSize,
+          'data-min-size': minSize,
+          'data-max-size': maxSize,
+        },
+        children
+      ),
     ResizablePanelGroup: ({ children }: { children: React.ReactNode }) =>
       ReactModule.createElement('div', { 'data-testid': 'resizable-group' }, children),
   }
@@ -186,5 +207,14 @@ describe('HistoryPage', () => {
       JSON.stringify({ type: 'spring', stiffness: 400, damping: 30, delay: 0.08 })
     )
     expect(screen.getByTestId('clipboard-preview')).toBeInTheDocument()
+  })
+
+  it('keeps the history list within readable bounds while preview uses extra width', () => {
+    render(<HistoryPage />)
+
+    expect(screen.getByTestId('history-list-panel')).toHaveAttribute('data-default-size', '42%')
+    expect(screen.getByTestId('history-list-panel')).toHaveAttribute('data-min-size', '20rem')
+    expect(screen.getByTestId('history-list-panel')).toHaveAttribute('data-max-size', '36rem')
+    expect(screen.getByTestId('history-preview-panel')).toHaveAttribute('data-default-size', '58%')
   })
 })

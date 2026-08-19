@@ -10,6 +10,14 @@ vi.mock('@/hooks/useShortcut', () => ({
   useShortcut: vi.fn(),
 }))
 
+vi.mock('@/contexts/sidebar-slot-context', () => ({
+  useSidebarSlot: () => ({
+    sidebarCollapsed: false,
+    sidebarHost: null,
+    contentToolbarHost: null,
+  }),
+}))
+
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
     t: (key: string, opts?: string | Record<string, unknown>) =>

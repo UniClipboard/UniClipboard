@@ -6,7 +6,6 @@ import { useWindowFrame } from '@/hooks/useWindowFrame'
 import { commands } from '@/lib/ipc'
 import { createLogger } from '@/lib/logger'
 import { cn } from '@/lib/utils'
-import { DevProfileIndicator } from './DevProfileIndicator'
 
 const log = createLogger('title-bar')
 
@@ -15,6 +14,13 @@ interface TitleBarProps {
   isSetupActive?: boolean
   rightSlot?: React.ReactNode
 }
+
+interface TitleBarSectionProps {
+  className?: string
+  rightSlot?: React.ReactNode
+}
+
+type ContentToolbarProps = TitleBarSectionProps
 
 // macOS 三色交通灯相对系统标准位置的偏移，屏幕坐标系：正 X 向右、正 Y 向下。
 // 自绘 titlebar 高度 40pt vs 系统默认 28pt，按钮要向下挪一点才视觉居中；
@@ -57,15 +63,33 @@ const TitleBarButton = ({
   </button>
 )
 
-export const TitleBar = ({ className, isSetupActive = false, rightSlot }: TitleBarProps) => {
+export const SidebarTitle = ({ className, rightSlot }: TitleBarSectionProps) => {
+  const { isMac } = usePlatform()
+
+  return (
+    <div
+      data-tauri-drag-region
+      className={cn(
+        'relative flex h-10 shrink-0 select-none items-center',
+        isMac ? 'pl-18 pr-3' : 'px-3',
+        className
+      )}
+    >
+      {rightSlot && (
+        <div className="relative z-10 flex items-center" data-tauri-drag-region="false">
+          {rightSlot}
+        </div>
+      )}
+    </div>
+  )
+}
+
+export const ContentToolbar = ({ className, rightSlot }: ContentToolbarProps) => {
   const [isMaximized, setIsMaximized] = useState(false)
 
   const { isMac, isTauri } = usePlatform()
   const { hasCustomWindowControls } = useWindowFrame()
   const windowRef = useMemo(() => (isTauri ? getCurrentWindow() : null), [isTauri])
-
-  // Setup 页面隐藏 TitleBar 保持沉浸感
-  const shouldHideTitleBar = isSetupActive
 
   const syncTrafficLightPosition = useCallback(() => {
     if (!isMac) return
@@ -143,83 +167,60 @@ export const TitleBar = ({ className, isSetupActive = false, rightSlot }: TitleB
     }
   }
 
-  if (shouldHideTitleBar) {
-    return null
-  }
+  return (
+    <div
+      data-tauri-drag-region
+      onDoubleClick={() => {
+        if (!hasCustomWindowControls) return
+        handleToggleMaximize()
+      }}
+      className={cn(
+        'relative z-20 flex h-10 w-full shrink-0 select-none items-center justify-end bg-transparent',
+        className
+      )}
+    >
+      {rightSlot && (
+        <div
+          className="relative z-10 flex min-w-0 flex-1 items-center px-3"
+          data-tauri-drag-region="false"
+        >
+          {rightSlot}
+        </div>
+      )}
+      {hasCustomWindowControls && (
+        <div className="relative z-10 flex h-full items-center" data-tauri-drag-region="false">
+          <TitleBarButton aria-label="最小化" onClick={handleMinimize}>
+            <Minus className="size-4" />
+          </TitleBarButton>
+          <TitleBarButton
+            aria-label={isMaximized ? '还原' : '最大化'}
+            onClick={handleToggleMaximize}
+          >
+            <Square className="size-3.5" />
+          </TitleBarButton>
+          <TitleBarButton
+            aria-label="关闭"
+            onClick={handleClose}
+            className="hover:bg-red-500/90 hover:text-white"
+          >
+            <X className="size-4" />
+          </TitleBarButton>
+        </div>
+      )}
+    </div>
+  )
+}
+
+export const TitleBar = ({ className, isSetupActive = false, rightSlot }: TitleBarProps) => {
+  if (isSetupActive) return null
 
   return (
     <div
       data-tauri-drag-region
-      className={cn(
-        // Window chrome layer - sits in normal document flow (not fixed)
-        // No z-index needed - proper layering via DOM hierarchy
-        'h-10 w-full flex-shrink-0 select-none',
-        'relative z-20 bg-transparent',
-        className
-      )}
+      className={cn('relative z-20 flex h-10 w-full shrink-0 bg-transparent', className)}
     >
-      <div
-        data-tauri-drag-region
-        className="relative z-10 h-full flex items-center justify-between cursor-default"
-      >
-        <div
-          data-tauri-drag-region
-          className={cn(
-            'relative flex-1 flex items-center',
-            'pr-4',
-            // On macOS, add left padding to avoid traffic lights
-            // On other platforms, use default padding
-            isMac
-              ? 'pl-16'
-              : 'px-3' /* MVP: justify-center removed - restore with: , isDashboardPage ? 'justify-center' : '' */
-          )}
-        >
-          <button
-            type="button"
-            data-tauri-drag-region
-            aria-label="Toggle window maximize"
-            className="absolute inset-0 z-0 cursor-default bg-transparent"
-            onDoubleClick={() => {
-              if (!hasCustomWindowControls) return
-              handleToggleMaximize()
-            }}
-            onKeyDown={event => {
-              if (!hasCustomWindowControls) return
-              if (event.key === 'Enter' || event.key === ' ') {
-                event.preventDefault()
-                handleToggleMaximize()
-              }
-            }}
-            tabIndex={-1}
-          />
-          <DevProfileIndicator />
-        </div>
-        {rightSlot && (
-          <div className="relative z-10 flex items-center pr-2" data-tauri-drag-region="false">
-            {rightSlot}
-          </div>
-        )}
-        {hasCustomWindowControls && (
-          <div className="flex items-center h-full bg-transparent" data-tauri-drag-region="false">
-            <TitleBarButton aria-label="最小化" onClick={handleMinimize}>
-              <Minus className="size-4" />
-            </TitleBarButton>
-            <TitleBarButton
-              aria-label={isMaximized ? '还原' : '最大化'}
-              onClick={handleToggleMaximize}
-            >
-              <Square className="size-3.5" />
-            </TitleBarButton>
-            <TitleBarButton
-              aria-label="关闭"
-              onClick={handleClose}
-              className="hover:bg-red-500/90 hover:text-white"
-            >
-              <X className="size-4" />
-            </TitleBarButton>
-          </div>
-        )}
-      </div>
+      <SidebarTitle className="min-w-0 flex-1" />
+      <ContentToolbar rightSlot={rightSlot} />
     </div>
   )
 }

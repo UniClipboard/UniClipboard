@@ -58,7 +58,9 @@
     "updateInstalling": "Installing update...",
     "updateReady": "Update ready to install",
     "back": "Back",
-    "feedback": "Feedback"
+    "feedback": "Feedback",
+    "collapseSidebar": "Collapse sidebar",
+    "expandSidebar": "Expand sidebar"
   },
   "debugBadge": {
     "title": "Debug mode is on",
@@ -858,7 +860,11 @@
       "noMatches": "No matches",
       "removeFilter": "Remove filter: {{filter}}",
       "moreFilters": "Show {{count}} more filters",
-      "clearAll": "Clear all"
+      "clearAll": "Clear all",
+      "close": "Close search panel",
+      "filterCategories": "Filter categories",
+      "results": "{{count}} results",
+      "done": "Done"
     }
   },
   "dashboard": {

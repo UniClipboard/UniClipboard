@@ -1,4 +1,5 @@
-import { render, screen } from '@testing-library/react'
+import { render } from '@testing-library/react'
+import { MemoryRouter } from 'react-router'
 import { describe, expect, it, vi } from 'vitest'
 import MainLayout from '../MainLayout'
 
@@ -24,6 +25,10 @@ vi.mock('@/hooks/useWindowFrame', () => ({
   useWindowFrame: () => windowFrameState,
 }))
 
+vi.mock('@/contexts/titlebar-slot-context', () => ({
+  useTitleBarSlot: () => ({ rightSlotHost: null }),
+}))
+
 vi.mock('@/components', () => ({
   Sidebar: ({ className }: { className?: string }) => (
     <aside data-testid="sidebar" className={className} />
@@ -32,9 +37,11 @@ vi.mock('@/components', () => ({
 
 const renderLayout = () =>
   render(
-    <MainLayout>
-      <div data-testid="content" />
-    </MainLayout>
+    <MemoryRouter>
+      <MainLayout>
+        <div data-testid="content" />
+      </MainLayout>
+    </MemoryRouter>
   )
 
 describe('MainLayout', () => {
@@ -50,11 +57,10 @@ describe('MainLayout', () => {
 
     const { container } = renderLayout()
     const main = container.querySelector('main')
+    const inset = main?.querySelector('.pb-2.pr-2')
 
-    expect(main).toHaveClass('pb-2')
-    expect(main).toHaveClass('pr-2')
-    expect(container.innerHTML).toContain('rounded-[1.25rem]')
-    expect(screen.getByTestId('sidebar')).not.toHaveClass('border-r')
+    expect(inset).toBeInTheDocument()
+    expect(inset?.firstElementChild).toHaveClass('rounded-xl')
   })
 
   it('Linux 系统窗口框使用平面布局', () => {
@@ -71,9 +77,7 @@ describe('MainLayout', () => {
     const main = container.querySelector('main')
 
     expect(main).toHaveClass('bg-card')
-    expect(main).not.toHaveClass('pb-2')
-    expect(main).not.toHaveClass('pr-2')
-    expect(container.innerHTML).not.toContain('rounded-[1.25rem]')
-    expect(screen.getByTestId('sidebar')).toHaveClass('border-r')
+    expect(main?.querySelector('.pb-2.pr-2')).not.toBeInTheDocument()
+    expect(main?.querySelector('.rounded-xl')).not.toBeInTheDocument()
   })
 })

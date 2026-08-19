@@ -63,7 +63,7 @@ const HistoryGridRow: React.FC<HistoryGridRowProps> = React.memo(
           rowHeightClass(item),
           'relative overflow-hidden transition-colors',
           showDivider && 'border-b border-border/40',
-          isActive && 'bg-primary/[0.06]'
+          isActive && 'bg-primary/[0.025] dark:bg-primary/[0.05]'
         )}
       >
         <HistoryCardContextMenu

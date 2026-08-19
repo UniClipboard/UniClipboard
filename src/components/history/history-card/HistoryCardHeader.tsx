@@ -8,13 +8,11 @@ import {
 } from 'lucide-react'
 import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
-import type { EntrySourceView } from '@/api/tauri-command/clipboard_delivery'
 import type { ClipboardTextItem, DisplayClipboardItem } from '@/lib/clipboard-entry'
 import { cn } from '@/lib/utils'
 import type { TransferProgressInfo } from '@/store/slices/fileTransferSlice'
 import { formatFileSize } from '@/utils'
 import {
-  describeSource,
   detectCodeLanguage,
   getContentSizeLabel,
   TYPE_COLOR,
@@ -24,7 +22,6 @@ import {
 interface HistoryCardHeaderProps {
   item: DisplayClipboardItem
   relativeTime: string
-  deliverySource?: EntrySourceView
   transfer?: TransferProgressInfo
   state: {
     isFileType: boolean
@@ -42,7 +39,6 @@ interface HistoryCardHeaderProps {
 function HistoryCardHeader({
   item,
   relativeTime,
-  deliverySource,
   transfer,
   state,
   percent,
@@ -67,7 +63,6 @@ function HistoryCardHeader({
   const speedLabel = transfer?.bytesPerSecond
     ? formatFileSize(transfer.bytesPerSecond) + '/s'
     : null
-  const source = deliverySource ? describeSource(deliverySource, t) : null
 
   return (
     <div className="pointer-events-none relative z-10 mb-1.5 flex items-center gap-1.5">
@@ -122,16 +117,7 @@ function HistoryCardHeader({
             </span>
           </>
         ) : (
-          <span className="flex items-center gap-1 text-[10px] text-muted-foreground/45">
-            {source?.Icon && <source.Icon className={cn('size-2.5', source.color)} />}
-            {source?.label && (
-              <>
-                <span className="max-w-[7rem] truncate">{source.label}</span>
-                <span className="text-muted-foreground/25">·</span>
-              </>
-            )}
-            <span className="tabular-nums">{relativeTime}</span>
-          </span>
+          <span className="text-[10px] tabular-nums text-muted-foreground/45">{relativeTime}</span>
         )}
       </div>
     </div>

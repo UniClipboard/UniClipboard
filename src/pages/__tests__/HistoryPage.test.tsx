@@ -10,12 +10,9 @@ const controller = vi.hoisted(() => ({
   current: null as unknown,
 }))
 
-const windowFrame = vi.hoisted(() => ({
-  searchInTitleBar: true,
-}))
-
-const titleBarSlot = vi.hoisted(() => ({
-  host: null as HTMLElement | null,
+const sidebarSlot = vi.hoisted(() => ({
+  sidebarHost: null as HTMLElement | null,
+  contentToolbarHost: null as HTMLElement | null,
 }))
 
 vi.mock('react-i18next', () => ({
@@ -53,12 +50,12 @@ vi.mock('framer-motion', async () => {
   }
 })
 
-vi.mock('@/hooks/useWindowFrame', () => ({
-  useWindowFrame: () => ({ searchInTitleBar: windowFrame.searchInTitleBar }),
-}))
-
-vi.mock('@/contexts/titlebar-slot-context', () => ({
-  useTitleBarSlot: () => ({ rightSlotHost: titleBarSlot.host }),
+vi.mock('@/contexts/sidebar-slot-context', () => ({
+  useSidebarSlot: () => ({
+    sidebarCollapsed: false,
+    sidebarHost: sidebarSlot.sidebarHost,
+    contentToolbarHost: sidebarSlot.contentToolbarHost,
+  }),
 }))
 
 vi.mock('@/hooks/useHistoryController', () => ({
@@ -68,9 +65,10 @@ vi.mock('@/hooks/useHistoryController', () => ({
 vi.mock('@/components/history/composite-search', async () => {
   const ReactModule = await import('react')
   return {
-    CompositeSearchBar: () => ReactModule.createElement('div', { 'data-testid': 'search-bar' }),
     HistoryFilterPanel: () =>
       ReactModule.createElement('aside', { 'data-testid': 'history-filter-panel' }),
+    HistorySearchPanel: () =>
+      ReactModule.createElement('aside', { 'data-testid': 'history-search-panel' }),
   }
 })
 
@@ -195,26 +193,23 @@ function makeControllerState(
 describe('HistoryPage', () => {
   beforeEach(() => {
     controller.current = makeControllerState()
-    windowFrame.searchInTitleBar = true
-    titleBarSlot.host = document.createElement('div')
-    document.body.appendChild(titleBarSlot.host)
+    sidebarSlot.sidebarHost = document.createElement('div')
+    sidebarSlot.contentToolbarHost = document.createElement('div')
+    document.body.append(sidebarSlot.sidebarHost, sidebarSlot.contentToolbarHost)
   })
 
-  it('puts search in the title bar when the custom frame is active', () => {
+  it('puts the filter panel in the sidebar', () => {
     render(<HistoryPage />)
 
-    expect(titleBarSlot.host).toContainElement(screen.getByTestId('search-bar'))
-    expect(screen.queryByText('history.filter.all')).not.toBeInTheDocument()
+    expect(sidebarSlot.sidebarHost).toContainElement(screen.getByTestId('history-filter-panel'))
   })
 
-  it('keeps search in the page when the system frame is active', () => {
-    windowFrame.searchInTitleBar = false
-
+  it('puts the search control in the content toolbar', () => {
     render(<HistoryPage />)
 
-    expect(titleBarSlot.host).toBeEmptyDOMElement()
-    expect(screen.getByText('history.filter.all')).toBeInTheDocument()
-    expect(screen.getByTestId('search-bar')).toBeInTheDocument()
+    expect(sidebarSlot.contentToolbarHost).toContainElement(
+      screen.getByRole('button', { name: 'history.composite.title' })
+    )
   })
 
   it('animates the preview pane shortly after history rows start entering', () => {

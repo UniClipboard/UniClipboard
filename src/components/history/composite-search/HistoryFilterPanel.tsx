@@ -1,10 +1,14 @@
-import { Clock, LayoutGrid, MonitorSmartphone, Star, type LucideIcon } from 'lucide-react'
+import { getCurrentWindow } from '@tauri-apps/api/window'
+import { ChevronDown, LayoutGrid, Star, type LucideIcon } from 'lucide-react'
+import { useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Filter } from '@/api/clipboardItems'
 import type { TimeRangePreset } from '@/api/daemon/search'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+import { useSidebarSlot } from '@/contexts/sidebar-slot-context'
 import type { SearchTagOption } from '@/lib/search-tags'
 import { cn } from '@/lib/utils'
-import { buildCandidates, DIMENSION_LABEL_KEYS, type SourceOption } from './composite-search-model'
+import { buildCandidates, type SourceOption } from './composite-search-model'
 
 interface HistoryFilterPanelProps {
   contentFilter: Filter
@@ -26,15 +30,47 @@ function PanelRow({
   icon: Icon,
   label,
   active,
+  collapsed,
   onClick,
 }: {
   icon: LucideIcon
   label: string
   active: boolean
+  collapsed: boolean
   onClick: () => void
 }) {
+  if (collapsed) {
+    return (
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <button
+              data-tauri-drag-region="false"
+              type="button"
+              onClick={onClick}
+              aria-label={label}
+              aria-pressed={active}
+              className={cn(
+                'flex size-8 items-center justify-center rounded-md transition-colors',
+                active
+                  ? 'bg-primary/15 text-primary ring-1 ring-inset ring-primary/30 dark:bg-primary/20'
+                  : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'
+              )}
+            />
+          }
+        >
+          <Icon className="size-4" />
+        </TooltipTrigger>
+        <TooltipContent side="right" sideOffset={6}>
+          {label}
+        </TooltipContent>
+      </Tooltip>
+    )
+  }
+
   return (
     <button
+      data-tauri-drag-region="false"
       type="button"
       onClick={onClick}
       aria-pressed={active}
@@ -52,163 +88,126 @@ function PanelRow({
 }
 
 /** A labeled group of rows; the header is omitted when `title` is empty. */
-function PanelSection({ title, children }: { title?: string; children: React.ReactNode }) {
+function PanelSection({
+  title,
+  separated = false,
+  children,
+}: {
+  title?: string
+  separated?: boolean
+  children: React.ReactNode
+}) {
+  const [expanded, setExpanded] = useState(true)
+
   return (
-    <div className="mb-3">
+    <div className={cn('mb-3', separated && 'border-t border-border/35 pt-3')}>
       {title && (
-        <div className="px-2 pb-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground/50">
-          {title}
-        </div>
+        <button
+          data-tauri-drag-region="false"
+          type="button"
+          aria-expanded={expanded}
+          onClick={() => setExpanded(value => !value)}
+          className="flex h-7 w-full items-center justify-between rounded-md px-2 text-[11px] font-medium uppercase text-muted-foreground/50 transition-colors hover:bg-muted/50 hover:text-muted-foreground"
+        >
+          <span>{title}</span>
+          <ChevronDown className={cn('size-3 transition-transform', !expanded && '-rotate-90')} />
+        </button>
       )}
-      <div className="space-y-0.5">{children}</div>
+      {(!title || expanded) && <div className="space-y-0.5">{children}</div>}
     </div>
   )
 }
 
 /**
- * Vertical "organize" panel for the History page: the page-local filter controls
- * (quick views, content type, source device, time range) laid out as grouped
- * rows beside the card grid. It is a pure skin over the History page's filter
- * state — every selection dispatches through the `on*Change` props, the same
- * single source of truth the composite search box reads — so selecting here also
- * surfaces a chip in the search box and vice versa.
- *
- * Content type and the quick views (all / favorited) share one selection
- * register (`contentFilter`), so they are mutually exclusive radio rows; source
- * and time are independent dimensions with their own "no filter" reset row.
+ * High-frequency History views and tags shown in the app sidebar. Advanced
+ * dimensions stay in the composite search control instead of lengthening this
+ * navigation surface.
  */
 function HistoryFilterPanel({
   contentFilter,
-  sourceFilter,
   tagFilter,
-  timeRange,
-  extensionFilter,
   onContentFilterChange,
   onTagFilterChange,
-  onSourceFilterChange,
-  onTimeRangeChange,
-  onExtensionFilterChange,
-  sourceOptions,
   tagOptions,
 }: HistoryFilterPanelProps) {
   const { t } = useTranslation()
+  const { sidebarCollapsed } = useSidebarSlot()
+  const dragStartRef = useRef<{ x: number; y: number } | null>(null)
   const current = {
     type: contentFilter,
     tag: tagFilter,
-    source: sourceFilter,
-    time: timeRange,
-    extension: extensionFilter,
+    source: null,
+    time: 'all_time' as const,
+    extension: null,
   }
-  const typeCandidates = buildCandidates('type', '', { t, sourceOptions, tagOptions, current })
   const tagCandidates = buildCandidates('tag', '', {
     t,
-    sourceOptions,
+    sourceOptions: [],
     tagOptions,
     current,
   }).filter(opt => opt.value !== Filter.Favorited)
-  const sourceCandidates = buildCandidates('source', '', { t, sourceOptions, tagOptions, current })
-  const timeCandidates = buildCandidates('time', '', { t, sourceOptions, tagOptions, current })
-  const extensionCandidates = buildCandidates('extension', '', {
-    t,
-    sourceOptions,
-    tagOptions,
-    current,
-  })
 
   return (
-    <aside className="no-scrollbar w-44 shrink-0 overflow-y-auto border-r border-border/60 bg-muted/20 px-2 py-3">
-      {/* Quick views — share the content-type register, so radio-exclusive. */}
-      <PanelSection>
-        <PanelRow
-          icon={LayoutGrid}
-          label={t('history.filter.all')}
-          active={contentFilter === Filter.All}
-          onClick={() => onContentFilterChange(Filter.All)}
-        />
-        <PanelRow
-          icon={Star}
-          label={t('history.filter.favorited')}
-          active={contentFilter === Filter.Favorited}
-          onClick={() => onContentFilterChange(Filter.Favorited)}
-        />
-      </PanelSection>
-
-      <PanelSection title={t(DIMENSION_LABEL_KEYS.type)}>
-        {typeCandidates.map(opt => (
+    <TooltipProvider delay={300}>
+      <div
+        data-tauri-drag-region
+        onPointerDownCapture={event => {
+          if (event.button !== 0) return
+          dragStartRef.current = { x: event.clientX, y: event.clientY }
+        }}
+        onPointerMoveCapture={event => {
+          const start = dragStartRef.current
+          if (!start || (event.buttons & 1) === 0) return
+          if (Math.hypot(event.clientX - start.x, event.clientY - start.y) < 4) return
+          dragStartRef.current = null
+          void getCurrentWindow()
+            .startDragging()
+            .catch(() => undefined)
+        }}
+        onPointerUpCapture={() => {
+          dragStartRef.current = null
+        }}
+        className={cn(
+          'flex h-full w-full flex-col py-3',
+          sidebarCollapsed ? 'items-center px-2' : 'px-3'
+        )}
+      >
+        <PanelSection>
           <PanelRow
-            key={opt.id}
-            icon={opt.icon}
-            label={opt.label}
-            active={opt.isActive}
-            onClick={() => onContentFilterChange(opt.value as Filter)}
+            icon={LayoutGrid}
+            label={t('history.filter.all')}
+            active={contentFilter === Filter.All}
+            collapsed={sidebarCollapsed}
+            onClick={() => onContentFilterChange(Filter.All)}
           />
-        ))}
-      </PanelSection>
-
-      <PanelSection title={t('history.composite.dimension.tag')}>
-        {tagCandidates.map(opt => (
           <PanelRow
-            key={opt.id}
-            icon={opt.icon}
-            label={opt.label}
-            active={opt.isActive}
-            // Unlike source/time, the tag group has no "all" row; clicking the
-            // active tag toggles it back off so the filter can return to null.
-            onClick={() => onTagFilterChange(opt.isActive ? null : opt.value)}
+            icon={Star}
+            label={t('history.filter.favorited')}
+            active={contentFilter === Filter.Favorited}
+            collapsed={sidebarCollapsed}
+            onClick={() => onContentFilterChange(Filter.Favorited)}
           />
-        ))}
-      </PanelSection>
-
-      {sourceOptions.length > 0 && (
-        <PanelSection title={t(DIMENSION_LABEL_KEYS.source)}>
-          <PanelRow
-            icon={MonitorSmartphone}
-            label={t('history.source.all')}
-            active={sourceFilter === null}
-            onClick={() => onSourceFilterChange(null)}
-          />
-          {sourceCandidates.map(opt => (
-            <PanelRow
-              key={opt.id}
-              icon={opt.icon}
-              label={opt.label}
-              active={opt.isActive}
-              onClick={() => onSourceFilterChange(opt.value)}
-            />
-          ))}
         </PanelSection>
-      )}
 
-      <PanelSection title={t(DIMENSION_LABEL_KEYS.time)}>
-        <PanelRow
-          icon={Clock}
-          label={t('history.timeRange.all_time')}
-          active={timeRange === 'all_time'}
-          onClick={() => onTimeRangeChange('all_time')}
-        />
-        {timeCandidates.map(opt => (
-          <PanelRow
-            key={opt.id}
-            icon={opt.icon}
-            label={opt.label}
-            active={opt.isActive}
-            onClick={() => onTimeRangeChange(opt.value as TimeRangePreset)}
-          />
-        ))}
-      </PanelSection>
-
-      <PanelSection title={t(DIMENSION_LABEL_KEYS.extension)}>
-        {extensionCandidates.map(opt => (
-          <PanelRow
-            key={opt.id}
-            icon={opt.icon}
-            label={opt.label}
-            active={opt.isActive}
-            onClick={() => onExtensionFilterChange(opt.isActive ? null : opt.value)}
-          />
-        ))}
-      </PanelSection>
-    </aside>
+        <div className="no-scrollbar min-h-0 flex-1 overflow-y-auto">
+          <PanelSection
+            title={sidebarCollapsed ? undefined : t('history.composite.dimension.tag')}
+            separated={sidebarCollapsed}
+          >
+            {tagCandidates.map(opt => (
+              <PanelRow
+                key={opt.id}
+                icon={opt.icon}
+                label={opt.label}
+                active={opt.isActive}
+                collapsed={sidebarCollapsed}
+                onClick={() => onTagFilterChange(opt.isActive ? null : opt.value)}
+              />
+            ))}
+          </PanelSection>
+        </div>
+      </div>
+    </TooltipProvider>
   )
 }
 

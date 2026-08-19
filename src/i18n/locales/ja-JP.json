@@ -58,7 +58,9 @@
     "updateInstalling": "更新をインストール中...",
     "updateReady": "更新をインストールする準備ができました",
     "back": "戻る",
-    "feedback": "フィードバック"
+    "feedback": "フィードバック",
+    "collapseSidebar": "サイドバーを折りたたむ",
+    "expandSidebar": "サイドバーを展開"
   },
   "debugBadge": {
     "title": "デバッグ モードがオンになっています。",
@@ -858,7 +860,11 @@
       "noMatches": "一致しません",
       "removeFilter": "フィルタを削除: {{filter}}",
       "moreFilters": "さらに {{count}} 個のフィルタを表示",
-      "clearAll": "すべてクリア"
+      "clearAll": "すべてクリア",
+      "close": "検索パネルを閉じる",
+      "filterCategories": "フィルタカテゴリ",
+      "results": "{{count}} 件の結果",
+      "done": "完了"
     }
   },
   "dashboard": {

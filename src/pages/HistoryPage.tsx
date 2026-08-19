@@ -107,7 +107,7 @@ const HistoryPage: React.FC = () => {
         />
         <ResizablePanelGroup orientation="horizontal" className="min-h-0 flex-1">
           {/* List */}
-          <ResizablePanel id="history-list" defaultSize="42%" minSize="30%" maxSize="65%">
+          <ResizablePanel id="history-list" defaultSize="42%" minSize="20rem" maxSize="36rem">
             <div className="flex h-full min-w-0 flex-col">
               <HistoryGrid
                 items={c.items}

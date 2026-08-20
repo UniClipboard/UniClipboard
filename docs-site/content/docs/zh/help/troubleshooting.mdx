@@ -9,7 +9,7 @@ import { Tab, Tabs } from 'fumadocs-ui/components/tabs'
 UniClipboard 的故障可以按层定位：**守护进程是否在跑 → 配对是否成立 → 对端是否被发现 → 传输是否打通 → 表示是否落地**。下面按这个顺序展开，每节都写明"看哪些信号"和"动哪些命令"。
 
 <Callout type="info">
-  在排查任何问题之前，先在两端各跑一遍 `uniclip status` 与 `uniclip members` 拿到客观状态。
+  在排查任何问题之前，先在两端各跑一遍 `uniclip space status` 与 `uniclip members` 拿到客观状态。
   人脑记忆里的"应该在线"经常和实际不符。
 </Callout>
 
@@ -27,11 +27,11 @@ UniClipboard 的故障可以按层定位：**守护进程是否在跑 → 配对
 
 ## 守护进程
 
-CLI 的所有同步功能都依赖守护进程。`uniclip start` 拉起、`uniclip stop` 停掉、`uniclip status` 看健康度。
+CLI 的所有同步功能都依赖守护进程。`uniclip start` 拉起、`uniclip stop` 停掉、`uniclip space status` 看健康度。
 
 ```bash
-uniclip status            # 摘要
-uniclip status --json     # 字段稳定，方便比对
+uniclip space status            # 摘要
+uniclip space status --json     # 字段稳定，方便比对
 ```
 
 关键字段：
@@ -80,7 +80,7 @@ gnome-keyring-daemon --start --components=secrets
 邀请码 **短期、一次性**。一旦过期或已被消费，就需要在 sponsor 上重新生成：
 
 ```bash
-uniclip invite        # 在 sponsor 上重出一张
+uniclip space invite  # 在 sponsor 上重出一张
 ```
 
 不要把邀请码当长效凭据保存或粘到聊天群里 —— 它的设计就是只活到下一次握手。
@@ -90,7 +90,7 @@ uniclip invite        # 在 sponsor 上重出一张
 握手会跑 PAKE 校验口令。如果对方在 `members` 里始终不出现：
 
 1. 确认两端的系统时间偏差小于几分钟。Argon2id 与签名校验对时间漂移敏感。
-2. 在 sponsor 端 `uniclip status --json | grep handshake` 查看是否在等 joiner，如果根本没收到说明发现层就没打通，跳到[对端不上线](#对端不上线)。
+2. 在 sponsor 端 `uniclip space status --json | grep handshake` 查看是否在等 joiner，如果根本没收到说明发现层就没打通，跳到[对端不上线](#对端不上线)。
 3. 默认握手 TTL 约 3 分钟。超时后 sponsor 会丢弃这次邀请，joiner 拿到的就是"invitation expired"。重新 `invite` 即可。
 4. **sponsor 端跑着 Tailscale 之类的 overlay 网络？** 默认情况下 Tailscale CGNAT (`100.64.0.0/10`) 与 IPv6 ULA (`fd7a:115c:a1e0::/48`) 地址不会被写进邀请，joiner 拿到的全是不可达的 LAN 地址就会一直拨不通。在 sponsor 端 **设置 → 网络 → 允许覆盖网络地址** 打开并重启 daemon，Tailscale 地址才会进入邀请。Clash TUN 的 fake-ip (`198.18.0.0/15`) 与 IPv4 link-local (`169.254.0.0/16`) 始终被过滤、无开关 —— 这类网卡本来就不能拿来真实拨号，让 UniClipboard 走真实物理网卡即可。
 
@@ -129,7 +129,7 @@ uniclip invite        # 在 sponsor 上重出一张
 跨家庭网络、手机热点、4G/5G 的发现依赖 rendezvous（HTTPS）。如果你在严格的企业网络下，可能整个 HTTPS 出站都被中间盒拦了。
 
 - 临时换到手机热点验证一下；只要热点下能发现，问题就锁定在原网络的出站策略上。
-- 防火墙白名单需要放开 iroh 默认的 rendezvous + 中继域名。具体域名见 `uniclip status --json` 的 `network` 字段。
+- 防火墙白名单需要放开 iroh 默认的 rendezvous + 中继域名。具体域名见 `uniclip space status --json` 的 `network` 字段。
 
 </Step>
 
@@ -145,7 +145,7 @@ uniclip invite        # 在 sponsor 上重出一张
 
 ## 卡在中继 / 同步缓慢
 
-`uniclip status` 里 `network.relay` 非空就说明走的是中继 —— 能跑，但延迟和带宽都不如直连。如果你确定双方在同一个网络下却仍然走中继：
+`uniclip space status` 里 `network.relay` 非空就说明走的是中继 —— 能跑，但延迟和带宽都不如直连。如果你确定双方在同一个网络下却仍然走中继：
 
 - **对称 NAT。** 部分运营商 / 移动网络下 NAT 端口分配不可预测，打洞会失败。换网络（或开 IPv6）通常立刻好。
 - **IPv6 被禁。** 路径上某一跳关掉了 IPv6 时直连会回退到 IPv4 NAT 打洞。
@@ -298,7 +298,7 @@ uniclip start --foreground -v
 提交 issue 时请尽量附上：
 
 - `uniclip --version`、操作系统与版本。
-- `uniclip status --json`（两端各一份）。
+- `uniclip space status --json`（两端各一份）。
 - 复现步骤与时间戳，对应时间窗口的日志切片即可，不必整份上传。
 - **不要** 把数据库文件、邀请码、空间口令贴到 issue 里。
 
@@ -316,7 +316,7 @@ uniclip start --foreground -v
    口令 modal 弹出时内部也有一个相同的入口。
 2. 在二次确认对话框里输入 `RESET`，然后点 **重置**。
 3. 应用会删掉本机磁盘上的 keyslot 与 KEK、清空 `SetupStatus`，并把你
-   送回 setup 页。之后可以重新 `init` 一个新空间或从另一台设备 `join`。
+   送回 setup 页。之后可以重新 `space init` 一个新空间或从另一台设备 `space join`。
 
 这与下面 CLI 标签页里的操作是同一个破坏性动作 —— 执行后本机历史无法
 找回。空间里其他设备不受影响（参见下方提示）。
@@ -332,7 +332,7 @@ uniclip stop
 rm -rf ~/.local/share/app.uniclipboard.desktop
 ```
 
-清理后 `uniclip init` 或 `uniclip join` 即可重来。系统密钥环里的 KEK 条目也会在下次 `init` 时被覆盖。
+清理后 `uniclip space init` 或 `uniclip space join` 即可重来。系统密钥环里的 KEK 条目也会在下次 `space init` 时被覆盖。
 
 </Tab>
 
@@ -356,6 +356,16 @@ rm -rf ~/.local/share/app.uniclipboard.desktop
 </Tab>
 
 </Tabs>
+
+### 保留本机历史，移除所有旧设备关系
+
+这与上面的紧急重置不同。在 **设备** 页选择 **重置空间** 并确认，或运行：
+
+```bash
+uniclip space reset --yes
+```
+
+它会保留本机剪贴板历史、已完成文件、设置、设备身份和解锁能力，但会移除本机与所有旧设备的配对、信任和同步关系。其他设备不会被删除；恢复同步前，所有设备都必须重新配对。
 
 <Callout type="warn">
   其它设备上的历史不受本机重置影响。如果是想让一台设备从空间里

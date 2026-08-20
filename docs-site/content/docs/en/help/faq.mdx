@@ -147,7 +147,7 @@ treated as a trusted peer by every other device in the space.
 
 ### Can one device join multiple spaces?
 
-Yes, but **only one is active at a time**. Running `uniclip join
+Yes, but **only one is active at a time**. Running `uniclip space join
 --switch` with another sponsor's invitation (or the GUI's Devices page)
 re-encrypts local history under the new space's MasterKey before
 completing the switch — there is no plaintext window during the handoff.
@@ -330,7 +330,7 @@ stable, and stdin works (`echo ... | uniclip send`). See
 ### How do I report a bug?
 
 [github.com/UniClipboard/UniClipboard/issues](https://github.com/UniClipboard/UniClipboard/issues), with
-`uniclip --version`, `uniclip status --json`, repro steps, and the log
+`uniclip --version`, `uniclip space status --json`, repro steps, and the log
 slice for the relevant time window.
 
 ### How do I report a security issue?

@@ -18,12 +18,20 @@ description: uniclip 全部子命令 —— 成员、发送/监听、搜索、bl
 
 | 命令                     | 作用                                             |
 | ------------------------ | ------------------------------------------------ |
-| `uniclip join --no-wait` | 记录等待中的加入请求后立即返回，不等待最终结果。 |
-| `uniclip join status`    | 查看当前加入请求及其 Engine 状态。               |
-| `uniclip join cancel`    | 请求取消当前仍在等待的加入。                     |
+| `uniclip space join --no-wait` | 记录等待中的加入请求后立即返回，不等待最终结果。 |
+| `uniclip space join status`    | 查看当前加入请求及其 Engine 状态。               |
+| `uniclip space join cancel`    | 请求取消当前仍在等待的加入。                     |
 
-不带 `--no-wait` 时，`uniclip join` 会等待最终结果。Ctrl-C 只停止本地等待；
-确实要取消请求时应使用 `join cancel`。
+不带 `--no-wait` 时，`uniclip space join` 会等待最终结果。Ctrl-C 只停止本地等待；
+确实要取消请求时应使用 `space join cancel`。
+
+### 重置空间
+
+| 命令                         | 作用                                                                                 |
+| ---------------------------- | ------------------------------------------------------------------------------------ |
+| `uniclip space reset --yes` | 将当前 profile 重建为只含本机的空间，同时保留本机历史和设置。                       |
+
+该操作会永久移除本机与所有旧设备的关系，不会删除其他设备；恢复同步前，所有设备都必须重新配对。
 
 ### 设备信任变化
 

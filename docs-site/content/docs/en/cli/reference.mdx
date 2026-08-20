@@ -20,12 +20,22 @@ for scripting.
 
 | Command                  | Effect                                                                                  |
 | ------------------------ | --------------------------------------------------------------------------------------- |
-| `uniclip join --no-wait` | Record a pending join and return without waiting for its final result.                  |
-| `uniclip join status`    | Show the current join request and its Engine-owned status.                              |
-| `uniclip join cancel`    | Request cancellation of the current pending join.                                      |
+| `uniclip space join --no-wait` | Record a pending join and return without waiting for its final result.            |
+| `uniclip space join status`    | Show the current join request and its Engine-owned status.                        |
+| `uniclip space join cancel`    | Request cancellation of the current pending join.                                |
 
-Without `--no-wait`, `uniclip join` waits for a final result. Ctrl-C stops only
-that local wait; use `join cancel` when the request itself should be cancelled.
+Without `--no-wait`, `uniclip space join` waits for a final result. Ctrl-C stops
+only that local wait; use `space join cancel` when the request itself should be
+cancelled.
+
+### Space reset
+
+| Command                      | Effect                                                                                         |
+| ---------------------------- | ---------------------------------------------------------------------------------------------- |
+| `uniclip space reset --yes` | Rebuild this profile as a one-device space while retaining its local history and settings.   |
+
+The reset permanently removes every old device relationship from this profile.
+It does not erase the other devices; pair every device again before sync resumes.
 
 ### Device trust changes
 

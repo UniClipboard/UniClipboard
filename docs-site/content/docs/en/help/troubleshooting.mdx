@@ -13,7 +13,7 @@ order. Each section below tells you which signals to look at and which
 commands to run.
 
 <Callout type="info">
-  Before guessing, run `uniclip status` and `uniclip members` on **both** ends. The "should be
+  Before guessing, run `uniclip space status` and `uniclip members` on **both** ends. The "should be
   online" feeling rarely matches what's actually on the wire.
 </Callout>
 
@@ -32,12 +32,12 @@ commands to run.
 ## Daemon
 
 Every CLI sync command depends on the daemon. Use `uniclip start` to
-launch, `uniclip stop` to shut it down, and `uniclip status` to inspect
+launch, `uniclip stop` to shut it down, and `uniclip space status` to inspect
 health.
 
 ```bash
-uniclip status            # summary
-uniclip status --json     # stable fields, easy to diff
+uniclip space status            # summary
+uniclip space status --json     # stable fields, easy to diff
 ```
 
 Key fields:
@@ -108,7 +108,7 @@ Invitation codes are **short-lived and single-use**. Once consumed or
 expired, regenerate one on the sponsor:
 
 ```bash
-uniclip invite        # issue a fresh one on the sponsor
+uniclip space invite  # issue a fresh one on the sponsor
 ```
 
 Don't treat invites like long-lived credentials or paste them into a
@@ -121,7 +121,7 @@ appears in `members`:
 
 1. Confirm clocks on both ends agree to within a few minutes. Argon2id
    and signature checks are sensitive to clock drift.
-2. On the sponsor, `uniclip status --json | grep handshake` shows
+2. On the sponsor, `uniclip space status --json | grep handshake` shows
    whether it's waiting for a joiner. If nothing arrived, discovery
    itself is broken — jump to [Peer not appearing](#peer-not-appearing).
 3. The default handshake TTL is roughly three minutes. After that the
@@ -191,7 +191,7 @@ entirely.
 - Switch one device to a phone hotspot and retry. If it works there,
   the original network's egress policy is the culprit.
 - Firewall allowlists need to permit iroh's default rendezvous and
-  relay domains. Inspect `uniclip status --json` (`network` field) for
+  relay domains. Inspect `uniclip space status --json` (`network` field) for
   the exact hosts in use.
 
 </Step>
@@ -210,7 +210,7 @@ producing the "looks online, can't find each other" pattern.
 
 ## Stuck on relay / slow sync
 
-A non-empty `network.relay` in `uniclip status` means the path is
+A non-empty `network.relay` in `uniclip space status` means the path is
 relayed — it works, but with worse latency and bandwidth than direct.
 If both devices are on the same network and you still see relay use:
 
@@ -430,7 +430,7 @@ uniclip start --foreground -v
 When filing an issue, please attach:
 
 - `uniclip --version`, OS and version.
-- `uniclip status --json` from each end.
+- `uniclip space status --json` from each end.
 - Repro steps with timestamps; the log slice covering that window is
   enough — no need to upload the full file.
 - **Don't** paste database files, invitation codes, or space
@@ -454,7 +454,7 @@ but you can't recall the passphrase, you don't need the CLI:
 2. Type `RESET` in the confirmation dialog and press **Reset**.
 3. The app deletes the on-disk keyslot and KEK on this device, clears
    `SetupStatus`, and drops you back at the setup screen. From there
-   `init` a fresh space or `join` from another device.
+   `space init` a fresh space or `space join` from another device.
 
 This is the same destructive operation as the CLI tabs below — local
 history on this device is unrecoverable afterwards. Other devices in
@@ -471,8 +471,8 @@ uniclip stop
 rm -rf ~/.local/share/app.uniclipboard.desktop
 ```
 
-After cleanup, `uniclip init` or `uniclip join` starts fresh. The
-keyring's KEK entry will be overwritten by the next `init`.
+After cleanup, `uniclip space init` or `uniclip space join` starts fresh. The
+keyring's KEK entry will be overwritten by the next `space init`.
 
 </Tab>
 
@@ -499,6 +499,20 @@ keyring's KEK entry will be overwritten by the next `init`.
 </Tab>
 
 </Tabs>
+
+### Keep this device's history, remove every old device relationship
+
+This is different from the emergency reset above. From **Devices**, choose
+**Reset space** and confirm the action, or run:
+
+```bash
+uniclip space reset --yes
+```
+
+It keeps this device's local clipboard history, completed files, settings,
+device identity, and unlock access. It removes every old pairing, trust, and
+sync relationship from this profile. Other devices are not erased, but every
+device must pair again before sync resumes.
 
 <Callout type="warn">
   Resetting one device does not revoke it on the other devices in the space. To make a device

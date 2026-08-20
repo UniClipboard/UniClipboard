@@ -97,19 +97,19 @@ CLI 与 GUI 流程完全一致，适用于无桌面环境（如服务器、SSH �
 
 ```bash
 # 在第一台设备上（已在 GUI 创建过空间则跳过 init）
-uniclip init
+uniclip space init
 
 # 生成短期邀请码
-uniclip invite
+uniclip space invite
 
 # 在新设备上输入上一步生成的邀请码
-uniclip join <code>
+uniclip space join <code>
 
 # 确认双方互相看见
 uniclip members
 ```
 
-守护进程会自动启动。可用 `uniclip status` 查看状态，或 `uniclip start` / `uniclip stop` 显式控制。
+守护进程会自动启动。可用 `uniclip space status` 查看当前空间状态，或 `uniclip start` / `uniclip stop` 显式控制。
 
 </Tab>
 
@@ -155,7 +155,8 @@ iroh 信任网络、不分配 node ID。默认在 LAN 下与桌面互通，需�
 
 - **添加更多设备。** 在每台你想加入空间的机器上重复"添加第二台设备"。每个邀请码都是一次性的。
 - **试试快捷面板。** 用配置的快捷键唤出，键盘流即时取用最近的剪贴 —— 文本、链接、图片、代码与文件。
-- **切换空间。** 在 **设备** 页或带上另一个 sponsor 的邀请码运行 `uniclip join --switch` 切换，例如把个人机和工作机分到不同的空间。切换时本地历史会用新空间的密钥重新加密。
+- **切换空间。** 在 **设备** 页或带上另一个 sponsor 的邀请码运行 `uniclip space join --switch` 切换，例如把个人机和工作机分到不同的空间。切换时本地历史会用新空间的密钥重新加密。
+- **重置空间关系。** 当需要丢弃所有旧设备关系时，在 **设备** 页执行重置。它会保留本机历史和设置，但所有设备必须重新配对后才能恢复同步。
 - **接入手机（实验性）。** 端到端流程见
   [移动端同步](../core-features/mobile-sync)。
 

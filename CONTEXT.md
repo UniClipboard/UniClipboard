@@ -82,6 +82,12 @@ _Avoid_: trusted peer list、relationship history、all known devices
 等待旧成员重新准入的升级流程，不是网络连接状态，也不由客户端本地状态决定。
 _Avoid_: readmission、reconnect、client-side retry、temporary pairing state
 
+**Space reset**：
+把当前 profile 不可逆地重建为只含本机的 Space 的恢复操作；永久丢弃与所有旧设备的配对、
+信任和同步关系，但保留本机剪贴板历史、已完成文件、设置、设备身份和解锁能力。其他设备
+不会被删除，但必须重新配对后才能恢复同步。
+_Avoid_: factory reset、delete profile、remove remote device
+
 **ClipboardEvent**：
 一次剪贴板捕获动作的领域事件（`event_id`、捕获时刻、源设备 `DeviceId`、
 `snapshot_hash`）。它记录的是「在某台设备上发生了一次复制」，是同步与去重的

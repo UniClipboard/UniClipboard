@@ -1,4 +1,4 @@
-name: "Release"
+name: 'Release'
 run-name: >-
   ${{ github.event_name == 'push'
     && format('release-{0}', github.ref_name)
@@ -6,47 +6,47 @@ run-name: >-
 on:
   push:
     tags:
-      - "v*"
+      - 'v*'
   workflow_dispatch:
     inputs:
       branch:
-        description: "发布分支"
+        description: '发布分支'
         required: true
         type: string
-        default: "main"
+        default: 'main'
       platform:
-        description: "构建平台"
+        description: '构建平台'
         required: true
         type: choice
         options:
-          - "all"
-          - "macos-aarch64"
-          - "macos-x86_64"
-          - "ubuntu-22.04"
-          - "ubuntu-22.04-arm"
-          - "windows-latest"
-          - "windows-x86_64"
-          - "windows-arm64"
-        default: "all"
+          - 'all'
+          - 'macos-aarch64'
+          - 'macos-x86_64'
+          - 'ubuntu-22.04'
+          - 'ubuntu-22.04-arm'
+          - 'windows-latest'
+          - 'windows-x86_64'
+          - 'windows-arm64'
+        default: 'all'
       bump:
-        description: "版本升级类型"
+        description: '版本升级类型'
         required: true
         type: choice
         options:
-          - "patch"
-          - "minor"
-          - "major"
-        default: "patch"
+          - 'patch'
+          - 'minor'
+          - 'major'
+        default: 'patch'
       channel:
-        description: "发布渠道"
+        description: '发布渠道'
         required: true
         type: choice
         options:
-          - "stable"
-          - "alpha"
-          - "beta"
-          - "rc"
-        default: "stable"
+          - 'stable'
+          - 'alpha'
+          - 'beta'
+          - 'rc'
+        default: 'stable'
 
 jobs:
   validate:
@@ -176,7 +176,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-      pages: write
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -194,8 +193,7 @@ jobs:
           bun-version: latest
 
       - name: Install frontend dependencies
-        # archive-release-notes.js imports `semver`; without node_modules
-        # the Archive step fails with ERR_MODULE_NOT_FOUND.
+        # Release metadata scripts use the repository's locked dependencies.
         run: bun install --frozen-lockfile
 
       - name: Download all artifacts
@@ -426,74 +424,46 @@ jobs:
               --remote
           done
 
-      - name: Assemble and upload R2 manifest
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      - name: Assemble FlareRelease registration
         run: |
           VERSION="${{ needs.validate.outputs.version }}"
           CHANNEL="${{ needs.validate.outputs.channel }}"
-          WORKER_URL="${{ vars.UPDATE_SERVER_URL }}"
+          PUBLIC_URL="${{ vars.UPDATE_SERVER_URL }}"
 
           node scripts/assemble-update-manifest.js \
             --version "$VERSION" \
             --artifacts-dir release-assets \
-            --output "updates-r2/${CHANNEL}.json" \
-            --base-url "${WORKER_URL}/artifacts/v${VERSION}" \
+            --output "flare-release/manifest.json" \
+            --base-url "${PUBLIC_URL}/artifacts/v${VERSION}" \
             --notes-file "docs/changelog/${VERSION}.md" \
             --zh-notes-file "docs/changelog/${VERSION}.zh.md"
 
-          echo "R2 manifest assembled for channel: ${CHANNEL}"
-          cat "updates-r2/${CHANNEL}.json"
-
-          wrangler r2 object put \
-            "uniclipboard-releases/manifests/${CHANNEL}.json" \
-            --file "updates-r2/${CHANNEL}.json" \
-            --content-type "application/json" \
-            --remote
-
-      - name: Archive release notes and update channel index
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: |
-          VERSION="${{ needs.validate.outputs.version }}"
-          CHANNEL="${{ needs.validate.outputs.channel }}"
-
-          node scripts/archive-release-notes.js \
+          node scripts/build-flare-release-registration.js \
             --version "$VERSION" \
             --channel "$CHANNEL" \
-            --notes-file "docs/changelog/${VERSION}.md" \
-            --zh-notes-file "docs/changelog/${VERSION}.zh.md"
-
-      - name: Assemble update manifest
-        run: |
-          VERSION="${{ needs.validate.outputs.version }}"
-          CHANNEL="${{ needs.validate.outputs.channel }}"
-          BASE_URL="https://github.com/${{ github.repository }}/releases/download/v${VERSION}"
-
-          node scripts/assemble-update-manifest.js \
-            --version "$VERSION" \
+            --manifest "flare-release/manifest.json" \
             --artifacts-dir release-assets \
-            --output "updates/${CHANNEL}.json" \
-            --base-url "$BASE_URL" \
-            --notes-file "docs/changelog/${VERSION}.md" \
-            --zh-notes-file "docs/changelog/${VERSION}.zh.md"
+            --source "github-actions:${{ github.repository }}:${{ github.run_id }}" \
+            --output "flare-release/registration.json"
 
-          echo "Manifest assembled for channel: ${CHANNEL}"
-          cat "updates/${CHANNEL}.json"
-
-      - name: Deploy update manifests to GitHub Pages
-        uses: peaceiris/actions-gh-pages@v4
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./updates
-          destination_dir: .
-          keep_files: true
-          commit_message: "deploy: update ${CHANNEL} manifest for v${VERSION}"
+      - name: Register release with FlareRelease
         env:
-          CHANNEL: ${{ needs.validate.outputs.channel }}
-          VERSION: ${{ needs.validate.outputs.version }}
+          FLARE_RELEASE_ACCESS_CLIENT_ID: ${{ secrets.FLARE_RELEASE_ACCESS_CLIENT_ID }}
+          FLARE_RELEASE_ACCESS_CLIENT_SECRET: ${{ secrets.FLARE_RELEASE_ACCESS_CLIENT_SECRET }}
+        run: |
+          : "${FLARE_RELEASE_ACCESS_CLIENT_ID:?FLARE_RELEASE_ACCESS_CLIENT_ID organization secret is unavailable to this repository}"
+          : "${FLARE_RELEASE_ACCESS_CLIENT_SECRET:?FLARE_RELEASE_ACCESS_CLIENT_SECRET organization secret is unavailable to this repository}"
+
+          curl --fail-with-body --silent --show-error \
+            --retry 3 \
+            --retry-all-errors \
+            --header "CF-Access-Client-Id: ${FLARE_RELEASE_ACCESS_CLIENT_ID}" \
+            --header "CF-Access-Client-Secret: ${FLARE_RELEASE_ACCESS_CLIENT_SECRET}" \
+            --header "Content-Type: application/json" \
+            --data-binary @flare-release/registration.json \
+            "https://release-admin.uniclipboard.app/api/releases/register" \
+            --output flare-release/response.json
+          jq -e '.data.status == "ready"' flare-release/response.json
 
       - name: Summary
         run: |
@@ -514,11 +484,8 @@ jobs:
             echo "3. Publish the release when ready" >> $GITHUB_STEP_SUMMARY
           fi
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Update Manifest" >> $GITHUB_STEP_SUMMARY
-          echo "Channel manifest deployed to GitHub Pages:" >> $GITHUB_STEP_SUMMARY
-          REPO_OWNER=$(echo "${{ github.repository }}" | cut -d'/' -f1)
-          REPO_NAME=$(echo "${{ github.repository }}" | cut -d'/' -f2)
-          echo "https://${REPO_OWNER}.github.io/${REPO_NAME}/${{ needs.validate.outputs.channel }}.json" >> $GITHUB_STEP_SUMMARY
+          echo "### FlareRelease" >> $GITHUB_STEP_SUMMARY
+          echo "Release registered as Ready. Promote it explicitly in FlareRelease when approved." >> $GITHUB_STEP_SUMMARY
 
   dispatch-snap:
     # snap 构建耗时较长,不能作为 reusable job 挂在 release 里等待。

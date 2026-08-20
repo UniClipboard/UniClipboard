@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { Filter } from '@/api/clipboardItems'
@@ -12,8 +12,6 @@ vi.mock('@/hooks/useShortcut', () => ({
 
 vi.mock('@/contexts/sidebar-slot-context', () => ({
   useSidebarSlot: () => ({
-    sidebarCollapsed: false,
-    sidebarHost: null,
     contentToolbarHost: null,
   }),
 }))
@@ -135,6 +133,37 @@ function renderFilterPanel(
 }
 
 describe('HistoryFilterPanel', () => {
+  it('replaces the all icon with a clear action while any filter is active', async () => {
+    const user = userEvent.setup()
+    const props = renderFilterPanel({
+      sourceFilter: 'peer-1',
+      tagFilter: 'code',
+      timeRange: 'today',
+      extensionFilter: 'txt',
+    })
+
+    const clearButton = screen.getByRole('button', { name: 'history.composite.clearAll' })
+    expect(clearButton.querySelector('svg')).toHaveClass('lucide-x')
+
+    await user.click(clearButton)
+
+    expect(props.onContentFilterChange).toHaveBeenCalledWith(Filter.All)
+    expect(props.onTagFilterChange).toHaveBeenCalledWith(null)
+    expect(props.onSourceFilterChange).toHaveBeenCalledWith(null)
+    expect(props.onTimeRangeChange).toHaveBeenCalledWith('all_time')
+    expect(props.onExtensionFilterChange).toHaveBeenCalledWith(null)
+  })
+
+  it('keeps the all icon when no filter is active', () => {
+    renderFilterPanel({ contentFilter: Filter.All })
+
+    const allButton = screen.getByRole('button', { name: 'history.filter.all', pressed: true })
+    expect(allButton.querySelector('svg')).toHaveClass('lucide-layout-grid')
+    expect(
+      screen.queryByRole('button', { name: 'history.composite.clearAll' })
+    ).not.toBeInTheDocument()
+  })
+
   it('uses a restrained selected-row treatment', () => {
     renderFilterPanel()
 
@@ -147,7 +176,25 @@ describe('HistoryFilterPanel', () => {
     expect(selectedRow.className).toContain('bg-muted/50')
     expect(selectedRow.className).toContain('text-foreground')
     expect(selectedRow.className).not.toContain('bg-primary')
+    expect(selectedRow.className).not.toContain('shadow')
+    expect(selectedRow.className).not.toContain('ring-')
     expect(selectedRow.className).not.toContain('font-medium')
-    expect(selectedIcon).toHaveClass('text-muted-foreground')
+    expect(selectedIcon).toHaveClass('opacity-80')
+    expect(selectedRow).not.toHaveTextContent('history.filter.favorited')
+  })
+
+  it('uses a fixed-width horizontal strip and maps the wheel to horizontal scrolling', () => {
+    renderFilterPanel({
+      tagOptions: [
+        { id: 'code', count: 2, isBuiltin: true },
+        { id: 'link', count: 1, isBuiltin: true },
+      ],
+    })
+
+    const strip = screen.getByTestId('history-filter-strip')
+    expect(strip).toHaveClass('w-fit', 'max-w-72', 'overflow-x-auto', 'rounded-full')
+
+    fireEvent.wheel(strip, { deltaY: 40 })
+    expect(strip.scrollLeft).toBe(40)
   })
 })

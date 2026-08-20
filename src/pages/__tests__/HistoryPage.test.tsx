@@ -12,7 +12,6 @@ const controller = vi.hoisted(() => ({
 }))
 
 const sidebarSlot = vi.hoisted(() => ({
-  sidebarHost: null as HTMLElement | null,
   contentToolbarHost: null as HTMLElement | null,
 }))
 
@@ -63,8 +62,6 @@ vi.mock('framer-motion', async () => {
 
 vi.mock('@/contexts/sidebar-slot-context', () => ({
   useSidebarSlot: () => ({
-    sidebarCollapsed: false,
-    sidebarHost: sidebarSlot.sidebarHost,
     contentToolbarHost: sidebarSlot.contentToolbarHost,
   }),
 }))
@@ -217,15 +214,16 @@ describe('HistoryPage', () => {
   beforeEach(() => {
     shortcuts.configs = []
     controller.current = makeControllerState()
-    sidebarSlot.sidebarHost = document.createElement('div')
     sidebarSlot.contentToolbarHost = document.createElement('div')
-    document.body.append(sidebarSlot.sidebarHost, sidebarSlot.contentToolbarHost)
+    document.body.append(sidebarSlot.contentToolbarHost)
   })
 
-  it('puts the filter panel in the sidebar', () => {
+  it('puts the horizontal filter strip in the content toolbar', () => {
     render(<HistoryPage />)
 
-    expect(sidebarSlot.sidebarHost).toContainElement(screen.getByTestId('history-filter-panel'))
+    expect(sidebarSlot.contentToolbarHost).toContainElement(
+      screen.getByTestId('history-filter-panel')
+    )
   })
 
   it('puts the search control in the content toolbar', () => {

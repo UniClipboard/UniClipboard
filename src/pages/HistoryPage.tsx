@@ -20,7 +20,7 @@ import { useShortcut } from '@/hooks/useShortcut'
 
 const HistoryPage: React.FC = () => {
   const { t } = useTranslation()
-  const { contentToolbarHost, sidebarHost } = useSidebarSlot()
+  const { contentToolbarHost } = useSidebarSlot()
   const c = useHistoryController()
   const [searchOpen, setSearchOpen] = useState(false)
   const searchControlRef = useRef<HTMLDivElement>(null)
@@ -203,24 +203,26 @@ const HistoryPage: React.FC = () => {
 
   return (
     <div className="relative flex h-full flex-col">
-      {contentToolbarHost ? createPortal(searchControl, contentToolbarHost) : null}
-      {sidebarHost
+      {contentToolbarHost
         ? createPortal(
-            <HistoryFilterPanel
-              contentFilter={c.filter.activeFilter}
-              sourceFilter={c.filter.sourceFilter}
-              tagFilter={c.filter.tagFilter}
-              timeRange={c.filter.timeRange}
-              extensionFilter={c.filter.extensionFilter}
-              onContentFilterChange={c.filterActions.setContentFilter}
-              onTagFilterChange={c.filterActions.setTagFilter}
-              onSourceFilterChange={c.filterActions.setSourceFilter}
-              onTimeRangeChange={c.filterActions.setTimeRange}
-              onExtensionFilterChange={c.filterActions.setExtensionFilter}
-              sourceOptions={c.sourceOptions}
-              tagOptions={c.searchableTags}
-            />,
-            sidebarHost
+            <div className="flex items-center gap-2">
+              <HistoryFilterPanel
+                contentFilter={c.filter.activeFilter}
+                sourceFilter={c.filter.sourceFilter}
+                tagFilter={c.filter.tagFilter}
+                timeRange={c.filter.timeRange}
+                extensionFilter={c.filter.extensionFilter}
+                onContentFilterChange={c.filterActions.setContentFilter}
+                onTagFilterChange={c.filterActions.setTagFilter}
+                onSourceFilterChange={c.filterActions.setSourceFilter}
+                onTimeRangeChange={c.filterActions.setTimeRange}
+                onExtensionFilterChange={c.filterActions.setExtensionFilter}
+                sourceOptions={c.sourceOptions}
+                tagOptions={c.searchableTags}
+              />
+              {searchControl}
+            </div>,
+            contentToolbarHost
           )
         : null}
       {/* ── Degraded notice: index rebuilding, browse served from main store ─ */}

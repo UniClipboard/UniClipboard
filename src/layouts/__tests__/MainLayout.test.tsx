@@ -1,4 +1,4 @@
-import { render } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import { describe, expect, it, vi } from 'vitest'
 import MainLayout from '../MainLayout'
@@ -79,5 +79,24 @@ describe('MainLayout', () => {
     expect(main).toHaveClass('bg-card')
     expect(main?.querySelector('.pb-2.pr-2')).not.toBeInTheDocument()
     expect(main?.querySelector('.rounded-xl')).not.toBeInTheDocument()
+  })
+
+  it('侧栏固定为窄栏并提供历史与设备两个页面入口', () => {
+    platformState.current = {
+      isWindows: false,
+      isMac: false,
+      isLinux: false,
+      isTauri: false,
+      reduceVisualEffects: false,
+    }
+    windowFrameState.useSystemWindowFrame = false
+
+    const { container } = renderLayout()
+    const sidebar = container.querySelector('aside')
+
+    expect(sidebar).toHaveClass('w-12')
+    expect(screen.getByRole('link', { name: 'History' })).toHaveAttribute('href', '/history')
+    expect(screen.getByRole('link', { name: 'Devices' })).toHaveAttribute('href', '/devices')
+    expect(screen.queryByRole('button', { name: /sidebar/i })).not.toBeInTheDocument()
   })
 })

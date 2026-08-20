@@ -1,8 +1,6 @@
 import { createContext, use } from 'react'
 
 interface SidebarSlotContextType {
-  sidebarCollapsed: boolean
-  sidebarHost: HTMLElement | null
   contentToolbarHost: HTMLElement | null
 }
 

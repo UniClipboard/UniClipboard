@@ -9,6 +9,7 @@ import {
 import {
   onSetupInvitationIssued,
   onSetupInvitationRevoked,
+  onSetupRePairingRequired,
   type SetupInvitationIssuedEvent,
   type SetupInvitationRevokedEvent,
 } from '@/api/setupEvents'
@@ -57,6 +58,7 @@ export type SetupFlow =
 interface Snapshot {
   flow: SetupFlow
   hydrated: boolean
+  rePairingRequired: boolean
 }
 
 const RETRY_DELAY_MS = 2000
@@ -64,6 +66,7 @@ const RETRY_DELAY_MS = 2000
 let snapshot: Snapshot = {
   flow: { kind: 'loading' },
   hydrated: false,
+  rePairingRequired: false,
 }
 
 const listeners = new Set<() => void>()
@@ -102,12 +105,12 @@ function flowFromState(
   return { kind: 'entry' }
 }
 
-function update(flow: SetupFlow, hydrated = true) {
+function update(flow: SetupFlow, hydrated = true, rePairingRequired = snapshot.rePairingRequired) {
   recordWdioE2eEvent('setup.flow.updated', {
     kind: flow.kind,
     code: flow.kind === 'invitation_pending' ? flow.code : undefined,
   })
-  snapshot = { flow, hydrated }
+  snapshot = { flow, hydrated, rePairingRequired }
   emitChange()
 }
 
@@ -151,7 +154,7 @@ async function refreshFromServer(completion: SetupCompletion | null = null) {
     const next = await getSetupState()
     if (generation !== syncGeneration || completionRevision !== revision) return
     const latestCompletion = completionFromFlow(snapshot.flow) ?? completion
-    update(flowFromState(next, latestCompletion))
+    update(flowFromState(next, latestCompletion), true, next.rePairingRequired)
   } catch (err) {
     if (err instanceof SetupV2Error) {
       log.warn({ kind: err.kind, raw: err.raw }, 'failed to refresh setup state')
@@ -183,7 +186,7 @@ export async function ensureSetupRealtimeSync(): Promise<void> {
 
       const initial = await getSetupState()
       if (generation !== syncGeneration) return
-      update(flowFromState(initial))
+      update(flowFromState(initial), true, initial.rePairingRequired)
 
       const offIssued = await onSetupInvitationIssued(applyInvitationIssued)
       if (generation !== syncGeneration) {
@@ -196,10 +199,21 @@ export async function ensureSetupRealtimeSync(): Promise<void> {
         offRevoked()
         return
       }
+      const offRePairingRequired = await onSetupRePairingRequired(() => void refreshFromServer())
+      if (generation !== syncGeneration) {
+        offIssued()
+        offRevoked()
+        offRePairingRequired()
+        return
+      }
       // Stash unlisten handles in the closure-rooted symbols so they survive
       // the lifetime of the singleton store; we never tear them down.
       void offIssued
       void offRevoked
+      void offRePairingRequired
+      // Close the query-to-subscribe race: a durable setup change may land
+      // after the initial query but before the realtime handlers are active.
+      await refreshFromServer()
       syncPhase = 'running'
     } catch (err) {
       if (generation !== syncGeneration) return
@@ -227,7 +241,7 @@ export function applyServerSetupState(
   completion: SetupCompletion | null = null
 ) {
   completionRevision += 1
-  update(flowFromState(state, completion))
+  update(flowFromState(state, completion), true, state.rePairingRequired)
 }
 
 /** Close the transient completion summary without changing completed setup state. */

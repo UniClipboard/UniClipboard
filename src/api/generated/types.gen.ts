@@ -1362,17 +1362,6 @@ export type LanInterfaceViewDto = {
     name: string;
 };
 
-export type LegacyBootstrapDto = {
-    bootstrapId: string;
-    outcome: LegacyBootstrapOutcomeDto;
-    pendingReadmission: number;
-};
-
-/**
- * Recoverable Legacy bootstrap progress, owned and persisted by the Engine.
- */
-export type LegacyBootstrapOutcomeDto = 'awaiting_readmission' | 'complete' | 'recovery_required';
-
 /**
  * Canonical success envelope: `{ "data": T, "ts": <unix millis i64> }`.
  *
@@ -2915,6 +2904,7 @@ export type SetupStateResponse = {
     currentInvitation?: CurrentInvitation | null;
     deviceName?: string | null;
     hasCompleted: boolean;
+    rePairingRequired: boolean;
 };
 
 /**
@@ -2999,7 +2989,6 @@ export type SpaceMemberListEnvelope = {
 };
 
 export type SpaceProtectionDto = {
-    legacyBootstrap?: LegacyBootstrapDto | null;
     members: Array<MemberProtectionDto>;
     mode: SpaceProtectionModeDto;
 };

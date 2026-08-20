@@ -11,11 +11,10 @@ use uc_engine::{
     DeviceSyncRelationshipSummary, DeviceTrustActionSummary, DeviceTrustChangeSummary,
     DeviceTrustChoiceSummary, DeviceTrustDecisionSummary, DeviceTrustImpactSummary,
     DeviceTrustRecoverySummary, DeviceTrustRelationshipSummary, DeviceTrustSnapshotSummary,
-    DeviceTrustUnavailableReasonSummary, LegacyBootstrapOutcome, LegacyBootstrapSummary,
-    MemberProtectionStatusSummary, MemberProtectionSummary, MemberSyncPreferencesPatch,
-    MemberSyncPreferencesSummary, SpaceProtectionModeSummary, SpaceProtectionSummary,
-    WorkspaceConvergenceFailureCategorySummary, WorkspaceConvergencePhaseSummary,
-    WorkspaceConvergenceSummary,
+    DeviceTrustUnavailableReasonSummary, MemberProtectionStatusSummary, MemberProtectionSummary,
+    MemberSyncPreferencesPatch, MemberSyncPreferencesSummary, SpaceProtectionModeSummary,
+    SpaceProtectionSummary, WorkspaceConvergenceFailureCategorySummary,
+    WorkspaceConvergencePhaseSummary, WorkspaceConvergenceSummary,
 };
 
 use super::{IntoApiDto, IntoDomain};
@@ -23,10 +22,10 @@ use crate::api::dto::member::{
     DeviceCompatibilityDto, DeviceGroupRelationshipDto, DeviceMembershipDto, DeviceReachabilityDto,
     DeviceSyncRelationshipDto, DeviceTrustActionDto, DeviceTrustChangeDto, DeviceTrustChoiceDto,
     DeviceTrustDecisionDto, DeviceTrustImpactDto, DeviceTrustRelationshipDto,
-    DeviceTrustSnapshotDto, DeviceTrustUnavailableReasonDto, LegacyBootstrapDto,
-    LegacyBootstrapOutcomeDto, MemberProtectionDto, MemberProtectionStatusDto,
-    MemberSyncPreferencesDto, PendingInboundMemberDto, SpaceProtectionDto, SpaceProtectionModeDto,
-    WorkspaceConvergenceDto, WorkspaceConvergenceFailureCategoryDto, WorkspaceConvergencePhaseDto,
+    DeviceTrustSnapshotDto, DeviceTrustUnavailableReasonDto, MemberProtectionDto,
+    MemberProtectionStatusDto, MemberSyncPreferencesDto, PendingInboundMemberDto,
+    SpaceProtectionDto, SpaceProtectionModeDto, WorkspaceConvergenceDto,
+    WorkspaceConvergenceFailureCategoryDto, WorkspaceConvergencePhaseDto,
 };
 use crate::api::dto::settings::{ContentTypesDto, ContentTypesPatchDto};
 
@@ -80,24 +79,6 @@ impl IntoApiDto<MemberSyncPreferencesDto> for MemberSyncPreferencesSummary {
     }
 }
 
-impl IntoApiDto<LegacyBootstrapDto> for LegacyBootstrapSummary {
-    fn into_api_dto(self) -> LegacyBootstrapDto {
-        LegacyBootstrapDto {
-            bootstrap_id: self.bootstrap_id,
-            outcome: match self.outcome {
-                LegacyBootstrapOutcome::AwaitingReadmission => {
-                    LegacyBootstrapOutcomeDto::AwaitingReadmission
-                }
-                LegacyBootstrapOutcome::Complete => LegacyBootstrapOutcomeDto::Complete,
-                LegacyBootstrapOutcome::RecoveryRequired => {
-                    LegacyBootstrapOutcomeDto::RecoveryRequired
-                }
-            },
-            pending_readmission: self.pending_readmission,
-        }
-    }
-}
-
 impl IntoApiDto<MemberProtectionDto> for MemberProtectionSummary {
     fn into_api_dto(self) -> MemberProtectionDto {
         MemberProtectionDto {
@@ -134,7 +115,6 @@ impl IntoApiDto<SpaceProtectionDto> for SpaceProtectionSummary {
                 .into_iter()
                 .map(IntoApiDto::into_api_dto)
                 .collect(),
-            legacy_bootstrap: self.legacy_bootstrap.map(IntoApiDto::into_api_dto),
         }
     }
 }

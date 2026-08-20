@@ -8,6 +8,7 @@ import {
 } from '@/api/security'
 import i18n from '@/i18n'
 import UnlockPage from '@/pages/UnlockPage'
+import { ensureSetupRealtimeSync, refreshSetupState } from '@/store/setupRealtimeStore'
 
 vi.mock('@/api/security', async () => {
   const actual = await vi.importActual<typeof import('@/api/security')>('@/api/security')
@@ -32,6 +33,11 @@ vi.mock('@/hooks/useSetting', () => ({
     updateSecuritySetting: updateSecuritySettingMock,
     loading: false,
   }),
+}))
+
+vi.mock('@/store/setupRealtimeStore', () => ({
+  ensureSetupRealtimeSync: vi.fn().mockResolvedValue(undefined),
+  refreshSetupState: vi.fn().mockResolvedValue(undefined),
 }))
 
 describe('UnlockPage', () => {
@@ -59,6 +65,8 @@ describe('UnlockPage', () => {
 
     expect(unlockEncryptionSession).toHaveBeenCalledTimes(1)
     expect(unlockSpaceWithPassphrase).not.toHaveBeenCalled()
+    expect(ensureSetupRealtimeSync).toHaveBeenCalledTimes(1)
+    expect(refreshSetupState).toHaveBeenCalledTimes(1)
     expect(onUnlockSucceeded).toHaveBeenCalledTimes(1)
   })
 
@@ -114,6 +122,7 @@ describe('UnlockPage', () => {
     })
 
     expect(unlockSpaceWithPassphrase).toHaveBeenCalledWith('correct-horse-battery-staple')
+    expect(refreshSetupState).toHaveBeenCalledTimes(1)
     expect(onUnlockSucceeded).toHaveBeenCalledTimes(1)
     await waitFor(() => {
       expect(screen.queryByText(i18n.t('unlock.passphraseModal.title'))).not.toBeInTheDocument()

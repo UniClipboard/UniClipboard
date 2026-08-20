@@ -25,12 +25,14 @@ const entryState: SetupStateResponse = {
   hasCompleted: false,
   currentInvitation: null,
   deviceName: null,
+  rePairingRequired: false,
 }
 
 const completedState: SetupStateResponse = {
   hasCompleted: true,
   currentInvitation: null,
   deviceName: 'MacBook',
+  rePairingRequired: false,
 }
 
 const redeem: RedeemResponse = {
@@ -63,6 +65,19 @@ describe('setupRealtimeStore completion ownership', () => {
       deviceName: 'MacBook',
       completion: null,
     })
+  })
+
+  it('keeps the Engine re-pairing requirement in the authoritative setup snapshot', () => {
+    const { result } = renderHook(() => useSetupRealtimeStore())
+
+    act(() =>
+      applyServerSetupState({
+        ...completedState,
+        rePairingRequired: true,
+      })
+    )
+
+    expect(result.current.rePairingRequired).toBe(true)
   })
 
   it('keeps joiner completion data in the same snapshot as the completed flow', () => {

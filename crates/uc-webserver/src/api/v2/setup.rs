@@ -441,6 +441,7 @@ pub(crate) async fn get_state(
             expires_at_ms: invitation.expires_at_ms,
         }),
         device_name: view.device_name,
+        re_pairing_required: view.re_pairing_required,
     })))
 }
 

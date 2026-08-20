@@ -17,11 +17,7 @@ import {
   getSpaceProtection as getSpaceProtectionSdk,
   updateMemberSyncPreferences as updateMemberSyncPreferencesSdk,
 } from '@/api/generated/sdk.gen'
-import type {
-  LegacyBootstrapDto,
-  MemberSyncPreferencesPatchDto,
-  SpaceProtectionDto,
-} from '@/api/generated/types.gen'
+import type { MemberSyncPreferencesPatchDto, SpaceProtectionDto } from '@/api/generated/types.gen'
 import { daemonClient } from './client'
 
 // ── Value objects ───────────────────────────────────────────────
@@ -75,13 +71,6 @@ export type MemberProtectionStatus =
   | 'awaiting_readmission'
   | 'requires_readmission'
   | 'recovery_required'
-export type LegacyBootstrapOutcome = 'awaiting_readmission' | 'complete' | 'recovery_required'
-export interface LegacyBootstrap {
-  bootstrapId: string
-  outcome: LegacyBootstrapOutcome
-  pendingReadmission: number
-}
-
 export interface MemberProtection {
   deviceId: string
   status: MemberProtectionStatus
@@ -91,7 +80,6 @@ export interface MemberProtection {
 export interface SpaceProtection {
   mode: SpaceProtectionMode
   members: MemberProtection[]
-  legacyBootstrap: LegacyBootstrap | null
 }
 
 // ── Public API ──────────────────────────────────────────────────
@@ -115,15 +103,6 @@ export async function getSpaceProtection(): Promise<SpaceProtection> {
   return {
     mode: data.mode,
     members: data.members.map(member => ({ deviceId: member.deviceId, status: member.status })),
-    legacyBootstrap: data.legacyBootstrap ? toLegacyBootstrap(data.legacyBootstrap) : null,
-  }
-}
-
-function toLegacyBootstrap(bootstrap: LegacyBootstrapDto): LegacyBootstrap {
-  return {
-    bootstrapId: bootstrap.bootstrapId,
-    outcome: bootstrap.outcome,
-    pendingReadmission: bootstrap.pendingReadmission,
   }
 }
 

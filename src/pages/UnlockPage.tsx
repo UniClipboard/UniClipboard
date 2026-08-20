@@ -26,7 +26,7 @@ import { Switch } from '@/components/ui/switch'
 import { usePlatform } from '@/hooks/usePlatform'
 import { useSetting } from '@/hooks/useSetting'
 import { createLogger } from '@/lib/logger'
-import { refreshSetupState } from '@/store/setupRealtimeStore'
+import { ensureSetupRealtimeSync, refreshSetupState } from '@/store/setupRealtimeStore'
 
 const log = createLogger('unlock-page')
 
@@ -106,6 +106,16 @@ export default function UnlockPage({ onUnlockSucceeded, onResetSucceeded }: Unlo
   const [resetting, setResetting] = useState(false)
   const [resetErrorKey, setResetErrorKey] = useState<string | null>(null)
 
+  const finishUnlock = async () => {
+    try {
+      await ensureSetupRealtimeSync()
+      await refreshSetupState()
+    } catch (error) {
+      log.warn({ err: error }, 'Setup state refresh failed after unlock')
+    }
+    onUnlockSucceeded?.()
+  }
+
   /**
    * 入口:用户点 Unlock 按钮。
    *
@@ -123,7 +133,7 @@ export default function UnlockPage({ onUnlockSucceeded, onResetSucceeded }: Unlo
       if (unlocked) {
         // Silent unlock 成功 — session 立即 ready,通知 parent。
         // 不依赖 WS 异步推送, 避免首屏闪烁。
-        onUnlockSucceeded?.()
+        await finishUnlock()
         return
       }
       // Silent unlock 返回 false = "keyring 没东西可恢复"。在 setup 已完成
@@ -176,7 +186,7 @@ export default function UnlockPage({ onUnlockSucceeded, onResetSucceeded }: Unlo
       // session 已 ready;同进程 daemon 会被 parent 触发 lifecycle/ready
       // (App.tsx 现有路径)启动 deferred services。
       closePassphraseModal()
-      onUnlockSucceeded?.()
+      await finishUnlock()
     } catch (error) {
       if (isUnlockSpaceError(error)) {
         setErrorKey(unlockErrorI18nKey(error))

@@ -116,14 +116,10 @@
       "close": "Fechar"
     }
   },
-  "upgradeNotice": {
+  "rePairingNotice": {
     "title": "Pareie seus dispositivos novamente",
     "body": "Esta versão altera o esquema de pareamento de dispositivos. Seus pareamentos anteriores não sincronizam mais. Abra Dispositivos para convidar o outro dispositivo ou entrar novamente a partir dele.",
-    "fromVersion": "Versão anterior: {{from}}",
-    "toVersion": "Versão atual: {{to}}",
-    "fromUnknown": "Versão anterior: desconhecida",
-    "gotIt": "Entendi, não lembrar novamente",
-    "later": "Depois"
+    "goToDevices": "Abrir gerenciamento de dispositivos"
   },
   "settings": {
     "title": "Configurações",

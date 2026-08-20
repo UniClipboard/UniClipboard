@@ -76,12 +76,11 @@ _Avoid_: temporary split、sync failure、pending recovery
 和待决定流程，但不同空间、等待加入或已移除的设备不得因此进入或重新进入设备列表。
 _Avoid_: trusted peer list、relationship history、all known devices
 
-**Readmission**：
-旧版 Space 安全升级时，成员重新进入安全组的 Engine 持久状态。成员处于
-`awaiting_readmission` 或 `requires_readmission` 时，安全升级会等待其重新准入；在
-`awaiting_readmission` 阶段，用户可以直接移除不再使用的设备，结束对该设备的等待。
-它不是网络连接状态，也不由客户端本地状态决定。
-_Avoid_: reconnect、client-side retry、temporary pairing state
+**Re-pairing required**：
+旧资料完成安全独立化后，由 Engine 持久记录的「所有旧设备都必须重新配对」状态；客户端
+只能展示并重新查询该事实，关闭提醒不会清除它，成功创建或加入新 Space 后才清除。它取代
+等待旧成员重新准入的升级流程，不是网络连接状态，也不由客户端本地状态决定。
+_Avoid_: readmission、reconnect、client-side retry、temporary pairing state
 
 **ClipboardEvent**：
 一次剪贴板捕获动作的领域事件（`event_id`、捕获时刻、源设备 `DeviceId`、

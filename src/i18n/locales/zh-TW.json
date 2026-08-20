@@ -116,14 +116,10 @@
       "close": "關閉"
     }
   },
-  "upgradeNotice": {
+  "rePairingNotice": {
     "title": "請重新配對裝置",
     "body": "本版本更新了裝置配對機制，原有配對已不可用。請前往「裝置」頁向另一台裝置發送邀請或重新加入。",
-    "fromVersion": "上一版本：{{from}}",
-    "toVersion": "目前版本：{{to}}",
-    "fromUnknown": "上一版本：未知",
-    "gotIt": "我知道了，不再提醒",
-    "later": "稍後再說"
+    "goToDevices": "前往裝置管理"
   },
   "settings": {
     "title": "設定",

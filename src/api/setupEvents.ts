@@ -32,10 +32,15 @@ export interface SetupInvitationRevokedEvent {
   reason: string
 }
 
+export interface SetupRePairingRequiredEvent {
+  scope: 'all_devices'
+}
+
 const TOPIC = 'setup'
 const EVT_INVITATION_ISSUED = 'setup.invitationIssued'
 const EVT_PAIRING_COMPLETED = 'setup.pairingCompleted'
 const EVT_INVITATION_REVOKED = 'setup.invitationRevoked'
+const EVT_RE_PAIRING_REQUIRED = 'setup.rePairingRequired'
 
 export async function onSetupInvitationIssued(
   callback: (event: SetupInvitationIssuedEvent) => void
@@ -61,5 +66,14 @@ export async function onSetupInvitationRevoked(
   return onDaemonRealtimeEvent(event => {
     if (event.topic !== TOPIC || event.type !== EVT_INVITATION_REVOKED) return
     callback(event.payload as SetupInvitationRevokedEvent)
+  })
+}
+
+export async function onSetupRePairingRequired(
+  callback: (event: SetupRePairingRequiredEvent) => void
+): Promise<() => void> {
+  return onDaemonRealtimeEvent(event => {
+    if (event.topic !== TOPIC || event.type !== EVT_RE_PAIRING_REQUIRED) return
+    callback(event.payload as SetupRePairingRequiredEvent)
   })
 }

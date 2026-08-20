@@ -42,6 +42,7 @@ pub mod ws_event {
     pub const SETUP_INVITATION_ISSUED: &str = "setup.invitationIssued";
     /// Setup pairing completed (Slice4 P3 T3.1) — both sponsor and joiner receive once handshake terminates.
     pub const SETUP_PAIRING_COMPLETED: &str = "setup.pairingCompleted";
+    pub const SETUP_RE_PAIRING_REQUIRED: &str = "setup.rePairingRequired";
     /// Setup invitation revoked (Slice4 P3 T3.1) — invitation cancelled or expired before redemption.
     pub const SETUP_INVITATION_REVOKED: &str = "setup.invitationRevoked";
     pub const CLIPBOARD_NEW_CONTENT: &str = "clipboard.new_content";

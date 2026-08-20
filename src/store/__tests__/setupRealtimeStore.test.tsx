@@ -67,6 +67,19 @@ describe('setupRealtimeStore completion ownership', () => {
     })
   })
 
+  it('keeps the Engine re-pairing requirement in the authoritative setup snapshot', () => {
+    const { result } = renderHook(() => useSetupRealtimeStore())
+
+    act(() =>
+      applyServerSetupState({
+        ...completedState,
+        rePairingRequired: true,
+      })
+    )
+
+    expect(result.current.rePairingRequired).toBe(true)
+  })
+
   it('keeps joiner completion data in the same snapshot as the completed flow', () => {
     const { result } = renderHook(() => useSetupRealtimeStore())
 

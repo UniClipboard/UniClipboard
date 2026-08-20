@@ -252,6 +252,7 @@ mod tests {
                 expires_at_ms: 1_745_577_600_000,
             }),
             device_name: Some("MacBook".to_string()),
+            re_pairing_required: false,
         };
         let json = serde_json::to_value(&resp).unwrap();
         assert_eq!(json["hasCompleted"], true);
@@ -292,6 +293,7 @@ mod tests {
             has_completed: false,
             current_invitation: None,
             device_name: None,
+            re_pairing_required: false,
         };
         let json = serde_json::to_value(&resp).unwrap();
         assert_eq!(json["hasCompleted"], false);

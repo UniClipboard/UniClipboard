@@ -144,9 +144,17 @@ pub fn engine_event_to_ws(event: EngineEvent) -> Option<DaemonWsEvent> {
                 "nextRetryInMs": status.next_retry_in_ms,
             }),
         ),
-        EngineEvent::RePairingRequired { .. } | EngineEvent::RefreshRequired { .. } => {
-            return Some(refresh_required_ws_event());
-        }
+        EngineEvent::RePairingRequired { scope } => (
+            ws_topic::SETUP,
+            ws_event::SETUP_RE_PAIRING_REQUIRED,
+            now_ms(),
+            serde_json::json!({
+                "scope": match scope {
+                    uc_engine::RePairingScope::AllDevices => "all_devices",
+                },
+            }),
+        ),
+        EngineEvent::RefreshRequired { .. } => return Some(refresh_required_ws_event()),
         EngineEvent::StateChanged { .. }
         | EngineEvent::PeerPresenceChanged(_)
         | EngineEvent::ActiveClipboardChanged(_)
@@ -238,15 +246,15 @@ mod engine_event_tests {
     }
 
     #[test]
-    fn re_pairing_required_becomes_a_global_resync_notification() {
+    fn re_pairing_required_becomes_a_setup_notification() {
         let event = engine_event_to_ws(EngineEvent::RePairingRequired {
             scope: RePairingScope::AllDevices,
         })
         .expect("re-pairing-required websocket event");
 
-        assert_eq!(event.topic, ws_topic::SYSTEM);
-        assert_eq!(event.event_type, ws_event::SYSTEM_REFRESH_REQUIRED);
-        assert_eq!(event.payload, serde_json::json!({}));
+        assert_eq!(event.topic, ws_topic::SETUP);
+        assert_eq!(event.event_type, ws_event::SETUP_RE_PAIRING_REQUIRED);
+        assert_eq!(event.payload, serde_json::json!({ "scope": "all_devices" }));
     }
 
     #[test]

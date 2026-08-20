@@ -124,6 +124,23 @@ bun run version:bump --type patch --channel alpha --dry-run
    - 生成发布说明（含桌面端直接下载链接，以及移动端仓库 [UniClipboard/UniClip](https://github.com/UniClipboard/UniClip) 的 iOS 公测与安卓下载链接；桌面预发布会链接到移动端最新预览版，正式发布会链接到移动端最新正式版）
    - 上传所有构建产物
    - 创建 GitHub Release 草稿
+   - 把不可变安装包上传到现有 R2 路径
+   - 通过 FlareRelease 登记 Release，并保持为待推广状态
+
+## FlareRelease 发布边界
+
+FlareRelease 是发布信息和 Channel 的唯一管理方。客户端继续访问 `release.uniclipboard.app`，安装包仍使用 `https://release.uniclipboard.app/artifacts/v<version>/<filename>`，这些公开地址没有变化。
+
+Desktop 工作流完成构建后只做两件事：上传不可变安装包，然后通过受 Cloudflare Access 保护的管理接口登记 Release。登记成功后 Release 状态为 Ready，但不会自动改变 Stable 或 Alpha Channel。维护者确认后，必须在 FlareRelease 中显式 Promote。
+
+CI 使用专门的 Cloudflare Access service token。以下凭据由 `UniClipboard` 组织的 GitHub Actions organization secrets 统一管理，并授权给 Desktop 与 UniClip 仓库：
+
+- `FLARE_RELEASE_ACCESS_CLIENT_ID`
+- `FLARE_RELEASE_ACCESS_CLIENT_SECRET`
+
+发布流程仍通过 `secrets.*` 读取组织密钥，不需要在每个仓库重复创建同名 repository secrets。个人登录信息和通用 Cloudflare 管理令牌不得用于 Release 登记。
+
+切换后，Desktop CI 不再写入 R2 中的 `manifests/*.json`、`release-notes/index/*.json` 或 GitHub Pages 的 Channel manifest。旧 R2 JSON 只作为迁移备份保留。`workers/update-server` 的部署入口已经停用，但代码会保留到生产验证完成且约定的回滚窗口结束；窗口内如需回退，使用 Cloudflare Worker version rollback，不重新启用两套长期并行的发布状态。
 
 ### 完成发布
 
@@ -133,6 +150,7 @@ bun run version:bump --type patch --channel alpha --dry-run
 2. 找到新创建的草稿版本
 3. 编辑发布说明，补充更新内容
 4. 确认无误后，点击 "Publish release" 发布
+5. 在 FlareRelease 中检查新版本为 Ready，并显式 Promote 到目标 Channel
 
 ## 版本升级策略
 
@@ -260,3 +278,4 @@ bun run version:bump --type minor --channel stable
 - 发布工作流：[`.github/workflows/release.yml`](../.github/workflows/release.yml)
 - 预发布准备工作流：[`.github/workflows/prepare-release.yml`](../.github/workflows/prepare-release.yml)
 - 构建工作流：[`.github/workflows/build.yml`](../.github/workflows/build.yml)
+- 发布控制服务：[`UniClipboard/FlareRelease`](https://github.com/UniClipboard/FlareRelease)

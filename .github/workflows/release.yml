@@ -1,4 +1,4 @@
-name: 'Release'
+name: "Release"
 run-name: >-
   ${{ github.event_name == 'push'
     && format('release-{0}', github.ref_name)
@@ -6,47 +6,47 @@ run-name: >-
 on:
   push:
     tags:
-      - 'v*'
+      - "v*"
   workflow_dispatch:
     inputs:
       branch:
-        description: '发布分支'
+        description: "发布分支"
         required: true
         type: string
-        default: 'main'
+        default: "main"
       platform:
-        description: '构建平台'
+        description: "构建平台"
         required: true
         type: choice
         options:
-          - 'all'
-          - 'macos-aarch64'
-          - 'macos-x86_64'
-          - 'ubuntu-22.04'
-          - 'ubuntu-22.04-arm'
-          - 'windows-latest'
-          - 'windows-x86_64'
-          - 'windows-arm64'
-        default: 'all'
+          - "all"
+          - "macos-aarch64"
+          - "macos-x86_64"
+          - "ubuntu-22.04"
+          - "ubuntu-22.04-arm"
+          - "windows-latest"
+          - "windows-x86_64"
+          - "windows-arm64"
+        default: "all"
       bump:
-        description: '版本升级类型'
+        description: "版本升级类型"
         required: true
         type: choice
         options:
-          - 'patch'
-          - 'minor'
-          - 'major'
-        default: 'patch'
+          - "patch"
+          - "minor"
+          - "major"
+        default: "patch"
       channel:
-        description: '发布渠道'
+        description: "发布渠道"
         required: true
         type: choice
         options:
-          - 'stable'
-          - 'alpha'
-          - 'beta'
-          - 'rc'
-        default: 'stable'
+          - "stable"
+          - "alpha"
+          - "beta"
+          - "rc"
+        default: "stable"
 
 jobs:
   validate:

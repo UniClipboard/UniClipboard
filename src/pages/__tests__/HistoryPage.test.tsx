@@ -1,4 +1,5 @@
-import { render, screen } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import React from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { useHistoryController } from '@/hooks/useHistoryController'
@@ -13,6 +14,16 @@ const controller = vi.hoisted(() => ({
 const sidebarSlot = vi.hoisted(() => ({
   sidebarHost: null as HTMLElement | null,
   contentToolbarHost: null as HTMLElement | null,
+}))
+
+const shortcuts = vi.hoisted(() => ({
+  configs: [] as Array<{
+    id?: string
+    key: string | string[]
+    handler: () => void
+    enableOnFormTags?: boolean
+    useKey?: boolean
+  }>,
 }))
 
 vi.mock('react-i18next', () => ({
@@ -56,6 +67,18 @@ vi.mock('@/contexts/sidebar-slot-context', () => ({
     sidebarHost: sidebarSlot.sidebarHost,
     contentToolbarHost: sidebarSlot.contentToolbarHost,
   }),
+}))
+
+vi.mock('@/hooks/useShortcut', () => ({
+  useShortcut: (config: {
+    id?: string
+    key: string | string[]
+    handler: () => void
+    enableOnFormTags?: boolean
+    useKey?: boolean
+  }) => {
+    shortcuts.configs.push(config)
+  },
 }))
 
 vi.mock('@/hooks/useHistoryController', () => ({
@@ -192,6 +215,7 @@ function makeControllerState(
 
 describe('HistoryPage', () => {
   beforeEach(() => {
+    shortcuts.configs = []
     controller.current = makeControllerState()
     sidebarSlot.sidebarHost = document.createElement('div')
     sidebarSlot.contentToolbarHost = document.createElement('div')
@@ -210,6 +234,42 @@ describe('HistoryPage', () => {
     expect(sidebarSlot.contentToolbarHost).toContainElement(
       screen.getByRole('button', { name: 'history.composite.title' })
     )
+  })
+
+  it('opens and focuses search from the configurable shortcut', async () => {
+    render(<HistoryPage />)
+
+    const shortcut = shortcuts.configs.find(config => config.id === 'clipboard.search')
+    expect(shortcut?.key).toBe('mod+f')
+
+    act(() => shortcut?.handler())
+    const input = await screen.findByRole('textbox', { name: 'history.searchPlaceholder' })
+    await waitFor(() => expect(input).toHaveFocus())
+  })
+
+  it('opens search with slash only outside form fields', () => {
+    render(<HistoryPage />)
+
+    const shortcut = shortcuts.configs.find(
+      config => Array.isArray(config.key) && config.key.includes('/') && config.key.includes('、')
+    )
+    expect(shortcut).toBeDefined()
+    expect(shortcut?.id).toBeUndefined()
+    expect(shortcut?.enableOnFormTags).not.toBe(true)
+    expect(shortcut?.useKey).toBe(true)
+  })
+
+  it('disables browser text correction in the toolbar search', async () => {
+    const user = userEvent.setup()
+    render(<HistoryPage />)
+
+    await user.click(screen.getByRole('button', { name: 'history.composite.title' }))
+    const input = screen.getByRole('textbox', { name: 'history.searchPlaceholder' })
+
+    expect(input).toHaveAttribute('autocorrect', 'off')
+    expect(input).toHaveAttribute('autocapitalize', 'off')
+    expect(input).toHaveAttribute('autocomplete', 'off')
+    expect(input).toHaveAttribute('spellcheck', 'false')
   })
 
   it('animates the preview pane shortly after history rows start entering', () => {

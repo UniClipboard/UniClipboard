@@ -629,6 +629,7 @@
           "goSettings": "Go to settings",
           "toggleQuickPanel": "Toggle quick panel",
           "favoriteClipboardItem": "Favorite current clipboard item",
+          "searchHistory": "Search history",
           "zoomIn": "Zoom in",
           "zoomOut": "Zoom out"
         },

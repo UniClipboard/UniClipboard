@@ -629,6 +629,7 @@
           "goSettings": "設定に移動",
           "toggleQuickPanel": "クイック パネルの切り替え",
           "favoriteClipboardItem": "現在のクリップボード項目をお気に入り",
+          "searchHistory": "履歴を検索",
           "zoomIn": "拡大",
           "zoomOut": "縮小"
         },

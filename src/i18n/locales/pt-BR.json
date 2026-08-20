@@ -629,6 +629,7 @@
           "goSettings": "Ir para as configurações",
           "toggleQuickPanel": "Abrir/fechar o painel rápido",
           "favoriteClipboardItem": "Favoritar o item atual da área de transferência",
+          "searchHistory": "Pesquisar histórico",
           "zoomIn": "Aumentar o zoom",
           "zoomOut": "Diminuir o zoom"
         },

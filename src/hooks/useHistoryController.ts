@@ -230,20 +230,6 @@ export function useHistoryController() {
     preventDefault: false,
   })
 
-  // CMD/Ctrl+F focuses the search box (works even while another input is focused).
-  useShortcut({
-    key: 'mod+f',
-    scope: 'clipboard',
-    handler: () => {
-      const el = searchInputRef.current
-      if (!el) return
-      el.focus()
-      el.select()
-    },
-    enableOnFormTags: true,
-    preventDefault: true,
-  })
-
   const handleCardClick = useCallback(
     (id: string) => setSelection({ id, items: orderedItems }),
     [orderedItems]

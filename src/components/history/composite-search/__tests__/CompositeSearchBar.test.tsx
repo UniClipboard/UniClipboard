@@ -70,6 +70,16 @@ describe('CompositeSearchBar', () => {
     expect(props.onQuerySubmit).toHaveBeenCalledWith('release notes')
   })
 
+  it('disables browser text correction and completion', () => {
+    renderSearchBar()
+
+    const input = screen.getByRole('combobox', { name: 'history.composite.title' })
+    expect(input).toHaveAttribute('autocorrect', 'off')
+    expect(input).toHaveAttribute('autocapitalize', 'off')
+    expect(input).toHaveAttribute('autocomplete', 'off')
+    expect(input).toHaveAttribute('spellcheck', 'false')
+  })
+
   it('applies a typed content filter token instead of submitting it as text', async () => {
     const user = userEvent.setup()
     const props = renderSearchBar()

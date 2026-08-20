@@ -629,6 +629,7 @@
           "goSettings": "前往设置",
           "toggleQuickPanel": "切换快捷面板",
           "favoriteClipboardItem": "收藏当前剪贴板项目",
+          "searchHistory": "搜索历史记录",
           "zoomIn": "放大界面",
           "zoomOut": "缩小界面"
         },

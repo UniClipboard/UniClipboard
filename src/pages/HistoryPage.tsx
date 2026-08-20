@@ -16,6 +16,7 @@ import HistoryGrid from '@/components/history/HistoryGrid'
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable'
 import { useSidebarSlot } from '@/contexts/sidebar-slot-context'
 import { useHistoryController } from '@/hooks/useHistoryController'
+import { useShortcut } from '@/hooks/useShortcut'
 
 const HistoryPage: React.FC = () => {
   const { t } = useTranslation()
@@ -43,6 +44,21 @@ const HistoryPage: React.FC = () => {
     inputRef: c.searchInputRef,
   })
   const searchSuggestionsOpen = compositeSearch.expanded && compositeSearch.buffer.trim().length > 0
+
+  useShortcut({
+    id: 'clipboard.search',
+    key: 'mod+f',
+    scope: 'clipboard',
+    handler: () => setSearchOpen(true),
+    enableOnFormTags: true,
+  })
+
+  useShortcut({
+    key: ['/', '、'],
+    scope: 'clipboard',
+    handler: () => setSearchOpen(true),
+    useKey: true,
+  })
 
   const searchBox = useMemo(
     () => (
@@ -139,6 +155,10 @@ const HistoryPage: React.FC = () => {
               onChange={compositeSearch.handleInputChange}
               onKeyDown={compositeSearch.handleKeyDown}
               aria-label={t('history.searchPlaceholder')}
+              autoCorrect="off"
+              autoCapitalize="off"
+              autoComplete="off"
+              spellCheck={false}
               placeholder={t('history.searchPlaceholder')}
               className="min-w-0 flex-1 bg-transparent text-xs outline-none placeholder:text-muted-foreground"
             />

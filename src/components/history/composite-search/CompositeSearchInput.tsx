@@ -137,6 +137,7 @@ function CompositeSearchInput({
             }
             autoCorrect="off"
             autoCapitalize="off"
+            autoComplete="off"
             spellCheck={false}
             value={buffer}
             onChange={onInputChange}

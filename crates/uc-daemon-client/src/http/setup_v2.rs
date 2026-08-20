@@ -151,7 +151,8 @@ mod tests {
                 "data": {
                     "hasCompleted": true,
                     "currentInvitation": null,
-                    "deviceName": "Test Mac"
+                    "deviceName": "Test Mac",
+                    "rePairingRequired": true
                 },
                 "ts": 2
             })))
@@ -176,6 +177,7 @@ mod tests {
 
         assert!(state.has_completed);
         assert_eq!(state.device_name.as_deref(), Some("Test Mac"));
+        assert!(state.re_pairing_required);
     }
 
     #[tokio::test]

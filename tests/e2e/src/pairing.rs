@@ -23,6 +23,7 @@ pub async fn setup_initialized_node(
     let cli = TestCli::new(&daemon.profile);
 
     let output = cli.run_capture(&[
+        "space",
         "init",
         "--passphrase",
         passphrase,
@@ -53,7 +54,7 @@ impl InviteSession {
     pub async fn start(cli: &TestCli) -> (Self, String) {
         let mut child = Command::new(cli.binary_path())
             .env("UC_PROFILE", &cli.profile_name)
-            .args(["invite"])
+            .args(["space", "invite"])
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
@@ -133,6 +134,7 @@ pub async fn invite_join_round(
     let (session, code) = InviteSession::start(sponsor_cli).await;
 
     let join_out = joiner_cli.run_capture(&[
+        "space",
         "join",
         "--code",
         &code,
@@ -162,6 +164,7 @@ pub async fn invite_switch_round(
     let (session, code) = InviteSession::start(sponsor_cli).await;
 
     let switch_out = switcher_cli.run_capture(&[
+        "space",
         "join",
         "--code",
         &code,

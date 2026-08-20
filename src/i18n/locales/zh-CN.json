@@ -1071,6 +1071,23 @@
   },
   "devices": {
     "title": "设备管理",
+    "resetSpace": {
+      "dangerZone": "危险区",
+      "description": "重建本机空间，永久断开与所有旧设备的关系。仅在其他恢复方式都无效时使用。",
+      "action": "重置空间",
+      "confirmTitle": "确定要重置空间吗？",
+      "confirmDescription": "这项操作不可撤销。其他设备不会被清空，但它们将无法再与本机同步。",
+      "removedTitle": "将会失效",
+      "removedRelationships": "本机与所有旧设备的配对、信任和同步关系",
+      "removedPairing": "所有设备都需要重新配对后才能继续同步",
+      "keptTitle": "本机仍会保留",
+      "keptContent": "剪贴板历史、已完成文件、一般设置、设备身份和解锁信息",
+      "cancel": "取消",
+      "confirmAction": "确认重置空间",
+      "resetting": "正在重置...",
+      "success": "空间已重置，请重新配对需要继续同步的设备",
+      "error": "无法重置空间，请重试"
+    },
     "addNew": "邀请新设备",
     "thisDevice": {
       "title": "本设备",

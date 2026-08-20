@@ -35,6 +35,7 @@ impl Node {
     ) -> Self {
         let node = Self::fresh(name, binaries, rendezvous).await;
         let output = node.cli.run_capture(&[
+            "space",
             "init",
             "--passphrase",
             PASSPHRASE,
@@ -188,6 +189,7 @@ async fn join(sponsor: &Node, joiner: &Node, joiner_name: &str) -> Value {
     let (session, code) = InviteSession::start(&sponsor.cli).await;
     let output = joiner.cli.run_capture(&[
         "--json",
+        "space",
         "join",
         "--code",
         &code,

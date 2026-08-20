@@ -40,6 +40,7 @@ async fn setup_initialized_node(name: &str) -> (TestDaemon, TestCli) {
     let cli = TestCli::new(&daemon.profile);
 
     let out = cli.run_capture(&[
+        "space",
         "init",
         "--passphrase",
         "get-test-passphrase-e2e",

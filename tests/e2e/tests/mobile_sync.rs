@@ -20,6 +20,7 @@ async fn setup_initialized_node(name: &str) -> (TestDaemon, TestCli) {
     let cli = TestCli::new(&daemon.profile);
 
     let output = cli.run_capture(&[
+        "space",
         "init",
         "--passphrase",
         "mobile-sync-e2e-pass",

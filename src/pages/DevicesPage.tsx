@@ -296,6 +296,14 @@ const DevicesPage: React.FC = () => {
     }
   }
 
+  const handleSpaceResetComplete = async () => {
+    await refreshDeviceTrust()
+    dispatch(fetchLocalDeviceInfo())
+    dispatch(fetchSpaceMembers())
+    dispatch(fetchSpaceProtection())
+    setSelection({ kind: 'local' })
+  }
+
   const unpairTargetDevice = peers.find(d => d.peerId === unpairTargetId)
   const networkRecoveryVisible =
     networkRecoveryError !== null || (networkRecovery !== null && networkRecovery.phase !== 'idle')
@@ -543,7 +551,11 @@ const DevicesPage: React.FC = () => {
         <ScrollArea className="h-full">
           {effectiveSelection.kind === 'local' &&
             (localDevice ? (
-              <LocalDevicePanel localDevice={localDevice} memberCount={peers.length + 1} />
+              <LocalDevicePanel
+                localDevice={localDevice}
+                memberCount={peers.length + 1}
+                onResetComplete={handleSpaceResetComplete}
+              />
             ) : localDeviceError ? (
               <div className="mx-auto w-full max-w-2xl px-8 py-8">
                 <Alert variant="destructive">

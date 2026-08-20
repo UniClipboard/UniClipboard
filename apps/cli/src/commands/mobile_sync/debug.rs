@@ -98,7 +98,7 @@ async fn ensure_session_resumed(ctx: &MobileSyncCmdCtx) -> Result<(), i32> {
         Ok(true) => Ok(()),
         Ok(false) => {
             ui::error(
-                "This profile is not set up yet. Run `uniclip init` (or `uniclip join`) first.",
+                "This profile is not set up yet. Run `uniclip space init` (or `uniclip space join`) first.",
             );
             Err(exit_codes::EXIT_ERROR)
         }

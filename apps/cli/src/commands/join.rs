@@ -591,7 +591,7 @@ async fn wait_for_join(
                 return emit_join_error(
                     context.json,
                     "join_status_missing",
-                    "The pending join is no longer available. Run `uniclip join status`.",
+                    "The pending join is no longer available. Run `uniclip space join status`.",
                     exit_codes::EXIT_ERROR,
                 );
             }
@@ -600,7 +600,7 @@ async fn wait_for_join(
                 return emit_join_error(
                     context.json,
                     "join_replaced",
-                    "A newer join request replaced this one. Run `uniclip join status`.",
+                    "A newer join request replaced this one. Run `uniclip space join status`.",
                     exit_codes::EXIT_ERROR,
                 );
             }

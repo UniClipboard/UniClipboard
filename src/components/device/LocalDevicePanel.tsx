@@ -17,6 +17,7 @@ import type { LocalDeviceInfo } from '@/api/daemon/members'
 import CopyIconButton from '@/components/device/CopyIconButton'
 import { getDeviceIcon } from '@/components/device/device-utils'
 import PanelFactRow from '@/components/device/PanelFactRow'
+import ResetSpaceDangerZone from '@/components/device/ResetSpaceDangerZone'
 import StatusDot from '@/components/device/StatusDot'
 import SwitchSpaceDialog from '@/components/device/SwitchSpaceDialog'
 import { Button } from '@/components/ui/button'
@@ -32,9 +33,14 @@ interface LocalDevicePanelProps {
   localDevice: LocalDeviceInfo
   /** Total member count of the current space (including this device). */
   memberCount: number
+  onResetComplete: () => void | Promise<void>
 }
 
-const LocalDevicePanel: React.FC<LocalDevicePanelProps> = ({ localDevice, memberCount }) => {
+const LocalDevicePanel: React.FC<LocalDevicePanelProps> = ({
+  localDevice,
+  memberCount,
+  onResetComplete,
+}) => {
   const { t } = useTranslation()
   const { setting, updateSyncSetting, updateFileSyncSetting } = useSetting()
   const [switchSpaceOpen, setSwitchSpaceOpen] = useState(false)
@@ -98,17 +104,19 @@ const LocalDevicePanel: React.FC<LocalDevicePanelProps> = ({ localDevice, member
             </span>
           </p>
         </div>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="shrink-0"
-          aria-label={t('devices.switchSpace.button')}
-          title={t('devices.switchSpace.button')}
-          onClick={() => setSwitchSpaceOpen(true)}
-        >
-          <ArrowRightLeft className="size-3.5" />
-          <span className="hidden @lg:inline">{t('devices.switchSpace.button')}</span>
-        </Button>
+        <div className="flex shrink-0 items-center gap-1">
+          <ResetSpaceDangerZone onResetComplete={onResetComplete} />
+          <Button
+            variant="ghost"
+            size="sm"
+            aria-label={t('devices.switchSpace.button')}
+            title={t('devices.switchSpace.button')}
+            onClick={() => setSwitchSpaceOpen(true)}
+          >
+            <ArrowRightLeft className="size-3.5" />
+            <span className="hidden @lg:inline">{t('devices.switchSpace.button')}</span>
+          </Button>
+        </div>
       </header>
 
       <div className="grid min-w-0 content-start @3xl:flex-1 @3xl:content-stretch @3xl:grid-cols-[minmax(16rem,0.82fr)_minmax(22rem,1.18fr)]">

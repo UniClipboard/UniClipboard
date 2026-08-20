@@ -28,6 +28,7 @@ async fn setup_with_client(name: &str) -> ApiTestContext {
     let cli = TestCli::new(&daemon.profile);
 
     let out = cli.run_capture(&[
+        "space",
         "init",
         "--passphrase",
         "api-test-pass",

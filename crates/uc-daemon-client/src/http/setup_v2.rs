@@ -1,8 +1,9 @@
 use std::sync::Arc;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use reqwest::Method;
 
+use crate::http::authorized_daemon_request_with_type;
 use crate::http::enveloped::enveloped_request;
 use crate::DaemonConnectionState;
 use uc_daemon_contract::api::dto::v2::setup::{
@@ -118,6 +119,29 @@ impl DaemonSetupV2Client {
         )
         .await?)
     }
+
+    pub async fn reset_space(&self) -> Result<()> {
+        let connection = self
+            .connection_state
+            .get()
+            .context("daemon connection info is not available")?;
+        let response = authorized_daemon_request_with_type(
+            &self.http,
+            &self.connection_state,
+            Method::POST,
+            "/v2/setup/reset",
+            connection.pid,
+            &self.client_type,
+        )
+        .await?
+        .send()
+        .await
+        .context("failed to call daemon setup reset route")?;
+        response
+            .error_for_status()
+            .context("daemon rejected the space reset")?;
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -151,7 +175,8 @@ mod tests {
                 "data": {
                     "hasCompleted": true,
                     "currentInvitation": null,
-                    "deviceName": "Test Mac"
+                    "deviceName": "Test Mac",
+                    "rePairingRequired": false
                 },
                 "ts": 2
             })))
@@ -176,6 +201,46 @@ mod tests {
 
         assert!(state.has_completed);
         assert_eq!(state.device_name.as_deref(), Some("Test Mac"));
+    }
+
+    #[tokio::test]
+    async fn reset_space_posts_to_the_device_management_reset_route() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/auth/connect"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "data": {
+                    "sessionToken": "test-session",
+                    "expiresInSecs": 300,
+                    "refreshAtSecs": 240
+                },
+                "ts": 1
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/v2/setup/reset"))
+            .and(header("authorization", "Session test-session"))
+            .respond_with(ResponseTemplate::new(204))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let connection_state = DaemonConnectionState::default();
+        connection_state.set(DaemonConnectionInfo {
+            base_url: server.uri(),
+            ws_url: "ws://127.0.0.1/unused".to_string(),
+            token: "test-bearer".to_string(),
+            pid: 42,
+        });
+        let client = DaemonSetupV2Client::with_http_conn_state_and_type(
+            Arc::new(reqwest::Client::new()),
+            connection_state,
+            "test".to_string(),
+        );
+
+        client.reset_space().await.expect("space reset request");
     }
 
     #[tokio::test]

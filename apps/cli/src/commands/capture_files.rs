@@ -189,7 +189,9 @@ async fn resume_session(bundle: &CliAppSession) -> Result<(), i32> {
     match bundle.recover_session().await {
         Ok(true) => Ok(()),
         Ok(false) => {
-            ui::error("This device is not set up yet. Use `uniclip init` or `uniclip join` first.");
+            ui::error(
+                "This device is not set up yet. Use `uniclip space init` or `uniclip space join` first.",
+            );
             Err(exit_codes::EXIT_ERROR)
         }
         Err(error) => {

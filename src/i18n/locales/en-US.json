@@ -1072,6 +1072,23 @@
   },
   "devices": {
     "title": "Device Management",
+    "resetSpace": {
+      "dangerZone": "Danger Zone",
+      "description": "Rebuild this device's space and permanently discard every old device relationship. Use only when other recovery options have failed.",
+      "action": "Reset Space",
+      "confirmTitle": "Reset this space?",
+      "confirmDescription": "This cannot be undone. Other devices will not be erased, but they will no longer sync with this device.",
+      "removedTitle": "Will stop working",
+      "removedRelationships": "Pairing, trust, and sync relationships with every old device",
+      "removedPairing": "Every device must be paired again before it can resume syncing",
+      "keptTitle": "Stays on this device",
+      "keptContent": "Clipboard history, completed files, general settings, device identity, and unlock access",
+      "cancel": "Cancel",
+      "confirmAction": "Reset Space",
+      "resetting": "Resetting...",
+      "success": "Space reset. Pair again with any devices you want to keep syncing.",
+      "error": "The space could not be reset. Try again."
+    },
     "addNew": "Invite New Device",
     "thisDevice": {
       "title": "This Device",

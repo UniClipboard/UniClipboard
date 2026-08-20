@@ -16,6 +16,7 @@ async fn test_double_init_fails() {
 
     // First init: should succeed
     let first = cli.run_capture(&[
+        "space",
         "init",
         "--passphrase",
         "first-pass-123",
@@ -26,6 +27,7 @@ async fn test_double_init_fails() {
 
     // Second init: should fail (space already exists)
     let second = cli.run_capture(&[
+        "space",
         "init",
         "--passphrase",
         "second-pass-456",
@@ -44,7 +46,7 @@ async fn test_init_empty_passphrase_fails() {
         .expect("daemon start failed");
     let cli = TestCli::new(&daemon.profile);
 
-    let output = cli.run_capture(&["init", "--passphrase", "", "--device-name", "node"]);
+    let output = cli.run_capture(&["space", "init", "--passphrase", "", "--device-name", "node"]);
     assert!(
         !output.success(),
         "init with empty passphrase should fail but got exit=0"

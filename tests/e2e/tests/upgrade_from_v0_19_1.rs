@@ -43,6 +43,7 @@ impl UpgradeNode {
         .unwrap_or_else(|error| panic!("start v0.19.1 daemon failed: {error}"));
         let cli = TestCli::with_binaries(&daemon.profile, &legacy);
         let output = cli.run_capture(&[
+            "space",
             "init",
             "--passphrase",
             PASSPHRASE,
@@ -669,6 +670,7 @@ async fn paired_legacy_nodes(test_name: &str) -> (UpgradeNode, UpgradeNode, Loca
         .expect("start legacy node A");
     let cli_a = TestCli::with_binaries(&daemon_a.profile, &legacy);
     let init = cli_a.run_capture(&[
+        "space",
         "init",
         "--passphrase",
         PASSPHRASE,
@@ -685,6 +687,7 @@ async fn paired_legacy_nodes(test_name: &str) -> (UpgradeNode, UpgradeNode, Loca
 
     let (invite, code) = InviteSession::start(&cli_a).await;
     let join = cli_b.run_capture(&[
+        "space",
         "join",
         "--code",
         &code,
@@ -738,6 +741,7 @@ async fn three_paired_legacy_nodes(
 
     let (invite, code) = InviteSession::start(&a.cli).await;
     let join = cli_c.run_capture(&[
+        "space",
         "join",
         "--code",
         &code,
@@ -758,6 +762,7 @@ async fn three_paired_legacy_nodes(
     // Pair B and C directly so every legacy node has the complete roster.
     let (invite, code) = InviteSession::start(&b.cli).await;
     let join = cli_c.run_capture(&[
+        "space",
         "join",
         "--code",
         &code,
@@ -1520,6 +1525,7 @@ async fn u12_removed_legacy_member_stays_excluded_after_retained_members_upgrade
     let cli_c = TestCli::with_binaries(&daemon_c.profile, &legacy);
     let (invite, code) = InviteSession::start(&a.cli).await;
     let join = cli_c.run_capture(&[
+        "space",
         "join",
         "--code",
         &code,

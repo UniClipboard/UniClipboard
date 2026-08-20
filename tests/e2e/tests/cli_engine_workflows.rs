@@ -69,6 +69,7 @@ impl Node {
     ) -> Self {
         let node = Self::fresh(name, binaries, rendezvous).await;
         let output = node.cli.run_capture(&[
+            "space",
             "init",
             "--passphrase",
             PASSPHRASE,
@@ -157,6 +158,7 @@ async fn join(sponsor: &Node, joiner: &Node, device_name: &str, no_wait: bool) -
     let requests_before = daemon_request_count(joiner, "POST", "/v2/setup/redeem");
     let mut args = vec![
         "--json",
+        "space",
         "join",
         "--code",
         &code,
@@ -178,13 +180,7 @@ async fn join(sponsor: &Node, joiner: &Node, device_name: &str, no_wait: bool) -
         sponsor.daemon.diagnostic_log(),
         joiner.daemon.diagnostic_log()
     );
-    assert_request_delta(
-        joiner,
-        "POST",
-        "/v2/setup/redeem",
-        requests_before,
-        1,
-    );
+    assert_request_delta(joiner, "POST", "/v2/setup/redeem", requests_before, 1);
     json(&output)
 }
 
@@ -240,18 +236,22 @@ async fn join_commands_report_none_then_real_active_join() {
     .await;
     let mut joiner = Node::fresh("cli-workflow-joiner", &binaries, &rendezvous).await;
 
-    let status = joiner.cli.run_capture(&["--json", "join", "status"]);
+    let status = joiner
+        .cli
+        .run_capture(&["--json", "space", "join", "status"]);
     assert!(status.success(), "join status failed: {status:?}");
     assert_eq!(json(&status)["status"], "none");
 
-    let human_status = joiner.cli.run_capture(&["join", "status"]);
+    let human_status = joiner.cli.run_capture(&["space", "join", "status"]);
     assert!(
         human_status.success(),
         "human join status failed: {human_status:?}"
     );
     assert!(human_status.stderr.contains("none"), "{human_status:?}");
 
-    let cancel = joiner.cli.run_capture(&["--json", "join", "cancel"]);
+    let cancel = joiner
+        .cli
+        .run_capture(&["--json", "space", "join", "cancel"]);
     assert!(cancel.success(), "empty join cancel failed: {cancel:?}");
     assert_eq!(json(&cancel)["status"], "none");
 
@@ -260,15 +260,18 @@ async fn join_commands_report_none_then_real_active_join() {
     assert_eq!(joined["status"], "active");
     let join_id = joined["join_id"].as_str().expect("active join id");
 
-    let status = joiner.cli.run_capture(&["--json", "join", "status"]);
+    let status = joiner
+        .cli
+        .run_capture(&["--json", "space", "join", "status"]);
     assert!(status.success(), "active join status failed: {status:?}");
     let status = json(&status);
     assert_eq!(status["status"], "active");
     assert_eq!(status["join_id"], join_id);
 
-    let cancel_requests_before =
-        daemon_request_count(&joiner, "POST", "/v2/setup/cancel-join");
-    let cancel = joiner.cli.run_capture(&["--json", "join", "cancel"]);
+    let cancel_requests_before = daemon_request_count(&joiner, "POST", "/v2/setup/cancel-join");
+    let cancel = joiner
+        .cli
+        .run_capture(&["--json", "space", "join", "cancel"]);
     assert!(cancel.success(), "active join cancel failed: {cancel:?}");
     let cancel = json(&cancel);
     assert_eq!(cancel["status"], "active");
@@ -281,15 +284,19 @@ async fn join_commands_report_none_then_real_active_join() {
         0,
     );
 
-    let human_status = joiner.cli.run_capture(&["join", "status"]);
+    let human_status = joiner.cli.run_capture(&["space", "join", "status"]);
     assert!(
         human_status.success(),
         "human active join status failed: {human_status:?}"
     );
-    assert!(human_status.stderr.contains("active") || human_status.stderr.contains("Join completed"));
+    assert!(
+        human_status.stderr.contains("active") || human_status.stderr.contains("Join completed")
+    );
 
     joiner.restart().await;
-    let restarted_status = joiner.cli.run_capture(&["--json", "join", "status"]);
+    let restarted_status = joiner
+        .cli
+        .run_capture(&["--json", "space", "join", "status"]);
     assert!(
         restarted_status.success(),
         "join status after daemon restart failed: {restarted_status:?}"
@@ -297,6 +304,112 @@ async fn join_commands_report_none_then_real_active_join() {
     let restarted_status = json(&restarted_status);
     assert_eq!(restarted_status["status"], "active");
     assert_eq!(restarted_status["join_id"], join_id);
+}
+
+#[tokio::test]
+#[ignore]
+async fn reset_space_keeps_local_history_and_permanently_discards_old_device_relationships() {
+    let binaries = NodeBinarySet::current();
+    let rendezvous = LocalRendezvous::start().await;
+    let mut alice = Node::initialized(
+        "cli-workflow-reset-alice",
+        "alice-node",
+        &binaries,
+        &rendezvous,
+    )
+    .await;
+    let bob = Node::fresh("cli-workflow-reset-bob", &binaries, &rendezvous).await;
+    let joined = join(&alice, &bob, "bob-node", false).await;
+    assert_eq!(joined["status"], "active");
+
+    let sent = alice.cli.run_capture(&["send", "reset-preserved-text"]);
+    assert!(sent.success(), "send before reset failed: {sent:?}");
+    assert_eq!(members(&alice.cli).len(), 2);
+
+    let requests_before = daemon_request_count(&alice, "POST", "/v2/setup/reset");
+    let reset = alice
+        .cli
+        .run_capture(&["--json", "space", "reset", "--yes"]);
+    assert!(reset.success(), "reset failed: {reset:?}");
+    assert_eq!(
+        json(&reset),
+        serde_json::json!({ "ok": true, "status": "reset" })
+    );
+    assert_request_delta(&alice, "POST", "/v2/setup/reset", requests_before, 1);
+
+    let after_reset = members(&alice.cli);
+    assert_eq!(
+        after_reset.len(),
+        1,
+        "old members survived reset: {after_reset:?}"
+    );
+    assert_eq!(after_reset[0]["device_name"], "alice-node");
+
+    let history = alice
+        .cli
+        .run_capture(&["--json", "search", "reset-preserved-text"]);
+    assert!(
+        history.success(),
+        "history search after reset failed: {history:?}"
+    );
+    assert!(
+        json(&history)["data"]
+            .as_array()
+            .is_some_and(|entries| !entries.is_empty()),
+        "local history was not retained: {history:?}"
+    );
+
+    alice.restart().await;
+    assert_eq!(
+        members(&alice.cli).len(),
+        1,
+        "old members returned after restart"
+    );
+}
+
+#[tokio::test]
+#[ignore]
+async fn legacy_space_commands_warn_and_keep_json_output_parseable() {
+    let binaries = NodeBinarySet::current();
+    let rendezvous = LocalRendezvous::start().await;
+    let node = Node::fresh("cli-workflow-legacy-space", &binaries, &rendezvous).await;
+
+    let invite = node.cli.run_capture(&["invite"]);
+    assert!(
+        !invite.success(),
+        "invite unexpectedly succeeded without setup"
+    );
+    assert!(invite.stderr.contains("`uniclip invite` is deprecated"));
+
+    let init = node.cli.run_capture(&[
+        "init",
+        "--passphrase",
+        PASSPHRASE,
+        "--device-name",
+        "legacy-node",
+    ]);
+    assert!(init.success(), "legacy init failed: {init:?}");
+    assert!(init.stderr.contains("`uniclip init` is deprecated"));
+
+    let status = node.cli.run_capture(&["--json", "status"]);
+    assert!(status.success(), "legacy status failed: {status:?}");
+    let _ = json(&status);
+    assert!(status.stderr.contains("`uniclip status` is deprecated"));
+
+    let join = node.cli.run_capture(&["--json", "join", "status"]);
+    assert!(join.success(), "legacy join status failed: {join:?}");
+    let _ = json(&join);
+    assert!(join.stderr.contains("`uniclip join` is deprecated"));
+
+    let reset = node.cli.run_capture(&["--json", "reset-space", "--yes"]);
+    assert!(reset.success(), "legacy reset failed: {reset:?}");
+    assert_eq!(
+        json(&reset),
+        serde_json::json!({ "ok": true, "status": "reset" })
+    );
+    assert!(reset
+        .stderr
+        .contains("`uniclip reset-space --yes` is deprecated"));
 }
 
 #[cfg(unix)]
@@ -324,13 +437,17 @@ async fn pending_join_survives_ctrl_c_and_daemon_restart_then_can_be_cancelled()
         daemon: sponsor_daemon,
     };
     let sponsor_init = sponsor.cli.run_capture(&[
+        "space",
         "init",
         "--passphrase",
         PASSPHRASE,
         "--device-name",
         "sponsor-node",
     ]);
-    assert!(sponsor_init.success(), "sponsor init failed: {sponsor_init:?}");
+    assert!(
+        sponsor_init.success(),
+        "sponsor init failed: {sponsor_init:?}"
+    );
     let joiner_profile = TestProfile::new("cli-workflow-pending-joiner");
     let joiner_daemon = TestDaemon::start_clean_configured_with(
         joiner_profile,
@@ -357,6 +474,7 @@ async fn pending_join_survives_ctrl_c_and_daemon_restart_then_can_be_cancelled()
         .env("UNICLIPBOARD_ENV", "development")
         .args([
             "--json",
+            "space",
             "join",
             "--code",
             &code,
@@ -400,7 +518,9 @@ async fn pending_join_survives_ctrl_c_and_daemon_restart_then_can_be_cancelled()
 
     let pending_deadline = tokio::time::Instant::now() + Duration::from_secs(15);
     let pending = loop {
-        let status = joiner.cli.run_capture(&["--json", "join", "status"]);
+        let status = joiner
+            .cli
+            .run_capture(&["--json", "space", "join", "status"]);
         if status.success() {
             let value = json(&status);
             if value["status"] == "pending" {
@@ -414,14 +534,11 @@ async fn pending_join_survives_ctrl_c_and_daemon_restart_then_can_be_cancelled()
         );
         tokio::time::sleep(Duration::from_millis(500)).await;
     };
-    let join_id = pending["join_id"].as_str().expect("pending join id").to_string();
-    assert_request_delta(
-        &joiner,
-        "POST",
-        "/v2/setup/redeem",
-        join_requests_before,
-        1,
-    );
+    let join_id = pending["join_id"]
+        .as_str()
+        .expect("pending join id")
+        .to_string();
+    assert_request_delta(&joiner, "POST", "/v2/setup/redeem", join_requests_before, 1);
 
     let join_pid = waiting_join.child_mut().id();
     assert_eq!(unsafe { libc::kill(join_pid as i32, libc::SIGINT) }, 0);
@@ -438,25 +555,42 @@ async fn pending_join_survives_ctrl_c_and_daemon_restart_then_can_be_cancelled()
         .unwrap_or_else(|error| panic!("interrupted output is not JSON: {error}"));
     assert_eq!(interrupted_json["code"], "interrupted");
 
-    let after_ctrl_c = joiner.cli.run_capture(&["--json", "join", "status"]);
-    assert!(after_ctrl_c.success(), "status after Ctrl-C failed: {after_ctrl_c:?}");
+    let after_ctrl_c = joiner
+        .cli
+        .run_capture(&["--json", "space", "join", "status"]);
+    assert!(
+        after_ctrl_c.success(),
+        "status after Ctrl-C failed: {after_ctrl_c:?}"
+    );
     let after_ctrl_c = json(&after_ctrl_c);
     assert_eq!(after_ctrl_c["status"], "pending");
     assert_eq!(after_ctrl_c["join_id"], join_id);
-    let human_pending = joiner.cli.run_capture(&["join", "status"]);
-    assert!(human_pending.success(), "human pending status failed: {human_pending:?}");
-    assert!(human_pending.stderr.contains("pending"), "{human_pending:?}");
+    let human_pending = joiner.cli.run_capture(&["space", "join", "status"]);
+    assert!(
+        human_pending.success(),
+        "human pending status failed: {human_pending:?}"
+    );
+    assert!(
+        human_pending.stderr.contains("pending"),
+        "{human_pending:?}"
+    );
 
     joiner.restart().await;
-    let after_restart = joiner.cli.run_capture(&["--json", "join", "status"]);
-    assert!(after_restart.success(), "status after restart failed: {after_restart:?}");
+    let after_restart = joiner
+        .cli
+        .run_capture(&["--json", "space", "join", "status"]);
+    assert!(
+        after_restart.success(),
+        "status after restart failed: {after_restart:?}"
+    );
     let after_restart = json(&after_restart);
     assert_eq!(after_restart["status"], "pending");
     assert_eq!(after_restart["join_id"], join_id);
 
-    let cancel_requests_before =
-        daemon_request_count(&joiner, "POST", "/v2/setup/cancel-join");
-    let cancelled = joiner.cli.run_capture(&["--json", "join", "cancel"]);
+    let cancel_requests_before = daemon_request_count(&joiner, "POST", "/v2/setup/cancel-join");
+    let cancelled = joiner
+        .cli
+        .run_capture(&["--json", "space", "join", "cancel"]);
     assert!(cancelled.success(), "pending cancel failed: {cancelled:?}");
     let cancelled = json(&cancelled);
     assert_eq!(cancelled["ok"], true);
@@ -470,7 +604,9 @@ async fn pending_join_survives_ctrl_c_and_daemon_restart_then_can_be_cancelled()
         1,
     );
 
-    let cancelled_again = joiner.cli.run_capture(&["--json", "join", "cancel"]);
+    let cancelled_again = joiner
+        .cli
+        .run_capture(&["--json", "space", "join", "cancel"]);
     assert!(
         cancelled_again.success(),
         "repeated pending cancel failed: {cancelled_again:?}"
@@ -504,10 +640,10 @@ async fn invalid_join_passphrase_is_clear_in_json_and_human_output() {
     let joiner = Node::fresh("cli-workflow-rejected-joiner", &binaries, &rendezvous).await;
 
     let (session, code) = InviteSession::start(&sponsor.cli).await;
-    let rejected_requests_before =
-        daemon_request_count(&joiner, "POST", "/v2/setup/redeem");
+    let rejected_requests_before = daemon_request_count(&joiner, "POST", "/v2/setup/redeem");
     let rejected = joiner.cli.run_capture(&[
         "--json",
+        "space",
         "join",
         "--code",
         &code,
@@ -517,7 +653,10 @@ async fn invalid_join_passphrase_is_clear_in_json_and_human_output() {
         "joiner-node",
     ]);
     drop(session);
-    assert_eq!(rejected.exit_code, 1, "invalid passphrase must fail: {rejected:?}");
+    assert_eq!(
+        rejected.exit_code, 1,
+        "invalid passphrase must fail: {rejected:?}"
+    );
     let rejected_json = json(&rejected);
     assert_eq!(rejected_json["ok"], false);
     assert!(rejected_json["code"].is_string(), "{rejected_json}");
@@ -530,7 +669,9 @@ async fn invalid_join_passphrase_is_clear_in_json_and_human_output() {
         1,
     );
 
-    let status = joiner.cli.run_capture(&["--json", "join", "status"]);
+    let status = joiner
+        .cli
+        .run_capture(&["--json", "space", "join", "status"]);
     assert!(status.success(), "join status failed: {status:?}");
     let status = json(&status);
     assert_eq!(status["ok"], true);
@@ -539,6 +680,7 @@ async fn invalid_join_passphrase_is_clear_in_json_and_human_output() {
     let (human_session, human_code) = InviteSession::start(&sponsor.cli).await;
     let human_requests_before = daemon_request_count(&joiner, "POST", "/v2/setup/redeem");
     let human = joiner.cli.run_capture(&[
+        "space",
         "join",
         "--code",
         &human_code,
@@ -548,7 +690,10 @@ async fn invalid_join_passphrase_is_clear_in_json_and_human_output() {
         "joiner-node",
     ]);
     drop(human_session);
-    assert_eq!(human.exit_code, 1, "human invalid passphrase must fail: {human:?}");
+    assert_eq!(
+        human.exit_code, 1,
+        "human invalid passphrase must fail: {human:?}"
+    );
     assert!(human.stderr.contains("Join failed"), "{human:?}");
     assert_request_delta(
         &joiner,
@@ -575,23 +720,20 @@ async fn member_sync_cli_reads_partially_updates_and_rereads_engine_state() {
     join(&alice, &bob, "bob-node", false).await;
     let bob_id = device_id(&alice.cli, "bob-node");
 
-    let human_before = alice
-        .cli
-        .run_capture(&["member", "sync", "show", &bob_id]);
+    let human_before = alice.cli.run_capture(&["member", "sync", "show", &bob_id]);
     assert!(
         human_before.success(),
         "human sync show failed: {human_before:?}"
     );
-    assert!(human_before.stderr.contains("Member sync"), "{human_before:?}");
+    assert!(
+        human_before.stderr.contains("Member sync"),
+        "{human_before:?}"
+    );
     assert!(human_before.stderr.contains(&bob_id), "{human_before:?}");
 
-    let before = alice.cli.run_capture(&[
-        "--json",
-        "member",
-        "sync",
-        "show",
-        &bob_id,
-    ]);
+    let before = alice
+        .cli
+        .run_capture(&["--json", "member", "sync", "show", &bob_id]);
     assert!(before.success(), "sync show failed: {before:?}");
     let before = json(&before);
     assert_eq!(before["status"], "current");
@@ -616,30 +758,28 @@ async fn member_sync_cli_reads_partially_updates_and_rereads_engine_state() {
     assert_eq!(updated["device_id"], bob_id);
     assert_eq!(updated["send_enabled"], false);
     assert_eq!(updated["send_content_types"], original_send_types);
-    assert_eq!(updated["receive_content_types"], serde_json::json!(["text", "image"]));
+    assert_eq!(
+        updated["receive_content_types"],
+        serde_json::json!(["text", "image"])
+    );
     assert_request_delta(&alice, "PATCH", &sync_path, update_requests_before, 1);
 
-    let reread = alice.cli.run_capture(&[
-        "--json",
-        "member",
-        "sync",
-        "show",
-        &bob_id,
-    ]);
+    let reread = alice
+        .cli
+        .run_capture(&["--json", "member", "sync", "show", &bob_id]);
     assert!(reread.success(), "sync reread failed: {reread:?}");
     let reread = json(&reread);
     assert_eq!(reread["send_enabled"], false);
-    assert_eq!(reread["receive_content_types"], serde_json::json!(["text", "image"]));
+    assert_eq!(
+        reread["receive_content_types"],
+        serde_json::json!(["text", "image"])
+    );
 
     let human_update_requests_before = daemon_request_count(&alice, "PATCH", &sync_path);
-    let human_updated = alice.cli.run_capture(&[
-        "member",
-        "sync",
-        "set",
-        &bob_id,
-        "--receive",
-        "off",
-    ]);
+    let human_updated =
+        alice
+            .cli
+            .run_capture(&["member", "sync", "set", &bob_id, "--receive", "off"]);
     assert!(
         human_updated.success(),
         "human sync update failed: {human_updated:?}"
@@ -650,15 +790,12 @@ async fn member_sync_cli_reads_partially_updates_and_rereads_engine_state() {
             .contains("Member sync settings updated"),
         "{human_updated:?}"
     );
-    assert!(human_updated.stderr.contains("receive"), "{human_updated:?}");
-    assert!(human_updated.stderr.contains("off"), "{human_updated:?}");
-    assert_request_delta(
-        &alice,
-        "PATCH",
-        &sync_path,
-        human_update_requests_before,
-        1,
+    assert!(
+        human_updated.stderr.contains("receive"),
+        "{human_updated:?}"
     );
+    assert!(human_updated.stderr.contains("off"), "{human_updated:?}");
+    assert_request_delta(&alice, "PATCH", &sync_path, human_update_requests_before, 1);
 }
 
 #[tokio::test]
@@ -701,37 +838,32 @@ async fn member_trust_cli_keeps_applies_and_rejects_stale_decisions() {
         .to_string();
     assert_eq!(carol_change_id, bob_change_id);
 
-    let human_status = carol
-        .cli
-        .run_capture(&["member", "trust", "status"]);
+    let human_status = carol.cli.run_capture(&["member", "trust", "status"]);
     assert!(
         human_status.success(),
         "human trust status failed: {human_status:?}"
     );
-    assert!(human_status.stderr.contains("Device trust"), "{human_status:?}");
-    assert!(human_status.stderr.contains(&carol_change_id), "{human_status:?}");
+    assert!(
+        human_status.stderr.contains("Device trust"),
+        "{human_status:?}"
+    );
+    assert!(
+        human_status.stderr.contains(&carol_change_id),
+        "{human_status:?}"
+    );
 
     let decision_path = "/member/device-trust/decision";
     let decision_requests_before = daemon_request_count(&carol, "POST", decision_path);
-    let human_stale = carol.cli.run_capture(&[
-        "member",
-        "trust",
-        "keep",
-        "--change",
-        "stale-change-id",
-    ]);
+    let human_stale =
+        carol
+            .cli
+            .run_capture(&["member", "trust", "keep", "--change", "stale-change-id"]);
     assert_eq!(
         human_stale.exit_code, 1,
         "human stale decision must fail: {human_stale:?}"
     );
     assert!(human_stale.stderr.contains("changed"), "{human_stale:?}");
-    assert_request_delta(
-        &carol,
-        "POST",
-        decision_path,
-        decision_requests_before,
-        0,
-    );
+    assert_request_delta(&carol, "POST", decision_path, decision_requests_before, 0);
 
     let stale = carol.cli.run_capture(&[
         "--json",
@@ -745,13 +877,7 @@ async fn member_trust_cli_keeps_applies_and_rejects_stale_decisions() {
     let stale = json(&stale);
     assert_eq!(stale["code"], "device_trust_state_changed");
     assert_eq!(stale["current_change_id"], carol_change_id);
-    assert_request_delta(
-        &carol,
-        "POST",
-        decision_path,
-        decision_requests_before,
-        0,
-    );
+    assert_request_delta(&carol, "POST", decision_path, decision_requests_before, 0);
 
     let keep_requests_before = daemon_request_count(&carol, "POST", decision_path);
     let kept = carol.cli.run_capture(&[

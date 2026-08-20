@@ -26,6 +26,7 @@ impl Node {
     async fn initialized(name: &str, device_name: &str, binaries: &NodeBinarySet) -> Self {
         let node = Self::fresh(name, binaries).await;
         let output = node.cli.run_capture(&[
+            "space",
             "init",
             "--passphrase",
             PASSPHRASE,
@@ -121,6 +122,7 @@ async fn join(sponsor: &Node, joiner: &Node, joiner_name: &str) {
     let (session, code) = InviteSession::start(&sponsor.cli).await;
     let output = joiner.cli.run_capture(&[
         "--json",
+        "space",
         "join",
         "--code",
         &code,
@@ -289,6 +291,7 @@ async fn h1_current_joiner_rejects_legacy_sponsor_without_partial_setup() {
 
     let output = joiner.cli.run_capture(&[
         "--json",
+        "space",
         "join",
         "--code",
         &code,
@@ -312,6 +315,7 @@ async fn h1_current_joiner_rejects_legacy_sponsor_without_partial_setup() {
     assert_eq!(members(&sponsor.cli).len(), 1);
 
     let init = joiner.cli.run_capture(&[
+        "space",
         "init",
         "--passphrase",
         "independent-space-passphrase",
@@ -338,6 +342,7 @@ async fn h2_join_succeeds_after_legacy_sponsor_is_upgraded_in_place() {
     let (session, code) = InviteSession::start(&sponsor.cli).await;
     let rejected = joiner.cli.run_capture(&[
         "--json",
+        "space",
         "join",
         "--code",
         &code,

@@ -29,6 +29,7 @@ async fn setup_initialized_node(name: &str, device_name: &str) -> (TestDaemon, T
     let cli = TestCli::new(&daemon.profile);
 
     let output = cli.run_capture(&[
+        "space",
         "init",
         "--passphrase",
         PASSPHRASE,

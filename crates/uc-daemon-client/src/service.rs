@@ -42,6 +42,8 @@ pub trait DaemonService: Send + Sync {
 
     async fn cancel_join(&self, join_id: &str) -> Result<JoinSpaceResponse>;
 
+    async fn reset_space(&self) -> Result<()>;
+
     async fn decide_device_trust(
         &self,
         request: &DecideDeviceTrustRequestDto,

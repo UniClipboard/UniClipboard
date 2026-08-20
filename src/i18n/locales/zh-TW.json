@@ -1071,6 +1071,23 @@
   },
   "devices": {
     "title": "裝置管理",
+    "resetSpace": {
+      "dangerZone": "危險區",
+      "description": "重建本機空間，永久中斷與所有舊裝置的關係。僅在其他復原方式都無效時使用。",
+      "action": "重設空間",
+      "confirmTitle": "確定要重設空間嗎？",
+      "confirmDescription": "此操作無法復原。其他裝置不會被清空，但將無法再與本機同步。",
+      "removedTitle": "將會失效",
+      "removedRelationships": "本機與所有舊裝置的配對、信任與同步關係",
+      "removedPairing": "所有裝置都必須重新配對才能繼續同步",
+      "keptTitle": "本機仍會保留",
+      "keptContent": "剪貼簿記錄、已完成檔案、一般設定、裝置身分與解鎖資訊",
+      "cancel": "取消",
+      "confirmAction": "確認重設空間",
+      "resetting": "正在重設...",
+      "success": "空間已重設，請重新配對需要繼續同步的裝置",
+      "error": "無法重設空間，請再試一次"
+    },
     "addNew": "邀請新裝置",
     "thisDevice": {
       "title": "本裝置",

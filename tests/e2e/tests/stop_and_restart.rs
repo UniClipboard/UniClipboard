@@ -44,6 +44,7 @@ async fn setup_initialized_node(name: &str) -> (TestDaemon, TestCli) {
     let cli = TestCli::new(&daemon.profile);
 
     let output = cli.run_capture(&[
+        "space",
         "init",
         "--passphrase",
         "test-passphrase-e2e",
@@ -310,6 +311,7 @@ async fn start_already_running() {
 
     // Init so the setup gate passes.
     let init_out = cli.run_capture(&[
+        "space",
         "init",
         "--passphrase",
         "test-passphrase-e2e",
@@ -367,6 +369,7 @@ async fn start_foreground_streams_logs() {
     let cli = TestCli::new(&temp_daemon.profile);
 
     let init_out = cli.run_capture(&[
+        "space",
         "init",
         "--passphrase",
         "fg-test-pass",

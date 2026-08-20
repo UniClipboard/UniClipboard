@@ -1074,6 +1074,23 @@
   },
   "devices": {
     "title": "Gerenciamento de dispositivos",
+    "resetSpace": {
+      "dangerZone": "Zona de perigo",
+      "description": "Reconstrói o espaço deste dispositivo e descarta permanentemente todas as relações antigas. Use somente quando outras opções de recuperação falharem.",
+      "action": "Redefinir espaço",
+      "confirmTitle": "Redefinir este espaço?",
+      "confirmDescription": "Esta ação não pode ser desfeita. Os outros dispositivos não serão apagados, mas deixarão de sincronizar com este dispositivo.",
+      "removedTitle": "Deixará de funcionar",
+      "removedRelationships": "Pareamento, confiança e sincronização com todos os dispositivos antigos",
+      "removedPairing": "Todos os dispositivos deverão ser pareados novamente para continuar sincronizando",
+      "keptTitle": "Permanece neste dispositivo",
+      "keptContent": "Histórico da área de transferência, arquivos concluídos, configurações gerais, identidade e acesso de desbloqueio",
+      "cancel": "Cancelar",
+      "confirmAction": "Redefinir espaço",
+      "resetting": "Redefinindo...",
+      "success": "Espaço redefinido. Pareie novamente os dispositivos que devem continuar sincronizando.",
+      "error": "Não foi possível redefinir o espaço. Tente novamente."
+    },
     "addNew": "Convidar novo dispositivo",
     "thisDevice": {
       "title": "Este dispositivo",

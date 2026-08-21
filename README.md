@@ -40,7 +40,7 @@
     </a >
     <a href="https://github.com/UniClipboard/UniClipboard/releases">
       <img
-        src="https://img.shields.io/github/v/release/UniClipboard/UniClipboard?include_prereleases&style=flat-square"
+        src="https://img.shields.io/github/v/release/UniClipboard/UniClipboard?style=flat-square"
       />
     </a >
     <a href="https://codecov.io/gh/UniClipboard/UniClipboard" >

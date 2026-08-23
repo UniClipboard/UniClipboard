@@ -61,8 +61,8 @@ const SPEED_WINDOW_MAX_SAMPLES: usize = 32;
 /// 终态保留时长:Completed 后保留多久才被 sweep 移除。配 UI 上"打勾
 /// 停一下再淡出"的视觉节奏。
 pub const COMPLETED_RETAIN_MS: u64 = 2_000;
-/// Failed / Cancelled 终态保留时长。用户需要更多时间读失败原因。
-pub const FAILED_RETAIN_MS: u64 = 4_000;
+/// Cancelled terminal rows remain briefly so the user can see the outcome.
+pub const CANCELLED_RETAIN_MS: u64 = 4_000;
 
 /// 单条传输行的对外快照。`speed_window` 是内部状态,不进 snapshot。
 #[derive(Debug, Clone, PartialEq)]
@@ -442,21 +442,44 @@ impl ActivityHudState {
         true
     }
 
-    /// 把过保留期的终态行扫掉。`completed_retain_ms` / `failed_retain_ms`
-    /// 用模块常量 [`COMPLETED_RETAIN_MS`] / [`FAILED_RETAIN_MS`]。返回
-    /// true 表示有行被移除。
+    /// Sweep timed terminal rows. Failed rows are retained until dismissed;
+    /// completed and cancelled rows use their module retention constants.
     pub fn sweep(&mut self) -> bool {
         let now_ms = self.clock.now_ms();
         let before = self.rows.len();
         self.rows.retain(|_, row| {
             let retain_ms = match row.state {
                 RowState::Receiving | RowState::CancelPending => return true,
+                RowState::Failed { .. } => return true,
                 RowState::Completed => COMPLETED_RETAIN_MS,
-                RowState::Failed { .. } | RowState::Cancelled { .. } => FAILED_RETAIN_MS,
+                RowState::Cancelled { .. } => CANCELLED_RETAIN_MS,
             };
             now_ms.saturating_sub(row.state_entered_at_ms) < retain_ms
         });
         self.rows.len() != before
+    }
+
+    pub fn dismiss_scoped(
+        &mut self,
+        entry_id: &str,
+        attempt_id: Option<&str>,
+        transfer_id: &str,
+    ) -> bool {
+        let key = row_key(entry_id, attempt_id, transfer_id);
+        let removed = self.rows.remove(&key).is_some();
+        if removed {
+            self.pending_filenames.remove(&key);
+            if let Some(attempt_id) = attempt_id {
+                if self
+                    .current_attempt_by_entry
+                    .get(entry_id)
+                    .is_some_and(|current| current == attempt_id)
+                {
+                    self.current_attempt_by_entry.remove(entry_id);
+                }
+            }
+        }
+        removed
     }
 
     /// 返回当前所有行的快照,按插入顺序稳定排序。UI 应拿这份去重绘。
@@ -698,7 +721,7 @@ mod tests {
     }
 
     #[test]
-    fn failed_retains_longer_than_completed() {
+    fn failed_persists_until_explicitly_dismissed() {
         let (mut state, clock) = make_state();
         state.apply_progress(
             "t1",
@@ -708,10 +731,10 @@ mod tests {
             Some(100),
         );
         state.apply_status_changed("t1", "failed", Some("disk_full".into()));
-        clock.advance(COMPLETED_RETAIN_MS + 100);
-        assert!(!state.sweep(), "Failed 比 Completed 保留更久");
-        clock.advance(FAILED_RETAIN_MS - COMPLETED_RETAIN_MS + 100);
-        assert!(state.sweep());
+        clock.advance(CANCELLED_RETAIN_MS * 10);
+        assert!(!state.sweep());
+        assert!(state.dismiss_scoped("t1", None, "t1"));
+        assert!(state.is_empty());
     }
 
     #[test]

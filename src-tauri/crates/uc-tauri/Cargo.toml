@@ -108,6 +108,9 @@ core-foundation = "0.10"
 objc2 = "0.6"
 objc2-app-kit = { version = "0.3", features = [
   "NSApplication",
+  "NSAccessibility",
+  "NSAccessibilityProtocols",
+  "NSGlassEffectView",
   "NSImage",
   "NSEvent",
   "NSScreen",
@@ -119,6 +122,9 @@ objc2-app-kit = { version = "0.3", features = [
   "NSWorkspace",
   "NSRunningApplication",
   "NSStackView",
+  "NSGestureRecognizer",
+  "NSClickGestureRecognizer",
+  "NSTrackingArea",
   "NSProgressIndicator",
   "NSTextField",
   "NSText",
@@ -127,6 +133,7 @@ objc2-app-kit = { version = "0.3", features = [
   "NSCell",
   "NSView",
   "NSVisualEffectView",
+  "objc2-core-foundation",
   "NSLayoutConstraint",
   "NSFont",
   "objc2-quartz-core",
@@ -146,6 +153,7 @@ core-graphics = "0.24"
 objc2-foundation = { version = "0.3", features = [
   "NSBundle",
   "NSGeometry",
+  "NSProcessInfo",
   "objc2-core-foundation",
   "NSBackgroundActivityScheduler",
   "NSString",

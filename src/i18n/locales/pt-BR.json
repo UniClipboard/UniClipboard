@@ -58,7 +58,9 @@
     "updateInstalling": "Instalando atualização...",
     "updateReady": "Atualização pronta para instalar",
     "back": "Voltar",
-    "feedback": "Feedback"
+    "feedback": "Feedback",
+    "collapseSidebar": "Recolher barra lateral",
+    "expandSidebar": "Expandir barra lateral"
   },
   "debugBadge": {
     "title": "O modo de depuração está ativado",
@@ -623,6 +625,7 @@
           "goSettings": "Ir para as configurações",
           "toggleQuickPanel": "Abrir/fechar o painel rápido",
           "favoriteClipboardItem": "Favoritar o item atual da área de transferência",
+          "searchHistory": "Pesquisar histórico",
           "zoomIn": "Aumentar o zoom",
           "zoomOut": "Diminuir o zoom"
         },
@@ -855,7 +858,11 @@
       "noMatches": "Nenhum resultado",
       "removeFilter": "Remover filtro: {{filter}}",
       "moreFilters": "Mostrar mais {{count}} filtros",
-      "clearAll": "Limpar tudo"
+      "clearAll": "Limpar tudo",
+      "close": "Fechar painel de pesquisa",
+      "filterCategories": "Categorias de filtro",
+      "results": "{{count}} resultados",
+      "done": "Concluir"
     }
   },
   "dashboard": {

@@ -1,6 +1,5 @@
 import React, { useCallback, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useEntryDelivery } from '@/hooks/useEntryDelivery'
 import { useRelativeTime } from '@/hooks/useRelativeTime'
 import type { DisplayClipboardItem } from '@/lib/clipboard-entry'
 import { cn } from '@/lib/utils'
@@ -41,7 +40,6 @@ const HistoryCard: React.FC<HistoryCardProps> = ({
 }) => {
   const { t } = useTranslation()
   const relativeTime = useRelativeTime(item.activeTime)
-  const { delivery } = useEntryDelivery(item.id)
   const isFileType = item.type === 'file'
   const isFavorited = item.isFavorited ?? false
   const isUnavailable = item.isUnavailable ?? false
@@ -117,7 +115,6 @@ const HistoryCard: React.FC<HistoryCardProps> = ({
       <HistoryCardHeader
         item={item}
         relativeTime={relativeTime}
-        deliverySource={delivery?.source}
         transfer={transfer}
         state={cardState}
         percent={percent}

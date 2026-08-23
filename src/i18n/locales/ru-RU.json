@@ -58,7 +58,9 @@
     "updateInstalling": "Установка обновления...",
     "updateReady": "Обновление готово к установке",
     "back": "Назад",
-    "feedback": "Обратная связь"
+    "feedback": "Обратная связь",
+    "collapseSidebar": "Свернуть боковую панель",
+    "expandSidebar": "Развернуть боковую панель"
   },
   "debugBadge": {
     "title": "Режим отладки включён",
@@ -623,6 +625,7 @@
           "goSettings": "Перейти к настройкам",
           "toggleQuickPanel": "Показать или скрыть быструю панель",
           "favoriteClipboardItem": "Добавить текущий элемент в избранное",
+          "searchHistory": "Поиск по истории",
           "zoomIn": "Увеличить",
           "zoomOut": "Уменьшить"
         },
@@ -854,7 +857,11 @@
       "noMatches": "Совпадений нет",
       "removeFilter": "Удалить фильтр: {{filter}}",
       "moreFilters": "Показать ещё фильтры ({{count}})",
-      "clearAll": "Очистить всё"
+      "clearAll": "Очистить всё",
+      "close": "Закрыть панель поиска",
+      "filterCategories": "Категории фильтров",
+      "results": "Результатов: {{count}}",
+      "done": "Готово"
     },
     "subtitle_few": "{{count}} элемента",
     "subtitle_many": "{{count}} элементов"

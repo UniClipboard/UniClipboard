@@ -58,7 +58,9 @@
     "updateInstalling": "正在安装更新...",
     "updateReady": "更新已就绪，可安装",
     "back": "返回",
-    "feedback": "反馈"
+    "feedback": "反馈",
+    "collapseSidebar": "收起侧栏",
+    "expandSidebar": "展开侧栏"
   },
   "debugBadge": {
     "title": "Debug 模式已开启",
@@ -623,6 +625,7 @@
           "goSettings": "前往设置",
           "toggleQuickPanel": "切换快捷面板",
           "favoriteClipboardItem": "收藏当前剪贴板项目",
+          "searchHistory": "搜索历史记录",
           "zoomIn": "放大界面",
           "zoomOut": "缩小界面"
         },
@@ -853,7 +856,11 @@
       "noMatches": "无匹配项",
       "removeFilter": "移除筛选：{{filter}}",
       "moreFilters": "展开其余 {{count}} 个筛选",
-      "clearAll": "清除全部"
+      "clearAll": "清除全部",
+      "close": "关闭搜索面板",
+      "filterCategories": "筛选类别",
+      "results": "{{count}} 条结果",
+      "done": "完成"
     }
   },
   "dashboard": {

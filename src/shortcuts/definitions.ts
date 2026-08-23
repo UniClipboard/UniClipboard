@@ -10,6 +10,7 @@ export type ShortcutAction =
   | 'global.zoomOut'
   | 'global.toggleQuickPanel'
   | 'clipboard.favorite'
+  | 'clipboard.search'
   | 'navigation.settings'
   | string
 
@@ -100,5 +101,12 @@ export const SHORTCUT_DEFINITIONS: ShortcutDefinition[] = [
     action: 'clipboard.favorite',
     scope: 'clipboard',
     description: 'settings.sections.shortcuts.actions.favoriteClipboardItem',
+  },
+  {
+    id: 'clipboard.search',
+    key: 'mod+f',
+    action: 'clipboard.search',
+    scope: 'clipboard',
+    description: 'settings.sections.shortcuts.actions.searchHistory',
   },
 ]

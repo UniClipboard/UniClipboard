@@ -58,7 +58,9 @@
     "updateInstalling": "正在安裝更新...",
     "updateReady": "更新已就緒，可安裝",
     "back": "返回",
-    "feedback": "意見回饋"
+    "feedback": "意見回饋",
+    "collapseSidebar": "收起側欄",
+    "expandSidebar": "展開側欄"
   },
   "debugBadge": {
     "title": "Debug 模式已開啓",
@@ -623,6 +625,7 @@
           "goSettings": "前往設定",
           "toggleQuickPanel": "切換快捷面板",
           "favoriteClipboardItem": "我的最愛目前剪貼簿項目",
+          "searchHistory": "搜尋歷史記錄",
           "zoomIn": "放大介面",
           "zoomOut": "縮小介面"
         },
@@ -853,7 +856,11 @@
       "noMatches": "無匹配項",
       "removeFilter": "移除篩選：{{filter}}",
       "moreFilters": "展開其餘 {{count}} 個篩選",
-      "clearAll": "清除全部"
+      "clearAll": "清除全部",
+      "close": "關閉搜尋面板",
+      "filterCategories": "篩選類別",
+      "results": "{{count}} 條結果",
+      "done": "完成"
     }
   },
   "dashboard": {

@@ -1,5 +1,5 @@
 import { AnimatePresence, LazyMotion, MotionConfig, domMax, m } from 'framer-motion'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   BrowserRouter as Router,
   Route,
@@ -12,7 +12,7 @@ import { daemonClient } from '@/api/daemon/client'
 import { signalLifecycleReady } from '@/api/daemon/lifecycle'
 import { unlockEncryptionSession } from '@/api/security'
 import { checkForUpdate, openUpdaterWindow } from '@/api/updater'
-import { TitleBar } from '@/components'
+import { SidebarTitle, TitleBar } from '@/components'
 import { DeviceTrustDialog } from '@/components/device/DeviceTrustDialog'
 import { GlobalShortcuts } from '@/components/GlobalShortcuts'
 import StartupModals from '@/components/StartupModals'
@@ -57,13 +57,13 @@ const LOADING_WATCHDOG_MS = 12_000
 const PAGE_TRANSITION = { duration: 0.16, ease: [0.22, 1, 0.36, 1] } as const
 
 // Keep the sidebar mounted while route bodies crossfade in the shared surface.
-const AuthenticatedLayout = () => {
+const AuthenticatedLayout = ({ sidebarTitle }: { sidebarTitle: ReactNode }) => {
   const routerLocation = useLocation()
   const outlet = useOutlet()
   const { reduceVisualEffects } = usePlatform()
 
   return (
-    <MainLayout>
+    <MainLayout sidebarTitle={sidebarTitle}>
       <div className="relative h-full overflow-hidden">
         <AnimatePresence initial={false} mode="sync">
           <m.div
@@ -84,11 +84,15 @@ const AuthenticatedLayout = () => {
 
 // 主应用程序内容
 const AppContent = ({
+  fullTitleBar,
   isSetupActive,
   onSetupComplete,
+  sidebarTitle,
 }: {
+  fullTitleBar: ReactNode
   isSetupActive: boolean
   onSetupComplete: () => void
+  sidebarTitle: ReactNode
 }) => {
   const [encryptionOverride, setEncryptionOverride] = useState<EncryptionStatusView | null>(null)
   // Captures boot-time WS failures so the error UI can surface them even
@@ -294,36 +298,39 @@ const AppContent = ({
   if (bootstrapFailure) {
     const versionTooOld = bootstrapFailure.kind === 'versionTooOld'
     return (
-      <div className="flex h-full w-full items-center justify-center p-4 text-sm text-foreground">
-        <div className="max-w-sm space-y-3 text-center">
-          <p>
-            {versionTooOld
-              ? 'A newer version is already running in the background. Please update this app to continue.'
-              : "Couldn't reach the background service. Please restart the app."}
-          </p>
-          <p className="break-words text-xs text-muted-foreground">
-            {bootEncryptionError ?? bootstrapFailure.detail}
-          </p>
-          {versionTooOld ? (
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => {
-                void checkForUpdate(null).catch(error =>
-                  console.error('Update check from bootstrap error screen failed:', error)
-                )
-                void openUpdaterWindow().catch(error =>
-                  console.error('Failed to open updater window:', error)
-                )
-              }}
-            >
-              Open updater
-            </Button>
-          ) : (
-            <Button size="sm" variant="outline" onClick={handleBootstrapRetry}>
-              Retry
-            </Button>
-          )}
+      <div className="flex h-full w-full flex-col">
+        {fullTitleBar}
+        <div className="flex min-h-0 flex-1 items-center justify-center p-4 text-sm text-foreground">
+          <div className="max-w-sm space-y-3 text-center">
+            <p>
+              {versionTooOld
+                ? 'A newer version is already running in the background. Please update this app to continue.'
+                : "Couldn't reach the background service. Please restart the app."}
+            </p>
+            <p className="break-words text-xs text-muted-foreground">
+              {bootEncryptionError ?? bootstrapFailure.detail}
+            </p>
+            {versionTooOld ? (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  void checkForUpdate(null).catch(error =>
+                    console.error('Update check from bootstrap error screen failed:', error)
+                  )
+                  void openUpdaterWindow().catch(error =>
+                    console.error('Failed to open updater window:', error)
+                  )
+                }}
+              >
+                Open updater
+              </Button>
+            ) : (
+              <Button size="sm" variant="outline" onClick={handleBootstrapRetry}>
+                Retry
+              </Button>
+            )}
+          </div>
         </div>
       </div>
     )
@@ -351,13 +358,16 @@ const AppContent = ({
 
   if (encryptionError) {
     return (
-      <div className="flex h-full w-full items-center justify-center p-4 text-sm text-foreground">
-        <div className="max-w-sm space-y-3 text-center">
-          <p>Couldn&apos;t reach the background service. Please restart the app.</p>
-          <p className="break-words text-xs text-muted-foreground">{encryptionError}</p>
-          <Button size="sm" variant="outline" onClick={handleBootstrapRetry}>
-            Retry
-          </Button>
+      <div className="flex h-full w-full flex-col">
+        {fullTitleBar}
+        <div className="flex min-h-0 flex-1 items-center justify-center p-4 text-sm text-foreground">
+          <div className="max-w-sm space-y-3 text-center">
+            <p>Couldn&apos;t reach the background service. Please restart the app.</p>
+            <p className="break-words text-xs text-muted-foreground">{encryptionError}</p>
+            <Button size="sm" variant="outline" onClick={handleBootstrapRetry}>
+              Retry
+            </Button>
+          </div>
         </div>
       </div>
     )
@@ -370,16 +380,19 @@ const AppContent = ({
   // If initialized but not ready, show unlock page.
   if (resolvedEncryptionStatus?.initialized && !resolvedEncryptionStatus?.session_ready) {
     return (
-      <>
-        <UnlockPage
-          onUnlockSucceeded={() =>
-            setEncryptionOverride({ initialized: true, session_ready: true })
-          }
-          onResetSucceeded={() =>
-            setEncryptionOverride({ initialized: false, session_ready: false })
-          }
-        />
-      </>
+      <div className="flex h-full w-full flex-col">
+        {fullTitleBar}
+        <div className="min-h-0 flex-1">
+          <UnlockPage
+            onUnlockSucceeded={() =>
+              setEncryptionOverride({ initialized: true, session_ready: true })
+            }
+            onResetSucceeded={() =>
+              setEncryptionOverride({ initialized: false, session_ready: false })
+            }
+          />
+        </div>
+      </div>
     )
   }
 
@@ -387,12 +400,12 @@ const AppContent = ({
     <DeviceTrustProvider enabled>
       <GlobalShortcuts />
       <SentryRoutes>
-        <Route element={<AuthenticatedLayout />}>
+        <Route element={<AuthenticatedLayout sidebarTitle={sidebarTitle} />}>
           <Route path="/" element={<Navigate to="/history" replace />} />
           <Route path="/history" element={<HistoryPage />} />
           <Route path="/devices" element={<DevicesPage />} />
         </Route>
-        <Route element={<SettingsFullLayout />}>
+        <Route element={<SettingsFullLayout titleBar={fullTitleBar} />}>
           <Route path="/settings" element={<SettingsPage />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
@@ -439,7 +452,7 @@ export default function App() {
   )
 }
 
-// TitleBar wrapper with slot context
+// Standalone title bar used outside the authenticated main layout.
 const TitleBarWithSearch = ({
   isSetupActive,
   rightSlot,
@@ -448,11 +461,7 @@ const TitleBarWithSearch = ({
   rightSlot: React.ReactNode
 }) => <TitleBar isSetupActive={isSetupActive} rightSlot={rightSlot} />
 
-// App content with WindowShell structure
 export const AppContentWithBar = () => {
-  // WindowShell provides the correct window-level structure:
-  // - TitleBar: Window chrome layer (full-width, drag region)
-  // - Content: App layout layer (Sidebar + Main via routes)
   const { hasCustomTitleBar } = useWindowFrame()
   const { hydrated, flow } = useSetupRealtimeStore()
   const isSetupActive = isSetupGateActive(flow, hydrated)
@@ -489,6 +498,10 @@ export const AppContentWithBar = () => {
       ) : null,
     [hasCustomTitleBar, slotValue, isSetupActive, rightSlot]
   )
+  const sidebarTitle = useMemo(
+    () => (hasCustomTitleBar ? <SidebarTitle rightSlot={rightSlot} /> : null),
+    [hasCustomTitleBar, rightSlot]
+  )
 
   return (
     <TitleBarSlotContext value={slotValue}>
@@ -497,8 +510,13 @@ export const AppContentWithBar = () => {
           the shortcut context — React context follows the render tree, and the
           slot renders inside the title bar, above AppContent. */}
       <ShortcutProvider>
-        <WindowShell titleBar={titleBar}>
-          <AppContent isSetupActive={isSetupActive} onSetupComplete={handleSetupComplete} />
+        <WindowShell titleBar={null}>
+          <AppContent
+            fullTitleBar={titleBar}
+            isSetupActive={isSetupActive}
+            onSetupComplete={handleSetupComplete}
+            sidebarTitle={sidebarTitle}
+          />
         </WindowShell>
       </ShortcutProvider>
     </TitleBarSlotContext>

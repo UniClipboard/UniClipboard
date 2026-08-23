@@ -29,6 +29,8 @@ interface UseShortcutOptions {
   preventDefault?: boolean
   /** 是否允许在表单元素中触发 */
   enableOnFormTags?: boolean | Array<'input' | 'textarea' | 'select'>
+  /** Match KeyboardEvent.key instead of the physical KeyboardEvent.code. */
+  useKey?: boolean
 }
 
 /**
@@ -58,6 +60,7 @@ export const useShortcut = ({
   handler,
   preventDefault = true,
   enableOnFormTags = false,
+  useKey = false,
 }: UseShortcutOptions): void => {
   const { activeScope, activeLayer } = useShortcutContext()
 
@@ -139,6 +142,7 @@ export const useShortcut = ({
       enabled: isActive,
       preventDefault,
       enableOnFormTags,
+      useKey,
       enableOnContentEditable: false,
       // 使用非逗号字符作为多快捷键分隔符，避免 "mod+," 中的逗号被误判为分隔符
       delimiter: '§',
@@ -152,6 +156,7 @@ export const useShortcut = ({
       onPrimary,
       preventDefault,
       enableOnFormTags,
+      useKey,
       keyboardShortcuts,
     ]
   )
@@ -165,9 +170,10 @@ export const useShortcut = ({
       enabled: isActive && isChord && !sameSecond,
       preventDefault,
       enableOnFormTags,
+      useKey,
       enableOnContentEditable: false,
       delimiter: '§',
     },
-    [secondKey, isChord, sameSecond, isActive, onSecond, preventDefault, enableOnFormTags]
+    [secondKey, isChord, sameSecond, isActive, onSecond, preventDefault, enableOnFormTags, useKey]
   )
 }

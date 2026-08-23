@@ -38,6 +38,7 @@ pub trait ActivityHudActions: Send + Sync {
     /// 3. 后端落地的 `StatusChanged: cancelled` 会通过 host event bus
     ///    回流到状态机,把行最终切到 `Cancelled`
     fn cancel(&self, entry_id: &str, attempt_id: Option<&str>, transfer_id: &str);
+    fn dismiss(&self, entry_id: &str, attempt_id: Option<&str>, transfer_id: &str);
 }
 
 /// 默认实现:把"乐观状态更新"和"调 facade"两件事捏在一起。
@@ -96,5 +97,9 @@ impl ActivityHudActions for DefaultActivityHudActions {
                 );
             }
         });
+    }
+
+    fn dismiss(&self, entry_id: &str, attempt_id: Option<&str>, transfer_id: &str) {
+        self.emitter.dismiss(entry_id, attempt_id, transfer_id);
     }
 }

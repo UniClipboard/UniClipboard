@@ -93,6 +93,10 @@ impl ActivityHudEmitter {
         });
     }
 
+    pub fn dismiss(&self, entry_id: &str, attempt_id: Option<&str>, transfer_id: &str) {
+        self.apply(|state| state.dismiss_scoped(entry_id, attempt_id, transfer_id));
+    }
+
     /// 给后台 sweep 任务调用:扫掉过保留期的终态行,如有变化通知 listener。
     pub fn tick(&self) {
         let snapshot_opt = {
@@ -339,5 +343,30 @@ mod tests {
             },
         ));
         assert!(recorder.snapshots().is_empty());
+    }
+
+    #[test]
+    fn dismiss_failed_removes_the_row_and_notifies_listener() {
+        let (emitter, recorder, _clock) = make_emitter();
+        emitter.emit(progress_event(
+            "t1",
+            "peer-a",
+            FileTransferDirection::Receiving,
+            50,
+            Some(100),
+        ));
+        emitter.emit(RealtimeEvent::FileTransferStatusChanged(
+            FileTransferStatusChangedEvent {
+                transfer_id: "t1".into(),
+                entry_id: "t1".into(),
+                attempt_id: None,
+                status: "failed".into(),
+                reason: Some("disk_full".into()),
+            },
+        ));
+
+        emitter.dismiss("t1", None, "t1");
+
+        assert!(recorder.snapshots().last().unwrap().is_empty());
     }
 }

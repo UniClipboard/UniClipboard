@@ -45,6 +45,8 @@ describe('TitleBar', () => {
   it('在 Linux 中显示并启用窗口控制按钮', async () => {
     render(<TitleBar />)
 
+    expect(screen.getByRole('button', { name: '关闭' }).parentElement).toHaveClass('mr-2')
+
     fireEvent.click(screen.getByRole('button', { name: '最小化' }))
     fireEvent.click(screen.getByRole('button', { name: '最大化' }))
     fireEvent.click(screen.getByRole('button', { name: '关闭' }))

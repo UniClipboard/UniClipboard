@@ -188,7 +188,7 @@ export const ContentToolbar = ({ className, rightSlot }: ContentToolbarProps) =>
         </div>
       )}
       {hasCustomWindowControls && (
-        <div className="relative z-10 flex h-full items-center" data-tauri-drag-region="false">
+        <div className="relative z-10 mr-2 flex h-full items-center" data-tauri-drag-region="false">
           <TitleBarButton aria-label="最小化" onClick={handleMinimize}>
             <Minus className="size-4" />
           </TitleBarButton>

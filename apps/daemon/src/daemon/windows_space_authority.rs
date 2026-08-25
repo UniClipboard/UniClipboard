@@ -118,6 +118,7 @@ impl WindowsSpaceAuthority {
         Ok(gate)
     }
 
+    #[cfg(test)]
     pub(crate) async fn active_profile(&self) -> Result<String, WindowsSpaceAuthorityError> {
         self.router
             .active_profile()

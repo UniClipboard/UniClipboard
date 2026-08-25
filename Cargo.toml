@@ -54,8 +54,8 @@ dbg_macro = "warn"
 # Temporary immutable fork pin for the Windows admission recovery in
 # https://github.com/UniClipboard/Engine/pull/52. Return to the official repo
 # after the fix is merged and released.
-uc-engine = { git = "https://github.com/cwxsss/Engine.git", rev = "6a0acd0affee51cf9e6d849fd0361969ca5ecb93" }
-uc-observability-contract = { git = "https://github.com/cwxsss/Engine.git", rev = "6a0acd0affee51cf9e6d849fd0361969ca5ecb93" }
+uc-engine = { git = "https://github.com/cwxsss/Engine.git", rev = "f449698b6e96e5d99549c3fdd076dcd8e68118ce" }
+uc-observability-contract = { git = "https://github.com/cwxsss/Engine.git", rev = "f449698b6e96e5d99549c3fdd076dcd8e68118ce" }
 
 # tauri 2.11 是 specta rc.25 兼容的最低版本 —— 2.10.x 及之前在
 # `tauri/src/ipc/channel.rs` 用了 `#[specta(remote=..., rename="...")]`

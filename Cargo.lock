@@ -10630,10 +10630,14 @@ dependencies = [
  "async-trait",
  "chrono",
  "dirs 6.0.0",
+ "fs2",
  "objc2",
  "objc2-app-kit",
  "rustls",
+ "serde",
  "serde_json",
+ "tempfile",
+ "thiserror 2.0.19",
  "tokio",
  "tokio-util",
  "tracing",
@@ -10643,6 +10647,8 @@ dependencies = [
  "uc-engine",
  "uc-observability",
  "uc-webserver",
+ "uuid",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]

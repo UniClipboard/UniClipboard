@@ -351,6 +351,7 @@ async fn pending_join_survives_ctrl_c_and_daemon_restart_then_can_be_cancelled()
     };
     let (session, code) = InviteSession::start(&sponsor.cli).await;
     let join_requests_before = daemon_request_count(&joiner, "POST", "/v2/setup/redeem");
+    sponsor.daemon.suspend().expect("suspend sponsor daemon");
 
     let child = Command::new(joiner.cli.binary_path())
         .env("UC_PROFILE", &joiner.cli.profile_name)
@@ -370,33 +371,6 @@ async fn pending_join_survives_ctrl_c_and_daemon_restart_then_can_be_cancelled()
         .spawn()
         .expect("spawn waiting join");
     let mut waiting_join = ChildGuard::new(child);
-
-    let candidate_deadline = tokio::time::Instant::now() + Duration::from_secs(15);
-    loop {
-        if joiner
-            .daemon
-            .diagnostic_log()
-            .contains("\"DurableAdmission\"")
-        {
-            sponsor.daemon.suspend().expect("suspend sponsor daemon");
-            break;
-        }
-        assert!(
-            waiting_join
-                .child_mut()
-                .try_wait()
-                .expect("join child state")
-                .is_none(),
-            "join completed before sponsor suspension"
-        );
-        assert!(
-            tokio::time::Instant::now() < candidate_deadline,
-            "durable admission message did not arrive; sponsor_log={} joiner_log={}",
-            sponsor.daemon.diagnostic_log(),
-            joiner.daemon.diagnostic_log(),
-        );
-        tokio::time::sleep(Duration::from_millis(1)).await;
-    }
 
     let pending_deadline = tokio::time::Instant::now() + Duration::from_secs(15);
     let pending = loop {

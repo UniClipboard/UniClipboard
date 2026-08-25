@@ -10489,8 +10489,8 @@ dependencies = [
 
 [[package]]
 name = "uc-application"
-version = "1.1.0-rc.6"
-source = "git+https://github.com/cwxsss/Engine.git?rev=f449698b6e96e5d99549c3fdd076dcd8e68118ce#f449698b6e96e5d99549c3fdd076dcd8e68118ce"
+version = "1.1.0-rc.5"
+source = "git+https://github.com/UniClipboard/Engine.git?rev=ed3c6acac72e25070d4fca4b783025b131e28861#ed3c6acac72e25070d4fca4b783025b131e28861"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -10587,8 +10587,8 @@ dependencies = [
 
 [[package]]
 name = "uc-content-hash"
-version = "1.1.0-rc.6"
-source = "git+https://github.com/cwxsss/Engine.git?rev=f449698b6e96e5d99549c3fdd076dcd8e68118ce#f449698b6e96e5d99549c3fdd076dcd8e68118ce"
+version = "1.1.0-rc.5"
+source = "git+https://github.com/UniClipboard/Engine.git?rev=ed3c6acac72e25070d4fca4b783025b131e28861#ed3c6acac72e25070d4fca4b783025b131e28861"
 dependencies = [
  "blake3",
  "hex",
@@ -10596,8 +10596,8 @@ dependencies = [
 
 [[package]]
 name = "uc-core"
-version = "1.1.0-rc.6"
-source = "git+https://github.com/cwxsss/Engine.git?rev=f449698b6e96e5d99549c3fdd076dcd8e68118ce#f449698b6e96e5d99549c3fdd076dcd8e68118ce"
+version = "1.1.0-rc.5"
+source = "git+https://github.com/UniClipboard/Engine.git?rev=ed3c6acac72e25070d4fca4b783025b131e28861#ed3c6acac72e25070d4fca4b783025b131e28861"
 dependencies = [
  "anyhow",
  "arrayvec",
@@ -10758,8 +10758,8 @@ dependencies = [
 
 [[package]]
 name = "uc-engine"
-version = "1.1.0-rc.6"
-source = "git+https://github.com/cwxsss/Engine.git?rev=f449698b6e96e5d99549c3fdd076dcd8e68118ce#f449698b6e96e5d99549c3fdd076dcd8e68118ce"
+version = "1.1.0-rc.5"
+source = "git+https://github.com/UniClipboard/Engine.git?rev=ed3c6acac72e25070d4fca4b783025b131e28861#ed3c6acac72e25070d4fca4b783025b131e28861"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -10783,8 +10783,8 @@ dependencies = [
 
 [[package]]
 name = "uc-infra"
-version = "1.1.0-rc.6"
-source = "git+https://github.com/cwxsss/Engine.git?rev=f449698b6e96e5d99549c3fdd076dcd8e68118ce#f449698b6e96e5d99549c3fdd076dcd8e68118ce"
+version = "1.1.0-rc.5"
+source = "git+https://github.com/UniClipboard/Engine.git?rev=ed3c6acac72e25070d4fca4b783025b131e28861#ed3c6acac72e25070d4fca4b783025b131e28861"
 dependencies = [
  "anyhow",
  "argon2",
@@ -10845,8 +10845,8 @@ dependencies = [
 
 [[package]]
 name = "uc-mobile-lan"
-version = "1.1.0-rc.6"
-source = "git+https://github.com/cwxsss/Engine.git?rev=f449698b6e96e5d99549c3fdd076dcd8e68118ce#f449698b6e96e5d99549c3fdd076dcd8e68118ce"
+version = "1.1.0-rc.5"
+source = "git+https://github.com/UniClipboard/Engine.git?rev=ed3c6acac72e25070d4fca4b783025b131e28861#ed3c6acac72e25070d4fca4b783025b131e28861"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -10869,8 +10869,8 @@ dependencies = [
 
 [[package]]
 name = "uc-mobile-proto"
-version = "1.1.0-rc.6"
-source = "git+https://github.com/cwxsss/Engine.git?rev=f449698b6e96e5d99549c3fdd076dcd8e68118ce#f449698b6e96e5d99549c3fdd076dcd8e68118ce"
+version = "1.1.0-rc.5"
+source = "git+https://github.com/UniClipboard/Engine.git?rev=ed3c6acac72e25070d4fca4b783025b131e28861#ed3c6acac72e25070d4fca4b783025b131e28861"
 dependencies = [
  "base64 0.22.1",
  "chrono",
@@ -10904,8 +10904,8 @@ dependencies = [
 
 [[package]]
 name = "uc-observability-contract"
-version = "1.1.0-rc.6"
-source = "git+https://github.com/cwxsss/Engine.git?rev=f449698b6e96e5d99549c3fdd076dcd8e68118ce#f449698b6e96e5d99549c3fdd076dcd8e68118ce"
+version = "1.1.0-rc.5"
+source = "git+https://github.com/UniClipboard/Engine.git?rev=ed3c6acac72e25070d4fca4b783025b131e28861#ed3c6acac72e25070d4fca4b783025b131e28861"
 dependencies = [
  "anyhow",
  "chrono",

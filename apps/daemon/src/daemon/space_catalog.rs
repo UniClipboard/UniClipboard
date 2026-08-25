@@ -2,6 +2,7 @@ use std::collections::HashSet;
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, Write};
 use std::path::{Component, Path, PathBuf};
+use std::time::{Duration, Instant};
 
 use fs2::FileExt;
 use serde::{Deserialize, Serialize};
@@ -11,6 +12,8 @@ use uuid::{Uuid, Variant, Version};
 pub const SPACE_CATALOG_FILE_NAME: &str = "space-catalog.json";
 const SPACE_CATALOG_LOCK_FILE_NAME: &str = ".space-catalog.lock";
 const LEGACY_PROFILE_DIR: &str = ".";
+const CATALOG_LOCK_TIMEOUT: Duration = Duration::from_millis(500);
+const CATALOG_LOCK_RETRY_INTERVAL: Duration = Duration::from_millis(5);
 
 #[derive(Debug, Error)]
 pub enum SpaceCatalogError {
@@ -325,9 +328,30 @@ fn lock_catalog(root: &Path) -> Result<File, SpaceCatalogError> {
         .write(true)
         .open(root.join(SPACE_CATALOG_LOCK_FILE_NAME))
         .map_err(|source| io_error("open lock", source))?;
-    lock.lock_exclusive()
-        .map_err(|source| io_error("lock", source))?;
-    Ok(lock)
+    let deadline = Instant::now() + CATALOG_LOCK_TIMEOUT;
+    loop {
+        match lock.try_lock_exclusive() {
+            Ok(()) => return Ok(lock),
+            Err(source) if is_lock_contention(&source) => {
+                if Instant::now() >= deadline {
+                    return Err(io_error(
+                        "lock",
+                        io::Error::new(
+                            io::ErrorKind::TimedOut,
+                            "space catalog lock acquisition timed out",
+                        ),
+                    ));
+                }
+                std::thread::sleep(CATALOG_LOCK_RETRY_INTERVAL);
+            }
+            Err(source) => return Err(io_error("lock", source)),
+        }
+    }
+}
+
+fn is_lock_contention(error: &io::Error) -> bool {
+    error.kind() == io::ErrorKind::WouldBlock
+        || cfg!(windows) && matches!(error.raw_os_error(), Some(32 | 33))
 }
 
 fn write_document(root: &Path, document: &CatalogDocument) -> Result<(), SpaceCatalogError> {
@@ -1049,6 +1073,28 @@ mod tests {
                 .len(),
             2
         );
+    }
+
+    #[test]
+    fn catalog_lock_contention_has_a_hard_deadline() {
+        let root = tempfile::tempdir().expect("create temp data root");
+        SpaceCatalog::load_or_migrate(root.path()).expect("create catalog");
+        let held = lock_catalog(root.path()).expect("hold catalog lock");
+        let started = Instant::now();
+
+        let error = SpaceCatalog::load_or_migrate(root.path())
+            .expect_err("contended lock must time out instead of blocking forever");
+
+        assert!(matches!(
+            error,
+            SpaceCatalogError::Io { operation: "lock", source }
+                if source.kind() == io::ErrorKind::TimedOut
+        ));
+        assert!(
+            started.elapsed() < Duration::from_secs(2),
+            "lock timeout must stay bounded"
+        );
+        drop(held);
     }
 
     #[test]

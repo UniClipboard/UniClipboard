@@ -6,6 +6,7 @@ use std::time::Duration;
 use async_trait::async_trait;
 use thiserror::Error;
 use tokio::sync::{mpsc, oneshot, Mutex};
+use tokio_util::sync::CancellationToken;
 
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum ClipboardRouterError {
@@ -22,9 +23,18 @@ const ROUTER_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(15);
 
 #[async_trait]
 pub trait ClipboardRouterBackend<Snapshot>: Send + Sync {
-    async fn dispatch_snapshot(&self, profile_id: &str, snapshot: Snapshot) -> anyhow::Result<()>;
+    async fn dispatch_snapshot(
+        &self,
+        profile_id: &str,
+        snapshot: Snapshot,
+        cancel: CancellationToken,
+    ) -> anyhow::Result<()>;
 
-    async fn persist_active_profile(&self, profile_id: &str) -> anyhow::Result<()>;
+    async fn persist_active_profile(
+        &self,
+        profile_id: &str,
+        cancel: CancellationToken,
+    ) -> anyhow::Result<()>;
 }
 
 pub struct ClipboardRouterHandle<Snapshot> {
@@ -101,21 +111,25 @@ where
                 ClipboardRouterCommand::ClipboardChanged { snapshot, reply } => {
                     let dispatch_backend = Arc::clone(&backend);
                     let profile_id = active_profile.clone();
-                    let result = run_backend_operation(operation_timeout, async move {
-                        dispatch_backend
-                            .dispatch_snapshot(&profile_id, snapshot)
-                            .await
-                    })
-                    .await;
+                    let result =
+                        run_backend_operation(operation_timeout, move |cancel| async move {
+                            dispatch_backend
+                                .dispatch_snapshot(&profile_id, snapshot, cancel)
+                                .await
+                        })
+                        .await;
                     let _ = reply.send(result);
                 }
                 ClipboardRouterCommand::SetActive { profile_id, reply } => {
                     let persist_backend = Arc::clone(&backend);
                     let target = profile_id.clone();
-                    let result = run_backend_operation(operation_timeout, async move {
-                        persist_backend.persist_active_profile(&target).await
-                    })
-                    .await;
+                    let result =
+                        run_backend_operation(operation_timeout, move |cancel| async move {
+                            persist_backend
+                                .persist_active_profile(&target, cancel)
+                                .await
+                        })
+                        .await;
                     if result.is_ok() {
                         active_profile = profile_id;
                     }
@@ -147,14 +161,16 @@ where
     )
 }
 
-async fn run_backend_operation<F>(
+async fn run_backend_operation<Factory, F>(
     timeout: Duration,
-    operation: F,
+    operation: Factory,
 ) -> Result<(), ClipboardRouterError>
 where
+    Factory: FnOnce(CancellationToken) -> F,
     F: std::future::Future<Output = anyhow::Result<()>> + Send + 'static,
 {
-    let mut task = AbortOnDropTask::new(tokio::spawn(operation));
+    let cancel = CancellationToken::new();
+    let mut task = AbortOnDropTask::new(tokio::spawn(operation(cancel.clone())));
     match tokio::time::timeout(timeout, task.handle_mut()).await {
         Ok(Ok(Ok(()))) => Ok(()),
         Ok(Ok(Err(error))) => Err(ClipboardRouterError::Backend(error.to_string())),
@@ -162,8 +178,8 @@ where
             "backend task failed: {error}"
         ))),
         Err(_) => {
+            cancel.cancel();
             task.abort();
-            let _ = task.handle_mut().await;
             Err(ClipboardRouterError::TimedOut)
         }
     }
@@ -322,10 +338,12 @@ mod tests {
             &self,
             profile_id: &str,
             snapshot: String,
+            cancel: CancellationToken,
         ) -> anyhow::Result<()> {
             if self.pending_snapshots.lock().await.contains(&snapshot) {
                 self.pending_entered.notify_one();
-                std::future::pending::<()>().await;
+                cancel.cancelled().await;
+                anyhow::bail!("cancelled pending snapshot");
             }
             if self.rejected_snapshots.lock().await.contains(&snapshot) {
                 anyhow::bail!("rejected snapshot {snapshot}");
@@ -341,7 +359,11 @@ mod tests {
             Ok(())
         }
 
-        async fn persist_active_profile(&self, profile_id: &str) -> anyhow::Result<()> {
+        async fn persist_active_profile(
+            &self,
+            profile_id: &str,
+            _cancel: CancellationToken,
+        ) -> anyhow::Result<()> {
             if self.rejected_profiles.lock().await.contains(profile_id) {
                 anyhow::bail!("rejected profile {profile_id}");
             }

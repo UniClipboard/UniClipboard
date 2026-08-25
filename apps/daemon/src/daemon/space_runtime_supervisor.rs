@@ -7,8 +7,9 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use thiserror::Error;
+use tokio_util::sync::CancellationToken;
 use uc_bootstrap::{prepare_desktop_engine_host_for_profile, DesktopRuntimeProfileConfig};
-use uc_engine::{Engine, EventStream};
+use uc_engine::{Engine, EngineEvent, EngineState, EventStream};
 
 use super::space_catalog::{SpaceCatalog, SpaceCatalogEntry};
 
@@ -17,6 +18,14 @@ const ENGINE_SHUTDOWN_DEADLINE: Duration = Duration::from_secs(15);
 pub type SpaceRuntimeFuture<T> = Pin<Box<dyn Future<Output = T> + Send + 'static>>;
 pub type SpaceRuntimeFailureCallback =
     Arc<dyn Fn(SpaceRuntimeFailure) -> SpaceRuntimeFuture<bool> + Send + Sync>;
+pub type SpaceRuntimeEventCallback = Arc<dyn Fn(EngineEvent) -> bool + Send + Sync>;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProfiledEngineEvent {
+    pub profile_id: String,
+    pub generation: u64,
+    pub event: EngineEvent,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SpaceRuntimeFailureCategory {
@@ -51,7 +60,7 @@ impl SpaceRuntimeFailure {
         }
     }
 
-    fn shutdown(message: impl Into<String>) -> Self {
+    pub fn shutdown(message: impl Into<String>) -> Self {
         Self {
             category: SpaceRuntimeFailureCategory::Shutdown,
             message: message.into(),
@@ -100,7 +109,7 @@ pub trait SupervisedSpaceRuntime: Send + Sync {
         None
     }
 
-    async fn shutdown(&self) -> Result<(), SpaceRuntimeFailure>;
+    async fn shutdown(&self, deadline: Duration) -> Result<(), SpaceRuntimeFailure>;
 }
 
 #[async_trait]
@@ -110,6 +119,7 @@ pub trait SpaceRuntimeFactory: Send + Sync {
         spec: SpaceRuntimeProfileSpec,
         generation: u64,
         report_failure: SpaceRuntimeFailureCallback,
+        forward_event: SpaceRuntimeEventCallback,
     ) -> Result<Arc<dyn SupervisedSpaceRuntime>, SpaceRuntimeFailure>;
 }
 
@@ -117,7 +127,8 @@ pub struct ProductionSpaceRuntimeFactory;
 
 struct ProductionSpaceRuntime {
     engine: Arc<Engine>,
-    _events: Mutex<Option<EventStream>>,
+    monitor_cancel: CancellationToken,
+    monitor: Mutex<Option<tokio::task::JoinHandle<()>>>,
 }
 
 #[async_trait]
@@ -126,11 +137,47 @@ impl SupervisedSpaceRuntime for ProductionSpaceRuntime {
         Some(Arc::clone(&self.engine))
     }
 
-    async fn shutdown(&self) -> Result<(), SpaceRuntimeFailure> {
-        self.engine
-            .shutdown(ENGINE_SHUTDOWN_DEADLINE)
+    async fn shutdown(&self, deadline: Duration) -> Result<(), SpaceRuntimeFailure> {
+        let deadline_at = tokio::time::Instant::now() + deadline;
+        self.monitor_cancel.cancel();
+        let monitor = match self.monitor.lock() {
+            Ok(mut monitor) => monitor.take(),
+            Err(poisoned) => poisoned.into_inner().take(),
+        };
+        let monitor_failure = match monitor {
+            Some(mut monitor) => match tokio::time::timeout_at(deadline_at, &mut monitor).await {
+                Ok(Ok(())) => None,
+                Ok(Err(error)) => Some(SpaceRuntimeFailure::shutdown(format!(
+                    "engine event monitor failed: {error}"
+                ))),
+                Err(_) => {
+                    match self.monitor.lock() {
+                        Ok(mut registered) => *registered = Some(monitor),
+                        Err(poisoned) => *poisoned.into_inner() = Some(monitor),
+                    }
+                    Some(SpaceRuntimeFailure::shutdown(
+                        "engine event monitor shutdown deadline exceeded",
+                    ))
+                }
+            },
+            None => None,
+        };
+        if self.engine.lifecycle_state().await == EngineState::Stopped {
+            return match monitor_failure {
+                Some(failure) => Err(failure),
+                None => Ok(()),
+            };
+        }
+        let remaining = deadline_at.saturating_duration_since(tokio::time::Instant::now());
+        let engine_result = self
+            .engine
+            .shutdown(remaining)
             .await
-            .map_err(|error| SpaceRuntimeFailure::shutdown(error.to_string()))
+            .map_err(|error| SpaceRuntimeFailure::shutdown(error.to_string()));
+        engine_result.and_then(|()| match monitor_failure {
+            Some(failure) => Err(failure),
+            None => Ok(()),
+        })
     }
 }
 
@@ -140,7 +187,8 @@ impl SpaceRuntimeFactory for ProductionSpaceRuntimeFactory {
         &self,
         spec: SpaceRuntimeProfileSpec,
         _generation: u64,
-        _report_failure: SpaceRuntimeFailureCallback,
+        report_failure: SpaceRuntimeFailureCallback,
+        forward_event: SpaceRuntimeEventCallback,
     ) -> Result<Arc<dyn SupervisedSpaceRuntime>, SpaceRuntimeFailure> {
         let config = DesktopRuntimeProfileConfig::new(
             spec.profile_id,
@@ -155,11 +203,72 @@ impl SpaceRuntimeFactory for ProductionSpaceRuntimeFactory {
         let (engine, events) = Engine::start(engine_config, host_capabilities)
             .await
             .map_err(|error| SpaceRuntimeFailure::bootstrap(error.to_string()))?;
+        let monitor_cancel = CancellationToken::new();
+        let monitor = spawn_engine_event_monitor(
+            Box::new(events),
+            monitor_cancel.clone(),
+            forward_event,
+            report_failure,
+        );
         Ok(Arc::new(ProductionSpaceRuntime {
             engine: Arc::new(engine),
-            _events: Mutex::new(Some(events)),
+            monitor_cancel,
+            monitor: Mutex::new(Some(monitor)),
         }))
     }
+}
+
+#[async_trait]
+trait SpaceEngineEventStream: Send {
+    async fn next(&mut self) -> Option<EngineEvent>;
+}
+
+#[async_trait]
+impl SpaceEngineEventStream for EventStream {
+    async fn next(&mut self) -> Option<EngineEvent> {
+        EventStream::next(self).await
+    }
+}
+
+fn spawn_engine_event_monitor(
+    mut events: Box<dyn SpaceEngineEventStream>,
+    cancel: CancellationToken,
+    forward_event: SpaceRuntimeEventCallback,
+    report_failure: SpaceRuntimeFailureCallback,
+) -> tokio::task::JoinHandle<()> {
+    tokio::spawn(async move {
+        loop {
+            tokio::select! {
+                biased;
+                _ = cancel.cancelled() => break,
+                event = events.next() => match event {
+                    Some(EngineEvent::Fatal { error }) => {
+                        if !cancel.is_cancelled() {
+                            let report_failure = Arc::clone(&report_failure);
+                            tokio::spawn(async move {
+                                let _ = report_failure(SpaceRuntimeFailure::runtime(error.to_string())).await;
+                            });
+                        }
+                        break;
+                    }
+                    Some(event) => {
+                        let _ = forward_event(event);
+                    }
+                    None => {
+                        if !cancel.is_cancelled() {
+                            let report_failure = Arc::clone(&report_failure);
+                            tokio::spawn(async move {
+                                let _ = report_failure(SpaceRuntimeFailure::runtime(
+                                    "engine event stream exited unexpectedly",
+                                )).await;
+                            });
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+    })
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -253,6 +362,16 @@ pub struct SpaceRuntimeSupervisor {
     factory: Arc<dyn SpaceRuntimeFactory>,
     roots: SpaceRuntimeRoots,
     slots: Mutex<HashMap<String, SpaceRuntimeSlot>>,
+    event_tx: tokio::sync::broadcast::Sender<ProfiledEngineEvent>,
+}
+
+enum StartAction {
+    Start(u64),
+    Return(SpaceRuntimeStatus),
+    Wait {
+        generation: u64,
+        notify: Arc<tokio::sync::Notify>,
+    },
 }
 
 enum StopAction {
@@ -271,10 +390,12 @@ enum StopAction {
 
 impl SpaceRuntimeSupervisor {
     pub fn new(factory: Arc<dyn SpaceRuntimeFactory>, roots: SpaceRuntimeRoots) -> Arc<Self> {
+        let (event_tx, _) = tokio::sync::broadcast::channel(256);
         Arc::new(Self {
             factory,
             roots,
             slots: Mutex::new(HashMap::new()),
+            event_tx,
         })
     }
 
@@ -333,6 +454,26 @@ impl SpaceRuntimeSupervisor {
         self.start_entry(entry).await
     }
 
+    #[cfg(test)]
+    async fn start_entry_for_test(
+        self: &Arc<Self>,
+        entries: Vec<SpaceCatalogEntry>,
+        profile_id: &str,
+    ) -> Result<SpaceRuntimeStart, SpaceRuntimeStartError> {
+        let entry = entries
+            .into_iter()
+            .find(|entry| entry.profile_id == profile_id)
+            .ok_or_else(|| SpaceRuntimeStartError {
+                profile_id: profile_id.to_string(),
+                generation: 0,
+                failure: SpaceRuntimeFailure::for_category(
+                    SpaceRuntimeFailureCategory::UnknownProfile,
+                    "profile is not present in the catalog",
+                ),
+            })?;
+        self.start_entry(entry).await
+    }
+
     async fn start_entry(
         self: &Arc<Self>,
         entry: SpaceCatalogEntry,
@@ -355,7 +496,7 @@ impl SpaceRuntimeSupervisor {
                 failure,
             })?;
         let profile_id = spec.profile_id.clone();
-        let generation = {
+        let action = {
             let mut slots = self.lock_slots();
             match slots.get_mut(&profile_id) {
                 Some(slot) if slot.spec != spec => {
@@ -368,28 +509,58 @@ impl SpaceRuntimeSupervisor {
                         ),
                     });
                 }
+                Some(slot) if slot.lifecycle == SpaceRuntimeLifecycle::Running => {
+                    StartAction::Return(slot.status())
+                }
+                Some(slot)
+                    if slot.lifecycle == SpaceRuntimeLifecycle::Failed
+                        && slot.runtime.is_some() =>
+                {
+                    return Err(SpaceRuntimeStartError {
+                        profile_id,
+                        generation: slot.generation,
+                        failure: slot.last_failure.clone().unwrap_or_else(|| {
+                            SpaceRuntimeFailure::shutdown(
+                                "failed runtime must be stopped before restart",
+                            )
+                        }),
+                    });
+                }
                 Some(slot)
                     if matches!(
                         slot.lifecycle,
-                        SpaceRuntimeLifecycle::Starting
-                            | SpaceRuntimeLifecycle::Running
-                            | SpaceRuntimeLifecycle::Stopping
+                        SpaceRuntimeLifecycle::Starting | SpaceRuntimeLifecycle::Stopping
                     ) =>
                 {
-                    return Ok(SpaceRuntimeStart {
-                        disposition: SpaceRuntimeStartDisposition::Existing,
-                        status: slot.status(),
-                    });
+                    StartAction::Wait {
+                        generation: slot.generation,
+                        notify: Arc::clone(&slot.lifecycle_notify),
+                    }
                 }
-                Some(slot) => slot.begin_start(),
+                Some(slot) => StartAction::Start(slot.begin_start()),
                 None => {
                     let generation = 1;
                     slots.insert(
                         profile_id.clone(),
                         SpaceRuntimeSlot::starting(spec.clone(), generation),
                     );
-                    generation
+                    StartAction::Start(generation)
                 }
+            }
+        };
+
+        let generation = match action {
+            StartAction::Start(generation) => generation,
+            StartAction::Return(status) => {
+                return Ok(SpaceRuntimeStart {
+                    disposition: SpaceRuntimeStartDisposition::Existing,
+                    status,
+                });
+            }
+            StartAction::Wait { generation, notify } => {
+                return self
+                    .wait_for_start_conclusion(&profile_id, generation, &notify)
+                    .await;
             }
         };
 
@@ -409,8 +580,28 @@ impl SpaceRuntimeSupervisor {
                 }
             })
         });
+        let weak_supervisor = Arc::downgrade(self);
+        let event_profile_id = profile_id.clone();
+        let forward_event: SpaceRuntimeEventCallback = Arc::new(move |event| {
+            weak_supervisor.upgrade().is_some_and(|supervisor| {
+                supervisor.publish_event(&event_profile_id, generation, event)
+            })
+        });
+        let factory = Arc::clone(&self.factory);
+        let factory_result = tokio::spawn(async move {
+            factory
+                .create(spec, generation, report_failure, forward_event)
+                .await
+        })
+        .await;
+        let factory_result = match factory_result {
+            Ok(result) => result,
+            Err(error) => Err(SpaceRuntimeFailure::bootstrap(format!(
+                "runtime factory task failed: {error}"
+            ))),
+        };
 
-        match self.factory.create(spec, generation, report_failure).await {
+        match factory_result {
             Ok(runtime) => {
                 let committed = {
                     let mut slots = self.lock_slots();
@@ -437,14 +628,26 @@ impl SpaceRuntimeSupervisor {
                         status,
                     })
                 } else {
-                    let _ = runtime.shutdown().await;
-                    self.finish_pending_start(&profile_id, generation);
+                    self.attach_superseded_runtime(&profile_id, generation, Arc::clone(&runtime));
+                    let shutdown = runtime.shutdown(ENGINE_SHUTDOWN_DEADLINE).await;
+                    self.finish_superseded_start(
+                        &profile_id,
+                        generation,
+                        &runtime,
+                        shutdown.clone(),
+                    );
+                    let message = match shutdown {
+                        Ok(()) => "start was superseded by a newer lifecycle operation".to_string(),
+                        Err(error) => format!(
+                            "start was superseded; runtime retained after shutdown failed: {error}"
+                        ),
+                    };
                     Err(SpaceRuntimeStartError {
                         profile_id,
                         generation,
                         failure: SpaceRuntimeFailure::for_category(
                             SpaceRuntimeFailureCategory::Superseded,
-                            "start was superseded by a newer lifecycle operation",
+                            message,
                         ),
                     })
                 }
@@ -470,7 +673,7 @@ impl SpaceRuntimeSupervisor {
                 if let Some(notify) = notify {
                     notify.notify_waiters();
                 } else {
-                    self.finish_pending_start(&profile_id, generation);
+                    self.finish_pending_start_without_runtime(&profile_id, generation);
                 }
                 Err(SpaceRuntimeStartError {
                     profile_id,
@@ -481,7 +684,78 @@ impl SpaceRuntimeSupervisor {
         }
     }
 
+    async fn wait_for_start_conclusion(
+        &self,
+        profile_id: &str,
+        generation: u64,
+        notify: &Arc<tokio::sync::Notify>,
+    ) -> Result<SpaceRuntimeStart, SpaceRuntimeStartError> {
+        loop {
+            let notified = notify.notified();
+            let status = self
+                .status(profile_id)
+                .ok_or_else(|| SpaceRuntimeStartError {
+                    profile_id: profile_id.to_string(),
+                    generation,
+                    failure: SpaceRuntimeFailure::for_category(
+                        SpaceRuntimeFailureCategory::Superseded,
+                        "profile runtime registration disappeared",
+                    ),
+                })?;
+            if status.generation != generation {
+                return Err(SpaceRuntimeStartError {
+                    profile_id: profile_id.to_string(),
+                    generation,
+                    failure: SpaceRuntimeFailure::for_category(
+                        SpaceRuntimeFailureCategory::Superseded,
+                        "start was superseded by a newer lifecycle operation",
+                    ),
+                });
+            }
+            match status.lifecycle {
+                SpaceRuntimeLifecycle::Starting => notified.await,
+                SpaceRuntimeLifecycle::Running => {
+                    return Ok(SpaceRuntimeStart {
+                        disposition: SpaceRuntimeStartDisposition::Existing,
+                        status,
+                    });
+                }
+                SpaceRuntimeLifecycle::Failed => {
+                    return Err(SpaceRuntimeStartError {
+                        profile_id: profile_id.to_string(),
+                        generation,
+                        failure: status.last_failure.unwrap_or_else(|| {
+                            SpaceRuntimeFailure::runtime("runtime start failed")
+                        }),
+                    });
+                }
+                SpaceRuntimeLifecycle::Stopping | SpaceRuntimeLifecycle::Stopped => {
+                    return Err(SpaceRuntimeStartError {
+                        profile_id: profile_id.to_string(),
+                        generation,
+                        failure: SpaceRuntimeFailure::for_category(
+                            SpaceRuntimeFailureCategory::Superseded,
+                            "start was superseded by a stop operation",
+                        ),
+                    });
+                }
+            }
+        }
+    }
+
     pub async fn stop_profile(&self, profile_id: &str) -> Option<SpaceRuntimeStatus> {
+        self.stop_profile_until(
+            profile_id,
+            tokio::time::Instant::now() + ENGINE_SHUTDOWN_DEADLINE,
+        )
+        .await
+    }
+
+    async fn stop_profile_until(
+        &self,
+        profile_id: &str,
+        deadline_at: tokio::time::Instant,
+    ) -> Option<SpaceRuntimeStatus> {
         loop {
             let action = {
                 let mut slots = self.lock_slots();
@@ -492,12 +766,14 @@ impl SpaceRuntimeSupervisor {
                         generation: slot.generation,
                         notify: Arc::clone(&slot.lifecycle_notify),
                     },
-                    SpaceRuntimeLifecycle::Failed => {
+                    SpaceRuntimeLifecycle::Failed if slot.runtime.is_none() => {
                         slot.lifecycle = SpaceRuntimeLifecycle::Stopped;
                         slot.last_failure = None;
                         StopAction::Return(slot.status())
                     }
-                    SpaceRuntimeLifecycle::Starting | SpaceRuntimeLifecycle::Running => {
+                    SpaceRuntimeLifecycle::Starting
+                    | SpaceRuntimeLifecycle::Running
+                    | SpaceRuntimeLifecycle::Failed => {
                         let pending_start_generation = slot.pending_start_generation;
                         let generation = slot.advance_generation();
                         slot.lifecycle = SpaceRuntimeLifecycle::Stopping;
@@ -505,7 +781,7 @@ impl SpaceRuntimeSupervisor {
                         StopAction::Shutdown {
                             generation,
                             pending_start_generation,
-                            runtime: slot.runtime.take(),
+                            runtime: slot.runtime.as_ref().map(Arc::clone),
                             notify: Arc::clone(&slot.lifecycle_notify),
                         }
                     }
@@ -515,47 +791,78 @@ impl SpaceRuntimeSupervisor {
             match action {
                 StopAction::Return(status) => return Some(status),
                 StopAction::Wait { generation, notify } => {
-                    self.wait_until_not_stopping(profile_id, generation, &notify)
-                        .await;
+                    if !self
+                        .wait_until_not_stopping(profile_id, generation, &notify, deadline_at)
+                        .await
+                    {
+                        return self.fail_stopping_deadline(profile_id, generation);
+                    }
                 }
                 StopAction::Shutdown {
                     generation,
                     pending_start_generation,
-                    runtime,
+                    mut runtime,
                     notify,
                 } => {
-                    let failure = match runtime {
-                        Some(runtime) => runtime.shutdown().await.err(),
-                        None => None,
-                    };
                     if let Some(pending) = pending_start_generation {
-                        self.wait_for_pending_start(profile_id, generation, pending, &notify)
-                            .await;
+                        if !self
+                            .wait_for_pending_start(
+                                profile_id,
+                                generation,
+                                pending,
+                                &notify,
+                                deadline_at,
+                            )
+                            .await
+                        {
+                            return self.fail_stopping_deadline(profile_id, generation);
+                        }
+                        runtime = self.runtime_for_stopping(profile_id, generation);
                     }
-                    return self.complete_stopping(
+                    let shutdown = match runtime.as_ref() {
+                        Some(runtime) => runtime.shutdown(remaining_until(deadline_at)).await,
+                        None => Ok(()),
+                    };
+                    return self.complete_shutdown(
                         profile_id,
                         generation,
-                        if failure.is_some() {
-                            SpaceRuntimeLifecycle::Failed
-                        } else {
-                            SpaceRuntimeLifecycle::Stopped
-                        },
-                        failure,
+                        runtime.as_ref(),
+                        shutdown,
                     );
                 }
             }
         }
     }
 
-    pub async fn shutdown_all(&self) -> Vec<SpaceRuntimeStatus> {
+    pub async fn shutdown_all(self: &Arc<Self>) -> Vec<SpaceRuntimeStatus> {
+        self.shutdown_all_with_deadline(ENGINE_SHUTDOWN_DEADLINE)
+            .await
+    }
+
+    pub async fn shutdown_all_with_deadline(
+        self: &Arc<Self>,
+        deadline: Duration,
+    ) -> Vec<SpaceRuntimeStatus> {
         let profile_ids: Vec<_> = self
             .list()
             .into_iter()
             .map(|status| status.profile_id)
             .collect();
-        let mut stopped = Vec::with_capacity(profile_ids.len());
+        let profile_count = profile_ids.len();
+        let deadline_at = tokio::time::Instant::now() + deadline;
+        let mut shutdowns = tokio::task::JoinSet::new();
         for profile_id in profile_ids {
-            if let Some(status) = self.stop_profile(&profile_id).await {
+            let supervisor = Arc::clone(self);
+            shutdowns.spawn(async move {
+                supervisor
+                    .stop_profile_until(&profile_id, deadline_at)
+                    .await
+            });
+        }
+
+        let mut stopped = Vec::with_capacity(profile_count);
+        while let Some(result) = shutdowns.join_next().await {
+            if let Ok(Some(status)) = result {
                 stopped.push(status);
             }
         }
@@ -580,17 +887,19 @@ impl SpaceRuntimeSupervisor {
             let failure_generation = slot.advance_generation();
             slot.lifecycle = SpaceRuntimeLifecycle::Stopping;
             slot.last_failure = None;
-            (failure_generation, slot.runtime.take())
+            (failure_generation, slot.runtime.as_ref().map(Arc::clone))
         };
 
-        if let Some(runtime) = runtime {
-            let _ = runtime.shutdown().await;
-        }
-        self.complete_stopping(
+        let shutdown = match runtime.as_ref() {
+            Some(runtime) => runtime.shutdown(ENGINE_SHUTDOWN_DEADLINE).await,
+            None => Ok(()),
+        };
+        self.complete_failure_shutdown(
             profile_id,
             failure_generation,
-            SpaceRuntimeLifecycle::Failed,
-            Some(failure),
+            runtime.as_ref(),
+            failure,
+            shutdown,
         );
         true
     }
@@ -607,6 +916,10 @@ impl SpaceRuntimeSupervisor {
         self.runtime(profile_id)?.engine()
     }
 
+    pub fn subscribe_events(&self) -> tokio::sync::broadcast::Receiver<ProfiledEngineEvent> {
+        self.event_tx.subscribe()
+    }
+
     pub fn status(&self, profile_id: &str) -> Option<SpaceRuntimeStatus> {
         self.lock_slots()
             .get(profile_id)
@@ -621,6 +934,25 @@ impl SpaceRuntimeSupervisor {
             .collect();
         statuses.sort_by(|left, right| left.profile_id.cmp(&right.profile_id));
         statuses
+    }
+
+    fn publish_event(&self, profile_id: &str, generation: u64, event: EngineEvent) -> bool {
+        let accepted = self.lock_slots().get(profile_id).is_some_and(|slot| {
+            slot.generation == generation
+                && matches!(
+                    slot.lifecycle,
+                    SpaceRuntimeLifecycle::Starting | SpaceRuntimeLifecycle::Running
+                )
+        });
+        if !accepted {
+            return false;
+        }
+        let _ = self.event_tx.send(ProfiledEngineEvent {
+            profile_id: profile_id.to_string(),
+            generation,
+            event,
+        });
+        true
     }
 
     fn profile_spec(
@@ -653,7 +985,72 @@ impl SpaceRuntimeSupervisor {
         })
     }
 
-    fn finish_pending_start(&self, profile_id: &str, generation: u64) {
+    fn attach_superseded_runtime(
+        &self,
+        profile_id: &str,
+        start_generation: u64,
+        runtime: Arc<dyn SupervisedSpaceRuntime>,
+    ) {
+        let mut slots = self.lock_slots();
+        let Some(slot) = slots.get_mut(profile_id) else {
+            return;
+        };
+        if slot.pending_start_generation == Some(start_generation)
+            && matches!(
+                slot.lifecycle,
+                SpaceRuntimeLifecycle::Stopping | SpaceRuntimeLifecycle::Failed
+            )
+            && slot.runtime.is_none()
+        {
+            slot.runtime = Some(runtime);
+        }
+    }
+
+    fn finish_superseded_start(
+        &self,
+        profile_id: &str,
+        start_generation: u64,
+        runtime: &Arc<dyn SupervisedSpaceRuntime>,
+        shutdown: Result<(), SpaceRuntimeFailure>,
+    ) {
+        let notify = {
+            let mut slots = self.lock_slots();
+            let Some(slot) = slots.get_mut(profile_id) else {
+                return;
+            };
+            if slot.pending_start_generation == Some(start_generation) {
+                slot.pending_start_generation = None;
+                match shutdown {
+                    Ok(()) => {
+                        if slot
+                            .runtime
+                            .as_ref()
+                            .is_some_and(|registered| Arc::ptr_eq(registered, runtime))
+                        {
+                            slot.runtime = None;
+                        }
+                        slot.lifecycle = SpaceRuntimeLifecycle::Stopped;
+                        slot.last_failure = None;
+                    }
+                    Err(failure) => {
+                        if slot.runtime.is_none() {
+                            slot.runtime = Some(Arc::clone(runtime));
+                        }
+                        slot.lifecycle = SpaceRuntimeLifecycle::Failed;
+                        slot.last_failure = Some(failure);
+                    }
+                }
+                Some(Arc::clone(&slot.lifecycle_notify))
+            } else {
+                None
+            }
+        };
+        if let Some(notify) = notify {
+            notify.notify_waiters();
+        }
+    }
+
+    fn finish_pending_start_without_runtime(&self, profile_id: &str, generation: u64) {
         let notify = {
             let mut slots = self.lock_slots();
             let Some(slot) = slots.get_mut(profile_id) else {
@@ -677,22 +1074,27 @@ impl SpaceRuntimeSupervisor {
         stopping_generation: u64,
         pending_start_generation: u64,
         notify: &Arc<tokio::sync::Notify>,
-    ) {
-        loop {
-            let notified = notify.notified();
-            let still_pending = {
-                let slots = self.lock_slots();
-                slots.get(profile_id).is_some_and(|slot| {
-                    slot.generation == stopping_generation
-                        && slot.lifecycle == SpaceRuntimeLifecycle::Stopping
-                        && slot.pending_start_generation == Some(pending_start_generation)
-                })
-            };
-            if !still_pending {
-                return;
+        deadline_at: tokio::time::Instant,
+    ) -> bool {
+        tokio::time::timeout_at(deadline_at, async {
+            loop {
+                let notified = notify.notified();
+                let still_pending = {
+                    let slots = self.lock_slots();
+                    slots.get(profile_id).is_some_and(|slot| {
+                        slot.generation == stopping_generation
+                            && slot.lifecycle == SpaceRuntimeLifecycle::Stopping
+                            && slot.pending_start_generation == Some(pending_start_generation)
+                    })
+                };
+                if !still_pending {
+                    return;
+                }
+                notified.await;
             }
-            notified.await;
-        }
+        })
+        .await
+        .is_ok()
     }
 
     async fn wait_until_not_stopping(
@@ -700,36 +1102,144 @@ impl SpaceRuntimeSupervisor {
         profile_id: &str,
         generation: u64,
         notify: &Arc<tokio::sync::Notify>,
-    ) {
-        loop {
-            let notified = notify.notified();
-            let is_stopping = {
-                let slots = self.lock_slots();
-                slots.get(profile_id).is_some_and(|slot| {
-                    slot.generation == generation
-                        && slot.lifecycle == SpaceRuntimeLifecycle::Stopping
-                })
-            };
-            if !is_stopping {
-                return;
+        deadline_at: tokio::time::Instant,
+    ) -> bool {
+        tokio::time::timeout_at(deadline_at, async {
+            loop {
+                let notified = notify.notified();
+                let is_stopping = {
+                    let slots = self.lock_slots();
+                    slots.get(profile_id).is_some_and(|slot| {
+                        slot.generation == generation
+                            && slot.lifecycle == SpaceRuntimeLifecycle::Stopping
+                    })
+                };
+                if !is_stopping {
+                    return;
+                }
+                notified.await;
             }
-            notified.await;
-        }
+        })
+        .await
+        .is_ok()
     }
 
-    fn complete_stopping(
+    fn runtime_for_stopping(
         &self,
         profile_id: &str,
         generation: u64,
-        lifecycle: SpaceRuntimeLifecycle,
-        last_failure: Option<SpaceRuntimeFailure>,
+    ) -> Option<Arc<dyn SupervisedSpaceRuntime>> {
+        let slots = self.lock_slots();
+        let slot = slots.get(profile_id)?;
+        if slot.generation != generation || slot.lifecycle != SpaceRuntimeLifecycle::Stopping {
+            return None;
+        }
+        slot.runtime.as_ref().map(Arc::clone)
+    }
+
+    fn complete_shutdown(
+        &self,
+        profile_id: &str,
+        generation: u64,
+        runtime: Option<&Arc<dyn SupervisedSpaceRuntime>>,
+        shutdown: Result<(), SpaceRuntimeFailure>,
     ) -> Option<SpaceRuntimeStatus> {
         let completed = {
             let mut slots = self.lock_slots();
             let slot = slots.get_mut(profile_id)?;
             if slot.generation == generation && slot.lifecycle == SpaceRuntimeLifecycle::Stopping {
-                slot.lifecycle = lifecycle;
-                slot.last_failure = last_failure;
+                match shutdown {
+                    Ok(()) => {
+                        if runtime.is_none_or(|runtime| {
+                            slot.runtime
+                                .as_ref()
+                                .is_some_and(|registered| Arc::ptr_eq(registered, runtime))
+                        }) {
+                            slot.runtime = None;
+                        }
+                        slot.lifecycle = SpaceRuntimeLifecycle::Stopped;
+                        slot.last_failure = None;
+                    }
+                    Err(failure) => {
+                        if slot.runtime.is_none() {
+                            slot.runtime = runtime.map(Arc::clone);
+                        }
+                        slot.lifecycle = SpaceRuntimeLifecycle::Failed;
+                        slot.last_failure = Some(failure);
+                    }
+                }
+                Some((slot.status(), Arc::clone(&slot.lifecycle_notify)))
+            } else {
+                None
+            }
+        };
+        if let Some((status, notify)) = completed {
+            notify.notify_waiters();
+            Some(status)
+        } else {
+            self.status(profile_id)
+        }
+    }
+
+    fn complete_failure_shutdown(
+        &self,
+        profile_id: &str,
+        generation: u64,
+        runtime: Option<&Arc<dyn SupervisedSpaceRuntime>>,
+        runtime_failure: SpaceRuntimeFailure,
+        shutdown: Result<(), SpaceRuntimeFailure>,
+    ) -> Option<SpaceRuntimeStatus> {
+        let completed = {
+            let mut slots = self.lock_slots();
+            let slot = slots.get_mut(profile_id)?;
+            if slot.generation == generation && slot.lifecycle == SpaceRuntimeLifecycle::Stopping {
+                slot.lifecycle = SpaceRuntimeLifecycle::Failed;
+                match shutdown {
+                    Ok(()) => {
+                        if runtime.is_none_or(|runtime| {
+                            slot.runtime
+                                .as_ref()
+                                .is_some_and(|registered| Arc::ptr_eq(registered, runtime))
+                        }) {
+                            slot.runtime = None;
+                        }
+                        slot.last_failure = Some(runtime_failure);
+                    }
+                    Err(shutdown_failure) => {
+                        if slot.runtime.is_none() {
+                            slot.runtime = runtime.map(Arc::clone);
+                        }
+                        slot.last_failure = Some(SpaceRuntimeFailure::shutdown(format!(
+                            "{runtime_failure}; shutdown failed: {shutdown_failure}"
+                        )));
+                    }
+                }
+                Some((slot.status(), Arc::clone(&slot.lifecycle_notify)))
+            } else {
+                None
+            }
+        };
+        if let Some((status, notify)) = completed {
+            notify.notify_waiters();
+            Some(status)
+        } else {
+            self.status(profile_id)
+        }
+    }
+
+    fn fail_stopping_deadline(
+        &self,
+        profile_id: &str,
+        generation: u64,
+    ) -> Option<SpaceRuntimeStatus> {
+        let completed = {
+            let mut slots = self.lock_slots();
+            let slot = slots.get_mut(profile_id)?;
+            if slot.generation == generation && slot.lifecycle == SpaceRuntimeLifecycle::Stopping {
+                slot.lifecycle = SpaceRuntimeLifecycle::Failed;
+                slot.last_failure = Some(SpaceRuntimeFailure::shutdown(
+                    "global shutdown deadline exceeded",
+                ));
                 Some((slot.status(), Arc::clone(&slot.lifecycle_notify)))
             } else {
                 None
@@ -758,31 +1268,93 @@ fn result_profile_id(result: &Result<SpaceRuntimeStart, SpaceRuntimeStartError>)
     }
 }
 
+fn remaining_until(deadline_at: tokio::time::Instant) -> Duration {
+    deadline_at.saturating_duration_since(tokio::time::Instant::now())
+}
+
 #[cfg(test)]
 mod tests {
-    use std::collections::{HashMap, HashSet};
+    use std::collections::{HashMap, HashSet, VecDeque};
+    use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::{Arc, Mutex};
+    use std::time::{Duration, Instant};
 
     use async_trait::async_trait;
-    use tokio::sync::Barrier;
+    use tokio::sync::{Barrier, Notify};
+    use tokio_util::sync::CancellationToken;
+    use uc_engine::{EngineError, EngineErrorCategory, EngineEvent, EngineState};
 
     use super::{
-        SpaceRuntimeFactory, SpaceRuntimeFailure, SpaceRuntimeFailureCallback,
-        SpaceRuntimeLifecycle, SpaceRuntimeProfileSpec, SpaceRuntimeRoots,
-        SpaceRuntimeStartDisposition, SpaceRuntimeSupervisor, SupervisedSpaceRuntime,
+        spawn_engine_event_monitor, ProfiledEngineEvent, SpaceEngineEventStream,
+        SpaceRuntimeEventCallback, SpaceRuntimeFactory, SpaceRuntimeFailure,
+        SpaceRuntimeFailureCallback, SpaceRuntimeFailureCategory, SpaceRuntimeLifecycle,
+        SpaceRuntimeProfileSpec, SpaceRuntimeRoots, SpaceRuntimeStartDisposition,
+        SpaceRuntimeSupervisor, SupervisedSpaceRuntime,
     };
     use crate::daemon::space_catalog::SpaceCatalog;
 
-    #[derive(Default)]
     struct FakeRuntime {
-        shutdowns: Mutex<usize>,
+        shutdowns: AtomicUsize,
+        shutdown_results: Mutex<VecDeque<Result<(), SpaceRuntimeFailure>>>,
+        shutdown_barrier: Option<Arc<Barrier>>,
+        shutdown_delay: Duration,
+    }
+
+    impl Default for FakeRuntime {
+        fn default() -> Self {
+            Self {
+                shutdowns: AtomicUsize::new(0),
+                shutdown_results: Mutex::new(VecDeque::new()),
+                shutdown_barrier: None,
+                shutdown_delay: Duration::ZERO,
+            }
+        }
     }
 
     #[async_trait]
     impl SupervisedSpaceRuntime for FakeRuntime {
-        async fn shutdown(&self) -> Result<(), SpaceRuntimeFailure> {
-            *self.shutdowns.lock().expect("lock shutdown count") += 1;
-            Ok(())
+        async fn shutdown(&self, deadline: Duration) -> Result<(), SpaceRuntimeFailure> {
+            self.shutdowns.fetch_add(1, Ordering::SeqCst);
+            let work = async {
+                if let Some(barrier) = &self.shutdown_barrier {
+                    barrier.wait().await;
+                }
+                if !self.shutdown_delay.is_zero() {
+                    tokio::time::sleep(self.shutdown_delay).await;
+                }
+                self.shutdown_results
+                    .lock()
+                    .expect("lock shutdown results")
+                    .pop_front()
+                    .unwrap_or(Ok(()))
+            };
+            match tokio::time::timeout(deadline, work).await {
+                Ok(result) => result,
+                Err(_) => Err(SpaceRuntimeFailure::shutdown(
+                    "injected shutdown deadline exceeded",
+                )),
+            }
+        }
+    }
+
+    #[derive(Clone, Default)]
+    struct RuntimePlan {
+        shutdown_results: VecDeque<Result<(), SpaceRuntimeFailure>>,
+        shutdown_barrier: Option<Arc<Barrier>>,
+        shutdown_delay: Duration,
+    }
+
+    struct StartGate {
+        entered: Arc<Barrier>,
+        release: Arc<Notify>,
+    }
+
+    impl StartGate {
+        fn new() -> Arc<Self> {
+            Arc::new(Self {
+                entered: Arc::new(Barrier::new(2)),
+                release: Arc::new(Notify::new()),
+            })
         }
     }
 
@@ -791,9 +1363,13 @@ mod tests {
         starts: Mutex<HashMap<String, usize>>,
         specs: Mutex<Vec<SpaceRuntimeProfileSpec>>,
         callbacks: Mutex<HashMap<String, Vec<SpaceRuntimeFailureCallback>>>,
+        event_callbacks: Mutex<HashMap<String, Vec<SpaceRuntimeEventCallback>>>,
         failures: Mutex<HashSet<String>>,
+        panics: Mutex<HashSet<String>>,
         runtimes: Mutex<HashMap<String, Vec<Arc<FakeRuntime>>>>,
         start_barrier: Mutex<Option<Arc<Barrier>>>,
+        start_gates: Mutex<HashMap<String, Arc<StartGate>>>,
+        runtime_plans: Mutex<HashMap<String, RuntimePlan>>,
     }
 
     impl RecordingFactory {
@@ -809,6 +1385,29 @@ mod tests {
                 Some(Arc::new(Barrier::new(parties)));
         }
 
+        fn block_start(&self, profile_id: &str) -> Arc<StartGate> {
+            let gate = StartGate::new();
+            self.start_gates
+                .lock()
+                .expect("lock start gates")
+                .insert(profile_id.to_string(), Arc::clone(&gate));
+            gate
+        }
+
+        fn panic_on_start(&self, profile_id: &str) {
+            self.panics
+                .lock()
+                .expect("lock panic profiles")
+                .insert(profile_id.to_string());
+        }
+
+        fn set_runtime_plan(&self, profile_id: &str, plan: RuntimePlan) {
+            self.runtime_plans
+                .lock()
+                .expect("lock runtime plans")
+                .insert(profile_id.to_string(), plan);
+        }
+
         fn start_count(&self, profile_id: &str) -> usize {
             self.starts
                 .lock()
@@ -820,6 +1419,10 @@ mod tests {
 
         fn callback(&self, profile_id: &str, index: usize) -> SpaceRuntimeFailureCallback {
             self.callbacks.lock().expect("lock callbacks")[profile_id][index].clone()
+        }
+
+        fn event_callback(&self, profile_id: &str, index: usize) -> SpaceRuntimeEventCallback {
+            self.event_callbacks.lock().expect("lock event callbacks")[profile_id][index].clone()
         }
 
         fn runtime(&self, profile_id: &str, index: usize) -> Arc<FakeRuntime> {
@@ -834,6 +1437,7 @@ mod tests {
             spec: SpaceRuntimeProfileSpec,
             _generation: u64,
             report_failure: SpaceRuntimeFailureCallback,
+            forward_event: SpaceRuntimeEventCallback,
         ) -> Result<Arc<dyn SupervisedSpaceRuntime>, SpaceRuntimeFailure> {
             *self
                 .starts
@@ -848,6 +1452,12 @@ mod tests {
                 .entry(spec.profile_id.clone())
                 .or_default()
                 .push(report_failure);
+            self.event_callbacks
+                .lock()
+                .expect("lock event callbacks")
+                .entry(spec.profile_id.clone())
+                .or_default()
+                .push(forward_event);
             let barrier = self
                 .start_barrier
                 .lock()
@@ -855,6 +1465,24 @@ mod tests {
                 .clone();
             if let Some(barrier) = barrier {
                 barrier.wait().await;
+            }
+            let start_gate = self
+                .start_gates
+                .lock()
+                .expect("lock start gates")
+                .get(&spec.profile_id)
+                .cloned();
+            if let Some(gate) = start_gate {
+                gate.entered.wait().await;
+                gate.release.notified().await;
+            }
+            if self
+                .panics
+                .lock()
+                .expect("lock panic profiles")
+                .contains(&spec.profile_id)
+            {
+                panic!("injected factory panic");
             }
             if self
                 .failures
@@ -864,7 +1492,19 @@ mod tests {
             {
                 return Err(SpaceRuntimeFailure::bootstrap("injected start failure"));
             }
-            let runtime = Arc::new(FakeRuntime::default());
+            let plan = self
+                .runtime_plans
+                .lock()
+                .expect("lock runtime plans")
+                .get(&spec.profile_id)
+                .cloned()
+                .unwrap_or_default();
+            let runtime = Arc::new(FakeRuntime {
+                shutdowns: AtomicUsize::new(0),
+                shutdown_results: Mutex::new(plan.shutdown_results),
+                shutdown_barrier: plan.shutdown_barrier,
+                shutdown_delay: plan.shutdown_delay,
+            });
             self.runtimes
                 .lock()
                 .expect("lock runtimes")
@@ -888,6 +1528,26 @@ mod tests {
             root.path().join("cache"),
             root.path().join("logs"),
         )
+    }
+
+    async fn wait_for_lifecycle(
+        supervisor: &SpaceRuntimeSupervisor,
+        profile_id: &str,
+        lifecycle: SpaceRuntimeLifecycle,
+    ) {
+        tokio::time::timeout(Duration::from_secs(1), async {
+            loop {
+                if supervisor
+                    .status(profile_id)
+                    .is_some_and(|status| status.lifecycle == lifecycle)
+                {
+                    return;
+                }
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("lifecycle transition timed out");
     }
 
     #[tokio::test]
@@ -956,20 +1616,42 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn concurrent_duplicate_start_creates_only_one_runtime() {
+    async fn concurrent_duplicate_start_waits_for_the_same_success() {
         let (root, catalog) = test_catalog();
         let profile_id = catalog.entries()[0].profile_id.clone();
         let factory = Arc::new(RecordingFactory::default());
+        let gate = factory.block_start(&profile_id);
         let supervisor = SpaceRuntimeSupervisor::new(factory.clone(), test_roots(&root));
 
-        let (left, right) = tokio::join!(
-            supervisor.start_profile(&catalog, &profile_id),
-            supervisor.start_profile(&catalog, &profile_id),
-        );
+        let first = tokio::spawn({
+            let supervisor = Arc::clone(&supervisor);
+            let catalog = catalog.entries().to_vec();
+            let profile_id = profile_id.clone();
+            async move { supervisor.start_entry_for_test(catalog, &profile_id).await }
+        });
+        gate.entered.wait().await;
+        let second = tokio::spawn({
+            let supervisor = Arc::clone(&supervisor);
+            let catalog = catalog.entries().to_vec();
+            let profile_id = profile_id.clone();
+            async move { supervisor.start_entry_for_test(catalog, &profile_id).await }
+        });
+        tokio::task::yield_now().await;
+        gate.release.notify_one();
+        let left = first.await.expect("first start task");
+        let right = second.await.expect("second start task");
 
         assert!(left.is_ok());
         assert!(right.is_ok());
         assert_eq!(factory.start_count(&profile_id), 1);
+        assert_eq!(
+            left.as_ref().unwrap().status.lifecycle,
+            SpaceRuntimeLifecycle::Running
+        );
+        assert_eq!(
+            right.as_ref().unwrap().status.lifecycle,
+            SpaceRuntimeLifecycle::Running
+        );
         assert!(matches!(
             (left.unwrap().disposition, right.unwrap().disposition),
             (
@@ -980,6 +1662,196 @@ mod tests {
                 SpaceRuntimeStartDisposition::Started
             )
         ));
+    }
+
+    #[tokio::test]
+    async fn concurrent_duplicate_start_waits_for_the_same_failure() {
+        let (root, catalog) = test_catalog();
+        let profile_id = catalog.entries()[0].profile_id.clone();
+        let factory = Arc::new(RecordingFactory::default());
+        factory.fail(&profile_id);
+        let gate = factory.block_start(&profile_id);
+        let supervisor = SpaceRuntimeSupervisor::new(factory.clone(), test_roots(&root));
+
+        let first = tokio::spawn({
+            let supervisor = Arc::clone(&supervisor);
+            let entries = catalog.entries().to_vec();
+            let profile_id = profile_id.clone();
+            async move { supervisor.start_entry_for_test(entries, &profile_id).await }
+        });
+        gate.entered.wait().await;
+        let second = tokio::spawn({
+            let supervisor = Arc::clone(&supervisor);
+            let entries = catalog.entries().to_vec();
+            let profile_id = profile_id.clone();
+            async move { supervisor.start_entry_for_test(entries, &profile_id).await }
+        });
+        tokio::task::yield_now().await;
+        gate.release.notify_one();
+        let left = first.await.expect("first start task").unwrap_err();
+        let right = second.await.expect("second start task").unwrap_err();
+
+        assert_eq!(factory.start_count(&profile_id), 1);
+        assert_eq!(right.generation, left.generation);
+        assert_eq!(right.failure, left.failure);
+        assert_eq!(
+            supervisor
+                .status(&profile_id)
+                .expect("failed status")
+                .lifecycle,
+            SpaceRuntimeLifecycle::Failed
+        );
+    }
+
+    #[tokio::test]
+    async fn factory_panic_becomes_typed_failure_and_wakes_duplicate_waiter() {
+        let (root, catalog) = test_catalog();
+        let profile_id = catalog.entries()[0].profile_id.clone();
+        let factory = Arc::new(RecordingFactory::default());
+        factory.panic_on_start(&profile_id);
+        let gate = factory.block_start(&profile_id);
+        let supervisor = SpaceRuntimeSupervisor::new(factory, test_roots(&root));
+
+        let first = tokio::spawn({
+            let supervisor = Arc::clone(&supervisor);
+            let entries = catalog.entries().to_vec();
+            let profile_id = profile_id.clone();
+            async move { supervisor.start_entry_for_test(entries, &profile_id).await }
+        });
+        gate.entered.wait().await;
+        let second = tokio::spawn({
+            let supervisor = Arc::clone(&supervisor);
+            let entries = catalog.entries().to_vec();
+            let profile_id = profile_id.clone();
+            async move { supervisor.start_entry_for_test(entries, &profile_id).await }
+        });
+        gate.release.notify_one();
+
+        let left = first.await.expect("first wrapper task").unwrap_err();
+        let right = second.await.expect("second wrapper task").unwrap_err();
+        assert_eq!(left.failure, right.failure);
+        assert_eq!(
+            left.failure.category,
+            SpaceRuntimeFailureCategory::Bootstrap
+        );
+        assert_eq!(
+            supervisor
+                .status(&profile_id)
+                .expect("failed status")
+                .lifecycle,
+            SpaceRuntimeLifecycle::Failed
+        );
+    }
+
+    #[tokio::test]
+    async fn stop_while_starting_supersedes_and_shuts_down_created_runtime() {
+        let (root, catalog) = test_catalog();
+        let profile_id = catalog.entries()[0].profile_id.clone();
+        let factory = Arc::new(RecordingFactory::default());
+        let gate = factory.block_start(&profile_id);
+        let supervisor = SpaceRuntimeSupervisor::new(factory.clone(), test_roots(&root));
+        let start = tokio::spawn({
+            let supervisor = Arc::clone(&supervisor);
+            let entries = catalog.entries().to_vec();
+            let profile_id = profile_id.clone();
+            async move { supervisor.start_entry_for_test(entries, &profile_id).await }
+        });
+        gate.entered.wait().await;
+        let stop = tokio::spawn({
+            let supervisor = Arc::clone(&supervisor);
+            let profile_id = profile_id.clone();
+            async move { supervisor.stop_profile(&profile_id).await }
+        });
+        wait_for_lifecycle(&supervisor, &profile_id, SpaceRuntimeLifecycle::Stopping).await;
+        gate.release.notify_one();
+
+        assert_eq!(
+            start
+                .await
+                .expect("start task")
+                .unwrap_err()
+                .failure
+                .category,
+            SpaceRuntimeFailureCategory::Superseded
+        );
+        assert_eq!(
+            stop.await
+                .expect("stop task")
+                .expect("stopped status")
+                .lifecycle,
+            SpaceRuntimeLifecycle::Stopped
+        );
+        assert_eq!(
+            factory
+                .runtime(&profile_id, 0)
+                .shutdowns
+                .load(Ordering::SeqCst),
+            1
+        );
+    }
+
+    #[tokio::test]
+    async fn superseded_start_shutdown_failure_keeps_handle_for_stop_retry() {
+        let (root, catalog) = test_catalog();
+        let profile_id = catalog.entries()[0].profile_id.clone();
+        let factory = Arc::new(RecordingFactory::default());
+        factory.set_runtime_plan(
+            &profile_id,
+            RuntimePlan {
+                shutdown_results: VecDeque::from([
+                    Err(SpaceRuntimeFailure::shutdown("first shutdown failed")),
+                    Ok(()),
+                ]),
+                ..RuntimePlan::default()
+            },
+        );
+        let gate = factory.block_start(&profile_id);
+        let supervisor = SpaceRuntimeSupervisor::new(factory.clone(), test_roots(&root));
+        let start = tokio::spawn({
+            let supervisor = Arc::clone(&supervisor);
+            let entries = catalog.entries().to_vec();
+            let profile_id = profile_id.clone();
+            async move { supervisor.start_entry_for_test(entries, &profile_id).await }
+        });
+        gate.entered.wait().await;
+        let stop = tokio::spawn({
+            let supervisor = Arc::clone(&supervisor);
+            let profile_id = profile_id.clone();
+            async move { supervisor.stop_profile(&profile_id).await }
+        });
+        wait_for_lifecycle(&supervisor, &profile_id, SpaceRuntimeLifecycle::Stopping).await;
+        gate.release.notify_one();
+
+        assert!(start.await.expect("start task").is_err());
+        assert_eq!(
+            stop.await
+                .expect("stop task")
+                .expect("stop status")
+                .lifecycle,
+            SpaceRuntimeLifecycle::Failed
+        );
+        assert_eq!(
+            factory
+                .runtime(&profile_id, 0)
+                .shutdowns
+                .load(Ordering::SeqCst),
+            1
+        );
+        assert_eq!(
+            supervisor
+                .stop_profile(&profile_id)
+                .await
+                .expect("retry stop status")
+                .lifecycle,
+            SpaceRuntimeLifecycle::Stopped
+        );
+        assert_eq!(
+            factory
+                .runtime(&profile_id, 0)
+                .shutdowns
+                .load(Ordering::SeqCst),
+            2
+        );
     }
 
     #[tokio::test]
@@ -1012,6 +1884,124 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn current_generation_failure_stops_only_that_runtime() {
+        let (root, catalog) = test_catalog();
+        let profile_id = catalog.entries()[0].profile_id.clone();
+        let factory = Arc::new(RecordingFactory::default());
+        let supervisor = SpaceRuntimeSupervisor::new(factory.clone(), test_roots(&root));
+        let started = supervisor
+            .start_profile(&catalog, &profile_id)
+            .await
+            .expect("start runtime");
+
+        assert!((factory.callback(&profile_id, 0))(SpaceRuntimeFailure::runtime("fatal")).await);
+
+        let status = supervisor.status(&profile_id).expect("failed status");
+        assert!(status.generation > started.status.generation);
+        assert_eq!(status.lifecycle, SpaceRuntimeLifecycle::Failed);
+        assert_eq!(
+            factory
+                .runtime(&profile_id, 0)
+                .shutdowns
+                .load(Ordering::SeqCst),
+            1
+        );
+    }
+
+    #[tokio::test]
+    async fn shutdown_failure_retains_runtime_and_failed_stop_can_retry() {
+        let (root, catalog) = test_catalog();
+        let profile_id = catalog.entries()[0].profile_id.clone();
+        let factory = Arc::new(RecordingFactory::default());
+        factory.set_runtime_plan(
+            &profile_id,
+            RuntimePlan {
+                shutdown_results: VecDeque::from([
+                    Err(SpaceRuntimeFailure::shutdown("injected shutdown failure")),
+                    Ok(()),
+                ]),
+                ..RuntimePlan::default()
+            },
+        );
+        let supervisor = SpaceRuntimeSupervisor::new(factory.clone(), test_roots(&root));
+        supervisor
+            .start_profile(&catalog, &profile_id)
+            .await
+            .expect("start runtime");
+
+        let failed = supervisor
+            .stop_profile(&profile_id)
+            .await
+            .expect("failed stop status");
+        assert_eq!(failed.lifecycle, SpaceRuntimeLifecycle::Failed);
+        let restart = supervisor.start_profile(&catalog, &profile_id).await;
+        assert_eq!(
+            restart.unwrap_err().failure.category,
+            SpaceRuntimeFailureCategory::Shutdown
+        );
+        assert_eq!(factory.start_count(&profile_id), 1);
+        let stopped = supervisor
+            .stop_profile(&profile_id)
+            .await
+            .expect("retried stop status");
+
+        assert_eq!(stopped.lifecycle, SpaceRuntimeLifecycle::Stopped);
+        assert_eq!(
+            factory
+                .runtime(&profile_id, 0)
+                .shutdowns
+                .load(Ordering::SeqCst),
+            2
+        );
+    }
+
+    #[tokio::test]
+    async fn failure_callback_shutdown_error_remains_retryable() {
+        let (root, catalog) = test_catalog();
+        let profile_id = catalog.entries()[0].profile_id.clone();
+        let factory = Arc::new(RecordingFactory::default());
+        factory.set_runtime_plan(
+            &profile_id,
+            RuntimePlan {
+                shutdown_results: VecDeque::from([
+                    Err(SpaceRuntimeFailure::shutdown("callback shutdown failure")),
+                    Ok(()),
+                ]),
+                ..RuntimePlan::default()
+            },
+        );
+        let supervisor = SpaceRuntimeSupervisor::new(factory.clone(), test_roots(&root));
+        supervisor
+            .start_profile(&catalog, &profile_id)
+            .await
+            .expect("start runtime");
+
+        assert!((factory.callback(&profile_id, 0))(SpaceRuntimeFailure::runtime("fatal")).await);
+        assert_eq!(
+            supervisor
+                .status(&profile_id)
+                .expect("failed status")
+                .lifecycle,
+            SpaceRuntimeLifecycle::Failed
+        );
+        assert_eq!(
+            supervisor
+                .stop_profile(&profile_id)
+                .await
+                .expect("retry status")
+                .lifecycle,
+            SpaceRuntimeLifecycle::Stopped
+        );
+        assert_eq!(
+            factory
+                .runtime(&profile_id, 0)
+                .shutdowns
+                .load(Ordering::SeqCst),
+            2
+        );
+    }
+
+    #[tokio::test]
     async fn shutdown_all_stops_every_running_runtime() {
         let (root, catalog) = test_catalog();
         let ids: Vec<_> = catalog
@@ -1035,7 +2025,249 @@ mod tests {
             .all(|status| status.lifecycle == SpaceRuntimeLifecycle::Stopped));
         assert!(runtimes
             .iter()
-            .all(|runtime| { *runtime.shutdowns.lock().expect("lock shutdown count") == 1 }));
+            .all(|runtime| runtime.shutdowns.load(Ordering::SeqCst) == 1));
+    }
+
+    #[tokio::test]
+    async fn shutdown_all_runs_profile_shutdowns_concurrently() {
+        let (root, catalog) = test_catalog();
+        let barrier = Arc::new(Barrier::new(2));
+        let factory = Arc::new(RecordingFactory::default());
+        for entry in catalog.entries() {
+            factory.set_runtime_plan(
+                &entry.profile_id,
+                RuntimePlan {
+                    shutdown_barrier: Some(Arc::clone(&barrier)),
+                    ..RuntimePlan::default()
+                },
+            );
+        }
+        let supervisor = SpaceRuntimeSupervisor::new(factory, test_roots(&root));
+        supervisor.start_enabled(&catalog).await;
+
+        let statuses = supervisor
+            .shutdown_all_with_deadline(Duration::from_secs(1))
+            .await;
+
+        assert_eq!(statuses.len(), 2);
+        assert!(statuses
+            .iter()
+            .all(|status| status.lifecycle == SpaceRuntimeLifecycle::Stopped));
+    }
+
+    #[tokio::test]
+    async fn shutdown_all_uses_one_global_deadline_and_retains_timed_out_runtimes() {
+        let (root, catalog) = test_catalog();
+        let factory = Arc::new(RecordingFactory::default());
+        for entry in catalog.entries() {
+            factory.set_runtime_plan(
+                &entry.profile_id,
+                RuntimePlan {
+                    shutdown_delay: Duration::from_secs(1),
+                    ..RuntimePlan::default()
+                },
+            );
+        }
+        let supervisor = SpaceRuntimeSupervisor::new(factory.clone(), test_roots(&root));
+        supervisor.start_enabled(&catalog).await;
+        let started_at = Instant::now();
+
+        let statuses = supervisor
+            .shutdown_all_with_deadline(Duration::from_millis(50))
+            .await;
+
+        assert!(started_at.elapsed() < Duration::from_millis(300));
+        assert_eq!(statuses.len(), 2);
+        assert!(statuses.iter().all(|status| {
+            status.lifecycle == SpaceRuntimeLifecycle::Failed
+                && status.last_failure.as_ref().is_some_and(|failure| {
+                    failure.category == SpaceRuntimeFailureCategory::Shutdown
+                })
+        }));
+        for entry in catalog.entries() {
+            assert_eq!(
+                factory
+                    .runtime(&entry.profile_id, 0)
+                    .shutdowns
+                    .load(Ordering::SeqCst),
+                1
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn supervisor_forwards_ordinary_events_with_profile_and_generation() {
+        let (root, catalog) = test_catalog();
+        let profile_id = catalog.entries()[0].profile_id.clone();
+        let factory = Arc::new(RecordingFactory::default());
+        let supervisor = SpaceRuntimeSupervisor::new(factory.clone(), test_roots(&root));
+        let started = supervisor
+            .start_profile(&catalog, &profile_id)
+            .await
+            .expect("start runtime");
+        let mut events = supervisor.subscribe_events();
+
+        assert!((factory.event_callback(&profile_id, 0))(
+            EngineEvent::StateChanged {
+                state: EngineState::Running,
+            }
+        ));
+        let ProfiledEngineEvent {
+            profile_id: actual_profile,
+            generation,
+            event,
+        } = events.recv().await.expect("profile-tagged event");
+
+        assert_eq!(actual_profile, profile_id);
+        assert_eq!(generation, started.status.generation);
+        assert!(matches!(
+            event,
+            EngineEvent::StateChanged {
+                state: EngineState::Running
+            }
+        ));
+    }
+
+    struct ChannelEventStream {
+        receiver: tokio::sync::mpsc::UnboundedReceiver<EngineEvent>,
+    }
+
+    #[async_trait]
+    impl SpaceEngineEventStream for ChannelEventStream {
+        async fn next(&mut self) -> Option<EngineEvent> {
+            self.receiver.recv().await
+        }
+    }
+
+    #[tokio::test]
+    async fn event_monitor_forwards_ordinary_events_and_normal_cancel_is_not_failure() {
+        let (sender, receiver) = tokio::sync::mpsc::unbounded_channel();
+        let cancel = CancellationToken::new();
+        let forwarded = Arc::new(Mutex::new(Vec::new()));
+        let failures = Arc::new(AtomicUsize::new(0));
+        let event_seen = Arc::new(Notify::new());
+        let forward_event: SpaceRuntimeEventCallback = {
+            let forwarded = Arc::clone(&forwarded);
+            let event_seen = Arc::clone(&event_seen);
+            Arc::new(move |event| {
+                forwarded.lock().expect("lock forwarded events").push(event);
+                event_seen.notify_one();
+                true
+            })
+        };
+        let report_failure: SpaceRuntimeFailureCallback = {
+            let failures = Arc::clone(&failures);
+            Arc::new(move |_| {
+                let failures = Arc::clone(&failures);
+                Box::pin(async move {
+                    failures.fetch_add(1, Ordering::SeqCst);
+                    true
+                })
+            })
+        };
+        let monitor = spawn_engine_event_monitor(
+            Box::new(ChannelEventStream { receiver }),
+            cancel.clone(),
+            forward_event,
+            report_failure,
+        );
+
+        sender
+            .send(EngineEvent::StateChanged {
+                state: EngineState::Running,
+            })
+            .expect("send ordinary event");
+        event_seen.notified().await;
+        cancel.cancel();
+        monitor.await.expect("monitor join");
+
+        assert_eq!(forwarded.lock().expect("lock forwarded events").len(), 1);
+        assert_eq!(failures.load(Ordering::SeqCst), 0);
+    }
+
+    #[tokio::test]
+    async fn unexpected_event_stream_exit_reports_runtime_failure() {
+        let (sender, receiver) = tokio::sync::mpsc::unbounded_channel();
+        let cancel = CancellationToken::new();
+        let failure_seen = Arc::new(Notify::new());
+        let failure_value = Arc::new(Mutex::new(None));
+        let report_failure: SpaceRuntimeFailureCallback = {
+            let failure_seen = Arc::clone(&failure_seen);
+            let failure_value = Arc::clone(&failure_value);
+            Arc::new(move |failure| {
+                let failure_seen = Arc::clone(&failure_seen);
+                let failure_value = Arc::clone(&failure_value);
+                Box::pin(async move {
+                    *failure_value.lock().expect("lock failure value") = Some(failure);
+                    failure_seen.notify_one();
+                    true
+                })
+            })
+        };
+        let monitor = spawn_engine_event_monitor(
+            Box::new(ChannelEventStream { receiver }),
+            cancel,
+            Arc::new(|_| true),
+            report_failure,
+        );
+
+        drop(sender);
+        failure_seen.notified().await;
+        monitor.await.expect("monitor join");
+
+        assert_eq!(
+            failure_value
+                .lock()
+                .expect("lock failure value")
+                .as_ref()
+                .expect("runtime failure")
+                .category,
+            SpaceRuntimeFailureCategory::Runtime
+        );
+    }
+
+    #[tokio::test]
+    async fn fatal_event_reports_from_detached_task_so_monitor_can_finish_before_shutdown() {
+        let (sender, receiver) = tokio::sync::mpsc::unbounded_channel();
+        let cancel = CancellationToken::new();
+        let callback_entered = Arc::new(Notify::new());
+        let release_callback = Arc::new(Notify::new());
+        let callback_finished = Arc::new(Notify::new());
+        let report_failure: SpaceRuntimeFailureCallback = {
+            let callback_entered = Arc::clone(&callback_entered);
+            let release_callback = Arc::clone(&release_callback);
+            let callback_finished = Arc::clone(&callback_finished);
+            Arc::new(move |_| {
+                let callback_entered = Arc::clone(&callback_entered);
+                let release_callback = Arc::clone(&release_callback);
+                let callback_finished = Arc::clone(&callback_finished);
+                Box::pin(async move {
+                    callback_entered.notify_one();
+                    release_callback.notified().await;
+                    callback_finished.notify_one();
+                    true
+                })
+            })
+        };
+        let monitor = spawn_engine_event_monitor(
+            Box::new(ChannelEventStream { receiver }),
+            cancel,
+            Arc::new(|_| true),
+            report_failure,
+        );
+        sender
+            .send(EngineEvent::Fatal {
+                error: EngineError::new(9999, EngineErrorCategory::Internal, false),
+            })
+            .expect("send fatal event");
+
+        callback_entered.notified().await;
+        tokio::time::timeout(Duration::from_secs(1), monitor)
+            .await
+            .expect("monitor must not await its failure callback")
+            .expect("monitor join");
+        release_callback.notify_one();
+        callback_finished.notified().await;
     }
 
     #[tokio::test]

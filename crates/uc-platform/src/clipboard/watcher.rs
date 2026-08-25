@@ -9,8 +9,8 @@ use tracing::{debug, info, warn};
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 use clipboard_rs::ClipboardHandler;
 
-use crate::clipboard::SystemClipboard;
 use crate::clipboard::SystemClipboardSnapshot;
+use crate::clipboard::{ClipboardChangeToken, SystemClipboard};
 
 /// Minimal platform event type retained for clipboard watcher channel.
 /// Full PlatformEvent (ipc module) was removed in Phase 65; only the
@@ -18,7 +18,10 @@ use crate::clipboard::SystemClipboardSnapshot;
 #[derive(Debug, Clone)]
 pub enum PlatformEvent {
     /// Local clipboard content changed.
-    ClipboardChanged { snapshot: SystemClipboardSnapshot },
+    ClipboardChanged {
+        snapshot: SystemClipboardSnapshot,
+        change_token: Option<ClipboardChangeToken>,
+    },
 }
 
 /// Channel sender for platform events emitted by the clipboard watcher.
@@ -154,6 +157,7 @@ pub struct ClipboardWatcher {
     /// breaker, which engages only for images we could fingerprint (the fp=None
     /// path stays on the [`IMAGE_STORM_MAX_GAP`] size latch).
     image_burst: Option<ImageBurst>,
+    dedup_enabled: bool,
 }
 
 impl ClipboardWatcher {
@@ -165,7 +169,17 @@ impl ClipboardWatcher {
             last_file_emit_time: None,
             last_image_seen: None,
             image_burst: None,
+            dedup_enabled: true,
         }
+    }
+
+    pub fn new_passthrough(
+        local_clipboard: Arc<dyn SystemClipboard>,
+        sender: PlatformEventSender,
+    ) -> Self {
+        let mut watcher = Self::new(local_clipboard, sender);
+        watcher.dedup_enabled = false;
+        watcher
     }
 }
 
@@ -244,8 +258,14 @@ impl ClipboardWatcher {
     /// Errors are logged at warn level and never propagated — a transient OS
     /// read failure must not bring down the watcher loop.
     pub fn notify_change(&mut self) {
+        let token_before_read = self.local_clipboard.change_token();
         match self.local_clipboard.read_snapshot() {
-            Ok(snapshot) => self.emit_with_dedup(snapshot),
+            Ok(snapshot) => {
+                let token_after_read = self.local_clipboard.change_token();
+                let stable_token =
+                    token_after_read.filter(|token| Some(*token) == token_before_read);
+                self.emit_with_dedup_and_token(snapshot, stable_token);
+            }
             Err(e) => {
                 warn!(
                     error_kind = "platform_clipboard_read_failed",
@@ -269,13 +289,43 @@ impl ClipboardWatcher {
         self.emit_with_dedup(snapshot);
     }
 
+    pub fn notify_with_snapshot_and_token(
+        &mut self,
+        snapshot: SystemClipboardSnapshot,
+        change_token: Option<ClipboardChangeToken>,
+    ) {
+        self.emit_with_dedup_and_token(snapshot, change_token);
+    }
+
     fn emit_with_dedup(&mut self, snapshot: SystemClipboardSnapshot) {
-        self.emit_with_dedup_at(snapshot, Instant::now());
+        self.emit_with_dedup_and_token(snapshot, None);
+    }
+
+    fn emit_with_dedup_and_token(
+        &mut self,
+        snapshot: SystemClipboardSnapshot,
+        change_token: Option<ClipboardChangeToken>,
+    ) {
+        self.emit_with_dedup_at_and_token(snapshot, change_token, Instant::now());
     }
 
     /// Dedup core with an injected `now`, so the time-based guards are testable
     /// without sleeping. Production callers go through [`Self::emit_with_dedup`].
+    #[cfg(test)]
     fn emit_with_dedup_at(&mut self, snapshot: SystemClipboardSnapshot, now: Instant) {
+        self.emit_with_dedup_at_and_token(snapshot, None, now);
+    }
+
+    fn emit_with_dedup_at_and_token(
+        &mut self,
+        snapshot: SystemClipboardSnapshot,
+        change_token: Option<ClipboardChangeToken>,
+        now: Instant,
+    ) {
+        if !self.dedup_enabled {
+            self.send_event(snapshot, change_token);
+            return;
+        }
         let raw_key = dedupe_key(&snapshot);
         let is_image = raw_key.as_deref().is_some_and(|k| k.starts_with("image:"));
 
@@ -430,17 +480,7 @@ impl ClipboardWatcher {
             }
         }
 
-        if let Err(err) = self
-            .sender
-            .try_send(PlatformEvent::ClipboardChanged { snapshot })
-        {
-            warn!(
-                error_kind = "notify_channel_send_failed",
-                retryable = true,
-                error = %err,
-                "Failed to notify clipboard change"
-            );
-        } else {
+        if self.send_event(snapshot, change_token) {
             if current_dedupe_key
                 .as_ref()
                 .is_some_and(|k| k.starts_with("files:"))
@@ -470,6 +510,27 @@ impl ClipboardWatcher {
             }
         }
     }
+
+    fn send_event(
+        &self,
+        snapshot: SystemClipboardSnapshot,
+        change_token: Option<ClipboardChangeToken>,
+    ) -> bool {
+        if let Err(err) = self.sender.try_send(PlatformEvent::ClipboardChanged {
+            snapshot,
+            change_token,
+        }) {
+            warn!(
+                error_kind = "notify_channel_send_failed",
+                retryable = true,
+                error = %err,
+                "Failed to notify clipboard change"
+            );
+            false
+        } else {
+            true
+        }
+    }
 }
 
 // `ClipboardHandler` adapter for platforms whose event loop is built on top of
@@ -486,8 +547,10 @@ impl ClipboardHandler for ClipboardWatcher {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::atomic::{AtomicU64, Ordering};
+
     use super::*;
-    use crate::clipboard::{FormatId, RepresentationId};
+    use crate::clipboard::{ClipboardChangeToken, FormatId, RepresentationId};
     use crate::clipboard::{MimeType, ObservedClipboardRepresentation};
 
     /// `local_clipboard` is unused on the `notify_with_snapshot` path that
@@ -507,9 +570,51 @@ mod tests {
         }
     }
 
+    struct TokenClipboard {
+        token: AtomicU64,
+        snapshot: SystemClipboardSnapshot,
+    }
+
+    impl SystemClipboard for TokenClipboard {
+        fn read_snapshot(&self) -> anyhow::Result<SystemClipboardSnapshot> {
+            Ok(self.snapshot.clone())
+        }
+
+        fn write_snapshot(&self, _snapshot: SystemClipboardSnapshot) -> anyhow::Result<()> {
+            Ok(())
+        }
+
+        fn change_token(&self) -> Option<ClipboardChangeToken> {
+            Some(ClipboardChangeToken::new(self.token.load(Ordering::SeqCst)))
+        }
+    }
+
     fn watcher() -> (ClipboardWatcher, tokio::sync::mpsc::Receiver<PlatformEvent>) {
         let (tx, rx) = tokio::sync::mpsc::channel(64);
         (ClipboardWatcher::new(Arc::new(StubClipboard), tx), rx)
+    }
+
+    #[tokio::test]
+    async fn watcher_event_carries_token_captured_during_notification() {
+        let clipboard = Arc::new(TokenClipboard {
+            token: AtomicU64::new(41),
+            snapshot: text("captured now"),
+        });
+        let (sender, mut receiver) = tokio::sync::mpsc::channel(1);
+        let mut watcher = ClipboardWatcher::new_passthrough(clipboard.clone(), sender);
+
+        watcher.notify_change();
+        clipboard.token.store(42, Ordering::SeqCst);
+
+        let PlatformEvent::ClipboardChanged {
+            snapshot,
+            change_token,
+        } = receiver.recv().await.unwrap();
+        assert_eq!(
+            snapshot.representations[0].expect_inline_bytes(),
+            b"captured now"
+        );
+        assert_eq!(change_token, Some(ClipboardChangeToken::new(41)));
     }
 
     /// Image snapshot of exactly `size` bytes filled with `fill`. Varying

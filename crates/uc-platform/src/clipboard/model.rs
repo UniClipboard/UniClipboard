@@ -289,6 +289,29 @@ pub struct SystemClipboardSnapshot {
     pub file_set_v1_component: Option<[u8; 32]>,
 }
 
+/// Platform clipboard change identity captured at the OS notification edge.
+///
+/// On Windows this wraps `GetClipboardSequenceNumber`. Other platforms may
+/// return `None` when they cannot provide an equivalent causal identity.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ClipboardChangeToken(u64);
+
+impl ClipboardChangeToken {
+    pub const fn new(value: u64) -> Self {
+        Self(value)
+    }
+
+    pub const fn get(self) -> u64 {
+        self.0
+    }
+}
+
+/// Causal identity produced by one successful system clipboard write.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SystemClipboardWriteReceipt {
+    pub change_token: Option<ClipboardChangeToken>,
+}
+
 impl SystemClipboardSnapshot {
     pub fn is_empty(&self) -> bool {
         self.representations.is_empty()
@@ -340,6 +363,22 @@ impl SystemClipboardSnapshot {
 pub trait SystemClipboard: Send + Sync {
     fn read_snapshot(&self) -> anyhow::Result<SystemClipboardSnapshot>;
     fn write_snapshot(&self, snapshot: SystemClipboardSnapshot) -> anyhow::Result<()>;
+
+    fn change_token(&self) -> Option<ClipboardChangeToken> {
+        None
+    }
+
+    fn write_snapshot_with_receipt(
+        &self,
+        snapshot: SystemClipboardSnapshot,
+    ) -> anyhow::Result<SystemClipboardWriteReceipt> {
+        let before = self.change_token();
+        self.write_snapshot(snapshot)?;
+        let after = self.change_token();
+        Ok(SystemClipboardWriteReceipt {
+            change_token: after.filter(|after| Some(*after) != before),
+        })
+    }
 }
 
 pub fn is_file_mime_or_format(mime: Option<&MimeType>, format_id: &FormatId) -> bool {

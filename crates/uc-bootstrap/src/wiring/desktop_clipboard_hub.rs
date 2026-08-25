@@ -1,21 +1,19 @@
 //! Shared Windows desktop clipboard hub for multi-space Engine hosts.
 
 use std::collections::VecDeque;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use uc_platform::clipboard::watcher::{ClipboardWatcher, PlatformEvent};
 use uc_platform::clipboard::{
-    build_event_loop, shutdown_channel, PlatformClipboardEventLoop, ShutdownTx, SystemClipboard,
-    SystemClipboardSnapshot,
+    build_event_loop, shutdown_channel, ClipboardChangeToken, PlatformClipboardEventLoop,
+    ShutdownTx, SystemClipboard, SystemClipboardSnapshot,
 };
 
 use crate::layer::platform::{create_desktop_system_clipboard, SystemClipboardWiring};
 use crate::wiring::error::{WiringError, WiringResult};
 
-const ECHO_GUARD_TTL: Duration = Duration::from_secs(5);
-const NEXT_CHANGE_FALLBACK_WINDOW: Duration = Duration::from_millis(750);
 const WATCHER_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(5);
 
 pub(crate) type EventLoopFactory =
@@ -34,9 +32,11 @@ struct DesktopClipboardHubInner {
     system_clipboard: Arc<dyn SystemClipboard>,
     changes_enabled: bool,
     watcher_taken: AtomicBool,
-    write_serialization: Mutex<()>,
+    causality_gate: Mutex<()>,
     echo_suppression: Mutex<EchoSuppression>,
     event_loop_factory: EventLoopFactory,
+    watcher_shutdown_timeout: Duration,
+    next_stage_id: AtomicU64,
 }
 
 /// A profile-local clipboard view backed by a shared [`DesktopClipboardHub`].
@@ -48,7 +48,24 @@ struct DesktopClipboardHubInner {
 #[derive(Clone)]
 pub struct DesktopClipboardProfileHandle {
     hub: DesktopClipboardHub,
-    pending_snapshot: Arc<Mutex<Option<SystemClipboardSnapshot>>>,
+    pending_snapshot: Arc<Mutex<Option<StagedSnapshot>>>,
+}
+
+struct StagedSnapshot {
+    id: u64,
+    snapshot: SystemClipboardSnapshot,
+}
+
+/// Transaction guard for one exact event-time snapshot staged to a profile.
+///
+/// Dropping or rolling back an uncompleted guard clears only its own stage. A
+/// successful clipboard read consumes the stage, after which `complete()`
+/// confirms the transaction.
+pub struct DesktopClipboardStageGuard {
+    hub: DesktopClipboardHub,
+    profile: DesktopClipboardProfileHandle,
+    stage_id: u64,
+    active: bool,
 }
 
 /// Create the process-wide Windows clipboard hub from the normal desktop
@@ -68,14 +85,30 @@ impl DesktopClipboardHub {
         changes_enabled: bool,
         event_loop_factory: EventLoopFactory,
     ) -> Self {
+        Self::from_parts_with_shutdown_timeout(
+            system_clipboard,
+            changes_enabled,
+            event_loop_factory,
+            WATCHER_SHUTDOWN_TIMEOUT,
+        )
+    }
+
+    fn from_parts_with_shutdown_timeout(
+        system_clipboard: Arc<dyn SystemClipboard>,
+        changes_enabled: bool,
+        event_loop_factory: EventLoopFactory,
+        watcher_shutdown_timeout: Duration,
+    ) -> Self {
         Self {
             inner: Arc::new(DesktopClipboardHubInner {
                 system_clipboard,
                 changes_enabled,
                 watcher_taken: AtomicBool::new(false),
-                write_serialization: Mutex::new(()),
+                causality_gate: Mutex::new(()),
                 echo_suppression: Mutex::new(EchoSuppression::default()),
                 event_loop_factory,
+                watcher_shutdown_timeout,
+                next_stage_id: AtomicU64::new(0),
             }),
         }
     }
@@ -93,14 +126,35 @@ impl DesktopClipboardHub {
         &self,
         profile: &DesktopClipboardProfileHandle,
         snapshot: SystemClipboardSnapshot,
-    ) -> WiringResult<()> {
-        if !Arc::ptr_eq(&self.inner, &profile.hub.inner) {
+    ) -> WiringResult<DesktopClipboardStageGuard> {
+        self.ensure_profile_belongs_to_hub(profile)?;
+        let mut pending = lock_unpoisoned(&profile.pending_snapshot);
+        if pending.is_some() {
             return Err(WiringError::ClipboardInit(
-                "clipboard profile handle belongs to a different hub".into(),
+                "clipboard profile already has an unconsumed staged snapshot".into(),
             ));
         }
-        *lock_unpoisoned(&profile.pending_snapshot) = Some(snapshot);
-        Ok(())
+        let stage_id = self.inner.next_stage_id.fetch_add(1, Ordering::Relaxed);
+        *pending = Some(StagedSnapshot {
+            id: stage_id,
+            snapshot,
+        });
+        drop(pending);
+        Ok(DesktopClipboardStageGuard {
+            hub: self.clone(),
+            profile: profile.clone(),
+            stage_id,
+            active: true,
+        })
+    }
+
+    /// Explicitly clear a profile's pending stage after an aborted actor step.
+    pub fn clear_staged_snapshot(
+        &self,
+        profile: &DesktopClipboardProfileHandle,
+    ) -> WiringResult<bool> {
+        self.ensure_profile_belongs_to_hub(profile)?;
+        Ok(lock_unpoisoned(&profile.pending_snapshot).take().is_some())
     }
 
     /// Take the process's single physical watcher stream.
@@ -122,32 +176,88 @@ impl DesktopClipboardHub {
         Ok(Some(DesktopClipboardHubChangeStream {
             hub: self.clone(),
             running: None,
+            lease: Some(DesktopClipboardWatcherLease {
+                inner: Arc::clone(&self.inner),
+            }),
         }))
     }
 
     fn write_snapshot(&self, snapshot: SystemClipboardSnapshot) -> anyhow::Result<()> {
-        let _write = lock_unpoisoned(&self.inner.write_serialization);
-        let now = Instant::now();
-        let mut suppression = lock_unpoisoned(&self.inner.echo_suppression);
-        let guard_id = suppression.arm(&snapshot, now);
-        match self.inner.system_clipboard.write_snapshot(snapshot) {
-            Ok(()) => Ok(()),
-            Err(error) => {
-                suppression.disarm(guard_id);
-                Err(error)
-            }
+        // This gate orders writes against watcher-event matching. The smaller
+        // echo-state mutex is deliberately acquired only after the OS write.
+        let _causality = lock_unpoisoned(&self.inner.causality_gate);
+        let receipt = self
+            .inner
+            .system_clipboard
+            .write_snapshot_with_receipt(snapshot)?;
+        if let Some(token) = receipt.change_token {
+            lock_unpoisoned(&self.inner.echo_suppression).arm(token);
+        }
+        Ok(())
+    }
+
+    fn should_suppress_watcher_event(&self, token: Option<ClipboardChangeToken>) -> bool {
+        let _causality = lock_unpoisoned(&self.inner.causality_gate);
+        lock_unpoisoned(&self.inner.echo_suppression).consume(token)
+    }
+
+    fn ensure_profile_belongs_to_hub(
+        &self,
+        profile: &DesktopClipboardProfileHandle,
+    ) -> WiringResult<()> {
+        if Arc::ptr_eq(&self.inner, &profile.hub.inner) {
+            Ok(())
+        } else {
+            Err(WiringError::ClipboardInit(
+                "clipboard profile handle belongs to a different hub".into(),
+            ))
         }
     }
 
-    fn should_suppress_watcher_snapshot(&self, snapshot: &SystemClipboardSnapshot) -> bool {
-        lock_unpoisoned(&self.inner.echo_suppression).consume(snapshot, Instant::now())
+    fn clear_stage_if_matches(&self, profile: &DesktopClipboardProfileHandle, stage_id: u64) {
+        let mut pending = lock_unpoisoned(&profile.pending_snapshot);
+        if pending.as_ref().is_some_and(|staged| staged.id == stage_id) {
+            pending.take();
+        }
+    }
+}
+
+impl DesktopClipboardStageGuard {
+    /// Confirm that the staged snapshot was consumed by the intended read.
+    pub fn complete(mut self) -> WiringResult<()> {
+        let still_pending = lock_unpoisoned(&self.profile.pending_snapshot)
+            .as_ref()
+            .is_some_and(|staged| staged.id == self.stage_id);
+        if still_pending {
+            return Err(WiringError::ClipboardInit(
+                "staged clipboard snapshot was not consumed".into(),
+            ));
+        }
+        self.active = false;
+        Ok(())
+    }
+
+    /// Abort this stage and clear it if it has not already been consumed.
+    pub fn rollback(mut self) {
+        self.hub
+            .clear_stage_if_matches(&self.profile, self.stage_id);
+        self.active = false;
+    }
+}
+
+impl Drop for DesktopClipboardStageGuard {
+    fn drop(&mut self) {
+        if self.active {
+            self.hub
+                .clear_stage_if_matches(&self.profile, self.stage_id);
+        }
     }
 }
 
 impl SystemClipboard for DesktopClipboardProfileHandle {
     fn read_snapshot(&self) -> anyhow::Result<SystemClipboardSnapshot> {
-        if let Some(snapshot) = lock_unpoisoned(&self.pending_snapshot).take() {
-            return Ok(snapshot);
+        if let Some(staged) = lock_unpoisoned(&self.pending_snapshot).take() {
+            return Ok(staged.snapshot);
         }
         self.hub.inner.system_clipboard.read_snapshot()
     }
@@ -161,6 +271,17 @@ impl SystemClipboard for DesktopClipboardProfileHandle {
 pub struct DesktopClipboardHubChangeStream {
     hub: DesktopClipboardHub,
     running: Option<RunningDesktopClipboardHubChanges>,
+    lease: Option<DesktopClipboardWatcherLease>,
+}
+
+struct DesktopClipboardWatcherLease {
+    inner: Arc<DesktopClipboardHubInner>,
+}
+
+impl Drop for DesktopClipboardWatcherLease {
+    fn drop(&mut self) {
+        self.inner.watcher_taken.store(false, Ordering::SeqCst);
+    }
 }
 
 struct RunningDesktopClipboardHubChanges {
@@ -174,12 +295,30 @@ impl DesktopClipboardHubChangeStream {
         if self.running.is_some() {
             return Ok(());
         }
-        let event_loop = (self.hub.inner.event_loop_factory)()
-            .map_err(|error| WiringError::ClipboardInit(error.to_string()))?;
+        if self.lease.is_none() {
+            return Err(WiringError::ClipboardInit(
+                "desktop clipboard watcher lease is no longer owned".into(),
+            ));
+        }
+        let event_loop = match (self.hub.inner.event_loop_factory)() {
+            Ok(event_loop) => event_loop,
+            Err(error) => {
+                self.lease.take();
+                return Err(WiringError::ClipboardInit(error.to_string()));
+            }
+        };
         let (sender, receiver) = tokio::sync::mpsc::channel(64);
-        let watcher = ClipboardWatcher::new(Arc::clone(&self.hub.inner.system_clipboard), sender);
+        let watcher =
+            ClipboardWatcher::new_passthrough(Arc::clone(&self.hub.inner.system_clipboard), sender);
         let (shutdown, shutdown_receiver) = shutdown_channel();
-        let join = tokio::task::spawn_blocking(move || event_loop.run(watcher, shutdown_receiver));
+        let lease = self
+            .lease
+            .take()
+            .expect("watcher lease checked before event-loop startup");
+        let join = tokio::task::spawn_blocking(move || {
+            let _lease = lease;
+            event_loop.run(watcher, shutdown_receiver)
+        });
         self.running = Some(RunningDesktopClipboardHubChanges {
             receiver,
             shutdown,
@@ -200,34 +339,49 @@ impl DesktopClipboardHubChangeStream {
                 None => return Ok(None),
             };
             match event {
-                Some(PlatformEvent::ClipboardChanged { snapshot }) if snapshot.is_empty() => {}
-                Some(PlatformEvent::ClipboardChanged { snapshot })
-                    if self.hub.should_suppress_watcher_snapshot(&snapshot) => {}
-                Some(PlatformEvent::ClipboardChanged { snapshot }) => return Ok(Some(snapshot)),
+                Some(PlatformEvent::ClipboardChanged { snapshot, .. }) if snapshot.is_empty() => {}
+                Some(PlatformEvent::ClipboardChanged { change_token, .. })
+                    if self.hub.should_suppress_watcher_event(change_token) => {}
+                Some(PlatformEvent::ClipboardChanged { snapshot, .. }) => {
+                    return Ok(Some(snapshot))
+                }
                 None => return Ok(None),
             }
         }
     }
 
     pub async fn shutdown(&mut self) -> WiringResult<()> {
-        let Some(running) = self.running.take() else {
+        let Some(running) = self.running.as_mut() else {
+            self.lease.take();
             return Ok(());
         };
         running.shutdown.signal();
-        match tokio::time::timeout(WATCHER_SHUTDOWN_TIMEOUT, running.join).await {
-            Ok(Ok(Ok(()))) => Ok(()),
-            Ok(Ok(Err(error))) => Err(WiringError::ClipboardInit(error.to_string())),
-            Ok(Err(error)) => Err(WiringError::ClipboardInit(error.to_string())),
-            Err(_) => Err(WiringError::ClipboardInit(
-                "desktop clipboard hub watcher shutdown timed out".into(),
-            )),
+        let (result, timed_out) =
+            match tokio::time::timeout(self.hub.inner.watcher_shutdown_timeout, &mut running.join)
+                .await
+            {
+                Ok(Ok(Ok(()))) => (Ok(()), false),
+                Ok(Ok(Err(error))) => (Err(WiringError::ClipboardInit(error.to_string())), false),
+                Ok(Err(error)) => (Err(WiringError::ClipboardInit(error.to_string())), false),
+                Err(_) => (
+                    Err(WiringError::ClipboardInit(
+                        "desktop clipboard hub watcher shutdown timed out".into(),
+                    )),
+                    true,
+                ),
+            };
+        if !timed_out {
+            self.running.take();
         }
+        result
     }
 }
 
 impl Drop for DesktopClipboardHubChangeStream {
     fn drop(&mut self) {
         if let Some(running) = self.running.as_ref() {
+            // The detached blocking task owns the lease and releases it only
+            // after the physical event loop actually exits.
             running.shutdown.signal();
         }
     }
@@ -235,80 +389,53 @@ impl Drop for DesktopClipboardHubChangeStream {
 
 #[derive(Default)]
 struct EchoSuppression {
-    next_id: u64,
-    guards: VecDeque<EchoGuard>,
-}
-
-struct EchoGuard {
-    id: u64,
-    content_key: Option<String>,
-    content_class: Option<String>,
-    fallback_until: Instant,
-    expires_at: Instant,
+    pending_tokens: VecDeque<ClipboardChangeToken>,
+    last_suppressed_token: Option<ClipboardChangeToken>,
 }
 
 impl EchoSuppression {
-    fn arm(&mut self, snapshot: &SystemClipboardSnapshot, now: Instant) -> u64 {
-        self.prune(now);
-        self.next_id = self.next_id.wrapping_add(1);
-        let content_key = snapshot.meaningful_origin_key();
-        let content_class = content_key
-            .as_deref()
-            .and_then(content_class)
-            .map(str::to_owned);
-        self.guards.push_back(EchoGuard {
-            id: self.next_id,
-            content_key,
-            content_class,
-            fallback_until: now + NEXT_CHANGE_FALLBACK_WINDOW,
-            expires_at: now + ECHO_GUARD_TTL,
-        });
-        self.next_id
-    }
-
-    fn disarm(&mut self, id: u64) {
-        if let Some(position) = self.guards.iter().position(|guard| guard.id == id) {
-            self.guards.remove(position);
+    fn arm(&mut self, token: ClipboardChangeToken) {
+        if !self.pending_tokens.contains(&token) {
+            self.pending_tokens.push_back(token);
         }
     }
 
-    fn consume(&mut self, snapshot: &SystemClipboardSnapshot, now: Instant) -> bool {
-        self.prune(now);
-        let observed_key = snapshot.meaningful_origin_key();
+    fn consume(&mut self, token: Option<ClipboardChangeToken>) -> bool {
+        let Some(token) = token else {
+            self.last_suppressed_token = None;
+            return false;
+        };
+        // One physical write may queue more than one Windows notification,
+        // all carrying the same sequence number. Consecutive repeats therefore
+        // remain suppressed until a different sequence reaches this FIFO.
+        if self.last_suppressed_token == Some(token) {
+            return true;
+        }
         if let Some(position) = self
-            .guards
+            .pending_tokens
             .iter()
-            .position(|guard| guard.content_key.is_some() && guard.content_key == observed_key)
+            .position(|candidate| *candidate == token)
         {
-            self.guards.remove(position);
+            self.pending_tokens.drain(..=position);
+            self.last_suppressed_token = Some(token);
             return true;
         }
 
-        let observed_class = observed_key.as_deref().and_then(content_class);
-        if let Some(position) = self.guards.iter().position(|guard| {
-            now <= guard.fallback_until
-                && (guard.content_key.is_none()
-                    || (allows_next_change_fallback(guard.content_class.as_deref())
-                        && (observed_key.is_none()
-                            || guard.content_class.as_deref() == observed_class)))
-        }) {
-            self.guards.remove(position);
-            return true;
-        }
+        self.last_suppressed_token = None;
+        self.pending_tokens
+            .retain(|candidate| windows_sequence_is_after(*candidate, token));
         false
     }
-
-    fn prune(&mut self, now: Instant) {
-        self.guards.retain(|guard| now <= guard.expires_at);
-    }
 }
 
-fn content_class(key: &str) -> Option<&str> {
-    key.split_once(':').map(|(class, _)| class)
-}
-
-fn allows_next_change_fallback(content_class: Option<&str>) -> bool {
-    matches!(content_class, Some("image" | "files"))
+fn windows_sequence_is_after(
+    candidate: ClipboardChangeToken,
+    observed: ClipboardChangeToken,
+) -> bool {
+    let candidate = candidate.get() as u32;
+    let observed = observed.get() as u32;
+    let distance = candidate.wrapping_sub(observed);
+    distance != 0 && distance < (1 << 31)
 }
 
 fn lock_unpoisoned<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
@@ -319,14 +446,15 @@ fn lock_unpoisoned<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+    use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
     use std::sync::{mpsc, Arc, Mutex};
     use std::thread;
 
     use uc_platform::clipboard::watcher::ClipboardWatcher;
     use uc_platform::clipboard::{
-        FormatId, MimeType, ObservedClipboardRepresentation, PlatformClipboardEventLoop,
-        RepresentationId, ShutdownRx, SystemClipboard, SystemClipboardSnapshot,
+        ClipboardChangeToken, FormatId, MimeType, ObservedClipboardRepresentation,
+        PlatformClipboardEventLoop, RepresentationId, ShutdownRx, SystemClipboard,
+        SystemClipboardSnapshot,
     };
 
     use super::*;
@@ -359,13 +487,31 @@ mod tests {
         }
     }
 
+    fn file_snapshot(ts_ms: i64, path: &str) -> SystemClipboardSnapshot {
+        SystemClipboardSnapshot {
+            ts_ms,
+            representations: vec![ObservedClipboardRepresentation::new(
+                RepresentationId::new(),
+                FormatId::from("files"),
+                Some(MimeType("text/uri-list".into())),
+                path.as_bytes().to_vec(),
+            )],
+            file_content_digests: Vec::new(),
+            file_set_v1_component: None,
+        }
+    }
+
     fn snapshot_text(snapshot: &SystemClipboardSnapshot) -> &[u8] {
         snapshot.representations[0].expect_inline_bytes()
     }
 
+    fn token(value: u64) -> Option<ClipboardChangeToken> {
+        Some(ClipboardChangeToken::new(value))
+    }
+
     struct ScriptedEventLoop {
         runs: Arc<AtomicUsize>,
-        events: Vec<SystemClipboardSnapshot>,
+        events: Vec<(SystemClipboardSnapshot, Option<ClipboardChangeToken>)>,
     }
 
     impl PlatformClipboardEventLoop for ScriptedEventLoop {
@@ -375,8 +521,8 @@ mod tests {
             shutdown_rx: ShutdownRx,
         ) -> anyhow::Result<()> {
             self.runs.fetch_add(1, Ordering::SeqCst);
-            for snapshot in self.events {
-                handler.notify_with_snapshot(snapshot);
+            for (snapshot, change_token) in self.events {
+                handler.notify_with_snapshot_and_token(snapshot, change_token);
             }
             shutdown_rx.wait();
             Ok(())
@@ -388,12 +534,14 @@ mod tests {
         current: Mutex<Option<SystemClipboardSnapshot>>,
         writes: Mutex<Vec<SystemClipboardSnapshot>>,
         fail_next_write: AtomicBool,
+        sequence: AtomicU64,
     }
 
     impl StatefulClipboard {
         fn with_snapshot(snapshot: SystemClipboardSnapshot) -> Self {
             Self {
                 current: Mutex::new(Some(snapshot)),
+                sequence: AtomicU64::new(100),
                 ..Self::default()
             }
         }
@@ -420,14 +568,19 @@ mod tests {
                 .lock()
                 .unwrap_or_else(|poisoned| poisoned.into_inner())
                 .push(snapshot);
+            self.sequence.fetch_add(1, Ordering::SeqCst);
             Ok(())
+        }
+
+        fn change_token(&self) -> Option<ClipboardChangeToken> {
+            token(self.sequence.load(Ordering::SeqCst))
         }
     }
 
     fn scripted_hub(
         clipboard: Arc<dyn SystemClipboard>,
         runs: Arc<AtomicUsize>,
-        events: Vec<SystemClipboardSnapshot>,
+        events: Vec<(SystemClipboardSnapshot, Option<ClipboardChangeToken>)>,
     ) -> DesktopClipboardHub {
         DesktopClipboardHub::from_parts(
             clipboard,
@@ -447,7 +600,7 @@ mod tests {
         let local = text_snapshot(1, "local");
         let clipboard: Arc<dyn SystemClipboard> =
             Arc::new(StatefulClipboard::with_snapshot(local.clone()));
-        let hub = scripted_hub(clipboard, Arc::clone(&runs), vec![local]);
+        let hub = scripted_hub(clipboard, Arc::clone(&runs), vec![(local, token(200))]);
         let _profile_a = hub.profile_handle();
         let _profile_b = hub.profile_handle();
 
@@ -459,6 +612,84 @@ mod tests {
         assert_eq!(snapshot_text(&observed), b"local");
         assert_eq!(runs.load(Ordering::SeqCst), 1);
         changes.shutdown().await.unwrap();
+        assert!(hub.take_change_stream().unwrap().is_some());
+    }
+
+    #[test]
+    fn dropping_unstarted_watcher_lease_allows_reacquire() {
+        let clipboard: Arc<dyn SystemClipboard> =
+            Arc::new(StatefulClipboard::with_snapshot(text_snapshot(1, "local")));
+        let hub = DesktopClipboardHub::from_parts(
+            clipboard,
+            true,
+            Arc::new(|| anyhow::bail!("watcher must not start")),
+        );
+
+        let changes = hub.take_change_stream().unwrap().unwrap();
+        drop(changes);
+
+        assert!(hub.take_change_stream().unwrap().is_some());
+    }
+
+    #[tokio::test]
+    async fn watcher_factory_failure_releases_lease_for_retry() {
+        let clipboard: Arc<dyn SystemClipboard> =
+            Arc::new(StatefulClipboard::with_snapshot(text_snapshot(1, "local")));
+        let hub = DesktopClipboardHub::from_parts(
+            clipboard,
+            true,
+            Arc::new(|| anyhow::bail!("injected factory failure")),
+        );
+        let mut changes = hub.take_change_stream().unwrap().unwrap();
+
+        assert!(changes.next().await.is_err());
+        assert!(hub.take_change_stream().unwrap().is_some());
+    }
+
+    struct DelayedShutdownEventLoop {
+        release: mpsc::Receiver<()>,
+    }
+
+    impl PlatformClipboardEventLoop for DelayedShutdownEventLoop {
+        fn run(
+            self: Box<Self>,
+            _handler: ClipboardWatcher,
+            shutdown_rx: ShutdownRx,
+        ) -> anyhow::Result<()> {
+            shutdown_rx.wait();
+            self.release.recv().unwrap();
+            Ok(())
+        }
+    }
+
+    #[tokio::test]
+    async fn shutdown_timeout_retains_join_and_lease_for_retry() {
+        let (release_tx, release_rx) = mpsc::channel();
+        let release_rx = Arc::new(Mutex::new(Some(release_rx)));
+        let clipboard: Arc<dyn SystemClipboard> =
+            Arc::new(StatefulClipboard::with_snapshot(text_snapshot(1, "local")));
+        let hub = DesktopClipboardHub::from_parts_with_shutdown_timeout(
+            clipboard,
+            true,
+            Arc::new(move || {
+                let release = release_rx
+                    .lock()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner())
+                    .take()
+                    .ok_or_else(|| anyhow::anyhow!("event loop already built"))?;
+                Ok(Box::new(DelayedShutdownEventLoop { release }))
+            }),
+            Duration::from_millis(20),
+        );
+        let mut changes = hub.take_change_stream().unwrap().unwrap();
+        changes.start_if_needed().unwrap();
+
+        assert!(changes.shutdown().await.is_err());
+        assert!(hub.take_change_stream().unwrap().is_none());
+
+        release_tx.send(()).unwrap();
+        changes.shutdown().await.unwrap();
+        assert!(hub.take_change_stream().unwrap().is_some());
     }
 
     #[tokio::test]
@@ -470,7 +701,11 @@ mod tests {
         let hub = scripted_hub(
             clipboard.clone(),
             runs,
-            vec![echo.clone(), user_copy.clone()],
+            vec![
+                (echo.clone(), token(101)),
+                (echo.clone(), token(101)),
+                (user_copy.clone(), token(102)),
+            ],
         );
         let _profile_a = hub.profile_handle();
         let profile_b = hub.profile_handle();
@@ -489,7 +724,11 @@ mod tests {
         let remote_write = text_snapshot(12, "remote text whose echo was deduped");
         let user_copy = text_snapshot(13, "different real user copy");
         let clipboard = Arc::new(StatefulClipboard::with_snapshot(text_snapshot(0, "old")));
-        let hub = scripted_hub(clipboard, Arc::new(AtomicUsize::new(0)), vec![user_copy]);
+        let hub = scripted_hub(
+            clipboard,
+            Arc::new(AtomicUsize::new(0)),
+            vec![(user_copy, token(102))],
+        );
         let profile = hub.profile_handle();
 
         profile.write_snapshot(remote_write).unwrap();
@@ -504,30 +743,90 @@ mod tests {
         changes.shutdown().await.unwrap();
     }
 
-    #[test]
-    fn reencoded_image_uses_one_next_change_fallback_only() {
-        let now = Instant::now();
-        let mut suppression = EchoSuppression::default();
-        suppression.arm(&image_snapshot(1, b"programmatic png bytes"), now);
+    #[tokio::test]
+    async fn only_matching_write_token_is_suppressed_for_repeated_identical_content() {
+        let same = text_snapshot(12, "same bytes every time");
+        let clipboard = Arc::new(StatefulClipboard::with_snapshot(text_snapshot(0, "old")));
+        let hub = scripted_hub(
+            clipboard,
+            Arc::new(AtomicUsize::new(0)),
+            vec![
+                (same.clone(), token(99)),
+                (same.clone(), token(101)),
+                (same.clone(), token(102)),
+            ],
+        );
+        let profile = hub.profile_handle();
+        profile.write_snapshot(same).unwrap();
+        let mut changes = hub.take_change_stream().unwrap().unwrap();
 
-        assert!(suppression.consume(
-            &image_snapshot(2, b"same image reencoded by Windows"),
-            now + Duration::from_millis(100)
-        ));
-        assert!(!suppression.consume(
-            &image_snapshot(3, b"later real image copy"),
-            now + Duration::from_millis(200)
-        ));
+        let queued_before_write = changes.next().await.unwrap().unwrap();
+        assert_eq!(
+            snapshot_text(&queued_before_write),
+            b"same bytes every time"
+        );
+        let copied_again = changes.next().await.unwrap().unwrap();
+        assert_eq!(snapshot_text(&copied_again), b"same bytes every time");
+        changes.shutdown().await.unwrap();
     }
 
     #[test]
-    fn expired_echo_guard_never_suppresses_a_later_matching_copy() {
-        let now = Instant::now();
-        let snapshot = text_snapshot(1, "same content later");
+    fn all_pending_write_tokens_remain_causally_suppressible() {
         let mut suppression = EchoSuppression::default();
-        suppression.arm(&snapshot, now);
+        for value in 1..=256 {
+            suppression.arm(ClipboardChangeToken::new(value));
+        }
 
-        assert!(!suppression.consume(&snapshot, now + ECHO_GUARD_TTL + Duration::from_millis(1)));
+        for value in 1..=256 {
+            assert!(suppression.consume(token(value)));
+        }
+        assert!(!suppression.consume(token(257)));
+    }
+
+    #[tokio::test]
+    async fn missing_image_echo_never_suppresses_different_real_image() {
+        let remote_write = image_snapshot(12, b"remote image");
+        let user_copy = image_snapshot(13, b"different user image");
+        let clipboard = Arc::new(StatefulClipboard::with_snapshot(text_snapshot(0, "old")));
+        let hub = scripted_hub(
+            clipboard,
+            Arc::new(AtomicUsize::new(0)),
+            vec![(user_copy, token(102))],
+        );
+        let profile = hub.profile_handle();
+        profile.write_snapshot(remote_write).unwrap();
+        let mut changes = hub.take_change_stream().unwrap().unwrap();
+
+        let observed = tokio::time::timeout(Duration::from_secs(1), changes.next())
+            .await
+            .expect("different real image must not be swallowed")
+            .unwrap()
+            .unwrap();
+        assert_eq!(snapshot_text(&observed), b"different user image");
+        changes.shutdown().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn missing_file_echo_never_suppresses_different_real_file_copy() {
+        let remote_write = file_snapshot(14, "file:///C:/remote.txt");
+        let user_copy = file_snapshot(15, "file:///C:/user.txt");
+        let clipboard = Arc::new(StatefulClipboard::with_snapshot(text_snapshot(0, "old")));
+        let hub = scripted_hub(
+            clipboard,
+            Arc::new(AtomicUsize::new(0)),
+            vec![(user_copy, token(102))],
+        );
+        let profile = hub.profile_handle();
+        profile.write_snapshot(remote_write).unwrap();
+        let mut changes = hub.take_change_stream().unwrap().unwrap();
+
+        let observed = tokio::time::timeout(Duration::from_secs(1), changes.next())
+            .await
+            .expect("different real file copy must not be swallowed")
+            .unwrap()
+            .unwrap();
+        assert_eq!(snapshot_text(&observed), b"file:///C:/user.txt");
+        changes.shutdown().await.unwrap();
     }
 
     #[tokio::test]
@@ -538,7 +837,7 @@ mod tests {
         let hub = scripted_hub(
             clipboard.clone(),
             Arc::new(AtomicUsize::new(0)),
-            vec![failed.clone()],
+            vec![(failed.clone(), token(100))],
         );
         let profile = hub.profile_handle();
 
@@ -646,7 +945,7 @@ mod tests {
         let profile_a = hub.profile_handle();
         let profile_b = hub.profile_handle();
 
-        hub.stage_snapshot(&profile_a, staged).unwrap();
+        let stage = hub.stage_snapshot(&profile_a, staged).unwrap();
 
         assert_eq!(
             snapshot_text(&profile_a.read_snapshot().unwrap()),
@@ -656,5 +955,59 @@ mod tests {
             snapshot_text(&profile_b.read_snapshot().unwrap()),
             b"fresh OS value"
         );
+        stage.complete().unwrap();
+    }
+
+    #[test]
+    fn second_stage_fails_closed_instead_of_overwriting_unconsumed_snapshot() {
+        let clipboard: Arc<dyn SystemClipboard> = Arc::new(StatefulClipboard::with_snapshot(
+            text_snapshot(50, "physical"),
+        ));
+        let hub = DesktopClipboardHub::from_parts(
+            clipboard,
+            false,
+            Arc::new(|| anyhow::bail!("watcher must not start")),
+        );
+        let profile = hub.profile_handle();
+
+        let first = hub
+            .stage_snapshot(&profile, text_snapshot(51, "first staged"))
+            .unwrap();
+        assert!(hub
+            .stage_snapshot(&profile, text_snapshot(52, "must be rejected"))
+            .is_err());
+
+        assert_eq!(
+            snapshot_text(&profile.read_snapshot().unwrap()),
+            b"first staged"
+        );
+        first.complete().unwrap();
+    }
+
+    #[test]
+    fn failed_stage_transaction_can_rollback_and_retry() {
+        let clipboard: Arc<dyn SystemClipboard> = Arc::new(StatefulClipboard::with_snapshot(
+            text_snapshot(60, "physical"),
+        ));
+        let hub = DesktopClipboardHub::from_parts(
+            clipboard,
+            false,
+            Arc::new(|| anyhow::bail!("watcher must not start")),
+        );
+        let profile = hub.profile_handle();
+
+        let failed = hub
+            .stage_snapshot(&profile, text_snapshot(61, "failed observe"))
+            .unwrap();
+        failed.rollback();
+
+        let retry = hub
+            .stage_snapshot(&profile, text_snapshot(62, "retry exact"))
+            .unwrap();
+        assert_eq!(
+            snapshot_text(&profile.read_snapshot().unwrap()),
+            b"retry exact"
+        );
+        retry.complete().unwrap();
     }
 }

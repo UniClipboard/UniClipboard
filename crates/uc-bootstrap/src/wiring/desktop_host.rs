@@ -426,8 +426,8 @@ impl HostClipboardChangeStream for DesktopClipboardChanges {
                 None => return Ok(HostClipboardChange::Closed),
             };
             match event {
-                Some(PlatformEvent::ClipboardChanged { snapshot }) if snapshot.is_empty() => {}
-                Some(PlatformEvent::ClipboardChanged { snapshot }) => {
+                Some(PlatformEvent::ClipboardChanged { snapshot, .. }) if snapshot.is_empty() => {}
+                Some(PlatformEvent::ClipboardChanged { snapshot, .. }) => {
                     *self.pending_snapshots() = Some(snapshot);
                     return Ok(HostClipboardChange::Changed);
                 }
@@ -760,21 +760,22 @@ mod tests {
             Arc::new(|| anyhow::bail!("profile host must not start a watcher")),
         );
         let profile = hub.profile_handle();
-        hub.stage_snapshot(
-            &profile,
-            SystemClipboardSnapshot {
-                ts_ms: 9,
-                representations: vec![ObservedClipboardRepresentation::new(
-                    RepresentationId::new(),
-                    FormatId::from("text"),
-                    Some(uc_platform::clipboard::MimeType("text/plain".into())),
-                    b"staged exact".to_vec(),
-                )],
-                file_content_digests: Vec::new(),
-                file_set_v1_component: None,
-            },
-        )
-        .unwrap();
+        let stage = hub
+            .stage_snapshot(
+                &profile,
+                SystemClipboardSnapshot {
+                    ts_ms: 9,
+                    representations: vec![ObservedClipboardRepresentation::new(
+                        RepresentationId::new(),
+                        FormatId::from("text"),
+                        Some(uc_platform::clipboard::MimeType("text/plain".into())),
+                        b"staged exact".to_vec(),
+                    )],
+                    file_content_digests: Vec::new(),
+                    file_set_v1_component: None,
+                },
+            )
+            .unwrap();
 
         let host = prepare_desktop_engine_host_for_profile_with_hub(config, profile).unwrap();
         let (_, capabilities) = host.into_engine_start();
@@ -784,6 +785,7 @@ mod tests {
             panic!("expected inline clipboard representation");
         };
         assert_eq!(bytes, b"staged exact");
+        stage.complete().unwrap();
         capabilities
             .clipboard()
             .write(HostClipboardSnapshot {

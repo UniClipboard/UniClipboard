@@ -1,8 +1,8 @@
 use super::super::cf_html::strip_cf_html_wrapper;
 use super::super::common::CommonClipboardImpl;
 use super::super::payload::rep_bytes;
-use crate::clipboard::RepresentationId;
 use crate::clipboard::SystemClipboard;
+use crate::clipboard::{ClipboardChangeToken, RepresentationId};
 use crate::clipboard::{
     ImageKind, MimeClass, MimeType, ObservedClipboardRepresentation, SystemClipboardSnapshot,
 };
@@ -956,6 +956,11 @@ impl SystemClipboard for WindowsClipboard {
             info!("Wrote clipboard snapshot to system");
             Ok(())
         })
+    }
+
+    fn change_token(&self) -> Option<ClipboardChangeToken> {
+        clipboard_win::raw::seq_num()
+            .map(|sequence| ClipboardChangeToken::new(u64::from(sequence.get())))
     }
 }
 

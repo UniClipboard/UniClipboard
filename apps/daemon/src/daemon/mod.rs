@@ -18,5 +18,7 @@ pub mod spaces_axum;
 pub mod spaces_http;
 pub mod startup_recovery;
 pub mod tokio_runtime;
+#[cfg(target_os = "windows")]
+pub mod windows_space_authority;
 
 pub use handle::DaemonHandle;

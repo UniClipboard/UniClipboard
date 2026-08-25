@@ -1,11 +1,11 @@
 import { configureStore } from '@reduxjs/toolkit'
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Provider } from 'react-redux'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { JoinSpaceProfileRequest, SpaceProfileSummary } from '@/api/daemon/spaces'
 import SpaceSelector from '@/components/spaces/SpaceSelector'
-import spacesReducer, { joinSpace } from '@/store/spacesSlice'
+import spacesReducer, { fetchSpaces, joinSpace } from '@/store/spacesSlice'
 
 const listSpacesApi = vi.hoisted(() => vi.fn())
 const joinSpaceProfileApi = vi.hoisted(() => vi.fn())
@@ -65,6 +65,12 @@ describe('SpaceSelector', () => {
     listSpacesApi.mockReset()
     joinSpaceProfileApi.mockReset()
     setActiveSendSpaceApi.mockReset()
+    document.elementFromPoint = vi.fn(() => document.body)
+  })
+
+  afterEach(async () => {
+    cleanup()
+    await new Promise(resolve => setTimeout(resolve, 60))
   })
 
   it('lists every space with display-name fallback and runtime/incoming states', async () => {
@@ -120,6 +126,29 @@ describe('SpaceSelector', () => {
 
     expect(screen.getByRole('listitem', { name: 'Work' })).toBeInTheDocument()
     expect(screen.getByRole('listitem', { name: 'Family' })).toBeInTheDocument()
+  })
+
+  it('shows a newer mutation error instead of a stale list error', async () => {
+    const first = makeSpace('a', { displayName: 'Work', isActiveSend: true })
+    const { store } = renderSelector([first])
+
+    await waitFor(() => expect(listSpacesApi).toHaveBeenCalledOnce())
+    listSpacesApi.mockRejectedValue(new Error('daemon unavailable'))
+    await act(async () => {
+      await store.dispatch(fetchSpaces())
+    })
+    expect(screen.getByRole('alert')).toHaveTextContent("Couldn't load spaces")
+
+    joinSpaceProfileApi.mockRejectedValue(new Error('invitation rejected'))
+    await act(async () => {
+      await store.dispatch(
+        joinSpace({ code: 'ABCD-1234', passphrase: 'correct horse battery staple' })
+      )
+    })
+
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      "Couldn't join the space. Check the invitation and passphrase, then try again."
+    )
   })
 
   it('shows one profile fault only on that space', () => {

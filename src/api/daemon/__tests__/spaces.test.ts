@@ -56,7 +56,7 @@ describe('spaces daemon API', () => {
       deviceName: 'Office PC',
     })
     await joinSpaceProfile({
-      code: 'ABCD-1234',
+      code: 'abcd1234',
       passphrase: 'correct horse battery staple',
       deviceName: null,
     })

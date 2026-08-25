@@ -60,11 +60,11 @@ async function mutateThenRefresh(
   return message ? { message, items } : { items: items! }
 }
 
-let activeSendQueue: Promise<void> = Promise.resolve()
+let authorityQueue: Promise<void> = Promise.resolve()
 
-function enqueueActiveSend<T>(operation: () => Promise<T>): Promise<T> {
-  const result = activeSendQueue.then(operation, operation)
-  activeSendQueue = result.then(
+function enqueueAuthority<T>(operation: () => Promise<T>): Promise<T> {
+  const result = authorityQueue.then(operation, operation)
+  authorityQueue = result.then(
     () => undefined,
     () => undefined
   )
@@ -75,7 +75,7 @@ export const fetchSpaces = createAsyncThunk<SpaceProfileSummary[], void, { rejec
   'spaces/fetch',
   async (_, { rejectWithValue }) => {
     try {
-      return await listSpaces()
+      return await enqueueAuthority(() => listSpaces())
     } catch {
       return rejectWithValue('spaces.errors.load')
     }
@@ -87,7 +87,9 @@ export const createSpace = createAsyncThunk<
   CreateSpaceProfileRequest,
   { rejectValue: MutationFailure }
 >('spaces/create', async (request, { rejectWithValue }) => {
-  const result = await mutateThenRefresh(() => createSpaceProfile(request), 'spaces.errors.create')
+  const result = await enqueueAuthority(() =>
+    mutateThenRefresh(() => createSpaceProfile(request), 'spaces.errors.create')
+  )
   return 'message' in result ? rejectWithValue(result) : result
 })
 
@@ -96,7 +98,9 @@ export const joinSpace = createAsyncThunk<
   JoinSpaceProfileRequest,
   { rejectValue: MutationFailure }
 >('spaces/join', async (request, { rejectWithValue }) => {
-  const result = await mutateThenRefresh(() => joinSpaceProfile(request), 'spaces.errors.join')
+  const result = await enqueueAuthority(() =>
+    mutateThenRefresh(() => joinSpaceProfile(request), 'spaces.errors.join')
+  )
   return 'message' in result ? rejectWithValue(result) : result
 })
 
@@ -105,7 +109,7 @@ export const selectActiveSendSpace = createAsyncThunk<
   string,
   { rejectValue: MutationFailure }
 >('spaces/selectActiveSend', async (profileId, { rejectWithValue }) => {
-  const result = await enqueueActiveSend(() =>
+  const result = await enqueueAuthority(() =>
     mutateThenRefresh(() => setActiveSendSpace(profileId), 'spaces.errors.activeSend')
   )
   return 'message' in result ? rejectWithValue(result) : result
@@ -116,9 +120,8 @@ export const removeSpace = createAsyncThunk<
   string,
   { rejectValue: MutationFailure }
 >('spaces/remove', async (profileId, { rejectWithValue }) => {
-  const result = await mutateThenRefresh(
-    () => deleteSpaceProfile(profileId),
-    'spaces.errors.remove'
+  const result = await enqueueAuthority(() =>
+    mutateThenRefresh(() => deleteSpaceProfile(profileId), 'spaces.errors.remove')
   )
   return 'message' in result ? rejectWithValue(result) : result
 })
@@ -153,10 +156,14 @@ const spacesSlice = createSlice({
       })
       .addCase(createSpace.fulfilled, (state, action) => {
         state.items = action.payload.items
+        state.listError = null
         state.mutationError = null
       })
       .addCase(createSpace.rejected, (state, action) => {
-        if (action.payload?.items) state.items = action.payload.items
+        if (action.payload?.items) {
+          state.items = action.payload.items
+          state.listError = null
+        }
         state.mutationError = action.payload?.message ?? 'spaces.errors.create'
       })
 
@@ -166,10 +173,14 @@ const spacesSlice = createSlice({
       })
       .addCase(joinSpace.fulfilled, (state, action) => {
         state.items = action.payload.items
+        state.listError = null
         state.mutationError = null
       })
       .addCase(joinSpace.rejected, (state, action) => {
-        if (action.payload?.items) state.items = action.payload.items
+        if (action.payload?.items) {
+          state.items = action.payload.items
+          state.listError = null
+        }
         state.mutationError = action.payload?.message ?? 'spaces.errors.join'
       })
 
@@ -180,15 +191,19 @@ const spacesSlice = createSlice({
         state.activeSendError = null
       })
       .addCase(selectActiveSendSpace.fulfilled, (state, action) => {
-        state.items = action.payload.items
         if (state.activeSendRequestId !== action.meta.requestId) return
+        state.items = action.payload.items
+        state.listError = null
         state.activeSendPendingProfileId = null
         state.activeSendRequestId = null
         state.activeSendError = null
       })
       .addCase(selectActiveSendSpace.rejected, (state, action) => {
-        if (action.payload?.items) state.items = action.payload.items
         if (state.activeSendRequestId !== action.meta.requestId) return
+        if (action.payload?.items) {
+          state.items = action.payload.items
+          state.listError = null
+        }
         state.activeSendPendingProfileId = null
         state.activeSendRequestId = null
         state.activeSendError = action.payload?.message ?? 'spaces.errors.activeSend'
@@ -200,10 +215,14 @@ const spacesSlice = createSlice({
       })
       .addCase(removeSpace.fulfilled, (state, action) => {
         state.items = action.payload.items
+        state.listError = null
         state.mutationError = null
       })
       .addCase(removeSpace.rejected, (state, action) => {
-        if (action.payload?.items) state.items = action.payload.items
+        if (action.payload?.items) {
+          state.items = action.payload.items
+          state.listError = null
+        }
         state.mutationError = action.payload?.message ?? 'spaces.errors.remove'
       })
   },

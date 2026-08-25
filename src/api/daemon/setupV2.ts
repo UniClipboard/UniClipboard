@@ -22,6 +22,7 @@ import type {
   RedeemRequest as RedeemRequestDto,
   SwitchSpaceRequest as SwitchSpaceRequestDto,
 } from '@/api/generated/types.gen'
+import { normalizeInvitationCode } from '@/components/invitation-code-utils'
 import { daemonClient } from './client'
 import { DaemonApiError } from './errors'
 
@@ -416,19 +417,6 @@ export async function issuePairingInvitation(): Promise<IssueInvitationResponse>
   } catch (err) {
     throw classifyIssueError(err)
   }
-}
-
-/**
- * Backend invitation codes are formatted as `XXXX-XXXX` (8 alphanumerics +
- * a hyphen separator) and the rendezvous server compares them as-is — no
- * normalization on the server side. The frontend OTP input strips the
- * hyphen so callers may hand us a bare 8-char code; rebuild the canonical
- * form here so all redeem paths behave identically.
- */
-function normalizeInvitationCode(raw: string): string {
-  const clean = raw.toUpperCase().replace(/[^A-Z0-9]/g, '')
-  if (clean.length !== 8) return raw
-  return `${clean.slice(0, 4)}-${clean.slice(4)}`
 }
 
 export async function redeemInvitation(body: RedeemRequest): Promise<RedeemResponse> {

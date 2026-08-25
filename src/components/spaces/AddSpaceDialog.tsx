@@ -1,5 +1,10 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import {
+  isInvitationCodeComplete,
+  normalizeInvitationCode,
+} from '@/components/invitation-code-utils'
+import { InvitationCodeInput } from '@/components/InvitationCodeInput'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -42,12 +47,11 @@ function AddSpaceDialogInner({ open, onOpenChange }: AddSpaceDialogProps) {
 
   const passphrasesMismatch =
     mode === 'create' && passphraseConfirm.length > 0 && passphrase !== passphraseConfirm
+  const codeComplete = isInvitationCodeComplete(code)
   const canSubmit =
     !submitting &&
     passphrase.length > 0 &&
-    (mode === 'join'
-      ? code.trim().length > 0
-      : passphraseConfirm.length > 0 && !passphrasesMismatch)
+    (mode === 'join' ? codeComplete : passphraseConfirm.length > 0 && !passphrasesMismatch)
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -58,7 +62,7 @@ function AddSpaceDialogInner({ open, onOpenChange }: AddSpaceDialogProps) {
       if (mode === 'join') {
         await dispatch(
           joinSpace({
-            code: code.trim(),
+            code: normalizeInvitationCode(code),
             passphrase,
             deviceName: normalizedDeviceName,
           })
@@ -112,10 +116,10 @@ function AddSpaceDialogInner({ open, onOpenChange }: AddSpaceDialogProps) {
           {mode === 'join' ? (
             <div className="space-y-2">
               <Label htmlFor="add-space-code">{t('spaces.dialog.code')}</Label>
-              <Input
+              <InvitationCodeInput
                 id="add-space-code"
                 value={code}
-                onChange={event => setCode(event.target.value)}
+                onChange={setCode}
                 autoComplete="one-time-code"
                 autoFocus
               />

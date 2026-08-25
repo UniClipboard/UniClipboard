@@ -1,8 +1,8 @@
 import { configureStore } from '@reduxjs/toolkit'
-import { render, screen, waitFor } from '@testing-library/react'
+import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Provider } from 'react-redux'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { SpaceProfileSummary } from '@/api/daemon/spaces'
 import AddSpaceDialog from '@/components/spaces/AddSpaceDialog'
 import i18n from '@/i18n'
@@ -56,27 +56,50 @@ describe('AddSpaceDialog', () => {
     listSpacesApi.mockReset()
     createSpaceProfileApi.mockReset()
     joinSpaceProfileApi.mockReset()
+    document.elementFromPoint = vi.fn(() => document.body)
     await i18n.changeLanguage('en-US')
   })
 
-  it('joins a second space through the multi-space thunk and closes after reconciliation', async () => {
+  afterEach(async () => {
+    cleanup()
+    await new Promise(resolve => setTimeout(resolve, 60))
+  })
+
+  it.each([
+    ['12345678', '1234-5678'],
+    ['ABCD-1234', 'ABCD-1234'],
+  ])(
+    'normalizes invitation input %s before joining and closes after reconciliation',
+    async (enteredCode, expectedCode) => {
+      const user = userEvent.setup()
+      joinSpaceProfileApi.mockResolvedValue(joinedSpace)
+      listSpacesApi.mockResolvedValue([joinedSpace])
+      const { onOpenChange } = renderDialog()
+
+      await user.type(screen.getByRole('textbox', { name: 'Invitation code' }), enteredCode)
+      await user.type(screen.getByLabelText('Space passphrase'), 'correct horse')
+      await user.type(screen.getByLabelText('Device name (optional)'), 'Office PC')
+      await user.click(screen.getByRole('button', { name: 'Join space' }))
+
+      expect(joinSpaceProfileApi).toHaveBeenCalledWith({
+        code: expectedCode,
+        passphrase: 'correct horse',
+        deviceName: 'Office PC',
+      })
+      expect(listSpacesApi).toHaveBeenCalledOnce()
+      expect(onOpenChange).toHaveBeenCalledWith(false)
+    }
+  )
+
+  it('keeps join disabled until the invitation contains exactly eight alphanumerics', async () => {
     const user = userEvent.setup()
-    joinSpaceProfileApi.mockResolvedValue(joinedSpace)
-    listSpacesApi.mockResolvedValue([joinedSpace])
-    const { onOpenChange } = renderDialog()
+    renderDialog()
 
-    await user.type(screen.getByRole('textbox', { name: 'Invitation code' }), '12345678')
+    await user.type(screen.getByRole('textbox', { name: 'Invitation code' }), 'ABC-123')
     await user.type(screen.getByLabelText('Space passphrase'), 'correct horse')
-    await user.type(screen.getByLabelText('Device name (optional)'), 'Office PC')
-    await user.click(screen.getByRole('button', { name: 'Join space' }))
 
-    expect(joinSpaceProfileApi).toHaveBeenCalledWith({
-      code: '12345678',
-      passphrase: 'correct horse',
-      deviceName: 'Office PC',
-    })
-    expect(listSpacesApi).toHaveBeenCalledOnce()
-    expect(onOpenChange).toHaveBeenCalledWith(false)
+    expect(screen.getByRole('button', { name: 'Join space' })).toBeDisabled()
+    expect(joinSpaceProfileApi).not.toHaveBeenCalled()
   })
 
   it('creates a space only when both passphrase fields match', async () => {

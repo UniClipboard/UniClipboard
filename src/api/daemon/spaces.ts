@@ -1,3 +1,4 @@
+import { normalizeInvitationCode } from '@/components/invitation-code-utils'
 import { daemonClient } from './client'
 import { DaemonApiError, DaemonErrorCode } from './errors'
 
@@ -160,7 +161,13 @@ export async function joinSpaceProfile(
   body: JoinSpaceProfileRequest
 ): Promise<SpaceProfileSummary> {
   const endpoint = '/v2/spaces/join'
-  return parseSpaceSummary(await requestEnvelopeData(endpoint, 'POST', body), endpoint)
+  return parseSpaceSummary(
+    await requestEnvelopeData(endpoint, 'POST', {
+      ...body,
+      code: normalizeInvitationCode(body.code),
+    }),
+    endpoint
+  )
 }
 
 export async function setActiveSendSpace(profileId: string): Promise<SpaceProfileSummary> {

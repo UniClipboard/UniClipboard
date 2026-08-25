@@ -79,9 +79,57 @@ describe('spacesSlice', () => {
     expect(store.getState().spaces.listError).toBe('spaces.errors.load')
   })
 
+  it('serializes fetch and every mutation refresh in dispatch order without list rollback', async () => {
+    const oldSnapshot = [makeSpace('old')]
+    const afterJoin = [makeSpace('old'), makeSpace('joined')]
+    const afterCreate = [...afterJoin, makeSpace('created')]
+    const afterRemove = [makeSpace('joined'), makeSpace('created')]
+    const snapshots = [oldSnapshot, afterJoin, afterCreate, afterRemove]
+    const operations: string[] = []
+    let listCall = 0
+    let inFlight = 0
+    let maxInFlight = 0
+
+    const runOperation = async <T>(label: string, delayMs: number, value: T): Promise<T> => {
+      operations.push(label)
+      inFlight += 1
+      maxInFlight = Math.max(maxInFlight, inFlight)
+      await new Promise(resolve => setTimeout(resolve, delayMs))
+      inFlight -= 1
+      return value
+    }
+
+    listSpacesApi.mockImplementation(() => {
+      const call = listCall++
+      return runOperation(`GET ${call + 1}`, call === 0 ? 40 : 1, snapshots[call])
+    })
+    joinSpaceProfileApi.mockImplementation(() => runOperation('JOIN', 2, makeSpace('joined')))
+    createSpaceProfileApi.mockImplementation(() => runOperation('CREATE', 4, makeSpace('created')))
+    deleteSpaceProfileApi.mockImplementation(() => runOperation('REMOVE', 6, makeSpace('old')))
+
+    const store = makeStore([makeSpace('initial')])
+    const pending = [
+      store.dispatch(fetchSpaces()),
+      store.dispatch(joinSpace({ code: 'ABCD-1234', passphrase: 'correct horse battery staple' })),
+      store.dispatch(
+        createSpace({
+          passphrase: 'correct horse battery staple',
+          passphraseConfirm: 'correct horse battery staple',
+        })
+      ),
+      store.dispatch(removeSpace('old')),
+    ]
+
+    await Promise.all(pending)
+
+    expect(operations).toEqual(['GET 1', 'JOIN', 'GET 2', 'CREATE', 'GET 3', 'REMOVE', 'GET 4'])
+    expect(maxInFlight).toBe(1)
+    expect(store.getState().spaces.items).toEqual(afterRemove)
+  })
+
   it('serializes rapid active-send A→B→C requests and finishes from the daemon list', async () => {
     const spaces = [makeSpace('a'), makeSpace('b'), makeSpace('c')]
-    let daemonActive = 'a'
+    let daemonActive = 'b'
     let inFlight = 0
     let maxInFlight = 0
     const started: string[] = []
@@ -120,12 +168,20 @@ describe('spacesSlice', () => {
     await vi.waitFor(() => expect(started).toEqual(['a']))
     settle.get('a')?.(true)
     await vi.waitFor(() => expect(started).toEqual(['a', 'b']))
+    const activeAfterStaleFulfilled = store
+      .getState()
+      .spaces.items.find(space => space.isActiveSend)?.profileId
     settle.get('b')?.(false)
     await vi.waitFor(() => expect(started).toEqual(['a', 'b', 'c']))
+    const activeAfterStaleRejected = store
+      .getState()
+      .spaces.items.find(space => space.isActiveSend)?.profileId
     settle.get('c')?.(true)
     await Promise.all([selectA, selectB, selectC])
 
     expect(maxInFlight).toBe(1)
+    expect(activeAfterStaleFulfilled).toBe('b')
+    expect(activeAfterStaleRejected).toBe('b')
     expect(listSpacesApi).toHaveBeenCalledTimes(3)
     expect(store.getState().spaces.items.find(space => space.profileId === 'c')?.isActiveSend).toBe(
       true
@@ -154,6 +210,29 @@ describe('spacesSlice', () => {
     expect(store.getState().spaces.items).toEqual([first])
     expect(store.getState().spaces.mutationError).toBe('spaces.errors.create')
     expect(listSpacesApi).toHaveBeenCalledTimes(2)
+  })
+
+  it('clears an old list error after any successful authoritative refresh', async () => {
+    const authoritative = [makeSpace('a')]
+    listSpacesApi
+      .mockRejectedValueOnce(new Error('daemon unavailable'))
+      .mockResolvedValueOnce(authoritative)
+    createSpaceProfileApi.mockRejectedValue(new Error('create rejected'))
+    const store = makeStore([makeSpace('stale')])
+
+    await store.dispatch(fetchSpaces())
+    expect(store.getState().spaces.listError).toBe('spaces.errors.load')
+
+    await store.dispatch(
+      createSpace({
+        passphrase: 'correct horse battery staple',
+        passphraseConfirm: 'correct horse battery staple',
+      })
+    )
+
+    expect(store.getState().spaces.items).toEqual(authoritative)
+    expect(store.getState().spaces.listError).toBeNull()
+    expect(store.getState().spaces.mutationError).toBe('spaces.errors.create')
   })
 
   it('replaces local state from GET after join succeeds and after join fails', async () => {

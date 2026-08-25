@@ -105,9 +105,9 @@ export default function SpaceSelector() {
         <Plus aria-hidden />
         {t('spaces.actions.add')}
       </Button>
-      {listError || mutationError || activeSendError ? (
+      {activeSendError || mutationError || listError ? (
         <p role="alert" className="text-xs font-medium text-destructive">
-          {t(listError ?? mutationError ?? activeSendError ?? 'spaces.errors.refresh')}
+          {t(activeSendError ?? mutationError ?? listError ?? 'spaces.errors.refresh')}
         </p>
       ) : null}
       <AddSpaceDialog open={addSpaceOpen} onOpenChange={setAddSpaceOpen} />

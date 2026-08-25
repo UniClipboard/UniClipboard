@@ -306,10 +306,12 @@ impl ClipboardChangeToken {
     }
 }
 
-/// Causal identity produced by one successful system clipboard write.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Causal identities produced by one successful logical system clipboard
+/// write. A Windows write may use both a primary writer and a native fallback,
+/// so every physical write token is retained in causal order.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SystemClipboardWriteReceipt {
-    pub change_token: Option<ClipboardChangeToken>,
+    pub change_tokens: Vec<ClipboardChangeToken>,
 }
 
 impl SystemClipboardSnapshot {
@@ -376,7 +378,10 @@ pub trait SystemClipboard: Send + Sync {
         self.write_snapshot(snapshot)?;
         let after = self.change_token();
         Ok(SystemClipboardWriteReceipt {
-            change_token: after.filter(|after| Some(*after) != before),
+            change_tokens: after
+                .filter(|after| Some(*after) != before)
+                .into_iter()
+                .collect(),
         })
     }
 }

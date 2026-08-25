@@ -1,6 +1,7 @@
 //! Shared Windows desktop clipboard hub for multi-space Engine hosts.
 
 use std::collections::VecDeque;
+use std::future::Future;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
@@ -15,6 +16,10 @@ use crate::layer::platform::{create_desktop_system_clipboard, SystemClipboardWir
 use crate::wiring::error::{WiringError, WiringResult};
 
 const WATCHER_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(5);
+
+tokio::task_local! {
+    static ACTIVE_CLIPBOARD_STAGE_ID: u64;
+}
 
 pub(crate) type EventLoopFactory =
     Arc<dyn Fn() -> anyhow::Result<Box<dyn PlatformClipboardEventLoop>> + Send + Sync + 'static>;
@@ -49,11 +54,14 @@ struct DesktopClipboardHubInner {
 pub struct DesktopClipboardProfileHandle {
     hub: DesktopClipboardHub,
     pending_snapshot: Arc<Mutex<Option<StagedSnapshot>>>,
+    operation_gate: Arc<tokio::sync::Mutex<()>>,
 }
 
 struct StagedSnapshot {
     id: u64,
-    snapshot: SystemClipboardSnapshot,
+    snapshot: Option<SystemClipboardSnapshot>,
+    operation_active: bool,
+    consumed: bool,
 }
 
 /// Transaction guard for one exact event-time snapshot staged to a profile.
@@ -66,6 +74,19 @@ pub struct DesktopClipboardStageGuard {
     profile: DesktopClipboardProfileHandle,
     stage_id: u64,
     active: bool,
+}
+
+/// Result of one operation executed under an exact staged snapshot.
+///
+/// Failures before consumption are safe for the authority to retry. Failures
+/// after consumption are explicitly distinct so callers never blindly replay
+/// an Engine operation that may already have captured or dispatched data.
+#[derive(Debug)]
+pub enum DesktopClipboardStageExecution<T, E> {
+    ConsumedAndCompleted(T),
+    CompletedWithoutConsumption(T),
+    FailedBeforeConsumption(E),
+    FailedAfterConsumption(E),
 }
 
 /// Create the process-wide Windows clipboard hub from the normal desktop
@@ -118,6 +139,7 @@ impl DesktopClipboardHub {
         DesktopClipboardProfileHandle {
             hub: self.clone(),
             pending_snapshot: Arc::new(Mutex::new(None)),
+            operation_gate: Arc::new(tokio::sync::Mutex::new(())),
         }
     }
 
@@ -137,7 +159,9 @@ impl DesktopClipboardHub {
         let stage_id = self.inner.next_stage_id.fetch_add(1, Ordering::Relaxed);
         *pending = Some(StagedSnapshot {
             id: stage_id,
-            snapshot,
+            snapshot: Some(snapshot),
+            operation_active: false,
+            consumed: false,
         });
         drop(pending);
         Ok(DesktopClipboardStageGuard {
@@ -148,13 +172,39 @@ impl DesktopClipboardHub {
         })
     }
 
-    /// Explicitly clear a profile's pending stage after an aborted actor step.
+    /// Report whether a profile is clear. A live stage is owned exclusively by
+    /// its guard and can only be rolled back by dropping that guard, preventing
+    /// unrelated code from clearing an operation's exact snapshot.
     pub fn clear_staged_snapshot(
         &self,
         profile: &DesktopClipboardProfileHandle,
     ) -> WiringResult<bool> {
         self.ensure_profile_belongs_to_hub(profile)?;
-        Ok(lock_unpoisoned(&profile.pending_snapshot).take().is_some())
+        let pending = lock_unpoisoned(&profile.pending_snapshot);
+        if pending.is_some() {
+            return Err(WiringError::ClipboardInit(
+                "staged clipboard snapshot is owned by its operation guard".into(),
+            ));
+        }
+        Ok(false)
+    }
+
+    /// Atomically stage one event-time snapshot and execute the operation that
+    /// is allowed to consume it. No unrelated read or clear can take the stage
+    /// while the operation future is active.
+    pub async fn execute_with_staged_snapshot<T, E, F, Fut>(
+        &self,
+        profile: &DesktopClipboardProfileHandle,
+        snapshot: SystemClipboardSnapshot,
+        operation: F,
+    ) -> WiringResult<DesktopClipboardStageExecution<T, E>>
+    where
+        F: FnOnce() -> Fut,
+        Fut: Future<Output = Result<T, E>>,
+    {
+        self.stage_snapshot(profile, snapshot)?
+            .execute(operation)
+            .await
     }
 
     /// Take the process's single physical watcher stream.
@@ -190,7 +240,7 @@ impl DesktopClipboardHub {
             .inner
             .system_clipboard
             .write_snapshot_with_receipt(snapshot)?;
-        if let Some(token) = receipt.change_token {
+        for token in receipt.change_tokens {
             lock_unpoisoned(&self.inner.echo_suppression).arm(token);
         }
         Ok(())
@@ -223,18 +273,65 @@ impl DesktopClipboardHub {
 }
 
 impl DesktopClipboardStageGuard {
-    /// Confirm that the staged snapshot was consumed by the intended read.
-    pub fn complete(mut self) -> WiringResult<()> {
-        let still_pending = lock_unpoisoned(&self.profile.pending_snapshot)
-            .as_ref()
-            .is_some_and(|staged| staged.id == self.stage_id);
-        if still_pending {
-            return Err(WiringError::ClipboardInit(
-                "staged clipboard snapshot was not consumed".into(),
-            ));
+    /// Run the complete Engine Observe operation under this stage's ownership
+    /// token and report whether the stage was consumed before completion or
+    /// failure.
+    pub async fn execute<T, E, F, Fut>(
+        mut self,
+        operation: F,
+    ) -> WiringResult<DesktopClipboardStageExecution<T, E>>
+    where
+        F: FnOnce() -> Fut,
+        Fut: Future<Output = Result<T, E>>,
+    {
+        let _operation = self.profile.operation_gate.lock().await;
+        {
+            let mut pending = lock_unpoisoned(&self.profile.pending_snapshot);
+            let Some(staged) = pending.as_mut() else {
+                return Err(WiringError::ClipboardInit(
+                    "staged clipboard snapshot was cleared before execution".into(),
+                ));
+            };
+            if staged.id != self.stage_id {
+                return Err(WiringError::ClipboardInit(
+                    "staged clipboard snapshot ownership changed before execution".into(),
+                ));
+            }
+            if staged.operation_active {
+                return Err(WiringError::ClipboardInit(
+                    "staged clipboard snapshot already has an active operation".into(),
+                ));
+            }
+            staged.operation_active = true;
         }
+
+        let result = ACTIVE_CLIPBOARD_STAGE_ID
+            .scope(self.stage_id, operation())
+            .await;
+        let consumed = {
+            let mut pending = lock_unpoisoned(&self.profile.pending_snapshot);
+            let staged = pending.take().ok_or_else(|| {
+                WiringError::ClipboardInit(
+                    "active staged clipboard snapshot disappeared during execution".into(),
+                )
+            })?;
+            if staged.id != self.stage_id {
+                return Err(WiringError::ClipboardInit(
+                    "active staged clipboard snapshot ownership changed".into(),
+                ));
+            }
+            staged.consumed
+        };
         self.active = false;
-        Ok(())
+
+        Ok(match (result, consumed) {
+            (Ok(value), true) => DesktopClipboardStageExecution::ConsumedAndCompleted(value),
+            (Ok(value), false) => {
+                DesktopClipboardStageExecution::CompletedWithoutConsumption(value)
+            }
+            (Err(error), false) => DesktopClipboardStageExecution::FailedBeforeConsumption(error),
+            (Err(error), true) => DesktopClipboardStageExecution::FailedAfterConsumption(error),
+        })
     }
 
     /// Abort this stage and clear it if it has not already been consumed.
@@ -256,9 +353,22 @@ impl Drop for DesktopClipboardStageGuard {
 
 impl SystemClipboard for DesktopClipboardProfileHandle {
     fn read_snapshot(&self) -> anyhow::Result<SystemClipboardSnapshot> {
-        if let Some(staged) = lock_unpoisoned(&self.pending_snapshot).take() {
-            return Ok(staged.snapshot);
+        let active_stage_id = ACTIVE_CLIPBOARD_STAGE_ID
+            .try_with(|stage_id| *stage_id)
+            .ok();
+        let mut pending = lock_unpoisoned(&self.pending_snapshot);
+        if let Some(staged) = pending.as_mut() {
+            if !staged.operation_active || active_stage_id != Some(staged.id) {
+                anyhow::bail!("staged clipboard snapshot is reserved for its owning operation");
+            }
+            let snapshot = staged
+                .snapshot
+                .take()
+                .ok_or_else(|| anyhow::anyhow!("staged clipboard snapshot already consumed"))?;
+            staged.consumed = true;
+            return Ok(snapshot);
         }
+        drop(pending);
         self.hub.inner.system_clipboard.read_snapshot()
     }
 
@@ -454,7 +564,7 @@ mod tests {
     use uc_platform::clipboard::{
         ClipboardChangeToken, FormatId, MimeType, ObservedClipboardRepresentation,
         PlatformClipboardEventLoop, RepresentationId, ShutdownRx, SystemClipboard,
-        SystemClipboardSnapshot,
+        SystemClipboardSnapshot, SystemClipboardWriteReceipt,
     };
 
     use super::*;
@@ -574,6 +684,31 @@ mod tests {
 
         fn change_token(&self) -> Option<ClipboardChangeToken> {
             token(self.sequence.load(Ordering::SeqCst))
+        }
+    }
+
+    struct MultiTokenWriteClipboard {
+        inner: StatefulClipboard,
+        write_tokens: Vec<ClipboardChangeToken>,
+    }
+
+    impl SystemClipboard for MultiTokenWriteClipboard {
+        fn read_snapshot(&self) -> anyhow::Result<SystemClipboardSnapshot> {
+            self.inner.read_snapshot()
+        }
+
+        fn write_snapshot(&self, snapshot: SystemClipboardSnapshot) -> anyhow::Result<()> {
+            self.inner.write_snapshot(snapshot)
+        }
+
+        fn write_snapshot_with_receipt(
+            &self,
+            snapshot: SystemClipboardSnapshot,
+        ) -> anyhow::Result<SystemClipboardWriteReceipt> {
+            self.inner.write_snapshot(snapshot)?;
+            Ok(SystemClipboardWriteReceipt {
+                change_tokens: self.write_tokens.clone(),
+            })
         }
     }
 
@@ -716,6 +851,39 @@ mod tests {
         let observed = changes.next().await.unwrap().unwrap();
         assert_eq!(snapshot_text(&observed), b"next real copy");
         assert_eq!(clipboard.writes.lock().unwrap().len(), 1);
+        changes.shutdown().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn every_token_from_one_primary_and_fallback_write_is_suppressed() {
+        let primary_echo = text_snapshot(20, "primary write echo");
+        let fallback_echo = text_snapshot(21, "fallback write echo");
+        let user_copy = text_snapshot(22, "real user copy");
+        let clipboard = Arc::new(MultiTokenWriteClipboard {
+            inner: StatefulClipboard::with_snapshot(text_snapshot(0, "old")),
+            write_tokens: vec![
+                ClipboardChangeToken::new(101),
+                ClipboardChangeToken::new(102),
+            ],
+        });
+        let hub = scripted_hub(
+            clipboard,
+            Arc::new(AtomicUsize::new(0)),
+            vec![
+                (primary_echo, token(101)),
+                (fallback_echo, token(102)),
+                (user_copy, token(103)),
+            ],
+        );
+        let profile = hub.profile_handle();
+
+        profile
+            .write_snapshot(text_snapshot(19, "remote inbound"))
+            .unwrap();
+        let mut changes = hub.take_change_stream().unwrap().unwrap();
+
+        let observed = changes.next().await.unwrap().unwrap();
+        assert_eq!(snapshot_text(&observed), b"real user copy");
         changes.shutdown().await.unwrap();
     }
 
@@ -932,8 +1100,8 @@ mod tests {
         assert_eq!(snapshot_text(&clipboard.read_snapshot().unwrap()), b"B");
     }
 
-    #[test]
-    fn staged_snapshot_is_read_exactly_by_the_selected_profile() {
+    #[tokio::test]
+    async fn staged_snapshot_is_read_exactly_by_the_selected_profile() {
         let fresh = text_snapshot(41, "fresh OS value");
         let staged = text_snapshot(40, "event-time exact value");
         let clipboard: Arc<dyn SystemClipboard> = Arc::new(StatefulClipboard::with_snapshot(fresh));
@@ -945,21 +1113,25 @@ mod tests {
         let profile_a = hub.profile_handle();
         let profile_b = hub.profile_handle();
 
-        let stage = hub.stage_snapshot(&profile_a, staged).unwrap();
-
-        assert_eq!(
-            snapshot_text(&profile_a.read_snapshot().unwrap()),
-            b"event-time exact value"
-        );
+        let operation_profile = profile_a.clone();
+        let outcome = hub
+            .execute_with_staged_snapshot(&profile_a, staged, move || async move {
+                operation_profile.read_snapshot()
+            })
+            .await
+            .unwrap();
+        let DesktopClipboardStageExecution::ConsumedAndCompleted(observed) = outcome else {
+            panic!("selected profile must consume the exact staged snapshot");
+        };
+        assert_eq!(snapshot_text(&observed), b"event-time exact value");
         assert_eq!(
             snapshot_text(&profile_b.read_snapshot().unwrap()),
             b"fresh OS value"
         );
-        stage.complete().unwrap();
     }
 
-    #[test]
-    fn second_stage_fails_closed_instead_of_overwriting_unconsumed_snapshot() {
+    #[tokio::test]
+    async fn second_stage_fails_closed_instead_of_overwriting_unconsumed_snapshot() {
         let clipboard: Arc<dyn SystemClipboard> = Arc::new(StatefulClipboard::with_snapshot(
             text_snapshot(50, "physical"),
         ));
@@ -977,15 +1149,19 @@ mod tests {
             .stage_snapshot(&profile, text_snapshot(52, "must be rejected"))
             .is_err());
 
-        assert_eq!(
-            snapshot_text(&profile.read_snapshot().unwrap()),
-            b"first staged"
-        );
-        first.complete().unwrap();
+        let operation_profile = profile.clone();
+        let outcome = first
+            .execute(move || async move { operation_profile.read_snapshot() })
+            .await
+            .unwrap();
+        let DesktopClipboardStageExecution::ConsumedAndCompleted(observed) = outcome else {
+            panic!("first stage must remain authoritative");
+        };
+        assert_eq!(snapshot_text(&observed), b"first staged");
     }
 
-    #[test]
-    fn failed_stage_transaction_can_rollback_and_retry() {
+    #[tokio::test]
+    async fn failed_stage_transaction_can_rollback_and_retry() {
         let clipboard: Arc<dyn SystemClipboard> = Arc::new(StatefulClipboard::with_snapshot(
             text_snapshot(60, "physical"),
         ));
@@ -1001,13 +1177,99 @@ mod tests {
             .unwrap();
         failed.rollback();
 
+        let retry_profile = profile.clone();
         let retry = hub
-            .stage_snapshot(&profile, text_snapshot(62, "retry exact"))
+            .execute_with_staged_snapshot(
+                &profile,
+                text_snapshot(62, "retry exact"),
+                move || async move { retry_profile.read_snapshot() },
+            )
+            .await
             .unwrap();
-        assert_eq!(
-            snapshot_text(&profile.read_snapshot().unwrap()),
-            b"retry exact"
+        let DesktopClipboardStageExecution::ConsumedAndCompleted(observed) = retry else {
+            panic!("rolled-back stage must permit a clean retry");
+        };
+        assert_eq!(snapshot_text(&observed), b"retry exact");
+    }
+
+    #[tokio::test]
+    async fn atomic_stage_rejects_foreign_read_and_clear_and_reports_consumed_failure() {
+        let clipboard: Arc<dyn SystemClipboard> = Arc::new(StatefulClipboard::with_snapshot(
+            text_snapshot(70, "physical"),
+        ));
+        let hub = DesktopClipboardHub::from_parts(
+            clipboard,
+            false,
+            Arc::new(|| anyhow::bail!("watcher must not start")),
         );
-        retry.complete().unwrap();
+        let profile = hub.profile_handle();
+        let operation_profile = profile.clone();
+        let foreign_profile = profile.clone();
+        let operation_hub = hub.clone();
+
+        let outcome = hub
+            .execute_with_staged_snapshot(
+                &profile,
+                text_snapshot(71, "event-time snapshot"),
+                move || async move {
+                    let foreign_read = thread::spawn(move || foreign_profile.read_snapshot())
+                        .join()
+                        .unwrap();
+                    assert!(foreign_read.is_err());
+                    assert!(operation_hub
+                        .clear_staged_snapshot(&operation_profile)
+                        .is_err());
+                    let observed = operation_profile.read_snapshot()?;
+                    assert_eq!(snapshot_text(&observed), b"event-time snapshot");
+                    Err::<(), anyhow::Error>(anyhow::anyhow!("observe failed after capture"))
+                },
+            )
+            .await
+            .unwrap();
+
+        match outcome {
+            DesktopClipboardStageExecution::FailedAfterConsumption(error) => {
+                assert!(error.to_string().contains("observe failed after capture"));
+            }
+            _ => panic!("expected an explicit consumed failure outcome"),
+        }
+    }
+
+    #[tokio::test]
+    async fn atomic_stage_reports_pre_consumption_failure_and_allows_safe_retry() {
+        let clipboard: Arc<dyn SystemClipboard> = Arc::new(StatefulClipboard::with_snapshot(
+            text_snapshot(80, "physical"),
+        ));
+        let hub = DesktopClipboardHub::from_parts(
+            clipboard,
+            false,
+            Arc::new(|| anyhow::bail!("watcher must not start")),
+        );
+        let profile = hub.profile_handle();
+
+        let failed = hub
+            .execute_with_staged_snapshot(&profile, text_snapshot(81, "first event"), || async {
+                Err::<(), anyhow::Error>(anyhow::anyhow!("observe failed before capture"))
+            })
+            .await
+            .unwrap();
+        assert!(matches!(
+            failed,
+            DesktopClipboardStageExecution::FailedBeforeConsumption(_)
+        ));
+
+        let retry_profile = profile.clone();
+        let retried = hub
+            .execute_with_staged_snapshot(
+                &profile,
+                text_snapshot(82, "retry event"),
+                move || async move { retry_profile.read_snapshot() },
+            )
+            .await
+            .unwrap();
+        let DesktopClipboardStageExecution::ConsumedAndCompleted(observed) = retried else {
+            panic!("retry must consume and complete exactly once");
+        };
+        assert_eq!(snapshot_text(&observed), b"retry event");
     }
 }

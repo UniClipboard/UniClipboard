@@ -20,11 +20,11 @@ pub use uc_app_paths::{DesktopRuntimeProfileConfig, DesktopRuntimeProfileConfigE
 pub use wiring::analytics::{initialize_analytics_context, DesktopHostAnalytics};
 pub use wiring::desktop_clipboard_hub::{
     prepare_desktop_clipboard_hub, DesktopClipboardHub, DesktopClipboardHubChangeStream,
-    DesktopClipboardProfileHandle, DesktopClipboardStageGuard,
+    DesktopClipboardProfileHandle, DesktopClipboardStageExecution, DesktopClipboardStageGuard,
 };
 pub use wiring::desktop_host::{
     prepare_desktop_engine_host, prepare_desktop_engine_host_for_profile,
-    prepare_desktop_engine_host_for_profile_with_hub, DesktopEngineHost, DesktopHostFileHandles,
-    DesktopHostProcessPaths,
+    prepare_desktop_engine_host_for_profile_with_hub, prepare_desktop_engine_host_with_hub,
+    DesktopEngineHost, DesktopHostFileHandles, DesktopHostProcessPaths,
 };
 pub use wiring::error::{WiringError, WiringResult};

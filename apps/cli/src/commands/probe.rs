@@ -133,7 +133,7 @@ fn run_watch(max_events: Option<usize>) -> Result<()> {
     // `dispatch` is invoked from `tokio::task::spawn_blocking`, so we can
     // bridge between the blocking world and the tokio mpsc with
     // `blocking_recv`.
-    while let Some(PlatformEvent::ClipboardChanged { snapshot }) = rx.blocking_recv() {
+    while let Some(PlatformEvent::ClipboardChanged { snapshot, .. }) = rx.blocking_recv() {
         event_count += 1;
         let observed_ms = chrono::Utc::now().timestamp_millis();
         let observed_instant = Instant::now();

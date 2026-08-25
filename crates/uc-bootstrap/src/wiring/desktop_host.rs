@@ -119,6 +119,26 @@ pub fn prepare_desktop_engine_host() -> WiringResult<DesktopEngineHost> {
     )
 }
 
+/// Prepare the legacy default desktop Engine host with a shared clipboard Hub
+/// handle. This preserves the original Engine profile, secure-storage
+/// namespace, database, blob, identity, and settings paths; only clipboard
+/// capture ownership changes to the daemon-level external router.
+pub fn prepare_desktop_engine_host_with_hub(
+    clipboard: DesktopClipboardProfileHandle,
+) -> WiringResult<DesktopEngineHost> {
+    let paths = resolve_desktop_host_paths()?;
+    let secure_storage = build_secure_storage_prelude(&paths)?.secure_storage;
+    let engine_config = default_desktop_engine_config();
+    let shared_clipboard: Arc<dyn SystemClipboard> = Arc::new(clipboard);
+    prepare_desktop_engine_host_from_parts(
+        paths,
+        engine_config,
+        secure_storage,
+        DesktopClipboardMode::ExternalRouter,
+        Some(shared_clipboard),
+    )
+}
+
 /// Prepare one isolated desktop Engine host from explicit profile roots.
 ///
 /// This entry never reads or modifies `UC_PROFILE`. It keeps real clipboard
@@ -743,8 +763,8 @@ mod tests {
         assert_eq!(writes[0].representations.len(), 1);
     }
 
-    #[test]
-    fn explicit_host_with_hub_uses_staged_snapshot_and_shared_write_path() {
+    #[tokio::test]
+    async fn explicit_host_with_hub_uses_staged_snapshot_and_shared_write_path() {
         let temporary = tempfile::tempdir().unwrap();
         let config = DesktopRuntimeProfileConfig::new(
             "019d-profile-hub",
@@ -760,8 +780,11 @@ mod tests {
             Arc::new(|| anyhow::bail!("profile host must not start a watcher")),
         );
         let profile = hub.profile_handle();
-        let stage = hub
-            .stage_snapshot(
+        let host =
+            prepare_desktop_engine_host_for_profile_with_hub(config, profile.clone()).unwrap();
+        let (_, capabilities) = host.into_engine_start();
+        let outcome = hub
+            .execute_with_staged_snapshot(
                 &profile,
                 SystemClipboardSnapshot {
                     ts_ms: 9,
@@ -774,18 +797,17 @@ mod tests {
                     file_content_digests: Vec::new(),
                     file_set_v1_component: None,
                 },
+                || async { capabilities.clipboard().read() },
             )
+            .await
             .unwrap();
-
-        let host = prepare_desktop_engine_host_for_profile_with_hub(config, profile).unwrap();
-        let (_, capabilities) = host.into_engine_start();
-
-        let observed = capabilities.clipboard().read().unwrap();
+        let crate::DesktopClipboardStageExecution::ConsumedAndCompleted(observed) = outcome else {
+            panic!("host clipboard operation must consume its exact staged snapshot");
+        };
         let HostClipboardRepresentation::Inline { bytes, .. } = &observed.representations[0] else {
             panic!("expected inline clipboard representation");
         };
         assert_eq!(bytes, b"staged exact");
-        stage.complete().unwrap();
         capabilities
             .clipboard()
             .write(HostClipboardSnapshot {

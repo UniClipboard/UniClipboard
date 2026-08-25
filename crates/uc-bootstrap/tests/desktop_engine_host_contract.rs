@@ -2,8 +2,9 @@ use std::path::Path;
 
 use uc_bootstrap::{
     prepare_desktop_engine_host, prepare_desktop_engine_host_for_profile,
-    prepare_desktop_engine_host_for_profile_with_hub, DesktopClipboardProfileHandle,
-    DesktopEngineHost, DesktopHostFileHandles, DesktopRuntimeProfileConfig,
+    prepare_desktop_engine_host_for_profile_with_hub, prepare_desktop_engine_host_with_hub,
+    DesktopClipboardProfileHandle, DesktopEngineHost, DesktopHostFileHandles,
+    DesktopRuntimeProfileConfig,
 };
 use uc_engine::HostFileAccess;
 
@@ -51,6 +52,33 @@ fn explicit_profile_host_exposes_the_shared_hub_preparation_entry() {
         DesktopClipboardProfileHandle,
     ) -> uc_bootstrap::WiringResult<DesktopEngineHost> =
         prepare_desktop_engine_host_for_profile_with_hub;
+}
+
+#[test]
+fn legacy_default_host_exposes_the_shared_hub_preparation_entry() {
+    let _prepare: fn(
+        DesktopClipboardProfileHandle,
+    ) -> uc_bootstrap::WiringResult<DesktopEngineHost> = prepare_desktop_engine_host_with_hub;
+}
+
+#[test]
+fn legacy_hub_entry_keeps_default_paths_config_and_secure_storage_scope() {
+    let source = include_str!("../src/wiring/desktop_host.rs");
+    let start = source
+        .find("pub fn prepare_desktop_engine_host_with_hub")
+        .expect("legacy-compatible Hub preparation entry must exist");
+    let end = source[start..]
+        .find("/// Prepare one isolated desktop Engine host")
+        .map(|offset| start + offset)
+        .expect("explicit-profile entry must follow the legacy entry");
+    let body = &source[start..end];
+
+    assert!(body.contains("resolve_desktop_host_paths()"));
+    assert!(body.contains("build_secure_storage_prelude(&paths)"));
+    assert!(body.contains("default_desktop_engine_config()"));
+    assert!(body.contains("DesktopClipboardMode::ExternalRouter"));
+    assert!(!body.contains("build_secure_storage_prelude_for_profile"));
+    assert!(!body.contains("explicit_desktop_engine_config"));
 }
 
 #[test]

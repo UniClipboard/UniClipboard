@@ -1,19 +1,48 @@
 use super::super::cf_html::strip_cf_html_wrapper;
 use super::super::common::CommonClipboardImpl;
 use super::super::payload::rep_bytes;
-use crate::clipboard::SystemClipboard;
 use crate::clipboard::{ClipboardChangeToken, RepresentationId};
 use crate::clipboard::{
     ImageKind, MimeClass, MimeType, ObservedClipboardRepresentation, SystemClipboardSnapshot,
 };
+use crate::clipboard::{SystemClipboard, SystemClipboardWriteReceipt};
 use anyhow::Result;
 use async_trait::async_trait;
 use clipboard_rs::{Clipboard, ClipboardContext};
+use std::cell::RefCell;
 use std::ops::Range;
 use std::sync::{Arc, Mutex};
 use tracing::{debug, debug_span, error, info, warn};
 
 use crate::clipboard::format_id_mime::format_id_default_mime;
+
+thread_local! {
+    /// Per-call trace used only by `write_snapshot_with_receipt`. Keeping the
+    /// trace thread-local lets the existing synchronous Windows write path
+    /// record both primary and fallback mutations without sharing receipt
+    /// state across concurrent callers.
+    static WRITE_TOKEN_TRACE: RefCell<Option<Vec<ClipboardChangeToken>>> = const { RefCell::new(None) };
+}
+
+fn current_windows_change_token() -> Option<ClipboardChangeToken> {
+    clipboard_win::raw::seq_num()
+        .map(|sequence| ClipboardChangeToken::new(u64::from(sequence.get())))
+}
+
+fn record_windows_write_token() {
+    let Some(token) = current_windows_change_token() else {
+        return;
+    };
+    WRITE_TOKEN_TRACE.with(|trace| {
+        let mut trace = trace.borrow_mut();
+        let Some(tokens) = trace.as_mut() else {
+            return;
+        };
+        if tokens.last().copied() != Some(token) {
+            tokens.push(token);
+        }
+    });
+}
 
 /// Classify a rep for the Windows multi-rep write path.
 ///
@@ -877,7 +906,9 @@ impl SystemClipboard for WindowsClipboard {
                 let mut dummy_ctx = ClipboardContext::new().map_err(|e| {
                     anyhow::anyhow!("创建多 rep 分发用临时 clipboard ctx 失败: {}", e)
                 })?;
-                return CommonClipboardImpl::write_snapshot(&mut dummy_ctx, snapshot);
+                let result = CommonClipboardImpl::write_snapshot(&mut dummy_ctx, snapshot);
+                record_windows_write_token();
+                return result;
             }
 
             let mut ctx = self.inner.lock().map_err(|poison| {
@@ -888,6 +919,7 @@ impl SystemClipboard for WindowsClipboard {
                 )
             })?;
             let write_result = CommonClipboardImpl::write_snapshot(&mut ctx, snapshot);
+            record_windows_write_token();
             if let Err(err) = write_result {
                 // Drop clipboard-rs context before native fallback to avoid double clipboard open
                 drop(ctx);
@@ -900,6 +932,7 @@ impl SystemClipboard for WindowsClipboard {
                             "Primary clipboard-rs write failed; using Windows Unicode text fallback"
                         );
                         write_text_windows_native(text)?;
+                        record_windows_write_token();
                         info!("Wrote clipboard text via Windows Unicode fallback");
                         return Ok(());
                     }
@@ -913,6 +946,7 @@ impl SystemClipboard for WindowsClipboard {
                             "Primary clipboard-rs image write failed; using Windows native Bitmap fallback"
                         );
                         write_image_windows(bytes)?;
+                        record_windows_write_token();
                         info!("Wrote clipboard image via Windows native Bitmap fallback");
                         return Ok(());
                     }
@@ -949,6 +983,7 @@ impl SystemClipboard for WindowsClipboard {
             if needs_fallback {
                 if let Some(text) = expected_text.as_deref() {
                     write_text_windows_native(text)?;
+                    record_windows_write_token();
                     info!("Rewrote clipboard text via Windows Unicode fallback after verification");
                 }
             }
@@ -959,8 +994,26 @@ impl SystemClipboard for WindowsClipboard {
     }
 
     fn change_token(&self) -> Option<ClipboardChangeToken> {
-        clipboard_win::raw::seq_num()
-            .map(|sequence| ClipboardChangeToken::new(u64::from(sequence.get())))
+        current_windows_change_token()
+    }
+
+    fn write_snapshot_with_receipt(
+        &self,
+        snapshot: SystemClipboardSnapshot,
+    ) -> Result<SystemClipboardWriteReceipt> {
+        let before = current_windows_change_token();
+        WRITE_TOKEN_TRACE.with(|trace| {
+            let previous = trace.replace(Some(Vec::new()));
+            debug_assert!(previous.is_none(), "nested Windows clipboard write receipt");
+        });
+
+        let result = self.write_snapshot(snapshot);
+        let mut change_tokens =
+            WRITE_TOKEN_TRACE.with(|trace| trace.replace(None).unwrap_or_default());
+        change_tokens.retain(|token| Some(*token) != before);
+        change_tokens.dedup();
+        result?;
+        Ok(SystemClipboardWriteReceipt { change_tokens })
     }
 }
 

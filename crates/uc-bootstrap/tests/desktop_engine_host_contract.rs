@@ -1,8 +1,9 @@
 use std::path::Path;
 
 use uc_bootstrap::{
-    prepare_desktop_engine_host, prepare_desktop_engine_host_for_profile, DesktopEngineHost,
-    DesktopHostFileHandles, DesktopRuntimeProfileConfig,
+    prepare_desktop_engine_host, prepare_desktop_engine_host_for_profile,
+    prepare_desktop_engine_host_for_profile_with_hub, DesktopClipboardProfileHandle,
+    DesktopEngineHost, DesktopHostFileHandles, DesktopRuntimeProfileConfig,
 };
 use uc_engine::HostFileAccess;
 
@@ -41,6 +42,15 @@ impl Drop for ScopedEnv {
 fn desktop_engine_host_has_a_single_preparation_entry() {
     let _prepare: fn() -> uc_bootstrap::WiringResult<DesktopEngineHost> =
         prepare_desktop_engine_host;
+}
+
+#[test]
+fn explicit_profile_host_exposes_the_shared_hub_preparation_entry() {
+    let _prepare: fn(
+        DesktopRuntimeProfileConfig,
+        DesktopClipboardProfileHandle,
+    ) -> uc_bootstrap::WiringResult<DesktopEngineHost> =
+        prepare_desktop_engine_host_for_profile_with_hub;
 }
 
 #[test]

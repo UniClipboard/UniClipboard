@@ -18,8 +18,13 @@ pub use layer::platform::SystemClipboardWiring;
 pub use observability::tracing::{init_tracing_subscriber, install_panic_logging_hook};
 pub use uc_app_paths::{DesktopRuntimeProfileConfig, DesktopRuntimeProfileConfigError};
 pub use wiring::analytics::{initialize_analytics_context, DesktopHostAnalytics};
+pub use wiring::desktop_clipboard_hub::{
+    prepare_desktop_clipboard_hub, DesktopClipboardHub, DesktopClipboardHubChangeStream,
+    DesktopClipboardProfileHandle,
+};
 pub use wiring::desktop_host::{
-    prepare_desktop_engine_host, prepare_desktop_engine_host_for_profile, DesktopEngineHost,
-    DesktopHostFileHandles, DesktopHostProcessPaths,
+    prepare_desktop_engine_host, prepare_desktop_engine_host_for_profile,
+    prepare_desktop_engine_host_for_profile_with_hub, DesktopEngineHost, DesktopHostFileHandles,
+    DesktopHostProcessPaths,
 };
 pub use wiring::error::{WiringError, WiringResult};

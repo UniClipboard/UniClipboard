@@ -26,6 +26,7 @@ use uc_platform::ports::{SecureStorageError, SecureStorageProvider};
 use crate::layer::paths::{resolve_desktop_host_paths, DesktopHostPaths};
 use crate::layer::platform::{create_desktop_system_clipboard, SystemClipboardWiring};
 use crate::wiring::analytics::DesktopHostAnalytics;
+use crate::wiring::desktop_clipboard_hub::DesktopClipboardProfileHandle;
 use crate::wiring::error::{WiringError, WiringResult};
 use crate::wiring::secure_storage::{
     build_secure_storage_prelude, build_secure_storage_prelude_for_profile,
@@ -114,6 +115,7 @@ pub fn prepare_desktop_engine_host() -> WiringResult<DesktopEngineHost> {
         engine_config,
         secure_storage,
         DesktopClipboardMode::EngineManaged,
+        None,
     )
 }
 
@@ -136,6 +138,34 @@ pub fn prepare_desktop_engine_host_for_profile(
         engine_config,
         secure_storage,
         DesktopClipboardMode::ExternalRouter,
+        None,
+    )
+}
+
+/// Prepare one isolated desktop Engine host using a shared clipboard Hub
+/// profile handle.
+///
+/// The handle preserves real read/write support, routes every programmatic
+/// write through the Hub's global serializer and echo guard, and never exposes
+/// an Engine-managed change stream. The caller retains the Hub and handle so a
+/// daemon-level actor can stage an exact watcher snapshot before executing
+/// `Operation::ObserveClipboardChange` for the selected profile.
+pub fn prepare_desktop_engine_host_for_profile_with_hub(
+    config: DesktopRuntimeProfileConfig,
+    clipboard: DesktopClipboardProfileHandle,
+) -> WiringResult<DesktopEngineHost> {
+    let paths = DesktopHostPaths::from_profile_config(&config);
+    let secure_storage =
+        build_secure_storage_prelude_for_profile(&paths, config.secure_storage_namespace())?
+            .secure_storage;
+    let engine_config = explicit_desktop_engine_config(&config);
+    let shared_clipboard: Arc<dyn SystemClipboard> = Arc::new(clipboard);
+    prepare_desktop_engine_host_from_parts(
+        paths,
+        engine_config,
+        secure_storage,
+        DesktopClipboardMode::ExternalRouter,
+        Some(shared_clipboard),
     )
 }
 
@@ -144,8 +174,15 @@ fn prepare_desktop_engine_host_from_parts(
     engine_config: EngineConfig,
     secure_storage: Arc<dyn SecureStorageProvider>,
     clipboard_mode: DesktopClipboardMode,
+    shared_clipboard: Option<Arc<dyn SystemClipboard>>,
 ) -> WiringResult<DesktopEngineHost> {
-    let (_, system_clipboard, clipboard_wiring) = create_desktop_system_clipboard()?.into_parts();
+    let (system_clipboard, changes_enabled) = match shared_clipboard {
+        Some(clipboard) => (clipboard, false),
+        None => {
+            let (_, clipboard, wiring) = create_desktop_system_clipboard()?.into_parts();
+            (clipboard, wiring == SystemClipboardWiring::Real)
+        }
+    };
     let file_handles = DesktopHostFileHandles::default();
     let file_registry = Arc::clone(&file_handles.file_registry);
     let pending_snapshot = Arc::new(Mutex::new(None));
@@ -171,7 +208,7 @@ fn prepare_desktop_engine_host_from_parts(
             file_registry: Arc::clone(&file_registry),
             pending_snapshot,
             change_stream_taken: false,
-            changes_enabled: clipboard_wiring == SystemClipboardWiring::Real,
+            changes_enabled,
             mode: clipboard_mode,
         }),
         Box::new(file_handles.clone()),
@@ -593,6 +630,7 @@ fn host_io_error(detail: &'static str) -> HostCapabilityError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::wiring::desktop_clipboard_hub::DesktopClipboardHub;
     use uc_platform::clipboard::{FormatId, RepresentationId};
 
     #[derive(Default)]
@@ -703,6 +741,61 @@ mod tests {
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         assert_eq!(writes.len(), 1);
         assert_eq!(writes[0].representations.len(), 1);
+    }
+
+    #[test]
+    fn explicit_host_with_hub_uses_staged_snapshot_and_shared_write_path() {
+        let temporary = tempfile::tempdir().unwrap();
+        let config = DesktopRuntimeProfileConfig::new(
+            "019d-profile-hub",
+            temporary.path().join("data"),
+            temporary.path().join("cache"),
+            temporary.path().join("logs"),
+        )
+        .unwrap();
+        let system_clipboard = Arc::new(RecordingClipboard::default());
+        let hub = DesktopClipboardHub::from_parts(
+            system_clipboard.clone(),
+            false,
+            Arc::new(|| anyhow::bail!("profile host must not start a watcher")),
+        );
+        let profile = hub.profile_handle();
+        hub.stage_snapshot(
+            &profile,
+            SystemClipboardSnapshot {
+                ts_ms: 9,
+                representations: vec![ObservedClipboardRepresentation::new(
+                    RepresentationId::new(),
+                    FormatId::from("text"),
+                    Some(uc_platform::clipboard::MimeType("text/plain".into())),
+                    b"staged exact".to_vec(),
+                )],
+                file_content_digests: Vec::new(),
+                file_set_v1_component: None,
+            },
+        )
+        .unwrap();
+
+        let host = prepare_desktop_engine_host_for_profile_with_hub(config, profile).unwrap();
+        let (_, capabilities) = host.into_engine_start();
+
+        let observed = capabilities.clipboard().read().unwrap();
+        let HostClipboardRepresentation::Inline { bytes, .. } = &observed.representations[0] else {
+            panic!("expected inline clipboard representation");
+        };
+        assert_eq!(bytes, b"staged exact");
+        capabilities
+            .clipboard()
+            .write(HostClipboardSnapshot {
+                observed_at_ms: 10,
+                representations: vec![HostClipboardRepresentation::Inline {
+                    format: "text".into(),
+                    mime_type: Some("text/plain".into()),
+                    bytes: b"shared write".to_vec(),
+                }],
+            })
+            .unwrap();
+        assert_eq!(system_clipboard.writes.lock().unwrap().len(), 1);
     }
 
     #[test]

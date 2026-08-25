@@ -126,6 +126,18 @@ pub trait SpaceRuntimeFactory: Send + Sync {
 
 pub struct ProductionSpaceRuntimeFactory;
 
+fn validate_production_profile_spec(
+    spec: &SpaceRuntimeProfileSpec,
+) -> Result<(), SpaceRuntimeFailure> {
+    if spec.profile_dir == "." {
+        return Err(SpaceRuntimeFailure::for_category(
+            SpaceRuntimeFailureCategory::ProfileConflict,
+            "legacy default profile must remain on the compatibility desktop host",
+        ));
+    }
+    Ok(())
+}
+
 struct ProductionSpaceRuntime {
     engine: Arc<Engine>,
     monitor_cancel: CancellationToken,
@@ -256,6 +268,7 @@ impl SpaceRuntimeFactory for ProductionSpaceRuntimeFactory {
         report_failure: SpaceRuntimeFailureCallback,
         forward_event: SpaceRuntimeEventCallback,
     ) -> Result<Arc<dyn SupervisedSpaceRuntime>, SpaceRuntimeFailure> {
+        validate_production_profile_spec(&spec)?;
         let config = DesktopRuntimeProfileConfig::new(
             spec.profile_id,
             spec.data_root,
@@ -1428,6 +1441,7 @@ async fn shutdown_runtime_until(
 #[cfg(test)]
 mod tests {
     use std::collections::{HashMap, HashSet, VecDeque};
+    use std::path::PathBuf;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::{Arc, Mutex};
     use std::time::{Duration, Instant};
@@ -1438,11 +1452,11 @@ mod tests {
     use uc_engine::{EngineError, EngineErrorCategory, EngineEvent, EngineState};
 
     use super::{
-        spawn_engine_event_monitor, ProfiledEngineEvent, SpaceEngineEventStream,
-        SpaceRuntimeEventCallback, SpaceRuntimeFactory, SpaceRuntimeFailure,
-        SpaceRuntimeFailureCallback, SpaceRuntimeFailureCategory, SpaceRuntimeLifecycle,
-        SpaceRuntimeProfileSpec, SpaceRuntimeRoots, SpaceRuntimeStartDisposition,
-        SpaceRuntimeSupervisor, SupervisedSpaceRuntime,
+        spawn_engine_event_monitor, validate_production_profile_spec, ProfiledEngineEvent,
+        SpaceEngineEventStream, SpaceRuntimeEventCallback, SpaceRuntimeFactory,
+        SpaceRuntimeFailure, SpaceRuntimeFailureCallback, SpaceRuntimeFailureCategory,
+        SpaceRuntimeLifecycle, SpaceRuntimeProfileSpec, SpaceRuntimeRoots,
+        SpaceRuntimeStartDisposition, SpaceRuntimeSupervisor, SupervisedSpaceRuntime,
     };
     use crate::daemon::space_catalog::SpaceCatalog;
 
@@ -1464,6 +1478,25 @@ mod tests {
                 ignore_shutdown_deadline: false,
             }
         }
+    }
+
+    #[test]
+    fn production_factory_rejects_the_legacy_default_profile() {
+        let spec = SpaceRuntimeProfileSpec {
+            profile_id: "11111111-1111-4111-8111-111111111111".to_string(),
+            profile_dir: ".".to_string(),
+            data_root: PathBuf::from("legacy-data"),
+            cache_root: PathBuf::from("legacy-cache"),
+            log_dir: PathBuf::from("legacy-logs"),
+            temporary_root: PathBuf::from("legacy-temp"),
+            secure_storage_namespace: "11111111-1111-4111-8111-111111111111".to_string(),
+        };
+
+        let error = validate_production_profile_spec(&spec)
+            .expect_err("legacy must stay on the compatibility host");
+
+        assert_eq!(error.category, SpaceRuntimeFailureCategory::ProfileConflict);
+        assert!(error.message.contains("legacy"));
     }
 
     #[async_trait]

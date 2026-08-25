@@ -36,8 +36,11 @@ const makeSpace = (
   ...overrides,
 })
 
-const renderSelector = (items: SpaceProfileSummary[], onAddSpace = vi.fn()) => {
-  listSpacesApi.mockResolvedValue(items)
+const renderSelector = (
+  items: SpaceProfileSummary[],
+  authoritativeItems: SpaceProfileSummary[] = items
+) => {
+  listSpacesApi.mockResolvedValueOnce(items).mockResolvedValue(authoritativeItems)
   const store = configureStore({
     reducer: { spaces: spacesReducer },
     preloadedState: {
@@ -50,16 +53,18 @@ const renderSelector = (items: SpaceProfileSummary[], onAddSpace = vi.fn()) => {
 
   render(
     <Provider store={store}>
-      <SpaceSelector onAddSpace={onAddSpace} />
+      <SpaceSelector />
     </Provider>
   )
 
-  return { store, onAddSpace }
+  return { store }
 }
 
 describe('SpaceSelector', () => {
   beforeEach(() => {
-    vi.clearAllMocks()
+    listSpacesApi.mockReset()
+    joinSpaceProfileApi.mockReset()
+    setActiveSendSpaceApi.mockReset()
   })
 
   it('lists every space with display-name fallback and runtime/incoming states', async () => {
@@ -69,9 +74,9 @@ describe('SpaceSelector', () => {
 
     const workItem = screen.getByRole('listitem', { name: 'Work' })
     const personalItem = screen.getByRole('listitem', { name: 'Surface Laptop' })
-    expect(within(workItem).getByText('Runtime running')).toBeInTheDocument()
-    expect(within(workItem).getByText('Incoming receiving')).toBeInTheDocument()
-    expect(within(personalItem).getByText('Runtime running')).toBeInTheDocument()
+    expect(within(workItem).getByText('Runtime: Running')).toBeInTheDocument()
+    expect(within(workItem).getByText('Incoming: Receiving')).toBeInTheDocument()
+    expect(within(personalItem).getByText('Runtime: Running')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Work/ })).toHaveAttribute('aria-pressed', 'true')
     await waitFor(() => expect(listSpacesApi).toHaveBeenCalledOnce())
   })
@@ -80,15 +85,19 @@ describe('SpaceSelector', () => {
     const user = userEvent.setup()
     const first = makeSpace('a', { displayName: 'Work', isActiveSend: true })
     const second = makeSpace('b', { displayName: 'Personal' })
-    setActiveSendSpaceApi.mockResolvedValue({ ...second, isActiveSend: true })
-    renderSelector([first, second])
+    const authoritative = [
+      { ...first, isActiveSend: false },
+      { ...second, isActiveSend: true },
+    ]
+    setActiveSendSpaceApi.mockResolvedValue(authoritative[1])
+    renderSelector([first, second], authoritative)
 
     await user.click(screen.getByRole('button', { name: /Personal/ }))
 
     expect(setActiveSendSpaceApi).toHaveBeenCalledWith('b')
     expect(screen.getAllByRole('listitem')).toHaveLength(2)
-    expect(screen.getByRole('listitem', { name: 'Work' })).toHaveTextContent('Runtime running')
-    expect(screen.getByRole('listitem', { name: 'Personal' })).toHaveTextContent('Runtime running')
+    expect(screen.getByRole('listitem', { name: 'Work' })).toHaveTextContent('Runtime: Running')
+    expect(screen.getByRole('listitem', { name: 'Personal' })).toHaveTextContent('Runtime: Running')
     await waitFor(() =>
       expect(screen.getByRole('button', { name: /Personal/ })).toHaveAttribute(
         'aria-pressed',
@@ -100,7 +109,7 @@ describe('SpaceSelector', () => {
   it('keeps the previous space visible when a join succeeds', async () => {
     const first = makeSpace('a', { displayName: 'Work', isActiveSend: true })
     const joined = makeSpace('b', { displayName: 'Family' })
-    const { store } = renderSelector([first])
+    const { store } = renderSelector([first], [first, joined])
     const request: JoinSpaceProfileRequest = {
       code: 'ABCD-1234',
       passphrase: 'correct horse battery staple',
@@ -125,22 +134,23 @@ describe('SpaceSelector', () => {
 
     const healthyItem = screen.getByRole('listitem', { name: 'Work' })
     const failedItem = screen.getByRole('listitem', { name: 'Family' })
-    expect(within(healthyItem).queryByText(/relay_unreachable/)).not.toBeInTheDocument()
-    expect(within(failedItem).getByText(/relay_unreachable/)).toBeInTheDocument()
+    expect(within(healthyItem).queryByText('Relay is unreachable')).not.toBeInTheDocument()
+    expect(within(failedItem).getByText('Relay is unreachable')).toBeInTheDocument()
+    expect(within(failedItem).queryByText(/relay_unreachable|network/)).not.toBeInTheDocument()
   })
 
-  it('uses keyboard-operable labelled buttons for selection and the Task 6 add entry', async () => {
+  it('uses keyboard-operable labelled buttons and opens the real add-space dialog', async () => {
     const user = userEvent.setup()
     const space = makeSpace('a', { displayName: 'Work' })
     setActiveSendSpaceApi.mockResolvedValue({ ...space, isActiveSend: true })
-    const { onAddSpace } = renderSelector([space])
+    renderSelector([space], [{ ...space, isActiveSend: true }])
 
     const selectButton = screen.getByRole('button', { name: /Work/ })
     selectButton.focus()
     await user.keyboard('{Enter}')
     expect(setActiveSendSpaceApi).toHaveBeenCalledWith('a')
 
-    await user.click(screen.getByRole('button', { name: 'Add Space' }))
-    expect(onAddSpace).toHaveBeenCalledOnce()
+    await user.click(screen.getByRole('button', { name: 'Add space' }))
+    expect(screen.getByRole('heading', { name: 'Add a space' })).toBeInTheDocument()
   })
 })

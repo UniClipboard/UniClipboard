@@ -1,13 +1,11 @@
 import { Check, Plus } from 'lucide-react'
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import StatusDot, { type StatusDotTone } from '@/components/device/StatusDot'
+import AddSpaceDialog from '@/components/spaces/AddSpaceDialog'
 import { Button } from '@/components/ui/button'
 import { useAppDispatch, useAppSelector } from '@/store/hooks'
 import { fetchSpaces, selectActiveSendSpace } from '@/store/spacesSlice'
-
-interface SpaceSelectorProps {
-  onAddSpace: () => void
-}
 
 const runtimeTone: Record<string, StatusDotTone> = {
   stopped: 'off',
@@ -17,8 +15,10 @@ const runtimeTone: Record<string, StatusDotTone> = {
   failed: 'warning',
 }
 
-export default function SpaceSelector({ onAddSpace }: SpaceSelectorProps) {
+export default function SpaceSelector() {
+  const { t } = useTranslation()
   const dispatch = useAppDispatch()
+  const [addSpaceOpen, setAddSpaceOpen] = useState(false)
   const {
     items,
     listLoading,
@@ -34,20 +34,25 @@ export default function SpaceSelector({ onAddSpace }: SpaceSelectorProps) {
 
   return (
     <section
-      aria-label="Space selector"
+      aria-label={t('spaces.selector.ariaLabel')}
       className="flex shrink-0 items-center gap-2 border-b border-border bg-card px-3 py-2 text-card-foreground"
     >
-      <div role="list" className="flex min-w-0 flex-1 gap-2 overflow-x-auto">
+      <ul className="flex min-w-0 flex-1 gap-2 overflow-x-auto">
         {items.map(space => {
           const name = space.displayName?.trim() || space.deviceName?.trim() || space.profileId
           const selecting = activeSendPendingProfileId === space.profileId
           const faultText = space.lastFault
-            ? `${space.lastFault.category}${space.lastFault.messageCode ? ` (${space.lastFault.messageCode})` : ''}`
+            ? t(
+                space.lastFault.messageCode === 'relay_unreachable'
+                  ? 'spaces.faults.relayUnreachable'
+                  : 'spaces.faults.generic'
+              )
             : null
+          const runtimeLabel = t(`spaces.runtime.${space.runtimeState.state}`)
+          const incomingLabel = t(`spaces.incoming.${space.incomingSyncState.state}`)
 
           return (
-            <div
-              role="listitem"
+            <li
               aria-label={name}
               key={space.profileId}
               className="min-w-40 rounded-lg border border-border bg-background p-2"
@@ -56,10 +61,11 @@ export default function SpaceSelector({ onAddSpace }: SpaceSelectorProps) {
                 type="button"
                 aria-label={
                   space.isActiveSend
-                    ? `${name}, active send space`
-                    : `Set ${name} as active send space`
+                    ? t('spaces.status.active', { name })
+                    : t('spaces.status.setActive', { name })
                 }
                 aria-pressed={space.isActiveSend}
+                aria-busy={selecting}
                 disabled={selecting}
                 onClick={() => void dispatch(selectActiveSendSpace(space.profileId))}
                 className="flex w-full items-center gap-2 rounded-md text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
@@ -69,31 +75,42 @@ export default function SpaceSelector({ onAddSpace }: SpaceSelectorProps) {
                 {space.isActiveSend ? <Check aria-hidden className="size-4 text-primary" /> : null}
               </button>
               <div className="mt-1 flex flex-wrap gap-x-2 text-xs text-muted-foreground">
-                <span>Runtime {space.runtimeState.state}</span>
-                <span>Incoming {space.incomingSyncState.state}</span>
+                <span>{t('spaces.status.runtime', { state: runtimeLabel })}</span>
+                <span>{t('spaces.status.incoming', { state: incomingLabel })}</span>
               </div>
               {faultText ? (
-                <p className="mt-1 text-xs font-medium text-destructive">Fault: {faultText}</p>
+                <p className="mt-1 text-xs font-medium text-destructive">{faultText}</p>
               ) : null}
-            </div>
+            </li>
           )
         })}
         {listLoading && items.length === 0 ? (
-          <p className="self-center text-sm text-muted-foreground">Loading spaces</p>
+          <li className="self-center text-sm text-muted-foreground">
+            {t('spaces.selector.loading')}
+          </li>
         ) : null}
         {!listLoading && items.length === 0 && !listError ? (
-          <p className="self-center text-sm text-muted-foreground">No spaces available</p>
+          <li className="self-center text-sm text-muted-foreground">
+            {t('spaces.selector.empty')}
+          </li>
         ) : null}
-      </div>
-      <Button type="button" variant="outline" size="sm" aria-label="Add Space" onClick={onAddSpace}>
+      </ul>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        aria-label={t('spaces.actions.add')}
+        onClick={() => setAddSpaceOpen(true)}
+      >
         <Plus aria-hidden />
-        Add Space
+        {t('spaces.actions.add')}
       </Button>
       {listError || mutationError || activeSendError ? (
         <p role="alert" className="text-xs font-medium text-destructive">
-          {listError ?? mutationError ?? activeSendError}
+          {t(listError ?? mutationError ?? activeSendError ?? 'spaces.errors.refresh')}
         </p>
       ) : null}
+      <AddSpaceDialog open={addSpaceOpen} onOpenChange={setAddSpaceOpen} />
     </section>
   )
 }

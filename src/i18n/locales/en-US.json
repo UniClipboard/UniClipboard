@@ -2121,5 +2121,63 @@
         "done": "Done"
       }
     }
+  },
+  "spaces": {
+    "selector": {
+      "ariaLabel": "Spaces",
+      "loading": "Loading spaces…",
+      "empty": "No spaces available"
+    },
+    "actions": {
+      "add": "Add space",
+      "join": "Join space",
+      "create": "Create space",
+      "cancel": "Cancel",
+      "legacyRecovery": "Recover legacy space"
+    },
+    "status": {
+      "runtime": "Runtime: {{state}}",
+      "incoming": "Incoming: {{state}}",
+      "active": "{{name}}, active send space",
+      "setActive": "Set {{name}} as active send space"
+    },
+    "runtime": {
+      "stopped": "Stopped",
+      "starting": "Starting",
+      "running": "Running",
+      "locked": "Locked",
+      "failed": "Failed"
+    },
+    "incoming": {
+      "enabled": "Enabled",
+      "receiving": "Receiving",
+      "degraded": "Degraded",
+      "disabled": "Disabled"
+    },
+    "faults": {
+      "relayUnreachable": "Relay is unreachable",
+      "generic": "This space needs attention"
+    },
+    "errors": {
+      "load": "Couldn't load spaces",
+      "refresh": "The space list couldn't be refreshed",
+      "create": "Couldn't create the space",
+      "join": "Couldn't join the space. Check the invitation and passphrase, then try again.",
+      "activeSend": "Couldn't change the active send space",
+      "remove": "Couldn't remove the space"
+    },
+    "dialog": {
+      "title": "Add a space",
+      "subtitle": "Keep multiple spaces connected. Incoming sync stays enabled for every running space.",
+      "joinMode": "Join an existing space",
+      "createMode": "Create a new space",
+      "code": "Invitation code",
+      "passphrase": "Space passphrase",
+      "confirmPassphrase": "Confirm passphrase",
+      "deviceName": "Device name (optional)",
+      "passphraseMismatch": "Passphrases do not match",
+      "joining": "Joining…",
+      "creating": "Creating…"
+    }
   }
 }

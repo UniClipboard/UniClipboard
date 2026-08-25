@@ -2127,5 +2127,63 @@
         "done": "Concluir"
       }
     }
+  },
+  "spaces": {
+    "selector": {
+      "ariaLabel": "Espaços",
+      "loading": "Carregando espaços…",
+      "empty": "Nenhum espaço disponível"
+    },
+    "actions": {
+      "add": "Adicionar espaço",
+      "join": "Entrar no espaço",
+      "create": "Criar espaço",
+      "cancel": "Cancelar",
+      "legacyRecovery": "Recuperar espaço antigo"
+    },
+    "status": {
+      "runtime": "Execução: {{state}}",
+      "incoming": "Recebimento: {{state}}",
+      "active": "{{name}}, espaço ativo para envio",
+      "setActive": "Definir {{name}} como espaço ativo para envio"
+    },
+    "runtime": {
+      "stopped": "Parado",
+      "starting": "Iniciando",
+      "running": "Em execução",
+      "locked": "Bloqueado",
+      "failed": "Falhou"
+    },
+    "incoming": {
+      "enabled": "Ativado",
+      "receiving": "Recebendo",
+      "degraded": "Parcialmente indisponível",
+      "disabled": "Desativado"
+    },
+    "faults": {
+      "relayUnreachable": "O relay está inacessível",
+      "generic": "Este espaço precisa de atenção"
+    },
+    "errors": {
+      "load": "Não foi possível carregar os espaços",
+      "refresh": "Não foi possível atualizar a lista de espaços",
+      "create": "Não foi possível criar o espaço",
+      "join": "Não foi possível entrar no espaço. Verifique o convite e a senha.",
+      "activeSend": "Não foi possível alterar o espaço de envio",
+      "remove": "Não foi possível remover o espaço"
+    },
+    "dialog": {
+      "title": "Adicionar um espaço",
+      "subtitle": "Mantenha vários espaços conectados e recebendo conteúdo ao mesmo tempo.",
+      "joinMode": "Entrar em um espaço existente",
+      "createMode": "Criar um novo espaço",
+      "code": "Código do convite",
+      "passphrase": "Senha do espaço",
+      "confirmPassphrase": "Confirmar senha",
+      "deviceName": "Nome do dispositivo (opcional)",
+      "passphraseMismatch": "As senhas não coincidem",
+      "joining": "Entrando…",
+      "creating": "Criando…"
+    }
   }
 }

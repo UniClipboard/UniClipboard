@@ -61,7 +61,7 @@ describe('spaces daemon API', () => {
       deviceName: null,
     })
     await setActiveSendSpace('profile-a')
-    await deleteSpaceProfile('profile/a')
+    await expect(deleteSpaceProfile('profile/a')).resolves.toEqual(runningSpaceWire)
 
     expect(request).toHaveBeenNthCalledWith(1, '/v2/spaces', {
       method: 'POST',
@@ -86,6 +86,12 @@ describe('spaces daemon API', () => {
     expect(request).toHaveBeenNthCalledWith(4, '/v2/spaces/profile%2Fa', {
       method: 'DELETE',
     })
+  })
+
+  it('requires DELETE to return the 200 summary envelope rather than an empty response', async () => {
+    request.mockResolvedValue(undefined)
+
+    await expect(deleteSpaceProfile('profile-a')).rejects.toBeInstanceOf(DaemonApiError)
   })
 
   it('rejects a response missing a required profile field with the shared error type', async () => {

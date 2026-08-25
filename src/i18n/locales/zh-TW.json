@@ -2119,5 +2119,56 @@
         "done": "完成"
       }
     }
+  },
+  "spaces": {
+    "selector": { "ariaLabel": "空間", "loading": "正在載入空間…", "empty": "沒有可用空間" },
+    "actions": {
+      "add": "新增空間",
+      "join": "加入空間",
+      "create": "建立空間",
+      "cancel": "取消",
+      "legacyRecovery": "復原舊版空間"
+    },
+    "status": {
+      "runtime": "執行狀態：{{state}}",
+      "incoming": "接收狀態：{{state}}",
+      "active": "{{name}}，目前傳送空間",
+      "setActive": "將 {{name}} 設為目前傳送空間"
+    },
+    "runtime": {
+      "stopped": "已停止",
+      "starting": "正在啟動",
+      "running": "執行中",
+      "locked": "已鎖定",
+      "failed": "失敗"
+    },
+    "incoming": {
+      "enabled": "已啟用",
+      "receiving": "正在接收",
+      "degraded": "部分異常",
+      "disabled": "已停用"
+    },
+    "faults": { "relayUnreachable": "無法連線至中繼服務", "generic": "此空間需要處理" },
+    "errors": {
+      "load": "無法載入空間清單",
+      "refresh": "無法重新整理空間清單",
+      "create": "無法建立空間",
+      "join": "無法加入空間，請檢查邀請碼與密碼後再試一次。",
+      "activeSend": "無法切換目前傳送空間",
+      "remove": "無法移除空間"
+    },
+    "dialog": {
+      "title": "新增空間",
+      "subtitle": "可同時保持多個空間連線；所有執行中的空間都會繼續接收同步內容。",
+      "joinMode": "加入現有空間",
+      "createMode": "建立新空間",
+      "code": "邀請碼",
+      "passphrase": "空間密碼",
+      "confirmPassphrase": "確認密碼",
+      "deviceName": "裝置名稱（選填）",
+      "passphraseMismatch": "兩次輸入的密碼不一致",
+      "joining": "正在加入…",
+      "creating": "正在建立…"
+    }
   }
 }

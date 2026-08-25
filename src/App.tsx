@@ -62,16 +62,11 @@ const AuthenticatedLayout = ({ sidebarTitle }: { sidebarTitle: ReactNode }) => {
   const routerLocation = useLocation()
   const outlet = useOutlet()
   const { isWindows, reduceVisualEffects } = usePlatform()
-  const handleAddSpace = useCallback(() => {
-    // Task 6 owns the add/join dialog and consumes this entry event once the
-    // production multi-space handlers are available.
-    window.dispatchEvent(new CustomEvent('uniclipboard:add-space-requested'))
-  }, [])
 
   return (
     <MainLayout sidebarTitle={sidebarTitle}>
       <div className="flex h-full min-h-0 flex-col overflow-hidden">
-        {isWindows ? <SpaceSelector onAddSpace={handleAddSpace} /> : null}
+        {isWindows ? <SpaceSelector /> : null}
         <div className="relative min-h-0 flex-1 overflow-hidden">
           <AnimatePresence initial={false} mode="sync">
             <m.div

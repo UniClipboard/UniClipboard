@@ -18,7 +18,15 @@ export interface SpacesState {
   activeSendPendingProfileId: string | null
   activeSendError: string | null
   activeSendRequestId: string | null
-  previousActiveSendProfileId: string | null
+}
+
+interface MutationSuccess {
+  items: SpaceProfileSummary[]
+}
+
+interface MutationFailure {
+  message: string
+  items: SpaceProfileSummary[] | null
 }
 
 const initialState: SpacesState = {
@@ -29,16 +37,38 @@ const initialState: SpacesState = {
   activeSendPendingProfileId: null,
   activeSendError: null,
   activeSendRequestId: null,
-  previousActiveSendProfileId: null,
 }
 
-function upsertSpace(items: SpaceProfileSummary[], incoming: SpaceProfileSummary): void {
-  const index = items.findIndex(space => space.profileId === incoming.profileId)
-  if (index === -1) {
-    items.push(incoming)
-  } else {
-    items[index] = incoming
+async function mutateThenRefresh(
+  mutation: () => Promise<unknown>,
+  mutationError: string
+): Promise<MutationSuccess | MutationFailure> {
+  let message: string | null = null
+  try {
+    await mutation()
+  } catch {
+    message = mutationError
   }
+
+  let items: SpaceProfileSummary[] | null = null
+  try {
+    items = await listSpaces()
+  } catch {
+    message ??= 'spaces.errors.refresh'
+  }
+
+  return message ? { message, items } : { items: items! }
+}
+
+let activeSendQueue: Promise<void> = Promise.resolve()
+
+function enqueueActiveSend<T>(operation: () => Promise<T>): Promise<T> {
+  const result = activeSendQueue.then(operation, operation)
+  activeSendQueue = result.then(
+    () => undefined,
+    () => undefined
+  )
+  return result
 }
 
 export const fetchSpaces = createAsyncThunk<SpaceProfileSummary[], void, { rejectValue: string }>(
@@ -47,62 +77,60 @@ export const fetchSpaces = createAsyncThunk<SpaceProfileSummary[], void, { rejec
     try {
       return await listSpaces()
     } catch {
-      return rejectWithValue('Failed to load spaces')
+      return rejectWithValue('spaces.errors.load')
     }
   }
 )
 
 export const createSpace = createAsyncThunk<
-  SpaceProfileSummary,
+  MutationSuccess,
   CreateSpaceProfileRequest,
-  { rejectValue: string }
+  { rejectValue: MutationFailure }
 >('spaces/create', async (request, { rejectWithValue }) => {
-  try {
-    return await createSpaceProfile(request)
-  } catch {
-    return rejectWithValue('Failed to create space')
-  }
+  const result = await mutateThenRefresh(() => createSpaceProfile(request), 'spaces.errors.create')
+  return 'message' in result ? rejectWithValue(result) : result
 })
 
 export const joinSpace = createAsyncThunk<
-  SpaceProfileSummary,
+  MutationSuccess,
   JoinSpaceProfileRequest,
-  { rejectValue: string }
+  { rejectValue: MutationFailure }
 >('spaces/join', async (request, { rejectWithValue }) => {
-  try {
-    return await joinSpaceProfile(request)
-  } catch {
-    return rejectWithValue('Failed to join space')
-  }
+  const result = await mutateThenRefresh(() => joinSpaceProfile(request), 'spaces.errors.join')
+  return 'message' in result ? rejectWithValue(result) : result
 })
 
 export const selectActiveSendSpace = createAsyncThunk<
-  SpaceProfileSummary,
+  MutationSuccess,
   string,
-  { rejectValue: string }
+  { rejectValue: MutationFailure }
 >('spaces/selectActiveSend', async (profileId, { rejectWithValue }) => {
-  try {
-    return await setActiveSendSpace(profileId)
-  } catch {
-    return rejectWithValue('Failed to change active send space')
-  }
+  const result = await enqueueActiveSend(() =>
+    mutateThenRefresh(() => setActiveSendSpace(profileId), 'spaces.errors.activeSend')
+  )
+  return 'message' in result ? rejectWithValue(result) : result
 })
 
-export const removeSpace = createAsyncThunk<SpaceProfileSummary, string, { rejectValue: string }>(
-  'spaces/remove',
-  async (profileId, { rejectWithValue }) => {
-    try {
-      return await deleteSpaceProfile(profileId)
-    } catch {
-      return rejectWithValue('Failed to remove space')
-    }
-  }
-)
+export const removeSpace = createAsyncThunk<
+  MutationSuccess,
+  string,
+  { rejectValue: MutationFailure }
+>('spaces/remove', async (profileId, { rejectWithValue }) => {
+  const result = await mutateThenRefresh(
+    () => deleteSpaceProfile(profileId),
+    'spaces.errors.remove'
+  )
+  return 'message' in result ? rejectWithValue(result) : result
+})
 
 const spacesSlice = createSlice({
   name: 'spaces',
   initialState,
-  reducers: {},
+  reducers: {
+    clearMutationError: state => {
+      state.mutationError = null
+    },
+  },
   extraReducers: builder => {
     builder
       .addCase(fetchSpaces.pending, state => {
@@ -116,7 +144,7 @@ const spacesSlice = createSlice({
       })
       .addCase(fetchSpaces.rejected, (state, action) => {
         state.listLoading = false
-        state.listError = action.payload ?? 'Failed to load spaces'
+        state.listError = action.payload ?? 'spaces.errors.load'
       })
 
     builder
@@ -124,11 +152,12 @@ const spacesSlice = createSlice({
         state.mutationError = null
       })
       .addCase(createSpace.fulfilled, (state, action) => {
-        upsertSpace(state.items, action.payload)
+        state.items = action.payload.items
         state.mutationError = null
       })
       .addCase(createSpace.rejected, (state, action) => {
-        state.mutationError = action.payload ?? 'Failed to create space'
+        if (action.payload?.items) state.items = action.payload.items
+        state.mutationError = action.payload?.message ?? 'spaces.errors.create'
       })
 
     builder
@@ -136,44 +165,33 @@ const spacesSlice = createSlice({
         state.mutationError = null
       })
       .addCase(joinSpace.fulfilled, (state, action) => {
-        upsertSpace(state.items, action.payload)
+        state.items = action.payload.items
         state.mutationError = null
       })
       .addCase(joinSpace.rejected, (state, action) => {
-        state.mutationError = action.payload ?? 'Failed to join space'
+        if (action.payload?.items) state.items = action.payload.items
+        state.mutationError = action.payload?.message ?? 'spaces.errors.join'
       })
 
     builder
       .addCase(selectActiveSendSpace.pending, (state, action) => {
-        state.previousActiveSendProfileId =
-          state.items.find(space => space.isActiveSend)?.profileId ?? null
         state.activeSendRequestId = action.meta.requestId
         state.activeSendPendingProfileId = action.meta.arg
         state.activeSendError = null
-        for (const space of state.items) {
-          space.isActiveSend = space.profileId === action.meta.arg
-        }
       })
       .addCase(selectActiveSendSpace.fulfilled, (state, action) => {
+        state.items = action.payload.items
         if (state.activeSendRequestId !== action.meta.requestId) return
-        upsertSpace(state.items, action.payload)
-        for (const space of state.items) {
-          space.isActiveSend = space.profileId === action.payload.profileId
-        }
         state.activeSendPendingProfileId = null
         state.activeSendRequestId = null
-        state.previousActiveSendProfileId = null
         state.activeSendError = null
       })
       .addCase(selectActiveSendSpace.rejected, (state, action) => {
+        if (action.payload?.items) state.items = action.payload.items
         if (state.activeSendRequestId !== action.meta.requestId) return
-        for (const space of state.items) {
-          space.isActiveSend = space.profileId === state.previousActiveSendProfileId
-        }
         state.activeSendPendingProfileId = null
         state.activeSendRequestId = null
-        state.previousActiveSendProfileId = null
-        state.activeSendError = action.payload ?? 'Failed to change active send space'
+        state.activeSendError = action.payload?.message ?? 'spaces.errors.activeSend'
       })
 
     builder
@@ -181,13 +199,15 @@ const spacesSlice = createSlice({
         state.mutationError = null
       })
       .addCase(removeSpace.fulfilled, (state, action) => {
-        state.items = state.items.filter(space => space.profileId !== action.payload.profileId)
+        state.items = action.payload.items
         state.mutationError = null
       })
       .addCase(removeSpace.rejected, (state, action) => {
-        state.mutationError = action.payload ?? 'Failed to remove space'
+        if (action.payload?.items) state.items = action.payload.items
+        state.mutationError = action.payload?.message ?? 'spaces.errors.remove'
       })
   },
 })
 
+export const { clearMutationError } = spacesSlice.actions
 export default spacesSlice.reducer

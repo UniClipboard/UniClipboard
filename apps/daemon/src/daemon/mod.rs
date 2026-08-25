@@ -11,6 +11,7 @@ pub mod mobile_lan_lifecycle;
 pub mod oneshot;
 pub mod run_mode;
 pub mod space_catalog;
+pub mod space_runtime_supervisor;
 #[cfg(windows)]
 pub mod spaces_axum;
 #[cfg(target_os = "windows")]

@@ -17,9 +17,9 @@ vi.mock('@tauri-apps/api/window', () => ({
 
 vi.mock('@/hooks/usePlatform', () => ({
   usePlatform: () => ({
-    isWindows: false,
+    isWindows: true,
     isMac: false,
-    isLinux: true,
+    isLinux: false,
     isTauri: true,
     hasCustomWindowControls: true,
     reduceVisualEffects: true,
@@ -42,10 +42,12 @@ describe('TitleBar', () => {
     windowMocks.isMaximized.mockResolvedValue(false)
   })
 
-  it('在 Linux 中显示并启用窗口控制按钮', async () => {
+  it('在 Windows 中显示并启用窗口控制按钮', async () => {
     render(<TitleBar />)
 
-    expect(screen.getByRole('button', { name: '关闭' }).parentElement).toHaveClass('mr-2')
+    const closeControlContainer = screen.getByRole('button', { name: '关闭' }).parentElement
+    expect(closeControlContainer).toHaveClass('mr-4')
+    expect(closeControlContainer).not.toHaveClass('mr-2')
 
     fireEvent.click(screen.getByRole('button', { name: '最小化' }))
     fireEvent.click(screen.getByRole('button', { name: '最大化' }))

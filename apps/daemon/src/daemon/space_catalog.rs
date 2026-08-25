@@ -6,7 +6,7 @@ use std::path::{Component, Path, PathBuf};
 use fs2::FileExt;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
-use uuid::Uuid;
+use uuid::{Uuid, Variant, Version};
 
 pub const SPACE_CATALOG_FILE_NAME: &str = "space-catalog.json";
 const SPACE_CATALOG_LOCK_FILE_NAME: &str = ".space-catalog.lock";
@@ -63,27 +63,41 @@ pub struct SpaceCatalog {
     document: CatalogDocument,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum CatalogPathState {
+    Present,
+    Missing,
+}
+
 impl SpaceCatalog {
     pub fn load_or_migrate(root: impl AsRef<Path>) -> Result<Self, SpaceCatalogError> {
+        Self::load_or_migrate_with_probe(root, probe_catalog_path)
+    }
+
+    fn load_or_migrate_with_probe(
+        root: impl AsRef<Path>,
+        probe: impl FnOnce(&Path) -> Result<CatalogPathState, SpaceCatalogError>,
+    ) -> Result<Self, SpaceCatalogError> {
         let root = root.as_ref().to_path_buf();
         fs::create_dir_all(&root).map_err(|source| io_error("create data root", source))?;
         let _lock = lock_catalog(&root)?;
         let path = root.join(SPACE_CATALOG_FILE_NAME);
 
-        let document = if path.exists() {
-            read_document(&path)?
-        } else {
-            let document = CatalogDocument {
-                entries: vec![SpaceCatalogEntry {
-                    profile_id: Uuid::new_v4().to_string(),
-                    profile_dir: LEGACY_PROFILE_DIR.to_string(),
-                    enabled: true,
-                    active_send: true,
-                }],
-            };
-            validate_document(&document)?;
-            write_document(&root, &document)?;
-            document
+        let document = match probe(&path)? {
+            CatalogPathState::Present => read_document(&path)?,
+            CatalogPathState::Missing => {
+                let document = CatalogDocument {
+                    entries: vec![SpaceCatalogEntry {
+                        profile_id: Uuid::new_v4().to_string(),
+                        profile_dir: LEGACY_PROFILE_DIR.to_string(),
+                        enabled: true,
+                        active_send: true,
+                    }],
+                };
+                validate_document(&document)?;
+                write_document(&root, &document)?;
+                document
+            }
         };
 
         Ok(Self { root, document })
@@ -115,6 +129,7 @@ impl SpaceCatalog {
     }
 
     pub fn set_active_send(&mut self, profile_id: &str) -> Result<(), SpaceCatalogError> {
+        parse_canonical_profile_id(profile_id)?;
         if !self
             .document
             .entries
@@ -137,6 +152,7 @@ impl SpaceCatalog {
         &mut self,
         profile_id: &str,
     ) -> Result<SpaceCatalogEntry, SpaceCatalogError> {
+        parse_canonical_profile_id(profile_id)?;
         let position = self
             .document
             .entries
@@ -170,6 +186,32 @@ impl SpaceCatalog {
     }
 }
 
+fn probe_catalog_path(path: &Path) -> Result<CatalogPathState, SpaceCatalogError> {
+    probe_catalog_path_with(
+        path,
+        |candidate| fs::metadata(candidate).map(drop),
+        |candidate| fs::symlink_metadata(candidate).map(drop),
+    )
+}
+
+fn probe_catalog_path_with(
+    path: &Path,
+    metadata: impl FnOnce(&Path) -> io::Result<()>,
+    symlink_metadata: impl FnOnce(&Path) -> io::Result<()>,
+) -> Result<CatalogPathState, SpaceCatalogError> {
+    match metadata(path) {
+        Ok(()) => Ok(CatalogPathState::Present),
+        Err(source) if source.kind() == io::ErrorKind::NotFound => match symlink_metadata(path) {
+            Err(entry_error) if entry_error.kind() == io::ErrorKind::NotFound => {
+                Ok(CatalogPathState::Missing)
+            }
+            Ok(()) => Err(io_error("inspect catalog target", source)),
+            Err(entry_error) => Err(io_error("inspect catalog directory entry", entry_error)),
+        },
+        Err(source) => Err(io_error("inspect catalog metadata", source)),
+    }
+}
+
 fn read_document(path: &Path) -> Result<CatalogDocument, SpaceCatalogError> {
     let bytes = fs::read(path).map_err(|source| io_error("read", source))?;
     let document = serde_json::from_slice(&bytes)?;
@@ -183,27 +225,18 @@ fn validate_document(document: &CatalogDocument) -> Result<(), SpaceCatalogError
     let mut active_send_count = 0;
 
     for entry in &document.entries {
-        let parsed = Uuid::parse_str(&entry.profile_id).map_err(|_| {
-            SpaceCatalogError::InvalidProfileId {
-                profile_id: entry.profile_id.clone(),
-            }
-        })?;
-        if parsed.get_version_num() != 4 {
-            return Err(SpaceCatalogError::InvalidProfileId {
-                profile_id: entry.profile_id.clone(),
-            });
-        }
+        let parsed = parse_canonical_profile_id(&entry.profile_id)?;
         if !is_safe_profile_directory(&entry.profile_dir) {
             return Err(SpaceCatalogError::UnsafeProfileDirectory {
                 profile_dir: entry.profile_dir.clone(),
             });
         }
-        if !profile_ids.insert(entry.profile_id.as_str()) {
+        if !profile_ids.insert(parsed) {
             return Err(SpaceCatalogError::DuplicateProfileId {
                 profile_id: entry.profile_id.clone(),
             });
         }
-        if !profile_directories.insert(entry.profile_dir.as_str()) {
+        if !profile_directories.insert(profile_directory_equivalence_key(&entry.profile_dir)) {
             return Err(SpaceCatalogError::DuplicateProfileDirectory {
                 profile_dir: entry.profile_dir.clone(),
             });
@@ -224,6 +257,21 @@ fn validate_document(document: &CatalogDocument) -> Result<(), SpaceCatalogError
         });
     }
     Ok(())
+}
+
+fn parse_canonical_profile_id(profile_id: &str) -> Result<Uuid, SpaceCatalogError> {
+    let parsed = Uuid::parse_str(profile_id).map_err(|_| SpaceCatalogError::InvalidProfileId {
+        profile_id: profile_id.to_string(),
+    })?;
+    if parsed.get_version() != Some(Version::Random)
+        || parsed.get_variant() != Variant::RFC4122
+        || parsed.hyphenated().to_string() != profile_id
+    {
+        return Err(SpaceCatalogError::InvalidProfileId {
+            profile_id: profile_id.to_string(),
+        });
+    }
+    Ok(parsed)
 }
 
 fn is_safe_profile_directory(profile_dir: &str) -> bool {
@@ -261,8 +309,22 @@ fn is_safe_profile_directory(profile_dir: &str) -> bool {
 }
 
 fn is_numbered_windows_device(name: &str, prefix: &str) -> bool {
-    name.strip_prefix(prefix)
-        .is_some_and(|suffix| matches!(suffix, "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9"))
+    name.strip_prefix(prefix).is_some_and(|suffix| {
+        matches!(
+            suffix,
+            "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" | "¹" | "²" | "³"
+        )
+    })
+}
+
+#[cfg(windows)]
+fn profile_directory_equivalence_key(profile_dir: &str) -> String {
+    profile_dir.to_lowercase()
+}
+
+#[cfg(not(windows))]
+fn profile_directory_equivalence_key(profile_dir: &str) -> String {
+    profile_dir.to_string()
 }
 
 fn lock_catalog(root: &Path) -> Result<File, SpaceCatalogError> {
@@ -278,10 +340,18 @@ fn lock_catalog(root: &Path) -> Result<File, SpaceCatalogError> {
 }
 
 fn write_document(root: &Path, document: &CatalogDocument) -> Result<(), SpaceCatalogError> {
+    write_document_with_replace(root, document, replace_file)
+}
+
+fn write_document_with_replace(
+    root: &Path,
+    document: &CatalogDocument,
+    replace: impl FnOnce(&Path, &Path) -> Result<(), SpaceCatalogError>,
+) -> Result<(), SpaceCatalogError> {
     let bytes = serde_json::to_vec_pretty(document)?;
     let target = root.join(SPACE_CATALOG_FILE_NAME);
     let temporary = root.join(format!(".{SPACE_CATALOG_FILE_NAME}.{}.tmp", Uuid::new_v4()));
-    let result = write_and_replace(&temporary, &target, &bytes);
+    let result = write_and_replace(&temporary, &target, &bytes, replace);
     if result.is_err() {
         let _ = fs::remove_file(&temporary);
     }
@@ -292,6 +362,7 @@ fn write_and_replace(
     temporary: &Path,
     target: &Path,
     bytes: &[u8],
+    replace: impl FnOnce(&Path, &Path) -> Result<(), SpaceCatalogError>,
 ) -> Result<(), SpaceCatalogError> {
     let mut file = OpenOptions::new()
         .create_new(true)
@@ -306,7 +377,7 @@ fn write_and_replace(
         .map_err(|source| io_error("sync temporary file", source))?;
     drop(file);
 
-    replace_file(temporary, target)?;
+    replace(temporary, target)?;
     sync_parent_directory(target)?;
     Ok(())
 }
@@ -364,6 +435,7 @@ fn io_error(operation: &'static str, source: io::Error) -> SpaceCatalogError {
 #[cfg(test)]
 mod tests {
     use std::fs;
+    use std::io;
     use std::sync::{Arc, Barrier};
     use std::thread;
 
@@ -412,6 +484,58 @@ mod tests {
 
         assert_eq!(second.entries(), first.entries());
         assert_eq!(persisted_after, persisted_before);
+    }
+
+    #[test]
+    fn metadata_probe_error_never_triggers_first_start_migration() {
+        let root = tempfile::tempdir().expect("create temp data root");
+
+        let error = SpaceCatalog::load_or_migrate_with_probe(root.path(), |_| {
+            Err(io_error(
+                "inspect catalog metadata",
+                io::Error::new(io::ErrorKind::PermissionDenied, "injected metadata failure"),
+            ))
+        })
+        .expect_err("metadata failure must fail closed");
+
+        assert!(matches!(
+            error,
+            SpaceCatalogError::Io { source, .. }
+                if source.kind() == io::ErrorKind::PermissionDenied
+        ));
+        assert!(!root.path().join(SPACE_CATALOG_FILE_NAME).exists());
+    }
+
+    #[test]
+    fn dangling_catalog_directory_entry_is_not_treated_as_missing() {
+        let path = Path::new("space-catalog.json");
+
+        let error = probe_catalog_path_with(
+            path,
+            |_| Err(io::Error::new(io::ErrorKind::NotFound, "target missing")),
+            |_| Ok(()),
+        )
+        .expect_err("dangling directory entry must fail closed");
+
+        assert!(matches!(
+            error,
+            SpaceCatalogError::Io { source, .. }
+                if source.kind() == io::ErrorKind::NotFound
+        ));
+    }
+
+    #[test]
+    fn catalog_is_missing_only_when_metadata_and_directory_entry_are_not_found() {
+        let path = Path::new("space-catalog.json");
+
+        let state = probe_catalog_path_with(
+            path,
+            |_| Err(io::Error::new(io::ErrorKind::NotFound, "target missing")),
+            |_| Err(io::Error::new(io::ErrorKind::NotFound, "entry missing")),
+        )
+        .expect("unambiguous missing catalog");
+
+        assert_eq!(state, CatalogPathState::Missing);
     }
 
     #[test]
@@ -563,6 +687,49 @@ mod tests {
     }
 
     #[test]
+    fn replace_failure_preserves_old_catalog_and_cleans_temporary_file() {
+        let root = tempfile::tempdir().expect("create temp data root");
+        let catalog = SpaceCatalog::load_or_migrate(root.path()).expect("migrate catalog");
+        let catalog_path = root.path().join(SPACE_CATALOG_FILE_NAME);
+        let persisted_before = fs::read(&catalog_path).expect("read old catalog");
+        let mut candidate = catalog.document.clone();
+        candidate.entries.push(SpaceCatalogEntry {
+            profile_id: "abcdefab-cdef-4abc-8def-abcdefabcdef".to_string(),
+            profile_dir: "profile-two".to_string(),
+            enabled: true,
+            active_send: false,
+        });
+
+        let error = write_document_with_replace(root.path(), &candidate, |_, _| {
+            Err(io_error(
+                "injected replace",
+                io::Error::new(io::ErrorKind::PermissionDenied, "injected replace failure"),
+            ))
+        })
+        .expect_err("replace failure must be reported");
+
+        assert!(matches!(
+            error,
+            SpaceCatalogError::Io { source, .. }
+                if source.kind() == io::ErrorKind::PermissionDenied
+        ));
+        assert_eq!(
+            fs::read(catalog_path).expect("read old catalog after failure"),
+            persisted_before
+        );
+        let temporary_files = fs::read_dir(root.path())
+            .expect("read catalog root")
+            .filter_map(Result::ok)
+            .filter(|entry| {
+                let name = entry.file_name();
+                let name = name.to_string_lossy();
+                name.starts_with(&format!(".{SPACE_CATALOG_FILE_NAME}.")) && name.ends_with(".tmp")
+            })
+            .count();
+        assert_eq!(temporary_files, 0);
+    }
+
+    #[test]
     fn unsafe_profile_directory_is_rejected() {
         for unsafe_directory in [
             "../outside",
@@ -570,6 +737,14 @@ mod tests {
             r"C:\outside",
             "NUL",
             "trailing.",
+            "COM1",
+            "lpt9.txt",
+            "COM¹",
+            "com².log",
+            "CoM³",
+            "LPT¹",
+            "lpt².log",
+            "LpT³",
         ] {
             let root = tempfile::tempdir().expect("create temp data root");
             write_catalog(
@@ -595,6 +770,40 @@ mod tests {
         }
     }
 
+    #[cfg(windows)]
+    #[test]
+    fn windows_case_insensitive_profile_directory_aliases_are_duplicates() {
+        let root = tempfile::tempdir().expect("create temp data root");
+        write_catalog(
+            root.path(),
+            serde_json::json!({
+                "entries": [
+                    {
+                        "profile_id": "11111111-1111-4111-8111-111111111111",
+                        "profile_dir": "Profile-One",
+                        "enabled": true,
+                        "active_send": true
+                    },
+                    {
+                        "profile_id": "22222222-2222-4222-8222-222222222222",
+                        "profile_dir": "profile-one",
+                        "enabled": true,
+                        "active_send": false
+                    }
+                ]
+            }),
+        );
+
+        let error = SpaceCatalog::load_or_migrate(root.path())
+            .expect_err("case-insensitive directory aliases must fail on Windows");
+
+        assert!(matches!(
+            error,
+            SpaceCatalogError::DuplicateProfileDirectory { profile_dir }
+                if profile_dir == "profile-one"
+        ));
+    }
+
     #[test]
     fn non_random_profile_id_is_rejected() {
         let root = tempfile::tempdir().expect("create temp data root");
@@ -618,6 +827,85 @@ mod tests {
             SpaceCatalogError::InvalidProfileId { profile_id }
                 if profile_id == "not-a-random-uuid"
         ));
+    }
+
+    #[test]
+    fn non_canonical_or_non_rfc4122_profile_ids_are_rejected() {
+        for invalid_profile_id in [
+            "ABCDEFAB-CDEF-4ABC-8DEF-ABCDEFABCDEF",
+            "abcdefabcdef4abc8defabcdefabcdef",
+            "abcdefab-cdef-4abc-cdef-abcdefabcdef",
+        ] {
+            let root = tempfile::tempdir().expect("create temp data root");
+            write_catalog(
+                root.path(),
+                serde_json::json!({
+                    "entries": [{
+                        "profile_id": invalid_profile_id,
+                        "profile_dir": "profile-one",
+                        "enabled": true,
+                        "active_send": true
+                    }]
+                }),
+            );
+
+            let error = SpaceCatalog::load_or_migrate(root.path())
+                .expect_err("non-canonical profile ID must fail");
+
+            assert!(matches!(
+                error,
+                SpaceCatalogError::InvalidProfileId { profile_id }
+                    if profile_id == invalid_profile_id
+            ));
+        }
+    }
+
+    #[test]
+    fn api_lookup_rejects_non_canonical_profile_id_without_rewriting_catalog() {
+        let root = tempfile::tempdir().expect("create temp data root");
+        let second_id = "abcdefab-cdef-4abc-8def-abcdefabcdef";
+        write_catalog(
+            root.path(),
+            serde_json::json!({
+                "entries": [
+                    {
+                        "profile_id": "11111111-1111-4111-8111-111111111111",
+                        "profile_dir": "profile-one",
+                        "enabled": true,
+                        "active_send": true
+                    },
+                    {
+                        "profile_id": second_id,
+                        "profile_dir": "profile-two",
+                        "enabled": true,
+                        "active_send": false
+                    }
+                ]
+            }),
+        );
+        let catalog_path = root.path().join(SPACE_CATALOG_FILE_NAME);
+        let persisted_before = fs::read(&catalog_path).expect("read catalog before lookup");
+        let mut catalog = SpaceCatalog::load_or_migrate(root.path()).expect("load catalog");
+
+        let set_error = catalog
+            .set_active_send(&second_id.to_ascii_uppercase())
+            .expect_err("uppercase lookup must fail");
+        let remove_error = catalog
+            .remove_profile(&second_id.replace('-', ""))
+            .expect_err("simple UUID lookup must fail");
+
+        assert!(matches!(
+            set_error,
+            SpaceCatalogError::InvalidProfileId { .. }
+        ));
+        assert!(matches!(
+            remove_error,
+            SpaceCatalogError::InvalidProfileId { .. }
+        ));
+        assert_eq!(
+            fs::read(catalog_path).expect("read catalog after lookup"),
+            persisted_before
+        );
     }
 
     #[test]

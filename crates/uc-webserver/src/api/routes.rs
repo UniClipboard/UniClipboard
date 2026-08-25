@@ -88,7 +88,17 @@ pub fn router_l1(state: DaemonApiState) -> Router<DaemonApiState> {
 /// The middleware chain enforces only L2 (valid JWT + PID whitelist).
 /// L3/L4 checks (encryption_ready state) are reserved for future phases.
 pub fn router_l2_plus(state: DaemonApiState) -> Router<DaemonApiState> {
+    router_l2_plus_with_extra(state, Router::new())
+}
+
+/// Build the protected router with daemon-owned extension routes inside the
+/// same authentication and rate-limit boundary.
+pub fn router_l2_plus_with_extra(
+    state: DaemonApiState,
+    extra: Router<DaemonApiState>,
+) -> Router<DaemonApiState> {
     let router = Router::new()
+        .merge(extra)
         .merge(crate::api::clipboard::router())
         .merge(crate::api::search::router())
         .merge(crate::api::device::router())

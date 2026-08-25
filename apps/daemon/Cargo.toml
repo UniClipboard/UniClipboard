@@ -35,6 +35,7 @@ tracing = "0.1"
 rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
 
 [target.'cfg(windows)'.dependencies]
+axum = { version = "0.7", features = ["tokio", "http1", "json"] }
 windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_Storage_FileSystem"] }
 
 # macOS: the headless daemon loads AppKit (for `NSPasteboard`) and must then
@@ -47,6 +48,7 @@ objc2-app-kit = { version = "0.3", features = ["NSApplication", "NSResponder"] }
 uc-daemon-local = { path = "../../crates/uc-daemon-local", features = ["test-helpers"] }
 chrono = { version = "0.4", default-features = true }
 tempfile = "3"
+tower = { version = "0.5", features = ["util"] }
 
 [features]
 e2e-rendezvous = [

@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::future::Future;
 use std::path::PathBuf;
 use std::pin::Pin;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
 
@@ -9,7 +10,7 @@ use async_trait::async_trait;
 use thiserror::Error;
 use tokio_util::sync::CancellationToken;
 use uc_bootstrap::{prepare_desktop_engine_host_for_profile, DesktopRuntimeProfileConfig};
-use uc_engine::{Engine, EngineEvent, EngineState, EventStream};
+use uc_engine::{Engine, EngineEvent, EventStream};
 
 use super::space_catalog::{SpaceCatalog, SpaceCatalogEntry};
 
@@ -128,7 +129,61 @@ pub struct ProductionSpaceRuntimeFactory;
 struct ProductionSpaceRuntime {
     engine: Arc<Engine>,
     monitor_cancel: CancellationToken,
-    monitor: Mutex<Option<tokio::task::JoinHandle<()>>>,
+    monitor: Arc<Mutex<Option<tokio::task::JoinHandle<()>>>>,
+    shutdown: Arc<StickyShutdown>,
+}
+
+struct StickyShutdown {
+    started: AtomicBool,
+    result: tokio::sync::watch::Sender<Option<Result<(), SpaceRuntimeFailure>>>,
+}
+
+impl Default for StickyShutdown {
+    fn default() -> Self {
+        let (result, _) = tokio::sync::watch::channel(None);
+        Self {
+            started: AtomicBool::new(false),
+            result,
+        }
+    }
+}
+
+impl StickyShutdown {
+    // Engine marks itself Stopped after a failed runtime shutdown, so the first outcome is
+    // terminal evidence. Retrying Engine::shutdown would only produce an invalid-state error.
+    async fn run<F, Fut>(self: &Arc<Self>, work: F) -> Result<(), SpaceRuntimeFailure>
+    where
+        F: FnOnce() -> Fut + Send + 'static,
+        Fut: Future<Output = Result<(), SpaceRuntimeFailure>> + Send + 'static,
+    {
+        let mut result = self.result.subscribe();
+        if self
+            .started
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .is_ok()
+        {
+            let completed = self.result.clone();
+            tokio::spawn(async move {
+                let worker = tokio::spawn(work());
+                let outcome = match worker.await {
+                    Ok(outcome) => outcome,
+                    Err(error) => Err(SpaceRuntimeFailure::shutdown(format!(
+                        "production shutdown task failed: {error}"
+                    ))),
+                };
+                completed.send_replace(Some(outcome));
+            });
+        }
+
+        loop {
+            if let Some(outcome) = result.borrow().clone() {
+                return outcome;
+            }
+            result.changed().await.map_err(|_| {
+                SpaceRuntimeFailure::shutdown("production shutdown result channel closed")
+            })?;
+        }
+    }
 }
 
 #[async_trait]
@@ -138,47 +193,58 @@ impl SupervisedSpaceRuntime for ProductionSpaceRuntime {
     }
 
     async fn shutdown(&self, deadline: Duration) -> Result<(), SpaceRuntimeFailure> {
-        let deadline_at = tokio::time::Instant::now() + deadline;
-        self.monitor_cancel.cancel();
-        let monitor = match self.monitor.lock() {
-            Ok(mut monitor) => monitor.take(),
-            Err(poisoned) => poisoned.into_inner().take(),
-        };
-        let monitor_failure = match monitor {
-            Some(mut monitor) => match tokio::time::timeout_at(deadline_at, &mut monitor).await {
+        let engine = Arc::clone(&self.engine);
+        let monitor_cancel = self.monitor_cancel.clone();
+        let monitor = Arc::clone(&self.monitor);
+        self.shutdown
+            .run(move || async move {
+                shutdown_production_runtime(engine, monitor_cancel, monitor, deadline).await
+            })
+            .await
+    }
+}
+
+async fn shutdown_production_runtime(
+    engine: Arc<Engine>,
+    monitor_cancel: CancellationToken,
+    monitor: Arc<Mutex<Option<tokio::task::JoinHandle<()>>>>,
+    deadline: Duration,
+) -> Result<(), SpaceRuntimeFailure> {
+    let deadline_at = tokio::time::Instant::now() + deadline;
+    monitor_cancel.cancel();
+    let monitor_task = match monitor.lock() {
+        Ok(mut monitor) => monitor.take(),
+        Err(poisoned) => poisoned.into_inner().take(),
+    };
+    let monitor_failure = match monitor_task {
+        Some(mut monitor_task) => {
+            match tokio::time::timeout_at(deadline_at, &mut monitor_task).await {
                 Ok(Ok(())) => None,
                 Ok(Err(error)) => Some(SpaceRuntimeFailure::shutdown(format!(
                     "engine event monitor failed: {error}"
                 ))),
                 Err(_) => {
-                    match self.monitor.lock() {
-                        Ok(mut registered) => *registered = Some(monitor),
-                        Err(poisoned) => *poisoned.into_inner() = Some(monitor),
+                    match monitor.lock() {
+                        Ok(mut registered) => *registered = Some(monitor_task),
+                        Err(poisoned) => *poisoned.into_inner() = Some(monitor_task),
                     }
                     Some(SpaceRuntimeFailure::shutdown(
                         "engine event monitor shutdown deadline exceeded",
                     ))
                 }
-            },
-            None => None,
-        };
-        if self.engine.lifecycle_state().await == EngineState::Stopped {
-            return match monitor_failure {
-                Some(failure) => Err(failure),
-                None => Ok(()),
-            };
+            }
         }
-        let remaining = deadline_at.saturating_duration_since(tokio::time::Instant::now());
-        let engine_result = self
-            .engine
-            .shutdown(remaining)
-            .await
-            .map_err(|error| SpaceRuntimeFailure::shutdown(error.to_string()));
-        engine_result.and_then(|()| match monitor_failure {
-            Some(failure) => Err(failure),
-            None => Ok(()),
-        })
-    }
+        None => None,
+    };
+    let remaining = deadline_at.saturating_duration_since(tokio::time::Instant::now());
+    let engine_result = engine
+        .shutdown(remaining)
+        .await
+        .map_err(|error| SpaceRuntimeFailure::shutdown(error.to_string()));
+    engine_result.and_then(|()| match monitor_failure {
+        Some(failure) => Err(failure),
+        None => Ok(()),
+    })
 }
 
 #[async_trait]
@@ -213,7 +279,8 @@ impl SpaceRuntimeFactory for ProductionSpaceRuntimeFactory {
         Ok(Arc::new(ProductionSpaceRuntime {
             engine: Arc::new(engine),
             monitor_cancel,
-            monitor: Mutex::new(Some(monitor)),
+            monitor: Arc::new(Mutex::new(Some(monitor))),
+            shutdown: Arc::new(StickyShutdown::default()),
         }))
     }
 }
@@ -315,6 +382,8 @@ struct SpaceRuntimeSlot {
     last_failure: Option<SpaceRuntimeFailure>,
     pending_start_generation: Option<u64>,
     lifecycle_notify: Arc<tokio::sync::Notify>,
+    #[cfg(test)]
+    start_waiter_notify: Arc<tokio::sync::Notify>,
     runtime: Option<Arc<dyn SupervisedSpaceRuntime>>,
 }
 
@@ -327,6 +396,8 @@ impl SpaceRuntimeSlot {
             last_failure: None,
             pending_start_generation: Some(generation),
             lifecycle_notify: Arc::new(tokio::sync::Notify::new()),
+            #[cfg(test)]
+            start_waiter_notify: Arc::new(tokio::sync::Notify::new()),
             runtime: None,
         }
     }
@@ -513,6 +584,23 @@ impl SpaceRuntimeSupervisor {
                     StartAction::Return(slot.status())
                 }
                 Some(slot)
+                    if slot.pending_start_generation.is_some()
+                        && !matches!(
+                            slot.lifecycle,
+                            SpaceRuntimeLifecycle::Starting | SpaceRuntimeLifecycle::Stopping
+                        ) =>
+                {
+                    return Err(SpaceRuntimeStartError {
+                        profile_id,
+                        generation: slot.generation,
+                        failure: slot.last_failure.clone().unwrap_or_else(|| {
+                            SpaceRuntimeFailure::shutdown(
+                                "previous runtime start is still pending cleanup",
+                            )
+                        }),
+                    });
+                }
+                Some(slot)
                     if slot.lifecycle == SpaceRuntimeLifecycle::Failed
                         && slot.runtime.is_some() =>
                 {
@@ -629,7 +717,11 @@ impl SpaceRuntimeSupervisor {
                     })
                 } else {
                     self.attach_superseded_runtime(&profile_id, generation, Arc::clone(&runtime));
-                    let shutdown = runtime.shutdown(ENGINE_SHUTDOWN_DEADLINE).await;
+                    let shutdown = shutdown_runtime_until(
+                        &runtime,
+                        tokio::time::Instant::now() + ENGINE_SHUTDOWN_DEADLINE,
+                    )
+                    .await;
                     self.finish_superseded_start(
                         &profile_id,
                         generation,
@@ -690,6 +782,14 @@ impl SpaceRuntimeSupervisor {
         generation: u64,
         notify: &Arc<tokio::sync::Notify>,
     ) -> Result<SpaceRuntimeStart, SpaceRuntimeStartError> {
+        #[cfg(test)]
+        if let Some(waiter_notify) = self
+            .lock_slots()
+            .get(profile_id)
+            .map(|slot| Arc::clone(&slot.start_waiter_notify))
+        {
+            waiter_notify.notify_one();
+        }
         loop {
             let notified = notify.notified();
             let status = self
@@ -766,7 +866,9 @@ impl SpaceRuntimeSupervisor {
                         generation: slot.generation,
                         notify: Arc::clone(&slot.lifecycle_notify),
                     },
-                    SpaceRuntimeLifecycle::Failed if slot.runtime.is_none() => {
+                    SpaceRuntimeLifecycle::Failed
+                        if slot.runtime.is_none() && slot.pending_start_generation.is_none() =>
+                    {
                         slot.lifecycle = SpaceRuntimeLifecycle::Stopped;
                         slot.last_failure = None;
                         StopAction::Return(slot.status())
@@ -820,7 +922,7 @@ impl SpaceRuntimeSupervisor {
                         runtime = self.runtime_for_stopping(profile_id, generation);
                     }
                     let shutdown = match runtime.as_ref() {
-                        Some(runtime) => runtime.shutdown(remaining_until(deadline_at)).await,
+                        Some(runtime) => shutdown_runtime_until(runtime, deadline_at).await,
                         None => Ok(()),
                     };
                     return self.complete_shutdown(
@@ -848,11 +950,11 @@ impl SpaceRuntimeSupervisor {
             .into_iter()
             .map(|status| status.profile_id)
             .collect();
-        let profile_count = profile_ids.len();
         let deadline_at = tokio::time::Instant::now() + deadline;
         let mut shutdowns = tokio::task::JoinSet::new();
-        for profile_id in profile_ids {
+        for profile_id in &profile_ids {
             let supervisor = Arc::clone(self);
+            let profile_id = profile_id.clone();
             shutdowns.spawn(async move {
                 supervisor
                     .stop_profile_until(&profile_id, deadline_at)
@@ -860,12 +962,24 @@ impl SpaceRuntimeSupervisor {
             });
         }
 
-        let mut stopped = Vec::with_capacity(profile_count);
-        while let Some(result) = shutdowns.join_next().await {
-            if let Ok(Some(status)) = result {
-                stopped.push(status);
+        loop {
+            match tokio::time::timeout_at(deadline_at, shutdowns.join_next()).await {
+                Ok(Some(_)) => {}
+                Ok(None) => break,
+                Err(_) => {
+                    shutdowns.abort_all();
+                    break;
+                }
             }
         }
+        drop(shutdowns);
+        for profile_id in &profile_ids {
+            self.fail_current_stopping_deadline(profile_id);
+        }
+        let mut stopped: Vec<_> = profile_ids
+            .iter()
+            .filter_map(|profile_id| self.status(profile_id))
+            .collect();
         stopped.sort_by(|left, right| left.profile_id.cmp(&right.profile_id));
         stopped
     }
@@ -891,7 +1005,13 @@ impl SpaceRuntimeSupervisor {
         };
 
         let shutdown = match runtime.as_ref() {
-            Some(runtime) => runtime.shutdown(ENGINE_SHUTDOWN_DEADLINE).await,
+            Some(runtime) => {
+                shutdown_runtime_until(
+                    runtime,
+                    tokio::time::Instant::now() + ENGINE_SHUTDOWN_DEADLINE,
+                )
+                .await
+            }
             None => Ok(()),
         };
         self.complete_failure_shutdown(
@@ -934,6 +1054,17 @@ impl SpaceRuntimeSupervisor {
             .collect();
         statuses.sort_by(|left, right| left.profile_id.cmp(&right.profile_id));
         statuses
+    }
+
+    #[cfg(test)]
+    fn start_waiter_notification(&self, profile_id: &str) -> Arc<tokio::sync::Notify> {
+        Arc::clone(
+            &self
+                .lock_slots()
+                .get(profile_id)
+                .expect("profile slot must exist")
+                .start_waiter_notify,
+        )
     }
 
     fn publish_event(&self, profile_id: &str, generation: u64, event: EngineEvent) -> bool {
@@ -1253,6 +1384,15 @@ impl SpaceRuntimeSupervisor {
         }
     }
 
+    fn fail_current_stopping_deadline(&self, profile_id: &str) {
+        let generation = self.lock_slots().get(profile_id).and_then(|slot| {
+            (slot.lifecycle == SpaceRuntimeLifecycle::Stopping).then_some(slot.generation)
+        });
+        if let Some(generation) = generation {
+            self.fail_stopping_deadline(profile_id, generation);
+        }
+    }
+
     fn lock_slots(&self) -> MutexGuard<'_, HashMap<String, SpaceRuntimeSlot>> {
         match self.slots.lock() {
             Ok(slots) => slots,
@@ -1270,6 +1410,19 @@ fn result_profile_id(result: &Result<SpaceRuntimeStart, SpaceRuntimeStartError>)
 
 fn remaining_until(deadline_at: tokio::time::Instant) -> Duration {
     deadline_at.saturating_duration_since(tokio::time::Instant::now())
+}
+
+async fn shutdown_runtime_until(
+    runtime: &Arc<dyn SupervisedSpaceRuntime>,
+    deadline_at: tokio::time::Instant,
+) -> Result<(), SpaceRuntimeFailure> {
+    match tokio::time::timeout_at(deadline_at, runtime.shutdown(remaining_until(deadline_at))).await
+    {
+        Ok(result) => result,
+        Err(_) => Err(SpaceRuntimeFailure::shutdown(
+            "global shutdown deadline exceeded",
+        )),
+    }
 }
 
 #[cfg(test)]
@@ -1298,6 +1451,7 @@ mod tests {
         shutdown_results: Mutex<VecDeque<Result<(), SpaceRuntimeFailure>>>,
         shutdown_barrier: Option<Arc<Barrier>>,
         shutdown_delay: Duration,
+        ignore_shutdown_deadline: bool,
     }
 
     impl Default for FakeRuntime {
@@ -1307,6 +1461,7 @@ mod tests {
                 shutdown_results: Mutex::new(VecDeque::new()),
                 shutdown_barrier: None,
                 shutdown_delay: Duration::ZERO,
+                ignore_shutdown_deadline: false,
             }
         }
     }
@@ -1328,6 +1483,9 @@ mod tests {
                     .pop_front()
                     .unwrap_or(Ok(()))
             };
+            if self.ignore_shutdown_deadline {
+                return work.await;
+            }
             match tokio::time::timeout(deadline, work).await {
                 Ok(result) => result,
                 Err(_) => Err(SpaceRuntimeFailure::shutdown(
@@ -1342,6 +1500,7 @@ mod tests {
         shutdown_results: VecDeque<Result<(), SpaceRuntimeFailure>>,
         shutdown_barrier: Option<Arc<Barrier>>,
         shutdown_delay: Duration,
+        ignore_shutdown_deadline: bool,
     }
 
     struct StartGate {
@@ -1504,6 +1663,7 @@ mod tests {
                 shutdown_results: Mutex::new(plan.shutdown_results),
                 shutdown_barrier: plan.shutdown_barrier,
                 shutdown_delay: plan.shutdown_delay,
+                ignore_shutdown_deadline: plan.ignore_shutdown_deadline,
             });
             self.runtimes
                 .lock()
@@ -1630,13 +1790,14 @@ mod tests {
             async move { supervisor.start_entry_for_test(catalog, &profile_id).await }
         });
         gate.entered.wait().await;
+        let waiter = supervisor.start_waiter_notification(&profile_id);
         let second = tokio::spawn({
             let supervisor = Arc::clone(&supervisor);
             let catalog = catalog.entries().to_vec();
             let profile_id = profile_id.clone();
             async move { supervisor.start_entry_for_test(catalog, &profile_id).await }
         });
-        tokio::task::yield_now().await;
+        waiter.notified().await;
         gate.release.notify_one();
         let left = first.await.expect("first start task");
         let right = second.await.expect("second start task");
@@ -1680,13 +1841,14 @@ mod tests {
             async move { supervisor.start_entry_for_test(entries, &profile_id).await }
         });
         gate.entered.wait().await;
+        let waiter = supervisor.start_waiter_notification(&profile_id);
         let second = tokio::spawn({
             let supervisor = Arc::clone(&supervisor);
             let entries = catalog.entries().to_vec();
             let profile_id = profile_id.clone();
             async move { supervisor.start_entry_for_test(entries, &profile_id).await }
         });
-        tokio::task::yield_now().await;
+        waiter.notified().await;
         gate.release.notify_one();
         let left = first.await.expect("first start task").unwrap_err();
         let right = second.await.expect("second start task").unwrap_err();
@@ -1719,12 +1881,14 @@ mod tests {
             async move { supervisor.start_entry_for_test(entries, &profile_id).await }
         });
         gate.entered.wait().await;
+        let waiter = supervisor.start_waiter_notification(&profile_id);
         let second = tokio::spawn({
             let supervisor = Arc::clone(&supervisor);
             let entries = catalog.entries().to_vec();
             let profile_id = profile_id.clone();
             async move { supervisor.start_entry_for_test(entries, &profile_id).await }
         });
+        waiter.notified().await;
         gate.release.notify_one();
 
         let left = first.await.expect("first wrapper task").unwrap_err();
@@ -1842,6 +2006,114 @@ mod tests {
                 .stop_profile(&profile_id)
                 .await
                 .expect("retry stop status")
+                .lifecycle,
+            SpaceRuntimeLifecycle::Stopped
+        );
+        assert_eq!(
+            factory
+                .runtime(&profile_id, 0)
+                .shutdowns
+                .load(Ordering::SeqCst),
+            2
+        );
+    }
+
+    #[tokio::test]
+    async fn stop_timeout_blocks_restart_until_superseded_runtime_is_recovered() {
+        let (root, catalog) = test_catalog();
+        let profile_id = catalog.entries()[0].profile_id.clone();
+        let factory = Arc::new(RecordingFactory::default());
+        factory.set_runtime_plan(
+            &profile_id,
+            RuntimePlan {
+                shutdown_results: VecDeque::from([
+                    Err(SpaceRuntimeFailure::shutdown("superseded cleanup failed")),
+                    Ok(()),
+                ]),
+                ..RuntimePlan::default()
+            },
+        );
+        let gate = factory.block_start(&profile_id);
+        let supervisor = SpaceRuntimeSupervisor::new(factory.clone(), test_roots(&root));
+        let start = tokio::spawn({
+            let supervisor = Arc::clone(&supervisor);
+            let entries = catalog.entries().to_vec();
+            let profile_id = profile_id.clone();
+            async move { supervisor.start_entry_for_test(entries, &profile_id).await }
+        });
+        gate.entered.wait().await;
+
+        let timed_out = supervisor
+            .stop_profile_until(
+                &profile_id,
+                tokio::time::Instant::now() + Duration::from_millis(25),
+            )
+            .await
+            .expect("timed out stop status");
+        assert_eq!(timed_out.lifecycle, SpaceRuntimeLifecycle::Failed);
+
+        let restart = tokio::time::timeout(
+            Duration::from_millis(100),
+            supervisor.start_profile(&catalog, &profile_id),
+        )
+        .await
+        .expect("restart must be rejected while old start is pending")
+        .expect_err("pending generation must not be replaced");
+        assert_eq!(
+            restart.failure.category,
+            SpaceRuntimeFailureCategory::Shutdown
+        );
+        assert_eq!(factory.start_count(&profile_id), 1);
+
+        let retry_stop = supervisor
+            .stop_profile_until(
+                &profile_id,
+                tokio::time::Instant::now() + Duration::from_millis(25),
+            )
+            .await
+            .expect("second timed out stop status");
+        assert_eq!(retry_stop.lifecycle, SpaceRuntimeLifecycle::Failed);
+        assert!(supervisor
+            .start_profile(&catalog, &profile_id)
+            .await
+            .is_err());
+        assert_eq!(factory.start_count(&profile_id), 1);
+
+        gate.release.notify_one();
+        assert_eq!(
+            start
+                .await
+                .expect("start task")
+                .unwrap_err()
+                .failure
+                .category,
+            SpaceRuntimeFailureCategory::Superseded
+        );
+        assert_eq!(
+            supervisor
+                .status(&profile_id)
+                .expect("retained status")
+                .lifecycle,
+            SpaceRuntimeLifecycle::Failed
+        );
+        assert_eq!(
+            factory
+                .runtime(&profile_id, 0)
+                .shutdowns
+                .load(Ordering::SeqCst),
+            1
+        );
+
+        assert!(supervisor
+            .start_profile(&catalog, &profile_id)
+            .await
+            .is_err());
+        assert_eq!(factory.start_count(&profile_id), 1);
+        assert_eq!(
+            supervisor
+                .stop_profile(&profile_id)
+                .await
+                .expect("cleanup retry status")
                 .lifecycle,
             SpaceRuntimeLifecycle::Stopped
         );
@@ -2056,7 +2328,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn shutdown_all_uses_one_global_deadline_and_retains_timed_out_runtimes() {
+    async fn shutdown_all_hard_bounds_non_cooperative_runtime_and_retains_handles() {
         let (root, catalog) = test_catalog();
         let factory = Arc::new(RecordingFactory::default());
         for entry in catalog.entries() {
@@ -2064,6 +2336,7 @@ mod tests {
                 &entry.profile_id,
                 RuntimePlan {
                     shutdown_delay: Duration::from_secs(1),
+                    ignore_shutdown_deadline: true,
                     ..RuntimePlan::default()
                 },
             );
@@ -2093,6 +2366,37 @@ mod tests {
                 1
             );
         }
+    }
+
+    #[tokio::test]
+    async fn sticky_production_shutdown_failure_is_never_retried_as_success() {
+        let shutdown = Arc::new(super::StickyShutdown::default());
+        let calls = Arc::new(AtomicUsize::new(0));
+        let failure = SpaceRuntimeFailure::shutdown("engine stopped after failed cleanup");
+
+        let first = shutdown
+            .run({
+                let calls = Arc::clone(&calls);
+                let failure = failure.clone();
+                move || async move {
+                    calls.fetch_add(1, Ordering::SeqCst);
+                    Err(failure)
+                }
+            })
+            .await;
+        let second = shutdown
+            .run({
+                let calls = Arc::clone(&calls);
+                move || async move {
+                    calls.fetch_add(1, Ordering::SeqCst);
+                    Ok(())
+                }
+            })
+            .await;
+
+        assert_eq!(first, Err(failure.clone()));
+        assert_eq!(second, Err(failure));
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
     }
 
     #[tokio::test]

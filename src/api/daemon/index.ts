@@ -105,3 +105,19 @@ export type {
 } from './search'
 export { getUpgradeStatus, acknowledgeUpgrade } from './upgrade'
 export type { UpgradeStatus } from './upgrade'
+export {
+  createSpaceProfile,
+  deleteSpaceProfile,
+  joinSpaceProfile,
+  listSpaces,
+  setActiveSendSpace,
+} from './spaces'
+export type {
+  CreateSpaceProfileRequest,
+  JoinSpaceProfileRequest,
+  SetActiveSendSpaceRequest,
+  SpaceFault,
+  SpaceIncomingSyncState,
+  SpaceProfileSummary,
+  SpaceRuntimeState,
+} from './spaces'

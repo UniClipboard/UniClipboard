@@ -15,6 +15,7 @@ path = "src/main.rs"
 
 [dependencies]
 uc-bootstrap = { path = "../../crates/uc-bootstrap" }
+uc-platform = { path = "../../crates/uc-platform" }
 uc-engine.workspace = true
 uc-observability = { path = "../../crates/uc-observability" }
 uc-daemon-contract = { path = "../../crates/uc-daemon-contract" }
@@ -24,11 +25,19 @@ tokio = { version = "1", features = ["full"] }
 tokio-util = "0.7"
 async-trait = "0.1"
 anyhow = "1.0"
+fs2 = "0.4"
+serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+thiserror = "2.0"
+uuid = { version = "1", features = ["v4"] }
 chrono = { version = "0.4", features = ["serde"] }
 dirs = "6"
 tracing = "0.1"
 rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
+
+[target.'cfg(windows)'.dependencies]
+axum = { version = "0.7", features = ["tokio", "http1", "json"] }
+windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_Storage_FileSystem"] }
 
 # macOS: the headless daemon loads AppKit (for `NSPasteboard`) and must then
 # demote its activation policy so it never shows a (forever-bouncing) Dock tile.
@@ -39,6 +48,8 @@ objc2-app-kit = { version = "0.3", features = ["NSApplication", "NSResponder"] }
 [dev-dependencies]
 uc-daemon-local = { path = "../../crates/uc-daemon-local", features = ["test-helpers"] }
 chrono = { version = "0.4", default-features = true }
+tempfile = "3"
+tower = { version = "0.5", features = ["util"] }
 
 [features]
 e2e-rendezvous = [

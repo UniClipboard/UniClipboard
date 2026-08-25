@@ -19,6 +19,7 @@ import { getDeviceIcon } from '@/components/device/device-utils'
 import PanelFactRow from '@/components/device/PanelFactRow'
 import StatusDot from '@/components/device/StatusDot'
 import SwitchSpaceDialog from '@/components/device/SwitchSpaceDialog'
+import AddSpaceDialog from '@/components/spaces/AddSpaceDialog'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
 import { useSetting } from '@/hooks/useSetting'
@@ -37,7 +38,8 @@ interface LocalDevicePanelProps {
 const LocalDevicePanel: React.FC<LocalDevicePanelProps> = ({ localDevice, memberCount }) => {
   const { t } = useTranslation()
   const { setting, updateSyncSetting, updateFileSyncSetting } = useSetting()
-  const [switchSpaceOpen, setSwitchSpaceOpen] = useState(false)
+  const [addSpaceOpen, setAddSpaceOpen] = useState(false)
+  const [legacyRecoveryOpen, setLegacyRecoveryOpen] = useState(false)
   const [appVersion, setAppVersion] = useState<string | null>(null)
 
   useEffect(() => {
@@ -102,12 +104,12 @@ const LocalDevicePanel: React.FC<LocalDevicePanelProps> = ({ localDevice, member
           variant="ghost"
           size="sm"
           className="shrink-0"
-          aria-label={t('devices.switchSpace.button')}
-          title={t('devices.switchSpace.button')}
-          onClick={() => setSwitchSpaceOpen(true)}
+          aria-label={t('spaces.actions.join')}
+          title={t('spaces.actions.join')}
+          onClick={() => setAddSpaceOpen(true)}
         >
           <ArrowRightLeft className="size-3.5" />
-          <span className="hidden @lg:inline">{t('devices.switchSpace.button')}</span>
+          <span className="hidden @lg:inline">{t('spaces.actions.join')}</span>
         </Button>
       </header>
 
@@ -139,8 +141,16 @@ const LocalDevicePanel: React.FC<LocalDevicePanelProps> = ({ localDevice, member
               </PanelFactRow>
             )}
             <PanelFactRow label={t('devices.panel.profile.space')}>
-              <span className="text-xs font-medium">
-                {t('devices.panel.profile.memberCount', { count: memberCount })}
+              <span className="flex min-w-0 items-center gap-2 text-xs font-medium">
+                <span>{t('devices.panel.profile.memberCount', { count: memberCount })}</span>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="xs"
+                  onClick={() => setLegacyRecoveryOpen(true)}
+                >
+                  {t('spaces.actions.legacyRecovery')}
+                </Button>
               </span>
             </PanelFactRow>
           </div>
@@ -170,7 +180,8 @@ const LocalDevicePanel: React.FC<LocalDevicePanelProps> = ({ localDevice, member
         </section>
       </div>
 
-      <SwitchSpaceDialog open={switchSpaceOpen} onOpenChange={setSwitchSpaceOpen} />
+      <AddSpaceDialog open={addSpaceOpen} onOpenChange={setAddSpaceOpen} />
+      <SwitchSpaceDialog open={legacyRecoveryOpen} onOpenChange={setLegacyRecoveryOpen} />
     </div>
   )
 }

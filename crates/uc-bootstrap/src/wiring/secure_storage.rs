@@ -51,6 +51,23 @@ pub(crate) fn build_secure_storage_prelude(
     Ok(SecureStoragePrelude { secure_storage })
 }
 
+pub(crate) fn build_secure_storage_prelude_for_profile(
+    paths: &DesktopHostPaths,
+    namespace: &str,
+) -> WiringResult<SecureStoragePrelude> {
+    let app_data_root = paths.app_data_root_dir.clone();
+    let secure_storage =
+        uc_platform::secure_storage::create_default_secure_storage_in_app_data_root_for_profile(
+            app_data_root.clone(),
+            namespace,
+        )
+        .map_err(|error| WiringError::SecureStorageInit(error.to_string()))?;
+
+    let secure_storage = build_legacy_identity_fallback(secure_storage, &app_data_root);
+
+    Ok(SecureStoragePrelude { secure_storage })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

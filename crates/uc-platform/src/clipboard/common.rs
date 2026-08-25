@@ -670,6 +670,7 @@ impl CommonClipboardImpl {
                             error = %err,
                             "Windows optimized image read failed across all tiers"
                         );
+                        had_unreadable_format = true;
                     }
                 }
             }

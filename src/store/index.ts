@@ -6,6 +6,7 @@ import clipboardReducer from './slices/clipboardSlice'
 import devicesReducer from './slices/devicesSlice'
 import fileTransferReducer from './slices/fileTransferSlice'
 import statsReducer from './slices/statsSlice'
+import spacesReducer from './spacesSlice'
 
 const sentryReduxEnhancer = sentryEnabled
   ? Sentry.createReduxEnhancer({
@@ -20,6 +21,7 @@ export const store = configureStore({
     stats: statsReducer,
     devices: devicesReducer,
     fileTransfer: fileTransferReducer,
+    spaces: spacesReducer,
   },
   middleware: getDefaultMiddleware => getDefaultMiddleware().concat(appApi.middleware),
   enhancers: getDefaultEnhancers => {

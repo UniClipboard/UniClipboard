@@ -15,6 +15,7 @@ import { checkForUpdate, openUpdaterWindow } from '@/api/updater'
 import { SidebarTitle, TitleBar } from '@/components'
 import { DeviceTrustDialog } from '@/components/device/DeviceTrustDialog'
 import { GlobalShortcuts } from '@/components/GlobalShortcuts'
+import SpaceSelector from '@/components/spaces/SpaceSelector'
 import StartupModals from '@/components/StartupModals'
 import { Button } from '@/components/ui/button'
 import { Toaster } from '@/components/ui/sonner'
@@ -60,23 +61,26 @@ const PAGE_TRANSITION = { duration: 0.16, ease: [0.22, 1, 0.36, 1] } as const
 const AuthenticatedLayout = ({ sidebarTitle }: { sidebarTitle: ReactNode }) => {
   const routerLocation = useLocation()
   const outlet = useOutlet()
-  const { reduceVisualEffects } = usePlatform()
+  const { isWindows, reduceVisualEffects } = usePlatform()
 
   return (
     <MainLayout sidebarTitle={sidebarTitle}>
-      <div className="relative h-full overflow-hidden">
-        <AnimatePresence initial={false} mode="sync">
-          <m.div
-            key={routerLocation.pathname}
-            initial={reduceVisualEffects ? false : { opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={reduceVisualEffects ? undefined : { opacity: 0 }}
-            transition={reduceVisualEffects ? { duration: 0 } : PAGE_TRANSITION}
-            className="absolute inset-0"
-          >
-            {outlet}
-          </m.div>
-        </AnimatePresence>
+      <div className="flex h-full min-h-0 flex-col overflow-hidden">
+        {isWindows ? <SpaceSelector /> : null}
+        <div className="relative min-h-0 flex-1 overflow-hidden">
+          <AnimatePresence initial={false} mode="sync">
+            <m.div
+              key={routerLocation.pathname}
+              initial={reduceVisualEffects ? false : { opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={reduceVisualEffects ? undefined : { opacity: 0 }}
+              transition={reduceVisualEffects ? { duration: 0 } : PAGE_TRANSITION}
+              className="absolute inset-0"
+            >
+              {outlet}
+            </m.div>
+          </AnimatePresence>
+        </div>
       </div>
     </MainLayout>
   )

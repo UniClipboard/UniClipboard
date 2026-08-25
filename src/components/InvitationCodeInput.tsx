@@ -1,9 +1,7 @@
 import { type ComponentProps } from 'react'
-import { INVITATION_CODE_LENGTH } from '@/components/invitation-code-utils'
+import { INVITATION_CODE_LENGTH, sanitizeInvitationCode } from '@/components/invitation-code-utils'
 import { InputOTP, InputOTPGroup, InputOTPSlot } from '@/components/ui/input-otp'
 import { cn } from '@/lib/utils'
-
-const ALLOWED_CHARS = /[A-Z0-9]/
 
 type Props = Omit<
   ComponentProps<typeof InputOTP>,
@@ -33,27 +31,14 @@ export function InvitationCodeInput({
   className,
   ...rest
 }: Props) {
-  const sanitizeInvitationInput = (next: string) => {
-    const cleaned = next
-      .toUpperCase()
-      .split('')
-      .filter(c => ALLOWED_CHARS.test(c))
-      .join('')
-      .slice(0, INVITATION_CODE_LENGTH)
-    onChange(cleaned)
-  }
+  const sanitizeInvitationInput = (next: string) => onChange(sanitizeInvitationCode(next))
 
   // Strip the `XXXX-XXXX` hyphen on paste so the underlying `<input>`'s
   // maxLength=8 does not lop off the final character of a 9-char clipboard
   // payload before our onChange filter runs. Passing this transformer also
   // forces input-otp to route paste through JS (preventDefault + manual
   // setValue) on non-iOS browsers, sidestepping the maxLength truncation.
-  const stripInvitationCodeSeparator = (text: string) =>
-    text
-      .toUpperCase()
-      .split('')
-      .filter(c => ALLOWED_CHARS.test(c))
-      .join('')
+  const stripInvitationCodeSeparator = sanitizeInvitationCode
 
   const finalSlotClass = cn(slotClass, invalid && invalidSlotClass)
 

@@ -34,6 +34,12 @@ pub(crate) fn dib_to_png(dib_data: &[u8]) -> Result<Vec<u8>> {
     use image::DynamicImage;
     use std::io::Cursor;
 
+    if dib_data.len() >= BITMAPV5HEADER_SIZE
+        && read_u32(dib_data, 0) == Some(BITMAPV5HEADER_SIZE as u32)
+    {
+        return dibv5_to_png(dib_data);
+    }
+
     let cursor = Cursor::new(dib_data);
     let decoder = BmpDecoder::new_without_file_header(cursor)
         .map_err(|e| anyhow::anyhow!("Failed to decode DIB: {}", e))?;
@@ -46,4 +52,104 @@ pub(crate) fn dib_to_png(dib_data: &[u8]) -> Result<Vec<u8>> {
         .map_err(|e| anyhow::anyhow!("Failed to encode PNG: {}", e))?;
 
     Ok(png_bytes)
+}
+
+const BITMAPV5HEADER_SIZE: usize = 124;
+const BI_RGB: u32 = 0;
+const BI_BITFIELDS: u32 = 3;
+const BI_ALPHABITFIELDS: u32 = 6;
+
+fn dibv5_to_png(dib_data: &[u8]) -> Result<Vec<u8>> {
+    use image::{Rgba, RgbaImage};
+    use std::io::Cursor;
+
+    let width =
+        read_i32(dib_data, 4).ok_or_else(|| anyhow::anyhow!("CF_DIBV5 is missing width"))?;
+    let height =
+        read_i32(dib_data, 8).ok_or_else(|| anyhow::anyhow!("CF_DIBV5 is missing height"))?;
+    let planes =
+        read_u16(dib_data, 12).ok_or_else(|| anyhow::anyhow!("CF_DIBV5 is missing planes"))?;
+    let bits_per_pixel =
+        read_u16(dib_data, 14).ok_or_else(|| anyhow::anyhow!("CF_DIBV5 is missing bit count"))?;
+    let compression =
+        read_u32(dib_data, 16).ok_or_else(|| anyhow::anyhow!("CF_DIBV5 is missing compression"))?;
+
+    if width <= 0 || height == 0 || planes != 1 || bits_per_pixel != 32 {
+        anyhow::bail!(
+            "unsupported CF_DIBV5 geometry: width={}, height={}, planes={}, bits_per_pixel={}",
+            width,
+            height,
+            planes,
+            bits_per_pixel
+        );
+    }
+    if !matches!(compression, BI_RGB | BI_BITFIELDS | BI_ALPHABITFIELDS) {
+        anyhow::bail!("unsupported CF_DIBV5 compression: {}", compression);
+    }
+
+    let width = width as usize;
+    let height_abs = height.unsigned_abs() as usize;
+    let row_bytes = width
+        .checked_mul(4)
+        .ok_or_else(|| anyhow::anyhow!("CF_DIBV5 row size overflow"))?;
+    let pixel_bytes = row_bytes
+        .checked_mul(height_abs)
+        .ok_or_else(|| anyhow::anyhow!("CF_DIBV5 pixel size overflow"))?;
+    let pixel_end = BITMAPV5HEADER_SIZE
+        .checked_add(pixel_bytes)
+        .ok_or_else(|| anyhow::anyhow!("CF_DIBV5 payload size overflow"))?;
+    let pixels = dib_data
+        .get(BITMAPV5HEADER_SIZE..pixel_end)
+        .ok_or_else(|| anyhow::anyhow!("CF_DIBV5 pixel payload is truncated"))?;
+
+    let mut image = RgbaImage::new(width as u32, height_abs as u32);
+    for y in 0..height_abs {
+        let source_y = if height < 0 { y } else { height_abs - 1 - y };
+        let row_start = source_y * row_bytes;
+        for x in 0..width {
+            let offset = row_start + x * 4;
+            let alpha = if compression == BI_RGB {
+                255
+            } else {
+                pixels[offset + 3]
+            };
+            image.put_pixel(
+                x as u32,
+                y as u32,
+                Rgba([
+                    pixels[offset + 2],
+                    pixels[offset + 1],
+                    pixels[offset],
+                    alpha,
+                ]),
+            );
+        }
+    }
+
+    let mut png_bytes = Vec::new();
+    image::DynamicImage::ImageRgba8(image)
+        .write_to(&mut Cursor::new(&mut png_bytes), image::ImageFormat::Png)
+        .map_err(|e| anyhow::anyhow!("Failed to encode CF_DIBV5 as PNG: {}", e))?;
+    Ok(png_bytes)
+}
+
+fn read_u16(bytes: &[u8], offset: usize) -> Option<u16> {
+    bytes
+        .get(offset..offset + 2)
+        .and_then(|value| value.try_into().ok())
+        .map(u16::from_le_bytes)
+}
+
+fn read_u32(bytes: &[u8], offset: usize) -> Option<u32> {
+    bytes
+        .get(offset..offset + 4)
+        .and_then(|value| value.try_into().ok())
+        .map(u32::from_le_bytes)
+}
+
+fn read_i32(bytes: &[u8], offset: usize) -> Option<i32> {
+    bytes
+        .get(offset..offset + 4)
+        .and_then(|value| value.try_into().ok())
+        .map(i32::from_le_bytes)
 }

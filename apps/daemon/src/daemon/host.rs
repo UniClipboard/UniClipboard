@@ -7,22 +7,34 @@ use std::time::Duration;
 use tokio::sync::broadcast;
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
+#[cfg(not(target_os = "windows"))]
+use uc_bootstrap::prepare_desktop_engine_host;
 use uc_bootstrap::{
     init_tracing_subscriber, initialize_analytics_context, install_panic_logging_hook,
-    prepare_desktop_engine_host, DesktopHostFileHandles, DesktopHostProcessPaths,
+    DesktopHostFileHandles, DesktopHostProcessPaths,
 };
+#[cfg(target_os = "windows")]
+use uc_bootstrap::{prepare_desktop_clipboard_hub, prepare_desktop_engine_host_with_hub};
 use uc_daemon_local::crash_marker::{DaemonExitReport, DaemonRunMarker};
 use uc_daemon_local::process_metadata::{DaemonPidManager, DaemonProcessMode};
 use uc_engine::{ActiveClipboardChanged, Engine, HostFileHandle, Operation, OperationResult};
 use uc_observability::analytics::AnalyticsPort;
 use uc_webserver::api::auth::load_or_create_auth_token_from_conn;
-use uc_webserver::api::server::{run_http_server, DaemonApiState, DaemonFileHandles};
+#[cfg(not(target_os = "windows"))]
+use uc_webserver::api::server::run_http_server;
+#[cfg(target_os = "windows")]
+use uc_webserver::api::server::run_http_server_with_extra_l2;
+use uc_webserver::api::server::{DaemonApiState, DaemonFileHandles};
 use uc_webserver::api::types::{DaemonResidency, DaemonWsEvent};
 use uc_webserver::security::{cleanup_rate_limiter_task, SecurityState};
 
 use super::engine_events::forward_engine_events;
 use super::mobile_lan_lifecycle::{initial_lan_target, MobileLanLifecycleController};
+#[cfg(target_os = "windows")]
+use super::production_spaces::{catalog_root, WindowsMultiSpace};
 use super::run_mode::DaemonRunMode;
+#[cfg(target_os = "windows")]
+use super::space_runtime_supervisor::SpaceRuntimeRoots;
 use super::startup_recovery::{record_upgrade_status_at_startup, spawn_startup_recovery};
 use super::tokio_runtime::build_daemon_tokio_runtime;
 
@@ -78,6 +90,13 @@ async fn run_async(run_mode: DaemonRunMode) -> anyhow::Result<()> {
     init_tracing_subscriber()?;
     install_panic_logging_hook();
 
+    #[cfg(target_os = "windows")]
+    let clipboard_hub = prepare_desktop_clipboard_hub()?;
+    #[cfg(target_os = "windows")]
+    let legacy_clipboard = clipboard_hub.profile_handle();
+    #[cfg(target_os = "windows")]
+    let prepared = prepare_desktop_engine_host_with_hub(legacy_clipboard.clone())?;
+    #[cfg(not(target_os = "windows"))]
     let prepared = prepare_desktop_engine_host()?;
     let process_paths = prepared.process_paths().clone();
     let analytics = prepared.analytics();
@@ -108,6 +127,28 @@ async fn run_async(run_mode: DaemonRunMode) -> anyhow::Result<()> {
     record_upgrade_status_at_startup(&engine).await;
     spawn_startup_recovery(run_mode, Arc::clone(&engine));
 
+    #[cfg(target_os = "windows")]
+    let mut multi_space = match WindowsMultiSpace::start(
+        catalog_root(process_paths.app_data_root()),
+        SpaceRuntimeRoots::new(
+            process_paths.app_data_root().to_path_buf(),
+            process_paths.cache_root().to_path_buf(),
+            process_paths.logs_root().to_path_buf(),
+        ),
+        Arc::clone(&engine),
+        clipboard_hub,
+        legacy_clipboard,
+        run_mode,
+    )
+    .await
+    {
+        Ok(multi_space) => multi_space,
+        Err(error) => {
+            let _ = engine.shutdown(ENGINE_SHUTDOWN_DEADLINE).await;
+            return Err(error);
+        }
+    };
+
     let result = run_daemon_surfaces(
         run_mode,
         Arc::clone(&engine),
@@ -115,14 +156,31 @@ async fn run_async(run_mode: DaemonRunMode) -> anyhow::Result<()> {
         file_handles,
         process_paths,
         analytics.sink(),
+        #[cfg(target_os = "windows")]
+        &mut multi_space,
     )
     .await;
+    #[cfg(target_os = "windows")]
+    if result.is_err() {
+        let _ = multi_space.quiesce().await;
+        let _ = multi_space.shutdown_clipboard().await;
+        let _ = multi_space.shutdown_secondaries().await;
+    }
     let shutdown = engine
         .shutdown(ENGINE_SHUTDOWN_DEADLINE)
         .await
         .map_err(anyhow::Error::new);
 
-    result.and(shutdown)
+    let run_marker = match result {
+        Ok(run_marker) => run_marker,
+        Err(error) => {
+            let _ = shutdown;
+            return Err(error);
+        }
+    };
+    shutdown?;
+    run_marker.mark_clean_exit()?;
+    Ok(())
 }
 
 async fn run_daemon_surfaces(
@@ -132,7 +190,8 @@ async fn run_daemon_surfaces(
     file_handles: Arc<dyn DaemonFileHandles>,
     process_paths: DesktopHostProcessPaths,
     analytics_sink: Arc<dyn AnalyticsPort>,
-) -> anyhow::Result<()> {
+    #[cfg(target_os = "windows")] multi_space: &mut WindowsMultiSpace,
+) -> anyhow::Result<DaemonRunMarker> {
     // ADR-011: the bearer token lives inside `daemon.conn` (load-or-create);
     // the HTTP server publishes the full connection file once it has bound.
     let conn_path = uc_daemon_local::socket::resolve_daemon_conn_path()?;
@@ -162,6 +221,13 @@ async fn run_daemon_surfaces(
     let http_cancel = cancel.child_token();
     let cleanup_cancel = cancel.child_token();
     let event_cancel = cancel.child_token();
+    #[cfg(target_os = "windows")]
+    let mut http_handle = tokio::spawn(run_http_server_with_extra_l2(
+        api_state,
+        http_cancel,
+        super::spaces_axum::router(multi_space.service.clone()),
+    ));
+    #[cfg(not(target_os = "windows"))]
     let mut http_handle = tokio::spawn(run_http_server(api_state, http_cancel));
     let _cleanup_handle = cleanup_rate_limiter_task(security, cleanup_cancel);
 
@@ -218,11 +284,30 @@ async fn run_daemon_surfaces(
     if controlled_oneshot_exit {
         write_handover_if_requested(&restart, process_paths.app_data_root());
     }
+    #[cfg(target_os = "windows")]
+    let mut shutdown_error = None;
+    #[cfg(target_os = "windows")]
+    if let Err(error) = multi_space.quiesce().await {
+        shutdown_error = Some(error);
+    }
     cancel.cancel();
     mobile_lan.disable().await;
     if !http_completed {
         let _ =
             tokio::time::timeout(uc_daemon_local::timing::SHUTDOWN_JOIN_TIMEOUT, http_handle).await;
+    }
+    #[cfg(target_os = "windows")]
+    if let Err(error) = multi_space.shutdown_clipboard().await {
+        shutdown_error.get_or_insert(error);
+    }
+    let _ = tokio::time::timeout(
+        uc_daemon_local::timing::SHUTDOWN_JOIN_TIMEOUT,
+        event_forwarder,
+    )
+    .await;
+    #[cfg(target_os = "windows")]
+    if let Err(error) = multi_space.shutdown_secondaries().await {
+        shutdown_error.get_or_insert(error);
     }
     // ADR-011: a graceful exit must not leave a stale connection file behind —
     // clients probe it and would otherwise see a dead PID until their identity
@@ -230,13 +315,11 @@ async fn run_daemon_surfaces(
     if let Err(error) = uc_daemon_local::socket::remove_daemon_conn_file() {
         warn!(error = %error, "failed to remove daemon connection file on shutdown");
     }
-    let _ = tokio::time::timeout(
-        uc_daemon_local::timing::SHUTDOWN_JOIN_TIMEOUT,
-        event_forwarder,
-    )
-    .await;
-    run_marker.mark_clean_exit()?;
-    Ok(())
+    #[cfg(target_os = "windows")]
+    if let Some(error) = shutdown_error {
+        return Err(error);
+    }
+    Ok(run_marker)
 }
 
 async fn apply_initial_mobile_lan_target(

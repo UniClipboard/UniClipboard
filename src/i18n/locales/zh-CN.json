@@ -1111,7 +1111,13 @@
       "subtitle": "在要加入的电脑或手机上输入此邀请码",
       "expiresIn": "{{remaining}} 后过期",
       "expired": "邀请码已过期",
-      "passphraseHint": "新设备还需输入空间口令完成配对",
+      "qrAlt": "包含邀请码和空间口令的二维码",
+      "qrWaiting": "输入口令后生成",
+      "qrPassphraseLabel": "空间口令",
+      "qrPassphrasePlaceholder": "输入至少 8 位空间口令",
+      "showQrPassphrase": "显示空间口令",
+      "hideQrPassphrase": "隐藏空间口令",
+      "passphraseHint": "口令仅用于生成本次二维码，关闭弹窗后会立即清除",
       "loading": "正在生成邀请码……",
       "actions": {
         "cancel": "取消",
@@ -2112,6 +2118,64 @@
       "actions": {
         "done": "完成"
       }
+    }
+  },
+  "spaces": {
+    "selector": {
+      "ariaLabel": "空间",
+      "loading": "正在加载空间…",
+      "empty": "暂无可用空间"
+    },
+    "actions": {
+      "add": "添加空间",
+      "join": "加入空间",
+      "create": "创建空间",
+      "cancel": "取消",
+      "legacyRecovery": "恢复旧版空间"
+    },
+    "status": {
+      "runtime": "运行状态：{{state}}",
+      "incoming": "接收状态：{{state}}",
+      "active": "{{name}}，当前发送空间",
+      "setActive": "将 {{name}} 设为当前发送空间"
+    },
+    "runtime": {
+      "stopped": "已停止",
+      "starting": "正在启动",
+      "running": "运行中",
+      "locked": "已锁定",
+      "failed": "失败"
+    },
+    "incoming": {
+      "enabled": "已启用",
+      "receiving": "正在接收",
+      "degraded": "部分异常",
+      "disabled": "已停用"
+    },
+    "faults": {
+      "relayUnreachable": "无法连接中继服务",
+      "generic": "此空间需要处理"
+    },
+    "errors": {
+      "load": "无法加载空间列表",
+      "refresh": "无法刷新空间列表",
+      "create": "无法创建空间",
+      "join": "无法加入空间，请检查邀请码和口令后重试。",
+      "activeSend": "无法切换当前发送空间",
+      "remove": "无法移除空间"
+    },
+    "dialog": {
+      "title": "添加空间",
+      "subtitle": "可同时保持多个空间连接；所有运行中的空间都会继续接收同步内容。",
+      "joinMode": "加入已有空间",
+      "createMode": "创建新空间",
+      "code": "邀请码",
+      "passphrase": "空间口令",
+      "confirmPassphrase": "确认口令",
+      "deviceName": "设备名称（可选）",
+      "passphraseMismatch": "两次输入的口令不一致",
+      "joining": "正在加入…",
+      "creating": "正在创建…"
     }
   }
 }

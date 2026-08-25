@@ -2,6 +2,7 @@
 
 use std::path::PathBuf;
 
+use uc_app_paths::DesktopRuntimeProfileConfig;
 use uc_platform::app_dirs::DirsAppDirsAdapter;
 use uc_platform::ports::{AppDirs, AppDirsProvider};
 
@@ -32,6 +33,17 @@ impl DesktopHostPaths {
             logs_dir: dirs.app_log_dir,
             cache_dir,
             app_data_root_dir: dirs.app_data_root,
+        }
+    }
+
+    pub(crate) fn from_profile_config(config: &DesktopRuntimeProfileConfig) -> Self {
+        Self {
+            db_path: config.data_root().join("uniclipboard.db"),
+            vault_dir: config.data_root().join("vault"),
+            settings_path: config.data_root().join("settings.json"),
+            logs_dir: config.log_dir().to_path_buf(),
+            cache_dir: config.cache_root().to_path_buf(),
+            app_data_root_dir: config.data_root().to_path_buf(),
         }
     }
 

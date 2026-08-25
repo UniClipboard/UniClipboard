@@ -380,6 +380,14 @@ pub(crate) fn ensure_not_quiescing(quiescing: &AtomicBool) -> Result<(), ApiErro
 }
 
 pub fn build_router(state: DaemonApiState) -> Router {
+    build_router_with_extra_l2(state, Router::new())
+}
+
+/// Build the daemon router with extension routes protected as L2 endpoints.
+pub fn build_router_with_extra_l2(
+    state: DaemonApiState,
+    extra_l2: Router<DaemonApiState>,
+) -> Router {
     let swagger = SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi());
 
     #[cfg(debug_assertions)]
@@ -391,7 +399,7 @@ pub fn build_router(state: DaemonApiState) -> Router {
     Router::new()
         .merge(swagger)
         .merge(routes::router_l1(state.clone()))
-        .merge(routes::router_l2_plus(state.clone()))
+        .merge(routes::router_l2_plus_with_extra(state.clone(), extra_l2))
         .merge(crate::security::connect::router())
         .merge(ws::router())
         .layer(middleware::from_fn(cors_middleware))
@@ -646,6 +654,15 @@ pub async fn run_http_server(
     state: DaemonApiState,
     cancel: CancellationToken,
 ) -> anyhow::Result<()> {
+    run_http_server_with_extra_l2(state, cancel, Router::new()).await
+}
+
+/// Run the HTTP server with daemon-owned routes inside the normal L2 boundary.
+pub async fn run_http_server_with_extra_l2(
+    state: DaemonApiState,
+    cancel: CancellationToken,
+    extra_l2: Router<DaemonApiState>,
+) -> anyhow::Result<()> {
     // ADR-011: bind an ephemeral loopback port — the kernel picks a free one,
     // so no fixed port can ever collide with unrelated local services. The
     // actual port is published in `daemon.conn` for local clients.
@@ -680,7 +697,8 @@ pub async fn run_http_server(
     // the socket address will be a default value (127.0.0.1:0) since there's no real
     // TCP connection. The SlidingWindowRateLimiter unit tests cover rate limiting logic
     // independently. IP-based rate limiting works correctly in production.
-    let make_service = build_router(state).into_make_service_with_connect_info::<SocketAddr>();
+    let make_service = build_router_with_extra_l2(state, extra_l2)
+        .into_make_service_with_connect_info::<SocketAddr>();
 
     axum::serve(listener, make_service)
         .with_graceful_shutdown(cancel.cancelled_owned())

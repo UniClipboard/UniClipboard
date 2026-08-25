@@ -6,7 +6,7 @@
  * 这里用 StrictMode 渲染,确保双跑后仍然能拿到邀请码而不是卡在 loading。
  */
 
-import { act, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { StrictMode } from 'react'
 import { I18nextProvider } from 'react-i18next'
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -27,6 +27,12 @@ vi.mock('@/api/daemon/setupV2', () => ({
 
 vi.mock('@/api/daemon/device-trust', () => ({
   getDeviceTrust: () => getDeviceTrust(),
+}))
+
+vi.mock('qrcode.react', () => ({
+  QRCodeSVG: ({ value, 'aria-label': ariaLabel }: { value: string; 'aria-label'?: string }) => (
+    <div aria-label={ariaLabel} data-qr-value={value} />
+  ),
 }))
 
 vi.mock('@/lib/daemon-ws', () => ({
@@ -107,6 +113,16 @@ describe('AddDeviceDialog invitation issuing', () => {
     await waitFor(() => {
       expect(screen.getByLabelText('123456789')).toBeInTheDocument()
     })
+    expect(screen.queryByLabelText(i18n.t('devices.addDevice.qrAlt'))).not.toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText(i18n.t('devices.addDevice.qrPassphraseLabel')), {
+      target: { value: 'correct horse!' },
+    })
+
+    expect(screen.getByLabelText(i18n.t('devices.addDevice.qrAlt'))).toHaveAttribute(
+      'data-qr-value',
+      'uniclipboard://join-space?v=1&code=123456789&pwd=correct%20horse!'
+    )
     expect(issuePairingInvitation).toHaveBeenCalledTimes(1)
   })
 

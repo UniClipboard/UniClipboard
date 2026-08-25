@@ -4,11 +4,15 @@ import {
   CheckCircle2,
   Clock,
   Copy,
+  Eye,
+  EyeOff,
   Info,
   Loader2,
+  QrCode,
   RefreshCw,
   XCircle,
 } from 'lucide-react'
+import { QRCodeSVG } from 'qrcode.react'
 import { useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { getDeviceTrust } from '@/api/daemon/device-trust'
@@ -30,6 +34,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { Progress } from '@/components/ui/progress'
 import { daemonWs } from '@/lib/daemon-ws'
 import { createLogger } from '@/lib/logger'
@@ -64,6 +70,8 @@ function AddDeviceDialogInner({ open, onOpenChange }: AddDeviceDialogProps) {
   const [error, setError] = useState<string | null>(null)
   const [now, setNow] = useState(() => Date.now())
   const [copied, setCopied] = useState(false)
+  const [spacePassphrase, setSpacePassphrase] = useState('')
+  const [showPassphrase, setShowPassphrase] = useState(false)
   const [step, setStep] = useState<Step>('invitation')
   const [failureReason, setFailureReason] = useState<string | null>(null)
   const initialDeviceIdsRef = useRef<ReadonlySet<string> | null>(null)
@@ -174,6 +182,13 @@ function AddDeviceDialogInner({ open, onOpenChange }: AddDeviceDialogProps) {
     () => (invitation ? formatInvitationCode(invitation.code) : ''),
     [invitation]
   )
+  const invitationQrPayload = useMemo(() => {
+    if (!invitation || spacePassphrase.length < 8) return null
+    return (
+      `uniclipboard://join-space?v=1&code=${encodeURIComponent(invitation.code)}` +
+      `&pwd=${encodeURIComponent(spacePassphrase)}`
+    )
+  }, [invitation, spacePassphrase])
 
   const handleCopy = async () => {
     if (!invitation) return
@@ -293,15 +308,33 @@ function AddDeviceDialogInner({ open, onOpenChange }: AddDeviceDialogProps) {
               : 'border-primary/20 from-primary/[0.04] to-transparent'
           )}
         >
-          <div
-            className={cn(
-              'select-all text-center font-mono font-semibold tabular-nums text-foreground',
-              'text-[28px] tracking-[0.18em] sm:text-[32px] sm:tracking-[0.2em]',
-              expired && 'text-muted-foreground/50 line-through decoration-1'
-            )}
-            aria-label={invitation.code}
-          >
-            {display}
+          <div className="grid gap-5 sm:grid-cols-[8.5rem_minmax(0,1fr)] sm:items-center">
+            <div className="mx-auto flex size-34 items-center justify-center rounded-md bg-white p-2">
+              {invitationQrPayload ? (
+                <QRCodeSVG
+                  value={invitationQrPayload}
+                  size={120}
+                  level="M"
+                  aria-label={t('devices.addDevice.qrAlt')}
+                />
+              ) : (
+                <div className="flex flex-col items-center gap-2 text-center text-muted-foreground">
+                  <QrCode className="size-9" />
+                  <span className="text-xs">{t('devices.addDevice.qrWaiting')}</span>
+                </div>
+              )}
+            </div>
+
+            <div
+              className={cn(
+                'min-w-0 select-all text-center font-mono text-2xl font-semibold tabular-nums text-foreground',
+                'tracking-[0.12em]',
+                expired && 'text-muted-foreground/50 line-through decoration-1'
+              )}
+              aria-label={invitation.code}
+            >
+              {display}
+            </div>
           </div>
 
           <div className="mt-5 space-y-2">
@@ -323,7 +356,34 @@ function AddDeviceDialogInner({ open, onOpenChange }: AddDeviceDialogProps) {
           </div>
         </div>
 
-        {/* 提示：还需空间口令 */}
+        <div className="space-y-2">
+          <Label htmlFor="pairing-qr-passphrase">{t('devices.addDevice.qrPassphraseLabel')}</Label>
+          <div className="relative">
+            <Input
+              id="pairing-qr-passphrase"
+              type={showPassphrase ? 'text' : 'password'}
+              value={spacePassphrase}
+              onChange={event => setSpacePassphrase(event.target.value)}
+              placeholder={t('devices.addDevice.qrPassphrasePlaceholder')}
+              className="pr-10"
+            />
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="absolute right-0 top-0 size-8 text-muted-foreground"
+              onClick={() => setShowPassphrase(current => !current)}
+              aria-label={t(
+                showPassphrase
+                  ? 'devices.addDevice.hideQrPassphrase'
+                  : 'devices.addDevice.showQrPassphrase'
+              )}
+            >
+              {showPassphrase ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+            </Button>
+          </div>
+        </div>
+
         <div className="flex items-start gap-2.5 rounded-lg bg-muted/50 px-3.5 py-2.5 text-xs text-muted-foreground">
           <Info className="mt-0.5 size-3.5 shrink-0" />
           <span className="leading-relaxed">{t('devices.addDevice.passphraseHint')}</span>
@@ -403,7 +463,7 @@ function AddDeviceDialogInner({ open, onOpenChange }: AddDeviceDialogProps) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange} disablePointerDismissal>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>
             {step === 'success'

@@ -1130,7 +1130,13 @@
       "subtitle": "追加するコンピューターまたはスマートフォンでこのコードを入力してください",
       "expiresIn": "有効期限は {{remaining}}",
       "expired": "招待の有効期限が切れました",
-      "passphraseHint": "参加デバイスでもペアリングを完了するにはスペース パスフレーズが必要です",
+      "qrAlt": "招待コードとスペースパスフレーズを含むQRコード",
+      "qrWaiting": "パスフレーズを入力",
+      "qrPassphraseLabel": "スペースパスフレーズ",
+      "qrPassphrasePlaceholder": "8文字以上を入力",
+      "showQrPassphrase": "スペースパスフレーズを表示",
+      "hideQrPassphrase": "スペースパスフレーズを隠す",
+      "passphraseHint": "パスフレーズはこのQRコードだけに使用され、ダイアログを閉じると消去されます",
       "loading": "招待コードを生成中…",
       "actions": {
         "cancel": "キャンセル",
@@ -2113,6 +2119,64 @@
       "actions": {
         "done": "完了"
       }
+    }
+  },
+  "spaces": {
+    "selector": {
+      "ariaLabel": "スペース",
+      "loading": "スペースを読み込み中…",
+      "empty": "利用できるスペースがありません"
+    },
+    "actions": {
+      "add": "スペースを追加",
+      "join": "スペースに参加",
+      "create": "スペースを作成",
+      "cancel": "キャンセル",
+      "legacyRecovery": "旧スペースを復旧"
+    },
+    "status": {
+      "runtime": "実行状態: {{state}}",
+      "incoming": "受信状態: {{state}}",
+      "active": "{{name}}、現在の送信スペース",
+      "setActive": "{{name}} を現在の送信スペースに設定"
+    },
+    "runtime": {
+      "stopped": "停止",
+      "starting": "起動中",
+      "running": "実行中",
+      "locked": "ロック中",
+      "failed": "失敗"
+    },
+    "incoming": {
+      "enabled": "有効",
+      "receiving": "受信中",
+      "degraded": "一部障害",
+      "disabled": "無効"
+    },
+    "faults": {
+      "relayUnreachable": "リレーに接続できません",
+      "generic": "このスペースを確認してください"
+    },
+    "errors": {
+      "load": "スペースを読み込めませんでした",
+      "refresh": "スペース一覧を更新できませんでした",
+      "create": "スペースを作成できませんでした",
+      "join": "スペースに参加できませんでした。招待コードとパスフレーズを確認してください。",
+      "activeSend": "送信スペースを変更できませんでした",
+      "remove": "スペースを削除できませんでした"
+    },
+    "dialog": {
+      "title": "スペースを追加",
+      "subtitle": "複数のスペースを同時に接続し、実行中のすべてのスペースで受信を続けます。",
+      "joinMode": "既存のスペースに参加",
+      "createMode": "新しいスペースを作成",
+      "code": "招待コード",
+      "passphrase": "スペースのパスフレーズ",
+      "confirmPassphrase": "パスフレーズを確認",
+      "deviceName": "デバイス名（任意）",
+      "passphraseMismatch": "パスフレーズが一致しません",
+      "joining": "参加中…",
+      "creating": "作成中…"
     }
   }
 }

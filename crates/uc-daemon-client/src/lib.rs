@@ -22,8 +22,8 @@ pub use http::{
     DaemonAnalyticsClient, DaemonClipboardClient, DaemonConfigClient, DaemonDiagnosticsClient,
     DaemonLifecycleClient, DaemonMemberClient, DaemonMobileSyncClient, DaemonPairingClient,
     DaemonPairingRequestError, DaemonQueryClient, DaemonRequestError, DaemonSearchClient,
-    DaemonSettingsClient, DaemonSetupV2Client, DaemonUpgradeClient, ExchangedSessionToken,
-    SearchQueryRequest,
+    DaemonSettingsClient, DaemonSetupV2Client, DaemonSpacesV2Client, DaemonUpgradeClient,
+    ExchangedSessionToken, SearchQueryRequest,
 };
 pub use http_ws_service::HttpWsDaemonService;
 pub use service::{ControlLeaseGuard, DaemonService, FileExport};
@@ -198,6 +198,15 @@ impl DaemonClientContext {
     /// Spawn a [`DaemonSetupV2Client`] that shares this context's connection state and HTTP client.
     pub fn setup_v2_client(&self) -> DaemonSetupV2Client {
         DaemonSetupV2Client::with_http_conn_state_and_type(
+            self.http.clone(),
+            self.connection_state.clone(),
+            self.client_type.clone(),
+        )
+    }
+
+    /// Spawn a [`DaemonSpacesV2Client`] that shares this context's connection state and HTTP client.
+    pub fn spaces_v2_client(&self) -> DaemonSpacesV2Client {
+        DaemonSpacesV2Client::with_http_conn_state_and_type(
             self.http.clone(),
             self.connection_state.clone(),
             self.client_type.clone(),

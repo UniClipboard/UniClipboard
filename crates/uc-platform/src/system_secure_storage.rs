@@ -60,6 +60,15 @@ fn classify_platform_failure(msg: &str) -> SecureStorageError {
 /// The function appends the `"dev"` suffix when `UNICLIPBOARD_ENV` is set to `"development"` or `"dev"` (case-insensitive).
 /// It also appends a profile suffix taken from `UC_PROFILE` if non-empty, or from `crate::default_profile()` if `UC_PROFILE` is unset or empty.
 fn resolve_service_name() -> String {
+    let profile = crate::resolve_profile();
+    resolve_service_name_with_profile(profile.as_deref())
+}
+
+fn resolve_service_name_for_explicit_profile(profile: &str) -> String {
+    resolve_service_name_with_profile(Some(profile))
+}
+
+fn resolve_service_name_with_profile(profile: Option<&str>) -> String {
     let mut suffixes: Vec<String> = Vec::new();
 
     if matches!(
@@ -69,8 +78,8 @@ fn resolve_service_name() -> String {
         suffixes.push("dev".to_string());
     }
 
-    if let Some(profile) = crate::resolve_profile() {
-        suffixes.push(profile);
+    if let Some(profile) = profile {
+        suffixes.push(profile.to_string());
     }
 
     if suffixes.is_empty() {
@@ -101,6 +110,15 @@ impl SystemSecureStorage {
     pub fn new() -> Self {
         Self {
             service_name: resolve_service_name(),
+        }
+    }
+
+    /// Create a system secure storage instance for an explicit profile.
+    ///
+    /// This constructor never reads `UC_PROFILE`.
+    pub fn for_profile(profile: &str) -> Self {
+        Self {
+            service_name: resolve_service_name_for_explicit_profile(profile),
         }
     }
 
@@ -151,6 +169,40 @@ impl SecureStorageProvider for SystemSecureStorage {
 mod tests {
     use super::*;
 
+    static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    struct ScopedEnv {
+        values: Vec<(&'static str, Option<String>)>,
+    }
+
+    impl ScopedEnv {
+        fn apply(changes: &[(&'static str, Option<&'static str>)]) -> Self {
+            let values = changes
+                .iter()
+                .map(|(name, value)| {
+                    let previous = std::env::var(name).ok();
+                    match value {
+                        Some(value) => std::env::set_var(name, value),
+                        None => std::env::remove_var(name),
+                    }
+                    (*name, previous)
+                })
+                .collect();
+            Self { values }
+        }
+    }
+
+    impl Drop for ScopedEnv {
+        fn drop(&mut self) {
+            for (name, value) in self.values.drain(..).rev() {
+                match value {
+                    Some(value) => std::env::set_var(name, value),
+                    None => std::env::remove_var(name),
+                }
+            }
+        }
+    }
+
     #[test]
     fn unavailable_classification() {
         assert!(matches!(
@@ -185,5 +237,63 @@ mod tests {
             SecureStorageError::Other(msg) => assert!(msg.contains("platform failure")),
             _ => panic!("expected Other"),
         }
+    }
+
+    #[test]
+    fn explicit_profile_service_name_does_not_consult_ambient_profile() {
+        let _lock = ENV_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let _env = ScopedEnv::apply(&[
+            ("UC_PROFILE", Some("ambient-must-not-leak")),
+            ("UNICLIPBOARD_ENV", None),
+        ]);
+
+        assert_eq!(
+            SystemSecureStorage::for_profile("019d-profile-a").service_name,
+            "UniClipboard-019d-profile-a"
+        );
+        assert_eq!(
+            SystemSecureStorage::for_profile("019d-profile-b").service_name,
+            "UniClipboard-019d-profile-b"
+        );
+    }
+
+    #[test]
+    fn default_service_name_preserves_ambient_and_development_resolution() {
+        let _lock = ENV_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let _env = ScopedEnv::apply(&[("UC_PROFILE", None), ("UNICLIPBOARD_ENV", None)]);
+
+        let no_ambient = if cfg!(feature = "dev-profile") {
+            "UniClipboard-dev"
+        } else {
+            "UniClipboard"
+        };
+        assert_eq!(SystemSecureStorage::new().service_name, no_ambient);
+
+        std::env::set_var("UC_PROFILE", "ambient-profile");
+        assert_eq!(
+            SystemSecureStorage::new().service_name,
+            "UniClipboard-ambient-profile"
+        );
+
+        std::env::set_var("UNICLIPBOARD_ENV", "development");
+        assert_eq!(
+            SystemSecureStorage::new().service_name,
+            "UniClipboard-dev-ambient-profile"
+        );
+
+        std::env::remove_var("UC_PROFILE");
+        let development_without_ambient = if cfg!(feature = "dev-profile") {
+            "UniClipboard-dev-dev"
+        } else {
+            "UniClipboard-dev"
+        };
+        assert_eq!(
+            SystemSecureStorage::new().service_name,
+            development_without_ambient
+        );
     }
 }

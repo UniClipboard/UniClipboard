@@ -1,19 +1,48 @@
 use super::super::cf_html::strip_cf_html_wrapper;
 use super::super::common::CommonClipboardImpl;
 use super::super::payload::rep_bytes;
-use crate::clipboard::RepresentationId;
-use crate::clipboard::SystemClipboard;
+use crate::clipboard::{ClipboardChangeToken, RepresentationId};
 use crate::clipboard::{
     ImageKind, MimeClass, MimeType, ObservedClipboardRepresentation, SystemClipboardSnapshot,
 };
+use crate::clipboard::{SystemClipboard, SystemClipboardWriteReceipt};
 use anyhow::Result;
 use async_trait::async_trait;
 use clipboard_rs::{Clipboard, ClipboardContext};
+use std::cell::RefCell;
 use std::ops::Range;
 use std::sync::{Arc, Mutex};
 use tracing::{debug, debug_span, error, info, warn};
 
 use crate::clipboard::format_id_mime::format_id_default_mime;
+
+thread_local! {
+    /// Per-call trace used only by `write_snapshot_with_receipt`. Keeping the
+    /// trace thread-local lets the existing synchronous Windows write path
+    /// record both primary and fallback mutations without sharing receipt
+    /// state across concurrent callers.
+    static WRITE_TOKEN_TRACE: RefCell<Option<Vec<ClipboardChangeToken>>> = const { RefCell::new(None) };
+}
+
+fn current_windows_change_token() -> Option<ClipboardChangeToken> {
+    clipboard_win::raw::seq_num()
+        .map(|sequence| ClipboardChangeToken::new(u64::from(sequence.get())))
+}
+
+fn record_windows_write_token() {
+    let Some(token) = current_windows_change_token() else {
+        return;
+    };
+    WRITE_TOKEN_TRACE.with(|trace| {
+        let mut trace = trace.borrow_mut();
+        let Some(tokens) = trace.as_mut() else {
+            return;
+        };
+        if tokens.last().copied() != Some(token) {
+            tokens.push(token);
+        }
+    });
+}
 
 /// Classify a rep for the Windows multi-rep write path.
 ///
@@ -877,7 +906,9 @@ impl SystemClipboard for WindowsClipboard {
                 let mut dummy_ctx = ClipboardContext::new().map_err(|e| {
                     anyhow::anyhow!("创建多 rep 分发用临时 clipboard ctx 失败: {}", e)
                 })?;
-                return CommonClipboardImpl::write_snapshot(&mut dummy_ctx, snapshot);
+                let result = CommonClipboardImpl::write_snapshot(&mut dummy_ctx, snapshot);
+                record_windows_write_token();
+                return result;
             }
 
             let mut ctx = self.inner.lock().map_err(|poison| {
@@ -888,6 +919,7 @@ impl SystemClipboard for WindowsClipboard {
                 )
             })?;
             let write_result = CommonClipboardImpl::write_snapshot(&mut ctx, snapshot);
+            record_windows_write_token();
             if let Err(err) = write_result {
                 // Drop clipboard-rs context before native fallback to avoid double clipboard open
                 drop(ctx);
@@ -900,6 +932,7 @@ impl SystemClipboard for WindowsClipboard {
                             "Primary clipboard-rs write failed; using Windows Unicode text fallback"
                         );
                         write_text_windows_native(text)?;
+                        record_windows_write_token();
                         info!("Wrote clipboard text via Windows Unicode fallback");
                         return Ok(());
                     }
@@ -913,6 +946,7 @@ impl SystemClipboard for WindowsClipboard {
                             "Primary clipboard-rs image write failed; using Windows native Bitmap fallback"
                         );
                         write_image_windows(bytes)?;
+                        record_windows_write_token();
                         info!("Wrote clipboard image via Windows native Bitmap fallback");
                         return Ok(());
                     }
@@ -949,6 +983,7 @@ impl SystemClipboard for WindowsClipboard {
             if needs_fallback {
                 if let Some(text) = expected_text.as_deref() {
                     write_text_windows_native(text)?;
+                    record_windows_write_token();
                     info!("Rewrote clipboard text via Windows Unicode fallback after verification");
                 }
             }
@@ -956,6 +991,29 @@ impl SystemClipboard for WindowsClipboard {
             info!("Wrote clipboard snapshot to system");
             Ok(())
         })
+    }
+
+    fn change_token(&self) -> Option<ClipboardChangeToken> {
+        current_windows_change_token()
+    }
+
+    fn write_snapshot_with_receipt(
+        &self,
+        snapshot: SystemClipboardSnapshot,
+    ) -> Result<SystemClipboardWriteReceipt> {
+        let before = current_windows_change_token();
+        WRITE_TOKEN_TRACE.with(|trace| {
+            let previous = trace.replace(Some(Vec::new()));
+            debug_assert!(previous.is_none(), "nested Windows clipboard write receipt");
+        });
+
+        let result = self.write_snapshot(snapshot);
+        let mut change_tokens =
+            WRITE_TOKEN_TRACE.with(|trace| trace.replace(None).unwrap_or_default());
+        change_tokens.retain(|token| Some(*token) != before);
+        change_tokens.dedup();
+        result?;
+        Ok(SystemClipboardWriteReceipt { change_tokens })
     }
 }
 
@@ -1197,20 +1255,33 @@ fn read_image_windows_native_png() -> Result<Option<Vec<u8>>> {
     Ok(Some(bytes))
 }
 
-/// Windows-specific: Read image from clipboard as CF_DIB and convert to PNG bytes.
+/// Windows-specific: read an image from CF_DIBV5 or CF_DIB and convert it to PNG bytes.
 ///
-/// Uses `clipboard-win` to read raw CF_DIB data (BITMAPINFOHEADER + pixel data,
-/// without the 14-byte BMP file header), then delegates to the cross-platform
-/// `dib_to_png` converter.
+/// Modern screenshot sources commonly expose only CF_DIBV5. Fall back to
+/// CF_DIB for legacy producers, then delegate raw DIB bytes to the
+/// cross-platform `dib_to_png` converter.
 fn read_image_windows_as_png() -> Result<Vec<u8>> {
     use clipboard_win::{formats, get_clipboard};
 
-    let dib_data: Vec<u8> = get_clipboard(formats::RawData(formats::CF_DIB))
-        .map_err(|e| anyhow::anyhow!("No DIB image on clipboard: {}", e))?;
+    let (dib_data, clipboard_format): (Vec<u8>, &str) =
+        match get_clipboard(formats::RawData(formats::CF_DIBV5)) {
+            Ok(data) => (data, "CF_DIBV5"),
+            Err(dibv5_error) => {
+                let data =
+                    get_clipboard(formats::RawData(formats::CF_DIB)).map_err(|dib_error| {
+                        anyhow::anyhow!(
+                            "No CF_DIBV5 or CF_DIB image on clipboard: CF_DIBV5={}, CF_DIB={}",
+                            dibv5_error,
+                            dib_error
+                        )
+                    })?;
+                (data, "CF_DIB")
+            }
+        };
 
     debug!(
         dib_size_bytes = dib_data.len(),
-        "Read CF_DIB from Windows clipboard"
+        clipboard_format, "Read DIB image from Windows clipboard"
     );
     crate::clipboard::image_convert::dib_to_png(&dib_data)
 }
@@ -1385,5 +1456,24 @@ mod tests {
 
         let r = rep("text", Some("Text/Plain; Charset=UTF-8"));
         assert_eq!(resolve_multi_rep_mime(&r), Some(MimeClass::TextPlain));
+    }
+
+    #[test]
+    fn decodes_cf_dibv5_payload() {
+        use image::{DynamicImage, Rgba, RgbaImage};
+        use std::io::Cursor;
+
+        let source = RgbaImage::from_pixel(2, 1, Rgba([17, 34, 51, 68]));
+        let mut png = Vec::new();
+        DynamicImage::ImageRgba8(source)
+            .write_to(&mut Cursor::new(&mut png), image::ImageFormat::Png)
+            .unwrap();
+        let dibv5 = png_to_dibv5(&png).unwrap();
+        assert_eq!(&dibv5[..4], &124u32.to_le_bytes());
+
+        let decoded_png = crate::clipboard::image_convert::dib_to_png(&dibv5).unwrap();
+        let decoded = image::load_from_memory(&decoded_png).unwrap().to_rgba8();
+        assert_eq!(decoded.dimensions(), (2, 1));
+        assert_eq!(decoded.get_pixel(0, 0).0, [17, 34, 51, 68]);
     }
 }

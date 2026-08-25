@@ -16,6 +16,10 @@ pub enum ClipboardRouterError {
     Backend(String),
     #[error("clipboard router operation timed out")]
     TimedOut,
+    #[error("active-profile persistence is still uncertain")]
+    PersistUncertain,
+    #[error("clipboard router is poisoned: {0}")]
+    Poisoned(String),
 }
 
 const BACKEND_OPERATION_TIMEOUT: Duration = Duration::from_secs(15);
@@ -69,7 +73,7 @@ enum ClipboardRouterCommand<Snapshot> {
         reply: oneshot::Sender<Result<(), ClipboardRouterError>>,
     },
     Shutdown {
-        reply: oneshot::Sender<()>,
+        reply: oneshot::Sender<Result<(), ClipboardRouterError>>,
     },
 }
 
@@ -78,6 +82,195 @@ pub struct ClipboardRouterTask<Snapshot> {
     admission: Arc<Mutex<bool>>,
     join: Option<tokio::task::JoinHandle<()>>,
     shutdown_timeout: Duration,
+}
+
+enum ActiveProfileState {
+    Ready(String),
+    PersistUncertain(PendingPersist),
+    Poisoned(ClipboardRouterError),
+}
+
+struct PendingPersist {
+    target: String,
+    failure: ClipboardRouterError,
+    completion: tokio::task::JoinHandle<Result<String, ClipboardRouterError>>,
+}
+
+impl ActiveProfileState {
+    fn ready_profile(&self) -> Result<&str, ClipboardRouterError> {
+        match self {
+            Self::Ready(profile_id) => Ok(profile_id),
+            Self::PersistUncertain(_) => Err(ClipboardRouterError::PersistUncertain),
+            Self::Poisoned(error) => Err(error.clone()),
+        }
+    }
+}
+
+async fn reconcile_completed_persist<Snapshot>(
+    backend: Arc<dyn ClipboardRouterBackend<Snapshot>>,
+    target: String,
+    persist_error: ClipboardRouterError,
+    operation_timeout: Duration,
+) -> (ActiveProfileState, Result<(), ClipboardRouterError>)
+where
+    Snapshot: Send + 'static,
+{
+    let load_backend = Arc::clone(&backend);
+    match run_backend_operation(operation_timeout, move |cancel| async move {
+        load_backend.load_active_profile(cancel).await
+    })
+    .await
+    {
+        Ok(durable_profile) => {
+            let reached_target = durable_profile == target;
+            let state = ActiveProfileState::Ready(durable_profile);
+            if reached_target {
+                (state, Ok(()))
+            } else {
+                (state, Err(persist_error))
+            }
+        }
+        Err(reconcile_error) => {
+            let error = ClipboardRouterError::Poisoned(format!(
+                "{persist_error}; durable active-profile reconciliation failed: {reconcile_error}"
+            ));
+            (ActiveProfileState::Poisoned(error.clone()), Err(error))
+        }
+    }
+}
+
+async fn complete_timed_out_persist<Snapshot>(
+    persist_task: tokio::task::JoinHandle<anyhow::Result<()>>,
+    backend: Arc<dyn ClipboardRouterBackend<Snapshot>>,
+    operation_timeout: Duration,
+) -> Result<String, ClipboardRouterError>
+where
+    Snapshot: Send + 'static,
+{
+    let terminal = match persist_task.await {
+        Ok(Ok(())) => "completed successfully".to_owned(),
+        Ok(Err(error)) => format!("completed with backend error: {error}"),
+        Err(error) => format!("task failed: {error}"),
+    };
+    let load_backend = Arc::clone(&backend);
+    run_backend_operation(operation_timeout, move |cancel| async move {
+        load_backend.load_active_profile(cancel).await
+    })
+    .await
+    .map_err(|error| {
+        ClipboardRouterError::Poisoned(format!(
+            "timed-out persist {terminal}; durable active-profile reconciliation failed: {error}"
+        ))
+    })
+}
+
+fn finish_pending_result(
+    target: String,
+    failure: ClipboardRouterError,
+    completion: Result<Result<String, ClipboardRouterError>, tokio::task::JoinError>,
+) -> (ActiveProfileState, Result<(), ClipboardRouterError>) {
+    match completion {
+        Ok(Ok(durable_profile)) => {
+            let reached_target = durable_profile == target;
+            let state = ActiveProfileState::Ready(durable_profile);
+            if reached_target {
+                (state, Ok(()))
+            } else {
+                (state, Err(failure))
+            }
+        }
+        Ok(Err(error)) => (ActiveProfileState::Poisoned(error.clone()), Err(error)),
+        Err(error) => {
+            let error = ClipboardRouterError::Poisoned(format!(
+                "persist completion fence task failed: {error}"
+            ));
+            (ActiveProfileState::Poisoned(error.clone()), Err(error))
+        }
+    }
+}
+
+async fn wait_for_pending(
+    mut pending: PendingPersist,
+    timeout: Duration,
+) -> (ActiveProfileState, Result<(), ClipboardRouterError>) {
+    match tokio::time::timeout(timeout, &mut pending.completion).await {
+        Ok(completion) => finish_pending_result(pending.target, pending.failure, completion),
+        Err(_) => (
+            ActiveProfileState::PersistUncertain(pending),
+            Err(ClipboardRouterError::PersistUncertain),
+        ),
+    }
+}
+
+async fn settle_active_profile(
+    state: ActiveProfileState,
+    timeout: Duration,
+) -> (ActiveProfileState, Result<(), ClipboardRouterError>) {
+    match state {
+        ActiveProfileState::Ready(profile_id) => (ActiveProfileState::Ready(profile_id), Ok(())),
+        ActiveProfileState::PersistUncertain(pending) => wait_for_pending(pending, timeout).await,
+        ActiveProfileState::Poisoned(error) => {
+            (ActiveProfileState::Poisoned(error.clone()), Err(error))
+        }
+    }
+}
+
+async fn run_persist_operation<Snapshot>(
+    backend: Arc<dyn ClipboardRouterBackend<Snapshot>>,
+    target: String,
+    operation_timeout: Duration,
+) -> (ActiveProfileState, Result<(), ClipboardRouterError>)
+where
+    Snapshot: Send + 'static,
+{
+    let cancel = CancellationToken::new();
+    let persist_cancel = cancel.clone();
+    let persist_backend = Arc::clone(&backend);
+    let persist_target = target.clone();
+    let mut persist_task = tokio::spawn(async move {
+        persist_backend
+            .persist_active_profile(&persist_target, persist_cancel)
+            .await
+    });
+
+    match tokio::time::timeout(operation_timeout, &mut persist_task).await {
+        Ok(Ok(Ok(()))) => (ActiveProfileState::Ready(target), Ok(())),
+        Ok(Ok(Err(error))) => {
+            reconcile_completed_persist(
+                backend,
+                target,
+                ClipboardRouterError::Backend(error.to_string()),
+                operation_timeout,
+            )
+            .await
+        }
+        Ok(Err(error)) => {
+            reconcile_completed_persist(
+                backend,
+                target,
+                ClipboardRouterError::Backend(format!("backend task failed: {error}")),
+                operation_timeout,
+            )
+            .await
+        }
+        Err(_) => {
+            cancel.cancel();
+            let completion_backend = Arc::clone(&backend);
+            let completion = tokio::spawn(async move {
+                complete_timed_out_persist(persist_task, completion_backend, operation_timeout)
+                    .await
+            });
+            wait_for_pending(
+                PendingPersist {
+                    target,
+                    failure: ClipboardRouterError::TimedOut,
+                    completion,
+                },
+                operation_timeout,
+            )
+            .await
+        }
+    }
 }
 
 pub fn spawn_clipboard_router<Snapshot>(
@@ -112,17 +305,21 @@ where
     let join = tokio::spawn(async move {
         let load_backend = Arc::clone(&backend);
         let mut active_profile =
-            run_backend_operation(operation_timeout, move |cancel| async move {
+            match run_backend_operation(operation_timeout, move |cancel| async move {
                 load_backend.load_active_profile(cancel).await
             })
-            .await;
+            .await
+            {
+                Ok(profile_id) => ActiveProfileState::Ready(profile_id),
+                Err(error) => ActiveProfileState::Poisoned(error),
+            };
         while let Some(command) = receiver.recv().await {
             match command {
                 ClipboardRouterCommand::ClipboardChanged { snapshot, reply } => {
-                    let profile_id = match &active_profile {
-                        Ok(profile_id) => profile_id.clone(),
+                    let profile_id = match active_profile.ready_profile() {
+                        Ok(profile_id) => profile_id.to_owned(),
                         Err(error) => {
-                            let _ = reply.send(Err(error.clone()));
+                            let _ = reply.send(Err(error));
                             continue;
                         }
                     };
@@ -137,67 +334,72 @@ where
                     let _ = reply.send(result);
                 }
                 ClipboardRouterCommand::SetActive { profile_id, reply } => {
-                    if active_profile.as_ref() == Ok(&profile_id) {
+                    let current = std::mem::replace(
+                        &mut active_profile,
+                        ActiveProfileState::Poisoned(ClipboardRouterError::Poisoned(
+                            "active-profile transition interrupted".into(),
+                        )),
+                    );
+                    let (settled, settle_result) =
+                        settle_active_profile(current, operation_timeout).await;
+                    active_profile = settled;
+                    if let Err(error) = settle_result {
+                        let _ = reply.send(Err(error));
+                        continue;
+                    }
+
+                    if active_profile.ready_profile() == Ok(profile_id.as_str()) {
                         let _ = reply.send(Ok(()));
                         continue;
                     }
-                    let persist_backend = Arc::clone(&backend);
-                    let target = profile_id.clone();
-                    let persist_result =
-                        run_backend_operation(operation_timeout, move |cancel| async move {
-                            persist_backend
-                                .persist_active_profile(&target, cancel)
-                                .await
-                        })
-                        .await;
-                    let result = match persist_result {
-                        Ok(()) => {
-                            active_profile = Ok(profile_id);
-                            Ok(())
-                        }
-                        Err(persist_error) => {
-                            let load_backend = Arc::clone(&backend);
-                            match run_backend_operation(
-                                operation_timeout,
-                                move |cancel| async move {
-                                    load_backend.load_active_profile(cancel).await
-                                },
-                            )
-                            .await
-                            {
-                                Ok(durable_profile) => {
-                                    let reached_target = durable_profile == profile_id;
-                                    active_profile = Ok(durable_profile);
-                                    if reached_target {
-                                        Ok(())
-                                    } else {
-                                        Err(persist_error)
-                                    }
-                                }
-                                Err(reconcile_error) => {
-                                    let error = ClipboardRouterError::Backend(format!(
-                                        "{persist_error}; durable active profile reconciliation failed: {reconcile_error}"
-                                    ));
-                                    active_profile = Err(error.clone());
-                                    Err(error)
-                                }
-                            }
-                        }
-                    };
+
+                    if let Err(error) = active_profile.ready_profile() {
+                        let _ = reply.send(Err(error));
+                        continue;
+                    }
+                    let (state, result) =
+                        run_persist_operation(Arc::clone(&backend), profile_id, operation_timeout)
+                            .await;
+                    active_profile = state;
                     let _ = reply.send(result);
                 }
                 ClipboardRouterCommand::ActiveProfile { reply } => {
-                    let _ = reply.send(active_profile.clone());
+                    let current = std::mem::replace(
+                        &mut active_profile,
+                        ActiveProfileState::Poisoned(ClipboardRouterError::Poisoned(
+                            "active-profile query interrupted".into(),
+                        )),
+                    );
+                    let (settled, _) = settle_active_profile(current, operation_timeout).await;
+                    active_profile = settled;
+                    let result = active_profile.ready_profile().map(str::to_owned);
+                    let _ = reply.send(result);
                 }
                 ClipboardRouterCommand::Barrier { reply } => {
-                    let _ = reply.send(Ok(()));
+                    let current = std::mem::replace(
+                        &mut active_profile,
+                        ActiveProfileState::Poisoned(ClipboardRouterError::Poisoned(
+                            "active-profile barrier interrupted".into(),
+                        )),
+                    );
+                    let (settled, result) = settle_active_profile(current, operation_timeout).await;
+                    active_profile = settled;
+                    let _ = reply.send(result);
                 }
                 ClipboardRouterCommand::Shutdown { reply } => {
+                    let current = std::mem::replace(
+                        &mut active_profile,
+                        ActiveProfileState::Poisoned(ClipboardRouterError::Poisoned(
+                            "active-profile shutdown interrupted".into(),
+                        )),
+                    );
+                    let (_settled, result) =
+                        settle_active_profile(current, operation_timeout).await;
                     receiver.close();
                     while let Some(command) = receiver.recv().await {
                         reject_command(command);
                     }
-                    let _ = reply.send(());
+                    let _ = reply.send(result);
                     break;
                 }
             }
@@ -278,7 +480,7 @@ fn reject_command<Snapshot>(command: ClipboardRouterCommand<Snapshot>) {
             let _ = reply.send(Err(ClipboardRouterError::Closed));
         }
         ClipboardRouterCommand::Shutdown { reply } => {
-            let _ = reply.send(());
+            let _ = reply.send(Err(ClipboardRouterError::Closed));
         }
     }
 }
@@ -367,7 +569,7 @@ where
         tokio::time::timeout_at(deadline, acknowledged)
             .await
             .map_err(|_| ClipboardRouterError::TimedOut)?
-            .map_err(|_| ClipboardRouterError::Closed)?;
+            .map_err(|_| ClipboardRouterError::Closed)??;
         let Some(mut join) = self.join.take() else {
             return Ok(());
         };
@@ -414,9 +616,10 @@ mod tests {
         events: Mutex<Vec<Recorded>>,
         durable_active: Mutex<String>,
         rejected_profiles: Mutex<HashSet<String>>,
-        persist_after_commit: Mutex<HashSet<String>>,
-        persist_committed: Notify,
-        release_persist: Notify,
+        late_commit_profiles: Mutex<HashSet<String>>,
+        never_complete_profiles: Mutex<HashSet<String>>,
+        persist_started: Notify,
+        release_late_commit: Notify,
         rejected_snapshots: Mutex<HashSet<String>>,
         pending_snapshots: Mutex<HashSet<String>>,
         pending_entered: Notify,
@@ -431,9 +634,10 @@ mod tests {
                 events: Mutex::new(Vec::new()),
                 durable_active: Mutex::new("profile-a".into()),
                 rejected_profiles: Mutex::new(HashSet::new()),
-                persist_after_commit: Mutex::new(HashSet::new()),
-                persist_committed: Notify::new(),
-                release_persist: Notify::new(),
+                late_commit_profiles: Mutex::new(HashSet::new()),
+                never_complete_profiles: Mutex::new(HashSet::new()),
+                persist_started: Notify::new(),
+                release_late_commit: Notify::new(),
                 rejected_snapshots: Mutex::new(HashSet::new()),
                 pending_snapshots: Mutex::new(HashSet::new()),
                 pending_entered: Notify::new(),
@@ -478,20 +682,31 @@ mod tests {
         async fn persist_active_profile(
             &self,
             profile_id: &str,
-            _cancel: CancellationToken,
+            cancel: CancellationToken,
         ) -> anyhow::Result<()> {
             if self.rejected_profiles.lock().await.contains(profile_id) {
                 anyhow::bail!("rejected profile {profile_id}");
+            }
+            if self.late_commit_profiles.lock().await.contains(profile_id) {
+                self.persist_started.notify_one();
+                cancel.cancelled().await;
+                self.release_late_commit.notified().await;
+            }
+            if self
+                .never_complete_profiles
+                .lock()
+                .await
+                .contains(profile_id)
+            {
+                self.persist_started.notify_one();
+                cancel.cancelled().await;
+                std::future::pending::<()>().await;
             }
             self.events
                 .lock()
                 .await
                 .push(Recorded::SetActive(profile_id.to_string()));
             *self.durable_active.lock().await = profile_id.to_owned();
-            if self.persist_after_commit.lock().await.contains(profile_id) {
-                self.persist_committed.notify_one();
-                self.release_persist.notified().await;
-            }
             Ok(())
         }
     }
@@ -642,11 +857,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn persist_timeout_reconciles_the_committed_durable_profile_before_dispatch() {
+    async fn barrier_waits_for_a_late_persist_commit_and_reconciliation() {
         let backend = Arc::new(RecordingBackend::default());
-        *backend.durable_active.lock().await = "profile-a".into();
         backend
-            .persist_after_commit
+            .late_commit_profiles
             .lock()
             .await
             .insert("profile-b".into());
@@ -656,21 +870,70 @@ mod tests {
             Duration::from_secs(1),
         );
 
-        assert_eq!(router.set_active("profile-b".into()).await, Ok(()));
+        let switching = {
+            let router = router.clone();
+            tokio::spawn(async move { router.set_active("profile-b".into()).await })
+        };
+        backend.persist_started.notified().await;
+        assert!(switching.await.unwrap().is_err());
+        assert_eq!(*backend.durable_active.lock().await, "profile-a");
+
+        let mut barrier = {
+            let router = router.clone();
+            tokio::spawn(async move { router.barrier().await })
+        };
+        assert!(
+            tokio::time::timeout(Duration::from_millis(10), &mut barrier)
+                .await
+                .is_err(),
+            "barrier must not pass while a timed-out persist can still commit"
+        );
+
+        backend.release_late_commit.notify_one();
+        barrier.await.unwrap().unwrap();
         assert_eq!(*backend.durable_active.lock().await, "profile-b");
+        assert_eq!(router.active_profile().await.unwrap(), "profile-b");
 
         router
-            .clipboard_changed("after-timeout".into())
+            .clipboard_changed("after-reconcile".into())
             .await
             .unwrap();
         assert_eq!(
             backend.events.lock().await.last(),
             Some(&Recorded::Dispatch {
                 profile_id: "profile-b".into(),
-                value: "after-timeout".into(),
+                value: "after-reconcile".into(),
             })
         );
         task.shutdown().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn permanently_uncertain_persist_blocks_barrier_and_clean_shutdown() {
+        let backend = Arc::new(RecordingBackend::default());
+        backend
+            .never_complete_profiles
+            .lock()
+            .await
+            .insert("profile-b".into());
+        let (router, task) = spawn_clipboard_router_with_timeouts(
+            backend.clone(),
+            Duration::from_millis(25),
+            Duration::from_secs(1),
+        );
+
+        let switching = {
+            let router = router.clone();
+            tokio::spawn(async move { router.set_active("profile-b".into()).await })
+        };
+        backend.persist_started.notified().await;
+        assert!(switching.await.unwrap().is_err());
+
+        assert!(router.barrier().await.is_err());
+        assert!(router.active_profile().await.is_err());
+        assert!(router.clipboard_changed("blocked".into()).await.is_err());
+        assert!(router.set_active("profile-a".into()).await.is_err());
+        assert!(task.shutdown().await.is_err());
     }
 
     #[tokio::test]

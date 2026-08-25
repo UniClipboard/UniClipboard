@@ -41,6 +41,8 @@ pub enum SpaceCatalogError {
     DuplicateProfileDirectory { profile_dir: String },
     #[error("space catalog must contain exactly one active-send target, found {count}")]
     InvalidActiveSendCount { count: usize },
+    #[error("space catalog must contain exactly one legacy default profile, found {count}")]
+    InvalidLegacyProfileCount { count: usize },
     #[error("active-send space profile is disabled: {profile_id}")]
     ActiveSendProfileDisabled { profile_id: String },
     #[error("space catalog changed since it was loaded")]
@@ -233,6 +235,7 @@ fn validate_document(document: &CatalogDocument) -> Result<(), SpaceCatalogError
     let mut profile_ids = HashSet::with_capacity(document.entries.len());
     let mut profile_directories = HashSet::with_capacity(document.entries.len());
     let mut active_send_count = 0;
+    let mut legacy_profile_count = 0;
 
     for entry in &document.entries {
         let parsed = parse_canonical_profile_id(&entry.profile_id)?;
@@ -251,6 +254,9 @@ fn validate_document(document: &CatalogDocument) -> Result<(), SpaceCatalogError
                 profile_dir: entry.profile_dir.clone(),
             });
         }
+        if entry.profile_dir == LEGACY_PROFILE_DIR {
+            legacy_profile_count += 1;
+        }
         if entry.active_send {
             active_send_count += 1;
             if !entry.enabled {
@@ -261,6 +267,11 @@ fn validate_document(document: &CatalogDocument) -> Result<(), SpaceCatalogError
         }
     }
 
+    if legacy_profile_count != 1 {
+        return Err(SpaceCatalogError::InvalidLegacyProfileCount {
+            count: legacy_profile_count,
+        });
+    }
     if active_send_count != 1 {
         return Err(SpaceCatalogError::InvalidActiveSendCount {
             count: active_send_count,
@@ -855,12 +866,20 @@ mod tests {
         write_catalog(
             root.path(),
             serde_json::json!({
-                "entries": [{
-                    "profile_id": "abcdefab-cdef-4abc-8def-abcdefabcdef",
-                    "profile_dir": "profile-abcdefab-cdef-4abc-8def-abcdefabcdef",
-                    "enabled": true,
-                    "active_send": true
-                }]
+                "entries": [
+                    {
+                        "profile_id": "11111111-1111-4111-8111-111111111111",
+                        "profile_dir": ".",
+                        "enabled": true,
+                        "active_send": false
+                    },
+                    {
+                        "profile_id": "abcdefab-cdef-4abc-8def-abcdefabcdef",
+                        "profile_dir": "profile-abcdefab-cdef-4abc-8def-abcdefabcdef",
+                        "enabled": true,
+                        "active_send": true
+                    }
+                ]
             }),
         );
 
@@ -868,7 +887,7 @@ mod tests {
             .expect("matching generated profile directory must load");
 
         assert_eq!(
-            catalog.entries()[0].profile_dir,
+            catalog.entries()[1].profile_dir,
             "profile-abcdefab-cdef-4abc-8def-abcdefabcdef"
         );
     }
@@ -939,7 +958,7 @@ mod tests {
                 "entries": [
                     {
                         "profile_id": "11111111-1111-4111-8111-111111111111",
-                        "profile_dir": "profile-11111111-1111-4111-8111-111111111111",
+                        "profile_dir": ".",
                         "enabled": true,
                         "active_send": true
                     },
@@ -985,7 +1004,7 @@ mod tests {
             serde_json::json!({
                 "entries": [{
                     "profile_id": "11111111-1111-4111-8111-111111111111",
-                    "profile_dir": "profile-11111111-1111-4111-8111-111111111111",
+                    "profile_dir": ".",
                     "enabled": true,
                     "active_send": false
                 }]
@@ -998,6 +1017,30 @@ mod tests {
         assert!(matches!(
             error,
             SpaceCatalogError::InvalidActiveSendCount { count: 0 }
+        ));
+    }
+
+    #[test]
+    fn catalog_without_a_legacy_default_profile_is_rejected() {
+        let root = tempfile::tempdir().expect("create temp data root");
+        write_catalog(
+            root.path(),
+            serde_json::json!({
+                "entries": [{
+                    "profile_id": "11111111-1111-4111-8111-111111111111",
+                    "profile_dir": "profile-11111111-1111-4111-8111-111111111111",
+                    "enabled": true,
+                    "active_send": true
+                }]
+            }),
+        );
+
+        let error = SpaceCatalog::load_or_migrate(root.path())
+            .expect_err("catalog without legacy default profile must fail closed");
+
+        assert!(matches!(
+            error,
+            SpaceCatalogError::InvalidLegacyProfileCount { count: 0 }
         ));
     }
 

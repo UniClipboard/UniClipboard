@@ -54,6 +54,15 @@ pub enum DaemonRequestError {
         path: String,
         source: reqwest::Error,
     },
+
+    #[error(
+        "daemon request {path} returned unexpected success status {actual}; expected {expected}"
+    )]
+    UnexpectedSuccessStatus {
+        path: String,
+        expected: StatusCode,
+        actual: StatusCode,
+    },
 }
 
 impl DaemonRequestError {
@@ -61,6 +70,7 @@ impl DaemonRequestError {
     pub fn status(&self) -> Option<StatusCode> {
         match self {
             Self::Status { status, .. } => Some(*status),
+            Self::UnexpectedSuccessStatus { actual, .. } => Some(*actual),
             _ => None,
         }
     }

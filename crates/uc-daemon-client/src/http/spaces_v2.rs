@@ -1,14 +1,15 @@
 use std::sync::Arc;
 
 use anyhow::Result;
-use reqwest::Method;
+use reqwest::{Method, StatusCode};
+use uc_daemon_contract::api::dto::envelope::ApiEnvelope;
 use uc_daemon_contract::api::dto::v2::spaces::{
     CreateSpaceProfileRequestDto, JoinSpaceProfileRequestDto, SetActiveSendSpaceRequestDto,
     SpaceProfileSummaryDto,
 };
 
 use crate::http::encode_path_segment;
-use crate::http::enveloped::enveloped_request;
+use crate::http::enveloped::{enveloped_request, send_checked, DaemonRequestError};
 use crate::DaemonConnectionState;
 
 const SPACES_PATH: &str = "/v2/spaces";
@@ -88,8 +89,34 @@ impl DaemonSpacesV2Client {
     pub async fn remove_space(&self, profile_id: &str) -> Result<SpaceProfileSummaryDto> {
         let profile_id = encode_path_segment(profile_id)?;
         let path = format!("{SPACES_PATH}/{profile_id}");
-        self.enveloped(Method::DELETE, &path, |request| request)
-            .await
+        let response = send_checked(
+            &self.http,
+            &self.connection_state,
+            &self.client_type,
+            Method::DELETE,
+            &path,
+            |request| request,
+        )
+        .await?;
+        let actual = response.status();
+        if actual != StatusCode::OK {
+            return Err(DaemonRequestError::UnexpectedSuccessStatus {
+                path,
+                expected: StatusCode::OK,
+                actual,
+            }
+            .into());
+        }
+
+        let envelope: ApiEnvelope<SpaceProfileSummaryDto> =
+            response
+                .json()
+                .await
+                .map_err(|source| DaemonRequestError::Decode {
+                    path: path.clone(),
+                    source,
+                })?;
+        Ok(envelope.data)
     }
 
     async fn enveloped<T>(
@@ -119,7 +146,6 @@ mod tests {
 
     use std::sync::Arc;
 
-    use crate::DaemonRequestError;
     use uc_daemon_contract::api::auth::DaemonConnectionInfo;
     use uc_daemon_contract::api::dto::v2::spaces::{
         CreateSpaceProfileRequestDto, JoinSpaceProfileRequestDto, SetActiveSendSpaceRequestDto,
@@ -174,6 +200,31 @@ mod tests {
             })
             .await
             .expect("create space");
+
+        assert_eq!(result.profile_id, "profile-created");
+    }
+
+    #[tokio::test]
+    async fn create_space_keeps_shared_envelope_semantics_for_201() {
+        let (server, client) = test_client().await;
+        Mock::given(method("POST"))
+            .and(path("/v2/spaces"))
+            .respond_with(ResponseTemplate::new(201).set_body_json(serde_json::json!({
+                "data": summary_json("profile-created", false),
+                "ts": 2
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let result = client
+            .create_space(&CreateSpaceProfileRequestDto {
+                passphrase: "correct horse battery staple".to_string(),
+                passphrase_confirm: "correct horse battery staple".to_string(),
+                device_name: None,
+            })
+            .await
+            .expect("shared enveloped requests still accept valid 201 responses");
 
         assert_eq!(result.profile_id, "profile-created");
     }
@@ -262,10 +313,27 @@ mod tests {
 
     #[tokio::test]
     async fn remove_space_rejects_204_because_delete_contract_requires_summary_envelope() {
+        assert_remove_rejects_unexpected_success_status(reqwest::StatusCode::NO_CONTENT).await;
+    }
+
+    #[tokio::test]
+    async fn remove_space_rejects_201_even_with_valid_summary_envelope() {
+        assert_remove_rejects_unexpected_success_status(reqwest::StatusCode::CREATED).await;
+    }
+
+    #[tokio::test]
+    async fn remove_space_rejects_202_even_with_valid_summary_envelope() {
+        assert_remove_rejects_unexpected_success_status(reqwest::StatusCode::ACCEPTED).await;
+    }
+
+    #[tokio::test]
+    async fn remove_space_rejects_malformed_200_envelope() {
         let (server, client) = test_client().await;
         Mock::given(method("DELETE"))
             .and(path("/v2/spaces/profile-a"))
-            .respond_with(ResponseTemplate::new(204))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "profileId": "profile-a"
+            })))
             .expect(1)
             .mount(&server)
             .await;
@@ -273,7 +341,7 @@ mod tests {
         let error = client
             .remove_space("profile-a")
             .await
-            .expect_err("204 must not satisfy the 200 summary contract");
+            .expect_err("malformed 200 envelope must fail");
         let request_error = error
             .downcast_ref::<DaemonRequestError>()
             .expect("shared daemon decode error");
@@ -343,6 +411,40 @@ mod tests {
             "test".to_string(),
         );
         (server, client)
+    }
+
+    async fn assert_remove_rejects_unexpected_success_status(status: reqwest::StatusCode) {
+        let (server, client) = test_client().await;
+        Mock::given(method("DELETE"))
+            .and(path("/v2/spaces/profile-a"))
+            .respond_with(
+                ResponseTemplate::new(status.as_u16()).set_body_json(serde_json::json!({
+                    "data": summary_json("profile-a", false),
+                    "ts": 2
+                })),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let error = client
+            .remove_space("profile-a")
+            .await
+            .expect_err("non-200 success status must fail");
+        let request_error = error
+            .downcast_ref::<DaemonRequestError>()
+            .expect("typed daemon protocol status error");
+
+        assert!(matches!(
+            request_error,
+            DaemonRequestError::UnexpectedSuccessStatus {
+                path,
+                expected,
+                actual,
+            } if path == "/v2/spaces/profile-a"
+                && *expected == reqwest::StatusCode::OK
+                && *actual == status
+        ));
     }
 
     fn summary_envelope(profile_id: &str, active: bool) -> ResponseTemplate {

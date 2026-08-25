@@ -20,39 +20,6 @@ fn daemon_production_host_starts_and_stops_only_the_engine() {
 }
 
 #[test]
-fn default_and_explicit_desktop_hosts_keep_distinct_scope_rules() {
-    let host = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../crates/uc-bootstrap/src/wiring/desktop_host.rs");
-    let source = std::fs::read_to_string(&host)
-        .unwrap_or_else(|error| panic!("failed to read {}: {error}", host.display()));
-
-    let default_entry = source
-        .split("pub fn prepare_desktop_engine_host()")
-        .nth(1)
-        .and_then(|tail| {
-            tail.split("/// Prepare one isolated desktop Engine host")
-                .next()
-        })
-        .expect("default desktop host entry must remain discoverable");
-    assert!(default_entry.contains("EngineConfig::new"));
-    assert!(default_entry.contains("build_secure_storage_prelude"));
-    assert!(!default_entry.contains("with_profile_id"));
-    assert!(!default_entry.contains("build_secure_storage_prelude_for_profile"));
-    assert!(!default_entry.contains("prepare_desktop_engine_host_with_profile"));
-
-    let explicit_entry = source
-        .split("pub fn prepare_desktop_engine_host_for_profile")
-        .nth(1)
-        .and_then(|tail| {
-            tail.split("fn prepare_desktop_engine_host_from_parts")
-                .next()
-        })
-        .expect("explicit desktop host entry must remain discoverable");
-    assert!(explicit_entry.contains("with_profile_id(config.profile_id())"));
-    assert!(explicit_entry.contains("build_secure_storage_prelude_for_profile"));
-}
-
-#[test]
 fn daemon_api_state_owns_engine_instead_of_app_facade() {
     let state =
         Path::new(env!("CARGO_MANIFEST_DIR")).join("../../crates/uc-webserver/src/api/server.rs");

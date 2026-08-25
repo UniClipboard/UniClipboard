@@ -52,7 +52,9 @@ fn desktop_engine_host_preparation_does_not_assemble_the_core() {
 
 #[test]
 fn explicit_profile_hosts_isolate_every_persistent_boundary_from_ambient_profile() {
-    let _env = ENV_LOCK.lock().unwrap();
+    let _env = ENV_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
     let _scoped_env = ScopedEnv::set(&[
         ("UC_PROFILE", "ambient-must-not-leak"),
         ("UC_DISABLE_SYSTEM_CLIPBOARD", "1"),

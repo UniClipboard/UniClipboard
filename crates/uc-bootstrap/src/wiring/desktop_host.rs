@@ -57,6 +57,12 @@ impl DesktopEngineHost {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DesktopClipboardMode {
+    EngineManaged,
+    ExternalRouter,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DesktopHostProcessPaths {
     app_data_root: PathBuf,
@@ -89,17 +95,34 @@ fn host_directories(paths: &DesktopHostPaths, temporary_dir: PathBuf) -> HostDir
     )
 }
 
+fn default_desktop_engine_config() -> EngineConfig {
+    EngineConfig::new(env!("CARGO_PKG_VERSION")).with_portable_storage(uc_app_paths::is_portable())
+}
+
+fn explicit_desktop_engine_config(config: &DesktopRuntimeProfileConfig) -> EngineConfig {
+    EngineConfig::new(env!("CARGO_PKG_VERSION"))
+        .with_profile_id(config.profile_id())
+        .with_portable_storage(uc_app_paths::is_portable())
+}
+
 pub fn prepare_desktop_engine_host() -> WiringResult<DesktopEngineHost> {
     let paths = resolve_desktop_host_paths()?;
     let secure_storage = build_secure_storage_prelude(&paths)?.secure_storage;
-    let engine_config = EngineConfig::new(env!("CARGO_PKG_VERSION"))
-        .with_portable_storage(uc_app_paths::is_portable());
-    prepare_desktop_engine_host_from_parts(paths, engine_config, secure_storage)
+    let engine_config = default_desktop_engine_config();
+    prepare_desktop_engine_host_from_parts(
+        paths,
+        engine_config,
+        secure_storage,
+        DesktopClipboardMode::EngineManaged,
+    )
 }
 
 /// Prepare one isolated desktop Engine host from explicit profile roots.
 ///
-/// This entry never reads or modifies `UC_PROFILE`.
+/// This entry never reads or modifies `UC_PROFILE`. It keeps real clipboard
+/// read/write support for routed operations, but it never exposes a change
+/// stream or starts a profile-local watcher; the daemon-level external router
+/// owns capture for multi-profile runtimes.
 pub fn prepare_desktop_engine_host_for_profile(
     config: DesktopRuntimeProfileConfig,
 ) -> WiringResult<DesktopEngineHost> {
@@ -107,16 +130,20 @@ pub fn prepare_desktop_engine_host_for_profile(
     let secure_storage =
         build_secure_storage_prelude_for_profile(&paths, config.secure_storage_namespace())?
             .secure_storage;
-    let engine_config = EngineConfig::new(env!("CARGO_PKG_VERSION"))
-        .with_profile_id(config.profile_id())
-        .with_portable_storage(uc_app_paths::is_portable());
-    prepare_desktop_engine_host_from_parts(paths, engine_config, secure_storage)
+    let engine_config = explicit_desktop_engine_config(&config);
+    prepare_desktop_engine_host_from_parts(
+        paths,
+        engine_config,
+        secure_storage,
+        DesktopClipboardMode::ExternalRouter,
+    )
 }
 
 fn prepare_desktop_engine_host_from_parts(
     paths: DesktopHostPaths,
     engine_config: EngineConfig,
     secure_storage: Arc<dyn SecureStorageProvider>,
+    clipboard_mode: DesktopClipboardMode,
 ) -> WiringResult<DesktopEngineHost> {
     let (_, system_clipboard, clipboard_wiring) = create_desktop_system_clipboard()?.into_parts();
     let file_handles = DesktopHostFileHandles::default();
@@ -145,6 +172,7 @@ fn prepare_desktop_engine_host_from_parts(
             pending_snapshot,
             change_stream_taken: false,
             changes_enabled: clipboard_wiring == SystemClipboardWiring::Real,
+            mode: clipboard_mode,
         }),
         Box::new(file_handles.clone()),
     )
@@ -200,6 +228,7 @@ struct DesktopClipboard {
     pending_snapshot: Arc<Mutex<Option<SystemClipboardSnapshot>>>,
     change_stream_taken: bool,
     changes_enabled: bool,
+    mode: DesktopClipboardMode,
 }
 
 impl HostClipboard for DesktopClipboard {
@@ -256,7 +285,10 @@ impl HostClipboard for DesktopClipboard {
     fn take_change_stream(
         &mut self,
     ) -> Result<Option<Box<dyn HostClipboardChangeStream>>, HostCapabilityError> {
-        if !self.changes_enabled || self.change_stream_taken {
+        if self.mode == DesktopClipboardMode::ExternalRouter
+            || !self.changes_enabled
+            || self.change_stream_taken
+        {
             return Ok(None);
         }
         self.change_stream_taken = true;
@@ -563,6 +595,25 @@ mod tests {
     use super::*;
     use uc_platform::clipboard::{FormatId, RepresentationId};
 
+    #[derive(Default)]
+    struct RecordingClipboard {
+        writes: Mutex<Vec<SystemClipboardSnapshot>>,
+    }
+
+    impl SystemClipboard for RecordingClipboard {
+        fn read_snapshot(&self) -> anyhow::Result<SystemClipboardSnapshot> {
+            Ok(empty_system_snapshot())
+        }
+
+        fn write_snapshot(&self, snapshot: SystemClipboardSnapshot) -> anyhow::Result<()> {
+            self.writes
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .push(snapshot);
+            Ok(())
+        }
+    }
+
     struct StaticClipboard {
         snapshot: SystemClipboardSnapshot,
     }
@@ -575,6 +626,114 @@ mod tests {
         fn write_snapshot(&self, _snapshot: SystemClipboardSnapshot) -> anyhow::Result<()> {
             Ok(())
         }
+    }
+
+    fn empty_system_snapshot() -> SystemClipboardSnapshot {
+        SystemClipboardSnapshot {
+            ts_ms: 0,
+            representations: Vec::new(),
+            file_content_digests: Vec::new(),
+            file_set_v1_component: None,
+        }
+    }
+
+    fn clipboard_for_test(
+        system_clipboard: Arc<dyn SystemClipboard>,
+        mode: DesktopClipboardMode,
+    ) -> DesktopClipboard {
+        DesktopClipboard {
+            system_clipboard,
+            file_registry: Arc::new(DesktopFileRegistry::default()),
+            pending_snapshot: Arc::new(Mutex::new(None)),
+            change_stream_taken: false,
+            changes_enabled: true,
+            mode,
+        }
+    }
+
+    #[test]
+    fn explicit_profile_clipboards_never_expose_engine_managed_change_streams() {
+        let system_clipboard: Arc<dyn SystemClipboard> = Arc::new(StaticClipboard {
+            snapshot: empty_system_snapshot(),
+        });
+        let mut profile_a = clipboard_for_test(
+            Arc::clone(&system_clipboard),
+            DesktopClipboardMode::ExternalRouter,
+        );
+        let mut profile_b =
+            clipboard_for_test(system_clipboard, DesktopClipboardMode::ExternalRouter);
+
+        assert!(profile_a.take_change_stream().unwrap().is_none());
+        assert!(profile_b.take_change_stream().unwrap().is_none());
+    }
+
+    #[test]
+    fn default_clipboard_keeps_engine_managed_change_stream() {
+        let system_clipboard: Arc<dyn SystemClipboard> = Arc::new(StaticClipboard {
+            snapshot: empty_system_snapshot(),
+        });
+        let mut clipboard =
+            clipboard_for_test(system_clipboard, DesktopClipboardMode::EngineManaged);
+
+        assert!(clipboard.take_change_stream().unwrap().is_some());
+    }
+
+    #[test]
+    fn external_router_mode_still_allows_inbound_clipboard_writes() {
+        let system_clipboard = Arc::new(RecordingClipboard::default());
+        let clipboard = clipboard_for_test(
+            system_clipboard.clone(),
+            DesktopClipboardMode::ExternalRouter,
+        );
+
+        clipboard
+            .write(HostClipboardSnapshot {
+                observed_at_ms: 7,
+                representations: vec![HostClipboardRepresentation::Inline {
+                    format: "text".into(),
+                    mime_type: Some("text/plain".into()),
+                    bytes: b"inbound".to_vec(),
+                }],
+            })
+            .unwrap();
+
+        let writes = system_clipboard
+            .writes
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        assert_eq!(writes.len(), 1);
+        assert_eq!(writes[0].representations.len(), 1);
+    }
+
+    #[test]
+    fn default_engine_config_scope_matches_the_raw_engine_baseline() {
+        let baseline = EngineConfig::new(env!("CARGO_PKG_VERSION"));
+        let actual = default_desktop_engine_config();
+
+        assert_eq!(actual.profile_id(), baseline.profile_id());
+    }
+
+    #[test]
+    fn explicit_engine_config_scope_uses_each_profile_id() {
+        let temporary = tempfile::tempdir().unwrap();
+        let config = |profile_id: &str| {
+            DesktopRuntimeProfileConfig::new(
+                profile_id,
+                temporary.path().join(profile_id).join("data"),
+                temporary.path().join(profile_id).join("cache"),
+                temporary.path().join(profile_id).join("logs"),
+            )
+            .unwrap()
+        };
+
+        assert_eq!(
+            explicit_desktop_engine_config(&config("019d-profile-a")).profile_id(),
+            "019d-profile-a"
+        );
+        assert_eq!(
+            explicit_desktop_engine_config(&config("019d-profile-b")).profile_id(),
+            "019d-profile-b"
+        );
     }
 
     #[test]
@@ -618,6 +777,7 @@ mod tests {
             pending_snapshot: Arc::new(Mutex::new(None)),
             change_stream_taken: false,
             changes_enabled: false,
+            mode: DesktopClipboardMode::EngineManaged,
         };
 
         let snapshot = clipboard.read().unwrap();
@@ -675,6 +835,7 @@ mod tests {
             pending_snapshot: Arc::new(Mutex::new(Some(pending))),
             change_stream_taken: false,
             changes_enabled: false,
+            mode: DesktopClipboardMode::EngineManaged,
         };
 
         let first = clipboard.read().unwrap();

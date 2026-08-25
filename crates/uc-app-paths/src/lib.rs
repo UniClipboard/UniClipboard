@@ -128,11 +128,23 @@ fn validate_explicit_root(
     if root.components().any(|component| match component {
         std::path::Component::CurDir | std::path::Component::ParentDir => true,
         std::path::Component::Normal(component) => !is_safe_windows_path_component(component),
-        std::path::Component::Prefix(_) | std::path::Component::RootDir => false,
+        std::path::Component::Prefix(prefix) => !is_safe_windows_prefix(prefix.kind()),
+        std::path::Component::RootDir => false,
     }) {
         return Err(DesktopRuntimeProfileConfigError::InvalidRoot(name));
     }
     Ok(())
+}
+
+#[cfg(windows)]
+fn is_safe_windows_prefix(prefix: std::path::Prefix<'_>) -> bool {
+    matches!(
+        prefix,
+        std::path::Prefix::Disk(_)
+            | std::path::Prefix::UNC(_, _)
+            | std::path::Prefix::VerbatimDisk(_)
+            | std::path::Prefix::VerbatimUNC(_, _)
+    )
 }
 
 #[cfg(windows)]
@@ -356,10 +368,17 @@ fn is_windows_reserved_component(component: &str) -> bool {
     matches!(upper.as_str(), "CON" | "PRN" | "AUX" | "NUL")
         || upper
             .strip_prefix("COM")
-            .is_some_and(|suffix| matches!(suffix.as_bytes(), [b'1'..=b'9']))
+            .is_some_and(is_windows_reserved_device_number)
         || upper
             .strip_prefix("LPT")
-            .is_some_and(|suffix| matches!(suffix.as_bytes(), [b'1'..=b'9']))
+            .is_some_and(is_windows_reserved_device_number)
+}
+
+fn is_windows_reserved_device_number(suffix: &str) -> bool {
+    matches!(
+        suffix,
+        "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" | "¹" | "²" | "³"
+    )
 }
 
 #[cfg(target_os = "macos")]

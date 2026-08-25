@@ -29,6 +29,8 @@ pub enum SpaceCatalogError {
     UnknownProfileId { profile_id: String },
     #[error("cannot remove the active-send space profile: {profile_id}")]
     CannotRemoveActiveSend { profile_id: String },
+    #[error("cannot remove the legacy default space profile: {profile_id}")]
+    CannotRemoveLegacyProfile { profile_id: String },
     #[error("space profile ID is not a random UUID: {profile_id}")]
     InvalidProfileId { profile_id: String },
     #[error("unsafe space profile directory: {profile_dir}")]
@@ -166,6 +168,11 @@ impl SpaceCatalog {
             })?;
         if self.document.entries[position].active_send {
             return Err(SpaceCatalogError::CannotRemoveActiveSend {
+                profile_id: profile_id.to_string(),
+            });
+        }
+        if self.document.entries[position].profile_dir == LEGACY_PROFILE_DIR {
+            return Err(SpaceCatalogError::CannotRemoveLegacyProfile {
                 profile_id: profile_id.to_string(),
             });
         }
@@ -662,6 +669,31 @@ mod tests {
     }
 
     #[test]
+    fn inactive_legacy_profile_cannot_be_removed() {
+        let root = tempfile::tempdir().expect("create temp data root");
+        let mut catalog = SpaceCatalog::load_or_migrate(root.path()).expect("migrate catalog");
+        let legacy_id = catalog.entries()[0].profile_id.clone();
+        let added = catalog.add_profile().expect("add profile");
+        catalog
+            .set_active_send(&added.profile_id)
+            .expect("move active send away from legacy");
+
+        let error = catalog
+            .remove_profile(&legacy_id)
+            .expect_err("legacy profile removal must fail closed");
+
+        assert!(matches!(
+            error,
+            SpaceCatalogError::CannotRemoveLegacyProfile { profile_id }
+                if profile_id == legacy_id
+        ));
+        assert!(catalog
+            .entries()
+            .iter()
+            .any(|entry| entry.profile_id == legacy_id && entry.profile_dir == LEGACY_PROFILE_DIR));
+    }
+
+    #[test]
     fn persisted_catalog_contains_only_non_sensitive_allowlisted_fields() {
         let root = tempfile::tempdir().expect("create temp data root");
         SpaceCatalog::load_or_migrate(root.path()).expect("migrate catalog");
@@ -1117,14 +1149,23 @@ mod tests {
                 .map(|entry| entry.profile_id.as_str()),
             Some(added.profile_id.as_str())
         );
-        reloaded
+        let error = reloaded
             .remove_profile(&adopted_id)
-            .expect("remove inactive adopted record");
+            .expect_err("legacy adopted record must remain protected");
+        assert!(matches!(
+            error,
+            SpaceCatalogError::CannotRemoveLegacyProfile { profile_id }
+                if profile_id == adopted_id
+        ));
         drop(reloaded);
 
         let final_catalog = SpaceCatalog::load_or_migrate(root.path()).expect("final reload");
-        assert_eq!(final_catalog.entries().len(), 1);
-        let retained = &final_catalog.entries()[0];
+        assert_eq!(final_catalog.entries().len(), 2);
+        let retained = final_catalog
+            .entries()
+            .iter()
+            .find(|entry| entry.profile_id == added.profile_id)
+            .expect("secondary profile remains persisted");
         assert_eq!(retained.profile_id, added.profile_id);
         assert_eq!(retained.profile_dir, added.profile_dir);
         assert_eq!(retained.enabled, added.enabled);

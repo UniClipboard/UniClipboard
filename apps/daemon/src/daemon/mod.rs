@@ -3,6 +3,7 @@
 //! 保留 `daemon/` 路径使迁入文件内的 `crate::daemon::X` / `super::X` 引用
 //! 原样可解析。
 
+pub mod clipboard_router;
 pub mod engine_events;
 pub mod handle;
 pub mod host;

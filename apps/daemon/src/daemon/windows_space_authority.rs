@@ -3,6 +3,7 @@
 //! This module deliberately owns only ordering and failure semantics. Concrete
 //! catalog, runtime, and clipboard-router adapters are wired elsewhere.
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -11,9 +12,9 @@ use tokio::sync::Mutex;
 
 #[async_trait]
 pub(crate) trait CatalogPort: Send + Sync {
-    /// Persist an active-profile transition using compare-and-set semantics.
-    async fn set_active(&self, expected: &str, target: &str) -> anyhow::Result<()>;
-
+    /// Implementations must be bounded and must not call another mutation on
+    /// this authority. Read-only state queries are safe because state locks are
+    /// never held across port awaits.
     async fn profile_dir(&self, profile_id: &str) -> anyhow::Result<Option<String>>;
 
     /// Remove only the catalog record. Implementations must not delete data.
@@ -22,6 +23,7 @@ pub(crate) trait CatalogPort: Send + Sync {
 
 #[async_trait]
 pub(crate) trait RuntimePort: Send + Sync {
+    /// Production adapters must enforce their own hard lifecycle deadlines.
     async fn ensure_available(&self, profile_id: &str) -> anyhow::Result<()>;
 
     async fn stop(&self, profile_id: &str) -> anyhow::Result<()>;
@@ -29,7 +31,10 @@ pub(crate) trait RuntimePort: Send + Sync {
 
 #[async_trait]
 pub(crate) trait RouterPort: Send + Sync {
-    async fn set_active(&self, profile_id: &str) -> anyhow::Result<()>;
+    /// Commit the durable catalog target and the router's in-memory target as
+    /// one cancellation-safe, internally bounded actor operation. `Err` means
+    /// neither is changed. The adapter must not re-enter an authority mutation.
+    async fn set_active_transaction(&self, profile_id: &str) -> anyhow::Result<()>;
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
@@ -38,26 +43,26 @@ pub(crate) enum WindowsSpaceAuthorityError {
     Quiescing,
     #[error("the legacy profile cannot be removed")]
     LegacyProfileCannotBeRemoved,
+    #[error("the active-send profile cannot be removed")]
+    ActiveProfileCannotBeRemoved,
     #[error("profile not found: {0}")]
     ProfileNotFound(String),
     #[error("runtime operation failed: {0}")]
     Runtime(String),
     #[error("catalog operation failed: {0}")]
     Catalog(String),
-    #[error("router update failed: {router}; catalog rollback failed: {rollback:?}")]
-    Router {
-        router: String,
-        rollback: Option<String>,
-    },
+    #[error("router transaction failed: {0}")]
+    Router(String),
 }
 
 struct AuthorityState {
     active_profile: String,
-    quiescing: bool,
 }
 
 pub(crate) struct WindowsSpaceAuthority {
     state: Mutex<AuthorityState>,
+    operation_gate: Mutex<()>,
+    accepting: AtomicBool,
     catalog: Arc<dyn CatalogPort>,
     runtime: Arc<dyn RuntimePort>,
     router: Arc<dyn RouterPort>,
@@ -73,8 +78,9 @@ impl WindowsSpaceAuthority {
         Self {
             state: Mutex::new(AuthorityState {
                 active_profile: initial_active_profile,
-                quiescing: false,
             }),
+            operation_gate: Mutex::new(()),
+            accepting: AtomicBool::new(true),
             catalog,
             runtime,
             router,
@@ -87,47 +93,33 @@ impl WindowsSpaceAuthority {
 
     /// Wait for the current mutation, then reject all subsequent mutations.
     pub(crate) async fn quiesce(&self) {
-        self.state.lock().await.quiescing = true;
+        self.accepting.store(false, Ordering::Release);
+        let _gate = self.operation_gate.lock().await;
     }
 
     pub(crate) async fn set_active(&self, target: &str) -> Result<(), WindowsSpaceAuthorityError> {
-        let mut state = self.state.lock().await;
-        Self::ensure_accepting(&state)?;
-        if state.active_profile == target {
-            return Ok(());
-        }
-
-        let previous = state.active_profile.clone();
+        Self::ensure_accepting(self.accepting.load(Ordering::Acquire))?;
+        let _gate = self.operation_gate.lock().await;
+        Self::ensure_accepting(self.accepting.load(Ordering::Acquire))?;
         self.runtime
             .ensure_available(target)
             .await
             .map_err(|error| WindowsSpaceAuthorityError::Runtime(error.to_string()))?;
-        self.catalog
-            .set_active(&previous, target)
-            .await
-            .map_err(|error| WindowsSpaceAuthorityError::Catalog(error.to_string()))?;
-
-        if let Err(router_error) = self.router.set_active(target).await {
-            let rollback = self
-                .catalog
-                .set_active(target, &previous)
-                .await
-                .err()
-                .map(|error| error.to_string());
-            return Err(WindowsSpaceAuthorityError::Router {
-                router: router_error.to_string(),
-                rollback,
-            });
+        if self.state.lock().await.active_profile == target {
+            return Ok(());
         }
-
-        state.active_profile = target.to_owned();
+        self.router
+            .set_active_transaction(target)
+            .await
+            .map_err(|error| WindowsSpaceAuthorityError::Router(error.to_string()))?;
+        self.state.lock().await.active_profile = target.to_owned();
         Ok(())
     }
 
     pub(crate) async fn remove(&self, profile_id: &str) -> Result<(), WindowsSpaceAuthorityError> {
-        let state = self.state.lock().await;
-        Self::ensure_accepting(&state)?;
-
+        Self::ensure_accepting(self.accepting.load(Ordering::Acquire))?;
+        let _gate = self.operation_gate.lock().await;
+        Self::ensure_accepting(self.accepting.load(Ordering::Acquire))?;
         let profile_dir = self
             .catalog
             .profile_dir(profile_id)
@@ -136,6 +128,9 @@ impl WindowsSpaceAuthority {
             .ok_or_else(|| WindowsSpaceAuthorityError::ProfileNotFound(profile_id.to_owned()))?;
         if profile_dir == "." {
             return Err(WindowsSpaceAuthorityError::LegacyProfileCannotBeRemoved);
+        }
+        if self.state.lock().await.active_profile == profile_id {
+            return Err(WindowsSpaceAuthorityError::ActiveProfileCannotBeRemoved);
         }
 
         self.runtime
@@ -149,11 +144,11 @@ impl WindowsSpaceAuthority {
         Ok(())
     }
 
-    fn ensure_accepting(state: &AuthorityState) -> Result<(), WindowsSpaceAuthorityError> {
-        if state.quiescing {
-            Err(WindowsSpaceAuthorityError::Quiescing)
-        } else {
+    fn ensure_accepting(accepting: bool) -> Result<(), WindowsSpaceAuthorityError> {
+        if accepting {
             Ok(())
+        } else {
+            Err(WindowsSpaceAuthorityError::Quiescing)
         }
     }
 }
@@ -173,7 +168,6 @@ mod tests {
         active: String,
         directories: HashMap<String, String>,
         calls: Vec<String>,
-        fail_catalog_set: bool,
         fail_catalog_remove: bool,
         fail_runtime_available: bool,
         fail_runtime_stop: bool,
@@ -197,6 +191,9 @@ mod tests {
             state
                 .directories
                 .insert("secondary".into(), "profiles/secondary".into());
+            state
+                .directories
+                .insert("other".into(), "profiles/other".into());
             drop(state);
             ports
         }
@@ -208,19 +205,6 @@ mod tests {
 
     #[async_trait]
     impl CatalogPort for FakePorts {
-        async fn set_active(&self, expected: &str, target: &str) -> anyhow::Result<()> {
-            let mut state = self.state.lock().await;
-            state
-                .calls
-                .push(format!("catalog.set_active:{expected}->{target}"));
-            if state.fail_catalog_set {
-                anyhow::bail!("catalog set failed");
-            }
-            anyhow::ensure!(state.active == expected, "unexpected active profile");
-            state.active = target.to_owned();
-            Ok(())
-        }
-
         async fn profile_dir(&self, profile_id: &str) -> anyhow::Result<Option<String>> {
             let mut state = self.state.lock().await;
             state
@@ -270,12 +254,15 @@ mod tests {
 
     #[async_trait]
     impl RouterPort for FakePorts {
-        async fn set_active(&self, profile_id: &str) -> anyhow::Result<()> {
+        async fn set_active_transaction(&self, profile_id: &str) -> anyhow::Result<()> {
             let mut state = self.state.lock().await;
-            state.calls.push(format!("router.set_active:{profile_id}"));
+            state
+                .calls
+                .push(format!("router.set_active_transaction:{profile_id}"));
             if state.fail_router {
                 anyhow::bail!("router failed");
             }
+            state.active = profile_id.to_owned();
             Ok(())
         }
     }
@@ -290,7 +277,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn set_active_orders_runtime_catalog_then_router() {
+    async fn set_active_orders_runtime_then_router_transaction() {
         let ports = FakePorts::seeded().await;
         authority(&ports).set_active("secondary").await.unwrap();
 
@@ -298,8 +285,7 @@ mod tests {
             ports.calls().await,
             [
                 "runtime.ensure_available:secondary",
-                "catalog.set_active:legacy->secondary",
-                "router.set_active:secondary",
+                "router.set_active_transaction:secondary",
             ]
         );
         assert_eq!(ports.state.lock().await.active, "secondary");
@@ -317,24 +303,18 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn catalog_failure_keeps_old_active_and_skips_router() {
+    async fn same_target_still_checks_runtime_health() {
         let ports = FakePorts::seeded().await;
-        ports.state.lock().await.fail_catalog_set = true;
+        ports.state.lock().await.fail_runtime_available = true;
 
-        authority(&ports).set_active("secondary").await.unwrap_err();
+        authority(&ports).set_active("legacy").await.unwrap_err();
 
         assert_eq!(ports.state.lock().await.active, "legacy");
-        assert_eq!(
-            ports.calls().await,
-            [
-                "runtime.ensure_available:secondary",
-                "catalog.set_active:legacy->secondary",
-            ]
-        );
+        assert_eq!(ports.calls().await, ["runtime.ensure_available:legacy"]);
     }
 
     #[tokio::test]
-    async fn router_failure_rolls_catalog_back_and_keeps_authority_active() {
+    async fn router_transaction_failure_keeps_every_active_view_unchanged() {
         let ports = FakePorts::seeded().await;
         ports.state.lock().await.fail_router = true;
         let authority = authority(&ports);
@@ -347,9 +327,7 @@ mod tests {
             ports.calls().await,
             [
                 "runtime.ensure_available:secondary",
-                "catalog.set_active:legacy->secondary",
-                "router.set_active:secondary",
-                "catalog.set_active:secondary->legacy",
+                "router.set_active_transaction:secondary",
             ]
         );
     }
@@ -408,6 +386,30 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn remove_rejects_current_non_legacy_profile_before_stop() {
+        let ports = FakePorts::seeded().await;
+        let authority = authority(&ports);
+        authority.set_active("secondary").await.unwrap();
+
+        let error = authority.remove("secondary").await.unwrap_err();
+
+        assert_eq!(
+            error,
+            WindowsSpaceAuthorityError::ActiveProfileCannotBeRemoved
+        );
+        assert!(!ports
+            .calls()
+            .await
+            .contains(&"runtime.stop:secondary".to_string()));
+        assert!(ports
+            .state
+            .lock()
+            .await
+            .directories
+            .contains_key("secondary"));
+    }
+
+    #[tokio::test]
     async fn operations_are_serialized() {
         let ports = FakePorts::seeded().await;
         *ports.block_available.lock().await = true;
@@ -419,7 +421,7 @@ mod tests {
         ports.available_entered.notified().await;
         let removing = {
             let authority = Arc::clone(&authority);
-            tokio::spawn(async move { authority.remove("secondary").await })
+            tokio::spawn(async move { authority.remove("other").await })
         };
 
         tokio::task::yield_now().await;
@@ -432,11 +434,10 @@ mod tests {
             ports.calls().await,
             [
                 "runtime.ensure_available:secondary",
-                "catalog.set_active:legacy->secondary",
-                "router.set_active:secondary",
-                "catalog.profile_dir:secondary",
-                "runtime.stop:secondary",
-                "catalog.remove:secondary",
+                "router.set_active_transaction:secondary",
+                "catalog.profile_dir:other",
+                "runtime.stop:other",
+                "catalog.remove:other",
             ]
         );
     }
@@ -456,5 +457,33 @@ mod tests {
             WindowsSpaceAuthorityError::Quiescing
         );
         assert!(ports.calls().await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn quiesce_closes_admission_then_waits_for_the_current_mutation() {
+        let ports = FakePorts::seeded().await;
+        *ports.block_available.lock().await = true;
+        let authority = authority(&ports);
+        let switching = {
+            let authority = Arc::clone(&authority);
+            tokio::spawn(async move { authority.set_active("secondary").await })
+        };
+        ports.available_entered.notified().await;
+        let mut quiescing = {
+            let authority = Arc::clone(&authority);
+            tokio::spawn(async move { authority.quiesce().await })
+        };
+
+        tokio::task::yield_now().await;
+        assert!(!quiescing.is_finished());
+        assert_eq!(
+            authority.remove("other").await.unwrap_err(),
+            WindowsSpaceAuthorityError::Quiescing
+        );
+
+        ports.available_release.notify_one();
+        switching.await.unwrap().unwrap();
+        (&mut quiescing).await.unwrap();
+        assert_eq!(authority.active_profile().await, "secondary");
     }
 }

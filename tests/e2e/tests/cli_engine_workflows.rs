@@ -351,7 +351,6 @@ async fn pending_join_survives_ctrl_c_and_daemon_restart_then_can_be_cancelled()
     };
     let (session, code) = InviteSession::start(&sponsor.cli).await;
     let join_requests_before = daemon_request_count(&joiner, "POST", "/v2/setup/redeem");
-    sponsor.daemon.suspend().expect("suspend sponsor daemon");
 
     let child = Command::new(joiner.cli.binary_path())
         .env("UC_PROFILE", &joiner.cli.profile_name)
@@ -378,6 +377,7 @@ async fn pending_join_survives_ctrl_c_and_daemon_restart_then_can_be_cancelled()
         if status.success() {
             let value = json(&status);
             if value["status"] == "pending" {
+                sponsor.daemon.suspend().expect("suspend sponsor daemon");
                 break value;
             }
         }
@@ -386,7 +386,7 @@ async fn pending_join_survives_ctrl_c_and_daemon_restart_then_can_be_cancelled()
             "pending join did not become observable; joiner_log={}",
             joiner.daemon.diagnostic_log()
         );
-        tokio::time::sleep(Duration::from_millis(500)).await;
+        tokio::time::sleep(Duration::from_millis(25)).await;
     };
     let join_id = pending["join_id"].as_str().expect("pending join id").to_string();
     assert_request_delta(

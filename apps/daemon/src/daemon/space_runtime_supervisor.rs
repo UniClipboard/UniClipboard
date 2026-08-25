@@ -9,8 +9,12 @@ use std::time::Duration;
 use async_trait::async_trait;
 use thiserror::Error;
 use tokio_util::sync::CancellationToken;
-use uc_bootstrap::{prepare_desktop_engine_host_for_profile, DesktopRuntimeProfileConfig};
-use uc_engine::{Engine, EngineEvent, EventStream};
+use uc_bootstrap::{
+    prepare_desktop_engine_host_for_profile_with_hub, DesktopClipboardHub,
+    DesktopClipboardProfileHandle, DesktopClipboardStageExecution, DesktopRuntimeProfileConfig,
+};
+use uc_engine::{Engine, EngineEvent, EventStream, ObserveClipboardChangeInput, Operation};
+use uc_platform::clipboard::SystemClipboardSnapshot;
 
 use super::space_catalog::{SpaceCatalog, SpaceCatalogEntry};
 
@@ -110,6 +114,16 @@ pub trait SupervisedSpaceRuntime: Send + Sync {
         None
     }
 
+    async fn dispatch_snapshot(
+        &self,
+        _snapshot: SystemClipboardSnapshot,
+        _cancel: CancellationToken,
+    ) -> Result<(), SpaceRuntimeFailure> {
+        Err(SpaceRuntimeFailure::runtime(
+            "runtime does not support clipboard snapshot dispatch",
+        ))
+    }
+
     async fn shutdown(&self, deadline: Duration) -> Result<(), SpaceRuntimeFailure>;
 }
 
@@ -124,7 +138,15 @@ pub trait SpaceRuntimeFactory: Send + Sync {
     ) -> Result<Arc<dyn SupervisedSpaceRuntime>, SpaceRuntimeFailure>;
 }
 
-pub struct ProductionSpaceRuntimeFactory;
+pub struct ProductionSpaceRuntimeFactory {
+    clipboard_hub: DesktopClipboardHub,
+}
+
+impl ProductionSpaceRuntimeFactory {
+    pub fn new(clipboard_hub: DesktopClipboardHub) -> Self {
+        Self { clipboard_hub }
+    }
+}
 
 fn validate_production_profile_spec(
     spec: &SpaceRuntimeProfileSpec,
@@ -140,6 +162,8 @@ fn validate_production_profile_spec(
 
 struct ProductionSpaceRuntime {
     engine: Arc<Engine>,
+    clipboard_hub: DesktopClipboardHub,
+    clipboard_profile: DesktopClipboardProfileHandle,
     monitor_cancel: CancellationToken,
     monitor: Arc<Mutex<Option<tokio::task::JoinHandle<()>>>>,
     shutdown: Arc<StickyShutdown>,
@@ -202,6 +226,42 @@ impl StickyShutdown {
 impl SupervisedSpaceRuntime for ProductionSpaceRuntime {
     fn engine(&self) -> Option<Arc<Engine>> {
         Some(Arc::clone(&self.engine))
+    }
+
+    async fn dispatch_snapshot(
+        &self,
+        snapshot: SystemClipboardSnapshot,
+        cancel: CancellationToken,
+    ) -> Result<(), SpaceRuntimeFailure> {
+        let engine = Arc::clone(&self.engine);
+        let outcome = self
+            .clipboard_hub
+            .execute_with_staged_snapshot(&self.clipboard_profile, snapshot, move || async move {
+                tokio::select! {
+                    _ = cancel.cancelled() => anyhow::bail!("clipboard dispatch was cancelled"),
+                    result = engine.execute(Operation::ObserveClipboardChange(
+                        ObserveClipboardChangeInput { dispatch: true },
+                    )) => result.map(|_| ()).map_err(anyhow::Error::new),
+                }
+            })
+            .await
+            .map_err(|error| SpaceRuntimeFailure::runtime(error.to_string()))?;
+        match outcome {
+            DesktopClipboardStageExecution::ConsumedAndCompleted(()) => Ok(()),
+            DesktopClipboardStageExecution::CompletedWithoutConsumption(()) => Err(
+                SpaceRuntimeFailure::runtime("Engine completed without consuming staged clipboard"),
+            ),
+            DesktopClipboardStageExecution::FailedBeforeConsumption(error) => {
+                Err(SpaceRuntimeFailure::runtime(format!(
+                    "clipboard dispatch failed before capture: {error}"
+                )))
+            }
+            DesktopClipboardStageExecution::FailedAfterConsumption(error) => {
+                Err(SpaceRuntimeFailure::runtime(format!(
+                    "clipboard dispatch failed after capture: {error}"
+                )))
+            }
+        }
     }
 
     async fn shutdown(&self, deadline: Duration) -> Result<(), SpaceRuntimeFailure> {
@@ -269,6 +329,7 @@ impl SpaceRuntimeFactory for ProductionSpaceRuntimeFactory {
         forward_event: SpaceRuntimeEventCallback,
     ) -> Result<Arc<dyn SupervisedSpaceRuntime>, SpaceRuntimeFailure> {
         validate_production_profile_spec(&spec)?;
+        let clipboard_profile = self.clipboard_hub.profile_handle();
         let config = DesktopRuntimeProfileConfig::new(
             spec.profile_id,
             spec.data_root,
@@ -276,8 +337,9 @@ impl SpaceRuntimeFactory for ProductionSpaceRuntimeFactory {
             spec.log_dir,
         )
         .map_err(|error| SpaceRuntimeFailure::bootstrap(error.to_string()))?;
-        let prepared = prepare_desktop_engine_host_for_profile(config)
-            .map_err(|error| SpaceRuntimeFailure::bootstrap(error.to_string()))?;
+        let prepared =
+            prepare_desktop_engine_host_for_profile_with_hub(config, clipboard_profile.clone())
+                .map_err(|error| SpaceRuntimeFailure::bootstrap(error.to_string()))?;
         let (engine_config, host_capabilities) = prepared.into_engine_start();
         let (engine, events) = Engine::start(engine_config, host_capabilities)
             .await
@@ -291,6 +353,8 @@ impl SpaceRuntimeFactory for ProductionSpaceRuntimeFactory {
         );
         Ok(Arc::new(ProductionSpaceRuntime {
             engine: Arc::new(engine),
+            clipboard_hub: self.clipboard_hub.clone(),
+            clipboard_profile,
             monitor_cancel,
             monitor: Arc::new(Mutex::new(Some(monitor))),
             shutdown: Arc::new(StickyShutdown::default()),
@@ -483,8 +547,11 @@ impl SpaceRuntimeSupervisor {
         })
     }
 
-    pub fn production(roots: SpaceRuntimeRoots) -> Arc<Self> {
-        Self::new(Arc::new(ProductionSpaceRuntimeFactory), roots)
+    pub fn production(roots: SpaceRuntimeRoots, clipboard_hub: DesktopClipboardHub) -> Arc<Self> {
+        Self::new(
+            Arc::new(ProductionSpaceRuntimeFactory::new(clipboard_hub)),
+            roots,
+        )
     }
 
     pub async fn start_enabled(
@@ -1047,6 +1114,21 @@ impl SpaceRuntimeSupervisor {
 
     pub fn engine(&self, profile_id: &str) -> Option<Arc<Engine>> {
         self.runtime(profile_id)?.engine()
+    }
+
+    pub async fn dispatch_snapshot(
+        &self,
+        profile_id: &str,
+        snapshot: SystemClipboardSnapshot,
+        cancel: CancellationToken,
+    ) -> Result<(), SpaceRuntimeFailure> {
+        let runtime = self.runtime(profile_id).ok_or_else(|| {
+            SpaceRuntimeFailure::for_category(
+                SpaceRuntimeFailureCategory::Runtime,
+                "profile runtime is not running",
+            )
+        })?;
+        runtime.dispatch_snapshot(snapshot, cancel).await
     }
 
     pub fn subscribe_events(&self) -> tokio::sync::broadcast::Receiver<ProfiledEngineEvent> {

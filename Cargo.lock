@@ -10649,6 +10649,7 @@ dependencies = [
  "uc-daemon-local",
  "uc-engine",
  "uc-observability",
+ "uc-platform",
  "uc-webserver",
  "uuid",
  "windows-sys 0.59.0",

@@ -284,6 +284,7 @@ async fn run_daemon_surfaces(
     if controlled_oneshot_exit {
         write_handover_if_requested(&restart, process_paths.app_data_root());
     }
+    #[cfg(target_os = "windows")]
     let mut shutdown_error = None;
     #[cfg(target_os = "windows")]
     if let Err(error) = multi_space.quiesce().await {
@@ -314,6 +315,7 @@ async fn run_daemon_surfaces(
     if let Err(error) = uc_daemon_local::socket::remove_daemon_conn_file() {
         warn!(error = %error, "failed to remove daemon connection file on shutdown");
     }
+    #[cfg(target_os = "windows")]
     if let Some(error) = shutdown_error {
         return Err(error);
     }

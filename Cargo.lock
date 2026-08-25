@@ -10484,6 +10484,7 @@ name = "uc-app-paths"
 version = "1.0.0-alpha.7"
 dependencies = [
  "dirs 6.0.0",
+ "tempfile",
 ]
 
 [[package]]

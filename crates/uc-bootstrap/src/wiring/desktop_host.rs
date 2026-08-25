@@ -8,6 +8,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use async_trait::async_trait;
+use uc_app_paths::DesktopRuntimeProfileConfig;
 use uc_engine::{
     EngineConfig, HostCapabilities, HostCapabilityError, HostCapabilityErrorCategory,
     HostClipboard, HostClipboardChange, HostClipboardChangeStream, HostClipboardRepresentation,
@@ -26,7 +27,9 @@ use crate::layer::paths::{resolve_desktop_host_paths, DesktopHostPaths};
 use crate::layer::platform::{create_desktop_system_clipboard, SystemClipboardWiring};
 use crate::wiring::analytics::DesktopHostAnalytics;
 use crate::wiring::error::{WiringError, WiringResult};
-use crate::wiring::secure_storage::build_secure_storage_prelude;
+use crate::wiring::secure_storage::{
+    build_secure_storage_prelude, build_secure_storage_prelude_for_profile,
+};
 
 pub struct DesktopEngineHost {
     engine_config: EngineConfig,
@@ -89,6 +92,32 @@ fn host_directories(paths: &DesktopHostPaths, temporary_dir: PathBuf) -> HostDir
 pub fn prepare_desktop_engine_host() -> WiringResult<DesktopEngineHost> {
     let paths = resolve_desktop_host_paths()?;
     let secure_storage = build_secure_storage_prelude(&paths)?.secure_storage;
+    let engine_config = EngineConfig::new(env!("CARGO_PKG_VERSION"))
+        .with_portable_storage(uc_app_paths::is_portable());
+    prepare_desktop_engine_host_from_parts(paths, engine_config, secure_storage)
+}
+
+/// Prepare one isolated desktop Engine host from explicit profile roots.
+///
+/// This entry never reads or modifies `UC_PROFILE`.
+pub fn prepare_desktop_engine_host_for_profile(
+    config: DesktopRuntimeProfileConfig,
+) -> WiringResult<DesktopEngineHost> {
+    let paths = DesktopHostPaths::from_profile_config(&config);
+    let secure_storage =
+        build_secure_storage_prelude_for_profile(&paths, config.secure_storage_namespace())?
+            .secure_storage;
+    let engine_config = EngineConfig::new(env!("CARGO_PKG_VERSION"))
+        .with_profile_id(config.profile_id())
+        .with_portable_storage(uc_app_paths::is_portable());
+    prepare_desktop_engine_host_from_parts(paths, engine_config, secure_storage)
+}
+
+fn prepare_desktop_engine_host_from_parts(
+    paths: DesktopHostPaths,
+    engine_config: EngineConfig,
+    secure_storage: Arc<dyn SecureStorageProvider>,
+) -> WiringResult<DesktopEngineHost> {
     let (_, system_clipboard, clipboard_wiring) = create_desktop_system_clipboard()?.into_parts();
     let file_handles = DesktopHostFileHandles::default();
     let file_registry = Arc::clone(&file_handles.file_registry);
@@ -99,8 +128,6 @@ pub fn prepare_desktop_engine_host() -> WiringResult<DesktopEngineHost> {
             "failed to create engine temporary directory: {error}"
         ))
     })?;
-    let engine_config = EngineConfig::new(env!("CARGO_PKG_VERSION"))
-        .with_portable_storage(uc_app_paths::is_portable());
     #[cfg(feature = "e2e-rendezvous")]
     let engine_config = match std::env::var("UC_E2E_RENDEZVOUS_BASE_URL") {
         Ok(base_url) if !base_url.trim().is_empty() => {

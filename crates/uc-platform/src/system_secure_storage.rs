@@ -60,6 +60,15 @@ fn classify_platform_failure(msg: &str) -> SecureStorageError {
 /// The function appends the `"dev"` suffix when `UNICLIPBOARD_ENV` is set to `"development"` or `"dev"` (case-insensitive).
 /// It also appends a profile suffix taken from `UC_PROFILE` if non-empty, or from `crate::default_profile()` if `UC_PROFILE` is unset or empty.
 fn resolve_service_name() -> String {
+    let profile = crate::resolve_profile();
+    resolve_service_name_with_profile(profile.as_deref())
+}
+
+fn resolve_service_name_for_explicit_profile(profile: &str) -> String {
+    resolve_service_name_with_profile(Some(profile))
+}
+
+fn resolve_service_name_with_profile(profile: Option<&str>) -> String {
     let mut suffixes: Vec<String> = Vec::new();
 
     if matches!(
@@ -69,8 +78,8 @@ fn resolve_service_name() -> String {
         suffixes.push("dev".to_string());
     }
 
-    if let Some(profile) = crate::resolve_profile() {
-        suffixes.push(profile);
+    if let Some(profile) = profile {
+        suffixes.push(profile.to_string());
     }
 
     if suffixes.is_empty() {
@@ -101,6 +110,15 @@ impl SystemSecureStorage {
     pub fn new() -> Self {
         Self {
             service_name: resolve_service_name(),
+        }
+    }
+
+    /// Create a system secure storage instance for an explicit profile.
+    ///
+    /// This constructor never reads `UC_PROFILE`.
+    pub fn for_profile(profile: &str) -> Self {
+        Self {
+            service_name: resolve_service_name_for_explicit_profile(profile),
         }
     }
 
@@ -185,5 +203,17 @@ mod tests {
             SecureStorageError::Other(msg) => assert!(msg.contains("platform failure")),
             _ => panic!("expected Other"),
         }
+    }
+
+    #[test]
+    fn explicit_profile_service_name_does_not_consult_ambient_profile() {
+        assert_eq!(
+            resolve_service_name_for_explicit_profile("019d-profile-a"),
+            "UniClipboard-019d-profile-a"
+        );
+        assert_eq!(
+            resolve_service_name_for_explicit_profile("019d-profile-b"),
+            "UniClipboard-019d-profile-b"
+        );
     }
 }

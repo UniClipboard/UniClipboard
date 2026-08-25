@@ -309,6 +309,22 @@ pub fn create_default_secure_storage(
 pub fn create_default_secure_storage_in_app_data_root(
     app_data_root: PathBuf,
 ) -> Result<Arc<dyn SecureStorageProvider>, SecureStorageFactoryError> {
+    create_secure_storage_in_app_data_root(app_data_root, SystemSecureStorage::new())
+}
+
+/// Create secure storage for an explicit desktop profile without consulting
+/// `UC_PROFILE` for the system keyring namespace.
+pub fn create_default_secure_storage_in_app_data_root_for_profile(
+    app_data_root: PathBuf,
+    profile: &str,
+) -> Result<Arc<dyn SecureStorageProvider>, SecureStorageFactoryError> {
+    create_secure_storage_in_app_data_root(app_data_root, SystemSecureStorage::for_profile(profile))
+}
+
+fn create_secure_storage_in_app_data_root(
+    app_data_root: PathBuf,
+    system_storage: SystemSecureStorage,
+) -> Result<Arc<dyn SecureStorageProvider>, SecureStorageFactoryError> {
     // Portable ("green") builds must not write the KEK into a per-user system
     // secret store (Windows Credential Manager / macOS Keychain / Secret
     // Service): that would leave a trace outside the portable folder and break
@@ -336,8 +352,6 @@ pub fn create_default_secure_storage_in_app_data_root(
             // to system keyring; on failure degrade to FileSecureStorage so
             // daemon bootstrap can still complete instead of crashing with an
             // opaque "invalid KEK length" later in the unlock path.
-            let system_storage = SystemSecureStorage::new();
-
             // Linux runs the binary round-trip integrity probe; macOS/Windows
             // stick to the cheap reachability probe — a `set` on macOS would
             // risk a fresh Keychain authorization prompt every launch, and

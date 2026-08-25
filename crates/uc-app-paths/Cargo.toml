@@ -14,5 +14,8 @@ path = "src/lib.rs"
 # and uc-daemon-process previously pinned, so resolved paths stay byte-identical.
 dirs = "6.0"
 
+[dev-dependencies]
+tempfile = "3"
+
 [lints]
 workspace = true

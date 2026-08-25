@@ -36,6 +36,123 @@
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
+/// Explicit, instance-level roots for one desktop Engine runtime.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DesktopRuntimeProfileConfig {
+    profile_id: String,
+    data_root: PathBuf,
+    cache_root: PathBuf,
+    log_dir: PathBuf,
+}
+
+/// Validation failures for [`DesktopRuntimeProfileConfig`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DesktopRuntimeProfileConfigError {
+    InvalidProfileId,
+    RootMustBeAbsolute(&'static str),
+    InvalidRoot(&'static str),
+}
+
+impl std::fmt::Display for DesktopRuntimeProfileConfigError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::InvalidProfileId => {
+                formatter.write_str("profile id is not a safe path component")
+            }
+            Self::RootMustBeAbsolute(root) => write!(formatter, "{root} must be absolute"),
+            Self::InvalidRoot(root) => {
+                write!(formatter, "{root} contains an unsafe path component")
+            }
+        }
+    }
+}
+
+impl std::error::Error for DesktopRuntimeProfileConfigError {}
+
+impl DesktopRuntimeProfileConfig {
+    pub fn new(
+        profile_id: impl Into<String>,
+        data_root: PathBuf,
+        cache_root: PathBuf,
+        log_dir: PathBuf,
+    ) -> Result<Self, DesktopRuntimeProfileConfigError> {
+        let profile_id = profile_id.into();
+        if !is_safe_profile_component(&profile_id) {
+            return Err(DesktopRuntimeProfileConfigError::InvalidProfileId);
+        }
+        for (name, root) in [
+            ("data_root", &data_root),
+            ("cache_root", &cache_root),
+            ("log_dir", &log_dir),
+        ] {
+            validate_explicit_root(name, root)?;
+        }
+        Ok(Self {
+            profile_id,
+            data_root,
+            cache_root,
+            log_dir,
+        })
+    }
+
+    pub fn profile_id(&self) -> &str {
+        &self.profile_id
+    }
+
+    /// Namespace supplied to the desktop secure-storage adapter and Engine.
+    pub fn secure_storage_namespace(&self) -> &str {
+        &self.profile_id
+    }
+
+    pub fn data_root(&self) -> &Path {
+        &self.data_root
+    }
+
+    pub fn cache_root(&self) -> &Path {
+        &self.cache_root
+    }
+
+    pub fn log_dir(&self) -> &Path {
+        &self.log_dir
+    }
+}
+
+fn validate_explicit_root(
+    name: &'static str,
+    root: &Path,
+) -> Result<(), DesktopRuntimeProfileConfigError> {
+    if !root.is_absolute() {
+        return Err(DesktopRuntimeProfileConfigError::RootMustBeAbsolute(name));
+    }
+    #[cfg(windows)]
+    if root.components().any(|component| match component {
+        std::path::Component::CurDir | std::path::Component::ParentDir => true,
+        std::path::Component::Normal(component) => !is_safe_windows_path_component(component),
+        std::path::Component::Prefix(_) | std::path::Component::RootDir => false,
+    }) {
+        return Err(DesktopRuntimeProfileConfigError::InvalidRoot(name));
+    }
+    Ok(())
+}
+
+#[cfg(windows)]
+fn is_safe_windows_path_component(component: &std::ffi::OsStr) -> bool {
+    let Some(component) = component.to_str() else {
+        return false;
+    };
+    if component.is_empty()
+        || component.ends_with(' ')
+        || component.ends_with('.')
+        || component
+            .chars()
+            .any(|character| character < ' ' || r#"<>:"/\|?*"#.contains(character))
+    {
+        return false;
+    }
+    let basename = component.split('.').next().unwrap_or(component);
+    !is_windows_reserved_component(basename)
+}
+
 /// Application directory name. The data/cache roots are
 /// `<base>/app.uniclipboard.desktop[-<profile>]`.
 pub const APP_DIR_NAME: &str = "app.uniclipboard.desktop";
@@ -231,6 +348,18 @@ fn is_safe_profile_component(profile: &str) -> bool {
         && profile
             .bytes()
             .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
+        && !is_windows_reserved_component(profile)
+}
+
+fn is_windows_reserved_component(component: &str) -> bool {
+    let upper = component.to_ascii_uppercase();
+    matches!(upper.as_str(), "CON" | "PRN" | "AUX" | "NUL")
+        || upper
+            .strip_prefix("COM")
+            .is_some_and(|suffix| matches!(suffix.as_bytes(), [b'1'..=b'9']))
+        || upper
+            .strip_prefix("LPT")
+            .is_some_and(|suffix| matches!(suffix.as_bytes(), [b'1'..=b'9']))
 }
 
 #[cfg(target_os = "macos")]

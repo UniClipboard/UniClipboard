@@ -67,6 +67,8 @@ enum DesktopClipboardMode {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DesktopHostProcessPaths {
     app_data_root: PathBuf,
+    cache_root: PathBuf,
+    logs_root: PathBuf,
     daemon_pid: PathBuf,
 }
 
@@ -74,6 +76,8 @@ impl DesktopHostProcessPaths {
     fn from_app_paths(paths: &DesktopHostPaths) -> Self {
         Self {
             app_data_root: paths.app_data_root_dir.clone(),
+            cache_root: paths.cache_dir.clone(),
+            logs_root: paths.logs_dir.clone(),
             daemon_pid: paths.app_data_root_dir.join(".daemon-pid"),
         }
     }
@@ -84,6 +88,14 @@ impl DesktopHostProcessPaths {
 
     pub fn daemon_pid(&self) -> PathBuf {
         self.daemon_pid.clone()
+    }
+
+    pub fn cache_root(&self) -> &Path {
+        &self.cache_root
+    }
+
+    pub fn logs_root(&self) -> &Path {
+        &self.logs_root
     }
 }
 

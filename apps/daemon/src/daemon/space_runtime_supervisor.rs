@@ -625,7 +625,7 @@ impl SpaceRuntimeSupervisor {
         self.start_entry(entry).await
     }
 
-    async fn start_entry(
+    pub async fn start_entry(
         self: &Arc<Self>,
         entry: SpaceCatalogEntry,
     ) -> Result<SpaceRuntimeStart, SpaceRuntimeStartError> {

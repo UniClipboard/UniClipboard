@@ -87,7 +87,7 @@ pub(crate) enum WindowsSpaceAuthorityError {
 }
 
 pub(crate) struct WindowsSpaceAuthority {
-    operation_gate: Mutex<()>,
+    operation_gate: Arc<Mutex<()>>,
     accepting: AtomicBool,
     catalog: Arc<dyn CatalogPort>,
     runtime: Arc<dyn RuntimePort>,
@@ -101,12 +101,21 @@ impl WindowsSpaceAuthority {
         router: Arc<dyn RouterPort>,
     ) -> Self {
         Self {
-            operation_gate: Mutex::new(()),
+            operation_gate: Arc::new(Mutex::new(())),
             accepting: AtomicBool::new(true),
             catalog,
             runtime,
             router,
         }
+    }
+
+    pub(crate) async fn acquire_mutation(
+        &self,
+    ) -> Result<tokio::sync::OwnedMutexGuard<()>, WindowsSpaceAuthorityError> {
+        Self::ensure_accepting(self.accepting.load(Ordering::Acquire))?;
+        let gate = Arc::clone(&self.operation_gate).lock_owned().await;
+        Self::ensure_accepting(self.accepting.load(Ordering::Acquire))?;
+        Ok(gate)
     }
 
     pub(crate) async fn active_profile(&self) -> Result<String, WindowsSpaceAuthorityError> {
@@ -127,9 +136,7 @@ impl WindowsSpaceAuthority {
     }
 
     pub(crate) async fn set_active(&self, target: &str) -> Result<(), WindowsSpaceAuthorityError> {
-        Self::ensure_accepting(self.accepting.load(Ordering::Acquire))?;
-        let _gate = self.operation_gate.lock().await;
-        Self::ensure_accepting(self.accepting.load(Ordering::Acquire))?;
+        let _gate = self.acquire_mutation().await?;
         self.runtime
             .ensure_available(target)
             .await
@@ -141,9 +148,7 @@ impl WindowsSpaceAuthority {
     }
 
     pub(crate) async fn remove(&self, profile_id: &str) -> Result<(), WindowsSpaceAuthorityError> {
-        Self::ensure_accepting(self.accepting.load(Ordering::Acquire))?;
-        let _gate = self.operation_gate.lock().await;
-        Self::ensure_accepting(self.accepting.load(Ordering::Acquire))?;
+        let _gate = self.acquire_mutation().await?;
         let active_profile = self
             .router
             .active_profile()

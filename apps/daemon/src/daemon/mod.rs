@@ -9,6 +9,8 @@ pub mod handle;
 pub mod host;
 pub mod mobile_lan_lifecycle;
 pub mod oneshot;
+#[cfg(target_os = "windows")]
+pub mod production_spaces;
 pub mod run_mode;
 pub mod space_catalog;
 pub mod space_runtime_supervisor;

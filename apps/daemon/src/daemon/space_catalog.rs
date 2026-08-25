@@ -114,25 +114,33 @@ impl SpaceCatalog {
         &self.document.entries
     }
 
-    pub fn add_profile(&mut self) -> Result<SpaceCatalogEntry, SpaceCatalogError> {
-        let entry = loop {
+    pub fn new_profile_entry(&self) -> SpaceCatalogEntry {
+        loop {
             let profile_id = Uuid::new_v4().to_string();
             let profile_dir = format!("profile-{profile_id}");
             if self.document.entries.iter().all(|candidate| {
                 candidate.profile_id != profile_id && candidate.profile_dir != profile_dir
             }) {
-                break SpaceCatalogEntry {
+                return SpaceCatalogEntry {
                     profile_id,
                     profile_dir,
                     enabled: true,
                     active_send: false,
                 };
             }
-        };
-        let mut candidate = self.document.clone();
-        candidate.entries.push(entry.clone());
-        self.persist(candidate)?;
+        }
+    }
+
+    pub fn add_profile(&mut self) -> Result<SpaceCatalogEntry, SpaceCatalogError> {
+        let entry = self.new_profile_entry();
+        self.add_entry(entry.clone())?;
         Ok(entry)
+    }
+
+    pub fn add_entry(&mut self, entry: SpaceCatalogEntry) -> Result<(), SpaceCatalogError> {
+        let mut candidate = self.document.clone();
+        candidate.entries.push(entry);
+        self.persist(candidate)
     }
 
     pub fn set_active_send(&mut self, profile_id: &str) -> Result<(), SpaceCatalogError> {

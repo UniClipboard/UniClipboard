@@ -11,6 +11,8 @@ pub mod mobile_lan_lifecycle;
 pub mod oneshot;
 pub mod run_mode;
 pub mod space_catalog;
+#[cfg(target_os = "windows")]
+pub mod spaces_http;
 pub mod startup_recovery;
 pub mod tokio_runtime;
 

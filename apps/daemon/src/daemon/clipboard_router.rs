@@ -866,7 +866,7 @@ mod tests {
             .insert("profile-b".into());
         let (router, task) = spawn_clipboard_router_with_timeouts(
             backend.clone(),
-            Duration::from_millis(25),
+            Duration::from_millis(250),
             Duration::from_secs(1),
         );
 

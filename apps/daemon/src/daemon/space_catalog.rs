@@ -226,7 +226,7 @@ fn validate_document(document: &CatalogDocument) -> Result<(), SpaceCatalogError
 
     for entry in &document.entries {
         let parsed = parse_canonical_profile_id(&entry.profile_id)?;
-        if !is_safe_profile_directory(&entry.profile_dir) {
+        if !is_safe_profile_directory(&entry.profile_dir, &entry.profile_id) {
             return Err(SpaceCatalogError::UnsafeProfileDirectory {
                 profile_dir: entry.profile_dir.clone(),
             });
@@ -236,7 +236,7 @@ fn validate_document(document: &CatalogDocument) -> Result<(), SpaceCatalogError
                 profile_id: entry.profile_id.clone(),
             });
         }
-        if !profile_directories.insert(profile_directory_equivalence_key(&entry.profile_dir)) {
+        if !profile_directories.insert(entry.profile_dir.clone()) {
             return Err(SpaceCatalogError::DuplicateProfileDirectory {
                 profile_dir: entry.profile_dir.clone(),
             });
@@ -274,11 +274,12 @@ fn parse_canonical_profile_id(profile_id: &str) -> Result<Uuid, SpaceCatalogErro
     Ok(parsed)
 }
 
-fn is_safe_profile_directory(profile_dir: &str) -> bool {
+fn is_safe_profile_directory(profile_dir: &str, profile_id: &str) -> bool {
     if profile_dir == LEGACY_PROFILE_DIR {
         return true;
     }
-    if profile_dir.is_empty()
+    if profile_dir != format!("profile-{profile_id}")
+        || profile_dir.is_empty()
         || profile_dir.ends_with(['.', ' '])
         || profile_dir.chars().any(|character| {
             character <= '\u{1f}'
@@ -315,16 +316,6 @@ fn is_numbered_windows_device(name: &str, prefix: &str) -> bool {
             "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" | "¹" | "²" | "³"
         )
     })
-}
-
-#[cfg(windows)]
-fn profile_directory_equivalence_key(profile_dir: &str) -> String {
-    profile_dir.to_lowercase()
-}
-
-#[cfg(not(windows))]
-fn profile_directory_equivalence_key(profile_dir: &str) -> String {
-    profile_dir.to_string()
 }
 
 fn lock_catalog(root: &Path) -> Result<File, SpaceCatalogError> {
@@ -695,7 +686,7 @@ mod tests {
         let mut candidate = catalog.document.clone();
         candidate.entries.push(SpaceCatalogEntry {
             profile_id: "abcdefab-cdef-4abc-8def-abcdefabcdef".to_string(),
-            profile_dir: "profile-two".to_string(),
+            profile_dir: "profile-abcdefab-cdef-4abc-8def-abcdefabcdef".to_string(),
             enabled: true,
             active_send: false,
         });
@@ -770,38 +761,60 @@ mod tests {
         }
     }
 
-    #[cfg(windows)]
     #[test]
-    fn windows_case_insensitive_profile_directory_aliases_are_duplicates() {
+    fn generated_profile_directory_must_exactly_match_canonical_profile_id() {
+        let profile_id = "abcdefab-cdef-4abc-8def-abcdefabcdef";
+        for invalid_profile_directory in [
+            "profile-arbitrary",
+            "profile-ABCDEFAB-CDEF-4ABC-8DEF-ABCDEFABCDEF",
+            "profile-ａbcdefab-cdef-4abc-8def-abcdefabcdef",
+        ] {
+            let root = tempfile::tempdir().expect("create temp data root");
+            write_catalog(
+                root.path(),
+                serde_json::json!({
+                    "entries": [{
+                        "profile_id": profile_id,
+                        "profile_dir": invalid_profile_directory,
+                        "enabled": true,
+                        "active_send": true
+                    }]
+                }),
+            );
+
+            let error = SpaceCatalog::load_or_migrate(root.path())
+                .expect_err("generated profile directory alias must fail");
+
+            assert!(matches!(
+                error,
+                SpaceCatalogError::UnsafeProfileDirectory { profile_dir }
+                    if profile_dir == invalid_profile_directory
+            ));
+        }
+    }
+
+    #[test]
+    fn generated_profile_directory_matching_canonical_profile_id_is_accepted() {
         let root = tempfile::tempdir().expect("create temp data root");
         write_catalog(
             root.path(),
             serde_json::json!({
-                "entries": [
-                    {
-                        "profile_id": "11111111-1111-4111-8111-111111111111",
-                        "profile_dir": "Profile-One",
-                        "enabled": true,
-                        "active_send": true
-                    },
-                    {
-                        "profile_id": "22222222-2222-4222-8222-222222222222",
-                        "profile_dir": "profile-one",
-                        "enabled": true,
-                        "active_send": false
-                    }
-                ]
+                "entries": [{
+                    "profile_id": "abcdefab-cdef-4abc-8def-abcdefabcdef",
+                    "profile_dir": "profile-abcdefab-cdef-4abc-8def-abcdefabcdef",
+                    "enabled": true,
+                    "active_send": true
+                }]
             }),
         );
 
-        let error = SpaceCatalog::load_or_migrate(root.path())
-            .expect_err("case-insensitive directory aliases must fail on Windows");
+        let catalog = SpaceCatalog::load_or_migrate(root.path())
+            .expect("matching generated profile directory must load");
 
-        assert!(matches!(
-            error,
-            SpaceCatalogError::DuplicateProfileDirectory { profile_dir }
-                if profile_dir == "profile-one"
-        ));
+        assert_eq!(
+            catalog.entries()[0].profile_dir,
+            "profile-abcdefab-cdef-4abc-8def-abcdefabcdef"
+        );
     }
 
     #[test]
@@ -870,13 +883,13 @@ mod tests {
                 "entries": [
                     {
                         "profile_id": "11111111-1111-4111-8111-111111111111",
-                        "profile_dir": "profile-one",
+                        "profile_dir": "profile-11111111-1111-4111-8111-111111111111",
                         "enabled": true,
                         "active_send": true
                     },
                     {
                         "profile_id": second_id,
-                        "profile_dir": "profile-two",
+                        "profile_dir": "profile-abcdefab-cdef-4abc-8def-abcdefabcdef",
                         "enabled": true,
                         "active_send": false
                     }
@@ -916,7 +929,7 @@ mod tests {
             serde_json::json!({
                 "entries": [{
                     "profile_id": "11111111-1111-4111-8111-111111111111",
-                    "profile_dir": "profile-one",
+                    "profile_dir": "profile-11111111-1111-4111-8111-111111111111",
                     "enabled": true,
                     "active_send": false
                 }]
@@ -941,13 +954,13 @@ mod tests {
                 "entries": [
                     {
                         "profile_id": "11111111-1111-4111-8111-111111111111",
-                        "profile_dir": "profile-one",
+                        "profile_dir": ".",
                         "enabled": true,
                         "active_send": true
                     },
                     {
                         "profile_id": "11111111-1111-4111-8111-111111111111",
-                        "profile_dir": "profile-two",
+                        "profile_dir": "profile-11111111-1111-4111-8111-111111111111",
                         "enabled": true,
                         "active_send": false
                     }
@@ -974,13 +987,13 @@ mod tests {
                 "entries": [
                     {
                         "profile_id": "11111111-1111-4111-8111-111111111111",
-                        "profile_dir": "profile-one",
+                        "profile_dir": ".",
                         "enabled": true,
                         "active_send": true
                     },
                     {
                         "profile_id": "22222222-2222-4222-8222-222222222222",
-                        "profile_dir": "profile-one",
+                        "profile_dir": ".",
                         "enabled": true,
                         "active_send": false
                     }
@@ -994,7 +1007,7 @@ mod tests {
         assert!(matches!(
             error,
             SpaceCatalogError::DuplicateProfileDirectory { profile_dir }
-                if profile_dir == "profile-one"
+                if profile_dir == "."
         ));
     }
 

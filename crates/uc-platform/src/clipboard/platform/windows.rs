@@ -1255,20 +1255,33 @@ fn read_image_windows_native_png() -> Result<Option<Vec<u8>>> {
     Ok(Some(bytes))
 }
 
-/// Windows-specific: Read image from clipboard as CF_DIB and convert to PNG bytes.
+/// Windows-specific: read an image from CF_DIBV5 or CF_DIB and convert it to PNG bytes.
 ///
-/// Uses `clipboard-win` to read raw CF_DIB data (BITMAPINFOHEADER + pixel data,
-/// without the 14-byte BMP file header), then delegates to the cross-platform
-/// `dib_to_png` converter.
+/// Modern screenshot sources commonly expose only CF_DIBV5. Fall back to
+/// CF_DIB for legacy producers, then delegate raw DIB bytes to the
+/// cross-platform `dib_to_png` converter.
 fn read_image_windows_as_png() -> Result<Vec<u8>> {
     use clipboard_win::{formats, get_clipboard};
 
-    let dib_data: Vec<u8> = get_clipboard(formats::RawData(formats::CF_DIB))
-        .map_err(|e| anyhow::anyhow!("No DIB image on clipboard: {}", e))?;
+    let (dib_data, clipboard_format): (Vec<u8>, &str) =
+        match get_clipboard(formats::RawData(formats::CF_DIBV5)) {
+            Ok(data) => (data, "CF_DIBV5"),
+            Err(dibv5_error) => {
+                let data =
+                    get_clipboard(formats::RawData(formats::CF_DIB)).map_err(|dib_error| {
+                        anyhow::anyhow!(
+                            "No CF_DIBV5 or CF_DIB image on clipboard: CF_DIBV5={}, CF_DIB={}",
+                            dibv5_error,
+                            dib_error
+                        )
+                    })?;
+                (data, "CF_DIB")
+            }
+        };
 
     debug!(
         dib_size_bytes = dib_data.len(),
-        "Read CF_DIB from Windows clipboard"
+        clipboard_format, "Read DIB image from Windows clipboard"
     );
     crate::clipboard::image_convert::dib_to_png(&dib_data)
 }
@@ -1443,5 +1456,24 @@ mod tests {
 
         let r = rep("text", Some("Text/Plain; Charset=UTF-8"));
         assert_eq!(resolve_multi_rep_mime(&r), Some(MimeClass::TextPlain));
+    }
+
+    #[test]
+    fn decodes_cf_dibv5_payload() {
+        use image::{DynamicImage, Rgba, RgbaImage};
+        use std::io::Cursor;
+
+        let source = RgbaImage::from_pixel(2, 1, Rgba([17, 34, 51, 68]));
+        let mut png = Vec::new();
+        DynamicImage::ImageRgba8(source)
+            .write_to(&mut Cursor::new(&mut png), image::ImageFormat::Png)
+            .unwrap();
+        let dibv5 = png_to_dibv5(&png).unwrap();
+        assert_eq!(&dibv5[..4], &124u32.to_le_bytes());
+
+        let decoded_png = crate::clipboard::image_convert::dib_to_png(&dibv5).unwrap();
+        let decoded = image::load_from_memory(&decoded_png).unwrap().to_rgba8();
+        assert_eq!(decoded.dimensions(), (2, 1));
+        assert_eq!(decoded.get_pixel(0, 0).0, [17, 34, 51, 68]);
     }
 }

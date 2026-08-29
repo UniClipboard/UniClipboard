@@ -23,8 +23,6 @@
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
 
-#[cfg(target_os = "linux")]
-use tauri::utils::config::WindowConfig;
 use tauri::webview::PageLoadEvent;
 use tauri::Manager;
 use tracing::{error, info, warn};
@@ -156,7 +154,7 @@ fn create_main_window(
     app: &tauri::AppHandle,
     generation: u64,
 ) -> tauri::Result<tauri::WebviewWindow> {
-    let mut config = app
+    let config = app
         .config()
         .app
         .windows
@@ -169,8 +167,6 @@ fn create_main_window(
             ))
         })?;
 
-    configure_main_window_config_for_platform(&mut config);
-
     let window = tauri::WebviewWindowBuilder::from_config(app, &config)?
         .on_page_load(move |window, payload| {
             if matches!(payload.event(), PageLoadEvent::Finished) {
@@ -182,19 +178,6 @@ fn create_main_window(
     info!("Main window created from config");
     Ok(window)
 }
-
-/// Keep macOS/Windows visual effects from making the Linux WebKit surface
-/// transparent. On WebKitGTK a transparent main window can expose the window
-/// behind it instead of painting the React content, while Linux does not
-/// support Tauri's configured `windowEffects` in the first place.
-#[cfg(target_os = "linux")]
-fn configure_main_window_config_for_platform(config: &mut WindowConfig) {
-    config.transparent = false;
-    config.window_effects = None;
-}
-
-#[cfg(not(target_os = "linux"))]
-fn configure_main_window_config_for_platform(_config: &mut tauri::utils::config::WindowConfig) {}
 
 /// Windows: the config uses `titleBarStyle: Overlay` for macOS; on Windows the
 /// native decorations must be turned off after creation instead. This must run
@@ -263,22 +246,7 @@ fn refresh_dock_icon(app: &tauri::AppHandle) {
 
 #[cfg(test)]
 mod tests {
-    use super::{configure_main_window_config_for_platform, MainWindowLoadState};
-
-    #[cfg(target_os = "linux")]
-    #[test]
-    fn linux_main_window_is_forced_opaque_without_unsupported_effects() {
-        let mut config = tauri::utils::config::WindowConfig {
-            transparent: true,
-            window_effects: Some(Default::default()),
-            ..Default::default()
-        };
-
-        configure_main_window_config_for_platform(&mut config);
-
-        assert!(!config.transparent);
-        assert!(config.window_effects.is_none());
-    }
+    use super::MainWindowLoadState;
 
     #[test]
     fn reveal_waits_for_initial_page_load() {

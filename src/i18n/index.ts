@@ -1,11 +1,12 @@
 import i18n from 'i18next'
 import { initReactI18next } from 'react-i18next'
 import enUS from './locales/en-US.json'
+import jaJP from './locales/ja-JP.json'
 import ptBR from './locales/pt-BR.json'
 import ruRU from './locales/ru-RU.json'
 import zhCN from './locales/zh-CN.json'
 
-export const SUPPORTED_LANGUAGES = ['zh-CN', 'en-US', 'ru-RU', 'pt-BR'] as const
+export const SUPPORTED_LANGUAGES = ['zh-CN', 'en-US', 'ja-JP', 'ru-RU', 'pt-BR'] as const
 export type SupportedLanguage = (typeof SUPPORTED_LANGUAGES)[number]
 
 const STORAGE_KEY = 'uniclipboard.language'
@@ -22,6 +23,7 @@ export function isSupportedLanguage(language: unknown): language is SupportedLan
  */
 const LOCALE_BY_SUBTAG: Partial<Record<string, SupportedLanguage>> = {
   zh: 'zh-CN',
+  ja: 'ja-JP',
   ru: 'ru-RU',
   pt: 'pt-BR',
 }
@@ -48,6 +50,7 @@ i18n.use(initReactI18next).init({
   resources: {
     'zh-CN': { translation: zhCN },
     'en-US': { translation: enUS },
+    'ja-JP': { translation: jaJP },
     'ru-RU': { translation: ruRU },
     'pt-BR': { translation: ptBR },
   },

@@ -1,6 +1,7 @@
 import { afterEach, beforeAll, describe, expect, it } from 'vitest'
 import i18n, { SUPPORTED_LANGUAGES, normalizeLanguage } from '@/i18n'
 import enUS from '@/i18n/locales/en-US.json'
+import jaJP from '@/i18n/locales/ja-JP.json'
 import ptBR from '@/i18n/locales/pt-BR.json'
 import ruRU from '@/i18n/locales/ru-RU.json'
 import zhCN from '@/i18n/locales/zh-CN.json'
@@ -22,6 +23,7 @@ describe('locale bundle parity', () => {
   const bundles: Record<string, Record<string, string>> = {
     'zh-CN': flatten(zhCN),
     'en-US': flatten(enUS),
+    'ja-JP': flatten(jaJP),
     'ru-RU': flatten(ruRU),
     'pt-BR': flatten(ptBR),
   }
@@ -126,6 +128,12 @@ describe('setup i18n keys', () => {
     expect(i18n.t('setup.page.loadingSetupState')).toBe('Carregando o estado da configuração...')
   })
 
+  it('resolves ja-JP setup.welcome.title', async () => {
+    await i18n.changeLanguage('ja-JP')
+    expect(i18n.t('setup.welcome.title')).toBe('始めましょう')
+    expect(i18n.t('setup.page.loadingSetupState')).toBe('セットアップ状態を読み込み中...')
+  })
+
   it('contains pairing failure copy in both locales', async () => {
     await i18n.changeLanguage('zh-CN')
     expect(i18n.t('pairing.failed.errors.activeSession')).toBe('已有正在进行的配对，请稍后再试')
@@ -160,6 +168,9 @@ describe('setup i18n keys', () => {
     expect(normalizeLanguage('pt-BR')).toBe('pt-BR')
     // pt-BR is the only Portuguese bundle, so European Portuguese lands here too.
     expect(normalizeLanguage('pt-PT')).toBe('pt-BR')
+    expect(normalizeLanguage('ja')).toBe('ja-JP')
+    expect(normalizeLanguage('ja-JP')).toBe('ja-JP')
+    expect(normalizeLanguage('ja_JP')).toBe('ja-JP')
     expect(normalizeLanguage('fr-FR')).toBe('en-US')
     // POSIX locale envs use an underscore; BCP-47 uses a hyphen.
     expect(normalizeLanguage('pt_BR')).toBe('pt-BR')
@@ -175,6 +186,7 @@ describe('setup i18n keys', () => {
     const autonyms: Record<string, string> = {
       'zh-CN': '简体中文',
       'en-US': 'English',
+      'ja-JP': '日本語',
       'ru-RU': 'Русский',
       'pt-BR': 'Português (Brasil)',
     }

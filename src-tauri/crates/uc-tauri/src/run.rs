@@ -168,63 +168,6 @@ async fn wait_for_terminate_signal() {
 /// let ctx = tauri::generate_context!();
 /// crate::run(ctx).expect("failed to start tauri application");
 /// ```
-/// Disable WebKitGTK's DMABUF renderer on Wayland sessions.
-///
-/// WebKitGTK's DMABUF render path crashes or paints a blank WebView on a
-/// number of Linux GPU + compositor combinations, most reliably on wlroots
-/// Wayland sessions (hyprland / sway). Forcing it off makes the GUI usable out
-/// of the box without the user having to export
-/// `WEBKIT_DISABLE_DMABUF_RENDERER=1` themselves — a clipboard UI gains nothing
-/// from the GPU-uploaded buffer path, so the tradeoff is effectively free.
-///
-/// Scope is intentionally limited to Wayland (`WAYLAND_DISPLAY` set); X11
-/// sessions keep the default hardware path. An explicit user value for the
-/// variable — including `0` to force the renderer back on — is always
-/// respected.
-///
-/// Must be called early in `run()`, before the Tauri builder creates any
-/// WebView: WebKit reads this variable when the WebView initializes.
-///
-/// Compiled on every platform (it touches only cross-platform `std::env`
-/// APIs) so it type-checks on the dev host, but only called on Linux.
-#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
-fn disable_webkit_dmabuf_on_wayland() {
-    const VAR: &str = "WEBKIT_DISABLE_DMABUF_RENDERER";
-
-    // Respect an explicit user choice (any value, including "0" to opt back in).
-    if std::env::var_os(VAR).is_some() {
-        info!(
-            var = VAR,
-            "WebKit DMABUF renderer override already set; leaving it untouched"
-        );
-        return;
-    }
-
-    // The breakage is concentrated on Wayland compositors; leave X11 sessions
-    // on the default path. `XDG_SESSION_TYPE` is unreliable (it can say
-    // "wayland" with no socket), so key off the actual display socket.
-    let on_wayland = std::env::var_os("WAYLAND_DISPLAY").is_some_and(|v| !v.is_empty());
-    if !on_wayland {
-        return;
-    }
-
-    // SAFETY: `set_var` is `unsafe` (since Rust 1.84) because it races any
-    // thread that concurrently reads or writes the environment. This runs on
-    // the main thread; the only other thread alive here is the tracing
-    // JSON-writer worker spawned by `init_gui_tracing()` earlier in `run()`,
-    // which merely drains a log channel to disk and never touches the
-    // environment. Tracing's own env reads (`LogProfile::from_env`, app-data
-    // path lookup) already ran synchronously on this thread before that worker
-    // existed, and GTK/WebKit have not initialized — so nothing reads the
-    // environment concurrently with this write.
-    unsafe { std::env::set_var(VAR, "1") };
-    info!(
-        var = VAR,
-        "Wayland session detected; disabled WebKit DMABUF renderer to avoid a blank or crashing \
-         WebView (export the variable yourself to override)"
-    );
-}
-
 pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
     // Tracing must be initialized before anything else so all subsequent
     // log calls (including build_gui_client_context) are captured.
@@ -235,13 +178,6 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
     // run-loop closure below and dropped at `RunEvent::Exit` so buffered log
     // lines reach disk before tao's destructor-skipping `process::exit`.
     let mut json_log_guard = init_gui_tracing();
-
-    // WebKitGTK's DMABUF renderer is unreliable on Wayland (notably wlroots
-    // compositors like hyprland / sway): the WebView crashes or renders blank.
-    // Disable it before the Tauri builder creates any WebView so the GUI works
-    // out of the box. See `disable_webkit_dmabuf_on_wayland`.
-    #[cfg(target_os = "linux")]
-    disable_webkit_dmabuf_on_wayland();
 
     // ADR-008 P3-3 (B2'-3): the GUI is a pure client of an external `uniclipd`.
     // It assembles ONLY the file-backed ports it needs (settings / setup-status /

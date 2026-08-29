@@ -12,10 +12,12 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
+  Switch,
 } from '@/components/ui'
 import { DEFAULT_THEME_COLOR, THEME_COLORS } from '@/constants/theme'
 import { useSetting, type Theme } from '@/hooks/useSetting'
 import { useUiScale } from '@/hooks/useUiScale'
+import { useWindowFrame } from '@/hooks/useWindowFrame'
 import { hexToOklch, oklchToHexSafe } from '@/lib/color-convert'
 import { createLogger } from '@/lib/logger'
 import {
@@ -27,6 +29,7 @@ import {
 import { setTransitionOrigin } from '@/lib/theme-transition'
 import { cn } from '@/lib/utils'
 import { SettingGroup } from './SettingGroup'
+import { SettingRow } from './SettingRow'
 
 const log = createLogger('appearance-section')
 
@@ -426,6 +429,7 @@ function ThemePresetSection({
 export default function AppearanceSection() {
   const { t } = useTranslation()
   const { setting, updateGeneralSetting } = useSetting()
+  const { canChooseSystemFrame, useSystemWindowFrame, setUseSystemWindowFrame } = useWindowFrame()
   const {
     options,
     setScale,
@@ -591,6 +595,25 @@ export default function AppearanceSection() {
         modifiedLabel={t('settings.sections.appearance.tokenPicker.modified')}
         hexInputLabel={t('settings.sections.appearance.tokenPicker.hexInputLabel')}
       />
+
+      {canChooseSystemFrame && (
+        <SettingGroup title={t('settings.sections.appearance.windowFrame.title')}>
+          <SettingRow
+            label={t('settings.sections.appearance.windowFrame.useSystem')}
+            description={t('settings.sections.appearance.windowFrame.description')}
+          >
+            <Switch
+              checked={useSystemWindowFrame}
+              aria-label={t('settings.sections.appearance.windowFrame.useSystem')}
+              onCheckedChange={enabled => {
+                void setUseSystemWindowFrame(enabled).catch(error => {
+                  log.error({ err: error }, 'Failed to change window frame')
+                })
+              }}
+            />
+          </SettingRow>
+        </SettingGroup>
+      )}
 
       <SettingGroup title={t('settings.sections.appearance.zoom.title')}>
         <div className="flex flex-col gap-3 p-4">

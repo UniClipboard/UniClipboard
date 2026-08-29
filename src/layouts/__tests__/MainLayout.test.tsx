@@ -12,8 +12,16 @@ const platformState = vi.hoisted(() => ({
   },
 }))
 
+const windowFrameState = vi.hoisted(() => ({
+  useSystemWindowFrame: false,
+}))
+
 vi.mock('@/hooks/usePlatform', () => ({
   usePlatform: () => platformState.current,
+}))
+
+vi.mock('@/hooks/useWindowFrame', () => ({
+  useWindowFrame: () => windowFrameState,
 }))
 
 vi.mock('@/components', () => ({
@@ -30,7 +38,7 @@ const renderLayout = () =>
   )
 
 describe('MainLayout', () => {
-  it('Linux Tauri 使用无圆角主内容布局', () => {
+  it('Linux 自绘窗口框使用内嵌布局', () => {
     platformState.current = {
       isWindows: false,
       isMac: false,
@@ -38,6 +46,26 @@ describe('MainLayout', () => {
       isTauri: true,
       reduceVisualEffects: true,
     }
+    windowFrameState.useSystemWindowFrame = false
+
+    const { container } = renderLayout()
+    const main = container.querySelector('main')
+
+    expect(main).toHaveClass('pb-2')
+    expect(main).toHaveClass('pr-2')
+    expect(container.innerHTML).toContain('rounded-[1.25rem]')
+    expect(screen.getByTestId('sidebar')).not.toHaveClass('border-r')
+  })
+
+  it('Linux 系统窗口框使用无圆角主内容布局', () => {
+    platformState.current = {
+      isWindows: false,
+      isMac: false,
+      isLinux: true,
+      isTauri: true,
+      reduceVisualEffects: true,
+    }
+    windowFrameState.useSystemWindowFrame = true
 
     const { container } = renderLayout()
     const main = container.querySelector('main')
@@ -57,6 +85,7 @@ describe('MainLayout', () => {
       isTauri: true,
       reduceVisualEffects: false,
     }
+    windowFrameState.useSystemWindowFrame = true
 
     const { container } = renderLayout()
     const main = container.querySelector('main')

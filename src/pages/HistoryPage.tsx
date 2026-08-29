@@ -14,16 +14,16 @@ import HistoryGrid from '@/components/history/HistoryGrid'
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable'
 import { useTitleBarSlot } from '@/contexts/titlebar-slot-context'
 import { useHistoryController } from '@/hooks/useHistoryController'
-import { usePlatform } from '@/hooks/usePlatform'
+import { useWindowFrame } from '@/hooks/useWindowFrame'
 
 const HistoryPage: React.FC = () => {
   const { t } = useTranslation()
-  const { isMac, isWindows } = usePlatform()
+  const { searchInTitleBar } = useWindowFrame()
   const { rightSlotHost } = useTitleBarSlot()
   const c = useHistoryController()
 
-  // The composite search box is shared between the in-page top bar (other
-  // platforms) and the window title bar (mac/windows). Memoized so its element
+  // The composite search box is shared between the in-page top bar (system
+  // frame) and the app-rendered title bar. Memoized so its element
   // reference only changes when an input prop actually changes — required because
   // injecting it into the title bar slot re-renders the app root, which would
   // otherwise loop.
@@ -62,9 +62,9 @@ const HistoryPage: React.FC = () => {
     ]
   )
 
-  // On mac and windows, hoist just the search box into the title bar (no page
-  // heading there); on other platforms it stays in the in-page top bar.
-  const hoistSearchToTitleBar = isMac || isWindows
+  // Hoist just the search box when the app owns the title bar. With a native
+  // system frame it stays in the in-page top bar.
+  const hoistSearchToTitleBar = searchInTitleBar
   const titleBarContent = useMemo(
     () => (hoistSearchToTitleBar ? <div className="w-80 max-w-full">{searchBox}</div> : null),
     [hoistSearchToTitleBar, searchBox]
@@ -74,8 +74,7 @@ const HistoryPage: React.FC = () => {
     <div className="flex flex-col h-full">
       {rightSlotHost && titleBarContent ? createPortal(titleBarContent, rightSlotHost) : null}
       {/* ── Top bar: page heading (left) + composite search (right) ─ */}
-      {/* On mac/windows this row is hidden; the search box is hoisted into the
-          window title bar instead (see above). */}
+      {/* This row is hidden when search is hoisted into the app title bar. */}
       {!hoistSearchToTitleBar && (
         <div className="shrink-0 flex items-center gap-3 border-b border-border/60 px-4 pt-3 pb-2.5">
           <h1 className="shrink-0 text-sm font-semibold text-foreground">{c.viewLabel}</h1>

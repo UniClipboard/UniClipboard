@@ -237,6 +237,11 @@
           "modified": "已自定义",
           "hexInputLabel": "十六进制颜色值"
         },
+        "windowFrame": {
+          "title": "窗口外观",
+          "useSystem": "使用系统窗口框",
+          "description": "开启后使用桌面系统的标题栏和窗口按钮，搜索框将移回页面。"
+        },
         "zoom": {
           "title": "界面缩放",
           "description": "缩放会同时影响主窗口和快捷面板，也会和快捷键保持同步。",

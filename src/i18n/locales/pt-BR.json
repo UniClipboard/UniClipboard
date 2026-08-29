@@ -237,6 +237,11 @@
           "modified": "Personalizado",
           "hexInputLabel": "Valor hexadecimal da cor"
         },
+        "windowFrame": {
+          "title": "Aparência da janela",
+          "useSystem": "Usar moldura de janela do sistema",
+          "description": "Usa a barra de título e os botões do sistema e move a busca de volta para a página."
+        },
         "zoom": {
           "title": "Escala da interface",
           "description": "A escala vale tanto para a janela principal quanto para o painel rápido, e fica em sincronia com os atalhos.",

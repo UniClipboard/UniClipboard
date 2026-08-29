@@ -237,6 +237,11 @@
           "modified": "Custom",
           "hexInputLabel": "Hex color value"
         },
+        "windowFrame": {
+          "title": "Window appearance",
+          "useSystem": "Use system window frame",
+          "description": "Use the desktop title bar and window buttons, with search returned to the page."
+        },
         "zoom": {
           "title": "Interface Scale",
           "description": "Scale applies to both the main window and quick panel, and stays in sync with the shortcuts.",

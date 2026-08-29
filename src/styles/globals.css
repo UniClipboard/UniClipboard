@@ -490,6 +490,12 @@ html[data-uc-low-effects='true']::view-transition-new(root) {
   animation: none !important;
 }
 
+html[data-uc-custom-window-frame='true'],
+html[data-uc-custom-window-frame='true'] body,
+html[data-uc-custom-window-frame='true'] #root {
+  background-color: transparent;
+}
+
 @layer base {
   html,
   body,

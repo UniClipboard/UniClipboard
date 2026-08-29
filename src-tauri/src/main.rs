@@ -2,6 +2,8 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
+    uc_tauri::prepare_process_environment();
+
     // `tauri::generate_context!()` 必须在 bin crate 调用——它读取 bin
     // 的 Cargo.toml 同目录下的 tauri.conf.json。其它装配 + Tauri 事件
     // 循环全部交给 `uc_tauri::run`。

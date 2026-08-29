@@ -40,7 +40,16 @@ impl DaemonRecoveryClient for DaemonQueryClient {
 pub async fn recover_after_restart(
     connection_state: DaemonConnectionState,
 ) -> DaemonRecoveryReport {
-    let client = DaemonQueryClient::new(connection_state);
+    let client = match DaemonQueryClient::new(connection_state) {
+        Ok(client) => client,
+        Err(error) => {
+            tracing::warn!(error = %error, "failed to build local daemon recovery client");
+            return DaemonRecoveryReport {
+                unlock: UnlockRecoveryOutcome::Failed,
+                lifecycle_ready: false,
+            };
+        }
+    };
     recover_after_restart_with(&client).await
 }
 
@@ -94,7 +103,16 @@ pub async fn recover_after_cold_launch(
     connection_state: DaemonConnectionState,
     auto_unlock_enabled: bool,
 ) -> DaemonRecoveryReport {
-    let client = DaemonQueryClient::new(connection_state);
+    let client = match DaemonQueryClient::new(connection_state) {
+        Ok(client) => client,
+        Err(error) => {
+            tracing::warn!(error = %error, "failed to build local daemon recovery client");
+            return DaemonRecoveryReport {
+                unlock: UnlockRecoveryOutcome::Failed,
+                lifecycle_ready: false,
+            };
+        }
+    };
     recover_after_cold_launch_with(&client, auto_unlock_enabled).await
 }
 

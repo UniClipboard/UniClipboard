@@ -93,7 +93,13 @@ pub async fn wait_for_encryption_session_ready(
     timeout: Duration,
     poll_interval: Duration,
 ) -> bool {
-    let client = DaemonQueryClient::new(connection_state);
+    let client = match DaemonQueryClient::new(connection_state) {
+        Ok(client) => client,
+        Err(error) => {
+            tracing::warn!(error = %error, "failed to build local daemon encryption-state client");
+            return false;
+        }
+    };
     let deadline = tokio::time::Instant::now() + timeout;
     loop {
         match client.get_encryption_state().await {
@@ -197,7 +203,13 @@ pub async fn run_cold_launch_actions(
         return None;
     }
 
-    let settings_client = DaemonSettingsClient::new(connection_state.clone());
+    let settings_client = match DaemonSettingsClient::new(connection_state.clone()) {
+        Ok(client) => client,
+        Err(error) => {
+            tracing::warn!(error = %error, "failed to build local daemon settings client");
+            return None;
+        }
+    };
     let settings = match settings_client.get_settings().await {
         Ok(settings) => settings,
         Err(error) => {
@@ -277,8 +289,20 @@ pub async fn run_cold_launch_actions(
 /// deprecated list endpoint was observed to return an empty page in that
 /// case instead of the real most-recent entry.
 async fn restore_last_entry(connection_state: DaemonConnectionState) {
-    let search_client = DaemonSearchClient::new(connection_state.clone());
-    let clipboard_client = DaemonClipboardClient::new(connection_state);
+    let search_client = match DaemonSearchClient::new(connection_state.clone()) {
+        Ok(client) => client,
+        Err(error) => {
+            tracing::warn!(error = %error, "failed to build local daemon search client");
+            return;
+        }
+    };
+    let clipboard_client = match DaemonClipboardClient::new(connection_state) {
+        Ok(client) => client,
+        Err(error) => {
+            tracing::warn!(error = %error, "failed to build local daemon clipboard client");
+            return;
+        }
+    };
 
     let query = SearchQueryRequest {
         query: String::new(),

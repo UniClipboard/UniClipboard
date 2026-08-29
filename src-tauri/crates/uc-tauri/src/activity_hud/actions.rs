@@ -72,7 +72,17 @@ impl ActivityHudActions for DefaultActivityHudActions {
         let app_handle = self.app_handle.clone();
         tauri::async_runtime::spawn(async move {
             let connection_state = app_handle.state::<DaemonConnectionState>().inner().clone();
-            let client = DaemonClipboardClient::new(connection_state);
+            let client = match DaemonClipboardClient::new(connection_state) {
+                Ok(client) => client,
+                Err(err) => {
+                    warn!(
+                        error = %err,
+                        transfer_id = %transfer_id,
+                        "activity_hud: failed to build local daemon clipboard client"
+                    );
+                    return;
+                }
+            };
             // `local_user` is the reason string the daemon parses back into
             // `FileTransferCancellationReason::LocalUser`.
             if let Err(err) = client.cancel_transfer(&transfer_id, "local_user").await {

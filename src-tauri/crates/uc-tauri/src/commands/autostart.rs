@@ -49,7 +49,8 @@ pub async fn update_autostart(
         // ADR-008 P3-3 B2': persist the `auto_start` preference through the
         // daemon over loopback HTTP instead of the in-process facade. The OS
         // launch registration + rollback below stay native.
-        let client = DaemonSettingsClient::new(connection_state.inner().clone());
+        let client = DaemonSettingsClient::new(connection_state.inner().clone())
+            .map_err(CommandError::internal)?;
         let previous = client
             .get_settings()
             .await

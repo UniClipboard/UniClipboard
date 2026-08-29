@@ -190,9 +190,7 @@ impl From<SpawnDaemonError> for LocalDaemonError {
 /// distinguish `Compatible` / `Absent` / `Incompatible` and surface a clear
 /// error on a version/contract mismatch.
 pub async fn probe_running() -> Result<ProbeOutcome, LocalDaemonError> {
-    let client = Client::builder()
-        .timeout(PROBE_TIMEOUT)
-        .build()
+    let client = uc_daemon_client::build_local_http_client_with_timeout(PROBE_TIMEOUT)
         .map_err(|error| LocalDaemonError::ProbeClient(error.into()))?;
     let base_url = resolve_base_url()?;
     probe_daemon_health(&client, &base_url).await
@@ -207,9 +205,7 @@ pub async fn probe_running() -> Result<ProbeOutcome, LocalDaemonError> {
 /// no in-crate caller yet — hence `#[allow(dead_code)]`).
 #[allow(dead_code)]
 pub async fn ensure_local_daemon_running() -> Result<LocalDaemonSession, LocalDaemonError> {
-    let client = Client::builder()
-        .timeout(PROBE_TIMEOUT)
-        .build()
+    let client = uc_daemon_client::build_local_http_client_with_timeout(PROBE_TIMEOUT)
         .map_err(|error| LocalDaemonError::ProbeClient(error.into()))?;
     let base_url = resolve_base_url()?;
 
@@ -279,9 +275,7 @@ fn classify_probe_action(outcome: &ProbeOutcome) -> ProbeAction {
 pub async fn ensure_or_promote_local_daemon(
     target: DaemonResidency,
 ) -> Result<LocalDaemonSession, LocalDaemonError> {
-    let client = Client::builder()
-        .timeout(PROBE_TIMEOUT)
-        .build()
+    let client = uc_daemon_client::build_local_http_client_with_timeout(PROBE_TIMEOUT)
         .map_err(|error| LocalDaemonError::ProbeClient(error.into()))?;
     let base_url = resolve_base_url()?;
 
@@ -313,9 +307,7 @@ pub async fn ensure_or_promote_local_daemon(
 /// classified the daemon as Absent) and does NOT touch the start-only
 /// promote path.
 pub async fn spawn_oneshot_and_wait() -> Result<LocalDaemonSession, LocalDaemonError> {
-    let client = Client::builder()
-        .timeout(PROBE_TIMEOUT)
-        .build()
+    let client = uc_daemon_client::build_local_http_client_with_timeout(PROBE_TIMEOUT)
         .map_err(|error| LocalDaemonError::ProbeClient(error.into()))?;
     let base_url = resolve_base_url()?;
     std::env::set_var(

@@ -15,20 +15,20 @@ pub struct DaemonSetupClient {
 }
 
 impl DaemonSetupClient {
-    pub fn new() -> Self {
-        Self {
-            http: Arc::new(reqwest::Client::new()),
+    pub fn new() -> Result<Self> {
+        Ok(Self {
+            http: Arc::new(crate::build_local_http_client()?),
             connection_state: DaemonConnectionState::default(),
             client_type: "gui".to_string(),
-        }
+        })
     }
 
-    pub fn with_conn_state(connection_state: DaemonConnectionState) -> Self {
-        Self {
-            http: Arc::new(reqwest::Client::new()),
+    pub fn with_conn_state(connection_state: DaemonConnectionState) -> Result<Self> {
+        Ok(Self {
+            http: Arc::new(crate::build_local_http_client()?),
             connection_state,
             client_type: "gui".to_string(),
-        }
+        })
     }
 
     pub(crate) fn with_http_conn_state_and_type(

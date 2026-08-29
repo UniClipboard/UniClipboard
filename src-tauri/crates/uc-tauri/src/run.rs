@@ -273,9 +273,9 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
     // in-process sink. The webview's UI events already POST directly
     // (`src/api/daemon/analytics.ts`).
     client_deps.analytics = Arc::new(
-        crate::analytics_forward::DaemonForwardingAnalyticsSink::new(DaemonConnectionState::clone(
-            &daemon_connection_state,
-        )),
+        crate::analytics_forward::DaemonForwardingAnalyticsSink::new(
+            DaemonConnectionState::clone(&daemon_connection_state),
+        )?,
     );
 
     let runtime = Arc::new(TauriAppRuntime::new(client_deps));

@@ -87,7 +87,8 @@ pub async fn get_daemon_session(
             return Ok(None);
         };
 
-        let context = DaemonClientContext::with_connection_info(connection_info, "gui".to_string());
+        let context = DaemonClientContext::with_connection_info(connection_info, "gui".to_string())
+            .map_err(crate::commands::CommandError::internal)?;
         let session = context
             .exchange_session_token(std::process::id(), "gui")
             .await

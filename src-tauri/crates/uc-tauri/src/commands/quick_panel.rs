@@ -204,7 +204,8 @@ pub async fn set_quick_panel_double_tap_modifier(
 
     async {
         let _guard = update_lock.0.lock().await;
-        let client = DaemonSettingsClient::new(connection_state.inner().clone());
+        let client = DaemonSettingsClient::new(connection_state.inner().clone())
+            .map_err(CommandError::internal)?;
         let current = client
             .get_settings()
             .await
@@ -315,7 +316,8 @@ pub async fn set_quick_panel_enabled(
         // ADR-008 P3-3 B2': read-modify-write the settings domain through the
         // daemon over loopback HTTP instead of the in-process facade. The OS
         // global-shortcut register/rollback below stays native.
-        let client = DaemonSettingsClient::new(connection_state.inner().clone());
+        let client = DaemonSettingsClient::new(connection_state.inner().clone())
+            .map_err(CommandError::internal)?;
         let current = client
             .get_settings()
             .await
@@ -579,7 +581,8 @@ pub async fn set_quick_panel_position(
         // over loopback HTTP instead of the in-process facade. The in-memory
         // cache refresh below stays native.
         let core_position = QuickPanelPosition::from(position);
-        let client = DaemonSettingsClient::new(connection_state.inner().clone());
+        let client = DaemonSettingsClient::new(connection_state.inner().clone())
+            .map_err(CommandError::internal)?;
         let patch = SettingsPatchDto {
             quick_panel: Some(QuickPanelSettingsPatchDto {
                 position: Some(QuickPanelPositionDto::from(core_position)),

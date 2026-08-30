@@ -64,7 +64,6 @@
     "@reduxjs/toolkit": "^2.12.0",
     "@sentry/react": "^10.53.1",
     "@tauri-apps/api": "^2.11.0",
-    "@tauri-apps/plugin-log": "2.9.0",
     "@tauri-apps/plugin-notification": "^2.3.3",
     "@tauri-apps/plugin-opener": "^2.5.4",
     "@types/culori": "^4.0.1",

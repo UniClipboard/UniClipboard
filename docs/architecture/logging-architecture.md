@@ -7,10 +7,9 @@ UniClipboard uses **`tracing`** crate as the primary logging framework with stru
 - **Console output**: Pretty human-readable format with ANSI colors (stdout)
 - **JSON file output**: Structured flat JSON with daily-rotating files (7-day retention) for tooling and analysis
 
-A **dual-track** coexistence is maintained during the transition from legacy `log` crate to `tracing`:
-
-- `log::*` macros -> `tauri-plugin-log` -> Webview (dev) / stdout (prod)
-- `tracing::*` macros -> `uc-observability` subscriber -> console + JSON file
+Rust 日志统一由 `tracing` 和 `uc-observability` 负责；前端应用日志统一由 Pino
+负责，并按遥测开关转发到 Sentry。项目不再注册 `tauri-plugin-log`，也不再维护
+`log::*` 的平行输出路径。
 
 **Current Status**: Phases 0-3 complete, actively using `tracing` across all architectural layers. Dual-output logging with profile system active. Spans, structured logs, and panics flow through **Sentry** (Issues + Logs + Performance) — the OTLP→Seq pipeline used previously was retired in commit `faa8eb8d` (backend) and issue #543 (frontend); see [Sentry Logs (Centralized Observability)](#sentry-logs-centralized-observability).
 
@@ -36,25 +35,20 @@ The application uses `tracing` crate for structured, span-aware logging:
 | Phase 1 | Command layer root spans                                | Complete     |
 | Phase 2 | UseCase layer child spans                               | Complete     |
 | Phase 3 | Infra/Platform layer debug spans                        | Complete     |
-| Phase 4 | Remove `log` dependency (optional)                      | Not required |
+| Phase 4 | Remove legacy `log` and `tauri-plugin-log` path          | Complete     |
 
-### Dual-Track System
+### Single Logging Ownership
 
-During the transition, both `log` and `tracing` coexist:
+Rust 代码只使用 `tracing`：
 
 ```rust
-// Legacy code (still works via tauri-plugin-log)
-log::info!("Application started");
-
-// New code (preferred) - produces both console + JSON output
 tracing::info!("Application started");
 tracing::info_span!("command.clipboard.capture", device_id = %id);
 ```
 
-**Note**: `tracing-log` bridge is NOT configured. The two systems operate independently:
-
-- `log::` macros -> `tauri-plugin-log` -> Webview (dev) / stdout (prod)
-- `tracing::` macros -> `uc-observability` subscriber -> console (pretty) + JSON file + Sentry (Logs + Performance, when DSN is configured)
+该路径同时提供终端输出、轮转 JSON 文件和受遥测开关控制的 Sentry 数据。前端
+模块通过 `src/lib/logger.ts` 创建 Pino child logger；开发环境输出到 DevTools，
+生产环境按级别转发到 Sentry。
 
 ### Module Organization
 
@@ -85,21 +79,16 @@ Provides:
 
 **Zero app-layer dependencies** - Sentry integration is kept in the caller.
 
-#### 2. Bootstrap Configuration
+#### 2. GUI Initialization
 
-**Location**: `src-tauri/crates/uc-tauri/src/bootstrap/`
-
-```
-bootstrap/
-├── logging.rs       # tauri-plugin-log configuration (legacy, Webview + stdout)
-└── tracing.rs       # Thin wrapper: uc-observability layers + Sentry
-```
+GUI 在进入 Tauri builder 前调用 `init_gui_tracing()`。daemon 和 CLI 则由各自
+入口初始化 `uc-observability`；三种角色共享日志格式、目录和保留策略。
 
 **Initialization Flow**:
 
 ```
-main.rs
-  ├─> init_tracing_subscriber()         // uc-tauri/bootstrap/tracing.rs
+uc_tauri::run()
+  ├─> init_gui_tracing()
   │    ├─> LogProfile::from_env()       // Select profile
   │    ├─> sentry::init()               // Optional Sentry (if SENTRY_DSN set)
   │    │     - logs feature enabled (sentry 0.48+)
@@ -111,8 +100,6 @@ main.rs
   │    └─> registry().with(...).try_init()  // Compose and register
   │
   └─> Builder::default()
-       └─> .plugin(logging::get_builder().build())
-            └─> Legacy log::* macros still work (Webview/stdout only)
 ```
 
 #### 3. Layer-Based Tracing
@@ -285,11 +272,10 @@ When `debug_assertions` is true (debug builds):
 - **Sentry**: Enabled if `SENTRY_DSN` is set; further gated by the user's
   in-app `general.telemetry_enabled` setting at runtime
 
-**tauri-plugin-log (legacy)**:
+**Frontend Pino**:
 
 - **Level**: `Debug`
-- **Target**: `Webview` (browser DevTools console)
-- **Filters**: Tauri internals, wry noise
+- **Target**: Browser DevTools，并按遥测开关向 Sentry Logs 转发 `info` 及以上事件
 
 ### Production Mode
 
@@ -306,11 +292,10 @@ When `debug_assertions` is false (release builds):
   persisted preference back to the GUI). `INFO` events are sent as breadcrumbs
   only; `WARN` and `ERROR` become searchable Logs / Issues.
 
-**tauri-plugin-log (legacy)**:
+**Frontend Pino**:
 
 - **Level**: `Info`
-- **Target**: `Stdout` only (file logging handled by tracing)
-- **Filters**: Tauri internals, wry noise, `ipc::request`
+- **Target**: 本地控制台抑制低于 `warn` 的输出；`info` 及以上事件按遥测开关转发到 Sentry Logs
 
 ### Environment Variables
 
@@ -543,18 +528,10 @@ count = 42
 - `libp2p_mdns::behaviour::iface` set to `off`
 - Caused by proxy software virtual network interfaces
 
-**Tauri Internal Events** (tauri-plugin-log only):
+**Tauri 与 WebView 噪声**：
 
-- Filtered to prevent infinite loops with Webview target
-- `tauri::*` modules
-- `tracing::*` modules
-- `tauri-` prefixed modules
-- `wry::*` modules
-
-**IPC Request Logs**:
-
-- Development: Enabled for debugging
-- Production: Filtered to reduce verbosity
+- Rust 侧由 `EnvFilter` 按 target 控制。
+- 前端只记录应用通过 Pino 显式产生的事件，不桥接 Rust `log` facade 或 Tauri 内部事件。
 
 ## Viewing Logs
 
@@ -568,12 +545,12 @@ bun run tauri:dev
 # JSON file written to platform log directory simultaneously
 ```
 
-**Browser DevTools (log output)**:
+**Browser DevTools (frontend Pino output)**:
 
 1. Open app in development mode
 2. Press F12 or right-click -> Inspect
 3. Go to Console tab
-4. `log::*` macros appear here
+4. Pino 和显式 `console.*` 输出会出现在这里
 
 ### Production
 
@@ -584,7 +561,6 @@ bun run tauri:dev
 ./uniclipboard
 
 # tracing::* output appears in terminal (pretty format)
-# log::* output also appears in terminal (stdout)
 ```
 
 **JSON log file**:
@@ -625,10 +601,10 @@ The tracing and observability modules include tests:
 
 ```bash
 # Run uc-observability tests (profile, format, init)
-cd src-tauri && cargo test --package uc-observability
+cargo test --package uc-observability
 
-# Run uc-tauri tracing bootstrap tests
-cd src-tauri && cargo test --package uc-tauri -- bootstrap::tracing
+# Run uc-tauri tests
+cargo test --package uc-tauri
 ```
 
 ### Manual Testing
@@ -636,7 +612,7 @@ cd src-tauri && cargo test --package uc-tauri -- bootstrap::tracing
 1. **Development**: Run `bun run tauri:dev` and check:
    - Terminal for `tracing::*` console output (pretty)
    - JSON file created in platform log directory
-   - Browser DevTools for `log::*` output
+   - Browser DevTools for frontend Pino output
 2. **Production**: Build and run, check:
    - JSON file exists and contains valid NDJSON entries
    - Terminal shows `tracing::*` console output
@@ -652,15 +628,10 @@ cd src-tauri && cargo test --package uc-tauri -- bootstrap::tracing
 2. Check `tracing` dependency is present
 3. Ensure you're using `tracing::info!` not `println!`
 
-**Check log plugin**:
-
-1. Verify `main.rs` has `.plugin(logging::get_builder().build())`
-2. Check `log` crate dependency is present
-
 ### Logs not appearing in browser
 
-1. Check Webview target is enabled in `logging.rs` for development mode
-2. Open browser DevTools and check Console tab
+1. Open browser DevTools and check Console tab
+2. Verify the caller uses `createLogger()` from `src/lib/logger.ts`
 3. Verify there are no JavaScript errors preventing log display
 
 ### JSON log file not created
@@ -712,7 +683,7 @@ async move {
 
 ### Converting Legacy Code
 
-**Before** (log crate):
+**Before**（已删除的 `log` facade）：
 
 ```rust
 use log::info;
@@ -750,7 +721,7 @@ pub async fn get_entries(&self) -> Result<Vec<Entry>> {
 
 ### DON'T
 
-- **Don't use `log::*` in new code**: Prefer `tracing::*` macros
+- **不要使用 `log::*`**：Rust 代码统一使用 `tracing::*` macros
 - **Don't create spans for trivial operations**: Spans should represent meaningful work
 - **Don't mix formatting styles**: Be consistent with field formatting
 - **Don't forget to close spans**: Spans end when their scope ends
@@ -805,7 +776,7 @@ The previous OTLP→Seq pipeline was retired in commit `faa8eb8d` (backend) and 
 
 transport 是最后一道边界，且与前面的钩子 **并不冗余**：它是唯一能覆盖那些任何 `before_*` 钩子都看不到的 envelope 的关卡——包括切换开关前已经采样的 Transaction、`release-health` 的 session 更新（sentry-core 的 `session.rs` 直接调用 `send_envelope`，绕过 `before_send`），以及未来 SDK 升级引入的新 envelope 类型。
 
-前端的 gate 启动时默认 **关闭**，并把上次确认过的偏好镜像进 `localStorage`（`uc.telemetry_enabled`），这样在 SettingContext 从 daemon 拿到持久化值之前的启动早期窗口，关掉过遥测的用户依然受保护。后端的等价做法是 `tracing.rs` 同步读 `settings.json`，在 `sentry::init` 之前调用 `set_telemetry_enabled`。
+前端的 gate 启动时默认 **关闭**，并把上次确认过的偏好镜像进 `localStorage`（`uc.telemetry_enabled`），这样在 SettingContext 从 daemon 拿到持久化值之前的启动早期窗口，关掉过遥测的用户依然受保护。后端的等价做法是 `crates/uc-bootstrap/src/observability/tracing.rs` 同步读 `settings.json`，在 `sentry::init` 之前调用 `set_telemetry_enabled`。
 
 A shared field-name redaction blocklist (backend: `uc_observability::redact`, frontend: `src/observability/redaction.ts`) is applied to attributes regardless of the gate state, so secrets like `password`, `token`, `auth`, `api_key`, etc. never leave the process even if telemetry is enabled.
 
@@ -813,7 +784,7 @@ A shared field-name redaction blocklist (backend: `uc_observability::redact`, fr
 
 | Variable           | Purpose                                                                                              | Default            |
 | ------------------ | ---------------------------------------------------------------------------------------------------- | ------------------ |
-| `SENTRY_DSN`       | Backend DSN baked into the Rust binary at compile time via `option_env!` in `uc-bootstrap/tracing.rs`. | Not set (disabled) |
+| `SENTRY_DSN`       | Backend DSN baked into the Rust binary at compile time via `option_env!` in `crates/uc-bootstrap/src/observability/tracing.rs`. | Not set (disabled) |
 | `VITE_SENTRY_DSN`  | Frontend DSN baked into the Vite bundle at build time. Independent project from `SENTRY_DSN`.        | Not set (disabled) |
 | `SENTRY_AUTH_TOKEN` | Used by CI to upload `.dSYM` / `.pdb` / DWARF debug symbols and source maps.                         | Not set            |
 | `SENTRY_ORG`        | Sentry organization slug used by the symbol-upload CLI.                                              | Not set            |
@@ -888,15 +859,13 @@ The pre-migration Seq signal files have been moved to `docs/_archive/seq/signals
 
 - [Tracing Crate Documentation](https://docs.rs/tracing/)
 - [Tracing Subscriber Documentation](https://docs.rs/tracing-subscriber/)
-- [Tauri Plugin Log Documentation](https://v2.tauri.app/plugin/logging/)
 - [Sentry Rust SDK](https://docs.rs/sentry/)
 - [`@sentry/react` SDK](https://docs.sentry.io/platforms/javascript/guides/react/)
 - [Sentry Logs feature](https://docs.sentry.io/product/explore/logs/)
 - [Sentry distributed tracing — sentry-trace + baggage](https://docs.sentry.io/concepts/key-terms/tracing/distributed-tracing/)
 - Source:
   - `src-tauri/crates/uc-observability/` (profile, format, init, redact, telemetry_gate)
-  - `src-tauri/crates/uc-tauri/src/bootstrap/tracing.rs` (Sentry + uc-observability composition)
-  - `src-tauri/crates/uc-tauri/src/bootstrap/logging.rs` (legacy log plugin, Webview + stdout)
+  - `src-tauri/crates/uc-tauri/src/run.rs`（GUI tracing 初始化）
   - `src/observability/sentry.ts` (frontend Sentry init + redaction hooks)
   - `src/lib/logger.ts` (pino → Sentry.logger bridge)
 - Archive:

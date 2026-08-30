@@ -7,7 +7,6 @@ const mocks = vi.hoisted(() => {
     applyPlatformEffectPreferences: vi.fn(),
     applyPlatformTypographyScale: vi.fn(),
     applyDeviceMetaToSentry: vi.fn(),
-    attachConsole: vi.fn(() => Promise.resolve()),
     connectDaemonWs: vi.fn(() => Promise.resolve()),
     createRoot: vi.fn(() => ({ render })),
     getDeviceMeta: vi.fn(() => Promise.resolve({})),
@@ -21,10 +20,6 @@ const mocks = vi.hoisted(() => {
 vi.mock('react-dom/client', () => ({
   default: { createRoot: mocks.createRoot },
   createRoot: mocks.createRoot,
-}))
-
-vi.mock('@tauri-apps/plugin-log', () => ({
-  attachConsole: mocks.attachConsole,
 }))
 
 vi.mock('@/api/runtime', () => ({

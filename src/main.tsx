@@ -1,4 +1,3 @@
-import { attachConsole } from '@tauri-apps/plugin-log'
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { Provider } from 'react-redux'
@@ -65,24 +64,6 @@ if (typeof window !== 'undefined') {
 
 initializeWindowUi()
 initializeWindowFrame()
-
-// 初始化日志系统：将后端日志输出到浏览器 DevTools
-const initLogging = async () => {
-  try {
-    // 仅在 Tauri 环境中运行（不在浏览器开发模式中）
-    if (typeof window !== 'undefined' && '__TAURI__' in window) {
-      await attachConsole()
-      console.log('[Tauri Log] Console attached successfully')
-    }
-  } catch (error) {
-    console.error('[Tauri Log] Failed to attach console:', error)
-  }
-}
-
-// 执行日志初始化
-initLogging().then(() => {
-  console.log('[Tauri Log] Logging system initialized')
-})
 
 // Connect the frontend WebSocket client to the daemon.
 // This must run before React renders so that daemonWs is connected by the time

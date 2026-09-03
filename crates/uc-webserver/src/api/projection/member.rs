@@ -7,25 +7,25 @@
 
 use uc_engine::{
     ContentTypesPatch, ContentTypesSummary, DeviceCompatibilitySummary,
-    DeviceGroupRelationshipSummary, DeviceMembershipSummary, DeviceReachabilitySummary,
-    DeviceSyncRelationshipSummary, DeviceTrustActionSummary, DeviceTrustChangeSummary,
-    DeviceTrustChoiceSummary, DeviceTrustDecisionSummary, DeviceTrustImpactSummary,
-    DeviceTrustRecoverySummary, DeviceTrustRelationshipSummary, DeviceTrustSnapshotSummary,
-    DeviceTrustUnavailableReasonSummary, MemberProtectionStatusSummary, MemberProtectionSummary,
-    MemberSyncPreferencesPatch, MemberSyncPreferencesSummary, SpaceProtectionModeSummary,
-    SpaceProtectionSummary, WorkspaceConvergenceFailureCategorySummary,
-    WorkspaceConvergencePhaseSummary, WorkspaceConvergenceSummary,
+    DeviceGroupChoiceOptionSummary, DeviceGroupChoiceOutcomeSummary,
+    DeviceGroupChoiceResultSummary, DeviceGroupChoicesSummary, DeviceGroupRelationshipSummary,
+    DeviceMembershipSummary, DeviceReachabilitySummary, DeviceSyncRelationshipSummary,
+    DeviceTrustActionSummary, DeviceTrustChangeSummary, DeviceTrustChoiceSummary,
+    DeviceTrustImpactSummary, DeviceTrustRecoverySummary, DeviceTrustRelationshipSummary,
+    DeviceTrustSnapshotSummary, DeviceTrustUnavailableReasonSummary, MemberProtectionStatusSummary,
+    MemberProtectionSummary, MemberSyncPreferencesPatch, MemberSyncPreferencesSummary,
+    SpaceProtectionModeSummary, SpaceProtectionSummary,
 };
 
 use super::{IntoApiDto, IntoDomain};
 use crate::api::dto::member::{
-    DeviceCompatibilityDto, DeviceGroupRelationshipDto, DeviceMembershipDto, DeviceReachabilityDto,
+    DeviceCompatibilityDto, DeviceGroupChoiceIssueDto, DeviceGroupChoiceOptionDto,
+    DeviceGroupChoiceOutcomeDto, DeviceGroupChoiceResultDto, DeviceGroupChoicesDto,
+    DeviceGroupRelationshipDto, DeviceMembershipDto, DeviceReachabilityDto,
     DeviceSyncRelationshipDto, DeviceTrustActionDto, DeviceTrustChangeDto, DeviceTrustChoiceDto,
-    DeviceTrustDecisionDto, DeviceTrustImpactDto, DeviceTrustRelationshipDto,
-    DeviceTrustSnapshotDto, DeviceTrustUnavailableReasonDto, MemberProtectionDto,
-    MemberProtectionStatusDto, MemberSyncPreferencesDto, PendingInboundMemberDto,
-    SpaceProtectionDto, SpaceProtectionModeDto, WorkspaceConvergenceDto,
-    WorkspaceConvergenceFailureCategoryDto, WorkspaceConvergencePhaseDto,
+    DeviceTrustImpactDto, DeviceTrustRelationshipDto, DeviceTrustSnapshotDto,
+    DeviceTrustUnavailableReasonDto, MemberProtectionDto, MemberProtectionStatusDto,
+    MemberSyncPreferencesDto, PendingInboundMemberDto, SpaceProtectionDto, SpaceProtectionModeDto,
 };
 use crate::api::dto::settings::{ContentTypesDto, ContentTypesPatchDto};
 
@@ -119,63 +119,6 @@ impl IntoApiDto<SpaceProtectionDto> for SpaceProtectionSummary {
     }
 }
 
-impl IntoApiDto<WorkspaceConvergenceDto> for WorkspaceConvergenceSummary {
-    fn into_api_dto(self) -> WorkspaceConvergenceDto {
-        WorkspaceConvergenceDto {
-            phase: match self.phase {
-                WorkspaceConvergencePhaseSummary::LocallyApplied => {
-                    WorkspaceConvergencePhaseDto::LocallyApplied
-                }
-                WorkspaceConvergencePhaseSummary::Converging => {
-                    WorkspaceConvergencePhaseDto::Converging
-                }
-                WorkspaceConvergencePhaseSummary::Complete => {
-                    WorkspaceConvergencePhaseDto::Complete
-                }
-                WorkspaceConvergencePhaseSummary::RecoveryRequired => {
-                    WorkspaceConvergencePhaseDto::RecoveryRequired
-                }
-            },
-            revision: self.revision,
-            history_event_count: self.history_event_count,
-            effective_member_count: self.effective_member_count,
-            pending_removal_decision_device_ids: self.pending_removal_decision_device_ids,
-            pending_removal_decision_event_id: self.pending_removal_decision_event_id,
-            diverged_peer_device_ids: self.diverged_peer_device_ids,
-            upgrade_required_peer_device_ids: self.upgrade_required_peer_device_ids,
-            convergence_digest: self.convergence_digest,
-            updated_at_ms: self.updated_at_ms,
-            removed: self.removed,
-            failure_category: self.failure_category.map(|category| match category {
-                WorkspaceConvergenceFailureCategorySummary::SpaceMismatch => {
-                    WorkspaceConvergenceFailureCategoryDto::SpaceMismatch
-                }
-                WorkspaceConvergenceFailureCategorySummary::ContinuityGap => {
-                    WorkspaceConvergenceFailureCategoryDto::ContinuityGap
-                }
-                WorkspaceConvergenceFailureCategorySummary::IdentityMismatch => {
-                    WorkspaceConvergenceFailureCategoryDto::IdentityMismatch
-                }
-                WorkspaceConvergenceFailureCategorySummary::DigestConflict => {
-                    WorkspaceConvergenceFailureCategoryDto::DigestConflict
-                }
-                WorkspaceConvergenceFailureCategorySummary::Unauthorized => {
-                    WorkspaceConvergenceFailureCategoryDto::Unauthorized
-                }
-                WorkspaceConvergenceFailureCategorySummary::VersionIncompatible => {
-                    WorkspaceConvergenceFailureCategoryDto::VersionIncompatible
-                }
-                WorkspaceConvergenceFailureCategorySummary::NoEffectiveMembers => {
-                    WorkspaceConvergenceFailureCategoryDto::NoEffectiveMembers
-                }
-                WorkspaceConvergenceFailureCategorySummary::Storage => {
-                    WorkspaceConvergenceFailureCategoryDto::Storage
-                }
-            }),
-        }
-    }
-}
-
 impl IntoApiDto<DeviceTrustSnapshotDto> for DeviceTrustSnapshotSummary {
     fn into_api_dto(self) -> DeviceTrustSnapshotDto {
         DeviceTrustSnapshotDto {
@@ -213,47 +156,62 @@ impl IntoApiDto<DeviceTrustSnapshotDto> for DeviceTrustSnapshotSummary {
     }
 }
 
-impl IntoApiDto<DeviceTrustDecisionDto> for DeviceTrustDecisionSummary {
-    fn into_api_dto(self) -> DeviceTrustDecisionDto {
-        match self {
-            DeviceTrustDecisionSummary::Applied {
-                change_id,
-                snapshot,
-            } => DeviceTrustDecisionDto::Applied {
-                change_id,
-                snapshot: snapshot.into_api_dto(),
-            },
-            DeviceTrustDecisionSummary::KeptCurrentDeviceGroup {
-                change_id,
-                snapshot,
-            } => DeviceTrustDecisionDto::KeptCurrentDeviceGroup {
-                change_id,
-                snapshot: snapshot.into_api_dto(),
-            },
-            DeviceTrustDecisionSummary::AlreadyCompleted {
-                change_id,
-                completed_choice,
-                snapshot,
-            } => DeviceTrustDecisionDto::AlreadyCompleted {
-                change_id,
-                completed_choice: device_trust_choice(completed_choice),
-                snapshot: snapshot.into_api_dto(),
-            },
-            DeviceTrustDecisionSummary::StateChanged {
-                current_change_id,
-                snapshot,
-            } => DeviceTrustDecisionDto::StateChanged {
-                current_change_id,
-                snapshot: snapshot.into_api_dto(),
-            },
-            DeviceTrustDecisionSummary::LocalDeviceConfirmationRequired {
-                change_id,
-                snapshot,
-            } => DeviceTrustDecisionDto::LocalDeviceConfirmationRequired {
-                change_id,
-                snapshot: snapshot.into_api_dto(),
-            },
+impl IntoApiDto<DeviceGroupChoicesDto> for DeviceGroupChoicesSummary {
+    fn into_api_dto(self) -> DeviceGroupChoicesDto {
+        DeviceGroupChoicesDto {
+            revision: self.revision,
+            device_trust: self.device_trust.into_api_dto(),
+            issues: self
+                .issues
+                .into_iter()
+                .map(|issue| DeviceGroupChoiceIssueDto {
+                    issue_id: issue.issue_id,
+                    choices: issue
+                        .choices
+                        .into_iter()
+                        .map(device_group_choice_option)
+                        .collect(),
+                })
+                .collect(),
         }
+    }
+}
+
+impl IntoApiDto<DeviceGroupChoiceResultDto> for DeviceGroupChoiceResultSummary {
+    fn into_api_dto(self) -> DeviceGroupChoiceResultDto {
+        DeviceGroupChoiceResultDto {
+            outcome: match self.outcome {
+                DeviceGroupChoiceOutcomeSummary::Completed => {
+                    DeviceGroupChoiceOutcomeDto::Completed
+                }
+                DeviceGroupChoiceOutcomeSummary::Pending => DeviceGroupChoiceOutcomeDto::Pending,
+                DeviceGroupChoiceOutcomeSummary::RePairingRequired => {
+                    DeviceGroupChoiceOutcomeDto::RePairingRequired
+                }
+                DeviceGroupChoiceOutcomeSummary::AlreadyCompleted => {
+                    DeviceGroupChoiceOutcomeDto::AlreadyCompleted
+                }
+                DeviceGroupChoiceOutcomeSummary::StateChanged => {
+                    DeviceGroupChoiceOutcomeDto::StateChanged
+                }
+                DeviceGroupChoiceOutcomeSummary::LocalDeviceConfirmationRequired => {
+                    DeviceGroupChoiceOutcomeDto::LocalDeviceConfirmationRequired
+                }
+            },
+            current_revision: self.current_revision,
+        }
+    }
+}
+
+fn device_group_choice_option(
+    option: DeviceGroupChoiceOptionSummary,
+) -> DeviceGroupChoiceOptionDto {
+    DeviceGroupChoiceOptionDto {
+        choice_id: option.choice_id,
+        is_current_group: option.is_current_group,
+        requires_re_pairing: option.requires_re_pairing,
+        member_device_ids: option.member_device_ids,
+        members_complete: option.members_complete,
     }
 }
 
@@ -412,6 +370,7 @@ fn device_trust_unavailable_reason(
 mod tests {
     use super::*;
     use crate::api::dto::member::{DeviceTrustSnapshotDto, MemberSyncPreferencesPatchDto};
+    use uc_engine::DeviceGroupChoiceIssueSummary;
 
     #[test]
     fn patch_mapping_preserves_omitted_fields_as_none() {
@@ -504,5 +463,30 @@ mod tests {
             change.apply_impact.local_device_outcome,
             DeviceMembershipDto::Removed
         );
+    }
+
+    #[test]
+    fn device_group_choices_preserve_engine_owned_ids_and_revision() {
+        let summary = DeviceGroupChoicesSummary {
+            revision: 9,
+            device_trust: DeviceTrustSnapshotSummary::empty_unavailable("device-local".to_string()),
+            issues: vec![DeviceGroupChoiceIssueSummary {
+                issue_id: "c:issue-1".to_string(),
+                choices: vec![DeviceGroupChoiceOptionSummary {
+                    choice_id: "b:choice-1".to_string(),
+                    is_current_group: false,
+                    requires_re_pairing: true,
+                    member_device_ids: vec!["device-a".to_string(), "device-b".to_string()],
+                    members_complete: true,
+                }],
+            }],
+        };
+
+        let mapped: DeviceGroupChoicesDto = summary.into_api_dto();
+
+        assert_eq!(mapped.revision, 9);
+        assert_eq!(mapped.issues[0].issue_id, "c:issue-1");
+        assert_eq!(mapped.issues[0].choices[0].choice_id, "b:choice-1");
+        assert!(mapped.issues[0].choices[0].requires_re_pairing);
     }
 }

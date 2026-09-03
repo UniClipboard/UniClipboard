@@ -1,6 +1,6 @@
 import { act, renderHook } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { RedeemResponse, SetupStateResponse } from '@/api/daemon/setupV2'
+import type { SetupStateResponse } from '@/api/daemon/setupV2'
 import {
   acknowledgeSetupCompletion,
   applyIssuedInvitation,
@@ -33,20 +33,6 @@ const completedState: SetupStateResponse = {
   currentInvitation: null,
   deviceName: 'MacBook',
   rePairingRequired: false,
-}
-
-const redeem: RedeemResponse = {
-  status: 'active',
-  joinId: 'join-id',
-  joinedSpace: {
-    sponsorDeviceId: 'sponsor-id',
-    sponsorIdentityFingerprint: 'sponsor-fingerprint',
-    spaceId: 'space-id',
-    selfDeviceId: 'self-id',
-    selfIdentityFingerprint: 'self-fingerprint',
-    migratedRecords: null,
-    preservedUnreadableRecords: null,
-  },
 }
 
 describe('setupRealtimeStore completion ownership', () => {
@@ -84,13 +70,21 @@ describe('setupRealtimeStore completion ownership', () => {
     const { result } = renderHook(() => useSetupRealtimeStore())
 
     act(() =>
-      applyServerSetupState(completedState, { kind: 'pairing_succeeded', role: 'joiner', redeem })
+      applyServerSetupState(completedState, {
+        kind: 'pairing_succeeded',
+        role: 'joiner',
+        peerDeviceId: 'sponsor-id',
+      })
     )
 
     expect(result.current.flow).toEqual({
       kind: 'completed',
       deviceName: 'MacBook',
-      completion: { kind: 'pairing_succeeded', role: 'joiner', redeem },
+      completion: {
+        kind: 'pairing_succeeded',
+        role: 'joiner',
+        peerDeviceId: 'sponsor-id',
+      },
     })
   })
 

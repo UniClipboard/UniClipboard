@@ -38,6 +38,7 @@ pub struct WsErrorResponse {
 /// All topics supported by the daemon WebSocket server.
 /// Used by clients and OpenAPI documentation.
 pub const WS_SUPPORTED_TOPICS: &[&str] = &[
+    ws_topic::SYSTEM,
     ws_topic::STATUS,
     ws_topic::PEERS,
     ws_topic::PAIRED_DEVICES,
@@ -47,5 +48,6 @@ pub const WS_SUPPORTED_TOPICS: &[&str] = &[
     ws_topic::FILE_TRANSFER,
     ws_topic::ENCRYPTION,
     ws_topic::SEARCH,
-    ws_topic::WORKSPACE_CONVERGENCE,
+    ws_topic::DEVICE_TRUST,
+    ws_topic::NETWORK_RECOVERY,
 ];

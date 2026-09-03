@@ -173,7 +173,7 @@ async fn run_for_address_inner(selected_ip: IpAddr, verbose: bool) -> i32 {
         }
     }
 
-    let baseline_revision = match workspace_convergence_revision(&cli).await {
+    let baseline_revision = match membership_diagnostics_revision(&cli).await {
         Ok(revision) => revision,
         Err(error) => {
             ui::error(&format!("Failed to read workspace convergence: {error}"));
@@ -235,7 +235,7 @@ async fn run_for_address_inner(selected_ip: IpAddr, verbose: bool) -> i32 {
                 return Err("Invitation expired before pairing completed".to_string());
             }
             tokio::time::sleep(Duration::from_millis(200)).await;
-            match workspace_convergence_revision(&cli).await {
+            match membership_diagnostics_revision(&cli).await {
                 Ok(revision) if revision > baseline_revision => return Ok(()),
                 Ok(_) => {}
                 Err(error) => return Err(format!("Failed to read workspace convergence: {error}")),
@@ -268,16 +268,16 @@ async fn run_for_address_inner(selected_ip: IpAddr, verbose: bool) -> i32 {
 }
 
 #[cfg(feature = "dev-tools")]
-async fn workspace_convergence_revision(
+async fn membership_diagnostics_revision(
     cli: &crate::commands::app_session::CliAppSession,
 ) -> Result<u64, String> {
     match cli
         .engine()
-        .execute(Operation::QueryWorkspaceConvergence)
+        .execute(Operation::QueryMembershipDiagnostics)
         .await
         .map_err(|error| error.to_string())?
     {
-        OperationResult::WorkspaceConvergence(summary) => Ok(summary.revision),
+        OperationResult::MembershipDiagnostics(summary) => Ok(summary.revision),
         result => Err(format!("unexpected engine response: {result:?}")),
     }
 }

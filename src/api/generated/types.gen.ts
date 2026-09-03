@@ -239,6 +239,13 @@ export type CaptureUiEventResponse = {
     accepted: boolean;
 };
 
+export type ChooseDeviceGroupRequestDto = {
+    choiceId: string;
+    confirmLocalRemoval?: boolean;
+    expectedRevision: number;
+    issueId: string;
+};
+
 /**
  * Canonical success envelope: `{ "data": T, "ts": <unix millis i64> }`.
  *
@@ -445,12 +452,6 @@ export type DebugStatusEnvelope = {
     ts: number;
 };
 
-export type DecideDeviceTrustRequestDto = {
-    changeId: string;
-    choice: DeviceTrustChoiceDto;
-    confirmLocalRemoval?: boolean;
-};
-
 /**
  * Failure reason. i18n key convention: `delivery.failureReason.<variant>`.
  *
@@ -460,6 +461,78 @@ export type DecideDeviceTrustRequestDto = {
 export type DeliveryFailureReasonDto = 'localPolicy' | 'peerRejected' | 'peerIncompatible' | 'io' | 'internal';
 
 export type DeviceCompatibilityDto = 'compatible' | 'upgrade_required' | 'unknown';
+
+export type DeviceGroupChoiceIssueDto = {
+    choices: Array<DeviceGroupChoiceOptionDto>;
+    issueId: string;
+};
+
+export type DeviceGroupChoiceOptionDto = {
+    choiceId: string;
+    isCurrentGroup: boolean;
+    memberDeviceIds: Array<string>;
+    membersComplete: boolean;
+    requiresRePairing: boolean;
+};
+
+export type DeviceGroupChoiceOutcomeDto = 'completed' | 'pending' | 're_pairing_required' | 'already_completed' | 'state_changed' | 'local_device_confirmation_required';
+
+export type DeviceGroupChoiceResultDto = {
+    currentRevision?: number | null;
+    outcome: DeviceGroupChoiceOutcomeDto;
+};
+
+/**
+ * Canonical success envelope: `{ "data": T, "ts": <unix millis i64> }`.
+ *
+ * `ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler
+ * via [`ApiEnvelope::now`] (the contract carries only the type + the clock
+ * helper, not a hard dependency on when the handler reads the clock).
+ * `rename_all = "camelCase"` is a no-op for the single-word fields here but is
+ * declared for forward-compat.
+ *
+ * IMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named
+ * OpenAPI component is declared in the `#[aliases(...)]` block below. Add a new
+ * alias line whenever a new payload type needs enveloping. NEVER register the
+ * bare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare
+ * generic, and an un-aliased generic inlines an anonymous schema.
+ */
+export type DeviceGroupChoiceResultEnvelope = {
+    data: DeviceGroupChoiceResultDto;
+    /**
+     * Server time when the response was built (unix epoch milliseconds).
+     */
+    ts: number;
+};
+
+export type DeviceGroupChoicesDto = {
+    deviceTrust: DeviceTrustSnapshotDto;
+    issues: Array<DeviceGroupChoiceIssueDto>;
+    revision: number;
+};
+
+/**
+ * Canonical success envelope: `{ "data": T, "ts": <unix millis i64> }`.
+ *
+ * `ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler
+ * via [`ApiEnvelope::now`] (the contract carries only the type + the clock
+ * helper, not a hard dependency on when the handler reads the clock).
+ * `rename_all = "camelCase"` is a no-op for the single-word fields here but is
+ * declared for forward-compat.
+ *
+ * IMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named
+ * OpenAPI component is declared in the `#[aliases(...)]` block below. Add a new
+ * alias line whenever a new payload type needs enveloping. NEVER register the
+ * bare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare
+ * generic, and an un-aliased generic inlines an anonymous schema.
+ */
+export type DeviceGroupChoicesEnvelope = {
+    data: DeviceGroupChoicesDto;
+    /**
+     * Server time when the response was built (unix epoch milliseconds).
+     */
+    ts: number;
+};
 
 export type DeviceGroupRelationshipDto = 'consistent' | 'pending_local_decision' | 'diverged' | 'unverifiable' | 'unknown';
 
@@ -483,52 +556,6 @@ export type DeviceTrustChangeDto = {
 };
 
 export type DeviceTrustChoiceDto = 'apply_change' | 'keep_current_device_group';
-
-export type DeviceTrustDecisionDto = {
-    changeId: string;
-    kind: 'applied';
-    snapshot: DeviceTrustSnapshotDto;
-} | {
-    changeId: string;
-    kind: 'kept_current_device_group';
-    snapshot: DeviceTrustSnapshotDto;
-} | {
-    changeId: string;
-    completedChoice: DeviceTrustChoiceDto;
-    kind: 'already_completed';
-    snapshot: DeviceTrustSnapshotDto;
-} | {
-    currentChangeId?: string | null;
-    kind: 'state_changed';
-    snapshot: DeviceTrustSnapshotDto;
-} | {
-    changeId: string;
-    kind: 'local_device_confirmation_required';
-    snapshot: DeviceTrustSnapshotDto;
-};
-
-/**
- * Canonical success envelope: `{ "data": T, "ts": <unix millis i64> }`.
- *
- * `ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler
- * via [`ApiEnvelope::now`] (the contract carries only the type + the clock
- * helper, not a hard dependency on when the handler reads the clock).
- * `rename_all = "camelCase"` is a no-op for the single-word fields here but is
- * declared for forward-compat.
- *
- * IMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named
- * OpenAPI component is declared in the `#[aliases(...)]` block below. Add a new
- * alias line whenever a new payload type needs enveloping. NEVER register the
- * bare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare
- * generic, and an un-aliased generic inlines an anonymous schema.
- */
-export type DeviceTrustDecisionEnvelope = {
-    data: DeviceTrustDecisionDto;
-    /**
-     * Server time when the response was built (unix epoch milliseconds).
-     */
-    ts: number;
-};
 
 /**
  * Canonical success envelope: `{ "data": T, "ts": <unix millis i64> }`.
@@ -3479,57 +3506,6 @@ export type WorkerStatusDto = {
 };
 
 /**
- * Complete Engine-owned workspace convergence state for the active space.
- */
-export type WorkspaceConvergenceDto = {
-    convergenceDigest?: string | null;
-    divergedPeerDeviceIds: Array<string>;
-    effectiveMemberCount: number;
-    failureCategory?: WorkspaceConvergenceFailureCategoryDto | null;
-    historyEventCount: number;
-    pendingRemovalDecisionDeviceIds: Array<string>;
-    pendingRemovalDecisionEventId?: string | null;
-    phase: WorkspaceConvergencePhaseDto;
-    removed: boolean;
-    revision: number;
-    updatedAtMs: number;
-    upgradeRequiredPeerDeviceIds: Array<string>;
-};
-
-/**
- * Canonical success envelope: `{ "data": T, "ts": <unix millis i64> }`.
- *
- * `ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler
- * via [`ApiEnvelope::now`] (the contract carries only the type + the clock
- * helper, not a hard dependency on when the handler reads the clock).
- * `rename_all = "camelCase"` is a no-op for the single-word fields here but is
- * declared for forward-compat.
- *
- * IMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named
- * OpenAPI component is declared in the `#[aliases(...)]` block below. Add a new
- * alias line whenever a new payload type needs enveloping. NEVER register the
- * bare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare
- * generic, and an un-aliased generic inlines an anonymous schema.
- */
-export type WorkspaceConvergenceEnvelope = {
-    data: WorkspaceConvergenceDto;
-    /**
-     * Server time when the response was built (unix epoch milliseconds).
-     */
-    ts: number;
-};
-
-/**
- * Stable failure category for workspace convergence.
- */
-export type WorkspaceConvergenceFailureCategoryDto = 'space_mismatch' | 'continuity_gap' | 'identity_mismatch' | 'digest_conflict' | 'unauthorized' | 'version_incompatible' | 'no_effective_members' | 'storage';
-
-/**
- * Current phase of the Engine-owned workspace convergence.
- */
-export type WorkspaceConvergencePhaseDto = 'locally_applied' | 'converging' | 'complete' | 'recovery_required';
-
-/**
  * Error response sent via HTTP status + JSON body when the WebSocket upgrade fails.
  */
 export type WsErrorResponse = {
@@ -4714,31 +4690,31 @@ export type GetLifecycleStatusResponses = {
 
 export type GetLifecycleStatusResponse = GetLifecycleStatusResponses[keyof GetLifecycleStatusResponses];
 
-export type GetDeviceTrustData = {
+export type GetDeviceGroupChoicesData = {
     body?: never;
     path?: never;
     query?: never;
-    url: '/member/device-trust';
+    url: '/member/device-group-choices';
 };
 
-export type GetDeviceTrustResponses = {
-    200: DeviceTrustEnvelope;
+export type GetDeviceGroupChoicesResponses = {
+    200: DeviceGroupChoicesEnvelope;
 };
 
-export type GetDeviceTrustResponse = GetDeviceTrustResponses[keyof GetDeviceTrustResponses];
+export type GetDeviceGroupChoicesResponse = GetDeviceGroupChoicesResponses[keyof GetDeviceGroupChoicesResponses];
 
-export type DecideDeviceTrustData = {
-    body: DecideDeviceTrustRequestDto;
+export type ChooseDeviceGroupData = {
+    body: ChooseDeviceGroupRequestDto;
     path?: never;
     query?: never;
-    url: '/member/device-trust/decision';
+    url: '/member/device-group-choices';
 };
 
-export type DecideDeviceTrustResponses = {
-    200: DeviceTrustDecisionEnvelope;
+export type ChooseDeviceGroupResponses = {
+    200: DeviceGroupChoiceResultEnvelope;
 };
 
-export type DecideDeviceTrustResponse = DecideDeviceTrustResponses[keyof DecideDeviceTrustResponses];
+export type ChooseDeviceGroupResponse = ChooseDeviceGroupResponses[keyof ChooseDeviceGroupResponses];
 
 export type GetSpaceProtectionData = {
     body?: never;
@@ -5215,7 +5191,7 @@ export type UnpairDeviceErrors = {
 export type UnpairDeviceError = UnpairDeviceErrors[keyof UnpairDeviceErrors];
 
 export type UnpairDeviceResponses = {
-    200: WorkspaceConvergenceEnvelope;
+    200: DeviceTrustEnvelope;
 };
 
 export type UnpairDeviceResponse = UnpairDeviceResponses[keyof UnpairDeviceResponses];

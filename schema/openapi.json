@@ -352,6 +352,30 @@
         ],
         "type": "object"
       },
+      "ChooseDeviceGroupRequestDto": {
+        "properties": {
+          "choiceId": {
+            "type": "string"
+          },
+          "confirmLocalRemoval": {
+            "type": "boolean"
+          },
+          "expectedRevision": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "issueId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "issueId",
+          "choiceId",
+          "expectedRevision"
+        ],
+        "type": "object"
+      },
       "ClearCacheEnvelope": {
         "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
         "properties": {
@@ -660,24 +684,6 @@
         ],
         "type": "object"
       },
-      "DecideDeviceTrustRequestDto": {
-        "properties": {
-          "changeId": {
-            "type": "string"
-          },
-          "choice": {
-            "$ref": "#/components/schemas/DeviceTrustChoiceDto"
-          },
-          "confirmLocalRemoval": {
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "changeId",
-          "choice"
-        ],
-        "type": "object"
-      },
       "DeliveryFailureReasonDto": {
         "description": "Failure reason. i18n key convention: `delivery.failureReason.<variant>`.\n\nNote: \"peer offline\" is NOT in this enum — it is represented as\n`EntryDeliveryStatusDto::Unreachable` (a separate status, not a failure).",
         "enum": [
@@ -696,6 +702,142 @@
           "unknown"
         ],
         "type": "string"
+      },
+      "DeviceGroupChoiceIssueDto": {
+        "properties": {
+          "choices": {
+            "items": {
+              "$ref": "#/components/schemas/DeviceGroupChoiceOptionDto"
+            },
+            "type": "array"
+          },
+          "issueId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "issueId",
+          "choices"
+        ],
+        "type": "object"
+      },
+      "DeviceGroupChoiceOptionDto": {
+        "properties": {
+          "choiceId": {
+            "type": "string"
+          },
+          "isCurrentGroup": {
+            "type": "boolean"
+          },
+          "memberDeviceIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "membersComplete": {
+            "type": "boolean"
+          },
+          "requiresRePairing": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "choiceId",
+          "isCurrentGroup",
+          "requiresRePairing",
+          "memberDeviceIds",
+          "membersComplete"
+        ],
+        "type": "object"
+      },
+      "DeviceGroupChoiceOutcomeDto": {
+        "enum": [
+          "completed",
+          "pending",
+          "re_pairing_required",
+          "already_completed",
+          "state_changed",
+          "local_device_confirmation_required"
+        ],
+        "type": "string"
+      },
+      "DeviceGroupChoiceResultDto": {
+        "properties": {
+          "currentRevision": {
+            "format": "int64",
+            "minimum": 0,
+            "nullable": true,
+            "type": "integer"
+          },
+          "outcome": {
+            "$ref": "#/components/schemas/DeviceGroupChoiceOutcomeDto"
+          }
+        },
+        "required": [
+          "outcome"
+        ],
+        "type": "object"
+      },
+      "DeviceGroupChoiceResultEnvelope": {
+        "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/DeviceGroupChoiceResultDto"
+          },
+          "ts": {
+            "description": "Server time when the response was built (unix epoch milliseconds).",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "data",
+          "ts"
+        ],
+        "type": "object"
+      },
+      "DeviceGroupChoicesDto": {
+        "properties": {
+          "deviceTrust": {
+            "$ref": "#/components/schemas/DeviceTrustSnapshotDto"
+          },
+          "issues": {
+            "items": {
+              "$ref": "#/components/schemas/DeviceGroupChoiceIssueDto"
+            },
+            "type": "array"
+          },
+          "revision": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "revision",
+          "deviceTrust",
+          "issues"
+        ],
+        "type": "object"
+      },
+      "DeviceGroupChoicesEnvelope": {
+        "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/DeviceGroupChoicesDto"
+          },
+          "ts": {
+            "description": "Server time when the response was built (unix epoch milliseconds).",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "data",
+          "ts"
+        ],
+        "type": "object"
       },
       "DeviceGroupRelationshipDto": {
         "enum": [
@@ -802,145 +944,6 @@
           "keep_current_device_group"
         ],
         "type": "string"
-      },
-      "DeviceTrustDecisionDto": {
-        "discriminator": {
-          "propertyName": "kind"
-        },
-        "oneOf": [
-          {
-            "properties": {
-              "changeId": {
-                "type": "string"
-              },
-              "kind": {
-                "enum": [
-                  "applied"
-                ],
-                "type": "string"
-              },
-              "snapshot": {
-                "$ref": "#/components/schemas/DeviceTrustSnapshotDto"
-              }
-            },
-            "required": [
-              "changeId",
-              "snapshot",
-              "kind"
-            ],
-            "type": "object"
-          },
-          {
-            "properties": {
-              "changeId": {
-                "type": "string"
-              },
-              "kind": {
-                "enum": [
-                  "kept_current_device_group"
-                ],
-                "type": "string"
-              },
-              "snapshot": {
-                "$ref": "#/components/schemas/DeviceTrustSnapshotDto"
-              }
-            },
-            "required": [
-              "changeId",
-              "snapshot",
-              "kind"
-            ],
-            "type": "object"
-          },
-          {
-            "properties": {
-              "changeId": {
-                "type": "string"
-              },
-              "completedChoice": {
-                "$ref": "#/components/schemas/DeviceTrustChoiceDto"
-              },
-              "kind": {
-                "enum": [
-                  "already_completed"
-                ],
-                "type": "string"
-              },
-              "snapshot": {
-                "$ref": "#/components/schemas/DeviceTrustSnapshotDto"
-              }
-            },
-            "required": [
-              "changeId",
-              "completedChoice",
-              "snapshot",
-              "kind"
-            ],
-            "type": "object"
-          },
-          {
-            "properties": {
-              "currentChangeId": {
-                "nullable": true,
-                "type": "string"
-              },
-              "kind": {
-                "enum": [
-                  "state_changed"
-                ],
-                "type": "string"
-              },
-              "snapshot": {
-                "$ref": "#/components/schemas/DeviceTrustSnapshotDto"
-              }
-            },
-            "required": [
-              "snapshot",
-              "kind"
-            ],
-            "type": "object"
-          },
-          {
-            "properties": {
-              "changeId": {
-                "type": "string"
-              },
-              "kind": {
-                "enum": [
-                  "local_device_confirmation_required"
-                ],
-                "type": "string"
-              },
-              "snapshot": {
-                "$ref": "#/components/schemas/DeviceTrustSnapshotDto"
-              }
-            },
-            "required": [
-              "changeId",
-              "snapshot",
-              "kind"
-            ],
-            "type": "object"
-          }
-        ]
-      },
-      "DeviceTrustDecisionEnvelope": {
-        "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
-        "properties": {
-          "data": {
-            "$ref": "#/components/schemas/DeviceTrustDecisionDto"
-          },
-          "ts": {
-            "description": "Server time when the response was built (unix epoch milliseconds).",
-            "format": "int64",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "data",
-          "ts"
-        ],
-        "type": "object"
       },
       "DeviceTrustEnvelope": {
         "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
@@ -5763,124 +5766,6 @@
         ],
         "type": "object"
       },
-      "WorkspaceConvergenceDto": {
-        "description": "Complete Engine-owned workspace convergence state for the active space.",
-        "properties": {
-          "convergenceDigest": {
-            "nullable": true,
-            "type": "string"
-          },
-          "divergedPeerDeviceIds": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
-          },
-          "effectiveMemberCount": {
-            "format": "int64",
-            "minimum": 0,
-            "type": "integer"
-          },
-          "failureCategory": {
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/WorkspaceConvergenceFailureCategoryDto"
-              }
-            ],
-            "nullable": true
-          },
-          "historyEventCount": {
-            "format": "int64",
-            "minimum": 0,
-            "type": "integer"
-          },
-          "pendingRemovalDecisionDeviceIds": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
-          },
-          "pendingRemovalDecisionEventId": {
-            "nullable": true,
-            "type": "string"
-          },
-          "phase": {
-            "$ref": "#/components/schemas/WorkspaceConvergencePhaseDto"
-          },
-          "removed": {
-            "type": "boolean"
-          },
-          "revision": {
-            "format": "int64",
-            "minimum": 0,
-            "type": "integer"
-          },
-          "updatedAtMs": {
-            "format": "int64",
-            "type": "integer"
-          },
-          "upgradeRequiredPeerDeviceIds": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
-          }
-        },
-        "required": [
-          "phase",
-          "revision",
-          "historyEventCount",
-          "effectiveMemberCount",
-          "pendingRemovalDecisionDeviceIds",
-          "divergedPeerDeviceIds",
-          "upgradeRequiredPeerDeviceIds",
-          "updatedAtMs",
-          "removed"
-        ],
-        "type": "object"
-      },
-      "WorkspaceConvergenceEnvelope": {
-        "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
-        "properties": {
-          "data": {
-            "$ref": "#/components/schemas/WorkspaceConvergenceDto"
-          },
-          "ts": {
-            "description": "Server time when the response was built (unix epoch milliseconds).",
-            "format": "int64",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "data",
-          "ts"
-        ],
-        "type": "object"
-      },
-      "WorkspaceConvergenceFailureCategoryDto": {
-        "description": "Stable failure category for workspace convergence.",
-        "enum": [
-          "space_mismatch",
-          "continuity_gap",
-          "identity_mismatch",
-          "digest_conflict",
-          "unauthorized",
-          "version_incompatible",
-          "no_effective_members",
-          "storage"
-        ],
-        "type": "string"
-      },
-      "WorkspaceConvergencePhaseDto": {
-        "description": "Current phase of the Engine-owned workspace convergence.",
-        "enum": [
-          "locally_applied",
-          "converging",
-          "complete",
-          "recovery_required"
-        ],
-        "type": "string"
-      },
       "WsErrorResponse": {
         "description": "Error response sent via HTTP status + JSON body when the WebSocket upgrade fails.",
         "properties": {
@@ -8091,15 +7976,15 @@
         ]
       }
     },
-    "/member/device-trust": {
+    "/member/device-group-choices": {
       "get": {
-        "operationId": "getDeviceTrust",
+        "operationId": "getDeviceGroupChoices",
         "responses": {
           "200": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/DeviceTrustEnvelope"
+                  "$ref": "#/components/schemas/DeviceGroupChoicesEnvelope"
                 }
               }
             },
@@ -8117,16 +8002,14 @@
         "tags": [
           "member"
         ]
-      }
-    },
-    "/member/device-trust/decision": {
+      },
       "post": {
-        "operationId": "decideDeviceTrust",
+        "operationId": "chooseDeviceGroup",
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/DecideDeviceTrustRequestDto"
+                "$ref": "#/components/schemas/ChooseDeviceGroupRequestDto"
               }
             }
           },
@@ -8137,7 +8020,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/DeviceTrustDecisionEnvelope"
+                  "$ref": "#/components/schemas/DeviceGroupChoiceResultEnvelope"
                 }
               }
             },
@@ -9014,7 +8897,7 @@
     },
     "/pairing/unpair": {
       "post": {
-        "description": "Revokes the local member record for the given peer and returns the\nEngine-owned workspace convergence state. Errors flow through the shared `ApiError`\ncarrier and therefore serialize to `ApiErrorResponse { code, message,\ndetails? }` on the wire.",
+        "description": "Revokes the local member record for the given peer and returns the\ncurrent Engine-owned device relationship state. Errors flow through the shared `ApiError`\ncarrier and therefore serialize to `ApiErrorResponse { code, message,\ndetails? }` on the wire.",
         "operationId": "unpairDevice",
         "requestBody": {
           "content": {
@@ -9031,7 +8914,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/WorkspaceConvergenceEnvelope"
+                  "$ref": "#/components/schemas/DeviceTrustEnvelope"
                 }
               }
             },

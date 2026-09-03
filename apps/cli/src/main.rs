@@ -350,15 +350,13 @@ enum MemberCommands {
     /// Record an irreversible, offline-first removal intent for one member.
     ///
     /// Immediately stops sending new content to the peer and prints the full
-    /// Engine-owned convergence state. Pass `--json` for the raw DTO.
+    /// Engine-owned device relationship state. Pass `--json` for the raw DTO.
     Remove {
         /// Peer device ID to remove.
         #[arg(value_name = "PEER-ID")]
         peer_id: String,
     },
-    /// Query the current space-wide member removal state.
-    RemovalStatus,
-    /// Inspect or decide the current Engine-owned device trust change.
+    /// Inspect or choose among current Engine-owned device groups.
     Trust {
         #[command(subcommand)]
         command: MemberTrustCommands,
@@ -380,22 +378,19 @@ enum JoinCommands {
 
 #[derive(Subcommand)]
 enum MemberTrustCommands {
-    /// Show the current device trust state and pending change.
+    /// Show the current device relationship state and pending group choices.
     Status,
-    /// Apply the current device group change.
-    Apply {
-        /// Expected change ID. Required for JSON and non-interactive use.
-        #[arg(long, value_name = "CHANGE-ID")]
-        change: Option<String>,
+    /// Choose one option from the current device-group query.
+    Choose {
+        /// Opaque issue ID from `member trust status`.
+        #[arg(long, value_name = "ISSUE-ID")]
+        issue: Option<String>,
+        /// Opaque choice ID from the selected issue.
+        #[arg(long, value_name = "CHOICE-ID")]
+        choice: Option<String>,
         /// Explicitly allow this device to be removed by the change.
         #[arg(long)]
         confirm_local_removal: bool,
-    },
-    /// Keep the current device group instead of applying the change.
-    Keep {
-        /// Expected change ID. Required for JSON and non-interactive use.
-        #[arg(long, value_name = "CHANGE-ID")]
-        change: Option<String>,
     },
 }
 
@@ -503,32 +498,26 @@ fn main() -> anyhow::Result<()> {
                 preserve_unreadable_history,
                 no_wait,
                 command,
-            } => {
-                match command {
-                    Some(JoinCommands::Status) => {
-                        commands::join::status(cli.json, cli.verbose).await
-                    }
-                    Some(JoinCommands::Cancel) => {
-                        commands::join::cancel(cli.json, cli.verbose).await
-                    }
-                    None => {
-                        commands::join::run(
-                            commands::join::JoinArgs {
-                                code,
-                                passphrase,
-                                device_name,
-                                switch,
-                                yes,
-                                preserve_unreadable_history,
-                                no_wait,
-                            },
-                            cli.json,
-                            cli.verbose,
-                        )
-                        .await
-                    }
+            } => match command {
+                Some(JoinCommands::Status) => commands::join::status(cli.json, cli.verbose).await,
+                Some(JoinCommands::Cancel) => commands::join::cancel(cli.json, cli.verbose).await,
+                None => {
+                    commands::join::run(
+                        commands::join::JoinArgs {
+                            code,
+                            passphrase,
+                            device_name,
+                            switch,
+                            yes,
+                            preserve_unreadable_history,
+                            no_wait,
+                        },
+                        cli.json,
+                        cli.verbose,
+                    )
+                    .await
                 }
-            }
+            },
             Commands::Members { probe } => {
                 commands::members::run(probe, cli.json, cli.verbose).await
             }
@@ -536,31 +525,19 @@ fn main() -> anyhow::Result<()> {
                 MemberCommands::Remove { peer_id } => {
                     commands::member::remove(peer_id, cli.json, cli.verbose).await
                 }
-                MemberCommands::RemovalStatus => {
-                    commands::member::removal_status(cli.json, cli.verbose).await
-                }
                 MemberCommands::Trust { command } => match command {
                     MemberTrustCommands::Status => {
                         commands::member_trust::status(cli.json, cli.verbose).await
                     }
-                    MemberTrustCommands::Apply {
-                        change,
+                    MemberTrustCommands::Choose {
+                        issue,
+                        choice,
                         confirm_local_removal,
                     } => {
-                        commands::member_trust::decide(
-                            uc_daemon_contract::api::dto::member::DeviceTrustChoiceDto::ApplyChange,
-                            change,
+                        commands::member_trust::choose(
+                            issue,
+                            choice,
                             confirm_local_removal,
-                            cli.json,
-                            cli.verbose,
-                        )
-                        .await
-                    }
-                    MemberTrustCommands::Keep { change } => {
-                        commands::member_trust::decide(
-                            uc_daemon_contract::api::dto::member::DeviceTrustChoiceDto::KeepCurrentDeviceGroup,
-                            change,
-                            false,
                             cli.json,
                             cli.verbose,
                         )
@@ -833,27 +810,32 @@ mod tests {
             })
         ));
 
-        let apply = Cli::try_parse_from([
+        let choose = Cli::try_parse_from([
             "uniclip",
             "member",
             "trust",
+            "choose",
+            "--issue",
+            "p:issue-1",
+            "--choice",
             "apply",
-            "--change",
-            "change-1",
             "--confirm-local-removal",
         ])
-        .expect("member trust apply flags must parse");
+        .expect("member trust choose flags must parse");
         assert!(matches!(
-            apply.command,
+            choose.command,
             Some(Commands::Member {
                 command: MemberCommands::Trust {
-                    command: MemberTrustCommands::Apply {
-                        change: Some(_),
+                    command: MemberTrustCommands::Choose {
+                        issue: Some(_),
+                        choice: Some(_),
                         confirm_local_removal: true,
                     }
                 }
             })
         ));
+
+        assert!(Cli::try_parse_from(["uniclip", "member", "trust", "apply"]).is_err());
     }
 
     #[test]
@@ -1130,10 +1112,9 @@ mod tests {
     }
 
     #[test]
-    fn member_removal_status_parses() {
-        // `member removal-status` 无参数即可查询空间级移除状态。
-        let ok = Cli::try_parse_from(["uniclip", "member", "removal-status"]);
-        assert!(ok.is_ok(), "expected `member removal-status` to parse");
+    fn retired_member_removal_status_is_rejected() {
+        let result = Cli::try_parse_from(["uniclip", "member", "removal-status"]);
+        assert!(result.is_err(), "retired removal status must not parse");
     }
 
     #[test]

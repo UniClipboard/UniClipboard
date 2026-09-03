@@ -59,8 +59,8 @@ use uc_webserver::api::openapi::ApiDoc;
 /// +2 paths, +2 operations.
 /// Engine-owned member protection adds GET `/member/protection`. Workspace
 /// Device trust replaces the product-facing convergence query with one complete
-/// query and one decision endpoint: 73 paths / 81 operations.
-const EXPECTED_PATHS: usize = 73;
+/// query and choice operations on one path: 72 paths / 81 operations.
+const EXPECTED_PATHS: usize = 72;
 const EXPECTED_OPERATIONS: usize = 81;
 const SCHEMA_PREFIX: &str = "#/components/schemas/";
 const HTTP_METHODS: [&str; 7] = ["get", "put", "post", "delete", "patch", "head", "options"];

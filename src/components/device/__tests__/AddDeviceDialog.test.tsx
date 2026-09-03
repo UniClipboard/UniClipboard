@@ -15,24 +15,25 @@ import i18n from '@/i18n'
 
 const getSetupState = vi.fn()
 const issuePairingInvitation = vi.fn()
-const getDeviceTrust = vi.fn()
-let deviceTrustHandler: (() => void) | undefined
+const cancelInvitation = vi.fn()
+const getDeviceTrustSnapshot = vi.fn()
+let deviceTrustHandler: ((event?: { eventType: string }) => void) | undefined
 let reconnectHandler: (() => void) | undefined
 
 vi.mock('@/api/daemon/setupV2', () => ({
   getSetupState: () => getSetupState(),
   issuePairingInvitation: () => issuePairingInvitation(),
-  cancelInvitation: vi.fn(() => Promise.resolve()),
+  cancelInvitation: () => cancelInvitation(),
 }))
 
 vi.mock('@/api/daemon/device-trust', () => ({
-  getDeviceTrust: () => getDeviceTrust(),
+  getDeviceTrustSnapshot: () => getDeviceTrustSnapshot(),
 }))
 
 vi.mock('@/lib/daemon-ws', () => ({
   daemonWs: {
     subscribe: vi.fn((_topics, callback) => {
-      deviceTrustHandler = () => callback({ eventType: 'device-trust.changed' })
+      deviceTrustHandler = event => callback(event ?? { eventType: 'device-trust.changed' })
       return () => undefined
     }),
     onReconnect: vi.fn(callback => {
@@ -73,7 +74,7 @@ describe('AddDeviceDialog invitation issuing', () => {
       currentInvitation: null,
       deviceName: 'test',
     })
-    getDeviceTrust.mockResolvedValue({
+    getDeviceTrustSnapshot.mockResolvedValue({
       localDeviceId: 'local',
       devices: [{ deviceId: 'local', membership: 'active' }],
     })
@@ -81,6 +82,7 @@ describe('AddDeviceDialog invitation issuing', () => {
       code: '123456789',
       expiresAtMs: Date.now() + 300_000,
     })
+    cancelInvitation.mockResolvedValue(undefined)
   })
 
   afterEach(() => {
@@ -111,7 +113,7 @@ describe('AddDeviceDialog invitation issuing', () => {
   })
 
   it('does not issue an invitation without a device-trust baseline', async () => {
-    getDeviceTrust.mockRejectedValue(new Error('device trust unavailable'))
+    getDeviceTrustSnapshot.mockRejectedValue(new Error('device trust unavailable'))
 
     render(
       <I18nextProvider i18n={i18n}>
@@ -126,7 +128,7 @@ describe('AddDeviceDialog invitation issuing', () => {
   })
 
   it('replaces the invitation with success after a new member is confirmed', async () => {
-    getDeviceTrust
+    getDeviceTrustSnapshot
       .mockResolvedValueOnce({
         localDeviceId: 'local',
         devices: [
@@ -142,8 +144,16 @@ describe('AddDeviceDialog invitation issuing', () => {
         ],
       })
     getSetupState
-      .mockResolvedValueOnce({ hasCompleted: true, currentInvitation: null, deviceName: 'test' })
-      .mockResolvedValueOnce({ hasCompleted: true, currentInvitation: null, deviceName: 'test' })
+      .mockResolvedValueOnce({
+        hasCompleted: true,
+        currentInvitation: null,
+        deviceName: 'test',
+      })
+      .mockResolvedValueOnce({
+        hasCompleted: true,
+        currentInvitation: null,
+        deviceName: 'test',
+      })
     render(
       <I18nextProvider i18n={i18n}>
         <AddDeviceDialog open onOpenChange={() => undefined} />
@@ -167,7 +177,7 @@ describe('AddDeviceDialog invitation issuing', () => {
 
   it('keeps the success state visible briefly, then closes automatically', async () => {
     const onOpenChange = vi.fn()
-    getDeviceTrust
+    getDeviceTrustSnapshot
       .mockResolvedValueOnce({
         localDeviceId: 'local',
         devices: [{ deviceId: 'local', membership: 'active' }],
@@ -214,8 +224,8 @@ describe('AddDeviceDialog invitation issuing', () => {
     expect(onOpenChange).toHaveBeenCalledWith(false)
   })
 
-  it('does not show success while the invitation is still active', async () => {
-    getDeviceTrust
+  it('shows success when a new member is active even if the issued invitation remains', async () => {
+    getDeviceTrustSnapshot
       .mockResolvedValueOnce({
         localDeviceId: 'local',
         devices: [{ deviceId: 'local', membership: 'active' }],
@@ -228,10 +238,17 @@ describe('AddDeviceDialog invitation issuing', () => {
         ],
       })
     getSetupState
-      .mockResolvedValueOnce({ hasCompleted: true, currentInvitation: null, deviceName: 'test' })
       .mockResolvedValueOnce({
         hasCompleted: true,
-        currentInvitation: { code: '123456789', expiresAtMs: Date.now() + 300_000 },
+        currentInvitation: null,
+        deviceName: 'test',
+      })
+      .mockResolvedValueOnce({
+        hasCompleted: true,
+        currentInvitation: {
+          code: '123456789',
+          expiresAtMs: Date.now() + 300_000,
+        },
         deviceName: 'test',
       })
 
@@ -244,12 +261,14 @@ describe('AddDeviceDialog invitation issuing', () => {
     await waitFor(() => expect(deviceTrustHandler).toBeTypeOf('function'))
     act(() => deviceTrustHandler?.())
 
-    await waitFor(() => expect(getDeviceTrust).toHaveBeenCalledTimes(2))
-    expect(screen.getByLabelText('123456789')).toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.getAllByText(i18n.t('devices.addDevice.success.title'))).not.toHaveLength(0)
+    })
+    expect(cancelInvitation).toHaveBeenCalledOnce()
   })
 
   it('rechecks the completed invitation after reconnecting', async () => {
-    getDeviceTrust
+    getDeviceTrustSnapshot
       .mockResolvedValueOnce({
         localDeviceId: 'local',
         devices: [{ deviceId: 'local', membership: 'active' }],
@@ -270,6 +289,34 @@ describe('AddDeviceDialog invitation issuing', () => {
 
     await waitFor(() => expect(reconnectHandler).toBeTypeOf('function'))
     act(() => reconnectHandler?.())
+
+    await waitFor(() => {
+      expect(screen.getAllByText(i18n.t('devices.addDevice.success.title'))).not.toHaveLength(0)
+    })
+  })
+
+  it('rechecks the completed invitation after a global refresh notification', async () => {
+    getDeviceTrustSnapshot
+      .mockResolvedValueOnce({
+        localDeviceId: 'local',
+        devices: [{ deviceId: 'local', membership: 'active' }],
+      })
+      .mockResolvedValueOnce({
+        localDeviceId: 'local',
+        devices: [
+          { deviceId: 'local', membership: 'active' },
+          { deviceId: 'peer', membership: 'active' },
+        ],
+      })
+
+    render(
+      <I18nextProvider i18n={i18n}>
+        <AddDeviceDialog open onOpenChange={() => undefined} />
+      </I18nextProvider>
+    )
+
+    await waitFor(() => expect(deviceTrustHandler).toBeTypeOf('function'))
+    act(() => deviceTrustHandler?.({ eventType: 'system.refresh_required' }))
 
     await waitFor(() => {
       expect(screen.getAllByText(i18n.t('devices.addDevice.success.title'))).not.toHaveLength(0)

@@ -1,8 +1,12 @@
 import { Loader2, ShieldAlert } from 'lucide-react'
 import { useState, type KeyboardEvent } from 'react'
 import { useTranslation } from 'react-i18next'
-import type { DeviceTrustChoice, DeviceTrustSnapshot } from '@/api/daemon/device-trust'
-import { getPendingDecisionView } from '@/components/device/device-trust-model'
+import type {
+  DeviceGroupChoice,
+  DeviceGroupChoices,
+  DeviceTrustRelationship,
+} from '@/api/daemon/device-trust'
+import { getDeviceLabel, getPendingDecisionView } from '@/components/device/device-trust-model'
 import { DeviceTrustChoiceCard } from '@/components/device/DeviceTrustChoiceCard'
 import { Button } from '@/components/ui/button'
 import {
@@ -27,37 +31,96 @@ function moveChoice(event: KeyboardEvent<HTMLDivElement>) {
   next.focus()
 }
 
+function deviceDisplayMap(devices: DeviceTrustRelationship[]) {
+  const nameCounts = new Map<string, number>()
+  for (const device of devices) {
+    const name = device.displayName.trim().toLocaleLowerCase()
+    if (name) nameCounts.set(name, (nameCounts.get(name) ?? 0) + 1)
+  }
+  return new Map(
+    devices.map(device => {
+      const displayName = device.displayName.trim()
+      const duplicate =
+        displayName.length > 0 && (nameCounts.get(displayName.toLocaleLowerCase()) ?? 0) > 1
+      return [
+        device.deviceId,
+        displayName && !duplicate ? displayName : getDeviceLabel(displayName, device.deviceId),
+      ] as const
+    })
+  )
+}
+
 export function DeviceTrustDecisionContent({
-  snapshot,
+  deviceGroups,
   busy,
   error,
-  localRemovalConfirmationChangeId,
-  onDecide,
+  localRemovalConfirmationIssueId,
+  onChoose,
 }: {
-  snapshot: DeviceTrustSnapshot
+  deviceGroups: DeviceGroupChoices
   busy: boolean
   error: string | null
-  localRemovalConfirmationChangeId: string | null
-  onDecide: (choice: DeviceTrustChoice, confirmLocalRemoval: boolean) => void
+  localRemovalConfirmationIssueId: string | null
+  onChoose: (issueId: string, choiceId: string, confirmLocalRemoval: boolean) => void
 }) {
   const { t } = useTranslation()
-  const view = getPendingDecisionView(snapshot)
-  const change = snapshot.currentChange
-  const choices = change?.allowedChoices ?? []
-  const [selectedChoice, setSelectedChoice] = useState<DeviceTrustChoice>(
-    () => choices[0] ?? 'apply_change'
-  )
-  if (!view || !change || choices.length === 0) return null
-  const choice = choices.includes(selectedChoice) ? selectedChoice : choices[0]
-  const confirmingLocalRemoval =
-    localRemovalConfirmationChangeId === change.changeId &&
-    choice === 'apply_change' &&
-    view.includesLocalDevice
+  const issue = deviceGroups.issues[0]
+  const choices = issue?.choices ?? []
+  const [selectedChoiceId, setSelectedChoiceId] = useState(() => choices[0]?.choiceId ?? '')
+  if (!issue || choices.length === 0) return null
 
-  const names = (items: typeof view.targets) =>
-    items.length > 0
-      ? items.map(item => item.label).join(t('deviceTrust.listSeparator'))
+  const snapshot = deviceGroups.deviceTrust
+  const pendingView = getPendingDecisionView(snapshot)
+  const selectedChoice = choices.find(choice => choice.choiceId === selectedChoiceId) ?? choices[0]
+  const confirmingLocalRemoval =
+    localRemovalConfirmationIssueId === issue.issueId &&
+    !selectedChoice.memberDeviceIds.includes(snapshot.localDeviceId)
+  const labels = deviceDisplayMap(snapshot.devices)
+  const allPeerIds = snapshot.devices.flatMap(device =>
+    device.isLocal || device.membership === 'removed' ? [] : [device.deviceId]
+  )
+  const names = (deviceIds: string[]) => {
+    const values = deviceIds.flatMap(deviceId =>
+      deviceId === snapshot.localDeviceId
+        ? []
+        : [labels.get(deviceId) ?? getDeviceLabel('', deviceId)]
+    )
+    return values.length > 0
+      ? values.join(t('deviceTrust.listSeparator'))
       : t('deviceTrust.modal.noDevices')
+  }
+  const cardView = (choice: DeviceGroupChoice) => {
+    if (pendingView && choice.choiceId === 'apply') {
+      return {
+        title: t(
+          pendingView.includesLocalDevice
+            ? 'deviceTrust.modal.leaveTitle'
+            : 'deviceTrust.modal.applyTitle'
+        ),
+        continuesWith: names(pendingView.apply.continuesWith.map(device => device.deviceId)),
+        stopsWith: names(pendingView.apply.stopsWith.map(device => device.deviceId)),
+      }
+    }
+    if (pendingView && choice.choiceId === 'keep') {
+      return {
+        title: t(
+          pendingView.includesLocalDevice
+            ? 'deviceTrust.modal.stayTitle'
+            : 'deviceTrust.modal.keepTitle'
+        ),
+        continuesWith: names(pendingView.keepCurrent.continuesWith.map(device => device.deviceId)),
+        stopsWith: names(pendingView.keepCurrent.stopsWith.map(device => device.deviceId)),
+      }
+    }
+    const memberIds = new Set(choice.memberDeviceIds)
+    return {
+      title: t(
+        choice.isCurrentGroup ? 'deviceTrust.modal.stayTitle' : 'deviceTrust.modal.useGroupTitle'
+      ),
+      continuesWith: names(choice.memberDeviceIds),
+      stopsWith: names(allPeerIds.filter(deviceId => !memberIds.has(deviceId))),
+    }
+  }
 
   return (
     <>
@@ -68,51 +131,56 @@ export function DeviceTrustDecisionContent({
         <span className="min-w-0">
           <DialogTitle>{t('deviceTrust.modal.title')}</DialogTitle>
           <DialogDescription className="mt-1">
-            {view.includesLocalDevice
-              ? t('deviceTrust.modal.localSummary', { proposer: view.proposer.label })
-              : t('deviceTrust.modal.summary', {
-                  proposer: view.proposer.label,
-                  targets: names(view.targets),
-                })}
+            {pendingView
+              ? pendingView.includesLocalDevice
+                ? t('deviceTrust.modal.localSummary', { proposer: pendingView.proposer.label })
+                : t('deviceTrust.modal.summary', {
+                    proposer: pendingView.proposer.label,
+                    targets: names(pendingView.targets.map(device => device.deviceId)),
+                  })
+              : t('deviceTrust.modal.groupConflictSummary')}
           </DialogDescription>
+          {deviceGroups.issues.length > 1 && (
+            <p className="mt-1 text-xs text-muted-foreground">
+              {t('deviceTrust.modal.issueProgress', {
+                current: 1,
+                total: deviceGroups.issues.length,
+              })}
+            </p>
+          )}
         </span>
       </DialogHeader>
       <DialogBody className="space-y-4 py-1">
         <div className="grid min-w-0 gap-3" role="radiogroup" onKeyDown={moveChoice}>
-          {choices.includes('apply_change') && (
-            <DeviceTrustChoiceCard
-              selected={choice === 'apply_change'}
-              disabled={busy}
-              onSelect={() => setSelectedChoice('apply_change')}
-              title={t(
-                view.includesLocalDevice
-                  ? 'deviceTrust.modal.leaveTitle'
-                  : 'deviceTrust.modal.applyTitle'
-              )}
-              continuesWith={names(view.apply.continuesWith)}
-              stopsWith={names(view.apply.stopsWith)}
-            />
-          )}
-          {choices.includes('keep_current_device_group') && (
-            <DeviceTrustChoiceCard
-              selected={choice === 'keep_current_device_group'}
-              disabled={busy}
-              onSelect={() => setSelectedChoice('keep_current_device_group')}
-              title={t(
-                view.includesLocalDevice
-                  ? 'deviceTrust.modal.stayTitle'
-                  : 'deviceTrust.modal.keepTitle'
-              )}
-              continuesWith={names(view.keepCurrent.continuesWith)}
-              stopsWith={names(view.keepCurrent.stopsWith)}
-            />
-          )}
+          {choices.map(choice => {
+            const view = cardView(choice)
+            const notes = [
+              choice.requiresRePairing ? t('deviceTrust.modal.requiresRePairing') : null,
+              !choice.membersComplete ? t('deviceTrust.modal.membersIncomplete') : null,
+            ].filter((note): note is string => note !== null)
+            return (
+              <DeviceTrustChoiceCard
+                key={choice.choiceId}
+                selected={selectedChoice.choiceId === choice.choiceId}
+                disabled={busy}
+                onSelect={() => setSelectedChoiceId(choice.choiceId)}
+                title={view.title}
+                continuesWith={view.continuesWith}
+                stopsWith={view.stopsWith}
+                note={notes.join(' ')}
+              />
+            )
+          })}
         </div>
         {error && (
           <p className="rounded-md border border-destructive/20 bg-destructive/10 px-3 py-2 text-sm font-medium text-destructive">
             {error === 'device_state_changed'
               ? t('deviceTrust.modal.stateChanged')
-              : t('deviceTrust.modal.failed')}
+              : error === 'choice_pending'
+                ? t('deviceTrust.modal.choicePending')
+                : error === 're_pairing_required'
+                  ? t('deviceTrust.modal.rePairingRequired')
+                  : t('deviceTrust.modal.failed')}
           </p>
         )}
         {confirmingLocalRemoval && (
@@ -125,7 +193,7 @@ export function DeviceTrustDecisionContent({
         <Button
           className="min-w-24"
           disabled={busy}
-          onClick={() => onDecide(choice, confirmingLocalRemoval)}
+          onClick={() => onChoose(issue.issueId, selectedChoice.choiceId, confirmingLocalRemoval)}
         >
           {busy && <Loader2 className="animate-spin" aria-hidden="true" />}
           {t(

@@ -51,17 +51,21 @@ pub async fn run(json: bool, verbose: bool) -> i32 {
     };
 
     let facade = HttpWsDaemonService::new(ctx);
-    let device_trust = match facade.device_trust().await {
-        Ok(snapshot) => DeviceTrustStatus {
-            local_membership: snapshot.local_membership,
-            current_change_id: snapshot.current_change.map(|change| change.change_id),
-            upgrade_required_device_ids: snapshot
+    let device_trust = match facade.query_device_group_choices().await {
+        Ok(choices) => DeviceTrustStatus {
+            local_membership: choices.device_trust.local_membership,
+            current_change_id: choices
+                .device_trust
+                .current_change
+                .map(|change| change.change_id),
+            upgrade_required_device_ids: choices
+                .device_trust
                 .devices
                 .into_iter()
                 .filter(|device| device.compatibility == DeviceCompatibilityDto::UpgradeRequired)
                 .map(|device| device.device_id)
                 .collect(),
-            blocked_reason: snapshot.blocked_reason,
+            blocked_reason: choices.device_trust.blocked_reason,
         },
         Err(err) => {
             ui::error(&format!("Failed to query device trust status: {err}"));

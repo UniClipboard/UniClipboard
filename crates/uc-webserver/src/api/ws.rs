@@ -504,7 +504,6 @@ fn is_supported_topic(topic: &str) -> bool {
             | ws_topic::FILE_TRANSFER
             | ws_topic::ENCRYPTION
             | ws_topic::SEARCH
-            | ws_topic::WORKSPACE_CONVERGENCE
             | ws_topic::DEVICE_TRUST
             | ws_topic::NETWORK_RECOVERY
     )
@@ -593,7 +592,6 @@ async fn build_snapshot_event(
         ws_topic::SYSTEM | ws_topic::SETUP => Ok(None),
         ws_topic::CLIPBOARD => Ok(None),
         ws_topic::FILE_TRANSFER => Ok(None),
-        ws_topic::WORKSPACE_CONVERGENCE => Ok(None),
         ws_topic::DEVICE_TRUST => Ok(None),
         ws_topic::NETWORK_RECOVERY => Ok(None),
 
@@ -740,7 +738,7 @@ mod tests {
 
     fn test_event(event_type: &str) -> DaemonWsEvent {
         DaemonWsEvent {
-            topic: ws_topic::WORKSPACE_CONVERGENCE.to_string(),
+            topic: ws_topic::DEVICE_TRUST.to_string(),
             event_type: event_type.to_string(),
             session_id: None,
             ts: 1,
@@ -759,7 +757,7 @@ mod tests {
     #[tokio::test]
     async fn lagged_websocket_client_receives_global_refresh_required() {
         let topics = Arc::new(RwLock::new(HashSet::from([
-            ws_topic::WORKSPACE_CONVERGENCE.to_string(),
+            ws_topic::DEVICE_TRUST.to_string()
         ])));
         let (event_tx, _) = tokio::sync::broadcast::channel(1);
         let broadcast_rx = event_tx.subscribe();

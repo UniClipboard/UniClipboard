@@ -24,7 +24,7 @@ import {
   listPairedDevices as listPairedDevicesSdk,
   unpairDevice as unpairDeviceSdk,
 } from '@/api/generated/sdk.gen'
-import type { WorkspaceConvergenceDto } from '@/api/generated/types.gen'
+import type { DeviceTrustSnapshotDto } from '@/api/generated/types.gen'
 import { daemonClient } from './client'
 
 export interface LocalDeviceInfo {
@@ -101,6 +101,6 @@ export async function getPairedPeersWithStatus(): Promise<SpaceMember[]> {
  *
  * 取消配对：从本机成员仓库移除该设备。
  */
-export async function unpairDevice(peerId: string): Promise<WorkspaceConvergenceDto> {
+export async function unpairDevice(peerId: string): Promise<DeviceTrustSnapshotDto> {
   return daemonClient.callEnveloped(() => unpairDeviceSdk({ body: { peerId }, throwOnError: true }))
 }

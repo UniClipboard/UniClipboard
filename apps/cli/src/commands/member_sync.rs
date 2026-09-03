@@ -211,8 +211,8 @@ async fn run(
         Ok(session) => session,
         Err(code) => return code,
     };
-    let trust = match service.device_trust().await {
-        Ok(snapshot) => snapshot,
+    let trust = match service.query_device_group_choices().await {
+        Ok(choices) => choices.device_trust,
         Err(err) => {
             return emit_error(
                 json,

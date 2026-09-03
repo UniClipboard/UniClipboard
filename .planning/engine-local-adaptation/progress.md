@@ -1,0 +1,24 @@
+# Progress
+
+- 2026-09-03: Defined completion criteria and confirmed the desktop worktree starts clean on `main`.
+- 2026-09-03: Found an unrelated active planning scope and created a separate plan without changing it.
+- 2026-09-03: Read product, workflow, Rust, and architecture guidance; inventoried current Engine pins and local Engine history.
+- 2026-09-03: Chose a machine-level Cargo patch to preserve the desktop repository's immutable published dependency declaration.
+- 2026-09-03: Added the machine-level patch. Initial locked verification correctly showed that the workspace lockfile must be refreshed for the local sources.
+- 2026-09-03: Refreshed `Cargo.lock`, downloaded four missing public dependencies, and proved all eight Engine-owned packages resolve from the local Engine checkout.
+- 2026-09-03: Ran a full all-target workspace check against local Engine. Compilation reached desktop code and exposed six concrete `uc-webserver` compatibility failures.
+- 2026-09-03: Verified `uc-bootstrap` all targets pass unchanged against local Engine.
+- 2026-09-03: Verified the all-feature CLI has two additional removed convergence-operation errors in its dev-tools invitation helper.
+- 2026-09-03: Traced the new query/choice contract through daemon DTOs, HTTP clients, CLI commands, frontend context, dialogs, generated API, event invalidation, and unpairing.
+- 2026-09-03: Completed the adaptation and deletion plan without changing product implementation.
+- 2026-09-03: Final locked metadata proof reports eight local Engine packages and zero remote Engine packages; `git diff --check` passes.
+- 2026-09-03: Final repository changes are the local-source `Cargo.lock` refresh plus this scoped analysis. The machine patch lives in the user Cargo config and leaves the tracked Engine pin unchanged.
+- 2026-09-03: User authorized implementation. Reopened the plan with test-first backend, CLI, frontend, generated-contract, verification, review, and commit phases.
+- 2026-09-03: Added failing daemon-contract, projection, error-mapping, daemon-client, CLI parsing, CLI selection, frontend context, and dialog tests before production changes.
+- 2026-09-03: Cut daemon contract/server/client and CLI over to the new device-group query and choice flow; focused Rust tests and all-feature CLI check pass.
+- 2026-09-03: Removed the stale product workspace-convergence response, client method, CLI command, and WebSocket topic.
+- 2026-09-04: Diagnosed the reported delay from profile a/b logs. The pairing protocol completed in seconds; both UIs remained stale because success invalidations and invitation semantics were not aligned.
+- 2026-09-04: Added Engine membership commit and join-session transition notifications with focused success, failure, and host-mapping tests.
+- 2026-09-04: Updated sponsor and joiner UI completion rules, including duplicate-event protection, stale invitation cleanup, global refresh handling, and a pre-join peer baseline.
+- 2026-09-04: Added a focused dual-window valid-pairing test with a 30-second completion bound. It passed on fresh profiles; both windows reached the success screen in 12.9 seconds.
+- 2026-09-04: Final verification passed: 156 frontend files / 1030 tests, lint with two pre-existing warnings, production and E2E builds, Engine all-target dev-tools check, Engine architecture preflight, and React Doctor changed-file scan (89/100, four existing complexity warnings).

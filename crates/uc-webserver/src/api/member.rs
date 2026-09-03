@@ -3,24 +3,23 @@
 //! Storage access and partial-update semantics stay behind the engine interface.
 
 use axum::extract::{Path, State};
-use axum::routing::{get, patch, post};
+use axum::routing::{get, patch};
 use axum::{Json, Router};
 use tracing::{info, instrument};
 
 use uc_daemon_contract::api::dto::envelope::ApiEnvelope;
 use uc_engine::error_codes::{
     MEMBER_INVALID_INPUT_CODE, MEMBER_LEGACY_BOOTSTRAP_FAILED_CODE, MEMBER_NOT_FOUND_CODE,
-    MEMBER_UNAVAILABLE_CODE, QUERY_WORKSPACE_CONVERGENCE_FAILED_CODE,
-    QUERY_WORKSPACE_CONVERGENCE_UNAVAILABLE_CODE, SPACE_PROTECTION_FAILED_CODE,
+    MEMBER_UNAVAILABLE_CODE, SPACE_PROTECTION_FAILED_CODE,
 };
 use uc_engine::{
-    DecideDeviceTrustChangeInput, DeviceTrustChoiceSummary, EngineError, Operation,
-    OperationResult, QueryMemberSyncPreferencesInput, UpdateMemberSyncPreferencesInput,
+    ChooseDeviceGroupInput, EngineError, EngineErrorCategory, Operation, OperationResult,
+    QueryMemberSyncPreferencesInput, UpdateMemberSyncPreferencesInput,
 };
 
 use crate::api::dto::error::{log_facade_failure, ApiError};
 use crate::api::dto::member::{
-    DecideDeviceTrustRequestDto, DeviceTrustDecisionDto, DeviceTrustSnapshotDto,
+    ChooseDeviceGroupRequestDto, DeviceGroupChoiceResultDto, DeviceGroupChoicesDto,
     MemberSyncPreferencesPatchDto, MemberSyncResultDto, SpaceProtectionDto,
 };
 use crate::api::projection::{IntoApiDto, IntoDomain};
@@ -37,10 +36,9 @@ pub fn router() -> Router<DaemonApiState> {
             patch(update_member_sync_preferences_handler),
         )
         .route("/member/protection", get(get_space_protection_handler))
-        .route("/member/device-trust", get(get_device_trust_handler))
         .route(
-            "/member/device-trust/decision",
-            post(decide_device_trust_handler),
+            "/member/device-group-choices",
+            get(get_device_group_choices_handler).post(choose_device_group_handler),
         )
 }
 
@@ -203,84 +201,85 @@ pub async fn get_space_protection_handler(
     Ok(Json(ApiEnvelope::now(snapshot.into_api_dto())))
 }
 
-#[instrument(name = "api.member.get_device_trust", level = "info", skip(state))]
+#[instrument(
+    name = "api.member.get_device_group_choices",
+    level = "info",
+    skip(state)
+)]
 #[utoipa::path(
     get,
-    path = "/member/device-trust",
+    path = "/member/device-group-choices",
     tag = "member",
-    operation_id = "getDeviceTrust",
-    responses((status = 200, body = DeviceTrustEnvelope))
+    operation_id = "getDeviceGroupChoices",
+    responses((status = 200, body = DeviceGroupChoicesEnvelope))
 )]
-pub async fn get_device_trust_handler(
+pub async fn get_device_group_choices_handler(
     State(state): State<DaemonApiState>,
-) -> Result<Json<ApiEnvelope<DeviceTrustSnapshotDto>>, ApiError> {
+) -> Result<Json<ApiEnvelope<DeviceGroupChoicesDto>>, ApiError> {
     let result = state
-        .execute(Operation::QueryDeviceTrust)
+        .execute(Operation::QueryDeviceGroupChoices)
         .await
-        .map_err(|error| map_member_engine_error("", "get_device_trust", error))?;
-    let OperationResult::DeviceTrust(snapshot) = result else {
+        .map_err(|error| map_member_engine_error("", "query_device_group_choices", error))?;
+    let OperationResult::DeviceGroupChoices(choices) = result else {
         tracing::error!(
             error_kind = "unexpected_operation_result",
-            operation = "get_device_trust",
-            "engine returned an unexpected device trust result"
+            operation = "query_device_group_choices",
+            "engine returned an unexpected device group choices result"
         );
         return Err(ApiError::internal(
-            "engine returned an unexpected device trust result",
+            "engine returned an unexpected device group choices result",
         ));
     };
-    let revision = snapshot.revision;
-    let dto = snapshot.into_api_dto();
-    info!(revision, "device trust query completed");
+    let revision = choices.revision;
+    let issue_count = choices.issues.len();
+    let dto = choices.into_api_dto();
+    info!(
+        revision,
+        issue_count, "device group choices query completed"
+    );
     Ok(Json(ApiEnvelope::now(dto)))
 }
 
 #[instrument(
-    name = "api.member.decide_device_trust",
+    name = "api.member.choose_device_group",
     level = "info",
-    skip(state, request)
+    skip(state, request),
+    fields(expected_revision = request.expected_revision)
 )]
 #[utoipa::path(
     post,
-    path = "/member/device-trust/decision",
+    path = "/member/device-group-choices",
     tag = "member",
-    operation_id = "decideDeviceTrust",
-    request_body = DecideDeviceTrustRequestDto,
-    responses((status = 200, body = DeviceTrustDecisionEnvelope))
+    operation_id = "chooseDeviceGroup",
+    request_body = ChooseDeviceGroupRequestDto,
+    responses((status = 200, body = DeviceGroupChoiceResultEnvelope))
 )]
-pub async fn decide_device_trust_handler(
+pub async fn choose_device_group_handler(
     State(state): State<DaemonApiState>,
-    Json(request): Json<DecideDeviceTrustRequestDto>,
-) -> Result<Json<ApiEnvelope<DeviceTrustDecisionDto>>, ApiError> {
-    let choice = match request.choice {
-        crate::api::dto::member::DeviceTrustChoiceDto::ApplyChange => {
-            DeviceTrustChoiceSummary::ApplyChange
-        }
-        crate::api::dto::member::DeviceTrustChoiceDto::KeepCurrentDeviceGroup => {
-            DeviceTrustChoiceSummary::KeepCurrentDeviceGroup
-        }
-    };
+    Json(request): Json<ChooseDeviceGroupRequestDto>,
+) -> Result<Json<ApiEnvelope<DeviceGroupChoiceResultDto>>, ApiError> {
     let result = state
-        .execute(Operation::DecideDeviceTrustChange(
-            DecideDeviceTrustChangeInput {
-                change_id: request.change_id,
-                choice,
-                confirm_local_removal: request.confirm_local_removal,
-            },
-        ))
+        .execute(Operation::ChooseDeviceGroup(ChooseDeviceGroupInput {
+            issue_id: request.issue_id,
+            choice_id: request.choice_id,
+            expected_revision: request.expected_revision,
+            confirm_local_removal: request.confirm_local_removal,
+        }))
         .await
-        .map_err(|error| map_member_engine_error("", "decide_device_trust", error))?;
-    let OperationResult::DeviceTrustDecision(decision) = result else {
+        .map_err(|error| map_member_engine_error("", "choose_device_group", error))?;
+    let OperationResult::DeviceGroupChosen(choice) = result else {
         tracing::error!(
             error_kind = "unexpected_operation_result",
-            operation = "decide_device_trust",
-            "engine returned an unexpected device trust decision result"
+            operation = "choose_device_group",
+            "engine returned an unexpected device group choice result"
         );
         return Err(ApiError::internal(
-            "engine returned an unexpected device trust decision result",
+            "engine returned an unexpected device group choice result",
         ));
     };
-    let dto = decision.into_api_dto();
-    info!(result = "completed", "device trust decision completed");
+    let outcome = choice.outcome;
+    let dto = choice.into_api_dto();
+    info!(?outcome, "device group choice completed");
     Ok(Json(ApiEnvelope::now(dto)))
 }
 
@@ -289,41 +288,44 @@ pub(crate) fn map_member_engine_error(
     op: &'static str,
     error: EngineError,
 ) -> ApiError {
-    let (variant, api): (&'static str, ApiError) = match error.code() {
-        MEMBER_INVALID_INPUT_CODE if op == "decide_device_trust" => (
-            "invalid_change_id",
-            ApiError::bad_request("device trust change ID must be valid hexadecimal"),
-        ),
-        MEMBER_INVALID_INPUT_CODE => (
-            "invalid_input",
-            ApiError::bad_request("member device ID must not be empty"),
-        ),
-        MEMBER_NOT_FOUND_CODE => (
-            "not_found",
-            ApiError::not_found(format!("member `{device_id}` not found")),
-        ),
-        MEMBER_UNAVAILABLE_CODE => (
-            "unavailable",
-            ApiError::service_unavailable("member roster facade unavailable"),
-        ),
-        MEMBER_LEGACY_BOOTSTRAP_FAILED_CODE => (
-            "legacy_bootstrap_failed",
-            ApiError::internal("secure legacy member removal failed"),
-        ),
-        SPACE_PROTECTION_FAILED_CODE => (
-            "space_protection_failed",
-            ApiError::internal("space protection status is unavailable"),
-        ),
-        QUERY_WORKSPACE_CONVERGENCE_UNAVAILABLE_CODE => (
-            "workspace_convergence_unavailable",
-            ApiError::service_unavailable("workspace convergence status is unavailable"),
-        ),
-        QUERY_WORKSPACE_CONVERGENCE_FAILED_CODE => (
-            "workspace_convergence_failed",
-            ApiError::internal("failed to query workspace convergence status"),
-        ),
-        _ => ("internal", ApiError::internal("member operation failed")),
-    };
+    let (variant, api): (&'static str, ApiError) =
+        if op == "choose_device_group" && error.category() == EngineErrorCategory::InvalidInput {
+            (
+                "invalid_device_group_choice",
+                ApiError::bad_request("device group choice is invalid"),
+            )
+        } else if matches!(op, "query_device_group_choices" | "choose_device_group")
+            && error.category() == EngineErrorCategory::Unavailable
+        {
+            (
+                "device_group_choices_unavailable",
+                ApiError::service_unavailable("device group choices are unavailable"),
+            )
+        } else {
+            match error.code() {
+                MEMBER_INVALID_INPUT_CODE => (
+                    "invalid_input",
+                    ApiError::bad_request("member device ID must not be empty"),
+                ),
+                MEMBER_NOT_FOUND_CODE => (
+                    "not_found",
+                    ApiError::not_found(format!("member `{device_id}` not found")),
+                ),
+                MEMBER_UNAVAILABLE_CODE => (
+                    "unavailable",
+                    ApiError::service_unavailable("member roster facade unavailable"),
+                ),
+                MEMBER_LEGACY_BOOTSTRAP_FAILED_CODE => (
+                    "legacy_bootstrap_failed",
+                    ApiError::internal("secure legacy member removal failed"),
+                ),
+                SPACE_PROTECTION_FAILED_CODE => (
+                    "space_protection_failed",
+                    ApiError::internal("space protection status is unavailable"),
+                ),
+                _ => ("internal", ApiError::internal("member operation failed")),
+            }
+        };
     log_facade_failure("roster", op, variant, api.status, &api.message);
     api
 }
@@ -339,18 +341,15 @@ mod tests {
     }
 
     #[test]
-    fn invalid_device_trust_change_id_has_a_specific_message() {
+    fn invalid_device_group_choice_has_a_specific_message() {
         let api = map_member_engine_error(
             "",
-            "decide_device_trust",
-            engine_error(MEMBER_INVALID_INPUT_CODE),
+            "choose_device_group",
+            EngineError::new(1210, EngineErrorCategory::InvalidInput, false),
         );
 
         assert_eq!(api.status, StatusCode::BAD_REQUEST);
-        assert_eq!(
-            api.message,
-            "device trust change ID must be valid hexadecimal"
-        );
+        assert_eq!(api.message, "device group choice is invalid");
     }
 
     #[test]

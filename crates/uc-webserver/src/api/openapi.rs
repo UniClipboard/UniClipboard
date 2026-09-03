@@ -31,14 +31,14 @@ use crate::api::dto::encryption::{
 };
 use crate::api::dto::error::ApiErrorResponse;
 use crate::api::dto::member::{
-    DecideDeviceTrustRequestDto, DeviceCompatibilityDto, DeviceGroupRelationshipDto,
-    DeviceMembershipDto, DeviceReachabilityDto, DeviceSyncRelationshipDto, DeviceTrustActionDto,
-    DeviceTrustChangeDto, DeviceTrustChoiceDto, DeviceTrustDecisionDto, DeviceTrustImpactDto,
-    DeviceTrustRelationshipDto, DeviceTrustSnapshotDto, DeviceTrustUnavailableReasonDto,
-    MemberProtectionDto, MemberProtectionStatusDto, MemberSyncPreferencesDto,
-    MemberSyncPreferencesPatchDto, MemberSyncResultDto, PendingInboundMemberDto,
-    SpaceProtectionDto, SpaceProtectionModeDto, WorkspaceConvergenceDto,
-    WorkspaceConvergenceFailureCategoryDto, WorkspaceConvergencePhaseDto,
+    ChooseDeviceGroupRequestDto, DeviceCompatibilityDto, DeviceGroupChoiceIssueDto,
+    DeviceGroupChoiceOptionDto, DeviceGroupChoiceOutcomeDto, DeviceGroupChoiceResultDto,
+    DeviceGroupChoicesDto, DeviceGroupRelationshipDto, DeviceMembershipDto, DeviceReachabilityDto,
+    DeviceSyncRelationshipDto, DeviceTrustActionDto, DeviceTrustChangeDto, DeviceTrustChoiceDto,
+    DeviceTrustImpactDto, DeviceTrustRelationshipDto, DeviceTrustSnapshotDto,
+    DeviceTrustUnavailableReasonDto, MemberProtectionDto, MemberProtectionStatusDto,
+    MemberSyncPreferencesDto, MemberSyncPreferencesPatchDto, MemberSyncResultDto,
+    PendingInboundMemberDto, SpaceProtectionDto, SpaceProtectionModeDto,
 };
 use crate::api::dto::mobile_sync::{
     LanInterfaceViewDto, MobileDeviceViewDto, MobileSyncActionResultDto, MobileSyncSettingsViewDto,
@@ -88,11 +88,12 @@ use uc_daemon_contract::api::dto::config::{
 use uc_daemon_contract::api::dto::envelope::{
     AckUpgradeEnvelope, CancelEntryReceiveEnvelope, CancelTransferEnvelope,
     CaptureCurrentClipboardEnvelope, CaptureUiEventEnvelope, ClearCacheEnvelope,
-    ClearHistoryEnvelope, ClipboardStatsEnvelope, DebugStatusEnvelope, DeviceTrustDecisionEnvelope,
-    DeviceTrustEnvelope, DispatchOutcomeEnvelope, EncryptionActionEnvelope,
-    EncryptionStateEnvelope, EntryDeliveryViewEnvelope, EntryDetailEnvelope,
-    EntryReceiveProgressEnvelope, EntryReceiveProgressListEnvelope, EntryResourceEnvelope,
-    ExportConfigEnvelope, ImportConfigEnvelope, KeychainAccessEnvelope, LanInterfaceListEnvelope,
+    ClearHistoryEnvelope, ClipboardStatsEnvelope, DebugStatusEnvelope,
+    DeviceGroupChoiceResultEnvelope, DeviceGroupChoicesEnvelope, DeviceTrustEnvelope,
+    DispatchOutcomeEnvelope, EncryptionActionEnvelope, EncryptionStateEnvelope,
+    EntryDeliveryViewEnvelope, EntryDetailEnvelope, EntryReceiveProgressEnvelope,
+    EntryReceiveProgressListEnvelope, EntryResourceEnvelope, ExportConfigEnvelope,
+    ImportConfigEnvelope, KeychainAccessEnvelope, LanInterfaceListEnvelope,
     LifecycleStatusEnvelope, ListEntriesEnvelope, LocalDeviceInfoEnvelope, LogExportEnvelope,
     MemberSyncPreferencesEnvelope, MemberSyncResultEnvelope, MobileDeviceListEnvelope,
     MobileSyncActionEnvelope, MobileSyncSettingsEnvelope, NetworkRecoveryStatusEnvelope,
@@ -105,7 +106,7 @@ use uc_daemon_contract::api::dto::envelope::{
     SetupRedeemEnvelope, SetupStateEnvelope, SetupSwitchSpaceEnvelope, SpaceMemberListEnvelope,
     SpaceProtectionEnvelope, StatusEnvelope, StorageStatsEnvelope, ToggleFavoriteEnvelope,
     UnlockSpaceEnvelope, UpdateDebugModeEnvelope, UpdateMobileDeviceEnvelope,
-    UpdateMobileSyncSettingsEnvelope, UpgradeStatusEnvelope, WorkspaceConvergenceEnvelope,
+    UpdateMobileSyncSettingsEnvelope, UpgradeStatusEnvelope,
 };
 use uc_daemon_contract::api::dto::storage::{
     ClearCacheRequest, ClearCacheResponse, StorageStatsDto,
@@ -191,8 +192,8 @@ impl Modify for ContractMeta {
         crate::api::member::get_member_sync_preferences_handler,
         crate::api::member::update_member_sync_preferences_handler,
         crate::api::member::get_space_protection_handler,
-        crate::api::member::get_device_trust_handler,
-        crate::api::member::decide_device_trust_handler,
+        crate::api::member::get_device_group_choices_handler,
+        crate::api::member::choose_device_group_handler,
         // ── mobile-sync ────────────────────────────────────────────
         crate::api::mobile_sync::register_mobile_device_handler,
         crate::api::mobile_sync::list_mobile_devices_handler,
@@ -330,18 +331,20 @@ impl Modify for ContractMeta {
             MemberSyncPreferencesEnvelope,
             MemberSyncResultEnvelope,
             SpaceProtectionEnvelope,
-            WorkspaceConvergenceEnvelope,
             DeviceTrustEnvelope,
-            DeviceTrustDecisionEnvelope,
+            DeviceGroupChoicesEnvelope,
+            DeviceGroupChoiceResultEnvelope,
             MemberSyncPreferencesDto,
             MemberSyncResultDto,
             MemberSyncPreferencesPatchDto,
             SpaceProtectionDto,
             SpaceProtectionModeDto,
-            WorkspaceConvergenceDto,
-            WorkspaceConvergencePhaseDto,
-            WorkspaceConvergenceFailureCategoryDto,
-            DecideDeviceTrustRequestDto,
+            DeviceGroupChoicesDto,
+            DeviceGroupChoiceIssueDto,
+            DeviceGroupChoiceOptionDto,
+            ChooseDeviceGroupRequestDto,
+            DeviceGroupChoiceOutcomeDto,
+            DeviceGroupChoiceResultDto,
             DeviceMembershipDto,
             DeviceReachabilityDto,
             DeviceGroupRelationshipDto,
@@ -354,7 +357,6 @@ impl Modify for ContractMeta {
             DeviceTrustChangeDto,
             DeviceTrustRelationshipDto,
             DeviceTrustSnapshotDto,
-            DeviceTrustDecisionDto,
             PendingInboundMemberDto,
             MemberProtectionDto,
             MemberProtectionStatusDto,
@@ -638,9 +640,8 @@ mod assembly_smoke_tests {
         // exact cancellation: +3 paths, +3 operations → 67 / 74. Relay credential
         // status and atomic save add two paths and two operations → 69 / 76.
         // Engine-owned space protection adds GET /member/protection and the
-        // workspace convergence migration replaces the former member-removal,
-        // convergence, and shared-device-refresh routes with one
-        // Device trust query and decision endpoints: 73 paths / 81 operations.
+        // device-group migration replaces the former query and decision paths
+        // with GET and POST on one resource: 72 paths / 81 operations.
         const HTTP_METHODS: [&str; 7] =
             ["get", "put", "post", "delete", "patch", "head", "options"];
         let paths = value
@@ -649,8 +650,8 @@ mod assembly_smoke_tests {
             .expect("OpenAPI doc must declare paths");
         assert_eq!(
             paths.len(),
-            73,
-            "expected exactly 73 path templates, found {}: {:?}",
+            72,
+            "expected exactly 72 path templates, found {}: {:?}",
             paths.len(),
             paths.keys().collect::<Vec<_>>()
         );
@@ -680,8 +681,8 @@ mod assembly_smoke_tests {
             "getEntryReceiveProgress",
             "cancelEntryReceive",
             "getSpaceProtection",
-            "getDeviceTrust",
-            "decideDeviceTrust",
+            "getDeviceGroupChoices",
+            "chooseDeviceGroup",
         ] {
             assert!(
                 json.contains(&format!("\"{op}\"")),

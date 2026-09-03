@@ -5,7 +5,6 @@ import {
   SetupV2Error,
   cancelJoinSpace,
   switchSpace,
-  type JoinSpaceResponse,
   type SwitchSpaceErrorKind,
   type SwitchSpaceResponse,
 } from '@/api/daemon/setupV2'
@@ -22,7 +21,7 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { useJoinAdmission } from '@/hooks/useJoinAdmission'
+import { type JoinAdmissionResolution, useJoinAdmission } from '@/hooks/useJoinAdmission'
 import { createLogger } from '@/lib/logger'
 import { cn } from '@/lib/utils'
 import { useAppDispatch } from '@/store/hooks'
@@ -99,22 +98,20 @@ function SwitchSpaceDialogInner({ open, onOpenChange }: SwitchSpaceDialogProps) 
     return () => clearTimeout(id)
   }, [step, dispatch])
 
-  const resolveJoinAdmission = useCallback(
-    (result: Exclude<JoinSpaceResponse, { status: 'pending' }>) => {
-      if (result.status === 'active') {
-        setResult(result)
-        setPendingJoinId(null)
-        setStep('success')
-        return
-      }
+  const resolveJoinAdmission = useCallback((resolution: JoinAdmissionResolution) => {
+    if (resolution.status === 'active') {
+      if (resolution.result === null) return
+      setResult(resolution.result)
       setPendingJoinId(null)
-      setErrorKind('internal')
-      setErrorRaw(result.reason)
-      setStep('failed')
-    },
-    []
-  )
-  useJoinAdmission(pendingJoinId, resolveJoinAdmission)
+      setStep('success')
+      return
+    }
+    setPendingJoinId(null)
+    setErrorKind('internal')
+    setErrorRaw(resolution.reason)
+    setStep('failed')
+  }, [])
+  useJoinAdmission(pendingJoinId, null, resolveJoinAdmission)
 
   const handleSubmit = async (preserveUnreadableHistory = false) => {
     // Validate inputs independently from step check
@@ -177,7 +174,15 @@ function SwitchSpaceDialogInner({ open, onOpenChange }: SwitchSpaceDialogProps) 
     if (!pendingJoinId) return
     try {
       const result = await cancelJoinSpace(pendingJoinId)
-      if (result.status !== 'pending') resolveJoinAdmission(result)
+      if (result.status === 'active') {
+        resolveJoinAdmission({
+          status: 'active',
+          peerDeviceId: result.joinedSpace.sponsorDeviceId,
+          result,
+        })
+      } else if (result.status === 'rejected') {
+        resolveJoinAdmission({ status: 'rejected', reason: result.reason })
+      }
     } catch (err) {
       log.error({ err, joinId: pendingJoinId }, 'cancelJoinSpace failed')
       setErrorKind('internal')

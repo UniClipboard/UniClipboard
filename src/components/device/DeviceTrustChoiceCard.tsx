@@ -1,4 +1,4 @@
-import { Check, Link2, Unlink } from 'lucide-react'
+import { AlertTriangle, Check, Link2, Unlink } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { DeviceTrustOutcomeRow } from '@/components/device/DeviceTrustOutcomeRow'
 import { cn } from '@/lib/utils'
@@ -10,6 +10,7 @@ export function DeviceTrustChoiceCard({
   selected,
   disabled,
   onSelect,
+  note,
 }: {
   title: string
   continuesWith: string
@@ -17,6 +18,7 @@ export function DeviceTrustChoiceCard({
   selected: boolean
   disabled: boolean
   onSelect: () => void
+  note?: string
 }) {
   const { t } = useTranslation()
   return (
@@ -60,6 +62,12 @@ export function DeviceTrustChoiceCard({
           tone="danger"
         />
       </span>
+      {note && (
+        <span className="mt-3 flex items-start gap-2 border-t border-border/70 pt-3 text-xs font-medium text-amber-700 dark:text-amber-300">
+          <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
+          <span>{note}</span>
+        </span>
+      )}
     </button>
   )
 }

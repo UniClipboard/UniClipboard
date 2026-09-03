@@ -236,6 +236,40 @@ function createTransferFile(filePath) {
 }
 
 dualDescribe('同机双客户端首次配对', () => {
+  it('完成有效邀请后两个窗口都会立即显示配对成功', async () => {
+    const sponsor = browser.sponsor
+    const joiner = browser.joiner
+    const passphrase = 'e2e-pairing-feedback-passphrase'
+
+    await Promise.all([sponsor.tauri.switchWindow('main'), joiner.tauri.switchWindow('main')])
+    await Promise.all([showMainWindow(sponsor), showMainWindow(joiner)])
+    await Promise.all([
+      setupEntry(sponsor, '[data-testid="setup-entry-create"]', 'Sponsor'),
+      setupEntry(joiner, '[data-testid="setup-entry-join"]', 'Joiner'),
+    ])
+
+    await click(sponsor, '[data-testid="setup-entry-create"]')
+    await (await element(sponsor, '#device-name')).setValue('E2E Sponsor')
+    await (await element(sponsor, '#pass1')).setValue(passphrase)
+    await (await element(sponsor, '#pass2')).setValue(passphrase)
+    await click(sponsor, '[data-testid="setup-initialize-submit"]')
+    await click(sponsor, '[data-testid="setup-complete-invite"]')
+    const code = await invitationCode(sponsor)
+
+    await click(joiner, '[data-testid="setup-entry-join"]')
+    await enterInvitation(joiner, code, passphrase)
+    const startedAt = Date.now()
+    await click(joiner, '[data-testid="setup-redeem-submit"]')
+
+    const [sponsorComplete, joinerComplete] = await Promise.all([
+      pairingComplete(sponsor, 'Sponsor'),
+      pairingComplete(joiner, 'Joiner'),
+    ])
+    await expect(sponsorComplete).toExist()
+    await expect(joinerComplete).toExist()
+    expect(Date.now() - startedAt).toBeLessThan(30_000)
+  })
+
   it('拒绝失效邀请码和错误口令后仍可用全新邀请码完成加入', async () => {
     const sponsor = browser.sponsor
     const joiner = browser.joiner

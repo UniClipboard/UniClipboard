@@ -11,7 +11,7 @@ import {
 } from 'lucide-react'
 import { useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { getDeviceTrust } from '@/api/daemon/device-trust'
+import { getDeviceTrustSnapshot } from '@/api/daemon/device-trust'
 import {
   cancelInvitation,
   getSetupState,
@@ -67,6 +67,7 @@ function AddDeviceDialogInner({ open, onOpenChange }: AddDeviceDialogProps) {
   const [step, setStep] = useState<Step>('invitation')
   const [failureReason, setFailureReason] = useState<string | null>(null)
   const initialDeviceIdsRef = useRef<ReadonlySet<string> | null>(null)
+  const pairingCompletionInFlightRef = useRef(false)
 
   // 倒计时 tick — 仅在邀请态 + 有邀请时启动
   useEffect(() => {
@@ -93,7 +94,7 @@ function AddDeviceDialogInner({ open, onOpenChange }: AddDeviceDialogProps) {
       setLoading(true)
       setError(null)
       try {
-        initialDeviceIdsRef.current = activeDeviceIds(await getDeviceTrust())
+        initialDeviceIdsRef.current = activeDeviceIds(await getDeviceTrustSnapshot())
         const state = await getSetupState()
         if (cancelled) return
         if (state.currentInvitation) {
@@ -119,18 +120,30 @@ function AddDeviceDialogInner({ open, onOpenChange }: AddDeviceDialogProps) {
   }, [open])
 
   const confirmPairingCompleted = useEffectEvent(async () => {
-    if (step !== 'invitation' || initialDeviceIdsRef.current === null) return
+    if (
+      step !== 'invitation' ||
+      initialDeviceIdsRef.current === null ||
+      pairingCompletionInFlightRef.current
+    ) {
+      return
+    }
     try {
-      const [state, trust] = await Promise.all([getSetupState(), getDeviceTrust()])
+      const trust = await getDeviceTrustSnapshot()
       const peerDeviceId = findNewActiveDeviceId(
         initialDeviceIdsRef.current,
         activeDeviceIds(trust)
       )
-      if (state.currentInvitation === null && peerDeviceId !== null) {
-        setStep('success')
+      if (peerDeviceId === null) return
+      pairingCompletionInFlightRef.current = true
+      try {
+        await cancelInvitation()
+      } catch (err) {
+        log.warn({ err }, 'failed to clear completed invitation')
       }
+      setStep('success')
     } catch (err) {
       log.warn({ err }, 'failed to verify completed invitation')
+      pairingCompletionInFlightRef.current = false
     }
   })
 
@@ -142,8 +155,11 @@ function AddDeviceDialogInner({ open, onOpenChange }: AddDeviceDialogProps) {
 
   useEffect(() => {
     if (!open) return
-    const unsubscribeEvents = daemonWs.subscribe(['device-trust', 'setup'], event => {
-      if (event.eventType === 'device-trust.changed') {
+    const unsubscribeEvents = daemonWs.subscribe(['device-trust', 'setup', 'system'], event => {
+      if (
+        event.eventType === 'device-trust.changed' ||
+        event.eventType === 'system.refresh_required'
+      ) {
         void confirmPairingCompleted()
       } else if (event.eventType === 'setup.invitationRevoked') {
         handleInvitationRevoked(event.payload as SetupInvitationRevokedEvent)
@@ -204,7 +220,7 @@ function AddDeviceDialogInner({ open, onOpenChange }: AddDeviceDialogProps) {
     setStep('invitation')
     setFailureReason(null)
     try {
-      initialDeviceIdsRef.current = activeDeviceIds(await getDeviceTrust())
+      initialDeviceIdsRef.current = activeDeviceIds(await getDeviceTrustSnapshot())
       try {
         await cancelInvitation()
       } catch (err) {
@@ -318,7 +334,9 @@ function AddDeviceDialogInner({ open, onOpenChange }: AddDeviceDialogProps) {
               <Clock className="size-3" />
               {expired
                 ? t('devices.addDevice.expired')
-                : t('devices.addDevice.expiresIn', { remaining: formatRemaining(remaining) })}
+                : t('devices.addDevice.expiresIn', {
+                    remaining: formatRemaining(remaining),
+                  })}
             </div>
           </div>
         </div>

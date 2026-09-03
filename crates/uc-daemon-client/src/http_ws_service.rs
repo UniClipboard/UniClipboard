@@ -14,9 +14,9 @@ use uc_daemon_contract::api::dto::clipboard_command::{
     ResendResponse,
 };
 use uc_daemon_contract::api::dto::member::{
-    DecideDeviceTrustRequestDto, DeviceTrustDecisionDto, DeviceTrustSnapshotDto,
-    MemberSyncPreferencesDto, MemberSyncPreferencesPatchDto, MemberSyncResultDto,
-    WorkspaceConvergenceDto,
+    ChooseDeviceGroupRequestDto, DeviceGroupChoiceResultDto, DeviceGroupChoicesDto,
+    DeviceTrustSnapshotDto, MemberSyncPreferencesDto, MemberSyncPreferencesPatchDto,
+    MemberSyncResultDto,
 };
 use uc_daemon_contract::api::dto::setup_events::SetupPairingCompletedEvent;
 use uc_daemon_contract::api::dto::v2::setup::JoinSpaceResponse;
@@ -38,23 +38,23 @@ impl HttpWsDaemonService {
 
 #[async_trait]
 impl DaemonService for HttpWsDaemonService {
-    async fn remove_member(&self, peer_id: String) -> Result<WorkspaceConvergenceDto> {
+    async fn remove_member(&self, peer_id: String) -> Result<DeviceTrustSnapshotDto> {
         self.ctx.pairing_client().unpair_device(peer_id).await
     }
 
-    async fn device_trust(&self) -> Result<DeviceTrustSnapshotDto> {
-        self.ctx.member_client().device_trust().await
+    async fn query_device_group_choices(&self) -> Result<DeviceGroupChoicesDto> {
+        self.ctx.member_client().query_device_group_choices().await
     }
 
     async fn cancel_join(&self, join_id: &str) -> Result<JoinSpaceResponse> {
         self.ctx.setup_v2_client().cancel_join(join_id).await
     }
 
-    async fn decide_device_trust(
+    async fn choose_device_group(
         &self,
-        request: &DecideDeviceTrustRequestDto,
-    ) -> Result<DeviceTrustDecisionDto> {
-        self.ctx.member_client().decide_device_trust(request).await
+        request: &ChooseDeviceGroupRequestDto,
+    ) -> Result<DeviceGroupChoiceResultDto> {
+        self.ctx.member_client().choose_device_group(request).await
     }
 
     async fn member_sync_preferences(&self, device_id: &str) -> Result<MemberSyncPreferencesDto> {
@@ -73,10 +73,6 @@ impl DaemonService for HttpWsDaemonService {
             .member_client()
             .update_member_sync_preferences(device_id, patch)
             .await
-    }
-
-    async fn workspace_convergence(&self) -> Result<WorkspaceConvergenceDto> {
-        self.ctx.member_client().workspace_convergence().await
     }
 
     async fn dispatch_text(

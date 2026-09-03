@@ -16,7 +16,6 @@ pub mod ws_topic {
     pub const ENCRYPTION: &str = "encryption";
     /// Search index events topic (Phase 92).
     pub const SEARCH: &str = "search";
-    pub const WORKSPACE_CONVERGENCE: &str = "workspace-convergence";
     pub const DEVICE_TRUST: &str = "device-trust";
     pub const NETWORK_RECOVERY: &str = "network-recovery";
 }
@@ -66,7 +65,6 @@ pub mod ws_event {
     pub const SEARCH_STATUS_SNAPSHOT: &str = "search.status_snapshot";
     /// Search rebuild progress event (Phase 92).
     pub const SEARCH_REBUILD_PROGRESS: &str = "search.rebuild_progress";
-    pub const WORKSPACE_CONVERGENCE_CHANGED: &str = "workspace-convergence.changed";
     pub const DEVICE_TRUST_CHANGED: &str = "device-trust.changed";
     pub const NETWORK_RECOVERY_CHANGED: &str = "network-recovery.changed";
     /// Lightweight inbound clipboard notice for CLI `watch` (ADR-008 P2.5).

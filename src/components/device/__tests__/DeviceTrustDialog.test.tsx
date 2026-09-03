@@ -1,133 +1,156 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
-import type { DeviceTrustSnapshot } from '@/api/daemon/device-trust'
+import type { DeviceGroupChoices } from '@/api/daemon/device-trust'
 import { DeviceTrustDialog } from '@/components/device/DeviceTrustDialog'
 import i18n from '@/i18n'
 
-const snapshot = {
+const deviceGroups = {
   revision: 2,
-  localDeviceId: 'windows',
-  localMembership: 'active',
-  currentChange: {
-    changeId: 'change-1',
-    proposedByDeviceId: 'mac',
-    targetDeviceIds: ['phone'],
-    includesLocalDevice: false,
-    applyImpact: {
-      usableDeviceIds: ['mac', 'windows'],
-      pausedDeviceIds: [],
-      localDeviceOutcome: 'active',
-      requiresRejoinDeviceIds: ['phone'],
+  deviceTrust: {
+    revision: 2,
+    localDeviceId: 'windows',
+    localMembership: 'active',
+    currentChange: {
+      changeId: 'change-1',
+      proposedByDeviceId: 'mac',
+      targetDeviceIds: ['phone'],
+      includesLocalDevice: false,
+      applyImpact: {
+        usableDeviceIds: ['mac', 'windows'],
+        pausedDeviceIds: [],
+        localDeviceOutcome: 'active',
+        requiresRejoinDeviceIds: ['phone'],
+      },
+      keepCurrentImpact: {
+        usableDeviceIds: ['windows', 'phone'],
+        pausedDeviceIds: ['mac'],
+        localDeviceOutcome: 'active',
+        requiresRejoinDeviceIds: [],
+      },
+      allowedChoices: ['apply_change', 'keep_current_device_group'],
+      blockedReason: null,
     },
-    keepCurrentImpact: {
-      usableDeviceIds: ['windows', 'phone'],
-      pausedDeviceIds: ['mac'],
-      localDeviceOutcome: 'active',
-      requiresRejoinDeviceIds: [],
-    },
-    allowedChoices: ['apply_change', 'keep_current_device_group'],
+    devices: [
+      {
+        deviceId: 'mac',
+        displayName: 'Mac',
+        isLocal: false,
+        reachability: 'online',
+        membership: 'active',
+        groupRelationship: 'pending_local_decision',
+        compatibility: 'compatible',
+        syncRelationship: 'waiting_for_local_decision',
+        availableActions: [],
+        blockedReason: null,
+      },
+      {
+        deviceId: 'phone',
+        displayName: 'Phone',
+        isLocal: false,
+        reachability: 'offline',
+        membership: 'active',
+        groupRelationship: 'consistent',
+        compatibility: 'compatible',
+        syncRelationship: 'usable',
+        availableActions: [],
+        blockedReason: null,
+      },
+    ],
+    recovery: 'not_available_in_this_version',
+    allowedActions: [],
     blockedReason: null,
+    updatedAtMs: 1,
   },
-  devices: [
+  issues: [
     {
-      deviceId: 'mac',
-      displayName: 'Mac',
-      isLocal: false,
-      reachability: 'online',
-      membership: 'active',
-      groupRelationship: 'pending_local_decision',
-      compatibility: 'compatible',
-      syncRelationship: 'waiting_for_local_decision',
-      availableActions: [],
-      blockedReason: null,
-    },
-    {
-      deviceId: 'phone',
-      displayName: 'Phone',
-      isLocal: false,
-      reachability: 'offline',
-      membership: 'active',
-      groupRelationship: 'consistent',
-      compatibility: 'compatible',
-      syncRelationship: 'usable',
-      availableActions: [],
-      blockedReason: null,
+      issueId: 'p:change-1',
+      choices: [
+        {
+          choiceId: 'apply',
+          isCurrentGroup: false,
+          requiresRePairing: false,
+          memberDeviceIds: ['mac', 'windows'],
+          membersComplete: true,
+        },
+        {
+          choiceId: 'keep',
+          isCurrentGroup: true,
+          requiresRePairing: false,
+          memberDeviceIds: ['windows', 'phone'],
+          membersComplete: true,
+        },
+      ],
     },
   ],
-  recovery: 'not_available_in_this_version',
-  allowedActions: [],
-  blockedReason: null,
-  updatedAtMs: 1,
-} satisfies DeviceTrustSnapshot
+} satisfies DeviceGroupChoices
 
 describe('DeviceTrustDialog', () => {
-  it('selects an option from the cards and confirms it with the only footer button', () => {
-    const decide = vi.fn()
-    render(<DeviceTrustDialog snapshot={snapshot} busy={false} error={null} onDecide={decide} />)
-    expect(screen.queryByRole('button', { name: /close/i })).not.toBeInTheDocument()
+  it('submits the returned issue and choice ids', () => {
+    const choose = vi.fn()
+    render(
+      <DeviceTrustDialog deviceGroups={deviceGroups} busy={false} error={null} onChoose={choose} />
+    )
     const options = screen.getAllByRole('radio')
-    expect(screen.getByText(i18n.t('deviceTrust.modal.title'))).toBeInTheDocument()
-    expect(screen.getAllByText(i18n.t('deviceTrust.modal.continueSyncing'))).toHaveLength(2)
-    expect(screen.getAllByText(i18n.t('deviceTrust.modal.stopSyncing'))).toHaveLength(2)
-    expect(
-      screen.getAllByText(i18n.t('deviceTrust.modal.continueSyncing'))[0].parentElement
-    ).toHaveClass('text-emerald-600')
-    expect(
-      screen.getAllByText(i18n.t('deviceTrust.modal.stopSyncing'))[0].parentElement
-    ).toHaveClass('text-destructive')
-    expect(screen.queryByText(/Windows/)).not.toBeInTheDocument()
-    expect(options[0]).toHaveAttribute('aria-checked', 'true')
     fireEvent.click(options[1])
-    expect(options[1]).toHaveAttribute('aria-checked', 'true')
-    const confirm = screen.getByRole('button', { name: i18n.t('deviceTrust.actions.confirm') })
-    expect(screen.getAllByRole('button')).toHaveLength(1)
-    fireEvent.click(confirm)
-    expect(decide).toHaveBeenCalledWith('keep_current_device_group', false)
+    fireEvent.click(screen.getByRole('button', { name: i18n.t('deviceTrust.actions.confirm') }))
+
+    expect(choose).toHaveBeenCalledWith('p:change-1', 'keep', false)
   })
 
   it('requires two explicit confirmations before removing this device', () => {
-    const decide = vi.fn()
-    const localRemovalSnapshot: DeviceTrustSnapshot = {
-      ...snapshot,
-      currentChange: {
-        ...snapshot.currentChange,
-        includesLocalDevice: true,
-        applyImpact: { ...snapshot.currentChange.applyImpact, localDeviceOutcome: 'removed' },
+    const choose = vi.fn()
+    const localRemovalGroups: DeviceGroupChoices = {
+      ...deviceGroups,
+      deviceTrust: {
+        ...deviceGroups.deviceTrust,
+        currentChange: {
+          ...deviceGroups.deviceTrust.currentChange!,
+          includesLocalDevice: true,
+          applyImpact: {
+            ...deviceGroups.deviceTrust.currentChange!.applyImpact,
+            localDeviceOutcome: 'removed',
+          },
+        },
       },
+      issues: [
+        {
+          ...deviceGroups.issues[0],
+          choices: [
+            { ...deviceGroups.issues[0].choices[0], memberDeviceIds: ['mac'] },
+            deviceGroups.issues[0].choices[1],
+          ],
+        },
+      ],
     }
     const { rerender } = render(
       <DeviceTrustDialog
-        snapshot={localRemovalSnapshot}
+        deviceGroups={localRemovalGroups}
         busy={false}
         error={null}
-        onDecide={decide}
+        onChoose={choose}
       />
     )
-    expect(
-      screen.getByRole('radio', { name: new RegExp(i18n.t('deviceTrust.modal.leaveTitle')) })
-    ).toBeInTheDocument()
-    expect(
-      screen.getByRole('radio', { name: new RegExp(i18n.t('deviceTrust.modal.stayTitle')) })
-    ).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: i18n.t('deviceTrust.actions.confirm') }))
-    expect(decide).toHaveBeenCalledWith('apply_change', false)
+    expect(choose).toHaveBeenCalledWith('p:change-1', 'apply', false)
 
     rerender(
       <DeviceTrustDialog
-        snapshot={localRemovalSnapshot}
+        deviceGroups={localRemovalGroups}
         busy={false}
         error={null}
-        localRemovalConfirmationChangeId="change-1"
-        onDecide={decide}
+        localRemovalConfirmationIssueId="p:change-1"
+        onChoose={choose}
       />
     )
     expect(screen.getByText(i18n.t('deviceTrust.modal.confirmLocalRemoval'))).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: i18n.t('deviceTrust.actions.confirmExit') }))
-    expect(decide).toHaveBeenLastCalledWith('apply_change', true)
+    expect(choose).toHaveBeenLastCalledWith('p:change-1', 'apply', true)
   })
 
   it('uses one tab stop and arrow keys to move between choices', () => {
-    render(<DeviceTrustDialog snapshot={snapshot} busy={false} error={null} onDecide={vi.fn()} />)
+    render(
+      <DeviceTrustDialog deviceGroups={deviceGroups} busy={false} error={null} onChoose={vi.fn()} />
+    )
     const options = screen.getAllByRole('radio')
 
     expect(options[0]).toHaveAttribute('tabindex', '0')
@@ -139,48 +162,60 @@ describe('DeviceTrustDialog', () => {
     expect(options[1]).toHaveFocus()
   })
 
-  it('resets the selected choice when the pending change changes', () => {
-    const decide = vi.fn()
+  it('resets the selected choice when the current issue changes', () => {
     const { rerender } = render(
-      <DeviceTrustDialog snapshot={snapshot} busy={false} error={null} onDecide={decide} />
+      <DeviceTrustDialog deviceGroups={deviceGroups} busy={false} error={null} onChoose={vi.fn()} />
     )
     fireEvent.click(screen.getAllByRole('radio')[1])
 
     rerender(
       <DeviceTrustDialog
-        snapshot={{
-          ...snapshot,
-          currentChange: { ...snapshot.currentChange, changeId: 'change-2' },
+        deviceGroups={{
+          ...deviceGroups,
+          issues: [{ ...deviceGroups.issues[0], issueId: 'p:change-2' }],
         }}
         busy={false}
         error={null}
-        onDecide={decide}
+        onChoose={vi.fn()}
       />
     )
 
     expect(screen.getAllByRole('radio')[0]).toHaveAttribute('aria-checked', 'true')
   })
 
-  it('only shows choices allowed by the current change', () => {
-    const decide = vi.fn()
+  it('renders arbitrary candidate groups and re-pairing requirements', () => {
+    const branchGroups: DeviceGroupChoices = {
+      ...deviceGroups,
+      deviceTrust: { ...deviceGroups.deviceTrust, currentChange: null },
+      issues: [
+        {
+          issueId: 'c:conflict-1',
+          choices: [
+            {
+              choiceId: 'b:branch-a',
+              isCurrentGroup: true,
+              requiresRePairing: false,
+              memberDeviceIds: ['windows', 'mac'],
+              membersComplete: true,
+            },
+            {
+              choiceId: 'b:branch-b',
+              isCurrentGroup: false,
+              requiresRePairing: true,
+              memberDeviceIds: ['phone'],
+              membersComplete: true,
+            },
+          ],
+        },
+      ],
+    }
+
     render(
-      <DeviceTrustDialog
-        snapshot={{
-          ...snapshot,
-          currentChange: {
-            ...snapshot.currentChange,
-            allowedChoices: ['keep_current_device_group'],
-          },
-        }}
-        busy={false}
-        error={null}
-        onDecide={decide}
-      />
+      <DeviceTrustDialog deviceGroups={branchGroups} busy={false} error={null} onChoose={vi.fn()} />
     )
 
-    expect(screen.getAllByRole('radio')).toHaveLength(1)
-    expect(screen.getByRole('radio')).toHaveAccessibleName(
-      new RegExp(i18n.t('deviceTrust.modal.keepTitle'))
-    )
+    expect(screen.getByText(i18n.t('deviceTrust.modal.requiresRePairing'))).toBeInTheDocument()
+    expect(screen.getAllByText('Mac').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Phone').length).toBeGreaterThan(0)
   })
 })

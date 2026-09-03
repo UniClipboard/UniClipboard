@@ -79,48 +79,6 @@ pub struct SpaceProtectionDto {
     pub members: Vec<MemberProtectionDto>,
 }
 
-/// Current phase of the Engine-owned workspace convergence.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum WorkspaceConvergencePhaseDto {
-    LocallyApplied,
-    Converging,
-    Complete,
-    RecoveryRequired,
-}
-
-/// Stable failure category for workspace convergence.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum WorkspaceConvergenceFailureCategoryDto {
-    SpaceMismatch,
-    ContinuityGap,
-    IdentityMismatch,
-    DigestConflict,
-    Unauthorized,
-    VersionIncompatible,
-    NoEffectiveMembers,
-    Storage,
-}
-
-/// Complete Engine-owned workspace convergence state for the active space.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
-#[serde(rename_all = "camelCase")]
-pub struct WorkspaceConvergenceDto {
-    pub phase: WorkspaceConvergencePhaseDto,
-    pub revision: u64,
-    pub history_event_count: u64,
-    pub effective_member_count: u64,
-    pub pending_removal_decision_device_ids: Vec<String>,
-    pub pending_removal_decision_event_id: Option<String>,
-    pub diverged_peer_device_ids: Vec<String>,
-    pub upgrade_required_peer_device_ids: Vec<String>,
-    pub convergence_digest: Option<String>,
-    pub updated_at_ms: i64,
-    pub removed: bool,
-    pub failure_category: Option<WorkspaceConvergenceFailureCategoryDto>,
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum DeviceMembershipDto {
@@ -261,51 +219,59 @@ pub struct DeviceTrustSnapshotDto {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
-pub struct DecideDeviceTrustRequestDto {
-    pub change_id: String,
-    pub choice: DeviceTrustChoiceDto,
+pub struct DeviceGroupChoicesDto {
+    pub revision: u64,
+    pub device_trust: DeviceTrustSnapshotDto,
+    pub issues: Vec<DeviceGroupChoiceIssueDto>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct DeviceGroupChoiceIssueDto {
+    pub issue_id: String,
+    pub choices: Vec<DeviceGroupChoiceOptionDto>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct DeviceGroupChoiceOptionDto {
+    pub choice_id: String,
+    pub is_current_group: bool,
+    pub requires_re_pairing: bool,
+    pub member_device_ids: Vec<String>,
+    pub members_complete: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ChooseDeviceGroupRequestDto {
+    pub issue_id: String,
+    pub choice_id: String,
+    pub expected_revision: u64,
     #[serde(default)]
     pub confirm_local_removal: bool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum DeviceGroupChoiceOutcomeDto {
+    Completed,
+    Pending,
+    RePairingRequired,
+    AlreadyCompleted,
+    StateChanged,
+    LocalDeviceConfirmationRequired,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
-#[serde(
-    rename_all = "snake_case",
-    rename_all_fields = "camelCase",
-    tag = "kind"
-)]
-pub enum DeviceTrustDecisionDto {
-    Applied {
-        #[schema(rename = "changeId")]
-        change_id: String,
-        snapshot: DeviceTrustSnapshotDto,
-    },
-    KeptCurrentDeviceGroup {
-        #[schema(rename = "changeId")]
-        change_id: String,
-        snapshot: DeviceTrustSnapshotDto,
-    },
-    AlreadyCompleted {
-        #[schema(rename = "changeId")]
-        change_id: String,
-        #[schema(rename = "completedChoice")]
-        completed_choice: DeviceTrustChoiceDto,
-        snapshot: DeviceTrustSnapshotDto,
-    },
-    StateChanged {
-        #[schema(rename = "currentChangeId")]
-        current_change_id: Option<String>,
-        snapshot: DeviceTrustSnapshotDto,
-    },
-    LocalDeviceConfirmationRequired {
-        #[schema(rename = "changeId")]
-        change_id: String,
-        snapshot: DeviceTrustSnapshotDto,
-    },
+#[serde(rename_all = "camelCase")]
+pub struct DeviceGroupChoiceResultDto {
+    pub outcome: DeviceGroupChoiceOutcomeDto,
+    pub current_revision: Option<u64>,
 }
 
 #[cfg(test)]
-mod device_trust_decision_dto_tests {
+mod device_group_choice_dto_tests {
     use serde_json::json;
 
     use super::*;
@@ -327,23 +293,59 @@ mod device_trust_decision_dto_tests {
     }
 
     #[test]
-    fn serializes_struct_variant_fields_in_camel_case() {
-        let value = serde_json::to_value(DeviceTrustDecisionDto::AlreadyCompleted {
-            change_id: "change-1".to_string(),
-            completed_choice: DeviceTrustChoiceDto::ApplyChange,
-            snapshot: snapshot(),
+    fn query_response_preserves_opaque_issue_and_choice_ids() {
+        let value = serde_json::to_value(DeviceGroupChoicesDto {
+            revision: 7,
+            device_trust: snapshot(),
+            issues: vec![DeviceGroupChoiceIssueDto {
+                issue_id: "p:issue-1".to_string(),
+                choices: vec![DeviceGroupChoiceOptionDto {
+                    choice_id: "keep".to_string(),
+                    is_current_group: true,
+                    requires_re_pairing: false,
+                    member_device_ids: vec!["device-1".to_string()],
+                    members_complete: true,
+                }],
+            }],
         })
-        .expect("serialize device trust decision");
+        .expect("serialize device group choices");
 
-        assert_eq!(value["changeId"], json!("change-1"));
-        assert_eq!(value["completedChoice"], json!("apply_change"));
-        assert!(
-            value.get("change_id").is_none(),
-            "legacy snake_case field leaked: {value}"
+        assert_eq!(value["revision"], 7);
+        assert_eq!(value["deviceTrust"]["localDeviceId"], "local-device");
+        assert_eq!(value["issues"][0]["issueId"], "p:issue-1");
+        assert_eq!(value["issues"][0]["choices"][0]["choiceId"], "keep");
+    }
+
+    #[test]
+    fn choice_request_and_result_use_the_current_query_revision() {
+        let request = serde_json::to_value(ChooseDeviceGroupRequestDto {
+            issue_id: "c:issue-1".to_string(),
+            choice_id: "b:choice-1".to_string(),
+            expected_revision: 9,
+            confirm_local_removal: true,
+        })
+        .expect("serialize device group choice request");
+        let result = serde_json::to_value(DeviceGroupChoiceResultDto {
+            outcome: DeviceGroupChoiceOutcomeDto::StateChanged,
+            current_revision: Some(10),
+        })
+        .expect("serialize device group choice result");
+
+        assert_eq!(
+            request,
+            json!({
+                "issueId": "c:issue-1",
+                "choiceId": "b:choice-1",
+                "expectedRevision": 9,
+                "confirmLocalRemoval": true,
+            })
         );
-        assert!(
-            value.get("completed_choice").is_none(),
-            "legacy snake_case field leaked: {value}"
+        assert_eq!(
+            result,
+            json!({
+                "outcome": "state_changed",
+                "currentRevision": 10,
+            })
         );
     }
 }

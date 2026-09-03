@@ -16,9 +16,9 @@ use uc_daemon_contract::api::dto::clipboard_command::{
     ResendResponse,
 };
 use uc_daemon_contract::api::dto::member::{
-    DecideDeviceTrustRequestDto, DeviceTrustDecisionDto, DeviceTrustSnapshotDto,
-    MemberSyncPreferencesDto, MemberSyncPreferencesPatchDto, MemberSyncResultDto,
-    WorkspaceConvergenceDto,
+    ChooseDeviceGroupRequestDto, DeviceGroupChoiceResultDto, DeviceGroupChoicesDto,
+    DeviceTrustSnapshotDto, MemberSyncPreferencesDto, MemberSyncPreferencesPatchDto,
+    MemberSyncResultDto,
 };
 use uc_daemon_contract::api::dto::setup_events::SetupPairingCompletedEvent;
 use uc_daemon_contract::api::dto::v2::setup::JoinSpaceResponse;
@@ -36,16 +36,16 @@ pub struct FileExport {
 
 #[async_trait]
 pub trait DaemonService: Send + Sync {
-    async fn remove_member(&self, peer_id: String) -> Result<WorkspaceConvergenceDto>;
+    async fn remove_member(&self, peer_id: String) -> Result<DeviceTrustSnapshotDto>;
 
-    async fn device_trust(&self) -> Result<DeviceTrustSnapshotDto>;
+    async fn query_device_group_choices(&self) -> Result<DeviceGroupChoicesDto>;
 
     async fn cancel_join(&self, join_id: &str) -> Result<JoinSpaceResponse>;
 
-    async fn decide_device_trust(
+    async fn choose_device_group(
         &self,
-        request: &DecideDeviceTrustRequestDto,
-    ) -> Result<DeviceTrustDecisionDto>;
+        request: &ChooseDeviceGroupRequestDto,
+    ) -> Result<DeviceGroupChoiceResultDto>;
 
     async fn member_sync_preferences(&self, device_id: &str) -> Result<MemberSyncPreferencesDto>;
 
@@ -54,8 +54,6 @@ pub trait DaemonService: Send + Sync {
         device_id: &str,
         patch: &MemberSyncPreferencesPatchDto,
     ) -> Result<MemberSyncResultDto>;
-
-    async fn workspace_convergence(&self) -> Result<WorkspaceConvergenceDto>;
 
     async fn dispatch_text(
         &self,

@@ -418,16 +418,22 @@ const AppContent = ({
 }
 
 const DeviceTrustDialogHost = () => {
-  const { snapshot, decisionBusy, decisionError, localRemovalConfirmationChangeId, decide } =
-    useDeviceTrust()
+  const {
+    deviceGroups,
+    snapshot,
+    decisionBusy,
+    decisionError,
+    localRemovalConfirmationIssueId,
+    choose,
+  } = useDeviceTrust()
   useDeviceTrustDesktopEffects(snapshot)
-  return snapshot?.currentChange ? (
+  return deviceGroups && deviceGroups.issues.length > 0 ? (
     <DeviceTrustDialog
-      snapshot={snapshot}
+      deviceGroups={deviceGroups}
       busy={decisionBusy}
       error={decisionError}
-      localRemovalConfirmationChangeId={localRemovalConfirmationChangeId}
-      onDecide={(choice, confirm) => void decide(choice, confirm)}
+      localRemovalConfirmationIssueId={localRemovalConfirmationIssueId}
+      onChoose={(issueId, choiceId, confirm) => void choose(issueId, choiceId, confirm)}
     />
   ) : null
 }

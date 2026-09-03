@@ -534,13 +534,13 @@ async fn wait_for_join(
             _ = tokio::time::sleep(JOIN_POLL_INTERVAL) => {}
         }
 
-        let snapshot = match service.device_trust().await {
-            Ok(snapshot) => {
+        let snapshot = match service.query_device_group_choices().await {
+            Ok(choices) => {
                 if reconnecting {
                     spinner.set_message("Join request pending; waiting for final status...");
                     reconnecting = false;
                 }
-                snapshot
+                choices.device_trust
             }
             Err(_) => {
                 if !reconnecting {
@@ -616,8 +616,8 @@ pub async fn status(json: bool, verbose: bool) -> i32 {
         Ok(session) => session,
         Err(code) => return code,
     };
-    let snapshot = match service.device_trust().await {
-        Ok(snapshot) => snapshot,
+    let snapshot = match service.query_device_group_choices().await {
+        Ok(choices) => choices.device_trust,
         Err(err) => {
             return emit_join_error(
                 json,
@@ -654,8 +654,8 @@ pub async fn cancel(json: bool, verbose: bool) -> i32 {
         Ok(session) => session,
         Err(code) => return code,
     };
-    let snapshot = match service.device_trust().await {
-        Ok(snapshot) => snapshot,
+    let snapshot = match service.query_device_group_choices().await {
+        Ok(choices) => choices.device_trust,
         Err(err) => {
             return emit_join_error(
                 json,

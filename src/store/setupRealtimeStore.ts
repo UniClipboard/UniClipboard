@@ -1,7 +1,6 @@
 import { useEffect, useSyncExternalStore } from 'react'
 import {
   getSetupState,
-  type ActiveJoinSpaceResponse,
   type CurrentInvitation,
   type SetupStateResponse,
   SetupV2Error,
@@ -33,7 +32,11 @@ export type SetupCompletion =
       sponsorDeviceId: string
       peerDeviceId: string | null
     }
-  | { kind: 'pairing_succeeded'; role: 'joiner'; redeem: ActiveJoinSpaceResponse }
+  | {
+      kind: 'pairing_succeeded'
+      role: 'joiner'
+      peerDeviceId: string | null
+    }
 
 export type SetupFlow =
   /** Initial fetch in progress; setup gate stays active. */

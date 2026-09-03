@@ -14,7 +14,7 @@ vi.mock('@/api/daemon/setupV2', () => ({
 }))
 
 vi.mock('@/api/daemon/device-trust', () => ({
-  getDeviceTrust: vi.fn(() => Promise.resolve({ currentJoin: null })),
+  getDeviceTrustSnapshot: vi.fn(() => Promise.resolve({ currentJoin: null })),
 }))
 vi.mock('@/lib/daemon-ws', () => ({
   daemonWs: {

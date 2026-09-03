@@ -6,7 +6,7 @@ use reqwest::{Method, RequestBuilder, StatusCode};
 use crate::http::enveloped::enveloped_request;
 use crate::http::{authorized_daemon_request_with_type, encode_path_segment};
 use crate::DaemonConnectionState;
-use uc_daemon_contract::api::dto::member::WorkspaceConvergenceDto;
+use uc_daemon_contract::api::dto::member::DeviceTrustSnapshotDto;
 use uc_daemon_contract::api::dto::pairing::{
     AckedPairingCommandResponse, InitiatePairingRequest, InitiatePairingResponse,
     PairingApiErrorResponse, PairingSessionCommandRequest, SetPairingDiscoverabilityRequest,
@@ -161,7 +161,7 @@ impl DaemonPairingClient {
         .await
     }
 
-    pub async fn unpair_device(&self, peer_id: String) -> Result<WorkspaceConvergenceDto> {
+    pub async fn unpair_device(&self, peer_id: String) -> Result<DeviceTrustSnapshotDto> {
         Ok(enveloped_request(
             &self.http,
             &self.connection_state,

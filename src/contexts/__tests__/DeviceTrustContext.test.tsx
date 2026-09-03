@@ -1,19 +1,18 @@
 import { act, renderHook, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { DeviceTrustSnapshot } from '@/api/daemon/device-trust'
+import type { DeviceGroupChoices, DeviceTrustSnapshot } from '@/api/daemon/device-trust'
 import { DeviceTrustProvider } from '@/contexts/DeviceTrustContext'
 import { useDeviceTrust } from '@/hooks/useDeviceTrust'
 
-const { getDeviceTrust, decideDeviceTrust, subscribe } = vi.hoisted(() => ({
-  getDeviceTrust: vi.fn(),
-  decideDeviceTrust: vi.fn(),
+const { getDeviceGroupChoices, chooseDeviceGroup, subscribe } = vi.hoisted(() => ({
+  getDeviceGroupChoices: vi.fn(),
+  chooseDeviceGroup: vi.fn(),
   subscribe: vi.fn((_topics: string[], _callback: (event: unknown) => void) => vi.fn()),
 }))
 
-vi.mock('@/api/daemon/device-trust', () => ({ getDeviceTrust, decideDeviceTrust }))
+vi.mock('@/api/daemon/device-trust', () => ({ getDeviceGroupChoices, chooseDeviceGroup }))
 vi.mock('@/lib/daemon-ws', () => ({ daemonWs: { subscribe } }))
-vi.mock('@/lib/device-trust-notifications', () => ({ notifyDeviceTrustSnapshot: vi.fn() }))
 
 const emptySnapshot: DeviceTrustSnapshot = {
   revision: 1,
@@ -27,6 +26,54 @@ const emptySnapshot: DeviceTrustSnapshot = {
   updatedAtMs: 1,
 }
 
+const emptyGroups: DeviceGroupChoices = {
+  revision: 1,
+  deviceTrust: emptySnapshot,
+  issues: [],
+}
+
+const pendingGroups: DeviceGroupChoices = {
+  revision: 7,
+  deviceTrust: {
+    ...emptySnapshot,
+    revision: 7,
+    currentChange: {
+      changeId: 'change-1',
+      proposedByDeviceId: 'peer-a',
+      targetDeviceIds: ['peer-b'],
+      includesLocalDevice: false,
+      applyImpact: {
+        usableDeviceIds: ['local'],
+        pausedDeviceIds: [],
+        localDeviceOutcome: 'active',
+        requiresRejoinDeviceIds: ['peer-b'],
+      },
+      keepCurrentImpact: {
+        usableDeviceIds: ['local', 'peer-b'],
+        pausedDeviceIds: ['peer-a'],
+        localDeviceOutcome: 'active',
+        requiresRejoinDeviceIds: [],
+      },
+      allowedChoices: ['apply_change'],
+      blockedReason: null,
+    },
+  },
+  issues: [
+    {
+      issueId: 'p:issue-1',
+      choices: [
+        {
+          choiceId: 'apply',
+          isCurrentGroup: false,
+          requiresRePairing: false,
+          memberDeviceIds: ['local'],
+          membersComplete: true,
+        },
+      ],
+    },
+  ],
+}
+
 function wrapper({ children }: { children: ReactNode }) {
   return <DeviceTrustProvider enabled>{children}</DeviceTrustProvider>
 }
@@ -34,61 +81,73 @@ function wrapper({ children }: { children: ReactNode }) {
 describe('DeviceTrustProvider', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    getDeviceTrust.mockResolvedValue(emptySnapshot)
+    getDeviceGroupChoices.mockResolvedValue(emptyGroups)
   })
 
-  it('loads the complete snapshot and reloads it after a trust event', async () => {
+  it('loads complete choices and refreshes after device or global invalidation events', async () => {
     const { result } = renderHook(() => useDeviceTrust(), { wrapper })
     await waitFor(() => expect(result.current.snapshot).toEqual(emptySnapshot))
+    expect(result.current.deviceGroups).toEqual(emptyGroups)
+    expect(subscribe).toHaveBeenCalledWith(['device-trust', 'system'], expect.any(Function))
+
     const handler = subscribe.mock.calls[0]?.[1]
     expect(handler).toBeDefined()
     if (!handler) return
-    await act(async () => handler({ topic: 'device-trust', eventType: 'device-trust.changed' }))
-    await waitFor(() => expect(getDeviceTrust).toHaveBeenCalledTimes(2))
+    await act(async () => handler({ topic: 'system', eventType: 'system.refresh_required' }))
+    await waitFor(() => expect(getDeviceGroupChoices).toHaveBeenCalledTimes(2))
   })
 
-  it('does not automatically repeat a failed user decision', async () => {
-    const pending = {
-      ...emptySnapshot,
-      currentChange: { changeId: 'change-1', allowedChoices: ['apply_change'] },
-    }
-    getDeviceTrust.mockResolvedValue(pending)
-    decideDeviceTrust.mockRejectedValue(new Error('offline'))
+  it('submits opaque ids with the query revision and then refreshes', async () => {
+    getDeviceGroupChoices.mockResolvedValueOnce(pendingGroups).mockResolvedValueOnce(emptyGroups)
+    chooseDeviceGroup.mockResolvedValue({
+      outcome: 'completed',
+      currentRevision: null,
+    })
     const { result } = renderHook(() => useDeviceTrust(), { wrapper })
-    await waitFor(() => expect(result.current.snapshot).toEqual(pending))
-    await act(async () => result.current.decide('apply_change', false))
-    expect(decideDeviceTrust).toHaveBeenCalledTimes(1)
+    await waitFor(() => expect(result.current.deviceGroups).toEqual(pendingGroups))
+
+    await act(async () => result.current.choose('p:issue-1', 'apply', false))
+
+    expect(chooseDeviceGroup).toHaveBeenCalledWith('p:issue-1', 'apply', 7, false)
+    expect(getDeviceGroupChoices).toHaveBeenCalledTimes(2)
+    expect(result.current.deviceGroups).toEqual(emptyGroups)
+  })
+
+  it('exposes a second local-removal confirmation for the same issue', async () => {
+    getDeviceGroupChoices.mockResolvedValue(pendingGroups)
+    chooseDeviceGroup.mockResolvedValue({
+      outcome: 'local_device_confirmation_required',
+      currentRevision: null,
+    })
+    const { result } = renderHook(() => useDeviceTrust(), { wrapper })
+    await waitFor(() => expect(result.current.deviceGroups).toEqual(pendingGroups))
+
+    await act(async () => result.current.choose('p:issue-1', 'apply', false))
+
+    expect(result.current.localRemovalConfirmationIssueId).toBe('p:issue-1')
+  })
+
+  it('does not automatically repeat a failed user choice', async () => {
+    getDeviceGroupChoices.mockResolvedValue(pendingGroups)
+    chooseDeviceGroup.mockRejectedValue(new Error('offline'))
+    const { result } = renderHook(() => useDeviceTrust(), { wrapper })
+    await waitFor(() => expect(result.current.deviceGroups).toEqual(pendingGroups))
+
+    await act(async () => result.current.choose('p:issue-1', 'apply', false))
+
+    expect(chooseDeviceGroup).toHaveBeenCalledTimes(1)
     expect(result.current.decisionError).toBeTruthy()
   })
 
-  it('exposes the engine request for a second local-removal confirmation', async () => {
-    const pending = {
-      ...emptySnapshot,
-      currentChange: { changeId: 'change-1', allowedChoices: ['apply_change'] },
-    }
-    getDeviceTrust.mockResolvedValue(pending)
-    decideDeviceTrust.mockResolvedValue({
-      kind: 'local_device_confirmation_required',
-      changeId: 'change-1',
-      snapshot: pending,
-    })
-    const { result } = renderHook(() => useDeviceTrust(), { wrapper })
-    await waitFor(() => expect(result.current.snapshot).toEqual(pending))
-
-    await act(async () => result.current.decide('apply_change', false))
-
-    expect(Reflect.get(result.current, 'localRemovalConfirmationChangeId')).toBe('change-1')
-  })
-
-  it('does not let an older refresh overwrite a newer snapshot', async () => {
-    let resolveFirst!: (snapshot: DeviceTrustSnapshot) => void
-    let resolveSecond!: (snapshot: DeviceTrustSnapshot) => void
-    getDeviceTrust
+  it('does not let an older refresh overwrite a newer response', async () => {
+    let resolveFirst!: (state: DeviceGroupChoices) => void
+    let resolveSecond!: (state: DeviceGroupChoices) => void
+    getDeviceGroupChoices
       .mockImplementationOnce(
-        () => new Promise<DeviceTrustSnapshot>(resolve => (resolveFirst = resolve))
+        () => new Promise<DeviceGroupChoices>(resolve => (resolveFirst = resolve))
       )
       .mockImplementationOnce(
-        () => new Promise<DeviceTrustSnapshot>(resolve => (resolveSecond = resolve))
+        () => new Promise<DeviceGroupChoices>(resolve => (resolveSecond = resolve))
       )
 
     const { result } = renderHook(() => useDeviceTrust(), { wrapper })
@@ -97,50 +156,15 @@ describe('DeviceTrustProvider', () => {
     if (!handler) return
     act(() => handler({ topic: 'device-trust', eventType: 'device-trust.changed' }))
 
-    const newer = { ...emptySnapshot, revision: 2, updatedAtMs: 2 }
+    const newer = {
+      ...emptyGroups,
+      revision: 2,
+      deviceTrust: { ...emptySnapshot, revision: 2, updatedAtMs: 2 },
+    }
     await act(async () => resolveSecond(newer))
-    await waitFor(() => expect(result.current.snapshot).toEqual(newer))
+    await waitFor(() => expect(result.current.deviceGroups).toEqual(newer))
 
-    await act(async () => resolveFirst(emptySnapshot))
-    expect(result.current.snapshot).toEqual(newer)
-  })
-
-  it('keeps a completed decision newer than a refresh started during submission', async () => {
-    const pending = {
-      ...emptySnapshot,
-      currentChange: { changeId: 'change-1', allowedChoices: ['apply_change'] },
-    }
-    let resolveDecision!: (result: unknown) => void
-    let resolveRefresh!: (snapshot: DeviceTrustSnapshot) => void
-    getDeviceTrust
-      .mockResolvedValueOnce(pending)
-      .mockImplementationOnce(
-        () => new Promise<DeviceTrustSnapshot>(resolve => (resolveRefresh = resolve))
-      )
-    decideDeviceTrust.mockImplementationOnce(
-      () => new Promise(resolve => (resolveDecision = resolve))
-    )
-
-    const { result } = renderHook(() => useDeviceTrust(), { wrapper })
-    await waitFor(() => expect(result.current.snapshot).toEqual(pending))
-    let decisionPromise!: Promise<void>
-    act(() => {
-      decisionPromise = result.current.decide('apply_change', false)
-    })
-    const handler = subscribe.mock.calls[0]?.[1]
-    expect(handler).toBeDefined()
-    if (!handler) return
-    act(() => handler({ topic: 'device-trust', eventType: 'device-trust.changed' }))
-
-    const decided = { ...emptySnapshot, revision: 3, updatedAtMs: 3 }
-    await act(async () =>
-      resolveDecision({ kind: 'applied', changeId: 'change-1', snapshot: decided })
-    )
-    await decisionPromise
-    expect(result.current.snapshot).toEqual(decided)
-
-    await act(async () => resolveRefresh({ ...emptySnapshot, revision: 2, updatedAtMs: 2 }))
-    expect(result.current.snapshot).toEqual(decided)
-    expect(result.current.loading).toBe(false)
+    await act(async () => resolveFirst(emptyGroups))
+    expect(result.current.deviceGroups).toEqual(newer)
   })
 })

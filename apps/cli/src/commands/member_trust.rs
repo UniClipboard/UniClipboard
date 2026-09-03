@@ -2,8 +2,9 @@ use std::io::IsTerminal;
 
 use serde::Serialize;
 use uc_daemon_contract::api::dto::member::{
-    DecideDeviceTrustRequestDto, DeviceMembershipDto, DeviceTrustChangeDto, DeviceTrustChoiceDto,
-    DeviceTrustDecisionDto, DeviceTrustImpactDto, DeviceTrustSnapshotDto,
+    ChooseDeviceGroupRequestDto, DeviceGroupChoiceIssueDto, DeviceGroupChoiceOptionDto,
+    DeviceGroupChoiceOutcomeDto, DeviceGroupChoiceResultDto, DeviceGroupChoicesDto,
+    DeviceMembershipDto,
 };
 
 use crate::commands::app_session::connect_facade_with_lease;
@@ -11,71 +12,59 @@ use crate::exit_codes;
 use crate::{output, ui};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum SelectChangeError {
-    NoCurrentChange,
-    ExpectedChangeRequired,
-    StateChanged,
+enum SelectionError {
+    NoIssues,
+    IssueRequired,
+    IssueChanged,
+    NoChoices,
+    ChoiceRequired,
+    ChoiceChanged,
 }
 
-fn select_change<'a>(
-    current: Option<&'a DeviceTrustChangeDto>,
-    expected_change: Option<&str>,
-    interactive: bool,
-) -> Result<&'a DeviceTrustChangeDto, SelectChangeError> {
-    let current = current.ok_or(SelectChangeError::NoCurrentChange)?;
-    match expected_change {
-        Some(expected) if expected != current.change_id => Err(SelectChangeError::StateChanged),
-        Some(_) => Ok(current),
-        None if interactive => Ok(current),
-        None => Err(SelectChangeError::ExpectedChangeRequired),
+fn select_issue<'a>(
+    state: &'a DeviceGroupChoicesDto,
+    expected_issue: Option<&str>,
+) -> Result<&'a DeviceGroupChoiceIssueDto, SelectionError> {
+    match expected_issue {
+        Some(expected) => state
+            .issues
+            .iter()
+            .find(|issue| issue.issue_id == expected)
+            .ok_or(SelectionError::IssueChanged),
+        None if state.issues.is_empty() => Err(SelectionError::NoIssues),
+        None if state.issues.len() == 1 => Ok(&state.issues[0]),
+        None => Err(SelectionError::IssueRequired),
     }
 }
 
-fn requires_local_removal_confirmation(change: &DeviceTrustChangeDto) -> bool {
-    change.apply_impact.local_device_outcome == DeviceMembershipDto::Removed
+fn select_choice<'a>(
+    issue: &'a DeviceGroupChoiceIssueDto,
+    expected_choice: Option<&str>,
+) -> Result<&'a DeviceGroupChoiceOptionDto, SelectionError> {
+    match expected_choice {
+        Some(expected) => issue
+            .choices
+            .iter()
+            .find(|choice| choice.choice_id == expected)
+            .ok_or(SelectionError::ChoiceChanged),
+        None if issue.choices.is_empty() => Err(SelectionError::NoChoices),
+        None if issue.choices.len() == 1 => Ok(&issue.choices[0]),
+        None => Err(SelectionError::ChoiceRequired),
+    }
 }
 
-fn choice_is_allowed(change: &DeviceTrustChangeDto, choice: DeviceTrustChoiceDto) -> bool {
-    change.allowed_choices.contains(&choice)
+fn choice_removes_local_device(choice: &DeviceGroupChoiceOptionDto, local_device_id: &str) -> bool {
+    !choice
+        .member_device_ids
+        .iter()
+        .any(|device_id| device_id == local_device_id)
 }
 
 #[derive(Serialize)]
-struct TrustStatusOutput<'a> {
+struct ChoiceOutput<'a> {
     ok: bool,
-    status: &'static str,
-    revision: u64,
-    local_device_id: &'a str,
-    local_membership: DeviceMembershipDto,
-    current_change: Option<TrustChangeOutput<'a>>,
-}
-
-#[derive(Serialize)]
-struct TrustChangeOutput<'a> {
-    change_id: &'a str,
-    proposed_by_device_id: &'a str,
-    target_device_ids: &'a [String],
-    includes_local_device: bool,
-    apply_impact: TrustImpactOutput<'a>,
-    keep_current_impact: TrustImpactOutput<'a>,
-    allowed_choices: &'a [DeviceTrustChoiceDto],
-}
-
-#[derive(Serialize)]
-struct TrustImpactOutput<'a> {
-    usable_device_ids: &'a [String],
-    paused_device_ids: &'a [String],
-    local_device_outcome: DeviceMembershipDto,
-    requires_rejoin_device_ids: &'a [String],
-}
-
-#[derive(Serialize)]
-struct TrustDecisionOutput<'a> {
-    ok: bool,
-    status: &'static str,
-    change_id: Option<&'a str>,
-    completed_choice: Option<DeviceTrustChoiceDto>,
-    current_change_id: Option<&'a str>,
-    snapshot: TrustStatusOutput<'a>,
+    result: &'a DeviceGroupChoiceResultDto,
+    state: &'a DeviceGroupChoicesDto,
 }
 
 #[derive(Serialize)]
@@ -83,340 +72,276 @@ struct TrustErrorOutput<'a> {
     ok: bool,
     code: &'a str,
     message: &'a str,
-    current_change_id: Option<&'a str>,
+    current_issue_id: Option<&'a str>,
 }
 
 pub async fn status(json: bool, verbose: bool) -> i32 {
     if !json {
-        ui::header("Device trust");
+        ui::header("Device groups");
     }
     let (_lease, service) = match connect_facade_with_lease(verbose).await {
         Ok(session) => session,
         Err(code) => return code,
     };
-    let snapshot = match service.device_trust().await {
-        Ok(snapshot) => snapshot,
-        Err(err) => {
+    let state = match service.query_device_group_choices().await {
+        Ok(state) => state,
+        Err(error) => {
             return emit_error(
                 json,
-                "device_trust_unavailable",
+                "device_group_choices_unavailable",
                 &format!(
-                    "Failed to query device trust: {}",
-                    crate::commands::daemon_error_message(&err)
+                    "Failed to query device groups: {}",
+                    crate::commands::daemon_error_message(&error)
                 ),
                 None,
-            )
+            );
         }
     };
-    emit_status(&snapshot, json)
+    emit_status(&state, json)
 }
 
-pub async fn decide(
-    choice: DeviceTrustChoiceDto,
-    expected_change: Option<String>,
+pub async fn choose(
+    requested_issue: Option<String>,
+    requested_choice: Option<String>,
     confirm_local_removal: bool,
     json: bool,
     verbose: bool,
 ) -> i32 {
     if !json {
-        ui::header(match choice {
-            DeviceTrustChoiceDto::ApplyChange => "Apply device trust change",
-            DeviceTrustChoiceDto::KeepCurrentDeviceGroup => "Keep current device group",
-        });
+        ui::header("Choose device group");
     }
     let (_lease, service) = match connect_facade_with_lease(verbose).await {
         Ok(session) => session,
         Err(code) => return code,
     };
-    let snapshot = match service.device_trust().await {
-        Ok(snapshot) => snapshot,
-        Err(err) => {
+    let state = match service.query_device_group_choices().await {
+        Ok(state) => state,
+        Err(error) => {
             return emit_error(
                 json,
-                "device_trust_unavailable",
+                "device_group_choices_unavailable",
                 &format!(
-                    "Failed to query device trust: {}",
-                    crate::commands::daemon_error_message(&err)
+                    "Failed to query device groups: {}",
+                    crate::commands::daemon_error_message(&error)
                 ),
                 None,
-            )
+            );
         }
     };
+
     let interactive = !json && std::io::stderr().is_terminal();
-    let change = match select_change(
-        snapshot.current_change.as_ref(),
-        expected_change.as_deref(),
-        interactive,
-    ) {
-        Ok(change) => change,
-        Err(SelectChangeError::NoCurrentChange) => {
-            return emit_error(
-                json,
-                "no_current_change",
-                "There is no device trust change to decide.",
-                None,
-            )
-        }
-        Err(SelectChangeError::ExpectedChangeRequired) => {
-            return emit_error(
-                json,
-                "change_id_required",
-                "Non-interactive use requires --change <CHANGE-ID>.",
-                snapshot
-                    .current_change
-                    .as_ref()
-                    .map(|change| change.change_id.as_str()),
-            )
-        }
-        Err(SelectChangeError::StateChanged) => {
-            return emit_error(
-                json,
-                "device_trust_state_changed",
-                "The device trust change has changed; review the current status.",
-                snapshot
-                    .current_change
-                    .as_ref()
-                    .map(|change| change.change_id.as_str()),
-            )
-        }
-    };
-
-    if !choice_is_allowed(change, choice) {
-        return emit_error(
-            json,
-            "choice_not_allowed",
-            "The selected decision is not available for this device trust change.",
-            Some(&change.change_id),
-        );
-    }
-
     if interactive {
-        render_change(change);
-        let prompt = match choice {
-            DeviceTrustChoiceDto::ApplyChange => "Apply this device group change?",
-            DeviceTrustChoiceDto::KeepCurrentDeviceGroup => "Keep the current device group?",
-        };
-        match ui::confirm(prompt, false) {
-            Ok(true) => {}
-            Ok(false) => {
-                ui::end("No device trust decision was made.");
-                return exit_codes::EXIT_SUCCESS;
-            }
-            Err(err) => {
-                return emit_error(false, "confirmation_failed", &err, Some(&change.change_id))
-            }
-        }
+        render_status(&state);
     }
+    let issue_input = match requested_issue {
+        Some(issue) => Some(issue),
+        None if interactive && state.issues.len() > 1 => match ui::input("Issue ID", false) {
+            Ok(issue) => Some(issue),
+            Err(error) => {
+                return emit_error(false, "selection_failed", &error, None);
+            }
+        },
+        None => None,
+    };
+    let issue = match select_issue(&state, issue_input.as_deref()) {
+        Ok(issue) => issue,
+        Err(error) => return emit_selection_error(json, error, None),
+    };
+    let choice_input = match requested_choice {
+        Some(choice) => Some(choice),
+        None if interactive && issue.choices.len() > 1 => match ui::input("Choice ID", false) {
+            Ok(choice) => Some(choice),
+            Err(error) => {
+                return emit_error(false, "selection_failed", &error, Some(&issue.issue_id));
+            }
+        },
+        None => None,
+    };
+    let choice = match select_choice(issue, choice_input.as_deref()) {
+        Ok(choice) => choice,
+        Err(error) => return emit_selection_error(json, error, Some(&issue.issue_id)),
+    };
 
     let mut confirm_local_removal = confirm_local_removal;
-    if choice == DeviceTrustChoiceDto::ApplyChange
-        && requires_local_removal_confirmation(change)
+    if choice_removes_local_device(choice, &state.device_trust.local_device_id)
         && !confirm_local_removal
     {
         if !interactive {
             return emit_error(
                 json,
                 "local_removal_confirmation_required",
-                "This change removes this device; pass --confirm-local-removal.",
-                Some(&change.change_id),
+                "This choice removes this device; pass --confirm-local-removal.",
+                Some(&issue.issue_id),
             );
         }
         match ui::confirm(
-            "This change removes this device from the space. Continue?",
+            "This choice removes this device from the space. Continue?",
             false,
         ) {
             Ok(true) => confirm_local_removal = true,
             Ok(false) => {
-                ui::end("No device trust decision was made.");
+                ui::end("No device group choice was made.");
                 return exit_codes::EXIT_SUCCESS;
             }
-            Err(err) => {
-                return emit_error(false, "confirmation_failed", &err, Some(&change.change_id))
+            Err(error) => {
+                return emit_error(false, "confirmation_failed", &error, Some(&issue.issue_id));
             }
         }
     }
 
-    let request = DecideDeviceTrustRequestDto {
-        change_id: change.change_id.clone(),
-        choice,
+    let request = ChooseDeviceGroupRequestDto {
+        issue_id: issue.issue_id.clone(),
+        choice_id: choice.choice_id.clone(),
+        expected_revision: state.revision,
         confirm_local_removal,
     };
-    let decision = match service.decide_device_trust(&request).await {
-        Ok(decision) => decision,
-        Err(err) => {
+    let result = match service.choose_device_group(&request).await {
+        Ok(result) => result,
+        Err(error) => {
             return emit_error(
                 json,
-                "device_trust_decision_failed",
+                "device_group_choice_failed",
                 &format!(
-                    "Failed to decide device trust: {}",
-                    crate::commands::daemon_error_message(&err)
+                    "Failed to choose device group: {}",
+                    crate::commands::daemon_error_message(&error)
                 ),
-                Some(&request.change_id),
-            )
+                Some(&request.issue_id),
+            );
         }
     };
-    emit_decision(&decision, json)
+    let latest = match service.query_device_group_choices().await {
+        Ok(state) => state,
+        Err(error) => {
+            return emit_error(
+                json,
+                "device_group_refresh_failed",
+                &format!(
+                    "Choice was submitted, but current state could not be read: {}",
+                    crate::commands::daemon_error_message(&error)
+                ),
+                Some(&request.issue_id),
+            );
+        }
+    };
+
+    emit_choice(&result, &latest, json)
 }
 
-fn emit_status(snapshot: &DeviceTrustSnapshotDto, json: bool) -> i32 {
-    let output = status_output(snapshot);
+pub(crate) fn emit_status(state: &DeviceGroupChoicesDto, json: bool) -> i32 {
     if json {
-        return output::emit_json(&output, "device trust status");
+        return output::emit_json(state, "device group choices");
     }
-    ui::info("local_device_id", output.local_device_id);
-    ui::info(
-        "local_membership",
-        membership_label(output.local_membership),
-    );
-    match snapshot.current_change.as_ref() {
-        Some(change) => render_change(change),
-        None => ui::info("status", "none"),
-    }
+    render_status(state);
     exit_codes::EXIT_SUCCESS
 }
 
-fn status_output(snapshot: &DeviceTrustSnapshotDto) -> TrustStatusOutput<'_> {
-    TrustStatusOutput {
-        ok: true,
-        status: if snapshot.current_change.is_some() {
-            "pending_change"
-        } else {
-            "none"
-        },
-        revision: snapshot.revision,
-        local_device_id: &snapshot.local_device_id,
-        local_membership: snapshot.local_membership,
-        current_change: snapshot.current_change.as_ref().map(change_output),
+fn render_status(state: &DeviceGroupChoicesDto) {
+    ui::info("revision", &state.revision.to_string());
+    ui::info("local_device_id", &state.device_trust.local_device_id);
+    ui::info(
+        "local_membership",
+        membership_label(state.device_trust.local_membership),
+    );
+    ui::info("pending_issues", &state.issues.len().to_string());
+    for issue in &state.issues {
+        ui::bar();
+        ui::info("issue_id", &issue.issue_id);
+        for choice in &issue.choices {
+            let group = if choice.is_current_group {
+                "current"
+            } else {
+                "candidate"
+            };
+            ui::info(
+                "choice",
+                &format!(
+                    "{} ({group}; members={}; re_pairing={}; complete={})",
+                    choice.choice_id,
+                    choice.member_device_ids.join(","),
+                    choice.requires_re_pairing,
+                    choice.members_complete
+                ),
+            );
+        }
     }
 }
 
-fn change_output(change: &DeviceTrustChangeDto) -> TrustChangeOutput<'_> {
-    TrustChangeOutput {
-        change_id: &change.change_id,
-        proposed_by_device_id: &change.proposed_by_device_id,
-        target_device_ids: &change.target_device_ids,
-        includes_local_device: change.includes_local_device,
-        apply_impact: impact_output(&change.apply_impact),
-        keep_current_impact: impact_output(&change.keep_current_impact),
-        allowed_choices: &change.allowed_choices,
-    }
-}
-
-fn impact_output(impact: &DeviceTrustImpactDto) -> TrustImpactOutput<'_> {
-    TrustImpactOutput {
-        usable_device_ids: &impact.usable_device_ids,
-        paused_device_ids: &impact.paused_device_ids,
-        local_device_outcome: impact.local_device_outcome,
-        requires_rejoin_device_ids: &impact.requires_rejoin_device_ids,
-    }
-}
-
-fn render_change(change: &DeviceTrustChangeDto) {
-    ui::info("change_id", &change.change_id);
-    ui::info("proposed_by", &change.proposed_by_device_id);
-    ui::info("targets", &change.target_device_ids.join(","));
-    ui::info(
-        "apply_local_outcome",
-        membership_label(change.apply_impact.local_device_outcome),
+fn emit_choice(
+    result: &DeviceGroupChoiceResultDto,
+    state: &DeviceGroupChoicesDto,
+    json: bool,
+) -> i32 {
+    let success = !matches!(
+        result.outcome,
+        DeviceGroupChoiceOutcomeDto::StateChanged
+            | DeviceGroupChoiceOutcomeDto::LocalDeviceConfirmationRequired
     );
-    ui::info(
-        "apply_paused_devices",
-        &change.apply_impact.paused_device_ids.len().to_string(),
-    );
-    ui::info(
-        "keep_paused_devices",
-        &change
-            .keep_current_impact
-            .paused_device_ids
-            .len()
-            .to_string(),
-    );
-}
-
-fn emit_decision(decision: &DeviceTrustDecisionDto, json: bool) -> i32 {
-    let (status, change_id, completed_choice, current_change_id, snapshot, exit_code) =
-        match decision {
-            DeviceTrustDecisionDto::Applied {
-                change_id,
-                snapshot,
-            } => (
-                "applied",
-                Some(change_id.as_str()),
-                None,
-                None,
-                snapshot,
-                exit_codes::EXIT_SUCCESS,
-            ),
-            DeviceTrustDecisionDto::KeptCurrentDeviceGroup {
-                change_id,
-                snapshot,
-            } => (
-                "kept_current_device_group",
-                Some(change_id.as_str()),
-                None,
-                None,
-                snapshot,
-                exit_codes::EXIT_SUCCESS,
-            ),
-            DeviceTrustDecisionDto::AlreadyCompleted {
-                change_id,
-                completed_choice,
-                snapshot,
-            } => (
-                "already_completed",
-                Some(change_id.as_str()),
-                Some(*completed_choice),
-                None,
-                snapshot,
-                exit_codes::EXIT_SUCCESS,
-            ),
-            DeviceTrustDecisionDto::StateChanged {
-                current_change_id,
-                snapshot,
-            } => (
-                "state_changed",
-                None,
-                None,
-                current_change_id.as_deref(),
-                snapshot,
-                exit_codes::EXIT_ERROR,
-            ),
-            DeviceTrustDecisionDto::LocalDeviceConfirmationRequired {
-                change_id,
-                snapshot,
-            } => (
-                "local_device_confirmation_required",
-                Some(change_id.as_str()),
-                None,
-                None,
-                snapshot,
-                exit_codes::EXIT_ERROR,
-            ),
-        };
-    let output = TrustDecisionOutput {
-        ok: exit_code == exit_codes::EXIT_SUCCESS,
-        status,
-        change_id,
-        completed_choice,
-        current_change_id,
-        snapshot: status_output(snapshot),
+    let exit_code = if success {
+        exit_codes::EXIT_SUCCESS
+    } else {
+        exit_codes::EXIT_ERROR
     };
     if json {
-        return output::emit_json_with_code(&output, "device trust decision", exit_code);
+        return output::emit_json_with_code(
+            &ChoiceOutput {
+                ok: success,
+                result,
+                state,
+            },
+            "device group choice",
+            exit_code,
+        );
     }
-    if exit_code == exit_codes::EXIT_SUCCESS {
-        ui::success(match status {
-            "applied" => "Device group change applied.",
-            "kept_current_device_group" => "Current device group kept.",
-            _ => "Device trust decision was already completed.",
-        });
-    } else {
-        ui::error(match status {
-            "state_changed" => "Device trust state changed; review the current status.",
-            _ => "This decision requires explicit local removal confirmation.",
-        });
+    match result.outcome {
+        DeviceGroupChoiceOutcomeDto::Completed => ui::success("Device group choice completed."),
+        DeviceGroupChoiceOutcomeDto::Pending => {
+            ui::warn("Device group choice is saved and still being completed.")
+        }
+        DeviceGroupChoiceOutcomeDto::RePairingRequired => {
+            ui::warn("Device group changed; affected devices must be paired again.")
+        }
+        DeviceGroupChoiceOutcomeDto::AlreadyCompleted => {
+            ui::success("Device group choice was already completed.")
+        }
+        DeviceGroupChoiceOutcomeDto::StateChanged => {
+            ui::error("Device group state changed; review the latest choices.")
+        }
+        DeviceGroupChoiceOutcomeDto::LocalDeviceConfirmationRequired => {
+            ui::error("This choice requires explicit local removal confirmation.")
+        }
     }
+    render_status(state);
     exit_code
+}
+
+fn emit_selection_error(json: bool, error: SelectionError, current_issue_id: Option<&str>) -> i32 {
+    let (code, message) = match error {
+        SelectionError::NoIssues => (
+            "no_device_group_issues",
+            "There are no device group issues.",
+        ),
+        SelectionError::IssueRequired => (
+            "issue_id_required",
+            "Multiple issues are available; pass --issue with an ID from status.",
+        ),
+        SelectionError::IssueChanged => (
+            "device_group_state_changed",
+            "The requested issue is no longer current; review status.",
+        ),
+        SelectionError::NoChoices => (
+            "no_device_group_choices",
+            "The selected issue has no available choices.",
+        ),
+        SelectionError::ChoiceRequired => (
+            "choice_id_required",
+            "Multiple choices are available; pass --choice with an ID from status.",
+        ),
+        SelectionError::ChoiceChanged => (
+            "device_group_state_changed",
+            "The requested choice is no longer current; review status.",
+        ),
+    };
+    emit_error(json, code, message, current_issue_id)
 }
 
 fn membership_label(value: DeviceMembershipDto) -> &'static str {
@@ -428,16 +353,16 @@ fn membership_label(value: DeviceMembershipDto) -> &'static str {
     }
 }
 
-fn emit_error(json: bool, code: &str, message: &str, current_change_id: Option<&str>) -> i32 {
+fn emit_error(json: bool, code: &str, message: &str, current_issue_id: Option<&str>) -> i32 {
     if json {
         output::emit_json_with_code(
             &TrustErrorOutput {
                 ok: false,
                 code,
                 message,
-                current_change_id,
+                current_issue_id,
             },
-            "device trust error",
+            "device group error",
             exit_codes::EXIT_ERROR,
         )
     } else {
@@ -448,122 +373,80 @@ fn emit_error(json: bool, code: &str, message: &str, current_change_id: Option<&
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        choice_is_allowed, requires_local_removal_confirmation, select_change, status_output,
-        SelectChangeError,
-    };
+    use super::{choice_removes_local_device, select_choice, select_issue, SelectionError};
     use uc_daemon_contract::api::dto::member::{
-        DeviceMembershipDto, DeviceTrustChangeDto, DeviceTrustChoiceDto, DeviceTrustImpactDto,
+        DeviceGroupChoiceIssueDto, DeviceGroupChoiceOptionDto, DeviceGroupChoicesDto,
+        DeviceMembershipDto, DeviceTrustSnapshotDto,
     };
 
-    fn change(id: &str, removes_local: bool) -> DeviceTrustChangeDto {
-        let local_outcome = if removes_local {
-            DeviceMembershipDto::Removed
-        } else {
-            DeviceMembershipDto::Active
-        };
-        DeviceTrustChangeDto {
-            change_id: id.to_string(),
-            proposed_by_device_id: "sponsor".to_string(),
-            target_device_ids: vec!["device-b".to_string()],
-            includes_local_device: removes_local,
-            apply_impact: DeviceTrustImpactDto {
-                usable_device_ids: vec![],
-                paused_device_ids: vec![],
-                local_device_outcome: local_outcome,
-                requires_rejoin_device_ids: vec![],
+    fn choices() -> DeviceGroupChoicesDto {
+        DeviceGroupChoicesDto {
+            revision: 7,
+            device_trust: DeviceTrustSnapshotDto {
+                revision: 7,
+                local_device_id: "local".to_string(),
+                local_membership: DeviceMembershipDto::Active,
+                current_change: None,
+                current_join: None,
+                pending_inbound_member: None,
+                devices: vec![],
+                recovery: "not_available_in_this_version".to_string(),
+                allowed_actions: vec![],
+                blocked_reason: None,
+                updated_at_ms: 1,
             },
-            keep_current_impact: DeviceTrustImpactDto {
-                usable_device_ids: vec![],
-                paused_device_ids: vec![],
-                local_device_outcome: DeviceMembershipDto::Active,
-                requires_rejoin_device_ids: vec![],
-            },
-            allowed_choices: vec![
-                DeviceTrustChoiceDto::ApplyChange,
-                DeviceTrustChoiceDto::KeepCurrentDeviceGroup,
-            ],
-            blocked_reason: None,
+            issues: vec![DeviceGroupChoiceIssueDto {
+                issue_id: "c:issue-1".to_string(),
+                choices: vec![
+                    DeviceGroupChoiceOptionDto {
+                        choice_id: "b:current".to_string(),
+                        is_current_group: true,
+                        requires_re_pairing: false,
+                        member_device_ids: vec!["local".to_string(), "peer-a".to_string()],
+                        members_complete: true,
+                    },
+                    DeviceGroupChoiceOptionDto {
+                        choice_id: "b:other".to_string(),
+                        is_current_group: false,
+                        requires_re_pairing: true,
+                        member_device_ids: vec!["peer-b".to_string()],
+                        members_complete: true,
+                    },
+                ],
+            }],
         }
     }
 
     #[test]
-    fn non_interactive_decision_requires_expected_change_id() {
-        let current = change("change-1", false);
+    fn a_single_issue_and_choice_can_be_selected_by_opaque_id() {
+        let state = choices();
+        let issue = select_issue(&state, Some("c:issue-1")).expect("select issue");
+        let choice = select_choice(issue, Some("b:other")).expect("select choice");
+
+        assert_eq!(choice.choice_id, "b:other");
+    }
+
+    #[test]
+    fn stale_issue_id_never_falls_through_to_current_issue() {
+        let state = choices();
         assert_eq!(
-            select_change(Some(&current), None, false),
-            Err(SelectChangeError::ExpectedChangeRequired)
+            select_issue(&state, Some("c:stale")),
+            Err(SelectionError::IssueChanged)
         );
     }
 
     #[test]
-    fn stale_change_id_never_falls_through_to_current_change() {
-        let current = change("change-2", false);
-        assert_eq!(
-            select_change(Some(&current), Some("change-1"), false),
-            Err(SelectChangeError::StateChanged)
-        );
-    }
+    fn a_choice_that_excludes_the_local_device_requires_confirmation() {
+        let state = choices();
+        let issue = select_issue(&state, Some("c:issue-1")).expect("select issue");
 
-    #[test]
-    fn interactive_decision_can_bind_to_displayed_current_change() {
-        let current = change("change-1", false);
-        assert_eq!(
-            select_change(Some(&current), None, true)
-                .expect("interactive current change")
-                .change_id,
-            "change-1"
-        );
-    }
-
-    #[test]
-    fn applying_local_removal_requires_separate_confirmation() {
-        assert!(requires_local_removal_confirmation(&change(
-            "change-1", true
-        )));
-        assert!(!requires_local_removal_confirmation(&change(
-            "change-1", false
-        )));
-    }
-
-    #[test]
-    fn trust_decision_must_be_allowed_by_the_current_change() {
-        let mut current = change("change-1", false);
-        current.allowed_choices = vec![DeviceTrustChoiceDto::KeepCurrentDeviceGroup];
-
-        assert!(!choice_is_allowed(
-            &current,
-            DeviceTrustChoiceDto::ApplyChange
+        assert!(!choice_removes_local_device(
+            &issue.choices[0],
+            &state.device_trust.local_device_id
         ));
-        assert!(choice_is_allowed(
-            &current,
-            DeviceTrustChoiceDto::KeepCurrentDeviceGroup
+        assert!(choice_removes_local_device(
+            &issue.choices[1],
+            &state.device_trust.local_device_id
         ));
-    }
-
-    #[test]
-    fn device_trust_json_shape_includes_current_change_and_impacts() {
-        let current_change = change("change-1", false);
-        let snapshot = uc_daemon_contract::api::dto::member::DeviceTrustSnapshotDto {
-            revision: 7,
-            local_device_id: "device-local".to_string(),
-            local_membership: DeviceMembershipDto::Active,
-            current_change: Some(current_change),
-            current_join: None,
-            pending_inbound_member: None,
-            devices: vec![],
-            recovery: "not_available_in_this_version".to_string(),
-            allowed_actions: vec![],
-            blocked_reason: None,
-            updated_at_ms: 10,
-        };
-        let value =
-            serde_json::to_value(status_output(&snapshot)).expect("serialize device trust status");
-        assert_eq!(value["current_change"]["change_id"], "change-1");
-        assert_eq!(
-            value["current_change"]["apply_impact"]["local_device_outcome"],
-            "active"
-        );
-        assert!(value.get("currentChange").is_none());
     }
 }

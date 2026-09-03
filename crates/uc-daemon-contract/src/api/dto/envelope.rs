@@ -30,8 +30,8 @@ use crate::api::dto::encryption::{
     EncryptionActionResponse, EncryptionStateResponse, KeychainAccessResponse, UnlockSpaceResponse,
 };
 use crate::api::dto::member::{
-    DeviceTrustDecisionDto, DeviceTrustSnapshotDto, MemberSyncPreferencesDto, MemberSyncResultDto,
-    SpaceProtectionDto, WorkspaceConvergenceDto,
+    DeviceGroupChoiceResultDto, DeviceGroupChoicesDto, DeviceTrustSnapshotDto,
+    MemberSyncPreferencesDto, MemberSyncResultDto, SpaceProtectionDto,
 };
 use crate::api::dto::mobile_sync::{
     LanInterfaceViewDto, MobileDeviceViewDto, MobileSyncActionResultDto, MobileSyncSettingsViewDto,
@@ -89,7 +89,8 @@ use crate::api::types::{
     EntryReceiveProgressListEnvelope = ApiEnvelope<Vec<EntryReceiveProgressResponse>>,
     CancelEntryReceiveEnvelope = ApiEnvelope<CancelEntryReceiveResponse>,
     DeviceTrustEnvelope = ApiEnvelope<DeviceTrustSnapshotDto>,
-    DeviceTrustDecisionEnvelope = ApiEnvelope<DeviceTrustDecisionDto>,
+    DeviceGroupChoicesEnvelope = ApiEnvelope<DeviceGroupChoicesDto>,
+    DeviceGroupChoiceResultEnvelope = ApiEnvelope<DeviceGroupChoiceResultDto>,
     // ── settings (GET + PUT both enveloped per §0.1) ───────────────
     SettingsEnvelope = ApiEnvelope<SettingsDto>,
     SettingsUpdateResultEnvelope = ApiEnvelope<SettingsUpdateResultDto>,
@@ -104,7 +105,6 @@ use crate::api::types::{
     MemberSyncPreferencesEnvelope = ApiEnvelope<MemberSyncPreferencesDto>,
     MemberSyncResultEnvelope = ApiEnvelope<MemberSyncResultDto>,
     SpaceProtectionEnvelope = ApiEnvelope<SpaceProtectionDto>,
-    WorkspaceConvergenceEnvelope = ApiEnvelope<WorkspaceConvergenceDto>,
     // ── mobile sync ────────────────────────────────────────────────
     RegisterMobileDeviceEnvelope = ApiEnvelope<RegisterMobileDeviceResultDto>,
     RotateMobilePasswordEnvelope = ApiEnvelope<RotateMobilePasswordResultDto>,

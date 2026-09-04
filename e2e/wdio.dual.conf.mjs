@@ -38,7 +38,7 @@ function instance(profile, extraEnv = {}) {
 
 export const config = {
   runner: 'local',
-  specs: [path.join(__dirname, 'specs', 'setup-dual-peer.e2e.js')],
+  specs: [path.join(__dirname, 'specs', '*.dual.e2e.js')],
   maxInstances: 1,
   logLevel: 'error',
   waitforTimeout: 30000,

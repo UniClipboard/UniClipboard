@@ -44,6 +44,7 @@ function HistoryCardActions({
       )}
     >
       <button
+        data-testid="history-favorite"
         type="button"
         aria-label={t('clipboard.item.actions.copy')}
         tabIndex={isHovered ? 0 : -1}
@@ -53,6 +54,7 @@ function HistoryCardActions({
         <Copy className="size-3" />
       </button>
       <button
+        data-testid="history-delete"
         type="button"
         aria-label={t(
           isFavorited ? 'clipboard.item.actions.unfavorite' : 'clipboard.item.actions.favorite'

@@ -24,7 +24,11 @@ export function DeviceTrustDialog({
       onOpenChange={(_open, eventDetails) => eventDetails.cancel()}
       disablePointerDismissal
     >
-      <DialogContent className="bg-card text-card-foreground sm:max-w-xl" showCloseButton={false}>
+      <DialogContent
+        data-testid="device-trust-dialog"
+        className="bg-card text-card-foreground sm:max-w-xl"
+        showCloseButton={false}
+      >
         <DeviceTrustDecisionContent
           key={issueId}
           deviceGroups={deviceGroups}

@@ -249,7 +249,7 @@ function AddDeviceDialogInner({ open, onOpenChange }: AddDeviceDialogProps) {
   let body: React.ReactNode = null
   if (step === 'success') {
     body = (
-      <div className="flex flex-col items-center gap-3 py-8">
+      <div data-testid="add-device-success" className="flex flex-col items-center gap-3 py-8">
         <div className="flex size-14 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
           <CheckCircle2 className="size-8" />
         </div>
@@ -310,6 +310,7 @@ function AddDeviceDialogInner({ open, onOpenChange }: AddDeviceDialogProps) {
           )}
         >
           <div
+            data-testid="add-device-invitation-code"
             className={cn(
               'select-all text-center font-mono font-semibold tabular-nums text-foreground',
               'text-[28px] tracking-[0.18em] sm:text-[32px] sm:tracking-[0.2em]',

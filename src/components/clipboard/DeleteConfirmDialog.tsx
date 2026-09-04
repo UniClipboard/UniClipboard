@@ -108,6 +108,7 @@ const DeleteConfirmDialog: React.FC<DeleteConfirmDialogProps> = ({
             </span>
           </AlertDialogCancel>
           <AlertDialogAction
+            data-testid="history-delete-confirm"
             onClick={e => {
               e.preventDefault()
               handleConfirm()

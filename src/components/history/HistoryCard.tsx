@@ -83,6 +83,9 @@ const HistoryCard: React.FC<HistoryCardProps> = ({
 
   return (
     <div
+      data-testid="history-card"
+      data-entry-id={item.id}
+      data-favorited={isFavorited}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
       onFocus={handleFocus}

@@ -41,6 +41,7 @@ const UnpairAlertDialog: React.FC<UnpairAlertDialogProps> = ({
         <AlertDialogFooter>
           <AlertDialogCancel disabled={busy}>{t('clipboard.cancelLabel')}</AlertDialogCancel>
           <AlertDialogAction
+            data-testid="device-unpair-confirm"
             variant="destructive"
             disabled={busy}
             aria-busy={busy}

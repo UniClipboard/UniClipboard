@@ -734,13 +734,18 @@ export function JoinPendingScreen({
       title={t('title')}
       subtitle={t('subtitle')}
       footer={
-        <Button variant="outline" onClick={onCancel} disabled={loading}>
+        <Button
+          data-testid="setup-join-cancel"
+          variant="outline"
+          onClick={onCancel}
+          disabled={loading}
+        >
           {t('actions.cancel')}
         </Button>
       }
       centered
     >
-      <div className="mt-8 flex justify-center">
+      <div data-testid="setup-join-pending" className="mt-8 flex justify-center">
         <Loader2 className="size-12 animate-spin text-primary" />
       </div>
     </ScreenShell>
@@ -759,10 +764,14 @@ export function JoinRejectedScreen({
     <ScreenShell
       title={t('rejected.title')}
       subtitle={t(`rejected.reasons.${reason}`)}
-      footer={<Button onClick={onBack}>{t('actions.back')}</Button>}
+      footer={
+        <Button data-testid="setup-join-rejected-back" onClick={onBack}>
+          {t('actions.back')}
+        </Button>
+      }
       centered
     >
-      <div className="mt-8 flex justify-center">
+      <div data-testid="setup-join-rejected" className="mt-8 flex justify-center">
         <XCircle className="size-12 text-destructive" />
       </div>
     </ScreenShell>

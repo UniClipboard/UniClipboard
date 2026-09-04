@@ -205,6 +205,7 @@ const PeerDetailPanel: React.FC<PeerDetailPanelProps> = ({
           </p>
         </div>
         <Button
+          data-testid="device-unpair"
           variant="ghost"
           size="sm"
           aria-label={t('devices.list.actions.unpair')}

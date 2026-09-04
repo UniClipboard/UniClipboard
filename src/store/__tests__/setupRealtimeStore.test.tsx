@@ -1,6 +1,6 @@
 import { act, renderHook } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { SetupStateResponse } from '@/api/daemon/setupV2'
+import type { ActiveJoinSpaceResponse, SetupStateResponse } from '@/api/daemon/setupV2'
 import {
   acknowledgeSetupCompletion,
   applyIssuedInvitation,
@@ -33,6 +33,20 @@ const completedState: SetupStateResponse = {
   currentInvitation: null,
   deviceName: 'MacBook',
   rePairingRequired: false,
+}
+
+const redeem: ActiveJoinSpaceResponse = {
+  status: 'active',
+  joinId: 'join-id',
+  joinedSpace: {
+    sponsorDeviceId: 'sponsor-id',
+    sponsorIdentityFingerprint: 'sponsor-fingerprint',
+    spaceId: 'space-id',
+    selfDeviceId: 'self-id',
+    selfIdentityFingerprint: 'self-fingerprint',
+    migratedRecords: null,
+    preservedUnreadableRecords: null,
+  },
 }
 
 describe('setupRealtimeStore completion ownership', () => {
@@ -73,7 +87,7 @@ describe('setupRealtimeStore completion ownership', () => {
       applyServerSetupState(completedState, {
         kind: 'pairing_succeeded',
         role: 'joiner',
-        peerDeviceId: 'sponsor-id',
+        redeem,
       })
     )
 
@@ -83,7 +97,7 @@ describe('setupRealtimeStore completion ownership', () => {
       completion: {
         kind: 'pairing_succeeded',
         role: 'joiner',
-        peerDeviceId: 'sponsor-id',
+        redeem,
       },
     })
   })

@@ -72,6 +72,10 @@ interface ClipboardIncomingPendingPayload {
   filenames?: string[]
 }
 
+interface ClipboardInboundNoticePayload {
+  action: string
+}
+
 interface FileTransferStatusEvent {
   transferId: string
   entryId: string
@@ -155,6 +159,13 @@ export function reduceClipboardRealtimeEvent(
   state: ClipboardEventReducerState,
   input: ClipboardEventReducerInput
 ): ClipboardEventReducerResult {
+  if (event.eventType === 'clipboard.inbound_notice') {
+    const payload = event.payload as ClipboardInboundNoticePayload
+    if (payload.action !== 'new_entry') return result(state)
+    const remote = reduceRemoteNewContent(state, input)
+    return result(remote.state, [], remote.effects)
+  }
+
   if (event.eventType === 'clipboard.incoming_pending') {
     const payload = event.payload as ClipboardIncomingPendingPayload
     const pending: PendingClipboardEntry = {

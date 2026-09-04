@@ -1,6 +1,7 @@
 import { useEffect, useSyncExternalStore } from 'react'
 import {
   getSetupState,
+  type ActiveJoinSpaceResponse,
   type CurrentInvitation,
   type SetupStateResponse,
   SetupV2Error,
@@ -35,7 +36,7 @@ export type SetupCompletion =
   | {
       kind: 'pairing_succeeded'
       role: 'joiner'
-      peerDeviceId: string | null
+      redeem: ActiveJoinSpaceResponse
     }
 
 export type SetupFlow =

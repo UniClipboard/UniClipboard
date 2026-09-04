@@ -19,6 +19,8 @@ use uc_daemon_client::DaemonConnectionState;
 use crate::commands::{record_trace_fields, TraceMetadata};
 use crate::run::{FRONTEND_SHUTDOWN_EVENT, SHUTDOWN_FRONTEND_GRACE_MS};
 
+const DAEMON_CONNECTION_CHANGED_EVENT: &str = "app://daemon-connection-changed";
+
 /// Restarts the running Tauri application to apply settings changes.
 ///
 /// 流程:
@@ -118,6 +120,7 @@ pub(crate) async fn perform_full_restart(app: &tauri::AppHandle) {
 #[tauri::command]
 #[specta::specta]
 pub async fn restart_daemon(
+    app: tauri::AppHandle,
     connection_state: tauri::State<'_, DaemonConnectionState>,
     _trace: Option<TraceMetadata>,
 ) -> Result<(), crate::commands::error::CommandError> {
@@ -129,6 +132,15 @@ pub async fn restart_daemon(
     record_trace_fields(&span, &_trace);
 
     async move {
+        if let Err(error) = app.emit(FRONTEND_SHUTDOWN_EVENT, ()) {
+            warn!(
+                %error,
+                event = FRONTEND_SHUTDOWN_EVENT,
+                "failed to disconnect frontend before daemon restart"
+            );
+        }
+        tokio::time::sleep(Duration::from_millis(SHUTDOWN_FRONTEND_GRACE_MS)).await;
+
         let new_info = uc_desktop::daemon_probe::restart_local_daemon(env!("CARGO_PKG_VERSION"))
             .await
             .map_err(|e| {
@@ -142,6 +154,13 @@ pub async fn restart_daemon(
         // the new daemon has a fresh JWT secret and will reject it.
         uc_daemon_client::http::clear_session_token_cache().await;
         info!("daemon restarted, connection state refreshed, session cache cleared");
+        if let Err(error) = app.emit(DAEMON_CONNECTION_CHANGED_EVENT, ()) {
+            warn!(
+                %error,
+                event = DAEMON_CONNECTION_CHANGED_EVENT,
+                "failed to notify frontend about daemon connection change"
+            );
+        }
 
         let conn: DaemonConnectionState = (*connection_state).clone();
         tauri::async_runtime::spawn(async move {

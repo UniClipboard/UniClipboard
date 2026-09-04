@@ -15,6 +15,7 @@ const TEST_PAYLOAD = {
 let _sessionToken: string | null = null
 let _fetchQueue: Response[] = []
 let _daemonWsConnectCalls: string[] = []
+let _daemonWsDisconnectCalls = 0
 
 // Now mocks the typed `commands.getDaemonConnectionInfo` proxy from
 // `@/lib/ipc` (used to be `invokeWithTrace('get_daemon_connection_info')`
@@ -27,6 +28,7 @@ function resetState(): void {
   _sessionToken = null
   _fetchQueue = []
   _daemonWsConnectCalls = []
+  _daemonWsDisconnectCalls = 0
   mockGetDaemonConnectionInfo.mockReset()
 }
 
@@ -94,11 +96,15 @@ vi.mock('@/lib/daemon-ws', () => ({
     connect: vi.fn(async (url: string) => {
       _daemonWsConnectCalls.push(url)
     }),
+    disconnect: vi.fn(() => {
+      _daemonWsDisconnectCalls++
+    }),
     subscribe: vi.fn(async () => () => {}),
   },
 }))
 
-const { connectDaemonWs, resetConnectDaemonWsForTests } = await import('@/lib/daemon-ws-bootstrap')
+const { connectDaemonWs, reconnectDaemonWs, resetConnectDaemonWsForTests } =
+  await import('@/lib/daemon-ws-bootstrap')
 
 function getDaemonWsConnectCount(): number {
   return _daemonWsConnectCalls.length
@@ -148,6 +154,21 @@ describe('connectDaemonWs()', () => {
     expect(mockGetDaemonConnectionInfo).toHaveBeenCalledTimes(2)
     expect(refreshSessionCallCount).toBe(1)
     expect(getDaemonWsConnectCount()).toBe(1)
+  })
+
+  it('disconnects the stale socket and reconnects with the latest daemon address', async () => {
+    const replacement = {
+      baseUrl: 'http://127.0.0.1:42716',
+      wsUrl: 'ws://127.0.0.1:42716/ws',
+    }
+    mockGetDaemonConnectionInfo.mockResolvedValueOnce(TEST_PAYLOAD).mockResolvedValue(replacement)
+
+    await connectDaemonWs()
+    await reconnectDaemonWs()
+
+    expect(_daemonWsDisconnectCalls).toBe(1)
+    expect(_daemonWsConnectCalls).toEqual([TEST_PAYLOAD.wsUrl, replacement.wsUrl])
+    expect(refreshSessionCallCount).toBe(2)
   })
 
   it('rejects malformed command payloads before initializing clients', async () => {

@@ -1,22 +1,16 @@
 import { useEffect, useEffectEvent } from 'react'
 import { getDeviceTrustSnapshot } from '@/api/daemon/device-trust'
-import type { ActiveJoinSpaceResponse, JoinSpaceRejectionReason } from '@/api/daemon/setupV2'
+import type { JoinSpaceResponse } from '@/api/daemon/setupV2'
 import { daemonWs } from '@/lib/daemon-ws'
 import { createLogger } from '@/lib/logger'
 
 const log = createLogger('join-admission')
+const JOIN_STATUS_POLL_MS = 1000
 
-export type JoinAdmissionResolution =
-  | {
-      status: 'active'
-      peerDeviceId: string | null
-      result: ActiveJoinSpaceResponse | null
-    }
-  | { status: 'rejected'; reason: JoinSpaceRejectionReason }
+export type JoinAdmissionResolution = Exclude<JoinSpaceResponse, { status: 'pending' }>
 
 export function useJoinAdmission(
   joinId: string | null,
-  initialDeviceIds: ReadonlySet<string> | null,
   onResolved: (result: JoinAdmissionResolution) => void
 ) {
   const refresh = useEffectEvent(async () => {
@@ -25,27 +19,7 @@ export function useJoinAdmission(
       const snapshot = await getDeviceTrustSnapshot()
       const currentJoin = snapshot.currentJoin
       if (currentJoin?.joinId === joinId && currentJoin.status !== 'pending') {
-        onResolved(
-          currentJoin.status === 'active'
-            ? {
-                status: 'active',
-                peerDeviceId: currentJoin.joinedSpace.sponsorDeviceId,
-                result: currentJoin,
-              }
-            : { status: 'rejected', reason: currentJoin.reason }
-        )
-        return
-      }
-      if (initialDeviceIds === null || snapshot.localMembership !== 'active') return
-      for (const device of snapshot.devices) {
-        if (
-          !device.isLocal &&
-          device.membership === 'active' &&
-          !initialDeviceIds.has(device.deviceId)
-        ) {
-          onResolved({ status: 'active', peerDeviceId: device.deviceId, result: null })
-          return
-        }
+        onResolved(currentJoin)
       }
     } catch (err) {
       log.warn({ err, joinId }, 'failed to refresh durable admission')
@@ -55,6 +29,7 @@ export function useJoinAdmission(
   useEffect(() => {
     if (!joinId) return
     void refresh()
+    const pollId = setInterval(() => void refresh(), JOIN_STATUS_POLL_MS)
     const unsubscribeDeviceTrust = daemonWs.subscribe(['device-trust', 'system'], event => {
       if (
         event.eventType === 'device-trust.changed' ||
@@ -65,8 +40,9 @@ export function useJoinAdmission(
     })
     const unsubscribeReconnect = daemonWs.onReconnect(() => void refresh())
     return () => {
+      clearInterval(pollId)
       unsubscribeDeviceTrust()
       unsubscribeReconnect()
     }
-  }, [joinId, initialDeviceIds])
+  }, [joinId])
 }

@@ -1,5 +1,5 @@
 import { act, renderHook, waitFor } from '@testing-library/react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useJoinAdmission } from '@/hooks/useJoinAdmission'
 
 const getDeviceTrustSnapshot = vi.hoisted(() => vi.fn())
@@ -14,6 +14,8 @@ vi.mock('@/lib/daemon-ws', () => ({
 }))
 
 describe('useJoinAdmission', () => {
+  afterEach(() => vi.useRealTimers())
+
   beforeEach(() => {
     vi.clearAllMocks()
     subscribe.mockImplementation((_topics, _callback) => () => undefined)
@@ -43,7 +45,7 @@ describe('useJoinAdmission', () => {
       },
     })
 
-    renderHook(() => useJoinAdmission('join-1', new Set(), resolved))
+    renderHook(() => useJoinAdmission('join-1', resolved))
     await waitFor(() => expect(getDeviceTrustSnapshot).toHaveBeenCalledTimes(1))
     expect(subscribe).toHaveBeenCalledWith(['device-trust', 'system'], expect.any(Function))
 
@@ -52,39 +54,41 @@ describe('useJoinAdmission', () => {
     await waitFor(() =>
       expect(resolved).toHaveBeenCalledWith({
         status: 'active',
-        peerDeviceId: 'sponsor',
-        result: expect.objectContaining({ status: 'active', joinId: 'join-1' }),
+        joinId: 'join-1',
+        joinedSpace: expect.objectContaining({ sponsorDeviceId: 'sponsor' }),
       })
     )
   })
 
-  it('resolves from a newly active member when the completed join record is no longer present', async () => {
-    let handler: ((event: { eventType: string }) => void) | undefined
-    subscribe.mockImplementation((_topics, callback) => {
-      handler = callback
-      return () => undefined
-    })
+  it('rechecks a pending join when no realtime notification arrives', async () => {
+    vi.useFakeTimers()
     const resolved = vi.fn()
     getDeviceTrustSnapshot
-      .mockResolvedValueOnce({ currentJoin: null, localMembership: 'unavailable', devices: [] })
       .mockResolvedValueOnce({
-        currentJoin: null,
-        localMembership: 'active',
-        devices: [
-          { deviceId: 'local', isLocal: true, membership: 'active' },
-          { deviceId: 'sponsor', isLocal: false, membership: 'active' },
-        ],
+        currentJoin: { status: 'pending', joinId: 'join-1' },
+        localMembership: 'unavailable',
+        devices: [],
+      })
+      .mockResolvedValueOnce({
+        currentJoin: {
+          status: 'rejected',
+          joinId: 'join-1',
+          reason: 'invitation_unavailable',
+        },
+        localMembership: 'unavailable',
+        devices: [],
       })
 
-    renderHook(() => useJoinAdmission('join-1', new Set(), resolved))
-    await waitFor(() => expect(getDeviceTrustSnapshot).toHaveBeenCalledTimes(1))
-    await act(async () => handler?.({ eventType: 'device-trust.changed' }))
+    renderHook(() => useJoinAdmission('join-1', resolved))
+    await vi.waitFor(() => expect(getDeviceTrustSnapshot).toHaveBeenCalledTimes(1))
 
-    await waitFor(() =>
+    await act(async () => vi.advanceTimersByTime(1000))
+
+    await vi.waitFor(() =>
       expect(resolved).toHaveBeenCalledWith({
-        status: 'active',
-        peerDeviceId: 'sponsor',
-        result: null,
+        status: 'rejected',
+        joinId: 'join-1',
+        reason: 'invitation_unavailable',
       })
     )
   })

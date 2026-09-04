@@ -75,8 +75,12 @@ export function waitForDaemonConnectionInfo(): Promise<DaemonConnectionPayload> 
   return connectionInfoPromise
 }
 
-export function resetDaemonConnectionInfoPollingForTests(): void {
+export function invalidateDaemonConnectionInfo(): void {
   connectionInfoPromise = null
+}
+
+export function resetDaemonConnectionInfoPollingForTests(): void {
+  invalidateDaemonConnectionInfo()
 }
 
 async function pollForDaemonConnectionInfo(): Promise<DaemonConnectionPayload> {

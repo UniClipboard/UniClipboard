@@ -9,7 +9,7 @@ use serde::Deserialize;
 use uc_daemon_process::process_metadata::{DaemonSpawnOrigin, SPAWN_ORIGIN_ENV};
 use uc_daemon_process::socket::DAEMON_CONN_FORMAT;
 
-use crate::{NodeBinarySet, TestProfile};
+use crate::{DaemonEndpointDiscovery, NodeBinarySet, TestProfile};
 
 const LEGACY_PROFILE_HTTP_PORT_START: u16 = 42719;
 
@@ -74,7 +74,8 @@ impl TestDaemon {
             // `daemon.conn` (ADR-011 ephemeral port).
             port: 0,
             binary,
-            uses_legacy_fixed_port: binaries.version == "0.19.1",
+            uses_legacy_fixed_port: binaries.endpoint_discovery
+                == DaemonEndpointDiscovery::FixedProfilePort,
             rendezvous_base_url,
         })
     }
@@ -136,11 +137,16 @@ impl TestDaemon {
             profile,
             port: 0,
             binary,
-            uses_legacy_fixed_port: binaries.version == "0.19.1",
+            uses_legacy_fixed_port: binaries.endpoint_discovery
+                == DaemonEndpointDiscovery::FixedProfilePort,
             rendezvous_base_url,
         };
-        daemon.wait_for_endpoint(Duration::from_secs(30)).await?;
-        daemon.wait_healthy(Duration::from_secs(30)).await?;
+        if let Err(error) = daemon.wait_for_endpoint(Duration::from_secs(30)).await {
+            return Err(format!("{error}\n{}", daemon.diagnostic_log()));
+        }
+        if let Err(error) = daemon.wait_healthy(Duration::from_secs(30)).await {
+            return Err(format!("{error}\n{}", daemon.diagnostic_log()));
+        }
         Ok(daemon)
     }
 
@@ -208,7 +214,8 @@ impl TestDaemon {
     ) -> Result<(), String> {
         self.kill();
         self.binary = binaries.daemon.clone();
-        self.uses_legacy_fixed_port = binaries.version == "0.19.1";
+        self.uses_legacy_fixed_port =
+            binaries.endpoint_discovery == DaemonEndpointDiscovery::FixedProfilePort;
         self.rendezvous_base_url = rendezvous_base_url.map(str::to_string);
         self.start_configured().await
     }
@@ -219,7 +226,8 @@ impl TestDaemon {
     ) -> Result<(), String> {
         self.kill();
         self.binary = binaries.daemon.clone();
-        self.uses_legacy_fixed_port = binaries.version == "0.19.1";
+        self.uses_legacy_fixed_port =
+            binaries.endpoint_discovery == DaemonEndpointDiscovery::FixedProfilePort;
         self.rendezvous_base_url = None;
         let mut command = Self::command(&self.profile, &self.binary, None)
             .map_err(|e| format!("prepare GUI-origin restart failed: {e}"))?;

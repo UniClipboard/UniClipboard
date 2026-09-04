@@ -1,0 +1,57 @@
+{
+  "formatVersion": 1,
+  "sourceVersion": "0.20.0-alpha.6",
+  "sourceAssetSha256": "ffd37436526e817862727d18f215969acf631f04f0504909b69694c04f114323",
+  "platform": "macos-aarch64",
+  "scenario": "single-node-empty",
+  "environment": "development",
+  "archive": "userdata.tar.gz",
+  "archiveSha256": "68ca6c43e9ea141baa1ff177a7fc20220d4acdd0ad1439d230fcdca825fc577b",
+  "files": [
+    {
+      "path": "data/iroh-blobs/blobs.db",
+      "size": 1056768,
+      "sha256": "714c1983c7d110c7e54e9b464d3d49d6a4d187b2deb2fbcc5a26c90054d8488d"
+    },
+    {
+      "path": "data/keyring/69726f682d6964656e746974793a7631.bin",
+      "size": 32,
+      "sha256": "e640b1a67678ea08e1de8e26ac89909fde1df1824ee173bdd1fcdfc8c49c6da2"
+    },
+    {
+      "path": "data/keyring/6b656b3a76313a70726f66696c653a64656661756c74.bin",
+      "size": 32,
+      "sha256": "4a04ac81b1ba9fe833e60188c3e9e2e63beeeb250ce169a25e8e6b18cc523599"
+    },
+    {
+      "path": "data/settings.json",
+      "size": 2195,
+      "sha256": "533ca7bad4d231d42707ccc5768d5ce690cb0de6505fc48a9336dc056481f41a"
+    },
+    {
+      "path": "data/uniclipboard.db",
+      "size": 368640,
+      "sha256": "aecf8d28fb6e8b0a71aed09986298d94a52bc33a7d307acb62c791c12a5891d3"
+    },
+    {
+      "path": "data/upgrade-cursor.json",
+      "size": 66,
+      "sha256": "b12d9d131f04b04d2d80f719ebf540e1aad000c70a33fa4ff97597b9de2a6bef"
+    },
+    {
+      "path": "data/vault/.setup_status",
+      "size": 81,
+      "sha256": "1a6f3a07e596d9082a48f30242b9aae2705c8e6ad6c26748e92cec210f9850b8"
+    },
+    {
+      "path": "data/vault/device_id.txt",
+      "size": 36,
+      "sha256": "6a32ebf7b27689402d2866b9e2c6d3f3d715646fea2a4695525c818b836394f4"
+    },
+    {
+      "path": "data/vault/keyslot.json",
+      "size": 1293,
+      "sha256": "855892c4dd14272a85f67d6f11b91c3a414ff92111143263c428ce9ac2b79a43"
+    }
+  ]
+}

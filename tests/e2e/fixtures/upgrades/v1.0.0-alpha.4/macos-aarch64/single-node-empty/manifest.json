@@ -1,0 +1,62 @@
+{
+  "formatVersion": 1,
+  "sourceVersion": "1.0.0-alpha.4",
+  "sourceAssetSha256": "fb016f703b45be1cfb633db4680ac9207f65f599f4a0e6b5c77ee2800fdd048e",
+  "platform": "macos-aarch64",
+  "scenario": "single-node-empty",
+  "environment": "development",
+  "archive": "userdata.tar.gz",
+  "archiveSha256": "af2648e1c1d99e302e74641b2c3269ccb0672dd8631e0527b5d9827c21f45334",
+  "files": [
+    {
+      "path": "data/iroh-blobs/blobs.db",
+      "size": 1056768,
+      "sha256": "714c1983c7d110c7e54e9b464d3d49d6a4d187b2deb2fbcc5a26c90054d8488d"
+    },
+    {
+      "path": "data/iroh-identity/69726f682d6964656e746974793a7631.bin",
+      "size": 32,
+      "sha256": "cb41b9205e48f73dc6096ba1437dafebb5794e01f0496db7b50d58cdeafdb8ac"
+    },
+    {
+      "path": "data/keyring/6b656b3a76313a70726f66696c653a64656661756c74.bin",
+      "size": 32,
+      "sha256": "1251ea4bdb6be020ef7e638ea5072a6a7f25966f0783c9919444606aca41b222"
+    },
+    {
+      "path": "data/settings.json",
+      "size": 2228,
+      "sha256": "92665b43208c711e1cc76cc95b0acf471460048a7b62acd4b0135a238cf329ef"
+    },
+    {
+      "path": "data/uniclipboard.db",
+      "size": 352256,
+      "sha256": "07b426fb88da546d34b04db531253b5d46ddf28f15f4aa567ddd22e8a8608012"
+    },
+    {
+      "path": "data/uniclipboard.db-wal",
+      "size": 358472,
+      "sha256": "c5fb80b86c819105b1bed30542b661c218044ee3c1890e382079cee7aa274464"
+    },
+    {
+      "path": "data/upgrade-cursor.json",
+      "size": 65,
+      "sha256": "87a8473b25f28a4384a3f098884f058b95f69b9bda6e3f52ad32e0c755d9c592"
+    },
+    {
+      "path": "data/vault/.setup_status",
+      "size": 81,
+      "sha256": "2857b272ff340aca1d062b2f1a468ff12b676c5ea3ab675ebe948d3e76e692a9"
+    },
+    {
+      "path": "data/vault/device_id.txt",
+      "size": 36,
+      "sha256": "bc6525293005da710ec3b4f75b9dcbb88896fb1ff5eac3f146aa3e296f3f107c"
+    },
+    {
+      "path": "data/vault/keyslot.json",
+      "size": 1281,
+      "sha256": "6444af9b34434ed1bd46fff6fa39460c75fbefd60a9156bc2fbb6cd70f91bfa2"
+    }
+  ]
+}

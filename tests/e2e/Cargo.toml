@@ -15,8 +15,16 @@ name = "prepare-v0-19-1-release"
 path = "src/bin/prepare_v0_19_1_release.rs"
 
 [[bin]]
+name = "prepare-upgrade-release"
+path = "src/bin/prepare_upgrade_release.rs"
+
+[[bin]]
 name = "build-v0-19-1-userdata-fixture"
 path = "src/bin/build_v0_19_1_userdata_fixture.rs"
+
+[[bin]]
+name = "build-upgrade-userdata-fixture"
+path = "src/bin/build_upgrade_userdata_fixture.rs"
 
 [[bin]]
 name = "restore-upgrade-userdata-fixture"

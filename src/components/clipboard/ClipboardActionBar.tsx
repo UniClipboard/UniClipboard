@@ -43,6 +43,7 @@ const ClipboardActionBar: React.FC<ClipboardActionBarProps> = ({
       )}
     >
       <m.button
+        data-testid="history-toolbar-favorite"
         type="button"
         whileTap={{ scale: 0.97 }}
         className={cn(
@@ -99,6 +100,7 @@ const ClipboardActionBar: React.FC<ClipboardActionBarProps> = ({
       </m.button>
 
       <m.button
+        data-testid="history-toolbar-delete"
         type="button"
         whileTap={{ scale: 0.97 }}
         className={cn(

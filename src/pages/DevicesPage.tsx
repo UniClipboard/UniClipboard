@@ -323,7 +323,12 @@ const DevicesPage: React.FC = () => {
             {/* Primary add path: inviting a device is the one first-class way
                 to grow the space, so it gets a direct button instead of a
                 menu. The LAN mobile channel is demoted to a secondary link. */}
-            <Button variant="outline" size="xs" onClick={() => setAddP2PDialogOpen(true)}>
+            <Button
+              data-testid="devices-add-device"
+              variant="outline"
+              size="xs"
+              onClick={() => setAddP2PDialogOpen(true)}
+            >
               <Plus />
               {t('devices.panel.addMenu.trigger')}
             </Button>
@@ -422,6 +427,7 @@ const DevicesPage: React.FC = () => {
             <SectionLabel label={t('devices.thisDevice.title')} />
             {localDevice ? (
               <DeviceListItem
+                testId="device-local"
                 name={localDevice.deviceName}
                 tone={
                   localDeviceStatus.kind === 'online'
@@ -460,6 +466,7 @@ const DevicesPage: React.FC = () => {
               return (
                 <DeviceListItem
                   key={peer.peerId}
+                  testId={`device-peer-${peer.peerId}`}
                   name={peer.deviceName || t('devices.list.labels.unknownDevice')}
                   tone={trustStatus?.tone ?? peerDotTone(peer)}
                   status={
@@ -713,6 +720,7 @@ const EmptyAddRow: React.FC<{ label: string; onClick: () => void; dimmed?: boole
 )
 
 interface DeviceListItemProps {
+  testId?: string
   name: string
   tone: StatusDotTone
   status: DeviceRowStatus
@@ -722,6 +730,7 @@ interface DeviceListItemProps {
 }
 
 const DeviceListItem: React.FC<DeviceListItemProps> = ({
+  testId,
   name,
   tone,
   status,
@@ -730,6 +739,8 @@ const DeviceListItem: React.FC<DeviceListItemProps> = ({
   onSelect,
 }) => (
   <div
+    data-testid={testId}
+    data-status={status.kind}
     className={cn(
       'group/item flex w-full items-center gap-1 rounded-lg px-2.5 py-2 transition-colors',
       selected ? 'bg-muted' : 'hover:bg-muted/60'

@@ -161,6 +161,7 @@ export function DeviceTrustDecisionContent({
             return (
               <DeviceTrustChoiceCard
                 key={choice.choiceId}
+                testId={`device-trust-choice-${choice.choiceId}`}
                 selected={selectedChoice.choiceId === choice.choiceId}
                 disabled={busy}
                 onSelect={() => setSelectedChoiceId(choice.choiceId)}
@@ -184,13 +185,17 @@ export function DeviceTrustDecisionContent({
           </p>
         )}
         {confirmingLocalRemoval && (
-          <p className="rounded-md border border-destructive/20 bg-destructive/10 px-3 py-2 text-sm font-medium text-destructive">
+          <p
+            data-testid="device-trust-local-removal-warning"
+            className="rounded-md border border-destructive/20 bg-destructive/10 px-3 py-2 text-sm font-medium text-destructive"
+          >
             {t('deviceTrust.modal.confirmLocalRemoval')}
           </p>
         )}
       </DialogBody>
       <DialogFooter>
         <Button
+          data-testid="device-trust-confirm"
           className="min-w-24"
           disabled={busy}
           onClick={() => onChoose(issue.issueId, selectedChoice.choiceId, confirmingLocalRemoval)}

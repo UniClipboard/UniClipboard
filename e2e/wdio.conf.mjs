@@ -24,7 +24,6 @@ Object.assign(process.env, {
 export const config = {
   runner: 'local',
   specs: [path.join(__dirname, 'specs', '**', '*.e2e.js')],
-  exclude: [path.join(__dirname, 'specs', 'setup-dual-peer.e2e.js')],
   maxInstances: 1,
   logLevel: 'warn',
   waitforTimeout: 30000,

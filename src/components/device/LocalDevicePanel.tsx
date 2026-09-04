@@ -99,6 +99,7 @@ const LocalDevicePanel: React.FC<LocalDevicePanelProps> = ({ localDevice, member
           </p>
         </div>
         <Button
+          data-testid="device-switch-space"
           variant="ghost"
           size="sm"
           className="shrink-0"

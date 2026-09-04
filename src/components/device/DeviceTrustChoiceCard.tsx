@@ -4,6 +4,7 @@ import { DeviceTrustOutcomeRow } from '@/components/device/DeviceTrustOutcomeRow
 import { cn } from '@/lib/utils'
 
 export function DeviceTrustChoiceCard({
+  testId,
   title,
   continuesWith,
   stopsWith,
@@ -12,6 +13,7 @@ export function DeviceTrustChoiceCard({
   onSelect,
   note,
 }: {
+  testId?: string
   title: string
   continuesWith: string
   stopsWith: string
@@ -23,6 +25,7 @@ export function DeviceTrustChoiceCard({
   const { t } = useTranslation()
   return (
     <button
+      data-testid={testId}
       type="button"
       role="radio"
       aria-checked={selected}

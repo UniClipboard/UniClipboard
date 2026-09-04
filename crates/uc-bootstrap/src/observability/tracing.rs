@@ -95,6 +95,25 @@ fn sentry_target_allowed(target: &str) -> bool {
         .any(|prefix| target.starts_with(prefix))
 }
 
+const SEARCHABLE_PERFORMANCE_TARGETS: &[&str] = &[
+    "admission.performance",
+    "membership.performance",
+    "storage.performance",
+    "uc_otlp",
+];
+
+fn sentry_event_filter(level: &::tracing::Level, target: &str) -> Option<EventFilter> {
+    match *level {
+        ::tracing::Level::ERROR => Some(EventFilter::Event | EventFilter::Log),
+        ::tracing::Level::WARN => Some(EventFilter::Log),
+        ::tracing::Level::INFO if SEARCHABLE_PERFORMANCE_TARGETS.contains(&target) => {
+            Some(EventFilter::Log)
+        }
+        ::tracing::Level::INFO => Some(EventFilter::Breadcrumb),
+        _ => None,
+    }
+}
+
 #[derive(Deserialize)]
 #[serde(default)]
 #[derive(Default)]
@@ -174,7 +193,7 @@ fn select_log_profile(settings: &BootstrapSettings) -> LogProfile {
 ///    (mirrors the front-end `VITE_SENTRY_DSN` pattern). Sentry collects three
 ///    signals through one layer:
 ///    - **Issues** (panics + tracing ERROR with `error` field)
-///    - **Logs** (tracing ERROR + WARN, redacted)
+///    - **Logs** (tracing ERROR + WARN and approved performance INFO, redacted)
 ///    - **Performance Spans** (tracing spans, sampled at `traces_sample_rate`)
 /// 4. Builds console + JSON layers via `uc_observability`
 /// 5. Composes all layers on a `Registry` and registers globally
@@ -310,8 +329,8 @@ pub fn init_tracing_subscriber() -> anyhow::Result<()> {
                 // Sentry envelope types added by SDK upgrades.
                 transport: Some(Arc::new(TelemetryGatedTransportFactory)),
                 // Enable Sentry Logs (replaces the legacy OTLP→Seq pipeline).
-                // Tracing ERROR + WARN events are routed to Logs by the
-                // `event_filter` below; INFO stays as a breadcrumb only.
+                // Tracing ERROR + WARN and approved performance INFO events
+                // are routed to Logs; ordinary INFO remains breadcrumb-only.
                 enable_logs: true,
                 // Runtime telemetry gate + known-upstream-panic mute.
                 //
@@ -439,14 +458,12 @@ pub fn init_tracing_subscriber() -> anyhow::Result<()> {
                         return EventMapping::Ignore;
                     }
 
-                    // 2) 按 level 决定要产出哪些载体(可叠加)。
-                    //    EventFilter 仍是 bitflags,沿用旧规则把 ERROR 同时
-                    //    打成 Issue+Log,WARN 只进 Log,INFO 走 breadcrumb。
-                    let level_filter = match *md.level() {
-                        ::tracing::Level::ERROR => EventFilter::Event | EventFilter::Log,
-                        ::tracing::Level::WARN => EventFilter::Log,
-                        ::tracing::Level::INFO => EventFilter::Breadcrumb,
-                        _ => return EventMapping::Ignore,
+                    // 2) Route by severity and the narrow performance-target
+                    //    allowlist. Ordinary INFO remains breadcrumb-only;
+                    //    approved structured performance records become
+                    //    searchable Logs without widening general log volume.
+                    let Some(level_filter) = sentry_event_filter(md.level(), md.target()) else {
+                        return EventMapping::Ignore;
                     };
 
                     // 3) 沿 span 链合并 correlation 字段,准备一次性塞到
@@ -810,6 +827,26 @@ mod tests {
                 "{target} should reach Sentry"
             );
         }
+    }
+
+    #[test]
+    fn performance_info_targets_are_searchable_logs() {
+        for target in [
+            "admission.performance",
+            "membership.performance",
+            "storage.performance",
+            "uc_otlp",
+        ] {
+            let filter = sentry_event_filter(&::tracing::Level::INFO, target)
+                .expect("performance info target should be exported");
+            assert!(filter.contains(EventFilter::Log), "{target}");
+            assert!(!filter.contains(EventFilter::Event), "{target}");
+        }
+
+        let ordinary = sentry_event_filter(&::tracing::Level::INFO, "uc_engine::runtime")
+            .expect("ordinary info target should remain a breadcrumb");
+        assert!(ordinary.contains(EventFilter::Breadcrumb));
+        assert!(!ordinary.contains(EventFilter::Log));
     }
 
     #[test]

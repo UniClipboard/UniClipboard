@@ -18,8 +18,21 @@ const issuePairingInvitation = vi.fn()
 const cancelInvitation = vi.fn()
 const getDeviceTrustSnapshot = vi.fn()
 const unlockSpaceWithPassphrase = vi.fn()
+const { logInfo, logWarn, logError } = vi.hoisted(() => ({
+  logInfo: vi.fn(),
+  logWarn: vi.fn(),
+  logError: vi.fn(),
+}))
 let deviceTrustHandler: ((event?: { eventType: string }) => void) | undefined
 let reconnectHandler: (() => void) | undefined
+
+vi.mock('@/lib/logger', () => ({
+  createLogger: () => ({
+    info: logInfo,
+    warn: logWarn,
+    error: logError,
+  }),
+}))
 
 vi.mock('@/api/daemon/setupV2', () => ({
   getSetupState: () => getSetupState(),
@@ -164,6 +177,11 @@ describe('AddDeviceDialog invitation issuing', () => {
     await waitFor(() => expect(screen.getByLabelText('123456789')).toBeInTheDocument())
     expect(unlockSpaceWithPassphrase).toHaveBeenCalledWith('original-passphrase')
     expect(issuePairingInvitation).toHaveBeenCalledOnce()
+    expect(logInfo).toHaveBeenCalledWith(
+      { event: 'invitation_ready', mode: 'legacy_re_pairing' },
+      're-pairing invitation ready'
+    )
+    expect(JSON.stringify(logInfo.mock.calls)).not.toContain('original-passphrase')
   })
 
   it('keeps the confirmation step open after a wrong passphrase', async () => {
@@ -194,6 +212,13 @@ describe('AddDeviceDialog invitation issuing', () => {
     ).toBeInTheDocument()
     expect(input).toHaveValue('wrong-passphrase')
     expect(issuePairingInvitation).not.toHaveBeenCalled()
+    expect(logInfo).toHaveBeenCalledWith(
+      { error_kind: 'wrong_passphrase', event: 'credentials_rejected' },
+      're-pairing credentials rejected'
+    )
+    expect(JSON.stringify([...logInfo.mock.calls, ...logWarn.mock.calls])).not.toContain(
+      'wrong-passphrase'
+    )
   })
 
   it('replaces the invitation with success after a new member is confirmed', async () => {
@@ -244,6 +269,10 @@ describe('AddDeviceDialog invitation issuing', () => {
       expect(screen.getAllByText(i18n.t('devices.addDevice.success.title'))).not.toHaveLength(0)
       expect(onSuccess).toHaveBeenCalledOnce()
     })
+    expect(logInfo).toHaveBeenCalledWith(
+      { event: 'pairing_confirmed', trigger: 'device_trust_changed' },
+      'new device pairing confirmed'
+    )
   })
 
   it('keeps the success state visible briefly, then closes automatically', async () => {

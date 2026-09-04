@@ -47,6 +47,7 @@ const DEFAULT_TTL_MS = 5 * 60 * 1000
 const SUCCESS_AUTO_CLOSE_MS = 2000
 
 type Step = 'credentials' | 'invitation' | 'success' | 'failed'
+type PairingCompletionTrigger = 'device_trust_changed' | 'refresh_required' | 'reconnected'
 
 interface AddDeviceDialogProps {
   open: boolean
@@ -90,8 +91,8 @@ function AddDeviceDialogInner({ open, onOpenChange, onSuccess }: AddDeviceDialog
   // open 会话重挂载，effect 必须严格「每次挂载跑一次」。若 t 留在依赖里，i18n
   // 资源 reload 会重跑 effect 并重复 issue 新邀请，把还没展示完的 step='success'
   // 覆盖掉。
-  const reportIssueFailure = useEffectEvent((err: unknown) => {
-    log.error({ err }, 'Failed to load or issue invitation')
+  const reportIssueFailure = useEffectEvent(() => {
+    log.error({ error_kind: 'invitation_issue_failed' }, 'failed to load or issue invitation')
     setError(t('devices.addDevice.errors.issueFailed'))
   })
   useEffect(() => {
@@ -108,17 +109,20 @@ function AddDeviceDialogInner({ open, onOpenChange, onSuccess }: AddDeviceDialog
           setInvitation(state.currentInvitation)
           // 复用的邀请 — 没有真实"签发时间"，按 TTL 倒推一个估算值
           setIssuedAtMs(state.currentInvitation.expiresAtMs - DEFAULT_TTL_MS)
+          log.info({ event: 'invitation_ready', mode: 'reused' }, 'pairing invitation ready')
         } else if (state.rePairingRequired) {
           setStep('credentials')
+          log.info({ event: 'credentials_required' }, 're-pairing credentials required')
         } else {
           const issued = await issuePairingInvitation()
           if (cancelled) return
           setInvitation(issued)
           setIssuedAtMs(Date.now())
+          log.info({ event: 'invitation_ready', mode: 'standard' }, 'pairing invitation ready')
         }
-      } catch (err) {
+      } catch {
         if (cancelled) return
-        reportIssueFailure(err)
+        reportIssueFailure()
       } finally {
         if (!cancelled) setLoading(false)
       }
@@ -128,7 +132,7 @@ function AddDeviceDialogInner({ open, onOpenChange, onSuccess }: AddDeviceDialog
     }
   }, [open])
 
-  const confirmPairingCompleted = useEffectEvent(async () => {
+  const confirmPairingCompleted = useEffectEvent(async (trigger: PairingCompletionTrigger) => {
     if (
       step !== 'invitation' ||
       initialDeviceIdsRef.current === null ||
@@ -146,13 +150,20 @@ function AddDeviceDialogInner({ open, onOpenChange, onSuccess }: AddDeviceDialog
       pairingCompletionInFlightRef.current = true
       try {
         await cancelInvitation()
-      } catch (err) {
-        log.warn({ err }, 'failed to clear completed invitation')
+      } catch {
+        log.warn(
+          { error_kind: 'invitation_cleanup_failed' },
+          'failed to clear completed invitation'
+        )
       }
       setStep('success')
+      log.info({ event: 'pairing_confirmed', trigger }, 'new device pairing confirmed')
       reportSuccess()
-    } catch (err) {
-      log.warn({ err }, 'failed to verify completed invitation')
+    } catch {
+      log.warn(
+        { error_kind: 'pairing_confirmation_failed', trigger },
+        'failed to verify completed invitation'
+      )
       pairingCompletionInFlightRef.current = false
     }
   })
@@ -161,21 +172,23 @@ function AddDeviceDialogInner({ open, onOpenChange, onSuccess }: AddDeviceDialog
     if (step !== 'invitation' || loading) return
     setFailureReason(evt.reason)
     setStep('failed')
+    log.info({ event: 'invitation_revoked' }, 'pairing invitation revoked')
   })
 
   useEffect(() => {
     if (!open) return
     const unsubscribeEvents = daemonWs.subscribe(['device-trust', 'setup', 'system'], event => {
-      if (
-        event.eventType === 'device-trust.changed' ||
-        event.eventType === 'system.refresh_required'
-      ) {
-        void confirmPairingCompleted()
+      if (event.eventType === 'device-trust.changed') {
+        void confirmPairingCompleted('device_trust_changed')
+      } else if (event.eventType === 'system.refresh_required') {
+        void confirmPairingCompleted('refresh_required')
       } else if (event.eventType === 'setup.invitationRevoked') {
         handleInvitationRevoked(event.payload as SetupInvitationRevokedEvent)
       }
     })
-    const unsubscribeReconnect = daemonWs.onReconnect(() => void confirmPairingCompleted())
+    const unsubscribeReconnect = daemonWs.onReconnect(
+      () => void confirmPairingCompleted('reconnected')
+    )
 
     return () => {
       unsubscribeEvents()
@@ -207,8 +220,8 @@ function AddDeviceDialogInner({ open, onOpenChange, onSuccess }: AddDeviceDialog
       await navigator.clipboard.writeText(invitation.code)
       setCopied(true)
       setTimeout(() => setCopied(false), 1500)
-    } catch (err) {
-      log.warn({ err }, 'clipboard.writeText failed')
+    } catch {
+      log.warn({ error_kind: 'clipboard_write_failed' }, 'clipboard.writeText failed')
     }
   }
 
@@ -216,8 +229,8 @@ function AddDeviceDialogInner({ open, onOpenChange, onSuccess }: AddDeviceDialog
     setLoading(true)
     try {
       await cancelInvitation()
-    } catch (err) {
-      log.warn({ err }, 'cancelInvitation failed (ignored on close)')
+    } catch {
+      log.warn({ error_kind: 'invitation_cancel_failed' }, 'cancelInvitation failed on close')
     } finally {
       setLoading(false)
       onOpenChange(false)
@@ -233,14 +246,18 @@ function AddDeviceDialogInner({ open, onOpenChange, onSuccess }: AddDeviceDialog
       initialDeviceIdsRef.current = activeDeviceIds(await getDeviceTrustSnapshot())
       try {
         await cancelInvitation()
-      } catch (err) {
-        log.warn({ err }, 'cancelInvitation before regenerate failed')
+      } catch {
+        log.warn(
+          { error_kind: 'invitation_cancel_failed' },
+          'cancelInvitation before regenerate failed'
+        )
       }
       const issued = await issuePairingInvitation()
       setInvitation(issued)
       setIssuedAtMs(Date.now())
-    } catch (err) {
-      log.error({ err }, 'Regenerate invitation failed')
+      log.info({ event: 'invitation_ready', mode: 'regenerated' }, 'pairing invitation ready')
+    } catch {
+      log.error({ error_kind: 'invitation_issue_failed' }, 'regenerate invitation failed')
       setError(t('devices.addDevice.errors.issueFailed'))
     } finally {
       setLoading(false)
@@ -253,6 +270,7 @@ function AddDeviceDialogInner({ open, onOpenChange, onSuccess }: AddDeviceDialog
     if (!value) return
     setLoading(true)
     setError(null)
+    log.info({ event: 'credentials_submitted' }, 're-pairing credentials submitted')
     try {
       await unlockSpaceWithPassphrase(value)
       initialDeviceIdsRef.current = activeDeviceIds(await getDeviceTrustSnapshot())
@@ -261,10 +279,25 @@ function AddDeviceDialogInner({ open, onOpenChange, onSuccess }: AddDeviceDialog
       setIssuedAtMs(Date.now())
       setPassphrase('')
       setStep('invitation')
+      log.info(
+        { event: 'invitation_ready', mode: 'legacy_re_pairing' },
+        're-pairing invitation ready'
+      )
     } catch (err) {
-      log.warn({ err }, 'Failed to confirm passphrase before re-pairing')
+      const wrongPassphrase = isUnlockSpaceError(err) && err.code === 'WRONG_PASSPHRASE'
+      if (wrongPassphrase) {
+        log.info(
+          { error_kind: 'wrong_passphrase', event: 'credentials_rejected' },
+          're-pairing credentials rejected'
+        )
+      } else {
+        log.warn(
+          { error_kind: 'credentials_confirmation_failed', event: 'credentials_rejected' },
+          're-pairing credentials rejected'
+        )
+      }
       setError(
-        isUnlockSpaceError(err) && err.code === 'WRONG_PASSPHRASE'
+        wrongPassphrase
           ? t('devices.addDevice.rePairing.wrongPassphrase')
           : t('devices.addDevice.rePairing.failed')
       )

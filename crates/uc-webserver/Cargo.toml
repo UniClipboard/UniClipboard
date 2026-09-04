@@ -35,6 +35,7 @@ zeroize = "1"
 
 [dev-dependencies]
 async-trait = "0.1"
+tracing-subscriber = "0.3"
 tower = { version = "0.5", features = ["util"] }
 # The /healthz load benchmark only: it drives a real listener over real TCP and
 # needs the *real* Argon2id cost on the control arm — a fake hasher would make

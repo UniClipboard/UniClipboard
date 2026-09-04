@@ -44,7 +44,7 @@ const log = createLogger('add-device-dialog')
 // 默认邀请有效期 — 用于估算进度条百分比；倒计时仍按 expiresAtMs 显示真实剩余。
 const DEFAULT_TTL_MS = 5 * 60 * 1000
 // 配对成功后短暂展示成功态，再自动关闭对话框
-const SUCCESS_AUTO_CLOSE_MS = 2000
+const SUCCESS_AUTO_CLOSE_MS = 5000
 
 type Step = 'credentials' | 'invitation' | 'success' | 'failed'
 type PairingCompletionTrigger = 'device_trust_changed' | 'refresh_required' | 'reconnected'

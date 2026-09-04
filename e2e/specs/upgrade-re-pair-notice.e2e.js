@@ -18,7 +18,7 @@ async function finishAnimations() {
   })
 }
 
-describe('v0.19.1 upgrade re-pair notice', () => {
+describe('historical upgrade re-pair notice', () => {
   before(function () {
     if (!enabled) this.skip()
   })
@@ -55,17 +55,19 @@ describe('v0.19.1 upgrade re-pair notice', () => {
       }
     }
 
-    await browser.waitUntil(async () => (await $('body').getText()).includes('请重新配对设备'), {
+    const rePairingNotice = await $('[data-slot="alert-dialog-content"]')
+    await rePairingNotice.waitForDisplayed({
       timeout: 60000,
-      timeoutMsg: 're-pair notice did not appear after unlock',
+      timeoutMsg: 'visible re-pair notice did not appear after unlock',
     })
-
+    expect(await rePairingNotice.getText()).toContain('请重新配对设备')
+    await finishAnimations()
     await browser.saveScreenshot(path.join(screenshotDir, 'upgrade-re-pair-notice.png'))
 
     const buttons = await $$('button')
     let openDevicesButton = null
     for (const button of buttons) {
-      if ((await button.getText()).includes('前往设备管理')) {
+      if ((await button.isDisplayed()) && (await button.getText()).includes('前往设备管理')) {
         openDevicesButton = button
         break
       }

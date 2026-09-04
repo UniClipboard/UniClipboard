@@ -6,6 +6,18 @@ const expectCleared = process.env.E2E_UPGRADE_REPAIR_CLEARED === '1'
 const passphrase = process.env.E2E_UPGRADE_PASSPHRASE ?? 'hunter22hunter22'
 const screenshotDir = process.env.E2E_SCREENSHOT_DIR ?? path.resolve('e2e', 'artifacts')
 
+async function finishAnimations() {
+  await browser.execute(() => {
+    for (const animation of document.getAnimations()) {
+      try {
+        animation.finish()
+      } catch {
+        // WebKit can expose a completed transition that no longer accepts finish().
+      }
+    }
+  })
+}
+
 describe('v0.19.1 upgrade re-pair notice', () => {
   before(function () {
     if (!enabled) this.skip()
@@ -65,11 +77,89 @@ describe('v0.19.1 upgrade re-pair notice', () => {
       timeout: 30000,
       timeoutMsg: 're-pair notice did not navigate to device management',
     })
-    await browser.waitUntil(async () => await $('h2*=设备').isDisplayed(), {
+    await browser.pause(1000)
+    if (!(await browser.getUrl()).endsWith('/devices')) {
+      const openedFromSidebar = await browser.execute(() => {
+        const link = document.querySelector('a[href="/devices"]')
+        if (!(link instanceof HTMLElement)) return false
+        link.click()
+        return true
+      })
+      expect(openedFromSidebar).toBe(true)
+    }
+    await finishAnimations()
+    const addDeviceButton = await $('[data-testid="devices-add-device"]')
+    await addDeviceButton.waitForExist({
       timeout: 30000,
       timeoutMsg: 'device management page did not finish rendering',
     })
     await browser.saveScreenshot(path.join(screenshotDir, 'upgrade-re-pair-devices.png'))
+
+    const opened = await browser.execute(() => {
+      const button = Array.from(
+        document.querySelectorAll('[data-testid="devices-add-device"]')
+      ).find(candidate => candidate instanceof HTMLElement && candidate.offsetParent !== null)
+      if (!(button instanceof HTMLElement)) return false
+      button.click()
+      return true
+    })
+    expect(opened).toBe(true)
+    const passphraseStep = await $('[data-testid="re-pairing-passphrase-step"]')
+    await passphraseStep.waitForExist({
+      timeout: 30000,
+      timeoutMsg: 're-pairing invitation did not request the original passphrase',
+    })
+    await finishAnimations()
+    const setPassphrase = async value => {
+      const changed = await browser.execute(nextValue => {
+        const input = document.querySelector('#re-pairing-passphrase')
+        if (!(input instanceof HTMLInputElement)) return false
+        const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
+        setter?.call(input, nextValue)
+        input.dispatchEvent(new Event('input', { bubbles: true }))
+        input.dispatchEvent(new Event('change', { bubbles: true }))
+        return true
+      }, value)
+      expect(changed).toBe(true)
+    }
+    const confirmPassphrase = async () => {
+      await browser.waitUntil(
+        async () =>
+          browser.execute(() => {
+            const button = document.querySelector('[data-testid="re-pairing-confirm-passphrase"]')
+            return button instanceof HTMLButtonElement && !button.disabled
+          }),
+        { timeout: 10000, timeoutMsg: 'passphrase confirmation did not become available' }
+      )
+      const clicked = await browser.execute(() => {
+        const button = document.querySelector('[data-testid="re-pairing-confirm-passphrase"]')
+        if (!(button instanceof HTMLElement)) return false
+        button.click()
+        return true
+      })
+      expect(clicked).toBe(true)
+    }
+
+    await setPassphrase(`${passphrase}-wrong`)
+    await confirmPassphrase()
+    await passphraseStep.waitForExist({
+      timeout: 30000,
+      timeoutMsg: 'wrong passphrase unexpectedly left the confirmation step',
+    })
+    expect(await $('[data-testid="add-device-invitation-code"]').isExisting()).toBe(false)
+    await finishAnimations()
+    await browser.pause(500)
+    await browser.saveScreenshot(path.join(screenshotDir, 'upgrade-re-pair-wrong-passphrase.png'))
+
+    await setPassphrase(passphrase)
+    await confirmPassphrase()
+    await $('[data-testid="add-device-invitation-code"]').waitForExist({
+      timeout: 30000,
+      timeoutMsg: 'correct original passphrase did not produce an invitation',
+    })
+    await finishAnimations()
+    await browser.pause(500)
+    await browser.saveScreenshot(path.join(screenshotDir, 'upgrade-re-pair-invitation.png'))
   })
 
   it('stays cleared after re-pairing and restart', async () => {

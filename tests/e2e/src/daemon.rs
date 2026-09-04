@@ -119,6 +119,31 @@ impl TestDaemon {
         Self::start_clean_configured_with(profile, binaries, rendezvous_base_url, |_| {}).await
     }
 
+    /// Start from userdata that was already restored into this exact profile.
+    pub async fn start_preserving_with(
+        profile: TestProfile,
+        binaries: &NodeBinarySet,
+        rendezvous_base_url: Option<&str>,
+    ) -> Result<Self, String> {
+        let binary = binaries.daemon.clone();
+        let rendezvous_base_url = rendezvous_base_url.map(str::to_string);
+        let child = Self::command(&profile, &binary, rendezvous_base_url.as_deref())
+            .map_err(|error| format!("prepare restored profile failed: {error}"))?
+            .spawn()
+            .map_err(|error| format!("spawn restored profile failed: {error}"))?;
+        let mut daemon = Self {
+            child: Some(child),
+            profile,
+            port: 0,
+            binary,
+            uses_legacy_fixed_port: binaries.version == "0.19.1",
+            rendezvous_base_url,
+        };
+        daemon.wait_for_endpoint(Duration::from_secs(30)).await?;
+        daemon.wait_healthy(Duration::from_secs(30)).await?;
+        Ok(daemon)
+    }
+
     pub async fn start_clean_configured_with(
         profile: TestProfile,
         binaries: &NodeBinarySet,
@@ -328,6 +353,46 @@ impl TestDaemon {
             let _ = child.wait();
         }
         self.child = None;
+    }
+
+    /// Ask the daemon to shut down cleanly so SQLite can checkpoint before a
+    /// profile is snapshotted. A timeout is an error and never falls through
+    /// to packaging a potentially incomplete profile.
+    pub async fn stop_gracefully(&mut self) -> Result<(), String> {
+        let Some(child) = self.child.as_mut() else {
+            return Ok(());
+        };
+        #[cfg(unix)]
+        if unsafe { libc::kill(child.id() as i32, libc::SIGTERM) } != 0 {
+            return Err(format!(
+                "send daemon SIGTERM failed: {}",
+                std::io::Error::last_os_error()
+            ));
+        }
+        #[cfg(not(unix))]
+        child
+            .kill()
+            .map_err(|error| format!("stop daemon failed: {error}"))?;
+
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(10);
+        loop {
+            let exited = self
+                .child
+                .as_mut()
+                .expect("daemon child disappeared during graceful stop")
+                .try_wait()
+                .map_err(|error| format!("wait for daemon shutdown failed: {error}"))?
+                .is_some();
+            if exited {
+                self.child = None;
+                return Ok(());
+            }
+            if tokio::time::Instant::now() >= deadline {
+                self.kill();
+                return Err("daemon did not shut down cleanly within 10s".to_string());
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
     }
 
     /// Check if the daemon process is still running.

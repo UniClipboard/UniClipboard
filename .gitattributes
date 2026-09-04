@@ -31,6 +31,7 @@
 *.ttf binary
 *.eot binary
 *.pdf binary
+tests/e2e/fixtures/upgrades/**/*.tar.gz binary
 
 # Linguist / CodeQL: Homebrew casks & formulae are Ruby DSL, not analyzable
 # application source. Exclude them from language detection so CodeQL's default

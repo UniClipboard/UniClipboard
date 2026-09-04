@@ -30,6 +30,22 @@ impl TestProfile {
         Self::from_unique_name(unique)
     }
 
+    pub fn for_upgrade_fixture(profile_name: &str) -> Result<Self, String> {
+        let development_prefix = ["dev-", "e2e-", "wdio-"]
+            .into_iter()
+            .any(|prefix| profile_name.starts_with(prefix));
+        if !development_prefix
+            || profile_name.is_empty()
+            || profile_name.starts_with('.')
+            || !profile_name
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.'))
+        {
+            return Err("upgrade fixture profile name is invalid".to_string());
+        }
+        Ok(Self::from_unique_name(profile_name.to_string()))
+    }
+
     fn from_unique_name(unique: String) -> Self {
         let data_dir = Self::resolve_data_dir(&unique);
         let cache_dir = Self::resolve_cache_dir(&unique);
@@ -67,6 +83,10 @@ impl TestProfile {
     /// Path to the data directory for this profile.
     pub fn data_dir(&self) -> &PathBuf {
         &self.data_dir
+    }
+
+    pub fn cache_dir(&self) -> &PathBuf {
+        &self.cache_dir
     }
 
     pub fn log_dir(&self) -> &PathBuf {
@@ -109,6 +129,22 @@ impl Drop for TestProfile {
     fn drop(&mut self) {
         if std::env::var_os("UC_E2E_KEEP_PROFILES").is_none() {
             self.cleanup();
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::TestProfile;
+
+    #[test]
+    fn upgrade_fixture_restore_rejects_the_default_profile() {
+        match TestProfile::for_upgrade_fixture("default") {
+            Err(_) => {}
+            Ok(profile) => {
+                std::mem::forget(profile);
+                panic!("default profile must never be a fixture restore target");
+            }
         }
     }
 }

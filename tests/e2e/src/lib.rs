@@ -12,6 +12,7 @@ mod pairing;
 mod profile;
 mod releases;
 mod rendezvous;
+mod upgrade_userdata;
 
 pub use auth::{get_session_token, read_daemon_file_token};
 pub use binaries::NodeBinarySet;
@@ -29,3 +30,6 @@ pub use releases::{
     V0_19_1_RELEASE_VERSION, V0_19_1_SHA256SUMS_SHA256,
 };
 pub use rendezvous::LocalRendezvous;
+pub use upgrade_userdata::{
+    verify_upgrade_userdata_archive, UpgradeUserdataFixture, UpgradeUserdataManifest,
+};

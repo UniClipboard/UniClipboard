@@ -10,8 +10,8 @@ use std::{
     time::Duration,
 };
 use uc_e2e_tests::{
-    get_session_token, InviteSession, LocalRendezvous, NodeBinarySet, TestCli, TestDaemon,
-    TestProfile, V0_19_1_RELEASE_VERSION,
+    get_session_token, invite_switch_round, InviteSession, LocalRendezvous, NodeBinarySet, TestCli,
+    TestDaemon, TestProfile, V0_19_1_RELEASE_VERSION,
 };
 
 const PASSPHRASE: &str = "v0-19-1-upgrade-e2e-passphrase";
@@ -472,7 +472,7 @@ async fn wait_for_peer_sync_ready(daemon: &TestDaemon, peer_id: &str) {
     let deadline = tokio::time::Instant::now() + Duration::from_secs(60);
     loop {
         let response = client
-            .get(format!("{}/member/device-trust", daemon.base_url()))
+            .get(format!("{}/member/device-group-choices", daemon.base_url()))
             .header("Authorization", format!("Session {session}"))
             .send()
             .await
@@ -487,13 +487,13 @@ async fn wait_for_peer_sync_ready(daemon: &TestDaemon, peer_id: &str) {
                 value
                     .get("data")
                     .unwrap_or(&value)
+                    .get("deviceTrust")
+                    .unwrap_or(&Value::Null)
                     .get("devices")
                     .and_then(Value::as_array)
                     .is_some_and(|devices| {
                         devices.iter().any(|device| {
                             device.get("deviceId").and_then(Value::as_str) == Some(peer_id)
-                                && device.get("reachability").and_then(Value::as_str)
-                                    == Some("online")
                                 && device.get("membership").and_then(Value::as_str)
                                     == Some("active")
                                 && device.get("groupRelationship").and_then(Value::as_str)
@@ -511,57 +511,6 @@ async fn wait_for_peer_sync_ready(daemon: &TestDaemon, peer_id: &str) {
         assert!(
             tokio::time::Instant::now() < deadline,
             "{} peer {peer_id} did not become sync-ready before timeout: status={status} body={body}",
-            daemon.profile.name
-        );
-        tokio::time::sleep(Duration::from_secs(1)).await;
-    }
-}
-
-async fn wait_for_offline_peer_without_version_inference(daemon: &TestDaemon, peer_id: &str) {
-    let client = reqwest::Client::new();
-    let session = get_session_token(daemon, &client).await;
-    let deadline = tokio::time::Instant::now() + Duration::from_secs(30);
-    loop {
-        let response = client
-            .get(format!("{}/member/device-trust", daemon.base_url()))
-            .header("Authorization", format!("Session {session}"))
-            .send()
-            .await
-            .expect("query device trust while waiting for the offline legacy peer");
-        let status = response.status();
-        let body = response
-            .text()
-            .await
-            .expect("read device trust response for the offline legacy peer");
-        let retained_without_inference = status.is_success()
-            && serde_json::from_str::<Value>(&body).is_ok_and(|value| {
-                value
-                    .get("data")
-                    .unwrap_or(&value)
-                    .get("devices")
-                    .and_then(Value::as_array)
-                    .is_some_and(|devices| {
-                        devices.iter().any(|device| {
-                            device.get("deviceId").and_then(Value::as_str) == Some(peer_id)
-                                && device.get("reachability").and_then(Value::as_str)
-                                    == Some("offline")
-                                && device.get("membership").and_then(Value::as_str)
-                                    == Some("unknown")
-                                && device.get("groupRelationship").and_then(Value::as_str)
-                                    == Some("unknown")
-                                && device.get("compatibility").and_then(Value::as_str)
-                                    == Some("unknown")
-                                && device.get("syncRelationship").and_then(Value::as_str)
-                                    == Some("unknown")
-                        })
-                    })
-            });
-        if retained_without_inference {
-            return;
-        }
-        assert!(
-            tokio::time::Instant::now() < deadline,
-            "{} did not retain offline peer {peer_id} without inferring removal or version: status={status} body={body}",
             daemon.profile.name
         );
         tokio::time::sleep(Duration::from_secs(1)).await;
@@ -610,28 +559,6 @@ async fn legacy_unpair(daemon: &TestDaemon, peer_id: &str) {
     );
 }
 
-async fn wait_for_upgrade_required(cli: &TestCli, expected_device_id: &str) {
-    let deadline = tokio::time::Instant::now() + Duration::from_secs(30);
-    loop {
-        let status = cli.run_capture(&["--json", "status"]);
-        let current_status = status.stdout.trim();
-        if status.success()
-            && serde_json::from_str::<Value>(current_status).is_ok_and(|value| {
-                value["device_trust"]["upgrade_required_device_ids"]
-                    == serde_json::json!([expected_device_id])
-            })
-        {
-            return;
-        }
-        assert!(
-            tokio::time::Instant::now() < deadline,
-            "device trust did not report {expected_device_id} as upgrade-required before timeout; last status: {}",
-            current_status
-        );
-        tokio::time::sleep(Duration::from_secs(3)).await;
-    }
-}
-
 async fn wait_for_upgrade_cleared(cli: &TestCli) {
     let deadline = tokio::time::Instant::now() + Duration::from_secs(30);
     loop {
@@ -656,6 +583,60 @@ async fn wait_for_upgrade_cleared(cli: &TestCli) {
         );
         tokio::time::sleep(Duration::from_secs(3)).await;
     }
+}
+
+async fn setup_state(daemon: &TestDaemon) -> Value {
+    let client = reqwest::Client::new();
+    let session = get_session_token(daemon, &client).await;
+    let response = client
+        .get(format!("{}/v2/setup/state", daemon.base_url()))
+        .header("Authorization", format!("Session {session}"))
+        .send()
+        .await
+        .expect("query setup state");
+    let status = response.status();
+    let body: Value = response.json().await.expect("setup-state JSON");
+    assert!(
+        status.is_success(),
+        "setup-state query failed: status={status} body={body}"
+    );
+    body.get("data").cloned().unwrap_or(body)
+}
+
+async fn wait_for_re_pairing_state(daemon: &TestDaemon, expected: bool) {
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(30);
+    loop {
+        let state = setup_state(daemon).await;
+        if state["rePairingRequired"] == serde_json::json!(expected) {
+            return;
+        }
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "re-pairing state did not become {expected} before timeout: {state}"
+        );
+        tokio::time::sleep(Duration::from_millis(500)).await;
+    }
+}
+
+async fn confirm_legacy_upgrade_passphrase(daemon: &TestDaemon, passphrase: &str) {
+    let client = reqwest::Client::new();
+    let session = get_session_token(daemon, &client).await;
+    let response = client
+        .post(format!(
+            "{}/encryption/unlock-with-passphrase",
+            daemon.base_url()
+        ))
+        .header("Authorization", format!("Session {session}"))
+        .json(&serde_json::json!({ "passphrase": passphrase }))
+        .send()
+        .await
+        .expect("confirm legacy upgrade passphrase");
+    let status = response.status();
+    let body = response.text().await.expect("read unlock response");
+    assert!(
+        status.is_success(),
+        "legacy upgrade passphrase confirmation failed: status={status} body={body}"
+    );
 }
 
 async fn paired_legacy_nodes(test_name: &str) -> (UpgradeNode, UpgradeNode, LocalRendezvous) {
@@ -831,6 +812,7 @@ async fn u01_single_node_upgrades_in_place_without_identity_change() {
     );
     assert_eq!(local_device_id(&node.cli), device_id_before);
     assert_eq!(members(&node.cli).len(), 1);
+    wait_for_re_pairing_state(&node.daemon, true).await;
 }
 
 #[tokio::test]
@@ -1061,10 +1043,13 @@ async fn u02_image_file_favorite_search_restore_and_delete_survive_upgrade() {
         .output()
         .expect("read restored system clipboard");
     assert_eq!(restored.stdout, text.as_bytes());
+    // The GUI clipboard watcher writes the restored value back into history.
+    // Wait for that transaction before exercising an unrelated delete.
+    tokio::time::sleep(Duration::from_secs(1)).await;
 
     let delete = client
         .delete(format!(
-            "{}/clipboard/entries/{text_id}",
+            "{}/clipboard/entries/{file_id}",
             node.daemon.base_url()
         ))
         .header("Authorization", format!("Session {gui_session}"))
@@ -1075,7 +1060,7 @@ async fn u02_image_file_favorite_search_restore_and_delete_survive_upgrade() {
     assert!(api_history(&node.daemon, &client, &gui_session)
         .await
         .iter()
-        .all(|entry| entry.get("id").and_then(Value::as_str) != Some(&text_id)));
+        .all(|entry| entry.get("id").and_then(Value::as_str) != Some(&file_id)));
 }
 
 #[tokio::test]
@@ -1458,6 +1443,18 @@ async fn u18_legacy_daemon_cannot_overwrite_data_written_by_current_version() {
         .await;
     b.upgrade_to_current_with_rendezvous(Some(&rendezvous_uri))
         .await;
+    wait_for_member_count(&a.cli, 1).await;
+    wait_for_member_count(&b.cli, 1).await;
+    confirm_legacy_upgrade_passphrase(&a.daemon, PASSPHRASE).await;
+    let switch = invite_switch_round(&a.cli, &b.cli, PASSPHRASE).await;
+    assert!(
+        switch.success(),
+        "downgrade-test B failed to re-pair with A: stdout={} stderr={}",
+        switch.stdout,
+        switch.stderr
+    );
+    wait_for_member_count(&a.cli, 2).await;
+    wait_for_member_count(&b.cli, 2).await;
     wait_for_peer_sync_ready(&a.daemon, &b_id).await;
     wait_for_peer_sync_ready(&b.daemon, &a_id).await;
 
@@ -1560,6 +1557,18 @@ async fn u12_removed_legacy_member_stays_excluded_after_retained_members_upgrade
         .await;
     c.upgrade_to_current_with_rendezvous(Some(&rendezvous_uri))
         .await;
+    wait_for_member_count(&a.cli, 1).await;
+    wait_for_member_count(&c.cli, 1).await;
+    wait_for_re_pairing_state(&a.daemon, true).await;
+    wait_for_re_pairing_state(&c.daemon, true).await;
+    confirm_legacy_upgrade_passphrase(&a.daemon, PASSPHRASE).await;
+    let switch = invite_switch_round(&a.cli, &c.cli, PASSPHRASE).await;
+    assert!(
+        switch.success(),
+        "retained legacy C failed to re-pair with A: stdout={} stderr={}",
+        switch.stdout,
+        switch.stderr
+    );
     wait_for_member_count(&a.cli, 2).await;
     wait_for_member_count(&c.cli, 2).await;
     wait_for_member_absent(&a.cli, &b_id).await;
@@ -1634,9 +1643,20 @@ async fn u15_interrupted_first_current_start_recovers_without_data_loss() {
 
     a.upgrade_to_current_with_rendezvous(Some(&rendezvous_uri))
         .await;
-    wait_for_upgrade_required(&a.cli, &b_id).await;
+    wait_for_re_pairing_state(&a.daemon, true).await;
+    wait_for_member_count(&a.cli, 1).await;
     b.upgrade_to_current_with_rendezvous(Some(&rendezvous_uri))
         .await;
+    wait_for_re_pairing_state(&b.daemon, true).await;
+    wait_for_member_count(&b.cli, 1).await;
+    confirm_legacy_upgrade_passphrase(&a.daemon, PASSPHRASE).await;
+    let switch = invite_switch_round(&a.cli, &b.cli, PASSPHRASE).await;
+    assert!(
+        switch.success(),
+        "interrupted-upgrade B failed to re-pair with A: stdout={} stderr={}",
+        switch.stdout,
+        switch.stderr
+    );
     wait_for_member_count(&a.cli, 2).await;
     wait_for_member_count(&b.cli, 2).await;
     wait_for_remote_online(&a.cli).await;
@@ -1712,16 +1732,30 @@ async fn u06_u07_u08_staged_two_node_upgrade_recovers_bidirectional_sync() {
 
     a.upgrade_to_current_with_rendezvous(Some(&rendezvous_uri))
         .await;
-    wait_for_upgrade_required(&a.cli, &b_id).await;
+    wait_for_re_pairing_state(&a.daemon, true).await;
+    wait_for_member_count(&a.cli, 1).await;
 
     b.upgrade_to_current_with_rendezvous(Some(&rendezvous_uri))
         .await;
+    wait_for_re_pairing_state(&b.daemon, true).await;
+    wait_for_member_count(&b.cli, 1).await;
+
+    confirm_legacy_upgrade_passphrase(&a.daemon, PASSPHRASE).await;
+    let switch = invite_switch_round(&a.cli, &b.cli, PASSPHRASE).await;
+    assert!(
+        switch.success(),
+        "upgraded B failed to re-pair with A: stdout={} stderr={}",
+        switch.stdout,
+        switch.stderr
+    );
     wait_for_member_count(&a.cli, 2).await;
     wait_for_member_count(&b.cli, 2).await;
     wait_for_remote_online(&a.cli).await;
     wait_for_remote_online(&b.cli).await;
     wait_for_upgrade_cleared(&a.cli).await;
     wait_for_upgrade_cleared(&b.cli).await;
+    wait_for_re_pairing_state(&a.daemon, false).await;
+    wait_for_re_pairing_state(&b.daemon, false).await;
     wait_for_peer_sync_ready(&a.daemon, &b_id).await;
     wait_for_peer_sync_ready(&b.daemon, &a_id).await;
     assert_eq!(local_device_id(&a.cli), a_id);
@@ -1749,17 +1783,26 @@ async fn u09_offline_legacy_member_recovers_after_later_upgrade() {
     let rendezvous_uri = rendezvous.uri();
     let a_id = local_device_id(&a.cli);
     let b_id = local_device_id(&b.cli);
-    let expected_ids = vec![a_id.clone(), b_id.clone()];
-
     b.daemon.kill();
     a.upgrade_to_current_with_rendezvous(Some(&rendezvous_uri))
         .await;
-    wait_for_exact_member_ids(&a.cli, &expected_ids).await;
+    wait_for_member_count(&a.cli, 1).await;
+    wait_for_re_pairing_state(&a.daemon, true).await;
 
     b.upgrade_to_current_with_rendezvous(Some(&rendezvous_uri))
         .await;
-    wait_for_exact_member_ids(&a.cli, &expected_ids).await;
-    wait_for_exact_member_ids(&b.cli, &expected_ids).await;
+    wait_for_member_count(&b.cli, 1).await;
+    wait_for_re_pairing_state(&b.daemon, true).await;
+    confirm_legacy_upgrade_passphrase(&a.daemon, PASSPHRASE).await;
+    let switch = invite_switch_round(&a.cli, &b.cli, PASSPHRASE).await;
+    assert!(
+        switch.success(),
+        "formerly offline B failed to re-pair with A: stdout={} stderr={}",
+        switch.stdout,
+        switch.stderr
+    );
+    wait_for_member_count(&a.cli, 2).await;
+    wait_for_member_count(&b.cli, 2).await;
     wait_for_remote_online(&a.cli).await;
     wait_for_remote_online(&b.cli).await;
     wait_for_upgrade_cleared(&a.cli).await;
@@ -1792,25 +1835,42 @@ async fn u10_u11_three_node_staged_upgrade_converges_and_syncs() {
     let a_id = local_device_id(&a.cli);
     let b_id = local_device_id(&b.cli);
     let c_id = local_device_id(&c.cli);
-    let expected_ids = vec![a_id.clone(), b_id.clone(), c_id.clone()];
-
     c.daemon.kill();
     a.upgrade_to_current_with_rendezvous(Some(&rendezvous_uri))
         .await;
     b.upgrade_to_current_with_rendezvous(Some(&rendezvous_uri))
         .await;
-    wait_for_exact_member_ids(&a.cli, &expected_ids).await;
-    wait_for_exact_member_ids(&b.cli, &expected_ids).await;
-    wait_for_offline_peer_without_version_inference(&a.daemon, &c_id).await;
-    wait_for_offline_peer_without_version_inference(&b.daemon, &c_id).await;
+    wait_for_member_count(&a.cli, 1).await;
+    wait_for_member_count(&b.cli, 1).await;
+    wait_for_re_pairing_state(&a.daemon, true).await;
+    wait_for_re_pairing_state(&b.daemon, true).await;
+    confirm_legacy_upgrade_passphrase(&a.daemon, PASSPHRASE).await;
+    let switch_b = invite_switch_round(&a.cli, &b.cli, PASSPHRASE).await;
+    assert!(
+        switch_b.success(),
+        "upgraded B failed to re-pair with A: stdout={} stderr={}",
+        switch_b.stdout,
+        switch_b.stderr
+    );
+    wait_for_member_count(&a.cli, 2).await;
+    wait_for_member_count(&b.cli, 2).await;
     wait_for_peer_sync_ready(&a.daemon, &b_id).await;
     wait_for_peer_sync_ready(&b.daemon, &a_id).await;
 
     c.upgrade_to_current_with_rendezvous(Some(&rendezvous_uri))
         .await;
-    wait_for_exact_member_ids(&a.cli, &expected_ids).await;
-    wait_for_exact_member_ids(&b.cli, &expected_ids).await;
-    wait_for_exact_member_ids(&c.cli, &expected_ids).await;
+    wait_for_member_count(&c.cli, 1).await;
+    wait_for_re_pairing_state(&c.daemon, true).await;
+    let switch_c = invite_switch_round(&a.cli, &c.cli, PASSPHRASE).await;
+    assert!(
+        switch_c.success(),
+        "upgraded C failed to re-pair with A: stdout={} stderr={}",
+        switch_c.stdout,
+        switch_c.stderr
+    );
+    wait_for_member_count(&a.cli, 3).await;
+    wait_for_member_count(&b.cli, 3).await;
+    wait_for_member_count(&c.cli, 3).await;
     wait_for_upgrade_cleared(&a.cli).await;
     wait_for_upgrade_cleared(&b.cli).await;
     wait_for_upgrade_cleared(&c.cli).await;

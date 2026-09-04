@@ -9,23 +9,40 @@ import { createSpecRuns } from './run-plan.mjs'
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const rootDir = path.resolve(__dirname, '..')
 const dualPeerMode = process.argv.includes('--dual-peer')
+const triplePeerMode = process.argv.includes('--triple-peer')
+if (dualPeerMode && triplePeerMode) {
+  throw new Error('双设备和三设备模式不能同时启用')
+}
 const profile = process.env.E2E_UC_PROFILE ?? 'wdio'
-const wdioConfig = dualPeerMode ? 'e2e/wdio.dual.conf.mjs' : 'e2e/wdio.conf.mjs'
-const forwardedArgs = process.argv.slice(2).filter(arg => arg !== '--dual-peer')
+const wdioConfig = triplePeerMode
+  ? 'e2e/wdio.triple.conf.mjs'
+  : dualPeerMode
+    ? 'e2e/wdio.dual.conf.mjs'
+    : 'e2e/wdio.conf.mjs'
+const forwardedArgs = process.argv
+  .slice(2)
+  .filter(arg => arg !== '--dual-peer' && arg !== '--triple-peer')
 const requestedSpec = process.env.E2E_SPEC
 const specFiles = fs
   .readdirSync(path.join(__dirname, 'specs'))
   .filter(name => name.endsWith('.e2e.js'))
-  .filter(name => (dualPeerMode ? name.endsWith('.dual.e2e.js') : !name.endsWith('.dual.e2e.js')))
+  .filter(name => {
+    if (triplePeerMode) return name.endsWith('.triple.e2e.js')
+    if (dualPeerMode) return name.endsWith('.dual.e2e.js')
+    return !name.endsWith('.dual.e2e.js') && !name.endsWith('.triple.e2e.js')
+  })
   .map(name => path.join(__dirname, 'specs', name))
   .filter(spec => !requestedSpec || spec === path.resolve(rootDir, requestedSpec))
   .sort()
 const specRuns = createSpecRuns({
   specs: specFiles,
   dualPeerMode,
+  triplePeerMode,
   profile,
   sponsorProfile: process.env.E2E_UC_SPONSOR_PROFILE ?? 'wdio-sponsor',
   joinerProfile: process.env.E2E_UC_JOINER_PROFILE ?? 'wdio-joiner',
+  retainedProfile: process.env.E2E_UC_RETAINED_PROFILE ?? 'wdio-retained',
+  removedProfile: process.env.E2E_UC_REMOVED_PROFILE ?? 'wdio-removed',
 })
 const applicationPath =
   process.env.E2E_TAURI_APP ??

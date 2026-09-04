@@ -40,4 +40,31 @@ describe('GUI E2E run plan', () => {
     ])
     expect(new Set(runs.flatMap(run => run.profiles)).size).toBe(4)
   })
+
+  it('gives every triple-window spec three isolated profiles', () => {
+    const runs = createSpecRuns({
+      specs: ['/repo/e2e/specs/offline-removal-choice.triple.e2e.js'],
+      dualPeerMode: false,
+      triplePeerMode: true,
+      sponsorProfile: 'wdio-sponsor',
+      retainedProfile: 'wdio-retained',
+      removedProfile: 'wdio-removed',
+    })
+
+    expect(runs).toEqual([
+      {
+        spec: '/repo/e2e/specs/offline-removal-choice.triple.e2e.js',
+        profiles: [
+          'wdio-sponsor-offline-removal-choice',
+          'wdio-retained-offline-removal-choice',
+          'wdio-removed-offline-removal-choice',
+        ],
+        env: {
+          E2E_UC_SPONSOR_PROFILE: 'wdio-sponsor-offline-removal-choice',
+          E2E_UC_RETAINED_PROFILE: 'wdio-retained-offline-removal-choice',
+          E2E_UC_REMOVED_PROFILE: 'wdio-removed-offline-removal-choice',
+        },
+      },
+    ])
+  })
 })

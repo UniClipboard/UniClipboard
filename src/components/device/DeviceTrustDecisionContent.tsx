@@ -174,7 +174,11 @@ export function DeviceTrustDecisionContent({
           })}
         </div>
         {error && (
-          <p className="rounded-md border border-destructive/20 bg-destructive/10 px-3 py-2 text-sm font-medium text-destructive">
+          <p
+            data-testid="device-trust-error"
+            data-error={error}
+            className="rounded-md border border-destructive/20 bg-destructive/10 px-3 py-2 text-sm font-medium text-destructive"
+          >
             {error === 'device_state_changed'
               ? t('deviceTrust.modal.stateChanged')
               : error === 'choice_pending'

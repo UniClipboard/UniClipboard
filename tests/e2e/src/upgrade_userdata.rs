@@ -17,6 +17,7 @@ const MAX_TOTAL_SIZE: u64 = 256 * 1024 * 1024;
 pub struct UpgradeUserdataManifest {
     format_version: u16,
     pub source_version: String,
+    pub source_asset_sha256: String,
     pub platform: String,
     pub scenario: String,
     pub environment: String,

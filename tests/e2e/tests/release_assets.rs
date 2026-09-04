@@ -1,9 +1,9 @@
 use uc_e2e_tests::{
     checksum_for_asset, extract_release_archive, fixed_legacy_release_asset,
-    prepare_fixed_legacy_release_from, v0_19_1_release_asset, verify_release_payload,
-    ArchiveFormat, NodeBinarySet, ReleaseAsset, LEGACY_RELEASE_BASE_URL, LEGACY_RELEASE_TAG,
-    LEGACY_RELEASE_VERSION, LEGACY_SHA256SUMS_SHA256, V0_19_1_RELEASE_TAG, V0_19_1_RELEASE_VERSION,
-    V0_19_1_SHA256SUMS_SHA256,
+    prepare_fixed_legacy_release_from, selected_upgrade_release, v0_19_1_release_asset,
+    verify_release_payload, ArchiveFormat, DaemonEndpointDiscovery, NodeBinarySet, ReleaseAsset,
+    LEGACY_RELEASE_BASE_URL, LEGACY_RELEASE_TAG, LEGACY_RELEASE_VERSION, LEGACY_SHA256SUMS_SHA256,
+    UPGRADE_RELEASES, V0_19_1_RELEASE_TAG, V0_19_1_RELEASE_VERSION, V0_19_1_SHA256SUMS_SHA256,
 };
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -30,6 +30,68 @@ fn v0_19_1_release_identity_is_immutable() {
         V0_19_1_SHA256SUMS_SHA256,
         "c572d2c25f98f6bdf18216a33e88a5dcce0c77dba06b0283855def77650f55af"
     );
+}
+
+#[test]
+fn upgrade_release_matrix_tracks_distinct_breaking_boundaries() {
+    let versions = UPGRADE_RELEASES
+        .iter()
+        .map(|release| release.version)
+        .collect::<Vec<_>>();
+    assert_eq!(
+        versions,
+        ["0.20.0-alpha.2", "0.20.0-alpha.6", "1.0.0-alpha.4"]
+    );
+
+    let alpha2 = selected_upgrade_release("0.20.0-alpha.2").expect("selected alpha.2");
+    assert_eq!(alpha2.tag, "v0.20.0-alpha.2");
+    assert_eq!(
+        alpha2.manifest_sha256,
+        "c86f90b2f6ae46c07445f0e17c0e7245bc8958ae81d01dcbd0f4d9e3398a422c"
+    );
+    assert_eq!(
+        alpha2.endpoint_discovery,
+        DaemonEndpointDiscovery::FixedProfilePort
+    );
+    assert_eq!(
+        alpha2.macos_aarch64_asset.filename,
+        "uniclipboard-cli-0.20.0-alpha.2-aarch64-apple-darwin.tar.gz"
+    );
+    assert_eq!(
+        alpha2.macos_aarch64_asset_sha256,
+        "898694075738ad0c23461b10dead4c0473bc8a89e743b965a20a234116f0a32c"
+    );
+
+    let alpha6 = selected_upgrade_release("0.20.0-alpha.6").expect("selected alpha.6");
+    assert_eq!(
+        alpha6.manifest_sha256,
+        "905876044fbe05128b155c6be35908ec214fd61eace1ee3a871d1f58585da4ca"
+    );
+    assert_eq!(
+        alpha6.endpoint_discovery,
+        DaemonEndpointDiscovery::FixedProfilePort
+    );
+    assert_eq!(
+        alpha6.macos_aarch64_asset_sha256,
+        "ffd37436526e817862727d18f215969acf631f04f0504909b69694c04f114323"
+    );
+
+    let alpha4 = selected_upgrade_release("1.0.0-alpha.4").expect("selected alpha.4");
+    assert_eq!(
+        alpha4.manifest_sha256,
+        "fd10e8b3e4d2c5d07fbcddd9748a532d0cd2635baf29d24a1ac74f5d81a430ff"
+    );
+    assert_eq!(
+        alpha4.endpoint_discovery,
+        DaemonEndpointDiscovery::ConnectionFile
+    );
+    assert_eq!(
+        alpha4.macos_aarch64_asset_sha256,
+        "fb016f703b45be1cfb633db4680ac9207f65f599f4a0e6b5c77ee2800fdd048e"
+    );
+
+    assert!(selected_upgrade_release("1.0.0-alpha.5").is_none());
+    assert!(selected_upgrade_release("1.0.0-alpha.7").is_none());
 }
 
 #[test]

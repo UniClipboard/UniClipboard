@@ -603,7 +603,14 @@ const DevicesPage: React.FC = () => {
       </main>
 
       {/* ── flow dialogs ──────────────────────────────────────── */}
-      <AddDeviceDialog open={addP2PDialogOpen} onOpenChange={setAddP2PDialogOpen} />
+      <AddDeviceDialog
+        open={addP2PDialogOpen}
+        onOpenChange={setAddP2PDialogOpen}
+        onSuccess={() => {
+          dispatch(fetchSpaceMembers())
+          dispatch(fetchSpaceProtection())
+        }}
+      />
       <UnpairAlertDialog
         open={unpairDialogOpen}
         onOpenChange={handleUnpairDialogOpenChange}

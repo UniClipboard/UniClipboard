@@ -61,6 +61,7 @@ const AuthenticatedLayout = ({ sidebarTitle }: { sidebarTitle: ReactNode }) => {
   const routerLocation = useLocation()
   const outlet = useOutlet()
   const { reduceVisualEffects } = usePlatform()
+  const pageTransitionsDisabled = reduceVisualEffects || import.meta.env.VITE_E2E === '1'
 
   return (
     <MainLayout sidebarTitle={sidebarTitle}>
@@ -68,10 +69,10 @@ const AuthenticatedLayout = ({ sidebarTitle }: { sidebarTitle: ReactNode }) => {
         <AnimatePresence initial={false} mode="sync">
           <m.div
             key={routerLocation.pathname}
-            initial={reduceVisualEffects ? false : { opacity: 0 }}
+            initial={pageTransitionsDisabled ? false : { opacity: 0 }}
             animate={{ opacity: 1 }}
-            exit={reduceVisualEffects ? undefined : { opacity: 0 }}
-            transition={reduceVisualEffects ? { duration: 0 } : PAGE_TRANSITION}
+            exit={pageTransitionsDisabled ? undefined : { opacity: 0 }}
+            transition={pageTransitionsDisabled ? { duration: 0 } : PAGE_TRANSITION}
             className="absolute inset-0"
           >
             {outlet}

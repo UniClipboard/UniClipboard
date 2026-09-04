@@ -20,6 +20,8 @@ export function createSpecRuns({
   joinerProfile = 'wdio-joiner',
   retainedProfile = 'wdio-retained',
   removedProfile = 'wdio-removed',
+  hostPlatform,
+  hostArch,
 }) {
   return specs.map(spec => {
     const slug = scenarioSlug(spec)
@@ -51,6 +53,21 @@ export function createSpecRuns({
     }
 
     const isolatedProfile = `${profile}-${slug}`
+    if (slug === 'upgrade-re-pair-notice' && hostPlatform === 'darwin' && hostArch === 'arm64') {
+      return {
+        spec,
+        profiles: [isolatedProfile],
+        env: {
+          E2E_UC_PROFILE: isolatedProfile,
+          E2E_UPGRADE_REPAIR: '1',
+          E2E_UPGRADE_PASSPHRASE: 'v0-19-1-upgrade-fixture-passphrase',
+        },
+        fixture: {
+          directory: 'tests/e2e/fixtures/upgrades/v0.19.1/macos-aarch64/single-node-empty',
+          profile: isolatedProfile,
+        },
+      }
+    }
     return {
       spec,
       profiles: [isolatedProfile],

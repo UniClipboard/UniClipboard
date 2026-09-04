@@ -1,0 +1,62 @@
+{
+  "formatVersion": 1,
+  "sourceVersion": "0.19.1",
+  "sourceAssetSha256": "df8966aa0b462c69de8a304a99f71228ea2c9119fa3a327a33bb48df9b27b4e6",
+  "platform": "macos-aarch64",
+  "scenario": "single-node-empty",
+  "environment": "development",
+  "archive": "userdata.tar.gz",
+  "archiveSha256": "184b51bf08e84f5372f0544372181e76527a57893cc8b7d5cd2a0b1a41e1276d",
+  "files": [
+    {
+      "path": "data/keyring/6b656b3a76313a70726f66696c653a64656661756c74.bin",
+      "size": 32,
+      "sha256": "afeea4e34984a771d79b74f547889d5c7dc0db5c12ade3ef2fd68ea1d75781e6"
+    },
+    {
+      "path": "data/settings.json",
+      "size": 2198,
+      "sha256": "7c1041f7d3fdaf124b676803300b1b560a2f4b933f31e2bfe338d1567bc167c2"
+    },
+    {
+      "path": "data/uniclipboard.db",
+      "size": 4096,
+      "sha256": "edbee11a2e909b4413b8e2265b665c0f156aaba120e5c715a11d8fc30ba789d7"
+    },
+    {
+      "path": "data/uniclipboard.db-wal",
+      "size": 1009432,
+      "sha256": "5c9e65398b0ee38f8c145f52e5244e707e9f1085b34c0404f6ba1312906b375a"
+    },
+    {
+      "path": "data/upgrade-cursor.json",
+      "size": 58,
+      "sha256": "481cab3f5c6b3cfcd6a4e111d6b6764fe2c12046e4fd4e7bba79dc9e28d9969a"
+    },
+    {
+      "path": "data/vault/.setup_status",
+      "size": 81,
+      "sha256": "c687d23b466f38c581b8006d0cc33935d0813ff410629e731ff1305cf2227d77"
+    },
+    {
+      "path": "data/vault/device_id.txt",
+      "size": 36,
+      "sha256": "3b2f1a8d2133afcc257986ee13cdc1f75f702d0bbc9894b5ff05b9d8d115330e"
+    },
+    {
+      "path": "data/vault/keyslot.json",
+      "size": 1288,
+      "sha256": "fb0e375230edc900264c933542fcbe1d9b22f6b56595ab3131306acd269fc5f0"
+    },
+    {
+      "path": "legacy-iroh-blobs/blobs.db",
+      "size": 1056768,
+      "sha256": "714c1983c7d110c7e54e9b464d3d49d6a4d187b2deb2fbcc5a26c90054d8488d"
+    },
+    {
+      "path": "legacy-iroh-identity/69726f682d6964656e746974793a7631.bin",
+      "size": 32,
+      "sha256": "73025df234ea009eac688748d312ed11897362f455f10905e980343783691fcb"
+    }
+  ]
+}

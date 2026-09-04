@@ -43,6 +43,8 @@ const specRuns = createSpecRuns({
   joinerProfile: process.env.E2E_UC_JOINER_PROFILE ?? 'wdio-joiner',
   retainedProfile: process.env.E2E_UC_RETAINED_PROFILE ?? 'wdio-retained',
   removedProfile: process.env.E2E_UC_REMOVED_PROFILE ?? 'wdio-removed',
+  hostPlatform: process.platform,
+  hostArch: process.arch,
 })
 const applicationPath =
   process.env.E2E_TAURI_APP ??
@@ -121,6 +123,25 @@ for (const specRun of specRuns) {
     for (const activeProfile of specRun.profiles) {
       fs.rmSync(resolveProfileDataDir(activeProfile), { recursive: true, force: true })
     }
+  }
+  if (specRun.fixture && process.env.E2E_UPGRADE_REPAIR_CLEARED !== '1') {
+    run(
+      'cargo',
+      [
+        'run',
+        '--locked',
+        '--manifest-path',
+        'tests/e2e/Cargo.toml',
+        '--bin',
+        'restore-upgrade-userdata-fixture',
+        '--',
+        '--fixture',
+        specRun.fixture.directory,
+        '--profile',
+        specRun.fixture.profile,
+      ],
+      `升级 userdata 样本恢复失败：${path.basename(specRun.spec)}`
+    )
   }
   run(
     'bunx',

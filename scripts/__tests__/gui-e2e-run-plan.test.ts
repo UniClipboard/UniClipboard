@@ -67,4 +67,31 @@ describe('GUI E2E run plan', () => {
       },
     ])
   })
+
+  it('attaches the tracked v0.19.1 userdata fixture to its macOS ARM upgrade spec', () => {
+    const runs = createSpecRuns({
+      specs: ['/repo/e2e/specs/upgrade-re-pair-notice.e2e.js'],
+      dualPeerMode: false,
+      triplePeerMode: false,
+      profile: 'wdio',
+      hostPlatform: 'darwin',
+      hostArch: 'arm64',
+    })
+
+    expect(runs).toEqual([
+      {
+        spec: '/repo/e2e/specs/upgrade-re-pair-notice.e2e.js',
+        profiles: ['wdio-upgrade-re-pair-notice'],
+        env: {
+          E2E_UC_PROFILE: 'wdio-upgrade-re-pair-notice',
+          E2E_UPGRADE_REPAIR: '1',
+          E2E_UPGRADE_PASSPHRASE: 'v0-19-1-upgrade-fixture-passphrase',
+        },
+        fixture: {
+          directory: 'tests/e2e/fixtures/upgrades/v0.19.1/macos-aarch64/single-node-empty',
+          profile: 'wdio-upgrade-re-pair-notice',
+        },
+      },
+    ])
+  })
 })

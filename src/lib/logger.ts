@@ -40,6 +40,12 @@ function transmitToSentry(level: string, logEvent: LogEvent): void {
 
   const traceId = traceManager.getCurrentTrace()?.traceId
   const attributes: Record<string, unknown> = {}
+  for (const item of logEvent.messages) {
+    const redacted = redactSensitiveArgs(item)
+    if (typeof redacted === 'object' && redacted !== null && !Array.isArray(redacted)) {
+      Object.assign(attributes, redacted)
+    }
+  }
   if (traceId) attributes.trace_id = traceId
   if (context.module) attributes.module = String(context.module)
 

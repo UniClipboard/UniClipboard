@@ -11085,6 +11085,7 @@ dependencies = [
  "tokio-util",
  "tower",
  "tracing",
+ "tracing-subscriber",
  "uc-daemon-contract",
  "uc-daemon-local",
  "uc-engine",

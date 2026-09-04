@@ -79,6 +79,28 @@ describe('frontend pino → Sentry Logs bridge', () => {
     expect(message).not.toContain('hunter2')
   })
 
+  it('forwards structured object fields as searchable Sentry attributes', async () => {
+    const { createLogger } = await loadLogger()
+    const log = createLogger('add-device-dialog')
+
+    log.info(
+      {
+        event: 'credentials_rejected',
+        error_kind: 'wrong_passphrase',
+        passphrase: 'never-export-this',
+      },
+      're-pairing credentials rejected'
+    )
+
+    const [, attributes] = sentryLogger.info.mock.calls[0]
+    expect(attributes).toEqual({
+      module: 'add-device-dialog',
+      event: 'credentials_rejected',
+      error_kind: 'wrong_passphrase',
+      passphrase: '[REDACTED]',
+    })
+  })
+
   it('attaches the active trace_id from traceManager when present', async () => {
     getCurrentTrace.mockReturnValue({ traceId: 'trace-abc' })
     const { createLogger } = await loadLogger()

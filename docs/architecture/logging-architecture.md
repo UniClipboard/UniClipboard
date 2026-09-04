@@ -303,8 +303,9 @@ When `debug_assertions` is false (release builds):
 - **JSON**: Flat JSON to daily-rotating file
 - **Sentry**: Enabled if `SENTRY_DSN` is set; gated at runtime by the user's
   `general.telemetry_enabled` setting (default-off until the daemon hands the
-  persisted preference back to the GUI). `INFO` events are sent as breadcrumbs
-  only; `WARN` and `ERROR` become searchable Logs / Issues.
+  persisted preference back to the GUI). 普通 `INFO` 事件仅作为 breadcrumb；
+  `admission.performance`、`membership.performance`、`storage.performance` 与
+  `uc_otlp` 白名单事件进入可搜索日志，`WARN` 和 `ERROR` 继续进入日志或问题列表。
 
 **tauri-plugin-log (legacy)**:
 
@@ -829,10 +830,10 @@ The backend uses `sentry-tracing` 0.48+ with the `EventFilter` bitflags:
 | --------------- | --------------------------------------------------- |
 | `error!`        | **Issue** (Event) **+** searchable **Log** entry    |
 | `warn!`         | searchable **Log** entry                            |
-| `info!`         | **Breadcrumb** (attached to next Issue, not stored) |
+| `info!`         | 普通事件为 **Breadcrumb**；白名单性能事件为可搜索 **Log** |
 | `debug!`/`trace!` | dropped (console + JSON file only)                |
 
-`INFO` is intentionally a breadcrumb-only level to keep the Sentry monthly logs quota safe. Spans created with `#[tracing::instrument]` become Performance spans and contribute to transaction sampling.
+为控制每月日志量，普通 `INFO` 仍只作为 breadcrumb。只有 `admission.performance`、`membership.performance`、`storage.performance` 和 `uc_otlp` 四类结构化性能记录进入可搜索日志。通过 `#[tracing::instrument]` 创建的 span 继续进入采样后的性能追踪。
 
 ### Frontend → Sentry Mapping
 

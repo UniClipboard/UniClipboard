@@ -21,6 +21,7 @@ use axum::response::Response;
 use axum::Router;
 use tokio::sync::{broadcast, Semaphore};
 use tokio_util::sync::CancellationToken;
+use tracing::Instrument;
 use uc_engine::{
     Engine, HostFileHandle, NetworkRecoveryPhaseSummary, NetworkRecoveryStatusSummary, Operation,
     OperationResult, PeerConnectionChannelSummary,
@@ -413,86 +414,77 @@ pub(crate) async fn request_tracing_middleware(request: Request<Body>, next: Nex
     let query_redacted = redact_query_secrets(request.uri().query());
     let request_id = format!("{:016x}", rand::random::<u64>());
     let start = Instant::now();
+    let span = tracing::info_span!(
+        "daemon.http.request",
+        request_id = %request_id,
+        method = %method,
+        path = %path,
+        query = %query_redacted,
+    );
 
-    if method == Method::OPTIONS {
-        tracing::debug!(
-            request_id = %request_id,
-            method = %method,
-            path = %path,
-            query = %query_redacted,
-            "daemon http preflight received"
-        );
-    } else {
-        tracing::info!(
-            request_id = %request_id,
-            method = %method,
-            path = %path,
-            query = %query_redacted,
-            "daemon http request received"
-        );
-    }
+    async move {
+        if method == Method::OPTIONS {
+            tracing::debug!("daemon http preflight received");
+        } else {
+            tracing::info!("daemon http request received");
+        }
 
-    let response = next.run(request).await;
-    let status = response.status();
-    let elapsed_ms = start.elapsed().as_millis() as u64;
+        let response = next.run(request).await;
+        let status = response.status();
+        let elapsed_ms = start.elapsed().as_millis() as u64;
 
-    let level_action = if status.is_server_error() {
-        "server_error"
-    } else if status.is_client_error() {
-        "client_error"
-    } else {
-        "ok"
-    };
+        let level_action = if status.is_server_error() {
+            "server_error"
+        } else if status.is_client_error() {
+            "client_error"
+        } else {
+            "ok"
+        };
 
-    match level_action {
-        // Access-log echo only — root cause lives in the handler that mapped
-        // the facade error to ApiError, not here. Earlier UNICLIPBOARD-RUST-5
-        // tried to fingerprint 5xx by status code, but a per-status static
-        // template ("daemon http upstream unavailable" etc.) is just a reskin
-        // of the HTTP status — it carries no signal beyond `status` itself
-        // and crowds out the real ERROR emitted upstream. Keep this at WARN
-        // so the Log channel still has a query handle for 5xx rate, but stop
-        // creating Sentry Issues from a layer that doesn't know the cause.
-        "server_error" => tracing::warn!(
-            request_id = %request_id,
-            method = %method,
-            path = %path,
-            status = status.as_u16(),
-            elapsed_ms,
-            "daemon http response 5xx"
-        ),
-        "client_error" => tracing::info!(
-            request_id = %request_id,
-            method = %method,
-            path = %path,
-            status = status.as_u16(),
-            elapsed_ms,
-            "daemon http request rejected (client error)"
-        ),
-        _ => {
-            if method == Method::OPTIONS {
-                tracing::debug!(
-                    request_id = %request_id,
-                    method = %method,
-                    path = %path,
-                    status = status.as_u16(),
-                    elapsed_ms,
-                    "daemon http preflight completed"
-                );
-            } else {
-                tracing::info!(
-                    request_id = %request_id,
-                    method = %method,
-                    path = %path,
-                    status = status.as_u16(),
-                    elapsed_ms,
-                    "daemon http request completed"
-                );
+        match level_action {
+            // Access-log echo only — root cause lives in the handler that mapped
+            // the facade error to ApiError, not here. Earlier UNICLIPBOARD-RUST-5
+            // tried to fingerprint 5xx by status code, but a per-status static
+            // template ("daemon http upstream unavailable" etc.) is just a reskin
+            // of the HTTP status — it carries no signal beyond `status` itself
+            // and crowds out the real ERROR emitted upstream. Keep this at WARN
+            // so the Log channel still has a query handle for 5xx rate, but stop
+            // creating Sentry Issues from a layer that doesn't know the cause.
+            "server_error" => tracing::warn!(
+                status = status.as_u16(),
+                elapsed_ms,
+                outcome = "server_error",
+                "daemon http response 5xx"
+            ),
+            "client_error" => tracing::info!(
+                status = status.as_u16(),
+                elapsed_ms,
+                outcome = "client_error",
+                "daemon http request rejected (client error)"
+            ),
+            _ => {
+                if method == Method::OPTIONS {
+                    tracing::debug!(
+                        status = status.as_u16(),
+                        elapsed_ms,
+                        outcome = "ok",
+                        "daemon http preflight completed"
+                    );
+                } else {
+                    tracing::info!(
+                        status = status.as_u16(),
+                        elapsed_ms,
+                        outcome = "ok",
+                        "daemon http request completed"
+                    );
+                }
             }
         }
-    }
 
-    response
+        response
+    }
+    .instrument(span)
+    .await
 }
 
 /// Redact every query value before logging. Query parameters can carry both
@@ -593,9 +585,50 @@ fn is_allowed_cors_origin(origin: &str) -> bool {
 
 #[cfg(test)]
 mod request_log_redaction_tests {
-    use axum::http::Uri;
+    use std::io::Write;
+    use std::sync::{Arc, Mutex};
 
-    use super::{redact_query_secrets, sanitize_uri_for_log};
+    use axum::body::Body;
+    use axum::http::Uri;
+    use axum::http::{Request, StatusCode};
+    use axum::middleware;
+    use axum::routing::get;
+    use axum::Router;
+    use tower::ServiceExt;
+
+    use super::{redact_query_secrets, request_tracing_middleware, sanitize_uri_for_log};
+
+    #[derive(Clone, Default)]
+    struct CapturedWriter(Arc<Mutex<Vec<u8>>>);
+
+    impl Write for CapturedWriter {
+        fn write(&mut self, buffer: &[u8]) -> std::io::Result<usize> {
+            self.0
+                .lock()
+                .expect("captured writer lock")
+                .extend_from_slice(buffer);
+            Ok(buffer.len())
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    impl<'writer> tracing_subscriber::fmt::MakeWriter<'writer> for CapturedWriter {
+        type Writer = CapturedWriter;
+
+        fn make_writer(&'writer self) -> Self::Writer {
+            self.clone()
+        }
+    }
+
+    impl CapturedWriter {
+        fn output(&self) -> String {
+            String::from_utf8(self.0.lock().expect("captured writer lock").clone())
+                .expect("captured events should be UTF-8")
+        }
+    }
 
     #[test]
     fn redacts_all_query_values() {
@@ -638,6 +671,56 @@ mod request_log_redaction_tests {
         assert_eq!(
             sanitize_uri_for_log(&uri),
             "/settings/relay-credential?url=<redacted>&safe=<redacted>"
+        );
+    }
+
+    #[test]
+    fn request_span_carries_request_id_into_handler_events() {
+        let writer = CapturedWriter::default();
+        let subscriber = tracing_subscriber::fmt()
+            .with_ansi(false)
+            .without_time()
+            .with_writer(writer.clone())
+            .finish();
+        let dispatch = tracing::Dispatch::new(subscriber);
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("test runtime");
+
+        tracing::dispatcher::with_default(&dispatch, || {
+            runtime.block_on(async {
+                let router = Router::new()
+                    .route(
+                        "/correlation-test",
+                        get(|| async {
+                            tracing::info!(outcome = "ok", "correlated handler event");
+                            StatusCode::OK
+                        }),
+                    )
+                    .layer(middleware::from_fn(request_tracing_middleware));
+                let response = router
+                    .oneshot(
+                        Request::builder()
+                            .uri("/correlation-test")
+                            .body(Body::empty())
+                            .expect("test request"),
+                    )
+                    .await
+                    .expect("test response");
+                assert_eq!(response.status(), StatusCode::OK);
+            });
+        });
+
+        let output = writer.output();
+        let handler_event = output
+            .lines()
+            .find(|line| line.contains("correlated handler event"))
+            .expect("handler event should be captured");
+        assert!(handler_event.contains("request_id="), "{handler_event}");
+        assert!(
+            handler_event.contains("path=/correlation-test"),
+            "{handler_event}"
         );
     }
 }

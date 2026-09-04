@@ -313,7 +313,7 @@ describe('AddDeviceDialog invitation issuing', () => {
     expect(onOpenChange).not.toHaveBeenCalled()
 
     act(() => {
-      vi.advanceTimersByTime(1999)
+      vi.advanceTimersByTime(4999)
     })
     expect(onOpenChange).not.toHaveBeenCalled()
 

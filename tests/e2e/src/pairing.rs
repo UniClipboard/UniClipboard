@@ -53,6 +53,7 @@ impl InviteSession {
     pub async fn start(cli: &TestCli) -> (Self, String) {
         let mut child = Command::new(cli.binary_path())
             .env("UC_PROFILE", &cli.profile_name)
+            .env("UNICLIPBOARD_ENV", "development")
             .args(["invite"])
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())

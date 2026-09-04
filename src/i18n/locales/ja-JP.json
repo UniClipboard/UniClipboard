@@ -1138,6 +1138,17 @@
       "expiresIn": "有効期限は {{remaining}}",
       "expired": "招待の有効期限が切れました",
       "passphraseHint": "参加デバイスでもペアリングを完了するにはスペース パスフレーズが必要です",
+      "rePairing": {
+        "title": "スペースのパスフレーズを確認",
+        "subtitle": "旧バージョンからの更新後に一度だけ必要です",
+        "description": "履歴は安全に保持されています。新しい招待コードを作成する前に、元のスペースのパスフレーズを確認してください。",
+        "passphraseLabel": "スペースのパスフレーズ",
+        "passphrasePlaceholder": "元のパスフレーズを入力",
+        "submit": "確認してコードを作成",
+        "submitting": "パスフレーズを確認中…",
+        "wrongPassphrase": "パスフレーズが正しくありません。",
+        "failed": "パスフレーズを確認できませんでした。もう一度お試しください。"
+      },
       "loading": "招待コードを生成中…",
       "actions": {
         "cancel": "キャンセル",

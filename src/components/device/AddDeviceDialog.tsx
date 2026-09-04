@@ -6,6 +6,7 @@ import {
   Copy,
   Info,
   Loader2,
+  LockKeyhole,
   RefreshCw,
   XCircle,
 } from 'lucide-react'
@@ -18,6 +19,7 @@ import {
   issuePairingInvitation,
   type CurrentInvitation,
 } from '@/api/daemon/setupV2'
+import { isUnlockSpaceError, unlockSpaceWithPassphrase } from '@/api/security'
 import type { SetupInvitationRevokedEvent } from '@/api/setupEvents'
 import { activeDeviceIds, findNewActiveDeviceId } from '@/components/device/pairing-success-utils'
 import { formatInvitationCode } from '@/components/invitation-code-utils'
@@ -30,6 +32,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { Progress } from '@/components/ui/progress'
 import { daemonWs } from '@/lib/daemon-ws'
 import { createLogger } from '@/lib/logger'
@@ -42,7 +46,7 @@ const DEFAULT_TTL_MS = 5 * 60 * 1000
 // 配对成功后短暂展示成功态，再自动关闭对话框
 const SUCCESS_AUTO_CLOSE_MS = 2000
 
-type Step = 'invitation' | 'success' | 'failed'
+type Step = 'credentials' | 'invitation' | 'success' | 'failed'
 
 interface AddDeviceDialogProps {
   open: boolean
@@ -67,6 +71,7 @@ function AddDeviceDialogInner({ open, onOpenChange, onSuccess }: AddDeviceDialog
   const [copied, setCopied] = useState(false)
   const [step, setStep] = useState<Step>('invitation')
   const [failureReason, setFailureReason] = useState<string | null>(null)
+  const [passphrase, setPassphrase] = useState('')
   const initialDeviceIdsRef = useRef<ReadonlySet<string> | null>(null)
   const pairingCompletionInFlightRef = useRef(false)
   const reportSuccess = useEffectEvent(() => onSuccess?.())
@@ -103,6 +108,8 @@ function AddDeviceDialogInner({ open, onOpenChange, onSuccess }: AddDeviceDialog
           setInvitation(state.currentInvitation)
           // 复用的邀请 — 没有真实"签发时间"，按 TTL 倒推一个估算值
           setIssuedAtMs(state.currentInvitation.expiresAtMs - DEFAULT_TTL_MS)
+        } else if (state.rePairingRequired) {
+          setStep('credentials')
         } else {
           const issued = await issuePairingInvitation()
           if (cancelled) return
@@ -240,6 +247,32 @@ function AddDeviceDialogInner({ open, onOpenChange, onSuccess }: AddDeviceDialog
     }
   }
 
+  const handleConfirmPassphrase = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    const value = passphrase.trim()
+    if (!value) return
+    setLoading(true)
+    setError(null)
+    try {
+      await unlockSpaceWithPassphrase(value)
+      initialDeviceIdsRef.current = activeDeviceIds(await getDeviceTrustSnapshot())
+      const issued = await issuePairingInvitation()
+      setInvitation(issued)
+      setIssuedAtMs(Date.now())
+      setPassphrase('')
+      setStep('invitation')
+    } catch (err) {
+      log.warn({ err }, 'Failed to confirm passphrase before re-pairing')
+      setError(
+        isUnlockSpaceError(err) && err.code === 'WRONG_PASSPHRASE'
+          ? t('devices.addDevice.rePairing.wrongPassphrase')
+          : t('devices.addDevice.rePairing.failed')
+      )
+    } finally {
+      setLoading(false)
+    }
+  }
+
   const failureMessage = useMemo(() => {
     if (!failureReason) return t('devices.addDevice.failed.unknown')
     const key = `devices.addDevice.failed.reasons.${failureReason}`
@@ -250,7 +283,46 @@ function AddDeviceDialogInner({ open, onOpenChange, onSuccess }: AddDeviceDialog
 
   // ── 主体内容 ─────────────────────────────────────────
   let body: React.ReactNode = null
-  if (step === 'success') {
+  if (step === 'credentials') {
+    body = (
+      <form
+        data-testid="re-pairing-passphrase-step"
+        className="flex flex-col gap-4 py-3"
+        onSubmit={handleConfirmPassphrase}
+      >
+        <div className="flex items-start gap-3 rounded-lg border border-primary/20 bg-primary/5 p-3 text-sm text-foreground">
+          <LockKeyhole className="mt-0.5 size-4 shrink-0 text-primary" />
+          <span>{t('devices.addDevice.rePairing.description')}</span>
+        </div>
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="re-pairing-passphrase">
+            {t('devices.addDevice.rePairing.passphraseLabel')}
+          </Label>
+          <Input
+            id="re-pairing-passphrase"
+            type="password"
+            autoComplete="current-password"
+            autoFocus
+            value={passphrase}
+            onChange={event => setPassphrase(event.target.value)}
+            placeholder={t('devices.addDevice.rePairing.passphrasePlaceholder')}
+            disabled={loading}
+          />
+        </div>
+        {error && <p className="text-sm font-medium text-destructive">{error}</p>}
+        <Button
+          type="submit"
+          data-testid="re-pairing-confirm-passphrase"
+          disabled={loading || !passphrase.trim()}
+        >
+          {loading && <Loader2 className="mr-2 size-4 animate-spin" />}
+          {loading
+            ? t('devices.addDevice.rePairing.submitting')
+            : t('devices.addDevice.rePairing.submit')}
+        </Button>
+      </form>
+    )
+  } else if (step === 'success') {
     body = (
       <div data-testid="add-device-success" className="flex flex-col items-center gap-3 py-8">
         <div className="flex size-14 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
@@ -356,7 +428,7 @@ function AddDeviceDialogInner({ open, onOpenChange, onSuccess }: AddDeviceDialog
 
   // ── Footer ───────────────────────────────────────────
   let footer: React.ReactNode
-  if (step === 'success') {
+  if (step === 'credentials' || step === 'success') {
     // 自动关闭，无按钮
     footer = null
   } else if (step === 'failed') {
@@ -428,14 +500,20 @@ function AddDeviceDialogInner({ open, onOpenChange, onSuccess }: AddDeviceDialog
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>
-            {step === 'success'
-              ? t('devices.addDevice.success.title')
-              : step === 'failed'
-                ? t('devices.addDevice.failed.title')
-                : t('devices.addDevice.title')}
+            {step === 'credentials'
+              ? t('devices.addDevice.rePairing.title')
+              : step === 'success'
+                ? t('devices.addDevice.success.title')
+                : step === 'failed'
+                  ? t('devices.addDevice.failed.title')
+                  : t('devices.addDevice.title')}
           </DialogTitle>
-          {step === 'invitation' && (
-            <DialogDescription>{t('devices.addDevice.subtitle')}</DialogDescription>
+          {(step === 'credentials' || step === 'invitation') && (
+            <DialogDescription>
+              {step === 'credentials'
+                ? t('devices.addDevice.rePairing.subtitle')
+                : t('devices.addDevice.subtitle')}
+            </DialogDescription>
           )}
         </DialogHeader>
 

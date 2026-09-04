@@ -6,7 +6,7 @@
  * 这里用 StrictMode 渲染,确保双跑后仍然能拿到邀请码而不是卡在 loading。
  */
 
-import { act, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { StrictMode } from 'react'
 import { I18nextProvider } from 'react-i18next'
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -17,6 +17,7 @@ const getSetupState = vi.fn()
 const issuePairingInvitation = vi.fn()
 const cancelInvitation = vi.fn()
 const getDeviceTrustSnapshot = vi.fn()
+const unlockSpaceWithPassphrase = vi.fn()
 let deviceTrustHandler: ((event?: { eventType: string }) => void) | undefined
 let reconnectHandler: (() => void) | undefined
 
@@ -28,6 +29,12 @@ vi.mock('@/api/daemon/setupV2', () => ({
 
 vi.mock('@/api/daemon/device-trust', () => ({
   getDeviceTrustSnapshot: () => getDeviceTrustSnapshot(),
+}))
+
+vi.mock('@/api/security', () => ({
+  unlockSpaceWithPassphrase: (passphrase: string) => unlockSpaceWithPassphrase(passphrase),
+  isUnlockSpaceError: (error: unknown) =>
+    typeof error === 'object' && error !== null && 'code' in error,
 }))
 
 vi.mock('@/lib/daemon-ws', () => ({
@@ -73,6 +80,7 @@ describe('AddDeviceDialog invitation issuing', () => {
       hasCompleted: true,
       currentInvitation: null,
       deviceName: 'test',
+      rePairingRequired: false,
     })
     getDeviceTrustSnapshot.mockResolvedValue({
       localDeviceId: 'local',
@@ -83,6 +91,7 @@ describe('AddDeviceDialog invitation issuing', () => {
       expiresAtMs: Date.now() + 300_000,
     })
     cancelInvitation.mockResolvedValue(undefined)
+    unlockSpaceWithPassphrase.mockResolvedValue({ spaceId: 'space' })
   })
 
   afterEach(() => {
@@ -124,6 +133,66 @@ describe('AddDeviceDialog invitation issuing', () => {
     await waitFor(() => {
       expect(screen.getByText(i18n.t('devices.addDevice.errors.issueFailed'))).toBeInTheDocument()
     })
+    expect(issuePairingInvitation).not.toHaveBeenCalled()
+  })
+
+  it('confirms the original passphrase before issuing a re-pairing invitation', async () => {
+    getSetupState.mockResolvedValue({
+      hasCompleted: true,
+      currentInvitation: null,
+      deviceName: 'test',
+      rePairingRequired: true,
+    })
+
+    render(
+      <I18nextProvider i18n={i18n}>
+        <AddDeviceDialog open onOpenChange={() => undefined} />
+      </I18nextProvider>
+    )
+
+    const input = await screen.findByLabelText(
+      i18n.t('devices.addDevice.rePairing.passphraseLabel')
+    )
+    expect(issuePairingInvitation).not.toHaveBeenCalled()
+    fireEvent.change(input, { target: { value: 'original-passphrase' } })
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: i18n.t('devices.addDevice.rePairing.submit'),
+      })
+    )
+
+    await waitFor(() => expect(screen.getByLabelText('123456789')).toBeInTheDocument())
+    expect(unlockSpaceWithPassphrase).toHaveBeenCalledWith('original-passphrase')
+    expect(issuePairingInvitation).toHaveBeenCalledOnce()
+  })
+
+  it('keeps the confirmation step open after a wrong passphrase', async () => {
+    getSetupState.mockResolvedValue({
+      hasCompleted: true,
+      currentInvitation: null,
+      deviceName: 'test',
+      rePairingRequired: true,
+    })
+    unlockSpaceWithPassphrase.mockRejectedValue({ code: 'WRONG_PASSPHRASE' })
+
+    render(
+      <I18nextProvider i18n={i18n}>
+        <AddDeviceDialog open onOpenChange={() => undefined} />
+      </I18nextProvider>
+    )
+
+    const input = await screen.findByLabelText(
+      i18n.t('devices.addDevice.rePairing.passphraseLabel')
+    )
+    fireEvent.change(input, { target: { value: 'wrong-passphrase' } })
+    fireEvent.click(
+      screen.getByRole('button', { name: i18n.t('devices.addDevice.rePairing.submit') })
+    )
+
+    expect(
+      await screen.findByText(i18n.t('devices.addDevice.rePairing.wrongPassphrase'))
+    ).toBeInTheDocument()
+    expect(input).toHaveValue('wrong-passphrase')
     expect(issuePairingInvitation).not.toHaveBeenCalled()
   })
 

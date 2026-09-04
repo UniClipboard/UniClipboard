@@ -1137,6 +1137,17 @@
       "expiresIn": "{{remaining}} 後過期",
       "expired": "邀請碼已過期",
       "passphraseHint": "新裝置還需輸入空間口令完成配對",
+      "rePairing": {
+        "title": "確認空間口令",
+        "subtitle": "舊版本升級後需要確認一次",
+        "description": "你的歷史記錄已安全保留。產生新邀請碼前，請確認原來的空間口令。",
+        "passphraseLabel": "空間口令",
+        "passphrasePlaceholder": "輸入原來的空間口令",
+        "submit": "確認並產生邀請碼",
+        "submitting": "正在確認口令……",
+        "wrongPassphrase": "空間口令不正確",
+        "failed": "暫時無法確認口令，請重試"
+      },
       "loading": "正在生成邀請碼……",
       "actions": {
         "cancel": "取消",

@@ -1119,6 +1119,17 @@
       "expiresIn": "{{remaining}} 后过期",
       "expired": "邀请码已过期",
       "passphraseHint": "新设备还需输入空间口令完成配对",
+      "rePairing": {
+        "title": "确认空间口令",
+        "subtitle": "旧版本升级后需要确认一次",
+        "description": "你的历史记录已安全保留。生成新邀请码前，请确认原来的空间口令。",
+        "passphraseLabel": "空间口令",
+        "passphrasePlaceholder": "输入原来的空间口令",
+        "submit": "确认并生成邀请码",
+        "submitting": "正在确认口令……",
+        "wrongPassphrase": "空间口令不正确",
+        "failed": "暂时无法确认口令，请重试"
+      },
       "loading": "正在生成邀请码……",
       "actions": {
         "cancel": "取消",

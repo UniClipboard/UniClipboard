@@ -1120,6 +1120,17 @@
       "expiresIn": "Expires in {{remaining}}",
       "expired": "Invitation expired",
       "passphraseHint": "The joining device also needs the space passphrase to finish pairing",
+      "rePairing": {
+        "title": "Confirm your space passphrase",
+        "subtitle": "This is required once after upgrading an older profile",
+        "description": "Your history is safe. Confirm the original space passphrase before creating a new invitation.",
+        "passphraseLabel": "Space passphrase",
+        "passphrasePlaceholder": "Enter the original passphrase",
+        "submit": "Confirm and generate code",
+        "submitting": "Checking passphrase…",
+        "wrongPassphrase": "That passphrase is incorrect.",
+        "failed": "The passphrase could not be confirmed. Please try again."
+      },
       "loading": "Generating invitation code…",
       "actions": {
         "cancel": "Cancel",

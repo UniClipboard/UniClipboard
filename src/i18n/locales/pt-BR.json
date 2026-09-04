@@ -1141,6 +1141,17 @@
       "expiresIn": "Expira em {{remaining}}",
       "expired": "Convite expirado",
       "passphraseHint": "O dispositivo que vai entrar também precisa da frase secreta do Espaço para concluir o pareamento",
+      "rePairing": {
+        "title": "Confirme a frase secreta do Espaço",
+        "subtitle": "Isso é necessário uma vez após atualizar um perfil antigo",
+        "description": "Seu histórico foi preservado. Confirme a frase secreta original do Espaço antes de criar um novo código de convite.",
+        "passphraseLabel": "Frase secreta do Espaço",
+        "passphrasePlaceholder": "Digite a frase secreta original",
+        "submit": "Confirmar e gerar código",
+        "submitting": "Verificando frase secreta…",
+        "wrongPassphrase": "A frase secreta está incorreta.",
+        "failed": "Não foi possível confirmar a frase secreta. Tente novamente."
+      },
       "loading": "Gerando código de convite…",
       "actions": {
         "cancel": "Cancelar",

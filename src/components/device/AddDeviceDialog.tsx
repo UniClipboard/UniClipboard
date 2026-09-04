@@ -47,6 +47,7 @@ type Step = 'invitation' | 'success' | 'failed'
 interface AddDeviceDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
+  onSuccess?: () => void
 }
 
 function formatRemaining(ms: number): string {
@@ -56,7 +57,7 @@ function formatRemaining(ms: number): string {
   return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`
 }
 
-function AddDeviceDialogInner({ open, onOpenChange }: AddDeviceDialogProps) {
+function AddDeviceDialogInner({ open, onOpenChange, onSuccess }: AddDeviceDialogProps) {
   const { t } = useTranslation()
   const [invitation, setInvitation] = useState<CurrentInvitation | null>(null)
   const [issuedAtMs, setIssuedAtMs] = useState<number | null>(null)
@@ -68,6 +69,7 @@ function AddDeviceDialogInner({ open, onOpenChange }: AddDeviceDialogProps) {
   const [failureReason, setFailureReason] = useState<string | null>(null)
   const initialDeviceIdsRef = useRef<ReadonlySet<string> | null>(null)
   const pairingCompletionInFlightRef = useRef(false)
+  const reportSuccess = useEffectEvent(() => onSuccess?.())
 
   // 倒计时 tick — 仅在邀请态 + 有邀请时启动
   useEffect(() => {
@@ -141,6 +143,7 @@ function AddDeviceDialogInner({ open, onOpenChange }: AddDeviceDialogProps) {
         log.warn({ err }, 'failed to clear completed invitation')
       }
       setStep('success')
+      reportSuccess()
     } catch (err) {
       log.warn({ err }, 'failed to verify completed invitation')
       pairingCompletionInFlightRef.current = false

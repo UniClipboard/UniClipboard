@@ -128,6 +128,7 @@ describe('AddDeviceDialog invitation issuing', () => {
   })
 
   it('replaces the invitation with success after a new member is confirmed', async () => {
+    const onSuccess = vi.fn()
     getDeviceTrustSnapshot
       .mockResolvedValueOnce({
         localDeviceId: 'local',
@@ -156,7 +157,7 @@ describe('AddDeviceDialog invitation issuing', () => {
       })
     render(
       <I18nextProvider i18n={i18n}>
-        <AddDeviceDialog open onOpenChange={() => undefined} />
+        <AddDeviceDialog open onOpenChange={() => undefined} onSuccess={onSuccess} />
       </I18nextProvider>
     )
 
@@ -172,6 +173,7 @@ describe('AddDeviceDialog invitation issuing', () => {
     await waitFor(() => {
       expect(screen.queryByLabelText('123456789')).not.toBeInTheDocument()
       expect(screen.getAllByText(i18n.t('devices.addDevice.success.title'))).not.toHaveLength(0)
+      expect(onSuccess).toHaveBeenCalledOnce()
     })
   })
 

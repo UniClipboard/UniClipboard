@@ -100,8 +100,7 @@ function SwitchSpaceDialogInner({ open, onOpenChange }: SwitchSpaceDialogProps) 
 
   const resolveJoinAdmission = useCallback((resolution: JoinAdmissionResolution) => {
     if (resolution.status === 'active') {
-      if (resolution.result === null) return
-      setResult(resolution.result)
+      setResult(resolution)
       setPendingJoinId(null)
       setStep('success')
       return
@@ -111,7 +110,7 @@ function SwitchSpaceDialogInner({ open, onOpenChange }: SwitchSpaceDialogProps) 
     setErrorRaw(resolution.reason)
     setStep('failed')
   }, [])
-  useJoinAdmission(pendingJoinId, null, resolveJoinAdmission)
+  useJoinAdmission(pendingJoinId, resolveJoinAdmission)
 
   const handleSubmit = async (preserveUnreadableHistory = false) => {
     // Validate inputs independently from step check
@@ -175,13 +174,9 @@ function SwitchSpaceDialogInner({ open, onOpenChange }: SwitchSpaceDialogProps) 
     try {
       const result = await cancelJoinSpace(pendingJoinId)
       if (result.status === 'active') {
-        resolveJoinAdmission({
-          status: 'active',
-          peerDeviceId: result.joinedSpace.sponsorDeviceId,
-          result,
-        })
+        resolveJoinAdmission(result)
       } else if (result.status === 'rejected') {
-        resolveJoinAdmission({ status: 'rejected', reason: result.reason })
+        resolveJoinAdmission(result)
       }
     } catch (err) {
       log.error({ err, joinId: pendingJoinId }, 'cancelJoinSpace failed')
@@ -283,7 +278,7 @@ function SwitchSpaceDialogInner({ open, onOpenChange }: SwitchSpaceDialogProps) 
     )
   } else if (step === 'success' && result) {
     body = (
-      <div className="flex flex-col items-center gap-3 py-8">
+      <div data-testid="switch-space-success" className="flex flex-col items-center gap-3 py-8">
         <div className="flex size-14 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
           <CheckCircle2 className="size-8" />
         </div>
@@ -329,7 +324,12 @@ function SwitchSpaceDialogInner({ open, onOpenChange }: SwitchSpaceDialogProps) 
         <Button variant="ghost" onClick={() => onOpenChange(false)}>
           {t('actions.cancel')}
         </Button>
-        <Button onClick={() => void handleSubmit()} disabled={!canSubmit} className="min-w-28">
+        <Button
+          data-testid="switch-space-submit"
+          onClick={() => void handleSubmit()}
+          disabled={!canSubmit}
+          className="min-w-28"
+        >
           <ArrowRightLeft className={cn('mr-2 size-4', !canSubmit && 'opacity-50')} />
           {t('actions.switch')}
         </Button>
@@ -380,7 +380,7 @@ function SwitchSpaceDialogInner({ open, onOpenChange }: SwitchSpaceDialogProps) 
         onOpenChange(next)
       }}
     >
-      <DialogContent className="sm:max-w-md">
+      <DialogContent data-testid="switch-space-dialog" className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>
             {step === 'success'

@@ -105,7 +105,6 @@ export function useSetupFlow(): UseSetupFlowReturn {
   const [pageScreen, setPageScreen] = useState<SetupScreen | null>(null)
   const [loading, setLoading] = useState(false)
   const invitationDeviceIdsRef = useRef<ReadonlySet<string> | null>(null)
-  const joinDeviceIdsRef = useRef<ReadonlySet<string> | null>(null)
   const sponsorCompletionInFlightRef = useRef(false)
 
   const screen: SetupScreen = (() => {
@@ -123,7 +122,7 @@ export function useSetupFlow(): UseSetupFlowReturn {
         ? {
             kind: 'pairing_complete',
             localDeviceName: flow.deviceName,
-            peerDeviceId: flow.completion.peerDeviceId,
+            peerDeviceId: flow.completion.redeem.joinedSpace.sponsorDeviceId,
           }
         : {
             kind: 'pairing_complete',
@@ -183,11 +182,12 @@ export function useSetupFlow(): UseSetupFlowReturn {
       return
     }
     try {
+      setPageScreen(null)
       const next = await getSetupState()
       applyServerSetupState(next, {
         kind: 'pairing_succeeded',
         role: 'joiner',
-        peerDeviceId: result.peerDeviceId,
+        redeem: result,
       })
     } catch (err) {
       log.warn({ err }, 'failed to apply completed durable admission')
@@ -195,7 +195,7 @@ export function useSetupFlow(): UseSetupFlowReturn {
   }, [])
 
   const pendingJoinId = pageScreen?.kind === 'join_pending' ? pageScreen.joinId : null
-  useJoinAdmission(pendingJoinId, joinDeviceIdsRef.current, resolveJoinAdmission)
+  useJoinAdmission(pendingJoinId, resolveJoinAdmission)
 
   useEffect(() => {
     if (flow.kind !== 'invitation_pending') return
@@ -311,7 +311,6 @@ export function useSetupFlow(): UseSetupFlowReturn {
     async (input: { code: string; passphrase: string }) => {
       setLoading(true)
       try {
-        joinDeviceIdsRef.current = activeDeviceIds(await getDeviceTrustSnapshot())
         const redeem = await redeemInvitation({
           code: input.code,
           passphrase: input.passphrase,
@@ -332,7 +331,7 @@ export function useSetupFlow(): UseSetupFlowReturn {
         applyServerSetupState(next, {
           kind: 'pairing_succeeded',
           role: 'joiner',
-          peerDeviceId: redeem.joinedSpace.sponsorDeviceId,
+          redeem,
         })
         return { ok: true, redeem } as const
       } catch (err) {
@@ -364,13 +363,9 @@ export function useSetupFlow(): UseSetupFlowReturn {
       try {
         const result = await cancelJoinSpace(joinId)
         if (result.status === 'active') {
-          await resolveJoinAdmission({
-            status: 'active',
-            peerDeviceId: result.joinedSpace.sponsorDeviceId,
-            result,
-          })
+          await resolveJoinAdmission(result)
         } else if (result.status === 'rejected') {
-          await resolveJoinAdmission({ status: 'rejected', reason: result.reason })
+          await resolveJoinAdmission(result)
         }
       } catch (err) {
         log.error({ err, joinId }, 'cancelJoinSpace failed')

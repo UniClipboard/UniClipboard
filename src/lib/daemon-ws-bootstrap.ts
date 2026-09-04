@@ -12,7 +12,10 @@
  */
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { daemonClient } from '@/api/daemon/client'
-import { waitForDaemonConnectionInfo } from '@/lib/daemon-connection-info'
+import {
+  invalidateDaemonConnectionInfo,
+  waitForDaemonConnectionInfo,
+} from '@/lib/daemon-connection-info'
 import { daemonWs } from '@/lib/daemon-ws'
 import { createLogger } from '@/lib/logger'
 
@@ -21,10 +24,12 @@ const log = createLogger('daemon-ws-bootstrap')
 /** Tauri event the Rust shell emits right before tearing down the in-process
  *  daemon — see `src-tauri/crates/uc-tauri/src/run.rs::FRONTEND_SHUTDOWN_EVENT`. */
 const APP_SHUTDOWN_EVENT = 'app://shutting-down'
+const DAEMON_CONNECTION_CHANGED_EVENT = 'app://daemon-connection-changed'
 
 let connectionEstablished = false
 let connectionPromise: Promise<void> | null = null
 let shutdownListenerUnlisten: UnlistenFn | null = null
+let connectionChangedListenerUnlisten: UnlistenFn | null = null
 
 /** Reset the bootstrap state so the next `connectDaemonWs()` call re-fetches
  *  connection_info + refreshes the JWT session. Used by the test helper. */
@@ -92,6 +97,14 @@ export function connectDaemonWs(): Promise<void> {
   return connectionPromise
 }
 
+/** Re-read native connection state after the daemon process has been replaced. */
+export function reconnectDaemonWs(): Promise<void> {
+  daemonWs.disconnect()
+  resetConnectionState()
+  invalidateDaemonConnectionInfo()
+  return connectDaemonWs()
+}
+
 /**
  * Reset the module-level `connectionEstablished` flag.
  * Exported for test use only — do not call in production.
@@ -113,19 +126,30 @@ export function resetConnectDaemonWsForTests(): void {
  * stays installed). Safe to call before `connectDaemonWs()` resolves.
  */
 export async function registerDaemonShutdownListener(): Promise<void> {
-  if (shutdownListenerUnlisten) {
-    return
+  if (!shutdownListenerUnlisten) {
+    try {
+      shutdownListenerUnlisten = await listen(APP_SHUTDOWN_EVENT, () => {
+        log.info('received app://shutting-down — disconnecting daemon WebSocket')
+        daemonWs.disconnect()
+      })
+    } catch (err) {
+      log.warn(
+        { err },
+        'failed to register app://shutting-down listener; daemon shutdown ' +
+          'will fall back to heartbeat-driven WS disconnect'
+      )
+    }
   }
-  try {
-    shutdownListenerUnlisten = await listen(APP_SHUTDOWN_EVENT, () => {
-      log.info('received app://shutting-down — disconnecting daemon WebSocket')
-      daemonWs.disconnect()
-    })
-  } catch (err) {
-    log.warn(
-      { err },
-      'failed to register app://shutting-down listener; daemon shutdown ' +
-        'will fall back to heartbeat-driven WS disconnect'
-    )
+
+  if (!connectionChangedListenerUnlisten) {
+    try {
+      connectionChangedListenerUnlisten = await listen(DAEMON_CONNECTION_CHANGED_EVENT, () => {
+        void reconnectDaemonWs().catch(err => {
+          log.error({ err }, 'failed to reconnect after daemon connection changed')
+        })
+      })
+    } catch (err) {
+      log.warn({ err }, 'failed to register daemon connection change listener')
+    }
   }
 }

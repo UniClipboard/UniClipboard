@@ -45,6 +45,8 @@
     }
   },
   "common": {
+    "notifications": "Уведомления",
+    "dismissNotification": "Закрыть уведомление",
     "loading": "Загрузка...",
     "unknownSize": "Размер неизвестен",
     "zeroBytes": "0 байт"

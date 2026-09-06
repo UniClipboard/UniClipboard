@@ -34,7 +34,7 @@ vi.mock('@/api/tauri-command/clipboard_delivery', async () => {
   return { ...actual, resendEntry: (...args: unknown[]) => resendEntryMock(...args) }
 })
 
-vi.mock('sonner', () => ({
+vi.mock('@/components/ui/toast', () => ({
   toast: { success: vi.fn(), error: vi.fn() },
 }))
 

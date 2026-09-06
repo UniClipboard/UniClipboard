@@ -1,7 +1,6 @@
 import { Loader2 } from 'lucide-react'
 import * as React from 'react'
 import { useTranslation } from 'react-i18next'
-import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -12,6 +11,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
+import { toast } from '@/components/ui/toast'
 import { createLogger } from '@/lib/logger'
 import { cn } from '@/lib/utils'
 import { Sentry } from '@/observability/sentry'

@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useEffectEvent, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { toast } from 'sonner'
 import { getDeviceTrustSnapshot } from '@/api/daemon/device-trust'
 import {
   cancelJoinSpace,
@@ -18,6 +17,7 @@ import {
   type JoinSpaceRejectionReason,
 } from '@/api/daemon/setupV2'
 import { activeDeviceIds, findNewActiveDeviceId } from '@/components/device/pairing-success-utils'
+import { toast } from '@/components/ui/toast'
 import { type JoinAdmissionResolution, useJoinAdmission } from '@/hooks/useJoinAdmission'
 import { daemonWs } from '@/lib/daemon-ws'
 import { createLogger } from '@/lib/logger'

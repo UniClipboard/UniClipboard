@@ -755,7 +755,7 @@ describe('Phase 95 ROADMAP fence — 4 验收 + 3 Pitfall 防御', () => {
     const banner = screen.getByRole('status')
     expect(banner).not.toBeNull()
     // 不是 sonner toast 容器
-    expect(document.querySelector('[data-sonner-toaster]')).toBeNull()
+    expect(document.querySelector('[data-animated-toast-stack]')).toBeNull()
   })
 
   it('Pitfall 5 — 4 类外网请求清单存在（Popover 展开后）', async () => {

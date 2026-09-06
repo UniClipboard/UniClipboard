@@ -45,6 +45,8 @@
     }
   },
   "common": {
+    "notifications": "Notificações",
+    "dismissNotification": "Fechar notificação",
     "loading": "Carregando...",
     "unknownSize": "Tamanho desconhecido",
     "zeroBytes": "0 Bytes"

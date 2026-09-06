@@ -395,6 +395,11 @@
         "loadError": "Failed to load settings:"
       },
       "network": {
+        "groups": {
+          "connection": "Connection",
+          "relays": "Relay servers",
+          "performance": "Transfer performance"
+        },
         "loadError": "Failed to load settings:",
         "lanOnly": {
           "label": "LAN-only Mode",
@@ -650,6 +655,7 @@
         "recording": "Press keys...",
         "chordHint": "Press another combo for a second step (press the same combo twice for a \"double tap\"), or confirm",
         "rerecord": "Re-record",
+        "save": "Save",
         "conflict": "Conflicts with: {{name}}",
         "confirmOverride": "Apply anyway (clears conflict)",
         "confirm": "Confirm",

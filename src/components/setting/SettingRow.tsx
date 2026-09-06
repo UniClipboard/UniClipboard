@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
+import { isExperimentalFeature } from '@/components/setting/experimental-features'
+import { ExperimentalBadge } from '@/components/setting/ExperimentalBadge'
 import { cn } from '@/lib/utils'
-import { isExperimentalFeature } from './experimental-features'
-import { ExperimentalBadge } from './ExperimentalBadge'
 
 interface SettingRowProps {
   label?: string
@@ -27,22 +27,29 @@ export function SettingRow({
   const showExperimental = isExperimentalFeature(experimentalKey)
 
   return (
-    <div className={cn('flex items-center justify-between gap-4 px-4 py-3', className)}>
+    <div
+      className={cn(
+        'flex min-w-0 flex-wrap items-center justify-between gap-x-6 gap-y-2.5 px-1 py-3.5',
+        className
+      )}
+    >
       {(label || description) && (
-        <div className="space-y-0.5 min-w-0 flex-1">
+        <div className="flex min-w-0 flex-[1_1_14rem] flex-col gap-1">
           {label && (
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <h4 className="text-sm font-medium">{label}</h4>
               {showExperimental && <ExperimentalBadge />}
               {labelExtra}
             </div>
           )}
           {description && (
-            <p className="text-xs text-muted-foreground leading-snug">{description}</p>
+            <p className="text-xs text-muted-foreground leading-relaxed break-words">
+              {description}
+            </p>
           )}
         </div>
       )}
-      {children && <div className="shrink-0">{children}</div>}
+      {children && <div className="ml-auto max-w-full min-w-0 shrink-0">{children}</div>}
     </div>
   )
 }

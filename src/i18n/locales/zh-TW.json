@@ -395,6 +395,11 @@
         "loadError": "載入設定失敗:"
       },
       "network": {
+        "groups": {
+          "connection": "連線方式",
+          "relays": "中繼伺服器",
+          "performance": "傳輸效能"
+        },
         "loadError": "載入設定失敗:",
         "lanOnly": {
           "label": "LAN-only 模式",
@@ -650,6 +655,7 @@
         "recording": "請按快捷鍵...",
         "chordHint": "可再按一個組合作為第二段（連按兩次相同組合即\"雙擊\"），或直接確認",
         "rerecord": "重錄",
+        "save": "儲存",
         "conflict": "與 {{name}} 衝突",
         "confirmOverride": "仍要套用（清除衝突）",
         "confirm": "確認",

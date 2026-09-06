@@ -395,6 +395,11 @@
         "loadError": "設定のロードに失敗しました:"
       },
       "network": {
+        "groups": {
+          "connection": "接続方法",
+          "relays": "リレーサーバー",
+          "performance": "転送パフォーマンス"
+        },
         "loadError": "設定のロードに失敗しました:",
         "lanOnly": {
           "label": "LAN専用モード",
@@ -650,6 +655,7 @@
         "recording": "キーを押してください...",
         "chordHint": "2 番目のステップとして別のコンボを押します (「ダブルタップ」するには同じコンボを 2 回押します)、または確認します",
         "rerecord": "再録音",
+        "save": "保存",
         "conflict": "次との競合: {{name}}",
         "confirmOverride": "とにかく適用 (競合をクリア)",
         "confirm": "確認",

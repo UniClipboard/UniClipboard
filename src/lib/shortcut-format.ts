@@ -11,6 +11,7 @@ export const isMac =
  */
 function formatKeyPart(part: string): string {
   const lower = part.toLowerCase().trim()
+  if (lower === 'comma') return ','
 
   if (isMac) {
     switch (lower) {

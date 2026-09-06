@@ -1,5 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { AllowOverlayAddrsDisclosure } from '@/components/setting/AllowOverlayAddrsDisclosure'
+import { CustomRelayUrlsField } from '@/components/setting/CustomRelayUrlsField'
+import { LanOnlyDisclosure } from '@/components/setting/LanOnlyDisclosure'
+import { RestartBanner } from '@/components/setting/RestartBanner'
+import { SettingGroup } from '@/components/setting/SettingGroup'
+import { SettingRow } from '@/components/setting/SettingRow'
 import { Switch } from '@/components/ui'
 import {
   Select,
@@ -12,12 +18,6 @@ import { useSetting } from '@/hooks/useSetting'
 import { commands } from '@/lib/ipc'
 import { createLogger } from '@/lib/logger'
 import type { CongestionController, RelaySaveMutation } from '@/types/setting'
-import { AllowOverlayAddrsDisclosure } from './AllowOverlayAddrsDisclosure'
-import { CustomRelayUrlsField } from './CustomRelayUrlsField'
-import { LanOnlyDisclosure } from './LanOnlyDisclosure'
-import { RestartBanner } from './RestartBanner'
-import { SettingGroup } from './SettingGroup'
-import { SettingRow } from './SettingRow'
 
 const log = createLogger('network-section')
 const SAVE_DELAY_MS = 500
@@ -266,71 +266,80 @@ const NetworkSection: React.FC = () => {
   }
 
   return (
-    <SettingGroup title={t('settings.categories.network')}>
-      <RestartBanner
-        visible={pending}
-        message={t('settings.sections.network.restartBanner.message')}
-        onRestart={handleRestart}
-        loading={restartLoading}
-        error={restartError}
-        onDismissError={() => setRestartError(null)}
-      />
-      <SettingRow
-        label={t('settings.sections.network.lanOnly.label')}
-        labelExtra={<LanOnlyDisclosure />}
-        description={t('settings.sections.network.lanOnly.description')}
-        experimentalKey="network.lanOnly"
-      >
-        <Switch
-          id="lan-only-switch"
-          aria-label={t('settings.sections.network.lanOnly.label')}
-          // FENCE: 反向命名唯一取反点（Pitfall 1 — checked=ON ⇔ allowRelayFallback=false）
-          checked={!allowRelayFallback}
-          onCheckedChange={handleLanOnlySwitchChange}
+    <>
+      <div className="overflow-hidden rounded-xl border border-border/60 empty:hidden">
+        <RestartBanner
+          visible={pending}
+          message={t('settings.sections.network.restartBanner.message')}
+          onRestart={handleRestart}
+          loading={restartLoading}
+          error={restartError}
+          onDismissError={() => setRestartError(null)}
         />
-      </SettingRow>
-      <SettingRow
-        label={t('settings.sections.network.allowOverlayAddrs.label')}
-        labelExtra={<AllowOverlayAddrsDisclosure />}
-        description={t('settings.sections.network.allowOverlayAddrs.description')}
-        experimentalKey="network.allowOverlayAddrs"
-      >
-        <Switch
-          id="allow-overlay-addrs-switch"
-          aria-label={t('settings.sections.network.allowOverlayAddrs.label')}
-          checked={allowOverlayNetworkAddrs}
-          onCheckedChange={handleAllowOverlaySwitchChange}
-        />
-      </SettingRow>
-      <SettingRow
-        label={t('settings.sections.network.congestionController.label')}
-        description={t('settings.sections.network.congestionController.description')}
-        experimentalKey="network.congestionController"
-      >
-        <Select value={congestionController} onValueChange={handleCongestionControllerChange}>
-          <SelectTrigger
-            id="congestion-controller-select"
-            size="sm"
-            aria-label={t('settings.sections.network.congestionController.label')}
-            className="w-[180px]"
-          >
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="cubic">
-              CUBIC ({t('settings.sections.network.congestionController.recommended')})
-            </SelectItem>
-            <SelectItem value="bbr3">BBR3</SelectItem>
-          </SelectContent>
-        </Select>
-      </SettingRow>
-      <CustomRelayUrlsField value={customRelayUrls} onSave={saveCustomRelay} />
+      </div>
       {saveError && (
-        <div className="px-4 pb-3 text-xs text-destructive" role="alert">
+        <div
+          className="rounded-lg border border-destructive/20 bg-destructive/5 p-3 text-xs text-destructive"
+          role="alert"
+        >
           {saveError}
         </div>
       )}
-    </SettingGroup>
+      <SettingGroup title={t('settings.sections.network.groups.connection')}>
+        <SettingRow
+          label={t('settings.sections.network.lanOnly.label')}
+          labelExtra={<LanOnlyDisclosure />}
+          description={t('settings.sections.network.lanOnly.description')}
+          experimentalKey="network.lanOnly"
+        >
+          <Switch
+            id="lan-only-switch"
+            aria-label={t('settings.sections.network.lanOnly.label')}
+            // FENCE: 反向命名唯一取反点（Pitfall 1 — checked=ON ⇔ allowRelayFallback=false）
+            checked={!allowRelayFallback}
+            onCheckedChange={handleLanOnlySwitchChange}
+          />
+        </SettingRow>
+        <SettingRow
+          label={t('settings.sections.network.allowOverlayAddrs.label')}
+          labelExtra={<AllowOverlayAddrsDisclosure />}
+          description={t('settings.sections.network.allowOverlayAddrs.description')}
+          experimentalKey="network.allowOverlayAddrs"
+        >
+          <Switch
+            id="allow-overlay-addrs-switch"
+            aria-label={t('settings.sections.network.allowOverlayAddrs.label')}
+            checked={allowOverlayNetworkAddrs}
+            onCheckedChange={handleAllowOverlaySwitchChange}
+          />
+        </SettingRow>
+      </SettingGroup>
+      <CustomRelayUrlsField value={customRelayUrls} onSave={saveCustomRelay} />
+      <SettingGroup title={t('settings.sections.network.groups.performance')}>
+        <SettingRow
+          label={t('settings.sections.network.congestionController.label')}
+          description={t('settings.sections.network.congestionController.description')}
+          experimentalKey="network.congestionController"
+        >
+          <Select value={congestionController} onValueChange={handleCongestionControllerChange}>
+            <SelectTrigger
+              id="congestion-controller-select"
+              size="sm"
+              aria-label={t('settings.sections.network.congestionController.label')}
+              className="w-44"
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="cubic">
+                CUBIC ({t('settings.sections.network.congestionController.recommended')})
+              </SelectItem>
+              <SelectItem value="bbr3">BBR3</SelectItem>
+            </SelectContent>
+          </Select>
+        </SettingRow>
+      </SettingGroup>
+    </>
   )
 }
 

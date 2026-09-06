@@ -198,8 +198,11 @@ export function RelayEditor({ index, initialUrl, removable, onSave, onRemove }: 
   }
 
   return (
-    <section className="py-4" aria-labelledby={`relay-node-${displayIndex}-title`}>
-      <div className="flex items-center justify-between gap-3">
+    <section
+      className="rounded-xl border border-border/60 bg-card p-4"
+      aria-labelledby={`relay-node-${displayIndex}-title`}
+    >
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <h5 id={`relay-node-${displayIndex}-title`} className="text-sm font-medium">
           {t('settings.sections.network.customRelays.rowLabel', { index: displayIndex })}
         </h5>
@@ -232,14 +235,14 @@ export function RelayEditor({ index, initialUrl, removable, onSave, onRemove }: 
           aria-label={t('settings.sections.network.customRelays.itemAriaLabel', {
             index: displayIndex,
           })}
-          className="h-9 border-border/60 bg-background/50 font-mono text-xs shadow-none"
+          className="h-9 border-border/60 bg-muted/20 font-mono text-xs shadow-none"
           disabled={saving}
           onChange={event => updateUrl(event.target.value)}
         />
       </div>
 
       <div className="mt-3 space-y-1.5">
-        <div className="flex items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <label htmlFor={`relay-access-token-${displayIndex}`} className="text-xs font-medium">
             {t('settings.sections.network.customRelays.tokenLabel')}
           </label>
@@ -274,7 +277,7 @@ export function RelayEditor({ index, initialUrl, removable, onSave, onRemove }: 
               index: displayIndex,
             })}
             placeholder={t('settings.sections.network.customRelays.credentials.placeholder')}
-            className="h-9 border-border/60 bg-background/50 pr-10 font-mono text-xs shadow-none"
+            className="h-9 border-border/60 bg-muted/20 pr-10 font-mono text-xs shadow-none"
             disabled={saving || removeSavedToken}
             onChange={event => updateAccessToken(event.target.value)}
           />
@@ -323,37 +326,35 @@ export function RelayEditor({ index, initialUrl, removable, onSave, onRemove }: 
       </div>
 
       <div className="mt-4 border-t border-border/40 pt-3">
-        <p className="text-xs text-muted-foreground">
+        <p className="text-xs leading-relaxed text-muted-foreground">
           {t('settings.sections.network.customRelays.testHint')}
         </p>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className="mt-2"
-          disabled={!canTest}
-          onClick={() => void testAvailability()}
-        >
-          {probeStatus.kind === 'testing' ? (
-            <Loader2 aria-hidden="true" className="animate-spin" />
-          ) : (
-            <SignalHigh aria-hidden="true" />
-          )}
-          {t('settings.sections.network.customRelays.testButton')}
-        </Button>
-        <ProbeResult status={probeStatus} />
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={!canTest}
+            onClick={() => void testAvailability()}
+          >
+            {probeStatus.kind === 'testing' ? (
+              <Loader2 aria-hidden="true" className="animate-spin" />
+            ) : (
+              <SignalHigh aria-hidden="true" />
+            )}
+            {t('settings.sections.network.customRelays.testButton')}
+          </Button>
+          <Button type="button" size="sm" disabled={!canSave} onClick={() => void saveRelay()}>
+            {saving ? (
+              <Loader2 aria-hidden="true" className="animate-spin" />
+            ) : (
+              <Save aria-hidden="true" />
+            )}
+            {t('settings.sections.network.customRelays.saveButton')}
+          </Button>
+        </div>
       </div>
-
-      <div className="mt-4 flex justify-end border-t border-border/40 pt-3">
-        <Button type="button" size="sm" disabled={!canSave} onClick={() => void saveRelay()}>
-          {saving ? (
-            <Loader2 aria-hidden="true" className="animate-spin" />
-          ) : (
-            <Save aria-hidden="true" />
-          )}
-          {t('settings.sections.network.customRelays.saveButton')}
-        </Button>
-      </div>
+      <ProbeResult status={probeStatus} />
 
       {error && (
         <p className="mt-2 text-xs text-destructive" role="alert">

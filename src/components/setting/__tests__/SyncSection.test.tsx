@@ -1,5 +1,5 @@
 import '@testing-library/jest-dom/vitest'
-import { cleanup, render } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import SyncSection from '@/components/setting/SyncSection'
 import { useSetting } from '@/hooks/useSetting'
@@ -79,5 +79,47 @@ describe('SyncSection', () => {
     const { container } = setup({ syncEnabled: false })
 
     expect(container.querySelector('#file-sync-enabled')).toBeDisabled()
+  })
+
+  it('rejects invalid beUI input and saves valid file sizes in bytes', async () => {
+    setup()
+    const input = screen.getByRole('textbox', {
+      name: 'settings.sections.sync.fileSync.smallFileThreshold.label',
+    })
+    const update = mockUseSetting.mock.results[0].value.updateFileSyncSetting
+
+    fireEvent.change(input, { target: { value: '0' } })
+    expect(input).toHaveAttribute('aria-invalid', 'true')
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'settings.sections.sync.fileSync.smallFileThreshold.errors.range'
+    )
+    expect(update).not.toHaveBeenCalled()
+
+    fireEvent.change(input, { target: { value: '20' } })
+    await waitFor(() =>
+      expect(update).toHaveBeenCalledWith({ smallFileThreshold: 20 * 1024 * 1024 })
+    )
+    expect(input).not.toHaveAttribute('aria-invalid')
+  })
+
+  it('preserves cache and retention units through beUI inputs', async () => {
+    setup()
+    const update = mockUseSetting.mock.results[0].value.updateFileSyncSetting
+    fireEvent.change(
+      screen.getByRole('textbox', {
+        name: 'settings.sections.sync.fileSync.cacheQuota.label',
+      }),
+      { target: { value: '750' } }
+    )
+    fireEvent.change(
+      screen.getByRole('textbox', {
+        name: 'settings.sections.sync.fileSync.retentionPeriod.label',
+      }),
+      { target: { value: '48' } }
+    )
+    await waitFor(() => {
+      expect(update).toHaveBeenCalledWith({ fileCacheQuotaPerDevice: 750 * 1024 * 1024 })
+      expect(update).toHaveBeenCalledWith({ fileRetentionHours: 48 })
+    })
   })
 })

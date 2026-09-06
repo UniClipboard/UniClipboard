@@ -20,6 +20,7 @@ pub mod mobile_sync;
 #[cfg(feature = "dev-tools")]
 pub mod probe;
 pub mod recv;
+pub mod reset_space;
 pub mod search;
 #[cfg(feature = "dev-tools")]
 pub mod seed_clipboard;

@@ -217,7 +217,7 @@ fn render_search_error(action: &str, err: anyhow::Error, json: bool) -> i32 {
 }
 
 fn render_rebuild_locked_message() -> &'static str {
-    "Search is unavailable while the encryption session is locked. Unlock first, or run `uniclip status` to inspect application state."
+    "Search is unavailable while the encryption session is locked. Unlock first, or run `uniclip space status` to inspect application state."
 }
 
 /// A device that clips can arrive from: its display name and the canonical id

@@ -437,7 +437,7 @@ async fn resume_and_probe(cli: &CliAppSession) -> Result<(), i32> {
         Ok(false) => {
             ui::spinner_finish_error(
                 &resume_spinner,
-                "No space on this profile — run `init` or `join` first.",
+                "No space on this profile — run `space init` or `space join` first.",
             );
             return Err(exit_codes::EXIT_ERROR);
         }

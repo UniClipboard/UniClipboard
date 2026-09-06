@@ -34,9 +34,8 @@ export const LONG_PRESS_DELAY = 520
 
 export const LONG_PRESS_TOLERANCE = 10
 
-export const MORPH_DURATION = 0.3
-
 export type TriggerElementProps = React.HTMLAttributes<HTMLElement> & {
+  'data-context-menu-tree'?: string
   ref?: Ref<HTMLElement>
 }
 
@@ -109,12 +108,14 @@ export interface ContextMenuProps {
 }
 
 export interface ContextMenuTriggerProps {
+  activation?: 'contextmenu' | 'click'
   children: ReactElement<TriggerElementProps>
   disabled?: boolean
   className?: string
 }
 
 export interface ContextMenuContentProps {
+  side?: 'bottom' | 'top'
   children: ReactNode
   className?: string
   ariaLabel?: string

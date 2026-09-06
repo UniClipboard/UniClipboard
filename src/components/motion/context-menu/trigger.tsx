@@ -45,6 +45,7 @@ import { cn } from '@/lib/utils'
 
 export function ContextMenuTrigger({
   children,
+  activation = 'contextmenu',
   disabled = false,
   className,
 }: ContextMenuTriggerProps) {
@@ -84,7 +85,7 @@ export function ContextMenuTrigger({
     // of the platform for it, so it holds to open too. A mouse has the right
     // button and is left to `onContextMenu`.
     const pressToOpen = event.pointerType === 'touch' || event.pointerType === 'pen'
-    if (event.defaultPrevented || disabled || !pressToOpen) return
+    if (event.defaultPrevented || disabled || activation === 'click' || !pressToOpen) return
 
     // `pointer-coarse:select-none` misses this press on a laptop whose mouse
     // is the primary pointer and whose touchscreen is not, and the platform's
@@ -134,6 +135,17 @@ export function ContextMenuTrigger({
     },
     'aria-controls': context.open ? context.menuId : undefined,
     'aria-haspopup': 'menu',
+    'data-context-menu-tree': activation === 'click' ? context.treeId : undefined,
+    onClick: (event: ReactMouseEvent<HTMLElement>) => {
+      childProps.onClick?.(event)
+      if (event.defaultPrevented || disabled || activation !== 'click') return
+      if (context.open) {
+        context.setOpen(false)
+        return
+      }
+      const rect = event.currentTarget.getBoundingClientRect()
+      context.openAt({ x: rect.left, y: rect.top }, event.detail === 0 ? 'keyboard' : 'pointer')
+    },
     'aria-expanded': context.open,
     // The long press is ours: without this iOS runs its own on the same
     // gesture and drops the selection callout and its handles on top of the

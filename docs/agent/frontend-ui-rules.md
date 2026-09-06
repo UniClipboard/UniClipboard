@@ -4,6 +4,8 @@ Use this document when editing React, TypeScript, Tailwind, UX flows, or fronten
 
 ## Frontend Layout Rules
 
+- 操作菜单（点击、右键及子菜单）统一使用 `src/components/motion/context-menu/`。下拉选项保留 `Select` 的选值语义，并与操作菜单共同复用 `src/components/motion/menu/` 的面板、展开动画和高亮；不得另建平行的菜单展示实现。快捷键录入、颜色编辑、二维码和详情说明保留内容浮层的交互语义；通用 `PopoverContent` 同样复用上述面板与展开动画，不使用菜单的方向键导航接管录入或表单。
+
 - **No fixed-pixel layouts.**
   - Use **Tailwind utilities** or **rem** units.
 

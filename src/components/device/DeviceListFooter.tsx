@@ -1,13 +1,13 @@
 import { ArrowRightLeft, MoreHorizontal, Plus, Settings2, Smartphone } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { Button } from '@/components/ui/button'
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from '@/components/motion/context-menu'
+import { Button } from '@/components/ui/button'
 
 interface Props {
   onlineCount: number
@@ -40,32 +40,33 @@ export default function DeviceListFooter({
           <Plus className="size-4" />
           <span className="truncate">{t('devices.panel.addMenu.trigger')}</span>
         </Button>
-        <DropdownMenu>
-          <DropdownMenuTrigger
-            render={
-              <Button
-                variant="outline"
-                size="icon-sm"
-                className="shrink-0 bg-card shadow-none"
-                aria-label={t('devices.panel.addMenu.otherWays')}
-                title={t('devices.panel.addMenu.otherWays')}
-              />
-            }
+        <ContextMenu>
+          <ContextMenuTrigger activation="click">
+            <Button
+              variant="outline"
+              size="icon-sm"
+              className="shrink-0 bg-card shadow-none"
+              aria-label={t('devices.panel.addMenu.otherWays')}
+            >
+              <MoreHorizontal className="size-4" />
+            </Button>
+          </ContextMenuTrigger>
+          <ContextMenuContent
+            ariaLabel={t('devices.panel.addMenu.otherWays')}
+            side="top"
+            className="w-64"
           >
-            <MoreHorizontal className="size-4" />
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" side="top" className="w-64">
-            <DropdownMenuItem onClick={onAddMobile}>
+            <ContextMenuItem onSelect={onAddMobile}>
               <Smartphone className="size-4" />
               {t('devices.panel.addMenu.mobile')}
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={onMobileSettings}>
+            </ContextMenuItem>
+            <ContextMenuSeparator />
+            <ContextMenuItem onSelect={onMobileSettings}>
               <Settings2 className="size-4" />
               {t('devices.mobileSync.title')} · {t('devices.mobileSync.configure')}
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+            </ContextMenuItem>
+          </ContextMenuContent>
+        </ContextMenu>
       </div>
       <div className="flex min-w-0 items-center justify-between gap-2">
         <Button

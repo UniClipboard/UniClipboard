@@ -34,20 +34,24 @@ import { createPortal } from 'react-dom'
 import {
   MenuPoint,
   VIEWPORT_PADDING,
-  MORPH_DURATION,
   useContextMenuContext,
   getEnabledItems,
   clamp,
   collapsedClip,
   ContextMenuContentProps,
 } from '@/components/motion/context-menu/state'
-import { EASE_OUT } from '@/lib/ease'
+import {
+  MENU_SURFACE_CLASS,
+  MENU_SHADOW_CLASS,
+  menuMotion,
+} from '@/components/motion/menu/presentation'
 import { cn } from '@/lib/utils'
 
 export function ContextMenuContent({
   children,
   className,
   ariaLabel = 'Context menu',
+  side = 'bottom',
 }: ContextMenuContentProps) {
   const context = useContextMenuContext('ContextMenuContent')
   const [mounted, setMounted] = useState(false)
@@ -76,7 +80,11 @@ export function ContextMenuContent({
         ? triggerRect.left - rect.width + 4
         : triggerRect.right - 4
       : context.point.x
-    const targetY = triggerRect ? triggerRect.top - 6 : context.point.y
+    const targetY = triggerRect
+      ? triggerRect.top - 6
+      : side === 'top'
+        ? context.point.y - rect.height - 6
+        : context.point.y
     const left = Math.max(
       VIEWPORT_PADDING,
       Math.min(
@@ -117,6 +125,7 @@ export function ContextMenuContent({
       cancelAnimationFrame(openFrame)
     }
   }, [
+    side,
     mounted,
     context.open,
     context.point,
@@ -200,7 +209,6 @@ export function ContextMenuContent({
 
   const visualOpen = context.open && morphReady
   const clipHidden = collapsedClip(origin, size)
-  const clipShown = 'inset(0px 0px 0px 0px round 12px)'
 
   return createPortal(
     <div
@@ -210,7 +218,8 @@ export function ContextMenuContent({
       inert={!context.open}
       style={{ left: position.x, top: position.y }}
       className={cn(
-        'fixed z-[100] [filter:drop-shadow(0_1.125rem_1.75rem_rgba(0,0,0,0.2))]',
+        'fixed z-[100]',
+        MENU_SHADOW_CLASS,
         context.open ? 'pointer-events-auto' : 'pointer-events-none'
       )}
     >
@@ -224,33 +233,12 @@ export function ContextMenuContent({
         data-morph-ready={morphReady ? 'true' : 'false'}
         tabIndex={-1}
         initial={false}
-        animate={{
-          opacity: visualOpen ? 1 : 0,
-          clipPath:
-            context.reduce || context.modality === 'keyboard' || visualOpen
-              ? clipShown
-              : clipHidden,
-        }}
-        transition={
-          context.modality === 'keyboard'
-            ? { duration: 0 }
-            : context.reduce
-              ? { duration: 0.1, ease: EASE_OUT }
-              : {
-                  clipPath: {
-                    duration: MORPH_DURATION,
-                    ease: EASE_OUT,
-                  },
-                  opacity: {
-                    duration: MORPH_DURATION,
-                    ease: EASE_OUT,
-                  },
-                }
-        }
+        {...menuMotion(visualOpen, context.reduce, clipHidden, context.modality === 'keyboard')}
         onKeyDown={onKeyDown}
         onContextMenu={event => event.preventDefault()}
         className={cn(
-          'min-w-56 max-w-[calc(100vw-1rem)] max-h-[calc(100vh-1rem)] overflow-x-hidden overflow-y-auto rounded-xl border border-border bg-card p-1.5 text-foreground outline-none',
+          'min-w-56 max-w-[calc(100vw-1rem)] max-h-[calc(100vh-1rem)] overflow-x-hidden overflow-y-auto',
+          MENU_SURFACE_CLASS,
           className
         )}
       >

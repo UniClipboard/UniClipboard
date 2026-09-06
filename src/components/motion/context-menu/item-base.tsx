@@ -22,10 +22,10 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 // Animated Context Menu from https://beui.dev/r/context-menu/raw (MIT).
-import { m } from 'framer-motion'
 import { type Ref, useId } from 'react'
 import { useContextMenuContext, ContextMenuItemProps } from '@/components/motion/context-menu/state'
-import { SPRING_LAYOUT } from '@/lib/ease'
+import { MenuHighlight } from '@/components/motion/menu/MenuHighlight'
+import { MENU_ITEM_CLASS } from '@/components/motion/menu/presentation'
 import { cn } from '@/lib/utils'
 
 export function ContextMenuItemBase({
@@ -91,7 +91,7 @@ export function ContextMenuItemBase({
         if (closeOnSelect) context.closeAll()
       }}
       className={cn(
-        'relative isolate flex w-full select-none items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[0.8125rem] outline-none',
+        MENU_ITEM_CLASS,
         'focus-visible:ring-2 focus-visible:ring-foreground/15',
         'disabled:pointer-events-none disabled:opacity-40',
         inset && 'pl-8',
@@ -100,14 +100,7 @@ export function ContextMenuItemBase({
       )}
     >
       {active ? (
-        <m.span
-          layoutId={`${context.menuId}-active`}
-          className={cn(
-            'absolute inset-0 -z-10 rounded-lg',
-            tone === 'destructive' ? 'bg-destructive/10' : 'bg-foreground/[0.065]'
-          )}
-          transition={context.reduce ? { duration: 0 } : SPRING_LAYOUT}
-        />
+        <MenuHighlight layoutId={`${context.menuId}-active`} destructive={tone === 'destructive'} />
       ) : null}
       {children}
     </button>

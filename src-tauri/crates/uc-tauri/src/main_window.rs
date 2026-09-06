@@ -154,7 +154,7 @@ fn create_main_window(
     app: &tauri::AppHandle,
     generation: u64,
 ) -> tauri::Result<tauri::WebviewWindow> {
-    let config = app
+    let mut config = app
         .config()
         .app
         .windows
@@ -166,6 +166,8 @@ fn create_main_window(
                 "main window config missing from tauri.conf.json"
             ))
         })?;
+
+    configure_main_window_config_for_platform(&mut config);
 
     let window = tauri::WebviewWindowBuilder::from_config(app, &config)?
         .on_page_load(move |window, payload| {
@@ -295,5 +297,28 @@ mod tests {
 
         assert!(state.request_reveal());
         assert!(!state.mark_loaded(generation));
+    }
+}
+
+/// Linux requires an opaque surface and does not support the shared window effects.
+fn configure_main_window_config_for_platform(config: &mut tauri::utils::config::WindowConfig) {
+    if cfg!(target_os = "linux") {
+        config.transparent = false;
+        config.window_effects = None;
+    }
+}
+
+#[cfg(test)]
+mod surface_tests {
+    #[test]
+    fn main_window_surface_matches_platform_support() {
+        let mut config = tauri::utils::config::WindowConfig {
+            transparent: true,
+            window_effects: Some(Default::default()),
+            ..Default::default()
+        };
+        super::configure_main_window_config_for_platform(&mut config);
+        assert_eq!(config.transparent, !cfg!(target_os = "linux"));
+        assert_eq!(config.window_effects.is_some(), !cfg!(target_os = "linux"));
     }
 }

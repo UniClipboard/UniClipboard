@@ -8,7 +8,9 @@ import type { DeviceRowStatus } from '@/components/device/device-trust-view'
 import { getDeviceIcon } from '@/components/device/device-utils'
 import LocalSyncToggle from '@/components/device/LocalSyncToggle'
 import PanelFactRow from '@/components/device/PanelFactRow'
+import RebuildSpaceDialog from '@/components/device/RebuildSpaceDialog'
 import StatusDot from '@/components/device/StatusDot'
+import { Button } from '@/components/ui/button'
 import { useSettingSelector } from '@/hooks/useSetting'
 import { detectPlatformInfo } from '@/lib/platform'
 import { cn } from '@/lib/utils'
@@ -18,14 +20,17 @@ interface LocalDevicePanelProps {
   /** Total member count of the current space (including this device). */
   memberCount: number
   status?: DeviceRowStatus
+  onRebuildSucceeded?: () => void
 }
 
 const LocalDevicePanel: React.FC<LocalDevicePanelProps> = ({
   localDevice,
   memberCount,
   status,
+  onRebuildSucceeded,
 }) => {
   const { t } = useTranslation()
+  const [showResetModal, setShowResetModal] = useState(false)
   const [appVersion, setAppVersion] = useState<string | null>(null)
 
   useEffect(() => {
@@ -90,6 +95,28 @@ const LocalDevicePanel: React.FC<LocalDevicePanelProps> = ({
               </PanelFactRow>
             </div>
           </details>
+          <section
+            aria-label={t('devices.panel.danger.title')}
+            className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-destructive/20 bg-card px-5 py-4 text-card-foreground @md:px-6"
+          >
+            <div className="min-w-0 flex-1 basis-48">
+              <h4 className="text-sm font-medium text-destructive">
+                {t('devices.panel.danger.title')}
+              </h4>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {t('devices.panel.danger.description')}
+              </p>
+            </div>
+            <Button variant="destructive" onClick={() => setShowResetModal(true)}>
+              {t('devices.panel.danger.reset')}
+            </Button>
+          </section>
+          {showResetModal && (
+            <RebuildSpaceDialog
+              onClose={() => setShowResetModal(false)}
+              onRebuildSucceeded={onRebuildSucceeded}
+            />
+          )}
         </div>
       </div>
     </div>

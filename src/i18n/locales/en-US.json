@@ -1517,6 +1517,21 @@
       }
     },
     "panel": {
+      "danger": {
+        "title": "Danger zone",
+        "description": "Keep local history and clear this device’s pairings.",
+        "reset": "Rebuild space",
+        "failed": "Could not rebuild the space. Try again or restart the app.",
+        "modal": {
+          "title": "Rebuild space",
+          "warning": "Create a new space containing only this device. Local history and settings are kept. Old space memberships, security state, and pending invitations are cleared. Pair other devices again to sync.",
+          "confirmPrompt": "Type RESET to confirm",
+          "confirmPlaceholder": "RESET",
+          "confirm": "Rebuild space",
+          "resetting": "Rebuilding...",
+          "cancel": "Cancel"
+        }
+      },
       "listTitle": "Devices",
       "counts": "{{online}}/{{total}} online · {{mobile}} mobile",
       "localBadge": "This device",

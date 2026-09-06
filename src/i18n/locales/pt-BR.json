@@ -1520,6 +1520,21 @@
       }
     },
     "panel": {
+      "danger": {
+        "title": "Zona de perigo",
+        "description": "Mantenha o histórico local e remova os pareamentos deste dispositivo.",
+        "reset": "Reconstruir espaço",
+        "failed": "Não foi possível reconstruir o espaço. Tente novamente ou reinicie o aplicativo.",
+        "modal": {
+          "title": "Reconstruir espaço",
+          "warning": "Crie um novo espaço apenas com este dispositivo. O histórico local e as configurações serão mantidos. Vínculos, estado de segurança e convites pendentes do espaço antigo serão removidos. Pareie os outros dispositivos novamente.",
+          "confirmPrompt": "Digite RESET para confirmar",
+          "confirmPlaceholder": "RESET",
+          "confirm": "Reconstruir espaço",
+          "resetting": "Reconstruindo...",
+          "cancel": "Cancelar"
+        }
+      },
       "listTitle": "Dispositivos",
       "counts": "{{online}}/{{total}} online · {{mobile}} móveis",
       "localBadge": "Este dispositivo",

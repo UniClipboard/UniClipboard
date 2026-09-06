@@ -1,5 +1,6 @@
+import { LayoutGroup, m } from 'framer-motion'
 import { Plus, RefreshCw, Settings2 } from 'lucide-react'
-import React, { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
+import React, { useCallback, useEffect, useId, useRef, useState, useSyncExternalStore } from 'react'
 import { useTranslation } from 'react-i18next'
 import { shallowEqual } from 'react-redux'
 import { refreshPresence } from '@/api/daemon'
@@ -87,6 +88,7 @@ function getDocumentVisible(): boolean {
 }
 
 const DevicesPage: React.FC = () => {
+  const selectionId = useId()
   const { t } = useTranslation()
   const dispatch = useAppDispatch()
   const now = useNow()
@@ -314,151 +316,154 @@ const DevicesPage: React.FC = () => {
         </div>
 
         <ScrollArea className="min-h-0 flex-1">
-          <nav
-            aria-label={t('devices.panel.listTitle')}
-            data-device-list
-            className="flex flex-col gap-1 px-2 pb-3"
-          >
-            {(spaceMembersError || mobileDevicesError || spaceProtectionError || false) && (
-              <Alert variant="destructive" className="mx-1 my-2">
-                <AlertDescription className="flex flex-col gap-2 text-xs">
-                  <span>
-                    {spaceMembersError ??
-                      mobileDevicesError ??
-                      (spaceProtectionError ? t(spaceProtectionError) : null)}
-                  </span>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="self-start"
-                    onClick={() => {
-                      if (spaceMembersError) {
-                        dispatch(clearSpaceMembersError())
-                        dispatch(fetchSpaceMembers())
-                      }
-                      if (spaceProtectionError) {
-                        dispatch(fetchSpaceProtection())
-                      }
-                      if (mobileDevicesError) {
-                        mobileActions.reload()
-                      }
-                    }}
-                  >
-                    {t('devices.list.actions.retry')}
-                  </Button>
-                </AlertDescription>
-              </Alert>
-            )}
+          <LayoutGroup id={selectionId}>
+            <m.nav
+              layoutRoot
+              aria-label={t('devices.panel.listTitle')}
+              data-device-list
+              className="flex flex-col gap-1 px-2 pb-3"
+            >
+              {(spaceMembersError || mobileDevicesError || spaceProtectionError || false) && (
+                <Alert variant="destructive" className="mx-1 my-2">
+                  <AlertDescription className="flex flex-col gap-2 text-xs">
+                    <span>
+                      {spaceMembersError ??
+                        mobileDevicesError ??
+                        (spaceProtectionError ? t(spaceProtectionError) : null)}
+                    </span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="self-start"
+                      onClick={() => {
+                        if (spaceMembersError) {
+                          dispatch(clearSpaceMembersError())
+                          dispatch(fetchSpaceMembers())
+                        }
+                        if (spaceProtectionError) {
+                          dispatch(fetchSpaceProtection())
+                        }
+                        if (mobileDevicesError) {
+                          mobileActions.reload()
+                        }
+                      }}
+                    >
+                      {t('devices.list.actions.retry')}
+                    </Button>
+                  </AlertDescription>
+                </Alert>
+              )}
 
-            <SectionLabel label={t('devices.thisDevice.title')} />
-            {localDevice ? (
-              <LocalDeviceListItem
-                name={localDevice.deviceName}
-                status={localDeviceStatus}
-                selected={effectiveSelection.kind === 'local'}
-                onSelect={() => setSelection({ kind: 'local' })}
-              />
-            ) : (
-              <div className="px-2.5 py-2">
-                {localDeviceError ? (
-                  <button
-                    type="button"
-                    className="text-left text-xs text-destructive underline underline-offset-2"
-                    onClick={() => {
-                      dispatch(clearLocalDeviceError())
-                      dispatch(fetchLocalDeviceInfo())
-                    }}
-                  >
-                    {t('devices.list.actions.retry')}
-                  </button>
-                ) : (
-                  <Skeleton className="h-5 w-32" />
-                )}
-              </div>
-            )}
-
-            <SectionLabel label={t('devices.pairedDevices.title')} />
-            {peers.map(peer => {
-              const trust = trustListView.relationshipsByDeviceId.get(peer.peerId)
-              const trustStatus = trust ? getDeviceTrustStatus(trust, t) : null
-              return (
-                <DeviceListItem
-                  key={peer.peerId}
-                  testId={`device-peer-${peer.peerId}`}
-                  name={peer.deviceName || t('devices.list.labels.unknownDevice')}
-                  tone={trustStatus?.tone ?? peerDotTone(peer)}
-                  status={
-                    trustStatus?.status ?? {
-                      kind: peer.connected ? 'online' : 'offline',
-                      label: t(`devices.list.status.${peer.connected ? 'online' : 'offline'}`),
-                    }
-                  }
-                  dimmed={!peer.connected && !trustStatus}
-                  selected={
-                    effectiveSelection.kind === 'peer' && effectiveSelection.id === peer.peerId
-                  }
-                  onSelect={() => setSelection({ kind: 'peer', id: peer.peerId })}
+              <SectionLabel label={t('devices.thisDevice.title')} />
+              {localDevice ? (
+                <LocalDeviceListItem
+                  name={localDevice.deviceName}
+                  status={localDeviceStatus}
+                  selected={effectiveSelection.kind === 'local'}
+                  onSelect={() => setSelection({ kind: 'local' })}
                 />
-              )
-            })}
-            {peers.length === 0 && !spaceMembersError && (
-              <EmptyAddRow
-                label={t('devices.panel.addMenu.trigger')}
-                onClick={() => setAddP2PDialogOpen(true)}
-              />
-            )}
-
-            {mobileDevices.length > 0 && (
-              <>
-                <SectionLabel
-                  label={t('devices.mobileSync.title')}
-                  trailing={
+              ) : (
+                <div className="px-2.5 py-2">
+                  {localDeviceError ? (
                     <button
                       type="button"
-                      aria-label={t('devices.mobileSync.configure')}
-                      title={t('devices.mobileSync.configure')}
-                      className="rounded-md p-0.5 text-muted-foreground/70 transition-colors hover:text-foreground"
-                      onClick={mobileActions.openSettings}
-                    >
-                      <Settings2 className="size-3.5" />
-                    </button>
-                  }
-                />
-                {mobileDevices.map(mobile => {
-                  const tone = mobileDotTone(mobile, now)
-                  return (
-                    <DeviceListItem
-                      key={mobile.deviceId}
-                      name={mobile.label}
-                      tone={tone}
-                      status={{
-                        kind: 'recently_active',
-                        label:
-                          mobile.lastSeenAtMs == null
-                            ? t('devices.mobileSync.list.lastSeen.never')
-                            : formatRelativeTime(mobile.lastSeenAtMs, now, t),
+                      className="text-left text-xs text-destructive underline underline-offset-2"
+                      onClick={() => {
+                        dispatch(clearLocalDeviceError())
+                        dispatch(fetchLocalDeviceInfo())
                       }}
-                      dimmed={tone === 'off'}
-                      selected={
-                        effectiveSelection.kind === 'mobile' &&
-                        effectiveSelection.id === mobile.deviceId
+                    >
+                      {t('devices.list.actions.retry')}
+                    </button>
+                  ) : (
+                    <Skeleton className="h-5 w-32" />
+                  )}
+                </div>
+              )}
+
+              <SectionLabel label={t('devices.pairedDevices.title')} />
+              {peers.map(peer => {
+                const trust = trustListView.relationshipsByDeviceId.get(peer.peerId)
+                const trustStatus = trust ? getDeviceTrustStatus(trust, t) : null
+                return (
+                  <DeviceListItem
+                    key={peer.peerId}
+                    testId={`device-peer-${peer.peerId}`}
+                    name={peer.deviceName || t('devices.list.labels.unknownDevice')}
+                    tone={trustStatus?.tone ?? peerDotTone(peer)}
+                    status={
+                      trustStatus?.status ?? {
+                        kind: peer.connected ? 'online' : 'offline',
+                        label: t(`devices.list.status.${peer.connected ? 'online' : 'offline'}`),
                       }
-                      onSelect={() =>
-                        setSelection(current => ({
-                          kind: 'mobile',
-                          id: mobile.deviceId,
-                          pendingCredential:
-                            current.kind === 'mobile' && current.id === mobile.deviceId
-                              ? current.pendingCredential
-                              : undefined,
-                        }))
-                      }
-                    />
-                  )
-                })}
-              </>
-            )}
-          </nav>
+                    }
+                    dimmed={!peer.connected && !trustStatus}
+                    selected={
+                      effectiveSelection.kind === 'peer' && effectiveSelection.id === peer.peerId
+                    }
+                    onSelect={() => setSelection({ kind: 'peer', id: peer.peerId })}
+                  />
+                )
+              })}
+              {peers.length === 0 && !spaceMembersError && (
+                <EmptyAddRow
+                  label={t('devices.panel.addMenu.trigger')}
+                  onClick={() => setAddP2PDialogOpen(true)}
+                />
+              )}
+
+              {mobileDevices.length > 0 && (
+                <>
+                  <SectionLabel
+                    label={t('devices.mobileSync.title')}
+                    trailing={
+                      <button
+                        type="button"
+                        aria-label={t('devices.mobileSync.configure')}
+                        title={t('devices.mobileSync.configure')}
+                        className="rounded-md p-0.5 text-muted-foreground/70 transition-colors hover:text-foreground"
+                        onClick={mobileActions.openSettings}
+                      >
+                        <Settings2 className="size-3.5" />
+                      </button>
+                    }
+                  />
+                  {mobileDevices.map(mobile => {
+                    const tone = mobileDotTone(mobile, now)
+                    return (
+                      <DeviceListItem
+                        key={mobile.deviceId}
+                        name={mobile.label}
+                        tone={tone}
+                        status={{
+                          kind: 'recently_active',
+                          label:
+                            mobile.lastSeenAtMs == null
+                              ? t('devices.mobileSync.list.lastSeen.never')
+                              : formatRelativeTime(mobile.lastSeenAtMs, now, t),
+                        }}
+                        dimmed={tone === 'off'}
+                        selected={
+                          effectiveSelection.kind === 'mobile' &&
+                          effectiveSelection.id === mobile.deviceId
+                        }
+                        onSelect={() =>
+                          setSelection(current => ({
+                            kind: 'mobile',
+                            id: mobile.deviceId,
+                            pendingCredential:
+                              current.kind === 'mobile' && current.id === mobile.deviceId
+                                ? current.pendingCredential
+                                : undefined,
+                          }))
+                        }
+                      />
+                    )
+                  })}
+                </>
+              )}
+            </m.nav>
+          </LayoutGroup>
         </ScrollArea>
         <DeviceListFooter
           onlineCount={onlineCount}
@@ -485,6 +490,14 @@ const DevicesPage: React.FC = () => {
                 localDevice={localDevice}
                 memberCount={peers.length + 1}
                 status={localDeviceStatus}
+                onRebuildSucceeded={() => {
+                  dispatch(fetchSpaceMembers())
+                  dispatch(fetchSpaceProtection())
+                  dispatch(fetchNetworkRecoveryStatus())
+                  void refreshDeviceTrust().catch(error => {
+                    log.warn({ err: error }, 'Device trust refresh failed after space rebuild')
+                  })
+                }}
               />
             ) : localDeviceError ? (
               <div className="mx-auto w-full max-w-2xl px-8 py-8">

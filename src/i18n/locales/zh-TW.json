@@ -1516,6 +1516,21 @@
       }
     },
     "panel": {
+      "danger": {
+        "title": "危險區",
+        "description": "保留本機歷史，清空本機的配對關係。",
+        "reset": "重建空間",
+        "failed": "重建失敗，請重試或重新啟動應用程式。",
+        "modal": {
+          "title": "重建空間",
+          "warning": "重建後將建立僅包含本機的新空間。本機歷史與設定會保留；舊空間的成員關係、安全狀態及未完成邀請將清空。其他裝置需重新配對。",
+          "confirmPrompt": "請輸入 RESET 以確認",
+          "confirmPlaceholder": "RESET",
+          "confirm": "重建空間",
+          "resetting": "正在重建...",
+          "cancel": "取消"
+        }
+      },
       "listTitle": "裝置",
       "counts": "{{online}}/{{total}} 在線 · {{mobile}} 移動裝置",
       "localBadge": "本機",

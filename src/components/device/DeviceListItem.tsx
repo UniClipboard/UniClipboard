@@ -1,7 +1,9 @@
+import '@/components/ui/selection-item.css'
 import type { KeyboardEvent } from 'react'
 import type { DeviceRowStatus } from '@/components/device/device-trust-view'
 import { getDeviceIcon } from '@/components/device/device-utils'
 import StatusDot, { type StatusDotTone } from '@/components/device/StatusDot'
+import SelectionIndicator from '@/components/ui/selection-indicator'
 import { cn } from '@/lib/utils'
 
 interface DeviceListItemProps {
@@ -54,13 +56,17 @@ export default function DeviceListItem({
       onKeyDown={navigateDevices}
       title={name}
       className={cn(
-        'flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset',
-        selected ? 'bg-primary/10 text-foreground' : 'text-foreground hover:bg-muted/60',
+        'selection-item relative isolate flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset',
+        'text-foreground',
         dimmed && !selected && 'text-muted-foreground'
       )}
     >
-      <Icon className="size-5 shrink-0 text-muted-foreground" aria-hidden="true" />
-      <span className="min-w-0 flex-1">
+      {selected && <SelectionIndicator layoutId="device-selection" className="bg-primary/10" />}
+      <Icon
+        className="selection-item-content relative z-10 size-5 shrink-0 text-muted-foreground"
+        aria-hidden="true"
+      />
+      <span className="selection-item-content relative z-10 min-w-0 flex-1">
         <span className="block truncate text-sm font-medium">{name}</span>
         <span className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
           <StatusDot tone={tone} />

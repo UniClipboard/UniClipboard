@@ -11,7 +11,7 @@ import {
   ContextMenuSubContent,
   ContextMenuSubTrigger,
   ContextMenuTrigger,
-} from '@/components/ui/context-menu'
+} from '@/components/motion/context-menu'
 import { toast } from '@/components/ui/toast'
 import { useResendAction } from '@/hooks/useResendAction'
 import type { DisplayClipboardItem } from '@/lib/clipboard-entry'
@@ -103,13 +103,19 @@ const HistoryCardContextMenu: React.FC<HistoryCardContextMenuProps> = ({
 
   return (
     <ContextMenu>
-      <ContextMenuTrigger className={triggerClassName} role={triggerRole}>
-        {children}
+      <ContextMenuTrigger>
+        <div className={triggerClassName} role={triggerRole} tabIndex={-1}>
+          {children}
+        </div>
       </ContextMenuTrigger>
-      <ContextMenuContent className="w-48">
+      <ContextMenuContent className="w-60">
         {/* Copy — unavailable entries (payload lost) can't be restored. */}
-        <ContextMenuItem disabled={isUnavailable} onClick={() => !isUnavailable && onCopy(item.id)}>
-          <Copy className="mr-2 size-4" />
+        <ContextMenuItem
+          textValue={t('clipboard.contextMenu.copy')}
+          disabled={isUnavailable}
+          onSelect={() => !isUnavailable && onCopy(item.id)}
+        >
+          <Copy className="size-4" />
           {t('clipboard.contextMenu.copy')}
           <ContextMenuShortcut>C</ContextMenuShortcut>
         </ContextMenuItem>
@@ -117,9 +123,9 @@ const HistoryCardContextMenu: React.FC<HistoryCardContextMenuProps> = ({
         {item.type === 'file' && (
           <ContextMenuItem
             disabled={isUnavailable}
-            onClick={() => !isUnavailable && onFilePathsAction(item.id)}
+            onSelect={() => !isUnavailable && onFilePathsAction(item.id)}
           >
-            <FileText className="mr-2 size-4" />
+            <FileText className="size-4" />
             {t(
               filePathsAction === 'paste'
                 ? 'clipboard.contextMenu.pasteFilePaths'
@@ -129,8 +135,13 @@ const HistoryCardContextMenu: React.FC<HistoryCardContextMenuProps> = ({
         )}
 
         {/* Favorite toggle */}
-        <ContextMenuItem onClick={() => onToggleFavorite(item.id, isFavorited)}>
-          <Star className={`mr-2 size-4 ${isFavorited ? 'fill-current' : ''}`} />
+        <ContextMenuItem
+          textValue={t(
+            isFavorited ? 'clipboard.contextMenu.unfavorite' : 'clipboard.contextMenu.favorite'
+          )}
+          onSelect={() => onToggleFavorite(item.id, isFavorited)}
+        >
+          <Star className={`size-4 ${isFavorited ? 'fill-current' : ''}`} />
           {isFavorited
             ? t('clipboard.contextMenu.unfavorite')
             : t('clipboard.contextMenu.favorite')}
@@ -140,20 +151,23 @@ const HistoryCardContextMenu: React.FC<HistoryCardContextMenuProps> = ({
         {/* Send — dispatch to a peer (or all) without touching the local clipboard.
             Unavailable entries (payload lost) can't be resent, so gate it like copy. */}
         <ContextMenuSub>
-          <ContextMenuSubTrigger disabled={sendInFlight || isUnavailable}>
+          <ContextMenuSubTrigger
+            textValue={t('clipboard.contextMenu.send')}
+            disabled={sendInFlight || isUnavailable}
+          >
             {sendInFlight ? (
-              <Loader2 className="mr-2 size-4 animate-spin" />
+              <Loader2 className="size-4 animate-spin" />
             ) : (
-              <Send className="mr-2 size-4" />
+              <Send className="size-4" />
             )}
             {t('clipboard.contextMenu.send')}
           </ContextMenuSubTrigger>
-          <ContextMenuSubContent className="w-44">
+          <ContextMenuSubContent className="w-56">
             {members.length === 0 ? (
               <ContextMenuItem disabled>{t('clipboard.contextMenu.sendNoDevices')}</ContextMenuItem>
             ) : (
               <>
-                <ContextMenuItem onClick={() => void resendAction.resendAll(item.id)}>
+                <ContextMenuItem onSelect={() => void resendAction.resendAll(item.id)}>
                   {t('clipboard.contextMenu.sendAll')}
                 </ContextMenuItem>
                 <ContextMenuSeparator />
@@ -161,7 +175,7 @@ const HistoryCardContextMenu: React.FC<HistoryCardContextMenuProps> = ({
                   <ContextMenuItem
                     key={member.peerId}
                     disabled={!member.connected}
-                    onClick={() => void resendAction.resendToPeer(item.id, member.peerId)}
+                    onSelect={() => void resendAction.resendToPeer(item.id, member.peerId)}
                   >
                     <span className="truncate">{member.deviceName}</span>
                   </ContextMenuItem>
@@ -173,8 +187,8 @@ const HistoryCardContextMenu: React.FC<HistoryCardContextMenuProps> = ({
 
         {/* Open file location — file entries with at least one revealable path. */}
         {revealPath && (
-          <ContextMenuItem onClick={() => void handleOpenFileLocation()}>
-            <FolderOpen className="mr-2 size-4" />
+          <ContextMenuItem onSelect={() => void handleOpenFileLocation()}>
+            <FolderOpen className="size-4" />
             {t('clipboard.contextMenu.openFileLocation')}
           </ContextMenuItem>
         )}
@@ -182,8 +196,12 @@ const HistoryCardContextMenu: React.FC<HistoryCardContextMenuProps> = ({
         <ContextMenuSeparator />
 
         {/* Delete */}
-        <ContextMenuItem variant="destructive" onClick={() => onDelete(item.id)}>
-          <Trash2 className="mr-2 size-4" />
+        <ContextMenuItem
+          textValue={t('clipboard.contextMenu.delete')}
+          tone="destructive"
+          onSelect={() => onDelete(item.id)}
+        >
+          <Trash2 className="size-4" />
           {t('clipboard.contextMenu.delete')}
           <ContextMenuShortcut>D</ContextMenuShortcut>
         </ContextMenuItem>

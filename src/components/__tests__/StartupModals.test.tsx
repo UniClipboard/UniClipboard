@@ -57,7 +57,6 @@ describe('StartupModals', () => {
     renderStartupModals()
 
     expect(await screen.findByText('rePairingNotice.title')).toBeVisible()
-    expect(screen.getByRole('alertdialog')).toHaveStyle({ animation: 'none' })
     expect(
       screen.queryByText('settings.sections.general.telemetry.notice.title')
     ).not.toBeInTheDocument()

@@ -1,6 +1,7 @@
 import { Dialog as DialogPrimitive } from '@base-ui/react/dialog'
 import { XIcon } from 'lucide-react'
 import * as React from 'react'
+import { CenterMorphModalSurface } from '@/components/motion/center-morph-modal'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
@@ -24,9 +25,8 @@ function DialogOverlay({ className, ...props }: DialogPrimitive.Backdrop.Props) 
   return (
     <DialogPrimitive.Backdrop
       data-slot="dialog-overlay"
-      data-tauri-drag-region
       className={cn(
-        'fixed inset-0 isolate z-50 bg-black/10 duration-100 supports-backdrop-filter:backdrop-blur-xs data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0',
+        'center-morph-backdrop fixed inset-0 isolate z-50 bg-background/10 supports-backdrop-filter:backdrop-blur-sm',
         className
       )}
       {...props}
@@ -45,25 +45,34 @@ function DialogContent({
   return (
     <DialogPortal>
       <DialogOverlay />
-      <DialogPrimitive.Popup
-        data-slot="dialog-content"
-        className={cn(
-          'fixed top-1/2 left-1/2 z-50 flex max-h-[calc(100%-2rem)] w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 flex-col gap-4 overflow-y-auto rounded-xl bg-background p-4 text-sm ring-1 ring-foreground/10 duration-100 outline-none sm:max-w-sm data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95',
-          className
-        )}
-        {...props}
-      >
-        {children}
-        {showCloseButton && (
-          <DialogPrimitive.Close
-            data-slot="dialog-close"
-            render={<Button variant="ghost" className="absolute top-2 right-2" size="icon-sm" />}
-          >
-            <XIcon />
-            <span className="sr-only">Close</span>
-          </DialogPrimitive.Close>
-        )}
-      </DialogPrimitive.Popup>
+      <CenterMorphModalSurface>
+        <DialogPrimitive.Popup
+          data-slot="dialog-content"
+          data-has-close={showCloseButton || undefined}
+          className={cn(
+            'center-morph-surface pointer-events-auto fixed top-1/2 left-1/2 z-50 flex max-h-[calc(100%-2rem)] w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 flex-col gap-4 overflow-y-auto rounded-[1.875rem] bg-card p-7 text-card-foreground text-sm border border-border outline-none sm:max-w-[26rem]',
+            className
+          )}
+          {...props}
+        >
+          {children}
+          {showCloseButton && (
+            <DialogPrimitive.Close
+              data-slot="dialog-close"
+              render={
+                <Button
+                  variant="ghost"
+                  className="center-morph-close absolute top-4 right-4 rounded-full bg-foreground/5 text-muted-foreground hover:bg-foreground/8 hover:text-foreground"
+                  size="icon-sm"
+                />
+              }
+            >
+              <XIcon />
+              <span className="sr-only">Close</span>
+            </DialogPrimitive.Close>
+          )}
+        </DialogPrimitive.Popup>
+      </CenterMorphModalSurface>
     </DialogPortal>
   )
 }
@@ -82,7 +91,7 @@ function DialogBody({ className, ...props }: React.ComponentProps<'div'>) {
   return (
     <div
       data-slot="dialog-body"
-      className={cn('-mx-4 min-h-0 flex-1 overflow-y-auto px-4', className)}
+      className={cn('-mx-7 min-h-0 flex-1 overflow-y-auto px-7', className)}
       {...props}
     />
   )
@@ -100,7 +109,7 @@ function DialogFooter({
     <div
       data-slot="dialog-footer"
       className={cn(
-        '-mx-4 -mb-4 flex shrink-0 flex-col-reverse gap-2 rounded-b-xl border-t bg-muted/50 p-4 sm:flex-row sm:justify-end',
+        '-mx-7 -mb-7 flex shrink-0 flex-col-reverse gap-2 rounded-b-[1.875rem] border-t bg-muted/50 px-7 py-4 sm:flex-row sm:justify-end',
         className
       )}
       {...props}

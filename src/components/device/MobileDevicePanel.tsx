@@ -63,9 +63,6 @@ import { cn } from '@/lib/utils'
 
 const log = createLogger('mobile-device-panel')
 
-/** A device counts as "online" if it was seen within this window. */
-const ONLINE_WINDOW_MS = 10 * 60 * 1000
-
 type View = 'info' | 'edit'
 type FieldErrorKey = 'label' | 'username' | 'password'
 type FieldErrors = Partial<Record<FieldErrorKey, string>>
@@ -437,7 +434,7 @@ const MobileDevicePanel: React.FC<Props> = ({
 export default MobileDevicePanel
 
 // ────────────────────────────────────────────────────────────────
-// Header: online / offline status pill (ticks on the shared 30s clock)
+// Header: last observed activity (ticks on the shared 30s clock)
 // ────────────────────────────────────────────────────────────────
 
 const DeviceStatusPill: React.FC<{ lastSeenAtMs: number | null | undefined }> = ({
@@ -455,20 +452,11 @@ const DeviceStatusPill: React.FC<{ lastSeenAtMs: number | null | undefined }> = 
     )
   }
 
-  const online = now - lastSeenAtMs <= ONLINE_WINDOW_MS
-  if (online) {
-    return (
-      <span className="inline-flex shrink-0 items-center gap-1.5 font-medium text-success">
-        <StatusDot tone="success" />
-        {t('devices.mobileSync.deviceDialog.status.online')}
-      </span>
-    )
-  }
   return (
     <span className="inline-flex min-w-0 items-center gap-1.5 truncate font-medium text-muted-foreground">
       <StatusDot tone="off" />
       <span className="truncate">
-        {t('devices.mobileSync.deviceDialog.status.offline')} ·{' '}
+        {t('devices.mobileSync.deviceDialog.fields.lastSeen')} ·{' '}
         {formatRelativeTime(lastSeenAtMs, now, t)}
       </span>
     </span>

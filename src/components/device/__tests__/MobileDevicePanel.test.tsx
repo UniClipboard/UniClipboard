@@ -80,6 +80,23 @@ describe('MobileDevicePanel', () => {
     })
   })
 
+  it('shows recent activity without claiming that the legacy device is online', async () => {
+    renderWithI18n(
+      <MobileDevicePanel
+        device={{ ...device, lastSeenAtMs: Date.now() }}
+        settings={settings}
+        onRevoke={vi.fn()}
+        onRotated={vi.fn()}
+      />
+    )
+    expect(
+      screen.queryByText(i18n.t('devices.mobileSync.deviceDialog.status.online'))
+    ).not.toBeInTheDocument()
+    expect(
+      await screen.findByText(new RegExp(i18n.t('clipboard.time.justNow')))
+    ).toBeInTheDocument()
+  })
+
   it('submits label and username edits without sending password when password is blank', async () => {
     const user = userEvent.setup()
     const onUpdated = vi.fn()

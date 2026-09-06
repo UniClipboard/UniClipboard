@@ -1,9 +1,10 @@
-import { Pencil, RotateCcw } from 'lucide-react'
+import { RotateCcw } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { KeyRecorder } from '@/components/setting/KeyRecorder'
+import { ShortcutKeys } from '@/components/setting/ShortcutKeys'
 import { Button } from '@/components/ui'
-import { formatShortcutChord } from '@/lib/shortcut-format'
+import { Popover, PopoverContent, PopoverTitle, PopoverTrigger } from '@/components/ui/popover'
 import type { ShortcutKeyOverrides } from '@/shortcuts/conflicts'
 import type { ShortcutDefinition } from '@/shortcuts/definitions'
 
@@ -26,11 +27,6 @@ export function ShortcutRow({
 }: ShortcutRowProps) {
   const { t } = useTranslation()
   const [isRecording, setIsRecording] = useState(false)
-  const chordSegments = formatShortcutChord(currentKey)
-
-  const handleEdit = () => {
-    setIsRecording(true)
-  }
 
   const handleConfirm = (key: string, clearedIds?: string[]) => {
     onOverrideChange(definition.id, key, clearedIds)
@@ -45,23 +41,8 @@ export function ShortcutRow({
     onResetShortcut(definition.id)
   }
 
-  // When recording, show the KeyRecorder component
-  if (isRecording) {
-    return (
-      <div className="px-4 py-2.5">
-        <KeyRecorder
-          shortcutId={definition.id}
-          scope={definition.scope}
-          currentOverrides={currentOverrides}
-          onConfirm={handleConfirm}
-          onCancel={handleCancel}
-        />
-      </div>
-    )
-  }
-
   return (
-    <div className="flex items-center justify-between gap-4 px-4 py-2.5">
+    <div className="flex items-center justify-between gap-4 px-1 py-2.5">
       <div className="min-w-0 flex-1">
         <span className="text-sm">{t(definition.description)}</span>
         {isModified && (
@@ -72,33 +53,34 @@ export function ShortcutRow({
       </div>
 
       <div className="flex items-center gap-2 shrink-0">
-        <div className="flex items-center gap-1.5">
-          {chordSegments.map((parts, segIdx) => (
-            <div key={`seg-${segIdx}`} className="flex items-center gap-1.5">
-              {segIdx > 0 && <span className="text-muted-foreground text-xs">›</span>}
-              <div className="flex items-center gap-0.5">
-                {parts.map((part, idx) => (
-                  <span key={`${part}-${idx}`} className="flex items-center">
-                    {idx > 0 && <span className="text-muted-foreground text-xs mx-0.5">+</span>}
-                    <kbd className="bg-muted text-xs font-mono px-1.5 py-0.5 rounded border border-border/60 text-foreground">
-                      {part}
-                    </kbd>
-                  </span>
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
-
-        <Button
-          variant="ghost"
-          size="icon"
-          className="size-7"
-          onClick={handleEdit}
-          title={t('settings.sections.shortcuts.edit')}
-        >
-          <Pencil className="size-3.5" />
-        </Button>
+        <Popover open={isRecording} onOpenChange={setIsRecording}>
+          <PopoverTrigger
+            aria-label={`${t('settings.sections.shortcuts.edit')} ${t(definition.description)}`}
+            className="inline-flex min-h-8 min-w-20 max-w-52 items-center justify-center rounded-lg border border-border bg-muted/30 px-2.5 py-1 text-sm transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 data-popup-open:border-ring data-popup-open:bg-muted"
+          >
+            {currentKey ? (
+              <ShortcutKeys shortcut={currentKey} />
+            ) : (
+              <span className="text-muted-foreground">{t('settings.sections.shortcuts.edit')}</span>
+            )}
+          </PopoverTrigger>
+          <PopoverContent
+            align="end"
+            finalFocus
+            className="w-80 max-w-[calc(100vw-2rem)] gap-3 bg-card p-4 text-card-foreground"
+          >
+            <PopoverTitle className="text-sm font-medium">{t(definition.description)}</PopoverTitle>
+            {isRecording && (
+              <KeyRecorder
+                shortcutId={definition.id}
+                scope={definition.scope}
+                currentOverrides={currentOverrides}
+                onConfirm={handleConfirm}
+                onCancel={handleCancel}
+              />
+            )}
+          </PopoverContent>
+        </Popover>
 
         {isModified && (
           <Button

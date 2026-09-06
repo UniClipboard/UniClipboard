@@ -1,9 +1,10 @@
 import { Plus } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { RelayEditor } from '@/components/setting/RelayEditor'
+import { SettingGroup } from '@/components/setting/SettingGroup'
 import { Button, TooltipProvider } from '@/components/ui'
 import type { RelaySaveContextResult, RelaySaveMutation } from '@/types/setting'
-import { RelayEditor } from './RelayEditor'
 
 interface CustomRelayUrlsFieldProps {
   value: string[]
@@ -51,72 +52,68 @@ export function CustomRelayUrlsField({ value, onSave }: CustomRelayUrlsFieldProp
 
   return (
     <TooltipProvider delay={200}>
-      <div className="px-4 py-3">
-        <div className="space-y-0.5">
-          <h4 className="text-sm font-medium">
-            {t('settings.sections.network.customRelays.label')}
-          </h4>
-          <p className="text-xs leading-snug text-muted-foreground">
+      <SettingGroup title={t('settings.sections.network.groups.relays')}>
+        <div className="px-1 pt-3">
+          <p className="max-w-prose text-xs leading-relaxed text-muted-foreground">
             {t('settings.sections.network.customRelays.description')}
           </p>
-        </div>
+          <div className="mt-4 flex flex-col gap-4">
+            {savedRows.map(({ index, key, url }) => (
+              <RelayEditor
+                key={key}
+                index={index}
+                initialUrl={url}
+                onRemove={async () => {
+                  await onSave({
+                    index,
+                    previousUrl: url,
+                    nextUrl: null,
+                    credential: { action: 'delete' },
+                  })
+                }}
+                onSave={(nextUrl, credential) =>
+                  saveRelay(null, {
+                    index,
+                    previousUrl: url,
+                    nextUrl,
+                    credential,
+                  })
+                }
+                removable
+              />
+            ))}
+            {draftRowIds.map((draftRowId, draftIndex) => (
+              <RelayEditor
+                key={draftRowId}
+                index={value.length + draftIndex}
+                initialUrl=""
+                onRemove={() => discardDraft(draftRowId)}
+                onSave={(nextUrl, credential) =>
+                  saveRelay(draftRowId, {
+                    index: null,
+                    previousUrl: null,
+                    nextUrl,
+                    credential,
+                  })
+                }
+                removable={value.length > 0 || draftRowIds.length > 1}
+              />
+            ))}
+          </div>
 
-        <div className="mt-3 divide-y divide-border/50 border-y border-border/50">
-          {savedRows.map(({ index, key, url }) => (
-            <RelayEditor
-              key={key}
-              index={index}
-              initialUrl={url}
-              onRemove={async () => {
-                await onSave({
-                  index,
-                  previousUrl: url,
-                  nextUrl: null,
-                  credential: { action: 'delete' },
-                })
-              }}
-              onSave={(nextUrl, credential) =>
-                saveRelay(null, {
-                  index,
-                  previousUrl: url,
-                  nextUrl,
-                  credential,
-                })
-              }
-              removable
-            />
-          ))}
-          {draftRowIds.map((draftRowId, draftIndex) => (
-            <RelayEditor
-              key={draftRowId}
-              index={value.length + draftIndex}
-              initialUrl=""
-              onRemove={() => discardDraft(draftRowId)}
-              onSave={(nextUrl, credential) =>
-                saveRelay(draftRowId, {
-                  index: null,
-                  previousUrl: null,
-                  nextUrl,
-                  credential,
-                })
-              }
-              removable={value.length > 0 || draftRowIds.length > 1}
-            />
-          ))}
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="mt-2 h-8 px-2 text-muted-foreground hover:text-foreground"
+            disabled={!canAddRelay}
+            onClick={addRelay}
+          >
+            <Plus aria-hidden="true" />
+            {t('settings.sections.network.customRelays.addButton')}
+          </Button>
         </div>
-
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className="mt-2 h-8 px-2 text-muted-foreground hover:text-foreground"
-          disabled={!canAddRelay}
-          onClick={addRelay}
-        >
-          <Plus aria-hidden="true" />
-          {t('settings.sections.network.customRelays.addButton')}
-        </Button>
-      </div>
+      </SettingGroup>
     </TooltipProvider>
   )
 }

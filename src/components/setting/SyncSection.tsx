@@ -1,12 +1,13 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Switch, Input, Badge, Button } from '@/components/ui'
+import { Input } from '@/components/motion/input'
+import { SettingGroup } from '@/components/setting/SettingGroup'
+import { SettingRow } from '@/components/setting/SettingRow'
+import { useOptimisticSetting } from '@/components/setting/useOptimisticSetting'
+import { Switch, Badge, Button } from '@/components/ui'
 import { useSetting } from '@/hooks/useSetting'
 import { commands } from '@/lib/ipc'
 import { createLogger } from '@/lib/logger'
-import { SettingGroup } from './SettingGroup'
-import { SettingRow } from './SettingRow'
-import { useOptimisticSetting } from './useOptimisticSetting'
 
 const log = createLogger('sync-section')
 
@@ -80,8 +81,7 @@ const SyncSection: React.FC = () => {
     { value: '15m', label: t('settings.sections.sync.syncFrequency.15m') },
   ]
 
-  const handleSmallFileThresholdChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value
+  const handleSmallFileThresholdChange = (value: string) => {
     setSmallFileThresholdDraft(value)
 
     if (!value.trim()) {
@@ -121,8 +121,7 @@ const SyncSection: React.FC = () => {
     )
   }
 
-  const handleMaxFileSizeLimitChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value
+  const handleMaxFileSizeLimitChange = (value: string) => {
     setMaxFileSizeLimitDraft(value)
 
     if (!value.trim()) {
@@ -158,8 +157,7 @@ const SyncSection: React.FC = () => {
     )
   }
 
-  const handleCacheQuotaChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value
+  const handleCacheQuotaChange = (value: string) => {
     setCacheQuotaDraft(value)
 
     if (!value.trim()) {
@@ -188,8 +186,7 @@ const SyncSection: React.FC = () => {
     )
   }
 
-  const handleRetentionHoursChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value
+  const handleRetentionHoursChange = (value: string) => {
     setRetentionHoursDraft(value)
 
     if (!value.trim()) {
@@ -261,7 +258,12 @@ const SyncSection: React.FC = () => {
           label={t('settings.sections.sync.syncEnabled.label')}
           description={t('settings.sections.sync.syncEnabled.description')}
         >
-          <Switch id="sync-enabled" checked={syncEnabled} onCheckedChange={setSyncEnabled} />
+          <Switch
+            id="sync-enabled"
+            aria-label={t('settings.sections.sync.syncEnabled.label')}
+            checked={syncEnabled}
+            onCheckedChange={setSyncEnabled}
+          />
         </SettingRow>
 
         <SettingRow
@@ -270,6 +272,7 @@ const SyncSection: React.FC = () => {
         >
           <Switch
             id="auto-sync"
+            aria-label={t('settings.sections.sync.autoSync.label')}
             checked={autoSyncEnabled}
             onCheckedChange={setAutoSyncEnabled}
             disabled={!syncEnabled}
@@ -282,6 +285,7 @@ const SyncSection: React.FC = () => {
         >
           <Switch
             id="sync-on-restore"
+            aria-label={t('settings.sections.sync.syncOnRestore.label')}
             checked={syncOnRestore}
             onCheckedChange={setSyncOnRestore}
             disabled={!syncEnabled}
@@ -303,168 +307,164 @@ const SyncSection: React.FC = () => {
         </SettingRow>
       </SettingGroup>
 
-      <div className="mt-6">
-        <SettingGroup title={t('settings.sections.sync.fileSync.title')}>
-          {/* Enable file sync toggle */}
-          <SettingRow
-            label={t('settings.sections.sync.fileSync.enable.label')}
-            description={t('settings.sections.sync.fileSync.enable.description')}
-          >
-            <Switch
-              id="file-sync-enabled"
-              checked={fileSyncEnabled}
-              onCheckedChange={setFileSyncEnabled}
-              disabled={!syncEnabled}
-            />
-          </SettingRow>
+      <SettingGroup title={t('settings.sections.sync.fileSync.title')}>
+        {/* Enable file sync toggle */}
+        <SettingRow
+          label={t('settings.sections.sync.fileSync.enable.label')}
+          description={t('settings.sections.sync.fileSync.enable.description')}
+        >
+          <Switch
+            id="file-sync-enabled"
+            aria-label={t('settings.sections.sync.fileSync.enable.label')}
+            checked={fileSyncEnabled}
+            onCheckedChange={setFileSyncEnabled}
+            disabled={!syncEnabled}
+          />
+        </SettingRow>
 
-          {/* Auto-save directory for received files */}
-          <SettingRow
-            label={t('settings.sections.sync.fileSync.autoSaveDir.label')}
-            description={t('settings.sections.sync.fileSync.autoSaveDir.description')}
-          >
-            <div className="flex flex-col items-end gap-2">
-              {autoSaveDir ? (
-                <span
-                  className="text-foreground max-w-64 truncate text-xs font-medium"
-                  title={autoSaveDir}
-                >
-                  {autoSaveDir}
-                </span>
-              ) : (
-                <span className="text-muted-foreground text-xs">
-                  {t('settings.sections.sync.fileSync.autoSaveDir.managed')}
-                </span>
-              )}
-              <div className="flex items-center gap-2">
+        {/* Auto-save directory for received files */}
+        <SettingRow
+          label={t('settings.sections.sync.fileSync.autoSaveDir.label')}
+          description={t('settings.sections.sync.fileSync.autoSaveDir.description')}
+        >
+          <div className="flex flex-col items-end gap-2">
+            {autoSaveDir ? (
+              <span
+                className="text-foreground max-w-64 truncate text-xs font-medium"
+                title={autoSaveDir}
+              >
+                {autoSaveDir}
+              </span>
+            ) : (
+              <span className="text-muted-foreground text-xs">
+                {t('settings.sections.sync.fileSync.autoSaveDir.managed')}
+              </span>
+            )}
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handlePickAutoSaveDir}
+                disabled={!syncEnabled || !fileSyncEnabled || savingAutoSaveDir}
+              >
+                {t('settings.sections.sync.fileSync.autoSaveDir.choose')}
+              </Button>
+              {autoSaveDir && (
                 <Button
-                  variant="outline"
+                  variant="ghost"
                   size="sm"
-                  onClick={handlePickAutoSaveDir}
+                  onClick={handleClearAutoSaveDir}
                   disabled={!syncEnabled || !fileSyncEnabled || savingAutoSaveDir}
                 >
-                  {t('settings.sections.sync.fileSync.autoSaveDir.choose')}
+                  {t('settings.sections.sync.fileSync.autoSaveDir.clear')}
                 </Button>
-                {autoSaveDir && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={handleClearAutoSaveDir}
-                    disabled={!syncEnabled || !fileSyncEnabled || savingAutoSaveDir}
-                  >
-                    {t('settings.sections.sync.fileSync.autoSaveDir.clear')}
-                  </Button>
-                )}
-              </div>
-            </div>
-          </SettingRow>
-
-          {/* Small file threshold */}
-          <SettingRow
-            label={t('settings.sections.sync.fileSync.smallFileThreshold.label')}
-            description={t('settings.sections.sync.fileSync.smallFileThreshold.description')}
-          >
-            <div className="flex flex-col items-end gap-1">
-              <div className="flex items-center gap-2">
-                <Input
-                  type="text"
-                  value={smallFileThresholdValue}
-                  onChange={handleSmallFileThresholdChange}
-                  className={smallFileThresholdError ? 'border-red-500 w-32' : 'w-32'}
-                  disabled={!syncEnabled || !fileSyncEnabled}
-                />
-                <span className="text-sm text-muted-foreground">
-                  {t('settings.sections.sync.fileSync.smallFileThreshold.unit')}
-                </span>
-              </div>
-              {smallFileThresholdError && (
-                <p className="text-xs text-red-500">{smallFileThresholdError}</p>
               )}
             </div>
-          </SettingRow>
+          </div>
+        </SettingRow>
 
-          {/* Max file size limit */}
-          <SettingRow
-            label={t('settings.sections.sync.fileSync.maxFileSize.label')}
-            description={t('settings.sections.sync.fileSync.maxFileSize.description')}
-          >
-            <div className="flex flex-col items-end gap-1">
-              <div className="flex items-center gap-2">
-                <Input
-                  type="text"
-                  value={maxFileSizeLimitValue}
-                  onChange={handleMaxFileSizeLimitChange}
-                  className={maxFileSizeLimitError ? 'border-red-500 w-32' : 'w-32'}
-                  disabled={!syncEnabled || !fileSyncEnabled}
-                />
-                <span className="text-sm text-muted-foreground">
-                  {t('settings.sections.sync.fileSync.maxFileSize.unit')}
-                </span>
-              </div>
-              {maxFileSizeLimitError && (
-                <p className="text-xs text-red-500">{maxFileSizeLimitError}</p>
-              )}
-            </div>
-          </SettingRow>
+        {/* Small file threshold */}
+        <SettingRow
+          label={t('settings.sections.sync.fileSync.smallFileThreshold.label')}
+          description={t('settings.sections.sync.fileSync.smallFileThreshold.description')}
+        >
+          <Input
+            aria-label={t('settings.sections.sync.fileSync.smallFileThreshold.label')}
+            inputMode="numeric"
+            value={smallFileThresholdValue}
+            onChange={handleSmallFileThresholdChange}
+            error={smallFileThresholdError ?? undefined}
+            className="w-44 max-w-full"
+            classNames={{
+              field: 'h-9 rounded-lg bg-card',
+              input: 'text-right text-sm tabular-nums',
+              rightIcon: 'pr-3 text-xs',
+            }}
+            rightIcon={t('settings.sections.sync.fileSync.smallFileThreshold.unit')}
+            disabled={!syncEnabled || !fileSyncEnabled}
+          />
+        </SettingRow>
 
-          {/* Per-device cache quota */}
-          <SettingRow
-            label={t('settings.sections.sync.fileSync.cacheQuota.label')}
-            description={t('settings.sections.sync.fileSync.cacheQuota.description')}
-          >
-            <div className="flex flex-col items-end gap-1">
-              <div className="flex items-center gap-2">
-                <Input
-                  type="text"
-                  value={cacheQuotaValue}
-                  onChange={handleCacheQuotaChange}
-                  className={cacheQuotaError ? 'border-red-500 w-32' : 'w-32'}
-                  disabled={!syncEnabled || !fileSyncEnabled}
-                />
-                <span className="text-sm text-muted-foreground">
-                  {t('settings.sections.sync.fileSync.cacheQuota.unit')}
-                </span>
-              </div>
-              {cacheQuotaError && <p className="text-xs text-red-500">{cacheQuotaError}</p>}
-            </div>
-          </SettingRow>
+        {/* Max file size limit */}
+        <SettingRow
+          label={t('settings.sections.sync.fileSync.maxFileSize.label')}
+          description={t('settings.sections.sync.fileSync.maxFileSize.description')}
+        >
+          <Input
+            aria-label={t('settings.sections.sync.fileSync.maxFileSize.label')}
+            inputMode="numeric"
+            value={maxFileSizeLimitValue}
+            onChange={handleMaxFileSizeLimitChange}
+            error={maxFileSizeLimitError ?? undefined}
+            className="w-44 max-w-full"
+            classNames={{
+              field: 'h-9 rounded-lg bg-card',
+              input: 'text-right text-sm tabular-nums',
+              rightIcon: 'pr-3 text-xs',
+            }}
+            rightIcon={t('settings.sections.sync.fileSync.maxFileSize.unit')}
+            disabled={!syncEnabled || !fileSyncEnabled}
+          />
+        </SettingRow>
 
-          {/* File retention period */}
-          <SettingRow
-            label={t('settings.sections.sync.fileSync.retentionPeriod.label')}
-            description={t('settings.sections.sync.fileSync.retentionPeriod.description')}
-          >
-            <div className="flex flex-col items-end gap-1">
-              <div className="flex items-center gap-2">
-                <Input
-                  type="text"
-                  value={retentionHoursValue}
-                  onChange={handleRetentionHoursChange}
-                  className={retentionHoursError ? 'border-red-500 w-32' : 'w-32'}
-                  disabled={!syncEnabled || !fileSyncEnabled}
-                />
-                <span className="text-sm text-muted-foreground">
-                  {t('settings.sections.sync.fileSync.retentionPeriod.unit')}
-                </span>
-              </div>
-              {retentionHoursError && <p className="text-xs text-red-500">{retentionHoursError}</p>}
-            </div>
-          </SettingRow>
+        {/* Per-device cache quota */}
+        <SettingRow
+          label={t('settings.sections.sync.fileSync.cacheQuota.label')}
+          description={t('settings.sections.sync.fileSync.cacheQuota.description')}
+        >
+          <Input
+            aria-label={t('settings.sections.sync.fileSync.cacheQuota.label')}
+            inputMode="numeric"
+            value={cacheQuotaValue}
+            onChange={handleCacheQuotaChange}
+            error={cacheQuotaError ?? undefined}
+            className="w-44 max-w-full"
+            classNames={{
+              field: 'h-9 rounded-lg bg-card',
+              input: 'text-right text-sm tabular-nums',
+              rightIcon: 'pr-3 text-xs',
+            }}
+            rightIcon={t('settings.sections.sync.fileSync.cacheQuota.unit')}
+            disabled={!syncEnabled || !fileSyncEnabled}
+          />
+        </SettingRow>
 
-          {/* Auto-cleanup toggle */}
-          <SettingRow
-            label={t('settings.sections.sync.fileSync.autoCleanup.label')}
-            description={t('settings.sections.sync.fileSync.autoCleanup.description')}
-          >
-            <Switch
-              id="file-auto-cleanup"
-              checked={fileAutoCleanup}
-              onCheckedChange={setFileAutoCleanup}
-              disabled={!syncEnabled || !fileSyncEnabled}
-            />
-          </SettingRow>
-        </SettingGroup>
-      </div>
+        {/* File retention period */}
+        <SettingRow
+          label={t('settings.sections.sync.fileSync.retentionPeriod.label')}
+          description={t('settings.sections.sync.fileSync.retentionPeriod.description')}
+        >
+          <Input
+            aria-label={t('settings.sections.sync.fileSync.retentionPeriod.label')}
+            inputMode="numeric"
+            value={retentionHoursValue}
+            onChange={handleRetentionHoursChange}
+            error={retentionHoursError ?? undefined}
+            className="w-44 max-w-full"
+            classNames={{
+              field: 'h-9 rounded-lg bg-card',
+              input: 'text-right text-sm tabular-nums',
+              rightIcon: 'pr-3 text-xs',
+            }}
+            rightIcon={t('settings.sections.sync.fileSync.retentionPeriod.unit')}
+            disabled={!syncEnabled || !fileSyncEnabled}
+          />
+        </SettingRow>
+
+        {/* Auto-cleanup toggle */}
+        <SettingRow
+          label={t('settings.sections.sync.fileSync.autoCleanup.label')}
+          description={t('settings.sections.sync.fileSync.autoCleanup.description')}
+        >
+          <Switch
+            id="file-auto-cleanup"
+            aria-label={t('settings.sections.sync.fileSync.autoCleanup.label')}
+            checked={fileAutoCleanup}
+            onCheckedChange={setFileAutoCleanup}
+            disabled={!syncEnabled || !fileSyncEnabled}
+          />
+        </SettingRow>
+      </SettingGroup>
     </>
   )
 }

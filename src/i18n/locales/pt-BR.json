@@ -395,6 +395,11 @@
         "loadError": "Falha ao carregar as configurações:"
       },
       "network": {
+        "groups": {
+          "connection": "Conexão",
+          "relays": "Servidores de retransmissão",
+          "performance": "Desempenho da transferência"
+        },
         "loadError": "Falha ao carregar as configurações:",
         "lanOnly": {
           "label": "LAN-only Mode",
@@ -650,6 +655,7 @@
         "recording": "Pressione as teclas...",
         "chordHint": "Pressione outra combinação para um segundo passo (pressione a mesma combinação duas vezes para um \"toque duplo\") ou confirme",
         "rerecord": "Regravar",
+        "save": "Salvar",
         "conflict": "Conflita com: {{name}}",
         "confirmOverride": "Aplicar mesmo assim (remove o conflito)",
         "confirm": "Confirmar",

@@ -1,9 +1,10 @@
 'use client'
 
-import { useEffect, useEffectEvent, useMemo, useState } from 'react'
+import { useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { ShortcutKeys } from '@/components/setting/ShortcutKeys'
 import { Button } from '@/components/ui'
-import { formatShortcutChord } from '@/lib/shortcut-format'
+import { useShortcutLayer } from '@/hooks/useShortcutLayer'
 import {
   getCandidateKeyIssues,
   resolveShortcuts,
@@ -47,30 +48,28 @@ export function KeyRecorder({
   onCancel,
 }: KeyRecorderProps) {
   const { t } = useTranslation()
+  const recordingRef = useRef<HTMLDivElement>(null)
+  useShortcutLayer({ layer: 'modal', scope: 'modal' })
   // Committed chord segments (one combo each), at most MAX_CHORD_SEGMENTS.
   const [segments, setSegments] = useState<string[]>([])
 
   const cancelRecording = useEffectEvent(onCancel)
 
-  // Capture key presses globally while recording. Each non-modifier keydown
-  // appends one segment (VS Code style); Escape cancels.
+  // Capture before application handlers while the recording field has focus.
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      // Ignore auto-repeat events from a held key; only the initial press
-      // should record a segment (otherwise holding a key fabricates a second
-      // identical segment, i.e. an accidental double-tap chord).
-      if (e.repeat) {
-        e.preventDefault()
-        e.stopPropagation()
-        return
-      }
       if (e.key === 'Escape') {
         e.preventDefault()
+        e.stopPropagation()
         cancelRecording()
         return
       }
+      // Only the focused recording field captures combinations; actions remain keyboard accessible.
+      if (e.target !== recordingRef.current) return
+      if (e.key === 'Tab' && !e.metaKey && !e.ctrlKey && !e.altKey) return
       e.preventDefault()
       e.stopPropagation()
+      if (e.repeat) return
       const combo = comboFromEvent(e)
       if (!combo) return
       setSegments(prev => (prev.length >= MAX_CHORD_SEGMENTS ? prev : [...prev, combo]))
@@ -105,41 +104,35 @@ export function KeyRecorder({
     onConfirm(candidateKey, errorIssue?.relatedIds)
   }
 
-  const handleClear = () => setSegments([])
+  const handleClear = () => {
+    setSegments([])
+    recordingRef.current?.focus()
+  }
 
   const handleCancelClick = () => {
     onCancel()
   }
 
-  const chordSegments = formatShortcutChord(candidateKey)
   const isFull = segments.length >= MAX_CHORD_SEGMENTS
 
   return (
-    <div className="flex flex-col gap-2 p-3 rounded-md border-2 border-primary/50 bg-card">
-      <div className="flex items-center gap-2 min-h-7">
-        {chordSegments.length > 0 ? (
-          <div className="flex items-center gap-1.5">
-            {chordSegments.map((parts, segIdx) => (
-              <div key={`seg-${segIdx}`} className="flex items-center gap-1.5">
-                {segIdx > 0 && <span className="text-muted-foreground text-xs">›</span>}
-                <div className="flex items-center gap-0.5">
-                  {parts.map((part, idx) => (
-                    <span key={`${part}-${idx}`} className="flex items-center">
-                      {idx > 0 && <span className="text-muted-foreground text-xs mx-0.5">+</span>}
-                      <kbd className="bg-muted text-xs font-mono px-1.5 py-0.5 rounded border border-border/60 text-foreground">
-                        {part}
-                      </kbd>
-                    </span>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <span className="text-sm text-muted-foreground">
-            {t('settings.sections.shortcuts.recording')}
-          </span>
-        )}
+    <div className="flex flex-col gap-3">
+      <div
+        ref={recordingRef}
+        role="group"
+        tabIndex={0}
+        aria-label={t('settings.sections.shortcuts.recording')}
+        className="flex min-h-14 items-center justify-center rounded-lg border border-border bg-muted/30 p-3 text-center outline-none focus:border-ring focus:ring-2 focus:ring-ring/20"
+      >
+        <span aria-live="polite">
+          {candidateKey ? (
+            <ShortcutKeys shortcut={candidateKey} />
+          ) : (
+            <span className="text-sm text-muted-foreground">
+              {t('settings.sections.shortcuts.recording')}
+            </span>
+          )}
+        </span>
       </div>
 
       {/* Hint: after one segment, the user may add a second to form a chord. */}
@@ -151,7 +144,10 @@ export function KeyRecorder({
 
       {/* Conflict warnings */}
       {issues.length > 0 && (
-        <div className="flex flex-col gap-1 text-xs">
+        <div
+          role="alert"
+          className="flex flex-col gap-2 rounded-lg border border-border bg-muted/30 p-2.5 text-xs leading-relaxed"
+        >
           {errorIssue && (
             <div className="flex items-center gap-2 text-destructive">
               <span>{t(errorIssue.messageKey, errorIssue.messageParams)}</span>
@@ -176,25 +172,24 @@ export function KeyRecorder({
         </div>
       )}
 
-      {/* Action buttons */}
-      <div className="flex items-center gap-2 mt-1">
-        <Button
-          size="sm"
-          variant={errorIssue ? 'default' : 'outline'}
-          onClick={handleConfirm}
-          disabled={!candidateKey}
-        >
-          {errorIssue
-            ? t('settings.sections.shortcuts.confirmOverride')
-            : t('settings.sections.shortcuts.confirm')}
-        </Button>
+      <div className="flex flex-wrap items-center justify-end gap-2 border-t border-border/50 pt-3">
         {segments.length > 0 && (
-          <Button size="sm" variant="ghost" onClick={handleClear}>
+          <Button size="sm" variant="ghost" className="mr-auto" onClick={handleClear}>
             {t('settings.sections.shortcuts.rerecord')}
           </Button>
         )}
         <Button size="sm" variant="ghost" onClick={handleCancelClick}>
           {t('settings.sections.shortcuts.cancel')}
+        </Button>
+        <Button
+          size="sm"
+          onClick={handleConfirm}
+          disabled={!candidateKey}
+          className="h-auto min-h-7 whitespace-normal"
+        >
+          {errorIssue
+            ? t('settings.sections.shortcuts.confirmOverride')
+            : t('settings.sections.shortcuts.save')}
         </Button>
       </div>
     </div>

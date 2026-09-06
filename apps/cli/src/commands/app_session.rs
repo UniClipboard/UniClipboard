@@ -133,7 +133,9 @@ pub async fn connect_or_spawn_oneshot_daemon(verbose: bool) -> Result<Box<dyn Da
             // Mirror start.rs's lenient unwrap_or(true): if setup state is
             // unreadable, attempt the spawn and let the real error surface.
             if !crate::setup_check::is_setup_complete().unwrap_or(true) {
-                ui::error("No space on this profile — run `uniclip init` or `uniclip join` first.");
+                ui::error(
+                    "No space on this profile — run `uniclip space init` or `uniclip space join` first.",
+                );
                 return Err(exit_codes::EXIT_ERROR);
             }
             match crate::local_daemon::spawn_oneshot_and_wait().await {

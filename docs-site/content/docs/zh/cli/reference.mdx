@@ -5,6 +5,19 @@ description: uniclip 全部子命令 —— 成员、发送/监听、搜索、bl
 
 这是 `uniclip` 的完整子命令参考。第一次用 CLI？先看 [CLI 概览](../cli/getting-started)。
 
+## 空间
+
+| 命令                        | 作用                                                                               |
+| --------------------------- | ---------------------------------------------------------------------------------- |
+| `uniclip space status`      | 查看当前空间和设备信任摘要。                                                       |
+| `uniclip space init`        | 为当前 profile 创建新的加密空间。                                                  |
+| `uniclip space invite`      | 签发一次性配对邀请。                                                               |
+| `uniclip space join`        | 加入或重新配对 sponsor；加 `--switch` 可切换到另一个空间。                         |
+| `uniclip space reset --yes` | 重建为只包含本机的新空间，同时保留本机历史、已完成文件、设置、设备身份和解锁能力。 |
+
+空间重建会永久废弃旧的配对、信任和同步关系，所有设备都需要重新配对。它不会删除本机
+历史，也不是恢复出厂设置。
+
 ## 成员
 
 | 命令                      | 返回内容                                                                                                        |
@@ -18,12 +31,12 @@ description: uniclip 全部子命令 —— 成员、发送/监听、搜索、bl
 
 | 命令                     | 作用                                             |
 | ------------------------ | ------------------------------------------------ |
-| `uniclip join --no-wait` | 记录等待中的加入请求后立即返回，不等待最终结果。 |
-| `uniclip join status`    | 查看当前加入请求及其 Engine 状态。               |
-| `uniclip join cancel`    | 请求取消当前仍在等待的加入。                     |
+| `uniclip space join --no-wait` | 记录等待中的加入请求后立即返回，不等待最终结果。 |
+| `uniclip space join status`    | 查看当前加入请求及其 Engine 状态。               |
+| `uniclip space join cancel`    | 请求取消当前仍在等待的加入。                     |
 
-不带 `--no-wait` 时，`uniclip join` 会等待最终结果。Ctrl-C 只停止本地等待；
-确实要取消请求时应使用 `join cancel`。
+不带 `--no-wait` 时，`uniclip space join` 会等待最终结果。Ctrl-C 只停止本地等待；
+确实要取消请求时应使用 `space join cancel`。
 
 ### 设备信任变化
 
@@ -186,7 +199,7 @@ uniclip mobile disable
 行为约定：
 
 - **写命令在同 profile daemon 跑着时会被拒绝。** 跑 `setup`、`add`、
-  `network set` 等之前先 `uniclip stop` / 退掉 GUI。读命令（`status`）在
+  `network set` 等之前先 `uniclip stop` / 退掉 GUI。读命令（`space status`）在
   daemon 跑着时也可以。
 - **`--json` 隐含 non-interactive。** 不会出任何交互提示。`setup` 在
   non-interactive / JSON 模式下必须显式给 `--label`、`--accept-network-risk`；

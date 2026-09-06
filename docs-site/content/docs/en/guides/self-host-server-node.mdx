@@ -151,7 +151,7 @@ socket so peers can dial it directly.
 
 ## Provision (one-time, before the daemon)
 
-`join` and the `mobile` write commands **refuse to run while a
+`space join` and the `mobile` write commands **refuse to run while a
 daemon is up**, so all provisioning happens in one-off containers first.
 They share the same state volume the long-running daemon will read.
 
@@ -159,7 +159,7 @@ They share the same state volume the long-running daemon will read.
 invite` to get a code, then:
 
 ```bash
-docker compose run --rm app uniclip join
+docker compose run --rm app uniclip space join
 ```
 
 This prompts interactively for the **invitation code** and the **Space
@@ -347,7 +347,7 @@ the phone and confirm it appears on your desktops.
 
 | Symptom                               | Where to look                                                                                        |
 | ------------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| `setup not complete` on `up -d`       | Provisioning (`join`) didn't persist. Confirm the `docker compose run` commands hit the same volume. |
+| `setup not complete` on `up -d`       | Provisioning (`space join`) didn't persist. Confirm the `docker compose run` commands hit the same volume. |
 | Caddy never gets a certificate        | DNS for `UC_DOMAIN` must resolve to this VPS and `80`/`443` must be open **before** `up -d`.         |
 | Phone gets the wrong URL              | Re-run `mobile network set --url https://<domain>` (daemon stopped), then `up -d`.                   |
 | Desktop on another network won't sync | Open `UC_IROH_BIND_PORT/udp` in the firewall and check `UC_PUBLIC_IP` is the real public IP.         |

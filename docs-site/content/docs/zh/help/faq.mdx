@@ -32,9 +32,9 @@ description: 隐私、部署模型、多设备多空间、数据与升级 ——
 
 **不能。** 口令通过 Argon2id 派生 KEK，KEK 又封装空间 MasterKey。整条链路上没有任何能用第二把钥匙打开的副本 —— 这是设计目标，也是不留后门的代价。
 
-如果还有一台设备能登录这个空间：在那台机器上吊销丢失设备、必要时重建空间即可。如果所有设备都丢了口令，本地历史只能放弃，重新 `init` 一个新空间。
+如果还有一台设备能登录这个空间：在那台机器上吊销丢失设备、必要时重建空间即可。如果所有设备都丢了口令，本地历史只能放弃，重新 `space init` 一个新空间。
 
-锁屏页提供了 **「忘记口令？重置并重新开始」** 入口，可以在 GUI 里直接完成上述操作：它会清掉本机磁盘上的 keyslot 与 KEK，然后把你送回 setup 页面，让你重新 `init` 一个新空间或从另一台设备 `join`。点击后需要手动输入 `RESET` 确认 —— 一旦执行，本机历史无法找回。
+锁屏页提供了 **「忘记口令？重置并重新开始」** 入口，可以在 GUI 里直接完成上述操作：它会清掉本机磁盘上的 keyslot 与 KEK，然后把你送回 setup 页面，让你重新 `space init` 一个新空间或从另一台设备 `space join`。点击后需要手动输入 `RESET` 确认 —— 一旦执行，本机历史无法找回。
 
 ### 中继被攻陷了怎么办？
 
@@ -99,7 +99,7 @@ URL 后，重启 daemon 即可只使用这些自定义中继节点。从零搭�
 
 ### 一台设备能加入多个空间吗？
 
-可以，但 **同一时刻只激活一个**。带上另一个 sponsor 的邀请码运行 `uniclip join --switch`（或用 GUI 的设备页）切换时，本地历史会先用新空间的 MasterKey 重新加密再切，没有明文窗口。
+可以，但 **同一时刻只激活一个**。带上另一个 sponsor 的邀请码运行 `uniclip space join --switch`（或用 GUI 的设备页）切换时，本地历史会先用新空间的 MasterKey 重新加密再切，没有明文窗口。
 
 典型用法：把"个人"和"工作"两套设备分到两个空间，机敏度不同。
 
@@ -225,7 +225,7 @@ UniClipboard 的输入面板时，iOS 给到一个合法的读写窗口，可以
 
 ### 发现 bug 怎么提？
 
-[github.com/UniClipboard/UniClipboard/issues](https://github.com/UniClipboard/UniClipboard/issues)，附上 `uniclip --version`、`uniclip status --json`、复现步骤、对应时段的日志切片。
+[github.com/UniClipboard/UniClipboard/issues](https://github.com/UniClipboard/UniClipboard/issues)，附上 `uniclip --version`、`uniclip space status --json`、复现步骤、对应时段的日志切片。
 
 ### 安全问题怎么报？
 

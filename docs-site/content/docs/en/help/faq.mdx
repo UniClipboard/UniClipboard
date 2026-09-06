@@ -54,13 +54,13 @@ key — that's the design goal and the price of having no backdoor.
 
 If another device still has access to this space, revoke the lost one
 from there (or rebuild the space). If every device lost the
-passphrase, the only path is to abandon local history and `init` a new
+passphrase, the only path is to abandon local history and `space init` a new
 space.
 
 On the unlock screen, **Forgot passphrase? Reset and start over** runs
 this from the GUI: it wipes the on-disk keyslot and KEK on this device,
-then drops you back at the setup screen so you can `init` a fresh
-space or `join` from another device. You'll have to type `RESET` to
+then drops you back at the setup screen so you can `space init` a fresh
+space or `space join` from another device. You'll have to type `RESET` to
 confirm — local history is unrecoverable after this point.
 
 ### What if a relay gets compromised?
@@ -147,7 +147,7 @@ treated as a trusted peer by every other device in the space.
 
 ### Can one device join multiple spaces?
 
-Yes, but **only one is active at a time**. Running `uniclip join
+Yes, but **only one is active at a time**. Running `uniclip space join
 --switch` with another sponsor's invitation (or the GUI's Devices page)
 re-encrypts local history under the new space's MasterKey before
 completing the switch — there is no plaintext window during the handoff.
@@ -330,7 +330,7 @@ stable, and stdin works (`echo ... | uniclip send`). See
 ### How do I report a bug?
 
 [github.com/UniClipboard/UniClipboard/issues](https://github.com/UniClipboard/UniClipboard/issues), with
-`uniclip --version`, `uniclip status --json`, repro steps, and the log
+`uniclip --version`, `uniclip space status --json`, repro steps, and the log
 slice for the relevant time window.
 
 ### How do I report a security issue?

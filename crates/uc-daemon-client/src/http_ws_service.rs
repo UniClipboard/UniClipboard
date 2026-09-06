@@ -50,6 +50,10 @@ impl DaemonService for HttpWsDaemonService {
         self.ctx.setup_v2_client().cancel_join(join_id).await
     }
 
+    async fn reset_space(&self) -> Result<()> {
+        self.ctx.setup_v2_client().reset_space().await
+    }
+
     async fn choose_device_group(
         &self,
         request: &ChooseDeviceGroupRequestDto,

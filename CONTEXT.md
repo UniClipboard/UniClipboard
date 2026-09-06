@@ -83,10 +83,18 @@ _Avoid_: temporary split、sync failure、pending recovery
 _Avoid_: trusted peer list、relationship history、all known devices
 
 **Re-pairing required**：
-旧资料完成安全独立化后，由 Engine 持久记录的「所有旧设备都必须重新配对」状态；客户端
-只能展示并重新查询该事实，关闭提醒不会清除它，成功创建或加入新 Space 后才清除。它取代
-等待旧成员重新准入的升级流程，不是网络连接状态，也不由客户端本地状态决定。
+旧资料完成安全独立化或执行 **Space reset** 后，由 Engine 持久记录的「所有旧设备都必须
+重新配对」状态；客户端只能展示并重新查询该事实，关闭提醒不会清除它，成功建立新的设备
+关系后才清除。它取代等待旧成员重新准入的升级流程，不是网络连接状态，也不由客户端本地
+状态决定。
 _Avoid_: readmission、reconnect、client-side retry、temporary pairing state
+
+**Space reset**：
+经用户明确确认后，把当前 profile 重建为只包含本机的新 Space；永久废弃与旧设备的配对、
+信任和同步关系，清除未完成邀请，并进入 **Re-pairing required**，但保留本机剪贴板历史、
+已完成文件、设置、设备身份和解锁能力。该操作绝不自动执行，其他设备必须重新配对后才能
+恢复同步。
+_Avoid_: factory reset、delete profile、remove remote device
 
 **ClipboardEvent**：
 一次剪贴板捕获动作的领域事件（`event_id`、捕获时刻、源设备 `DeviceId`、

@@ -37,13 +37,14 @@ cargo build -p uc-cli
 | `uniclip start`                     | 启动本机 daemon。默认后台运行。                                                                                                                                                                                                                          |
 | `uniclip start --foreground`        | 前台启动 daemon，并把日志输出到终端。                                                                                                                                                                                                                    |
 | `uniclip stop`                      | 停止本机 daemon。                                                                                                                                                                                                                                        |
-| `uniclip status`                    | 查看当前应用状态。                                                                                                                                                                                                                                       |
-| `uniclip init`                      | 在当前 profile 创建新的加密空间。                                                                                                                                                                                                                        |
-| `uniclip invite`                    | 作为 sponsor 发起配对邀请。                                                                                                                                                                                                                              |
-| `uniclip join`                      | 用邀请码加入空间。默认走非破坏性的赎回 / 重新配对分支（首次加入，以及在「同一空间」单侧解除配对后重新配对——见 issue #1023）。加 `--switch` 才切换到「另一个」sponsor 的空间并重加密迁移本地历史（破坏性，会先确认，再加 `--yes` 在非交互场景跳过确认）。 |
-| `uniclip join --no-wait`            | 发起加入后，如果请求仍在等待，只报告当前状态并立即返回。                                                                                                                                                                                                 |
-| `uniclip join status`               | 查看 Engine 保存的当前加入状态。                                                                                                                                                                                                                         |
-| `uniclip join cancel`               | 取消当前仍在等待的加入请求。                                                                                                                                                                                                                             |
+| `uniclip space status`                    | 查看当前应用状态。                                                                                                                                                                                                                                       |
+| `uniclip space init`                      | 在当前 profile 创建新的加密空间。                                                                                                                                                                                                                        |
+| `uniclip space invite`                    | 作为 sponsor 发起配对邀请。                                                                                                                                                                                                                              |
+| `uniclip space join`                      | 用邀请码加入空间。默认走非破坏性的赎回 / 重新配对分支（首次加入，以及在「同一空间」单侧解除配对后重新配对——见 issue #1023）。加 `--switch` 才切换到「另一个」sponsor 的空间并重加密迁移本地历史（破坏性，会先确认，再加 `--yes` 在非交互场景跳过确认）。 |
+| `uniclip space join --no-wait`            | 发起加入后，如果请求仍在等待，只报告当前状态并立即返回。                                                                                                                                                                                                 |
+| `uniclip space join status`               | 查看 Engine 保存的当前加入状态。                                                                                                                                                                                                                         |
+| `uniclip space join cancel`               | 取消当前仍在等待的加入请求。                                                                                                                                                                                                                             |
+| `uniclip space reset --yes`               | 重建为只包含本机的新空间；保留本机历史、已完成文件、设置、设备身份和解锁能力，所有设备需要重新配对。                                                                                                                                                      |
 | `uniclip members`                   | 列出空间成员（本机 + 已配对设备）及在线状态；加 `--probe` 主动探测刷新状态。`devices` 是其别名。                                                                                                                                                         |
 | `uniclip member remove <PEER-ID>`   | 移除一个空间成员；即使对方离线也会立即记录并停止向它发送新内容。                                                                                                                                                                                         |
 | `uniclip member removal-status`     | 查看当前空间的成员移除与收敛状态。                                                                                                                                                                                                                       |
@@ -56,6 +57,9 @@ cargo build -p uc-cli
 | `uniclip watch`                     | 监听并打印收到的剪贴板 payload；不会写入系统剪贴板。                                                                                                                                                                                                     |
 | `uniclip recv`                      | 阻塞等待 **下一个** 入站文件并落盘；不会写入系统剪贴板。                                                                                                                                                                                                 |
 | `uniclip get`                       | 读取 **已同步** 的剪贴板条目并立即返回（headless / 脚本 / agent 友好）。                                                                                                                                                                                 |
+
+旧的顶层 `status`、`init`、`invite` 和 `join` 入口仍可使用，但会提示对应的
+`space` 命令。新脚本和文档应使用 `uniclip space ...`。
 
 ## 取回已同步内容（`get`）
 
@@ -119,7 +123,13 @@ uniclip blob fetch <TICKET> --entry-id <ENTRY_ID> --out ./restored.bin
 
 ## 空间切换
 
-切换到另一个 sponsor 的空间已合并进 `uniclip join`：在已加入空间的设备上运行 `join --switch`，会走切换分支，重加密并迁移本地历史数据。无需单独的 `switch-space` 命令。不带 `--switch` 的 `join` 始终走非破坏性的赎回 / 重新配对分支。
+切换到另一个 sponsor 的空间已合并进 `uniclip space join`：在已加入空间的设备上运行 `uniclip space join --switch`，会走切换分支，重加密并迁移本地历史数据。无需单独的 `switch-space` 命令。不带 `--switch` 的 `space join` 始终走非破坏性的赎回 / 重新配对分支。
+
+## 重建空间
+
+`uniclip space reset --yes` 会创建一个只包含本机的新空间，并永久废弃与所有旧设备的
+配对、信任和同步关系。本机剪贴板历史、已完成文件、设置、设备身份和解锁能力都会保留；
+其他设备不会被删除，但必须重新配对后才能恢复同步。这不是恢复出厂设置。
 
 ## 隐藏的剪贴板诊断命令组（`probe`）
 

@@ -3,7 +3,7 @@ use std::sync::Arc;
 use anyhow::Result;
 use reqwest::Method;
 
-use crate::http::enveloped::enveloped_request;
+use crate::http::enveloped::{empty_request, enveloped_request};
 use crate::DaemonConnectionState;
 use uc_daemon_contract::api::dto::v2::setup::{
     CancelJoinSpaceRequest, InitializeSpaceRequest, InitializeSpaceResponse,
@@ -118,6 +118,18 @@ impl DaemonSetupV2Client {
         )
         .await?)
     }
+
+    pub async fn reset_space(&self) -> Result<()> {
+        Ok(empty_request(
+            &self.http,
+            &self.connection_state,
+            &self.client_type,
+            Method::POST,
+            http_route_v2::SETUP_RESET,
+            |request| request,
+        )
+        .await?)
+    }
 }
 
 #[cfg(test)]
@@ -178,6 +190,46 @@ mod tests {
         assert!(state.has_completed);
         assert_eq!(state.device_name.as_deref(), Some("Test Mac"));
         assert!(state.re_pairing_required);
+    }
+
+    #[tokio::test]
+    async fn reset_space_posts_to_the_space_rebuild_route() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/auth/connect"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "data": {
+                    "sessionToken": "test-session",
+                    "expiresInSecs": 300,
+                    "refreshAtSecs": 240
+                },
+                "ts": 1
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/v2/setup/reset"))
+            .and(header("authorization", "Session test-session"))
+            .respond_with(ResponseTemplate::new(204))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let connection_state = DaemonConnectionState::default();
+        connection_state.set(DaemonConnectionInfo {
+            base_url: server.uri(),
+            ws_url: "ws://127.0.0.1/unused".to_string(),
+            token: "test-bearer".to_string(),
+            pid: 42,
+        });
+        let client = DaemonSetupV2Client::with_http_conn_state_and_type(
+            Arc::new(reqwest::Client::new()),
+            connection_state,
+            "test".to_string(),
+        );
+
+        client.reset_space().await.expect("space rebuild request");
     }
 
     #[tokio::test]

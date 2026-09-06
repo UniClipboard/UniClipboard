@@ -1,4 +1,4 @@
-//! `uniclip invite` — sponsor side of Slice 1 pairing.
+//! `uniclip space invite` — sponsor side of Slice 1 pairing.
 //!
 //! ## Execution paths
 //!
@@ -161,7 +161,7 @@ async fn run_for_address_inner(selected_ip: IpAddr, verbose: bool) -> i32 {
         Ok(false) => {
             ui::spinner_finish_error(
                 &resume_spinner,
-                "No space on this profile — run `init` first.",
+                "No space on this profile — run `space init` first.",
             );
             cli.shutdown().await;
             return exit_codes::EXIT_ERROR;

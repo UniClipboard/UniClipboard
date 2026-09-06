@@ -6,6 +6,20 @@ description: Every uniclip subcommand — members, send/watch, search, blob, mob
 This is the full `uniclip` subcommand reference. New to the CLI?
 Start with the [CLI overview](../cli/getting-started).
 
+## Space
+
+| Command                     | Effect                                                                                                         |
+| --------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `uniclip space status`      | Show the current space and device-trust summary.                                                               |
+| `uniclip space init`        | Create a new encrypted space for this profile.                                                                 |
+| `uniclip space invite`      | Issue a one-time pairing invitation.                                                                           |
+| `uniclip space join`        | Join or re-pair with a sponsoring device; add `--switch` to move to a different space.                        |
+| `uniclip space reset --yes` | Rebuild as a new one-device space while retaining local history, completed files, settings, and device access. |
+
+Space reset permanently discards old pairing, trust, and sync relationships.
+Every device must pair again. It does not erase local history and is not a
+factory reset.
+
 ## Members
 
 | Command                   | What it shows                                                                                                                                    |
@@ -20,12 +34,12 @@ for scripting.
 
 | Command                  | Effect                                                                                  |
 | ------------------------ | --------------------------------------------------------------------------------------- |
-| `uniclip join --no-wait` | Record a pending join and return without waiting for its final result.                  |
-| `uniclip join status`    | Show the current join request and its Engine-owned status.                              |
-| `uniclip join cancel`    | Request cancellation of the current pending join.                                      |
+| `uniclip space join --no-wait` | Record a pending join and return without waiting for its final result.                  |
+| `uniclip space join status`    | Show the current join request and its Engine-owned status.                              |
+| `uniclip space join cancel`    | Request cancellation of the current pending join.                                      |
 
-Without `--no-wait`, `uniclip join` waits for a final result. Ctrl-C stops only
-that local wait; use `join cancel` when the request itself should be cancelled.
+Without `--no-wait`, `uniclip space join` waits for a final result. Ctrl-C stops only
+that local wait; use `space join cancel` when the request itself should be cancelled.
 
 ### Device trust changes
 
@@ -211,7 +225,7 @@ Behavioural notes:
 
 - **Write commands refuse to run while a same-profile daemon is up.**
   Stop the daemon (`uniclip stop` / quit the GUI) before running
-  `setup`, `add`, `network set`, etc. The read command (`status`) is
+  `setup`, `add`, `network set`, etc. The read command (`space status`) is
   tolerant of a running daemon.
 - **`--json` implies non-interactive.** No prompts will be shown.
   `setup` in non-interactive / JSON mode requires `--label` and

@@ -201,7 +201,12 @@ pub async fn export_config_package(
             None => return Err(ConfigCommandError::Cancelled),
         };
 
-        let client = DaemonConfigClient::new(connection_state.inner().clone());
+        let client =
+            DaemonConfigClient::new(connection_state.inner().clone()).map_err(|error| {
+                ConfigCommandError::Internal {
+                    message: error.to_string(),
+                }
+            })?;
         let response = client.export(target_path).await?;
         tracing::info!("config export bundle written");
         Ok(ExportConfigResult {
@@ -257,7 +262,12 @@ pub async fn preview_config_import(
     record_trace_fields(&span, &_trace);
 
     async move {
-        let client = DaemonConfigClient::new(connection_state.inner().clone());
+        let client =
+            DaemonConfigClient::new(connection_state.inner().clone()).map_err(|error| {
+                ConfigCommandError::Internal {
+                    message: error.to_string(),
+                }
+            })?;
         // `password` is moved into the request body and never logged.
         let preview = client.preview_import(password, source_path).await?;
         Ok(ConfigImportPreview {
@@ -307,7 +317,12 @@ pub async fn import_config_package(
     record_trace_fields(&span, &_trace);
 
     async move {
-        let client = DaemonConfigClient::new(connection_state.inner().clone());
+        let client =
+            DaemonConfigClient::new(connection_state.inner().clone()).map_err(|error| {
+                ConfigCommandError::Internal {
+                    message: error.to_string(),
+                }
+            })?;
         // `password` is moved into the request body and never logged. `confirmed`
         // is always true: the UI performs the explicit confirmation gate.
         let response = client.import(password, source_path, true).await?;

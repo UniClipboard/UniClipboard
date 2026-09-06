@@ -43,10 +43,10 @@ impl DaemonForwardingAnalyticsSink {
     /// info may still be empty at construction time (the GUI connects to the
     /// daemon later); each `capture` reads it lazily and drops the event if the
     /// daemon is not reachable yet.
-    pub fn new(connection_state: DaemonConnectionState) -> Self {
-        Self {
-            client: DaemonAnalyticsClient::new(connection_state),
-        }
+    pub fn new(connection_state: DaemonConnectionState) -> anyhow::Result<Self> {
+        Ok(Self {
+            client: DaemonAnalyticsClient::new(connection_state)?,
+        })
     }
 }
 

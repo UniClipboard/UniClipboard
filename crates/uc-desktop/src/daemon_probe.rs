@@ -201,10 +201,8 @@ pub async fn bootstrap_daemon_in_process(
     health_check_timeout: Duration,
     health_poll_interval: Duration,
 ) -> Result<DaemonConnectionInfo, DaemonBootstrapError> {
-    let client = reqwest::Client::builder()
-        .timeout(PROBE_TIMEOUT)
-        .build()
-        .map_err(|error| {
+    let client =
+        uc_daemon_client::build_local_http_client_with_timeout(PROBE_TIMEOUT).map_err(|error| {
             DaemonBootstrapError::Client(
                 anyhow::Error::new(error).context("failed to build daemon probe client"),
             )
@@ -587,10 +585,8 @@ pub async fn restart_local_daemon(
 ) -> Result<DaemonConnectionInfo, DaemonBootstrapError> {
     use uc_daemon_process::process_metadata::{verify_pid_identity, PidVerification};
 
-    let client = reqwest::Client::builder()
-        .timeout(PROBE_TIMEOUT)
-        .build()
-        .map_err(|e| {
+    let client =
+        uc_daemon_client::build_local_http_client_with_timeout(PROBE_TIMEOUT).map_err(|e| {
             DaemonBootstrapError::Client(
                 anyhow::Error::new(e).context("failed to build probe client for daemon restart"),
             )
@@ -717,10 +713,7 @@ mod tests {
     // ------- probe_daemon_health_at: mocked HTTP transport -------
 
     fn build_test_client() -> reqwest::Client {
-        reqwest::Client::builder()
-            .timeout(PROBE_TIMEOUT)
-            .build()
-            .expect("client build")
+        uc_daemon_client::build_local_http_client_with_timeout(PROBE_TIMEOUT).expect("client build")
     }
 
     #[tokio::test]

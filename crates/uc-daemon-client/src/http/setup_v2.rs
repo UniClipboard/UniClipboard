@@ -20,12 +20,12 @@ pub struct DaemonSetupV2Client {
 }
 
 impl DaemonSetupV2Client {
-    pub fn with_conn_state(connection_state: DaemonConnectionState) -> Self {
-        Self::with_http_conn_state_and_type(
-            Arc::new(reqwest::Client::new()),
+    pub fn with_conn_state(connection_state: DaemonConnectionState) -> Result<Self> {
+        Ok(Self::with_http_conn_state_and_type(
+            Arc::new(crate::build_local_http_client()?),
             connection_state,
             "gui".to_string(),
-        )
+        ))
     }
 
     pub(crate) fn with_http_conn_state_and_type(

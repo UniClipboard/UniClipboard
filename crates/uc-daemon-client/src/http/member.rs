@@ -23,12 +23,12 @@ pub struct DaemonMemberClient {
 }
 
 impl DaemonMemberClient {
-    pub fn new(connection_state: DaemonConnectionState) -> Self {
-        Self {
-            http: Arc::new(reqwest::Client::new()),
+    pub fn new(connection_state: DaemonConnectionState) -> Result<Self> {
+        Ok(Self {
+            http: Arc::new(crate::build_local_http_client()?),
             connection_state,
             client_type: "gui".to_string(),
-        }
+        })
     }
 
     pub(crate) fn with_http_conn_state_and_type(
@@ -202,7 +202,7 @@ mod tests {
             token: "test-bearer".to_string(),
             pid: 42,
         });
-        let client = DaemonMemberClient::new(connection_state);
+        let client = DaemonMemberClient::new(connection_state).unwrap();
 
         let choices = client
             .query_device_group_choices()
@@ -345,7 +345,7 @@ mod tests {
             token: "test-bearer".to_string(),
             pid: 42,
         });
-        let client = DaemonMemberClient::new(connection_state);
+        let client = DaemonMemberClient::new(connection_state).unwrap();
         (server, client)
     }
 

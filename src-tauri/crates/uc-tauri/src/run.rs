@@ -268,9 +268,9 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
     // in-process sink. The webview's UI events already POST directly
     // (`src/api/daemon/analytics.ts`).
     client_deps.analytics = Arc::new(
-        crate::analytics_forward::DaemonForwardingAnalyticsSink::new(DaemonConnectionState::clone(
-            &daemon_connection_state,
-        )),
+        crate::analytics_forward::DaemonForwardingAnalyticsSink::new(
+            DaemonConnectionState::clone(&daemon_connection_state),
+        )?,
     );
 
     let runtime = Arc::new(TauriAppRuntime::new(client_deps));
@@ -884,15 +884,23 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
                     prompt_throttle_path,
                 });
                 app_handle_for_startup.manage(notify_ctx.clone());
+                let scheduler_clients = (|| -> anyhow::Result<_> {
+                    Ok((
+                        uc_daemon_client::DaemonSettingsClient::new(daemon_connection_state.clone())?,
+                        uc_daemon_client::DaemonSetupV2Client::with_conn_state(daemon_connection_state.clone())?,
+                    ))
+                })();
+                let (settings_client, setup_readiness) = match scheduler_clients {
+                    Ok(clients) => clients,
+                    Err(error) => {
+                        warn!(error = %error, error_kind = "daemon_client_build_failed", retryable = false,
+                            "Failed to initialize update scheduler clients");
+                        return;
+                    }
+                };
                 let scheduler_deps = crate::update_scheduler::SchedulerDeps {
-                    settings_client: uc_daemon_client::DaemonSettingsClient::new(
-                        daemon_connection_state.clone(),
-                    ),
-                    setup_readiness: Arc::new(
-                        uc_daemon_client::DaemonSetupV2Client::with_conn_state(
-                            daemon_connection_state.clone(),
-                        ),
-                    ),
+                    settings_client,
+                    setup_readiness: Arc::new(setup_readiness),
                     notify: notify_ctx,
                 };
 

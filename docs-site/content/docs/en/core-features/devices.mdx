@@ -1,6 +1,6 @@
 ---
 title: Device management
-description: How the Devices page is laid out, how pairing/unpairing works, and per-peer content rules.
+description: Device lists and details, group choices, pairing and removal, and per-device sync rules.
 ---
 
 The Devices page is the live view of the current space's members:
@@ -11,55 +11,28 @@ the page.
 
 ## Page layout
 
-| Block       | Content                                                                                                                                                                                                               |
-| ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Top Hero    | This device icon + name + short Peer ID + a **Switch space** chip; two StatPills on the right showing paired/online counts and sync status.                                                                           |
-| Tab bar     | Two tabs on a single row: **Paired devices** (desktop P2P peers) and **Mobile sync** (LAN mobile clients). Each tab carries a count chip; the action buttons on the right of the bar change with the active tab.      |
-| Tab content | A card grid for the active tab (3-up on wide screens, collapsing to 1–2 columns on narrow). The last cell is a dashed "add" card that opens the corresponding invite / registration flow. See the two sections below. |
+The left list groups this device, paired devices, and mobile sync devices. Select a device to show its details on the right.
+The list footer provides actions to add a desktop device or phone, configure mobile sync, and switch spaces. An empty paired-device section also offers an add action.
 
-The Hero is read-only. To rename this machine or toggle local sync,
-head to [Settings → General](../guides/settings#general) and
-[Settings → Sync](../guides/settings#sync). The "Switch space" chip opens its
-own dialog.
+Local details include the device name, sync control, connection information, and space rebuild action. Paired-device details include sync rules, connection information, and unpairing. Mobile details include the server address, credentials, and last activity.
 
 ## Device trust changes
 
-When another device proposes a membership change, UniClipboard opens a required
-decision dialog and sends a system notification. The dialog cannot be dismissed
-until you choose one of the outcomes shown by the app:
+When a device-group decision is required, UniClipboard opens a required decision dialog and sends a system notification.
+Each option shows which devices will continue syncing, which will stop, and whether re-pairing is required or membership information is incomplete.
+A removal change may offer **Apply the change** and **Keep the current space**; other issues show the available device groups.
 
-- **Apply the change** adopts the proposed membership on this device.
-- **Keep the current space** preserves this device's current group. Devices that
-  accepted the other outcome move into a different space and stop sharing new
-  clipboard content with this group.
+Removing this device requires an additional confirmation. A submitted choice may be complete, pending, or require re-pairing; follow the displayed result.
+If device state changes while you choose, the app refreshes the options and asks you to choose again.
+Separate groups are a long-term result, not an offline or failed state, and are not merged automatically.
 
-Leaving the current space and keeping a group split both require an additional
-confirmation. A split is a supported long-term result, not an offline or failed
-state, and UniClipboard does not merge the groups automatically.
-
-Only when the background service confirms that a device version is too old does
-its card show **Update required**. Offline status alone never means that an
-update is required. If this device has been removed, rejoin from a trusted
-remaining device to use the space again.
-
-For setting up mobile sync end to end (LAN listener, iOS Shortcut,
-credentials), see the dedicated [Mobile sync](./mobile-sync) guide.
+The device list contains current space members only. Historical relationships do not bring removed devices or devices in another space back into the list.
+**Update required** appears only when the background service confirms an outdated version. Offline status alone does not mean that a device needs an update or has been removed.
 
 ## What a peer card tells you
 
-Top to bottom on each card:
-
-- **Device icon** — heuristically colored from the device name (accent
-  for online, muted for offline); online cards also get a small green
-  dot on the icon's bottom-right corner.
-- **Device name** — what that device named itself; truncated if long.
-- **Status line** — `● Online` / `○ Offline`, plus the connection
-  address (mono) when one is known.
-- **Update warning** — when present at the end of a card, this exact device
-  must come online for a membership update to finish.
-- **Channel chip** — the transport channel badge at the card footer
-  (see below).
-- **Click the card** — opens the centered "Device settings" modal.
+Devices now appear as list rows. Desktop rows show the name and online, offline, or action-required status. Select a row to see full connection details and actions on the right.
+Phones show last activity, which does not indicate a persistent online connection.
 
 ### Transport channel badge
 
@@ -85,8 +58,7 @@ confidentiality.
 
 ## Adding a device
 
-Click `Invite new device` on the right of the **Paired devices** tab
-bar (the dashed placeholder card in the grid is the same entry point).
+Choose the add-device action from the list footer. An empty paired-device section also provides an add action.
 The dialog will:
 
 1. Ask the sponsor daemon to mint a one-time invitation code.
@@ -104,69 +76,27 @@ passphrase. Full walkthrough at
   single-use design, not a bug — just mint a fresh one.
 </Callout>
 
-## The per-device settings modal
+## Per-device settings
 
-Clicking a card opens a centered "Device settings" modal with the
-controls below.
+Select a paired device to show its settings in the right-hand detail panel.
 
 ### Basic info
 
-- The header shows the device icon + name + a status dot (online /
-  offline) + a short Peer ID. The full Peer ID context lives under
-  **Connection info**.
-- **Connection info** section lists rounded InfoRows for `Channel`
-  (Direct / Relay / Offline / Out of LAN) and, when known, `Address`.
+The header shows the device name, status, and unpair action. Expand **Connection info** to view or copy the device identifier and see its channel and address.
 
 ### Send and receive controls
 
-<Feature since="0.7.0">
-  Per-peer **outbound gate** + **content-type allowlist** are now enforced at the dispatcher
-  (previously persisted but unused). Bytes for any disabled type never leave this machine.
-</Feature>
-
-`Send to this device`: when off, clips produced on this machine never
-leave for this peer. The switch is per-peer-outbound, not space-wide.
-
-`Receive from this device`: when off, future clips from this peer are
-rejected locally before they enter history, overwrite the system
-clipboard, or get re-broadcast. The preference belongs to this machine;
-it is not copied to the peer, and turning it back on only affects future
-content.
+**Sync with this device** controls synchronization with that peer. Turning it off stops both directions. It cannot be enabled here while global sync is off.
 
 ### Content-type allowlist
 
-Below each direction switch, a 2-column pill grid lists every content
-type — each cell is an icon + label + a small Switch:
-
-- Text
-- Image
-- Link
-- File
-- Rich text (HTML / RTF)
-
-Active toggles get a primary border + tinted background; turning a
-direction's master switch off dims and disables that direction's grid.
-
-For the send allowlist, a disabled type **never leaves this machine** —
-the gate is enforced at the scheduler. For the receive allowlist, a
-disabled type is rejected locally before it enters history or the
-system clipboard. So:
-
-- Off for "File" → stops eating that peer's file-cache budget.
-- Off for "Image" → screenshots stop competing for bandwidth.
-- `Restore defaults` is a ghost button at the top-right of the "Sync
-  settings" section (not in the footer) — one click puts both directions
-  and every content type back to their defaults.
-
-<Callout type="info">
-  Rules apply per-peer. With multiple peers, you can configure them separately — e.g. send only text
-  to a work laptop, no files to a phone.
-</Callout>
+Text, images, links, files, and rich text each offer four directions: both, send only, receive only, or off. **Restore defaults** restores the default sync rules.
+Disabled send types never leave this device for that peer. Disabled receive types are rejected before they enter local history or the system clipboard.
+These preferences apply locally to this peer; they do not change the peer's preferences. Re-enabling a type affects future content only.
 
 ## Unpairing
 
-`Unpair` lives on the left side of the modal footer (destructive —
-confirms twice). After unpairing:
+Click **Unpair** in the device-detail header and confirm. After unpairing:
 
 - The peer disappears from "Space members".
 - Once removal completes, future traffic from that node ID is rejected by the protected space.
@@ -186,72 +116,23 @@ stolen device. Treat that local copy as still accessible.
 **Re-pair the removed device:** Create a fresh `invite` on a trusted remaining
 device and join from the removed device.
 
+## Rebuilding the space
+
+In this device's **Danger zone**, click **Rebuild space**, enter `RESET`, and confirm.
+Rebuilding creates a new space containing only this device. Local history and settings remain; old membership, security state, and unfinished invitations are cleared. Other devices must pair again.
+
 ## Mobile sync devices
 
-Paired mobile clients live under the **Mobile sync** tab on the same
-page — they aren't desktop peers and don't share the iroh trust mesh,
-so they get their own card grid distinct from the Paired devices grid.
+Registered phones appear in a separate group on the left, with their names and last activity. They are not members of the desktop trust group and do not show desktop transport badges.
+Selecting a phone opens its server address, username, last activity, and credential controls on the right.
 
-### Tab-bar actions
+The footer menu provides mobile sync settings and registration. Registration guides you through enabling mobile sync if needed and reports listener failures. When phones are registered, a settings button also appears beside their group heading.
 
-Switching to the Mobile sync tab swaps in two buttons on the right
-of the tab bar:
+An existing device's original password cannot be recovered. Reset the password to pair it again. Newly created or updated credentials provide a fresh QR code and credential backup in the detail panel.
+Editing allows changes to the label, username, or password; a blank password keeps the existing one. Changing the username reissues credentials and requires the phone to pair again.
+Revoking a device prevents its old credentials from accessing the service.
 
-| Button       | What it does                                                                                                                                                                  |
-| ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `Configure`  | Opens the **Mobile sync settings** modal — master switch, LAN listen toggle, bind IP, port, and current listen URL.                                                           |
-| `Add device` | Starts the registration flow ([Mobile sync — Pair an iPhone](./mobile-sync#pair-an-iphone)). If the master switch or LAN listener is off, an onboarding dialog appears first. |
-
-If the LAN listener fails to bind (port in use, permission denied,
-…), `Add device` stays clickable and clicking it surfaces the reason
-as a toast. The full reason — and the LAN safety warning — live as
-Alerts **inside** the Configure modal; there's no separate status
-strip on the page anymore.
-
-### Paired cards
-
-Each card:
-
-- Top: blue `Smartphone` icon.
-- Middle: the label you gave the device, plus the Basic Auth
-  **username** in mono (copy it for diagnostics).
-- Bottom: last-active timestamp.
-
-The **whole card** is clickable. Clicking it opens a **Mobile sync
-device** dialog rather than triggering an inline action. The dialog
-has two views:
-
-- **Info view (default)** — shows the current connection: base URL
-  (with a network-interface dropdown so you can re-pick the
-  advertised IP) and either a QR placeholder ("server only stores a
-  password hash — click Edit device to set a new one and scan
-  it here") or, if you just changed the credentials, the freshly-minted
-  `uniclipboard://connect` QR plus an amber **Credentials** zone
-  with a one-click **Backup** button. Footer buttons: **Edit
-  device** (left), **Revoke** + **Done** (right).
-- **Edit view** — opened by pressing **Edit device**. Lets you change
-  the label, username, and/or password (leave the password blank to
-  keep it, press **Regenerate** for an auto-generated one, or type a
-  new one — at least 8 characters). Changing the username reissues the
-  password, so the device must be re-paired. On success the dialog
-  flips back to Info view with the new QR / amber credentials visible,
-  so you can scan or copy immediately. When the password changes, the
-  old Argon2id hash is invalidated atomically and the old credentials
-  stop working immediately.
-
-Pressing **Revoke** removes the device record. Subsequent requests
-with those credentials get `401 Unauthorized`.
-
-<Callout type="info">
-  Mobile cards don't show the `LAN / Direct / Relay` transport badge — mobile sync speaks
-  SyncClipboard HTTP rather than the iroh transport, so there's nothing to compare against.
-</Callout>
-
-For the full setup walkthrough (LAN listener, advertised IP, iOS
-Shortcut install, security caveats), jump to
-[Mobile sync](./mobile-sync). The pairing flow itself is also
-described under
-[Pairing & sync — Mobile companion](../guides/pairing#mobile-companion).
+For the full setup walkthrough, see [Mobile sync](./mobile-sync).
 
 ## How fast does online status update
 
@@ -284,8 +165,8 @@ back to force a refresh; if it's still off, head to
 | Add device → invite code        | `uniclip invite`                                                                                                      |
 | Join an existing space          | `uniclip join <code>`                                                                                                 |
 | Copy Peer ID                    | `uniclip status --json` → `network.endpoint`                                                                          |
-| Unpair                          | **GUI only today**; a CLI subcommand is on the roadmap                                                                |
-| Per-peer content-type allowlist | **GUI only today**; CLI configuration subcommand is on the roadmap                                                    |
+| Unpair                          | `uniclip member remove <PEER-ID>`                                                                |
+| Per-peer content-type allowlist | `uniclip member sync show <DEVICE>` / `uniclip member sync set <DEVICE>`                                                    |
 | Mobile sync — status            | `uniclip mobile status`                                                                                               |
 | Mobile sync — list paired       | `uniclip mobile status`                                                                                               |
 | Mobile sync — register a device | `uniclip mobile setup` (wizard) or `uniclip mobile add --label …`                                                     |

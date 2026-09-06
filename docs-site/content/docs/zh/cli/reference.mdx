@@ -30,11 +30,11 @@ description: uniclip 全部子命令 —— 成员、发送/监听、搜索、bl
 | 命令                          | 作用                                             |
 | ----------------------------- | ------------------------------------------------ |
 | `uniclip member trust status` | 查看当前设备组变化、变化 ID 以及每种选择的影响。 |
-| `uniclip member trust apply`  | 确认后应用等待处理的设备组变化。                 |
-| `uniclip member trust keep`   | 保留当前设备组，不应用等待处理的变化。           |
+| `uniclip member trust choose` | 从当前设备组问题的可用选项中选择。 |
 
-脚本和 JSON 调用必须传入 `--change <CHANGE-ID>`，确保选择对应刚刚查看的变化。
-如果应用变化会移除本机，还必须传入 `--confirm-local-removal`。
+交互终端可按提示选择。脚本或 JSON 调用应传入 `--issue <ISSUE-ID>` 和 `--choice <CHOICE-ID>`，
+使用 `member trust status` 返回的编号；涉及移除本机还需 `--confirm-local-removal`。
+如果状态已变化，应重新查询再选择；提交结果可能仍在等待或需要重新配对。
 
 ### 按成员设置同步
 

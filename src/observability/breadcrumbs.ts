@@ -1,4 +1,4 @@
-import { Sentry, sentryEnabled } from '@/observability/sentry'
+import { recordDiagnosticBreadcrumb, diagnosticsConfigured } from '@/observability/diagnostics'
 
 export type UserIntent =
   | 'copy_clipboard'
@@ -10,10 +10,10 @@ export type UserIntent =
   | 'toggle_favorite'
 
 export function captureUserIntent(intent: UserIntent, context?: Record<string, unknown>) {
-  if (!sentryEnabled) {
+  if (!diagnosticsConfigured) {
     return
   }
-  Sentry.addBreadcrumb({
+  recordDiagnosticBreadcrumb({
     category: 'user_intent',
     message: intent,
     level: 'info',

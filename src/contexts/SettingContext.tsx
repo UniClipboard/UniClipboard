@@ -15,7 +15,7 @@ import { createLogger } from '@/lib/logger'
 import { emitSettingsChanged } from '@/lib/settings-events'
 import { applyThemeOverrides, applyThemePreset } from '@/lib/theme-engine'
 import { startThemeTransition } from '@/lib/theme-transition'
-import { setFrontendSentryEnabled } from '@/observability/sentry'
+import { setDiagnosticsEnabled } from '@/observability/diagnostics'
 import type {
   RelaySaveContextResult,
   RelaySaveMutation,
@@ -466,7 +466,7 @@ export const SettingProvider: React.FC<SettingProviderProps> = ({ children }) =>
   useEffect(() => {
     const enabled = setting?.general?.telemetryEnabled
     if (typeof enabled !== 'boolean') return
-    setFrontendSentryEnabled(enabled)
+    setDiagnosticsEnabled(enabled)
   }, [setting?.general?.telemetryEnabled])
 
   const value: SettingContextType = {

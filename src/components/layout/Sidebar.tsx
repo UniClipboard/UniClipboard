@@ -39,7 +39,7 @@ import { useSettingSelector } from '@/hooks/useSetting'
 import { useUpdate } from '@/hooks/useUpdate'
 import { createLogger } from '@/lib/logger'
 import { cn } from '@/lib/utils'
-import { sentryEnabled } from '@/observability/sentry'
+import { diagnosticsConfigured } from '@/observability/diagnostics'
 
 const log = createLogger('sidebar')
 
@@ -449,7 +449,7 @@ const Sidebar: React.FC<SidebarProps> = ({ className }) => {
               </Tooltip>
             </TooltipProvider>
           )}
-          {sentryEnabled && (
+          {diagnosticsConfigured && (
             <>
               <TooltipProvider delay={0}>
                 <Tooltip>

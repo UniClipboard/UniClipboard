@@ -2,19 +2,21 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 // Mock Sentry's namespaced logger so we can assert which severity the pino
 // transmit hook routes each pino level to and what attributes it attaches.
-const sentryLogger = {
+const diagnosticLogger = {
   trace: vi.fn(),
   debug: vi.fn(),
   info: vi.fn(),
   warn: vi.fn(),
   error: vi.fn(),
   fatal: vi.fn(),
-  fmt: (strings: TemplateStringsArray, ...values: unknown[]) =>
-    strings.reduce((acc, part, i) => acc + part + (i < values.length ? String(values[i]) : ''), ''),
 }
 
-vi.mock('@sentry/react', () => ({
-  logger: sentryLogger,
+vi.mock('@/observability/diagnostics', () => ({
+  writeDiagnosticLog: (
+    level: keyof typeof diagnosticLogger,
+    message: string,
+    attributes?: Record<string, unknown>
+  ) => diagnosticLogger[level](message, attributes),
 }))
 
 // traceManager is consulted on every transmit; mock so individual cases can
@@ -31,7 +33,7 @@ async function loadLogger() {
   return import('@/lib/logger')
 }
 
-describe('frontend pino → Sentry Logs bridge', () => {
+describe('frontend diagnostic logging', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     getCurrentTrace.mockReturnValue(null)
@@ -41,26 +43,26 @@ describe('frontend pino → Sentry Logs bridge', () => {
     vi.restoreAllMocks()
   })
 
-  it('routes pino.info() to Sentry.logger.info with the module attribute', async () => {
+  it('routes pino.info() to diagnostics.info with the module attribute', async () => {
     const { createLogger } = await loadLogger()
     const log = createLogger('daemon-ws')
 
     log.info('connected')
 
-    expect(sentryLogger.info).toHaveBeenCalledTimes(1)
-    const [message, attributes] = sentryLogger.info.mock.calls[0]
+    expect(diagnosticLogger.info).toHaveBeenCalledTimes(1)
+    const [message, attributes] = diagnosticLogger.info.mock.calls[0]
     expect(message).toBe('connected')
     expect(attributes).toEqual({ module: 'daemon-ws' })
   })
 
-  it('routes pino.error() to Sentry.logger.error and surfaces the message text', async () => {
+  it('routes pino.error() to diagnostics.error and surfaces the message text', async () => {
     const { createLogger } = await loadLogger()
     const log = createLogger('worker')
 
     log.error('task failed')
 
-    expect(sentryLogger.error).toHaveBeenCalledTimes(1)
-    const [message, attributes] = sentryLogger.error.mock.calls[0]
+    expect(diagnosticLogger.error).toHaveBeenCalledTimes(1)
+    const [message, attributes] = diagnosticLogger.error.mock.calls[0]
     expect(message).toBe('task failed')
     expect(attributes).toEqual({ module: 'worker' })
   })
@@ -70,8 +72,8 @@ describe('frontend pino → Sentry Logs bridge', () => {
 
     logger.warn({ password: 'hunter2', other: 'ok' }, 'auth event')
 
-    expect(sentryLogger.warn).toHaveBeenCalledTimes(1)
-    const [message] = sentryLogger.warn.mock.calls[0]
+    expect(diagnosticLogger.warn).toHaveBeenCalledTimes(1)
+    const [message] = diagnosticLogger.warn.mock.calls[0]
     // Pino concatenates child bindings + message args — the redacted object
     // becomes part of the rendered message string.
     expect(message).toContain('[REDACTED]')
@@ -92,7 +94,7 @@ describe('frontend pino → Sentry Logs bridge', () => {
       're-pairing credentials rejected'
     )
 
-    const [, attributes] = sentryLogger.info.mock.calls[0]
+    const [, attributes] = diagnosticLogger.info.mock.calls[0]
     expect(attributes).toEqual({
       module: 'add-device-dialog',
       event: 'credentials_rejected',
@@ -108,8 +110,8 @@ describe('frontend pino → Sentry Logs bridge', () => {
 
     log.info('captured')
 
-    expect(sentryLogger.info).toHaveBeenCalledTimes(1)
-    const [, attributes] = sentryLogger.info.mock.calls[0]
+    expect(diagnosticLogger.info).toHaveBeenCalledTimes(1)
+    const [, attributes] = diagnosticLogger.info.mock.calls[0]
     expect(attributes).toEqual({ module: 'clipboard', trace_id: 'trace-abc' })
   })
 
@@ -118,8 +120,8 @@ describe('frontend pino → Sentry Logs bridge', () => {
 
     logger.info('plain message')
 
-    expect(sentryLogger.info).toHaveBeenCalledTimes(1)
-    const [, attributes] = sentryLogger.info.mock.calls[0]
+    expect(diagnosticLogger.info).toHaveBeenCalledTimes(1)
+    const [, attributes] = diagnosticLogger.info.mock.calls[0]
     expect(attributes).toBeUndefined()
   })
 
@@ -129,7 +131,7 @@ describe('frontend pino → Sentry Logs bridge', () => {
 
     log.debug('chatty')
 
-    expect(sentryLogger.debug).not.toHaveBeenCalled()
-    expect(sentryLogger.info).not.toHaveBeenCalled()
+    expect(diagnosticLogger.debug).not.toHaveBeenCalled()
+    expect(diagnosticLogger.info).not.toHaveBeenCalled()
   })
 })

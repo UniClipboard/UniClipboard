@@ -1,8 +1,8 @@
 import { invoke } from '@tauri-apps/api/core'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { invokeWithTrace } from '@/lib/tauri-command'
+import { captureDiagnosticException, recordDiagnosticBreadcrumb } from '@/observability/diagnostics'
 import { redactSensitiveArgs } from '@/observability/redaction'
-import { Sentry } from '@/observability/sentry'
 import { traceManager } from '@/observability/trace'
 
 vi.mock('@tauri-apps/api/core', () => ({
@@ -16,11 +16,9 @@ vi.mock('@/observability/trace', () => ({
   },
 }))
 
-vi.mock('@/observability/sentry', () => ({
-  Sentry: {
-    addBreadcrumb: vi.fn(),
-    captureException: vi.fn(),
-  },
+vi.mock('@/observability/diagnostics', () => ({
+  recordDiagnosticBreadcrumb: vi.fn(),
+  captureDiagnosticException: vi.fn(),
 }))
 
 describe('invokeWithTrace', () => {
@@ -39,7 +37,7 @@ describe('invokeWithTrace', () => {
     await invokeWithTrace('get_clipboard_entries', args)
 
     expect(traceManager.startTrace).toHaveBeenCalledWith('get_clipboard_entries')
-    expect(Sentry.addBreadcrumb).toHaveBeenCalledWith({
+    expect(recordDiagnosticBreadcrumb).toHaveBeenCalledWith({
       category: 'tauri_command',
       message: 'get_clipboard_entries',
       level: 'info',
@@ -52,7 +50,7 @@ describe('invokeWithTrace', () => {
         timestamp: trace.startTime,
       },
     })
-    expect(traceManager.endTrace).toHaveBeenCalled()
+    expect(traceManager.endTrace).toHaveBeenCalledWith(trace)
   })
 
   it('redacts sensitive args for sentry breadcrumbs and errors', async () => {
@@ -66,13 +64,13 @@ describe('invokeWithTrace', () => {
 
     await expect(invokeWithTrace('set_clipboard', args)).rejects.toThrow('boom')
 
-    expect(Sentry.addBreadcrumb).toHaveBeenCalledWith({
+    expect(recordDiagnosticBreadcrumb).toHaveBeenCalledWith({
       category: 'tauri_command',
       message: 'set_clipboard',
       level: 'info',
       data: { traceId: trace.traceId, args: safeArgs },
     })
-    expect(Sentry.captureException).toHaveBeenCalledWith(error, {
+    expect(captureDiagnosticException).toHaveBeenCalledWith(error, {
       tags: { command: 'set_clipboard', traceId: trace.traceId },
       extra: { args: safeArgs },
     })
@@ -83,7 +81,7 @@ describe('invokeWithTrace', () => {
         timestamp: trace.startTime,
       },
     })
-    expect(traceManager.endTrace).toHaveBeenCalled()
+    expect(traceManager.endTrace).toHaveBeenCalledWith(trace)
   })
 
   it('does NOT report expected user/validation errors to Sentry', async () => {
@@ -101,10 +99,10 @@ describe('invokeWithTrace', () => {
     await expect(invokeWithTrace('update_keyboard_shortcuts')).rejects.toEqual(userError)
 
     // Still rethrows for the caller to handle, and still leaves a breadcrumb…
-    expect(Sentry.addBreadcrumb).toHaveBeenCalled()
+    expect(recordDiagnosticBreadcrumb).toHaveBeenCalled()
     // …but no exception is captured.
-    expect(Sentry.captureException).not.toHaveBeenCalled()
-    expect(traceManager.endTrace).toHaveBeenCalled()
+    expect(captureDiagnosticException).not.toHaveBeenCalled()
+    expect(traceManager.endTrace).toHaveBeenCalledWith(trace)
   })
 
   it('reports unexpected system errors to Sentry', async () => {
@@ -116,7 +114,7 @@ describe('invokeWithTrace', () => {
 
     await expect(invokeWithTrace('register_mobile_device')).rejects.toEqual(systemError)
 
-    expect(Sentry.captureException).toHaveBeenCalledTimes(1)
-    expect(traceManager.endTrace).toHaveBeenCalled()
+    expect(captureDiagnosticException).toHaveBeenCalledTimes(1)
+    expect(traceManager.endTrace).toHaveBeenCalledWith(trace)
   })
 })

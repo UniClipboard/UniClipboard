@@ -1,6 +1,6 @@
 import { USER_FACING_ERROR_CODES } from '@/lib/error-severity.generated'
+import { captureDiagnosticException, diagnosticsConfigured } from '@/observability/diagnostics'
 import { redactSensitiveArgs } from '@/observability/redaction'
-import { Sentry, sentryEnabled } from '@/observability/sentry'
 
 /**
  * Wrap a Rust-side typed-error envelope (`{ code: string, ...payload }`) into
@@ -52,8 +52,8 @@ export function isExpectedCommandError(error: unknown): boolean {
 class ExpectedError extends Error {}
 
 export function reportError(error: unknown, context?: Record<string, unknown>) {
-  if (!sentryEnabled || error instanceof ExpectedError || isExpectedCommandError(error)) {
+  if (!diagnosticsConfigured || error instanceof ExpectedError || isExpectedCommandError(error)) {
     return
   }
-  Sentry.captureException(error, { extra: context })
+  captureDiagnosticException(error, { extra: context })
 }

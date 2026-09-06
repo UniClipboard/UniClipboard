@@ -1,40 +1,37 @@
+import * as Sentry from '@sentry/react'
 import { describe, expect, it, vi } from 'vitest'
-vi.mock('@/observability/sentry', () => ({
-  Sentry: {
-    startInactiveSpan: vi.fn(() => ({
-      spanContext: () => ({ traceId: crypto.randomUUID() }),
-      end: vi.fn(),
-    })),
-  },
-  sentryEnabled: true,
-}))
 import { traceManager } from '../trace'
 
-describe('traceManager', () => {
-  it('generates unique trace ids', () => {
-    const first = traceManager.startTrace('test')
-    traceManager.endTrace()
-    const second = traceManager.startTrace('test')
-    expect(first.traceId).not.toBe(second.traceId)
-    traceManager.endTrace()
+vi.mock('@sentry/react', async importOriginal => ({
+  ...(await importOriginal<typeof Sentry>()),
+  startInactiveSpan: vi.fn(() => ({
+    spanContext: () => ({ traceId: crypto.randomUUID() }),
+    end: vi.fn(),
+  })),
+}))
+
+describe('diagnostic operation ownership', () => {
+  it('does not expose provider objects to callers', () => {
+    const trace = traceManager.startTrace('copy')
+    expect(trace).not.toHaveProperty('sentrySpan')
+    traceManager.endTrace(trace)
   })
 
-  it('creates a Sentry span on startTrace', async () => {
-    const { Sentry } = await import('@/observability/sentry')
-    const trace = traceManager.startTrace('test.operation')
-    expect(Sentry.startInactiveSpan).toHaveBeenCalledWith({
-      name: 'test.operation',
-      op: 'ui.action',
-    })
-    expect(trace.sentrySpan).toBeDefined()
-    traceManager.endTrace()
-  })
+  it('finishes only the requested operation when calls overlap', () => {
+    const first = traceManager.startTrace('first')
+    const firstSpan = vi.mocked(Sentry.startInactiveSpan).mock.results.slice(-1)[0]!.value
+    const second = traceManager.startTrace('second')
+    const secondSpan = vi.mocked(Sentry.startInactiveSpan).mock.results.slice(-1)[0]!.value
 
-  it('ends the Sentry span on endTrace', async () => {
-    const trace = traceManager.startTrace('test.end')
-    const endSpy = trace.sentrySpan!.end as ReturnType<typeof vi.fn>
-    traceManager.endTrace()
-    expect(endSpy).toHaveBeenCalled()
+    expect(traceManager.getCurrentTrace()).toBeNull()
+    traceManager.endTrace(first)
+    expect(firstSpan.end).toHaveBeenCalledOnce()
+    expect(secondSpan.end).not.toHaveBeenCalled()
+    expect(traceManager.getCurrentTrace()).toBe(second)
+    traceManager.endTrace(first)
+    expect(firstSpan.end).toHaveBeenCalledOnce()
+    traceManager.endTrace(second)
+    expect(secondSpan.end).toHaveBeenCalledOnce()
     expect(traceManager.getCurrentTrace()).toBeNull()
   })
 })

@@ -37,9 +37,9 @@
  * The wrapper transparently injects trace + redacts logs + bubbles errors.
  */
 
+import { captureDiagnosticException, recordDiagnosticBreadcrumb } from '@/observability/diagnostics'
 import { isExpectedCommandError, toReportableError } from '@/observability/errors'
 import { redactSensitiveArgs } from '@/observability/redaction'
-import { Sentry } from '@/observability/sentry'
 import { traceManager } from '@/observability/trace'
 import { commands as raw } from './ipc-bindings.generated'
 
@@ -126,7 +126,7 @@ function buildProxy(): TypedCommands {
             Object.fromEntries(args.map((value, index) => [`arg${index}`, value]))
           )
 
-          Sentry.addBreadcrumb({
+          recordDiagnosticBreadcrumb({
             category: 'tauri_command',
             message: prop,
             level: 'info',
@@ -153,14 +153,14 @@ function buildProxy(): TypedCommands {
             // noise. Only capture genuinely unexpected failures. The breadcrumb
             // above still records the call for context on later real errors.
             if (!isExpectedCommandError(error)) {
-              Sentry.captureException(toReportableError(error, prop), {
+              captureDiagnosticException(toReportableError(error, prop), {
                 tags: { command: prop, traceId: trace.traceId },
                 extra: { args: safeArgs },
               })
             }
             throw error
           } finally {
-            traceManager.endTrace()
+            traceManager.endTrace(trace)
           }
         }
       },

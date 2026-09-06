@@ -1,17 +1,12 @@
 import { configureStore } from '@reduxjs/toolkit'
-import { redactSensitiveArgs } from '@/observability/redaction'
-import { Sentry, sentryEnabled } from '@/observability/sentry'
+import { createDiagnosticsEnhancer } from '@/observability/diagnostics'
 import { appApi } from './api'
 import clipboardReducer from './slices/clipboardSlice'
 import devicesReducer from './slices/devicesSlice'
 import fileTransferReducer from './slices/fileTransferSlice'
 import statsReducer from './slices/statsSlice'
 
-const sentryReduxEnhancer = sentryEnabled
-  ? Sentry.createReduxEnhancer({
-      stateTransformer: state => redactSensitiveArgs(state) as Record<string, unknown>,
-    })
-  : undefined
+const diagnosticsEnhancer = createDiagnosticsEnhancer()
 
 export const store = configureStore({
   reducer: {
@@ -24,7 +19,7 @@ export const store = configureStore({
   middleware: getDefaultMiddleware => getDefaultMiddleware().concat(appApi.middleware),
   enhancers: getDefaultEnhancers => {
     const enhancers = getDefaultEnhancers()
-    return sentryReduxEnhancer ? enhancers.concat(sentryReduxEnhancer) : enhancers
+    return diagnosticsEnhancer ? enhancers.concat(diagnosticsEnhancer) : enhancers
   },
 })
 

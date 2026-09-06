@@ -1,3 +1,4 @@
+import type { StoreEnhancer } from '@reduxjs/toolkit'
 import type { ErrorEvent, EventHint } from '@sentry/core'
 import * as Sentry from '@sentry/react'
 import React from 'react'
@@ -9,6 +10,14 @@ import {
   useNavigationType,
 } from 'react-router'
 import { redactSensitiveArgs } from '@/observability/redaction'
+import type {
+  DiagnosticBreadcrumb,
+  DiagnosticDeviceContext,
+  DiagnosticExceptionContext,
+  DiagnosticFeedback,
+  DiagnosticLogLevel,
+  DiagnosticTrace,
+} from './types'
 
 const sentryEnabled = Boolean(import.meta.env.VITE_SENTRY_DSN)
 export const DEVICE_ROLE_WEBVIEW = 'webview'
@@ -206,30 +215,8 @@ export function initSentry(): void {
   syncFrontendReplayEnabled(sentryRuntimeEnabled)
 }
 
-/**
- * `applyDeviceMetaToSentry` 接收的设备和应用元数据。
- * 形状与 `src/api/runtime.ts::DeviceMeta` 保持一致；这里单独声明，避免本模块
- * 引入 Tauri 相关依赖，方便浏览器环境下的 Vitest 测试。
- */
-export interface SentryDeviceMeta {
-  deviceId: string
-  deviceRole: string
-  platform: string
-  appVersion: string
-  appChannel: string
-}
-
-/**
- * 把 `get_device_meta` 返回的设备和应用元数据写入 Sentry 全局 scope。
- * 这与 Rust 侧 `uc-bootstrap::tracing` 里的 scope 写入保持同一套标签，
- * 让 webview 和 Rust 主进程事件能按 `device.id` 关联。
- *
- * 注意:webview 自身的角色固定为 `webview`,而 Rust 主进程上报的
- * `deviceRole`(`gui-host` / `daemon` / `cli`)挂在二级 tag
- * `device.host_role` 上 —— 这样一台机器的两个进程在 Sentry 上既能用 `device.id`
- * 聚合,又能用 role 区分。
- */
-export function applyDeviceMetaToSentry(meta: SentryDeviceMeta): void {
+/** Attach host metadata without exposing provider scopes to callers. */
+export function applyDeviceMetaToSentry(meta: DiagnosticDeviceContext): void {
   if (!sentryEnabled) {
     return
   }
@@ -246,6 +233,54 @@ export function applyDeviceMetaToSentry(meta: SentryDeviceMeta): void {
  * Sentry-instrumented Routes component.
  * Use this instead of `Routes` to get parameterized navigation tracing.
  */
-export const SentryRoutes = Sentry.withSentryReactRouterV7Routing(Routes)
+export const DiagnosticsRoutes: React.ComponentType<React.ComponentProps<typeof Routes>> =
+  Sentry.withSentryReactRouterV7Routing(Routes)
 
-export { Sentry, sentryEnabled }
+export const DiagnosticsErrorBoundary: React.ComponentType<{
+  children?: React.ReactNode
+  fallback: React.ReactElement
+}> = ({ children, fallback }) => React.createElement(Sentry.ErrorBoundary, { fallback }, children)
+
+export function captureDiagnosticException(
+  error: unknown,
+  context?: DiagnosticExceptionContext
+): void {
+  Sentry.captureException(error, context)
+}
+
+export function recordDiagnosticBreadcrumb(breadcrumb: DiagnosticBreadcrumb): void {
+  Sentry.addBreadcrumb(breadcrumb)
+}
+
+export function writeDiagnosticLog(
+  level: DiagnosticLogLevel,
+  message: string,
+  attributes?: Record<string, unknown>
+): void {
+  Sentry.logger[level](message, attributes)
+}
+
+export async function submitDiagnosticFeedback(feedback: DiagnosticFeedback): Promise<void> {
+  const associatedEventId = Sentry.captureMessage('User Feedback')
+  Sentry.captureFeedback({ ...feedback, name: 'User', associatedEventId })
+}
+
+export function startDiagnosticTrace(operation: string): DiagnosticTrace {
+  const span = sentryEnabled
+    ? Sentry.startInactiveSpan({ name: operation, op: 'ui.action' })
+    : undefined
+  return {
+    traceId: span?.spanContext().traceId ?? crypto.randomUUID(),
+    finish: () => span?.end(),
+  }
+}
+
+export function createDiagnosticsEnhancer(): StoreEnhancer | undefined {
+  return sentryEnabled
+    ? Sentry.createReduxEnhancer({
+        stateTransformer: state => redactSensitiveArgs(state) as Record<string, unknown>,
+      })
+    : undefined
+}
+
+export { sentryEnabled }

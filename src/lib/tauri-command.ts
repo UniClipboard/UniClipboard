@@ -1,7 +1,7 @@
 import { invoke } from '@tauri-apps/api/core'
+import { captureDiagnosticException, recordDiagnosticBreadcrumb } from '@/observability/diagnostics'
 import { isExpectedCommandError, toReportableError } from '@/observability/errors'
 import { redactSensitiveArgs } from '@/observability/redaction'
-import { Sentry } from '@/observability/sentry'
 import { traceManager } from '@/observability/trace'
 
 /**
@@ -24,7 +24,7 @@ export async function invokeWithTrace<T>(
   const trace = traceManager.startTrace(command)
   const safeArgs = redactSensitiveArgs(args)
 
-  Sentry.addBreadcrumb({
+  recordDiagnosticBreadcrumb({
     category: 'tauri_command',
     message: command,
     level: 'info',
@@ -44,13 +44,13 @@ export async function invokeWithTrace<T>(
     // input-validation rejections don't raise Sentry alerts. The breadcrumb
     // above still records the invocation for context on real failures.
     if (!isExpectedCommandError(error)) {
-      Sentry.captureException(toReportableError(error, command), {
+      captureDiagnosticException(toReportableError(error, command), {
         tags: { command, traceId: trace.traceId },
         extra: { args: safeArgs },
       })
     }
     throw error
   } finally {
-    traceManager.endTrace()
+    traceManager.endTrace(trace)
   }
 }

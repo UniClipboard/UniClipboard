@@ -32,12 +32,12 @@ that local wait; use `join cancel` when the request itself should be cancelled.
 | Command                                       | Effect                                                                                     |
 | --------------------------------------------- | ------------------------------------------------------------------------------------------ |
 | `uniclip member trust status`                 | Show the current device-group change, its identifier, and the effect of each choice.      |
-| `uniclip member trust apply`                  | Apply the pending device-group change after confirmation.                                 |
-| `uniclip member trust keep`                   | Keep the current device group instead of applying the pending change.                     |
+| `uniclip member trust choose` | Select an available option for a current device-group issue. |
 
-Scripts and JSON callers must pass `--change <CHANGE-ID>` to bind the choice to
-the change they inspected. Applying a change that removes the local device also
-requires `--confirm-local-removal`.
+Interactive terminals can follow the prompts. Scripts and JSON callers should pass
+`--issue <ISSUE-ID>` and `--choice <CHOICE-ID>` using identifiers returned by
+`member trust status`. Removing this device also requires `--confirm-local-removal`.
+Query again if state has changed; a submitted choice may still be pending or require re-pairing.
 
 ### Per-member sync
 

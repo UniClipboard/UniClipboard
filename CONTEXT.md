@@ -65,6 +65,12 @@ Engine 持久保存、等待本机用户决定的一次设备组移除变化，�
 重复提交或状态已经变化时，由 Engine 返回明确结果，客户端不得自行补算。
 _Avoid_: pending removal flag、local dialog state、client-side decision
 
+**Device group choice**：
+Engine 针对当前设备组问题给出的可选成员集合，包含是否为当前组、成员是否完整及是否需要重新配对；
+**Pending device change** 是其中一种待决定情况。客户端按当前查询版本提交选项，状态变化后重新查询；
+涉及移除本机必须再次确认，提交结果分别表达已完成、等待完成或需要重新配对，不得把提交成功当作完成。
+_Avoid_: client-side group inference、fixed apply-or-keep decision
+
 **Membership divergence**：
 用户选择保留当前设备组后形成的长期设备组分歧。分歧双方停止互相同步，各自设备组继续独立
 使用；它不是离线、失败或待处理状态，当前版本也不会自动合并或恢复。客户端只展示 Engine

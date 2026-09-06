@@ -105,7 +105,7 @@ function HistorySearchPanel(props: HistorySearchPanelProps) {
       </div>
 
       {visibleChips.length > 0 && (
-        <div className="no-scrollbar flex shrink-0 items-center gap-1.5 overflow-x-auto border-t border-border/60 px-3 py-2">
+        <div className="flex shrink-0 items-center gap-1.5 overflow-x-auto border-t border-border/60 px-3 py-2">
           {visibleChips.map(chip => {
             const Icon = chip.icon
             return (
@@ -132,7 +132,7 @@ function HistorySearchPanel(props: HistorySearchPanelProps) {
       <div className="flex h-56 min-h-0 shrink-0 border-t border-border">
         <nav
           aria-label={t('history.composite.filterCategories')}
-          className="no-scrollbar flex w-28 shrink-0 flex-col gap-1 overflow-y-auto border-r border-border p-2"
+          className="flex w-28 shrink-0 flex-col gap-1 overflow-y-auto border-r border-border p-2"
         >
           {DIMENSIONS.map(item => (
             <button
@@ -153,7 +153,7 @@ function HistorySearchPanel(props: HistorySearchPanelProps) {
           ))}
         </nav>
 
-        <div className="no-scrollbar grid min-w-0 flex-1 grid-cols-1 content-start gap-1 overflow-y-auto p-2">
+        <div className="grid min-w-0 flex-1 grid-cols-1 content-start gap-1 overflow-y-auto p-2">
           {props.searchSuggestionsOpen ? (
             props.searchOptions.map((option, index) => {
               const Icon = option.icon

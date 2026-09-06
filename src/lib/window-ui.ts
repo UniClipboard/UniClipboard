@@ -1,4 +1,5 @@
 import { applyPlatformEffectPreferences, detectPlatformInfo } from '@/lib/platform'
+import { initializeScrollbarVisibility } from '@/lib/scrollbar-visibility'
 import { initializeUiScale } from '@/lib/ui-scale'
 import { initializeUiSound } from '@/lib/ui-sound'
 
@@ -28,11 +29,13 @@ export const applyPlatformTypographyScale = () => {
 export const initializeWindowUi = (): (() => void) => {
   applyPlatformTypographyScale()
   applyPlatformEffectPreferences()
+  const disposeScrollbarVisibility = initializeScrollbarVisibility()
   const disposeUiScale = initializeUiScale()
   const disposeUiSound = initializeUiSound()
 
   return () => {
     disposeUiSound()
     disposeUiScale()
+    disposeScrollbarVisibility()
   }
 }

@@ -1566,6 +1566,20 @@
       },
       "sync": {
         "title": "同期設定",
+        "syncWithDevice": "{{deviceName}} と同期",
+        "enabledDescription": "両方のデバイスでコピーした内容を自動的に同期します。",
+        "disabledDescription": "このデバイスとの同期はオフです。",
+        "customize": "同期する内容をカスタマイズ",
+        "allBoth": "すべて双方向",
+        "customized": "カスタマイズ済み",
+        "customizeDescription": "コンテンツごとに同期方向を選択します。",
+        "directionLabel": "{{contentType}} の同期方向",
+        "modes": {
+          "both": "双方向",
+          "sendOnly": "{{deviceName}} にのみ送信",
+          "receiveOnly": "{{deviceName}} からのみ受信",
+          "off": "同期しない"
+        },
         "helpLabel": "送信と受信について",
         "help": "送信では、このコンピューターからこのデバイスへ同期する内容を指定します。受信では、このデバイスから受け取る内容を指定します。",
         "restoreDefaults": "既定値に戻す",

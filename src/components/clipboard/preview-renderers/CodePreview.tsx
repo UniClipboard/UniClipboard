@@ -15,7 +15,7 @@ const CodePreview: React.FC<CodePreviewProps> = ({ item, preview }) => {
   return (
     <div
       data-testid="code-preview"
-      className="scrollbar-code h-full overflow-auto bg-transparent font-mono text-[13px] leading-relaxed text-foreground/85"
+      className="h-full overflow-auto bg-transparent font-mono text-[13px] leading-relaxed text-foreground/85"
     >
       <div className="flex w-max min-w-full">
         <div

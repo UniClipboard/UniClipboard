@@ -41,6 +41,10 @@ Examples:
 
 ## Frontend Architecture Notes
 
+- 局部设置控件优先通过 `useSettingSelector` 读取实际需要的字段，选择结果应为基本值或已有的稳定引用；不要在选择函数中创建新对象。需要完整设置的页面可以继续使用 `useSetting()`。
+- 保存状态由发起操作的控件持有，避免禁用或刷新无关的设置行。`SettingProvider` 继续负责保存排队与权威值更新，控件不另存业务设置副本。
+- 设置上下文使用 `use-context-selector`，不要通过 React 的 `use()` 直接读取 `SettingContext`。主题应用仅依赖外观配置，修改同步等其他配置不应重新写入整页主题。
+
 - Prefer API wrappers in `src/api/*` and shared helpers over direct `invoke()` in components.
 - Keep route gating in `App.tsx` or layout-level logic, not duplicated in leaf components.
 - Avoid parallel state sources for the same domain (local cache + Redux for the same truth).

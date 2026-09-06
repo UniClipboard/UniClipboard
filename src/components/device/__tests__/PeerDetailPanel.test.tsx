@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { I18nextProvider } from 'react-i18next'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -45,7 +45,7 @@ const preferences: MemberSyncPreferences = {
 
 const state = {
   devices: {
-    memberSyncPreferences: { 'peer-1': preferences },
+    memberSyncPreferences: { 'peer-1': preferences } as Record<string, MemberSyncPreferences>,
     memberSyncPreferencesLoading: { 'peer-1': false },
     spaceProtection: null as null | {
       members: Array<{ deviceId: string; status: MemberProtectionStatus }>
@@ -83,20 +83,19 @@ const device: SpaceMember = {
 
 function renderPanel() {
   return render(
-    <I18nextProvider i18n={i18n}>
-      <PeerDetailPanel
-        deviceId="peer-1"
-        device={device}
-        globalSyncOff={false}
-        globalFileSyncOff={false}
-        lanOnlyActive={false}
-        onUnpair={vi.fn()}
-      />
-    </I18nextProvider>
+    <PeerDetailPanel
+      deviceId="peer-1"
+      device={device}
+      globalSyncOff={false}
+      globalFileSyncOff={false}
+      lanOnlyActive={false}
+      onUnpair={vi.fn()}
+    />,
+    { wrapper: ({ children }) => <I18nextProvider i18n={i18n}>{children}</I18nextProvider> }
   )
 }
 
-describe('PeerDetailPanel receive controls', () => {
+describe('PeerDetailPanel sync controls', () => {
   let initialLanguage = 'en-US'
 
   beforeAll(async () => {
@@ -116,26 +115,75 @@ describe('PeerDetailPanel receive controls', () => {
     mocks.dispatch.mockReturnValue({ unwrap: () => Promise.resolve(preferences) })
     state.devices.spaceProtection = null
     state.devices.memberRemoval = null
+    state.devices.memberSyncPreferences = { 'peer-1': preferences }
+    state.devices.memberSyncPreferencesLoading['peer-1'] = false
   })
 
-  it('shows send and receive settings in one content-type table', () => {
+  it('keeps saved controls stable while refreshing a reselected device', () => {
+    state.devices.memberSyncPreferencesLoading['peer-1'] = true
     renderPanel()
-
-    const table = screen.getByRole('table', { name: 'Sync Settings' })
-    expect(within(table).getByRole('columnheader', { name: /Content types/ })).toBeInTheDocument()
-    expect(within(table).getByRole('columnheader', { name: /Send/ })).toBeInTheDocument()
-    expect(within(table).getByRole('columnheader', { name: /Receive/ })).toBeInTheDocument()
-
-    const textRow = within(table).getByRole('row', { name: /Text/ })
-    expect(within(textRow).getByRole('switch', { name: 'Send: Text' })).toBeInTheDocument()
-    expect(within(textRow).getByRole('switch', { name: 'Receive: Text' })).toBeInTheDocument()
-    expect(screen.queryByRole('tab')).not.toBeInTheDocument()
+    expect(screen.getByRole('switch', { name: 'Sync with Office PC' })).toBeEnabled()
+    expect(screen.getByRole('combobox', { name: 'Sync direction for Text' })).toBeEnabled()
   })
 
-  it('exposes an accessible sync settings help icon', () => {
+  it('keeps the settings structure mounted throughout the first load', () => {
+    state.devices.memberSyncPreferences = {}
+    const view = renderPanel()
+    const region = screen.getByRole('region', { name: 'Sync Settings' })
+    const control = region.querySelector('[data-slot="select-trigger"]')
+    expect(region).toHaveAttribute('aria-busy', 'true')
+    expect(control).not.toBeNull()
+    expect(control).toBeDisabled()
+
+    state.devices.memberSyncPreferencesLoading['peer-1'] = true
+    view.rerender(
+      <PeerDetailPanel
+        deviceId="peer-1"
+        device={device}
+        globalSyncOff={false}
+        globalFileSyncOff={false}
+        lanOnlyActive={false}
+        onUnpair={vi.fn()}
+      />
+    )
+    expect(
+      screen
+        .getByRole('region', { name: 'Sync Settings' })
+        .querySelector('[data-slot="select-trigger"]')
+    ).toBe(control)
+    state.devices.memberSyncPreferences['peer-1'] = preferences
+    state.devices.memberSyncPreferencesLoading['peer-1'] = false
+    view.rerender(
+      <PeerDetailPanel
+        deviceId="peer-1"
+        device={device}
+        globalSyncOff={false}
+        globalFileSyncOff={false}
+        lanOnlyActive={false}
+        onUnpair={vi.fn()}
+      />
+    )
+    expect(screen.getByRole('combobox', { name: 'Sync direction for Text' })).toBe(control)
+    expect(control).toBeEnabled()
+  })
+
+  it('shows the content direction choices without a collapse control', () => {
     renderPanel()
 
-    expect(screen.getByRole('button', { name: 'About send and receive' })).toBeInTheDocument()
+    expect(screen.getByRole('switch', { name: 'Sync with Office PC' })).toBeChecked()
+    expect(
+      screen.queryByRole('button', { name: /Customize synced content/ })
+    ).not.toBeInTheDocument()
+    expect(screen.getAllByRole('combobox')).toHaveLength(5)
+  })
+
+  it('shows one direction choice for each content type', () => {
+    renderPanel()
+
+    expect(screen.getByRole('combobox', { name: 'Sync direction for Text' })).toHaveTextContent(
+      'Both directions'
+    )
+    expect(screen.getAllByRole('combobox')).toHaveLength(5)
   })
 
   it('explains that a peer awaiting readmission needs its client updated', () => {
@@ -152,30 +200,34 @@ describe('PeerDetailPanel receive controls', () => {
     ).toBeInTheDocument()
   })
 
-  it('updates only the receive master switch when the user disables receiving', async () => {
+  it('turns off both directions from the device sync switch', async () => {
     const user = userEvent.setup()
     renderPanel()
 
-    await user.click(screen.getByRole('switch', { name: 'Receive from this device' }))
+    await user.click(screen.getByRole('switch', { name: 'Sync with Office PC' }))
 
     await waitFor(() => {
       expect(mocks.updateMemberSyncPreferences).toHaveBeenCalledWith({
         deviceId: 'peer-1',
-        patch: { receiveEnabled: false },
+        patch: { sendEnabled: false, receiveEnabled: false },
       })
     })
   })
 
-  it('updates only one receive content type from the receive section', async () => {
+  it('maps one content direction choice to the existing send and receive settings', async () => {
     const user = userEvent.setup()
     renderPanel()
 
-    await user.click(screen.getByRole('switch', { name: 'Receive: Text' }))
+    await user.click(screen.getByRole('combobox', { name: 'Sync direction for Text' }))
+    await user.click(await screen.findByRole('option', { name: 'Only send to Office PC' }))
 
     await waitFor(() => {
       expect(mocks.updateMemberSyncPreferences).toHaveBeenCalledWith({
         deviceId: 'peer-1',
-        patch: { receiveContentTypes: { text: false } },
+        patch: {
+          sendContentTypes: { text: true },
+          receiveContentTypes: { text: false },
+        },
       })
     })
   })
@@ -209,7 +261,7 @@ describe('PeerDetailPanel receive controls', () => {
     }))
     renderPanel()
 
-    await user.click(screen.getByRole('switch', { name: 'Receive from this device' }))
+    await user.click(screen.getByRole('switch', { name: 'Sync with Office PC' }))
 
     await waitFor(() => {
       expect(mocks.toastError).toHaveBeenCalledWith("Couldn't update sync settings. Try again.")

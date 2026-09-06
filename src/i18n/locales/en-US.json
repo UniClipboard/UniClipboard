@@ -1566,6 +1566,20 @@
       },
       "sync": {
         "title": "Sync Settings",
+        "syncWithDevice": "Sync with {{deviceName}}",
+        "enabledDescription": "Copied content syncs automatically between both devices.",
+        "disabledDescription": "Sync with this device is off.",
+        "customize": "Customize synced content",
+        "allBoth": "All in both directions",
+        "customized": "Customized",
+        "customizeDescription": "Choose a sync direction for each content type.",
+        "directionLabel": "Sync direction for {{contentType}}",
+        "modes": {
+          "both": "Both directions",
+          "sendOnly": "Only send to {{deviceName}}",
+          "receiveOnly": "Only receive from {{deviceName}}",
+          "off": "Do not sync"
+        },
         "helpLabel": "About send and receive",
         "help": "Send controls what this computer can sync to this device. Receive controls what this computer can accept from this device.",
         "restoreDefaults": "Restore defaults",

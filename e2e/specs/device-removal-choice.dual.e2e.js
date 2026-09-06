@@ -24,7 +24,7 @@ dualDescribe('设备移除与设备组选择', () => {
     ])
     await Promise.all([click(sponsor, 'a[href="/devices"]'), click(joiner, 'a[href="/devices"]')])
 
-    await click(sponsor, '[data-testid^="device-peer-"] button')
+    await click(sponsor, '[data-testid^="device-peer-"]')
     await click(sponsor, '[data-testid="device-unpair"]')
     await click(sponsor, '[data-testid="device-unpair-confirm"]')
 

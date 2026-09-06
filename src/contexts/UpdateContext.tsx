@@ -13,7 +13,7 @@ import {
   type InstallKind,
   type UpdateMetadata,
 } from '@/api/updater'
-import { useSetting } from '@/hooks/useSetting'
+import { useSettingSelector } from '@/hooks/useSetting'
 import { createLogger } from '@/lib/logger'
 import type { UpdateChannel } from '@/types/setting'
 import { UpdateContext, type UpdateState } from './update-context'
@@ -32,7 +32,7 @@ const initialState: UpdateState = {
 }
 
 export const UpdateProvider: React.FC<UpdateProviderProps> = ({ children }) => {
-  const { setting } = useSetting()
+  const updateChannel = useSettingSelector(({ setting }) => setting?.general?.updateChannel ?? null)
   const [state, setReactState] = useState<UpdateState>(initialState)
   const stateRef = useRef<UpdateState>(initialState)
   const setState = useCallback((action: React.SetStateAction<UpdateState>) => {
@@ -94,8 +94,7 @@ export const UpdateProvider: React.FC<UpdateProviderProps> = ({ children }) => {
 
   const checkForUpdates = useCallback(
     async (channelOverride?: UpdateChannel | null) => {
-      const channel =
-        channelOverride === undefined ? (setting?.general?.updateChannel ?? null) : channelOverride
+      const channel = channelOverride === undefined ? updateChannel : channelOverride
       const activeCheck = activeCheckRef.current
 
       if (activeCheck) {
@@ -110,7 +109,7 @@ export const UpdateProvider: React.FC<UpdateProviderProps> = ({ children }) => {
 
       return runCheckForChannel(channel)
     },
-    [runCheckForChannel, setting?.general?.updateChannel]
+    [runCheckForChannel, updateChannel]
   )
 
   const doDownloadUpdate = useCallback(async () => {

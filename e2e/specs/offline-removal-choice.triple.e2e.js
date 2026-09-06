@@ -143,7 +143,7 @@ dualDescribe('三设备离线驱逐与设备组选择', () => {
     const removedConnection = daemonConnection(process.env.E2E_UC_REMOVED_PROFILE)
     process.kill(removedConnection.pid, 'SIGSTOP')
     try {
-      await click(sponsor, `[data-testid="device-peer-${removedDevice.peerId}"] button`)
+      await click(sponsor, `[data-testid="device-peer-${removedDevice.peerId}"]`)
       await click(sponsor, '[data-testid="device-unpair"]')
       await click(sponsor, '[data-testid="device-unpair-confirm"]')
 

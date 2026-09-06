@@ -1565,6 +1565,20 @@
       },
       "sync": {
         "title": "同步設定",
+        "syncWithDevice": "與 {{deviceName}} 同步",
+        "enabledDescription": "雙方複製的內容會自動同步。",
+        "disabledDescription": "已停止與這台裝置同步。",
+        "customize": "自訂同步內容",
+        "allBoth": "全部雙向同步",
+        "customized": "已自訂",
+        "customizeDescription": "分別設定每種內容的同步方向。",
+        "directionLabel": "{{contentType}}的同步方向",
+        "modes": {
+          "both": "雙向同步",
+          "sendOnly": "僅傳送至 {{deviceName}}",
+          "receiveOnly": "僅從 {{deviceName}} 接收",
+          "off": "不同步"
+        },
         "helpLabel": "瞭解傳送和接收",
         "help": "傳送決定本機可以向這台裝置同步哪些內容；接收決定本機可以從這台裝置接收哪些內容。",
         "restoreDefaults": "恢復預設",

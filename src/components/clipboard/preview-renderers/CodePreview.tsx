@@ -15,12 +15,12 @@ const CodePreview: React.FC<CodePreviewProps> = ({ item, preview }) => {
   return (
     <div
       data-testid="code-preview"
-      className="h-full overflow-auto bg-transparent font-mono text-[13px] leading-relaxed text-foreground/85"
+      className="h-full overflow-auto bg-card font-mono text-[13px] leading-relaxed text-foreground/85"
     >
       <div className="flex w-max min-w-full">
         <div
           aria-hidden
-          className="sticky left-0 z-10 shrink-0 select-none border-r border-border/25 bg-muted/20 py-5 pl-3 pr-2 text-right tabular-nums text-muted-foreground/35"
+          className="sticky left-0 z-10 shrink-0 select-none bg-card py-5 pl-3 pr-2 text-right tabular-nums text-muted-foreground/35"
         >
           {Array.from({ length: lineCount }, (_, i) => (
             <div key={i}>{i + 1}</div>

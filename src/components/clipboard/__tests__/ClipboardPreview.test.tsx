@@ -286,7 +286,7 @@ describe('ClipboardPreview', () => {
     expect(codePreview).not.toHaveClass('p-6')
     expect(codePreview.querySelector('.rounded-xl')).not.toBeInTheDocument()
     expect(detail).toHaveClass('bg-muted/15')
-    expect(codePreview).toHaveClass('bg-transparent', 'text-foreground/85')
+    expect(codePreview).toHaveClass('bg-card', 'text-foreground/85')
     expect(codePreview.className).not.toContain('bg-[#0d1117]')
   })
 })

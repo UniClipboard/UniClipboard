@@ -28,7 +28,7 @@ vi.mock('@/api/tauri-command/clipboard_delivery', async () => {
   }
 })
 
-vi.mock('sonner', () => ({
+vi.mock('@/components/ui/toast', () => ({
   toast: {
     success: (...args: unknown[]) => toastSuccessMock(...args),
     error: (...args: unknown[]) => toastErrorMock(...args),

@@ -3,7 +3,7 @@ import { LazyMotion, MotionConfig, domMax } from 'framer-motion'
 import React, { useCallback, useEffect, useEffectEvent, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { daemonClient } from '@/api/daemon/client'
-import { Toaster } from '@/components/ui/sonner'
+import { Toaster } from '@/components/ui/toaster'
 import { usePlatform } from '@/hooks/usePlatform'
 import { connectDaemonWs } from '@/lib/daemon-ws-bootstrap'
 import { commands } from '@/lib/ipc'
@@ -134,7 +134,7 @@ const QuickPanelApp: React.FC = () => {
   //
   // The Toaster is likewise per-webview: the reused history context menu surfaces
   // send/reveal feedback through `toast`, which no-ops without a Toaster mounted
-  // in this window's tree. Themed via the app's CSS vars (see sonner.tsx), so it
+  // in this window's tree. Themed via the app's CSS vars (see toaster.tsx), so it
   // follows the panel's light/dark class without a next-themes provider.
   return (
     <LazyMotion features={domMax} strict>

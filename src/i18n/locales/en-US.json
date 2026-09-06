@@ -45,6 +45,8 @@
     }
   },
   "common": {
+    "notifications": "Notifications",
+    "dismissNotification": "Dismiss toast",
     "loading": "Loading...",
     "unknownSize": "Unknown size",
     "zeroBytes": "0 Bytes"

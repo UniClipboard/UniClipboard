@@ -45,6 +45,8 @@
     }
   },
   "common": {
+    "notifications": "通知",
+    "dismissNotification": "關閉提示",
     "loading": "載入中...",
     "unknownSize": "未知大小",
     "zeroBytes": "0 字節"

@@ -25,7 +25,7 @@ vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string) => key }),
 }))
 
-vi.mock('sonner', () => ({ toast: { error: vi.fn() } }))
+vi.mock('@/components/ui/toast', () => ({ toast: { error: vi.fn() } }))
 
 vi.mock('@/api/daemon/device-trust', () => ({
   getDeviceTrustSnapshot: () => getDeviceTrustSnapshot(),

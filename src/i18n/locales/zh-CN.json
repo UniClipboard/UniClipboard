@@ -1515,7 +1515,7 @@
         "peerId": "Peer ID"
       },
       "profile": {
-        "title": "身份档案",
+        "title": "设备信息",
         "platform": "平台",
         "version": "应用版本",
         "space": "所在空间",
@@ -1565,6 +1565,20 @@
       },
       "sync": {
         "title": "同步设置",
+        "syncWithDevice": "与 {{deviceName}} 同步",
+        "enabledDescription": "双方复制的内容会自动同步。",
+        "disabledDescription": "已停止与这台设备同步。",
+        "customize": "自定义同步内容",
+        "allBoth": "全部双向同步",
+        "customized": "已自定义",
+        "customizeDescription": "分别设置每种内容的同步方向。",
+        "directionLabel": "{{contentType}}的同步方向",
+        "modes": {
+          "both": "双向同步",
+          "sendOnly": "仅发往 {{deviceName}}",
+          "receiveOnly": "仅从 {{deviceName}} 接收",
+          "off": "不同步"
+        },
         "helpLabel": "了解发送和接收",
         "help": "发送决定本机可以向这台设备同步哪些内容；接收决定本机可以从这台设备接收哪些内容。",
         "restoreDefaults": "恢复默认",

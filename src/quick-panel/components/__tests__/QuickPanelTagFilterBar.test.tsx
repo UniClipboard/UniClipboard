@@ -28,8 +28,7 @@ describe('QuickPanelTagFilterBar', () => {
     expect(screen.getByRole('button', { name: 'Code' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'project' })).toBeInTheDocument()
     expect(container.querySelector('[data-testid="quick-panel-tag-filter-list"]')).toHaveClass(
-      'overflow-x-auto',
-      'no-scrollbar'
+      'overflow-x-auto'
     )
   })
 

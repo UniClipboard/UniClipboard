@@ -60,7 +60,7 @@ const HistoryGrid: React.FC<HistoryGridProps> = ({
   const { t } = useTranslation()
 
   return (
-    <div className="no-scrollbar flex-1 min-h-0 overflow-y-auto">
+    <div className="flex-1 min-h-0 overflow-y-auto">
       {searchLoading && items.length === 0 ? (
         <div className="flex flex-col items-center justify-center h-full text-muted-foreground gap-3 pb-10">
           <Loader2 className="size-5 text-muted-foreground/40 animate-spin" />
@@ -98,7 +98,7 @@ const HistoryGrid: React.FC<HistoryGridProps> = ({
           ref={listRef}
           data={items}
           style={{ height: '100%' }}
-          className="no-scrollbar flex-1 min-h-0"
+          className="flex-1 min-h-0"
           computeItemKey={(_index, item) => item.id}
           restoreStateFrom={restoreStateFrom ?? undefined}
           increaseViewportBy={{ top: 240, bottom: 480 }}

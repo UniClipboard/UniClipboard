@@ -35,7 +35,7 @@ import { toast } from '@/components/ui/toast'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { PackageManagerUpdateDialog } from '@/components/update/PackageManagerUpdateDialog'
 import { ReleaseNotes } from '@/components/update/ReleaseNotes'
-import { useSetting } from '@/hooks/useSetting'
+import { useSettingSelector } from '@/hooks/useSetting'
 import { useUpdate } from '@/hooks/useUpdate'
 import { createLogger } from '@/lib/logger'
 import { cn } from '@/lib/utils'
@@ -172,9 +172,10 @@ const Sidebar: React.FC<SidebarProps> = ({ className }) => {
   const { t } = useTranslation()
   const location = useLocation()
   const navigate = useNavigate()
-  const { setting, reloadSetting } = useSetting()
+  const reloadSetting = useSettingSelector(context => context.reloadSetting)
+  const debugMode = useSettingSelector(({ setting }) => setting?.general.debugMode)
   const [updateDialogOpen, setUpdateDialogOpen] = useState(false)
-  const autoCheckUpdate = setting?.general.autoCheckUpdate
+  const autoCheckUpdate = useSettingSelector(({ setting }) => setting?.general.autoCheckUpdate)
   const [previousAutoCheckUpdate, setPreviousAutoCheckUpdate] = useState(autoCheckUpdate)
   if (previousAutoCheckUpdate !== autoCheckUpdate) {
     setPreviousAutoCheckUpdate(autoCheckUpdate)
@@ -346,7 +347,7 @@ const Sidebar: React.FC<SidebarProps> = ({ className }) => {
 
         {/* Bottom Navigation */}
         <div className="relative z-10 flex flex-col gap-3 w-full items-center">
-          {setting?.general.debugMode && (
+          {debugMode && (
             <TooltipProvider delay={0}>
               <Tooltip>
                 <TooltipTrigger

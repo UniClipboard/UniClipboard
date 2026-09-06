@@ -1570,6 +1570,20 @@
       },
       "sync": {
         "title": "Configurações de sincronização",
+        "syncWithDevice": "Sincronizar com {{deviceName}}",
+        "enabledDescription": "O conteúdo copiado é sincronizado automaticamente entre os dispositivos.",
+        "disabledDescription": "A sincronização com este dispositivo está desativada.",
+        "customize": "Personalizar conteúdo sincronizado",
+        "allBoth": "Tudo nas duas direções",
+        "customized": "Personalizado",
+        "customizeDescription": "Escolha uma direção para cada tipo de conteúdo.",
+        "directionLabel": "Direção de sincronização para {{contentType}}",
+        "modes": {
+          "both": "Nas duas direções",
+          "sendOnly": "Apenas enviar para {{deviceName}}",
+          "receiveOnly": "Apenas receber de {{deviceName}}",
+          "off": "Não sincronizar"
+        },
         "helpLabel": "Sobre enviar e receber",
         "help": "Enviar controla o que este computador pode sincronizar com este dispositivo. Receber controla o que este computador pode aceitar deste dispositivo.",
         "restoreDefaults": "Restaurar padrões",

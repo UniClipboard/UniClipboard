@@ -1,37 +1,7 @@
-/**
- * DevicesPage: master-detail layout ("Ledger" treatment).
- *
- *   ┌─ list column ──────┬─ detail pane ──────────────────────────┐
- *   │ 设备       [＋ 添加] │  Windows 工作站            [取消配对]  │
- *   │ 2/3 在线            │  ● 在线 · 局域网直连                    │
- *   │ ── 本机 ──────────  │  ─────────────────────────────────────  │
- *   │ ● MacBook Pro      │  PEER ID   通道   地址                  │
- *   │ ── 已配对设备 ────  │  ─────────────────────────────────────  │
- *   │ ● Windows 工作站 ◀ │  同步设置（开关 + 内容类型）             │
- *   │ ● Arch VM          │                                         │
- *   │ ── 移动同步 ──  ⚙  │                                         │
- *   │ ● iPhone 15 Pro    │                                         │
- *   └────────────────────┴─────────────────────────────────────────┘
- *
- * Selecting a device renders its detail inline (LocalDevicePanel /
- * PeerDetailPanel / MobileDevicePanel) instead of stacking dialogs.
- * Flow dialogs (add / enable / credential echo / unpair / revoke /
- * mobile-sync settings) remain modal. `refreshPresence` fires only on
- * mount and on visibility regain; steady-state updates ride the
- * daemon-pushed `peers.changed` ws events.
- */
-
-import {
-  ChevronDown,
-  CircleCheck,
-  CircleOff,
-  Plus,
-  RefreshCw,
-  Settings2,
-  TriangleAlert,
-} from 'lucide-react'
+import { ChevronDown, ArrowRightLeft, Plus, RefreshCw, Settings2 } from 'lucide-react'
 import React, { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { useTranslation } from 'react-i18next'
+import { shallowEqual } from 'react-redux'
 import { refreshPresence } from '@/api/daemon'
 import type { SpaceMember } from '@/api/daemon/members'
 import { unpairDevice } from '@/api/daemon/members'
@@ -54,12 +24,15 @@ import {
   getDeviceTrustStatus,
   type DeviceRowStatus,
 } from '@/components/device/device-trust-view'
+import DeviceListItem from '@/components/device/DeviceListItem'
 import EnableMobileSyncDialog from '@/components/device/EnableMobileSyncDialog'
+import LocalDeviceListItem from '@/components/device/LocalDeviceListItem'
 import LocalDevicePanel from '@/components/device/LocalDevicePanel'
 import MobileDevicePanel from '@/components/device/MobileDevicePanel'
 import MobileSyncSettingsDialog from '@/components/device/MobileSyncSettingsDialog'
-import PeerDetailPanel from '@/components/device/PeerDetailPanel'
-import StatusDot, { type StatusDotTone } from '@/components/device/StatusDot'
+import PeerDetailPanelContainer from '@/components/device/PeerDetailPanelContainer'
+import { type StatusDotTone } from '@/components/device/StatusDot'
+import SwitchSpaceDialog from '@/components/device/SwitchSpaceDialog'
 import UnpairAlertDialog from '@/components/device/UnpairAlertDialog'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import {
@@ -83,11 +56,9 @@ import {
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Skeleton } from '@/components/ui/skeleton'
 import { toast } from '@/components/ui/toast'
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import type { PeerSnapshotPayloadItem, PeersChangedPayload } from '@/hooks/useDaemonEvents'
 import { useDeviceTrust } from '@/hooks/useDeviceTrust'
-import { useNow } from '@/hooks/useRelativeTime'
-import { useSetting } from '@/hooks/useSetting'
+import { formatRelativeTime, useNow } from '@/hooks/useRelativeTime'
 import { daemonWs } from '@/lib/daemon-ws'
 import { createLogger } from '@/lib/logger'
 import { cn } from '@/lib/utils'
@@ -142,7 +113,20 @@ const DevicesPage: React.FC = () => {
     networkRecovery,
     networkRecoveryError,
     networkRecoveryRequestId,
-  } = useAppSelector(state => state.devices)
+  } = useAppSelector(
+    ({ devices }) => ({
+      localDevice: devices.localDevice,
+      localDeviceLoading: devices.localDeviceLoading,
+      localDeviceError: devices.localDeviceError,
+      spaceMembers: devices.spaceMembers,
+      spaceMembersError: devices.spaceMembersError,
+      spaceProtectionError: devices.spaceProtectionError,
+      networkRecovery: devices.networkRecovery,
+      networkRecoveryError: devices.networkRecoveryError,
+      networkRecoveryRequestId: devices.networkRecoveryRequestId,
+    }),
+    shallowEqual
+  )
   const { snapshot: deviceTrust, refresh: refreshDeviceTrust } = useDeviceTrust()
 
   const admittedPeers = localDevice
@@ -152,10 +136,8 @@ const DevicesPage: React.FC = () => {
   const peers = trustListView.peers
   const onlineCount = peers.filter(p => p.connected).length
 
-  const { setting } = useSetting()
-  const syncActive = setting?.sync.syncEnabled !== false
   const localTrust = trustListView.localRelationship
-  const localDeviceStatus: DeviceRowStatus =
+  const localDeviceStatus: DeviceRowStatus | undefined =
     deviceTrust?.localMembership === 'removed'
       ? {
           kind: 'removed',
@@ -174,13 +156,7 @@ const DevicesPage: React.FC = () => {
               label: t('devices.memberRemoval.converging.title'),
               description: t('devices.memberRemoval.converging.description'),
             }
-          : {
-              kind: syncActive ? 'online' : 'offline',
-              label: t(`devices.list.status.${syncActive ? 'online' : 'offline'}`),
-            }
-  const globalSyncOff = setting?.sync.syncEnabled === false
-  const globalFileSyncOff = setting?.fileSync?.fileSyncEnabled === false
-  const lanOnlyActive = setting?.network?.allowRelayFallback === false
+          : undefined
 
   useEffect(() => {
     dispatch(fetchLocalDeviceInfo())
@@ -257,6 +233,7 @@ const DevicesPage: React.FC = () => {
       : selection
 
   // ── p2p dialogs ──────────────────────────────────────────────
+  const [switchSpaceOpen, setSwitchSpaceOpen] = useState(false)
   const [addP2PDialogOpen, setAddP2PDialogOpen] = useState(false)
   const [unpairDialogOpen, setUnpairDialogOpen] = useState(false)
   const [unpairTargetId, setUnpairTargetId] = useState<string | null>(null)
@@ -296,6 +273,11 @@ const DevicesPage: React.FC = () => {
     }
   }
 
+  const getDeviceTrustStatusForPeer = (peerId: string) => {
+    const relationship = trustListView.relationshipsByDeviceId.get(peerId)
+    return relationship ? getDeviceTrustStatus(relationship, t)?.status : undefined
+  }
+
   const unpairTargetDevice = peers.find(d => d.peerId === unpairTargetId)
   const networkRecoveryVisible =
     networkRecoveryError !== null || (networkRecovery !== null && networkRecovery.phase !== 'idle')
@@ -309,63 +291,10 @@ const DevicesPage: React.FC = () => {
   }
 
   return (
-    <div className="flex h-full">
+    <div className="flex h-full min-w-0">
       {/* ── list column ───────────────────────────────────────── */}
-      <aside className="relative flex w-60 shrink-0 flex-col border-r border-border/50">
-        {/* The add button shares a row with the title only, so the counts
-            line below keeps the full column width instead of wrapping in a
-            long locale (ru). */}
-        <div className="px-4 pb-2 pt-5">
-          <div className="flex items-center justify-between gap-2">
-            <h2 className="min-w-0 truncate text-base font-semibold tracking-tight text-foreground">
-              {t('devices.panel.listTitle')}
-            </h2>
-            {/* Primary add path: inviting a device is the one first-class way
-                to grow the space, so it gets a direct button instead of a
-                menu. The LAN mobile channel is demoted to a secondary link. */}
-            <Button
-              data-testid="devices-add-device"
-              variant="outline"
-              size="xs"
-              onClick={() => setAddP2PDialogOpen(true)}
-            >
-              <Plus />
-              {t('devices.panel.addMenu.trigger')}
-            </Button>
-          </div>
-          <p className="mt-0.5 text-[11px] text-muted-foreground">
-            {t('devices.panel.counts', {
-              online: onlineCount,
-              total: peers.length,
-              mobile: mobileDevices.length,
-            })}
-          </p>
-          {/* Secondary add path: LAN mobile sync, kept for existing users but
-              visually demoted behind a muted disclosure link. */}
-          <div className="mt-1">
-            <DropdownMenu>
-              <DropdownMenuTrigger
-                render={
-                  <button
-                    type="button"
-                    aria-label={t('devices.panel.addMenu.otherWays')}
-                    className="flex items-center gap-0.5 text-xs text-muted-foreground/70 transition-colors hover:text-foreground"
-                  />
-                }
-              >
-                {t('devices.panel.addMenu.otherWays')}
-                <ChevronDown className="size-3" aria-hidden="true" />
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className="w-64">
-                <DropdownMenuItem onClick={mobileActions.handleAddClick}>
-                  <span className="flex-1">{t('devices.panel.addMenu.mobile')}</span>
-                  <Badge variant="outline" className="border-border/60 text-muted-foreground">
-                    {t('devices.mobileSync.deprecated')}
-                  </Badge>
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
+      <aside className="relative flex w-56 shrink-0 flex-col border-r border-border/50 bg-muted/15 xl:w-64">
+        <div className="px-3 pt-3">
           {networkRecoveryVisible && (
             <Alert className="mt-2 border-warning/30 bg-warning/10 text-warning">
               <AlertDescription className="flex flex-col gap-2 text-xs">
@@ -392,7 +321,11 @@ const DevicesPage: React.FC = () => {
         </div>
 
         <ScrollArea className="min-h-0 flex-1">
-          <div className="flex flex-col px-2 pb-3">
+          <nav
+            aria-label={t('devices.panel.listTitle')}
+            data-device-list
+            className="flex flex-col gap-1 px-2 pb-3"
+          >
             {(spaceMembersError || mobileDevicesError || spaceProtectionError || false) && (
               <Alert variant="destructive" className="mx-1 my-2">
                 <AlertDescription className="flex flex-col gap-2 text-xs">
@@ -426,16 +359,8 @@ const DevicesPage: React.FC = () => {
 
             <SectionLabel label={t('devices.thisDevice.title')} />
             {localDevice ? (
-              <DeviceListItem
-                testId="device-local"
+              <LocalDeviceListItem
                 name={localDevice.deviceName}
-                tone={
-                  localDeviceStatus.kind === 'online'
-                    ? 'success'
-                    : localDeviceStatus.kind === 'offline'
-                      ? 'off'
-                      : 'warning'
-                }
                 status={localDeviceStatus}
                 selected={effectiveSelection.kind === 'local'}
                 onSelect={() => setSelection({ kind: 'local' })}
@@ -490,67 +415,129 @@ const DevicesPage: React.FC = () => {
               />
             )}
 
-            <SectionLabel
-              label={t('devices.mobileSync.title')}
-              labelTrailing={<DeprecatedBadge />}
-              trailing={
-                <button
-                  type="button"
-                  aria-label={t('devices.mobileSync.configure')}
-                  title={t('devices.mobileSync.configure')}
-                  className="rounded-md p-0.5 text-muted-foreground/70 transition-colors hover:text-foreground"
-                  onClick={mobileActions.openSettings}
-                >
-                  <Settings2 className="size-3.5" />
-                </button>
-              }
-            />
-            {mobileDevices.map(mobile => {
-              const tone = mobileDotTone(mobile, now)
-              return (
-                <DeviceListItem
-                  key={mobile.deviceId}
-                  name={mobile.label}
-                  tone={tone}
-                  status={{
-                    kind: tone === 'off' ? 'offline' : 'online',
-                    label: t(`devices.list.status.${tone === 'off' ? 'offline' : 'online'}`),
-                  }}
-                  dimmed={tone === 'off'}
-                  selected={
-                    effectiveSelection.kind === 'mobile' &&
-                    effectiveSelection.id === mobile.deviceId
-                  }
-                  onSelect={() =>
-                    setSelection(current => ({
-                      kind: 'mobile',
-                      id: mobile.deviceId,
-                      pendingCredential:
-                        current.kind === 'mobile' && current.id === mobile.deviceId
-                          ? current.pendingCredential
-                          : undefined,
-                    }))
+            {mobileDevices.length > 0 && (
+              <>
+                <SectionLabel
+                  label={t('devices.mobileSync.title')}
+                  labelTrailing={<DeprecatedBadge />}
+                  trailing={
+                    <button
+                      type="button"
+                      aria-label={t('devices.mobileSync.configure')}
+                      title={t('devices.mobileSync.configure')}
+                      className="rounded-md p-0.5 text-muted-foreground/70 transition-colors hover:text-foreground"
+                      onClick={mobileActions.openSettings}
+                    >
+                      <Settings2 className="size-3.5" />
+                    </button>
                   }
                 />
-              )
-            })}
-            {mobileDevices.length === 0 && !mobileDevicesError && (
-              <EmptyAddRow
-                label={t('devices.panel.addMenu.mobile')}
-                onClick={mobileActions.handleAddClick}
-                dimmed
-              />
+                {mobileDevices.map(mobile => {
+                  const tone = mobileDotTone(mobile, now)
+                  return (
+                    <DeviceListItem
+                      key={mobile.deviceId}
+                      name={mobile.label}
+                      tone={tone}
+                      status={{
+                        kind: 'recently_active',
+                        label:
+                          mobile.lastSeenAtMs == null
+                            ? t('devices.mobileSync.list.lastSeen.never')
+                            : formatRelativeTime(mobile.lastSeenAtMs, now, t),
+                      }}
+                      dimmed={tone === 'off'}
+                      selected={
+                        effectiveSelection.kind === 'mobile' &&
+                        effectiveSelection.id === mobile.deviceId
+                      }
+                      onSelect={() =>
+                        setSelection(current => ({
+                          kind: 'mobile',
+                          id: mobile.deviceId,
+                          pendingCredential:
+                            current.kind === 'mobile' && current.id === mobile.deviceId
+                              ? current.pendingCredential
+                              : undefined,
+                        }))
+                      }
+                    />
+                  )
+                })}
+              </>
             )}
-          </div>
+          </nav>
         </ScrollArea>
+        <div className="flex flex-col gap-2 border-t border-border/50 px-3 py-2">
+          <div className="flex items-center justify-between gap-1">
+            <Button
+              data-testid="devices-add-device"
+              variant="ghost"
+              size="sm"
+              onClick={() => setAddP2PDialogOpen(true)}
+            >
+              <Plus />
+              {t('devices.panel.addMenu.trigger')}
+            </Button>
+            <Button
+              data-testid="device-switch-space"
+              variant="ghost"
+              size="icon-sm"
+              aria-label={t('devices.switchSpace.button')}
+              title={t('devices.switchSpace.button')}
+              onClick={() => setSwitchSpaceOpen(true)}
+            >
+              <ArrowRightLeft className="size-4" />
+            </Button>
+          </div>
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={
+                <button
+                  type="button"
+                  aria-label={t('devices.panel.addMenu.otherWays')}
+                  className="flex items-center gap-0.5 text-xs text-muted-foreground/70 transition-colors hover:text-foreground"
+                />
+              }
+            >
+              {t('devices.panel.addMenu.otherWays')}
+              <ChevronDown className="size-3" aria-hidden="true" />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-64">
+              <DropdownMenuItem onClick={mobileActions.handleAddClick}>
+                <span className="flex-1">{t('devices.panel.addMenu.mobile')}</span>
+                <Badge variant="outline" className="border-border/60 text-muted-foreground">
+                  {t('devices.mobileSync.deprecated')}
+                </Badge>
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={mobileActions.openSettings}>
+                {t('devices.mobileSync.title')} · {t('devices.mobileSync.configure')}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <p className="px-2 text-xs text-muted-foreground">
+            {t('devices.thisDevice.onlineCount', { count: onlineCount })}
+          </p>
+        </div>
       </aside>
 
       {/* ── detail pane ───────────────────────────────────────── */}
-      <main className="min-w-0 flex-1">
-        <ScrollArea className="h-full">
+      <main className="min-w-0 flex-1 bg-muted/20">
+        <ScrollArea
+          key={
+            effectiveSelection.kind === 'local'
+              ? 'local'
+              : `${effectiveSelection.kind}:${effectiveSelection.id}`
+          }
+          className="h-full [&_[data-slot=scroll-area-viewport]>div]:min-h-full [&_[data-slot=scroll-area-viewport]>div]:!block"
+        >
           {effectiveSelection.kind === 'local' &&
             (localDevice ? (
-              <LocalDevicePanel localDevice={localDevice} memberCount={peers.length + 1} />
+              <LocalDevicePanel
+                localDevice={localDevice}
+                memberCount={peers.length + 1}
+                status={localDeviceStatus}
+              />
             ) : localDeviceError ? (
               <div className="mx-auto w-full max-w-2xl px-8 py-8">
                 <Alert variant="destructive">
@@ -574,13 +561,11 @@ const DevicesPage: React.FC = () => {
             ))}
 
           {effectiveSelection.kind === 'peer' && selectedPeer && (
-            <PeerDetailPanel
+            <PeerDetailPanelContainer
               key={selectedPeer.peerId}
               deviceId={selectedPeer.peerId}
               device={selectedPeer}
-              globalSyncOff={globalSyncOff}
-              globalFileSyncOff={globalFileSyncOff}
-              lanOnlyActive={lanOnlyActive}
+              status={getDeviceTrustStatusForPeer(selectedPeer.peerId)}
               onUnpair={handleUnpairRequest}
             />
           )}
@@ -603,6 +588,7 @@ const DevicesPage: React.FC = () => {
       </main>
 
       {/* ── flow dialogs ──────────────────────────────────────── */}
+      <SwitchSpaceDialog open={switchSpaceOpen} onOpenChange={setSwitchSpaceOpen} />
       <AddDeviceDialog
         open={addP2PDialogOpen}
         onOpenChange={setAddP2PDialogOpen}
@@ -675,7 +661,7 @@ const DevicesPage: React.FC = () => {
   )
 }
 
-export default DevicesPage
+export default React.memo(DevicesPage)
 
 // ────────────────────────────────────────────────────────────────
 // List column pieces
@@ -700,7 +686,7 @@ const SectionLabel: React.FC<{
 /**
  * Empty-state row that doubles as that section's add entry point: with no
  * devices to list, the space is better spent on a labelled target than on a
- * dead "nothing here" line. The header's `＋` stays the steady-state shortcut.
+ * dead "nothing here" line. The footer keeps the add action within reach.
  *
  * `dimmed` marks a legacy entry that stays reachable for existing users but is
  * no longer presented as onboarding guidance (LAN mobile sync).
@@ -725,89 +711,6 @@ const EmptyAddRow: React.FC<{ label: string; onClick: () => void; dimmed?: boole
     {label}
   </button>
 )
-
-interface DeviceListItemProps {
-  testId?: string
-  name: string
-  tone: StatusDotTone
-  status: DeviceRowStatus
-  selected: boolean
-  dimmed?: boolean
-  onSelect: () => void
-}
-
-const DeviceListItem: React.FC<DeviceListItemProps> = ({
-  testId,
-  name,
-  tone,
-  status,
-  selected,
-  dimmed,
-  onSelect,
-}) => (
-  <div
-    data-testid={testId}
-    data-status={status.kind}
-    className={cn(
-      'group/item flex w-full items-center gap-1 rounded-lg px-2.5 py-2 transition-colors',
-      selected ? 'bg-muted' : 'hover:bg-muted/60'
-    )}
-  >
-    <button
-      type="button"
-      onClick={onSelect}
-      className={cn(
-        'flex min-w-0 flex-1 items-center gap-2.5 text-left text-sm transition-colors',
-        selected ? 'font-semibold text-foreground' : 'font-medium text-foreground',
-        dimmed && !selected && 'opacity-60'
-      )}
-    >
-      <StatusDot tone={tone} />
-      <span className="min-w-0 flex-1 truncate">{name}</span>
-    </button>
-    <DeviceRowStatusIcon name={name} status={status} />
-  </div>
-)
-
-const DeviceRowStatusIcon: React.FC<{ name: string; status: DeviceRowStatus }> = ({
-  name,
-  status,
-}) => {
-  const Icon =
-    status.kind === 'online' ? CircleCheck : status.kind === 'offline' ? CircleOff : TriangleAlert
-  const colorClass =
-    status.kind === 'removed' || status.kind === 'recovery_required' || status.kind === 'diverged'
-      ? 'text-destructive'
-      : status.kind === 'removing' || status.kind === 'waiting_for_update'
-        ? 'text-warning'
-        : status.kind === 'online'
-          ? 'text-success'
-          : 'text-muted-foreground'
-  const label = `${name}: ${status.label}`
-
-  return (
-    <TooltipProvider delay={200}>
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <span
-              aria-label={label}
-              className={cn('flex size-5 shrink-0 items-center justify-center', colorClass)}
-            />
-          }
-        >
-          <Icon className="size-3.5" aria-hidden="true" />
-        </TooltipTrigger>
-        <TooltipContent side="right" align="center">
-          <p className={status.description ? 'font-medium' : undefined}>{status.label}</p>
-          {status.description && (
-            <p className="mt-1 max-w-56 text-muted-foreground">{status.description}</p>
-          )}
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
-  )
-}
 
 const LocalPanelSkeleton: React.FC = () => (
   <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-8 py-8">

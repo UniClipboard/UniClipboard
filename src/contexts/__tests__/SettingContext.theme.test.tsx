@@ -1,6 +1,6 @@
-import { renderHook, waitFor } from '@testing-library/react'
+import { act, renderHook, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { getSettings } from '@/api/daemon'
+import { getSettings, updateSettings } from '@/api/daemon'
 import type { Settings } from '@/api/daemon/settings'
 import { DEFAULT_THEME_COLOR } from '@/constants/theme'
 import { SettingProvider } from '@/contexts/SettingContext'
@@ -20,6 +20,12 @@ vi.mock('@/lib/daemon-ws-bootstrap', () => ({
 
 vi.mock('@/lib/tauri-command', () => ({
   invokeWithTrace: vi.fn(),
+}))
+vi.mock('@/lib/settings-events', () => ({
+  emitSettingsChanged: vi.fn().mockResolvedValue(undefined),
+}))
+vi.mock('@/lib/ipc', () => ({
+  commands: { setTrayLanguage: vi.fn().mockResolvedValue(undefined) },
 }))
 
 vi.mock('@/i18n', () => ({
@@ -78,6 +84,22 @@ describe('SettingProvider theme integration', () => {
       expect(result.current.setting?.general.themeColor).toBe(DEFAULT_THEME_COLOR)
       expect(document.documentElement.getAttribute('data-theme')).toBe(DEFAULT_THEME_COLOR)
     })
+  })
+
+  it('does not reapply the page theme when only file sync changes', async () => {
+    vi.mocked(updateSettings).mockResolvedValue({ success: true, restartRequired: false })
+    const { result } = renderHook(() => useSetting(), { wrapper })
+    await waitFor(() => expect(result.current.setting).not.toBeNull())
+    const setAttribute = vi.spyOn(document.documentElement, 'setAttribute')
+    const setProperty = vi.spyOn(document.documentElement.style, 'setProperty')
+    try {
+      await act(() => result.current.updateFileSyncSetting({ fileSyncEnabled: false }))
+      expect(setAttribute).not.toHaveBeenCalled()
+      expect(setProperty).not.toHaveBeenCalled()
+    } finally {
+      setAttribute.mockRestore()
+      setProperty.mockRestore()
+    }
   })
 
   it('falls back to the default preset when themeColor is null', async () => {

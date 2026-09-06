@@ -6,7 +6,7 @@ interface DeviceStatusProps {}
 const DeviceStatus: React.FC<DeviceStatusProps> = () => {
   return (
     <>
-      <div className="bg-gray-800 border-b border-gray-800/50 px-4 py-2 flex items-center gap-x-3 overflow-x-auto hide-scrollbar">
+      <div className="flex items-center gap-x-3 overflow-x-auto border-b border-gray-800/50 bg-gray-800 px-4 py-2">
         <div className="flex items-center text-sm text-gray-400">
           <span>已连接设备:</span>
         </div>

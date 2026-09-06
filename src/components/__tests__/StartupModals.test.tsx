@@ -8,9 +8,12 @@ const mockUpdateGeneralSetting = vi.hoisted(() => vi.fn().mockResolvedValue(unde
 const mockSetupSnapshot = vi.hoisted(() => ({ rePairingRequired: false }))
 
 vi.mock('@/hooks/useSetting', () => ({
-  useSetting: () => ({
-    updateGeneralSetting: mockUpdateGeneralSetting,
-  }),
+  useSettingSelector: (
+    selector: (value: { updateGeneralSetting: typeof mockUpdateGeneralSetting }) => unknown
+  ) =>
+    selector({
+      updateGeneralSetting: mockUpdateGeneralSetting,
+    }),
 }))
 
 vi.mock('@/store/setupRealtimeStore', () => ({

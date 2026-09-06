@@ -10,7 +10,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui'
-import { useSetting } from '@/hooks/useSetting'
+import { useSettingSelector } from '@/hooks/useSetting'
 import { createLogger } from '@/lib/logger'
 
 const log = createLogger('telemetry-notice')
@@ -29,7 +29,7 @@ interface TelemetryNoticeProps {
 
 export default function TelemetryNotice({ enabled = true, onDismiss }: TelemetryNoticeProps = {}) {
   const { t } = useTranslation()
-  const { updateGeneralSetting } = useSetting()
+  const updateGeneralSetting = useSettingSelector(context => context.updateGeneralSetting)
   const [dismissed, setDismissed] = useState(() => !!localStorage.getItem(TELEMETRY_NOTICE_KEY))
   const open = enabled && !dismissed
 

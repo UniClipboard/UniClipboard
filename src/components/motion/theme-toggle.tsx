@@ -10,7 +10,7 @@
 import { Moon, Sun } from 'lucide-react'
 import { useEffect, useState, type ComponentPropsWithoutRef } from 'react'
 import { ActionSwapIcon } from '@/components/motion/action-swap'
-import { useSetting } from '@/hooks/useSetting'
+import { useSettingSelector } from '@/hooks/useSetting'
 import { createLogger } from '@/lib/logger'
 import { setTransitionOrigin } from '@/lib/theme-transition'
 import { cn } from '@/lib/utils'
@@ -46,7 +46,7 @@ function useResolvedDark(): boolean {
 }
 
 export function ThemeToggle({ className, iconClassName, ...rest }: ThemeToggleProps) {
-  const { updateGeneralSetting } = useSetting()
+  const updateGeneralSetting = useSettingSelector(context => context.updateGeneralSetting)
   const isDark = useResolvedDark()
 
   const toggle = (e: React.MouseEvent<HTMLButtonElement>) => {

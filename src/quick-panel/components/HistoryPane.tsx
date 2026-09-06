@@ -216,7 +216,7 @@ const HistoryPane: React.FC<HistoryPaneProps> = React.memo(
               role="listbox"
               aria-label={t('listAriaLabel')}
               className={cn(
-                'scrollbar-thin flex-1 overflow-y-auto overflow-x-hidden px-1.5 py-1',
+                'flex-1 overflow-y-auto overflow-x-hidden px-1.5 py-1',
                 // Reserved scrollbar gutter so a mid-scroll appearance of the
                 // scrollbar doesn't shove the masonry tiles sideways.
                 showImageWall && 'overflow-y-scroll px-2 py-2 [scrollbar-gutter:stable]'

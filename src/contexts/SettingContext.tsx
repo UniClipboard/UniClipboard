@@ -47,14 +47,14 @@ export const SettingProvider: React.FC<SettingProviderProps> = ({ children }) =>
   const latestSettingRef = React.useRef<Settings | null>(null)
   const mutationQueueRef = React.useRef<Promise<void>>(Promise.resolve())
 
-  const enqueueTask = <T,>(task: () => Promise<T>): Promise<T> => {
+  const enqueueTask = useCallback(<T,>(task: () => Promise<T>): Promise<T> => {
     const operation = mutationQueueRef.current.then(task)
     mutationQueueRef.current = operation.then(
       () => undefined,
       () => undefined
     )
     return operation
-  }
+  }, [])
 
   // 加载设置
   const loadSetting = useCallback(async () => {
@@ -75,53 +75,55 @@ export const SettingProvider: React.FC<SettingProviderProps> = ({ children }) =>
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [enqueueTask])
 
-  const enqueueSettingMutation = <T,>(
-    mutate: (current: Settings) => Promise<{ next: Settings; result: T }>
-  ): Promise<T> => {
-    return enqueueTask(async () => {
-      const current = latestSettingRef.current
-      if (!current) throw new Error('No settings loaded')
-      const { next, result } = await mutate(current)
-      latestSettingRef.current = next
-      setSetting(next)
-      setError(null)
-      try {
-        await emitSettingsChanged(next)
-      } catch (err) {
-        log.error({ err }, 'Failed to broadcast settings change')
-      }
-      return result
-    })
-  }
+  const enqueueSettingMutation = useCallback(
+    <T,>(mutate: (current: Settings) => Promise<{ next: Settings; result: T }>): Promise<T> => {
+      return enqueueTask(async () => {
+        const current = latestSettingRef.current
+        if (!current) throw new Error('No settings loaded')
+        const { next, result } = await mutate(current)
+        latestSettingRef.current = next
+        setSetting(next)
+        setError(null)
+        try {
+          await emitSettingsChanged(next)
+        } catch (err) {
+          log.error({ err }, 'Failed to broadcast settings change')
+        }
+        return result
+      })
+    },
+    [enqueueTask]
+  )
 
   // 保存设置
   // Phase 95: 返回 { restartRequired } 透传 daemon PUT /settings 响应；
   // 现有调用方 await 但不读返回值，向后兼容（Promise<X> 可被忽略）。
-  const saveSetting = async (
-    buildNext: (current: Settings) => Settings
-  ): Promise<{ restartRequired: boolean }> => {
-    // Per-section saves must NOT flip the global `loading` flag. Every settings
-    // section subscribes to this context and ORs `loading` into its own
-    // `disabled` state (`isBusy = loading || saving`), so toggling `loading`
-    // here would disable/dim every sibling section's controls at once — a
-    // full-panel flash on each save. `loading` is reserved for the initial
-    // load / reload in `loadSetting`; an in-flight per-section save is tracked
-    // by that section's local `saving` flag instead.
-    try {
-      return await enqueueSettingMutation(async current => {
-        const next = buildNext(current)
-        const result = await updateSettings(next)
-        if (!result.success) throw new Error('Settings update was rejected')
-        return { next, result: { restartRequired: result.restartRequired } }
-      })
-    } catch (err) {
-      log.error({ err }, '保存设置失败')
-      setError(`保存设置失败: ${err}`)
-      throw err // 重新抛出错误，让调用者可以处理
-    }
-  }
+  const saveSetting = useCallback(
+    async (buildNext: (current: Settings) => Settings): Promise<{ restartRequired: boolean }> => {
+      // Per-section saves must NOT flip the global `loading` flag. Every settings
+      // section subscribes to this context and ORs `loading` into its own
+      // `disabled` state (`isBusy = loading || saving`), so toggling `loading`
+      // here would disable/dim every sibling section's controls at once — a
+      // full-panel flash on each save. `loading` is reserved for the initial
+      // load / reload in `loadSetting`; an in-flight per-section save is tracked
+      // by that section's local `saving` flag instead.
+      try {
+        return await enqueueSettingMutation(async current => {
+          const next = buildNext(current)
+          const result = await updateSettings(next)
+          if (!result.success) throw new Error('Settings update was rejected')
+          return { next, result: { restartRequired: result.restartRequired } }
+        })
+      } catch (err) {
+        log.error({ err }, '保存设置失败')
+        setError(`保存设置失败: ${err}`)
+        throw err // 重新抛出错误，让调用者可以处理
+      }
+    },
+    [enqueueSettingMutation]
+  )
 
   // 更新整个设置
   const updateSetting = async (newSetting: Settings) => {
@@ -131,17 +133,18 @@ export const SettingProvider: React.FC<SettingProviderProps> = ({ children }) =>
   // 更新通用设置。autoStart 被排除在外:它是桌面宿主 OS 副作用,必须走专用的
   // updateAutostart 命令,否则会静默跳过 OS 启动项注册(daemon settings 管线
   // 不触碰操作系统)。
-  const updateGeneralSetting = async (
-    newGeneralSetting: Partial<Omit<Settings['general'], 'autoStart'>>
-  ) => {
-    await saveSetting(current => ({
-      ...current,
-      general: {
-        ...current.general,
-        ...newGeneralSetting,
-      },
-    }))
-  }
+  const updateGeneralSetting = useCallback(
+    async (newGeneralSetting: Partial<Omit<Settings['general'], 'autoStart'>>) => {
+      await saveSetting(current => ({
+        ...current,
+        general: {
+          ...current.general,
+          ...newGeneralSetting,
+        },
+      }))
+    },
+    [saveSetting]
+  )
 
   // 切换开机自启动。必须走 Tauri in-process command：OS 启动项注册是桌面宿主
   // 副作用，daemon HTTP settings API 只做持久化、不触碰操作系统。命令内部会
@@ -166,15 +169,18 @@ export const SettingProvider: React.FC<SettingProviderProps> = ({ children }) =>
   }
 
   // 更新同步设置
-  const updateSyncSetting = async (newSyncSetting: Partial<Settings['sync']>) => {
-    await saveSetting(current => ({
-      ...current,
-      sync: {
-        ...current.sync,
-        ...newSyncSetting,
-      },
-    }))
-  }
+  const updateSyncSetting = useCallback(
+    async (newSyncSetting: Partial<Settings['sync']>) => {
+      await saveSetting(current => ({
+        ...current,
+        sync: {
+          ...current.sync,
+          ...newSyncSetting,
+        },
+      }))
+    },
+    [saveSetting]
+  )
 
   // 更新安全设置
   const updateSecuritySetting = async (newSecuritySetting: Partial<Settings['security']>) => {
@@ -199,24 +205,25 @@ export const SettingProvider: React.FC<SettingProviderProps> = ({ children }) =>
   }
 
   // Update file sync settings
-  const updateFileSyncSetting = async (
-    newFileSyncSetting: Partial<Settings['fileSync'] & object>
-  ) => {
-    await saveSetting(current => ({
-      ...current,
-      fileSync: {
-        ...(current.fileSync ?? {
-          fileSyncEnabled: true,
-          smallFileThreshold: 10 * 1024 * 1024,
-          maxFileSize: 5 * 1024 * 1024 * 1024,
-          fileCacheQuotaPerDevice: 500 * 1024 * 1024,
-          fileRetentionHours: 24,
-          fileAutoCleanup: true,
-        }),
-        ...newFileSyncSetting,
-      },
-    }))
-  }
+  const updateFileSyncSetting = useCallback(
+    async (newFileSyncSetting: Partial<Settings['fileSync'] & object>) => {
+      await saveSetting(current => ({
+        ...current,
+        fileSync: {
+          ...(current.fileSync ?? {
+            fileSyncEnabled: true,
+            smallFileThreshold: 10 * 1024 * 1024,
+            maxFileSize: 5 * 1024 * 1024 * 1024,
+            fileCacheQuotaPerDevice: 500 * 1024 * 1024,
+            fileRetentionHours: 24,
+            fileAutoCleanup: true,
+          }),
+          ...newFileSyncSetting,
+        },
+      }))
+    },
+    [saveSetting]
+  )
 
   // Update network settings (Phase 95)
   // 镜像 partial 进 setting.network 后调 saveSetting；透传 restartRequired。
@@ -372,11 +379,12 @@ export const SettingProvider: React.FC<SettingProviderProps> = ({ children }) =>
   const prevAppliedColorRef = React.useRef<string | undefined>(undefined)
   const prevAppliedOverridesRef = React.useRef<string | undefined>(undefined)
   const hasAppliedOnceRef = React.useRef(false)
+  const general = setting?.general
 
   useEffect(() => {
     // Skip theme application until settings are loaded to avoid
     // flashing the default theme before switching to the user's theme
-    if (!setting) return
+    if (!general) return
 
     const root = window.document.documentElement
     const systemThemeMedia = window.matchMedia('(prefers-color-scheme: dark)')
@@ -384,19 +392,16 @@ export const SettingProvider: React.FC<SettingProviderProps> = ({ children }) =>
     // 选取当前 mode 应用的预设：优先 light/dark 拆分字段,缺失时回退到旧
     // themeColor 字段（v0.7 之前持久化的偏好）,再缺失时使用引擎默认。
     const resolveThemeColor = (mode: 'light' | 'dark'): string => {
-      const split =
-        mode === 'dark' ? setting.general.themeColorDark : setting.general.themeColorLight
-      return split || setting.general.themeColor || DEFAULT_THEME_COLOR
+      const split = mode === 'dark' ? general.themeColorDark : general.themeColorLight
+      return split || general.themeColor || DEFAULT_THEME_COLOR
     }
 
     const resolveOverrides = (mode: 'light' | 'dark'): Record<string, string> => {
-      return mode === 'dark'
-        ? setting.general.themeOverridesDark || {}
-        : setting.general.themeOverridesLight || {}
+      return mode === 'dark' ? general.themeOverridesDark || {} : general.themeOverridesLight || {}
     }
 
     const resolveMode = (): 'light' | 'dark' => {
-      const theme = setting.general.theme
+      const theme = general.theme
       if (theme === 'light' || theme === 'dark') return theme
       return systemThemeMedia.matches ? 'dark' : 'light'
     }
@@ -430,7 +435,7 @@ export const SettingProvider: React.FC<SettingProviderProps> = ({ children }) =>
     }
 
     const handleSystemThemeChange = () => {
-      if (setting.general.theme === 'system' || !setting.general.theme) {
+      if (general.theme === 'system' || !general.theme) {
         applyTheme()
       }
     }
@@ -440,19 +445,7 @@ export const SettingProvider: React.FC<SettingProviderProps> = ({ children }) =>
     return () => {
       systemThemeMedia.removeEventListener('change', handleSystemThemeChange)
     }
-    // 依赖列表包含 `setting` 本体，react-doctor / exhaustive-deps 的
-    // "需要整个 setting" 与作者的"只关心主题字段"两个语义在这里合二为一：
-    // 多出来的 effect 重跑会被上方 prevResolvedMode/Color/Overrides 三个 ref
-    // 比较拦下来，不会触发 startThemeTransition 的 reveal 动画。
-  }, [
-    setting,
-    setting?.general.theme,
-    setting?.general.themeColor,
-    setting?.general.themeColorLight,
-    setting?.general.themeColorDark,
-    setting?.general.themeOverridesLight,
-    setting?.general.themeOverridesDark,
-  ])
+  }, [general])
 
   // 监听语言变化并应用
   useEffect(() => {

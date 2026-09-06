@@ -4,6 +4,9 @@ import type { StatusDotTone } from '@/components/device/StatusDot'
 
 export type DeviceRowStatus = {
   kind:
+    | 'paused'
+    | 'unknown'
+    | 'recently_active'
     | 'online'
     | 'offline'
     | 'waiting_for_update'

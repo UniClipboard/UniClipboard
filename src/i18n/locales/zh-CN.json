@@ -1516,6 +1516,21 @@
       }
     },
     "panel": {
+      "danger": {
+        "title": "危险区",
+        "description": "保留本地历史，清空本机的配对关系。",
+        "reset": "重建空间",
+        "failed": "重建失败，请重试或重启应用。",
+        "modal": {
+          "title": "重建空间",
+          "warning": "重建后将创建仅包含本机的新空间。本地历史和设置会保留；旧空间的成员关系、安全状态及未完成邀请将清空。其他设备需重新配对。",
+          "confirmPrompt": "请输入 RESET 以确认",
+          "confirmPlaceholder": "RESET",
+          "confirm": "重建空间",
+          "resetting": "正在重建...",
+          "cancel": "取消"
+        }
+      },
       "listTitle": "设备",
       "counts": "{{online}}/{{total}} 在线 · {{mobile}} 移动设备",
       "localBadge": "本机",

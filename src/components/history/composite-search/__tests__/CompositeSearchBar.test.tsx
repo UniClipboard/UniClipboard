@@ -173,7 +173,7 @@ describe('HistoryFilterPanel', () => {
     })
     const selectedIcon = selectedRow.querySelector('svg')
 
-    expect(selectedRow.className).toContain('bg-muted/50')
+    expect(selectedRow.querySelector('span[aria-hidden="true"]')).toHaveClass('bg-muted/50')
     expect(selectedRow.className).toContain('text-foreground')
     expect(selectedRow.className).not.toContain('bg-primary')
     expect(selectedRow.className).not.toContain('shadow')

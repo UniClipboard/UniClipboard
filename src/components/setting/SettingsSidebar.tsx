@@ -1,8 +1,11 @@
+import '@/components/ui/selection-item.css'
+import { LayoutGroup } from 'framer-motion'
 import { ArrowLeft } from 'lucide-react'
-import type { FC } from 'react'
+import { useId, type FC } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router'
 import { SETTINGS_CATEGORIES } from '@/components/setting/settings-config'
+import SelectionIndicator from '@/components/ui/selection-indicator'
 import {
   Sidebar,
   SidebarContent,
@@ -27,6 +30,7 @@ const SettingsSidebar: FC<SettingsSidebarProps> = ({
   onCategoryChange,
   flat = false,
 }) => {
+  const selectionId = useId()
   const { t } = useTranslation()
   const navigate = useNavigate()
 
@@ -48,33 +52,44 @@ const SettingsSidebar: FC<SettingsSidebarProps> = ({
       }
     >
       <SidebarContent className={flat ? '' : 'bg-transparent'}>
-        <SidebarGroup>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {SETTINGS_CATEGORIES.map(item => {
-                const Icon = item.icon
-                const isActive = activeCategory === item.id
+        <LayoutGroup id={selectionId}>
+          <SidebarGroup>
+            <SidebarGroupContent>
+              <SidebarMenu className="gap-1">
+                {SETTINGS_CATEGORIES.map(item => {
+                  const Icon = item.icon
+                  const isActive = activeCategory === item.id
 
-                return (
-                  <SidebarMenuItem key={item.id}>
-                    <button
-                      type="button"
-                      onClick={() => onCategoryChange(item.id)}
-                      className={`flex w-full items-center gap-2 overflow-hidden rounded-md p-2 text-left text-sm outline-none ring-sidebar-ring transition-[width,height,padding] focus-visible:ring-2 disabled:pointer-events-none disabled:opacity-50 [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0 ${
-                        isActive
-                          ? 'bg-primary/10 font-medium text-primary'
-                          : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-                      }`}
-                    >
-                      <Icon className="size-4" />
-                      <span>{t(`settings.categories.${item.id}`)}</span>
-                    </button>
-                  </SidebarMenuItem>
-                )
-              })}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
+                  return (
+                    <SidebarMenuItem key={item.id}>
+                      <button
+                        type="button"
+                        onClick={() => onCategoryChange(item.id)}
+                        aria-current={isActive ? 'true' : undefined}
+                        className={`selection-item relative isolate flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-sm outline-none ring-sidebar-ring focus-visible:ring-2 disabled:pointer-events-none disabled:opacity-50 [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0 ${
+                          isActive
+                            ? 'font-medium text-foreground'
+                            : 'text-muted-foreground hover:text-foreground'
+                        }`}
+                      >
+                        {isActive && (
+                          <SelectionIndicator
+                            layoutId="settings-selection"
+                            className="bg-foreground/[0.06] dark:bg-foreground/10"
+                          />
+                        )}
+                        <Icon className="selection-item-content relative z-10 size-4" />
+                        <span className="selection-item-content relative z-10">
+                          {t(`settings.categories.${item.id}`)}
+                        </span>
+                      </button>
+                    </SidebarMenuItem>
+                  )
+                })}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        </LayoutGroup>
       </SidebarContent>
       <SidebarFooter>
         <SidebarGroup>
@@ -84,10 +99,10 @@ const SettingsSidebar: FC<SettingsSidebarProps> = ({
                 <button
                   type="button"
                   onClick={handleBack}
-                  className="flex w-full items-center gap-2 overflow-hidden rounded-md p-2 text-left text-sm outline-none ring-sidebar-ring transition-[width,height,padding] focus-visible:ring-2 disabled:pointer-events-none disabled:opacity-50 [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0 text-muted-foreground hover:bg-muted hover:text-foreground"
+                  className="selection-item relative isolate flex w-full items-center gap-2 overflow-hidden rounded-md p-2 text-left text-sm outline-none ring-sidebar-ring focus-visible:ring-2 disabled:pointer-events-none disabled:opacity-50 [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0 text-muted-foreground hover:text-foreground"
                 >
-                  <ArrowLeft className="size-4" />
-                  <span>{t('nav.back')}</span>
+                  <ArrowLeft className="selection-item-content relative z-10 size-4" />
+                  <span className="selection-item-content relative z-10">{t('nav.back')}</span>
                 </button>
               </SidebarMenuItem>
             </SidebarMenu>

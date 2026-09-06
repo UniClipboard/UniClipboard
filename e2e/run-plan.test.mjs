@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import test from 'node:test'
+import { test } from 'vitest'
 import { createSpecRuns } from './run-plan.mjs'
 
 test('upgrade recovery notice runs every selected historical fixture', () => {

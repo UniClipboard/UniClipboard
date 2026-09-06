@@ -78,20 +78,21 @@ describe('GUI E2E run plan', () => {
       hostArch: 'arm64',
     })
 
-    expect(runs).toEqual([
-      {
-        spec: '/repo/e2e/specs/upgrade-re-pair-notice.e2e.js',
-        profiles: ['wdio-upgrade-re-pair-notice'],
-        env: {
-          E2E_UC_PROFILE: 'wdio-upgrade-re-pair-notice',
-          E2E_UPGRADE_REPAIR: '1',
-          E2E_UPGRADE_PASSPHRASE: 'v0-19-1-upgrade-fixture-passphrase',
-        },
-        fixture: {
-          directory: 'tests/e2e/fixtures/upgrades/v0.19.1/macos-aarch64/single-node-empty',
-          profile: 'wdio-upgrade-re-pair-notice',
-        },
+    expect(runs).toHaveLength(4)
+    expect(runs[0]).toEqual({
+      spec: '/repo/e2e/specs/upgrade-re-pair-notice.e2e.js',
+      profiles: ['wdio-upgrade-re-pair-notice-0-19-1'],
+      env: {
+        E2E_UC_PROFILE: 'wdio-upgrade-re-pair-notice-0-19-1',
+        E2E_UPGRADE_REPAIR: '1',
+        E2E_UPGRADE_VERSION: '0.19.1',
+        E2E_UPGRADE_PASSPHRASE: 'v0-19-1-upgrade-fixture-passphrase',
+        E2E_SCREENSHOT_DIR: 'e2e/artifacts/upgrade-0-19-1',
       },
-    ])
+      fixture: {
+        directory: 'tests/e2e/fixtures/upgrades/v0.19.1/macos-aarch64/single-node-empty',
+        profile: 'wdio-upgrade-re-pair-notice-0-19-1',
+      },
+    })
   })
 })

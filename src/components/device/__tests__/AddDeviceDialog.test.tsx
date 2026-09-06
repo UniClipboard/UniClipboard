@@ -1,9 +1,6 @@
 /**
- * AddDeviceDialog —— 邀请码签发的挂载语义回归测试。
- *
- * 对话框在 DevicesPage 里常驻渲染,open 翻转时才重挂载 Inner。这意味着签发
- * 邀请的 effect 的「首次挂载」发生在 open=true 状态下,会被 StrictMode 双跑。
- * 这里用 StrictMode 渲染,确保双跑后仍然能拿到邀请码而不是卡在 loading。
+ * Invitation loading must survive StrictMode and each completed dialog session.
+ * The inner form resets only after the closing animation has finished.
  */
 
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'

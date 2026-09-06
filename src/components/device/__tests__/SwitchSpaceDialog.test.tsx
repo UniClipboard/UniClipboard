@@ -50,6 +50,37 @@ describe('SwitchSpaceDialog durable admission', () => {
     })
   })
 
+  it('keeps the closing form until the exit completes and resets it on the next open', async () => {
+    const onOpenChange = vi.fn()
+    const { rerender } = render(
+      <I18nextProvider i18n={i18n}>
+        <SwitchSpaceDialog open onOpenChange={onOpenChange} />
+      </I18nextProvider>
+    )
+    fireEvent.change(screen.getByLabelText('Invitation code'), { target: { value: 'ABCD1234' } })
+    const input = screen.getByLabelText('New space passphrase')
+    fireEvent.change(input, { target: { value: 'temporary passphrase' } })
+    const popup = screen.getByRole('dialog')
+
+    rerender(
+      <I18nextProvider i18n={i18n}>
+        <SwitchSpaceDialog open={false} onOpenChange={onOpenChange} />
+      </I18nextProvider>
+    )
+    expect(popup).toBeInTheDocument()
+    expect(input).toHaveValue('temporary passphrase')
+    await waitFor(() => expect(popup).not.toBeInTheDocument())
+
+    rerender(
+      <I18nextProvider i18n={i18n}>
+        <SwitchSpaceDialog open onOpenChange={onOpenChange} />
+      </I18nextProvider>
+    )
+    expect(screen.getByLabelText('Invitation code')).toHaveValue('')
+    fireEvent.change(screen.getByLabelText('Invitation code'), { target: { value: 'ABCD1234' } })
+    expect(screen.getByLabelText('New space passphrase')).toHaveValue('')
+  })
+
   it('shows a cancel action while a switch admission is pending', async () => {
     render(
       <I18nextProvider i18n={i18n}>

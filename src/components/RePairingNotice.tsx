@@ -19,7 +19,7 @@ export default function RePairingNotice({ onOpenDevices }: RePairingNoticeProps)
 
   return (
     <AlertDialog open>
-      <AlertDialogContent className="bg-card text-card-foreground" style={{ animation: 'none' }}>
+      <AlertDialogContent className="bg-card text-card-foreground">
         <AlertDialogHeader>
           <div className="mb-2 flex size-10 items-center justify-center rounded-lg bg-warning/15 text-warning">
             <MonitorCog className="size-5" />

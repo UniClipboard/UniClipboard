@@ -21,6 +21,7 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { useDialogSessionReset } from '@/hooks/useDialogSessionReset'
 import { type JoinAdmissionResolution, useJoinAdmission } from '@/hooks/useJoinAdmission'
 import { createLogger } from '@/lib/logger'
 import { cn } from '@/lib/utils'
@@ -50,20 +51,22 @@ interface SwitchSpaceDialogProps {
  * - failed：按 SwitchSpaceErrorKind 显示具体提示，提供重试。
  */
 export default function SwitchSpaceDialog({ open, onOpenChange }: SwitchSpaceDialogProps) {
-  // `open` is used as a React `key` on the inner body. When the dialog
-  // closes, the inner component unmounts and its state is dropped — the
-  // next open remounts with fresh defaults. This replaces the previous
-  // reset-all-state-on-open useEffect (no-reset-all-state-on-prop-change).
+  const { sessionKey, onOpenChangeComplete } = useDialogSessionReset()
   return (
     <SwitchSpaceDialogInner
-      key={open ? 'open' : 'closed'}
+      key={sessionKey}
       open={open}
       onOpenChange={onOpenChange}
+      onOpenChangeComplete={onOpenChangeComplete}
     />
   )
 }
 
-function SwitchSpaceDialogInner({ open, onOpenChange }: SwitchSpaceDialogProps) {
+function SwitchSpaceDialogInner({
+  open,
+  onOpenChange,
+  onOpenChangeComplete,
+}: SwitchSpaceDialogProps & { onOpenChangeComplete: (open: boolean) => void }) {
   const { t } = useTranslation(undefined, { keyPrefix: 'devices.switchSpace' })
   const dispatch = useAppDispatch()
   const [step, setStep] = useState<Step>('input')
@@ -245,11 +248,6 @@ function SwitchSpaceDialogInner({ open, onOpenChange }: SwitchSpaceDialogProps) 
             </div>
           </div>
         )}
-
-        <div className="flex items-start gap-2.5 rounded-lg border border-amber-500/30 bg-amber-500/5 px-3.5 py-2.5 text-xs text-muted-foreground">
-          <AlertCircle className="mt-0.5 size-4 shrink-0 text-amber-500" />
-          <span className="leading-relaxed">{t('warning')}</span>
-        </div>
       </div>
     )
   } else if (step === 'migrating') {
@@ -370,6 +368,7 @@ function SwitchSpaceDialogInner({ open, onOpenChange }: SwitchSpaceDialogProps) 
 
   return (
     <Dialog
+      onOpenChangeComplete={onOpenChangeComplete}
       open={open}
       onOpenChange={(next, eventDetails) => {
         // 迁移中阻止关闭，避免用户误触导致状态机从 GUI 视角看起来"丢失"

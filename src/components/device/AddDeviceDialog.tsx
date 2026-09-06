@@ -35,6 +35,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Progress } from '@/components/ui/progress'
+import { useDialogSessionReset } from '@/hooks/useDialogSessionReset'
 import { daemonWs } from '@/lib/daemon-ws'
 import { createLogger } from '@/lib/logger'
 import { cn } from '@/lib/utils'
@@ -62,7 +63,12 @@ function formatRemaining(ms: number): string {
   return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`
 }
 
-function AddDeviceDialogInner({ open, onOpenChange, onSuccess }: AddDeviceDialogProps) {
+function AddDeviceDialogInner({
+  open,
+  onOpenChange,
+  onSuccess,
+  onOpenChangeComplete,
+}: AddDeviceDialogProps & { onOpenChangeComplete: (open: boolean) => void }) {
   const { t } = useTranslation()
   const [invitation, setInvitation] = useState<CurrentInvitation | null>(null)
   const [issuedAtMs, setIssuedAtMs] = useState<number | null>(null)
@@ -84,13 +90,10 @@ function AddDeviceDialogInner({ open, onOpenChange, onSuccess }: AddDeviceDialog
     return () => clearInterval(id)
   }, [open, invitation, step])
 
-  // 打开时：优先恢复 currentInvitation，否则申请新邀请
-  // 后端约束"同一时刻一个邀请"，关闭对话框不取消邀请，重开会拿回同一个
-  //
-  // t 只在失败分支用到，包成 effect event 移出依赖：本组件由外层 wrapper 按
-  // open 会话重挂载，effect 必须严格「每次挂载跑一次」。若 t 留在依赖里，i18n
-  // 资源 reload 会重跑 effect 并重复 issue 新邀请，把还没展示完的 step='success'
-  // 覆盖掉。
+  // Restore the current invitation when opening, or issue one if necessary.
+  // Closing does not revoke it; local form state resets after the exit finishes.
+  // Keep translation updates out of the effect dependencies so resource reloads
+  // cannot issue another invitation or overwrite the completed state.
   const reportIssueFailure = useEffectEvent(() => {
     log.error({ error_kind: 'invitation_issue_failed' }, 'failed to load or issue invitation')
     setError(t('devices.addDevice.errors.issueFailed'))
@@ -529,7 +532,12 @@ function AddDeviceDialogInner({ open, onOpenChange, onSuccess }: AddDeviceDialog
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange} disablePointerDismissal>
+    <Dialog
+      open={open}
+      onOpenChange={onOpenChange}
+      onOpenChangeComplete={onOpenChangeComplete}
+      disablePointerDismissal
+    >
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>
@@ -559,5 +567,8 @@ function AddDeviceDialogInner({ open, onOpenChange, onSuccess }: AddDeviceDialog
 }
 
 export default function AddDeviceDialog(props: AddDeviceDialogProps) {
-  return <AddDeviceDialogInner key={props.open ? 'open' : 'closed'} {...props} />
+  const { sessionKey, onOpenChangeComplete } = useDialogSessionReset()
+  return (
+    <AddDeviceDialogInner key={sessionKey} {...props} onOpenChangeComplete={onOpenChangeComplete} />
+  )
 }

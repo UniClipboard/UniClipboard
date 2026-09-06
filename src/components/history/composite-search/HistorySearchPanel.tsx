@@ -26,15 +26,13 @@ interface HistorySearchPanelProps extends DimensionHandlers {
   extensionFilter: string | null
   sourceOptions: SourceOption[]
   tagOptions: SearchTagOption[]
-  totalCount: number
+  searchPanelId: string
   searchOptions: PanelOption[]
   searchHighlight: number
   searchSuggestionsOpen: boolean
   onSearchOptionSelect: (index: number) => void
   onSearchOptionHighlight: (index: number) => void
   onDismissSearchSuggestions: () => void
-  onClearAll: () => void
-  onClose: () => void
 }
 
 function HistorySearchPanel(props: HistorySearchPanelProps) {
@@ -78,34 +76,9 @@ function HistorySearchPanel(props: HistorySearchPanelProps) {
   const typeIsAll = props.contentFilter === Filter.All
 
   return (
-    <section
-      aria-label={t('history.composite.title')}
-      className="flex max-h-[26rem] min-h-0 w-full flex-col overflow-hidden rounded-lg border border-border bg-popover text-popover-foreground shadow-xl"
-    >
-      <div className="flex h-11 shrink-0 items-center gap-2 px-3">
-        <span className="text-sm font-medium">{t('history.composite.title')}</span>
-        <span className="shrink-0 text-xs text-muted-foreground">
-          {t('history.composite.results', { count: props.totalCount })}
-        </span>
-        <button
-          type="button"
-          onClick={props.onClearAll}
-          className="ml-auto h-7 shrink-0 rounded-md px-2 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
-        >
-          {t('history.composite.clearAll')}
-        </button>
-        <button
-          type="button"
-          aria-label={t('history.composite.close')}
-          onClick={props.onClose}
-          className="flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
-        >
-          <X className="size-4" />
-        </button>
-      </div>
-
+    <div className="flex max-h-[26rem] min-h-0 w-full flex-col overflow-hidden">
       {visibleChips.length > 0 && (
-        <div className="flex shrink-0 items-center gap-1.5 overflow-x-auto border-t border-border/60 px-3 py-2">
+        <div className="flex shrink-0 items-center gap-1.5 overflow-x-auto px-3 py-2">
           {visibleChips.map(chip => {
             const Icon = chip.icon
             return (
@@ -129,7 +102,9 @@ function HistorySearchPanel(props: HistorySearchPanelProps) {
         </div>
       )}
 
-      <div className="flex h-56 min-h-0 shrink-0 border-t border-border">
+      <div
+        className={`flex h-56 min-h-0 shrink-0 ${visibleChips.length > 0 ? 'border-t border-border' : ''}`}
+      >
         <nav
           aria-label={t('history.composite.filterCategories')}
           className="flex w-28 shrink-0 flex-col gap-1 overflow-y-auto border-r border-border p-2"
@@ -153,7 +128,12 @@ function HistorySearchPanel(props: HistorySearchPanelProps) {
           ))}
         </nav>
 
-        <div className="grid min-w-0 flex-1 grid-cols-1 content-start gap-1 overflow-y-auto p-2">
+        <div
+          id={props.searchSuggestionsOpen ? props.searchPanelId : undefined}
+          role={props.searchSuggestionsOpen ? 'listbox' : undefined}
+          aria-label={props.searchSuggestionsOpen ? t('history.composite.title') : undefined}
+          className="grid min-w-0 flex-1 grid-cols-1 content-start gap-1 overflow-y-auto p-2"
+        >
           {props.searchSuggestionsOpen ? (
             props.searchOptions.map((option, index) => {
               const Icon = option.icon
@@ -231,7 +211,7 @@ function HistorySearchPanel(props: HistorySearchPanelProps) {
           )}
         </div>
       </div>
-    </section>
+    </div>
   )
 }
 

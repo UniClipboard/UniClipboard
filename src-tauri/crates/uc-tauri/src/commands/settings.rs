@@ -130,7 +130,8 @@ pub async fn update_keyboard_shortcuts(
         // ADR-008 P3-3 B2': read-modify-write the settings domain through the
         // daemon over loopback HTTP instead of the in-process facade. The OS
         // global-shortcut register/rollback below stays native.
-        let client = DaemonSettingsClient::new(connection_state.inner().clone());
+        let client = DaemonSettingsClient::new(connection_state.inner().clone())
+            .map_err(CommandError::internal)?;
         let current = client.get_settings().await.map_err(CommandError::internal)?;
         let quick_panel_enabled = current.quick_panel.enabled;
         let current_shortcuts = current

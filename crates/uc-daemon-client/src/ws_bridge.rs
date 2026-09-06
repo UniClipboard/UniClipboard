@@ -294,7 +294,8 @@ impl DaemonWsBridge {
 
             // Exchange bearer → session JWT lazily on first WS connect attempt.
             // Uses the same session token cache as HTTP requests.
-            let http = reqwest::Client::new();
+            let http = crate::build_local_http_client()
+                .context("failed to build local daemon HTTP client for websocket authentication")?;
             let session_token =
                 crate::http::get_session_token(&http, &self.connection_state, connection.pid)
                     .await?;

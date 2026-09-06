@@ -468,7 +468,9 @@ pub async fn check_for_update(
                 let app_version = app.package_info().version.to_string();
                 let settings_client = app
                     .try_state::<DaemonConnectionState>()
-                    .map(|state| DaemonSettingsClient::new(state.inner().clone()));
+                    .map(|state| DaemonSettingsClient::new(state.inner().clone()))
+                    .transpose()
+                    .map_err(|e| format!("failed to build daemon settings client: {e}"))?;
                 let ch = match settings_client {
                     Some(client) => match client.get_settings().await {
                         Ok(settings) => crate::update_scheduler::scheduler::resolve_channel(
@@ -557,7 +559,16 @@ pub(crate) async fn perform_manual_check_from_tray(app: &AppHandle) {
     let app_version = app.package_info().version.to_string();
     let settings_client = app
         .try_state::<DaemonConnectionState>()
-        .map(|state| DaemonSettingsClient::new(state.inner().clone()));
+        .map(|state| DaemonSettingsClient::new(state.inner().clone()))
+        .transpose();
+    let settings_client = match settings_client {
+        Ok(client) => client,
+        Err(error) => {
+            warn!(error = %error, error_kind = "daemon_client_build_failed", retryable = false,
+                "Failed to build settings client for tray update check");
+            return;
+        }
+    };
     let resolved_channel = match settings_client {
         Some(client) => match client.get_settings().await {
             Ok(settings) => crate::update_scheduler::scheduler::resolve_channel(
@@ -1290,7 +1301,9 @@ pub async fn skip_version(
     let app_version = app.package_info().version.to_string();
     let settings_client = app
         .try_state::<DaemonConnectionState>()
-        .map(|state| DaemonSettingsClient::new(state.inner().clone()));
+        .map(|state| DaemonSettingsClient::new(state.inner().clone()))
+        .transpose()
+        .map_err(|e| format!("failed to build daemon settings client: {e}"))?;
     let channel = match settings_client {
         Some(client) => match client.get_settings().await {
             Ok(settings) => crate::update_scheduler::scheduler::resolve_channel(
@@ -1323,6 +1336,7 @@ pub async fn get_auto_download_update(
 ) -> Result<bool, String> {
     let _ = _trace;
     let settings = DaemonSettingsClient::new(connection_state.inner().clone())
+        .map_err(|e| format!("failed to build daemon settings client: {e}"))?
         .get_settings()
         .await
         .map_err(|e| format!("failed to load settings: {e}"))?;
@@ -1343,6 +1357,7 @@ pub async fn set_auto_download_update(
 ) -> Result<(), String> {
     let _ = _trace;
     DaemonSettingsClient::new(connection_state.inner().clone())
+        .map_err(|e| format!("failed to build daemon settings client: {e}"))?
         .update_settings(SettingsPatchDto {
             general: Some(GeneralSettingsPatchDto {
                 auto_download_update: Some(enabled),

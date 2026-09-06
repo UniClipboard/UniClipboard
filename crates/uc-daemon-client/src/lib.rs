@@ -5,6 +5,7 @@
 
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Duration;
 
 pub mod connection;
 pub mod http;
@@ -31,6 +32,26 @@ pub use ws_bridge::{BridgeState, DaemonWsBridge, DaemonWsBridgeConfig, DaemonWsB
 
 const ENV_BASE_URL: &str = "UNICLIPBOARD_DAEMON_BASE_URL";
 const ENV_TOKEN_PATH: &str = "UNICLIPBOARD_DAEMON_TOKEN_PATH";
+
+/// Build an HTTP client dedicated to the local daemon transport.
+///
+/// Daemon traffic is process-local IPC over a loopback socket. It must never
+/// inherit system proxy settings: forwarding `127.0.0.1` through an HTTP proxy
+/// can turn a healthy daemon response into the proxy's `502 Bad Gateway`.
+pub fn build_local_http_client() -> reqwest::Result<reqwest::Client> {
+    build_local_http_client_from(reqwest::Client::builder())
+}
+
+/// Build a loopback-only daemon client with a request timeout.
+pub fn build_local_http_client_with_timeout(timeout: Duration) -> reqwest::Result<reqwest::Client> {
+    build_local_http_client_from(reqwest::Client::builder().timeout(timeout))
+}
+
+fn build_local_http_client_from(
+    builder: reqwest::ClientBuilder,
+) -> reqwest::Result<reqwest::Client> {
+    builder.no_proxy().build()
+}
 
 /// Resolve the daemon connection info from environment for CLI clients.
 ///
@@ -136,7 +157,7 @@ fn non_empty_env(name: &str) -> Option<String> {
 ///
 /// ```ignore
 /// // For GUI (long-running, caches session tokens):
-/// let ctx = DaemonClientContext::new(connection_info);
+/// let ctx = DaemonClientContext::new(connection_info)?;
 /// let setup = ctx.setup_v2_client();
 ///
 /// // For CLI (short-lived, exchanges fresh token each call):
@@ -155,14 +176,16 @@ impl DaemonClientContext {
     ///
     /// Uses `"gui"` as the client type (session tokens are cached per-request
     /// via `get_session_token` in `authorized_daemon_request`).
-    pub fn new(connection_info: DaemonConnectionInfo) -> Self {
+    pub fn new(connection_info: DaemonConnectionInfo) -> Result<Self> {
         let connection_state = DaemonConnectionState::default();
         connection_state.set(connection_info);
-        Self {
+        Ok(Self {
             connection_state,
-            http: Arc::new(reqwest::Client::new()),
+            http: Arc::new(
+                build_local_http_client().context("failed to build local daemon HTTP client")?,
+            ),
             client_type: "gui".to_string(),
-        }
+        })
     }
 
     /// Create a CLI context by resolving connection info from environment.
@@ -175,24 +198,23 @@ impl DaemonClientContext {
     /// session token (no caching) since CLI processes are short-lived.
     pub fn from_env() -> Result<Self> {
         let connection_info = resolve_connection_info_from_env()?;
-        Ok(Self::with_connection_info(
-            connection_info,
-            "cli".to_string(),
-        ))
+        Self::with_connection_info(connection_info, "cli".to_string())
     }
 
     /// Create a context with an explicit connection info and client type.
     pub fn with_connection_info(
         connection_info: DaemonConnectionInfo,
         client_type: String,
-    ) -> Self {
+    ) -> Result<Self> {
         let connection_state = DaemonConnectionState::default();
         connection_state.set(connection_info);
-        Self {
+        Ok(Self {
             connection_state,
-            http: Arc::new(reqwest::Client::new()),
+            http: Arc::new(
+                build_local_http_client().context("failed to build local daemon HTTP client")?,
+            ),
             client_type,
-        }
+        })
     }
 
     /// Spawn a [`DaemonSetupV2Client`] that shares this context's connection state and HTTP client.
@@ -331,5 +353,124 @@ impl DaemonClientContext {
     /// Get a clone of the client type.
     pub fn client_type(&self) -> &str {
         &self.client_type
+    }
+}
+
+#[cfg(test)]
+mod local_http_client_tests {
+    use super::*;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::TcpListener;
+
+    #[tokio::test]
+    async fn local_daemon_client_bypasses_configured_proxy() {
+        let proxy = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let proxy_addr = proxy.local_addr().unwrap();
+        let target = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let target_addr = target.local_addr().unwrap();
+
+        let target_task = tokio::spawn(async move {
+            let (mut stream, _) = target.accept().await.unwrap();
+            let mut request = [0_u8; 1024];
+            let bytes_read = stream.read(&mut request).await.unwrap();
+            assert!(bytes_read > 0);
+            stream
+                .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 6\r\n\r\ndirect")
+                .await
+                .unwrap();
+        });
+
+        let client = build_local_http_client_from(
+            reqwest::Client::builder()
+                .timeout(Duration::from_secs(5))
+                .proxy(reqwest::Proxy::all(format!("http://{proxy_addr}")).unwrap()),
+        )
+        .unwrap();
+        let body = client
+            .get(format!("http://{target_addr}/health"))
+            .send()
+            .await
+            .unwrap()
+            .text()
+            .await
+            .unwrap();
+
+        assert_eq!(body, "direct");
+        assert!(
+            tokio::time::timeout(Duration::from_millis(100), proxy.accept())
+                .await
+                .is_err()
+        );
+        target_task.await.unwrap();
+    }
+}
+
+#[cfg(test)]
+mod proxy_environment_tests {
+    use super::*;
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    #[tokio::test]
+    async fn daemon_request_bypasses_proxy_environment() {
+        const CHILD_TARGET: &str = "UC_TEST_PROXY_TARGET";
+        if let Ok(target) = std::env::var(CHILD_TARGET) {
+            let context = DaemonClientContext::new(DaemonConnectionInfo {
+                base_url: target.clone(),
+                ws_url: target.replace("http://", "ws://"),
+                token: "test-token".into(),
+                pid: std::process::id(),
+            })
+            .unwrap();
+            let response = context
+                .http
+                .get(format!("{target}/health"))
+                .timeout(Duration::from_secs(5))
+                .send()
+                .await
+                .unwrap();
+            assert_eq!(response.status(), reqwest::StatusCode::OK);
+            assert_eq!(response.text().await.unwrap(), "direct");
+            return;
+        }
+
+        let target = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/health"))
+            .respond_with(ResponseTemplate::new(200).set_body_string("direct"))
+            .expect(1)
+            .mount(&target)
+            .await;
+        let proxy = MockServer::start().await;
+        Mock::given(method("GET"))
+            .respond_with(ResponseTemplate::new(502))
+            .expect(0)
+            .mount(&proxy)
+            .await;
+        // Isolate environment changes from parallel tests and reqwest's proxy cache.
+        let output = tokio::process::Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "proxy_environment_tests::daemon_request_bypasses_proxy_environment",
+                "--nocapture",
+            ])
+            .env(CHILD_TARGET, target.uri())
+            .env("HTTP_PROXY", proxy.uri())
+            .env("HTTPS_PROXY", proxy.uri())
+            .env("http_proxy", proxy.uri())
+            .env("https_proxy", proxy.uri())
+            .env_remove("NO_PROXY")
+            .env_remove("no_proxy")
+            .env_remove("ALL_PROXY")
+            .env_remove("all_proxy")
+            .output()
+            .await
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
     }
 }

@@ -15,6 +15,7 @@ pub mod commands;
 pub mod lightweight;
 pub mod main_window;
 pub mod modifier_double_tap_platform;
+pub mod process_environment;
 pub mod quick_panel;
 pub mod run;
 mod runtime_environment;
@@ -22,4 +23,5 @@ pub mod specta_builder;
 pub mod tray;
 pub mod update_scheduler;
 
+pub use process_environment::prepare_process_environment;
 pub use run::run;

@@ -32,7 +32,7 @@ function createCodeItem(text = 'const answer = 42'): DisplayClipboardItem {
 }
 
 describe('ClipboardPreviewInfo', () => {
-  it('renders file count and combined size for file entries', () => {
+  it('renders file count and combined size for file entries', async () => {
     render(
       <ClipboardPreviewInfo
         item={createFileItem()}
@@ -57,7 +57,7 @@ describe('ClipboardPreviewInfo', () => {
     expect(container).toBeEmptyDOMElement()
   })
 
-  it('identifies code-tagged text as code', () => {
+  it('keeps text as the type and displays code once as a tag', () => {
     render(
       <ClipboardPreviewInfo
         item={createCodeItem()}
@@ -67,11 +67,12 @@ describe('ClipboardPreviewInfo', () => {
       />
     )
 
-    expect(screen.getByText(i18n.t('header.filters.code'))).toBeInTheDocument()
-    expect(screen.queryByText(i18n.t('header.filters.text'))).not.toBeInTheDocument()
+    expect(screen.queryByRole('button')).not.toBeInTheDocument()
+    expect(screen.getAllByText(i18n.t('history.type.code'))).toHaveLength(1)
+    expect(screen.getByText(i18n.t('header.filters.text'))).toBeInTheDocument()
   })
 
-  it('shows the full code preview line count without a trailing phantom line', () => {
+  it('shows the full code preview line count without a trailing phantom line', async () => {
     const text = 'const first = 1\nconst second = 2\n'
     render(
       <ClipboardPreviewInfo

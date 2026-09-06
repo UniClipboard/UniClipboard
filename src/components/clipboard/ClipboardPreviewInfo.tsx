@@ -30,8 +30,7 @@ function buildInfoRows(
   imageDimensions: { width: number; height: number } | null,
   t: (key: string, options?: Record<string, unknown>) => string
 ): InfoRow[] {
-  const displayType = item.contentTags?.includes('code') ? 'code' : item.type
-  const rows: InfoRow[] = [{ id: 'type', value: t('header.filters.' + displayType) }]
+  const rows: InfoRow[] = [{ id: 'type', value: t('header.filters.' + item.type) }]
 
   if ((item.type === 'text' || item.type === 'richtext') && item.content) {
     const textItem = item.content as ClipboardTextItem
@@ -44,7 +43,7 @@ function buildInfoRows(
       id: 'text-chars',
       value: t('clipboard.preview.charactersCount', { count: charCount }),
     })
-    if (displayType === 'code') {
+    if (item.contentTags?.includes('code')) {
       const code = resolveCodePreviewText(textItem.display_text, preview)
       rows.push({
         id: 'code-lines',
@@ -79,13 +78,6 @@ function buildInfoRows(
   return rows
 }
 
-/**
- * Lightweight meta strip atop the preview pane: a single dot-separated line of
- * facts (type · size · dims …) on the same `bg-card` surface as the body, with
- * the delivery badge pinned right. No background block or divider — the preview
- * reads as one continuous surface, with hierarchy carried by type scale and
- * spacing rather than rules.
- */
 const ClipboardPreviewInfo: React.FC<ClipboardPreviewInfoProps> = ({
   imageDimensions,
   item,
@@ -101,16 +93,30 @@ const ClipboardPreviewInfo: React.FC<ClipboardPreviewInfoProps> = ({
   if (rows.length === 0 && !delivery) return null
 
   return (
-    <div className="shrink-0 px-6 pt-4 pb-2">
-      <div className="flex items-center gap-2 text-[11px] font-medium tabular-nums text-muted-foreground/55">
-        {rows.map((row, i) => (
-          <React.Fragment key={row.id}>
-            {i > 0 && <span className="text-muted-foreground/25">·</span>}
-            <span className="shrink-0">{row.value}</span>
-          </React.Fragment>
-        ))}
+    <div className="shrink-0 p-3" data-testid="clipboard-preview-info">
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1.5 text-[0.6875rem] font-normal tabular-nums text-muted-foreground/75">
+        <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+          {rows.map((row, i) => (
+            <span key={row.id} className="inline-flex items-center gap-2">
+              {i > 0 && (
+                <span aria-hidden="true" className="text-muted-foreground/40">
+                  ·
+                </span>
+              )}
+              <span>{row.value}</span>
+            </span>
+          ))}
+          {item.contentTags?.map(tag => (
+            <span
+              key={tag}
+              className="rounded bg-muted/50 px-1.5 py-0.5 text-[0.625rem] leading-none text-muted-foreground/80"
+            >
+              {t(`history.type.${tag}`, tag)}
+            </span>
+          ))}
+        </div>
         {delivery && (
-          <div className="ml-auto">
+          <div className="min-w-0 max-w-full [&>div]:flex-wrap [&_span]:font-normal">
             <EntryDeliveryBadge delivery={delivery} />
           </div>
         )}

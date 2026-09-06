@@ -1,4 +1,4 @@
-import { ChevronDown, ArrowRightLeft, Plus, RefreshCw, Settings2 } from 'lucide-react'
+import { Plus, RefreshCw, Settings2 } from 'lucide-react'
 import React, { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { useTranslation } from 'react-i18next'
 import { shallowEqual } from 'react-redux'
@@ -18,12 +18,12 @@ import {
 import AddDeviceDialog from '@/components/device/AddDeviceDialog'
 import AddMobileSyncDeviceDialog from '@/components/device/AddMobileSyncDeviceDialog'
 import { derivePeerStatusTone } from '@/components/device/connection-channel-utils'
-import { DeprecatedBadge } from '@/components/device/DeprecatedBadge'
 import {
   buildDeviceTrustListView,
   getDeviceTrustStatus,
   type DeviceRowStatus,
 } from '@/components/device/device-trust-view'
+import DeviceListFooter from '@/components/device/DeviceListFooter'
 import DeviceListItem from '@/components/device/DeviceListItem'
 import EnableMobileSyncDialog from '@/components/device/EnableMobileSyncDialog'
 import LocalDeviceListItem from '@/components/device/LocalDeviceListItem'
@@ -45,14 +45,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Skeleton } from '@/components/ui/skeleton'
 import { toast } from '@/components/ui/toast'
@@ -419,7 +412,6 @@ const DevicesPage: React.FC = () => {
               <>
                 <SectionLabel
                   label={t('devices.mobileSync.title')}
-                  labelTrailing={<DeprecatedBadge />}
                   trailing={
                     <button
                       type="button"
@@ -468,57 +460,13 @@ const DevicesPage: React.FC = () => {
             )}
           </nav>
         </ScrollArea>
-        <div className="flex flex-col gap-2 border-t border-border/50 px-3 py-2">
-          <div className="flex items-center justify-between gap-1">
-            <Button
-              data-testid="devices-add-device"
-              variant="ghost"
-              size="sm"
-              onClick={() => setAddP2PDialogOpen(true)}
-            >
-              <Plus />
-              {t('devices.panel.addMenu.trigger')}
-            </Button>
-            <Button
-              data-testid="device-switch-space"
-              variant="ghost"
-              size="icon-sm"
-              aria-label={t('devices.switchSpace.button')}
-              title={t('devices.switchSpace.button')}
-              onClick={() => setSwitchSpaceOpen(true)}
-            >
-              <ArrowRightLeft className="size-4" />
-            </Button>
-          </div>
-          <DropdownMenu>
-            <DropdownMenuTrigger
-              render={
-                <button
-                  type="button"
-                  aria-label={t('devices.panel.addMenu.otherWays')}
-                  className="flex items-center gap-0.5 text-xs text-muted-foreground/70 transition-colors hover:text-foreground"
-                />
-              }
-            >
-              {t('devices.panel.addMenu.otherWays')}
-              <ChevronDown className="size-3" aria-hidden="true" />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="w-64">
-              <DropdownMenuItem onClick={mobileActions.handleAddClick}>
-                <span className="flex-1">{t('devices.panel.addMenu.mobile')}</span>
-                <Badge variant="outline" className="border-border/60 text-muted-foreground">
-                  {t('devices.mobileSync.deprecated')}
-                </Badge>
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={mobileActions.openSettings}>
-                {t('devices.mobileSync.title')} · {t('devices.mobileSync.configure')}
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-          <p className="px-2 text-xs text-muted-foreground">
-            {t('devices.thisDevice.onlineCount', { count: onlineCount })}
-          </p>
-        </div>
+        <DeviceListFooter
+          onlineCount={onlineCount}
+          onAddDevice={() => setAddP2PDialogOpen(true)}
+          onSwitchSpace={() => setSwitchSpaceOpen(true)}
+          onAddMobile={mobileActions.handleAddClick}
+          onMobileSettings={mobileActions.openSettings}
+        />
       </aside>
 
       {/* ── detail pane ───────────────────────────────────────── */}
@@ -669,15 +617,13 @@ export default React.memo(DevicesPage)
 
 const SectionLabel: React.FC<{
   label: string
-  labelTrailing?: React.ReactNode
   trailing?: React.ReactNode
-}> = ({ label, labelTrailing, trailing }) => (
+}> = ({ label, trailing }) => (
   <div className="flex items-center justify-between px-2.5 pb-1 pt-4">
     <div className="flex min-w-0 items-center gap-1.5">
       <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground/80">
         {label}
       </span>
-      {labelTrailing}
     </div>
     {trailing}
   </div>

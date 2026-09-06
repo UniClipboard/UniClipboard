@@ -1,6 +1,12 @@
 {
   "version": 1,
   "skills": {
+    "beui": {
+      "source": "starc007/ui-components",
+      "sourceType": "github",
+      "skillPath": "skills/beui/SKILL.md",
+      "computedHash": "376f66cd971464942de99b11bf17d939d98d894904f4b2fea0570446baefff1a"
+    },
     "ralph-loop": {
       "source": "andrelandgraf/fullstackrecipes",
       "sourceType": "github",

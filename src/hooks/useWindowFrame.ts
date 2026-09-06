@@ -27,9 +27,9 @@ export function useWindowFrame() {
 
       await getCurrentWindow().setDecorations(enabled)
       setStoredUseSystemWindowFrame(enabled)
-      applyWindowFrameDocumentState(!enabled)
+      applyWindowFrameDocumentState(resolveWindowFrameMode(platform, enabled).hasRoundedWindow)
     },
-    [mode.canChooseSystemFrame]
+    [mode.canChooseSystemFrame, platform]
   )
 
   return {

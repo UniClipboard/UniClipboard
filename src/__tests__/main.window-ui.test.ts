@@ -6,12 +6,12 @@ const mocks = vi.hoisted(() => {
   return {
     applyPlatformEffectPreferences: vi.fn(),
     applyPlatformTypographyScale: vi.fn(),
-    applyDeviceMetaToSentry: vi.fn(),
+    applyDiagnosticDeviceContext: vi.fn(),
     attachConsole: vi.fn(() => Promise.resolve()),
     connectDaemonWs: vi.fn(() => Promise.resolve()),
     createRoot: vi.fn(() => ({ render })),
     getDeviceMeta: vi.fn(() => Promise.resolve({})),
-    initSentry: vi.fn(),
+    initializeDiagnostics: vi.fn(),
     initializeWindowUi: vi.fn(),
     registerDaemonShutdownListener: vi.fn(() => Promise.resolve()),
     render,
@@ -42,12 +42,10 @@ vi.mock('@/lib/window-ui', () => ({
   initializeWindowUi: mocks.initializeWindowUi,
 }))
 
-vi.mock('@/observability/sentry', () => ({
-  applyDeviceMetaToSentry: mocks.applyDeviceMetaToSentry,
-  initSentry: mocks.initSentry,
-  Sentry: {
-    ErrorBoundary: ({ children }: { children: ReactNode }) => children,
-  },
+vi.mock('@/observability/diagnostics', () => ({
+  applyDiagnosticDeviceContext: mocks.applyDiagnosticDeviceContext,
+  initializeDiagnostics: mocks.initializeDiagnostics,
+  DiagnosticsErrorBoundary: ({ children }: { children: ReactNode }) => children,
 }))
 
 vi.mock('@/store', () => ({

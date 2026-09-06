@@ -9,26 +9,25 @@ import { initializeWebviewContextMenu } from '@/lib/webview-context-menu'
 import { initializeWindowFrame } from '@/lib/window-frame-runtime'
 import { initializeWindowUi } from '@/lib/window-ui'
 import '@/lib/wdio-test-bridge'
-import { applyDeviceMetaToSentry, initSentry, Sentry } from '@/observability/sentry'
+import {
+  applyDiagnosticDeviceContext,
+  initializeDiagnostics,
+  DiagnosticsErrorBoundary,
+} from '@/observability/diagnostics'
 import App from './App'
 import { store } from './store'
 
 initializeWebviewContextMenu()
 
-// Sentry init runs before React mounts so that the global ErrorBoundary,
-// the pino → Sentry.logger transmit hook, and breadcrumb capture are all
-// wired up by the time any module calls `createLogger()`. Whether logs
-// actually leave the process is gated at runtime by
-// `setFrontendSentryEnabled`, which SettingContext flips once the daemon
-// returns the persisted user preference.
-initSentry()
+// Initialize diagnostics before React mounts. The provider owns SDK setup;
+// the persisted diagnostics setting still controls remote delivery.
+initializeDiagnostics()
 
-// 启动后异步拉取 Rust 侧解析的 device/app 元数据，用于推进 Sentry 全局 scope。
-// 如果 Tauri runtime 未就绪或 meta 未生成，只记录警告，不阻塞渲染。
+// Attach host context without blocking rendering when the runtime is not ready.
 getDeviceMeta()
-  .then(applyDeviceMetaToSentry)
+  .then(applyDiagnosticDeviceContext)
   .catch(err => {
-    console.warn('[sentry] failed to attach device meta:', err)
+    console.warn('[diagnostics] failed to attach device meta:', err)
   })
 
 const startupTimingOrigin = Date.now()
@@ -87,9 +86,9 @@ registerDaemonShutdownListener().catch(err => {
 ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
   <React.StrictMode>
     <Provider store={store}>
-      <Sentry.ErrorBoundary fallback={<div>Something went wrong.</div>}>
+      <DiagnosticsErrorBoundary fallback={<div>Something went wrong.</div>}>
         <App />
-      </Sentry.ErrorBoundary>
+      </DiagnosticsErrorBoundary>
     </Provider>
   </React.StrictMode>
 )

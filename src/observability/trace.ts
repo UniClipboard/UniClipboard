@@ -1,39 +1,35 @@
-import { Sentry, sentryEnabled } from '@/observability/sentry'
+import { startDiagnosticTrace } from '@/observability/diagnostics'
 
 export interface TraceContext {
   traceId: string
   startTime: number
   operation: string
-  sentrySpan?: ReturnType<typeof Sentry.startInactiveSpan>
 }
 
 class TraceManager {
-  private currentTrace: TraceContext | null = null
+  private activeTraces = new Map<TraceContext, () => void>()
 
   startTrace(operation: string): TraceContext {
-    const span = sentryEnabled
-      ? Sentry.startInactiveSpan({
-          name: operation,
-          op: 'ui.action',
-        })
-      : undefined
-
-    this.currentTrace = {
-      traceId: span?.spanContext().traceId ?? crypto.randomUUID(),
+    const backendTrace = startDiagnosticTrace(operation)
+    const trace = {
+      traceId: backendTrace.traceId,
       startTime: Date.now(),
       operation,
-      sentrySpan: span,
     }
-    return this.currentTrace
+    this.activeTraces.set(trace, backendTrace.finish)
+    return trace
   }
 
   getCurrentTrace(): TraceContext | null {
-    return this.currentTrace
+    // Overlapping calls have no unambiguous ambient owner in a WebView.
+    // Their explicit command breadcrumbs/errors still carry their own IDs.
+    return this.activeTraces.size === 1 ? this.activeTraces.keys().next().value! : null
   }
 
-  endTrace(): void {
-    this.currentTrace?.sentrySpan?.end()
-    this.currentTrace = null
+  endTrace(trace: TraceContext): void {
+    const finish = this.activeTraces.get(trace)
+    this.activeTraces.delete(trace)
+    finish?.()
   }
 }
 

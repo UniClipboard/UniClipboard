@@ -1,19 +1,8 @@
-import * as Sentry from '@sentry/react'
 import pino from 'pino'
-import type { LogEvent } from 'pino'
+import type { Level, LogEvent } from 'pino'
+import { writeDiagnosticLog } from '@/observability/diagnostics'
 import { redactSensitiveArgs } from '@/observability/redaction'
 import { traceManager } from '@/observability/trace'
-
-type SentryLogFn = (message: string, attributes?: Record<string, unknown>) => void
-
-const SENTRY_LOG_FN: Record<string, SentryLogFn> = {
-  trace: Sentry.logger.trace,
-  debug: Sentry.logger.debug,
-  info: Sentry.logger.info,
-  warn: Sentry.logger.warn,
-  error: Sentry.logger.error,
-  fatal: Sentry.logger.fatal,
-}
 
 function stringifyArg(value: unknown, includeStack = false): string {
   if (value instanceof Error) {
@@ -29,9 +18,7 @@ function stringifyArg(value: unknown, includeStack = false): string {
   }
 }
 
-function transmitToSentry(level: string, logEvent: LogEvent): void {
-  const send = SENTRY_LOG_FN[level] ?? Sentry.logger.info
-
+function transmitDiagnostics(level: Level, logEvent: LogEvent): void {
   // Build message from all arguments, applying redaction on each.
   const message = logEvent.messages.map(m => stringifyArg(redactSensitiveArgs(m), false)).join(' ')
 
@@ -49,16 +36,16 @@ function transmitToSentry(level: string, logEvent: LogEvent): void {
   if (traceId) attributes.trace_id = traceId
   if (context.module) attributes.module = String(context.module)
 
-  send(message, Object.keys(attributes).length > 0 ? attributes : undefined)
+  writeDiagnosticLog(level, message, Object.keys(attributes).length > 0 ? attributes : undefined)
 }
 
 /**
  * Application-wide pino logger.
  *
  * - In development: writes to browser DevTools console (default pino/browser
- *   behaviour) and forwards structured records to Sentry Logs (gated at
- *   runtime by `setFrontendSentryEnabled`).
- * - In production: console output is suppressed below 'warn'; Sentry receives
+ *   behaviour) and forwards structured records to the diagnostics provider (gated at
+ *   runtime by `setDiagnosticsEnabled`).
+ * - In production: console output is suppressed below 'warn'; the provider receives
  *   all records at 'info' and above.
  *
  * Prefer creating module-level child loggers via `createLogger('module-name')`
@@ -77,15 +64,15 @@ export const logger = pino({
   browser: {
     transmit: {
       level: 'info',
-      send: transmitToSentry,
+      send: transmitDiagnostics,
     },
   },
 })
 
 /**
  * Create a child logger bound to a named module.
- * The `module` field is forwarded as a Sentry log attribute so logs can be
- * filtered by component in the Sentry Logs UI.
+ * The `module` field is forwarded as a diagnostic log attribute so logs can be
+ * filtered by component in the diagnostics viewer.
  */
 export function createLogger(module: string): pino.Logger {
   return logger.child({ module })

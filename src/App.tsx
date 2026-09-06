@@ -39,8 +39,8 @@ import {
 } from '@/lib/daemon-lifecycle-ready'
 import { connectDaemonWs } from '@/lib/daemon-ws-bootstrap'
 import { commands, type DaemonBootstrapFailure } from '@/lib/ipc'
+import { DiagnosticsRoutes } from '@/observability/diagnostics'
 import { reportError } from '@/observability/errors'
-import { SentryRoutes } from '@/observability/sentry'
 import DevicesPage from '@/pages/DevicesPage'
 import HistoryPage from '@/pages/HistoryPage'
 import SettingsPage from '@/pages/SettingsPage'
@@ -400,7 +400,7 @@ const AppContent = ({
   return (
     <DeviceTrustProvider enabled>
       <GlobalShortcuts />
-      <SentryRoutes>
+      <DiagnosticsRoutes>
         <Route element={<AuthenticatedLayout sidebarTitle={sidebarTitle} />}>
           <Route path="/" element={<Navigate to="/history" replace />} />
           <Route path="/history" element={<HistoryPage />} />
@@ -410,7 +410,7 @@ const AppContent = ({
           <Route path="/settings" element={<SettingsPage />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
-      </SentryRoutes>
+      </DiagnosticsRoutes>
       <Toaster />
       <StartupModals />
       <DeviceTrustDialogHost />

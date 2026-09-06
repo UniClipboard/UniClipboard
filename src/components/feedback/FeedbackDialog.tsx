@@ -14,7 +14,7 @@ import { Input } from '@/components/ui/input'
 import { toast } from '@/components/ui/toast'
 import { createLogger } from '@/lib/logger'
 import { cn } from '@/lib/utils'
-import { Sentry } from '@/observability/sentry'
+import { submitDiagnosticFeedback } from '@/observability/diagnostics'
 
 const log = createLogger('feedback-dialog')
 
@@ -44,13 +44,7 @@ export function FeedbackDialog({ open, onOpenChange }: FeedbackDialogProps) {
 
     setIsSubmitting(true)
     try {
-      const eventId = Sentry.captureMessage('User Feedback')
-      Sentry.captureFeedback({
-        message: content,
-        name: 'User',
-        email: email || undefined,
-        associatedEventId: eventId,
-      })
+      await submitDiagnosticFeedback({ message: content, email: email || undefined })
 
       if (email.trim()) {
         try {

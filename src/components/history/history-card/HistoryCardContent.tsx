@@ -1,3 +1,4 @@
+import InlineTextSummary from '@/components/clipboard/InlineTextSummary'
 import type {
   ClipboardFileItem,
   ClipboardImageItem,
@@ -46,8 +47,8 @@ function HistoryCardContent({ item }: HistoryCardContentProps) {
       return <CodeEntryContent item={{ code: item.textPreview }} />
     }
     return item.textPreview ? (
-      <div className="text-[13px] leading-[1.55] text-foreground/85 line-clamp-2 break-words whitespace-pre-wrap">
-        {item.textPreview}
+      <div className="text-[13px] leading-[1.55] text-foreground/85 line-clamp-2 break-words">
+        <InlineTextSummary text={item.textPreview} />
       </div>
     ) : null
   }
@@ -75,7 +76,9 @@ function HistoryCardContent({ item }: HistoryCardContentProps) {
     }
     default:
       return item.textPreview ? (
-        <div className="text-[13px] text-muted-foreground/70 line-clamp-3">{item.textPreview}</div>
+        <div className="text-[13px] text-muted-foreground/70 line-clamp-3">
+          <InlineTextSummary text={item.textPreview} />
+        </div>
       ) : null
   }
 }

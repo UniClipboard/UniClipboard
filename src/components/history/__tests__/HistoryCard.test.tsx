@@ -152,7 +152,7 @@ describe('HistoryCard', () => {
     expect(screen.getAllByText('2.00 KB').length).toBeGreaterThan(0)
   })
 
-  it('renders code preview lines with line numbers', () => {
+  it('joins code preview lines with a newline marker', () => {
     renderCard({
       id: 'code-preview-entry',
       type: 'text',
@@ -166,10 +166,8 @@ describe('HistoryCard', () => {
     } as DisplayClipboardItem)
 
     expect(screen.getByText('JavaScript')).toBeInTheDocument()
-    expect(screen.getByText('const')).toBeInTheDocument()
-    expect(screen.getByText('return')).toBeInTheDocument()
-    expect(screen.getAllByText('1').length).toBeGreaterThanOrEqual(2)
-    expect(screen.getByText('2')).toBeInTheDocument()
+    expect(screen.getByText('↵').parentElement).toHaveTextContent('const value = 1 ↵ return value')
+    expect(screen.queryByText('2')).not.toBeInTheDocument()
   })
 
   it('hides the hover actions after clicking an action button', async () => {

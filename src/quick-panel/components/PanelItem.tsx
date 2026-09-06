@@ -1,6 +1,7 @@
 import { useMergedRefs } from '@base-ui/utils/useMergedRefs'
 import { FileText, Star } from 'lucide-react'
 import React from 'react'
+import InlineTextSummary from '@/components/clipboard/InlineTextSummary'
 import { useInView } from '@/hooks/useInView'
 import { formatRelativeTime } from '@/lib/clipboard-utils'
 import { cn } from '@/lib/utils'
@@ -106,7 +107,11 @@ const PanelItem: React.FC<PanelItemProps> = React.memo(
           />
         )}
         <span className={cn('flex-1 truncate', isUnavailable && 'line-through opacity-60')}>
-          {item.preview || '(empty)'}
+          {item.type === 'text' || item.type === 'richtext' ? (
+            <InlineTextSummary text={item.preview.trim() || '(empty)'} />
+          ) : (
+            item.preview || '(empty)'
+          )}
         </span>
         {/* Favorite indicator (decorative, mirrors the history card star) so
             toggling favorite from the context menu has a persistent visual. */}

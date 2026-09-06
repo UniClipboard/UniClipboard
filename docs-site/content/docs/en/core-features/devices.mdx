@@ -39,7 +39,7 @@ Phones show last activity, which does not indicate a persistent online connectio
 <Feature since="0.7.0">
   Per-peer `LAN` / `Direct` / `Relay` reachability badges. Backed by a single
   `ConnectionChannelPort` source of truth wired through the DTO so the GUI, the tray icon, and
-  `uniclip status --json` all agree.
+  `uniclip space status --json` all agree.
 </Feature>
 
 The little tag next to `Online` reports how the connection is reaching
@@ -113,13 +113,14 @@ the space. Do not treat an ordinary offline device as removed.
 Removal cannot erase history that was already stored on a lost or
 stolen device. Treat that local copy as still accessible.
 
-**Re-pair the removed device:** Create a fresh `invite` on a trusted remaining
+**Re-pair the removed device:** Create a fresh `space invite` on a trusted remaining
 device and join from the removed device.
 
 ## Rebuilding the space
 
 In this device's **Danger zone**, click **Rebuild space**, enter `RESET`, and confirm.
 Rebuilding creates a new space containing only this device. Local history and settings remain; old membership, security state, and unfinished invitations are cleared. Other devices must pair again.
+The CLI equivalent is `uniclip space reset --yes`. This is not a factory reset.
 
 ## Mobile sync devices
 
@@ -162,9 +163,9 @@ back to force a refresh; if it's still off, head to
 | GUI action                      | CLI equivalent                                                                                                        |
 | ------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
 | "Space members" list            | `uniclip members` (local device + paired peers; add `--probe` for fresh online state). `uniclip devices` is an alias. |
-| Add device → invite code        | `uniclip invite`                                                                                                      |
-| Join an existing space          | `uniclip join <code>`                                                                                                 |
-| Copy Peer ID                    | `uniclip status --json` → `network.endpoint`                                                                          |
+| Add device → invite code        | `uniclip space invite`                                                                                                      |
+| Join an existing space          | `uniclip space join <code>`                                                                                                 |
+| Copy Peer ID                    | `uniclip space status --json` → `network.endpoint`                                                                          |
 | Unpair                          | `uniclip member remove <PEER-ID>`                                                                |
 | Per-peer content-type allowlist | `uniclip member sync show <DEVICE>` / `uniclip member sync set <DEVICE>`                                                    |
 | Mobile sync — status            | `uniclip mobile status`                                                                                               |

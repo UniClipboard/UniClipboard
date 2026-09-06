@@ -25,7 +25,7 @@ the only way to start syncing.
 
 ### Creating a space (sponsor)
 
-The first device runs `init` (CLI) or **This is my first device** (GUI).
+The first device runs `space init` (CLI) or **This is my first device** (GUI).
 That step:
 
 1. Prompts for a passphrase.
@@ -41,7 +41,7 @@ entirely on the sponsor's machine until another device is invited.
 
 ### Joining a space (joiner)
 
-`invite` (sponsor) prints a short-lived, one-time invitation code. The
+`space invite` (sponsor) prints a short-lived, one-time invitation code. The
 joiner runs `join <code>` and supplies the same passphrase. Under the
 hood:
 
@@ -53,7 +53,7 @@ hood:
    guess.
 3. On success, the sponsor wraps the MasterKey under a fresh KEK
    derived from the joiner's passphrase entry, and the joiner persists
-   it the same way the sponsor did during `init`.
+   it the same way the sponsor did during `space init`.
 4. Both devices add each other to their **paired devices** list.
 
 After this point, the invite code is consumed. Adding a third device

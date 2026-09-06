@@ -33,9 +33,12 @@ import { Tab, Tabs } from 'fumadocs-ui/components/tabs'
 | `uniclip start --foreground` | 前台启动并把日志输出到当前终端。                                                                               |
 | `uniclip start --server`     | 以无头 server 节点运行：不接系统剪贴板、不监听剪贴板，作为普通成员经 iroh 同步。用于无 display 的 VPS / 容器。 |
 | `uniclip stop`               | 停止运行中的守护进程。                                                                                         |
-| `uniclip status`             | 查看守护进程健康度与设备信任摘要，包括本机成员状态、待确认变化和需要更新的设备。                               |
+| `uniclip space status`             | 查看守护进程健康度与设备信任摘要，包括本机成员状态、待确认变化和需要更新的设备。                               |
 
 需要守护进程的命令会自动拉起它，所以显式 `start` 主要用于"日志流式查看"或"长驻后台"的服务器场景。
+
+旧的顶层 `status`、`init`、`invite` 和 `join` 命令仍为兼容保留，但执行时会提示弃用。
+新脚本应使用 `space` 命令组。
 
 ## 空间生命周期
 
@@ -47,13 +50,13 @@ CLI 与 GUI 流程一致，详见[配对与同步](../guides/pairing)。
 
 ```bash
 # 在当前 profile 下新建加密空间
-uniclip init
+uniclip space init
 
 # 发起一次性邀请并等待 joiner
-uniclip invite
+uniclip space invite
 ```
 
-`init` 默认交互式输入口令。`--passphrase` 与 `--device-name` 仅在非交互场景（如 E2E 测试脚本）中使用。
+`space init` 默认交互式输入口令。`--passphrase` 与 `--device-name` 仅在非交互场景（如 E2E 测试脚本）中使用。
 
 </Tab>
 
@@ -61,21 +64,21 @@ uniclip invite
 
 ```bash
 # 用邀请码加入 sponsor 的空间
-uniclip join <invitation-code>
+uniclip space join <invitation-code>
 
 # 验证配对结果
 uniclip members
 ```
 
-`join` 在不带 `--passphrase` 时会提示输入。口令通过 PAKE 在本地验证 —— 输错会立即失败，
+`space join` 在不带 `--passphrase` 时会提示输入。口令通过 PAKE 在本地验证 —— 输错会立即失败，
 不会把口令值发给 sponsor。
 
-`join` 默认等待请求被接受或拒绝。加 `--no-wait` 可在等待请求记录成功后立即返回，
+`space join` 默认等待请求被接受或拒绝。加 `--no-wait` 可在等待请求记录成功后立即返回，
 之后可继续查看或取消同一个请求：
 
 ```bash
-uniclip join status
-uniclip join cancel
+uniclip space join status
+uniclip space join cancel
 ```
 
 按 Ctrl-C 只会停止本地等待，不会取消加入请求。
@@ -85,14 +88,24 @@ uniclip join cancel
 </Tabs>
 
 把当前设备切换到**另一个** sponsor 的空间（用新 MasterKey 重新加密本地历史）时，
-带上新 sponsor 的邀请码并加 `--switch` 运行 `join`：
+带上新 sponsor 的邀请码并加 `--switch` 运行 `space join`：
 
 ```bash
-uniclip join --switch --code <新邀请码>
+uniclip space join --switch --code <新邀请码>
 ```
 
-切换是破坏性操作（会重新加密本地历史），因此 `join` 会先弹出确认提示。
+切换是破坏性操作（会重新加密本地历史），因此 `space join` 会先弹出确认提示。
 在非交互场景下可加 `--yes` 跳过确认。
 
-不带 `--switch` 时，`join` 始终走非破坏性的重新配对分支 —— 这也是单侧解除
+不带 `--switch` 时，`space join` 始终走非破坏性的重新配对分支 —— 这也是单侧解除
 配对后重新配对的方式（对本机已在的空间赎回邀请并替换过期记录）。
+
+## 重建当前空间
+
+```bash
+uniclip space reset --yes
+```
+
+该命令会创建一个只包含本机的新空间，并永久废弃与所有旧设备的配对、信任和同步关系。
+本机剪贴板历史、已完成文件、设置、设备身份和解锁能力都会保留；其他设备不会被删除，
+但所有设备都必须重新配对后才能恢复同步。这不是恢复出厂设置。

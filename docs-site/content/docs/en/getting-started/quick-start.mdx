@@ -119,19 +119,19 @@ sessions, and tmux-driven workflows.
 
 ```bash
 # On the first device — skip if you already created the space in the GUI
-uniclip init
+uniclip space init
 
 # Generate a short-lived invite code
-uniclip invite
+uniclip space invite
 
 # On the new device, paste the code from the previous step
-uniclip join <code>
+uniclip space join <code>
 
 # Confirm both peers see each other
 uniclip members
 ```
 
-The daemon starts automatically. Use `uniclip status` to inspect it, or
+The daemon starts automatically. Use `uniclip space status` to inspect it, or
 `uniclip start` / `uniclip stop` to control it explicitly.
 
 </Tab>
@@ -192,7 +192,7 @@ and [Mobile LAN API](../reference/mobile-api).
   fast keyboard-driven access to recent clips — text, links, images,
   code, and files.
 - **Switch spaces.** From the **Devices** page or by running
-  `uniclip join --switch` with another sponsor's invitation, e.g. to
+  `uniclip space join --switch` with another sponsor's invitation, e.g. to
   keep personal and work machines in separate spaces. Local history is
   re-encrypted under the new space's key during the switch.
 - **Sync with a phone (experimental).** See

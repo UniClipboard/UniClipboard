@@ -82,7 +82,7 @@ export const resolveWindowFrameMode = (
     canChooseSystemFrame,
     hasCustomTitleBar,
     hasCustomWindowControls: usesSelectableCustomFrame,
-    hasRoundedWindow: usesSelectableCustomFrame,
+    hasRoundedWindow: platform.isWindows && usesSelectableCustomFrame,
     searchInTitleBar:
       platform.isMac || ((platform.isWindows || platform.isLinux) && !useSystemWindowFrame),
   }

@@ -32,8 +32,17 @@ describe('window frame preference', () => {
       canChooseSystemFrame: true,
       hasCustomTitleBar: true,
       hasCustomWindowControls: true,
-      hasRoundedWindow: true,
+      hasRoundedWindow: false,
       searchInTitleBar: true,
+    })
+  })
+
+  it('keeps custom frame rounding as a Windows-specific policy', () => {
+    expect(
+      resolveWindowFrameMode({ ...linuxPlatform, isLinux: false, isWindows: true }, false)
+    ).toMatchObject({
+      hasCustomWindowControls: true,
+      hasRoundedWindow: true,
     })
   })
 

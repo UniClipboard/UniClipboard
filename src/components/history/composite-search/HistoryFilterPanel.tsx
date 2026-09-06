@@ -1,8 +1,11 @@
+import '@/components/ui/selection-item.css'
+import { LayoutGroup, m } from 'framer-motion'
 import { LayoutGrid, Star, X, type LucideIcon } from 'lucide-react'
-import type { WheelEvent } from 'react'
+import { useId, type WheelEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Filter } from '@/api/clipboardItems'
 import type { TimeRangePreset } from '@/api/daemon/search'
+import SelectionIndicator from '@/components/ui/selection-indicator'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import type { SearchTagOption } from '@/lib/search-tags'
 import { cn } from '@/lib/utils'
@@ -28,7 +31,9 @@ function FilterButton({
   label,
   active,
   onClick,
+  indicatorId = 'filter-selection',
 }: {
+  indicatorId?: string
   icon: LucideIcon
   label: string
   active: boolean
@@ -45,15 +50,19 @@ function FilterButton({
             aria-label={label}
             aria-pressed={active}
             className={cn(
-              'flex size-7 shrink-0 items-center justify-center rounded-full transition-colors',
-              active
-                ? 'bg-muted/50 text-foreground'
-                : 'text-muted-foreground hover:bg-muted/35 hover:text-foreground'
+              'selection-item relative isolate flex size-7 shrink-0 items-center justify-center rounded-full',
+              active ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'
             )}
           />
         }
       >
-        <Icon className={cn('size-3.5 shrink-0', active ? 'opacity-80' : 'opacity-65')} />
+        {active && <SelectionIndicator layoutId={indicatorId} className="bg-muted/50" />}
+        <Icon
+          className={cn(
+            'selection-item-content relative z-10 size-3.5 shrink-0',
+            active ? 'opacity-80' : 'opacity-65'
+          )}
+        />
       </TooltipTrigger>
       <TooltipContent side="bottom" sideOffset={6}>
         {label}
@@ -77,6 +86,7 @@ function HistoryFilterPanel({
   tagOptions,
 }: HistoryFilterPanelProps) {
   const { t } = useTranslation()
+  const selectionId = useId()
   const hasActiveFilter =
     contentFilter !== Filter.All ||
     sourceFilter !== null ||
@@ -112,36 +122,42 @@ function HistoryFilterPanel({
   }
 
   return (
-    <TooltipProvider delay={300}>
-      <div
-        data-testid="history-filter-strip"
-        aria-label={t('history.composite.filterCategories')}
-        onWheel={handleWheel}
-        className="flex h-8 w-fit max-w-72 shrink-0 items-center gap-0.5 overflow-x-auto overscroll-x-contain rounded-full border border-border/25 bg-muted/15 p-0.5"
-      >
-        <FilterButton
-          icon={hasActiveFilter ? X : LayoutGrid}
-          label={t(hasActiveFilter ? 'history.composite.clearAll' : 'history.filter.all')}
-          active={!hasActiveFilter}
-          onClick={hasActiveFilter ? clearFilters : () => onContentFilterChange(Filter.All)}
-        />
-        <FilterButton
-          icon={Star}
-          label={t('history.filter.favorited')}
-          active={contentFilter === Filter.Favorited}
-          onClick={() => onContentFilterChange(Filter.Favorited)}
-        />
-        {tagCandidates.map(option => (
+    <LayoutGroup id={selectionId}>
+      <TooltipProvider delay={300}>
+        <m.div
+          layoutScroll
+          data-testid="history-filter-strip"
+          aria-label={t('history.composite.filterCategories')}
+          onWheel={handleWheel}
+          className="flex h-8 w-fit max-w-72 shrink-0 items-center gap-0.5 overflow-x-auto overscroll-x-contain rounded-full border border-border/25 bg-muted/15 p-0.5"
+        >
           <FilterButton
-            key={option.id}
-            icon={option.icon}
-            label={option.label}
-            active={option.isActive}
-            onClick={() => onTagFilterChange(option.isActive ? null : option.value)}
+            icon={hasActiveFilter ? X : LayoutGrid}
+            label={t(hasActiveFilter ? 'history.composite.clearAll' : 'history.filter.all')}
+            active={!hasActiveFilter}
+            onClick={hasActiveFilter ? clearFilters : () => onContentFilterChange(Filter.All)}
           />
-        ))}
-      </div>
-    </TooltipProvider>
+          <FilterButton
+            icon={Star}
+            label={t('history.filter.favorited')}
+            active={contentFilter === Filter.Favorited}
+            onClick={() => onContentFilterChange(Filter.Favorited)}
+          />
+          {tagCandidates.map(option => (
+            <FilterButton
+              key={option.id}
+              indicatorId={
+                contentFilter === Filter.Favorited ? 'tag-selection' : 'filter-selection'
+              }
+              icon={option.icon}
+              label={option.label}
+              active={option.isActive}
+              onClick={() => onTagFilterChange(option.isActive ? null : option.value)}
+            />
+          ))}
+        </m.div>
+      </TooltipProvider>
+    </LayoutGroup>
   )
 }
 

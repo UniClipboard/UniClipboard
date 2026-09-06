@@ -1,20 +1,23 @@
+import '@/components/ui/selection-item.css'
 import { m } from 'framer-motion'
 import { Settings } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { NavLink } from 'react-router'
+import { NavLink, useLocation } from 'react-router'
 import DevProfileIndicator from '@/components/DevProfileIndicator'
+import SelectionIndicator from '@/components/ui/selection-indicator'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 
 function SidebarFooter() {
   const { t } = useTranslation()
+  const { pathname } = useLocation()
   const settingsLabel = t('nav.settings')
 
   return (
     <m.footer
       data-tauri-drag-region
       layout
-      className="relative flex shrink-0 flex-col items-center gap-1 overflow-hidden border-t border-border/40 px-2 py-2"
+      className="relative flex shrink-0 flex-col items-center gap-1 border-t border-border/40 px-2 py-2"
       transition={{ type: 'spring', stiffness: 420, damping: 34 }}
     >
       <div
@@ -35,14 +38,17 @@ function SidebarFooter() {
                   aria-label={settingsLabel}
                   className={({ isActive }) =>
                     cn(
-                      'flex size-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground',
-                      isActive && 'bg-muted text-foreground'
+                      'selection-item relative isolate flex size-8 items-center justify-center rounded-md text-muted-foreground',
+                      isActive ? 'text-foreground' : 'hover:text-foreground'
                     )
                   }
                 />
               }
             >
-              <Settings className="size-4" />
+              {pathname.startsWith('/settings') && (
+                <SelectionIndicator layoutId="sidebar-selection" className="bg-muted" />
+              )}
+              <Settings className="selection-item-content relative z-10 size-4" />
             </TooltipTrigger>
             <TooltipContent side="right" sideOffset={6}>
               {settingsLabel}

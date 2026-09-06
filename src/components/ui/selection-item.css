@@ -1,0 +1,47 @@
+/* Hover feedback stays separate from the shared selected indicator. */
+.selection-item {
+  transition: color 180ms ease-out;
+}
+
+.selection-item::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: color-mix(in oklab, var(--muted) 35%, transparent);
+  opacity: 0;
+  transition: opacity 180ms ease-out;
+}
+
+.selection-item > .selection-item-content {
+  transition: opacity 180ms ease-out;
+}
+
+.selection-item:is([aria-current], [aria-pressed='true']) > .selection-item-content {
+  opacity: 0.9;
+}
+
+@media (hover: hover) {
+  .selection-item:hover,
+  .selection-item:hover::before,
+  .selection-item:hover > .selection-item-content {
+    transition-duration: 120ms;
+  }
+
+  .selection-item:not([aria-current], [aria-pressed='true']):hover::before {
+    opacity: 1;
+  }
+
+  .selection-item:is([aria-current], [aria-pressed='true']):hover > .selection-item-content {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .selection-item,
+  .selection-item::before,
+  .selection-item > .selection-item-content {
+    transition: none !important;
+  }
+}

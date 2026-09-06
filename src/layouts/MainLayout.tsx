@@ -1,5 +1,6 @@
 import { getCurrentWindow } from '@tauri-apps/api/window'
-import React, { ReactNode, useMemo, useRef, useState } from 'react'
+import { LayoutGroup } from 'framer-motion'
+import React, { ReactNode, useId, useMemo, useRef, useState } from 'react'
 import InsetSurface from '@/components/layout/InsetSurface'
 import SidebarFooter from '@/components/layout/SidebarFooter'
 import SidebarNavigation from '@/components/layout/SidebarNavigation'
@@ -21,6 +22,7 @@ interface ContentToolbarProps {
 }
 
 const SidebarArea: React.FC<SidebarAreaProps> = ({ title }) => {
+  const selectionId = useId()
   const dragStartRef = useRef<{ x: number; y: number } | null>(null)
 
   const handlePointerDown = (event: React.PointerEvent<HTMLElement>) => {
@@ -49,8 +51,10 @@ const SidebarArea: React.FC<SidebarAreaProps> = ({ title }) => {
       className="flex h-full w-12 shrink-0 flex-col"
     >
       {title}
-      <SidebarNavigation />
-      <SidebarFooter />
+      <LayoutGroup id={selectionId}>
+        <SidebarNavigation />
+        <SidebarFooter />
+      </LayoutGroup>
     </aside>
   )
 }

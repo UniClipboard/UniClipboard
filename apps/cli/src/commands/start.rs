@@ -9,6 +9,7 @@ use uc_daemon_contract::api::types::DaemonResidency;
 use crate::exit_codes;
 use crate::local_daemon;
 use crate::output;
+use crate::ui;
 
 #[derive(Serialize)]
 pub struct StartOutput {
@@ -93,9 +94,9 @@ async fn check_setup_complete(json: bool, _verbose: bool) -> Option<i32> {
             true,
         );
     } else {
-        eprintln!(
-            "Error: setup not complete. Run `uniclip init` (new Space) or \
-             `uniclip join` (existing Space) first, then retry `start`."
+        ui::error(
+            "setup not complete. Run `uniclip space init` (new Space) or \
+             `uniclip space join` (existing Space) first, then retry `start`.",
         );
     }
     Some(exit_codes::EXIT_ERROR)

@@ -5,7 +5,8 @@ use std::process::{Child, Command, Stdio};
 
 use serde_json::Value;
 use uc_e2e_tests::{
-    InviteSession, LocalRendezvous, NodeBinarySet, TestCli, TestDaemon, TestProfile,
+    get_session_token, InviteSession, LocalRendezvous, NodeBinarySet, TestCli, TestDaemon,
+    TestProfile,
 };
 
 const PASSPHRASE: &str = "cli-engine-workflows-passphrase";
@@ -197,6 +198,20 @@ fn members(cli: &TestCli) -> Vec<Value> {
         .clone()
 }
 
+async fn setup_state(node: &Node) -> Value {
+    let client = reqwest::Client::new();
+    let token = get_session_token(&node.daemon, &client).await;
+    let response = client
+        .get(format!("{}/v2/setup/state", node.daemon.base_url()))
+        .header("Authorization", format!("Session {token}"))
+        .send()
+        .await
+        .expect("setup state request");
+    assert!(response.status().is_success(), "setup state request failed");
+    let body: Value = response.json().await.expect("setup state json");
+    body["data"].clone()
+}
+
 fn device_id(cli: &TestCli, name: &str) -> String {
     members(cli)
         .into_iter()
@@ -297,6 +312,71 @@ async fn join_commands_report_none_then_real_active_join() {
     let restarted_status = json(&restarted_status);
     assert_eq!(restarted_status["status"], "active");
     assert_eq!(restarted_status["join_id"], join_id);
+}
+
+#[tokio::test]
+#[ignore]
+async fn space_reset_rebuilds_membership_and_preserves_local_history() {
+    let binaries = NodeBinarySet::current_dev_cli();
+    let rendezvous = LocalRendezvous::start().await;
+    let mut alice = Node::initialized(
+        "cli-workflow-reset-alice",
+        "alice-node",
+        &binaries,
+        &rendezvous,
+    )
+    .await;
+    assert_eq!(setup_state(&alice).await["rePairingRequired"], false);
+
+    alice.daemon.kill();
+    let seeded = alice.cli.run_capture(&[
+        "dev",
+        "seed-clipboard",
+        "--text",
+        "history survives space reset",
+    ]);
+    assert!(seeded.success(), "history seed failed: {seeded:?}");
+    let entry_id = seeded
+        .stdout
+        .lines()
+        .find_map(|line| line.strip_prefix("SEED_ENTRY_ID="))
+        .expect("seeded entry id")
+        .to_string();
+    alice.restart().await;
+
+    let requests_before = daemon_request_count(&alice, "POST", "/v2/setup/reset");
+    let reset = alice
+        .cli
+        .run_capture(&["--json", "space", "reset", "--yes"]);
+    assert!(reset.success(), "space reset failed: {reset:?}");
+    assert_eq!(
+        json(&reset),
+        serde_json::json!({ "ok": true, "status": "rebuilt" })
+    );
+    assert_request_delta(&alice, "POST", "/v2/setup/reset", requests_before, 1);
+
+    let after_reset = members(&alice.cli);
+    assert_eq!(after_reset.len(), 1);
+    assert_eq!(after_reset[0]["device_name"], "alice-node");
+    assert_eq!(setup_state(&alice).await["rePairingRequired"], true);
+
+    let history = alice.cli.run_capture(&["--json", "get", "--list"]);
+    assert!(history.success(), "history list after reset failed: {history:?}");
+    assert!(json(&history).as_array().is_some_and(|entries| {
+        entries.iter().any(|entry| entry["entry_id"] == entry_id)
+    }));
+
+    alice.restart().await;
+    let restarted_history = alice.cli.run_capture(&["--json", "get", "--list"]);
+    assert!(
+        restarted_history.success(),
+        "history list after restart failed: {restarted_history:?}"
+    );
+    assert!(json(&restarted_history).as_array().is_some_and(|entries| {
+        entries.iter().any(|entry| entry["entry_id"] == entry_id)
+    }));
+    assert_eq!(members(&alice.cli).len(), 1);
+    assert_eq!(setup_state(&alice).await["rePairingRequired"], true);
 }
 
 #[cfg(unix)]

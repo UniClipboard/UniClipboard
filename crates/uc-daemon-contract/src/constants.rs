@@ -183,7 +183,7 @@ pub mod http_route_v2 {
     pub const SETUP_REDEEM: &str = "/v2/setup/redeem";
     /// POST /v2/setup/cancel — drop in-flight invitation; 409 when none.
     pub const SETUP_CANCEL: &str = "/v2/setup/cancel";
-    /// POST /v2/setup/reset — clear setup status + pending invitations.
+    /// POST /v2/setup/reset — rebuild as a one-device space and retain local history.
     pub const SETUP_RESET: &str = "/v2/setup/reset";
     /// GET /v2/setup/state — read-only snapshot for the v2 UI.
     pub const SETUP_STATE: &str = "/v2/setup/state";

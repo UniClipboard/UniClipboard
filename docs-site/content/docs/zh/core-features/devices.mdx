@@ -35,7 +35,7 @@ description: 设备列表与详情、设备组选项、添加与解除配对，�
 
 <Feature since="0.7.0">
   按对端展示 `LAN` / `Direct` / `Relay` 的可达性徽标。底层由 `ConnectionChannelPort`
-  单一真相源贯穿到 DTO，GUI、托盘图标与 `uniclip status --json` 三处看到的状态一致。
+  单一真相源贯穿到 DTO，GUI、托盘图标与 `uniclip space status --json` 三处看到的状态一致。
 </Feature>
 
 `Online` 旁的小标签告诉你这次连接走的是哪条路：
@@ -96,12 +96,13 @@ description: 设备列表与详情、设备组选项、添加与解除配对，�
 
 移除操作无法抹掉丢失或失窃设备上已经保存的历史，应当视为这些本地副本仍可被访问。
 
-**重新配对被移除设备：** 在一台仍受信任的设备上生成新的 `invite`，再在被移除设备上完成 `join`。
+**重新配对被移除设备：** 在一台仍受信任的设备上生成新的 `space invite`，再在被移除设备上完成 `space join`。
 
 ## 重建空间
 
 在本机详情的「危险区」点击「重建空间」，输入 `RESET` 后确认。
 重建会创建仅包含本机的新空间，保留本地历史和设置，清空旧空间的成员关系、安全状态及未完成邀请；其他设备需要重新配对。
+对应的 CLI 命令是 `uniclip space reset --yes`。这不是恢复出厂设置。
 
 ## 移动端同步设备
 
@@ -142,9 +143,9 @@ description: 设备列表与详情、设备组选项、添加与解除配对，�
 | GUI 操作                | CLI 等价                                                                                            |
 | ----------------------- | --------------------------------------------------------------------------------------------------- |
 | 「空间成员」列表        | `uniclip members`（本机 + 已配对对端；加 `--probe` 获取实时在线状态）。`uniclip devices` 是其别名。 |
-| 添加设备 → 邀请码       | `uniclip invite`                                                                                    |
-| 加入已有空间            | `uniclip join <code>`                                                                               |
-| 复制 Peer ID            | `uniclip status --json` 中的 `network.endpoint`                                                     |
+| 添加设备 → 邀请码       | `uniclip space invite`                                                                                    |
+| 加入已有空间            | `uniclip space join <code>`                                                                               |
+| 复制 Peer ID            | `uniclip space status --json` 中的 `network.endpoint`                                                     |
 | 解除配对                | `uniclip member remove <PEER-ID>`                                              |
 | 按对端的内容类型白名单  | `uniclip member sync show <DEVICE>` / `uniclip member sync set <DEVICE>`                                                  |
 | 移动端同步 — 状态       | `uniclip mobile status`                                                                             |

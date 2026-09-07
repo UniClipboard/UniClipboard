@@ -1,4 +1,4 @@
-//! `uniclip init` — initialize a new encrypted space via daemon HTTP API.
+//! `uniclip space init` — initialize a new encrypted space via daemon HTTP API.
 //!
 //! Prompts for (or accepts `--passphrase`) + optional `--device-name`,
 //! then calls `POST /v2/setup/initialize` on the daemon. Spawns a

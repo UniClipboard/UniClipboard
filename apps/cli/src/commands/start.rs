@@ -9,6 +9,7 @@ use uc_daemon_contract::api::types::DaemonResidency;
 use crate::exit_codes;
 use crate::local_daemon;
 use crate::output;
+use crate::ui;
 
 #[derive(Serialize)]
 pub struct StartOutput {

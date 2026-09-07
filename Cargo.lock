@@ -271,12 +271,6 @@ checksum = "683d7910e743518b0e34f1186f92494becacb047c7b6bf616c96772180fef923"
 
 [[package]]
 name = "android_log-sys"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "85965b6739a430150bdd138e2374a98af0c3ee0d030b3bb7fc3bddff58d0102e"
-
-[[package]]
-name = "android_log-sys"
 version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "84521a3cf562bc62942e294181d9eef17eb38ceb8c68677bc49f144e4c3d4f8d"
@@ -287,7 +281,7 @@ version = "0.15.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dbb4e440d04be07da1f1bf44fb4495ebd58669372fe0cffa6e48595ac5bd88a3"
 dependencies = [
- "android_log-sys 0.3.2",
+ "android_log-sys",
  "env_filter",
  "log",
 ]
@@ -337,7 +331,7 @@ version = "1.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "40c48f72fd53cd289104fc64099abca73db4166ad86ea0b4341abe65af83dadc"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -348,7 +342,7 @@ checksum = "291e6a250ff86cd4a820112fb8898808a366d8f9f58ce16d1f538353ad55747d"
 dependencies = [
  "anstyle",
  "once_cell_polyfill",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -2297,7 +2291,7 @@ dependencies = [
  "libc",
  "option-ext",
  "redox_users 0.5.2",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -2695,7 +2689,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -3182,8 +3176,8 @@ dependencies = [
  "libc",
  "log",
  "rustversion",
- "windows-link 0.1.3",
- "windows-result 0.3.4",
+ "windows-link 0.2.1",
+ "windows-result 0.4.1",
 ]
 
 [[package]]
@@ -3315,7 +3309,7 @@ dependencies = [
  "gobject-sys 0.21.5",
  "libc",
  "system-deps 7.0.8",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -4013,7 +4007,7 @@ dependencies = [
  "libc",
  "percent-encoding",
  "pin-project-lite",
- "socket2 0.6.5",
+ "socket2 0.5.10",
  "tokio",
  "tower-service",
  "tracing",
@@ -4031,7 +4025,7 @@ dependencies = [
  "js-sys",
  "log",
  "wasm-bindgen",
- "windows-core 0.59.0",
+ "windows-core 0.62.2",
 ]
 
 [[package]]
@@ -5526,7 +5520,7 @@ dependencies = [
  "png 0.18.1",
  "serde",
  "thiserror 2.0.19",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -5884,7 +5878,7 @@ dependencies = [
  "pin-project-lite",
  "rustc-hash",
  "rustls",
- "socket2 0.6.5",
+ "socket2 0.5.10",
  "thiserror 2.0.19",
  "tokio",
  "tokio-stream",
@@ -5929,7 +5923,7 @@ checksum = "b3c1520eacd33fd6b009e2e70116b05508ade51db5e0d315ff8bf6b702148c2b"
 dependencies = [
  "cfg_aliases",
  "libc",
- "socket2 0.6.5",
+ "socket2 0.5.10",
  "tracing",
  "windows-sys 0.61.2",
 ]
@@ -5963,7 +5957,7 @@ version = "0.50.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -6099,7 +6093,7 @@ version = "0.7.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "680998035259dcfcafe653688bf2aa6d3e2dc05e98be6ab46afb089dc84f1df8"
 dependencies = [
- "proc-macro-crate 2.0.2",
+ "proc-macro-crate 1.3.1",
  "proc-macro2",
  "quote",
  "syn 2.0.119",
@@ -6611,87 +6605,6 @@ name = "openssl-probe"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7c87def4c32ab89d880effc9e097653c8da5d6ef28e6b539d313baaacfbafcbe"
-
-[[package]]
-name = "opentelemetry"
-version = "0.32.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b0142c63252a9e054e68a4c61a5778f7b14f576274d593f8ce883d191a099682"
-dependencies = [
- "futures-core",
- "futures-sink",
- "js-sys",
- "pin-project-lite",
- "thiserror 2.0.19",
-]
-
-[[package]]
-name = "opentelemetry-appender-tracing"
-version = "0.32.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2c0080f0dc1d7c786f467cd85a4e395fcab11ee852004f39a29a18ab7c25d837"
-dependencies = [
- "opentelemetry",
- "tracing",
- "tracing-core",
- "tracing-subscriber",
-]
-
-[[package]]
-name = "opentelemetry-http"
-version = "0.32.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5683015d09e2df236ef005b17f6f196f0d5f6313c4fa43a7b6a53b52776e4331"
-dependencies = [
- "async-trait",
- "bytes",
- "http 1.4.2",
- "opentelemetry",
- "reqwest 0.13.4",
-]
-
-[[package]]
-name = "opentelemetry-otlp"
-version = "0.32.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9966929966d17620d7c316c643ba62631826e10021409357772d5eea84f62c35"
-dependencies = [
- "http 1.4.2",
- "opentelemetry",
- "opentelemetry-http",
- "opentelemetry-proto",
- "opentelemetry_sdk",
- "prost",
- "reqwest 0.13.4",
- "thiserror 2.0.19",
-]
-
-[[package]]
-name = "opentelemetry-proto"
-version = "0.32.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "56d658ba1faf63f7b9c492cfbe6e0ec365440a16132d3270c1065f7b33f1b638"
-dependencies = [
- "opentelemetry",
- "opentelemetry_sdk",
- "prost",
-]
-
-[[package]]
-name = "opentelemetry_sdk"
-version = "0.32.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9b59f80e1ac4d5ff7a2db8fb6c80badb7f0f3f858211fba08dd9aaec750894f9"
-dependencies = [
- "futures-channel",
- "futures-executor",
- "futures-util",
- "opentelemetry",
- "percent-encoding",
- "portable-atomic",
- "rand 0.9.5",
- "thiserror 2.0.19",
-]
 
 [[package]]
 name = "option-ext"
@@ -7473,29 +7386,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "prost"
-version = "0.14.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "528ac67416ff8646872a3c02cad9cc4ee5dc9f9540c9b10771855c95cb2e5ae1"
-dependencies = [
- "bytes",
- "prost-derive",
-]
-
-[[package]]
-name = "prost-derive"
-version = "0.14.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b570b25f7617e43d59005d0990ccb79e950a423952cea19671b7a876da390adf"
-dependencies = [
- "anyhow",
- "itertools",
- "proc-macro2",
- "quote",
- "syn 2.0.119",
-]
-
-[[package]]
 name = "pulp"
 version = "0.22.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7570,7 +7460,7 @@ dependencies = [
  "quinn-udp",
  "rustc-hash",
  "rustls",
- "socket2 0.6.5",
+ "socket2 0.5.10",
  "thiserror 2.0.19",
  "tokio",
  "tracing",
@@ -7609,9 +7499,9 @@ dependencies = [
  "cfg_aliases",
  "libc",
  "once_cell",
- "socket2 0.6.5",
+ "socket2 0.5.10",
  "tracing",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -7928,7 +7818,7 @@ dependencies = [
  "cfg-if",
  "libc",
  "rustix 1.1.4",
- "windows 0.61.3",
+ "windows 0.62.2",
 ]
 
 [[package]]
@@ -8252,7 +8142,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys 0.12.1",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -8311,7 +8201,7 @@ dependencies = [
  "security-framework 3.7.0",
  "security-framework-sys",
  "webpki-root-certs",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -8511,7 +8401,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5b55fb86dfd3a2f5f76ea78310a88f96c4ea21a3031f8d212443d56123fd0521"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -9069,7 +8959,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c3d1e2c7f27f8d4cb10542a02c49005dbd6e93095799d6f3be745fae9f8fedd4"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -10058,7 +9948,7 @@ dependencies = [
  "getrandom 0.4.3",
  "once_cell",
  "rustix 1.1.4",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -10508,17 +10398,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "tracing-android"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "12612be8f868a09c0ceae7113ff26afe79d81a24473a393cb9120ece162e86c0"
-dependencies = [
- "android_log-sys 0.2.0",
- "tracing",
- "tracing-subscriber",
-]
-
-[[package]]
 name = "tracing-appender"
 version = "0.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -10561,32 +10440,6 @@ dependencies = [
  "log",
  "once_cell",
  "tracing-core",
-]
-
-[[package]]
-name = "tracing-opentelemetry"
-version = "0.33.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "adbc64cba7137545b8044cb1fe9814f7aacf3c6b5f9b45be8bb5db538befdb26"
-dependencies = [
- "js-sys",
- "opentelemetry",
- "tracing",
- "tracing-core",
- "tracing-subscriber",
- "web-time",
-]
-
-[[package]]
-name = "tracing-oslog"
-version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d76902d2a8d5f9f55a81155c08971734071968c90f2d9bfe645fe700579b2950"
-dependencies = [
- "cc",
- "cfg-if",
- "tracing-core",
- "tracing-subscriber",
 ]
 
 [[package]]
@@ -10640,7 +10493,7 @@ dependencies = [
  "png 0.18.1",
  "serde",
  "thiserror 2.0.19",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -10688,8 +10541,8 @@ dependencies = [
 
 [[package]]
 name = "uc-application"
-version = "1.1.0-rc.6"
-source = "git+https://github.com/UniClipboard/Engine.git?rev=1631a370#1631a370399ebcd0821b2163ca3594d63fad3451"
+version = "1.1.0-rc.5"
+source = "git+https://github.com/UniClipboard/Engine.git?rev=229edc7fdf23cacc45b5d3516f29d37e2326b719#229edc7fdf23cacc45b5d3516f29d37e2326b719"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -10786,8 +10639,8 @@ dependencies = [
 
 [[package]]
 name = "uc-content-hash"
-version = "1.1.0-rc.6"
-source = "git+https://github.com/UniClipboard/Engine.git?rev=1631a370#1631a370399ebcd0821b2163ca3594d63fad3451"
+version = "1.1.0-rc.5"
+source = "git+https://github.com/UniClipboard/Engine.git?rev=229edc7fdf23cacc45b5d3516f29d37e2326b719#229edc7fdf23cacc45b5d3516f29d37e2326b719"
 dependencies = [
  "blake3",
  "hex",
@@ -10795,8 +10648,8 @@ dependencies = [
 
 [[package]]
 name = "uc-core"
-version = "1.1.0-rc.6"
-source = "git+https://github.com/UniClipboard/Engine.git?rev=1631a370#1631a370399ebcd0821b2163ca3594d63fad3451"
+version = "1.1.0-rc.5"
+source = "git+https://github.com/UniClipboard/Engine.git?rev=229edc7fdf23cacc45b5d3516f29d37e2326b719#229edc7fdf23cacc45b5d3516f29d37e2326b719"
 dependencies = [
  "anyhow",
  "arrayvec",
@@ -10815,6 +10668,7 @@ dependencies = [
  "tokio",
  "tokio-util",
  "toml 0.8.2",
+ "tracing",
  "uc-content-hash",
  "url",
  "uuid",
@@ -10947,8 +10801,8 @@ dependencies = [
 
 [[package]]
 name = "uc-engine"
-version = "1.1.0-rc.6"
-source = "git+https://github.com/UniClipboard/Engine.git?rev=1631a370#1631a370399ebcd0821b2163ca3594d63fad3451"
+version = "1.1.0-rc.5"
+source = "git+https://github.com/UniClipboard/Engine.git?rev=229edc7fdf23cacc45b5d3516f29d37e2326b719#229edc7fdf23cacc45b5d3516f29d37e2326b719"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -10965,7 +10819,6 @@ dependencies = [
  "uc-mobile-lan",
  "uc-mobile-proto",
  "uc-observability-contract",
- "uc-observability-runtime",
  "url",
  "uuid",
  "zeroize",
@@ -10973,8 +10826,8 @@ dependencies = [
 
 [[package]]
 name = "uc-infra"
-version = "1.1.0-rc.6"
-source = "git+https://github.com/UniClipboard/Engine.git?rev=1631a370#1631a370399ebcd0821b2163ca3594d63fad3451"
+version = "1.1.0-rc.5"
+source = "git+https://github.com/UniClipboard/Engine.git?rev=229edc7fdf23cacc45b5d3516f29d37e2326b719#229edc7fdf23cacc45b5d3516f29d37e2326b719"
 dependencies = [
  "anyhow",
  "argon2",
@@ -11010,8 +10863,6 @@ dependencies = [
  "openmls_memory_storage",
  "openmls_rust_crypto",
  "openmls_traits",
- "opentelemetry",
- "opentelemetry_sdk",
  "postcard",
  "rand 0.9.5",
  "reqwest 0.12.28",
@@ -11025,7 +10876,6 @@ dependencies = [
  "thiserror 2.0.19",
  "tokio",
  "tracing",
- "tracing-opentelemetry",
  "uc-application",
  "uc-core",
  "uc-observability-contract",
@@ -11041,8 +10891,8 @@ dependencies = [
 
 [[package]]
 name = "uc-mobile-lan"
-version = "1.1.0-rc.6"
-source = "git+https://github.com/UniClipboard/Engine.git?rev=1631a370#1631a370399ebcd0821b2163ca3594d63fad3451"
+version = "1.1.0-rc.5"
+source = "git+https://github.com/UniClipboard/Engine.git?rev=229edc7fdf23cacc45b5d3516f29d37e2326b719#229edc7fdf23cacc45b5d3516f29d37e2326b719"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -11065,8 +10915,8 @@ dependencies = [
 
 [[package]]
 name = "uc-mobile-proto"
-version = "1.1.0-rc.6"
-source = "git+https://github.com/UniClipboard/Engine.git?rev=1631a370#1631a370399ebcd0821b2163ca3594d63fad3451"
+version = "1.1.0-rc.5"
+source = "git+https://github.com/UniClipboard/Engine.git?rev=229edc7fdf23cacc45b5d3516f29d37e2326b719#229edc7fdf23cacc45b5d3516f29d37e2326b719"
 dependencies = [
  "base64 0.22.1",
  "chrono",
@@ -11100,48 +10950,17 @@ dependencies = [
 
 [[package]]
 name = "uc-observability-contract"
-version = "1.1.0-rc.6"
-source = "git+https://github.com/UniClipboard/Engine.git?rev=1631a370#1631a370399ebcd0821b2163ca3594d63fad3451"
+version = "1.1.0-rc.5"
+source = "git+https://github.com/UniClipboard/Engine.git?rev=229edc7fdf23cacc45b5d3516f29d37e2326b719#229edc7fdf23cacc45b5d3516f29d37e2326b719"
 dependencies = [
  "anyhow",
  "chrono",
- "opentelemetry",
  "serde",
  "serde_json",
  "sha2 0.10.9",
  "tokio",
  "tracing",
- "tracing-opentelemetry",
  "uuid",
-]
-
-[[package]]
-name = "uc-observability-runtime"
-version = "1.1.0-rc.6"
-source = "git+https://github.com/UniClipboard/Engine.git?rev=1631a370#1631a370399ebcd0821b2163ca3594d63fad3451"
-dependencies = [
- "chrono",
- "jni 0.22.4",
- "libc",
- "opentelemetry",
- "opentelemetry-appender-tracing",
- "opentelemetry-otlp",
- "opentelemetry_sdk",
- "reqwest 0.13.4",
- "rustls",
- "rustls-platform-verifier",
- "semver",
- "thiserror 2.0.19",
- "tracing",
- "tracing-android",
- "tracing-log",
- "tracing-opentelemetry",
- "tracing-oslog",
- "tracing-subscriber",
- "uc-observability-contract",
- "url",
- "uuid",
- "zeroize",
 ]
 
 [[package]]
@@ -11292,7 +11111,7 @@ checksum = "f2f6fb2847f6742cd76af783a2a2c49e9375d0a111c7bef6f71cd9e738c72d6e"
 dependencies = [
  "memoffset",
  "tempfile",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -12034,7 +11853,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -12649,8 +12468,8 @@ dependencies = [
  "log",
  "serde",
  "thiserror 2.0.19",
- "windows 0.59.0",
- "windows-core 0.59.0",
+ "windows 0.62.2",
+ "windows-core 0.62.2",
 ]
 
 [[package]]

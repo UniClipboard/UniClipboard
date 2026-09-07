@@ -1,74 +1,81 @@
-import { AlertTriangle, Check, Link2, Unlink } from 'lucide-react'
+import { Check, Monitor } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { DeviceTrustOutcomeRow } from '@/components/device/DeviceTrustOutcomeRow'
+import type { presentDeviceGroups } from '@/components/device/device-group-presentation'
 import { cn } from '@/lib/utils'
 
 export function DeviceTrustChoiceCard({
-  testId,
-  title,
-  continuesWith,
-  stopsWith,
+  view,
   selected,
   disabled,
+  tabStop,
   onSelect,
-  note,
+  showDetails,
 }: {
-  testId?: string
-  title: string
-  continuesWith: string
-  stopsWith: string
+  view: ReturnType<typeof presentDeviceGroups>['choices'][number]
   selected: boolean
   disabled: boolean
+  tabStop: boolean
   onSelect: () => void
-  note?: string
+  showDetails: boolean
 }) {
   const { t } = useTranslation()
   return (
     <button
-      data-testid={testId}
       type="button"
       role="radio"
       aria-checked={selected}
-      tabIndex={selected ? 0 : -1}
+      tabIndex={tabStop ? 0 : -1}
+      data-testid={`device-trust-choice-${view.id}`}
       disabled={disabled}
       onClick={onSelect}
       className={cn(
-        'group relative min-w-0 rounded-md border p-4 text-left outline-none transition-colors',
-        'hover:border-primary/50 hover:bg-primary/5 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50',
-        'disabled:cursor-not-allowed disabled:opacity-50',
-        selected ? 'border-primary bg-primary/5 ring-1 ring-primary/20' : 'border-border bg-card'
+        'relative min-w-0 rounded-md border p-4 text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60',
+        selected ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50'
       )}
     >
+      <span className="block pr-8 text-sm font-semibold break-words [overflow-wrap:anywhere]">
+        {view.title}
+      </span>
       <span
-        className={cn(
-          'absolute top-3 right-3 flex size-5 items-center justify-center rounded-full border transition-colors',
-          selected
-            ? 'border-primary bg-primary text-primary-foreground'
-            : 'border-muted-foreground/40 bg-background group-hover:border-primary/60'
-        )}
         aria-hidden="true"
+        className={cn(
+          'absolute top-4 right-4 flex size-5 items-center justify-center rounded-full border',
+          selected ? 'border-primary bg-primary text-primary-foreground' : 'border-muted-foreground'
+        )}
       >
-        {selected && <Check className="size-3.5" strokeWidth={3} />}
+        {selected && <Check className="size-3.5" />}
       </span>
-      <span className="block pr-7 text-sm font-semibold">{title}</span>
-      <span className="mt-3 grid gap-2">
-        <DeviceTrustOutcomeRow
-          icon={Link2}
-          label={t('deviceTrust.modal.continueSyncing')}
-          devices={continuesWith}
-          tone="success"
-        />
-        <DeviceTrustOutcomeRow
-          icon={Unlink}
-          label={t('deviceTrust.modal.stopSyncing')}
-          devices={stopsWith}
-          tone="danger"
-        />
+      {view.summary && (
+        <span className="mt-2 block pr-4 text-sm leading-6 text-muted-foreground [overflow-wrap:anywhere]">
+          {view.summary}
+        </span>
+      )}
+      <span hidden={!showDetails}>
+        <span className="mt-4 flex items-start gap-2 border-t border-border pt-3 text-xs text-muted-foreground">
+          <Monitor className="size-4 shrink-0" />
+          {t('deviceTrust.presentation.members')}
+        </span>
+        <span
+          data-testid="choice-members"
+          className="mt-1 block text-sm leading-6 break-words [overflow-wrap:anywhere]"
+        >
+          {view.members}
+        </span>
+        {view.membersIncomplete && (
+          <span className="mt-2 block text-xs text-muted-foreground">
+            {t('deviceTrust.modal.membersIncomplete')}
+          </span>
+        )}
+        <span className="mt-3 grid gap-2 text-xs leading-5 break-words [overflow-wrap:anywhere]">
+          {view.scope && <span>{t('deviceTrust.presentation.scope', { names: view.scope })}</span>}
+          {view.rejoin && (
+            <span>{t('deviceTrust.presentation.rejoin', { names: view.rejoin })}</span>
+          )}
+        </span>
       </span>
-      {note && (
-        <span className="mt-3 flex items-start gap-2 border-t border-border/70 pt-3 text-xs font-medium text-amber-700 dark:text-amber-300">
-          <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
-          <span>{note}</span>
+      {!view.impactKnown && (
+        <span className="mt-2 block text-xs text-muted-foreground">
+          {t('deviceTrust.presentation.impactUnknown')}
         </span>
       )}
     </button>

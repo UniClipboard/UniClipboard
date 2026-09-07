@@ -49,6 +49,9 @@ export type DeviceGroupChoices = Omit<DeviceGroupChoicesDto, 'deviceTrust'> & {
 export type DeviceGroupChoiceOutcome = DeviceGroupChoiceOutcomeDto
 export type DeviceGroupChoiceResult = DeviceGroupChoiceResultDto
 
+const DEVICE_GROUP_QUERY_TIMEOUT_MS = 15_000
+const DEVICE_GROUP_CHOICE_TIMEOUT_MS = 60_000
+
 function normalizeJoinSpaceResponse(
   response: GeneratedJoinSpaceResponse | null | undefined
 ): JoinSpaceResponse | null | undefined {
@@ -73,7 +76,10 @@ function normalizeJoinSpaceResponse(
 
 export async function getDeviceGroupChoices(): Promise<DeviceGroupChoices> {
   const result = (await daemonClient.callEnveloped(() =>
-    getDeviceGroupChoicesSdk({ throwOnError: true })
+    getDeviceGroupChoicesSdk({
+      throwOnError: true,
+      signal: AbortSignal.timeout(DEVICE_GROUP_QUERY_TIMEOUT_MS),
+    })
   )) as DeviceGroupChoicesDto
   return {
     ...result,
@@ -98,6 +104,7 @@ export async function chooseDeviceGroup(
     chooseDeviceGroupSdk({
       body: { issueId, choiceId, expectedRevision, confirmLocalRemoval },
       throwOnError: true,
+      signal: AbortSignal.timeout(DEVICE_GROUP_CHOICE_TIMEOUT_MS),
     })
   ) as Promise<DeviceGroupChoiceResult>
 }

@@ -13,7 +13,7 @@ import { signalLifecycleReady } from '@/api/daemon/lifecycle'
 import { unlockEncryptionSession } from '@/api/security'
 import { checkForUpdate, openUpdaterWindow } from '@/api/updater'
 import { SidebarTitle, TitleBar } from '@/components'
-import { DeviceTrustDialog } from '@/components/device/DeviceTrustDialog'
+import { DeviceTrustDialogHost } from '@/components/device/DeviceTrustDialogHost'
 import { GlobalShortcuts } from '@/components/GlobalShortcuts'
 import StartupModals from '@/components/StartupModals'
 import { Button } from '@/components/ui/button'
@@ -25,8 +25,6 @@ import { ShortcutProvider } from '@/contexts/ShortcutContext'
 import { TitleBarSlotContext } from '@/contexts/titlebar-slot-context'
 import { UpdateProvider } from '@/contexts/UpdateContext'
 import { useEncryptionState } from '@/hooks/useDaemonEvents'
-import { useDeviceTrust } from '@/hooks/useDeviceTrust'
-import { useDeviceTrustDesktopEffects } from '@/hooks/useDeviceTrustDesktopEffects'
 import { usePlatform } from '@/hooks/usePlatform'
 import { useUINavigateListener } from '@/hooks/useUINavigateListener'
 import { useWindowFrame } from '@/hooks/useWindowFrame'
@@ -418,30 +416,8 @@ const AppContent = ({
   )
 }
 
-const DeviceTrustDialogHost = () => {
-  const {
-    deviceGroups,
-    snapshot,
-    decisionBusy,
-    decisionError,
-    localRemovalConfirmationIssueId,
-    choose,
-  } = useDeviceTrust()
-  useDeviceTrustDesktopEffects(snapshot)
-  return deviceGroups && deviceGroups.issues.length > 0 ? (
-    <DeviceTrustDialog
-      deviceGroups={deviceGroups}
-      busy={decisionBusy}
-      error={decisionError}
-      localRemovalConfirmationIssueId={localRemovalConfirmationIssueId}
-      onChoose={(issueId, choiceId, confirm) => void choose(issueId, choiceId, confirm)}
-    />
-  ) : null
-}
-
 export default function App() {
   const { reduceVisualEffects } = usePlatform()
-
   return (
     <LazyMotion features={domMax} strict>
       <MotionConfig reducedMotion={reduceVisualEffects ? 'always' : 'user'}>

@@ -8,7 +8,6 @@ import {
   type SwitchSpaceErrorKind,
   type SwitchSpaceResponse,
 } from '@/api/daemon/setupV2'
-import { INVITATION_CODE_LENGTH } from '@/components/invitation-code-utils'
 import { InvitationCodeInput } from '@/components/InvitationCodeInput'
 import { Button } from '@/components/ui/button'
 import {
@@ -23,6 +22,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useDialogSessionReset } from '@/hooks/useDialogSessionReset'
 import { type JoinAdmissionResolution, useJoinAdmission } from '@/hooks/useJoinAdmission'
+import { INVITATION_CODE_LENGTH } from '@/lib/invitation-code'
 import { createLogger } from '@/lib/logger'
 import { cn } from '@/lib/utils'
 import { useAppDispatch } from '@/store/hooks'
@@ -203,7 +203,7 @@ function SwitchSpaceDialogInner({
   let body: React.ReactNode
   if (step === 'input') {
     body = (
-      <div className="space-y-5 py-2">
+      <div className="mx-auto w-fit max-w-full space-y-5 py-2">
         <div className="space-y-2">
           <Label htmlFor="switch-code" className="sr-only">
             {t('labels.code')}
@@ -214,12 +214,12 @@ function SwitchSpaceDialogInner({
             onChange={setCode}
             invalid={errorKind === 'invitation_not_found' || errorKind === 'invitation_expired'}
             autoFocus
-            className="relative w-full justify-between gap-0 before:absolute before:left-1/2 before:top-1/2 before:-translate-x-1/2 before:-translate-y-1/2 before:font-mono before:text-lg before:font-semibold before:text-muted-foreground before:content-['-']"
+            className="relative w-full justify-center gap-8 before:absolute before:left-1/2 before:top-1/2 before:-translate-x-1/2 before:-translate-y-1/2 before:font-mono before:text-lg before:font-semibold before:text-muted-foreground before:content-['-']"
           />
         </div>
 
         {codeComplete && (
-          <div className="space-y-2">
+          <div className="w-0 min-w-full space-y-2">
             <Label htmlFor="switch-pass" className="text-xs text-muted-foreground">
               {t('labels.newPassphrase')}
             </Label>
@@ -379,7 +379,7 @@ function SwitchSpaceDialogInner({
         onOpenChange(next)
       }}
     >
-      <DialogContent data-testid="switch-space-dialog" className="sm:max-w-md">
+      <DialogContent data-testid="switch-space-dialog" className="sm:max-w-sm">
         <DialogHeader>
           <DialogTitle>
             {step === 'success'

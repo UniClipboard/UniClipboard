@@ -48,15 +48,12 @@
 pub mod analytics;
 pub mod analytics_gate;
 mod context;
-pub use uc_observability_contract::flow;
 pub mod format;
 mod init;
 pub mod profile;
 pub mod redact;
 pub mod scope;
 pub(crate) mod span_fields;
-pub use uc_observability_contract::stages;
-pub use uc_observability_contract::task_supervision;
 pub mod telemetry_gate;
 
 pub use analytics_gate::{is_analytics_enabled, set_analytics_enabled};
@@ -66,5 +63,3 @@ pub use profile::LogProfile;
 pub use scope::{global_scope, role_log_file_stem, set_global_scope, ScopeContext};
 pub use telemetry_gate::{is_telemetry_enabled, set_telemetry_enabled};
 pub use tracing_appender::non_blocking::WorkerGuard;
-pub use uc_observability_contract::spawn_supervised;
-pub use uc_observability_contract::FlowId;

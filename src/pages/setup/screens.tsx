@@ -30,12 +30,12 @@ import type {
   RedeemInvitationErrorKind,
   ActiveJoinSpaceResponse,
 } from '@/api/daemon/setupV2'
-import { INVITATION_CODE_LENGTH, formatInvitationCode } from '@/components/invitation-code-utils'
 import { InvitationCodeInput } from '@/components/InvitationCodeInput'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useConfigImport, type ConfigImportErrorKind } from '@/hooks/useConfigImport'
+import { INVITATION_CODE_LENGTH, formatInvitationCode } from '@/lib/invitation-code'
 import { cn } from '@/lib/utils'
 
 // ── Common shell ───────────────────────────────────────────────────────────

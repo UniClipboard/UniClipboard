@@ -660,8 +660,10 @@ pub(crate) fn join_space_response(status: JoinSpaceStatusSummary) -> JoinSpaceRe
         JoinSpaceStatusSummary::Active {
             join_id,
             joined_space,
+            peer_upgrade_required,
         } => JoinSpaceResponse::Active {
             join_id,
+            peer_upgrade_required,
             joined_space: JoinedSpaceResponse {
                 sponsor_device_id: joined_space.sponsor_device_id,
                 sponsor_identity_fingerprint: joined_space.sponsor_identity_fingerprint,
@@ -678,12 +680,14 @@ pub(crate) fn join_space_response(status: JoinSpaceStatusSummary) -> JoinSpaceRe
             sponsor_device_id,
             sponsor_identity_fingerprint,
             cancel_requested,
+            peer_upgrade_required,
         } => JoinSpaceResponse::Pending {
             join_id,
             target_space_id,
             sponsor_device_id,
             sponsor_identity_fingerprint,
             cancel_requested,
+            peer_upgrade_required,
         },
         JoinSpaceStatusSummary::Rejected { join_id, reason } => JoinSpaceResponse::Rejected {
             join_id,

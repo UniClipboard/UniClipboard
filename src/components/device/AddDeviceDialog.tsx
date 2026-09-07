@@ -22,7 +22,6 @@ import {
 import { isUnlockSpaceError, unlockSpaceWithPassphrase } from '@/api/security'
 import type { SetupInvitationRevokedEvent } from '@/api/setupEvents'
 import { activeDeviceIds, findNewActiveDeviceId } from '@/components/device/pairing-success-utils'
-import { formatInvitationCode } from '@/components/invitation-code-utils'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -37,6 +36,7 @@ import { Label } from '@/components/ui/label'
 import { Progress } from '@/components/ui/progress'
 import { useDialogSessionReset } from '@/hooks/useDialogSessionReset'
 import { daemonWs } from '@/lib/daemon-ws'
+import { formatInvitationCode } from '@/lib/invitation-code'
 import { createLogger } from '@/lib/logger'
 import { cn } from '@/lib/utils'
 

@@ -161,11 +161,14 @@ async fn update_settings_handler(
         }
     }
 
-    if let Some(enabled) = telemetry_update {
-        uc_observability::set_telemetry_enabled(enabled);
-    }
     if let Some(enabled) = analytics_update {
         uc_observability::set_analytics_enabled(enabled);
+    }
+    if let Some(enabled) = telemetry_update {
+        uc_observability::telemetry_gate::save_preference(enabled).map_err(|error| {
+            tracing::warn!(error = %error, error_kind = "telemetry_preference_save_failed", "Failed to save error reporting preference");
+            ApiError::internal("failed to save error reporting preference")
+        })?;
     }
 
     info!(restart_required, "update settings succeeded");

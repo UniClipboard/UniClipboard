@@ -703,6 +703,98 @@
         ],
         "type": "string"
       },
+      "DeviceGroupChangeDto": {
+        "properties": {
+          "actor": {
+            "$ref": "#/components/schemas/DeviceGroupChoiceDeviceDto"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/DeviceGroupChangeKindDto"
+          },
+          "side": {
+            "$ref": "#/components/schemas/DeviceGroupChangeSideDto"
+          },
+          "target": {
+            "$ref": "#/components/schemas/DeviceGroupChoiceDeviceDto"
+          }
+        },
+        "required": [
+          "side",
+          "kind",
+          "actor",
+          "target"
+        ],
+        "type": "object"
+      },
+      "DeviceGroupChangeKindDto": {
+        "enum": [
+          "added_device",
+          "removed_device"
+        ],
+        "type": "string"
+      },
+      "DeviceGroupChangeSideDto": {
+        "enum": [
+          "local",
+          "remote"
+        ],
+        "type": "string"
+      },
+      "DeviceGroupChoiceDeviceDto": {
+        "properties": {
+          "deviceId": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "deviceId",
+          "displayName"
+        ],
+        "type": "object"
+      },
+      "DeviceGroupChoiceImpactDto": {
+        "properties": {
+          "localDeviceOutcome": {
+            "$ref": "#/components/schemas/DeviceMembershipDto"
+          },
+          "pausedDeviceIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "pendingConfirmationDeviceIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "requiresRejoinDeviceIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "syncScopeDeviceIds": {
+            "description": "Expected sync scope; not authorization or completed recovery.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "syncScopeDeviceIds",
+          "pausedDeviceIds",
+          "pendingConfirmationDeviceIds",
+          "requiresRejoinDeviceIds",
+          "localDeviceOutcome"
+        ],
+        "type": "object"
+      },
       "DeviceGroupChoiceIssueDto": {
         "properties": {
           "choices": {
@@ -713,6 +805,9 @@
           },
           "issueId": {
             "type": "string"
+          },
+          "reason": {
+            "$ref": "#/components/schemas/DeviceGroupChoiceReasonDto"
           }
         },
         "required": [
@@ -721,10 +816,41 @@
         ],
         "type": "object"
       },
+      "DeviceGroupChoiceMemberDto": {
+        "properties": {
+          "active": {
+            "type": "boolean"
+          },
+          "deviceId": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "isLocal": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "deviceId",
+          "displayName",
+          "isLocal",
+          "active"
+        ],
+        "type": "object"
+      },
       "DeviceGroupChoiceOptionDto": {
         "properties": {
           "choiceId": {
             "type": "string"
+          },
+          "impact": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/DeviceGroupChoiceImpactDto"
+              }
+            ],
+            "nullable": true
           },
           "isCurrentGroup": {
             "type": "boolean"
@@ -735,11 +861,23 @@
             },
             "type": "array"
           },
+          "members": {
+            "items": {
+              "$ref": "#/components/schemas/DeviceGroupChoiceMemberDto"
+            },
+            "type": "array"
+          },
           "membersComplete": {
             "type": "boolean"
           },
           "requiresRePairing": {
             "type": "boolean"
+          },
+          "sourceDeviceIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
           }
         },
         "required": [
@@ -759,6 +897,46 @@
           "already_completed",
           "state_changed",
           "local_device_confirmation_required"
+        ],
+        "type": "string"
+      },
+      "DeviceGroupChoiceReasonDto": {
+        "description": "Verified language-neutral facts. Products localize templates, not device names.",
+        "properties": {
+          "changes": {
+            "items": {
+              "$ref": "#/components/schemas/DeviceGroupChangeDto"
+            },
+            "type": "array"
+          },
+          "decisions": {
+            "items": {
+              "$ref": "#/components/schemas/DeviceGroupDecisionDto"
+            },
+            "type": "array"
+          },
+          "detailsComplete": {
+            "type": "boolean"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/DeviceGroupChoiceReasonKindDto"
+          }
+        },
+        "required": [
+          "kind",
+          "changes",
+          "decisions",
+          "detailsComplete"
+        ],
+        "type": "object"
+      },
+      "DeviceGroupChoiceReasonKindDto": {
+        "enum": [
+          "unknown",
+          "pending_removal",
+          "different_removals",
+          "removal_decision_disagreement",
+          "diverged_history"
         ],
         "type": "string"
       },
@@ -839,13 +1017,40 @@
         ],
         "type": "object"
       },
+      "DeviceGroupDecisionDto": {
+        "properties": {
+          "decision": {
+            "$ref": "#/components/schemas/DeviceGroupRemovalDecisionDto"
+          },
+          "device": {
+            "$ref": "#/components/schemas/DeviceGroupChoiceDeviceDto"
+          },
+          "target": {
+            "$ref": "#/components/schemas/DeviceGroupChoiceDeviceDto"
+          }
+        },
+        "required": [
+          "device",
+          "decision",
+          "target"
+        ],
+        "type": "object"
+      },
       "DeviceGroupRelationshipDto": {
         "enum": [
+          "confirmation_pending",
           "consistent",
           "pending_local_decision",
           "diverged",
           "unverifiable",
           "unknown"
+        ],
+        "type": "string"
+      },
+      "DeviceGroupRemovalDecisionDto": {
+        "enum": [
+          "accepted",
+          "rejected"
         ],
         "type": "string"
       },
@@ -2310,6 +2515,9 @@
               "joinedSpace": {
                 "$ref": "#/components/schemas/JoinedSpaceResponse"
               },
+              "peerUpgradeRequired": {
+                "type": "boolean"
+              },
               "status": {
                 "enum": [
                   "active"
@@ -2331,6 +2539,9 @@
               },
               "joinId": {
                 "type": "string"
+              },
+              "peerUpgradeRequired": {
+                "type": "boolean"
               },
               "sponsorDeviceId": {
                 "nullable": true,

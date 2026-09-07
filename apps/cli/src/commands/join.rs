@@ -43,27 +43,18 @@ fn next_reconnect_delay(current: std::time::Duration) -> std::time::Duration {
     current.saturating_mul(2).min(JOIN_RECONNECT_MAX_INTERVAL)
 }
 
-/// Number of base32 chars in an invitation-code body (the `XXXX-XXXX`
-/// shape carries 8 chars plus one middle hyphen).
-const CODE_BODY_LEN: usize = 8;
+/// Number of digits in an invitation-code body, excluding the separator.
+const CODE_BODY_LEN: usize = 6;
 
-/// Fold a typed invitation code into the canonical `XXXX-XXXX` form the
-/// sponsor minted and published.
-///
-/// Codes use an all-uppercase Crockford base32 alphabet and are compared
-/// byte-for-byte (rendezvous lookup key + handshake), so loose typing
-/// would otherwise fail to pair. We drop separators (whitespace, hyphens),
-/// uppercase, and — when exactly the 8-char body remains — re-insert the
-/// single middle hyphen. Anything else is passed through compacted and
-/// uppercased so a genuinely malformed code still surfaces a real
-/// resolution error instead of being silently "fixed".
+/// Format six numeric digits as `XXX-XXX`, preserving leading zeros.
+/// Malformed input remains compacted for the server to reject.
 fn normalize_invitation_code(raw: &str) -> String {
     let compact: String = raw
         .chars()
         .filter(|c| !c.is_whitespace() && *c != '-')
         .collect::<String>()
         .to_ascii_uppercase();
-    if compact.is_ascii() && compact.len() == CODE_BODY_LEN {
+    if compact.len() == CODE_BODY_LEN && compact.bytes().all(|byte| byte.is_ascii_digit()) {
         let mid = CODE_BODY_LEN / 2;
         format!("{}-{}", &compact[..mid], &compact[mid..])
     } else {
@@ -176,6 +167,7 @@ struct JoinErrorOutput {
 
 #[derive(Serialize)]
 struct JoinSuccessOutput<'a> {
+    peer_upgrade_required: bool,
     ok: bool,
     status: &'static str,
     join_id: &'a str,
@@ -193,6 +185,7 @@ struct JoinSuccessOutput<'a> {
 
 #[derive(Serialize)]
 struct JoinPendingOutput<'a> {
+    peer_upgrade_required: bool,
     ok: bool,
     status: &'static str,
     join_id: &'a str,
@@ -348,11 +341,13 @@ fn render_join_response(
         JoinSpaceResponse::Active {
             join_id,
             joined_space,
+            peer_upgrade_required,
         } => {
             if json {
                 spinner.finish_and_clear();
                 crate::output::emit_json_with_code(
                     &JoinSuccessOutput {
+                        peer_upgrade_required: *peer_upgrade_required,
                         ok: outcome.ok,
                         status: "active",
                         join_id,
@@ -401,11 +396,13 @@ fn render_join_response(
             sponsor_device_id,
             sponsor_identity_fingerprint,
             cancel_requested,
+            peer_upgrade_required,
         } => {
             if json {
                 spinner.finish_and_clear();
                 crate::output::emit_json_with_code(
                     &JoinPendingOutput {
+                        peer_upgrade_required: *peer_upgrade_required,
                         ok: outcome.ok,
                         status: "pending",
                         join_id,
@@ -978,6 +975,7 @@ mod tests {
     #[test]
     fn cancel_reports_active_and_rejected_current_join_states() {
         let active = JoinSpaceResponse::Active {
+            peer_upgrade_required: false,
             join_id: "join-active".to_string(),
             joined_space: JoinedSpaceResponse {
                 sponsor_device_id: "sponsor".to_string(),
@@ -1007,6 +1005,7 @@ mod tests {
     #[test]
     fn cancel_does_not_resubmit_when_cancellation_is_already_requested() {
         let pending = JoinSpaceResponse::Pending {
+            peer_upgrade_required: false,
             join_id: "join-pending".to_string(),
             target_space_id: None,
             sponsor_device_id: None,
@@ -1023,6 +1022,7 @@ mod tests {
     #[test]
     fn start_outcome_distinguishes_completed_pending_and_rejected_admission() {
         let active = JoinSpaceResponse::Active {
+            peer_upgrade_required: false,
             join_id: "join-active".to_string(),
             joined_space: JoinedSpaceResponse {
                 sponsor_device_id: "sponsor".to_string(),
@@ -1035,6 +1035,7 @@ mod tests {
             },
         };
         let pending = JoinSpaceResponse::Pending {
+            peer_upgrade_required: false,
             join_id: "join-pending".to_string(),
             target_space_id: None,
             sponsor_device_id: None,
@@ -1080,6 +1081,7 @@ mod tests {
             reason: JoinSpaceRejectionReason::Cancelled,
         };
         let active = JoinSpaceResponse::Active {
+            peer_upgrade_required: false,
             join_id: "join-active".to_string(),
             joined_space: JoinedSpaceResponse {
                 sponsor_device_id: "sponsor".to_string(),
@@ -1104,6 +1106,7 @@ mod tests {
     #[test]
     fn join_json_shapes_use_stable_snake_case_fields() {
         let pending = serde_json::to_value(JoinPendingOutput {
+            peer_upgrade_required: true,
             ok: true,
             status: "pending",
             join_id: "join-1",
@@ -1114,6 +1117,7 @@ mod tests {
         })
         .expect("serialize pending join");
         assert_eq!(pending["join_id"], "join-1");
+        assert_eq!(pending["peer_upgrade_required"], true);
         assert_eq!(pending["target_space_id"], "space-1");
         assert!(pending.get("joinId").is_none());
 
@@ -1130,6 +1134,7 @@ mod tests {
     #[test]
     fn no_wait_only_detaches_from_pending_join() {
         let pending = JoinSpaceResponse::Pending {
+            peer_upgrade_required: false,
             join_id: "join-pending".to_string(),
             target_space_id: None,
             sponsor_device_id: None,
@@ -1149,6 +1154,7 @@ mod tests {
     #[test]
     fn polling_never_attaches_to_a_different_join_attempt() {
         let same_pending = JoinSpaceResponse::Pending {
+            peer_upgrade_required: false,
             join_id: "join-1".to_string(),
             target_space_id: None,
             sponsor_device_id: None,
@@ -1161,6 +1167,7 @@ mod tests {
         );
 
         let replaced = JoinSpaceResponse::Pending {
+            peer_upgrade_required: false,
             join_id: "join-2".to_string(),
             target_space_id: None,
             sponsor_device_id: None,
@@ -1179,18 +1186,18 @@ mod tests {
 
     #[test]
     fn already_canonical_code_is_unchanged() {
-        assert_eq!(normalize_invitation_code("ABCD-1234"), "ABCD-1234");
+        assert_eq!(normalize_invitation_code("000-001"), "000-001");
     }
 
     #[test]
-    fn lowercase_is_uppercased() {
-        assert_eq!(normalize_invitation_code("abcd-1234"), "ABCD-1234");
+    fn letters_are_not_formatted_as_a_numeric_code() {
+        assert_eq!(normalize_invitation_code("abc123"), "ABC123");
     }
 
     #[test]
-    fn hyphenless_eight_chars_get_canonical_hyphen() {
-        assert_eq!(normalize_invitation_code("abcd1234"), "ABCD-1234");
-        assert_eq!(normalize_invitation_code("ABCD1234"), "ABCD-1234");
+    fn hyphenless_six_digits_get_canonical_hyphen() {
+        assert_eq!(normalize_invitation_code("012345"), "012-345");
+        assert_eq!(normalize_invitation_code("000001"), "000-001");
     }
 
     #[test]
@@ -1212,13 +1219,13 @@ mod tests {
 
     #[test]
     fn surrounding_and_inner_whitespace_is_dropped() {
-        assert_eq!(normalize_invitation_code("  abcd 1234 "), "ABCD-1234");
-        assert_eq!(normalize_invitation_code("ABCD - 1234"), "ABCD-1234");
+        assert_eq!(normalize_invitation_code("  012 345 "), "012-345");
+        assert_eq!(normalize_invitation_code("012 - 345"), "012-345");
     }
 
     #[test]
     fn malformed_length_is_passed_through_compacted() {
-        // Not 8 body chars → no hyphen reconstruction, but still
+        // Not six digits: no hyphen reconstruction, but still
         // separator-stripped + uppercased so resolution fails on the
         // real value rather than a half-normalised one.
         assert_eq!(normalize_invitation_code("abc123"), "ABC123");

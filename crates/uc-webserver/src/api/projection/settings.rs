@@ -50,7 +50,6 @@ impl IntoDomain<app_settings::SettingsPatch> for SettingsPatchDto {
                     update_channel: general
                         .update_channel
                         .map(|channel| channel.map(IntoDomain::into_domain)),
-                    telemetry_enabled: general.telemetry_enabled,
                     usage_analytics_enabled: general.usage_analytics_enabled,
                     debug_mode: general.debug_mode,
                 }),
@@ -159,7 +158,7 @@ impl IntoApiDto<SettingsDto> for app_settings::SettingsView {
                 language: self.general.language,
                 device_name: self.general.device_name,
                 update_channel: self.general.update_channel.map(IntoApiDto::into_api_dto),
-                telemetry_enabled: self.general.telemetry_enabled,
+                telemetry_enabled: uc_observability::is_telemetry_enabled(),
                 usage_analytics_enabled: self.general.usage_analytics_enabled,
                 debug_mode: self.general.debug_mode,
             },

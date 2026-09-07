@@ -57,7 +57,7 @@ describe('SwitchSpaceDialog durable admission', () => {
         <SwitchSpaceDialog open onOpenChange={onOpenChange} />
       </I18nextProvider>
     )
-    fireEvent.change(screen.getByLabelText('Invitation code'), { target: { value: 'ABCD1234' } })
+    fireEvent.change(screen.getByLabelText('Invitation code'), { target: { value: '012345' } })
     const input = screen.getByLabelText('New space passphrase')
     fireEvent.change(input, { target: { value: 'temporary passphrase' } })
     const popup = screen.getByRole('dialog')
@@ -77,7 +77,7 @@ describe('SwitchSpaceDialog durable admission', () => {
       </I18nextProvider>
     )
     expect(screen.getByLabelText('Invitation code')).toHaveValue('')
-    fireEvent.change(screen.getByLabelText('Invitation code'), { target: { value: 'ABCD1234' } })
+    fireEvent.change(screen.getByLabelText('Invitation code'), { target: { value: '012345' } })
     expect(screen.getByLabelText('New space passphrase')).toHaveValue('')
   })
 
@@ -89,7 +89,7 @@ describe('SwitchSpaceDialog durable admission', () => {
     )
 
     fireEvent.change(screen.getByLabelText('Invitation code'), {
-      target: { value: 'ABCD1234' },
+      target: { value: '012345' },
     })
     fireEvent.change(screen.getByLabelText('New space passphrase'), {
       target: { value: 'passphrase' },
@@ -110,7 +110,7 @@ describe('SwitchSpaceDialog durable admission', () => {
     )
 
     fireEvent.change(screen.getByLabelText('Invitation code'), {
-      target: { value: 'ABCD1234' },
+      target: { value: '012345' },
     })
     fireEvent.change(screen.getByLabelText('New space passphrase'), {
       target: { value: 'passphrase' },

@@ -397,6 +397,7 @@ mod tests {
             },
             issues: vec![DeviceGroupChoiceIssueDto {
                 issue_id: "c:issue-1".to_string(),
+                reason: Default::default(),
                 choices: vec![
                     DeviceGroupChoiceOptionDto {
                         choice_id: "b:current".to_string(),
@@ -404,6 +405,9 @@ mod tests {
                         requires_re_pairing: false,
                         member_device_ids: vec!["local".to_string(), "peer-a".to_string()],
                         members_complete: true,
+                        members: vec![],
+                        source_device_ids: vec![],
+                        impact: None,
                     },
                     DeviceGroupChoiceOptionDto {
                         choice_id: "b:other".to_string(),
@@ -411,6 +415,9 @@ mod tests {
                         requires_re_pairing: true,
                         member_device_ids: vec!["peer-b".to_string()],
                         members_complete: true,
+                        members: vec![],
+                        source_device_ids: vec![],
+                        impact: None,
                     },
                 ],
             }],

@@ -462,20 +462,70 @@ export type DeliveryFailureReasonDto = 'localPolicy' | 'peerRejected' | 'peerInc
 
 export type DeviceCompatibilityDto = 'compatible' | 'upgrade_required' | 'unknown';
 
+export type DeviceGroupChangeDto = {
+    actor: DeviceGroupChoiceDeviceDto;
+    kind: DeviceGroupChangeKindDto;
+    side: DeviceGroupChangeSideDto;
+    target: DeviceGroupChoiceDeviceDto;
+};
+
+export type DeviceGroupChangeKindDto = 'added_device' | 'removed_device';
+
+export type DeviceGroupChangeSideDto = 'local' | 'remote';
+
+export type DeviceGroupChoiceDeviceDto = {
+    deviceId: string;
+    displayName: string;
+};
+
+export type DeviceGroupChoiceImpactDto = {
+    localDeviceOutcome: DeviceMembershipDto;
+    pausedDeviceIds: Array<string>;
+    pendingConfirmationDeviceIds: Array<string>;
+    requiresRejoinDeviceIds: Array<string>;
+    /**
+     * Expected sync scope; not authorization or completed recovery.
+     */
+    syncScopeDeviceIds: Array<string>;
+};
+
 export type DeviceGroupChoiceIssueDto = {
     choices: Array<DeviceGroupChoiceOptionDto>;
     issueId: string;
+    reason?: DeviceGroupChoiceReasonDto;
+};
+
+export type DeviceGroupChoiceMemberDto = {
+    active: boolean;
+    deviceId: string;
+    displayName: string;
+    isLocal: boolean;
 };
 
 export type DeviceGroupChoiceOptionDto = {
     choiceId: string;
+    impact?: DeviceGroupChoiceImpactDto | null;
     isCurrentGroup: boolean;
     memberDeviceIds: Array<string>;
+    members?: Array<DeviceGroupChoiceMemberDto>;
     membersComplete: boolean;
     requiresRePairing: boolean;
+    sourceDeviceIds?: Array<string>;
 };
 
 export type DeviceGroupChoiceOutcomeDto = 'completed' | 'pending' | 're_pairing_required' | 'already_completed' | 'state_changed' | 'local_device_confirmation_required';
+
+/**
+ * Verified language-neutral facts. Products localize templates, not device names.
+ */
+export type DeviceGroupChoiceReasonDto = {
+    changes: Array<DeviceGroupChangeDto>;
+    decisions: Array<DeviceGroupDecisionDto>;
+    detailsComplete: boolean;
+    kind: DeviceGroupChoiceReasonKindDto;
+};
+
+export type DeviceGroupChoiceReasonKindDto = 'unknown' | 'pending_removal' | 'different_removals' | 'removal_decision_disagreement' | 'diverged_history';
 
 export type DeviceGroupChoiceResultDto = {
     currentRevision?: number | null;
@@ -534,7 +584,15 @@ export type DeviceGroupChoicesEnvelope = {
     ts: number;
 };
 
-export type DeviceGroupRelationshipDto = 'consistent' | 'pending_local_decision' | 'diverged' | 'unverifiable' | 'unknown';
+export type DeviceGroupDecisionDto = {
+    decision: DeviceGroupRemovalDecisionDto;
+    device: DeviceGroupChoiceDeviceDto;
+    target: DeviceGroupChoiceDeviceDto;
+};
+
+export type DeviceGroupRelationshipDto = 'confirmation_pending' | 'consistent' | 'pending_local_decision' | 'diverged' | 'unverifiable' | 'unknown';
+
+export type DeviceGroupRemovalDecisionDto = 'accepted' | 'rejected';
 
 export type DeviceMembershipDto = 'active' | 'removed' | 'unavailable' | 'unknown';
 
@@ -1295,10 +1353,12 @@ export type JoinSpaceRejectionReason = 'invitation_unavailable' | 'authenticatio
 export type JoinSpaceResponse = {
     joinId: string;
     joinedSpace: JoinedSpaceResponse;
+    peerUpgradeRequired?: boolean;
     status: 'active';
 } | {
     cancelRequested: boolean;
     joinId: string;
+    peerUpgradeRequired?: boolean;
     sponsorDeviceId?: string | null;
     sponsorIdentityFingerprint?: string | null;
     status: 'pending';

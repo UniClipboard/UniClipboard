@@ -187,7 +187,7 @@ async fn build_ready_session(verbose: bool) -> Result<CliAppSession, i32> {
         Ok(false) => {
             ui::spinner_finish_error(
                 &resume_spinner,
-                "No space on this profile — run `space init` or `space join` first.",
+                "No space on this profile — run `uniclip space init` or `uniclip space join` first.",
             );
             cli.shutdown().await;
             Err(exit_codes::EXIT_ERROR)

@@ -176,7 +176,8 @@
   "rePairingNotice": {
     "title": "请重新配对设备",
     "body": "本版本更新了设备配对机制，原有配对已不可用。请前往「设备」页向另一台设备发送邀请或重新加入。",
-    "goToDevices": "前往设备管理"
+    "goToDevices": "前往设备管理",
+    "dontShowAgain": "不再提示"
   },
   "settings": {
     "title": "设置",

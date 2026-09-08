@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import {
   AlertDialog,
   AlertDialogAction,
+  AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
   AlertDialogFooter,
@@ -12,9 +13,10 @@ import {
 
 interface RePairingNoticeProps {
   onOpenDevices: () => void
+  onDontShowAgain: () => void
 }
 
-export default function RePairingNotice({ onOpenDevices }: RePairingNoticeProps) {
+export default function RePairingNotice({ onOpenDevices, onDontShowAgain }: RePairingNoticeProps) {
   const { t } = useTranslation()
 
   return (
@@ -28,6 +30,9 @@ export default function RePairingNotice({ onOpenDevices }: RePairingNoticeProps)
           <AlertDialogDescription>{t('rePairingNotice.body')}</AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
+          <AlertDialogCancel onClick={onDontShowAgain}>
+            {t('rePairingNotice.dontShowAgain')}
+          </AlertDialogCancel>
           <AlertDialogAction onClick={onOpenDevices}>
             {t('rePairingNotice.goToDevices')}
           </AlertDialogAction>

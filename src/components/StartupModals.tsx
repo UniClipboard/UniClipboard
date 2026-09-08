@@ -1,8 +1,10 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router'
+import RePairingNotice from '@/components/RePairingNotice'
+import TelemetryNotice from '@/components/TelemetryNotice'
 import { useSetupRealtimeStore } from '@/store/setupRealtimeStore'
-import RePairingNotice from './RePairingNotice'
-import TelemetryNotice from './TelemetryNotice'
+
+const RE_PAIRING_NOTICE_DISMISSED_KEY = 'uc-re-pairing-notice-dismissed'
 
 /**
  * Phases of the launch-time modal queue. Only one modal is rendered at a
@@ -21,7 +23,9 @@ export default function StartupModals() {
   const navigate = useNavigate()
   const { rePairingRequired } = useSetupRealtimeStore()
   const [phase, setPhase] = useState<Phase>('telemetry')
-  const [rePairingNoticeHandled, setRePairingNoticeHandled] = useState(false)
+  const [rePairingNoticeHandled, setRePairingNoticeHandled] = useState(
+    () => localStorage.getItem(RE_PAIRING_NOTICE_DISMISSED_KEY) === '1'
+  )
 
   const handleTelemetryDismissed = () => {
     setPhase('done')
@@ -33,8 +37,15 @@ export default function StartupModals() {
     navigate('/devices')
   }
 
+  const handleDontShowAgain = () => {
+    localStorage.setItem(RE_PAIRING_NOTICE_DISMISSED_KEY, '1')
+    setRePairingNoticeHandled(true)
+  }
+
   if (rePairingRequired && !rePairingNoticeHandled) {
-    return <RePairingNotice onOpenDevices={handleOpenDevices} />
+    return (
+      <RePairingNotice onOpenDevices={handleOpenDevices} onDontShowAgain={handleDontShowAgain} />
+    )
   }
 
   return <TelemetryNotice enabled={phase === 'telemetry'} onDismiss={handleTelemetryDismissed} />

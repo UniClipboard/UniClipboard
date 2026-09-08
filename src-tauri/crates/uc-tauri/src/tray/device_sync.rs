@@ -215,7 +215,9 @@ async fn run(
         if let Err(error) = &rows {
             warn!(error = %error, "Device sync menu unavailable");
         }
-        render(app, Arc::clone(&view), rows.ok(), completed).await?;
+        if let Err(error) = render(app, Arc::clone(&view), rows.ok(), completed).await {
+            warn!(error = %error, "Failed to render device sync menu");
+        }
     }
 }
 

@@ -1,0 +1,1 @@
+Synthetic file for UniClipboard 0.19.3 upgrade verification.

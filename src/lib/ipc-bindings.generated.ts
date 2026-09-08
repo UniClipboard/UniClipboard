@@ -401,6 +401,11 @@ export const commands = {
 	trace_id: string,
 	timestamp: number,
 } | null) => typedError<ModifierDoubleTapAvailability, CommandError>(__TAURI_INVOKE("get_quick_panel_double_tap_availability", { trace })),
+	/**  Whether Quick Panel activation shortcuts must be configured in the compositor. */
+	quickPanelUsesCompositorShortcuts: (trace: {
+	trace_id: string,
+	timestamp: number,
+} | null) => __TAURI_INVOKE<boolean>("quick_panel_uses_compositor_shortcuts", { trace }),
 	/**
 	 *  实时启用/禁用快捷面板。
 	 * 

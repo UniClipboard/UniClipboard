@@ -660,7 +660,7 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
             let mut registered_quick_panel_shortcuts = Vec::new();
 
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
-            {
+            if !quick_panel::uses_compositor_shortcuts() {
                 app.handle()
                     .plugin(tauri_plugin_global_shortcut::Builder::new().build())?;
 

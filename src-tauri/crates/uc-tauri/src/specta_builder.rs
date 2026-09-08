@@ -87,6 +87,7 @@ pub fn build() -> Builder<tauri::Wry> {
         crate::commands::quick_panel::finalize_quick_panel_show,
         crate::commands::quick_panel::mark_quick_panel_ready,
         crate::commands::quick_panel::get_quick_panel_double_tap_availability,
+        crate::commands::quick_panel::quick_panel_uses_compositor_shortcuts,
         crate::commands::quick_panel::set_quick_panel_enabled,
         crate::commands::quick_panel::set_quick_panel_double_tap_modifier,
         crate::commands::quick_panel::set_quick_panel_position,

@@ -801,6 +801,7 @@
         "modified": "変更済み"
       },
       "quickPanel": {
+        "compositorShortcuts": "Wayland の呼び出しショートカットはデスクトップ環境が管理します。コンポジターの設定で次のコマンドにキーを割り当ててください。",
         "title": "クイック パネル",
         "featureTitle": "機能",
         "shortcutTitle": "ショートカット",

@@ -57,11 +57,11 @@
     },
     "linux": {
       "deb": {
-        "depends": ["libayatana-appindicator3-1"],
+        "depends": ["libayatana-appindicator3-1", "libgtk-layer-shell0"],
         "desktopTemplate": "../packaging/linux/uniclipboard.desktop.hbs"
       },
       "rpm": {
-        "depends": ["libayatana-appindicator-gtk3"],
+        "depends": ["libayatana-appindicator-gtk3", "gtk-layer-shell"],
         "desktopTemplate": "../packaging/linux/uniclipboard.desktop.hbs"
       }
     },

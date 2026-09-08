@@ -20,7 +20,7 @@ license=('AGPL-3.0-only')
 # Tauri 2 + webkit2gtk-4.1 运行链 + 系统托盘需要的 appindicator + 桌面通知。
 # tauri.conf.json 的 .deb depends 只列了 appindicator，是因为 .deb 工具会自动
 # 从 ELF 反查共享库依赖；PKGBUILD 不会，所以必须显式列全。
-depends=('webkit2gtk-4.1' 'gtk3' 'libayatana-appindicator' 'libnotify')
+depends=('webkit2gtk-4.1' 'gtk3' 'gtk-layer-shell' 'libayatana-appindicator' 'libnotify')
 # bun 在 Arch [extra]；rust 也在 [extra]（不要写 rustup，那是 AUR 包且需要再装 toolchain）。
 makedepends=('git' 'rust' 'nodejs' 'bun' 'pkgconf')
 provides=("$_pkgname" "$_pkgname=$pkgver")

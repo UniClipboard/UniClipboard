@@ -801,6 +801,7 @@
         "modified": "Modificado"
       },
       "quickPanel": {
+        "compositorShortcuts": "No Wayland, os atalhos de ativação são gerenciados pelo ambiente de trabalho. Associe o comando abaixo a um atalho nas configurações do compositor.",
         "title": "Painel rápido",
         "featureTitle": "Recurso",
         "shortcutTitle": "Atalho",

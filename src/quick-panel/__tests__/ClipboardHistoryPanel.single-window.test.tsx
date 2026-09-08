@@ -6,6 +6,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { Provider } from 'react-redux'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { deleteClipboardEntry, restoreClipboardEntry } from '@/api/daemon'
+import { usePlatform } from '@/hooks/usePlatform'
 import { __resetResendActionStoreForTests } from '@/hooks/useResendAction'
 import i18n from '@/i18n'
 import { playUiSound } from '@/lib/ui-sound'
@@ -14,6 +15,7 @@ import ClipboardHistoryPanel from '../ClipboardHistoryPanel'
 import { useHistorySearch } from '../hooks/useHistorySearch'
 
 const invokeMock = vi.fn()
+vi.mock('@/hooks/usePlatform', () => ({ usePlatform: vi.fn() }))
 
 // The panel now primes the paired-device list (for the row context menu's
 // "send to device" submenu) and the reused `HistoryCardContextMenu` reads
@@ -109,6 +111,12 @@ vi.mock('../hooks/useHistorySearch', () => ({
 const defaultHistorySearchImplementation = vi.mocked(useHistorySearch).getMockImplementation()
 
 beforeEach(() => {
+  vi.mocked(usePlatform).mockReturnValue({
+    isLinux: false,
+    isTauri: true,
+    isMac: true,
+    isWindows: false,
+  })
   if (defaultHistorySearchImplementation) {
     vi.mocked(useHistorySearch).mockImplementation(defaultHistorySearchImplementation)
   }
@@ -180,6 +188,50 @@ describe('ClipboardHistoryPanel single-window preview', () => {
     vi.clearAllMocks()
     invokeMock.mockResolvedValue(undefined)
     Element.prototype.scrollIntoView = vi.fn()
+  })
+
+  it('shows both Linux columns immediately and changes selection without resizing', () => {
+    vi.mocked(usePlatform).mockReturnValue({
+      isLinux: true,
+      isTauri: true,
+      isMac: false,
+      isWindows: false,
+    })
+    const { container } = renderPanel()
+    const root = container.firstElementChild!
+    expect(screen.getByText('Preview for entry-1')).toBeInTheDocument()
+    expect(root.children[1]).toHaveAttribute('aria-hidden', 'false')
+    expect(root).not.toHaveClass('flex-row-reverse')
+    invokeMock.mockClear()
+    fireEvent.keyDown(screen.getByRole('combobox'), { key: 'ArrowDown' })
+    expect(screen.getByText('Preview for entry-2')).toBeInTheDocument()
+    expect(
+      invokeMock.mock.calls.some(
+        ([command]) =>
+          command === 'set_quick_panel_layout' || command === 'resolve_quick_panel_expand_side'
+      )
+    ).toBe(false)
+  })
+
+  it('keeps the Linux preview column visible when history is empty', () => {
+    vi.mocked(usePlatform).mockReturnValue({
+      isLinux: true,
+      isTauri: true,
+      isMac: false,
+      isWindows: false,
+    })
+    vi.mocked(useHistorySearch).mockReturnValue({
+      ...defaultHistorySearchImplementation!({ searchQuery: '', activeFilter: 'all' } as Parameters<
+        typeof useHistorySearch
+      >[0]),
+      filteredItems: [],
+      previewItems: [],
+    })
+    const { container } = renderPanel()
+    expect(screen.getByTestId('preview-empty')).toBeInTheDocument()
+    expect(container.firstElementChild!.children[1]).toHaveAttribute('aria-hidden', 'false')
+    expect(container.firstElementChild!.children[0]).toHaveClass('flex-[9]')
+    expect(container.firstElementChild!.children[1]).toHaveClass('flex-[11]')
   })
 
   it('starts a shown session without a preview transition', () => {

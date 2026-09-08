@@ -8,6 +8,7 @@ import {
   type ShortcutDefinition,
   type ShortcutScope,
 } from '@/shortcuts/definitions'
+import { QuickPanelShortcutRow } from './QuickPanelShortcutRow'
 import { useShortcutSettings } from './useShortcutSettings'
 
 /** Display order for shortcut scopes */
@@ -44,17 +45,20 @@ const ShortcutsSection: React.FC = () => {
 
         return (
           <SettingGroup key={scope} title={t(`settings.sections.shortcuts.scope.${scope}`)}>
-            {shortcuts.map(def => (
-              <ShortcutRow
-                key={def.id}
-                definition={def}
-                currentKey={getCurrentKey(def)}
-                currentOverrides={overrides}
-                isModified={isModified(def.id)}
-                onOverrideChange={handleOverrideChange}
-                onResetShortcut={handleResetShortcut}
-              />
-            ))}
+            {shortcuts.map(def => {
+              const Row = def.id === 'global.toggleQuickPanel' ? QuickPanelShortcutRow : ShortcutRow
+              return (
+                <Row
+                  key={def.id}
+                  definition={def}
+                  currentKey={getCurrentKey(def)}
+                  currentOverrides={overrides}
+                  isModified={isModified(def.id)}
+                  onOverrideChange={handleOverrideChange}
+                  onResetShortcut={handleResetShortcut}
+                />
+              )
+            })}
           </SettingGroup>
         )
       })}

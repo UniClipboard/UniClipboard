@@ -181,13 +181,13 @@ const ClipboardHistoryPanelSession: React.FC<ClipboardHistoryPanelProps> = ({
   const previewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const previewLayoutTokenRef = useRef(0)
   const [skipTransition, setSkipTransition] = useState(showRequestId !== 0)
-  const previewExpanded = previewState.mode === 'expanded'
+  const previewExpanded = isLinuxQuickPanel || previewState.mode === 'expanded'
   const previewReservingSpace = previewState.mode === 'reserving'
   const previewEntryId = previewState.entryId
   const previewSuppressed = previewState.suppressed
   const historyLockedWidth = previewState.historyLockedWidth
   const previewSide = previewState.side
-  const layoutClassNames = getQuickPanelLayoutClassNames(isLinuxQuickPanel, previewSide === 'left')
+  const layoutClassNames = getQuickPanelLayoutClassNames(isLinuxQuickPanel)
   const previewFocusSource = previewState.focusSource
 
   const { filteredItems, previewItems, isSearching, searchTotal, loading, isLocked, removeItem } =
@@ -224,9 +224,9 @@ const ClipboardHistoryPanelSession: React.FC<ClipboardHistoryPanelProps> = ({
       clearPreviewTimer()
       previewLayoutTokenRef.current += 1
       dispatchPreview({ type: 'reset', suppressed: suppressUntilNextSelection })
-      void setQuickPanelLayout(readStoredUiScale(), false).catch(() => {})
+      if (!isLinuxQuickPanel) void setQuickPanelLayout(readStoredUiScale(), false).catch(() => {})
     },
-    [clearPreviewTimer]
+    [clearPreviewTimer, isLinuxQuickPanel]
   )
 
   // Session remount already resets search/filters/list. This only focuses the
@@ -302,11 +302,20 @@ const ClipboardHistoryPanelSession: React.FC<ClipboardHistoryPanelProps> = ({
     previewTargetId != null
       ? (previewItems.find(item => item.id === previewTargetId) ?? null)
       : null
-  const previewItem = previewEntryId
+  const floatingPreviewItem = previewEntryId
     ? (previewItems.find(item => item.id === previewEntryId) ?? null)
     : null
 
+  const previewItem = isLinuxQuickPanel
+    ? isLocked
+      ? null
+      : targetPreviewItem
+    : floatingPreviewItem
+
   useEffect(() => {
+    // Linux keeps both columns visible and derives the preview from selection.
+    // Only floating panels need delayed expansion and native window resizing.
+    if (isLinuxQuickPanel) return
     clearPreviewTimer()
     if (previewSuppressed || isLocked) return
     if (!targetPreviewItem) {
@@ -361,6 +370,7 @@ const ClipboardHistoryPanelSession: React.FC<ClipboardHistoryPanelProps> = ({
     }
   }, [
     clearPreviewTimer,
+    isLinuxQuickPanel,
     isLocked,
     previewEntryId,
     previewExpanded,
@@ -709,7 +719,9 @@ const ClipboardHistoryPanelSession: React.FC<ClipboardHistoryPanelProps> = ({
         className={
           previewReservingSpace && historyLockedWidth != null
             ? 'min-w-0 shrink-0'
-            : 'min-w-0 flex-1 basis-0'
+            : isLinuxQuickPanel
+              ? 'min-w-0 flex-[9] basis-0'
+              : 'min-w-0 flex-1 basis-0'
         }
         style={
           previewReservingSpace && historyLockedWidth != null

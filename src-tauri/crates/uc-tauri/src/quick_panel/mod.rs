@@ -6,6 +6,10 @@
 //!
 //! 跨平台快捷剪贴板面板。macOS 上使用 NSPanel，不会抢夺前台应用焦点。
 
+#[cfg(target_os = "linux")]
+mod layer_shell;
+#[cfg(target_os = "linux")]
+pub(crate) mod linux;
 #[cfg(target_os = "macos")]
 mod macos;
 #[cfg(any(target_os = "windows", test))]
@@ -14,7 +18,7 @@ mod shortcut_registry;
 #[cfg(target_os = "windows")]
 mod windows;
 
-pub use shortcut_registry::TauriGlobalShortcutRegistry;
+pub use shortcut_registry::{uses_compositor_shortcuts, TauriGlobalShortcutRegistry};
 
 use std::sync::Mutex;
 use std::time::Instant;
@@ -64,6 +68,8 @@ const BLUR_VERIFY_DELAY_MS: u64 = 100;
 const BASE_PANEL_WIDTH: f64 = 360.0;
 const BASE_PANEL_HEIGHT: f64 = 420.0;
 const BASE_PREVIEW_WIDTH: f64 = 360.0;
+const LINUX_PANEL_WIDTH: f64 = 800.0;
+const LINUX_PANEL_HEIGHT: f64 = 560.0;
 const PANEL_GAP: f64 = 8.0;
 const MIN_UI_SCALE: f64 = 0.8;
 const MAX_UI_SCALE: f64 = 1.5;
@@ -461,6 +467,9 @@ fn resolve_horizontal_layout(
 /// without moving the window. Lets the frontend reverse its layout *before* the
 /// window is repositioned, so the history pane never visibly jumps.
 pub fn resolve_expand_side(app: &tauri::AppHandle, scale: f64) -> ExpandSide {
+    if cfg!(target_os = "linux") {
+        return ExpandSide::Right;
+    }
     let (narrow_width, height) = panel_dimensions(scale, false);
     let (wide_width, _) = panel_dimensions(scale, true);
     let (anchor_x, _) = panel_origin_or_default(app, narrow_width, height);
@@ -490,6 +499,10 @@ fn normalize_ui_scale(scale: f64) -> f64 {
 }
 
 fn panel_dimensions(scale: f64, preview_expanded: bool) -> (f64, f64) {
+    if cfg!(target_os = "linux") {
+        let scale = normalize_ui_scale(scale);
+        return (LINUX_PANEL_WIDTH * scale, LINUX_PANEL_HEIGHT * scale);
+    }
     panel_dimensions_for_window_padding(scale, preview_expanded, window_padding())
 }
 
@@ -585,6 +598,15 @@ pub fn pre_create(app: &tauri::AppHandle) {
         return; // Already created
     }
 
+    #[cfg(target_os = "linux")]
+    let layer_hook = match linux::CreationHook::install() {
+        Ok(hook) => hook,
+        Err(error) => {
+            warn!(error_kind = "layer_shell_unavailable", retryable = false, %error, "Using ordinary Linux panel window");
+            None
+        }
+    };
+
     // Position off-screen; will be repositioned on first show()
     let url = WebviewUrl::App("quick-panel.html".into());
     let (initial_width, initial_height) = panel_dimensions(1.0, false);
@@ -603,6 +625,16 @@ pub fn pre_create(app: &tauri::AppHandle) {
         .build()
     {
         Ok(window) => {
+            #[cfg(target_os = "linux")]
+            if let Some(hook) = layer_hook {
+                if let Err(error) = hook.finish(&window) {
+                    error!(error_kind = "layer_shell_initialization_failed", retryable = false, %error, "Quick panel creation failed");
+                    if let Err(error) = window.destroy() {
+                        error!(%error, "Failed to destroy invalid quick panel");
+                    }
+                    return;
+                }
+            }
             info!("Quick panel window pre-created");
 
             #[cfg(target_os = "macos")]
@@ -693,16 +725,6 @@ pub fn toggle(app: &tauri::AppHandle) {
 /// 在屏幕中央显示快捷面板（类似 Raycast）。
 pub fn show(app: &tauri::AppHandle) {
     let (width, height) = panel_dimensions(1.0, false);
-    let position = current_position();
-    let (panel_x, panel_y) = default_panel_position(app, width, height);
-
-    info!(
-        panel_x,
-        panel_y,
-        ?position,
-        "Showing quick panel at the resolved position on the monitor containing the cursor"
-    );
-
     // If panel doesn't exist yet (pre_create wasn't called), create it now
     if app.get_webview_window(PANEL_LABEL).is_none() {
         warn!("Quick panel not pre-created, creating inline (may activate app)");
@@ -718,17 +740,9 @@ pub fn show(app: &tauri::AppHandle) {
         #[cfg(target_os = "macos")]
         macos::remember_previous_app();
 
-        if let Err(e) = window.set_size(tauri::LogicalSize::new(width, height)) {
-            warn!(error = %e, "Failed to reset quick panel size");
-        }
-
-        // Reposition to screen center
-        if let Err(e) = window.set_position(tauri::Position::Logical(tauri::LogicalPosition::new(
-            panel_x, panel_y,
-        ))) {
-            warn!(error = %e, "Failed to set quick panel position");
-        } else {
-            remember_panel_origin(panel_x, panel_y);
+        if let Err(error) = prepare_window_show(&window, width, height) {
+            error!(error_kind = "panel_show_failed", retryable = true, %error, "Quick panel could not prepare to show");
+            return;
         }
 
         // Record show timestamp *before* the frontend finalizes show so the
@@ -743,6 +757,31 @@ pub fn show(app: &tauri::AppHandle) {
             warn!(error = %e, "Failed to emit prepare-show event to quick panel");
         }
     }
+}
+
+fn prepare_window_show(
+    window: &tauri::WebviewWindow,
+    width: f64,
+    height: f64,
+) -> Result<(), String> {
+    #[cfg(target_os = "linux")]
+    if linux::active(window.app_handle()) {
+        return linux::prepare_show(window, width, height);
+    }
+    let (x, y) = default_panel_position(window.app_handle(), width, height);
+    info!(
+        panel_x = x,
+        panel_y = y,
+        "Preparing quick panel window position"
+    );
+    if let Err(error) = window.set_size(tauri::LogicalSize::new(width, height)) {
+        warn!(%error, "Failed to reset quick panel size");
+    }
+    match window.set_position(tauri::LogicalPosition::new(x, y)) {
+        Ok(()) => remember_panel_origin(x, y),
+        Err(error) => warn!(%error, "Failed to set quick panel position"),
+    }
+    Ok(())
 }
 
 /// Actually make the quick panel window visible.
@@ -762,6 +801,13 @@ pub fn finalize_show(app: &tauri::AppHandle) {
         }
         #[cfg(not(any(target_os = "macos", target_os = "windows")))]
         {
+            #[cfg(target_os = "linux")]
+            if linux::active(app) {
+                if let Err(error) = linux::show(&window) {
+                    error!(error_kind = "panel_show_failed", retryable = true, %error, "Quick panel could not show");
+                }
+                return;
+            }
             let _ = window.show();
             let _ = window.set_focus();
         }
@@ -777,6 +823,13 @@ pub fn finalize_show(app: &tauri::AppHandle) {
 /// 关闭快捷面板并恢复焦点到之前的应用。
 pub fn dismiss(app: &tauri::AppHandle) {
     if let Some(window) = app.get_webview_window(PANEL_LABEL) {
+        #[cfg(target_os = "linux")]
+        if linux::active(app) {
+            if let Err(error) = linux::dismiss(&window) {
+                error!(error_kind = "panel_hide_failed", retryable = true, %error, "Quick panel could not hide");
+            }
+            return;
+        }
         let _ = window.hide();
     }
 
@@ -798,6 +851,14 @@ pub fn set_layout(app: &tauri::AppHandle, scale: f64, preview_expanded: bool) {
     let Some(window) = app.get_webview_window(PANEL_LABEL) else {
         return;
     };
+
+    #[cfg(target_os = "linux")]
+    if linux::active(app) {
+        if let Err(error) = linux::set_layout(&window, scale, preview_expanded) {
+            error!(error_kind = "panel_layout_failed", retryable = true, %error, "Quick panel layout failed");
+        }
+        return;
+    }
 
     let (narrow_width, height) = panel_dimensions(scale, false);
     let (wide_width, _) = panel_dimensions(scale, true);
@@ -855,6 +916,7 @@ pub fn set_layout(app: &tauri::AppHandle, scale: f64, preview_expanded: bool) {
 /// 关闭快捷面板，然后将剪贴板内容粘贴到之前的应用。
 ///
 /// Returns an error on platforms where simulated paste is not yet implemented.
+#[cfg(not(target_os = "linux"))]
 pub fn paste(app: &tauri::AppHandle) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
@@ -945,7 +1007,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn linux_dimensions_do_not_reserve_transparent_outer_padding() {
+    fn floating_dimensions_can_omit_outer_padding() {
         assert_eq!(
             panel_dimensions_for_window_padding(1.0, false, 0.0),
             (360.0, 420.0)
@@ -954,6 +1016,21 @@ mod tests {
             panel_dimensions_for_window_padding(1.0, true, 0.0),
             (728.0, 420.0)
         );
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn linux_window_keeps_both_columns_at_every_preview_state() {
+        for scale in [0.8, 1.0, 1.25] {
+            assert_eq!(
+                panel_dimensions(scale, false),
+                panel_dimensions(scale, true)
+            );
+            assert_eq!(
+                panel_dimensions(scale, false).0,
+                800.0 * normalize_ui_scale(scale)
+            );
+        }
     }
 
     #[test]

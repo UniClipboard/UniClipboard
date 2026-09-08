@@ -801,6 +801,7 @@
         "modified": "已修改"
       },
       "quickPanel": {
+        "compositorShortcuts": "Wayland 下的喚起快捷鍵由桌面環境管理。請在視窗管理器設定中為以下命令綁定快捷鍵。",
         "title": "快捷面板",
         "featureTitle": "功能",
         "shortcutTitle": "快捷鍵",

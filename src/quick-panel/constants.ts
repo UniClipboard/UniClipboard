@@ -16,18 +16,16 @@ export const typeIcons: Record<ClipboardEntryType, React.ElementType> = {
   unknown: FileText,
 }
 
-export function getQuickPanelLayoutClassNames(isLinux: boolean, previewOnLeft = false) {
+export function getQuickPanelLayoutClassNames(isLinux: boolean) {
   if (isLinux) {
-    const dividerClassName = previewOnLeft ? 'border-r' : 'border-l'
-
     return {
-      container: 'flex h-screen w-screen overflow-hidden bg-background p-0',
-      statusSurface: 'bg-background',
-      card: 'flex h-full w-full min-w-0 flex-col overflow-hidden border border-border/50 bg-background',
-      previewCard:
-        'flex h-full w-full min-w-0 flex-col overflow-hidden border border-border/50 bg-card text-card-foreground',
-      previewExpanded: `flex-1 basis-0 ${dividerClassName} border-border/50 opacity-100 translate-x-0`,
-      previewReserved: `shrink-0 ${dividerClassName} border-border/50 opacity-0 translate-x-0 pointer-events-none`,
+      container:
+        'flex h-screen w-screen overflow-hidden border border-border/50 bg-card text-card-foreground p-0',
+      statusSurface: 'bg-card text-card-foreground',
+      card: 'flex h-full w-full min-w-0 flex-col overflow-hidden',
+      previewCard: 'flex h-full w-full min-w-0 flex-col overflow-hidden',
+      previewExpanded: 'flex-[11] basis-0 border-l border-border/50 opacity-100 translate-x-0',
+      previewReserved: 'shrink-0 opacity-0 pointer-events-none',
     }
   }
 

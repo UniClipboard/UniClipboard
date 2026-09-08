@@ -801,6 +801,7 @@
         "modified": "Modified"
       },
       "quickPanel": {
+        "compositorShortcuts": "Wayland activation shortcuts are managed by your desktop. Bind the following command in your compositor settings.",
         "title": "Quick Panel",
         "featureTitle": "Feature",
         "shortcutTitle": "Shortcut",

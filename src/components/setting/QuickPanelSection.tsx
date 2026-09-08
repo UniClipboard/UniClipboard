@@ -14,10 +14,10 @@ import { createLogger } from '@/lib/logger'
 import { SHORTCUT_DEFINITIONS, type ShortcutDefinition } from '@/shortcuts/definitions'
 import type { QuickPanelPosition } from '@/types/setting'
 import { QuickPanelDoubleTapRow } from './QuickPanelDoubleTapRow'
+import { QuickPanelShortcutRow } from './QuickPanelShortcutRow'
 import { RestartBanner } from './RestartBanner'
 import { SettingGroup } from './SettingGroup'
 import { SettingRow } from './SettingRow'
-import { ShortcutRow } from './ShortcutRow'
 import { useOptimisticSetting } from './useOptimisticSetting'
 import { useShortcutSettings } from './useShortcutSettings'
 
@@ -137,7 +137,7 @@ export default function QuickPanelSection() {
       {quickPanelDef && (
         <SettingGroup title={t('settings.sections.quickPanel.shortcutTitle')}>
           <QuickPanelDoubleTapRow enabled={enabled} />
-          <ShortcutRow
+          <QuickPanelShortcutRow
             definition={quickPanelDef}
             currentKey={getCurrentKey(quickPanelDef)}
             currentOverrides={overrides}

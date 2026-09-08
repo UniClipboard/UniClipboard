@@ -48,7 +48,12 @@ export function useAppBootstrap(isSetupActive: boolean) {
     skip: isSetupActive || !state.daemonBootstrapReady,
   })
 
-  const isInitialLoading = encryptionLoading && state.encryptionOverride === null
+  const isInitialLoading =
+    !isSetupActive &&
+    state.encryptionOverride === null &&
+    !state.bootEncryptionError &&
+    !state.bootstrapFailure &&
+    (encryptionLoading || !state.daemonBootstrapReady)
   useEffect(() => {
     if (!isInitialLoading) return
     const id = setTimeout(() => dispatch({ type: 'loadingTimedOut' }), LOADING_WATCHDOG_MS)

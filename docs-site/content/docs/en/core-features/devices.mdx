@@ -19,12 +19,16 @@ Local details include the device name, sync control, connection information, and
 ## Device trust changes
 
 When a device-group decision is required, UniClipboard opens a required decision dialog and sends a system notification.
-Each option shows which devices will continue syncing, which will stop, and whether re-pairing is required or membership information is incomplete.
-A removal change may offer **Apply the change** and **Keep the current space**; other issues show the available device groups.
+Each option first explains its main effect, such as which devices will stop syncing. Expand **View devices** to inspect the member list, expected sync scope, and rejoining requirements. Incomplete information is labeled explicitly rather than treated as an empty list.
+A removal change may offer **Accept this removal** and **Stay in the current device group**. When this device would leave, the choices are **Leave the device group** and **Keep existing devices**. Other issues show the available device groups.
+Group membership, expected sync scope, and current sync availability are different facts. An expected scope does not mean that peers have confirmed the choice or that synchronization has resumed.
 
 Removing this device requires an additional confirmation. A submitted choice may be complete, pending, or require re-pairing; follow the displayed result.
 If device state changes while you choose, the app refreshes the options and asks you to choose again.
+If the result cannot yet be confirmed, choose **Check again**. When another issue remains after one is resolved, the dialog explains it and asks for a new choice without carrying over the previous selection.
 Separate groups are a long-term result, not an offline or failed state, and are not merged automatically.
+
+If a re-pairing reminder appears at startup, **Don't show again** remembers your preference to hide that reminder. It does not restore old device relationships or clear the requirement to re-pair. Choosing **Open device management** alone does not permanently hide the reminder.
 
 The device list contains current space members only. Historical relationships do not bring removed devices or devices in another space back into the list.
 **Update required** appears only when the background service confirms an outdated version. Offline status alone does not mean that a device needs an update or has been removed.

@@ -22,7 +22,14 @@ describe('device-local visual effects', () => {
       sessionId: before.sessionId,
       systemMotion: 'allow',
     })
-    assert.equal(allowed.autoForSession, 'smooth')
+    if (process.env.E2E_EXPECT_AUTO) {
+      assert.equal(allowed.autoForSession, process.env.E2E_EXPECT_AUTO)
+    }
+    console.log('Native automatic visual effects:', {
+      result: allowed.autoForSession,
+      reason: allowed.reason,
+      lowEffects: allowed.lowEffects,
+    })
     const manual = await invoke('set_visual_effects_mode', { mode: 'effects' })
     assert.equal(manual.mode, 'effects')
     assert.equal(manual.lowEffects, false)
@@ -49,7 +56,8 @@ describe('device-local visual effects', () => {
     assert.equal(auto.autoForSession, before.autoForSession)
     await browser.waitUntil(
       async () =>
-        (await browser.execute(() => document.documentElement.dataset.ucLowEffects)) === 'true'
+        (await browser.execute(() => document.documentElement.dataset.ucLowEffects)) ===
+        String(auto.lowEffects)
     )
   })
 })

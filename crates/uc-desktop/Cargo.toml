@@ -26,12 +26,24 @@ async-trait = "0.1"
 thiserror = "1"
 tracing = "0.1"
 gethostname = "1.1"
+sysinfo = { version = "0.38.4", default-features = false, features = ["system"] }
 url = "2"
 uuid = { version = "1", features = ["v4", "fast-rng"] }
 reqwest = { version = "0.12", default-features = false, features = [
   "json",
   "rustls-tls",
   "rustls-tls-webpki-roots",
+] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2-metal = { version = "0.3", default-features = false, features = ["std", "MTLDevice"] }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+windows = { version = "0.61", features = [
+  "Win32_Foundation",
+  "Win32_Graphics_Direct3D",
+  "Win32_Graphics_Direct3D11",
+  "Win32_Graphics_Dxgi",
 ] }
 
 [dev-dependencies]

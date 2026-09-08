@@ -5,7 +5,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-pub const POLICY_VERSION: u32 = 1;
+pub const POLICY_VERSION: u32 = 2;
 
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
 #[serde(default, rename_all = "camelCase")]

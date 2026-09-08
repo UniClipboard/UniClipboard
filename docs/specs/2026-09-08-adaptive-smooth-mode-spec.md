@@ -1,7 +1,7 @@
 # 桌面流畅模式实施规格
 
 - 日期：2026-09-08。
-- 状态：已实现三档选择、统一效果控制和运行评估规则；硬件阈值校准及完整跨平台验收尚未完成。实际依据见[验收记录](2026-09-08-adaptive-smooth-mode-verification.md)。
+- 状态：已实现三档选择、统一效果控制、原生能力初判和运行评估规则；完整跨平台实测仍需补齐。能力规则及当前证据见[校准记录](2026-09-08-adaptive-smooth-mode-calibration.md)，界面验证见[验收记录](2026-09-08-adaptive-smooth-mode-verification.md)。
 - 需求：[GitHub issue #1622](https://github.com/UniClipboard/UniClipboard/issues/1622)。
 - 需求修订：用户于 2026-09-08 明确 Linux 的自动模式默认采用流畅优先。本文按自动固定流畅、允许手动效果优先执行；此规则优先于原 issue 中所有系统均按能力初判的描述。
 - 代码研究基线：`1861d0999`。
@@ -12,7 +12,7 @@
 
 本文要让执行者逐片完成，不要求执行者自行决定状态所有权、系统偏好优先级、跨窗口一致性、失败处理或采样算法。第 8 节每片均列出入口、步骤、交付物、验收和停止条件。一次只做一片，通过后再进入下一片；提交粒度可小于切片。
 
-文档完成与功能完成分开：本文给出可执行的测量流程和暂定测试参数，但没有弱机、强机实测数据。S5 必须产出校准报告才能冻结生产阈值；S7 才能宣布 issue 验收完成。缺设备时可继续不依赖设备的切片，不得用模拟数据冒充真机结论。
+文档完成与功能完成分开。自动模式先用明确的原生能力门槛选择初始效果，再由真实交互修正下一次启动结果；能力检测不等同于帧率保证。修复原实现始终返回 unknown 后，不再让缺少完整设备校准报告阻止有可靠能力信号的设备启用效果。S5/S7 仍负责补充代表设备和完整跨平台证据，不能用模拟输入冒充真机实测。
 
 开始实施时依次读 `VISION.md`、`docs/agent/workflow-rules.md`、`docs/agent/frontend-ui-rules.md`、`src/AGENTS.md`；修改 Rust 前补读 `docs/agent/rust-tauri-rules.md`、`crates/AGENTS.md`、`src-tauri/AGENTS.md`。本文拟新增的路径会明确标为“新增”，不要误认为已有模块。
 
@@ -94,7 +94,8 @@ Linux 默认选中的仍是“自动”，不要把保存的用户选择改成�
 | --- | --- |
 | `src-tauri/crates/uc-tauri/src/visual_effects.rs` | 纯决策、进程级状态、版本与汇总；变大后才按职责拆子模块 |
 | `src-tauri/crates/uc-tauri/src/visual_effects_storage.rs` | 有界读取、校验、原子替换配置文件 |
-| `src-tauri/crates/uc-tauri/src/visual_effects_probe.rs` | 一次性原生设备信息获取与未知处理 |
+| `src-tauri/crates/uc-tauri/src/visual_effects_probe.rs` | 启动等待上限、结果映射与未知处理 |
+| `crates/uc-desktop/src/visual_capabilities.rs` 及同名目录 | 框架无关的 CPU/内存读取、Metal/Direct3D 能力查询和联合分类 |
 | `src-tauri/crates/uc-tauri/src/commands/visual_effects.rs` | 类型化命令，薄转发，不复制策略 |
 | `src/api/visual-effects.ts` | 命令及事件封装、错误反馈 |
 | `src/lib/visual-effects-store.ts` | 每窗口只读快照、订阅和重连；无磁盘写入、无硬件分类 |
@@ -161,13 +162,13 @@ interface StoredVisualEffectsV1 {
 
 ### 5.1 初次设备判断
 
-Linux 直接冻结流畅结果，跳过原生探测。macOS/Windows 的原生探测在 GUI 启动时后台执行一次；总等待预算 500 ms，超时本次取 unknown，迟到结果不得改变本次自动结果。使用 `sysinfo 0.38.4` 的最小 CPU/内存刷新；原始信息留内存，释放后不再采集。禁止 `System::new_all()`、枚举进程、命令行调用系统信息工具或依赖 `navigator.deviceMemory`。
+Linux 直接冻结流畅结果，跳过原生探测。macOS/Windows 在 GUI 启动阶段后台执行一次探测；等待上限为 2 秒，超时本次取 unknown，迟到结果不得改变本次自动结果。首次原生检测在 M4 上曾达到约 723 ms，因此原来 500 ms 的上限过短。等待期间使用现有静态首屏，不阻塞界面主线程。通过 `sysinfo 0.38.4` 按需读取物理核数和物理内存，不刷新进程列表或 CPU 使用率；原始信息只留在本次调用中。禁止 `System::new_all()`、命令行探测和依赖 `navigator.deviceMemory`。
 
-CPU 逻辑核数、物理内存只能提供部分证据。显卡枚举不等于当前 WebView 使用的合成器；第一版没有经跨平台验证的原生合成器信息时，图形能力明确为 unknown，不通过 GPU 型号字符串猜快慢，也不为了这一功能引入 wgpu。
+初始资源门槛是至少 4 个物理核心、8 GiB 物理内存，同时具备现代硬件图形能力。macOS 使用 `MTLCopyAllDevices` 枚举 Metal 设备，要求每个可用设备均支持 `MTLGPUFamilyMac2`，避免只看最强独显，也不为了探测切换独显。Windows 用 `D3D11CreateDevice` 的 HARDWARE 驱动验证默认适配器，要求 feature level 至少 12_0；旧运行时拒绝新特性级别时只重试旧硬件级别，不回退 WARP 软件渲染。原生图形能力代表设备支持范围，不声称当前 WebView 必定使用该设备；实际表现仍由后续交互采样验证。不通过型号名称、厂商字符串或操作系统名称推断性能。
 
 冻结 `autoForSession` 的顺序：Linux → 流畅，忽略历史 nextAuto；其余支持平台：有效的下次结果 → 采用；设备 constrained/unknown → 流畅；设备 capable → 完整效果。Linux 快照的 nextAuto 为 null、原因为 platform_default（系统偏好或手动选择覆盖时使用对应原因）。系统偏好在其外层按第 3 节即时覆盖，不写进冻结值；否则启动时的系统减少动效会在关闭系统偏好后仍然错误保留。手动模式按第 3 节处理。macOS/Windows 的 `nextAuto` 是持续保存的启动覆盖值，读取不清空；不然降级只持续一次启动。
 
-macOS/Windows 的 `capable` 必须由 S5 冻结的组合规则产生：至少结合 CPU、内存及经实测验证的图形能力证据；缺关键证据一律 unknown。S5 若证实其中某平台无法可靠取得该证据，则该平台自动保守流畅，用户可手动选择效果优先，并在验收报告写明该平台未达到“强设备自动完整效果”，不能悄悄把未知当强设备通过验收。Linux 自动流畅是已确定的产品规则，不属于能力检测失败或验收缺项。
+分类顺序：任一已知资源低于门槛或 GPU 只支持旧能力，判为 constrained；否则，物理核数/内存无法读取、值为零或图形能力无法获取，判为 unknown；三个条件均满足才是 capable。这是保守初判，不是由核心数或内存单项推断实际帧率。策略版本升为 2，升级时保留手动选择，清除旧策略的自动覆盖值。Linux 自动流畅不属于检测失败。
 
 ### 5.2 轻量采样的固定规则
 
@@ -289,9 +290,9 @@ rg -n 'reduceVisualEffects|ucLowEffects|isLowEffectsEnabled' src
 
 - 依赖：S3、S4；需要代表性较弱/较强设备或维护者提供可运行测试的机器。
 - 修改：probe、唯一策略参数表、测试能力样本；按需增加同版本 sysinfo 直接依赖。
-- 步骤：在 macOS/Windows 实现 CPU/内存读取及 500 ms 超时，记录能否可靠读取实际图形能力，不能读取就 unknown；Linux 验证跳过探测。用同版本正式构建在每台设备运行相同 200 条合成历史的搜索、弹窗、菜单、滚动和快捷面板操作，各重复 5 轮。合成数据不得使用个人历史。
+- 步骤：验证第 5.1 节的原生能力读取及 2 秒等待上限，记录能力结果和真实运行表现的差别；Linux 验证跳过探测。用同版本正式构建在每台设备运行相同 200 条合成历史的搜索、弹窗、菜单、滚动和快捷面板操作，各重复 5 轮。合成数据不得使用个人历史。
 - macOS/Windows 每台测三组：完整效果、流畅、完整效果加监测；Linux 测自动流畅和手动效果优先两组，并确认没有产品采样。记录 WebView 版本、屏幕刷新率、缩放、供电状态、前台操作延迟和帧间隔。硬件资料仅经测试者明确同意放入脱敏报告，产品自身不记录。
-- 初始质量门槛：完整效果每轮长帧比例低于 5%、操作到可见反馈 p95 不超过 100 ms 才可列作 capable 候选；超过 20% 为 constrained 候选，中间区间 unknown。只有 CPU/内存/图形组合规则在所有保留验证轮次均正确识别强弱样本，才冻结为生产规则；不使用型号白名单。
+- 校准质量门槛：完整效果每轮长帧比例低于 5%、操作到可见反馈 p95 不超过 100 ms 作为流畅样本；超过 20% 长帧作为明显受限样本。用这些实测结果调整第 5.1 节的初判规则，不把 API 能力级别当作已测帧率，不使用型号白名单。
 - 开销门槛：监测回调累计耗时不超过采样时长 1%；包含 WebView 子进程的 CPU 相比不监测增加不超过 1 个百分点；隐藏时采样回调为零。低效果改善应在差机器上可重复观察，不能只比较平均数。
 - 交付：新增 `docs/specs/2026-09-08-adaptive-smooth-mode-calibration.md`，含逐轮原始汇总、能力可得性矩阵、最后规则、阈值修改理由和留出轮次验证。不得只写“已实测”。
 - 验收：P02/P02L；macOS/Windows 强机器自动完整、弱机器自动流畅、未知有说明；Linux 强弱机器自动均流畅且手动可覆盖；所有平台编译及各自适用的能力或跳过探测测试通过。

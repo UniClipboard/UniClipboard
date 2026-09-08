@@ -414,6 +414,24 @@ mod tests {
         assert!(value.get("reduceMotion").is_some());
         assert!(value.get("reduce_motion").is_none());
     }
+
+    #[test]
+    fn visual_effects_reclassifies_old_unknown_policy_without_changing_user_choice() {
+        for mode in [EffectsMode::Auto, EffectsMode::Effects, EffectsMode::Smooth] {
+            let (storage, mut stored) = EffectsStorage::load(None);
+            stored.mode = mode;
+            stored.policy_version = 1;
+            stored.evidence_class = EvidenceClass::Unknown;
+            stored.next_auto = Some(AutoResult::Smooth);
+            let mut s = VisualEffects::new(storage, stored, false, EvidenceClass::Capable);
+            s.environment("main", &s.session_id.clone(), SystemMotion::Allow);
+            let snapshot = s.snapshot();
+            assert_eq!(snapshot.mode, mode);
+            assert_eq!(snapshot.auto_for_session, AutoResult::Effects);
+            assert_eq!(snapshot.next_auto, None);
+            assert_eq!(snapshot.low_effects, mode == EffectsMode::Smooth);
+        }
+    }
     #[test]
     fn visual_effects_mode_system_matrix() {
         for linux in [false, true] {

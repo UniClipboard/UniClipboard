@@ -24,7 +24,6 @@ serde_json = "1"
 anyhow = "1.0"
 async-trait = "0.1"
 thiserror = "1"
-chrono = { version = "0.4", features = ["serde"] }
 tracing = "0.1"
 gethostname = "1.1"
 url = "2"
@@ -40,10 +39,6 @@ cargo_metadata = "0.19.2"
 uc-daemon-process = { path = "../uc-daemon-process", features = [
   "test-helpers",
 ] }
-tempfile = "3"
-chrono = { version = "0.4", default-features = true }
-diesel = { version = "2.3.5", features = ["sqlite"] }
-mockall = "0.13"
 syn = { version = "2", features = ["full", "visit"] }
 wiremock = "0.6"
 

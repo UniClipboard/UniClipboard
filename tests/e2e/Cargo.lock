@@ -3585,7 +3585,6 @@ checksum = "494815d09bf52b5548659851081238f0ca39ff638363907596da739561c62c52"
 dependencies = [
  "bytes",
  "futures-core",
- "futures-io",
  "futures-sink",
  "libc",
  "pin-project-lite",
@@ -3778,31 +3777,21 @@ version = "1.0.0-alpha.7"
 dependencies = [
  "anyhow",
  "async-trait",
- "base64",
  "blake3",
- "bytes",
  "chrono",
  "clipboard-rs",
  "clipboard-win",
- "futures",
  "image",
  "keyring",
- "libc",
  "libdbus-sys",
- "log",
  "objc2",
  "objc2-app-kit",
  "objc2-foundation",
- "once_cell",
  "rand 0.9.4",
  "rustix 0.38.44",
  "serde",
- "serde_json",
- "sha2",
- "subtle",
  "thiserror 2.0.18",
  "tokio",
- "tokio-util",
  "tracing",
  "uc-app-paths",
  "url",
@@ -4926,11 +4915,3 @@ dependencies = [
  "quote",
  "syn 2.0.117",
 ]
-
-[[patch.unused]]
-name = "uc-engine"
-version = "1.1.0-rc.5"
-
-[[patch.unused]]
-name = "uc-observability-contract"
-version = "1.1.0-rc.5"

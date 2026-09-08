@@ -9,7 +9,7 @@ description = "Proc-macros for uc-cli (internal)"
 proc-macro = true
 
 [dependencies]
-syn = { version = "2", features = ["full", "visit-mut"] }
+syn = { version = "3", features = ["full", "visit-mut"] }
 quote = "1"
 proc-macro2 = "1"
 

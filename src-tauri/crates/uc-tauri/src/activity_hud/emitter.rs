@@ -134,17 +134,15 @@ impl ActivityHudEmitter {
                 });
             }
             RealtimeEvent::FileTransferStatusChanged(event) => {
-                if event.attempt_id.is_none() {
-                    self.apply(|state| {
-                        state.apply_scoped_status_changed(
-                            &event.transfer_id,
-                            Some(&event.entry_id),
-                            None,
-                            &event.status,
-                            event.reason,
-                        )
-                    });
-                }
+                self.apply(|state| {
+                    state.apply_scoped_status_changed(
+                        &event.transfer_id,
+                        Some(&event.entry_id),
+                        event.attempt_id.as_deref(),
+                        &event.status,
+                        event.reason,
+                    )
+                });
             }
             RealtimeEvent::ClipboardIncomingPending(event) => {
                 self.apply(|state| {
@@ -196,7 +194,7 @@ mod tests {
 
     use uc_daemon_client::realtime::{
         ClipboardIncomingPendingEvent, FileTransferProgressEvent, FileTransferStatusChangedEvent,
-        RealtimeEvent,
+        RealtimeEvent, ReceiveAttemptStateChangedEvent,
     };
     use uc_daemon_contract::api::types::FileTransferDirection;
 
@@ -326,6 +324,73 @@ mod tests {
         emitter.tick();
         let last = recorder.snapshots().pop().unwrap();
         assert!(last.is_empty(), "sweep 后行应被清空");
+    }
+
+    #[test]
+    fn adopted_upload_terminal_event_retires_only_the_provisional_row() {
+        for status in ["completed", "failed", "cancelled"] {
+            for saved_row_expired in [false, true] {
+                let (emitter, recorder, clock) = make_emitter();
+                emitter.emit(RealtimeEvent::FileTransferProgress(
+                    FileTransferProgressEvent {
+                        transfer_id: "mobile-upload".into(),
+                        entry_id: None,
+                        attempt_id: None,
+                        peer_id: "phone".into(),
+                        direction: FileTransferDirection::Receiving,
+                        bytes_transferred: 100,
+                        total_bytes: Some(100),
+                    },
+                ));
+                emitter.emit(RealtimeEvent::ClipboardIncomingPending(
+                    ClipboardIncomingPendingEvent {
+                        entry_id: "entry".into(),
+                        attempt_id: Some("attempt".into()),
+                        from_device: "phone".into(),
+                        total_bytes: Some(200),
+                        filenames: vec![],
+                    },
+                ));
+                emitter.mark_cancel_pending("mobile-upload", None, "mobile-upload");
+                if saved_row_expired {
+                    emitter.emit(RealtimeEvent::ReceiveAttemptStateChanged(
+                        ReceiveAttemptStateChangedEvent {
+                            entry_id: "entry".into(),
+                            attempt_id: "attempt".into(),
+                            state: "completed".into(),
+                        },
+                    ));
+                    clock.advance(super::super::state::COMPLETED_RETAIN_MS + 1);
+                    emitter.tick();
+                }
+                for _ in 0..2 {
+                    emitter.emit(RealtimeEvent::FileTransferStatusChanged(
+                        FileTransferStatusChangedEvent {
+                            transfer_id: "mobile-upload".into(),
+                            entry_id: "entry".into(),
+                            attempt_id: Some("attempt".into()),
+                            status: status.into(),
+                            reason: None,
+                        },
+                    ));
+                }
+                let rows = recorder.snapshots().pop().unwrap();
+                if saved_row_expired {
+                    assert!(
+                        rows.is_empty(),
+                        "late completion must not recreate the saved row"
+                    );
+                } else {
+                    assert_eq!(rows.len(), 1, "the provisional upload must be retired");
+                    assert_eq!(rows[0].entry_id, "entry");
+                    assert_eq!(
+                        rows[0].state,
+                        super::super::state::RowState::Receiving,
+                        "one item's terminal event must not finish the whole attempt"
+                    );
+                }
+            }
+        }
     }
 
     #[test]

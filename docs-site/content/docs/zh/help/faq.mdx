@@ -59,7 +59,7 @@ mDNS 局域网发现 + 直连（LAN / IPv6）路径：
 效果：只能在同子网且 mDNS 可达时找到对端；跨网段已配对设备会变得
 不可达 —— 这是 LAN-only 的设计意图。
 
-此开关变更需要重启 daemon 生效，托盘图标也会反映 LAN-only 状态。
+此开关变更需要重启 daemon 生效。请在「设置 → 网络」中查看此设置；托盘菜单提供同步开关。
 
 **注意**：首次配对仍走公网 rendezvous（`rendezvous.uniclipboard.app`）
 交换 NodeId，请先在默认模式完成配对，再开 LAN-only。

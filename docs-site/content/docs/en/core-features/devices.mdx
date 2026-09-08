@@ -42,7 +42,7 @@ Phones show last activity, which does not indicate a persistent online connectio
 
 <Feature since="0.7.0">
   Per-peer `LAN` / `Direct` / `Relay` reachability badges. Backed by a single
-  `ConnectionChannelPort` source of truth wired through the DTO so the GUI, the tray icon, and
+  `ConnectionChannelPort` source of truth wired through the DTO so the GUI and
   `uniclip space status --json` all agree.
 </Feature>
 
@@ -91,6 +91,12 @@ The header shows the device name, status, and unpair action. Expand **Connection
 ### Send and receive controls
 
 **Sync with this device** controls synchronization with that peer. Turning it off stops both directions. It cannot be enabled here while global sync is off.
+
+The tray menu's **Device Sync** submenu also lists paired devices, including offline ones.
+A checkmark means this device's sync preference is enabled. Click a device to turn sending
+and receiving off or on together without changing its content-type rules or pairing.
+Changes appear in both the menu and the device detail panel. Global sync remains the
+master switch: device choices are preserved while it is off and take effect when it is enabled again.
 
 ### Content-type allowlist
 

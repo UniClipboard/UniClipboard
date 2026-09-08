@@ -30,11 +30,10 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { Progress } from '@/components/ui/progress'
 import { toast } from '@/components/ui/toast'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { PackageManagerUpdateDialog } from '@/components/update/PackageManagerUpdateDialog'
-import { ReleaseNotes } from '@/components/update/ReleaseNotes'
+import { UpdateDetails } from '@/components/update/UpdateDetails'
 import { useSettingSelector } from '@/hooks/useSetting'
 import { useUpdate } from '@/hooks/useUpdate'
 import { createLogger } from '@/lib/logger'
@@ -504,41 +503,14 @@ const Sidebar: React.FC<SidebarProps> = ({ className }) => {
           <AlertDialogHeader>
             <AlertDialogTitle>{t('update.title')}</AlertDialogTitle>
             <AlertDialogDescription render={<div />} className="space-y-3">
-              <div className="space-y-1 text-sm">
-                <div className="flex items-center justify-between text-muted-foreground">
-                  <span>{t('update.currentVersion')}</span>
-                  <span className="text-foreground">{state.info?.currentVersion ?? '-'}</span>
-                </div>
-                <div className="flex items-center justify-between text-muted-foreground">
-                  <span>{t('update.latestVersion')}</span>
-                  <span className="text-foreground">{state.info?.version ?? '-'}</span>
-                </div>
-              </div>
-              <div className="space-y-2">
-                <div className="text-sm font-medium text-foreground">
-                  {t('update.releaseNotes')}
-                </div>
-                <div className="max-h-48 overflow-auto rounded-md border border-border/60 bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
-                  <ReleaseNotes content={state.info?.body ?? ''} fallback={t('update.noNotes')} />
-                </div>
-              </div>
-              {isReady && (
-                <div className="text-xs text-emerald-600 dark:text-emerald-400 pt-1">
-                  {t('update.readyHint')}
-                </div>
-              )}
-              {(isDownloading || isInstalling) && (
-                <div className="space-y-2 pt-2">
-                  <div className="flex justify-between text-xs text-muted-foreground">
-                    <span>{isInstalling ? t('update.installing') : t('update.downloading')}</span>
-                    {downloadPercent !== null && <span>{downloadPercent}%</span>}
-                  </div>
-                  <Progress
-                    value={downloadPercent ?? undefined}
-                    className={cn('h-2', downloadPercent === null && 'animate-pulse')}
-                  />
-                </div>
-              )}
+              <UpdateDetails
+                currentVersion={state.info?.currentVersion}
+                version={state.info?.version}
+                body={state.info?.body}
+                phase={phase}
+                percent={downloadPercent}
+                showReadyHint={isReady}
+              />
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

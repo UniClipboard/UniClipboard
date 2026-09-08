@@ -13,6 +13,30 @@ import { invoke as __TAURI_INVOKE, Channel } from "@tauri-apps/api/core";
 
 /** Commands */
 export const commands = {
+	getVisualEffects: (trace: {
+	trace_id: string,
+	timestamp: number,
+} | null) => typedError<EffectsSnapshot, string>(__TAURI_INVOKE("get_visual_effects", { trace })),
+	setVisualEffectsMode: (mode: EffectsMode, trace: {
+	trace_id: string,
+	timestamp: number,
+} | null) => typedError<EffectsSnapshot, string>(__TAURI_INVOKE("set_visual_effects_mode", { mode, trace })),
+	reportVisualEffectsEnvironment: (sessionId: string, systemMotion: SystemMotion, trace: {
+	trace_id: string,
+	timestamp: number,
+} | null) => typedError<EffectsSnapshot, string>(__TAURI_INVOKE("report_visual_effects_environment", { sessionId, systemMotion, trace })),
+	beginVisualEffectsSample: (sessionId: string, trace: {
+	trace_id: string,
+	timestamp: number,
+} | null) => typedError<{
+	sampleId: number,
+	revision: number,
+	sessionId: string,
+} | null, string>(__TAURI_INVOKE("begin_visual_effects_sample", { sessionId, trace })),
+	reportVisualEffectsSample: (sample: EffectsSample, trace: {
+	trace_id: string,
+	timestamp: number,
+} | null) => typedError<EffectsSnapshot, string>(__TAURI_INVOKE("report_visual_effects_sample", { sample, trace })),
 	/**
 	 *  Update tray menu labels to match the UI language.
 	 * 
@@ -507,6 +531,8 @@ export const commands = {
 };
 
 /* Types */
+export type AutoResult = "effects" | "smooth";
+
 /**
  *  Typed command error taxonomy for Tauri command boundary.
  * 
@@ -685,6 +711,35 @@ export type DownloadProgressSnapshot = {
 	date: string | null,
 };
 
+export type EffectsMode = "auto" | "effects" | "smooth";
+
+export type EffectsPersistence = "saved" | "session_only";
+
+export type EffectsReason = "manual" | "system" | "platform_default" | "hardware" | "unknown" | "runtime";
+
+export type EffectsSample = {
+	sessionId: string,
+	sampleId: number,
+	revision: number,
+	frames: number,
+	durationMs: number | null,
+	longFrames: number,
+	longestMs: number | null,
+};
+
+export type EffectsSnapshot = {
+	sessionId: string,
+	revision: number,
+	mode: EffectsMode,
+	autoForSession: AutoResult,
+	nextAuto: AutoResult | null,
+	systemMotion: SystemMotion,
+	reduceMotion: boolean,
+	lowEffects: boolean,
+	reason: EffectsReason,
+	persistence: EffectsPersistence,
+};
+
 /**
  *  Result of [`export_config_package`].
  * 
@@ -747,7 +802,15 @@ export type QuickPanelExpandSide = "right" | "left";
  */
 export type QuickPanelPositionArg = "center" | "follow_cursor";
 
+export type SamplePermit = {
+	sampleId: number,
+	revision: number,
+	sessionId: string,
+};
+
 export type ShortcutKeyDto = string | string[];
+
+export type SystemMotion = "reduce" | "allow" | "unknown";
 
 /**  Trace context supplied by the webview for one Tauri command invocation. */
 export type TraceMetadata = {

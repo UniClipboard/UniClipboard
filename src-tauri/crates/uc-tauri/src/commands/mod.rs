@@ -9,6 +9,7 @@ pub mod startup;
 pub mod storage;
 pub mod tray;
 pub mod updater;
+pub mod visual_effects;
 pub mod window_chrome;
 
 use tracing::Span;

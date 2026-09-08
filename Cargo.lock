@@ -11196,6 +11196,7 @@ dependencies = [
  "serde_json",
  "specta",
  "specta-typescript",
+ "sysinfo",
  "tauri",
  "tauri-plugin-autostart",
  "tauri-plugin-dialog",

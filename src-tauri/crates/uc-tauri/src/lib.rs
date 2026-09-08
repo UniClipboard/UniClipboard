@@ -22,6 +22,9 @@ mod runtime_environment;
 pub mod specta_builder;
 pub mod tray;
 pub mod update_scheduler;
+pub mod visual_effects;
+mod visual_effects_probe;
+mod visual_effects_storage;
 
 pub use process_environment::prepare_process_environment;
 pub use run::run;

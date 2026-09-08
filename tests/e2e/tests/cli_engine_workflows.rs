@@ -53,7 +53,11 @@ impl Node {
             binaries,
             Some(&rendezvous.uri()),
             |command| {
-                command.env("RUST_LOG", "uc_webserver::api::server=info");
+                command.env(
+                    "RUST_LOG",
+                    std::env::var("UC_E2E_RUST_LOG")
+                        .unwrap_or_else(|_| "uc_webserver::api::server=info".to_string()),
+                );
             },
         )
         .await
@@ -89,7 +93,11 @@ impl Node {
     async fn restart(&mut self) {
         self.daemon
             .restart_preserving_configured_with(|command| {
-                command.env("RUST_LOG", "uc_webserver::api::server=info");
+                command.env(
+                    "RUST_LOG",
+                    std::env::var("UC_E2E_RUST_LOG")
+                        .unwrap_or_else(|_| "uc_webserver::api::server=info".to_string()),
+                );
             })
             .await
             .unwrap_or_else(|error| {
@@ -179,13 +187,7 @@ async fn join(sponsor: &Node, joiner: &Node, device_name: &str, no_wait: bool) -
         sponsor.daemon.diagnostic_log(),
         joiner.daemon.diagnostic_log()
     );
-    assert_request_delta(
-        joiner,
-        "POST",
-        "/v2/setup/redeem",
-        requests_before,
-        1,
-    );
+    assert_request_delta(joiner, "POST", "/v2/setup/redeem", requests_before, 1);
     json(&output)
 }
 
@@ -228,7 +230,10 @@ async fn wait_for_trust_change(node: &Node) -> Value {
             .run_capture(&["--json", "member", "trust", "status"]);
         if output.success() {
             let value = json(&output);
-            if value["status"] == "pending_change" && value["current_change"].is_object() {
+            if value["issues"]
+                .as_array()
+                .is_some_and(|issues| !issues.is_empty())
+            {
                 return value;
             }
         }
@@ -272,20 +277,34 @@ async fn join_commands_report_none_then_real_active_join() {
 
     let joined = join(&sponsor, &joiner, "joiner-node", true).await;
     assert_eq!(joined["ok"], true);
-    assert_eq!(joined["status"], "active");
-    let join_id = joined["join_id"].as_str().expect("active join id");
+    assert_eq!(joined["status"], "pending");
+    let join_id = joined["join_id"].as_str().expect("pending join id");
 
-    let status = joiner.cli.run_capture(&["--json", "join", "status"]);
-    assert!(status.success(), "active join status failed: {status:?}");
-    let status = json(&status);
-    assert_eq!(status["status"], "active");
-    assert_eq!(status["join_id"], join_id);
+    let deadline = tokio::time::Instant::now() + WAIT_TIMEOUT;
+    loop {
+        let status = joiner.cli.run_capture(&["--json", "join", "status"]);
+        assert!(status.success(), "join status failed: {status:?}");
+        let status = json(&status);
+        assert_eq!(status["join_id"], join_id);
+        if status["status"] == "active" {
+            break;
+        }
+        assert_eq!(
+            status["status"], "pending",
+            "join did not complete: {status}"
+        );
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "join remained pending: {status}"
+        );
+        tokio::time::sleep(Duration::from_millis(500)).await;
+    }
 
-    let cancel_requests_before =
-        daemon_request_count(&joiner, "POST", "/v2/setup/cancel-join");
+    let cancel_requests_before = daemon_request_count(&joiner, "POST", "/v2/setup/cancel-join");
     let cancel = joiner.cli.run_capture(&["--json", "join", "cancel"]);
     assert!(cancel.success(), "active join cancel failed: {cancel:?}");
     let cancel = json(&cancel);
+    assert_eq!(cancel["ok"], true);
     assert_eq!(cancel["status"], "active");
     assert_eq!(cancel["join_id"], join_id);
     assert_request_delta(
@@ -301,7 +320,9 @@ async fn join_commands_report_none_then_real_active_join() {
         human_status.success(),
         "human active join status failed: {human_status:?}"
     );
-    assert!(human_status.stderr.contains("active") || human_status.stderr.contains("Join completed"));
+    assert!(
+        human_status.stderr.contains("active") || human_status.stderr.contains("Join completed")
+    );
 
     joiner.restart().await;
     let restarted_status = joiner.cli.run_capture(&["--json", "join", "status"]);
@@ -361,10 +382,13 @@ async fn space_reset_rebuilds_membership_and_preserves_local_history() {
     assert_eq!(setup_state(&alice).await["rePairingRequired"], true);
 
     let history = alice.cli.run_capture(&["--json", "get", "--list"]);
-    assert!(history.success(), "history list after reset failed: {history:?}");
-    assert!(json(&history).as_array().is_some_and(|entries| {
-        entries.iter().any(|entry| entry["entry_id"] == entry_id)
-    }));
+    assert!(
+        history.success(),
+        "history list after reset failed: {history:?}"
+    );
+    assert!(json(&history)
+        .as_array()
+        .is_some_and(|entries| { entries.iter().any(|entry| entry["entry_id"] == entry_id) }));
 
     alice.restart().await;
     let restarted_history = alice.cli.run_capture(&["--json", "get", "--list"]);
@@ -372,9 +396,9 @@ async fn space_reset_rebuilds_membership_and_preserves_local_history() {
         restarted_history.success(),
         "history list after restart failed: {restarted_history:?}"
     );
-    assert!(json(&restarted_history).as_array().is_some_and(|entries| {
-        entries.iter().any(|entry| entry["entry_id"] == entry_id)
-    }));
+    assert!(json(&restarted_history)
+        .as_array()
+        .is_some_and(|entries| { entries.iter().any(|entry| entry["entry_id"] == entry_id) }));
     assert_eq!(members(&alice.cli).len(), 1);
     assert_eq!(setup_state(&alice).await["rePairingRequired"], true);
 }
@@ -410,7 +434,10 @@ async fn pending_join_survives_ctrl_c_and_daemon_restart_then_can_be_cancelled()
         "--device-name",
         "sponsor-node",
     ]);
-    assert!(sponsor_init.success(), "sponsor init failed: {sponsor_init:?}");
+    assert!(
+        sponsor_init.success(),
+        "sponsor init failed: {sponsor_init:?}"
+    );
     let joiner_profile = TestProfile::new("cli-workflow-pending-joiner");
     let joiner_daemon = TestDaemon::start_clean_configured_with(
         joiner_profile,
@@ -431,6 +458,11 @@ async fn pending_join_survives_ctrl_c_and_daemon_restart_then_can_be_cancelled()
     };
     let (session, code) = InviteSession::start(&sponsor.cli).await;
     let join_requests_before = daemon_request_count(&joiner, "POST", "/v2/setup/redeem");
+    // Joining is persisted before network exchange; an offline sponsor keeps it pending.
+    sponsor
+        .daemon
+        .suspend()
+        .expect("suspend sponsor before joining");
 
     let child = Command::new(joiner.cli.binary_path())
         .env("UC_PROFILE", &joiner.cli.profile_name)
@@ -451,33 +483,6 @@ async fn pending_join_survives_ctrl_c_and_daemon_restart_then_can_be_cancelled()
         .expect("spawn waiting join");
     let mut waiting_join = ChildGuard::new(child);
 
-    let candidate_deadline = tokio::time::Instant::now() + Duration::from_secs(15);
-    loop {
-        if joiner
-            .daemon
-            .diagnostic_log()
-            .contains("\"DurableAdmission\"")
-        {
-            sponsor.daemon.suspend().expect("suspend sponsor daemon");
-            break;
-        }
-        assert!(
-            waiting_join
-                .child_mut()
-                .try_wait()
-                .expect("join child state")
-                .is_none(),
-            "join completed before sponsor suspension"
-        );
-        assert!(
-            tokio::time::Instant::now() < candidate_deadline,
-            "durable admission message did not arrive; sponsor_log={} joiner_log={}",
-            sponsor.daemon.diagnostic_log(),
-            joiner.daemon.diagnostic_log(),
-        );
-        tokio::time::sleep(Duration::from_millis(1)).await;
-    }
-
     let pending_deadline = tokio::time::Instant::now() + Duration::from_secs(15);
     let pending = loop {
         let status = joiner.cli.run_capture(&["--json", "join", "status"]);
@@ -494,48 +499,66 @@ async fn pending_join_survives_ctrl_c_and_daemon_restart_then_can_be_cancelled()
         );
         tokio::time::sleep(Duration::from_millis(500)).await;
     };
-    let join_id = pending["join_id"].as_str().expect("pending join id").to_string();
-    assert_request_delta(
-        &joiner,
-        "POST",
-        "/v2/setup/redeem",
-        join_requests_before,
-        1,
-    );
+    let join_id = pending["join_id"]
+        .as_str()
+        .expect("pending join id")
+        .to_string();
+    assert_request_delta(&joiner, "POST", "/v2/setup/redeem", join_requests_before, 1);
 
     let join_pid = waiting_join.child_mut().id();
     assert_eq!(unsafe { libc::kill(join_pid as i32, libc::SIGINT) }, 0);
-    let interrupted = tokio::time::timeout(
-        Duration::from_secs(10),
-        tokio::task::spawn_blocking(move || waiting_join.take().wait_with_output()),
-    )
-    .await
-    .expect("waiting join did not stop after Ctrl-C")
-    .expect("join wait task")
-    .expect("join wait output");
+    let interrupt_deadline = tokio::time::Instant::now() + Duration::from_secs(10);
+    while waiting_join
+        .child_mut()
+        .try_wait()
+        .expect("join child state")
+        .is_none()
+    {
+        assert!(
+            tokio::time::Instant::now() < interrupt_deadline,
+            "waiting join did not stop after Ctrl-C; joiner_log={}",
+            joiner.daemon.diagnostic_log()
+        );
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
+    let interrupted = waiting_join
+        .take()
+        .wait_with_output()
+        .expect("join wait output");
     assert_eq!(interrupted.status.code(), Some(130));
     let interrupted_json: Value = serde_json::from_slice(&interrupted.stdout)
         .unwrap_or_else(|error| panic!("interrupted output is not JSON: {error}"));
     assert_eq!(interrupted_json["code"], "interrupted");
 
     let after_ctrl_c = joiner.cli.run_capture(&["--json", "join", "status"]);
-    assert!(after_ctrl_c.success(), "status after Ctrl-C failed: {after_ctrl_c:?}");
+    assert!(
+        after_ctrl_c.success(),
+        "status after Ctrl-C failed: {after_ctrl_c:?}"
+    );
     let after_ctrl_c = json(&after_ctrl_c);
     assert_eq!(after_ctrl_c["status"], "pending");
     assert_eq!(after_ctrl_c["join_id"], join_id);
     let human_pending = joiner.cli.run_capture(&["join", "status"]);
-    assert!(human_pending.success(), "human pending status failed: {human_pending:?}");
-    assert!(human_pending.stderr.contains("pending"), "{human_pending:?}");
+    assert!(
+        human_pending.success(),
+        "human pending status failed: {human_pending:?}"
+    );
+    assert!(
+        human_pending.stderr.contains("pending"),
+        "{human_pending:?}"
+    );
 
     joiner.restart().await;
     let after_restart = joiner.cli.run_capture(&["--json", "join", "status"]);
-    assert!(after_restart.success(), "status after restart failed: {after_restart:?}");
+    assert!(
+        after_restart.success(),
+        "status after restart failed: {after_restart:?}"
+    );
     let after_restart = json(&after_restart);
     assert_eq!(after_restart["status"], "pending");
     assert_eq!(after_restart["join_id"], join_id);
 
-    let cancel_requests_before =
-        daemon_request_count(&joiner, "POST", "/v2/setup/cancel-join");
+    let cancel_requests_before = daemon_request_count(&joiner, "POST", "/v2/setup/cancel-join");
     let cancelled = joiner.cli.run_capture(&["--json", "join", "cancel"]);
     assert!(cancelled.success(), "pending cancel failed: {cancelled:?}");
     let cancelled = json(&cancelled);
@@ -557,7 +580,9 @@ async fn pending_join_survives_ctrl_c_and_daemon_restart_then_can_be_cancelled()
     );
     let cancelled_again = json(&cancelled_again);
     assert_eq!(cancelled_again["join_id"], join_id);
-    assert_eq!(cancelled_again["cancel_requested"], true);
+    assert_eq!(cancelled_again["ok"], true);
+    assert_eq!(cancelled_again["status"], "rejected");
+    assert_eq!(cancelled_again["reason"], "cancelled");
     assert_request_delta(
         &joiner,
         "POST",
@@ -584,8 +609,7 @@ async fn invalid_join_passphrase_is_clear_in_json_and_human_output() {
     let joiner = Node::fresh("cli-workflow-rejected-joiner", &binaries, &rendezvous).await;
 
     let (session, code) = InviteSession::start(&sponsor.cli).await;
-    let rejected_requests_before =
-        daemon_request_count(&joiner, "POST", "/v2/setup/redeem");
+    let rejected_requests_before = daemon_request_count(&joiner, "POST", "/v2/setup/redeem");
     let rejected = joiner.cli.run_capture(&[
         "--json",
         "join",
@@ -597,11 +621,15 @@ async fn invalid_join_passphrase_is_clear_in_json_and_human_output() {
         "joiner-node",
     ]);
     drop(session);
-    assert_eq!(rejected.exit_code, 1, "invalid passphrase must fail: {rejected:?}");
+    assert_eq!(
+        rejected.exit_code, 1,
+        "invalid passphrase must fail: {rejected:?}"
+    );
     let rejected_json = json(&rejected);
     assert_eq!(rejected_json["ok"], false);
-    assert!(rejected_json["code"].is_string(), "{rejected_json}");
-    assert!(rejected_json["message"].is_string(), "{rejected_json}");
+    assert_eq!(rejected_json["status"], "rejected");
+    assert_eq!(rejected_json["reason"], "authentication_rejected");
+    let rejected_join_id = rejected_json["join_id"].as_str().expect("rejected join id");
     assert_request_delta(
         &joiner,
         "POST",
@@ -614,7 +642,9 @@ async fn invalid_join_passphrase_is_clear_in_json_and_human_output() {
     assert!(status.success(), "join status failed: {status:?}");
     let status = json(&status);
     assert_eq!(status["ok"], true);
-    assert_eq!(status["status"], "none");
+    assert_eq!(status["status"], "rejected");
+    assert_eq!(status["reason"], "authentication_rejected");
+    assert_eq!(status["join_id"], rejected_join_id);
 
     let (human_session, human_code) = InviteSession::start(&sponsor.cli).await;
     let human_requests_before = daemon_request_count(&joiner, "POST", "/v2/setup/redeem");
@@ -628,8 +658,18 @@ async fn invalid_join_passphrase_is_clear_in_json_and_human_output() {
         "joiner-node",
     ]);
     drop(human_session);
-    assert_eq!(human.exit_code, 1, "human invalid passphrase must fail: {human:?}");
-    assert!(human.stderr.contains("Join failed"), "{human:?}");
+    assert_eq!(
+        human.exit_code, 1,
+        "human invalid passphrase must fail: {human:?}"
+    );
+    assert!(
+        human.stderr.contains("Join request was rejected"),
+        "{human:?}"
+    );
+    assert!(
+        human.stderr.contains("authentication_rejected"),
+        "{human:?}"
+    );
     assert_request_delta(
         &joiner,
         "POST",
@@ -655,23 +695,20 @@ async fn member_sync_cli_reads_partially_updates_and_rereads_engine_state() {
     join(&alice, &bob, "bob-node", false).await;
     let bob_id = device_id(&alice.cli, "bob-node");
 
-    let human_before = alice
-        .cli
-        .run_capture(&["member", "sync", "show", &bob_id]);
+    let human_before = alice.cli.run_capture(&["member", "sync", "show", &bob_id]);
     assert!(
         human_before.success(),
         "human sync show failed: {human_before:?}"
     );
-    assert!(human_before.stderr.contains("Member sync"), "{human_before:?}");
+    assert!(
+        human_before.stderr.contains("Member sync"),
+        "{human_before:?}"
+    );
     assert!(human_before.stderr.contains(&bob_id), "{human_before:?}");
 
-    let before = alice.cli.run_capture(&[
-        "--json",
-        "member",
-        "sync",
-        "show",
-        &bob_id,
-    ]);
+    let before = alice
+        .cli
+        .run_capture(&["--json", "member", "sync", "show", &bob_id]);
     assert!(before.success(), "sync show failed: {before:?}");
     let before = json(&before);
     assert_eq!(before["status"], "current");
@@ -696,30 +733,28 @@ async fn member_sync_cli_reads_partially_updates_and_rereads_engine_state() {
     assert_eq!(updated["device_id"], bob_id);
     assert_eq!(updated["send_enabled"], false);
     assert_eq!(updated["send_content_types"], original_send_types);
-    assert_eq!(updated["receive_content_types"], serde_json::json!(["text", "image"]));
+    assert_eq!(
+        updated["receive_content_types"],
+        serde_json::json!(["text", "image"])
+    );
     assert_request_delta(&alice, "PATCH", &sync_path, update_requests_before, 1);
 
-    let reread = alice.cli.run_capture(&[
-        "--json",
-        "member",
-        "sync",
-        "show",
-        &bob_id,
-    ]);
+    let reread = alice
+        .cli
+        .run_capture(&["--json", "member", "sync", "show", &bob_id]);
     assert!(reread.success(), "sync reread failed: {reread:?}");
     let reread = json(&reread);
     assert_eq!(reread["send_enabled"], false);
-    assert_eq!(reread["receive_content_types"], serde_json::json!(["text", "image"]));
+    assert_eq!(
+        reread["receive_content_types"],
+        serde_json::json!(["text", "image"])
+    );
 
     let human_update_requests_before = daemon_request_count(&alice, "PATCH", &sync_path);
-    let human_updated = alice.cli.run_capture(&[
-        "member",
-        "sync",
-        "set",
-        &bob_id,
-        "--receive",
-        "off",
-    ]);
+    let human_updated =
+        alice
+            .cli
+            .run_capture(&["member", "sync", "set", &bob_id, "--receive", "off"]);
     assert!(
         human_updated.success(),
         "human sync update failed: {human_updated:?}"
@@ -730,15 +765,12 @@ async fn member_sync_cli_reads_partially_updates_and_rereads_engine_state() {
             .contains("Member sync settings updated"),
         "{human_updated:?}"
     );
-    assert!(human_updated.stderr.contains("receive"), "{human_updated:?}");
-    assert!(human_updated.stderr.contains("off"), "{human_updated:?}");
-    assert_request_delta(
-        &alice,
-        "PATCH",
-        &sync_path,
-        human_update_requests_before,
-        1,
+    assert!(
+        human_updated.stderr.contains("receive"),
+        "{human_updated:?}"
     );
+    assert!(human_updated.stderr.contains("off"), "{human_updated:?}");
+    assert_request_delta(&alice, "PATCH", &sync_path, human_update_requests_before, 1);
 }
 
 #[tokio::test]
@@ -765,85 +797,105 @@ async fn member_trust_cli_keeps_applies_and_rejects_stale_decisions() {
     assert!(removal.success(), "member removal failed: {removal:?}");
 
     let bob_change = wait_for_trust_change(&bob).await;
-    let bob_change_id = bob_change["current_change"]["change_id"]
+    assert_eq!(bob_change["issues"].as_array().unwrap().len(), 1);
+    let bob_issue = &bob_change["issues"][0];
+    let bob_change_id = bob_issue["issueId"]
         .as_str()
         .expect("bob change id")
         .to_string();
-    assert_eq!(
-        bob_change["current_change"]["apply_impact"]["local_device_outcome"],
-        "removed"
-    );
+    let bob_choice = bob_issue["choices"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|choice| choice["isCurrentGroup"] == false)
+        .expect("removal choice");
+    let bob_choice_id = bob_choice["choiceId"].as_str().unwrap();
+    assert_eq!(bob_choice["impact"]["localDeviceOutcome"], "removed");
 
     let carol_change = wait_for_trust_change(&carol).await;
-    let carol_change_id = carol_change["current_change"]["change_id"]
+    assert_eq!(carol_change["issues"].as_array().unwrap().len(), 1);
+    let carol_issue = &carol_change["issues"][0];
+    let carol_change_id = carol_issue["issueId"]
         .as_str()
         .expect("carol change id")
         .to_string();
     assert_eq!(carol_change_id, bob_change_id);
+    let carol_choice_id = carol_issue["choices"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|choice| choice["isCurrentGroup"] == true)
+        .expect("current group choice")["choiceId"]
+        .as_str()
+        .unwrap();
 
-    let human_status = carol
-        .cli
-        .run_capture(&["member", "trust", "status"]);
+    let human_status = carol.cli.run_capture(&["member", "trust", "status"]);
     assert!(
         human_status.success(),
         "human trust status failed: {human_status:?}"
     );
-    assert!(human_status.stderr.contains("Device trust"), "{human_status:?}");
-    assert!(human_status.stderr.contains(&carol_change_id), "{human_status:?}");
+    assert!(
+        human_status.stderr.contains("Device groups"),
+        "{human_status:?}"
+    );
+    assert!(
+        human_status.stderr.contains(&carol_change_id),
+        "{human_status:?}"
+    );
 
-    let decision_path = "/member/device-trust/decision";
+    let decision_path = "/member/device-group-choices";
     let decision_requests_before = daemon_request_count(&carol, "POST", decision_path);
     let human_stale = carol.cli.run_capture(&[
         "member",
         "trust",
-        "keep",
-        "--change",
+        "choose",
+        "--issue",
         "stale-change-id",
+        "--choice",
+        carol_choice_id,
     ]);
     assert_eq!(
         human_stale.exit_code, 1,
         "human stale decision must fail: {human_stale:?}"
     );
-    assert!(human_stale.stderr.contains("changed"), "{human_stale:?}");
-    assert_request_delta(
-        &carol,
-        "POST",
-        decision_path,
-        decision_requests_before,
-        0,
+    assert!(
+        human_stale.stderr.contains("no longer current"),
+        "{human_stale:?}"
     );
+    assert_request_delta(&carol, "POST", decision_path, decision_requests_before, 0);
 
     let stale = carol.cli.run_capture(&[
         "--json",
         "member",
         "trust",
-        "keep",
-        "--change",
+        "choose",
+        "--issue",
         "stale-change-id",
+        "--choice",
+        carol_choice_id,
     ]);
     assert_eq!(stale.exit_code, 1, "stale decision must fail: {stale:?}");
     let stale = json(&stale);
-    assert_eq!(stale["code"], "device_trust_state_changed");
-    assert_eq!(stale["current_change_id"], carol_change_id);
-    assert_request_delta(
-        &carol,
-        "POST",
-        decision_path,
-        decision_requests_before,
-        0,
-    );
+    assert_eq!(stale["code"], "device_group_state_changed");
+    assert_request_delta(&carol, "POST", decision_path, decision_requests_before, 0);
 
     let keep_requests_before = daemon_request_count(&carol, "POST", decision_path);
     let kept = carol.cli.run_capture(&[
         "--json",
         "member",
         "trust",
-        "keep",
-        "--change",
+        "choose",
+        "--issue",
         &carol_change_id,
+        "--choice",
+        carol_choice_id,
     ]);
     assert!(kept.success(), "keep decision failed: {kept:?}");
-    assert_eq!(json(&kept)["status"], "kept_current_device_group");
+    let kept = json(&kept);
+    assert_eq!(kept["ok"], true);
+    assert_eq!(kept["result"]["outcome"], "completed");
+    assert_eq!(kept["state"]["deviceTrust"]["localMembership"], "active");
+    assert!(kept["state"]["deviceTrust"]["currentChange"].is_null());
     assert_request_delta(&carol, "POST", decision_path, keep_requests_before, 1);
 
     let apply_requests_before = daemon_request_count(&bob, "POST", decision_path);
@@ -851,9 +903,11 @@ async fn member_trust_cli_keeps_applies_and_rejects_stale_decisions() {
         "--json",
         "member",
         "trust",
-        "apply",
-        "--change",
+        "choose",
+        "--issue",
         &bob_change_id,
+        "--choice",
+        bob_choice_id,
     ]);
     assert_eq!(
         missing_confirmation.exit_code, 1,
@@ -869,12 +923,21 @@ async fn member_trust_cli_keeps_applies_and_rejects_stale_decisions() {
         "--json",
         "member",
         "trust",
-        "apply",
-        "--change",
+        "choose",
+        "--issue",
         &bob_change_id,
+        "--choice",
+        bob_choice_id,
         "--confirm-local-removal",
     ]);
     assert!(applied.success(), "apply decision failed: {applied:?}");
-    assert_eq!(json(&applied)["status"], "applied");
+    let applied = json(&applied);
+    assert_eq!(applied["ok"], true);
+    assert_eq!(applied["result"]["outcome"], "completed");
+    assert_eq!(
+        applied["state"]["deviceTrust"]["localMembership"],
+        "removed"
+    );
+    assert!(applied["state"]["deviceTrust"]["currentChange"].is_null());
     assert_request_delta(&bob, "POST", decision_path, apply_requests_before, 1);
 }

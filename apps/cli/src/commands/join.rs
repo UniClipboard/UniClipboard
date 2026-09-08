@@ -517,19 +517,9 @@ async fn wait_for_join(
     spinner.set_message("Join request pending; waiting for final status...");
     let mut reconnecting = false;
     let mut reconnect_delay = JOIN_POLL_INTERVAL;
+    // The caller owns cancellation across submission, polling, and reconnection.
     loop {
-        select! {
-            _ = signal::ctrl_c() => {
-                spinner.finish_and_clear();
-                return emit_join_error(
-                    context.json,
-                    "interrupted",
-                    "Stopped waiting; join request is still pending.",
-                    EXIT_SIGINT,
-                );
-            }
-            _ = tokio::time::sleep(JOIN_POLL_INTERVAL) => {}
-        }
+        tokio::time::sleep(JOIN_POLL_INTERVAL).await;
 
         let snapshot = match service.query_device_group_choices().await {
             Ok(choices) => {
@@ -545,18 +535,7 @@ async fn wait_for_join(
                     reconnecting = true;
                 }
                 loop {
-                    select! {
-                        _ = signal::ctrl_c() => {
-                            spinner.finish_and_clear();
-                            return emit_join_error(
-                                context.json,
-                                "interrupted",
-                                "Stopped waiting; join request is still pending.",
-                                EXIT_SIGINT,
-                            );
-                        }
-                        _ = tokio::time::sleep(reconnect_delay) => {}
-                    }
+                    tokio::time::sleep(reconnect_delay).await;
                     match reconnect_setup_facade_with_lease(context.verbose).await {
                         Ok((new_lease, new_service)) => {
                             _lease = new_lease;
@@ -809,10 +788,9 @@ async fn run_redeem(
 
     let setup_client = ctx.setup_v2_client();
     let redeem_fut = setup_client.redeem_invitation(&req);
-    tokio::pin!(redeem_fut);
 
     select! {
-        result = &mut redeem_fut => match result {
+        result = async { match redeem_fut.await {
             Ok(resp) if should_wait_for_join(&resp, no_wait) => wait_for_join(
                 _lease,
                 service,
@@ -837,7 +815,7 @@ async fn run_redeem(
                 spinner.finish_and_clear();
                 render_join_error("Join failed", &err, json)
             }
-        },
+        }} => result,
         _ = signal::ctrl_c() => {
             spinner.finish_and_clear();
             emit_join_error(
@@ -904,10 +882,9 @@ async fn run_switch(
 
     let setup_client = ctx.setup_v2_client();
     let switch_fut = setup_client.switch_space(&req);
-    tokio::pin!(switch_fut);
 
     select! {
-        result = &mut switch_fut => match result {
+        result = async { match switch_fut.await {
             Ok(resp) if should_wait_for_join(&resp, no_wait) => wait_for_join(
                 _lease,
                 service,
@@ -932,7 +909,7 @@ async fn run_switch(
                 spinner.finish_and_clear();
                 render_join_error("Switch-space failed", &err, json)
             }
-        },
+        }} => result,
         _ = signal::ctrl_c() => {
             spinner.finish_and_clear();
             emit_join_error(

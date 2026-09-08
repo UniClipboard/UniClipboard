@@ -1,5 +1,6 @@
 import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
+import { createServer } from 'node:net'
 import path from 'node:path'
 import process from 'node:process'
 import { describe, expect, it } from 'vitest'
@@ -23,6 +24,37 @@ function createInvocation(args: string[], env: NodeJS.ProcessEnv = {}): Invocati
 }
 
 describe('custom-profile Tauri development command', () => {
+  it.each(['127.0.0.1', '::1'])(
+    'avoids an existing frontend listening on %s without stopping it',
+    async host => {
+      const preferred = Number(createInvocation(['occupied-profile']).env.UC_DEV_SERVER_PORT)
+      const server = createServer()
+      await new Promise<void>((resolve, reject) => {
+        server.once('error', reject)
+        server.listen(preferred, host, resolve)
+      })
+      try {
+        const resolveInvocation = Reflect.get(launcher, 'createAvailableTauriDevInvocation')
+        expect(resolveInvocation).toBeTypeOf('function')
+        const invocation = (await resolveInvocation(['occupied-profile'], {})) as Invocation
+        const port = Number(invocation.env.UC_DEV_SERVER_PORT)
+        expect(port).toBeGreaterThan(0)
+        expect(port).not.toBe(preferred)
+        expect(server.listening).toBe(true)
+        const config = JSON.parse(invocation.args[invocation.args.indexOf('--config') + 1])
+        expect(config.build.devUrl).toBe(`http://localhost:${port}`)
+        const probe = createServer()
+        await new Promise<void>((resolve, reject) => {
+          probe.once('error', reject)
+          probe.listen(port, resolve)
+        })
+        await new Promise<void>(resolve => probe.close(() => resolve()))
+      } finally {
+        await new Promise<void>(resolve => server.close(() => resolve()))
+      }
+    }
+  )
+
   it('is exposed through package.json', () => {
     const packageJson = JSON.parse(
       fs.readFileSync(path.join(projectRoot, 'package.json'), 'utf8')

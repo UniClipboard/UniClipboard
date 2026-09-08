@@ -107,6 +107,7 @@ export function DeviceTrustDecisionContent({
           className="grid min-w-0 gap-3"
           role="radiogroup"
           aria-label={t('deviceTrust.presentation.select')}
+          tabIndex={-1}
           onKeyDown={moveChoice}
         >
           {view.choices.map((choice, index) => (

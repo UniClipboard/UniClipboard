@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useMemo, useReducer, useRef, type ReactNode } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useEffectEvent,
+  useMemo,
+  useReducer,
+  useRef,
+  type ReactNode,
+} from 'react'
 import {
   chooseDeviceGroup,
   getDeviceGroupChoices,
@@ -181,21 +189,22 @@ export function DeviceTrustProvider({
     }
   }, [enabled, refresh])
 
+  const refreshWhenVisible = useEffectEvent(() => {
+    if (document.visibilityState === 'visible') void refresh()
+  })
+  const refreshOnFocus = useEffectEvent(() => {
+    void refresh()
+  })
+
   useEffect(() => {
     if (!enabled) return
-    const onVisible = () => {
-      if (document.visibilityState === 'visible') void refresh()
-    }
-    const onFocus = () => {
-      void refresh()
-    }
-    document.addEventListener('visibilitychange', onVisible)
-    window.addEventListener('focus', onFocus)
+    document.addEventListener('visibilitychange', refreshWhenVisible)
+    window.addEventListener('focus', refreshOnFocus)
     return () => {
-      document.removeEventListener('visibilitychange', onVisible)
-      window.removeEventListener('focus', onFocus)
+      document.removeEventListener('visibilitychange', refreshWhenVisible)
+      window.removeEventListener('focus', refreshOnFocus)
     }
-  }, [enabled, refresh])
+  }, [enabled])
 
   const choose = useCallback(
     async (issueId: string, choiceId: string, confirmLocalRemoval: boolean) => {

@@ -11,6 +11,9 @@ import {
   SpaceReadyScreen,
 } from '@/pages/setup/screens'
 
+const expiredInvitationAtMs = 0
+const activeInvitationAtMs = 4_102_444_800_000
+
 describe('setup screens e2e selectors', () => {
   beforeAll(() => {
     if (!('ResizeObserver' in globalThis)) {
@@ -72,7 +75,9 @@ describe('setup screens e2e selectors', () => {
   it('returns from an invitation as soon as its code expires', async () => {
     const onCancel = vi.fn()
 
-    render(<ShowInvitationScreen code="123456" expiresAtMs={Date.now() - 1} onCancel={onCancel} />)
+    render(
+      <ShowInvitationScreen code="123456" expiresAtMs={expiredInvitationAtMs} onCancel={onCancel} />
+    )
 
     await waitFor(() => expect(onCancel).toHaveBeenCalledTimes(1))
   })
@@ -174,7 +179,7 @@ describe('setup screens e2e selectors', () => {
     expect(screen.getByTestId('setup-redeem-submit')).toBeInTheDocument()
 
     rerender(
-      <ShowInvitationScreen code="012345" expiresAtMs={Date.now() + 60_000} onCancel={noop} />
+      <ShowInvitationScreen code="012345" expiresAtMs={activeInvitationAtMs} onCancel={noop} />
     )
     expect(screen.getByTestId('setup-invitation-code')).toHaveTextContent('012-345')
     expect(screen.getByTestId('setup-invitation-cancel')).toBeInTheDocument()

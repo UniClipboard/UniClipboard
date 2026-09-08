@@ -245,6 +245,7 @@ describe('DeviceTrustDialog', () => {
     )
     const options = screen.getAllByRole('radio')
 
+    expect(screen.getByRole('radiogroup')).toHaveAttribute('tabindex', '-1')
     expect(options[0]).toHaveAttribute('tabindex', '0')
     expect(options[1]).toHaveAttribute('tabindex', '-1')
     options[0].focus()

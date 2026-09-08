@@ -199,7 +199,7 @@ describe('AboutSection', () => {
 
     expect(checkButton).toBeDisabled()
     expect(checkButton).toHaveAttribute('aria-busy', 'true')
-    expect(checkButton).toHaveClass('w-44')
+    expect(checkButton).toHaveClass('w-40')
     expect(checkButton).toHaveClass('transition-colors')
     expect(checkButton).not.toHaveClass('transition-all')
     expect(checkButton).toHaveTextContent('settings.sections.about.checkingUpdate')

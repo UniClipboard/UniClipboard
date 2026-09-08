@@ -41,6 +41,7 @@ import { useUpdate } from '@/hooks/useUpdate'
 import { createLogger } from '@/lib/logger'
 import { cn } from '@/lib/utils'
 import type { UpdateChannel } from '@/types/setting'
+import appIcon from '@/updater/app-icon.png'
 import { SponsorsGroup } from './about/SponsorsGroup'
 import { SettingGroup } from './SettingGroup'
 import { SettingRow } from './SettingRow'
@@ -234,44 +235,25 @@ const AboutSection: React.FC = () => {
   }
 
   return (
-    <div className="space-y-5">
-      {/* App identity hero */}
-      <div className="flex flex-col items-center gap-4 rounded-xl border border-border/60 bg-card px-6 py-8 text-center">
-        <div className="flex size-16 items-center justify-center rounded-2xl bg-gradient-to-br from-primary to-primary/60 shadow-lg shadow-primary/25">
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            className="size-9 text-primary-foreground"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-          >
-            <title>{t('settings.sections.about.appName')}</title>
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth="2"
-              d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"
-            />
-          </svg>
-        </div>
-        <div className="space-y-1.5">
-          <div className="flex items-center justify-center gap-2">
-            <h3 className="text-xl font-semibold tracking-tight">
-              {t('settings.sections.about.appName')}
-            </h3>
+    <div className="flex min-w-0 flex-col gap-8">
+      <div className="flex min-w-0 flex-wrap items-center gap-4 px-1">
+        <img src={appIcon} alt="" className="size-12 shrink-0 rounded-lg" />
+        <div className="min-w-0 flex-1 space-y-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="text-base font-semibold">{t('settings.sections.about.appName')}</h2>
             {channel && (
               <Badge variant={getChannelBadgeVariant(channel)}>{getChannelLabel(channel)}</Badge>
             )}
           </div>
-          <p className="text-sm text-muted-foreground">
+          <p className="text-xs text-muted-foreground">
             {appVersion
               ? t('settings.sections.about.version', { version: appVersion })
               : t('settings.sections.about.version', { version: '...' })}
           </p>
         </div>
         <Button
-          size="lg"
-          className="w-44 transition-colors"
+          size="sm"
+          className="ml-auto w-40 max-w-full transition-colors"
           onClick={handleCheckUpdate}
           disabled={settingLoading || isCheckingUpdate}
           aria-busy={isCheckingUpdate}
@@ -288,7 +270,7 @@ const AboutSection: React.FC = () => {
         {import.meta.env.DEV && (
           <button
             type="button"
-            className="text-xs text-amber-600 underline-offset-2 hover:underline dark:text-amber-400"
+            className="w-full text-left text-xs text-amber-600 underline-offset-2 hover:underline dark:text-amber-400"
             onClick={handleOpenUpdaterWindowDev}
             title="Dev only: open the Sparkle-style updater window with mock data"
           >

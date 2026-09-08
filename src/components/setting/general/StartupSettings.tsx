@@ -1,23 +1,17 @@
-import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   Switch,
-  Input,
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
 } from '@/components/ui'
-import { toast } from '@/components/ui/toast'
 import { useSetting } from '@/hooks/useSetting'
-import { createLogger } from '@/lib/logger'
 import type { StartupMode } from '@/types/setting'
 import { SettingGroup } from '../SettingGroup'
 import { SettingRow } from '../SettingRow'
 import { useOptimisticSetting } from '../useOptimisticSetting'
-
-const log = createLogger('startup-settings')
 
 const STARTUP_MODES: StartupMode[] = ['normal', 'silent', 'lightweight']
 
@@ -44,63 +38,46 @@ export function StartupSettings() {
     { failureLog: 'Failed to change restore-last-entry-on-startup setting' }
   )
 
-  const persistedDeviceName = setting?.general.deviceName ?? ''
-  const [deviceNameDraft, setDeviceNameDraft] = useState<string | null>(null)
-  const deviceName = deviceNameDraft ?? persistedDeviceName
-
-  const handleDeviceNameBlur = () => {
-    if (deviceName === persistedDeviceName) {
-      setDeviceNameDraft(null)
-      return
-    }
-    const submittedName = deviceName
-    updateGeneralSetting({ deviceName: submittedName }).then(
-      () => {
-        setDeviceNameDraft(active => (active === submittedName ? null : active))
-      },
-      (err: unknown) => {
-        log.error({ err }, 'Failed to change device name')
-        toast.error(t('settings.sections.general.saveError'))
-      }
-    )
-  }
-
   return (
     <SettingGroup title={t('settings.sections.general.startupTitle')}>
-      <SettingRow
-        label={t('settings.sections.general.deviceName.label')}
-        description={t('settings.sections.general.deviceName.description')}
-      >
-        <div className="w-40">
-          <Input
-            value={deviceName}
-            onChange={e => setDeviceNameDraft(e.target.value)}
-            onBlur={handleDeviceNameBlur}
-            placeholder={t('settings.sections.general.deviceName.placeholder')}
-          />
-        </div>
-      </SettingRow>
-
       <SettingRow
         label={t('settings.sections.general.autoStart.label')}
         description={t('settings.sections.general.autoStart.description')}
       >
-        <Switch checked={autoStart} onCheckedChange={setAutoStart} />
+        <Switch
+          aria-label={t('settings.sections.general.autoStart.label')}
+          checked={autoStart}
+          onCheckedChange={setAutoStart}
+        />
       </SettingRow>
 
       <SettingRow
         label={t('settings.sections.general.startupMode.label')}
-        description={t('settings.sections.general.startupMode.description')}
+        description={t(`settings.sections.general.startupMode.summaries.${startupMode}`)}
       >
         <div className="w-40">
           <Select value={startupMode} onValueChange={next => setStartupMode(next as StartupMode)}>
-            <SelectTrigger className="w-full">
-              <SelectValue />
+            <SelectTrigger
+              aria-label={t('settings.sections.general.startupMode.label')}
+              className="w-full"
+            >
+              <SelectValue>
+                {t(`settings.sections.general.startupMode.options.${startupMode}`)}
+              </SelectValue>
             </SelectTrigger>
-            <SelectContent>
+            <SelectContent className="w-72 max-w-[calc(100vw-2rem)]">
               {STARTUP_MODES.map(mode => (
-                <SelectItem key={mode} value={mode}>
-                  {t(`settings.sections.general.startupMode.options.${mode}`)}
+                <SelectItem
+                  key={mode}
+                  value={mode}
+                  aria-label={t(`settings.sections.general.startupMode.options.${mode}`)}
+                >
+                  <span className="flex min-w-0 flex-col gap-1">
+                    <span>{t(`settings.sections.general.startupMode.options.${mode}`)}</span>
+                    <span className="text-xs leading-relaxed text-muted-foreground">
+                      {t(`settings.sections.general.startupMode.summaries.${mode}`)}
+                    </span>
+                  </span>
                 </SelectItem>
               ))}
             </SelectContent>
@@ -112,7 +89,11 @@ export function StartupSettings() {
         label={t('settings.sections.general.restoreLastEntryOnStartup.label')}
         description={t('settings.sections.general.restoreLastEntryOnStartup.description')}
       >
-        <Switch checked={restoreLastEntry} onCheckedChange={setRestoreLastEntry} />
+        <Switch
+          aria-label={t('settings.sections.general.restoreLastEntryOnStartup.label')}
+          checked={restoreLastEntry}
+          onCheckedChange={setRestoreLastEntry}
+        />
       </SettingRow>
     </SettingGroup>
   )

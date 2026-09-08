@@ -25,7 +25,7 @@ const SecuritySection: React.FC = () => {
   }
 
   return (
-    <SettingGroup title={t('settings.sections.security.title')}>
+    <SettingGroup>
       <SettingRow
         label={t('settings.sections.security.autoUnlock.label')}
         description={t('settings.sections.security.autoUnlock.description')}

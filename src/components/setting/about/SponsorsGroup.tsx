@@ -1,5 +1,5 @@
 import { Heart, Star } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useId, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { fetchSponsors, type Sponsor } from '@/api/sponsors'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
@@ -94,6 +94,7 @@ const SKELETON_CARD_COUNT = 3
  * placeholder.
  */
 export function SponsorsGroup() {
+  const titleId = useId()
   const { t } = useTranslation()
   const [sponsors, setSponsors] = useState<Sponsor[] | null>(null)
   const isLoading = sponsors === null
@@ -114,11 +115,11 @@ export function SponsorsGroup() {
   if (sponsors?.length === 0) return null
 
   return (
-    <div className="space-y-1.5">
-      <h3 className="px-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+    <section aria-labelledby={titleId} className="min-w-0">
+      <h2 id={titleId} className="mb-4 px-1 text-base font-semibold">
         {t('settings.sections.about.sponsors.title')}
-      </h3>
-      <div className="space-y-4 rounded-lg border border-border/60 bg-card p-4">
+      </h2>
+      <div className="space-y-4 px-1">
         <div className="flex items-center gap-2">
           <Heart className="size-4 shrink-0 fill-rose-500/20 text-rose-500" />
           <p className="text-xs leading-snug text-muted-foreground">
@@ -165,6 +166,6 @@ export function SponsorsGroup() {
           </>
         )}
       </div>
-    </div>
+    </section>
   )
 }

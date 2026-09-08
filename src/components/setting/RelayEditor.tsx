@@ -199,7 +199,7 @@ export function RelayEditor({ index, initialUrl, removable, onSave, onRemove }: 
 
   return (
     <section
-      className="rounded-xl border border-border/60 bg-card p-4"
+      className="rounded-lg border border-border/60 bg-card p-4"
       aria-labelledby={`relay-node-${displayIndex}-title`}
     >
       <div className="flex flex-wrap items-center justify-between gap-2">

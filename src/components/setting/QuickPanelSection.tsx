@@ -223,7 +223,7 @@ export default function QuickPanelSection() {
   )
 
   return (
-    <div className="space-y-6">
+    <div className="flex min-w-0 flex-col gap-8">
       <SettingGroup title={t('settings.sections.quickPanel.featureTitle')}>
         <RestartBanner
           visible={restartHintVisible}
@@ -248,7 +248,7 @@ export default function QuickPanelSection() {
             onValueChange={value => setPosition(value as QuickPanelPosition)}
             disabled={!enabled}
           >
-            <SelectTrigger className="h-7 w-40 text-xs">
+            <SelectTrigger className="h-9 w-40 text-sm">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -281,7 +281,7 @@ export default function QuickPanelSection() {
                 onValueChange={value => setDoubleTapModifier(value as QuickPanelDoubleTapModifier)}
                 disabled={!enabled || !doubleTapSupported}
               >
-                <SelectTrigger className="h-7 w-40 text-xs">
+                <SelectTrigger className="h-9 w-40 text-sm">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>

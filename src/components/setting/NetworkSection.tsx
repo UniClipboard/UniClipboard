@@ -267,7 +267,7 @@ const NetworkSection: React.FC = () => {
 
   return (
     <>
-      <div className="overflow-hidden rounded-xl border border-border/60 empty:hidden">
+      <div className="overflow-hidden rounded-lg border border-border/60 empty:hidden">
         <RestartBanner
           visible={pending}
           message={t('settings.sections.network.restartBanner.message')}

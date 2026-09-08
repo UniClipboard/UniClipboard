@@ -1,6 +1,23 @@
 {
   "appearanceLayout": {
-    "effectsHelp": "平衡視覺效果與執行效能。"
+    "effectsHelp": "平衡視覺效果與執行效能。",
+    "scaleHelp": "調整介面元素與文字大小。",
+    "themeHelp": {
+      "system": "跟隨系統自動切換淺色與深色。",
+      "light": "一律使用淺色外觀。",
+      "dark": "一律使用深色外觀。"
+    },
+    "lightPalette": "淺色配色",
+    "darkPalette": "深色配色",
+    "theme": "主題",
+    "palette": "配色",
+    "effects": "視覺效果",
+    "display": "顯示",
+    "customColors": "自訂顏色",
+    "preview": "目前主題預覽",
+    "zoomIn": "放大介面",
+    "zoomOut": "縮小介面",
+    "saveFailed": "無法儲存變更，請再試一次。"
   },
   "smoothMode": {
     "title": "流暢模式",
@@ -201,6 +218,21 @@
     "goToDevices": "前往裝置管理"
   },
   "settings": {
+    "pageDescriptions": {
+      "general": "設定啟動方式、語言、音效與診斷偏好。",
+      "appearance": "調整主題、配色與顯示效果。",
+      "shortcuts": "自訂常用操作的鍵盤快速鍵。",
+      "quickPanel": "設定快捷面板的喚起方式與顯示位置。",
+      "sync": "管理剪貼簿與檔案的同步行為。",
+      "security": "管理這台裝置的自動解鎖偏好。",
+      "network": "調整連線方式、中繼伺服器與傳輸效能。",
+      "storage": "查看空間使用量，管理歷史記錄與快取。",
+      "about": "查看應用程式版本、更新與專案資訊。"
+    },
+    "sectionHeadings": {
+      "syncBehavior": "同步行為",
+      "historyRetention": "歷史保留"
+    },
     "title": "設定",
     "restartBanner": {
       "restartButton": "立即重新啟動",
@@ -228,7 +260,7 @@
         "saveError": "儲存設定失敗",
         "deviceName": {
           "label": "裝置名稱",
-          "description": "用於在區域網路中識別此裝置",
+          "description": "用來區分你的不同裝置。",
           "placeholder": "輸入裝置名稱"
         },
         "autoStart": {
@@ -236,6 +268,11 @@
           "description": "系統啟動時自動啟動 UniClipboard"
         },
         "startupMode": {
+          "summaries": {
+            "normal": "啟動後顯示應用程式視窗。",
+            "silent": "啟動後在背景執行，不彈出視窗。",
+            "lightweight": "開機自啟時只保留背景同步，需要時可重新開啟介面。"
+          },
           "label": "啟動方式",
           "description": "「靜默」啟動後不彈窗，直接進入背景；「輕量」在背景就緒後進一步退出視窗和托盤、僅保留背景服務併發送通知，之後按一下應用程式圖標即可重新打開視窗。",
           "options": {
@@ -245,8 +282,8 @@
           }
         },
         "restoreLastEntryOnStartup": {
-          "label": "啟動後恢復最近一條剪貼簿記錄",
-          "description": "應用程式啟動、背景就緒後自動將最近一條歷程記錄重新放入系統剪貼簿"
+          "label": "啟動時還原剪貼簿",
+          "description": "將最近一筆歷史記錄重新放回剪貼簿。"
         },
         "language": {
           "title": "語言",

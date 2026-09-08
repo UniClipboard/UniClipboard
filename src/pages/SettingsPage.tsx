@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router'
 import InsetSurface from '@/components/layout/InsetSurface'
 import {
@@ -6,6 +6,7 @@ import {
   SETTINGS_CATEGORIES,
   type SettingsCategory,
 } from '@/components/setting/settings-config'
+import SettingsPageHeader from '@/components/setting/SettingsPageHeader'
 import SettingsSidebar from '@/components/setting/SettingsSidebar'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { SidebarProvider, SidebarInset } from '@/components/ui/sidebar'
@@ -58,6 +59,10 @@ function SettingsPage() {
     (cat: SettingsCategory) => cat.id === activeCategory
   )
   const ActiveSection = activeCategoryConfig?.Component
+  const sectionHeader = useMemo(
+    () => (activeCategoryConfig ? <SettingsPageHeader category={activeCategoryConfig.id} /> : null),
+    [activeCategoryConfig]
+  )
 
   const { isLinux, isTauri } = usePlatform()
   const useFlatLayout = isLinux && isTauri
@@ -67,7 +72,7 @@ function SettingsPage() {
       <ScrollArea className="flex-1 min-h-0">
         <div className="p-4 sm:p-6 lg:p-8">
           {ActiveSection && (
-            <SettingContentLayout>
+            <SettingContentLayout header={sectionHeader}>
               <ActiveSection />
             </SettingContentLayout>
           )}

@@ -111,7 +111,7 @@ const ShortcutsSection: React.FC = () => {
   }, [overrides, updateKeyboardShortcuts])
 
   return (
-    <div className="space-y-6">
+    <div className="flex min-w-0 flex-col gap-8">
       {SCOPE_ORDER.map(scope => {
         const shortcuts = groupedShortcuts.get(scope)
         if (!shortcuts || shortcuts.length === 0) return null

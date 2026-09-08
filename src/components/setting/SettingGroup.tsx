@@ -1,4 +1,4 @@
-import { useId, type ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import { cn } from '@/lib/utils'
 
 interface SettingGroupProps {
@@ -8,22 +8,14 @@ interface SettingGroupProps {
 }
 
 export function SettingGroup({ title, children, className }: SettingGroupProps) {
-  const titleId = useId()
-
   return (
-    <section
-      aria-labelledby={title ? titleId : undefined}
-      className={cn('flex min-w-0 flex-col gap-1', className)}
-    >
+    <fieldset data-slot="setting-group" className={cn('min-w-0', className)}>
       {title && (
-        <h3
-          id={titleId}
-          className="border-b border-border/60 px-1 pb-3 text-base font-semibold leading-6"
-        >
+        <legend data-slot="setting-group-title" className="mb-4 px-1 text-base font-semibold">
           {title}
-        </h3>
+        </legend>
       )}
-      <div className="min-w-0 divide-y divide-border/50 text-card-foreground">{children}</div>
-    </section>
+      <div className="min-w-0 divide-y divide-border/25 text-card-foreground">{children}</div>
+    </fieldset>
   )
 }

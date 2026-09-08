@@ -253,7 +253,7 @@ const SyncSection: React.FC = () => {
 
   return (
     <>
-      <SettingGroup title={t('settings.categories.sync')}>
+      <SettingGroup title={t('settings.sectionHeadings.syncBehavior')}>
         <SettingRow
           label={t('settings.sections.sync.syncEnabled.label')}
           description={t('settings.sections.sync.syncEnabled.description')}

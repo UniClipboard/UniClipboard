@@ -1,6 +1,23 @@
 {
   "appearanceLayout": {
-    "effectsHelp": "視覚効果と動作の快適さを調整します。"
+    "effectsHelp": "視覚効果と動作の快適さを調整します。",
+    "scaleHelp": "文字や画面の要素の大きさを調整します。",
+    "themeHelp": {
+      "system": "システムに合わせてライトとダークを自動で切り替えます。",
+      "light": "常にライトモードを使用します。",
+      "dark": "常にダークモードを使用します。"
+    },
+    "lightPalette": "ライト配色",
+    "darkPalette": "ダーク配色",
+    "theme": "テーマ",
+    "palette": "配色",
+    "effects": "視覚効果",
+    "display": "表示",
+    "customColors": "色のカスタマイズ",
+    "preview": "現在のテーマのプレビュー",
+    "zoomIn": "拡大",
+    "zoomOut": "縮小",
+    "saveFailed": "変更を保存できませんでした。もう一度お試しください。"
   },
   "smoothMode": {
     "title": "スムーズモード",
@@ -201,6 +218,21 @@
     "goToDevices": "デバイス管理を開く"
   },
   "settings": {
+    "pageDescriptions": {
+      "general": "起動、言語、サウンド、診断の設定を変更します。",
+      "appearance": "テーマ、配色、表示を調整します。",
+      "shortcuts": "よく使う操作のキーボードショートカットを変更します。",
+      "quickPanel": "クイックパネルの呼び出し方法と表示位置を設定します。",
+      "sync": "クリップボードとファイルの同期を設定します。",
+      "security": "このデバイスの自動ロック解除を設定します。",
+      "network": "接続方法、中継サーバー、転送性能を調整します。",
+      "storage": "容量の使用状況を確認し、履歴とキャッシュを管理します。",
+      "about": "アプリのバージョン、更新、プロジェクト情報を確認します。"
+    },
+    "sectionHeadings": {
+      "syncBehavior": "同期の動作",
+      "historyRetention": "履歴の保持"
+    },
     "title": "設定",
     "restartBanner": {
       "restartButton": "今すぐ再起動",
@@ -228,7 +260,7 @@
         "saveError": "設定の保存に失敗しました",
         "deviceName": {
           "label": "デバイス名",
-          "description": "ローカル ネットワーク上でこのデバイスを識別するために使用されます",
+          "description": "ほかのデバイスと区別するための名前です。",
           "placeholder": "デバイス名を入力してください"
         },
         "autoStart": {
@@ -236,6 +268,11 @@
           "description": "システム起動時に UniClipboard を開始します"
         },
         "startupMode": {
+          "summaries": {
+            "normal": "起動時にアプリのウィンドウを表示します。",
+            "silent": "ウィンドウを開かずにバックグラウンドで動作します。",
+            "lightweight": "ログイン時はバックグラウンド同期のみを起動します。画面は必要なときに開けます。"
+          },
           "label": "スタートアップ モード",
           "description": "サイレントはウィンドウをスキップし、バックグラウンドで直接実行します。軽量化はさらに進んでおり、同期の準備が完了するとウィンドウとトレイも終了し、バックグラウンド サービスだけを維持して通知を送信します。アプリ アイコンをもう一度クリックしてウィンドウを再度開きます。",
           "options": {
@@ -245,8 +282,8 @@
           }
         },
         "restoreLastEntryOnStartup": {
-          "label": "起動時に最後のエントリを復元する",
-          "description": "起動時にバックグラウンド サービスの準備ができたら、最新の履歴エントリをシステム クリップボードに戻します"
+          "label": "起動時にクリップボードを復元",
+          "description": "最新の履歴をクリップボードに戻します。"
         },
         "language": {
           "title": "言語",

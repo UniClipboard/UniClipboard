@@ -161,7 +161,7 @@ interface StorageSegment {
  */
 function StorageUsageSkeleton() {
   return (
-    <div className="p-4 space-y-3.5">
+    <div className="px-1 py-4 space-y-3.5">
       {/* Header skeleton */}
       <div className="flex items-center justify-between">
         <div className="flex items-baseline gap-2">
@@ -208,7 +208,7 @@ function StorageUsageBar({
 
   if (error) {
     return (
-      <div className="px-4 py-6 flex flex-col items-center justify-center gap-3 text-center">
+      <div className="px-1 py-6 flex flex-col items-center justify-center gap-3 text-center">
         <div className="text-sm text-destructive">{error}</div>
         <Button variant="outline" size="sm" onClick={onRefresh}>
           <RefreshCw className="size-4 mr-2" />
@@ -219,7 +219,7 @@ function StorageUsageBar({
   }
 
   return (
-    <div className="p-4 space-y-3.5">
+    <div className="px-1 py-4 space-y-3.5">
       {/* Header: total + refresh */}
       <div className="flex items-center justify-between">
         <div className="flex items-baseline gap-2">
@@ -513,7 +513,7 @@ const StorageSection: React.FC = () => {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="flex min-w-0 flex-col gap-8">
       {/* ── Storage Usage ── */}
       <SettingGroup title={t('settings.sections.storage.storageUsage.label')}>
         <StorageUsageBar
@@ -582,7 +582,7 @@ const StorageSection: React.FC = () => {
       </SettingGroup>
 
       {/* ── Retention Policy ── */}
-      <SettingGroup title={t('settings.categories.storage')}>
+      <SettingGroup title={t('settings.sectionHeadings.historyRetention')}>
         <SettingRow
           label={t('settings.sections.storage.autoClearHistory.label')}
           description={t('settings.sections.storage.autoClearHistory.description')}
@@ -599,7 +599,7 @@ const StorageSection: React.FC = () => {
             onValueChange={handleRetentionDaysChange}
             disabled={!enabled}
           >
-            <SelectTrigger className="w-36">
+            <SelectTrigger className="w-40">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -617,7 +617,7 @@ const StorageSection: React.FC = () => {
           description={t('settings.sections.storage.maxHistoryItems.description')}
         >
           <Select value={maxItems} onValueChange={handleMaxItemsChange} disabled={!enabled}>
-            <SelectTrigger className="w-36">
+            <SelectTrigger className="w-40">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>

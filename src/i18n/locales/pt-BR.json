@@ -1,6 +1,23 @@
 {
   "appearanceLayout": {
-    "effectsHelp": "Equilibre os efeitos visuais e o desempenho."
+    "effectsHelp": "Equilibre os efeitos visuais e o desempenho.",
+    "scaleHelp": "Ajuste o tamanho do texto e dos elementos da interface.",
+    "themeHelp": {
+      "system": "Alterne entre claro e escuro seguindo o sistema.",
+      "light": "Sempre usar a aparência clara.",
+      "dark": "Sempre usar a aparência escura."
+    },
+    "lightPalette": "Cores claras",
+    "darkPalette": "Cores escuras",
+    "theme": "Tema",
+    "palette": "Cores",
+    "effects": "Efeitos visuais",
+    "display": "Exibição",
+    "customColors": "Cores personalizadas",
+    "preview": "Prévia do tema atual",
+    "zoomIn": "Ampliar",
+    "zoomOut": "Reduzir",
+    "saveFailed": "Não foi possível salvar a alteração. Tente novamente."
   },
   "smoothMode": {
     "title": "Modo fluido",
@@ -201,6 +218,21 @@
     "goToDevices": "Abrir gerenciamento de dispositivos"
   },
   "settings": {
+    "pageDescriptions": {
+      "general": "Configure a inicialização, o idioma, os sons e os diagnósticos.",
+      "appearance": "Ajuste o tema, as cores e a exibição.",
+      "shortcuts": "Personalize os atalhos de teclado para ações frequentes.",
+      "quickPanel": "Escolha como abrir e posicionar o painel rápido.",
+      "sync": "Gerencie a sincronização da área de transferência e de arquivos.",
+      "security": "Gerencie o desbloqueio automático neste dispositivo.",
+      "network": "Configure conexões, servidores de retransmissão e desempenho de transferência.",
+      "storage": "Veja o uso de espaço e gerencie o histórico e o cache.",
+      "about": "Veja a versão do aplicativo, as atualizações e as informações do projeto."
+    },
+    "sectionHeadings": {
+      "syncBehavior": "Comportamento da sincronização",
+      "historyRetention": "Retenção do histórico"
+    },
     "title": "Configurações",
     "restartBanner": {
       "restartButton": "Reiniciar agora",
@@ -228,7 +260,7 @@
         "saveError": "Falha ao salvar a configuração",
         "deviceName": {
           "label": "Nome do dispositivo",
-          "description": "Usado para identificar este dispositivo na rede local",
+          "description": "Identifique este dispositivo entre os seus dispositivos.",
           "placeholder": "Digite o nome do dispositivo"
         },
         "autoStart": {
@@ -236,6 +268,11 @@
           "description": "Iniciar o UniClipboard ao iniciar o sistema"
         },
         "startupMode": {
+          "summaries": {
+            "normal": "Mostrar a janela do aplicativo ao iniciar.",
+            "silent": "Executar em segundo plano sem abrir uma janela.",
+            "lightweight": "Ao entrar no sistema, manter apenas a sincronização em segundo plano. Abra a interface quando precisar."
+          },
           "label": "Modo de inicialização",
           "description": "O modo Silencioso pula a janela e roda direto em segundo plano. O modo Leve vai além — assim que a sincronização fica pronta, ele fecha a janela e também sai da bandeja do sistema, mantendo só o serviço em segundo plano e enviando uma notificação; clique no ícone do app de novo para reabrir a janela.",
           "options": {
@@ -245,8 +282,8 @@
           }
         },
         "restoreLastEntryOnStartup": {
-          "label": "Restaurar a última entrada ao iniciar",
-          "description": "Assim que o serviço em segundo plano estiver pronto na inicialização, coloca a entrada mais recente do histórico de volta na área de transferência do sistema"
+          "label": "Restaurar a área de transferência ao iniciar",
+          "description": "Colocar a entrada mais recente do histórico de volta na área de transferência."
         },
         "language": {
           "title": "Idioma",

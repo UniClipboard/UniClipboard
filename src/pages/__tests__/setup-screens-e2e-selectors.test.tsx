@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import i18n from '@/i18n'
@@ -135,6 +135,18 @@ describe('setup screens e2e selectors', () => {
     await user.type(passphrase, 'secret')
     await user.click(screen.getByTestId('setup-redeem-submit'))
     expect(onSubmit).toHaveBeenCalledWith({ code: '000001', passphrase: 'secret' })
+  })
+
+  it('refocuses the passphrase when a code is completed again during the exit animation', () => {
+    render(<RedeemInvitationScreen onSubmit={vi.fn()} onBack={vi.fn()} />)
+    const codeInput = screen.getByLabelText('Invitation code')
+    fireEvent.change(codeInput, { target: { value: '012345' } })
+    const passphrase = screen.getByLabelText('Space passphrase')
+    expect(passphrase).toHaveFocus()
+    codeInput.focus()
+    fireEvent.change(codeInput, { target: { value: '01234' } })
+    fireEvent.change(codeInput, { target: { value: '012345' } })
+    expect(screen.getByLabelText('Space passphrase')).toHaveFocus()
   })
 
   it('keeps the invitation and passphrase when the other device needs an update', async () => {

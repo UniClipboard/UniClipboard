@@ -1,7 +1,7 @@
 'use client'
 
 import { Popover as PopoverPrimitive } from '@base-ui/react/popover'
-import { m, useReducedMotion, type HTMLMotionProps } from 'framer-motion'
+import { m, type HTMLMotionProps } from 'framer-motion'
 import * as React from 'react'
 import {
   anchoredMenuClip,
@@ -9,6 +9,7 @@ import {
   MENU_SHADOW_CLASS,
   menuMotion,
 } from '@/components/motion/menu/presentation'
+import { useReducedMotion } from '@/hooks/useVisualEffects'
 import { cn } from '@/lib/utils'
 
 function Popover({ ...props }: PopoverPrimitive.Root.Props) {

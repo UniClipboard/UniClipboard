@@ -1,6 +1,7 @@
 import { LazyMotion, domMax } from 'framer-motion'
 import React from 'react'
 import ReactDOM from 'react-dom/client'
+import VisualEffectsProvider from '@/components/motion/VisualEffectsProvider'
 import '@/i18n'
 import { initializeWindowUi } from '@/lib/window-ui'
 import '@/styles/globals.css'
@@ -15,7 +16,9 @@ initializeWindowUi()
 ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
   <React.StrictMode>
     <LazyMotion features={domMax} strict>
-      <UpdaterWindow />
+      <VisualEffectsProvider>
+        <UpdaterWindow />
+      </VisualEffectsProvider>
     </LazyMotion>
   </React.StrictMode>
 )

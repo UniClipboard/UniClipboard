@@ -26,6 +26,7 @@ pub mod shell_settings;
 pub mod shortcuts;
 pub mod startup_actions;
 pub mod task_registry;
+pub mod visual_capabilities;
 
 pub use daemon::{DaemonLaunchOrigin, DaemonOwnership};
 pub use runtime::DesktopRuntime;

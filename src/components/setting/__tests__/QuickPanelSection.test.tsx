@@ -69,7 +69,6 @@ beforeEach(() => {
     isMac: true,
     isLinux: false,
     isTauri: true,
-    reduceVisualEffects: false,
   })
 })
 
@@ -116,7 +115,6 @@ describe('QuickPanelSection modifier double-tap trigger', () => {
       isMac: false,
       isLinux: true,
       isTauri: true,
-      reduceVisualEffects: true,
     })
     mockGetQuickPanelDoubleTapAvailability.mockResolvedValue('unsupported_display_session')
     setup()

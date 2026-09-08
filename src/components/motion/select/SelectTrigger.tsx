@@ -1,6 +1,7 @@
 import { Select as SelectPrimitive } from '@base-ui/react/select'
-import { m, useReducedMotion, type HTMLMotionProps } from 'framer-motion'
+import { m, type HTMLMotionProps } from 'framer-motion'
 import { ChevronDownIcon } from 'lucide-react'
+import { useReducedMotion } from '@/hooks/useVisualEffects'
 import { cn } from '@/lib/utils'
 
 // Adapted from beui.dev/components/motion/select. Base UI owns keyboard and focus behavior.

@@ -45,6 +45,7 @@ url = "2"
 tokio = { version = "1", features = ["full"] }
 tokio-util = "0.7"
 rand = "0.9"
+tempfile = "3"
 async-trait = "0.1"
 
 # Serialization

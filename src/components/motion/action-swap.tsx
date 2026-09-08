@@ -1,13 +1,8 @@
 'use client'
 
-import {
-  AnimatePresence,
-  m,
-  useReducedMotion,
-  type HTMLMotionProps,
-  type Variants,
-} from 'framer-motion'
+import { AnimatePresence, m, type HTMLMotionProps, type Variants } from 'framer-motion'
 import { useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import { useReducedMotion } from '@/hooks/useVisualEffects'
 import { EASE_OUT, EASE_OUT_CSS, SPRING_PRESS, SPRING_SWAP } from '@/lib/ease'
 import { cn } from '@/lib/utils'
 

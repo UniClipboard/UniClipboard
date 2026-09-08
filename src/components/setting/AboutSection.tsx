@@ -1,6 +1,6 @@
 import { getVersion } from '@tauri-apps/api/app'
 import { invoke } from '@tauri-apps/api/core'
-import { Loader2, TriangleAlert } from 'lucide-react'
+import { Loader2 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
@@ -18,33 +18,20 @@ import {
   AlertDialogDescription,
   AlertDialogFooter,
   AlertDialogHeader,
-  AlertDialogMedia,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Progress } from '@/components/ui/progress'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
-import { Switch } from '@/components/ui/switch'
 import { toast } from '@/components/ui/toast'
 import { PackageManagerUpdateDialog } from '@/components/update/PackageManagerUpdateDialog'
-import { ReleaseNotes } from '@/components/update/ReleaseNotes'
+import { UpdateDetails } from '@/components/update/UpdateDetails'
 import { useSetting } from '@/hooks/useSetting'
 import { useShortcutLayer } from '@/hooks/useShortcutLayer'
 import { useUpdate } from '@/hooks/useUpdate'
 import { createLogger } from '@/lib/logger'
-import { cn } from '@/lib/utils'
-import type { UpdateChannel } from '@/types/setting'
+import appIcon from '@/updater/app-icon.png'
 import { SponsorsGroup } from './about/SponsorsGroup'
-import { SettingGroup } from './SettingGroup'
-import { SettingRow } from './SettingRow'
-import { useOptimisticSetting } from './useOptimisticSetting'
+import { UpdatePreferencesGroup } from './UpdatePreferencesGroup'
 
 const log = createLogger('about-section')
 
@@ -67,13 +54,18 @@ function getChannelLabel(channel: string): string {
   return labels[channel] ?? channel
 }
 
-function normalizeUpdateChannel(value: string): UpdateChannel | null {
-  return value === 'auto' ? null : (value as UpdateChannel)
+const handleOpenUpdaterWindowDev = async () => {
+  try {
+    await invoke('dev_open_updater_window', { trace: null })
+  } catch (error) {
+    log.error({ err: error }, 'Dev open updater window failed')
+    toast.error(String(error))
+  }
 }
 
 const AboutSection: React.FC = () => {
   const { t } = useTranslation()
-  const { setting, loading: settingLoading, updateGeneralSetting } = useSetting()
+  const { loading: settingLoading } = useSetting()
   const {
     updateInfo,
     isCheckingUpdate,
@@ -84,31 +76,8 @@ const AboutSection: React.FC = () => {
     isManualUpdate,
   } = useUpdate()
   const [appVersion, setAppVersion] = useState<string>('')
-  const [autoCheckUpdate, setAutoCheckUpdate] = useOptimisticSetting(
-    setting?.general.autoCheckUpdate ?? true,
-    next => updateGeneralSetting({ autoCheckUpdate: next }),
-    { failureLog: 'Failed to change auto-check-update setting' }
-  )
-  const [autoDownloadUpdate, setAutoDownloadUpdate] = useOptimisticSetting(
-    setting?.general.autoDownloadUpdate ?? false,
-    next => updateGeneralSetting({ autoDownloadUpdate: next }),
-    { failureLog: 'Failed to change auto-download-update setting' }
-  )
-  // The channel persists like the others, then kicks off a background update
-  // check for the newly-selected channel (best-effort — a failed check does not
-  // revert the channel).
-  const [updateChannel, setUpdateChannel] = useOptimisticSetting<UpdateChannel | null>(
-    setting?.general.updateChannel ?? null,
-    async next => {
-      await updateGeneralSetting({ updateChannel: next })
-      checkForUpdates(next).catch(err => log.error({ err }, 'Failed to check for updates'))
-    },
-    { failureLog: 'Failed to change update channel' }
-  )
-  const pendingUpdateChannelRef = useRef<UpdateChannel | null>(null)
   const [updateDialogOpen, setUpdateDialogOpen] = useState(false)
   const [packageManagerDialogOpen, setPackageManagerDialogOpen] = useState(false)
-  const [alphaWarningOpen, setAlphaWarningOpen] = useState(false)
   /** See `Sidebar.tsx` for the dismissal-reason ref pattern. */
   const dialogDismissReasonRef = useRef<DismissSource | null>(null)
   const isInstallingUpdate =
@@ -134,44 +103,6 @@ const AboutSection: React.FC = () => {
       cancelled = true
     }
   }, [])
-
-  const handleUpdateChannelChange = (value: string) => {
-    const newChannel = normalizeUpdateChannel(value)
-    if (newChannel === updateChannel) return
-
-    if (newChannel === 'alpha' && updateChannel !== 'alpha') {
-      pendingUpdateChannelRef.current = newChannel
-      setAlphaWarningOpen(true)
-      return
-    }
-
-    setUpdateChannel(newChannel)
-  }
-
-  const handleAlphaWarningOpenChange = (open: boolean) => {
-    setAlphaWarningOpen(open)
-    if (!open) {
-      pendingUpdateChannelRef.current = null
-    }
-  }
-
-  const handleConfirmAlphaChannel = () => {
-    const channel = pendingUpdateChannelRef.current
-    setAlphaWarningOpen(false)
-    pendingUpdateChannelRef.current = null
-
-    if (channel !== 'alpha') return
-    setUpdateChannel(channel)
-  }
-
-  const handleOpenUpdaterWindowDev = async () => {
-    try {
-      await invoke('dev_open_updater_window', { trace: null })
-    } catch (error) {
-      log.error({ err: error }, 'Dev open updater window failed')
-      toast.error(String(error))
-    }
-  }
 
   const handleCheckUpdate = async () => {
     try {
@@ -234,44 +165,25 @@ const AboutSection: React.FC = () => {
   }
 
   return (
-    <div className="space-y-5">
-      {/* App identity hero */}
-      <div className="flex flex-col items-center gap-4 rounded-xl border border-border/60 bg-card px-6 py-8 text-center">
-        <div className="flex size-16 items-center justify-center rounded-2xl bg-gradient-to-br from-primary to-primary/60 shadow-lg shadow-primary/25">
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            className="size-9 text-primary-foreground"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-          >
-            <title>{t('settings.sections.about.appName')}</title>
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth="2"
-              d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"
-            />
-          </svg>
-        </div>
-        <div className="space-y-1.5">
-          <div className="flex items-center justify-center gap-2">
-            <h3 className="text-xl font-semibold tracking-tight">
-              {t('settings.sections.about.appName')}
-            </h3>
+    <div className="flex min-w-0 flex-col gap-8">
+      <div className="flex min-w-0 flex-wrap items-center gap-4 px-1">
+        <img src={appIcon} alt="" className="size-12 shrink-0 rounded-lg" />
+        <div className="min-w-0 flex-1 space-y-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="text-base font-semibold">{t('settings.sections.about.appName')}</h2>
             {channel && (
               <Badge variant={getChannelBadgeVariant(channel)}>{getChannelLabel(channel)}</Badge>
             )}
           </div>
-          <p className="text-sm text-muted-foreground">
+          <p className="text-xs text-muted-foreground">
             {appVersion
               ? t('settings.sections.about.version', { version: appVersion })
               : t('settings.sections.about.version', { version: '...' })}
           </p>
         </div>
         <Button
-          size="lg"
-          className="w-44 transition-colors"
+          size="sm"
+          className="ml-auto w-40 max-w-full transition-colors"
           onClick={handleCheckUpdate}
           disabled={settingLoading || isCheckingUpdate}
           aria-busy={isCheckingUpdate}
@@ -288,7 +200,7 @@ const AboutSection: React.FC = () => {
         {import.meta.env.DEV && (
           <button
             type="button"
-            className="text-xs text-amber-600 underline-offset-2 hover:underline dark:text-amber-400"
+            className="w-full text-left text-xs text-amber-600 underline-offset-2 hover:underline dark:text-amber-400"
             onClick={handleOpenUpdaterWindowDev}
             title="Dev only: open the Sparkle-style updater window with mock data"
           >
@@ -298,51 +210,7 @@ const AboutSection: React.FC = () => {
       </div>
 
       {/* Update settings */}
-      <SettingGroup title={t('settings.sections.about.updatesTitle')}>
-        <SettingRow
-          label={t('settings.sections.about.autoCheckUpdate.label')}
-          description={t('settings.sections.about.autoCheckUpdate.description')}
-        >
-          <Switch checked={autoCheckUpdate} onCheckedChange={setAutoCheckUpdate} />
-        </SettingRow>
-
-        <SettingRow
-          label={t('settings.sections.about.autoDownloadUpdate.label')}
-          description={
-            autoCheckUpdate
-              ? t('settings.sections.about.autoDownloadUpdate.description')
-              : t('settings.sections.about.autoDownloadUpdate.disabledHint')
-          }
-        >
-          <Switch
-            checked={autoDownloadUpdate && autoCheckUpdate}
-            onCheckedChange={setAutoDownloadUpdate}
-            disabled={!autoCheckUpdate}
-          />
-        </SettingRow>
-
-        <SettingRow
-          label={t('settings.sections.about.updateChannel.label')}
-          description={t('settings.sections.about.updateChannel.description')}
-        >
-          <Select value={updateChannel ?? 'auto'} onValueChange={handleUpdateChannelChange}>
-            <SelectTrigger className="w-40">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="auto">
-                {t('settings.sections.about.updateChannel.auto')}
-              </SelectItem>
-              <SelectItem value="stable">
-                {t('settings.sections.about.updateChannel.stable')}
-              </SelectItem>
-              <SelectItem value="alpha">
-                {t('settings.sections.about.updateChannel.alpha')}
-              </SelectItem>
-            </SelectContent>
-          </Select>
-        </SettingRow>
-      </SettingGroup>
+      <UpdatePreferencesGroup />
 
       {/* Sponsors */}
       <SponsorsGroup />
@@ -383,49 +251,17 @@ const AboutSection: React.FC = () => {
           <AlertDialogHeader>
             <AlertDialogTitle>{t('update.title')}</AlertDialogTitle>
             <AlertDialogDescription render={<div />} className="space-y-3">
-              <div className="space-y-1">
-                <div className="flex items-center justify-between text-muted-foreground">
-                  <span>{t('update.currentVersion')}</span>
-                  <span className="text-foreground">{updateInfo?.currentVersion ?? '-'}</span>
-                </div>
-                <div className="flex items-center justify-between text-muted-foreground">
-                  <span>{t('update.latestVersion')}</span>
-                  <span className="text-foreground">{updateInfo?.version ?? '-'}</span>
-                </div>
-              </div>
-              <div className="space-y-2">
-                <div className="text-sm font-medium text-foreground">
-                  {t('update.releaseNotes')}
-                </div>
-                <div className="max-h-48 overflow-auto rounded-md border border-border/60 bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
-                  <ReleaseNotes content={updateInfo?.body ?? ''} fallback={t('update.noNotes')} />
-                </div>
-              </div>
-              {(downloadProgress.phase === 'downloading' ||
-                downloadProgress.phase === 'installing') && (
-                <div className="space-y-2 pt-2">
-                  <div className="flex justify-between text-xs text-muted-foreground">
-                    <span>
-                      {downloadProgress.phase === 'installing'
-                        ? t('update.installing')
-                        : t('update.downloading')}
-                    </span>
-                    {downloadProgress.total !== null && (
-                      <span>
-                        {Math.round((downloadProgress.downloaded / downloadProgress.total) * 100)}%
-                      </span>
-                    )}
-                  </div>
-                  <Progress
-                    value={
-                      downloadProgress.total !== null
-                        ? (downloadProgress.downloaded / downloadProgress.total) * 100
-                        : undefined
-                    }
-                    className={cn('h-2', downloadProgress.total === null && 'animate-pulse')}
-                  />
-                </div>
-              )}
+              <UpdateDetails
+                currentVersion={updateInfo?.currentVersion}
+                version={updateInfo?.version}
+                body={updateInfo?.body}
+                phase={downloadProgress.phase}
+                percent={
+                  downloadProgress.total && downloadProgress.total > 0
+                    ? (downloadProgress.downloaded / downloadProgress.total) * 100
+                    : null
+                }
+              />
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -458,35 +294,6 @@ const AboutSection: React.FC = () => {
           updateInfo={updateInfo}
         />
       )}
-
-      <AlertDialog open={alphaWarningOpen} onOpenChange={handleAlphaWarningOpenChange}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogMedia className="bg-amber-500/10 text-amber-600 dark:text-amber-400">
-              <TriangleAlert className="size-5" />
-            </AlertDialogMedia>
-            <AlertDialogTitle>
-              {t('settings.sections.about.updateChannel.alphaWarning.title')}
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              {t('settings.sections.about.updateChannel.alphaWarning.description')}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>
-              {t('settings.sections.about.updateChannel.alphaWarning.cancel')}
-            </AlertDialogCancel>
-            <AlertDialogAction
-              onClick={event => {
-                event.preventDefault()
-                handleConfirmAlphaChannel()
-              }}
-            >
-              {t('settings.sections.about.updateChannel.alphaWarning.confirm')}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </div>
   )
 }

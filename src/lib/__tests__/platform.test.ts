@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { applyPlatformEffectPreferences, detectPlatformInfo } from '@/lib/platform'
 
 describe('platform helpers', () => {
-  it('为 Linux 开启低特效模式', () => {
+  it('识别 Linux 平台', () => {
     const platform = detectPlatformInfo({
       userAgent: 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/605.1.15',
       platform: 'Linux x86_64',
@@ -10,10 +10,9 @@ describe('platform helpers', () => {
     })
 
     expect(platform.isLinux).toBe(true)
-    expect(platform.reduceVisualEffects).toBe(true)
   })
 
-  it('为 Windows 开启低特效模式（WebView2 下 backdrop-filter 在弱 GPU 上过重，#1129）', () => {
+  it('识别 Windows 平台', () => {
     const platform = detectPlatformInfo({
       userAgent:
         'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Edg/120.0',
@@ -22,7 +21,6 @@ describe('platform helpers', () => {
     })
 
     expect(platform.isWindows).toBe(true)
-    expect(platform.reduceVisualEffects).toBe(true)
   })
 
   it('不会把 Android 当作桌面 Linux', () => {
@@ -33,10 +31,9 @@ describe('platform helpers', () => {
     })
 
     expect(platform.isLinux).toBe(false)
-    expect(platform.reduceVisualEffects).toBe(false)
   })
 
-  it('把低特效标记写到根节点', () => {
+  it('只写入平台标记，不再决定视觉效果', () => {
     const root = document.createElement('html')
 
     applyPlatformEffectPreferences(root, {
@@ -44,10 +41,9 @@ describe('platform helpers', () => {
       isMac: false,
       isLinux: true,
       isTauri: true,
-      reduceVisualEffects: true,
     })
 
     expect(root.dataset.ucPlatform).toBe('linux')
-    expect(root.dataset.ucLowEffects).toBe('true')
+    expect(root.dataset.ucLowEffects).toBeUndefined()
   })
 })

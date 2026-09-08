@@ -46,6 +46,14 @@ Diagnostics and usage analytics are separate toggles. They do not include clipbo
 Zoom changes rendering density only (think DPI). It doesn't touch your
 data and doesn't sync to other devices.
 
+### Smooth Mode
+
+Choose **Auto** (the default), **Effects first**, or **Smooth first**. Effects first keeps visual effects; Smooth first reduces nonessential animation and heavier effects. Manual changes apply immediately across the main window and Quick Panel. System reduced-motion preferences still limit animation in every mode.
+
+Auto uses device capabilities on macOS and Windows, conservatively reducing effects when information is unavailable. On Linux, Auto defaults to Smooth first; manual choices remain available. Repeated slow interactions can reduce Auto effects at the next launch, without changing effects mid-session. That result remains until the policy version or device capability classification changes; manual choices are not overridden.
+
+The choice is saved only for this device's current profile and does not sync to other devices or change clipboard and background sync behavior. The control shows the current result and its reason. If saving fails, the change applies only for the current session and a warning is shown.
+
 ## Shortcuts
 
 Bindable commands are organized by **scope**. Each entry can be

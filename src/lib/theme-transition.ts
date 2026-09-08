@@ -5,7 +5,7 @@
  */
 
 import { flushSync } from 'react-dom'
-import { isLowEffectsEnabled } from '@/lib/platform'
+import { isMotionReduced, visualEffectsStore } from '@/lib/visual-effects-store'
 
 let lastClickX = 0
 let lastClickY = 0
@@ -23,7 +23,7 @@ export function setTransitionOrigin(x: number, y: number) {
  * Pass null for x or y to skip the reveal animation (e.g. keyboard/ESC activations).
  */
 function startCircularReveal(x: number | null, y: number | null, updateDOM: () => void) {
-  if (x === null || y === null || isLowEffectsEnabled() || !document.startViewTransition) {
+  if (x === null || y === null || isMotionReduced() || !document.startViewTransition) {
     updateDOM()
     return
   }
@@ -37,23 +37,39 @@ function startCircularReveal(x: number | null, y: number | null, updateDOM: () =
     flushSync(updateDOM)
   })
 
-  transition.ready.then(() => {
-    // "circle-blur" reveal (ported from beui.dev/components/motion/theme-toggle):
-    // the new snapshot clips in as an expanding circle from the click point while
-    // deblurring 8px -> 0px. globals.css already pins the old snapshot underneath
-    // (animation: none, z-index) so only this reveal is visible.
-    document.documentElement.animate(
-      {
-        clipPath: [`circle(0px at ${x}px ${y}px)`, `circle(${endRadius}px at ${x}px ${y}px)`],
-        filter: ['blur(8px)', 'blur(0px)'],
-      },
-      {
-        duration: 700,
-        easing: 'cubic-bezier(0.4, 0, 0.2, 1)',
-        pseudoElement: '::view-transition-new(root)',
-      }
-    )
+  let animation: Animation | undefined
+  const unsubscribe = visualEffectsStore.subscribe(() => {
+    if (!isMotionReduced()) return
+    animation?.finish()
+    transition.skipTransition()
   })
+  void transition.finished.finally(unsubscribe).catch(() => {})
+
+  transition.ready
+    .then(() => {
+      if (isMotionReduced()) {
+        transition.skipTransition()
+        return
+      }
+      // "circle-blur" reveal (ported from beui.dev/components/motion/theme-toggle):
+      // the new snapshot clips in as an expanding circle from the click point while
+      // deblurring 8px -> 0px. globals.css already pins the old snapshot underneath
+      // (animation: none, z-index) so only this reveal is visible.
+      animation = document.documentElement.animate(
+        {
+          clipPath: [`circle(0px at ${x}px ${y}px)`, `circle(${endRadius}px at ${x}px ${y}px)`],
+          filter: ['blur(8px)', 'blur(0px)'],
+        },
+        {
+          duration: 700,
+          easing: 'cubic-bezier(0.4, 0, 0.2, 1)',
+          pseudoElement: '::view-transition-new(root)',
+        }
+      )
+    })
+    .catch(() => {
+      transition.skipTransition()
+    })
 }
 
 /**

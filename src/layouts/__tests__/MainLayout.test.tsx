@@ -9,7 +9,6 @@ const platformState = vi.hoisted(() => ({
     isMac: false,
     isLinux: false,
     isTauri: false,
-    reduceVisualEffects: false,
   },
 }))
 
@@ -51,7 +50,6 @@ describe('MainLayout', () => {
       isMac: false,
       isLinux: true,
       isTauri: true,
-      reduceVisualEffects: true,
     }
     windowFrameState.useSystemWindowFrame = false
 
@@ -69,7 +67,6 @@ describe('MainLayout', () => {
       isMac: false,
       isLinux: true,
       isTauri: true,
-      reduceVisualEffects: true,
     }
     windowFrameState.useSystemWindowFrame = true
 
@@ -87,7 +84,6 @@ describe('MainLayout', () => {
       isMac: false,
       isLinux: false,
       isTauri: false,
-      reduceVisualEffects: false,
     }
     windowFrameState.useSystemWindowFrame = false
 

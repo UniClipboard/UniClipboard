@@ -1,4 +1,42 @@
 {
+  "appearanceLayout": {
+    "effectsHelp": "平衡视觉效果与运行性能。",
+    "scaleHelp": "调整界面元素与文字大小。",
+    "themeHelp": {
+      "system": "跟随系统自动切换浅色与深色。",
+      "light": "始终使用浅色外观。",
+      "dark": "始终使用深色外观。"
+    },
+    "lightPalette": "浅色配色",
+    "darkPalette": "深色配色",
+    "theme": "主题",
+    "palette": "配色",
+    "effects": "视觉效果",
+    "display": "显示",
+    "customColors": "自定义颜色",
+    "preview": "当前主题预览",
+    "zoomIn": "放大界面",
+    "zoomOut": "缩小界面",
+    "saveFailed": "未能保存更改，请重试。"
+  },
+  "smoothMode": {
+    "title": "流畅模式",
+    "auto": "自动",
+    "effects": "效果优先",
+    "smooth": "流畅优先",
+    "currentSmooth": "当前采用流畅模式",
+    "currentEffects": "当前采用效果优先",
+    "notSaved": "本次已生效，但未能保存，重启后可能恢复原设置。",
+    "unavailable": "暂时无法读取或保存外观偏好，请稍后重试。",
+    "reason": {
+      "manual": "已采用你的选择。",
+      "system": "已遵循系统减少动效偏好；无法读取时保守减少动效。",
+      "platform_default": "Linux 自动模式默认减少视觉效果。",
+      "hardware": "已根据设备能力选择。",
+      "unknown": "设备能力尚未确认，暂时减少视觉效果。",
+      "runtime": "已根据此前运行表现选择。"
+    }
+  },
   "deviceTrust": {
     "presentation": {
       "localRemovalTitle": "{{actor}} 要将本机移出设备组",
@@ -180,6 +218,21 @@
     "dontShowAgain": "不再提示"
   },
   "settings": {
+    "pageDescriptions": {
+      "general": "设置启动方式、语言、声音与诊断偏好。",
+      "appearance": "调整主题、配色与显示效果。",
+      "shortcuts": "自定义常用操作的键盘快捷键。",
+      "quickPanel": "设置快捷面板的唤起方式与显示位置。",
+      "sync": "管理剪贴板与文件的同步行为。",
+      "security": "管理这台设备的自动解锁偏好。",
+      "network": "调整连接方式、中继服务器与传输性能。",
+      "storage": "查看空间占用，管理历史记录与缓存。",
+      "about": "查看应用版本、更新与项目信息。"
+    },
+    "sectionHeadings": {
+      "syncBehavior": "同步行为",
+      "historyRetention": "历史保留"
+    },
     "title": "设置",
     "restartBanner": {
       "restartButton": "立即重启",
@@ -207,7 +260,7 @@
         "saveError": "保存设置失败",
         "deviceName": {
           "label": "设备名称",
-          "description": "用于在局域网中识别此设备",
+          "description": "用于区分你的不同设备。",
           "placeholder": "输入设备名称"
         },
         "autoStart": {
@@ -215,6 +268,11 @@
           "description": "系统启动时自动启动 UniClipboard"
         },
         "startupMode": {
+          "summaries": {
+            "normal": "启动后显示应用窗口。",
+            "silent": "启动后在后台运行，不弹出窗口。",
+            "lightweight": "开机自启时仅保留后台同步，需要时可重新打开界面。"
+          },
           "label": "启动方式",
           "description": "「静默」启动后不弹窗，直接进入后台；「轻量」在后台就绪后进一步退出窗口和托盘、仅保留后台服务并发送通知，之后点击应用图标即可重新打开窗口。",
           "options": {
@@ -224,8 +282,8 @@
           }
         },
         "restoreLastEntryOnStartup": {
-          "label": "启动后恢复最近一条剪贴板记录",
-          "description": "应用启动、后台就绪后自动将最近一条历史记录重新放入系统剪贴板"
+          "label": "启动时恢复剪贴板",
+          "description": "将最近一条历史记录重新放回剪贴板。"
         },
         "language": {
           "title": "语言",

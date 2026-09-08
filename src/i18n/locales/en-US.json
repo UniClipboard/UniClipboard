@@ -1,4 +1,42 @@
 {
+  "appearanceLayout": {
+    "effectsHelp": "Balance visual effects and performance.",
+    "scaleHelp": "Adjust the size of text and interface elements.",
+    "themeHelp": {
+      "system": "Automatically switch between light and dark with your system.",
+      "light": "Always use a light appearance.",
+      "dark": "Always use a dark appearance."
+    },
+    "lightPalette": "Light colors",
+    "darkPalette": "Dark colors",
+    "theme": "Theme",
+    "palette": "Colors",
+    "effects": "Visual effects",
+    "display": "Display",
+    "customColors": "Custom colors",
+    "preview": "Current theme preview",
+    "zoomIn": "Zoom in",
+    "zoomOut": "Zoom out",
+    "saveFailed": "Could not save the change. Please try again."
+  },
+  "smoothMode": {
+    "title": "Smooth Mode",
+    "auto": "Auto",
+    "effects": "Effects first",
+    "smooth": "Smooth first",
+    "currentSmooth": "Currently using reduced effects",
+    "currentEffects": "Currently prioritizing effects",
+    "notSaved": "Applied for this session, but could not save. Restarting may restore the previous choice.",
+    "unavailable": "Unable to read or save appearance preferences. Please try again.",
+    "reason": {
+      "manual": "Using your selection.",
+      "system": "Respecting reduced motion, including when the system preference is unavailable.",
+      "platform_default": "Auto uses reduced effects on Linux.",
+      "hardware": "Selected for this device.",
+      "unknown": "Device capability is unconfirmed; using reduced effects.",
+      "runtime": "Selected from previous runtime performance."
+    }
+  },
   "deviceTrust": {
     "presentation": {
       "localRemovalTitle": "{{actor}} wants to remove this device",
@@ -180,6 +218,21 @@
     "dontShowAgain": "Don't show again"
   },
   "settings": {
+    "pageDescriptions": {
+      "general": "Configure startup, language, sound, and diagnostics.",
+      "appearance": "Adjust your theme, colors, and display.",
+      "shortcuts": "Customize keyboard shortcuts for common actions.",
+      "quickPanel": "Choose how to open and position the quick panel.",
+      "sync": "Manage clipboard and file synchronization.",
+      "security": "Manage automatic unlocking on this device.",
+      "network": "Configure connections, relay servers, and transfer performance.",
+      "storage": "Check space usage and manage history and caches.",
+      "about": "View the app version, updates, and project information."
+    },
+    "sectionHeadings": {
+      "syncBehavior": "Sync behavior",
+      "historyRetention": "History retention"
+    },
     "title": "Settings",
     "restartBanner": {
       "restartButton": "Restart now",
@@ -207,7 +260,7 @@
         "saveError": "Failed to save setting",
         "deviceName": {
           "label": "Device Name",
-          "description": "Used to identify this device on the local network",
+          "description": "Distinguish this device from your other devices.",
           "placeholder": "Enter device name"
         },
         "autoStart": {
@@ -215,6 +268,11 @@
           "description": "Start UniClipboard when the system boots"
         },
         "startupMode": {
+          "summaries": {
+            "normal": "Show the app window on startup.",
+            "silent": "Run in the background without opening a window.",
+            "lightweight": "On login, keep only background sync running. Reopen the interface when needed."
+          },
           "label": "Startup mode",
           "description": "Silent skips the window and runs straight in the background. Lightweight goes further — once sync is ready it exits the window and tray too, keeping just the background service and sending a notification; click the app icon again to reopen the window.",
           "options": {
@@ -224,8 +282,8 @@
           }
         },
         "restoreLastEntryOnStartup": {
-          "label": "Restore last entry on startup",
-          "description": "Once the background service is ready at launch, put the most recent history entry back on the system clipboard"
+          "label": "Restore clipboard on startup",
+          "description": "Put the most recent history entry back on the clipboard."
         },
         "language": {
           "title": "Language",

@@ -1,4 +1,4 @@
-import { AnimatePresence, m, useReducedMotion, type Transition } from 'framer-motion'
+import { AnimatePresence, m, type Transition } from 'framer-motion'
 /*!
 MIT License
 
@@ -25,6 +25,7 @@ SOFTWARE.
 // Animated Toast Stack, adapted from https://beui.dev/r/animated-toast-stack/raw
 import { AlertCircle, Bell, Check, Info, LoaderCircle, X, type LucideIcon } from 'lucide-react'
 import { memo, type ReactNode, type Ref } from 'react'
+import { useReducedMotion } from '@/hooks/useVisualEffects'
 import { EASE_OUT } from '@/lib/ease'
 import { cn } from '@/lib/utils'
 import type { AnimatedToast, ToastClassNames, ToastStatus } from './animated-toast-types'

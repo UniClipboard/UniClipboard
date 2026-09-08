@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { Toaster } from '@/components/ui/toaster'
 import { useAppBootstrap } from '@/hooks/useAppBootstrap'
+import { useVisualEffectsSampling } from '@/hooks/useVisualEffectsSampling'
 import SetupPage from '@/pages/SetupPage'
 import UnlockPage from '@/pages/UnlockPage'
 import { AppStatusScreen } from './AppStatusScreen'
@@ -20,6 +21,12 @@ export function AppContent({
   sidebarTitle,
 }: AppContentProps) {
   const bootstrap = useAppBootstrap(isSetupActive)
+  useVisualEffectsSampling(
+    !isSetupActive &&
+      bootstrap.daemonBootstrapReady &&
+      !bootstrap.encryptionLoading &&
+      Boolean(bootstrap.resolvedEncryptionStatus?.session_ready)
+  )
 
   if (bootstrap.bootstrapFailure) {
     return (

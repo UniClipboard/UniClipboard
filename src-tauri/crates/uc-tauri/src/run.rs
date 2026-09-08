@@ -14,9 +14,9 @@
 use std::sync::Arc;
 
 use tauri::webview::PageLoadEvent;
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 use tauri_plugin_autostart::MacosLauncher;
-use tracing::{error, info, warn};
+use tracing::{error, info, warn, Instrument};
 
 use uc_daemon_client::realtime::RealtimeTopic;
 use uc_daemon_client::{DaemonConnectionState, DaemonWsBridge, DaemonWsBridgeConfig};
@@ -289,6 +289,7 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
     let builder = tauri::Builder::default()
         // Register TauriAppRuntime for Tauri commands
         .manage(runtime.clone())
+        .manage(crate::visual_effects::VisualEffectsService::default())
         .manage(DaemonConnectionState::clone(&daemon_connection_state))
         .manage(DaemonOwnership::clone(&daemon_ownership))
         .manage(daemon_bootstrap_status.clone())
@@ -298,6 +299,19 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
         .manage(quick_panel::QuickPanelToggleController::default())
         .manage(task_registry.clone())
         .on_window_event(|window, event| {
+            if matches!(event, tauri::WindowEvent::Destroyed) {
+                let app = window.app_handle().clone();
+                let label = window.label().to_owned();
+                tauri::async_runtime::spawn(async move {
+                    let service = app.state::<crate::visual_effects::VisualEffectsService>();
+                    let Some(initialized) = service.0.get() else { return; };
+                    let mut state = initialized.lock().await;
+                    state.remove_window(&label);
+                    if let Err(error) = app.emit(crate::visual_effects::EFFECTS_EVENT, state.snapshot()) {
+                        tracing::warn!(error_kind = "visual_effects_emit", source = %error, "visual preferences notification failed");
+                    }
+                }.in_current_span());
+            }
             if let tauri::WindowEvent::CloseRequested { .. } = event {
                 if window.label() == crate::main_window::MAIN_WINDOW_LABEL {
                     // The close proceeds in BOTH branches: destroying the

@@ -1,7 +1,7 @@
 'use client'
 // beui.dev/components/blocks/expandable-action-bar
 
-import { LayoutGroup, m, type Transition, useReducedMotion } from 'framer-motion'
+import { LayoutGroup, m, type Transition } from 'framer-motion'
 import {
   Fragment,
   type FocusEvent,
@@ -15,6 +15,7 @@ import {
   useRef,
   useState,
 } from 'react'
+import { useReducedMotion } from '@/hooks/useVisualEffects'
 import { useDismiss } from '@/lib/hooks/use-dismiss'
 import { useHoverGesture } from '@/lib/hooks/use-hover-gesture'
 import { useTapGesture } from '@/lib/hooks/use-tap-gesture'
@@ -183,11 +184,11 @@ export function ExpandableActionBar({
   // an action whose label nobody can read. Only on the way down from expanded:
   // a controlled bar that declined to expand at all keeps its arm, which is
   // what lets its second tap act.
-  const wasExpanded = useRef(isExpanded)
-  useEffect(() => {
-    if (wasExpanded.current && !isExpanded) setTapExpanded(false)
-    wasExpanded.current = isExpanded
-  }, [isExpanded])
+  const [wasExpanded, setWasExpanded] = useState(isExpanded)
+  if (wasExpanded !== isExpanded) {
+    setWasExpanded(isExpanded)
+    if (!isExpanded) setTapExpanded(false)
+  }
 
   // A finger never hovers and Safari does not focus a button on tap, so a bar a
   // tap expanded would have nothing to close it. The tap that lands elsewhere

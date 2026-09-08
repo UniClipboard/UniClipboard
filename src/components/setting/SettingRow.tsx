@@ -28,8 +28,9 @@ export function SettingRow({
 
   return (
     <div
+      data-slot="setting-row"
       className={cn(
-        'flex min-w-0 flex-wrap items-center justify-between gap-x-6 gap-y-2.5 px-1 py-3.5',
+        'flex min-w-0 flex-wrap items-center justify-between gap-x-8 gap-y-3 px-1 py-4',
         className
       )}
     >
@@ -37,13 +38,18 @@ export function SettingRow({
         <div className="flex min-w-0 flex-[1_1_14rem] flex-col gap-1">
           {label && (
             <div className="flex flex-wrap items-center gap-2">
-              <h4 className="text-sm font-medium">{label}</h4>
+              <span data-slot="setting-label" className="text-sm font-normal">
+                {label}
+              </span>
               {showExperimental && <ExperimentalBadge />}
               {labelExtra}
             </div>
           )}
           {description && (
-            <p className="text-xs text-muted-foreground leading-relaxed break-words">
+            <p
+              data-slot="setting-description"
+              className="max-w-[34rem] text-xs text-muted-foreground leading-relaxed break-words"
+            >
               {description}
             </p>
           )}

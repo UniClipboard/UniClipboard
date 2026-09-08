@@ -369,7 +369,19 @@
   z-index: 9999;
 }
 
-/* Linux WebKit 低特效模式：优先保证响应速度与稳定渲染。 */
+/* Device-local effect policy, shared by all desktop windows. */
+.uc-menu-shadow {
+  filter: drop-shadow(0 1.125rem 1.75rem rgb(0 0 0 / 0.2));
+}
+
+html[data-uc-low-effects='true'] .uc-menu-shadow {
+  filter: none;
+}
+
+html[data-uc-low-effects='true'] .uc-effects-surface {
+  background-color: var(--background);
+}
+
 html[data-uc-low-effects='true'] {
   --shadow-2xs: none;
   --shadow-xs: none;
@@ -383,9 +395,9 @@ html[data-uc-low-effects='true'] {
   --shadow-blur: 0px;
 }
 
-html[data-uc-low-effects='true'] *,
-html[data-uc-low-effects='true'] *::before,
-html[data-uc-low-effects='true'] *::after {
+html[data-uc-reduce-motion='true'] *,
+html[data-uc-reduce-motion='true'] *::before,
+html[data-uc-reduce-motion='true'] *::after {
   animation: none !important;
   transition-property: none !important;
   transition-duration: 0s !important;
@@ -410,8 +422,8 @@ html[data-uc-low-effects='true'] .glass-strong {
   background-color: var(--background);
 }
 
-html[data-uc-low-effects='true']::view-transition-old(root),
-html[data-uc-low-effects='true']::view-transition-new(root) {
+html[data-uc-reduce-motion='true']::view-transition-old(root),
+html[data-uc-reduce-motion='true']::view-transition-new(root) {
   animation: none !important;
 }
 

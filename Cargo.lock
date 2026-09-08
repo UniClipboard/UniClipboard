@@ -10921,10 +10921,12 @@ dependencies = [
  "async-trait",
  "cargo_metadata",
  "gethostname",
+ "objc2-metal",
  "reqwest 0.12.28",
  "serde",
  "serde_json",
  "syn 2.0.119",
+ "sysinfo",
  "thiserror 1.0.69",
  "tokio",
  "tokio-util",
@@ -10936,6 +10938,7 @@ dependencies = [
  "uc-observability",
  "url",
  "uuid",
+ "windows 0.61.3",
  "wiremock",
 ]
 

@@ -34,7 +34,7 @@ export function getQuickPanelLayoutClassNames(isLinux: boolean, previewOnLeft = 
   return {
     container: 'flex h-screen w-screen overflow-hidden bg-transparent p-4',
     statusSurface: 'bg-transparent',
-    card: 'flex h-full w-full min-w-0 flex-col overflow-hidden rounded-xl border border-border/50 bg-background/95 shadow-xl backdrop-blur-xl',
+    card: 'uc-effects-surface flex h-full w-full min-w-0 flex-col overflow-hidden rounded-xl border border-border/50 bg-background/95 shadow-xl backdrop-blur-xl',
     previewCard:
       'flex h-full w-full min-w-0 flex-col overflow-hidden rounded-xl border border-border/50 bg-card text-card-foreground shadow-xl backdrop-blur-xl',
     previewExpanded: 'flex-1 basis-0 opacity-100 translate-x-0',

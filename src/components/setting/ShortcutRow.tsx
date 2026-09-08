@@ -1,7 +1,8 @@
 import { RotateCcw } from 'lucide-react'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { KeyRecorder } from '@/components/setting/KeyRecorder'
+import { SettingRow } from '@/components/setting/SettingRow'
 import { ShortcutKeys } from '@/components/setting/ShortcutKeys'
 import { Button } from '@/components/ui'
 import { Popover, PopoverContent, PopoverTitle, PopoverTrigger } from '@/components/ui/popover'
@@ -27,6 +28,15 @@ export function ShortcutRow({
 }: ShortcutRowProps) {
   const { t } = useTranslation()
   const [isRecording, setIsRecording] = useState(false)
+  const modifiedLabel = useMemo(
+    () =>
+      isModified ? (
+        <span className="text-xs font-medium text-primary">
+          {t('settings.sections.shortcuts.modified')}
+        </span>
+      ) : undefined,
+    [isModified, t]
+  )
 
   const handleConfirm = (key: string, clearedIds?: string[]) => {
     onOverrideChange(definition.id, key, clearedIds)
@@ -42,16 +52,7 @@ export function ShortcutRow({
   }
 
   return (
-    <div className="flex items-center justify-between gap-4 px-1 py-2.5">
-      <div className="min-w-0 flex-1">
-        <span className="text-sm">{t(definition.description)}</span>
-        {isModified && (
-          <span className="ml-2 text-xs text-primary font-medium">
-            {t('settings.sections.shortcuts.modified')}
-          </span>
-        )}
-      </div>
-
+    <SettingRow label={t(definition.description)} labelExtra={modifiedLabel}>
       <div className="flex items-center gap-2 shrink-0">
         <Popover open={isRecording} onOpenChange={setIsRecording}>
           <PopoverTrigger
@@ -94,6 +95,6 @@ export function ShortcutRow({
           </Button>
         )}
       </div>
-    </div>
+    </SettingRow>
   )
 }

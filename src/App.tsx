@@ -1,15 +1,15 @@
-import { LazyMotion, MotionConfig, domMax } from 'framer-motion'
+import { LazyMotion, domMax } from 'framer-motion'
 import { type ReactNode, useCallback, useMemo, useState } from 'react'
 import { BrowserRouter as Router, useNavigate } from 'react-router'
 import { unlockEncryptionSession } from '@/api/security'
 import { SidebarTitle, TitleBar } from '@/components'
 import { AppContent } from '@/components/app/AppContent'
+import VisualEffectsProvider from '@/components/motion/VisualEffectsProvider'
 import { SearchProvider } from '@/contexts/SearchContext'
 import { SettingProvider } from '@/contexts/SettingContext'
 import { ShortcutProvider } from '@/contexts/ShortcutContext'
 import { TitleBarSlotContext } from '@/contexts/titlebar-slot-context'
 import { UpdateProvider } from '@/contexts/UpdateContext'
-import { usePlatform } from '@/hooks/usePlatform'
 import { useUINavigateListener } from '@/hooks/useUINavigateListener'
 import { useWindowFrame } from '@/hooks/useWindowFrame'
 import { WindowShell } from '@/layouts'
@@ -22,10 +22,9 @@ const handleSetupComplete = () => {
 }
 
 export default function App() {
-  const { reduceVisualEffects } = usePlatform()
   return (
     <LazyMotion features={domMax} strict>
-      <MotionConfig reducedMotion={reduceVisualEffects ? 'always' : 'user'}>
+      <VisualEffectsProvider>
         <Router>
           <SearchProvider>
             <SettingProvider>
@@ -35,7 +34,7 @@ export default function App() {
             </SettingProvider>
           </SearchProvider>
         </Router>
-      </MotionConfig>
+      </VisualEffectsProvider>
     </LazyMotion>
   )
 }

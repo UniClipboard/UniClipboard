@@ -122,9 +122,11 @@ function buildProxy(): TypedCommands {
           // generated functions take positional args, so we just attach the
           // tuple — redactSensitiveArgs accepts an object/record only, so
           // wrap the tuple as an object first.
-          const safeArgs = redactSensitiveArgs(
-            Object.fromEntries(args.map((value, index) => [`arg${index}`, value]))
-          )
+          const safeArgs = prop.toLowerCase().includes('visualeffects')
+            ? {}
+            : redactSensitiveArgs(
+                Object.fromEntries(args.map((value, index) => [`arg${index}`, value]))
+              )
 
           recordDiagnosticBreadcrumb({
             category: 'tauri_command',

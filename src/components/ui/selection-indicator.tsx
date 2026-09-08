@@ -1,5 +1,5 @@
-import { m, useReducedMotion } from 'framer-motion'
-import { isLowEffectsEnabled } from '@/lib/platform'
+import { m } from 'framer-motion'
+import { useReducedMotion } from '@/hooks/useVisualEffects'
 import { cn } from '@/lib/utils'
 
 interface SelectionIndicatorProps {
@@ -9,7 +9,7 @@ interface SelectionIndicatorProps {
 
 export default function SelectionIndicator({ layoutId, className }: SelectionIndicatorProps) {
   const reducedMotion = useReducedMotion()
-  const instant = reducedMotion || isLowEffectsEnabled()
+  const instant = reducedMotion
 
   return (
     <m.span

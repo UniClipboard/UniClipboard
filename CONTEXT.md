@@ -352,6 +352,16 @@ _Avoid_: cleanup job、GC
 并清理缓存。
 _Avoid_: recovery、startup cleanup
 
+## Language — 桌面视觉偏好
+
+**Smooth Mode**：
+本机当前配置下的视觉偏好，提供自动、效果优先、流畅优先三档，保存后不参与设备同步；
+手动选择立即作用于各窗口，系统减少动效要求始终优先约束动画。
+自动模式在 Linux 默认流畅，在 macOS/Windows 根据设备能力选择，证据不足时保守减少效果；
+持续卡顿产生的自动降级仅在下次启动生效，之后保持，直到策略版本或设备能力分类变化后重新判断。
+详见[流畅模式规格](docs/specs/2026-09-08-adaptive-smooth-mode-spec.md)。
+_Avoid_: synced performance setting、background sync mode
+
 ## Relationships — 关系
 
 - 一个剪贴板 **Entry** 拥有零或多个 **Tracked inbound file transfer**

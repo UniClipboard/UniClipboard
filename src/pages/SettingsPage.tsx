@@ -100,7 +100,7 @@ function SettingsPage() {
           {content}
         </main>
       ) : (
-        <InsetSurface className="mr-2 mb-2">{content}</InsetSurface>
+        <InsetSurface className="mr-2 mb-2 rounded-xl">{content}</InsetSurface>
       )}
     </SidebarProvider>
   )

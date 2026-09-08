@@ -5,20 +5,15 @@
 //! *routing + happy path*: an already-initialized Bob runs `join --switch
 //! --yes` against Alice's invitation and ends up a member of Alice's space.
 //!
-//! NOTE: data round-trip integrity — seeded clipboard history surviving the
-//! re-encryption — is intentionally NOT covered here. The headless E2E binary
-//! has no real OS clipboard, and it is built without `dev-tools` (CI runs
-//! `cargo build -p uc-daemon -p uc-cli`), so there is no `dev seed-clipboard`
-//! / `dev dump-clipboard` and no way to populate or read local history. That
-//! assertion lives in `scripts/test_switch_space_e2e.sh`, which runs with
-//! `dev-tools` against a real macOS clipboard.
+//! The separate development CLI seeds isolated history; switching and reading
+//! the migrated content use the standard CLI and the real daemon.
 //!
 //! Run with: cargo test -p uc-e2e-tests -- --ignored
 
 use std::time::Duration;
 
 use serde_json::Value;
-use uc_e2e_tests::{invite_switch_round, setup_initialized_node, TestCli};
+use uc_e2e_tests::{invite_switch_round, setup_initialized_node, NodeBinarySet, TestCli};
 
 const PASSPHRASE_ALICE: &str = "switch-alice-passphrase";
 const PASSPHRASE_BOB: &str = "switch-bob-passphrase";
@@ -55,8 +50,23 @@ async fn already_set_up_join_routes_to_switch_and_migrates_membership() {
         setup_initialized_node("switch-alice", "alice-node", PASSPHRASE_ALICE).await;
 
     // Bob: his own space B. He must explicitly pass `--switch` to migrate.
-    let (bob_daemon, bob_cli) =
+    let (mut bob_daemon, bob_cli) =
         setup_initialized_node("switch-bob", "bob-node", PASSPHRASE_BOB).await;
+
+    let dev_cli = TestCli::with_binaries(&bob_daemon.profile, &NodeBinarySet::current_dev_cli());
+    bob_daemon.kill();
+    let original_text = "history remains readable after switching spaces";
+    let seeded = dev_cli.run_capture(&["dev", "seed-clipboard", "--text", original_text]);
+    assert!(seeded.success(), "seed history failed: {seeded:?}");
+    let entry_id = seeded
+        .stdout
+        .lines()
+        .find_map(|line| line.strip_prefix("SEED_ENTRY_ID="))
+        .expect("seeded entry id");
+    bob_daemon
+        .restart_preserving()
+        .await
+        .expect("restart seeded node");
 
     // Bob switches into Alice's space via `join --switch --yes`.
     let switch_out = invite_switch_round(&alice_cli, &bob_cli, PASSPHRASE_ALICE).await;
@@ -68,20 +78,20 @@ async fn already_set_up_join_routes_to_switch_and_migrates_membership() {
         switch_out.stderr,
     );
 
-    // The switch path prints "Switched space" + a `migrated_records` line on
-    // stderr (all ui output goes to Term::stderr). Redeem prints "Joined
-    // space" with no `migrated_records` — so these confirm `--switch` took the
-    // destructive switch, not a first-time join.
+    // Confirm routing, then verify the actual content survived re-encryption.
     assert!(
         switch_out.stderr.contains("Switched space"),
         "expected switch-path output, got stderr: {}",
         switch_out.stderr,
     );
+    let migrated = bob_cli.run_capture(&["--json", "get", "--id", entry_id]);
     assert!(
-        switch_out.stderr.contains("migrated_records"),
-        "switch output should report migrated_records, got stderr: {}",
-        switch_out.stderr,
+        migrated.success(),
+        "migrated entry is unreadable: {migrated:?}"
     );
+    let migrated: Value = serde_json::from_str(migrated.stdout.trim()).unwrap();
+    assert_eq!(migrated["entry_id"], entry_id);
+    assert_eq!(migrated["text"], original_text);
 
     // Settle, then both sides should converge on exactly two members
     // (local + peer). Bob's old space B had only himself, so a clean switch

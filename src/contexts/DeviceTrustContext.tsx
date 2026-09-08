@@ -178,16 +178,18 @@ export function DeviceTrustProvider({
     }
   }, [enabled])
 
+  const refreshFromSubscription = useEffectEvent(() => void refresh())
+
   useEffect(() => {
     if (!enabled) return
-    const unsubscribe = daemonWs.subscribe(['device-trust', 'system'], () => void refresh())
-    const reconnect = daemonWs.onReconnect(() => void refresh())
-    void refresh()
+    const unsubscribe = daemonWs.subscribe(['device-trust', 'system'], refreshFromSubscription)
+    const reconnect = daemonWs.onReconnect(refreshFromSubscription)
+    refreshFromSubscription()
     return () => {
       unsubscribe()
       reconnect()
     }
-  }, [enabled, refresh])
+  }, [enabled])
 
   const refreshWhenVisible = useEffectEvent(() => {
     if (document.visibilityState === 'visible') void refresh()

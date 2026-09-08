@@ -126,11 +126,17 @@ export const AnimatedToastItem = memo(function ToastItem({
         {renderToast ? (
           renderToast(toast)
         ) : (
-          <div className="flex items-start gap-3">
+          <div
+            className={cn(
+              'flex gap-3',
+              toast.description || toast.action ? 'items-start' : 'items-center'
+            )}
+          >
             <m.span
               layout
               className={cn(
-                'mt-0.5 inline-flex size-7 shrink-0 items-center justify-center rounded-full',
+                'inline-flex size-7 shrink-0 items-center justify-center rounded-full',
+                (toast.description || toast.action) && 'mt-0.5',
                 STATUS_CLASS[status],
                 classNames?.iconWrap
               )}

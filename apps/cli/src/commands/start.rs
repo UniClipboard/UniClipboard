@@ -32,6 +32,27 @@ impl fmt::Display for StartOutput {
 
 /// Run the start command.
 pub async fn run(foreground: bool, server: bool, json: bool, verbose: bool) -> i32 {
+    configure_run_mode(server);
+    if foreground {
+        run_foreground(json, verbose).await
+    } else {
+        // Release the temporary control lease before promotion can drain it.
+        {
+            let (_lease, _service) =
+                match super::app_session::connect_setup_facade_with_lease(verbose).await {
+                    Ok(session) => session,
+                    Err(code) => return code,
+                };
+            if let Some(code) = check_setup_complete(json).await {
+                return code;
+            }
+        }
+        configure_run_mode(server);
+        run_background(json, server).await
+    }
+}
+
+fn configure_run_mode(server: bool) {
     if server {
         // Translate the user's `--server` flag into the daemon spawn
         // contract. The spawned `uniclipd` child inherits this process's
@@ -45,16 +66,6 @@ pub async fn run(foreground: bool, server: bool, json: bool, verbose: bool) -> i
         );
     } else {
         std::env::remove_var(uc_daemon_process::spawn_contract::RUN_MODE_ENV);
-    }
-
-    if let Some(code) = check_setup_complete(json, verbose).await {
-        return code;
-    }
-
-    if foreground {
-        run_foreground(json, verbose).await
-    } else {
-        run_background(json, server).await
     }
 }
 
@@ -72,17 +83,17 @@ fn promote_target_residency(server: bool) -> DaemonResidency {
     }
 }
 
-/// Block `start` if Space setup hasn't completed for the active
-/// profile. Uses a thin filesystem check ([`crate::setup_check::is_setup_complete`])
-/// that reads the `.setup_status` JSON file (and legacy marker) directly,
-/// avoiding the heavy `uc-bootstrap` assembly stack.
+/// Ask a running daemon whether setup is complete, without knowing its storage layout.
 ///
 /// Returns `Some(exit_code)` to block, `None` to proceed.
-async fn check_setup_complete(json: bool, _verbose: bool) -> Option<i32> {
-    // Resolution failure (e.g. missing app dirs) → let daemon surface
-    // the underlying error rather than masking it here.
-    if crate::setup_check::is_setup_complete().unwrap_or(true) {
-        return None;
+async fn check_setup_complete(json: bool) -> Option<i32> {
+    match crate::setup_check::is_setup_complete().await {
+        Ok(true) => return None,
+        Ok(false) => {}
+        Err(error) => {
+            ui::error(&format!("Failed to read setup state: {error}"));
+            return Some(exit_codes::EXIT_ERROR);
+        }
     }
 
     if json {
@@ -143,6 +154,9 @@ async fn run_foreground(json: bool, _verbose: bool) -> i32 {
     // (restart/takeover is L8); Absent → fall through to the foreground spawn.
     match local_daemon::probe_running().await {
         Ok(uc_daemon_contract::probe::ProbeOutcome::Compatible(_)) => {
+            if let Some(code) = check_setup_complete(json).await {
+                return code;
+            }
             let pid = uc_daemon_process::process_metadata::read_pid_metadata()
                 .ok()
                 .flatten()
@@ -182,7 +196,11 @@ async fn run_foreground(json: bool, _verbose: bool) -> i32 {
 
     let mut child = match std::process::Command::new(&daemon_exe)
         .stdin(Stdio::null())
-        .stdout(Stdio::inherit())
+        .stdout(if json {
+            Stdio::from(std::io::stderr())
+        } else {
+            Stdio::inherit()
+        })
         .stderr(Stdio::inherit())
         .spawn()
     {
@@ -192,6 +210,18 @@ async fn run_foreground(json: bool, _verbose: bool) -> i32 {
             return exit_codes::EXIT_ERROR;
         }
     };
+
+    if let Err(error) = local_daemon::wait_for_running_daemon().await {
+        let _ = child.kill();
+        let _ = child.wait();
+        ui::error(&format!("Failed to start daemon: {error}"));
+        return exit_codes::EXIT_ERROR;
+    }
+    if let Some(code) = check_setup_complete(json).await {
+        let _ = child.kill();
+        let _ = child.wait();
+        return code;
+    }
 
     match child.wait() {
         Ok(_) => exit_codes::EXIT_SUCCESS,

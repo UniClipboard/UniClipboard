@@ -16,6 +16,7 @@ path = "src/main.rs"
 # daemon-client CLI; release builds omit this feature to shed iroh/diesel/
 # libsqlite3-sys from the binary.
 dev-tools = [
+    "dep:uc-observability",
     "dep:uc-bootstrap",
     "dep:uc-engine",
     "uc-engine/lan-compat",
@@ -24,7 +25,6 @@ dev-tools = [
 ]
 
 [dependencies]
-uc-observability = { path = "../../crates/uc-observability" }
 uc-daemon-client = { path = "../../crates/uc-daemon-client" }
 uc-daemon-contract = { path = "../../crates/uc-daemon-contract" }
 # ADR-008 P5-0: the process-management primitives (process_metadata / socket /
@@ -36,6 +36,7 @@ uc-daemon-process = { path = "../../crates/uc-daemon-process" }
 uc-app-paths = { path = "../../crates/uc-app-paths" }
 
 # --- Heavy optional deps (only pulled by `dev-tools` feature) ---------------
+uc-observability = { path = "../../crates/uc-observability", optional = true }
 uc-bootstrap = { path = "../../crates/uc-bootstrap", optional = true }
 uc-engine = { workspace = true, optional = true, features = ["dev-tools"] }
 # Hidden `probe` subcommand group reads/writes the OS clipboard directly

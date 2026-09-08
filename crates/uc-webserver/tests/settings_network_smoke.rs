@@ -35,7 +35,6 @@ impl Default for SettingsBoundaryFixture {
     fn default() -> Self {
         let mut current = SettingsSummary::default();
         current.network.allow_relay_fallback = true;
-        current.general.telemetry_enabled = true;
         Self { current }
     }
 }
@@ -67,9 +66,6 @@ fn simulate_put(fixture: &mut SettingsBoundaryFixture, body_json: &str) -> Value
         }
         if let Some(value) = general.device_name {
             fixture.current.general.device_name = value;
-        }
-        if let Some(value) = general.telemetry_enabled {
-            fixture.current.general.telemetry_enabled = value;
         }
     }
     if let Some(network) = patch.network {

@@ -14,7 +14,11 @@
           "identifier": "e2e-wdio",
           "description": "WebdriverIO permissions for the dedicated E2E build",
           "windows": ["main", "quick-panel"],
-          "permissions": ["wdio:default"]
+          "permissions": [
+            "wdio:default",
+            "core:window:allow-set-min-size",
+            "core:window:allow-set-size"
+          ]
         }
       ]
     }

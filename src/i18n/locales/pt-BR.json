@@ -1,5 +1,51 @@
 {
   "deviceTrust": {
+    "presentation": {
+      "localRemovalTitle": "{{actor}} quer remover este dispositivo",
+      "leave": "Sair do grupo de dispositivos",
+      "keep": "Manter os dispositivos existentes",
+      "leaveEffect": "Parar a sincronização com todos os dispositivos.",
+      "keepEffect": "Manter os dispositivos existentes. A sincronização com {{names}} será pausada.",
+      "showDevices": "Ver dispositivos",
+      "hideDevices": "Ocultar dispositivos",
+      "scope": "Escopo esperado de sincronização: {{names}}.",
+      "title": "Escolha um grupo de dispositivos para {{name}}",
+      "local": "Este dispositivo: {{name}}",
+      "localMember": "{{name}} (este dispositivo)",
+      "unnamed": "Dispositivo sem nome",
+      "members": "Membros do grupo",
+      "membersUnknown": "Os detalhes dos membros estão incompletos",
+      "impactUnknown": "Os detalhes dos efeitos desta escolha estão incompletos.",
+      "detailsIncomplete": "Alguns detalhes da alteração não estão disponíveis.",
+      "paused": "A sincronização com {{names}} será pausada.",
+      "rejoin": "{{names}} precisa entrar novamente para sincronizar no grupo selecionado.",
+      "waiting": "Aguardando a confirmação de {{names}}.",
+      "removed": "{{actor}} propôs remover {{target}}.",
+      "added": "{{actor}} adicionou {{target}}.",
+      "accepted": "{{actor}} aceitou remover {{target}}.",
+      "rejected": "{{actor}} recusou remover {{target}}.",
+      "reason": {
+        "unknown": "Os grupos de dispositivos são diferentes. Não há informações suficientes para explicar o motivo.",
+        "pending_removal": "Uma remoção de dispositivo precisa da sua decisão.",
+        "different_removals": "Os dois lados removeram dispositivos diferentes.",
+        "removal_decision_disagreement": "Os dois lados tomaram decisões diferentes sobre a mesma remoção.",
+        "diverged_history": "Os dois lados registraram alterações diferentes no grupo de dispositivos."
+      },
+      "select": "Escolha um grupo de dispositivos",
+      "back": "Voltar às opções",
+      "retry": "Verificar novamente",
+      "processing": "Enviando sua escolha",
+      "checking": "Verificando o resultado",
+      "pending": "Sua escolha foi recebida e ainda está sendo processada.",
+      "completed": "Grupo de dispositivos atualizado",
+      "next": "Continuar",
+      "done": "Concluído",
+      "more": "A escolha anterior foi concluída. Mais {{count}} precisam da sua decisão.",
+      "uncertain": "Não foi possível confirmar o resultado. Verifique novamente.",
+      "changed": "As opções mudaram. Revise-as novamente.",
+      "loading": "Verificando as relações entre dispositivos",
+      "loadFailed": "Não foi possível carregar as relações entre dispositivos. Tente novamente."
+    },
     "listSeparator": ", ",
     "notification": {
       "title": "Revise a relação dos dispositivos",
@@ -128,6 +174,7 @@
     }
   },
   "rePairingNotice": {
+    "dontShowAgain": "Não mostrar novamente",
     "title": "Pareie seus dispositivos novamente",
     "body": "Esta versão altera o esquema de pareamento de dispositivos. Seus pareamentos anteriores não sincronizam mais. Abra Dispositivos para convidar o outro dispositivo ou entrar novamente a partir dele.",
     "goToDevices": "Abrir gerenciamento de dispositivos"

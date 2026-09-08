@@ -3,6 +3,7 @@ import { I18nextProvider } from 'react-i18next'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import SwitchSpaceDialog from '@/components/device/SwitchSpaceDialog'
 import i18n from '@/i18n'
+import { fetchLocalDeviceInfo, fetchSpaceMembers } from '@/store/slices/devicesSlice'
 
 const switchSpace = vi.hoisted(() => vi.fn())
 const cancelJoinSpace = vi.hoisted(() => vi.fn())
@@ -57,8 +58,9 @@ describe('SwitchSpaceDialog durable admission', () => {
         <SwitchSpaceDialog open onOpenChange={onOpenChange} />
       </I18nextProvider>
     )
-    fireEvent.change(screen.getByLabelText('Invitation code'), { target: { value: 'ABCD1234' } })
+    fireEvent.change(screen.getByLabelText('Invitation code'), { target: { value: '012345' } })
     const input = screen.getByLabelText('New space passphrase')
+    expect(input).toHaveFocus()
     fireEvent.change(input, { target: { value: 'temporary passphrase' } })
     const popup = screen.getByRole('dialog')
 
@@ -77,8 +79,36 @@ describe('SwitchSpaceDialog durable admission', () => {
       </I18nextProvider>
     )
     expect(screen.getByLabelText('Invitation code')).toHaveValue('')
-    fireEvent.change(screen.getByLabelText('Invitation code'), { target: { value: 'ABCD1234' } })
+    fireEvent.change(screen.getByLabelText('Invitation code'), { target: { value: '012345' } })
     expect(screen.getByLabelText('New space passphrase')).toHaveValue('')
+  })
+
+  it('refreshes devices once after immediate success and preserves success on rerender', async () => {
+    switchSpace.mockResolvedValue({
+      status: 'active',
+      joinedSpace: { migratedRecords: 3, preservedUnreadableRecords: 0 },
+    })
+    const { rerender } = render(
+      <I18nextProvider i18n={i18n}>
+        <SwitchSpaceDialog open onOpenChange={vi.fn()} />
+      </I18nextProvider>
+    )
+    fireEvent.change(screen.getByLabelText('Invitation code'), { target: { value: '012345' } })
+    fireEvent.change(screen.getByLabelText('New space passphrase'), {
+      target: { value: 'passphrase' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Switch' }))
+    await screen.findByTestId('switch-space-success')
+    expect(fetchSpaceMembers).toHaveBeenCalledTimes(1)
+    expect(fetchLocalDeviceInfo).toHaveBeenCalledTimes(1)
+    rerender(
+      <I18nextProvider i18n={i18n}>
+        <SwitchSpaceDialog open onOpenChange={vi.fn()} />
+      </I18nextProvider>
+    )
+    expect(screen.getByTestId('switch-space-success')).toBeInTheDocument()
+    expect(fetchSpaceMembers).toHaveBeenCalledTimes(1)
+    expect(fetchLocalDeviceInfo).toHaveBeenCalledTimes(1)
   })
 
   it('shows a cancel action while a switch admission is pending', async () => {
@@ -89,7 +119,7 @@ describe('SwitchSpaceDialog durable admission', () => {
     )
 
     fireEvent.change(screen.getByLabelText('Invitation code'), {
-      target: { value: 'ABCD1234' },
+      target: { value: '012345' },
     })
     fireEvent.change(screen.getByLabelText('New space passphrase'), {
       target: { value: 'passphrase' },
@@ -110,7 +140,7 @@ describe('SwitchSpaceDialog durable admission', () => {
     )
 
     fireEvent.change(screen.getByLabelText('Invitation code'), {
-      target: { value: 'ABCD1234' },
+      target: { value: '012345' },
     })
     fireEvent.change(screen.getByLabelText('New space passphrase'), {
       target: { value: 'passphrase' },

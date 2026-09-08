@@ -1,5 +1,51 @@
 {
   "deviceTrust": {
+    "presentation": {
+      "localRemovalTitle": "{{actor}} 要将本机移出设备组",
+      "leave": "退出设备组",
+      "keep": "保留现有设备",
+      "leaveEffect": "停止与所有设备同步。",
+      "keepEffect": "保留原来的设备，与 {{names}} 的同步暂停。",
+      "showDevices": "查看设备",
+      "hideDevices": "收起设备",
+      "scope": "选择后的同步范围：{{names}}。",
+      "title": "为 {{name}} 选择设备组",
+      "local": "本机：{{name}}",
+      "localMember": "{{name}}（本机）",
+      "unnamed": "未命名设备",
+      "members": "组内设备",
+      "membersUnknown": "成员资料暂不完整",
+      "impactUnknown": "选择影响的资料暂不完整。",
+      "detailsIncomplete": "部分变化详情暂不可用。",
+      "paused": "与 {{names}} 的同步将暂停。",
+      "rejoin": "{{names}} 若要加入所选组同步，需要重新加入。",
+      "waiting": "等待 {{names}} 确认。",
+      "removed": "{{actor}} 提出移除 {{target}}。",
+      "added": "{{actor}} 加入了设备 {{target}}。",
+      "accepted": "{{actor}} 接受了移除 {{target}}。",
+      "rejected": "{{actor}} 拒绝了移除 {{target}}。",
+      "reason": {
+        "unknown": "设备组存在差异，暂时没有足够资料说明原因。",
+        "pending_removal": "设备组有一项移除需要你决定。",
+        "different_removals": "两侧移除了不同的设备。",
+        "removal_decision_disagreement": "对同一次移除，两侧作出了不同决定。",
+        "diverged_history": "两侧记录的设备组变化不同。"
+      },
+      "select": "请选择一个设备组",
+      "back": "返回选择",
+      "retry": "重新检查",
+      "processing": "正在提交你的选择",
+      "checking": "正在核对处理结果",
+      "pending": "选择已受理，仍在处理。",
+      "completed": "设备组已更新",
+      "next": "继续处理",
+      "done": "完成",
+      "more": "上一项已处理，还有 {{count}} 项需要选择。",
+      "uncertain": "暂时无法确认处理结果，请重新检查。",
+      "changed": "选择内容已变化，请重新核对。",
+      "loading": "正在检查设备关系",
+      "loadFailed": "暂时无法读取设备关系，请重试。"
+    },
     "listSeparator": "、",
     "notification": {
       "title": "设备关系需要查看",
@@ -130,7 +176,8 @@
   "rePairingNotice": {
     "title": "请重新配对设备",
     "body": "本版本更新了设备配对机制，原有配对已不可用。请前往「设备」页向另一台设备发送邀请或重新加入。",
-    "goToDevices": "前往设备管理"
+    "goToDevices": "前往设备管理",
+    "dontShowAgain": "不再提示"
   },
   "settings": {
     "title": "设置",

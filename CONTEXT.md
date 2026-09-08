@@ -69,6 +69,8 @@ _Avoid_: pending removal flag、local dialog state、client-side decision
 Engine 针对当前设备组问题给出的可选成员集合，包含是否为当前组、成员是否完整及是否需要重新配对；
 **Pending device change** 是其中一种待决定情况。客户端按当前查询版本提交选项，状态变化后重新查询；
 涉及移除本机必须再次确认，提交结果分别表达已完成、等待完成或需要重新配对，不得把提交成功当作完成。
+候选原因和影响预览也由 Engine 给出；候选成员、预期同步范围、暂停同步、等待确认和需要重新加入是独立事实。
+预期同步范围不代表已获同步授权或已经恢复同步，客户端不得从名单差异自行推导影响。
 _Avoid_: client-side group inference、fixed apply-or-keep decision
 
 **Membership divergence**：
@@ -87,6 +89,8 @@ _Avoid_: trusted peer list、relationship history、all known devices
 重新配对」状态；客户端只能展示并重新查询该事实，关闭提醒不会清除它，成功建立新的设备
 关系后才清除。它取代等待旧成员重新准入的升级流程，不是网络连接状态，也不由客户端本地
 状态决定。
+桌面端可持久记住「不再提示」，但它只控制启动提醒，不清除 Engine 的重新配对要求，也不恢复旧设备关系；
+仅选择「前往设备管理」不会永久隐藏提醒。
 _Avoid_: readmission、reconnect、client-side retry、temporary pairing state
 
 **Space reset**：

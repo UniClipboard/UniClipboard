@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import i18n from '@/i18n'
@@ -10,6 +10,9 @@ import {
   ShowInvitationScreen,
   SpaceReadyScreen,
 } from '@/pages/setup/screens'
+
+const expiredInvitationAtMs = 0
+const activeInvitationAtMs = 4_102_444_800_000
 
 describe('setup screens e2e selectors', () => {
   beforeAll(() => {
@@ -72,7 +75,9 @@ describe('setup screens e2e selectors', () => {
   it('returns from an invitation as soon as its code expires', async () => {
     const onCancel = vi.fn()
 
-    render(<ShowInvitationScreen code="ABC123" expiresAtMs={Date.now() - 1} onCancel={onCancel} />)
+    render(
+      <ShowInvitationScreen code="123456" expiresAtMs={expiredInvitationAtMs} onCancel={onCancel} />
+    )
 
     await waitFor(() => expect(onCancel).toHaveBeenCalledTimes(1))
   })
@@ -101,7 +106,7 @@ describe('setup screens e2e selectors', () => {
     render(<RedeemInvitationScreen onSubmit={onSubmit} onBack={vi.fn()} />)
 
     const codeInput = screen.getByLabelText('Invitation code')
-    await user.type(codeInput, 'ABCD1234')
+    await user.type(codeInput, '012345')
     const passphraseInput = await screen.findByLabelText('Space passphrase')
     await user.type(passphraseInput, 'wrong passphrase')
     await user.click(screen.getByTestId('setup-redeem-submit'))
@@ -110,8 +115,38 @@ describe('setup screens e2e selectors', () => {
     expect(codeInput).toHaveValue('')
     expect(screen.queryByLabelText('Space passphrase')).not.toBeInTheDocument()
 
-    await user.type(codeInput, 'WXYZ5678')
+    await user.type(codeInput, '987654')
     expect(await screen.findByLabelText('Space passphrase')).toHaveValue('')
+  })
+
+  it('accepts a pasted six-digit code with leading zeros and submits all digits', async () => {
+    const user = userEvent.setup()
+    const onSubmit = vi.fn().mockResolvedValue({ ok: true, redeem: null })
+    render(<RedeemInvitationScreen onSubmit={onSubmit} onBack={vi.fn()} />)
+    const codeInput = screen.getByLabelText('Invitation code')
+    expect(document.querySelectorAll('[data-slot="input-otp-slot"]')).toHaveLength(6)
+    await user.type(codeInput, 'abc')
+    expect(codeInput).toHaveValue('')
+    expect(screen.getByTestId('setup-redeem-submit')).toBeDisabled()
+    await user.paste('000-001')
+    expect(codeInput).toHaveValue('000001')
+    const passphrase = await screen.findByLabelText('Space passphrase')
+    expect(passphrase).toHaveFocus()
+    await user.type(passphrase, 'secret')
+    await user.click(screen.getByTestId('setup-redeem-submit'))
+    expect(onSubmit).toHaveBeenCalledWith({ code: '000001', passphrase: 'secret' })
+  })
+
+  it('refocuses the passphrase when a code is completed again during the exit animation', () => {
+    render(<RedeemInvitationScreen onSubmit={vi.fn()} onBack={vi.fn()} />)
+    const codeInput = screen.getByLabelText('Invitation code')
+    fireEvent.change(codeInput, { target: { value: '012345' } })
+    const passphrase = screen.getByLabelText('Space passphrase')
+    expect(passphrase).toHaveFocus()
+    codeInput.focus()
+    fireEvent.change(codeInput, { target: { value: '01234' } })
+    fireEvent.change(codeInput, { target: { value: '012345' } })
+    expect(screen.getByLabelText('Space passphrase')).toHaveFocus()
   })
 
   it('keeps the invitation and passphrase when the other device needs an update', async () => {
@@ -125,13 +160,13 @@ describe('setup screens e2e selectors', () => {
     render(<RedeemInvitationScreen onSubmit={onSubmit} onBack={vi.fn()} />)
 
     const codeInput = screen.getByLabelText('Invitation code')
-    await user.type(codeInput, 'ABCD1234')
+    await user.type(codeInput, '012345')
     const passphraseInput = await screen.findByLabelText('Space passphrase')
     await user.type(passphraseInput, 'correct passphrase')
     await user.click(screen.getByTestId('setup-redeem-submit'))
 
     await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1))
-    expect(codeInput).toHaveValue('ABCD1234')
+    expect(codeInput).toHaveValue('012345')
     expect(passphraseInput).toHaveValue('correct passphrase')
     expect(
       screen.getByText(i18n.t('setup.redeemInvitation.errors.sponsorUpgradeRequired'))
@@ -156,9 +191,9 @@ describe('setup screens e2e selectors', () => {
     expect(screen.getByTestId('setup-redeem-submit')).toBeInTheDocument()
 
     rerender(
-      <ShowInvitationScreen code="ABCD1234" expiresAtMs={Date.now() + 60_000} onCancel={noop} />
+      <ShowInvitationScreen code="012345" expiresAtMs={activeInvitationAtMs} onCancel={noop} />
     )
-    expect(screen.getByTestId('setup-invitation-code')).toHaveTextContent('ABCD-1234')
+    expect(screen.getByTestId('setup-invitation-code')).toHaveTextContent('012-345')
     expect(screen.getByTestId('setup-invitation-cancel')).toBeInTheDocument()
 
     rerender(<PairingCompleteScreen peerDeviceId="peer-device-id" onDone={noop} />)

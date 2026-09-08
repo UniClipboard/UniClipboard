@@ -64,5 +64,8 @@ export function getDeviceTrustStatus(
   if (device.groupRelationship === 'pending_local_decision') {
     return { tone: 'warning', status: { kind: 'removing', label: t('deviceTrust.status.pending') } }
   }
+  if (device.groupRelationship === 'confirmation_pending') {
+    return { tone: 'warning', status: { kind: 'paused', label: t('setup.joinPending.title') } }
+  }
   return null
 }

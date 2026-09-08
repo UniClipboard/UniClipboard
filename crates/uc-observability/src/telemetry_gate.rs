@@ -18,6 +18,69 @@
 //! before any user-visible event would normally be processed.
 
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::{
+    io::Write,
+    path::{Path, PathBuf},
+    sync::{Mutex, OnceLock},
+};
+
+static PREFERENCE_PATH: OnceLock<PathBuf> = OnceLock::new();
+static PREFERENCE_WRITE: Mutex<()> = Mutex::new(());
+
+/// Initialize the desktop-owned preference before Engine rewrites its settings.
+pub fn initialize_preference(settings_path: &Path) -> anyhow::Result<bool> {
+    let path = settings_path.with_file_name("desktop-telemetry.json");
+    PREFERENCE_PATH
+        .set(path.clone())
+        .map_err(|_| anyhow::anyhow!("telemetry preference already initialized"))?;
+    let enabled = load_preference(&path, settings_path)?;
+    set_telemetry_enabled(enabled);
+    Ok(enabled)
+}
+
+fn load_preference(path: &Path, legacy_path: &Path) -> anyhow::Result<bool> {
+    match std::fs::read(path) {
+        Ok(bytes) => Ok(serde_json::from_slice::<bool>(&bytes)?),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            let enabled = match std::fs::read(legacy_path) {
+                Ok(bytes) => serde_json::from_slice::<serde_json::Value>(&bytes)?
+                    .pointer("/general/telemetry_enabled")
+                    .and_then(serde_json::Value::as_bool)
+                    .unwrap_or(true),
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => true,
+                Err(error) => return Err(error.into()),
+            };
+            write_preference(path, enabled)?;
+            Ok(enabled)
+        }
+        Err(error) => Err(error.into()),
+    }
+}
+
+fn write_preference(path: &Path, enabled: bool) -> anyhow::Result<()> {
+    let parent = path
+        .parent()
+        .ok_or_else(|| anyhow::anyhow!("missing preference directory"))?;
+    std::fs::create_dir_all(parent)?;
+    let mut file = tempfile::NamedTempFile::new_in(parent)?;
+    file.write_all(serde_json::to_string(&enabled)?.as_bytes())?;
+    file.as_file().sync_all()?;
+    file.persist(path)?;
+    Ok(())
+}
+
+/// Persist first so a failed save cannot change the runtime preference.
+pub fn save_preference(enabled: bool) -> anyhow::Result<()> {
+    let _guard = PREFERENCE_WRITE
+        .lock()
+        .map_err(|_| anyhow::anyhow!("telemetry preference lock poisoned"))?;
+    let path = PREFERENCE_PATH
+        .get()
+        .ok_or_else(|| anyhow::anyhow!("telemetry preference is not initialized"))?;
+    write_preference(path, enabled)?;
+    set_telemetry_enabled(enabled);
+    Ok(())
+}
 
 static TELEMETRY_ENABLED: AtomicBool = AtomicBool::new(true);
 
@@ -52,6 +115,28 @@ mod tests {
     // serialize them here to prevent set(false) in one from racing
     // assert(true) in the other.
     static TEST_LOCK: Mutex<()> = Mutex::new(());
+
+    #[test]
+    fn preference_preserves_legacy_opt_out_and_survives_engine_rewrite() {
+        let dir = tempfile::tempdir().unwrap();
+        let legacy = dir.path().join("settings.json");
+        let path = dir.path().join("desktop-telemetry.json");
+        std::fs::write(&legacy, r#"{"general":{"telemetry_enabled":false}}"#).unwrap();
+        assert!(!load_preference(&path, &legacy).unwrap());
+        std::fs::write(&legacy, r#"{"general":{}}"#).unwrap();
+        assert!(!load_preference(&path, &legacy).unwrap());
+        write_preference(&path, true).unwrap();
+        assert!(load_preference(&path, &legacy).unwrap());
+    }
+
+    #[test]
+    fn corrupt_preference_is_not_replaced_with_enabled_default() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("desktop-telemetry.json");
+        std::fs::write(&path, "invalid").unwrap();
+        assert!(load_preference(&path, &dir.path().join("settings.json")).is_err());
+        assert_eq!(std::fs::read_to_string(path).unwrap(), "invalid");
+    }
 
     #[test]
     fn default_is_true_to_avoid_dropping_pre_init_events() {

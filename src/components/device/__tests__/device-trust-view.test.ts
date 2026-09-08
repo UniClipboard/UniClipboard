@@ -1,7 +1,19 @@
 import { describe, expect, it } from 'vitest'
 import type { DeviceTrustSnapshot } from '@/api/daemon/device-trust'
 import type { SpaceMember } from '@/api/daemon/members'
-import { buildDeviceTrustListView } from '@/components/device/device-trust-view'
+import {
+  buildDeviceTrustListView,
+  getDeviceTrustStatus,
+} from '@/components/device/device-trust-view'
+
+it('shows waiting for confirmation even when the peer is reachable', () => {
+  expect(
+    getDeviceTrustStatus(
+      { ...snapshot.devices[1], groupRelationship: 'confirmation_pending' },
+      key => key
+    )
+  ).toEqual({ tone: 'warning', status: { kind: 'paused', label: 'setup.joinPending.title' } })
+})
 
 const admittedPeer: SpaceMember = {
   peerId: 'peer-a',

@@ -20,7 +20,15 @@ import {
   Wifi,
   XCircle,
 } from 'lucide-react'
-import { useEffect, useEffectEvent, useMemo, useRef, useState, type ReactNode } from 'react'
+import {
+  useEffect,
+  useEffectEvent,
+  useMemo,
+  useReducer,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react'
 import { useTranslation } from 'react-i18next'
 import { getSettings } from '@/api/daemon/settings'
 import type {
@@ -30,12 +38,12 @@ import type {
   RedeemInvitationErrorKind,
   ActiveJoinSpaceResponse,
 } from '@/api/daemon/setupV2'
-import { INVITATION_CODE_LENGTH, formatInvitationCode } from '@/components/invitation-code-utils'
 import { InvitationCodeInput } from '@/components/InvitationCodeInput'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useConfigImport, type ConfigImportErrorKind } from '@/hooks/useConfigImport'
+import { INVITATION_CODE_LENGTH, formatInvitationCode } from '@/lib/invitation-code'
 import { cn } from '@/lib/utils'
 
 // ── Common shell ───────────────────────────────────────────────────────────
@@ -283,6 +291,17 @@ function initializeErrorMessage(
   }
 }
 
+interface InitializeForm {
+  deviceName: string
+  pass1: string
+  pass2: string
+  errorKind: InitializeSpaceErrorKind | null
+}
+
+type InitializeFormAction =
+  | { type: 'default_name'; name: string }
+  | { type: 'edit'; changes: Partial<InitializeForm> }
+
 export function InitializeSpaceScreen({
   onSubmit,
   onBack,
@@ -299,12 +318,16 @@ export function InitializeSpaceScreen({
   const { t } = useTranslation(undefined, {
     keyPrefix: 'setup.initializeSpace',
   })
-  const [deviceName, setDeviceName] = useState('')
-  const [pass1, setPass1] = useState('')
-  const [pass2, setPass2] = useState('')
+  const [form, updateForm] = useReducer(
+    (state: InitializeForm, action: InitializeFormAction): InitializeForm =>
+      action.type === 'default_name'
+        ? { ...state, deviceName: state.deviceName || action.name }
+        : { ...state, ...action.changes },
+    { deviceName: '', pass1: '', pass2: '', errorKind: null }
+  )
+  const { deviceName, pass1, pass2, errorKind } = form
   const [showPass1, setShowPass1] = useState(false)
   const [showPass2, setShowPass2] = useState(false)
-  const [errorKind, setErrorKind] = useState<InitializeSpaceErrorKind | null>(null)
 
   const errorMessage = initializeErrorMessage(t, errorKind)
 
@@ -318,7 +341,7 @@ export function InitializeSpaceScreen({
         if (cancelled) return
         const fallback = s.general.deviceName?.trim() ?? ''
         if (!fallback) return
-        setDeviceName(prev => (prev ? prev : fallback))
+        updateForm({ type: 'default_name', name: fallback })
       })
       .catch(() => {
         // Non-fatal — user can still type a name manually.
@@ -329,17 +352,17 @@ export function InitializeSpaceScreen({
   }, [])
 
   const handleSubmit = async () => {
-    setErrorKind(null)
+    updateForm({ type: 'edit', changes: { errorKind: null } })
     if (!deviceName.trim()) {
-      setErrorKind('device_name_required')
+      updateForm({ type: 'edit', changes: { errorKind: 'device_name_required' } })
       return
     }
     if (!pass1) {
-      setErrorKind('passphrase_mismatch')
+      updateForm({ type: 'edit', changes: { errorKind: 'passphrase_mismatch' } })
       return
     }
     if (pass1 !== pass2) {
-      setErrorKind('passphrase_mismatch')
+      updateForm({ type: 'edit', changes: { errorKind: 'passphrase_mismatch' } })
       return
     }
     const res = await onSubmit({
@@ -347,7 +370,7 @@ export function InitializeSpaceScreen({
       passphrase: pass1,
       passphraseConfirm: pass2,
     })
-    if (!res.ok) setErrorKind(res.kind)
+    if (!res.ok) updateForm({ type: 'edit', changes: { errorKind: res.kind } })
   }
 
   return (
@@ -391,7 +414,7 @@ export function InitializeSpaceScreen({
           <Input
             id="device-name"
             value={deviceName}
-            onChange={e => setDeviceName(e.target.value)}
+            onChange={e => updateForm({ type: 'edit', changes: { deviceName: e.target.value } })}
             disabled={loading}
             placeholder={t('placeholders.deviceName')}
           />
@@ -404,7 +427,7 @@ export function InitializeSpaceScreen({
               id="pass1"
               type={showPass1 ? 'text' : 'password'}
               value={pass1}
-              onChange={e => setPass1(e.target.value)}
+              onChange={e => updateForm({ type: 'edit', changes: { pass1: e.target.value } })}
               disabled={loading}
               className="pr-10"
               placeholder={t('placeholders.passphrase')}
@@ -426,7 +449,7 @@ export function InitializeSpaceScreen({
               id="pass2"
               type={showPass2 ? 'text' : 'password'}
               value={pass2}
-              onChange={e => setPass2(e.target.value)}
+              onChange={e => updateForm({ type: 'edit', changes: { pass2: e.target.value } })}
               disabled={loading}
               className="pr-10"
               placeholder={t('placeholders.passphraseConfirm')}
@@ -599,12 +622,6 @@ export function RedeemInvitationScreen({
   const canSubmit = codeComplete && pass.length > 0 && !loading
   const codeInvalid = errorKind === 'invitation_not_found' || errorKind === 'invitation_expired'
 
-  // Hand focus over to passphrase the moment the code reaches full length —
-  // works for both paste and the last keystroke of manual entry.
-  useEffect(() => {
-    if (codeComplete) passInputRef.current?.focus()
-  }, [codeComplete])
-
   const handleSubmit = async () => {
     setErrorKind(null)
     if (!canSubmit) return
@@ -669,7 +686,10 @@ export function RedeemInvitationScreen({
             <InvitationCodeInput
               id="join-code"
               value={code}
-              onChange={setCode}
+              onChange={value => {
+                setCode(value)
+                if (value.length === INVITATION_CODE_LENGTH) passInputRef.current?.focus()
+              }}
               disabled={loading}
               invalid={codeInvalid}
               autoFocus
@@ -695,6 +715,7 @@ export function RedeemInvitationScreen({
                   <Input
                     id="join-pass"
                     ref={passInputRef}
+                    autoFocus
                     type={showPass ? 'text' : 'password'}
                     value={pass}
                     onChange={e => setPass(e.target.value)}

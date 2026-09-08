@@ -60,8 +60,22 @@ impl Respond for CreatePairing {
         let Some(ticket) = body.get("sponsorTicket").and_then(|value| value.as_str()) else {
             return ResponseTemplate::new(400);
         };
+        // Mirror the service contract: six digits on request, eight by default.
+        let length = match body.get("codeLength") {
+            None => 8,
+            Some(value) => match value.as_u64() {
+                Some(6) => 6,
+                Some(8) => 8,
+                _ => return ResponseTemplate::new(400),
+            },
+        };
         let sequence = self.counter.fetch_add(1, Ordering::Relaxed);
-        let code = format!("E2E0-{sequence:04}");
+        let digits = format!("{sequence:0length$}");
+        if digits.len() != length {
+            return ResponseTemplate::new(503);
+        }
+        let midpoint = length / 2;
+        let code = format!("{}-{}", &digits[..midpoint], &digits[midpoint..]);
         self.tickets
             .lock()
             .expect("ticket vault lock")

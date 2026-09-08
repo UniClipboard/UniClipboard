@@ -97,7 +97,7 @@ describe('AddDeviceDialog invitation issuing', () => {
       devices: [{ deviceId: 'local', membership: 'active' }],
     })
     issuePairingInvitation.mockResolvedValue({
-      code: '123456789',
+      code: '012-345',
       expiresAtMs: Date.now() + 300_000,
     })
     cancelInvitation.mockResolvedValue(undefined)
@@ -126,7 +126,7 @@ describe('AddDeviceDialog invitation issuing', () => {
     )
 
     await waitFor(() => {
-      expect(screen.getByLabelText('123456789')).toBeInTheDocument()
+      expect(screen.getByLabelText('012-345')).toBeInTheDocument()
     })
     expect(issuePairingInvitation).toHaveBeenCalledTimes(1)
   })
@@ -171,7 +171,7 @@ describe('AddDeviceDialog invitation issuing', () => {
       })
     )
 
-    await waitFor(() => expect(screen.getByLabelText('123456789')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByLabelText('012-345')).toBeInTheDocument())
     expect(unlockSpaceWithPassphrase).toHaveBeenCalledWith('original-passphrase')
     expect(issuePairingInvitation).toHaveBeenCalledOnce()
     expect(logInfo).toHaveBeenCalledWith(
@@ -253,7 +253,7 @@ describe('AddDeviceDialog invitation issuing', () => {
     )
 
     await waitFor(() => {
-      expect(screen.getByLabelText('123456789')).toBeInTheDocument()
+      expect(screen.getByLabelText('012-345')).toBeInTheDocument()
       expect(deviceTrustHandler).toBeTypeOf('function')
     })
 
@@ -262,7 +262,7 @@ describe('AddDeviceDialog invitation issuing', () => {
     })
 
     await waitFor(() => {
-      expect(screen.queryByLabelText('123456789')).not.toBeInTheDocument()
+      expect(screen.queryByLabelText('012-345')).not.toBeInTheDocument()
       expect(screen.getAllByText(i18n.t('devices.addDevice.success.title'))).not.toHaveLength(0)
       expect(onSuccess).toHaveBeenCalledOnce()
     })
@@ -294,7 +294,7 @@ describe('AddDeviceDialog invitation issuing', () => {
     )
 
     await waitFor(() => {
-      expect(screen.getByLabelText('123456789')).toBeInTheDocument()
+      expect(screen.getByLabelText('012-345')).toBeInTheDocument()
       expect(deviceTrustHandler).toBeTypeOf('function')
     })
 
@@ -343,7 +343,7 @@ describe('AddDeviceDialog invitation issuing', () => {
       .mockResolvedValueOnce({
         hasCompleted: true,
         currentInvitation: {
-          code: '123456789',
+          code: '012-345',
           expiresAtMs: Date.now() + 300_000,
         },
         deviceName: 'test',

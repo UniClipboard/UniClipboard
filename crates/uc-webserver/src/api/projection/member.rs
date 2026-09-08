@@ -5,27 +5,29 @@
 //! `ContentTypesPatchDto` / `ContentTypesDto` carry one impl per target here
 //! in addition to the settings ones.
 
+mod device_group;
+
 use uc_engine::{
     ContentTypesPatch, ContentTypesSummary, DeviceCompatibilitySummary,
-    DeviceGroupChoiceOptionSummary, DeviceGroupChoiceOutcomeSummary,
-    DeviceGroupChoiceResultSummary, DeviceGroupChoicesSummary, DeviceGroupRelationshipSummary,
-    DeviceMembershipSummary, DeviceReachabilitySummary, DeviceSyncRelationshipSummary,
-    DeviceTrustActionSummary, DeviceTrustChangeSummary, DeviceTrustChoiceSummary,
-    DeviceTrustImpactSummary, DeviceTrustRecoverySummary, DeviceTrustRelationshipSummary,
-    DeviceTrustSnapshotSummary, DeviceTrustUnavailableReasonSummary, MemberProtectionStatusSummary,
-    MemberProtectionSummary, MemberSyncPreferencesPatch, MemberSyncPreferencesSummary,
-    SpaceProtectionModeSummary, SpaceProtectionSummary,
+    DeviceGroupChoiceOutcomeSummary, DeviceGroupChoiceResultSummary, DeviceGroupChoicesSummary,
+    DeviceGroupRelationshipSummary, DeviceMembershipSummary, DeviceReachabilitySummary,
+    DeviceSyncRelationshipSummary, DeviceTrustActionSummary, DeviceTrustChangeSummary,
+    DeviceTrustChoiceSummary, DeviceTrustImpactSummary, DeviceTrustRecoverySummary,
+    DeviceTrustRelationshipSummary, DeviceTrustSnapshotSummary,
+    DeviceTrustUnavailableReasonSummary, MemberProtectionStatusSummary, MemberProtectionSummary,
+    MemberSyncPreferencesPatch, MemberSyncPreferencesSummary, SpaceProtectionModeSummary,
+    SpaceProtectionSummary,
 };
 
 use super::{IntoApiDto, IntoDomain};
 use crate::api::dto::member::{
-    DeviceCompatibilityDto, DeviceGroupChoiceIssueDto, DeviceGroupChoiceOptionDto,
-    DeviceGroupChoiceOutcomeDto, DeviceGroupChoiceResultDto, DeviceGroupChoicesDto,
-    DeviceGroupRelationshipDto, DeviceMembershipDto, DeviceReachabilityDto,
-    DeviceSyncRelationshipDto, DeviceTrustActionDto, DeviceTrustChangeDto, DeviceTrustChoiceDto,
-    DeviceTrustImpactDto, DeviceTrustRelationshipDto, DeviceTrustSnapshotDto,
-    DeviceTrustUnavailableReasonDto, MemberProtectionDto, MemberProtectionStatusDto,
-    MemberSyncPreferencesDto, PendingInboundMemberDto, SpaceProtectionDto, SpaceProtectionModeDto,
+    DeviceCompatibilityDto, DeviceGroupChoiceIssueDto, DeviceGroupChoiceOutcomeDto,
+    DeviceGroupChoiceResultDto, DeviceGroupChoicesDto, DeviceGroupRelationshipDto,
+    DeviceMembershipDto, DeviceReachabilityDto, DeviceSyncRelationshipDto, DeviceTrustActionDto,
+    DeviceTrustChangeDto, DeviceTrustChoiceDto, DeviceTrustImpactDto, DeviceTrustRelationshipDto,
+    DeviceTrustSnapshotDto, DeviceTrustUnavailableReasonDto, MemberProtectionDto,
+    MemberProtectionStatusDto, MemberSyncPreferencesDto, PendingInboundMemberDto,
+    SpaceProtectionDto, SpaceProtectionModeDto,
 };
 use crate::api::dto::settings::{ContentTypesDto, ContentTypesPatchDto};
 
@@ -166,10 +168,11 @@ impl IntoApiDto<DeviceGroupChoicesDto> for DeviceGroupChoicesSummary {
                 .into_iter()
                 .map(|issue| DeviceGroupChoiceIssueDto {
                     issue_id: issue.issue_id,
+                    reason: device_group::reason(issue.reason),
                     choices: issue
                         .choices
                         .into_iter()
-                        .map(device_group_choice_option)
+                        .map(device_group::option)
                         .collect(),
                 })
                 .collect(),
@@ -200,18 +203,6 @@ impl IntoApiDto<DeviceGroupChoiceResultDto> for DeviceGroupChoiceResultSummary {
             },
             current_revision: self.current_revision,
         }
-    }
-}
-
-fn device_group_choice_option(
-    option: DeviceGroupChoiceOptionSummary,
-) -> DeviceGroupChoiceOptionDto {
-    DeviceGroupChoiceOptionDto {
-        choice_id: option.choice_id,
-        is_current_group: option.is_current_group,
-        requires_re_pairing: option.requires_re_pairing,
-        member_device_ids: option.member_device_ids,
-        members_complete: option.members_complete,
     }
 }
 
@@ -255,6 +246,9 @@ fn device_trust_relationship(
         },
         membership: device_membership(relationship.membership),
         group_relationship: match relationship.group_relationship {
+            DeviceGroupRelationshipSummary::ConfirmationPending => {
+                DeviceGroupRelationshipDto::ConfirmationPending
+            }
             DeviceGroupRelationshipSummary::Consistent => DeviceGroupRelationshipDto::Consistent,
             DeviceGroupRelationshipSummary::PendingLocalDecision => {
                 DeviceGroupRelationshipDto::PendingLocalDecision
@@ -370,7 +364,7 @@ fn device_trust_unavailable_reason(
 mod tests {
     use super::*;
     use crate::api::dto::member::{DeviceTrustSnapshotDto, MemberSyncPreferencesPatchDto};
-    use uc_engine::DeviceGroupChoiceIssueSummary;
+    use uc_engine::{DeviceGroupChoiceIssueSummary, DeviceGroupChoiceOptionSummary};
 
     #[test]
     fn patch_mapping_preserves_omitted_fields_as_none() {
@@ -472,12 +466,38 @@ mod tests {
             device_trust: DeviceTrustSnapshotSummary::empty_unavailable("device-local".to_string()),
             issues: vec![DeviceGroupChoiceIssueSummary {
                 issue_id: "c:issue-1".to_string(),
+                reason: uc_engine::DeviceGroupChoiceReasonSummary {
+                    kind: uc_engine::DeviceGroupChoiceReasonKind::DifferentRemovals,
+                    ..Default::default()
+                },
                 choices: vec![DeviceGroupChoiceOptionSummary {
                     choice_id: "b:choice-1".to_string(),
                     is_current_group: false,
                     requires_re_pairing: true,
                     member_device_ids: vec!["device-a".to_string(), "device-b".to_string()],
                     members_complete: true,
+                    members: vec![
+                        uc_engine::DeviceGroupChoiceMemberSummary {
+                            device_id: "device-a".to_owned(),
+                            display_name: "Laptop".to_owned(),
+                            is_local: false,
+                            active: true,
+                        },
+                        uc_engine::DeviceGroupChoiceMemberSummary {
+                            device_id: "device-b".to_owned(),
+                            display_name: "Office Mac".to_owned(),
+                            is_local: false,
+                            active: true,
+                        },
+                    ],
+                    source_device_ids: vec!["device-b".to_owned()],
+                    impact: Some(uc_engine::DeviceGroupChoiceImpactSummary {
+                        sync_scope_device_ids: Vec::new(),
+                        paused_device_ids: vec!["device-a".to_owned()],
+                        pending_confirmation_device_ids: Vec::new(),
+                        requires_rejoin_device_ids: vec!["device-local".to_owned()],
+                        local_device_outcome: DeviceMembershipSummary::Removed,
+                    }),
                 }],
             }],
         };
@@ -488,5 +508,22 @@ mod tests {
         assert_eq!(mapped.issues[0].issue_id, "c:issue-1");
         assert_eq!(mapped.issues[0].choices[0].choice_id, "b:choice-1");
         assert!(mapped.issues[0].choices[0].requires_re_pairing);
+        assert_eq!(
+            mapped.issues[0].reason.kind,
+            crate::api::dto::member::DeviceGroupChoiceReasonKindDto::DifferentRemovals
+        );
+        assert_eq!(
+            mapped.issues[0].choices[0].members[1].display_name,
+            "Office Mac"
+        );
+        assert_eq!(mapped.issues[0].choices[0].source_device_ids, ["device-b"]);
+        assert_eq!(
+            mapped.issues[0].choices[0]
+                .impact
+                .as_ref()
+                .unwrap()
+                .requires_rejoin_device_ids,
+            ["device-local"]
+        );
     }
 }

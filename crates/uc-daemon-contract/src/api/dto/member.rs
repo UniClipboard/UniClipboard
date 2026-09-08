@@ -10,6 +10,14 @@ use utoipa::ToSchema;
 use super::settings::{ContentTypesDto, ContentTypesPatchDto};
 use super::v2::setup::JoinSpaceResponse;
 
+mod presentation;
+pub use presentation::{
+    DeviceGroupChangeDto, DeviceGroupChangeKindDto, DeviceGroupChangeSideDto,
+    DeviceGroupChoiceDeviceDto, DeviceGroupChoiceImpactDto, DeviceGroupChoiceMemberDto,
+    DeviceGroupChoiceReasonDto, DeviceGroupChoiceReasonKindDto, DeviceGroupDecisionDto,
+    DeviceGroupRemovalDecisionDto,
+};
+
 /// Sync preferences recorded for a space member.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
@@ -99,6 +107,7 @@ pub enum DeviceReachabilityDto {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum DeviceGroupRelationshipDto {
+    ConfirmationPending,
     Consistent,
     PendingLocalDecision,
     Diverged,
@@ -225,14 +234,16 @@ pub struct DeviceGroupChoicesDto {
     pub issues: Vec<DeviceGroupChoiceIssueDto>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct DeviceGroupChoiceIssueDto {
     pub issue_id: String,
     pub choices: Vec<DeviceGroupChoiceOptionDto>,
+    #[serde(default)]
+    pub reason: DeviceGroupChoiceReasonDto,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct DeviceGroupChoiceOptionDto {
     pub choice_id: String,
@@ -240,6 +251,11 @@ pub struct DeviceGroupChoiceOptionDto {
     pub requires_re_pairing: bool,
     pub member_device_ids: Vec<String>,
     pub members_complete: bool,
+    #[serde(default)]
+    pub members: Vec<DeviceGroupChoiceMemberDto>,
+    #[serde(default)]
+    pub source_device_ids: Vec<String>,
+    pub impact: Option<DeviceGroupChoiceImpactDto>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
@@ -299,12 +315,16 @@ mod device_group_choice_dto_tests {
             device_trust: snapshot(),
             issues: vec![DeviceGroupChoiceIssueDto {
                 issue_id: "p:issue-1".to_string(),
+                reason: DeviceGroupChoiceReasonDto::default(),
                 choices: vec![DeviceGroupChoiceOptionDto {
                     choice_id: "keep".to_string(),
                     is_current_group: true,
                     requires_re_pairing: false,
                     member_device_ids: vec!["device-1".to_string()],
                     members_complete: true,
+                    members: Vec::new(),
+                    source_device_ids: Vec::new(),
+                    impact: None,
                 }],
             }],
         })

@@ -124,7 +124,6 @@ struct BootstrapSettings {
 #[derive(Deserialize)]
 #[serde(default)]
 struct BootstrapGeneralSettings {
-    telemetry_enabled: bool,
     usage_analytics_enabled: bool,
     debug_mode: bool,
 }
@@ -132,7 +131,6 @@ struct BootstrapGeneralSettings {
 impl Default for BootstrapGeneralSettings {
     fn default() -> Self {
         Self {
-            telemetry_enabled: true,
             usage_analytics_enabled: true,
             debug_mode: false,
         }
@@ -250,21 +248,13 @@ pub fn init_tracing_subscriber() -> anyhow::Result<()> {
     let settings = load_bootstrap_settings(&paths.settings_path);
     let profile = select_log_profile(&settings);
 
-    // Step 2b: Resolve `telemetry_enabled` from persisted settings and push it
-    // into the process-wide runtime gate exposed by `uc-observability`.
-    //
-    // Sentry consults that gate at event time via the `before_send`,
-    // `before_breadcrumb`, and `before_send_log` hooks installed below. The
-    // user-facing `General › Telemetry` switch therefore takes effect
-    // immediately — `uc-webserver`'s PUT /settings handler calls
-    // `set_telemetry_enabled` when the field changes, and the next emitted
-    // event already honors it.
-    //
-    // Reading the persisted value here is what makes the *initial* state
-    // correct: until the daemon side serves any settings update, the gate
-    // would otherwise carry its `true` default and ignore a user who had
-    // turned telemetry off in a previous session.
-    let telemetry_enabled = settings.general.telemetry_enabled;
+    // Import the legacy preference before Engine can rewrite its settings.
+    // The desktop-owned value controls Sentry independently of Engine settings.
+    let telemetry_enabled = uc_observability::telemetry_gate::initialize_preference(&paths.settings_path)
+        .unwrap_or_else(|error| {
+            ::tracing::warn!(error = %error, error_kind = "telemetry_preference_unavailable", "Error reporting disabled because its preference could not be loaded");
+            false
+        });
     uc_observability::set_telemetry_enabled(telemetry_enabled);
 
     // Step 2c: 同样的"读盘 → 推 gate"流程，但作用对象是产品 telemetry

@@ -1,5 +1,51 @@
 {
   "deviceTrust": {
+    "presentation": {
+      "localRemovalTitle": "{{actor}} 想將此裝置移出裝置群組",
+      "leave": "離開裝置群組",
+      "keep": "保留現有裝置",
+      "leaveEffect": "停止與所有裝置同步。",
+      "keepEffect": "保留現有裝置。與 {{names}} 的同步將暫停。",
+      "showDevices": "檢視裝置",
+      "hideDevices": "隱藏裝置",
+      "scope": "選擇後的同步範圍：{{names}}。",
+      "title": "為 {{name}} 選擇裝置群組",
+      "local": "此裝置：{{name}}",
+      "localMember": "{{name}}（此裝置）",
+      "unnamed": "未命名裝置",
+      "members": "群組成員",
+      "membersUnknown": "成員資料暫不完整",
+      "impactUnknown": "此選擇的影響資料暫不完整。",
+      "detailsIncomplete": "部分變更詳情暫不可用。",
+      "paused": "與 {{names}} 的同步將暫停。",
+      "rejoin": "{{names}} 若要加入所選群組同步，需要重新加入。",
+      "waiting": "正在等待 {{names}} 確認。",
+      "removed": "{{actor}} 提出移除 {{target}}。",
+      "added": "{{actor}} 加入了裝置 {{target}}。",
+      "accepted": "{{actor}} 接受了移除 {{target}}。",
+      "rejected": "{{actor}} 拒絕了移除 {{target}}。",
+      "reason": {
+        "unknown": "裝置群組存在差異，暫時沒有足夠資料說明原因。",
+        "pending_removal": "裝置群組有一項移除需要你決定。",
+        "different_removals": "兩側移除了不同的裝置。",
+        "removal_decision_disagreement": "對同一次移除，兩側作出了不同決定。",
+        "diverged_history": "兩側記錄的裝置群組變更不同。"
+      },
+      "select": "請選擇一個裝置群組",
+      "back": "返回選擇",
+      "retry": "重新檢查",
+      "processing": "正在提交你的選擇",
+      "checking": "正在核對處理結果",
+      "pending": "選擇已受理，仍在處理。",
+      "completed": "裝置群組已更新",
+      "next": "繼續處理",
+      "done": "完成",
+      "more": "上一項已處理，還有 {{count}} 項需要選擇。",
+      "uncertain": "暫時無法確認處理結果，請重新檢查。",
+      "changed": "選擇內容已變更，請重新核對。",
+      "loading": "正在檢查裝置關係",
+      "loadFailed": "暫時無法讀取裝置關係，請重試。"
+    },
     "listSeparator": "、",
     "notification": {
       "title": "裝置關係需要查看",
@@ -128,6 +174,7 @@
     }
   },
   "rePairingNotice": {
+    "dontShowAgain": "不再提示",
     "title": "請重新配對裝置",
     "body": "本版本更新了裝置配對機制，原有配對已不可用。請前往「裝置」頁向另一台裝置發送邀請或重新加入。",
     "goToDevices": "前往裝置管理"

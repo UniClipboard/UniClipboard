@@ -1,5 +1,51 @@
 {
   "deviceTrust": {
+    "presentation": {
+      "localRemovalTitle": "{{actor}} がこのデバイスを削除しようとしています",
+      "leave": "デバイスグループを離脱",
+      "keep": "既存のデバイスを保持",
+      "leaveEffect": "すべてのデバイスとの同期を停止します。",
+      "keepEffect": "既存のデバイスを保持します。{{names}} との同期は一時停止します。",
+      "showDevices": "デバイスを表示",
+      "hideDevices": "デバイスを非表示",
+      "scope": "選択後の同期範囲: {{names}}。",
+      "title": "{{name}} のデバイスグループを選択",
+      "local": "このデバイス: {{name}}",
+      "localMember": "{{name}}（このデバイス）",
+      "unnamed": "名前のないデバイス",
+      "members": "グループのメンバー",
+      "membersUnknown": "メンバーの詳細が不完全です",
+      "impactUnknown": "この選択による影響の詳細が不完全です。",
+      "detailsIncomplete": "一部の変更の詳細を取得できません。",
+      "paused": "{{names}} との同期は一時停止します。",
+      "rejoin": "選択したグループ内で同期するには、{{names}} が再参加する必要があります。",
+      "waiting": "{{names}} の確認を待っています。",
+      "removed": "{{actor}} が {{target}} の削除を提案しました。",
+      "added": "{{actor}} が {{target}} を追加しました。",
+      "accepted": "{{actor}} が {{target}} の削除を承認しました。",
+      "rejected": "{{actor}} が {{target}} の削除を拒否しました。",
+      "reason": {
+        "unknown": "デバイスグループが異なります。理由を説明する情報が不足しています。",
+        "pending_removal": "デバイスの削除について決定が必要です。",
+        "different_removals": "両側で異なるデバイスが削除されました。",
+        "removal_decision_disagreement": "同じ削除について両側で異なる決定が行われました。",
+        "diverged_history": "両側で異なるデバイスグループの変更が記録されています。"
+      },
+      "select": "デバイスグループを選択",
+      "back": "選択肢に戻る",
+      "retry": "もう一度確認",
+      "processing": "選択を送信しています",
+      "checking": "結果を確認しています",
+      "pending": "選択を受け付け、引き続き処理しています。",
+      "completed": "デバイスグループを更新しました",
+      "next": "続行",
+      "done": "完了",
+      "more": "前の選択は完了しました。あと {{count}} 件の決定が必要です。",
+      "uncertain": "結果を確認できませんでした。もう一度確認してください。",
+      "changed": "選択肢が変更されました。もう一度確認してください。",
+      "loading": "デバイスの関係を確認しています",
+      "loadFailed": "デバイスの関係を読み込めませんでした。もう一度お試しください。"
+    },
     "listSeparator": "、",
     "notification": {
       "title": "デバイス関係の確認",
@@ -128,6 +174,7 @@
     }
   },
   "rePairingNotice": {
+    "dontShowAgain": "今後表示しない",
     "title": "デバイスを再ペアリング",
     "body": "このバージョンでは、デバイス ペアリング スキームが更新されます。以前のペアリングは同期できなくなります。 [デバイス] を開いて、他のデバイスを招待または再参加してください。",
     "goToDevices": "デバイス管理を開く"

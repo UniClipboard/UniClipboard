@@ -86,7 +86,7 @@ describe('useSetupFlow sponsor pairing completion', () => {
       deviceName: 'MacBook',
     })
     issuePairingInvitation.mockResolvedValue({
-      code: '123456789',
+      code: '012-345',
       expiresAtMs: 123_456,
     })
     cancelInvitation.mockResolvedValue(undefined)
@@ -101,7 +101,7 @@ describe('useSetupFlow sponsor pairing completion', () => {
 
     flow = {
       kind: 'invitation_pending',
-      code: '123456789',
+      code: '012-345',
       expiresAtMs: 123_456,
       deviceName: 'MacBook',
       completion: { kind: 'space_ready' },
@@ -140,7 +140,7 @@ describe('useSetupFlow sponsor pairing completion', () => {
 
     flow = {
       kind: 'invitation_pending',
-      code: '123456789',
+      code: '012-345',
       expiresAtMs: 123_456,
       deviceName: 'MacBook',
       completion: { kind: 'space_ready' },
@@ -155,7 +155,7 @@ describe('useSetupFlow sponsor pairing completion', () => {
     })
     getSetupState.mockResolvedValue({
       hasCompleted: true,
-      currentInvitation: { code: '123456789', expiresAtMs: 123_456 },
+      currentInvitation: { code: '012-345', expiresAtMs: 123_456 },
       deviceName: 'MacBook',
     })
 
@@ -182,7 +182,7 @@ describe('useSetupFlow sponsor pairing completion', () => {
 
     flow = {
       kind: 'invitation_pending',
-      code: '123456789',
+      code: '012-345',
       expiresAtMs: 123_456,
       deviceName: 'MacBook',
       completion: { kind: 'space_ready' },
@@ -228,7 +228,7 @@ describe('useSetupFlow joiner admission', () => {
     act(() => result.current.startJoinSpace())
     await act(async () => {
       await result.current.redeemInvitation({
-        code: 'ABCD1234',
+        code: '012345',
         passphrase: 'passphrase',
       })
     })
@@ -244,7 +244,7 @@ describe('useSetupFlow joiner admission', () => {
     act(() => result.current.startJoinSpace())
     await act(async () => {
       await result.current.redeemInvitation({
-        code: 'ABCD1234',
+        code: '012345',
         passphrase: 'passphrase',
       })
     })

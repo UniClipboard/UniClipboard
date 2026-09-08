@@ -194,6 +194,12 @@ pub async fn probe_running() -> Result<ProbeOutcome, LocalDaemonError> {
     probe_daemon_health(&client).await
 }
 
+/// Wait for a foreground child to publish a compatible daemon endpoint.
+pub(crate) async fn wait_for_running_daemon() -> Result<(), LocalDaemonError> {
+    let mut probe = || probe_running();
+    wait_for_daemon_health(&mut probe, STARTUP_TIMEOUT, POLL_INTERVAL, None).await
+}
+
 /// Probe-then-reuse-or-spawn entry used by the `#[autostop]` business-command
 /// seam (rewritten to `ensure_local_daemon_running_capture` by
 /// `uc-cli-macros`). The background `start` path now goes through the

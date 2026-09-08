@@ -305,9 +305,11 @@ pub enum LatencyBucket {
 | `general.telemetry_enabled` | Sentry（错误 / breadcrumb / Logs） | `true` | 已存在，不改名 |
 | `general.usage_analytics_enabled` | 本文档定义的产品 telemetry | `true` | **新增** |
 
-**为什么不改名**：现有 `telemetry_enabled` 已经持久化在所有用户的 settings
-文件里，重命名等于做一次迁移。保留原字段语义（= 错误上报），新加一个字段
-即可，零迁移成本。文档与 UI 文案上把它表述为"错误与崩溃上报"。
+**桌面保存职责**：Engine 不再保存错误上报开关。桌面仍通过
+`general.telemetry_enabled` 提供同名设置，由 `uc-observability` 保存到当前
+配置目录的 `desktop-telemetry.json`，其中仅包含布尔开关，不含用户内容。
+首次启动从旧设置导入；此后只读取桌面文件，避免 Engine 重写设置后丢失
+用户选择。保存失败时不更新运行时开关；读取失败时关闭错误上报并记录原因。
 
 **运行时门控**：
 

@@ -12,7 +12,7 @@ const { getDeviceGroupChoices, chooseDeviceGroup, subscribe } = vi.hoisted(() =>
 }))
 
 vi.mock('@/api/daemon/device-trust', () => ({ getDeviceGroupChoices, chooseDeviceGroup }))
-vi.mock('@/lib/daemon-ws', () => ({ daemonWs: { subscribe } }))
+vi.mock('@/lib/daemon-ws', () => ({ daemonWs: { subscribe, onReconnect: () => vi.fn() } }))
 
 const emptySnapshot: DeviceTrustSnapshot = {
   revision: 1,
@@ -79,6 +79,15 @@ function wrapper({ children }: { children: ReactNode }) {
 }
 
 describe('DeviceTrustProvider', () => {
+  it('refreshes on focus even when WebKit visibility is stale', async () => {
+    const visibility = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden')
+    const { result } = renderHook(() => useDeviceTrust(), { wrapper })
+    await waitFor(() => expect(result.current.deviceGroups).not.toBeNull())
+    const before = getDeviceGroupChoices.mock.calls.length
+    await act(async () => window.dispatchEvent(new Event('focus')))
+    expect(getDeviceGroupChoices.mock.calls.length).toBe(before + 1)
+    visibility.mockRestore()
+  })
   beforeEach(() => {
     vi.clearAllMocks()
     getDeviceGroupChoices.mockResolvedValue(emptyGroups)
@@ -125,6 +134,7 @@ describe('DeviceTrustProvider', () => {
     await act(async () => result.current.choose('p:issue-1', 'apply', false))
 
     expect(result.current.localRemovalConfirmationIssueId).toBe('p:issue-1')
+    expect(result.current.localRemovalConfirmationChoiceId).toBe('apply')
   })
 
   it('does not automatically repeat a failed user choice', async () => {

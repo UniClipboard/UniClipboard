@@ -450,6 +450,21 @@ async fn start_before_init_fails() {
     );
 }
 
+#[tokio::test]
+#[ignore]
+async fn foreground_start_before_init_preserves_json_output() {
+    let profile = TestProfile::new("start-foreground-noinit");
+    let cli = TestCli::new(&profile);
+    let output = cli.run_capture(&["--json", "start", "--foreground", "--server"]);
+    assert_eq!(
+        output.exit_code, 1,
+        "uninitialized foreground start must fail: {output:?}"
+    );
+    let value: serde_json::Value = serde_json::from_str(output.stdout.trim())
+        .expect("foreground startup logs must not corrupt JSON output");
+    assert_eq!(value["status"], "setup_required");
+}
+
 // ---------------------------------------------------------------------------
 // stop_json_output_structure
 // ---------------------------------------------------------------------------

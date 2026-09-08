@@ -22,6 +22,7 @@ import type {
   RedeemRequest as RedeemRequestDto,
   SwitchSpaceRequest as SwitchSpaceRequestDto,
 } from '@/api/generated/types.gen'
+import { formatInvitationCode } from '@/lib/invitation-code'
 import { daemonClient } from './client'
 import { DaemonApiError } from './errors'
 
@@ -78,7 +79,12 @@ export type JoinSpaceRejectionReason =
   | 'removed_before_activation'
 
 export type JoinSpaceResponse =
-  | { status: 'active'; joinId: string; joinedSpace: JoinedSpaceResponse }
+  | {
+      status: 'active'
+      joinId: string
+      joinedSpace: JoinedSpaceResponse
+      peerUpgradeRequired?: boolean
+    }
   | {
       status: 'pending'
       joinId: string
@@ -86,6 +92,7 @@ export type JoinSpaceResponse =
       sponsorDeviceId: string | null
       sponsorIdentityFingerprint: string | null
       cancelRequested: boolean
+      peerUpgradeRequired?: boolean
     }
   | { status: 'rejected'; joinId: string; reason: JoinSpaceRejectionReason }
 
@@ -418,26 +425,13 @@ export async function issuePairingInvitation(): Promise<IssueInvitationResponse>
   }
 }
 
-/**
- * Backend invitation codes are formatted as `XXXX-XXXX` (8 alphanumerics +
- * a hyphen separator) and the rendezvous server compares them as-is — no
- * normalization on the server side. The frontend OTP input strips the
- * hyphen so callers may hand us a bare 8-char code; rebuild the canonical
- * form here so all redeem paths behave identically.
- */
-function normalizeInvitationCode(raw: string): string {
-  const clean = raw.toUpperCase().replace(/[^A-Z0-9]/g, '')
-  if (clean.length !== 8) return raw
-  return `${clean.slice(0, 4)}-${clean.slice(4)}`
-}
-
 export async function redeemInvitation(body: RedeemRequest): Promise<RedeemResponse> {
   try {
     const data = await daemonClient.callEnveloped(() =>
       setupV2Redeem({
         body: {
           ...body,
-          code: normalizeInvitationCode(body.code),
+          code: formatInvitationCode(body.code),
         } as unknown as RedeemRequestDto,
         throwOnError: true,
       })
@@ -505,7 +499,7 @@ export async function switchSpace(body: SwitchSpaceRequest): Promise<SwitchSpace
       setupV2SwitchSpace({
         body: {
           ...body,
-          code: normalizeInvitationCode(body.code),
+          code: formatInvitationCode(body.code),
           preserveUnreadableHistory: body.preserveUnreadableHistory ?? false,
         } as unknown as SwitchSpaceRequestDto,
         throwOnError: true,

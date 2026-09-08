@@ -20,44 +20,54 @@ fn is_attended(
 }
 
 pub fn spawn_startup_recovery(run_mode: DaemonRunMode, engine: Arc<Engine>) {
-    uc_observability::spawn_supervised("daemon.startup_recovery", async move {
-        let attended = is_attended(
-            run_mode,
-            DaemonSpawnOrigin::from_env(),
-            unattended_from_env(),
-        );
-        let allow_secure_storage_unlock = if attended {
-            match engine.execute(Operation::QuerySettings).await {
-                Ok(OperationResult::Settings(settings)) => settings.security.auto_unlock_enabled,
-                Ok(_) | Err(_) => false,
+    let recovery = tokio::spawn(
+        async move {
+            let attended = is_attended(
+                run_mode,
+                DaemonSpawnOrigin::from_env(),
+                unattended_from_env(),
+            );
+            let allow_secure_storage_unlock = if attended {
+                match engine.execute(Operation::QuerySettings).await {
+                    Ok(OperationResult::Settings(settings)) => {
+                        settings.security.auto_unlock_enabled
+                    }
+                    Ok(_) | Err(_) => false,
+                }
+            } else {
+                true
+            };
+
+            let recovery = engine
+                .execute(Operation::RecoverSession(RecoverSessionInput {
+                    allow_secure_storage_unlock,
+                }))
+                .instrument(info_span!("daemon.startup.recover_session"))
+                .await;
+
+            match recovery {
+                Ok(OperationResult::SessionRecovered {
+                    unlocked: true,
+                    resumed,
+                }) => tracing::info!(resumed, "background engine session recovery completed"),
+                Ok(OperationResult::SessionRecovered {
+                    unlocked: false, ..
+                }) => tracing::info!("background engine session remains locked"),
+                Ok(_) => tracing::warn!("engine returned an unexpected recovery result"),
+                Err(error) => tracing::warn!(
+                    code = error.code(),
+                    category = %error.category(),
+                    "background engine session recovery failed"
+                ),
             }
-        } else {
-            true
-        };
-
-        let recovery = engine
-            .execute(Operation::RecoverSession(RecoverSessionInput {
-                allow_secure_storage_unlock,
-            }))
-            .instrument(info_span!("daemon.startup.recover_session"))
-            .await;
-
-        match recovery {
-            Ok(OperationResult::SessionRecovered {
-                unlocked: true,
-                resumed,
-            }) => tracing::info!(resumed, "background engine session recovery completed"),
-            Ok(OperationResult::SessionRecovered {
-                unlocked: false, ..
-            }) => tracing::info!("background engine session remains locked"),
-            Ok(_) => tracing::warn!("engine returned an unexpected recovery result"),
-            Err(error) => tracing::warn!(
-                code = error.code(),
-                category = %error.category(),
-                "background engine session recovery failed"
-            ),
         }
-    });
+        .in_current_span(),
+    );
+    tokio::spawn(async move {
+        if let Err(error) = recovery.await {
+            tracing::error!(error = %error, error_kind = "startup_recovery_task_failed", "startup recovery task failed");
+        }
+    }.in_current_span());
 }
 
 pub(crate) async fn record_upgrade_status_at_startup(engine: &Engine) {

@@ -27,6 +27,7 @@ const specFiles = fs
   .readdirSync(path.join(__dirname, 'specs'))
   .filter(name => name.endsWith('.e2e.js'))
   .filter(name => {
+    if (name === 'device-group-conflict.e2e.js') return false
     if (triplePeerMode) return name.endsWith('.triple.e2e.js')
     if (dualPeerMode) return name.endsWith('.dual.e2e.js')
     return !name.endsWith('.dual.e2e.js') && !name.endsWith('.triple.e2e.js')

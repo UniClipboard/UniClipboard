@@ -1208,6 +1208,14 @@
       "pairedCount_other": "{{count}} 台已配对",
       "onlineCount": "{{count}} 台在线"
     },
+    "connectionRefresh": {
+      "action": "刷新连接",
+      "checking": "正在检查连接",
+      "failed": "刷新失败，请重试",
+      "summary": "检查了 {{total}} 台设备，{{online}} 台在线，{{offline}} 台离线",
+      "errors": "{{count}} 台检查失败，连接状态未能确认",
+      "listFailed": "连接检查已完成，设备列表更新失败，请重试"
+    },
     "pairedDevices": {
       "title": "已配对设备"
     },

@@ -1209,6 +1209,14 @@
       "pairedCount_other": "{{count}} 個がペアリングされました",
       "onlineCount": "{{count}} 台のオンライン"
     },
+    "connectionRefresh": {
+      "action": "接続を更新",
+      "checking": "接続を確認中",
+      "failed": "更新に失敗しました。再試行してください。",
+      "summary": "{{total}} 台を確認：オンライン {{online}} 台、オフライン {{offline}} 台",
+      "errors": "{{count}} 台の確認に失敗しました。接続状態は未確認です。",
+      "listFailed": "接続確認は完了しましたが、デバイス一覧を更新できませんでした。再試行してください。"
+    },
     "pairedDevices": {
       "title": "ペアリングされたデバイス"
     },

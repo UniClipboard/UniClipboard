@@ -163,12 +163,18 @@ fn assert_request_delta(node: &Node, method: &str, path: &str, before: usize, ex
 
 async fn join(sponsor: &Node, joiner: &Node, device_name: &str, no_wait: bool) -> Value {
     let (session, code) = InviteSession::start(&sponsor.cli).await;
+    let result = run_join(joiner, &code, device_name, no_wait);
+    session.finish().await;
+    result
+}
+
+fn run_join(joiner: &Node, code: &str, device_name: &str, no_wait: bool) -> Value {
     let requests_before = daemon_request_count(joiner, "POST", "/v2/setup/redeem");
     let mut args = vec![
         "--json",
         "join",
         "--code",
-        &code,
+        code,
         "--passphrase",
         PASSPHRASE,
         "--device-name",
@@ -177,18 +183,26 @@ async fn join(sponsor: &Node, joiner: &Node, device_name: &str, no_wait: bool) -
     if no_wait {
         args.push("--no-wait");
     }
-    let output = joiner.cli.run_capture(&args);
-    session.finish().await;
+    let asserted = assert_cmd::Command::new(joiner.cli.binary_path())
+        .env("UC_PROFILE", &joiner.cli.profile_name)
+        .env("UNICLIPBOARD_ENV", "development")
+        .args(&args)
+        .timeout(if no_wait {
+            Duration::from_secs(10)
+        } else {
+            WAIT_TIMEOUT
+        })
+        .assert();
+    let output = asserted.get_output();
     assert!(
-        output.success(),
-        "join failed: stdout={} stderr={} sponsor_log={} joiner_log={}",
-        output.stdout,
-        output.stderr,
-        sponsor.daemon.diagnostic_log(),
+        output.status.success(),
+        "join failed: stdout={} stderr={} joiner_log={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr),
         joiner.daemon.diagnostic_log()
     );
     assert_request_delta(joiner, "POST", "/v2/setup/redeem", requests_before, 1);
-    json(&output)
+    serde_json::from_slice(&output.stdout).expect("join result must be JSON")
 }
 
 fn members(cli: &TestCli) -> Vec<Value> {
@@ -246,6 +260,86 @@ async fn wait_for_trust_change(node: &Node) -> Value {
     }
 }
 
+async fn confirm_device_group(
+    node: &Node,
+    expected_issue: &Value,
+    expected_choice: &Value,
+    confirm_local_removal: bool,
+) -> Value {
+    let issue_id = expected_issue["issueId"].as_str().expect("issue id");
+    let choice_id = expected_choice["choiceId"].as_str().expect("choice id");
+    let deadline = tokio::time::Instant::now() + WAIT_TIMEOUT;
+    loop {
+        // Each submission represents a new user confirmation of freshly read facts.
+        let current = node
+            .cli
+            .run_capture(&["--json", "member", "trust", "status"]);
+        assert!(
+            current.success(),
+            "read choices before confirmation failed: {current:?}"
+        );
+        let current = json(&current);
+        let issue = current["issues"]
+            .as_array()
+            .expect("issues")
+            .iter()
+            .find(|issue| issue["issueId"] == issue_id)
+            .expect("same issue must remain current");
+        let choice = issue["choices"]
+            .as_array()
+            .expect("choices")
+            .iter()
+            .find(|choice| choice["choiceId"] == choice_id)
+            .expect("same choice must remain available");
+        assert_eq!(
+            issue["reason"]["changes"],
+            expected_issue["reason"]["changes"]
+        );
+        assert_eq!(
+            choice["memberDeviceIds"],
+            expected_choice["memberDeviceIds"]
+        );
+        assert_eq!(choice["membersComplete"], true);
+        assert_eq!(
+            choice["requiresRePairing"],
+            expected_choice["requiresRePairing"]
+        );
+        assert_eq!(
+            choice["impact"]["localDeviceOutcome"],
+            expected_choice["impact"]["localDeviceOutcome"]
+        );
+
+        let mut args = vec![
+            "--json", "member", "trust", "choose", "--issue", issue_id, "--choice", choice_id,
+        ];
+        if confirm_local_removal {
+            args.push("--confirm-local-removal");
+        }
+        let before = daemon_request_count(node, "POST", "/member/device-group-choices");
+        let output = node.cli.run_capture(&args);
+        assert_request_delta(node, "POST", "/member/device-group-choices", before, 1);
+        let result = json(&output);
+        if result["result"]["outcome"] != "state_changed" {
+            assert!(
+                output.success(),
+                "device group confirmation failed: {output:?}"
+            );
+            return result;
+        }
+        assert_eq!(output.exit_code, 1);
+        assert_eq!(result["ok"], false);
+        assert!(
+            result["state"]["revision"].as_u64().expect("new revision")
+                > current["revision"].as_u64().expect("reviewed revision")
+        );
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "device group never settled: {result}"
+        );
+        tokio::time::sleep(Duration::from_millis(250)).await;
+    }
+}
+
 #[tokio::test]
 #[ignore]
 async fn join_commands_report_none_then_real_active_join() {
@@ -275,30 +369,16 @@ async fn join_commands_report_none_then_real_active_join() {
     assert!(cancel.success(), "empty join cancel failed: {cancel:?}");
     assert_eq!(json(&cancel)["status"], "none");
 
-    let joined = join(&sponsor, &joiner, "joiner-node", true).await;
+    let joined = join(&sponsor, &joiner, "joiner-node", false).await;
     assert_eq!(joined["ok"], true);
-    assert_eq!(joined["status"], "pending");
-    let join_id = joined["join_id"].as_str().expect("pending join id");
+    assert_eq!(joined["status"], "active");
+    let join_id = joined["join_id"].as_str().expect("active join id");
 
-    let deadline = tokio::time::Instant::now() + WAIT_TIMEOUT;
-    loop {
-        let status = joiner.cli.run_capture(&["--json", "join", "status"]);
-        assert!(status.success(), "join status failed: {status:?}");
-        let status = json(&status);
-        assert_eq!(status["join_id"], join_id);
-        if status["status"] == "active" {
-            break;
-        }
-        assert_eq!(
-            status["status"], "pending",
-            "join did not complete: {status}"
-        );
-        assert!(
-            tokio::time::Instant::now() < deadline,
-            "join remained pending: {status}"
-        );
-        tokio::time::sleep(Duration::from_millis(500)).await;
-    }
+    let status = joiner.cli.run_capture(&["--json", "join", "status"]);
+    assert!(status.success(), "active join status failed: {status:?}");
+    let status = json(&status);
+    assert_eq!(status["status"], "active");
+    assert_eq!(status["join_id"], join_id);
 
     let cancel_requests_before = daemon_request_count(&joiner, "POST", "/v2/setup/cancel-join");
     let cancel = joiner.cli.run_capture(&["--json", "join", "cancel"]);
@@ -333,6 +413,52 @@ async fn join_commands_report_none_then_real_active_join() {
     let restarted_status = json(&restarted_status);
     assert_eq!(restarted_status["status"], "active");
     assert_eq!(restarted_status["join_id"], join_id);
+}
+
+#[cfg(unix)]
+#[tokio::test]
+#[ignore]
+async fn no_wait_returns_a_saved_pending_join_while_sponsor_is_offline() {
+    let binaries = NodeBinarySet::current();
+    let rendezvous = LocalRendezvous::start().await;
+    let mut sponsor = Node::initialized(
+        "cli-no-wait-sponsor",
+        "sponsor-node",
+        &binaries,
+        &rendezvous,
+    )
+    .await;
+    let joiner = Node::fresh("cli-no-wait-joiner", &binaries, &rendezvous).await;
+    let (session, code) = InviteSession::start(&sponsor.cli).await;
+    sponsor
+        .daemon
+        .suspend()
+        .expect("hold sponsor offline before joining");
+
+    let joined = run_join(&joiner, &code, "joiner-node", true);
+    assert_eq!(joined["ok"], true);
+    assert_eq!(joined["status"], "pending");
+    let join_id = joined["join_id"].as_str().expect("pending join id");
+
+    let status = joiner.cli.run_capture(&["--json", "join", "status"]);
+    assert!(status.success(), "saved join status failed: {status:?}");
+    let status = json(&status);
+    assert_eq!(status["status"], "pending");
+    assert_eq!(status["join_id"], join_id);
+
+    let cancelled = joiner.cli.run_capture(&["--json", "join", "cancel"]);
+    assert!(
+        cancelled.success(),
+        "cancel saved join failed: {cancelled:?}"
+    );
+    assert_eq!(json(&cancelled)["join_id"], join_id);
+    let status = joiner.cli.run_capture(&["--json", "join", "status"]);
+    assert!(status.success(), "cancelled join status failed: {status:?}");
+    let status = json(&status);
+    assert_eq!(status["status"], "rejected");
+    assert_eq!(status["reason"], "cancelled");
+    assert_eq!(status["join_id"], join_id);
+    drop(session);
 }
 
 #[tokio::test]
@@ -820,14 +946,13 @@ async fn member_trust_cli_keeps_applies_and_rejects_stale_decisions() {
         .expect("carol change id")
         .to_string();
     assert_eq!(carol_change_id, bob_change_id);
-    let carol_choice_id = carol_issue["choices"]
+    let carol_choice = carol_issue["choices"]
         .as_array()
         .unwrap()
         .iter()
         .find(|choice| choice["isCurrentGroup"] == true)
-        .expect("current group choice")["choiceId"]
-        .as_str()
-        .unwrap();
+        .expect("current group choice");
+    let carol_choice_id = carol_choice["choiceId"].as_str().unwrap();
 
     let human_status = carol.cli.run_capture(&["member", "trust", "status"]);
     assert!(
@@ -879,24 +1004,11 @@ async fn member_trust_cli_keeps_applies_and_rejects_stale_decisions() {
     assert_eq!(stale["code"], "device_group_state_changed");
     assert_request_delta(&carol, "POST", decision_path, decision_requests_before, 0);
 
-    let keep_requests_before = daemon_request_count(&carol, "POST", decision_path);
-    let kept = carol.cli.run_capture(&[
-        "--json",
-        "member",
-        "trust",
-        "choose",
-        "--issue",
-        &carol_change_id,
-        "--choice",
-        carol_choice_id,
-    ]);
-    assert!(kept.success(), "keep decision failed: {kept:?}");
-    let kept = json(&kept);
+    let kept = confirm_device_group(&carol, carol_issue, carol_choice, false).await;
     assert_eq!(kept["ok"], true);
     assert_eq!(kept["result"]["outcome"], "completed");
     assert_eq!(kept["state"]["deviceTrust"]["localMembership"], "active");
     assert!(kept["state"]["deviceTrust"]["currentChange"].is_null());
-    assert_request_delta(&carol, "POST", decision_path, keep_requests_before, 1);
 
     let apply_requests_before = daemon_request_count(&bob, "POST", decision_path);
     let missing_confirmation = bob.cli.run_capture(&[
@@ -919,19 +1031,7 @@ async fn member_trust_cli_keeps_applies_and_rejects_stale_decisions() {
     );
     assert_request_delta(&bob, "POST", decision_path, apply_requests_before, 0);
 
-    let applied = bob.cli.run_capture(&[
-        "--json",
-        "member",
-        "trust",
-        "choose",
-        "--issue",
-        &bob_change_id,
-        "--choice",
-        bob_choice_id,
-        "--confirm-local-removal",
-    ]);
-    assert!(applied.success(), "apply decision failed: {applied:?}");
-    let applied = json(&applied);
+    let applied = confirm_device_group(&bob, bob_issue, bob_choice, true).await;
     assert_eq!(applied["ok"], true);
     assert_eq!(applied["result"]["outcome"], "completed");
     assert_eq!(
@@ -939,5 +1039,4 @@ async fn member_trust_cli_keeps_applies_and_rejects_stale_decisions() {
         "removed"
     );
     assert!(applied["state"]["deviceTrust"]["currentChange"].is_null());
-    assert_request_delta(&bob, "POST", decision_path, apply_requests_before, 1);
 }

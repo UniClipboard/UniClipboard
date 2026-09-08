@@ -128,24 +128,23 @@ pub async fn connect_or_spawn_oneshot_daemon(verbose: bool) -> Result<Box<dyn Da
             ui::error(&crate::local_daemon::incompatible_outcome_error(outcome).to_string());
             Err(exit_codes::EXIT_DAEMON_UNREACHABLE)
         }
-        Ok(ProbeOutcome::Absent) => {
-            // Don't spawn a useless Oneshot for an unprovisioned profile.
-            // Mirror start.rs's lenient unwrap_or(true): if setup state is
-            // unreadable, attempt the spawn and let the real error surface.
-            if !crate::setup_check::is_setup_complete().unwrap_or(true) {
-                ui::error(
-                    "No space on this profile — run `uniclip space init` or `uniclip space join` first.",
-                );
-                return Err(exit_codes::EXIT_ERROR);
-            }
-            match crate::local_daemon::spawn_oneshot_and_wait().await {
-                Ok(_session) => build_daemon_client_service(true),
-                Err(err) => {
-                    ui::error(&err.to_string());
+        Ok(ProbeOutcome::Absent) => match crate::local_daemon::spawn_oneshot_and_wait().await {
+            Ok(_session) => match crate::setup_check::is_setup_complete().await {
+                Ok(true) => build_daemon_client_service(true),
+                Ok(false) => {
+                    ui::error("No space on this profile; run `uniclip space init` or `uniclip space join` first.");
                     Err(exit_codes::EXIT_ERROR)
                 }
+                Err(error) => {
+                    ui::error(&format!("Failed to read setup state: {error}"));
+                    Err(exit_codes::EXIT_ERROR)
+                }
+            },
+            Err(err) => {
+                ui::error(&err.to_string());
+                Err(exit_codes::EXIT_ERROR)
             }
-        }
+        },
         // No in-process fallback in P5-1a. connect/timeout already map to
         // Absent upstream, so a probe Err is a genuine failure → hard error.
         Err(err) => {

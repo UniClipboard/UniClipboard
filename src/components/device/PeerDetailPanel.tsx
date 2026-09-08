@@ -15,6 +15,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { toast } from '@/components/ui/toast'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+import { subscribeDeviceSyncChanged } from '@/lib/device-sync-events'
 import { createLogger } from '@/lib/logger'
 import { cn } from '@/lib/utils'
 import { useAppDispatch, useAppSelector } from '@/store/hooks'
@@ -60,6 +61,12 @@ const PeerDetailPanel: React.FC<PeerDetailPanelProps> = ({
     if (deviceId) {
       dispatch(fetchMemberSyncPreferences(deviceId))
     }
+  }, [dispatch, deviceId])
+
+  useEffect(() => {
+    return subscribeDeviceSyncChanged(deviceId, () => {
+      dispatch(fetchMemberSyncPreferences(deviceId))
+    })
   }, [dispatch, deviceId])
 
   // Preferences are updated optimistically in the slice; on failure re-fetch

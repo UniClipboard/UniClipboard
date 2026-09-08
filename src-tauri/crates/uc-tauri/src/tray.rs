@@ -16,6 +16,8 @@ use uc_daemon_contract::api::dto::settings::{SettingsPatchDto, SyncSettingsPatch
 
 use crate::main_window::show_main_window;
 
+mod device_sync;
+
 /// Managed state that holds the tray icon and its menu item handles.
 ///
 /// Stored via `app.manage(TrayState::default())` and accessed from
@@ -29,6 +31,7 @@ pub struct TrayState {
 struct TrayHandles {
     _tray: tauri::tray::TrayIcon,
     sync: MenuItem<tauri::Wry>,
+    device_sync: device_sync::DeviceSyncMenu,
     open: MenuItem<tauri::Wry>,
     settings: MenuItem<tauri::Wry>,
     check_update: MenuItem<tauri::Wry>,
@@ -64,6 +67,7 @@ impl TrayState {
 
         let language = normalize_language(initial_language);
         let labels = MenuLabels::for_language(language);
+        let device_sync = device_sync::DeviceSyncMenu::new(app, language)?;
         // Create menu items with well-known IDs.
         let sync = MenuItem::with_id(
             app,
@@ -114,6 +118,7 @@ impl TrayState {
         #[cfg_attr(not(debug_assertions), allow(unused_mut))]
         let mut menu_builder = MenuBuilder::new(app)
             .item(&sync)
+            .item(&device_sync.submenu)
             .separator()
             .item(&open)
             .item(&settings)
@@ -202,6 +207,20 @@ impl TrayState {
                     // QuitIntent and runs the graceful stop.
                     crate::lightweight::request_full_quit(app);
                 }
+                id if id.starts_with("tray.device-sync.") => {
+                    let result = (|| -> anyhow::Result<()> {
+                        let tray = app.state::<TrayState>();
+                        let guard = tray.inner.lock().map_err(|e| anyhow::anyhow!("{e}"))?;
+                        if let Some(handles) = guard.as_ref() {
+                            handles.device_sync.on_menu_event(id)?;
+                        }
+                        Ok(())
+                    })();
+                    if let Err(error) = result {
+                        warn!(error = %error, "Failed to handle device sync menu action");
+                        show_sync_error(app);
+                    }
+                }
                 _ => {}
             })
             .on_tray_icon_event(|tray, event| {
@@ -285,6 +304,7 @@ impl TrayState {
         *guard = Some(TrayHandles {
             _tray: tray,
             sync,
+            device_sync,
             open,
             settings,
             check_update,
@@ -328,6 +348,14 @@ impl TrayState {
             .unwrap_or(false)
     }
 
+    pub(crate) fn refresh_devices(&self) {
+        if let Ok(guard) = self.inner.lock() {
+            if let Some(handles) = guard.as_ref() {
+                handles.device_sync.refresh();
+            }
+        }
+    }
+
     /// Update the tray menu labels to match the given language.
     ///
     /// If the tray has not been initialized yet, this is a no-op.
@@ -349,6 +377,7 @@ impl TrayState {
         let labels = MenuLabels::for_language(language);
 
         handles.open.set_text(labels.open)?;
+        handles.device_sync.set_language(language)?;
         handles.settings.set_text(labels.settings)?;
         handles.check_update.set_text(labels.check_update)?;
         handles.restart.set_text(labels.restart)?;
@@ -462,26 +491,31 @@ async fn toggle_sync(app: &tauri::AppHandle) {
     }
     if let Err(error) = result {
         warn!(error = %error, error_kind = "sync_toggle_failed", "Failed to toggle sync from tray");
-        let language = tray
-            .inner
-            .lock()
-            .ok()
-            .and_then(|guard| guard.as_ref().map(|handles| handles.language.clone()))
-            .unwrap_or_default();
-        let message = match language.as_str() {
-            "zh-CN" => "无法更改同步状态，请稍后重试。",
-            "zh-TW" => "無法變更同步狀態，請稍後重試。",
-            "ja-JP" => "同期設定を変更できませんでした。もう一度お試しください。",
-            "ru-RU" => "Не удалось изменить синхронизацию. Повторите попытку позже.",
-            "pt-BR" => "Não foi possível alterar a sincronização. Tente novamente.",
-            _ => "Could not change sync. Please try again.",
-        };
-        app.dialog()
-            .message(message)
-            .title("UniClipboard")
-            .kind(tauri_plugin_dialog::MessageDialogKind::Error)
-            .show(|_| {});
+        show_sync_error(app);
     }
+}
+
+fn show_sync_error(app: &tauri::AppHandle) {
+    let tray = app.state::<TrayState>();
+    let language = tray
+        .inner
+        .lock()
+        .ok()
+        .and_then(|guard| guard.as_ref().map(|handles| handles.language.clone()))
+        .unwrap_or_default();
+    let message = match language.as_str() {
+        "zh-CN" => "无法更改同步状态，请稍后重试。",
+        "zh-TW" => "無法變更同步狀態，請稍後重試。",
+        "ja-JP" => "同期設定を変更できませんでした。もう一度お試しください。",
+        "ru-RU" => "Не удалось изменить синхронизацию. Повторите попытку позже.",
+        "pt-BR" => "Não foi possível alterar a sincronização. Tente novamente.",
+        _ => "Could not change sync. Please try again.",
+    };
+    app.dialog()
+        .message(message)
+        .title("UniClipboard")
+        .kind(tauri_plugin_dialog::MessageDialogKind::Error)
+        .show(|_| {});
 }
 
 /// Normalize a language string to a supported locale.

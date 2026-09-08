@@ -18,6 +18,7 @@ import {
   recoverNetwork as recoverNetworkApi,
   type NetworkRecoveryStatus,
 } from '@/api/daemon/network-recovery'
+import { emitDeviceSyncChanged } from '@/lib/device-sync-events'
 
 interface DevicesState {
   // 当前设备
@@ -191,6 +192,7 @@ export const updateMemberSyncPreferences = createAsyncThunk(
   ) => {
     try {
       const preferences = await updateMemberSyncPreferencesApi(deviceId, patch)
+      await emitDeviceSyncChanged(deviceId)
       return { deviceId, preferences }
     } catch {
       return rejectWithValue('Failed to update member sync preferences')

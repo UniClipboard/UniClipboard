@@ -532,7 +532,7 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
                 silent_start,
                 is_silent_mode,
                 initial_language,
-                lan_only_active,
+                sync_enabled,
                 quick_panel_enabled,
                 quick_panel_double_tap_modifier,
                 auto_start,
@@ -559,7 +559,7 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
                             settings.silent_start,
                             settings.is_silent_mode,
                             settings.language,
-                            settings.lan_only_active,
+                            settings.sync_enabled,
                             settings.quick_panel_enabled,
                             settings.quick_panel_double_tap_modifier,
                             settings.auto_start,
@@ -616,7 +616,7 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
 
             // Initialize system tray
             let tray_state = app.state::<TrayState>();
-            if let Err(e) = tray_state.init(app.handle(), &initial_language, lan_only_active) {
+            if let Err(e) = tray_state.init(app.handle(), &initial_language, sync_enabled) {
                 error!("Failed to initialize system tray: {}", e);
                 // Non-fatal: continue startup without tray
             }

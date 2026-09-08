@@ -1,3 +1,4 @@
+import { listen } from '@tauri-apps/api/event'
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { getSettings, updateSettings } from '@/api/daemon'
@@ -12,6 +13,10 @@ import { makeBaseSettings } from '@/test/fixtures/settings'
 vi.mock('@/api/daemon', () => ({
   getSettings: vi.fn(),
   updateSettings: vi.fn(),
+}))
+
+vi.mock('@tauri-apps/api/event', () => ({
+  listen: vi.fn().mockResolvedValue(() => {}),
 }))
 
 vi.mock('@/lib/daemon-ws-bootstrap', () => ({
@@ -86,8 +91,31 @@ describe('SettingProvider theme integration', () => {
     })
   })
 
+  it('reloads the saved sync switch after a tray change', async () => {
+    const { result } = renderHook(() => useSetting(), { wrapper })
+    await waitFor(() => expect(result.current.setting).not.toBeNull())
+    const subscription = vi
+      .mocked(listen)
+      .mock.calls.find(([name]) => name === 'settings://sync-changed')
+    expect(subscription).toBeDefined()
+    mockGetSettings.mockResolvedValue(
+      makeBaseSettings({ sync: { ...baseSetting.sync, syncEnabled: false } })
+    )
+    await act(async () => {
+      subscription![1]({
+        event: 'settings://sync-changed',
+        id: 1,
+        payload: null,
+      })
+    })
+    await waitFor(() => expect(result.current.setting?.sync.syncEnabled).toBe(false))
+  })
+
   it('does not reapply the page theme when only file sync changes', async () => {
-    vi.mocked(updateSettings).mockResolvedValue({ success: true, restartRequired: false })
+    vi.mocked(updateSettings).mockResolvedValue({
+      success: true,
+      restartRequired: false,
+    })
     const { result } = renderHook(() => useSetting(), { wrapper })
     await waitFor(() => expect(result.current.setting).not.toBeNull())
     const setAttribute = vi.spyOn(document.documentElement, 'setAttribute')

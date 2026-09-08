@@ -8,8 +8,11 @@ use std::sync::Mutex;
 
 use tauri::menu::{MenuBuilder, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
-use tauri::{Emitter, Manager};
+use tauri::{Emitter, Listener, Manager};
+use tauri_plugin_dialog::DialogExt;
 use tracing::{debug, info, warn};
+use uc_daemon_client::{DaemonConnectionState, DaemonSettingsClient};
+use uc_daemon_contract::api::dto::settings::{SettingsPatchDto, SyncSettingsPatchDto};
 
 use crate::main_window::show_main_window;
 
@@ -24,11 +27,8 @@ pub struct TrayState {
 
 /// Internal handles for the tray icon and its menu items.
 struct TrayHandles {
-    tray: tauri::tray::TrayIcon,
-    /// Phase 96 INDIC-04 状态行 —— 不可交互,用于让用户在不打开主窗口的
-    /// 前提下确认 LAN-only Mode 是否已开启(差异图标 OR 状态徽章 二选一,
-    /// 这里选状态文案 + tooltip 双重披露)。
-    status: MenuItem<tauri::Wry>,
+    _tray: tauri::tray::TrayIcon,
+    sync: MenuItem<tauri::Wry>,
     open: MenuItem<tauri::Wry>,
     settings: MenuItem<tauri::Wry>,
     check_update: MenuItem<tauri::Wry>,
@@ -36,7 +36,8 @@ struct TrayHandles {
     lightweight: MenuItem<tauri::Wry>,
     quit: MenuItem<tauri::Wry>,
     language: String,
-    lan_only_active: bool,
+    sync_enabled: bool,
+    sync_busy: bool,
 }
 
 impl TrayState {
@@ -45,15 +46,11 @@ impl TrayState {
     /// This method is idempotent: if the tray is already initialized,
     /// it returns `Ok(())` immediately.
     ///
-    /// Phase 96 INDIC-04:`lan_only_active` 反映启动时的 LAN-only Mode 状态
-    /// (后端 `settings.network.allow_relay_fallback == false ⇔ ON`),用于
-    /// 渲染状态菜单行 + tooltip 后缀。本里程碑承担"重启生效"语义,所以
-    /// 进程内不再随设置变化更新此状态(即便设置已切换,要等下次重启才生效)。
     pub fn init(
         &self,
         app: &tauri::AppHandle,
         initial_language: &str,
-        lan_only_active: bool,
+        sync_enabled: bool,
     ) -> tauri::Result<()> {
         let mut guard = self
             .inner
@@ -67,13 +64,14 @@ impl TrayState {
 
         let language = normalize_language(initial_language);
         let labels = MenuLabels::for_language(language);
-        let status_label = lan_only_status_label(language, lan_only_active);
-        let tooltip = lan_only_tooltip(language, lan_only_active);
-
         // Create menu items with well-known IDs.
-        // `tray.status` 是不可交互的状态展示行(`enabled = false`),
-        // 用户右键 tray 时一眼可见 LAN-only Mode 是否已生效。
-        let status = MenuItem::with_id(app, "tray.status", status_label, false, None::<&str>)?;
+        let sync = MenuItem::with_id(
+            app,
+            "tray.sync",
+            sync_action_label(language, sync_enabled),
+            true,
+            None::<&str>,
+        )?;
         let open = MenuItem::with_id(app, "tray.open", labels.open, true, None::<&str>)?;
         let settings =
             MenuItem::with_id(app, "tray.settings", labels.settings, true, None::<&str>)?;
@@ -115,7 +113,7 @@ impl TrayState {
         //     一些距离,降低"想点退出却点到重启"的误触
         #[cfg_attr(not(debug_assertions), allow(unused_mut))]
         let mut menu_builder = MenuBuilder::new(app)
-            .item(&status)
+            .item(&sync)
             .separator()
             .item(&open)
             .item(&settings)
@@ -133,10 +131,16 @@ impl TrayState {
 
         // Build the tray icon
         let mut builder = TrayIconBuilder::with_id("uc-tray")
-            .tooltip(&tooltip)
+            .tooltip("UniClipboard")
             .show_menu_on_left_click(false)
             .menu(&menu)
             .on_menu_event(|app, event| match event.id().as_ref() {
+                "tray.sync" => {
+                    let app = app.clone();
+                    tauri::async_runtime::spawn(async move {
+                        toggle_sync(&app).await;
+                    });
+                }
                 "tray.open" => {
                     show_main_window(app);
                 }
@@ -274,13 +278,13 @@ impl TrayState {
 
         info!(
             language = %language,
-            lan_only_active,
+            sync_enabled,
             "System tray initialized"
         );
 
         *guard = Some(TrayHandles {
-            tray,
-            status,
+            _tray: tray,
+            sync,
             open,
             settings,
             check_update,
@@ -288,7 +292,23 @@ impl TrayState {
             lightweight,
             quit,
             language: language.to_string(),
-            lan_only_active,
+            sync_enabled,
+            sync_busy: false,
+        });
+
+        let handle = app.clone();
+        app.listen("settings://changed", move |event| {
+            let result = (|| -> anyhow::Result<()> {
+                let notification: SettingsChanged = serde_json::from_str(event.payload())?;
+                let settings: SyncSnapshot = serde_json::from_str(&notification.setting_json)?;
+                handle
+                    .state::<TrayState>()
+                    .set_sync_enabled(settings.sync.sync_enabled)?;
+                Ok(())
+            })();
+            if let Err(error) = result {
+                warn!(error = %error, "Failed to refresh tray sync state");
+            }
         });
 
         Ok(())
@@ -327,8 +347,6 @@ impl TrayState {
 
         let language = normalize_language(language);
         let labels = MenuLabels::for_language(language);
-        let status_label = lan_only_status_label(language, handles.lan_only_active);
-        let tooltip = lan_only_tooltip(language, handles.lan_only_active);
 
         handles.open.set_text(labels.open)?;
         handles.settings.set_text(labels.settings)?;
@@ -336,49 +354,133 @@ impl TrayState {
         handles.restart.set_text(labels.restart)?;
         handles.lightweight.set_text(labels.lightweight)?;
         handles.quit.set_text(labels.quit)?;
-        handles.status.set_text(status_label)?;
-        // Tray icon tooltip 也要随语言切换刷新。
-        let _ = handles.tray.set_tooltip(Some(&tooltip));
+        handles
+            .sync
+            .set_text(sync_action_label(language, handles.sync_enabled))?;
         handles.language = language.to_string();
 
         debug!("Tray language updated to: {}", language);
         Ok(())
     }
-}
 
-/// Phase 96 INDIC-04:LAN-only Mode 状态文案(菜单状态行)。
-fn lan_only_status_label(language: &str, lan_only_active: bool) -> &'static str {
-    match (language, lan_only_active) {
-        ("zh-CN", true) => "LAN-only Mode:已开启",
-        ("zh-CN", false) => "LAN-only Mode:未开启",
-        ("zh-TW", true) => "LAN 專用模式：開啟",
-        ("zh-TW", false) => "LAN 專用模式：關閉",
-        ("ja-JP", true) => "LAN専用モード: オン",
-        ("ja-JP", false) => "LAN専用モード: オフ",
-        ("ru-RU", true) => "LAN-only Mode: включён",
-        ("ru-RU", false) => "LAN-only Mode: выключен",
-        ("pt-BR", true) => "LAN-only Mode: ativado",
-        ("pt-BR", false) => "LAN-only Mode: desativado",
-        (_, true) => "LAN-only Mode: ON",
-        (_, false) => "LAN-only Mode: OFF",
+    fn set_sync_enabled(&self, enabled: bool) -> anyhow::Result<()> {
+        let mut guard = self.inner.lock().map_err(|e| anyhow::anyhow!("{e}"))?;
+        if let Some(handles) = guard.as_mut() {
+            handles
+                .sync
+                .set_text(sync_action_label(&handles.language, enabled))?;
+            handles.sync_enabled = enabled;
+        }
+        Ok(())
+    }
+
+    fn set_sync_busy(&self, busy: bool) -> anyhow::Result<bool> {
+        let mut guard = self.inner.lock().map_err(|e| anyhow::anyhow!("{e}"))?;
+        let Some(handles) = guard.as_mut() else {
+            return Ok(false);
+        };
+        if busy && handles.sync_busy {
+            return Ok(false);
+        }
+        handles.sync.set_enabled(!busy)?;
+        handles.sync_busy = busy;
+        Ok(true)
     }
 }
 
-/// Phase 96 INDIC-04:tray icon tooltip。hover 即可看到 LAN-only Mode 状态。
-fn lan_only_tooltip(language: &str, lan_only_active: bool) -> String {
-    match (language, lan_only_active) {
-        ("zh-CN", true) => "UniClipboard — LAN-only Mode 已开启".to_string(),
-        ("zh-CN", false) => "UniClipboard".to_string(),
-        ("zh-TW", true) => "UniClipboard - LAN 專用模式：開啟".to_string(),
-        ("zh-TW", false) => "UniClipboard".to_string(),
-        ("ja-JP", true) => "UniClipboard - LAN専用モード: オン".to_string(),
-        ("ja-JP", false) => "UniClipboard".to_string(),
-        ("ru-RU", true) => "UniClipboard — LAN-only Mode включён".to_string(),
-        ("ru-RU", false) => "UniClipboard".to_string(),
-        ("pt-BR", true) => "UniClipboard — LAN-only Mode ativado".to_string(),
-        ("pt-BR", false) => "UniClipboard".to_string(),
-        (_, true) => "UniClipboard — LAN-only Mode is ON".to_string(),
-        (_, false) => "UniClipboard".to_string(),
+fn sync_action_label(language: &str, sync_enabled: bool) -> &'static str {
+    match (language, sync_enabled) {
+        ("zh-CN", true) => "关闭同步",
+        ("zh-CN", false) => "开启同步",
+        ("zh-TW", true) => "關閉同步",
+        ("zh-TW", false) => "開啟同步",
+        ("ja-JP", true) => "同期をオフにする",
+        ("ja-JP", false) => "同期をオンにする",
+        ("ru-RU", true) => "Выключить синхронизацию",
+        ("ru-RU", false) => "Включить синхронизацию",
+        ("pt-BR", true) => "Desativar sincronização",
+        ("pt-BR", false) => "Ativar sincronização",
+        (_, true) => "Disable Sync",
+        (_, false) => "Enable Sync",
+    }
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SettingsChanged {
+    setting_json: String,
+}
+
+#[derive(serde::Deserialize)]
+struct SyncSnapshot {
+    sync: SyncValue,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SyncValue {
+    sync_enabled: bool,
+}
+
+#[tracing::instrument(name = "tray.toggle_sync", skip(app))]
+async fn toggle_sync(app: &tauri::AppHandle) {
+    let tray = app.state::<TrayState>();
+    match tray.set_sync_busy(true) {
+        Ok(true) => {}
+        Ok(false) => return,
+        Err(error) => {
+            warn!(error = %error, "Failed to reserve tray sync action");
+            return;
+        }
+    }
+    let result = async {
+        let client =
+            DaemonSettingsClient::new(app.state::<DaemonConnectionState>().inner().clone())?;
+        let current = client.get_settings().await?;
+        let enabled = !current.sync.sync_enabled;
+        let result = client
+            .update_settings(SettingsPatchDto {
+                sync: Some(SyncSettingsPatchDto {
+                    sync_enabled: Some(enabled),
+                    auto_sync_enabled: None,
+                    sync_frequency: None,
+                    content_types: None,
+                    sync_on_restore: None,
+                }),
+                ..Default::default()
+            })
+            .await?;
+        anyhow::ensure!(result.success, "Sync settings update was rejected");
+        tray.set_sync_enabled(enabled)?;
+        app.emit("settings://sync-changed", ())?;
+        info!(sync_enabled = enabled, "Tray sync switch saved");
+        Ok::<_, anyhow::Error>(())
+    }
+    .await;
+    if let Err(error) = tray.set_sync_busy(false) {
+        warn!(error = %error, "Failed to restore tray sync action");
+    }
+    if let Err(error) = result {
+        warn!(error = %error, error_kind = "sync_toggle_failed", "Failed to toggle sync from tray");
+        let language = tray
+            .inner
+            .lock()
+            .ok()
+            .and_then(|guard| guard.as_ref().map(|handles| handles.language.clone()))
+            .unwrap_or_default();
+        let message = match language.as_str() {
+            "zh-CN" => "无法更改同步状态，请稍后重试。",
+            "zh-TW" => "無法變更同步狀態，請稍後重試。",
+            "ja-JP" => "同期設定を変更できませんでした。もう一度お試しください。",
+            "ru-RU" => "Не удалось изменить синхронизацию. Повторите попытку позже.",
+            "pt-BR" => "Não foi possível alterar a sincronização. Tente novamente.",
+            _ => "Could not change sync. Please try again.",
+        };
+        app.dialog()
+            .message(message)
+            .title("UniClipboard")
+            .kind(tauri_plugin_dialog::MessageDialogKind::Error)
+            .show(|_| {});
     }
 }
 

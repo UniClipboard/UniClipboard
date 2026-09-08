@@ -1,3 +1,4 @@
+import { listen } from '@tauri-apps/api/event'
 import React, { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { getSettings, saveRelay as persistRelay, updateSettings } from '@/api/daemon'
 import {
@@ -364,6 +365,18 @@ export const SettingProvider: React.FC<SettingProviderProps> = ({ children }) =>
   // Load settings immediately on mount
   useEffect(() => {
     void loadSetting()
+  }, [loadSetting])
+
+  useEffect(() => {
+    const subscription = listen('settings://sync-changed', () => {
+      void loadSetting()
+    }).catch(err => {
+      log.error({ err }, 'Failed to subscribe to tray sync changes')
+      return () => {}
+    })
+    return () => {
+      void subscription.then(unlisten => unlisten())
+    }
   }, [loadSetting])
 
   // Note: Cross-window settings sync via daemon WebSocket events (future enhancement)

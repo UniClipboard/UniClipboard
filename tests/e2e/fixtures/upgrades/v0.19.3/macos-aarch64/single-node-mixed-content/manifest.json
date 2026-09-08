@@ -1,0 +1,73 @@
+{
+  "formatVersion": 1,
+  "sourceVersion": "0.19.3",
+  "sourceAssetSha256": "",
+  "sourceKind": "source-build",
+  "sourceCommit": "d2d19c8934aa966a9e01bd4885de68de810e0030",
+  "sourceBinaries": {
+    "cliSha256": "11457db9dea7628fe5eb1b9a8899aa1f8618c294657b413d885f4defa4400c28",
+    "daemonSha256": "14f58f1b6f8e71e2ba5105f9d3d850388481024a45199e1f4969d2554bc0bd34"
+  },
+  "platform": "macos-aarch64",
+  "scenario": "single-node-mixed-content",
+  "environment": "development",
+  "archive": "userdata.tar.gz",
+  "archiveSha256": "4f2807e2146f3d2fbdc864561a617137ca800240435ce418a05741ab7c622304",
+  "files": [
+    {
+      "path": "data/keyring/6b656b3a76313a70726f66696c653a64656661756c74.bin",
+      "size": 32,
+      "sha256": "16d3ba4b04104f70ccce9114276adae2be42380ffd3dadbe414832097ceee089"
+    },
+    {
+      "path": "data/settings.json",
+      "size": 2189,
+      "sha256": "6cc8b2f131d8877e65a9e6dd12609524374f6e8ae70a2cd90e9e81bf80656a54"
+    },
+    {
+      "path": "data/uniclipboard.db",
+      "size": 286720,
+      "sha256": "16c15f46fa9ce289ddb2531b8047c46657d51d093ee865bf0a56bde44458729f"
+    },
+    {
+      "path": "data/uniclipboard.db-wal",
+      "size": 1231912,
+      "sha256": "e956903d1c862481c873d28a439982faedc38867ad030490cd8b826b655bf7f4"
+    },
+    {
+      "path": "data/upgrade-cursor.json",
+      "size": 58,
+      "sha256": "79b1084a14d3623a8c30d871f9df54c69cf0cfe1ccaef3cbd0fbf1d65a3fe0c8"
+    },
+    {
+      "path": "data/vault/.setup_status",
+      "size": 81,
+      "sha256": "31602b1643d82bf4809d0bfb167718337c16ac42f486e3474230c6c55535f06e"
+    },
+    {
+      "path": "data/vault/blobs/d89cc55c-903c-46bb-a586-937bf3fcffa8",
+      "size": 128,
+      "sha256": "7398dbf856100fc83f921a05b52c94b7768b1eaa87e8e5067b5905c6d13fe885"
+    },
+    {
+      "path": "data/vault/device_id.txt",
+      "size": 36,
+      "sha256": "ec318920f94e45ccb22082cfb61bf754e28fa7a0c2e4af09b900704e26660c39"
+    },
+    {
+      "path": "data/vault/keyslot.json",
+      "size": 1297,
+      "sha256": "955b6c0aa346d8188c6ecfa3951374550649fef27d7954607f90d5367d35d01f"
+    },
+    {
+      "path": "legacy-iroh-blobs/blobs.db",
+      "size": 1056768,
+      "sha256": "afb2df8baeb9945e23c9115f3a9d1a417468dd5ae7524bffbd43e1e00b293af2"
+    },
+    {
+      "path": "legacy-iroh-identity/69726f682d6964656e746974793a7631.bin",
+      "size": 32,
+      "sha256": "358ae04a16ac5791bd9fee21439ab857c2c1138c466ac27365c158bbb24234b3"
+    }
+  ]
+}

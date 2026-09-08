@@ -1,4 +1,5 @@
 import { Check, Monitor } from 'lucide-react'
+import type { KeyboardEventHandler } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { presentDeviceGroups } from '@/components/device/device-group-presentation'
 import { cn } from '@/lib/utils'
@@ -10,6 +11,7 @@ export function DeviceTrustChoiceCard({
   tabStop,
   onSelect,
   showDetails,
+  onKeyDown,
 }: {
   view: ReturnType<typeof presentDeviceGroups>['choices'][number]
   selected: boolean
@@ -17,6 +19,7 @@ export function DeviceTrustChoiceCard({
   tabStop: boolean
   onSelect: () => void
   showDetails: boolean
+  onKeyDown?: KeyboardEventHandler<HTMLButtonElement>
 }) {
   const { t } = useTranslation()
   return (
@@ -28,6 +31,7 @@ export function DeviceTrustChoiceCard({
       data-testid={`device-trust-choice-${view.id}`}
       disabled={disabled}
       onClick={onSelect}
+      onKeyDown={onKeyDown}
       className={cn(
         'relative min-w-0 rounded-md border p-4 text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60',
         selected ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50'

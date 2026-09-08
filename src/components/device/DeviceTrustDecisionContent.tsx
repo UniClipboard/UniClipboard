@@ -13,10 +13,12 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 
-function moveChoice(event: KeyboardEvent<HTMLDivElement>) {
+function moveChoice(event: KeyboardEvent<HTMLButtonElement>) {
   if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(event.key)) return
   const options = Array.from(
-    event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="radio"]:not(:disabled)')
+    event.currentTarget
+      .closest('[role="radiogroup"]')!
+      .querySelectorAll<HTMLButtonElement>('[role="radio"]:not(:disabled)')
   )
   const index = options.indexOf(document.activeElement as HTMLButtonElement)
   if (index < 0 || options.length < 2) return
@@ -106,9 +108,8 @@ export function DeviceTrustDecisionContent({
         <div
           className="grid min-w-0 gap-3"
           role="radiogroup"
-          aria-label={t('deviceTrust.presentation.select')}
           tabIndex={-1}
-          onKeyDown={moveChoice}
+          aria-label={t('deviceTrust.presentation.select')}
         >
           {view.choices.map((choice, index) => (
             <DeviceTrustChoiceCard
@@ -118,6 +119,7 @@ export function DeviceTrustDecisionContent({
               selected={selected?.id === choice.id}
               tabStop={selected ? selected.id === choice.id : index === 0}
               disabled={busy || localConfirmation}
+              onKeyDown={moveChoice}
               onSelect={() => {
                 setSelection(choice.id)
                 setConfirming(false)

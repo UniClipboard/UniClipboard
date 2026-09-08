@@ -184,11 +184,11 @@ export function ExpandableActionBar({
   // an action whose label nobody can read. Only on the way down from expanded:
   // a controlled bar that declined to expand at all keeps its arm, which is
   // what lets its second tap act.
-  const wasExpanded = useRef(isExpanded)
-  useEffect(() => {
-    if (wasExpanded.current && !isExpanded) setTapExpanded(false)
-    wasExpanded.current = isExpanded
-  }, [isExpanded])
+  const [wasExpanded, setWasExpanded] = useState(isExpanded)
+  if (wasExpanded !== isExpanded) {
+    setWasExpanded(isExpanded)
+    if (!isExpanded) setTapExpanded(false)
+  }
 
   // A finger never hovers and Safari does not focus a button on tap, so a bar a
   // tap expanded would have nothing to close it. The tap that lands elsewhere

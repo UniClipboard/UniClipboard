@@ -22,6 +22,7 @@ function AlertDialogOverlay({ className, ...props }: AlertDialogPrimitive.Backdr
   return (
     <AlertDialogPrimitive.Backdrop
       data-slot="alert-dialog-overlay"
+      data-tauri-drag-region
       className={cn(
         'center-morph-backdrop fixed inset-0 isolate z-50 bg-background/10 supports-backdrop-filter:backdrop-blur-sm',
         className

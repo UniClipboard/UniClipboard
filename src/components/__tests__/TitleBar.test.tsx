@@ -22,7 +22,6 @@ vi.mock('@/hooks/usePlatform', () => ({
     isLinux: true,
     isTauri: true,
     hasCustomWindowControls: true,
-    reduceVisualEffects: true,
   }),
 }))
 

@@ -1,0 +1,29 @@
+.appearance-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 20rem);
+  align-items: center;
+  gap: 0.5rem 2rem;
+  min-width: 0;
+}
+
+.appearance-note {
+  grid-column: 2;
+  min-width: 0;
+}
+
+.appearance-label-block {
+  grid-row: span 2;
+  align-self: start;
+}
+
+@media (max-width: 36rem) {
+  .appearance-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .appearance-note {
+    grid-column: 1;
+  }
+  .appearance-label-block {
+    grid-row: auto;
+  }
+}

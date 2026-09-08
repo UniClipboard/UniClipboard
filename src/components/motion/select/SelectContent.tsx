@@ -1,5 +1,5 @@
 import { Select as SelectPrimitive } from '@base-ui/react/select'
-import { LayoutGroup, m, useReducedMotion, type HTMLMotionProps } from 'framer-motion'
+import { LayoutGroup, m, type HTMLMotionProps } from 'framer-motion'
 import { useId } from 'react'
 import {
   anchoredMenuClip,
@@ -7,6 +7,7 @@ import {
   MENU_SHADOW_CLASS,
   menuMotion,
 } from '@/components/motion/menu/presentation'
+import { useReducedMotion } from '@/hooks/useVisualEffects'
 import { cn } from '@/lib/utils'
 
 // Keep select semantics while sharing the action menus' surface and reveal motion.

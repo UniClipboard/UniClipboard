@@ -1,4 +1,25 @@
 {
+  "appearanceLayout": {
+    "effectsHelp": "視覚効果と動作の快適さを調整します。"
+  },
+  "smoothMode": {
+    "title": "スムーズモード",
+    "auto": "自動",
+    "effects": "効果優先",
+    "smooth": "動作優先",
+    "currentSmooth": "現在：動作優先",
+    "currentEffects": "現在：効果優先",
+    "notSaved": "今回の変更は適用されましたが、保存できませんでした。再起動後に元の設定に戻る場合があります。",
+    "unavailable": "外観設定を読み込むか保存できません。後でもう一度お試しください。",
+    "reason": {
+      "manual": "選択した設定を使用しています。",
+      "system": "システムの動きを減らす設定に従います。取得できない場合も動きを減らします。",
+      "platform_default": "Linux の自動モードでは視覚効果を減らします。",
+      "hardware": "デバイスの性能に基づいて選択しました。",
+      "unknown": "デバイスの性能が未確認のため、視覚効果を減らしています。",
+      "runtime": "以前の動作状況に基づいて選択しました。"
+    }
+  },
   "deviceTrust": {
     "presentation": {
       "localRemovalTitle": "{{actor}} がこのデバイスを削除しようとしています",

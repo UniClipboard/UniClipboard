@@ -1,7 +1,7 @@
 'use client'
 // beui.dev/components/blocks/expandable-action-bar
 
-import { LayoutGroup, m, type Transition, useReducedMotion } from 'framer-motion'
+import { LayoutGroup, m, type Transition } from 'framer-motion'
 import {
   Fragment,
   type FocusEvent,
@@ -15,6 +15,7 @@ import {
   useRef,
   useState,
 } from 'react'
+import { useReducedMotion } from '@/hooks/useVisualEffects'
 import { useDismiss } from '@/lib/hooks/use-dismiss'
 import { useHoverGesture } from '@/lib/hooks/use-hover-gesture'
 import { useTapGesture } from '@/lib/hooks/use-tap-gesture'

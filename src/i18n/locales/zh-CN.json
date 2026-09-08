@@ -1,4 +1,25 @@
 {
+  "appearanceLayout": {
+    "effectsHelp": "平衡视觉效果与运行性能。"
+  },
+  "smoothMode": {
+    "title": "流畅模式",
+    "auto": "自动",
+    "effects": "效果优先",
+    "smooth": "流畅优先",
+    "currentSmooth": "当前采用流畅模式",
+    "currentEffects": "当前采用效果优先",
+    "notSaved": "本次已生效，但未能保存，重启后可能恢复原设置。",
+    "unavailable": "暂时无法读取或保存外观偏好，请稍后重试。",
+    "reason": {
+      "manual": "已采用你的选择。",
+      "system": "已遵循系统减少动效偏好；无法读取时保守减少动效。",
+      "platform_default": "Linux 自动模式默认减少视觉效果。",
+      "hardware": "已根据设备能力选择。",
+      "unknown": "设备能力尚未确认，暂时减少视觉效果。",
+      "runtime": "已根据此前运行表现选择。"
+    }
+  },
   "deviceTrust": {
     "presentation": {
       "localRemovalTitle": "{{actor}} 要将本机移出设备组",

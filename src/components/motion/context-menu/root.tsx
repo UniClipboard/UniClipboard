@@ -22,7 +22,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 // Animated Context Menu from https://beui.dev/r/context-menu/raw (MIT).
-import { useReducedMotion } from 'framer-motion'
+import {} from 'framer-motion'
 import { useCallback, use, useEffect, useId, useMemo, useRef, useState } from 'react'
 import {
   OpenModality,
@@ -31,6 +31,7 @@ import {
   ContextMenuContext,
   ContextMenuProps,
 } from '@/components/motion/context-menu/state'
+import { useReducedMotion } from '@/hooks/useVisualEffects'
 import { cn } from '@/lib/utils'
 
 export function ContextMenu({

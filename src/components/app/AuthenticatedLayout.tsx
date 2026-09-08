@@ -1,7 +1,7 @@
 import { AnimatePresence, m } from 'framer-motion'
 import type { ReactNode } from 'react'
 import { useLocation, useOutlet } from 'react-router'
-import { usePlatform } from '@/hooks/usePlatform'
+import { useReducedMotion } from '@/hooks/useVisualEffects'
 import { MainLayout } from '@/layouts'
 
 const PAGE_TRANSITION = { duration: 0.16, ease: [0.22, 1, 0.36, 1] } as const
@@ -9,8 +9,8 @@ const PAGE_TRANSITION = { duration: 0.16, ease: [0.22, 1, 0.36, 1] } as const
 export function AuthenticatedLayout({ sidebarTitle }: { sidebarTitle: ReactNode }) {
   const routerLocation = useLocation()
   const outlet = useOutlet()
-  const { reduceVisualEffects } = usePlatform()
-  const pageTransitionsDisabled = reduceVisualEffects || import.meta.env.VITE_E2E === '1'
+  const reduceMotion = useReducedMotion()
+  const pageTransitionsDisabled = reduceMotion || import.meta.env.VITE_E2E === '1'
 
   return (
     <MainLayout sidebarTitle={sidebarTitle}>

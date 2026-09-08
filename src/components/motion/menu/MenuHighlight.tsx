@@ -1,4 +1,5 @@
-import { m, useReducedMotion } from 'framer-motion'
+import { m } from 'framer-motion'
+import { useReducedMotion } from '@/hooks/useVisualEffects'
 import { SPRING_LAYOUT } from '@/lib/ease'
 import { cn } from '@/lib/utils'
 

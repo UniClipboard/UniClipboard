@@ -1,14 +1,17 @@
 import { listen } from '@tauri-apps/api/event'
-import { LazyMotion, MotionConfig, domMax } from 'framer-motion'
+import { LazyMotion, domMax } from 'framer-motion'
 import React, { useCallback, useEffect, useEffectEvent, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { daemonClient } from '@/api/daemon/client'
+import VisualEffectsProvider from '@/components/motion/VisualEffectsProvider'
 import { Toaster } from '@/components/ui/toaster'
 import { usePlatform } from '@/hooks/usePlatform'
+import { useVisualEffectsSampling } from '@/hooks/useVisualEffectsSampling'
 import { connectDaemonWs } from '@/lib/daemon-ws-bootstrap'
 import { commands } from '@/lib/ipc'
 import { createLogger } from '@/lib/logger'
 import { readStoredUiScale } from '@/lib/ui-scale'
+import { visualEffectsStore } from '@/lib/visual-effects-store'
 import ClipboardHistoryPanel from './ClipboardHistoryPanel'
 import { getQuickPanelLayoutClassNames } from './constants'
 
@@ -17,11 +20,13 @@ const SHOW_FALLBACK_DELAY_MS = 50
 
 const QuickPanelApp: React.FC = () => {
   const { t } = useTranslation(undefined, { keyPrefix: 'quickPanel' })
-  const { isLinux, isTauri, reduceVisualEffects } = usePlatform()
+  const { isLinux, isTauri } = usePlatform()
   const layoutClassNames = getQuickPanelLayoutClassNames(isLinux && isTauri)
   const [daemonReady, setDaemonReady] = useState(daemonClient.initialized)
   const [bootstrapError, setBootstrapError] = useState<string | null>(null)
   const [showRequestId, setShowRequestId] = useState(0)
+  const [preparedRequestId, setPreparedRequestId] = useState(0)
+  useVisualEffectsSampling(daemonReady && showRequestId > 0 && preparedRequestId === showRequestId)
   const nextShowRequestIdRef = useRef(0)
   const pendingShowRequestIdRef = useRef<number | null>(null)
   const finalizeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -37,6 +42,7 @@ const QuickPanelApp: React.FC = () => {
     (requestId: number) => {
       if (pendingShowRequestIdRef.current !== requestId) return
       pendingShowRequestIdRef.current = null
+      setPreparedRequestId(requestId)
       clearFinalizeTimer()
       void commands
         .setQuickPanelLayout(readStoredUiScale(), false)
@@ -44,7 +50,7 @@ const QuickPanelApp: React.FC = () => {
           // A newer prepare-show may have arrived during the IPC hop; if so this
           // request is stale and the newer one will finalize itself.
           if (nextShowRequestIdRef.current !== requestId) return
-          return commands.finalizeQuickPanelShow()
+          return visualEffectsStore.refresh().then(() => commands.finalizeQuickPanelShow())
         })
         .catch(err => {
           log.warn({ err }, 'failed to finalize quick panel show')
@@ -138,8 +144,10 @@ const QuickPanelApp: React.FC = () => {
   // follows the panel's light/dark class without a next-themes provider.
   return (
     <LazyMotion features={domMax} strict>
-      <MotionConfig reducedMotion={reduceVisualEffects ? 'always' : 'user'}>{content}</MotionConfig>
-      <Toaster />
+      <VisualEffectsProvider>
+        {content}
+        <Toaster />
+      </VisualEffectsProvider>
     </LazyMotion>
   )
 }

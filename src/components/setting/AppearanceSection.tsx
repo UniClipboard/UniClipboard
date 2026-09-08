@@ -2,6 +2,7 @@ import { Minus, Plus, RotateCcw, X } from 'lucide-react'
 import { useState, type MouseEvent } from 'react'
 import { HexColorPicker } from 'react-colorful'
 import { useTranslation } from 'react-i18next'
+import SmoothModeSetting from '@/components/setting/SmoothModeSetting'
 import {
   Button,
   Popover,
@@ -526,6 +527,7 @@ export default function AppearanceSection() {
 
   return (
     <>
+      <SmoothModeSetting />
       <div className="space-y-1.5">
         <div className="flex items-center justify-between px-1">
           <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">

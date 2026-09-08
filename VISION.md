@@ -50,7 +50,7 @@
 - **Quick Panel 零延迟感知**：启动时预创建隐藏 WebView 并转换为 NSPanel（macOS），首次唤起无窗口创建开销
 - **粘贴不夺焦**：NSPanel NonactivatingPanel 样式保持前一应用焦点，粘贴时先确认焦点恢复再发送按键
 - **模糊事件防抖**：300ms show-debounce + 100ms verify-delay 消除 IME/系统通知导致的误关闭
-- **跨平台视觉适配**：Linux 自动禁用 backdrop-blur/动画/阴影等重效果，macOS/Windows 保留完整视觉
+- **跨平台视觉适配**：Linux 的自动模式默认流畅；macOS/Windows 自动模式按设备能力与运行表现选择，证据不足时保守减少效果。所有平台允许手动选择，并尊重系统减少动效偏好；平台窗口正确性约束独立保留
 - **自愈 autostart**：每次启动 reconcile OS 登录项到当前可执行文件路径，修复因更新/移动导致的静默失效
 
 ## 锁定决策

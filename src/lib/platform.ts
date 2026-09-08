@@ -3,7 +3,6 @@ export interface PlatformInfo {
   isMac: boolean
   isLinux: boolean
   isTauri: boolean
-  reduceVisualEffects: boolean
 }
 
 interface PlatformProbe {
@@ -61,12 +60,6 @@ export const detectPlatformInfo = (probe: PlatformProbe = readPlatformProbe()): 
     isMac,
     isLinux,
     isTauri: probe.isTauri ?? false,
-    // Windows renders in WebView2, where backdrop-filter/blur is extremely
-    // expensive on weak GPUs (e.g. the Intel HD3000 on 2011-era machines) and
-    // tanks scrolling/repaint on the dashboard and devices pages. Route Windows
-    // through the same low-effects path as Linux so the ready-made CSS killers
-    // in globals.css drop blur + animations there too. See issue #1129.
-    reduceVisualEffects: isLinux || isWindows,
   }
 }
 
@@ -85,8 +78,4 @@ export const applyPlatformEffectPreferences = (
       : platform.isMac
         ? 'macos'
         : 'unknown'
-  root.dataset.ucLowEffects = platform.reduceVisualEffects ? 'true' : 'false'
 }
-
-export const isLowEffectsEnabled = (): boolean =>
-  typeof document !== 'undefined' && document.documentElement.dataset.ucLowEffects === 'true'

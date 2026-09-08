@@ -1,5 +1,6 @@
-import { MotionConfig, m, useReducedMotion } from 'framer-motion'
+import { MotionConfig, m } from 'framer-motion'
 import * as React from 'react'
+import { useReducedMotion } from '@/hooks/useVisualEffects'
 import { playUiSound } from '@/lib/ui-sound'
 import { cn } from '@/lib/utils'
 

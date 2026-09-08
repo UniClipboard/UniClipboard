@@ -1,7 +1,7 @@
 'use client'
 // beui.dev/components/motion/input
 
-import { AnimatePresence, animate, m, useReducedMotion } from 'framer-motion'
+import { AnimatePresence, animate, m } from 'framer-motion'
 import {
   useEffect,
   useId,
@@ -11,6 +11,7 @@ import {
   type ReactNode,
   type Ref,
 } from 'react'
+import { useReducedMotion } from '@/hooks/useVisualEffects'
 import { cn } from '@/lib/utils'
 
 export type InputClassNames = {
@@ -86,7 +87,7 @@ export function Input({
   useEffect(() => {
     if (!fieldRef.current || reduce || !hasError) return
     const animation = animate(fieldRef.current, { x: [0, -6, 6, -4, 4, -2, 0] }, { duration: 0.45 })
-    return () => animation.stop()
+    return () => animation.complete()
   }, [hasError, reduce])
 
   const handleChange = (next: string) => {

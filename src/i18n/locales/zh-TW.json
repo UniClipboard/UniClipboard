@@ -1,4 +1,25 @@
 {
+  "appearanceLayout": {
+    "effectsHelp": "平衡視覺效果與執行效能。"
+  },
+  "smoothMode": {
+    "title": "流暢模式",
+    "auto": "自動",
+    "effects": "效果優先",
+    "smooth": "流暢優先",
+    "currentSmooth": "目前採用流暢模式",
+    "currentEffects": "目前採用效果優先",
+    "notSaved": "本次已生效，但無法儲存，重新啟動後可能恢復原設定。",
+    "unavailable": "暫時無法讀取或儲存外觀偏好，請稍後再試。",
+    "reason": {
+      "manual": "已採用你的選擇。",
+      "system": "遵循系統減少動態效果偏好；無法讀取時保守減少動態效果。",
+      "platform_default": "Linux 自動模式預設減少視覺效果。",
+      "hardware": "已依裝置能力選擇。",
+      "unknown": "裝置能力尚未確認，暫時減少視覺效果。",
+      "runtime": "已依先前執行表現選擇。"
+    }
+  },
   "deviceTrust": {
     "presentation": {
       "localRemovalTitle": "{{actor}} 想將此裝置移出裝置群組",

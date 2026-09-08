@@ -134,7 +134,7 @@ SOFTWARE.
   }
 }
 
-html[data-uc-low-effects='true'] .center-morph-surface {
+html[data-uc-reduce-motion='true'] .center-morph-surface {
   clip-path: none;
 }
 

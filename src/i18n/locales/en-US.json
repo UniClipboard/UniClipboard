@@ -1,4 +1,25 @@
 {
+  "appearanceLayout": {
+    "effectsHelp": "Balance visual effects and performance."
+  },
+  "smoothMode": {
+    "title": "Smooth Mode",
+    "auto": "Auto",
+    "effects": "Effects first",
+    "smooth": "Smooth first",
+    "currentSmooth": "Currently using reduced effects",
+    "currentEffects": "Currently prioritizing effects",
+    "notSaved": "Applied for this session, but could not save. Restarting may restore the previous choice.",
+    "unavailable": "Unable to read or save appearance preferences. Please try again.",
+    "reason": {
+      "manual": "Using your selection.",
+      "system": "Respecting reduced motion, including when the system preference is unavailable.",
+      "platform_default": "Auto uses reduced effects on Linux.",
+      "hardware": "Selected for this device.",
+      "unknown": "Device capability is unconfirmed; using reduced effects.",
+      "runtime": "Selected from previous runtime performance."
+    }
+  },
   "deviceTrust": {
     "presentation": {
       "localRemovalTitle": "{{actor}} wants to remove this device",

@@ -1,4 +1,25 @@
 {
+  "appearanceLayout": {
+    "effectsHelp": "Equilibre os efeitos visuais e o desempenho."
+  },
+  "smoothMode": {
+    "title": "Modo fluido",
+    "auto": "Automático",
+    "effects": "Priorizar efeitos",
+    "smooth": "Priorizar fluidez",
+    "currentSmooth": "Atual: priorizando fluidez",
+    "currentEffects": "Atual: priorizando efeitos",
+    "notSaved": "Aplicado nesta sessão, mas não foi possível salvar. Reiniciar pode restaurar a seleção anterior.",
+    "unavailable": "Não foi possível ler ou salvar as preferências de aparência. Tente novamente.",
+    "reason": {
+      "manual": "Usando sua seleção.",
+      "system": "Respeitando a preferência do sistema por movimento reduzido, inclusive quando ela está indisponível.",
+      "platform_default": "No Linux, o modo automático reduz os efeitos visuais.",
+      "hardware": "Selecionado conforme a capacidade do dispositivo.",
+      "unknown": "A capacidade do dispositivo não foi confirmada; usando efeitos reduzidos.",
+      "runtime": "Selecionado com base no desempenho anterior."
+    }
+  },
   "deviceTrust": {
     "presentation": {
       "localRemovalTitle": "{{actor}} quer remover este dispositivo",

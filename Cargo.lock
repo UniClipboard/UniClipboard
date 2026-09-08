@@ -11225,6 +11225,7 @@ dependencies = [
  "url",
  "uuid",
  "windows 0.61.3",
+ "wiremock",
  "x11-dl",
 ]
 

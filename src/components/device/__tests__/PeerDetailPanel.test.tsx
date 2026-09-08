@@ -1,3 +1,4 @@
+import { listen } from '@tauri-apps/api/event'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { I18nextProvider } from 'react-i18next'
@@ -20,6 +21,10 @@ const mocks = vi.hoisted(() => ({
     })
   ),
   toastError: vi.fn(),
+}))
+
+vi.mock('@tauri-apps/api/event', () => ({
+  listen: vi.fn().mockResolvedValue(() => {}),
 }))
 
 const preferences: MemberSyncPreferences = {
@@ -96,6 +101,19 @@ function renderPanel() {
 }
 
 describe('PeerDetailPanel sync controls', () => {
+  it('refreshes this device after its tray switch changes', async () => {
+    renderPanel()
+    const subscription = vi
+      .mocked(listen)
+      .mock.calls.find(([name]) => name === 'devices://sync-changed')
+    expect(subscription).toBeDefined()
+    mocks.fetchMemberSyncPreferences.mockClear()
+    subscription![1]({ event: 'devices://sync-changed', id: 1, payload: 'peer-1' })
+    expect(mocks.fetchMemberSyncPreferences).toHaveBeenCalledWith('peer-1')
+    mocks.fetchMemberSyncPreferences.mockClear()
+    subscription![1]({ event: 'devices://sync-changed', id: 2, payload: 'other-peer' })
+    expect(mocks.fetchMemberSyncPreferences).not.toHaveBeenCalled()
+  })
   let initialLanguage = 'en-US'
 
   beforeAll(async () => {

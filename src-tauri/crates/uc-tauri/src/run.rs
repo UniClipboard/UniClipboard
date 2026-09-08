@@ -442,11 +442,12 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
             ));
             let hud_bridge_for_run = std::sync::Arc::clone(&hud_bridge);
             let hud_bridge_token = runtime.desktop().task_registry().token().clone();
+            let tray_event_app = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 let mut rx = match hud_bridge
                     .subscribe(
                         "activity_hud",
-                        &[RealtimeTopic::FileTransfer, RealtimeTopic::Clipboard],
+                        &[RealtimeTopic::FileTransfer, RealtimeTopic::Clipboard, RealtimeTopic::Peers, RealtimeTopic::PairedDevices],
                     )
                     .await
                 {
@@ -459,6 +460,9 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
                 // 现在有订阅者了,驱动 bridge 连接循环。
                 tauri::async_runtime::spawn(hud_bridge_for_run.run(hud_bridge_token));
                 while let Some(event) = rx.recv().await {
+                    if matches!(&event, uc_daemon_client::realtime::RealtimeEvent::PeersChanged(_) | uc_daemon_client::realtime::RealtimeEvent::PeersNameUpdated(_) | uc_daemon_client::realtime::RealtimeEvent::SpaceMembersChanged(_)) {
+                        tray_event_app.state::<TrayState>().refresh_devices();
+                    }
                     hud_emitter.emit(event);
                 }
             });
@@ -532,7 +536,7 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
                 silent_start,
                 is_silent_mode,
                 initial_language,
-                lan_only_active,
+                sync_enabled,
                 quick_panel_enabled,
                 quick_panel_double_tap_modifier,
                 auto_start,
@@ -559,7 +563,7 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
                             settings.silent_start,
                             settings.is_silent_mode,
                             settings.language,
-                            settings.lan_only_active,
+                            settings.sync_enabled,
                             settings.quick_panel_enabled,
                             settings.quick_panel_double_tap_modifier,
                             settings.auto_start,
@@ -616,7 +620,7 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
 
             // Initialize system tray
             let tray_state = app.state::<TrayState>();
-            if let Err(e) = tray_state.init(app.handle(), &initial_language, lan_only_active) {
+            if let Err(e) = tray_state.init(app.handle(), &initial_language, sync_enabled) {
                 error!("Failed to initialize system tray: {}", e);
                 // Non-fatal: continue startup without tray
             }

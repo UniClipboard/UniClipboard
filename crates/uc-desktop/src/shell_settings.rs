@@ -8,11 +8,24 @@ use uc_daemon_contract::api::dto::settings::{
 
 use crate::runtime::DesktopRuntime;
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn shell_reads_saved_sync_switch_and_defaults_to_enabled() {
+        let stored: StoredSettings =
+            serde_json::from_str(r#"{"sync":{"sync_enabled":false}}"#).unwrap();
+        assert!(!stored.sync.sync_enabled);
+        assert!(StoredSettings::default().sync.sync_enabled);
+    }
+}
+
 pub struct DesktopShellSettings {
     pub silent_start: bool,
     pub is_silent_mode: bool,
     pub language: String,
-    pub lan_only_active: bool,
+    pub sync_enabled: bool,
     pub quick_panel_enabled: bool,
     pub quick_panel_position: QuickPanelPositionDto,
     pub quick_panel_double_tap_modifier: QuickPanelDoubleTapModifierDto,
@@ -24,7 +37,7 @@ pub struct DesktopShellSettings {
 #[serde(default)]
 struct StoredSettings {
     general: StoredGeneralSettings,
-    network: StoredNetworkSettings,
+    sync: StoredSyncSettings,
     quick_panel: StoredQuickPanelSettings,
     keyboard_shortcuts: HashMap<String, ShortcutKeyDto>,
 }
@@ -48,15 +61,13 @@ enum StoredStartupMode {
 
 #[derive(Deserialize)]
 #[serde(default)]
-struct StoredNetworkSettings {
-    allow_relay_fallback: bool,
+struct StoredSyncSettings {
+    sync_enabled: bool,
 }
 
-impl Default for StoredNetworkSettings {
+impl Default for StoredSyncSettings {
     fn default() -> Self {
-        Self {
-            allow_relay_fallback: true,
-        }
+        Self { sync_enabled: true }
     }
 }
 
@@ -93,7 +104,7 @@ impl DesktopRuntime {
             silent_start,
             is_silent_mode,
             language: stored.general.language.unwrap_or_default(),
-            lan_only_active: !stored.network.allow_relay_fallback,
+            sync_enabled: stored.sync.sync_enabled,
             quick_panel_enabled: stored.quick_panel.enabled,
             quick_panel_position: stored.quick_panel.position,
             quick_panel_double_tap_modifier: stored.quick_panel.double_tap_modifier,

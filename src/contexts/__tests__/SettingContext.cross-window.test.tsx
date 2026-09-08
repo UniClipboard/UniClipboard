@@ -11,6 +11,7 @@ import { makeBaseSettings } from '@/test/fixtures/settings'
 
 vi.mock('@tauri-apps/api/event', () => ({
   emit: vi.fn(),
+  listen: vi.fn().mockResolvedValue(() => {}),
 }))
 
 vi.mock('@/api/daemon', () => ({

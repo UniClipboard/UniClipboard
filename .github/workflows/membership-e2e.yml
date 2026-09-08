@@ -91,6 +91,9 @@ jobs:
       - name: Verify fixed release preparation
         run: cargo test --manifest-path tests/e2e/Cargo.toml --test release_assets
 
+      - name: Verify local invitation service contract
+        run: cargo test --manifest-path tests/e2e/Cargo.toml --test rendezvous_contract
+
       - name: Prepare fixed legacy release
         shell: bash
         run: >-

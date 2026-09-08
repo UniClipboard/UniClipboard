@@ -1,13 +1,6 @@
-import { openUrl } from '@tauri-apps/plugin-opener'
-import { ExternalLink } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
-  getQuickPanelDoubleTapAvailability,
-  type ModifierDoubleTapAvailability,
-} from '@/api/tauri-command'
-import {
-  Button,
   Select,
   SelectContent,
   SelectItem,
@@ -15,24 +8,22 @@ import {
   SelectValue,
   Switch,
 } from '@/components/ui'
-import { toast } from '@/components/ui/toast'
-import { usePlatform } from '@/hooks/usePlatform'
 import { useSetting } from '@/hooks/useSetting'
 import { commands } from '@/lib/ipc'
 import { createLogger } from '@/lib/logger'
 import { SHORTCUT_DEFINITIONS, type ShortcutDefinition } from '@/shortcuts/definitions'
-import type { QuickPanelDoubleTapModifier, QuickPanelPosition } from '@/types/setting'
+import type { QuickPanelPosition } from '@/types/setting'
+import { QuickPanelDoubleTapRow } from './QuickPanelDoubleTapRow'
 import { RestartBanner } from './RestartBanner'
 import { SettingGroup } from './SettingGroup'
 import { SettingRow } from './SettingRow'
 import { ShortcutRow } from './ShortcutRow'
 import { useOptimisticSetting } from './useOptimisticSetting'
+import { useShortcutSettings } from './useShortcutSettings'
 
 const log = createLogger('quick-panel-section')
 
 const QUICK_PANEL_SHORTCUT_ID = 'global.toggleQuickPanel'
-const MACOS_ACCESSIBILITY_SETTINGS_URL =
-  'x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility'
 
 /**
  * Quick panel feature section.
@@ -50,14 +41,10 @@ const MACOS_ACCESSIBILITY_SETTINGS_URL =
  */
 export default function QuickPanelSection() {
   const { t } = useTranslation()
-  const { isMac, isWindows } = usePlatform()
-  const { setting, updateQuickPanelSetting, updateKeyboardShortcuts } = useSetting()
+  const { setting, updateQuickPanelSetting } = useSetting()
 
-  // setting?.keyboardShortcuts 可能在 setting 重新加载时被赋成全新对象，但
-  // 内容若未变（同一份持久 JSON re-parse）useCallback 仍会被无谓重建，并把
-  // 下游 ShortcutRow 的 React.memo 全部击穿。这里直接用 useMemo 锁住引用，
-  // 让 `[overrides]` 依赖只在键位真正变化时翻新。
-  const overrides = useMemo(() => setting?.keyboardShortcuts ?? {}, [setting?.keyboardShortcuts])
+  const { overrides, getCurrentKey, isModified, handleOverrideChange, handleResetShortcut } =
+    useShortcutSettings()
   const quickPanelDef = useMemo<ShortcutDefinition | undefined>(
     () => SHORTCUT_DEFINITIONS.find(def => def.id === QUICK_PANEL_SHORTCUT_ID),
     []
@@ -69,30 +56,6 @@ export default function QuickPanelSection() {
   const [disabledThisSession, setDisabledThisSession] = useState(false)
   const [restartLoading, setRestartLoading] = useState(false)
   const [restartError, setRestartError] = useState<string | null>(null)
-  const [doubleTapAvailability, setDoubleTapAvailability] =
-    useState<ModifierDoubleTapAvailability | null>(null)
-
-  useEffect(() => {
-    let active = true
-    const refreshAvailability = () => {
-      void getQuickPanelDoubleTapAvailability()
-        .then(availability => {
-          if (active) setDoubleTapAvailability(availability)
-        })
-        .catch(err => {
-          log.error({ err }, 'Failed to detect modifier double-tap availability')
-          if (active) setDoubleTapAvailability('unsupported_display_session')
-        })
-    }
-
-    refreshAvailability()
-    window.addEventListener('focus', refreshAvailability)
-    return () => {
-      active = false
-      window.removeEventListener('focus', refreshAvailability)
-    }
-  }, [])
-
   // Optimistic like every other settings toggle: the switch flips immediately
   // and persists in the background, so it no longer waits a daemon round-trip
   // or dims the group while saving. The session-local "was disabled" hint and
@@ -101,7 +64,7 @@ export default function QuickPanelSection() {
     setting?.quickPanel?.enabled ?? false,
     async (next: boolean) => {
       await updateQuickPanelSetting({ enabled: next })
-      setDisabledThisSession(prev => (next ? false : prev || true))
+      setDisabledThisSession(!next)
       if (next) setRestartError(null)
     },
     { failureLog: 'Failed to toggle quick panel' }
@@ -111,46 +74,7 @@ export default function QuickPanelSection() {
     next => updateQuickPanelSetting({ position: next }),
     { failureLog: 'Failed to change quick panel position' }
   )
-  const [doubleTapModifier, setDoubleTapModifier] =
-    useOptimisticSetting<QuickPanelDoubleTapModifier>(
-      setting?.quickPanel?.doubleTapModifier ?? 'disabled',
-      next => updateQuickPanelSetting({ doubleTapModifier: next }),
-      {
-        failureLog: 'Failed to change quick panel modifier trigger',
-        errorKey: error =>
-          typeof error === 'object' &&
-          error !== null &&
-          'code' in error &&
-          error.code === 'AccessibilityPermissionRequired'
-            ? 'settings.sections.quickPanel.doubleTap.permissionRequired'
-            : 'settings.sections.general.saveError',
-      }
-    )
-  const altLabel = isMac
-    ? t('settings.sections.quickPanel.doubleTap.option')
-    : t('settings.sections.quickPanel.doubleTap.alt')
-  const metaLabel = isMac
-    ? t('settings.sections.quickPanel.doubleTap.command')
-    : isWindows
-      ? t('settings.sections.quickPanel.doubleTap.windows')
-      : t('settings.sections.quickPanel.doubleTap.super')
   const restartHintVisible = disabledThisSession && !enabled
-  const doubleTapSupported = doubleTapAvailability === 'supported'
-  const doubleTapDescriptionKey =
-    doubleTapAvailability === null
-      ? 'settings.sections.quickPanel.doubleTap.checking'
-      : doubleTapAvailability === 'accessibility_permission_required'
-        ? 'settings.sections.quickPanel.doubleTap.permissionRequired'
-        : doubleTapSupported
-          ? 'settings.sections.quickPanel.doubleTap.description'
-          : 'settings.sections.quickPanel.doubleTap.unsupported'
-
-  const handleOpenAccessibilitySettings = () => {
-    void openUrl(MACOS_ACCESSIBILITY_SETTINGS_URL).catch(err => {
-      log.error({ err }, 'Failed to open macOS Accessibility settings')
-      toast.error(t('settings.sections.quickPanel.doubleTap.openSettingsError'))
-    })
-  }
 
   const handleRestart = async () => {
     setRestartLoading(true)
@@ -159,68 +83,15 @@ export default function QuickPanelSection() {
       // app.restart() 不返回(进程会 exit),后续代码理论上不可达;
       // 走到 catch 说明 spawn 本身就失败了。
       await commands.restartApp()
-      setRestartLoading(false)
       return true
     } catch (err) {
       log.error({ err }, '快捷面板关闭后重启应用失败')
       setRestartError(t('settings.restartBanner.errorMessage'))
-      setRestartLoading(false)
       return false
+    } finally {
+      setRestartLoading(false)
     }
   }
-
-  const getCurrentKey = (def: ShortcutDefinition): string => {
-    const override = overrides[def.id]
-    if (override != null) {
-      return Array.isArray(override) ? (override[0] ?? String(def.key)) : override
-    }
-    return Array.isArray(def.key) ? (def.key[0] ?? '') : def.key
-  }
-
-  const isModified = (defId: string): boolean => defId in overrides
-
-  const shortcutsById = useMemo(() => new Map(SHORTCUT_DEFINITIONS.map(d => [d.id, d])), [])
-
-  const handleOverrideChange = useCallback(
-    async (id: string, newKey: string, clearedIds?: string[]) => {
-      const newOverrides = { ...overrides }
-      newOverrides[id] = newKey
-      if (clearedIds && clearedIds.length > 0) {
-        for (const clearedId of clearedIds) {
-          const clearedDef = shortcutsById.get(clearedId)
-          if (clearedDef) {
-            const clearedDefaultKey = Array.isArray(clearedDef.key)
-              ? clearedDef.key[0]
-              : clearedDef.key
-            if (clearedDefaultKey === newKey) {
-              newOverrides[clearedId] = ''
-            } else {
-              delete newOverrides[clearedId]
-            }
-          }
-        }
-      }
-      try {
-        await updateKeyboardShortcuts(overrides, newOverrides)
-      } catch (err) {
-        log.error({ err }, '更新快捷面板快捷键失败')
-      }
-    },
-    [overrides, shortcutsById, updateKeyboardShortcuts]
-  )
-
-  const handleResetShortcut = useCallback(
-    async (id: string) => {
-      const newOverrides = { ...overrides }
-      delete newOverrides[id]
-      try {
-        await updateKeyboardShortcuts(overrides, newOverrides)
-      } catch (err) {
-        log.error({ err }, '重置快捷面板快捷键失败')
-      }
-    },
-    [overrides, updateKeyboardShortcuts]
-  )
 
   return (
     <div className="flex min-w-0 flex-col gap-8">
@@ -265,42 +136,7 @@ export default function QuickPanelSection() {
 
       {quickPanelDef && (
         <SettingGroup title={t('settings.sections.quickPanel.shortcutTitle')}>
-          <SettingRow
-            label={t('settings.sections.quickPanel.doubleTap.label')}
-            description={t(doubleTapDescriptionKey)}
-          >
-            <div className="flex flex-wrap items-center justify-end gap-2">
-              {doubleTapAvailability === 'accessibility_permission_required' && (
-                <Button variant="outline" size="sm" onClick={handleOpenAccessibilitySettings}>
-                  <ExternalLink className="size-3.5" />
-                  {t('settings.sections.quickPanel.doubleTap.openSettings')}
-                </Button>
-              )}
-              <Select
-                value={doubleTapModifier}
-                onValueChange={value => setDoubleTapModifier(value as QuickPanelDoubleTapModifier)}
-                disabled={!enabled || !doubleTapSupported}
-              >
-                <SelectTrigger className="h-9 w-40 text-sm">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="disabled" className="text-xs">
-                    {t('settings.sections.quickPanel.doubleTap.disabled')}
-                  </SelectItem>
-                  <SelectItem value="alt" className="text-xs">
-                    {altLabel}
-                  </SelectItem>
-                  <SelectItem value="control" className="text-xs">
-                    {t('settings.sections.quickPanel.doubleTap.control')}
-                  </SelectItem>
-                  <SelectItem value="meta" className="text-xs">
-                    {metaLabel}
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </SettingRow>
+          <QuickPanelDoubleTapRow enabled={enabled} />
           <ShortcutRow
             definition={quickPanelDef}
             currentKey={getCurrentKey(quickPanelDef)}

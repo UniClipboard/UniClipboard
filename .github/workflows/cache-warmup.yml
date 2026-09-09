@@ -1,6 +1,12 @@
 name: 'Cache Warmup'
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/cache-warmup.yml'
+      - '.github/workflows/build.yml'
+      - 'scripts/ci/configure-build-mode.mjs'
   schedule:
     # Run every Monday at 00:00 UTC to keep Rust/Bun caches warm.
     # GitHub Actions caches expire after 7 days of inactivity.
@@ -34,6 +40,16 @@ jobs:
     uses: ./.github/workflows/build-cli.yml
     with:
       platform: 'windows-latest'
+      save_cache: true
+    secrets: inherit
+
+  warmup-test-app:
+    name: Warm Windows x64 test app cache
+    needs: maintain-caches
+    uses: ./.github/workflows/build.yml
+    with:
+      platform: 'windows-x86_64'
+      build_mode: 'test'
       save_cache: true
     secrets: inherit
 

@@ -265,9 +265,18 @@ bun run version:bump --type minor --channel stable
 
 ### 构建缓存维护
 
+- `build.yml` 手动构建默认采用 `build_mode=test`：只降低编译优化成本，
+  保留 release 的安全功能开关、panic 策略和调试符号，适合功能验证。
+  需要正式优化或测量正式版运行性能时选择 `build_mode=release`。
+  发布工作流的可复用调用仍默认 `release`，`Cargo.toml` 的正式配置不变。
+  测试缓存、上传产物和 Windows 免安装包带 `-test` 标识，不覆盖正式缓存。
+- 2026-09-09 同提交 Windows x64 对照：依赖缓存命中时，正式优化 23m24s，
+  快速模式 8m47s；首次无测试缓存仍为 22m39s。
+  保留应用自身产物的实验没有避免应用重编，故不启用。
+  详细数据见 [Windows 构建对照记录](ci/windows-build-benchmarks.md)。
 - `build.yml` 的手动构建默认保存缓存；可用 `save_cache=false` 关闭。
   被其他发布工作流调用时仍默认只读，main 上的构建继续保存缓存。
-- `cache-warmup.yml` 每周预热 Windows x64 桌面版、Windows CLI、Rust 检查、
+- `cache-warmup.yml` 每周以及构建模式配置合入 main 后，预热 Windows x64 正式版与测试版、Windows CLI、Rust 检查、
   覆盖率和文档依赖。其他发布平台仍可正常构建，但不再同时预热全部平台，
   避免缓存总量超过仓库默认容量。
 - 覆盖率检查关闭工具链安装步骤自带的缓存，由显式缓存步骤统一管理；
@@ -276,7 +285,7 @@ bun run version:bump --type minor --channel stable
   只处理已知的 Rust、Bun 和 CodeQL 缓存：删除旧 PR 覆盖率缓存、已结束 PR 的缓存，
   并对每个分支、用途和编译环境只保留最新一份。
   总量超过 8 GiB 时按最近使用时间清理，为下一次上传预留空间；
-  优先保留 main 最新的 Windows x64 桌面构建缓存。未知用途的缓存不会自动删除。
+  优先保留 main 最新的 Windows x64 正式版和测试版构建缓存。未知用途的缓存不会自动删除。
 - 缓存维护只处理 Actions 缓存，不删除构建产物或 Release 文件。
   手动触发 Cache Maintenance 默认仅预览；命令行等效操作：
 

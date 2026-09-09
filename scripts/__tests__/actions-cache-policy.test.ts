@@ -67,12 +67,25 @@ describe('Actions cache retention', () => {
     expect(result.remove).toEqual([])
     expect(result.overBudget).toBe(true)
   })
+
+  it('protects both default-branch Windows release and test caches', () => {
+    const entries = [
+      cache(1, windows, undefined, 2 * GiB),
+      cache(2, windows.replace('-Windows_NT', '-test-Windows_NT'), undefined, 2 * GiB),
+      cache(3, coverage, undefined, 4 * GiB),
+      cache(4, `Linux-bun-${'a'.repeat(64)}`, undefined, GiB),
+    ]
+    expect(planCacheCleanup(entries, []).remove.map(entry => entry.id)).toEqual([3])
+  })
 })
 
 describe('cache workflow ownership', () => {
   const root = path.resolve(__dirname, '../..')
   it('cleans after PR and security jobs using only trusted default-branch code', () => {
-    const source = fs.readFileSync(path.join(root, '.github/workflows/cache-maintenance.yml'), 'utf8')
+    const source = fs.readFileSync(
+      path.join(root, '.github/workflows/cache-maintenance.yml'),
+      'utf8'
+    )
     expect(source).toContain("'CodeQL - Code Quality'")
     expect(source).toContain("'PR Check'")
     expect(source).toContain('ref: ${{ github.event.repository.default_branch }}')

@@ -3,7 +3,12 @@ import { pathToFileURL } from 'node:url'
 
 // Leave room for a Windows release cache upload before GitHub starts evicting entries.
 const CACHE_BUDGET_BYTES = 8 * 1024 ** 3
-const WINDOWS_APP_CACHE = /^v\d+-rust-x86_64-pc-windows-msvc-Windows_NT-x64-/
+const WINDOWS_APP_CACHE = /^v\d+-rust-x86_64-pc-windows-msvc(-test)?-Windows_NT-x64-/
+
+function windowsCacheKind(key) {
+  const match = key.match(WINDOWS_APP_CACHE)
+  return match ? (match[1] ? 'test' : 'release') : undefined
+}
 
 function cacheFamily(key) {
   return (
@@ -46,16 +51,20 @@ export function planCacheCleanup(caches, openPullNumbers, defaultRef = 'refs/hea
     else seen.add(group)
   }
 
-  const windows = newestFirst.filter(
-    entry => !removed.has(entry.id) && WINDOWS_APP_CACHE.test(entry.key)
-  )
-  const protectedId = (windows.find(entry => entry.ref === defaultRef) ?? windows[0])?.id
+  const protectedIds = new Set()
+  for (const kind of ['release', 'test']) {
+    const windows = newestFirst.filter(
+      entry => !removed.has(entry.id) && windowsCacheKind(entry.key) === kind
+    )
+    const preferred = windows.find(entry => entry.ref === defaultRef) ?? windows[0]
+    if (preferred) protectedIds.add(preferred.id)
+  }
   const oldestAccessFirst = [...caches].sort(
     (a, b) => Date.parse(a.last_accessed_at) - Date.parse(b.last_accessed_at)
   )
   for (const entry of oldestAccessFirst) {
     if (remainingBytes <= CACHE_BUDGET_BYTES) break
-    if (removed.has(entry.id) || entry.id === protectedId || !cacheFamily(entry.key)) continue
+    if (removed.has(entry.id) || protectedIds.has(entry.id) || !cacheFamily(entry.key)) continue
     select(entry, 'reserve upload capacity')
   }
 

@@ -1,0 +1,64 @@
+# Windows x64 构建对照（2026-09-09）
+
+## 采用结论
+
+- 采用快速测试模式：手动构建默认 `test`，正式发布与可复用调用默认 `release`。
+- 不采用应用自身产物缓存。完整命中后仍重编相同的应用 crate，单次耗时差不足以证明稳定收益。
+- 不改变后台与 GUI 的顺序，不升级 runner。
+- 测试缓存独立预热并纳入容量保护，避免新分支因没有共享测试缓存而反复从头编译。
+
+## 方法与边界
+
+全部使用 `windows-latest`、Windows x64、相同应用源码，先验证快速模式，再验证 workspace 缓存。
+每组对照固定提交；没有把无缓存构建与命中缓存的构建直接作为优化收益对照。
+总耗时包含工具安装、缓存恢复、前端依赖、编译、打包、上传，受 runner 和网络波动影响。
+以下数字是本次观测，不是每次构建的时长保证。
+
+`test` 通过单次 Cargo 环境覆盖使用 `opt-level=1`、`lto=off`、`codegen-units=16`；
+仍走 release 打包路径，不启用 debug assertions，不改变 panic 或调试符号配置。
+这类测试包用于功能验证，不替代正式版运行性能测试。
+
+## 第一组：编译优化
+
+提交 `efb1425f7`，应用源码与主分支基线 `6dc638139` 相同。
+
+| 方式 | 缓存 | 整轮 | 后台步骤 | GUI 与打包步骤 | 构建记录 |
+| --- | --- | --- | --- | --- | --- |
+| 正式优化 | 依赖完整命中 | 23m24s | 10m07s | 5m50s | [A](https://github.com/UniClipboard/UniClipboard/actions/runs/34329179303) |
+| 快速测试，首次 | 未命中，保存依赖缓存 | 22m39s | 11m20s | 5m32s | [B](https://github.com/UniClipboard/UniClipboard/actions/runs/34329181074) |
+| 快速测试，重复 | 依赖完整命中 | 8m47s | 1m57s | 3m16s | [C](https://github.com/UniClipboard/UniClipboard/actions/runs/34331388945) |
+
+A 与 C 都重编后台 9 个、GUI 8 个 crate，编译数量没有变化，优化参数减少了实际编译成本。
+A 的缓存恢复为 113s，C 为 45s；因此整轮差值不应全部归因于编译参数。
+
+## 第二组：应用自身产物缓存
+
+提交 `c08253838`，编译参数与第一组的 `test` 完全相同。
+
+| 方式 | 整轮 | 后台步骤 | GUI 与打包步骤 | 构建记录 |
+| --- | --- | --- | --- | --- |
+| 仅依赖缓存，完整命中 | 7m59s | 1m41s | 3m04s | [D-off](https://github.com/UniClipboard/UniClipboard/actions/runs/34332537638) |
+| 首次生成 workspace 缓存 | 23m33s | 不作为命中对照 | 不作为命中对照 | [D-seed](https://github.com/UniClipboard/UniClipboard/actions/runs/34332538962) |
+| workspace 缓存完整命中 | 7m01s | 1m17s | 2m46s | [E](https://github.com/UniClipboard/UniClipboard/actions/runs/34335044592) |
+
+缓存由 1,311,087,968 bytes 增至 1,366,195,580 bytes，增加 55,107,612 bytes（约 4.2%）。
+E 日志确认 `cache-workspace-crates: true` 和 `full match: true`，但仍重编与 D-off 完全相同的后台 9 个、GUI 8 个 crate。
+没有实现跳过应用编译的目标，单次 58s 差异不足以排除 runner 波动，因此移除实验开关，继续只缓存依赖。
+未据此声称仅修改页面时可以复用应用产物，也没有引入修改源码时间戳等额外机制。
+
+## 包体积与验证
+
+| 产物 | 正式优化 | 快速测试 |
+| --- | --- | --- |
+| NSIS 安装包 | 19,579,389 bytes | 23,325,177 bytes |
+| Portable ZIP | 24,681,278 bytes | 31,446,685 bytes |
+| GUI EXE | 15,000,576 bytes | 19,639,808 bytes |
+| Daemon EXE | 34,773,504 bytes | 51,873,280 bytes |
+
+已下载 A/B 产物并核对，快速 portable ZIP 完整性检查通过，包含 GUI、daemon、portable.dat 和 README。
+未进行 Windows 原生交互或运行性能对照。构建模式与缓存规则由脚本测试和 actionlint 验证。
+
+## 参考
+
+- [Cargo profiles](https://doc.rust-lang.org/cargo/reference/profiles.html)
+- [rust-cache 的缓存范围与 workspace 说明](https://github.com/Swatinem/rust-cache)

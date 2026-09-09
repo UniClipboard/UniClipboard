@@ -13,7 +13,7 @@ fn main() {
     use tauri::{Assets, Manager, Runtime};
 
     struct TestAssets;
-    const HTML: &[u8] = br#"<!doctype html><html><body style="margin:0;background:#18212f;color:white;font:20px sans-serif"><h2>Layer Shell smoke test</h2><input autofocus placeholder="Keyboard / IME test"><p>No clipboard data is loaded.</p></body></html>"#;
+    const HTML: &[u8] = br#"<!doctype html><html style="background:transparent"><body style="margin:0;background:transparent"><main style="border-radius:24px;clip-path:inset(0 round 24px);height:100vh;background:#18212f;color:white;font:20px sans-serif;overflow:hidden"><h2>Layer Shell smoke test</h2><input autofocus placeholder="Keyboard / IME test"><p>No clipboard data is loaded.</p></main></body></html>"#;
     impl<R: Runtime> Assets<R> for TestAssets {
         fn get(&self, _: &AssetKey) -> Option<Cow<'_, [u8]>> {
             Some(Cow::Borrowed(HTML))
@@ -100,6 +100,10 @@ fn main() {
                             "Layer must receive keyboard focus"
                         );
                         let gtk_panel = panel.gtk_window().expect("GTK panel");
+                        check!(
+                            gtk_panel.is_app_paintable(),
+                            "Rounded corners require a transparent GTK surface"
+                        );
                         check!(
                             gtk_panel.size() == gtk_panel.size_request(),
                             "Layer must honor requested dimensions, not WebKit natural size"

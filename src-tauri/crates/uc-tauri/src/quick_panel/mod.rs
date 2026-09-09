@@ -537,10 +537,6 @@ fn window_padding() -> f64 {
     }
 }
 
-fn uses_transparent_window() -> bool {
-    !cfg!(target_os = "linux")
-}
-
 fn remember_panel_origin(x: f64, y: f64) {
     if let Ok(mut guard) = PANEL_ORIGIN.lock() {
         *guard = Some((x, y));
@@ -615,7 +611,7 @@ pub fn pre_create(app: &tauri::AppHandle) {
         .inner_size(initial_width, initial_height)
         .position(-9999.0, -9999.0)
         .decorations(false)
-        .transparent(uses_transparent_window())
+        .transparent(true)
         .shadow(false)
         .always_on_top(true)
         .devtools(crate::runtime_environment::development_mode())
@@ -1039,11 +1035,6 @@ mod tests {
                 800.0 * normalize_ui_scale(scale)
             );
         }
-    }
-
-    #[test]
-    fn window_transparency_matches_the_current_platform() {
-        assert_eq!(uses_transparent_window(), !cfg!(target_os = "linux"));
     }
 
     // Monitor spanning logical [0, 1000) on each axis for readability.

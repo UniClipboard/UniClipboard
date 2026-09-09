@@ -11,6 +11,7 @@ vi.mock('@/lib/ipc', () => ({ commands: { getDesktopTheme: vi.fn() } }))
 
 const snapshot = (revision: number): DesktopThemeSnapshot => ({
   revision,
+  windowCornerRadius: 12,
   theme: { dark: true, variables: { '--background': '#2d353b' } },
 })
 
@@ -44,6 +45,7 @@ describe('desktop palette subscription', () => {
     resolveRequest(snapshot(1))
     await request
     await Promise.resolve()
+    expect(apply).toHaveBeenCalledWith(snapshot(2).theme, 12)
     expect(apply).toHaveBeenCalledOnce()
     receive({ payload: snapshot(3) })
     expect(apply).toHaveBeenCalledTimes(2)

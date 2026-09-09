@@ -24,8 +24,8 @@ export function getQuickPanelLayoutClassNames(isLinux: boolean) {
   if (isLinux) {
     return {
       container:
-        'flex h-screen w-screen overflow-hidden border border-border/50 bg-card text-card-foreground p-0',
-      statusSurface: 'bg-card text-card-foreground',
+        'quick-panel-linux-surface flex h-screen w-screen overflow-hidden border border-border/50 bg-card text-card-foreground p-0',
+      statusSurface: 'quick-panel-linux-surface bg-card text-card-foreground',
       card: 'flex h-full w-full min-w-0 flex-col overflow-hidden',
       previewCard: 'flex h-full w-full min-w-0 flex-col overflow-hidden',
       previewExpanded:

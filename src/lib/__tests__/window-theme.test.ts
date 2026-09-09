@@ -10,7 +10,7 @@ vi.mock('@/lib/theme-transition', () => ({
   startThemeTransition: vi.fn((apply: () => void) => apply()),
 }))
 
-let receive: (theme: DesktopTheme | null) => void
+let receive: Parameters<typeof subscribeDesktopTheme>[0]
 const unsubscribe = vi.fn()
 const palette = (background: string, dark = true): DesktopTheme => ({
   dark,
@@ -83,5 +83,15 @@ it('prevents an older animated update from overwriting a newer desktop change', 
   receive(palette('#2d353b'))
   pending()
   expect(document.documentElement.style.getPropertyValue('--background')).toBe('#2d353b')
+  controller.dispose()
+})
+
+it('updates compositor rounding even when the manual palette is unchanged', () => {
+  const controller = createWindowThemeController()
+  controller.setGeneral(general('light'))
+  receive(null, 12)
+  expect(document.documentElement.style.getPropertyValue('--desktop-window-radius')).toBe('12px')
+  receive(null, 0)
+  expect(document.documentElement.style.getPropertyValue('--desktop-window-radius')).toBe('0px')
   controller.dispose()
 })

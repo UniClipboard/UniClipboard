@@ -8,7 +8,9 @@ export type { DesktopTheme } from '@/lib/ipc-bindings.generated'
 const log = createLogger('desktop-theme')
 
 /** Subscribe before querying so startup and hidden windows cannot miss a change. */
-export function subscribeDesktopTheme(onTheme: (theme: DesktopTheme | null) => void): () => void {
+export function subscribeDesktopTheme(
+  onTheme: (theme: DesktopTheme | null, windowCornerRadius?: number | null) => void
+): () => void {
   if (!isTauri()) return () => {}
   let disposed = false
   let revision = -1
@@ -16,7 +18,7 @@ export function subscribeDesktopTheme(onTheme: (theme: DesktopTheme | null) => v
   const accept = (snapshot: DesktopThemeSnapshot) => {
     if (disposed || snapshot.revision <= revision) return
     revision = snapshot.revision
-    onTheme(snapshot.theme)
+    onTheme(snapshot.theme, snapshot.windowCornerRadius)
   }
   const refresh = async () => {
     try {

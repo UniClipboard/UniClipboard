@@ -92,6 +92,18 @@ impl Hyprland {
         String::from_utf8(response).map_err(|_| "Invalid Hyprland response encoding".into())
     }
 
+    /// Read the compositor's effective logical corner radius, including runtime overrides.
+    pub fn window_corner_radius(&self) -> Result<u32, String> {
+        #[derive(Deserialize)]
+        struct Rounding {
+            int: u32,
+        }
+        let value: Rounding =
+            serde_json::from_str(&self.request("j/getoption decoration:rounding")?)
+                .map_err(|_| "Invalid Hyprland rounding response")?;
+        Ok(value.int)
+    }
+
     pub fn cursor(&self) -> Result<CursorPosition, String> {
         let cursor: CursorPosition = serde_json::from_str(&self.request("j/cursorpos")?)
             .map_err(|_| "Invalid Hyprland cursor response")?;
@@ -254,6 +266,26 @@ mod tests {
             commands
         });
         (Hyprland { socket: path }, worker)
+    }
+
+    #[test]
+    fn reads_effective_rounding_and_rejects_invalid_values() {
+        let (client, worker) = scripted_compositor(vec![
+            r#"{"int":12}"#,
+            r#"{"int":0}"#,
+            r#"{"int":-1}"#,
+            r#"{"int":1.5}"#,
+            "{}",
+        ]);
+        assert_eq!(client.window_corner_radius().expect("rounding"), 12);
+        assert_eq!(client.window_corner_radius().expect("square"), 0);
+        for _ in 0..3 {
+            assert!(client.window_corner_radius().is_err());
+        }
+        assert_eq!(
+            worker.join().expect("worker"),
+            vec!["j/getoption decoration:rounding"; 5]
+        );
     }
 
     #[test]

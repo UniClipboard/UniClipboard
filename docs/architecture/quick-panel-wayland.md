@@ -72,3 +72,7 @@ cargo run -p uc-tauri --example layer_shell_smoke
 冒烟程序使用合成测试页面与独立按键接收窗口，不启动 daemon、不读取用户历史、不写入系统剪贴板；依次检查显示、键盘焦点、布局更新、自动粘贴按键送达、再次显示，以及通过 GTK 信号触发的关闭回调和背景窗口清理。应在支持 Layer Shell 的 Hyprland 会话内运行，且测试期间不要主动切换焦点。
 
 上述流程已在 Hyprland 0.56.1、Tauri 2.11.5 / Tao 0.35.3 下通过。GTK 信号验证不等同于合成器的实际鼠标事件验证：当前虚拟鼠标测试工具在独立普通 GTK 窗口中也未产生点击回调，因此真实点击关闭、输入法及多屏组合仍需交互验收。
+
+## 桌面圆角
+
+Layer Shell 面板由应用裁切圆角。GTK 与 WebView 使用透明背景，前端统一表面保留不透明底色，四角按桌面主题快照中的 `windowCornerRadius` 裁切。`desktop_theme/rounding.rs` 通过有超时与响应长度上限的 Hyprland IPC 每 2 秒读取有效的 `decoration:rounding`，仅值变化时广播，与 Omarchy 配色共享版本化快照但不依赖配色或深浅色偏好。读取失败保留上次有效值；非 Hyprland 会话默认直角。

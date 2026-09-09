@@ -13,6 +13,8 @@ use tracing::{info_span, Instrument};
 
 #[cfg(target_os = "linux")]
 mod omarchy;
+#[cfg(target_os = "linux")]
+mod rounding;
 
 #[derive(Clone, Debug, PartialEq, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
@@ -26,6 +28,7 @@ pub struct DesktopTheme {
 pub struct DesktopThemeSnapshot {
     pub revision: u32,
     pub theme: Option<DesktopTheme>,
+    pub window_corner_radius: Option<u32>,
 }
 
 #[derive(Clone, Default)]
@@ -68,11 +71,18 @@ pub async fn get_desktop_theme(
 
 pub fn install(app: &tauri::AppHandle, cancel: tokio_util::sync::CancellationToken) {
     #[cfg(target_os = "linux")]
-    omarchy::install(
-        app.clone(),
-        app.state::<DesktopThemeState>().inner().clone(),
-        cancel,
-    );
+    {
+        rounding::install(
+            app.clone(),
+            app.state::<DesktopThemeState>().inner().clone(),
+            cancel.clone(),
+        );
+        omarchy::install(
+            app.clone(),
+            app.state::<DesktopThemeState>().inner().clone(),
+            cancel,
+        );
+    }
     #[cfg(not(target_os = "linux"))]
     let _ = (app, cancel);
 }

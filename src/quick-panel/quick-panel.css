@@ -79,3 +79,9 @@
 [data-slot='context-menu-content'] > hr {
   margin: 0.25rem 0;
 }
+
+/* Only the unified Linux surface follows compositor geometry. */
+.quick-panel-linux-surface {
+  border-radius: var(--desktop-window-radius, 0px);
+  clip-path: inset(0 round var(--desktop-window-radius, 0px));
+}

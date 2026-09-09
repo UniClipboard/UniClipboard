@@ -44,9 +44,12 @@ fn palettes_supply_all_semantic_tokens_and_contrasting_button_text() {
     }
     let wire = serde_json::to_value(super::super::DesktopThemeSnapshot {
         revision: 1,
+        window_corner_radius: Some(12),
         theme: Some(dark),
     })
     .unwrap();
+    assert_eq!(wire["windowCornerRadius"], 12);
+    assert!(wire.get("window_corner_radius").is_none());
     assert_eq!(wire["theme"]["dark"], true);
     assert!(wire["theme"]["variables"].is_object());
 }

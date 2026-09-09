@@ -690,7 +690,7 @@ export type DesktopTheme = {
 export type DesktopThemeSnapshot = {
 	revision: number,
 	theme: DesktopTheme | null,
-
+	windowCornerRadius: number | null,
 };
 
 /**

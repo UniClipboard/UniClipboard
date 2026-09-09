@@ -49,7 +49,8 @@ export function createWindowThemeController(animate = false) {
     else apply()
     previous = signature
   }
-  const unsubscribe = subscribeDesktopTheme(theme => {
+  const unsubscribe = subscribeDesktopTheme((theme, windowCornerRadius) => {
+    root.style.setProperty('--desktop-window-radius', `${windowCornerRadius ?? 0}px`)
     desktop = theme
     refresh()
   })

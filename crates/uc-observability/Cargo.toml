@@ -15,7 +15,7 @@ serde = { version = "1", features = ["derive"] }
 chrono = { version = "0.4", features = ["serde"] }
 anyhow = "1.0"
 tempfile = "3"
-zip = { version = "4.6.1", default-features = false, features = ["deflate"] }
+zip = { version = "8.6.0", default-features = false, features = ["deflate"] }
 uuid = { version = "1", features = ["v7", "serde"] }
 # Slice 7b: PosthogSink 自写 minimal HTTP client
 # - reqwest 0.12 + rustls(ring) features 与 uc-infra/uc-daemon-client/uc-cli/uc-desktop 已有用法一致；

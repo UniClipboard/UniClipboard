@@ -8,10 +8,13 @@ on:
       - '.github/workflows/cache-warmup.yml'
       - '.github/workflows/coverage.yml'
       - '.github/workflows/build.yml'
+      - '.github/workflows/build-cli.yml'
       - 'scripts/ci/maintain-actions-cache.mjs'
       - 'scripts/__tests__/actions-cache-policy.test.ts'
       - 'scripts/ci/configure-build-mode.mjs'
       - 'scripts/__tests__/build-mode.test.ts'
+      - 'scripts/ci/isolate-build-toolchain.mjs'
+      - 'scripts/__tests__/ci-toolchains.test.ts'
 
 permissions:
   contents: read
@@ -27,4 +30,4 @@ jobs:
           node-version: '24'
       - uses: oven-sh/setup-bun@v2
       - run: bun install --frozen-lockfile
-      - run: bun x vitest run scripts/__tests__/actions-cache-policy.test.ts scripts/__tests__/build-mode.test.ts
+      - run: bun x vitest run scripts/__tests__/actions-cache-policy.test.ts scripts/__tests__/build-mode.test.ts scripts/__tests__/ci-toolchains.test.ts

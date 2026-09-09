@@ -265,6 +265,9 @@ bun run version:bump --type minor --channel stable
 
 ### 构建缓存维护
 
+- 桌面与 CLI 的 GitHub 临时构建机器在缓存恢复前只保留项目固定的 Rust 工具链。
+  rust-cache 会把所有已安装编译器纳入匹配；清除未使用的预装工具链，可以避免其补丁升级造成无关的缓存失配。
+  该操作拒绝在本机和自托管 runner 执行。首次切换到这套稳定匹配条件需要重新生成缓存。
 - `build.yml` 手动构建默认采用 `build_mode=test`：只降低编译优化成本，
   保留 release 的安全功能开关、panic 策略和调试符号，适合功能验证。
   需要正式优化或测量正式版运行性能时选择 `build_mode=release`。

@@ -7,6 +7,7 @@ on:
       - '.github/workflows/cache-warmup.yml'
       - '.github/workflows/build.yml'
       - 'scripts/ci/configure-build-mode.mjs'
+      - 'scripts/ci/isolate-build-toolchain.mjs'
   schedule:
     # Run every Monday at 00:00 UTC to keep Rust/Bun caches warm.
     # GitHub Actions caches expire after 7 days of inactivity.

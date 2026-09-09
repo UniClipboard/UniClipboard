@@ -176,6 +176,11 @@ jobs:
         shell: bash
         run: echo "${CARGO_HOME:-$HOME/.cargo}/bin" >> "$GITHUB_PATH"
 
+      - name: Isolate pinned build toolchain
+        env:
+          UC_PINNED_RUST: ${{ steps.rust-channel.outputs.channel }}
+        run: node scripts/ci/isolate-build-toolchain.mjs
+
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
         with:

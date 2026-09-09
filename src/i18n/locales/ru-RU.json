@@ -771,6 +771,7 @@
         "title": "Сочетания клавиш",
         "description": "Настройте сочетания клавиш",
         "scope": {
+          "quickPanel": "Быстрая панель",
           "global": "Глобальные",
           "clipboard": "Буфер обмена",
           "settings": "Настройки",
@@ -778,6 +779,10 @@
           "modal": "Диалоговое окно"
         },
         "actions": {
+          "quickPanelWindowIncrease": "Увеличить окно",
+          "quickPanelWindowDecrease": "Уменьшить окно",
+          "quickPanelTextIncrease": "Увеличить текст",
+          "quickPanelTextDecrease": "Уменьшить текст",
           "goSettings": "Перейти к настройкам",
           "toggleQuickPanel": "Показать или скрыть быструю панель",
           "favoriteClipboardItem": "Добавить текущий элемент в избранное",

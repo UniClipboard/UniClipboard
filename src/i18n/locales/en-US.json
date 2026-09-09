@@ -767,6 +767,7 @@
         "title": "Shortcuts",
         "description": "Customize keyboard shortcuts",
         "scope": {
+          "quickPanel": "Quick Panel",
           "global": "Global",
           "clipboard": "Clipboard",
           "settings": "Settings",
@@ -774,6 +775,10 @@
           "modal": "Modal"
         },
         "actions": {
+          "quickPanelWindowIncrease": "Increase window size",
+          "quickPanelWindowDecrease": "Decrease window size",
+          "quickPanelTextIncrease": "Increase text size",
+          "quickPanelTextDecrease": "Decrease text size",
           "goSettings": "Go to settings",
           "toggleQuickPanel": "Toggle quick panel",
           "favoriteClipboardItem": "Favorite current clipboard item",

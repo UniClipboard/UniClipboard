@@ -36,50 +36,35 @@ export async function setQuickPanelLayout(scale: number, previewExpanded: boolea
   await commands.setQuickPanelLayout(scale, previewExpanded, factor)
 }
 
-// Capture before search suggestions and menus handle keys, and suppress WebKit zoom.
 export type QuickPanelScaleFeedback = { textPercent: number; windowPercent: number }
+export type QuickPanelScaleAction =
+  | 'windowIncrease'
+  | 'windowDecrease'
+  | 'textIncrease'
+  | 'textDecrease'
 
-export function installWindowResizeShortcuts(
-  onAdjust?: (feedback: QuickPanelScaleFeedback) => void
-): () => void {
-  const report = (textScale = readStoredUiScale()) => {
-    onAdjust?.({
-      textPercent: Math.round(textScale * 100),
-      windowPercent: Math.round(readWindowScale() * 100),
-    })
-  }
-  const onKeyDown = (event: KeyboardEvent) => {
-    if (!event.ctrlKey || event.altKey || event.metaKey || event.isComposing) return
-    const direction =
-      event.key === '+' || event.key === '='
-        ? 1
-        : event.key === '-' || (event.shiftKey && event.key === '_')
-          ? -1
-          : 0
-    if (!direction) return
-    event.preventDefault()
-    event.stopImmediatePropagation()
-    if (event.shiftKey) {
-      report(adjustUiScale(direction > 0 ? 'in' : 'out'))
-      return
-    }
+export function adjustQuickPanelScale(action: QuickPanelScaleAction): QuickPanelScaleFeedback {
+  const direction = action.endsWith('Increase') ? 1 : -1
+  let textScale = readStoredUiScale()
+  if (action.startsWith('text')) {
+    textScale = adjustUiScale(direction > 0 ? 'in' : 'out')
+  } else {
     const previous = readWindowScale()
     const next = normalizeScale(previous + direction * WINDOW_SCALE_STEP)
-    if (next === previous) {
-      report()
-      return
+    if (next !== previous) {
+      sessionScale = next
+      try {
+        localStorage.setItem(STORAGE_KEY, String(next))
+      } catch (err) {
+        log.warn({ err }, 'failed to persist quick panel window size')
+      }
+      void setQuickPanelLayout(textScale, false).catch(err => {
+        log.warn({ err }, 'failed to resize quick panel window')
+      })
     }
-    sessionScale = next
-    try {
-      localStorage.setItem(STORAGE_KEY, String(next))
-    } catch (err) {
-      log.warn({ err }, 'failed to persist quick panel window size')
-    }
-    report()
-    void setQuickPanelLayout(readStoredUiScale(), false).catch(err => {
-      log.warn({ err }, 'failed to resize quick panel window')
-    })
   }
-  window.addEventListener('keydown', onKeyDown, true)
-  return () => window.removeEventListener('keydown', onKeyDown, true)
+  return {
+    textPercent: Math.round(textScale * 100),
+    windowPercent: Math.round(readWindowScale() * 100),
+  }
 }

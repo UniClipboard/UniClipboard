@@ -25,6 +25,36 @@ function setup() {
 }
 
 describe('shortcut recorder popover', () => {
+  it.each([
+    ['+', 'Equal', 'ctrl+shift+equal'],
+    ['_', 'Minus', 'ctrl+shift+minus'],
+  ])('records shifted %s as a reusable shortcut', async (key, code, expected) => {
+    const user = userEvent.setup()
+    const save = vi.fn()
+    const panelDefinition = SHORTCUT_DEFINITIONS.find(
+      item => item.id === 'quickPanel.textIncrease'
+    )!
+    render(
+      <ShortcutProvider>
+        <ShortcutRow
+          definition={panelDefinition}
+          currentKey="ctrl+shift+equal"
+          currentOverrides={{ 'quickPanel.textDecrease': '' }}
+          isModified={false}
+          onOverrideChange={save}
+          onResetShortcut={vi.fn()}
+        />
+      </ShortcutProvider>
+    )
+    await user.click(screen.getByRole('button', { name: /settings.sections.shortcuts.edit/ }))
+    const field = await screen.findByRole('group', {
+      name: 'settings.sections.shortcuts.recording',
+    })
+    fireEvent.keyDown(field, { key, code, ctrlKey: true, shiftKey: true })
+    await user.click(screen.getByRole('button', { name: 'settings.sections.shortcuts.save' }))
+    expect(save).toHaveBeenCalledWith('quickPanel.textIncrease', expected, undefined)
+  })
+
   it('keeps the row visible and cancels without saving', async () => {
     const user = userEvent.setup()
     const save = setup()

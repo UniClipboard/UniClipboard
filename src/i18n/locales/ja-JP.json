@@ -767,6 +767,7 @@
         "title": "ショートカット",
         "description": "キーボード ショートカットのカスタマイズ",
         "scope": {
+          "quickPanel": "クイックパネル",
           "global": "グローバル",
           "clipboard": "クリップボード",
           "settings": "設定",
@@ -774,6 +775,10 @@
           "modal": "モーダル"
         },
         "actions": {
+          "quickPanelWindowIncrease": "ウィンドウを拡大",
+          "quickPanelWindowDecrease": "ウィンドウを縮小",
+          "quickPanelTextIncrease": "文字を拡大",
+          "quickPanelTextDecrease": "文字を縮小",
           "goSettings": "設定に移動",
           "toggleQuickPanel": "クイック パネルの切り替え",
           "favoriteClipboardItem": "現在のクリップボード項目をお気に入り",

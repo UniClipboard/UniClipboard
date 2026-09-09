@@ -5,7 +5,7 @@ import QuickPanelScaleIndicator from '../components/QuickPanelScaleIndicator'
 import type { QuickPanelScaleFeedback } from '../window-layout'
 
 const { install, dispose } = vi.hoisted(() => ({ install: vi.fn(), dispose: vi.fn() }))
-vi.mock('../window-layout', () => ({ installWindowResizeShortcuts: install }))
+vi.mock('../hooks/useQuickPanelScaleShortcuts', () => ({ useQuickPanelScaleShortcuts: install }))
 
 beforeEach(async () => {
   await i18n.changeLanguage('zh-CN')
@@ -35,11 +35,10 @@ it('shows both percentages and extends visibility after repeated adjustments', (
   expect(screen.queryByRole('status')).toBeNull()
 })
 
-it('cleans up keyboard handling and the pending dismissal on unmount', () => {
+it('cleans up the pending dismissal on unmount', () => {
   const { unmount } = render(<QuickPanelScaleIndicator />)
   adjust({ textPercent: 100, windowPercent: 100 })
   unmount()
-  expect(dispose).toHaveBeenCalledOnce()
   expect(vi.getTimerCount()).toBe(0)
 })
 

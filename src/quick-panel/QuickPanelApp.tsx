@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next'
 import { daemonClient } from '@/api/daemon/client'
 import VisualEffectsProvider from '@/components/motion/VisualEffectsProvider'
 import { Toaster } from '@/components/ui/toaster'
+import { ShortcutProvider } from '@/contexts/ShortcutContext'
 import { usePlatform } from '@/hooks/usePlatform'
 import { useThemeSync } from '@/hooks/useThemeSync'
 import { useVisualEffectsSampling } from '@/hooks/useVisualEffectsSampling'
@@ -149,7 +150,11 @@ const QuickPanelApp: React.FC = () => {
     <LazyMotion features={domMax} strict>
       <VisualEffectsProvider>
         {content}
-        {isLinux && isTauri && <QuickPanelScaleIndicator key={showRequestId} />}
+        {isLinux && isTauri && daemonReady && (
+          <ShortcutProvider key={showRequestId}>
+            <QuickPanelScaleIndicator />
+          </ShortcutProvider>
+        )}
         <Toaster />
       </VisualEffectsProvider>
     </LazyMotion>

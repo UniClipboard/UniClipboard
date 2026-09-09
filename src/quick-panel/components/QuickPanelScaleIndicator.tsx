@@ -1,23 +1,19 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { installWindowResizeShortcuts, type QuickPanelScaleFeedback } from '../window-layout'
+import { useQuickPanelScaleShortcuts } from '../hooks/useQuickPanelScaleShortcuts'
+import { type QuickPanelScaleFeedback } from '../window-layout'
 
 export default function QuickPanelScaleIndicator() {
   const { t } = useTranslation(undefined, { keyPrefix: 'quickPanel' })
   const [feedback, setFeedback] = useState<QuickPanelScaleFeedback | null>(null)
 
-  useEffect(() => {
-    let timer: ReturnType<typeof setTimeout> | undefined
-    const dispose = installWindowResizeShortcuts(next => {
-      setFeedback(next)
-      clearTimeout(timer)
-      timer = setTimeout(() => setFeedback(null), 1200)
-    })
-    return () => {
-      dispose()
-      clearTimeout(timer)
-    }
-  }, [])
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  useQuickPanelScaleShortcuts(next => {
+    setFeedback(next)
+    clearTimeout(timer.current)
+    timer.current = setTimeout(() => setFeedback(null), 1200)
+  })
+  useEffect(() => () => clearTimeout(timer.current), [])
 
   if (!feedback) return null
 

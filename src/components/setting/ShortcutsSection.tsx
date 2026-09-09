@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { SettingGroup } from '@/components/setting/SettingGroup'
 import { ShortcutRow } from '@/components/setting/ShortcutRow'
 import { Button } from '@/components/ui'
+import { usePlatform } from '@/hooks/usePlatform'
 import {
   SHORTCUT_DEFINITIONS,
   type ShortcutDefinition,
@@ -12,10 +13,11 @@ import { QuickPanelShortcutRow } from './QuickPanelShortcutRow'
 import { useShortcutSettings } from './useShortcutSettings'
 
 /** Display order for shortcut scopes */
-const SCOPE_ORDER: ShortcutScope[] = ['global', 'clipboard']
+const SCOPE_ORDER: ShortcutScope[] = ['global', 'clipboard', 'quickPanel']
 
 const ShortcutsSection: React.FC = () => {
   const { t } = useTranslation()
+  const { isLinux } = usePlatform()
   const {
     overrides,
     getCurrentKey,
@@ -40,6 +42,7 @@ const ShortcutsSection: React.FC = () => {
   return (
     <div className="flex min-w-0 flex-col gap-8">
       {SCOPE_ORDER.map(scope => {
+        if (scope === 'quickPanel' && !isLinux) return null
         const shortcuts = groupedShortcuts.get(scope)
         if (!shortcuts || shortcuts.length === 0) return null
 

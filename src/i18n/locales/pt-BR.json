@@ -767,6 +767,7 @@
         "title": "Atalhos",
         "description": "Personalize os atalhos de teclado",
         "scope": {
+          "quickPanel": "Painel rápido",
           "global": "Global",
           "clipboard": "Área de transferência",
           "settings": "Configurações",
@@ -774,6 +775,10 @@
           "modal": "Modal"
         },
         "actions": {
+          "quickPanelWindowIncrease": "Aumentar janela",
+          "quickPanelWindowDecrease": "Diminuir janela",
+          "quickPanelTextIncrease": "Aumentar texto",
+          "quickPanelTextDecrease": "Diminuir texto",
           "goSettings": "Ir para as configurações",
           "toggleQuickPanel": "Abrir/fechar o painel rápido",
           "favoriteClipboardItem": "Favoritar o item atual da área de transferência",

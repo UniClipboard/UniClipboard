@@ -11,7 +11,6 @@ const log = createLogger('title-bar')
 
 interface TitleBarProps {
   className?: string
-  isSetupActive?: boolean
   rightSlot?: React.ReactNode
 }
 
@@ -211,16 +210,14 @@ export const ContentToolbar = ({ className, rightSlot }: ContentToolbarProps) =>
   )
 }
 
-export const TitleBar = ({ className, isSetupActive = false, rightSlot }: TitleBarProps) => {
-  if (isSetupActive) return null
-
+export const TitleBar = ({ className, rightSlot }: TitleBarProps) => {
   return (
     <div
       data-tauri-drag-region
       className={cn('relative z-20 flex h-10 w-full shrink-0 bg-transparent', className)}
     >
       <SidebarTitle className="min-w-0 flex-1" />
-      <ContentToolbar rightSlot={rightSlot} />
+      <ContentToolbar className="w-auto" rightSlot={rightSlot} />
     </div>
   )
 }

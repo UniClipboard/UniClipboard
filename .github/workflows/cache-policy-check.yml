@@ -1,0 +1,28 @@
+name: Cache Policy Check
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/cache-policy-check.yml'
+      - '.github/workflows/cache-maintenance.yml'
+      - '.github/workflows/cache-warmup.yml'
+      - '.github/workflows/coverage.yml'
+      - '.github/workflows/build.yml'
+      - 'scripts/ci/maintain-actions-cache.mjs'
+      - 'scripts/__tests__/actions-cache-policy.test.ts'
+
+permissions:
+  contents: read
+
+jobs:
+  cache-policy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+      - run: bun x vitest run scripts/__tests__/actions-cache-policy.test.ts

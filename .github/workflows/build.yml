@@ -1,5 +1,5 @@
 name: 'Build Tauri App'
-run-name: "build-${{ inputs.platform || 'all' }}-${{ github.run_number }}"
+run-name: "build-${{ inputs.platform || 'all' }}${{ inputs.build_mode == 'test' && '-test' || '' }}-${{ github.run_number }}"
 on:
   workflow_dispatch:
     inputs:
@@ -31,9 +31,19 @@ on:
         description: '是否保存构建缓存(用于手动验证 cache warmup)'
         required: false
         type: boolean
-        default: false
+        default: true
+      build_mode:
+        description: '构建方式：release 正式优化，test 快速测试包'
+        type: choice
+        options: ['release', 'test']
+        default: 'test'
   workflow_call:
     inputs:
+      build_mode:
+        description: 'Build optimization mode; publishing workflows keep release by default'
+        required: false
+        type: string
+        default: 'release'
       platform:
         description: '选择构建平台'
         required: false
@@ -123,6 +133,12 @@ jobs:
         with:
           bun-version: latest
 
+      - name: Configure package build mode
+        id: build-mode
+        env:
+          UC_BUILD_MODE: ${{ inputs.build_mode || 'release' }}
+        run: node scripts/ci/configure-build-mode.mjs
+
       - name: resolve pinned Rust channel
         id: rust-channel
         # Single source of truth: rust-toolchain.toml (repo root). CI installs
@@ -160,11 +176,18 @@ jobs:
         shell: bash
         run: echo "${CARGO_HOME:-$HOME/.cargo}/bin" >> "$GITHUB_PATH"
 
+      - name: Isolate pinned build toolchain
+        env:
+          UC_PINNED_RUST: ${{ steps.rust-channel.outputs.channel }}
+        run: node scripts/ci/isolate-build-toolchain.mjs
+
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: ". -> target"
-          shared-key: ${{ matrix.target }}
+          shared-key: ${{ matrix.target }}${{ steps.build-mode.outputs.suffix }}
+          # The measured workspace-cache experiment still rebuilt every application crate.
+          cache-workspace-crates: false
           # 只在 main 写缓存,其他分支(含 tag 触发的 release)只读。
           # Windows Post Cache Rust 上传单次 ~2m43s (25682907543),tag run
           # 通常基于刚合入 main 的代码,命中已存的 main cache 即可,不必再
@@ -320,6 +343,8 @@ jobs:
         # and the portable build could not start).
         if: matrix.platform == 'windows-latest'
         shell: bash
+        env:
+          BUILD_SUFFIX: ${{ steps.build-mode.outputs.suffix }}
         run: |
           set -euo pipefail
           VERSION="${{ steps.app-version.outputs.version }}"
@@ -368,7 +393,7 @@ jobs:
           : > "$STAGE/portable.dat"
           cp packaging/windows/portable/README.txt "$STAGE/README.txt"
 
-          ZIP="$OUT_DIR/UniClipboard_${VERSION}_${ARCH}-portable.zip"
+          ZIP="$OUT_DIR/UniClipboard_${VERSION}_${ARCH}${BUILD_SUFFIX}-portable.zip"
           powershell -Command "Compress-Archive -Path '$STAGE/*' -DestinationPath '$ZIP' -Force"
           echo "Built portable zip:"
           ls -la "$OUT_DIR"
@@ -405,5 +430,5 @@ jobs:
       - name: upload artifacts
         uses: actions/upload-artifact@v7
         with:
-          name: uniclipboard-${{ matrix.target }}
+          name: uniclipboard-${{ matrix.target }}${{ steps.build-mode.outputs.suffix }}
           path: target/**/release/bundle/**

@@ -263,6 +263,41 @@ bun run version:bump --type minor --channel stable
 
 如果工作流提示标签已存在，说明该版本已经发布过。请更新版本号后重试。
 
+### 构建缓存维护
+
+- 桌面与 CLI 的 GitHub 临时构建机器在缓存恢复前只保留项目固定的 Rust 工具链。
+  rust-cache 会把所有已安装编译器纳入匹配；清除未使用的预装工具链，可以避免其补丁升级造成无关的缓存失配。
+  该操作拒绝在本机和自托管 runner 执行。首次切换到这套稳定匹配条件需要重新生成缓存。
+- `build.yml` 手动构建默认采用 `build_mode=test`：只降低编译优化成本，
+  保留 release 的安全功能开关、panic 策略和调试符号，适合功能验证。
+  需要正式优化或测量正式版运行性能时选择 `build_mode=release`。
+  发布工作流的可复用调用仍默认 `release`，`Cargo.toml` 的正式配置不变。
+  测试缓存、上传产物和 Windows 免安装包带 `-test` 标识，不覆盖正式缓存。
+- 2026-09-09 同提交 Windows x64 对照：依赖缓存命中时，正式优化 23m24s，
+  快速模式 8m47s；首次无测试缓存仍为 22m39s。
+  保留应用自身产物的实验没有避免应用重编，故不启用。
+  详细数据见 [Windows 构建对照记录](ci/windows-build-benchmarks.md)。
+- `build.yml` 的手动构建默认保存缓存；可用 `save_cache=false` 关闭。
+  被其他发布工作流调用时仍默认只读，main 上的构建继续保存缓存。
+- `cache-warmup.yml` 每周以及构建模式配置合入 main 后，预热 Windows x64 正式版与测试版、Windows CLI、Rust 检查、
+  覆盖率和文档依赖。其他发布平台仍可正常构建，但不再同时预热全部平台，
+  避免缓存总量超过仓库默认容量。
+- 覆盖率检查关闭工具链安装步骤自带的缓存，由显式缓存步骤统一管理；
+  PR 只读取已有缓存，main 和预热工作流负责写入。
+- `cache-maintenance.yml` 每日、相关构建结束后及预热之前清理缓存。
+  只处理已知的 Rust、Bun 和 CodeQL 缓存：删除旧 PR 覆盖率缓存、已结束 PR 的缓存，
+  并对每个分支、用途和编译环境只保留最新一份。
+  总量超过 8 GiB 时按最近使用时间清理，为下一次上传预留空间；
+  优先保留 main 最新的 Windows x64 正式版和测试版构建缓存。未知用途的缓存不会自动删除。
+- 缓存维护只处理 Actions 缓存，不删除构建产物或 Release 文件。
+  手动触发 Cache Maintenance 默认仅预览；命令行等效操作：
+
+```bash
+GH_REPO=UniClipboard/UniClipboard node scripts/ci/maintain-actions-cache.mjs
+# 检查预览结果后执行相同规则
+GH_REPO=UniClipboard/UniClipboard node scripts/ci/maintain-actions-cache.mjs --apply
+```
+
 ### 构建失败
 
 1. 检查构建日志中的错误信息

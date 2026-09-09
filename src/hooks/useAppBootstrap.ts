@@ -8,7 +8,10 @@ import { shouldSignalDaemonLifecycleReady } from '@/lib/daemon-lifecycle-ready'
 import { connectDaemonWs } from '@/lib/daemon-ws-bootstrap'
 import { commands } from '@/lib/ipc'
 import { reportError } from '@/observability/errors'
-import { useGetEncryptionSessionStatusQuery } from '@/store/api'
+import {
+  useGetEncryptionSessionStatusQuery,
+  useLazyGetEncryptionSessionStatusQuery,
+} from '@/store/api'
 
 const LOADING_WATCHDOG_MS = 12_000
 
@@ -43,10 +46,10 @@ export function useAppBootstrap(isSetupActive: boolean) {
     data: encryptionData,
     isLoading: encryptionLoading,
     error: encryptionQueryError,
-    refetch: refetchEncryption,
   } = useGetEncryptionSessionStatusQuery(undefined, {
     skip: isSetupActive || !state.daemonBootstrapReady,
   })
+  const [checkEncryption] = useLazyGetEncryptionSessionStatusQuery()
 
   const isInitialLoading =
     !isSetupActive &&
@@ -78,17 +81,18 @@ export function useAppBootstrap(isSetupActive: boolean) {
       (state.loadingTimedOut ? 'Timed out waiting for the background service.' : null))
 
   const retry = useCallback(() => {
+    if (bootstrapRetryingRef.current) return
     bootstrapRetryingRef.current = true
     dispatch({ type: 'retryStarted' })
     commands
       .restartDaemon()
       .then(() => connectDaemonWs())
       .then(() => {
-        dispatch({ type: 'connectionReady' })
         return daemonClient.refreshSession()
       })
+      .then(() => checkEncryption(undefined, false).unwrap())
       .then(() => {
-        void refetchEncryption()
+        dispatch({ type: 'connectionReady' })
       })
       .catch(error => {
         dispatch({
@@ -99,8 +103,9 @@ export function useAppBootstrap(isSetupActive: boolean) {
       })
       .finally(() => {
         bootstrapRetryingRef.current = false
+        dispatch({ type: 'retryFinished' })
       })
-  }, [refetchEncryption])
+  }, [checkEncryption])
 
   useEffect(() => {
     if (state.daemonBootstrapReady || state.bootstrapFailure) return

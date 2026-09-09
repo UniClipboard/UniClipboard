@@ -1,4 +1,23 @@
 {
+  "startupFailure": {
+    "unavailable": "起動時に問題が発生しました",
+    "title": "起動できません",
+    "description": "バックグラウンドサービスに接続できないため、現在アプリを利用できません。",
+    "updateTitle": "アプリの更新が必要です",
+    "updateDescription": "新しいバージョンがバックグラウンドで実行されています。アプリを更新してください。",
+    "retry": "再試行",
+    "retrying": "再試行中…",
+    "export": "ログをエクスポート",
+    "exporting": "エクスポート中…",
+    "contact": "作者に連絡",
+    "update": "更新を開く",
+    "details": "エラーの詳細",
+    "exported": "ログの保存先：{{path}}",
+    "exportFailed": "ログをエクスポートできませんでした。保存先と空き容量を確認して再試行してください。",
+    "contactFailed": "サポートページを開けませんでした。連絡先：",
+    "updateFailed": "更新を確認できませんでした。後でもう一度お試しください。",
+    "contactOpened": "ブラウザーでサポートページを開きました。"
+  },
   "appearanceLayout": {
     "effectsHelp": "視覚効果と動作の快適さを調整します。",
     "scaleHelp": "文字や画面の要素の大きさを調整します。",

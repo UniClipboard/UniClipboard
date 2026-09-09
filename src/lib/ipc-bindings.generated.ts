@@ -322,6 +322,10 @@ export const commands = {
 	trace_id: string,
 	timestamp: number,
 } | null) => typedError<null, CommandError>(__TAURI_INVOKE("open_logs_directory", { trace })),
+	exportStartupLogs: (trace: {
+	trace_id: string,
+	timestamp: number,
+} | null) => typedError<string | null, CommandError>(__TAURI_INVOKE("export_startup_logs", { trace })),
 	/**
 	 *  Reveal a file or directory in the system file manager, opening its
 	 *  containing folder with the item selected (Finder / Explorer / file

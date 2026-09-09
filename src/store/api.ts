@@ -37,4 +37,4 @@ export const appApi = createApi({
   }),
 })
 
-export const { useGetEncryptionSessionStatusQuery } = appApi
+export const { useGetEncryptionSessionStatusQuery, useLazyGetEncryptionSessionStatusQuery } = appApi

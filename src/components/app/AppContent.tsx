@@ -28,14 +28,15 @@ export function AppContent({
       Boolean(bootstrap.resolvedEncryptionStatus?.session_ready)
   )
 
-  if (bootstrap.bootstrapFailure) {
+  if (bootstrap.bootstrapFailure || bootstrap.retrying) {
     return (
       <div className="flex h-full w-full flex-col">
         {fullTitleBar}
         <AppStatusScreen
-          detail={bootstrap.bootEncryptionError ?? bootstrap.bootstrapFailure.detail}
+          detail={bootstrap.bootEncryptionError ?? bootstrap.bootstrapFailure?.detail}
           failure={bootstrap.bootstrapFailure}
           onRetry={bootstrap.retry}
+          retrying={bootstrap.retrying}
         />
       </div>
     )

@@ -1,4 +1,23 @@
 {
+  "startupFailure": {
+    "unavailable": "Startup interrupted",
+    "title": "Unable to start right now",
+    "description": "The background service could not be reached. The app is temporarily unavailable.",
+    "updateTitle": "An app update is needed",
+    "updateDescription": "A newer version is running in the background. Update this app to continue.",
+    "retry": "Retry",
+    "retrying": "Retrying…",
+    "export": "Export logs",
+    "exporting": "Exporting…",
+    "contact": "Contact author",
+    "update": "Open updater",
+    "details": "Error details",
+    "exported": "Logs saved to: {{path}}",
+    "exportFailed": "Could not export logs. Check the save location and available space, then try again.",
+    "contactFailed": "Could not open the support page. Contact address:",
+    "updateFailed": "Could not complete the update check. Please try again later.",
+    "contactOpened": "The support page is open in your browser."
+  },
   "appearanceLayout": {
     "effectsHelp": "Balance visual effects and performance.",
     "scaleHelp": "Adjust the size of text and interface elements.",

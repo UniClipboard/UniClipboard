@@ -7,6 +7,7 @@ import { initializeWindowUi } from '@/lib/window-ui'
 import '@/lib/wdio-test-bridge'
 import { store } from '@/store'
 import '@/styles/globals.css'
+import '@/quick-panel/quick-panel.css'
 import QuickPanelApp from './QuickPanelApp'
 
 initializeWindowUi()

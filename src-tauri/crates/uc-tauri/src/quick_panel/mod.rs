@@ -640,7 +640,15 @@ pub fn pre_create(app: &tauri::AppHandle) {
             #[cfg(target_os = "macos")]
             macos::convert_to_panel(&window);
 
-            // Auto-hide when the panel loses focus (user clicks elsewhere).
+            // Layer Shell owns outside-click dismissal through its GTK backdrops.
+            // Focus changes can also come from pointer movement, so they must
+            // not install the ordinary-window blur dismissal path.
+            #[cfg(target_os = "linux")]
+            if linux::active(app) {
+                return;
+            }
+
+            // Ordinary windows auto-hide when they lose focus.
             let win_clone = window.clone();
             window.on_window_event(move |event| {
                 if let tauri::WindowEvent::Focused(false) = event {

@@ -18,8 +18,8 @@ import {
   recoverNetwork as recoverNetworkApi,
   type NetworkRecoveryStatus,
 } from '@/api/daemon/network-recovery'
-import { emitDeviceSyncChanged } from '@/lib/device-sync-events'
 import { refreshPresence, type PresenceRefreshResult } from '@/api/daemon/presence'
+import { emitDeviceSyncChanged } from '@/lib/device-sync-events'
 
 type ConnectionRefresh =
   | { status: 'idle' | 'checking' | 'failed' }

@@ -18,7 +18,9 @@ Linux 面板打开即同时显示左侧历史和右侧预览，默认尺寸为 8
 
 GTK3 运行库 `libgtk-layer-shell.so.0` 按需加载。库不可用时会记录能力降级事件；GTK 已安装的回调要求库在进程生命周期内保持加载。GTK4 的同名用途库不能替代 GTK3 版本。
 
-Deb、RPM、AUR 和 Nix 包装声明了此运行时依赖。直接运行开发二进制或 AppImage 时，需要确认宿主或包内可以找到该库；动态加载的库不会自动成为 ELF 链接依赖。
+Deb、RPM、AUR 和 Nix 包装声明了此运行时依赖，Snap 通过 `stage-packages` 携带 GTK3 Layer Shell。AppImage 在 Tauri 的 `beforeBundleCommand` 中运行 `scripts/prepare-linux-bundle.mjs`，按目标架构检查系统库并暂存到 `src-tauri/binaries/linux/`，再通过 `bundle.linux.appimage.files` 放入包内的 `usr/lib/`；缺库或架构不匹配时打包失败，不能依赖 ELF 自动扫描发现动态加载的库。
+
+Linux 发布工作流在上传前运行 `scripts/check-linux-bundles.py`，检查实际 Deb、RPM 的强制依赖及 AppImage 内库的架构、SONAME 和入口符号。直接运行开发二进制仍需自行安装该运行库，并重新启动 GUI。
 
 ## Omarchy 配置
 

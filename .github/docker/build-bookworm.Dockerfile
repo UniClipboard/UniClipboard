@@ -24,11 +24,11 @@ ENV DEBIAN_FRONTEND=noninteractive
 # 在它调用的 gtk 插件里)。
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
-      git curl wget ca-certificates xz-utils unzip sudo \
+      git curl wget ca-certificates xz-utils unzip sudo python3 \
       build-essential pkg-config cmake clang \
       libssl-dev \
       libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf \
-      libgtk-3-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev \
+      libgtk-3-dev libgtk-layer-shell0 libsoup-3.0-dev libjavascriptcoregtk-4.1-dev \
       file desktop-file-utils \
       xdg-utils \
       rpm \

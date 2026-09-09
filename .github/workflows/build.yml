@@ -297,6 +297,16 @@ jobs:
           tauriScript: bun run tauri
           args: ${{ matrix.args }}
 
+      # Keep builds working while the updated base image is being published.
+      - name: Install Linux dynamically loaded runtime
+        if: contains(matrix.target, 'linux')
+        shell: bash
+        run: |
+          if ! dpkg-query -W -f='${Status}' libgtk-layer-shell0 2>/dev/null | grep -q "install ok installed" || ! command -v python3 >/dev/null; then
+            apt-get update
+            apt-get install -y --no-install-recommends libgtk-layer-shell0 python3
+          fi
+
       - name: build Tauri app (non-macOS)
         if: matrix.platform != 'macos-latest'
         shell: bash
@@ -327,6 +337,13 @@ jobs:
           else
             bun run tauri build ${{ matrix.args }}
           fi
+
+      - name: Verify Linux bundle runtime dependencies
+        if: contains(matrix.target, 'linux')
+        shell: bash
+        run: |
+          python3 -m unittest discover -s scripts/tests -p test_check_linux_bundles.py
+          python3 scripts/check-linux-bundles.py target/release/bundle
 
       - name: package Windows portable zip
         # Portable ("green") build: the standalone exe + the `uniclipd` daemon +

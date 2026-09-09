@@ -71,6 +71,14 @@ describe('Actions cache retention', () => {
 
 describe('cache workflow ownership', () => {
   const root = path.resolve(__dirname, '../..')
+  it('cleans after PR and security jobs using only trusted default-branch code', () => {
+    const source = fs.readFileSync(path.join(root, '.github/workflows/cache-maintenance.yml'), 'utf8')
+    expect(source).toContain("'CodeQL - Code Quality'")
+    expect(source).toContain("'PR Check'")
+    expect(source).toContain('ref: ${{ github.event.repository.default_branch }}')
+    expect(source).not.toContain('workflow_run.head_sha')
+    expect(source).not.toContain('workflow_run.head_branch')
+  })
   it('disables the implicit cache in both coverage entry points', () => {
     for (const file of ['coverage.yml', 'cache-warmup.yml']) {
       const source = fs.readFileSync(path.join(root, '.github/workflows', file), 'utf8')

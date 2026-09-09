@@ -4,7 +4,7 @@ on:
   schedule:
     - cron: '0 3 * * *'
   workflow_run:
-    workflows: ['Coverage', 'Cache Warmup', 'Build Tauri App', 'Build CLI']
+    workflows: ['Coverage', 'Cache Warmup', 'Build Tauri App', 'Build CLI', 'PR Check', 'CodeQL - Code Quality']
     types: [completed]
   workflow_dispatch:
     inputs:

@@ -21,13 +21,16 @@
 //! cost up front.
 
 use std::sync::{Mutex, MutexGuard};
+use std::time::Duration;
 
 use tauri::webview::PageLoadEvent;
 use tauri::Manager;
-use tracing::{error, info, warn};
+use tracing::{error, info, warn, Instrument};
 
 /// Label of the main window as declared in `tauri.conf.json`.
 pub const MAIN_WINDOW_LABEL: &str = "main";
+// A broken frontend must not leave an explicitly opened window hidden forever.
+const MAIN_WINDOW_REVEAL_TIMEOUT: Duration = Duration::from_secs(10);
 
 #[derive(Default)]
 struct MainWindowLoadState {
@@ -35,6 +38,7 @@ struct MainWindowLoadState {
     page_loaded: bool,
     frontend_ready: bool,
     reveal_requested: bool,
+    reveal_timeout_elapsed: bool,
 }
 
 impl MainWindowLoadState {
@@ -43,6 +47,7 @@ impl MainWindowLoadState {
         self.page_loaded = false;
         self.frontend_ready = false;
         self.reveal_requested = false;
+        self.reveal_timeout_elapsed = false;
         self.generation
     }
 
@@ -69,14 +74,21 @@ impl MainWindowLoadState {
 
     fn consume_reveal_request(&mut self) -> bool {
         if self.generation == 0
-            || !self.page_loaded
-            || !self.frontend_ready
+            || (!(self.page_loaded && self.frontend_ready) && !self.reveal_timeout_elapsed)
             || !self.reveal_requested
         {
             return false;
         }
         self.reveal_requested = false;
         true
+    }
+
+    fn mark_reveal_timeout(&mut self, generation: u64) -> bool {
+        if self.generation != generation || self.reveal_timeout_elapsed {
+            return false;
+        }
+        self.reveal_timeout_elapsed = true;
+        self.consume_reveal_request()
     }
 }
 
@@ -85,6 +97,7 @@ static MAIN_WINDOW_LOAD_STATE: Mutex<MainWindowLoadState> = Mutex::new(MainWindo
     page_loaded: false,
     frontend_ready: false,
     reveal_requested: false,
+    reveal_timeout_elapsed: false,
 });
 static MAIN_WINDOW_CREATION_LOCK: Mutex<()> = Mutex::new(());
 
@@ -96,7 +109,7 @@ fn load_state() -> MutexGuard<'static, MainWindowLoadState> {
 }
 
 /// Request the main window: recreate it if needed, then reveal it once its
-/// page has loaded and its first React commit has completed.
+/// page and frontend are ready, or the generation's readiness deadline expires.
 pub fn show_main_window(app: &tauri::AppHandle) {
     #[cfg(target_os = "macos")]
     if let Err(error) = app.set_dock_visibility(true) {
@@ -172,12 +185,50 @@ fn reveal_main_window(window: &tauri::WebviewWindow) {
     let _ = window.set_focus();
 }
 
+fn schedule_reveal_fallback(window: &tauri::WebviewWindow, generation: u64) {
+    let window = window.clone();
+    let app = window.app_handle().clone();
+    tauri::async_runtime::spawn(
+        async move {
+            tokio::time::sleep(MAIN_WINDOW_REVEAL_TIMEOUT).await;
+            if let Err(error) = app.run_on_main_thread(move || {
+                // Never recreate a window from a timer. Keep the original handle
+                // so a concurrent recreation cannot redirect this reveal.
+                if window
+                    .app_handle()
+                    .get_webview_window(MAIN_WINDOW_LABEL)
+                    .is_none()
+                    || !load_state().mark_reveal_timeout(generation)
+                {
+                    return;
+                }
+                warn!(
+                    generation,
+                    error_kind = "main_window_readiness_timeout",
+                    retryable = false,
+                    "Main window readiness timed out; revealing the existing window"
+                );
+                reveal_main_window(&window);
+            }) {
+                warn!(
+                    generation,
+                    error_kind = "main_window_fallback_dispatch_failed",
+                    retryable = false,
+                    error = %error,
+                    "Failed to dispatch main window fallback reveal"
+                );
+            }
+        }
+        .in_current_span(),
+    );
+}
+
 /// Create the main window from its `tauri.conf.json` entry (`create: false`
 /// keeps Tauri from doing this automatically at startup).
 ///
 /// The config declares `visible: false`; [`show_main_window`] keeps a newly
-/// created window hidden until its page and rendered frontend are ready. This avoids
-/// exposing WebView2's unpainted surface during a Windows cold start.
+/// created window hidden until its page and rendered frontend are ready. A bounded
+/// fallback exposes failed frontends instead of leaving the window inaccessible.
 fn create_main_window(
     app: &tauri::AppHandle,
     generation: u64,
@@ -208,6 +259,7 @@ fn create_main_window(
             }
         })
         .build()?;
+    schedule_reveal_fallback(&window, generation);
     info!("Main window created from config");
     Ok(window)
 }
@@ -267,6 +319,62 @@ fn refresh_dock_icon(app: &tauri::AppHandle) {
 #[cfg(test)]
 mod tests {
     use super::MainWindowLoadState;
+
+    #[test]
+    fn timeout_reveals_a_loaded_window_without_frontend_readiness() {
+        let mut state = MainWindowLoadState::default();
+        let generation = state.mark_created();
+        assert!(!state.request_reveal());
+        assert!(!state.mark_loaded(generation));
+        assert!(state.mark_reveal_timeout(generation));
+        assert!(!state.mark_reveal_timeout(generation));
+        assert!(!state.mark_frontend_ready(generation));
+    }
+
+    #[test]
+    fn timeout_bounds_wait_even_when_page_load_never_finishes() {
+        let mut state = MainWindowLoadState::default();
+        let generation = state.mark_created();
+        assert!(!state.request_reveal());
+        assert!(state.mark_reveal_timeout(generation));
+        assert!(!state.mark_loaded(generation));
+        assert!(!state.mark_frontend_ready(generation));
+    }
+
+    #[test]
+    fn timeout_does_not_refocus_a_normally_revealed_window() {
+        let mut state = MainWindowLoadState::default();
+        let generation = state.mark_created();
+        assert!(!state.request_reveal());
+        assert!(!state.mark_loaded(generation));
+        assert!(state.mark_frontend_ready(generation));
+        assert!(!state.mark_reveal_timeout(generation));
+    }
+
+    #[test]
+    fn recreated_window_gets_its_own_timeout_and_readiness() {
+        let mut state = MainWindowLoadState::default();
+        let old_generation = state.mark_created();
+        assert!(!state.request_reveal());
+        assert!(state.mark_reveal_timeout(old_generation));
+        assert!(state.request_reveal());
+
+        let generation = state.mark_created();
+        assert!(!state.request_reveal());
+        assert!(!state.mark_reveal_timeout(old_generation));
+        assert!(!state.mark_frontend_ready(old_generation));
+        assert!(!state.mark_loaded(generation));
+        assert!(state.mark_reveal_timeout(generation));
+    }
+
+    #[test]
+    fn timeout_without_open_request_does_not_show_a_window() {
+        let mut state = MainWindowLoadState::default();
+        let generation = state.mark_created();
+        assert!(!state.mark_reveal_timeout(generation));
+        assert!(state.request_reveal());
+        assert!(!state.mark_reveal_timeout(generation));
+    }
 
     #[test]
     fn page_load_does_not_reveal_before_frontend_commit() {

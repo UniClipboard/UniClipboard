@@ -2,11 +2,19 @@ import type { PlatformInfo } from '@/lib/platform'
 
 export const WINDOW_FRAME_STORAGE_KEY = 'uniclipboard.useSystemWindowFrame'
 const WINDOW_FRAME_CHANGED_EVENT = 'uniclipboard:window-frame-changed'
-let sessionUseSystemWindowFrame: boolean | undefined
+export type WindowFramePreference = 'auto' | 'custom' | 'system' | 'none'
+let sessionPreference: WindowFramePreference | undefined
+
+declare global {
+  interface Window {
+    __UC_WINDOW_FRAME_DEFAULT__?: 'custom' | 'none'
+  }
+}
 
 type WindowFramePlatform = Pick<PlatformInfo, 'isWindows' | 'isMac' | 'isLinux' | 'isTauri'>
 
 export interface WindowFrameMode {
+  useSystemWindowFrame: boolean
   canChooseSystemFrame: boolean
   hasCustomTitleBar: boolean
   hasCustomWindowControls: boolean
@@ -24,28 +32,33 @@ const getStorage = (): Storage | null => {
   }
 }
 
-export const readUseSystemWindowFrame = (): boolean => {
-  if (sessionUseSystemWindowFrame !== undefined) return sessionUseSystemWindowFrame
+export const readWindowFramePreference = (): WindowFramePreference => {
+  if (sessionPreference !== undefined) return sessionPreference
 
   try {
-    return getStorage()?.getItem(WINDOW_FRAME_STORAGE_KEY) === 'true'
+    const stored = getStorage()?.getItem(WINDOW_FRAME_STORAGE_KEY)
+    // Keep existing explicit choices while treating missing preferences as automatic.
+    if (stored === 'true') return 'system'
+    if (stored === 'false') return 'custom'
+    if (stored === 'custom' || stored === 'system' || stored === 'none') return stored
+    return 'auto'
   } catch {
-    return false
+    return 'auto'
   }
 }
 
-export const setStoredUseSystemWindowFrame = (enabled: boolean): void => {
+export const setStoredWindowFramePreference = (preference: WindowFramePreference): void => {
   const storage = getStorage()
 
   if (!storage) {
-    sessionUseSystemWindowFrame = enabled
+    sessionPreference = preference
   } else {
     try {
-      storage.setItem(WINDOW_FRAME_STORAGE_KEY, String(enabled))
-      sessionUseSystemWindowFrame = undefined
+      storage.setItem(WINDOW_FRAME_STORAGE_KEY, preference)
+      sessionPreference = undefined
     } catch {
       // A storage failure must not prevent the current window from changing frame mode.
-      sessionUseSystemWindowFrame = enabled
+      sessionPreference = preference
     }
   }
 
@@ -72,19 +85,23 @@ export const subscribeWindowFrameChanges = (listener: () => void): (() => void) 
 
 export const resolveWindowFrameMode = (
   platform: WindowFramePlatform,
-  useSystemWindowFrame: boolean
+  preference: WindowFramePreference,
+  prefersNoTitleBar = typeof window !== 'undefined' && window.__UC_WINDOW_FRAME_DEFAULT__ === 'none'
 ): WindowFrameMode => {
   const canChooseSystemFrame = platform.isTauri && (platform.isWindows || platform.isLinux)
-  const usesSelectableCustomFrame = canChooseSystemFrame && !useSystemWindowFrame
+  const selected =
+    preference === 'auto' ? (platform.isLinux && prefersNoTitleBar ? 'none' : 'custom') : preference
+  const useSystemWindowFrame = canChooseSystemFrame && selected === 'system'
+  const usesSelectableCustomFrame = canChooseSystemFrame && selected === 'custom'
   const hasCustomTitleBar = platform.isMac || !platform.isTauri || usesSelectableCustomFrame
 
   return {
+    useSystemWindowFrame,
     canChooseSystemFrame,
     hasCustomTitleBar,
     hasCustomWindowControls: usesSelectableCustomFrame,
     hasRoundedWindow: platform.isWindows && usesSelectableCustomFrame,
-    searchInTitleBar:
-      platform.isMac || ((platform.isWindows || platform.isLinux) && !useSystemWindowFrame),
+    searchInTitleBar: platform.isMac || usesSelectableCustomFrame,
   }
 }
 

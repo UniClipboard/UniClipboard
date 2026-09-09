@@ -101,7 +101,8 @@ beforeEach(() => {
     hasRoundedWindow: false,
     searchInTitleBar: true,
     useSystemWindowFrame: false,
-    setUseSystemWindowFrame: vi.fn().mockResolvedValue(undefined),
+    windowFramePreference: 'custom',
+    setWindowFramePreference: vi.fn().mockResolvedValue(undefined),
   })
 })
 
@@ -166,7 +167,7 @@ describe('AppearanceSection', () => {
     const { updateGeneralSetting } = setup()
     expect(document.querySelector('details')).not.toHaveAttribute('open')
     await user.click(screen.getByRole('combobox', { name: 'appearanceLayout.darkPalette' }))
-    await user.click(screen.getByRole('option', { name: 'blue' }))
+    await user.click(await screen.findByRole('option', { name: 'blue' }))
     await waitFor(() =>
       expect(updateGeneralSetting).toHaveBeenCalledWith({
         themeColorDark: 'blue',
@@ -180,27 +181,36 @@ describe('AppearanceSection', () => {
     ).toBeVisible()
   })
 
-  it('在支持的平台上允许启用系统窗口框', async () => {
-    const user = userEvent.setup()
-    const setUseSystemWindowFrame = vi.fn().mockResolvedValue(undefined)
-    mockUseWindowFrame.mockReturnValue({
-      canChooseSystemFrame: true,
-      hasCustomTitleBar: true,
-      hasCustomWindowControls: true,
-      hasRoundedWindow: true,
-      searchInTitleBar: true,
-      useSystemWindowFrame: false,
-      setUseSystemWindowFrame,
-    })
+  it.each(['auto', 'custom', 'system', 'none'] as const)(
+    '允许选择标题栏模式 %s',
+    async preference => {
+      const user = userEvent.setup()
+      const setWindowFramePreference = vi.fn().mockResolvedValue(undefined)
+      mockUseWindowFrame.mockReturnValue({
+        canChooseSystemFrame: true,
+        hasCustomTitleBar: true,
+        hasCustomWindowControls: true,
+        hasRoundedWindow: true,
+        searchInTitleBar: true,
+        useSystemWindowFrame: false,
+        windowFramePreference: preference === 'custom' ? 'system' : 'custom',
+        setWindowFramePreference,
+      })
 
-    setup()
-    const toggle = screen.getByRole('switch', {
-      name: 'settings.sections.appearance.windowFrame.useSystem',
-    })
+      setup()
+      const selector = screen.getByRole('combobox', {
+        name: 'settings.sections.appearance.windowFrame.title',
+      })
 
-    expect(toggle).toHaveAttribute('aria-checked', 'false')
-    await user.click(toggle)
+      expect(selector).toBeVisible()
+      await user.click(selector)
+      await user.click(
+        await screen.findByRole('option', {
+          name: `settings.sections.appearance.windowFrame.${preference}`,
+        })
+      )
 
-    expect(setUseSystemWindowFrame).toHaveBeenCalledWith(true)
-  })
+      expect(setWindowFramePreference).toHaveBeenCalledWith(preference)
+    }
+  )
 })

@@ -25,6 +25,7 @@ pub mod update_scheduler;
 pub mod visual_effects;
 mod visual_effects_probe;
 mod visual_effects_storage;
+mod window_frame_environment;
 
 pub use process_environment::prepare_process_environment;
 pub use run::run;

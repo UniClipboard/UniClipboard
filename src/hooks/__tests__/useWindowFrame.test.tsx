@@ -14,13 +14,13 @@ vi.mock('@tauri-apps/api/window', () => ({
 }))
 
 function FrameControls() {
-  const { setUseSystemWindowFrame } = useWindowFrame()
+  const { setWindowFramePreference } = useWindowFrame()
   return (
     <>
-      <button type="button" onClick={() => setUseSystemWindowFrame(true)}>
+      <button type="button" onClick={() => setWindowFramePreference('system')}>
         System
       </button>
-      <button type="button" onClick={() => setUseSystemWindowFrame(false)}>
+      <button type="button" onClick={() => setWindowFramePreference('custom')}>
         Custom
       </button>
     </>
@@ -43,7 +43,9 @@ describe('window frame switching', () => {
       mocks.platform.isLinux = platform === 'linux'
       mocks.platform.isWindows = platform === 'windows'
       const rounded = platform === 'windows'
-      applyWindowFrameDocumentState(resolveWindowFrameMode(mocks.platform, false).hasRoundedWindow)
+      applyWindowFrameDocumentState(
+        resolveWindowFrameMode(mocks.platform, 'custom').hasRoundedWindow
+      )
       const { container } = render(<WindowShell titleBar={<FrameControls />}>Content</WindowShell>)
       const shell = container.firstElementChild
 

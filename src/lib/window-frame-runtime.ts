@@ -3,22 +3,21 @@ import { createLogger } from '@/lib/logger'
 import { detectPlatformInfo } from '@/lib/platform'
 import {
   applyWindowFrameDocumentState,
-  readUseSystemWindowFrame,
+  readWindowFramePreference,
   resolveWindowFrameMode,
 } from '@/lib/window-frame'
 
 const log = createLogger('window-frame')
 
-export const initializeWindowFrame = (): void => {
+export const initializeWindowFrame = async (): Promise<void> => {
   const platform = detectPlatformInfo()
-  const useSystemWindowFrame = readUseSystemWindowFrame()
-  const mode = resolveWindowFrameMode(platform, useSystemWindowFrame)
+  const mode = resolveWindowFrameMode(platform, readWindowFramePreference())
 
   applyWindowFrameDocumentState(mode.hasRoundedWindow)
 
   if (!mode.canChooseSystemFrame) return
 
-  getCurrentWindow()
-    .setDecorations(useSystemWindowFrame)
+  await getCurrentWindow()
+    .setDecorations(mode.useSystemWindowFrame)
     .catch(error => log.error({ err: error }, 'Failed to initialize window frame'))
 }

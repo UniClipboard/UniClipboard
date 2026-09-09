@@ -407,9 +407,12 @@
           "hexInputLabel": "十六进制颜色值"
         },
         "windowFrame": {
-          "title": "窗口外观",
-          "useSystem": "使用系统窗口框",
-          "description": "开启后使用桌面系统的标题栏和窗口按钮，搜索框将移回页面。"
+          "title": "窗口标题栏",
+          "description": "自动模式在 niri 和 Hyprland 下隐藏标题栏。选择仅对本机生效，启动期间同样适用。",
+          "auto": "自动",
+          "custom": "应用标题栏",
+          "system": "系统标题栏",
+          "none": "无标题栏"
         },
         "zoom": {
           "title": "界面缩放",

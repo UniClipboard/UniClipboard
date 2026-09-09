@@ -20,68 +20,96 @@
 //! the first explicit open, so a login autostart no longer pays the webview
 //! cost up front.
 
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Mutex;
+use std::sync::{Mutex, MutexGuard};
+use std::time::Duration;
 
 use tauri::webview::PageLoadEvent;
 use tauri::Manager;
-use tracing::{error, info, warn};
+use tracing::{error, info, warn, Instrument};
 
 /// Label of the main window as declared in `tauri.conf.json`.
 pub const MAIN_WINDOW_LABEL: &str = "main";
+// A broken frontend must not leave an explicitly opened window hidden forever.
+const MAIN_WINDOW_REVEAL_TIMEOUT: Duration = Duration::from_secs(10);
 
 #[derive(Default)]
 struct MainWindowLoadState {
-    generation: AtomicU64,
-    loaded_generation: AtomicU64,
-    reveal_requested_generation: AtomicU64,
+    generation: u64,
+    page_loaded: bool,
+    frontend_ready: bool,
+    reveal_requested: bool,
+    reveal_timeout_elapsed: bool,
 }
 
 impl MainWindowLoadState {
-    fn mark_created(&self) -> u64 {
-        let generation = self.generation.fetch_add(1, Ordering::SeqCst) + 1;
-        self.loaded_generation.store(0, Ordering::SeqCst);
-        self.reveal_requested_generation.store(0, Ordering::SeqCst);
-        generation
+    fn mark_created(&mut self) -> u64 {
+        self.generation += 1;
+        self.page_loaded = false;
+        self.frontend_ready = false;
+        self.reveal_requested = false;
+        self.reveal_timeout_elapsed = false;
+        self.generation
     }
 
-    fn request_reveal(&self) -> bool {
-        let generation = self.generation.load(Ordering::SeqCst);
-        self.reveal_requested_generation
-            .store(generation, Ordering::SeqCst);
-
-        self.loaded_generation.load(Ordering::SeqCst) == generation
-            && self.generation.load(Ordering::SeqCst) == generation
-            && self.consume_reveal_request(generation)
+    fn request_reveal(&mut self) -> bool {
+        self.reveal_requested = true;
+        self.consume_reveal_request()
     }
 
-    fn mark_loaded(&self, generation: u64) -> bool {
-        if self.generation.load(Ordering::SeqCst) != generation {
+    fn mark_loaded(&mut self, generation: u64) -> bool {
+        if self.generation != generation {
             return false;
         }
-
-        self.loaded_generation.store(generation, Ordering::SeqCst);
-
-        self.generation.load(Ordering::SeqCst) == generation
-            && self.consume_reveal_request(generation)
+        self.page_loaded = true;
+        self.consume_reveal_request()
     }
 
-    fn consume_reveal_request(&self, generation: u64) -> bool {
-        self.reveal_requested_generation
-            .compare_exchange(generation, 0, Ordering::SeqCst, Ordering::SeqCst)
-            .is_ok()
+    fn mark_frontend_ready(&mut self, generation: u64) -> bool {
+        if self.generation != generation {
+            return false;
+        }
+        self.frontend_ready = true;
+        self.consume_reveal_request()
+    }
+
+    fn consume_reveal_request(&mut self) -> bool {
+        if self.generation == 0
+            || (!(self.page_loaded && self.frontend_ready) && !self.reveal_timeout_elapsed)
+            || !self.reveal_requested
+        {
+            return false;
+        }
+        self.reveal_requested = false;
+        true
+    }
+
+    fn mark_reveal_timeout(&mut self, generation: u64) -> bool {
+        if self.generation != generation || self.reveal_timeout_elapsed {
+            return false;
+        }
+        self.reveal_timeout_elapsed = true;
+        self.consume_reveal_request()
     }
 }
 
-static MAIN_WINDOW_LOAD_STATE: MainWindowLoadState = MainWindowLoadState {
-    generation: AtomicU64::new(0),
-    loaded_generation: AtomicU64::new(0),
-    reveal_requested_generation: AtomicU64::new(0),
-};
+static MAIN_WINDOW_LOAD_STATE: Mutex<MainWindowLoadState> = Mutex::new(MainWindowLoadState {
+    generation: 0,
+    page_loaded: false,
+    frontend_ready: false,
+    reveal_requested: false,
+    reveal_timeout_elapsed: false,
+});
 static MAIN_WINDOW_CREATION_LOCK: Mutex<()> = Mutex::new(());
 
+fn load_state() -> MutexGuard<'static, MainWindowLoadState> {
+    MAIN_WINDOW_LOAD_STATE.lock().unwrap_or_else(|poisoned| {
+        warn!("Main window load state mutex poisoned; recovering ownership");
+        poisoned.into_inner()
+    })
+}
+
 /// Request the main window: recreate it if needed, then reveal it once its
-/// initial page load has finished.
+/// page and frontend are ready, or the generation's readiness deadline expires.
 pub fn show_main_window(app: &tauri::AppHandle) {
     #[cfg(target_os = "macos")]
     if let Err(error) = app.set_dock_visibility(true) {
@@ -110,7 +138,7 @@ pub fn show_main_window(app: &tauri::AppHandle) {
     let window = match app.get_webview_window(MAIN_WINDOW_LABEL) {
         Some(window) => window,
         None => {
-            let generation = MAIN_WINDOW_LOAD_STATE.mark_created();
+            let generation = load_state().mark_created();
             match create_main_window(app, generation) {
                 Ok(window) => window,
                 Err(error) => {
@@ -121,8 +149,8 @@ pub fn show_main_window(app: &tauri::AppHandle) {
         }
     };
 
-    if !MAIN_WINDOW_LOAD_STATE.request_reveal() {
-        info!("Main window reveal deferred until initial page load finishes");
+    if !load_state().request_reveal() {
+        info!("Main window reveal deferred until page and frontend are ready");
         return;
     }
 
@@ -130,12 +158,25 @@ pub fn show_main_window(app: &tauri::AppHandle) {
 }
 
 fn handle_page_load_finished(window: &tauri::WebviewWindow, generation: u64) {
-    if !MAIN_WINDOW_LOAD_STATE.mark_loaded(generation) {
+    if !load_state().mark_loaded(generation) {
         return;
     }
 
     reveal_main_window(window);
-    info!(generation, "Main window revealed after initial page load");
+    info!(
+        generation,
+        "Main window revealed after page and frontend became ready"
+    );
+}
+
+pub(crate) fn handle_frontend_ready(window: &tauri::WebviewWindow, generation: u64) {
+    if load_state().mark_frontend_ready(generation) {
+        reveal_main_window(window);
+        info!(
+            generation,
+            "Main window revealed after page and frontend became ready"
+        );
+    }
 }
 
 fn reveal_main_window(window: &tauri::WebviewWindow) {
@@ -144,12 +185,50 @@ fn reveal_main_window(window: &tauri::WebviewWindow) {
     let _ = window.set_focus();
 }
 
+fn schedule_reveal_fallback(window: &tauri::WebviewWindow, generation: u64) {
+    let window = window.clone();
+    let app = window.app_handle().clone();
+    tauri::async_runtime::spawn(
+        async move {
+            tokio::time::sleep(MAIN_WINDOW_REVEAL_TIMEOUT).await;
+            if let Err(error) = app.run_on_main_thread(move || {
+                // Never recreate a window from a timer. Keep the original handle
+                // so a concurrent recreation cannot redirect this reveal.
+                if window
+                    .app_handle()
+                    .get_webview_window(MAIN_WINDOW_LABEL)
+                    .is_none()
+                    || !load_state().mark_reveal_timeout(generation)
+                {
+                    return;
+                }
+                warn!(
+                    generation,
+                    error_kind = "main_window_readiness_timeout",
+                    retryable = false,
+                    "Main window readiness timed out; revealing the existing window"
+                );
+                reveal_main_window(&window);
+            }) {
+                warn!(
+                    generation,
+                    error_kind = "main_window_fallback_dispatch_failed",
+                    retryable = false,
+                    error = %error,
+                    "Failed to dispatch main window fallback reveal"
+                );
+            }
+        }
+        .in_current_span(),
+    );
+}
+
 /// Create the main window from its `tauri.conf.json` entry (`create: false`
 /// keeps Tauri from doing this automatically at startup).
 ///
 /// The config declares `visible: false`; [`show_main_window`] keeps a newly
-/// created window hidden until its first page load finishes. This avoids
-/// exposing WebView2's unpainted surface during a Windows cold start.
+/// created window hidden until its page and rendered frontend are ready. A bounded
+/// fallback exposes failed frontends instead of leaving the window inaccessible.
 fn create_main_window(
     app: &tauri::AppHandle,
     generation: u64,
@@ -170,35 +249,20 @@ fn create_main_window(
     configure_main_window_config_for_platform(&mut config);
 
     let window = tauri::WebviewWindowBuilder::from_config(app, &config)?
+        .initialization_script(crate::window_frame_environment::initialization_script())
+        .initialization_script(format!(
+            "window.__UC_MAIN_WINDOW_GENERATION__ = '{generation}';"
+        ))
         .on_page_load(move |window, payload| {
             if matches!(payload.event(), PageLoadEvent::Finished) {
                 handle_page_load_finished(&window, generation);
             }
         })
         .build()?;
-    configure_for_platform(&window);
+    schedule_reveal_fallback(&window, generation);
     info!("Main window created from config");
     Ok(window)
 }
-
-/// Windows and Linux use the React titlebar controls, so their native window
-/// decorations must be disabled after every main-window creation. Keeping the
-/// Linux client-side decorations beneath the webview drag region makes KDE and
-/// other Wayland compositors route clicks away from the native controls.
-#[cfg(any(target_os = "windows", target_os = "linux"))]
-fn configure_for_platform(window: &tauri::WebviewWindow) {
-    if let Err(error) = window.set_decorations(false) {
-        warn!(
-            error = %error,
-            error_kind = "window_decorations_disable_failed",
-            retryable = false,
-            "Failed to disable native main window decorations"
-        );
-    }
-}
-
-#[cfg(not(any(target_os = "windows", target_os = "linux")))]
-fn configure_for_platform(_window: &tauri::WebviewWindow) {}
 
 /// macOS: force the Dock to repaint this app's icon after flipping back to the
 /// `Regular` activation policy.
@@ -257,17 +321,92 @@ mod tests {
     use super::MainWindowLoadState;
 
     #[test]
-    fn reveal_waits_for_initial_page_load() {
-        let state = MainWindowLoadState::default();
+    fn timeout_reveals_a_loaded_window_without_frontend_readiness() {
+        let mut state = MainWindowLoadState::default();
+        let generation = state.mark_created();
+        assert!(!state.request_reveal());
+        assert!(!state.mark_loaded(generation));
+        assert!(state.mark_reveal_timeout(generation));
+        assert!(!state.mark_reveal_timeout(generation));
+        assert!(!state.mark_frontend_ready(generation));
+    }
+
+    #[test]
+    fn timeout_bounds_wait_even_when_page_load_never_finishes() {
+        let mut state = MainWindowLoadState::default();
+        let generation = state.mark_created();
+        assert!(!state.request_reveal());
+        assert!(state.mark_reveal_timeout(generation));
+        assert!(!state.mark_loaded(generation));
+        assert!(!state.mark_frontend_ready(generation));
+    }
+
+    #[test]
+    fn timeout_does_not_refocus_a_normally_revealed_window() {
+        let mut state = MainWindowLoadState::default();
+        let generation = state.mark_created();
+        assert!(!state.request_reveal());
+        assert!(!state.mark_loaded(generation));
+        assert!(state.mark_frontend_ready(generation));
+        assert!(!state.mark_reveal_timeout(generation));
+    }
+
+    #[test]
+    fn recreated_window_gets_its_own_timeout_and_readiness() {
+        let mut state = MainWindowLoadState::default();
+        let old_generation = state.mark_created();
+        assert!(!state.request_reveal());
+        assert!(state.mark_reveal_timeout(old_generation));
+        assert!(state.request_reveal());
+
+        let generation = state.mark_created();
+        assert!(!state.request_reveal());
+        assert!(!state.mark_reveal_timeout(old_generation));
+        assert!(!state.mark_frontend_ready(old_generation));
+        assert!(!state.mark_loaded(generation));
+        assert!(state.mark_reveal_timeout(generation));
+    }
+
+    #[test]
+    fn timeout_without_open_request_does_not_show_a_window() {
+        let mut state = MainWindowLoadState::default();
+        let generation = state.mark_created();
+        assert!(!state.mark_reveal_timeout(generation));
+        assert!(state.request_reveal());
+        assert!(!state.mark_reveal_timeout(generation));
+    }
+
+    #[test]
+    fn page_load_does_not_reveal_before_frontend_commit() {
+        let mut state = MainWindowLoadState::default();
         let generation = state.mark_created();
 
         assert!(!state.request_reveal());
+        assert!(!state.mark_loaded(generation));
+        assert!(state.mark_frontend_ready(generation));
+    }
+
+    #[test]
+    fn frontend_commit_does_not_reveal_before_page_load() {
+        let mut state = MainWindowLoadState::default();
+        let generation = state.mark_created();
+        assert!(!state.request_reveal());
+        assert!(!state.mark_frontend_ready(generation));
         assert!(state.mark_loaded(generation));
     }
 
     #[test]
+    fn readiness_before_open_request_does_not_show_window() {
+        let mut state = MainWindowLoadState::default();
+        let generation = state.mark_created();
+        assert!(!state.mark_loaded(generation));
+        assert!(!state.mark_frontend_ready(generation));
+        assert!(state.request_reveal());
+    }
+
+    #[test]
     fn stale_page_load_does_not_reveal_recreated_window() {
-        let state = MainWindowLoadState::default();
+        let mut state = MainWindowLoadState::default();
         let old_generation = state.mark_created();
         assert!(!state.request_reveal());
 
@@ -275,33 +414,45 @@ mod tests {
         assert!(!state.request_reveal());
 
         assert!(!state.mark_loaded(old_generation));
-        assert!(state.mark_loaded(current_generation));
+        assert!(!state.mark_frontend_ready(old_generation));
+        assert!(!state.mark_loaded(current_generation));
+        assert!(!state.mark_frontend_ready(old_generation));
+        assert!(state.mark_frontend_ready(current_generation));
     }
 
     #[test]
     fn page_load_consumes_reveal_request() {
-        let state = MainWindowLoadState::default();
+        let mut state = MainWindowLoadState::default();
         let generation = state.mark_created();
         assert!(!state.request_reveal());
 
-        assert!(state.mark_loaded(generation));
         assert!(!state.mark_loaded(generation));
+        assert!(state.mark_frontend_ready(generation));
+        assert!(!state.mark_loaded(generation));
+        assert!(!state.mark_frontend_ready(generation));
     }
 
     #[test]
     fn loaded_window_can_be_explicitly_revealed_again() {
-        let state = MainWindowLoadState::default();
+        let mut state = MainWindowLoadState::default();
         let generation = state.mark_created();
         assert!(!state.request_reveal());
-        assert!(state.mark_loaded(generation));
+        assert!(!state.mark_loaded(generation));
+        assert!(state.mark_frontend_ready(generation));
 
         assert!(state.request_reveal());
         assert!(!state.mark_loaded(generation));
+        assert!(!state.mark_frontend_ready(generation));
     }
 }
 
 /// Linux requires an opaque surface and does not support the shared window effects.
 fn configure_main_window_config_for_platform(config: &mut tauri::utils::config::WindowConfig) {
+    // Start without native chrome; the webview applies the saved preference
+    // before rendering, including on startup failure and window recreation.
+    if cfg!(any(target_os = "linux", target_os = "windows")) {
+        config.decorations = false;
+    }
     if cfg!(target_os = "linux") {
         config.transparent = false;
         config.window_effects = None;
@@ -318,6 +469,9 @@ mod surface_tests {
             ..Default::default()
         };
         super::configure_main_window_config_for_platform(&mut config);
+        if cfg!(any(target_os = "linux", target_os = "windows")) {
+            assert!(!config.decorations);
+        }
         assert_eq!(config.transparent, !cfg!(target_os = "linux"));
         assert_eq!(config.window_effects.is_some(), !cfg!(target_os = "linux"));
     }

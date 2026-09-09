@@ -8,11 +8,11 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-  Switch,
 } from '@/components/ui'
 import { useUiScale } from '@/hooks/useUiScale'
 import { useWindowFrame } from '@/hooks/useWindowFrame'
 import { createLogger } from '@/lib/logger'
+import type { WindowFramePreference } from '@/lib/window-frame'
 
 const log = createLogger('appearance-display')
 export default function AppearanceDisplay() {
@@ -21,11 +21,11 @@ export default function AppearanceDisplay() {
   const frame = useWindowFrame()
   const [saving, setSaving] = useState(false)
   const [failed, setFailed] = useState(false)
-  const toggleFrame = async (enabled: boolean) => {
+  const changeFrame = async (preference: WindowFramePreference) => {
     setSaving(true)
     setFailed(false)
     try {
-      await frame.setUseSystemWindowFrame(enabled)
+      await frame.setWindowFramePreference(preference)
     } catch (error) {
       log.error({ err: error }, 'Failed to change window frame')
       setFailed(true)
@@ -99,7 +99,7 @@ export default function AppearanceDisplay() {
         <div className="appearance-row py-4">
           <div className="min-w-0">
             <label htmlFor="appearance-system-frame" className="text-sm font-normal">
-              {t('settings.sections.appearance.windowFrame.useSystem')}
+              {t('settings.sections.appearance.windowFrame.title')}
             </label>
             <p className="mt-1 max-w-sm text-xs leading-relaxed text-muted-foreground">
               {t('settings.sections.appearance.windowFrame.description')}
@@ -110,15 +110,28 @@ export default function AppearanceDisplay() {
               </p>
             )}
           </div>
-          <Switch
-            id="appearance-system-frame"
-            aria-label={t('settings.sections.appearance.windowFrame.useSystem')}
-            checked={frame.useSystemWindowFrame}
+          <Select
+            value={frame.windowFramePreference}
             disabled={saving}
-            onCheckedChange={value => {
-              void toggleFrame(value)
+            onValueChange={value => {
+              void changeFrame(value as WindowFramePreference)
             }}
-          />
+          >
+            <SelectTrigger
+              id="appearance-system-frame"
+              aria-label={t('settings.sections.appearance.windowFrame.title')}
+              className="h-9 w-full min-w-0"
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {(['auto', 'custom', 'system', 'none'] as const).map(value => (
+                <SelectItem key={value} value={value}>
+                  {t(`settings.sections.appearance.windowFrame.${value}`)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       )}
     </div>

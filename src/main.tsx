@@ -4,6 +4,7 @@ import ReactDOM from 'react-dom/client'
 import { Provider } from 'react-redux'
 import './i18n'
 import { getDeviceMeta } from '@/api/runtime'
+import { MainWindowReady } from '@/components/app/MainWindowReady'
 import { connectDaemonWs, registerDaemonShutdownListener } from '@/lib/daemon-ws-bootstrap'
 import { initializeWebviewContextMenu } from '@/lib/webview-context-menu'
 import { initializeWindowFrame } from '@/lib/window-frame-runtime'
@@ -48,7 +49,7 @@ if (typeof window !== 'undefined') {
 }
 
 initializeWindowUi()
-initializeWindowFrame()
+const windowFrameReady = initializeWindowFrame()
 
 // 初始化日志系统：将后端日志输出到浏览器 DevTools
 const initLogging = async () => {
@@ -83,14 +84,23 @@ registerDaemonShutdownListener().catch(err => {
   console.error('[main] daemon shutdown listener registration failed:', err)
 })
 
-ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
-  <React.StrictMode>
-    <Provider store={store}>
-      <DiagnosticsErrorBoundary fallback={<div>Something went wrong.</div>}>
-        <App />
-      </DiagnosticsErrorBoundary>
-    </Provider>
-  </React.StrictMode>
-)
-
-logStartupTiming('ReactDOM.render invoked')
+void windowFrameReady.then(() => {
+  ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
+    <React.StrictMode>
+      <Provider store={store}>
+        <DiagnosticsErrorBoundary
+          fallback={
+            <>
+              <div>Something went wrong.</div>
+              <MainWindowReady />
+            </>
+          }
+        >
+          <App />
+          <MainWindowReady />
+        </DiagnosticsErrorBoundary>
+      </Provider>
+    </React.StrictMode>
+  )
+  logStartupTiming('ReactDOM.render invoked')
+})

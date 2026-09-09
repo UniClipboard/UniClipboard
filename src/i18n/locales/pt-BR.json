@@ -2078,6 +2078,8 @@
     }
   },
   "quickPanel": {
+    "scaleText": "Texto",
+    "scaleWindow": "Janela",
     "loading": "Conectando ao histórico da área de transferência...",
     "unavailable": "O histórico da área de transferência está indisponível no momento.",
     "history": {

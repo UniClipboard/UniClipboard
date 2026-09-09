@@ -2070,6 +2070,8 @@
     }
   },
   "quickPanel": {
+    "scaleText": "文字",
+    "scaleWindow": "視窗",
     "loading": "正在連接剪貼簿歷史...",
     "unavailable": "目前無法使用剪貼簿歷史。",
     "history": {

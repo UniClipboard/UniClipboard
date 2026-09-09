@@ -2070,6 +2070,8 @@
     }
   },
   "quickPanel": {
+    "scaleText": "文字",
+    "scaleWindow": "窗口",
     "loading": "正在连接剪贴板历史...",
     "unavailable": "当前无法使用剪贴板历史。",
     "history": {

@@ -37,7 +37,17 @@ export async function setQuickPanelLayout(scale: number, previewExpanded: boolea
 }
 
 // Capture before search suggestions and menus handle keys, and suppress WebKit zoom.
-export function installWindowResizeShortcuts(): () => void {
+export type QuickPanelScaleFeedback = { textPercent: number; windowPercent: number }
+
+export function installWindowResizeShortcuts(
+  onAdjust?: (feedback: QuickPanelScaleFeedback) => void
+): () => void {
+  const report = (textScale = readStoredUiScale()) => {
+    onAdjust?.({
+      textPercent: Math.round(textScale * 100),
+      windowPercent: Math.round(readWindowScale() * 100),
+    })
+  }
   const onKeyDown = (event: KeyboardEvent) => {
     if (!event.ctrlKey || event.altKey || event.metaKey || event.isComposing) return
     const direction =
@@ -50,18 +60,22 @@ export function installWindowResizeShortcuts(): () => void {
     event.preventDefault()
     event.stopImmediatePropagation()
     if (event.shiftKey) {
-      adjustUiScale(direction > 0 ? 'in' : 'out')
+      report(adjustUiScale(direction > 0 ? 'in' : 'out'))
       return
     }
     const previous = readWindowScale()
     const next = normalizeScale(previous + direction * WINDOW_SCALE_STEP)
-    if (next === previous) return
+    if (next === previous) {
+      report()
+      return
+    }
     sessionScale = next
     try {
       localStorage.setItem(STORAGE_KEY, String(next))
     } catch (err) {
       log.warn({ err }, 'failed to persist quick panel window size')
     }
+    report()
     void setQuickPanelLayout(readStoredUiScale(), false).catch(err => {
       log.warn({ err }, 'failed to resize quick panel window')
     })

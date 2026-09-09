@@ -2071,6 +2071,8 @@
     }
   },
   "quickPanel": {
+    "scaleText": "文字",
+    "scaleWindow": "ウィンドウ",
     "loading": "クリップボード履歴を接続しています...",
     "unavailable": "クリップボード履歴は現在利用できません。",
     "history": {

@@ -2072,6 +2072,8 @@
     }
   },
   "quickPanel": {
+    "scaleText": "Text",
+    "scaleWindow": "Window",
     "loading": "Connecting clipboard history...",
     "unavailable": "Clipboard history is unavailable right now.",
     "history": {

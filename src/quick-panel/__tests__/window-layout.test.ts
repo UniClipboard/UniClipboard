@@ -39,6 +39,21 @@ afterEach(() => {
 })
 
 describe('quick panel window resize', () => {
+  it('reports both percentages for window, text and limit adjustments', async () => {
+    const report = vi.fn()
+    const { installWindowResizeShortcuts } = await import('../window-layout')
+    cleanup = installWindowResizeShortcuts(report)
+    press('=')
+    expect(report).toHaveBeenLastCalledWith({ textPercent: 125, windowPercent: 110 })
+    adjustUiScale.mockReturnValue(1.5)
+    press('+', { shiftKey: true })
+    expect(report).toHaveBeenLastCalledWith({ textPercent: 150, windowPercent: 110 })
+    for (let i = 0; i < 10; i++) press('=')
+    report.mockClear()
+    press('=')
+    expect(report).toHaveBeenCalledExactlyOnceWith({ textPercent: 125, windowPercent: 150 })
+  })
+
   it('resizes with plus, equals and minus using a separate panel factor', async () => {
     const { installWindowResizeShortcuts } = await import('../window-layout')
     cleanup = installWindowResizeShortcuts()

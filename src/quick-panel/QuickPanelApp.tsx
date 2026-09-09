@@ -14,8 +14,9 @@ import { createLogger } from '@/lib/logger'
 import { readStoredUiScale } from '@/lib/ui-scale'
 import { visualEffectsStore } from '@/lib/visual-effects-store'
 import ClipboardHistoryPanel from './ClipboardHistoryPanel'
+import QuickPanelScaleIndicator from './components/QuickPanelScaleIndicator'
 import { getQuickPanelLayoutClassNames } from './constants'
-import { installWindowResizeShortcuts, setQuickPanelLayout } from './window-layout'
+import { setQuickPanelLayout } from './window-layout'
 
 const log = createLogger('quick-panel-app')
 const SHOW_FALLBACK_DELAY_MS = 50
@@ -23,9 +24,6 @@ const SHOW_FALLBACK_DELAY_MS = 50
 const QuickPanelApp: React.FC = () => {
   const { t } = useTranslation(undefined, { keyPrefix: 'quickPanel' })
   const { isLinux, isTauri } = usePlatform()
-  useEffect(() => {
-    if (isLinux && isTauri) return installWindowResizeShortcuts()
-  }, [isLinux, isTauri])
   const layoutClassNames = getQuickPanelLayoutClassNames(isLinux && isTauri)
   const [daemonReady, setDaemonReady] = useState(daemonClient.initialized)
   useThemeSync(daemonReady)
@@ -151,6 +149,7 @@ const QuickPanelApp: React.FC = () => {
     <LazyMotion features={domMax} strict>
       <VisualEffectsProvider>
         {content}
+        {isLinux && isTauri && <QuickPanelScaleIndicator key={showRequestId} />}
         <Toaster />
       </VisualEffectsProvider>
     </LazyMotion>

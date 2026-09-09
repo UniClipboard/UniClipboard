@@ -2,6 +2,7 @@ import { Hash } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { SearchTagOption } from '@/lib/search-tags'
 import { cn } from '@/lib/utils'
+import { QUICK_PANEL_FOOTER_CLASS_NAME } from '@/quick-panel/constants'
 
 interface QuickPanelTagFilterBarProps {
   tagFilter: string | null
@@ -13,7 +14,7 @@ function QuickPanelTagFilterBar({ tagFilter, tagOptions, onChange }: QuickPanelT
   const { t } = useTranslation()
 
   return (
-    <div className="flex min-w-0 items-center gap-2 border-t border-border/50 bg-muted/5 px-3 py-1.5 text-[11px] text-muted-foreground">
+    <div className={cn(QUICK_PANEL_FOOTER_CLASS_NAME, 'min-w-0 gap-2 bg-muted/5')}>
       <span className="shrink-0">{t('history.composite.dimension.tag')}</span>
       <div
         className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto"

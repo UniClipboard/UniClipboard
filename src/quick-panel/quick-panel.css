@@ -17,4 +17,27 @@
 /* Align the search icon with list-row content inside the shared outer gutter. */
 [data-slot='composite-search-field'] {
   padding-left: 0.5rem;
+  min-height: 2rem;
+  border-color: transparent;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+[data-slot='composite-search-field'][data-state='closed'] {
+  padding-right: 0.5rem;
+}
+
+/* Expanded filter chips can cover the row below; use the panel's own surface. */
+[data-slot='composite-search-field'][data-state='open'] {
+  background: var(--card);
+}
+
+[data-slot='composite-search-field'] > input {
+  font-size: 0.875rem;
+  caret-color: var(--primary);
+}
+
+[data-slot='composite-search-field']:focus-within > svg {
+  color: var(--foreground);
 }

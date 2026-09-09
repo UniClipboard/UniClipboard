@@ -209,6 +209,7 @@ const HistoryPane: React.FC<HistoryPaneProps> = React.memo(
                 suggestionActivation="intentional"
                 className="w-full"
               />
+              <div aria-hidden="true" className="mt-1.5 border-b border-border/30" />
             </div>
             <QuickPanelTypeFilterBar activeFilter={activeFilter} onChange={setActiveFilter} />
 

@@ -57,6 +57,7 @@ vi.mock('@/components/ui/toaster', () => ({ Toaster: () => null }))
 beforeEach(() => {
   vi.clearAllMocks()
   localStorage.removeItem(WINDOW_FRAME_STORAGE_KEY)
+  delete window.__UC_WINDOW_FRAME_DEFAULT__
   state.retrying = false
   state.failed = true
   state.platform = { isWindows: true, isLinux: false, isMac: false, isTauri: true }
@@ -64,6 +65,25 @@ beforeEach(() => {
 afterEach(cleanup)
 
 describe('startup window frame before setup hydration', () => {
+  it.each([false, true])('hides titlebar on a tiling desktop while retrying=%s', retrying => {
+    state.platform = { isWindows: false, isLinux: true, isMac: false, isTauri: true }
+    window.__UC_WINDOW_FRAME_DEFAULT__ = 'none'
+    state.retrying = retrying
+    state.failed = !retrying
+    const { container } = render(<AppContentWithBar />)
+    expect(screen.getByRole('main')).toHaveTextContent('Startup failure')
+    expect(screen.queryByRole('button', { name: '关闭' })).not.toBeInTheDocument()
+    expect(container.querySelector('[data-tauri-drag-region]')).toBeNull()
+  })
+
+  it('preserves an explicit custom frame on a tiling desktop before setup', () => {
+    state.platform = { isWindows: false, isLinux: true, isMac: false, isTauri: true }
+    window.__UC_WINDOW_FRAME_DEFAULT__ = 'none'
+    localStorage.setItem(WINDOW_FRAME_STORAGE_KEY, 'false')
+    render(<AppContentWithBar />)
+    expect(screen.getByRole('button', { name: '关闭' })).toBeVisible()
+  })
+
   it.each(['Windows', 'Linux'])('keeps drag regions and window controls on %s', async platform => {
     state.platform.isWindows = platform === 'Windows'
     state.platform.isLinux = platform === 'Linux'

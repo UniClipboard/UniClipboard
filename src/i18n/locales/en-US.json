@@ -407,9 +407,12 @@
           "hexInputLabel": "Hex color value"
         },
         "windowFrame": {
-          "title": "Window appearance",
-          "useSystem": "Use system window frame",
-          "description": "Use the desktop title bar and window buttons, with search returned to the page."
+          "title": "Window title bar",
+          "description": "Automatic hides the title bar on niri and Hyprland. Your selection applies to this device, including during startup.",
+          "auto": "Automatic",
+          "custom": "App title bar",
+          "system": "System title bar",
+          "none": "No title bar"
         },
         "zoom": {
           "title": "Interface Scale",

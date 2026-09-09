@@ -407,9 +407,12 @@
           "hexInputLabel": "十六進制顏色值"
         },
         "windowFrame": {
-          "title": "視窗外觀",
-          "useSystem": "使用系統視窗框",
-          "description": "開啟後使用桌面系統的標題列和視窗按鈕，搜尋框將移回頁面。"
+          "title": "視窗標題列",
+          "description": "自動模式在 niri 和 Hyprland 下隱藏標題列。選擇僅對本機生效，啟動期間同樣適用。",
+          "auto": "自動",
+          "custom": "應用程式標題列",
+          "system": "系統標題列",
+          "none": "無標題列"
         },
         "zoom": {
           "title": "介面縮放",

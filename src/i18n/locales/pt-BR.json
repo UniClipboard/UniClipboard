@@ -407,9 +407,12 @@
           "hexInputLabel": "Valor hexadecimal da cor"
         },
         "windowFrame": {
-          "title": "Aparência da janela",
-          "useSystem": "Usar moldura de janela do sistema",
-          "description": "Usa a barra de título e os botões do sistema e move a busca de volta para a página."
+          "title": "Barra de título",
+          "description": "O modo automático oculta a barra de título no niri e no Hyprland. A seleção vale para este dispositivo, inclusive durante a inicialização.",
+          "auto": "Automático",
+          "custom": "Barra do aplicativo",
+          "system": "Barra do sistema",
+          "none": "Sem barra de título"
         },
         "zoom": {
           "title": "Escala da interface",

@@ -170,35 +170,16 @@ fn create_main_window(
     configure_main_window_config_for_platform(&mut config);
 
     let window = tauri::WebviewWindowBuilder::from_config(app, &config)?
+        .initialization_script(crate::window_frame_environment::initialization_script())
         .on_page_load(move |window, payload| {
             if matches!(payload.event(), PageLoadEvent::Finished) {
                 handle_page_load_finished(&window, generation);
             }
         })
         .build()?;
-    configure_for_platform(&window);
     info!("Main window created from config");
     Ok(window)
 }
-
-/// Windows and Linux use the React titlebar controls, so their native window
-/// decorations must be disabled after every main-window creation. Keeping the
-/// Linux client-side decorations beneath the webview drag region makes KDE and
-/// other Wayland compositors route clicks away from the native controls.
-#[cfg(any(target_os = "windows", target_os = "linux"))]
-fn configure_for_platform(window: &tauri::WebviewWindow) {
-    if let Err(error) = window.set_decorations(false) {
-        warn!(
-            error = %error,
-            error_kind = "window_decorations_disable_failed",
-            retryable = false,
-            "Failed to disable native main window decorations"
-        );
-    }
-}
-
-#[cfg(not(any(target_os = "windows", target_os = "linux")))]
-fn configure_for_platform(_window: &tauri::WebviewWindow) {}
 
 /// macOS: force the Dock to repaint this app's icon after flipping back to the
 /// `Regular` activation policy.
@@ -302,6 +283,11 @@ mod tests {
 
 /// Linux requires an opaque surface and does not support the shared window effects.
 fn configure_main_window_config_for_platform(config: &mut tauri::utils::config::WindowConfig) {
+    // Start without native chrome; the webview applies the saved preference
+    // before rendering, including on startup failure and window recreation.
+    if cfg!(any(target_os = "linux", target_os = "windows")) {
+        config.decorations = false;
+    }
     if cfg!(target_os = "linux") {
         config.transparent = false;
         config.window_effects = None;
@@ -318,6 +304,9 @@ mod surface_tests {
             ..Default::default()
         };
         super::configure_main_window_config_for_platform(&mut config);
+        if cfg!(any(target_os = "linux", target_os = "windows")) {
+            assert!(!config.decorations);
+        }
         assert_eq!(config.transparent, !cfg!(target_os = "linux"));
         assert_eq!(config.window_effects.is_some(), !cfg!(target_os = "linux"));
     }

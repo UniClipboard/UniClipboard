@@ -3,38 +3,40 @@ import { useCallback, useMemo, useSyncExternalStore } from 'react'
 import { usePlatform } from '@/hooks/usePlatform'
 import {
   applyWindowFrameDocumentState,
-  readUseSystemWindowFrame,
+  readWindowFramePreference,
   resolveWindowFrameMode,
-  setStoredUseSystemWindowFrame,
+  setStoredWindowFramePreference,
   subscribeWindowFrameChanges,
+  type WindowFramePreference,
 } from '@/lib/window-frame'
 
 export function useWindowFrame() {
   const platform = usePlatform()
-  const useSystemWindowFrame = useSyncExternalStore(
+  const windowFramePreference = useSyncExternalStore(
     subscribeWindowFrameChanges,
-    readUseSystemWindowFrame,
-    () => false
+    readWindowFramePreference,
+    () => 'auto' as const
   )
   const mode = useMemo(
-    () => resolveWindowFrameMode(platform, useSystemWindowFrame),
-    [platform, useSystemWindowFrame]
+    () => resolveWindowFrameMode(platform, windowFramePreference),
+    [platform, windowFramePreference]
   )
 
-  const setUseSystemWindowFrame = useCallback(
-    async (enabled: boolean) => {
+  const setWindowFramePreference = useCallback(
+    async (preference: WindowFramePreference) => {
       if (!mode.canChooseSystemFrame) return
 
-      await getCurrentWindow().setDecorations(enabled)
-      setStoredUseSystemWindowFrame(enabled)
-      applyWindowFrameDocumentState(resolveWindowFrameMode(platform, enabled).hasRoundedWindow)
+      const nextMode = resolveWindowFrameMode(platform, preference)
+      await getCurrentWindow().setDecorations(nextMode.useSystemWindowFrame)
+      setStoredWindowFramePreference(preference)
+      applyWindowFrameDocumentState(nextMode.hasRoundedWindow)
     },
     [mode.canChooseSystemFrame, platform]
   )
 
   return {
     ...mode,
-    useSystemWindowFrame,
-    setUseSystemWindowFrame,
+    windowFramePreference,
+    setWindowFramePreference,
   }
 }

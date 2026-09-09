@@ -354,6 +354,14 @@ _Avoid_: recovery、startup cleanup
 
 ## Language — 桌面视觉偏好
 
+**Window frame preference**：
+Windows/Linux 主窗口在本机当前配置下的标题栏偏好，提供自动、应用标题栏、系统标题栏、
+无标题栏四档，不参与设备同步。未设置时使用自动：Linux 的 niri、Hyprland 默认无标题栏，
+其他环境保留应用标题栏。明确选择优先于自动判断，旧版明确选择继续保留。
+此规则在设置完成前、启动失败、重试及重新打开主窗口时同样适用。
+详见[设置指南](docs-site/content/docs/zh/guides/settings.mdx)。
+_Avoid_: synced window setting、system frame toggle
+
 **Smooth Mode**：
 本机当前配置下的视觉偏好，提供自动、效果优先、流畅优先三档，保存后不参与设备同步；
 手动选择立即作用于各窗口，系统减少动效要求始终优先约束动画。

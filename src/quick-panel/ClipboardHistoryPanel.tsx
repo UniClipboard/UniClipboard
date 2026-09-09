@@ -394,14 +394,16 @@ const ClipboardHistoryPanelSession: React.FC<ClipboardHistoryPanelProps> = ({
 
   const handleHover = useCallback(
     (index: number) => {
-      if (isKeyboardNav || !hasPointerMovedSinceShow) return
+      notePointerMoved()
       const item = filteredItems[index]
       if (!item) return
       dispatchPreview({ type: 'suppress', value: false })
       dispatchPreview({ type: 'set-focus-source', source: 'hover' })
+      // Keep the immediate Linux preview after the pointer leaves the list.
+      if (isLinuxQuickPanel) dispatchPreview({ type: 'set-entry', entryId: item.id })
       setHoveredIndex(index)
     },
-    [filteredItems, hasPointerMovedSinceShow, isKeyboardNav, setHoveredIndex]
+    [filteredItems, isLinuxQuickPanel, notePointerMoved, setHoveredIndex]
   )
 
   const handleDelete = useCallback(

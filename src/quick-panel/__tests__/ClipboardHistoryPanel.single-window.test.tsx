@@ -212,6 +212,39 @@ describe('ClipboardHistoryPanel single-window preview', () => {
     ).toBe(false)
   })
 
+  it('retains the Linux hover preview until another hover or keyboard selection', () => {
+    vi.mocked(usePlatform).mockReturnValue({
+      isLinux: true,
+      isTauri: true,
+      isMac: false,
+      isWindows: false,
+    })
+    const { container } = renderPanel()
+    expect(screen.getByText('Preview for entry-1')).toBeInTheDocument()
+    const secondRow = screen.getByText('Second preview title')
+
+    // Browsers deliver enter before move, including when resuming from keyboard navigation.
+    fireEvent.mouseEnter(secondRow)
+    expect(screen.getByText('Preview for entry-1')).toBeInTheDocument()
+    fireEvent.mouseMove(secondRow)
+    expect(screen.getByText('Preview for entry-2')).toBeInTheDocument()
+
+    fireEvent.mouseLeave(screen.getByRole('listbox'))
+    fireEvent.mouseEnter(container.firstElementChild!.children[1])
+    expect(screen.getByText('Preview for entry-2')).toBeInTheDocument()
+    expect(screen.queryByTestId('preview-empty')).not.toBeInTheDocument()
+
+    fireEvent.mouseMove(screen.getByText('File preview title'))
+    fireEvent.mouseLeave(screen.getByRole('listbox'))
+    expect(screen.getByText('Preview for entry-file')).toBeInTheDocument()
+
+    fireEvent.keyDown(screen.getByRole('combobox'), { key: 'ArrowDown' })
+    expect(screen.getByText('Preview for entry-2')).toBeInTheDocument()
+    fireEvent.mouseEnter(screen.getByText('Preview title'))
+    fireEvent.mouseMove(screen.getByText('Preview title'))
+    expect(screen.getByText('Preview for entry-1')).toBeInTheDocument()
+  })
+
   it('keeps the Linux preview column visible when history is empty', () => {
     vi.mocked(usePlatform).mockReturnValue({
       isLinux: true,

@@ -68,7 +68,7 @@ const PanelItem: React.FC<PanelItemProps> = React.memo(
               : 'text-foreground hover:bg-muted/50'
         )}
         onClick={e => onSelect(index, e.altKey)}
-        onMouseEnter={() => onHover(index)}
+        onMouseMove={() => onHover(index)}
         // Base UI opens the menu on the same event; we only move the selection so
         // the highlighted row is the one the menu acts on. No preventDefault —
         // that's Base UI's job (it suppresses the native browser menu).

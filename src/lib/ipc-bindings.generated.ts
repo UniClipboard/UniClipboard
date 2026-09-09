@@ -532,6 +532,11 @@ export const commands = {
 	trace_id: string,
 	timestamp: number,
 } | null) => typedError<null, string>(__TAURI_INVOKE("set_traffic_light_position", { offsetX, offsetY, trace })),
+	/**  Acknowledge the first frontend commit for one main-window generation. */
+	markMainWindowReady: (generation: string, trace: {
+	trace_id: string,
+	timestamp: number,
+} | null) => typedError<null, string>(__TAURI_INVOKE("mark_main_window_ready", { generation, trace })),
 };
 
 /* Types */

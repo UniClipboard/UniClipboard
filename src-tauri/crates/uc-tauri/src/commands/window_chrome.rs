@@ -31,6 +31,41 @@ use tauri::Manager;
 use tauri::WebviewWindow;
 use tracing::{info_span, Instrument};
 
+/// Acknowledge the first frontend commit for one main-window generation.
+#[tauri::command]
+#[specta::specta]
+pub fn mark_main_window_ready(
+    window: WebviewWindow,
+    generation: String,
+    _trace: Option<TraceMetadata>,
+) -> Result<(), String> {
+    let span = info_span!(
+        "command.window_chrome.mark_main_window_ready",
+        trace_id = tracing::field::Empty,
+        trace_ts = tracing::field::Empty,
+    );
+    record_trace_fields(&span, &_trace);
+    span.in_scope(|| {
+        if window.label() != crate::main_window::MAIN_WINDOW_LABEL {
+            tracing::warn!(
+                error_kind = "unexpected_window",
+                "Ignoring readiness from a non-main window"
+            );
+            return Err("Only the main window may report startup readiness".into());
+        }
+        let generation = generation.parse::<u64>().map_err(|_| {
+            tracing::warn!(
+                error_kind = "invalid_window_generation",
+                "Invalid main window generation"
+            );
+            "Invalid main window generation".to_string()
+        })?;
+        tracing::debug!(generation, "Main window frontend committed");
+        crate::main_window::handle_frontend_ready(&window, generation);
+        Ok(())
+    })
+}
+
 #[cfg(target_os = "macos")]
 mod imp {
     use objc2_app_kit::{NSWindow, NSWindowButton};

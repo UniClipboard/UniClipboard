@@ -4,6 +4,7 @@ import ReactDOM from 'react-dom/client'
 import { Provider } from 'react-redux'
 import './i18n'
 import { getDeviceMeta } from '@/api/runtime'
+import { MainWindowReady } from '@/components/app/MainWindowReady'
 import { connectDaemonWs, registerDaemonShutdownListener } from '@/lib/daemon-ws-bootstrap'
 import { initializeWebviewContextMenu } from '@/lib/webview-context-menu'
 import { initializeWindowFrame } from '@/lib/window-frame-runtime'
@@ -87,8 +88,16 @@ void windowFrameReady.then(() => {
   ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
     <React.StrictMode>
       <Provider store={store}>
-        <DiagnosticsErrorBoundary fallback={<div>Something went wrong.</div>}>
+        <DiagnosticsErrorBoundary
+          fallback={
+            <>
+              <div>Something went wrong.</div>
+              <MainWindowReady />
+            </>
+          }
+        >
           <App />
+          <MainWindowReady />
         </DiagnosticsErrorBoundary>
       </Provider>
     </React.StrictMode>

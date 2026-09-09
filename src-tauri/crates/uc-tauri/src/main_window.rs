@@ -20,8 +20,7 @@
 //! the first explicit open, so a login autostart no longer pays the webview
 //! cost up front.
 
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Mutex;
+use std::sync::{Mutex, MutexGuard};
 
 use tauri::webview::PageLoadEvent;
 use tauri::Manager;
@@ -32,56 +31,72 @@ pub const MAIN_WINDOW_LABEL: &str = "main";
 
 #[derive(Default)]
 struct MainWindowLoadState {
-    generation: AtomicU64,
-    loaded_generation: AtomicU64,
-    reveal_requested_generation: AtomicU64,
+    generation: u64,
+    page_loaded: bool,
+    frontend_ready: bool,
+    reveal_requested: bool,
 }
 
 impl MainWindowLoadState {
-    fn mark_created(&self) -> u64 {
-        let generation = self.generation.fetch_add(1, Ordering::SeqCst) + 1;
-        self.loaded_generation.store(0, Ordering::SeqCst);
-        self.reveal_requested_generation.store(0, Ordering::SeqCst);
-        generation
+    fn mark_created(&mut self) -> u64 {
+        self.generation += 1;
+        self.page_loaded = false;
+        self.frontend_ready = false;
+        self.reveal_requested = false;
+        self.generation
     }
 
-    fn request_reveal(&self) -> bool {
-        let generation = self.generation.load(Ordering::SeqCst);
-        self.reveal_requested_generation
-            .store(generation, Ordering::SeqCst);
-
-        self.loaded_generation.load(Ordering::SeqCst) == generation
-            && self.generation.load(Ordering::SeqCst) == generation
-            && self.consume_reveal_request(generation)
+    fn request_reveal(&mut self) -> bool {
+        self.reveal_requested = true;
+        self.consume_reveal_request()
     }
 
-    fn mark_loaded(&self, generation: u64) -> bool {
-        if self.generation.load(Ordering::SeqCst) != generation {
+    fn mark_loaded(&mut self, generation: u64) -> bool {
+        if self.generation != generation {
             return false;
         }
-
-        self.loaded_generation.store(generation, Ordering::SeqCst);
-
-        self.generation.load(Ordering::SeqCst) == generation
-            && self.consume_reveal_request(generation)
+        self.page_loaded = true;
+        self.consume_reveal_request()
     }
 
-    fn consume_reveal_request(&self, generation: u64) -> bool {
-        self.reveal_requested_generation
-            .compare_exchange(generation, 0, Ordering::SeqCst, Ordering::SeqCst)
-            .is_ok()
+    fn mark_frontend_ready(&mut self, generation: u64) -> bool {
+        if self.generation != generation {
+            return false;
+        }
+        self.frontend_ready = true;
+        self.consume_reveal_request()
+    }
+
+    fn consume_reveal_request(&mut self) -> bool {
+        if self.generation == 0
+            || !self.page_loaded
+            || !self.frontend_ready
+            || !self.reveal_requested
+        {
+            return false;
+        }
+        self.reveal_requested = false;
+        true
     }
 }
 
-static MAIN_WINDOW_LOAD_STATE: MainWindowLoadState = MainWindowLoadState {
-    generation: AtomicU64::new(0),
-    loaded_generation: AtomicU64::new(0),
-    reveal_requested_generation: AtomicU64::new(0),
-};
+static MAIN_WINDOW_LOAD_STATE: Mutex<MainWindowLoadState> = Mutex::new(MainWindowLoadState {
+    generation: 0,
+    page_loaded: false,
+    frontend_ready: false,
+    reveal_requested: false,
+});
 static MAIN_WINDOW_CREATION_LOCK: Mutex<()> = Mutex::new(());
 
+fn load_state() -> MutexGuard<'static, MainWindowLoadState> {
+    MAIN_WINDOW_LOAD_STATE.lock().unwrap_or_else(|poisoned| {
+        warn!("Main window load state mutex poisoned; recovering ownership");
+        poisoned.into_inner()
+    })
+}
+
 /// Request the main window: recreate it if needed, then reveal it once its
-/// initial page load has finished.
+/// page has loaded and its first React commit has completed.
 pub fn show_main_window(app: &tauri::AppHandle) {
     #[cfg(target_os = "macos")]
     if let Err(error) = app.set_dock_visibility(true) {
@@ -110,7 +125,7 @@ pub fn show_main_window(app: &tauri::AppHandle) {
     let window = match app.get_webview_window(MAIN_WINDOW_LABEL) {
         Some(window) => window,
         None => {
-            let generation = MAIN_WINDOW_LOAD_STATE.mark_created();
+            let generation = load_state().mark_created();
             match create_main_window(app, generation) {
                 Ok(window) => window,
                 Err(error) => {
@@ -121,8 +136,8 @@ pub fn show_main_window(app: &tauri::AppHandle) {
         }
     };
 
-    if !MAIN_WINDOW_LOAD_STATE.request_reveal() {
-        info!("Main window reveal deferred until initial page load finishes");
+    if !load_state().request_reveal() {
+        info!("Main window reveal deferred until page and frontend are ready");
         return;
     }
 
@@ -130,12 +145,25 @@ pub fn show_main_window(app: &tauri::AppHandle) {
 }
 
 fn handle_page_load_finished(window: &tauri::WebviewWindow, generation: u64) {
-    if !MAIN_WINDOW_LOAD_STATE.mark_loaded(generation) {
+    if !load_state().mark_loaded(generation) {
         return;
     }
 
     reveal_main_window(window);
-    info!(generation, "Main window revealed after initial page load");
+    info!(
+        generation,
+        "Main window revealed after page and frontend became ready"
+    );
+}
+
+pub(crate) fn handle_frontend_ready(window: &tauri::WebviewWindow, generation: u64) {
+    if load_state().mark_frontend_ready(generation) {
+        reveal_main_window(window);
+        info!(
+            generation,
+            "Main window revealed after page and frontend became ready"
+        );
+    }
 }
 
 fn reveal_main_window(window: &tauri::WebviewWindow) {
@@ -148,7 +176,7 @@ fn reveal_main_window(window: &tauri::WebviewWindow) {
 /// keeps Tauri from doing this automatically at startup).
 ///
 /// The config declares `visible: false`; [`show_main_window`] keeps a newly
-/// created window hidden until its first page load finishes. This avoids
+/// created window hidden until its page and rendered frontend are ready. This avoids
 /// exposing WebView2's unpainted surface during a Windows cold start.
 fn create_main_window(
     app: &tauri::AppHandle,
@@ -171,6 +199,9 @@ fn create_main_window(
 
     let window = tauri::WebviewWindowBuilder::from_config(app, &config)?
         .initialization_script(crate::window_frame_environment::initialization_script())
+        .initialization_script(format!(
+            "window.__UC_MAIN_WINDOW_GENERATION__ = '{generation}';"
+        ))
         .on_page_load(move |window, payload| {
             if matches!(payload.event(), PageLoadEvent::Finished) {
                 handle_page_load_finished(&window, generation);
@@ -238,17 +269,36 @@ mod tests {
     use super::MainWindowLoadState;
 
     #[test]
-    fn reveal_waits_for_initial_page_load() {
-        let state = MainWindowLoadState::default();
+    fn page_load_does_not_reveal_before_frontend_commit() {
+        let mut state = MainWindowLoadState::default();
         let generation = state.mark_created();
 
         assert!(!state.request_reveal());
+        assert!(!state.mark_loaded(generation));
+        assert!(state.mark_frontend_ready(generation));
+    }
+
+    #[test]
+    fn frontend_commit_does_not_reveal_before_page_load() {
+        let mut state = MainWindowLoadState::default();
+        let generation = state.mark_created();
+        assert!(!state.request_reveal());
+        assert!(!state.mark_frontend_ready(generation));
         assert!(state.mark_loaded(generation));
     }
 
     #[test]
+    fn readiness_before_open_request_does_not_show_window() {
+        let mut state = MainWindowLoadState::default();
+        let generation = state.mark_created();
+        assert!(!state.mark_loaded(generation));
+        assert!(!state.mark_frontend_ready(generation));
+        assert!(state.request_reveal());
+    }
+
+    #[test]
     fn stale_page_load_does_not_reveal_recreated_window() {
-        let state = MainWindowLoadState::default();
+        let mut state = MainWindowLoadState::default();
         let old_generation = state.mark_created();
         assert!(!state.request_reveal());
 
@@ -256,28 +306,35 @@ mod tests {
         assert!(!state.request_reveal());
 
         assert!(!state.mark_loaded(old_generation));
-        assert!(state.mark_loaded(current_generation));
+        assert!(!state.mark_frontend_ready(old_generation));
+        assert!(!state.mark_loaded(current_generation));
+        assert!(!state.mark_frontend_ready(old_generation));
+        assert!(state.mark_frontend_ready(current_generation));
     }
 
     #[test]
     fn page_load_consumes_reveal_request() {
-        let state = MainWindowLoadState::default();
+        let mut state = MainWindowLoadState::default();
         let generation = state.mark_created();
         assert!(!state.request_reveal());
 
-        assert!(state.mark_loaded(generation));
         assert!(!state.mark_loaded(generation));
+        assert!(state.mark_frontend_ready(generation));
+        assert!(!state.mark_loaded(generation));
+        assert!(!state.mark_frontend_ready(generation));
     }
 
     #[test]
     fn loaded_window_can_be_explicitly_revealed_again() {
-        let state = MainWindowLoadState::default();
+        let mut state = MainWindowLoadState::default();
         let generation = state.mark_created();
         assert!(!state.request_reveal());
-        assert!(state.mark_loaded(generation));
+        assert!(!state.mark_loaded(generation));
+        assert!(state.mark_frontend_ready(generation));
 
         assert!(state.request_reveal());
         assert!(!state.mark_loaded(generation));
+        assert!(!state.mark_frontend_ready(generation));
     }
 }
 

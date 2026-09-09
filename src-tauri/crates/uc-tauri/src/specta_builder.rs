@@ -99,5 +99,6 @@ pub fn build() -> Builder<tauri::Wry> {
         crate::commands::config::import_config_package,
         // ── window chrome (macOS traffic lights) ────────────────────────────
         crate::commands::window_chrome::set_traffic_light_position,
+        crate::commands::window_chrome::mark_main_window_ready,
     ])
 }

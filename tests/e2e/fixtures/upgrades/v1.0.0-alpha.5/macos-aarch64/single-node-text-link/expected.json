@@ -1,0 +1,17 @@
+{
+  "passphrase": "upgrade-fixture-passphrase",
+  "entries": [
+    {
+      "id": "41d4bede-bfb2-41f4-82d3-bfa58c78b485",
+      "text": "Alpha5 upgrade baseline: first clipboard record"
+    },
+    {
+      "id": "a4a6afce-e7a9-497c-b933-621c81767b40",
+      "text": "Alpha5 upgrade baseline: second record\nSecond line"
+    },
+    {
+      "id": "629c0625-8f0c-4fe2-a3fb-2b48a8f383c7",
+      "text": "https://example.com/alpha5-upgrade-baseline"
+    }
+  ]
+}

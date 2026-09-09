@@ -16,6 +16,19 @@ beforeEach(async () => {
 afterEach(cleanup)
 
 describe('startup recovery screen', () => {
+  it('checks for updates on ordinary failures and restores retry after a failed check', async () => {
+    vi.mocked(checkForUpdate).mockRejectedValue(new Error('offline'))
+    const retry = vi.fn()
+    render(<AppStatusScreen detail="connection refused" onRetry={retry} />)
+    fireEvent.click(screen.getByRole('button', { name: '检查更新' }))
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('无法完成更新检查'))
+    expect(openUpdaterWindow).toHaveBeenCalledOnce()
+    expect(checkForUpdate).toHaveBeenCalledWith(null)
+    expect(screen.getByRole('button', { name: '检查更新' })).toBeEnabled()
+    fireEvent.click(screen.getByRole('button', { name: '重试' }))
+    expect(retry).toHaveBeenCalledOnce()
+  })
+
   it('keeps support available during a restart', () => {
     render(<AppStatusScreen detail={null} onRetry={vi.fn()} retrying />)
     expect(screen.getByRole('button', { name: '正在重试…' })).toBeDisabled()

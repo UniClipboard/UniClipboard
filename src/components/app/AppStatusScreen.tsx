@@ -72,16 +72,7 @@ export function AppStatusScreen({
           {t(versionTooOld ? 'startupFailure.updateDescription' : 'startupFailure.description')}
         </p>
         <div className="mt-7 flex flex-wrap gap-3">
-          {versionTooOld ? (
-            <Button disabled={action !== null || retrying} onClick={() => void runAction('update')}>
-              {action === 'update' ? (
-                <Loader2 className="size-4 animate-spin" />
-              ) : (
-                <ArrowUpCircle className="size-4" />
-              )}
-              {t('startupFailure.update')}
-            </Button>
-          ) : (
+          {!versionTooOld && (
             <Button disabled={retrying || action !== null} onClick={onRetry}>
               {retrying ? (
                 <Loader2 className="size-4 animate-spin" />
@@ -91,6 +82,18 @@ export function AppStatusScreen({
               {t(retrying ? 'startupFailure.retrying' : 'startupFailure.retry')}
             </Button>
           )}
+          <Button
+            variant={versionTooOld ? 'default' : 'outline'}
+            disabled={action !== null || retrying}
+            onClick={() => void runAction('update')}
+          >
+            {action === 'update' ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <ArrowUpCircle className="size-4" />
+            )}
+            {t(versionTooOld ? 'startupFailure.update' : 'settings.sections.about.checkUpdate')}
+          </Button>
           <Button
             variant="outline"
             disabled={action !== null}

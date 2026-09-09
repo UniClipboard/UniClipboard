@@ -39,3 +39,15 @@ Mac 上相关单元、升级集成与进程中断检查通过；全 workspace、
 - 原用户 Windows 凭据环境下的完整桌面安装和启动仍需实际验收。本次用户数据检查只证明数据库拆分和源文件保留。
 - 未做物理断电、磁盘填满测试；不把进程退出模拟等同于断电测试。
 - 测试包构建使用现有手动流程，不新增自动检查任务。
+
+## 测试包
+
+[构建 34364343056](https://github.com/UniClipboard/UniClipboard/actions/runs/34364343056) 成功。
+构建日志确认 Desktop `8748b851a` 使用 Engine `2a298a2c`。
+[下载产物](https://github.com/UniClipboard/UniClipboard/actions/runs/34364343056/artifacts/10109730767) 已实际下载，便携包完整性检查通过，桌面程序与后台程序均为 Windows x64。
+
+安装文件为 `release/bundle/nsis/UniClipboard_1.0.0-alpha.8_x64-setup.exe`，SHA-256：
+
+```text
+7b2f78e7afc1d2c1805a1824bf645aa6e54bb1ebeeccc1ccbe45d2e981914e06
+```

@@ -1,0 +1,46 @@
+name: Cache Maintenance
+
+on:
+  schedule:
+    - cron: '0 3 * * *'
+  workflow_run:
+    workflows: ['Coverage', 'Cache Warmup', 'Build Tauri App', 'Build CLI']
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Only report the cleanup plan'
+        type: boolean
+        default: true
+  workflow_call:
+
+permissions:
+  contents: read
+  actions: write
+  pull-requests: read
+
+concurrency:
+  group: actions-cache-maintenance
+  cancel-in-progress: false
+
+jobs:
+  maintain:
+    runs-on: ubuntu-latest
+    steps:
+      # workflow_run must never execute code from the triggering PR or branch.
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+
+      - name: Reclaim obsolete caches and reserve upload capacity
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          DRY_RUN: ${{ inputs.dry_run == true }}
+        run: |
+          if [ "$DRY_RUN" = "true" ]; then
+            node scripts/ci/maintain-actions-cache.mjs
+          else
+            node scripts/ci/maintain-actions-cache.mjs --apply
+          fi

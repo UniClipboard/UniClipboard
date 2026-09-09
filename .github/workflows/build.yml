@@ -31,7 +31,7 @@ on:
         description: '是否保存构建缓存(用于手动验证 cache warmup)'
         required: false
         type: boolean
-        default: false
+        default: true
   workflow_call:
     inputs:
       platform:

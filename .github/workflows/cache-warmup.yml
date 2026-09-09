@@ -7,16 +7,27 @@ on:
     - cron: '0 0 * * 1'
   workflow_dispatch:
 
+permissions:
+  contents: read
+  actions: write
+  pull-requests: read
+
 jobs:
+  maintain-caches:
+    uses: ./.github/workflows/cache-maintenance.yml
+
   warmup-release-app:
-    name: Warm release app caches
+    name: Warm Windows x64 release app cache
+    needs: maintain-caches
     uses: ./.github/workflows/build.yml
     with:
-      platform: 'all'
+      # All six release caches plus CI caches exceed the repository's default quota.
+      platform: 'windows-x86_64'
       save_cache: true
     secrets: inherit
 
   warmup-windows-cli:
+    needs: maintain-caches
     # 先预热 Windows CLI:这是最近 release 没命中的关键路径。
     # CLI 全平台 cache 会明显挤占 10GB 配额,如后续确实需要再按平台扩展。
     name: Warm Windows CLI cache
@@ -27,6 +38,7 @@ jobs:
     secrets: inherit
 
   warmup-pr-check-rust:
+    needs: maintain-caches
     name: Warm PR check Rust cache
     runs-on: ubuntu-latest
     steps:
@@ -56,6 +68,7 @@ jobs:
         run: cargo check --workspace --locked
 
   warmup-docs-bun:
+    needs: maintain-caches
     # docs-check.yml PR 阶段只 restore Linux-docs-bun-*,这里负责在 main 上写。
     name: Warm docs Bun cache
     runs-on: ubuntu-latest
@@ -84,6 +97,7 @@ jobs:
         run: bun install --frozen-lockfile
 
   warmup-coverage-rust:
+    needs: maintain-caches
     name: Warm coverage Rust cache
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -98,6 +112,8 @@ jobs:
 
       - name: Setup Rust toolchain
         uses: actions-rust-lang/setup-rust-toolchain@v1.15.2
+        with:
+          cache: false
 
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2

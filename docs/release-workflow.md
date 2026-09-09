@@ -263,6 +263,29 @@ bun run version:bump --type minor --channel stable
 
 如果工作流提示标签已存在，说明该版本已经发布过。请更新版本号后重试。
 
+### 构建缓存维护
+
+- `build.yml` 的手动构建默认保存缓存；可用 `save_cache=false` 关闭。
+  被其他发布工作流调用时仍默认只读，main 上的构建继续保存缓存。
+- `cache-warmup.yml` 每周预热 Windows x64 桌面版、Windows CLI、Rust 检查、
+  覆盖率和文档依赖。其他发布平台仍可正常构建，但不再同时预热全部平台，
+  避免缓存总量超过仓库默认容量。
+- 覆盖率检查关闭工具链安装步骤自带的缓存，由显式缓存步骤统一管理；
+  PR 只读取已有缓存，main 和预热工作流负责写入。
+- `cache-maintenance.yml` 每日、相关构建结束后及预热之前清理缓存。
+  只处理已知的 Rust、Bun 和 CodeQL 缓存：删除旧 PR 覆盖率缓存、已结束 PR 的缓存，
+  并对每个分支、用途和编译环境只保留最新一份。
+  总量超过 8 GiB 时按最近使用时间清理，为下一次上传预留空间；
+  优先保留 main 最新的 Windows x64 桌面构建缓存。未知用途的缓存不会自动删除。
+- 缓存维护只处理 Actions 缓存，不删除构建产物或 Release 文件。
+  手动触发 Cache Maintenance 默认仅预览；命令行等效操作：
+
+```bash
+GH_REPO=UniClipboard/UniClipboard node scripts/ci/maintain-actions-cache.mjs
+# 检查预览结果后执行相同规则
+GH_REPO=UniClipboard/UniClipboard node scripts/ci/maintain-actions-cache.mjs --apply
+```
+
 ### 构建失败
 
 1. 检查构建日志中的错误信息

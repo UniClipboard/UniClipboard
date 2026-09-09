@@ -46,8 +46,6 @@ E 日志确认 `cache-workspace-crates: true` 和 `full match: true`，但仍重
 没有实现跳过应用编译的目标，单次 58s 差异不足以排除 runner 波动，因此移除实验开关，继续只缓存依赖。
 未据此声称仅修改页面时可以复用应用产物，也没有引入修改源码时间戳等额外机制。
 
-## 包体积与验证
-
 ## 默认构建发现的额外失配
 
 最终默认测试 [F](https://github.com/UniClipboard/UniClipboard/actions/runs/34336799091) 正确选择了快速模式，
@@ -58,6 +56,13 @@ E 日志确认 `cache-workspace-crates: true` 和 `full match: true`，但仍重
 rust-cache 会枚举并哈希所有已安装工具链。修复在 GitHub 临时构建机器上确认并保留项目指定的活跃工具链，
 删除未使用的其他工具链；不关闭编译器匹配检查，不强行复用旧缓存，也不修改本机或自托管环境。
 切换后的新缓存需要先生成一次，再验证重复构建。
+
+提交 `1ce64cb73` 的 [G1](https://github.com/UniClipboard/UniClipboard/actions/runs/34339353967)
+完整构建成功（23m31s），保存了 1,311,366,316 bytes 的新缓存。
+同提交 [G2](https://github.com/UniClipboard/UniClipboard/actions/runs/34341733713)
+未指定构建模式，正确使用默认 test，完整命中并成功完成（8m45s）。
+两轮缓存匹配前后只包含 Rust 1.95.0，环境段均为 `bd69162e`，G2 日志明确记录 `full match: true`。
+工具链隔离、模式选择和缓存规则共 23 项测试通过；实际编译器和正式优化配置均未改变。
 
 ## 包体积与验证
 

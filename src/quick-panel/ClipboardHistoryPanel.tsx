@@ -40,6 +40,7 @@ import type {
   PreviewState,
   QuickPanelContextMenuActions,
 } from './types'
+import { setQuickPanelLayout } from './window-layout'
 
 const log = createLogger('clipboard-history-panel')
 
@@ -49,10 +50,6 @@ async function dismissPanel(): Promise<void> {
 
 async function pasteToApp(): Promise<void> {
   await commands.pasteToPreviousApp()
-}
-
-async function setQuickPanelLayout(scale: number, previewExpanded: boolean): Promise<void> {
-  await commands.setQuickPanelLayout(scale, previewExpanded)
 }
 
 /**

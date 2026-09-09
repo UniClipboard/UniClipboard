@@ -742,6 +742,7 @@ pub async fn set_quick_panel_layout(
     app: tauri::AppHandle,
     scale: f64,
     preview_expanded: bool,
+    window_scale: f64,
     _trace: Option<TraceMetadata>,
 ) -> Result<(), String> {
     let span = info_span!(
@@ -749,6 +750,7 @@ pub async fn set_quick_panel_layout(
         trace_id = tracing::field::Empty,
         trace_ts = tracing::field::Empty,
         scale = scale,
+        window_scale,
         preview_expanded = preview_expanded,
     );
     record_trace_fields(&span, &_trace);
@@ -756,7 +758,7 @@ pub async fn set_quick_panel_layout(
     async {
         let handle = app.clone();
         app.run_on_main_thread(move || {
-            quick_panel::set_layout(&handle, scale, preview_expanded);
+            quick_panel::set_layout(&handle, scale, preview_expanded, window_scale);
         })
         .map_err(|e| format!("Failed to dispatch to main thread: {e}"))?;
         Ok(())

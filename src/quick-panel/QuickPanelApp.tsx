@@ -15,6 +15,7 @@ import { readStoredUiScale } from '@/lib/ui-scale'
 import { visualEffectsStore } from '@/lib/visual-effects-store'
 import ClipboardHistoryPanel from './ClipboardHistoryPanel'
 import { getQuickPanelLayoutClassNames } from './constants'
+import { installWindowResizeShortcuts, setQuickPanelLayout } from './window-layout'
 
 const log = createLogger('quick-panel-app')
 const SHOW_FALLBACK_DELAY_MS = 50
@@ -22,6 +23,9 @@ const SHOW_FALLBACK_DELAY_MS = 50
 const QuickPanelApp: React.FC = () => {
   const { t } = useTranslation(undefined, { keyPrefix: 'quickPanel' })
   const { isLinux, isTauri } = usePlatform()
+  useEffect(() => {
+    if (isLinux && isTauri) return installWindowResizeShortcuts()
+  }, [isLinux, isTauri])
   const layoutClassNames = getQuickPanelLayoutClassNames(isLinux && isTauri)
   const [daemonReady, setDaemonReady] = useState(daemonClient.initialized)
   useThemeSync(daemonReady)
@@ -46,8 +50,7 @@ const QuickPanelApp: React.FC = () => {
       pendingShowRequestIdRef.current = null
       setPreparedRequestId(requestId)
       clearFinalizeTimer()
-      void commands
-        .setQuickPanelLayout(readStoredUiScale(), false)
+      void setQuickPanelLayout(readStoredUiScale(), false)
         .then(() => {
           // A newer prepare-show may have arrived during the IPC hop; if so this
           // request is stale and the newer one will finalize itself.

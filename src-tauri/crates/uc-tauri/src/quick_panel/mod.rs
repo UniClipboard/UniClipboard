@@ -71,6 +71,8 @@ const BASE_PREVIEW_WIDTH: f64 = 360.0;
 const LINUX_PANEL_WIDTH: f64 = 800.0;
 const LINUX_PANEL_HEIGHT: f64 = 560.0;
 const PANEL_GAP: f64 = 8.0;
+const MIN_WINDOW_SCALE: f64 = 0.8;
+const MAX_WINDOW_SCALE: f64 = 1.5;
 const MIN_UI_SCALE: f64 = 0.8;
 const MAX_UI_SCALE: f64 = 1.5;
 
@@ -500,10 +502,24 @@ fn normalize_ui_scale(scale: f64) -> f64 {
 
 fn panel_dimensions(scale: f64, preview_expanded: bool) -> (f64, f64) {
     if cfg!(target_os = "linux") {
-        let scale = normalize_ui_scale(scale);
-        return (LINUX_PANEL_WIDTH * scale, LINUX_PANEL_HEIGHT * scale);
+        // Content zoom must not change the Linux window dimensions.
+        return (LINUX_PANEL_WIDTH, LINUX_PANEL_HEIGHT);
     }
     panel_dimensions_for_window_padding(scale, preview_expanded, window_padding())
+}
+
+fn resized_panel_dimensions(scale: f64, preview_expanded: bool, window_scale: f64) -> (f64, f64) {
+    let (width, height) = panel_dimensions(scale, preview_expanded);
+    if cfg!(target_os = "linux") {
+        let factor = if window_scale.is_finite() {
+            window_scale.clamp(MIN_WINDOW_SCALE, MAX_WINDOW_SCALE)
+        } else {
+            1.0
+        };
+        (width * factor, height * factor)
+    } else {
+        (width, height)
+    }
 }
 
 fn panel_dimensions_for_window_padding(
@@ -851,21 +867,21 @@ pub fn dismiss(app: &tauri::AppHandle) {
 /// window is shifted left by the preview's extra width so the preview opens to
 /// the *left* while the history pane stays put — the frontend reverses its flex
 /// order to match. See [`resolve_horizontal_layout`].
-pub fn set_layout(app: &tauri::AppHandle, scale: f64, preview_expanded: bool) {
+pub fn set_layout(app: &tauri::AppHandle, scale: f64, preview_expanded: bool, window_scale: f64) {
     let Some(window) = app.get_webview_window(PANEL_LABEL) else {
         return;
     };
 
     #[cfg(target_os = "linux")]
     if linux::active(app) {
-        if let Err(error) = linux::set_layout(&window, scale, preview_expanded) {
+        if let Err(error) = linux::set_layout(&window, scale, preview_expanded, window_scale) {
             error!(error_kind = "panel_layout_failed", retryable = true, %error, "Quick panel layout failed");
         }
         return;
     }
 
-    let (narrow_width, height) = panel_dimensions(scale, false);
-    let (wide_width, _) = panel_dimensions(scale, true);
+    let (narrow_width, height) = resized_panel_dimensions(scale, false, window_scale);
+    let (wide_width, _) = resized_panel_dimensions(scale, true, window_scale);
     let display_width = if preview_expanded {
         wide_width
     } else {
@@ -1008,6 +1024,42 @@ pub fn type_file_paths(app: &tauri::AppHandle, file_paths: &[String]) -> Result<
 
 #[cfg(test)]
 mod tests {
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn linux_text_zoom_does_not_resize_the_window() {
+        for ui_scale in [0.8, 1.0, 1.25, 1.5] {
+            for expanded in [false, true] {
+                assert_eq!(super::panel_dimensions(ui_scale, expanded), (800.0, 560.0));
+                assert_eq!(
+                    super::resized_panel_dimensions(ui_scale, expanded, 1.2),
+                    (960.0, 672.0)
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn window_resize_is_independent_of_ui_zoom_and_validates_bounds() {
+        for (requested, expected) in [
+            (1.2, 1.2),
+            (0.1, 0.8),
+            (9.0, 1.5),
+            (f64::NAN, 1.0),
+            (f64::INFINITY, 1.0),
+        ] {
+            let (width, height) = super::panel_dimensions(1.5, false);
+            let factor = if cfg!(target_os = "linux") {
+                expected
+            } else {
+                1.0
+            };
+            assert_eq!(
+                super::resized_panel_dimensions(1.5, false, requested),
+                (width * factor, height * factor)
+            );
+        }
+    }
+
     use super::*;
 
     #[test]
@@ -1030,10 +1082,7 @@ mod tests {
                 panel_dimensions(scale, false),
                 panel_dimensions(scale, true)
             );
-            assert_eq!(
-                panel_dimensions(scale, false).0,
-                800.0 * normalize_ui_scale(scale)
-            );
+            assert_eq!(panel_dimensions(scale, false).0, 800.0);
         }
     }
 

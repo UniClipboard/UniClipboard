@@ -382,10 +382,10 @@ export const commands = {
 	 *  Update quick panel size and position from the active UI scale and whether
 	 *  the inline preview is expanded (flipping the preview left near the right edge).
 	 */
-	setQuickPanelLayout: (scale: number | null, previewExpanded: boolean, trace: {
+	setQuickPanelLayout: (scale: number | null, previewExpanded: boolean, windowScale: number | null, trace: {
 	trace_id: string,
 	timestamp: number,
-} | null) => typedError<null, string>(__TAURI_INVOKE("set_quick_panel_layout", { scale, previewExpanded, trace })),
+} | null) => typedError<null, string>(__TAURI_INVOKE("set_quick_panel_layout", { scale, previewExpanded, windowScale, trace })),
 	/**
 	 *  Finalize the quick panel show after the frontend has cleared stale state.
 	 * 

@@ -355,11 +355,12 @@ pub(super) fn set_layout(
     window: &tauri::WebviewWindow,
     scale: f64,
     expanded: bool,
+    window_scale: f64,
 ) -> Result<(), String> {
     let Some(placement) = placement(window.app_handle()) else {
         return Ok(());
     };
-    let (width, height) = super::panel_dimensions(scale, expanded);
+    let (width, height) = super::resized_panel_dimensions(scale, expanded, window_scale);
     let (x, y, width, height) = layout(placement, width, height);
     let gtk = gtk_window(window)?;
     LayerShell::get()?.position(&gtk, x, y);

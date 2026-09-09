@@ -109,12 +109,13 @@ fn main() {
                             "Layer must honor requested dimensions, not WebKit natural size"
                         );
                         initial_size = Some(panel.inner_size().expect("initial panel size"));
-                        uc_tauri::quick_panel::set_layout(&handle, 1.0, true);
+                        panel.set_zoom(1.5).expect("zoom panel content");
+                        uc_tauri::quick_panel::set_layout(&handle, 1.5, true, 1.0);
                     }
                     2 => {
                         check!(
                             Some(panel.inner_size().expect("updated panel size")) == initial_size,
-                            "Linux preview updates must preserve the complete window size"
+                            "Linux content zoom and preview updates must preserve the complete window size"
                         );
                         let handle = handle.clone();
                         tauri::async_runtime::spawn(async move {

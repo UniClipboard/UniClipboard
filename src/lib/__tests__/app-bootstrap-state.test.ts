@@ -2,6 +2,17 @@ import { describe, expect, it } from 'vitest'
 import { appBootstrapReducer, initialAppBootstrapState } from '@/lib/app-bootstrap-state'
 
 describe('appBootstrapReducer', () => {
+  it('keeps the failure visible while retrying and marks completion', () => {
+    const failed = appBootstrapReducer(initialAppBootstrapState, {
+      type: 'connectionFailed',
+      error: 'offline',
+      failure: null,
+    })
+    const retrying = appBootstrapReducer(failed, { type: 'retryStarted' })
+    expect(retrying.bootEncryptionError).toBe('offline')
+    expect(retrying.retrying).toBe(true)
+    expect(appBootstrapReducer(retrying, { type: 'retryFinished' }).retrying).toBe(false)
+  })
   it('clears a previous connection error when the daemon becomes ready', () => {
     const failedState = appBootstrapReducer(initialAppBootstrapState, {
       type: 'connectionFailed',

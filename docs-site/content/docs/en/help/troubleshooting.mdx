@@ -401,6 +401,14 @@ If a problem is hard to reproduce, enable verbose logging first
 (Settings → General → **Debug mode**, or `uniclip debug on`), reproduce,
 then export. Turn it back off and restart afterwards.
 
+If the app is stuck on its startup failure screen and Settings is unavailable,
+click **Export logs** on that screen and choose a save location. This entry point
+works without a running background service and packages the retained GUI, daemon,
+and CLI logs in the current app log directory, rather than limiting the export to
+the last 24 hours. **Retry** restarts the background service and shows progress on
+the screen. **Contact author** opens the GitHub support page without uploading any
+logs automatically. Expand **Error details** to inspect the reported failure.
+
 If you'd rather grab the files by hand, logs live in each platform's
 conventional log location (separate from the encrypted history). Only the
 last 7 days are kept per process; older files are removed automatically:

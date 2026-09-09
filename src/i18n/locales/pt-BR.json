@@ -1,4 +1,23 @@
 {
+  "startupFailure": {
+    "unavailable": "Problema na inicialização",
+    "title": "Não foi possível iniciar",
+    "description": "Não foi possível conectar ao serviço em segundo plano. O aplicativo está temporariamente indisponível.",
+    "updateTitle": "É necessário atualizar o aplicativo",
+    "updateDescription": "Uma versão mais recente está em execução em segundo plano. Atualize este aplicativo para continuar.",
+    "retry": "Tentar novamente",
+    "retrying": "Tentando novamente…",
+    "export": "Exportar logs",
+    "exporting": "Exportando…",
+    "contact": "Contatar o autor",
+    "update": "Abrir atualização",
+    "details": "Detalhes do erro",
+    "exported": "Logs salvos em: {{path}}",
+    "exportFailed": "Não foi possível exportar os logs. Verifique o local de destino e o espaço disponível e tente novamente.",
+    "contactFailed": "Não foi possível abrir a página de suporte. Endereço de contato:",
+    "updateFailed": "Não foi possível verificar atualizações. Tente novamente mais tarde.",
+    "contactOpened": "A página de suporte foi aberta no navegador."
+  },
   "appearanceLayout": {
     "effectsHelp": "Equilibre os efeitos visuais e o desempenho.",
     "scaleHelp": "Ajuste o tamanho do texto e dos elementos da interface.",

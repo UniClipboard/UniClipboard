@@ -7,12 +7,14 @@ export type AppBootstrapState = {
   bootstrapFailure: DaemonBootstrapFailure | null
   daemonBootstrapReady: boolean
   loadingTimedOut: boolean
+  retrying: boolean
 }
 
 type AppBootstrapAction =
   | { type: 'connectionReady' }
   | { type: 'connectionFailed'; error: string; failure: DaemonBootstrapFailure | null }
   | { type: 'retryStarted' }
+  | { type: 'retryFinished' }
   | { type: 'bootstrapFailed'; failure: DaemonBootstrapFailure }
   | { type: 'encryptionReady' }
   | { type: 'encryptionNotReady' }
@@ -25,6 +27,7 @@ export const initialAppBootstrapState: AppBootstrapState = {
   bootstrapFailure: null,
   daemonBootstrapReady: false,
   loadingTimedOut: false,
+  retrying: false,
 }
 
 export function appBootstrapReducer(
@@ -48,10 +51,12 @@ export function appBootstrapReducer(
     case 'retryStarted':
       return {
         ...state,
-        bootEncryptionError: null,
-        bootstrapFailure: null,
+        retrying: true,
+        daemonBootstrapReady: false,
         loadingTimedOut: false,
       }
+    case 'retryFinished':
+      return { ...state, retrying: false }
     case 'bootstrapFailed':
       return {
         ...state,

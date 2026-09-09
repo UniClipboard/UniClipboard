@@ -1,4 +1,23 @@
 {
+  "startupFailure": {
+    "unavailable": "啟動遇到問題",
+    "title": "暫時無法啟動",
+    "description": "無法連線到背景服務，應用程式暫時無法使用。",
+    "updateTitle": "需要更新應用程式",
+    "updateDescription": "背景正在執行較新的版本，請更新目前的應用程式後繼續。",
+    "retry": "重試",
+    "retrying": "正在重試…",
+    "export": "匯出日誌",
+    "exporting": "正在匯出…",
+    "contact": "聯絡作者",
+    "update": "開啟更新",
+    "details": "錯誤詳情",
+    "exported": "日誌已儲存至：{{path}}",
+    "exportFailed": "日誌匯出失敗，請檢查儲存位置與剩餘空間後重試。",
+    "contactFailed": "無法開啟求助頁面，聯絡網址：",
+    "updateFailed": "無法完成更新檢查，請稍後重試。",
+    "contactOpened": "已在瀏覽器中開啟求助頁面。"
+  },
   "appearanceLayout": {
     "effectsHelp": "平衡視覺效果與執行效能。",
     "scaleHelp": "調整介面元素與文字大小。",

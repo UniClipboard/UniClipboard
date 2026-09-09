@@ -1,5 +1,5 @@
 import { LazyMotion, domMax } from 'framer-motion'
-import { type ReactNode, useCallback, useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { BrowserRouter as Router, useNavigate } from 'react-router'
 import { unlockEncryptionSession } from '@/api/security'
 import { SidebarTitle, TitleBar } from '@/components'
@@ -39,14 +39,6 @@ export default function App() {
   )
 }
 
-const TitleBarWithSearch = ({
-  isSetupActive,
-  rightSlot,
-}: {
-  isSetupActive: boolean
-  rightSlot: ReactNode
-}) => <TitleBar isSetupActive={isSetupActive} rightSlot={rightSlot} />
-
 export const AppContentWithBar = () => {
   const { hasCustomTitleBar } = useWindowFrame()
   const { hydrated, flow } = useSetupRealtimeStore()
@@ -62,10 +54,10 @@ export const AppContentWithBar = () => {
     () =>
       hasCustomTitleBar ? (
         <TitleBarSlotContext value={slotValue}>
-          <TitleBarWithSearch isSetupActive={isSetupActive} rightSlot={rightSlot} />
+          <TitleBar rightSlot={rightSlot} />
         </TitleBarSlotContext>
       ) : null,
-    [hasCustomTitleBar, slotValue, isSetupActive, rightSlot]
+    [hasCustomTitleBar, slotValue, rightSlot]
   )
   const sidebarTitle = useMemo(
     () => (hasCustomTitleBar ? <SidebarTitle rightSlot={rightSlot} /> : null),

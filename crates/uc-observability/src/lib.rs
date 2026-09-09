@@ -54,6 +54,7 @@ pub mod profile;
 pub mod redact;
 pub mod scope;
 pub(crate) mod span_fields;
+pub mod startup_logs;
 pub mod telemetry_gate;
 
 pub use analytics_gate::{is_analytics_enabled, set_analytics_enabled};

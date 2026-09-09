@@ -1,4 +1,23 @@
 {
+  "startupFailure": {
+    "unavailable": "启动遇到问题",
+    "title": "暂时无法启动",
+    "description": "无法连接到后台服务，应用暂时无法使用。",
+    "updateTitle": "需要更新应用",
+    "updateDescription": "后台正在运行较新的版本，请更新当前应用后继续。",
+    "retry": "重试",
+    "retrying": "正在重试…",
+    "export": "导出日志",
+    "exporting": "正在导出…",
+    "contact": "联系作者",
+    "update": "打开更新",
+    "details": "错误详情",
+    "exported": "日志已保存至：{{path}}",
+    "exportFailed": "日志导出失败，请检查保存位置和剩余空间后重试。",
+    "contactFailed": "无法打开求助页面，联系地址：",
+    "updateFailed": "无法完成更新检查，请稍后重试。",
+    "contactOpened": "已在浏览器中打开求助页面。"
+  },
   "appearanceLayout": {
     "effectsHelp": "平衡视觉效果与运行性能。",
     "scaleHelp": "调整界面元素与文字大小。",

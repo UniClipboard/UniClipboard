@@ -13,6 +13,10 @@ import { invoke as __TAURI_INVOKE, Channel } from "@tauri-apps/api/core";
 
 /** Commands */
 export const commands = {
+	getDesktopTheme: (trace: {
+	trace_id: string,
+	timestamp: number,
+} | null) => typedError<DesktopThemeSnapshot, string>(__TAURI_INVOKE("get_desktop_theme", { trace })),
 	getVisualEffects: (trace: {
 	trace_id: string,
 	timestamp: number,
@@ -676,6 +680,17 @@ export type DaemonStartupStatus = {
 	service_ready: boolean,
 	service_failed: boolean,
 	progress: StartupSnapshotDto,
+};
+
+export type DesktopTheme = {
+	dark: boolean,
+	variables: { [key in string]: string },
+};
+
+export type DesktopThemeSnapshot = {
+	revision: number,
+	theme: DesktopTheme | null,
+
 };
 
 /**

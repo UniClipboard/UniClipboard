@@ -39,7 +39,6 @@ vi.mock('@tauri-apps/api/event', () => ({
   listen: vi.fn(() => Promise.resolve(() => {})),
 }))
 
-vi.mock('@/hooks/useThemeSync', () => ({ useThemeSync: vi.fn() }))
 vi.mock('@/hooks/useHistorySourceOptions', () => ({ useHistorySourceOptions: () => [] }))
 vi.mock('@/hooks/useShortcut', () => ({ useShortcut: vi.fn() }))
 vi.mock('@/lib/ui-sound', () => ({ playUiSound: vi.fn() }))

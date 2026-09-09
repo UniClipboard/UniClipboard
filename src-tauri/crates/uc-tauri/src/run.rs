@@ -291,6 +291,7 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
         .manage(runtime.clone())
         .manage(crate::visual_effects::VisualEffectsService::default())
         .manage(uc_daemon_client::DaemonQueryClient::new(daemon_connection_state.clone())?)
+        .manage(crate::desktop_theme::DesktopThemeState::default())
         .manage(DaemonConnectionState::clone(&daemon_connection_state))
         .manage(DaemonOwnership::clone(&daemon_ownership))
         .manage(daemon_bootstrap_status.clone())
@@ -429,6 +430,7 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
             Some(vec![AUTOSTART_LAUNCH_ARG]),
         ))
         .setup(move |app| {
+            crate::desktop_theme::install(app.handle(), runtime.desktop().task_registry().token().clone());
             // Set AppHandle on runtime so it can emit events to frontend
             // In Tauri 2, use app.handle() to get the AppHandle
             runtime.set_app_handle(app.handle().clone());

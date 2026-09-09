@@ -40,6 +40,16 @@ o.bind("SUPER + SHIFT + V", "UniClipboard", "uniclipboard --quick-panel")
 
 不需要针对快捷面板添加浮动、居中窗口规则。Layer Shell namespace 为 `uniclipboard-quick-panel`，可通过 `hyprctl layers -j` 验证。Wayland 下应用内的 X11 全局快捷键注册被禁用，设置页显示桌面配置入口；单独修饰键双击仍受 Wayland 输入隔离限制。
 
+## Omarchy 主题跟随
+
+在 Omarchy 会话中，外观设置选择“跟随系统”后，主窗口、快捷面板和更新窗口同时跟随桌面深浅模式与配色。选择固定浅色或深色后，使用原有应用预设和自定义颜色；回到“跟随系统”时恢复当前桌面配色。主题切换无需重启，隐藏的快捷面板也保持订阅。快捷面板的主题生命周期由窗口根组件拥有，首次绘制前先应用系统深浅色，连接中和连接失败页面也接收桌面配色；daemon 就绪后再读取用户主题设置，进入历史页面时不重建主题订阅。
+
+该适配仅由 GUI 的 `src-tauri/crates/uc-tauri/src/desktop_theme/` 管理：检查会话的 `OMARCHY_PATH` 与当前主题目录，从用户主目录下的 `.local/state/omarchy/current/theme/colors.toml` 读取调色板。只安装 Omarchy 包、未进入 Omarchy 会话时不开启；其他系统不提供配色覆盖。此入口针对使用上述状态目录的 Omarchy 版本。
+
+Omarchy 会整体替换主题目录，因此监听其稳定父目录并合并文件事件。读取失败或主题内容无效时保留最近一次有效配色；后续文件变化会重新读取。调色板仅驻留内存，不写入业务设置，不修改系统 GTK 配置，不安装主题钩子。
+
+前端通过 `src/lib/window-theme.ts` 统一选择最终主题，窗口只消费深浅模式与语义颜色变量。初始查询和实时事件带版本号，避免旧查询覆盖新主题；GUI 退出时取消文件监听。daemon、Engine 和其他平台不承担 Omarchy 适配逻辑。
+
 ## 粘贴与能力边界
 
 Hyprland 后端在显示前记录原窗口身份，选择条目后先恢复系统剪贴板，再隐藏面板、释放键盘交互，并在工作线程中确认原窗口仍存在、恢复焦点、验证身份，最后向该窗口发送粘贴快捷键。整个流程不通过 shell 执行命令，不把正文或窗口标题放入命令及日志。常见终端使用 `Ctrl+Shift+V`，普通应用使用 `Ctrl+V`；用户自定义的粘贴按键可能不同。

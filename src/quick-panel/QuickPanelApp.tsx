@@ -6,6 +6,7 @@ import { daemonClient } from '@/api/daemon/client'
 import VisualEffectsProvider from '@/components/motion/VisualEffectsProvider'
 import { Toaster } from '@/components/ui/toaster'
 import { usePlatform } from '@/hooks/usePlatform'
+import { useThemeSync } from '@/hooks/useThemeSync'
 import { useVisualEffectsSampling } from '@/hooks/useVisualEffectsSampling'
 import { connectDaemonWs } from '@/lib/daemon-ws-bootstrap'
 import { commands } from '@/lib/ipc'
@@ -23,6 +24,7 @@ const QuickPanelApp: React.FC = () => {
   const { isLinux, isTauri } = usePlatform()
   const layoutClassNames = getQuickPanelLayoutClassNames(isLinux && isTauri)
   const [daemonReady, setDaemonReady] = useState(daemonClient.initialized)
+  useThemeSync(daemonReady)
   const [bootstrapError, setBootstrapError] = useState<string | null>(null)
   const [showRequestId, setShowRequestId] = useState(0)
   const [preparedRequestId, setPreparedRequestId] = useState(0)

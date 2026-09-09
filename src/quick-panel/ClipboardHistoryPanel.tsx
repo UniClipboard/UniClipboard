@@ -16,7 +16,6 @@ import { useDebounce } from '@/hooks/useDebounce'
 import { useHistorySourceOptions } from '@/hooks/useHistorySourceOptions'
 import { usePlatform } from '@/hooks/usePlatform'
 import { useSearchTags } from '@/hooks/useSearchTags'
-import { useThemeSync } from '@/hooks/useThemeSync'
 import { pasteableFilePaths } from '@/lib/clipboard-utils'
 import { commands } from '@/lib/ipc'
 import { createLogger } from '@/lib/logger'
@@ -120,7 +119,6 @@ interface ClipboardHistoryPanelProps {
  * results. The webview stays alive between hides; only this tree is recreated.
  */
 const ClipboardHistoryPanel: React.FC<ClipboardHistoryPanelProps> = props => {
-  useThemeSync()
   return <ClipboardHistoryPanelSession key={props.showRequestId ?? 0} {...props} />
 }
 

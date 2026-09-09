@@ -11,9 +11,8 @@
 //   laptop sleep while `tauri dev` was running) leaves the Vite process alive;
 //   the next `tauri dev` then hard-fails on the occupied port.
 //
-// Scope: only the default dev-server ports (1420 and 1421). Profile-specific
-// servers fail safely when their port is occupied instead of killing an
-// unrelated listener.
+// Scope: only the default dev-server ports (1420 and 1421). The profile launcher
+// selects an available port; this hook never kills its existing listeners.
 // The daemon's own ports are never touched. No-op when nothing is listening.
 //
 // Platform strategy:

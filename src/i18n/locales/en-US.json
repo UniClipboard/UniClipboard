@@ -1209,6 +1209,14 @@
       "pairedCount_other": "{{count}} paired",
       "onlineCount": "{{count}} online"
     },
+    "connectionRefresh": {
+      "action": "Refresh connections",
+      "checking": "Checking connections",
+      "failed": "Refresh failed. Please try again.",
+      "summary": "Checked {{total}} devices: {{online}} online, {{offline}} offline",
+      "errors": "{{count}} could not be checked; connection status is unconfirmed",
+      "listFailed": "Connection check complete. Could not update the device list. Please try again."
+    },
     "pairedDevices": {
       "title": "Paired devices"
     },

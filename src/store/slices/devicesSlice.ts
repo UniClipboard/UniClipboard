@@ -18,9 +18,16 @@ import {
   recoverNetwork as recoverNetworkApi,
   type NetworkRecoveryStatus,
 } from '@/api/daemon/network-recovery'
+import { refreshPresence, type PresenceRefreshResult } from '@/api/daemon/presence'
 import { emitDeviceSyncChanged } from '@/lib/device-sync-events'
 
+type ConnectionRefresh =
+  | { status: 'idle' | 'checking' | 'failed' }
+  | { status: 'complete' | 'list-failed'; report: PresenceRefreshResult }
+
 interface DevicesState {
+  connectionRefresh: ConnectionRefresh
+  connectionRefreshTrigger: 'automatic' | 'manual'
   // 当前设备
   localDevice: LocalDeviceInfo | null
   localDeviceLoading: boolean
@@ -100,6 +107,8 @@ function sameMemberSyncPreferences(a: MemberSyncPreferences, b: MemberSyncPrefer
 }
 
 const initialState: DevicesState = {
+  connectionRefresh: { status: 'idle' },
+  connectionRefreshTrigger: 'automatic',
   localDevice: null,
   localDeviceLoading: false,
   localDeviceError: null,
@@ -136,6 +145,52 @@ export const fetchSpaceMembers = createAsyncThunk(
     } catch {
       return rejectWithValue('获取空间成员失败')
     }
+  }
+)
+
+// Keep promises outside Redux state, scoped to the store that owns the check.
+const connectionRefreshes = new WeakMap<
+  () => { devices: DevicesState },
+  Promise<ConnectionRefresh>
+>()
+
+export const refreshDeviceConnections = createAsyncThunk<
+  ConnectionRefresh,
+  'manual' | void,
+  { state: { devices: DevicesState } }
+>(
+  'devices/refreshConnections',
+  async (_, { dispatch, getState }) => {
+    const active = connectionRefreshes.get(getState)
+    if (active) return active
+
+    const operation = (async (): Promise<ConnectionRefresh> => {
+      const report = await refreshPresence()
+      try {
+        const members = await getPairedPeersWithStatus()
+        dispatch(setSpaceMembers(members))
+        dispatch(clearSpaceMembersError())
+        return { status: 'complete', report }
+      } catch {
+        return { status: 'list-failed', report }
+      }
+    })()
+    connectionRefreshes.set(getState, operation)
+    try {
+      return await operation
+    } finally {
+      connectionRefreshes.delete(getState)
+    }
+  },
+  {
+    // Share the operation across manual refresh, visibility changes and page remounts.
+    condition: (trigger, { getState }) => {
+      const { connectionRefresh, connectionRefreshTrigger } = getState().devices
+      return (
+        connectionRefresh.status !== 'checking' ||
+        (trigger === 'manual' && connectionRefreshTrigger === 'automatic')
+      )
+    },
   }
 )
 
@@ -228,6 +283,18 @@ const devicesSlice = createSlice({
     },
   },
   extraReducers: builder => {
+    builder
+      .addCase(refreshDeviceConnections.pending, (state, action) => {
+        state.connectionRefresh = { status: 'checking' }
+        state.connectionRefreshTrigger = action.meta.arg ?? 'automatic'
+      })
+      .addCase(refreshDeviceConnections.fulfilled, (state, action) => {
+        state.connectionRefresh = action.payload
+      })
+      .addCase(refreshDeviceConnections.rejected, state => {
+        state.connectionRefresh = { status: 'failed' }
+      })
+
     // Local device info
     builder
       .addCase(fetchLocalDeviceInfo.pending, state => {

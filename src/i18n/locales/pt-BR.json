@@ -1212,6 +1212,14 @@
       "pairedCount_many": "{{count}} pareados",
       "onlineCount": "{{count}} online"
     },
+    "connectionRefresh": {
+      "action": "Atualizar conexões",
+      "checking": "Verificando conexões",
+      "failed": "Falha ao atualizar. Tente novamente.",
+      "summary": "{{total}} dispositivos verificados: {{online}} online, {{offline}} offline",
+      "errors": "Não foi possível verificar {{count}} dispositivos; estado da conexão não confirmado",
+      "listFailed": "Verificação concluída. Não foi possível atualizar a lista de dispositivos. Tente novamente."
+    },
     "pairedDevices": {
       "title": "Dispositivos pareados"
     },

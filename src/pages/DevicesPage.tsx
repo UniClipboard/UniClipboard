@@ -3,7 +3,6 @@ import { Plus, RefreshCw, Settings2 } from 'lucide-react'
 import React, { useCallback, useEffect, useId, useRef, useState, useSyncExternalStore } from 'react'
 import { useTranslation } from 'react-i18next'
 import { shallowEqual } from 'react-redux'
-import { refreshPresence } from '@/api/daemon'
 import type { SpaceMember } from '@/api/daemon/members'
 import { unpairDevice } from '@/api/daemon/members'
 import {
@@ -65,6 +64,7 @@ import {
   fetchSpaceProtection,
   fetchSpaceMembers,
   requestNetworkRecovery,
+  refreshDeviceConnections,
   setSpaceMembers,
 } from '@/store/slices/devicesSlice'
 
@@ -108,6 +108,8 @@ const DevicesPage: React.FC = () => {
     networkRecovery,
     networkRecoveryError,
     networkRecoveryRequestId,
+    connectionRefresh,
+    connectionRefreshTrigger,
   } = useAppSelector(
     ({ devices }) => ({
       localDevice: devices.localDevice,
@@ -119,10 +121,14 @@ const DevicesPage: React.FC = () => {
       networkRecovery: devices.networkRecovery,
       networkRecoveryError: devices.networkRecoveryError,
       networkRecoveryRequestId: devices.networkRecoveryRequestId,
+      connectionRefresh: devices.connectionRefresh,
+      connectionRefreshTrigger: devices.connectionRefreshTrigger,
     }),
     shallowEqual
   )
   const { snapshot: deviceTrust, refresh: refreshDeviceTrust } = useDeviceTrust()
+  const manualRefreshInProgress =
+    connectionRefresh.status === 'checking' && connectionRefreshTrigger === 'manual'
 
   const admittedPeers = localDevice
     ? rawSpaceMembers.filter(d => d.peerId !== localDevice.peerId)
@@ -163,19 +169,29 @@ const DevicesPage: React.FC = () => {
     dispatch(fetchSpaceProtection())
     dispatch(fetchNetworkRecoveryStatus())
 
-    // Presence awareness is push-driven by the daemon's PeerKeepAliveWorker
-    // (inbound presence Online → outbound dial → peers.changed ws). The
-    // frontend only pulls presence twice: on first mount (warm the UI) and
-    // when the tab becomes visible again (safety snapshot). No polling.
-    const probe = () => {
-      refreshPresence().catch(err => {
-        // refresh_presence 5xxs while setup is incomplete / daemon not
-        // ready; the push pipeline is unaffected, so warn is enough.
-        log.warn({ err }, 'presence refresh failed')
-      })
-    }
-    probe()
+    // Share the same refresh with the manual action; live updates remain push-driven.
+    void dispatch(refreshDeviceConnections())
   }, [dispatch, documentVisible])
+
+  const refreshConnectionsManually = async () => {
+    const result = await dispatch(refreshDeviceConnections('manual'))
+    if (refreshDeviceConnections.rejected.match(result)) {
+      if (!result.meta.condition) toast.error(t('devices.connectionRefresh.failed'))
+      return
+    }
+    const refresh = result.payload
+    if (refresh.status === 'complete' || refresh.status === 'list-failed') {
+      const { report } = refresh
+      const description = [
+        report.errors > 0 ? t('devices.connectionRefresh.errors', { count: report.errors }) : null,
+        refresh.status === 'list-failed' ? t('devices.connectionRefresh.listFailed') : null,
+      ]
+        .filter(Boolean)
+        .join('\n')
+      const notify = description ? toast.error : toast.success
+      notify(t('devices.connectionRefresh.summary', { ...report }), { description })
+    }
+  }
 
   useEffect(() => {
     const handler = (event: { topic: string; eventType: string; payload: unknown }) => {
@@ -381,7 +397,31 @@ const DevicesPage: React.FC = () => {
                 </div>
               )}
 
-              <SectionLabel label={t('devices.pairedDevices.title')} />
+              <SectionLabel
+                label={t('devices.pairedDevices.title')}
+                trailing={
+                  <button
+                    type="button"
+                    aria-label={t('devices.connectionRefresh.action')}
+                    title={t(
+                      manualRefreshInProgress
+                        ? 'devices.connectionRefresh.checking'
+                        : 'devices.connectionRefresh.action'
+                    )}
+                    disabled={manualRefreshInProgress}
+                    className="flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground/70 transition-colors hover:bg-muted hover:text-foreground disabled:cursor-wait disabled:opacity-60"
+                    onClick={() => void refreshConnectionsManually()}
+                  >
+                    <RefreshCw
+                      aria-hidden="true"
+                      className={cn(
+                        'size-3.5',
+                        manualRefreshInProgress && 'motion-safe:animate-spin'
+                      )}
+                    />
+                  </button>
+                }
+              />
               {peers.map(peer => {
                 const trust = trustListView.relationshipsByDeviceId.get(peer.peerId)
                 const trustStatus = trust ? getDeviceTrustStatus(trust, t) : null

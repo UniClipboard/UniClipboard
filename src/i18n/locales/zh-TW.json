@@ -1208,6 +1208,14 @@
       "pairedCount_other": "{{count}} 台已配對",
       "onlineCount": "{{count}} 台在線"
     },
+    "connectionRefresh": {
+      "action": "重新整理連線",
+      "checking": "正在檢查連線",
+      "failed": "重新整理失敗，請重試",
+      "summary": "檢查了 {{total}} 台裝置，{{online}} 台線上，{{offline}} 台離線",
+      "errors": "{{count}} 台檢查失敗，無法確認連線狀態",
+      "listFailed": "連線檢查已完成，裝置清單更新失敗，請重試"
+    },
     "pairedDevices": {
       "title": "已配對裝置"
     },

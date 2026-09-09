@@ -6,8 +6,9 @@ import type { ClipboardEntryType } from '@/lib/clipboard-entry'
 export const PREVIEW_OPEN_DELAY_MS = 500
 export const PREVIEW_SWITCH_DELAY_MS = 120
 
-export const QUICK_PANEL_FOOTER_CLASS_NAME =
-  'flex h-10 shrink-0 items-center border-t border-border/50 px-3 text-[11px] text-muted-foreground'
+export const QUICK_PANEL_GUTTER_CLASS_NAME = 'px-2'
+
+export const QUICK_PANEL_FOOTER_CLASS_NAME = `${QUICK_PANEL_GUTTER_CLASS_NAME} flex h-10 shrink-0 items-center border-t border-border/50 text-[11px] text-muted-foreground`
 
 export const isMac = navigator.platform.toUpperCase().includes('MAC')
 

@@ -93,6 +93,7 @@ function CompositeSearchInput({
 
       <div className="relative min-h-7 min-w-0 flex-1">
         <div
+          data-slot="composite-search-field"
           className={cn(
             'flex min-h-7 items-center gap-1.5 rounded-2xl border py-1 pl-3 transition-colors',
             open

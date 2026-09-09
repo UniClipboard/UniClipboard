@@ -7,7 +7,11 @@ import { usePlatform } from '@/hooks/usePlatform'
 import type { DisplayClipboardItem } from '@/lib/clipboard-entry'
 import type { SearchTagOption } from '@/lib/search-tags'
 import { cn } from '@/lib/utils'
-import { getQuickPanelLayoutClassNames } from '../constants'
+import {
+  getQuickPanelLayoutClassNames,
+  QUICK_PANEL_FOOTER_CLASS_NAME,
+  QUICK_PANEL_GUTTER_CLASS_NAME,
+} from '@/quick-panel/constants'
 import {
   peekQuickPanelImageAspectRatio,
   useQuickPanelImageAspectRatioEpoch,
@@ -175,14 +179,14 @@ const HistoryPane: React.FC<HistoryPaneProps> = React.memo(
                 </p>
               )}
             </div>
-            <div className="flex items-center justify-center border-t border-border/50 px-3 py-1.5 text-[11px] text-muted-foreground">
+            <div className={cn(QUICK_PANEL_FOOTER_CLASS_NAME, 'justify-center')}>
               <span>{t('status.close')}</span>
             </div>
           </>
         ) : (
           <>
             {/* --- SPOTLIGHT STYLE TOP BAR --- */}
-            <div className="px-3 py-2">
+            <div className={cn(QUICK_PANEL_GUTTER_CLASS_NAME, 'pt-2 pb-1.5')}>
               <CompositeSearchBar
                 contentFilter={activeFilter}
                 tagFilter={tagFilter}
@@ -216,8 +220,8 @@ const HistoryPane: React.FC<HistoryPaneProps> = React.memo(
               role="listbox"
               aria-label={t('listAriaLabel')}
               className={cn(
-                'flex-1 overflow-y-auto overflow-x-hidden px-1.5 py-1',
-                showImageWall && 'px-2 py-2'
+                QUICK_PANEL_GUTTER_CLASS_NAME,
+                'min-h-0 flex-1 overflow-y-auto overflow-x-hidden py-0.5'
               )}
               onMouseMove={() => {
                 if (!hasPointerMovedSinceShow || isKeyboardNav) onHistoryMouseMove()

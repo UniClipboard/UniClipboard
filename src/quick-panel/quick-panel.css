@@ -13,3 +13,8 @@
 [data-slot='scroll-area-scrollbar'] {
   display: none;
 }
+
+/* Align the search icon with list-row content inside the shared outer gutter. */
+[data-slot='composite-search-field'] {
+  padding-left: 0.5rem;
+}

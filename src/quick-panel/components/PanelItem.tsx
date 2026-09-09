@@ -60,7 +60,7 @@ const PanelItem: React.FC<PanelItemProps> = React.memo(
         // 顺序(恒定 -1),避免 Tab 把焦点移到这里导致键盘导航失效。
         tabIndex={-1}
         className={cn(
-          'flex cursor-pointer select-none items-center gap-2.5 rounded-md px-4 py-2 text-[13px] leading-tight transition-colors',
+          'flex cursor-pointer select-none items-center gap-1.5 rounded-md px-2 py-1.5 text-[13px] leading-tight transition-colors',
           isSelected
             ? 'bg-primary text-primary-foreground shadow-sm shadow-primary/20'
             : hoverDisabled

@@ -41,3 +41,8 @@
 [data-slot='composite-search-field']:focus-within > svg {
   color: var(--foreground);
 }
+
+/* Match the history gutter plus row inset without changing the main-window preview. */
+:root {
+  --clipboard-preview-inset: 1rem;
+}

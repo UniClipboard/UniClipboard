@@ -262,8 +262,8 @@ describe('ClipboardHistoryPanel single-window preview', () => {
     const { container } = renderPanel()
     expect(screen.getByTestId('preview-empty')).toBeInTheDocument()
     expect(container.firstElementChild!.children[1]).toHaveAttribute('aria-hidden', 'false')
-    expect(container.firstElementChild!.children[0]).toHaveClass('flex-[9]')
-    expect(container.firstElementChild!.children[1]).toHaveClass('flex-[11]')
+    expect(container.firstElementChild!.children[0]).toHaveClass('flex-[42]', 'basis-0')
+    expect(container.firstElementChild!.children[1]).toHaveClass('flex-[58]', 'basis-0')
   })
 
   it('starts a shown session without a preview transition', () => {

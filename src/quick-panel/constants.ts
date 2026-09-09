@@ -28,7 +28,8 @@ export function getQuickPanelLayoutClassNames(isLinux: boolean) {
       statusSurface: 'bg-card text-card-foreground',
       card: 'flex h-full w-full min-w-0 flex-col overflow-hidden',
       previewCard: 'flex h-full w-full min-w-0 flex-col overflow-hidden',
-      previewExpanded: 'flex-[11] basis-0 border-l border-border/50 opacity-100 translate-x-0',
+      previewExpanded:
+        'relative flex-[58] basis-0 opacity-100 translate-x-0 before:pointer-events-none before:absolute before:inset-y-0 before:left-0 before:z-10 before:w-px before:bg-border/50',
       previewReserved: 'shrink-0 opacity-0 pointer-events-none',
     }
   }

@@ -208,7 +208,7 @@ const FilePreview: React.FC<FilePreviewProps> = ({
 
     if (hasSingleImage) {
       return (
-        <div className="flex min-h-full flex-col items-center justify-center gap-6 p-8">
+        <div className="flex min-h-full flex-col items-center justify-center gap-6 px-[var(--clipboard-preview-inset,2rem)] py-8">
           <div className="relative flex w-full max-w-5xl items-center justify-center overflow-hidden rounded-lg bg-muted/10 p-2">
             <ProgressOverlay
               effectiveStatus={effectiveStatus}
@@ -257,7 +257,7 @@ const FilePreview: React.FC<FilePreviewProps> = ({
     }
 
     return (
-      <div className="flex h-full flex-col items-center justify-center gap-y-10 p-8">
+      <div className="flex h-full flex-col items-center justify-center gap-y-10 px-[var(--clipboard-preview-inset,2rem)] py-8">
         <div className="relative w-full max-w-sm">
           <div className="relative overflow-hidden rounded-[2rem] border border-border/40 bg-background/60 p-1 ring-1 ring-white/10">
             <ProgressOverlay
@@ -306,7 +306,7 @@ const FilePreview: React.FC<FilePreviewProps> = ({
   if (isImageFileGroup) {
     const totalSize = getKnownTotalSize(fileSizes)
     return (
-      <div className="space-y-6 p-6">
+      <div className="space-y-6 px-[var(--clipboard-preview-inset,1.5rem)] py-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-2 text-ui-body font-medium text-muted-foreground">
             <span>{t('clipboard.preview.imagesCount', { count: fileNames.length })}</span>
@@ -372,7 +372,7 @@ const FilePreview: React.FC<FilePreviewProps> = ({
   }
 
   return (
-    <div className="space-y-6 p-6">
+    <div className="space-y-6 px-[var(--clipboard-preview-inset,1.5rem)] py-6">
       <div className="flex items-center justify-between">
         <StatusBadge effectiveStatus={effectiveStatus} transfer={transfer} />
         {item.device && (

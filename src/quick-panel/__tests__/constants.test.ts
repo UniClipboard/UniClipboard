@@ -38,7 +38,8 @@ describe('Linux quick panel layout', () => {
     expect(layout.container).toContain('border-border/50')
     expect(layout.card).not.toMatch(/border|rounded|shadow|bg-/)
     expect(layout.previewCard).not.toMatch(/border|rounded|shadow|bg-/)
-    expect(layout.previewExpanded).toContain('border-l')
+    expect(layout.previewExpanded).toContain('before:w-px')
+    expect(layout.previewExpanded).not.toContain('border-l')
   })
 
   it('keeps the floating-card layout on non-Linux platforms', () => {

@@ -720,7 +720,7 @@ const ClipboardHistoryPanelSession: React.FC<ClipboardHistoryPanelProps> = ({
           previewReservingSpace && historyLockedWidth != null
             ? 'min-w-0 shrink-0'
             : isLinuxQuickPanel
-              ? 'min-w-0 flex-[9] basis-0'
+              ? 'min-w-0 flex-[42] basis-0'
               : 'min-w-0 flex-1 basis-0'
         }
         style={

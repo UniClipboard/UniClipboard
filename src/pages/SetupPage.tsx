@@ -1,7 +1,5 @@
 import { AnimatePresence } from 'framer-motion'
-import { Loader2 } from 'lucide-react'
 import type React from 'react'
-import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router'
 import { usePlatform } from '@/hooks/usePlatform'
 import { useSetupFlow } from '@/hooks/useSetupFlow'
@@ -26,7 +24,7 @@ interface SetupPageProps {
 type SetupFlow = ReturnType<typeof useSetupFlow>
 
 interface SetupScreenProps {
-  screen: SetupFlow['screen']
+  screen: Exclude<SetupFlow['screen'], { kind: 'loading' }>
   loading: boolean
   goEntry: SetupFlow['goEntry']
   startCreateSpace: SetupFlow['startCreateSpace']
@@ -54,17 +52,7 @@ const SetupScreen: React.FC<SetupScreenProps> = ({
   cancelJoin,
   onDone,
 }) => {
-  const { t } = useTranslation(undefined, { keyPrefix: 'setup.page' })
   switch (screen.kind) {
-    case 'loading':
-      return (
-        <div className="flex h-full w-full items-center justify-center">
-          <div className="flex items-center gap-3 text-sm text-muted-foreground">
-            <Loader2 className="size-4 animate-spin" />
-            {t('loadingSetupState')}
-          </div>
-        </div>
-      )
     case 'entry':
       return (
         <EntryScreen
@@ -126,6 +114,9 @@ export default function SetupPage({ onCompleteSetup }: SetupPageProps = {}) {
     cancelJoin,
     finishPairing,
   } = useSetupFlow()
+
+  // The app-level gate owns unknown setup state and its loading presentation.
+  if (screen.kind === 'loading') return null
 
   const handleDone = () => {
     finishPairing()

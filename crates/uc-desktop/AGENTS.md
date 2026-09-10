@@ -89,6 +89,8 @@ shell crate。如果在 desktop 里需要写 `if cfg!(feature = "tauri")` 或
 
 ## 当前落地边界
 
+- `src/startup/` 内聚启动进度、就绪等待与冷启动动作；调用方使用 `uc_desktop::startup`，内部 `actions` 和 `progress` 模块不公开。
+
 - daemon runtime + host entry points + process bootstrap 全部住在 `uc-daemon`
   （ADR-008 P1+P2），新增 runtime 构件请加到那里，**不要** 回流本 crate。
   本 crate `src/daemon/` 不再是 `uc-daemon` 的 re-export shim：ADR-008 依赖边

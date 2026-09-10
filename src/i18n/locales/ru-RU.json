@@ -2122,7 +2122,6 @@
   },
   "setup": {
     "page": {
-      "loadingSetupState": "Загрузка состояния настройки...",
       "processing": "Обработка...",
       "processingJoinSpace": {
         "title": "Подключение к устройству…",

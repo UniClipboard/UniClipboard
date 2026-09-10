@@ -36,11 +36,13 @@ const TIMEOUT_MS = 60_000
 
 const mockGetDaemonConnectionInfo = vi.fn()
 const mockGetDaemonBootstrapFailure = vi.fn()
+const mockGetDaemonStartupStatus = vi.fn()
 
 vi.mock('@/lib/ipc', () => ({
   commands: {
     getDaemonConnectionInfo: (...args: unknown[]) => mockGetDaemonConnectionInfo(...args),
     getDaemonBootstrapFailure: (...args: unknown[]) => mockGetDaemonBootstrapFailure(...args),
+    getDaemonStartupStatus: () => mockGetDaemonStartupStatus(),
   },
 }))
 
@@ -51,6 +53,7 @@ describe('waitForDaemonConnectionInfo()', () => {
     mockGetDaemonBootstrapFailure.mockReset()
     // Default: bootstrap has not failed — the common path.
     mockGetDaemonBootstrapFailure.mockResolvedValue(null)
+    mockGetDaemonStartupStatus.mockReset().mockResolvedValue(null)
     vi.useFakeTimers()
   })
 
@@ -64,6 +67,42 @@ describe('waitForDaemonConnectionInfo()', () => {
     const promise = waitForDaemonConnectionInfo()
     await vi.advanceTimersByTimeAsync(500)
 
+    await expect(promise).resolves.toEqual(TEST_PAYLOAD)
+  })
+
+  it('continues after an auxiliary startup query rejects', async () => {
+    mockGetDaemonConnectionInfo.mockResolvedValueOnce(null).mockResolvedValueOnce(TEST_PAYLOAD)
+    mockGetDaemonStartupStatus.mockRejectedValueOnce(new Error('temporary IPC failure'))
+    const promise = waitForDaemonConnectionInfo()
+    const expectation = expect(promise).resolves.toEqual(TEST_PAYLOAD)
+    await vi.advanceTimersByTimeAsync(500)
+    await expectation
+  })
+
+  it('still times out when every auxiliary startup query rejects', async () => {
+    mockGetDaemonConnectionInfo.mockResolvedValue(null)
+    mockGetDaemonStartupStatus.mockRejectedValue(new Error('temporary IPC failure'))
+    const expectation = expect(waitForDaemonConnectionInfo()).rejects.toBeInstanceOf(
+      DaemonConnectionInfoTimeoutError
+    )
+    await vi.advanceTimersByTimeAsync(TIMEOUT_MS + 500)
+    await expectation
+  })
+
+  it('waits through a 147-second upgrade then connects without a retry', async () => {
+    mockGetDaemonConnectionInfo.mockResolvedValue(null)
+    mockGetDaemonStartupStatus.mockResolvedValue({
+      service_ready: false,
+      service_failed: false,
+      progress: { attempt_id: 'long', sequence: 1, state: 'upgrading' },
+    })
+    const promise = waitForDaemonConnectionInfo()
+    const resolved = vi.fn()
+    void promise.then(resolved)
+    await vi.advanceTimersByTimeAsync(147_000)
+    expect(resolved).not.toHaveBeenCalled()
+    mockGetDaemonConnectionInfo.mockResolvedValue(TEST_PAYLOAD)
+    await vi.advanceTimersByTimeAsync(500)
     await expect(promise).resolves.toEqual(TEST_PAYLOAD)
   })
 

@@ -29,6 +29,7 @@ vi.mock('@/lib/ipc', () => ({
   commands: {
     getDaemonConnectionInfo: (...args: unknown[]) => mockInvokeWithTrace(...args),
     getDaemonBootstrapFailure: async () => null,
+    getDaemonStartupStatus: async () => null,
   },
 }))
 

@@ -1,4 +1,4 @@
-//! 窗口外壳相关 Tauri 命令（目前仅 macOS 交通灯定位）。
+//! Window chrome positioning and main-window presentation commands.
 //!
 //! ## 为什么需要这个模块
 //!
@@ -64,6 +64,29 @@ pub fn mark_main_window_ready(
         crate::main_window::handle_frontend_ready(&window, generation);
         Ok(())
     })
+}
+
+/// The current main document has committed useful content or an actionable failure.
+#[tauri::command]
+#[specta::specta]
+pub async fn main_window_presentation_ready(
+    window: WebviewWindow,
+    generation: String,
+    _trace: Option<TraceMetadata>,
+) {
+    let span = info_span!(
+        "command.window_chrome.presentation_ready",
+        trace_id = tracing::field::Empty,
+        trace_ts = tracing::field::Empty
+    );
+    record_trace_fields(&span, &_trace);
+    async move {
+        if let Ok(generation) = generation.parse::<u64>() {
+            crate::main_window::mark_presentation_ready(&window, generation);
+        }
+    }
+    .instrument(span)
+    .await;
 }
 
 #[cfg(target_os = "macos")]

@@ -140,37 +140,31 @@ describe('setup i18n keys', () => {
   it('resolves zh-CN setup.welcome.title', async () => {
     await i18n.changeLanguage('zh-CN')
     expect(i18n.t('setup.welcome.title')).toBe('开始使用')
-    expect(i18n.t('setup.page.loadingSetupState')).toBe('正在加载初始化状态...')
   })
 
   it('resolves zh-TW setup.welcome.title', async () => {
     await i18n.changeLanguage('zh-TW')
     expect(i18n.t('setup.welcome.title')).toBe('開始使用')
-    expect(i18n.t('setup.page.loadingSetupState')).toBe('正在載入初始化狀態...')
   })
 
   it('resolves en-US setup.welcome.title', async () => {
     await i18n.changeLanguage('en-US')
     expect(i18n.t('setup.welcome.title')).toBe('Get started')
-    expect(i18n.t('setup.page.loadingSetupState')).toBe('Loading setup state...')
   })
 
   it('resolves ja-JP setup.welcome.title', async () => {
     await i18n.changeLanguage('ja-JP')
     expect(i18n.t('setup.welcome.title')).toBe('始めましょう')
-    expect(i18n.t('setup.page.loadingSetupState')).toBe('セットアップ状態を読み込み中...')
   })
 
   it('resolves ru-RU setup.welcome.title', async () => {
     await i18n.changeLanguage('ru-RU')
     expect(i18n.t('setup.welcome.title')).toBe('Начало работы')
-    expect(i18n.t('setup.page.loadingSetupState')).toBe('Загрузка состояния настройки...')
   })
 
   it('resolves pt-BR setup.welcome.title', async () => {
     await i18n.changeLanguage('pt-BR')
     expect(i18n.t('setup.welcome.title')).toBe('Vamos começar')
-    expect(i18n.t('setup.page.loadingSetupState')).toBe('Carregando o estado da configuração...')
   })
 
   it('contains pairing failure copy in both locales', async () => {

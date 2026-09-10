@@ -2112,7 +2112,6 @@
   },
   "setup": {
     "page": {
-      "loadingSetupState": "Carregando o estado da configuração...",
       "processing": "Processando...",
       "processingJoinSpace": {
         "title": "Conectando ao dispositivo…",

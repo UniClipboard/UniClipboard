@@ -6,6 +6,13 @@ import ptBR from './locales/pt-BR.json'
 import ruRU from './locales/ru-RU.json'
 import zhCN from './locales/zh-CN.json'
 import zhTW from './locales/zh-TW.json'
+import {
+  upgradeProgressEn,
+  upgradeProgressZh,
+  upgradeProgressJa,
+  upgradeProgressPt,
+  upgradeProgressRu,
+} from './upgrade-progress'
 
 export const SUPPORTED_LANGUAGES = ['zh-CN', 'zh-TW', 'en-US', 'ja-JP', 'ru-RU', 'pt-BR'] as const
 export type SupportedLanguage = (typeof SUPPORTED_LANGUAGES)[number]
@@ -55,12 +62,12 @@ export function persistLanguage(language: SupportedLanguage) {
 
 i18n.use(initReactI18next).init({
   resources: {
-    'zh-CN': { translation: zhCN },
-    'zh-TW': { translation: zhTW },
-    'en-US': { translation: enUS },
-    'ja-JP': { translation: jaJP },
-    'ru-RU': { translation: ruRU },
-    'pt-BR': { translation: ptBR },
+    'zh-CN': { translation: { ...zhCN, upgradeProgress: upgradeProgressZh } },
+    'zh-TW': { translation: { ...zhTW, upgradeProgress: upgradeProgressZh } },
+    'en-US': { translation: { ...enUS, upgradeProgress: upgradeProgressEn } },
+    'ja-JP': { translation: { ...jaJP, upgradeProgress: upgradeProgressJa } },
+    'ru-RU': { translation: { ...ruRU, upgradeProgress: upgradeProgressRu } },
+    'pt-BR': { translation: { ...ptBR, upgradeProgress: upgradeProgressPt } },
   },
   lng: getInitialLanguage(),
   fallbackLng: 'zh-CN',

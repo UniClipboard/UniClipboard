@@ -1,3 +1,4 @@
+import { refreshStartupSnapshot, startupFailed } from '@/lib/daemon-startup-progress'
 import { commands } from '@/lib/ipc'
 import type {
   DaemonBootstrapFailure,
@@ -84,7 +85,7 @@ export function resetDaemonConnectionInfoPollingForTests(): void {
 }
 
 async function pollForDaemonConnectionInfo(): Promise<DaemonConnectionPayload> {
-  const deadline = Date.now() + CONNECTION_INFO_TIMEOUT_MS
+  let deadline = Date.now() + CONNECTION_INFO_TIMEOUT_MS
   while (true) {
     const payload = await commands.getDaemonConnectionInfo()
     if (payload) {
@@ -97,8 +98,12 @@ async function pollForDaemonConnectionInfo(): Promise<DaemonConnectionPayload> {
     // there is no point polling until the timeout. This surfaces the typed
     // failure within one poll interval instead of waiting out the ceiling, and
     // lets the UI distinguish "update the app" from "restart".
+    // Startup discovery is auxiliary; its errors must not terminate connection polling.
+    const startup = await refreshStartupSnapshot().catch(() => null)
+    const active = startup && !startupFailed(startup)
+    if (active) deadline = Date.now() + CONNECTION_INFO_TIMEOUT_MS
     const failure = await commands.getDaemonBootstrapFailure()
-    if (failure) {
+    if (failure && (!active || failure.kind === 'versionTooOld')) {
       throw new DaemonBootstrapFailedError(failure)
     }
 

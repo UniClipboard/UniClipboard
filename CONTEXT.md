@@ -352,6 +352,22 @@ _Avoid_: cleanup job、GC
 并清理缓存。
 _Avoid_: recovery、startup cleanup
 
+## Language — 启动与资料升级
+
+**Startup progress**：
+Engine 提供、后台在内存中持有的一次启动尝试的当前状态，界面只观察；Engine 就绪、
+后台服务就绪与界面连接成功是不同事实。可认证的启动任务仍存活时，不因耗时长判定失败；
+重新打开窗口继续观察同一任务，重试不得打断活跃启动。
+详见[桌面启动与资料升级进度](docs/architecture/startup-upgrade-progress.md)。
+_Avoid_: persisted startup state、client-side startup orchestration
+
+**Profile upgrade progress**：
+普通启动中可选的资料升级过程的当前状态，区分需要升级、恢复中与已完成；界面只展示
+当前步骤的真实处理量，内容表示数量不等于历史条数，步骤百分比不等于整体完成度。
+该进度保存在内存中，不是新增的持久状态。
+详见[桌面启动与资料升级进度](docs/architecture/startup-upgrade-progress.md)。
+_Avoid_: overall upgrade percentage、history entry count（指内容表示数量）
+
 ## Language — 桌面视觉偏好
 
 **Window frame preference**：

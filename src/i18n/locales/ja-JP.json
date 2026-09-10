@@ -2105,7 +2105,6 @@
   },
   "setup": {
     "page": {
-      "loadingSetupState": "セットアップ状態を読み込み中...",
       "processing": "処理中...",
       "processingJoinSpace": {
         "title": "デバイスに接続中...",

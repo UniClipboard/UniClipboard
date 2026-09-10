@@ -74,6 +74,8 @@ When documentation conflicts with code, treat the code as the source of truth an
 
 **核心原则**：GUI 和 CLI 是 daemon 的纯客户端，不内嵌业务栈。所有业务逻辑在 daemon 内通过 `uc-bootstrap` 装配运行。
 
+启动期间的资料升级、进度访问和自动连接见[桌面启动与资料升级进度](architecture/startup-upgrade-progress.md)。
+
 ## Current State
 
 The codebase is already organized around a modular Rust workspace and hexagonal boundaries, but the migration is still ongoing in practice.

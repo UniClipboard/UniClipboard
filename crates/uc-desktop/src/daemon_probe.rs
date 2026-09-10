@@ -22,7 +22,7 @@ use uc_daemon_contract::probe::{
 use uc_daemon_process::contract::{
     terminate_local_daemon_pid, DaemonBootstrapError, TerminateDaemonError,
 };
-use uc_daemon_process::health_wait::{wait_for_daemon_health, wait_for_endpoint_absent};
+use uc_daemon_process::health_wait::wait_for_endpoint_absent;
 use uc_daemon_process::process_metadata::{
     read_pid_metadata, DaemonPidMetadata, DaemonProcessMode, DaemonSpawnOrigin,
 };
@@ -290,17 +290,31 @@ async fn spawn_external_and_wait_health(
 ) -> Result<(), DaemonBootstrapError> {
     // ADR-008 D3: tag the spawn as GUI-owned so its PID file records
     // `spawned_by = gui` — this (or another) GUI may stop it on full quit.
-    spawn_detached_daemon(DaemonSpawnOrigin::Gui, None).map_err(|error| {
-        DaemonBootstrapError::Spawn(
-            anyhow::Error::new(error).context("detached daemon spawn failed"),
-        )
-    })?;
-    ownership.set_external();
-    // This launch spawned the daemon — a genuine cold start (issue #1169).
-    launch_origin.mark_spawned();
+    if crate::startup::read_startup_status(client)
+        .await
+        .map_err(DaemonBootstrapError::Probe)?
+        .is_none()
+    {
+        spawn_detached_daemon(DaemonSpawnOrigin::Gui, None).map_err(|error| {
+            DaemonBootstrapError::Spawn(
+                anyhow::Error::new(error).context("detached daemon spawn failed"),
+            )
+        })?;
+        ownership.set_external();
+        // This launch spawned the daemon — a genuine cold start (issue #1169).
+        launch_origin.mark_spawned();
+    } else {
+        ownership.set_external();
+        launch_origin.mark_already_running();
+    }
 
-    let mut probe_fn = || async { probe_daemon_health(client, expected_package_version).await };
-    wait_for_daemon_health(&mut probe_fn, health_check_timeout, health_poll_interval).await
+    crate::startup::wait_for_ready(
+        client,
+        expected_package_version,
+        health_check_timeout,
+        health_poll_interval,
+    )
+    .await
 }
 
 /// 终止 PID 文件指向的不兼容 daemon——但**绝不**对 in-process daemon 动手。
@@ -584,6 +598,10 @@ pub async fn restart_local_daemon(
     expected_package_version: &str,
 ) -> Result<DaemonConnectionInfo, DaemonBootstrapError> {
     use uc_daemon_process::process_metadata::{verify_pid_identity, PidVerification};
+    static RESTART: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+    let _restart = RESTART.try_lock().map_err(|_| {
+        DaemonBootstrapError::Probe(anyhow::anyhow!("daemon restart already in progress"))
+    })?;
 
     let client =
         uc_daemon_client::build_local_http_client_with_timeout(PROBE_TIMEOUT).map_err(|e| {
@@ -592,6 +610,19 @@ pub async fn restart_local_daemon(
             )
         })?;
 
+    if let Some(status) = crate::startup::read_startup_status(&client)
+        .await
+        .map_err(DaemonBootstrapError::Probe)?
+    {
+        if !status.service_ready
+            && (!status.is_failed()
+                || (!status.service_failed && !status.progress.allowed_actions.retry))
+        {
+            return Err(DaemonBootstrapError::Probe(anyhow::anyhow!(
+                "startup cannot be restarted in its current state"
+            )));
+        }
+    }
     // ── 1. 读 PID 文件（可能不存在）──────────────────────────────
     // Retry-from-bootstrap-failure may run with NO daemon at all (the spawn
     // never succeeded, or the daemon crashed and cleared its PID file). A
@@ -672,8 +703,13 @@ pub async fn restart_local_daemon(
     })?;
 
     // ── 5. 等待新 daemon 就绪 ────────────────────────────────────
-    let mut probe_fn = || async { probe_daemon_health(&client, expected_package_version).await };
-    wait_for_daemon_health(&mut probe_fn, HEALTH_CHECK_TIMEOUT, HEALTH_POLL_INTERVAL).await?;
+    crate::startup::wait_for_ready(
+        &client,
+        expected_package_version,
+        HEALTH_CHECK_TIMEOUT,
+        HEALTH_POLL_INTERVAL,
+    )
+    .await?;
 
     // ── 6. 返回新连接信息 ────────────────────────────────────────
     let info = load_daemon_connection_info()?;

@@ -61,6 +61,7 @@ fn network_recovery_status_response(
 
 #[derive(Clone)]
 pub struct DaemonApiState {
+    pub startup_ready: Option<Arc<AtomicBool>>,
     pub auth_token: DaemonAuthToken,
     pub engine: Arc<Engine>,
     pub file_handles: Arc<dyn DaemonFileHandles>,
@@ -144,6 +145,7 @@ impl DaemonApiState {
         // both so a coordinator `request()`/`abort()` is observed by every gate.
         let quiescing = Arc::new(AtomicBool::new(false));
         Self {
+            startup_ready: None,
             auth_token,
             engine,
             file_handles,
@@ -751,6 +753,9 @@ pub async fn run_http_server(
     );
     uc_daemon_local::socket::write_daemon_conn_file(&conn)
         .context("failed to publish daemon connection file")?;
+    if let Some(ready) = &state.startup_ready {
+        ready.store(true, Ordering::Release);
+    }
     tracing::info!(
         base_url = %connection_info.base_url,
         ws_url = %connection_info.ws_url,

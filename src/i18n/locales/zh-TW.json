@@ -2104,7 +2104,6 @@
   },
   "setup": {
     "page": {
-      "loadingSetupState": "正在載入初始化狀態...",
       "processing": "正在處理...",
       "processingJoinSpace": {
         "title": "正在連接裝置…",

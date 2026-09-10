@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useReducer, useRef } from 'react'
+import { useCallback, useEffect, useReducer, useRef, useSyncExternalStore } from 'react'
 import { daemonClient } from '@/api/daemon/client'
 import { signalLifecycleReady } from '@/api/daemon/lifecycle'
 import { useEncryptionState } from '@/hooks/useDaemonEvents'
 import { appBootstrapReducer, initialAppBootstrapState } from '@/lib/app-bootstrap-state'
 import { DaemonBootstrapFailedError } from '@/lib/daemon-connection-info'
 import { shouldSignalDaemonLifecycleReady } from '@/lib/daemon-lifecycle-ready'
+import { getStartupSnapshot, subscribeStartup } from '@/lib/daemon-startup-progress'
 import { connectDaemonWs } from '@/lib/daemon-ws-bootstrap'
 import { commands } from '@/lib/ipc'
 import { reportError } from '@/observability/errors'
@@ -13,15 +14,19 @@ import {
   useLazyGetEncryptionSessionStatusQuery,
 } from '@/store/api'
 
-const LOADING_WATCHDOG_MS = 12_000
-
 export function useAppBootstrap(isSetupActive: boolean) {
   const [state, dispatch] = useReducer(appBootstrapReducer, initialAppBootstrapState)
   const bootstrapRetryingRef = useRef(false)
   const daemonLifecycleReadySignaledRef = useRef(false)
+  const subscribe = useCallback(
+    (listener: () => void) => (state.daemonBootstrapReady ? () => {} : subscribeStartup(listener)),
+    [state.daemonBootstrapReady]
+  )
+  const startupStatus = useSyncExternalStore(subscribe, getStartupSnapshot)
+  const serviceReady = startupStatus?.service_ready ?? false
 
   useEffect(() => {
-    if (isSetupActive) return
+    if (bootstrapRetryingRef.current) return
 
     let cancelled = false
     connectDaemonWs()
@@ -40,7 +45,7 @@ export function useAppBootstrap(isSetupActive: boolean) {
     return () => {
       cancelled = true
     }
-  }, [isSetupActive])
+  }, [serviceReady])
 
   const {
     data: encryptionData,
@@ -50,18 +55,6 @@ export function useAppBootstrap(isSetupActive: boolean) {
     skip: isSetupActive || !state.daemonBootstrapReady,
   })
   const [checkEncryption] = useLazyGetEncryptionSessionStatusQuery()
-
-  const isInitialLoading =
-    !isSetupActive &&
-    state.encryptionOverride === null &&
-    !state.bootEncryptionError &&
-    !state.bootstrapFailure &&
-    (encryptionLoading || !state.daemonBootstrapReady)
-  useEffect(() => {
-    if (!isInitialLoading) return
-    const id = setTimeout(() => dispatch({ type: 'loadingTimedOut' }), LOADING_WATCHDOG_MS)
-    return () => clearTimeout(id)
-  }, [isInitialLoading])
 
   useEncryptionState(
     () => dispatch({ type: 'encryptionReady' }),
@@ -76,9 +69,7 @@ export function useAppBootstrap(isSetupActive: boolean) {
   const resolvedEncryptionStatus = state.encryptionOverride ?? encryptionData ?? null
   const encryptionError = resolvedEncryptionStatus
     ? null
-    : (state.bootEncryptionError ??
-      encryptionQueryErrorMessage ??
-      (state.loadingTimedOut ? 'Timed out waiting for the background service.' : null))
+    : (state.bootEncryptionError ?? encryptionQueryErrorMessage)
 
   const retry = useCallback(() => {
     if (bootstrapRetryingRef.current) return
@@ -115,7 +106,16 @@ export function useAppBootstrap(isSetupActive: boolean) {
       if (cancelled || bootstrapRetryingRef.current) return
       try {
         const failure = await commands.getDaemonBootstrapFailure()
-        if (failure && !cancelled && !bootstrapRetryingRef.current) {
+        const active = getStartupSnapshot()
+        if (
+          failure &&
+          !cancelled &&
+          !bootstrapRetryingRef.current &&
+          (!active ||
+            active.service_failed ||
+            ['failed', 'interrupted'].includes(active.progress.state) ||
+            failure.kind === 'versionTooOld')
+        ) {
           dispatch({ type: 'bootstrapFailed', failure })
           reportError(new Error(`Daemon bootstrap failed: ${failure.kind}`), {
             kind: failure.kind,
@@ -162,6 +162,7 @@ export function useAppBootstrap(isSetupActive: boolean) {
 
   return {
     ...state,
+    startupStatus,
     encryptionLoading,
     encryptionError,
     resolvedEncryptionStatus,

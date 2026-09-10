@@ -6,3 +6,4 @@ pub const DAEMON_API_REVISION: &str =
 pub mod api;
 pub mod constants;
 pub mod probe;
+pub mod startup;

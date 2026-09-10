@@ -40,7 +40,7 @@ export type SetupCompletion =
     }
 
 export type SetupFlow =
-  /** Initial fetch in progress; setup gate stays active. */
+  /** Initial fetch in progress; the app startup screen owns this state. */
   | { kind: 'loading' }
   /** No space initialised yet — show the entry / initialise / redeem screens. */
   | { kind: 'entry' }

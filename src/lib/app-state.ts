@@ -1,8 +1,11 @@
 import type { EncryptionStatusView } from '@/lib/daemon-lifecycle-ready'
 import type { SetupFlow } from '@/store/setupRealtimeStore'
 
-export function isSetupGateActive(flow: SetupFlow, hydrated: boolean): boolean {
-  return !hydrated || flow.kind !== 'completed' || flow.completion !== null
+export type SetupGate = 'loading' | 'setup' | 'ready'
+
+export function resolveSetupGate(flow: SetupFlow, hydrated: boolean): SetupGate {
+  if (!hydrated || flow.kind === 'loading') return 'loading'
+  return flow.kind === 'completed' && flow.completion === null ? 'ready' : 'setup'
 }
 
 export function resolveEncryptionStatus(

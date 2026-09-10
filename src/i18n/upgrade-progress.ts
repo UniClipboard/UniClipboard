@@ -50,6 +50,195 @@ export const upgradeProgressZh = {
     interrupted: '上次升级已中断。重试后将检查已有结果，并重新处理未完成的部分。',
   },
 }
+export const upgradeProgressJa: typeof upgradeProgressZh = {
+  preparing: 'アプリを起動しています',
+  startupFailed: 'アプリを起動できませんでした',
+  startupReady: 'アプリの準備ができました',
+  startupCategory: '起動準備',
+  startingDescription: 'バックグラウンドサービスに接続しています。準備ができると自動的に開きます。',
+  category: 'ローカルデータのアップグレード',
+  title: 'データをアップグレードしています',
+  recovering: 'データのアップグレードを再開しています',
+  starting: 'データの更新が完了しました。アプリを準備しています',
+  ready: 'データの準備ができました',
+  failed: 'データのアップグレードが完了していません',
+  description: '履歴が多い場合は数分かかることがあります。完了すると自動的にアプリが開きます。',
+  readyDescription: 'データのアップグレードと検証が完了しました。',
+  progress: '現在の手順の進捗',
+  stepPercent: 'この手順：{{percent}}%',
+  finishingStep: 'この手順を完了しています',
+  processing: '処理中',
+  count: '{{processed}} / {{total}} {{unit}}',
+  unknown: '総数を確認中',
+  elapsed: '経過時間 {{time}}',
+  activity: '処理履歴',
+  stepDone: '完了',
+  stepStopped: '停止',
+  warningsUnknown: '前回の処理で発生した警告を確認しています',
+  warnings: '{{count}} 件のデータを保持していますが、現在は読み取れません',
+  retry: 'アップグレードを再試行',
+  export: '診断情報をエクスポート',
+  exportFailed: 'エクスポートに失敗しました。再試行してください。',
+  exportDone: '診断情報をエクスポートしました。',
+  steps: {
+    checking: 'ローカルデータを確認',
+    converting_contents: '履歴の内容を変換',
+    converting_large_contents: '大容量の内容を変換',
+    converting_related_records: '関連レコードを変換',
+    verifying: 'アップグレード結果を検証',
+    preparing: 'アプリを準備',
+  },
+  units: {
+    content_representations: '形式別データ',
+    large_contents: 'データブロック',
+    related_records: 'レコード',
+  },
+  errors: {
+    storage_full: 'ディスクの空き容量が不足しています。空き容量を確保してから再試行してください。',
+    permission_denied:
+      '必要なファイルにアクセスできません。アクセス権を確認してから再試行してください。',
+    storage_unavailable:
+      'ローカルストレージにアクセスできません。ディスクが利用可能か確認してください。',
+    protection_unavailable:
+      'データ保護情報を利用できません。既存のデータを保持し、診断情報をエクスポートしてください。別の端末から移したデータには、元の端末の保護情報が必要な場合があります。',
+    corrupt_data:
+      'データの検証に失敗しました。既存のデータを保持し、診断情報をエクスポートしてください。',
+    source_changed:
+      'アップグレード中に元のデータが変更されました。このデータを使用する他のアプリを閉じて再試行してください。',
+    already_running: '別のタスクがこのデータを処理しています。完了するまでお待ちください。',
+    startup_failed:
+      'アプリの起動が完了しませんでした。原因を調べるために診断情報をエクスポートできます。',
+    interrupted:
+      '前回のアップグレードは中断されました。再試行すると保存済みの結果を確認し、未完了の処理をやり直します。',
+  },
+}
+export const upgradeProgressPt: typeof upgradeProgressZh = {
+  preparing: 'Iniciando o aplicativo',
+  startupFailed: 'Não foi possível iniciar o aplicativo',
+  startupReady: 'O aplicativo está pronto',
+  startupCategory: 'Inicialização',
+  startingDescription:
+    'Conectando ao serviço em segundo plano. O aplicativo abrirá quando estiver pronto.',
+  category: 'Atualização dos dados locais',
+  title: 'Atualizando seus dados',
+  recovering: 'Retomando a atualização dos dados',
+  starting: 'Dados atualizados. Preparando o aplicativo',
+  ready: 'Seus dados estão prontos',
+  failed: 'Atualização dos dados incompleta',
+  description:
+    'Históricos maiores podem levar alguns minutos. O aplicativo abrirá automaticamente quando estiver pronto.',
+  readyDescription: 'Seus dados foram atualizados e verificados.',
+  progress: 'Progresso da etapa atual',
+  stepPercent: 'Esta etapa: {{percent}}%',
+  finishingStep: 'Concluindo esta etapa',
+  processing: 'Processando',
+  count: '{{processed}} / {{total}} {{unit}}',
+  unknown: 'total a confirmar',
+  elapsed: 'Tempo decorrido {{time}}',
+  activity: 'Atividade',
+  stepDone: 'Concluída',
+  stepStopped: 'Interrompida',
+  warningsUnknown: 'Verificando avisos da tentativa anterior',
+  warnings: '{{count}} itens preservados, mas indisponíveis para leitura no momento',
+  retry: 'Tentar atualizar novamente',
+  export: 'Exportar diagnóstico',
+  exportFailed: 'Falha ao exportar. Tente novamente.',
+  exportDone: 'Diagnóstico exportado.',
+  steps: {
+    checking: 'Verificando dados locais',
+    converting_contents: 'Convertendo conteúdo do histórico',
+    converting_large_contents: 'Convertendo conteúdo grande',
+    converting_related_records: 'Convertendo registros relacionados',
+    verifying: 'Verificando dados atualizados',
+    preparing: 'Preparando o aplicativo',
+  },
+  units: {
+    content_representations: 'representações',
+    large_contents: 'blocos de conteúdo',
+    related_records: 'registros',
+  },
+  errors: {
+    storage_full: 'Não há espaço suficiente no disco. Libere espaço e tente atualizar novamente.',
+    permission_denied:
+      'Não é possível acessar os arquivos necessários. Verifique as permissões antes de tentar novamente.',
+    storage_unavailable:
+      'O armazenamento local está indisponível. Verifique se o disco está acessível.',
+    protection_unavailable:
+      'As informações de proteção dos dados estão indisponíveis. Preserve os dados existentes e exporte o diagnóstico. Dados movidos de outro dispositivo podem precisar das informações de proteção originais.',
+    corrupt_data:
+      'A verificação dos dados falhou. Preserve os dados existentes e exporte o diagnóstico.',
+    source_changed:
+      'Os dados originais mudaram durante a atualização. Feche outros aplicativos que usam esses dados e tente novamente.',
+    already_running: 'Outra tarefa está processando esses dados. Aguarde a conclusão.',
+    startup_failed:
+      'O aplicativo não conseguiu concluir a inicialização. Exporte o diagnóstico para investigar.',
+    interrupted:
+      'A atualização anterior foi interrompida. Uma nova tentativa verificará os resultados salvos e repetirá o trabalho pendente.',
+  },
+}
+export const upgradeProgressRu: typeof upgradeProgressZh = {
+  preparing: 'Запуск приложения',
+  startupFailed: 'Не удалось запустить приложение',
+  startupReady: 'Приложение готово',
+  startupCategory: 'Подготовка к запуску',
+  startingDescription:
+    'Подключение к фоновой службе. Приложение откроется, когда всё будет готово.',
+  category: 'Обновление локальных данных',
+  title: 'Обновление ваших данных',
+  recovering: 'Возобновление обновления данных',
+  starting: 'Данные обновлены. Подготовка приложения',
+  ready: 'Ваши данные готовы',
+  failed: 'Обновление данных не завершено',
+  description:
+    'При большой истории обновление может занять несколько минут. После завершения приложение откроется автоматически.',
+  readyDescription: 'Ваши данные обновлены и проверены.',
+  progress: 'Ход текущего этапа',
+  stepPercent: 'Этот этап: {{percent}}%',
+  finishingStep: 'Завершение текущего этапа',
+  processing: 'Обработка',
+  count: '{{processed}} / {{total}} {{unit}}',
+  unknown: 'общее количество уточняется',
+  elapsed: 'Прошло {{time}}',
+  activity: 'Журнал обработки',
+  stepDone: 'Завершено',
+  stepStopped: 'Остановлено',
+  warningsUnknown: 'Проверка предупреждений предыдущей попытки',
+  warnings: 'Сохранены, но пока недоступны для чтения: {{count}}',
+  retry: 'Повторить обновление',
+  export: 'Экспорт диагностики',
+  exportFailed: 'Не удалось экспортировать. Повторите попытку.',
+  exportDone: 'Диагностика экспортирована.',
+  steps: {
+    checking: 'Проверка локальных данных',
+    converting_contents: 'Преобразование содержимого истории',
+    converting_large_contents: 'Преобразование крупных данных',
+    converting_related_records: 'Преобразование связанных записей',
+    verifying: 'Проверка обновлённых данных',
+    preparing: 'Подготовка приложения',
+  },
+  units: {
+    content_representations: 'представлений',
+    large_contents: 'блоков данных',
+    related_records: 'записей',
+  },
+  errors: {
+    storage_full: 'Недостаточно места на диске. Освободите место и повторите обновление.',
+    permission_denied:
+      'Нет доступа к необходимым файлам. Проверьте права доступа и повторите попытку.',
+    storage_unavailable: 'Локальное хранилище недоступно. Проверьте доступность диска.',
+    protection_unavailable:
+      'Данные защиты недоступны. Сохраните существующие данные и экспортируйте диагностику. Для данных с другого устройства могут потребоваться исходные данные защиты.',
+    corrupt_data:
+      'Проверка данных не пройдена. Сохраните существующие данные и экспортируйте диагностику.',
+    source_changed:
+      'Исходные данные изменились во время обновления. Закройте другие приложения, использующие эти данные, и повторите попытку.',
+    already_running: 'Другая задача обрабатывает эти данные. Дождитесь её завершения.',
+    startup_failed:
+      'Не удалось завершить запуск приложения. Экспортируйте диагностику для выяснения причины.',
+    interrupted:
+      'Предыдущее обновление было прервано. При повторной попытке сохранённые результаты будут проверены, а незавершённая работа выполнена заново.',
+  },
+}
 export const upgradeProgressEn = {
   preparing: 'Starting the app',
   startupFailed: 'The app could not start',

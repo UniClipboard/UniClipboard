@@ -13,10 +13,13 @@ use uc_bootstrap::{
 };
 use uc_daemon_local::crash_marker::{DaemonExitReport, DaemonRunMarker};
 use uc_daemon_local::process_metadata::{DaemonPidManager, DaemonProcessMode};
-use uc_engine::{ActiveClipboardChanged, Engine, HostFileHandle, Operation, OperationResult};
+use uc_engine::{
+    ActiveClipboardChanged, Engine, HostFileHandle, Operation, OperationResult, StartupProgress,
+};
 use uc_observability::analytics::AnalyticsPort;
 use uc_webserver::api::auth::load_or_create_auth_token_from_conn;
 use uc_webserver::api::server::{run_http_server, DaemonApiState, DaemonFileHandles};
+use uc_webserver::api::startup::StartupServer;
 use uc_webserver::api::types::{DaemonResidency, DaemonWsEvent};
 use uc_webserver::security::{cleanup_rate_limiter_task, SecurityState};
 
@@ -93,9 +96,42 @@ async fn run_async(run_mode: DaemonRunMode) -> anyhow::Result<()> {
     .map_err(|error| anyhow::anyhow!("{error}"))?;
     uc_daemon_local::handover::clear(process_paths.app_data_root());
 
-    let (engine, events) = Engine::start(engine_config, host_capabilities)
-        .await
-        .map_err(anyhow::Error::new)?;
+    let pid_manager = DaemonPidManager::new(process_paths.daemon_pid());
+    let _pid_file_guard = DaemonPidFileGuard::activate(pid_manager, run_mode.process_mode())?;
+    let token =
+        load_or_create_auth_token_from_conn(&uc_daemon_local::socket::resolve_daemon_conn_path()?)?;
+    let (input, progress) = StartupProgress::channel();
+    let startup_server = StartupServer::bind(
+        progress,
+        token,
+        uc_daemon_local::socket::resolve_startup_conn_path()?,
+    )
+    .await?;
+    let mut starting = tokio::spawn(Engine::start_with_progress(
+        engine_config,
+        host_capabilities,
+        input,
+    ));
+    let started = tokio::select! {
+        result = &mut starting => result.map_err(anyhow::Error::new).and_then(|result| result.map_err(anyhow::Error::new)),
+        signal = wait_for_shutdown_signal() => {
+            signal?;
+            starting.abort();
+            let _ = starting.await;
+            startup_server.shutdown().await?;
+            return Ok(());
+        }
+    };
+    let (engine, events) = match started {
+        Ok(result) => result,
+        Err(error) => {
+            tracing::error!("engine startup failed; startup status remains available");
+            // Keep the terminal snapshot readable until an explicit retry or full quit.
+            wait_for_shutdown_signal().await?;
+            startup_server.shutdown().await?;
+            return Err(error);
+        }
+    };
     let engine = Arc::new(engine);
 
     initialize_analytics_context(
@@ -115,6 +151,7 @@ async fn run_async(run_mode: DaemonRunMode) -> anyhow::Result<()> {
         file_handles,
         process_paths,
         analytics.sink(),
+        startup_server.ready_flag(),
     )
     .await;
     let shutdown = engine
@@ -122,6 +159,12 @@ async fn run_async(run_mode: DaemonRunMode) -> anyhow::Result<()> {
         .await
         .map_err(anyhow::Error::new);
 
+    if result.is_err() {
+        startup_server.mark_service_failed();
+        tracing::error!("daemon service startup failed; startup status remains available");
+        wait_for_shutdown_signal().await?;
+    }
+    startup_server.shutdown().await?;
     result.and(shutdown)
 }
 
@@ -132,13 +175,12 @@ async fn run_daemon_surfaces(
     file_handles: Arc<dyn DaemonFileHandles>,
     process_paths: DesktopHostProcessPaths,
     analytics_sink: Arc<dyn AnalyticsPort>,
+    startup_ready: Arc<std::sync::atomic::AtomicBool>,
 ) -> anyhow::Result<()> {
     // ADR-011: the bearer token lives inside `daemon.conn` (load-or-create);
     // the HTTP server publishes the full connection file once it has bound.
     let conn_path = uc_daemon_local::socket::resolve_daemon_conn_path()?;
     let auth_token = load_or_create_auth_token_from_conn(&conn_path)?;
-    let pid_manager = DaemonPidManager::new(process_paths.daemon_pid());
-    let _pid_file_guard = DaemonPidFileGuard::activate(pid_manager, run_mode.process_mode())?;
     let pid = std::process::id();
     let run_marker = DaemonRunMarker::new(process_paths.app_data_root().to_path_buf());
     log_previous_crash(run_marker.begin_run(pid)?);
@@ -153,6 +195,7 @@ async fn run_daemon_surfaces(
     )
     .with_residency(run_mode.into())
     .with_analytics(analytics_sink);
+    api_state.startup_ready = Some(startup_ready);
     let (event_tx, _) = broadcast::channel::<DaemonWsEvent>(64);
     api_state.event_tx = event_tx.clone();
 
@@ -235,6 +278,9 @@ async fn run_daemon_surfaces(
         event_forwarder,
     )
     .await;
+    if http_completed {
+        anyhow::bail!("daemon HTTP service exited unexpectedly");
+    }
     run_marker.mark_clean_exit()?;
     Ok(())
 }

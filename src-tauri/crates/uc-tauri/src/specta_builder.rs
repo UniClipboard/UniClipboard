@@ -54,6 +54,7 @@ pub fn build() -> Builder<tauri::Wry> {
         crate::commands::startup::get_daemon_connection_info,
         crate::commands::startup::get_daemon_session,
         crate::commands::startup::get_daemon_bootstrap_failure,
+        crate::commands::startup::get_daemon_startup_status,
         crate::commands::startup::take_pending_navigation,
         // ── restart ──────────────────────────────────────────────────────────
         crate::commands::restart::restart_app,

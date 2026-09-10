@@ -10508,7 +10508,7 @@ dependencies = [
 [[package]]
 name = "uc-application"
 version = "1.1.0-rc.14"
-source = "git+https://github.com/UniClipboard/Engine.git?rev=2a298a2c4fab4719e57b0ac53fe1080eaab08abb#2a298a2c4fab4719e57b0ac53fe1080eaab08abb"
+source = "git+https://github.com/UniClipboard/Engine.git?rev=e01893df011df58b7ccf1b8ff66d7835a64e3d39#e01893df011df58b7ccf1b8ff66d7835a64e3d39"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -10600,7 +10600,7 @@ dependencies = [
 [[package]]
 name = "uc-content-hash"
 version = "1.1.0-rc.14"
-source = "git+https://github.com/UniClipboard/Engine.git?rev=2a298a2c4fab4719e57b0ac53fe1080eaab08abb#2a298a2c4fab4719e57b0ac53fe1080eaab08abb"
+source = "git+https://github.com/UniClipboard/Engine.git?rev=e01893df011df58b7ccf1b8ff66d7835a64e3d39#e01893df011df58b7ccf1b8ff66d7835a64e3d39"
 dependencies = [
  "blake3",
  "hex",
@@ -10609,7 +10609,7 @@ dependencies = [
 [[package]]
 name = "uc-core"
 version = "1.1.0-rc.14"
-source = "git+https://github.com/UniClipboard/Engine.git?rev=2a298a2c4fab4719e57b0ac53fe1080eaab08abb#2a298a2c4fab4719e57b0ac53fe1080eaab08abb"
+source = "git+https://github.com/UniClipboard/Engine.git?rev=e01893df011df58b7ccf1b8ff66d7835a64e3d39#e01893df011df58b7ccf1b8ff66d7835a64e3d39"
 dependencies = [
  "anyhow",
  "arrayvec",
@@ -10686,6 +10686,8 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_with",
+ "specta",
+ "specta-typescript",
  "utoipa",
 ]
 
@@ -10758,7 +10760,7 @@ dependencies = [
 [[package]]
 name = "uc-engine"
 version = "1.1.0-rc.14"
-source = "git+https://github.com/UniClipboard/Engine.git?rev=2a298a2c4fab4719e57b0ac53fe1080eaab08abb#2a298a2c4fab4719e57b0ac53fe1080eaab08abb"
+source = "git+https://github.com/UniClipboard/Engine.git?rev=e01893df011df58b7ccf1b8ff66d7835a64e3d39#e01893df011df58b7ccf1b8ff66d7835a64e3d39"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -10777,13 +10779,14 @@ dependencies = [
  "uc-observability-contract",
  "uc-observability-runtime",
  "url",
+ "uuid",
  "zeroize",
 ]
 
 [[package]]
 name = "uc-infra"
 version = "1.1.0-rc.14"
-source = "git+https://github.com/UniClipboard/Engine.git?rev=2a298a2c4fab4719e57b0ac53fe1080eaab08abb#2a298a2c4fab4719e57b0ac53fe1080eaab08abb"
+source = "git+https://github.com/UniClipboard/Engine.git?rev=e01893df011df58b7ccf1b8ff66d7835a64e3d39#e01893df011df58b7ccf1b8ff66d7835a64e3d39"
 dependencies = [
  "anyhow",
  "argon2",
@@ -10850,7 +10853,7 @@ dependencies = [
 [[package]]
 name = "uc-mobile-lan"
 version = "1.1.0-rc.14"
-source = "git+https://github.com/UniClipboard/Engine.git?rev=2a298a2c4fab4719e57b0ac53fe1080eaab08abb#2a298a2c4fab4719e57b0ac53fe1080eaab08abb"
+source = "git+https://github.com/UniClipboard/Engine.git?rev=e01893df011df58b7ccf1b8ff66d7835a64e3d39#e01893df011df58b7ccf1b8ff66d7835a64e3d39"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -10872,7 +10875,7 @@ dependencies = [
 [[package]]
 name = "uc-mobile-proto"
 version = "1.1.0-rc.14"
-source = "git+https://github.com/UniClipboard/Engine.git?rev=2a298a2c4fab4719e57b0ac53fe1080eaab08abb#2a298a2c4fab4719e57b0ac53fe1080eaab08abb"
+source = "git+https://github.com/UniClipboard/Engine.git?rev=e01893df011df58b7ccf1b8ff66d7835a64e3d39#e01893df011df58b7ccf1b8ff66d7835a64e3d39"
 dependencies = [
  "base64 0.22.1",
  "chrono",
@@ -10907,7 +10910,7 @@ dependencies = [
 [[package]]
 name = "uc-observability-contract"
 version = "1.1.0-rc.14"
-source = "git+https://github.com/UniClipboard/Engine.git?rev=2a298a2c4fab4719e57b0ac53fe1080eaab08abb#2a298a2c4fab4719e57b0ac53fe1080eaab08abb"
+source = "git+https://github.com/UniClipboard/Engine.git?rev=e01893df011df58b7ccf1b8ff66d7835a64e3d39#e01893df011df58b7ccf1b8ff66d7835a64e3d39"
 dependencies = [
  "anyhow",
  "chrono",
@@ -10924,7 +10927,7 @@ dependencies = [
 [[package]]
 name = "uc-observability-runtime"
 version = "1.1.0-rc.14"
-source = "git+https://github.com/UniClipboard/Engine.git?rev=2a298a2c4fab4719e57b0ac53fe1080eaab08abb#2a298a2c4fab4719e57b0ac53fe1080eaab08abb"
+source = "git+https://github.com/UniClipboard/Engine.git?rev=e01893df011df58b7ccf1b8ff66d7835a64e3d39#e01893df011df58b7ccf1b8ff66d7835a64e3d39"
 dependencies = [
  "chrono",
  "jni 0.22.4",

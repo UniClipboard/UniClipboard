@@ -172,6 +172,11 @@ pub struct DaemonBootstrapStatus {
 }
 
 impl DaemonBootstrapStatus {
+    pub fn clear(&self) {
+        if let Ok(mut guard) = self.failure.lock() {
+            *guard = None;
+        }
+    }
     /// Record a terminal bootstrap failure. Overwrites any previous value.
     pub fn record_failure(&self, failure: DaemonBootstrapFailure) {
         if let Ok(mut guard) = self.failure.lock() {
@@ -183,6 +188,50 @@ impl DaemonBootstrapStatus {
     pub fn get(&self) -> Option<DaemonBootstrapFailure> {
         self.failure.lock().ok().and_then(|guard| guard.clone())
     }
+}
+
+/// Read authenticated startup state without requiring a working business API.
+#[tauri::command]
+#[specta::specta]
+pub async fn get_daemon_startup_status(
+    connection: tauri::State<'_, DaemonConnectionState>,
+    bootstrap: tauri::State<'_, DaemonBootstrapStatus>,
+    _trace: Option<TraceMetadata>,
+) -> Result<Option<uc_daemon_contract::startup::DaemonStartupStatus>, crate::commands::CommandError>
+{
+    let span = info_span!(
+        "command.startup.get_daemon_startup_status",
+        trace_id = tracing::field::Empty,
+        trace_ts = tracing::field::Empty
+    );
+    record_trace_fields(&span, &_trace);
+    async move {
+        let client = uc_daemon_client::build_local_http_client_with_timeout(
+            uc_desktop::daemon_probe::PROBE_TIMEOUT,
+        )
+        .map_err(crate::commands::CommandError::internal)?;
+        let status = uc_desktop::startup::read_startup_status(&client)
+            .await
+            .map_err(crate::commands::CommandError::internal)?;
+        if status.as_ref().is_some_and(|status| status.service_ready) && connection.get().is_none()
+        {
+            if matches!(
+                uc_desktop::daemon_probe::probe_daemon_health(&client, env!("CARGO_PKG_VERSION"))
+                    .await
+                    .map_err(crate::commands::CommandError::internal)?,
+                uc_daemon_contract::probe::ProbeOutcome::Compatible(_)
+            ) {
+                connection.set(
+                    uc_desktop::daemon_probe::load_daemon_connection_info()
+                        .map_err(crate::commands::CommandError::internal)?,
+                );
+                bootstrap.clear();
+            }
+        }
+        Ok(status)
+    }
+    .instrument(span)
+    .await
 }
 
 /// Read the recorded daemon-bootstrap failure, if the native bootstrap gave up.

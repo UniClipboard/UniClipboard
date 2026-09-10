@@ -60,10 +60,21 @@ pub async fn wait_for_daemon_connection(
     timeout: Duration,
     poll_interval: Duration,
 ) -> bool {
-    let deadline = tokio::time::Instant::now() + timeout;
+    let mut deadline = tokio::time::Instant::now() + timeout;
+    let client =
+        uc_daemon_client::build_local_http_client_with_timeout(crate::daemon_probe::PROBE_TIMEOUT)
+            .ok();
     loop {
         if state.get().is_some() {
             return true;
+        }
+        if let Some(client) = &client {
+            if let Ok(Some(status)) = super::progress::read_startup_status(client).await {
+                if status.is_failed() {
+                    return false;
+                }
+                deadline = tokio::time::Instant::now() + timeout;
+            }
         }
         if tokio::time::Instant::now() >= deadline {
             return false;

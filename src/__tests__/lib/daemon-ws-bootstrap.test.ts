@@ -55,6 +55,7 @@ vi.mock('@/lib/ipc', () => ({
     // each round; these tests exercise the success/auth paths, so a constant
     // "no failure" keeps the poll on its happy path.
     getDaemonBootstrapFailure: async () => null,
+    getDaemonStartupStatus: async () => null,
   },
 }))
 

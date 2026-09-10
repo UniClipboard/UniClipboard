@@ -40,6 +40,28 @@ Mac 上相关单元、升级集成与进程中断检查通过；全 workspace、
 - 未做物理断电、磁盘填满测试；不把进程退出模拟等同于断电测试。
 - 测试包构建使用现有手动流程，不新增自动检查任务。
 
+## 完整用户资料的 Windows 实测（后续补充）
+
+2026-09-09，使用上述测试包，在用户提供的 Windows 真机创建独立 profile
+`dev-original-userdata-20260909`，传入最初的完整 userdata 压缩包。
+解压后 1,378 个文件逐一与压缩包内容校验一致，未替换加密资料或升级状态。
+
+首次直接通过 SSH 启动后台程序，Windows 返回 `ERROR_NO_SUCH_LOGON_SESSION`，
+系统凭据访问失败。随后使用临时计划任务，在已登录的桌面会话实际启动
+`UniClipboard.exe`，确认日志为 `Using system secure storage`，排除了 SSH 会话限制。
+
+桌面会话的后台程序仍于 `2026-09-09T15:07:18.981Z` 失败：
+`upgrade_action=prepare_source`、`error_kind=security`。失败发生在打开旧数据库之前，
+没有完成升级或历史读取，不能将之前的数据库拆分通过视为完整用户资料升级通过。
+
+原资料中的受保护空间标识依赖系统保存的 profile admission key，完整 userdata
+压缩包不包含原用户 Windows 凭据；独立 profile 也不会共享原 profile 的系统凭据。
+这把随机密钥不是用户密码派生的历史解锁密钥。因此当前副本缺少继续原样验证所需的
+原系统密钥。没有删除受保护空间标识或升级记录来绕过此限制。
+
+测试期间桌面程序运行在独立 profile，测试结束后关闭该测试进程并移除临时计划任务。
+完整副本与本次结果保留在测试机，真实用户资料不进入仓库。
+
 ## 测试包
 
 [构建 34364343056](https://github.com/UniClipboard/UniClipboard/actions/runs/34364343056) 成功。

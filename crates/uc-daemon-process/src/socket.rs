@@ -90,6 +90,12 @@ pub fn resolve_daemon_conn_path() -> Result<PathBuf> {
     Ok(root.join(DAEMON_CONN_FILE_NAME))
 }
 
+/// Discovery for the authenticated startup-only listener, never a business health endpoint.
+pub fn resolve_startup_conn_path() -> Result<PathBuf> {
+    let root = app_data_root().context("the system data-local directory is unavailable")?;
+    Ok(root.join("daemon-startup.conn"))
+}
+
 /// Read the daemon connection-info file, returning `Ok(None)` when it does not
 /// exist yet (daemon not running).
 ///

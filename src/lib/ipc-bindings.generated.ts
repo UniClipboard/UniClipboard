@@ -112,6 +112,16 @@ export const commands = {
 	observedVersion: string | null,
 	expectedVersion: string | null,
 } | null, CommandError>(__TAURI_INVOKE("get_daemon_bootstrap_failure", { trace })),
+	/**  Read authenticated startup state without requiring a working business API. */
+	getDaemonStartupStatus: (trace: {
+	trace_id: string,
+	timestamp: number,
+} | null) => typedError<{
+	package_version: string,
+	service_ready: boolean,
+	service_failed: boolean,
+	progress: StartupSnapshotDto,
+} | null, CommandError>(__TAURI_INVOKE("get_daemon_startup_status", { trace })),
 	/**
 	 *  Consume the pending deep-link route recorded by native UI surfaces.
 	 * 
@@ -651,6 +661,13 @@ export type DaemonSessionPayload = {
 	refreshAtSecs: number,
 };
 
+export type DaemonStartupStatus = {
+	package_version: string,
+	service_ready: boolean,
+	service_failed: boolean,
+	progress: StartupSnapshotDto,
+};
+
 /**
  *  暴露给 webview 的设备和应用元数据，用于补齐前端 Sentry scope。
  * 
@@ -818,6 +835,51 @@ export type SamplePermit = {
 };
 
 export type ShortcutKeyDto = string | string[];
+
+export type StartupActionsDto = {
+	retry: boolean,
+	export_diagnostics: boolean,
+};
+
+export type StartupFailureDto = {
+	reason: StartupFailureReasonDto,
+	retryable: boolean,
+};
+
+export type StartupFailureReasonDto = "storage_full" | "permission_denied" | "storage_unavailable" | "protection_unavailable" | "corrupt_data" | "source_changed" | "already_running" | "startup_failed";
+
+export type StartupSnapshotDto = {
+	attempt_id: string,
+	sequence: number,
+	state: StartupStateDto,
+	elapsed_ms: number,
+	upgrade: StartupUpgradeDto | null,
+	failure: StartupFailureDto | null,
+	allowed_actions: StartupActionsDto,
+};
+
+export type StartupStateDto = "preparing" | "upgrading" | "starting_services" | "ready" | "failed" | "interrupted";
+
+export type StartupStepDto = "checking" | "converting_contents" | "converting_large_contents" | "converting_related_records" | "verifying" | "preparing";
+
+export type StartupStepProgressDto = {
+	step: StartupStepDto,
+	processed: number,
+	total: number | null,
+	unit: StartupUnitDto | null,
+	warning_count: number | null,
+	completed: boolean,
+};
+
+export type StartupUnitDto = "content_representations" | "large_contents" | "related_records";
+
+export type StartupUpgradeDto = {
+	required: boolean,
+	recovering: boolean,
+	completed: boolean,
+	current_step: StartupStepDto | null,
+	steps: StartupStepProgressDto[],
+};
 
 export type SystemMotion = "reduce" | "allow" | "unknown";
 

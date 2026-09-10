@@ -12,7 +12,7 @@
 
 use std::time::Duration;
 
-use tauri::Emitter;
+use tauri::{Emitter, Manager};
 use tracing::{info, info_span, warn, Instrument};
 use uc_daemon_client::DaemonConnectionState;
 
@@ -150,6 +150,8 @@ pub async fn restart_daemon(
             })?;
 
         connection_state.set(new_info);
+        app.state::<crate::commands::startup::DaemonBootstrapStatus>()
+            .clear();
         // The static JWT cache holds a token minted by the OLD daemon —
         // the new daemon has a fresh JWT secret and will reject it.
         uc_daemon_client::http::clear_session_token_cache().await;

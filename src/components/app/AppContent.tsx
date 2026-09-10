@@ -1,11 +1,14 @@
 import type { ReactNode } from 'react'
+import { exportStartupLogs } from '@/api/startup-support'
 import { Toaster } from '@/components/ui/toaster'
 import { useAppBootstrap } from '@/hooks/useAppBootstrap'
 import { useVisualEffectsSampling } from '@/hooks/useVisualEffectsSampling'
+import { startupViewSnapshot } from '@/lib/startup-progress'
 import SetupPage from '@/pages/SetupPage'
 import UnlockPage from '@/pages/UnlockPage'
 import { AppStatusScreen } from './AppStatusScreen'
 import { AuthenticatedRoutes } from './AuthenticatedRoutes'
+import { UpgradeProgressScreen } from './UpgradeProgressScreen'
 
 type AppContentProps = {
   fullTitleBar: ReactNode
@@ -27,6 +30,25 @@ export function AppContent({
       !bootstrap.encryptionLoading &&
       Boolean(bootstrap.resolvedEncryptionStatus?.session_ready)
   )
+
+  if (
+    bootstrap.startupStatus &&
+    !bootstrap.daemonBootstrapReady &&
+    bootstrap.bootstrapFailure?.kind !== 'versionTooOld'
+  ) {
+    return (
+      <div className="flex h-full w-full flex-col">
+        {fullTitleBar}
+        <UpgradeProgressScreen
+          snapshot={startupViewSnapshot(bootstrap.startupStatus, bootstrap.retrying)}
+          onRetry={bootstrap.retry}
+          onExport={async () => {
+            return (await exportStartupLogs()) !== null
+          }}
+        />
+      </div>
+    )
+  }
 
   if (bootstrap.bootstrapFailure || bootstrap.retrying) {
     return (

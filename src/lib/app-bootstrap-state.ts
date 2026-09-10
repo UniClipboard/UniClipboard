@@ -6,7 +6,6 @@ export type AppBootstrapState = {
   bootEncryptionError: string | null
   bootstrapFailure: DaemonBootstrapFailure | null
   daemonBootstrapReady: boolean
-  loadingTimedOut: boolean
   retrying: boolean
 }
 
@@ -19,14 +18,12 @@ type AppBootstrapAction =
   | { type: 'encryptionReady' }
   | { type: 'encryptionNotReady' }
   | { type: 'encryptionStatusSet'; status: EncryptionStatusView }
-  | { type: 'loadingTimedOut' }
 
 export const initialAppBootstrapState: AppBootstrapState = {
   encryptionOverride: null,
   bootEncryptionError: null,
   bootstrapFailure: null,
   daemonBootstrapReady: false,
-  loadingTimedOut: false,
   retrying: false,
 }
 
@@ -53,7 +50,6 @@ export function appBootstrapReducer(
         ...state,
         retrying: true,
         daemonBootstrapReady: false,
-        loadingTimedOut: false,
       }
     case 'retryFinished':
       return { ...state, retrying: false }
@@ -79,7 +75,5 @@ export function appBootstrapReducer(
       }
     case 'encryptionStatusSet':
       return { ...state, encryptionOverride: action.status }
-    case 'loadingTimedOut':
-      return { ...state, loadingTimedOut: true }
   }
 }

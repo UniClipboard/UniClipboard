@@ -484,6 +484,7 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
                 {
                     Ok(connection_info) => {
                         daemon_connection_state_for_setup.set(connection_info);
+                        daemon_bootstrap_status_for_setup.clear();
                         // ADR-008 P3-3 (B2'-3): daemon 现在永远是外部独立进程
                         // (probe→connect 或 detached spawn)。GUI 不再 owns 它的
                         // 生命周期 —— 崩溃恢复由外部负责;退出语义见 D3 三态
@@ -815,18 +816,18 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
                 // ADR-008 P3-3 B2': the GUI is a pure client, so it can no
                 // longer reach an in-process `AppFacade` — the whole sequence
                 // is framework-agnostic RPC orchestration, so it lives in
-                // `uc_desktop::startup_actions` (shared by any future non-Tauri
+                // `uc_desktop::startup` (shared by any future non-Tauri
                 // shell); only the window/tray mechanics below are Tauri-specific.
                 let daemon_conn_for_startup_actions = daemon_connection_state.clone();
                 let app_handle_for_lightweight_start = app_handle_for_startup.clone();
                 let launch_origin_for_startup = daemon_launch_origin.clone();
                 let keep_gui_for_quick_panel = show_quick_panel_on_start;
                 tauri::async_runtime::spawn(async move {
-                    let outcome = uc_desktop::startup_actions::run_cold_launch_actions(
+                    let outcome = uc_desktop::startup::run_cold_launch_actions(
                         daemon_conn_for_startup_actions,
                         launch_origin_for_startup,
-                        uc_desktop::startup_actions::DEFAULT_READY_TIMEOUT,
-                        uc_desktop::startup_actions::DEFAULT_READY_POLL,
+                        uc_desktop::startup::DEFAULT_READY_TIMEOUT,
+                        uc_desktop::startup::DEFAULT_READY_POLL,
                     )
                     .await;
 
@@ -837,23 +838,23 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
                     // only running; a later click that finds the daemon already
                     // running reopens the window instead.
                     match outcome.map(|o| o.window_action) {
-                        Some(uc_desktop::startup_actions::StartupWindowAction::EnterBackgroundOnly)
+                        Some(uc_desktop::startup::StartupWindowAction::EnterBackgroundOnly)
                             if !keep_gui_for_quick_panel => {
                             info!(
                                 "[Startup] Lightweight cold start: daemon ready, entering Lightweight Mode (GUI exits, daemon stays running)"
                             );
                             crate::lightweight::enter_lightweight_mode(&app_handle_for_lightweight_start);
                         }
-                        Some(uc_desktop::startup_actions::StartupWindowAction::EnterBackgroundOnly) => {
+                        Some(uc_desktop::startup::StartupWindowAction::EnterBackgroundOnly) => {
                             info!("Quick panel launch keeps GUI active instead of entering Lightweight Mode");
                         }
-                        Some(uc_desktop::startup_actions::StartupWindowAction::ShowWindow) => {
+                        Some(uc_desktop::startup::StartupWindowAction::ShowWindow) => {
                             info!(
                                 "[Startup] Lightweight reopen: daemon already running, showing the main window"
                             );
                             crate::main_window::show_main_window(&app_handle_for_lightweight_start);
                         }
-                        Some(uc_desktop::startup_actions::StartupWindowAction::None) | None => {}
+                        Some(uc_desktop::startup::StartupWindowAction::None) | None => {}
                     }
                 });
 

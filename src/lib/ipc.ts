@@ -85,6 +85,7 @@ type Wrap<F> = F extends (...args: infer A) => infer R
  * error directly instead of returning a discriminated union.
  */
 export type TypedCommands = { [K in keyof typeof raw]: Wrap<(typeof raw)[K]> }
+export type { DaemonStartupStatus } from './ipc-bindings.generated'
 
 /**
  * Inspect a result envelope to decide whether tauri-specta wrapped it for

@@ -235,31 +235,40 @@ async fn test_members_json_output() {
 #[ignore]
 async fn test_search_rebuild() {
     let (_daemon, cli) = setup_initialized_node("search-rebuild").await;
-    let previous = wait_for_search_rebuild(&cli, None).await;
+    for _ in 0..2 {
+        // An empty index can be ready without ever having been rebuilt.
+        let previous = wait_for_search_status(&cli, |_| true).await;
+        let previous_completed = previous["last_rebuild_completed_at_ms"].as_i64();
 
-    let output = cli.run_capture(&["--json", "search", "rebuild"]);
-    assert!(
-        output.success(),
-        "search rebuild failed (exit={}): {}",
-        output.exit_code,
-        output.stderr
-    );
-    let result: serde_json::Value = serde_json::from_str(output.stdout.trim()).unwrap();
-    assert_eq!(result["accepted"], true);
-    wait_for_search_rebuild(&cli, Some(previous)).await;
+        let output = cli.run_capture(&["--json", "search", "rebuild"]);
+        assert!(
+            output.success(),
+            "search rebuild failed (exit={}): {}",
+            output.exit_code,
+            output.stderr
+        );
+        let result: serde_json::Value = serde_json::from_str(output.stdout.trim()).unwrap();
+        assert_eq!(result["accepted"], true);
+        wait_for_search_status(&cli, |state| {
+            state["last_rebuild_completed_at_ms"]
+                .as_i64()
+                .is_some_and(|completed| previous_completed.is_none_or(|before| completed > before))
+        })
+        .await;
+    }
 }
 
-async fn wait_for_search_rebuild(cli: &TestCli, completed_after: Option<i64>) -> i64 {
+async fn wait_for_search_status(
+    cli: &TestCli,
+    is_complete: impl Fn(&serde_json::Value) -> bool,
+) -> serde_json::Value {
     let deadline = tokio::time::Instant::now() + Duration::from_secs(15);
     loop {
         let output = cli.run_capture(&["--json", "search", "status"]);
         assert!(output.success(), "search status failed: {output:?}");
         let state: serde_json::Value = serde_json::from_str(output.stdout.trim()).unwrap();
-        if let Some(completed) = state["last_rebuild_completed_at_ms"].as_i64() {
-            if state["state"] == "ready" && completed_after.is_none_or(|before| completed > before)
-            {
-                return completed;
-            }
+        if state["state"] == "ready" && is_complete(&state) {
+            return state;
         }
         assert!(
             tokio::time::Instant::now() < deadline,

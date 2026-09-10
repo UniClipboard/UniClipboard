@@ -18,7 +18,6 @@ export interface WindowFrameMode {
   canChooseSystemFrame: boolean
   hasCustomTitleBar: boolean
   hasCustomWindowControls: boolean
-  hasRoundedWindow: boolean
   searchInTitleBar: boolean
 }
 
@@ -100,12 +99,6 @@ export const resolveWindowFrameMode = (
     canChooseSystemFrame,
     hasCustomTitleBar,
     hasCustomWindowControls: usesSelectableCustomFrame,
-    hasRoundedWindow: platform.isWindows && usesSelectableCustomFrame,
     searchInTitleBar: platform.isMac || usesSelectableCustomFrame,
   }
-}
-
-export const applyWindowFrameDocumentState = (hasRoundedWindow: boolean): void => {
-  if (typeof document === 'undefined') return
-  document.documentElement.dataset.ucCustomWindowFrame = String(hasRoundedWindow)
 }

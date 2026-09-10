@@ -60,6 +60,29 @@ pub async fn wait_for_ready(
     .await
 }
 
+fn is_transient_discovery_error(error: &anyhow::Error) -> bool {
+    error.chain().any(|source| {
+        if let Some(error) = source.downcast_ref::<reqwest::Error>() {
+            return error.is_connect() || error.is_timeout() || error.is_body();
+        }
+        source
+            .downcast_ref::<std::io::Error>()
+            .is_some_and(|error| {
+                matches!(
+                    error.kind(),
+                    std::io::ErrorKind::NotFound
+                        | std::io::ErrorKind::Interrupted
+                        | std::io::ErrorKind::WouldBlock
+                        | std::io::ErrorKind::TimedOut
+                        | std::io::ErrorKind::ConnectionRefused
+                        | std::io::ErrorKind::ConnectionReset
+                        | std::io::ErrorKind::ConnectionAborted
+                        | std::io::ErrorKind::BrokenPipe
+                )
+            })
+    })
+}
+
 async fn wait_for_ready_with<P, PF, S, SF>(
     mut probe: P,
     mut startup: S,
@@ -89,7 +112,18 @@ where
             }
             ProbeOutcome::Absent => {}
         }
-        if let Some(status) = startup().await.map_err(DaemonBootstrapError::Probe)? {
+        let status = match startup().await {
+            Ok(status) => status,
+            Err(error) if is_transient_discovery_error(&error) => {
+                tracing::debug!(
+                    error_kind = "startup_discovery_unavailable",
+                    "startup discovery temporarily unavailable; continuing readiness probes"
+                );
+                None
+            }
+            Err(error) => return Err(DaemonBootstrapError::Probe(error)),
+        };
+        if let Some(status) = status {
             if running_daemon_is_strictly_newer(Some(&status.package_version), version) {
                 return Err(DaemonBootstrapError::RefusedNewerDaemon {
                     observed: status.package_version,
@@ -179,6 +213,67 @@ mod tests {
             result,
             Err(uc_daemon_process::contract::DaemonBootstrapError::StartupTimeout { .. })
         ));
+    }
+    #[tokio::test(start_paused = true)]
+    async fn transient_discovery_errors_reach_timeout_instead_of_probe_failure() {
+        let result = wait_for_ready_with(
+            || async { Ok(ProbeOutcome::Absent) },
+            || async { Err(std::io::Error::from(std::io::ErrorKind::ConnectionReset).into()) },
+            "1.0.0",
+            Duration::from_secs(45),
+            Duration::from_secs(1),
+        )
+        .await;
+        assert!(matches!(
+            result,
+            Err(uc_daemon_process::contract::DaemonBootstrapError::StartupTimeout { .. })
+        ));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn invalid_discovery_is_not_ignored() {
+        let started = tokio::time::Instant::now();
+        let result = wait_for_ready_with(
+            || async { Ok(ProbeOutcome::Absent) },
+            || async { Err(anyhow::anyhow!("startup address is not loopback")) },
+            "1.0.0",
+            Duration::from_secs(45),
+            Duration::from_secs(1),
+        )
+        .await;
+        assert!(matches!(
+            result,
+            Err(uc_daemon_process::contract::DaemonBootstrapError::Probe(_))
+        ));
+        assert_eq!(started.elapsed(), Duration::ZERO);
+    }
+    #[tokio::test(start_paused = true)]
+    async fn business_readiness_wins_after_transient_discovery_failure() {
+        let started = tokio::time::Instant::now();
+        let result = wait_for_ready_with(
+            || async {
+                if started.elapsed() < Duration::from_secs(1) {
+                    Ok(ProbeOutcome::Absent)
+                } else {
+                    Ok(ProbeOutcome::Compatible(
+                        uc_daemon_contract::api::types::HealthResponse {
+                            status: "ok".into(),
+                            degraded_reason: None,
+                            package_version: "1.0.0".into(),
+                            api_revision: String::new(),
+                            residency: uc_daemon_contract::api::types::DaemonResidency::Standalone,
+                        },
+                    ))
+                }
+            },
+            || async { Err(std::io::Error::from(std::io::ErrorKind::Interrupted).into()) },
+            "1.0.0",
+            Duration::from_secs(45),
+            Duration::from_secs(1),
+        )
+        .await;
+        assert!(result.is_ok());
+        assert_eq!(started.elapsed(), Duration::from_secs(1));
     }
     #[tokio::test(start_paused = true)]
     async fn interrupted_startup_is_terminal_without_waiting() {

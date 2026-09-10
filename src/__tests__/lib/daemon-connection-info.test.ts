@@ -70,6 +70,25 @@ describe('waitForDaemonConnectionInfo()', () => {
     await expect(promise).resolves.toEqual(TEST_PAYLOAD)
   })
 
+  it('continues after an auxiliary startup query rejects', async () => {
+    mockGetDaemonConnectionInfo.mockResolvedValueOnce(null).mockResolvedValueOnce(TEST_PAYLOAD)
+    mockGetDaemonStartupStatus.mockRejectedValueOnce(new Error('temporary IPC failure'))
+    const promise = waitForDaemonConnectionInfo()
+    const expectation = expect(promise).resolves.toEqual(TEST_PAYLOAD)
+    await vi.advanceTimersByTimeAsync(500)
+    await expectation
+  })
+
+  it('still times out when every auxiliary startup query rejects', async () => {
+    mockGetDaemonConnectionInfo.mockResolvedValue(null)
+    mockGetDaemonStartupStatus.mockRejectedValue(new Error('temporary IPC failure'))
+    const expectation = expect(waitForDaemonConnectionInfo()).rejects.toBeInstanceOf(
+      DaemonConnectionInfoTimeoutError
+    )
+    await vi.advanceTimersByTimeAsync(TIMEOUT_MS + 500)
+    await expectation
+  })
+
   it('waits through a 147-second upgrade then connects without a retry', async () => {
     mockGetDaemonConnectionInfo.mockResolvedValue(null)
     mockGetDaemonStartupStatus.mockResolvedValue({

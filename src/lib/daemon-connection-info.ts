@@ -98,7 +98,8 @@ async function pollForDaemonConnectionInfo(): Promise<DaemonConnectionPayload> {
     // there is no point polling until the timeout. This surfaces the typed
     // failure within one poll interval instead of waiting out the ceiling, and
     // lets the UI distinguish "update the app" from "restart".
-    const startup = await refreshStartupSnapshot()
+    // Startup discovery is auxiliary; its errors must not terminate connection polling.
+    const startup = await refreshStartupSnapshot().catch(() => null)
     const active = startup && !startupFailed(startup)
     if (active) deadline = Date.now() + CONNECTION_INFO_TIMEOUT_MS
     const failure = await commands.getDaemonBootstrapFailure()

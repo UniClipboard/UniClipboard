@@ -78,7 +78,7 @@ interface ClipboardInboundNoticePayload {
 
 interface FileTransferStatusEvent {
   transferId: string
-  entryId: string
+  entryId?: string | null
   attemptId?: string | null
   status: string
   reason?: string | null
@@ -340,11 +340,12 @@ function reduceRemoteNewContent(
 
 function reduceTransferStatus(payload: FileTransferStatusEvent): ClipboardEventReducerAction[] {
   if (payload.attemptId) return []
-  const actions: ClipboardEventReducerAction[] = [
-    linkTransferToEntry({ transferId: payload.transferId, entryId: payload.entryId }),
-  ]
+  const actions: ClipboardEventReducerAction[] = []
+  if (payload.entryId) {
+    actions.push(linkTransferToEntry({ transferId: payload.transferId, entryId: payload.entryId }))
+  }
 
-  if (isValidTransferStatus(payload.status)) {
+  if (payload.entryId && isValidTransferStatus(payload.status)) {
     actions.push(
       setEntryTransferStatus({
         entryId: payload.entryId,
@@ -362,8 +363,8 @@ function reduceTransferStatus(payload: FileTransferStatusEvent): ClipboardEventR
       })
     )
   } else if (payload.status === 'cancelled') {
+    if (payload.entryId) actions.push(removePendingEntry(payload.entryId))
     actions.push(
-      removePendingEntry(payload.entryId),
       markTransferCancelled({
         transferId: payload.transferId,
         reason: normalizeCancelReason(payload.reason),

@@ -24,10 +24,11 @@
 use std::sync::Arc;
 
 use tauri::{AppHandle, Manager};
-use tracing::warn;
+use tracing::{warn, Instrument};
 use uc_daemon_client::{DaemonClipboardClient, DaemonConnectionState};
 
 use super::emitter::ActivityHudEmitter;
+use super::state::CancelResult;
 
 /// HUD 用户动作。所有方法都是 fire-and-forget:动作内部应自行处理
 /// 乐观 UI 状态、异步执行、错误日志。调用方不等待结果。
@@ -74,6 +75,7 @@ impl ActivityHudActions for DefaultActivityHudActions {
         let entry_id = entry_id.to_string();
         let attempt_id = attempt_id.map(str::to_owned);
         let app_handle = self.app_handle.clone();
+        let emitter = self.emitter.clone();
         tauri::async_runtime::spawn(async move {
             let connection_state = app_handle.state::<DaemonConnectionState>().inner().clone();
             let client = match DaemonClipboardClient::new(connection_state) {
@@ -86,6 +88,7 @@ impl ActivityHudActions for DefaultActivityHudActions {
                         transfer_id = %transfer_id,
                         "activity_hud: failed to build local daemon clipboard client"
                     );
+                    emitter.resolve_cancel(&entry_id, attempt_id.as_deref(), &transfer_id, CancelResult::NotCancelled);
                     return;
                 }
             };
@@ -95,23 +98,62 @@ impl ActivityHudActions for DefaultActivityHudActions {
                 Some(attempt_id) => client
                     .cancel_entry_receive(&entry_id, attempt_id)
                     .await
-                    .map(|_| ()),
+                    .map(|response| response.outcome),
                 None => client
                     .cancel_transfer(&transfer_id, "local_user")
                     .await
-                    .map(|_| ()),
+                    .map(|response| response.outcome),
             };
-            if let Err(err) = result {
-                warn!(
-                    error = %err,
-                    transfer_id = %transfer_id,
-                    "activity_hud: cancel_inbound_transfer failed"
-                );
-            }
-        });
+            let resolution = match result {
+                Ok(outcome) => cancel_result(&outcome),
+                Err(err) => {
+                    warn!(error = %err, transfer_id = %transfer_id, "activity_hud: cancel request failed");
+                    CancelResult::NotCancelled
+                }
+            };
+            emitter.resolve_cancel(&entry_id, attempt_id.as_deref(), &transfer_id, resolution);
+        }.in_current_span());
     }
 
     fn dismiss(&self, entry_id: &str, attempt_id: Option<&str>, transfer_id: &str) {
         self.emitter.dismiss(entry_id, attempt_id, transfer_id);
+    }
+}
+
+fn cancel_result(outcome: &str) -> CancelResult {
+    match outcome {
+        "cancelled" => CancelResult::Cancelled,
+        "not_inflight" | "not_receiving" | "already_terminal" | "superseded" => {
+            CancelResult::Inactive
+        }
+        "too_late" => CancelResult::NotCancelled,
+        _ => {
+            warn!(
+                error_kind = "unknown_cancel_outcome",
+                "activity_hud: unexpected cancellation response"
+            );
+            CancelResult::NotCancelled
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn daemon_cancel_outcomes_are_resolved() {
+        assert_eq!(cancel_result("cancelled"), CancelResult::Cancelled);
+        for outcome in [
+            "not_inflight",
+            "not_receiving",
+            "already_terminal",
+            "superseded",
+        ] {
+            assert_eq!(cancel_result(outcome), CancelResult::Inactive);
+        }
+        for outcome in ["too_late", "unexpected"] {
+            assert_eq!(cancel_result(outcome), CancelResult::NotCancelled);
+        }
     }
 }

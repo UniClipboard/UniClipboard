@@ -1277,7 +1277,7 @@ fn map_daemon_ws_event(event: DaemonWsEvent) -> Option<RealtimeEvent> {
             #[serde(rename_all = "camelCase")]
             struct StatusChangedPayload {
                 transfer_id: String,
-                entry_id: String,
+                entry_id: Option<String>,
                 #[serde(default)]
                 attempt_id: Option<String>,
                 status: String,
@@ -1293,7 +1293,7 @@ fn map_daemon_ws_event(event: DaemonWsEvent) -> Option<RealtimeEvent> {
                         session_id = session_id.as_deref().unwrap_or(""),
                         payload_type = "StatusChangedPayload",
                         transfer_id = %payload.transfer_id,
-                        entry_id = %payload.entry_id,
+                        entry_id = ?payload.entry_id,
                         status = %payload.status,
                         "decoded websocket payload"
                     );
@@ -1426,5 +1426,27 @@ fn lock_recover<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
     match mutex.lock() {
         Ok(guard) => guard,
         Err(poisoned) => poisoned.into_inner(),
+    }
+}
+
+#[cfg(test)]
+mod provisional_status_tests {
+    use super::*;
+
+    #[test]
+    fn terminal_transfer_without_entry_is_delivered() {
+        for status in ["completed", "failed", "cancelled"] {
+            let event = map_daemon_ws_event(DaemonWsEvent {
+                topic: ws_topic::FILE_TRANSFER.into(),
+                event_type: ws_event::FILE_TRANSFER_STATUS_CHANGED.into(),
+                session_id: None,
+                ts: 0,
+                payload: serde_json::json!({ "transferId": "mobile-lan:duplicate", "entryId": null, "status": status }),
+            });
+            assert!(
+                matches!(event, Some(RealtimeEvent::FileTransferStatusChanged(_))),
+                "unowned {status} event must reach the HUD"
+            );
+        }
     }
 }

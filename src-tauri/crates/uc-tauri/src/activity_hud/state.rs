@@ -43,6 +43,14 @@ pub enum RowState {
     CancelPending,
 }
 
+/// The daemon's response to a user cancellation request.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CancelResult {
+    Cancelled,
+    Inactive,
+    NotCancelled,
+}
+
 impl RowState {
     /// 终态:行最终会被 sweep 走,不应再被 progress 事件更新。
     pub fn is_terminal(&self) -> bool {
@@ -419,6 +427,36 @@ impl ActivityHudState {
         }
         row.state = RowState::CancelPending;
         row.state_entered_at_ms = now_ms;
+        true
+    }
+
+    /// Resolve only the pending request's row; late replies cannot change a terminal row.
+    pub fn resolve_cancel(
+        &mut self,
+        entry_id: &str,
+        attempt_id: Option<&str>,
+        transfer_id: &str,
+        result: CancelResult,
+    ) -> bool {
+        let key = row_key(entry_id, attempt_id, transfer_id);
+        let Some(row) = self.rows.get_mut(&key) else {
+            return false;
+        };
+        if row.state != RowState::CancelPending {
+            return false;
+        }
+        match result {
+            CancelResult::Inactive => {
+                return self.dismiss_scoped(entry_id, attempt_id, transfer_id)
+            }
+            CancelResult::Cancelled => {
+                row.state = RowState::Cancelled {
+                    reason: Some("local_user".into()),
+                }
+            }
+            CancelResult::NotCancelled => row.state = RowState::Receiving,
+        }
+        row.state_entered_at_ms = self.clock.now_ms();
         true
     }
 

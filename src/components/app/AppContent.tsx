@@ -57,7 +57,7 @@ export function AppContent({
   useMainWindowPresentation(showFailure || !showStartup || needsAttention)
   if (showFailure) {
     return (
-      <div className="flex h-full w-full flex-col">
+      <div className="flex h-full w-full flex-col bg-background">
         {fullTitleBar}
         <AppStatusScreen
           detail={
@@ -74,7 +74,7 @@ export function AppContent({
 
   if (showStartup) {
     return (
-      <div className="flex h-full w-full flex-col">
+      <div className="flex h-full w-full flex-col bg-background">
         {fullTitleBar}
         <StartupProgressScreen
           snapshot={

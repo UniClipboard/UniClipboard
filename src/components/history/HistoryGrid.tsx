@@ -2,8 +2,11 @@ import { Loader2, Search } from 'lucide-react'
 import React from 'react'
 import { useTranslation } from 'react-i18next'
 import { Virtuoso, type StateSnapshot, type VirtuosoHandle } from 'react-virtuoso'
+import { HistoryScroller, HistoryList } from '@/components/history/history-scroll-components'
 import HistoryGridRow from '@/components/history/HistoryGridRow'
 import type { DisplayClipboardItem } from '@/lib/clipboard-entry'
+
+const historyScrollComponents = { Scroller: HistoryScroller, List: HistoryList }
 
 interface HistoryGridProps {
   items: DisplayClipboardItem[]
@@ -60,7 +63,7 @@ const HistoryGrid: React.FC<HistoryGridProps> = ({
   const { t } = useTranslation()
 
   return (
-    <div className="flex-1 min-h-0 overflow-y-auto">
+    <div className="flex-1 min-h-0 overflow-hidden">
       {searchLoading && items.length === 0 ? (
         <div className="flex flex-col items-center justify-center h-full text-muted-foreground gap-3 pb-10">
           <Loader2 className="size-5 text-muted-foreground/40 animate-spin" />
@@ -96,6 +99,7 @@ const HistoryGrid: React.FC<HistoryGridProps> = ({
       ) : (
         <Virtuoso
           ref={listRef}
+          components={historyScrollComponents}
           data={items}
           style={{ height: '100%' }}
           className="flex-1 min-h-0"

@@ -1,7 +1,7 @@
 import { Moon, Pause, Play, RotateCcw, Sun } from 'lucide-react'
 import { useEffect, useReducer } from 'react'
 import { useTranslation } from 'react-i18next'
-import { UpgradeProgressScreen } from '@/components/app/UpgradeProgressScreen'
+import { StartupProgressScreen } from '@/components/app/StartupProgressScreen'
 import {
   makeUpgradePreview,
   previewScenarios,
@@ -154,7 +154,7 @@ export function UpgradePreview() {
           {state.dark ? <Sun size={16} /> : <Moon size={16} />}
         </button>
       </nav>
-      <UpgradeProgressScreen
+      <StartupProgressScreen
         key={state.attempt}
         snapshot={snapshot}
         onRetry={() => dispatch({ type: 'reset' })}

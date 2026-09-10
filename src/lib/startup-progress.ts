@@ -7,8 +7,35 @@ import type {
 export type StartupSnapshot = StartupSnapshotDto
 export type StepProgress = StartupStepProgressDto
 
+export function startupPresentation(snapshot: StartupSnapshot) {
+  const required = snapshot.upgrade?.required === true
+  const failed = snapshot.state === 'failed' || snapshot.state === 'interrupted'
+  const ready = snapshot.state === 'ready'
+  let title = 'preparing'
+  if (failed) title = required ? 'failed' : 'startupFailed'
+  else if (ready) title = required ? 'ready' : 'startupReady'
+  else if (required && snapshot.state === 'starting_services') title = 'starting'
+  else if (required && snapshot.state === 'upgrading')
+    title = snapshot.upgrade?.recovering ? 'recovering' : 'title'
+  return {
+    required,
+    failed,
+    ready,
+    title,
+    showProgress: required && !failed && !ready,
+    showActivity: required && Boolean(snapshot.upgrade?.steps.length),
+  }
+}
+
 export function stepPercentage(step: StepProgress | undefined): number | null {
-  if (!step || step.total === null || step.total <= 0) return null
+  if (
+    !step ||
+    step.total === null ||
+    step.total <= 0 ||
+    step.completed ||
+    step.processed >= step.total
+  )
+    return null
   return Math.min(100, Math.max(0, Math.floor((step.processed / step.total) * 100)))
 }
 

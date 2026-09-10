@@ -25,6 +25,7 @@ use uc_engine::StartupProgress;
 
 #[derive(Clone)]
 struct StartupApi {
+    started_at: std::time::Instant,
     progress: StartupProgress,
     token: DaemonAuthToken,
     ready: Arc<AtomicBool>,
@@ -40,7 +41,20 @@ async fn snapshot(State(state): State<StartupApi>, headers: HeaderMap) -> Respon
         return StatusCode::UNAUTHORIZED.into_response();
     }
     // Serialize the public Engine contract only; schema drift fails closed and is tested.
-    let progress = serde_json::to_value(state.progress.snapshot()).and_then(serde_json::from_value);
+    let mut current = state.progress.snapshot();
+    if !state.ready.load(Ordering::Acquire)
+        && !state.failed.load(Ordering::Acquire)
+        && !matches!(
+            current.state,
+            uc_engine::StartupState::Failed | uc_engine::StartupState::Interrupted
+        )
+    {
+        // Progress events are sparse. A newly attached window needs a current clock sample.
+        current.elapsed_ms = current
+            .elapsed_ms
+            .max(state.started_at.elapsed().as_millis() as u64);
+    }
+    let progress = serde_json::to_value(current).and_then(serde_json::from_value);
     let Ok(progress) = progress else {
         return StatusCode::INTERNAL_SERVER_ERROR.into_response();
     };
@@ -72,6 +86,7 @@ impl StartupServer {
         token: DaemonAuthToken,
         path: PathBuf,
     ) -> anyhow::Result<Self> {
+        let started_at = std::time::Instant::now();
         let listener = tokio::net::TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).await?;
         let addr = listener.local_addr()?;
         let ready = Arc::new(AtomicBool::new(false));
@@ -80,6 +95,7 @@ impl StartupServer {
             .route("/startup", get(snapshot))
             .fallback(|| async { StatusCode::SERVICE_UNAVAILABLE })
             .with_state(StartupApi {
+                started_at,
                 progress,
                 token: token.clone(),
                 ready: ready.clone(),

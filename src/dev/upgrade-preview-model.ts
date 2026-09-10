@@ -2,8 +2,11 @@ import type { StartupSnapshot, StepProgress } from '@/lib/startup-progress'
 
 export const previewScenarios = [
   'upgrading',
+  'cold-start',
   'recovering',
   'unknown',
+  'finishing',
+  'verifying',
   'failed',
   'protection',
   'interrupted',
@@ -15,10 +18,15 @@ export type PreviewScenario = (typeof previewScenarios)[number]
 export function makeUpgradePreview(scenario: PreviewScenario, seconds: number): StartupSnapshot {
   const finished = scenario === 'starting' || scenario === 'ready'
   const current: StepProgress = {
-    step: 'converting_contents',
-    processed: Math.min(4098, Math.floor((seconds / 40) * 4098)),
-    total: scenario === 'unknown' ? null : 4098,
-    unit: 'content_representations',
+    step: scenario === 'verifying' ? 'verifying' : 'converting_contents',
+    processed:
+      scenario === 'verifying'
+        ? 0
+        : scenario === 'finishing'
+          ? 4098
+          : Math.min(4098, Math.floor((seconds / 40) * 4098)),
+    total: scenario === 'unknown' || scenario === 'verifying' ? null : 4098,
+    unit: scenario === 'verifying' ? null : 'content_representations',
     warning_count: scenario === 'recovering' ? null : 0,
     completed: finished,
   }
@@ -34,7 +42,7 @@ export function makeUpgradePreview(scenario: PreviewScenario, seconds: number): 
       ? 'interrupted'
       : scenario === 'ready'
         ? 'ready'
-        : scenario === 'starting'
+        : scenario === 'starting' || scenario === 'cold-start'
           ? 'starting_services'
           : 'upgrading'
   return {
@@ -43,7 +51,7 @@ export function makeUpgradePreview(scenario: PreviewScenario, seconds: number): 
     state,
     elapsed_ms: seconds * 1000,
     upgrade: {
-      required: true,
+      required: scenario !== 'cold-start',
       recovering: scenario === 'recovering',
       completed: finished,
       current_step: finished ? null : current.step,

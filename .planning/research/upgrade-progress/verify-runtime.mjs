@@ -30,6 +30,7 @@ for (const phase of ['upgrade', 'restart']) {
   child.on('error', error => { throw error })
   try {
     const seen = new Set()
+    const startedAt = performance.now()
     let ready = false
     let early = false
     for (let i = 0; i < 6000; i++) {
@@ -41,6 +42,7 @@ for (const phase of ['upgrade', 'restart']) {
         const response = await fetch(url, { headers: { Authorization: `Bearer ${conn.token}` } })
         assert.equal(response.status, 200)
         const status = await response.json()
+        if (phase === 'restart') assert.notEqual(status.progress.upgrade?.required, true)
         seen.add(status.progress.state)
         if (!status.service_ready) early = true
         if (status.progress.state === 'failed' || status.service_failed) throw new Error(`Startup failed; inspect ${work}`)
@@ -66,7 +68,7 @@ for (const phase of ['upgrade', 'restart']) {
       await pause(10)
     }
     assert.equal(ready, true)
-    results.push({ phase, statusBeforeBusinessReady: early, states: [...seen], businessHealthy: ready, historyEntries: expected.entries.length })
+    results.push({ phase, statusBeforeBusinessReady: early, states: [...seen], businessHealthy: ready, historyEntries: expected.entries.length, startupMs: Math.round(performance.now() - startedAt) })
   } finally {
     child.kill('SIGTERM')
     for (let i = 0; i < 300 && child.exitCode === null && child.signalCode === null; i++) await pause(100)

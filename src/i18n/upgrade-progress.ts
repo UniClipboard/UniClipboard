@@ -1,5 +1,7 @@
 export const upgradeProgressZh = {
   preparing: '正在启动',
+  startupFailed: '应用未能启动',
+  startupReady: '应用已准备好',
   startupCategory: '启动准备',
   startingDescription: '正在连接后台服务，就绪后将自动进入应用。',
   category: '本地资料升级',
@@ -11,6 +13,8 @@ export const upgradeProgressZh = {
   description: '历史记录较多时，升级可能需要几分钟。完成后将自动进入应用。',
   readyDescription: '资料升级与检查已完成。',
   progress: '当前步骤进度',
+  stepPercent: '本步骤 {{percent}}%',
+  finishingStep: '正在完成本步骤',
   processing: '处理中',
   count: '{{processed}} / {{total}} {{unit}}',
   unknown: '总量待确认',
@@ -48,6 +52,8 @@ export const upgradeProgressZh = {
 }
 export const upgradeProgressEn = {
   preparing: 'Starting the app',
+  startupFailed: 'The app could not start',
+  startupReady: 'The app is ready',
   startupCategory: 'Starting up',
   startingDescription: 'Connecting to the background service. The app will open when ready.',
   category: 'Local data upgrade',
@@ -60,6 +66,8 @@ export const upgradeProgressEn = {
     'Larger histories may take a few minutes. The app will open automatically when ready.',
   readyDescription: 'Your data has been upgraded and verified.',
   progress: 'Current step progress',
+  stepPercent: 'This step: {{percent}}%',
+  finishingStep: 'Finishing this step',
   processing: 'Processing',
   count: '{{processed}} / {{total}} {{unit}}',
   unknown: 'total pending',

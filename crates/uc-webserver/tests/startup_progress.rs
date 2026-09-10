@@ -28,6 +28,22 @@ async fn startup_is_authenticated_available_before_engine_and_retains_interrupti
         .unwrap();
     assert_eq!(state["progress"]["state"], "preparing");
     assert_eq!(state["service_ready"], false);
+    let first_elapsed = state["progress"]["elapsed_ms"].as_u64().unwrap();
+    tokio::time::sleep(std::time::Duration::from_millis(1100)).await;
+    let refreshed: serde_json::Value = client
+        .get(&url)
+        .bearer_auth(token.as_str())
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(
+        refreshed["progress"]["sequence"],
+        state["progress"]["sequence"]
+    );
+    assert!(refreshed["progress"]["elapsed_ms"].as_u64().unwrap() >= first_elapsed + 1000);
     assert_eq!(
         client
             .get(format!("http://127.0.0.1:{}/health", conn.port))

@@ -8,7 +8,7 @@ import SetupPage from '@/pages/SetupPage'
 import UnlockPage from '@/pages/UnlockPage'
 import { AppStatusScreen } from './AppStatusScreen'
 import { AuthenticatedRoutes } from './AuthenticatedRoutes'
-import { UpgradeProgressScreen } from './UpgradeProgressScreen'
+import { StartupProgressScreen } from './StartupProgressScreen'
 
 type AppContentProps = {
   fullTitleBar: ReactNode
@@ -39,7 +39,7 @@ export function AppContent({
     return (
       <div className="flex h-full w-full flex-col">
         {fullTitleBar}
-        <UpgradeProgressScreen
+        <StartupProgressScreen
           snapshot={startupViewSnapshot(bootstrap.startupStatus, bootstrap.retrying)}
           onRetry={bootstrap.retry}
           onExport={async () => {

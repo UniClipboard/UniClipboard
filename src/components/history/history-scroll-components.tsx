@@ -16,5 +16,5 @@ export function HistoryScroller({ ref, children, style, ...props }: ScrollerProp
 
 // Recompute the thumb when virtual list padding or content size changes.
 export function HistoryList(props: ListProps) {
-  return <ScrollArea.Content {...props} />
+  return <ScrollArea.Content {...props} style={{ ...props.style, width: '100%', minWidth: 0 }} />
 }

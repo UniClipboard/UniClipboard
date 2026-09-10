@@ -3,6 +3,7 @@ pub const PANEL_HEIGHT: f64 = 420.;
 pub const WINDOW_GAP: f64 = 8.;
 pub const POINTER_DEPTH: f64 = 8.;
 pub const POINTER_HALF_HEIGHT: f64 = 7.;
+pub const PREVIEW_CORNER_RADIUS: f64 = 12.;
 pub const MIN_PREVIEW_HEIGHT: f64 = 96.;
 pub const MAX_PREVIEW_HEIGHT: f64 = 480.;
 const SCREEN_INSET: f64 = 8.;
@@ -55,7 +56,31 @@ pub fn preview_placement(anchor: PreviewAnchor, measured_height: f64) -> Preview
     let maximum = (MAX_PREVIEW_HEIGHT * scale).min(available_height);
     let minimum = (MIN_PREVIEW_HEIGHT * scale).min(maximum);
     let height = measured_height.clamp(minimum, maximum);
-    let width = ((PANEL_WIDTH + POINTER_DEPTH) * scale).min(anchor.screen.width);
+    preview_placement_for_size(anchor, PANEL_WIDTH * scale, height)
+}
+
+pub fn preview_capacity(anchor: PreviewAnchor) -> (f64, f64) {
+    let clearance = (WINDOW_GAP + POINTER_DEPTH) * anchor.scale;
+    let left = anchor.history.x - anchor.screen.x - clearance;
+    let right = anchor.screen.right() - anchor.history.right() - clearance;
+    let inset = (SCREEN_INSET * anchor.scale).min(anchor.screen.height / 4.);
+    (
+        left.max(right).max(1.),
+        (anchor.screen.height - 2. * inset).max(1.),
+    )
+}
+
+pub fn preview_placement_for_size(
+    anchor: PreviewAnchor,
+    body_width: f64,
+    body_height: f64,
+) -> PreviewPlacement {
+    let scale = anchor.scale;
+    let inset = (SCREEN_INSET * scale).min(anchor.screen.height / 4.);
+    let height = body_height
+        .max(1.)
+        .min((anchor.screen.height - 2. * inset).max(1.));
+    let width = (body_width + POINTER_DEPTH * scale).min(anchor.screen.width);
     let right = anchor.history.right() + WINDOW_GAP * scale;
     let (side, x) = if right + width <= anchor.screen.right() {
         (PreviewSide::Right, right)

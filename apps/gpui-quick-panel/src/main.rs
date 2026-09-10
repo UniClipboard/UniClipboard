@@ -1,6 +1,7 @@
 mod appearance;
 mod backend;
 mod filters;
+mod image_geometry;
 mod panel;
 mod platform;
 mod selection;
@@ -70,6 +71,12 @@ fn main() -> anyhow::Result<()> {
         .with_assets(gpui_component_assets::Assets)
         .run(move |cx| {
             gpui_component::init(cx);
+            cx.bind_keys([
+                gpui::KeyBinding::new("cmd-c", gpui_component::input::Copy, Some("QuickPanel")),
+                gpui::KeyBinding::new("ctrl-c", gpui_component::input::Copy, Some("QuickPanel")),
+                gpui::KeyBinding::new("tab", panel::NextSuggestion, Some("QuickPanel")),
+                gpui::KeyBinding::new("shift-tab", panel::PreviousSuggestion, Some("QuickPanel")),
+            ]);
             if cx
                 .text_system()
                 .add_fonts(vec![

@@ -1,0 +1,56 @@
+{
+  "schemaVersion": 1,
+  "general": {
+    "autoStart": false,
+    "autoCheckUpdate": false,
+    "theme": "system",
+    "themeColor": "zinc",
+    "language": "zh-CN",
+    "deviceName": null,
+    "telemetryEnabled": false,
+    "usageAnalyticsEnabled": false
+  },
+  "sync": {
+    "syncEnabled": false,
+    "autoSyncEnabled": false,
+    "syncFrequency": "realtime",
+    "contentTypes": {
+      "text": true,
+      "image": true,
+      "link": true,
+      "file": true,
+      "codeSnippet": true,
+      "richText": true
+    },
+    "syncOnRestore": false
+  },
+  "retentionPolicy": {
+    "enabled": false,
+    "rules": [],
+    "skipPinned": true,
+    "evaluation": "anyMatch"
+  },
+  "security": {
+    "encryptionEnabled": true,
+    "passphraseConfigured": true,
+    "autoUnlockEnabled": false
+  },
+  "pairing": {
+    "stepTimeout": 30,
+    "userVerificationTimeout": 60,
+    "sessionTimeout": 120,
+    "maxRetries": 3,
+    "protocolVersion": "1"
+  },
+  "keyboardShortcuts": {},
+  "fileSync": {
+    "fileSyncEnabled": false,
+    "smallFileThreshold": 1024,
+    "maxFileSize": 2048,
+    "fileCacheQuotaPerDevice": 4096,
+    "fileRetentionHours": 24,
+    "fileAutoCleanup": true
+  },
+  "network": { "allowRelayFallback": false },
+  "quickPanel": { "enabled": true, "position": "center", "doubleTapModifier": "disabled" }
+}

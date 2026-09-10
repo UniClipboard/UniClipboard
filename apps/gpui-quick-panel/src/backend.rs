@@ -41,27 +41,69 @@ pub async fn search_filtered(
     filters: crate::filters::Filters,
 ) -> Result<SearchQueryResultDto, SearchFailure> {
     let operation = async {
-        context()
+        let client = context()
             .await
             .map_err(SearchFailure::Unavailable)?
-            .search_client()
-            .query(filters.request())
+            .search_client();
+        let mut request = filters.request();
+        let mut result = client
+            .query(request.clone())
             .await
-            .map_err(|error| {
-                if error
-                    .downcast_ref::<uc_daemon_client::DaemonRequestError>()
-                    .and_then(|e| e.status())
-                    .is_some_and(|s| s.as_u16() == 423)
-                {
-                    SearchFailure::Locked
-                } else {
-                    SearchFailure::Failed
+            .map_err(search_failure)?;
+        if filters.tags.len() < 2 {
+            return Ok(result);
+        }
+
+        // The daemon combines tags with OR. Scan its ordered pages to compute an exact
+        // intersection, retaining only the panel's first page. The outer timeout and
+        // request cancellation also cover every subsequent page.
+        let mut items = Vec::new();
+        let mut total = 0_u32;
+        loop {
+            let page_len = result.items.len() as u32;
+            for item in result.items.drain(..) {
+                if filters.tags.iter().all(|tag| item.tags.contains(tag)) {
+                    total += 1;
+                    if items.len() < request.limit as usize {
+                        items.push(item);
+                    }
                 }
-            })
+            }
+            if !result.has_more {
+                break;
+            }
+            if page_len == 0 {
+                return Err(SearchFailure::Failed);
+            }
+            request.offset = request
+                .offset
+                .checked_add(page_len)
+                .ok_or(SearchFailure::Failed)?;
+            result = client
+                .query(request.clone())
+                .await
+                .map_err(search_failure)?;
+        }
+        result.has_more = total > items.len() as u32;
+        result.total = total;
+        result.items = items;
+        Ok(result)
     };
     tokio::time::timeout(Duration::from_secs(8), operation)
         .await
         .map_err(|_| SearchFailure::Timeout)?
+}
+
+fn search_failure(error: anyhow::Error) -> SearchFailure {
+    if error
+        .downcast_ref::<uc_daemon_client::DaemonRequestError>()
+        .and_then(|e| e.status())
+        .is_some_and(|s| s.as_u16() == 423)
+    {
+        SearchFailure::Locked
+    } else {
+        SearchFailure::Failed
+    }
 }
 
 #[cfg(test)]
@@ -259,6 +301,14 @@ mod tests {
         Mock, MockServer, ResponseTemplate,
     };
 
+    #[test]
+    fn visual_fixture_settings_match_the_daemon_contract() {
+        let settings: uc_daemon_contract::api::dto::settings::SettingsDto =
+            serde_json::from_str(include_str!("../tests/settings.json")).unwrap();
+        assert!(settings.quick_panel.enabled);
+        assert!(!settings.general.telemetry_enabled);
+    }
+
     #[tokio::test]
     async fn authenticated_search_restore_and_private_errors() {
         const CHILD: &str = "UC_GPUI_PROTOCOL_TEST_CHILD";
@@ -267,6 +317,18 @@ mod tests {
             assert_eq!(results.items.len(), 1);
             assert_eq!(results.items[0].entry_id, "test-entry");
             assert_eq!(results.total, 1);
+            let results = search_filtered(crate::filters::Filters {
+                query: "multi".into(),
+                content_type: 3,
+                tags: vec!["favorited".into(), "工作".into()],
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+            assert_eq!(results.total, 1);
+            assert_eq!(results.items.len(), 1);
+            assert_eq!(results.items[0].entry_id, "multi-50");
+            assert!(!results.has_more);
             restore("test-entry".into()).await.unwrap();
             let failure = search("error".into()).await.unwrap_err().to_string();
             assert!(failure.contains("搜索失败"));
@@ -298,6 +360,23 @@ mod tests {
             .expect(1)
             .mount(&server)
             .await;
+        for offset in [0, 50] {
+            let items: Vec<_> = (offset..if offset == 0 { 50 } else { 51 }).map(|index| json!({
+                "entryId": format!("multi-{index}"), "contentType": "image", "activeTimeMs": 0,
+                "tags": if index == 50 { vec!["favorited", "工作"] } else { vec!["favorited"] },
+                "textPreview": null, "charCount": null, "mimeType": "image/png",
+                "fileExtensions": [], "fileNames": [], "filePaths": [], "linkUrls": [],
+                "sourceDevice": null, "payloadState": null
+            })).collect();
+            Mock::given(method("GET")).and(path("/search/query"))
+                .and(query_param("query", "multi"))
+                .and(query_param("contentTypes", "image"))
+                .and(query_param("tags", "favorited,工作"))
+                .and(query_param("offset", offset.to_string()))
+                .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                    "data": {"items":items, "total":51, "hasMore":offset == 0, "state":"ready"}, "ts":0
+                }))).expect(1).mount(&server).await;
+        }
         Mock::given(method("POST"))
             .and(path("/clipboard/restore/test-entry"))
             .and(header("authorization", "Session test-session"))
@@ -341,8 +420,9 @@ mod tests {
         .unwrap();
         assert!(
             output.status.success(),
-            "{}",
-            String::from_utf8_lossy(&output.stdout)
+            "{}\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
         );
     }
 

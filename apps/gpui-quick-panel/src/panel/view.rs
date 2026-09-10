@@ -8,7 +8,7 @@ use gpui_component::{
     ActiveTheme, Icon, IconName, Sizable,
 };
 
-fn units(value: f32) -> gpui::Rems {
+pub(super) fn units(value: f32) -> gpui::Rems {
     gpui::rems(value / 16.)
 }
 
@@ -173,11 +173,17 @@ impl Panel {
             })
             .into_any_element();
         if let Some(image) = self.images.get(&item.entry_id) {
-            leading = img(image.image.clone())
-                .w(units(28.))
+            leading = div()
+                .w(units(20.))
                 .h(units(16.))
-                .object_fit(ObjectFit::Cover)
+                .flex_shrink_0()
+                .overflow_hidden()
                 .rounded_sm()
+                .child(
+                    img(image.image.clone())
+                        .size_full()
+                        .object_fit(ObjectFit::Cover),
+                )
                 .into_any_element();
         }
         let minutes = ((chrono::Utc::now().timestamp_millis() - item.active_time_ms) as f64
@@ -199,12 +205,12 @@ impl Panel {
             .id(gpui::SharedString::from(item.entry_id.clone()))
             .w_full()
             .h(units(32.25))
-            .px(units(16.))
+            .px(units(8.))
             .py(units(8.))
             .rounded(units(6.))
             .flex()
             .items_center()
-            .gap(units(10.))
+            .gap(units(8.))
             .cursor_pointer()
             .text_size(units(13.))
             .line_height(units(16.25))
@@ -213,7 +219,15 @@ impl Panel {
             .when(!selected && !self.keyboard, |row| {
                 row.hover(|row| row.bg(theme.muted.opacity(0.5)))
             })
-            .child(leading)
+            .child(
+                div()
+                    .w(units(20.))
+                    .flex_shrink_0()
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .child(leading),
+            )
             .child(
                 div()
                     .flex_1()
@@ -303,7 +317,7 @@ impl Panel {
             .into_any_element()
     }
 
-    fn history_view(&self, cx: &Context<Self>) -> AnyElement {
+    fn history_view(&self, window: &Window, cx: &Context<Self>) -> AnyElement {
         let theme = cx.theme();
         let border = theme.border.opacity(0.5);
         let muted = theme.muted_foreground;
@@ -320,38 +334,27 @@ impl Panel {
                 .flex()
                 .items_center()
                 .gap(units(6.))
-                .px(units(10.))
-                .children(
-                    filters
-                        .iter()
-                        .take(2)
-                        .enumerate()
-                        .map(|(ix, (dimension, value))| {
-                            let dimension = *dimension;
-                            div()
-                                .id(("chip", ix))
-                                .rounded_full()
-                                .px(units(5.))
-                                .py(units(2.))
-                                .bg(theme.accent)
-                                .text_size(units(11.))
-                                .cursor_pointer()
-                                .child(format!("{} ×", filters::label(value)))
-                                .on_click(cx.listener(move |this, _, window, cx| {
-                                    this.change_filter(dimension, None, window, cx)
-                                }))
-                        }),
-                )
+                .px(units(7.))
                 .child(
                     div().flex_1().min_w_0().child(
                         Input::new(&self.input)
                             .appearance(false)
                             .small()
                             .disabled(self.busy)
+                            .px_0()
+                            .gap(units(8.))
                             .prefix(
-                                Icon::new(IconName::Search)
-                                    .size(units(14.))
-                                    .text_color(muted.opacity(0.5)),
+                                div()
+                                    .w(units(20.))
+                                    .flex_shrink_0()
+                                    .flex()
+                                    .items_center()
+                                    .justify_center()
+                                    .child(
+                                        Icon::new(IconName::Search)
+                                            .size(units(14.))
+                                            .text_color(muted.opacity(0.5)),
+                                    ),
                             )
                             .text_size(units(12.)),
                     ),
@@ -374,37 +377,6 @@ impl Panel {
                     )
                 }),
         );
-        let type_bar = div()
-            .flex()
-            .gap(units(4.))
-            .px(units(12.))
-            .pb(units(8.))
-            .children(filters::TYPES.iter().enumerate().map(|(ix, value)| {
-                let active = self.filters.content_type == ix;
-                let value = (*value).to_string();
-                div()
-                    .id(("type", ix))
-                    .rounded(units(6.))
-                    .px(units(8.))
-                    .py(units(4.))
-                    .text_size(units(11.))
-                    .line_height(units(17.6))
-                    .bg(if active {
-                        theme.primary
-                    } else {
-                        theme.muted.opacity(0.6)
-                    })
-                    .text_color(if active {
-                        theme.primary_foreground
-                    } else {
-                        muted
-                    })
-                    .cursor_pointer()
-                    .child(filters::label(&value).to_string())
-                    .on_click(cx.listener(move |this, _, window, cx| {
-                        this.change_filter(Dimension::Type, Some(value.clone()), window, cx)
-                    }))
-            }));
         let anchor_tracker = cx.entity().downgrade();
         let list = div()
             .on_children_prepainted(move |_, window, cx| {
@@ -417,7 +389,7 @@ impl Panel {
             .flex_1()
             .min_h_0()
             .overflow_y_scroll()
-            .px(units(6.))
+            .px(units(12.))
             .py(units(4.))
             .track_scroll(&self.scroll)
             .on_mouse_move(cx.listener(|this, _, _, _| {
@@ -461,56 +433,6 @@ impl Panel {
             .when(!self.loading && self.filters.content_type == 3, |list| {
                 list.child(self.image_wall(cx))
             });
-        let tag_bar = div()
-            .border_t_1()
-            .border_color(border)
-            .px(units(12.))
-            .py(units(6.))
-            .flex()
-            .items_center()
-            .gap(units(8.))
-            .text_size(units(11.))
-            .text_color(muted)
-            .child("标签")
-            .child(
-                div()
-                    .id("tag-scroll")
-                    .flex_1()
-                    .min_w_0()
-                    .overflow_x_scroll()
-                    .flex()
-                    .gap(units(4.))
-                    .children(self.tags.iter().enumerate().map(|(ix, tag)| {
-                        let active = self.filters.tag.as_ref() == Some(tag);
-                        let tag = tag.clone();
-                        div()
-                            .id(("tag", ix))
-                            .flex_shrink_0()
-                            .rounded(units(6.))
-                            .px(units(8.))
-                            .py(units(4.))
-                            .cursor_pointer()
-                            .bg(if active {
-                                theme.primary
-                            } else {
-                                theme.muted.opacity(0.6)
-                            })
-                            .text_color(if active {
-                                theme.primary_foreground
-                            } else {
-                                muted
-                            })
-                            .child(format!("# {}", filters::label(&tag)))
-                            .on_click(cx.listener(move |this, _, window, cx| {
-                                this.change_filter(
-                                    Dimension::Tag,
-                                    if active { None } else { Some(tag.clone()) },
-                                    window,
-                                    cx,
-                                )
-                            }))
-                    })),
-            );
         let mut card = div()
             .relative()
             .w(units(360.))
@@ -525,9 +447,8 @@ impl Panel {
             .text_color(theme.foreground)
             .overflow_hidden()
             .child(search)
-            .child(type_bar)
-            .child(list)
-            .child(tag_bar);
+            .child(self.filter_bar(window, cx))
+            .child(list);
         if let Some(message) = &self.message {
             card = card.child(
                 div()
@@ -550,41 +471,6 @@ impl Panel {
                             })),
                     ),
             );
-        }
-        if self.suggestions_open {
-            let candidates = self.candidates(cx);
-            if !candidates.is_empty() {
-                card = card.child(
-                    div()
-                        .absolute()
-                        .top(units(42.))
-                        .left(units(12.))
-                        .right(units(12.))
-                        .max_h(units(260.))
-                        .id("suggestions")
-                        .overflow_y_scroll()
-                        .rounded_lg()
-                        .border_1()
-                        .border_color(theme.border)
-                        .bg(theme.popover)
-                        .shadow_lg()
-                        .p_1()
-                        .children(candidates.into_iter().enumerate().map(|(ix, (_, label))| {
-                            div()
-                                .id(("suggestion", ix))
-                                .px_3()
-                                .py_2()
-                                .rounded_md()
-                                .text_size(units(12.))
-                                .cursor_pointer()
-                                .when(ix == self.suggestion_index, |row| row.bg(theme.accent))
-                                .child(label)
-                                .on_click(cx.listener(move |this, _, window, cx| {
-                                    this.apply_candidate(ix, window, cx)
-                                }))
-                        })),
-                );
-            }
         }
         card.into_any_element()
     }
@@ -755,7 +641,7 @@ impl PreviewSnapshot {
             .flex_shrink_0()
             .flex()
             .flex_col()
-            .rounded(units(12.))
+            .rounded(units(crate::window_pair::PREVIEW_CORNER_RADIUS as f32))
             .border_1()
             .border_color(border)
             .bg(cx.global::<crate::appearance::Surfaces>().card)
@@ -789,22 +675,6 @@ impl PreviewSnapshot {
                 .text_size(units(14.))
                 .text_color(muted)
                 .child("正在加载…")
-                .into_any_element()
-        } else if let Some(image) = self.image.as_ref() {
-            let image_height =
-                (328. * image.height as f32 / image.width.max(1) as f32).clamp(48., 360.);
-            div()
-                .w_full()
-                .p_4()
-                .flex()
-                .items_center()
-                .justify_center()
-                .child(
-                    img(image.image.clone())
-                        .w_full()
-                        .h(units(image_height))
-                        .object_fit(ObjectFit::Contain),
-                )
                 .into_any_element()
         } else if item.content_type == "file" {
             div()
@@ -884,11 +754,19 @@ impl PreviewSnapshot {
 }
 
 impl Render for Panel {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let history = self.history_view(cx);
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let history = self.history_view(window, cx);
         div()
             .size_full()
             .text_color(cx.theme().foreground)
+            .key_context("QuickPanel")
+            .on_action(cx.listener(|this, _: &NextSuggestion, window, cx| {
+                this.focus_filter_suggestion(false, window, cx)
+            }))
+            .on_action(cx.listener(|this, _: &PreviousSuggestion, window, cx| {
+                this.focus_filter_suggestion(true, window, cx)
+            }))
+            .capture_action(cx.listener(Self::copy_action))
             .capture_key_down(cx.listener(Self::key_down))
             .child(history)
     }

@@ -1,6 +1,7 @@
 use super::*;
 use crate::window_pair::{
-    preview_placement, PreviewPlacement, PreviewSide, POINTER_DEPTH, POINTER_HALF_HEIGHT,
+    preview_capacity, preview_placement, preview_placement_for_size, PreviewPlacement, PreviewSide,
+    POINTER_DEPTH, POINTER_HALF_HEIGHT,
 };
 use gpui::{canvas, div, point, px, AnyWindowHandle, IntoElement, PathBuilder, Render};
 use gpui_component::ActiveTheme;
@@ -22,6 +23,7 @@ pub struct PreviewWindow {
     chrome_height: Option<f64>,
     placement: Option<PreviewPlacement>,
     shown: bool,
+    image_view: Option<Entity<image_preview::ImagePreview>>,
 }
 
 impl PreviewWindow {
@@ -50,6 +52,18 @@ impl PreviewWindow {
                 || this.snapshot.scale != next.scale
                 || image_changed;
             this.snapshot = next;
+            if this.snapshot.is_image() {
+                if let Some(view) = &this.image_view {
+                    view.update(cx, |view, cx| view.update_source(&this.snapshot, cx));
+                } else {
+                    this.image_view =
+                        Some(cx.new(|cx| {
+                            image_preview::ImagePreview::new(&this.snapshot, window, cx)
+                        }));
+                }
+            } else {
+                this.image_view = None;
+            }
             if changed {
                 this.generation += 1;
                 // Reuse the last measured size for the first frame after reopening.
@@ -75,6 +89,9 @@ impl PreviewWindow {
                 });
             }));
         });
+        let image_view = snapshot
+            .is_image()
+            .then(|| cx.new(|cx| image_preview::ImagePreview::new(&snapshot, window, cx)));
         Self {
             panel,
             history,
@@ -86,6 +103,7 @@ impl PreviewWindow {
             chrome_height: None,
             placement: None,
             shown: false,
+            image_view,
         }
     }
 
@@ -121,10 +139,32 @@ impl PreviewWindow {
             }
             return;
         };
-        let (Some(content), Some(chrome)) = (self.content_height, self.chrome_height) else {
-            return;
+        let placement = if self.snapshot.is_image() {
+            use crate::image_geometry::{image_body_size, Size};
+            let (width, height) = preview_capacity(anchor);
+            let body = if let Some(image) = &self.snapshot.image {
+                image_body_size(
+                    Size {
+                        width: image.width as f64,
+                        height: image.height as f64,
+                    },
+                    f64::from(window.scale_factor()),
+                    Size { width, height },
+                    self.snapshot.scale,
+                )
+            } else {
+                Size {
+                    width: (320. * self.snapshot.scale).min(width),
+                    height: (200. * self.snapshot.scale).min(height),
+                }
+            };
+            preview_placement_for_size(anchor, body.width, body.height)
+        } else {
+            let (Some(content), Some(chrome)) = (self.content_height, self.chrome_height) else {
+                return;
+            };
+            preview_placement(anchor, content + chrome)
         };
-        let placement = preview_placement(anchor, content + chrome);
         if self.placement != Some(placement) {
             let frame = placement.frame;
             if let Err(error) =
@@ -134,6 +174,11 @@ impl PreviewWindow {
                 return;
             }
             self.placement = Some(placement);
+            if let Err(error) =
+                platform::clip_preview_shape(window, placement, self.snapshot.scale, cx)
+            {
+                tracing::warn!(error=%error,"Could not clip preview contents to its contour");
+            }
             cx.notify();
         }
         if !self.shown {
@@ -148,7 +193,11 @@ impl PreviewWindow {
 
 impl Render for PreviewWindow {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let preview = self.snapshot.preview_view(window, cx, self.generation);
+        let preview = if let Some(image) = &self.image_view {
+            image.clone().into_any_element()
+        } else {
+            self.snapshot.preview_view(window, cx, self.generation)
+        };
         let placement = self.placement.or_else(|| {
             self.snapshot
                 .anchor
@@ -158,7 +207,11 @@ impl Render for PreviewWindow {
         let depth = px((POINTER_DEPTH * self.snapshot.scale) as f32);
         let pointer_y = px(placement.map(|p| p.pointer_y).unwrap_or(48.) as f32);
         let half = px((POINTER_HALF_HEIGHT * self.snapshot.scale) as f32);
-        let surface = cx.global::<crate::appearance::Surfaces>().card;
+        let surface = if self.snapshot.is_image() {
+            cx.theme().muted
+        } else {
+            cx.global::<crate::appearance::Surfaces>().card
+        };
         let border = cx.theme().border.opacity(0.5);
         let panel = self.panel.clone();
         let history = self.history;
@@ -211,7 +264,7 @@ impl Render for PreviewWindow {
                 .absolute()
                 .size_full(),
             )
-            .on_key_down(move |event, _, cx| {
+            .capture_key_down(move |event, _, cx| {
                 if event.keystroke.key == "escape" {
                     let panel = panel.clone();
                     cx.defer(move |cx| {

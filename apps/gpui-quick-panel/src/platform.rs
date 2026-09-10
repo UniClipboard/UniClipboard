@@ -229,6 +229,88 @@ pub fn configure_shaped_preview(_: &gpui::Window, _: &gpui::App) -> Result<(), S
 }
 
 #[cfg(target_os = "macos")]
+pub fn clip_preview_shape(
+    window: &gpui::Window,
+    placement: crate::window_pair::PreviewPlacement,
+    scale: f64,
+    cx: &gpui::App,
+) -> Result<(), String> {
+    use crate::window_pair::{
+        PreviewSide, POINTER_DEPTH, POINTER_HALF_HEIGHT, PREVIEW_CORNER_RADIUS,
+    };
+    use objc2_app_kit::NSBezierPath;
+    use objc2_foundation::{NSPoint, NSRect, NSSize};
+    use objc2_quartz_core::{CAShapeLayer, CATransaction};
+    use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+    let handle = HasWindowHandle::window_handle(window).map_err(|_| "无法访问预览窗口。")?;
+    let RawWindowHandle::AppKit(handle) = handle.as_raw() else {
+        return Err("窗口类型不支持。".into());
+    };
+    let view = unsafe { &*handle.ns_view.as_ptr().cast::<objc2_app_kit::NSView>() };
+    let layer = view.layer().ok_or("预览绘制层尚未就绪。")?;
+    let native = view.window().ok_or("预览窗口已关闭。")?;
+    let display_scale = f64::from(window.scale_factor());
+    cx.foreground_executor()
+        .spawn(async move {
+            let width = placement.frame.width;
+            let height = placement.frame.height;
+            let depth = POINTER_DEPTH * scale;
+            let half = POINTER_HALF_HEIGHT * scale;
+            let x = if placement.side == PreviewSide::Right {
+                depth
+            } else {
+                0.
+            };
+            let y = if layer.isGeometryFlipped() {
+                placement.pointer_y
+            } else {
+                height - placement.pointer_y
+            };
+            let path = NSBezierPath::bezierPathWithRoundedRect_xRadius_yRadius(
+                NSRect::new(NSPoint::new(x, 0.), NSSize::new(width - depth, height)),
+                PREVIEW_CORNER_RADIUS * scale,
+                PREVIEW_CORNER_RADIUS * scale,
+            );
+            let (base, tip) = if placement.side == PreviewSide::Right {
+                (depth, 0.)
+            } else {
+                (width - depth, width)
+            };
+            path.moveToPoint(NSPoint::new(base, y - half));
+            path.lineToPoint(NSPoint::new(tip, y));
+            path.lineToPoint(NSPoint::new(base, y + half));
+            path.closePath();
+            let mask = CAShapeLayer::layer();
+            mask.setFrame(NSRect::new(
+                NSPoint::new(0., 0.),
+                NSSize::new(width, height),
+            ));
+            mask.setContentsScale(display_scale);
+            mask.setPath(Some(&path.CGPath()));
+            CATransaction::begin();
+            CATransaction::setDisableActions(true);
+            // The mask is retained by the layer and contains no parent references.
+            unsafe {
+                layer.setMask(Some(&mask));
+            }
+            CATransaction::commit();
+            native.invalidateShadow();
+        })
+        .detach();
+    Ok(())
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn clip_preview_shape(
+    _: &gpui::Window,
+    _: crate::window_pair::PreviewPlacement,
+    _: f64,
+    _: &gpui::App,
+) -> Result<(), String> {
+    Ok(())
+}
+
+#[cfg(target_os = "macos")]
 pub fn show_without_focus(window: &gpui::Window) -> Result<(), String> {
     use raw_window_handle::{HasWindowHandle, RawWindowHandle};
     let handle = HasWindowHandle::window_handle(window).map_err(|_| "无法访问预览窗口。")?;

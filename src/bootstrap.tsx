@@ -2,9 +2,10 @@ import { attachConsole } from '@tauri-apps/plugin-log'
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { Provider } from 'react-redux'
-import './i18n'
 import { getDeviceMeta } from '@/api/runtime'
 import { MainWindowReady } from '@/components/app/MainWindowReady'
+import App from '@/App'
+import '@/i18n'
 import { connectDaemonWs, registerDaemonShutdownListener } from '@/lib/daemon-ws-bootstrap'
 import { initializeWebviewContextMenu } from '@/lib/webview-context-menu'
 import { initializeWindowFrame } from '@/lib/window-frame-runtime'
@@ -15,8 +16,7 @@ import {
   initializeDiagnostics,
   DiagnosticsErrorBoundary,
 } from '@/observability/diagnostics'
-import App from './App'
-import { store } from './store'
+import { store } from '@/store'
 
 initializeWebviewContextMenu()
 

@@ -104,7 +104,9 @@ describe('startup window frame before setup hydration', () => {
     state.retrying = retrying
     state.failed = !retrying
     const { container } = render(<AppContentWithBar />)
-    expect(screen.getByRole('main')).toHaveTextContent(retrying ? 'Startup progress' : 'Startup failure')
+    expect(screen.getByRole('main')).toHaveTextContent(
+      retrying ? 'Starting the app' : 'Startup failure'
+    )
     expect(screen.queryByRole('button', { name: '关闭' })).not.toBeInTheDocument()
     expect(container.querySelector('[data-tauri-drag-region]')).toBeNull()
   })

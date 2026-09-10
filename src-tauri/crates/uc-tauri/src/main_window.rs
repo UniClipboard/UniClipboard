@@ -84,7 +84,8 @@ impl MainWindowLoadState {
     fn consume_reveal_request(&mut self) -> bool {
         if self.generation == 0
             || self.destroyed
-            || (!(self.page_loaded && self.frontend_ready
+            || (!(self.page_loaded
+                && self.frontend_ready
                 && (!self.wait_for_content || self.content_ready || self.grace_elapsed))
                 && !self.reveal_timeout_elapsed)
             || !self.reveal_requested
@@ -104,13 +105,17 @@ impl MainWindowLoadState {
     }
 
     fn mark_content_ready(&mut self, generation: u64) -> bool {
-        if self.generation != generation { return false; }
+        if self.generation != generation {
+            return false;
+        }
         self.content_ready = true;
         self.consume_reveal_request()
     }
 
     fn mark_grace_elapsed(&mut self, generation: u64) -> bool {
-        if self.generation != generation { return false; }
+        if self.generation != generation {
+            return false;
+        }
         self.grace_elapsed = true;
         self.consume_reveal_request()
     }
@@ -197,13 +202,19 @@ pub fn show_main_window(app: &tauri::AppHandle) {
 
 fn handle_page_load_finished(window: &tauri::WebviewWindow, generation: u64) {
     let delayed_window = window.clone();
-    tauri::async_runtime::spawn(async move {
-        tokio::time::sleep(REOPEN_REVEAL_GRACE).await;
-        if load_state().mark_grace_elapsed(generation) {
-            reveal_main_window(&delayed_window);
-            info!(generation, "Main window revealed while restoration continues");
+    tauri::async_runtime::spawn(
+        async move {
+            tokio::time::sleep(REOPEN_REVEAL_GRACE).await;
+            if load_state().mark_grace_elapsed(generation) {
+                reveal_main_window(&delayed_window);
+                info!(
+                    generation,
+                    "Main window revealed while restoration continues"
+                );
+            }
         }
-    }.in_current_span());
+        .in_current_span(),
+    );
     if !load_state().mark_loaded(generation) {
         return;
     }
@@ -377,6 +388,46 @@ fn refresh_dock_icon(app: &tauri::AppHandle) {
 #[cfg(test)]
 mod tests {
     use super::MainWindowLoadState;
+
+    #[test]
+    fn warm_open_requires_frame_readiness_and_restored_content() {
+        let mut state = MainWindowLoadState::default();
+        let generation = state.mark_created();
+        state.wait_for_content = true;
+        assert!(!state.request_reveal());
+        assert!(!state.mark_loaded(generation));
+        assert!(!state.mark_frontend_ready(generation));
+        assert!(state.mark_content_ready(generation));
+        assert!(!state.mark_grace_elapsed(generation));
+    }
+
+    #[test]
+    fn warm_grace_does_not_bypass_frame_readiness() {
+        let mut state = MainWindowLoadState::default();
+        let generation = state.mark_created();
+        state.wait_for_content = true;
+        assert!(!state.request_reveal());
+        assert!(!state.mark_loaded(generation));
+        assert!(!state.mark_grace_elapsed(generation));
+        assert!(state.mark_frontend_ready(generation));
+    }
+
+    #[test]
+    fn stale_or_destroyed_notifications_cannot_reveal_windows() {
+        let mut state = MainWindowLoadState::default();
+        let old = state.mark_created();
+        let current = state.mark_created();
+        state.wait_for_content = true;
+        assert!(!state.request_reveal());
+        assert!(!state.mark_loaded(current));
+        assert!(!state.mark_frontend_ready(current));
+        assert!(!state.mark_content_ready(old));
+        assert!(!state.mark_grace_elapsed(old));
+        state.mark_destroyed(current);
+        assert!(!state.mark_content_ready(current));
+        assert!(!state.mark_grace_elapsed(current));
+        assert!(!state.mark_reveal_timeout(current));
+    }
 
     #[test]
     fn timeout_reveals_a_loaded_window_without_frontend_readiness() {

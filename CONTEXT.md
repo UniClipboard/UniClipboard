@@ -325,6 +325,8 @@ _Avoid_: lazy hash、pending entry、async capture
 **Tracked inbound file transfer**：
 接收设备本地为「一个正在/已经收下的文件」维护的一条投影记录（id、来源设备、
 缓存路径、状态、时间戳）。
+临时接收或重复内容也可能在生成本地历史记录前结束，因此终态通知允许没有
+`entry_id`；这类传输只负责结束临时 HUD，不创建历史记录。
 _Avoid_: download、file record
 
 **Receiver-side file transfer projection**：
@@ -399,6 +401,8 @@ _Avoid_: synced performance setting、background sync mode
 > **领域专家**：没有。先用占位 id seed 一条 **Tracked inbound file transfer**，
 > 等 SyncDoc apply 阶段生成真实 entry 后再 relink 过去。所以这条投影行的
 > entry_id 是会被改写的——这正是 `RecordReceiverTransferPort` 要 relink 的原因。
+> 如果 SyncDoc apply 发现内容已经存在，临时传输也可能直接以无 `entry_id` 的
+> 完成、失败或取消终态结束，只关闭 HUD，不新增历史记录。
 
 > **Dev**：那「接收进度百分比」算不算领域概念？
 > **领域专家**：目前不算。我们只跟 **In-flight transfer** 的状态枚举，不跟逐块

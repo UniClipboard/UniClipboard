@@ -104,7 +104,7 @@ pub struct ClipboardIncomingPendingEvent {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FileTransferStatusChangedEvent {
     pub transfer_id: String,
-    pub entry_id: String,
+    pub entry_id: Option<String>,
     pub attempt_id: Option<String>,
     pub status: String,
     pub reason: Option<String>,

@@ -31,6 +31,7 @@ use tracing::{error, info, warn, Instrument};
 pub const MAIN_WINDOW_LABEL: &str = "main";
 // A broken frontend must not leave an explicitly opened window hidden forever.
 const MAIN_WINDOW_REVEAL_TIMEOUT: Duration = Duration::from_secs(10);
+const REOPEN_REVEAL_GRACE: Duration = Duration::from_millis(500);
 
 #[derive(Default)]
 struct MainWindowLoadState {
@@ -39,6 +40,10 @@ struct MainWindowLoadState {
     frontend_ready: bool,
     reveal_requested: bool,
     reveal_timeout_elapsed: bool,
+    wait_for_content: bool,
+    content_ready: bool,
+    grace_elapsed: bool,
+    destroyed: bool,
 }
 
 impl MainWindowLoadState {
@@ -48,6 +53,10 @@ impl MainWindowLoadState {
         self.frontend_ready = false;
         self.reveal_requested = false;
         self.reveal_timeout_elapsed = false;
+        self.wait_for_content = false;
+        self.content_ready = false;
+        self.grace_elapsed = false;
+        self.destroyed = false;
         self.generation
     }
 
@@ -74,7 +83,10 @@ impl MainWindowLoadState {
 
     fn consume_reveal_request(&mut self) -> bool {
         if self.generation == 0
-            || (!(self.page_loaded && self.frontend_ready) && !self.reveal_timeout_elapsed)
+            || self.destroyed
+            || (!(self.page_loaded && self.frontend_ready
+                && (!self.wait_for_content || self.content_ready || self.grace_elapsed))
+                && !self.reveal_timeout_elapsed)
             || !self.reveal_requested
         {
             return false;
@@ -90,6 +102,25 @@ impl MainWindowLoadState {
         self.reveal_timeout_elapsed = true;
         self.consume_reveal_request()
     }
+
+    fn mark_content_ready(&mut self, generation: u64) -> bool {
+        if self.generation != generation { return false; }
+        self.content_ready = true;
+        self.consume_reveal_request()
+    }
+
+    fn mark_grace_elapsed(&mut self, generation: u64) -> bool {
+        if self.generation != generation { return false; }
+        self.grace_elapsed = true;
+        self.consume_reveal_request()
+    }
+
+    fn mark_destroyed(&mut self, generation: u64) {
+        if self.generation == generation {
+            self.destroyed = true;
+            self.reveal_requested = false;
+        }
+    }
 }
 
 static MAIN_WINDOW_LOAD_STATE: Mutex<MainWindowLoadState> = Mutex::new(MainWindowLoadState {
@@ -98,6 +129,10 @@ static MAIN_WINDOW_LOAD_STATE: Mutex<MainWindowLoadState> = Mutex::new(MainWindo
     frontend_ready: false,
     reveal_requested: false,
     reveal_timeout_elapsed: false,
+    wait_for_content: false,
+    content_ready: false,
+    grace_elapsed: false,
+    destroyed: false,
 });
 static MAIN_WINDOW_CREATION_LOCK: Mutex<()> = Mutex::new(());
 
@@ -139,6 +174,9 @@ pub fn show_main_window(app: &tauri::AppHandle) {
         Some(window) => window,
         None => {
             let generation = load_state().mark_created();
+            load_state().wait_for_content = app
+                .try_state::<uc_daemon_client::DaemonConnectionState>()
+                .is_some_and(|connection| connection.get().is_some());
             match create_main_window(app, generation) {
                 Ok(window) => window,
                 Err(error) => {
@@ -158,6 +196,14 @@ pub fn show_main_window(app: &tauri::AppHandle) {
 }
 
 fn handle_page_load_finished(window: &tauri::WebviewWindow, generation: u64) {
+    let delayed_window = window.clone();
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(REOPEN_REVEAL_GRACE).await;
+        if load_state().mark_grace_elapsed(generation) {
+            reveal_main_window(&delayed_window);
+            info!(generation, "Main window revealed while restoration continues");
+        }
+    }.in_current_span());
     if !load_state().mark_loaded(generation) {
         return;
     }
@@ -176,6 +222,13 @@ pub(crate) fn handle_frontend_ready(window: &tauri::WebviewWindow, generation: u
             generation,
             "Main window revealed after page and frontend became ready"
         );
+    }
+}
+
+pub(crate) fn mark_presentation_ready(window: &tauri::WebviewWindow, generation: u64) {
+    if window.label() == MAIN_WINDOW_LABEL && load_state().mark_content_ready(generation) {
+        reveal_main_window(window);
+        info!(generation, "Main window revealed with restored content");
     }
 }
 
@@ -260,6 +313,11 @@ fn create_main_window(
         })
         .build()?;
     schedule_reveal_fallback(&window, generation);
+    window.on_window_event(move |event| {
+        if matches!(event, tauri::WindowEvent::Destroyed) {
+            load_state().mark_destroyed(generation);
+        }
+    });
     info!("Main window created from config");
     Ok(window)
 }

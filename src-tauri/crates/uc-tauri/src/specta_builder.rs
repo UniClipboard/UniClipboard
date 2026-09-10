@@ -56,6 +56,7 @@ pub fn build() -> Builder<tauri::Wry> {
         crate::commands::startup::get_daemon_bootstrap_failure,
         crate::commands::startup::get_daemon_startup_status,
         crate::commands::startup::take_pending_navigation,
+        crate::commands::window_chrome::main_window_presentation_ready,
         // ── restart ──────────────────────────────────────────────────────────
         crate::commands::restart::restart_app,
         crate::commands::restart::restart_daemon,

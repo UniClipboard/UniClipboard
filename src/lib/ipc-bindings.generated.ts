@@ -135,6 +135,11 @@ export const commands = {
 	trace_id: string,
 	timestamp: number,
 } | null) => typedError<string | null, CommandError>(__TAURI_INVOKE("take_pending_navigation", { trace })),
+	/**  The current main document has committed useful content or an actionable failure. */
+	mainWindowPresentationReady: (generation: string, trace: {
+	trace_id: string,
+	timestamp: number,
+} | null) => __TAURI_INVOKE<void>("main_window_presentation_ready", { generation, trace }),
 	/**
 	 *  Restarts the running Tauri application to apply settings changes.
 	 * 

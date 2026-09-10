@@ -7,6 +7,17 @@ import type {
 export type StartupSnapshot = StartupSnapshotDto
 export type StepProgress = StartupStepProgressDto
 
+// Local waiting presentation before a daemon snapshot or setup response exists.
+export const pendingStartupSnapshot: StartupSnapshot = {
+  attempt_id: 'awaiting-app-state',
+  sequence: 0,
+  state: 'preparing',
+  elapsed_ms: 0,
+  upgrade: null,
+  failure: null,
+  allowed_actions: { retry: false, export_diagnostics: true },
+}
+
 export function startupPresentation(snapshot: StartupSnapshot) {
   const required = snapshot.upgrade?.required === true
   const failed = snapshot.state === 'failed' || snapshot.state === 'interrupted'
@@ -61,6 +72,11 @@ export function startupViewSnapshot(
       allowed_actions: { retry: true, export_diagnostics: true },
     }
   }
-  if (progress.state === 'ready') return { ...progress, state: 'starting_services' }
+  if (progress.state === 'ready')
+    return {
+      ...progress,
+      state: 'starting_services',
+      upgrade: status.service_ready ? null : progress.upgrade,
+    }
   return progress
 }

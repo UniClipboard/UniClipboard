@@ -2106,7 +2106,6 @@
   },
   "setup": {
     "page": {
-      "loadingSetupState": "Loading setup state...",
       "processing": "Processing...",
       "processingJoinSpace": {
         "title": "Connecting to device…",

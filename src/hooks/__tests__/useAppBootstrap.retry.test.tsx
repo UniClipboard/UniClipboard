@@ -35,6 +35,13 @@ vi.mock('@/store/api', () => ({
 }))
 
 describe('startup retry', () => {
+  it('connects even while setup state is unknown or the setup wizard is active', async () => {
+    mocks.connect.mockReset().mockResolvedValue(undefined)
+    const { result, unmount } = renderHook(() => useAppBootstrap(true))
+    await waitFor(() => expect(result.current.daemonBootstrapReady).toBe(true))
+    expect(mocks.connect).toHaveBeenCalledOnce()
+    unmount()
+  })
   it('automatically reconnects when a delayed startup becomes ready', async () => {
     mocks.connect
       .mockReset()

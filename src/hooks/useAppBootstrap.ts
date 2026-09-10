@@ -26,7 +26,7 @@ export function useAppBootstrap(isSetupActive: boolean) {
   const serviceReady = startupStatus?.service_ready ?? false
 
   useEffect(() => {
-    if (isSetupActive || bootstrapRetryingRef.current) return
+    if (bootstrapRetryingRef.current) return
 
     let cancelled = false
     connectDaemonWs()
@@ -45,7 +45,7 @@ export function useAppBootstrap(isSetupActive: boolean) {
     return () => {
       cancelled = true
     }
-  }, [isSetupActive, serviceReady])
+  }, [serviceReady])
 
   const {
     data: encryptionData,

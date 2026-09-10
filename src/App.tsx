@@ -13,7 +13,7 @@ import { UpdateProvider } from '@/contexts/UpdateContext'
 import { useUINavigateListener } from '@/hooks/useUINavigateListener'
 import { useWindowFrame } from '@/hooks/useWindowFrame'
 import { WindowShell } from '@/layouts'
-import { isSetupGateActive } from '@/lib/app-state'
+import { resolveSetupGate } from '@/lib/app-state'
 import { useSetupRealtimeStore } from '@/store/setupRealtimeStore'
 import './App.css'
 
@@ -42,7 +42,7 @@ export default function App() {
 export const AppContentWithBar = () => {
   const { hasCustomTitleBar } = useWindowFrame()
   const { hydrated, flow } = useSetupRealtimeStore()
-  const isSetupActive = isSetupGateActive(flow, hydrated)
+  const setupGate = resolveSetupGate(flow, hydrated)
   const navigate = useNavigate()
   const handleNavigate = useCallback((route: string) => navigate(route), [navigate])
   useUINavigateListener(handleNavigate)
@@ -70,7 +70,7 @@ export const AppContentWithBar = () => {
         <WindowShell titleBar={null}>
           <AppContent
             fullTitleBar={titleBar}
-            isSetupActive={isSetupActive}
+            setupGate={setupGate}
             onSetupComplete={handleSetupComplete}
             sidebarTitle={sidebarTitle}
           />

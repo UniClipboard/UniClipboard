@@ -56,6 +56,18 @@ pub struct DaemonSearchClient {
 }
 
 impl DaemonSearchClient {
+    /// Fetch the currently available built-in and custom search tags.
+    pub async fn tags(&self) -> Result<Vec<uc_daemon_contract::api::dto::search::SearchTagDto>> {
+        Ok(enveloped_request(
+            &self.http,
+            &self.connection_state,
+            &self.client_type,
+            Method::GET,
+            "/search/tags",
+            |r| r,
+        )
+        .await?)
+    }
     pub fn new(connection_state: DaemonConnectionState) -> Result<Self> {
         Ok(Self {
             http: Arc::new(crate::build_local_http_client()?),

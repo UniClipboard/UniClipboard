@@ -52,6 +52,16 @@ impl DaemonClipboardClient {
     /// occurs because CaptureClipboardUseCase skips capture for LocalRestore origin.
     /// A 404 surfaces as `DaemonRequestError::Status` (downcastable from anyhow).
     pub async fn restore_clipboard_entry(&self, entry_id: &str) -> Result<()> {
+        self.restore_clipboard_entry_with_options(entry_id, false)
+            .await
+    }
+
+    /// Restore the complete representation or its plain-text alternative.
+    pub async fn restore_clipboard_entry_with_options(
+        &self,
+        entry_id: &str,
+        plain_only: bool,
+    ) -> Result<()> {
         let entry_id = encode_path_segment(entry_id)?;
         let path = format!("{}/{entry_id}", http_route::CLIPBOARD_RESTORE);
         empty_request(
@@ -60,7 +70,43 @@ impl DaemonClipboardClient {
             &self.client_type,
             Method::POST,
             &path,
+            |r| {
+                if plain_only {
+                    r.query(&[("plain", true)])
+                } else {
+                    r
+                }
+            },
+        )
+        .await?;
+        Ok(())
+    }
+
+    /// Delete one history entry through the daemon's canonical endpoint.
+    pub async fn delete_entry(&self, entry_id: &str) -> Result<()> {
+        let id = encode_path_segment(entry_id)?;
+        empty_request(
+            &self.http,
+            &self.connection_state,
+            &self.client_type,
+            Method::DELETE,
+            &format!("{}/{id}", http_route::CLIPBOARD_ENTRIES),
             |r| r,
+        )
+        .await?;
+        Ok(())
+    }
+
+    /// Update an entry's favorite flag without changing clipboard contents.
+    pub async fn set_favorite(&self, entry_id: &str, favorite: bool) -> Result<()> {
+        let id = encode_path_segment(entry_id)?;
+        let _: serde_json::Value = enveloped_request(
+            &self.http,
+            &self.connection_state,
+            &self.client_type,
+            Method::POST,
+            &format!("{}/{id}/favorite", http_route::CLIPBOARD_ENTRIES),
+            |r| r.json(&serde_json::json!({"isFavorited": favorite})),
         )
         .await?;
         Ok(())

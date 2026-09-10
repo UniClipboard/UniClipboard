@@ -6,6 +6,7 @@
 | --- | --- | --- | --- |
 | `cli/` | `uc-cli` | `uniclip` | `apps/cli/AGENTS.md` |
 | `daemon/` | `uc-daemon` | `uniclipd` | （暂无；遵循 workspace 规则） |
+| `gpui-quick-panel/` | `uc-gpui-quick-panel` | GPUI 快捷面板验证原型（不发布） | `README.md` |
 | `mobile-probe-core/` | `uc-mobile-probe-core` | iOS/Android 验收库 | （诊断宿主，不发布） |
 | `android-probe/` | - | Android 模拟器与真机验收应用 | （诊断宿主，不发布） |
 | `ohos-probe/` | - | HarmonyOS 模拟器与真机验收应用 | （诊断宿主，不发布） |

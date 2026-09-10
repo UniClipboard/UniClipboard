@@ -13,6 +13,7 @@
 |- apps/                 # Runnable binaries
 |  |- cli/                 # `uniclip` CLI (daemon client; heavy deps feature-gated)
 |  |- daemon/              # GUI-agnostic daemon runtime; hosts the `uniclipd` binary
+|  |- gpui-quick-panel/    # (no description)
 |- crates/               # Library crates (12)
 |  # -- Desktop host adapters --
 |  |- uc-platform/      # OS adapters: clipboard, secure storage, autostart

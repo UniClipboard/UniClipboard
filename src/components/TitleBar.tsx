@@ -181,7 +181,7 @@ export const ContentToolbar = ({ className, rightSlot }: ContentToolbarProps) =>
       {rightSlot && (
         <div
           className="relative z-10 flex min-w-0 flex-1 items-center px-3"
-          data-tauri-drag-region="false"
+          data-tauri-drag-region="deep"
         >
           {rightSlot}
         </div>

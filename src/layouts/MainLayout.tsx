@@ -75,7 +75,10 @@ const LinuxMainLayout: React.FC<MainLayoutProps & SidebarAreaProps & ContentTool
       <SidebarArea />
 
       <main className="relative flex min-h-0 flex-1 flex-col overflow-hidden bg-card text-card-foreground">
-        <div data-tauri-drag-region className="flex h-10 shrink-0 items-center justify-end px-3">
+        <div
+          data-tauri-drag-region="deep"
+          className="flex h-10 shrink-0 items-center justify-end px-3"
+        >
           <div ref={toolbarHostRef} className="flex items-center" />
         </div>
         <div className="min-h-0 flex-1">{children}</div>

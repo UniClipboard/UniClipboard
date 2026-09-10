@@ -37,7 +37,7 @@ describe('startup and upgrade progress', () => {
       <StartupProgressScreen snapshot={snapshot} onRetry={vi.fn()} onExport={vi.fn()} />
     )
     expect(screen.queryByText(/100%/)).not.toBeInTheDocument()
-    expect(screen.getByRole('progressbar')).not.toHaveAttribute('aria-valuenow')
+    expect(screen.getByRole('progressbar')).not.toHaveAttribute('value')
     view.rerender(
       <StartupProgressScreen
         snapshot={{
@@ -62,7 +62,7 @@ describe('startup and upgrade progress', () => {
       />
     )
     expect(screen.queryByText(/100%/)).not.toBeInTheDocument()
-    expect(screen.getByRole('progressbar')).not.toHaveAttribute('aria-valuenow')
+    expect(screen.getByRole('progressbar')).not.toHaveAttribute('value')
   })
   it('shows step progress without calling representations history entries', () => {
     render(
@@ -72,7 +72,9 @@ describe('startup and upgrade progress', () => {
         onExport={vi.fn()}
       />
     )
-    expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '50')
+    expect(screen.getByRole('progressbar').tagName).toBe('PROGRESS')
+    expect(screen.getByRole('progressbar')).toHaveAttribute('max', '100')
+    expect(screen.getByRole('progressbar')).toHaveAttribute('value', '50')
     expect(screen.queryByRole('button', { name: /重试|Retry/i })).not.toBeInTheDocument()
   })
 
@@ -84,7 +86,7 @@ describe('startup and upgrade progress', () => {
         onExport={vi.fn()}
       />
     )
-    expect(screen.getByRole('progressbar')).not.toHaveAttribute('aria-valuenow')
+    expect(screen.getByRole('progressbar')).not.toHaveAttribute('value')
   })
 
   it('only allows retry when the owner permits it', () => {

@@ -77,14 +77,13 @@ export function StartupProgressScreen({ snapshot, onRetry, onExport }: Props) {
                   : t('upgradeProgress.stepPercent', { percent: percentage })}
               </span>
             </div>
-            <div
-              role="progressbar"
+            <progress
               aria-label={t('upgradeProgress.progress')}
-              aria-valuemin={0}
-              aria-valuemax={100}
-              aria-valuenow={percentage ?? undefined}
-              className="h-1.5 overflow-hidden rounded-full bg-muted"
-            >
+              max={100}
+              value={percentage ?? undefined}
+              className="sr-only"
+            />
+            <div aria-hidden="true" className="h-1.5 overflow-hidden rounded-full bg-muted">
               <div
                 className={`h-full rounded-full bg-primary transition-[width] duration-300 motion-reduce:transition-none ${percentage === null ? 'w-1/3 animate-pulse motion-reduce:animate-none' : ''}`}
                 style={percentage === null ? undefined : { width: `${percentage}%` }}

@@ -2,7 +2,6 @@ import { getCurrentWindow } from '@tauri-apps/api/window'
 import { useCallback, useMemo, useSyncExternalStore } from 'react'
 import { usePlatform } from '@/hooks/usePlatform'
 import {
-  applyWindowFrameDocumentState,
   readWindowFramePreference,
   resolveWindowFrameMode,
   setStoredWindowFramePreference,
@@ -29,7 +28,6 @@ export function useWindowFrame() {
       const nextMode = resolveWindowFrameMode(platform, preference)
       await getCurrentWindow().setDecorations(nextMode.useSystemWindowFrame)
       setStoredWindowFramePreference(preference)
-      applyWindowFrameDocumentState(nextMode.hasRoundedWindow)
     },
     [mode.canChooseSystemFrame, platform]
   )

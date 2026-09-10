@@ -446,14 +446,14 @@ mod tests {
     }
 }
 
-/// Linux requires an opaque surface and does not support the shared window effects.
+/// Only macOS uses transparency and the shared native window effects.
 fn configure_main_window_config_for_platform(config: &mut tauri::utils::config::WindowConfig) {
     // Start without native chrome; the webview applies the saved preference
     // before rendering, including on startup failure and window recreation.
     if cfg!(any(target_os = "linux", target_os = "windows")) {
         config.decorations = false;
     }
-    if cfg!(target_os = "linux") {
+    if !cfg!(target_os = "macos") {
         config.transparent = false;
         config.window_effects = None;
     }
@@ -472,7 +472,7 @@ mod surface_tests {
         if cfg!(any(target_os = "linux", target_os = "windows")) {
             assert!(!config.decorations);
         }
-        assert_eq!(config.transparent, !cfg!(target_os = "linux"));
-        assert_eq!(config.window_effects.is_some(), !cfg!(target_os = "linux"));
+        assert_eq!(config.transparent, cfg!(target_os = "macos"));
+        assert_eq!(config.window_effects.is_some(), cfg!(target_os = "macos"));
     }
 }

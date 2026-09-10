@@ -4,6 +4,7 @@ import React, { ReactNode, useId, useMemo, useRef, useState } from 'react'
 import InsetSurface from '@/components/layout/InsetSurface'
 import SidebarFooter from '@/components/layout/SidebarFooter'
 import SidebarNavigation from '@/components/layout/SidebarNavigation'
+import { ContentToolbar } from '@/components/TitleBar'
 import { SidebarSlotContext } from '@/contexts/sidebar-slot-context'
 import { usePlatform } from '@/hooks/usePlatform'
 import { useWindowFrame } from '@/hooks/useWindowFrame'
@@ -99,9 +100,11 @@ const InsetMainLayout: React.FC<MainLayoutProps & SidebarAreaProps & ContentTool
       <SidebarArea title={sidebarTitle} />
 
       <main className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-        <div data-tauri-drag-region className="flex h-10 shrink-0 items-center justify-end px-3">
-          <div ref={toolbarHostRef} className="flex items-center" />
-        </div>
+        <ContentToolbar
+          rightSlot={
+            <div ref={toolbarHostRef} className="flex min-w-0 flex-1 items-center justify-end" />
+          }
+        />
         <div className="flex min-h-0 flex-1 pb-2 pr-2">
           <InsetSurface className="h-full w-full flex-1 rounded-xl">{children}</InsetSurface>
         </div>

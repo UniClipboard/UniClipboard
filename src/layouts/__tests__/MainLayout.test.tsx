@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import { describe, expect, it, vi } from 'vitest'
 import MainLayout from '../MainLayout'
@@ -16,12 +16,31 @@ const windowFrameState = vi.hoisted(() => ({
   useSystemWindowFrame: false,
 }))
 
+const windowMocks = vi.hoisted(() => ({
+  close: vi.fn().mockResolvedValue(undefined),
+  isMaximized: vi.fn().mockResolvedValue(false),
+  maximize: vi.fn().mockResolvedValue(undefined),
+  minimize: vi.fn().mockResolvedValue(undefined),
+  onResized: vi.fn().mockResolvedValue(() => {}),
+  unmaximize: vi.fn().mockResolvedValue(undefined),
+}))
+
+vi.mock('@tauri-apps/api/window', () => ({
+  getCurrentWindow: () => windowMocks,
+}))
+
 vi.mock('@/hooks/usePlatform', () => ({
   usePlatform: () => platformState.current,
 }))
 
 vi.mock('@/hooks/useWindowFrame', () => ({
-  useWindowFrame: () => windowFrameState,
+  useWindowFrame: () => ({
+    ...windowFrameState,
+    hasCustomWindowControls:
+      platformState.current.isTauri &&
+      !platformState.current.isMac &&
+      !windowFrameState.useSystemWindowFrame,
+  }),
 }))
 
 vi.mock('@/contexts/titlebar-slot-context', () => ({
@@ -44,6 +63,31 @@ const renderLayout = () =>
   )
 
 describe('MainLayout', () => {
+  it('Windows 历史和设备共用布局显示并启用三个窗口按钮', async () => {
+    platformState.current = {
+      isWindows: true,
+      isMac: false,
+      isLinux: false,
+      isTauri: true,
+    }
+    windowFrameState.useSystemWindowFrame = false
+
+    renderLayout()
+
+    fireEvent.click(screen.getByRole('button', { name: '最小化' }))
+    fireEvent.click(screen.getByRole('button', { name: '最大化' }))
+    fireEvent.click(screen.getByRole('button', { name: '关闭' }))
+
+    await waitFor(() => {
+      expect(windowMocks.minimize).toHaveBeenCalledOnce()
+      expect(windowMocks.maximize).toHaveBeenCalledOnce()
+      expect(windowMocks.close).toHaveBeenCalledOnce()
+    })
+    windowMocks.isMaximized.mockResolvedValueOnce(true)
+    fireEvent.click(screen.getByRole('button', { name: '还原' }))
+    await waitFor(() => expect(windowMocks.unmaximize).toHaveBeenCalledOnce())
+  })
+
   it('Linux 自绘窗口框使用与标题栏一致的内嵌布局', () => {
     platformState.current = {
       isWindows: false,
@@ -59,6 +103,7 @@ describe('MainLayout', () => {
 
     expect(inset).toBeInTheDocument()
     expect(inset?.firstElementChild).toHaveClass('rounded-xl')
+    expect(screen.getByRole('button', { name: '关闭' })).toBeInTheDocument()
   })
 
   it('Linux 系统窗口框使用平面布局', () => {
@@ -76,6 +121,7 @@ describe('MainLayout', () => {
     expect(main).toHaveClass('bg-card')
     expect(main?.querySelector('.pb-2.pr-2')).not.toBeInTheDocument()
     expect(main?.querySelector('.rounded-xl')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '关闭' })).not.toBeInTheDocument()
   })
 
   it('侧栏固定为窄栏并提供历史与设备两个页面入口', () => {

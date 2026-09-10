@@ -102,6 +102,7 @@ it.each([false, true])(
 
     await act(async () => {
       await import('@/main')
+      await vi.dynamicImportSettled()
     })
     window.dispatchEvent(new Event('load'))
     expect(host).toBeEmptyDOMElement()

@@ -65,6 +65,7 @@ describe('main window bootstrap', () => {
 
   it('启动主窗口时应用已保存的窗口 UI 设置', async () => {
     await import('@/main')
+    await vi.dynamicImportSettled()
 
     expect(mocks.initializeWindowUi).toHaveBeenCalledTimes(1)
     expect(mocks.createRoot).toHaveBeenCalledWith(document.getElementById('root'))

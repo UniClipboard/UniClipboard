@@ -15,7 +15,11 @@ export const previewScenarios = [
 ] as const
 export type PreviewScenario = (typeof previewScenarios)[number]
 
-export function makeUpgradePreview(scenario: PreviewScenario, seconds: number): StartupSnapshot {
+export function makeUpgradePreview(
+  scenario: PreviewScenario,
+  seconds: number,
+  upgradeRequired = scenario !== 'cold-start'
+): StartupSnapshot {
   const finished = scenario === 'starting' || scenario === 'ready'
   const current: StepProgress = {
     step: scenario === 'verifying' ? 'verifying' : 'converting_contents',
@@ -51,7 +55,7 @@ export function makeUpgradePreview(scenario: PreviewScenario, seconds: number): 
     state,
     elapsed_ms: seconds * 1000,
     upgrade: {
-      required: scenario !== 'cold-start',
+      required: upgradeRequired,
       recovering: scenario === 'recovering',
       completed: finished,
       current_step: finished ? null : current.step,

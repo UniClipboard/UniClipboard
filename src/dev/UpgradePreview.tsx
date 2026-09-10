@@ -10,6 +10,7 @@ import {
 
 interface State {
   scenario: PreviewScenario
+  upgradeRequired: boolean
   seconds: number
   playing: boolean
   dark: boolean
@@ -27,6 +28,7 @@ function reducer(state: State, action: Action): State {
       return {
         ...state,
         scenario: action.scenario,
+        upgradeRequired: action.scenario !== 'cold-start',
         seconds: 20,
         playing: false,
         attempt: state.attempt + 1,
@@ -39,6 +41,7 @@ function reducer(state: State, action: Action): State {
       return {
         ...state,
         scenario: 'upgrading',
+        upgradeRequired: true,
         seconds: 0,
         playing: true,
         attempt: state.attempt + 1,
@@ -58,8 +61,10 @@ function reducer(state: State, action: Action): State {
 function initialState(): State {
   const query = new URLSearchParams(window.location.search)
   const candidate = query.get('scenario')
+  const scenario = previewScenarios.find(value => value === candidate) ?? 'upgrading'
   return {
-    scenario: previewScenarios.find(value => value === candidate) ?? 'upgrading',
+    scenario,
+    upgradeRequired: scenario !== 'cold-start',
     seconds: 20,
     playing: false,
     dark: query.get('theme') === 'dark',
@@ -80,7 +85,7 @@ export function UpgradePreview() {
     return () => document.documentElement.classList.remove('dark')
   }, [state.dark])
   const snapshot = {
-    ...makeUpgradePreview(state.scenario, state.seconds),
+    ...makeUpgradePreview(state.scenario, state.seconds, state.upgradeRequired),
     attempt_id: `development-${state.attempt}`,
   }
   function exportSnapshot() {

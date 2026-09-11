@@ -80,7 +80,23 @@ fn online_export_embeds_engine_preparation_and_reports_actual_files() {
     let root = tempfile::tempdir().unwrap();
     let logs = root.path().join("logs");
     fs::create_dir(&logs).unwrap();
-    fs::write(logs.join("engine.2026-09-11.jsonl"), b"{}\n").unwrap();
+    let engine_record = serde_json::json!({
+        "local_schema_version": 2,
+        "run_id": "run-1",
+        "peer_ref": "peer-1",
+        "fields": {
+            "event.name": "connection.finished",
+            "outcome": "failed",
+            "error.phase": "establish",
+            "error.reason": "timed_out",
+            "attempt_count": 3
+        }
+    });
+    fs::write(
+        logs.join("engine.2026-09-11.jsonl"),
+        format!("{engine_record}\n"),
+    )
+    .unwrap();
     fs::write(logs.join("engine.latest.jsonl"), b"ignored").unwrap();
     let output = root.path().join("support.zip");
     let preparation = serde_json::json!({
@@ -104,6 +120,14 @@ fn online_export_embeds_engine_preparation_and_reports_actual_files() {
     assert!(report.unreadable_files.is_empty());
     assert!(report.truncated_files.is_empty());
     let mut archive = zip::ZipArchive::new(fs::File::open(output).unwrap()).unwrap();
+    let mut engine_log = String::new();
+    archive
+        .by_name("logs/engine.2026-09-11.jsonl")
+        .unwrap()
+        .read_to_string(&mut engine_log)
+        .unwrap();
+    let archived_record: serde_json::Value = serde_json::from_str(engine_log.trim()).unwrap();
+    assert_eq!(archived_record, engine_record);
     let mut manifest = String::new();
     archive
         .by_name("manifest.json")

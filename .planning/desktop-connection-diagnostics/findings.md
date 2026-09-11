@@ -28,6 +28,10 @@
 - A real isolated headless daemon run proved the API reports Engine source commit `b9b25fb2`, one stable run ID, a non-extending capture ID, distinct mismatch/stop results, and a new standard-mode run after restart.
 - The real online ZIP contained strict Engine and daemon files plus a manifest with completed flush, actual included files, empty unreadable/truncated lists, `otherProcessesFlushed=false`, and `concurrentWritesPossible=true`.
 - The local daemon protocol uses a strict revision handshake, so adding capture endpoints requires a revision bump to prevent an older daemon from being mistaken for a compatible controller.
+- The first real content inspection showed why archive-only validation was insufficient: connection establishment can succeed before the peer rejects continuation authentication.
+- The complete diagnosable story needs three owners' records: connection facts identify the attempt and candidates, the transport records the authentication rejection on each observable side, and Application records the recovery trigger and final deferred result.
+- Detailed capture preserves per-attempt start/result, candidate source, duration, and correlation. Standard capture retains the logical start/final result and failures while filtering successful attempt detail.
+- Engine still reports discovery and path sources as partial. The current evidence does not prove that a newly discovered candidate was the exact candidate selected for a later successful connection.
 
 ## Technical Decisions
 
@@ -39,6 +43,7 @@
 | Generalize the desktop archive packager instead of extending Engine business export | The product owns ZIP collection facts; Engine owns only its files, flush, and coverage report. |
 | Expose status/start/stop plus one export action | Export preparation is internal to the daemon export action and its report is returned and embedded, avoiding a second caller-controlled preparation sequence. |
 | Use one daemon-owned suspension observer with cancellation and join | It covers GUI-absent lightweight mode and avoids platform-specific duplicate lifecycle owners. |
+| Treat diagnostic content as a separate acceptance gate | A valid ZIP and successful flush do not prove that a failure can be explained from its records. |
 
 ## Issues Encountered
 

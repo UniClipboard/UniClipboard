@@ -86,6 +86,16 @@
 - Committed the settings UI, translations, and UI tests as one complete frontend slice.
 - Recorded the architecture and execution evidence in a final documentation commit.
 
+## Diagnostic Content Follow-up
+
+- Inspected actual Engine JSONL from a real SQLite plus local Iroh continuation-credential failure.
+- Extended the real failure test through the client exchange so both the server's missing-credential detail and the client's authentication-rejected result are required.
+- Enabled detailed capture in that test and required purpose, anonymous peer, logical connection, candidate source, attempt start/result, attempt count, duration, final connection result, and shared client correlation.
+- Added an Application recovery test requiring the real owner to emit the state-changed trigger, authentication-rejected reason, and deferred final result without the device-name sentinel.
+- Re-ran the actual-file tests for recovery next action, address generations, physical path/close records, membership-update source chain, and privacy filtering; all passed.
+- Extended the Desktop archive test to read the archived Engine JSONL and compare the diagnostic record field-for-field.
+- Candidate refresh-to-success, Windows, Linux, phone, system sleep, and two-device packages remain pending and are not described as passed.
+
 ## 5-Question Reboot Check
 
 | Question | Answer |

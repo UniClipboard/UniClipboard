@@ -46,6 +46,13 @@ Phase 5
 - [x] Commit desktop work
 - **Status:** complete
 
+### Phase 6: Diagnostic content acceptance
+- [x] Exercise a real local connection followed by an authentication failure
+- [x] Verify client, server, connection-attempt, recovery, and final-outcome records
+- [x] Verify the Desktop archive preserves Engine diagnostic records field-for-field
+- [x] Keep candidate-update recovery, cross-device, and unavailable platforms explicitly pending
+- **Status:** complete
+
 ## Key Questions
 
 1. Where is the process-wide Engine observability handle retained after daemon startup?

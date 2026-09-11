@@ -57,7 +57,7 @@ Phase 5
 
 1. Where is the process-wide Engine observability handle retained after daemon startup?
 2. Should online export extend the current Engine facade ZIP operation or use the desktop offline packager as the single archive owner?
-3. Which immutable remote Engine revision will Desktop pin? Resolved: full commit `9708c2786a604e76b19ab8dc63b2e923c0e9e35f`.
+3. Which immutable remote Engine revision will Desktop pin? Resolved: full commit `a90367302b180e978fd2c90508df94939efb96ec`, which also exposes the complete observability contract through `uc-engine`.
 
 ## Decisions Made
 
@@ -86,4 +86,4 @@ Phase 5
 ## External Action Completed
 
 - Engine branch `worktree/brave-harbor-fc60` was pushed to its existing upstream with user authorization.
-- GitHub directly resolved full commit `9708c2786a604e76b19ab8dc63b2e923c0e9e35f`.
+- GitHub directly resolved full commit `a90367302b180e978fd2c90508df94939efb96ec`.

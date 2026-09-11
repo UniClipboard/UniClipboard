@@ -96,6 +96,11 @@
 - Extended the Desktop archive test to read the archived Engine JSONL and compare the diagnostic record field-for-field.
 - Candidate refresh-to-success, Windows, Linux, phone, system sleep, and two-device packages remain pending and are not described as passed.
 
+## Engine Contract Boundary Follow-up
+
+- Engine commit `a90367302b180e978fd2c90508df94939efb96ec` exposes complete analytics and diagnostics contracts through `uc_engine::observability`.
+- Desktop now has one direct Engine dependency, and the consumer firewall rejects any return to a direct `uc-observability-contract` dependency.
+
 ## 5-Question Reboot Check
 
 | Question | Answer |

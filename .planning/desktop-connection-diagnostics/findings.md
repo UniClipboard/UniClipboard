@@ -32,6 +32,7 @@
 - The complete diagnosable story needs three owners' records: connection facts identify the attempt and candidates, the transport records the authentication rejection on each observable side, and Application records the recovery trigger and final deferred result.
 - Detailed capture preserves per-attempt start/result, candidate source, duration, and correlation. Standard capture retains the logical start/final result and failures while filtering successful attempt detail.
 - Engine still reports discovery and path sources as partial. The current evidence does not prove that a newly discovered candidate was the exact candidate selected for a later successful connection.
+- Engine now exposes its complete analytics and diagnostics contracts through `uc_engine::observability`; Desktop no longer needs a direct `uc-observability-contract` dependency or a second synchronized pin.
 
 ## Technical Decisions
 

@@ -22,8 +22,13 @@ use crate::api::dto::clipboard::{
 };
 use crate::api::dto::device::LocalDeviceInfoDto;
 use crate::api::dto::diagnostics::{
-    DebugStatusDto, LogExportRequestDto, LogExportResultDto, UpdateDebugModeRequestDto,
-    UpdateDebugModeResultDto,
+    DebugStatusDto, DiagnosticArchiveCollectionDto, DiagnosticCaptureEndReasonDto,
+    DiagnosticCaptureModeDto, DiagnosticCaptureStartRequestDto, DiagnosticCaptureStateDto,
+    DiagnosticCaptureStopRequestDto, DiagnosticCaptureStopResultDto,
+    DiagnosticExportPreparationDto, DiagnosticFileSourceCountsDto, DiagnosticSetupStatusDto,
+    DiagnosticSignalResultDto, DiagnosticSourceCapabilityDto, DiagnosticSourceCollectionDto,
+    DiagnosticSourceCoverageDto, DiagnosticSourceDto, DiagnosticStatusDto, LogExportRequestDto,
+    LogExportResultDto, UpdateDebugModeRequestDto, UpdateDebugModeResultDto,
 };
 use crate::api::dto::encryption::{
     EncryptionActionResponse, EncryptionStateResponse, KeychainAccessResponse, UnlockSpaceRequest,
@@ -93,23 +98,23 @@ use uc_daemon_contract::api::dto::envelope::{
     CaptureCurrentClipboardEnvelope, CaptureUiEventEnvelope, ClearCacheEnvelope,
     ClearHistoryEnvelope, ClipboardStatsEnvelope, DebugStatusEnvelope,
     DeviceGroupChoiceResultEnvelope, DeviceGroupChoicesEnvelope, DeviceTrustEnvelope,
-    DispatchOutcomeEnvelope, EncryptionActionEnvelope, EncryptionStateEnvelope,
-    EntryDeliveryViewEnvelope, EntryDetailEnvelope, EntryReceiveProgressEnvelope,
-    EntryReceiveProgressListEnvelope, EntryResourceEnvelope, ExportConfigEnvelope,
-    ImportConfigEnvelope, KeychainAccessEnvelope, LanInterfaceListEnvelope,
-    LifecycleStatusEnvelope, ListEntriesEnvelope, LocalDeviceInfoEnvelope, LogExportEnvelope,
-    MemberSyncPreferencesEnvelope, MemberSyncResultEnvelope, MobileDeviceListEnvelope,
-    MobileSyncActionEnvelope, MobileSyncSettingsEnvelope, NetworkRecoveryStatusEnvelope,
-    PeerSnapshotListEnvelope, PresenceRefreshEnvelope, PreviewImportEnvelope,
-    RegisterMobileDeviceEnvelope, RelayCredentialStatusEnvelope, RelayProbeOutcomeEnvelope,
-    RelaySaveResultEnvelope, ResendEnvelope, RestartAcceptedEnvelope, RestoreEntryEnvelope,
-    RotateMobilePasswordEnvelope, SearchQueryEnvelope, SearchRebuildEnvelope, SearchStatusEnvelope,
-    SearchTagsEnvelope, SessionTokenEnvelope, SettingsEnvelope, SettingsUpdateResultEnvelope,
-    SetupCancelJoinEnvelope, SetupInitializeEnvelope, SetupIssueInvitationEnvelope,
-    SetupRedeemEnvelope, SetupStateEnvelope, SetupSwitchSpaceEnvelope, SpaceMemberListEnvelope,
-    SpaceProtectionEnvelope, StatusEnvelope, StorageStatsEnvelope, ToggleFavoriteEnvelope,
-    UnlockSpaceEnvelope, UpdateDebugModeEnvelope, UpdateMobileDeviceEnvelope,
-    UpdateMobileSyncSettingsEnvelope, UpgradeStatusEnvelope,
+    DiagnosticCaptureStopEnvelope, DiagnosticStatusEnvelope, DispatchOutcomeEnvelope,
+    EncryptionActionEnvelope, EncryptionStateEnvelope, EntryDeliveryViewEnvelope,
+    EntryDetailEnvelope, EntryReceiveProgressEnvelope, EntryReceiveProgressListEnvelope,
+    EntryResourceEnvelope, ExportConfigEnvelope, ImportConfigEnvelope, KeychainAccessEnvelope,
+    LanInterfaceListEnvelope, LifecycleStatusEnvelope, ListEntriesEnvelope,
+    LocalDeviceInfoEnvelope, LogExportEnvelope, MemberSyncPreferencesEnvelope,
+    MemberSyncResultEnvelope, MobileDeviceListEnvelope, MobileSyncActionEnvelope,
+    MobileSyncSettingsEnvelope, NetworkRecoveryStatusEnvelope, PeerSnapshotListEnvelope,
+    PresenceRefreshEnvelope, PreviewImportEnvelope, RegisterMobileDeviceEnvelope,
+    RelayCredentialStatusEnvelope, RelayProbeOutcomeEnvelope, RelaySaveResultEnvelope,
+    ResendEnvelope, RestartAcceptedEnvelope, RestoreEntryEnvelope, RotateMobilePasswordEnvelope,
+    SearchQueryEnvelope, SearchRebuildEnvelope, SearchStatusEnvelope, SearchTagsEnvelope,
+    SessionTokenEnvelope, SettingsEnvelope, SettingsUpdateResultEnvelope, SetupCancelJoinEnvelope,
+    SetupInitializeEnvelope, SetupIssueInvitationEnvelope, SetupRedeemEnvelope, SetupStateEnvelope,
+    SetupSwitchSpaceEnvelope, SpaceMemberListEnvelope, SpaceProtectionEnvelope, StatusEnvelope,
+    StorageStatsEnvelope, ToggleFavoriteEnvelope, UnlockSpaceEnvelope, UpdateDebugModeEnvelope,
+    UpdateMobileDeviceEnvelope, UpdateMobileSyncSettingsEnvelope, UpgradeStatusEnvelope,
 };
 use uc_daemon_contract::api::dto::storage::{
     ClearCacheRequest, ClearCacheResponse, StorageStatsDto,
@@ -223,6 +228,9 @@ impl Modify for ContractMeta {
         crate::api::settings::save_relay_handler,
         crate::api::diagnostics::get_debug_status_handler,
         crate::api::diagnostics::update_debug_mode_handler,
+        crate::api::diagnostics::get_capture_status_handler,
+        crate::api::diagnostics::start_capture_handler,
+        crate::api::diagnostics::stop_capture_handler,
         crate::api::diagnostics::export_logs_handler,
         // ── lifecycle ──────────────────────────────────────────────
         crate::api::lifecycle::get_lifecycle_status_handler,
@@ -493,6 +501,24 @@ impl Modify for ContractMeta {
             HealthResponse,
             StatusResponse,
             DebugStatusDto,
+            DiagnosticCaptureModeDto,
+            DiagnosticCaptureEndReasonDto,
+            DiagnosticCaptureStopResultDto,
+            DiagnosticSignalResultDto,
+            DiagnosticSetupStatusDto,
+            DiagnosticSourceDto,
+            DiagnosticSourceCapabilityDto,
+            DiagnosticSourceCollectionDto,
+            DiagnosticCaptureStateDto,
+            DiagnosticSourceCoverageDto,
+            DiagnosticStatusDto,
+            DiagnosticFileSourceCountsDto,
+            DiagnosticExportPreparationDto,
+            DiagnosticArchiveCollectionDto,
+            DiagnosticCaptureStartRequestDto,
+            DiagnosticCaptureStopRequestDto,
+            DiagnosticStatusEnvelope,
+            DiagnosticCaptureStopEnvelope,
             UpdateDebugModeRequestDto,
             UpdateDebugModeResultDto,
             LogExportRequestDto,
@@ -642,8 +668,8 @@ mod assembly_smoke_tests {
         // `GET /clipboard/entries/{id}/file`: +1 path, +1 operation → 57 / 62.
         // The mobile-device edit feature added `PATCH /mobile-sync/devices/{device_id}`
         // onto the existing DELETE-only path: +0 paths, +1 operation → 57 / 63.
-        // Diagnostics added `/diagnostics/debug` GET+PUT and
-        // `/diagnostics/log-export` POST: +2 paths, +3 operations → 59 / 66.
+        // Diagnostics added debug, capture status/start/stop, and log export:
+        // +5 paths, +6 operations → 62 / 69.
         // Config migration (issue #1110) added `POST /config/export`,
         // `POST /config/import/preview`, and `POST /config/import`: +3 paths,
         // +3 operations → 62 / 69. The unified-search work added
@@ -654,7 +680,7 @@ mod assembly_smoke_tests {
         // status and atomic save add two paths and two operations → 69 / 76.
         // Engine-owned space protection adds GET /member/protection and the
         // device-group migration replaces the former query and decision paths
-        // with GET and POST on one resource: 72 paths / 81 operations.
+        // with GET and POST on one resource: 75 paths / 84 operations.
         const HTTP_METHODS: [&str; 7] =
             ["get", "put", "post", "delete", "patch", "head", "options"];
         let paths = value
@@ -663,8 +689,8 @@ mod assembly_smoke_tests {
             .expect("OpenAPI doc must declare paths");
         assert_eq!(
             paths.len(),
-            72,
-            "expected exactly 72 path templates, found {}: {:?}",
+            75,
+            "expected exactly 75 path templates, found {}: {:?}",
             paths.len(),
             paths.keys().collect::<Vec<_>>()
         );
@@ -678,8 +704,8 @@ mod assembly_smoke_tests {
             })
             .sum();
         assert_eq!(
-            operation_count, 81,
-            "expected exactly 81 operations across all paths, found {operation_count}"
+            operation_count, 84,
+            "expected exactly 84 operations across all paths, found {operation_count}"
         );
 
         // A few frozen operationIds (§D) must be present somewhere in the doc.

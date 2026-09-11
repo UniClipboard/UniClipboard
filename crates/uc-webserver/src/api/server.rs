@@ -22,6 +22,10 @@ use axum::Router;
 use tokio::sync::{broadcast, Semaphore};
 use tokio_util::sync::CancellationToken;
 use tracing::Instrument;
+use uc_daemon_contract::api::dto::diagnostics::{
+    DiagnosticCaptureStartRequestDto, DiagnosticCaptureStopResultDto,
+    DiagnosticExportPreparationDto, DiagnosticStatusDto, LogExportResultDto,
+};
 use uc_engine::{
     Engine, HostFileHandle, NetworkRecoveryPhaseSummary, NetworkRecoveryStatusSummary, Operation,
     OperationResult, PeerConnectionChannelSummary,
@@ -65,6 +69,8 @@ pub struct DaemonApiState {
     pub auth_token: DaemonAuthToken,
     pub engine: Arc<Engine>,
     pub file_handles: Arc<dyn DaemonFileHandles>,
+    pub diagnostics_runtime: Option<Arc<dyn DaemonDiagnosticsRuntime>>,
+    pub diagnostic_archive: Option<Arc<dyn DaemonDiagnosticArchive>>,
     pub event_tx: broadcast::Sender<DaemonWsEvent>,
     pub started_at: Instant,
     /// Gate controlling clipboard capture in the daemon.
@@ -149,6 +155,8 @@ impl DaemonApiState {
             auth_token,
             engine,
             file_handles,
+            diagnostics_runtime: None,
+            diagnostic_archive: None,
             event_tx,
             started_at: Instant::now(),
             clipboard_capture_gate: None,
@@ -181,6 +189,16 @@ impl DaemonApiState {
     /// through the single authoritative sender (ADR-008 D20).
     pub fn with_analytics(mut self, analytics: Arc<dyn AnalyticsPort>) -> Self {
         self.analytics = analytics;
+        self
+    }
+
+    pub fn with_diagnostics(
+        mut self,
+        runtime: Arc<dyn DaemonDiagnosticsRuntime>,
+        archive: Arc<dyn DaemonDiagnosticArchive>,
+    ) -> Self {
+        self.diagnostics_runtime = Some(runtime);
+        self.diagnostic_archive = Some(archive);
         self
     }
 
@@ -358,7 +376,35 @@ impl DaemonApiState {
 pub trait DaemonFileHandles: Send + Sync {
     fn register_input(&self, path: &Path) -> anyhow::Result<HostFileHandle>;
     fn register_output(&self, path: &Path) -> anyhow::Result<HostFileHandle>;
-    fn register_diagnostic_output(&self) -> anyhow::Result<(HostFileHandle, String)>;
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DaemonDiagnosticError {
+    InvalidInput,
+    Unavailable,
+    AlreadyShutdown,
+}
+
+pub trait DaemonDiagnosticsRuntime: Send + Sync {
+    fn status(&self) -> Result<DiagnosticStatusDto, DaemonDiagnosticError>;
+    fn start(
+        &self,
+        request: DiagnosticCaptureStartRequestDto,
+    ) -> Result<DiagnosticStatusDto, DaemonDiagnosticError>;
+    fn stop(
+        &self,
+        capture_id: &str,
+    ) -> Result<DiagnosticCaptureStopResultDto, DaemonDiagnosticError>;
+    fn prepare_export(&self) -> Result<DiagnosticExportPreparationDto, DaemonDiagnosticError>;
+}
+
+#[async_trait::async_trait]
+pub trait DaemonDiagnosticArchive: Send + Sync {
+    async fn export(
+        &self,
+        since_hours: Option<u32>,
+        engine_preparation: DiagnosticExportPreparationDto,
+    ) -> anyhow::Result<LogExportResultDto>;
 }
 
 fn peer_channel_to_wire(channel: PeerConnectionChannelSummary) -> &'static str {

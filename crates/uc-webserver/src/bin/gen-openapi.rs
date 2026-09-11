@@ -46,8 +46,8 @@ use uc_webserver::api::openapi::ApiDoc;
 /// ADR-008 P5-L (L8d-1) surfaced `POST /lifecycle/restart`: +1 path, +1 operation.
 /// ADR-008 P5-1b added the binary endpoint `GET /clipboard/entries/{id}/file`
 /// (doc-only, octet-stream): +1 path, +1 operation.
-/// Diagnostics debug/log export added `/diagnostics/debug` GET+PUT and
-/// `/diagnostics/log-export` POST: +2 paths, +3 operations.
+/// Diagnostics debug, capture, and log export added six operations across five
+/// paths.
 /// Config migration (issue #1110) added `POST /config/export`,
 /// `POST /config/import/preview`, and `POST /config/import`: +3 paths,
 /// +3 operations → 62 / 69.
@@ -59,9 +59,9 @@ use uc_webserver::api::openapi::ApiDoc;
 /// +2 paths, +2 operations.
 /// Engine-owned member protection adds GET `/member/protection`. Workspace
 /// Device trust replaces the product-facing convergence query with one complete
-/// query and choice operations on one path: 72 paths / 81 operations.
-const EXPECTED_PATHS: usize = 72;
-const EXPECTED_OPERATIONS: usize = 81;
+/// query and choice operations on one path: 75 paths / 84 operations.
+const EXPECTED_PATHS: usize = 75;
+const EXPECTED_OPERATIONS: usize = 84;
 const SCHEMA_PREFIX: &str = "#/components/schemas/";
 const HTTP_METHODS: [&str; 7] = ["get", "put", "post", "delete", "patch", "head", "options"];
 

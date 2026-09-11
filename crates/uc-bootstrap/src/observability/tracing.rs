@@ -203,10 +203,27 @@ fn select_log_profile(settings: &BootstrapSettings) -> LogProfile {
 /// - The global subscriber is already registered (and this is the first call)
 /// - The logs directory cannot be created
 pub fn init_tracing_subscriber() -> anyhow::Result<()> {
+    install_tracing_subscriber().map(drop)
+}
+
+/// Initialize tracing for the daemon and return its Engine diagnostics handle.
+///
+/// Unlike [`init_tracing_subscriber`], this entry requires the caller to own
+/// the first process installation. The daemon retains the returned handle for
+/// capture control, export preparation, and orderly shutdown.
+pub fn init_daemon_tracing_subscriber(
+) -> anyhow::Result<uc_engine::observability::ProcessObservabilityHandle> {
+    install_tracing_subscriber()?.ok_or_else(|| {
+        anyhow::anyhow!("daemon tracing was initialized before the daemon acquired its handle")
+    })
+}
+
+fn install_tracing_subscriber(
+) -> anyhow::Result<Option<uc_engine::observability::ProcessObservabilityHandle>> {
     // Idempotency guard: skip if already initialized
     if TRACING_INITIALIZED.get().is_some() {
         ::tracing::debug!("Tracing already initialized, skipping");
-        return Ok(());
+        return Ok(None);
     }
 
     // Step 1: Resolve logs directory
@@ -536,21 +553,18 @@ pub fn init_tracing_subscriber() -> anyhow::Result<()> {
         Box::new(console_layer),
         Box::new(json_layer),
     ];
-    let engine_local_logs_ready =
+    let process_observability =
         match uc_engine::observability::ProcessObservabilityRuntime::install_with_host_layers(
             engine_observability_config(&scope_ctx, &paths.logs_dir)?,
             host_layers,
         ) {
-            Ok(installed) => {
-                installed.handle().health().local_file
-                    == uc_engine::observability::ObservabilitySetupStatus::Ready
-            }
+            Ok(installed) => installed.handle(),
             Err(e) => {
                 // [Codex Review R1+R2] Only swallow on genuine re-entry (TRACING_INITIALIZED already set).
                 // If this is the first call and try_init() fails, propagate the error.
                 if TRACING_INITIALIZED.get().is_some() {
                     ::tracing::debug!("Tracing subscriber already set ({}), skipping re-init", e);
-                    return Ok(());
+                    return Ok(None);
                 } else {
                     return Err(anyhow::anyhow!(
                         "Failed to initialize tracing subscriber: {}",
@@ -559,6 +573,8 @@ pub fn init_tracing_subscriber() -> anyhow::Result<()> {
                 }
             }
         };
+    let engine_local_logs_ready = process_observability.health().local_file
+        == uc_engine::observability::ObservabilitySetupStatus::Ready;
 
     let _ = TRACING_INITIALIZED.set(());
 
@@ -575,7 +591,7 @@ pub fn init_tracing_subscriber() -> anyhow::Result<()> {
         "Tracing initialized with host output and shared Engine diagnostics"
     );
 
-    Ok(())
+    Ok(Some(process_observability))
 }
 
 fn engine_observability_config(

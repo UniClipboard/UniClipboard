@@ -15,6 +15,7 @@ uc-daemon-local = { path = "../uc-daemon-local" }
 uc-engine = { workspace = true, features = ["lan-compat"] }
 uc-observability = { path = "../uc-observability" }
 anyhow = "1.0"
+async-trait = "0.1"
 axum = { version = "0.7", features = ["ws", "tokio", "http1", "http2", "multipart"] }
 base64 = "0.22"
 chrono = { version = "0.4", features = ["serde"] }
@@ -34,7 +35,6 @@ uuid = { version = "1.10.0", features = ["v4"] }
 zeroize = "1"
 
 [dev-dependencies]
-async-trait = "0.1"
 tracing-subscriber = "0.3"
 tower = { version = "0.5", features = ["util"] }
 # The /healthz load benchmark only: it drives a real listener over real TCP and

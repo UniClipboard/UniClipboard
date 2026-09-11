@@ -791,6 +791,25 @@ mod tests {
     }
 
     #[test]
+    fn detailed_capture_commands_parse_with_bounded_minutes() {
+        let started =
+            Cli::try_parse_from(["uniclip", "debug", "capture", "start", "--minutes", "15"])
+                .expect("capture start must parse");
+        assert!(matches!(
+            started.command,
+            Some(Commands::Debug {
+                subcommand: commands::debug::DebugCommands::Capture {
+                    command: commands::debug::CaptureCommands::Start { minutes: 15 }
+                }
+            })
+        ));
+
+        let invalid =
+            Cli::try_parse_from(["uniclip", "debug", "capture", "start", "--minutes", "16"]);
+        assert!(invalid.is_err());
+    }
+
+    #[test]
     fn no_subcommand_displays_help() {
         let result = Cli::try_parse_from(["uniclip"]);
 

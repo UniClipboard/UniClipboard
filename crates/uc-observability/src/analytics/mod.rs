@@ -47,6 +47,6 @@ pub use ids::{
 };
 pub use port::{AnalyticsPort, GroupIdentifyPayload, IdentifyPayload, NoopAnalyticsSink};
 pub use sinks::{build_event_payload, GatedAnalyticsSink, PosthogSink, StdoutSink};
-pub use uc_observability_contract::analytics::{
+pub use uc_engine::observability::analytics::{
     AdoptOutcome, AnalyticsIdentityError, AnalyticsIdentityPort, ReleaseOutcome,
 };

@@ -31,6 +31,7 @@ const FORBIDDEN_RUNTIME_PACKAGES = new Set([
   'uc-content-hash',
   'uc-mobile-proto',
   'uc-mobile',
+  'uc-observability-contract',
 ])
 
 const MIGRATED_PATHS = [
@@ -188,7 +189,7 @@ function checkPublicSurface(metadata) {
     ['uc-bootstrap', 'uc-engine'],
     ['uc-webserver', 'uc-engine'],
     ['uc-cli', 'uc-engine'],
-    ['uc-observability', 'uc-observability-contract'],
+    ['uc-observability', 'uc-engine'],
   ]
   for (const [packageName, dependencyName] of requiredDependencies) {
     if (!dependency(workspacePackageByName(metadata, packageName), dependencyName)) {
@@ -307,11 +308,8 @@ function runNegativeFixtures(metadata, sources) {
   expectRejected(
     'tagged Engine dependency',
     changed => {
-      const contract = dependency(
-        workspacePackageByName(changed, 'uc-observability'),
-        'uc-observability-contract'
-      )
-      contract.source = `git+${ENGINE_REPOSITORY}?tag=v0.20.0-rc.5`
+      const engine = dependency(workspacePackageByName(changed, 'uc-observability'), 'uc-engine')
+      engine.source = `git+${ENGINE_REPOSITORY}?tag=v0.20.0-rc.5`
     },
     metadata,
     sources

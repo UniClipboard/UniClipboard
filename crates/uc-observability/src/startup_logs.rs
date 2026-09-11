@@ -161,7 +161,7 @@ fn collect_log_files(
 }
 
 fn managed_log_date(name: &str) -> Option<NaiveDate> {
-    if let Some(date) = uc_observability_contract::diagnostics::managed_log_file_date(name) {
+    if let Some(date) = uc_engine::observability::diagnostics::managed_log_file_date(name) {
         return Some(date);
     }
     [

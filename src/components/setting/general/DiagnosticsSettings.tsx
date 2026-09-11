@@ -1,7 +1,14 @@
 import { Loader2 } from 'lucide-react'
-import { useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { exportLogs, updateDebugMode } from '@/api/daemon/diagnostics'
+import {
+  exportLogs,
+  getDiagnosticCaptureStatus,
+  startDiagnosticCapture,
+  stopDiagnosticCapture,
+  updateDebugMode,
+  type DiagnosticCaptureStatus,
+} from '@/api/daemon/diagnostics'
 import * as storageApi from '@/api/storage'
 import {
   AlertDialog,
@@ -50,8 +57,52 @@ export function DiagnosticsSettings() {
   const [debugDialog, setDebugDialog] = useState<DebugDialogState>('closed')
   const [exportPath, setExportPath] = useState<string | null>(null)
   const [exportingLogs, setExportingLogs] = useState(false)
+  const [captureStatus, setCaptureStatus] = useState<DiagnosticCaptureStatus | null>(null)
+  const [captureUnavailable, setCaptureUnavailable] = useState(false)
+  const [captureBusy, setCaptureBusy] = useState(false)
   const isBusy = loading || saving
   const isRestarting = debugDialog === 'restarting'
+  const detailedCapture = captureStatus?.capture.mode === 'detailed'
+  const captureDescription = useMemo(() => {
+    if (captureUnavailable) return t('settings.sections.general.logs.capture.unavailable')
+    if (!captureStatus) return t('settings.sections.general.logs.capture.loading')
+    const coverage = {
+      enabled: captureStatus.sources.filter(source => source.collection === 'enabled').length,
+      total: captureStatus.sources.length,
+      filtered: captureStatus.policyFilteredRecords,
+      rejected: captureStatus.schemaRejectedRecords,
+    }
+    if (!detailedCapture) {
+      return t('settings.sections.general.logs.capture.standard', coverage)
+    }
+    return t('settings.sections.general.logs.capture.active', {
+      ...coverage,
+      minutes: Math.max(1, Math.ceil(captureStatus.capture.remainingMs / 60_000)),
+    })
+  }, [captureStatus, captureUnavailable, detailedCapture, t])
+
+  const loadCaptureStatus = useCallback(async () => {
+    try {
+      const status = await getDiagnosticCaptureStatus()
+      setCaptureStatus(status)
+      setCaptureUnavailable(false)
+      return status
+    } catch (error) {
+      log.warn({ err: error }, 'Failed to read detailed capture status')
+      setCaptureUnavailable(true)
+      return null
+    }
+  }, [])
+
+  useEffect(() => {
+    void loadCaptureStatus()
+  }, [loadCaptureStatus])
+
+  useEffect(() => {
+    if (!detailedCapture && !captureUnavailable) return
+    const timer = window.setInterval(() => void loadCaptureStatus(), 5_000)
+    return () => window.clearInterval(timer)
+  }, [captureUnavailable, detailedCapture, loadCaptureStatus])
 
   const persistDebugModeOff = () =>
     runSave(
@@ -99,14 +150,42 @@ export function DiagnosticsSettings() {
   const handleExportLogs = async () => {
     try {
       setExportingLogs(true)
-      const result = await exportLogs(24)
-      setExportPath(result.path)
-      toast.success(t('settings.sections.general.logs.export.success'))
+      let path: string | null
+      let exportNotice: 'complete' | 'partial' | 'offline' = 'complete'
+      try {
+        const result = await exportLogs(24)
+        path = result.path
+        if (
+          result.enginePreparation.flush !== 'completed' ||
+          result.collection.unreadableFiles.length > 0 ||
+          result.collection.truncatedFiles.length > 0
+        ) {
+          exportNotice = 'partial'
+        }
+      } catch (daemonError) {
+        log.warn({ err: daemonError }, 'Daemon export unavailable; using retained logs')
+        path = await commands.exportStartupLogs()
+        if (!path) return
+        exportNotice = 'offline'
+      }
+      if (!path) return
+      setExportPath(path)
+      if (exportNotice === 'complete') {
+        toast.success(t('settings.sections.general.logs.export.success'))
+      } else {
+        toast.message(
+          t(
+            exportNotice === 'offline'
+              ? 'settings.sections.general.logs.export.offlineSuccess'
+              : 'settings.sections.general.logs.export.partialSuccess'
+          )
+        )
+      }
       // Reveal the exported archive in the file manager so the user can find
       // it immediately. Failure here is non-fatal: the export already
       // succeeded and the path is shown in the UI.
       try {
-        await storageApi.revealPath(result.path)
+        await storageApi.revealPath(path)
       } catch (revealError) {
         log.warn({ err: revealError }, 'Failed to reveal exported log archive')
       }
@@ -115,6 +194,30 @@ export function DiagnosticsSettings() {
       toast.error(t('settings.sections.general.logs.export.error'))
     } finally {
       setExportingLogs(false)
+    }
+  }
+
+  const handleDetailedCaptureChange = async (checked: boolean) => {
+    setCaptureBusy(true)
+    try {
+      if (checked) {
+        setCaptureStatus(await startDiagnosticCapture(600))
+      } else if (captureStatus?.capture.captureId) {
+        await stopDiagnosticCapture(captureStatus.capture.captureId)
+        await loadCaptureStatus()
+      }
+      setCaptureUnavailable(false)
+    } catch (error) {
+      // A response can be lost after the daemon applied the request. Query the
+      // authority before reporting failure or starting another capture.
+      const recovered = await loadCaptureStatus()
+      const reachedRequestedState = recovered?.capture.mode === (checked ? 'detailed' : 'standard')
+      if (!reachedRequestedState) {
+        log.error({ err: error }, 'Failed to change detailed capture state')
+        toast.error(t('settings.sections.general.logs.capture.error'))
+      }
+    } finally {
+      setCaptureBusy(false)
     }
   }
 
@@ -140,6 +243,18 @@ export function DiagnosticsSettings() {
           checked={debugMode}
           onCheckedChange={handleDebugModeChange}
           disabled={isBusy}
+        />
+      </SettingRow>
+
+      <SettingRow
+        label={t('settings.sections.general.logs.capture.label')}
+        description={captureDescription}
+      >
+        <Switch
+          aria-label={t('settings.sections.general.logs.capture.label')}
+          checked={detailedCapture}
+          onCheckedChange={checked => void handleDetailedCaptureChange(checked)}
+          disabled={isBusy || captureBusy || captureUnavailable || !captureStatus}
         />
       </SettingRow>
 

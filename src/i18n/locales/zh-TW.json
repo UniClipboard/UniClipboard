@@ -339,10 +339,11 @@
         },
         "logs": {
           "capture": {
-            "label": "詳細連線記錄",
+            "label": "擷取詳細日誌",
+            "tooltip": "約剩 {{minutes}} 分鐘，可手動關閉。",
             "loading": "正在讀取背景服務的記錄狀態…",
-            "standard": "正在使用標準記錄。已啟用 {{enabled}}/{{total}} 個來源；已過濾 {{filtered}} 筆，拒收 {{rejected}} 筆。",
-            "active": "詳細記錄約剩 {{minutes}} 分鐘，關閉視窗不會停止。已啟用 {{enabled}}/{{total}} 個來源；已過濾 {{filtered}} 筆，拒收 {{rejected}} 筆。",
+            "standard": "暫時記錄詳細日誌，10 分鐘後自動停止。",
+            "active": "正在記錄詳細日誌，約 {{minutes}} 分鐘後自動停止。",
             "unavailable": "背景服務的診斷能力目前無法使用。",
             "error": "變更詳細記錄失敗"
           },

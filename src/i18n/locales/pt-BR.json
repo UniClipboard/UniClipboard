@@ -339,10 +339,11 @@
         },
         "logs": {
           "capture": {
-            "label": "Captura detalhada da conexão",
+            "label": "Capturar logs detalhados",
+            "tooltip": "Restam cerca de {{minutes}} minutos. Você pode desativar manualmente.",
             "loading": "Lendo o estado de captura do serviço em segundo plano…",
-            "standard": "O diagnóstico padrão está ativo. {{enabled}} de {{total}} fontes estão ativas; {{filtered}} registros foram filtrados e {{rejected}} rejeitados.",
-            "active": "A captura detalhada tem cerca de {{minutes}} min restantes e não para ao fechar esta janela. {{enabled}} de {{total}} fontes estão ativas; {{filtered}} registros foram filtrados e {{rejected}} rejeitados.",
+            "standard": "Registra logs detalhados temporariamente e para automaticamente após 10 minutos.",
+            "active": "Registrando logs detalhados. Para automaticamente em cerca de {{minutes}} minutos.",
             "unavailable": "O diagnóstico do serviço em segundo plano está indisponível.",
             "error": "Não foi possível alterar a captura detalhada"
           },

@@ -19,7 +19,8 @@ import type { SettingContextType, Settings } from '@/types/setting'
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
-    t: (key: string) => key,
+    t: (key: string, options?: { minutes?: number }) =>
+      key.endsWith('capture.tooltip') ? `${key}: ${options?.minutes}` : key,
   }),
 }))
 
@@ -127,6 +128,35 @@ function captureStatus(
 }
 
 describe('GeneralSection debug diagnostics controls', () => {
+  it('shows the remaining capture time on hover only while enabled and allows manual stop', async () => {
+    const user = userEvent.setup()
+    mockGetDiagnosticCaptureStatus.mockResolvedValue(captureStatus('detailed'))
+    mockStopDiagnosticCapture.mockResolvedValue('stopped')
+    setup()
+    render(<GeneralSection />)
+
+    const toggle = screen.getByRole('switch', { name: /logs\.capture\.label/ })
+    await waitFor(() => expect(toggle).toBeChecked())
+    await user.hover(toggle)
+    expect(await screen.findByRole('tooltip')).toHaveTextContent('capture.tooltip: 10')
+
+    const updated = captureStatus('detailed')
+    updated.capture.remainingMs = 540_000
+    mockGetDiagnosticCaptureStatus.mockResolvedValue(updated)
+    await waitFor(
+      () => expect(screen.getByRole('tooltip')).toHaveTextContent('capture.tooltip: 9'),
+      { timeout: 6_000 }
+    )
+
+    mockGetDiagnosticCaptureStatus.mockResolvedValue(captureStatus())
+    await user.click(toggle)
+    await waitFor(() => expect(mockStopDiagnosticCapture).toHaveBeenCalledWith('capture-1'))
+    await waitFor(() => expect(toggle).not.toBeChecked())
+    await user.unhover(toggle)
+    await user.hover(toggle)
+    await waitFor(() => expect(screen.queryByRole('tooltip')).not.toBeInTheDocument())
+  }, 10_000)
+
   it('enables debug mode then restarts the daemon and app after confirmation', async () => {
     const user = userEvent.setup()
     mockUpdateDebugMode.mockResolvedValue({ debugMode: true, restartRequired: true })

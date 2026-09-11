@@ -21,6 +21,10 @@ import {
   AlertDialogTitle,
   Switch,
   Button,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
 } from '@/components/ui'
 import { toast } from '@/components/ui/toast'
 import { useSetting } from '@/hooks/useSetting'
@@ -66,17 +70,10 @@ export function DiagnosticsSettings() {
   const captureDescription = useMemo(() => {
     if (captureUnavailable) return t('settings.sections.general.logs.capture.unavailable')
     if (!captureStatus) return t('settings.sections.general.logs.capture.loading')
-    const coverage = {
-      enabled: captureStatus.sources.filter(source => source.collection === 'enabled').length,
-      total: captureStatus.sources.length,
-      filtered: captureStatus.policyFilteredRecords,
-      rejected: captureStatus.schemaRejectedRecords,
-    }
     if (!detailedCapture) {
-      return t('settings.sections.general.logs.capture.standard', coverage)
+      return t('settings.sections.general.logs.capture.standard')
     }
     return t('settings.sections.general.logs.capture.active', {
-      ...coverage,
       minutes: Math.max(1, Math.ceil(captureStatus.capture.remainingMs / 60_000)),
     })
   }, [captureStatus, captureUnavailable, detailedCapture, t])
@@ -250,12 +247,25 @@ export function DiagnosticsSettings() {
         label={t('settings.sections.general.logs.capture.label')}
         description={captureDescription}
       >
-        <Switch
-          aria-label={t('settings.sections.general.logs.capture.label')}
-          checked={detailedCapture}
-          onCheckedChange={checked => void handleDetailedCaptureChange(checked)}
-          disabled={isBusy || captureBusy || captureUnavailable || !captureStatus}
-        />
+        <TooltipProvider>
+          <Tooltip disabled={!detailedCapture || captureUnavailable}>
+            <TooltipTrigger
+              render={
+                <Switch
+                  aria-label={t('settings.sections.general.logs.capture.label')}
+                  checked={detailedCapture}
+                  onCheckedChange={checked => void handleDetailedCaptureChange(checked)}
+                  disabled={isBusy || captureBusy || captureUnavailable || !captureStatus}
+                />
+              }
+            />
+            <TooltipContent role="tooltip" sideOffset={6}>
+              {t('settings.sections.general.logs.capture.tooltip', {
+                minutes: Math.max(1, Math.ceil((captureStatus?.capture.remainingMs ?? 0) / 60_000)),
+              })}
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
       </SettingRow>
 
       <SettingRow

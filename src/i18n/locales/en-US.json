@@ -339,10 +339,11 @@
         },
         "logs": {
           "capture": {
-            "label": "Detailed connection capture",
-            "loading": "Reading the background service capture state…",
-            "standard": "Standard diagnostics are active. {{enabled}} of {{total}} sources are enabled; {{filtered}} records were filtered and {{rejected}} rejected.",
-            "active": "Detailed capture has about {{minutes}} min remaining. Closing this window does not stop it. {{enabled}} of {{total}} sources are enabled; {{filtered}} records were filtered and {{rejected}} rejected.",
+            "label": "Capture detailed logs",
+            "tooltip": "About {{minutes}} minutes remaining. You can turn this off manually.",
+            "loading": "Checking log recording status…",
+            "standard": "Record detailed logs temporarily. Stops automatically after 10 minutes.",
+            "active": "Recording detailed logs. Stops automatically in about {{minutes}} minutes.",
             "unavailable": "Background service diagnostics are unavailable.",
             "error": "Failed to change detailed capture"
           },

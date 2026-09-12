@@ -1,5 +1,5 @@
 import { ChevronDown, ChevronUp, Hash } from 'lucide-react'
-import { useEffect, useId, useRef, useState } from 'react'
+import { useLayoutEffect, useId, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { SearchTagOption } from '@/lib/search-tags'
 import { cn } from '@/lib/utils'
@@ -21,7 +21,7 @@ function QuickPanelTagFilterBar({ tagFilter, tagOptions, onChange }: QuickPanelT
   const selectedTags = new Set(tagFilter?.split(',').filter(Boolean) ?? [])
   const showExpanded = overflowing && expanded
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const list = listRef.current
     if (!list) return
     const measure = () => {

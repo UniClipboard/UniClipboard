@@ -19,8 +19,7 @@ export default function QuickPanelScaleIndicator() {
 
   return (
     <div className="pointer-events-none fixed bottom-3 right-3 z-[1000]">
-      <div
-        role="status"
+      <output
         aria-live="polite"
         aria-atomic="true"
         className="flex items-center gap-4 rounded-xl border border-border/60 bg-card/95 px-4 py-3 text-[13px] text-card-foreground shadow-lg"
@@ -34,7 +33,7 @@ export default function QuickPanelScaleIndicator() {
           <span className="text-muted-foreground">{t('scaleWindow')}</span>
           <span className="font-medium tabular-nums">{feedback.windowPercent}%</span>
         </span>
-      </div>
+      </output>
     </div>
   )
 }

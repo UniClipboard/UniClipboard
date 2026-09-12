@@ -7,7 +7,7 @@ interface CodeEntryContentProps {
 
 function CodeEntryContent({ item }: CodeEntryContentProps) {
   return (
-    <div className="font-mono text-[11px] leading-[1.55] text-foreground/85 line-clamp-2 break-words">
+    <div className="font-mono text-ui-body text-foreground/85 line-clamp-2 break-words">
       <InlineTextSummary text={item.code} />
     </div>
   )

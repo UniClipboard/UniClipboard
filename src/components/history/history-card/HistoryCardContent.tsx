@@ -47,7 +47,7 @@ function HistoryCardContent({ item }: HistoryCardContentProps) {
       return <CodeEntryContent item={{ code: item.textPreview }} />
     }
     return item.textPreview ? (
-      <div className="text-[13px] leading-[1.55] text-foreground/85 line-clamp-2 break-words">
+      <div className="text-ui-body text-foreground/85 line-clamp-2 break-words">
         <InlineTextSummary text={item.textPreview} />
       </div>
     ) : null
@@ -76,7 +76,7 @@ function HistoryCardContent({ item }: HistoryCardContentProps) {
     }
     default:
       return item.textPreview ? (
-        <div className="text-[13px] text-muted-foreground/70 line-clamp-3">
+        <div className="text-ui-body text-muted-foreground/70 line-clamp-3">
           <InlineTextSummary text={item.textPreview} />
         </div>
       ) : null

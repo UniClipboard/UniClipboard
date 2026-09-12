@@ -5,7 +5,7 @@ export const MENU_SURFACE_CLASS =
   'rounded-xl border border-border bg-card p-1.5 text-foreground outline-none'
 export const MENU_SHADOW_CLASS = 'uc-menu-shadow'
 export const MENU_ITEM_CLASS =
-  'relative isolate flex w-full select-none items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[0.8125rem] outline-none'
+  'relative isolate flex w-full select-none items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-ui-body outline-none'
 
 export function menuMotion(
   open: boolean,

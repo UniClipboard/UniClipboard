@@ -94,7 +94,7 @@ const ClipboardPreviewInfo: React.FC<ClipboardPreviewInfoProps> = ({
 
   return (
     <div className="shrink-0 p-3" data-testid="clipboard-preview-info">
-      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1.5 text-[0.6875rem] font-normal tabular-nums text-muted-foreground/75">
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1.5 text-ui-caption font-normal tabular-nums text-muted-foreground/75">
         <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
           {rows.map((row, i) => (
             <span key={row.id} className="inline-flex items-center gap-2">
@@ -109,7 +109,7 @@ const ClipboardPreviewInfo: React.FC<ClipboardPreviewInfoProps> = ({
           {item.contentTags?.map(tag => (
             <span
               key={tag}
-              className="rounded bg-muted/50 px-1.5 py-0.5 text-[0.625rem] leading-none text-muted-foreground/80"
+              className="rounded bg-muted/50 px-1.5 py-0.5 text-ui-caption text-muted-foreground/80"
             >
               {t(`history.type.${tag}`, tag)}
             </span>

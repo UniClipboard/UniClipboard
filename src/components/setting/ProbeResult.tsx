@@ -16,7 +16,7 @@ export function ProbeResult({ status }: ProbeResultProps) {
   return (
     <p
       className={cn(
-        'mt-2 flex items-center gap-1.5 text-xs',
+        'mt-2 flex items-center gap-1.5 text-ui-body',
         success ? 'text-emerald-700 dark:text-emerald-400' : 'text-destructive'
       )}
       role={success ? 'status' : 'alert'}

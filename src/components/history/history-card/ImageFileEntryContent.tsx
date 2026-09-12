@@ -26,11 +26,11 @@ function ImageFileEntryContent({ item, entryId }: ImageFileEntryContentProps) {
         <FileGlyph ext={getFileExtLabel(name)} />
       )}
       <div className="min-w-0 flex-1">
-        <div className="text-[13px] font-medium leading-snug text-foreground/85 line-clamp-2 break-all">
+        <div className="text-ui-body font-medium text-foreground/85 line-clamp-2 break-all">
           {name}
         </div>
         {primarySize >= 0 && (
-          <div className="mt-1 text-[11px] tabular-nums text-muted-foreground/55">
+          <div className="mt-1 text-ui-caption tabular-nums text-muted-foreground/55">
             {formatFileSize(primarySize)}
           </div>
         )}

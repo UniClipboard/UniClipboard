@@ -11,7 +11,7 @@ export function SettingGroup({ title, children, className }: SettingGroupProps) 
   return (
     <fieldset data-slot="setting-group" className={cn('min-w-0', className)}>
       {title && (
-        <legend data-slot="setting-group-title" className="mb-4 px-1 text-base font-semibold">
+        <legend data-slot="setting-group-title" className="mb-4 px-1 text-ui-section font-semibold">
           {title}
         </legend>
       )}

@@ -29,10 +29,7 @@ export function ContextMenuShortcut({ children, className }: ContextMenuShortcut
   return (
     <span
       aria-hidden="true"
-      className={cn(
-        'ml-auto pl-4 text-[0.625rem] font-medium tracking-wide text-muted-foreground',
-        className
-      )}
+      className={cn('ml-auto pl-4 text-ui-caption font-medium text-muted-foreground', className)}
     >
       {children}
     </span>

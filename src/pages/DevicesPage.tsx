@@ -308,7 +308,7 @@ const DevicesPage: React.FC = () => {
         <div className="px-3 pt-3">
           {networkRecoveryVisible && (
             <Alert className="mt-2 border-warning/30 bg-warning/10 text-warning">
-              <AlertDescription className="flex flex-col gap-2 text-xs">
+              <AlertDescription className="flex flex-col gap-2 text-ui-caption">
                 <span>
                   {networkRecoveryError
                     ? t(networkRecoveryError)
@@ -341,7 +341,7 @@ const DevicesPage: React.FC = () => {
             >
               {(spaceMembersError || mobileDevicesError || spaceProtectionError || false) && (
                 <Alert variant="destructive" className="mx-1 my-2">
-                  <AlertDescription className="flex flex-col gap-2 text-xs">
+                  <AlertDescription className="flex flex-col gap-2 text-ui-caption">
                     <span>
                       {spaceMembersError ??
                         mobileDevicesError ??
@@ -383,7 +383,7 @@ const DevicesPage: React.FC = () => {
                   {localDeviceError ? (
                     <button
                       type="button"
-                      className="text-left text-xs text-destructive underline underline-offset-2"
+                      className="text-left text-ui-body text-destructive underline underline-offset-2"
                       onClick={() => {
                         dispatch(clearLocalDeviceError())
                         dispatch(fetchLocalDeviceInfo())
@@ -674,7 +674,7 @@ const SectionLabel: React.FC<{
 }> = ({ label, trailing }) => (
   <div className="flex items-center justify-between px-2.5 pb-1 pt-4">
     <div className="flex min-w-0 items-center gap-1.5">
-      <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground/80">
+      <span className="text-ui-caption font-semibold uppercase text-muted-foreground/80">
         {label}
       </span>
     </div>
@@ -702,7 +702,7 @@ const EmptyAddRow: React.FC<{ label: string; onClick: () => void; dimmed?: boole
     type="button"
     onClick={onClick}
     className={cn(
-      'flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-left text-[11px] text-muted-foreground/70 transition-colors hover:bg-muted/60 hover:text-foreground',
+      'flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-left text-ui-body text-muted-foreground/70 transition-colors hover:bg-muted/60 hover:text-foreground',
       dimmed && 'opacity-60 hover:bg-transparent hover:text-muted-foreground/70'
     )}
   >

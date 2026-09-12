@@ -30,12 +30,12 @@ export function DeprecatedBadge() {
         >
           <Badge
             variant="outline"
-            className="h-4 rounded-full border-border/60 px-1.5 text-[10px] font-medium text-muted-foreground"
+            className="h-4 rounded-full border-border/60 px-1.5 font-medium text-muted-foreground"
           >
             {t('devices.mobileSync.deprecated')}
           </Badge>
         </TooltipTrigger>
-        <TooltipContent side="top" className="max-w-56 text-left leading-relaxed">
+        <TooltipContent side="top" className="max-w-56 text-left ">
           {tooltip}
         </TooltipContent>
       </Tooltip>

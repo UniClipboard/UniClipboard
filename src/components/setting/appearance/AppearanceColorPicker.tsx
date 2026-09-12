@@ -39,7 +39,7 @@ export default function AppearanceColorPicker({
   const resetLabel = `${label}: ${t('settings.sections.appearance.tokenPicker.reset')}`
   return (
     <div className="py-2">
-      <div className="flex min-w-0 items-center justify-between gap-2 text-xs">
+      <div className="flex min-w-0 items-center justify-between gap-2 text-ui-caption">
         <span>{label}</span>
         <div className="flex shrink-0 items-center gap-1">
           <Popover
@@ -63,7 +63,7 @@ export default function AppearanceColorPicker({
                 className="size-4 rounded-sm border border-border"
                 style={{ backgroundColor: hex }}
               />
-              <span className="w-14 text-left font-mono text-[0.6875rem] uppercase text-muted-foreground">
+              <span className="w-14 text-left font-mono text-ui-caption uppercase text-muted-foreground">
                 {hex}
               </span>
             </PopoverTrigger>
@@ -77,7 +77,7 @@ export default function AppearanceColorPicker({
                 value={open ? draft : hex}
                 onChange={event => change(event.target.value.trim())}
                 spellCheck={false}
-                className="mt-3 w-full rounded-sm border border-border bg-background px-2 py-1.5 font-mono text-xs"
+                className="mt-3 w-full rounded-sm border border-border bg-background px-2 py-1.5 font-mono text-ui-body"
               />
             </PopoverContent>
           </Popover>
@@ -97,7 +97,7 @@ export default function AppearanceColorPicker({
         </div>
       </div>
       {failed && (
-        <p role="alert" className="mt-1 text-xs text-destructive">
+        <p role="alert" className="mt-1 text-ui-body text-destructive">
           {t('appearanceLayout.saveFailed')}
         </p>
       )}

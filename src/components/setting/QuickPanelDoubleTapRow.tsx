@@ -110,22 +110,18 @@ export function QuickPanelDoubleTapRow({ enabled }: { enabled: boolean }) {
           onValueChange={value => setDoubleTapModifier(value as QuickPanelDoubleTapModifier)}
           disabled={!enabled || !doubleTapSupported}
         >
-          <SelectTrigger className="h-9 w-40 text-sm">
+          <SelectTrigger className="h-9 w-40 ">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="disabled" className="text-xs">
+            <SelectItem value="disabled">
               {t('settings.sections.quickPanel.doubleTap.disabled')}
             </SelectItem>
-            <SelectItem value="alt" className="text-xs">
-              {altLabel}
-            </SelectItem>
-            <SelectItem value="control" className="text-xs">
+            <SelectItem value="alt">{altLabel}</SelectItem>
+            <SelectItem value="control">
               {t('settings.sections.quickPanel.doubleTap.control')}
             </SelectItem>
-            <SelectItem value="meta" className="text-xs">
-              {metaLabel}
-            </SelectItem>
+            <SelectItem value="meta">{metaLabel}</SelectItem>
           </SelectContent>
         </Select>
       </div>

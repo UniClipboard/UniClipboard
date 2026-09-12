@@ -50,7 +50,7 @@ export function DeviceTrustDecisionResult({
   return (
     <>
       <DialogHeader>
-        <DialogTitle className="flex items-center gap-2 leading-6">
+        <DialogTitle className="flex items-center gap-2 ">
           {done ? (
             <CheckCircle2 className="size-5 text-emerald-500" />
           ) : (
@@ -60,7 +60,7 @@ export function DeviceTrustDecisionResult({
         </DialogTitle>
         <DialogDescription>{selected?.title}</DialogDescription>
       </DialogHeader>
-      <DialogBody className="space-y-3 py-2 text-sm [overflow-wrap:anywhere]">
+      <DialogBody className="space-y-3 py-2 text-ui-body [overflow-wrap:anywhere]">
         <p className="text-muted-foreground">{t('deviceTrust.presentation.members')}</p>
         <p>{selected?.members}</p>
         {selected?.paused && (

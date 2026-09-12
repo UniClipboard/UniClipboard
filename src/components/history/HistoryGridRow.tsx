@@ -23,15 +23,6 @@ interface HistoryGridRowProps {
   onHoverChange: (id: string | null) => void
 }
 
-function rowHeightClass(item: DisplayClipboardItem): string {
-  switch (item.type) {
-    case 'text':
-      return 'h-20'
-    default:
-      return 'h-24'
-  }
-}
-
 const HistoryGridRow: React.FC<HistoryGridRowProps> = React.memo(
   ({
     item,
@@ -56,11 +47,11 @@ const HistoryGridRow: React.FC<HistoryGridRowProps> = React.memo(
 
     return (
       <m.div
+        data-testid="history-row"
         initial={isNew ? HISTORY_ENTRY_ANIMATION.initial : false}
         animate={HISTORY_ENTRY_ANIMATION.animate}
         transition={HISTORY_ENTRY_ANIMATION.transition}
         className={cn(
-          rowHeightClass(item),
           'relative overflow-hidden transition-colors',
           showDivider && 'border-b border-border/40',
           isActive && 'bg-primary/[0.025] dark:bg-primary/[0.05]'

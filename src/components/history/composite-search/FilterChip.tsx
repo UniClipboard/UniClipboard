@@ -19,7 +19,7 @@ interface FilterChipProps {
 function FilterChip({ icon: Icon, label, onActivate, onClear }: FilterChipProps) {
   const { t } = useTranslation()
   return (
-    <span className="inline-flex h-5 items-center gap-1 rounded-full bg-foreground/8 pl-2 pr-0.5 text-[11px] font-medium text-foreground">
+    <span className="inline-flex h-5 items-center gap-1 rounded-full bg-foreground/8 pl-2 pr-0.5 text-ui-caption font-medium text-foreground">
       <button
         type="button"
         onMouseDown={e => e.preventDefault()}

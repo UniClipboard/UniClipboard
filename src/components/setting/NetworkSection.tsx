@@ -279,7 +279,7 @@ const NetworkSection: React.FC = () => {
       </div>
       {saveError && (
         <div
-          className="rounded-lg border border-destructive/20 bg-destructive/5 p-3 text-xs text-destructive"
+          className="rounded-lg border border-destructive/20 bg-destructive/5 p-3 text-ui-body text-destructive"
           role="alert"
         >
           {saveError}

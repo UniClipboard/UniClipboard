@@ -78,7 +78,7 @@ export default function RebuildSpaceDialog({
         </AlertDialogHeader>
 
         <div className="space-y-2">
-          <Label htmlFor="rebuild-space-confirm" className="text-sm">
+          <Label htmlFor="rebuild-space-confirm">
             {t('devices.panel.danger.modal.confirmPrompt')}
           </Label>
           <Input
@@ -98,7 +98,7 @@ export default function RebuildSpaceDialog({
             role="alert"
             className="rounded-lg border border-destructive/20 bg-destructive/5 p-3"
           >
-            <p className="text-sm font-medium text-destructive">{t(resetErrorKey)}</p>
+            <p className="text-ui-body font-medium text-destructive">{t(resetErrorKey)}</p>
           </div>
         )}
 

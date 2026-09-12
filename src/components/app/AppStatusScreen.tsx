@@ -59,16 +59,16 @@ export function AppStatusScreen({
       <div className="mx-auto flex min-h-full w-full max-w-2xl flex-col justify-center px-6 py-10 sm:px-10">
         <div className="mb-10 flex items-center gap-3">
           <img src={appIcon} alt="" className="size-10 shrink-0" />
-          <span className="text-base font-semibold">UniClipboard</span>
+          <span className="text-ui-section font-semibold">UniClipboard</span>
         </div>
-        <div className="mb-4 flex items-center gap-2 text-sm font-medium text-destructive">
+        <div className="mb-4 flex items-center gap-2 text-ui-body font-medium text-destructive">
           <AlertCircle className="size-4" aria-hidden="true" />
           {t('startupFailure.unavailable')}
         </div>
-        <h1 className="text-2xl font-semibold leading-tight">
+        <h1 className="text-ui-title font-semibold">
           {t(versionTooOld ? 'startupFailure.updateTitle' : 'startupFailure.title')}
         </h1>
-        <p className="mt-3 text-sm leading-6 text-muted-foreground">
+        <p className="mt-3 text-ui-body text-muted-foreground">
           {t(versionTooOld ? 'startupFailure.updateDescription' : 'startupFailure.description')}
         </p>
         <div className="mt-7 flex flex-wrap gap-3">
@@ -118,7 +118,7 @@ export function AppStatusScreen({
         {feedback && (
           <div
             role={feedback.error ? 'alert' : 'status'}
-            className="mt-5 break-words rounded-md border border-border p-3 text-sm leading-6 [overflow-wrap:anywhere]"
+            className="mt-5 break-words rounded-md border border-border p-3 text-ui-body [overflow-wrap:anywhere]"
           >
             {feedback.message}
             {feedback.error && (
@@ -127,11 +127,11 @@ export function AppStatusScreen({
           </div>
         )}
         {detail && (
-          <details className="mt-8 border-t border-border pt-4 text-sm">
+          <details className="mt-8 border-t border-border pt-4 text-ui-body">
             <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
               {t('startupFailure.details')}
             </summary>
-            <pre className="mt-3 max-h-40 select-text overflow-y-auto whitespace-pre-wrap break-words font-mono text-xs leading-5 text-muted-foreground [overflow-wrap:anywhere]">
+            <pre className="mt-3 max-h-40 select-text overflow-y-auto whitespace-pre-wrap break-words font-mono text-ui-caption text-muted-foreground [overflow-wrap:anywhere]">
               {detail}
             </pre>
           </details>

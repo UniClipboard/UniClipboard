@@ -71,7 +71,7 @@ export function DeviceTrustDecisionContent({
         <span className="flex items-start gap-3">
           <ShieldAlert className="mt-0.5 size-5 shrink-0 text-destructive" />
           <span className="min-w-0">
-            <DialogTitle className="leading-6 [overflow-wrap:anywhere]">
+            <DialogTitle className="[overflow-wrap:anywhere]">
               {view.localRemovalTitle ??
                 t('deviceTrust.presentation.title', { name: view.localName })}
             </DialogTitle>
@@ -83,20 +83,17 @@ export function DeviceTrustDecisionContent({
           </span>
         </span>
         {!view.localRemovalTitle && (
-          <p
-            data-testid="choice-reason"
-            className="mt-3 text-sm leading-6 [overflow-wrap:anywhere]"
-          >
+          <p data-testid="choice-reason" className="mt-3 text-ui-body [overflow-wrap:anywhere]">
             {view.reason}
           </p>
         )}
         {view.detailsIncomplete && (
-          <p className="text-xs text-muted-foreground">
+          <p className="text-ui-caption text-muted-foreground">
             {t('deviceTrust.presentation.detailsIncomplete')}
           </p>
         )}
         {deviceGroups.issues.length > 1 && (
-          <p className="text-xs text-muted-foreground">
+          <p className="text-ui-caption text-muted-foreground">
             {t('deviceTrust.modal.issueProgress', {
               current: 1,
               total: deviceGroups.issues.length,
@@ -143,7 +140,7 @@ export function DeviceTrustDecisionContent({
             role="alert"
             data-testid="device-trust-error"
             data-error={error}
-            className="text-sm text-destructive"
+            className="text-ui-body text-destructive"
           >
             {t(
               error === 'device_state_changed'
@@ -153,7 +150,10 @@ export function DeviceTrustDecisionContent({
           </p>
         )}
         {localConfirmation && (
-          <p data-testid="device-trust-local-removal-warning" className="text-sm text-destructive">
+          <p
+            data-testid="device-trust-local-removal-warning"
+            className="text-ui-body text-destructive"
+          >
             {t('deviceTrust.modal.confirmLocalRemoval')}
           </p>
         )}

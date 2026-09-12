@@ -5,7 +5,7 @@ const Rules: React.FC = () => {
     <>
       <div className="mb-6">
         <div className="flex items-center justify-between mb-3">
-          <h3 className="text-sm font-medium text-gray-400">设备同步规则</h3>
+          <h3 className="text-ui-section text-gray-400">设备同步规则</h3>
           <div className="flex-grow ml-3 border-t border-gray-800/50"></div>
         </div>
 
@@ -29,11 +29,11 @@ const Rules: React.FC = () => {
                   />
                 </svg>
               </div>
-              <h4 className="ml-3 font-medium text-white">iPhone 13 同步规则</h4>
+              <h4 className="text-ui-section ml-3 text-white">iPhone 13 同步规则</h4>
             </div>
             <button
               type="button"
-              className="text-xs px-3 py-1 border border-gray-700 rounded-md text-gray-400 hover:bg-gray-700"
+              className="text-ui-body px-3 py-1 border border-gray-700 rounded-md text-gray-400 hover:bg-gray-700"
             >
               恢复默认
             </button>
@@ -44,8 +44,10 @@ const Rules: React.FC = () => {
             {/* 规则项 */}
             <div className="flex items-center justify-between bg-gray-800/70 rounded-md p-3">
               <div>
-                <h5 className="text-sm font-medium text-white">自动同步</h5>
-                <p className="text-xs text-gray-400 mt-0.5">在设备解锁状态下自动同步剪贴板内容</p>
+                <h5 className="text-ui-section text-white">自动同步</h5>
+                <p className="text-ui-caption text-gray-400 mt-0.5">
+                  在设备解锁状态下自动同步剪贴板内容
+                </p>
               </div>
               <label className="flex items-center">
                 <div className="relative">
@@ -65,8 +67,8 @@ const Rules: React.FC = () => {
             {/* 规则项 */}
             <div className="flex items-center justify-between bg-gray-800/70 rounded-md p-3">
               <div>
-                <h5 className="text-sm font-medium text-white">同步文本</h5>
-                <p className="text-xs text-gray-400 mt-0.5">允许同步文本内容</p>
+                <h5 className="text-ui-section text-white">同步文本</h5>
+                <p className="text-ui-caption text-gray-400 mt-0.5">允许同步文本内容</p>
               </div>
               <label className="flex items-center">
                 <div className="relative">
@@ -86,8 +88,8 @@ const Rules: React.FC = () => {
             {/* 规则项 */}
             <div className="flex items-center justify-between bg-gray-800/70 rounded-md p-3">
               <div>
-                <h5 className="text-sm font-medium text-white">同步图片</h5>
-                <p className="text-xs text-gray-400 mt-0.5">
+                <h5 className="text-ui-section text-white">同步图片</h5>
+                <p className="text-ui-caption text-gray-400 mt-0.5">
                   允许同步图片内容 (可能会消耗更多流量)
                 </p>
               </div>
@@ -109,8 +111,8 @@ const Rules: React.FC = () => {
             {/* 规则项 */}
             <div className="flex items-center justify-between bg-gray-800/70 rounded-md p-3">
               <div>
-                <h5 className="text-sm font-medium text-white">同步文件</h5>
-                <p className="text-xs text-gray-400 mt-0.5">允许同步文件内容 (最大10MB)</p>
+                <h5 className="text-ui-section text-white">同步文件</h5>
+                <p className="text-ui-caption text-gray-400 mt-0.5">允许同步文件内容 (最大10MB)</p>
               </div>
               <label className="flex items-center">
                 <div className="relative">
@@ -125,7 +127,7 @@ const Rules: React.FC = () => {
             <div className="pt-2">
               <button
                 type="button"
-                className="text-violet-400 hover:text-violet-300 text-xs flex items-center"
+                className="text-violet-400 hover:text-violet-300 text-ui-body flex items-center"
               >
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
@@ -167,7 +169,7 @@ const Rules: React.FC = () => {
                   />
                 </svg>
               </div>
-              <h4 className="ml-3 font-medium text-white">工作站 同步规则</h4>
+              <h4 className="text-ui-section ml-3 text-white">工作站 同步规则</h4>
             </div>
             <button
               type="button"
@@ -212,7 +214,7 @@ const Rules: React.FC = () => {
                   />
                 </svg>
               </div>
-              <h4 className="ml-3 font-medium text-white">iPad Pro 同步规则</h4>
+              <h4 className="text-ui-section ml-3 text-white">iPad Pro 同步规则</h4>
             </div>
             <button
               type="button"

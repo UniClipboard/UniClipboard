@@ -86,8 +86,8 @@ const LABEL_TRANSITION: Transition = {
 }
 
 const SIZE_CLASS: Record<ExpandableActionBarSize, string> = {
-  sm: 'min-h-9 gap-1 p-1 text-xs',
-  md: 'min-h-11 gap-1.5 p-1.5 text-sm',
+  sm: 'min-h-9 gap-1 p-1 text-ui-body',
+  md: 'min-h-11 gap-1.5 p-1.5 text-ui-body',
 }
 
 const ITEM_SIZE_CLASS: Record<ExpandableActionBarSize, string> = {
@@ -391,7 +391,7 @@ export function ExpandableActionBar({
                         }
                         transition={reduce ? { duration: 0 } : LABEL_TRANSITION}
                         className={cn(
-                          'hidden overflow-hidden whitespace-nowrap text-[10px] text-muted-foreground sm:inline-block',
+                          'hidden overflow-hidden whitespace-nowrap text-ui-caption text-muted-foreground sm:inline-block',
                           classNames?.shortcut
                         )}
                       >
@@ -402,7 +402,7 @@ export function ExpandableActionBar({
                     {item.badge ? (
                       <span
                         className={cn(
-                          'ml-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] leading-none text-primary-foreground',
+                          'ml-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-ui-caption text-primary-foreground',
                           !itemExpanded && 'absolute right-0.5 top-0.5',
                           classNames?.badge
                         )}

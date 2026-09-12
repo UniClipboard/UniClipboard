@@ -4,7 +4,7 @@ import { cn } from '@/lib/utils'
 export function RelayCredentialStatus({ configured }: { configured: boolean | null }) {
   const { t } = useTranslation()
   return (
-    <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+    <span className="flex items-center gap-1.5 text-ui-caption text-muted-foreground">
       <span
         aria-hidden="true"
         className={cn(

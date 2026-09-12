@@ -34,17 +34,15 @@ function FileGlyph({ ext, stacked }: FileGlyphProps) {
       {stacked && (
         <div
           aria-hidden
-          className="absolute -right-1 -top-1 h-12 w-10 rounded-md bg-muted-foreground/25"
+          className="absolute -right-1 -top-1 h-12 w-12 rounded-md bg-muted-foreground/25"
         />
       )}
       <div
-        className="relative flex h-12 w-10 items-center justify-center overflow-hidden rounded-md"
+        className="relative flex size-12 items-center justify-center overflow-hidden rounded-md"
         style={{ backgroundColor: color }}
       >
         <div className="absolute right-0 top-0 size-3 rounded-bl-md bg-black/20" />
-        <span className="px-0.5 text-[9px] font-bold uppercase tracking-wide text-white">
-          {label}
-        </span>
+        <span className="px-0.5 text-ui-caption font-medium uppercase text-white">{label}</span>
       </div>
     </div>
   )

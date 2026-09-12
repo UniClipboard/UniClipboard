@@ -50,8 +50,8 @@ function LocalSyncToggle({ kind }: { kind: 'sync' | 'file' }) {
       )}
     >
       <div className="min-w-0 flex-1">
-        <p className="text-sm font-medium text-foreground">{title}</p>
-        <p className="mt-1 text-xs leading-snug text-muted-foreground">
+        <p className="text-ui-body font-medium text-foreground">{title}</p>
+        <p className="mt-1 text-ui-caption text-muted-foreground">
           {t(`devices.panel.policies.${key}.description`)}
         </p>
       </div>

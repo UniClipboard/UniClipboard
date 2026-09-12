@@ -6,21 +6,21 @@ const Permissions: React.FC = () => {
       {' '}
       <div className="mb-6">
         <div className="flex items-center justify-between mb-3">
-          <h3 className="text-sm font-medium text-gray-400">权限管理</h3>
+          <h3 className="text-ui-section text-gray-400">权限管理</h3>
           <div className="flex-grow ml-3 border-t border-gray-800/50"></div>
         </div>
 
         <div className="bg-gray-800 rounded-lg p-4">
           <div className="mb-4">
-            <h4 className="font-medium text-white mb-2">设备访问权限</h4>
-            <p className="text-sm text-gray-400">
+            <h4 className="text-ui-section text-white mb-2">设备访问权限</h4>
+            <p className="text-ui-body text-gray-400">
               控制每个设备可以访问和同步的内容类型。通过限制权限，您可以保护敏感信息不被所有设备访问。
             </p>
           </div>
 
           {/* 权限表格 */}
           <div className="overflow-x-auto">
-            <table className="min-w-full text-sm">
+            <table className="min-w-full text-ui-body">
               <thead>
                 <tr className="border-b border-gray-800">
                   <th className="py-3 text-left text-gray-400 font-medium">设备</th>
@@ -203,7 +203,7 @@ const Permissions: React.FC = () => {
           <div className="mt-4 text-right">
             <button
               type="button"
-              className="px-3 py-1.5 bg-violet-500 hover:bg-violet-400 text-white text-sm rounded-md transition duration-150"
+              className="px-3 py-1.5 bg-violet-500 hover:bg-violet-400 text-white text-ui-body rounded-md transition duration-150"
             >
               保存权限设置
             </button>

@@ -189,7 +189,7 @@ const SourceBadge: React.FC<SourceBadgeProps> = ({ source }) => {
         }
       >
         <Icon className={cn('size-3.5 transition-colors group-hover:text-foreground/80', tone)} />
-        <span className="text-[11px] font-semibold tabular-nums text-muted-foreground/60 transition-colors group-hover:text-foreground/80">
+        <span className="text-ui-caption font-semibold tabular-nums text-muted-foreground/60 transition-colors group-hover:text-foreground/80">
           {label}
         </span>
       </TooltipTrigger>
@@ -291,7 +291,7 @@ const SyncBadge: React.FC<SyncBadgeProps> = ({
         <Icon className={cn('size-3.5 transition-colors', tone, spin && 'animate-spin')} />
         <span
           className={cn(
-            'text-[11px] font-semibold tabular-nums transition-colors',
+            'text-ui-caption font-semibold tabular-nums transition-colors',
             tone,
             'opacity-80 group-hover:opacity-100'
           )}
@@ -307,7 +307,7 @@ const SyncBadge: React.FC<SyncBadgeProps> = ({
         data-delivery-popover=""
       >
         <div className="mb-1 flex items-center justify-between gap-2 px-1">
-          <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground/80">
+          <span className="text-ui-caption font-medium uppercase text-muted-foreground/80">
             {t('delivery.popover.title')}
           </span>
           {resendable && (
@@ -355,10 +355,7 @@ const DeliveryRow: React.FC<DeliveryRowProps> = ({ target, resendable, entryId, 
       target.status.tag === 'pending')
 
   return (
-    <li
-      className="flex items-center gap-2 p-1 text-[11px] leading-tight"
-      data-status={target.status.tag}
-    >
+    <li className="flex items-center gap-2 p-1 text-ui-caption" data-status={target.status.tag}>
       <span className={cn('shrink-0', tone.icon)} aria-hidden>
         <StatusIcon status={target.status} />
       </span>
@@ -419,7 +416,7 @@ const ResendEntryButton: React.FC<ResendEntryButtonProps> = ({
       onClick={() => void action.resendAll(entryId)}
       data-resend-entry=""
       className={cn(
-        'inline-flex items-center gap-1 rounded px-2 py-0.5 text-[11px] font-medium transition-colors',
+        'inline-flex items-center gap-1 rounded px-2 py-0.5 text-ui-body font-medium transition-colors',
         disabled
           ? 'cursor-default text-muted-foreground/40'
           : 'text-sky-600 hover:bg-sky-500/10 dark:text-sky-400'

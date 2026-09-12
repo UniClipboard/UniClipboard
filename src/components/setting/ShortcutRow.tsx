@@ -31,7 +31,7 @@ export function ShortcutRow({
   const modifiedLabel = useMemo(
     () =>
       isModified ? (
-        <span className="text-xs font-medium text-primary">
+        <span className="text-ui-caption font-medium text-primary">
           {t('settings.sections.shortcuts.modified')}
         </span>
       ) : undefined,
@@ -57,7 +57,7 @@ export function ShortcutRow({
         <Popover open={isRecording} onOpenChange={setIsRecording}>
           <PopoverTrigger
             aria-label={`${t('settings.sections.shortcuts.edit')} ${t(definition.description)}`}
-            className="inline-flex min-h-8 min-w-20 max-w-52 items-center justify-center rounded-lg border border-border bg-muted/30 px-2.5 py-1 text-sm transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 data-popup-open:border-ring data-popup-open:bg-muted"
+            className="inline-flex min-h-8 min-w-20 max-w-52 items-center justify-center rounded-lg border border-border bg-muted/30 px-2.5 py-1 text-ui-body transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 data-popup-open:border-ring data-popup-open:bg-muted"
           >
             {currentKey ? (
               <ShortcutKeys shortcut={currentKey} />
@@ -70,7 +70,9 @@ export function ShortcutRow({
             finalFocus
             className="w-80 max-w-[calc(100vw-2rem)] gap-3 bg-card p-4 text-card-foreground"
           >
-            <PopoverTitle className="text-sm font-medium">{t(definition.description)}</PopoverTitle>
+            <PopoverTitle className="text-ui-body font-medium">
+              {t(definition.description)}
+            </PopoverTitle>
             {isRecording && (
               <KeyRecorder
                 shortcutId={definition.id}

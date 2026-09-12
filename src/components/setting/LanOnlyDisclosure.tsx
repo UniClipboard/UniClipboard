@@ -41,20 +41,20 @@ export function LanOnlyDisclosure() {
       <PopoverContent align="start" sideOffset={8} aria-labelledby="lan-only-disclosure-title">
         <div className="space-y-3">
           <div>
-            <p id="lan-only-disclosure-title" className="text-sm font-medium">
+            <p id="lan-only-disclosure-title" className="text-ui-body font-medium">
               {t('settings.sections.network.lanOnly.disclosure.title')}
             </p>
-            <p className="text-xs text-muted-foreground mt-1">
+            <p className="text-ui-caption text-muted-foreground mt-1">
               {t('settings.sections.network.lanOnly.disclosure.intro')}
             </p>
           </div>
           <div className="space-y-2">
             {DISCLOSURE_KEYS.map(key => (
               <div key={key} className="space-y-1">
-                <p className="text-sm font-medium">
+                <p className="text-ui-body font-medium">
                   {t(`settings.sections.network.lanOnly.disclosure.${key}.title`)}
                 </p>
-                <p className="text-xs text-muted-foreground leading-snug">
+                <p className="text-ui-caption text-muted-foreground">
                   {t(`settings.sections.network.lanOnly.disclosure.${key}.description`)}
                 </p>
               </div>

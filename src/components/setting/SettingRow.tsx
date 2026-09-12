@@ -38,7 +38,7 @@ export function SettingRow({
         <div className="flex min-w-0 flex-[1_1_14rem] flex-col gap-1">
           {label && (
             <div className="flex flex-wrap items-center gap-2">
-              <span data-slot="setting-label" className="text-sm font-normal">
+              <span data-slot="setting-label" className="text-ui-body font-normal">
                 {label}
               </span>
               {showExperimental && <ExperimentalBadge />}
@@ -48,7 +48,7 @@ export function SettingRow({
           {description && (
             <p
               data-slot="setting-description"
-              className="max-w-[34rem] text-xs text-muted-foreground leading-relaxed break-words"
+              className="max-w-[34rem] text-ui-caption-relaxed text-muted-foreground break-words"
             >
               {description}
             </p>

@@ -73,14 +73,14 @@ export default function DeviceListFooter({
           data-testid="device-switch-space"
           variant="ghost"
           size="sm"
-          className="min-w-0 shrink px-2 text-xs text-muted-foreground"
+          className="min-w-0 shrink px-2 text-muted-foreground"
           title={t('devices.switchSpace.button')}
           onClick={onSwitchSpace}
         >
           <ArrowRightLeft className="size-3.5 shrink-0" />
           <span className="truncate">{t('devices.switchSpace.button')}</span>
         </Button>
-        <span className="shrink-0 text-xs text-muted-foreground">
+        <span className="shrink-0 text-ui-caption text-muted-foreground">
           {t('devices.thisDevice.onlineCount', { count: onlineCount })}
         </span>
       </div>

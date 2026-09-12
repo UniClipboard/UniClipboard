@@ -58,7 +58,7 @@ export const BaseUrlChip: React.FC<BaseUrlChipProps> = ({
             aria-label={t('devices.mobileSync.credential.baseUrl.selectAria')}
           >
             <SelectValue>
-              <span className="truncate font-mono text-sm">{baseUrl}</span>
+              <span className="truncate font-mono text-ui-body">{baseUrl}</span>
             </SelectValue>
           </SelectTrigger>
           <SelectContent>
@@ -67,8 +67,8 @@ export const BaseUrlChip: React.FC<BaseUrlChipProps> = ({
               return (
                 <SelectItem key={`${iface.name}-${iface.ipv4}`} value={iface.ipv4}>
                   <div className="flex flex-col items-start gap-0.5">
-                    <span className="font-mono text-sm">{url}</span>
-                    <span className="text-xs text-muted-foreground">{iface.name}</span>
+                    <span className="font-mono text-ui-body">{url}</span>
+                    <span className="text-ui-caption text-muted-foreground">{iface.name}</span>
                   </div>
                 </SelectItem>
               )
@@ -76,7 +76,7 @@ export const BaseUrlChip: React.FC<BaseUrlChipProps> = ({
           </SelectContent>
         </Select>
       ) : (
-        <span className="truncate font-mono text-sm">{baseUrl}</span>
+        <span className="truncate font-mono text-ui-body">{baseUrl}</span>
       )}
       <CopyIconButton value={baseUrl} />
     </div>

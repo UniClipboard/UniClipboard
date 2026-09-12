@@ -51,7 +51,7 @@ function DialogContent({
           data-slot="dialog-content"
           data-has-close={showCloseButton || undefined}
           className={cn(
-            'center-morph-surface pointer-events-auto fixed top-1/2 left-1/2 z-50 flex max-h-[calc(100%-2rem)] w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 flex-col gap-4 overflow-y-auto rounded-[1.875rem] bg-card p-7 text-card-foreground text-sm border border-border outline-none sm:max-w-[26rem]',
+            'center-morph-surface pointer-events-auto fixed top-1/2 left-1/2 z-50 flex max-h-[calc(100%-2rem)] w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 flex-col gap-4 overflow-y-auto rounded-[1.875rem] bg-card p-7 text-card-foreground text-ui-body border border-border outline-none sm:max-w-[26rem]',
             className
           )}
           {...props}
@@ -127,7 +127,7 @@ function DialogTitle({ className, ...props }: DialogPrimitive.Title.Props) {
   return (
     <DialogPrimitive.Title
       data-slot="dialog-title"
-      className={cn('text-base leading-none font-medium', className)}
+      className={cn('text-ui-section', className)}
       {...props}
     />
   )
@@ -138,7 +138,7 @@ function DialogDescription({ className, ...props }: DialogPrimitive.Description.
     <DialogPrimitive.Description
       data-slot="dialog-description"
       className={cn(
-        'text-sm text-muted-foreground *:[a]:underline *:[a]:underline-offset-3 *:[a]:hover:text-foreground',
+        'text-ui-body text-muted-foreground *:[a]:underline *:[a]:underline-offset-3 *:[a]:hover:text-foreground',
         className
       )}
       {...props}

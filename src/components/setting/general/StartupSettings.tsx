@@ -74,7 +74,7 @@ export function StartupSettings() {
                 >
                   <span className="flex min-w-0 flex-col gap-1">
                     <span>{t(`settings.sections.general.startupMode.options.${mode}`)}</span>
-                    <span className="text-xs leading-relaxed text-muted-foreground">
+                    <span className="text-ui-caption-relaxed text-muted-foreground">
                       {t(`settings.sections.general.startupMode.summaries.${mode}`)}
                     </span>
                   </span>

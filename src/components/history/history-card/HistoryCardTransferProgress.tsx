@@ -53,7 +53,7 @@ function HistoryCardTransferProgress({
                   style={{ width: `${percent}%` }}
                 />
               </div>
-              <span className="shrink-0 text-[9px] tabular-nums text-primary/50">
+              <span className="shrink-0 text-ui-caption tabular-nums text-primary/50">
                 {transfer.totalBytes
                   ? `${formatFileSize(transfer.bytesTransferred)} / ${formatFileSize(transfer.totalBytes)}`
                   : formatFileSize(transfer.bytesTransferred)}

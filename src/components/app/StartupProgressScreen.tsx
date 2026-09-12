@@ -40,9 +40,9 @@ export function StartupProgressScreen({ snapshot, onRetry, onExport }: Props) {
       <div className="m-auto w-full max-w-2xl px-6 py-12 sm:px-12">
         <div className="mb-10 flex items-center gap-3">
           <img src={appIcon} alt="" className="size-10 shrink-0" />
-          <span className="text-base font-semibold">UniClipboard</span>
+          <span className="text-ui-section font-semibold">UniClipboard</span>
         </div>
-        <div className="mb-4 flex items-center gap-2 text-sm text-muted-foreground">
+        <div className="mb-4 flex items-center gap-2 text-ui-body text-muted-foreground">
           {failed ? (
             <AlertCircle className="size-4 text-destructive" />
           ) : ready ? (
@@ -52,10 +52,10 @@ export function StartupProgressScreen({ snapshot, onRetry, onExport }: Props) {
           )}
           {t(required ? 'upgradeProgress.category' : 'upgradeProgress.startupCategory')}
         </div>
-        <h1 className="text-2xl font-semibold leading-tight" aria-live="polite">
+        <h1 className="text-ui-title font-semibold" aria-live="polite">
           {t(`upgradeProgress.${title}`)}
         </h1>
-        <p className="mt-3 text-sm leading-6 text-muted-foreground">
+        <p className="mt-3 text-ui-body text-muted-foreground">
           {failed
             ? t(`upgradeProgress.errors.${snapshot.failure?.reason ?? 'interrupted'}`)
             : t(
@@ -65,7 +65,7 @@ export function StartupProgressScreen({ snapshot, onRetry, onExport }: Props) {
 
         {showProgress && (
           <section className="mt-8" aria-label={t('upgradeProgress.progress')}>
-            <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2 text-sm">
+            <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2 text-ui-body">
               <span className="font-medium">
                 {t(`upgradeProgress.steps.${current?.step ?? 'preparing'}`)}
               </span>
@@ -89,7 +89,7 @@ export function StartupProgressScreen({ snapshot, onRetry, onExport }: Props) {
                 style={percentage === null ? undefined : { width: `${percentage}%` }}
               />
             </div>
-            <div className="mt-3 flex flex-wrap justify-between gap-2 text-xs leading-5 text-muted-foreground">
+            <div className="mt-3 flex flex-wrap justify-between gap-2 text-ui-caption text-muted-foreground">
               <span>
                 {current?.unit
                   ? t('upgradeProgress.count', {
@@ -112,7 +112,7 @@ export function StartupProgressScreen({ snapshot, onRetry, onExport }: Props) {
         )}
 
         {!required && !failed && !ready && (
-          <p className="mt-5 text-xs tabular-nums text-muted-foreground">
+          <p className="mt-5 text-ui-caption tabular-nums text-muted-foreground">
             {t('upgradeProgress.elapsed', {
               time: `${Math.floor(elapsed / 60)}:${String(elapsed % 60).padStart(2, '0')}`,
             })}
@@ -120,11 +120,11 @@ export function StartupProgressScreen({ snapshot, onRetry, onExport }: Props) {
         )}
         {showActivity && (
           <details className="group mt-8 border-t border-border pt-4">
-            <summary className="flex cursor-pointer list-none items-center justify-between text-sm text-muted-foreground hover:text-foreground [&::-webkit-details-marker]:hidden">
+            <summary className="flex cursor-pointer list-none items-center justify-between text-ui-body text-muted-foreground hover:text-foreground [&::-webkit-details-marker]:hidden">
               {t('upgradeProgress.activity')}
               <ChevronDown className="size-4 transition-transform group-open:rotate-180" />
             </summary>
-            <ol className="mt-4 flex flex-col gap-4 text-sm">
+            <ol className="mt-4 flex flex-col gap-4 text-ui-body">
               {snapshot.upgrade?.steps.map(step => (
                 <li key={step.step} className="flex items-start gap-3">
                   {step.completed ? (
@@ -137,19 +137,19 @@ export function StartupProgressScreen({ snapshot, onRetry, onExport }: Props) {
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap justify-between gap-2">
                       <span>{t(`upgradeProgress.steps.${step.step}`)}</span>
-                      <span className="text-xs text-muted-foreground">
+                      <span className="text-ui-caption text-muted-foreground">
                         {t(
                           `upgradeProgress.${step.completed ? 'stepDone' : failed ? 'stepStopped' : 'processing'}`
                         )}
                       </span>
                     </div>
                     {step.warning_count === null ? (
-                      <p className="mt-1 text-xs text-muted-foreground">
+                      <p className="mt-1 text-ui-caption text-muted-foreground">
                         {t('upgradeProgress.warningsUnknown')}
                       </p>
                     ) : (
                       step.warning_count > 0 && (
-                        <p className="mt-1 text-xs text-amber-700 dark:text-amber-400">
+                        <p className="mt-1 text-ui-caption text-amber-700 dark:text-amber-400">
                           {t('upgradeProgress.warnings', { count: step.warning_count })}
                         </p>
                       )
@@ -179,12 +179,12 @@ export function StartupProgressScreen({ snapshot, onRetry, onExport }: Props) {
           )}
         </div>
         {exportState === 'failed' && (
-          <p role="alert" className="mt-3 text-sm text-destructive">
+          <p role="alert" className="mt-3 text-ui-body text-destructive">
             {t('upgradeProgress.exportFailed')}
           </p>
         )}
         {exportState === 'done' && (
-          <p role="status" className="mt-3 text-sm text-muted-foreground">
+          <p role="status" className="mt-3 text-ui-body text-muted-foreground">
             {t('upgradeProgress.exportDone')}
           </p>
         )}

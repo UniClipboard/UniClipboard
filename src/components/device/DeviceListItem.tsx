@@ -67,8 +67,8 @@ export default function DeviceListItem({
         aria-hidden="true"
       />
       <span className="selection-item-content relative z-10 min-w-0 flex-1">
-        <span className="block truncate text-sm font-medium">{name}</span>
-        <span className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
+        <span className="block truncate text-ui-body font-medium">{name}</span>
+        <span className="mt-1 flex items-center gap-2 text-ui-caption text-muted-foreground">
           <StatusDot tone={tone} />
           <span className="min-w-0 break-words">{status.label}</span>
         </span>

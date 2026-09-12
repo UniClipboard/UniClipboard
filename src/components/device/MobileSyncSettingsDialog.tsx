@@ -26,7 +26,7 @@
  *   └────────────────────────────────────────────────────────────┘
  *
  * 区块辅助组件（DialogSection / ListenUrlInfoRow / SettingControlRow / SettingToggleRow）
- * 同形：圆角 border bg-card/50，title `[11px] uppercase tracking-wider`，控件靠右。
+ * Shared sections use semantic section titles and right-aligned controls.
  *
  * # 关键不变量
  *
@@ -303,7 +303,7 @@ const MobileSyncSettingsDialog: React.FC<Props> = ({ open, onOpenChange, onSetti
                 <DialogTitle className="truncate text-left">
                   {t('devices.mobileSync.settingsSheet.title')}
                 </DialogTitle>
-                <DialogDescription className="mt-1 text-left text-xs leading-snug">
+                <DialogDescription className="mt-1 text-left ">
                   {t('devices.mobileSync.settingsSheet.description')}
                 </DialogDescription>
               </div>
@@ -373,7 +373,7 @@ const MobileSyncSettingsDialog: React.FC<Props> = ({ open, onOpenChange, onSetti
                         {t('devices.mobileSync.lanListener.bindIp.auto')}
                       </SelectItem>
                       {lanInterfaces.length === 0 ? (
-                        <div className="px-2 py-1.5 text-xs text-muted-foreground">
+                        <div className="px-2 py-1.5 text-ui-caption text-muted-foreground">
                           {t('devices.mobileSync.lanListener.bindIp.empty')}
                         </div>
                       ) : (
@@ -414,7 +414,7 @@ const MobileSyncSettingsDialog: React.FC<Props> = ({ open, onOpenChange, onSetti
                     <p
                       id="mobile-sync-port-error"
                       role="alert"
-                      className="mt-1 text-right text-xs text-destructive"
+                      className="mt-1 text-right text-ui-body text-destructive"
                     >
                       {portError}
                     </p>
@@ -435,7 +435,7 @@ const MobileSyncSettingsDialog: React.FC<Props> = ({ open, onOpenChange, onSetti
             <div
               aria-live="polite"
               className={cn(
-                'flex items-center gap-1.5 text-xs text-emerald-600 transition-opacity duration-200 dark:text-emerald-400',
+                'flex items-center gap-1.5 text-ui-caption text-emerald-600 transition-opacity duration-200 dark:text-emerald-400',
                 appliedFlash ? 'opacity-100' : 'pointer-events-none opacity-0'
               )}
             >
@@ -488,7 +488,7 @@ const DialogSection: React.FC<{
 }> = ({ title, trailing, children }) => (
   <section className="space-y-2">
     <div className="flex items-center justify-between px-1">
-      <h5 className="text-[11px] uppercase tracking-wider text-muted-foreground">{title}</h5>
+      <h5 className="text-ui-section uppercase text-muted-foreground">{title}</h5>
       {trailing}
     </div>
     <div className="space-y-2">{children}</div>
@@ -540,7 +540,7 @@ const ListenUrlInfoRow: React.FC<{
   }
 
   return (
-    <div className="flex items-center justify-between gap-3 rounded-lg border border-border/60 bg-card/50 px-3 py-2 text-xs">
+    <div className="flex items-center justify-between gap-3 rounded-lg border border-border/60 bg-card/50 px-3 py-2 text-ui-caption">
       <span className="shrink-0 text-muted-foreground">{label}</span>
       {content}
     </div>
@@ -599,7 +599,7 @@ const ListenUrlControl: React.FC<{ url: string }> = ({ url }) => {
   return (
     <div className="flex min-w-0 max-w-56 items-center gap-1 sm:max-w-xs">
       <code
-        className="min-w-0 flex-1 truncate rounded bg-muted px-2 py-1 font-mono text-xs text-foreground"
+        className="min-w-0 flex-1 truncate rounded bg-muted px-2 py-1 font-mono text-ui-caption text-foreground"
         title={url}
       >
         {url}
@@ -662,14 +662,14 @@ const AutoListenUrlBlock: React.FC<{
   const hint = t('devices.mobileSync.lanListener.currentUrl.auto.hint')
 
   return (
-    <div className="space-y-2 rounded-lg border border-border/60 bg-card/50 px-3 py-2 text-xs">
+    <div className="space-y-2 rounded-lg border border-border/60 bg-card/50 px-3 py-2 text-ui-caption">
       <div className="flex items-center justify-between gap-3">
         <span className="text-muted-foreground">{label}</span>
-        <span className="rounded bg-muted px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
+        <span className="rounded bg-muted px-1.5 py-0.5 font-mono text-ui-caption text-muted-foreground">
           {autoLabel}
         </span>
       </div>
-      <p className="text-[11px] leading-snug text-muted-foreground">{hint}</p>
+      <p className="text-ui-caption text-muted-foreground">{hint}</p>
       <ul className="space-y-1">
         {interfaces.map(iface => {
           const url = `http://${iface.ipv4}:${port}`
@@ -681,10 +681,10 @@ const AutoListenUrlBlock: React.FC<{
               className="flex items-center gap-2 rounded-md border border-border/40 bg-background/60 px-2 py-1.5"
             >
               <div className="min-w-0 flex-1">
-                <p className="truncate font-mono text-xs text-foreground" title={url}>
+                <p className="truncate font-mono text-ui-caption text-foreground" title={url}>
                   {url}
                 </p>
-                <p className="text-[10px] leading-snug text-muted-foreground">{iface.name}</p>
+                <p className="text-ui-caption text-muted-foreground">{iface.name}</p>
               </div>
               <Button
                 type="button"
@@ -735,10 +735,8 @@ const SettingToggleRow: React.FC<{
     )}
   >
     <div className="min-w-0 flex-1">
-      <p className="text-sm font-medium text-foreground">{label}</p>
-      {description && (
-        <p className="mt-0.5 text-[11px] leading-snug text-muted-foreground">{description}</p>
-      )}
+      <p className="text-ui-body font-medium text-foreground">{label}</p>
+      {description && <p className="mt-0.5 text-ui-caption text-muted-foreground">{description}</p>}
     </div>
     <Switch checked={checked} onCheckedChange={onChange} disabled={disabled} />
   </div>
@@ -758,7 +756,7 @@ const SettingControlRow: React.FC<{
     )}
   >
     <div className="flex items-center justify-between gap-3">
-      <span className="shrink-0 text-xs text-muted-foreground">{label}</span>
+      <span className="shrink-0 text-ui-caption text-muted-foreground">{label}</span>
       <div className="shrink-0">{control}</div>
     </div>
     {trailing}

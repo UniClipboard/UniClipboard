@@ -37,7 +37,7 @@ export function DeviceTrustChoiceCard({
         selected ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50'
       )}
     >
-      <span className="block pr-8 text-sm font-semibold break-words [overflow-wrap:anywhere]">
+      <span className="block pr-8 text-ui-body font-semibold break-words [overflow-wrap:anywhere]">
         {view.title}
       </span>
       <span
@@ -50,27 +50,27 @@ export function DeviceTrustChoiceCard({
         {selected && <Check className="size-3.5" />}
       </span>
       {view.summary && (
-        <span className="mt-2 block pr-4 text-sm leading-6 text-muted-foreground [overflow-wrap:anywhere]">
+        <span className="mt-2 block pr-4 text-ui-body text-muted-foreground [overflow-wrap:anywhere]">
           {view.summary}
         </span>
       )}
       <span hidden={!showDetails}>
-        <span className="mt-4 flex items-start gap-2 border-t border-border pt-3 text-xs text-muted-foreground">
+        <span className="mt-4 flex items-start gap-2 border-t border-border pt-3 text-ui-caption text-muted-foreground">
           <Monitor className="size-4 shrink-0" />
           {t('deviceTrust.presentation.members')}
         </span>
         <span
           data-testid="choice-members"
-          className="mt-1 block text-sm leading-6 break-words [overflow-wrap:anywhere]"
+          className="mt-1 block text-ui-body break-words [overflow-wrap:anywhere]"
         >
           {view.members}
         </span>
         {view.membersIncomplete && (
-          <span className="mt-2 block text-xs text-muted-foreground">
+          <span className="mt-2 block text-ui-caption text-muted-foreground">
             {t('deviceTrust.modal.membersIncomplete')}
           </span>
         )}
-        <span className="mt-3 grid gap-2 text-xs leading-5 break-words [overflow-wrap:anywhere]">
+        <span className="mt-3 grid gap-2 text-ui-caption break-words [overflow-wrap:anywhere]">
           {view.scope && <span>{t('deviceTrust.presentation.scope', { names: view.scope })}</span>}
           {view.rejoin && (
             <span>{t('deviceTrust.presentation.rejoin', { names: view.rejoin })}</span>
@@ -78,7 +78,7 @@ export function DeviceTrustChoiceCard({
         </span>
       </span>
       {!view.impactKnown && (
-        <span className="mt-2 block text-xs text-muted-foreground">
+        <span className="mt-2 block text-ui-caption text-muted-foreground">
           {t('deviceTrust.presentation.impactUnknown')}
         </span>
       )}

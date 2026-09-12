@@ -33,7 +33,7 @@ export function RelayCredentialFields({
   return (
     <div className="mt-3 space-y-1.5">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <label htmlFor={`relay-access-token-${displayIndex}`} className="text-xs font-medium">
+        <label htmlFor={`relay-access-token-${displayIndex}`} className="text-ui-body font-medium">
           {t('settings.sections.network.customRelays.tokenLabel')}
         </label>
         {!hasUrlChanged && initialUrl && <RelayCredentialStatus configured={configured} />}
@@ -48,7 +48,7 @@ export function RelayCredentialFields({
             index: displayIndex,
           })}
           placeholder={t('settings.sections.network.customRelays.credentials.placeholder')}
-          className="h-9 border-border/60 bg-muted/20 pr-10 font-mono text-xs shadow-none"
+          className="h-9 border-border/60 bg-muted/20 pr-10 font-mono shadow-none"
           disabled={saving || removeSavedToken}
           onChange={event => updateAccessToken(event.target.value)}
         />
@@ -69,7 +69,7 @@ export function RelayCredentialFields({
           type="button"
           variant="ghost"
           size="sm"
-          className="h-7 px-1.5 text-xs text-muted-foreground hover:text-destructive"
+          className="h-7 px-1.5 text-muted-foreground hover:text-destructive"
           disabled={saving}
           onClick={toggleTokenRemoval}
         >
@@ -83,7 +83,7 @@ export function RelayCredentialFields({
       )}
       {removeSavedToken && (
         <p
-          className="flex items-center gap-1.5 text-xs font-medium text-amber-700 dark:text-amber-400"
+          className="flex items-center gap-1.5 text-ui-caption font-medium text-amber-700 dark:text-amber-400"
           role="status"
         >
           <TriangleAlert aria-hidden="true" className="size-3.5" />

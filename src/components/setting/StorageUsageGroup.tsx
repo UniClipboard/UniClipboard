@@ -100,7 +100,7 @@ function StorageUsageBar({
   if (error) {
     return (
       <div className="px-1 py-6 flex flex-col items-center justify-center gap-3 text-center">
-        <div className="text-sm text-destructive">{error}</div>
+        <div className="text-ui-body text-destructive">{error}</div>
         <Button variant="outline" size="sm" onClick={onRefresh}>
           <RefreshCw className="size-4 mr-2" />
           {t('common.retry')}
@@ -114,10 +114,8 @@ function StorageUsageBar({
       {/* Header: total + refresh */}
       <div className="flex items-center justify-between">
         <div className="flex items-baseline gap-2">
-          <span className="text-xl font-semibold tabular-nums tracking-tight">
-            {formatBytes(total)}
-          </span>
-          <span className="text-xs text-muted-foreground">
+          <span className="text-ui-section font-semibold tabular-nums">{formatBytes(total)}</span>
+          <span className="text-ui-caption text-muted-foreground">
             {t('settings.sections.storage.storageUsage.total')}
           </span>
         </div>
@@ -170,8 +168,8 @@ function StorageUsageBar({
                 style={{ backgroundColor: seg.color, opacity: 0.85 }}
               />
               <Icon className="size-3 text-muted-foreground/50 shrink-0" />
-              <span className="text-xs text-muted-foreground truncate">{seg.label}</span>
-              <span className="text-xs tabular-nums text-foreground/70 ml-auto shrink-0">
+              <span className="text-ui-caption text-muted-foreground truncate">{seg.label}</span>
+              <span className="text-ui-caption tabular-nums text-foreground/70 ml-auto shrink-0">
                 {formatBytes(seg.bytes)}
               </span>
             </div>

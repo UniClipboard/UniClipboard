@@ -5,7 +5,6 @@ const mocks = vi.hoisted(() => {
   const render = vi.fn()
   return {
     applyPlatformEffectPreferences: vi.fn(),
-    applyPlatformTypographyScale: vi.fn(),
     applyDiagnosticDeviceContext: vi.fn(),
     attachConsole: vi.fn(() => Promise.resolve()),
     connectDaemonWs: vi.fn(() => Promise.resolve()),
@@ -38,7 +37,6 @@ vi.mock('@/lib/daemon-ws-bootstrap', () => ({
 
 vi.mock('@/lib/window-ui', () => ({
   applyPlatformEffectPreferences: mocks.applyPlatformEffectPreferences,
-  applyPlatformTypographyScale: mocks.applyPlatformTypographyScale,
   initializeWindowUi: mocks.initializeWindowUi,
 }))
 

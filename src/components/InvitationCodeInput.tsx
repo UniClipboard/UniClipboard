@@ -17,7 +17,7 @@ type Props = Omit<
 }
 
 const slotClass = cn(
-  'size-10 rounded-md border border-input bg-card text-lg font-mono font-semibold uppercase shadow-xs',
+  'size-10 rounded-md border border-input bg-card text-ui-body font-mono font-semibold uppercase shadow-xs',
   'data-[active=true]:border-primary data-[active=true]:bg-primary/5 data-[active=true]:ring-2 data-[active=true]:ring-primary/20',
   'transition-[border-color,background-color,box-shadow] duration-150'
 )

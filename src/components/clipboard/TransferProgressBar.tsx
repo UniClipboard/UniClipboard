@@ -52,7 +52,7 @@ const TransferProgressBar: React.FC<TransferProgressBarProps> = ({
 
   if (variant === 'minimal') {
     return (
-      <div className="flex items-center gap-2 text-[10px] font-medium tabular-nums text-primary/80">
+      <div className="flex items-center gap-2 text-ui-caption font-medium tabular-nums text-primary/80">
         <span>{percent}%</span>
         {speedLabel && (
           <>
@@ -75,7 +75,7 @@ const TransferProgressBar: React.FC<TransferProgressBarProps> = ({
       <div className="flex w-full min-w-0 items-center gap-1.5">
         <DirectionIcon className="size-3 shrink-0 text-primary" />
         <Progress value={percent} className="h-1.5 w-auto min-w-0 flex-1" />
-        <span className="text-xs text-muted-foreground shrink-0">{percent}%</span>
+        <span className="text-ui-caption text-muted-foreground shrink-0">{percent}%</span>
         {showCancel && (
           <button
             type="button"
@@ -102,10 +102,10 @@ const TransferProgressBar: React.FC<TransferProgressBarProps> = ({
       <DirectionIcon className="size-3.5 shrink-0 text-primary" />
       <div className="min-w-0 flex-1">
         <div className="mb-1.5 flex items-center justify-between gap-2">
-          <span className="truncate text-[11px] font-medium text-foreground/85">
+          <span className="truncate text-ui-caption font-medium text-foreground/85">
             {directionLabel}
           </span>
-          <span className="shrink-0 text-[11px] text-muted-foreground">{percent}%</span>
+          <span className="shrink-0 text-ui-caption text-muted-foreground">{percent}%</span>
         </div>
         <Progress value={percent} className="h-1.5 bg-primary/10" />
       </div>
@@ -145,11 +145,11 @@ const TransferProgressBar: React.FC<TransferProgressBarProps> = ({
           <div className="flex flex-col gap-3">
             <div className="flex items-center gap-2">
               <DirectionIcon className="size-4 text-primary" />
-              <span className="text-sm font-medium">{directionLabel}</span>
-              <span className="ml-auto text-xs text-muted-foreground">{percent}%</span>
+              <span className="text-ui-body font-medium">{directionLabel}</span>
+              <span className="ml-auto text-ui-caption text-muted-foreground">{percent}%</span>
             </div>
             <div className="rounded-lg bg-muted/35 p-3">
-              <div className="space-y-2 text-xs text-muted-foreground">
+              <div className="space-y-2 text-ui-caption text-muted-foreground">
                 <div className="flex items-center justify-between gap-3">
                   <span>
                     {t('clipboard.transfer.progress', {

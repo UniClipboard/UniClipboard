@@ -11,25 +11,58 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* Shared text roles for every application-owned main-window surface. */
+@utility text-ui-caption {
+  font-size: var(--font-size-caption);
+  line-height: var(--line-height-caption);
+  letter-spacing: 0;
+}
+
+@utility text-ui-body {
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-body);
+  letter-spacing: 0;
+}
+
+@utility text-ui-section {
+  font-size: var(--font-size-section);
+  line-height: var(--line-height-section);
+  letter-spacing: 0;
+  font-weight: 600;
+}
+
+@utility text-ui-title {
+  font-size: var(--font-size-title);
+  line-height: var(--line-height-title);
+  letter-spacing: 0;
+  font-weight: 600;
+}
+
+@utility text-ui-caption-relaxed {
+  font-size: var(--font-size-caption);
+  line-height: var(--line-height-relaxed);
+  letter-spacing: 0;
+}
+
+@utility text-ui-body-relaxed {
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-relaxed);
+  letter-spacing: 0;
+}
+
 :root {
   /* Font sizes */
   --font-size-caption: 0.75rem; /* 12px */
-  --font-size-small: 0.8125rem; /* 13px */
   --font-size-body: 0.875rem; /* 14px */
-  --font-size-body-lg: 0.9375rem; /* 15px */
   --font-size-section: 1rem; /* 16px */
-  --font-size-title: 1.25rem; /* 20px */
+  --font-size-title: 1.5rem; /* 24px */
 
   /* Line heights */
-  --line-height-tight: 1.4;
-  --line-height-normal: 1.5;
-  --line-height-relaxed: 1.6;
-
-  /* Letter spacing */
-  --letter-spacing-title: -0.01em;
-  --letter-spacing-body: 0.01em;
-  --letter-spacing-button: 0.01em;
-  --letter-spacing-caption: 0.02em;
+  --line-height-caption: 1rem;
+  --line-height-body: 1.25rem;
+  --line-height-section: 1.5rem;
+  --line-height-title: 2rem;
+  --line-height-relaxed: 1.625;
 
   --sidebar: oklch(0.985 0 0);
 
@@ -523,9 +556,9 @@ html[data-uc-reduce-motion='true']::view-transition-new(root) {
   }
 
   body {
-    letter-spacing: var(--letter-spacing-body);
+    letter-spacing: 0;
     font-size: var(--font-size-body);
-    line-height: var(--line-height-relaxed);
+    line-height: var(--line-height-body);
   }
 
   code,

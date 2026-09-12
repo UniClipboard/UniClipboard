@@ -90,7 +90,7 @@ const SyncSection: React.FC = () => {
           description={t('settings.sections.sync.syncFrequency.description')}
         >
           <div className="flex items-center gap-2">
-            <span className="text-sm text-muted-foreground">
+            <span className="text-ui-body text-muted-foreground">
               {syncFrequencyOptions.find(
                 o => o.value === (setting?.sync.syncFrequency ?? 'realtime')
               )?.label ?? t('settings.sections.sync.syncFrequency.realtime')}

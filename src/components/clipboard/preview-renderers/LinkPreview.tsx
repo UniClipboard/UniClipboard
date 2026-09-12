@@ -21,7 +21,7 @@ const LinkPreview: React.FC<LinkPreviewProps> = ({ item }) => {
           onClick={() => openUrl(url).catch(err => log.error({ err }, 'Failed to open URL'))}
         >
           <ExternalLink className="mt-1 size-3.5 shrink-0 text-muted-foreground/60 transition-colors group-hover:text-foreground/80" />
-          <span className="break-all whitespace-normal font-mono text-sm leading-relaxed text-foreground/80 underline decoration-border underline-offset-4 transition-colors group-hover:text-foreground group-hover:decoration-foreground/40">
+          <span className="break-all whitespace-normal font-mono text-ui-body-relaxed text-foreground/80 underline decoration-border underline-offset-4 transition-colors group-hover:text-foreground group-hover:decoration-foreground/40">
             {url}
           </span>
         </button>

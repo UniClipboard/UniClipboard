@@ -156,7 +156,7 @@ const HistoryPage: React.FC = () => {
         : null}
       {/* ── Degraded notice: index rebuilding, browse served from main store ─ */}
       {c.indexState === 'degraded' && (
-        <div className="shrink-0 mx-2 mb-2 rounded-md bg-amber-500/10 px-3 py-1.5 text-xs text-amber-600 dark:text-amber-400">
+        <div className="shrink-0 mx-2 mb-2 rounded-md bg-amber-500/10 px-3 py-1.5 text-ui-caption text-amber-600 dark:text-amber-400">
           {t('clipboard.search.degraded')}
         </div>
       )}

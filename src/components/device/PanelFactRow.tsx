@@ -10,7 +10,7 @@ const PanelFactRow: React.FC<{ label: string; children: React.ReactNode }> = ({
   children,
 }) => (
   <div className="flex items-center gap-4 border-b border-border/40 py-2.5 last:border-b-0">
-    <span className="w-28 shrink-0 text-xs text-muted-foreground">{label}</span>
+    <span className="w-28 shrink-0 text-ui-caption text-muted-foreground">{label}</span>
     <div className="flex min-w-0 flex-1 items-center gap-2 text-foreground">{children}</div>
   </div>
 )

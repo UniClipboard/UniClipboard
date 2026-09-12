@@ -41,7 +41,7 @@ export default function AppearancePalette({
       aria-label={label}
       className="appearance-row appearance-palette-row"
     >
-      <span className="flex items-center gap-3 text-sm font-normal">
+      <span className="flex items-center gap-3 text-ui-body font-normal">
         <Icon className="size-5 shrink-0" aria-hidden="true" />
         {label}
       </span>
@@ -54,7 +54,7 @@ export default function AppearancePalette({
       >
         <SelectTrigger
           aria-label={label}
-          className="h-9 w-full min-w-0 text-sm"
+          className="h-9 w-full min-w-0 "
           onClick={event => setTransitionOrigin(event.clientX, event.clientY)}
         >
           <SelectValue>
@@ -70,7 +70,7 @@ export default function AppearancePalette({
         </SelectContent>
       </Select>
       {failed && (
-        <p role="alert" className="appearance-note text-xs text-destructive">
+        <p role="alert" className="appearance-note text-ui-body text-destructive">
           {t('appearanceLayout.saveFailed')}
         </p>
       )}

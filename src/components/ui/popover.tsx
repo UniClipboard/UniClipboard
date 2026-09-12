@@ -44,7 +44,7 @@ function PopoverContent({
           data-slot="popover-content"
           className={cn(
             MENU_SURFACE_CLASS,
-            'z-50 flex w-72 max-w-[calc(100vw-1rem)] max-h-(--available-height) origin-(--transform-origin) flex-col gap-2.5 overflow-y-auto p-3 text-sm',
+            'z-50 flex w-72 max-w-[calc(100vw-1rem)] max-h-(--available-height) origin-(--transform-origin) flex-col gap-2.5 overflow-y-auto p-3 text-ui-body',
 
             className
           )}
@@ -70,7 +70,7 @@ function PopoverHeader({ className, ...props }: React.ComponentProps<'div'>) {
   return (
     <div
       data-slot="popover-header"
-      className={cn('flex flex-col gap-0.5 text-sm', className)}
+      className={cn('flex flex-col gap-0.5 text-ui-body', className)}
       {...props}
     />
   )

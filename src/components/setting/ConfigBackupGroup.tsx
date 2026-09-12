@@ -186,7 +186,7 @@ export function ConfigBackupGroup() {
 
           {imp.isRestarting ? (
             <AlertDialogFooter>
-              <div className="flex w-full items-center justify-center gap-2 text-sm text-muted-foreground">
+              <div className="flex w-full items-center justify-center gap-2 text-ui-body text-muted-foreground">
                 <Loader2 className="size-4 animate-spin" />
                 {t(`${I18N}.import.restartingTitle`)}
               </div>
@@ -198,10 +198,10 @@ export function ConfigBackupGroup() {
                 {['warningMove', 'warningNoDualOnline', 'warningReplace'].map(warningKey => (
                   <div
                     key={warningKey}
-                    className="flex items-start gap-2 text-xs text-foreground/90"
+                    className="flex items-start gap-2 text-ui-caption text-foreground/90"
                   >
                     <AlertTriangle className="mt-0.5 size-3.5 shrink-0 text-destructive" />
-                    <span className="leading-snug">{t(`${I18N}.import.${warningKey}`)}</span>
+                    <span>{t(`${I18N}.import.${warningKey}`)}</span>
                   </div>
                 ))}
               </div>
@@ -209,10 +209,10 @@ export function ConfigBackupGroup() {
               {/* Preview metadata */}
               {imp.preview && (
                 <div className="space-y-1.5">
-                  <div className="text-xs font-medium text-muted-foreground">
+                  <div className="text-ui-caption font-medium text-muted-foreground">
                     {t(`${I18N}.import.metaTitle`)}
                   </div>
-                  <dl className="space-y-1 text-xs">
+                  <dl className="space-y-1 text-ui-caption">
                     <div className="flex justify-between gap-4">
                       <dt className="text-muted-foreground">
                         {t(`${I18N}.import.metaAppVersion`)}

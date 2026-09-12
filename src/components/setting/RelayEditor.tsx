@@ -32,7 +32,7 @@ export function RelayEditor({ index, removable, ...options }: RelayEditorProps) 
       aria-labelledby={`relay-node-${displayIndex}-title`}
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h5 id={`relay-node-${displayIndex}-title`} className="text-sm font-medium">
+        <h5 id={`relay-node-${displayIndex}-title`} className="text-ui-section ">
           {t('settings.sections.network.customRelays.rowLabel', { index: displayIndex })}
         </h5>
         <Button
@@ -51,7 +51,7 @@ export function RelayEditor({ index, removable, ...options }: RelayEditorProps) 
       </div>
 
       <div className="mt-3 space-y-1.5">
-        <label htmlFor={`custom-relay-url-${displayIndex}`} className="text-xs font-medium">
+        <label htmlFor={`custom-relay-url-${displayIndex}`} className="text-ui-body font-medium">
           {t('settings.sections.network.customRelays.urlLabel')}
         </label>
         <Input
@@ -64,7 +64,7 @@ export function RelayEditor({ index, removable, ...options }: RelayEditorProps) 
           aria-label={t('settings.sections.network.customRelays.itemAriaLabel', {
             index: displayIndex,
           })}
-          className="h-9 border-border/60 bg-muted/20 font-mono text-xs shadow-none"
+          className="h-9 border-border/60 bg-muted/20 font-mono shadow-none"
           disabled={saving}
           onChange={event => updateUrl(event.target.value)}
         />
@@ -73,7 +73,7 @@ export function RelayEditor({ index, removable, ...options }: RelayEditorProps) 
       <RelayCredentialFields displayIndex={displayIndex} initialUrl={initialUrl} {...editor} />
 
       <div className="mt-4 border-t border-border/40 pt-3">
-        <p className="text-xs leading-relaxed text-muted-foreground">
+        <p className="text-ui-caption-relaxed text-muted-foreground">
           {t('settings.sections.network.customRelays.testHint')}
         </p>
         <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
@@ -104,7 +104,7 @@ export function RelayEditor({ index, removable, ...options }: RelayEditorProps) 
       <ProbeResult status={probeStatus} />
 
       {error && (
-        <p className="mt-2 text-xs text-destructive" role="alert">
+        <p className="mt-2 text-ui-body text-destructive" role="alert">
           {error}
         </p>
       )}

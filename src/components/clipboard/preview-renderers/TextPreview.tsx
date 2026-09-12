@@ -25,10 +25,10 @@ const TextPreview: React.FC<TextPreviewProps> = ({ item, loading, preview }) => 
       {loading ? (
         <div className="flex items-center gap-2 text-muted-foreground/60">
           <Loader2 className="size-4 animate-spin" />
-          <span className="text-sm font-medium">{t('clipboard.item.loading')}</span>
+          <span className="text-ui-body font-medium">{t('clipboard.item.loading')}</span>
         </div>
       ) : (
-        <p className="selectable break-all whitespace-pre-wrap font-mono text-sm leading-relaxed text-foreground/80">
+        <p className="selectable break-all whitespace-pre-wrap font-mono text-ui-body text-foreground/80">
           {displayText}
         </p>
       )}

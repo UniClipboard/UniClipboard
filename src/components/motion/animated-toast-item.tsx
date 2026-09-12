@@ -176,7 +176,7 @@ export const AnimatedToastItem = memo(function ToastItem({
                 >
                   <p
                     className={cn(
-                      'break-words text-sm font-medium leading-5 text-foreground',
+                      'break-words text-ui-body font-medium text-foreground',
                       classNames?.title
                     )}
                   >
@@ -185,7 +185,7 @@ export const AnimatedToastItem = memo(function ToastItem({
                   {toast.description ? (
                     <p
                       className={cn(
-                        'mt-0.5 break-words text-xs leading-4 text-muted-foreground',
+                        'mt-0.5 break-words text-ui-caption text-muted-foreground',
                         classNames?.description
                       )}
                     >
@@ -200,7 +200,7 @@ export const AnimatedToastItem = memo(function ToastItem({
                   type="button"
                   onClick={() => toast.action?.onClick(toast)}
                   className={cn(
-                    'mt-2 inline-flex h-7 items-center rounded-full bg-primary/[0.06] px-3 text-xs font-medium text-foreground transition-colors hover:bg-primary/[0.1]',
+                    'mt-2 inline-flex h-7 items-center rounded-full bg-primary/[0.06] px-3 text-ui-body font-medium text-foreground transition-colors hover:bg-primary/[0.1]',
                     classNames?.action
                   )}
                 >

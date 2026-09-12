@@ -91,7 +91,9 @@ const HistoryCard: React.FC<HistoryCardProps> = ({
       onFocus={handleFocus}
       onBlur={handleBlur}
       className={cn(
-        'group relative flex h-full cursor-pointer flex-col overflow-hidden px-3.5 py-2.5 transition-all duration-200',
+        'group relative flex cursor-pointer flex-col overflow-hidden px-3.5 py-2.5 transition-all duration-200',
+        item.type === 'text' ? 'min-h-24' : 'min-h-28',
+        isTransferring && transfer && !hideByteProgress && 'pb-8',
         isDeleting
           ? 'bg-destructive/10 opacity-60 scale-[0.97]'
           : copySuccess
@@ -125,7 +127,7 @@ const HistoryCard: React.FC<HistoryCardProps> = ({
       />
       <div
         className={cn(
-          'pointer-events-none relative z-10 min-h-0 flex-1 overflow-hidden',
+          'pointer-events-none relative z-10 shrink-0 flex-1 overflow-hidden',
           isPending && 'opacity-60'
         )}
       >

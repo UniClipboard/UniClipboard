@@ -205,11 +205,11 @@ const HistoryPage: React.FC = () => {
             >
               <ClipboardPreview
                 item={c.selectedItem}
-                actions={
+                actions={delivery => (
                   <ClipboardActionBar
-                    hasActiveItem={c.selectedItem !== null}
+                    item={c.selectedItem}
+                    delivery={delivery}
                     copySuccess={c.copySuccessId !== null && c.copySuccessId === c.selectedId}
-                    isFavorited={c.selectedItem?.isFavorited === true}
                     onCopy={() => {
                       if (c.selectedId) c.handleCopy(c.selectedId)
                     }}
@@ -225,7 +225,7 @@ const HistoryPage: React.FC = () => {
                       if (c.selectedId) c.requestDelete(c.selectedId)
                     }}
                   />
-                }
+                )}
               />
             </m.div>
           </ResizablePanel>

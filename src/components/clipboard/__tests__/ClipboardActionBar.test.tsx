@@ -1,7 +1,19 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
+import type { EntrySourceView } from '@/api/tauri-command/clipboard_delivery'
 import ClipboardActionBar from '@/components/clipboard/ClipboardActionBar'
+import type { DisplayClipboardItem } from '@/lib/clipboard-entry'
+
+const item: DisplayClipboardItem = { id: 'entry-1', type: 'text', activeTime: 0, content: null }
+
+vi.mock('@/components/clipboard/ClipboardSendMenu', () => ({
+  default: ({ entryId, disabled }: { entryId: string; disabled?: boolean }) => (
+    <button type="button" disabled={disabled} data-entry-id={entryId}>
+      Send
+    </button>
+  ),
+}))
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
@@ -10,15 +22,46 @@ vi.mock('react-i18next', () => ({
 }))
 
 describe('ClipboardActionBar', () => {
+  it.each<{ source: EntrySourceView; unavailable: boolean; disabled: boolean }>([
+    { source: { tag: 'local' }, unavailable: false, disabled: false },
+    { source: { tag: 'local' }, unavailable: true, disabled: true },
+    {
+      source: { tag: 'remote', deviceId: 'peer-1', deviceName: null },
+      unavailable: false,
+      disabled: true,
+    },
+    { source: { tag: 'historical' }, unavailable: false, disabled: true },
+  ])(
+    'preserves send availability for $source.tag, unavailable=$unavailable',
+    ({ source, unavailable, disabled }) => {
+      render(
+        <ClipboardActionBar
+          item={{ ...item, isUnavailable: unavailable }}
+          delivery={{ entryId: item.id, source, deliveries: [] }}
+          copySuccess={false}
+          onCopy={vi.fn()}
+          onDelete={vi.fn()}
+          onToggleFavorite={vi.fn()}
+        />
+      )
+
+      expect(screen.getAllByRole('button')).toHaveLength(4)
+      const send = screen.getByRole('button', { name: 'Send' })
+      expect(send).toHaveAttribute('data-entry-id', item.id)
+      if (disabled) expect(send).toBeDisabled()
+      else expect(send).toBeEnabled()
+    }
+  )
+
   it('renders favorite action and toggles the active item', async () => {
     const user = userEvent.setup()
     const onToggleFavorite = vi.fn()
 
     render(
       <ClipboardActionBar
-        hasActiveItem
+        item={item}
+        delivery={null}
         copySuccess={false}
-        isFavorited={false}
         onCopy={vi.fn()}
         onDelete={vi.fn()}
         onToggleFavorite={onToggleFavorite}
@@ -38,9 +81,9 @@ describe('ClipboardActionBar', () => {
   it('labels an already favorited item as unfavorite', () => {
     render(
       <ClipboardActionBar
-        hasActiveItem
+        item={{ ...item, isFavorited: true }}
+        delivery={null}
         copySuccess={false}
-        isFavorited
         onCopy={vi.fn()}
         onDelete={vi.fn()}
         onToggleFavorite={vi.fn()}
@@ -56,9 +99,9 @@ describe('ClipboardActionBar', () => {
 it('reveals labels on hover and keeps them visible while keyboard focus stays inside', async () => {
   render(
     <ClipboardActionBar
-      hasActiveItem
+      item={item}
+      delivery={null}
       copySuccess={false}
-      isFavorited={false}
       onCopy={vi.fn()}
       onDelete={vi.fn()}
       onToggleFavorite={vi.fn()}
@@ -80,9 +123,9 @@ it('reveals labels on hover and keeps them visible while keyboard focus stays in
 it('expands only the pointed action', async () => {
   render(
     <ClipboardActionBar
-      hasActiveItem
+      item={item}
+      delivery={null}
       copySuccess={false}
-      isFavorited={false}
       onCopy={vi.fn()}
       onDelete={vi.fn()}
       onToggleFavorite={vi.fn()}
@@ -101,9 +144,9 @@ it('expands only the pointed action', async () => {
 it('does not attach native tooltips to actions', () => {
   render(
     <ClipboardActionBar
-      hasActiveItem
+      item={item}
+      delivery={null}
       copySuccess={false}
-      isFavorited={false}
       onCopy={vi.fn()}
       onDelete={vi.fn()}
       onToggleFavorite={vi.fn()}

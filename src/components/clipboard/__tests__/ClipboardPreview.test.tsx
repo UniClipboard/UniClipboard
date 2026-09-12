@@ -4,8 +4,6 @@ import ClipboardPreview from '@/components/clipboard/ClipboardPreview'
 import type { DisplayClipboardItem } from '@/lib/clipboard-entry'
 import type { ClipboardPreviewData } from '@/lib/clipboard-preview-cache'
 
-vi.mock('@/components/clipboard/ClipboardSendMenu', () => ({ default: () => null }))
-
 vi.mock('@tauri-apps/api/core', () => ({
   convertFileSrc: vi.fn((path: string) => `asset://localhost/${encodeURIComponent(path)}`),
 }))
@@ -82,6 +80,23 @@ describe('ClipboardPreview', () => {
       sizeBytes: 2048,
       imageBlobPath: '/clipboard/blobs/blob-image',
     }
+  })
+
+  it('omits the action bar when the caller supplies no actions', async () => {
+    render(<ClipboardPreview item={createImageFileItem()} />)
+
+    await screen.findByRole('img', { name: 'screenshot.png' })
+    expect(screen.queryByRole('button')).not.toBeInTheDocument()
+    expect(screen.getByTestId('clipboard-detail').querySelector('.bottom-4')).toBeNull()
+  })
+
+  it('renders caller actions using the current delivery information', async () => {
+    const actions = vi.fn(() => <button type="button">Caller action</button>)
+    render(<ClipboardPreview item={createImageFileItem()} actions={actions} />)
+
+    await screen.findByRole('img', { name: 'screenshot.png' })
+    expect(screen.getByRole('button', { name: 'Caller action' })).toBeInTheDocument()
+    expect(actions).toHaveBeenCalledWith(null)
   })
 
   it('renders a direct image preview with filename for image files', async () => {

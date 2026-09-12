@@ -1,4 +1,9 @@
 {
+  "omarchyTheme": {
+    "title": "跟随 Omarchy 主题",
+    "description": "开启后，深浅模式和配色由 Omarchy 控制。",
+    "unavailable": "Omarchy 当前不可用，暂时使用已保存的应用主题。"
+  },
   "startupFailure": {
     "unavailable": "启动遇到问题",
     "title": "暂时无法启动",
@@ -767,6 +772,7 @@
         "title": "快捷键",
         "description": "自定义键盘快捷键",
         "scope": {
+          "quickPanel": "快捷面板",
           "global": "全局",
           "clipboard": "剪贴板",
           "settings": "设置",
@@ -774,6 +780,10 @@
           "modal": "模态框"
         },
         "actions": {
+          "quickPanelWindowIncrease": "放大窗口",
+          "quickPanelWindowDecrease": "缩小窗口",
+          "quickPanelTextIncrease": "放大文字",
+          "quickPanelTextDecrease": "缩小文字",
           "goSettings": "前往设置",
           "toggleQuickPanel": "切换快捷面板",
           "favoriteClipboardItem": "收藏当前剪贴板项目",
@@ -801,6 +811,7 @@
         "modified": "已修改"
       },
       "quickPanel": {
+        "compositorShortcuts": "Wayland 下的唤起快捷键由桌面环境管理。请在窗口管理器设置中为以下命令绑定快捷键。",
         "title": "快捷面板",
         "featureTitle": "功能",
         "shortcutTitle": "快捷键",
@@ -2069,6 +2080,8 @@
     }
   },
   "quickPanel": {
+    "scaleText": "文字",
+    "scaleWindow": "窗口",
     "loading": "正在连接剪贴板历史...",
     "unavailable": "当前无法使用剪贴板历史。",
     "history": {

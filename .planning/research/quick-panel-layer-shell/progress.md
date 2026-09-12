@@ -1,0 +1,20 @@
+# Progress
+
+- 2026-09-08: User selected direct Layer Shell implementation. Read repository/Omarchy/research instructions; inspected current panel and launch lifecycle. No production edits yet.
+- Implemented scoped pre-realization hook, dynamic GTK3 Layer Shell ABI, output-local placement, and bounded Hyprland focus/paste IPC. Added compositor-managed shortcut UI and packaging dependencies.
+- `cargo check -p uc-tauri --offline` passed. `specta_export` passed and generated the new shortcut capability binding.
+- Actual Tauri smoke lifecycle passed; Hyprland reports the expected namespace with a 360x580 layer surface. Extended smoke now verifies keyboard focus and delivery to an isolated test target without touching clipboard data.
+- Build errors resolved from compiler evidence: private AssetsIter import corrected to tauri::utils::assets, ambiguous Into<String> call changed to &str.
+- Passed: 26 Quick Panel Rust tests, 5 Hyprland IPC tests, 8 frontend tests, TypeScript typecheck, targeted oxlint and formatting checks. React Doctor changed-file scan found no issues (reported score 84).
+- Strict Clippy with dependency checks is blocked by existing warnings in uc-app-paths/lib.rs:194 and uc-observability (doc indentation and profile.rs:186 expect); no unrelated fixes applied.
+- `--no-deps` strict Clippy also stops at existing daemon_probe.rs:40-41 documentation warnings. Scoped code inspection identified and fixed a related settings path: updating ordinary in-app shortcuts on Wayland must keep the OS global-grab registry empty.
+
+- 2026-09-09: Kept Exclusive keyboard mode after controlled OnDemand refocus failures. Added owned transparent GTK dismissal surfaces on each output, including cleanup if show fails.
+- Final isolated Hyprland smoke passed display, keyboard focus, expansion, targeted paste, remapping, GTK dismissal callback and native background destruction. The synthetic GTK callback does not validate physical compositor clicks; virtual input also failed against an ordinary GTK control window. Interactive pointer/IME/multi-output acceptance remains.
+- Re-ran 26 Quick Panel and 5 Hyprland tests after lifecycle changes; all passed. Shared QuickPanelShortcutRow now prevents ineffective shortcut recording in both Quick Panel and general Shortcuts settings.
+- Final frontend validation: 9 tests, TypeScript check and targeted Oxlint passed. React Doctor changed-file scan again reports no diagnostics (score 84). Full-target scoped Clippy finishes with pre-existing warnings; diagnostic example assertions are explicitly allowed as test code.
+
+- User corrected Linux UX: always show history and preview together from first render, even with no entries. Implemented a fixed 720-logical-pixel width (scaled by UI scale), a single themed outer surface, immediate derived preview content and no Linux expansion/side negotiation. macOS/Windows keep their floating lifecycle. 40 frontend tests and 26 Rust panel tests passed.
+- Native smoke passed again: compositor reported 720 logical pixels of panel width, and the new assertion confirmed unchanged native size across preview layout updates. TypeScript and targeted Oxlint passed; React Doctor score remains 84 with one control-flow-complexity warning on ClipboardHistoryPanelSession.
+- Implemented the accepted adaptive dimensions: 800×560 logical pixels before UI scale, capped independently at 90%/80% of the GTK output work area captured on each show. Recompute centered/cursor placement after applying scale limits. Linux column ratio is now 45/55; preview updates do not query another monitor. Tests cover large outputs, small outputs at enlarged UI scale and offset work-area bounds.
+- Real GTK probe exposed an extra natural-size constraint: requested 800×560 but allocation remained 800×580. Enabling GTK resizing for the Layer Shell window (which has no compositor resize handles) made allocation exactly 800×560; focus/paste/lifecycle smoke also passed. Added an assertion comparing GTK allocation to requested dimensions.

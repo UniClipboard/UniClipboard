@@ -1,7 +1,7 @@
 import { useTranslation } from 'react-i18next'
 import { Filter } from '@/api/clipboardItems'
 import { cn } from '@/lib/utils'
-import { QUICK_FILTER_ORDER } from '../constants'
+import { QUICK_FILTER_ORDER, QUICK_PANEL_GUTTER_CLASS_NAME } from '@/quick-panel/constants'
 
 interface QuickPanelTypeFilterBarProps {
   activeFilter: Filter
@@ -13,7 +13,10 @@ function QuickPanelTypeFilterBar({ activeFilter, onChange }: QuickPanelTypeFilte
 
   return (
     <div
-      className="flex flex-wrap items-center gap-1 px-3 pb-2"
+      className={cn(
+        QUICK_PANEL_GUTTER_CLASS_NAME,
+        'flex shrink-0 items-center gap-0.5 overflow-x-auto pb-1.5'
+      )}
       aria-label={t('history.composite.dimension.type')}
     >
       {QUICK_FILTER_ORDER.map(filter => {
@@ -27,7 +30,7 @@ function QuickPanelTypeFilterBar({ activeFilter, onChange }: QuickPanelTypeFilte
             aria-pressed={active}
             onClick={() => onChange(filter)}
             className={cn(
-              'rounded-md px-2 py-1 text-[11px] transition-colors',
+              'inline-flex h-6 shrink-0 items-center whitespace-nowrap rounded-md px-1.5 text-[11px] transition-colors',
               active
                 ? 'bg-primary text-primary-foreground'
                 : 'bg-muted/60 text-muted-foreground hover:bg-muted hover:text-foreground'

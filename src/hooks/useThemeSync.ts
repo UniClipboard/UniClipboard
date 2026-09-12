@@ -1,64 +1,33 @@
 import { listen } from '@tauri-apps/api/event'
-import { useEffect, useRef } from 'react'
+import { useEffect, useLayoutEffect, useRef } from 'react'
 import { getSettings } from '@/api/daemon'
 import { createLogger } from '@/lib/logger'
 import { parseSettingsChangedPayload, SETTINGS_CHANGED_EVENT } from '@/lib/settings-events'
-import { applyThemeOverrides, applyThemePreset, DEFAULT_THEME_COLOR } from '@/lib/theme-engine'
-import type { ThemeMode } from '@/lib/theme-engine'
+import { createWindowThemeController } from '@/lib/window-theme'
 import type { SettingChangedEvent } from '@/types/events'
-import type { Settings } from '@/types/setting'
 
 const log = createLogger('use-theme-sync')
 
-function resolveThemeMode(theme: string | undefined | null): ThemeMode {
-  if (theme === 'light' || theme === 'dark') return theme
-  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
-}
+/** Theme the entire window, including startup and error surfaces before settings are available. */
+export function useThemeSync(settingsReady = true): void {
+  const sessionRef = useRef<{
+    theme: ReturnType<typeof createWindowThemeController>
+    revision: number
+  } | null>(null)
 
-function applyFullTheme(settings: Settings | null): void {
-  const root = document.documentElement
-  const theme = settings?.general?.theme
-  const resolvedMode = resolveThemeMode(theme)
-  // light / dark 各自的预设；缺失时回退到旧 themeColor,再回退到引擎默认。
-  const split =
-    resolvedMode === 'dark' ? settings?.general?.themeColorDark : settings?.general?.themeColorLight
-  const themeColor = split || settings?.general?.themeColor || DEFAULT_THEME_COLOR
-  const overrides =
-    resolvedMode === 'dark'
-      ? settings?.general?.themeOverridesDark
-      : settings?.general?.themeOverridesLight
-
-  root.classList.remove('light', 'dark')
-  root.classList.add(resolvedMode)
-  applyThemePreset(themeColor, resolvedMode, root)
-  applyThemeOverrides(overrides ?? null, root)
-}
-
-export function useThemeSync(): void {
-  const settingsRef = useRef<Settings | null>(null)
-
-  useEffect(() => {
+  useLayoutEffect(() => {
     let cancelled = false
-
-    // Load initial theme from daemon settings API
-    void getSettings()
-      .then(settings => {
-        if (cancelled) return
-        settingsRef.current = settings
-        applyFullTheme(settings)
-      })
-      .catch(err => {
-        if (cancelled) return
-        log.error({ err }, 'Failed to load settings for theme')
-        applyFullTheme(null)
-      })
+    const session = { theme: createWindowThemeController(), revision: 0 }
+    sessionRef.current = session
+    // Apply the system appearance before the first paint; desktop updates do not need the daemon.
+    session.theme.setGeneral(null)
 
     const unlistenPromise = listen<SettingChangedEvent>(SETTINGS_CHANGED_EVENT, event => {
+      if (cancelled) return
       const nextSettings = parseSettingsChangedPayload(event.payload)
       if (!nextSettings) return
-
-      settingsRef.current = nextSettings
-      applyFullTheme(nextSettings)
+      session.revision += 1
+      session.theme.setGeneral(nextSettings.general)
     }).catch(err => {
       if (!cancelled) {
         log.error({ err }, 'Failed to subscribe to settings changes for theme sync')
@@ -66,21 +35,29 @@ export function useThemeSync(): void {
       return () => {}
     })
 
-    // Watch for system theme changes when user prefers 'system' theme
-    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
-    const handleSystemChange = () => {
-      const settings = settingsRef.current
-      if (!settings?.general?.theme || settings.general.theme === 'system') {
-        applyFullTheme(settings)
-      }
-    }
-
-    mediaQuery.addEventListener('change', handleSystemChange)
-
     return () => {
       cancelled = true
-      mediaQuery.removeEventListener('change', handleSystemChange)
+      sessionRef.current = null
+      session.theme.dispose()
       void unlistenPromise.then(unlisten => unlisten())
     }
   }, [])
+
+  useEffect(() => {
+    const session = sessionRef.current
+    if (!settingsReady || !session) return
+    let cancelled = false
+    const revision = session.revision
+    void getSettings()
+      .then(settings => {
+        // A live settings update takes precedence over an older startup response.
+        if (!cancelled && session.revision === revision) session.theme.setGeneral(settings.general)
+      })
+      .catch(err => {
+        if (!cancelled) log.error({ err }, 'Failed to load settings for theme')
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [settingsReady])
 }

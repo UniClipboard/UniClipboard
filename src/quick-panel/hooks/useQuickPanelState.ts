@@ -117,11 +117,13 @@ function navigationReducer(state: NavigationState, action: NavigationAction): Na
             : Math.max(state.selectedIndex - 1, 0),
       }
     case 'hover':
-      return { ...state, hoveredIndex: action.index }
+      return state.hoveredIndex === action.index ? state : { ...state, hoveredIndex: action.index }
     case 'use-keyboard':
       return { ...state, isKeyboardNav: true }
     case 'pointer-moved':
-      return { ...state, hasPointerMovedSinceShow: true, isKeyboardNav: false }
+      return state.hasPointerMovedSinceShow && !state.isKeyboardNav
+        ? state
+        : { ...state, hasPointerMovedSinceShow: true, isKeyboardNav: false }
     case 'preserve-selection':
       return { ...state, preserveSelectionOnNextListChange: true }
     case 'list-changed':

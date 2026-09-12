@@ -1,4 +1,9 @@
 {
+  "omarchyTheme": {
+    "title": "Seguir o tema do Omarchy",
+    "description": "O Omarchy controla o modo claro ou escuro e as cores do tema.",
+    "unavailable": "Omarchy indisponível. Usando o tema salvo do aplicativo."
+  },
   "startupFailure": {
     "unavailable": "Problema na inicialização",
     "title": "Não foi possível iniciar",
@@ -767,6 +772,7 @@
         "title": "Atalhos",
         "description": "Personalize os atalhos de teclado",
         "scope": {
+          "quickPanel": "Painel rápido",
           "global": "Global",
           "clipboard": "Área de transferência",
           "settings": "Configurações",
@@ -774,6 +780,10 @@
           "modal": "Modal"
         },
         "actions": {
+          "quickPanelWindowIncrease": "Aumentar janela",
+          "quickPanelWindowDecrease": "Diminuir janela",
+          "quickPanelTextIncrease": "Aumentar texto",
+          "quickPanelTextDecrease": "Diminuir texto",
           "goSettings": "Ir para as configurações",
           "toggleQuickPanel": "Abrir/fechar o painel rápido",
           "favoriteClipboardItem": "Favoritar o item atual da área de transferência",
@@ -801,6 +811,7 @@
         "modified": "Modificado"
       },
       "quickPanel": {
+        "compositorShortcuts": "No Wayland, os atalhos de ativação são gerenciados pelo ambiente de trabalho. Associe o comando abaixo a um atalho nas configurações do compositor.",
         "title": "Painel rápido",
         "featureTitle": "Recurso",
         "shortcutTitle": "Atalho",
@@ -2077,6 +2088,8 @@
     }
   },
   "quickPanel": {
+    "scaleText": "Texto",
+    "scaleWindow": "Janela",
     "loading": "Conectando ao histórico da área de transferência...",
     "unavailable": "O histórico da área de transferência está indisponível no momento.",
     "history": {

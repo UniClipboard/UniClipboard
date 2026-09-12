@@ -8,14 +8,12 @@ import {
   setQuickPanelPosition as persistQuickPanelPosition,
   updateAutostart as persistAutostart,
 } from '@/api/tauri-command'
-import { DEFAULT_THEME_COLOR } from '@/constants/theme'
+import { useWindowTheme } from '@/hooks/useWindowTheme'
 import i18n, { normalizeLanguage, persistLanguage } from '@/i18n'
 import { connectDaemonWs } from '@/lib/daemon-ws-bootstrap'
 import { commands } from '@/lib/ipc'
 import { createLogger } from '@/lib/logger'
 import { emitSettingsChanged } from '@/lib/settings-events'
-import { applyThemeOverrides, applyThemePreset } from '@/lib/theme-engine'
-import { startThemeTransition } from '@/lib/theme-transition'
 import { setDiagnosticsEnabled } from '@/observability/diagnostics'
 import type {
   RelaySaveContextResult,
@@ -381,84 +379,7 @@ export const SettingProvider: React.FC<SettingProviderProps> = ({ children }) =>
 
   // Note: Cross-window settings sync via daemon WebSocket events (future enhancement)
 
-  // 监听主题变化并应用。
-  //
-  // # 抖动防御
-  // transition reveal 动画只在**实际渲染结果**变化时触发,而不是 raw theme
-  // 字段变化时触发。例如用户切换 Follow system 开关:`theme: dark → system`
-  // 但当前媒体查询恰好也是 dark → resolved mode 不变 → 颜色也不变,这时
-  // 不应该跑 500ms 的圆形 reveal,否则就是无意义的"闪一下"。
-  const prevResolvedModeRef = React.useRef<'light' | 'dark' | undefined>(undefined)
-  const prevAppliedColorRef = React.useRef<string | undefined>(undefined)
-  const prevAppliedOverridesRef = React.useRef<string | undefined>(undefined)
-  const hasAppliedOnceRef = React.useRef(false)
-  const general = setting?.general
-
-  useEffect(() => {
-    // Skip theme application until settings are loaded to avoid
-    // flashing the default theme before switching to the user's theme
-    if (!general) return
-
-    const root = window.document.documentElement
-    const systemThemeMedia = window.matchMedia('(prefers-color-scheme: dark)')
-
-    // 选取当前 mode 应用的预设：优先 light/dark 拆分字段,缺失时回退到旧
-    // themeColor 字段（v0.7 之前持久化的偏好）,再缺失时使用引擎默认。
-    const resolveThemeColor = (mode: 'light' | 'dark'): string => {
-      const split = mode === 'dark' ? general.themeColorDark : general.themeColorLight
-      return split || general.themeColor || DEFAULT_THEME_COLOR
-    }
-
-    const resolveOverrides = (mode: 'light' | 'dark'): Record<string, string> => {
-      return mode === 'dark' ? general.themeOverridesDark || {} : general.themeOverridesLight || {}
-    }
-
-    const resolveMode = (): 'light' | 'dark' => {
-      const theme = general.theme
-      if (theme === 'light' || theme === 'dark') return theme
-      return systemThemeMedia.matches ? 'dark' : 'light'
-    }
-
-    const applyTheme = () => {
-      const resolvedMode = resolveMode()
-      root.classList.remove('light', 'dark')
-      root.classList.add(resolvedMode)
-      applyThemePreset(resolveThemeColor(resolvedMode), resolvedMode, root)
-      applyThemeOverrides(resolveOverrides(resolvedMode), root)
-    }
-
-    // 比较"实际生效的 mode + color + overrides"是否变化,而不是 raw theme 字段。
-    const nextResolvedMode = resolveMode()
-    const nextAppliedColor = resolveThemeColor(nextResolvedMode)
-    const nextOverridesKey = JSON.stringify(resolveOverrides(nextResolvedMode))
-    const hasVisualChange =
-      prevResolvedModeRef.current !== nextResolvedMode ||
-      prevAppliedColorRef.current !== nextAppliedColor ||
-      prevAppliedOverridesRef.current !== nextOverridesKey
-
-    prevResolvedModeRef.current = nextResolvedMode
-    prevAppliedColorRef.current = nextAppliedColor
-    prevAppliedOverridesRef.current = nextOverridesKey
-
-    if (!hasAppliedOnceRef.current || !hasVisualChange) {
-      hasAppliedOnceRef.current = true
-      applyTheme()
-    } else {
-      startThemeTransition(applyTheme)
-    }
-
-    const handleSystemThemeChange = () => {
-      if (general.theme === 'system' || !general.theme) {
-        applyTheme()
-      }
-    }
-
-    systemThemeMedia.addEventListener('change', handleSystemThemeChange)
-
-    return () => {
-      systemThemeMedia.removeEventListener('change', handleSystemThemeChange)
-    }
-  }, [general])
+  useWindowTheme(setting?.general)
 
   // 监听语言变化并应用
   useEffect(() => {

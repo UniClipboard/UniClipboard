@@ -96,6 +96,7 @@ parts:
       - unzip
       - ca-certificates
     stage-packages:
+      - libgtk-layer-shell0
       - libayatana-appindicator3-1
       - librsvg2-2
     build-environment:

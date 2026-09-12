@@ -12,7 +12,7 @@ interface LinkPreviewProps {
 
 const LinkPreview: React.FC<LinkPreviewProps> = ({ item }) => {
   return (
-    <div className="divide-y divide-border/30 px-8 py-4">
+    <div className="divide-y divide-border/30 px-[var(--clipboard-preview-inset,2rem)] py-4">
       {item.urls.map((url, index) => (
         <button
           key={`${url}-${index}`}

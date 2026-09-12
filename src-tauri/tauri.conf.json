@@ -7,6 +7,7 @@
     "beforeDevCommand": "bun run dev:sweep && bun run dev:sweep-port && bun run daemon:dev && bun run dev",
     "devUrl": "http://localhost:1420",
     "beforeBuildCommand": "bun run build",
+    "beforeBundleCommand": "node scripts/prepare-linux-bundle.mjs",
     "frontendDist": "../dist"
   },
   "app": {
@@ -56,12 +57,17 @@
       "minimumSystemVersion": "12.5"
     },
     "linux": {
+      "appimage": {
+        "files": {
+          "usr/lib/libgtk-layer-shell.so.0": "binaries/linux/libgtk-layer-shell.so.0"
+        }
+      },
       "deb": {
-        "depends": ["libayatana-appindicator3-1"],
+        "depends": ["libayatana-appindicator3-1", "libgtk-layer-shell0"],
         "desktopTemplate": "../packaging/linux/uniclipboard.desktop.hbs"
       },
       "rpm": {
-        "depends": ["libayatana-appindicator-gtk3"],
+        "depends": ["libayatana-appindicator-gtk3", "gtk-layer-shell"],
         "desktopTemplate": "../packaging/linux/uniclipboard.desktop.hbs"
       }
     },

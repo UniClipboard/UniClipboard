@@ -1,6 +1,7 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import AppearanceSection from '@/components/setting/AppearanceSection'
+import { useOmarchyTheme } from '@/hooks/useOmarchyTheme'
 import { useSetting } from '@/hooks/useSetting'
 import { useUiScale } from '@/hooks/useUiScale'
 import { useWindowFrame } from '@/hooks/useWindowFrame'
@@ -12,6 +13,8 @@ vi.mock('react-i18next', () => ({
     t: (key: string) => key,
   }),
 }))
+
+vi.mock('@/hooks/useOmarchyTheme', () => ({ useOmarchyTheme: vi.fn() }))
 
 vi.mock('@/hooks/useSetting', () => ({
   useSetting: vi.fn(),
@@ -94,6 +97,13 @@ const setup = (
 
 beforeEach(() => {
   vi.clearAllMocks()
+  vi.mocked(useOmarchyTheme).mockReturnValue({
+    enabled: false,
+    available: false,
+    saving: false,
+    failed: false,
+    setEnabled: vi.fn(),
+  })
   mockUseWindowFrame.mockReturnValue({
     canChooseSystemFrame: false,
     hasCustomTitleBar: true,
@@ -211,4 +221,45 @@ describe('AppearanceSection', () => {
       expect(setWindowFramePreference).toHaveBeenCalledWith(preference)
     }
   )
+})
+
+it('disables manual theme controls while preserving the saved selection', async () => {
+  const setEnabled = vi.fn()
+  vi.mocked(useOmarchyTheme).mockReturnValue({
+    enabled: true,
+    available: true,
+    saving: false,
+    failed: false,
+    setEnabled,
+  })
+  const { updateGeneralSetting } = setup('light')
+  const light = screen.getByRole('radio', {
+    name: 'settings.sections.appearance.themePreview.lightLabel',
+  })
+  expect(light).toBeChecked()
+  expect(light).toBeDisabled()
+  const toggle = screen.getByRole('switch', { name: 'omarchyTheme.title' })
+  expect(toggle).not.toBeDisabled()
+  await userEvent.click(light)
+  expect(updateGeneralSetting).not.toHaveBeenCalled()
+  await userEvent.click(toggle)
+  expect(setEnabled).toHaveBeenCalledWith(false)
+})
+
+it('keeps an unavailable enabled preference visible so it can be turned off', () => {
+  vi.mocked(useOmarchyTheme).mockReturnValue({
+    enabled: true,
+    available: false,
+    saving: false,
+    failed: false,
+    setEnabled: vi.fn(),
+  })
+  setup()
+  expect(screen.getByText('omarchyTheme.unavailable')).toBeInTheDocument()
+  expect(screen.getByRole('switch', { name: 'omarchyTheme.title' })).not.toBeDisabled()
+})
+
+it('hides Omarchy controls on unsupported desktops', () => {
+  setup()
+  expect(screen.queryByRole('switch', { name: 'omarchyTheme.title' })).not.toBeInTheDocument()
 })

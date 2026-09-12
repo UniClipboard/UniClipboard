@@ -1,4 +1,9 @@
 {
+  "omarchyTheme": {
+    "title": "Omarchy のテーマに合わせる",
+    "description": "ライト・ダークモードと配色を Omarchy が制御します。",
+    "unavailable": "Omarchy を利用できません。保存済みのアプリテーマを使用しています。"
+  },
   "startupFailure": {
     "unavailable": "起動時に問題が発生しました",
     "title": "起動できません",
@@ -767,6 +772,7 @@
         "title": "ショートカット",
         "description": "キーボード ショートカットのカスタマイズ",
         "scope": {
+          "quickPanel": "クイックパネル",
           "global": "グローバル",
           "clipboard": "クリップボード",
           "settings": "設定",
@@ -774,6 +780,10 @@
           "modal": "モーダル"
         },
         "actions": {
+          "quickPanelWindowIncrease": "ウィンドウを拡大",
+          "quickPanelWindowDecrease": "ウィンドウを縮小",
+          "quickPanelTextIncrease": "文字を拡大",
+          "quickPanelTextDecrease": "文字を縮小",
           "goSettings": "設定に移動",
           "toggleQuickPanel": "クイック パネルの切り替え",
           "favoriteClipboardItem": "現在のクリップボード項目をお気に入り",
@@ -801,6 +811,7 @@
         "modified": "変更済み"
       },
       "quickPanel": {
+        "compositorShortcuts": "Wayland の呼び出しショートカットはデスクトップ環境が管理します。コンポジターの設定で次のコマンドにキーを割り当ててください。",
         "title": "クイック パネル",
         "featureTitle": "機能",
         "shortcutTitle": "ショートカット",
@@ -2070,6 +2081,8 @@
     }
   },
   "quickPanel": {
+    "scaleText": "文字",
+    "scaleWindow": "ウィンドウ",
     "loading": "クリップボード履歴を接続しています...",
     "unavailable": "クリップボード履歴は現在利用できません。",
     "history": {

@@ -6,14 +6,17 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { Provider } from 'react-redux'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { deleteClipboardEntry, restoreClipboardEntry } from '@/api/daemon'
+import { usePlatform } from '@/hooks/usePlatform'
 import { __resetResendActionStoreForTests } from '@/hooks/useResendAction'
 import i18n from '@/i18n'
+import { formatRelativeTime } from '@/lib/clipboard-utils'
 import { playUiSound } from '@/lib/ui-sound'
 import devicesReducer from '@/store/slices/devicesSlice'
 import ClipboardHistoryPanel from '../ClipboardHistoryPanel'
 import { useHistorySearch } from '../hooks/useHistorySearch'
 
 const invokeMock = vi.fn()
+vi.mock('@/hooks/usePlatform', () => ({ usePlatform: vi.fn() }))
 
 // The panel now primes the paired-device list (for the row context menu's
 // "send to device" submenu) and the reused `HistoryCardContextMenu` reads
@@ -37,7 +40,6 @@ vi.mock('@tauri-apps/api/event', () => ({
   listen: vi.fn(() => Promise.resolve(() => {})),
 }))
 
-vi.mock('@/hooks/useThemeSync', () => ({ useThemeSync: vi.fn() }))
 vi.mock('@/hooks/useHistorySourceOptions', () => ({ useHistorySourceOptions: () => [] }))
 vi.mock('@/hooks/useShortcut', () => ({ useShortcut: vi.fn() }))
 vi.mock('@/lib/ui-sound', () => ({ playUiSound: vi.fn() }))
@@ -109,6 +111,12 @@ vi.mock('../hooks/useHistorySearch', () => ({
 const defaultHistorySearchImplementation = vi.mocked(useHistorySearch).getMockImplementation()
 
 beforeEach(() => {
+  vi.mocked(usePlatform).mockReturnValue({
+    isLinux: false,
+    isTauri: true,
+    isMac: true,
+    isWindows: false,
+  })
   if (defaultHistorySearchImplementation) {
     vi.mocked(useHistorySearch).mockImplementation(defaultHistorySearchImplementation)
   }
@@ -180,6 +188,83 @@ describe('ClipboardHistoryPanel single-window preview', () => {
     vi.clearAllMocks()
     invokeMock.mockResolvedValue(undefined)
     Element.prototype.scrollIntoView = vi.fn()
+  })
+
+  it('shows both Linux columns immediately and changes selection without resizing', () => {
+    vi.mocked(usePlatform).mockReturnValue({
+      isLinux: true,
+      isTauri: true,
+      isMac: false,
+      isWindows: false,
+    })
+    const { container } = renderPanel()
+    const root = container.firstElementChild!
+    expect(screen.getByText('Preview for entry-1')).toBeInTheDocument()
+    expect(root.children[1]).toHaveAttribute('aria-hidden', 'false')
+    expect(root).not.toHaveClass('flex-row-reverse')
+    invokeMock.mockClear()
+    fireEvent.keyDown(screen.getByRole('combobox'), { key: 'ArrowDown' })
+    expect(screen.getByText('Preview for entry-2')).toBeInTheDocument()
+    expect(
+      invokeMock.mock.calls.some(
+        ([command]) =>
+          command === 'set_quick_panel_layout' || command === 'resolve_quick_panel_expand_side'
+      )
+    ).toBe(false)
+  })
+
+  it('retains the Linux hover preview until another hover or keyboard selection', () => {
+    vi.mocked(usePlatform).mockReturnValue({
+      isLinux: true,
+      isTauri: true,
+      isMac: false,
+      isWindows: false,
+    })
+    const { container } = renderPanel()
+    expect(screen.getByText('Preview for entry-1')).toBeInTheDocument()
+    const secondRow = screen.getByText('Second preview title')
+
+    // Browsers deliver enter before move, including when resuming from keyboard navigation.
+    fireEvent.mouseEnter(secondRow)
+    expect(screen.getByText('Preview for entry-1')).toBeInTheDocument()
+    fireEvent.mouseMove(secondRow)
+    expect(screen.getByText('Preview for entry-2')).toBeInTheDocument()
+
+    fireEvent.mouseLeave(screen.getByRole('listbox'))
+    fireEvent.mouseEnter(container.firstElementChild!.children[1])
+    expect(screen.getByText('Preview for entry-2')).toBeInTheDocument()
+    expect(screen.queryByTestId('preview-empty')).not.toBeInTheDocument()
+
+    fireEvent.mouseMove(screen.getByText('File preview title'))
+    fireEvent.mouseLeave(screen.getByRole('listbox'))
+    expect(screen.getByText('Preview for entry-file')).toBeInTheDocument()
+
+    fireEvent.keyDown(screen.getByRole('combobox'), { key: 'ArrowDown' })
+    expect(screen.getByText('Preview for entry-2')).toBeInTheDocument()
+    fireEvent.mouseEnter(screen.getByText('Preview title'))
+    fireEvent.mouseMove(screen.getByText('Preview title'))
+    expect(screen.getByText('Preview for entry-1')).toBeInTheDocument()
+  })
+
+  it('keeps the Linux preview column visible when history is empty', () => {
+    vi.mocked(usePlatform).mockReturnValue({
+      isLinux: true,
+      isTauri: true,
+      isMac: false,
+      isWindows: false,
+    })
+    vi.mocked(useHistorySearch).mockReturnValue({
+      ...defaultHistorySearchImplementation!({ searchQuery: '', activeFilter: 'all' } as Parameters<
+        typeof useHistorySearch
+      >[0]),
+      filteredItems: [],
+      previewItems: [],
+    })
+    const { container } = renderPanel()
+    expect(screen.getByTestId('preview-empty')).toBeInTheDocument()
+    expect(container.firstElementChild!.children[1]).toHaveAttribute('aria-hidden', 'false')
+    expect(container.firstElementChild!.children[0]).toHaveClass('flex-[42]', 'basis-0')
+    expect(container.firstElementChild!.children[1]).toHaveClass('flex-[58]', 'basis-0')
   })
 
   it('starts a shown session without a preview transition', () => {
@@ -735,4 +820,49 @@ describe('ClipboardHistoryPanel hover/focus keyboard shortcuts', () => {
     fireEvent.change(input, { target: { value: '' } })
     expect(lastHistoryQuery()).toBe('')
   })
+})
+
+vi.mock('@/lib/clipboard-utils', async importOriginal => {
+  const actual = await importOriginal<typeof import('@/lib/clipboard-utils')>()
+  return { ...actual, formatRelativeTime: vi.fn(actual.formatRelativeTime) }
+})
+
+describe('ClipboardHistoryPanel hover rendering', () => {
+  it.each(['list', 'image wall'])(
+    'does not render unchanged %s rows during hover',
+    async layout => {
+      vi.useRealTimers()
+      invokeMock.mockResolvedValue(undefined)
+      Element.prototype.scrollIntoView = vi.fn()
+      vi.mocked(usePlatform).mockReturnValue({
+        isLinux: true,
+        isTauri: true,
+        isMac: false,
+        isWindows: false,
+      })
+      // Stable data isolates pointer updates from data subscription updates.
+      const stableData = defaultHistorySearchImplementation!({} as never)
+      vi.mocked(useHistorySearch).mockReturnValue(stableData)
+      renderPanel()
+      await act(async () => {
+        await Promise.resolve()
+      })
+      if (layout === 'image wall') {
+        fireEvent.click(screen.getAllByRole('button', { name: i18n.t('history.type.image') })[0])
+        await act(async () => {
+          await Promise.resolve()
+        })
+      }
+      const [first, second] = screen.getAllByRole('option')
+      fireEvent.mouseMove(first)
+      vi.mocked(formatRelativeTime).mockClear()
+      for (let i = 0; i < 5; i++) fireEvent.mouseMove(first)
+      expect(formatRelativeTime).not.toHaveBeenCalled()
+      fireEvent.mouseMove(second)
+      expect(screen.getByText('Preview for entry-2')).toBeInTheDocument()
+      expect(formatRelativeTime).not.toHaveBeenCalled()
+      fireEvent.keyDown(screen.getByRole('combobox'), { key: 'ArrowDown' })
+      expect(second.closest('[role="option"]')).toHaveAttribute('aria-selected', 'true')
+    }
+  )
 })

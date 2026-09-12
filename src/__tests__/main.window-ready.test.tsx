@@ -5,6 +5,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 const mocks = vi.hoisted(() => ({
   setDecorations: vi.fn(),
   markReady: vi.fn(),
+  initializeTheme: vi.fn(),
   roots: [] as Root[],
   failApp: false,
 }))
@@ -39,6 +40,7 @@ vi.mock('@/lib/daemon-ws-bootstrap', () => ({
   registerDaemonShutdownListener: vi.fn().mockResolvedValue(undefined),
 }))
 vi.mock('@/lib/webview-context-menu', () => ({ initializeWebviewContextMenu: vi.fn() }))
+vi.mock('@/lib/window-theme', () => ({ initializeWindowTheme: mocks.initializeTheme }))
 vi.mock('@/lib/window-ui', () => ({ initializeWindowUi: vi.fn() }))
 vi.mock('@/lib/wdio-test-bridge', () => ({}))
 vi.mock('@/observability/diagnostics', async () => {
@@ -82,6 +84,13 @@ it.each([false, true])(
     mocks.failApp = failApp
     const expectedContent = failApp ? 'Something went wrong.' : 'Startup failure'
     const notifications: Array<{ generation: string; content: string | null }> = []
+    let finishTheme!: () => void
+    mocks.initializeTheme.mockImplementation(
+      () =>
+        new Promise<void>(resolve => {
+          finishTheme = resolve
+        })
+    )
     let finish!: () => void
     mocks.setDecorations.mockImplementation(
       () =>
@@ -110,6 +119,11 @@ it.each([false, true])(
 
     await act(async () => {
       finish()
+    })
+    expect(host).toBeEmptyDOMElement()
+    expect(mocks.markReady).not.toHaveBeenCalled()
+    await act(async () => {
+      finishTheme()
     })
     expect(screen.getByText(expectedContent)).toBeVisible()
     expect(mocks.markReady).toHaveBeenCalledWith('7')

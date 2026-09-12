@@ -40,6 +40,8 @@ pub fn build() -> Builder<tauri::Wry> {
     // daemon WS (`clipboard.delivery_status_changed`, GAP-WS-1), consumed by
     // the frontend `useEntryDelivery` via `daemonWs.subscribe`.
     Builder::<tauri::Wry>::new().commands(collect_commands![
+        crate::desktop_theme::get_desktop_theme,
+        crate::desktop_theme::set_follow_omarchy_theme,
         crate::commands::visual_effects::get_visual_effects,
         crate::commands::visual_effects::set_visual_effects_mode,
         crate::commands::visual_effects::report_visual_effects_environment,
@@ -87,6 +89,7 @@ pub fn build() -> Builder<tauri::Wry> {
         crate::commands::quick_panel::finalize_quick_panel_show,
         crate::commands::quick_panel::mark_quick_panel_ready,
         crate::commands::quick_panel::get_quick_panel_double_tap_availability,
+        crate::commands::quick_panel::quick_panel_uses_compositor_shortcuts,
         crate::commands::quick_panel::set_quick_panel_enabled,
         crate::commands::quick_panel::set_quick_panel_double_tap_modifier,
         crate::commands::quick_panel::set_quick_panel_position,

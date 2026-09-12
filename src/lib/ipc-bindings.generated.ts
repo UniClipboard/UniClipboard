@@ -13,6 +13,14 @@ import { invoke as __TAURI_INVOKE, Channel } from "@tauri-apps/api/core";
 
 /** Commands */
 export const commands = {
+	getDesktopTheme: (trace: {
+	trace_id: string,
+	timestamp: number,
+} | null) => typedError<DesktopThemeSnapshot, string>(__TAURI_INVOKE("get_desktop_theme", { trace })),
+	setFollowOmarchyTheme: (enabled: boolean, trace: {
+	trace_id: string,
+	timestamp: number,
+} | null) => typedError<DesktopThemeSnapshot, string>(__TAURI_INVOKE("set_follow_omarchy_theme", { enabled, trace })),
 	getVisualEffects: (trace: {
 	trace_id: string,
 	timestamp: number,
@@ -378,10 +386,10 @@ export const commands = {
 	 *  Update quick panel size and position from the active UI scale and whether
 	 *  the inline preview is expanded (flipping the preview left near the right edge).
 	 */
-	setQuickPanelLayout: (scale: number | null, previewExpanded: boolean, trace: {
+	setQuickPanelLayout: (scale: number | null, previewExpanded: boolean, windowScale: number | null, trace: {
 	trace_id: string,
 	timestamp: number,
-} | null) => typedError<null, string>(__TAURI_INVOKE("set_quick_panel_layout", { scale, previewExpanded, trace })),
+} | null) => typedError<null, string>(__TAURI_INVOKE("set_quick_panel_layout", { scale, previewExpanded, windowScale, trace })),
 	/**
 	 *  Finalize the quick panel show after the frontend has cleared stale state.
 	 * 
@@ -401,6 +409,11 @@ export const commands = {
 	trace_id: string,
 	timestamp: number,
 } | null) => typedError<ModifierDoubleTapAvailability, CommandError>(__TAURI_INVOKE("get_quick_panel_double_tap_availability", { trace })),
+	/**  Whether Quick Panel activation shortcuts must be configured in the compositor. */
+	quickPanelUsesCompositorShortcuts: (trace: {
+	trace_id: string,
+	timestamp: number,
+} | null) => __TAURI_INVOKE<boolean>("quick_panel_uses_compositor_shortcuts", { trace }),
 	/**
 	 *  实时启用/禁用快捷面板。
 	 * 
@@ -671,6 +684,19 @@ export type DaemonStartupStatus = {
 	service_ready: boolean,
 	service_failed: boolean,
 	progress: StartupSnapshotDto,
+};
+
+export type DesktopTheme = {
+	dark: boolean,
+	variables: { [key in string]: string },
+};
+
+export type DesktopThemeSnapshot = {
+	revision: number,
+	followOmarchyTheme: boolean,
+	omarchyAvailable: boolean,
+	theme: DesktopTheme | null,
+	windowCornerRadius: number | null,
 };
 
 /**

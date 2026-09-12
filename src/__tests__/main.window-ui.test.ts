@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => {
     getDeviceMeta: vi.fn(() => Promise.resolve({})),
     initializeDiagnostics: vi.fn(),
     initializeWindowUi: vi.fn(),
+    initializeWindowTheme: vi.fn(() => Promise.resolve()),
     registerDaemonShutdownListener: vi.fn(() => Promise.resolve()),
     render,
   }
@@ -39,6 +40,9 @@ vi.mock('@/lib/window-ui', () => ({
   applyPlatformEffectPreferences: mocks.applyPlatformEffectPreferences,
   initializeWindowUi: mocks.initializeWindowUi,
 }))
+
+vi.mock('@/lib/window-theme', () => ({ initializeWindowTheme: mocks.initializeWindowTheme }))
+vi.mock('@/quick-panel/QuickPanelApp', () => ({ default: () => null }))
 
 vi.mock('@/observability/diagnostics', () => ({
   applyDiagnosticDeviceContext: mocks.applyDiagnosticDeviceContext,
@@ -71,4 +75,21 @@ describe('main window bootstrap', () => {
       mocks.createRoot.mock.invocationCallOrder[0]!
     )
   })
+})
+
+it('waits for the desktop palette before mounting the quick panel', async () => {
+  vi.resetModules()
+  vi.clearAllMocks()
+  document.body.innerHTML = '<div id="root"></div>'
+  let finish!: () => void
+  mocks.initializeWindowTheme.mockReturnValueOnce(
+    new Promise<void>(resolve => {
+      finish = resolve
+    })
+  )
+  await import('@/quick-panel/main')
+  expect(mocks.createRoot).not.toHaveBeenCalled()
+  finish()
+  await Promise.resolve()
+  expect(mocks.createRoot).toHaveBeenCalledWith(document.getElementById('root'))
 })

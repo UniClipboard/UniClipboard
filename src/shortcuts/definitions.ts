@@ -18,7 +18,7 @@ export type ShortcutAction =
  * Shortcut scope
  * Used to isolate shortcuts across different pages/components
  */
-export type ShortcutScope = 'global' | 'clipboard' | 'settings' | 'devices' | 'modal'
+export type ShortcutScope = 'global' | 'clipboard' | 'settings' | 'devices' | 'modal' | 'quickPanel'
 
 /**
  * Default scope -> layer mapping
@@ -33,6 +33,7 @@ export const DEFAULT_SCOPE_LAYER: Record<ShortcutScope, ShortcutLayer> = {
   settings: 'page',
   devices: 'page',
   modal: 'modal',
+  quickPanel: 'page',
 }
 
 /**
@@ -61,7 +62,39 @@ export interface ShortcutDefinition {
  * search.focus、modal.close —— 它们只在设置页面"看起来可定制",但没有 handler 读取
  * override,改了也不生效,因此从设置面板里下掉,避免对用户产生误导。
  */
+export const QUICK_PANEL_SCALE_SHORTCUTS = [
+  {
+    id: 'quickPanel.windowIncrease',
+    key: ['ctrl+equal', 'ctrl+add'],
+    action: 'quickPanel.windowIncrease',
+    scope: 'quickPanel',
+    description: 'settings.sections.shortcuts.actions.quickPanelWindowIncrease',
+  },
+  {
+    id: 'quickPanel.windowDecrease',
+    key: ['ctrl+minus', 'ctrl+subtract'],
+    action: 'quickPanel.windowDecrease',
+    scope: 'quickPanel',
+    description: 'settings.sections.shortcuts.actions.quickPanelWindowDecrease',
+  },
+  {
+    id: 'quickPanel.textIncrease',
+    key: ['ctrl+shift+equal', 'ctrl+shift+add'],
+    action: 'quickPanel.textIncrease',
+    scope: 'quickPanel',
+    description: 'settings.sections.shortcuts.actions.quickPanelTextIncrease',
+  },
+  {
+    id: 'quickPanel.textDecrease',
+    key: ['ctrl+shift+minus', 'ctrl+shift+subtract'],
+    action: 'quickPanel.textDecrease',
+    scope: 'quickPanel',
+    description: 'settings.sections.shortcuts.actions.quickPanelTextDecrease',
+  },
+] satisfies ShortcutDefinition[]
+
 export const SHORTCUT_DEFINITIONS: ShortcutDefinition[] = [
+  ...QUICK_PANEL_SCALE_SHORTCUTS,
   // ===== Navigation =====
   {
     id: 'nav.settings',

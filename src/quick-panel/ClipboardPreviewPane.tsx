@@ -3,7 +3,10 @@ import { useTranslation } from 'react-i18next'
 import ClipboardPreview from '@/components/clipboard/ClipboardPreview'
 import { usePlatform } from '@/hooks/usePlatform'
 import type { DisplayClipboardItem } from '@/lib/clipboard-entry'
-import { getQuickPanelLayoutClassNames } from './constants'
+import {
+  getQuickPanelLayoutClassNames,
+  QUICK_PANEL_FOOTER_CLASS_NAME,
+} from '@/quick-panel/constants'
 
 interface ClipboardPreviewPaneProps {
   item: DisplayClipboardItem | null
@@ -20,7 +23,7 @@ function ClipboardPreviewPane({ item }: ClipboardPreviewPaneProps) {
         <ClipboardPreview item={item} />
       </div>
 
-      <div className="flex items-center justify-start border-t border-border/50 px-3 py-1.5 text-[11px] text-muted-foreground">
+      <div className={QUICK_PANEL_FOOTER_CLASS_NAME}>
         <span>{t('deleteHint', { modifier: isMac ? '⌥' : 'Alt+' })}</span>
       </div>
     </div>

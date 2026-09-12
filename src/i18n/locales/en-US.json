@@ -1,4 +1,9 @@
 {
+  "omarchyTheme": {
+    "title": "Follow Omarchy theme",
+    "description": "Omarchy controls light and dark mode and theme colors.",
+    "unavailable": "Omarchy is unavailable. Using your saved app theme."
+  },
   "startupFailure": {
     "unavailable": "Startup interrupted",
     "title": "Unable to start right now",
@@ -767,6 +772,7 @@
         "title": "Shortcuts",
         "description": "Customize keyboard shortcuts",
         "scope": {
+          "quickPanel": "Quick Panel",
           "global": "Global",
           "clipboard": "Clipboard",
           "settings": "Settings",
@@ -774,6 +780,10 @@
           "modal": "Modal"
         },
         "actions": {
+          "quickPanelWindowIncrease": "Increase window size",
+          "quickPanelWindowDecrease": "Decrease window size",
+          "quickPanelTextIncrease": "Increase text size",
+          "quickPanelTextDecrease": "Decrease text size",
           "goSettings": "Go to settings",
           "toggleQuickPanel": "Toggle quick panel",
           "favoriteClipboardItem": "Favorite current clipboard item",
@@ -801,6 +811,7 @@
         "modified": "Modified"
       },
       "quickPanel": {
+        "compositorShortcuts": "Wayland activation shortcuts are managed by your desktop. Bind the following command in your compositor settings.",
         "title": "Quick Panel",
         "featureTitle": "Feature",
         "shortcutTitle": "Shortcut",
@@ -2071,6 +2082,8 @@
     }
   },
   "quickPanel": {
+    "scaleText": "Text",
+    "scaleWindow": "Window",
     "loading": "Connecting clipboard history...",
     "unavailable": "Clipboard history is unavailable right now.",
     "history": {

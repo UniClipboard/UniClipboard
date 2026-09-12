@@ -19,6 +19,8 @@ When documentation conflicts with code, treat the code as the source of truth an
 
 **For Implementation:**
 
+- [自动连接的桌面宿主接入](specs/automatic-peer-connections.md) - 前台、系统唤醒与 Engine 的责任边界和验证记录
+
 - [Bootstrap System](architecture/bootstrap.md) - How dependency injection works
 - [核心诊断与桌面日志装配](architecture/engine-diagnostic-runtime.md) - 共同运行时接入、文件所有权及验证范围
 - [跨平台核心接口](architecture/uc-engine-interface.md) - 宿主操作、生命周期、事件与能力边界

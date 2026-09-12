@@ -41,6 +41,7 @@ use uc_engine::{
 use crate::api::dto::error::{log_facade_failure, ApiError};
 use crate::api::server::DaemonApiState;
 use crate::security::middleware::{auth_extractor_middleware, rate_limit_middleware};
+use uc_daemon_contract::api::dto::device::ConnectivityOpportunityRequest;
 
 /// Build the L1 (public) router - no auth required.
 /// Contains only the health check endpoint.
@@ -108,6 +109,10 @@ pub fn router_l2_plus(state: DaemonApiState) -> Router<DaemonApiState> {
         .route("/peers", get(peers))
         .route("/paired-devices", get(paired_devices))
         .route("/presence/refresh", post(refresh_presence))
+        .route(
+            "/presence/opportunity",
+            post(notify_connectivity_opportunity),
+        )
         .route(
             http_route::NETWORK_RECOVERY,
             get(network_recovery_status).post(recover_network),
@@ -511,6 +516,27 @@ async fn refresh_presence(
         .await
         .map_err(|error| diagnostics_internal_error("refresh_presence", error))?;
     Ok(Json(ApiEnvelope::now(response)))
+}
+
+/// Accept a host opportunity without waiting for peer connections.
+#[utoipa::path(
+    post, path = "/presence/opportunity", operation_id = "notifyConnectivityOpportunity",
+    tag = "system", request_body = ConnectivityOpportunityRequest,
+    responses((status = 204, description = "Connectivity opportunity accepted"),
+        (status = 400, description = "Invalid connectivity opportunity", body = ApiErrorResponse),
+        (status = 503, description = "Engine is unavailable", body = ApiErrorResponse))
+)]
+async fn notify_connectivity_opportunity(
+    State(state): State<DaemonApiState>,
+    request: Result<Json<ConnectivityOpportunityRequest>, axum::extract::rejection::JsonRejection>,
+) -> Result<StatusCode, ApiError> {
+    let Json(request) =
+        request.map_err(|_| ApiError::bad_request("invalid connectivity opportunity"))?;
+    state
+        .notify_connectivity_opportunity(request.reason)
+        .await
+        .map_err(|error| network_recovery_error("connectivity_opportunity", error))?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 /// GET /network/recovery

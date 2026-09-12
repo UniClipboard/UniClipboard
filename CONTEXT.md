@@ -163,6 +163,10 @@ _Avoid_: global synchronization、manual resend gate
 核心统一拥有网络会话的完整恢复、自动重试与并发合并。状态为 `Idle`、`Recovering`、
 `RetryScheduled`、`Failed`；状态通知遗漏时，宿主重新读取当前状态。手动恢复仅在
 `Failed` 且可重试时作为最后兜底，不自行实现恢复步骤。
+
+**Connectivity opportunity**：
+应用进入前台、系统唤醒或网络变化时，宿主向 Engine 提交一次连接检查机会。接受机会
+不表示设备已经连接；连接目标、机会合并、重试和结果判断仍由 Engine 统一负责。
 _Avoid_: reconnect loop、client-side recovery
 
 **ActiveClipboardState**：

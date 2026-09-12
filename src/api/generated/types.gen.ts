@@ -366,6 +366,12 @@ export type ConnectRequest = {
     pid: number;
 };
 
+export type ConnectivityOpportunity = 'foreground' | 'system_wake' | 'network_changed';
+
+export type ConnectivityOpportunityRequest = {
+    reason: ConnectivityOpportunity;
+};
+
 export type ContentTypesDto = {
     codeSnippet: boolean;
     file: boolean;
@@ -5495,6 +5501,35 @@ export type ListPeersResponses = {
 
 export type ListPeersResponse = ListPeersResponses[keyof ListPeersResponses];
 
+export type NotifyConnectivityOpportunityData = {
+    body: ConnectivityOpportunityRequest;
+    path?: never;
+    query?: never;
+    url: '/presence/opportunity';
+};
+
+export type NotifyConnectivityOpportunityErrors = {
+    /**
+     * Invalid connectivity opportunity
+     */
+    400: ApiErrorResponse;
+    /**
+     * Engine is unavailable
+     */
+    503: ApiErrorResponse;
+};
+
+export type NotifyConnectivityOpportunityError = NotifyConnectivityOpportunityErrors[keyof NotifyConnectivityOpportunityErrors];
+
+export type NotifyConnectivityOpportunityResponses = {
+    /**
+     * Connectivity opportunity accepted
+     */
+    204: void;
+};
+
+export type NotifyConnectivityOpportunityResponse = NotifyConnectivityOpportunityResponses[keyof NotifyConnectivityOpportunityResponses];
+
 export type RefreshPresenceData = {
     body?: never;
     path?: never;
@@ -6086,11 +6121,15 @@ export type SetupV2IssueInvitationData = {
 
 export type SetupV2IssueInvitationErrors = {
     /**
+     * Space state requires recovery or does not permit invitations
+     */
+    409: ApiErrorResponse;
+    /**
      * Internal error
      */
     500: ApiErrorResponse;
     /**
-     * Facade not assembled or network not started
+     * Service unavailable, network not started, or member changes pending
      */
     503: ApiErrorResponse;
 };

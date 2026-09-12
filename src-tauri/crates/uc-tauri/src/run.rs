@@ -290,6 +290,7 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
         // Register TauriAppRuntime for Tauri commands
         .manage(runtime.clone())
         .manage(crate::visual_effects::VisualEffectsService::default())
+        .manage(uc_daemon_client::DaemonQueryClient::new(daemon_connection_state.clone())?)
         .manage(DaemonConnectionState::clone(&daemon_connection_state))
         .manage(DaemonOwnership::clone(&daemon_ownership))
         .manage(daemon_bootstrap_status.clone())
@@ -299,6 +300,16 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
         .manage(quick_panel::QuickPanelToggleController::default())
         .manage(task_registry.clone())
         .on_window_event(|window, event| {
+            if matches!(event, tauri::WindowEvent::Focused(true)) {
+                let client = window.app_handle().state::<uc_daemon_client::DaemonQueryClient>().inner().clone();
+                tauri::async_runtime::spawn(async move {
+                    let result = tokio::time::timeout(std::time::Duration::from_secs(2),
+                        client.notify_connectivity_opportunity(uc_daemon_contract::api::dto::device::ConnectivityOpportunity::Foreground)).await;
+                    if !matches!(result, Ok(Ok(()))) {
+                        tracing::debug!("foreground connectivity opportunity could not be delivered");
+                    }
+                });
+            }
             if matches!(event, tauri::WindowEvent::Destroyed) {
                 let app = window.app_handle().clone();
                 let label = window.label().to_owned();

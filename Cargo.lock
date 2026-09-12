@@ -10653,6 +10653,7 @@ dependencies = [
  "uc-daemon-local",
  "uc-engine",
  "uc-observability",
+ "uc-platform",
  "uc-webserver",
 ]
 
@@ -10966,6 +10967,7 @@ dependencies = [
  "chrono",
  "clipboard-rs",
  "clipboard-win",
+ "dbus",
  "image",
  "keyring",
  "libdbus-sys",
@@ -10986,6 +10988,7 @@ dependencies = [
  "wayland-client",
  "wayland-protocols",
  "wayland-protocols-wlr",
+ "windows 0.61.3",
  "x11rb",
 ]
 

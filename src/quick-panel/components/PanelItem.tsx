@@ -5,6 +5,7 @@ import InlineTextSummary from '@/components/clipboard/InlineTextSummary'
 import { useInView } from '@/hooks/useInView'
 import { formatRelativeTime } from '@/lib/clipboard-utils'
 import { cn } from '@/lib/utils'
+import { useQuickPanelItemRef } from '@/quick-panel/hooks/useQuickPanelItemRef'
 import { isMac, typeIcons } from '../constants'
 import type { DisplayItem } from '../types'
 import QuickPanelImage from './QuickPanelImage'
@@ -20,7 +21,7 @@ interface PanelItemProps {
   onContextMenu: (index: number) => void
   /** Renders a favorite star so toggling favorite from the menu has visible state. */
   isFavorited: boolean
-  itemRef?: React.Ref<HTMLDivElement>
+  itemRefs: Map<number, HTMLDivElement>
   shortcutKey?: string
 }
 
@@ -34,9 +35,10 @@ const PanelItem: React.FC<PanelItemProps> = React.memo(
     onHover,
     onContextMenu,
     isFavorited,
-    itemRef,
+    itemRefs,
     shortcutKey,
   }) => {
+    const itemRef = useQuickPanelItemRef(itemRefs, index)
     const Icon = typeIcons[item.type] ?? FileText
     const isUnavailable = item.isUnavailable
     const isImage = item.type === 'image'

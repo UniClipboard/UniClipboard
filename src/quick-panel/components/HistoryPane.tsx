@@ -78,19 +78,6 @@ function getShortcutKey(index: number): string | undefined {
   return index < 10 ? (index === 9 ? '0' : String(index + 1)) : undefined
 }
 
-/** Ref callback registering a row's DOM node under its list index, so
- * arrow-key navigation can `scrollIntoView` the selected row (see
- * `ClipboardHistoryPanel`'s `itemRefs`-keyed effect). */
-function makeItemRef(
-  itemRefs: Map<number, HTMLDivElement>,
-  index: number
-): (el: HTMLDivElement | null) => void {
-  return el => {
-    if (el) itemRefs.set(index, el)
-    else itemRefs.delete(index)
-  }
-}
-
 const HistoryPane: React.FC<HistoryPaneProps> = React.memo(
   ({
     filteredItems,
@@ -269,7 +256,7 @@ const HistoryPane: React.FC<HistoryPaneProps> = React.memo(
                             onContextMenu={onContextMenuSelect}
                             isFavorited={contextItems[index]?.isFavorited ?? false}
                             shortcutKey={getShortcutKey(index)}
-                            itemRef={makeItemRef(itemRefs, index)}
+                            itemRefs={itemRefs}
                           />
                         </PanelItemContextMenu>
                       ))}
@@ -293,7 +280,7 @@ const HistoryPane: React.FC<HistoryPaneProps> = React.memo(
                       onContextMenu={onContextMenuSelect}
                       isFavorited={contextItems[index]?.isFavorited ?? false}
                       shortcutKey={getShortcutKey(index)}
-                      itemRef={makeItemRef(itemRefs, index)}
+                      itemRefs={itemRefs}
                     />
                   </PanelItemContextMenu>
                 ))

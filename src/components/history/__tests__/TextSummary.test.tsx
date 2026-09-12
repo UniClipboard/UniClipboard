@@ -37,6 +37,7 @@ describe('list text summaries', () => {
           activeTime: Date.now(),
           isUnavailable: false,
         }}
+        itemRefs={new Map()}
         index={2}
         isSelected={true}
         hoverDisabled={false}

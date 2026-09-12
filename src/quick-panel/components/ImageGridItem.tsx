@@ -4,6 +4,7 @@ import { formatRelativeTime } from '@/lib/clipboard-utils'
 import { cn } from '@/lib/utils'
 import { clampImageCardAspectRatio, isMac } from '@/quick-panel/constants'
 import { useQuickPanelImage } from '@/quick-panel/hooks/useQuickPanelImage'
+import { useQuickPanelItemRef } from '@/quick-panel/hooks/useQuickPanelItemRef'
 import type { DisplayItem } from '@/quick-panel/types'
 import QuickPanelImage from './QuickPanelImage'
 
@@ -18,7 +19,7 @@ interface ImageGridItemProps {
   onContextMenu: (index: number) => void
   /** Renders a favorite star so toggling favorite from the menu has visible state. */
   isFavorited: boolean
-  itemRef?: React.Ref<HTMLDivElement>
+  itemRefs: Map<number, HTMLDivElement>
   shortcutKey?: string
 }
 
@@ -39,9 +40,10 @@ const ImageGridItem: React.FC<ImageGridItemProps> = React.memo(
     onHover,
     onContextMenu,
     isFavorited,
-    itemRef,
+    itemRefs,
     shortcutKey,
   }) => {
+    const itemRef = useQuickPanelItemRef(itemRefs, index)
     const { url, aspectRatio } = useQuickPanelImage(item.id)
     const displayAspectRatio = clampImageCardAspectRatio(aspectRatio)
     const isUnavailable = item.isUnavailable

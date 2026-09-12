@@ -699,6 +699,10 @@ const ClipboardHistoryPanelSession: React.FC<ClipboardHistoryPanelProps> = ({
     ]
   )
 
+  const historyInteraction = useMemo(
+    () => ({ hasPointerMovedSinceShow, isKeyboardNav, isLocked, selectedIndex }),
+    [hasPointerMovedSinceShow, isKeyboardNav, isLocked, selectedIndex]
+  )
   const handleHistoryMouseMove = notePointerMoved
 
   return (
@@ -728,7 +732,7 @@ const ClipboardHistoryPanelSession: React.FC<ClipboardHistoryPanelProps> = ({
       >
         <HistoryPane
           filteredItems={filteredItems}
-          interaction={{ hasPointerMovedSinceShow, isKeyboardNav, isLocked, selectedIndex }}
+          interaction={historyInteraction}
           isSearching={isSearching}
           searchTotal={searchTotal}
           itemRefs={itemRefs}

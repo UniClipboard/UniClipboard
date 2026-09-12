@@ -9,6 +9,7 @@ import { deleteClipboardEntry, restoreClipboardEntry } from '@/api/daemon'
 import { usePlatform } from '@/hooks/usePlatform'
 import { __resetResendActionStoreForTests } from '@/hooks/useResendAction'
 import i18n from '@/i18n'
+import { formatRelativeTime } from '@/lib/clipboard-utils'
 import { playUiSound } from '@/lib/ui-sound'
 import devicesReducer from '@/store/slices/devicesSlice'
 import ClipboardHistoryPanel from '../ClipboardHistoryPanel'
@@ -819,4 +820,49 @@ describe('ClipboardHistoryPanel hover/focus keyboard shortcuts', () => {
     fireEvent.change(input, { target: { value: '' } })
     expect(lastHistoryQuery()).toBe('')
   })
+})
+
+vi.mock('@/lib/clipboard-utils', async importOriginal => {
+  const actual = await importOriginal<typeof import('@/lib/clipboard-utils')>()
+  return { ...actual, formatRelativeTime: vi.fn(actual.formatRelativeTime) }
+})
+
+describe('ClipboardHistoryPanel hover rendering', () => {
+  it.each(['list', 'image wall'])(
+    'does not render unchanged %s rows during hover',
+    async layout => {
+      vi.useRealTimers()
+      invokeMock.mockResolvedValue(undefined)
+      Element.prototype.scrollIntoView = vi.fn()
+      vi.mocked(usePlatform).mockReturnValue({
+        isLinux: true,
+        isTauri: true,
+        isMac: false,
+        isWindows: false,
+      })
+      // Stable data isolates pointer updates from data subscription updates.
+      const stableData = defaultHistorySearchImplementation!({} as never)
+      vi.mocked(useHistorySearch).mockReturnValue(stableData)
+      renderPanel()
+      await act(async () => {
+        await Promise.resolve()
+      })
+      if (layout === 'image wall') {
+        fireEvent.click(screen.getAllByRole('button', { name: i18n.t('history.type.image') })[0])
+        await act(async () => {
+          await Promise.resolve()
+        })
+      }
+      const [first, second] = screen.getAllByRole('option')
+      fireEvent.mouseMove(first)
+      vi.mocked(formatRelativeTime).mockClear()
+      for (let i = 0; i < 5; i++) fireEvent.mouseMove(first)
+      expect(formatRelativeTime).not.toHaveBeenCalled()
+      fireEvent.mouseMove(second)
+      expect(screen.getByText('Preview for entry-2')).toBeInTheDocument()
+      expect(formatRelativeTime).not.toHaveBeenCalled()
+      fireEvent.keyDown(screen.getByRole('combobox'), { key: 'ArrowDown' })
+      expect(second.closest('[role="option"]')).toHaveAttribute('aria-selected', 'true')
+    }
+  )
 })

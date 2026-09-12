@@ -453,17 +453,25 @@ fn daemon_upgrade_paths_depend_on_the_desktop_upgrade_capability() {
 
 #[test]
 fn daemon_diagnostics_paths_depend_on_the_desktop_diagnostics_capability() {
-    let handler_path = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../crates/uc-webserver/src/api/diagnostics.rs");
+    let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let handler_path = manifest.join("../../crates/uc-webserver/src/api/diagnostics.rs");
     let handler = std::fs::read_to_string(&handler_path)
         .unwrap_or_else(|error| panic!("failed to read {}: {error}", handler_path.display()));
+    let runtime_path = manifest.join("../../apps/daemon/src/daemon/diagnostics.rs");
+    let runtime = std::fs::read_to_string(&runtime_path)
+        .unwrap_or_else(|error| panic!("failed to read {}: {error}", runtime_path.display()));
 
     assert!(
         !handler.contains("app_facade_or_error()")
             && handler.contains("Operation::QueryDiagnostics")
             && handler.contains("Operation::UpdateDebugMode")
-            && handler.contains("Operation::ExportDiagnosticLogs"),
-        "daemon diagnostics HTTP handlers must use public Engine operations"
+            && handler.contains("DaemonDiagnosticsRuntime")
+            && handler.contains("DaemonDiagnosticArchive")
+            && !handler.contains("Operation::ExportDiagnosticLogs")
+            && runtime.contains("ProcessObservabilityHandle")
+            && runtime.contains("prepare_local_diagnostic_export(")
+            && runtime.contains("export_diagnostic_logs("),
+        "daemon diagnostics paths must use the public Engine diagnostics runtime and the desktop archive capability"
     );
 }
 

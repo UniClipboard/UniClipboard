@@ -37,10 +37,10 @@ export default function AppearanceDisplay() {
     <div className="divide-y divide-border/25">
       <div className="appearance-row py-4">
         <div>
-          <span className="text-sm font-normal">
+          <span className="text-ui-body font-normal">
             {t('settings.sections.appearance.zoom.title')}
           </span>
-          <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+          <p className="mt-1 text-ui-caption-relaxed text-muted-foreground">
             {t('appearanceLayout.scaleHelp')}
           </p>
         </div>
@@ -59,7 +59,7 @@ export default function AppearanceDisplay() {
           <Select value={String(zoom.scale)} onValueChange={value => zoom.setScale(Number(value))}>
             <SelectTrigger
               aria-label={t('settings.sections.appearance.zoom.title')}
-              className="h-9 w-full min-w-0 text-sm"
+              className="h-9 w-full min-w-0 "
             >
               <SelectValue>{zoom.scalePercent}</SelectValue>
             </SelectTrigger>
@@ -98,14 +98,14 @@ export default function AppearanceDisplay() {
       {frame.canChooseSystemFrame && (
         <div className="appearance-row py-4">
           <div className="min-w-0">
-            <label htmlFor="appearance-system-frame" className="text-sm font-normal">
+            <label htmlFor="appearance-system-frame" className="text-ui-body font-normal">
               {t('settings.sections.appearance.windowFrame.title')}
             </label>
-            <p className="mt-1 max-w-sm text-xs leading-relaxed text-muted-foreground">
+            <p className="mt-1 max-w-sm text-ui-caption-relaxed text-muted-foreground">
               {t('settings.sections.appearance.windowFrame.description')}
             </p>
             {failed && (
-              <p role="alert" className="mt-1 text-xs text-destructive">
+              <p role="alert" className="mt-1 text-ui-body text-destructive">
                 {t('appearanceLayout.saveFailed')}
               </p>
             )}

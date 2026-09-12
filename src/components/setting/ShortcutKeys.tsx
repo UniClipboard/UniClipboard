@@ -5,5 +5,5 @@ export function ShortcutKeys({ shortcut }: { shortcut: string }) {
     .map(parts => parts.join(isMac ? '' : '+'))
     .join(' › ')
 
-  return <kbd className="font-sans text-sm font-medium tracking-wide">{label}</kbd>
+  return <kbd className="font-sans text-ui-body font-medium">{label}</kbd>
 }

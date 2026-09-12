@@ -36,7 +36,9 @@ export default function AppearanceTheme({ theme, lightTokens, darkTokens, onChan
   }
   return (
     <fieldset disabled={saving} className="min-w-0">
-      <legend className="mb-4 px-1 text-base font-semibold">{t('appearanceLayout.theme')}</legend>
+      <legend className="mb-4 px-1 text-ui-section font-semibold">
+        {t('appearanceLayout.theme')}
+      </legend>
       <div className="appearance-theme-choices">
         {OPTIONS.map(({ value, label }) => (
           <label key={value} className="appearance-theme-choice">
@@ -59,7 +61,7 @@ export default function AppearanceTheme({ theme, lightTokens, darkTokens, onChan
               <AppearanceThemeWindow tokens={value === 'dark' ? darkTokens : lightTokens} />
               {value === 'system' && <AppearanceThemeWindow tokens={darkTokens} clipped />}
             </span>
-            <span className="appearance-theme-caption peer-checked:font-semibold peer-disabled:opacity-60">
+            <span className="appearance-theme-caption text-ui-body peer-checked:font-medium peer-disabled:opacity-60">
               <span
                 aria-hidden="true"
                 className="appearance-theme-radio"
@@ -70,11 +72,11 @@ export default function AppearanceTheme({ theme, lightTokens, darkTokens, onChan
           </label>
         ))}
       </div>
-      <p className="mt-4 text-xs leading-relaxed text-muted-foreground" aria-live="polite">
+      <p className="mt-4 text-ui-caption-relaxed text-muted-foreground" aria-live="polite">
         {t(`appearanceLayout.themeHelp.${theme}`)}
       </p>
       {failed && (
-        <p role="alert" className="mt-2 text-xs text-destructive">
+        <p role="alert" className="mt-2 text-ui-body text-destructive">
           {t('appearanceLayout.saveFailed')}
         </p>
       )}

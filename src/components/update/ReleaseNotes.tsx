@@ -49,9 +49,10 @@ export function ReleaseNotes({ content, fallback }: ReleaseNotesProps) {
 
   return (
     <div
-      className="prose prose-sm dark:prose-invert max-w-none
-                    prose-headings:text-sm prose-headings:font-semibold prose-headings:mt-3 prose-headings:mb-1
-                    prose-ul:my-1 prose-li:my-0 prose-p:my-1"
+      className="text-ui-body break-words [&_:is(h1,h2,h3,h4,h5,h6)]:text-ui-section
+                    [&_:is(h1,h2,h3,h4,h5,h6)]:mt-3 [&_:is(h1,h2,h3,h4,h5,h6)]:mb-1
+                    [&_ul]:my-1 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:my-1 [&_ol]:list-decimal [&_ol]:pl-5
+                    [&_li]:my-0 [&_p]:my-1 [&_a]:underline [&_pre]:overflow-x-auto [&_code]:font-mono"
     >
       <Markdown components={markdownComponents}>{displayContent}</Markdown>
     </div>

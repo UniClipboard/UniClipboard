@@ -7,20 +7,20 @@ const DeviceStatus: React.FC<DeviceStatusProps> = () => {
   return (
     <>
       <div className="flex items-center gap-x-3 overflow-x-auto border-b border-gray-800/50 bg-gray-800 px-4 py-2">
-        <div className="flex items-center text-sm text-gray-400">
+        <div className="flex items-center text-ui-body text-gray-400">
           <span>已连接设备:</span>
         </div>
         <div className="px-3 py-1 bg-gray-700/70 rounded-full flex items-center">
           <div className="size-2 rounded-full bg-green-500 mr-2"></div>
-          <span className="text-xs text-white">MacBook Pro</span>
+          <span className="text-ui-caption text-white">MacBook Pro</span>
         </div>
         <div className="px-3 py-1 bg-gray-700/70 rounded-full flex items-center">
           <div className="size-2 rounded-full bg-green-500 mr-2"></div>
-          <span className="text-xs text-white">iPhone 13</span>
+          <span className="text-ui-caption text-white">iPhone 13</span>
         </div>
         <div className="px-3 py-1 bg-gray-700/70 rounded-full flex items-center">
           <div className="size-2 rounded-full bg-yellow-500 mr-2"></div>
-          <span className="text-xs text-white">工作站</span>
+          <span className="text-ui-caption text-white">工作站</span>
         </div>
         <div className="px-3 py-1 border border-dashed border-gray-600 rounded-full flex items-center hover:bg-gray-700/60">
           <svg
@@ -37,7 +37,7 @@ const DeviceStatus: React.FC<DeviceStatusProps> = () => {
               d="M12 6v6m0 0v6m0-6h6m-6 0H6"
             ></path>
           </svg>
-          <span className="text-xs text-gray-400">添加设备</span>
+          <span className="text-ui-caption text-gray-400">添加设备</span>
         </div>
       </div>
     </>

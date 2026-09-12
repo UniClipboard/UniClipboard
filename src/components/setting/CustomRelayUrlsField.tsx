@@ -54,7 +54,7 @@ export function CustomRelayUrlsField({ value, onSave }: CustomRelayUrlsFieldProp
     <TooltipProvider delay={200}>
       <SettingGroup title={t('settings.sections.network.groups.relays')}>
         <div className="px-1 pt-3">
-          <p className="max-w-prose text-xs leading-relaxed text-muted-foreground">
+          <p className="max-w-prose text-ui-caption-relaxed text-muted-foreground">
             {t('settings.sections.network.customRelays.description')}
           </p>
           <div className="mt-4 flex flex-col gap-4">

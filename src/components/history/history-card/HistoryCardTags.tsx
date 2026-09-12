@@ -17,7 +17,7 @@ function HistoryCardTags({ tags }: HistoryCardTagsProps) {
       {tags.map(tag => (
         <span
           key={tag}
-          className="rounded border px-1 py-0 text-[9px] font-medium leading-[1.25]"
+          className="rounded border px-1 py-0 text-ui-caption font-medium"
           style={{
             backgroundColor: TAG_STYLE[tag].background,
             borderColor: TAG_STYLE[tag].border,

@@ -83,10 +83,12 @@ export default function SyncPreferencesControl({
       <div className="px-5 py-5 @md:px-6">
         <div className="flex items-center justify-between gap-5">
           <div className="min-w-0">
-            <h4 className="truncate text-sm font-semibold text-foreground">
+            <h4 className="truncate text-ui-section font-semibold text-foreground">
               {t('devices.settings.sync.syncWithDevice', { deviceName })}
             </h4>
-            <p className={cn('mt-1 text-xs text-muted-foreground', isLoading && 'invisible')}>
+            <p
+              className={cn('mt-1 text-ui-caption text-muted-foreground', isLoading && 'invisible')}
+            >
               {t(
                 syncEnabled
                   ? 'devices.settings.sync.enabledDescription'
@@ -102,17 +104,19 @@ export default function SyncPreferencesControl({
           />
         </div>
         {globalSyncOff && (
-          <p role="status" className="mt-4 rounded-lg border bg-muted/40 p-3 text-sm">
+          <p role="status" className="mt-4 rounded-lg border bg-muted/40 p-3 text-ui-body">
             {t('devices.thisDevice.syncPaused')}
           </p>
         )}
       </div>
 
       <div className="flex w-full items-center justify-between gap-4 border-t border-border/50 px-5 py-4 @md:px-6">
-        <span className="text-sm font-medium text-foreground">
+        <span className="text-ui-body font-medium text-foreground">
           {t('devices.settings.sync.customize')}
         </span>
-        <span className={cn('truncate text-xs text-muted-foreground', isLoading && 'invisible')}>
+        <span
+          className={cn('truncate text-ui-caption text-muted-foreground', isLoading && 'invisible')}
+        >
           {t(
             syncEnabled && allBoth
               ? 'devices.settings.sync.allBoth'
@@ -123,7 +127,7 @@ export default function SyncPreferencesControl({
 
       <div className="border-t border-border/50">
         <div className="flex items-center justify-between gap-4 bg-muted/20 px-5 py-3 @md:px-6">
-          <p className="text-xs text-muted-foreground">
+          <p className="text-ui-caption text-muted-foreground">
             {t('devices.settings.sync.customizeDescription')}
           </p>
           <Button
@@ -137,7 +141,7 @@ export default function SyncPreferencesControl({
             className="shrink-0 text-muted-foreground hover:text-foreground"
           >
             <RotateCcw className="size-3.5" />
-            <span className="hidden text-xs @sm:inline">
+            <span className="hidden text-ui-caption @sm:inline">
               {t('devices.settings.sync.restoreDefaults')}
             </span>
           </Button>
@@ -164,17 +168,17 @@ export default function SyncPreferencesControl({
                 <div className="flex min-w-0 items-center gap-3">
                   <Icon className="size-4 shrink-0 text-muted-foreground" />
                   <span className="min-w-0">
-                    <span className="block text-sm text-foreground">{label}</span>
+                    <span className="block text-ui-body text-foreground">{label}</span>
                     {fileSyncOff && (
                       <Badge
                         variant="outline"
-                        className="mt-1 max-w-full border-warning/20 bg-warning/10 px-1.5 py-0 text-[9px] leading-4 text-warning"
+                        className="mt-1 max-w-full border-warning/20 bg-warning/10 px-1.5 py-0 text-warning"
                       >
                         {t('devices.settings.badges.globalFileSyncOff')}
                       </Badge>
                     )}
                     {unavailable && (
-                      <Badge variant="secondary" className="mt-1 px-1.5 py-0 text-[9px] leading-4">
+                      <Badge variant="secondary" className="mt-1 px-1.5 py-0 ">
                         {t('devices.settings.badges.comingSoon')}
                       </Badge>
                     )}

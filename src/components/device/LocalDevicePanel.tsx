@@ -62,7 +62,7 @@ const LocalDevicePanel: React.FC<LocalDevicePanelProps> = ({
           </section>
 
           <details className="group overflow-hidden rounded-xl border border-border/60 bg-card text-card-foreground">
-            <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-5 py-4 text-sm font-medium transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring @md:px-6 [&::-webkit-details-marker]:hidden">
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-5 py-4 text-ui-body font-medium transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring @md:px-6 [&::-webkit-details-marker]:hidden">
               {t('devices.panel.profile.title')}
               <ChevronRight className="size-4 text-muted-foreground transition-transform group-open:rotate-90" />
             </summary>
@@ -70,7 +70,7 @@ const LocalDevicePanel: React.FC<LocalDevicePanelProps> = ({
               <PanelFactRow label={t('devices.panel.fields.peerId')}>
                 <span className="inline-flex min-w-0 max-w-full items-center gap-1">
                   <span
-                    className="min-w-0 truncate font-mono text-xs font-medium"
+                    className="min-w-0 truncate font-mono text-ui-caption font-medium"
                     title={localDevice.peerId}
                   >
                     {localDevice.peerId}
@@ -80,16 +80,16 @@ const LocalDevicePanel: React.FC<LocalDevicePanelProps> = ({
               </PanelFactRow>
               {platformLabel && (
                 <PanelFactRow label={t('devices.panel.profile.platform')}>
-                  <span className="text-xs font-medium">{platformLabel}</span>
+                  <span className="text-ui-caption font-medium">{platformLabel}</span>
                 </PanelFactRow>
               )}
               {appVersion && (
                 <PanelFactRow label={t('devices.panel.profile.version')}>
-                  <span className="font-mono text-xs font-medium">v{appVersion}</span>
+                  <span className="font-mono text-ui-caption font-medium">v{appVersion}</span>
                 </PanelFactRow>
               )}
               <PanelFactRow label={t('devices.panel.profile.space')}>
-                <span className="text-xs font-medium">
+                <span className="text-ui-caption font-medium">
                   {t('devices.panel.profile.memberCount', { count: memberCount })}
                 </span>
               </PanelFactRow>
@@ -100,10 +100,10 @@ const LocalDevicePanel: React.FC<LocalDevicePanelProps> = ({
             className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-destructive/20 bg-card px-5 py-4 text-card-foreground @md:px-6"
           >
             <div className="min-w-0 flex-1 basis-48">
-              <h4 className="text-sm font-medium text-destructive">
+              <h4 className="text-ui-section text-destructive">
                 {t('devices.panel.danger.title')}
               </h4>
-              <p className="mt-1 text-xs text-muted-foreground">
+              <p className="mt-1 text-ui-caption text-muted-foreground">
                 {t('devices.panel.danger.description')}
               </p>
             </div>
@@ -147,15 +147,15 @@ function LocalDeviceHeader({
         <div className="flex items-center gap-2">
           <h3
             title={localDevice.deviceName}
-            className="truncate text-2xl font-semibold tracking-tight text-foreground"
+            className="truncate text-ui-title font-semibold text-foreground"
           >
             {localDevice.deviceName}
           </h3>
-          <span className="shrink-0 rounded-md bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+          <span className="shrink-0 rounded-md bg-muted px-2 py-0.5 text-ui-caption font-medium text-muted-foreground">
             {t('devices.panel.localBadge')}
           </span>
         </div>
-        <p className="mt-2 flex items-center gap-2 text-xs">
+        <p className="mt-2 flex items-center gap-2 text-ui-caption">
           <StatusDot tone={needsAttention ? 'warning' : syncActive ? 'success' : 'off'} />
           <span
             className={cn(

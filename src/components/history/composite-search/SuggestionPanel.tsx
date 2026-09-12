@@ -55,7 +55,7 @@ function SuggestionPanel({
           return (
             <Fragment key={opt.id}>
               {opt.header && (
-                <div className="px-2 pb-1 pt-2 text-[10px] font-medium uppercase tracking-wide text-muted-foreground/40">
+                <div className="px-2 pb-1 pt-2 text-ui-caption font-medium uppercase text-muted-foreground/40">
                   {opt.header}
                 </div>
               )}
@@ -70,14 +70,16 @@ function SuggestionPanel({
                 onClick={() => onSelect(i)}
                 onMouseEnter={() => onHighlight(i)}
                 className={cn(
-                  'flex h-8 w-full items-center gap-2 rounded-xl px-2 text-left text-[12px]',
+                  'flex h-8 w-full items-center gap-2 rounded-xl px-2 text-left text-ui-body',
                   active ? 'bg-foreground/8 text-foreground' : 'text-muted-foreground'
                 )}
               >
                 <Icon className="size-3.5 shrink-0 opacity-70" />
                 <span className="flex-1 truncate">{opt.label}</span>
                 {opt.hint && (
-                  <span className="font-mono text-[11px] text-muted-foreground/40">{opt.hint}</span>
+                  <span className="font-mono text-ui-caption text-muted-foreground/40">
+                    {opt.hint}
+                  </span>
                 )}
                 {opt.isActive && <Check className="size-3 shrink-0 text-primary" />}
               </button>

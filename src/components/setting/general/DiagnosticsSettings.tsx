@@ -97,7 +97,7 @@ export function DiagnosticsSettings() {
               : t('settings.sections.general.logs.export.button')}
           </Button>
           {exportPath && (
-            <div className="flex max-w-96 items-center gap-2 text-xs text-muted-foreground">
+            <div className="flex max-w-96 items-center gap-2 text-ui-caption text-muted-foreground">
               <span className="truncate">{exportPath}</span>
               <Button variant="ghost" size="sm" onClick={handleCopyExportPath}>
                 {t('settings.sections.general.logs.export.copyPath')}
@@ -143,7 +143,7 @@ export function DiagnosticsSettings() {
           </AlertDialogHeader>
           {isRestarting ? (
             <AlertDialogFooter>
-              <div className="flex w-full items-center justify-center gap-2 text-sm text-muted-foreground">
+              <div className="flex w-full items-center justify-center gap-2 text-ui-body text-muted-foreground">
                 <Loader2 className="size-4 animate-spin" />
                 {t('settings.sections.general.logs.debug.restartingTitle')}
               </div>

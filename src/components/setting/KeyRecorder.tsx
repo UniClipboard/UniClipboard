@@ -128,7 +128,7 @@ export function KeyRecorder({
           {candidateKey ? (
             <ShortcutKeys shortcut={candidateKey} />
           ) : (
-            <span className="text-sm text-muted-foreground">
+            <span className="text-ui-body text-muted-foreground">
               {t('settings.sections.shortcuts.recording')}
             </span>
           )}
@@ -137,7 +137,7 @@ export function KeyRecorder({
 
       {/* Hint: after one segment, the user may add a second to form a chord. */}
       {segments.length > 0 && !isFull && (
-        <span className="text-xs text-muted-foreground">
+        <span className="text-ui-caption text-muted-foreground">
           {t('settings.sections.shortcuts.chordHint')}
         </span>
       )}
@@ -146,7 +146,7 @@ export function KeyRecorder({
       {issues.length > 0 && (
         <div
           role="alert"
-          className="flex flex-col gap-2 rounded-lg border border-border bg-muted/30 p-2.5 text-xs leading-relaxed"
+          className="flex flex-col gap-2 rounded-lg border border-border bg-muted/30 p-2.5 text-ui-caption-relaxed"
         >
           {errorIssue && (
             <div className="flex items-center gap-2 text-destructive">

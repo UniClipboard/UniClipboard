@@ -27,7 +27,7 @@ export function SearchIndexGroup() {
                   : 'bg-muted-foreground/40'
             }`}
           />
-          <span className="text-sm text-muted-foreground">
+          <span className="text-ui-body text-muted-foreground">
             {searchStatus?.state === 'ready'
               ? t('settings.sections.storage.searchIndex.ready')
               : searchStatus?.state === 'rebuilding'
@@ -41,7 +41,7 @@ export function SearchIndexGroup() {
         label={t('settings.sections.storage.searchIndex.lastRebuilt')}
         description={t('settings.sections.storage.searchIndex.lastRebuiltDescription')}
       >
-        <span className="text-sm text-muted-foreground tabular-nums">
+        <span className="text-ui-body text-muted-foreground tabular-nums">
           {searchStatus?.lastRebuildCompletedAtMs
             ? new Date(searchStatus.lastRebuildCompletedAtMs).toLocaleString()
             : t('settings.sections.storage.searchIndex.never')}

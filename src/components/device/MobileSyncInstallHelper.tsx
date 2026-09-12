@@ -61,7 +61,7 @@ export const MobileSyncInstallHelper: React.FC<MobileSyncInstallHelperProps> = (
         render={
           <button
             type="button"
-            className="flex w-full items-center justify-between rounded-md border border-border/60 bg-card px-3 py-2 text-sm hover:bg-accent/50"
+            className="flex w-full items-center justify-between rounded-md border border-border/60 bg-card px-3 py-2 text-ui-body hover:bg-accent/50"
           />
         }
       >
@@ -98,7 +98,7 @@ export const MobileSyncInstallHelper: React.FC<MobileSyncInstallHelperProps> = (
                 (install once, works for every later scan). Visually a secondary
                 link + small QR-icon popover, so it doesn't steal focus from the
                 primary app QR. */}
-            <div className="flex items-center justify-between gap-2 border-t border-border/40 pt-2 text-xs">
+            <div className="flex items-center justify-between gap-2 border-t border-border/40 pt-2 text-ui-caption">
               <span className="text-muted-foreground">
                 {t('devices.mobileSync.credential.noClient.ios.shortcutFallback')}
               </span>
@@ -154,12 +154,12 @@ const ScanToDownloadPanel: React.FC<ScanToDownloadPanelProps> = ({
     <div className="rounded-md bg-white p-2">
       <QRCodeSVG value={qrValue} size={160} aria-label={qrAlt} />
     </div>
-    <p className="text-center text-xs text-foreground">{caption}</p>
+    <p className="text-center text-ui-caption text-foreground">{caption}</p>
     <Button
       type="button"
       variant="outline"
       size="sm"
-      className="h-7 text-xs"
+      className="h-7 "
       onClick={() =>
         openUrl(browserHref).catch(err =>
           log.warn({ err, href: browserHref }, 'failed to open URL')

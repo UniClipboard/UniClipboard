@@ -155,7 +155,11 @@ const AddMobileSyncDeviceDialogInner: React.FC<
               aria-describedby={fieldErrors.label ? 'mobile-sync-label-error' : undefined}
             />
             {fieldErrors.label !== undefined && (
-              <p id="mobile-sync-label-error" role="alert" className="text-xs text-destructive">
+              <p
+                id="mobile-sync-label-error"
+                role="alert"
+                className="text-ui-body text-destructive"
+              >
                 {fieldErrors.label}
               </p>
             )}
@@ -167,7 +171,7 @@ const AddMobileSyncDeviceDialogInner: React.FC<
               render={
                 <button
                   type="button"
-                  className="flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground"
+                  className="flex items-center gap-1 text-ui-body font-medium text-muted-foreground hover:text-foreground"
                 />
               }
             >
@@ -179,7 +183,7 @@ const AddMobileSyncDeviceDialogInner: React.FC<
               {t('devices.mobileSync.add.advanced.title')}
             </CollapsibleTrigger>
             <CollapsibleContent className="mt-2 space-y-3 rounded-md border border-border/40 bg-muted/30 p-3">
-              <p className="text-xs text-muted-foreground">
+              <p className="text-ui-caption text-muted-foreground">
                 {t('devices.mobileSync.add.advanced.description')}
               </p>
 
@@ -204,12 +208,12 @@ const AddMobileSyncDeviceDialogInner: React.FC<
                   <p
                     id="mobile-sync-username-error"
                     role="alert"
-                    className="text-xs text-destructive"
+                    className="text-ui-body text-destructive"
                   >
                     {fieldErrors.username}
                   </p>
                 ) : (
-                  <p className="text-xs text-muted-foreground/80">
+                  <p className="text-ui-caption text-muted-foreground/80">
                     {t('devices.mobileSync.add.username.help')}
                   </p>
                 )}
@@ -237,12 +241,12 @@ const AddMobileSyncDeviceDialogInner: React.FC<
                   <p
                     id="mobile-sync-password-error"
                     role="alert"
-                    className="text-xs text-destructive"
+                    className="text-ui-body text-destructive"
                   >
                     {fieldErrors.password}
                   </p>
                 ) : (
-                  <p className="text-xs text-muted-foreground/80">
+                  <p className="text-ui-caption text-muted-foreground/80">
                     {t('devices.mobileSync.add.password.help')}
                   </p>
                 )}
@@ -253,7 +257,7 @@ const AddMobileSyncDeviceDialogInner: React.FC<
           {formError !== null && (
             <div
               role="alert"
-              className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive"
+              className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-ui-body text-destructive"
             >
               {formError}
             </div>

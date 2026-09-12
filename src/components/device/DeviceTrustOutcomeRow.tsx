@@ -15,7 +15,7 @@ export function DeviceTrustOutcomeRow({
   return (
     <span
       className={cn(
-        'grid min-w-0 grid-cols-[1rem_5rem_minmax(0,1fr)] items-start gap-2 text-xs leading-5',
+        'grid min-w-0 grid-cols-[1rem_5rem_minmax(0,1fr)] items-start gap-2 text-ui-caption',
         tone === 'success' ? 'text-emerald-600 dark:text-emerald-400' : 'text-destructive'
       )}
     >

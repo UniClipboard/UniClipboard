@@ -66,7 +66,7 @@ const SettingsSidebar: FC<SettingsSidebarProps> = ({
                         type="button"
                         onClick={() => onCategoryChange(item.id)}
                         aria-current={isActive ? 'true' : undefined}
-                        className={`selection-item relative isolate flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-sm outline-none ring-sidebar-ring focus-visible:ring-2 disabled:pointer-events-none disabled:opacity-50 [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0 ${
+                        className={`selection-item relative isolate flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-ui-body outline-none ring-sidebar-ring focus-visible:ring-2 disabled:pointer-events-none disabled:opacity-50 [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0 ${
                           isActive
                             ? 'font-medium text-foreground'
                             : 'text-muted-foreground hover:text-foreground'
@@ -99,7 +99,7 @@ const SettingsSidebar: FC<SettingsSidebarProps> = ({
                 <button
                   type="button"
                   onClick={handleBack}
-                  className="selection-item relative isolate flex w-full items-center gap-2 overflow-hidden rounded-md p-2 text-left text-sm outline-none ring-sidebar-ring focus-visible:ring-2 disabled:pointer-events-none disabled:opacity-50 [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0 text-muted-foreground hover:text-foreground"
+                  className="selection-item relative isolate flex w-full items-center gap-2 overflow-hidden rounded-md p-2 text-left text-ui-body outline-none ring-sidebar-ring focus-visible:ring-2 disabled:pointer-events-none disabled:opacity-50 [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0 text-muted-foreground hover:text-foreground"
                 >
                   <ArrowLeft className="selection-item-content relative z-10 size-4" />
                   <span className="selection-item-content relative z-10">{t('nav.back')}</span>

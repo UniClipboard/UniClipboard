@@ -119,14 +119,14 @@ export default function QuickPanelSection() {
             onValueChange={value => setPosition(value as QuickPanelPosition)}
             disabled={!enabled}
           >
-            <SelectTrigger className="h-9 w-40 text-sm">
+            <SelectTrigger className="h-9 w-40 ">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="center" className="text-xs">
+              <SelectItem value="center">
                 {t('settings.sections.quickPanel.position.center')}
               </SelectItem>
-              <SelectItem value="follow_cursor" className="text-xs">
+              <SelectItem value="follow_cursor">
                 {t('settings.sections.quickPanel.position.followCursor')}
               </SelectItem>
             </SelectContent>

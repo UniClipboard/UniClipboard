@@ -292,19 +292,19 @@ const MobileDevicePanel: React.FC<Props> = ({
           <div className="min-w-0 flex-1">
             {pairing ? (
               <>
-                <h3 className="truncate text-2xl font-semibold tracking-tight text-foreground">
+                <h3 className="truncate text-ui-title font-semibold text-foreground">
                   {t('devices.mobileSync.deviceDialog.connectTitle', { label: visibleLabel })}
                 </h3>
-                <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
+                <p className="mt-2 text-ui-caption-relaxed text-muted-foreground">
                   {t('devices.mobileSync.deviceDialog.connectSubtitle')}
                 </p>
               </>
             ) : view === 'edit' ? (
               <>
-                <h3 className="truncate text-2xl font-semibold tracking-tight text-foreground">
+                <h3 className="truncate text-ui-title font-semibold text-foreground">
                   {t('devices.mobileSync.edit.title')}
                 </h3>
-                <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
+                <p className="mt-2 text-ui-caption-relaxed text-muted-foreground">
                   {t('devices.mobileSync.edit.subtitle')}
                 </p>
               </>
@@ -312,11 +312,11 @@ const MobileDevicePanel: React.FC<Props> = ({
               <>
                 <h3
                   title={visibleLabel}
-                  className="truncate text-2xl font-semibold tracking-tight text-foreground"
+                  className="truncate text-ui-title font-semibold text-foreground"
                 >
                   {visibleLabel}
                 </h3>
-                <div className="mt-2 flex min-w-0 flex-wrap items-center gap-2 text-xs">
+                <div className="mt-2 flex min-w-0 flex-wrap items-center gap-2 text-ui-caption">
                   <span className="min-w-0 truncate font-mono text-muted-foreground">
                     {visibleUsername}
                   </span>
@@ -533,15 +533,15 @@ const InfoView: React.FC<InfoViewProps> = ({
                 aria-label={t('devices.mobileSync.credential.pair.qrAlt')}
               />
             </div>
-            <p className="max-w-[34ch] text-center text-sm font-medium leading-snug text-balance text-foreground">
+            <p className="max-w-[34ch] text-center text-ui-body font-medium text-balance text-foreground">
               {t('devices.mobileSync.deviceDialog.scanInstruction')}
             </p>
             <div className="flex w-full flex-col items-center gap-2">
-              <span className="text-[11px] font-medium text-muted-foreground">
+              <span className="text-ui-caption font-medium text-muted-foreground">
                 {t('devices.mobileSync.deviceDialog.sections.serverAddress')}
               </span>
               {addressChip}
-              <p className="flex items-center gap-1.5 text-[11.5px] text-muted-foreground">
+              <p className="flex items-center gap-1.5 text-ui-caption text-muted-foreground">
                 <Wifi className="size-3.5 text-info" />
                 {t('devices.mobileSync.deviceDialog.wifiSameNetwork')}
               </p>
@@ -579,10 +579,10 @@ const InfoView: React.FC<InfoViewProps> = ({
       <Section title={t('devices.mobileSync.deviceDialog.sections.pairing')}>
         <div className="flex flex-wrap items-center gap-4">
           <div className="min-w-0 flex-1 basis-48">
-            <p className="text-sm font-medium">
+            <p className="text-ui-body font-medium">
               {t('devices.mobileSync.deviceDialog.repair.title')}
             </p>
-            <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+            <p className="mt-1 text-ui-caption-relaxed text-muted-foreground">
               {t('devices.mobileSync.deviceDialog.repair.description')}
             </p>
           </div>
@@ -640,16 +640,16 @@ const ManualCredentials: React.FC<ManualCredentialsProps> = ({
         }
       >
         <KeyRound className="size-4 shrink-0 text-warning" />
-        <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-warning">
+        <span className="min-w-0 flex-1 truncate text-ui-body font-medium text-warning">
           {t('devices.mobileSync.deviceDialog.manualEntry.title')}
         </span>
-        <span className="hidden shrink-0 text-[11px] text-muted-foreground sm:inline">
+        <span className="hidden shrink-0 text-ui-caption text-muted-foreground sm:inline">
           {t('devices.mobileSync.deviceDialog.manualEntry.oneTimeHint')}
         </span>
         <ChevronRight className="size-3.5 shrink-0 text-muted-foreground transition-transform group-data-[state=open]:rotate-90" />
       </CollapsibleTrigger>
       <CollapsibleContent className="space-y-3 border-t border-warning/30 px-3.5 pt-3 pb-3.5">
-        <p className="flex items-start gap-2 text-xs text-warning">
+        <p className="flex items-start gap-2 text-ui-caption text-warning">
           <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
           <span>{warning}</span>
         </p>
@@ -718,30 +718,32 @@ const DeviceDetails: React.FC<{ device: MobileDeviceView }> = ({ device }) => {
 
   return (
     <details className="group min-w-0 overflow-hidden rounded-xl border border-border/60 bg-card text-card-foreground">
-      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-5 py-4 text-sm font-medium transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring @md:px-6 [&::-webkit-details-marker]:hidden">
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-5 py-4 text-ui-body font-medium transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring @md:px-6 [&::-webkit-details-marker]:hidden">
         {t('devices.mobileSync.deviceDialog.sections.info')}
         <ChevronRight className="size-4 text-muted-foreground transition-transform group-open:rotate-90" />
       </summary>
       <div className="flex flex-col border-t border-border/50 px-5 py-2 @md:px-6 [&>div]:py-3">
         <PanelFactRow label={t('devices.mobileSync.deviceDialog.fields.createdAt')}>
-          <span className="text-xs font-medium">{createdAt}</span>
+          <span className="text-ui-caption font-medium">{createdAt}</span>
         </PanelFactRow>
         <PanelFactRow label={t('devices.mobileSync.deviceDialog.fields.lastSeen')}>
-          <span className="text-xs font-medium">{lastSeen}</span>
+          <span className="text-ui-caption font-medium">{lastSeen}</span>
         </PanelFactRow>
         {device.lastSeenIp && (
           <PanelFactRow label={t('devices.mobileSync.deviceDialog.fields.lastSeenIp')}>
-            <span className="truncate font-mono text-xs font-medium">{device.lastSeenIp}</span>
+            <span className="truncate font-mono text-ui-caption font-medium">
+              {device.lastSeenIp}
+            </span>
           </PanelFactRow>
         )}
         {device.reportedName && (
           <PanelFactRow label={t('devices.mobileSync.deviceDialog.fields.reportedName')}>
-            <span className="truncate text-xs font-medium">{device.reportedName}</span>
+            <span className="truncate text-ui-caption font-medium">{device.reportedName}</span>
           </PanelFactRow>
         )}
         {device.reportedOs && (
           <PanelFactRow label={t('devices.mobileSync.deviceDialog.fields.reportedOs')}>
-            <span className="truncate text-xs font-medium">{device.reportedOs}</span>
+            <span className="truncate text-ui-caption font-medium">{device.reportedOs}</span>
           </PanelFactRow>
         )}
       </div>
@@ -797,7 +799,11 @@ const EditView: React.FC<EditViewProps> = ({
           aria-describedby={fieldErrors.label ? 'mobile-device-edit-label-error' : undefined}
         />
         {fieldErrors.label !== undefined && (
-          <p id="mobile-device-edit-label-error" role="alert" className="text-xs text-destructive">
+          <p
+            id="mobile-device-edit-label-error"
+            role="alert"
+            className="text-ui-body text-destructive"
+          >
             {fieldErrors.label}
           </p>
         )}
@@ -825,17 +831,20 @@ const EditView: React.FC<EditViewProps> = ({
           <p
             id="mobile-device-edit-username-error"
             role="alert"
-            className="text-xs text-destructive"
+            className="text-ui-body text-destructive"
           >
             {fieldErrors.username}
           </p>
         ) : (
-          <p id="mobile-device-edit-username-help" className="text-xs text-muted-foreground/80">
+          <p
+            id="mobile-device-edit-username-help"
+            className="text-ui-caption text-muted-foreground/80"
+          >
             {t('devices.mobileSync.edit.username.help')}
           </p>
         )}
         {usernameRenamed && (
-          <p className="flex items-start gap-1.5 text-xs text-warning" role="status">
+          <p className="flex items-start gap-1.5 text-ui-caption text-warning" role="status">
             <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
             <span>{t('devices.mobileSync.edit.username.renameNotice')}</span>
           </p>
@@ -881,12 +890,15 @@ const EditView: React.FC<EditViewProps> = ({
           <p
             id="mobile-device-edit-password-error"
             role="alert"
-            className="text-xs text-destructive"
+            className="text-ui-body text-destructive"
           >
             {fieldErrors.password}
           </p>
         ) : (
-          <p id="mobile-device-edit-password-help" className="text-xs text-muted-foreground/80">
+          <p
+            id="mobile-device-edit-password-help"
+            className="text-ui-caption text-muted-foreground/80"
+          >
             {autoGeneratePassword
               ? t('devices.mobileSync.edit.password.autoHelp')
               : t('devices.mobileSync.edit.password.help')}
@@ -897,7 +909,7 @@ const EditView: React.FC<EditViewProps> = ({
       {formError !== null && (
         <div
           role="alert"
-          className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive"
+          className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-ui-body text-destructive"
         >
           {formError}
         </div>
@@ -917,7 +929,7 @@ const Section: React.FC<{
       className
     )}
   >
-    <h4 className="border-b border-border/50 px-5 py-4 text-sm font-medium @md:px-6">{title}</h4>
+    <h4 className="border-b border-border/50 px-5 py-4 text-ui-section @md:px-6">{title}</h4>
     <div className="space-y-3 px-5 py-4 @md:px-6">{children}</div>
   </section>
 )
@@ -931,13 +943,9 @@ const CredentialRow: React.FC<{
   const display = secret ? value.replace(/./g, '•') : value
   return (
     <div className="flex items-center gap-2">
-      <Label className="w-16 shrink-0 text-xs text-muted-foreground">{label}</Label>
+      <Label className="w-16 shrink-0 text-muted-foreground">{label}</Label>
       <div className="flex min-w-0 flex-1 items-center gap-1 rounded-md border border-border/60 bg-card px-2 py-1">
-        <span
-          className={cn('min-w-0 flex-1 truncate font-mono text-sm', secret && 'tracking-widest')}
-        >
-          {display}
-        </span>
+        <span className="min-w-0 flex-1 truncate font-mono text-ui-body">{display}</span>
         {extra}
         <InlineCopyButton value={value} />
       </div>

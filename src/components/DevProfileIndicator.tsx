@@ -31,7 +31,7 @@ export function DevProfileIndicator({ compact = false }: { compact?: boolean }) 
       data-tauri-drag-region
       aria-label={label}
       title={label}
-      className="relative z-10 inline-flex min-w-0 max-w-40 items-center gap-1 rounded border border-border/60 bg-muted/70 px-1.5 py-0.5 font-mono text-[10px] leading-none text-muted-foreground"
+      className="relative z-10 inline-flex min-w-0 max-w-40 items-center gap-1 rounded border border-border/60 bg-muted/70 px-1.5 py-0.5 font-mono text-ui-caption text-muted-foreground"
     >
       <span className="shrink-0 font-medium text-foreground/70">DEV</span>
       {!compact && (

@@ -9,8 +9,8 @@ const Welcome: React.FC<WelcomeProps> = () => {
       <div className="bg-gray-800 mx-4 mt-4 rounded-xl overflow-hidden border border-gray-700/30">
         <div className="p-5 flex flex-col md:flex-row items-center justify-between">
           <div className="mb-4 md:mb-0 md:mr-6">
-            <h2 className="text-lg font-semibold text-white mb-1">连接新设备到 ClipSync</h2>
-            <p className="text-gray-400 text-sm max-w-xl">
+            <h2 className="text-ui-section font-semibold text-white mb-1">连接新设备到 ClipSync</h2>
+            <p className="text-gray-400 text-ui-body max-w-xl">
               通过配对码或扫描二维码将新设备连接到您的 ClipSync
               网络。所有已配对设备将自动同步剪贴板内容。
             </p>
@@ -35,7 +35,7 @@ const Welcome: React.FC<WelcomeProps> = () => {
             </button> */}
             <button
               type="button"
-              className="bg-violet-500 hover:bg-violet-400 text-white px-4 py-2 rounded-lg text-sm font-medium transition duration-150 flex items-center"
+              className="bg-violet-500 hover:bg-violet-400 text-white px-4 py-2 rounded-lg text-ui-body font-medium transition duration-150 flex items-center"
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"

@@ -119,7 +119,7 @@ function CompositeSearchInput({
                 inputRef.current?.focus()
               }}
               aria-label={moreFiltersLabel}
-              className="inline-flex h-5 shrink-0 items-center rounded-full bg-foreground/8 px-2 text-[11px] font-medium text-muted-foreground hover:text-foreground"
+              className="inline-flex h-5 shrink-0 items-center rounded-full bg-foreground/8 px-2 text-ui-body font-medium text-muted-foreground hover:text-foreground"
             >
               +{hiddenChipCount}
             </button>
@@ -147,10 +147,10 @@ function CompositeSearchInput({
             }}
             onBlur={() => onOpenChange(false)}
             placeholder={chips.length === 0 ? placeholder : ''}
-            className="min-w-0 flex-1 bg-transparent text-[12px] text-foreground outline-none placeholder:text-muted-foreground/50"
+            className="min-w-0 flex-1 bg-transparent text-ui-body text-foreground outline-none placeholder:text-muted-foreground/50"
           />
           {totalCount > 0 && !open && chips.length === 0 && (
-            <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground/40">
+            <span className="shrink-0 text-ui-caption tabular-nums text-muted-foreground/40">
               {countLabel}
             </span>
           )}

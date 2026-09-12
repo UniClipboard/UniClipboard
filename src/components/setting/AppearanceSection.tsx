@@ -75,14 +75,14 @@ export default function AppearanceSection() {
               ))}
             </div>
             <details className="group mt-1 pl-3">
-              <summary className="flex w-fit cursor-pointer list-none items-center gap-3 rounded-sm py-2 text-sm text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
+              <summary className="flex w-fit cursor-pointer list-none items-center gap-3 rounded-sm py-2 text-ui-body text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
                 <ChevronRight aria-hidden="true" className="size-4 group-open:rotate-90" />
                 {t('appearanceLayout.customColors')}
               </summary>
               <div className="mt-3 grid gap-5 sm:grid-cols-2">
                 {MODES.map(mode => (
                   <fieldset key={mode} className="min-w-0">
-                    <legend className="mb-1 text-xs font-medium">
+                    <legend className="mb-1 text-ui-section ">
                       {t(`appearanceLayout.${mode}Palette`)}
                     </legend>
                     <div className="divide-y divide-border/25">

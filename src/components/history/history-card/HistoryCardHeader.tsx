@@ -65,10 +65,10 @@ function HistoryCardHeader({
     : null
 
   return (
-    <div className="pointer-events-none relative z-10 mb-1.5 flex items-center gap-1.5">
+    <div className="pointer-events-none relative z-10 mb-1.5 flex flex-wrap items-center gap-1.5">
       <TypeIcon className={cn('size-3 shrink-0', isPending && 'opacity-50')} style={{ color }} />
       <span
-        className={cn('text-[10.5px] font-medium', isPending && 'opacity-50')}
+        className={cn('text-ui-caption font-medium', isPending && 'opacity-50')}
         style={{ color }}
       >
         {codeLanguage ?? t(`history.type.${item.type}`, item.type)}
@@ -76,14 +76,14 @@ function HistoryCardHeader({
 
       {sizeLabel && !isTransferring && (
         <>
-          <span className="text-[9px] text-muted-foreground/25">·</span>
-          <span className="truncate text-[10px] tabular-nums text-muted-foreground/45">
+          <span className="text-ui-caption text-muted-foreground/25">·</span>
+          <span className="truncate text-ui-caption tabular-nums text-muted-foreground/45">
             {sizeLabel}
           </span>
         </>
       )}
 
-      <div className="ml-auto flex shrink-0 items-center gap-1.5">
+      <div className="ml-auto flex max-w-full flex-wrap items-center gap-1.5">
         {isUnavailable && (
           <AlertTriangle
             className="size-2.5 text-amber-500/70"
@@ -94,30 +94,34 @@ function HistoryCardHeader({
         {isFileType && isTransferring && hideByteProgress ? (
           <>
             <DirectionIcon className="size-2.5 text-primary/70" />
-            <span className="text-[10px] font-medium text-primary/80">
+            <span className="text-ui-caption font-medium text-primary/80">
               {t('clipboard.transfer.transferring')}
             </span>
           </>
         ) : isFileType && isTransferring ? (
           <>
             <DirectionIcon className="size-2.5 text-primary/70" />
-            <span className="text-[10px] font-medium tabular-nums text-primary/80">{percent}%</span>
+            <span className="text-ui-caption font-medium tabular-nums text-primary/80">
+              {percent}%
+            </span>
             {speedLabel && (
               <>
-                <span className="text-[9px] text-primary/30">·</span>
-                <span className="text-[10px] tabular-nums text-primary/70">{speedLabel}</span>
+                <span className="text-ui-caption text-primary/30">·</span>
+                <span className="text-ui-caption tabular-nums text-primary/70">{speedLabel}</span>
               </>
             )}
           </>
         ) : isFileType && isPending ? (
           <>
             <LoaderCircle className="size-2.5 animate-spin text-muted-foreground/40" />
-            <span className="text-[10px] text-muted-foreground/40">
+            <span className="text-ui-caption text-muted-foreground/40">
               {t('clipboard.transfer.pending')}
             </span>
           </>
         ) : (
-          <span className="text-[10px] tabular-nums text-muted-foreground/45">{relativeTime}</span>
+          <span className="text-ui-caption tabular-nums text-muted-foreground/45">
+            {relativeTime}
+          </span>
         )}
       </div>
     </div>

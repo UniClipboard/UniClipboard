@@ -50,7 +50,7 @@ export function RestartBanner({
           className="size-4 text-emerald-600 dark:text-emerald-400 shrink-0"
           aria-hidden="true"
         />
-        <p className="text-sm text-emerald-700 dark:text-emerald-300">
+        <p className="text-ui-body text-emerald-700 dark:text-emerald-300">
           {t('settings.restartBanner.successMessage')}
         </p>
       </output>
@@ -69,9 +69,9 @@ export function RestartBanner({
         aria-hidden="true"
       />
       <div className="flex-1 space-y-1">
-        <p className="text-sm text-foreground">{message}</p>
+        <p className="text-ui-body text-foreground">{message}</p>
         {error && (
-          <p role="alert" className="text-xs text-destructive">
+          <p role="alert" className="text-ui-body text-destructive">
             {error}
           </p>
         )}

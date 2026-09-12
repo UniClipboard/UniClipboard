@@ -170,12 +170,14 @@ const AboutSection: React.FC = () => {
         <img src={appIcon} alt="" className="size-12 shrink-0 rounded-lg" />
         <div className="min-w-0 flex-1 space-y-1">
           <div className="flex flex-wrap items-center gap-2">
-            <h2 className="text-base font-semibold">{t('settings.sections.about.appName')}</h2>
+            <h2 className="text-ui-section font-semibold">
+              {t('settings.sections.about.appName')}
+            </h2>
             {channel && (
               <Badge variant={getChannelBadgeVariant(channel)}>{getChannelLabel(channel)}</Badge>
             )}
           </div>
-          <p className="text-xs text-muted-foreground">
+          <p className="text-ui-caption text-muted-foreground">
             {appVersion
               ? t('settings.sections.about.version', { version: appVersion })
               : t('settings.sections.about.version', { version: '...' })}
@@ -200,7 +202,7 @@ const AboutSection: React.FC = () => {
         {import.meta.env.DEV && (
           <button
             type="button"
-            className="w-full text-left text-xs text-amber-600 underline-offset-2 hover:underline dark:text-amber-400"
+            className="w-full text-left text-ui-body text-amber-600 underline-offset-2 hover:underline dark:text-amber-400"
             onClick={handleOpenUpdaterWindowDev}
             title="Dev only: open the Sparkle-style updater window with mock data"
           >
@@ -217,7 +219,7 @@ const AboutSection: React.FC = () => {
 
       {/* Footer: links + copyright */}
       <div className="space-y-2.5 pt-1 text-center">
-        <div className="flex justify-center gap-x-5 text-sm">
+        <div className="flex justify-center gap-x-5 text-ui-body">
           <a
             href="https://github.com/UniClipboard/UniClipboard"
             className="text-muted-foreground transition-colors hover:text-foreground"
@@ -243,7 +245,9 @@ const AboutSection: React.FC = () => {
             {t('settings.sections.about.links.aboutMaintainers')}
           </a>
         </div>
-        <p className="text-xs text-muted-foreground/80">{t('settings.sections.about.copyright')}</p>
+        <p className="text-ui-caption text-muted-foreground/80">
+          {t('settings.sections.about.copyright')}
+        </p>
       </div>
 
       <AlertDialog open={updateDialogOpen} onOpenChange={handleUpdateDialogOpenChange}>

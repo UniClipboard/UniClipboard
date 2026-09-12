@@ -166,13 +166,10 @@ const PeerDetailPanel: React.FC<PeerDetailPanelProps> = ({
             <Icon className="size-8" strokeWidth={1.5} />
           </div>
           <div className="min-w-0 flex-1">
-            <h3
-              title={deviceName}
-              className="truncate text-2xl font-semibold tracking-tight text-foreground"
-            >
+            <h3 title={deviceName} className="truncate text-ui-title font-semibold text-foreground">
               {deviceName}
             </h3>
-            <p className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+            <p className="mt-2 flex flex-wrap items-center gap-2 text-ui-caption">
               <StatusDot tone={status ? 'warning' : dotTone} />
               <span
                 className={cn(
@@ -227,7 +224,7 @@ const PeerDetailPanel: React.FC<PeerDetailPanelProps> = ({
             open={!!protectionStatus && protectionStatus !== 'protected'}
             className="group overflow-hidden rounded-xl border border-border/60 bg-card text-card-foreground"
           >
-            <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-5 py-4 text-sm font-medium transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring @md:px-6 [&::-webkit-details-marker]:hidden">
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-5 py-4 text-ui-body font-medium transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring @md:px-6 [&::-webkit-details-marker]:hidden">
               {t('devices.settings.sections.connection')}
               <ChevronRight className="size-4 text-muted-foreground transition-transform group-open:rotate-90" />
             </summary>
@@ -235,7 +232,7 @@ const PeerDetailPanel: React.FC<PeerDetailPanelProps> = ({
               <PanelFactRow label={t('devices.panel.fields.peerId')}>
                 <span className="inline-flex min-w-0 max-w-full items-center gap-1">
                   <span
-                    className="min-w-0 truncate font-mono text-xs font-medium"
+                    className="min-w-0 truncate font-mono text-ui-caption font-medium"
                     title={device?.peerId}
                   >
                     {device?.peerId ?? deviceId}
@@ -244,7 +241,7 @@ const PeerDetailPanel: React.FC<PeerDetailPanelProps> = ({
                 </span>
               </PanelFactRow>
               <PanelFactRow label={t('devices.settings.fields.channel')}>
-                <span className="text-xs font-medium">{channelLabel}</span>
+                <span className="text-ui-caption font-medium">{channelLabel}</span>
               </PanelFactRow>
               {protectionStatus && protectionStatus !== 'protected' && (
                 <PanelFactRow label={t('devices.protection.label')}>
@@ -268,7 +265,7 @@ const PeerDetailPanel: React.FC<PeerDetailPanelProps> = ({
                         <TooltipContent
                           side="top"
                           sideOffset={6}
-                          className="max-w-64 text-left leading-relaxed whitespace-normal"
+                          className="max-w-64 text-left whitespace-normal"
                         >
                           {t('devices.protection.upgradePeerHelp')}
                         </TooltipContent>
@@ -279,7 +276,7 @@ const PeerDetailPanel: React.FC<PeerDetailPanelProps> = ({
               )}
               {device?.connectionAddress && (
                 <PanelFactRow label={t('devices.settings.fields.address')}>
-                  <span className="truncate font-mono text-xs font-medium">
+                  <span className="truncate font-mono text-ui-caption font-medium">
                     {device.connectionAddress}
                   </span>
                 </PanelFactRow>

@@ -67,7 +67,7 @@ const HistoryGrid: React.FC<HistoryGridProps> = ({
       {searchLoading && items.length === 0 ? (
         <div className="flex flex-col items-center justify-center h-full text-muted-foreground gap-3 pb-10">
           <Loader2 className="size-5 text-muted-foreground/40 animate-spin" />
-          <p className="text-[12px] text-muted-foreground/50">{t('clipboard.search.searching')}</p>
+          <p className="text-ui-body text-muted-foreground/50">{t('clipboard.search.searching')}</p>
         </div>
       ) : items.length === 0 ? (
         <div className="flex flex-col items-center justify-center h-full text-muted-foreground gap-3 pb-10">
@@ -77,19 +77,19 @@ const HistoryGrid: React.FC<HistoryGridProps> = ({
           <div className="text-center space-y-1">
             {isSearchActive ? (
               <>
-                <p className="text-[13px] font-medium">
+                <p className="text-ui-section">
                   {submittedQuery.trim()
                     ? t('clipboard.search.noResults', { query: submittedQuery })
                     : t('clipboard.search.noResultsFiltered')}
                 </p>
-                <p className="text-[12px] text-muted-foreground/50">
+                <p className="text-ui-body text-muted-foreground/50">
                   {t('clipboard.search.noResultsSub')}
                 </p>
               </>
             ) : (
               <>
-                <p className="text-[13px] font-medium">{t('clipboard.content.noClipboardItems')}</p>
-                <p className="text-[12px] text-muted-foreground/70">
+                <p className="text-ui-section">{t('clipboard.content.noClipboardItems')}</p>
+                <p className="text-ui-body text-muted-foreground/70">
                   {t('clipboard.content.emptyDescription')}
                 </p>
               </>

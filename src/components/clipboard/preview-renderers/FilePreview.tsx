@@ -70,13 +70,13 @@ const StatusBadge: React.FC<StatusBadgeProps> = ({ effectiveStatus, transfer }) 
   return (
     <div className="flex flex-wrap gap-2">
       {effectiveStatus === 'pending' && (
-        <div className="flex items-center gap-1.5 rounded-full bg-muted/30 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground backdrop-blur-md ring-1 ring-border/20">
+        <div className="flex items-center gap-1.5 rounded-full bg-muted/30 px-2.5 py-1 text-ui-caption font-medium uppercase text-muted-foreground backdrop-blur-md ring-1 ring-border/20">
           <Clock size={10} />
           {t('clipboard.transfer.pending')}
         </div>
       )}
       {effectiveStatus === 'transferring' && (
-        <div className="flex items-center gap-1.5 rounded-full bg-primary/15 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-primary backdrop-blur-md ring-1 ring-primary/30">
+        <div className="flex items-center gap-1.5 rounded-full bg-primary/15 px-2.5 py-1 text-ui-caption font-medium uppercase text-primary backdrop-blur-md ring-1 ring-primary/30">
           <Loader2 size={10} className="animate-spin" />
           {transfer?.direction === 'sending'
             ? t('clipboard.transfer.sending')
@@ -86,19 +86,19 @@ const StatusBadge: React.FC<StatusBadgeProps> = ({ effectiveStatus, transfer }) 
         </div>
       )}
       {effectiveStatus === 'failed' && (
-        <div className="flex items-center gap-1.5 rounded-full bg-destructive/15 px-2.5 py-1 text-[10px] font-bold tracking-wider text-destructive backdrop-blur-md ring-1 ring-destructive/30">
+        <div className="flex items-center gap-1.5 rounded-full bg-destructive/15 px-2.5 py-1 text-ui-body font-medium text-destructive backdrop-blur-md ring-1 ring-destructive/30">
           <AlertTriangle size={10} />
           <span>{t('clipboard.transfer.failed')}</span>
         </div>
       )}
       {effectiveStatus === 'cancelled' && (
-        <div className="flex items-center gap-1.5 rounded-full bg-muted/40 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground backdrop-blur-md ring-1 ring-border/30">
+        <div className="flex items-center gap-1.5 rounded-full bg-muted/40 px-2.5 py-1 text-ui-caption font-medium uppercase text-muted-foreground backdrop-blur-md ring-1 ring-border/30">
           <XCircle size={10} />
           <span>{t('clipboard.transfer.cancelled')}</span>
         </div>
       )}
       {effectiveStatus === 'completed' && (
-        <div className="flex items-center gap-1.5 rounded-full bg-green-500/15 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-green-500 backdrop-blur-md ring-1 ring-green-500/30">
+        <div className="flex items-center gap-1.5 rounded-full bg-green-500/15 px-2.5 py-1 text-ui-caption font-medium uppercase text-green-500 backdrop-blur-md ring-1 ring-green-500/30">
           <CheckCircle2 size={10} />
           {t('clipboard.transfer.completed')}
         </div>
@@ -195,12 +195,12 @@ const FilePreview: React.FC<FilePreviewProps> = ({
   if (isSingleFile) {
     const title = singleFileName
     const fileMeta = (
-      <div className="flex flex-wrap items-center justify-center gap-2 text-sm font-medium text-muted-foreground">
+      <div className="flex flex-wrap items-center justify-center gap-2 text-ui-body font-medium text-muted-foreground">
         {fileSizes[0] >= 0 && <span className="tabular-nums">{formatFileSize(fileSizes[0])}</span>}
         {item.device && (
           <>
-            <span className="text-xs opacity-20">•</span>
-            <span className="text-xs uppercase tracking-tighter opacity-70">{item.device}</span>
+            <span className="text-ui-caption opacity-20">•</span>
+            <span className="text-ui-caption uppercase opacity-70">{item.device}</span>
           </>
         )}
       </div>
@@ -232,7 +232,7 @@ const FilePreview: React.FC<FilePreviewProps> = ({
           </div>
 
           <div className="flex w-full max-w-4xl flex-col items-center gap-3 text-center">
-            <h3 className="max-w-full break-all text-lg font-semibold leading-snug text-foreground/90">
+            <h3 className="max-w-full break-all text-ui-section font-semibold text-foreground/90">
               {title}
             </h3>
             {fileMeta}
@@ -240,14 +240,14 @@ const FilePreview: React.FC<FilePreviewProps> = ({
           </div>
 
           {effectiveStatus === 'failed' && entryStatus?.reason && (
-            <div className="flex max-w-sm items-start gap-2 rounded-xl border border-destructive/10 bg-destructive/5 px-4 py-3 text-xs text-destructive/80">
+            <div className="flex max-w-sm items-start gap-2 rounded-xl border border-destructive/10 bg-destructive/5 px-4 py-3 text-ui-body text-destructive/80">
               <AlertTriangle size={14} className="mt-0.5 shrink-0" />
               <span>{entryStatus.reason}</span>
             </div>
           )}
 
           {effectiveStatus === 'cancelled' && (
-            <div className="flex max-w-sm items-start gap-2 rounded-xl border border-border/20 bg-muted/30 px-4 py-3 text-xs text-muted-foreground">
+            <div className="flex max-w-sm items-start gap-2 rounded-xl border border-border/20 bg-muted/30 px-4 py-3 text-ui-caption text-muted-foreground">
               <XCircle size={14} className="mt-0.5 shrink-0" />
               <span>{getCancelReasonText(t, entryStatus?.reason)}</span>
             </div>
@@ -275,7 +275,7 @@ const FilePreview: React.FC<FilePreviewProps> = ({
               </div>
 
               <div className="mb-8 w-full space-y-2">
-                <h3 className="break-all px-4 text-lg font-semibold leading-snug text-foreground/90">
+                <h3 className="break-all px-4 text-ui-section font-semibold text-foreground/90">
                   {title}
                 </h3>
                 {fileMeta}
@@ -287,14 +287,14 @@ const FilePreview: React.FC<FilePreviewProps> = ({
         </div>
 
         {effectiveStatus === 'failed' && entryStatus?.reason && (
-          <div className="flex max-w-sm items-start gap-2 rounded-xl border border-destructive/10 bg-destructive/5 px-4 py-3 text-xs text-destructive/80">
+          <div className="flex max-w-sm items-start gap-2 rounded-xl border border-destructive/10 bg-destructive/5 px-4 py-3 text-ui-body text-destructive/80">
             <AlertTriangle size={14} className="mt-0.5 shrink-0" />
             <span>{entryStatus.reason}</span>
           </div>
         )}
 
         {effectiveStatus === 'cancelled' && (
-          <div className="flex max-w-sm items-start gap-2 rounded-xl border border-border/20 bg-muted/30 px-4 py-3 text-xs text-muted-foreground">
+          <div className="flex max-w-sm items-start gap-2 rounded-xl border border-border/20 bg-muted/30 px-4 py-3 text-ui-caption text-muted-foreground">
             <XCircle size={14} className="mt-0.5 shrink-0" />
             <span>{getCancelReasonText(t, entryStatus?.reason)}</span>
           </div>
@@ -308,11 +308,11 @@ const FilePreview: React.FC<FilePreviewProps> = ({
     return (
       <div className="space-y-6 p-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex flex-wrap items-center gap-2 text-sm font-medium text-muted-foreground">
+          <div className="flex flex-wrap items-center gap-2 text-ui-body font-medium text-muted-foreground">
             <span>{t('clipboard.preview.imagesCount', { count: fileNames.length })}</span>
             {totalSize != null && (
               <>
-                <span className="text-xs opacity-25">•</span>
+                <span className="text-ui-caption opacity-25">•</span>
                 <span className="tabular-nums">{formatFileSize(totalSize)}</span>
               </>
             )}
@@ -354,11 +354,11 @@ const FilePreview: React.FC<FilePreviewProps> = ({
                   )}
                 </div>
                 <div className="space-y-1 p-3">
-                  <div className="break-all text-sm font-semibold leading-snug text-foreground/85">
+                  <div className="break-all text-ui-body font-semibold text-foreground/85">
                     {name}
                   </div>
                   {fileSizes[index] != null && fileSizes[index] >= 0 && (
-                    <div className="text-[11px] font-medium tabular-nums text-muted-foreground/60">
+                    <div className="text-ui-caption font-medium tabular-nums text-muted-foreground/60">
                       {formatFileSize(fileSizes[index])}
                     </div>
                   )}
@@ -376,7 +376,7 @@ const FilePreview: React.FC<FilePreviewProps> = ({
       <div className="flex items-center justify-between">
         <StatusBadge effectiveStatus={effectiveStatus} transfer={transfer} />
         {item.device && (
-          <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/50">
+          <div className="text-ui-caption font-medium uppercase text-muted-foreground/50">
             {t('clipboard.preview.sourceDevice')}: {item.device}
           </div>
         )}
@@ -399,9 +399,9 @@ const FilePreview: React.FC<FilePreviewProps> = ({
                 {React.createElement(getFileIcon(name), { size: 18 })}
               </div>
               <div className="min-w-0 flex-1">
-                <div className="truncate text-sm font-semibold text-foreground/80">{name}</div>
+                <div className="truncate text-ui-body font-semibold text-foreground/80">{name}</div>
                 {fileSizes[index] != null && fileSizes[index] >= 0 && (
-                  <div className="mt-0.5 text-[11px] font-medium tabular-nums text-muted-foreground/60">
+                  <div className="mt-0.5 text-ui-caption font-medium tabular-nums text-muted-foreground/60">
                     {formatFileSize(fileSizes[index])}
                   </div>
                 )}

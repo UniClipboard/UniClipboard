@@ -48,7 +48,7 @@ const ActionBar: React.FC<ActionBarProps> = ({ stats, onSync }) => {
 
   return (
     <footer className="absolute bottom-0 w-full glass-strong border-t border-border px-8 py-4 flex items-center justify-between z-10">
-      <div className="text-sm text-muted-foreground flex items-center gap-2">
+      <div className="text-ui-body text-muted-foreground flex items-center gap-2">
         <span className="font-medium text-foreground">已同步 {stats.totalItems} 项</span>
         <span>·</span>
         <span>已使用 {formatFileSize(stats.totalSize)}</span>

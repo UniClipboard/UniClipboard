@@ -100,7 +100,7 @@ export function Input({
       {label ? (
         <label
           htmlFor={id}
-          className={cn('px-1 text-sm font-medium text-foreground', classNames?.label)}
+          className={cn('px-1 text-ui-body font-medium text-foreground', classNames?.label)}
         >
           {label}
         </label>
@@ -148,7 +148,7 @@ export function Input({
             onBlur?.(event)
           }}
           className={cn(
-            'peer h-full w-full bg-transparent text-base leading-6 text-foreground caret-foreground outline-none',
+            'peer h-full w-full bg-transparent text-ui-body text-foreground caret-foreground outline-none',
             'placeholder:text-muted-foreground/60',
             leftIcon ? 'pl-10' : 'pl-3.5',
             rightSlot || success ? 'pr-10' : 'pr-3.5',
@@ -199,7 +199,7 @@ export function Input({
               animate={{ opacity: 1, y: 0 }}
               exit={reduce ? { opacity: 0 } : { opacity: 0, y: -4 }}
               transition={{ duration: 0.2 }}
-              className={cn('px-1 text-xs text-destructive', classNames?.errorMessage)}
+              className={cn('px-1 text-ui-body text-destructive', classNames?.errorMessage)}
             >
               {errorMessage}
             </m.p>

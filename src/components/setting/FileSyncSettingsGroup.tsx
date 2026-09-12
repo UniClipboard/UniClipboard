@@ -57,8 +57,8 @@ export function FileSyncSettingsGroup({ syncEnabled }: { syncEnabled: boolean })
           className="w-44 max-w-full"
           classNames={{
             field: 'h-9 rounded-lg bg-card',
-            input: 'text-right text-sm tabular-nums',
-            rightIcon: 'pr-3 text-xs',
+            input: 'text-right tabular-nums',
+            rightIcon: 'pr-3 text-ui-caption',
           }}
           rightIcon={t('settings.sections.sync.fileSync.smallFileThreshold.unit')}
           disabled={fileControlsDisabled}
@@ -79,8 +79,8 @@ export function FileSyncSettingsGroup({ syncEnabled }: { syncEnabled: boolean })
           className="w-44 max-w-full"
           classNames={{
             field: 'h-9 rounded-lg bg-card',
-            input: 'text-right text-sm tabular-nums',
-            rightIcon: 'pr-3 text-xs',
+            input: 'text-right tabular-nums',
+            rightIcon: 'pr-3 text-ui-caption',
           }}
           rightIcon={t('settings.sections.sync.fileSync.maxFileSize.unit')}
           disabled={fileControlsDisabled}
@@ -105,8 +105,8 @@ export function FileSyncSettingsGroup({ syncEnabled }: { syncEnabled: boolean })
           className="w-44 max-w-full"
           classNames={{
             field: 'h-9 rounded-lg bg-card',
-            input: 'text-right text-sm tabular-nums',
-            rightIcon: 'pr-3 text-xs',
+            input: 'text-right tabular-nums',
+            rightIcon: 'pr-3 text-ui-caption',
           }}
           rightIcon={t('settings.sections.sync.fileSync.cacheQuota.unit')}
           disabled={fileControlsDisabled}
@@ -127,8 +127,8 @@ export function FileSyncSettingsGroup({ syncEnabled }: { syncEnabled: boolean })
           className="w-44 max-w-full"
           classNames={{
             field: 'h-9 rounded-lg bg-card',
-            input: 'text-right text-sm tabular-nums',
-            rightIcon: 'pr-3 text-xs',
+            input: 'text-right tabular-nums',
+            rightIcon: 'pr-3 text-ui-caption',
           }}
           rightIcon={t('settings.sections.sync.fileSync.retentionPeriod.unit')}
           disabled={fileControlsDisabled}

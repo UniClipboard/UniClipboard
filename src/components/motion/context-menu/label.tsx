@@ -29,7 +29,7 @@ export function ContextMenuLabel({ children, inset = false, className }: Context
   return (
     <div
       className={cn(
-        'px-2.5 pb-1 pt-1.5 text-[0.625rem] font-semibold uppercase tracking-[0.12em] text-muted-foreground',
+        'px-2.5 pb-1 pt-1.5 text-ui-caption font-medium text-muted-foreground',
         inset && 'pl-8',
         className
       )}

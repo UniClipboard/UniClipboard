@@ -107,7 +107,7 @@ const ClearHistoryDialog: React.FC<ClearHistoryDialogProps> = ({
                 {t('settings.sections.storage.clearHistory.dialogConfirm')}
                 <span className="flex items-center gap-0.5">
                   <Kbd>D</Kbd>
-                  <span className="text-xs text-destructive-foreground/70 mx-0.5">/</span>
+                  <span className="text-ui-caption text-destructive-foreground/70 mx-0.5">/</span>
                   <Kbd>Y</Kbd>
                 </span>
               </span>

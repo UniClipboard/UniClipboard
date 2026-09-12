@@ -38,10 +38,10 @@ const ImagePreview: React.FC<ImagePreviewProps> = ({ loading, preview, setImageD
       <div className="flex items-center justify-center p-8">
         <div className="flex h-64 w-full flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-border/40 bg-muted/20">
           <ImageIcon className="size-8 text-muted-foreground/30" />
-          <span className="text-sm font-medium text-foreground">
+          <span className="text-ui-body font-medium text-foreground">
             {t('clipboard.item.largeImageTitle')}
           </span>
-          <span className="text-xs text-muted-foreground">
+          <span className="text-ui-caption text-muted-foreground">
             {t('clipboard.item.largeImageHint', {
               size: formatFileSize(preview?.sizeBytes),
             })}
@@ -49,7 +49,7 @@ const ImagePreview: React.FC<ImagePreviewProps> = ({ loading, preview, setImageD
           <button
             type="button"
             onClick={() => setRevealedLargeImage(true)}
-            className="mt-1 inline-flex items-center gap-1.5 rounded-md border border-border/60 px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-muted/50"
+            className="mt-1 inline-flex items-center gap-1.5 rounded-md border border-border/60 px-3 py-1.5 text-ui-body font-medium text-foreground transition-colors hover:bg-muted/50"
           >
             <ImageDown className="size-4" />
             {t('clipboard.item.loadLargeImage')}

@@ -374,8 +374,12 @@ const Sidebar: React.FC<SidebarProps> = ({ className }) => {
                 >
                   <div className="space-y-1">
                     <p className="font-medium">{t('debugBadge.title')}</p>
-                    <p className="text-xs text-muted-foreground">{t('debugBadge.description')}</p>
-                    <p className="text-xs text-muted-foreground">{t('debugBadge.restartHint')}</p>
+                    <p className="text-ui-caption text-muted-foreground">
+                      {t('debugBadge.description')}
+                    </p>
+                    <p className="text-ui-caption text-muted-foreground">
+                      {t('debugBadge.restartHint')}
+                    </p>
                   </div>
                 </TooltipContent>
               </Tooltip>

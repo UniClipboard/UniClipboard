@@ -18,7 +18,7 @@ export function SelectTrigger({
       data-cuelume-toggle="press"
       data-size={size}
       className={cn(
-        'relative flex w-fit max-w-full items-center justify-between gap-2 rounded-lg border border-border bg-card px-3 py-2 text-sm text-card-foreground outline-none transition-colors hover:border-foreground/25 focus-visible:ring-2 focus-visible:ring-ring/40 disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive data-placeholder:text-muted-foreground data-[size=default]:h-9 data-[size=sm]:h-7 [&_svg]:shrink-0',
+        'relative flex w-fit max-w-full items-center justify-between gap-2 rounded-lg border border-border bg-card px-3 py-2 text-ui-body text-card-foreground outline-none transition-colors hover:border-foreground/25 focus-visible:ring-2 focus-visible:ring-ring/40 disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive data-placeholder:text-muted-foreground data-[size=default]:h-9 data-[size=sm]:h-7 [&_svg]:shrink-0',
         className
       )}
       {...props}

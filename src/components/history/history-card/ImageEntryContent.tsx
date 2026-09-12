@@ -41,7 +41,7 @@ function ImageEntryContent({ entryId, imageItem }: ImageEntryContentProps) {
         </div>
       )}
       <div className="min-w-0 flex-1">
-        <div className="line-clamp-2 break-all text-[13px] font-medium leading-snug text-foreground/85">
+        <div className="line-clamp-2 break-all text-ui-body font-medium text-foreground/85">
           {title}
         </div>
       </div>

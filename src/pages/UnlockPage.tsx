@@ -326,16 +326,14 @@ export default function UnlockPage({ onUnlockSucceeded, onResetSucceeded }: Unlo
         </div>
 
         <div className="space-y-2">
-          <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
-            {t('unlock.title')}
-          </h1>
+          <h1 className="text-ui-title break-words text-foreground">{t('unlock.title')}</h1>
           <p className="text-muted-foreground">{t('unlock.description')}</p>
         </div>
 
         <div className="w-full space-y-6">
           <Button
             size="lg"
-            className="h-12 w-full rounded-xl text-base font-medium shadow-lg shadow-primary/20 transition-all hover:scale-[1.02] hover:shadow-primary/30"
+            className="h-12 w-full rounded-xl font-medium shadow-lg shadow-primary/20 transition-all hover:scale-[1.02] hover:shadow-primary/30"
             onClick={handleUnlock}
             disabled={unlocking}
           >
@@ -354,10 +352,10 @@ export default function UnlockPage({ onUnlockSucceeded, onResetSucceeded }: Unlo
 
           <div className="flex items-center justify-between rounded-xl border border-border/40 bg-muted/20 px-4 py-3 backdrop-blur-sm transition-colors hover:bg-muted/30">
             <div className="flex flex-col items-start gap-y-0.5 text-left">
-              <Label htmlFor="auto-unlock" className="cursor-pointer text-sm font-medium">
+              <Label htmlFor="auto-unlock" className="cursor-pointer font-medium">
                 {t('unlock.autoUnlock.label')}
               </Label>
-              <span className="text-xs text-muted-foreground">
+              <span className="text-ui-caption text-muted-foreground">
                 {t('unlock.autoUnlock.description')}
               </span>
             </div>
@@ -371,7 +369,9 @@ export default function UnlockPage({ onUnlockSucceeded, onResetSucceeded }: Unlo
         </div>
 
         {isMac && (
-          <p className="max-w-xs text-xs text-muted-foreground/60">{t('unlock.macOSNote')}</p>
+          <p className="max-w-xs text-ui-caption text-muted-foreground/60">
+            {t('unlock.macOSNote')}
+          </p>
         )}
 
         {/* Fallback 入口:用户忘记口令或遇到不可恢复的 keyslot 错误时的最后兜底。
@@ -379,7 +379,7 @@ export default function UnlockPage({ onUnlockSucceeded, onResetSucceeded }: Unlo
         <button
           type="button"
           onClick={openResetModal}
-          className="text-xs text-muted-foreground/60 underline-offset-4 transition-colors hover:text-muted-foreground hover:underline"
+          className="text-ui-body text-muted-foreground/60 underline-offset-4 transition-colors hover:text-muted-foreground hover:underline"
         >
           {t('unlock.factoryReset.link')}
         </button>
@@ -395,17 +395,17 @@ export default function UnlockPage({ onUnlockSucceeded, onResetSucceeded }: Unlo
             <AlertDialogDescription>{t('unlock.keychainModal.description')}</AlertDialogDescription>
           </AlertDialogHeader>
 
-          <ol className="list-decimal space-y-2 pl-5 text-sm text-foreground">
+          <ol className="list-decimal space-y-2 pl-5 text-ui-body text-foreground">
             <li>{t('unlock.keychainModal.step1')}</li>
             <li>{t('unlock.keychainModal.step2')}</li>
             <li>{t('unlock.keychainModal.step3')}</li>
           </ol>
 
-          <p className="text-xs text-muted-foreground">{t('unlock.keychainModal.note')}</p>
+          <p className="text-ui-caption text-muted-foreground">{t('unlock.keychainModal.note')}</p>
 
           {verifyError && (
             <div className="rounded-lg border border-destructive/20 bg-destructive/5 p-3">
-              <p className="text-sm font-medium text-destructive">{verifyError}</p>
+              <p className="text-ui-body font-medium text-destructive">{verifyError}</p>
             </div>
           )}
 
@@ -447,9 +447,7 @@ export default function UnlockPage({ onUnlockSucceeded, onResetSucceeded }: Unlo
           </AlertDialogHeader>
 
           <div className="space-y-2">
-            <Label htmlFor="unlock-passphrase" className="text-sm">
-              {t('unlock.passphraseModal.passphraseLabel')}
-            </Label>
+            <Label htmlFor="unlock-passphrase">{t('unlock.passphraseModal.passphraseLabel')}</Label>
             <div className="relative">
               <Input
                 id="unlock-passphrase"
@@ -479,11 +477,13 @@ export default function UnlockPage({ onUnlockSucceeded, onResetSucceeded }: Unlo
 
           {errorKey && (
             <div className="rounded-lg border border-destructive/20 bg-destructive/5 p-3">
-              <p className="text-sm font-medium text-destructive">{t(errorKey)}</p>
+              <p className="text-ui-body font-medium text-destructive">{t(errorKey)}</p>
             </div>
           )}
 
-          <p className="text-xs text-muted-foreground">{t('unlock.passphraseModal.hint')}</p>
+          <p className="text-ui-caption text-muted-foreground">
+            {t('unlock.passphraseModal.hint')}
+          </p>
 
           {/* 同 macOSNote 下方的链接,在 modal 里也提供一个入口 —— 用户卡在
               口令重试时不必关闭 modal 也能进入 reset 流程。 */}
@@ -494,7 +494,7 @@ export default function UnlockPage({ onUnlockSucceeded, onResetSucceeded }: Unlo
               openResetModal()
             }}
             disabled={submitting}
-            className="self-start text-xs text-muted-foreground/70 underline-offset-4 transition-colors hover:text-muted-foreground hover:underline disabled:opacity-50"
+            className="self-start text-ui-body text-muted-foreground/70 underline-offset-4 transition-colors hover:text-muted-foreground hover:underline disabled:opacity-50"
           >
             {t('unlock.factoryReset.link')}
           </button>
@@ -536,10 +536,12 @@ export default function UnlockPage({ onUnlockSucceeded, onResetSucceeded }: Unlo
             </AlertDialogDescription>
           </AlertDialogHeader>
 
-          <p className="text-sm text-muted-foreground">{t('unlock.factoryReset.modal.recovery')}</p>
+          <p className="text-ui-body text-muted-foreground">
+            {t('unlock.factoryReset.modal.recovery')}
+          </p>
 
           <div className="space-y-2">
-            <Label htmlFor="factory-reset-confirm" className="text-sm">
+            <Label htmlFor="factory-reset-confirm">
               {t('unlock.factoryReset.modal.confirmPrompt')}
             </Label>
             <Input
@@ -557,7 +559,7 @@ export default function UnlockPage({ onUnlockSucceeded, onResetSucceeded }: Unlo
 
           {resetErrorKey && (
             <div className="rounded-lg border border-destructive/20 bg-destructive/5 p-3">
-              <p className="text-sm font-medium text-destructive">{t(resetErrorKey)}</p>
+              <p className="text-ui-body font-medium text-destructive">{t(resetErrorKey)}</p>
             </div>
           )}
 

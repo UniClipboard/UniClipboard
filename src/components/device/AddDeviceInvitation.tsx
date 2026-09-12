@@ -40,7 +40,7 @@ export function AddDeviceInvitation({
           data-testid="add-device-invitation-code"
           className={cn(
             'select-all text-center font-mono font-semibold tabular-nums text-foreground',
-            'text-[28px] tracking-[0.18em] sm:text-[32px] sm:tracking-[0.2em]',
+            'text-ui-body',
             expired && 'text-muted-foreground/50 line-through decoration-1'
           )}
           aria-label={invitation.code}
@@ -55,7 +55,7 @@ export function AddDeviceInvitation({
           />
           <div
             className={cn(
-              'flex items-center justify-center gap-1.5 text-xs tabular-nums',
+              'flex items-center justify-center gap-1.5 text-ui-body tabular-nums',
               expired ? 'text-destructive' : 'text-muted-foreground'
             )}
           >
@@ -70,9 +70,9 @@ export function AddDeviceInvitation({
       </div>
 
       {/* 提示：还需空间口令 */}
-      <div className="flex items-start gap-2.5 rounded-lg bg-muted/50 px-3.5 py-2.5 text-xs text-muted-foreground">
+      <div className="flex items-start gap-2.5 rounded-lg bg-muted/50 px-3.5 py-2.5 text-ui-body text-muted-foreground">
         <Info className="mt-0.5 size-3.5 shrink-0" />
-        <span className="leading-relaxed">{t('devices.addDevice.passphraseHint')}</span>
+        <span>{t('devices.addDevice.passphraseHint')}</span>
       </div>
     </div>
   )

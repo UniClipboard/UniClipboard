@@ -83,13 +83,13 @@ function SwitchSpaceDialogInner({
             onChange={setCode}
             invalid={errorKind === 'invitation_not_found' || errorKind === 'invitation_expired'}
             autoFocus
-            className="relative w-full justify-center gap-8 before:absolute before:left-1/2 before:top-1/2 before:-translate-x-1/2 before:-translate-y-1/2 before:font-mono before:text-lg before:font-semibold before:text-muted-foreground before:content-['-']"
+            className="relative w-full justify-center gap-8 before:absolute before:left-1/2 before:top-1/2 before:-translate-x-1/2 before:-translate-y-1/2 before:font-mono before:text-ui-section before:font-semibold before:text-muted-foreground before:content-['-']"
           />
         </div>
 
         {codeComplete && (
           <div className="w-0 min-w-full space-y-2">
-            <Label htmlFor="switch-pass" className="text-xs text-muted-foreground">
+            <Label htmlFor="switch-pass" className="text-muted-foreground">
               {t('labels.newPassphrase')}
             </Label>
             <div className="relative">
@@ -126,8 +126,10 @@ function SwitchSpaceDialogInner({
           <Loader2 className="size-7 animate-spin" />
         </div>
         <div className="text-center">
-          <p className="text-base font-semibold text-foreground">{t('migrating.title')}</p>
-          <p className="mt-1 text-sm text-muted-foreground">{t('migrating.phase.preparing')}</p>
+          <p className="text-ui-section font-semibold text-foreground">{t('migrating.title')}</p>
+          <p className="mt-1 text-ui-body text-muted-foreground">
+            {t('migrating.phase.preparing')}
+          </p>
         </div>
       </div>
     )
@@ -138,8 +140,8 @@ function SwitchSpaceDialogInner({
           <Loader2 className="size-7 animate-spin" />
         </div>
         <div className="text-center">
-          <p className="text-base font-semibold text-foreground">{t('pending.title')}</p>
-          <p className="mt-1 text-sm text-muted-foreground">{t('pending.subtitle')}</p>
+          <p className="text-ui-section font-semibold text-foreground">{t('pending.title')}</p>
+          <p className="mt-1 text-ui-body text-muted-foreground">{t('pending.subtitle')}</p>
         </div>
       </div>
     )
@@ -150,8 +152,8 @@ function SwitchSpaceDialogInner({
           <CheckCircle2 className="size-8" />
         </div>
         <div className="text-center">
-          <p className="text-base font-semibold text-foreground">{t('success.title')}</p>
-          <p className="mt-1 text-sm text-muted-foreground">
+          <p className="text-ui-section font-semibold text-foreground">{t('success.title')}</p>
+          <p className="mt-1 text-ui-body text-muted-foreground">
             <Trans
               t={t}
               i18nKey="success.subtitle"
@@ -160,7 +162,7 @@ function SwitchSpaceDialogInner({
             />
           </p>
           {(result.joinedSpace.preservedUnreadableRecords ?? 0) > 0 && (
-            <p className="mt-2 text-sm text-muted-foreground">
+            <p className="mt-2 text-ui-body text-muted-foreground">
               {t('success.preservedUnreadable', {
                 count: result.joinedSpace.preservedUnreadableRecords ?? 0,
               })}
@@ -176,8 +178,10 @@ function SwitchSpaceDialogInner({
           <AlertCircle className="size-7" />
         </div>
         <div className="text-center">
-          <p className="text-base font-semibold text-foreground">{t('failed.title')}</p>
-          {failureMessage && <p className="mt-1 text-sm text-muted-foreground">{failureMessage}</p>}
+          <p className="text-ui-section font-semibold text-foreground">{t('failed.title')}</p>
+          {failureMessage && (
+            <p className="mt-1 text-ui-body text-muted-foreground">{failureMessage}</p>
+          )}
         </div>
       </div>
     )

@@ -49,13 +49,13 @@ export function AutoSaveDirectoryRow({ disabled }: { disabled: boolean }) {
       <div className="flex flex-col items-end gap-2">
         {autoSaveDir ? (
           <span
-            className="text-foreground max-w-64 truncate text-xs font-medium"
+            className="text-foreground max-w-64 truncate text-ui-caption font-medium"
             title={autoSaveDir}
           >
             {autoSaveDir}
           </span>
         ) : (
-          <span className="text-muted-foreground text-xs">
+          <span className="text-muted-foreground text-ui-caption">
             {t('settings.sections.sync.fileSync.autoSaveDir.managed')}
           </span>
         )}

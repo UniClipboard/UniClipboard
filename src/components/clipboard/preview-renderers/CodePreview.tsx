@@ -15,7 +15,7 @@ const CodePreview: React.FC<CodePreviewProps> = ({ item, preview }) => {
   return (
     <div
       data-testid="code-preview"
-      className="h-full overflow-auto bg-card font-mono text-[13px] leading-relaxed text-foreground/85"
+      className="h-full overflow-auto bg-card font-mono text-ui-body text-foreground/85"
     >
       <div className="flex w-max min-w-full">
         <div
@@ -23,7 +23,9 @@ const CodePreview: React.FC<CodePreviewProps> = ({ item, preview }) => {
           className="sticky left-0 z-10 shrink-0 select-none bg-card py-5 pl-3 pr-2 text-right tabular-nums text-muted-foreground/35"
         >
           {Array.from({ length: lineCount }, (_, i) => (
-            <div key={i}>{i + 1}</div>
+            <div key={i} className="flex h-(--line-height-body) items-center justify-end">
+              <span className="text-ui-caption">{i + 1}</span>
+            </div>
           ))}
         </div>
         <pre className="selectable shrink-0 px-4 py-5">

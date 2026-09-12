@@ -17,7 +17,7 @@ function InlineTextSummary({ text }: InlineTextSummaryProps) {
           {index > 0 && (
             <>
               {' '}
-              <span aria-hidden="true" className="text-[0.8em] opacity-45">
+              <span aria-hidden="true" className="text-ui-caption opacity-45">
                 ↵
               </span>{' '}
             </>

@@ -28,10 +28,10 @@ export default function SmoothModeSetting() {
     <fieldset className="appearance-row border-0" disabled={saving || !effects.sessionId}>
       <legend className="sr-only">{t('smoothMode.title')}</legend>
       <div className="appearance-label-block">
-        <span aria-hidden="true" className="text-sm font-normal">
+        <span aria-hidden="true" className="text-ui-body font-normal">
           {t('smoothMode.title')}
         </span>
-        <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+        <p className="mt-1 text-ui-caption-relaxed text-muted-foreground">
           {t('appearanceLayout.effectsHelp')}
         </p>
       </div>
@@ -48,13 +48,13 @@ export default function SmoothModeSetting() {
               }}
               className="peer sr-only"
             />
-            <span className="flex h-full min-h-7 items-center justify-center rounded-sm px-2 py-1 text-center text-sm break-words peer-checked:bg-background peer-checked:font-medium peer-focus-visible:outline-2 peer-focus-visible:outline-ring peer-disabled:opacity-60">
+            <span className="flex h-full min-h-7 items-center justify-center rounded-sm px-2 py-1 text-center text-ui-body break-words peer-checked:bg-background peer-checked:font-medium peer-focus-visible:outline-2 peer-focus-visible:outline-ring peer-disabled:opacity-60">
               {t(`smoothMode.${mode}`)}
             </span>
           </label>
         ))}
       </div>
-      <div className="appearance-note flex items-center gap-1.5 text-xs leading-relaxed text-muted-foreground">
+      <div className="appearance-note flex items-center gap-1.5 text-ui-caption-relaxed text-muted-foreground">
         <p role="status">
           {t(effects.lowEffects ? 'smoothMode.currentSmooth' : 'smoothMode.currentEffects')}
         </p>
@@ -78,7 +78,7 @@ export default function SmoothModeSetting() {
         </TooltipProvider>
       </div>
       {(unavailable || effects.persistence === 'session_only') && (
-        <p role="alert" className="appearance-note text-xs text-destructive">
+        <p role="alert" className="appearance-note text-ui-body text-destructive">
           {t(unavailable ? 'smoothMode.unavailable' : 'smoothMode.notSaved')}
         </p>
       )}

@@ -101,7 +101,7 @@ export const PackageManagerUpdateDialog: React.FC<PackageManagerUpdateDialogProp
           <AlertDialogTitle>{title}</AlertDialogTitle>
           <AlertDialogDescription render={<div />} className="space-y-3">
             {updateInfo && (
-              <div className="space-y-1 text-sm">
+              <div className="space-y-1 text-ui-body">
                 <div className="flex items-center justify-between text-muted-foreground">
                   <span>{t('update.currentVersion')}</span>
                   <span className="text-foreground">{updateInfo.currentVersion}</span>
@@ -112,9 +112,9 @@ export const PackageManagerUpdateDialog: React.FC<PackageManagerUpdateDialogProp
                 </div>
               </div>
             )}
-            <p className="text-sm text-muted-foreground">{t(hintKey)}</p>
+            <p className="text-ui-body text-muted-foreground">{t(hintKey)}</p>
             {!isPortable && (
-              <div className="relative rounded-md border border-border/60 bg-muted/40 px-3 py-2 pr-10 font-mono text-xs text-foreground break-all">
+              <div className="relative rounded-md border border-border/60 bg-muted/40 px-3 py-2 pr-10 font-mono text-ui-caption text-foreground break-all">
                 {command}
                 <button
                   type="button"

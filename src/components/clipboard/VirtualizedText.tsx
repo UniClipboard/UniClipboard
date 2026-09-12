@@ -21,7 +21,7 @@ function measureTextMetrics(
   container: HTMLElement
 ): { charsPerLine: number; lineHeight: number } | null {
   const test = document.createElement('div')
-  test.className = 'whitespace-pre-wrap font-mono text-sm leading-relaxed'
+  test.className = 'whitespace-pre-wrap font-mono text-ui-body'
   test.style.cssText = 'word-break:break-all;visibility:hidden;pointer-events:none'
 
   // Measure single-line height
@@ -132,7 +132,7 @@ const WindowedLongText: React.FC<{ text: string; className?: string }> = ({ text
         <>
           <div style={{ height: renderData.topHeight }} />
           <div
-            className="selectable whitespace-pre-wrap font-mono text-sm leading-relaxed text-foreground/90"
+            className="selectable whitespace-pre-wrap font-mono text-ui-body text-foreground/90"
             style={{ wordBreak: 'break-all' }}
           >
             {renderData.visibleText}
@@ -170,7 +170,7 @@ const VirtualizedText: React.FC<VirtualizedTextProps> = ({ text, className }) =>
       className={className}
       itemContent={(_index, line) => (
         <div
-          className="selectable whitespace-pre-wrap font-mono text-sm leading-relaxed text-foreground/90"
+          className="selectable whitespace-pre-wrap font-mono text-ui-body text-foreground/90"
           style={{ wordBreak: 'break-all' }}
         >
           {line || '\u00A0'}

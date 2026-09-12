@@ -84,7 +84,7 @@ function HistorySearchPanel(props: HistorySearchPanelProps) {
             return (
               <span
                 key={chip.dimension}
-                className="flex h-7 shrink-0 items-center gap-1.5 rounded-md bg-muted px-2 text-xs text-foreground"
+                className="flex h-7 shrink-0 items-center gap-1.5 rounded-md bg-muted px-2 text-ui-caption text-foreground"
               >
                 <Icon className="size-3.5 text-muted-foreground" />
                 {chip.label}
@@ -117,7 +117,7 @@ function HistorySearchPanel(props: HistorySearchPanelProps) {
                 props.onDismissSearchSuggestions()
                 setDimension(item)
               }}
-              className={`flex h-8 shrink-0 items-center rounded-md px-2.5 text-left text-xs transition-colors ${
+              className={`flex h-8 shrink-0 items-center rounded-md px-2.5 text-left text-ui-caption transition-colors ${
                 dimension === item
                   ? 'bg-muted font-medium text-foreground'
                   : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'
@@ -141,7 +141,7 @@ function HistorySearchPanel(props: HistorySearchPanelProps) {
               return (
                 <div key={option.id} className="min-w-0">
                   {option.header && (
-                    <div className="px-3 pb-1 pt-2 text-[10px] font-medium uppercase text-muted-foreground/50">
+                    <div className="px-3 pb-1 pt-2 text-ui-caption font-medium uppercase text-muted-foreground/50">
                       {option.header}
                     </div>
                   )}
@@ -153,14 +153,14 @@ function HistorySearchPanel(props: HistorySearchPanelProps) {
                     onMouseDown={event => event.preventDefault()}
                     onMouseEnter={() => props.onSearchOptionHighlight(index)}
                     onClick={() => props.onSearchOptionSelect(index)}
-                    className={`flex h-9 w-full min-w-0 items-center gap-2 rounded-md px-3 text-left text-sm transition-colors ${
+                    className={`flex h-9 w-full min-w-0 items-center gap-2 rounded-md px-3 text-left text-ui-body transition-colors ${
                       highlighted ? 'bg-muted text-foreground' : 'hover:bg-muted/60'
                     }`}
                   >
                     <Icon className="size-4 shrink-0 text-muted-foreground" />
                     <span className="min-w-0 flex-1 truncate">{option.label}</span>
                     {option.hint && (
-                      <span className="shrink-0 font-mono text-[11px] text-muted-foreground/60">
+                      <span className="shrink-0 font-mono text-ui-caption text-muted-foreground/60">
                         {option.hint}
                       </span>
                     )}
@@ -175,7 +175,7 @@ function HistorySearchPanel(props: HistorySearchPanelProps) {
                 <button
                   type="button"
                   onClick={() => props.onContentFilterChange(Filter.All)}
-                  className={`flex h-9 min-w-0 items-center gap-2 rounded-md px-3 text-left text-sm transition-colors ${
+                  className={`flex h-9 min-w-0 items-center gap-2 rounded-md px-3 text-left text-ui-body transition-colors ${
                     typeIsAll ? 'bg-primary/10 text-foreground' : 'hover:bg-muted'
                   }`}
                 >
@@ -192,7 +192,7 @@ function HistorySearchPanel(props: HistorySearchPanelProps) {
                     onClick={() =>
                       applyDimensionValue(candidate.dimension, candidate.value, handlers)
                     }
-                    className={`flex h-9 min-w-0 items-center gap-2 rounded-md px-3 text-left text-sm transition-colors ${
+                    className={`flex h-9 min-w-0 items-center gap-2 rounded-md px-3 text-left text-ui-body transition-colors ${
                       candidate.isActive ? 'bg-primary/10 text-foreground' : 'hover:bg-muted'
                     }`}
                   >
@@ -203,7 +203,7 @@ function HistorySearchPanel(props: HistorySearchPanelProps) {
                 )
               })}
               {candidates.length === 0 && dimension !== 'type' && (
-                <p className="px-2 py-3 text-sm text-muted-foreground">
+                <p className="px-2 py-3 text-ui-body text-muted-foreground">
                   {t('history.composite.noMatches')}
                 </p>
               )}

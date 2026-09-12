@@ -1,4 +1,9 @@
 {
+  "omarchyTheme": {
+    "title": "跟隨 Omarchy 主題",
+    "description": "開啟後，深淺模式與配色由 Omarchy 控制。",
+    "unavailable": "Omarchy 目前無法使用，暫時使用已儲存的應用程式主題。"
+  },
   "startupFailure": {
     "unavailable": "啟動遇到問題",
     "title": "暫時無法啟動",

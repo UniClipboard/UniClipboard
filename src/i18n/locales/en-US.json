@@ -1,4 +1,9 @@
 {
+  "omarchyTheme": {
+    "title": "Follow Omarchy theme",
+    "description": "Omarchy controls light and dark mode and theme colors.",
+    "unavailable": "Omarchy is unavailable. Using your saved app theme."
+  },
   "startupFailure": {
     "unavailable": "Startup interrupted",
     "title": "Unable to start right now",

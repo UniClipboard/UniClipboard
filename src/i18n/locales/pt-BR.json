@@ -1,4 +1,9 @@
 {
+  "omarchyTheme": {
+    "title": "Seguir o tema do Omarchy",
+    "description": "O Omarchy controla o modo claro ou escuro e as cores do tema.",
+    "unavailable": "Omarchy indisponível. Usando o tema salvo do aplicativo."
+  },
   "startupFailure": {
     "unavailable": "Problema na inicialização",
     "title": "Não foi possível iniciar",

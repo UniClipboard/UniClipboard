@@ -1,4 +1,9 @@
 {
+  "omarchyTheme": {
+    "title": "Omarchy のテーマに合わせる",
+    "description": "ライト・ダークモードと配色を Omarchy が制御します。",
+    "unavailable": "Omarchy を利用できません。保存済みのアプリテーマを使用しています。"
+  },
   "startupFailure": {
     "unavailable": "起動時に問題が発生しました",
     "title": "起動できません",

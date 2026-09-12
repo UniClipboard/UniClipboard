@@ -1,4 +1,9 @@
 {
+  "omarchyTheme": {
+    "title": "Следовать теме Omarchy",
+    "description": "Omarchy управляет светлым и тёмным режимами и цветами темы.",
+    "unavailable": "Omarchy недоступен. Используется сохранённая тема приложения."
+  },
   "startupFailure": {
     "unavailable": "Ошибка запуска",
     "title": "Не удалось запустить приложение",

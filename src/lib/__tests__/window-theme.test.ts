@@ -47,16 +47,16 @@ describe.each([
     expect(unsubscribe).toHaveBeenCalledOnce()
   })
 
-  it('keeps manual themes and restores the latest desktop palette on returning to system', () => {
+  it('overrides manual mode while enabled and restores saved settings when disabled', () => {
     const controller = createWindowThemeController(animate)
-    controller.setGeneral(general('dark'))
+    controller.setGeneral(general('light'))
     const original = document.documentElement.style.getPropertyValue('--background')
     receive(palette('#2d353b'))
-    expect(document.documentElement.style.getPropertyValue('--background')).toBe(original)
-    controller.setGeneral(general('system'))
     expect(document.documentElement.style.getPropertyValue('--background')).toBe('#2d353b')
-    controller.setGeneral(general('dark'))
+    expect(document.documentElement.classList.contains('dark')).toBe(true)
+    receive(null)
     expect(document.documentElement.style.getPropertyValue('--background')).toBe(original)
+    expect(document.documentElement.classList.contains('light')).toBe(true)
     controller.dispose()
   })
 

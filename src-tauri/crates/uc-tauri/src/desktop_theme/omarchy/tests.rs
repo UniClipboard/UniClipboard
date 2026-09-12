@@ -44,10 +44,16 @@ fn palettes_supply_all_semantic_tokens_and_contrasting_button_text() {
     }
     let wire = serde_json::to_value(super::super::DesktopThemeSnapshot {
         revision: 1,
+        follow_omarchy_theme: true,
+        omarchy_available: true,
         window_corner_radius: Some(12),
         theme: Some(dark),
     })
     .unwrap();
+    assert_eq!(wire["followOmarchyTheme"], true);
+    assert_eq!(wire["omarchyAvailable"], true);
+    assert!(wire.get("follow_omarchy_theme").is_none());
+    assert!(wire.get("omarchy_available").is_none());
     assert_eq!(wire["windowCornerRadius"], 12);
     assert!(wire.get("window_corner_radius").is_none());
     assert_eq!(wire["theme"]["dark"], true);

@@ -17,6 +17,10 @@ export const commands = {
 	trace_id: string,
 	timestamp: number,
 } | null) => typedError<DesktopThemeSnapshot, string>(__TAURI_INVOKE("get_desktop_theme", { trace })),
+	setFollowOmarchyTheme: (enabled: boolean, trace: {
+	trace_id: string,
+	timestamp: number,
+} | null) => typedError<DesktopThemeSnapshot, string>(__TAURI_INVOKE("set_follow_omarchy_theme", { enabled, trace })),
 	getVisualEffects: (trace: {
 	trace_id: string,
 	timestamp: number,
@@ -689,6 +693,8 @@ export type DesktopTheme = {
 
 export type DesktopThemeSnapshot = {
 	revision: number,
+	followOmarchyTheme: boolean,
+	omarchyAvailable: boolean,
 	theme: DesktopTheme | null,
 	windowCornerRadius: number | null,
 };

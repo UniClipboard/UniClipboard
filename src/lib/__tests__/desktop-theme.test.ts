@@ -11,6 +11,8 @@ vi.mock('@/lib/ipc', () => ({ commands: { getDesktopTheme: vi.fn() } }))
 
 const snapshot = (revision: number): DesktopThemeSnapshot => ({
   revision,
+  followOmarchyTheme: true,
+  omarchyAvailable: true,
   windowCornerRadius: 12,
   theme: { dark: true, variables: { '--background': '#2d353b' } },
 })
@@ -49,7 +51,7 @@ describe('desktop palette subscription', () => {
     resolveRequest(snapshot(1))
     await request
     await Promise.resolve()
-    expect(apply).toHaveBeenCalledWith(snapshot(2).theme, 12)
+    expect(apply).toHaveBeenCalledWith(snapshot(2).theme, 12, snapshot(2))
     expect(apply).toHaveBeenCalledOnce()
     receive({ payload: snapshot(3) })
     expect(apply).toHaveBeenCalledTimes(2)
@@ -100,7 +102,7 @@ it('replays the startup palette synchronously to the React theme owner', async (
   dispose()
   const next = vi.fn()
   const disposeNext = subscribeDesktopTheme(next)
-  expect(next).toHaveBeenCalledWith(snapshot(3).theme, 12)
+  expect(next).toHaveBeenCalledWith(snapshot(3).theme, 12, snapshot(3))
   disposeNext()
 })
 
@@ -120,6 +122,27 @@ it('still queries the initial palette when listener registration fails', async (
   vi.mocked(commands.getDesktopTheme).mockResolvedValue(snapshot(1))
   const apply = vi.fn()
   const dispose = subscribeDesktopTheme(apply)
-  await vi.waitFor(() => expect(apply).toHaveBeenCalledWith(snapshot(1).theme, 12))
+  await vi.waitFor(() => expect(apply).toHaveBeenCalledWith(snapshot(1).theme, 12, snapshot(1)))
+  dispose()
+})
+
+it('suppresses the palette when disabled or unavailable while retaining preference metadata', async () => {
+  vi.mocked(isTauri).mockReturnValue(true)
+  let receive!: (event: { payload: DesktopThemeSnapshot }) => void
+  vi.mocked(listen).mockImplementation(async (_event, callback) => {
+    receive = callback as typeof receive
+    return vi.fn<() => void>()
+  })
+  const disabled = { ...snapshot(1), followOmarchyTheme: false }
+  vi.mocked(commands.getDesktopTheme).mockResolvedValue(disabled)
+  const apply = vi.fn()
+  const dispose = subscribeDesktopTheme(apply)
+  await vi.waitFor(() => expect(apply).toHaveBeenCalledWith(null, 12, disabled))
+  const enabled = snapshot(2)
+  receive({ payload: enabled })
+  expect(apply).toHaveBeenLastCalledWith(enabled.theme, 12, enabled)
+  const unavailable = { ...snapshot(3), omarchyAvailable: false }
+  receive({ payload: unavailable })
+  expect(apply).toHaveBeenLastCalledWith(null, 12, unavailable)
   dispose()
 })

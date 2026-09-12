@@ -25,8 +25,16 @@ export function createWindowThemeController(animate = false) {
     if (!ready || disposed) return
     const preference = general?.theme
     const manual = preference === 'light' || preference === 'dark'
-    const external = manual ? null : desktop
-    const mode = manual ? preference : (external?.dark ?? media.matches) ? 'dark' : 'light'
+    const external = desktop
+    const mode = external
+      ? external.dark
+        ? 'dark'
+        : 'light'
+      : manual
+        ? preference
+        : media.matches
+          ? 'dark'
+          : 'light'
     const split = mode === 'dark' ? general?.themeColorDark : general?.themeColorLight
     const preset = split || general?.themeColor || DEFAULT_THEME_COLOR
     const overrides =

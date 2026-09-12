@@ -115,6 +115,7 @@ fn publish<R: tauri::Runtime>(
             if value.theme.as_ref() == Some(&theme) {
                 return;
             }
+            value.omarchy_available = true;
             value.theme = Some(theme);
             value.revision = value.revision.saturating_add(1);
             value.clone()

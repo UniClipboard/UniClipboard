@@ -139,6 +139,15 @@ async fn run_async_with_diagnostics(
     record_upgrade_status_at_startup(&engine).await;
     spawn_startup_recovery(run_mode, Arc::clone(&engine));
 
+    let wake_monitor = match super::system_wake::start(Arc::clone(&engine)).await {
+        Ok(monitor) => Some(monitor),
+        Err(_) => {
+            tracing::warn!(
+                "system wake notifications unavailable; Engine periodic recovery remains active"
+            );
+            None
+        }
+    };
     let result = run_daemon_surfaces(
         run_mode,
         Arc::clone(&engine),
@@ -150,6 +159,12 @@ async fn run_async_with_diagnostics(
         diagnostics,
     )
     .await;
+    if let Some((cancel, task)) = wake_monitor {
+        cancel.cancel();
+        if task.await.is_err() {
+            tracing::warn!("system wake forwarding task failed");
+        }
+    }
     let shutdown = engine
         .shutdown(ENGINE_SHUTDOWN_DEADLINE)
         .await

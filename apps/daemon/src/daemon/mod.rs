@@ -14,3 +14,5 @@ pub mod startup_recovery;
 pub mod tokio_runtime;
 
 pub use handle::DaemonHandle;
+
+mod system_wake;

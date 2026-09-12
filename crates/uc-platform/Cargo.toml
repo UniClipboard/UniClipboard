@@ -118,6 +118,7 @@ libdbus-sys = { version = "0.2", features = ["vendored"] }
 #     * x11rb 0.13.x is the current stable line; the `xfixes` feature is
 #       what the watcher needs for selection-change notifications.
 [target.'cfg(target_os = "linux")'.dependencies]
+dbus = "0.9"
 rustix = { version = "0.38", features = ["event", "fs", "pipe"] }
 wayland-client = "0.31"
 wayland-protocols = { version = "0.32", features = ["client", "staging"] }
@@ -132,6 +133,7 @@ x11rb = { version = "0.13", features = ["xfixes"] }
 clipboard-rs = { version = "0.3.3", features = ["default"] }
 
 [target.'cfg(windows)'.dependencies]
+windows = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Power", "Win32_UI_WindowsAndMessaging"] }
 clipboard-win = { version = "5.4" }
 
 # macOS 平台原子多 rep 写入（见 `clipboard/platform/macos.rs::write_snapshot_multi_macos`）。

@@ -15,6 +15,7 @@ path = "src/main.rs"
 
 [dependencies]
 uc-bootstrap = { path = "../../crates/uc-bootstrap" }
+uc-platform = { path = "../../crates/uc-platform" }
 uc-engine.workspace = true
 uc-observability = { path = "../../crates/uc-observability" }
 uc-daemon-contract = { path = "../../crates/uc-daemon-contract" }

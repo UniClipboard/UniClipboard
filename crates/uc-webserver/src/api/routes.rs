@@ -523,6 +523,7 @@ async fn refresh_presence(
     post, path = "/presence/opportunity", operation_id = "notifyConnectivityOpportunity",
     tag = "system", request_body = ConnectivityOpportunityRequest,
     responses((status = 204, description = "Connectivity opportunity accepted"),
+        (status = 400, description = "Invalid connectivity opportunity", body = ApiErrorResponse),
         (status = 503, description = "Engine is unavailable", body = ApiErrorResponse))
 )]
 async fn notify_connectivity_opportunity(

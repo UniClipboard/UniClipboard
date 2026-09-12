@@ -533,6 +533,26 @@
         ],
         "type": "object"
       },
+      "ConnectivityOpportunity": {
+        "enum": [
+          "foreground",
+          "system_wake",
+          "network_changed"
+        ],
+        "type": "string"
+      },
+      "ConnectivityOpportunityRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "reason": {
+            "$ref": "#/components/schemas/ConnectivityOpportunity"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "type": "object"
+      },
       "ContentTypesDto": {
         "properties": {
           "codeSnippet": {
@@ -9743,6 +9763,58 @@
         ]
       }
     },
+    "/presence/opportunity": {
+      "post": {
+        "operationId": "notifyConnectivityOpportunity",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConnectivityOpportunityRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Connectivity opportunity accepted"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Invalid connectivity opportunity"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Engine is unavailable"
+          }
+        },
+        "security": [
+          {
+            "session_query": []
+          },
+          {
+            "session_header": []
+          }
+        ],
+        "summary": "Accept a host opportunity without waiting for peer connections.",
+        "tags": [
+          "system"
+        ]
+      }
+    },
     "/presence/refresh": {
       "post": {
         "description": "Actively probe paired peers' reachability and return the round's counters.\nWrapped in the canonical `{ data, ts }` envelope (ADR-008 §0.2); the\nprevious bare object (counters at top level) is retired.",
@@ -10867,6 +10939,16 @@
             },
             "description": "Invitation issued"
           },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Space state requires recovery or does not permit invitations"
+          },
           "500": {
             "content": {
               "application/json": {
@@ -10885,7 +10967,7 @@
                 }
               }
             },
-            "description": "Facade not assembled or network not started"
+            "description": "Service unavailable, network not started, or member changes pending"
           }
         },
         "security": [

@@ -44,7 +44,7 @@ o.bind("SUPER + SHIFT + V", "UniClipboard", "uniclipboard --quick-panel")
 
 ## Omarchy 主题跟随
 
-在 Omarchy 会话中，外观设置选择“跟随系统”后，主窗口、快捷面板和更新窗口同时跟随桌面深浅模式与配色。选择固定浅色或深色后，使用原有应用预设和自定义颜色；回到“跟随系统”时恢复当前桌面配色。主题切换无需重启，隐藏的快捷面板也保持订阅。快捷面板的主题生命周期由窗口根组件拥有，首次绘制前先应用系统深浅色，连接中和连接失败页面也接收桌面配色；daemon 就绪后再读取用户主题设置，进入历史页面时不重建主题订阅。
+在 Omarchy 会话中，外观设置的“跟随 Omarchy 主题”默认开启，由桌面统一控制主窗口、快捷面板和更新窗口的深浅模式与配色，同时禁用手动主题选择、预设配色和自定义颜色。关闭后恢复原有应用主题设置。偏好由 desktop 本地保存，不经过 Engine 或 daemon 设置接口，详见 [desktop 本地主题偏好](desktop-theme-preferences.md)。主题切换无需重启，隐藏的快捷面板也保持订阅。初始主题快照在读取本地偏好后提供，避免关闭开关后启动时短暂应用 Omarchy 配色；daemon 就绪后读取原有应用主题设置，进入历史页面时不重建主题订阅。
 
 该适配仅由 GUI 的 `src-tauri/crates/uc-tauri/src/desktop_theme/` 管理：检查会话的 `OMARCHY_PATH` 与当前主题目录，从用户主目录下的 `.local/state/omarchy/current/theme/colors.toml` 读取调色板。只安装 Omarchy 包、未进入 Omarchy 会话时不开启；其他系统不提供配色覆盖。此入口针对使用上述状态目录的 Omarchy 版本。
 

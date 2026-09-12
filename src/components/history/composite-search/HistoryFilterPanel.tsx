@@ -71,6 +71,12 @@ function FilterButton({
   )
 }
 
+function handleWheel(event: WheelEvent<HTMLDivElement>) {
+  if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return
+  event.preventDefault()
+  event.currentTarget.scrollLeft += event.deltaY
+}
+
 function HistoryFilterPanel({
   contentFilter,
   sourceFilter,
@@ -106,12 +112,6 @@ function HistoryFilterPanel({
     tagOptions,
     current,
   }).filter(option => option.value !== Filter.Favorited)
-
-  const handleWheel = (event: WheelEvent<HTMLDivElement>) => {
-    if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return
-    event.preventDefault()
-    event.currentTarget.scrollLeft += event.deltaY
-  }
 
   const clearFilters = () => {
     onContentFilterChange(Filter.All)

@@ -2,7 +2,6 @@ import { Clipboard } from 'lucide-react'
 import React, { useCallback, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { cancelEntryReceive, cancelFileTransfer } from '@/api/file_transfer'
-import ClipboardSendMenu from '@/components/clipboard/ClipboardSendMenu'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { useClipboardPreviewState } from '@/hooks/useClipboardPreviewState'
 import { useEntryDelivery } from '@/hooks/useEntryDelivery'
@@ -25,7 +24,7 @@ import TransferProgressBar from './TransferProgressBar'
 
 interface ClipboardPreviewProps {
   item: DisplayClipboardItem | null
-  actions?: React.ReactNode
+  actions?: (delivery: ReturnType<typeof useEntryDelivery>['delivery']) => React.ReactNode
 }
 
 interface PreviewContentProps {
@@ -207,20 +206,13 @@ const ClipboardPreview: React.FC<ClipboardPreviewProps> = ({ item, actions }) =>
         </div>
       )}
       <div className="relative flex-1 min-h-0">
-        <div className="pointer-events-none absolute inset-x-4 bottom-4 z-10 flex flex-col items-center gap-2">
-          <div className="pointer-events-auto flex max-w-full items-center justify-center gap-1 rounded-full border border-border/60 bg-card/90 p-1 backdrop-blur-xl">
-            <div className="flex min-w-0 max-w-full items-center gap-1">
-              <ClipboardSendMenu
-                key={item.id}
-                entryId={item.id}
-                disabled={
-                  item.isUnavailable || (delivery !== null && delivery.source.tag !== 'local')
-                }
-              />
-              {actions}
+        {actions && (
+          <div className="pointer-events-none absolute inset-x-4 bottom-4 z-10 flex flex-col items-center gap-2">
+            <div className="pointer-events-auto flex max-w-full items-center justify-center gap-1 rounded-full border border-border/60 bg-card/90 p-1 backdrop-blur-xl">
+              <div className="flex min-w-0 max-w-full items-center gap-1">{actions(delivery)}</div>
             </div>
           </div>
-        </div>
+        )}
         {fillsParent ? (
           <div className="absolute inset-0">{content}</div>
         ) : (

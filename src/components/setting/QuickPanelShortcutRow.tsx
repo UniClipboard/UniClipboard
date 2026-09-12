@@ -25,7 +25,7 @@ export function QuickPanelShortcutRow(props: ComponentProps<typeof ShortcutRow>)
   }, [isLinux, isTauri])
 
   return compositorShortcuts ? (
-    <p className="text-sm text-muted-foreground">
+    <p className="text-ui-body text-muted-foreground">
       {t('settings.sections.quickPanel.compositorShortcuts')}
       <code className="mt-2 block select-text">uniclipboard --quick-panel</code>
     </p>

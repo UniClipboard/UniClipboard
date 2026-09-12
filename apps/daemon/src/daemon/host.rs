@@ -8,7 +8,7 @@ use tokio::sync::broadcast;
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 use uc_bootstrap::{
-    init_tracing_subscriber, initialize_analytics_context, install_panic_logging_hook,
+    init_daemon_tracing_subscriber, initialize_analytics_context, install_panic_logging_hook,
     prepare_desktop_engine_host, DesktopHostFileHandles, DesktopHostProcessPaths,
 };
 use uc_daemon_local::crash_marker::{DaemonExitReport, DaemonRunMarker};
@@ -23,6 +23,7 @@ use uc_webserver::api::startup::StartupServer;
 use uc_webserver::api::types::{DaemonResidency, DaemonWsEvent};
 use uc_webserver::security::{cleanup_rate_limiter_task, SecurityState};
 
+use super::diagnostics::{DesktopDiagnosticArchive, EngineDaemonDiagnostics};
 use super::engine_events::forward_engine_events;
 use super::mobile_lan_lifecycle::{initial_lan_target, MobileLanLifecycleController};
 use super::run_mode::DaemonRunMode;
@@ -53,22 +54,6 @@ impl DaemonFileHandles for DesktopDaemonFileHandles {
             .register_output(path.to_path_buf())
             .map_err(anyhow::Error::new)
     }
-
-    fn register_diagnostic_output(&self) -> anyhow::Result<(HostFileHandle, String)> {
-        let directory = dirs::download_dir()
-            .ok_or_else(|| anyhow::anyhow!("Downloads directory is unavailable"))?;
-        std::fs::create_dir_all(&directory)?;
-        let filename = format!(
-            "uniclipboard-diagnostics-{}.zip",
-            chrono::Utc::now().format("%Y%m%d-%H%M%S")
-        );
-        let path = directory.join(filename);
-        let handle = self
-            .handles
-            .register_output(path.clone())
-            .map_err(anyhow::Error::new)?;
-        Ok((handle, path.to_string_lossy().into_owned()))
-    }
 }
 
 /// Standalone daemon binary entry: start one shared engine and block until exit.
@@ -78,9 +63,18 @@ pub fn run(run_mode: DaemonRunMode) -> anyhow::Result<()> {
 }
 
 async fn run_async(run_mode: DaemonRunMode) -> anyhow::Result<()> {
-    init_tracing_subscriber()?;
+    let process_observability = init_daemon_tracing_subscriber()?;
     install_panic_logging_hook();
+    let diagnostics = Arc::new(EngineDaemonDiagnostics::new(process_observability));
+    let result = run_async_with_diagnostics(run_mode, Arc::clone(&diagnostics)).await;
+    diagnostics.finish_process(&result);
+    result
+}
 
+async fn run_async_with_diagnostics(
+    run_mode: DaemonRunMode,
+    diagnostics: Arc<EngineDaemonDiagnostics>,
+) -> anyhow::Result<()> {
     let prepared = prepare_desktop_engine_host()?;
     let process_paths = prepared.process_paths().clone();
     let analytics = prepared.analytics();
@@ -133,6 +127,7 @@ async fn run_async(run_mode: DaemonRunMode) -> anyhow::Result<()> {
         }
     };
     let engine = Arc::new(engine);
+    diagnostics.mark_runtime_started();
 
     initialize_analytics_context(
         &analytics,
@@ -152,6 +147,7 @@ async fn run_async(run_mode: DaemonRunMode) -> anyhow::Result<()> {
         process_paths,
         analytics.sink(),
         startup_server.ready_flag(),
+        diagnostics,
     )
     .await;
     let shutdown = engine
@@ -176,6 +172,7 @@ async fn run_daemon_surfaces(
     process_paths: DesktopHostProcessPaths,
     analytics_sink: Arc<dyn AnalyticsPort>,
     startup_ready: Arc<std::sync::atomic::AtomicBool>,
+    diagnostics: Arc<EngineDaemonDiagnostics>,
 ) -> anyhow::Result<()> {
     // ADR-011: the bearer token lives inside `daemon.conn` (load-or-create);
     // the HTTP server publishes the full connection file once it has bound.
@@ -194,7 +191,13 @@ async fn run_daemon_surfaces(
         Arc::clone(&security),
     )
     .with_residency(run_mode.into())
-    .with_analytics(analytics_sink);
+    .with_analytics(analytics_sink)
+    .with_diagnostics(
+        diagnostics.clone(),
+        Arc::new(DesktopDiagnosticArchive::new(
+            process_paths.logs_dir().to_path_buf(),
+        )),
+    );
     api_state.startup_ready = Some(startup_ready);
     let (event_tx, _) = broadcast::channel::<DaemonWsEvent>(64);
     api_state.event_tx = event_tx.clone();
@@ -205,6 +208,7 @@ async fn run_daemon_surfaces(
     let http_cancel = cancel.child_token();
     let cleanup_cancel = cancel.child_token();
     let event_cancel = cancel.child_token();
+    let suspension_cancel = cancel.child_token();
     let mut http_handle = tokio::spawn(run_http_server(api_state, http_cancel));
     let _cleanup_handle = cleanup_rate_limiter_task(security, cleanup_cancel);
 
@@ -221,6 +225,8 @@ async fn run_daemon_surfaces(
         Arc::clone(&mobile_lan),
         event_cancel,
     ));
+    let suspension_observer =
+        tokio::spawn(Arc::clone(&diagnostics).watch_process_suspension(suspension_cancel));
     apply_initial_mobile_lan_target(&engine, mobile_lan.as_ref()).await;
 
     let residency: DaemonResidency = run_mode.into();
@@ -276,6 +282,11 @@ async fn run_daemon_surfaces(
     let _ = tokio::time::timeout(
         uc_daemon_local::timing::SHUTDOWN_JOIN_TIMEOUT,
         event_forwarder,
+    )
+    .await;
+    let _ = tokio::time::timeout(
+        uc_daemon_local::timing::SHUTDOWN_JOIN_TIMEOUT,
+        suspension_observer,
     )
     .await;
     if http_completed {

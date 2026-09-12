@@ -203,10 +203,27 @@ fn select_log_profile(settings: &BootstrapSettings) -> LogProfile {
 /// - The global subscriber is already registered (and this is the first call)
 /// - The logs directory cannot be created
 pub fn init_tracing_subscriber() -> anyhow::Result<()> {
+    install_tracing_subscriber().map(drop)
+}
+
+/// Initialize tracing for the daemon and return its Engine diagnostics handle.
+///
+/// Unlike [`init_tracing_subscriber`], this entry requires the caller to own
+/// the first process installation. The daemon retains the returned handle for
+/// capture control, export preparation, and orderly shutdown.
+pub fn init_daemon_tracing_subscriber(
+) -> anyhow::Result<uc_engine::observability::ProcessObservabilityHandle> {
+    install_tracing_subscriber()?.ok_or_else(|| {
+        anyhow::anyhow!("daemon tracing was initialized before the daemon acquired its handle")
+    })
+}
+
+fn install_tracing_subscriber(
+) -> anyhow::Result<Option<uc_engine::observability::ProcessObservabilityHandle>> {
     // Idempotency guard: skip if already initialized
     if TRACING_INITIALIZED.get().is_some() {
         ::tracing::debug!("Tracing already initialized, skipping");
-        return Ok(());
+        return Ok(None);
     }
 
     // Step 1: Resolve logs directory
@@ -528,38 +545,36 @@ pub fn init_tracing_subscriber() -> anyhow::Result<()> {
         ::tracing::debug!("JSON log guard already initialized — skipping");
     }
 
-    // Step 5: Compose all layers and register.
-    //
-    // Sentry's tracing integration is a single layer that handles three
-    // telemetry concerns at once (Issues / Logs / Performance Spans), routed
-    // by the `event_filter` and the bundled span tracking. No separate OTLP
-    // trace or logs layer is needed.
-    // `CorrelationLayer` 必须先注册:它只在 span 生命周期里把 correlation
-    // 字段抓到 span extensions,sentry_layer 的 event_mapper 再从那里读。
-    // 顺序不严格要求(layer 间不竞争状态),但放最前面让阅读者一眼看到
-    // "这一层只是为了喂 Sentry"。
-    match tracing_subscriber::registry()
-        .with(CorrelationLayer)
-        .with(sentry_layer)
-        .with(console_layer)
-        .with(json_layer)
-        .try_init()
-    {
-        Ok(()) => {}
-        Err(e) => {
-            // [Codex Review R1+R2] Only swallow on genuine re-entry (TRACING_INITIALIZED already set).
-            // If this is the first call and try_init() fails, propagate the error.
-            if TRACING_INITIALIZED.get().is_some() {
-                ::tracing::debug!("Tracing subscriber already set ({}), skipping re-init", e);
-                return Ok(());
-            } else {
-                return Err(anyhow::anyhow!(
-                    "Failed to initialize tracing subscriber: {}",
-                    e
-                ));
+    // Engine owns its diagnostic records and installs the one process subscriber.
+    // These layers retain ownership of desktop host messages only.
+    let host_layers: Vec<uc_engine::observability::HostLogLayer> = vec![
+        Box::new(CorrelationLayer),
+        Box::new(sentry_layer),
+        Box::new(console_layer),
+        Box::new(json_layer),
+    ];
+    let process_observability =
+        match uc_engine::observability::ProcessObservabilityRuntime::install_with_host_layers(
+            engine_observability_config(&scope_ctx, &paths.logs_dir)?,
+            host_layers,
+        ) {
+            Ok(installed) => installed.handle(),
+            Err(e) => {
+                // [Codex Review R1+R2] Only swallow on genuine re-entry (TRACING_INITIALIZED already set).
+                // If this is the first call and try_init() fails, propagate the error.
+                if TRACING_INITIALIZED.get().is_some() {
+                    ::tracing::debug!("Tracing subscriber already set ({}), skipping re-init", e);
+                    return Ok(None);
+                } else {
+                    return Err(anyhow::anyhow!(
+                        "Failed to initialize tracing subscriber: {}",
+                        e
+                    ));
+                }
             }
-        }
-    }
+        };
+    let engine_local_logs_ready = process_observability.health().local_file
+        == uc_engine::observability::ObservabilitySetupStatus::Ready;
 
     let _ = TRACING_INITIALIZED.set(());
 
@@ -570,14 +585,54 @@ pub fn init_tracing_subscriber() -> anyhow::Result<()> {
     // on, with no restart.
     ::tracing::info!(
         profile = %profile,
-        logs_dir = %paths.logs_dir.display(),
+        engine_local_logs_ready,
         sentry_dsn_present = sentry_dsn_present,
         telemetry_enabled = telemetry_enabled,
-        "Tracing initialized with dual output (console + JSON{})",
-        if sentry_dsn_present { " + Sentry" } else { "" }
+        "Tracing initialized with host output and shared Engine diagnostics"
     );
 
-    Ok(())
+    Ok(Some(process_observability))
+}
+
+fn engine_observability_config(
+    scope: &uc_observability::ScopeContext,
+    logs_dir: &Path,
+) -> anyhow::Result<uc_engine::observability::ObservabilityConfig> {
+    use uc_engine::observability::{
+        DeploymentEnvironment, LocalLogConfig, ObservabilityConfig, ObservabilityResource,
+        OperatingSystem,
+    };
+    let channel = match scope.app_channel {
+        "alpha" => "alpha",
+        "beta" => "beta",
+        "stable" => "stable",
+        "production" => "production",
+        "test" => "test",
+        _ => "development",
+    };
+    let environment = match channel {
+        "development" => DeploymentEnvironment::Development,
+        "test" => DeploymentEnvironment::Test,
+        _ => DeploymentEnvironment::Production,
+    };
+    let platform = match scope.platform {
+        "windows" => OperatingSystem::Windows,
+        "macos" => OperatingSystem::Macos,
+        "linux" => OperatingSystem::Linux,
+        _ => OperatingSystem::Other,
+    };
+    let config = ObservabilityConfig::new(ObservabilityResource::new(
+        scope.app_version,
+        environment,
+        platform,
+        channel,
+    )?);
+    // The daemon is the Engine owner. GUI and CLI must not append to its files.
+    Ok(if scope.device_role == "daemon" {
+        config.with_local_logs(LocalLogConfig::new(logs_dir))
+    } else {
+        config
+    })
 }
 
 /// 安装全局 panic hook,把 panic 信息镜像到 tracing。
@@ -851,5 +906,30 @@ mod tests {
             None, // frames 通常都是 <unknown>,栈不可用
         );
         assert_eq!(known_upstream_panic(&ev), Some("libappindicator-rs#dlopen"));
+    }
+}
+
+#[cfg(test)]
+mod engine_observability_tests {
+    use super::*;
+
+    #[test]
+    fn only_the_daemon_owns_the_shared_engine_log_files() {
+        for (role, owns_files) in [("daemon", true), ("gui-host", false), ("cli", false)] {
+            let scope = uc_observability::ScopeContext {
+                device_id: Some("PRIVATE_DEVICE".into()),
+                device_role: role,
+                platform: "windows",
+                app_version: "1.1.0-rc.14",
+                app_channel: "dev",
+            };
+            let config = engine_observability_config(&scope, Path::new("logs")).expect("config");
+            assert_eq!(config.local_logs.is_some(), owns_files);
+            assert!(
+                config.remote.is_none(),
+                "host error reporting does not grant Engine remote export consent"
+            );
+            assert!(!format!("{config:?}").contains("PRIVATE_DEVICE"));
+        }
     }
 }

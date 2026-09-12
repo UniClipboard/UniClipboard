@@ -118,6 +118,12 @@ pub mod http_route {
     pub const SETTINGS_RELAY_SAVE: &str = "/settings/relay";
     /// GET/PUT /diagnostics/debug — inspect or update persistent local debug mode.
     pub const DIAGNOSTICS_DEBUG: &str = "/diagnostics/debug";
+    /// GET the daemon-owned detailed capture status.
+    pub const DIAGNOSTICS_CAPTURE: &str = "/diagnostics/capture";
+    /// POST a bounded detailed capture request to the daemon.
+    pub const DIAGNOSTICS_CAPTURE_START: &str = "/diagnostics/capture/start";
+    /// POST a capture identifier to stop the matching daemon capture.
+    pub const DIAGNOSTICS_CAPTURE_STOP: &str = "/diagnostics/capture/stop";
     /// POST /diagnostics/log-export — export recent GUI/daemon/CLI logs to Downloads.
     pub const DIAGNOSTICS_LOG_EXPORT: &str = "/diagnostics/log-export";
     /// GET /encryption/state — encryption state

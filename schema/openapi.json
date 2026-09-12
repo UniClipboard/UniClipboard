@@ -1343,6 +1343,371 @@
         ],
         "type": "string"
       },
+      "DiagnosticArchiveCollectionDto": {
+        "properties": {
+          "concurrentWritesPossible": {
+            "type": "boolean"
+          },
+          "includedFiles": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "truncatedFiles": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "unreadableFiles": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "includedFiles",
+          "unreadableFiles",
+          "truncatedFiles",
+          "concurrentWritesPossible"
+        ],
+        "type": "object"
+      },
+      "DiagnosticCaptureEndReasonDto": {
+        "enum": [
+          "expired",
+          "requested",
+          "suspensionExpiryUnknown",
+          "runtimeShutdown"
+        ],
+        "type": "string"
+      },
+      "DiagnosticCaptureModeDto": {
+        "enum": [
+          "standard",
+          "detailed"
+        ],
+        "type": "string"
+      },
+      "DiagnosticCaptureStartRequestDto": {
+        "properties": {
+          "durationSeconds": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "durationSeconds"
+        ],
+        "type": "object"
+      },
+      "DiagnosticCaptureStateDto": {
+        "properties": {
+          "captureId": {
+            "nullable": true,
+            "type": "string"
+          },
+          "endReason": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/DiagnosticCaptureEndReasonDto"
+              }
+            ],
+            "nullable": true
+          },
+          "lastCaptureId": {
+            "nullable": true,
+            "type": "string"
+          },
+          "mode": {
+            "$ref": "#/components/schemas/DiagnosticCaptureModeDto"
+          },
+          "remainingMs": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "revision": {
+            "type": "string"
+          },
+          "startedAtUtc": {
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "required": [
+          "mode",
+          "remainingMs",
+          "revision"
+        ],
+        "type": "object"
+      },
+      "DiagnosticCaptureStopEnvelope": {
+        "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/DiagnosticCaptureStopResultDto"
+          },
+          "ts": {
+            "description": "Server time when the response was built (unix epoch milliseconds).",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "data",
+          "ts"
+        ],
+        "type": "object"
+      },
+      "DiagnosticCaptureStopRequestDto": {
+        "properties": {
+          "captureId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "captureId"
+        ],
+        "type": "object"
+      },
+      "DiagnosticCaptureStopResultDto": {
+        "enum": [
+          "stopped",
+          "alreadyStopped",
+          "differentCapture"
+        ],
+        "type": "string"
+      },
+      "DiagnosticExportPreparationDto": {
+        "properties": {
+          "completedAtUtc": {
+            "type": "string"
+          },
+          "files": {
+            "items": {
+              "$ref": "#/components/schemas/DiagnosticFileSourceCountsDto"
+            },
+            "type": "array"
+          },
+          "flush": {
+            "$ref": "#/components/schemas/DiagnosticSignalResultDto"
+          },
+          "otherProcessesFlushed": {
+            "type": "boolean"
+          },
+          "requestedAtUtc": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/DiagnosticStatusDto"
+          }
+        },
+        "required": [
+          "flush",
+          "status",
+          "requestedAtUtc",
+          "completedAtUtc",
+          "otherProcessesFlushed",
+          "files"
+        ],
+        "type": "object"
+      },
+      "DiagnosticFileSourceCountsDto": {
+        "properties": {
+          "acceptedCount": {
+            "type": "string"
+          },
+          "lastWrittenAtMs": {
+            "nullable": true,
+            "type": "string"
+          },
+          "queueDroppedCount": {
+            "type": "string"
+          },
+          "quotaDroppedCount": {
+            "type": "string"
+          },
+          "source": {
+            "$ref": "#/components/schemas/DiagnosticSourceDto"
+          },
+          "writeFailedCount": {
+            "type": "string"
+          },
+          "writtenCount": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "source",
+          "acceptedCount",
+          "writtenCount",
+          "queueDroppedCount",
+          "quotaDroppedCount",
+          "writeFailedCount"
+        ],
+        "type": "object"
+      },
+      "DiagnosticSetupStatusDto": {
+        "enum": [
+          "disabled",
+          "ready",
+          "unavailable"
+        ],
+        "type": "string"
+      },
+      "DiagnosticSignalResultDto": {
+        "enum": [
+          "completed",
+          "failed",
+          "timedOut",
+          "alreadyShutdown"
+        ],
+        "type": "string"
+      },
+      "DiagnosticSourceCapabilityDto": {
+        "enum": [
+          "supported",
+          "partial",
+          "unsupported",
+          "unknown"
+        ],
+        "type": "string"
+      },
+      "DiagnosticSourceCollectionDto": {
+        "enum": [
+          "enabled",
+          "disabled",
+          "unavailable",
+          "notRegistered"
+        ],
+        "type": "string"
+      },
+      "DiagnosticSourceCoverageDto": {
+        "properties": {
+          "capability": {
+            "$ref": "#/components/schemas/DiagnosticSourceCapabilityDto"
+          },
+          "collection": {
+            "$ref": "#/components/schemas/DiagnosticSourceCollectionDto"
+          },
+          "observedCount": {
+            "type": "string"
+          },
+          "policyFilteredCount": {
+            "type": "string"
+          },
+          "source": {
+            "$ref": "#/components/schemas/DiagnosticSourceDto"
+          }
+        },
+        "required": [
+          "source",
+          "capability",
+          "collection",
+          "observedCount",
+          "policyFilteredCount"
+        ],
+        "type": "object"
+      },
+      "DiagnosticSourceDto": {
+        "enum": [
+          "runtime",
+          "connections",
+          "addressStorage",
+          "dnsDiscovery",
+          "mdnsDiscovery",
+          "pkarrDiscovery",
+          "connectionPaths",
+          "relayRecovery",
+          "membershipUpdates",
+          "sessions",
+          "hostApplication",
+          "hostShareExtension",
+          "hostKeyboardExtension",
+          "hostBackgroundService"
+        ],
+        "type": "string"
+      },
+      "DiagnosticStatusDto": {
+        "properties": {
+          "capture": {
+            "$ref": "#/components/schemas/DiagnosticCaptureStateDto"
+          },
+          "closed": {
+            "type": "boolean"
+          },
+          "correlationLimitedRecords": {
+            "type": "string"
+          },
+          "counterScope": {
+            "type": "string"
+          },
+          "engineVersion": {
+            "type": "string"
+          },
+          "localFile": {
+            "$ref": "#/components/schemas/DiagnosticSetupStatusDto"
+          },
+          "observedRecords": {
+            "type": "string"
+          },
+          "policyFilteredRecords": {
+            "type": "string"
+          },
+          "runId": {
+            "type": "string"
+          },
+          "schemaRejectedRecords": {
+            "type": "string"
+          },
+          "sourceCommit": {
+            "type": "string"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/DiagnosticSourceCoverageDto"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "runId",
+          "capture",
+          "observedRecords",
+          "policyFilteredRecords",
+          "schemaRejectedRecords",
+          "correlationLimitedRecords",
+          "engineVersion",
+          "sourceCommit",
+          "counterScope",
+          "sources",
+          "localFile",
+          "closed"
+        ],
+        "type": "object"
+      },
+      "DiagnosticStatusEnvelope": {
+        "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/DiagnosticStatusDto"
+          },
+          "ts": {
+            "description": "Server time when the response was built (unix epoch milliseconds).",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "data",
+          "ts"
+        ],
+        "type": "object"
+      },
       "DispatchOutcomeEnvelope": {
         "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
         "properties": {
@@ -2830,6 +3195,12 @@
       },
       "LogExportResultDto": {
         "properties": {
+          "collection": {
+            "$ref": "#/components/schemas/DiagnosticArchiveCollectionDto"
+          },
+          "enginePreparation": {
+            "$ref": "#/components/schemas/DiagnosticExportPreparationDto"
+          },
           "includedFiles": {
             "items": {
               "type": "string"
@@ -2847,7 +3218,9 @@
         "required": [
           "path",
           "includedFiles",
-          "since"
+          "since",
+          "enginePreparation",
+          "collection"
         ],
         "type": "object"
       },
@@ -7581,6 +7954,160 @@
         "summary": "GET /device/me",
         "tags": [
           "device"
+        ]
+      }
+    },
+    "/diagnostics/capture": {
+      "get": {
+        "operationId": "getDiagnosticCaptureStatus",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiagnosticStatusEnvelope"
+                }
+              }
+            },
+            "description": "Current daemon-owned diagnostic capture state"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Local Engine diagnostics unavailable"
+          }
+        },
+        "security": [
+          {
+            "session_query": []
+          },
+          {
+            "session_header": []
+          }
+        ],
+        "tags": [
+          "system"
+        ]
+      }
+    },
+    "/diagnostics/capture/start": {
+      "post": {
+        "operationId": "startDiagnosticCapture",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DiagnosticCaptureStartRequestDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiagnosticStatusEnvelope"
+                }
+              }
+            },
+            "description": "Actual daemon-owned diagnostic capture state"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Invalid capture duration"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Local Engine diagnostics unavailable"
+          }
+        },
+        "security": [
+          {
+            "session_query": []
+          },
+          {
+            "session_header": []
+          }
+        ],
+        "tags": [
+          "system"
+        ]
+      }
+    },
+    "/diagnostics/capture/stop": {
+      "post": {
+        "operationId": "stopDiagnosticCapture",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DiagnosticCaptureStopRequestDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiagnosticCaptureStopEnvelope"
+                }
+              }
+            },
+            "description": "Capture stop result"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Invalid capture identifier"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Local Engine diagnostics unavailable"
+          }
+        },
+        "security": [
+          {
+            "session_query": []
+          },
+          {
+            "session_header": []
+          }
+        ],
+        "tags": [
+          "system"
         ]
       }
     },

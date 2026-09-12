@@ -674,6 +674,135 @@ export type DeviceTrustSnapshotDto = {
 
 export type DeviceTrustUnavailableReasonDto = 'no_current_change' | 'change_no_longer_current' | 'local_device_confirmation_required' | 'local_device_removed' | 'recovery_not_available_in_this_version' | 'peer_upgrade_required' | 'device_facts_unverifiable' | 'engine_unavailable';
 
+export type DiagnosticArchiveCollectionDto = {
+    concurrentWritesPossible: boolean;
+    includedFiles: Array<string>;
+    truncatedFiles: Array<string>;
+    unreadableFiles: Array<string>;
+};
+
+export type DiagnosticCaptureEndReasonDto = 'expired' | 'requested' | 'suspensionExpiryUnknown' | 'runtimeShutdown';
+
+export type DiagnosticCaptureModeDto = 'standard' | 'detailed';
+
+export type DiagnosticCaptureStartRequestDto = {
+    durationSeconds: number;
+};
+
+export type DiagnosticCaptureStateDto = {
+    captureId?: string | null;
+    endReason?: DiagnosticCaptureEndReasonDto | null;
+    lastCaptureId?: string | null;
+    mode: DiagnosticCaptureModeDto;
+    remainingMs: number;
+    revision: string;
+    startedAtUtc?: string | null;
+};
+
+/**
+ * Canonical success envelope: `{ "data": T, "ts": <unix millis i64> }`.
+ *
+ * `ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler
+ * via [`ApiEnvelope::now`] (the contract carries only the type + the clock
+ * helper, not a hard dependency on when the handler reads the clock).
+ * `rename_all = "camelCase"` is a no-op for the single-word fields here but is
+ * declared for forward-compat.
+ *
+ * IMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named
+ * OpenAPI component is declared in the `#[aliases(...)]` block below. Add a new
+ * alias line whenever a new payload type needs enveloping. NEVER register the
+ * bare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare
+ * generic, and an un-aliased generic inlines an anonymous schema.
+ */
+export type DiagnosticCaptureStopEnvelope = {
+    data: DiagnosticCaptureStopResultDto;
+    /**
+     * Server time when the response was built (unix epoch milliseconds).
+     */
+    ts: number;
+};
+
+export type DiagnosticCaptureStopRequestDto = {
+    captureId: string;
+};
+
+export type DiagnosticCaptureStopResultDto = 'stopped' | 'alreadyStopped' | 'differentCapture';
+
+export type DiagnosticExportPreparationDto = {
+    completedAtUtc: string;
+    files: Array<DiagnosticFileSourceCountsDto>;
+    flush: DiagnosticSignalResultDto;
+    otherProcessesFlushed: boolean;
+    requestedAtUtc: string;
+    status: DiagnosticStatusDto;
+};
+
+export type DiagnosticFileSourceCountsDto = {
+    acceptedCount: string;
+    lastWrittenAtMs?: string | null;
+    queueDroppedCount: string;
+    quotaDroppedCount: string;
+    source: DiagnosticSourceDto;
+    writeFailedCount: string;
+    writtenCount: string;
+};
+
+export type DiagnosticSetupStatusDto = 'disabled' | 'ready' | 'unavailable';
+
+export type DiagnosticSignalResultDto = 'completed' | 'failed' | 'timedOut' | 'alreadyShutdown';
+
+export type DiagnosticSourceCapabilityDto = 'supported' | 'partial' | 'unsupported' | 'unknown';
+
+export type DiagnosticSourceCollectionDto = 'enabled' | 'disabled' | 'unavailable' | 'notRegistered';
+
+export type DiagnosticSourceCoverageDto = {
+    capability: DiagnosticSourceCapabilityDto;
+    collection: DiagnosticSourceCollectionDto;
+    observedCount: string;
+    policyFilteredCount: string;
+    source: DiagnosticSourceDto;
+};
+
+export type DiagnosticSourceDto = 'runtime' | 'connections' | 'addressStorage' | 'dnsDiscovery' | 'mdnsDiscovery' | 'pkarrDiscovery' | 'connectionPaths' | 'relayRecovery' | 'membershipUpdates' | 'sessions' | 'hostApplication' | 'hostShareExtension' | 'hostKeyboardExtension' | 'hostBackgroundService';
+
+export type DiagnosticStatusDto = {
+    capture: DiagnosticCaptureStateDto;
+    closed: boolean;
+    correlationLimitedRecords: string;
+    counterScope: string;
+    engineVersion: string;
+    localFile: DiagnosticSetupStatusDto;
+    observedRecords: string;
+    policyFilteredRecords: string;
+    runId: string;
+    schemaRejectedRecords: string;
+    sourceCommit: string;
+    sources: Array<DiagnosticSourceCoverageDto>;
+};
+
+/**
+ * Canonical success envelope: `{ "data": T, "ts": <unix millis i64> }`.
+ *
+ * `ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler
+ * via [`ApiEnvelope::now`] (the contract carries only the type + the clock
+ * helper, not a hard dependency on when the handler reads the clock).
+ * `rename_all = "camelCase"` is a no-op for the single-word fields here but is
+ * declared for forward-compat.
+ *
+ * IMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named
+ * OpenAPI component is declared in the `#[aliases(...)]` block below. Add a new
+ * alias line whenever a new payload type needs enveloping. NEVER register the
+ * bare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare
+ * generic, and an un-aliased generic inlines an anonymous schema.
+ */
+export type DiagnosticStatusEnvelope = {
+    data: DiagnosticStatusDto;
+    /**
+     * Server time when the response was built (unix epoch milliseconds).
+     */
+    ts: number;
+};
+
 /**
  * Canonical success envelope: `{ "data": T, "ts": <unix millis i64> }`.
  *
@@ -1563,6 +1692,8 @@ export type LogExportRequestDto = {
 };
 
 export type LogExportResultDto = {
+    collection: DiagnosticArchiveCollectionDto;
+    enginePreparation: DiagnosticExportPreparationDto;
     includedFiles: Array<string>;
     path: string;
     since: string;
@@ -4397,6 +4528,89 @@ export type GetLocalDeviceInfoResponses = {
 };
 
 export type GetLocalDeviceInfoResponse = GetLocalDeviceInfoResponses[keyof GetLocalDeviceInfoResponses];
+
+export type GetDiagnosticCaptureStatusData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/diagnostics/capture';
+};
+
+export type GetDiagnosticCaptureStatusErrors = {
+    /**
+     * Local Engine diagnostics unavailable
+     */
+    503: ApiErrorResponse;
+};
+
+export type GetDiagnosticCaptureStatusError = GetDiagnosticCaptureStatusErrors[keyof GetDiagnosticCaptureStatusErrors];
+
+export type GetDiagnosticCaptureStatusResponses = {
+    /**
+     * Current daemon-owned diagnostic capture state
+     */
+    200: DiagnosticStatusEnvelope;
+};
+
+export type GetDiagnosticCaptureStatusResponse = GetDiagnosticCaptureStatusResponses[keyof GetDiagnosticCaptureStatusResponses];
+
+export type StartDiagnosticCaptureData = {
+    body: DiagnosticCaptureStartRequestDto;
+    path?: never;
+    query?: never;
+    url: '/diagnostics/capture/start';
+};
+
+export type StartDiagnosticCaptureErrors = {
+    /**
+     * Invalid capture duration
+     */
+    400: ApiErrorResponse;
+    /**
+     * Local Engine diagnostics unavailable
+     */
+    503: ApiErrorResponse;
+};
+
+export type StartDiagnosticCaptureError = StartDiagnosticCaptureErrors[keyof StartDiagnosticCaptureErrors];
+
+export type StartDiagnosticCaptureResponses = {
+    /**
+     * Actual daemon-owned diagnostic capture state
+     */
+    200: DiagnosticStatusEnvelope;
+};
+
+export type StartDiagnosticCaptureResponse = StartDiagnosticCaptureResponses[keyof StartDiagnosticCaptureResponses];
+
+export type StopDiagnosticCaptureData = {
+    body: DiagnosticCaptureStopRequestDto;
+    path?: never;
+    query?: never;
+    url: '/diagnostics/capture/stop';
+};
+
+export type StopDiagnosticCaptureErrors = {
+    /**
+     * Invalid capture identifier
+     */
+    400: ApiErrorResponse;
+    /**
+     * Local Engine diagnostics unavailable
+     */
+    503: ApiErrorResponse;
+};
+
+export type StopDiagnosticCaptureError = StopDiagnosticCaptureErrors[keyof StopDiagnosticCaptureErrors];
+
+export type StopDiagnosticCaptureResponses = {
+    /**
+     * Capture stop result
+     */
+    200: DiagnosticCaptureStopEnvelope;
+};
+
+export type StopDiagnosticCaptureResponse = StopDiagnosticCaptureResponses[keyof StopDiagnosticCaptureResponses];
 
 export type GetDebugStatusData = {
     body?: never;

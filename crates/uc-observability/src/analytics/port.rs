@@ -1,1 +1,1 @@
-pub use uc_observability_contract::analytics::port::*;
+pub use uc_engine::observability::analytics::port::*;

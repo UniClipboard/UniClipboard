@@ -49,7 +49,7 @@ function fixture() {
   write(archivePath, sourceArchive.toString())
   write(
     join(root, 'Cargo.toml'),
-    `[workspace.dependencies]\nuc-engine = { git = "https://github.com/UniClipboard/Engine.git", rev = "${oldCommit}" }\nuc-observability-contract = { git = "https://github.com/UniClipboard/Engine.git", rev = "${oldCommit}" }\n`
+    `[workspace.dependencies]\nuc-engine = { git = "https://github.com/UniClipboard/Engine.git", rev = "${oldCommit}" }\n`
   )
   return { root, version, newCommit, manifestPath, archivePath }
 }
@@ -59,7 +59,7 @@ afterEach(() => {
 })
 
 describe('desktop Engine release adoption', () => {
-  it('updates every desktop Engine dependency after verifying the release source', () => {
+  it('updates the desktop Engine dependency after verifying the release source', () => {
     const { root, version, newCommit, manifestPath, archivePath } = fixture()
 
     execFileSync(
@@ -81,7 +81,7 @@ describe('desktop Engine release adoption', () => {
     )
 
     const cargo = readFileSync(join(root, 'Cargo.toml'), 'utf8')
-    expect(cargo.match(new RegExp(newCommit, 'g'))).toHaveLength(2)
+    expect(cargo.match(new RegExp(newCommit, 'g'))).toHaveLength(1)
     expect(cargo).not.toContain('a'.repeat(40))
   })
 

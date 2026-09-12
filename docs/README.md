@@ -20,6 +20,7 @@ When documentation conflicts with code, treat the code as the source of truth an
 **For Implementation:**
 
 - [Bootstrap System](architecture/bootstrap.md) - How dependency injection works
+- [核心诊断与桌面日志装配](architecture/engine-diagnostic-runtime.md) - 共同运行时接入、文件所有权及验证范围
 - [跨平台核心接口](architecture/uc-engine-interface.md) - 宿主操作、生命周期、事件与能力边界
 - [桌面配对全流程观测规格](specs/2026-09-06-desktop-pairing-observability-spec.md) - 保留 Sentry，开发时通过 Jaeger 串联加入空间的完整过程（待实施）
 - [Local Encrypted Search Design](architecture/local-encrypted-search.md) - V1 local search architecture for encrypted history

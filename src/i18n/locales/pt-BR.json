@@ -338,6 +338,15 @@
           "button": "Abrir no gerenciador de arquivos"
         },
         "logs": {
+          "capture": {
+            "label": "Capturar logs detalhados",
+            "tooltip": "Restam cerca de {{minutes}} minutos. Você pode desativar manualmente.",
+            "loading": "Lendo o estado de captura do serviço em segundo plano…",
+            "standard": "Registra logs detalhados temporariamente e para automaticamente após 10 minutos.",
+            "active": "Registrando logs detalhados. Para automaticamente em cerca de {{minutes}} minutos.",
+            "unavailable": "O diagnóstico do serviço em segundo plano está indisponível.",
+            "error": "Não foi possível alterar a captura detalhada"
+          },
           "debug": {
             "label": "Modo de depuração",
             "description": "Aumenta o detalhamento dos logs locais de diagnóstico depois que o app e o daemon forem reiniciados.",
@@ -352,10 +361,12 @@
           },
           "export": {
             "label": "Exportar logs",
-            "description": "Cria na pasta Downloads um arquivo zip com os logs de GUI, daemon e CLI das últimas 24 horas.",
+            "description": "Cria em Downloads um ZIP com diagnósticos recentes do app e do Engine, além de um relatório de cobertura.",
             "button": "Exportar logs",
             "exporting": "Exportando...",
             "success": "Logs exportados",
+            "offlineSuccess": "O serviço em segundo plano estava indisponível. Os logs existentes foram exportados sem confirmação de atualização ao vivo.",
+            "partialSuccess": "O pacote foi exportado com atualização ou cobertura de arquivos incompleta. Consulte o manifesto para obter detalhes.",
             "error": "Falha ao exportar os logs",
             "copyPath": "Copiar caminho",
             "copySuccess": "Caminho da exportação copiado",

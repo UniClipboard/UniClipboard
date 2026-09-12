@@ -58,6 +58,7 @@ impl DesktopEngineHost {
 pub struct DesktopHostProcessPaths {
     app_data_root: PathBuf,
     daemon_pid: PathBuf,
+    logs_dir: PathBuf,
 }
 
 impl DesktopHostProcessPaths {
@@ -65,6 +66,7 @@ impl DesktopHostProcessPaths {
         Self {
             app_data_root: paths.app_data_root_dir.clone(),
             daemon_pid: paths.app_data_root_dir.join(".daemon-pid"),
+            logs_dir: paths.logs_dir.clone(),
         }
     }
 
@@ -74,6 +76,10 @@ impl DesktopHostProcessPaths {
 
     pub fn daemon_pid(&self) -> PathBuf {
         self.daemon_pid.clone()
+    }
+
+    pub fn logs_dir(&self) -> &Path {
+        &self.logs_dir
     }
 }
 

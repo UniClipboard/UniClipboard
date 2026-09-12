@@ -338,6 +338,15 @@
           "button": "在檔案管理器中打開"
         },
         "logs": {
+          "capture": {
+            "label": "擷取詳細日誌",
+            "tooltip": "約剩 {{minutes}} 分鐘，可手動關閉。",
+            "loading": "正在讀取背景服務的記錄狀態…",
+            "standard": "暫時記錄詳細日誌，10 分鐘後自動停止。",
+            "active": "正在記錄詳細日誌，約 {{minutes}} 分鐘後自動停止。",
+            "unavailable": "背景服務的診斷能力目前無法使用。",
+            "error": "變更詳細記錄失敗"
+          },
           "debug": {
             "label": "Debug 模式",
             "description": "應用程式和 daemon 重新啟動後提高本地診斷日誌詳細度。",
@@ -352,10 +361,12 @@
           },
           "export": {
             "label": "匯出日誌",
-            "description": "在 Downloads 目錄建立包含最近 24 小時 GUI、daemon 和 CLI 日誌的 zip 包。",
+            "description": "在 Downloads 目錄建立包含最近應用程式、Engine 診斷記錄和涵蓋報告的 ZIP 包。",
             "button": "匯出日誌",
             "exporting": "正在匯出...",
             "success": "日誌已匯出",
+            "offlineSuccess": "背景服務無法使用，已匯出現有日誌，但沒有本次即時重新整理確認。",
+            "partialSuccess": "診斷包已匯出，但重新整理或檔案涵蓋不完整，詳情請見包內清單。",
             "error": "匯出日誌失敗",
             "copyPath": "複製路徑",
             "copySuccess": "已複製匯出路徑",

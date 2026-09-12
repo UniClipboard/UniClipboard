@@ -76,7 +76,7 @@ if (sha256(sourceBytes) !== sourceArtifact.sha256) {
 const cargoPath = resolve(root, 'Cargo.toml')
 let cargo = readFileSync(cargoPath, 'utf8')
 let replacements = 0
-for (const dependency of ['uc-engine', 'uc-observability-contract']) {
+for (const dependency of ['uc-engine']) {
   const pattern = new RegExp(
     `^(${dependency.replace('-', '\\-')}\\s*=\\s*\\{[^\\n]*git\\s*=\\s*"${ENGINE_GIT_URL.replaceAll('.', '\\.')}"[^\\n]*rev\\s*=\\s*")[0-9a-f]{40}("[^\\n]*\\})$`,
     'm'
@@ -85,7 +85,7 @@ for (const dependency of ['uc-engine', 'uc-observability-contract']) {
   cargo = cargo.replace(pattern, `$1${sourceCommit}$2`)
   replacements += 1
 }
-if (replacements !== 2) fail('did not update every Engine dependency')
+if (replacements !== 1) fail('did not update every Engine dependency')
 writeFileSync(cargoPath, cargo)
 
 process.stdout.write(`Adopted Engine ${version} at ${sourceCommit}\n`)

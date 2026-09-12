@@ -3,7 +3,7 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use uc_observability_contract::analytics::{
+use uc_engine::observability::analytics::{
     AdoptOutcome, AnalyticsIdentityError, AnalyticsIdentityPort, ReleaseOutcome,
 };
 use uuid::Uuid;
@@ -11,9 +11,7 @@ use uuid::Uuid;
 use super::context::{global_event_context, set_global_event_context, AnalyticsPersonId};
 use super::ids::{clear_space_person_id, set_space_person_id};
 
-pub use uc_observability_contract::analytics::{
-    hash_space_id_for_telemetry, NoopAnalyticsIdentity,
-};
+pub use uc_engine::observability::analytics::{hash_space_id_for_telemetry, NoopAnalyticsIdentity};
 
 /// File-backed analytics identity adapter owned by the host process.
 pub struct LocalAnalyticsIdentity {

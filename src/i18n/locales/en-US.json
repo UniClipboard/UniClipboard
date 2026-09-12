@@ -338,6 +338,15 @@
           "button": "Open in file manager"
         },
         "logs": {
+          "capture": {
+            "label": "Capture detailed logs",
+            "tooltip": "About {{minutes}} minutes remaining. You can turn this off manually.",
+            "loading": "Checking log recording status…",
+            "standard": "Record detailed logs temporarily. Stops automatically after 10 minutes.",
+            "active": "Recording detailed logs. Stops automatically in about {{minutes}} minutes.",
+            "unavailable": "Background service diagnostics are unavailable.",
+            "error": "Failed to change detailed capture"
+          },
           "debug": {
             "label": "Debug mode",
             "description": "Increase local diagnostic log detail after the app and daemon are restarted.",
@@ -352,10 +361,12 @@
           },
           "export": {
             "label": "Export logs",
-            "description": "Create a zip archive with GUI, daemon, and CLI logs from the last 24 hours in Downloads.",
+            "description": "Create a ZIP with recent app and Engine diagnostics plus a coverage report in Downloads.",
             "button": "Export logs",
             "exporting": "Exporting...",
             "success": "Logs exported",
+            "offlineSuccess": "The background service was unavailable. Existing logs were exported without a live flush confirmation.",
+            "partialSuccess": "The package was exported with incomplete refresh or file coverage. See its manifest for details.",
             "error": "Failed to export logs",
             "copyPath": "Copy path",
             "copySuccess": "Export path copied",

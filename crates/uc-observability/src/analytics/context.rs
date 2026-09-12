@@ -34,7 +34,7 @@ use std::sync::{Arc, RwLock};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-pub use uc_observability_contract::analytics::Os;
+pub use uc_engine::observability::analytics::Os;
 
 /// 事件共享上下文，每条事件都会带这些字段。
 ///

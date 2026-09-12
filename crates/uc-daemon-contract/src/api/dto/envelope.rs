@@ -25,7 +25,10 @@ use crate::api::dto::clipboard_command::{
 use crate::api::dto::clipboard_delivery::EntryDeliveryViewDto;
 use crate::api::dto::config::{ExportConfigResponse, ImportConfigResponse, PreviewImportResponse};
 use crate::api::dto::device::LocalDeviceInfoDto;
-use crate::api::dto::diagnostics::{DebugStatusDto, LogExportResultDto, UpdateDebugModeResultDto};
+use crate::api::dto::diagnostics::{
+    DebugStatusDto, DiagnosticCaptureStopResultDto, DiagnosticStatusDto, LogExportResultDto,
+    UpdateDebugModeResultDto,
+};
 use crate::api::dto::encryption::{
     EncryptionActionResponse, EncryptionStateResponse, KeychainAccessResponse, UnlockSpaceResponse,
 };
@@ -99,6 +102,8 @@ use crate::api::types::{
     RelaySaveResultEnvelope = ApiEnvelope<RelaySaveResultDto>,
     DebugStatusEnvelope = ApiEnvelope<DebugStatusDto>,
     UpdateDebugModeEnvelope = ApiEnvelope<UpdateDebugModeResultDto>,
+    DiagnosticStatusEnvelope = ApiEnvelope<DiagnosticStatusDto>,
+    DiagnosticCaptureStopEnvelope = ApiEnvelope<DiagnosticCaptureStopResultDto>,
     LogExportEnvelope = ApiEnvelope<LogExportResultDto>,
     // ── device / member ────────────────────────────────────────────
     LocalDeviceInfoEnvelope = ApiEnvelope<LocalDeviceInfoDto>,

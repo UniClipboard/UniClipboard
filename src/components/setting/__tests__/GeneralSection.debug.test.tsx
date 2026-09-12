@@ -174,7 +174,7 @@ describe('GeneralSection debug diagnostics controls', () => {
     await waitFor(() => {
       expect(mockUpdateDebugMode).toHaveBeenCalledWith(true)
     })
-    expect(reloadSetting).toHaveBeenCalledTimes(1)
+    expect(reloadSetting).not.toHaveBeenCalled()
     await waitFor(() => {
       expect(mockRestartDaemon).toHaveBeenCalledTimes(1)
     })
@@ -206,6 +206,24 @@ describe('GeneralSection debug diagnostics controls', () => {
     expect(
       screen.getByText('settings.sections.general.logs.debug.restartingDescription')
     ).toBeInTheDocument()
+  })
+
+  it('reloads the saved debug mode when restart fails', async () => {
+    const user = userEvent.setup()
+    mockUpdateDebugMode.mockResolvedValue({ debugMode: true, restartRequired: true })
+    mockRestartDaemon.mockRejectedValueOnce(new Error('restart failed'))
+    const { reloadSetting } = setup()
+
+    render(<GeneralSection />)
+
+    await user.click(screen.getByRole('switch', { name: /logs\.debug\.label/ }))
+    await user.click(screen.getByRole('button', { name: /logs\.debug\.confirm$/ }))
+
+    await waitFor(() => expect(reloadSetting).toHaveBeenCalledOnce())
+    expect(
+      screen.getByRole('button', { name: /settings\.sections\.general\.logs\.debug\.confirm$/ })
+    ).toBeInTheDocument()
+    expect(mockRestartApp).not.toHaveBeenCalled()
   })
 
   it('exports the last 24 hours of logs and shows the path', async () => {

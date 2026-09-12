@@ -1,15 +1,5 @@
 import { Loader2 } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import {
-  exportLogs,
-  getDiagnosticCaptureStatus,
-  startDiagnosticCapture,
-  stopDiagnosticCapture,
-  updateDebugMode,
-  type DiagnosticCaptureStatus,
-} from '@/api/daemon/diagnostics'
-import * as storageApi from '@/api/storage'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -26,208 +16,31 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui'
-import { toast } from '@/components/ui/toast'
-import { useSetting } from '@/hooks/useSetting'
-import { commands } from '@/lib/ipc'
-import { createLogger } from '@/lib/logger'
 import { SettingGroup } from '../SettingGroup'
 import { SettingRow } from '../SettingRow'
-import { useSavingState } from './useSavingState'
-
-const log = createLogger('general-section')
-
-/**
- * Debug-mode confirmation dialog as a small state machine:
- * - `closed`     — no dialog
- * - `confirming` — asking the user to confirm enabling debug mode
- * - `restarting` — forced, non-dismissable state while the daemon and GUI
- *   restart to pick up the new log profile
- */
-type DebugDialogState = 'closed' | 'confirming' | 'restarting'
-
-const handleOpenLogsDir = async () => {
-  try {
-    await storageApi.openLogsDirectory()
-  } catch (error) {
-    log.error({ err: error }, 'Failed to open logs directory')
-  }
-}
+import { openLogsDirectory, useDiagnosticsSettings } from './useDiagnosticsSettings'
 
 export function DiagnosticsSettings() {
   const { t } = useTranslation()
-  const { setting, loading, reloadSetting } = useSetting()
-  const { saving, runSave } = useSavingState()
-  const debugMode = setting?.general.debugMode ?? false
-  const [debugDialog, setDebugDialog] = useState<DebugDialogState>('closed')
-  const [exportPath, setExportPath] = useState<string | null>(null)
-  const [exportingLogs, setExportingLogs] = useState(false)
-  const [captureStatus, setCaptureStatus] = useState<DiagnosticCaptureStatus | null>(null)
-  const [captureUnavailable, setCaptureUnavailable] = useState(false)
-  const [captureBusy, setCaptureBusy] = useState(false)
-  const isBusy = loading || saving
+  const {
+    captureBusy,
+    captureDescription,
+    captureStatus,
+    captureUnavailable,
+    debugDialog,
+    debugMode,
+    detailedCapture,
+    exportingLogs,
+    exportPath,
+    handleConfirmDebugMode,
+    handleCopyExportPath,
+    handleDebugModeChange,
+    handleDetailedCaptureChange,
+    handleExportLogs,
+    isBusy,
+    setDebugDialog,
+  } = useDiagnosticsSettings()
   const isRestarting = debugDialog === 'restarting'
-  const detailedCapture = captureStatus?.capture.mode === 'detailed'
-  const captureDescription = useMemo(() => {
-    if (captureUnavailable) return t('settings.sections.general.logs.capture.unavailable')
-    if (!captureStatus) return t('settings.sections.general.logs.capture.loading')
-    if (!detailedCapture) {
-      return t('settings.sections.general.logs.capture.standard')
-    }
-    return t('settings.sections.general.logs.capture.active', {
-      minutes: Math.max(1, Math.ceil(captureStatus.capture.remainingMs / 60_000)),
-    })
-  }, [captureStatus, captureUnavailable, detailedCapture, t])
-
-  const loadCaptureStatus = useCallback(async () => {
-    try {
-      const status = await getDiagnosticCaptureStatus()
-      setCaptureStatus(status)
-      setCaptureUnavailable(false)
-      return status
-    } catch (error) {
-      log.warn({ err: error }, 'Failed to read detailed capture status')
-      setCaptureUnavailable(true)
-      return null
-    }
-  }, [])
-
-  useEffect(() => {
-    void loadCaptureStatus()
-  }, [loadCaptureStatus])
-
-  useEffect(() => {
-    if (!detailedCapture && !captureUnavailable) return
-    const timer = window.setInterval(() => void loadCaptureStatus(), 5_000)
-    return () => window.clearInterval(timer)
-  }, [captureUnavailable, detailedCapture, loadCaptureStatus])
-
-  const persistDebugModeOff = () =>
-    runSave(
-      'Failed to change debug mode',
-      async () => {
-        const result = await updateDebugMode(false)
-        await reloadSetting()
-        if (result.restartRequired) {
-          toast.message(t('settings.sections.general.logs.debug.restartToast'))
-        }
-      },
-      'settings.sections.general.logs.debug.error'
-    )
-
-  const handleDebugModeChange = (checked: boolean) => {
-    if (checked) {
-      setDebugDialog('confirming')
-    } else {
-      void persistDebugModeOff()
-    }
-  }
-
-  const handleConfirmDebugMode = async () => {
-    // Keep the dialog open and switch it into a forced "restarting" state so the
-    // user cannot dismiss it while the app and daemon are coming back up.
-    setDebugDialog('restarting')
-    try {
-      await updateDebugMode(true)
-      await reloadSetting()
-      // Debug mode changes the log profile, which both the daemon and the GUI
-      // read only at process start. Restart the daemon first so the engine —
-      // the primary log producer — picks up the debug profile, then restart the
-      // GUI. restartApp() exits this process, so code after it is unreachable on
-      // the happy path.
-      await commands.restartDaemon()
-      await commands.restartApp()
-    } catch (error) {
-      log.error({ err: error }, 'Failed to enable debug mode and restart')
-      toast.error(t('settings.sections.general.logs.debug.error'))
-      // Restart failed: drop back to the confirm state so the user can dismiss.
-      setDebugDialog('confirming')
-    }
-  }
-
-  const handleExportLogs = async () => {
-    try {
-      setExportingLogs(true)
-      let path: string | null
-      let exportNotice: 'complete' | 'partial' | 'offline' = 'complete'
-      try {
-        const result = await exportLogs(24)
-        path = result.path
-        if (
-          result.enginePreparation.flush !== 'completed' ||
-          result.collection.unreadableFiles.length > 0 ||
-          result.collection.truncatedFiles.length > 0
-        ) {
-          exportNotice = 'partial'
-        }
-      } catch (daemonError) {
-        log.warn({ err: daemonError }, 'Daemon export unavailable; using retained logs')
-        path = await commands.exportStartupLogs()
-        if (!path) return
-        exportNotice = 'offline'
-      }
-      if (!path) return
-      setExportPath(path)
-      if (exportNotice === 'complete') {
-        toast.success(t('settings.sections.general.logs.export.success'))
-      } else {
-        toast.message(
-          t(
-            exportNotice === 'offline'
-              ? 'settings.sections.general.logs.export.offlineSuccess'
-              : 'settings.sections.general.logs.export.partialSuccess'
-          )
-        )
-      }
-      // Reveal the exported archive in the file manager so the user can find
-      // it immediately. Failure here is non-fatal: the export already
-      // succeeded and the path is shown in the UI.
-      try {
-        await storageApi.revealPath(path)
-      } catch (revealError) {
-        log.warn({ err: revealError }, 'Failed to reveal exported log archive')
-      }
-    } catch (error) {
-      log.error({ err: error }, 'Failed to export logs')
-      toast.error(t('settings.sections.general.logs.export.error'))
-    } finally {
-      setExportingLogs(false)
-    }
-  }
-
-  const handleDetailedCaptureChange = async (checked: boolean) => {
-    setCaptureBusy(true)
-    try {
-      if (checked) {
-        setCaptureStatus(await startDiagnosticCapture(600))
-      } else if (captureStatus?.capture.captureId) {
-        await stopDiagnosticCapture(captureStatus.capture.captureId)
-        await loadCaptureStatus()
-      }
-      setCaptureUnavailable(false)
-    } catch (error) {
-      // A response can be lost after the daemon applied the request. Query the
-      // authority before reporting failure or starting another capture.
-      const recovered = await loadCaptureStatus()
-      const reachedRequestedState = recovered?.capture.mode === (checked ? 'detailed' : 'standard')
-      if (!reachedRequestedState) {
-        log.error({ err: error }, 'Failed to change detailed capture state')
-        toast.error(t('settings.sections.general.logs.capture.error'))
-      }
-    } finally {
-      setCaptureBusy(false)
-    }
-  }
-
-  const handleCopyExportPath = async () => {
-    if (!exportPath) return
-    try {
-      await navigator.clipboard.writeText(exportPath)
-      toast.success(t('settings.sections.general.logs.export.copySuccess'))
-    } catch (error) {
-      log.warn({ err: error }, 'Failed to copy log export path')
-      toast.error(t('settings.sections.general.logs.export.copyError'))
-    }
-  }
 
   return (
     <SettingGroup title={t('settings.sections.general.logsDirectory.title')}>
@@ -298,7 +111,7 @@ export function DiagnosticsSettings() {
         label={t('settings.sections.general.logsDirectory.label')}
         description={t('settings.sections.general.logsDirectory.description')}
       >
-        <Button variant="outline" size="sm" onClick={handleOpenLogsDir}>
+        <Button variant="outline" size="sm" onClick={openLogsDirectory}>
           {t('settings.sections.general.logsDirectory.button')}
         </Button>
       </SettingRow>

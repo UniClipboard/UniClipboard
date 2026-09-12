@@ -11,13 +11,7 @@ export function DeviceTrustDialogHost() {
   const { t } = useTranslation()
   const state = useDeviceTrust()
   useDeviceTrustDesktopEffects(state.snapshot)
-  if (
-    state.deviceGroups &&
-    !state.deviceGroups.issues.length &&
-    !state.decision &&
-    !state.decisionError
-  )
-    return null
+  if (!state.deviceGroups?.issues.length && !state.decision && !state.decisionError) return null
   return (
     <Dialog open onOpenChange={(_open, details) => details.cancel()} disablePointerDismissal>
       <DialogContent

@@ -246,7 +246,7 @@ it('disables manual theme controls while preserving the saved selection', async 
   expect(setEnabled).toHaveBeenCalledWith(false)
 })
 
-it('keeps an unavailable enabled preference visible so it can be turned off', () => {
+it('hides an enabled Omarchy preference on unsupported desktops and allows manual themes', async () => {
   vi.mocked(useOmarchyTheme).mockReturnValue({
     enabled: true,
     available: false,
@@ -254,9 +254,28 @@ it('keeps an unavailable enabled preference visible so it can be turned off', ()
     failed: false,
     setEnabled: vi.fn(),
   })
+  const { updateGeneralSetting } = setup()
+  expect(screen.queryByRole('switch', { name: 'omarchyTheme.title' })).not.toBeInTheDocument()
+  const dark = screen.getByRole('radio', {
+    name: 'settings.sections.appearance.themePreview.darkLabel',
+  })
+  expect(dark).not.toBeDisabled()
+  await userEvent.click(dark)
+  expect(updateGeneralSetting).toHaveBeenCalledWith({ theme: 'dark' })
+})
+
+it('shows the Omarchy switch when available even if the preference is off', async () => {
+  const setEnabled = vi.fn()
+  vi.mocked(useOmarchyTheme).mockReturnValue({
+    enabled: false,
+    available: true,
+    saving: false,
+    failed: false,
+    setEnabled,
+  })
   setup()
-  expect(screen.getByText('omarchyTheme.unavailable')).toBeInTheDocument()
-  expect(screen.getByRole('switch', { name: 'omarchyTheme.title' })).not.toBeDisabled()
+  await userEvent.click(screen.getByRole('switch', { name: 'omarchyTheme.title' }))
+  expect(setEnabled).toHaveBeenCalledWith(true)
 })
 
 it('hides Omarchy controls on unsupported desktops', () => {

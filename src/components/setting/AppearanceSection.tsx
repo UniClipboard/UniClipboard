@@ -26,6 +26,7 @@ export default function AppearanceSection() {
   const { t } = useTranslation()
   const { setting, updateGeneralSetting } = useSetting()
   const omarchy = useOmarchyTheme()
+  const followingOmarchy = omarchy.available && omarchy.enabled
   const general = setting?.general
   const presets = {
     light: general?.themeColorLight || general?.themeColor || DEFAULT_THEME_COLOR,
@@ -46,14 +47,9 @@ export default function AppearanceSection() {
   return (
     <div className="appearance-settings min-w-0" data-testid="appearance-settings">
       <div className="flex min-w-0 flex-col gap-8">
-        {(omarchy.available || omarchy.enabled) && (
+        {omarchy.available && (
           <div>
-            <SettingRow
-              label={t('omarchyTheme.title')}
-              description={t(
-                omarchy.available ? 'omarchyTheme.description' : 'omarchyTheme.unavailable'
-              )}
-            >
+            <SettingRow label={t('omarchyTheme.title')} description={t('omarchyTheme.description')}>
               <Switch
                 aria-label={t('omarchyTheme.title')}
                 checked={omarchy.enabled}
@@ -71,11 +67,11 @@ export default function AppearanceSection() {
           </div>
         )}
         <fieldset
-          disabled={omarchy.enabled}
+          disabled={followingOmarchy}
           className="min-w-0 flex flex-col gap-8 disabled:opacity-60"
         >
           <legend className="sr-only">{t('appearanceLayout.theme')}</legend>
-          <div inert={omarchy.enabled || undefined} className="min-w-0 flex flex-col gap-8">
+          <div inert={followingOmarchy || undefined} className="min-w-0 flex flex-col gap-8">
             <div className="min-w-0">
               <AppearanceTheme
                 theme={general?.theme || 'system'}
@@ -122,7 +118,7 @@ export default function AppearanceSection() {
                         <div className="divide-y divide-border/25">
                           {COLOR_FIELDS.map(({ token, label }) => (
                             <AppearanceColorPicker
-                              key={`${omarchy.enabled}:${presets[mode]}:${token}`}
+                              key={`${followingOmarchy}:${presets[mode]}:${token}`}
                               label={t(`settings.sections.appearance.${mode}Theme.${label}`)}
                               presetColor={
                                 (themePresets[presets[mode]] ?? themePresets[DEFAULT_THEME_COLOR])[

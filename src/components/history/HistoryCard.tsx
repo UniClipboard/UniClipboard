@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react'
+import React, { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useRelativeTime } from '@/hooks/useRelativeTime'
 import type { DisplayClipboardItem } from '@/lib/clipboard-entry'
@@ -17,19 +17,17 @@ import HistoryCardTransferProgress from './history-card/HistoryCardTransferProgr
 
 interface HistoryCardProps {
   item: DisplayClipboardItem
-  isHovered: boolean
   copySuccess: boolean
   isDeleting: boolean
   onCopy: (id: string) => void
   onDelete: (id: string) => void
   onToggleFavorite: (id: string, current: boolean) => void
   onClick: (id: string) => void
-  onHoverChange: (id: string | null) => void
+  onHoverChange: (id: string, hovered: boolean) => void
 }
 
 const HistoryCard: React.FC<HistoryCardProps> = ({
   item,
-  isHovered,
   copySuccess,
   isDeleting,
   onCopy,
@@ -63,18 +61,25 @@ const HistoryCard: React.FC<HistoryCardProps> = ({
   // per-member aggregate percentage; single-file / flat sends are unaffected.
   const hideByteProgress = (item.isDirectory ?? false) && transfer?.direction === 'sending'
 
-  // Reveal the action bar on keyboard focus too, not just mouse hover — its
-  // buttons are otherwise untabbable, so keyboard users could never reach
-  // copy/favorite/delete. Tracked locally (separate from the parent's hover
-  // selection) so it doesn't disturb the hover-driven keyboard shortcuts.
+  // Keep hover and keyboard focus local so scrolling across rows does not
+  // render the history page and its selected preview.
+  const [isHovered, setIsHovered] = useState(false)
   const [focusWithin, setFocusWithin] = useState(false)
-  const handleMouseEnter = useCallback(() => onHoverChange(item.id), [item.id, onHoverChange])
-  const handleMouseLeave = useCallback(() => onHoverChange(null), [onHoverChange])
+  useEffect(() => () => onHoverChange(item.id, false), [item.id, onHoverChange])
+  const handleMouseEnter = useCallback(() => {
+    setIsHovered(true)
+    onHoverChange(item.id, true)
+  }, [item.id, onHoverChange])
+  const handleMouseLeave = useCallback(() => {
+    setIsHovered(false)
+    onHoverChange(item.id, false)
+  }, [item.id, onHoverChange])
   const handleClick = useCallback(() => onClick(item.id), [item.id, onClick])
   const handleActionComplete = useCallback(() => {
     setFocusWithin(false)
-    onHoverChange(null)
-  }, [onHoverChange])
+    setIsHovered(false)
+    onHoverChange(item.id, false)
+  }, [item.id, onHoverChange])
   const handleFocus = useCallback(() => setFocusWithin(true), [])
   const handleBlur = useCallback((e: React.FocusEvent<HTMLDivElement>) => {
     if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setFocusWithin(false)

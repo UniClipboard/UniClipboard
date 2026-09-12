@@ -51,7 +51,9 @@ const SidebarArea: React.FC<SidebarAreaProps> = ({ title }) => {
       }}
       className="flex h-full w-12 shrink-0 flex-col"
     >
-      {title}
+      <div data-tauri-drag-region className="h-10 shrink-0">
+        {title}
+      </div>
       <LayoutGroup id={selectionId}>
         <SidebarNavigation />
         <SidebarFooter />

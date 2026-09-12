@@ -131,7 +131,6 @@ if (params.get('transfer') === '1') {
 export default function TypographyFixture() {
   const view = params.get('view') || 'history'
   const [selected, setSelected] = useState('text')
-  const [hovered, setHovered] = useState<string | null>(null)
   const [feedback, setFeedback] = useState(view === 'feedback')
   const [step, setStep] = useState(view)
   const [copied, setCopied] = useState<string | null>(null)
@@ -147,7 +146,6 @@ export default function TypographyFixture() {
               item={entry}
               seenIds={seenIds}
               isActive={entry.id === selected}
-              isHovered={entry.id === hovered}
               copySuccess={entry.id === copied}
               isDeleting={false}
               showDivider
@@ -156,7 +154,7 @@ export default function TypographyFixture() {
               onDelete={noop}
               onToggleFavorite={noop}
               onClick={setSelected}
-              onHoverChange={setHovered}
+              onHoverChange={noop}
             />
           ))}
         </div>

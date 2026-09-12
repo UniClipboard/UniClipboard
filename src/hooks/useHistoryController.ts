@@ -60,8 +60,12 @@ export function useHistoryController() {
   const searchableTags = useSearchTags()
   const initialSnapshot = readHistorySessionSnapshot()
 
-  // Per-card interaction state (small + render-driving).
-  const [requestedHoveredId, setHoveredId] = useState<string | null>(null)
+  // Hover only selects a keyboard shortcut target; visual state belongs to the card.
+  const hoveredIdRef = useRef<string | null>(null)
+  const handleHoverChange = useCallback((id: string, hovered: boolean) => {
+    if (hovered) hoveredIdRef.current = id
+    else if (hoveredIdRef.current === id) hoveredIdRef.current = null
+  }, [])
   // Stable Set of ids already rendered once; read during render to gate the
   // entrance animation, mutated only in an effect (never during render).
   const [seenIds] = useState(() => new Set<string>(initialSnapshot?.seenIds ?? []))
@@ -186,11 +190,7 @@ export function useHistoryController() {
   }
 
   const selectedId = selection.id
-  const orderedItemIds = new Set(orderedItems.map(item => item.id))
-  const hoveredId =
-    requestedHoveredId !== null && orderedItemIds.has(requestedHoveredId)
-      ? requestedHoveredId
-      : null
+  const orderedItemIds = useMemo(() => new Set(orderedItems.map(item => item.id)), [orderedItems])
 
   const selectedItem = useMemo(
     () => orderedItems.find(it => it.id === selectedId) ?? null,
@@ -201,9 +201,9 @@ export function useHistoryController() {
   useShortcut({
     key: 'c',
     scope: 'clipboard',
-    enabled: hoveredId !== null,
     handler: () => {
-      if (hoveredId) handleCopy(hoveredId)
+      const id = hoveredIdRef.current
+      if (id !== null && orderedItemIds.has(id)) handleCopy(id)
     },
     preventDefault: false,
   })
@@ -211,9 +211,9 @@ export function useHistoryController() {
   useShortcut({
     key: 'd',
     scope: 'clipboard',
-    enabled: hoveredId !== null,
     handler: () => {
-      if (hoveredId) requestDelete(hoveredId)
+      const id = hoveredIdRef.current
+      if (id !== null && orderedItemIds.has(id)) requestDelete(id)
     },
     preventDefault: false,
   })
@@ -289,8 +289,7 @@ export function useHistoryController() {
     setScrollState,
     hasMore: data.hasMore,
     handleLoadMore: data.handleLoadMore,
-    hoveredId,
-    setHoveredId,
+    handleHoverChange,
     selectedId,
     copySuccessId,
     deletingId,

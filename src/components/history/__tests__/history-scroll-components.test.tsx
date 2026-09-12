@@ -27,7 +27,7 @@ describe('history overlay scrolling', () => {
     expect(screen.queryByText('Entry 99')).not.toBeInTheDocument()
     expect(scroller).not.toBeNull()
     const viewport = scroller as unknown as HTMLElement
-    const content = viewport.querySelector('[role="presentation"]')
+    const content = viewport.querySelector('[data-testid="virtuoso-item-list"]')
     expect(content).not.toBeNull()
     expect(content).toHaveStyle({ width: '100%', minWidth: '0px' })
     Object.defineProperties(viewport, {

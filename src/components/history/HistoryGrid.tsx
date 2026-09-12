@@ -19,7 +19,6 @@ interface HistoryGridProps {
   isSearchActive: boolean
   submittedQuery: string
   searchLoading: boolean
-  hoveredId: string | null
   copySuccessId: string | null
   deletingId: string | null
   hasMore: boolean
@@ -29,7 +28,7 @@ interface HistoryGridProps {
   onDelete: (id: string) => void
   onToggleFavorite: (id: string, current: boolean) => void
   onCardClick: (id: string) => void
-  onHoverChange: (id: string | null) => void
+  onHoverChange: (id: string, hovered: boolean) => void
   onScrollStateRestored?: () => void
 }
 
@@ -47,7 +46,6 @@ const HistoryGrid: React.FC<HistoryGridProps> = ({
   isSearchActive,
   submittedQuery,
   searchLoading,
-  hoveredId,
   copySuccessId,
   deletingId,
   hasMore,
@@ -117,7 +115,6 @@ const HistoryGrid: React.FC<HistoryGridProps> = ({
               item={item}
               seenIds={seenIds}
               isActive={item.id === selectedId}
-              isHovered={hoveredId === item.id}
               copySuccess={copySuccessId === item.id}
               isDeleting={deletingId === item.id}
               showDivider={index < items.length - 1}

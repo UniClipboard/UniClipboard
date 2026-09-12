@@ -176,7 +176,6 @@ const HistoryPage: React.FC = () => {
                 isSearchActive={c.isSearchActive}
                 submittedQuery={c.filter.submittedQuery}
                 searchLoading={c.searchLoading}
-                hoveredId={c.hoveredId}
                 copySuccessId={c.copySuccessId}
                 deletingId={c.deletingId}
                 hasMore={c.hasMore}
@@ -186,7 +185,7 @@ const HistoryPage: React.FC = () => {
                 onDelete={c.requestDelete}
                 onToggleFavorite={c.handleToggleFavorite}
                 onCardClick={c.handleCardClick}
-                onHoverChange={c.setHoveredId}
+                onHoverChange={c.handleHoverChange}
                 onScrollStateRestored={() => c.setScrollState(null)}
               />
             </div>

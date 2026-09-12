@@ -71,6 +71,12 @@ function FilterButton({
   )
 }
 
+function handleWheel(event: WheelEvent<HTMLDivElement>) {
+  if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return
+  event.preventDefault()
+  event.currentTarget.scrollLeft += event.deltaY
+}
+
 function HistoryFilterPanel({
   contentFilter,
   sourceFilter,
@@ -107,12 +113,6 @@ function HistoryFilterPanel({
     current,
   }).filter(option => option.value !== Filter.Favorited)
 
-  const handleWheel = (event: WheelEvent<HTMLDivElement>) => {
-    if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return
-    event.preventDefault()
-    event.currentTarget.scrollLeft += event.deltaY
-  }
-
   const clearFilters = () => {
     onContentFilterChange(Filter.All)
     onTagFilterChange(null)
@@ -129,7 +129,7 @@ function HistoryFilterPanel({
           data-testid="history-filter-strip"
           aria-label={t('history.composite.filterCategories')}
           onWheel={handleWheel}
-          className="flex h-8 w-fit max-w-72 shrink-0 items-center gap-0.5 overflow-x-auto overscroll-x-contain rounded-full border border-border/25 bg-muted/15 p-0.5"
+          className="flex w-fit max-w-72 shrink-0 items-center gap-0.5 overflow-x-auto overscroll-x-contain rounded-full border border-border/25 bg-muted/15 p-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
         >
           <FilterButton
             icon={hasActiveFilter ? X : LayoutGrid}

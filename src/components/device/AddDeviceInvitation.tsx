@@ -40,7 +40,7 @@ export function AddDeviceInvitation({
           data-testid="add-device-invitation-code"
           className={cn(
             'select-all text-center font-mono font-semibold tabular-nums text-foreground',
-            'text-ui-body',
+            'text-ui-title',
             expired && 'text-muted-foreground/50 line-through decoration-1'
           )}
           aria-label={invitation.code}

@@ -539,7 +539,7 @@ export function ShowInvitationScreen({
       <div className="mt-8 flex flex-col items-center gap-6 sm:mt-10">
         <div
           data-testid="setup-invitation-code"
-          className="break-words rounded-xl border border-border/50 bg-muted/30 px-6 py-5 font-mono text-ui-body font-medium text-foreground"
+          className="break-words rounded-xl border border-border/50 bg-muted/30 px-6 py-5 font-mono text-ui-title text-foreground"
         >
           {display}
         </div>

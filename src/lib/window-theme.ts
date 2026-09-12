@@ -16,6 +16,10 @@ export function createWindowThemeController(animate = false) {
   let previous: string | undefined
   let generation = 0
   let disposed = false
+  let resolveReady!: () => void
+  const initialized = new Promise<void>(resolve => {
+    resolveReady = resolve
+  })
 
   const refresh = (animateChange = false) => {
     if (!ready || disposed) return
@@ -53,10 +57,12 @@ export function createWindowThemeController(animate = false) {
     root.style.setProperty('--desktop-window-radius', `${windowCornerRadius ?? 0}px`)
     desktop = theme
     refresh()
+    resolveReady()
   })
   const handleSystemChange = () => refresh()
   media.addEventListener('change', handleSystemChange)
   return {
+    initialized,
     setGeneral(next: General) {
       general = next
       ready = true
@@ -68,4 +74,13 @@ export function createWindowThemeController(animate = false) {
       media.removeEventListener('change', handleSystemChange)
     },
   }
+}
+
+/** Apply the first desktop palette before mounting either WebView's visible content. */
+export async function initializeWindowTheme(): Promise<void> {
+  const controller = createWindowThemeController()
+  await controller.initialized
+  controller.setGeneral(null)
+  // React takes ownership next; subscriptions replay the in-memory snapshot synchronously.
+  controller.dispose()
 }

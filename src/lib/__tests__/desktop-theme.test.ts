@@ -1,7 +1,7 @@
 import { isTauri } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { subscribeDesktopTheme } from '@/lib/desktop-theme'
+let subscribeDesktopTheme: typeof import('@/lib/desktop-theme').subscribeDesktopTheme
 import { commands } from '@/lib/ipc'
 import type { DesktopThemeSnapshot } from '@/lib/ipc-bindings.generated'
 
@@ -15,7 +15,11 @@ const snapshot = (revision: number): DesktopThemeSnapshot => ({
   theme: { dark: true, variables: { '--background': '#2d353b' } },
 })
 
-beforeEach(() => vi.resetAllMocks())
+beforeEach(async () => {
+  vi.resetAllMocks()
+  vi.resetModules()
+  ;({ subscribeDesktopTheme } = await import('@/lib/desktop-theme'))
+})
 
 describe('desktop palette subscription', () => {
   it('does not access native APIs outside Tauri', () => {
@@ -84,4 +88,38 @@ it('refreshes the latest palette when a suspended window becomes visible again',
   dispose()
   document.dispatchEvent(new Event('visibilitychange'))
   expect(commands.getDesktopTheme).toHaveBeenCalledTimes(2)
+})
+
+it('replays the startup palette synchronously to the React theme owner', async () => {
+  vi.mocked(isTauri).mockReturnValue(true)
+  vi.mocked(listen).mockResolvedValue(vi.fn())
+  vi.mocked(commands.getDesktopTheme).mockResolvedValue(snapshot(3))
+  const first = vi.fn()
+  const dispose = subscribeDesktopTheme(first)
+  await vi.waitFor(() => expect(first).toHaveBeenCalledOnce())
+  dispose()
+  const next = vi.fn()
+  const disposeNext = subscribeDesktopTheme(next)
+  expect(next).toHaveBeenCalledWith(snapshot(3).theme, 12)
+  disposeNext()
+})
+
+it('settles startup without a desktop palette when querying fails', async () => {
+  vi.mocked(isTauri).mockReturnValue(true)
+  vi.mocked(listen).mockResolvedValue(vi.fn())
+  vi.mocked(commands.getDesktopTheme).mockRejectedValue(new Error('unavailable'))
+  const apply = vi.fn()
+  const dispose = subscribeDesktopTheme(apply)
+  await vi.waitFor(() => expect(apply).toHaveBeenCalledWith(null))
+  dispose()
+})
+
+it('still queries the initial palette when listener registration fails', async () => {
+  vi.mocked(isTauri).mockReturnValue(true)
+  vi.mocked(listen).mockRejectedValue(new Error('unavailable'))
+  vi.mocked(commands.getDesktopTheme).mockResolvedValue(snapshot(1))
+  const apply = vi.fn()
+  const dispose = subscribeDesktopTheme(apply)
+  await vi.waitFor(() => expect(apply).toHaveBeenCalledWith(snapshot(1).theme, 12))
+  dispose()
 })

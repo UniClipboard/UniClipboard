@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { subscribeDesktopTheme } from '@/lib/desktop-theme'
 import type { DesktopTheme } from '@/lib/desktop-theme'
 import { startThemeTransition } from '@/lib/theme-transition'
-import { createWindowThemeController } from '@/lib/window-theme'
+import { createWindowThemeController, initializeWindowTheme } from '@/lib/window-theme'
 import { makeBaseSettings } from '@/test/fixtures/settings'
 
 vi.mock('@/lib/desktop-theme', () => ({ subscribeDesktopTheme: vi.fn() }))
@@ -94,4 +94,16 @@ it('updates compositor rounding even when the manual palette is unchanged', () =
   receive(null, 0)
   expect(document.documentElement.style.getPropertyValue('--desktop-window-radius')).toBe('0px')
   controller.dispose()
+})
+
+it('waits for and applies the desktop palette before startup is ready', async () => {
+  const ready = vi.fn()
+  const initialization = initializeWindowTheme().then(ready)
+  await Promise.resolve()
+  expect(ready).not.toHaveBeenCalled()
+  expect(document.documentElement.style.getPropertyValue('--background')).toBe('')
+  receive(palette('#2d353b'))
+  await initialization
+  expect(document.documentElement.style.getPropertyValue('--background')).toBe('#2d353b')
+  expect(unsubscribe).toHaveBeenCalledOnce()
 })

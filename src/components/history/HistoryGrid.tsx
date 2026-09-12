@@ -2,11 +2,11 @@ import { Loader2, Search } from 'lucide-react'
 import React from 'react'
 import { useTranslation } from 'react-i18next'
 import { Virtuoso, type StateSnapshot, type VirtuosoHandle } from 'react-virtuoso'
-import { HistoryScroller, HistoryList } from '@/components/history/history-scroll-components'
+import { HistoryList } from '@/components/history/history-scroll-components'
 import HistoryGridRow from '@/components/history/HistoryGridRow'
 import type { DisplayClipboardItem } from '@/lib/clipboard-entry'
 
-const historyScrollComponents = { Scroller: HistoryScroller, List: HistoryList }
+const historyScrollComponents = { List: HistoryList }
 
 interface HistoryGridProps {
   items: DisplayClipboardItem[]

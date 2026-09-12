@@ -57,7 +57,6 @@ function renderWithTransfer(
     <Provider store={store}>
       <HistoryCard
         item={item}
-        isHovered={false}
         copySuccess={false}
         isDeleting={false}
         onCopy={noop}

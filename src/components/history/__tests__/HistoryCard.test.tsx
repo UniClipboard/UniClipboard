@@ -1,6 +1,5 @@
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { useState } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 import HistoryCard from '@/components/history/HistoryCard'
 import type { DisplayClipboardItem } from '@/lib/clipboard-entry'
@@ -30,7 +29,6 @@ function renderCard(item: DisplayClipboardItem) {
   render(
     <HistoryCard
       item={item}
-      isHovered={false}
       copySuccess={false}
       isDeleting={false}
       onCopy={noop}
@@ -45,29 +43,50 @@ function renderCard(item: DisplayClipboardItem) {
 function renderInteractiveCard(item: DisplayClipboardItem, onCopy = vi.fn()) {
   const onCardClick = vi.fn()
 
-  function InteractiveCard() {
-    const [hoveredId, setHoveredId] = useState<string | null>(item.id)
-
-    return (
-      <HistoryCard
-        item={item}
-        isHovered={hoveredId === item.id}
-        copySuccess={false}
-        isDeleting={false}
-        onCopy={onCopy}
-        onDelete={noop}
-        onToggleFavorite={noop}
-        onClick={onCardClick}
-        onHoverChange={setHoveredId}
-      />
-    )
-  }
-
-  render(<InteractiveCard />)
+  render(
+    <HistoryCard
+      item={item}
+      copySuccess={false}
+      isDeleting={false}
+      onCopy={onCopy}
+      onDelete={noop}
+      onToggleFavorite={noop}
+      onClick={onCardClick}
+      onHoverChange={noop}
+    />
+  )
+  fireEvent.mouseEnter(screen.getByTestId('history-card'))
   return { onCardClick, onCopy }
 }
 
 describe('HistoryCard', () => {
+  it('owns hover feedback and releases the shortcut target when virtualized away', () => {
+    const onHoverChange = vi.fn()
+    const { unmount } = render(
+      <HistoryCard
+        item={{ id: 'hover-entry', type: 'text', activeTime: 1, content: null }}
+        copySuccess={false}
+        isDeleting={false}
+        onCopy={noop}
+        onDelete={noop}
+        onToggleFavorite={noop}
+        onClick={noop}
+        onHoverChange={onHoverChange}
+      />
+    )
+    const card = screen.getByTestId('history-card')
+    const copyButton = screen.getByRole('button', { name: 'clipboard.item.actions.copy' })
+    fireEvent.mouseEnter(card)
+    expect(copyButton.parentElement).toHaveClass('opacity-100')
+    expect(onHoverChange).toHaveBeenLastCalledWith('hover-entry', true)
+    fireEvent.mouseLeave(card)
+    expect(copyButton.parentElement).toHaveClass('opacity-0')
+    expect(onHoverChange).toHaveBeenLastCalledWith('hover-entry', false)
+    fireEvent.mouseEnter(card)
+    unmount()
+    expect(onHoverChange).toHaveBeenLastCalledWith('hover-entry', false)
+  })
+
   it('shows code as a text card with a code tag', () => {
     renderCard({
       id: 'code-entry',

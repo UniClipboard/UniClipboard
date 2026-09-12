@@ -11,7 +11,6 @@ interface HistoryGridRowProps {
   /** Ids already mounted once; gates the one-shot entrance animation. */
   seenIds: Set<string>
   isActive: boolean
-  isHovered: boolean
   copySuccess: boolean
   isDeleting: boolean
   showDivider: boolean
@@ -20,7 +19,7 @@ interface HistoryGridRowProps {
   onDelete: (id: string) => void
   onToggleFavorite: (id: string, current: boolean) => void
   onClick: (id: string) => void
-  onHoverChange: (id: string | null) => void
+  onHoverChange: (id: string, hovered: boolean) => void
 }
 
 const HistoryGridRow: React.FC<HistoryGridRowProps> = React.memo(
@@ -28,7 +27,6 @@ const HistoryGridRow: React.FC<HistoryGridRowProps> = React.memo(
     item,
     seenIds,
     isActive,
-    isHovered,
     copySuccess,
     isDeleting,
     showDivider,
@@ -66,7 +64,6 @@ const HistoryGridRow: React.FC<HistoryGridRowProps> = React.memo(
         >
           <HistoryCard
             item={item}
-            isHovered={isHovered}
             copySuccess={copySuccess}
             isDeleting={isDeleting}
             onCopy={onCopy}

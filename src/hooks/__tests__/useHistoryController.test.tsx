@@ -131,6 +131,47 @@ describe('useHistoryController', () => {
     vi.clearAllMocks()
   })
 
+  it('updates the hovered shortcut target without rendering the page', () => {
+    let renders = 0
+    const { result } = renderHook(() => {
+      renders += 1
+      return useHistoryController()
+    })
+    const initialRenders = renders
+    act(() => result.current.handleHoverChange('entry-1', true))
+    act(() => result.current.handleHoverChange('entry-2', true))
+    act(() => result.current.handleHoverChange('entry-2', false))
+    expect(renders).toBe(initialRenders)
+  })
+
+  it('keeps hover shortcuts current and ignores releases from other rows', () => {
+    const { result, rerender } = renderHook(() => useHistoryController())
+    const deleteShortcut = () =>
+      vi
+        .mocked(useShortcut)
+        .mock.calls.map(([config]) => config)
+        .reverse()
+        .find(config => config.key === 'd')!
+    const requestDelete = result.current.requestDelete
+
+    act(() => result.current.handleHoverChange('entry-1', true))
+    act(() => result.current.handleHoverChange('entry-2', true))
+    act(() => result.current.handleHoverChange('entry-1', false))
+    act(() => deleteShortcut().handler())
+    expect(requestDelete).toHaveBeenCalledWith('entry-2')
+
+    vi.mocked(requestDelete).mockClear()
+    act(() => result.current.handleHoverChange('entry-2', false))
+    act(() => deleteShortcut().handler())
+    expect(requestDelete).not.toHaveBeenCalled()
+
+    act(() => result.current.handleHoverChange('entry-2', true))
+    historyDataState.baseItems = [items[0]]
+    rerender()
+    act(() => deleteShortcut().handler())
+    expect(result.current.requestDelete).not.toHaveBeenCalled()
+  })
+
   it('persists the selected history entry as soon as selection changes', async () => {
     writeHistorySessionSnapshot({
       searchState: {

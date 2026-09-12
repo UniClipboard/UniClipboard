@@ -114,6 +114,14 @@ git submodule update --init --recursive
 bun tauri:dev
 ```
 
+React Grab 默认关闭，避免组件检查工具影响滚动性能。需要选取界面元素并复制组件位置时，在启动开发服务前显式启用：
+
+```bash
+VITE_REACT_GRAB=1 bun tauri:dev
+```
+
+也可以在本地 `.env.local` 中设置 `VITE_REACT_GRAB=1` 后重启开发服务。性能排查时应关闭；发行包始终不加载该工具。
+
 如果要在本机调试 P2P 同步，可以同时运行两个相互隔离的实例：
 
 ```bash

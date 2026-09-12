@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <script type="module">
-      if (import.meta.env.DEV) {
+      if (import.meta.env.DEV && import.meta.env.VITE_REACT_GRAB === '1') {
         import('react-grab')
         import('@react-grab/mcp/client')
       }

@@ -288,6 +288,25 @@ impl DaemonApiState {
     /// peer 都重新发起一次 iroh 拨号——在线 peer 拨号成功后丢弃新连接保留
     /// 旧的；离线 peer 拨号失败会立刻 `broadcast(Offline)`，进而触发
     /// `peers.changed` 推送、前端重拉 `/paired-devices`、UI 切灰。
+    pub async fn notify_connectivity_opportunity(
+        &self,
+        reason: uc_daemon_contract::api::dto::device::ConnectivityOpportunity,
+    ) -> anyhow::Result<()> {
+        use uc_daemon_contract::api::dto::device::ConnectivityOpportunity as Reason;
+        let reason = match reason {
+            Reason::Foreground => uc_engine::ConnectivityOpportunity::Foreground,
+            Reason::SystemWake => uc_engine::ConnectivityOpportunity::SystemWake,
+            Reason::NetworkChanged => uc_engine::ConnectivityOpportunity::NetworkChanged,
+        };
+        match self
+            .execute(Operation::NotifyConnectivityOpportunity { reason })
+            .await?
+        {
+            OperationResult::ConnectivityOpportunityAccepted => Ok(()),
+            _ => anyhow::bail!("engine returned an unexpected connectivity result"),
+        }
+    }
+
     pub async fn refresh_presence(&self) -> anyhow::Result<PresenceRefreshResponse> {
         let result = self.execute(Operation::RefreshPeerConnections).await?;
         let OperationResult::PeerConnectionsRefreshed(report) = result else {

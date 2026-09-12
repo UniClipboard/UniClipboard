@@ -11,6 +11,9 @@
 //! `ApiErrorResponse`. There are no bespoke `{data,ts}` wrapper structs anymore
 //! (per §0.1 — they were deleted by the per-domain P2 agents).
 
+use uc_daemon_contract::api::dto::device::{
+    ConnectivityOpportunity, ConnectivityOpportunityRequest,
+};
 use utoipa::{Modify, OpenApi};
 
 // ── Payload + request DTOs referenced by the enveloped aliases ──────────────
@@ -248,6 +251,7 @@ impl Modify for ContractMeta {
         crate::api::routes::peers,
         crate::api::routes::paired_devices,
         crate::api::routes::refresh_presence,
+        crate::api::routes::notify_connectivity_opportunity,
         crate::api::routes::network_recovery_status,
         crate::api::routes::recover_network,
         crate::api::ws::router,
@@ -267,6 +271,8 @@ impl Modify for ContractMeta {
         schemas(
             // ── canonical error body ───────────────────────────────
             ApiErrorResponse,
+            ConnectivityOpportunity,
+            ConnectivityOpportunityRequest,
             // ── clipboard: enveloped aliases ───────────────────────
             ListEntriesEnvelope,
             EntryDetailEnvelope,
@@ -681,6 +687,7 @@ mod assembly_smoke_tests {
         // Engine-owned space protection adds GET /member/protection and the
         // device-group migration replaces the former query and decision paths
         // with GET and POST on one resource: 75 paths / 84 operations.
+        // Connectivity opportunities add one path and operation: 76 / 85.
         const HTTP_METHODS: [&str; 7] =
             ["get", "put", "post", "delete", "patch", "head", "options"];
         let paths = value
@@ -689,8 +696,8 @@ mod assembly_smoke_tests {
             .expect("OpenAPI doc must declare paths");
         assert_eq!(
             paths.len(),
-            75,
-            "expected exactly 75 path templates, found {}: {:?}",
+            76,
+            "expected exactly 76 path templates, found {}: {:?}",
             paths.len(),
             paths.keys().collect::<Vec<_>>()
         );
@@ -704,8 +711,8 @@ mod assembly_smoke_tests {
             })
             .sum();
         assert_eq!(
-            operation_count, 84,
-            "expected exactly 84 operations across all paths, found {operation_count}"
+            operation_count, 85,
+            "expected exactly 85 operations across all paths, found {operation_count}"
         );
 
         // A few frozen operationIds (§D) must be present somewhere in the doc.

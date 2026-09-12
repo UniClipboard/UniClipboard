@@ -2,11 +2,11 @@ import { act, render, screen, waitFor } from '@testing-library/react'
 import { createRef } from 'react'
 import { Virtuoso, VirtuosoMockContext, type VirtuosoHandle } from 'react-virtuoso'
 import { describe, expect, it, vi } from 'vitest'
-import { HistoryList } from '@/components/history/history-scroll-components'
+import { HistoryScroller, HistoryList } from '@/components/history/history-scroll-components'
 
-const historyScrollComponents = { List: HistoryList }
+const historyScrollComponents = { Scroller: HistoryScroller, List: HistoryList }
 
-describe('history native scrolling', () => {
+describe('history overlay scrolling', () => {
   it('keeps virtualized navigation attached to the actual scrolling viewport', async () => {
     const ref = createRef<VirtuosoHandle>()
     let scroller: HTMLElement | null = null

@@ -57,6 +57,16 @@ impl SecureStorageProvider for FileSecureStorage {
     }
 
     fn set(&self, key: &str, value: &[u8]) -> Result<(), SecureStorageError> {
+        let mut directory = fs::DirBuilder::new();
+        directory.recursive(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::DirBuilderExt;
+            directory.mode(0o700);
+        }
+        directory
+            .create(&self.base_dir)
+            .map_err(|err| Self::map_io_error("failed to create secure storage directory", err))?;
         let path = self.file_path(key);
         let temp_path = path.with_extension("tmp");
         fs::write(&temp_path, value)

@@ -15,10 +15,11 @@ pub(crate) struct DesktopHostPaths {
     pub(crate) logs_dir: PathBuf,
     pub(crate) cache_dir: PathBuf,
     pub(crate) app_data_root_dir: PathBuf,
+    pub(crate) upgrade_backups_dir: PathBuf,
 }
 
 impl DesktopHostPaths {
-    fn from_app_dirs(dirs: AppDirs) -> Self {
+    fn from_app_dirs(dirs: AppDirs, upgrade_backups_dir: PathBuf) -> Self {
         let cache_dir = if dirs.app_cache_root == dirs.app_data_root {
             dirs.app_data_root.join("cache")
         } else {
@@ -32,6 +33,7 @@ impl DesktopHostPaths {
             logs_dir: dirs.app_log_dir,
             cache_dir,
             app_data_root_dir: dirs.app_data_root,
+            upgrade_backups_dir,
         }
     }
 
@@ -41,8 +43,12 @@ impl DesktopHostPaths {
 }
 
 pub(crate) fn resolve_desktop_host_paths() -> WiringResult<DesktopHostPaths> {
+    let upgrade_backups_dir = uc_app_paths::app_upgrade_backup_root(uc_platform::default_profile())
+        .ok_or_else(|| {
+            WiringError::ConfigInit("durable upgrade backup directory unavailable".into())
+        })?;
     DirsAppDirsAdapter::new()
         .get_app_dirs()
-        .map(DesktopHostPaths::from_app_dirs)
+        .map(|dirs| DesktopHostPaths::from_app_dirs(dirs, upgrade_backups_dir))
         .map_err(|error| WiringError::ConfigInit(error.to_string()))
 }

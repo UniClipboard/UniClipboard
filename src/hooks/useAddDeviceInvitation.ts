@@ -38,10 +38,12 @@ export function useAddDeviceInvitation({
   open,
   onOpenChange,
   onSuccess,
+  active = open,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   onSuccess?: () => void
+  active?: boolean
 }) {
   const { t } = useTranslation()
   const [state, update] = useReducer(
@@ -179,10 +181,10 @@ export function useAddDeviceInvitation({
   // Keep the close timer stable across parent renders.
   const closeDialog = useEffectEvent(() => onOpenChange(false))
   useEffect(() => {
-    if (step !== 'success') return
+    if (step !== 'success' || !active) return
     const id = setTimeout(() => closeDialog(), SUCCESS_AUTO_CLOSE_MS)
     return () => clearTimeout(id)
-  }, [step])
+  }, [step, active])
 
   const remaining = invitation ? Math.max(0, invitation.expiresAtMs - now) : 0
   const expired = invitation && step === 'invitation' ? remaining <= 0 : false

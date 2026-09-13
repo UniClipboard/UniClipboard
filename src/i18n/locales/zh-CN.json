@@ -1413,6 +1413,17 @@
       "message": "剪贴板同步已暂停，所有设备当前均不会同步内容。",
       "goToSettings": "前往设置"
     },
+    "connectMobile": {
+      "title": "连接手机",
+      "method": "同步方式",
+      "regular": "常规同步",
+      "direct": "设备直连",
+      "experimental": "实验性",
+      "regularDescription": "在同一局域网内，通过连接配置与手机同步剪贴板。",
+      "directDescription": "使用邀请码配对，让手机作为空间设备直接同步剪贴板。",
+      "loadFailed": "无法读取同步设置，请重试。",
+      "enableFailed": "无法开启常规同步，请检查设置后重试。"
+    },
     "mobileSync": {
       "title": "局域网移动同步",
       "description": "通过 SyncClipboard 协议在局域网内与移动设备（iOS / Android）同步剪贴板",

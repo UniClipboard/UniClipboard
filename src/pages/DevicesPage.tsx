@@ -16,8 +16,8 @@ import {
   type RegisterMobileDeviceResult,
 } from '@/api/tauri-command/mobile_sync'
 import AddDeviceDialog from '@/components/device/AddDeviceDialog'
-import AddMobileSyncDeviceDialog from '@/components/device/AddMobileSyncDeviceDialog'
 import { derivePeerStatusTone } from '@/components/device/connection-channel-utils'
+import ConnectMobileDialog from '@/components/device/ConnectMobileDialog'
 import {
   buildDeviceTrustListView,
   getDeviceTrustStatus,
@@ -25,7 +25,6 @@ import {
 } from '@/components/device/device-trust-view'
 import DeviceListFooter from '@/components/device/DeviceListFooter'
 import DeviceListItem from '@/components/device/DeviceListItem'
-import EnableMobileSyncDialog from '@/components/device/EnableMobileSyncDialog'
 import LocalDeviceListItem from '@/components/device/LocalDeviceListItem'
 import LocalDevicePanel from '@/components/device/LocalDevicePanel'
 import MobileDevicePanel from '@/components/device/MobileDevicePanel'
@@ -219,7 +218,6 @@ const DevicesPage: React.FC = () => {
     settings: mobileSettings,
     addDialogOpen,
     settingsSheetOpen,
-    enableConfirmOpen,
     revokeTarget,
     revokeBusy,
     actions: mobileActions,
@@ -609,15 +607,19 @@ const DevicesPage: React.FC = () => {
         onOpenChange={mobileActions.setSettingsSheetOpen}
         onSettingsChange={mobileActions.setSettings}
       />
-      <EnableMobileSyncDialog
-        open={enableConfirmOpen}
-        onOpenChange={mobileActions.setEnableConfirmOpen}
-        onSuccess={mobileActions.handleEnableSuccess}
-      />
-      <AddMobileSyncDeviceDialog
+      <ConnectMobileDialog
         open={addDialogOpen}
         onOpenChange={mobileActions.setAddDialogOpen}
-        onSuccess={result => {
+        onSettingsChange={mobileActions.setSettings}
+        onConfigure={() => {
+          mobileActions.setAddDialogOpen(false)
+          mobileActions.openSettings()
+        }}
+        onDirectSuccess={() => {
+          dispatch(fetchSpaceMembers())
+          dispatch(fetchSpaceProtection())
+        }}
+        onMobileSuccess={result => {
           // Retire the credential modal: refresh the list, select the new
           // device, and hand its one-time credentials to the panel's fresh
           // state (pairing QR + credentials + install helper) inline.
@@ -746,19 +748,16 @@ interface UseMobileDevicesReturn {
   settings: MobileSyncSettingsView | null
   addDialogOpen: boolean
   settingsSheetOpen: boolean
-  enableConfirmOpen: boolean
   revokeTarget: MobileDeviceView | null
   revokeBusy: boolean
   actions: {
     reload: () => void
     handleAddClick: () => void
-    handleEnableSuccess: () => void
     handleRevokeConfirm: () => Promise<void>
     requestRevoke: (device: MobileDeviceView) => void
     clearRevokeTarget: () => void
     setAddDialogOpen: (open: boolean) => void
     setSettingsSheetOpen: (open: boolean) => void
-    setEnableConfirmOpen: (open: boolean) => void
     setSettings: (settings: MobileSyncSettingsView | null) => void
     openSettings: () => void
   }
@@ -773,7 +772,6 @@ const useMobileDevices = (): UseMobileDevicesReturn => {
 
   const [settingsSheetOpen, setSettingsSheetOpen] = useState(false)
   const [addDialogOpen, setAddDialogOpen] = useState(false)
-  const [enableConfirmOpen, setEnableConfirmOpen] = useState(false)
 
   const [revokeTarget, setRevokeTarget] = useState<MobileDeviceView | null>(null)
   const [revokeBusy, setRevokeBusy] = useState(false)
@@ -791,10 +789,7 @@ const useMobileDevices = (): UseMobileDevicesReturn => {
     }
   }, [translate])
 
-  // Preload settings on first render: the add flow's gating (enable
-  // confirm / bind-error hard block) reads settings.enabled and
-  // settings.lanListenerError, which are otherwise only refreshed when
-  // the settings dialog opens.
+  // Preload settings for the selected mobile device panel.
   useEffect(() => {
     void reload()
     getMobileSyncSettings()
@@ -805,24 +800,6 @@ const useMobileDevices = (): UseMobileDevicesReturn => {
   }, [reload])
 
   const handleAddClick = useCallback(() => {
-    // A failed LAN bind is a hard block: without a listener no mobile
-    // device can connect, so adding one is pointless.
-    if (settings?.lanListenerError) {
-      toast.error(
-        t('devices.mobileSync.statusBar.bindFailed', { reason: settings.lanListenerError })
-      )
-      return
-    }
-    // First-run path: mobile sync or the LAN listener is off, walk the
-    // user through the enable confirm before the add dialog.
-    if (!settings?.enabled || !settings?.lanListenEnabled) {
-      setEnableConfirmOpen(true)
-      return
-    }
-    setAddDialogOpen(true)
-  }, [settings, t])
-
-  const handleEnableSuccess = useCallback(() => {
     setAddDialogOpen(true)
   }, [])
 
@@ -848,19 +825,16 @@ const useMobileDevices = (): UseMobileDevicesReturn => {
     settings,
     addDialogOpen,
     settingsSheetOpen,
-    enableConfirmOpen,
     revokeTarget,
     revokeBusy,
     actions: {
       reload: () => void reload(),
       handleAddClick,
-      handleEnableSuccess,
       handleRevokeConfirm,
       requestRevoke: setRevokeTarget,
       clearRevokeTarget: () => setRevokeTarget(null),
       setAddDialogOpen,
       setSettingsSheetOpen,
-      setEnableConfirmOpen,
       setSettings,
       openSettings: () => setSettingsSheetOpen(true),
     },

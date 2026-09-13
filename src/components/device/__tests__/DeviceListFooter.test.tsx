@@ -15,8 +15,8 @@ describe('DeviceListFooter', () => {
         onAddMobile={onAddMobile}
       />
     )
-    expect(screen.getByRole('button', { name: 'devices.panel.addMenu.mobile' })).toBeVisible()
-    await user.click(screen.getByRole('button', { name: 'devices.panel.addMenu.mobile' }))
+    expect(screen.getByRole('button', { name: 'devices.connectMobile.title' })).toBeVisible()
+    await user.click(screen.getByRole('button', { name: 'devices.connectMobile.title' }))
     expect(onAddMobile).toHaveBeenCalledTimes(1)
     expect(
       screen.queryByRole('button', { name: 'devices.mobileSync.configure' })

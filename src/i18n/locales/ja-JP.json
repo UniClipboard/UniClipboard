@@ -1414,6 +1414,17 @@
       "message": "クリップボードの同期は一時停止されています。現在、すべてのデバイスが同期していません。",
       "goToSettings": "設定に移動"
     },
+    "connectMobile": {
+      "title": "スマートフォンを接続",
+      "method": "同期方法",
+      "regular": "通常の同期",
+      "direct": "デバイス直接接続",
+      "experimental": "試験的",
+      "regularDescription": "同じローカルネットワーク内で、接続設定を使ってスマートフォンとクリップボードを同期します。",
+      "directDescription": "招待コードでペアリングし、スペース内のデバイスとしてスマートフォンと直接同期します。",
+      "loadFailed": "同期設定を読み込めませんでした。再試行してください。",
+      "enableFailed": "通常の同期を有効にできませんでした。設定を確認して再試行してください。"
+    },
     "mobileSync": {
       "title": "LANモバイル同期",
       "description": "SyncClipboard プロトコルを使用して LAN 経由でクリップボードをモバイル デバイス (iOS / Android) と同期します",

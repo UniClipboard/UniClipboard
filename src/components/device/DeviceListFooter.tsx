@@ -35,8 +35,8 @@ export default function DeviceListFooter({
           variant="outline"
           size="icon-sm"
           className="shrink-0 bg-card text-muted-foreground shadow-none"
-          aria-label={t('devices.panel.addMenu.mobile')}
-          title={t('devices.panel.addMenu.mobile')}
+          aria-label={t('devices.connectMobile.title')}
+          title={t('devices.connectMobile.title')}
           onClick={onAddMobile}
         >
           <Smartphone className="size-3.5" />

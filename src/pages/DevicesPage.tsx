@@ -510,7 +510,6 @@ const DevicesPage: React.FC = () => {
           onAddDevice={() => setAddP2PDialogOpen(true)}
           onSwitchSpace={() => setSwitchSpaceOpen(true)}
           onAddMobile={mobileActions.handleAddClick}
-          onMobileSettings={mobileActions.openSettings}
         />
       </aside>
 

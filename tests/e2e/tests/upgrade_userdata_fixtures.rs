@@ -16,6 +16,11 @@ fn v0193_fixture_directory() -> PathBuf {
         .join("fixtures/upgrades/v0.19.3/macos-aarch64/single-node-mixed-content")
 }
 
+fn v0193_large_history_fixture_directory() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("fixtures/upgrades/v0.19.3/macos-aarch64/single-node-5000-records")
+}
+
 #[test]
 fn tracked_v0193_source_fixture_validates_and_extracts() {
     let fixture = UpgradeUserdataFixture::load(v0193_fixture_directory()).unwrap();
@@ -35,6 +40,26 @@ fn tracked_v0193_source_fixture_validates_and_extracts() {
         .join("iroh-identity_dev-v0193-source-fixture")
         .is_dir());
     assert!(data.join("iroh-blobs_dev-v0193-source-fixture").is_dir());
+}
+
+#[test]
+fn tracked_v0193_large_history_fixture_validates_and_extracts() {
+    let fixture = UpgradeUserdataFixture::load(v0193_large_history_fixture_directory()).unwrap();
+    assert_eq!(fixture.manifest().source_version, "0.19.3");
+    assert_eq!(fixture.manifest().scenario, "single-node-5000-records");
+
+    let restored = tempfile::tempdir().unwrap();
+    let data = restored.path().join("data");
+    let cache = restored.path().join("cache");
+    fixture
+        .restore_into(&data, &cache, "dev-v0193-large-history")
+        .unwrap();
+
+    assert!(data.join("uniclipboard.db").is_file());
+    assert!(data.join("uniclipboard.db-wal").is_file());
+    assert!(!data.join("uniclipboard.db-shm").exists());
+    assert!(data.join("iroh-identity_dev-v0193-large-history").is_dir());
+    assert!(data.join("iroh-blobs_dev-v0193-large-history").is_dir());
 }
 
 #[test]

@@ -18,12 +18,22 @@ pub struct UpgradeUserdataManifest {
     format_version: u16,
     pub source_version: String,
     pub source_asset_sha256: String,
+    source_kind: Option<String>,
+    source_commit: Option<String>,
+    source_binaries: Option<SourceBinaries>,
     pub platform: String,
     pub scenario: String,
     pub environment: String,
     archive: String,
     archive_sha256: String,
     files: Vec<UpgradeUserdataFile>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SourceBinaries {
+    cli_sha256: String,
+    daemon_sha256: String,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -130,6 +140,19 @@ impl UpgradeUserdataManifest {
         {
             return Err("upgrade userdata manifest is invalid".to_string());
         }
+        match self.source_kind.as_deref() {
+            None if is_sha256(&self.source_asset_sha256)
+                && self.source_commit.is_none()
+                && self.source_binaries.is_none() => {}
+            Some("source-build")
+                if self.source_asset_sha256.is_empty()
+                    && self.source_commit.as_deref().is_some_and(is_git_commit)
+                    && self.source_binaries.as_ref().is_some_and(|binaries| {
+                        is_sha256(&binaries.cli_sha256)
+                            && is_sha256(&binaries.daemon_sha256)
+                    }) => {}
+            _ => return Err("upgrade userdata source provenance is invalid".to_string()),
+        }
         let mut paths = BTreeSet::new();
         let mut total_size = 0_u64;
         for file in &self.files {
@@ -166,6 +189,10 @@ impl UpgradeUserdataManifest {
         }
         Ok(())
     }
+}
+
+fn is_git_commit(value: &str) -> bool {
+    value.len() == 40 && value.bytes().all(|byte| byte.is_ascii_hexdigit())
 }
 
 fn read_archive_files(archive: &[u8]) -> Result<BTreeMap<PathBuf, Vec<u8>>, String> {

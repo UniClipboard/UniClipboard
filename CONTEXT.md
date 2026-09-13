@@ -41,6 +41,14 @@ _Avoid_: device name、machine id、peer id
 活跃成员。
 _Avoid_: peer、trusted peer、user
 
+**Regular sync**：
+移动端连接弹窗中默认选择的「常规同步」，通过 SyncClipboard 兼容通道和连接配置同步剪贴板；
+该连接方式本身不会使手机成为 **SpaceMember**。
+
+**Direct device sync**：
+移动端连接弹窗中的「设备直连」，使用邀请码让手机加入 Space，并作为成员设备同步；
+当前界面标记为实验性。
+
 **Durable admission**：
 Engine 持久拥有的一次加入 Space 尝试，以稳定 `join_id` 标识，结果只能是等待中、已生效或
 被拒绝；取消请求也作为该尝试的持久事实。等待中的设备尚不是 **SpaceMember**，只能在
@@ -181,7 +189,7 @@ UUID，不过线）；全序键是 `(activated_at_ms, activated_by)` 二元组�
 transient 的。它是「当前活跃剪贴板」的 **唯一 SoT**：本机每个改变 OS 剪贴板内容的
 事件（capture / restore / mobile push / 入站内容 apply / 入站 state apply）都在末端
 更新它；但 **只有 restore 与 mobile-push 会广播指针**（restore 受 `sync_on_restore`
-门控），新复制靠现有内容 dispatch 收敛、不另发指针。手机（pull-only、非 iroh peer）
+门控），新复制靠现有内容 dispatch 收敛、不另发指针。常规同步的兼容客户端（pull-only、非 iroh peer）
 不被推送，而是由桌面把 register 指向的 entry 作为 `GET /SyncClipboard.json` 的应答。
 _Avoid_: content sync、eventual consistency（指内容）、broadcast log
 
@@ -319,7 +327,7 @@ _Avoid_: lazy hash、pending entry、async capture
   后缀**（`photos (2)/`），树内部原封不动；重发的重建视为新投递、新建后缀目录，
   不合并、不覆盖
 - 相对路径落盘做穿越防护（拒 `..`、绝对路径、越界）
-- 手机端（pull-only）不消费文件集 entry：register 指向它时，`GET
+- 常规同步的兼容客户端（pull-only）不消费文件集 entry：register 指向它时，`GET
   /SyncClipboard.json` 保持上一个手机可消费的值不变
 - 目录支持以 dedup 计划的 `entry_file_set` 表先落地为前置（目录成员 = 带
   `(root_index, relative_path)` 的行），不另建平行 schema

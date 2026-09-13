@@ -31,3 +31,30 @@ pub struct ClearCacheRequest {
 pub struct ClearCacheResponse {
     pub freed_bytes: u64,
 }
+
+/// One completed pre-upgrade profile backup.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct UpgradeBackupDto {
+    pub id: String,
+    pub created_at_ms: u64,
+    pub source_product: Option<String>,
+    pub source_engine: Option<String>,
+    pub target_product: String,
+    pub target_engine: String,
+    pub size_bytes: u64,
+}
+
+/// Request payload for deleting a pre-upgrade backup.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct DeleteUpgradeBackupRequest {
+    pub confirmed: bool,
+}
+
+/// Response payload after deleting a pre-upgrade backup.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct DeleteUpgradeBackupResponse {
+    pub id: String,
+}

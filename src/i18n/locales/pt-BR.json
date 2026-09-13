@@ -703,6 +703,25 @@
           "description": "Abrir a pasta onde os dados do aplicativo são armazenados",
           "button": "Abrir no gerenciador de arquivos"
         },
+        "upgradeBackups": {
+          "label": "Backups de atualização",
+          "description": "Um backup é criado antes de atualizar os dados. Os 5 mais recentes são mantidos e os mais antigos são removidos.",
+          "count": "{{count}} de 5 backups salvos",
+          "loading": "Carregando backups…",
+          "loadFailed": "Não foi possível carregar os backups.",
+          "retry": "Tentar novamente",
+          "empty": "Ainda não há backups de atualização.",
+          "unknownVersion": "Versão desconhecida",
+          "versionChange": "Versão {{source}} → {{target}}",
+          "deleteLabel": "Excluir backup de {{date}}",
+          "confirmTitle": "Excluir este backup?",
+          "confirmDescription": "A exclusão é permanente. Seus dados atuais não serão alterados.",
+          "cancel": "Cancelar",
+          "delete": "Excluir backup",
+          "deleting": "Excluindo…",
+          "deleted": "Backup excluído",
+          "deleteFailed": "Falha ao excluir o backup"
+        },
         "configBackup": {
           "label": "Backup e migração das configurações",
           "export": {

@@ -703,6 +703,25 @@
           "description": "アプリケーション データが保存されているフォルダを開きます",
           "button": "ファイル マネージャーで開きます"
         },
+        "upgradeBackups": {
+          "label": "アップグレードバックアップ",
+          "description": "データのアップグレード前に自動でバックアップします。最新の5件を保持し、古いものは自動で削除します。",
+          "count": "{{count}} / 5 件を保存中",
+          "loading": "バックアップを読み込んでいます…",
+          "loadFailed": "バックアップを読み込めませんでした。",
+          "retry": "再試行",
+          "empty": "アップグレードバックアップはまだありません。",
+          "unknownVersion": "不明なバージョン",
+          "versionChange": "バージョン {{source}} → {{target}}",
+          "deleteLabel": "{{date}} のバックアップを削除",
+          "confirmTitle": "このバックアップを削除しますか？",
+          "confirmDescription": "削除後は復元できません。現在のデータには影響しません。",
+          "cancel": "キャンセル",
+          "delete": "削除",
+          "deleting": "削除中…",
+          "deleted": "バックアップを削除しました",
+          "deleteFailed": "バックアップを削除できませんでした"
+        },
         "configBackup": {
           "label": "設定のバックアップと移行",
           "export": {

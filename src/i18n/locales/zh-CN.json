@@ -703,6 +703,25 @@
           "description": "打开应用数据存储所在的文件夹",
           "button": "在文件管理器中打开"
         },
+        "upgradeBackups": {
+          "label": "升级备份",
+          "description": "资料升级前会自动生成备份。系统最多保留最新 5 份，较旧的会自动删除。",
+          "count": "已保留 {{count}} / 5 份",
+          "loading": "正在读取备份…",
+          "loadFailed": "暂时无法读取备份。",
+          "retry": "重试",
+          "empty": "还没有升级备份。",
+          "unknownVersion": "未知版本",
+          "versionChange": "版本 {{source}} → {{target}}",
+          "deleteLabel": "删除 {{date}} 的备份",
+          "confirmTitle": "删除这份升级备份？",
+          "confirmDescription": "删除后无法恢复，但不会影响当前资料。",
+          "cancel": "取消",
+          "delete": "删除备份",
+          "deleting": "正在删除…",
+          "deleted": "备份已删除",
+          "deleteFailed": "删除备份失败"
+        },
         "configBackup": {
           "label": "配置备份与迁移",
           "export": {

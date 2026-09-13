@@ -48,7 +48,9 @@ use crate::api::dto::settings::{
     RelayCredentialStatusDto, RelayProbeOutcomeDto, RelaySaveResultDto, SettingsDto,
     SettingsUpdateResultDto,
 };
-use crate::api::dto::storage::{ClearCacheResponse, StorageStatsDto};
+use crate::api::dto::storage::{
+    ClearCacheResponse, DeleteUpgradeBackupResponse, StorageStatsDto, UpgradeBackupDto,
+};
 use crate::api::dto::upgrade::{AckUpgradePayload, UpgradeStatusDto};
 use crate::api::dto::v2::setup::{
     InitializeSpaceResponse, IssueInvitationResponse, JoinSpaceResponse, SetupStateResponse,
@@ -137,6 +139,8 @@ use crate::api::types::{
     // ── storage ────────────────────────────────────────────────────
     StorageStatsEnvelope = ApiEnvelope<StorageStatsDto>,
     ClearCacheEnvelope = ApiEnvelope<ClearCacheResponse>,
+    UpgradeBackupListEnvelope = ApiEnvelope<Vec<UpgradeBackupDto>>,
+    DeleteUpgradeBackupEnvelope = ApiEnvelope<DeleteUpgradeBackupResponse>,
     // ── config migration (export / import preview / import staging) ──
     ExportConfigEnvelope = ApiEnvelope<ExportConfigResponse>,
     PreviewImportEnvelope = ApiEnvelope<PreviewImportResponse>,

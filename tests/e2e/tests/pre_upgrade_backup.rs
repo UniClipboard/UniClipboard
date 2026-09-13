@@ -259,3 +259,109 @@ async fn v0193_upgrade_backs_up_and_preserves_5000_history_records() {
         .await
         .expect("stop upgraded large-history daemon");
 }
+
+#[tokio::test]
+#[ignore]
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+async fn upgrade_backup_list_supports_confirmed_manual_deletion() {
+    let fixture = UpgradeUserdataFixture::load(fixture_directory()).expect("load v0.19.3 fixture");
+    let expected: Value = serde_json::from_slice(
+        &std::fs::read(fixture_directory().join("expected.json")).expect("read expectations"),
+    )
+    .expect("decode expectations");
+    let passphrase = expected["passphrase"]
+        .as_str()
+        .expect("expected fixture passphrase");
+    let expected_id = expected["records"][0]["id"]
+        .as_str()
+        .expect("expected history record id");
+    let profile = TestProfile::for_upgrade_fixture(&format!(
+        "dev-upgrade-backup-manage-v0193-{}",
+        uuid::Uuid::new_v4().as_simple()
+    ))
+    .expect("create isolated profile");
+    fixture
+        .restore_into(profile.data_dir(), profile.cache_dir(), &profile.name)
+        .expect("restore v0.19.3 fixture");
+
+    let mut daemon = TestDaemon::start_preserving_with(profile, &NodeBinarySet::current(), None)
+        .await
+        .expect("start current daemon on v0.19.3 data");
+    let client = reqwest::Client::new();
+    let session = get_session_token(&daemon, &client).await;
+    let authorization = format!("Session {session}");
+
+    let list = client
+        .get(format!("{}/storage/upgrade-backups", daemon.base_url()))
+        .header("Authorization", &authorization)
+        .send()
+        .await
+        .expect("list upgrade backups");
+    assert!(list.status().is_success());
+    let list: Value = list.json().await.expect("decode upgrade backup list");
+    let backups = list["data"].as_array().expect("upgrade backup array");
+    assert_eq!(backups.len(), 1);
+    assert_eq!(backups[0]["sourceProduct"], "0.19.3");
+    assert!(backups[0]["sizeBytes"].as_u64().is_some_and(|size| size > 0));
+    let backup_id = backups[0]["id"].as_str().expect("backup id");
+
+    let rejected = client
+        .delete(format!(
+            "{}/storage/upgrade-backups/{backup_id}",
+            daemon.base_url()
+        ))
+        .header("Authorization", &authorization)
+        .json(&serde_json::json!({ "confirmed": false }))
+        .send()
+        .await
+        .expect("reject unconfirmed backup deletion");
+    assert_eq!(rejected.status(), reqwest::StatusCode::BAD_REQUEST);
+
+    let deleted = client
+        .delete(format!(
+            "{}/storage/upgrade-backups/{backup_id}",
+            daemon.base_url()
+        ))
+        .header("Authorization", &authorization)
+        .json(&serde_json::json!({ "confirmed": true }))
+        .send()
+        .await
+        .expect("delete upgrade backup");
+    assert!(deleted.status().is_success());
+
+    let after = client
+        .get(format!("{}/storage/upgrade-backups", daemon.base_url()))
+        .header("Authorization", &authorization)
+        .send()
+        .await
+        .expect("list backups after deletion");
+    let after: Value = after.json().await.expect("decode empty backup list");
+    assert!(after["data"].as_array().is_some_and(Vec::is_empty));
+
+    let unlock = client
+        .post(format!(
+            "{}/encryption/unlock-with-passphrase",
+            daemon.base_url()
+        ))
+        .header("Authorization", &authorization)
+        .json(&serde_json::json!({ "passphrase": passphrase }))
+        .send()
+        .await
+        .expect("unlock after backup deletion");
+    assert!(unlock.status().is_success());
+    let history = client
+        .get(format!("{}/clipboard/entries?limit=100", daemon.base_url()))
+        .header("Authorization", &authorization)
+        .send()
+        .await
+        .expect("read history after backup deletion");
+    let history: Value = history.json().await.expect("decode history after deletion");
+    assert!(history["data"]
+        .as_array()
+        .is_some_and(|entries| entries.iter().any(|entry| entry["id"] == expected_id)));
+
+    daemon
+        .stop_gracefully()
+        .await
+        .expect("stop upgraded daemon cleanly");
+}

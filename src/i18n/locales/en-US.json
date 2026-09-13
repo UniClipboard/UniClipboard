@@ -703,6 +703,25 @@
           "description": "Open the folder where application data is stored",
           "button": "Open in file manager"
         },
+        "upgradeBackups": {
+          "label": "Upgrade backups",
+          "description": "A backup is created before a data upgrade. The latest 5 are kept automatically, and older ones are removed.",
+          "count": "{{count}} of 5 backups",
+          "loading": "Loading backups…",
+          "loadFailed": "Backups could not be loaded.",
+          "retry": "Retry",
+          "empty": "No upgrade backups yet.",
+          "unknownVersion": "Unknown version",
+          "versionChange": "Version {{source}} → {{target}}",
+          "deleteLabel": "Delete backup from {{date}}",
+          "confirmTitle": "Delete this upgrade backup?",
+          "confirmDescription": "This removes the backup permanently. Your current data will not be changed.",
+          "cancel": "Cancel",
+          "delete": "Delete backup",
+          "deleting": "Deleting…",
+          "deleted": "Backup deleted",
+          "deleteFailed": "Failed to delete backup"
+        },
         "configBackup": {
           "label": "Config backup & migration",
           "export": {

@@ -459,6 +459,43 @@ export type DebugStatusEnvelope = {
 };
 
 /**
+ * Canonical success envelope: `{ "data": T, "ts": <unix millis i64> }`.
+ *
+ * `ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler
+ * via [`ApiEnvelope::now`] (the contract carries only the type + the clock
+ * helper, not a hard dependency on when the handler reads the clock).
+ * `rename_all = "camelCase"` is a no-op for the single-word fields here but is
+ * declared for forward-compat.
+ *
+ * IMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named
+ * OpenAPI component is declared in the `#[aliases(...)]` block below. Add a new
+ * alias line whenever a new payload type needs enveloping. NEVER register the
+ * bare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare
+ * generic, and an un-aliased generic inlines an anonymous schema.
+ */
+export type DeleteUpgradeBackupEnvelope = {
+    data: DeleteUpgradeBackupResponse;
+    /**
+     * Server time when the response was built (unix epoch milliseconds).
+     */
+    ts: number;
+};
+
+/**
+ * Request payload for deleting a pre-upgrade backup.
+ */
+export type DeleteUpgradeBackupRequest = {
+    confirmed: boolean;
+};
+
+/**
+ * Response payload after deleting a pre-upgrade backup.
+ */
+export type DeleteUpgradeBackupResponse = {
+    id: string;
+};
+
+/**
  * Failure reason. i18n key convention: `delivery.failureReason.<variant>`.
  *
  * Note: "peer offline" is NOT in this enum — it is represented as
@@ -3646,6 +3683,42 @@ export type UpdateMobileSyncSettingsResultDto = {
 };
 
 /**
+ * One completed pre-upgrade profile backup.
+ */
+export type UpgradeBackupDto = {
+    createdAtMs: number;
+    id: string;
+    sizeBytes: number;
+    sourceEngine?: string | null;
+    sourceProduct?: string | null;
+    targetEngine: string;
+    targetProduct: string;
+};
+
+/**
+ * Canonical success envelope: `{ "data": T, "ts": <unix millis i64> }`.
+ *
+ * `ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler
+ * via [`ApiEnvelope::now`] (the contract carries only the type + the clock
+ * helper, not a hard dependency on when the handler reads the clock).
+ * `rename_all = "camelCase"` is a no-op for the single-word fields here but is
+ * declared for forward-compat.
+ *
+ * IMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named
+ * OpenAPI component is declared in the `#[aliases(...)]` block below. Add a new
+ * alias line whenever a new payload type needs enveloping. NEVER register the
+ * bare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare
+ * generic, and an un-aliased generic inlines an anonymous schema.
+ */
+export type UpgradeBackupListEnvelope = {
+    data: Array<UpgradeBackupDto>;
+    /**
+     * Server time when the response was built (unix epoch milliseconds).
+     */
+    ts: number;
+};
+
+/**
  * Discriminated union mirroring `uc_application::facade::UpgradeStatus`.
  *
  * Wire encoding uses `kind` discriminator with snake_case variants to
@@ -5962,6 +6035,65 @@ export type GetStorageStatsResponses = {
 };
 
 export type GetStorageStatsResponse = GetStorageStatsResponses[keyof GetStorageStatsResponses];
+
+export type ListUpgradeBackupsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/storage/upgrade-backups';
+};
+
+export type ListUpgradeBackupsErrors = {
+    /**
+     * Internal server error
+     */
+    500: ApiErrorResponse;
+};
+
+export type ListUpgradeBackupsError = ListUpgradeBackupsErrors[keyof ListUpgradeBackupsErrors];
+
+export type ListUpgradeBackupsResponses = {
+    /**
+     * Upgrade backups retrieved
+     */
+    200: UpgradeBackupListEnvelope;
+};
+
+export type ListUpgradeBackupsResponse = ListUpgradeBackupsResponses[keyof ListUpgradeBackupsResponses];
+
+export type DeleteUpgradeBackupData = {
+    body: DeleteUpgradeBackupRequest;
+    path: {
+        /**
+         * Backup identifier
+         */
+        id: string;
+    };
+    query?: never;
+    url: '/storage/upgrade-backups/{id}';
+};
+
+export type DeleteUpgradeBackupErrors = {
+    /**
+     * Confirmation missing or false
+     */
+    400: ApiErrorResponse;
+    /**
+     * Internal server error
+     */
+    500: ApiErrorResponse;
+};
+
+export type DeleteUpgradeBackupError = DeleteUpgradeBackupErrors[keyof DeleteUpgradeBackupErrors];
+
+export type DeleteUpgradeBackupResponses = {
+    /**
+     * Upgrade backup deleted
+     */
+    200: DeleteUpgradeBackupEnvelope;
+};
+
+export type DeleteUpgradeBackupResponse2 = DeleteUpgradeBackupResponses[keyof DeleteUpgradeBackupResponses];
 
 export type AcknowledgeUpgradeData = {
     body?: never;

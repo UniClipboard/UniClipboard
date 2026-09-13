@@ -32,6 +32,8 @@ vi.mock('@/api/storage', () => ({
   openDataDirectory: vi.fn(),
   revealPath: vi.fn(),
   clearAllClipboardHistory: vi.fn(),
+  listUpgradeBackups: vi.fn(),
+  deleteUpgradeBackup: vi.fn(),
 }))
 
 vi.mock('@/lib/ipc', () => ({
@@ -76,6 +78,7 @@ vi.mock('@/lib/delete-confirmation-preference', () => ({
 const mockUseSetting = vi.mocked(useSetting)
 const mockGetSearchStatus = vi.mocked(getSearchStatus)
 const mockGetStorageStats = vi.mocked(storageApi.getStorageStats)
+const mockListUpgradeBackups = vi.mocked(storageApi.listUpgradeBackups)
 
 beforeAll(() => {
   // Base UI Select needs pointer-capture + scrollIntoView shims under jsdom.
@@ -160,6 +163,7 @@ beforeAll(async () => {
 beforeEach(() => {
   vi.clearAllMocks()
   deleteConfirmationPreference.read.mockReturnValue(true)
+  mockListUpgradeBackups.mockResolvedValue([])
   mockGetStorageStats.mockResolvedValue({
     totalBytes: 100,
     databaseBytes: 25,

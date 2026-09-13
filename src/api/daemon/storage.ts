@@ -19,7 +19,9 @@
 
 import {
   clearStorageCache as clearStorageCacheSdk,
+  deleteUpgradeBackup as deleteUpgradeBackupSdk,
   getStorageStats as getStorageStatsSdk,
+  listUpgradeBackups as listUpgradeBackupsSdk,
 } from '@/api/generated/sdk.gen'
 import { daemonClient } from './client'
 
@@ -36,6 +38,16 @@ export interface StorageStats {
   vaultBytes: number
   cacheBytes: number
   logsBytes: number
+}
+
+export interface UpgradeBackup {
+  id: string
+  createdAtMs: number
+  sourceProduct: string | null
+  sourceEngine: string | null
+  targetProduct: string
+  targetEngine: string
+  sizeBytes: number
 }
 
 // ── Public API ─────────────────────────────────────────────────
@@ -73,5 +85,20 @@ export async function clearCache(confirmed: boolean): Promise<void> {
   // `freedBytes` payload, but this wrapper is void, so we do not read `.data`.
   await daemonClient.callSdk(() =>
     clearStorageCacheSdk({ body: { confirmed }, throwOnError: true })
+  )
+}
+
+export async function listUpgradeBackups(): Promise<UpgradeBackup[]> {
+  const data = await daemonClient.callEnveloped(() => listUpgradeBackupsSdk({ throwOnError: true }))
+  return data as unknown as UpgradeBackup[]
+}
+
+export async function deleteUpgradeBackup(id: string, confirmed: boolean): Promise<void> {
+  await daemonClient.callEnveloped(() =>
+    deleteUpgradeBackupSdk({
+      path: { id },
+      body: { confirmed },
+      throwOnError: true,
+    })
   )
 }

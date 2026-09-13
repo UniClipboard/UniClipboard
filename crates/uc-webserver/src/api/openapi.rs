@@ -99,7 +99,7 @@ use uc_daemon_contract::api::dto::config::{
 use uc_daemon_contract::api::dto::envelope::{
     AckUpgradeEnvelope, CancelEntryReceiveEnvelope, CancelTransferEnvelope,
     CaptureCurrentClipboardEnvelope, CaptureUiEventEnvelope, ClearCacheEnvelope,
-    ClearHistoryEnvelope, ClipboardStatsEnvelope, DebugStatusEnvelope,
+    ClearHistoryEnvelope, ClipboardStatsEnvelope, DebugStatusEnvelope, DeleteUpgradeBackupEnvelope,
     DeviceGroupChoiceResultEnvelope, DeviceGroupChoicesEnvelope, DeviceTrustEnvelope,
     DiagnosticCaptureStopEnvelope, DiagnosticStatusEnvelope, DispatchOutcomeEnvelope,
     EncryptionActionEnvelope, EncryptionStateEnvelope, EntryDeliveryViewEnvelope,
@@ -117,10 +117,12 @@ use uc_daemon_contract::api::dto::envelope::{
     SetupInitializeEnvelope, SetupIssueInvitationEnvelope, SetupRedeemEnvelope, SetupStateEnvelope,
     SetupSwitchSpaceEnvelope, SpaceMemberListEnvelope, SpaceProtectionEnvelope, StatusEnvelope,
     StorageStatsEnvelope, ToggleFavoriteEnvelope, UnlockSpaceEnvelope, UpdateDebugModeEnvelope,
-    UpdateMobileDeviceEnvelope, UpdateMobileSyncSettingsEnvelope, UpgradeStatusEnvelope,
+    UpdateMobileDeviceEnvelope, UpdateMobileSyncSettingsEnvelope, UpgradeBackupListEnvelope,
+    UpgradeStatusEnvelope,
 };
 use uc_daemon_contract::api::dto::storage::{
-    ClearCacheRequest, ClearCacheResponse, StorageStatsDto,
+    ClearCacheRequest, ClearCacheResponse, DeleteUpgradeBackupRequest, DeleteUpgradeBackupResponse,
+    StorageStatsDto, UpgradeBackupDto,
 };
 use uc_daemon_contract::api::dto::upgrade::{AckUpgradePayload, UpgradeStatusDto};
 use uc_daemon_contract::api::dto::v2::setup::{
@@ -193,6 +195,8 @@ impl Modify for ContractMeta {
         // ── storage ────────────────────────────────────────────────
         crate::api::storage::get_storage_stats_handler,
         crate::api::storage::clear_cache_handler,
+        crate::api::storage::list_upgrade_backups_handler,
+        crate::api::storage::delete_upgrade_backup_handler,
         // ── config migration ───────────────────────────────────────
         crate::api::config::export_config_handler,
         crate::api::config::preview_import_handler,
@@ -331,6 +335,11 @@ impl Modify for ContractMeta {
             StorageStatsDto,
             ClearCacheRequest,
             ClearCacheResponse,
+            UpgradeBackupListEnvelope,
+            DeleteUpgradeBackupEnvelope,
+            UpgradeBackupDto,
+            DeleteUpgradeBackupRequest,
+            DeleteUpgradeBackupResponse,
             // ── config migration ───────────────────────────────────
             ExportConfigEnvelope,
             PreviewImportEnvelope,
@@ -688,6 +697,7 @@ mod assembly_smoke_tests {
         // device-group migration replaces the former query and decision paths
         // with GET and POST on one resource: 75 paths / 84 operations.
         // Connectivity opportunities add one path and operation: 76 / 85.
+        // Upgrade backup management adds two paths and two operations: 78 / 87.
         const HTTP_METHODS: [&str; 7] =
             ["get", "put", "post", "delete", "patch", "head", "options"];
         let paths = value
@@ -696,8 +706,8 @@ mod assembly_smoke_tests {
             .expect("OpenAPI doc must declare paths");
         assert_eq!(
             paths.len(),
-            76,
-            "expected exactly 76 path templates, found {}: {:?}",
+            78,
+            "expected exactly 78 path templates, found {}: {:?}",
             paths.len(),
             paths.keys().collect::<Vec<_>>()
         );
@@ -711,8 +721,8 @@ mod assembly_smoke_tests {
             })
             .sum();
         assert_eq!(
-            operation_count, 85,
-            "expected exactly 85 operations across all paths, found {operation_count}"
+            operation_count, 87,
+            "expected exactly 87 operations across all paths, found {operation_count}"
         );
 
         // A few frozen operationIds (§D) must be present somewhere in the doc.

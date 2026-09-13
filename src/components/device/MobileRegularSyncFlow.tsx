@@ -1,5 +1,5 @@
 import { Loader2 } from 'lucide-react'
-import { useEffect, useEffectEvent, useState } from 'react'
+import { useEffect, useEffectEvent, useReducer, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import {
@@ -38,11 +38,14 @@ export default function MobileRegularSyncFlow({
 }: Props) {
   const { t } = useTranslation()
   const [state, setState] = useState<State>({ kind: 'loading' })
-  const [attempt, setAttempt] = useState(0)
+  const [attempt, retry] = useReducer((value: number) => value + 1, 0)
   const [enabling, setEnabling] = useState(false)
   const reportSettings = useEffectEvent(onSettingsChange)
   const reportLoadError = useEffectEvent(() => {
-    setState({ kind: 'failed', message: t('devices.connectMobile.loadFailed') })
+    setState({
+      kind: 'failed',
+      message: t('devices.connectMobile.loadFailed'),
+    })
   })
 
   useEffect(() => {
@@ -67,7 +70,10 @@ export default function MobileRegularSyncFlow({
     setEnabling(true)
     onBusyChange(true)
     try {
-      const result = await updateMobileSyncSettings({ enabled: true, lanListenEnabled: true })
+      const result = await updateMobileSyncSettings({
+        enabled: true,
+        lanListenEnabled: true,
+      })
       if (result.lanListenerBindError) {
         setState({
           kind: 'failed',
@@ -82,7 +88,10 @@ export default function MobileRegularSyncFlow({
       onSettingsChange(settings)
     } catch {
       log.warn('failed to enable mobile sync')
-      setState({ kind: 'failed', message: t('devices.connectMobile.enableFailed') })
+      setState({
+        kind: 'failed',
+        message: t('devices.connectMobile.enableFailed'),
+      })
     } finally {
       setEnabling(false)
       onBusyChange(false)
@@ -91,20 +100,19 @@ export default function MobileRegularSyncFlow({
 
   if (state.kind === 'loading') {
     return (
-      <div
-        role="status"
-        className="flex min-h-40 items-center justify-center gap-2 text-muted-foreground"
-      >
+      <output className="flex min-h-40 items-center justify-center gap-2 text-muted-foreground">
         <Loader2 className="size-4 animate-spin" />
         {t('common.loading')}
-      </div>
+      </output>
     )
   }
   const error =
     state.kind === 'failed'
       ? state.message
       : state.settings.lanListenerError
-        ? t('devices.mobileSync.statusBar.bindFailed', { reason: state.settings.lanListenerError })
+        ? t('devices.mobileSync.statusBar.bindFailed', {
+            reason: state.settings.lanListenerError,
+          })
         : null
   if (error) {
     return (
@@ -121,7 +129,7 @@ export default function MobileRegularSyncFlow({
               <Button
                 onClick={() => {
                   setState({ kind: 'loading' })
-                  setAttempt(value => value + 1)
+                  retry()
                 }}
               >
                 {t('devices.list.actions.retry')}

@@ -1,7 +1,7 @@
 /** Register a mobile connection and pass its one-time credentials to the device panel. */
 
 import { ChevronDown, ChevronRight, Loader2 } from 'lucide-react'
-import React, { useCallback, useId, useState } from 'react'
+import React, { useCallback, useId, useReducer } from 'react'
 import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import {
@@ -28,6 +28,49 @@ interface Props {
 type FieldErrorKey = 'label' | 'username' | 'password'
 type FieldErrors = Partial<Record<FieldErrorKey, string>>
 
+interface FormState {
+  label: string
+  username: string
+  password: string
+  advancedOpen: boolean
+  submitting: boolean
+  fieldErrors: FieldErrors
+  formError: string | null
+}
+
+type FormAction =
+  | { type: 'edit'; field: FieldErrorKey; value: string }
+  | { type: 'advanced'; open: boolean }
+  | { type: 'submit' }
+  | { type: 'fieldError'; field: FieldErrorKey; message: string }
+  | { type: 'formError'; message: string }
+  | { type: 'settled' }
+
+function formReducer(state: FormState, action: FormAction): FormState {
+  switch (action.type) {
+    case 'edit': {
+      const fieldErrors = { ...state.fieldErrors }
+      delete fieldErrors[action.field]
+      return { ...state, [action.field]: action.value, fieldErrors }
+    }
+    case 'advanced':
+      return { ...state, advancedOpen: action.open }
+    case 'submit':
+      return { ...state, submitting: true, fieldErrors: {}, formError: null }
+    case 'fieldError':
+      return {
+        ...state,
+        fieldErrors: { [action.field]: action.message },
+        formError: null,
+        advancedOpen: state.advancedOpen || action.field !== 'label',
+      }
+    case 'formError':
+      return { ...state, formError: action.message }
+    case 'settled':
+      return { ...state, submitting: false }
+  }
+}
+
 const MobileSyncRegistrationForm: React.FC<Props> = ({
   onCancel,
   onBusyChange,
@@ -37,34 +80,31 @@ const MobileSyncRegistrationForm: React.FC<Props> = ({
   const { t } = useTranslation()
   const formId = useId()
 
-  const [label, setLabel] = useState('')
-  const [username, setUsername] = useState('')
-  const [password, setPassword] = useState('')
-  const [advancedOpen, setAdvancedOpen] = useState(false)
-  const [submitting, setSubmitting] = useState(false)
-  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({})
-  const [formError, setFormError] = useState<string | null>(null)
-
-  const clearFieldError = useCallback((key: FieldErrorKey) => {
-    setFieldErrors(prev => {
-      if (prev[key] === undefined) return prev
-      const next = { ...prev }
-      delete next[key]
-      return next
-    })
-  }, [])
+  const [
+    { label, username, password, advancedOpen, submitting, fieldErrors, formError },
+    dispatch,
+  ] = useReducer(formReducer, {
+    label: '',
+    username: '',
+    password: '',
+    advancedOpen: false,
+    submitting: false,
+    fieldErrors: {},
+    formError: null,
+  })
 
   const handleSubmit = useCallback(async () => {
     const trimmedLabel = label.trim()
     if (trimmedLabel === '') {
-      setFieldErrors({ label: t('devices.mobileSync.errors.labelEmpty') })
-      setFormError(null)
+      dispatch({
+        type: 'fieldError',
+        field: 'label',
+        message: t('devices.mobileSync.errors.labelEmpty'),
+      })
       return
     }
-    setSubmitting(true)
+    dispatch({ type: 'submit' })
     onBusyChange(true)
-    setFieldErrors({})
-    setFormError(null)
     try {
       const result = await registerMobileDevice({
         label: trimmedLabel,
@@ -74,16 +114,18 @@ const MobileSyncRegistrationForm: React.FC<Props> = ({
       onSuccess(result)
     } catch (err) {
       log.error({ err }, 'failed to register mobile device')
-      const dispatch = classifyRegisterError(t, err)
-      if (dispatch.kind === 'field') {
-        setFieldErrors({ [dispatch.field]: dispatch.message })
-        // Reveal advanced fields when they contain validation errors.
-        if (dispatch.field !== 'label') setAdvancedOpen(true)
+      const error = classifyRegisterError(t, err)
+      if (error.kind === 'field') {
+        dispatch({
+          type: 'fieldError',
+          field: error.field,
+          message: error.message,
+        })
       } else {
-        setFormError(dispatch.message)
+        dispatch({ type: 'formError', message: error.message })
       }
     } finally {
-      setSubmitting(false)
+      dispatch({ type: 'settled' })
       onBusyChange(false)
     }
   }, [label, onBusyChange, onSuccess, password, t, username])
@@ -106,8 +148,7 @@ const MobileSyncRegistrationForm: React.FC<Props> = ({
             autoFocus
             value={label}
             onChange={e => {
-              setLabel(e.target.value)
-              clearFieldError('label')
+              dispatch({ type: 'edit', field: 'label', value: e.target.value })
             }}
             placeholder={t('devices.mobileSync.add.labelField.placeholder')}
             disabled={submitting}
@@ -123,11 +164,15 @@ const MobileSyncRegistrationForm: React.FC<Props> = ({
         </div>
 
         {/* Advanced options */}
-        <Collapsible open={advancedOpen} onOpenChange={setAdvancedOpen}>
+        <Collapsible
+          open={advancedOpen}
+          onOpenChange={open => dispatch({ type: 'advanced', open })}
+        >
           <CollapsibleTrigger
             render={
               <button
                 type="button"
+                aria-label={t('devices.mobileSync.add.advanced.title')}
                 className="flex items-center gap-1 text-ui-body font-medium text-muted-foreground hover:text-foreground"
               />
             }
@@ -152,8 +197,11 @@ const MobileSyncRegistrationForm: React.FC<Props> = ({
                 id="mobile-sync-username"
                 value={username}
                 onChange={e => {
-                  setUsername(e.target.value)
-                  clearFieldError('username')
+                  dispatch({
+                    type: 'edit',
+                    field: 'username',
+                    value: e.target.value,
+                  })
                 }}
                 placeholder={t('devices.mobileSync.add.username.placeholder')}
                 disabled={submitting}
@@ -185,8 +233,11 @@ const MobileSyncRegistrationForm: React.FC<Props> = ({
                 type="password"
                 value={password}
                 onChange={e => {
-                  setPassword(e.target.value)
-                  clearFieldError('password')
+                  dispatch({
+                    type: 'edit',
+                    field: 'password',
+                    value: e.target.value,
+                  })
                 }}
                 placeholder={t('devices.mobileSync.add.password.placeholder')}
                 disabled={submitting}
@@ -256,7 +307,11 @@ function classifyRegisterError(
     const e = err as MobileSyncError
     switch (e.code) {
       case 'LABEL_EMPTY':
-        return { kind: 'field', field: 'label', message: t('devices.mobileSync.errors.labelEmpty') }
+        return {
+          kind: 'field',
+          field: 'label',
+          message: t('devices.mobileSync.errors.labelEmpty'),
+        }
       case 'LABEL_TOO_LONG':
         return {
           kind: 'field',
@@ -267,19 +322,27 @@ function classifyRegisterError(
         return {
           kind: 'field',
           field: 'username',
-          message: t('devices.mobileSync.errors.usernameTaken', { username: e.username }),
+          message: t('devices.mobileSync.errors.usernameTaken', {
+            username: e.username,
+          }),
         }
       case 'USERNAME_TOO_SHORT':
         return {
           kind: 'field',
           field: 'username',
-          message: t('devices.mobileSync.errors.usernameTooShort', { min: e.min, got: e.got }),
+          message: t('devices.mobileSync.errors.usernameTooShort', {
+            min: e.min,
+            got: e.got,
+          }),
         }
       case 'USERNAME_TOO_LONG':
         return {
           kind: 'field',
           field: 'username',
-          message: t('devices.mobileSync.errors.usernameTooLong', { max: e.max, got: e.got }),
+          message: t('devices.mobileSync.errors.usernameTooLong', {
+            max: e.max,
+            got: e.got,
+          }),
         }
       case 'USERNAME_MUST_START_WITH_LETTER':
         return {
@@ -297,54 +360,83 @@ function classifyRegisterError(
         return {
           kind: 'field',
           field: 'password',
-          message: t('devices.mobileSync.errors.passwordTooShort', { min: e.min }),
+          message: t('devices.mobileSync.errors.passwordTooShort', {
+            min: e.min,
+          }),
         }
       case 'PASSWORD_TOO_LONG':
         return {
           kind: 'field',
           field: 'password',
-          message: t('devices.mobileSync.errors.passwordTooLong', { max: e.max }),
+          message: t('devices.mobileSync.errors.passwordTooLong', {
+            max: e.max,
+          }),
         }
       case 'LAN_LISTENER_DISABLED':
-        return { kind: 'form', message: t('devices.mobileSync.errors.lanListenerDisabled') }
+        return {
+          kind: 'form',
+          message: t('devices.mobileSync.errors.lanListenerDisabled'),
+        }
       case 'PASSWORD_HASH_FAILED':
         return {
           kind: 'form',
-          message: t('devices.mobileSync.errors.passwordHashFailed', { message: e.message }),
+          message: t('devices.mobileSync.errors.passwordHashFailed', {
+            message: e.message,
+          }),
         }
       case 'PERSISTENCE_FAILED':
         return {
           kind: 'form',
-          message: t('devices.mobileSync.errors.persistenceFailed', { message: e.message }),
+          message: t('devices.mobileSync.errors.persistenceFailed', {
+            message: e.message,
+          }),
         }
       case 'QR_RENDER_FAILED':
         return {
           kind: 'form',
-          message: t('devices.mobileSync.errors.qrRenderFailed', { message: e.message }),
+          message: t('devices.mobileSync.errors.qrRenderFailed', {
+            message: e.message,
+          }),
         }
       case 'SETTINGS_LOAD_FAILED':
         return {
           kind: 'form',
-          message: t('devices.mobileSync.errors.settingsLoadFailed', { message: e.message }),
+          message: t('devices.mobileSync.errors.settingsLoadFailed', {
+            message: e.message,
+          }),
         }
       case 'FACADE_UNAVAILABLE':
-        return { kind: 'form', message: t('devices.mobileSync.errors.facadeUnavailable') }
+        return {
+          kind: 'form',
+          message: t('devices.mobileSync.errors.facadeUnavailable'),
+        }
       case 'NO_LAN_INTERFACE_AVAILABLE':
-        return { kind: 'form', message: t('devices.mobileSync.errors.noLanInterfaceAvailable') }
+        return {
+          kind: 'form',
+          message: t('devices.mobileSync.errors.noLanInterfaceAvailable'),
+        }
       case 'LAN_PROBE_FAILED':
         return {
           kind: 'form',
-          message: t('devices.mobileSync.errors.lanProbeFailed', { message: e.message }),
+          message: t('devices.mobileSync.errors.lanProbeFailed', {
+            message: e.message,
+          }),
         }
       default: {
         // Keep unexpected service failures visible in the form.
         const message = (e as { message?: string }).message ?? e.code
-        return { kind: 'form', message: t('devices.mobileSync.errors.unknown', { message }) }
+        return {
+          kind: 'form',
+          message: t('devices.mobileSync.errors.unknown', { message }),
+        }
       }
     }
   }
   const message = err instanceof Error ? err.message : String(err)
-  return { kind: 'form', message: t('devices.mobileSync.errors.unknown', { message }) }
+  return {
+    kind: 'form',
+    message: t('devices.mobileSync.errors.unknown', { message }),
+  }
 }
 
 export default MobileSyncRegistrationForm

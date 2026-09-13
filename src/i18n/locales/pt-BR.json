@@ -1417,6 +1417,17 @@
       "message": "A sincronização da área de transferência está pausada. Nenhum dispositivo está sincronizando no momento.",
       "goToSettings": "Ir para Configurações"
     },
+    "connectMobile": {
+      "title": "Conectar celular",
+      "method": "Método de sincronização",
+      "regular": "Sincronização padrão",
+      "direct": "Conexão direta",
+      "experimental": "Experimental",
+      "regularDescription": "Sincronize a área de transferência com o celular na mesma rede local usando as configurações de conexão.",
+      "directDescription": "Use um código de convite para parear o celular e sincronizar diretamente como um dispositivo do seu espaço.",
+      "loadFailed": "Não foi possível carregar as configurações. Tente novamente.",
+      "enableFailed": "Não foi possível ativar a sincronização padrão. Verifique as configurações e tente novamente."
+    },
     "mobileSync": {
       "title": "Sincronização móvel pela rede local",
       "description": "Sincronize sua área de transferência com dispositivos móveis (iOS / Android) pela rede local usando o protocolo SyncClipboard",

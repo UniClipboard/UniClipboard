@@ -1414,6 +1414,17 @@
       "message": "Clipboard sync is paused. All devices are currently not syncing.",
       "goToSettings": "Go to Settings"
     },
+    "connectMobile": {
+      "title": "Connect phone",
+      "method": "Sync method",
+      "regular": "Regular sync",
+      "direct": "Device connection",
+      "experimental": "Experimental",
+      "regularDescription": "Sync your clipboard with your phone on the same local network using connection settings.",
+      "directDescription": "Pair with an invitation code to sync your phone directly as a device in your space.",
+      "loadFailed": "Could not load sync settings. Try again.",
+      "enableFailed": "Could not enable regular sync. Check settings and try again."
+    },
     "mobileSync": {
       "title": "LAN Mobile Sync",
       "description": "Sync your clipboard with mobile devices (iOS / Android) over LAN using the SyncClipboard protocol",

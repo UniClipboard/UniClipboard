@@ -1413,6 +1413,17 @@
       "message": "剪貼簿同步已暫停，所有裝置目前均不會同步內容。",
       "goToSettings": "前往設定"
     },
+    "connectMobile": {
+      "title": "連接手機",
+      "method": "同步方式",
+      "regular": "一般同步",
+      "direct": "裝置直連",
+      "experimental": "實驗性",
+      "regularDescription": "在同一區域網路內，透過連線設定與手機同步剪貼簿。",
+      "directDescription": "使用邀請碼配對，讓手機作為空間裝置直接同步剪貼簿。",
+      "loadFailed": "無法讀取同步設定，請重試。",
+      "enableFailed": "無法開啟一般同步，請檢查設定後重試。"
+    },
     "mobileSync": {
       "title": "區域網路移動同步",
       "description": "通過 SyncClipboard 協議在區域網路內與移動裝置（iOS / Android）同步剪貼簿",

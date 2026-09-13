@@ -12,7 +12,7 @@ the page.
 ## Page layout
 
 The left list groups this device, paired devices, and mobile sync devices. Select a device to show its details on the right.
-The list footer provides actions to add a desktop device or phone, configure mobile sync, and switch spaces. An empty paired-device section also offers an add action.
+The list footer provides device invitations, a phone connection icon beside the invitation button, and space switching. An empty paired-device section also offers an add action.
 
 Local details include the device name, sync control, connection information, and space rebuild action. Paired-device details include sync rules, connection information, and unpairing. Mobile details include the server address, credentials, and last activity.
 
@@ -137,7 +137,8 @@ The CLI equivalent is `uniclip space reset --yes`. This is not a factory reset.
 Registered phones appear in a separate group on the left, with their names and last activity. They are not members of the desktop trust group and do not show desktop transport badges.
 Selecting a phone opens its server address, username, last activity, and credential controls on the right.
 
-The footer menu provides mobile sync settings and registration. Registration guides you through enabling mobile sync if needed and reports listener failures. When phones are registered, a settings button also appears beside their group heading.
+The phone icon opens **Connect phone**. **Regular sync** is selected by default and connects using local-network settings. **Device connection (Experimental)** instead pairs the phone into the space with an invitation code. Each method has a short description, with actions in the shared dialog footer.
+Regular sync is enabled only after confirmation. Listener errors appear inside the dialog with configuration and retry actions, while device connection remains available. When phones are registered, a settings button also appears beside their group heading.
 
 An existing device's original password cannot be recovered. Reset the password to pair it again. Newly created or updated credentials provide a fresh QR code and credential backup in the detail panel.
 Editing allows changes to the label, username, or password; a blank password keeps the existing one. Changing the username reissues credentials and requires the phone to pair again.

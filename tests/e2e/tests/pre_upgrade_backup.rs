@@ -55,6 +55,29 @@ async fn v0193_upgrade_preserves_verified_backup_before_startup_changes() {
         .await
         .expect("start current daemon on v0.19.3 data");
     let client = reqwest::Client::new();
+    let startup_conn: Value = serde_json::from_slice(
+        &std::fs::read(daemon.profile.data_dir().join("daemon-startup.conn"))
+            .expect("read startup connection"),
+    )
+    .expect("decode startup connection");
+    let startup_port = startup_conn["port"].as_u64().expect("startup port");
+    let startup_token = startup_conn["token"].as_str().expect("startup token");
+    let startup_status: Value = client
+        .get(format!("http://127.0.0.1:{startup_port}/startup"))
+        .bearer_auth(startup_token)
+        .send()
+        .await
+        .expect("read startup progress")
+        .json()
+        .await
+        .expect("decode startup progress");
+    assert_eq!(startup_status["service_ready"], true);
+    let upgrade_steps = startup_status["progress"]["upgrade"]["steps"]
+        .as_array()
+        .expect("startup upgrade steps");
+    assert_eq!(upgrade_steps[0]["step"], "backing_up");
+    assert_eq!(upgrade_steps[0]["completed"], true);
+
     let session = get_session_token(&daemon, &client).await;
     let unlock = client
         .post(format!(

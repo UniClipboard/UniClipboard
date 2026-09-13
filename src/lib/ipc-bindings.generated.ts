@@ -851,7 +851,7 @@ export type StartupFailureDto = {
 	retryable: boolean,
 };
 
-export type StartupFailureReasonDto = "storage_full" | "permission_denied" | "storage_unavailable" | "protection_unavailable" | "corrupt_data" | "source_changed" | "already_running" | "startup_failed";
+export type StartupFailureReasonDto = "backup_failed" | "storage_full" | "permission_denied" | "storage_unavailable" | "protection_unavailable" | "corrupt_data" | "source_changed" | "already_running" | "startup_failed";
 
 export type StartupSnapshotDto = {
 	attempt_id: string,
@@ -865,7 +865,7 @@ export type StartupSnapshotDto = {
 
 export type StartupStateDto = "preparing" | "upgrading" | "starting_services" | "ready" | "failed" | "interrupted";
 
-export type StartupStepDto = "checking" | "converting_contents" | "converting_large_contents" | "converting_related_records" | "verifying" | "preparing";
+export type StartupStepDto = "backing_up" | "checking" | "converting_contents" | "converting_large_contents" | "converting_related_records" | "verifying" | "preparing";
 
 export type StartupStepProgressDto = {
 	step: StartupStepDto,

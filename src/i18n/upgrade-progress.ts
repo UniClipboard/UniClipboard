@@ -29,6 +29,7 @@ export const upgradeProgressZh = {
   exportFailed: '导出失败，请重试。',
   exportDone: '诊断记录已导出。',
   steps: {
+    backing_up: '备份本地资料',
     checking: '检查本地资料',
     converting_contents: '转换历史内容',
     converting_large_contents: '转换大块内容',
@@ -38,6 +39,7 @@ export const upgradeProgressZh = {
   },
   units: { content_representations: '份内容', large_contents: '块内容', related_records: '项记录' },
   errors: {
+    backup_failed: '未能完成旧资料备份。请检查磁盘空间和文件访问权限后重试。',
     storage_full: '磁盘可用空间不足。释放空间后，可以重试升级。',
     permission_denied: '无法访问所需文件。请检查访问权限后重试。',
     storage_unavailable: '暂时无法访问本地存储。请检查磁盘是否可用。',
@@ -81,6 +83,7 @@ export const upgradeProgressJa: typeof upgradeProgressZh = {
   exportFailed: 'エクスポートに失敗しました。再試行してください。',
   exportDone: '診断情報をエクスポートしました。',
   steps: {
+    backing_up: 'ローカルデータをバックアップ',
     checking: 'ローカルデータを確認',
     converting_contents: '履歴の内容を変換',
     converting_large_contents: '大容量の内容を変換',
@@ -94,6 +97,8 @@ export const upgradeProgressJa: typeof upgradeProgressZh = {
     related_records: 'レコード',
   },
   errors: {
+    backup_failed:
+      '古いデータをバックアップできませんでした。空き容量とファイルのアクセス権を確認してから再試行してください。',
     storage_full: 'ディスクの空き容量が不足しています。空き容量を確保してから再試行してください。',
     permission_denied:
       '必要なファイルにアクセスできません。アクセス権を確認してから再試行してください。',
@@ -145,6 +150,7 @@ export const upgradeProgressPt: typeof upgradeProgressZh = {
   exportFailed: 'Falha ao exportar. Tente novamente.',
   exportDone: 'Diagnóstico exportado.',
   steps: {
+    backing_up: 'Fazendo backup dos dados locais',
     checking: 'Verificando dados locais',
     converting_contents: 'Convertendo conteúdo do histórico',
     converting_large_contents: 'Convertendo conteúdo grande',
@@ -158,6 +164,8 @@ export const upgradeProgressPt: typeof upgradeProgressZh = {
     related_records: 'registros',
   },
   errors: {
+    backup_failed:
+      'Não foi possível concluir o backup dos dados antigos. Verifique o espaço em disco e as permissões dos arquivos e tente novamente.',
     storage_full: 'Não há espaço suficiente no disco. Libere espaço e tente atualizar novamente.',
     permission_denied:
       'Não é possível acessar os arquivos necessários. Verifique as permissões antes de tentar novamente.',
@@ -209,6 +217,7 @@ export const upgradeProgressRu: typeof upgradeProgressZh = {
   exportFailed: 'Не удалось экспортировать. Повторите попытку.',
   exportDone: 'Диагностика экспортирована.',
   steps: {
+    backing_up: 'Резервное копирование локальных данных',
     checking: 'Проверка локальных данных',
     converting_contents: 'Преобразование содержимого истории',
     converting_large_contents: 'Преобразование крупных данных',
@@ -222,6 +231,8 @@ export const upgradeProgressRu: typeof upgradeProgressZh = {
     related_records: 'записей',
   },
   errors: {
+    backup_failed:
+      'Не удалось создать резервную копию старых данных. Проверьте свободное место и права доступа к файлам, затем повторите попытку.',
     storage_full: 'Недостаточно места на диске. Освободите место и повторите обновление.',
     permission_denied:
       'Нет доступа к необходимым файлам. Проверьте права доступа и повторите попытку.',
@@ -271,6 +282,7 @@ export const upgradeProgressEn = {
   exportFailed: 'Export failed. Please try again.',
   exportDone: 'Diagnostics exported.',
   steps: {
+    backing_up: 'Backing up local data',
     checking: 'Checking local data',
     converting_contents: 'Converting history content',
     converting_large_contents: 'Converting large content',
@@ -284,6 +296,8 @@ export const upgradeProgressEn = {
     related_records: 'records',
   },
   errors: {
+    backup_failed:
+      'The old data backup could not be completed. Check disk space and file permissions, then try again.',
     storage_full: 'There is not enough disk space. Free up space, then retry the upgrade.',
     permission_denied: 'Required files are inaccessible. Check permissions before retrying.',
     storage_unavailable: 'Local storage is unavailable. Check that the disk is accessible.',

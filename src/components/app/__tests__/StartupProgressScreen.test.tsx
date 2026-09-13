@@ -12,6 +12,58 @@ describe('startup and upgrade progress', () => {
     expect(screen.queryByText(/资料已升级|Data upgraded|处理记录|Activity/)).not.toBeInTheDocument()
     expect(screen.getByRole('heading')).toHaveTextContent(/正在启动|Starting the app/)
   })
+  it('shows the backup as the first visible upgrade step', () => {
+    const snapshot = makeUpgradePreview('upgrading', 1)
+    snapshot.upgrade = {
+      required: true,
+      recovering: false,
+      completed: false,
+      current_step: 'backing_up',
+      steps: [
+        {
+          step: 'backing_up',
+          processed: 0,
+          total: null,
+          unit: null,
+          warning_count: 0,
+          completed: false,
+        },
+      ],
+    }
+    render(<StartupProgressScreen snapshot={snapshot} onRetry={vi.fn()} onExport={vi.fn()} />)
+    expect(screen.getByRole('heading')).toHaveTextContent(/正在升级你的资料|Upgrading your data/)
+    expect(screen.getAllByText(/备份本地资料|Backing up local data/)).not.toHaveLength(0)
+    expect(screen.getByRole('progressbar')).not.toHaveAttribute('value')
+  })
+
+  it('explains when the backup itself fails', () => {
+    const snapshot = makeUpgradePreview('upgrading', 1)
+    snapshot.state = 'failed'
+    snapshot.failure = { reason: 'backup_failed', retryable: true }
+    snapshot.allowed_actions.retry = true
+    snapshot.upgrade = {
+      required: true,
+      recovering: false,
+      completed: false,
+      current_step: 'backing_up',
+      steps: [
+        {
+          step: 'backing_up',
+          processed: 0,
+          total: null,
+          unit: null,
+          warning_count: 0,
+          completed: false,
+        },
+      ],
+    }
+    render(<StartupProgressScreen snapshot={snapshot} onRetry={vi.fn()} onExport={vi.fn()} />)
+    expect(
+      screen.getByText(/未能完成旧资料备份|old data backup could not be completed/)
+    ).toBeVisible()
+    expect(screen.getByRole('button', { name: /重试升级|Retry upgrade/ })).toBeVisible()
+  })
+
   it('keeps elapsed time moving without any backend progress update', () => {
     vi.useFakeTimers()
     const view = render(

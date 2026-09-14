@@ -160,6 +160,7 @@ async fn clear_cache_handler(
     tag = "storage",
     responses(
         (status = 200, description = "Upgrade backups retrieved", body = UpgradeBackupListEnvelope),
+        (status = 503, description = "Upgrade backup storage unavailable", body = ApiErrorResponse),
         (status = 500, description = "Internal server error", body = ApiErrorResponse),
     )
 )]
@@ -206,7 +207,9 @@ async fn list_upgrade_backups_handler(
     request_body = DeleteUpgradeBackupRequest,
     responses(
         (status = 200, description = "Upgrade backup deleted", body = DeleteUpgradeBackupEnvelope),
-        (status = 400, description = "Confirmation missing or false", body = ApiErrorResponse),
+        (status = 400, description = "Confirmation missing or false, or invalid backup identifier", body = ApiErrorResponse),
+        (status = 404, description = "Upgrade backup not found", body = ApiErrorResponse),
+        (status = 503, description = "Upgrade backup storage unavailable", body = ApiErrorResponse),
         (status = 500, description = "Internal server error", body = ApiErrorResponse),
     )
 )]

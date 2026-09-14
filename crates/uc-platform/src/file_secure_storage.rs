@@ -1,5 +1,5 @@
 use std::fs;
-use std::io;
+use std::io::{self, Write};
 use std::path::PathBuf;
 
 use crate::ports::{SecureStorageError, SecureStorageProvider};
@@ -67,12 +67,30 @@ impl SecureStorageProvider for FileSecureStorage {
         directory
             .create(&self.base_dir)
             .map_err(|err| Self::map_io_error("failed to create secure storage directory", err))?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(&self.base_dir, fs::Permissions::from_mode(0o700)).map_err(
+                |err| Self::map_io_error("failed to set secure storage directory permissions", err),
+            )?;
+        }
         let path = self.file_path(key);
-        let temp_path = path.with_extension("tmp");
-        fs::write(&temp_path, value)
+        let mut temporary_builder = tempfile::Builder::new();
+        temporary_builder.prefix(".secure-storage-").suffix(".tmp");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            temporary_builder.permissions(fs::Permissions::from_mode(0o600));
+        }
+        let mut temporary = temporary_builder
+            .tempfile_in(&self.base_dir)
+            .map_err(|err| Self::map_io_error("failed to create secure storage temp file", err))?;
+        temporary
+            .write_all(value)
             .map_err(|err| Self::map_io_error("failed to write secure storage temp file", err))?;
-        fs::rename(&temp_path, &path)
-            .map_err(|err| Self::map_io_error("failed to rename secure storage file", err))?;
+        temporary
+            .persist(&path)
+            .map_err(|err| Self::map_io_error("failed to rename secure storage file", err.error))?;
 
         #[cfg(unix)]
         {
@@ -99,5 +117,37 @@ impl SecureStorageProvider for FileSecureStorage {
                 err,
             )),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[cfg(unix)]
+    #[test]
+    fn set_repairs_directory_permissions_and_keeps_only_the_private_secret_file() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let temporary = tempfile::tempdir().unwrap();
+        let base_dir = temporary.path().join("keyring");
+        fs::create_dir(&base_dir).unwrap();
+        fs::set_permissions(&base_dir, fs::Permissions::from_mode(0o755)).unwrap();
+        let storage = FileSecureStorage::with_base_dir(base_dir.clone());
+
+        storage.set("profile-key", b"secret").unwrap();
+        storage.set("profile-key", b"replacement").unwrap();
+
+        assert_eq!(
+            fs::metadata(&base_dir).unwrap().permissions().mode() & 0o777,
+            0o700
+        );
+        let secret_path = storage.file_path("profile-key");
+        assert_eq!(
+            fs::metadata(&secret_path).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
+        assert_eq!(fs::read(secret_path).unwrap(), b"replacement");
+        assert_eq!(fs::read_dir(base_dir).unwrap().count(), 1);
     }
 }

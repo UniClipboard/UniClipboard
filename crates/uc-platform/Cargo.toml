@@ -61,10 +61,10 @@ keyring = { version = "3.6.3", features = [
   # (service_method_open_session 构造 GVariant 时遇 NULL → glib abort),DH 路径绕开。
   "crypto-rust",
 ] }
+tempfile = "3"
 thiserror = "2.0.17"
 
 [dev-dependencies]
-tempfile = "3"
 tracing-subscriber = { version = "0.3", features = ["registry", "fmt", "env-filter"] }
 
 # Linux 上 keyring → dbus-secret-service → dbus → libdbus-sys。默认 libdbus-sys

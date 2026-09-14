@@ -59,3 +59,32 @@ pub struct UnlockSpaceRequest {
 pub struct UnlockSpaceResponse {
     pub space_id: String,
 }
+
+/// Request body for `POST /encryption/passphrase`.
+///
+/// Both fields contain plaintext secrets and must never be logged.
+#[derive(Clone, Deserialize, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ChangeEncryptionPassphraseRequest {
+    pub passphrase: String,
+    pub passphrase_confirmation: String,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ChangeEncryptionPassphraseRequest;
+
+    #[test]
+    fn change_passphrase_request_uses_camel_case_wire_fields() {
+        let request = ChangeEncryptionPassphraseRequest {
+            passphrase: "new secret".to_string(),
+            passphrase_confirmation: "new secret".to_string(),
+        };
+
+        let value = serde_json::to_value(request).expect("request serializes");
+
+        assert_eq!(value["passphrase"], "new secret");
+        assert_eq!(value["passphraseConfirmation"], "new secret");
+        assert!(value.get("passphrase_confirmation").is_none());
+    }
+}

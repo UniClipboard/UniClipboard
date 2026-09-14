@@ -909,6 +909,39 @@
       }
     }
   },
+  "passphraseChange": {
+    "entry": {
+      "label": "スペースのパスフレーズをリセット",
+      "description": "履歴を削除せずに新しいパスフレーズへ変更します。",
+      "button": "リセット"
+    },
+    "availability": {
+      "checking": "このスペースをリセットできるか確認しています…",
+      "multipleDevices": "先にこのスペースから他のデバイスを削除してください。",
+      "unavailable": "デバイス一覧を確認できるまでリセットできません。"
+    },
+    "title": "スペースのパスフレーズをリセット",
+    "description": "新しいパスフレーズを設定します。履歴とローカルデータは保持されます。",
+    "passphraseLabel": "新しいスペースのパスフレーズ",
+    "passphrasePlaceholder": "新しいパスフレーズを入力",
+    "confirmationLabel": "新しいパスフレーズを確認",
+    "confirmationPlaceholder": "新しいパスフレーズをもう一度入力",
+    "show": "パスフレーズを表示",
+    "hide": "パスフレーズを隠す",
+    "cancel": "キャンセル",
+    "submit": "パスフレーズをリセット",
+    "submitting": "リセット中…",
+    "success": "スペースのパスフレーズをリセットしました",
+    "errors": {
+      "mismatch": "2つのパスフレーズが一致しません。",
+      "multipleDevices": "先に他のデバイスを削除してください。",
+      "locked": "先にこのスペースのロックを解除してください。",
+      "recovery": "先にデバイスの復旧問題を解決してください。",
+      "unavailable": "現在リセットできません。後でもう一度お試しください。",
+      "internal": "パスフレーズをリセットできませんでした。もう一度お試しください。"
+    },
+    "invitationAction": "以前のパスフレーズを忘れた場合はリセット"
+  },
   "unlock": {
     "title": "UniClipboardのロックを解除",
     "description": "データは暗号化されます。続行するにはロックを解除してください。",

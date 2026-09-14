@@ -909,6 +909,39 @@
       }
     }
   },
+  "passphraseChange": {
+    "entry": {
+      "label": "重設空間口令",
+      "description": "更換一個新口令，不會刪除歷史記錄。",
+      "button": "重設"
+    },
+    "availability": {
+      "checking": "正在確認目前空間是否可以重設……",
+      "multipleDevices": "請先移除空間內的其他裝置，再重設口令。",
+      "unavailable": "確認裝置清單後才能重設口令。"
+    },
+    "title": "重設空間口令",
+    "description": "設定一個新的空間口令。歷史記錄和本機資料都會保留。",
+    "passphraseLabel": "新空間口令",
+    "passphrasePlaceholder": "輸入新的空間口令",
+    "confirmationLabel": "確認新口令",
+    "confirmationPlaceholder": "再次輸入新的空間口令",
+    "show": "顯示口令",
+    "hide": "隱藏口令",
+    "cancel": "取消",
+    "submit": "重設口令",
+    "submitting": "正在重設……",
+    "success": "空間口令已重設",
+    "errors": {
+      "mismatch": "兩次輸入的口令不一致。",
+      "multipleDevices": "請先移除空間內的其他裝置，再重設口令。",
+      "locked": "請先解鎖目前空間，再重設口令。",
+      "recovery": "請先處理裝置恢復問題，再重設口令。",
+      "unavailable": "暫時無法重設口令，請稍後重試。",
+      "internal": "重設口令失敗，請重試。"
+    },
+    "invitationAction": "忘記原口令？重設口令"
+  },
   "unlock": {
     "title": "解鎖 UniClipboard",
     "description": "您的資料已加密，請解鎖以繼續。",

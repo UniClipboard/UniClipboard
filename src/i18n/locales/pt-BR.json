@@ -909,6 +909,39 @@
       }
     }
   },
+  "passphraseChange": {
+    "entry": {
+      "label": "Redefinir frase secreta do Espaço",
+      "description": "Escolha uma nova frase secreta sem excluir seu histórico.",
+      "button": "Redefinir"
+    },
+    "availability": {
+      "checking": "Verificando se este Espaço pode ser redefinido…",
+      "multipleDevices": "Remova os outros dispositivos deste Espaço antes de redefinir a frase secreta.",
+      "unavailable": "A redefinição estará disponível após a verificação dos dispositivos."
+    },
+    "title": "Redefinir frase secreta do Espaço",
+    "description": "Escolha uma nova frase secreta. Seu histórico e dados locais serão mantidos.",
+    "passphraseLabel": "Nova frase secreta do Espaço",
+    "passphrasePlaceholder": "Digite uma nova frase secreta",
+    "confirmationLabel": "Confirme a nova frase secreta",
+    "confirmationPlaceholder": "Digite a nova frase secreta novamente",
+    "show": "Mostrar frase secreta",
+    "hide": "Ocultar frase secreta",
+    "cancel": "Cancelar",
+    "submit": "Redefinir frase secreta",
+    "submitting": "Redefinindo…",
+    "success": "Frase secreta do Espaço redefinida",
+    "errors": {
+      "mismatch": "As frases secretas não coincidem.",
+      "multipleDevices": "Remova os outros dispositivos antes de redefinir a frase secreta.",
+      "locked": "Desbloqueie este Espaço antes de redefinir a frase secreta.",
+      "recovery": "Resolva o problema de recuperação dos dispositivos antes de continuar.",
+      "unavailable": "Não é possível redefinir agora. Tente novamente.",
+      "internal": "Não foi possível redefinir a frase secreta. Tente novamente."
+    },
+    "invitationAction": "Esqueceu a frase secreta antiga? Redefina-a"
+  },
   "unlock": {
     "title": "Desbloquear o UniClipboard",
     "description": "Seus dados estão criptografados. Desbloqueie para continuar.",

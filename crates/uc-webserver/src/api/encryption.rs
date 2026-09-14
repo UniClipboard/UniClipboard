@@ -9,6 +9,9 @@ use tracing::{debug, info};
 use uc_daemon_contract::api::dto::envelope::ApiEnvelope;
 use uc_daemon_contract::constants::{ws_event, ws_topic};
 use uc_engine::error_codes::{
+    ENCRYPTION_PASSPHRASE_CHANGE_RECOVERY_CODE, ENCRYPTION_PASSPHRASE_LOCKED_CODE,
+    ENCRYPTION_PASSPHRASE_MEMBERSHIP_RECOVERY_CODE, ENCRYPTION_PASSPHRASE_MISMATCH_CODE,
+    ENCRYPTION_PASSPHRASE_MULTIPLE_DEVICES_CODE, ENCRYPTION_PASSPHRASE_UNAVAILABLE_CODE,
     FACTORY_RESET_FAILED_CODE, FACTORY_RESET_KEY_MATERIAL_FAILED_CODE,
     FACTORY_RESET_STORAGE_FAILED_CODE, FACTORY_RESET_UNAVAILABLE_CODE, LOCK_ENCRYPTION_FAILED_CODE,
     QUERY_ENCRYPTION_STATE_FAILED_CODE, RECOVER_SESSION_RECEIVE_UNAVAILABLE_CODE,
@@ -17,14 +20,14 @@ use uc_engine::error_codes::{
     VERIFY_SECURE_STORAGE_ACCESS_FAILED_CODE,
 };
 use uc_engine::{
-    EngineError, EngineErrorCategory, Operation, OperationResult, RecoverSessionInput,
-    SecretString, UnlockSpaceInput,
+    ChangeEncryptionPassphraseInput, EngineError, EngineErrorCategory, Operation, OperationResult,
+    RecoverSessionInput, SecretString, UnlockSpaceInput,
 };
 use utoipa;
 
 use crate::api::dto::encryption::{
-    EncryptionActionResponse, EncryptionSessionReadyPayload, EncryptionStateResponse,
-    KeychainAccessResponse, UnlockSpaceRequest, UnlockSpaceResponse,
+    ChangeEncryptionPassphraseRequest, EncryptionActionResponse, EncryptionSessionReadyPayload,
+    EncryptionStateResponse, KeychainAccessResponse, UnlockSpaceRequest, UnlockSpaceResponse,
 };
 use crate::api::dto::error::{log_facade_failure, ApiError};
 use crate::api::server::DaemonApiState;
@@ -55,11 +58,81 @@ pub fn router() -> Router<DaemonApiState> {
             post(unlock_with_passphrase_handler),
         )
         .route("/encryption/lock", post(lock_handler))
+        .route(
+            "/encryption/passphrase",
+            post(change_encryption_passphrase_handler),
+        )
         .route("/encryption/factory-reset", post(factory_reset_handler))
         .route(
             "/encryption/keychain-access",
             get(verify_keychain_access_handler),
         )
+}
+
+fn map_change_passphrase_engine_err(error: EngineError) -> ApiError {
+    let (variant, api) = match error.code() {
+        ENCRYPTION_PASSPHRASE_MISMATCH_CODE => (
+            "passphrase_mismatch",
+            ApiError {
+                status: StatusCode::BAD_REQUEST,
+                code: "PASSPHRASE_MISMATCH".to_string(),
+                message: "passphrases do not match".to_string(),
+                details: None,
+            },
+        ),
+        ENCRYPTION_PASSPHRASE_MULTIPLE_DEVICES_CODE => (
+            "multiple_devices",
+            ApiError {
+                status: StatusCode::CONFLICT,
+                code: "MULTIPLE_DEVICES".to_string(),
+                message: "passphrase can only be changed in a single-device space".to_string(),
+                details: None,
+            },
+        ),
+        ENCRYPTION_PASSPHRASE_LOCKED_CODE => (
+            "locked",
+            ApiError {
+                status: StatusCode::CONFLICT,
+                code: "SPACE_LOCKED".to_string(),
+                message: "space is locked".to_string(),
+                details: None,
+            },
+        ),
+        ENCRYPTION_PASSPHRASE_MEMBERSHIP_RECOVERY_CODE => (
+            "membership_recovery_required",
+            ApiError {
+                status: StatusCode::CONFLICT,
+                code: "MEMBERSHIP_RECOVERY_REQUIRED".to_string(),
+                message: "device membership must be recovered first".to_string(),
+                details: None,
+            },
+        ),
+        ENCRYPTION_PASSPHRASE_CHANGE_RECOVERY_CODE => (
+            "passphrase_recovery_required",
+            ApiError {
+                status: StatusCode::CONFLICT,
+                code: "RECOVERY_REQUIRED".to_string(),
+                message: "passphrase change requires recovery".to_string(),
+                details: None,
+            },
+        ),
+        ENCRYPTION_PASSPHRASE_UNAVAILABLE_CODE => (
+            "unavailable",
+            ApiError::service_unavailable("passphrase change is temporarily unavailable"),
+        ),
+        _ => (
+            "unexpected_engine_error",
+            ApiError::internal("failed to change passphrase"),
+        ),
+    };
+    log_facade_failure(
+        "encryption",
+        "change_passphrase",
+        variant,
+        api.status,
+        &api.message,
+    );
+    api
 }
 
 fn map_factory_reset_engine_err(error: EngineError) -> ApiError {
@@ -328,6 +401,50 @@ async fn unlock_with_passphrase_handler(
     broadcast_session_ready(&state);
 
     Ok(Json(ApiEnvelope::now(UnlockSpaceResponse { space_id })))
+}
+
+/// POST /encryption/passphrase
+/// Replaces the passphrase for a space that contains only the local device.
+/// The request body contains plaintext secrets and must never be logged.
+#[utoipa::path(
+    post,
+    path = "/encryption/passphrase",
+    operation_id = "changeEncryptionPassphrase",
+    tag = "encryption",
+    request_body = ChangeEncryptionPassphraseRequest,
+    responses(
+        (status = 200, description = "Passphrase changed", body = EncryptionActionEnvelope),
+        (status = 400, description = "Passphrases do not match", body = ApiErrorResponse),
+        (status = 409, description = "Space is not eligible for a passphrase change", body = ApiErrorResponse),
+        (status = 503, description = "Passphrase change is unavailable", body = ApiErrorResponse),
+    )
+)]
+async fn change_encryption_passphrase_handler(
+    State(state): State<DaemonApiState>,
+    Json(request): Json<ChangeEncryptionPassphraseRequest>,
+) -> Result<Json<ApiEnvelope<EncryptionActionResponse>>, ApiError> {
+    let result = state
+        .execute(Operation::ChangeEncryptionPassphrase(
+            ChangeEncryptionPassphraseInput {
+                passphrase: SecretString::new(request.passphrase),
+                passphrase_confirmation: SecretString::new(request.passphrase_confirmation),
+            },
+        ))
+        .await
+        .map_err(map_change_passphrase_engine_err)?;
+    if !matches!(result, OperationResult::EncryptionPassphraseChanged) {
+        return Err(ApiError::internal(
+            "engine returned an unexpected passphrase-change result",
+        ));
+    }
+
+    info!(
+        event = "encryption_passphrase_changed",
+        "space passphrase changed"
+    );
+    Ok(Json(ApiEnvelope::now(EncryptionActionResponse {
+        success: true,
+    })))
 }
 
 fn broadcast_session_ready(state: &DaemonApiState) {
@@ -602,6 +719,58 @@ mod tests {
         ));
         assert_eq!(receive.status, StatusCode::SERVICE_UNAVAILABLE);
         assert_eq!(receive.code, "runtime_unavailable");
+    }
+
+    #[test]
+    fn map_change_passphrase_errors_preserves_user_recoverable_codes() {
+        let cases = [
+            (
+                ENCRYPTION_PASSPHRASE_MISMATCH_CODE,
+                EngineErrorCategory::InvalidInput,
+                StatusCode::BAD_REQUEST,
+                "PASSPHRASE_MISMATCH",
+            ),
+            (
+                ENCRYPTION_PASSPHRASE_MULTIPLE_DEVICES_CODE,
+                EngineErrorCategory::Conflict,
+                StatusCode::CONFLICT,
+                "MULTIPLE_DEVICES",
+            ),
+            (
+                ENCRYPTION_PASSPHRASE_LOCKED_CODE,
+                EngineErrorCategory::InvalidState,
+                StatusCode::CONFLICT,
+                "SPACE_LOCKED",
+            ),
+            (
+                ENCRYPTION_PASSPHRASE_MEMBERSHIP_RECOVERY_CODE,
+                EngineErrorCategory::InvalidState,
+                StatusCode::CONFLICT,
+                "MEMBERSHIP_RECOVERY_REQUIRED",
+            ),
+            (
+                ENCRYPTION_PASSPHRASE_CHANGE_RECOVERY_CODE,
+                EngineErrorCategory::InvalidState,
+                StatusCode::CONFLICT,
+                "RECOVERY_REQUIRED",
+            ),
+        ];
+
+        for (engine_code, category, status, api_code) in cases {
+            let api =
+                map_change_passphrase_engine_err(EngineError::new(engine_code, category, false));
+            assert_eq!(api.status, status);
+            assert_eq!(api.code, api_code);
+            assert!(api.details.is_none());
+        }
+
+        let unavailable = map_change_passphrase_engine_err(EngineError::new(
+            ENCRYPTION_PASSPHRASE_UNAVAILABLE_CODE,
+            EngineErrorCategory::Unavailable,
+            true,
+        ));
+        assert_eq!(unavailable.status, StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(unavailable.code, "runtime_unavailable");
     }
 
     /// Factory-reset variants keep the frontend semantic codes while redacting

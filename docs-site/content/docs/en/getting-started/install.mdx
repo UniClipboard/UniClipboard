@@ -127,13 +127,16 @@ The installer is code-signed.
 
 Want to skip installation or carry the app on a USB stick? Use the portable
 build. Download `UniClipboard_<version>_<arch>-portable.zip`, unzip it, and
-double-click `UniClipboard.exe` — no install, no registry writes, no traces in
-the system directories.
+double-click `UniClipboard.exe`. It requires no installation and writes no
+registry entries. Upgrade recovery copies are the system-directory exception
+described below.
 
-- **Data lives next to the app.** Everything (encrypted database, keys, search
-  index, logs) is stored in a `data` folder created next to
+- **Working data lives next to the app.** The encrypted database, keys, search
+  index, and logs are stored in a `data` folder created next to
   `UniClipboard.exe`. Move the whole folder (exe + `portable.dat` + `data`) to
-  carry your setup; delete `data` to reset.
+  carry your setup; delete `data` to reset. Recovery copies created before a
+  profile upgrade remain under `%LOCALAPPDATA%` so replacing or deleting the
+  portable folder cannot remove the last usable copy.
 - **`portable.dat` is the switch.** This marker file in the zip is what enables
   portable mode. Remove it and the app reverts to storing data under
   `%LOCALAPPDATA%\app.uniclipboard.desktop\` like the installed version.
@@ -150,8 +153,9 @@ the system directories.
 <Callout type="warn">
   **Known limitation:** the WebView2 runtime's browser cache is still written under `%LOCALAPPDATA%`
   and does not follow the portable folder yet, so a portable run is **not 100% trace-free**. That's
-  only the browser cache, though — your actual data (database, keys, search index, logs) lives in
-  the `data\` folder next to the app.
+  Besides the browser cache, pre-upgrade recovery copies are intentionally kept under
+  `%LOCALAPPDATA%`. Your active data (database, keys, search index, and logs) remains in the
+  `data\` folder next to the app.
 </Callout>
 
 Download the installer or portable zip from the
@@ -397,9 +401,11 @@ Logs sit under a `logs/` subdirectory. If you set the `UC_PROFILE` env
 var (e.g. `UC_PROFILE=dev`), the directory name is suffixed (e.g.
 `app.uniclipboard.desktop-dev`) so dev and prod can run side by side.
 
-The Windows **portable** build is the exception: it keeps all of the above in a
-`data\` folder next to `UniClipboard.exe` instead of `%LOCALAPPDATA%`. See the
-"Portable build" section under the Windows tab above.
+The Windows **portable** build keeps active data in a `data\` folder next to
+`UniClipboard.exe`. Pre-upgrade recovery copies remain under
+`%LOCALAPPDATA%\app.uniclipboard.desktop[-<profile>]-upgrade-backups\` so they
+survive replacement or deletion of the portable folder. See the "Portable
+build" section under the Windows tab above.
 
 ## Next
 

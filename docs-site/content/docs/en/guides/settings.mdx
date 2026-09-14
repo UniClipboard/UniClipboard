@@ -158,6 +158,7 @@ The biggest section, and the one with the most footguns.
 | ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Storage usage      | Four bars — database, encrypted vault, cache, logs — plus a `Refresh` button.                                                                                                |
 | Search index       | Status pill (Ready / Rebuilding / Unavailable), last rebuild timestamp, `Rebuild` button. See [Full-text search — Index lifecycle](../core-features/search#index-lifecycle). |
+| Upgrade backups    | Completed local recovery copies created before profile upgrades, newest first. The app keeps at most five. Each copy shows its versions, creation time, and size, and can be deleted after confirmation. These copies are separate from config exports and do not provide full app rollback. |
 | Auto-clear history | Master switch. Off → cleanup is manual only.                                                                                                                                 |
 | Retention days     | 7 / 30 / 90 / 180 / 365.                                                                                                                                                     |
 | Max items          | 100 / 200 / 500 / 1 000 / 2 000 / 5 000 / Unlimited. Either limit triggers a cleanup pass (Unlimited disables the item-count check entirely).                                |

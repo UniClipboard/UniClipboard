@@ -336,11 +336,9 @@ _Avoid_: lazy hash、pending entry、async capture
   不合并、不覆盖
 - 相对路径落盘做穿越防护（拒 `..`、绝对路径、越界）
 - 常规同步的兼容客户端（pull-only）不消费文件集 entry：register 指向它时，`GET
-  /SyncClipboard.json` 保持上一个手机可消费的值不变
+/SyncClipboard.json` 保持上一个手机可消费的值不变
 - 目录支持以 dedup 计划的 `entry_file_set` 表先落地为前置（目录成员 = 带
   `(root_index, relative_path)` 的行），不另建平行 schema
-
-
 
 **Tracked inbound file transfer**：
 接收设备本地为「一个正在/已经收下的文件」维护的一条投影记录（id、来源设备、

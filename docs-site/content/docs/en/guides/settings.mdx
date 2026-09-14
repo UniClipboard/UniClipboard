@@ -124,9 +124,10 @@ each peer's
 
 ## Security
 
-| Setting                        | What it does                                                                          |
-| ------------------------------ | ------------------------------------------------------------------------------------- |
-| Auto-unlock encryption session | Re-derive the MasterKey from the OS keyring KEK after lock/wake. Off → manual unlock. |
+| Setting                        | What it does                                                                                                                                                                             |
+| ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Auto-unlock encryption session | Re-derive the MasterKey from the OS keyring KEK after lock/wake. Off → manual unlock.                                                                                                   |
+| Reset space passphrase         | Choose a new passphrase without losing local history. Available only while this device is unlocked and is the space's only device. Existing invitations stop working after the reset. |
 
 For the underlying key model, see
 [Pairing & sync — Trust](./pairing#trust-the-space--invite-model).

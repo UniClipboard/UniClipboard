@@ -48,20 +48,24 @@ file content, passphrases, or keys. See
 
 ### Can I recover a forgotten passphrase?
 
-**No.** The passphrase derives the KEK via Argon2id, and the KEK wraps
-the space MasterKey. Nothing in the chain can be opened with a second
-key — that's the design goal and the price of having no backdoor.
+You cannot read or recover the current passphrase. However, if this device is
+already unlocked and is the only device in the space, open **Settings → Security
+& Privacy → Reset space passphrase** and choose a new one. This keeps your local
+history and data, but any existing invitations stop working.
 
-If another device still has access to this space, revoke the lost one
-from there (or rebuild the space). If every device lost the
-passphrase, the only path is to abandon local history and `space init` a new
-space.
+If the space has multiple devices, remove the other devices before resetting the
+passphrase. You can also start this reset from the passphrase prompt shown when
+you create an invitation.
+
+If no device can unlock the space, the passphrase still cannot be recovered.
+The remaining option is to reset and start over, which abandons local history.
 
 On the unlock screen, **Forgot passphrase? Reset and start over** runs
 this from the GUI: it wipes the on-disk keyslot and KEK on this device,
 then drops you back at the setup screen so you can `space init` a fresh
 space or `space join` from another device. You'll have to type `RESET` to
-confirm — local history is unrecoverable after this point.
+confirm — local history is unrecoverable after this point. This is different
+from the single-device passphrase reset above, which preserves local history.
 
 ### What if a relay gets compromised?
 

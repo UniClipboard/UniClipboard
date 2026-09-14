@@ -1,7 +1,19 @@
-import { act, fireEvent, render, screen } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { StartupProgressScreen } from '@/components/app/StartupProgressScreen'
 import { makeUpgradePreview } from '@/dev/upgrade-preview-model'
+
+const support = vi.hoisted(() => ({ contactAuthor: vi.fn() }))
+const updater = vi.hoisted(() => ({ checkForUpdate: vi.fn(), openUpdaterWindow: vi.fn() }))
+vi.mock('@/api/startup-support', () => ({
+  contactAuthor: support.contactAuthor,
+  STARTUP_SUPPORT_URL: 'https://github.com/UniClipboard/UniClipboard/issues/new/choose',
+}))
+vi.mock('@/api/updater', () => updater)
+
+beforeEach(() => {
+  vi.resetAllMocks()
+})
 
 describe('startup and upgrade progress', () => {
   it('does not present an ordinary cold start as an upgrade', () => {
@@ -12,6 +24,110 @@ describe('startup and upgrade progress', () => {
     expect(screen.queryByText(/资料已升级|Data upgraded|处理记录|Activity/)).not.toBeInTheDocument()
     expect(screen.getByRole('heading')).toHaveTextContent(/正在启动|Starting the app/)
   })
+  it('shows the backup as the first visible upgrade step', () => {
+    const snapshot = makeUpgradePreview('upgrading', 1)
+    snapshot.upgrade = {
+      required: true,
+      recovering: false,
+      completed: false,
+      current_step: 'backing_up',
+      steps: [
+        {
+          step: 'backing_up',
+          processed: 0,
+          total: null,
+          unit: null,
+          warning_count: 0,
+          completed: false,
+        },
+      ],
+    }
+    render(<StartupProgressScreen snapshot={snapshot} onRetry={vi.fn()} onExport={vi.fn()} />)
+    expect(screen.getByRole('heading')).toHaveTextContent(/正在升级你的资料|Upgrading your data/)
+    expect(screen.getAllByText(/备份本地资料|Backing up local data/)).not.toHaveLength(0)
+    expect(screen.getByRole('progressbar')).not.toHaveAttribute('value')
+  })
+
+  it('explains when the backup itself fails', () => {
+    const snapshot = makeUpgradePreview('upgrading', 1)
+    snapshot.state = 'failed'
+    snapshot.failure = { reason: 'backup_failed', retryable: true }
+    snapshot.allowed_actions.retry = true
+    snapshot.upgrade = {
+      required: true,
+      recovering: false,
+      completed: false,
+      current_step: 'backing_up',
+      steps: [
+        {
+          step: 'backing_up',
+          processed: 0,
+          total: null,
+          unit: null,
+          warning_count: 0,
+          completed: false,
+        },
+      ],
+    }
+    render(<StartupProgressScreen snapshot={snapshot} onRetry={vi.fn()} onExport={vi.fn()} />)
+    expect(
+      screen.getByText(/未能完成旧资料备份|old data backup could not be completed/)
+    ).toBeVisible()
+    expect(screen.getByRole('button', { name: /重试升级|Retry upgrade/ })).toBeVisible()
+    expect(screen.getByRole('button', { name: /联系作者|Contact author/ })).toBeVisible()
+  })
+
+  it('opens the author support channel after an upgrade failure', async () => {
+    support.contactAuthor.mockResolvedValue(undefined)
+    const snapshot = makeUpgradePreview('upgrading', 1)
+    snapshot.state = 'failed'
+    snapshot.failure = { reason: 'corrupt_data', retryable: false }
+
+    render(<StartupProgressScreen snapshot={snapshot} onRetry={vi.fn()} onExport={vi.fn()} />)
+    fireEvent.click(screen.getByRole('button', { name: /联系作者|Contact author/ }))
+
+    await waitFor(() => expect(support.contactAuthor).toHaveBeenCalledOnce())
+    expect(support.contactAuthor).toHaveBeenCalledOnce()
+    expect(screen.getByRole('status')).toHaveTextContent(
+      /支持页面已在浏览器中打开|support page is open/i
+    )
+  })
+
+  it('shows the support address when it cannot open the browser', async () => {
+    support.contactAuthor.mockRejectedValue(new Error('no browser'))
+    const snapshot = makeUpgradePreview('upgrading', 1)
+    snapshot.state = 'failed'
+    snapshot.failure = { reason: 'corrupt_data', retryable: false }
+
+    render(<StartupProgressScreen snapshot={snapshot} onRetry={vi.fn()} onExport={vi.fn()} />)
+    fireEvent.click(screen.getByRole('button', { name: /联系作者|Contact author/ }))
+
+    await waitFor(() =>
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        'https://github.com/UniClipboard/UniClipboard/issues/new/choose'
+      )
+    )
+  })
+
+  it('keeps update checking available after an upgrade failure', async () => {
+    updater.openUpdaterWindow.mockResolvedValue(undefined)
+    updater.checkForUpdate.mockRejectedValue(new Error('offline'))
+    const snapshot = makeUpgradePreview('upgrading', 1)
+    snapshot.state = 'failed'
+    snapshot.failure = { reason: 'corrupt_data', retryable: false }
+
+    render(<StartupProgressScreen snapshot={snapshot} onRetry={vi.fn()} onExport={vi.fn()} />)
+    fireEvent.click(screen.getByRole('button', { name: /检查更新|Check for updates/ }))
+
+    await waitFor(() =>
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        /无法完成更新检查|Could not complete the update check/i
+      )
+    )
+    expect(updater.openUpdaterWindow).toHaveBeenCalledOnce()
+    expect(updater.checkForUpdate).toHaveBeenCalledWith(null)
+  })
+
   it('keeps elapsed time moving without any backend progress update', () => {
     vi.useFakeTimers()
     const view = render(

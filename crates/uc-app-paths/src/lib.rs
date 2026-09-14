@@ -44,7 +44,7 @@ pub const APP_DIR_NAME: &str = "app.uniclipboard.desktop";
 /// presence flips the running binary into portable mode.
 pub const PORTABLE_MARKER: &str = "portable.dat";
 
-/// Subdirectory (relative to the executable) that holds all portable data.
+/// Subdirectory (relative to the executable) that holds active portable data.
 /// Keeping everything under a single `data/` folder gives users a clean
 /// "delete this to reset" story and keeps the zip root tidy.
 const PORTABLE_DATA_SUBDIR: &str = "data";
@@ -140,8 +140,9 @@ pub fn is_portable() -> bool {
 /// This is the *non-override* resolution; the test-only base override lives in
 /// `uc-platform`'s adapter and short-circuits before this is consulted.
 pub fn base_data_local_dir() -> Option<PathBuf> {
-    // Portable ("green") builds keep all data next to the executable so the
-    // app leaves no trace in the per-user system data directory. The redirect
+    // Portable builds keep active data next to the executable. Durable recovery
+    // copies deliberately use app_upgrade_backup_root outside this redirect.
+    // The redirect
     // is resolved here (the lowest common layer) so every call site — daemon
     // socket path, secure storage, process metadata — follows it without
     // knowing portable mode exists.
@@ -170,6 +171,47 @@ pub fn base_cache_dir() -> Option<PathBuf> {
 /// [`resolved_app_dir_name`] instead so the suffix is preserved.
 pub fn app_data_root() -> Option<PathBuf> {
     Some(base_data_local_dir()?.join(resolved_app_dir_name(None)))
+}
+
+/// Durable local recovery copies deliberately bypass the portable redirect.
+/// Deleting userdata or the portable installation must not delete these copies.
+pub fn app_upgrade_backup_root(compile_default: Option<&str>) -> Option<PathBuf> {
+    let profile = resolve_profile(compile_default);
+    upgrade_backup_root_in(&dirs::data_local_dir()?, profile.as_deref())
+}
+
+fn upgrade_backup_root_in(base: &Path, profile: Option<&str>) -> Option<PathBuf> {
+    let app_name = match profile {
+        Some(profile) if is_safe_profile_component(profile) => format!("{APP_DIR_NAME}-{profile}"),
+        Some(_) => return None,
+        None => APP_DIR_NAME.to_string(),
+    };
+    Some(base.join(format!("{app_name}-upgrade-backups")))
+}
+
+#[cfg(test)]
+mod upgrade_backup_tests {
+    use super::*;
+
+    #[test]
+    fn backups_are_outside_userdata_and_portable_installation() {
+        let system_base = Path::new("system-user-data");
+        let backup = upgrade_backup_root_in(system_base, Some("test")).unwrap();
+        assert_eq!(
+            backup,
+            system_base.join("app.uniclipboard.desktop-test-upgrade-backups")
+        );
+        assert!(!backup.starts_with(system_base.join("app.uniclipboard.desktop-test")));
+        assert!(!backup.starts_with(Path::new("portable-installation").join("data")));
+        assert_ne!(backup, upgrade_backup_root_in(system_base, None).unwrap());
+    }
+
+    #[test]
+    fn backup_profile_cannot_escape_its_directory() {
+        for profile in ["../other", "a/b", "a\\b", "", ".", ".."] {
+            assert!(upgrade_backup_root_in(Path::new("base"), Some(profile)).is_none());
+        }
+    }
 }
 
 /// Resolve the application cache root: `base_cache_dir().join(app_dir_name)`.

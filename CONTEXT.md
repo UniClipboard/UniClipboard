@@ -377,12 +377,20 @@ _Avoid_: persisted startup state、client-side startup orchestration
 
 **Profile upgrade progress**：
 普通启动中可选的资料升级过程的当前状态，区分需要升级、恢复中与已完成；界面只展示
-当前步骤的真实处理量，内容表示数量不等于历史条数，步骤百分比不等于整体完成度。
+当前步骤的真实处理量，升级前保存本机资料副本也是其中一个明确步骤；备份失败会停止升级，
+由界面提示用户检查磁盘空间和文件权限后重试。内容表示数量不等于历史条数，步骤百分比不等于整体完成度。
 旧历史内容无法解码时保留原内容、标记为不可用并继续升级；资料保护信息缺失或磁盘
 读取失败仍停止升级，不能把这类失败降级为单条历史内容不可用。
 该进度保存在内存中，不是新增的持久状态。
 详见[桌面启动与资料升级进度](docs/architecture/startup-upgrade-progress.md)。
 _Avoid_: overall upgrade percentage、history entry count（指内容表示数量）
+
+**Profile upgrade backup**：
+资料改写前自动生成并验证的本机恢复副本，与当前资料目录分开保存；最多保留最新 5 份，
+升级成功、清除当前资料或删除便携版目录都不会连带删除，用户可在“设置 → 存储”查看并经再次确认后手动删除。
+它保留原文件已有的保护状态，不是可分享的导出文件，也不表示已经支持完整软件回退。
+详见[桌面启动与资料升级进度](docs/architecture/startup-upgrade-progress.md)。
+_Avoid_: config export、portable data copy、complete rollback
 
 ## Language — 桌面视觉偏好
 

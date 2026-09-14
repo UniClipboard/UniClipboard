@@ -16,6 +16,7 @@ pub enum StartupStateDto {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "snake_case")]
 pub enum StartupStepDto {
+    BackingUp,
     Checking,
     ConvertingContents,
     ConvertingLargeContents,
@@ -35,6 +36,7 @@ pub enum StartupUnitDto {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "snake_case")]
 pub enum StartupFailureReasonDto {
+    BackupFailed,
     StorageFull,
     PermissionDenied,
     StorageUnavailable,

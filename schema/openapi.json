@@ -704,6 +704,48 @@
         ],
         "type": "object"
       },
+      "DeleteUpgradeBackupEnvelope": {
+        "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/DeleteUpgradeBackupResponse"
+          },
+          "ts": {
+            "description": "Server time when the response was built (unix epoch milliseconds).",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "data",
+          "ts"
+        ],
+        "type": "object"
+      },
+      "DeleteUpgradeBackupRequest": {
+        "description": "Request payload for deleting a pre-upgrade backup.",
+        "properties": {
+          "confirmed": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "confirmed"
+        ],
+        "type": "object"
+      },
+      "DeleteUpgradeBackupResponse": {
+        "description": "Response payload after deleting a pre-upgrade backup.",
+        "properties": {
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
       "DeliveryFailureReasonDto": {
         "description": "Failure reason. i18n key convention: `delivery.failureReason.<variant>`.\n\nNote: \"peer offline\" is NOT in this enum — it is represented as\n`EntryDeliveryStatusDto::Unreachable` (a separate status, not a failure).",
         "enum": [
@@ -6245,6 +6287,67 @@
         ],
         "type": "object"
       },
+      "UpgradeBackupDto": {
+        "description": "One completed pre-upgrade profile backup.",
+        "properties": {
+          "createdAtMs": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "id": {
+            "type": "string"
+          },
+          "sizeBytes": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "sourceEngine": {
+            "nullable": true,
+            "type": "string"
+          },
+          "sourceProduct": {
+            "nullable": true,
+            "type": "string"
+          },
+          "targetEngine": {
+            "type": "string"
+          },
+          "targetProduct": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "createdAtMs",
+          "targetProduct",
+          "targetEngine",
+          "sizeBytes"
+        ],
+        "type": "object"
+      },
+      "UpgradeBackupListEnvelope": {
+        "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/UpgradeBackupDto"
+            },
+            "type": "array"
+          },
+          "ts": {
+            "description": "Server time when the response was built (unix epoch milliseconds).",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "data",
+          "ts"
+        ],
+        "type": "object"
+      },
       "UpgradeStatusDto": {
         "description": "Discriminated union mirroring `uc_application::facade::UpgradeStatus`.\n\nWire encoding uses `kind` discriminator with snake_case variants to\nkeep parity with the CLI JSON output produced by `uniclip upgrade\nstatus --json`.\n\n防御性补丁(issue #606 followup):同时声明 `rename_all_fields`,\n避免未来新增多词字段(如 `target_version`)时 wire 字段名漂回\nsnake_case 与上层契约不一致。当前字段都是单词,加这个对 wire 无影响,\n但锁定未来添加字段的默认风格。详见 `docs/agent/rust-tauri-rules.md`\n的 \"Enum Wire Serialization\" 一节。",
         "discriminator": {
@@ -10653,6 +10756,147 @@
           }
         ],
         "summary": "GET /storage/stats",
+        "tags": [
+          "storage"
+        ]
+      }
+    },
+    "/storage/upgrade-backups": {
+      "get": {
+        "description": "Returns completed pre-upgrade backups, newest first.",
+        "operationId": "listUpgradeBackups",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpgradeBackupListEnvelope"
+                }
+              }
+            },
+            "description": "Upgrade backups retrieved"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal server error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Upgrade backup storage unavailable"
+          }
+        },
+        "security": [
+          {
+            "session_query": []
+          },
+          {
+            "session_header": []
+          }
+        ],
+        "summary": "GET /storage/upgrade-backups",
+        "tags": [
+          "storage"
+        ]
+      }
+    },
+    "/storage/upgrade-backups/{id}": {
+      "delete": {
+        "description": "Deletes one completed pre-upgrade backup after explicit confirmation.",
+        "operationId": "deleteUpgradeBackup",
+        "parameters": [
+          {
+            "description": "Backup identifier",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeleteUpgradeBackupRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeleteUpgradeBackupEnvelope"
+                }
+              }
+            },
+            "description": "Upgrade backup deleted"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Confirmation missing or false, or invalid backup identifier"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Upgrade backup not found"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal server error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Upgrade backup storage unavailable"
+          }
+        },
+        "security": [
+          {
+            "session_query": []
+          },
+          {
+            "session_header": []
+          }
+        ],
+        "summary": "DELETE /storage/upgrade-backups/{id}",
         "tags": [
           "storage"
         ]

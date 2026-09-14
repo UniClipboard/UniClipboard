@@ -708,6 +708,25 @@
           "description": "打開應用程式資料存儲所在的資料夾",
           "button": "在檔案管理器中打開"
         },
+        "upgradeBackups": {
+          "label": "升級備份",
+          "description": "資料升級前會自動建立備份。系統最多保留最新 5 份，較舊的會自動刪除。",
+          "count": "已保留 {{count}} / 5 份",
+          "loading": "正在讀取備份…",
+          "loadFailed": "暫時無法讀取備份。",
+          "retry": "重試",
+          "empty": "還沒有升級備份。",
+          "unknownVersion": "未知版本",
+          "versionChange": "版本 {{source}} → {{target}}",
+          "deleteLabel": "刪除 {{date}} 的備份",
+          "confirmTitle": "刪除這份升級備份？",
+          "confirmDescription": "刪除後無法復原，但不會影響目前資料。",
+          "cancel": "取消",
+          "delete": "刪除備份",
+          "deleting": "正在刪除…",
+          "deleted": "備份已刪除",
+          "deleteFailed": "刪除備份失敗"
+        },
         "configBackup": {
           "label": "設定備份與遷移",
           "export": {

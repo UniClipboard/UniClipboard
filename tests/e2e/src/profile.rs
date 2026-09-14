@@ -11,6 +11,7 @@ pub struct TestProfile {
     data_dir: PathBuf,
     cache_dir: PathBuf,
     log_dir: PathBuf,
+    upgrade_backup_dir: PathBuf,
 }
 
 impl TestProfile {
@@ -50,11 +51,13 @@ impl TestProfile {
         let data_dir = Self::resolve_data_dir(&unique);
         let cache_dir = Self::resolve_cache_dir(&unique);
         let log_dir = Self::resolve_log_dir(&unique);
+        let upgrade_backup_dir = Self::resolve_upgrade_backup_dir(&data_dir);
         Self {
             name: unique,
             data_dir,
             cache_dir,
             log_dir,
+            upgrade_backup_dir,
         }
     }
 
@@ -93,6 +96,10 @@ impl TestProfile {
         &self.log_dir
     }
 
+    pub fn upgrade_backup_dir(&self) -> &PathBuf {
+        &self.upgrade_backup_dir
+    }
+
     pub fn process_log_path(&self) -> PathBuf {
         self.data_dir.join("e2e-daemon-process.log")
     }
@@ -111,13 +118,27 @@ impl TestProfile {
             .expect("the platform must provide an E2E log directory")
     }
 
+    fn resolve_upgrade_backup_dir(data_dir: &std::path::Path) -> PathBuf {
+        let mut name = data_dir
+            .file_name()
+            .expect("E2E data directory must have a name")
+            .to_os_string();
+        name.push("-upgrade-backups");
+        data_dir.with_file_name(name)
+    }
+
     /// Remove every directory this profile's daemon may have created.
     ///
     /// The daemon writes BOTH a data dir and a separate cache dir (spool /
     /// blobs). Cleaning only the data dir leaked one cache dir per test run
     /// (`~/Library/Caches/...` on macOS), which accumulated unbounded.
     pub fn cleanup(&self) {
-        for dir in [&self.data_dir, &self.cache_dir, &self.log_dir] {
+        for dir in [
+            &self.data_dir,
+            &self.cache_dir,
+            &self.log_dir,
+            &self.upgrade_backup_dir,
+        ] {
             if dir.exists() {
                 let _ = std::fs::remove_dir_all(dir);
             }

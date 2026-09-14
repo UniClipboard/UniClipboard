@@ -1,10 +1,10 @@
-//! Desktop secure-storage preparation and legacy identity migration.
+//! Desktop secure-storage preparation and read-only legacy identity fallback.
 
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use uc_platform::fallback_secure_storage::FallbackSecureStorage;
 use uc_platform::file_secure_storage::FileSecureStorage;
-use uc_platform::migrating_secure_storage::MigratingSecureStorage;
 use uc_platform::ports::SecureStorageProvider;
 
 use super::error::{WiringError, WiringResult};
@@ -22,7 +22,7 @@ pub(crate) fn build_identity_storage(
 ) -> Arc<dyn SecureStorageProvider> {
     let legacy: Arc<dyn SecureStorageProvider> =
         Arc::new(FileSecureStorage::with_base_dir(legacy_identity_dir));
-    Arc::new(MigratingSecureStorage::new(
+    Arc::new(FallbackSecureStorage::new(
         primary,
         legacy,
         vec![LEGACY_IDENTITY_STORE_KEY.to_string()],
@@ -86,7 +86,7 @@ mod tests {
     }
 
     #[test]
-    fn legacy_identity_fallback_migrates_from_unmodified_directory_name() {
+    fn legacy_identity_read_preserves_the_original_files() {
         let temporary = tempfile::tempdir().unwrap();
         let profiled_app_data_root = temporary.path().join("app.uniclipboard.desktop-a");
         let legacy_identity_dir = profiled_app_data_root.join("iroh-identity");
@@ -103,13 +103,13 @@ mod tests {
             storage.get(LEGACY_IDENTITY_STORE_KEY).unwrap().as_deref(),
             Some(&b"legacy-identity"[..])
         );
-        assert!(!legacy_identity_file.exists());
+        assert!(legacy_identity_file.exists());
         assert!(primary_root
             .join("keyring")
             .read_dir()
             .unwrap()
             .next()
-            .is_some());
+            .is_none());
         assert!(!profiled_app_data_root.join("iroh-identity_a").exists());
     }
 }

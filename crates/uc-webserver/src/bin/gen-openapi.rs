@@ -61,8 +61,9 @@ use uc_webserver::api::openapi::ApiDoc;
 /// Device trust replaces the product-facing convergence query with one complete
 /// query and choice operations on one path: 75 paths / 84 operations.
 /// Connectivity opportunities add one path and operation: 76 / 85.
-const EXPECTED_PATHS: usize = 76;
-const EXPECTED_OPERATIONS: usize = 85;
+/// Upgrade backup management adds two paths and two operations: 78 / 87.
+const EXPECTED_PATHS: usize = 78;
+const EXPECTED_OPERATIONS: usize = 87;
 const SCHEMA_PREFIX: &str = "#/components/schemas/";
 const HTTP_METHODS: [&str; 7] = ["get", "put", "post", "delete", "patch", "head", "options"];
 

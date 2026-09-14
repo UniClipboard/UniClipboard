@@ -51,8 +51,8 @@ export type {
   ClipboardEntryResource,
   RestoreResult,
 } from './clipboard'
-export { getStorageStats, clearCache } from './storage'
-export type { StorageStats } from './storage'
+export { getStorageStats, clearCache, listUpgradeBackups, deleteUpgradeBackup } from './storage'
+export type { StorageStats, UpgradeBackup } from './storage'
 export {
   getSetupState,
   initializeSpace,

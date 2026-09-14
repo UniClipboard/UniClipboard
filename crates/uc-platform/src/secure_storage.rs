@@ -1,6 +1,9 @@
 //! Secure storage selection and default secure storage factory.
 
-use std::{fs, path::PathBuf, sync::Arc};
+use std::{path::PathBuf, sync::Arc};
+
+mod probed;
+use probed::ProbedSecureStorage;
 use tracing::{debug, error, info, warn};
 
 use crate::{
@@ -31,8 +34,8 @@ pub enum SecureStorageFactoryError {
 /// a desktop + DBus) but the real call was rejected at runtime: snap AppArmor
 /// blocking `org.freedesktop.Secret.Service.OpenSession`, gnome-keyring
 /// locked and unable to prompt in this context, KWallet disabled, etc. Those
-/// failures used to crash daemon bootstrap; callers can now degrade
-/// gracefully to file-based KEK instead.
+/// failures are reported on first access; the provider never substitutes an
+/// empty file store for an inaccessible system store.
 ///
 /// On Linux the production wiring uses the stricter
 /// `probe_system_storage_integrity` instead; this function is still compiled
@@ -56,8 +59,8 @@ fn probe_system_storage_reachable(storage: &dyn SecureStorageProvider) -> Result
 ///
 /// Returns `Ok(())` only when write + read + byte-equality all succeed.
 /// On any failure (including reachability failures previously caught by
-/// `probe_system_storage_reachable`) the caller falls back to
-/// `FileSecureStorage`. The sentinel entry is best-effort cleaned up
+/// `probe_system_storage_reachable`) the caller reports unavailability.
+/// The sentinel entry is best-effort cleaned up
 /// regardless of outcome so we don't leave probe state in the user's wallet.
 ///
 /// Not wired into macOS / Windows production paths: every `set` on macOS
@@ -107,7 +110,7 @@ fn probe_system_storage_integrity(storage: &dyn SecureStorageProvider) -> Result
 ///
 /// Must stay comfortably below the GUI's 8s daemon-startup window (the bootstrap
 /// `StartupTimeout`) so that a *blocked* probe still leaves enough time for the
-/// rest of daemon wiring + HTTP listen after we degrade to file-based KEK. A
+/// rest of daemon wiring to report secure-storage failure. A
 /// healthy, already-unlocked gnome-keyring round-trips set/get/delete in well
 /// under a second, so 3s only ever trips on genuinely stuck backends.
 #[cfg(target_os = "linux")]
@@ -123,10 +126,9 @@ const SYSTEM_STORAGE_PROBE_TIMEOUT: std::time::Duration = std::time::Duration::f
 /// are both present — so capability detection picks `SystemKeyring`, yet there
 /// may be no running secret service and no unlock prompter. The D-Bus call then
 /// *blocks* (waiting on service activation or an unlock agent) instead of
-/// failing fast, so the graceful file-based fallback in
-/// `create_default_secure_storage_in_app_data_root` never fires and daemon
-/// bootstrap hangs past the GUI's startup window. Bounding the probe lets us
-/// treat "blocks too long" the same as "failed fast": degrade to file-based.
+/// failing fast, so daemon bootstrap could hang past the GUI startup window.
+/// Bounding the probe makes an unavailable store fail explicitly without
+/// switching to a different store.
 ///
 /// The worker thread is intentionally detached. A blocked D-Bus call cannot be
 /// cancelled from outside; the thread unwinds on its own once the underlying
@@ -183,7 +185,7 @@ fn secure_storage_from_capability(
 /// the provided capability.
 ///
 /// The `base_dir` argument supplies the application data root required for file-based storage;
-/// when present the directory will be created if it does not exist.
+/// construction does not create the directory or access the secret service.
 ///
 /// # Examples
 ///
@@ -204,12 +206,11 @@ fn secure_storage_from_capability_with_base_dir(
     base_dir: Option<PathBuf>,
 ) -> Result<Arc<dyn SecureStorageProvider>, SecureStorageFactoryError> {
     match capability {
-        SecureStorageCapability::SystemKeyring => {
-            Ok(Arc::new(SystemSecureStorage::new()) as Arc<dyn SecureStorageProvider>)
-        }
+        SecureStorageCapability::SystemKeyring => Ok(Arc::new(ProbedSecureStorage::new(Arc::new(
+            SystemSecureStorage::new(),
+        ))) as Arc<dyn SecureStorageProvider>),
         SecureStorageCapability::FileBasedKeystore => {
             if let Some(base_dir) = base_dir {
-                fs::create_dir_all(&base_dir)?;
                 Ok(Arc::new(FileSecureStorage::with_base_dir(base_dir))
                     as Arc<dyn SecureStorageProvider>)
             } else {
@@ -277,11 +278,13 @@ pub fn create_default_secure_storage(
     }
 }
 
-/// Create a default secure storage using `app_data_root` when a file-based keystore is required.
+/// Select a provider without accessing secrets or modifying userdata.
+/// System probing is deferred until first access, after Engine startup backup.
+/// An inaccessible system store never falls back to a different empty store.
 ///
 /// Detects the platform's secure storage capability and returns an appropriate provider:
 /// - If system secure storage is available, returns the system-backed implementation.
-/// - If a file-based keystore is detected, initializes a file-backed implementation rooted at
+/// - If a file-based keystore is detected, selects a file-backed implementation rooted at
 ///   `app_data_root`.
 /// - If secure storage is unsupported, returns `SecureStorageFactoryError::Unsupported`.
 ///
@@ -292,7 +295,7 @@ pub fn create_default_secure_storage(
 /// # Errors
 ///
 /// Returns `SecureStorageFactoryError::Unsupported` when secure storage is not available.
-/// Returns `SecureStorageFactoryError::FileBasedInit` if initialization of file-based storage fails.
+/// Store access failures are returned by the first actual operation, not construction.
 ///
 /// # Examples
 ///
@@ -309,89 +312,13 @@ pub fn create_default_secure_storage(
 pub fn create_default_secure_storage_in_app_data_root(
     app_data_root: PathBuf,
 ) -> Result<Arc<dyn SecureStorageProvider>, SecureStorageFactoryError> {
-    // Portable ("green") builds must not write the KEK into a per-user system
-    // secret store (Windows Credential Manager / macOS Keychain / Secret
-    // Service): that would leave a trace outside the portable folder and break
-    // the "runs from a USB stick, leaves nothing behind" contract. Keep the KEK
-    // in a file under the portable data root instead.
-    if crate::portable::is_portable() {
-        info!("Portable mode: storing KEK as a file under the portable data root (skipping system secure storage)");
-        return Ok(
-            Arc::new(FileSecureStorage::new_in_app_data_root(app_data_root)?)
-                as Arc<dyn SecureStorageProvider>,
-        );
-    }
-
-    let capability = detect_storage_capability();
-    debug!(capability = ?capability, "Detected secure storage capability");
-
-    match capability {
-        SecureStorageCapability::SystemKeyring => {
-            // capability detection is env-only (DISPLAY + DBUS_SESSION_BUS_ADDRESS),
-            // it cannot tell whether the secret service actually accepts our calls.
-            // snap AppArmor refusing OpenSession is the canonical reachability
-            // failure (see `password-manager-service` plug in snapcraft.yaml);
-            // KWallet's Secret-Service bridge corrupting binary payloads is the
-            // canonical integrity failure (issue #838). Probe before committing
-            // to system keyring; on failure degrade to FileSecureStorage so
-            // daemon bootstrap can still complete instead of crashing with an
-            // opaque "invalid KEK length" later in the unlock path.
-            let system_storage = SystemSecureStorage::new();
-
-            // Linux runs the binary round-trip integrity probe; macOS/Windows
-            // stick to the cheap reachability probe — a `set` on macOS would
-            // risk a fresh Keychain authorization prompt every launch, and
-            // Windows Credential Manager has no equivalent text-mangling
-            // pathology that would be worth the extra write for.
-            //
-            // The Linux probe is bounded by a timeout: its synchronous D-Bus
-            // Secret-Service calls can *block* (not just fail) when the session
-            // looks like a desktop but has no running/unlocked secret service —
-            // see `run_probe_with_timeout`. A blocked probe degrades to
-            // file-based KEK just like an outright failure.
-            #[cfg(target_os = "linux")]
-            let probe_result = {
-                let storage_for_probe = system_storage.clone();
-                run_probe_with_timeout(SYSTEM_STORAGE_PROBE_TIMEOUT, move || {
-                    probe_system_storage_integrity(&storage_for_probe)
-                })
-            };
-            #[cfg(not(target_os = "linux"))]
-            let probe_result = probe_system_storage_reachable(&system_storage);
-
-            match probe_result {
-                Ok(()) => {
-                    info!("Using system secure storage");
-                    Ok(Arc::new(system_storage) as Arc<dyn SecureStorageProvider>)
-                }
-                Err(probe_err) => {
-                    warn!(
-                        probe_error = %probe_err,
-                        "System secure storage probe failed; falling back to file-based KEK. \
-                         Common causes: snap AppArmor blocking Secret-Service access \
-                         (check `password-manager-service` plug), keyring daemon not \
-                         running, or KWallet's Secret-Service bridge mangling binary \
-                         values (issue #838)."
-                    );
-                    Ok(
-                        Arc::new(FileSecureStorage::new_in_app_data_root(app_data_root)?)
-                            as Arc<dyn SecureStorageProvider>,
-                    )
-                }
-            }
-        }
-        SecureStorageCapability::FileBasedKeystore => {
-            warn!("Using file-based secure storage (insecure dev fallback for WSL/headless environments)");
-            Ok(
-                Arc::new(FileSecureStorage::new_in_app_data_root(app_data_root)?)
-                    as Arc<dyn SecureStorageProvider>,
-            )
-        }
-        SecureStorageCapability::Unsupported => {
-            error!(capability = ?capability, "Secure storage unsupported");
-            Err(SecureStorageFactoryError::Unsupported { capability })
-        }
-    }
+    let capability = if crate::portable::is_portable() {
+        SecureStorageCapability::FileBasedKeystore
+    } else {
+        detect_storage_capability()
+    };
+    debug!(capability = ?capability, "Selected secure storage capability");
+    secure_storage_from_capability_with_base_dir(capability, Some(app_data_root.join("keyring")))
 }
 
 #[cfg(test)]
@@ -400,6 +327,17 @@ mod tests {
     use crate::ports::SecureStorageError;
     use std::collections::HashMap;
     use std::sync::Mutex;
+
+    #[test]
+    fn default_factory_does_not_create_userdata_or_access_the_selected_store() {
+        let temporary = tempfile::tempdir().unwrap();
+        let root = temporary.path().join("userdata");
+        let result = create_default_secure_storage_in_app_data_root(root.clone());
+        assert!(!root.exists());
+        assert!(
+            result.is_ok() || matches!(result, Err(SecureStorageFactoryError::Unsupported { .. }))
+        );
+    }
 
     /// `SecureStorageProvider` that preserves bytes verbatim — models a
     /// well-behaved backend like gnome-keyring.
@@ -523,7 +461,7 @@ mod tests {
     #[test]
     fn probe_timeout_trips_on_blocking_probe() {
         // A probe that outlives the timeout must read as a failure so the
-        // caller degrades to file-based KEK instead of hanging bootstrap.
+        // caller reports unavailability instead of hanging bootstrap.
         let result = run_probe_with_timeout(std::time::Duration::from_millis(50), || {
             std::thread::sleep(std::time::Duration::from_secs(30));
             Ok(())

@@ -5,6 +5,7 @@ import { RetentionPolicyGroup } from './RetentionPolicyGroup'
 import { SearchIndexGroup } from './SearchIndexGroup'
 import { StorageDataGroup } from './StorageDataGroup'
 import { StorageUsageGroup } from './StorageUsageGroup'
+import { UpgradeBackupGroup } from './UpgradeBackupGroup'
 import { useStorageStats } from './useStorageStats'
 
 export default function StorageSection() {
@@ -23,6 +24,7 @@ export default function StorageSection() {
       <SearchIndexGroup />
       <RetentionPolicyGroup />
       <StorageDataGroup onChanged={refresh} />
+      <UpgradeBackupGroup />
       <ConfigBackupGroup />
     </div>
   )

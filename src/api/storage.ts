@@ -15,8 +15,13 @@
  * that the daemon cannot provide.
  */
 
-export { getStorageStats, clearCache } from './daemon/storage'
-export type { StorageStats } from './daemon/storage'
+export {
+  getStorageStats,
+  clearCache,
+  listUpgradeBackups,
+  deleteUpgradeBackup,
+} from './daemon/storage'
+export type { StorageStats, UpgradeBackup } from './daemon/storage'
 
 // ── Public API ─────────────────────────────────────────────────
 

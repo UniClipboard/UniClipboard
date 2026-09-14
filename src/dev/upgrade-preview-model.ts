@@ -2,6 +2,8 @@ import type { StartupSnapshot, StepProgress } from '@/lib/startup-progress'
 
 export const previewScenarios = [
   'upgrading',
+  'backing-up',
+  'backup-failed',
   'cold-start',
   'recovering',
   'unknown',
@@ -21,25 +23,28 @@ export function makeUpgradePreview(
   upgradeRequired = scenario !== 'cold-start'
 ): StartupSnapshot {
   const finished = scenario === 'starting' || scenario === 'ready'
+  const backingUp = scenario === 'backing-up' || scenario === 'backup-failed'
   const current: StepProgress = {
-    step: scenario === 'verifying' ? 'verifying' : 'converting_contents',
+    step: backingUp ? 'backing_up' : scenario === 'verifying' ? 'verifying' : 'converting_contents',
     processed:
       scenario === 'verifying'
         ? 0
         : scenario === 'finishing'
           ? 4098
           : Math.min(4098, Math.floor((seconds / 40) * 4098)),
-    total: scenario === 'unknown' || scenario === 'verifying' ? null : 4098,
-    unit: scenario === 'verifying' ? null : 'content_representations',
+    total: scenario === 'unknown' || scenario === 'verifying' || backingUp ? null : 4098,
+    unit: scenario === 'verifying' || backingUp ? null : 'content_representations',
     warning_count: scenario === 'recovering' ? null : 0,
     completed: finished,
   }
   const failure =
     scenario === 'failed'
       ? { reason: 'storage_full' as const, retryable: true }
-      : scenario === 'protection'
-        ? { reason: 'protection_unavailable' as const, retryable: false }
-        : null
+      : scenario === 'backup-failed'
+        ? { reason: 'backup_failed' as const, retryable: true }
+        : scenario === 'protection'
+          ? { reason: 'protection_unavailable' as const, retryable: false }
+          : null
   const state = failure
     ? 'failed'
     : scenario === 'interrupted'
@@ -61,14 +66,26 @@ export function makeUpgradePreview(
       current_step: finished ? null : current.step,
       steps: [
         {
-          step: 'checking',
+          step: 'backing_up',
           processed: 0,
           total: null,
           unit: null,
           warning_count: 0,
-          completed: true,
+          completed: !backingUp,
         },
-        { ...current, processed: finished ? 4098 : current.processed },
+        ...(backingUp
+          ? []
+          : [
+              {
+                step: 'checking' as const,
+                processed: 0,
+                total: null,
+                unit: null,
+                warning_count: 0,
+                completed: true,
+              },
+              { ...current, processed: finished ? 4098 : current.processed },
+            ]),
         ...(finished
           ? [
               {

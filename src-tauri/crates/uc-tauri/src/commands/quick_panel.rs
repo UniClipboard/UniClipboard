@@ -22,6 +22,25 @@ use crate::quick_panel;
 type QuickPanelDoubleTapModifier = QuickPanelDoubleTapModifierDto;
 type QuickPanelPosition = QuickPanelPositionDto;
 
+/// Whether Quick Panel activation shortcuts must be configured in the compositor.
+#[tauri::command]
+#[specta::specta]
+pub async fn quick_panel_uses_compositor_shortcuts(_trace: Option<TraceMetadata>) -> bool {
+    let span = info_span!(
+        "command.quick_panel.shortcut_backend",
+        trace_id = tracing::field::Empty,
+        trace_ts = tracing::field::Empty
+    );
+    record_trace_fields(&span, &_trace);
+    async {
+        let compositor_managed = quick_panel::uses_compositor_shortcuts();
+        tracing::debug!(compositor_managed, "Resolved quick panel shortcut backend");
+        compositor_managed
+    }
+    .instrument(span)
+    .await
+}
+
 /// Quick panel placement preference (Tauri command wire form).
 ///
 /// wire form: `center` | `follow_cursor`.
@@ -132,15 +151,22 @@ pub async fn paste_to_previous_app(
     record_trace_fields(&span, &_trace);
 
     async {
-        let handle = app.clone();
-        let (tx, rx) = tokio::sync::oneshot::channel();
-        app.run_on_main_thread(move || {
-            let result = quick_panel::paste(&handle);
-            let _ = tx.send(result);
-        })
-        .map_err(|e| format!("Failed to dispatch to main thread: {e}"))?;
-        rx.await
-            .map_err(|_| "Main thread dropped result".to_string())?
+        #[cfg(target_os = "linux")]
+        {
+            quick_panel::linux::paste(&app).await
+        }
+        #[cfg(not(target_os = "linux"))]
+        {
+            let handle = app.clone();
+            let (tx, rx) = tokio::sync::oneshot::channel();
+            app.run_on_main_thread(move || {
+                let result = quick_panel::paste(&handle);
+                let _ = tx.send(result);
+            })
+            .map_err(|e| format!("Failed to dispatch to main thread: {e}"))?;
+            rx.await
+                .map_err(|_| "Main thread dropped result".to_string())?
+        }
     }
     .instrument(span)
     .await
@@ -433,7 +459,7 @@ pub async fn set_quick_panel_enabled(
         // Reconstruct a domain `Settings`-shaped view of the current keyboard
         // shortcuts so we can reuse `resolve_quick_panel_shortcuts`. We only
         // need the `keyboard_shortcuts` field for that helper.
-        let target_shortcuts = if enabled {
+        let target_shortcuts = if enabled && !quick_panel::uses_compositor_shortcuts() {
             shortcuts::resolve_quick_panel_shortcuts(&current.keyboard_shortcuts)
         } else {
             Vec::new()
@@ -594,6 +620,13 @@ async fn apply_global_shortcuts_on_main_thread(
                 quick_panel::pre_create(&handle);
             }
 
+            if quick_panel::uses_compositor_shortcuts() {
+                if !target_enabled {
+                    quick_panel::dismiss(&handle);
+                }
+                return Ok(());
+            }
+
             let toggle_handle = handle.clone();
             let registry =
                 quick_panel::TauriGlobalShortcutRegistry::new(handle.clone(), move || {
@@ -709,6 +742,7 @@ pub async fn set_quick_panel_layout(
     app: tauri::AppHandle,
     scale: f64,
     preview_expanded: bool,
+    window_scale: f64,
     _trace: Option<TraceMetadata>,
 ) -> Result<(), String> {
     let span = info_span!(
@@ -716,6 +750,7 @@ pub async fn set_quick_panel_layout(
         trace_id = tracing::field::Empty,
         trace_ts = tracing::field::Empty,
         scale = scale,
+        window_scale,
         preview_expanded = preview_expanded,
     );
     record_trace_fields(&span, &_trace);
@@ -723,7 +758,7 @@ pub async fn set_quick_panel_layout(
     async {
         let handle = app.clone();
         app.run_on_main_thread(move || {
-            quick_panel::set_layout(&handle, scale, preview_expanded);
+            quick_panel::set_layout(&handle, scale, preview_expanded, window_scale);
         })
         .map_err(|e| format!("Failed to dispatch to main thread: {e}"))?;
         Ok(())

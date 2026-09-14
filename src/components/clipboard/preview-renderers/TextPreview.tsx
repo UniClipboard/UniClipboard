@@ -17,11 +17,15 @@ const TextPreview: React.FC<TextPreviewProps> = ({ item, loading, preview }) => 
   const displayText = getTextPreviewContent(item, preview)
 
   if (!loading && displayText.length > LARGE_TEXT_THRESHOLD) {
-    return <VirtualizedText text={displayText} className="selectable h-full" />
+    return (
+      <div className="h-full px-[var(--clipboard-preview-inset,0rem)]">
+        <VirtualizedText text={displayText} className="selectable h-full" />
+      </div>
+    )
   }
 
   return (
-    <div className="p-6">
+    <div className="px-[var(--clipboard-preview-inset,1.5rem)] py-6">
       {loading ? (
         <div className="flex items-center gap-2 text-muted-foreground/60">
           <Loader2 className="size-4 animate-spin" />

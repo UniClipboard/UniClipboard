@@ -3,6 +3,7 @@ import { useHotkeys } from 'react-hotkeys-hook'
 import { useContextSelector } from 'use-context-selector'
 import { SettingContext } from '@/contexts/setting-context'
 import { useShortcutContext } from '@/contexts/shortcut-context'
+import type { ShortcutKeyOverrides } from '@/shortcuts/conflicts'
 import { ShortcutScope } from '@/shortcuts/definitions'
 import { splitChord } from '@/shortcuts/normalize'
 
@@ -32,6 +33,8 @@ interface UseShortcutOptions {
   enableOnFormTags?: boolean | Array<'input' | 'textarea' | 'select'>
   /** Match KeyboardEvent.key instead of the physical KeyboardEvent.code. */
   useKey?: boolean
+  overrides?: ShortcutKeyOverrides
+  capture?: boolean
 }
 
 /**
@@ -62,15 +65,19 @@ export const useShortcut = ({
   preventDefault = true,
   enableOnFormTags = false,
   useKey = false,
+  overrides,
+  capture = false,
 }: UseShortcutOptions): void => {
   const { activeScope, activeLayer } = useShortcutContext()
 
   // Get setting context for keyboard shortcuts override support
   // This is optional - only used when id is provided
-  const keyboardShortcuts = useContextSelector(
+  const contextShortcuts = useContextSelector(
     SettingContext,
     context => context?.setting?.keyboardShortcuts ?? null
   )
+
+  const keyboardShortcuts = overrides ?? contextShortcuts
 
   // Determine effective key: use override from settings if available
   const effectiveKey = (() => {
@@ -107,36 +114,44 @@ export const useShortcut = ({
   const pendingRef = useRef(false)
   const lastLeaderAtRef = useRef(0)
 
-  const onPrimary = useCallback(() => {
-    if (!isChord) {
-      handler()
-      return
-    }
-    const now = Date.now()
-    if (sameSecond) {
-      // Double tap of the same combo: second press within the window fires.
-      if (pendingRef.current && now - lastLeaderAtRef.current <= CHORD_WINDOW_MS) {
-        pendingRef.current = false
+  const onPrimary = useCallback(
+    (event: KeyboardEvent) => {
+      if (capture) event.stopImmediatePropagation()
+      if (!isChord) {
         handler()
+        return
+      }
+      const now = Date.now()
+      if (sameSecond) {
+        // Double tap of the same combo: second press within the window fires.
+        if (pendingRef.current && now - lastLeaderAtRef.current <= CHORD_WINDOW_MS) {
+          pendingRef.current = false
+          handler()
+        } else {
+          pendingRef.current = true
+          lastLeaderAtRef.current = now
+        }
       } else {
+        // Leader of a two-distinct-combo chord: arm and wait for the second key.
         pendingRef.current = true
         lastLeaderAtRef.current = now
       }
-    } else {
-      // Leader of a two-distinct-combo chord: arm and wait for the second key.
-      pendingRef.current = true
-      lastLeaderAtRef.current = now
-    }
-  }, [isChord, sameSecond, handler])
+    },
+    [isChord, sameSecond, handler, capture]
+  )
 
-  const onSecond = useCallback(() => {
-    // Only the distinct-second-segment chord uses this; the same-combo double
-    // tap is fully handled in onPrimary.
-    if (pendingRef.current && Date.now() - lastLeaderAtRef.current <= CHORD_WINDOW_MS) {
-      pendingRef.current = false
-      handler()
-    }
-  }, [handler])
+  const onSecond = useCallback(
+    (event: KeyboardEvent) => {
+      if (capture) event.stopImmediatePropagation()
+      // Only the distinct-second-segment chord uses this; the same-combo double
+      // tap is fully handled in onPrimary.
+      if (pendingRef.current && Date.now() - lastLeaderAtRef.current <= CHORD_WINDOW_MS) {
+        pendingRef.current = false
+        handler()
+      }
+    },
+    [handler, capture]
+  )
 
   useHotkeys(
     primaryHotkey,
@@ -146,6 +161,8 @@ export const useShortcut = ({
       preventDefault,
       enableOnFormTags,
       useKey,
+      eventListenerOptions: { capture },
+      ignoreEventWhen: event => event.isComposing,
       enableOnContentEditable: false,
       // 使用非逗号字符作为多快捷键分隔符，避免 "mod+," 中的逗号被误判为分隔符
       delimiter: '§',
@@ -174,6 +191,8 @@ export const useShortcut = ({
       preventDefault,
       enableOnFormTags,
       useKey,
+      eventListenerOptions: { capture },
+      ignoreEventWhen: event => event.isComposing,
       enableOnContentEditable: false,
       delimiter: '§',
     },

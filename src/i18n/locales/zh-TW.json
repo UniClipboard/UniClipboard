@@ -1,4 +1,9 @@
 {
+  "omarchyTheme": {
+    "title": "跟隨 Omarchy 主題",
+    "description": "開啟後，深淺模式與配色由 Omarchy 控制。",
+    "unavailable": "Omarchy 目前無法使用，暫時使用已儲存的應用程式主題。"
+  },
   "startupFailure": {
     "unavailable": "啟動遇到問題",
     "title": "暫時無法啟動",
@@ -786,6 +791,7 @@
         "title": "快捷鍵",
         "description": "自定義鍵盤快捷鍵",
         "scope": {
+          "quickPanel": "快捷面板",
           "global": "全局",
           "clipboard": "剪貼簿",
           "settings": "設定",
@@ -793,6 +799,10 @@
           "modal": "模態框"
         },
         "actions": {
+          "quickPanelWindowIncrease": "放大視窗",
+          "quickPanelWindowDecrease": "縮小視窗",
+          "quickPanelTextIncrease": "放大文字",
+          "quickPanelTextDecrease": "縮小文字",
           "goSettings": "前往設定",
           "toggleQuickPanel": "切換快捷面板",
           "favoriteClipboardItem": "我的最愛目前剪貼簿項目",
@@ -820,6 +830,7 @@
         "modified": "已修改"
       },
       "quickPanel": {
+        "compositorShortcuts": "Wayland 下的喚起快捷鍵由桌面環境管理。請在視窗管理器設定中為以下命令綁定快捷鍵。",
         "title": "快捷面板",
         "featureTitle": "功能",
         "shortcutTitle": "快捷鍵",
@@ -1420,6 +1431,17 @@
     "syncPaused": {
       "message": "剪貼簿同步已暫停，所有裝置目前均不會同步內容。",
       "goToSettings": "前往設定"
+    },
+    "connectMobile": {
+      "title": "連接手機",
+      "method": "同步方式",
+      "regular": "一般同步",
+      "direct": "裝置直連",
+      "experimental": "實驗性",
+      "regularDescription": "在同一區域網路內，透過連線設定與手機同步剪貼簿。",
+      "directDescription": "使用邀請碼配對，讓手機作為空間裝置直接同步剪貼簿。",
+      "loadFailed": "無法讀取同步設定，請重試。",
+      "enableFailed": "無法開啟一般同步，請檢查設定後重試。"
     },
     "mobileSync": {
       "title": "區域網路移動同步",
@@ -2088,6 +2110,8 @@
     }
   },
   "quickPanel": {
+    "scaleText": "文字",
+    "scaleWindow": "視窗",
     "loading": "正在連接剪貼簿歷史...",
     "unavailable": "目前無法使用剪貼簿歷史。",
     "history": {

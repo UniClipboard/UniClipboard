@@ -1,8 +1,13 @@
 import { openUrl } from '@tauri-apps/plugin-opener'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { getQuickPanelDoubleTapAvailability } from '@/api/tauri-command'
+import type { ComponentType } from 'react'
+import {
+  getQuickPanelDoubleTapAvailability,
+  quickPanelUsesCompositorShortcuts,
+} from '@/api/tauri-command'
 import QuickPanelSection from '@/components/setting/QuickPanelSection'
+import ShortcutsSection from '@/components/setting/ShortcutsSection'
 import { usePlatform } from '@/hooks/usePlatform'
 import { useSetting } from '@/hooks/useSetting'
 import { makeBaseSettings } from '@/test/fixtures/settings'
@@ -20,6 +25,7 @@ vi.mock('react-i18next', () => ({
 
 vi.mock('@/api/tauri-command', () => ({
   getQuickPanelDoubleTapAvailability: vi.fn(),
+  quickPanelUsesCompositorShortcuts: vi.fn().mockResolvedValue(false),
 }))
 
 vi.mock('@/hooks/usePlatform', () => ({
@@ -35,7 +41,9 @@ vi.mock('@/lib/ipc', () => ({
 }))
 
 vi.mock('@/components/setting/ShortcutRow', () => ({
-  ShortcutRow: () => <div>recorded-shortcut-row</div>,
+  ShortcutRow: ({ definition }: { definition: { id: string } }) => (
+    <div>{`recorded-${definition.id}`}</div>
+  ),
 }))
 
 const mockOpenUrl = vi.mocked(openUrl)
@@ -46,6 +54,7 @@ const mockUseSetting = vi.mocked(useSetting)
 beforeEach(() => {
   vi.clearAllMocks()
   mockGetQuickPanelDoubleTapAvailability.mockResolvedValue('supported')
+  vi.mocked(quickPanelUsesCompositorShortcuts).mockResolvedValue(false)
   Object.defineProperties(HTMLElement.prototype, {
     hasPointerCapture: {
       configurable: true,
@@ -72,7 +81,26 @@ beforeEach(() => {
   })
 })
 
-function setup() {
+it.each([QuickPanelSection, ShortcutsSection])(
+  'shows compositor activation instructions in %s',
+  async Section => {
+    mockUsePlatform.mockReturnValue({
+      isWindows: false,
+      isMac: false,
+      isLinux: true,
+      isTauri: true,
+    })
+    vi.mocked(quickPanelUsesCompositorShortcuts).mockResolvedValue(true)
+    setup(Section)
+    await waitFor(() =>
+      expect(screen.queryByText('recorded-global.toggleQuickPanel')).not.toBeInTheDocument()
+    )
+    expect(screen.getByText('uniclipboard --quick-panel')).toBeInTheDocument()
+    expect(screen.getByText('settings.sections.quickPanel.compositorShortcuts')).toBeInTheDocument()
+  }
+)
+
+function setup(Section: ComponentType = QuickPanelSection) {
   const updateQuickPanelSetting = vi
     .fn<SettingContextType['updateQuickPanelSetting']>()
     .mockResolvedValue({ restartRequired: false })
@@ -104,7 +132,7 @@ function setup() {
     updateQuickPanelSetting,
   })
 
-  render(<QuickPanelSection />)
+  render(<Section />)
   return { updateQuickPanelSetting }
 }
 
@@ -125,7 +153,7 @@ describe('QuickPanelSection modifier double-tap trigger', () => {
     expect(
       screen.getByText('settings.sections.quickPanel.doubleTap.unsupported')
     ).toBeInTheDocument()
-    expect(screen.getByText('recorded-shortcut-row')).toBeInTheDocument()
+    expect(screen.getByText('recorded-global.toggleQuickPanel')).toBeInTheDocument()
   })
 
   it('shows an explicit macOS Accessibility action without prompting in the background', async () => {
@@ -148,7 +176,7 @@ describe('QuickPanelSection modifier double-tap trigger', () => {
     const user = userEvent.setup()
     const { updateQuickPanelSetting } = setup()
 
-    expect(screen.getByText('recorded-shortcut-row')).toBeInTheDocument()
+    expect(screen.getByText('recorded-global.toggleQuickPanel')).toBeInTheDocument()
 
     const selects = screen.getAllByRole('combobox')
     await user.click(selects[1]!)
@@ -159,7 +187,9 @@ describe('QuickPanelSection modifier double-tap trigger', () => {
     )
 
     await waitFor(() => {
-      expect(updateQuickPanelSetting).toHaveBeenCalledWith({ doubleTapModifier: 'meta' })
+      expect(updateQuickPanelSetting).toHaveBeenCalledWith({
+        doubleTapModifier: 'meta',
+      })
     })
   })
 })

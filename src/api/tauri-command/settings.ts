@@ -87,6 +87,10 @@ export async function getQuickPanelDoubleTapAvailability(): Promise<ModifierDoub
   return commands.getQuickPanelDoubleTapAvailability()
 }
 
+export async function quickPanelUsesCompositorShortcuts(): Promise<boolean> {
+  return commands.quickPanelUsesCompositorShortcuts()
+}
+
 /** Persist and apply the standalone modifier double-tap trigger. */
 export async function setQuickPanelDoubleTapModifier(
   modifier: QuickPanelDoubleTapModifier

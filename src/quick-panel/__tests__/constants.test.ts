@@ -33,16 +33,13 @@ describe('clampImageCardAspectRatio', () => {
 
 describe('Linux quick panel layout', () => {
   it('uses an opaque unified surface with a divider instead of transparent gaps', () => {
-    expect(getQuickPanelLayoutClassNames(true)).toEqual({
-      container: 'flex h-screen w-screen overflow-hidden bg-background p-0',
-      statusSurface: 'bg-background',
-      card: 'flex h-full w-full min-w-0 flex-col overflow-hidden border border-border/50 bg-background',
-      previewCard:
-        'flex h-full w-full min-w-0 flex-col overflow-hidden border border-border/50 bg-card text-card-foreground',
-      previewExpanded: 'flex-1 basis-0 border-l border-border/50 opacity-100 translate-x-0',
-      previewReserved:
-        'shrink-0 border-l border-border/50 opacity-0 translate-x-0 pointer-events-none',
-    })
+    const layout = getQuickPanelLayoutClassNames(true)
+    expect(layout.container).toContain('bg-card')
+    expect(layout.container).toContain('border-border/50')
+    expect(layout.card).not.toMatch(/border|rounded|shadow|bg-/)
+    expect(layout.previewCard).not.toMatch(/border|rounded|shadow|bg-/)
+    expect(layout.previewExpanded).toContain('before:w-px')
+    expect(layout.previewExpanded).not.toContain('border-l')
   })
 
   it('keeps the floating-card layout on non-Linux platforms', () => {

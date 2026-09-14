@@ -82,6 +82,9 @@ chrono = { version = "0.4", features = ["serde"] }
 tracing = "0.1"
 
 [target.'cfg(target_os = "linux")'.dependencies]
+gtk = "0.18"
+notify = "8"
+toml = "1.1"
 # Linux tray-icon 走 libappindicator-rs，后者用 once_cell::Lazy 包了
 # dlopen，找不到 libayatana-appindicator3 时直接 panic!()。我们的 binary
 # release profile = "abort"，catch_unwind 无法接住，所以必须在调用

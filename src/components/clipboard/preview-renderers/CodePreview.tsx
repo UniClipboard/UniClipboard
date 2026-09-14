@@ -20,7 +20,7 @@ const CodePreview: React.FC<CodePreviewProps> = ({ item, preview }) => {
       <div className="flex w-max min-w-full">
         <div
           aria-hidden
-          className="sticky left-0 z-10 shrink-0 select-none bg-card py-5 pl-3 pr-2 text-right tabular-nums text-muted-foreground/35"
+          className="sticky left-0 z-10 shrink-0 select-none bg-card py-5 pl-[var(--clipboard-preview-inset,0.75rem)] pr-2 text-right tabular-nums text-muted-foreground/35"
         >
           {Array.from({ length: lineCount }, (_, i) => (
             <div key={i} className="flex h-(--line-height-body) items-center justify-end">

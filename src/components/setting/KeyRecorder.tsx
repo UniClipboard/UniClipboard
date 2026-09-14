@@ -36,7 +36,18 @@ function comboFromEvent(e: KeyboardEvent): string | null {
   if (e.altKey) parts.push('alt')
   if (e.shiftKey) parts.push('shift')
   if (e.metaKey) parts.push('meta')
-  parts.push(e.key.toLowerCase())
+  // Shift changes '=' and '-' into '+' and '_'; retain the bindable base key.
+  const key =
+    e.code === 'NumpadAdd'
+      ? 'add'
+      : e.code === 'NumpadSubtract'
+        ? 'subtract'
+        : e.key === '+'
+          ? 'equal'
+          : e.key === '_'
+            ? 'minus'
+            : e.key.toLowerCase()
+  parts.push(key)
   return normalizeHotkey(parts.join('+'))
 }
 

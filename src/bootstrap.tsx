@@ -9,6 +9,7 @@ import '@/i18n'
 import { connectDaemonWs, registerDaemonShutdownListener } from '@/lib/daemon-ws-bootstrap'
 import { initializeWebviewContextMenu } from '@/lib/webview-context-menu'
 import { initializeWindowFrame } from '@/lib/window-frame-runtime'
+import { initializeWindowTheme } from '@/lib/window-theme'
 import { initializeWindowUi } from '@/lib/window-ui'
 import '@/lib/wdio-test-bridge'
 import {
@@ -50,6 +51,7 @@ if (typeof window !== 'undefined') {
 
 initializeWindowUi()
 const windowFrameReady = initializeWindowFrame()
+const windowThemeReady = initializeWindowTheme()
 
 // 初始化日志系统：将后端日志输出到浏览器 DevTools
 const initLogging = async () => {
@@ -84,7 +86,7 @@ registerDaemonShutdownListener().catch(err => {
   console.error('[main] daemon shutdown listener registration failed:', err)
 })
 
-void windowFrameReady.then(() => {
+void Promise.all([windowFrameReady, windowThemeReady]).then(() => {
   ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
     <React.StrictMode>
       <Provider store={store}>

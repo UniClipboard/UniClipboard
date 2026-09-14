@@ -12,7 +12,10 @@ import { Tab, Tabs } from 'fumadocs-ui/components/tabs'
   SyncClipboard-compatible client.
 </Feature>
 
-Mobile sync is an **HTTP companion mode** (introduced in 0.7): the
+This page covers **Regular sync**. The Connect phone dialog also offers
+**Device connection (Experimental)** to join a space using an invitation code.
+
+Regular sync is an **HTTP companion mode** (introduced in 0.7): the
 desktop daemon exposes a small SyncClipboard-compatible HTTP service,
 and a paired phone reads / pushes clips to it with HTTP Basic Auth.
 
@@ -51,22 +54,20 @@ LAN listener, register the phone, and print a QR code in one go.
 
 ### Open the **Devices** page
 
-The page has a "This device" Hero on top and a row of two tabs:
-**Paired devices** and **Mobile sync**. Switch to the **Mobile sync**
-tab; two action buttons appear on the right of the tab bar:
-**Configure** and **Add device**. If the listener fails to bind,
-`Add device` stays clickable and clicking it surfaces the reason as a
-toast — the full detail is inside the Configure modal.
+Click the phone icon beside the invitation button to open **Connect phone**.
+**Regular sync** is selected by default. On first use, confirm enabling it,
+then enter a device label and add the phone. For invitation-code pairing,
+switch to **Device connection (Experimental)**.
 
 </Step>
 
 <Step>
 
-### Click **Configure**
+### Adjust settings when needed
 
-A centered "Mobile sync settings" dialog opens. Under
-**Sync switches**, turn on **Enable mobile sync** and **LAN
-listener**. Then under **Network parameters**:
+Manual configuration is usually unnecessary. If a connection error occurs,
+use **Configure** in the dialog to open Mobile sync settings. The registered
+phone group also retains its settings action. Under **Network parameters**:
 
 - **Bind IP** — leave on `Auto` to have the desktop offer every
   RFC1918 candidate at copy time, or pick a specific interface to
@@ -88,8 +89,8 @@ hot-swapped: changes apply immediately, no daemon restart needed.
 
 If the daemon raises `lan_listener_error` (port in use, permission
 denied, etc.), a red Alert at the top of the dialog spells out the
-reason; clicking `Add device` surfaces the same reason as a toast
-while the listener can't bind.
+reason. The Connect phone dialog also shows the reason and offers
+configuration and retry actions.
 
 </Step>
 

@@ -1,4 +1,9 @@
 {
+  "omarchyTheme": {
+    "title": "跟随 Omarchy 主题",
+    "description": "开启后，深浅模式和配色由 Omarchy 控制。",
+    "unavailable": "Omarchy 当前不可用，暂时使用已保存的应用主题。"
+  },
   "startupFailure": {
     "unavailable": "启动遇到问题",
     "title": "暂时无法启动",
@@ -786,6 +791,7 @@
         "title": "快捷键",
         "description": "自定义键盘快捷键",
         "scope": {
+          "quickPanel": "快捷面板",
           "global": "全局",
           "clipboard": "剪贴板",
           "settings": "设置",
@@ -793,6 +799,10 @@
           "modal": "模态框"
         },
         "actions": {
+          "quickPanelWindowIncrease": "放大窗口",
+          "quickPanelWindowDecrease": "缩小窗口",
+          "quickPanelTextIncrease": "放大文字",
+          "quickPanelTextDecrease": "缩小文字",
           "goSettings": "前往设置",
           "toggleQuickPanel": "切换快捷面板",
           "favoriteClipboardItem": "收藏当前剪贴板项目",
@@ -820,6 +830,7 @@
         "modified": "已修改"
       },
       "quickPanel": {
+        "compositorShortcuts": "Wayland 下的唤起快捷键由桌面环境管理。请在窗口管理器设置中为以下命令绑定快捷键。",
         "title": "快捷面板",
         "featureTitle": "功能",
         "shortcutTitle": "快捷键",
@@ -1420,6 +1431,17 @@
     "syncPaused": {
       "message": "剪贴板同步已暂停，所有设备当前均不会同步内容。",
       "goToSettings": "前往设置"
+    },
+    "connectMobile": {
+      "title": "连接手机",
+      "method": "同步方式",
+      "regular": "常规同步",
+      "direct": "设备直连",
+      "experimental": "实验性",
+      "regularDescription": "在同一局域网内，通过连接配置与手机同步剪贴板。",
+      "directDescription": "使用邀请码配对，让手机作为空间设备直接同步剪贴板。",
+      "loadFailed": "无法读取同步设置，请重试。",
+      "enableFailed": "无法开启常规同步，请检查设置后重试。"
     },
     "mobileSync": {
       "title": "局域网移动同步",
@@ -2088,6 +2110,8 @@
     }
   },
   "quickPanel": {
+    "scaleText": "文字",
+    "scaleWindow": "窗口",
     "loading": "正在连接剪贴板历史...",
     "unavailable": "当前无法使用剪贴板历史。",
     "history": {

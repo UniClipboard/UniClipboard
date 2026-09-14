@@ -11,6 +11,23 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* History selection has a theme-owned color, independent of window chrome. */
+:root {
+  --history-selection-background: color-mix(in oklab, var(--primary) 2.5%, transparent);
+}
+
+:root.dark {
+  --history-selection-background: color-mix(in oklab, var(--primary) 5%, transparent);
+}
+
+:root[data-theme='zinc'] {
+  --history-selection-background: oklch(0.92 0.006 286.478);
+}
+
+:root.dark[data-theme='zinc'] {
+  --history-selection-background: oklch(0.3 0.006 286.033);
+}
+
 /* Shared text roles for every application-owned main-window surface. */
 @utility text-ui-caption {
   font-size: var(--font-size-caption);

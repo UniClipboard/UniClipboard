@@ -40,7 +40,7 @@ appimageTools.wrapType2 {
   # The AppImage bundles most of the GTK/WebKit stack, but the wrapped FHS env
   # may still miss a library at runtime. If the app fails to start with a
   # "cannot open shared object file" error, add the missing package here.
-  extraPkgs = pkgs: with pkgs; [ ];
+  extraPkgs = pkgs: with pkgs; [ gtk-layer-shell ];
 
   extraInstallCommands = ''
     # Desktop entry + icons taken from the AppImage payload. File names follow

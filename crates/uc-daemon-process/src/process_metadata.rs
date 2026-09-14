@@ -482,9 +482,28 @@ fn read_process_exe(pid: u32) -> Option<String> {
 
 #[cfg(target_os = "linux")]
 fn read_process_exe_platform(pid: u32) -> Option<String> {
-    fs::read_link(format!("/proc/{pid}/exe"))
+    use std::os::unix::fs::MetadataExt;
+
+    let proc_exe = format!("/proc/{pid}/exe");
+    let executable = fs::read_link(&proc_exe)
+        .ok()?
+        .to_string_lossy()
+        .into_owned();
+    // Linux appends this marker when a rebuild unlinks a running executable.
+    // Check the inode so a real filename ending in the marker stays unchanged.
+    if fs::metadata(&proc_exe)
         .ok()
-        .map(|p| p.to_string_lossy().into_owned())
+        .is_some_and(|metadata| metadata.nlink() == 0)
+    {
+        Some(
+            executable
+                .strip_suffix(" (deleted)")
+                .unwrap_or(&executable)
+                .to_owned(),
+        )
+    } else {
+        Some(executable)
+    }
 }
 
 #[cfg(target_os = "macos")]
@@ -613,6 +632,40 @@ pub fn resolve_pid_path() -> Result<PathBuf> {
 mod tests {
     use super::*;
     use tempfile::TempDir;
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn verifies_running_executables_after_rebuild_unlinks_them() {
+        for (name, unlink, expected_active) in [
+            ("uniclipd", true, true),
+            ("unrelated-process", true, false),
+            ("uniclipd (deleted)", false, false),
+        ] {
+            let temp = TempDir::new().unwrap();
+            let executable = temp.path().join(name);
+            fs::copy("/bin/sleep", &executable).unwrap();
+            let mut child = std::process::Command::new(&executable)
+                .arg("30")
+                .spawn()
+                .unwrap();
+            if unlink {
+                fs::remove_file(&executable).unwrap();
+            }
+            let metadata = DaemonPidMetadata::now(
+                child.id(),
+                DaemonProcessMode::Standalone,
+                DaemonSpawnOrigin::Unknown,
+            );
+            let verified = verify_pid_identity(&metadata);
+            child.kill().unwrap();
+            child.wait().unwrap();
+            assert_eq!(
+                matches!(verified, PidVerification::Active),
+                expected_active,
+                "unexpected identity for {name}: {verified:?}"
+            );
+        }
+    }
 
     /// Build a `DaemonPidManager` whose `pid_path()` lives inside `temp`.
     /// The manager now stores a resolved PID-file path directly, so tests

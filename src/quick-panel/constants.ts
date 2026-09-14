@@ -6,6 +6,10 @@ import type { ClipboardEntryType } from '@/lib/clipboard-entry'
 export const PREVIEW_OPEN_DELAY_MS = 500
 export const PREVIEW_SWITCH_DELAY_MS = 120
 
+export const QUICK_PANEL_GUTTER_CLASS_NAME = 'px-2'
+
+export const QUICK_PANEL_FOOTER_CLASS_NAME = `${QUICK_PANEL_GUTTER_CLASS_NAME} flex h-10 shrink-0 items-center border-t border-border/50 text-[11px] text-muted-foreground`
+
 export const isMac = navigator.platform.toUpperCase().includes('MAC')
 
 export const typeIcons: Record<ClipboardEntryType, React.ElementType> = {
@@ -16,18 +20,17 @@ export const typeIcons: Record<ClipboardEntryType, React.ElementType> = {
   unknown: FileText,
 }
 
-export function getQuickPanelLayoutClassNames(isLinux: boolean, previewOnLeft = false) {
+export function getQuickPanelLayoutClassNames(isLinux: boolean) {
   if (isLinux) {
-    const dividerClassName = previewOnLeft ? 'border-r' : 'border-l'
-
     return {
-      container: 'flex h-screen w-screen overflow-hidden bg-background p-0',
-      statusSurface: 'bg-background',
-      card: 'flex h-full w-full min-w-0 flex-col overflow-hidden border border-border/50 bg-background',
-      previewCard:
-        'flex h-full w-full min-w-0 flex-col overflow-hidden border border-border/50 bg-card text-card-foreground',
-      previewExpanded: `flex-1 basis-0 ${dividerClassName} border-border/50 opacity-100 translate-x-0`,
-      previewReserved: `shrink-0 ${dividerClassName} border-border/50 opacity-0 translate-x-0 pointer-events-none`,
+      container:
+        'quick-panel-linux-surface flex h-screen w-screen overflow-hidden border border-border/50 bg-card text-card-foreground p-0',
+      statusSurface: 'quick-panel-linux-surface bg-card text-card-foreground',
+      card: 'flex h-full w-full min-w-0 flex-col overflow-hidden',
+      previewCard: 'flex h-full w-full min-w-0 flex-col overflow-hidden',
+      previewExpanded:
+        'relative flex-[58] basis-0 opacity-100 translate-x-0 before:pointer-events-none before:absolute before:inset-y-0 before:left-0 before:z-10 before:w-px before:bg-border/50',
+      previewReserved: 'shrink-0 opacity-0 pointer-events-none',
     }
   }
 

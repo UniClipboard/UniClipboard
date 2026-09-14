@@ -1,6 +1,7 @@
 import { renderHook } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { Filter } from '@/api/clipboardItems'
+import { useLiveSearch } from '@/hooks/useLiveSearch'
 import type { DisplayClipboardItem } from '@/lib/clipboard-entry'
 import * as historySearchModule from '../useHistorySearch'
 import { useHistorySearch } from '../useHistorySearch'
@@ -32,6 +33,24 @@ vi.mock('@/hooks/useLiveSearch', () => ({
 }))
 
 describe('useHistorySearch', () => {
+  it('passes every selected tag to live search', () => {
+    renderHook(() =>
+      useHistorySearch({
+        searchQuery: '',
+        activeFilter: Filter.All,
+        tagFilter: 'code,project',
+        sourceFilter: null,
+        extensionFilter: null,
+        timeRange: 'all_time',
+      })
+    )
+    expect(useLiveSearch).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        model: expect.objectContaining({ tags: 'code,project' }),
+      })
+    )
+  })
+
   it('keeps full display items available for the quick preview pane', () => {
     liveItems.value = [
       {

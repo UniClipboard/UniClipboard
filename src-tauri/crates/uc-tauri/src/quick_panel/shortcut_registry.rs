@@ -23,6 +23,13 @@ use uc_desktop::shortcuts::{chord_segments, GlobalShortcutRegistry, ShortcutErro
 /// chord 第二段必须在 leader 之后这个时间窗内按下。与前端 `CHORD_WINDOW_MS` 对齐。
 const CHORD_WINDOW: Duration = Duration::from_millis(1000);
 
+/// Wayland global activation belongs to the compositor, including XWayland GUIs.
+pub fn uses_compositor_shortcuts() -> bool {
+    cfg!(target_os = "linux")
+        && (std::env::var_os("WAYLAND_DISPLAY").is_some_and(|value| !value.is_empty())
+            || std::env::var("XDG_SESSION_TYPE").is_ok_and(|value| value == "wayland"))
+}
+
 /// 正在等待第二段的 chord 状态。同一时刻只可能有一个 chord 在进行，所以是
 /// 单个 `Option` 而非 per-key map。
 struct PendingChord {
@@ -80,6 +87,11 @@ impl TauriGlobalShortcutRegistry {
 
 impl GlobalShortcutRegistry for TauriGlobalShortcutRegistry {
     fn register(&self, shortcut: &str) -> Result<(), ShortcutError> {
+        if uses_compositor_shortcuts() {
+            return Err(ShortcutError::backend(
+                "Wayland shortcuts are managed by the compositor; bind uniclipboard --quick-panel there",
+            ));
+        }
         let segments = chord_segments(shortcut);
         match segments.as_slice() {
             [single] => {
@@ -121,6 +133,9 @@ impl GlobalShortcutRegistry for TauriGlobalShortcutRegistry {
     }
 
     fn unregister(&self, shortcut: &str) -> Result<(), ShortcutError> {
+        if uses_compositor_shortcuts() {
+            return Ok(());
+        }
         // 契约：未注册视为成功。逐段反注册（chord 可能注册了两个物理键）。
         for combo in chord_segments(shortcut) {
             if let Err(e) = self.app.global_shortcut().unregister(combo.as_str()) {

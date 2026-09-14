@@ -1,5 +1,5 @@
 import { listen } from '@tauri-apps/api/event'
-import { renderHook, waitFor } from '@testing-library/react'
+import { act, renderHook, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { getSettings } from '@/api/daemon'
 import { applyThemePreset } from '@/lib/theme-engine'
@@ -129,6 +129,28 @@ describe('useThemeSync', () => {
 
     // 切到 light 时改用 themeColorLight = "zinc"
     expect(mockApplyThemePreset).toHaveBeenLastCalledWith('zinc', 'light', document.documentElement)
+  })
+
+  it('does not let a pending settings query overwrite a newer live preference', async () => {
+    let resolveSettings!: (settings: Awaited<ReturnType<typeof getSettings>>) => void
+    mockGetSettings.mockReturnValue(
+      new Promise(resolve => {
+        resolveSettings = resolve
+      })
+    )
+    renderHook(() => useThemeSync())
+    await waitFor(() => expect(settingsChangedCallback).not.toBeNull())
+    act(() =>
+      settingsChangedCallback?.({
+        payload: {
+          settingJson: JSON.stringify({ general: { theme: 'light', themeColorLight: 'rose' } }),
+        },
+      })
+    )
+    await act(async () => {
+      resolveSettings({ general: { theme: 'dark', themeColorDark: 'blue' } } as never)
+    })
+    expect(mockApplyThemePreset).toHaveBeenLastCalledWith('rose', 'light', document.documentElement)
   })
 
   it('falls back to legacy themeColor when split fields are null', async () => {

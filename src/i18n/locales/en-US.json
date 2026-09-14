@@ -1,4 +1,9 @@
 {
+  "omarchyTheme": {
+    "title": "Follow Omarchy theme",
+    "description": "Omarchy controls light and dark mode and theme colors.",
+    "unavailable": "Omarchy is unavailable. Using your saved app theme."
+  },
   "startupFailure": {
     "unavailable": "Startup interrupted",
     "title": "Unable to start right now",
@@ -786,6 +791,7 @@
         "title": "Shortcuts",
         "description": "Customize keyboard shortcuts",
         "scope": {
+          "quickPanel": "Quick Panel",
           "global": "Global",
           "clipboard": "Clipboard",
           "settings": "Settings",
@@ -793,6 +799,10 @@
           "modal": "Modal"
         },
         "actions": {
+          "quickPanelWindowIncrease": "Increase window size",
+          "quickPanelWindowDecrease": "Decrease window size",
+          "quickPanelTextIncrease": "Increase text size",
+          "quickPanelTextDecrease": "Decrease text size",
           "goSettings": "Go to settings",
           "toggleQuickPanel": "Toggle quick panel",
           "favoriteClipboardItem": "Favorite current clipboard item",
@@ -820,6 +830,7 @@
         "modified": "Modified"
       },
       "quickPanel": {
+        "compositorShortcuts": "Wayland activation shortcuts are managed by your desktop. Bind the following command in your compositor settings.",
         "title": "Quick Panel",
         "featureTitle": "Feature",
         "shortcutTitle": "Shortcut",
@@ -1421,6 +1432,17 @@
     "syncPaused": {
       "message": "Clipboard sync is paused. All devices are currently not syncing.",
       "goToSettings": "Go to Settings"
+    },
+    "connectMobile": {
+      "title": "Connect phone",
+      "method": "Sync method",
+      "regular": "Regular sync",
+      "direct": "Device connection",
+      "experimental": "Experimental",
+      "regularDescription": "Sync your clipboard with your phone on the same local network using connection settings.",
+      "directDescription": "Pair with an invitation code to sync your phone directly as a device in your space.",
+      "loadFailed": "Could not load sync settings. Try again.",
+      "enableFailed": "Could not enable regular sync. Check settings and try again."
     },
     "mobileSync": {
       "title": "LAN Mobile Sync",
@@ -2090,6 +2112,8 @@
     }
   },
   "quickPanel": {
+    "scaleText": "Text",
+    "scaleWindow": "Window",
     "loading": "Connecting clipboard history...",
     "unavailable": "Clipboard history is unavailable right now.",
     "history": {

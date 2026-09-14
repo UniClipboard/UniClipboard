@@ -273,6 +273,7 @@ export function buildCandidates(
     tagOptions: SearchTagOption[]
   }
 ): CandidateItem[] {
+  const selectedTags = new Set(ctx.current.tag?.split(',') ?? [])
   switch (dimension) {
     case 'type':
       return TYPE_FILTERS.flatMap(filter => {
@@ -304,7 +305,7 @@ export function buildCandidates(
           value: tag.id,
           label,
           icon: TYPE_ICONS[tag.id] ?? Hash,
-          isActive: ctx.current.tag === tag.id,
+          isActive: selectedTags.has(tag.id),
         }))
     case 'source':
       return ctx.sourceOptions.flatMap(opt =>
@@ -400,7 +401,10 @@ export function buildChips(ctx: {
     const opt = ctx.tagOptions.find(o => o.id === tag)
     chips.push({
       dimension: 'tag',
-      label: `#${ctx.t(`history.type.${tag}`, { defaultValue: tag })}`,
+      label: tag
+        .split(',')
+        .map(id => `#${ctx.t(`history.type.${id}`, { defaultValue: id })}`)
+        .join(', '),
       icon: TYPE_ICONS[opt?.id ?? tag] ?? Hash,
     })
   }

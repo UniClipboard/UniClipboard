@@ -8,8 +8,10 @@ import type { useAddDeviceInvitation } from '@/hooks/useAddDeviceInvitation'
 
 export function AddDeviceDialogBody({
   invitationState,
+  formId,
 }: {
   invitationState: ReturnType<typeof useAddDeviceInvitation>
+  formId?: string
 }) {
   const { t } = useTranslation()
   const {
@@ -31,6 +33,7 @@ export function AddDeviceDialogBody({
   if (step === 'credentials') {
     body = (
       <form
+        id={formId}
         data-testid="re-pairing-passphrase-step"
         className="flex flex-col gap-4 py-3"
         onSubmit={handleConfirmPassphrase}
@@ -55,16 +58,18 @@ export function AddDeviceDialogBody({
           />
         </div>
         {error && <p className="text-ui-body font-medium text-destructive">{error}</p>}
-        <Button
-          type="submit"
-          data-testid="re-pairing-confirm-passphrase"
-          disabled={loading || !passphrase.trim()}
-        >
-          {loading && <Loader2 className="mr-2 size-4 animate-spin" />}
-          {loading
-            ? t('devices.addDevice.rePairing.submitting')
-            : t('devices.addDevice.rePairing.submit')}
-        </Button>
+        {!formId && (
+          <Button
+            type="submit"
+            data-testid="re-pairing-confirm-passphrase"
+            disabled={loading || !passphrase.trim()}
+          >
+            {loading && <Loader2 className="mr-2 size-4 animate-spin" />}
+            {loading
+              ? t('devices.addDevice.rePairing.submitting')
+              : t('devices.addDevice.rePairing.submit')}
+          </Button>
+        )}
       </form>
     )
   } else if (step === 'success') {
@@ -111,10 +116,12 @@ export function AddDeviceDialogBody({
     body = (
       <div className="flex flex-col items-center gap-3 py-10">
         <p className="text-ui-body text-destructive">{error}</p>
-        <Button variant="outline" size="sm" onClick={handleRegenerate} disabled={loading}>
-          <RefreshCw className="mr-2 size-3.5" />
-          {t('devices.addDevice.actions.regenerate')}
-        </Button>
+        {!formId && (
+          <Button variant="outline" size="sm" onClick={handleRegenerate} disabled={loading}>
+            <RefreshCw className="mr-2 size-3.5" />
+            {t('devices.addDevice.actions.regenerate')}
+          </Button>
+        )}
       </div>
     )
   } else if (invitation) {

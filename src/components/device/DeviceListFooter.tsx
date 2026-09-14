@@ -1,12 +1,5 @@
-import { ArrowRightLeft, MoreHorizontal, Plus, Settings2, Smartphone } from 'lucide-react'
+import { ArrowRightLeft, Plus, Smartphone } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import {
-  ContextMenu,
-  ContextMenuContent,
-  ContextMenuItem,
-  ContextMenuSeparator,
-  ContextMenuTrigger,
-} from '@/components/motion/context-menu'
 import { Button } from '@/components/ui/button'
 
 interface Props {
@@ -14,7 +7,6 @@ interface Props {
   onAddDevice: () => void
   onSwitchSpace: () => void
   onAddMobile: () => void
-  onMobileSettings: () => void
 }
 
 export default function DeviceListFooter({
@@ -22,7 +14,6 @@ export default function DeviceListFooter({
   onAddDevice,
   onSwitchSpace,
   onAddMobile,
-  onMobileSettings,
 }: Props) {
   const { t } = useTranslation()
 
@@ -40,33 +31,16 @@ export default function DeviceListFooter({
           <Plus className="size-4" />
           <span className="truncate">{t('devices.panel.addMenu.trigger')}</span>
         </Button>
-        <ContextMenu>
-          <ContextMenuTrigger activation="click">
-            <Button
-              variant="outline"
-              size="icon-sm"
-              className="shrink-0 bg-card shadow-none"
-              aria-label={t('devices.panel.addMenu.otherWays')}
-            >
-              <MoreHorizontal className="size-4" />
-            </Button>
-          </ContextMenuTrigger>
-          <ContextMenuContent
-            ariaLabel={t('devices.panel.addMenu.otherWays')}
-            side="top"
-            className="w-64"
-          >
-            <ContextMenuItem onSelect={onAddMobile}>
-              <Smartphone className="size-4" />
-              {t('devices.panel.addMenu.mobile')}
-            </ContextMenuItem>
-            <ContextMenuSeparator />
-            <ContextMenuItem onSelect={onMobileSettings}>
-              <Settings2 className="size-4" />
-              {t('devices.mobileSync.title')} · {t('devices.mobileSync.configure')}
-            </ContextMenuItem>
-          </ContextMenuContent>
-        </ContextMenu>
+        <Button
+          variant="outline"
+          size="icon-sm"
+          className="shrink-0 bg-card text-muted-foreground shadow-none"
+          aria-label={t('devices.connectMobile.title')}
+          title={t('devices.connectMobile.title')}
+          onClick={onAddMobile}
+        >
+          <Smartphone className="size-3.5" />
+        </Button>
       </div>
       <div className="flex min-w-0 items-center justify-between gap-2">
         <Button

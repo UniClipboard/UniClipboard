@@ -5,6 +5,7 @@ import InlineTextSummary from '@/components/clipboard/InlineTextSummary'
 import { useInView } from '@/hooks/useInView'
 import { formatRelativeTime } from '@/lib/clipboard-utils'
 import { cn } from '@/lib/utils'
+import { useQuickPanelItemRef } from '@/quick-panel/hooks/useQuickPanelItemRef'
 import { isMac, typeIcons } from '../constants'
 import type { DisplayItem } from '../types'
 import QuickPanelImage from './QuickPanelImage'
@@ -20,7 +21,7 @@ interface PanelItemProps {
   onContextMenu: (index: number) => void
   /** Renders a favorite star so toggling favorite from the menu has visible state. */
   isFavorited: boolean
-  itemRef?: React.Ref<HTMLDivElement>
+  itemRefs: Map<number, HTMLDivElement>
   shortcutKey?: string
 }
 
@@ -34,9 +35,10 @@ const PanelItem: React.FC<PanelItemProps> = React.memo(
     onHover,
     onContextMenu,
     isFavorited,
-    itemRef,
+    itemRefs,
     shortcutKey,
   }) => {
+    const itemRef = useQuickPanelItemRef(itemRefs, index)
     const Icon = typeIcons[item.type] ?? FileText
     const isUnavailable = item.isUnavailable
     const isImage = item.type === 'image'
@@ -60,7 +62,7 @@ const PanelItem: React.FC<PanelItemProps> = React.memo(
         // 顺序(恒定 -1),避免 Tab 把焦点移到这里导致键盘导航失效。
         tabIndex={-1}
         className={cn(
-          'flex cursor-pointer select-none items-center gap-2.5 rounded-md px-4 py-2 text-[13px] leading-tight transition-colors',
+          'flex cursor-pointer select-none items-center gap-1.5 rounded-md px-2 py-1.5 text-[13px] leading-tight transition-colors',
           isSelected
             ? 'bg-primary text-primary-foreground shadow-sm shadow-primary/20'
             : hoverDisabled
@@ -68,7 +70,7 @@ const PanelItem: React.FC<PanelItemProps> = React.memo(
               : 'text-foreground hover:bg-muted/50'
         )}
         onClick={e => onSelect(index, e.altKey)}
-        onMouseEnter={() => onHover(index)}
+        onMouseMove={() => onHover(index)}
         // Base UI opens the menu on the same event; we only move the selection so
         // the highlighted row is the one the menu acts on. No preventDefault —
         // that's Base UI's job (it suppresses the native browser menu).

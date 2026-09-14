@@ -40,6 +40,8 @@ src/
 
 ## CONVENTIONS
 
+- 修改快捷面板的布局、字体、间距、菜单或交互前，先读 `src/quick-panel/DESIGN.md`；改变规范值时同步更新该文档。
+
 - Use alias imports `@/*` (configured in `tsconfig.json` and `vite.config.ts`).
 - New or edited imports should use `@/*` alias when targeting `src/*`; avoid adding new relative traversals when alias is available.
 - Keep import order strict: builtin -> external -> internal -> parent -> sibling -> index, no blank lines between groups.

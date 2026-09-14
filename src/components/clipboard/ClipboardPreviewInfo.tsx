@@ -93,7 +93,10 @@ const ClipboardPreviewInfo: React.FC<ClipboardPreviewInfoProps> = ({
   if (rows.length === 0 && !delivery) return null
 
   return (
-    <div className="shrink-0 p-3" data-testid="clipboard-preview-info">
+    <div
+      className="shrink-0 px-[var(--clipboard-preview-inset,0.75rem)] py-3"
+      data-testid="clipboard-preview-info"
+    >
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1.5 text-ui-caption font-normal tabular-nums text-muted-foreground/75">
         <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
           {rows.map((row, i) => (

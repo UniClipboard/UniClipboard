@@ -141,7 +141,7 @@ Basic Auth credentials minted at registration.
 | Cross-network  | Yes (hole-punching, relay)                     | **Yes, via a server node or Tailscale** — not P2P; the phone reaches an HTTPS gateway or overlay address |
 | End-to-end key | XChaCha20-Poly1305 under the space MasterKey   | TLS-less HTTP; payload hashed and authenticated only                                                     |
 
-The phone is always just a SyncClipboard HTTP client — it never becomes
+In the regular-sync mode described here, the phone is a SyncClipboard HTTP client and does not become
 an iroh peer. "Cross-network," then, means reaching the gateway from
 another network rather than P2P: run a
 [headless server node](./self-host-server-node) that exposes the gateway
@@ -152,8 +152,7 @@ paths.
 
 ### Pairing a mobile device
 
-On the desktop, open **Devices → Other ways to add → Connect a phone over LAN** (the same panel
-that hosts the per-device list). The pairing flow:
+On the desktop, click the **phone icon beside Invite device** to open **Connect phone**. **Regular sync** is selected by default; confirm enabling it if needed. The following steps describe regular sync. To join the space with an invitation code, switch to **Device connection (Experimental)**.
 
 1. Pick a label for the device.
 2. The daemon mints a one-time username and password and shows them

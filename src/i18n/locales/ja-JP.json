@@ -1,4 +1,9 @@
 {
+  "omarchyTheme": {
+    "title": "Omarchy のテーマに合わせる",
+    "description": "ライト・ダークモードと配色を Omarchy が制御します。",
+    "unavailable": "Omarchy を利用できません。保存済みのアプリテーマを使用しています。"
+  },
   "startupFailure": {
     "unavailable": "起動時に問題が発生しました",
     "title": "起動できません",
@@ -786,6 +791,7 @@
         "title": "ショートカット",
         "description": "キーボード ショートカットのカスタマイズ",
         "scope": {
+          "quickPanel": "クイックパネル",
           "global": "グローバル",
           "clipboard": "クリップボード",
           "settings": "設定",
@@ -793,6 +799,10 @@
           "modal": "モーダル"
         },
         "actions": {
+          "quickPanelWindowIncrease": "ウィンドウを拡大",
+          "quickPanelWindowDecrease": "ウィンドウを縮小",
+          "quickPanelTextIncrease": "文字を拡大",
+          "quickPanelTextDecrease": "文字を縮小",
           "goSettings": "設定に移動",
           "toggleQuickPanel": "クイック パネルの切り替え",
           "favoriteClipboardItem": "現在のクリップボード項目をお気に入り",
@@ -820,6 +830,7 @@
         "modified": "変更済み"
       },
       "quickPanel": {
+        "compositorShortcuts": "Wayland の呼び出しショートカットはデスクトップ環境が管理します。コンポジターの設定で次のコマンドにキーを割り当ててください。",
         "title": "クイック パネル",
         "featureTitle": "機能",
         "shortcutTitle": "ショートカット",
@@ -1421,6 +1432,17 @@
     "syncPaused": {
       "message": "クリップボードの同期は一時停止されています。現在、すべてのデバイスが同期していません。",
       "goToSettings": "設定に移動"
+    },
+    "connectMobile": {
+      "title": "スマートフォンを接続",
+      "method": "同期方法",
+      "regular": "通常の同期",
+      "direct": "デバイス直接接続",
+      "experimental": "試験的",
+      "regularDescription": "同じローカルネットワーク内で、接続設定を使ってスマートフォンとクリップボードを同期します。",
+      "directDescription": "招待コードでペアリングし、スペース内のデバイスとしてスマートフォンと直接同期します。",
+      "loadFailed": "同期設定を読み込めませんでした。再試行してください。",
+      "enableFailed": "通常の同期を有効にできませんでした。設定を確認して再試行してください。"
     },
     "mobileSync": {
       "title": "LANモバイル同期",
@@ -2089,6 +2111,8 @@
     }
   },
   "quickPanel": {
+    "scaleText": "文字",
+    "scaleWindow": "ウィンドウ",
     "loading": "クリップボード履歴を接続しています...",
     "unavailable": "クリップボード履歴は現在利用できません。",
     "history": {

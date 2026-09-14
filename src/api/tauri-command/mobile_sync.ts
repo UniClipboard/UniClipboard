@@ -54,7 +54,7 @@ export const DEFAULT_MOBILE_LAN_BIND_IP = '0.0.0.0'
 /**
  * Typed mobile-sync error. Serialized form on the daemon side is
  * `{ "code": "USERNAME_TAKEN", "username": "..." }`; the structured fields are
- * what `AddMobileSyncDeviceDialog` reads for i18n interpolation. Reconstructed
+ * what `MobileSyncRegistrationForm` reads for i18n interpolation. Reconstructed
  * by {@link toMobileSyncError} from `DaemonApiError.details`.
  */
 export type MobileSyncError =

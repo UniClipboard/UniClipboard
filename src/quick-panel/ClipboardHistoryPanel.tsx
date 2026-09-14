@@ -16,7 +16,6 @@ import { useDebounce } from '@/hooks/useDebounce'
 import { useHistorySourceOptions } from '@/hooks/useHistorySourceOptions'
 import { usePlatform } from '@/hooks/usePlatform'
 import { useSearchTags } from '@/hooks/useSearchTags'
-import { useThemeSync } from '@/hooks/useThemeSync'
 import { pasteableFilePaths } from '@/lib/clipboard-utils'
 import { commands } from '@/lib/ipc'
 import { createLogger } from '@/lib/logger'
@@ -41,6 +40,7 @@ import type {
   PreviewState,
   QuickPanelContextMenuActions,
 } from './types'
+import { setQuickPanelLayout } from './window-layout'
 
 const log = createLogger('clipboard-history-panel')
 
@@ -50,10 +50,6 @@ async function dismissPanel(): Promise<void> {
 
 async function pasteToApp(): Promise<void> {
   await commands.pasteToPreviousApp()
-}
-
-async function setQuickPanelLayout(scale: number, previewExpanded: boolean): Promise<void> {
-  await commands.setQuickPanelLayout(scale, previewExpanded)
 }
 
 /**
@@ -120,7 +116,6 @@ interface ClipboardHistoryPanelProps {
  * results. The webview stays alive between hides; only this tree is recreated.
  */
 const ClipboardHistoryPanel: React.FC<ClipboardHistoryPanelProps> = props => {
-  useThemeSync()
   return <ClipboardHistoryPanelSession key={props.showRequestId ?? 0} {...props} />
 }
 
@@ -181,13 +176,13 @@ const ClipboardHistoryPanelSession: React.FC<ClipboardHistoryPanelProps> = ({
   const previewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const previewLayoutTokenRef = useRef(0)
   const [skipTransition, setSkipTransition] = useState(showRequestId !== 0)
-  const previewExpanded = previewState.mode === 'expanded'
+  const previewExpanded = isLinuxQuickPanel || previewState.mode === 'expanded'
   const previewReservingSpace = previewState.mode === 'reserving'
   const previewEntryId = previewState.entryId
   const previewSuppressed = previewState.suppressed
   const historyLockedWidth = previewState.historyLockedWidth
   const previewSide = previewState.side
-  const layoutClassNames = getQuickPanelLayoutClassNames(isLinuxQuickPanel, previewSide === 'left')
+  const layoutClassNames = getQuickPanelLayoutClassNames(isLinuxQuickPanel)
   const previewFocusSource = previewState.focusSource
 
   const { filteredItems, previewItems, isSearching, searchTotal, loading, isLocked, removeItem } =
@@ -224,9 +219,9 @@ const ClipboardHistoryPanelSession: React.FC<ClipboardHistoryPanelProps> = ({
       clearPreviewTimer()
       previewLayoutTokenRef.current += 1
       dispatchPreview({ type: 'reset', suppressed: suppressUntilNextSelection })
-      void setQuickPanelLayout(readStoredUiScale(), false).catch(() => {})
+      if (!isLinuxQuickPanel) void setQuickPanelLayout(readStoredUiScale(), false).catch(() => {})
     },
-    [clearPreviewTimer]
+    [clearPreviewTimer, isLinuxQuickPanel]
   )
 
   // Session remount already resets search/filters/list. This only focuses the
@@ -302,11 +297,20 @@ const ClipboardHistoryPanelSession: React.FC<ClipboardHistoryPanelProps> = ({
     previewTargetId != null
       ? (previewItems.find(item => item.id === previewTargetId) ?? null)
       : null
-  const previewItem = previewEntryId
+  const floatingPreviewItem = previewEntryId
     ? (previewItems.find(item => item.id === previewEntryId) ?? null)
     : null
 
+  const previewItem = isLinuxQuickPanel
+    ? isLocked
+      ? null
+      : targetPreviewItem
+    : floatingPreviewItem
+
   useEffect(() => {
+    // Linux keeps both columns visible and derives the preview from selection.
+    // Only floating panels need delayed expansion and native window resizing.
+    if (isLinuxQuickPanel) return
     clearPreviewTimer()
     if (previewSuppressed || isLocked) return
     if (!targetPreviewItem) {
@@ -361,6 +365,7 @@ const ClipboardHistoryPanelSession: React.FC<ClipboardHistoryPanelProps> = ({
     }
   }, [
     clearPreviewTimer,
+    isLinuxQuickPanel,
     isLocked,
     previewEntryId,
     previewExpanded,
@@ -386,14 +391,16 @@ const ClipboardHistoryPanelSession: React.FC<ClipboardHistoryPanelProps> = ({
 
   const handleHover = useCallback(
     (index: number) => {
-      if (isKeyboardNav || !hasPointerMovedSinceShow) return
+      notePointerMoved()
       const item = filteredItems[index]
       if (!item) return
       dispatchPreview({ type: 'suppress', value: false })
       dispatchPreview({ type: 'set-focus-source', source: 'hover' })
+      // Keep the immediate Linux preview after the pointer leaves the list.
+      if (isLinuxQuickPanel) dispatchPreview({ type: 'set-entry', entryId: item.id })
       setHoveredIndex(index)
     },
-    [filteredItems, hasPointerMovedSinceShow, isKeyboardNav, setHoveredIndex]
+    [filteredItems, isLinuxQuickPanel, notePointerMoved, setHoveredIndex]
   )
 
   const handleDelete = useCallback(
@@ -692,6 +699,10 @@ const ClipboardHistoryPanelSession: React.FC<ClipboardHistoryPanelProps> = ({
     ]
   )
 
+  const historyInteraction = useMemo(
+    () => ({ hasPointerMovedSinceShow, isKeyboardNav, isLocked, selectedIndex }),
+    [hasPointerMovedSinceShow, isKeyboardNav, isLocked, selectedIndex]
+  )
   const handleHistoryMouseMove = notePointerMoved
 
   return (
@@ -709,7 +720,9 @@ const ClipboardHistoryPanelSession: React.FC<ClipboardHistoryPanelProps> = ({
         className={
           previewReservingSpace && historyLockedWidth != null
             ? 'min-w-0 shrink-0'
-            : 'min-w-0 flex-1 basis-0'
+            : isLinuxQuickPanel
+              ? 'min-w-0 flex-[42] basis-0'
+              : 'min-w-0 flex-1 basis-0'
         }
         style={
           previewReservingSpace && historyLockedWidth != null
@@ -719,7 +732,7 @@ const ClipboardHistoryPanelSession: React.FC<ClipboardHistoryPanelProps> = ({
       >
         <HistoryPane
           filteredItems={filteredItems}
-          interaction={{ hasPointerMovedSinceShow, isKeyboardNav, isLocked, selectedIndex }}
+          interaction={historyInteraction}
           isSearching={isSearching}
           searchTotal={searchTotal}
           itemRefs={itemRefs}

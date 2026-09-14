@@ -6,7 +6,7 @@ description: 'Connect your phone to the desktop for the first time: scan to pair
 import { Step, Steps } from 'fumadocs-ui/components/steps'
 import { Tab, Tabs } from 'fumadocs-ui/components/tabs'
 
-The UniClipboard mobile app is a LAN-only / self-hosted sync client. It doesn't
+This page covers **Regular sync**, a LAN / self-hosted connection mode. It doesn't
 join the desktop's encrypted space, and it doesn't run a P2P node — it connects
 to a computer running the UniClipboard **desktop app with "phone sync" turned
 on**, and everything flows through that computer. Two phones never sync directly
@@ -14,6 +14,8 @@ with each other; each one talks to the desktop on its own.
 
 The first connection boils down to this: grab a one-time credential on the
 desktop, then get it into your phone by scanning a QR code or typing it in.
+To join a space using an invitation code, choose **Device connection (Experimental)**
+in the same dialog instead.
 
 <Steps>
 
@@ -22,7 +24,9 @@ desktop, then get it into your phone by scanning a QR code or typing it in.
 ### Get the credential on the desktop
 
 Open the UniClipboard desktop app on your computer and go to
-**Devices → Phone Sync → Add Device**. The desktop shows a one-time credential
+**Devices**, click the phone icon beside the invitation button, and keep
+**Regular sync** selected. On first use, confirm enabling it, then enter a
+device label and add the phone. The desktop shows a one-time credential
 (server address + username + password) and a QR code for adding this one phone.
 
 - For how to enable phone sync on the desktop and what each field of the

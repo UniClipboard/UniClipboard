@@ -20,7 +20,7 @@ interface WindowShellProps {
  */
 export const WindowShell: React.FC<WindowShellProps> = ({ titleBar, children }) => {
   return (
-    <div className="relative h-screen flex flex-col overflow-hidden bg-[#F2F2F7] dark:bg-[#09090B] text-foreground transition-colors duration-500">
+    <div className="relative h-screen flex flex-col overflow-hidden bg-sidebar text-sidebar-foreground transition-colors duration-500">
       {/* Dynamic Background Accents */}
       <div
         data-uc-decorative-effect="true"

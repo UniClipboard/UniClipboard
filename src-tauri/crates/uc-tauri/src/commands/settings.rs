@@ -146,7 +146,9 @@ pub async fn update_keyboard_shortcuts(
         // 快捷面板关闭时,即使快捷键被修改也不向 OS 注册——OS 视角应保持空,
         // 与 quick_panel.enabled = false 的语义一致。用户重新打开开关时,
         // `set_quick_panel_enabled` 命令会根据当前 keyboard_shortcuts 注册。
-        let new_registered_shortcuts = if quick_panel_enabled {
+        // Compositor-managed activation must not interfere with saving ordinary
+        // in-app shortcuts, and CurrentShortcuts must reflect actual OS grabs.
+        let new_registered_shortcuts = if quick_panel_enabled && !quick_panel::uses_compositor_shortcuts() {
             quick_panel_shortcuts_from_keyboard_shortcuts(&next_keyboard_shortcuts)
         } else {
             Vec::new()

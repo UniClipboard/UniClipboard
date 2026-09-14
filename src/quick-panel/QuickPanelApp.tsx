@@ -5,7 +5,9 @@ import { useTranslation } from 'react-i18next'
 import { daemonClient } from '@/api/daemon/client'
 import VisualEffectsProvider from '@/components/motion/VisualEffectsProvider'
 import { Toaster } from '@/components/ui/toaster'
+import { ShortcutProvider } from '@/contexts/ShortcutContext'
 import { usePlatform } from '@/hooks/usePlatform'
+import { useThemeSync } from '@/hooks/useThemeSync'
 import { useVisualEffectsSampling } from '@/hooks/useVisualEffectsSampling'
 import { connectDaemonWs } from '@/lib/daemon-ws-bootstrap'
 import { commands } from '@/lib/ipc'
@@ -13,7 +15,9 @@ import { createLogger } from '@/lib/logger'
 import { readStoredUiScale } from '@/lib/ui-scale'
 import { visualEffectsStore } from '@/lib/visual-effects-store'
 import ClipboardHistoryPanel from './ClipboardHistoryPanel'
+import QuickPanelScaleIndicator from './components/QuickPanelScaleIndicator'
 import { getQuickPanelLayoutClassNames } from './constants'
+import { setQuickPanelLayout } from './window-layout'
 
 const log = createLogger('quick-panel-app')
 const SHOW_FALLBACK_DELAY_MS = 50
@@ -23,6 +27,7 @@ const QuickPanelApp: React.FC = () => {
   const { isLinux, isTauri } = usePlatform()
   const layoutClassNames = getQuickPanelLayoutClassNames(isLinux && isTauri)
   const [daemonReady, setDaemonReady] = useState(daemonClient.initialized)
+  useThemeSync(daemonReady)
   const [bootstrapError, setBootstrapError] = useState<string | null>(null)
   const [showRequestId, setShowRequestId] = useState(0)
   const [preparedRequestId, setPreparedRequestId] = useState(0)
@@ -44,8 +49,7 @@ const QuickPanelApp: React.FC = () => {
       pendingShowRequestIdRef.current = null
       setPreparedRequestId(requestId)
       clearFinalizeTimer()
-      void commands
-        .setQuickPanelLayout(readStoredUiScale(), false)
+      void setQuickPanelLayout(readStoredUiScale(), false)
         .then(() => {
           // A newer prepare-show may have arrived during the IPC hop; if so this
           // request is stale and the newer one will finalize itself.
@@ -146,6 +150,11 @@ const QuickPanelApp: React.FC = () => {
     <LazyMotion features={domMax} strict>
       <VisualEffectsProvider>
         {content}
+        {isLinux && isTauri && daemonReady && (
+          <ShortcutProvider key={showRequestId}>
+            <QuickPanelScaleIndicator />
+          </ShortcutProvider>
+        )}
         <Toaster />
       </VisualEffectsProvider>
     </LazyMotion>

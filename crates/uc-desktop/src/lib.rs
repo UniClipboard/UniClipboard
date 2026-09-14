@@ -18,6 +18,8 @@ pub mod daemon_probe;
 pub mod daemon_recovery;
 pub mod file_ports;
 pub mod gui_wiring;
+#[cfg(target_os = "linux")]
+pub mod hyprland;
 pub mod modifier_double_tap;
 pub mod modifier_double_tap_monitor;
 pub mod paths;

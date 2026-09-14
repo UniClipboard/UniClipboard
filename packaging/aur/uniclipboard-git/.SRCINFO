@@ -13,6 +13,7 @@ pkgbase = uniclipboard-git
 	makedepends = pkgconf
 	depends = webkit2gtk-4.1
 	depends = gtk3
+	depends = gtk-layer-shell
 	depends = libayatana-appindicator
 	depends = libnotify
 	provides = uniclipboard

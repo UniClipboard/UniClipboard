@@ -129,7 +129,7 @@ function HistoryFilterPanel({
           data-testid="history-filter-strip"
           aria-label={t('history.composite.filterCategories')}
           onWheel={handleWheel}
-          className="flex w-fit max-w-72 shrink-0 items-center gap-0.5 overflow-x-auto overscroll-x-contain rounded-full border border-border/25 bg-muted/15 p-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          className="flex min-h-8 w-fit max-w-72 shrink-0 items-center gap-0.5 overflow-x-auto overflow-y-hidden overscroll-x-contain rounded-full border border-border/25 bg-muted/15 p-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
         >
           <FilterButton
             icon={hasActiveFilter ? X : LayoutGrid}

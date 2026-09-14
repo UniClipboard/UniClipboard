@@ -19,6 +19,20 @@ const current: FilterSnapshot = {
 }
 
 describe('composite search model', () => {
+  it('represents every selected tag in the chip and suggestions', () => {
+    const context = {
+      t,
+      sourceOptions: [],
+      current: { ...current, tag: 'link,code' },
+      tagOptions: searchableTagsToOptions([]),
+    }
+    expect(buildChips(context)[0].label).toBe('#history.type.link, #history.type.code')
+    const candidates = buildCandidates('tag', '', context)
+    expect(candidates.find(item => item.value === 'link')?.isActive).toBe(true)
+    expect(candidates.find(item => item.value === 'code')?.isActive).toBe(true)
+    expect(candidates.find(item => item.value === 'directory')?.isActive).toBe(false)
+  })
+
   it('parses # as a tag token', () => {
     expect(parseBuffer('#')).toEqual({
       kind: 'token',

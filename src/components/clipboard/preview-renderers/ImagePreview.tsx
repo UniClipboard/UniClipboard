@@ -35,7 +35,7 @@ const ImagePreview: React.FC<ImagePreviewProps> = ({ loading, preview, setImageD
 
   if (gateLargeImage) {
     return (
-      <div className="flex items-center justify-center p-8">
+      <div className="flex items-center justify-center px-[var(--clipboard-preview-inset,2rem)] py-8">
         <div className="flex h-64 w-full flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-border/40 bg-muted/20">
           <ImageIcon className="size-8 text-muted-foreground/30" />
           <span className="text-ui-body font-medium text-foreground">
@@ -60,7 +60,7 @@ const ImagePreview: React.FC<ImagePreviewProps> = ({ loading, preview, setImageD
   }
 
   return (
-    <div className="flex items-center justify-center p-8">
+    <div className="flex items-center justify-center px-[var(--clipboard-preview-inset,2rem)] py-8">
       {loading || !imageUrl ? (
         <div className="flex h-64 w-full flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-border/40 bg-muted/20">
           <Loader2

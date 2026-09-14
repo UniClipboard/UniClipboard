@@ -53,6 +53,7 @@ ExclusiveArch:  x86_64 aarch64
 # 默认 chroot 都是 Fedora/EPEL,后续要扩展到 openSUSE 再加 conditional。
 Requires:       webkit2gtk4.1
 Requires:       gtk3
+Requires:       gtk-layer-shell
 Requires:       libappindicator-gtk3
 Requires:       librsvg2
 

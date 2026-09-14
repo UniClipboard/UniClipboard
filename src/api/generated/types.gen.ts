@@ -6048,6 +6048,10 @@ export type ListUpgradeBackupsErrors = {
      * Internal server error
      */
     500: ApiErrorResponse;
+    /**
+     * Upgrade backup storage unavailable
+     */
+    503: ApiErrorResponse;
 };
 
 export type ListUpgradeBackupsError = ListUpgradeBackupsErrors[keyof ListUpgradeBackupsErrors];
@@ -6075,13 +6079,21 @@ export type DeleteUpgradeBackupData = {
 
 export type DeleteUpgradeBackupErrors = {
     /**
-     * Confirmation missing or false
+     * Confirmation missing or false, or invalid backup identifier
      */
     400: ApiErrorResponse;
+    /**
+     * Upgrade backup not found
+     */
+    404: ApiErrorResponse;
     /**
      * Internal server error
      */
     500: ApiErrorResponse;
+    /**
+     * Upgrade backup storage unavailable
+     */
+    503: ApiErrorResponse;
 };
 
 export type DeleteUpgradeBackupError = DeleteUpgradeBackupErrors[keyof DeleteUpgradeBackupErrors];

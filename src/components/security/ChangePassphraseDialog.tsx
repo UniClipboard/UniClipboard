@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import ChangePassphraseForm from '@/components/security/ChangePassphraseForm'
 import {
@@ -18,17 +19,23 @@ export default function ChangePassphraseDialog({
   onChanged: () => void
 }) {
   const { t } = useTranslation()
+  const [submitting, setSubmitting] = useState(false)
+  const handleOpenChange = (nextOpen: boolean) => {
+    if (!submitting) onOpenChange(nextOpen)
+  }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange} disablePointerDismissal>
-      <DialogContent>
+    <Dialog open={open} onOpenChange={handleOpenChange} disablePointerDismissal>
+      <DialogContent showCloseButton={!submitting}>
         <DialogHeader>
           <DialogTitle>{t('passphraseChange.title')}</DialogTitle>
           <DialogDescription>{t('passphraseChange.description')}</DialogDescription>
         </DialogHeader>
         <ChangePassphraseForm
           key={open ? 'open' : 'closed'}
-          onCancel={() => onOpenChange(false)}
+          submitting={submitting}
+          onSubmittingChange={setSubmitting}
+          onCancel={() => handleOpenChange(false)}
           onChanged={onChanged}
         />
       </DialogContent>

@@ -228,16 +228,24 @@ describe('AddDeviceDialog invitation issuing', () => {
   })
 
   it('resets a forgotten passphrase before issuing the invitation', async () => {
+    const onOpenChange = vi.fn()
+    let finishPassphraseChange!: () => void
     getSetupState.mockResolvedValue({
       hasCompleted: true,
       currentInvitation: null,
       deviceName: 'test',
       rePairingRequired: true,
     })
+    changeEncryptionPassphrase.mockImplementation(
+      () =>
+        new Promise<void>(resolve => {
+          finishPassphraseChange = resolve
+        })
+    )
 
     render(
       <I18nextProvider i18n={i18n}>
-        <AddDeviceDialog open onOpenChange={() => undefined} />
+        <AddDeviceDialog open onOpenChange={onOpenChange} />
       </I18nextProvider>
     )
 
@@ -251,6 +259,12 @@ describe('AddDeviceDialog invitation issuing', () => {
       target: { value: 'replacement phrase' },
     })
     fireEvent.click(screen.getByRole('button', { name: 'Reset passphrase' }))
+
+    expect(screen.queryByRole('button', { name: 'Close' })).not.toBeInTheDocument()
+    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' })
+    expect(onOpenChange).not.toHaveBeenCalled()
+
+    await act(async () => finishPassphraseChange())
 
     await waitFor(() => expect(screen.getByLabelText('012-345')).toBeInTheDocument())
     expect(changeEncryptionPassphrase).toHaveBeenCalledWith(

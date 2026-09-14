@@ -14,21 +14,18 @@ interface ChangePassphraseState {
   passphrase: string
   confirmation: string
   visible: boolean
-  submitting: boolean
   errorKey: string | null
 }
 
 type ChangePassphraseAction =
   | { type: 'edit'; field: 'passphrase' | 'confirmation'; value: string }
   | { type: 'toggle_visibility' }
-  | { type: 'submit' }
   | { type: 'failed'; errorKey: string }
 
 const initialState: ChangePassphraseState = {
   passphrase: '',
   confirmation: '',
   visible: false,
-  submitting: false,
   errorKey: null,
 }
 
@@ -41,10 +38,8 @@ function reducer(
       return { ...state, [action.field]: action.value, errorKey: null }
     case 'toggle_visibility':
       return { ...state, visible: !state.visible }
-    case 'submit':
-      return { ...state, submitting: true, errorKey: null }
     case 'failed':
-      return { ...state, submitting: false, errorKey: action.errorKey }
+      return { ...state, errorKey: action.errorKey }
   }
 }
 
@@ -67,15 +62,19 @@ function errorTranslationKey(error: unknown): string {
 }
 
 export default function ChangePassphraseForm({
+  submitting,
+  onSubmittingChange,
   onCancel,
   onChanged,
 }: {
+  submitting: boolean
+  onSubmittingChange: (submitting: boolean) => void
   onCancel: () => void
   onChanged: () => void
 }) {
   const { t } = useTranslation()
   const [state, dispatch] = useReducer(reducer, initialState)
-  const { passphrase, confirmation, visible, submitting, errorKey } = state
+  const { passphrase, confirmation, visible, errorKey } = state
   const mismatch = confirmation.length > 0 && passphrase !== confirmation
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -86,7 +85,7 @@ export default function ChangePassphraseForm({
       return
     }
 
-    dispatch({ type: 'submit' })
+    onSubmittingChange(true)
     try {
       await changeEncryptionPassphrase(passphrase, confirmation)
       log.info({ event: 'passphrase_change_succeeded' }, 'space passphrase changed')
@@ -97,6 +96,8 @@ export default function ChangePassphraseForm({
         'space passphrase change failed'
       )
       dispatch({ type: 'failed', errorKey: errorTranslationKey(error) })
+    } finally {
+      onSubmittingChange(false)
     }
   }
 
@@ -121,6 +122,7 @@ export default function ChangePassphraseForm({
           <button
             type="button"
             onClick={() => dispatch({ type: 'toggle_visibility' })}
+            disabled={submitting}
             aria-label={t(visible ? 'passphraseChange.hide' : 'passphraseChange.show')}
             className="absolute top-0 right-0 flex h-full items-center px-3 text-muted-foreground transition-colors hover:text-foreground"
           >

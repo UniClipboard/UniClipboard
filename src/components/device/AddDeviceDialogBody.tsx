@@ -17,6 +17,8 @@ export function AddDeviceDialogBody({
     case 'reset_passphrase':
       return (
         <ChangePassphraseForm
+          submitting={invitationState.passphraseChangeSubmitting}
+          onSubmittingChange={invitationState.setPassphraseChangeSubmitting}
           onCancel={invitationState.handleCancelPassphraseChange}
           onChanged={invitationState.handlePassphraseChanged}
         />

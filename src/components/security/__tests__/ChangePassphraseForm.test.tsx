@@ -36,7 +36,12 @@ describe('ChangePassphraseForm', () => {
     const onChanged = vi.fn()
     render(
       <I18nextProvider i18n={i18n}>
-        <ChangePassphraseForm onCancel={() => undefined} onChanged={onChanged} />
+        <ChangePassphraseForm
+          submitting={false}
+          onSubmittingChange={() => undefined}
+          onCancel={() => undefined}
+          onChanged={onChanged}
+        />
       </I18nextProvider>
     )
 
@@ -61,7 +66,12 @@ describe('ChangePassphraseForm', () => {
   it('does not submit when the two passphrases differ', () => {
     render(
       <I18nextProvider i18n={i18n}>
-        <ChangePassphraseForm onCancel={() => undefined} onChanged={() => undefined} />
+        <ChangePassphraseForm
+          submitting={false}
+          onSubmittingChange={() => undefined}
+          onCancel={() => undefined}
+          onChanged={() => undefined}
+        />
       </I18nextProvider>
     )
 
@@ -82,7 +92,12 @@ describe('ChangePassphraseForm', () => {
     getChangePassphraseErrorCode.mockReturnValue('MULTIPLE_DEVICES')
     render(
       <I18nextProvider i18n={i18n}>
-        <ChangePassphraseForm onCancel={() => undefined} onChanged={() => undefined} />
+        <ChangePassphraseForm
+          submitting={false}
+          onSubmittingChange={() => undefined}
+          onCancel={() => undefined}
+          onChanged={() => undefined}
+        />
       </I18nextProvider>
     )
 

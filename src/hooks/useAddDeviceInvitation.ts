@@ -40,6 +40,7 @@ interface InvitationState {
   failureReason: string | null
   passphrase: string
   passphraseChangeAvailability: PassphraseChangeAvailability
+  passphraseChangeSubmitting: boolean
 }
 
 type PairingCompletionTrigger = 'device_trust_changed' | 'refresh_required' | 'reconnected'
@@ -67,6 +68,7 @@ export function useAddDeviceInvitation({
       failureReason: null,
       passphrase: '',
       passphraseChangeAvailability: 'checking',
+      passphraseChangeSubmitting: false,
     }
   )
   const { invitation, issuedAtMs, loading, step, failureReason, passphrase } = state
@@ -344,6 +346,8 @@ export function useAddDeviceInvitation({
     display,
     failureMessage,
     setPassphrase: (passphrase: string) => update({ passphrase }),
+    setPassphraseChangeSubmitting: (submitting: boolean) =>
+      update({ passphraseChangeSubmitting: submitting }),
     handleCopy,
     handleCancel,
     handleRegenerate,

@@ -163,9 +163,11 @@ async fn clear_cache_handler(
         (status = 500, description = "Internal server error", body = ApiErrorResponse),
     )
 )]
+#[tracing::instrument(name = "api.storage.upgrade_backups.list", level = "info", skip(state))]
 async fn list_upgrade_backups_handler(
     State(state): State<DaemonApiState>,
 ) -> Result<Json<ApiEnvelope<Vec<UpgradeBackupDto>>>, ApiError> {
+    tracing::debug!("Listing completed upgrade backups");
     let result = state
         .execute(Operation::ListUpgradeBackups)
         .await
@@ -175,6 +177,7 @@ async fn list_upgrade_backups_handler(
             "engine returned an unexpected upgrade backup list result",
         ));
     };
+    tracing::info!(backup_count = backups.len(), "Upgrade backups listed");
 
     Ok(Json(ApiEnvelope::now(
         backups
@@ -207,11 +210,18 @@ async fn list_upgrade_backups_handler(
         (status = 500, description = "Internal server error", body = ApiErrorResponse),
     )
 )]
+#[tracing::instrument(
+    name = "api.storage.upgrade_backups.delete",
+    level = "info",
+    skip(state, body),
+    fields(backup_id = %id)
+)]
 async fn delete_upgrade_backup_handler(
     State(state): State<DaemonApiState>,
     Path(id): Path<String>,
     body: Result<Json<DeleteUpgradeBackupRequest>, JsonRejection>,
 ) -> Result<Json<ApiEnvelope<DeleteUpgradeBackupResponse>>, ApiError> {
+    tracing::debug!("Upgrade backup deletion requested");
     match body {
         Ok(Json(req)) if req.confirmed => {}
         _ => {
@@ -235,6 +245,7 @@ async fn delete_upgrade_backup_handler(
             "engine returned an unexpected upgrade backup deletion result",
         ));
     };
+    tracing::info!("Upgrade backup deleted");
 
     Ok(Json(ApiEnvelope::now(DeleteUpgradeBackupResponse { id })))
 }

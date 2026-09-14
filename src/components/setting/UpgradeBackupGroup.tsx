@@ -1,5 +1,5 @@
 import { Loader2, Trash2 } from 'lucide-react'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useReducer } from 'react'
 import { useTranslation } from 'react-i18next'
 import * as storageApi from '@/api/storage'
 import type { UpgradeBackup } from '@/api/storage'
@@ -23,24 +23,72 @@ import { SettingRow } from './SettingRow'
 const log = createLogger('upgrade-backups')
 const I18N = 'settings.sections.storage.upgradeBackups'
 
+type BackupState = {
+  backups: UpgradeBackup[]
+  loading: boolean
+  loadFailed: boolean
+  selected: UpgradeBackup | null
+  deleting: boolean
+}
+
+type BackupAction =
+  | { type: 'loadStarted' }
+  | { type: 'loadSucceeded'; backups: UpgradeBackup[] }
+  | { type: 'loadFailed' }
+  | { type: 'select'; backup: UpgradeBackup }
+  | { type: 'dismissSelection' }
+  | { type: 'deleteStarted' }
+  | { type: 'deleteSucceeded'; id: string }
+  | { type: 'deleteFailed' }
+
+const initialState: BackupState = {
+  backups: [],
+  loading: true,
+  loadFailed: false,
+  selected: null,
+  deleting: false,
+}
+
+function backupReducer(state: BackupState, action: BackupAction): BackupState {
+  switch (action.type) {
+    case 'loadStarted':
+      return { ...state, loading: true, loadFailed: false }
+    case 'loadSucceeded':
+      return { ...state, backups: action.backups, loading: false }
+    case 'loadFailed':
+      return { ...state, loading: false, loadFailed: true }
+    case 'select':
+      return { ...state, selected: action.backup }
+    case 'dismissSelection':
+      return { ...state, selected: null }
+    case 'deleteStarted':
+      return { ...state, deleting: true }
+    case 'deleteSucceeded':
+      return {
+        ...state,
+        backups: state.backups.filter(backup => backup.id !== action.id),
+        selected: null,
+        deleting: false,
+      }
+    case 'deleteFailed':
+      return { ...state, deleting: false }
+  }
+}
+
 export function UpgradeBackupGroup() {
   const { t, i18n } = useTranslation()
-  const [backups, setBackups] = useState<UpgradeBackup[]>([])
-  const [loading, setLoading] = useState(true)
-  const [loadFailed, setLoadFailed] = useState(false)
-  const [selected, setSelected] = useState<UpgradeBackup | null>(null)
-  const [deleting, setDeleting] = useState(false)
+  const [{ backups, loading, loadFailed, selected, deleting }, dispatch] = useReducer(
+    backupReducer,
+    initialState
+  )
 
   const load = useCallback(async () => {
-    setLoading(true)
-    setLoadFailed(false)
+    dispatch({ type: 'loadStarted' })
     try {
-      setBackups(await storageApi.listUpgradeBackups())
+      dispatch({ type: 'loadSucceeded', backups: await storageApi.listUpgradeBackups() })
     } catch (error) {
       log.error({ err: error }, 'Failed to list upgrade backups')
-      setLoadFailed(true)
-    } finally {
-      setLoading(false)
+      dispatch({ type: 'loadFailed' })
     }
   }, [])
 
@@ -50,17 +98,15 @@ export function UpgradeBackupGroup() {
 
   const handleDelete = async () => {
     if (!selected) return
-    setDeleting(true)
+    dispatch({ type: 'deleteStarted' })
     try {
       await storageApi.deleteUpgradeBackup(selected.id, true)
-      setBackups(current => current.filter(backup => backup.id !== selected.id))
-      setSelected(null)
+      dispatch({ type: 'deleteSucceeded', id: selected.id })
       toast.success(t(`${I18N}.deleted`))
     } catch (error) {
       log.error({ err: error }, 'Failed to delete upgrade backup')
+      dispatch({ type: 'deleteFailed' })
       toast.error(t(`${I18N}.deleteFailed`))
-    } finally {
-      setDeleting(false)
     }
   }
 
@@ -110,7 +156,7 @@ export function UpgradeBackupGroup() {
                 aria-label={t(`${I18N}.deleteLabel`, {
                   date: new Date(backup.createdAtMs).toLocaleString(i18n.resolvedLanguage),
                 })}
-                onClick={() => setSelected(backup)}
+                onClick={() => dispatch({ type: 'select', backup })}
               >
                 <Trash2 aria-hidden="true" className="size-4" />
               </Button>
@@ -121,7 +167,7 @@ export function UpgradeBackupGroup() {
       <AlertDialog
         open={selected !== null}
         onOpenChange={open => {
-          if (!open && !deleting) setSelected(null)
+          if (!open && !deleting) dispatch({ type: 'dismissSelection' })
         }}
       >
         <AlertDialogContent>

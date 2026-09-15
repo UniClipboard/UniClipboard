@@ -5,6 +5,7 @@ import i18n from '@/i18n'
 import {
   EntryScreen,
   InitializeSpaceScreen,
+  JoinEndedScreen,
   PairingCompleteScreen,
   RedeemInvitationScreen,
   ShowInvitationScreen,
@@ -93,6 +94,20 @@ describe('setup screens e2e selectors', () => {
     await user.click(screen.getByTestId('setup-complete-done'))
     expect(onDone).toHaveBeenCalledTimes(1)
     expect(onInvite).not.toHaveBeenCalled()
+  })
+
+  it('explains that an expired join ended automatically and lets the user retry', async () => {
+    const user = userEvent.setup()
+    const onBack = vi.fn()
+
+    render(<JoinEndedScreen reason="expired" onBack={onBack} />)
+
+    expect(screen.getByTestId('setup-join-ended')).toBeInTheDocument()
+    expect(
+      screen.getByText('This join expired, so the unfinished pairing ended automatically.')
+    ).toBeInTheDocument()
+    await user.click(screen.getByTestId('setup-join-ended-back'))
+    expect(onBack).toHaveBeenCalledTimes(1)
   })
 
   it('clears the consumed invitation after a wrong passphrase', async () => {

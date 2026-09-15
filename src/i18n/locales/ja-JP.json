@@ -149,7 +149,9 @@
       "diverged": "別のスペース",
       "upgrade": "更新が必要",
       "unverifiable": "デバイス情報を確認できません",
-      "pending": "デバイス変更の確認が必要"
+      "pending": "デバイス変更の確認が必要",
+      "awaitingPeerConfirmation": "ペアリング完了、相手の確認待ち",
+      "unconfirmed": "ペアリング完了、未確認"
     }
   },
   "common": {
@@ -2347,7 +2349,7 @@
       "title": "確認待ち",
       "subtitle": "参加結果を待っています。",
       "actions": { "cancel": "参加を取り消す", "back": "戻る" },
-      "rejected": {
+      "ended": {
         "title": "スペースに参加できませんでした",
         "reasons": {
           "invitation_unavailable": "招待コードは利用できなくなりました。",
@@ -2358,6 +2360,8 @@
           "history_conflict": "両方の履歴を統合できません。",
           "peer_upgrade_required": "相手のデバイスで UniClipboard の更新が必要です。",
           "cancelled": "この参加は取り消されました。",
+          "expired": "参加期限が切れたため、未完了のペアリングは自動的に終了しました。",
+          "superseded": "この参加は新しいペアリングに置き換えられました。",
           "removed_before_activation": "確認前に相手がこのデバイスを削除しました。"
         }
       }

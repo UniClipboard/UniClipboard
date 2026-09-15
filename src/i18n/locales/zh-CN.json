@@ -149,7 +149,9 @@
       "diverged": "不同空间",
       "upgrade": "需要更新",
       "unverifiable": "无法验证设备资料",
-      "pending": "需要确认设备变化"
+      "pending": "需要确认设备变化",
+      "awaitingPeerConfirmation": "已完成配对，等待对方确认",
+      "unconfirmed": "已完成配对，但未被确认"
     }
   },
   "common": {
@@ -2346,7 +2348,7 @@
       "title": "等待对方确认",
       "subtitle": "正在等待加入结果。",
       "actions": { "cancel": "取消加入", "back": "返回" },
-      "rejected": {
+      "ended": {
         "title": "未能加入空间",
         "reasons": {
           "invitation_unavailable": "邀请码已失效。",
@@ -2357,6 +2359,8 @@
           "history_conflict": "两边的历史无法合并。",
           "peer_upgrade_required": "对方设备需要更新 UniClipboard。",
           "cancelled": "本次加入已取消。",
+          "expired": "本次加入已到期，未完成的配对已自动结束。",
+          "superseded": "本次加入已被新的配对替换。",
           "removed_before_activation": "对方在确认前取消了这台设备。"
         }
       }

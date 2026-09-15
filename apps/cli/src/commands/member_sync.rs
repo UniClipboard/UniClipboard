@@ -410,6 +410,7 @@ mod tests {
             group_relationship: DeviceGroupRelationshipDto::Consistent,
             compatibility: DeviceCompatibilityDto::Compatible,
             sync_relationship: DeviceSyncRelationshipDto::Usable,
+            pairing_confirmation: None,
             available_actions: vec![],
             blocked_reason: None,
         }

@@ -95,6 +95,11 @@ pub enum JoinSpaceResponse {
         join_id: String,
         reason: JoinSpaceRejectionReason,
     },
+    Terminated {
+        #[schema(rename = "joinId")]
+        join_id: String,
+        reason: JoinSpaceTerminationReason,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
@@ -121,6 +126,14 @@ pub enum JoinSpaceRejectionReason {
     PeerUpgradeRequired,
     Cancelled,
     RemovedBeforeActivation,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum JoinSpaceTerminationReason {
+    Cancelled,
+    Expired,
+    Superseded,
 }
 
 // ---------------------------------------------------------------------------
@@ -331,5 +344,22 @@ mod tests {
         assert_eq!(json["sponsorIdentityFingerprint"], "fingerprint-1");
         assert_eq!(json["cancelRequested"], false);
         assert!(json.get("join_id").is_none());
+    }
+
+    #[test]
+    fn join_space_terminated_response_has_a_stable_reason() {
+        let response = JoinSpaceResponse::Terminated {
+            join_id: "join-1".to_string(),
+            reason: JoinSpaceTerminationReason::Expired,
+        };
+
+        assert_eq!(
+            serde_json::to_value(response).unwrap(),
+            serde_json::json!({
+                "status": "terminated",
+                "joinId": "join-1",
+                "reason": "expired",
+            })
+        );
     }
 }

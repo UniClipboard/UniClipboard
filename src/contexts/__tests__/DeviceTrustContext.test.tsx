@@ -93,6 +93,32 @@ describe('DeviceTrustProvider', () => {
     getDeviceGroupChoices.mockResolvedValue(emptyGroups)
   })
 
+  it('ignores websocket events that do not invalidate device groups', async () => {
+    const { result } = renderHook(() => useDeviceTrust(), { wrapper })
+    await waitFor(() => expect(result.current.snapshot).toEqual(emptySnapshot))
+    const handler = subscribe.mock.calls[0]?.[1]
+    expect(handler).toBeDefined()
+    if (!handler) return
+    await act(async () => handler({ topic: 'system', eventType: 'system.snapshot' }))
+    expect(getDeviceGroupChoices).toHaveBeenCalledTimes(1)
+  })
+
+  it('skips a device change revision that is already loaded', async () => {
+    const { result } = renderHook(() => useDeviceTrust(), { wrapper })
+    await waitFor(() => expect(result.current.snapshot).toEqual(emptySnapshot))
+    const handler = subscribe.mock.calls[0]?.[1]
+    expect(handler).toBeDefined()
+    if (!handler) return
+    await act(async () =>
+      handler({
+        topic: 'device-trust',
+        eventType: 'device-trust.changed',
+        payload: { revision: 1 },
+      })
+    )
+    expect(getDeviceGroupChoices).toHaveBeenCalledTimes(1)
+  })
+
   it('loads complete choices and refreshes after device or global invalidation events', async () => {
     const { result } = renderHook(() => useDeviceTrust(), { wrapper })
     await waitFor(() => expect(result.current.snapshot).toEqual(emptySnapshot))
@@ -149,7 +175,7 @@ describe('DeviceTrustProvider', () => {
     expect(result.current.decisionError).toBeTruthy()
   })
 
-  it('does not let an older refresh overwrite a newer response', async () => {
+  it('serializes refreshes and coalesces repeated invalidations', async () => {
     let resolveFirst!: (state: DeviceGroupChoices) => void
     let resolveSecond!: (state: DeviceGroupChoices) => void
     getDeviceGroupChoices
@@ -164,7 +190,14 @@ describe('DeviceTrustProvider', () => {
     const handler = subscribe.mock.calls[0]?.[1]
     expect(handler).toBeDefined()
     if (!handler) return
-    act(() => handler({ topic: 'device-trust', eventType: 'device-trust.changed' }))
+    act(() => {
+      handler({ topic: 'system', eventType: 'system.refresh_required' })
+      handler({ topic: 'system', eventType: 'system.refresh_required' })
+    })
+    expect(getDeviceGroupChoices).toHaveBeenCalledTimes(1)
+
+    await act(async () => resolveFirst(emptyGroups))
+    await waitFor(() => expect(getDeviceGroupChoices).toHaveBeenCalledTimes(2))
 
     const newer = {
       ...emptyGroups,
@@ -173,8 +206,27 @@ describe('DeviceTrustProvider', () => {
     }
     await act(async () => resolveSecond(newer))
     await waitFor(() => expect(result.current.deviceGroups).toEqual(newer))
+    expect(getDeviceGroupChoices).toHaveBeenCalledTimes(2)
+  })
 
-    await act(async () => resolveFirst(emptyGroups))
-    expect(result.current.deviceGroups).toEqual(newer)
+  it('runs a queued refresh after the active refresh fails', async () => {
+    let rejectFirst!: (error: Error) => void
+    getDeviceGroupChoices
+      .mockImplementationOnce(
+        () => new Promise<DeviceGroupChoices>((_resolve, reject) => (rejectFirst = reject))
+      )
+      .mockResolvedValueOnce(emptyGroups)
+
+    const { result } = renderHook(() => useDeviceTrust(), { wrapper })
+    const handler = subscribe.mock.calls[0]?.[1]
+    expect(handler).toBeDefined()
+    if (!handler) return
+
+    act(() => handler({ topic: 'system', eventType: 'system.refresh_required' }))
+    expect(getDeviceGroupChoices).toHaveBeenCalledTimes(1)
+
+    await act(async () => rejectFirst(new Error('offline')))
+    await waitFor(() => expect(getDeviceGroupChoices).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(result.current.deviceGroups).toEqual(emptyGroups))
   })
 })

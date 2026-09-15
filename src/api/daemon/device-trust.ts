@@ -55,7 +55,9 @@ const DEVICE_GROUP_CHOICE_TIMEOUT_MS = 60_000
 function normalizeJoinSpaceResponse(
   response: GeneratedJoinSpaceResponse | null | undefined
 ): JoinSpaceResponse | null | undefined {
-  if (!response || response.status === 'rejected') return response
+  if (!response || response.status === 'rejected' || response.status === 'terminated') {
+    return response
+  }
   if (response.status === 'pending') {
     return {
       ...response,

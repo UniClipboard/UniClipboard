@@ -405,12 +405,22 @@ async fn join_commands_report_none_then_real_active_join() {
     );
 
     joiner.restart().await;
-    let restarted_status = joiner.cli.run_capture(&["--json", "join", "status"]);
-    assert!(
-        restarted_status.success(),
-        "join status after daemon restart failed: {restarted_status:?}"
-    );
-    let restarted_status = json(&restarted_status);
+    let restart_deadline = tokio::time::Instant::now() + WAIT_TIMEOUT;
+    let restarted_status = loop {
+        let output = joiner.cli.run_capture(&["--json", "join", "status"]);
+        if output.success() {
+            let status = json(&output);
+            if status["status"] == "active" {
+                break status;
+            }
+        }
+        assert!(
+            tokio::time::Instant::now() < restart_deadline,
+            "join status did not recover after daemon restart; last={output:?}; log={}",
+            joiner.daemon.diagnostic_log()
+        );
+        tokio::time::sleep(Duration::from_millis(250)).await;
+    };
     assert_eq!(restarted_status["status"], "active");
     assert_eq!(restarted_status["join_id"], join_id);
 }
@@ -455,7 +465,7 @@ async fn no_wait_returns_a_saved_pending_join_while_sponsor_is_offline() {
     let status = joiner.cli.run_capture(&["--json", "join", "status"]);
     assert!(status.success(), "cancelled join status failed: {status:?}");
     let status = json(&status);
-    assert_eq!(status["status"], "rejected");
+    assert_eq!(status["status"], "terminated");
     assert_eq!(status["reason"], "cancelled");
     assert_eq!(status["join_id"], join_id);
     drop(session);
@@ -690,7 +700,8 @@ async fn pending_join_survives_ctrl_c_and_daemon_restart_then_can_be_cancelled()
     let cancelled = json(&cancelled);
     assert_eq!(cancelled["ok"], true);
     assert_eq!(cancelled["join_id"], join_id);
-    assert_eq!(cancelled["cancel_requested"], true);
+    assert_eq!(cancelled["status"], "terminated");
+    assert_eq!(cancelled["reason"], "cancelled");
     assert_request_delta(
         &joiner,
         "POST",
@@ -707,7 +718,7 @@ async fn pending_join_survives_ctrl_c_and_daemon_restart_then_can_be_cancelled()
     let cancelled_again = json(&cancelled_again);
     assert_eq!(cancelled_again["join_id"], join_id);
     assert_eq!(cancelled_again["ok"], true);
-    assert_eq!(cancelled_again["status"], "rejected");
+    assert_eq!(cancelled_again["status"], "terminated");
     assert_eq!(cancelled_again["reason"], "cancelled");
     assert_request_delta(
         &joiner,

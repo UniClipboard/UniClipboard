@@ -92,54 +92,45 @@ describe('handoff: choice completion overlapping refresh', () => {
     expect(result.current.decisionError).toBeTruthy()
   })
 
-  it.each(['before', 'after'] as const)(
-    'clears busy when notification response finishes %s the choice read',
-    async order => {
-      let finishChoiceRead!: (value: DeviceGroupChoices) => void
-      let finishNotificationRead!: (value: DeviceGroupChoices) => void
-      getDeviceGroupChoices
-        .mockResolvedValueOnce(pending)
-        .mockImplementationOnce(
-          () =>
-            new Promise<DeviceGroupChoices>(resolve => {
-              finishChoiceRead = resolve
-            })
-        )
-        .mockImplementationOnce(
-          () =>
-            new Promise<DeviceGroupChoices>(resolve => {
-              finishNotificationRead = resolve
-            })
-        )
-        .mockResolvedValue(completed)
-      const { result } = renderHook(() => useDeviceTrust(), { wrapper })
-      await waitFor(() => expect(result.current.deviceGroups).toEqual(pending))
-      let submitted!: Promise<void>
-      await act(async () => {
-        submitted = result.current.choose('c:handoff', 'b:local', false)
-      })
-      expect(result.current.decisionBusy).toBe(true)
-      expect(getDeviceGroupChoices).toHaveBeenCalledTimes(2)
-      const notify = subscribe.mock.calls[0][1]
-      await act(async () => notify({ topic: 'device-trust', eventType: 'device-trust.changed' }))
-      expect(getDeviceGroupChoices).toHaveBeenCalledTimes(3)
-      if (order === 'before') {
-        await act(async () => finishNotificationRead(completed))
-        await act(async () => {
-          finishChoiceRead(completed)
-          await submitted
-        })
-      } else {
-        await act(async () => {
-          finishChoiceRead(completed)
-          await submitted
-        })
-        await act(async () => finishNotificationRead(completed))
-      }
-      expect(chooseDeviceGroup).toHaveBeenCalledTimes(1)
-      expect(result.current.deviceGroups?.issues).toHaveLength(0)
-      expect(result.current.loading).toBe(false)
-      expect(result.current.decisionBusy).toBe(false)
-    }
-  )
+  it('queues one final refresh when a notification arrives during the choice read', async () => {
+    let finishChoiceRead!: (value: DeviceGroupChoices) => void
+    let finishNotificationRead!: (value: DeviceGroupChoices) => void
+    getDeviceGroupChoices
+      .mockResolvedValueOnce(pending)
+      .mockImplementationOnce(
+        () =>
+          new Promise<DeviceGroupChoices>(resolve => {
+            finishChoiceRead = resolve
+          })
+      )
+      .mockImplementationOnce(
+        () =>
+          new Promise<DeviceGroupChoices>(resolve => {
+            finishNotificationRead = resolve
+          })
+      )
+    const { result } = renderHook(() => useDeviceTrust(), { wrapper })
+    await waitFor(() => expect(result.current.deviceGroups).toEqual(pending))
+    let submitted!: Promise<void>
+    await act(async () => {
+      submitted = result.current.choose('c:handoff', 'b:local', false)
+    })
+    expect(result.current.decisionBusy).toBe(true)
+    expect(getDeviceGroupChoices).toHaveBeenCalledTimes(2)
+    const notify = subscribe.mock.calls[0][1]
+    await act(async () => notify({ topic: 'device-trust', eventType: 'device-trust.changed' }))
+    expect(getDeviceGroupChoices).toHaveBeenCalledTimes(2)
+
+    await act(async () => finishChoiceRead(completed))
+    await waitFor(() => expect(getDeviceGroupChoices).toHaveBeenCalledTimes(3))
+    await act(async () => {
+      finishNotificationRead(completed)
+      await submitted
+    })
+
+    expect(chooseDeviceGroup).toHaveBeenCalledTimes(1)
+    expect(result.current.deviceGroups?.issues).toHaveLength(0)
+    expect(result.current.loading).toBe(false)
+    expect(result.current.decisionBusy).toBe(false)
+  })
 })

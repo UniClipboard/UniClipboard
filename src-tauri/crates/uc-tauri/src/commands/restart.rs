@@ -152,10 +152,7 @@ pub async fn restart_daemon(
         connection_state.set(new_info);
         app.state::<crate::commands::startup::DaemonBootstrapStatus>()
             .clear();
-        // The static JWT cache holds a token minted by the OLD daemon —
-        // the new daemon has a fresh JWT secret and will reject it.
-        uc_daemon_client::http::clear_session_token_cache().await;
-        info!("daemon restarted, connection state refreshed, session cache cleared");
+        info!("daemon restarted and connection state refreshed");
         if let Err(error) = app.emit(DAEMON_CONNECTION_CHANGED_EVENT, ()) {
             warn!(
                 %error,

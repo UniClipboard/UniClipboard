@@ -15,8 +15,8 @@ use uc_engine::{
     DeviceTrustChoiceSummary, DeviceTrustImpactSummary, DeviceTrustRecoverySummary,
     DeviceTrustRelationshipSummary, DeviceTrustSnapshotSummary,
     DeviceTrustUnavailableReasonSummary, MemberProtectionStatusSummary, MemberProtectionSummary,
-    MemberSyncPreferencesPatch, MemberSyncPreferencesSummary, SpaceProtectionModeSummary,
-    SpaceProtectionSummary,
+    MemberSyncPreferencesPatch, MemberSyncPreferencesSummary, PairingConfirmationSummary,
+    SpaceProtectionModeSummary, SpaceProtectionSummary,
 };
 
 use super::{IntoApiDto, IntoDomain};
@@ -26,8 +26,8 @@ use crate::api::dto::member::{
     DeviceMembershipDto, DeviceReachabilityDto, DeviceSyncRelationshipDto, DeviceTrustActionDto,
     DeviceTrustChangeDto, DeviceTrustChoiceDto, DeviceTrustImpactDto, DeviceTrustRelationshipDto,
     DeviceTrustSnapshotDto, DeviceTrustUnavailableReasonDto, MemberProtectionDto,
-    MemberProtectionStatusDto, MemberSyncPreferencesDto, PendingInboundMemberDto,
-    SpaceProtectionDto, SpaceProtectionModeDto,
+    MemberProtectionStatusDto, MemberSyncPreferencesDto, PairingConfirmationDto,
+    PendingInboundMemberDto, SpaceProtectionDto, SpaceProtectionModeDto,
 };
 use crate::api::dto::settings::{ContentTypesDto, ContentTypesPatchDto};
 
@@ -286,6 +286,15 @@ fn device_trust_relationship(
             }
             DeviceSyncRelationshipSummary::Unknown => DeviceSyncRelationshipDto::Unknown,
         },
+        pairing_confirmation: relationship
+            .pairing_confirmation
+            .map(|status| match status {
+                PairingConfirmationSummary::AwaitingPeerConfirmation => {
+                    PairingConfirmationDto::AwaitingPeerConfirmation
+                }
+                PairingConfirmationSummary::Unconfirmed => PairingConfirmationDto::Unconfirmed,
+                PairingConfirmationSummary::Confirmed => PairingConfirmationDto::Confirmed,
+            }),
         available_actions: relationship
             .available_actions
             .into_iter()
@@ -436,7 +445,19 @@ mod tests {
             }),
             current_join: None,
             pending_inbound_member: None,
-            devices: Vec::new(),
+            devices: vec![DeviceTrustRelationshipSummary {
+                device_id: "device-peer".to_string(),
+                display_name: "Peer".to_string(),
+                is_local: false,
+                reachability: DeviceReachabilitySummary::Online,
+                membership: DeviceMembershipSummary::Active,
+                group_relationship: DeviceGroupRelationshipSummary::ConfirmationPending,
+                compatibility: DeviceCompatibilitySummary::Compatible,
+                sync_relationship: DeviceSyncRelationshipSummary::PausedUnverifiable,
+                pairing_confirmation: Some(PairingConfirmationSummary::Unconfirmed),
+                available_actions: Vec::new(),
+                blocked_reason: None,
+            }],
             recovery: DeviceTrustRecoverySummary::NotAvailableInThisVersion,
             allowed_actions: vec![DeviceTrustActionSummary::KeepCurrentDeviceGroup],
             blocked_reason: Some(
@@ -449,6 +470,10 @@ mod tests {
 
         assert_eq!(mapped.local_device_id, "device-local");
         assert_eq!(mapped.revision, 7);
+        assert_eq!(
+            mapped.devices[0].pairing_confirmation,
+            Some(PairingConfirmationDto::Unconfirmed)
+        );
         let change = mapped.current_change.expect("pending device trust change");
         assert_eq!(change.change_id, "change-1");
         assert!(change.includes_local_device);

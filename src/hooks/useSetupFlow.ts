@@ -14,7 +14,7 @@ import {
   type ActiveJoinSpaceResponse,
   type RedeemInvitationErrorKind,
   type InitializeSpaceErrorKind,
-  type JoinSpaceRejectionReason,
+  type JoinSpaceEndReason,
 } from '@/api/daemon/setupV2'
 import { activeDeviceIds, findNewActiveDeviceId } from '@/components/device/pairing-success-utils'
 import { toast } from '@/components/ui/toast'
@@ -53,8 +53,8 @@ export type SetupScreen =
   | { kind: 'redeem_invitation' }
   /** S4a — joiner: durable admission is waiting for its final outcome. */
   | { kind: 'join_pending'; joinId: string }
-  /** S4b — joiner: durable admission was rejected. */
-  | { kind: 'join_rejected'; reason: JoinSpaceRejectionReason }
+  /** S4b — joiner: durable admission ended without activation. */
+  | { kind: 'join_ended'; reason: JoinSpaceEndReason }
   /** Sponsor Space is ready and can issue its first invitation. */
   | { kind: 'space_ready' }
   /** S5 — both: post-handshake summary. */
@@ -177,8 +177,8 @@ export function useSetupFlow(): UseSetupFlowReturn {
   })
 
   const resolveJoinAdmission = useCallback(async (result: JoinAdmissionResolution) => {
-    if (result.status === 'rejected') {
-      setPageScreen({ kind: 'join_rejected', reason: result.reason })
+    if (result.status === 'rejected' || result.status === 'terminated') {
+      setPageScreen({ kind: 'join_ended', reason: result.reason })
       return
     }
     try {
@@ -319,8 +319,8 @@ export function useSetupFlow(): UseSetupFlowReturn {
           setPageScreen({ kind: 'join_pending', joinId: redeem.joinId })
           return { ok: true, redeem: null } as const
         }
-        if (redeem.status === 'rejected') {
-          setPageScreen({ kind: 'join_rejected', reason: redeem.reason })
+        if (redeem.status === 'rejected' || redeem.status === 'terminated') {
+          setPageScreen({ kind: 'join_ended', reason: redeem.reason })
           return {
             ok: false,
             kind: 'internal' as RedeemInvitationErrorKind,
@@ -364,7 +364,7 @@ export function useSetupFlow(): UseSetupFlowReturn {
         const result = await cancelJoinSpace(joinId)
         if (result.status === 'active') {
           await resolveJoinAdmission(result)
-        } else if (result.status === 'rejected') {
+        } else if (result.status === 'rejected' || result.status === 'terminated') {
           await resolveJoinAdmission(result)
         }
       } catch (err) {

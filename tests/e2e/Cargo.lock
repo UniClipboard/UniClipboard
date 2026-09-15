@@ -3839,6 +3839,7 @@ dependencies = [
  "rand 0.9.4",
  "rustix 0.38.44",
  "serde",
+ "tempfile",
  "thiserror 2.0.18",
  "tokio",
  "tracing",
@@ -5039,7 +5040,3 @@ dependencies = [
  "quote",
  "syn 2.0.117",
 ]
-
-[[patch.unused]]
-name = "uc-engine"
-version = "1.1.0-rc.15"

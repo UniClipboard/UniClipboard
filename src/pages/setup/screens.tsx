@@ -34,7 +34,7 @@ import { getSettings } from '@/api/daemon/settings'
 import type {
   InitializeSpaceErrorKind,
   IssueInvitationErrorKind,
-  JoinSpaceRejectionReason,
+  JoinSpaceEndReason,
   RedeemInvitationErrorKind,
   ActiveJoinSpaceResponse,
 } from '@/api/daemon/setupV2'
@@ -773,26 +773,26 @@ export function JoinPendingScreen({
   )
 }
 
-export function JoinRejectedScreen({
+export function JoinEndedScreen({
   reason,
   onBack,
 }: {
-  reason: JoinSpaceRejectionReason
+  reason: JoinSpaceEndReason
   onBack: () => void
 }) {
   const { t } = useTranslation(undefined, { keyPrefix: 'setup.joinPending' })
   return (
     <ScreenShell
-      title={t('rejected.title')}
-      subtitle={t(`rejected.reasons.${reason}`)}
+      title={t('ended.title')}
+      subtitle={t(`ended.reasons.${reason}`)}
       footer={
-        <Button data-testid="setup-join-rejected-back" onClick={onBack}>
+        <Button data-testid="setup-join-ended-back" onClick={onBack}>
           {t('actions.back')}
         </Button>
       }
       centered
     >
-      <div data-testid="setup-join-rejected" className="mt-8 flex justify-center">
+      <div data-testid="setup-join-ended" className="mt-8 flex justify-center">
         <XCircle className="size-12 text-destructive" />
       </div>
     </ScreenShell>

@@ -13,8 +13,9 @@ use axum::{Json, Router};
 use uc_daemon_contract::api::dto::envelope::ApiEnvelope;
 use uc_daemon_contract::api::dto::v2::setup::{
     CancelJoinSpaceRequest, CurrentInvitation, InitializeSpaceRequest, InitializeSpaceResponse,
-    IssueInvitationResponse, JoinSpaceRejectionReason, JoinSpaceResponse, JoinedSpaceResponse,
-    RedeemRequest, SetupStateResponse, SwitchSpaceRequest,
+    IssueInvitationResponse, JoinSpaceRejectionReason, JoinSpaceResponse,
+    JoinSpaceTerminationReason, JoinedSpaceResponse, RedeemRequest, SetupStateResponse,
+    SwitchSpaceRequest,
 };
 use uc_daemon_contract::constants::http_route_v2;
 use uc_engine::error_codes::{
@@ -33,8 +34,8 @@ use uc_engine::error_codes::{
 };
 use uc_engine::{
     CancelJoinSpaceInput, CreateSpaceInput, EngineError, EngineErrorCategory, JoinSpaceInput,
-    JoinSpaceRejectionReasonSummary, JoinSpaceStatusSummary, Operation, OperationResult,
-    SecretString,
+    JoinSpaceRejectionReasonSummary, JoinSpaceStatusSummary, JoinSpaceTerminationReasonSummary,
+    Operation, OperationResult, SecretString,
 };
 
 use crate::api::dto::error::{log_facade_failure, ApiError};
@@ -731,6 +732,18 @@ pub(crate) fn join_space_response(status: JoinSpaceStatusSummary) -> JoinSpaceRe
                 JoinSpaceRejectionReasonSummary::Cancelled => JoinSpaceRejectionReason::Cancelled,
                 JoinSpaceRejectionReasonSummary::RemovedBeforeActivation => {
                     JoinSpaceRejectionReason::RemovedBeforeActivation
+                }
+            },
+        },
+        JoinSpaceStatusSummary::Terminated { join_id, reason } => JoinSpaceResponse::Terminated {
+            join_id,
+            reason: match reason {
+                JoinSpaceTerminationReasonSummary::Cancelled => {
+                    JoinSpaceTerminationReason::Cancelled
+                }
+                JoinSpaceTerminationReasonSummary::Expired => JoinSpaceTerminationReason::Expired,
+                JoinSpaceTerminationReasonSummary::Superseded => {
+                    JoinSpaceTerminationReason::Superseded
                 }
             },
         },

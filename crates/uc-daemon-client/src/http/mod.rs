@@ -46,14 +46,6 @@ pub(super) fn encode_path_segment(segment: &str) -> Result<String> {
     Ok(percent_encoding::utf8_percent_encode(segment, PATH_SEGMENT).to_string())
 }
 
-/// Cache for the daemon session token (JWT) exchanged from the bearer token.
-///
-/// The session token has a TTL of 300 seconds. The cache stores the token along
-/// with its expiry timestamp so we can proactively re-authenticate before expiry.
-/// Initialized lazily on first HTTP request via `get_session_token`.
-static SESSION_TOKEN_CACHE: tokio::sync::RwLock<Option<(String, u64)>> =
-    tokio::sync::RwLock::const_new(None);
-
 /// Session details returned by `/auth/connect`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExchangedSessionToken {
@@ -95,7 +87,15 @@ pub async fn exchange_session_token_with_metadata(
     let connection = connection_state
         .get()
         .ok_or_else(|| anyhow!("daemon connection info is not available"))?;
+    exchange_session_token_for_connection(http, &connection, pid, client_type).await
+}
 
+async fn exchange_session_token_for_connection(
+    http: &reqwest::Client,
+    connection: &uc_daemon_contract::api::auth::DaemonConnectionInfo,
+    pid: u32,
+    client_type: &str,
+) -> Result<ExchangedSessionToken> {
     let url = format!("{}/auth/connect", connection.base_url);
     let response = http
         .post(&url)
@@ -158,41 +158,42 @@ pub(crate) async fn get_session_token(
     connection_state: &DaemonConnectionState,
     pid: u32,
 ) -> Result<String> {
+    let snapshot = connection_state
+        .snapshot()
+        .ok_or_else(|| anyhow!("daemon connection info is not available"))?;
+    get_session_token_for_snapshot(http, connection_state, pid, &snapshot).await
+}
+
+async fn get_session_token_for_snapshot(
+    http: &reqwest::Client,
+    connection_state: &DaemonConnectionState,
+    pid: u32,
+    snapshot: &(uc_daemon_contract::api::auth::DaemonConnectionInfo, u64),
+) -> Result<String> {
+    let (connection, revision) = snapshot;
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap()
         .as_secs();
 
-    // Check cache first.
-    {
-        let cache = SESSION_TOKEN_CACHE.read().await;
-        if let Some((ref token, expires_at)) = &*cache {
-            // Use token if it has at least 30 seconds left.
-            if *expires_at > now + 30 {
-                return Ok(token.clone());
-            }
-        }
+    if let Some(token) = connection_state.cached_session_token(*revision, now) {
+        return Ok(token);
     }
 
-    // Exchange new token.
-    let new_token = exchange_session_token(http, connection_state, pid, "gui").await?;
+    let new_token = exchange_session_token_for_connection(http, connection, pid, "gui").await?;
     let expires_at = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap()
         .as_secs()
         + 300; // TTL from /auth/connect response
 
-    let mut cache = SESSION_TOKEN_CACHE.write().await;
-    *cache = Some((new_token.clone(), expires_at));
+    connection_state.cache_session_token_if_current(
+        *revision,
+        new_token.session_token.clone(),
+        expires_at,
+    );
 
-    Ok(new_token)
-}
-
-/// Clear the session token cache (useful after daemon restart).
-#[allow(dead_code)]
-pub async fn clear_session_token_cache() {
-    let mut cache = SESSION_TOKEN_CACHE.write().await;
-    *cache = None;
+    Ok(new_token.session_token)
 }
 
 /// Build an authorized HTTP request using the session token (JWT).
@@ -225,20 +226,118 @@ pub async fn authorized_daemon_request_with_type(
     pid: u32,
     client_type: &str,
 ) -> Result<RequestBuilder> {
-    let connection = connection_state
-        .get()
+    let snapshot = connection_state
+        .snapshot()
         .ok_or_else(|| anyhow!("daemon connection info is not available"))?;
+    authorized_daemon_request_for_snapshot(
+        http,
+        connection_state,
+        method,
+        path,
+        pid,
+        client_type,
+        snapshot,
+    )
+    .await
+}
+
+async fn authorized_daemon_request_for_snapshot(
+    http: &reqwest::Client,
+    connection_state: &DaemonConnectionState,
+    method: Method,
+    path: &str,
+    pid: u32,
+    client_type: &str,
+    snapshot: (uc_daemon_contract::api::auth::DaemonConnectionInfo, u64),
+) -> Result<RequestBuilder> {
+    let (connection, _) = &snapshot;
     let url = format!("{}{}", connection.base_url, path);
 
     // GUI clients benefit from token caching (long-running process).
     // CLI and other types use fresh tokens each call.
     let session_token = if client_type == "gui" {
-        get_session_token(http, connection_state, pid).await?
+        get_session_token_for_snapshot(http, connection_state, pid, &snapshot).await?
     } else {
-        exchange_session_token(http, connection_state, pid, client_type).await?
+        exchange_session_token_for_connection(http, connection, pid, client_type)
+            .await?
+            .session_token
     };
 
     Ok(http
         .request(method, url)
         .header(AUTHORIZATION, format!("Session {}", session_token)))
+}
+
+#[cfg(test)]
+mod connection_replacement_tests {
+    use super::*;
+    use std::time::Duration;
+    use uc_daemon_contract::api::auth::DaemonConnectionInfo;
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    #[tokio::test]
+    async fn authorized_request_keeps_one_snapshot_during_connection_replacement() {
+        let first_server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/auth/connect"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_delay(Duration::from_millis(10))
+                    .set_body_json(serde_json::json!({
+                        "data": {
+                            "sessionToken": "first-session",
+                            "expiresInSecs": 300,
+                            "refreshAtSecs": 240
+                        },
+                        "ts": 1
+                    })),
+            )
+            .expect(1)
+            .mount(&first_server)
+            .await;
+        let second_server = MockServer::start().await;
+        let connection_state = DaemonConnectionState::default();
+        connection_state.set(DaemonConnectionInfo {
+            base_url: first_server.uri(),
+            ws_url: "ws://127.0.0.1/first".to_string(),
+            token: "first-bearer".to_string(),
+            pid: 42,
+        });
+        let snapshot = connection_state.snapshot().expect("first connection");
+        connection_state.set(DaemonConnectionInfo {
+            base_url: second_server.uri(),
+            ws_url: "ws://127.0.0.1/second".to_string(),
+            token: "second-bearer".to_string(),
+            pid: 42,
+        });
+
+        let request = authorized_daemon_request_for_snapshot(
+            &reqwest::Client::new(),
+            &connection_state,
+            Method::GET,
+            "/paired-devices",
+            42,
+            "gui",
+            snapshot,
+        )
+        .await
+        .expect("authorized request")
+        .build()
+        .expect("request");
+
+        assert_eq!(
+            request.url().as_str(),
+            format!("{}/paired-devices", first_server.uri())
+        );
+        assert_eq!(
+            request.headers().get(AUTHORIZATION).expect("authorization"),
+            "Session first-session"
+        );
+        let (_, current_revision) = connection_state.snapshot().expect("second connection");
+        assert_eq!(
+            connection_state.cached_session_token(current_revision, 0),
+            None
+        );
+    }
 }

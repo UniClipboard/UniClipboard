@@ -10,7 +10,7 @@ use tracing_subscriber::EnvFilter;
 ///
 /// # Profile Selection Precedence
 ///
-/// 1. `RUST_LOG` env var (overrides everything when set)
+/// 1. `RUST_LOG` env var (subject to mandatory privacy and safety caps)
 /// 2. `UC_LOG_PROFILE` env var (`dev`, `prod`, `debug`, `debug_clipboard`)
 /// 3. Build-type default: debug builds -> `Dev`, release builds -> `Prod`
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -126,6 +126,23 @@ const NOISE_FILTERS: &[&str] = &[
     "log=warn",
 ];
 
+/// Mandatory privacy caps that no log profile or `RUST_LOG` override may relax.
+///
+/// OpenMLS can emit cryptographic keys, plaintext, and storage values through
+/// its `log`-based debug paths. Those records must never reach a persistent or
+/// remote sink, even when a user explicitly requests verbose diagnostics.
+const SENSITIVE_TARGET_FILTERS: &[&str] = &["openmls=off", "openmls_memory_storage=off"];
+
+fn enforce_sensitive_target_filters(mut filter: EnvFilter) -> EnvFilter {
+    for &directive in SENSITIVE_TARGET_FILTERS {
+        let Ok(directive) = directive.parse() else {
+            return EnvFilter::new("off");
+        };
+        filter = filter.add_directive(directive);
+    }
+    filter
+}
+
 impl LogProfile {
     /// Select a profile from environment variables.
     ///
@@ -150,7 +167,7 @@ impl LogProfile {
 
     /// Build the `EnvFilter` for the console (pretty) layer.
     ///
-    /// If `RUST_LOG` is set, returns that override filter instead.
+    /// If `RUST_LOG` is set, returns that override with mandatory caps applied.
     /// For the `Cli` profile, console output is completely disabled.
     pub fn console_filter(&self) -> EnvFilter {
         if let Some(filter) = Self::rust_log_override() {
@@ -166,7 +183,7 @@ impl LogProfile {
     ///
     /// Symmetric with `console_filter` per design decision, except for the
     /// `Cli` profile which still logs to JSON at info level for debugging.
-    /// If `RUST_LOG` is set, returns that override filter instead.
+    /// If `RUST_LOG` is set, returns that override with mandatory caps applied.
     pub fn json_filter(&self) -> EnvFilter {
         if let Some(filter) = Self::rust_log_override() {
             return filter;
@@ -182,9 +199,11 @@ impl LogProfile {
             // 否则会触发 netwatch udp.rs:436 的 divide-by-zero panic(详见
             // NOISE_FILTERS 同名条目)。`add_directive` 会覆盖同 target 的更
             // 宽松规则,放在用户 RUST_LOG 解析之后追加即可生效。
-            let filter =
-                filter.add_directive("netwatch::udp=debug".parse().expect("static directive"));
-            Some(filter)
+            let filter = match "netwatch::udp=debug".parse() {
+                Ok(directive) => filter.add_directive(directive),
+                Err(_) => EnvFilter::new("off"),
+            };
+            Some(enforce_sensitive_target_filters(filter))
         } else {
             None
         }
@@ -234,7 +253,7 @@ impl LogProfile {
             Self::Prod | Self::Cli => {}
         }
 
-        EnvFilter::new(directives.join(","))
+        enforce_sensitive_target_filters(EnvFilter::new(directives.join(",")))
     }
 }
 
@@ -247,5 +266,48 @@ impl fmt::Display for LogProfile {
             Self::DebugClipboard => write!(f, "debug_clipboard"),
             Self::Cli => write!(f, "cli"),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use tracing_subscriber::prelude::*;
+
+    use super::*;
+
+    #[test]
+    fn development_profile_never_enables_openmls_crypto_logs() {
+        let subscriber = tracing_subscriber::registry().with(LogProfile::Dev.json_filter());
+        let dispatch = tracing::Dispatch::new(subscriber);
+
+        tracing::dispatcher::with_default(&dispatch, || {
+            assert!(!tracing::enabled!(
+                target: "openmls::ciphersuite::hpke",
+                tracing::Level::DEBUG
+            ));
+            assert!(!tracing::enabled!(
+                target: "openmls_memory_storage",
+                tracing::Level::DEBUG
+            ));
+        });
+    }
+
+    #[test]
+    fn explicit_trace_override_cannot_enable_openmls_crypto_logs() {
+        let subscriber = tracing_subscriber::registry().with(enforce_sensitive_target_filters(
+            EnvFilter::new("trace,openmls=trace,openmls_memory_storage=trace"),
+        ));
+        let dispatch = tracing::Dispatch::new(subscriber);
+
+        tracing::dispatcher::with_default(&dispatch, || {
+            assert!(!tracing::enabled!(
+                target: "openmls::ciphersuite::hpke",
+                tracing::Level::ERROR
+            ));
+            assert!(!tracing::enabled!(
+                target: "openmls_memory_storage",
+                tracing::Level::ERROR
+            ));
+        });
     }
 }

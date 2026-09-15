@@ -95,7 +95,7 @@ export function useSwitchSpace({ onOpenChange }: { onOpenChange: (open: boolean)
         resolveJoinAdmission(res)
       } else if (res.status === 'pending') {
         update({ pendingJoinId: res.joinId, step: 'pending' })
-      } else if (res.status === 'rejected') {
+      } else if (res.status === 'rejected' || res.status === 'terminated') {
         update({ errorKind: 'internal', errorRaw: res.reason, step: 'failed' })
       }
     } catch (err) {
@@ -133,7 +133,7 @@ export function useSwitchSpace({ onOpenChange }: { onOpenChange: (open: boolean)
       const result = await cancelJoinSpace(pendingJoinId)
       if (result.status === 'active') {
         resolveJoinAdmission(result)
-      } else if (result.status === 'rejected') {
+      } else if (result.status === 'rejected' || result.status === 'terminated') {
         resolveJoinAdmission(result)
       }
     } catch (err) {

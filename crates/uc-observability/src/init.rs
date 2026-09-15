@@ -18,6 +18,9 @@
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 
+#[cfg(unix)]
+use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+
 use tracing::Subscriber;
 use tracing_appender::non_blocking::WorkerGuard;
 use tracing_subscriber::fmt::format::JsonFields;
@@ -141,16 +144,17 @@ fn build_json_writer(
             anyhow::anyhow!("{LOG_FILE_ENV} has no parent directory: {}", path.display())
         })?;
         std::fs::create_dir_all(parent)?;
-        let file = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(path)
-            .map_err(|err| {
-                anyhow::anyhow!(
-                    "failed to open {LOG_FILE_ENV} {} for append: {err}",
-                    path.display()
-                )
-            })?;
+        let mut options = std::fs::OpenOptions::new();
+        options.create(true).append(true);
+        #[cfg(unix)]
+        options.mode(0o600);
+        let file = options.open(path).map_err(|err| {
+            anyhow::anyhow!(
+                "failed to open {LOG_FILE_ENV} {} for append: {err}",
+                path.display()
+            )
+        })?;
+        make_file_private(&file)?;
         return Ok(
             tracing_appender::non_blocking::NonBlockingBuilder::default()
                 .lossy(false)
@@ -159,6 +163,7 @@ fn build_json_writer(
     }
 
     std::fs::create_dir_all(logs_dir)?;
+    make_log_directory_private(logs_dir)?;
 
     // ADR-008 D20 (P4-0): per-role file name so the GUI host and the detached
     // `uniclipd` never append to the same rolling log file. The `.json` is part
@@ -172,7 +177,51 @@ fn build_json_writer(
         .max_log_files(LOG_RETENTION_DAYS)
         .build(logs_dir)
         .map_err(|err| anyhow::anyhow!("failed to build rolling log appender: {err}"))?;
+    make_existing_log_files_private(logs_dir)?;
     Ok(tracing_appender::non_blocking(daily_appender))
+}
+
+#[cfg(unix)]
+fn make_log_directory_private(directory: &Path) -> anyhow::Result<()> {
+    std::fs::set_permissions(directory, std::fs::Permissions::from_mode(0o700)).map_err(|err| {
+        anyhow::anyhow!(
+            "failed to restrict log directory {}: {err}",
+            directory.display()
+        )
+    })
+}
+
+#[cfg(not(unix))]
+fn make_log_directory_private(_directory: &Path) -> anyhow::Result<()> {
+    Ok(())
+}
+
+#[cfg(unix)]
+fn make_existing_log_files_private(directory: &Path) -> anyhow::Result<()> {
+    for entry in std::fs::read_dir(directory)? {
+        let entry = entry?;
+        let metadata = std::fs::symlink_metadata(entry.path())?;
+        if metadata.file_type().is_file() {
+            std::fs::set_permissions(entry.path(), std::fs::Permissions::from_mode(0o600))?;
+        }
+    }
+    Ok(())
+}
+
+#[cfg(not(unix))]
+fn make_existing_log_files_private(_directory: &Path) -> anyhow::Result<()> {
+    Ok(())
+}
+
+#[cfg(unix)]
+fn make_file_private(file: &std::fs::File) -> anyhow::Result<()> {
+    file.set_permissions(std::fs::Permissions::from_mode(0o600))?;
+    Ok(())
+}
+
+#[cfg(not(unix))]
+fn make_file_private(_file: &std::fs::File) -> anyhow::Result<()> {
+    Ok(())
 }
 
 /// Initialize the dual-output tracing subscriber (convenience wrapper).
@@ -182,7 +231,8 @@ fn build_json_writer(
 /// 2. A JSON file layer using [`FlatJsonFormat`] with daily rolling files
 ///
 /// Both layers get independent `EnvFilter`s from the given profile.
-/// If `RUST_LOG` is set, it overrides the profile filters for both layers.
+/// If `RUST_LOG` is set, it overrides profile verbosity for both layers while
+/// mandatory privacy and safety caps remain enforced.
 ///
 /// Returns the [`WorkerGuard`] for the JSON file writer. **Ownership is the
 /// caller's** — this is `tracing_appender`'s native RAII contract: keep the
@@ -256,5 +306,45 @@ mod tests {
         assert!(validate_exact_log_role(Some(OsStr::new("daemon"))).is_ok());
         assert!(validate_exact_log_role(Some(OsStr::new("gui-host"))).is_err());
         assert!(validate_exact_log_role(None).is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn rolling_log_storage_is_private_to_the_current_user() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let temp = tempfile::tempdir().expect("temp directory");
+        std::fs::set_permissions(temp.path(), std::fs::Permissions::from_mode(0o755))
+            .expect("make the initial directory intentionally permissive");
+        let existing_log = temp.path().join("uniclipboard-daemon.json.previous");
+        std::fs::write(&existing_log, b"existing\n").expect("write existing log");
+        std::fs::set_permissions(&existing_log, std::fs::Permissions::from_mode(0o644))
+            .expect("make the existing log intentionally permissive");
+
+        let (mut writer, guard) = build_json_writer(temp.path(), None).expect("rolling writer");
+        writer.write_all(b"probe\n").expect("write probe");
+        drop(writer);
+        drop(guard);
+
+        assert_eq!(
+            std::fs::metadata(temp.path())
+                .expect("log directory metadata")
+                .permissions()
+                .mode()
+                & 0o777,
+            0o700
+        );
+        for entry in std::fs::read_dir(temp.path()).expect("read log directory") {
+            let entry = entry.expect("log entry");
+            assert_eq!(
+                entry
+                    .metadata()
+                    .expect("log file metadata")
+                    .permissions()
+                    .mode()
+                    & 0o777,
+                0o600
+            );
+        }
     }
 }

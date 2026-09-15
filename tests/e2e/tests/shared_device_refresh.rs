@@ -141,21 +141,17 @@ fn try_members(cli: &TestCli) -> Result<Vec<Value>, String> {
         .map_err(|error| format!("members output is not JSON: {error}\n{}", output.stdout))
 }
 
-fn members(cli: &TestCli) -> Vec<Value> {
-    try_members(cli).unwrap_or_else(|error| panic!("{error}"))
-}
-
 fn has_member_named(members: &[Value], name: &str) -> bool {
     members
         .iter()
         .any(|member| member.get("device_name").and_then(Value::as_str) == Some(name))
 }
 
-async fn wait_for_member_count(node: &Node, expected: usize) {
+async fn wait_for_member_count(node: &Node, expected: usize) -> Vec<Value> {
     let deadline = tokio::time::Instant::now() + WAIT_TIMEOUT;
     loop {
         match try_members(&node.cli) {
-            Ok(current) if current.len() == expected => return,
+            Ok(current) if current.len() == expected => return current,
             Ok(current) if tokio::time::Instant::now() >= deadline => {
                 panic!(
                     "{} member count did not reach {expected}; members={current:?}; log={}",
@@ -212,7 +208,7 @@ async fn restart_b_ignorant_of_c(
     let a = Node::initialized(&format!("{prefix}-a"), DEVICE_A, binaries, rendezvous).await;
     let mut b = Node::fresh(&format!("{prefix}-b"), binaries, rendezvous).await;
     join(&a, &b, DEVICE_B).await;
-    wait_for_member_count(&b, 2).await;
+    let _ = wait_for_member_count(&b, 2).await;
 
     // B offline so A's announcement delivery for C can never reach B.
     b.stop().await;
@@ -223,7 +219,7 @@ async fn restart_b_ignorant_of_c(
 
     c.stop().await;
     b.restart().await;
-    let current = members(&b.cli);
+    let current = wait_for_member_count(&b, 2).await;
     assert!(
         current.len() == 2 && !has_member_named(&current, DEVICE_C),
         "precondition failed: B must not know C before automatic discovery \
@@ -253,6 +249,6 @@ async fn unlocking_offline_member_automatically_discovers_other_shared_member() 
 
     wait_for_member_named(&b, DEVICE_C).await;
     wait_for_member_named(&c, DEVICE_B).await;
-    wait_for_member_count(&b, 3).await;
-    wait_for_member_count(&c, 3).await;
+    let _ = wait_for_member_count(&b, 3).await;
+    let _ = wait_for_member_count(&c, 3).await;
 }

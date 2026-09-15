@@ -78,6 +78,9 @@ export type JoinSpaceRejectionReason =
   | 'cancelled'
   | 'removed_before_activation'
 
+export type JoinSpaceTerminationReason = 'cancelled' | 'expired' | 'superseded'
+export type JoinSpaceEndReason = JoinSpaceRejectionReason | JoinSpaceTerminationReason
+
 export type JoinSpaceResponse =
   | {
       status: 'active'
@@ -95,6 +98,7 @@ export type JoinSpaceResponse =
       peerUpgradeRequired?: boolean
     }
   | { status: 'rejected'; joinId: string; reason: JoinSpaceRejectionReason }
+  | { status: 'terminated'; joinId: string; reason: JoinSpaceTerminationReason }
 
 export type RedeemResponse = JoinSpaceResponse
 export type ActiveJoinSpaceResponse = Extract<JoinSpaceResponse, { status: 'active' }>

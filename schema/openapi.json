@@ -1312,6 +1312,14 @@
           "membership": {
             "$ref": "#/components/schemas/DeviceMembershipDto"
           },
+          "pairingConfirmation": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PairingConfirmationDto"
+              }
+            ],
+            "nullable": true
+          },
           "reachability": {
             "$ref": "#/components/schemas/DeviceReachabilityDto"
           },
@@ -3033,8 +3041,38 @@
               "status"
             ],
             "type": "object"
+          },
+          {
+            "properties": {
+              "joinId": {
+                "type": "string"
+              },
+              "reason": {
+                "$ref": "#/components/schemas/JoinSpaceTerminationReason"
+              },
+              "status": {
+                "enum": [
+                  "terminated"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "joinId",
+              "reason",
+              "status"
+            ],
+            "type": "object"
           }
         ]
+      },
+      "JoinSpaceTerminationReason": {
+        "enum": [
+          "cancelled",
+          "expired",
+          "superseded"
+        ],
+        "type": "string"
       },
       "JoinedSpaceResponse": {
         "properties": {
@@ -3689,6 +3727,14 @@
           }
         },
         "type": "object"
+      },
+      "PairingConfirmationDto": {
+        "enum": [
+          "awaiting_peer_confirmation",
+          "unconfirmed",
+          "confirmed"
+        ],
+        "type": "string"
       },
       "PairingSettingsDto": {
         "properties": {

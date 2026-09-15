@@ -289,6 +289,54 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn gui_clients_keep_session_tokens_scoped_to_their_connection() {
+        let (first_server, first_client) = test_client_with_session_token("first-session").await;
+        Mock::given(method("GET"))
+            .and(path("/member/device-a/sync-preferences"))
+            .and(header("authorization", "Session first-session"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "data": {
+                    "sendEnabled": true,
+                    "receiveEnabled": false,
+                    "sendContentTypes": content_types_json(true),
+                    "receiveContentTypes": content_types_json(false)
+                },
+                "ts": 2
+            })))
+            .expect(1)
+            .mount(&first_server)
+            .await;
+        first_client
+            .member_sync_preferences("device-a")
+            .await
+            .expect("first daemon request");
+
+        let (second_server, second_client) = test_client_with_session_token("second-session").await;
+        Mock::given(method("GET"))
+            .and(path("/member/device-a/sync-preferences"))
+            .and(header("authorization", "Session second-session"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "data": {
+                    "sendEnabled": false,
+                    "receiveEnabled": true,
+                    "sendContentTypes": content_types_json(false),
+                    "receiveContentTypes": content_types_json(true)
+                },
+                "ts": 3
+            })))
+            .expect(1)
+            .mount(&second_server)
+            .await;
+        let preferences = second_client
+            .member_sync_preferences("device-a")
+            .await
+            .expect("second daemon request");
+
+        assert!(!preferences.send_enabled);
+        assert!(preferences.receive_enabled);
+    }
+
+    #[tokio::test]
     async fn update_member_sync_preferences_patches_only_supplied_fields() {
         let (server, client) = test_client().await;
         Mock::given(method("PATCH"))
@@ -336,6 +384,34 @@ mod tests {
                 },
                 "ts": 1
             })))
+            .mount(&server)
+            .await;
+        let connection_state = DaemonConnectionState::default();
+        connection_state.set(DaemonConnectionInfo {
+            base_url: server.uri(),
+            ws_url: "ws://127.0.0.1/unused".to_string(),
+            token: "test-bearer".to_string(),
+            pid: 42,
+        });
+        let client = DaemonMemberClient::new(connection_state).unwrap();
+        (server, client)
+    }
+
+    async fn test_client_with_session_token(
+        session_token: &str,
+    ) -> (MockServer, DaemonMemberClient) {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/auth/connect"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "data": {
+                    "sessionToken": session_token,
+                    "expiresInSecs": 300,
+                    "refreshAtSecs": 240
+                },
+                "ts": 1
+            })))
+            .expect(1)
             .mount(&server)
             .await;
         let connection_state = DaemonConnectionState::default();

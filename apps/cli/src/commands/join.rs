@@ -25,7 +25,7 @@ use uc_daemon_client::{
 };
 use uc_daemon_contract::api::dto::settings::{GeneralSettingsPatchDto, SettingsPatchDto};
 use uc_daemon_contract::api::dto::v2::setup::{
-    JoinSpaceResponse, RedeemRequest, SwitchSpaceRequest,
+    JoinSpaceResponse, JoinSpaceTerminationReason, RedeemRequest, SwitchSpaceRequest,
 };
 
 use crate::commands::app_session::{
@@ -196,7 +196,7 @@ struct JoinPendingOutput<'a> {
 }
 
 #[derive(Serialize)]
-struct JoinRejectedOutput<'a> {
+struct JoinTerminalOutput<'a> {
     ok: bool,
     status: &'static str,
     join_id: &'a str,
@@ -239,7 +239,8 @@ fn join_id(response: &JoinSpaceResponse) -> &str {
     match response {
         JoinSpaceResponse::Active { join_id, .. }
         | JoinSpaceResponse::Pending { join_id, .. }
-        | JoinSpaceResponse::Rejected { join_id, .. } => join_id,
+        | JoinSpaceResponse::Rejected { join_id, .. }
+        | JoinSpaceResponse::Terminated { join_id, .. } => join_id,
     }
 }
 
@@ -304,7 +305,10 @@ fn join_response_outcome(
     intent: JoinResponseIntent,
 ) -> JoinResponseOutcome {
     let ok = match intent {
-        JoinResponseIntent::Start => !matches!(response, JoinSpaceResponse::Rejected { .. }),
+        JoinResponseIntent::Start => !matches!(
+            response,
+            JoinSpaceResponse::Rejected { .. } | JoinSpaceResponse::Terminated { .. }
+        ),
         JoinResponseIntent::Status => true,
         JoinResponseIntent::Cancel => matches!(
             response,
@@ -314,6 +318,9 @@ fn join_response_outcome(
             } | JoinSpaceResponse::Rejected {
                 reason:
                     uc_daemon_contract::api::dto::v2::setup::JoinSpaceRejectionReason::Cancelled,
+                ..
+            } | JoinSpaceResponse::Terminated {
+                reason: JoinSpaceTerminationReason::Cancelled,
                 ..
             }
         ),
@@ -456,7 +463,7 @@ fn render_join_response(
             if json {
                 spinner.finish_and_clear();
                 crate::output::emit_json_with_code(
-                    &JoinRejectedOutput {
+                    &JoinTerminalOutput {
                         ok: outcome.ok,
                         status: "rejected",
                         join_id,
@@ -475,6 +482,40 @@ fn render_join_response(
                         ui::info("status", "rejected");
                     }
                     _ => ui::spinner_finish_error(spinner, "Join request was rejected"),
+                }
+                ui::info("join_id", join_id);
+                ui::info("reason", reason);
+                outcome.exit_code
+            }
+        }
+        JoinSpaceResponse::Terminated { join_id, reason } => {
+            let reason = match reason {
+                JoinSpaceTerminationReason::Cancelled => "cancelled",
+                JoinSpaceTerminationReason::Expired => "expired",
+                JoinSpaceTerminationReason::Superseded => "superseded",
+            };
+            if json {
+                spinner.finish_and_clear();
+                crate::output::emit_json_with_code(
+                    &JoinTerminalOutput {
+                        ok: outcome.ok,
+                        status: "terminated",
+                        join_id,
+                        reason,
+                    },
+                    "join response",
+                    outcome.exit_code,
+                )
+            } else {
+                match (intent, outcome.ok) {
+                    (JoinResponseIntent::Cancel, true) => {
+                        ui::spinner_finish_success(spinner, "Join cancelled");
+                    }
+                    (JoinResponseIntent::Status, true) => {
+                        spinner.finish_and_clear();
+                        ui::info("status", "terminated");
+                    }
+                    _ => ui::spinner_finish_error(spinner, "Join request ended"),
                 }
                 ui::info("join_id", join_id);
                 ui::info("reason", reason);
@@ -927,14 +968,15 @@ mod tests {
     use super::{
         join_cancel_decision, join_error_output, join_poll_decision, join_response_outcome,
         next_reconnect_delay, normalize_invitation_code, should_wait_for_join, JoinCancelDecision,
-        JoinPendingOutput, JoinPollDecision, JoinRejectedOutput, JoinResponseIntent,
+        JoinPendingOutput, JoinPollDecision, JoinResponseIntent, JoinTerminalOutput,
         JOIN_POLL_INTERVAL, JOIN_RECONNECT_MAX_INTERVAL,
     };
     use crate::exit_codes;
     use reqwest::StatusCode;
     use uc_daemon_client::DaemonRequestError;
     use uc_daemon_contract::api::dto::v2::setup::{
-        JoinSpaceRejectionReason, JoinSpaceResponse, JoinedSpaceResponse,
+        JoinSpaceRejectionReason, JoinSpaceResponse, JoinSpaceTerminationReason,
+        JoinedSpaceResponse,
     };
 
     #[test]
@@ -1098,7 +1140,7 @@ mod tests {
         assert_eq!(pending["target_space_id"], "space-1");
         assert!(pending.get("joinId").is_none());
 
-        let rejected = serde_json::to_value(JoinRejectedOutput {
+        let rejected = serde_json::to_value(JoinTerminalOutput {
             ok: false,
             status: "rejected",
             join_id: "join-2",
@@ -1106,6 +1148,16 @@ mod tests {
         })
         .expect("serialize rejected join");
         assert_eq!(rejected["reason"], "cancelled");
+
+        let terminated = serde_json::to_value(JoinTerminalOutput {
+            ok: false,
+            status: "terminated",
+            join_id: "join-3",
+            reason: "expired",
+        })
+        .expect("serialize terminated join");
+        assert_eq!(terminated["status"], "terminated");
+        assert_eq!(terminated["reason"], "expired");
     }
 
     #[test]
@@ -1126,6 +1178,20 @@ mod tests {
             reason: JoinSpaceRejectionReason::AuthenticationRejected,
         };
         assert!(!should_wait_for_join(&rejected, false));
+    }
+
+    #[test]
+    fn expired_join_is_a_failed_start_but_a_successful_status_query() {
+        let expired = JoinSpaceResponse::Terminated {
+            join_id: "join-expired".to_string(),
+            reason: JoinSpaceTerminationReason::Expired,
+        };
+
+        assert_eq!(
+            join_response_outcome(&expired, JoinResponseIntent::Start).exit_code,
+            exit_codes::EXIT_ERROR
+        );
+        assert!(join_response_outcome(&expired, JoinResponseIntent::Status).ok);
     }
 
     #[test]

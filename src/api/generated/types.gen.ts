@@ -707,6 +707,7 @@ export type DeviceTrustRelationshipDto = {
     groupRelationship: DeviceGroupRelationshipDto;
     isLocal: boolean;
     membership: DeviceMembershipDto;
+    pairingConfirmation?: PairingConfirmationDto | null;
     reachability: DeviceReachabilityDto;
     syncRelationship: DeviceSyncRelationshipDto;
 };
@@ -1549,7 +1550,13 @@ export type JoinSpaceResponse = {
     joinId: string;
     reason: JoinSpaceRejectionReason;
     status: 'rejected';
+} | {
+    joinId: string;
+    reason: JoinSpaceTerminationReason;
+    status: 'terminated';
 };
+
+export type JoinSpaceTerminationReason = 'cancelled' | 'expired' | 'superseded';
 
 export type JoinedSpaceResponse = {
     migratedRecords?: number | null;
@@ -2020,6 +2027,8 @@ export type NetworkSettingsPatchDto = {
     congestionController?: CongestionControllerDto | null;
     customRelayUrls?: Array<string> | null;
 };
+
+export type PairingConfirmationDto = 'awaiting_peer_confirmation' | 'unconfirmed' | 'confirmed';
 
 export type PairingSettingsDto = {
     maxRetries: number;

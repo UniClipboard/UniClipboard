@@ -149,7 +149,9 @@
       "diverged": "Espaço diferente",
       "upgrade": "Atualização necessária",
       "unverifiable": "Não foi possível verificar o dispositivo",
-      "pending": "Alteração precisa de revisão"
+      "pending": "Alteração precisa de revisão",
+      "awaitingPeerConfirmation": "Pareamento concluído, aguardando confirmação do outro dispositivo",
+      "unconfirmed": "Pareamento concluído, mas não confirmado"
     }
   },
   "common": {
@@ -2354,7 +2356,7 @@
       "title": "Aguardando confirmação",
       "subtitle": "Aguardando o resultado da entrada.",
       "actions": { "cancel": "Cancelar entrada", "back": "Voltar" },
-      "rejected": {
+      "ended": {
         "title": "Não foi possível entrar no espaço",
         "reasons": {
           "invitation_unavailable": "O convite não está mais disponível.",
@@ -2365,6 +2367,8 @@
           "history_conflict": "Os dois históricos não podem ser combinados.",
           "peer_upgrade_required": "O outro dispositivo precisa atualizar o UniClipboard.",
           "cancelled": "Esta entrada foi cancelada.",
+          "expired": "Esta entrada expirou, então o pareamento incompleto foi encerrado automaticamente.",
+          "superseded": "Um pareamento mais recente substituiu esta entrada.",
           "removed_before_activation": "O outro dispositivo removeu este dispositivo antes da confirmação."
         }
       }

@@ -6,15 +6,6 @@ import {
   getDeviceTrustStatus,
 } from '@/components/device/device-trust-view'
 
-it('shows waiting for confirmation even when the peer is reachable', () => {
-  expect(
-    getDeviceTrustStatus(
-      { ...snapshot.devices[1], groupRelationship: 'confirmation_pending' },
-      key => key
-    )
-  ).toEqual({ tone: 'warning', status: { kind: 'paused', label: 'setup.joinPending.title' } })
-})
-
 const admittedPeer: SpaceMember = {
   peerId: 'peer-a',
   deviceName: 'Peer A',
@@ -75,6 +66,38 @@ const snapshot: DeviceTrustSnapshot = {
 }
 
 describe('device trust list view', () => {
+  it.each([
+    [
+      'awaiting_peer_confirmation',
+      'pairing_awaiting_confirmation',
+      'deviceTrust.status.awaitingPeerConfirmation',
+    ],
+    ['unconfirmed', 'pairing_unconfirmed', 'deviceTrust.status.unconfirmed'],
+  ] as const)('shows the Engine-owned pairing state %s', (pairingConfirmation, kind, label) => {
+    expect(
+      getDeviceTrustStatus(
+        {
+          ...snapshot.devices[1],
+          groupRelationship: 'confirmation_pending',
+          pairingConfirmation,
+        },
+        key => key
+      )
+    ).toEqual({ tone: 'warning', status: { kind, label } })
+  })
+
+  it('returns to normal connection status after pairing is confirmed', () => {
+    expect(
+      getDeviceTrustStatus(
+        {
+          ...snapshot.devices[1],
+          pairingConfirmation: 'confirmed',
+        },
+        key => key
+      )
+    ).toBeNull()
+  })
+
   it('indexes relationships without adding devices missing from current membership', () => {
     const view = buildDeviceTrustListView([admittedPeer], snapshot)
 

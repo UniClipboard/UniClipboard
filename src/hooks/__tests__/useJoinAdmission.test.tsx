@@ -92,4 +92,25 @@ describe('useJoinAdmission', () => {
       })
     )
   })
+
+  it('ends an expired join without waiting for another device', async () => {
+    const resolved = vi.fn()
+    getDeviceTrustSnapshot.mockResolvedValue({
+      currentJoin: {
+        status: 'terminated',
+        joinId: 'join-expired',
+        reason: 'expired',
+      },
+    })
+
+    renderHook(() => useJoinAdmission('join-expired', resolved))
+
+    await waitFor(() =>
+      expect(resolved).toHaveBeenCalledWith({
+        status: 'terminated',
+        joinId: 'join-expired',
+        reason: 'expired',
+      })
+    )
+  })
 })

@@ -9,7 +9,7 @@ import {
   ImportConfigScreen,
   InitializeSpaceScreen,
   JoinPendingScreen,
-  JoinRejectedScreen,
+  JoinEndedScreen,
   PairingCompleteScreen,
   RedeemInvitationScreen,
   SetupBrandPanel,
@@ -81,8 +81,8 @@ const SetupScreen: React.FC<SetupScreenProps> = ({
       )
     case 'join_pending':
       return <JoinPendingScreen onCancel={() => void cancelJoin(screen.joinId)} loading={loading} />
-    case 'join_rejected':
-      return <JoinRejectedScreen reason={screen.reason} onBack={startJoinSpace} />
+    case 'join_ended':
+      return <JoinEndedScreen reason={screen.reason} onBack={startJoinSpace} />
     case 'space_ready':
       return <SpaceReadyScreen onInvite={issueInvitation} onDone={onDone} loading={loading} />
     case 'pairing_complete':

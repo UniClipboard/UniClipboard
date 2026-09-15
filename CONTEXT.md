@@ -58,9 +58,10 @@ _Avoid_: peer、trusted peer、user
 当前界面标记为实验性。
 
 **Durable admission**：
-Engine 持久拥有的一次加入 Space 尝试，以稳定 `join_id` 标识，结果只能是等待中、已生效或
-被拒绝；取消请求也作为该尝试的持久事实。等待中的设备尚不是 **SpaceMember**，只能在
-加入结果生效后进入成员集合；历史冲突、取消或生效前被移除都会形成明确的拒绝结果。
+Engine 持久拥有的一次加入 Space 尝试，以稳定 `join_id` 标识，结果只能是等待中、已生效、
+被拒绝或已终止；取消请求也作为该尝试的持久事实。等待中的设备尚不是 **SpaceMember**，
+只能在加入结果生效后进入成员集合；历史冲突或生效前被移除会形成明确的拒绝结果，取消、
+到期或被新的配对尝试替换则形成明确的终止结果。
 _Avoid_: temporary pairing state、client-side join status、pending member
 
 **Workspace convergence**：
@@ -74,6 +75,13 @@ _Avoid_: member revocation、client-side convergence、offline inference
 Engine 对一台已知设备给出的完整关系视图，由成员资格、在线情况、设备组关系、版本兼容性
 和同步关系五个彼此独立的事实组成；任何一项都不得被客户端用来推断另一项。
 _Avoid_: device status、peer state、client-side trust inference
+
+**Pairing confirmation**：
+Engine 在当前成员关系上给出的配对确认展示事实：`awaiting_peer_confirmation` 表示本机已完成
+配对并等待对方确认，`unconfirmed` 表示期限内未收到确认但仍保留为用户可移除的设备，
+`confirmed` 表示双方已经确认。客户端只展示当前事实并在收到变化通知后重新读取，不自行计算
+期限、推断确认或驱动撤销；在线情况和同步关系仍是独立事实。
+_Avoid_: client-side pairing timer、online confirmation、pairing success inference
 
 **Pending device change**：
 Engine 持久保存、等待本机用户决定的一次设备组移除变化，包含稳定编号、提出设备、移除目标

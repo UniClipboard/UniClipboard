@@ -166,6 +166,14 @@ pub enum DeviceTrustUnavailableReasonDto {
     EngineUnavailable,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum PairingConfirmationDto {
+    AwaitingPeerConfirmation,
+    Unconfirmed,
+    Confirmed,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct DeviceTrustImpactDto {
@@ -199,6 +207,8 @@ pub struct DeviceTrustRelationshipDto {
     pub group_relationship: DeviceGroupRelationshipDto,
     pub compatibility: DeviceCompatibilityDto,
     pub sync_relationship: DeviceSyncRelationshipDto,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pairing_confirmation: Option<PairingConfirmationDto>,
     pub available_actions: Vec<DeviceTrustActionDto>,
     pub blocked_reason: Option<DeviceTrustUnavailableReasonDto>,
 }
@@ -291,6 +301,23 @@ mod device_group_choice_dto_tests {
     use serde_json::json;
 
     use super::*;
+
+    #[test]
+    fn pairing_confirmation_uses_stable_wire_names() {
+        for (status, expected) in [
+            (
+                PairingConfirmationDto::AwaitingPeerConfirmation,
+                "awaiting_peer_confirmation",
+            ),
+            (PairingConfirmationDto::Unconfirmed, "unconfirmed"),
+            (PairingConfirmationDto::Confirmed, "confirmed"),
+        ] {
+            assert_eq!(
+                serde_json::to_value(status).expect("serialize pairing confirmation"),
+                json!(expected)
+            );
+        }
+    }
 
     fn snapshot() -> DeviceTrustSnapshotDto {
         DeviceTrustSnapshotDto {

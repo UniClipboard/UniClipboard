@@ -149,7 +149,9 @@
       "diverged": "Different space",
       "upgrade": "Update required",
       "unverifiable": "Device details cannot be verified",
-      "pending": "Device change needs review"
+      "pending": "Device change needs review",
+      "awaitingPeerConfirmation": "Pairing complete, waiting for peer confirmation",
+      "unconfirmed": "Pairing complete, but not confirmed"
     }
   },
   "common": {
@@ -2348,7 +2350,7 @@
       "title": "Waiting for confirmation",
       "subtitle": "Waiting for the join result.",
       "actions": { "cancel": "Cancel join", "back": "Back" },
-      "rejected": {
+      "ended": {
         "title": "Could not join the space",
         "reasons": {
           "invitation_unavailable": "The invitation is no longer available.",
@@ -2359,6 +2361,8 @@
           "history_conflict": "The two histories cannot be merged.",
           "peer_upgrade_required": "The other device must update UniClipboard.",
           "cancelled": "This join was cancelled.",
+          "expired": "This join expired, so the unfinished pairing ended automatically.",
+          "superseded": "A newer pairing replaced this join.",
           "removed_before_activation": "The other device removed this device before confirmation."
         }
       }

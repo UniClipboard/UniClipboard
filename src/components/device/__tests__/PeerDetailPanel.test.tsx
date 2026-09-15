@@ -86,15 +86,22 @@ const device: SpaceMember = {
   connectionAddress: '192.168.1.2:5000',
 }
 
-function renderPanel() {
+function renderPanel({
+  status,
+  onUnpair = vi.fn(),
+}: {
+  status?: { kind: 'pairing_unconfirmed'; label: string }
+  onUnpair?: (peerId: string) => void
+} = {}) {
   return render(
     <PeerDetailPanel
       deviceId="peer-1"
+      status={status}
       device={device}
       globalSyncOff={false}
       globalFileSyncOff={false}
       lanOnlyActive={false}
-      onUnpair={vi.fn()}
+      onUnpair={onUnpair}
     />,
     { wrapper: ({ children }) => <I18nextProvider i18n={i18n}>{children}</I18nextProvider> }
   )
@@ -216,6 +223,19 @@ describe('PeerDetailPanel sync controls', () => {
         name: 'Update UniClipboard on the other device to the latest version.',
       })
     ).toBeInTheDocument()
+  })
+
+  it('keeps removal available when pairing was not confirmed in time', async () => {
+    const onUnpair = vi.fn()
+    const user = userEvent.setup()
+    renderPanel({
+      status: { kind: 'pairing_unconfirmed', label: '已完成配对，但未被确认' },
+      onUnpair,
+    })
+
+    expect(screen.getByText('已完成配对，但未被确认')).toBeVisible()
+    await user.click(screen.getByRole('button', { name: 'Unpair' }))
+    expect(onUnpair).toHaveBeenCalledWith('peer-1')
   })
 
   it('turns off both directions from the device sync switch', async () => {

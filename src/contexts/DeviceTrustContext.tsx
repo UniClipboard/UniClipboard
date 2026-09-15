@@ -15,7 +15,7 @@ import {
 } from '@/api/daemon/device-trust'
 import { decisionFingerprint } from '@/components/device/device-group-presentation'
 import { DeviceTrustContext, type DeviceGroupDecision } from '@/contexts/device-trust-context'
-import { daemonWs } from '@/lib/daemon-ws'
+import { daemonWs, type DaemonWsEvent } from '@/lib/daemon-ws'
 
 interface DeviceTrustState {
   deviceGroups: DeviceGroupChoices | null
@@ -161,35 +161,75 @@ export function DeviceTrustProvider({
   const [state, dispatch] = useReducer(stateReducer, initialState)
   const deviceGroupsRef = useRef<DeviceGroupChoices | null>(null)
   const decisionBusyRef = useRef(false)
-  const refreshSequenceRef = useRef(0)
+  const refreshInFlightRef = useRef<Promise<void> | null>(null)
+  const forceRefreshPendingRef = useRef(false)
+  const requiredRevisionRef = useRef(0)
 
-  const refresh = useCallback(async () => {
-    if (!enabled) return
-    const sequence = ++refreshSequenceRef.current
-    dispatch({ type: 'refresh_started' })
-    try {
-      const deviceGroups = await getDeviceGroupChoices()
-      if (sequence !== refreshSequenceRef.current) return
-      deviceGroupsRef.current = deviceGroups
-      dispatch({ type: 'refresh_finished', deviceGroups })
-    } catch (error) {
-      if (sequence !== refreshSequenceRef.current) return
-      dispatch({ type: 'refresh_failed', error: errorMessage(error) })
+  const runRefreshes = useCallback(async () => {
+    while (enabled) {
+      const loadedRevision = deviceGroupsRef.current?.revision ?? -1
+      if (!forceRefreshPendingRef.current && requiredRevisionRef.current <= loadedRevision) return
+      forceRefreshPendingRef.current = false
+      dispatch({ type: 'refresh_started' })
+      try {
+        const deviceGroups = await getDeviceGroupChoices()
+        deviceGroupsRef.current = deviceGroups
+        dispatch({ type: 'refresh_finished', deviceGroups })
+      } catch (error) {
+        dispatch({ type: 'refresh_failed', error: errorMessage(error) })
+      }
     }
   }, [enabled])
 
-  const refreshFromSubscription = useEffectEvent(() => void refresh())
+  const requestRefresh = useCallback(
+    (force: boolean, requiredRevision = 0): Promise<void> => {
+      if (!enabled) return Promise.resolve()
+      if (force) forceRefreshPendingRef.current = true
+      requiredRevisionRef.current = Math.max(requiredRevisionRef.current, requiredRevision)
+      const current = refreshInFlightRef.current
+      if (current) return current
+      const worker = runRefreshes()
+      refreshInFlightRef.current = worker
+      void worker.finally(() => {
+        if (refreshInFlightRef.current === worker) refreshInFlightRef.current = null
+      })
+      return worker
+    },
+    [enabled, runRefreshes]
+  )
+
+  const refresh = useCallback(() => requestRefresh(true), [requestRefresh])
+
+  const refreshFromSubscription = useEffectEvent((event: DaemonWsEvent) => {
+    if (event.eventType === 'system.refresh_required') {
+      void requestRefresh(true)
+      return
+    }
+    if (event.eventType !== 'device-trust.changed') return
+    const revision =
+      typeof event.payload === 'object' &&
+      event.payload !== null &&
+      'revision' in event.payload &&
+      typeof event.payload.revision === 'number'
+        ? event.payload.revision
+        : 0
+    if (revision > 0) {
+      void requestRefresh(false, revision)
+    } else {
+      void requestRefresh(true)
+    }
+  })
 
   useEffect(() => {
     if (!enabled) return
     const unsubscribe = daemonWs.subscribe(['device-trust', 'system'], refreshFromSubscription)
-    const reconnect = daemonWs.onReconnect(refreshFromSubscription)
-    refreshFromSubscription()
+    const reconnect = daemonWs.onReconnect(() => void requestRefresh(true))
+    void requestRefresh(true)
     return () => {
       unsubscribe()
       reconnect()
     }
-  }, [enabled])
+  }, [enabled, requestRefresh])
 
   const refreshWhenVisible = useEffectEvent(() => {
     if (document.visibilityState === 'visible') void refresh()
@@ -225,7 +265,6 @@ export function DeviceTrustProvider({
         return
       }
       decisionBusyRef.current = true
-      refreshSequenceRef.current += 1
       dispatch({
         type: 'choice_started',
         decision: { groups: deviceGroups, issueId, choiceId, outcome: 'submitting' },

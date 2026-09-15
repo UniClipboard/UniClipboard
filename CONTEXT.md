@@ -22,13 +22,21 @@ _Avoid_: unlocked key、session、handle
 **MasterKey**：
 Space 的 32 字节对称根密钥，直接加密所有本地历史与传输负载；由 passphrase 经
 KEK 解包得到，`Debug` 输出 `[REDACTED]`、drop 时内存清零。已物理下沉到
-`uc-infra`，但仍是跨层领域概念。
+`uc-infra`，但仍是跨层领域概念。修改 passphrase 只替换它的保护与配对认证资料，
+不会更换 `MasterKey` 或重新加密历史内容。
 _Avoid_: password、secret、AES key
 
 **Passphrase**：
-用户设定的解锁口令，仅在 unlock / initialize 流程内用于派生 KEK，不长期持有。
-是「人记得住的输入」，区别于由它派生出的 `MasterKey`（机器持有的根密钥）。
+用户设定的解锁与配对口令，在 initialize、unlock 和 **Passphrase change** 流程内用于
+派生 KEK，不长期持有。是「人记得住的输入」，区别于由它保护的 `MasterKey`
+（机器持有的根密钥）。
 _Avoid_: pin、key、token
+
+**Passphrase change**：
+用户为已解锁的 Space 自定义新 **Passphrase** 的单一业务动作；只有本机成员有效、成员
+状态可确认且不存在其他正常或暂停设备时允许。成功后保留同一 **MasterKey**、历史记录
+和本地数据，使旧口令与旧邀请失效；已有的 **Re-pairing required** 不会因此清除。
+_Avoid_: space reset、factory reset、history re-encryption
 
 **DeviceId**：
 系统中一台设备的稳定身份值对象（`Copy`、≤64 字节、超限即拒绝而非截断）。
@@ -328,11 +336,9 @@ _Avoid_: lazy hash、pending entry、async capture
   不合并、不覆盖
 - 相对路径落盘做穿越防护（拒 `..`、绝对路径、越界）
 - 常规同步的兼容客户端（pull-only）不消费文件集 entry：register 指向它时，`GET
-  /SyncClipboard.json` 保持上一个手机可消费的值不变
+/SyncClipboard.json` 保持上一个手机可消费的值不变
 - 目录支持以 dedup 计划的 `entry_file_set` 表先落地为前置（目录成员 = 带
   `(root_index, relative_path)` 的行），不另建平行 schema
-
-
 
 **Tracked inbound file transfer**：
 接收设备本地为「一个正在/已经收下的文件」维护的一条投影记录（id、来源设备、

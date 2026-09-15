@@ -34,8 +34,8 @@ use crate::api::dto::diagnostics::{
     LogExportResultDto, UpdateDebugModeRequestDto, UpdateDebugModeResultDto,
 };
 use crate::api::dto::encryption::{
-    EncryptionActionResponse, EncryptionStateResponse, KeychainAccessResponse, UnlockSpaceRequest,
-    UnlockSpaceResponse,
+    ChangeEncryptionPassphraseRequest, EncryptionActionResponse, EncryptionStateResponse,
+    KeychainAccessResponse, UnlockSpaceRequest, UnlockSpaceResponse,
 };
 use crate::api::dto::error::ApiErrorResponse;
 use crate::api::dto::member::{
@@ -224,6 +224,7 @@ impl Modify for ContractMeta {
         crate::api::encryption::get_encryption_state_handler,
         crate::api::encryption::unlock_handler,
         crate::api::encryption::unlock_with_passphrase_handler,
+        crate::api::encryption::change_encryption_passphrase_handler,
         crate::api::encryption::lock_handler,
         crate::api::encryption::factory_reset_handler,
         crate::api::encryption::verify_keychain_access_handler,
@@ -432,6 +433,7 @@ impl Modify for ContractMeta {
             KeychainAccessResponse,
             UnlockSpaceRequest,
             UnlockSpaceResponse,
+            ChangeEncryptionPassphraseRequest,
             // ── settings ───────────────────────────────────────────
             SettingsEnvelope,
             SettingsUpdateResultEnvelope,
@@ -698,6 +700,7 @@ mod assembly_smoke_tests {
         // with GET and POST on one resource: 75 paths / 84 operations.
         // Connectivity opportunities add one path and operation: 76 / 85.
         // Upgrade backup management adds two paths and two operations: 78 / 87.
+        // Passphrase changes add one path and operation: 79 / 88.
         const HTTP_METHODS: [&str; 7] =
             ["get", "put", "post", "delete", "patch", "head", "options"];
         let paths = value
@@ -706,8 +709,8 @@ mod assembly_smoke_tests {
             .expect("OpenAPI doc must declare paths");
         assert_eq!(
             paths.len(),
-            78,
-            "expected exactly 78 path templates, found {}: {:?}",
+            79,
+            "expected exactly 79 path templates, found {}: {:?}",
             paths.len(),
             paths.keys().collect::<Vec<_>>()
         );
@@ -721,8 +724,8 @@ mod assembly_smoke_tests {
             })
             .sum();
         assert_eq!(
-            operation_count, 87,
-            "expected exactly 87 operations across all paths, found {operation_count}"
+            operation_count, 88,
+            "expected exactly 88 operations across all paths, found {operation_count}"
         );
 
         // A few frozen operationIds (§D) must be present somewhere in the doc.

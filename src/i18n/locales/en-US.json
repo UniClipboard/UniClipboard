@@ -909,6 +909,39 @@
       }
     }
   },
+  "passphraseChange": {
+    "entry": {
+      "label": "Reset space passphrase",
+      "description": "Choose a new passphrase without deleting your history.",
+      "button": "Reset"
+    },
+    "availability": {
+      "checking": "Checking whether this space can be reset…",
+      "multipleDevices": "Remove the other devices from this space before resetting the passphrase.",
+      "unavailable": "Passphrase reset is unavailable until the device list can be verified."
+    },
+    "title": "Reset space passphrase",
+    "description": "Choose a new passphrase. Your history and local data will be kept.",
+    "passphraseLabel": "New space passphrase",
+    "passphrasePlaceholder": "Enter a new passphrase",
+    "confirmationLabel": "Confirm new passphrase",
+    "confirmationPlaceholder": "Enter the new passphrase again",
+    "show": "Show passphrase",
+    "hide": "Hide passphrase",
+    "cancel": "Cancel",
+    "submit": "Reset passphrase",
+    "submitting": "Resetting…",
+    "success": "Space passphrase reset",
+    "errors": {
+      "mismatch": "The two passphrases do not match.",
+      "multipleDevices": "Remove the other devices before resetting the passphrase.",
+      "locked": "Unlock this space before resetting the passphrase.",
+      "recovery": "Resolve the device recovery issue before resetting the passphrase.",
+      "unavailable": "Passphrase reset is temporarily unavailable. Please try again.",
+      "internal": "Could not reset the passphrase. Please try again."
+    },
+    "invitationAction": "Forgot the old passphrase? Reset it"
+  },
   "unlock": {
     "title": "Unlock UniClipboard",
     "description": "Your data is encrypted. Please unlock to continue.",

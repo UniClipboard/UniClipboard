@@ -239,6 +239,16 @@ export type CaptureUiEventResponse = {
     accepted: boolean;
 };
 
+/**
+ * Request body for `POST /encryption/passphrase`.
+ *
+ * Both fields contain plaintext secrets and must never be logged.
+ */
+export type ChangeEncryptionPassphraseRequest = {
+    passphrase: string;
+    passphraseConfirmation: string;
+};
+
 export type ChooseDeviceGroupRequestDto = {
     choiceId: string;
     confirmLocalRemoval?: boolean;
@@ -4840,6 +4850,39 @@ export type LockEncryptionSessionResponses = {
 };
 
 export type LockEncryptionSessionResponse = LockEncryptionSessionResponses[keyof LockEncryptionSessionResponses];
+
+export type ChangeEncryptionPassphraseData = {
+    body: ChangeEncryptionPassphraseRequest;
+    path?: never;
+    query?: never;
+    url: '/encryption/passphrase';
+};
+
+export type ChangeEncryptionPassphraseErrors = {
+    /**
+     * Passphrases do not match
+     */
+    400: ApiErrorResponse;
+    /**
+     * Space is not eligible for a passphrase change
+     */
+    409: ApiErrorResponse;
+    /**
+     * Passphrase change is unavailable
+     */
+    503: ApiErrorResponse;
+};
+
+export type ChangeEncryptionPassphraseError = ChangeEncryptionPassphraseErrors[keyof ChangeEncryptionPassphraseErrors];
+
+export type ChangeEncryptionPassphraseResponses = {
+    /**
+     * Passphrase changed
+     */
+    200: EncryptionActionEnvelope;
+};
+
+export type ChangeEncryptionPassphraseResponse = ChangeEncryptionPassphraseResponses[keyof ChangeEncryptionPassphraseResponses];
 
 export type GetEncryptionStateData = {
     body?: never;

@@ -10,6 +10,10 @@ import {
 import { isUnlockSpaceError, unlockSpaceWithPassphrase } from '@/api/security'
 import type { SetupInvitationRevokedEvent } from '@/api/setupEvents'
 import { activeDeviceIds, findNewActiveDeviceId } from '@/components/device/pairing-success-utils'
+import {
+  getPassphraseChangeAvailability,
+  type PassphraseChangeAvailability,
+} from '@/components/security/passphrase-change-availability'
 import { daemonWs } from '@/lib/daemon-ws'
 import { formatInvitationCode } from '@/lib/invitation-code'
 import { createLogger } from '@/lib/logger'
@@ -21,15 +25,22 @@ const DEFAULT_TTL_MS = 5 * 60 * 1000
 // Keep the success message visible before closing.
 const SUCCESS_AUTO_CLOSE_MS = 5000
 
-type Step = 'credentials' | 'invitation' | 'success' | 'failed'
+export type AddDeviceInvitationStep =
+  | 'credentials'
+  | 'reset_passphrase'
+  | 'invitation'
+  | 'success'
+  | 'failed'
 interface InvitationState {
   invitation: CurrentInvitation | null
   issuedAtMs: number | null
   loading: boolean
   error: string | null
-  step: Step
+  step: AddDeviceInvitationStep
   failureReason: string | null
   passphrase: string
+  passphraseChangeAvailability: PassphraseChangeAvailability
+  passphraseChangeSubmitting: boolean
 }
 
 type PairingCompletionTrigger = 'device_trust_changed' | 'refresh_required' | 'reconnected'
@@ -56,6 +67,8 @@ export function useAddDeviceInvitation({
       step: 'invitation',
       failureReason: null,
       passphrase: '',
+      passphraseChangeAvailability: 'checking',
+      passphraseChangeSubmitting: false,
     }
   )
   const { invitation, issuedAtMs, loading, step, failureReason, passphrase } = state
@@ -80,36 +93,42 @@ export function useAddDeviceInvitation({
     log.error({ error_kind: 'invitation_issue_failed' }, 'failed to load or issue invitation')
     update({ error: t('devices.addDevice.errors.issueFailed') })
   })
+  const restoreOrIssueInvitation = useEffectEvent(async (isCancelled: () => boolean) => {
+    update({ loading: true, error: null })
+    try {
+      const trust = await getDeviceTrustSnapshot()
+      if (isCancelled()) return
+      initialDeviceIdsRef.current = activeDeviceIds(trust)
+      update({
+        passphraseChangeAvailability: getPassphraseChangeAvailability(trust, false),
+      })
+      const setupState = await getSetupState()
+      if (isCancelled()) return
+      if (setupState.currentInvitation) {
+        update({ invitation: setupState.currentInvitation })
+        // Estimate the issue time for a restored invitation.
+        update({ issuedAtMs: setupState.currentInvitation.expiresAtMs - DEFAULT_TTL_MS })
+        log.info({ event: 'invitation_ready', mode: 'reused' }, 'pairing invitation ready')
+      } else if (setupState.rePairingRequired) {
+        update({ step: 'credentials' })
+        log.info({ event: 'credentials_required' }, 're-pairing credentials required')
+      } else {
+        const issued = await issuePairingInvitation()
+        if (isCancelled()) return
+        update({ invitation: issued, issuedAtMs: Date.now() })
+        log.info({ event: 'invitation_ready', mode: 'standard' }, 'pairing invitation ready')
+      }
+    } catch {
+      if (isCancelled()) return
+      reportIssueFailure()
+    } finally {
+      if (!isCancelled()) update({ loading: false })
+    }
+  })
   useEffect(() => {
     if (!open) return
     let cancelled = false
-    void (async () => {
-      update({ loading: true, error: null })
-      try {
-        initialDeviceIdsRef.current = activeDeviceIds(await getDeviceTrustSnapshot())
-        const state = await getSetupState()
-        if (cancelled) return
-        if (state.currentInvitation) {
-          update({ invitation: state.currentInvitation })
-          // Estimate the issue time for a restored invitation.
-          update({ issuedAtMs: state.currentInvitation.expiresAtMs - DEFAULT_TTL_MS })
-          log.info({ event: 'invitation_ready', mode: 'reused' }, 'pairing invitation ready')
-        } else if (state.rePairingRequired) {
-          update({ step: 'credentials' })
-          log.info({ event: 'credentials_required' }, 're-pairing credentials required')
-        } else {
-          const issued = await issuePairingInvitation()
-          if (cancelled) return
-          update({ invitation: issued, issuedAtMs: Date.now() })
-          log.info({ event: 'invitation_ready', mode: 'standard' }, 'pairing invitation ready')
-        }
-      } catch {
-        if (cancelled) return
-        reportIssueFailure()
-      } finally {
-        if (!cancelled) update({ loading: false })
-      }
-    })()
+    void restoreOrIssueInvitation(() => cancelled)
     return () => {
       cancelled = true
     }
@@ -243,12 +262,11 @@ export function useAddDeviceInvitation({
 
   const handleConfirmPassphrase = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    const value = passphrase.trim()
-    if (!value) return
+    if (!passphrase) return
     update({ loading: true, error: null })
     log.info({ event: 'credentials_submitted' }, 're-pairing credentials submitted')
     try {
-      await unlockSpaceWithPassphrase(value)
+      await unlockSpaceWithPassphrase(passphrase)
       initialDeviceIdsRef.current = activeDeviceIds(await getDeviceTrustSnapshot())
       const issued = await issuePairingInvitation()
       update({ invitation: issued, issuedAtMs: Date.now(), passphrase: '', step: 'invitation' })
@@ -279,6 +297,38 @@ export function useAddDeviceInvitation({
     }
   }
 
+  const handleStartPassphraseChange = () => {
+    if (state.passphraseChangeAvailability !== 'available') return
+    update({ step: 'reset_passphrase', error: null, passphrase: '' })
+  }
+
+  const handleCancelPassphraseChange = () => {
+    update({ step: 'credentials', error: null })
+  }
+
+  const handlePassphraseChanged = () => {
+    update({ loading: true, error: null, step: 'invitation' })
+    void (async () => {
+      try {
+        initialDeviceIdsRef.current = activeDeviceIds(await getDeviceTrustSnapshot())
+        const issued = await issuePairingInvitation()
+        update({ invitation: issued, issuedAtMs: Date.now() })
+        log.info(
+          { event: 'invitation_ready', mode: 'passphrase_reset' },
+          'pairing invitation ready'
+        )
+      } catch {
+        log.error(
+          { error_kind: 'invitation_issue_failed' },
+          'failed to issue invitation after passphrase reset'
+        )
+        update({ error: t('devices.addDevice.errors.issueFailed') })
+      } finally {
+        update({ loading: false })
+      }
+    })()
+  }
+
   const failureMessage = useMemo(() => {
     if (!failureReason) return t('devices.addDevice.failed.unknown')
     const key = `devices.addDevice.failed.reasons.${failureReason}`
@@ -296,9 +346,14 @@ export function useAddDeviceInvitation({
     display,
     failureMessage,
     setPassphrase: (passphrase: string) => update({ passphrase }),
+    setPassphraseChangeSubmitting: (submitting: boolean) =>
+      update({ passphraseChangeSubmitting: submitting }),
     handleCopy,
     handleCancel,
     handleRegenerate,
     handleConfirmPassphrase,
+    handleStartPassphraseChange,
+    handleCancelPassphraseChange,
+    handlePassphraseChanged,
   }
 }

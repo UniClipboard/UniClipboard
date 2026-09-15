@@ -15,15 +15,19 @@ export default function AddDeviceDialogSession({
   onOpenChangeComplete: (open: boolean) => void
 }) {
   const invitationState = useAddDeviceInvitation(props)
+  const busy = invitationState.loading || invitationState.passphraseChangeSubmitting
+  const handleOpenChange = (nextOpen: boolean) => {
+    if (!busy) props.onOpenChange(nextOpen)
+  }
   return (
     <Dialog
       open={props.open}
-      onOpenChange={props.onOpenChange}
+      onOpenChange={handleOpenChange}
       onOpenChangeComplete={onOpenChangeComplete}
       disablePointerDismissal
     >
-      <DialogContent className="sm:max-w-md">
-        <DeviceInvitationFlow invitationState={invitationState} onOpenChange={props.onOpenChange} />
+      <DialogContent className="sm:max-w-md" showCloseButton={!busy}>
+        <DeviceInvitationFlow invitationState={invitationState} onOpenChange={handleOpenChange} />
       </DialogContent>
     </Dialog>
   )

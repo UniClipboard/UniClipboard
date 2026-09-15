@@ -1,5 +1,9 @@
 import { useTranslation } from 'react-i18next'
 import { AddDeviceDialogBody } from '@/components/device/AddDeviceDialogBody'
+import {
+  getInvitationDescriptionKey,
+  getInvitationTitleKey,
+} from '@/components/device/device-invitation-presentation'
 import DeviceInvitationActions from '@/components/device/DeviceInvitationActions'
 import { DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import type { useAddDeviceInvitation } from '@/hooks/useAddDeviceInvitation'
@@ -17,33 +21,20 @@ export default function DeviceInvitationFlow({
 }: AddDeviceDialogProps) {
   const { t } = useTranslation()
   const { step } = invitationState
+  const descriptionKey = getInvitationDescriptionKey(step)
 
   return (
     <div className="flex flex-col gap-4">
       {showHeader && (
         <DialogHeader>
-          <DialogTitle>
-            {step === 'credentials'
-              ? t('devices.addDevice.rePairing.title')
-              : step === 'success'
-                ? t('devices.addDevice.success.title')
-                : step === 'failed'
-                  ? t('devices.addDevice.failed.title')
-                  : t('devices.addDevice.title')}
-          </DialogTitle>
-          {(step === 'credentials' || step === 'invitation') && (
-            <DialogDescription>
-              {step === 'credentials'
-                ? t('devices.addDevice.rePairing.subtitle')
-                : t('devices.addDevice.subtitle')}
-            </DialogDescription>
-          )}
+          <DialogTitle>{t(getInvitationTitleKey(step))}</DialogTitle>
+          {descriptionKey && <DialogDescription>{t(descriptionKey)}</DialogDescription>}
         </DialogHeader>
       )}
 
       <AddDeviceDialogBody invitationState={invitationState} />
 
-      {step !== 'credentials' && step !== 'success' && (
+      {step !== 'credentials' && step !== 'reset_passphrase' && step !== 'success' && (
         <DialogFooter>
           <DeviceInvitationActions invitationState={invitationState} onOpenChange={onOpenChange} />
         </DialogFooter>

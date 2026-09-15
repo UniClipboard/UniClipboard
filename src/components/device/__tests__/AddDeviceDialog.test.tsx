@@ -15,6 +15,7 @@ const issuePairingInvitation = vi.fn()
 const cancelInvitation = vi.fn()
 const getDeviceTrustSnapshot = vi.fn()
 const unlockSpaceWithPassphrase = vi.fn()
+const changeEncryptionPassphrase = vi.fn()
 const { logInfo, logWarn, logError } = vi.hoisted(() => ({
   logInfo: vi.fn(),
   logWarn: vi.fn(),
@@ -45,6 +46,12 @@ vi.mock('@/api/security', () => ({
   unlockSpaceWithPassphrase: (passphrase: string) => unlockSpaceWithPassphrase(passphrase),
   isUnlockSpaceError: (error: unknown) =>
     typeof error === 'object' && error !== null && 'code' in error,
+}))
+
+vi.mock('@/api/daemon/encryption', () => ({
+  changeEncryptionPassphrase: (passphrase: string, confirmation: string) =>
+    changeEncryptionPassphrase(passphrase, confirmation),
+  getChangePassphraseErrorCode: () => null,
 }))
 
 vi.mock('@/lib/daemon-ws', () => ({
@@ -94,6 +101,7 @@ describe('AddDeviceDialog invitation issuing', () => {
     })
     getDeviceTrustSnapshot.mockResolvedValue({
       localDeviceId: 'local',
+      localMembership: 'active',
       devices: [{ deviceId: 'local', membership: 'active' }],
     })
     issuePairingInvitation.mockResolvedValue({
@@ -102,6 +110,7 @@ describe('AddDeviceDialog invitation issuing', () => {
     })
     cancelInvitation.mockResolvedValue(undefined)
     unlockSpaceWithPassphrase.mockResolvedValue({ spaceId: 'space' })
+    changeEncryptionPassphrase.mockResolvedValue(undefined)
   })
 
   afterEach(() => {
@@ -164,7 +173,7 @@ describe('AddDeviceDialog invitation issuing', () => {
       i18n.t('devices.addDevice.rePairing.passphraseLabel')
     )
     expect(issuePairingInvitation).not.toHaveBeenCalled()
-    fireEvent.change(input, { target: { value: 'original-passphrase' } })
+    fireEvent.change(input, { target: { value: ' original-passphrase ' } })
     fireEvent.click(
       screen.getByRole('button', {
         name: i18n.t('devices.addDevice.rePairing.submit'),
@@ -172,7 +181,7 @@ describe('AddDeviceDialog invitation issuing', () => {
     )
 
     await waitFor(() => expect(screen.getByLabelText('012-345')).toBeInTheDocument())
-    expect(unlockSpaceWithPassphrase).toHaveBeenCalledWith('original-passphrase')
+    expect(unlockSpaceWithPassphrase).toHaveBeenCalledWith(' original-passphrase ')
     expect(issuePairingInvitation).toHaveBeenCalledOnce()
     expect(logInfo).toHaveBeenCalledWith(
       { event: 'invitation_ready', mode: 'legacy_re_pairing' },
@@ -216,6 +225,84 @@ describe('AddDeviceDialog invitation issuing', () => {
     expect(JSON.stringify([...logInfo.mock.calls, ...logWarn.mock.calls])).not.toContain(
       'wrong-passphrase'
     )
+  })
+
+  it('resets a forgotten passphrase before issuing the invitation', async () => {
+    const onOpenChange = vi.fn()
+    let finishPassphraseChange!: () => void
+    getSetupState.mockResolvedValue({
+      hasCompleted: true,
+      currentInvitation: null,
+      deviceName: 'test',
+      rePairingRequired: true,
+    })
+    changeEncryptionPassphrase.mockImplementation(
+      () =>
+        new Promise<void>(resolve => {
+          finishPassphraseChange = resolve
+        })
+    )
+
+    render(
+      <I18nextProvider i18n={i18n}>
+        <AddDeviceDialog open onOpenChange={onOpenChange} />
+      </I18nextProvider>
+    )
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Forgot the old passphrase? Reset it' })
+    )
+    fireEvent.change(await screen.findByLabelText('New space passphrase'), {
+      target: { value: 'replacement phrase' },
+    })
+    fireEvent.change(screen.getByLabelText('Confirm new passphrase'), {
+      target: { value: 'replacement phrase' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Reset passphrase' }))
+
+    expect(screen.queryByRole('button', { name: 'Close' })).not.toBeInTheDocument()
+    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' })
+    expect(onOpenChange).not.toHaveBeenCalled()
+
+    await act(async () => finishPassphraseChange())
+
+    await waitFor(() => expect(screen.getByLabelText('012-345')).toBeInTheDocument())
+    expect(changeEncryptionPassphrase).toHaveBeenCalledWith(
+      'replacement phrase',
+      'replacement phrase'
+    )
+    expect(unlockSpaceWithPassphrase).not.toHaveBeenCalled()
+    expect(issuePairingInvitation).toHaveBeenCalledOnce()
+  })
+
+  it('disables forgotten-passphrase reset when another device remains', async () => {
+    getSetupState.mockResolvedValue({
+      hasCompleted: true,
+      currentInvitation: null,
+      deviceName: 'test',
+      rePairingRequired: true,
+    })
+    getDeviceTrustSnapshot.mockResolvedValue({
+      localDeviceId: 'local',
+      localMembership: 'active',
+      devices: [
+        { deviceId: 'local', membership: 'active' },
+        { deviceId: 'peer', membership: 'active' },
+      ],
+    })
+
+    render(
+      <I18nextProvider i18n={i18n}>
+        <AddDeviceDialog open onOpenChange={() => undefined} />
+      </I18nextProvider>
+    )
+
+    expect(
+      await screen.findByRole('button', { name: 'Forgot the old passphrase? Reset it' })
+    ).toBeDisabled()
+    expect(
+      screen.getByText('Remove the other devices from this space before resetting the passphrase.')
+    ).toBeVisible()
   })
 
   it('replaces the invitation with success after a new member is confirmed', async () => {

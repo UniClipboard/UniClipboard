@@ -352,6 +352,22 @@
         ],
         "type": "object"
       },
+      "ChangeEncryptionPassphraseRequest": {
+        "description": "Request body for `POST /encryption/passphrase`.\n\nBoth fields contain plaintext secrets and must never be logged.",
+        "properties": {
+          "passphrase": {
+            "type": "string"
+          },
+          "passphraseConfirmation": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "passphrase",
+          "passphraseConfirmation"
+        ],
+        "type": "object"
+      },
       "ChooseDeviceGroupRequestDto": {
         "properties": {
           "choiceId": {
@@ -8481,6 +8497,76 @@
           }
         ],
         "summary": "POST /encryption/lock",
+        "tags": [
+          "encryption"
+        ]
+      }
+    },
+    "/encryption/passphrase": {
+      "post": {
+        "description": "Replaces the passphrase for a space that contains only the local device.\nThe request body contains plaintext secrets and must never be logged.",
+        "operationId": "changeEncryptionPassphrase",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChangeEncryptionPassphraseRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EncryptionActionEnvelope"
+                }
+              }
+            },
+            "description": "Passphrase changed"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Passphrases do not match"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Space is not eligible for a passphrase change"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Passphrase change is unavailable"
+          }
+        },
+        "security": [
+          {
+            "session_query": []
+          },
+          {
+            "session_header": []
+          }
+        ],
+        "summary": "POST /encryption/passphrase",
         "tags": [
           "encryption"
         ]

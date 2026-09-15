@@ -7,12 +7,14 @@
  * - `GET /encryption/state` → current encryption initialization & session state
  * - `POST /encryption/unlock` → auto-unlock encryption session via keyring (no passphrase)
  * - `POST /encryption/unlock-with-passphrase` → user-driven passphrase unlock (ADR-008 D15)
+ * - `POST /encryption/passphrase` → replace the passphrase for a single-device space
  * - `POST /encryption/lock` → lock encryption session (clear master key)
  * - `POST /encryption/factory-reset` → wipe key material + clear setup status
  * - `GET /encryption/keychain-access` → verify Keychain "Always Allow" permission
  */
 
 import {
+  changeEncryptionPassphrase as changeEncryptionPassphraseSdk,
   factoryResetSpace as factoryResetSpaceSdk,
   getEncryptionState as getEncryptionStateSdk,
   lockEncryptionSession as lockEncryptionSessionSdk,
@@ -21,6 +23,34 @@ import {
   verifyKeychainAccess as verifyKeychainAccessSdk,
 } from '@/api/generated/sdk.gen'
 import { daemonClient } from './client'
+import { DaemonApiError } from './errors'
+
+export type ChangePassphraseErrorCode =
+  | 'PASSPHRASE_MISMATCH'
+  | 'MULTIPLE_DEVICES'
+  | 'SPACE_LOCKED'
+  | 'MEMBERSHIP_RECOVERY_REQUIRED'
+  | 'RECOVERY_REQUIRED'
+  | 'runtime_unavailable'
+
+const CHANGE_PASSPHRASE_ERROR_CODES: ReadonlySet<string> = new Set([
+  'PASSPHRASE_MISMATCH',
+  'MULTIPLE_DEVICES',
+  'SPACE_LOCKED',
+  'MEMBERSHIP_RECOVERY_REQUIRED',
+  'RECOVERY_REQUIRED',
+  'runtime_unavailable',
+])
+
+export function getChangePassphraseErrorCode(error: unknown): ChangePassphraseErrorCode | null {
+  if (!(error instanceof DaemonApiError) || !error.details || typeof error.details !== 'object') {
+    return null
+  }
+  const code = 'code' in error.details ? error.details.code : undefined
+  return typeof code === 'string' && CHANGE_PASSPHRASE_ERROR_CODES.has(code)
+    ? (code as ChangePassphraseErrorCode)
+    : null
+}
 
 // ── Response types ─────────────────────────────────────────────
 
@@ -136,6 +166,19 @@ export async function unlockSpaceWithPassphrase(passphrase: string): Promise<{ s
     unlockSpaceWithPassphraseSdk({ body: { passphrase }, throwOnError: true })
   )
   return { spaceId: data.spaceId }
+}
+
+/** Replace the passphrase for a space containing only the local device. */
+export async function changeEncryptionPassphrase(
+  passphrase: string,
+  passphraseConfirmation: string
+): Promise<void> {
+  await daemonClient.callSdk(() =>
+    changeEncryptionPassphraseSdk({
+      body: { passphrase, passphraseConfirmation },
+      throwOnError: true,
+    })
+  )
 }
 
 /**

@@ -49,8 +49,10 @@ On first launch you'll see two options: **This is my first device** and
 
 The passphrase is fed through Argon2id to derive your encryption key,
 which then encrypts every clip with XChaCha20-Poly1305. Pick something
-long and memorable — there is no reset flow, by design. Nothing about
-your space ever leaves the device unencrypted.
+long and memorable. The passphrase cannot be recovered, but while this
+device is unlocked and remains the only device in the space, you can replace
+it from **Settings → Security & Privacy** without losing local history. Nothing
+about your space ever leaves the device unencrypted.
 
 </Step>
 

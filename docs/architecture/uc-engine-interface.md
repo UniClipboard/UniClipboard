@@ -6,15 +6,15 @@
 
 crate 根只保留稳定名称的统一导出，内部按职责分为七层：
 
-| 目录 | 唯一职责 |
-| --- | --- |
-| `contract/` | 配置、宿主能力、操作、结果、事件和稳定错误 |
-| `engine/` | 生命周期、事件流与在途操作管理 |
-| `runtime/` | 生产会话与生命周期资源、操作路由、宿主剪贴板、文件处理和移动上传 |
-| `operations/` | 按空间、剪贴板、历史、设备和设置划分的业务动作 |
-| `subsystems/` | 不关心具体适配器的长期任务和协调逻辑 |
-| `assembly/` | 宿主适配、数据库、网络、加密、搜索、剪贴板和传输组装 |
-| `compatibility/mobile_lan/` | 与完整 P2P 主路径隔离的 LAN 兼容能力 |
+| 目录                        | 唯一职责                                                         |
+| --------------------------- | ---------------------------------------------------------------- |
+| `contract/`                 | 配置、宿主能力、操作、结果、事件和稳定错误                       |
+| `engine/`                   | 生命周期、事件流与在途操作管理                                   |
+| `runtime/`                  | 生产会话与生命周期资源、操作路由、宿主剪贴板、文件处理和移动上传 |
+| `operations/`               | 按空间、剪贴板、历史、设备和设置划分的业务动作                   |
+| `subsystems/`               | 不关心具体适配器的长期任务和协调逻辑                             |
+| `assembly/`                 | 宿主适配、数据库、网络、加密、搜索、剪贴板和传输组装             |
+| `compatibility/mobile_lan/` | 与完整 P2P 主路径隔离的 LAN 兼容能力                             |
 
 开发与验收操作单独位于 `dev/`，且只在显式启用 `dev-tools` feature 时编译；正式宿主和发布产物不得启用它。内部宿主契约检查位于 `testing/`。`runtime/mod.rs` 只拥有生产会话的建立、后台任务挂接和生命周期资源，具体路由、宿主剪贴板、文件操作与移动上传各自由独立内部模块拥有。`uc-infra` 具体类型只允许出现在 `assembly/`；业务操作和生产路由只能接收已经组装好的能力。完整导航见 `crates/uc-engine/README.md`。
 
@@ -28,14 +28,14 @@ crate 根只保留稳定名称的统一导出，内部按职责分为七层：
 
 核心事件包括：
 
-| 事件 | 含义 |
-| --- | --- |
-| `StateChanged` | 生命周期状态已经改变 |
-| `IncomingEntry` | 收到一条具有完整摘要的新内容 |
-| `TransferProgress` | 文件传输进度发生变化 |
-| `RefreshRequired` | 宿主必须重新查询当前状态 |
+| 事件                | 含义                             |
+| ------------------- | -------------------------------- |
+| `StateChanged`      | 生命周期状态已经改变             |
+| `IncomingEntry`     | 收到一条具有完整摘要的新内容     |
+| `TransferProgress`  | 文件传输进度发生变化             |
+| `RefreshRequired`   | 宿主必须重新查询当前状态         |
 | `OperationFinished` | 一次操作进入成功、失败或取消终态 |
-| `Fatal` | 核心遇到不可恢复错误 |
+| `Fatal`             | 核心遇到不可恢复错误             |
 
 当底层变化事件不包含完整条目摘要时，核心只发送 `RefreshRequired(StateInvalidated)`，不得猜测内容类型、时间或预览。
 
@@ -58,74 +58,77 @@ Running|Quiescing|Quiesced|Suspended -> ShuttingDown -> Stopped
 
 ## 公开操作
 
-| 操作 | 当前行为 |
-| --- | --- |
-| `CreateSpace` | 创建空间、设备身份和加密存储 |
-| `UnlockSpace` | 使用口令恢复当前空间会话 |
-| `RecoverSession` | 按宿主策略从系统安全存储恢复加密与空间会话 |
-| `JoinSpace` | 首次设备加入空间；已设置设备保留历史并切换空间 |
-| `IssueInvitation` | 签发一次配对邀请 |
-| `CancelInvitation` | 取消当前尚未兑换的配对邀请 |
-| `ResetSpace` | 重建为只包含本机的新空间，保留本机历史、设置、设备身份和解锁能力 |
-| `FactoryResetSpace` | 依次清除密钥材料、空间设置和待处理邀请，使设备可重新初始化 |
-| `QuerySetupState` | 查询设置是否完成、当前邀请、已保存设备名和是否需要重新配对 |
-| `QueryMigrationProgress` | 查询空间切换所处阶段和已备份记录数量 |
-| `QueryStorageStats` | 查询数据库、密钥库、缓存和日志占用大小，不返回本机目录 |
-| `ClearStorageCache` | 清理核心缓存并返回实际释放的字节数 |
-| `QueryLocalDevice` | 返回本机设备编号和按设置解析后的显示名 |
-| `ListMobileDevices` | 列出用户显式启用的 LAN 兼容通道所登记的移动设备 |
-| `RevokeMobileDevice` | 撤销一台 LAN 兼容设备的访问凭据 |
-| `AuthenticateMobileRequest` | 校验一次 LAN 兼容请求并返回脱敏凭据凭证 |
-| `RevalidateMobileCredential` | 复查长连接使用的凭据凭证是否仍然有效 |
-| `QueryMobileSyncSettings` | 查询 LAN 兼容通道的持久设置、监听状态和可用安装方式 |
-| `UpdateMobileSyncSettings` | 校验并保存 LAN 兼容通道设置，返回最终目标状态和是否发生变化 |
-| `UpdateMobileLanEndpoint` | 由桌面外壳报告 LAN listener 已停止、正在监听或绑定失败 |
-| `RegisterMobileDevice` | 登记一台 LAN 兼容设备并返回一次性连接凭据和二维码内容 |
-| `UpdateMobileDevice` | 修改 LAN 兼容设备的标签、用户名或密码，换密时只返回一次新密码 |
-| `CheckMobileContentAvailable` | 按稳定内容编号确认本机是否仍持有可用内容 |
-| `QueryLatestMobileSyncDocument` | 返回最新内容的 LAN 兼容文档；没有内容时返回空结果 |
-| `ApplyMobileSyncDocument` | 把 LAN 兼容文档交给统一入站、剪贴板、历史和转发流程 |
-| `ReadMobileSyncFile` | 按最新文档中的附件名读取文件或图片字节和媒体类型 |
-| `BeginMobileFileUpload` | 开始一次分块文件上传并返回不透明上传编号 |
-| `AppendMobileFileUpload` | 向同一上传顺序追加一个字节块 |
-| `FinishMobileFileUpload` | 完成临时文件并挂入等待对应文档的入站缓冲区 |
-| `AbortMobileFileUpload` | 放弃未完成上传并释放临时资源；重复放弃返回未找到活动上传 |
-| `QueryEncryptionState` | 查询当前空间是否已初始化、加密会话是否可用 |
-| `LockEncryption` | 清除当前加密会话并关闭接收入口 |
-| `VerifySecureStorageAccess` | 检查宿主安全存储是否可在当前环境中访问 |
-| `ListDevices` | 返回设备编号、显示名和在线状态 |
-| `QueryMemberSyncPreferences` | 查询指定成员的发送、接收和内容类型偏好 |
-| `UpdateMemberSyncPreferences` | 局部更新指定成员的同步偏好，未提供字段保持不变 |
-| `RemoveMember` | 删除本机保存的成员及其信任和地址关联记录 |
-| `SearchEntries` | 使用关键词、时间、内容类型、来源设备和标签等条件查询加密搜索索引 |
-| `QuerySearchTags` | 查询当前索引中的标签和条目数量 |
-| `QuerySearchStatus` | 查询索引是否可用及最近重建时间 |
-| `RebuildSearchIndex` | 请求重建当前加密搜索索引 |
-| `SendText` | 写入加密历史、更新搜索并发送不超过 64 KiB 的文本 |
-| `SendImage` | 写入加密历史、更新搜索并发送不超过 64 KiB 的图片 |
-| `QueryHistory` | 查询历史并返回稳定分页标记 |
-| `ListHistoryEntries` | 按偏移量返回桌面兼容列表所需的完整历史投影 |
-| `GetHistoryEntry` | 返回指定文本记录的完整详情 |
-| `DeleteHistoryEntry` | 删除指定记录及其关联选择、文件、搜索和 blob 引用 |
-| `SetHistoryEntryFavorite` | 设置指定记录的收藏状态 |
-| `QueryHistoryStats` | 返回历史记录总数和总大小 |
-| `GetHistoryEntryResource` | 返回指定记录的资源标识、类型、大小及可用读取方式 |
-| `ReadBlob` | 读取指定 blob 的完整字节和媒体类型 |
-| `ReadThumbnail` | 读取指定表示的缩略图字节和媒体类型 |
-| `ReadEntryFile` | 读取指定记录的首个已物化文件及下载文件名 |
-| `QueryEntryDelivery` | 返回指定记录的来源及每个可信设备的投递状态 |
-| `ClearHistory` | 清空全部历史，并返回删除数量和未删除条目标识 |
-| `QueryEntryReceiveProgress` | 查询指定远端接收任务的当前聚合进度 |
-| `ListEntryReceiveProgress` | 列出全部尚未结束的远端接收任务进度 |
-| `CancelEntryReceive` | 按记录和尝试编号取消一次远端接收任务 |
-| `CancelInboundTransfer` | 按传输编号和稳定原因取消一次正在进行的文件接收 |
-| `CaptureCurrentClipboard` | 立即读取系统剪贴板并按正常捕获流程保存 |
-| `RestoreClipboard` | 以普通、纯文本或文件路径模式把指定历史记录恢复到系统剪贴板 |
-| `ExportEntry` | 通过宿主文件句柄分块写出主内容 |
-| `ResendEntry` | 重新发送一条本机仍持有内容的历史记录 |
-| `SendFiles` | 从宿主句柄分块导入文件，并按现有文件协议发送 |
+| 操作                            | 当前行为                                                                                         |
+| ------------------------------- | ------------------------------------------------------------------------------------------------ |
+| `CreateSpace`                   | 创建空间、设备身份和加密存储                                                                     |
+| `UnlockSpace`                   | 使用口令恢复当前空间会话                                                                         |
+| `RecoverSession`                | 按宿主策略从系统安全存储恢复加密与空间会话                                                       |
+| `ChangeEncryptionPassphrase`    | 当前设备列表只显示有效本机时，把加密口令修改为用户输入并再次确认的新口令，同时撤销此前签发的邀请 |
+| `JoinSpace`                     | 首次设备加入空间；已设置设备保留历史并切换空间                                                   |
+| `IssueInvitation`               | 签发一次配对邀请                                                                                 |
+| `CancelInvitation`              | 取消当前尚未兑换的配对邀请                                                                       |
+| `ResetSpace`                    | 重建为只包含本机的新空间，保留本机历史、设置、设备身份和解锁能力                                 |
+| `FactoryResetSpace`             | 依次清除密钥材料、空间设置和待处理邀请，使设备可重新初始化                                       |
+| `QuerySetupState`               | 查询设置是否完成、当前邀请、已保存设备名和是否需要重新配对                                       |
+| `QueryMigrationProgress`        | 查询空间切换所处阶段和已备份记录数量                                                             |
+| `QueryStorageStats`             | 查询数据库、密钥库、缓存和日志占用大小，不返回本机目录                                           |
+| `ClearStorageCache`             | 清理核心缓存并返回实际释放的字节数                                                               |
+| `QueryLocalDevice`              | 返回本机设备编号和按设置解析后的显示名                                                           |
+| `ListMobileDevices`             | 列出用户显式启用的 LAN 兼容通道所登记的移动设备                                                  |
+| `RevokeMobileDevice`            | 撤销一台 LAN 兼容设备的访问凭据                                                                  |
+| `AuthenticateMobileRequest`     | 校验一次 LAN 兼容请求并返回脱敏凭据凭证                                                          |
+| `RevalidateMobileCredential`    | 复查长连接使用的凭据凭证是否仍然有效                                                             |
+| `QueryMobileSyncSettings`       | 查询 LAN 兼容通道的持久设置、监听状态和可用安装方式                                              |
+| `UpdateMobileSyncSettings`      | 校验并保存 LAN 兼容通道设置，返回最终目标状态和是否发生变化                                      |
+| `UpdateMobileLanEndpoint`       | 由桌面外壳报告 LAN listener 已停止、正在监听或绑定失败                                           |
+| `RegisterMobileDevice`          | 登记一台 LAN 兼容设备并返回一次性连接凭据和二维码内容                                            |
+| `UpdateMobileDevice`            | 修改 LAN 兼容设备的标签、用户名或密码，换密时只返回一次新密码                                    |
+| `CheckMobileContentAvailable`   | 按稳定内容编号确认本机是否仍持有可用内容                                                         |
+| `QueryLatestMobileSyncDocument` | 返回最新内容的 LAN 兼容文档；没有内容时返回空结果                                                |
+| `ApplyMobileSyncDocument`       | 把 LAN 兼容文档交给统一入站、剪贴板、历史和转发流程                                              |
+| `ReadMobileSyncFile`            | 按最新文档中的附件名读取文件或图片字节和媒体类型                                                 |
+| `BeginMobileFileUpload`         | 开始一次分块文件上传并返回不透明上传编号                                                         |
+| `AppendMobileFileUpload`        | 向同一上传顺序追加一个字节块                                                                     |
+| `FinishMobileFileUpload`        | 完成临时文件并挂入等待对应文档的入站缓冲区                                                       |
+| `AbortMobileFileUpload`         | 放弃未完成上传并释放临时资源；重复放弃返回未找到活动上传                                         |
+| `QueryEncryptionState`          | 查询当前空间是否已初始化、加密会话是否可用                                                       |
+| `LockEncryption`                | 清除当前加密会话并关闭接收入口                                                                   |
+| `VerifySecureStorageAccess`     | 检查宿主安全存储是否可在当前环境中访问                                                           |
+| `ListDevices`                   | 返回设备编号、显示名和在线状态                                                                   |
+| `QueryMemberSyncPreferences`    | 查询指定成员的发送、接收和内容类型偏好                                                           |
+| `UpdateMemberSyncPreferences`   | 局部更新指定成员的同步偏好，未提供字段保持不变                                                   |
+| `RemoveMember`                  | 删除本机保存的成员及其信任和地址关联记录                                                         |
+| `SearchEntries`                 | 使用关键词、时间、内容类型、来源设备和标签等条件查询加密搜索索引                                 |
+| `QuerySearchTags`               | 查询当前索引中的标签和条目数量                                                                   |
+| `QuerySearchStatus`             | 查询索引是否可用及最近重建时间                                                                   |
+| `RebuildSearchIndex`            | 请求重建当前加密搜索索引                                                                         |
+| `SendText`                      | 写入加密历史、更新搜索并发送不超过 64 KiB 的文本                                                 |
+| `SendImage`                     | 写入加密历史、更新搜索并发送不超过 64 KiB 的图片                                                 |
+| `QueryHistory`                  | 查询历史并返回稳定分页标记                                                                       |
+| `ListHistoryEntries`            | 按偏移量返回桌面兼容列表所需的完整历史投影                                                       |
+| `GetHistoryEntry`               | 返回指定文本记录的完整详情                                                                       |
+| `DeleteHistoryEntry`            | 删除指定记录及其关联选择、文件、搜索和 blob 引用                                                 |
+| `SetHistoryEntryFavorite`       | 设置指定记录的收藏状态                                                                           |
+| `QueryHistoryStats`             | 返回历史记录总数和总大小                                                                         |
+| `GetHistoryEntryResource`       | 返回指定记录的资源标识、类型、大小及可用读取方式                                                 |
+| `ReadBlob`                      | 读取指定 blob 的完整字节和媒体类型                                                               |
+| `ReadThumbnail`                 | 读取指定表示的缩略图字节和媒体类型                                                               |
+| `ReadEntryFile`                 | 读取指定记录的首个已物化文件及下载文件名                                                         |
+| `QueryEntryDelivery`            | 返回指定记录的来源及每个可信设备的投递状态                                                       |
+| `ClearHistory`                  | 清空全部历史，并返回删除数量和未删除条目标识                                                     |
+| `QueryEntryReceiveProgress`     | 查询指定远端接收任务的当前聚合进度                                                               |
+| `ListEntryReceiveProgress`      | 列出全部尚未结束的远端接收任务进度                                                               |
+| `CancelEntryReceive`            | 按记录和尝试编号取消一次远端接收任务                                                             |
+| `CancelInboundTransfer`         | 按传输编号和稳定原因取消一次正在进行的文件接收                                                   |
+| `CaptureCurrentClipboard`       | 立即读取系统剪贴板并按正常捕获流程保存                                                           |
+| `RestoreClipboard`              | 以普通、纯文本或文件路径模式把指定历史记录恢复到系统剪贴板                                       |
+| `ExportEntry`                   | 通过宿主文件句柄分块写出主内容                                                                   |
+| `ResendEntry`                   | 重新发送一条本机仍持有内容的历史记录                                                             |
+| `SendFiles`                     | 从宿主句柄分块导入文件，并按现有文件协议发送                                                     |
 
 `RecoverSession` 的 `allow_secure_storage_unlock` 由宿主根据当前运行环境决定。值为 `false` 时核心不得尝试从系统安全存储恢复密钥；值为 `true` 时，核心统一完成加密会话、空间会话、搜索和接收能力恢复。
+
+单设备修改加密口令采用一个产品动作。产品收集用户自定义的新口令和再次输入值，一并交给 `ChangeEncryptionPassphrase`；两次输入不一致时不修改任何资料。成功后旧口令不能解锁或通过新配对认证，此前签发的邀请失效，新口令在重启后继续有效。该能力只允许 Space 已解锁、本机成员有效且当前设备列表范围只含本机；存在正常或暂停的其他设备、成员恢复中或成员资料不可确认时均拒绝。它保留现有 MasterKey 和历史内容，不触发批量重加密；已有的重新配对提示仍由新设备实际加入结束。修改失败或恢复尚未完成时，产品不得继续签发新邀请。
 
 `CancelInvitation` 在没有待取消邀请时返回冲突错误。`ResetSpace` 只在用户明确确认后执行：创建只包含本机的新空间，废弃旧设备关系和未完成邀请，保留本机历史、设置、设备身份和解锁能力，并持久标记需要重新配对；该标记在成功建立新的设备关系后清除。`FactoryResetSpace` 则先清除密钥材料，再清除空间设置和待处理邀请；密钥清除失败时不得提前清除设置，成功后必须关闭接收入口。`QuerySetupState` 返回需要重新配对的持久状态，但不返回内部服务状态；`QueryMigrationProgress` 只返回准备、握手完成、切换完成三个稳定阶段，不公开内部运行编号或目标空间。
 
@@ -183,16 +186,16 @@ LAN 内容读写复用核心现有的加密历史、系统剪贴板写入、内�
 
 公开错误只包含稳定编号、类别和是否可重试，不包含底层原因或用户内容。详细原因只进入脱敏日志。
 
-| 类别 | 含义 |
-| --- | --- |
-| `InvalidInput` | 输入、分页标记、文件句柄或内容类型无效 |
-| `InvalidState` | 当前生命周期或空间状态不允许该操作 |
-| `Unauthorized` | 口令错误、目标未授权或宿主无权限 |
-| `NotFound` | 邀请、设备、记录或资源不存在 |
-| `Conflict` | 已初始化、没有可发送目标或内容不可重发 |
-| `Unavailable` | 网络、索引、宿主能力或临时服务不可用 |
-| `DeadlineExceeded` | 操作超过约定期限 |
-| `Internal` | 无法向宿主公开细节的内部失败 |
+| 类别               | 含义                                   |
+| ------------------ | -------------------------------------- |
+| `InvalidInput`     | 输入、分页标记、文件句柄或内容类型无效 |
+| `InvalidState`     | 当前生命周期或空间状态不允许该操作     |
+| `Unauthorized`     | 口令错误、目标未授权或宿主无权限       |
+| `NotFound`         | 邀请、设备、记录或资源不存在           |
+| `Conflict`         | 已初始化、没有可发送目标或内容不可重发 |
+| `Unavailable`      | 网络、索引、宿主能力或临时服务不可用   |
+| `DeadlineExceeded` | 操作超过约定期限                       |
+| `Internal`         | 无法向宿主公开细节的内部失败           |
 
 每次被接受的操作都会产生一个 `OperationFinished` 终态事件。被生命周期期限取消的操作必须产生 `Cancelled`，不能只返回错误后静默消失。
 

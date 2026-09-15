@@ -62,8 +62,9 @@ use uc_webserver::api::openapi::ApiDoc;
 /// query and choice operations on one path: 75 paths / 84 operations.
 /// Connectivity opportunities add one path and operation: 76 / 85.
 /// Upgrade backup management adds two paths and two operations: 78 / 87.
-const EXPECTED_PATHS: usize = 78;
-const EXPECTED_OPERATIONS: usize = 87;
+/// Passphrase changes add one path and operation: 79 / 88.
+const EXPECTED_PATHS: usize = 79;
+const EXPECTED_OPERATIONS: usize = 88;
 const SCHEMA_PREFIX: &str = "#/components/schemas/";
 const HTTP_METHODS: [&str; 7] = ["get", "put", "post", "delete", "patch", "head", "options"];
 

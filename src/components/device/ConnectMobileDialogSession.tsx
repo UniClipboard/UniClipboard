@@ -126,7 +126,7 @@ export default function ConnectMobileDialogSession({
           </TabsContent>
         </Tabs>
         <DialogFooter ref={setFooterContainer}>
-          {mode === 'direct' && (
+          {mode === 'direct' && invitationState.step !== 'reset_passphrase' && (
             <DeviceInvitationActions
               invitationState={invitationState}
               onOpenChange={onOpenChange}

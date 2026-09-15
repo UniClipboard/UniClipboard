@@ -132,6 +132,8 @@ pub mod http_route {
     pub const ENCRYPTION_UNLOCK: &str = "/encryption/unlock";
     /// POST /encryption/lock — lock encryption
     pub const ENCRYPTION_LOCK: &str = "/encryption/lock";
+    /// POST /encryption/passphrase — replace the current space passphrase
+    pub const ENCRYPTION_PASSPHRASE: &str = "/encryption/passphrase";
     /// GET /storage/stats — storage statistics
     pub const STORAGE_STATS: &str = "/storage/stats";
     /// POST /storage/clear-cache — clear storage cache

@@ -22,7 +22,7 @@ export default function DeviceInvitationActions({
         type="submit"
         form={formId}
         data-testid="re-pairing-confirm-passphrase"
-        disabled={loading || !invitationState.passphrase.trim()}
+        disabled={loading || !invitationState.passphrase}
       >
         {loading && <Loader2 className="size-4 animate-spin" />}
         {t(

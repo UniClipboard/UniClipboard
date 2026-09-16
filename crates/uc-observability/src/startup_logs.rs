@@ -23,6 +23,7 @@ pub struct DiagnosticArchiveRequest {
     pub mode: DiagnosticArchiveMode,
     pub since: Option<DateTime<Utc>>,
     pub engine_preparation: Option<Value>,
+    pub startup_status: Option<Value>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -36,6 +37,16 @@ pub struct DiagnosticArchiveReport {
 
 /// Package retained logs while the daemon is unavailable.
 pub fn export_startup_logs(logs_dir: &Path, destination: &Path) -> Result<()> {
+    export_startup_logs_with_status(logs_dir, destination, None)
+}
+
+/// Package retained logs together with the terminal startup snapshot, when the
+/// startup service is still available.
+pub fn export_startup_logs_with_status(
+    logs_dir: &Path,
+    destination: &Path,
+    startup_status: Option<Value>,
+) -> Result<()> {
     export_diagnostic_logs(
         logs_dir,
         destination,
@@ -43,6 +54,7 @@ pub fn export_startup_logs(logs_dir: &Path, destination: &Path) -> Result<()> {
             mode: DiagnosticArchiveMode::Offline,
             since: None,
             engine_preparation: None,
+            startup_status,
         },
     )?;
     Ok(())
@@ -95,6 +107,7 @@ pub fn export_diagnostic_logs(
             exported_at: Utc::now(),
             since: request.since,
             engine_preparation: request.engine_preparation,
+            startup_status: request.startup_status,
             collection: &report,
         };
         archive.start_file("manifest.json", options)?;
@@ -196,5 +209,6 @@ struct DiagnosticArchiveManifest<'a> {
     exported_at: DateTime<Utc>,
     since: Option<DateTime<Utc>>,
     engine_preparation: Option<Value>,
+    startup_status: Option<Value>,
     collection: &'a DiagnosticArchiveReport,
 }

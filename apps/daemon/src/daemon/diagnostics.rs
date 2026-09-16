@@ -238,6 +238,7 @@ impl DaemonDiagnosticArchive for DesktopDiagnosticArchive {
                     mode: DiagnosticArchiveMode::Online,
                     since: Some(since),
                     engine_preparation: Some(manifest_preparation),
+                    startup_status: None,
                 },
             )
         })

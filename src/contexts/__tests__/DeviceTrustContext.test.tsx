@@ -93,6 +93,20 @@ describe('DeviceTrustProvider', () => {
     getDeviceGroupChoices.mockResolvedValue(emptyGroups)
   })
 
+  it('waits for a new refresh request after the initial check fails', async () => {
+    getDeviceGroupChoices.mockRejectedValueOnce(new Error('temporarily unavailable'))
+    const { result } = renderHook(() => useDeviceTrust(), { wrapper })
+
+    await waitFor(() => expect(result.current.decisionError).toBe('temporarily unavailable'))
+
+    expect(getDeviceGroupChoices).toHaveBeenCalledTimes(1)
+    expect(result.current.deviceGroups).toBeNull()
+
+    await act(async () => window.dispatchEvent(new Event('focus')))
+    await waitFor(() => expect(result.current.deviceGroups).toEqual(emptyGroups))
+    expect(getDeviceGroupChoices).toHaveBeenCalledTimes(2)
+  })
+
   it('ignores websocket events that do not invalidate device groups', async () => {
     const { result } = renderHook(() => useDeviceTrust(), { wrapper })
     await waitFor(() => expect(result.current.snapshot).toEqual(emptySnapshot))

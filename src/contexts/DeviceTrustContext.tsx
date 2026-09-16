@@ -170,6 +170,7 @@ export function DeviceTrustProvider({
       const loadedRevision = deviceGroupsRef.current?.revision ?? -1
       if (!forceRefreshPendingRef.current && requiredRevisionRef.current <= loadedRevision) return
       forceRefreshPendingRef.current = false
+      const attemptedRevision = requiredRevisionRef.current
       dispatch({ type: 'refresh_started' })
       try {
         const deviceGroups = await getDeviceGroupChoices()
@@ -177,6 +178,9 @@ export function DeviceTrustProvider({
         dispatch({ type: 'refresh_finished', deviceGroups })
       } catch (error) {
         dispatch({ type: 'refresh_failed', error: errorMessage(error) })
+        const refreshQueuedDuringAttempt =
+          forceRefreshPendingRef.current || requiredRevisionRef.current > attemptedRevision
+        if (!refreshQueuedDuringAttempt) return
       }
     }
   }, [enabled])

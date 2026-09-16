@@ -5,6 +5,45 @@ use tracing::{info_span, Instrument};
 
 use crate::commands::{record_trace_fields, CommandError, TraceMetadata};
 
+async fn startup_status_for_diagnostics() -> Option<serde_json::Value> {
+    let client = match uc_daemon_client::build_local_http_client_with_timeout(
+        uc_desktop::daemon_probe::PROBE_TIMEOUT,
+    ) {
+        Ok(client) => client,
+        Err(_) => {
+            tracing::warn!(
+                error_kind = "startup_status_client_failed",
+                retryable = true,
+                "startup status could not be included in diagnostics"
+            );
+            return None;
+        }
+    };
+    let status = match uc_desktop::startup::read_startup_status(&client).await {
+        Ok(Some(status)) => status,
+        Ok(None) => return None,
+        Err(_) => {
+            tracing::warn!(
+                error_kind = "startup_status_unavailable",
+                retryable = true,
+                "startup status could not be included in diagnostics"
+            );
+            return None;
+        }
+    };
+    match serde_json::to_value(status) {
+        Ok(status) => Some(status),
+        Err(_) => {
+            tracing::warn!(
+                error_kind = "startup_status_serialize_failed",
+                retryable = false,
+                "startup status could not be included in diagnostics"
+            );
+            None
+        }
+    }
+}
+
 #[tauri::command]
 #[specta::specta]
 pub async fn export_startup_logs(
@@ -19,6 +58,7 @@ pub async fn export_startup_logs(
     );
     record_trace_fields(&span, &_trace);
     async move {
+        let startup_status = startup_status_for_diagnostics().await;
         let logs_dir = runtime.desktop().storage_paths().logs_dir.clone();
         let worker_span = tracing::Span::current();
         let result = tauri::async_runtime::spawn_blocking(move || {
@@ -40,7 +80,11 @@ pub async fn export_startup_logs(
                 let destination = selected
                     .into_path()
                     .map_err(|error| anyhow::anyhow!("{error}"))?;
-                uc_observability::startup_logs::export_startup_logs(&logs_dir, &destination)?;
+                uc_observability::startup_logs::export_startup_logs_with_status(
+                    &logs_dir,
+                    &destination,
+                    startup_status,
+                )?;
                 tracing::info!("startup logs exported");
                 Ok(Some(destination.to_string_lossy().into_owned()))
             })

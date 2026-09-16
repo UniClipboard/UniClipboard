@@ -1,7 +1,8 @@
 use chrono::{TimeZone, Utc};
 use std::{fs, io::Read};
 use uc_observability::startup_logs::{
-    export_diagnostic_logs, export_startup_logs, DiagnosticArchiveMode, DiagnosticArchiveRequest,
+    export_diagnostic_logs, export_startup_logs, export_startup_logs_with_status,
+    DiagnosticArchiveMode, DiagnosticArchiveRequest,
 };
 
 #[test]
@@ -112,6 +113,7 @@ fn online_export_embeds_engine_preparation_and_reports_actual_files() {
             mode: DiagnosticArchiveMode::Online,
             since: Some(Utc.with_ymd_and_hms(2026, 9, 11, 0, 0, 0).unwrap()),
             engine_preparation: Some(preparation),
+            startup_status: None,
         },
     )
     .unwrap();
@@ -163,6 +165,7 @@ fn online_export_keeps_a_partial_package_when_a_managed_file_is_unreadable() {
             mode: DiagnosticArchiveMode::Online,
             since: None,
             engine_preparation: Some(serde_json::json!({ "flush": "completed" })),
+            startup_status: None,
         },
     )
     .unwrap();
@@ -171,4 +174,37 @@ fn online_export_keeps_a_partial_package_when_a_managed_file_is_unreadable() {
     assert_eq!(report.unreadable_files, ["engine.2026-09-11.jsonl"]);
     let archive = zip::ZipArchive::new(fs::File::open(output).unwrap()).unwrap();
     assert_eq!(archive.len(), 1);
+}
+
+#[test]
+fn offline_export_embeds_terminal_startup_status() {
+    let root = tempfile::tempdir().unwrap();
+    let logs = root.path().join("logs");
+    fs::create_dir(&logs).unwrap();
+    fs::write(
+        logs.join("uniclipboard-daemon.json.2026-09-16"),
+        "backup failure\n",
+    )
+    .unwrap();
+    let output = root.path().join("support.zip");
+    let startup_status = serde_json::json!({
+        "service_failed": true,
+        "progress": {
+            "state": "failed",
+            "failure": { "reason": "backup_failed", "retryable": true }
+        }
+    });
+
+    export_startup_logs_with_status(&logs, &output, Some(startup_status.clone())).unwrap();
+
+    let mut archive = zip::ZipArchive::new(fs::File::open(output).unwrap()).unwrap();
+    let mut manifest = String::new();
+    archive
+        .by_name("manifest.json")
+        .unwrap()
+        .read_to_string(&mut manifest)
+        .unwrap();
+    let manifest: serde_json::Value = serde_json::from_str(&manifest).unwrap();
+    assert_eq!(manifest["mode"], "offline");
+    assert_eq!(manifest["startupStatus"], startup_status);
 }

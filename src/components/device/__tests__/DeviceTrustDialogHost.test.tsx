@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import { beforeEach, it, expect, vi } from 'vitest'
 import { DeviceTrustDialogHost } from '@/components/device/DeviceTrustDialogHost'
 import type { DeviceTrustContextValue } from '@/contexts/device-trust-context'
@@ -79,7 +79,7 @@ it('opens when the initial check finds an issue', () => {
   expect(screen.getByRole('dialog')).toBeInTheDocument()
 })
 
-it('shows an initial check failure and keeps retry available until recovery', () => {
+it('stays hidden when the initial check fails before any issue is loaded', () => {
   state.current = {
     ...state.current,
     deviceGroups: null,
@@ -87,13 +87,10 @@ it('shows an initial check failure and keeps retry available until recovery', ()
     decisionError: 'runtime_unavailable',
   }
   const { rerender } = render(<DeviceTrustDialogHost />)
-  expect(screen.getByTestId('device-trust-error')).toBeVisible()
-  fireEvent.click(screen.getByTestId('device-trust-recheck'))
-  expect(state.current.refresh).toHaveBeenCalledOnce()
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   state.current = { ...state.current, loading: true }
   rerender(<DeviceTrustDialogHost />)
-  expect(screen.getByRole('dialog')).toBeInTheDocument()
-  expect(screen.getByTestId('device-trust-recheck')).toBeDisabled()
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   state.current = {
     ...state.current,
     loading: false,
@@ -128,11 +125,6 @@ it('keeps the same dialog through selection, submission, and completion', () => 
     decision: null,
     decisionError: 'runtime_unavailable',
   }
-  rerender(<DeviceTrustDialogHost />)
-  expect(screen.getByTestId('device-trust-error')).toBeVisible()
-  fireEvent.click(screen.getByTestId('device-trust-recheck'))
-  expect(state.current.refresh).toHaveBeenCalledOnce()
-  state.current = { ...state.current, decisionError: null }
   rerender(<DeviceTrustDialogHost />)
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
 })

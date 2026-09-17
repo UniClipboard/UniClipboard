@@ -67,7 +67,7 @@ export function AnimatedToastStack({
       aria-live="polite"
       aria-atomic="false"
       className={cn(
-        'pointer-events-none flex w-[calc(100vw-2rem)] max-w-sm max-h-[calc(100dvh-3rem)] overflow-y-auto overscroll-contain gap-2',
+        'pointer-events-none -m-2 box-content flex w-[calc(100vw-2rem)] max-w-sm max-h-[calc(100dvh-3rem)] overflow-y-auto overscroll-contain p-2 gap-2',
         isBottom ? 'flex-col-reverse' : 'flex-col',
         resolvedPlacement === 'fixed' && 'fixed z-[100]',
         resolvedPlacement === 'absolute' && 'absolute z-20',

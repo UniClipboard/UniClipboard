@@ -1,14 +1,9 @@
 import { execFileSync } from 'node:child_process'
 import { pathToFileURL } from 'node:url'
+import { appCachePriority, releaseCacheTargets } from './release-cache-policy.mjs'
 
-// Leave room for a Windows release cache upload before GitHub starts evicting entries.
+// Leave room for a release cache upload before GitHub starts evicting entries.
 const CACHE_BUDGET_BYTES = 8 * 1024 ** 3
-const WINDOWS_APP_CACHE = /^v\d+-rust-x86_64-pc-windows-msvc(-test)?-Windows_NT-x64-/
-
-function windowsCacheKind(key) {
-  const match = key.match(WINDOWS_APP_CACHE)
-  return match ? (match[1] ? 'test' : 'release') : undefined
-}
 
 function cacheFamily(key) {
   return (
@@ -52,12 +47,26 @@ export function planCacheCleanup(caches, openPullNumbers, defaultRef = 'refs/hea
   }
 
   const protectedIds = new Set()
-  for (const kind of ['release', 'test']) {
-    const windows = newestFirst.filter(
-      entry => !removed.has(entry.id) && windowsCacheKind(entry.key) === kind
+  // Protect only reusable default-branch entries, in release critical-path order.
+  // Bound protection itself so extra platforms cannot make cleanup exceed its budget.
+  let protectionBytes = 0
+  const unmanagedBytes = caches
+    .filter(entry => !cacheFamily(entry.key))
+    .reduce((total, entry) => total + entry.size_in_bytes, 0)
+  for (let priority = 0; priority <= releaseCacheTargets.length; priority++) {
+    const preferred = newestFirst.find(
+      entry =>
+        !removed.has(entry.id) &&
+        entry.ref === defaultRef &&
+        appCachePriority(entry.key) === priority
     )
-    const preferred = windows.find(entry => entry.ref === defaultRef) ?? windows[0]
-    if (preferred) protectedIds.add(preferred.id)
+    if (
+      preferred &&
+      unmanagedBytes + protectionBytes + preferred.size_in_bytes <= CACHE_BUDGET_BYTES
+    ) {
+      protectedIds.add(preferred.id)
+      protectionBytes += preferred.size_in_bytes
+    }
   }
   const oldestAccessFirst = [...caches].sort(
     (a, b) => Date.parse(a.last_accessed_at) - Date.parse(b.last_accessed_at)

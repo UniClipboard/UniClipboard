@@ -261,7 +261,7 @@ jobs:
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
           POSTHOG_PROJECT_KEY: ${{ secrets.POSTHOG_PROJECT_KEY }}
           APP_ENV: ${{ steps.resolve-env.outputs.app_env }}
-        run: node scripts/prepare-daemon-sidecar.mjs ${{ matrix.args }}
+        run: node scripts/prepare-daemon-sidecar.mjs ${{ matrix.args }} --timings
 
       - name: build Tauri app (macOS signed)
         if: matrix.platform == 'macos-latest'
@@ -295,7 +295,7 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         with:
           tauriScript: bun run tauri
-          args: ${{ matrix.args }}
+          args: ${{ matrix.args }} -- --timings
 
       # Keep builds working while the updated base image is being published.
       - name: Install Linux dynamically loaded runtime
@@ -333,9 +333,9 @@ jobs:
           VITE_SENTRY_PROJECT: ${{ secrets.VITE_SENTRY_PROJECT }}
         run: |
           if [ "${{ matrix.platform }}" = "windows-latest" ]; then
-            bun run tauri build ${{ matrix.args }} --bundles nsis
+            bun run tauri build ${{ matrix.args }} --bundles nsis -- --timings
           else
-            bun run tauri build ${{ matrix.args }}
+            bun run tauri build ${{ matrix.args }} -- --timings
           fi
 
       - name: Verify Linux bundle runtime dependencies
@@ -443,6 +443,15 @@ jobs:
           fi
           echo "Uploading debug files from $TARGET_DIR"
           sentry-cli debug-files upload --include-sources "$TARGET_DIR"
+
+      - name: Upload Cargo timing reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: cargo-timings-app-${{ matrix.target }}${{ steps.build-mode.outputs.suffix }}
+          path: target/cargo-timings/*.html
+          if-no-files-found: ignore
+          retention-days: 14
 
       - name: upload artifacts
         uses: actions/upload-artifact@v7

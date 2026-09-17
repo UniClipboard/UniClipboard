@@ -3,6 +3,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { maintainCaches, planCacheCleanup } from '../ci/maintain-actions-cache.mjs'
+import { appCachePriority, releaseCacheTargets } from '../ci/release-cache-policy.mjs'
 
 vi.mock('node:child_process', () => {
   const mock = { execFileSync: vi.fn() }
@@ -21,8 +22,57 @@ const cache = (id: number, key: string, ref = 'refs/heads/main', size = GiB) => 
 })
 const windows = 'v0-rust-x86_64-pc-windows-msvc-Windows_NT-x64-5bb3579f-11111111'
 const coverage = 'v0-rust-coverage-Linux-x64-20a16cf1-11111111'
+const macArm = 'v0-rust-aarch64-apple-darwin-Darwin-arm64-5bb3579f-11111111'
+const windowsArm = windows.replace('x86_64-pc', 'aarch64-pc')
 
 describe('Actions cache retention', () => {
+  it('protects ARM release caches before less expensive CI caches', () => {
+    const entries = [
+      cache(1, macArm, undefined, 2 * GiB),
+      cache(2, windowsArm, undefined, 2 * GiB),
+      cache(3, windows, undefined, 2 * GiB),
+      cache(4, coverage, undefined, 3 * GiB),
+    ]
+    expect(planCacheCleanup(entries, []).remove.map(entry => entry.id)).toEqual([4])
+  })
+
+  it('keeps protection within budget when all preferred platforms do not fit', () => {
+    const entries = [
+      cache(1, macArm, undefined, 3 * GiB),
+      cache(2, windowsArm, undefined, 3 * GiB),
+      cache(3, windows, undefined, 3 * GiB),
+      cache(4, windows.replace('-Windows_NT', '-test-Windows_NT'), undefined, 3 * GiB),
+    ]
+    const result = planCacheCleanup(entries, [])
+    expect(result.remove.map(entry => entry.id)).toEqual([3, 4])
+    expect(result.overBudget).toBe(false)
+  })
+
+  it('accounts for unknown caches before reserving release capacity', () => {
+    const entries = [
+      cache(1, macArm, undefined, 4 * GiB),
+      cache(2, windowsArm, undefined, 3 * GiB),
+      cache(3, 'unrelated-service-cache', undefined, 2 * GiB),
+    ]
+    const result = planCacheCleanup(entries, [])
+    expect(result.remove.map(entry => entry.id)).toEqual([2])
+    expect(result.overBudget).toBe(false)
+  })
+
+  it('prefers the default branch over a newer tag cache with the same target', () => {
+    const entries = [
+      cache(1, macArm, undefined, 4 * GiB),
+      cache(2, macArm, 'refs/tags/v1.0.0-alpha.15', 4 * GiB),
+      cache(3, coverage, undefined, 2 * GiB),
+    ]
+    expect(planCacheCleanup(entries, []).remove.map(entry => entry.id)).toEqual([2])
+  })
+
+  it('does not classify CLI or unrelated caches as release app caches', () => {
+    expect(appCachePriority(macArm.replace('rust-', 'rust-cli-'))).toBeUndefined()
+    expect(appCachePriority(coverage)).toBeUndefined()
+    expect(appCachePriority(windowsArm)).toBe(1)
+  })
   it('removes legacy PR coverage writes but preserves open-PR CodeQL caches', () => {
     const entries = [
       cache(1, coverage, 'refs/pull/1643/merge'),
@@ -101,8 +151,15 @@ describe('cache workflow ownership', () => {
     }
   })
 
-  it('warms Windows x64 rather than filling the quota with every release platform', () => {
+  it('uses the retention policy to select bounded release warmup targets', () => {
     const source = fs.readFileSync(path.join(root, '.github/workflows/cache-warmup.yml'), 'utf8')
+    expect(source).toContain('import { releaseCacheTargets }')
+    expect(source).toContain('matrix: ${{ fromJSON(needs.release-cache-matrix.outputs.matrix) }}')
+    expect(releaseCacheTargets.map(entry => entry.platform)).toEqual([
+      'macos-aarch64',
+      'windows-arm64',
+      'windows-x86_64',
+    ])
     expect(source).toContain("platform: 'windows-x86_64'")
     expect(source).not.toContain("platform: 'all'")
   })

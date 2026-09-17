@@ -10,8 +10,8 @@
 
 ```bash
 cargo run -p uc-cli -- --help
-cargo run -p uc-cli -- status
-cargo run -p uc-cli -- --json status
+cargo run -p uc-cli -- space status
+cargo run -p uc-cli -- --json space status
 ```
 
 构建后可直接运行：
@@ -47,10 +47,8 @@ cargo build -p uc-cli
 | `uniclip space reset --yes`               | 重建为只包含本机的新空间；保留本机历史、已完成文件、设置、设备身份和解锁能力，所有设备需要重新配对。                                                                                                                                                      |
 | `uniclip member list`               | 列出空间成员（本机 + 已配对设备）及在线状态；加 `--probe` 主动探测刷新状态。旧的 `members` 与 `devices` 已隐藏并弃用，但仍可调用。                                                                                                                       |
 | `uniclip member remove <PEER-ID>`   | 移除一个空间成员；即使对方离线也会立即记录并停止向它发送新内容。                                                                                                                                                                                         |
-| `uniclip member removal-status`     | 查看当前空间的成员移除与收敛状态。                                                                                                                                                                                                                       |
 | `uniclip member trust status`       | 查看当前设备组变化及两种选择的影响。                                                                                                                                                                                                                     |
-| `uniclip member trust apply`        | 应用当前设备组变化；脚本调用必须指定变化编号。                                                                                                                                                                                                           |
-| `uniclip member trust keep`         | 保留当前设备组；脚本调用必须指定变化编号。                                                                                                                                                                                                               |
+| `uniclip member trust choose`       | 选择当前设备组问题的一种处理方式；脚本调用必须指定问题和选择编号。                                                                                                                                                                                       |
 | `uniclip member sync show <DEVICE>` | 查看一个成员的发送、接收和内容类型设置。                                                                                                                                                                                                                 |
 | `uniclip member sync set <DEVICE>`  | 只修改明确给出的成员同步设置。                                                                                                                                                                                                                           |
 | `uniclip send [TEXT]`               | 向在线配对设备发送一段文本；省略 `TEXT` 时从 stdin 读取。                                                                                                                                                                                                |

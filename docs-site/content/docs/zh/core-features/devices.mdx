@@ -154,7 +154,7 @@ description: 设备列表与详情、设备组选项、添加与解除配对，�
 | ----------------------- | --------------------------------------------------------------------------------------------------- |
 | 「空间成员」列表        | `uniclip member list`（本机 + 已配对对端；加 `--probe` 获取实时在线状态）。                         |
 | 添加设备 → 邀请码       | `uniclip space invite`                                                                                    |
-| 加入已有空间            | `uniclip space join <code>`                                                                               |
+| 加入已有空间            | `uniclip space join --code <code>`                                                                        |
 | 复制 Peer ID            | `uniclip space status --json` 中的 `network.endpoint`                                                     |
 | 解除配对                | `uniclip member remove <PEER-ID>`                                              |
 | 按对端的内容类型白名单  | `uniclip member sync show <DEVICE>` / `uniclip member sync set <DEVICE>`                                                  |

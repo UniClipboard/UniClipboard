@@ -161,9 +161,9 @@ different sensitivity levels.
 
 ### How do I remove a device from a space?
 
-Revoke it from another online device (GUI Devices page; CLI subcommand
-landing later). After revocation, peers refuse traffic from that node
-ID.
+Remove it from another device in the space using the GUI Devices page or
+`uniclip member remove <PEER-ID>`. The removal is recorded even if that device
+is offline, and peers stop sending it new content.
 
 Wiping data on the device being removed **doesn't revoke trust** —
 only updates to the space's trusted set do.
@@ -311,16 +311,16 @@ Source build steps live in
 
 ### Can the CLI and the GUI run side by side?
 
-Yes, but pin them to **different profiles**. The default profile
-shares its data directory and keyslot, and two processes holding both
-will fight. Pass `--profile dev` to the CLI (or set `UC_PROFILE=dev`)
-to keep them separate.
+Yes. The desktop app and CLI can use the same profile and share the same
+background daemon. Use a different `--profile` only when you deliberately want
+an independent instance, such as an end-to-end test device.
 
 ### Can I limit sync to "text only"?
 
 Yes. Each paired device has per-direction (send / receive) and
-per-content-type toggles. Configured in the GUI Devices page today;
-CLI equivalents are on the roadmap. See
+per-content-type toggles. Configure them in the GUI Devices page or with
+`uniclip member sync show <DEVICE>` and `uniclip member sync set <DEVICE>`.
+See
 [Per-device sync toggles](../core-features/sync#per-device-sync-gates).
 
 ### Can I script against UniClipboard?

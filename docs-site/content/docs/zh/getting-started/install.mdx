@@ -205,7 +205,9 @@ sudo dnf install ./UniClipboard-<version>-1.x86_64.rpm
 
 ### 无桌面环境（仅安装 CLI）
 
-服务器、SSH 会话或任何没有桌面的环境，可以从 Releases 单独下载 `uniclip` CLI —— 查找 `uniclip-<version>-<arch>` 产物（与 musl 静态链接）。CLI 内置守护进程，无需 GUI 即可运行。
+服务器、SSH 会话或其他无桌面环境，请按专门的
+[CLI 安装指南](../cli/installation)操作。CLI 软件包同时包含 `uniclip` 和独立的
+后台服务 `uniclipd`，两者必须放在一起。运行时不需要 GUI。
 
 </Tab>
 

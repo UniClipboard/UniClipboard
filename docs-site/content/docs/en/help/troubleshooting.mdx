@@ -60,9 +60,10 @@ it in the foreground to capture the trace:
 uniclip start --foreground -v
 ```
 
-A common cause is the keyslot file being held by another process —
-typically the GUI and `uniclip` racing on the default profile. Adding
-`--profile dev` on the CLI side keeps them out of each other's way.
+Read the error printed by the foreground process. If it cannot find or start
+`uniclipd`, reinstall the CLI or put the matching `uniclip` and `uniclipd`
+files back in the same directory. The desktop app and CLI can normally share
+one profile and one daemon.
 
 ### Daemon log shows "System secure storage probe failed; falling back to file-based KEK"
 

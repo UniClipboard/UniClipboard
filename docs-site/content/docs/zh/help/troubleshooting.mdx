@@ -50,7 +50,9 @@ uniclip space status --json     # 字段稳定，方便比对
 uniclip start --foreground -v
 ```
 
-常见原因是 keyslot 文件被另一份进程占着（典型场景：GUI 与 `uniclip` 用了同一个默认 profile 同时跑）。在 CLI 端加 `--profile dev` 让二者分家即可。
+先看前台进程打印的具体错误。如果它找不到或无法启动 `uniclipd`，请重新安装 CLI，
+或把同版本的 `uniclip` 与 `uniclipd` 放回同一个目录。桌面应用和 CLI 通常可以
+共用一个 profile 和同一个后台服务。
 
 ### 守护进程日志里出现 "System secure storage probe failed; falling back to file-based KEK"
 

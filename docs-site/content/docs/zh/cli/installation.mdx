@@ -1,0 +1,96 @@
+---
+title: 安装 CLI
+description: 在 macOS、Windows 或 Linux 上安装 uniclip 及其后台服务。
+---
+
+CLI 由两个程序组成：你直接使用的 `uniclip`，以及它连接的后台服务
+`uniclipd`。两者必须来自同一个版本，并放在同一个安装目录中。通常不需要
+直接运行 `uniclipd`。
+
+## 推荐方式：npm
+
+npm 包支持 Apple 芯片和 Intel 芯片的 macOS、arm64 和 x64 的 Linux，
+以及 x64 的 Windows。需要 Node.js 18 或更高版本。
+
+```bash
+# 稳定版
+npm install -g @uniclipboard/cli
+
+# 预览版
+npm install -g @uniclipboard/cli@alpha
+```
+
+安装程序会根据操作系统和处理器选择正确的软件包，并让 `uniclip` 与
+`uniclipd` 保持在一起。不要使用 `--omit=optional` 或 `--no-optional`，
+这两个选项会把实际程序排除掉。
+
+安装后检查：
+
+```bash
+uniclip --version
+uniclip --help
+```
+
+如果终端找不到 `uniclip`，请重新打开终端，并确认 npm 的全局命令目录已经
+加入 `PATH`。
+
+### 更新或卸载
+
+```bash
+# 更新稳定版
+npm install -g @uniclipboard/cli@latest
+
+# 更新预览版
+npm install -g @uniclipboard/cli@alpha
+
+# 移除 CLI 与后台服务程序
+npm uninstall -g @uniclipboard/cli
+```
+
+卸载软件包不会删除 UniClipboard 数据。删除数据是另一项独立的破坏性操作。
+
+## 在 macOS 上使用 Homebrew
+
+Homebrew 配方跟随稳定版，可能会晚于预览版。若要使用本章节介绍的最新 CLI，
+推荐使用 npm。
+
+```bash
+brew tap UniClipboard/tap
+brew trust UniClipboard/tap  # Homebrew 6.0+，只需执行一次
+brew install uniclipboard
+```
+
+安装后运行 `uniclip --version`。如果这里介绍的某条命令不存在，说明配方仍在
+较早的稳定版；可以改用 npm 预览版，或下载对应的预览版压缩包。
+
+## 下载发布压缩包
+
+每个 CLI 版本也会在
+[GitHub Releases](https://github.com/UniClipboard/UniClipboard/releases)
+发布独立压缩包，文件名以 `uniclipboard-cli-` 开头，并包含版本和目标平台。
+
+1. 下载与你的操作系统和处理器匹配的压缩包。
+2. 解压出 `uniclip` 与 `uniclipd`；Windows 上是两个 `.exe` 文件。
+3. 把两个文件放在同一个目录。
+4. 把该目录加入 `PATH`。
+
+在 macOS 或 Linux 上，如果解压工具没有保留执行权限，请运行：
+
+```bash
+chmod +x uniclip uniclipd
+```
+
+<Callout type="warn">
+  不要只把 `uniclip` 移到其他目录。它会在自身旁边查找并启动同版本的
+  `uniclipd`；把两者分开会导致后台服务启动失败。
+</Callout>
+
+## 稳定版与预览版
+
+- 希望少变动、只使用当前稳定版支持的命令时，选择稳定版。
+- 希望跟随当前文档、提前测试新功能时，选择 `alpha` 预览版。
+- 不要混用不同版本的 `uniclip` 和 `uniclipd`。切换渠道时应同时重新安装或
+  替换两者。
+
+确认 `uniclip --version` 和 `uniclip --help` 都能运行后，继续阅读
+[快速上手](./getting-started)。

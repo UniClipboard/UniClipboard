@@ -1,9 +1,10 @@
 ---
 title: 命令参考
-description: uniclip 全部子命令 —— 成员、发送/监听、搜索、blob、移动端同步与退出码。
+description: uniclip 发布版中的空间、成员、内容、搜索、诊断与移动端同步命令。
 ---
 
-这是 `uniclip` 的完整子命令参考。第一次用 CLI？先看 [CLI 概览](../cli/getting-started)。
+本页只介绍发布版中由 `uniclip --help` 展示的公开命令。第一次使用 CLI，请先看
+[快速上手](./getting-started)。开发专用和隐藏命令留在仓库开发文档中，不混入用户指南。
 
 ## 空间
 
@@ -12,32 +13,45 @@ description: uniclip 全部子命令 —— 成员、发送/监听、搜索、bl
 | `uniclip space status`      | 查看当前空间和设备信任摘要。                                                       |
 | `uniclip space init`        | 为当前 profile 创建新的加密空间。                                                  |
 | `uniclip space invite`      | 签发一次性配对邀请。                                                               |
-| `uniclip space join`        | 加入或重新配对 sponsor；加 `--switch` 可切换到另一个空间。                         |
+| `uniclip space join`        | 交互输入邀请码，或传入 `--code <CODE>`；加 `--switch` 可切换到另一个空间。         |
 | `uniclip space reset --yes` | 重建为只包含本机的新空间，同时保留本机历史、已完成文件、设置、设备身份和解锁能力。 |
 
 空间重建会永久废弃旧的配对、信任和同步关系，所有设备都需要重新配对。它不会删除本机
 历史，也不是恢复出厂设置。
 
+`space join` 默认等待最终结果。`--no-wait` 会在请求被接受后返回；之后可用
+`space join status` 和 `space join cancel` 查看或取消等待中的请求。切换空间时，
+除非传入 `--yes`，否则命令会先要求确认。`--preserve-unreadable-history` 会在
+切换时保留无法读取的本机记录，而不是丢弃它们。
+
+### 加入请求
+
+| 命令                            | 作用                                             |
+| ------------------------------- | ------------------------------------------------ |
+| `uniclip space join --no-wait`  | 记录等待中的加入请求后立即返回，不等待最终结果。 |
+| `uniclip space join status`     | 查看当前加入请求及其 Engine 状态。               |
+| `uniclip space join cancel`     | 请求取消当前仍在等待的加入。                     |
+
+Ctrl-C 只会停止本地等待；确实要取消请求时应使用 `space join cancel`。
+
 ## 成员
 
-| 命令                      | 返回内容                                                                                                        |
-| ------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| 命令                          | 返回内容                                                                                                        |
+| ----------------------------- | --------------------------------------------------------------------------------------------------------------- |
 | `uniclip member list`         | 本空间的成员 —— 本机加上已配对的对端 —— 及各对端的最近一次可达状态：`{name} ({online \| offline \| unknown})`。 |
 | `uniclip member list --probe` | 同上，但会先主动 ping 每个已配对对端以刷新状态（会多一次网络往返）。                                            |
 
 旧的 `uniclip members` 及其别名 `uniclip devices` 已隐藏并弃用。为兼容既有脚本，
 它们仍可执行，但会打印弃用提示。新脚本应使用 `uniclip member list`；三种写法都支持 `--json`。
 
-### 加入请求
+### 移除成员
 
-| 命令                     | 作用                                             |
-| ------------------------ | ------------------------------------------------ |
-| `uniclip space join --no-wait` | 记录等待中的加入请求后立即返回，不等待最终结果。 |
-| `uniclip space join status`    | 查看当前加入请求及其 Engine 状态。               |
-| `uniclip space join cancel`    | 请求取消当前仍在等待的加入。                     |
+```bash
+uniclip member remove <PEER-ID>
+```
 
-不带 `--no-wait` 时，`uniclip space join` 会等待最终结果。Ctrl-C 只停止本地等待；
-确实要取消请求时应使用 `space join cancel`。
+即使对方离线，这条命令也会记录不可逆的移除意图，并立即停止向它发送新内容。
+移除后可用 `uniclip member trust status` 查看当前设备关系状态。
 
 ### 设备信任变化
 
@@ -90,8 +104,7 @@ uniclip watch
 ### 发送和接收文件
 
 ```bash
-# 发送端：通过守护进程的 blob 管线把文件分发给已配对 peer。
-# 守护进程负责 blob 存储和传输 —— dispatch 确认后 CLI 即可退出。
+# 发送端：持续提供文件，等对端取走。按 Ctrl-C 停止。
 uniclip send -f ./big-file.bin
 
 # 接收端：等待首个入站文件，从守护进程的缓存中导出字节，
@@ -99,8 +112,8 @@ uniclip send -f ./big-file.bin
 uniclip recv --out ./inbox
 ```
 
-`send -f` 与 positional text 和 `--resend` 互斥。
-守护进程负责 blob 存储和 peer 间传输，CLI 在 dispatch 确认后即可退出。
+`send -f` 与位置文本和 `--resend` 互斥。分发后进程仍会继续运行，让对端能够
+取走文件。请等目标设备接收完成后再按 Ctrl-C。
 
 ### 读取已同步的条目
 
@@ -140,28 +153,18 @@ uniclip search "报告" \
     --from-ms 1710000000000 --to-ms 1710100000000
 uniclip search "报告" \
     --source-device "Laptop"             # 只看来自该设备的内容
+uniclip search "报告" \
+    --operator or --time-preset last_7d \
+    --tag favorited --offset 20
 ```
 
-`--source-device` 按「内容来自哪台设备」过滤，接受设备名（大小写无关）或设备 id，可重复多次；运行 `uniclip member list` 可查看可用的设备名。`--detailed`（以及 `--json`）的输出里会带上每条结果的 `source` 设备 id。
+筛选项可以组合。`--type`、`--tag`、`--ext` 和 `--source-device` 都可重复使用。
+`--operator` 可选 `and` 或 `or`；`--time-preset` 可选 `today`、`yesterday`、
+`last_7d` 或 `last_30d`；`--offset` 和 `--limit` 用于分页。来源设备可以是
+不区分大小写的设备名或设备 ID；运行 `uniclip member list` 可查看可用名称。
+`--detailed` 和 `--json` 的结果会包含来源设备 ID。
 
 `rebuild` 是同步命令，重建完成才返回；脚本里抓诊断快照很有用。
-
-## Blob（大负载）诊断
-
-> **注意：**`blob`、`probe`、`dev` 子命令仅在开发构建（`dev-tools` feature）中可用，release 二进制不包含。
-
-`uniclip blob` 是分块 blob 管线的命令行入口，参见
-[同步内容 — 大负载（文件与大图）](../core-features/sync#大负载文件与大图)。
-
-```bash
-# 把本地文件作为加密 blob 发布，输出对应 ticket
-uniclip blob publish ./sample.bin
-
-# 用 ticket + entry id 把 blob 拉到本地
-uniclip blob fetch <TICKET> --entry-id <ENTRY_ID> --out ./restored.bin
-```
-
-适合排查文件同步失败、或验证对端能否访问 blob 存储。
 
 ## 移动端同步
 
@@ -182,8 +185,8 @@ uniclip mobile add --label "My iPhone" \
     [--username my_user] [--password-stdin]
 uniclip mobile revoke <device-id>
 
-# 进阶监听器配置（写命令 —— 必须先停 daemon）。`setup` 已覆盖常用场景，
-# 需要手动改地址或反代前置时才用这一组。
+# 进阶监听器配置。`setup` 已覆盖常用场景，需要手动改地址或配置反向代理时
+# 再使用这一组。
 uniclip mobile network interfaces
 # LAN 形态：宣告内网 IPv4 → 安装 URL 为 http://<IP>:<port>
 uniclip mobile network set --ip <LAN_IPV4> [--port 42720] --accept-network-risk
@@ -199,9 +202,8 @@ uniclip mobile disable
 
 行为约定：
 
-- **写命令在同 profile daemon 跑着时会被拒绝。** 跑 `setup`、`add`、
-  `network set` 等之前先 `uniclip stop` / 退掉 GUI。读命令（`space status`）在
-  daemon 跑着时也可以。
+- **公开的移动端命令都通过后台服务执行。** 它们会连接正在运行的服务，或在需要时
+  自动启动服务，因此运行 `setup`、`add` 或 `network set` 前不需要退出桌面应用。
 - **`--json` 隐含 non-interactive。** 不会出任何交互提示。`setup` 在
   non-interactive / JSON 模式下必须显式给 `--label`、`--accept-network-risk`；
   `--ip` / `--port` 是可选的高级覆盖项（不给则二维码自动携带所有检测到的
@@ -216,9 +218,6 @@ uniclip mobile disable
   host + 可选 port，如 `https://clip.example.com`），让安装 URL / 二维码
   指向 TLS 反向代理（Caddy、nginx 等），而监听器本身仍是内网明文 HTTP。
   两者互斥，设一个会清掉另一个；`mobile status` 会反映当前生效的那个。
-- 还有一组 **debug** 子命令（`uniclip mobile debug`），从 `--help`
-  里隐藏 —— 仅供开发与 E2E 脚本使用（绕过 HTTP，直接打 facade），可能
-  在不发版本说明的情况下变化。
 
 完整的端到端配置教程（监听器风险提示、iOS 快捷指令安装、密码轮换）见
 [移动端同步指南](../core-features/mobile-sync)。
@@ -229,6 +228,9 @@ uniclip mobile disable
 uniclip debug status                       # 当前是否开启持久化调试日志？
 uniclip debug on                           # 开启更详细的本地日志
 uniclip debug off                          # 恢复正常日志档位
+uniclip debug capture status               # 查看连接抓取状态
+uniclip debug capture start                # 开始一次有时限的详细抓取
+uniclip debug capture stop                 # 停止当前抓取
 uniclip debug export-logs                  # 把最近 24h 打包到下载目录
 uniclip debug export-logs --since-hours 6  # 收窄时间窗口
 ```
@@ -241,6 +243,9 @@ uniclip debug export-logs --since-hours 6  # 收窄时间窗口
 成一个 zip 放到下载目录 —— 这是收齐 issue 报告所需材料最快的方式。
 GUI 里在 **设置 → 常规** 下有同样的操作。
 
+连接抓取只应用于短时间排障。用 `debug capture status` 查看当前抓取，问题复现完成后
+立即停止，再按支持人员的要求导出日志。
+
 ## 升级检测游标
 
 ```bash
@@ -250,21 +255,6 @@ uniclip upgrade ack        # 把游标推进到当前构建版本
 ```
 
 查看或推进升级检测游标 —— 用于手动验证升级模块。普通用户基本用不到。
-
-## 隐藏命令
-
-下列命令存在，但刻意从 `uniclip --help` 中隐藏：
-
-- `uniclip probe ...` —— 剪贴诊断子命令组（替代旧的 `clipboard-probe` 独立二进制）。
-  CLI 中 **唯一** 写系统剪贴板的入口（仅限 `probe restore`），仅供开发与 E2E 调试。
-- `uniclip dev seed-clipboard --text <TEXT>` —— switch-space 数据完整性测试用的种子写入。
-- `uniclip dev dump-clipboard --limit <N>` —— 调试用，打印解密后的历史。
-- `uniclip dev capture-files --path <PATH>` —— 通过真实的本地捕获流程捕获一个或多个文件/目录，并打印落盘的文件集清单。可重复传入 `--path` 以混合选择多个路径。`--max-members` 和 `--max-bytes` 只临时覆盖本次捕获的文件集上限，不会写回 profile 的持久化设置。
-- `uniclip dev pairing ...` —— 配对邀请的诊断子命令组：`addrs` 列出经过产品过滤后的候选地址，`issue --addr <IP>` 把邀请约束在某一个本机 IP 上。daemon 跑着时会被拒绝；仅供开发与排查 [配对在虚拟网卡环境下打不通](../help/troubleshooting#配对失败) 这类问题使用。
-- `uniclipd` —— 后台 daemon，现在是**独立的二进制**（不再是 `uniclip daemon` 子命令）。`uniclip start` 和桌面应用会自动拉起它；你会在 `ps` 中看到它，但不要直接运行。
-
-这些不会出现在 shell 补全或 `--help` 中，并且可能在不发版本说明的情况下变化。
-这里列出来只是为了让你在 `ps` 或提交历史中看到时不会以为见鬼了。
 
 ## 退出码
 

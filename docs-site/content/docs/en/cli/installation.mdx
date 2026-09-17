@@ -1,0 +1,103 @@
+---
+title: Install the CLI
+description: Install uniclip and its background daemon on macOS, Windows, or Linux.
+---
+
+The CLI is distributed as two programs: `uniclip`, which you run, and
+`uniclipd`, the background service it talks to. Keep them from the same release
+and in the same installation directory. You normally never run `uniclipd`
+yourself.
+
+## Recommended: npm
+
+The npm package supports macOS on Apple Silicon and Intel, Linux on arm64 and
+x64, and Windows on x64. It requires Node.js 18 or later.
+
+```bash
+# Stable channel
+npm install -g @uniclipboard/cli
+
+# Preview channel
+npm install -g @uniclipboard/cli@alpha
+```
+
+The installer selects the package for your operating system and processor and
+keeps `uniclip` and `uniclipd` together. Do not install with
+`--omit=optional` or `--no-optional`; those options omit the programs.
+
+Verify the installation:
+
+```bash
+uniclip --version
+uniclip --help
+```
+
+If the shell cannot find `uniclip`, open a new terminal and check that npm's
+global binary directory is on `PATH`.
+
+### Update or remove
+
+```bash
+# Update the stable channel
+npm install -g @uniclipboard/cli@latest
+
+# Update the preview channel
+npm install -g @uniclipboard/cli@alpha
+
+# Remove the CLI and daemon programs
+npm uninstall -g @uniclipboard/cli
+```
+
+Removing the package does not erase your UniClipboard data. Data removal is a
+separate, destructive action.
+
+## Homebrew on macOS
+
+The Homebrew formula follows the stable release line and may lag preview
+releases. The npm package is the recommended way to follow the CLI described
+in these pages.
+
+```bash
+brew tap UniClipboard/tap
+brew trust UniClipboard/tap  # Homebrew 6.0+, one-time
+brew install uniclipboard
+```
+
+After installation, run `uniclip --version`. If a command documented here is
+missing, the formula is still on an older stable release; use the npm preview
+channel or download a matching preview archive instead.
+
+## Download a release archive
+
+Every CLI release also publishes a standalone archive on
+[GitHub Releases](https://github.com/UniClipboard/UniClipboard/releases). Its
+name starts with `uniclipboard-cli-` and includes the version and target.
+
+1. Download the archive for your operating system and processor.
+2. Extract both `uniclip` and `uniclipd` (or both `.exe` files on Windows).
+3. Put both files in the same directory.
+4. Add that directory to `PATH`.
+
+On macOS or Linux, make both files executable if your archive tool did not
+preserve permissions:
+
+```bash
+chmod +x uniclip uniclipd
+```
+
+<Callout type="warn">
+  Do not move only `uniclip` into another directory. It finds and starts the
+  matching `uniclipd` beside itself; separating them makes daemon startup fail.
+</Callout>
+
+## Stable and preview channels
+
+- Use the stable channel when you prefer fewer changes and commands supported
+  by the current stable release.
+- Use the `alpha` channel when following the current documentation and testing
+  features before their stable release.
+- Do not mix `uniclip` and `uniclipd` from different versions. Reinstall or
+  replace both together when switching channels.
+
+Continue with [Getting started](./getting-started) after `uniclip --version`
+and `uniclip --help` both work.

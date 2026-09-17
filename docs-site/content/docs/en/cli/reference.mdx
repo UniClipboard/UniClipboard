@@ -1,10 +1,12 @@
 ---
 title: CLI Reference
-description: Every uniclip subcommand — members, send/watch, search, blob, mobile sync, and exit codes.
+description: Public uniclip commands for spaces, members, content, search, diagnostics, and mobile sync.
 ---
 
-This is the full `uniclip` subcommand reference. New to the CLI?
-Start with the [CLI overview](../cli/getting-started).
+This page covers the commands included in release builds and shown by
+`uniclip --help`. New to the CLI? Start with [Getting started](./getting-started).
+Development-only and hidden commands are documented in the repository, not in
+the user guide.
 
 ## Space
 
@@ -13,17 +15,34 @@ Start with the [CLI overview](../cli/getting-started).
 | `uniclip space status`      | Show the current space and device-trust summary.                                                               |
 | `uniclip space init`        | Create a new encrypted space for this profile.                                                                 |
 | `uniclip space invite`      | Issue a one-time pairing invitation.                                                                           |
-| `uniclip space join`        | Join or re-pair with a sponsoring device; add `--switch` to move to a different space.                        |
+| `uniclip space join`        | Enter an invitation interactively, or pass `--code <CODE>`; add `--switch` to move to a different space.      |
 | `uniclip space reset --yes` | Rebuild as a new one-device space while retaining local history, completed files, settings, and device access. |
 
 Space reset permanently discards old pairing, trust, and sync relationships.
 Every device must pair again. It does not erase local history and is not a
 factory reset.
 
+`space join` waits for the final result by default. `--no-wait` returns after
+the request is accepted; `space join status` and `space join cancel` inspect or
+cancel that pending request. A space switch asks for confirmation unless
+`--yes` is supplied. During a switch, `--preserve-unreadable-history` keeps
+local records that cannot be read instead of dropping them.
+
+### Join requests
+
+| Command                         | Effect                                                                         |
+| ------------------------------- | ------------------------------------------------------------------------------ |
+| `uniclip space join --no-wait`  | Record a pending join and return without waiting for its final result.         |
+| `uniclip space join status`     | Show the current join request and its Engine-owned status.                     |
+| `uniclip space join cancel`     | Request cancellation of the current pending join.                             |
+
+Ctrl-C stops only the local wait; use `space join cancel` when the request
+itself should be cancelled.
+
 ## Members
 
-| Command                   | What it shows                                                                                                                                    |
-| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Command                       | What it shows                                                                                                                                    |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `uniclip member list`         | This space's members — the local device plus paired peers — with each peer's last-known reachability: `{name} ({online \| offline \| unknown})`. |
 | `uniclip member list --probe` | Same, but actively pings every paired peer first so the states are fresh (adds a network round-trip).                                            |
 
@@ -31,16 +50,16 @@ The former `uniclip members` command and its `uniclip devices` alias are hidden
 and deprecated. They still run for compatibility, but print a warning. New
 scripts should use `uniclip member list`. All three forms honour `--json`.
 
-### Join requests
+### Remove a member
 
-| Command                  | Effect                                                                                  |
-| ------------------------ | --------------------------------------------------------------------------------------- |
-| `uniclip space join --no-wait` | Record a pending join and return without waiting for its final result.                  |
-| `uniclip space join status`    | Show the current join request and its Engine-owned status.                              |
-| `uniclip space join cancel`    | Request cancellation of the current pending join.                                      |
+```bash
+uniclip member remove <PEER-ID>
+```
 
-Without `--no-wait`, `uniclip space join` waits for a final result. Ctrl-C stops only
-that local wait; use `space join cancel` when the request itself should be cancelled.
+Removal records an irreversible intent even when that device is offline and
+immediately stops new content from being sent to it. Use
+`uniclip member trust status` to inspect the current relationship state after
+the removal.
 
 ### Device trust changes
 
@@ -99,9 +118,7 @@ does **not** write the system clipboard — that's the daemon's job.
 ### Sending and receiving files
 
 ```bash
-# Sender: dispatch a file to paired peers via the daemon's blob
-# pipeline. The daemon handles blob storage and transfer — the CLI
-# exits once the dispatch is acknowledged.
+# Sender: keep serving the file until peers fetch it. Ctrl-C stops serving.
 uniclip send -f ./big-file.bin
 
 # Receiver: wait for the first inbound file, export it from the
@@ -110,9 +127,10 @@ uniclip send -f ./big-file.bin
 uniclip recv --out ./inbox
 ```
 
-`send -f` is mutually exclusive with positional text and `--resend`.
-The daemon handles blob storage and peer-to-peer transfer, so the CLI
-can exit as soon as the dispatch is confirmed.
+`send -f` is mutually exclusive with positional text and `--resend`. The
+process stays alive after dispatch because peers fetch the bytes from it.
+Keep the terminal open until the intended receivers have finished, then press
+Ctrl-C.
 
 ### Reading already-synced entries
 
@@ -158,34 +176,20 @@ uniclip search "report" \
     --from-ms 1710000000000 --to-ms 1710100000000
 uniclip search "report" \
     --source-device "Laptop"             # only clips from that device
+uniclip search "report" \
+    --operator or --time-preset last_7d \
+    --tag favorited --offset 20
 ```
 
-`--source-device` filters by the device a clip arrived from. It accepts a
-device name (case-insensitive) or a device id and is repeatable; run
-`uniclip member list` to see the available names. `--detailed` (and `--json`)
-output includes each result's `source` device id.
+Filters can be combined. `--type`, `--tag`, `--ext`, and `--source-device` are
+repeatable. `--operator` selects `and` or `or`; `--time-preset` accepts
+`today`, `yesterday`, `last_7d`, or `last_30d`; `--offset` and `--limit`
+support pagination. A source device can be a case-insensitive name or an ID;
+run `uniclip member list` to see available names. `--detailed` and `--json`
+include each result's source device ID.
 
 `rebuild` blocks until the rebuild finishes; useful when scripting a
 diagnostic snapshot.
-
-## Blob (large-payload) diagnostics
-
-> **Note:** `blob`, `probe`, and `dev` subcommands are only available in
-> development builds (`dev-tools` feature). Release binaries do not include them.
-
-`uniclip blob` is the headless interface to the chunked-blob pipeline
-described in [Sync content](../core-features/sync#large-payloads-files--big-images).
-
-```bash
-# Publish a local file as an encrypted blob and print its ticket
-uniclip blob publish ./sample.bin
-
-# Fetch a blob by ticket + entry ID into a local file
-uniclip blob fetch <TICKET> --entry-id <ENTRY_ID> --out ./restored.bin
-```
-
-Useful when debugging file-sync failures or verifying a peer can
-reach blob storage.
 
 ## Mobile sync
 
@@ -206,9 +210,8 @@ uniclip mobile add --label "My iPhone" \
     [--username my_user] [--password-stdin]
 uniclip mobile revoke <device-id>
 
-# Advanced listener configuration (write commands — daemon must be stopped).
-# `setup` already covers the common case; reach for these to re-point the
-# address or front the listener with a reverse proxy.
+# Advanced listener configuration. `setup` already covers the common case;
+# use these to change the address or add a reverse proxy.
 uniclip mobile network interfaces
 # LAN form: advertise an internal IPv4 → install URL is http://<IP>:<port>
 uniclip mobile network set --ip <LAN_IPV4> [--port 42720] --accept-network-risk
@@ -224,10 +227,9 @@ uniclip mobile disable
 
 Behavioural notes:
 
-- **Write commands refuse to run while a same-profile daemon is up.**
-  Stop the daemon (`uniclip stop` / quit the GUI) before running
-  `setup`, `add`, `network set`, etc. The read command (`space status`) is
-  tolerant of a running daemon.
+- **Public mobile commands use the daemon.** They connect to the running
+  service or start it when needed, so you do not need to stop the desktop app
+  before running `setup`, `add`, or `network set`.
 - **`--json` implies non-interactive.** No prompts will be shown.
   `setup` in non-interactive / JSON mode requires `--label` and
   `--accept-network-risk`. `--ip` / `--port` are optional advanced pins
@@ -247,10 +249,6 @@ Behavioural notes:
   …) while the listener itself stays plain HTTP on the internal
   network. The two are mutually exclusive and setting one clears the
   other; `mobile status` reflects whichever is active.
-- A **debug** subcommand group exists (`uniclip mobile debug`)
-  but is hidden from `--help` — it is reserved for development and
-  E2E scripts (it bypasses HTTP and pokes the facade directly), and
-  may change without notice.
 
 For a step-by-step setup walkthrough — listener risks, iOS Shortcut
 install, password rotation — see the [Mobile sync guide](../core-features/mobile-sync).
@@ -261,6 +259,9 @@ install, password rotation — see the [Mobile sync guide](../core-features/mobi
 uniclip debug status                       # is persistent debug logging on?
 uniclip debug on                           # enable verbose local logging
 uniclip debug off                          # back to the normal profile
+uniclip debug capture status               # inspect a connection capture
+uniclip debug capture start                # start a bounded detailed capture
+uniclip debug capture stop                 # stop the active capture
 uniclip debug export-logs                  # zip the last 24h to Downloads
 uniclip debug export-logs --since-hours 6  # narrow the window
 ```
@@ -275,6 +276,10 @@ window (default 24h) into a single zip in your Downloads folder — the
 fastest way to gather everything an issue report needs. The same action
 is available in the GUI under **Settings → General**.
 
+Connection capture is intended for a short troubleshooting window. Check the
+active capture with `debug capture status`, stop it when reproduction is
+complete, then export the logs requested by support.
+
 ## Upgrade-detection cursor
 
 ```bash
@@ -285,38 +290,6 @@ uniclip upgrade ack        # advance the cursor to the current build
 
 Inspects or advances the upgrade-detection cursor — exposed for manual
 verification of the upgrade module. Most users never need this.
-
-## Hidden commands
-
-The following commands exist but are deliberately hidden from
-`uniclip --help`:
-
-- `uniclip probe ...` — clipboard-diagnostic group (replaces the old
-  `clipboard-probe` binary). The only CLI path that writes the system
-  clipboard, and only via `probe restore`. Development and E2E only.
-- `uniclip dev seed-clipboard --text <TEXT>` — debug seeding for
-  switch-space data-integrity tests.
-- `uniclip dev dump-clipboard --limit <N>` — debug printing of decrypted
-  history.
-- `uniclip dev capture-files --path <PATH>` — captures one or more files
-  or directories through the real local-capture pipeline and prints the
-  persisted file-set manifest. Repeat `--path` for mixed selections.
-  `--max-members` and `--max-bytes` temporarily override the file-set
-  caps for this capture only; the override is not written back to the
-  profile's settings.
-- `uniclip dev pairing ...` — pairing-invitation diagnostics: `addrs`
-  lists candidate addresses after the product filter has run, and
-  `issue --addr <IP>` issues an invitation constrained to one local
-  IP. Refuses to run while the daemon is up. Intended for triaging
-  [pairing failures on virtual-NIC setups](../help/troubleshooting#pairing-failures).
-- `uniclipd` — the background daemon, shipped as a **separate binary**
-  (no longer a `uniclip daemon` subcommand). `uniclip start` and the
-  desktop app spawn it for you; you'll see it in `ps`, but don't launch
-  it directly.
-
-These won't show up in shell completion or `--help`, and may change
-without notice. They're documented here so you don't think you're
-seeing things in `ps` or in commit history.
 
 ## Exit codes
 

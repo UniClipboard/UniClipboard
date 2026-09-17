@@ -1,129 +1,180 @@
 ---
 title: Getting Started
-description: Install uniclip, start the daemon, and create or join a space — all from the terminal.
+description: Create or join a space, send content, and inspect history from the terminal.
 ---
 
 import { Tab, Tabs } from 'fumadocs-ui/components/tabs'
 
-The `uniclip` binary is the terminal-side equivalent of the desktop
-app. It talks to the background daemon over HTTP, so anything the GUI
-can do — pair, sync, send, search — works headlessly over SSH, in
-tmux, on a server, or from a script. If no daemon is running, `uniclip`
-starts one automatically.
+`uniclip` is the terminal client for UniClipboard. It connects to the same
+background service as the desktop app, so the CLI and GUI can use the same
+profile and space. If a command needs the service and it is not running,
+`uniclip` starts the matching `uniclipd` automatically.
 
-Install via the [Install](../getting-started/install) page (Homebrew
-on macOS, the headless `uniclip` artefact on Linux servers, etc.).
+If `uniclip --version` does not work yet, start with
+[Install the CLI](./installation).
 
-## Global flags
+## Global options
 
-These work on every subcommand:
+These options work with every public command:
 
-| Flag               | Effect                                                                            |
-| ------------------ | --------------------------------------------------------------------------------- |
-| `--json`           | Emit machine-readable JSON. Field names are stable; suitable for scripting.       |
-| `-v`, `--verbose`  | Show debug-level diagnostics on the console.                                      |
-| `--profile <NAME>` | Run as a separate profile — isolates data dir, keychain entry, and iroh identity. |
-| `--dev`            | Use file-based secure storage instead of the system keychain. Development only.   |
+| Option             | Effect                                                               |
+| ------------------ | -------------------------------------------------------------------- |
+| `--json`           | Return machine-readable JSON for scripts.                            |
+| `-v`, `--verbose`  | Show more diagnostic output in the terminal.                         |
+| `--profile <NAME>` | Use an isolated data set, secure-storage entry, and network identity. |
 
-`--profile` is the supported way to simulate two devices on one
-machine for end-to-end testing — run two terminals, each with a
-different `--profile` value.
+You do not need a separate profile just because the desktop app is open. Use
+`--profile` only when you intentionally want an independent instance, such as
+two test devices on one computer.
 
-## Daemon lifecycle
+## Create or join a space
 
-| Command                      | Effect                                                                                                                                              |
-| ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `uniclip start`              | Start the daemon in the background.                                                                                                                 |
-| `uniclip start --foreground` | Run the daemon in the foreground; logs go to the TTY.                                                                                               |
-| `uniclip start --server`     | Run as a headless server node: no system clipboard or clipboard watcher; syncs over iroh as a normal member. For a VPS / container with no display. |
-| `uniclip stop`               | Stop the running daemon.                                                                                                                            |
-| `uniclip space status`             | Show daemon health and a device-trust summary, including local membership, pending changes, and devices that need an update.                        |
+<Tabs items={['First device', 'Join an existing space']}>
 
-The daemon starts automatically when you run a command that needs it,
-so explicit `start` is mostly for log-streaming setups and headless
-servers that want a long-lived background process.
+<Tab value="First device">
 
-The former top-level `status`, `init`, `invite`, and `join` commands remain
-available for compatibility, but print a deprecation notice. New scripts
-should use the `space` command group.
-
-## Space lifecycle
-
-The CLI mirrors the GUI flow described in
-[Pairing & sync](../guides/pairing).
-
-<Tabs items={['Sponsor (first device)', 'Joiner (new device)']}>
-
-<Tab value="Sponsor (first device)">
+Create a space, then issue an invitation for another device:
 
 ```bash
-# Create a fresh encrypted space on this profile
 uniclip space init
-
-# Issue a one-time invitation and wait for the joiner
 uniclip space invite
 ```
 
-`space init` prompts for the passphrase interactively. Pass `--passphrase`
-or `--device-name` only in non-interactive contexts (e.g. an E2E test
-script).
+Both commands guide you through the required input. Treat the invitation as a
+short-lived secret and use it only once.
 
 </Tab>
 
-<Tab value="Joiner (new device)">
+<Tab value="Join an existing space">
+
+Run the join command on the new device. You can paste the invitation when
+prompted:
 
 ```bash
-# Redeem an invitation and join the sponsor's space
-uniclip space join <invitation-code>
+uniclip space join
+```
 
-# Verify the pairing landed
+For a non-interactive command, pass it explicitly:
+
+```bash
+uniclip space join --code <INVITATION_CODE>
+```
+
+The command also asks for the space passphrase and waits for the final result.
+After it succeeds, check the member list:
+
+```bash
 uniclip member list
 ```
 
-`space join` prompts for the passphrase if `--passphrase` is omitted. The
-passphrase is verified locally via PAKE — a wrong value fails fast
-without leaking the guess to the sponsor.
+</Tab>
 
-By default, `space join` waits until the request is accepted or rejected. Use
-`--no-wait` to return as soon as the pending request is recorded, then inspect
-or cancel that same request later:
+</Tabs>
+
+Use `--no-wait` when a script should return after the join request is accepted.
+You can then inspect or cancel that request:
 
 ```bash
 uniclip space join status
 uniclip space join cancel
 ```
 
-Pressing Ctrl-C only stops the local wait. It does not cancel the join request.
+Pressing Ctrl-C stops only the local wait; it does not cancel the request.
 
-</Tab>
-
-</Tabs>
-
-To switch this device to a **different** sponsor's space (re-encrypting
-local history under the new MasterKey), run `space join` with the new
-sponsor's invitation and the `--switch` flag:
+## Send and read content
 
 ```bash
-uniclip space join --switch --code <new-invitation-code>
+# Send text to online paired devices
+uniclip send "hello from the CLI"
+
+# Read text from standard input
+printf 'hello from a pipe' | uniclip send
+
+# Print the newest already-synced text or link
+uniclip get
+
+# List recent entries without downloading one
+uniclip get --list -n 20
+
+# Search history
+uniclip search "report"
 ```
 
-The switch is destructive (local history is re-encrypted), so `space join`
-prompts for confirmation first. Pass `--yes` to skip the prompt in
-non-interactive contexts.
+`get` returns content that is already in local history. `watch` waits for and
+prints future deliveries until you press Ctrl-C:
 
-Without `--switch`, `space join` always takes the non-destructive re-pair
-path — which is also how you re-pair after a one-sided unpair (it
-redeems against the space you're already in and replaces the stale
-records).
+```bash
+uniclip watch
+```
 
-## Rebuild the current space
+The watcher is an observer; it does not write content into the system
+clipboard.
+
+## Send or receive a file
+
+```bash
+# Keep serving the file until peers have fetched it; press Ctrl-C to stop
+uniclip send --file ./report.pdf
+
+# Wait for the next incoming file and save it under ./inbox
+uniclip recv --out ./inbox
+```
+
+File sending keeps the terminal process running because peers fetch the bytes
+from it. Do not close it immediately after the dispatch message.
+
+## Manage the background service
+
+Most commands start the service when needed. Use these commands when you want
+explicit lifecycle control:
+
+| Command                      | Effect                                                                 |
+| ---------------------------- | ---------------------------------------------------------------------- |
+| `uniclip start`              | Start `uniclipd` in the background.                                    |
+| `uniclip start --foreground` | Keep it in the terminal and show its logs.                             |
+| `uniclip start --server`     | Start a headless node without reading or writing the system clipboard. |
+| `uniclip stop`               | Stop the service for the active profile.                               |
+| `uniclip space status`       | Show service, space, network, and trust status.                        |
+
+The desktop app and CLI reuse the same service when they use the same profile.
+You should not launch `uniclipd` directly.
+
+## Use the CLI in scripts
+
+Add `--json` when another program consumes the result:
+
+```bash
+uniclip --json space status
+uniclip --json member list
+uniclip --json search "report" --limit 10
+```
+
+Human-readable status messages go to standard error where commands need to
+keep standard output clean. Scripts should use JSON and the command's exit
+status instead of matching terminal wording.
+
+## Switch or rebuild a space
+
+Switching to a different space migrates readable local history to the new
+space:
+
+```bash
+uniclip space join --switch --code <NEW_INVITATION_CODE>
+```
+
+The command asks for confirmation. Add `--yes` only in a controlled,
+non-interactive workflow. If some local records cannot be read, the command
+stops by default; `--preserve-unreadable-history` keeps those records instead
+of dropping them during the switch.
+
+To rebuild the current device as a new one-device space:
 
 ```bash
 uniclip space reset --yes
 ```
 
-This creates a new space containing only this device and permanently discards
-its old pairing, trust, and sync relationships. Local clipboard history,
-completed files, settings, device identity, and unlock access are retained.
-Other devices are not erased, but every device must pair again before syncing.
-This is not a factory reset.
+This permanently discards the old pairing, trust, and sync relationships but
+keeps local history, completed files, settings, device identity, and unlock
+access. Every device must pair again. This is not a factory reset.
+
+See the [CLI reference](./reference) for all public commands and options.

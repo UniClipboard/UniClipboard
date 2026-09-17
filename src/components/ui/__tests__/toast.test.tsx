@@ -39,6 +39,7 @@ describe('global animated toasts', () => {
     await waitFor(() => expect(screen.getByText('Save failed')).toBeVisible())
     expect(stack.closest('[inert], [aria-hidden="true"]')).toBeNull()
     expect(stack).toHaveAttribute('data-animated-toast-stack')
+    expect(stack).toHaveClass('box-content', '-m-2', 'p-2')
   })
   it('updates loading in place and starts the completion lifetime at the update', async () => {
     mount()

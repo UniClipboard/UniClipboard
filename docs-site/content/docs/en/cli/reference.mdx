@@ -24,11 +24,12 @@ factory reset.
 
 | Command                   | What it shows                                                                                                                                    |
 | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `uniclip members`         | This space's members — the local device plus paired peers — with each peer's last-known reachability: `{name} ({online \| offline \| unknown})`. |
-| `uniclip members --probe` | Same, but actively pings every paired peer first so the states are fresh (adds a network round-trip).                                            |
+| `uniclip member list`         | This space's members — the local device plus paired peers — with each peer's last-known reachability: `{name} ({online \| offline \| unknown})`. |
+| `uniclip member list --probe` | Same, but actively pings every paired peer first so the states are fresh (adds a network round-trip).                                            |
 
-`uniclip devices` is an alias for `uniclip members`. Both honour `--json`
-for scripting.
+The former `uniclip members` command and its `uniclip devices` alias are hidden
+and deprecated. They still run for compatibility, but print a warning. New
+scripts should use `uniclip member list`. All three forms honour `--json`.
 
 ### Join requests
 
@@ -161,7 +162,7 @@ uniclip search "report" \
 
 `--source-device` filters by the device a clip arrived from. It accepts a
 device name (case-insensitive) or a device id and is repeatable; run
-`uniclip members` to see the available names. `--detailed` (and `--json`)
+`uniclip member list` to see the available names. `--detailed` (and `--json`)
 output includes each result's `source` device id.
 
 `rebuild` blocks until the rebuild finishes; useful when scripting a

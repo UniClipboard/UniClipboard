@@ -1,6 +1,6 @@
-//! `uniclip members` — list this space's members: the local device plus
-//! paired peers, with each peer's reachability (ADR-008 P5-2a). Also reachable
-//! under the `devices` alias.
+//! `uniclip member list` — list this space's members: the local device plus
+//! paired peers, with each peer's reachability (ADR-008 P5-2a). The deprecated
+//! hidden `members` command and `devices` alias route to the same implementation.
 //!
 //! Routes through a running or freshly-spawned daemon. Holds a control-WS
 //! lease to keep a transient Oneshot daemon alive for the duration of the

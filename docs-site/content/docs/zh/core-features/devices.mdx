@@ -152,7 +152,7 @@ description: 设备列表与详情、设备组选项、添加与解除配对，�
 
 | GUI 操作                | CLI 等价                                                                                            |
 | ----------------------- | --------------------------------------------------------------------------------------------------- |
-| 「空间成员」列表        | `uniclip members`（本机 + 已配对对端；加 `--probe` 获取实时在线状态）。`uniclip devices` 是其别名。 |
+| 「空间成员」列表        | `uniclip member list`（本机 + 已配对对端；加 `--probe` 获取实时在线状态）。                         |
 | 添加设备 → 邀请码       | `uniclip space invite`                                                                                    |
 | 加入已有空间            | `uniclip space join <code>`                                                                               |
 | 复制 Peer ID            | `uniclip space status --json` 中的 `network.endpoint`                                                     |

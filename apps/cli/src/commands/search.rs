@@ -41,7 +41,7 @@ pub struct SearchQueryArgs {
     extensions: Vec<String>,
     /// Filter by source device — the device a clip arrived from. Accepts a
     /// device name (case-insensitive) or a device id; repeatable. Run
-    /// `uniclip members` to see paired device names.
+    /// `uniclip member list` to see paired device names.
     #[arg(long = "source-device")]
     source_devices: Vec<String>,
     /// Maximum results to return
@@ -360,7 +360,10 @@ async fn resolve_source_devices(
 /// unknown `--source-device` value.
 fn render_available_sources(directory: &[SourceDeviceEntry]) {
     if directory.is_empty() {
-        ui::info("devices", "no known source devices; run `uniclip members`");
+        ui::info(
+            "devices",
+            "no known source devices; run `uniclip member list`",
+        );
         return;
     }
     ui::info("devices", "available source devices (name → id):");

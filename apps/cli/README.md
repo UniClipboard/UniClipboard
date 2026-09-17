@@ -45,7 +45,7 @@ cargo build -p uc-cli
 | `uniclip space join status`               | 查看 Engine 保存的当前加入状态。                                                                                                                                                                                                                         |
 | `uniclip space join cancel`               | 取消当前仍在等待的加入请求。                                                                                                                                                                                                                             |
 | `uniclip space reset --yes`               | 重建为只包含本机的新空间；保留本机历史、已完成文件、设置、设备身份和解锁能力，所有设备需要重新配对。                                                                                                                                                      |
-| `uniclip members`                   | 列出空间成员（本机 + 已配对设备）及在线状态；加 `--probe` 主动探测刷新状态。`devices` 是其别名。                                                                                                                                                         |
+| `uniclip member list`               | 列出空间成员（本机 + 已配对设备）及在线状态；加 `--probe` 主动探测刷新状态。旧的 `members` 与 `devices` 已隐藏并弃用，但仍可调用。                                                                                                                       |
 | `uniclip member remove <PEER-ID>`   | 移除一个空间成员；即使对方离线也会立即记录并停止向它发送新内容。                                                                                                                                                                                         |
 | `uniclip member removal-status`     | 查看当前空间的成员移除与收敛状态。                                                                                                                                                                                                                       |
 | `uniclip member trust status`       | 查看当前设备组变化及两种选择的影响。                                                                                                                                                                                                                     |
@@ -106,7 +106,7 @@ uniclip search "report" --from-ms 1710000000000 --to-ms 1710100000000
 uniclip search "report" --source-device "Laptop"
 ```
 
-`--source-device` 接受设备名（大小写无关）或设备 id，可重复多次；运行 `uniclip members` 查看可用设备名。
+`--source-device` 接受设备名（大小写无关）或设备 id，可重复多次；运行 `uniclip member list` 查看可用设备名。
 
 `search rebuild` 是同步命令，完成后才返回。
 

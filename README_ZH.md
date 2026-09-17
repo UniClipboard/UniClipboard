@@ -314,7 +314,7 @@ uniclip init                    # 在本机创建一个新的加密空间
 uniclip invite                  # 生成短期邀请码
 uniclip join <code>             # 通过邀请码加入空间（重新配对，非破坏性）
 uniclip join --switch <code>    # 切换到另一个空间（重新加密本地历史）
-uniclip members                 # 列出已配对设备及在线状态
+uniclip member list             # 列出已配对设备及在线状态
 uniclip send "hello"            # 把内容发送到其他设备
 uniclip watch                   # 实时接收来自其他设备的剪贴板内容
 uniclip status / start / stop   # 守护进程生命周期

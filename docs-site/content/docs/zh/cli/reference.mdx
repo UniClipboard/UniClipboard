@@ -22,10 +22,11 @@ description: uniclip 全部子命令 —— 成员、发送/监听、搜索、bl
 
 | 命令                      | 返回内容                                                                                                        |
 | ------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| `uniclip members`         | 本空间的成员 —— 本机加上已配对的对端 —— 及各对端的最近一次可达状态：`{name} ({online \| offline \| unknown})`。 |
-| `uniclip members --probe` | 同上，但会先主动 ping 每个已配对对端以刷新状态（会多一次网络往返）。                                            |
+| `uniclip member list`         | 本空间的成员 —— 本机加上已配对的对端 —— 及各对端的最近一次可达状态：`{name} ({online \| offline \| unknown})`。 |
+| `uniclip member list --probe` | 同上，但会先主动 ping 每个已配对对端以刷新状态（会多一次网络往返）。                                            |
 
-`uniclip devices` 是 `uniclip members` 的别名。两个写法都支持 `--json`，方便脚本调用。
+旧的 `uniclip members` 及其别名 `uniclip devices` 已隐藏并弃用。为兼容既有脚本，
+它们仍可执行，但会打印弃用提示。新脚本应使用 `uniclip member list`；三种写法都支持 `--json`。
 
 ### 加入请求
 
@@ -141,7 +142,7 @@ uniclip search "报告" \
     --source-device "Laptop"             # 只看来自该设备的内容
 ```
 
-`--source-device` 按「内容来自哪台设备」过滤，接受设备名（大小写无关）或设备 id，可重复多次；运行 `uniclip members` 可查看可用的设备名。`--detailed`（以及 `--json`）的输出里会带上每条结果的 `source` 设备 id。
+`--source-device` 按「内容来自哪台设备」过滤，接受设备名（大小写无关）或设备 id，可重复多次；运行 `uniclip member list` 可查看可用的设备名。`--detailed`（以及 `--json`）的输出里会带上每条结果的 `source` 设备 id。
 
 `rebuild` 是同步命令，重建完成才返回；脚本里抓诊断快照很有用。
 

@@ -165,20 +165,21 @@ enum Commands {
         #[command(subcommand)]
         command: Option<JoinCommands>,
     },
-    /// List members of this space: the local device plus paired peers.
+    /// Deprecated alias for `member list`. Hidden from `--help`; still runs
+    /// with a deprecation warning so existing scripts keep working.
     ///
     /// Self-contained direct mode. Prints `{name} ({state}) [local]` per
     /// member using each peer's last-known reachability. Pass `--probe` to
     /// actively ping every paired peer first so the states are fresh.
     /// Also available under the `devices` alias.
-    #[command(alias = "devices")]
+    #[command(alias = "devices", hide = true)]
     Members {
         /// Actively probe paired peers for fresh online/offline state
         /// before listing (adds a network round-trip; off by default).
         #[arg(long)]
         probe: bool,
     },
-    /// Manage space member removal and inspect workspace convergence.
+    /// Manage members of the current space.
     Member {
         #[command(subcommand)]
         command: MemberCommands,
@@ -355,6 +356,13 @@ enum Commands {
 
 #[derive(Subcommand)]
 enum MemberCommands {
+    /// List members of this space: the local device plus paired peers.
+    List {
+        /// Actively probe paired peers for fresh online/offline state
+        /// before listing (adds a network round-trip; off by default).
+        #[arg(long)]
+        probe: bool,
+    },
     /// Record an irreversible, offline-first removal intent for one member.
     ///
     /// Immediately stops sending new content to the peer and prints the full
@@ -648,9 +656,15 @@ fn main() -> anyhow::Result<()> {
                 }
             },
             Commands::Members { probe } => {
+                ui::warn(
+                    "`uniclip members` and `uniclip devices` are deprecated; use `uniclip member list` instead.",
+                );
                 commands::members::run(probe, cli.json, cli.verbose).await
             }
             Commands::Member { command } => match command {
+                MemberCommands::List { probe } => {
+                    commands::members::run(probe, cli.json, cli.verbose).await
+                }
                 MemberCommands::Remove { peer_id } => {
                     commands::member::remove(peer_id, cli.json, cli.verbose).await
                 }
@@ -1220,19 +1234,40 @@ mod tests {
     }
 
     #[test]
-    fn members_probe_flag_parses_and_defaults_off() {
-        let bare = Cli::try_parse_from(["uniclip", "members"]).expect("bare members must parse");
-        let Some(Commands::Members { probe }) = bare.command else {
-            panic!("expected Members command");
+    fn member_list_probe_flag_parses_and_defaults_off() {
+        let bare =
+            Cli::try_parse_from(["uniclip", "member", "list"]).expect("member list must parse");
+        let Some(Commands::Member {
+            command: MemberCommands::List { probe },
+        }) = bare.command
+        else {
+            panic!("expected Member List command");
         };
         assert!(!probe, "probe must default off");
 
-        let probed =
-            Cli::try_parse_from(["uniclip", "members", "--probe"]).expect("members --probe parses");
-        let Some(Commands::Members { probe }) = probed.command else {
-            panic!("expected Members command");
+        let probed = Cli::try_parse_from(["uniclip", "member", "list", "--probe"])
+            .expect("member list --probe parses");
+        let Some(Commands::Member {
+            command: MemberCommands::List { probe },
+        }) = probed.command
+        else {
+            panic!("expected Member List command");
         };
         assert!(probe);
+    }
+
+    #[test]
+    fn member_list_is_public_and_members_is_hidden() {
+        let help = Cli::command().render_help().to_string();
+        assert!(help.contains("  member   "));
+        assert!(!help.contains("  members  "));
+
+        let cli = Cli::try_parse_from(["uniclip", "members", "--probe"])
+            .expect("deprecated members command must still parse");
+        assert!(matches!(
+            cli.command,
+            Some(Commands::Members { probe: true })
+        ));
     }
 
     #[cfg(feature = "dev-tools")]
@@ -1270,8 +1305,8 @@ mod tests {
     }
 
     #[test]
-    fn devices_is_an_alias_for_members() {
-        // The former `devices` command is now a hidden alias of `members`.
+    fn devices_remains_hidden_compatibility_alias() {
+        // The former `devices` command remains a hidden compatibility alias.
         let cli = Cli::try_parse_from(["uniclip", "devices"]).expect("devices alias must parse");
         assert!(matches!(cli.command, Some(Commands::Members { .. })));
     }

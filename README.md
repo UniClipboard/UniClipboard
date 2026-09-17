@@ -317,7 +317,7 @@ uniclip init                    # Create a new encrypted space on this device
 uniclip invite                  # Generate a short-lived invitation code
 uniclip join <code>             # Join a space (re-pair, non-destructive)
 uniclip join --switch <code>    # Switch to another space (re-encrypts local history)
-uniclip members                 # List paired devices and presence
+uniclip member list             # List paired devices and presence
 uniclip send "hello"            # Send clipboard content to other devices
 uniclip watch                   # Stream incoming clipboard events
 uniclip status / start / stop   # Daemon lifecycle

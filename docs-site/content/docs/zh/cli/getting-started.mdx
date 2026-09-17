@@ -1,111 +1,168 @@
 ---
-title: 上手
-description: 在终端中安装 uniclip、启动守护进程、创建或加入空间。
+title: 快速上手
+description: 从终端创建或加入空间、发送内容并查看历史。
 ---
 
 import { Tab, Tabs } from 'fumadocs-ui/components/tabs'
 
-`uniclip` 是 UniClipboard 的终端版本。它通过 HTTP 与后台守护进程通信，
-所以 GUI 能做的（配对、同步、发送、搜索）都能在 SSH、tmux、服务器或脚本里完成。
-如果守护进程尚未运行，`uniclip` 会自动拉起。
+`uniclip` 是 UniClipboard 的终端客户端。它与桌面应用连接同一个后台服务，
+因此 CLI 和 GUI 可以使用同一个 profile 与空间。需要后台服务的命令发现它尚未
+运行时，会自动启动同版本的 `uniclipd`。
 
-安装方式见[安装](../getting-started/install)（macOS Homebrew、Linux 服务器单装 `uniclip` 等）。
+如果 `uniclip --version` 还不能运行，请先阅读 [安装 CLI](./installation)。
 
 ## 全局参数
 
-以下参数对所有子命令生效：
+这些参数可用于所有公开命令：
 
-| 参数               | 作用                                                           |
-| ------------------ | -------------------------------------------------------------- |
-| `--json`           | 输出机器可读的 JSON。字段名稳定，适合脚本调用。                |
-| `-v`, `--verbose`  | 在控制台打印 debug 级别日志。                                  |
-| `--profile <NAME>` | 使用独立 profile 运行 —— 隔离数据目录、密钥环条目、iroh 身份。 |
-| `--dev`            | 用文件式安全存储替代系统密钥环。仅供开发使用。                 |
+| 参数               | 作用                                                   |
+| ------------------ | ------------------------------------------------------ |
+| `--json`           | 返回便于脚本处理的 JSON。                              |
+| `-v`, `--verbose`  | 在终端显示更多诊断信息。                               |
+| `--profile <NAME>` | 使用隔离的数据、安全存储条目和网络身份。               |
 
-`--profile` 是单机模拟两台设备做端到端测试的官方方式 ——
-两个终端各用不同的 `--profile` 即可。
+桌面应用已经打开时，不需要为 CLI 单独设置 profile。只有在确实要运行一个完全独立的
+实例时才使用 `--profile`，例如在一台电脑上模拟两台测试设备。
 
-## 守护进程生命周期
+## 创建或加入空间
 
-| 命令                         | 作用                                                                                                           |
-| ---------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| `uniclip start`              | 后台启动守护进程。                                                                                             |
-| `uniclip start --foreground` | 前台启动并把日志输出到当前终端。                                                                               |
-| `uniclip start --server`     | 以无头 server 节点运行：不接系统剪贴板、不监听剪贴板，作为普通成员经 iroh 同步。用于无 display 的 VPS / 容器。 |
-| `uniclip stop`               | 停止运行中的守护进程。                                                                                         |
-| `uniclip space status`             | 查看守护进程健康度与设备信任摘要，包括本机成员状态、待确认变化和需要更新的设备。                               |
+<Tabs items={['第一台设备', '加入已有空间']}>
 
-需要守护进程的命令会自动拉起它，所以显式 `start` 主要用于"日志流式查看"或"长驻后台"的服务器场景。
+<Tab value="第一台设备">
 
-旧的顶层 `status`、`init`、`invite` 和 `join` 命令仍为兼容保留，但执行时会提示弃用。
-新脚本应使用 `space` 命令组。
-
-## 空间生命周期
-
-CLI 与 GUI 流程一致，详见[配对与同步](../guides/pairing)。
-
-<Tabs items={['Sponsor（首台设备）', 'Joiner（新设备）']}>
-
-<Tab value="Sponsor（首台设备）">
+先创建空间，再为另一台设备生成邀请：
 
 ```bash
-# 在当前 profile 下新建加密空间
 uniclip space init
-
-# 发起一次性邀请并等待 joiner
 uniclip space invite
 ```
 
-`space init` 默认交互式输入口令。`--passphrase` 与 `--device-name` 仅在非交互场景（如 E2E 测试脚本）中使用。
+两个命令都会引导你输入所需信息。邀请码是短期秘密，只能使用一次。
 
 </Tab>
 
-<Tab value="Joiner（新设备）">
+<Tab value="加入已有空间">
+
+在新设备上运行加入命令，然后按提示粘贴邀请码：
 
 ```bash
-# 用邀请码加入 sponsor 的空间
-uniclip space join <invitation-code>
-
-# 验证配对结果
-uniclip members
+uniclip space join
 ```
 
-`space join` 在不带 `--passphrase` 时会提示输入。口令通过 PAKE 在本地验证 —— 输错会立即失败，
-不会把口令值发给 sponsor。
+非交互调用需要显式传入邀请码：
 
-`space join` 默认等待请求被接受或拒绝。加 `--no-wait` 可在等待请求记录成功后立即返回，
-之后可继续查看或取消同一个请求：
+```bash
+uniclip space join --code <INVITATION_CODE>
+```
+
+命令还会要求输入空间口令，并等待最终结果。成功后查看成员列表：
+
+```bash
+uniclip member list
+```
+
+</Tab>
+
+</Tabs>
+
+脚本只想等到加入请求被接受、不想等待最终结果时，可以加 `--no-wait`，之后再
+查看或取消请求：
 
 ```bash
 uniclip space join status
 uniclip space join cancel
 ```
 
-按 Ctrl-C 只会停止本地等待，不会取消加入请求。
+Ctrl-C 只会停止本地等待，不会取消加入请求。
 
-</Tab>
-
-</Tabs>
-
-把当前设备切换到**另一个** sponsor 的空间（用新 MasterKey 重新加密本地历史）时，
-带上新 sponsor 的邀请码并加 `--switch` 运行 `space join`：
+## 发送和读取内容
 
 ```bash
-uniclip space join --switch --code <新邀请码>
+# 把文本发送给在线的已配对设备
+uniclip send "hello from the CLI"
+
+# 从标准输入读取文本
+printf 'hello from a pipe' | uniclip send
+
+# 打印本机已经同步的最新文本或链接
+uniclip get
+
+# 只列出最近条目，不下载内容
+uniclip get --list -n 20
+
+# 搜索历史
+uniclip search "报告"
 ```
 
-切换是破坏性操作（会重新加密本地历史），因此 `space join` 会先弹出确认提示。
-在非交互场景下可加 `--yes` 跳过确认。
+`get` 读取已经进入本机历史的内容。`watch` 会等待并打印之后收到的内容，直到
+按下 Ctrl-C：
 
-不带 `--switch` 时，`space join` 始终走非破坏性的赎回路径。它适用于新 profile 的首次
-加入，也适用于本机已在目标空间时的重新配对（例如单侧解除配对后，赎回邀请并替换过期记录）。
+```bash
+uniclip watch
+```
 
-## 重建当前空间
+`watch` 只负责观察，不会把内容写入系统剪贴板。
+
+## 发送或接收文件
+
+```bash
+# 持续提供文件，等对端取走；按 Ctrl-C 停止
+uniclip send --file ./report.pdf
+
+# 等待下一个收到的文件，并保存到 ./inbox
+uniclip recv --out ./inbox
+```
+
+发送文件时，终端进程需要继续运行，让对端能够取走文件。看到分发提示后不要立即
+关闭它。
+
+## 管理后台服务
+
+大多数命令会在需要时自动启动服务。需要明确控制生命周期时，可以使用：
+
+| 命令                         | 作用                                           |
+| ---------------------------- | ---------------------------------------------- |
+| `uniclip start`              | 在后台启动 `uniclipd`。                        |
+| `uniclip start --foreground` | 让服务留在终端中运行并显示日志。               |
+| `uniclip start --server`     | 启动无头节点，不读写系统剪贴板。               |
+| `uniclip stop`               | 停止当前 profile 的后台服务。                  |
+| `uniclip space status`       | 查看服务、空间、网络和信任状态。               |
+
+桌面应用和 CLI 使用同一个 profile 时会复用同一个后台服务。不要直接启动
+`uniclipd`。
+
+## 在脚本中使用
+
+需要让其他程序读取结果时，加上 `--json`：
+
+```bash
+uniclip --json space status
+uniclip --json member list
+uniclip --json search "报告" --limit 10
+```
+
+为了保持标准输出干净，部分命令会把面向人的状态提示写到标准错误。脚本应读取
+JSON 和退出状态，不要匹配终端提示文字。
+
+## 切换或重建空间
+
+切换到另一个空间时，可读的本机历史会迁移到新空间：
+
+```bash
+uniclip space join --switch --code <NEW_INVITATION_CODE>
+```
+
+命令会先要求确认。只应在受控的非交互流程中添加 `--yes`。如果有本机记录无法
+读取，命令默认停止；使用 `--preserve-unreadable-history` 可以保留这些记录，
+避免在切换时丢弃。
+
+要把当前设备重建为只包含本机的新空间：
 
 ```bash
 uniclip space reset --yes
 ```
 
-该命令会创建一个只包含本机的新空间，并永久废弃与所有旧设备的配对、信任和同步关系。
-本机剪贴板历史、已完成文件、设置、设备身份和解锁能力都会保留；其他设备不会被删除，
-但所有设备都必须重新配对后才能恢复同步。这不是恢复出厂设置。
+这会永久废弃旧的配对、信任和同步关系，但保留本机历史、已完成文件、设置、
+设备身份和解锁能力。所有设备都需要重新配对。这不是恢复出厂设置。
+
+所有公开命令和参数见 [CLI 参考](./reference)。

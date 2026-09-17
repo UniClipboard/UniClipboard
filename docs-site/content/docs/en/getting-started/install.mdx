@@ -233,7 +233,10 @@ sudo dnf install ./UniClipboard-<version>-1.x86_64.rpm
 
 ### Headless / server install (CLI only)
 
-For servers, SSH sessions, or anything without a desktop, install just the `uniclip` CLI from Releases — look for the `uniclip-<version>-<arch>` artefact (statically linked against musl). The CLI runs the daemon in-process, so no GUI is required.
+For servers, SSH sessions, or anything without a desktop, follow the dedicated
+[CLI installation guide](../cli/installation). The CLI package includes both
+`uniclip` and its separate `uniclipd` background service; keep them together.
+No GUI is required.
 
 </Tab>
 

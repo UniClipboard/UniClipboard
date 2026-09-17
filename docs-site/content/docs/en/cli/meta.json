@@ -2,5 +2,5 @@
   "title": "CLI",
   "icon": "Terminal",
   "defaultOpen": true,
-  "pages": ["getting-started", "reference", "environment"]
+  "pages": ["installation", "getting-started", "reference", "environment"]
 }

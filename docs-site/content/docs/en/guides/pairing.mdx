@@ -42,7 +42,7 @@ entirely on the sponsor's machine until another device is invited.
 ### Joining a space (joiner)
 
 `uniclip space invite` (sponsor) prints a short-lived, one-time invitation code. The
-joiner runs `uniclip space join <code>` and supplies the same passphrase. Under the
+joiner runs `uniclip space join --code <code>` and supplies the same passphrase. Under the
 hood:
 
 1. The invite code carries the sponsor's iroh node ID and a transient
@@ -65,7 +65,8 @@ After this point, the invite code is consumed. Adding a third device
 means generating a new invite — pairing is per-join, not per-pair.
 
 <Callout type="info">
-  Lost a device? Revoke it from any other device in the space (GUI: **Devices** page; CLI: pending).
+  Lost a device? Remove it from any other device in the space (GUI: **Devices** page;
+  CLI: `uniclip member remove <PEER-ID>`).
   Subsequent traffic refuses transport from the revoked node ID.
 </Callout>
 

@@ -9,7 +9,7 @@ import { Tab, Tabs } from 'fumadocs-ui/components/tabs'
 UniClipboard 的故障可以按层定位：**守护进程是否在跑 → 配对是否成立 → 对端是否被发现 → 传输是否打通 → 表示是否落地**。下面按这个顺序展开，每节都写明"看哪些信号"和"动哪些命令"。
 
 <Callout type="info">
-  在排查任何问题之前，先在两端各跑一遍 `uniclip space status` 与 `uniclip members` 拿到客观状态。
+  在排查任何问题之前，先在两端各跑一遍 `uniclip space status` 与 `uniclip member list` 拿到客观状态。
   人脑记忆里的"应该在线"经常和实际不符。
 </Callout>
 
@@ -50,7 +50,9 @@ uniclip space status --json     # 字段稳定，方便比对
 uniclip start --foreground -v
 ```
 
-常见原因是 keyslot 文件被另一份进程占着（典型场景：GUI 与 `uniclip` 用了同一个默认 profile 同时跑）。在 CLI 端加 `--profile dev` 让二者分家即可。
+先看前台进程打印的具体错误。如果它找不到或无法启动 `uniclipd`，请重新安装 CLI，
+或把同版本的 `uniclip` 与 `uniclipd` 放回同一个目录。桌面应用和 CLI 通常可以
+共用一个 profile 和同一个后台服务。
 
 ### 守护进程日志里出现 "System secure storage probe failed; falling back to file-based KEK"
 

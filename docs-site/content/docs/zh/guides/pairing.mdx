@@ -33,7 +33,7 @@ UniClipboard 把"两台设备如何最终建立通信"拆成三层独立的问�
 
 ### 加入空间（joiner）
 
-sponsor 执行 `uniclip space invite` 后会得到一段短期、一次性的邀请码。joiner 在 `uniclip space join <code>` 时输入相同的口令。
+sponsor 执行 `uniclip space invite` 后会得到一段短期、一次性的邀请码。joiner 在 `uniclip space join --code <code>` 时输入相同的口令。
 内部流程：
 
 1. 邀请码携带 sponsor 的 iroh node ID 与一个临时握手秘密，**不** 携带口令本身。

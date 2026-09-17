@@ -24,7 +24,7 @@
 // instead of going through this script.
 //
 // Usage:
-//   node scripts/prepare-daemon-sidecar.mjs [--target <triple>] [--debug]
+//   node scripts/prepare-daemon-sidecar.mjs [--target <triple>] [--debug] [--timings]
 
 import { execFileSync } from 'node:child_process'
 import { chmodSync, copyFileSync, mkdirSync } from 'node:fs'
@@ -37,6 +37,7 @@ const srcTauri = join(repoRoot, 'src-tauri')
 function parseArgs(argv) {
   let target = ''
   let release = true
+  let timings = false
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i]
     if (arg === '--target') {
@@ -47,12 +48,14 @@ function parseArgs(argv) {
       release = false
     } else if (arg === '--release') {
       release = true
+    } else if (arg === '--timings') {
+      timings = true
     }
     // Unknown args are ignored on purpose so callers can forward the GUI
     // build's `${{ matrix.args }}` verbatim (it is either `--target <triple>`
     // or empty).
   }
-  return { target, release }
+  return { target, release, timings }
 }
 
 function hostTriple() {
@@ -77,7 +80,7 @@ function hostTriple() {
   }
 }
 
-const { target, release } = parseArgs(process.argv.slice(2))
+const { target, release, timings } = parseArgs(process.argv.slice(2))
 const triple = target || hostTriple()
 const isWindows = triple.includes('windows')
 const exeSuffix = isWindows ? '.exe' : ''
@@ -87,6 +90,7 @@ const profile = release ? 'release' : 'debug'
 const buildArgs = ['build', '-p', 'uc-daemon', '--bin', 'uniclipd']
 if (release) buildArgs.push('--release')
 if (target) buildArgs.push('--target', target)
+if (timings) buildArgs.push('--timings')
 console.log(`[sidecar] cargo ${buildArgs.join(' ')}`)
 execFileSync('cargo', buildArgs, { cwd: repoRoot, stdio: 'inherit' })
 

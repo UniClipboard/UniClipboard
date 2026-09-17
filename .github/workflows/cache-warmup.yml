@@ -8,6 +8,12 @@ on:
       - '.github/workflows/build.yml'
       - 'scripts/ci/configure-build-mode.mjs'
       - 'scripts/ci/isolate-build-toolchain.mjs'
+      - 'scripts/ci/release-cache-policy.mjs'
+      - 'scripts/ci/maintain-actions-cache.mjs'
+      - 'Cargo.lock'
+      - 'Cargo.toml'
+      - 'rust-toolchain.toml'
+      - '.cargo/config.toml'
   schedule:
     # Run every Monday at 00:00 UTC to keep Rust/Bun caches warm.
     # GitHub Actions caches expire after 7 days of inactivity.
@@ -19,17 +25,36 @@ permissions:
   actions: write
   pull-requests: read
 
+concurrency:
+  group: cache-warmup-${{ github.ref }}
+  # Let active builds finish and save their caches; newer pushes replace only queued runs.
+  cancel-in-progress: false
+
 jobs:
+  release-cache-matrix:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v6
+      - name: Select release cache targets
+        id: matrix
+        shell: bash
+        run: |
+          node --input-type=module -e 'import { releaseCacheTargets } from "./scripts/ci/release-cache-policy.mjs"; console.log("matrix=" + JSON.stringify({ include: releaseCacheTargets }))' >> "$GITHUB_OUTPUT"
+
   maintain-caches:
     uses: ./.github/workflows/cache-maintenance.yml
 
   warmup-release-app:
-    name: Warm Windows x64 release app cache
-    needs: maintain-caches
+    name: Warm release app cache (${{ matrix.platform }})
+    needs: [maintain-caches, release-cache-matrix]
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.release-cache-matrix.outputs.matrix) }}
     uses: ./.github/workflows/build.yml
     with:
-      # All six release caches plus CI caches exceed the repository's default quota.
-      platform: 'windows-x86_64'
+      platform: ${{ matrix.platform }}
       save_cache: true
     secrets: inherit
 

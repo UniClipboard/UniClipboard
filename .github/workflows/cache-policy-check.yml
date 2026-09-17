@@ -10,6 +10,7 @@ on:
       - '.github/workflows/build.yml'
       - '.github/workflows/build-cli.yml'
       - 'scripts/ci/maintain-actions-cache.mjs'
+      - 'scripts/ci/release-cache-policy.mjs'
       - 'scripts/__tests__/actions-cache-policy.test.ts'
       - 'scripts/ci/configure-build-mode.mjs'
       - 'scripts/__tests__/build-mode.test.ts'

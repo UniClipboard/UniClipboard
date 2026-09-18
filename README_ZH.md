@@ -315,7 +315,9 @@ uniclip space invite            # 生成短期邀请码
 uniclip space join --code <code> # 通过邀请码加入空间（重新配对，非破坏性）
 uniclip space join --switch --code <code> # 切换到另一个空间
 uniclip member list             # 列出已配对设备及在线状态
-uniclip send "hello"            # 把内容发送到其他设备
+uniclip send "hello"            # 把文字发送到其他设备
+uniclip send ./report.pdf        # 发送现有文件
+uniclip send --text report.pdf   # 强制把现有文件名作为文字发送
 uniclip watch                   # 实时接收来自其他设备的剪贴板内容
 uniclip space status            # 查看当前空间和后台服务
 uniclip start / stop            # 守护进程生命周期

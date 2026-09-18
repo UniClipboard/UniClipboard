@@ -167,6 +167,22 @@ Download the installer or portable zip from the
 
 Each release ships `.deb`, `.rpm`, and `.AppImage` artifacts for both `x86_64` and `aarch64`. Pick the channel that fits your distribution:
 
+### Arch Linux / Omarchy — AUR
+
+Arch Linux and Omarchy users can install the community-maintained binary package directly, avoiding a local build:
+
+```bash
+yay -S uniclipboard-bin
+```
+
+Alternatively, install the upstream-maintained source package, which tracks the `main` branch:
+
+```bash
+yay -S uniclipboard-git
+```
+
+`uniclipboard-bin` is maintained by the community and repackages UniClipboard's prebuilt release; `uniclipboard-git` is maintained upstream but builds the application locally. Both install the GUI, daemon, desktop entry, and the GTK Layer Shell runtime required by the Quick Panel on Wayland. After installation, follow [Quick Panel — Omarchy](../core-features/quick-panel#omarchy) to bind `Super+Ctrl+V` to the panel.
+
 ### Fedora / RHEL / openSUSE — recommended: COPR
 
 Install via [Fedora COPR](https://copr.fedorainfracloud.org/coprs/mkdir700/) and `dnf upgrade` will track new releases automatically:

@@ -139,6 +139,22 @@ Windows 提供两种形式：**安装版**（NSIS 安装包，推荐大多数人
 
 每次发布都会构建 `.deb`、`.rpm` 与 `.AppImage` 三种格式，覆盖 `x86_64` 与 `aarch64`。按你的发行版挑最合适的渠道：
 
+### Arch Linux / Omarchy — AUR
+
+Arch Linux 与 Omarchy 可以直接安装社区维护的二进制包，省去本机编译：
+
+```bash
+yay -S uniclipboard-bin
+```
+
+也可以安装由 UniClipboard 上游维护、跟随 `main` 分支构建的源码包：
+
+```bash
+yay -S uniclipboard-git
+```
+
+`uniclipboard-bin` 由社区维护，复用 UniClipboard 发布的预编译软件包；`uniclipboard-git` 由项目上游维护，但需要在本机完成源码构建。两种方式都会安装 GUI、后台服务、桌面入口，以及快捷面板在 Wayland 下所需的 GTK Layer Shell 运行库。安装完成后，请按[快捷面板 — Omarchy](../core-features/quick-panel#omarchy)配置 `Super+Ctrl+V` 唤起快捷键。
+
 ### Fedora / RHEL / openSUSE — 推荐 COPR
 
 通过 [Fedora COPR](https://copr.fedorainfracloud.org/coprs/mkdir700/) 一键安装并自动跟随版本升级：

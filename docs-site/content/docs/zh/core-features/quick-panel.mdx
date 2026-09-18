@@ -28,6 +28,30 @@ import { Tab, Tabs } from 'fumadocs-ui/components/tabs'
 uniclipboard --quick-panel
 ```
 
+### Omarchy
+
+UniClipboard 支持在 Omarchy 的 Hyprland 会话中显示快捷面板、跟随桌面主题，以及把选中内容粘贴回原窗口。当前 Omarchy 不会在安装 UniClipboard 后自动替换它自带的剪贴板管理器快捷键，需要手动配置一次。
+
+编辑 `~/.config/hypr/bindings.lua`，取消 Omarchy 默认的 `Super+Ctrl+V` 绑定，再把它交给 UniClipboard：
+
+```lua
+hl.unbind("SUPER + CTRL + V") -- was: Clipboard manager
+o.bind("SUPER + CTRL + V", "UniClipboard quick panel", "uniclipboard --quick-panel")
+```
+
+保存后 Hyprland 通常会自动重新加载。可以用下面的命令主动验证配置：
+
+```bash
+hyprctl reload
+hyprctl configerrors
+```
+
+第二条命令没有输出即表示配置有效。按 `Super+Ctrl+V` 可打开或关闭快捷面板；即使 GUI 尚未运行，该命令也会先启动 UniClipboard。快捷面板必须在 UniClipboard 设置中保持启用。
+
+<Callout type="warn">
+  这项集成目前需要上述手动配置，因此还不是开箱即用。UniClipboard 不会静默改写你的个人 Hyprland 配置。
+</Callout>
+
 ## 键盘操作
 
 面板设计为完全用键盘驱动。下面这套键位可在打开后立即用：

@@ -30,4 +30,5 @@ Keep the existing Tauri-managed WebviewWindow. Install a scoped GTK Application:
 - [x] Layer Shell creation/show/hide/layout backend
 - [x] Hyprland focus/paste adapter
 - [x] Shortcut capability handling and Omarchy integration guidance
+- [x] Public Chinese and English Omarchy installation and shortcut guidance
 - [x] Focused unit tests and isolated host validation (physical pointer/IME/multi-output acceptance remains)

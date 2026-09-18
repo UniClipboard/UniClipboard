@@ -5,11 +5,13 @@
 //! transient Oneshot daemon when none is running (skipping the setup
 //! gate, since this IS the setup command).
 
+use serde::Serialize;
 use uc_daemon_client::DaemonClientContext;
 use uc_daemon_contract::api::dto::v2::setup::InitializeSpaceRequest;
 
 use crate::commands::app_session::{default_device_name, ensure_daemon_for_setup};
 use crate::exit_codes;
+use crate::output;
 use crate::ui;
 
 pub struct InitArgs {
@@ -17,8 +19,17 @@ pub struct InitArgs {
     pub device_name: Option<String>,
 }
 
-pub async fn run(args: InitArgs, verbose: bool) -> i32 {
-    ui::header("Initialize space");
+#[derive(Serialize)]
+struct InitOutput<'a> {
+    space_id: &'a str,
+    device_id: &'a str,
+    fingerprint: &'a str,
+}
+
+pub async fn run(args: InitArgs, json: bool, verbose: bool) -> i32 {
+    if !json {
+        ui::header("Initialize space");
+    }
 
     // Collect passphrase: --passphrase wins; otherwise prompt with
     // confirmation. Empty strings are always rejected.
@@ -28,6 +39,10 @@ pub async fn run(args: InitArgs, verbose: bool) -> i32 {
             return exit_codes::EXIT_ERROR;
         }
         Some(p) => p,
+        None if json => {
+            ui::error("--passphrase is required in --json mode");
+            return exit_codes::EXIT_ERROR;
+        }
         None => match ui::password_with_confirm("New space passphrase", "Confirm passphrase") {
             Ok(p) if p.trim().is_empty() => {
                 ui::error("Passphrase cannot be empty");
@@ -71,7 +86,7 @@ pub async fn run(args: InitArgs, verbose: bool) -> i32 {
         }
     };
 
-    let spinner = ui::spinner("Creating encrypted space...");
+    let spinner = (!json).then(|| ui::spinner("Creating encrypted space..."));
     let req = InitializeSpaceRequest {
         passphrase: passphrase_str.clone(),
         passphrase_confirm: passphrase_str,
@@ -80,15 +95,56 @@ pub async fn run(args: InitArgs, verbose: bool) -> i32 {
 
     match ctx.setup_v2_client().initialize_space(&req).await {
         Ok(resp) => {
-            ui::spinner_finish_success(&spinner, "Space initialized");
-            ui::info("space_id", &resp.space_id);
-            ui::info("device_id", &resp.self_device_id);
-            ui::info("fingerprint", &resp.fingerprint);
-            exit_codes::EXIT_SUCCESS
+            if json {
+                output::emit_json(
+                    &InitOutput {
+                        space_id: &resp.space_id,
+                        device_id: &resp.self_device_id,
+                        fingerprint: &resp.fingerprint,
+                    },
+                    "space initialization result",
+                )
+            } else {
+                if let Some(spinner) = spinner.as_ref() {
+                    ui::spinner_finish_success(spinner, "Space initialized");
+                }
+                ui::info("space_id", &resp.space_id);
+                ui::info("device_id", &resp.self_device_id);
+                ui::info("fingerprint", &resp.fingerprint);
+                exit_codes::EXIT_SUCCESS
+            }
         }
         Err(err) => {
-            ui::spinner_finish_error(&spinner, &crate::commands::daemon_error_message(&err));
+            if let Some(spinner) = spinner.as_ref() {
+                ui::spinner_finish_error(spinner, &crate::commands::daemon_error_message(&err));
+            } else {
+                ui::error(&crate::commands::daemon_error_message(&err));
+            }
             exit_codes::EXIT_ERROR
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::InitOutput;
+
+    #[test]
+    fn json_output_uses_stable_identifiers() {
+        let value = serde_json::to_value(InitOutput {
+            space_id: "space-1",
+            device_id: "device-1",
+            fingerprint: "fingerprint-1",
+        })
+        .expect("init output should serialize");
+
+        assert_eq!(
+            value,
+            serde_json::json!({
+                "space_id": "space-1",
+                "device_id": "device-1",
+                "fingerprint": "fingerprint-1"
+            })
+        );
     }
 }

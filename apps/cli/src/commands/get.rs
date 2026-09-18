@@ -20,8 +20,8 @@
 //!   cache dir) and the **absolute path** is printed to stdout. `--out -`
 //!   streams the raw bytes to stdout instead.
 //!
-//! All human-readable status lines go to **stderr** (via `ui`), so stdout
-//! stays clean for both the path string and raw binary.
+//! Successful materialization prints only the requested value to stdout.
+//! Errors go to **stderr** (via `ui`).
 //!
 //! ## Exit codes
 //!
@@ -364,11 +364,9 @@ fn write_bytes_outcome(
             outcome: "exported",
         });
     } else {
-        // The path is the one machine-readable line on stdout; status on stderr.
+        // Keep successful output to exactly one machine-readable line so the
+        // command remains safe even when callers merge stdout and stderr.
         println!("{path_str}");
-        ui::info("type", category.as_str());
-        ui::info("bytes", &bytes_written.to_string());
-        ui::end("Done");
     }
     exit_codes::EXIT_SUCCESS
 }

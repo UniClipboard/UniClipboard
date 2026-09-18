@@ -7,39 +7,70 @@ import { resolveEncryptionStatus } from '@/lib/app-state'
 import { shouldSignalDaemonLifecycleReady } from '@/lib/daemon-lifecycle-ready'
 
 describe('shouldSignalDaemonLifecycleReady', () => {
-  it('returns true when setup is complete, daemon is connected, and encryption session is ready', () => {
+  it('returns true when setup, daemon, encryption, and membership are ready', () => {
     expect(
-      shouldSignalDaemonLifecycleReady(false, true, {
-        initialized: true,
-        session_ready: true,
-      })
+      shouldSignalDaemonLifecycleReady(
+        false,
+        true,
+        {
+          initialized: true,
+          session_ready: true,
+        },
+        'ready'
+      )
     ).toBe(true)
   })
 
   it('returns false while setup is still active', () => {
     expect(
-      shouldSignalDaemonLifecycleReady(true, true, {
-        initialized: true,
-        session_ready: true,
-      })
+      shouldSignalDaemonLifecycleReady(
+        true,
+        true,
+        {
+          initialized: true,
+          session_ready: true,
+        },
+        'ready'
+      )
     ).toBe(false)
   })
 
   it('returns false before daemon bootstrap finishes', () => {
     expect(
-      shouldSignalDaemonLifecycleReady(false, false, {
-        initialized: true,
-        session_ready: true,
-      })
+      shouldSignalDaemonLifecycleReady(
+        false,
+        false,
+        {
+          initialized: true,
+          session_ready: true,
+        },
+        'ready'
+      )
     ).toBe(false)
   })
 
   it('returns false when encryption is not yet ready', () => {
     expect(
-      shouldSignalDaemonLifecycleReady(false, true, {
-        initialized: true,
-        session_ready: false,
-      })
+      shouldSignalDaemonLifecycleReady(
+        false,
+        true,
+        {
+          initialized: true,
+          session_ready: false,
+        },
+        'ready'
+      )
+    ).toBe(false)
+  })
+
+  it('returns false while membership is recovering', () => {
+    expect(
+      shouldSignalDaemonLifecycleReady(
+        false,
+        true,
+        { initialized: true, session_ready: true },
+        'recoveringMembership'
+      )
     ).toBe(false)
   })
 })

@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useReducer, useRef, useSyncExternalStore } from 'react'
+import { useCallback, useEffect, useReducer, useRef, useState, useSyncExternalStore } from 'react'
 import { daemonClient } from '@/api/daemon/client'
-import { signalLifecycleReady } from '@/api/daemon/lifecycle'
+import { getLifecycleStatus, signalLifecycleReady } from '@/api/daemon/lifecycle'
 import { useEncryptionState } from '@/hooks/useDaemonEvents'
 import { appBootstrapReducer, initialAppBootstrapState } from '@/lib/app-bootstrap-state'
 import { DaemonBootstrapFailedError } from '@/lib/daemon-connection-info'
@@ -18,6 +18,9 @@ export function useAppBootstrap(isSetupActive: boolean) {
   const [state, dispatch] = useReducer(appBootstrapReducer, initialAppBootstrapState)
   const bootstrapRetryingRef = useRef(false)
   const daemonLifecycleReadySignaledRef = useRef(false)
+  const [spaceReadiness, setSpaceReadiness] = useState<
+    'checking' | 'recoveringMembership' | 'ready'
+  >('checking')
   const subscribe = useCallback(
     (listener: () => void) => (state.daemonBootstrapReady ? () => {} : subscribeStartup(listener)),
     [state.daemonBootstrapReady]
@@ -67,9 +70,49 @@ export function useAppBootstrap(isSetupActive: boolean) {
       : 'Failed to check encryption status'
     : null
   const resolvedEncryptionStatus = state.encryptionOverride ?? encryptionData ?? null
+  const encryptionInitialized = resolvedEncryptionStatus?.initialized === true
+  const encryptionSessionReady = resolvedEncryptionStatus?.session_ready === true
   const encryptionError = resolvedEncryptionStatus
     ? null
     : (state.bootEncryptionError ?? encryptionQueryErrorMessage)
+
+  useEffect(() => {
+    if (
+      isSetupActive ||
+      !state.daemonBootstrapReady ||
+      !encryptionInitialized ||
+      !encryptionSessionReady
+    ) {
+      setSpaceReadiness('checking')
+      return
+    }
+
+    let cancelled = false
+    let timer: ReturnType<typeof setTimeout> | null = null
+    const refresh = async () => {
+      try {
+        const status = await getLifecycleStatus()
+        if (cancelled) return
+        if (status.state === 'Ready') {
+          setSpaceReadiness('ready')
+          return
+        }
+        setSpaceReadiness(
+          status.pendingReason === 'membership_recovery' ? 'recoveringMembership' : 'checking'
+        )
+      } catch {
+        if (cancelled) return
+        setSpaceReadiness('checking')
+      }
+      timer = setTimeout(refresh, 1_000)
+    }
+    void refresh()
+
+    return () => {
+      cancelled = true
+      if (timer !== null) clearTimeout(timer)
+    }
+  }, [encryptionInitialized, encryptionSessionReady, isSetupActive, state.daemonBootstrapReady])
 
   const retry = useCallback(() => {
     if (bootstrapRetryingRef.current) return
@@ -141,7 +184,8 @@ export function useAppBootstrap(isSetupActive: boolean) {
       !shouldSignalDaemonLifecycleReady(
         isSetupActive,
         state.daemonBootstrapReady,
-        resolvedEncryptionStatus
+        resolvedEncryptionStatus,
+        spaceReadiness
       )
     ) {
       return
@@ -152,7 +196,7 @@ export function useAppBootstrap(isSetupActive: boolean) {
       daemonLifecycleReadySignaledRef.current = false
       console.error('Failed to signal daemon lifecycle ready:', error)
     })
-  }, [isSetupActive, resolvedEncryptionStatus, state.daemonBootstrapReady])
+  }, [isSetupActive, resolvedEncryptionStatus, spaceReadiness, state.daemonBootstrapReady])
 
   const setEncryptionStatus = useCallback(
     (status: { initialized: boolean; session_ready: boolean }) =>
@@ -166,6 +210,7 @@ export function useAppBootstrap(isSetupActive: boolean) {
     encryptionLoading,
     encryptionError,
     resolvedEncryptionStatus,
+    spaceReadiness,
     retry,
     setEncryptionStatus,
   }

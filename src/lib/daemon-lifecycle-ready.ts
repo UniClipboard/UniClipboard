@@ -6,12 +6,14 @@ export type EncryptionStatusView = {
 export function shouldSignalDaemonLifecycleReady(
   isSetupActive: boolean,
   daemonBootstrapReady: boolean,
-  encryptionStatus: EncryptionStatusView | null
+  encryptionStatus: EncryptionStatusView | null,
+  spaceReadiness: 'checking' | 'recoveringMembership' | 'ready'
 ): boolean {
   return (
     !isSetupActive &&
     daemonBootstrapReady &&
     encryptionStatus?.initialized === true &&
-    encryptionStatus.session_ready === true
+    encryptionStatus.session_ready === true &&
+    spaceReadiness === 'ready'
   )
 }

@@ -10,10 +10,14 @@ use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde_json::json;
 use tracing::{info, Instrument};
-use uc_engine::{EngineState, Operation, OperationResult, RecoverSessionInput};
+use uc_engine::{
+    EngineState, MembershipReadinessStateSummary, Operation, OperationResult, RecoverSessionInput,
+};
 
 use uc_daemon_contract::api::dto::envelope::{ApiEnvelope, LifecycleStatusEnvelope};
-use uc_daemon_contract::api::types::{DaemonResidency, RestartAccepted, RestartRequest};
+use uc_daemon_contract::api::types::{
+    DaemonResidency, LifecyclePendingReason, RestartAccepted, RestartRequest,
+};
 
 use super::types::LifecycleStatusResponse;
 use crate::api::dto::error::ApiError;
@@ -66,15 +70,118 @@ async fn lifecycle_ready_handler(State(_state): State<DaemonApiState>) -> impl I
 async fn get_lifecycle_status_handler(
     State(state): State<DaemonApiState>,
 ) -> Result<Json<LifecycleStatusEnvelope>, ApiError> {
-    let current_state = match state.engine.lifecycle_state().await {
-        EngineState::Running => "Ready",
-        EngineState::Quiescing | EngineState::Quiesced | EngineState::Suspended => "Pending",
-        EngineState::ShuttingDown | EngineState::Stopped => "Idle",
+    let response = match state.engine.lifecycle_state().await {
+        EngineState::Running => match state.execute(Operation::QueryMembershipReadiness).await {
+            Ok(OperationResult::MembershipReadiness(readiness)) => match readiness.state {
+                MembershipReadinessStateSummary::Ready => {
+                    let roster_readable = match state.execute(Operation::QueryPeerConnections).await
+                    {
+                        Ok(OperationResult::PeerConnections(_)) => true,
+                        Ok(_) => {
+                            return Err(ApiError::internal(
+                                "engine returned an unexpected peer connections result",
+                            ));
+                        }
+                        Err(error) => {
+                            tracing::warn!(
+                                code = error.code(),
+                                category = %error.category(),
+                                "membership roster is not ready"
+                            );
+                            false
+                        }
+                    };
+                    running_lifecycle_response(readiness.state, roster_readable)
+                }
+                _ => running_lifecycle_response(readiness.state, false),
+            },
+            Ok(_) => {
+                return Err(ApiError::internal(
+                    "engine returned an unexpected membership readiness result",
+                ));
+            }
+            Err(error) => {
+                tracing::error!(
+                    code = error.code(),
+                    category = %error.category(),
+                    "membership readiness query failed"
+                );
+                return Err(ApiError::service_unavailable(
+                    "membership readiness is unavailable",
+                ));
+            }
+        },
+        EngineState::Quiescing | EngineState::Quiesced | EngineState::Suspended => {
+            LifecycleStatusResponse {
+                state: "Pending".to_owned(),
+                pending_reason: None,
+            }
+        }
+        EngineState::ShuttingDown | EngineState::Stopped => LifecycleStatusResponse {
+            state: "Idle".to_owned(),
+            pending_reason: None,
+        },
     };
 
-    Ok(Json(ApiEnvelope::now(LifecycleStatusResponse {
-        state: current_state.to_string(),
-    })))
+    Ok(Json(ApiEnvelope::now(response)))
+}
+
+fn running_lifecycle_response(
+    state: MembershipReadinessStateSummary,
+    roster_readable: bool,
+) -> LifecycleStatusResponse {
+    let (state, pending_reason) = match state {
+        MembershipReadinessStateSummary::Ready if roster_readable => ("Ready", None),
+        MembershipReadinessStateSummary::Ready => {
+            ("Pending", Some(LifecyclePendingReason::MembershipRecovery))
+        }
+        MembershipReadinessStateSummary::Locked => {
+            ("Pending", Some(LifecyclePendingReason::SpaceLocked))
+        }
+        MembershipReadinessStateSummary::Recovering => {
+            ("Pending", Some(LifecyclePendingReason::MembershipRecovery))
+        }
+    };
+    LifecycleStatusResponse {
+        state: state.to_owned(),
+        pending_reason,
+    }
+}
+
+#[cfg(test)]
+mod readiness_tests {
+    use super::*;
+
+    #[test]
+    fn membership_recovery_keeps_the_product_pending() {
+        let response =
+            running_lifecycle_response(MembershipReadinessStateSummary::Recovering, false);
+
+        assert_eq!(response.state, "Pending");
+        assert_eq!(
+            response.pending_reason,
+            Some(LifecyclePendingReason::MembershipRecovery)
+        );
+    }
+
+    #[test]
+    fn verified_membership_admits_the_product_ui() {
+        let response = running_lifecycle_response(MembershipReadinessStateSummary::Ready, true);
+
+        assert_eq!(response.state, "Ready");
+        assert_eq!(response.pending_reason, None);
+    }
+
+    #[test]
+    fn unreadable_roster_keeps_verified_membership_pending() {
+        let response = running_lifecycle_response(MembershipReadinessStateSummary::Ready, false);
+
+        assert_eq!(response.state, "Pending");
+        assert_eq!(
+            response.pending_reason,
+            Some(LifecyclePendingReason::MembershipRecovery)
+        );
+    }
 }
 
 /// POST /lifecycle/retry

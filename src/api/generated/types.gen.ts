@@ -1638,6 +1638,8 @@ export type LanInterfaceViewDto = {
     name: string;
 };
 
+export type LifecyclePendingReason = 'space_locked' | 'membership_recovery';
+
 /**
  * Canonical success envelope: `{ "data": T, "ts": <unix millis i64> }`.
  *
@@ -1667,6 +1669,7 @@ export type LifecycleStatusEnvelope = {
  * can replace the Tauri get_lifecycle_status command without frontend type changes.
  */
 export type LifecycleStatusResponse = {
+    pendingReason?: LifecyclePendingReason | null;
     /**
      * Current lifecycle state.
      */

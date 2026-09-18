@@ -237,6 +237,16 @@ pub struct SpaceMembersChangedPayload {
 pub struct LifecycleStatusResponse {
     /// Current lifecycle state.
     pub state: String,
+    /// Why an otherwise running daemon cannot yet admit the product UI.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pending_reason: Option<LifecyclePendingReason>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum LifecyclePendingReason {
+    SpaceLocked,
+    MembershipRecovery,
 }
 
 /// POST /lifecycle/restart request body (ADR-008 P5-L L8d-1). `targetMode` is the

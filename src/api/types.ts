@@ -7,6 +7,7 @@ export type LifecycleState = 'Idle' | 'Pending' | 'Ready' | 'WatcherFailed' | 'N
 
 export interface LifecycleStatusDto {
   state: LifecycleState
+  pendingReason?: 'space_locked' | 'membership_recovery'
 }
 
 // `GET /lifecycle/status` now returns the canonical `{ data, ts }` envelope

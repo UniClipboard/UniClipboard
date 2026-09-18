@@ -1,5 +1,5 @@
 import { act, renderHook, waitFor } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useAppBootstrap } from '@/hooks/useAppBootstrap'
 import { refreshStartupSnapshot } from '@/lib/daemon-startup-progress'
 
@@ -14,6 +14,8 @@ const mocks = vi.hoisted(() => ({
   refetch: vi.fn(() => {
     throw new Error('Cannot refetch a query that has not been started yet')
   }),
+  lifecycle: vi.fn().mockResolvedValue({ state: 'Ready' }),
+  encryption: undefined as { initialized: boolean; session_ready: boolean } | undefined,
 }))
 vi.mock('@/lib/ipc', () => ({
   commands: {
@@ -24,17 +26,48 @@ vi.mock('@/lib/ipc', () => ({
 }))
 vi.mock('@/api/daemon/client', () => ({ daemonClient: { refreshSession: mocks.refresh } }))
 vi.mock('@/api/daemon/lifecycle', () => ({
+  getLifecycleStatus: mocks.lifecycle,
   signalLifecycleReady: vi.fn().mockResolvedValue(undefined),
 }))
 vi.mock('@/lib/daemon-ws-bootstrap', () => ({ connectDaemonWs: mocks.connect }))
 vi.mock('@/hooks/useDaemonEvents', () => ({ useEncryptionState: vi.fn() }))
 vi.mock('@/observability/errors', () => ({ reportError: vi.fn() }))
 vi.mock('@/store/api', () => ({
-  useGetEncryptionSessionStatusQuery: () => ({ isLoading: false, refetch: mocks.refetch }),
+  useGetEncryptionSessionStatusQuery: () => ({
+    data: mocks.encryption,
+    isLoading: false,
+    refetch: mocks.refetch,
+  }),
   useLazyGetEncryptionSessionStatusQuery: () => [mocks.check],
 }))
 
 describe('startup retry', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mocks.connect
+      .mockReset()
+      .mockRejectedValueOnce(new Error('offline'))
+      .mockResolvedValue(undefined)
+    mocks.lifecycle.mockReset().mockResolvedValue({ state: 'Ready' })
+    mocks.encryption = undefined
+  })
+
+  it('keeps polling authoritative readiness until membership recovery completes', async () => {
+    mocks.connect.mockReset().mockResolvedValue(undefined)
+    mocks.encryption = { initialized: true, session_ready: true }
+    mocks.lifecycle
+      .mockReset()
+      .mockResolvedValueOnce({ state: 'Pending', pendingReason: 'membership_recovery' })
+      .mockResolvedValue({ state: 'Ready' })
+
+    const { result, unmount } = renderHook(() => useAppBootstrap(false))
+
+    await waitFor(() => expect(result.current.spaceReadiness).toBe('recoveringMembership'))
+    await waitFor(() => expect(result.current.spaceReadiness).toBe('ready'), { timeout: 2_500 })
+    expect(mocks.lifecycle).toHaveBeenCalledTimes(2)
+    unmount()
+  })
+
   it('connects even while setup state is unknown or the setup wizard is active', async () => {
     mocks.connect.mockReset().mockResolvedValue(undefined)
     const { result, unmount } = renderHook(() => useAppBootstrap(true))

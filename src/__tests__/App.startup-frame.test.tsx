@@ -15,6 +15,7 @@ const state = vi.hoisted(() => ({
   setupRequired: false,
   locked: false,
   checkingEncryption: false,
+  spaceReadiness: 'ready' as 'ready' | 'recoveringMembership',
   presentation: vi.fn(),
   startupStatus: null as DaemonStartupStatus | null,
   window: {
@@ -67,6 +68,7 @@ vi.mock('@/hooks/useAppBootstrap', () => ({
     resolvedEncryptionStatus: state.checkingEncryption
       ? null
       : { initialized: true, session_ready: !state.locked },
+    spaceReadiness: state.spaceReadiness,
     setEncryptionStatus: vi.fn(),
     retry: vi.fn(),
   }),
@@ -92,6 +94,7 @@ beforeEach(() => {
   state.setupRequired = false
   state.locked = false
   state.checkingEncryption = false
+  state.spaceReadiness = 'ready'
   state.startupStatus = null
   state.platform = { isWindows: true, isLinux: false, isMac: false, isTauri: true }
 })
@@ -207,6 +210,24 @@ describe('startup window frame before setup hydration', () => {
     expect(screen.getByRole('main')).toHaveTextContent('History')
     expect(state.presentation).toHaveBeenLastCalledWith(true)
     expect(screen.queryByText('Setup')).not.toBeInTheDocument()
+  })
+
+  it('keeps the startup screen while authoritative space membership is recovering', () => {
+    state.failed = false
+    state.connected = true
+    state.hydrated = true
+    state.spaceReadiness = 'recoveringMembership'
+
+    const view = render(<AppContentWithBar />)
+
+    expect(screen.getByRole('heading')).toHaveTextContent(/正在恢复空间|Recovering.*space/)
+    expect(state.presentation).toHaveBeenLastCalledWith(true)
+    expect(screen.queryByText('History')).not.toBeInTheDocument()
+
+    state.spaceReadiness = 'ready'
+    view.rerender(<AppContentWithBar />)
+
+    expect(screen.getByRole('main')).toHaveTextContent('History')
   })
 
   it('opens the wizard only after setup is confirmed necessary', () => {

@@ -12,9 +12,10 @@ use uc_daemon_contract::api::dto::clipboard::{
     EntryDetailDto, EntryProjectionResponseDto, EntryResourceDto,
 };
 use uc_daemon_contract::api::dto::clipboard_command::{
-    CancelTransferResponse, DispatchOutcomeResponse, InboundEntryEvent, InboundNoticeEvent,
-    ResendResponse,
+    CancelTransferResponse, DispatchFileOutcomeResponse, DispatchOutcomeResponse,
+    InboundEntryEvent, InboundNoticeEvent, ResendResponse,
 };
+use uc_daemon_contract::api::dto::clipboard_delivery::EntryDeliveryViewDto;
 use uc_daemon_contract::api::dto::member::{
     ChooseDeviceGroupRequestDto, DeviceGroupChoiceResultDto, DeviceGroupChoicesDto,
     DeviceTrustSnapshotDto, MemberSyncPreferencesDto, MemberSyncPreferencesPatchDto,
@@ -62,6 +63,14 @@ pub trait DaemonService: Send + Sync {
         text: &str,
         peers: Option<Vec<String>>,
     ) -> Result<DispatchOutcomeResponse>;
+
+    async fn dispatch_file(
+        &self,
+        source_path: &str,
+        peers: Option<Vec<String>>,
+    ) -> Result<DispatchFileOutcomeResponse>;
+
+    async fn entry_delivery(&self, entry_id: &str) -> Result<EntryDeliveryViewDto>;
 
     async fn resend_entry(
         &self,

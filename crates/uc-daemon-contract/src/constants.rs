@@ -157,6 +157,8 @@ pub mod http_route {
     pub const UPGRADE_ACK: &str = "/upgrade/ack";
     /// POST /clipboard/dispatch — dispatch plaintext to online peers (ADR-008 P2.5 / D7)
     pub const CLIPBOARD_DISPATCH: &str = "/clipboard/dispatch";
+    /// POST /clipboard/dispatch-file — dispatch one local file through the daemon.
+    pub const CLIPBOARD_DISPATCH_FILE: &str = "/clipboard/dispatch-file";
     /// POST /clipboard/resend — resend a previously captured entry (ADR-008 P2.5 / D7)
     pub const CLIPBOARD_RESEND: &str = "/clipboard/resend";
     /// POST /clipboard/capture-current — capture whatever is on the OS

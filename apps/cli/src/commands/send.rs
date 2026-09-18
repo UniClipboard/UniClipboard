@@ -1,30 +1,19 @@
-//! `uniclip send` — clipboard dispatch via daemon (text/resend) or the unified
-//! engine (file-send, dev-tools only).
-//!
-//! ## Text / resend mode (always available)
-//!
-//! Routes through `connect_or_spawn_oneshot_daemon` → HTTP dispatch.
-//!
-//! ## File-send mode (`--features dev-tools` only)
-//!
-//! Starts the unified engine, imports the selected file through a host handle,
-//! sends it, and keeps the engine alive until Ctrl-C so receivers can fetch.
+//! `uniclip send` — text, file, and resend dispatch through the daemon.
 
 use std::io::Read;
 use std::path::PathBuf;
 
-#[cfg(feature = "dev-tools")]
 use serde::Serialize;
 
-#[cfg(feature = "dev-tools")]
-use uc_engine::{Operation, OperationResult, SendFilesInput, SendTargetOutcome, SendTargetSummary};
-
 use uc_daemon_client::DaemonService;
-use uc_daemon_contract::api::dto::clipboard_command::DispatchOutcomeResponse;
+use uc_daemon_contract::api::dto::clipboard_command::{
+    DispatchOutcomeResponse, PerTargetOutcomeDto,
+};
+use uc_daemon_contract::api::dto::clipboard_delivery::{
+    EntryDeliveryStatusDto, EntryDeliveryTargetDto, EntryDeliveryViewDto,
+};
 
 use crate::commands::app_session::connect_or_spawn_oneshot_daemon;
-#[cfg(feature = "dev-tools")]
-use crate::commands::app_session::{build_app_session, refuse_if_daemon_running, CliAppSession};
 use crate::exit_codes;
 use crate::ui;
 
@@ -34,12 +23,12 @@ pub struct SendArgs {
     /// until EOF — handy for `echo hi | uniclip send` and the
     /// dual-profile test recipe. Ignored when `resend` or `file` is set
     /// (clap enforces mutual exclusion at the parser layer).
-    pub text: Option<String>,
+    pub input: Option<String>,
+    /// Whether `--text` explicitly disables path auto-detection.
+    pub force_text: bool,
     /// Path to a file to send instead of text. Mutually exclusive with
-    /// positional text and `--resend`. The file is published as a blob,
-    /// dispatched as a clipboard envelope referencing the blob, and the
-    /// CLI keeps the iroh router alive (passive provider) until Ctrl-C
-    /// so the receiver has time to fetch.
+    /// positional text and `--resend`. The daemon owns the blob provider and
+    /// the CLI waits for the selected targets to reach terminal states.
     pub file: Option<PathBuf>,
     /// Entry id to **resend**. When set, the daemon pulls the original snapshot.
     pub resend: Option<String>,
@@ -49,29 +38,6 @@ pub struct SendArgs {
 }
 
 pub async fn run(args: SendArgs, json: bool, verbose: bool) -> i32 {
-    if let Some(file) = args.file {
-        if args.text.is_some() || args.resend.is_some() {
-            ui::error("`--file` cannot be combined with positional text or `--resend`.");
-            return exit_codes::EXIT_ERROR;
-        }
-        if !args.peers.is_empty() {
-            ui::error("`--peer` is not supported with `--file` yet.");
-            return exit_codes::EXIT_ERROR;
-        }
-        #[cfg(feature = "dev-tools")]
-        {
-            return run_send_file(file, json, verbose).await;
-        }
-        #[cfg(not(feature = "dev-tools"))]
-        {
-            let _ = file;
-            ui::error(
-                "`send --file` requires the in-process blob stack (build with --features dev-tools).",
-            );
-            return exit_codes::EXIT_ERROR;
-        }
-    }
-
     let mode = if args.resend.is_some() {
         SendMode::Resend
     } else {
@@ -82,21 +48,32 @@ pub async fn run(args: SendArgs, json: bool, verbose: bool) -> i32 {
         ui::header(mode.header());
     }
 
-    if args.resend.is_some() && args.text.is_some() {
+    if args.resend.is_some() && args.input.is_some() {
         ui::error("--resend cannot be combined with positional text.");
         return exit_codes::EXIT_ERROR;
     }
 
-    let plaintext = match mode {
+    let input = match mode {
         SendMode::Resend => None,
-        SendMode::New => match read_plaintext(args.text) {
-            Ok(text) if text.is_empty() => {
+        SendMode::New => match classify_input(args.input, args.file, args.force_text) {
+            Ok(SendInput::Stdin) => match read_plaintext(None) {
+                Ok(text) if text.is_empty() => {
+                    ui::error("Empty plaintext — nothing to send.");
+                    return exit_codes::EXIT_ERROR;
+                }
+                Ok(text) => Some(SendInput::Text(text)),
+                Err(message) => {
+                    ui::error(&message);
+                    return exit_codes::EXIT_ERROR;
+                }
+            },
+            Ok(SendInput::Text(text)) if text.is_empty() => {
                 ui::error("Empty plaintext — nothing to send.");
                 return exit_codes::EXIT_ERROR;
             }
-            Ok(text) => Some(text),
-            Err(msg) => {
-                ui::error(&msg);
+            Ok(input) => Some(input),
+            Err(message) => {
+                ui::error(&message);
                 return exit_codes::EXIT_ERROR;
             }
         },
@@ -112,7 +89,85 @@ pub async fn run(args: SendArgs, json: bool, verbose: bool) -> i32 {
         Ok(s) => s,
         Err(code) => return code,
     };
-    run_send_via_daemon(&*service, mode, plaintext, args.resend, peers_str, json).await
+    match input {
+        Some(SendInput::File(path)) => {
+            run_send_file_via_daemon(&*service, path, peers_str, json).await
+        }
+        Some(SendInput::Text(text)) => {
+            run_send_via_daemon(&*service, mode, Some(text), args.resend, peers_str, json).await
+        }
+        Some(SendInput::Stdin) => unreachable!("stdin is resolved before daemon connection"),
+        None => run_send_via_daemon(&*service, mode, None, args.resend, peers_str, json).await,
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum SendInput {
+    Stdin,
+    Text(String),
+    File(PathBuf),
+}
+
+fn classify_input(
+    positional: Option<String>,
+    explicit_file: Option<PathBuf>,
+    force_text: bool,
+) -> Result<SendInput, String> {
+    if let Some(path) = explicit_file {
+        return classify_file(path);
+    }
+    let Some(value) = positional else {
+        return Ok(SendInput::Stdin);
+    };
+    if force_text {
+        return Ok(SendInput::Text(value));
+    }
+    let path = PathBuf::from(&value);
+    match std::fs::metadata(&path) {
+        Ok(metadata) if metadata.is_file() => classify_file(path),
+        Ok(metadata) if metadata.is_dir() => Err(format!(
+            "Directory sending is not supported: {}",
+            path.display()
+        )),
+        Ok(_) => Err(format!("Path is not a regular file: {}", path.display())),
+        Err(error)
+            if error.kind() == std::io::ErrorKind::NotFound && looks_like_path(&path, &value) =>
+        {
+            Err(format!("Path does not exist: {}", path.display()))
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(SendInput::Text(value)),
+        Err(error) => Err(format!(
+            "Failed to inspect path {}: {error}",
+            path.display()
+        )),
+    }
+}
+
+fn classify_file(path: PathBuf) -> Result<SendInput, String> {
+    let metadata = std::fs::metadata(&path)
+        .map_err(|error| format!("Failed to inspect file {}: {error}", path.display()))?;
+    if metadata.is_dir() {
+        return Err(format!(
+            "Directory sending is not supported: {}",
+            path.display()
+        ));
+    }
+    if !metadata.is_file() {
+        return Err(format!("Path is not a regular file: {}", path.display()));
+    }
+    path.canonicalize()
+        .map(SendInput::File)
+        .map_err(|error| format!("Failed to resolve file path {}: {error}", path.display()))
+}
+
+fn looks_like_path(path: &std::path::Path, raw: &str) -> bool {
+    path.is_absolute()
+        || raw.starts_with("./")
+        || raw.starts_with("../")
+        || raw.starts_with(".\\")
+        || raw.starts_with("..\\")
+        || raw.contains('/')
+        || raw.contains('\\')
 }
 
 async fn run_send_via_daemon(
@@ -277,200 +332,201 @@ fn short_hash(hash: &str) -> &str {
     }
 }
 
-// ── File-send (dev-tools only) ────────────────────────────────────────
+// ── File send through the daemon ──────────────────────────────────────
 
-#[cfg(feature = "dev-tools")]
-fn render_per_target(entry: &SendTargetSummary) -> String {
-    match &entry.outcome {
-        SendTargetOutcome::Accepted => "accepted".to_string(),
-        SendTargetOutcome::Duplicate => "duplicate (peer already had it)".to_string(),
-        SendTargetOutcome::Error { message } => format!("failed: {message}"),
-    }
-}
-
-/// `send -f <path>` path (requires dev-tools feature).
-///
-/// Unlike the text path, dispatch returns but the process must stay alive while
-/// the receiver pulls bytes from this engine instance.
-#[cfg(feature = "dev-tools")]
-async fn run_send_file(path: PathBuf, json: bool, verbose: bool) -> i32 {
-    if !json {
-        ui::header("Send file");
-    }
-
-    // metadata before daemon check — bail early on obviously wrong paths.
-    let abs_path = match path.canonicalize() {
-        Ok(p) => p,
-        Err(err) => {
-            ui::error(&format!("Failed to resolve file path: {err}"));
-            return exit_codes::EXIT_ERROR;
-        }
-    };
-    let metadata = match tokio::fs::metadata(&abs_path).await {
-        Ok(m) => m,
-        Err(err) => {
-            ui::error(&format!("Failed to stat file: {err}"));
-            return exit_codes::EXIT_ERROR;
-        }
-    };
-    if !metadata.is_file() {
-        ui::error("Path is not a regular file.");
+async fn run_send_file_via_daemon(
+    service: &dyn DaemonService,
+    path: PathBuf,
+    peers: Option<Vec<String>>,
+    json: bool,
+) -> i32 {
+    let Some(source_path) = path.to_str() else {
+        ui::error("File path is not valid Unicode.");
         return exit_codes::EXIT_ERROR;
-    }
-    let size_bytes = metadata.len();
-    let filename = abs_path
-        .file_name()
-        .and_then(|n| n.to_str())
-        .map(|s| s.to_string())
-        .unwrap_or_else(|| "file".to_string());
-
-    if let Err(code) = refuse_if_daemon_running().await {
-        return code;
-    }
-
-    let cli = match build_app_session(verbose).await {
-        Ok(bundle) => bundle,
-        Err(code) => return code,
     };
-
-    if let Err(code) = resume_and_probe(&cli).await {
-        cli.shutdown().await;
-        return code;
-    }
-
-    let file_handle = match cli.file_handles().register_input(abs_path) {
-        Ok(handle) => handle,
+    let metadata = match std::fs::metadata(&path) {
+        Ok(metadata) => metadata,
         Err(error) => {
-            ui::error(&format!("Failed to register file: {error}"));
-            cli.shutdown().await;
+            ui::error(&format!("Failed to inspect file: {error}"));
             return exit_codes::EXIT_ERROR;
         }
     };
-
-    let dispatch_spinner = ui::spinner("Dispatching envelope to online peers...");
-    let outcome = match cli
-        .engine()
-        .execute(Operation::SendFiles(SendFilesInput {
-            files: vec![file_handle],
-            target_devices: Vec::new(),
-        }))
-        .await
-    {
-        Ok(OperationResult::EntrySent(report)) => {
-            ui::spinner_finish_success(
-                &dispatch_spinner,
-                &format!(
-                    "{} accepted, {} duplicate, {} offline, {} error(s)",
-                    report.total_accepted,
-                    report.total_duplicate,
-                    report.total_offline,
-                    report.total_errored
-                ),
-            );
-            report
-        }
-        Ok(_) => {
-            ui::spinner_finish_error(&dispatch_spinner, "Unexpected engine response");
-            cli.shutdown().await;
-            return exit_codes::EXIT_ERROR;
-        }
-        Err(err) => {
-            ui::spinner_finish_error(&dispatch_spinner, &format!("File send failed: {err}"));
-            cli.shutdown().await;
+    let filename = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("file")
+        .to_string();
+    let _lease = match service.hold_control_lease().await {
+        Ok(lease) => lease,
+        Err(error) => {
+            ui::error(&format!("Failed to hold daemon session lease: {error}"));
             return exit_codes::EXIT_ERROR;
         }
     };
+    let spinner = ui::spinner("Dispatching file via daemon...");
+    let outcome = match service.dispatch_file(source_path, peers).await {
+        Ok(outcome) => outcome,
+        Err(error) => {
+            ui::spinner_finish_error(&spinner, &format!("File send failed: {error}"));
+            return exit_codes::EXIT_ERROR;
+        }
+    };
+    ui::spinner_finish_success(
+        &spinner,
+        &format!(
+            "{} accepted, {} duplicate, {} offline, {} error(s)",
+            outcome.total_accepted,
+            outcome.total_duplicate,
+            outcome.total_offline,
+            outcome.total_errored
+        ),
+    );
 
+    let accepted_targets: std::collections::HashSet<String> = outcome
+        .per_target
+        .iter()
+        .filter(|target| target.outcome == "accepted")
+        .map(|target| target.device_id.clone())
+        .collect();
+    let related_targets: std::collections::HashSet<String> = outcome
+        .per_target
+        .iter()
+        .map(|target| target.device_id.clone())
+        .collect();
+    let delivery = if accepted_targets.is_empty() {
+        None
+    } else {
+        match wait_for_file_delivery(service, &outcome.entry_id, &accepted_targets).await {
+            Ok(view) => Some(view),
+            Err(WaitError::Cancelled) => {
+                ui::warn("Cancelled while waiting; the daemon may continue active transfers.");
+                return exit_codes::EXIT_ERROR;
+            }
+            Err(WaitError::Request(error)) => {
+                ui::error(&format!("Failed to query file delivery: {error}"));
+                return exit_codes::EXIT_ERROR;
+            }
+        }
+    };
+
+    let result = SendFileOutcomeDto {
+        entry_id: outcome.entry_id,
+        snapshot_hash: outcome.snapshot_hash,
+        filename,
+        size_bytes: metadata.len(),
+        total_accepted: outcome.total_accepted,
+        total_duplicate: outcome.total_duplicate,
+        total_offline: outcome.total_offline,
+        total_errored: outcome.total_errored,
+        per_target: outcome.per_target,
+        deliveries: delivery
+            .as_ref()
+            .map(|view| {
+                view.deliveries
+                    .iter()
+                    .filter(|target| related_targets.contains(&target.target_device_id))
+                    .cloned()
+                    .collect()
+            })
+            .unwrap_or_default(),
+    };
     if json {
-        let dto = SendFileOutcomeDto {
-            snapshot_hash: outcome.snapshot_hash.clone(),
-            filename: filename.clone(),
-            size_bytes,
-            entry_id: outcome.entry_id.clone(),
-            total_accepted: outcome.total_accepted,
-            total_duplicate: outcome.total_duplicate,
-            total_offline: outcome.total_offline,
-            total_errored: outcome.total_errored,
-            at_ms: outcome.at_ms,
-        };
-        match serde_json::to_string_pretty(&dto) {
-            Ok(s) => println!("{s}"),
-            Err(err) => {
-                ui::error(&format!("Failed to serialize outcome: {err}"));
-                cli.shutdown().await;
+        match serde_json::to_string_pretty(&result) {
+            Ok(value) => println!("{value}"),
+            Err(error) => {
+                ui::error(&format!("Failed to serialize outcome: {error}"));
                 return exit_codes::EXIT_ERROR;
             }
         }
     } else {
         ui::bar();
-        ui::info("file", &filename);
-        ui::info("size", &human_size(size_bytes));
-        ui::info("hash", short_hash(&outcome.snapshot_hash));
-        if outcome.per_target.is_empty() {
-            ui::info("targets", "(none — no online peers)");
-        } else {
-            for entry in &outcome.per_target {
-                ui::info(
-                    "·",
-                    &format!("{} → {}", entry.device_id, render_per_target(entry),),
-                );
+        ui::info("file", &result.filename);
+        ui::info("size", &human_size(result.size_bytes));
+        ui::info("hash", short_hash(&result.snapshot_hash));
+        for target in &result.deliveries {
+            ui::info(
+                "·",
+                &format!(
+                    "{} → {}",
+                    target.target_device_id,
+                    delivery_status_label(&target.status)
+                ),
+            );
+        }
+        if result.deliveries.is_empty() {
+            for target in &result.per_target {
+                ui::info("·", &format!("{} → {}", target.device_id, target.outcome));
             }
         }
         ui::bar();
-        ui::info("status", "Serving file — press Ctrl-C to stop");
+        ui::end("File send finished");
     }
-
-    // Keep the process alive until Ctrl-C so the receiver can fetch.
-    let _ = tokio::signal::ctrl_c().await;
-    if !json {
-        ui::end("Stopped");
-    }
-    cli.shutdown().await;
-    exit_codes::EXIT_SUCCESS
-}
-
-#[cfg(feature = "dev-tools")]
-async fn resume_and_probe(cli: &CliAppSession) -> Result<(), i32> {
-    let resume_spinner = ui::spinner("Resuming space session...");
-    match cli.recover_session().await {
-        Ok(true) => ui::spinner_finish_success(&resume_spinner, "Session resumed"),
-        Ok(false) => {
-            ui::spinner_finish_error(
-                &resume_spinner,
-                "No space on this profile — run `space init` or `space join` first.",
-            );
-            return Err(exit_codes::EXIT_ERROR);
-        }
-        Err(err) => {
-            ui::spinner_finish_error(&resume_spinner, &format!("Resume failed: {err}"));
-            return Err(exit_codes::EXIT_ERROR);
-        }
-    }
-
-    let probe_spinner = ui::spinner("Probing paired peers...");
-    match cli
-        .engine()
-        .execute(Operation::RefreshPeerConnections)
-        .await
+    if result.total_accepted == 0 && result.total_duplicate == 0 {
+        exit_codes::EXIT_ERROR
+    } else if result
+        .deliveries
+        .iter()
+        .any(|target| matches!(target.status, EntryDeliveryStatusDto::Failed { .. }))
     {
-        Ok(OperationResult::PeerConnectionsRefreshed(report)) => ui::spinner_finish_success(
-            &probe_spinner,
-            &format!(
-                "Probed {} peer(s): {} online, {} offline, {} error(s)",
-                report.total, report.online, report.offline, report.errors
-            ),
-        ),
-        Ok(_) => ui::spinner_finish_error(&probe_spinner, "Unexpected engine response"),
-        Err(err) => ui::spinner_finish_error(
-            &probe_spinner,
-            &format!("Probe round failed: {err} (proceeding)"),
-        ),
+        exit_codes::EXIT_ERROR
+    } else {
+        exit_codes::EXIT_SUCCESS
     }
-
-    Ok(())
 }
 
-#[cfg(feature = "dev-tools")]
+#[derive(Debug)]
+enum WaitError {
+    Cancelled,
+    Request(anyhow::Error),
+}
+
+async fn wait_for_file_delivery(
+    service: &dyn DaemonService,
+    entry_id: &str,
+    accepted_targets: &std::collections::HashSet<String>,
+) -> Result<EntryDeliveryViewDto, WaitError> {
+    loop {
+        let view = service
+            .entry_delivery(entry_id)
+            .await
+            .map_err(WaitError::Request)?;
+        if all_targets_terminal(&view, accepted_targets) {
+            return Ok(view);
+        }
+        tokio::select! {
+            _ = tokio::signal::ctrl_c() => return Err(WaitError::Cancelled),
+            _ = tokio::time::sleep(std::time::Duration::from_millis(250)) => {}
+        }
+    }
+}
+
+fn all_targets_terminal(
+    view: &EntryDeliveryViewDto,
+    target_ids: &std::collections::HashSet<String>,
+) -> bool {
+    target_ids.iter().all(|target_id| {
+        view.deliveries
+            .iter()
+            .find(|delivery| delivery.target_device_id == *target_id)
+            .is_some_and(|delivery| is_terminal_delivery(&delivery.status))
+    })
+}
+
+fn is_terminal_delivery(status: &EntryDeliveryStatusDto) -> bool {
+    !matches!(status, EntryDeliveryStatusDto::Pending)
+}
+
+fn delivery_status_label(status: &EntryDeliveryStatusDto) -> &'static str {
+    match status {
+        EntryDeliveryStatusDto::Pending => "pending",
+        EntryDeliveryStatusDto::Delivered => "delivered",
+        EntryDeliveryStatusDto::Duplicate => "duplicate",
+        EntryDeliveryStatusDto::Unreachable => "offline",
+        EntryDeliveryStatusDto::Superseded => "superseded",
+        EntryDeliveryStatusDto::Failed { .. } => "failed",
+    }
+}
+
 fn human_size(bytes: u64) -> String {
     const KIB: u64 = 1024;
     const MIB: u64 = 1024 * KIB;
@@ -486,16 +542,102 @@ fn human_size(bytes: u64) -> String {
     }
 }
 
-#[cfg(feature = "dev-tools")]
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 struct SendFileOutcomeDto {
+    entry_id: String,
     snapshot_hash: String,
     filename: String,
     size_bytes: u64,
-    entry_id: String,
     total_accepted: usize,
     total_duplicate: usize,
     total_offline: usize,
     total_errored: usize,
-    at_ms: i64,
+    per_target: Vec<PerTargetOutcomeDto>,
+    deliveries: Vec<EntryDeliveryTargetDto>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn existing_file_is_detected_but_force_text_wins() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("résumé file.txt");
+        std::fs::write(&path, b"hello").unwrap();
+        let raw = path.to_string_lossy().into_owned();
+
+        assert!(matches!(
+            classify_input(Some(raw.clone()), None, false).unwrap(),
+            SendInput::File(_)
+        ));
+        assert_eq!(
+            classify_input(Some(raw.clone()), None, true).unwrap(),
+            SendInput::Text(raw)
+        );
+    }
+
+    #[test]
+    fn directory_and_obvious_missing_path_are_rejected() {
+        let directory = tempfile::tempdir().unwrap();
+        let directory_error = classify_input(
+            Some(directory.path().to_string_lossy().into_owned()),
+            None,
+            false,
+        )
+        .unwrap_err();
+        assert!(directory_error.contains("Directory sending is not supported"));
+
+        let missing_error = classify_input(Some("./missing.pdf".into()), None, false).unwrap_err();
+        assert!(missing_error.contains("Path does not exist"));
+        assert_eq!(
+            classify_input(Some("hello world".into()), None, false).unwrap(),
+            SendInput::Text("hello world".into())
+        );
+    }
+
+    #[test]
+    fn all_non_pending_delivery_states_are_terminal() {
+        assert!(!is_terminal_delivery(&EntryDeliveryStatusDto::Pending));
+        assert!(is_terminal_delivery(&EntryDeliveryStatusDto::Delivered));
+        assert!(is_terminal_delivery(&EntryDeliveryStatusDto::Unreachable));
+        assert!(is_terminal_delivery(&EntryDeliveryStatusDto::Failed {
+            reason: uc_daemon_contract::api::dto::clipboard_delivery::DeliveryFailureReasonDto::Io,
+        }));
+    }
+
+    #[test]
+    fn multiple_targets_do_not_finish_when_only_the_first_is_terminal() {
+        use uc_daemon_contract::api::dto::clipboard_delivery::{
+            EntryDeliveryTargetDto, EntrySourceDto,
+        };
+
+        let targets = ["device-a".to_string(), "device-b".to_string()]
+            .into_iter()
+            .collect();
+        let mut view = EntryDeliveryViewDto {
+            entry_id: "entry-1".into(),
+            source: EntrySourceDto::Local,
+            deliveries: vec![
+                EntryDeliveryTargetDto {
+                    target_device_id: "device-a".into(),
+                    target_device_name: None,
+                    status: EntryDeliveryStatusDto::Delivered,
+                    reason_detail: None,
+                    updated_at_ms: Some(1),
+                },
+                EntryDeliveryTargetDto {
+                    target_device_id: "device-b".into(),
+                    target_device_name: None,
+                    status: EntryDeliveryStatusDto::Pending,
+                    reason_detail: None,
+                    updated_at_ms: None,
+                },
+            ],
+        };
+        assert!(!all_targets_terminal(&view, &targets));
+        view.deliveries[1].status = EntryDeliveryStatusDto::Delivered;
+        assert!(all_targets_terminal(&view, &targets));
+    }
 }

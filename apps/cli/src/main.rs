@@ -187,11 +187,12 @@ enum Commands {
     },
     /// Dispatch one clipboard payload to paired peers.
     ///
-    /// Self-contained direct mode. Two input modes, mutually exclusive:
+    /// Uses the local daemon. Three input modes are available:
     ///
-    /// * **New entry** (default) — reads text from the positional
-    ///   argument or stdin and fans it out as a fresh
-    ///   `SystemClipboardSnapshot` over the V3 envelope.
+    /// * **Automatic** (default) — an existing regular file is sent as a
+    ///   file; other positional input is sent as text; omitted input reads
+    ///   text from stdin.
+    /// * **Explicit** — `--text` forces text and `--file` forces a file.
     /// * **Resend** (`--resend <ENTRY-ID>`) — re-fans-out a previously
     ///   captured local entry. The CLI reconstructs the snapshot from
     ///   storage (no stdin / positional text). Fails when the entry is
@@ -212,15 +213,17 @@ enum Commands {
     ///   accepted, no duplicate, no pending). Use `--json` to inspect
     ///   per-bucket counts when a CI harness needs finer-grained checks.
     Send {
-        /// Plaintext to send. Omit to read from stdin until EOF.
-        /// Mutually exclusive with `--resend` and `--file`.
-        #[arg(conflicts_with_all = ["resend", "file"])]
-        text: Option<String>,
-        /// Send a file instead of text. Publishes the file as a blob to
-        /// the iroh-blobs store, dispatches a clipboard envelope to
-        /// online peers, then keeps the process alive so peers can fetch
-        /// the bytes. Press Ctrl-C to stop serving. Mutually exclusive
-        /// with `--resend`.
+        /// Text or an existing regular file to send. Omit to read text from
+        /// stdin. Mutually exclusive with `--resend` and `--file`.
+        #[arg(value_name = "TEXT", conflicts_with_all = ["resend", "file"])]
+        input: Option<String>,
+        /// Force the positional argument to be sent as text, even when it
+        /// names an existing file.
+        #[arg(long = "text", conflicts_with_all = ["resend", "file"])]
+        force_text: bool,
+        /// Force the path to be sent as a file. The daemon remains the file
+        /// provider, and the command exits after all relevant targets reach a
+        /// terminal delivery state. Mutually exclusive with `--resend`.
         #[arg(
             short = 'f',
             long = "file",
@@ -722,14 +725,16 @@ fn main() -> anyhow::Result<()> {
                 },
             },
             Commands::Send {
-                text,
+                input,
+                force_text,
                 file,
                 resend,
                 peers,
             } => {
                 commands::send::run(
                     commands::send::SendArgs {
-                        text,
+                        input,
+                        force_text,
                         file,
                         resend,
                         peers,
@@ -1615,6 +1620,42 @@ mod tests {
         // 历史契约:`uniclip send hello` 必须继续工作。
         let r = Cli::try_parse_from(["uniclip", "send", "hello"]);
         assert!(r.is_ok(), "expected `send hello` to parse");
+    }
+
+    #[test]
+    fn send_accepts_force_text_and_file_modes_with_peers() {
+        assert!(Cli::try_parse_from(["uniclip", "send", "--text", "report.pdf"]).is_ok());
+        assert!(Cli::try_parse_from([
+            "uniclip",
+            "send",
+            "--file",
+            "report.pdf",
+            "--peer",
+            "dev-a",
+        ])
+        .is_ok());
+    }
+
+    #[test]
+    fn send_explicit_modes_remain_mutually_exclusive() {
+        assert!(Cli::try_parse_from([
+            "uniclip",
+            "send",
+            "--text",
+            "report.pdf",
+            "--file",
+            "report.pdf",
+        ])
+        .is_err());
+        assert!(Cli::try_parse_from([
+            "uniclip",
+            "send",
+            "--text",
+            "report.pdf",
+            "--resend",
+            "entry-1",
+        ])
+        .is_err());
     }
 
     #[test]

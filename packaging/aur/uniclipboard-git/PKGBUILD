@@ -68,11 +68,11 @@ build() {
 package() {
   cd "$_pkgname"
 
-  install -Dm755 "src-tauri/target/release/$_pkgname" \
+  install -Dm755 "target/release/$_pkgname" \
                  "$pkgdir/usr/bin/$_pkgname"
 
   # ADR-008 D13: ship the daemon next to the GUI so it spawns as a sibling.
-  install -Dm755 "src-tauri/target/release/uniclipd" \
+  install -Dm755 "target/release/uniclipd" \
                  "$pkgdir/usr/bin/uniclipd"
 
   install -Dm644 "packaging/linux/$_pkgname.desktop" \

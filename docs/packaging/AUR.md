@@ -136,8 +136,11 @@ build() {
 package() {
   cd "$_pkgname"
 
-  install -Dm755 "src-tauri/target/release/uniclipboard" \
+  install -Dm755 "target/release/uniclipboard" \
                  "$pkgdir/usr/bin/uniclipboard"
+
+  install -Dm755 "target/release/uniclipd" \
+                 "$pkgdir/usr/bin/uniclipd"
 
   install -Dm644 "packaging/linux/uniclipboard.desktop" \
                  "$pkgdir/usr/share/applications/uniclipboard.desktop"

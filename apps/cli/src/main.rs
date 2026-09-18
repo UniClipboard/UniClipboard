@@ -8,6 +8,7 @@ mod exit_codes;
 mod local_daemon;
 mod output;
 mod setup_check;
+mod terminal_clipboard;
 mod ui;
 
 use clap::{CommandFactory, Parser, Subcommand, ValueEnum};
@@ -297,6 +298,9 @@ enum Commands {
         /// (those always print to stdout).
         #[arg(short = 'o', long = "out", value_name = "DIR|-")]
         out: Option<String>,
+        /// Copy the result to the clipboard on the computer where this terminal is open.
+        #[arg(short = 'c', long, conflicts_with = "list")]
+        copy: bool,
     },
     /// Publish or fetch encrypted large payload blobs
     #[cfg(feature = "dev-tools")]
@@ -743,6 +747,7 @@ fn main() -> anyhow::Result<()> {
                 list,
                 limit,
                 out,
+                copy,
             } => {
                 commands::get::run(
                     commands::get::GetArgs {
@@ -751,6 +756,7 @@ fn main() -> anyhow::Result<()> {
                         list,
                         limit,
                         out,
+                        copy,
                     },
                     cli.json,
                     cli.verbose,
@@ -1659,6 +1665,18 @@ mod tests {
     }
 
     #[test]
+    fn get_accepts_copy_flag() {
+        for flag in ["-c", "--copy"] {
+            let cli =
+                Cli::try_parse_from(["uniclip", "get", flag]).expect("get copy flag must parse");
+            assert!(matches!(
+                cli.command,
+                Some(Commands::Get { copy: true, .. })
+            ));
+        }
+    }
+
+    #[test]
     fn get_accepts_type_selector() {
         for kind in ["image", "file", "text", "link"] {
             let r = Cli::try_parse_from(["uniclip", "get", "--type", kind]);
@@ -1684,6 +1702,7 @@ mod tests {
         // `--list` 只列出, 不能同时带 selector。
         assert!(Cli::try_parse_from(["uniclip", "get", "--list", "--type", "image"]).is_err());
         assert!(Cli::try_parse_from(["uniclip", "get", "--list", "--id", "ent-1"]).is_err());
+        assert!(Cli::try_parse_from(["uniclip", "get", "--list", "--copy"]).is_err());
         assert!(
             Cli::try_parse_from(["uniclip", "get", "--list"]).is_ok(),
             "expected bare `get --list` to parse"

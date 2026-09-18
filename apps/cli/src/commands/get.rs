@@ -8,7 +8,8 @@
 //!
 //! Daemon-client mode: connects to a running daemon (or spawns a transient
 //! one), holds a control lease while it fetches, materializes the selected
-//! entry, and exits. It NEVER writes the system clipboard.
+//! entry, and exits. With `--copy`, it asks the active terminal to copy the
+//! materialized value; it does not call the platform clipboard API directly.
 //!
 //! ## Output contract (agent-friendly)
 //!
@@ -89,6 +90,8 @@ pub struct GetArgs {
     pub limit: Option<usize>,
     /// Output target for image/file bytes: a directory, or `-` for stdout.
     pub out: Option<String>,
+    /// Copy the materialized value through the terminal.
+    pub copy: bool,
 }
 
 pub async fn run(args: GetArgs, json: bool, verbose: bool) -> i32 {
@@ -194,7 +197,7 @@ async fn materialize(
 ) -> i32 {
     let category = classify(target);
     match category {
-        Category::Text | Category::Link => emit_text(service, target, category, json).await,
+        Category::Text | Category::Link => emit_text(service, target, category, args, json).await,
         Category::File => emit_file(service, target, args, json).await,
         Category::Image => emit_image(service, target, args, json).await,
     }
@@ -204,6 +207,7 @@ async fn emit_text(
     service: &dyn DaemonService,
     target: &EntryProjectionResponseDto,
     category: Category,
+    args: &GetArgs,
     json: bool,
 ) -> i32 {
     let detail = match service.entry_detail(&target.id).await {
@@ -214,6 +218,13 @@ async fn emit_text(
             return exit_codes::EXIT_ERROR;
         }
     };
+
+    if args.copy {
+        if let Err(err) = crate::terminal_clipboard::copy(&detail.content) {
+            ui::error(&err);
+            return exit_codes::EXIT_ERROR;
+        }
+    }
 
     if json {
         print_json(&GetOutcome {
@@ -323,6 +334,12 @@ fn write_bytes_outcome(
     let bytes_written = bytes.len() as u64;
 
     if args.out.as_deref() == Some("-") {
+        if args.copy {
+            ui::error(
+                "--copy cannot be combined with --out - for image or file content because no file path is produced",
+            );
+            return exit_codes::EXIT_ERROR;
+        }
         if json {
             ui::error(
                 "--json cannot be combined with --out - because the JSON would corrupt the raw byte stream on stdout",
@@ -350,6 +367,13 @@ fn write_bytes_outcome(
         return exit_codes::EXIT_ERROR;
     }
     let path_str = target_path.display().to_string();
+
+    if args.copy {
+        if let Err(err) = crate::terminal_clipboard::copy(&path_str) {
+            ui::error(&err);
+            return exit_codes::EXIT_ERROR;
+        }
+    }
 
     if json {
         print_json(&GetOutcome {
@@ -647,6 +671,7 @@ mod tests {
             list: false,
             limit: None,
             out: None,
+            copy: false,
         };
 
         let selected = select_target(&entries, &args).expect("image entry should match");

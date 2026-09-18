@@ -151,6 +151,9 @@ system clipboard to paste from — use `get`, which returns immediately.
 # Newest usable entry (text/link prints to stdout)
 uniclip get
 
+# Also copy the result to the computer where this terminal is open
+uniclip get -c
+
 # Newest entry of a kind: image | file | text | link
 uniclip get --type image
 
@@ -169,6 +172,10 @@ directory, defaulting to a per-user cache dir) and the absolute path is
 printed to stdout, or streamed to stdout with `--out -`. A successful fetch
 prints no additional status lines, so the result can be piped or captured
 directly. Unlike `recv`, `get` never blocks.
+
+With `-c` or `--copy`, text and links copy their content; images and files copy
+the absolute path written to disk. For images and files, `--copy` cannot be
+combined with `--out -`, because streaming the bytes does not produce a path.
 
 ## Search
 

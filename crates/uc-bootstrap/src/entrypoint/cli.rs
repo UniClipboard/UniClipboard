@@ -1,8 +1,6 @@
 //! CLI development runtime backed by the public engine entrypoint.
 
 use std::sync::Arc;
-use std::time::Duration;
-
 use uc_engine::{Engine, EventStream};
 
 use crate::{prepare_desktop_engine_host, DesktopHostFileHandles};
@@ -23,7 +21,7 @@ impl CliEngineRuntime {
     }
 
     pub async fn shutdown(self) {
-        if let Err(error) = self.engine.shutdown(Duration::from_secs(5)).await {
+        if let Err(error) = self.engine.shutdown_until_complete().await {
             tracing::warn!(error = %error, "CLI engine shutdown failed");
         }
     }

@@ -19,11 +19,12 @@ import appIcon from '@/updater/app-icon.png'
 
 interface Props {
   snapshot: StartupSnapshot
+  phase?: 'default' | 'membershipRecovery'
   onRetry: () => void
   onExport: () => Promise<void | boolean> | void
 }
 
-export function StartupProgressScreen({ snapshot, onRetry, onExport }: Props) {
+export function StartupProgressScreen({ snapshot, phase = 'default', onRetry, onExport }: Props) {
   const { t, i18n } = useTranslation()
   const [exportState, setExportState] = useState<'idle' | 'working' | 'failed' | 'done'>('idle')
   const [contactState, setContactState] = useState<'idle' | 'working' | 'failed' | 'done'>('idle')
@@ -89,14 +90,16 @@ export function StartupProgressScreen({ snapshot, onRetry, onExport }: Props) {
           {t(required ? 'upgradeProgress.category' : 'upgradeProgress.startupCategory')}
         </div>
         <h1 className="text-ui-title font-semibold" aria-live="polite">
-          {t(`upgradeProgress.${title}`)}
+          {t(`upgradeProgress.${phase === 'membershipRecovery' ? 'membershipRecovering' : title}`)}
         </h1>
         <p className="mt-3 text-ui-body text-muted-foreground">
-          {failed
-            ? t(`upgradeProgress.errors.${snapshot.failure?.reason ?? 'interrupted'}`)
-            : t(
-                `upgradeProgress.${ready && required ? 'readyDescription' : required && snapshot.state === 'upgrading' ? 'description' : 'startingDescription'}`
-              )}
+          {phase === 'membershipRecovery'
+            ? t('upgradeProgress.membershipRecoveringDescription')
+            : failed
+              ? t(`upgradeProgress.errors.${snapshot.failure?.reason ?? 'interrupted'}`)
+              : t(
+                  `upgradeProgress.${ready && required ? 'readyDescription' : required && snapshot.state === 'upgrading' ? 'description' : 'startingDescription'}`
+                )}
         </p>
 
         {showProgress && (

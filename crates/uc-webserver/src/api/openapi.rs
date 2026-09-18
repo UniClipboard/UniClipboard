@@ -135,9 +135,9 @@ use uc_daemon_contract::api::dto::v2::setup::{
 use uc_daemon_contract::api::dto::ws::{WsErrorResponse, WsSubscribeRequest};
 use uc_daemon_contract::api::types::DaemonWsEvent;
 use uc_daemon_contract::api::types::{
-    DaemonResidency, HealthResponse, LifecycleStatusResponse, NetworkRecoveryPhase,
-    NetworkRecoveryStatusResponse, PeerSnapshotDto, PresenceRefreshResponse, RestartAccepted,
-    RestartRequest, SpaceMemberDto, StatusResponse, WorkerStatusDto,
+    DaemonResidency, HealthResponse, LifecyclePendingReason, LifecycleStatusResponse,
+    NetworkRecoveryPhase, NetworkRecoveryStatusResponse, PeerSnapshotDto, PresenceRefreshResponse,
+    RestartAccepted, RestartRequest, SpaceMemberDto, StatusResponse, WorkerStatusDto,
 };
 
 /// Applies the contract-owned cross-cutting OpenAPI metadata (info-adjacent
@@ -486,6 +486,7 @@ impl Modify for ContractMeta {
             // ── lifecycle ──────────────────────────────────────────
             LifecycleStatusEnvelope,
             LifecycleStatusResponse,
+            LifecyclePendingReason,
             // ── lifecycle: controlled restart (ADR-008 P5-L L8d-1) ──
             RestartAcceptedEnvelope,
             RestartRequest,

@@ -31,7 +31,8 @@ export function AppContent({
     setupGate === 'ready' &&
       bootstrap.daemonBootstrapReady &&
       !bootstrap.encryptionLoading &&
-      Boolean(bootstrap.resolvedEncryptionStatus?.session_ready)
+      Boolean(bootstrap.resolvedEncryptionStatus?.session_ready) &&
+      bootstrap.spaceReadiness === 'ready'
   )
 
   const hasStartupTask = Boolean(bootstrap.startupStatus && !bootstrap.daemonBootstrapReady)
@@ -45,7 +46,10 @@ export function AppContent({
     bootstrap.retrying ||
     !bootstrap.daemonBootstrapReady ||
     setupGate === 'loading' ||
-    (setupGate === 'ready' && !bootstrap.resolvedEncryptionStatus)
+    (setupGate === 'ready' && !bootstrap.resolvedEncryptionStatus) ||
+    (setupGate === 'ready' &&
+      bootstrap.resolvedEncryptionStatus?.session_ready === true &&
+      bootstrap.spaceReadiness !== 'ready')
   const needsAttention = Boolean(
     hasStartupTask &&
     bootstrap.startupStatus &&
@@ -54,7 +58,12 @@ export function AppContent({
         bootstrap.startupStatus.progress.state === 'upgrading' &&
         bootstrap.startupStatus.progress.upgrade?.required))
   )
-  useMainWindowPresentation(showFailure || !showStartup || needsAttention)
+  useMainWindowPresentation(
+    showFailure ||
+      !showStartup ||
+      needsAttention ||
+      bootstrap.spaceReadiness === 'recoveringMembership'
+  )
   if (showFailure) {
     return (
       <div className="flex h-full w-full flex-col bg-background">
@@ -77,6 +86,9 @@ export function AppContent({
       <div className="flex h-full w-full flex-col bg-background">
         {fullTitleBar}
         <StartupProgressScreen
+          phase={
+            bootstrap.spaceReadiness === 'recoveringMembership' ? 'membershipRecovery' : 'default'
+          }
           snapshot={
             hasStartupTask && bootstrap.startupStatus
               ? startupViewSnapshot(bootstrap.startupStatus, bootstrap.retrying)

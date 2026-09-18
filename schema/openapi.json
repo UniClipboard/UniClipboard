@@ -3195,6 +3195,13 @@
         ],
         "type": "object"
       },
+      "LifecyclePendingReason": {
+        "enum": [
+          "space_locked",
+          "membership_recovery"
+        ],
+        "type": "string"
+      },
       "LifecycleStatusEnvelope": {
         "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
         "properties": {
@@ -3216,6 +3223,14 @@
       "LifecycleStatusResponse": {
         "description": "Response payload for GET /lifecycle/status.\nMirrors the frontend LifecycleStatusDto shape so the HTTP endpoint\ncan replace the Tauri get_lifecycle_status command without frontend type changes.",
         "properties": {
+          "pendingReason": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/LifecyclePendingReason"
+              }
+            ],
+            "nullable": true
+          },
           "state": {
             "description": "Current lifecycle state.",
             "type": "string"

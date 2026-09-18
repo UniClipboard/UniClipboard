@@ -4,6 +4,8 @@ export const upgradeProgressZh = {
   startupReady: '应用已准备好',
   startupCategory: '启动准备',
   startingDescription: '正在连接后台服务，就绪后将自动进入应用。',
+  membershipRecovering: '正在恢复空间',
+  membershipRecoveringDescription: '正在恢复成员资料。请确保至少一台已配对设备在线。',
   category: '本地资料升级',
   title: '正在升级你的资料',
   recovering: '正在恢复资料升级',
@@ -58,6 +60,9 @@ export const upgradeProgressJa: typeof upgradeProgressZh = {
   startupReady: 'アプリの準備ができました',
   startupCategory: '起動準備',
   startingDescription: 'バックグラウンドサービスに接続しています。準備ができると自動的に開きます。',
+  membershipRecovering: 'スペースを復旧しています',
+  membershipRecoveringDescription:
+    'メンバー情報を復旧しています。ペアリング済みの端末を1台以上オンラインにしてください。',
   category: 'ローカルデータのアップグレード',
   title: 'データをアップグレードしています',
   recovering: 'データのアップグレードを再開しています',
@@ -124,6 +129,9 @@ export const upgradeProgressPt: typeof upgradeProgressZh = {
   startupCategory: 'Inicialização',
   startingDescription:
     'Conectando ao serviço em segundo plano. O aplicativo abrirá quando estiver pronto.',
+  membershipRecovering: 'Recuperando seu espaço',
+  membershipRecoveringDescription:
+    'Recuperando os dados de membros. Mantenha pelo menos um dispositivo pareado online.',
   category: 'Atualização dos dados locais',
   title: 'Atualizando seus dados',
   recovering: 'Retomando a atualização dos dados',
@@ -191,6 +199,9 @@ export const upgradeProgressRu: typeof upgradeProgressZh = {
   startupCategory: 'Подготовка к запуску',
   startingDescription:
     'Подключение к фоновой службе. Приложение откроется, когда всё будет готово.',
+  membershipRecovering: 'Восстановление пространства',
+  membershipRecoveringDescription:
+    'Восстанавливаются данные об устройствах. Оставьте включённым хотя бы одно сопряжённое устройство.',
   category: 'Обновление локальных данных',
   title: 'Обновление ваших данных',
   recovering: 'Возобновление обновления данных',
@@ -256,6 +267,9 @@ export const upgradeProgressEn = {
   startupReady: 'The app is ready',
   startupCategory: 'Starting up',
   startingDescription: 'Connecting to the background service. The app will open when ready.',
+  membershipRecovering: 'Recovering your space',
+  membershipRecoveringDescription:
+    'Recovering member data. Keep at least one paired device online.',
   category: 'Local data upgrade',
   title: 'Upgrading your data',
   recovering: 'Resuming your data upgrade',

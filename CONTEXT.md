@@ -49,6 +49,14 @@ _Avoid_: device name、machine id、peer id
 活跃成员。
 _Avoid_: peer、trusted peer、user
 
+**Membership readiness**：
+Engine 对本机成员资料是否可用给出的唯一就绪事实，状态为 `Ready`、`Locked`、
+`Recovering`：Space 未解锁时为 `Locked`，本机成员资料缺失或尚未恢复时为
+`Recovering`，本机成员身份有效且资料可读时即为 `Ready`；其他可信设备全部离线
+不得阻止进入 `Ready`。恢复与解锁流程必须先完成本机成员资料恢复并确认可读，客户端
+只能读取这一事实，不得自行等待其他设备、猜测或编排恢复。
+_Avoid_: online readiness、trusted-device wait、client-side membership recovery
+
 **Regular sync**：
 移动端连接弹窗中默认选择的「常规同步」，通过 SyncClipboard 兼容通道和连接配置同步剪贴板；
 该连接方式本身不会使手机成为 **SpaceMember**。

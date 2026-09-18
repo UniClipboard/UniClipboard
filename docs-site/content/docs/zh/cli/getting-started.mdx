@@ -81,6 +81,12 @@ Ctrl-C 只会停止本地等待，不会取消加入请求。
 # 把文本发送给在线的已配对设备
 uniclip send "hello from the CLI"
 
+# 发送现有普通文件（自动识别）
+uniclip send ./report.pdf
+
+# 强制把现有文件名作为文字发送
+uniclip send --text report.pdf
+
 # 从标准输入读取文本
 printf 'hello from a pipe' | uniclip send
 
@@ -106,15 +112,15 @@ uniclip watch
 ## 发送或接收文件
 
 ```bash
-# 持续提供文件，等对端取走；按 Ctrl-C 停止
+# 显式强制文件模式
 uniclip send --file ./report.pdf
 
 # 等待下一个收到的文件，并保存到 ./inbox
 uniclip recv --out ./inbox
 ```
 
-发送文件时，终端进程需要继续运行，让对端能够取走文件。看到分发提示后不要立即
-关闭它。
+现有普通文件会被自动识别。文件传输由后台服务负责，所有相关目标进入终态后命令会
+自动退出。可以重复使用 `--peer` 限制目标，按 Ctrl-C 可取消等待。
 
 ## 管理后台服务
 

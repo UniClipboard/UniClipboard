@@ -85,9 +85,10 @@ use uc_daemon_contract::api::dto::analytics::{
 use uc_daemon_contract::api::dto::auth::{ConnectRequest, SessionTokenResponse};
 use uc_daemon_contract::api::dto::clipboard_command::{
     CancelEntryReceiveRequest, CancelEntryReceiveResponse, CancelTransferRequest,
-    CancelTransferResponse, CaptureCurrentClipboardResponse, DispatchOutcomeResponse,
-    DispatchTextRequest, EntryReceiveProgressResponse, PerTargetOutcomeDto, ResendRequest,
-    ResendResponse, RestoreEntryResponse,
+    CancelTransferResponse, CaptureCurrentClipboardResponse, DispatchFileOutcomeResponse,
+    DispatchFileRequest, DispatchOutcomeResponse, DispatchTextRequest,
+    EntryReceiveProgressResponse, PerTargetOutcomeDto, ResendRequest, ResendResponse,
+    RestoreEntryResponse,
 };
 use uc_daemon_contract::api::dto::clipboard_delivery::{
     DeliveryFailureReasonDto, EntryDeliveryStatusDto, EntryDeliveryTargetDto, EntryDeliveryViewDto,
@@ -178,6 +179,7 @@ impl Modify for ContractMeta {
         crate::api::clipboard::get_entry_delivery_view_handler,
         crate::api::clipboard::clear_history,
         crate::api::clipboard::dispatch_text,
+        crate::api::clipboard::dispatch_file,
         crate::api::clipboard::resend_entry,
         crate::api::clipboard::cancel_transfer,
         crate::api::clipboard::get_entry_receive_progress,
@@ -306,6 +308,8 @@ impl Modify for ContractMeta {
             ToggleFavoriteResultDto,
             DispatchTextRequest,
             DispatchOutcomeResponse,
+            DispatchFileRequest,
+            DispatchFileOutcomeResponse,
             PerTargetOutcomeDto,
             ResendRequest,
             ResendResponse,
@@ -705,7 +709,8 @@ mod assembly_smoke_tests {
         // with GET and POST on one resource: 75 paths / 84 operations.
         // Connectivity opportunities add one path and operation: 76 / 85.
         // Upgrade backup management adds two paths and two operations: 78 / 87.
-        // Passphrase changes add one path and operation: 79 / 88.
+        // Passphrase changes add one path and operation: 79 / 88. Daemon-owned
+        // CLI file dispatch adds one path and operation: 80 / 89.
         const HTTP_METHODS: [&str; 7] =
             ["get", "put", "post", "delete", "patch", "head", "options"];
         let paths = value
@@ -714,8 +719,8 @@ mod assembly_smoke_tests {
             .expect("OpenAPI doc must declare paths");
         assert_eq!(
             paths.len(),
-            79,
-            "expected exactly 79 path templates, found {}: {:?}",
+            80,
+            "expected exactly 80 path templates, found {}: {:?}",
             paths.len(),
             paths.keys().collect::<Vec<_>>()
         );
@@ -729,8 +734,8 @@ mod assembly_smoke_tests {
             })
             .sum();
         assert_eq!(
-            operation_count, 88,
-            "expected exactly 88 operations across all paths, found {operation_count}"
+            operation_count, 89,
+            "expected exactly 89 operations across all paths, found {operation_count}"
         );
 
         // A few frozen operationIds (§D) must be present somewhere in the doc.

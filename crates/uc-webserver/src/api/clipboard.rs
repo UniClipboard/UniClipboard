@@ -3,6 +3,8 @@
 //! All routes are protected by the auth_extractor + rate_limit middleware chain
 //! applied at the router level (see routes::router_l2_plus).
 
+use std::path::Path as FsPath;
+
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
@@ -21,15 +23,16 @@ use uc_engine::{
     CancelEntryReceiveInput, CancelInboundTransferInput, EngineError, EntryNotResendableReason,
     EntryReceiveCancellationOutcome, EntryReceiveProgressInput, HistoryEntryInput,
     InboundTransferCancellationOutcome, ListHistoryEntriesInput, Operation, OperationResult,
-    ReceiveProgressSummary, ResendEntryInput, ResendEntryOutcome, SendTextInput,
-    SetHistoryEntryFavoriteInput, TransferCancellationReason,
+    ReceiveProgressSummary, ResendEntryInput, ResendEntryOutcome, SendFilesInput,
+    SendTargetOutcome, SendTextInput, SetHistoryEntryFavoriteInput, TransferCancellationReason,
 };
 use utoipa::IntoParams;
 
 use uc_daemon_contract::api::dto::clipboard_command::{
     CancelEntryReceiveRequest, CancelEntryReceiveResponse, CancelTransferRequest,
-    CancelTransferResponse, DispatchOutcomeResponse, DispatchTextRequest,
-    EntryReceiveProgressResponse, ResendRequest, ResendResponse,
+    CancelTransferResponse, DispatchFileOutcomeResponse, DispatchFileRequest,
+    DispatchOutcomeResponse, DispatchTextRequest, EntryReceiveProgressResponse,
+    PerTargetOutcomeDto, ResendRequest, ResendResponse,
 };
 use uc_daemon_contract::api::dto::clipboard_delivery::EntryDeliveryViewDto;
 use uc_daemon_contract::api::dto::envelope::ApiEnvelope;
@@ -91,6 +94,7 @@ pub fn router() -> Router<DaemonApiState> {
             get(get_entry_delivery_view_handler),
         )
         .route(http_route::CLIPBOARD_DISPATCH, post(dispatch_text))
+        .route(http_route::CLIPBOARD_DISPATCH_FILE, post(dispatch_file))
         .route(http_route::CLIPBOARD_RESEND, post(resend_entry))
         .route(
             &format!("{}/:transfer_id", http_route::CLIPBOARD_CANCEL_TRANSFER),
@@ -540,6 +544,89 @@ async fn dispatch_text(
     };
 
     Ok(Json(ApiEnvelope::now(outcome.into_api_dto())))
+}
+
+/// POST /clipboard/dispatch-file
+///
+/// Registers a local regular file with the daemon-owned host adapter and asks
+/// the shared engine to dispatch it. The source path is transient input only.
+#[utoipa::path(
+    post,
+    path = "/clipboard/dispatch-file",
+    operation_id = "dispatchClipboardFile",
+    tag = "clipboard",
+    request_body = DispatchFileRequest,
+    responses(
+        (status = 200, description = "Initial file dispatch outcome", body = DispatchFileOutcomeResponse),
+        (status = 400, description = "Invalid or unavailable file", body = ApiErrorResponse),
+        (status = 500, description = "Internal server error", body = ApiErrorResponse),
+        (status = 503, description = "Daemon is draining", body = ApiErrorResponse),
+    )
+)]
+pub(crate) async fn dispatch_file(
+    State(state): State<DaemonApiState>,
+    body: Result<Json<DispatchFileRequest>, axum::extract::rejection::JsonRejection>,
+) -> Result<Json<ApiEnvelope<DispatchFileOutcomeResponse>>, ApiError> {
+    crate::api::server::ensure_not_quiescing(&state.quiescing)?;
+    let Json(req) = body.map_err(|error| ApiError::bad_request(error.to_string()))?;
+    let source_path = FsPath::new(&req.source_path);
+    let metadata =
+        std::fs::metadata(source_path).map_err(|_| ApiError::bad_request("file is unavailable"))?;
+    if !metadata.is_file() {
+        return Err(ApiError::bad_request("path is not a regular file"));
+    }
+    let file = state
+        .file_handles
+        .register_input(source_path)
+        .map_err(|_| ApiError::bad_request("file is unavailable"))?;
+    let result = state
+        .execute(Operation::SendFiles(SendFilesInput {
+            files: vec![file],
+            target_devices: req.peers.unwrap_or_default(),
+        }))
+        .await
+        .map_err(|error| {
+            log_facade_failure(
+                "clipboard_command",
+                "dispatch_file",
+                "dispatch_error",
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "file dispatch failed",
+            );
+            ApiError::internal(format!("file dispatch failed ({})", error.code()))
+        })?;
+    let OperationResult::EntrySent(outcome) = result else {
+        return Err(ApiError::internal(
+            "engine returned an unexpected file-dispatch result",
+        ));
+    };
+    let per_target = outcome
+        .per_target
+        .into_iter()
+        .map(|target| {
+            let (outcome, error) = match target.outcome {
+                SendTargetOutcome::Accepted => ("accepted", None),
+                SendTargetOutcome::Duplicate => ("duplicate", None),
+                SendTargetOutcome::Error { message } => ("error", Some(message)),
+            };
+            PerTargetOutcomeDto {
+                device_id: target.device_id,
+                outcome: outcome.to_string(),
+                error,
+            }
+        })
+        .collect();
+    Ok(Json(ApiEnvelope::now(DispatchFileOutcomeResponse {
+        entry_id: outcome.entry_id,
+        snapshot_hash: outcome.snapshot_hash,
+        at_ms: outcome.at_ms,
+        total_accepted: outcome.total_accepted,
+        total_duplicate: outcome.total_duplicate,
+        total_offline: outcome.total_offline,
+        total_errored: outcome.total_errored,
+        total_pending: outcome.total_pending,
+        per_target,
+    })))
 }
 
 /// POST /clipboard/resend

@@ -93,6 +93,12 @@ echo "from a heredoc" | uniclip send
 # 限定 fan-out 到指定设备（可重复）
 uniclip send "scoped message" --peer DEVICE_ID_A --peer DEVICE_ID_B
 
+# 发送现有普通文件（自动识别）
+uniclip send ./report.pdf
+
+# 强制把现有文件名作为文字发送
+uniclip send --text report.pdf
+
 # 重新分发一条本地已捕获的条目（不读 stdin / positional text）。
 # 不带 `--peer` 时默认目标为 trusted peer 中尚未收到该条目的差集。
 uniclip send --resend <ENTRY_ID>
@@ -110,7 +116,7 @@ uniclip watch
 ### 发送和接收文件
 
 ```bash
-# 发送端：持续提供文件，等对端取走。按 Ctrl-C 停止。
+# 发送端：显式强制文件模式（保留用于兼容）
 uniclip send -f ./big-file.bin
 
 # 接收端：等待首个入站文件，从守护进程的缓存中导出字节，
@@ -118,8 +124,10 @@ uniclip send -f ./big-file.bin
 uniclip recv --out ./inbox
 ```
 
-`send -f` 与位置文本和 `--resend` 互斥。分发后进程仍会继续运行，让对端能够
-取走文件。请等目标设备接收完成后再按 Ctrl-C。`recv` 成功时，stdout 只包含收到文件的
+位置参数对应现有普通文件时会自动按文件发送。使用 `--text` 可强制把文件名作为文字
+发送，使用 `-f` / `--file` 可强制进入文件模式。暂不支持目录；明显但不存在的路径会
+直接报错，不会静默当作文字。文件模式支持重复使用 `--peer`；所有相关目标均已完成、
+失败或离线后命令会自动退出，Ctrl-C 可取消等待。`recv` 成功时，stdout 只包含收到文件的
 绝对路径；进度仍以交互方式显示，`--json` 则返回完整结果对象。
 
 ### 读取已同步的条目

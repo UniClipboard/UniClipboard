@@ -318,7 +318,9 @@ uniclip space invite            # Generate a short-lived invitation code
 uniclip space join --code <code> # Join a space (re-pair, non-destructive)
 uniclip space join --switch --code <code> # Switch to another space
 uniclip member list             # List paired devices and presence
-uniclip send "hello"            # Send clipboard content to other devices
+uniclip send "hello"            # Send text to other devices
+uniclip send ./report.pdf        # Send an existing file
+uniclip send --text report.pdf   # Force an existing filename to be sent as text
 uniclip watch                   # Stream incoming clipboard events
 uniclip space status            # Inspect the active space and daemon
 uniclip start / stop            # Daemon lifecycle

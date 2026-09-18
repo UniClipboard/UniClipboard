@@ -7,9 +7,11 @@ use uc_daemon_contract::api::dto::clipboard::{
 };
 use uc_daemon_contract::api::dto::clipboard_command::{
     CancelEntryReceiveRequest, CancelEntryReceiveResponse, CancelTransferRequest,
-    CancelTransferResponse, CaptureCurrentClipboardResponse, DispatchOutcomeResponse,
-    DispatchTextRequest, EntryReceiveProgressResponse, ResendRequest, ResendResponse,
+    CancelTransferResponse, CaptureCurrentClipboardResponse, DispatchFileOutcomeResponse,
+    DispatchFileRequest, DispatchOutcomeResponse, DispatchTextRequest,
+    EntryReceiveProgressResponse, ResendRequest, ResendResponse,
 };
+use uc_daemon_contract::api::dto::clipboard_delivery::EntryDeliveryViewDto;
 use uc_daemon_contract::constants::http_route;
 
 use crate::http::encode_path_segment;
@@ -96,6 +98,40 @@ impl DaemonClipboardClient {
             Method::POST,
             http_route::CLIPBOARD_DISPATCH,
             |r| r.json(&req_body),
+        )
+        .await?)
+    }
+
+    pub async fn dispatch_file(
+        &self,
+        source_path: &str,
+        peers: Option<Vec<String>>,
+    ) -> Result<DispatchFileOutcomeResponse> {
+        let req_body = DispatchFileRequest {
+            source_path: source_path.to_string(),
+            peers,
+        };
+        Ok(enveloped_request(
+            &self.http,
+            &self.connection_state,
+            &self.client_type,
+            Method::POST,
+            http_route::CLIPBOARD_DISPATCH_FILE,
+            |request| request.json(&req_body),
+        )
+        .await?)
+    }
+
+    pub async fn entry_delivery(&self, entry_id: &str) -> Result<EntryDeliveryViewDto> {
+        let entry_id = encode_path_segment(entry_id)?;
+        let path = format!("/clipboard/entries/{entry_id}/delivery");
+        Ok(enveloped_request(
+            &self.http,
+            &self.connection_state,
+            &self.client_type,
+            Method::GET,
+            &path,
+            |request| request,
         )
         .await?)
     }

@@ -105,6 +105,12 @@ echo "from a heredoc" | uniclip send
 # Restrict fan-out to specific devices (repeatable)
 uniclip send "scoped message" --peer DEVICE_ID_A --peer DEVICE_ID_B
 
+# Send an existing regular file (auto-detected)
+uniclip send ./report.pdf
+
+# Force an existing filename to be sent as text
+uniclip send --text report.pdf
+
 # Re-fan-out a previously captured local entry. No stdin / positional
 # text is read. Without `--peer`, targets default to the diff of
 # trusted peers minus those that already received this entry.
@@ -126,7 +132,7 @@ does **not** write the system clipboard — that's the daemon's job.
 ### Sending and receiving files
 
 ```bash
-# Sender: keep serving the file until peers fetch it. Ctrl-C stops serving.
+# Sender: explicitly force file mode (kept for compatibility)
 uniclip send -f ./big-file.bin
 
 # Receiver: wait for the first inbound file, export it from the
@@ -135,11 +141,14 @@ uniclip send -f ./big-file.bin
 uniclip recv --out ./inbox
 ```
 
-`send -f` is mutually exclusive with positional text and `--resend`. The
-process stays alive after dispatch because peers fetch the bytes from it.
-Keep the terminal open until the intended receivers have finished, then press
-Ctrl-C. When `recv` succeeds, stdout contains only the received file's absolute
-path; progress remains interactive, and `--json` returns the full result object.
+An existing positional regular file is detected automatically. Use `--text` to
+force a filename to be sent as text, or `-f` / `--file` to force file mode.
+Directories are not supported, and an explicit-looking missing path is reported
+as an error instead of being sent as text. File mode supports repeatable
+`--peer`; the command exits after every relevant target is delivered, failed,
+or offline. Ctrl-C cancels the wait. When `recv` succeeds, stdout contains only
+the received file's absolute path; progress remains interactive, and `--json`
+returns the full result object.
 
 ### Reading already-synced entries
 

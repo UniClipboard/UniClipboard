@@ -87,6 +87,12 @@ Pressing Ctrl-C stops only the local wait; it does not cancel the request.
 # Send text to online paired devices
 uniclip send "hello from the CLI"
 
+# Send an existing regular file (auto-detected)
+uniclip send ./report.pdf
+
+# Force an existing filename to be sent as text
+uniclip send --text report.pdf
+
 # Read text from standard input
 printf 'hello from a pipe' | uniclip send
 
@@ -113,15 +119,16 @@ clipboard.
 ## Send or receive a file
 
 ```bash
-# Keep serving the file until peers have fetched it; press Ctrl-C to stop
+# Explicitly force file mode
 uniclip send --file ./report.pdf
 
 # Wait for the next incoming file and save it under ./inbox
 uniclip recv --out ./inbox
 ```
 
-File sending keeps the terminal process running because peers fetch the bytes
-from it. Do not close it immediately after the dispatch message.
+Existing regular files are detected automatically. File sending is owned by the
+daemon, and the command exits after all relevant targets reach a terminal state.
+Use repeatable `--peer` flags to restrict the targets; Ctrl-C cancels the wait.
 
 ## Manage the background service
 

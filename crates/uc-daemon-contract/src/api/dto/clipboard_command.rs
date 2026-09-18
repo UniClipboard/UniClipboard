@@ -47,6 +47,34 @@ pub struct DispatchOutcomeResponse {
     pub per_target: Vec<PerTargetOutcomeDto>,
 }
 
+/// Request body for `POST /clipboard/dispatch-file`.
+///
+/// The path is consumed only by the authenticated local daemon and must never
+/// be logged or persisted as clipboard metadata.
+#[derive(Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct DispatchFileRequest {
+    pub source_path: String,
+    #[serde(default)]
+    pub peers: Option<Vec<String>>,
+}
+
+/// Initial file dispatch result. Delivery may still be pending while peers
+/// fetch the bytes; callers use `entry_id` to query the delivery view.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct DispatchFileOutcomeResponse {
+    pub entry_id: String,
+    pub snapshot_hash: String,
+    pub at_ms: i64,
+    pub total_accepted: usize,
+    pub total_duplicate: usize,
+    pub total_offline: usize,
+    pub total_errored: usize,
+    pub total_pending: usize,
+    pub per_target: Vec<PerTargetOutcomeDto>,
+}
+
 // ── POST /clipboard/resend ───────────────────────────────────────
 
 /// Request body for `POST /clipboard/resend`.
@@ -229,6 +257,32 @@ mod tests {
         assert!(json.get("atMs").is_some());
         assert!(json.get("totalAccepted").is_some());
         assert!(json.get("perTarget").is_some());
+    }
+
+    #[test]
+    fn file_dispatch_request_and_response_use_camel_case() {
+        let request: DispatchFileRequest = serde_json::from_value(serde_json::json!({
+            "sourcePath": "/tmp/report.pdf",
+            "peers": ["device-1"]
+        }))
+        .unwrap();
+        assert_eq!(request.source_path, "/tmp/report.pdf");
+
+        let response = DispatchFileOutcomeResponse {
+            entry_id: "entry-1".into(),
+            snapshot_hash: "hash".into(),
+            at_ms: 1,
+            total_accepted: 1,
+            total_duplicate: 0,
+            total_offline: 0,
+            total_errored: 0,
+            total_pending: 1,
+            per_target: Vec::new(),
+        };
+        let json = serde_json::to_value(response).unwrap();
+        assert_eq!(json["entryId"], "entry-1");
+        assert_eq!(json["totalPending"], 1);
+        assert!(json.get("entry_id").is_none());
     }
 
     #[test]

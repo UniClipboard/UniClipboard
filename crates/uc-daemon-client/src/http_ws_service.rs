@@ -10,9 +10,10 @@ use uc_daemon_contract::api::dto::clipboard::{
     EntryDetailDto, EntryProjectionResponseDto, EntryResourceDto,
 };
 use uc_daemon_contract::api::dto::clipboard_command::{
-    CancelTransferResponse, DispatchOutcomeResponse, InboundEntryEvent, InboundNoticeEvent,
-    ResendResponse,
+    CancelTransferResponse, DispatchFileOutcomeResponse, DispatchOutcomeResponse,
+    InboundEntryEvent, InboundNoticeEvent, ResendResponse,
 };
+use uc_daemon_contract::api::dto::clipboard_delivery::EntryDeliveryViewDto;
 use uc_daemon_contract::api::dto::member::{
     ChooseDeviceGroupRequestDto, DeviceGroupChoiceResultDto, DeviceGroupChoicesDto,
     DeviceTrustSnapshotDto, MemberSyncPreferencesDto, MemberSyncPreferencesPatchDto,
@@ -85,6 +86,21 @@ impl DaemonService for HttpWsDaemonService {
         peers: Option<Vec<String>>,
     ) -> Result<DispatchOutcomeResponse> {
         self.ctx.clipboard_client().dispatch_text(text, peers).await
+    }
+
+    async fn dispatch_file(
+        &self,
+        source_path: &str,
+        peers: Option<Vec<String>>,
+    ) -> Result<DispatchFileOutcomeResponse> {
+        self.ctx
+            .clipboard_client()
+            .dispatch_file(source_path, peers)
+            .await
+    }
+
+    async fn entry_delivery(&self, entry_id: &str) -> Result<EntryDeliveryViewDto> {
+        self.ctx.clipboard_client().entry_delivery(entry_id).await
     }
 
     async fn resend_entry(

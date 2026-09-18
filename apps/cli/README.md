@@ -70,6 +70,7 @@ cargo build -p uc-cli
 
 ```bash
 uniclip get                      # 取最新一条可用条目
+uniclip get -c                   # 取回并复制到当前终端所在电脑的剪贴板
 uniclip get --type image         # 取最新一张图片
 uniclip get --type file -o ~/in  # 取最新一个文件并落地到 ~/in
 uniclip get --id <ENTRY-ID>      # 取指定条目（id 来自 uniclip search）
@@ -82,6 +83,9 @@ uniclip get --list -n 20         # 仅列出最近 20 条，不取回
 - **图片 / 文件**：字节写入 `--out` 目录（默认 per-user cache 目录），并把**绝对
   路径**打到 stdout；`--out -` 则把原始字节直接写到 stdout。成功时不再附带
   状态提示。
+
+加上 `-c` 或 `--copy` 后，文本和链接会复制内容，图片和文件会复制落盘后的完整
+路径。图片和文件不能同时使用 `--copy` 与 `--out -`，因为后者不会产生文件路径。
 
 `uniclip recv` 仍会交互显示等待和传输进度，但成功后的 stdout 只包含收到文件的
 绝对路径；`--json` 返回完整结果对象。

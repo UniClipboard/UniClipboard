@@ -131,6 +131,9 @@ uniclip recv --out ./inbox
 # 最新一条可用条目（文本/链接打到 stdout）
 uniclip get
 
+# 同时复制到当前终端所在电脑的剪贴板
+uniclip get -c
+
 # 最新一条指定类型：image | file | text | link
 uniclip get --type image
 
@@ -145,6 +148,9 @@ uniclip get --list -n 20
 `--out`（目录，默认 per-user 缓存目录）并把绝对路径打到 stdout，或用 `--out -`
 直接写到 stdout。成功获取时不会再输出额外状态提示，因此可以直接管道传递或捕获结果。
 与 `recv` 不同，`get` 不阻塞。
+
+加上 `-c` 或 `--copy` 后，文本和链接会复制内容，图片和文件会复制落盘后的完整
+路径。图片和文件不能同时使用 `--copy` 与 `--out -`，因为后者不会产生文件路径。
 
 ## 搜索
 

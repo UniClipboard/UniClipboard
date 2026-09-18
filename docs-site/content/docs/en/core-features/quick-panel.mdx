@@ -38,7 +38,7 @@ uniclipboard --quick-panel
 
 ### Omarchy
 
-UniClipboard supports Quick Panel display, desktop-theme following, and pasting back into the previous window in an Omarchy Hyprland session. Omarchy does not currently replace its built-in clipboard-manager shortcut when UniClipboard is installed, so one manual setup step is required.
+UniClipboard supports Quick Panel display, desktop-theme following, and pasting back into the previous window in an Omarchy Hyprland session. Use the following steps to replace Omarchy's built-in clipboard-manager shortcut with UniClipboard.
 
 Edit `~/.config/hypr/bindings.lua`, remove Omarchy's default `Super+Ctrl+V` binding, and assign it to UniClipboard:
 
@@ -55,10 +55,6 @@ hyprctl configerrors
 ```
 
 An empty result from the second command means the configuration is valid. `Super+Ctrl+V` now opens or closes the Quick Panel; if the GUI is not running, the command starts UniClipboard first. Quick Panel must remain enabled in UniClipboard settings.
-
-<Callout type="warn">
-  This integration currently requires the manual configuration above and is not yet zero-configuration. UniClipboard does not silently rewrite personal Hyprland configuration.
-</Callout>
 
 ## Keyboard controls
 

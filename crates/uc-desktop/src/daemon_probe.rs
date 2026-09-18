@@ -288,25 +288,18 @@ async fn spawn_external_and_wait_health(
     health_check_timeout: Duration,
     health_poll_interval: Duration,
 ) -> Result<(), DaemonBootstrapError> {
-    // ADR-008 D3: tag the spawn as GUI-owned so its PID file records
-    // `spawned_by = gui` — this (or another) GUI may stop it on full quit.
-    if crate::startup::read_startup_status(client)
-        .await
-        .map_err(DaemonBootstrapError::Probe)?
-        .is_none()
-    {
-        spawn_detached_daemon(DaemonSpawnOrigin::Gui, None).map_err(|error| {
-            DaemonBootstrapError::Spawn(
-                anyhow::Error::new(error).context("detached daemon spawn failed"),
-            )
-        })?;
-        ownership.set_external();
-        // This launch spawned the daemon — a genuine cold start (issue #1169).
-        launch_origin.mark_spawned();
-    } else {
-        ownership.set_external();
-        launch_origin.mark_already_running();
-    }
+    // The caller reaches this function only after the health endpoint was
+    // classified as absent. Always spawn a successor: a predecessor may still
+    // expose startup progress while it is shutting down, but the instance lock
+    // safely serializes the two processes until the predecessor exits.
+    spawn_detached_daemon(DaemonSpawnOrigin::Gui, None).map_err(|error| {
+        DaemonBootstrapError::Spawn(
+            anyhow::Error::new(error).context("detached daemon spawn failed"),
+        )
+    })?;
+    ownership.set_external();
+    // This launch spawned the daemon — a genuine cold start (issue #1169).
+    launch_origin.mark_spawned();
 
     crate::startup::wait_for_ready(
         client,

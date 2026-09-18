@@ -22,6 +22,14 @@ Space reset permanently discards old pairing, trust, and sync relationships.
 Every device must pair again. It does not erase local history and is not a
 factory reset.
 
+For scripts, `uniclip --json space init --passphrase <PASSPHRASE>` returns one
+JSON object containing `space_id`, `device_id`, and `fingerprint`. The
+passphrase is required because JSON mode never opens an interactive prompt.
+`uniclip --json space invite` streams newline-delimited JSON: the first event
+contains the invitation code and expiry, and a later event reports completion,
+failure, or interruption. This lets a caller read the invitation before the
+command finishes waiting for the other device.
+
 `space join` waits for the final result by default. `--no-wait` returns after
 the request is accepted; `space join status` and `space join cancel` inspect or
 cancel that pending request. A space switch asks for confirmation unless
@@ -130,7 +138,8 @@ uniclip recv --out ./inbox
 `send -f` is mutually exclusive with positional text and `--resend`. The
 process stays alive after dispatch because peers fetch the bytes from it.
 Keep the terminal open until the intended receivers have finished, then press
-Ctrl-C.
+Ctrl-C. When `recv` succeeds, stdout contains only the received file's absolute
+path; progress remains interactive, and `--json` returns the full result object.
 
 ### Reading already-synced entries
 
@@ -157,8 +166,9 @@ Output contract: **text / link** content is printed to stdout
 interactive terminal, so piped or redirected output stays byte-exact;
 **image / file** bytes are written to `--out` (a
 directory, defaulting to a per-user cache dir) and the absolute path is
-printed to stdout, or streamed to stdout with `--out -`. Status lines go
-to stderr, so stdout stays clean. Unlike `recv`, `get` never blocks.
+printed to stdout, or streamed to stdout with `--out -`. A successful fetch
+prints no additional status lines, so the result can be piped or captured
+directly. Unlike `recv`, `get` never blocks.
 
 ## Search
 

@@ -19,6 +19,12 @@ description: uniclip 发布版中的空间、成员、内容、搜索、诊断�
 空间重建会永久废弃旧的配对、信任和同步关系，所有设备都需要重新配对。它不会删除本机
 历史，也不是恢复出厂设置。
 
+脚本可以运行 `uniclip --json space init --passphrase <PASSPHRASE>`，成功后会得到一个
+包含 `space_id`、`device_id` 和 `fingerprint` 的 JSON 对象。JSON 模式不会打开交互提示，
+因此必须显式提供口令。`uniclip --json space invite` 会逐行输出 JSON：第一条事件包含
+邀请码和到期时间，后续事件报告配对完成、失败或被中断。这样调用方可以在命令继续等待
+另一台设备时先读到邀请码。
+
 `space join` 默认等待最终结果。`--no-wait` 会在请求被接受后返回；之后可用
 `space join status` 和 `space join cancel` 查看或取消等待中的请求。切换空间时，
 除非传入 `--yes`，否则命令会先要求确认。`--preserve-unreadable-history` 会在
@@ -113,7 +119,8 @@ uniclip recv --out ./inbox
 ```
 
 `send -f` 与位置文本和 `--resend` 互斥。分发后进程仍会继续运行，让对端能够
-取走文件。请等目标设备接收完成后再按 Ctrl-C。
+取走文件。请等目标设备接收完成后再按 Ctrl-C。`recv` 成功时，stdout 只包含收到文件的
+绝对路径；进度仍以交互方式显示，`--json` 则返回完整结果对象。
 
 ### 读取已同步的条目
 
@@ -136,7 +143,8 @@ uniclip get --list -n 20
 
 输出约定：**文本 / 链接**内容打到 stdout（可管道）；仅当 stdout 是交互式终端时才补一个尾换行，因此管道或重定向输出保持字节精确；**图片 / 文件**字节写入
 `--out`（目录，默认 per-user 缓存目录）并把绝对路径打到 stdout，或用 `--out -`
-直接写到 stdout。状态行走 stderr，stdout 保持干净。与 `recv` 不同，`get` 不阻塞。
+直接写到 stdout。成功获取时不会再输出额外状态提示，因此可以直接管道传递或捕获结果。
+与 `recv` 不同，`get` 不阻塞。
 
 ## 搜索
 

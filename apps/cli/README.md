@@ -59,6 +59,10 @@ cargo build -p uc-cli
 旧的顶层 `status`、`init`、`invite` 和 `join` 入口仍可使用，但会提示对应的
 `space` 命令。新脚本和文档应使用 `uniclip space ...`。
 
+脚本模式下，`uniclip --json space init --passphrase <PASSPHRASE>` 返回空间、设备和
+指纹标识；`uniclip --json space invite` 逐行输出邀请已签发及最终配对结果，让调用方
+在等待配对完成前就能读到邀请码。
+
 ## 取回已同步内容（`get`）
 
 无头 / SSH 机器没有系统剪贴板，`Ctrl+V` 无法粘贴已同步的图片或文件。`get`
@@ -74,9 +78,13 @@ uniclip get --list -n 20         # 仅列出最近 20 条，不取回
 
 输出契约：
 
-- **文本 / 链接**：内容打到 **stdout**（可管道）；状态行走 stderr。
+- **文本 / 链接**：内容打到 **stdout**（可管道）；成功时不再附带状态提示。
 - **图片 / 文件**：字节写入 `--out` 目录（默认 per-user cache 目录），并把**绝对
-  路径**打到 stdout；`--out -` 则把原始字节直接写到 stdout。
+  路径**打到 stdout；`--out -` 则把原始字节直接写到 stdout。成功时不再附带
+  状态提示。
+
+`uniclip recv` 仍会交互显示等待和传输进度，但成功后的 stdout 只包含收到文件的
+绝对路径；`--json` 返回完整结果对象。
 
 退出码：`0` 成功；`6` 无条目匹配 selector；`7` 条目存在但 payload 不可用
 （`Lost` / 未下载——需在源设备重发）。

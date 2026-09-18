@@ -271,8 +271,8 @@ enum Commands {
     ///
     /// Output: text/link content prints to stdout; image/file bytes are
     /// written to `--out` (default cache dir) with the absolute path printed
-    /// to stdout, or streamed to stdout with `--out -`. Status lines go to
-    /// stderr, so stdout stays clean for piping.
+    /// to stdout, or streamed to stdout with `--out -`. A successful fetch
+    /// prints no additional status lines, so the output can be piped directly.
     ///
     /// EXIT CODES: `0` materialized; `6` no entry matched the selector;
     /// `7` matched but payload unavailable (Lost / not downloaded — re-send

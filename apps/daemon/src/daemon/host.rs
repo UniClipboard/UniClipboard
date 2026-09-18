@@ -30,8 +30,6 @@ use super::run_mode::DaemonRunMode;
 use super::startup_recovery::{record_upgrade_status_at_startup, spawn_startup_recovery};
 use super::tokio_runtime::build_daemon_tokio_runtime;
 
-const ENGINE_SHUTDOWN_DEADLINE: Duration = Duration::from_secs(15);
-
 struct DesktopDaemonFileHandles {
     handles: DesktopHostFileHandles,
 }
@@ -110,9 +108,20 @@ async fn run_async_with_diagnostics(
         result = &mut starting => result.map_err(anyhow::Error::new).and_then(|result| result.map_err(anyhow::Error::new)),
         signal = wait_for_shutdown_signal() => {
             signal?;
-            starting.abort();
-            let _ = starting.await;
+            let shutdown = match starting.await.map_err(anyhow::Error::new) {
+                Ok(Ok((engine, events))) => {
+                    let result = engine
+                    .shutdown_until_complete()
+                    .await
+                    .map_err(anyhow::Error::new);
+                    drop(events);
+                    result
+                }
+                Ok(Err(error)) => Err(anyhow::Error::new(error)),
+                Err(error) => Err(error),
+            };
             startup_server.shutdown().await?;
+            shutdown?;
             return Ok(());
         }
     };
@@ -166,7 +175,7 @@ async fn run_async_with_diagnostics(
         }
     }
     let shutdown = engine
-        .shutdown(ENGINE_SHUTDOWN_DEADLINE)
+        .shutdown_until_complete()
         .await
         .map_err(anyhow::Error::new);
 

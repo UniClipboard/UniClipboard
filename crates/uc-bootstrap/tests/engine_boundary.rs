@@ -10,8 +10,12 @@ fn daemon_production_host_starts_and_stops_only_the_engine() {
     assert!(
         source.contains("prepare_desktop_engine_host")
             && source.contains("Engine::start")
-            && compact.contains("engine.shutdown"),
-        "daemon host must own one Engine from platform preparation through shutdown"
+            && compact.contains("engine.shutdown_until_complete()"),
+        "daemon host must own one Engine from platform preparation through complete shutdown"
+    );
+    assert!(
+        !compact.contains("starting.abort()") && !compact.contains("engine.shutdown("),
+        "desktop exit must not abort Engine startup or impose a mobile-style shutdown deadline"
     );
     assert!(
         !source.contains("build_process_runtime") && !source.contains("wire_dependencies"),

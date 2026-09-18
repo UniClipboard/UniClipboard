@@ -26,7 +26,9 @@ use crate::output;
 use crate::ui;
 
 pub async fn run(probe: bool, json: bool, verbose: bool) -> i32 {
-    ui::header("Members");
+    if !json {
+        ui::header("Members");
+    }
 
     let (_lease, ctx) = match connect_with_lease(verbose).await {
         Ok(pair) => pair,
@@ -37,22 +39,30 @@ pub async fn run(probe: bool, json: bool, verbose: bool) -> i32 {
     // Optionally probe presence so state is fresh before listing. Off by
     // default to keep listing fast; `--probe` opts into the round-trip.
     if probe {
-        let probe_spinner = ui::spinner("Probing paired peers...");
+        let probe_spinner = (!json).then(|| ui::spinner("Probing paired peers..."));
         match query.refresh_presence().await {
             Ok(report) => {
-                ui::spinner_finish_success(
-                    &probe_spinner,
-                    &format!(
-                        "Probed {} peer(s): {} online, {} offline, {} error(s)",
-                        report.total, report.online, report.offline, report.errors
-                    ),
-                );
+                if let Some(spinner) = probe_spinner.as_ref() {
+                    ui::spinner_finish_success(
+                        spinner,
+                        &format!(
+                            "Probed {} peer(s): {} online, {} offline, {} error(s)",
+                            report.total, report.online, report.offline, report.errors
+                        ),
+                    );
+                }
             }
             Err(err) => {
-                ui::spinner_finish_error(
-                    &probe_spinner,
-                    &format!("Probe round failed: {err} (showing last-known state)"),
-                );
+                if let Some(spinner) = probe_spinner.as_ref() {
+                    ui::spinner_finish_error(
+                        spinner,
+                        &format!("Probe round failed: {err} (showing last-known state)"),
+                    );
+                } else {
+                    ui::warn(&format!(
+                        "Probe round failed: {err} (showing last-known state)"
+                    ));
+                }
             }
         }
     }

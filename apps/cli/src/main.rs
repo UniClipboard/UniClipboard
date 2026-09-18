@@ -252,6 +252,8 @@ enum Commands {
     /// carries a materialized file, exports its bytes from the daemon, and
     /// writes them into the output directory. Press Ctrl-C to stop waiting.
     /// Does NOT write the system clipboard — recv is strictly a file sink.
+    /// Progress is shown interactively; on success, stdout contains only the
+    /// absolute path of the received file.
     Recv {
         /// Output directory. Created if missing. Defaults to current
         /// working directory.
@@ -405,7 +407,9 @@ enum SpaceCommands {
         #[arg(long)]
         device_name: Option<String>,
     },
-    /// Issue a pairing invitation and wait for a joiner.
+    /// Issue a pairing invitation and wait for a joiner. In JSON mode, emits
+    /// one event per line so callers receive the invitation before pairing
+    /// completes.
     Invite,
     /// Rebuild this profile as a new one-device space while keeping local history.
     Reset {
@@ -490,11 +494,12 @@ async fn run_space_command(command: SpaceCommands, json: bool, verbose: bool) ->
                     passphrase,
                     device_name,
                 },
+                json,
                 verbose,
             )
             .await
         }
-        SpaceCommands::Invite => commands::invite::run(verbose).await,
+        SpaceCommands::Invite => commands::invite::run(json, verbose).await,
         SpaceCommands::Reset { yes: _ } => commands::reset_space::run(json, verbose).await,
         SpaceCommands::Join {
             code,
@@ -611,13 +616,14 @@ fn main() -> anyhow::Result<()> {
                         passphrase,
                         device_name,
                     },
+                    cli.json,
                     cli.verbose,
                 )
                 .await
             }
             Commands::Invite => {
                 warn_legacy_space_command("invite", "space invite");
-                commands::invite::run(cli.verbose).await
+                commands::invite::run(cli.json, cli.verbose).await
             }
             Commands::Join {
                 code,

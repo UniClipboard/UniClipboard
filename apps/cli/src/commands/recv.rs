@@ -39,6 +39,7 @@
 //! remedy is to re-send the same file. (Pre-P5-1b in-process `recv` keyed off
 //! `inbound_notice` and so could observe duplicates; that path is retired.)
 
+use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use serde::Serialize;
@@ -200,24 +201,26 @@ fn finish_export(
         return exit_codes::EXIT_ERROR;
     }
 
-    if json {
-        let dto = RecvOutcomeDto {
-            from_device,
-            path: &target_path.display().to_string(),
-            bytes_written,
-            entry_id,
-            outcome: "received",
-        };
-        if let Ok(s) = serde_json::to_string_pretty(&dto) {
-            println!("{s}");
+    let path = target_path.display().to_string();
+    let dto = RecvOutcomeDto {
+        from_device,
+        path: &path,
+        bytes_written,
+        entry_id,
+        outcome: "received",
+    };
+    let rendered = match render_outcome(&dto, json) {
+        Ok(rendered) => rendered,
+        Err(error) => {
+            ui::error(&format!("Failed to serialize receive result: {error}"));
+            return exit_codes::EXIT_ERROR;
         }
-    } else {
-        ui::info("file", &filename);
-        ui::info("→", &target_path.display().to_string());
-        ui::bar();
-        ui::info("bytes", &bytes_written.to_string());
-        ui::end("Done");
-    }
+    };
+
+    // Waiting and transfer progress belong on stderr. Keep the completed
+    // value on stdout so command substitution captures only the path.
+    println!("{rendered}");
+    let _ = std::io::stdout().flush();
 
     exit_codes::EXIT_SUCCESS
 }
@@ -270,4 +273,55 @@ struct RecvOutcomeDto<'a> {
     entry_id: &'a str,
     /// `received` | `cancelled` | `failed`.
     outcome: &'static str,
+}
+
+fn render_outcome(outcome: &RecvOutcomeDto<'_>, json: bool) -> Result<String, serde_json::Error> {
+    if json {
+        serde_json::to_string_pretty(outcome)
+    } else {
+        Ok(outcome.path.to_string())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{render_outcome, RecvOutcomeDto};
+
+    fn outcome<'a>(path: &'a str) -> RecvOutcomeDto<'a> {
+        RecvOutcomeDto {
+            from_device: "device-1",
+            path,
+            bytes_written: 42,
+            entry_id: "entry-1",
+            outcome: "received",
+        }
+    }
+
+    #[test]
+    fn human_output_is_only_the_received_path() {
+        assert_eq!(
+            render_outcome(&outcome("/tmp/received.png"), false)
+                .expect("human output should render"),
+            "/tmp/received.png"
+        );
+    }
+
+    #[test]
+    fn json_output_keeps_receive_metadata() {
+        let rendered =
+            render_outcome(&outcome("/tmp/received.png"), true).expect("JSON output should render");
+        let value: serde_json::Value =
+            serde_json::from_str(&rendered).expect("JSON output should parse");
+
+        assert_eq!(
+            value,
+            serde_json::json!({
+                "from_device": "device-1",
+                "path": "/tmp/received.png",
+                "bytes_written": 42,
+                "entry_id": "entry-1",
+                "outcome": "received"
+            })
+        );
+    }
 }

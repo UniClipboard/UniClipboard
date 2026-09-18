@@ -10,7 +10,12 @@
 //!
 //! * **`run_for_address(ip, verbose)`** — unified engine path (dev-only).
 //!   Called from `dev pairing issue --addr <ip>`.
+//!
+//! JSON mode emits newline-delimited events because the invitation must be
+//! available before the command finishes waiting for the joiner.
 
+use serde::Serialize;
+use std::io::Write;
 use tokio::select;
 use tokio::signal;
 
@@ -34,12 +39,154 @@ use crate::ui;
 
 const EXIT_SIGINT: i32 = 130;
 
+#[derive(Serialize)]
+#[serde(
+    tag = "event",
+    rename_all = "snake_case",
+    rename_all_fields = "snake_case"
+)]
+enum InviteEvent<'a> {
+    InvitationIssued {
+        code: &'a str,
+        expires_at_ms: i64,
+    },
+    PairingCompleted {
+        sponsor_device_id: &'a str,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        joiner_device_id: Option<&'a str>,
+    },
+    PairingFailed {
+        reason: &'a str,
+    },
+    Interrupted,
+}
+
+#[derive(Clone, Copy)]
+enum InviteOutputMode {
+    Human,
+    JsonLines,
+}
+
+impl InviteOutputMode {
+    fn from_json(json: bool) -> Self {
+        if json {
+            Self::JsonLines
+        } else {
+            Self::Human
+        }
+    }
+
+    fn header(self) {
+        if matches!(self, Self::Human) {
+            ui::header("Invite a device");
+        }
+    }
+
+    fn spinner(self, message: &str) -> indicatif::ProgressBar {
+        match self {
+            Self::Human => ui::spinner(message),
+            Self::JsonLines => indicatif::ProgressBar::hidden(),
+        }
+    }
+
+    fn invitation_issued(
+        self,
+        spinner: &indicatif::ProgressBar,
+        code: &str,
+        expires_at_ms: i64,
+    ) -> Result<(), String> {
+        match self {
+            Self::Human => {
+                ui::spinner_finish_success(spinner, "Invitation issued");
+                ui::bar();
+                ui::verification_code(code);
+                if let Some(expires_at) = chrono::DateTime::from_timestamp_millis(expires_at_ms) {
+                    ui::info("expires_at", &expires_at.to_rfc3339());
+                } else {
+                    ui::info("expires_at", &format!("{expires_at_ms}ms"));
+                }
+                ui::bar();
+                emit_invitation_code(code)
+            }
+            Self::JsonLines => {
+                spinner.finish_and_clear();
+                emit_json_event(&InviteEvent::InvitationIssued {
+                    code,
+                    expires_at_ms,
+                })
+            }
+        }
+    }
+
+    fn request_failed(self, spinner: &indicatif::ProgressBar, message: &str) {
+        match self {
+            Self::Human => ui::spinner_finish_error(spinner, message),
+            Self::JsonLines => {
+                spinner.finish_and_clear();
+                ui::error(message);
+            }
+        }
+    }
+
+    fn pairing_completed(
+        self,
+        spinner: &indicatif::ProgressBar,
+        sponsor_device_id: &str,
+        joiner_device_id: Option<&str>,
+    ) -> Result<(), String> {
+        match self {
+            Self::Human => {
+                ui::spinner_finish_success(spinner, "Pairing completed");
+                ui::info("sponsor_device_id", sponsor_device_id);
+                if let Some(joiner_device_id) = joiner_device_id {
+                    ui::info("joiner_device_id", joiner_device_id);
+                }
+                Ok(())
+            }
+            Self::JsonLines => {
+                spinner.finish_and_clear();
+                emit_json_event(&InviteEvent::PairingCompleted {
+                    sponsor_device_id,
+                    joiner_device_id,
+                })
+            }
+        }
+    }
+
+    fn pairing_failed(self, spinner: &indicatif::ProgressBar, reason: &str) -> Result<(), String> {
+        match self {
+            Self::Human => {
+                ui::spinner_finish_error(spinner, &format!("Pairing failed: {reason}"));
+                Ok(())
+            }
+            Self::JsonLines => {
+                spinner.finish_and_clear();
+                emit_json_event(&InviteEvent::PairingFailed { reason })
+            }
+        }
+    }
+
+    fn interrupted(self, spinner: &indicatif::ProgressBar) -> Result<(), String> {
+        match self {
+            Self::Human => {
+                ui::spinner_finish_error(spinner, "Interrupted by user");
+                Ok(())
+            }
+            Self::JsonLines => {
+                spinner.finish_and_clear();
+                emit_json_event(&InviteEvent::Interrupted)
+            }
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Public entry: daemon path (ADR-008 P5-2b)
 // ---------------------------------------------------------------------------
 
-pub async fn run(verbose: bool) -> i32 {
-    ui::header("Invite a device");
+pub async fn run(json: bool, verbose: bool) -> i32 {
+    let output = InviteOutputMode::from_json(json);
+    output.header();
 
     let service = match connect_or_spawn_oneshot_daemon(verbose).await {
         Ok(s) => s,
@@ -64,71 +211,78 @@ pub async fn run(verbose: bool) -> i32 {
         }
     };
 
-    let spinner = ui::spinner("Requesting invitation from rendezvous...");
+    let spinner = output.spinner("Requesting invitation from rendezvous...");
     let invitation = match ctx.setup_v2_client().issue_invitation().await {
-        Ok(inv) => {
-            ui::spinner_finish_success(&spinner, "Invitation issued");
-            inv
-        }
+        Ok(invitation) => invitation,
         Err(err) => {
-            ui::spinner_finish_error(&spinner, &crate::commands::daemon_error_message(&err));
+            let message = crate::commands::daemon_error_message(&err);
+            output.request_failed(&spinner, &message);
             return exit_codes::EXIT_ERROR;
         }
     };
 
-    ui::bar();
-    ui::verification_code(&invitation.code);
-
-    // Convert epoch-ms to a human-readable UTC timestamp via chrono.
-    if let Some(dt) = chrono::DateTime::from_timestamp_millis(invitation.expires_at_ms) {
-        ui::info("expires_at", &dt.to_rfc3339());
-    } else {
-        ui::info("expires_at", &format!("{}ms", invitation.expires_at_ms));
-    }
-
-    ui::bar();
-
-    // Machine-readable line on stdout so scripts (e.g., the single-
-    // machine e2e test) can capture the code without parsing ANSI from
-    // the styled stderr output. Humans see the styled version above.
-    // Explicit flush because Rust stdout is fully-buffered when piped.
+    if let Err(message) =
+        output.invitation_issued(&spinner, &invitation.code, invitation.expires_at_ms)
     {
-        use std::io::Write;
-        let mut out = std::io::stdout().lock();
-        let _ = writeln!(out, "INVITATION_CODE={}", invitation.code);
-        let _ = out.flush();
+        ui::error(&message);
+        return exit_codes::EXIT_ERROR;
     }
 
-    let waiting = ui::spinner("Waiting for joiner to complete handshake (Ctrl+C to cancel)...");
+    let waiting = output.spinner("Waiting for joiner to complete handshake (Ctrl+C to cancel)...");
 
     select! {
         outcome = rx.recv() => match outcome {
             Some(event) if event.success => {
-                ui::spinner_finish_success(&waiting, "Pairing completed");
-                ui::info("sponsor_device_id", &event.sponsor_device_id);
-                if let Some(ref joiner_id) = event.joiner_device_id {
-                    ui::info("joiner_device_id", joiner_id);
+                match output.pairing_completed(
+                    &waiting,
+                    &event.sponsor_device_id,
+                    event.joiner_device_id.as_deref(),
+                ) {
+                    Ok(()) => exit_codes::EXIT_SUCCESS,
+                    Err(message) => {
+                        ui::error(&message);
+                        exit_codes::EXIT_ERROR
+                    }
                 }
-                exit_codes::EXIT_SUCCESS
             }
             Some(event) => {
                 let reason = event.reason.as_deref().unwrap_or("unknown");
-                ui::spinner_finish_error(
-                    &waiting,
-                    &format!("Pairing failed: {reason}"),
-                );
+                if let Err(message) = output.pairing_failed(&waiting, reason) {
+                    ui::error(&message);
+                }
                 exit_codes::EXIT_ERROR
             }
             None => {
-                ui::spinner_finish_error(&waiting, "Outcome stream ended unexpectedly");
+                let reason = "outcome stream ended unexpectedly";
+                if let Err(message) = output.pairing_failed(&waiting, reason) {
+                    ui::error(&message);
+                }
                 exit_codes::EXIT_ERROR
             }
         },
         _ = signal::ctrl_c() => {
-            ui::spinner_finish_error(&waiting, "Interrupted by user");
+            if let Err(message) = output.interrupted(&waiting) {
+                ui::error(&message);
+            }
             EXIT_SIGINT
         }
     }
+}
+
+fn emit_invitation_code(code: &str) -> Result<(), String> {
+    let mut out = std::io::stdout().lock();
+    writeln!(out, "INVITATION_CODE={code}")
+        .and_then(|()| out.flush())
+        .map_err(|error| format!("Failed to write invitation code: {error}"))
+}
+
+fn emit_json_event(event: &InviteEvent<'_>) -> Result<(), String> {
+    let mut out = std::io::stdout().lock();
+    serde_json::to_writer(&mut out, event)
+        .map_err(|error| format!("Failed to serialize invitation event: {error}"))?;
+    writeln!(out)
+        .and_then(|()| out.flush())
+        .map_err(|error| format!("Failed to write invitation event: {error}"))
 }
 
 // ---------------------------------------------------------------------------
@@ -214,11 +368,10 @@ async fn run_for_address_inner(selected_ip: IpAddr, verbose: bool) -> i32 {
     ui::bar();
 
     // Machine-readable line on stdout so scripts can capture the code.
-    {
-        use std::io::Write;
-        let mut out = std::io::stdout().lock();
-        let _ = writeln!(out, "INVITATION_CODE={}", invitation.code);
-        let _ = out.flush();
+    if let Err(message) = emit_invitation_code(&invitation.code) {
+        ui::error(&message);
+        cli.shutdown().await;
+        return exit_codes::EXIT_ERROR;
     }
 
     let waiting = ui::spinner("Waiting for joiner to complete handshake (Ctrl+C to cancel)...");
@@ -279,5 +432,41 @@ async fn membership_diagnostics_revision(
     {
         OperationResult::MembershipDiagnostics(summary) => Ok(summary.revision),
         result => Err(format!("unexpected engine response: {result:?}")),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::InviteEvent;
+
+    #[test]
+    fn json_events_are_independently_parseable() {
+        let issued = serde_json::to_value(InviteEvent::InvitationIssued {
+            code: "1234-5678",
+            expires_at_ms: 42,
+        })
+        .expect("issued event should serialize");
+        let completed = serde_json::to_value(InviteEvent::PairingCompleted {
+            sponsor_device_id: "sponsor-1",
+            joiner_device_id: Some("joiner-1"),
+        })
+        .expect("completed event should serialize");
+
+        assert_eq!(
+            issued,
+            serde_json::json!({
+                "event": "invitation_issued",
+                "code": "1234-5678",
+                "expires_at_ms": 42
+            })
+        );
+        assert_eq!(
+            completed,
+            serde_json::json!({
+                "event": "pairing_completed",
+                "sponsor_device_id": "sponsor-1",
+                "joiner_device_id": "joiner-1"
+            })
+        );
     }
 }

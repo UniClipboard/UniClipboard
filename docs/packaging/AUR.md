@@ -48,8 +48,8 @@ These were collected by scanning the repo on 2026-05-19. The PKGBUILDs in §6/§
 ### Build & runtime
 - [x] **Tech stack:** Tauri 2.11 + React 19 + TypeScript + Tailwind 4 (`src-tauri/Cargo.toml:136`, `package.json:92,113`).
 - [x] **Build command:** `bun run tauri build` (`.github/workflows/build.yml:268-269`).
-- [x] **Package manager:** **bun** (not pnpm). Lockfile is `bun.lock`. The `bun` package is in Arch `extra`.
-- [x] **`makedepends`:** `git rust nodejs bun pkgconf`. No `openssl-sys`/`libsqlite3-sys`-style sys crates spotted in workspace deps.
+- [x] **Package manager:** **bun** (not pnpm). Lockfile is `bun.lock`. Arch no longer ships a concrete `bun` package, so the PKGBUILD uses the AUR `bun-bin` provider.
+- [x] **`makedepends`:** `git rust nodejs bun-bin pkgconf`. Pinning `bun-bin` avoids the self-referential build dependency exposed when an AUR helper selects `bun-git` as the virtual `bun` provider. No `openssl-sys`/`libsqlite3-sys`-style sys crates spotted in workspace deps.
 - [x] **`depends`:** `webkit2gtk-4.1 gtk3 libayatana-appindicator libnotify` (mapped from `src-tauri/tauri.conf.json:48-54` .deb runtime deps).
 - [x] **Arches:** `x86_64 aarch64`. CI builds both for Linux (`.github/workflows/build.yml:71-86`).
 - [ ] **Minimum glibc:** **HUMAN** — CI builds in `debian:bookworm` (glibc 2.36) but no documented floor. Arch ships glibc ≥ 2.39, so practically a non-issue.
@@ -107,7 +107,7 @@ arch=('x86_64' 'aarch64')
 url="https://www.uniclipboard.app"
 license=('AGPL-3.0-only')
 depends=('webkit2gtk-4.1' 'gtk3' 'libayatana-appindicator' 'libnotify')
-makedepends=('git' 'rust' 'nodejs' 'bun' 'pkgconf')
+makedepends=('git' 'rust' 'nodejs' 'bun-bin' 'pkgconf')
 provides=("$_pkgname" "$_pkgname=$pkgver")
 conflicts=("$_pkgname")
 source=("$_pkgname::git+https://github.com/UniClipboard/UniClipboard.git")

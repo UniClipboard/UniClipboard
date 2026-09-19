@@ -38,7 +38,7 @@ omarchy pkg add gtk-layer-shell
 o.bind("SUPER + SHIFT + V", "UniClipboard", "uniclipboard --quick-panel")
 ```
 
-使用前先检查该组合是否已有绑定；如有冲突，应选择空闲组合，或者明确取消旧绑定后替换。GUI 必须启用快捷面板；重复执行该命令切换面板显示状态，未运行时启动 GUI。开发模式若禁用了单实例机制，应通过生产构建或显式启用单实例验证此入口。
+使用前先检查该组合是否已有绑定；如有冲突，应选择空闲组合，或者明确取消旧绑定后替换。GUI 必须已运行并启用快捷面板；重复执行该命令切换面板显示状态，GUI 未运行时命令会报错退出。开发模式默认启用单实例机制；如通过 `UC_DISABLE_SINGLE_INSTANCE=1` 显式禁用，则应恢复默认配置或使用生产构建验证此入口。
 
 不需要针对快捷面板添加浮动、居中窗口规则。Layer Shell namespace 为 `uniclipboard-quick-panel`，可通过 `hyprctl layers -j` 验证。Wayland 下应用内的 X11 全局快捷键注册被禁用，设置页显示桌面配置入口；单独修饰键双击仍受 Wayland 输入隔离限制。
 

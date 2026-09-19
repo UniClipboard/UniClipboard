@@ -71,13 +71,17 @@ fn has_quick_panel_launch_argument(args: impl IntoIterator<Item = String>) -> bo
     args.into_iter().any(|arg| arg == QUICK_PANEL_LAUNCH_ARG)
 }
 
-fn should_show_quick_panel_on_start(requested: bool, enabled: bool) -> bool {
-    requested && enabled
+fn validate_primary_launch(quick_panel_requested: bool) -> Result<(), &'static str> {
+    if quick_panel_requested {
+        Err("UniClipboard GUI is not running; cannot show the quick panel")
+    } else {
+        Ok(())
+    }
 }
 
 #[cfg(test)]
 mod launch_argument_tests {
-    use super::{has_quick_panel_launch_argument, should_show_quick_panel_on_start};
+    use super::{has_quick_panel_launch_argument, validate_primary_launch};
 
     #[test]
     fn recognizes_the_quick_panel_launch_argument() {
@@ -96,9 +100,16 @@ mod launch_argument_tests {
     }
 
     #[test]
-    fn startup_request_respects_a_disabled_quick_panel() {
-        assert!(!should_show_quick_panel_on_start(true, false));
-        assert!(should_show_quick_panel_on_start(true, true));
+    fn normal_primary_launch_is_allowed() {
+        assert!(validate_primary_launch(false).is_ok());
+    }
+
+    #[test]
+    fn quick_panel_primary_launch_is_rejected() {
+        assert_eq!(
+            validate_primary_launch(true).unwrap_err(),
+            "UniClipboard GUI is not running; cannot show the quick panel"
+        );
     }
 }
 
@@ -280,7 +291,6 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
     let disable_gui_single_instance =
         crate::runtime_environment::should_disable_gui_single_instance(
             explicit_single_instance_disable.as_deref(),
-            development_mode,
         );
 
     // Store TaskRegistry reference for exit hook registration
@@ -430,6 +440,25 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
             Some(vec![AUTOSTART_LAUNCH_ARG]),
         ))
         .setup(move |app| {
+            if let Err(message) = validate_primary_launch(quick_panel_requested_on_start) {
+                error!(
+                    error_kind = "quick_panel_gui_unavailable",
+                    retryable = true,
+                    error = message,
+                    "{message}"
+                );
+                // The single-instance plugin handles a secondary launch before setup.
+                // Reaching setup with this argument therefore means no GUI owns the
+                // activation channel. Defer exit until the run loop can receive the
+                // requested non-zero code.
+                let handle = app.handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    tokio::task::yield_now().await;
+                    handle.exit(1);
+                }.in_current_span());
+                return Ok(());
+            }
+
             crate::desktop_theme::install(app.handle(), runtime.desktop().task_registry().token().clone());
             // Set AppHandle on runtime so it can emit events to frontend
             // In Tauri 2, use app.handle() to get the AppHandle
@@ -602,8 +631,6 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
                 }
             };
 
-            let show_quick_panel_on_start =
-                should_show_quick_panel_on_start(quick_panel_requested_on_start, quick_panel_enabled);
             if app
                 .state::<quick_panel::QuickPanelToggleController>()
                 .configure(quick_panel_enabled)
@@ -760,7 +787,7 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
             // `show_main_window` creates it from config on demand. That is
             // exactly what a Lightweight *reopen* needs (issue #1169): the
             // cold-launch task calls `show_main_window` to bring it up.
-            if !silent_start && !show_quick_panel_on_start {
+            if !silent_start {
                 crate::main_window::show_main_window(app.handle());
                 info!("Main window show requested (silent_start=false)");
             } else {
@@ -783,10 +810,6 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
             // window on the critical startup path.
             if quick_panel_enabled {
                 quick_panel::pre_create(app.handle());
-            }
-            if show_quick_panel_on_start {
-                info!("Initial launch requested quick panel toggle");
-                quick_panel::request_toggle(app.handle());
             }
 
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -834,7 +857,6 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
                 let daemon_conn_for_startup_actions = daemon_connection_state.clone();
                 let app_handle_for_lightweight_start = app_handle_for_startup.clone();
                 let launch_origin_for_startup = daemon_launch_origin.clone();
-                let keep_gui_for_quick_panel = show_quick_panel_on_start;
                 tauri::async_runtime::spawn(async move {
                     let outcome = uc_desktop::startup::run_cold_launch_actions(
                         daemon_conn_for_startup_actions,
@@ -851,15 +873,11 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
                     // only running; a later click that finds the daemon already
                     // running reopens the window instead.
                     match outcome.map(|o| o.window_action) {
-                        Some(uc_desktop::startup::StartupWindowAction::EnterBackgroundOnly)
-                            if !keep_gui_for_quick_panel => {
+                        Some(uc_desktop::startup::StartupWindowAction::EnterBackgroundOnly) => {
                             info!(
                                 "[Startup] Lightweight cold start: daemon ready, entering Lightweight Mode (GUI exits, daemon stays running)"
                             );
                             crate::lightweight::enter_lightweight_mode(&app_handle_for_lightweight_start);
-                        }
-                        Some(uc_desktop::startup::StartupWindowAction::EnterBackgroundOnly) => {
-                            info!("Quick panel launch keeps GUI active instead of entering Lightweight Mode");
                         }
                         Some(uc_desktop::startup::StartupWindowAction::ShowWindow) => {
                             info!(
@@ -971,6 +989,17 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
         .build(tauri_ctx)
         .map_err(|error| anyhow::anyhow!("error building tauri application: {error}"))?
         .run(move |app_handle, event| {
+            if quick_panel_requested_on_start {
+                if let tauri::RunEvent::ExitRequested { code, .. } = event {
+                    drop(json_log_guard.take());
+                    // Tauri normalizes an exit requested during setup to zero after
+                    // the run callback returns. Exit here after flushing diagnostics
+                    // so this command preserves its documented failure status.
+                    std::process::exit(code.unwrap_or(1));
+                }
+                return;
+            }
+
             match event {
                 tauri::RunEvent::ExitRequested { code, api, .. } => {
                     // Window-close destroys the main window (releasing its

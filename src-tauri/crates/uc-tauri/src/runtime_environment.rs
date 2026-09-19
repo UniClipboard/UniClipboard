@@ -13,39 +13,21 @@ pub(crate) fn runtime_profile() -> String {
     uc_app_paths::resolve_profile(None).unwrap_or_else(|| "default".to_string())
 }
 
-pub(crate) fn should_disable_gui_single_instance(
-    explicit_disable: Option<&str>,
-    development_mode: bool,
-) -> bool {
-    explicit_disable == Some("1") || development_mode
+pub(crate) fn should_disable_gui_single_instance(explicit_disable: Option<&str>) -> bool {
+    explicit_disable == Some("1")
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{is_development_environment, should_disable_gui_single_instance};
+    use super::should_disable_gui_single_instance;
 
     #[test]
-    fn development_environment_disables_gui_single_instance() {
-        assert!(should_disable_gui_single_instance(
-            None,
-            is_development_environment(Some("development"))
-        ));
-    }
-
-    #[test]
-    fn production_environment_keeps_gui_single_instance() {
-        assert!(!should_disable_gui_single_instance(
-            None,
-            is_development_environment(Some("production"))
-        ));
-        assert!(!should_disable_gui_single_instance(
-            None,
-            is_development_environment(None)
-        ));
+    fn gui_single_instance_is_enabled_by_default() {
+        assert!(!should_disable_gui_single_instance(None));
     }
 
     #[test]
     fn explicit_override_still_disables_gui_single_instance() {
-        assert!(should_disable_gui_single_instance(Some("1"), false));
+        assert!(should_disable_gui_single_instance(Some("1")));
     }
 }

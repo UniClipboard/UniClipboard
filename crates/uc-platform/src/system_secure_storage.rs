@@ -54,29 +54,27 @@ fn classify_platform_failure(msg: &str) -> SecureStorageError {
 
 /// Builds the keychain service name used to namespace secure storage entries.
 ///
-/// The returned name is `SERVICE_NAME` when no environment-derived suffixes are present;
-/// otherwise the suffixes are appended with hyphens (for example: `UniClipboard-dev-profile`).
+/// The returned name is `SERVICE_NAME` when no environment-derived suffix is present;
+/// otherwise the resolved profile is appended with a hyphen (for example:
+/// `UniClipboard-peer-a`).
 ///
-/// The function appends the `"dev"` suffix when `UNICLIPBOARD_ENV` is set to `"development"` or `"dev"` (case-insensitive).
-/// It also appends a profile suffix taken from `UC_PROFILE` if non-empty, or from `crate::default_profile()` if `UC_PROFILE` is unset or empty.
+/// The resolved profile is the namespace authority. `UNICLIPBOARD_ENV` only preserves
+/// the legacy `UniClipboard-dev` isolation for an unprofiled development process; it
+/// must not add a second suffix when a profile already exists.
 fn resolve_service_name() -> String {
-    let mut suffixes: Vec<String> = Vec::new();
-
-    if matches!(
+    let development_environment = matches!(
         std::env::var("UNICLIPBOARD_ENV"),
         Ok(value) if value.eq_ignore_ascii_case("development") || value.eq_ignore_ascii_case("dev")
-    ) {
-        suffixes.push("dev".to_string());
-    }
+    );
 
-    if let Some(profile) = crate::resolve_profile() {
-        suffixes.push(profile);
-    }
+    service_name_for_context(crate::resolve_profile().as_deref(), development_environment)
+}
 
-    if suffixes.is_empty() {
-        SERVICE_NAME.to_string()
-    } else {
-        format!("{SERVICE_NAME}-{}", suffixes.join("-"))
+fn service_name_for_context(profile: Option<&str>, development_environment: bool) -> String {
+    match profile {
+        Some(profile) => format!("{SERVICE_NAME}-{profile}"),
+        None if development_environment => format!("{SERVICE_NAME}-dev"),
+        None => SERVICE_NAME.to_string(),
     }
 }
 
@@ -150,6 +148,24 @@ impl SecureStorageProvider for SystemSecureStorage {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn resolved_profile_is_the_only_secure_storage_namespace() {
+        assert_eq!(
+            service_name_for_context(Some("dev"), true),
+            "UniClipboard-dev"
+        );
+        assert_eq!(
+            service_name_for_context(Some("peer-a"), true),
+            "UniClipboard-peer-a"
+        );
+    }
+
+    #[test]
+    fn development_environment_still_isolates_an_unprofiled_process() {
+        assert_eq!(service_name_for_context(None, true), "UniClipboard-dev");
+        assert_eq!(service_name_for_context(None, false), "UniClipboard");
+    }
 
     #[test]
     fn unavailable_classification() {

@@ -81,11 +81,7 @@ pub fn bar() {
 /// Print a closing corner: `└  Message`
 pub fn end(text: &str) {
     let term = Term::stderr();
-    let _ = term.write_line(&format!(
-        " {}  {}",
-        green().apply_to("└"),
-        green().apply_to(text),
-    ));
+    let _ = term.write_line(&format!(" └  {text}"));
 }
 
 // ── Interactive prompts ─────────────────────────────────────────────

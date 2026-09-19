@@ -8,7 +8,10 @@ use uc_daemon_contract::api::types::{DaemonResidency, HealthResponse};
 use uc_daemon_contract::probe::{
     classify_health_response, running_daemon_is_strictly_newer, ProbeOutcome,
 };
-use uc_daemon_process::process_metadata::DaemonSpawnOrigin;
+use uc_daemon_process::health_wait::{probe_for_reuse, ReuseProbeResult};
+use uc_daemon_process::process_metadata::{
+    verify_pid_identity, DaemonPidMetadata, DaemonProcessMode, DaemonSpawnOrigin, PidVerification,
+};
 use uc_daemon_process::spawn::{spawn_detached_daemon, SpawnDaemonError};
 
 const HEALTH_PATH: &str = "/health";
@@ -194,6 +197,68 @@ pub async fn probe_running() -> Result<ProbeOutcome, LocalDaemonError> {
     probe_daemon_health(&client).await
 }
 
+/// Probe a daemon for a command that may spawn one when it is truly absent.
+///
+/// A published `daemon.conn` whose PID is still a live daemon is authoritative
+/// evidence that an incumbent exists. A short `/health` timeout must therefore
+/// be treated as readiness and retried, not as permission to spawn a competing
+/// same-version daemon. The latter can win single-instance arbitration and
+/// terminate the healthy incumbent that the command was supposed to reuse.
+pub async fn probe_running_for_reuse() -> Result<ProbeOutcome, LocalDaemonError> {
+    let client = uc_daemon_client::build_local_http_client_with_timeout(PROBE_TIMEOUT)
+        .map_err(|error| LocalDaemonError::ProbeClient(error.into()))?;
+    let mut probe = || probe_daemon_health(&client);
+    let mut incumbent_is_live = daemon_conn_points_to_live_process;
+    probe_for_reuse_with(
+        &mut probe,
+        &mut incumbent_is_live,
+        STARTUP_TIMEOUT,
+        POLL_INTERVAL,
+    )
+    .await
+}
+
+async fn probe_for_reuse_with<Probe, ProbeFuture, Incumbent>(
+    probe: &mut Probe,
+    incumbent_is_live: &mut Incumbent,
+    timeout: Duration,
+    poll_interval: Duration,
+) -> Result<ProbeOutcome, LocalDaemonError>
+where
+    Probe: FnMut() -> ProbeFuture,
+    ProbeFuture: Future<Output = Result<ProbeOutcome, LocalDaemonError>>,
+    Incumbent: FnMut() -> Result<bool, LocalDaemonError>,
+{
+    match probe_for_reuse(probe, incumbent_is_live, timeout, poll_interval).await? {
+        ReuseProbeResult::Outcome(outcome) => Ok(outcome),
+        ReuseProbeResult::LiveIncumbentTimedOut => Err(LocalDaemonError::StartupTimeout {
+            timeout_ms: timeout.as_millis() as u64,
+            profile: std::env::var("UC_PROFILE").ok(),
+            base_url: resolve_base_url().unwrap_or_default(),
+        }),
+    }
+}
+
+fn daemon_conn_points_to_live_process() -> Result<bool, LocalDaemonError> {
+    let conn = uc_daemon_process::socket::read_daemon_conn_file().map_err(|error| {
+        LocalDaemonError::ResolveAddress(error.context("failed to read daemon connection file"))
+    })?;
+    let Some(conn) = conn else {
+        return Ok(false);
+    };
+    let metadata = DaemonPidMetadata {
+        pid: conn.pid,
+        mode: DaemonProcessMode::Standalone,
+        started_at_ms: conn.started_at_ms,
+        spawned_by: DaemonSpawnOrigin::Unknown,
+        package_version: String::new(),
+    };
+    Ok(matches!(
+        verify_pid_identity(&metadata),
+        PidVerification::Active
+    ))
+}
+
 /// Wait for a foreground child to publish a compatible daemon endpoint.
 pub(crate) async fn wait_for_running_daemon() -> Result<(), LocalDaemonError> {
     let mut probe = || probe_running();
@@ -209,13 +274,10 @@ pub(crate) async fn wait_for_running_daemon() -> Result<(), LocalDaemonError> {
 /// no in-crate caller yet — hence `#[allow(dead_code)]`).
 #[allow(dead_code)]
 pub async fn ensure_local_daemon_running() -> Result<LocalDaemonSession, LocalDaemonError> {
-    let client = uc_daemon_client::build_local_http_client_with_timeout(PROBE_TIMEOUT)
-        .map_err(|error| LocalDaemonError::ProbeClient(error.into()))?;
-
     // Classify the daemon (if any) already bound to this profile (ADR-008 P5-L
     // L2). Compatible → reuse it; Incompatible → clear error (do NOT spawn a
     // competitor or kill it — restart/takeover is L8); Absent → spawn below.
-    match probe_daemon_health(&client).await? {
+    match probe_running_for_reuse().await? {
         ProbeOutcome::Compatible(_) => {
             return Ok(LocalDaemonSession {
                 base_url: resolve_base_url()?,
@@ -232,6 +294,8 @@ pub async fn ensure_local_daemon_running() -> Result<LocalDaemonSession, LocalDa
         ProbeOutcome::Absent => {}
     }
 
+    let client = uc_daemon_client::build_local_http_client_with_timeout(PROBE_TIMEOUT)
+        .map_err(|error| LocalDaemonError::ProbeClient(error.into()))?;
     spawn_and_wait_healthy(&client).await
 }
 
@@ -278,17 +342,22 @@ fn classify_probe_action(outcome: &ProbeOutcome) -> ProbeAction {
 pub async fn ensure_or_promote_local_daemon(
     target: DaemonResidency,
 ) -> Result<LocalDaemonSession, LocalDaemonError> {
-    let client = uc_daemon_client::build_local_http_client_with_timeout(PROBE_TIMEOUT)
-        .map_err(|error| LocalDaemonError::ProbeClient(error.into()))?;
-
-    let outcome = probe_daemon_health(&client).await?;
+    let outcome = probe_running_for_reuse().await?;
     match classify_probe_action(&outcome) {
-        ProbeAction::Promote => promote_oneshot_daemon(&client, target).await,
+        ProbeAction::Promote => {
+            let client = uc_daemon_client::build_local_http_client_with_timeout(PROBE_TIMEOUT)
+                .map_err(|error| LocalDaemonError::ProbeClient(error.into()))?;
+            promote_oneshot_daemon(&client, target).await
+        }
         ProbeAction::Reuse => Ok(LocalDaemonSession {
             base_url: resolve_base_url()?,
             spawned: false,
         }),
-        ProbeAction::Spawn => spawn_and_wait_healthy(&client).await,
+        ProbeAction::Spawn => {
+            let client = uc_daemon_client::build_local_http_client_with_timeout(PROBE_TIMEOUT)
+                .map_err(|error| LocalDaemonError::ProbeClient(error.into()))?;
+            spawn_and_wait_healthy(&client).await
+        }
         ProbeAction::Incompatible => match outcome {
             ProbeOutcome::Incompatible {
                 details,
@@ -701,6 +770,58 @@ mod tests {
             api_revision: uc_daemon_contract::DAEMON_API_REVISION.into(),
             residency,
         })
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn reuse_probe_waits_for_a_live_incumbent_instead_of_spawning_a_competitor() {
+        let probes = Arc::new(AtomicUsize::new(0));
+        let probe_calls = Arc::clone(&probes);
+        let mut probe = move || {
+            let call = probe_calls.fetch_add(1, Ordering::SeqCst);
+            async move {
+                if call == 0 {
+                    Ok(ProbeOutcome::Absent)
+                } else {
+                    Ok(compatible())
+                }
+            }
+        };
+        let mut incumbent_is_live = || Ok(true);
+
+        let outcome = probe_for_reuse_with(
+            &mut probe,
+            &mut incumbent_is_live,
+            Duration::from_secs(2),
+            Duration::from_millis(100),
+        )
+        .await
+        .expect("a temporarily unresponsive incumbent should become reusable");
+
+        assert!(matches!(outcome, ProbeOutcome::Compatible(_)));
+        assert_eq!(probes.load(Ordering::SeqCst), 2);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn reuse_probe_keeps_absent_behavior_when_no_live_incumbent_exists() {
+        let probes = Arc::new(AtomicUsize::new(0));
+        let probe_calls = Arc::clone(&probes);
+        let mut probe = move || {
+            probe_calls.fetch_add(1, Ordering::SeqCst);
+            async { Ok(ProbeOutcome::Absent) }
+        };
+        let mut incumbent_is_live = || Ok(false);
+
+        let outcome = probe_for_reuse_with(
+            &mut probe,
+            &mut incumbent_is_live,
+            Duration::from_secs(2),
+            Duration::from_millis(100),
+        )
+        .await
+        .expect("an actually absent daemon should stay absent");
+
+        assert_eq!(outcome, ProbeOutcome::Absent);
+        assert_eq!(probes.load(Ordering::SeqCst), 1);
     }
 
     // ---------- Display impl ----------

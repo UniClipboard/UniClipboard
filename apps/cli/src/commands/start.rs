@@ -141,6 +141,16 @@ async fn run_background(json: bool, server: bool) -> i32 {
 }
 
 async fn run_foreground(json: bool, _verbose: bool) -> i32 {
+    run_foreground_with_probe(json, local_daemon::probe_running_for_reuse).await
+}
+
+async fn run_foreground_with_probe<Probe, ProbeFuture>(json: bool, probe: Probe) -> i32
+where
+    Probe: FnOnce() -> ProbeFuture,
+    ProbeFuture: std::future::Future<
+        Output = Result<uc_daemon_contract::probe::ProbeOutcome, local_daemon::LocalDaemonError>,
+    >,
+{
     // ADR-008 P5-L L8d-2: controlled-restart promotion is background-only —
     // foreground is probe-only + its own foreground spawn (below), so the
     // `--server` → residency mapping does not apply here.
@@ -152,7 +162,7 @@ async fn run_foreground(json: bool, _verbose: bool) -> i32 {
     // ADR-008 P5-L L2: classify the probe. Compatible → report already_running;
     // Incompatible → surface a clear error and refuse to spawn a competitor
     // (restart/takeover is L8); Absent → fall through to the foreground spawn.
-    match local_daemon::probe_running().await {
+    match probe().await {
         Ok(uc_daemon_contract::probe::ProbeOutcome::Compatible(_)) => {
             if let Some(code) = check_setup_complete(json).await {
                 return code;
@@ -178,8 +188,11 @@ async fn run_foreground(json: bool, _verbose: bool) -> i32 {
             );
             return exit_codes::EXIT_ERROR;
         }
-        // Absent or probe error → proceed to spawn the foreground daemon.
-        Ok(uc_daemon_contract::probe::ProbeOutcome::Absent) | Err(_) => {}
+        Ok(uc_daemon_contract::probe::ProbeOutcome::Absent) => {}
+        Err(error) => {
+            ui::error(&format!("Failed to probe local daemon: {error}"));
+            return exit_codes::EXIT_DAEMON_UNREACHABLE;
+        }
     }
 
     let daemon_exe = match uc_daemon_process::spawn::resolve_daemon_exe_path() {
@@ -263,6 +276,20 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn foreground_start_refuses_to_spawn_when_live_incumbent_times_out() {
+        let exit_code = run_foreground_with_probe(false, || async {
+            Err(local_daemon::LocalDaemonError::StartupTimeout {
+                timeout_ms: 30_000,
+                profile: Some("test".into()),
+                base_url: "http://127.0.0.1:42720".into(),
+            })
+        })
+        .await;
+
+        assert_eq!(exit_code, exit_codes::EXIT_DAEMON_UNREACHABLE);
+    }
 
     #[test]
     fn server_flag_maps_to_server_headless_residency() {

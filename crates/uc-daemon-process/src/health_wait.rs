@@ -9,6 +9,49 @@ use std::time::Duration;
 
 use crate::contract::{DaemonBootstrapError, ProbeOutcome};
 
+/// Result of probing before an operation that may spawn a daemon.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ReuseProbeResult {
+    /// The probe reached a terminal health classification.
+    Outcome(ProbeOutcome),
+    /// A live incumbent stayed temporarily unreachable for the full budget.
+    LiveIncumbentTimedOut,
+}
+
+/// Probe before a possible spawn without mistaking a live incumbent for an
+/// absent daemon.
+///
+/// `Absent` authorizes a caller to spawn only when `incumbent_is_live` also
+/// reports that no daemon process owns the published connection. While that
+/// process remains live, this function keeps probing until it recovers or the
+/// supplied timeout expires.
+pub async fn probe_for_reuse<Probe, ProbeFuture, Incumbent, Error>(
+    probe: &mut Probe,
+    incumbent_is_live: &mut Incumbent,
+    timeout: Duration,
+    poll_interval: Duration,
+) -> Result<ReuseProbeResult, Error>
+where
+    Probe: FnMut() -> ProbeFuture,
+    ProbeFuture: Future<Output = Result<ProbeOutcome, Error>>,
+    Incumbent: FnMut() -> Result<bool, Error>,
+{
+    let deadline = tokio::time::Instant::now() + timeout;
+    loop {
+        let outcome = probe().await?;
+        if !matches!(outcome, ProbeOutcome::Absent) {
+            return Ok(ReuseProbeResult::Outcome(outcome));
+        }
+        if !incumbent_is_live()? {
+            return Ok(ReuseProbeResult::Outcome(ProbeOutcome::Absent));
+        }
+        if tokio::time::Instant::now() >= deadline {
+            return Ok(ReuseProbeResult::LiveIncumbentTimedOut);
+        }
+        tokio::time::sleep(poll_interval).await;
+    }
+}
+
 /// 轮询 daemon 健康端点，直到 daemon 报告兼容、或超时、或观测到不兼容。
 ///
 /// - `Compatible` → 返回 `Ok(())`
@@ -123,6 +166,65 @@ mod tests {
                 >
         };
         (probe, calls)
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn reuse_probe_waits_for_live_incumbent_until_it_recovers() {
+        let (mut probe, calls) = scripted_probe(vec![
+            ProbeOutcome::Absent,
+            ProbeOutcome::Compatible(ok_health()),
+        ]);
+        let mut incumbent_is_live = || Ok::<bool, DaemonBootstrapError>(true);
+
+        let result = probe_for_reuse(
+            &mut probe,
+            &mut incumbent_is_live,
+            Duration::from_secs(2),
+            Duration::from_millis(100),
+        )
+        .await
+        .expect("a live incumbent that recovers must be reusable");
+
+        assert!(matches!(
+            result,
+            ReuseProbeResult::Outcome(ProbeOutcome::Compatible(_))
+        ));
+        assert_eq!(calls.load(Ordering::SeqCst), 2);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn reuse_probe_preserves_absent_when_no_incumbent_is_live() {
+        let (mut probe, calls) = scripted_probe(vec![ProbeOutcome::Absent]);
+        let mut incumbent_is_live = || Ok::<bool, DaemonBootstrapError>(false);
+
+        let result = probe_for_reuse(
+            &mut probe,
+            &mut incumbent_is_live,
+            Duration::from_secs(2),
+            Duration::from_millis(100),
+        )
+        .await
+        .expect("a genuinely absent daemon must remain absent");
+
+        assert_eq!(result, ReuseProbeResult::Outcome(ProbeOutcome::Absent));
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn reuse_probe_reports_timeout_without_authorizing_a_spawn() {
+        let (mut probe, _calls) = scripted_probe(vec![ProbeOutcome::Absent]);
+        let mut incumbent_is_live = || Ok::<bool, DaemonBootstrapError>(true);
+
+        let result = probe_for_reuse(
+            &mut probe,
+            &mut incumbent_is_live,
+            Duration::from_millis(100),
+            Duration::from_millis(10),
+        )
+        .await
+        .expect("a live incumbent timeout is a classified result");
+
+        assert_eq!(result, ReuseProbeResult::LiveIncumbentTimedOut);
     }
 
     #[tokio::test]

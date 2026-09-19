@@ -152,7 +152,7 @@ async fn run_foreground(json: bool, _verbose: bool) -> i32 {
     // ADR-008 P5-L L2: classify the probe. Compatible → report already_running;
     // Incompatible → surface a clear error and refuse to spawn a competitor
     // (restart/takeover is L8); Absent → fall through to the foreground spawn.
-    match local_daemon::probe_running().await {
+    match local_daemon::probe_running_for_reuse().await {
         Ok(uc_daemon_contract::probe::ProbeOutcome::Compatible(_)) => {
             if let Some(code) = check_setup_complete(json).await {
                 return code;

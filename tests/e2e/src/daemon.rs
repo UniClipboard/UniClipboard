@@ -354,6 +354,19 @@ impl TestDaemon {
         }
     }
 
+    /// Resume a daemon previously suspended with [`Self::suspend`].
+    #[cfg(unix)]
+    pub fn resume(&mut self) -> std::io::Result<()> {
+        let child = self.child.as_mut().ok_or_else(|| {
+            std::io::Error::new(std::io::ErrorKind::NotFound, "daemon is not running")
+        })?;
+        if unsafe { libc::kill(child.id() as i32, libc::SIGCONT) } == 0 {
+            Ok(())
+        } else {
+            Err(std::io::Error::last_os_error())
+        }
+    }
+
     /// Kill the daemon process.
     pub fn kill(&mut self) {
         if let Some(ref mut child) = self.child {

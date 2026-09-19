@@ -4,7 +4,7 @@
 //! daemon) or delegate to a running daemon via `DaemonService`.
 
 use crate::exit_codes;
-use crate::local_daemon::probe_running;
+use crate::local_daemon::{probe_running, probe_running_for_reuse};
 use crate::ui;
 
 use uc_daemon_client::{
@@ -122,7 +122,7 @@ pub async fn build_app_session(verbose: bool) -> Result<CliAppSession, i32> {
 /// * Absent                    → setup gate, then spawn a Oneshot daemon.
 pub async fn connect_or_spawn_oneshot_daemon(verbose: bool) -> Result<Box<dyn DaemonService>, i32> {
     let _ = verbose; // reserved; the daemon path builds no in-process session.
-    match probe_running().await {
+    match probe_running_for_reuse().await {
         Ok(ProbeOutcome::Compatible(_)) => build_daemon_client_service(true),
         Ok(outcome @ ProbeOutcome::Incompatible { .. }) => {
             ui::error(&crate::local_daemon::incompatible_outcome_error(outcome).to_string());
@@ -258,7 +258,7 @@ async fn ensure_daemon_for_setup_inner(
     report_errors: bool,
 ) -> Result<Box<dyn DaemonService>, i32> {
     let _ = verbose; // reserved; the daemon path builds no in-process session.
-    match probe_running().await {
+    match probe_running_for_reuse().await {
         Ok(ProbeOutcome::Compatible(_)) => build_daemon_client_service(report_errors),
         Ok(outcome) if setup_control_contract_matches(&outcome) => {
             build_daemon_client_service(report_errors)

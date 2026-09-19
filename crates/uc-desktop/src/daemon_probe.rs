@@ -22,7 +22,7 @@ use uc_daemon_contract::probe::{
 use uc_daemon_process::contract::{
     terminate_local_daemon_pid, DaemonBootstrapError, TerminateDaemonError,
 };
-use uc_daemon_process::health_wait::wait_for_endpoint_absent;
+use uc_daemon_process::health_wait::{probe_for_reuse, wait_for_endpoint_absent, ReuseProbeResult};
 use uc_daemon_process::process_metadata::{
     read_pid_metadata, DaemonPidMetadata, DaemonProcessMode, DaemonSpawnOrigin,
 };
@@ -69,6 +69,35 @@ pub async fn probe_daemon_health(
         return Ok(ProbeOutcome::Absent);
     };
     probe_daemon_health_at(client, addr, expected_package_version).await
+}
+
+/// Probe before an operation that may spawn a replacement daemon.
+///
+/// A live PID behind `daemon.conn` remains authoritative while `/health` is
+/// temporarily unavailable, so GUI startup waits for that incumbent instead
+/// of launching a same-version contender that could evict it.
+async fn probe_daemon_health_for_reuse(
+    client: &reqwest::Client,
+    expected_package_version: &str,
+    timeout: Duration,
+    poll_interval: Duration,
+) -> Result<ProbeOutcome, DaemonBootstrapError> {
+    let mut probe = || probe_daemon_health(client, expected_package_version);
+    let mut incumbent_is_live = || {
+        resolve_probe_addr()
+            .map(|addr| addr.is_some())
+            .map_err(|error| {
+                DaemonBootstrapError::Probe(
+                    error.context("failed to verify daemon connection owner"),
+                )
+            })
+    };
+    match probe_for_reuse(&mut probe, &mut incumbent_is_live, timeout, poll_interval).await? {
+        ReuseProbeResult::Outcome(outcome) => Ok(outcome),
+        ReuseProbeResult::LiveIncumbentTimedOut => Err(DaemonBootstrapError::StartupTimeout {
+            timeout_ms: timeout.as_millis() as u64,
+        }),
+    }
 }
 
 /// Resolve the address the health probe should target (ADR-011).
@@ -208,7 +237,14 @@ pub async fn bootstrap_daemon_in_process(
             )
         })?;
 
-    match probe_daemon_health(&client, expected_package_version).await? {
+    match probe_daemon_health_for_reuse(
+        &client,
+        expected_package_version,
+        health_check_timeout,
+        health_poll_interval,
+    )
+    .await?
+    {
         ProbeOutcome::Compatible(_) => {
             ownership.set_external();
             // A compatible daemon was already up — this launch is a reopen, not

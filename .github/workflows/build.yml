@@ -80,7 +80,7 @@ jobs:
       - name: Select Windows runner
         id: select-windows-runner
         env:
-          RUNNER_STATUS_TOKEN: ${{ secrets.REPO_BOT_TOKEN }}
+          RUNNER_STATUS_TOKEN: ${{ secrets.WINDOWS_RUNNER_STATUS_TOKEN }}
         run: node scripts/ci/select-windows-runner.mjs
 
       - name: Generate matrix

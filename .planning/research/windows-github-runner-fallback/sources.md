@@ -26,4 +26,4 @@
 - 接入前仓库没有自建 Runner。
 - Windows 主机为 x64 Windows，32 GiB 内存，具备 Git、Rust、Node.js 和 Bun。
 - 官方 Runner `v2.337.0` 安装在 D 盘并作为 Windows 后台服务运行，专用标签为 `uniclipboard-desktop-windows-x64`。
-- 仓库已有 `REPO_BOT_TOKEN`，现有发布流程正在使用；选择步骤复用它读取 Runner 状态，不新增凭据，也不把它传给构建任务。
+- 状态选择使用仓库机密项 `WINDOWS_RUNNER_STATUS_TOKEN`。它只在 GitHub 提供的前置任务中读取 Runner 状态，不会传给构建任务；应使用仅限本仓库管理只读权限的专用凭据。

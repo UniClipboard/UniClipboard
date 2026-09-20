@@ -62,6 +62,6 @@ cd D:\actions-runner-uniclipboard
 ## 安全边界
 
 - 不把公开 PR 或其他不受信任来源的代码交给这台长期存在的机器。
-- `REPO_BOT_TOKEN` 只用于 GitHub 提供的前置选择任务，不会传入 Windows 构建。
+- `WINDOWS_RUNNER_STATUS_TOKEN` 只用于 GitHub 提供的前置选择任务，不会传入 Windows 构建。它至少需要目标仓库的管理只读权限；应优先使用只授予该仓库和该权限的专用凭据。
 - 代码检出关闭凭据保留，避免仓库写入凭据留在自建机器的工作目录中。
 - 状态查询失败时默认使用 GitHub 提供的机器，不因凭据或接口故障阻塞构建。

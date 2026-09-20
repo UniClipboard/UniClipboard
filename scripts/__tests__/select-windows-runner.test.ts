@@ -1,3 +1,5 @@
+import fs from 'node:fs'
+import path from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import {
   HOSTED_WINDOWS_LABEL,
@@ -60,5 +62,16 @@ describe('Windows Actions runner selection', () => {
       source: 'github-hosted',
       reason: 'missing-token',
     })
+  })
+
+  it('uses the dedicated status secret without exposing it to build jobs', () => {
+    for (const file of ['build.yml', 'build-cli.yml']) {
+      const source = fs.readFileSync(
+        path.resolve(__dirname, '../../.github/workflows', file),
+        'utf8'
+      )
+      expect(source).toContain('RUNNER_STATUS_TOKEN: ${{ secrets.WINDOWS_RUNNER_STATUS_TOKEN }}')
+      expect(source.match(/WINDOWS_RUNNER_STATUS_TOKEN/g)).toHaveLength(1)
+    }
   })
 })

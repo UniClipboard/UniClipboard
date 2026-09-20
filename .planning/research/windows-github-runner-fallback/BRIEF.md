@@ -25,7 +25,7 @@
 - 隔离：仓库级注册，关闭默认标签，只保留 `uniclipboard-desktop-windows-x64`。
 - 选择：仓库内脚本读取在线、忙碌和标签；任何查询错误都选 `windows-latest`。
 - 范围：桌面应用 Windows 构建和 Windows CLI 构建。
-- 凭据：复用仓库已有的 `REPO_BOT_TOKEN`，仅在 GitHub 提供的前置任务中使用；检出代码时不保留写入凭据。
+- 凭据：使用仓库机密项 `WINDOWS_RUNNER_STATUS_TOKEN`，仅在 GitHub 提供的前置任务中使用；检出代码时不保留写入凭据。
 
 ## 不采用的方案
 

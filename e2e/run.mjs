@@ -1,4 +1,6 @@
-import { spawnSync } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
+import { randomBytes } from 'node:crypto'
+import { once } from 'node:events'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -28,6 +30,7 @@ const specFiles = fs
   .filter(name => name.endsWith('.e2e.js'))
   .filter(name => {
     if (name === 'device-group-conflict.e2e.js') return false
+    if (name === 'final-confirmation.dual.e2e.js' && !requestedSpec) return false
     if (triplePeerMode) return name.endsWith('.triple.e2e.js')
     if (dualPeerMode) return name.endsWith('.dual.e2e.js')
     return !name.endsWith('.dual.e2e.js') && !name.endsWith('.triple.e2e.js')
@@ -35,6 +38,12 @@ const specFiles = fs
   .map(name => path.join(__dirname, 'specs', name))
   .filter(spec => !requestedSpec || spec === path.resolve(rootDir, requestedSpec))
   .sort()
+if (
+  requestedSpec?.endsWith('/final-confirmation.dual.e2e.js') &&
+  process.env.E2E_SKIP_BUILD !== '1'
+) {
+  throw new Error('最终确认场景需要先使用本地 Engine 测试源码构建后台，再设置 E2E_SKIP_BUILD=1')
+}
 const specRuns = createSpecRuns({
   specs: specFiles,
   dualPeerMode,
@@ -217,12 +226,36 @@ for (const specRun of specRuns) {
     }
     fs.renameSync(path.join(dataDir, 'keyring'), path.join(dataDir, 'keyring-test-backup'))
   }
-  run(
-    'bunx',
-    ['wdio', 'run', wdioConfig, '--spec', specRun.spec, ...forwardedArgs],
-    `Tauri E2E 测试失败：${path.basename(specRun.spec)}`,
-    { ...process.env, ...specRun.env }
-  )
+  let rendezvous
+  const e2eEnv = { ...process.env, ...specRun.env }
+  if (path.basename(specRun.spec) === 'final-confirmation.dual.e2e.js') {
+    rendezvous = spawn(process.execPath, [path.join(__dirname, 'fixtures/local-rendezvous.mjs')], {
+      stdio: ['ignore', 'pipe', 'inherit'],
+    })
+    try {
+      const [chunk] = await Promise.race([
+        once(rendezvous.stdout, 'data', { signal: AbortSignal.timeout(10000) }),
+        once(rendezvous, 'exit').then(() => {
+          throw new Error('本地配对服务启动失败')
+        }),
+      ])
+      e2eEnv.E2E_RENDEZVOUS_URL = chunk.toString().trim()
+      e2eEnv.E2E_SPACE_WORK_TOKEN = randomBytes(32).toString('hex')
+    } catch (error) {
+      rendezvous.kill()
+      throw error
+    }
+  }
+  try {
+    run(
+      'bunx',
+      ['wdio', 'run', wdioConfig, '--spec', specRun.spec, ...forwardedArgs],
+      `Tauri E2E 测试失败：${path.basename(specRun.spec)}`,
+      e2eEnv
+    )
+  } finally {
+    rendezvous?.kill()
+  }
   if (recoverySpec) {
     // Close the actual GUI before stopping its background, then launch a new GUI process.
     const cli = process.env.UC_E2E_DEV_CLI ?? path.join(rootDir, 'target/debug/uniclip')

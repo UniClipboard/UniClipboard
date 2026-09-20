@@ -1,0 +1,39 @@
+name: 问题反馈（中文）
+description: 使用中文反馈 UniClipboard 的问题
+title: "[Bug] "
+body:
+  - type: input
+    id: version
+    attributes:
+      label: 当前版本
+      description: 图形界面可在「设置 > 关于」查看；命令行可运行 `uniclip --version`。请同时写明操作系统及版本。
+      placeholder: 例如：UniClipboard 1.0.0-alpha.9，macOS 15.0
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: 日志
+      description: |
+        请尽量在问题发生后导出日志，并把 ZIP 文件拖入此处。
+
+        - 图形界面：如能重现，先在「设置 > 通用 > 日志」开启「捕获详细日志」，重现问题后点击「导出日志」。如果应用无法正常启动，可在启动失败页面点击「导出日志」。
+        - 命令行：重现问题后运行 `uniclip debug export-logs`。命令会显示导出文件的路径。
+
+        上传前请检查日志中是否包含个人信息、剪贴板内容、设备信息或凭据；请勿公开敏感内容。无法导出或不方便公开时，请说明原因，不必上传。
+      placeholder: 将日志 ZIP 拖到这里，或说明无法提供日志的原因。
+    validations:
+      required: false
+
+  - type: textarea
+    id: description
+    attributes:
+      label: 问题描述
+      description: 请说明发生了什么、如何重现、你原本期望什么；如有报错或大致发生时间，也请写上。
+      placeholder: |
+        操作步骤：
+        实际结果：
+        期望结果：
+    validations:
+      required: true

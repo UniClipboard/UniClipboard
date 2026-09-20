@@ -63,7 +63,8 @@ use uc_webserver::api::openapi::ApiDoc;
 /// Connectivity opportunities add one path and operation: 76 / 85.
 /// Upgrade backup management adds two paths and two operations: 78 / 87.
 /// Passphrase changes add one path and operation: 79 / 88.
-// Include the existing dispatch-file route and the profile recovery query.
+/// Daemon-owned CLI file dispatch adds one path and operation: 80 / 89.
+/// Profile recovery adds one path and operation: 81 / 90.
 const EXPECTED_PATHS: usize = 81;
 const EXPECTED_OPERATIONS: usize = 90;
 const SCHEMA_PREFIX: &str = "#/components/schemas/";

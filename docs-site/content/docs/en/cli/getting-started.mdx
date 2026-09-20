@@ -99,6 +99,12 @@ printf 'hello from a pipe' | uniclip send
 # Print the newest already-synced text or link
 uniclip get
 
+# Wait for the next synced entry, then print it and exit
+uniclip get --wait
+
+# Wait for the next entry and copy it through the active terminal
+uniclip get --copy --wait
+
 # List recent entries without downloading one
 uniclip get --list -n 20
 
@@ -106,8 +112,9 @@ uniclip get --list -n 20
 uniclip search "report"
 ```
 
-`get` returns content that is already in local history. `watch` waits for and
-prints future deliveries until you press Ctrl-C:
+By default, `get` returns content that is already in local history without
+waiting. `get --wait` handles one new delivery and exits. `watch` prints all
+future deliveries until you press Ctrl-C:
 
 ```bash
 uniclip watch
@@ -122,8 +129,8 @@ clipboard.
 # Explicitly force file mode
 uniclip send --file ./report.pdf
 
-# Wait for the next incoming file and save it under ./inbox
-uniclip recv --out ./inbox
+# Wait for the next incoming entry; files are saved under ./inbox
+uniclip get --wait --out ./inbox
 ```
 
 Existing regular files are detected automatically. File sending is owned by the

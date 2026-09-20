@@ -93,6 +93,12 @@ printf 'hello from a pipe' | uniclip send
 # 打印本机已经同步的最新文本或链接
 uniclip get
 
+# 等待下一条同步内容，输出后退出
+uniclip get --wait
+
+# 等待下一条内容，通过当前终端复制后退出
+uniclip get --copy --wait
+
 # 只列出最近条目，不下载内容
 uniclip get --list -n 20
 
@@ -100,8 +106,8 @@ uniclip get --list -n 20
 uniclip search "报告"
 ```
 
-`get` 读取已经进入本机历史的内容。`watch` 会等待并打印之后收到的内容，直到
-按下 Ctrl-C：
+`get` 默认读取已经进入本机历史的内容并立即返回。`get --wait` 只处理下一条新内容
+并退出。`watch` 会持续等待并打印之后收到的内容，直到按下 Ctrl-C：
 
 ```bash
 uniclip watch
@@ -115,8 +121,8 @@ uniclip watch
 # 显式强制文件模式
 uniclip send --file ./report.pdf
 
-# 等待下一个收到的文件，并保存到 ./inbox
-uniclip recv --out ./inbox
+# 等待下一条内容；文件保存到 ./inbox
+uniclip get --wait --out ./inbox
 ```
 
 现有普通文件会被自动识别。文件传输由后台服务负责，所有相关目标进入终态后命令会

@@ -63,8 +63,9 @@ use uc_webserver::api::openapi::ApiDoc;
 /// Connectivity opportunities add one path and operation: 76 / 85.
 /// Upgrade backup management adds two paths and two operations: 78 / 87.
 /// Passphrase changes add one path and operation: 79 / 88.
-const EXPECTED_PATHS: usize = 79;
-const EXPECTED_OPERATIONS: usize = 88;
+/// Daemon-owned CLI file dispatch adds one path and operation: 80 / 89.
+const EXPECTED_PATHS: usize = 80;
+const EXPECTED_OPERATIONS: usize = 89;
 const SCHEMA_PREFIX: &str = "#/components/schemas/";
 const HTTP_METHODS: [&str; 7] = ["get", "put", "post", "delete", "patch", "head", "options"];
 

@@ -314,6 +314,7 @@ export function useDevicesPage() {
     onlineCount,
     localDeviceStatus,
     refreshDeviceTrust,
+    deviceTrust,
     refreshConnectionsManually,
     trustListView,
     mobileDevices,

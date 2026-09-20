@@ -743,30 +743,37 @@ export function RedeemInvitationScreen({
 }
 
 export function JoinPendingScreen({
+  status,
   onCancel,
   loading = false,
 }: {
+  status: 'pending' | 'processing'
   onCancel: () => void
   loading?: boolean
 }) {
   const { t } = useTranslation(undefined, { keyPrefix: 'setup.joinPending' })
   return (
     <ScreenShell
-      title={t('title')}
-      subtitle={t('subtitle')}
+      title={t(status === 'processing' ? 'processing.title' : 'title')}
+      subtitle={t(status === 'processing' ? 'processing.subtitle' : 'subtitle')}
       footer={
-        <Button
-          data-testid="setup-join-cancel"
-          variant="outline"
-          onClick={onCancel}
-          disabled={loading}
-        >
-          {t('actions.cancel')}
-        </Button>
+        status === 'pending' ? (
+          <Button
+            data-testid="setup-join-cancel"
+            variant="outline"
+            onClick={onCancel}
+            disabled={loading}
+          >
+            {t('actions.cancel')}
+          </Button>
+        ) : undefined
       }
       centered
     >
-      <div data-testid="setup-join-pending" className="mt-8 flex justify-center">
+      <div
+        data-testid={status === 'processing' ? 'setup-join-processing' : 'setup-join-pending'}
+        className="mt-8 flex justify-center"
+      >
         <Loader2 className="size-12 animate-spin text-primary" />
       </div>
     </ScreenShell>

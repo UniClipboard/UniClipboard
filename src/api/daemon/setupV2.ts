@@ -97,6 +97,14 @@ export type JoinSpaceResponse =
       cancelRequested: boolean
       peerUpgradeRequired?: boolean
     }
+  | {
+      status: 'processing'
+      joinId: string
+      targetSpaceId: string
+      sponsorDeviceId: string
+      sponsorIdentityFingerprint: string
+      peerUpgradeRequired: boolean
+    }
   | { status: 'rejected'; joinId: string; reason: JoinSpaceRejectionReason }
   | { status: 'terminated'; joinId: string; reason: JoinSpaceTerminationReason }
 

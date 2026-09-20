@@ -1351,6 +1351,11 @@
         "requestFailed": "接続の復旧を開始できません"
       }
     },
+    "membershipMaintenance": {
+      "retrying": "デバイスグループの更新に失敗しました。自動的に再試行します。",
+      "needsAttention": "デバイスグループの更新に失敗しました。同期を復旧するにはグループを確認してください。",
+      "review": "デバイスグループを確認"
+    },
     "memberRemoval": {
       "deviceRemoved": {
         "title": "このデバイスは削除されました",
@@ -1936,6 +1941,10 @@
         "title": "確認待ち",
         "subtitle": "相手のデバイスによる切り替え確認を待っています。"
       },
+      "processing": {
+        "title": "切り替えを完了中",
+        "subtitle": "最終確認を行っています。接続が切れた場合は自動で再試行します。"
+      },
       "success": {
         "title": "スペースを切り替えました",
         "subtitle_one": "新しいマスター キーの下に 1 つのクリップボード レコードを移行しました。",
@@ -2365,6 +2374,10 @@
       }
     },
     "joinPending": {
+      "processing": {
+        "title": "ペアリングを完了中",
+        "subtitle": "参加を確認しています。接続が切れた場合は自動で再試行します。"
+      },
       "title": "確認待ち",
       "subtitle": "参加結果を待っています。",
       "actions": { "cancel": "参加を取り消す", "back": "戻る" },

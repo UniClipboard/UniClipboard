@@ -9,6 +9,7 @@ import DeviceListItem from '@/components/device/DeviceListItem'
 import SectionLabel from '@/components/device/DeviceSectionLabel'
 import EmptyAddRow from '@/components/device/EmptyAddRow'
 import LocalDeviceListItem from '@/components/device/LocalDeviceListItem'
+import { MembershipMaintenanceNotice } from '@/components/device/MembershipMaintenanceNotice'
 import { type StatusDotTone } from '@/components/device/StatusDot'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
@@ -37,6 +38,8 @@ export default function DevicesSidebar({ page }: { page: ReturnType<typeof useDe
     spaceMembersError,
     spaceProtectionError,
     networkRecovery,
+    deviceTrust,
+    refreshDeviceTrust,
     networkRecoveryError,
     manualRefreshInProgress,
     peers,
@@ -58,6 +61,12 @@ export default function DevicesSidebar({ page }: { page: ReturnType<typeof useDe
   return (
     <aside className="relative flex w-56 shrink-0 flex-col border-r border-border/50 bg-muted/15 xl:w-64">
       <div className="px-3 pt-3">
+        <MembershipMaintenanceNotice
+          health={deviceTrust?.maintenanceHealth}
+          onReview={() => {
+            void refreshDeviceTrust()
+          }}
+        />
         {networkRecoveryVisible && (
           <Alert className="mt-2 border-warning/30 bg-warning/10 text-warning">
             <AlertDescription className="flex flex-col gap-2 text-ui-caption">

@@ -17,7 +17,7 @@ const log = createLogger('switch-space-dialog')
 
 const SUCCESS_AUTO_CLOSE_MS = 2500
 
-type Step = 'input' | 'migrating' | 'pending' | 'success' | 'failed'
+type Step = 'input' | 'migrating' | 'pending' | 'processing' | 'success' | 'failed'
 type ActiveJoinSpaceResponse = Extract<SwitchSpaceResponse, { status: 'active' }>
 
 interface SwitchState {
@@ -77,7 +77,9 @@ export function useSwitchSpace({ onOpenChange }: { onOpenChange: (open: boolean)
     },
     [dispatch]
   )
-  useJoinAdmission(pendingJoinId, resolveJoinAdmission)
+  useJoinAdmission(pendingJoinId, resolveJoinAdmission, result => {
+    update({ step: result.status })
+  })
 
   const handleSubmit = async (preserveUnreadableHistory = false) => {
     // Validate inputs independently from step check
@@ -93,8 +95,8 @@ export function useSwitchSpace({ onOpenChange }: { onOpenChange: (open: boolean)
       })
       if (res.status === 'active') {
         resolveJoinAdmission(res)
-      } else if (res.status === 'pending') {
-        update({ pendingJoinId: res.joinId, step: 'pending' })
+      } else if (res.status === 'pending' || res.status === 'processing') {
+        update({ pendingJoinId: res.joinId, step: res.status })
       } else if (res.status === 'rejected' || res.status === 'terminated') {
         update({ errorKind: 'internal', errorRaw: res.reason, step: 'failed' })
       }

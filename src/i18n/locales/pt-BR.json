@@ -1354,6 +1354,11 @@
         "requestFailed": "Não foi possível iniciar a recuperação da conexão"
       }
     },
+    "membershipMaintenance": {
+      "retrying": "A atualização do grupo de dispositivos falhou; uma nova tentativa será feita automaticamente.",
+      "needsAttention": "A atualização do grupo de dispositivos falhou. Revise o grupo para restaurar a sincronização.",
+      "review": "Revisar grupo de dispositivos"
+    },
     "memberRemoval": {
       "deviceRemoved": {
         "title": "Este dispositivo foi removido",
@@ -1940,6 +1945,10 @@
         "title": "Aguardando confirmação",
         "subtitle": "Aguardando o outro dispositivo confirmar esta troca."
       },
+      "processing": {
+        "title": "Concluindo a troca",
+        "subtitle": "A confirmação final está em andamento. Se a conexão falhar, haverá nova tentativa automática."
+      },
       "success": {
         "title": "Espaço alterado",
         "subtitle_one": "1 registro da área de transferência migrado com a nova chave mestra.",
@@ -2372,6 +2381,10 @@
       }
     },
     "joinPending": {
+      "processing": {
+        "title": "Concluindo o pareamento",
+        "subtitle": "A confirmação está em andamento. Se a conexão falhar, haverá nova tentativa automática."
+      },
       "title": "Aguardando confirmação",
       "subtitle": "Aguardando o resultado da entrada.",
       "actions": { "cancel": "Cancelar entrada", "back": "Voltar" },

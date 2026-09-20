@@ -7,19 +7,27 @@ import { createLogger } from '@/lib/logger'
 const log = createLogger('join-admission')
 const JOIN_STATUS_POLL_MS = 1000
 
-export type JoinAdmissionResolution = Exclude<JoinSpaceResponse, { status: 'pending' }>
+export type JoinAdmissionResolution = Exclude<
+  JoinSpaceResponse,
+  { status: 'pending' | 'processing' }
+>
 
 export function useJoinAdmission(
   joinId: string | null,
-  onResolved: (result: JoinAdmissionResolution) => void
+  onResolved: (result: JoinAdmissionResolution) => void,
+  onProgress?: (result: Extract<JoinSpaceResponse, { status: 'pending' | 'processing' }>) => void
 ) {
   const refresh = useEffectEvent(async () => {
     if (!joinId) return
     try {
       const snapshot = await getDeviceTrustSnapshot()
       const currentJoin = snapshot.currentJoin
-      if (currentJoin?.joinId === joinId && currentJoin.status !== 'pending') {
-        onResolved(currentJoin)
+      if (currentJoin?.joinId === joinId) {
+        if (currentJoin.status === 'pending' || currentJoin.status === 'processing') {
+          onProgress?.(currentJoin)
+        } else {
+          onResolved(currentJoin)
+        }
       }
     } catch (err) {
       log.warn({ err, joinId }, 'failed to refresh durable admission')

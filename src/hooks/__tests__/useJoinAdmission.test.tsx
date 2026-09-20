@@ -113,4 +113,33 @@ describe('useJoinAdmission', () => {
       })
     )
   })
+
+  it('keeps processing nonterminal until Engine reports completion', async () => {
+    vi.useFakeTimers()
+    const resolved = vi.fn()
+    const processing = {
+      status: 'processing',
+      joinId: 'join-1',
+      targetSpaceId: 'space-1',
+      sponsorDeviceId: 'sponsor-1',
+      sponsorIdentityFingerprint: 'fingerprint-1',
+      peerUpgradeRequired: false,
+    }
+    getDeviceTrustSnapshot
+      .mockResolvedValueOnce({ currentJoin: processing })
+      .mockResolvedValueOnce({
+        currentJoin: { status: 'terminated', joinId: 'join-1', reason: 'expired' },
+      })
+    renderHook(() => useJoinAdmission('join-1', resolved))
+    await vi.waitFor(() => expect(getDeviceTrustSnapshot).toHaveBeenCalledTimes(1))
+    expect(resolved).not.toHaveBeenCalled()
+    await act(async () => vi.advanceTimersByTime(1000))
+    await vi.waitFor(() =>
+      expect(resolved).toHaveBeenCalledWith({
+        status: 'terminated',
+        joinId: 'join-1',
+        reason: 'expired',
+      })
+    )
+  })
 })

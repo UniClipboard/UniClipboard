@@ -389,6 +389,7 @@ mod tests {
                 current_change: None,
                 current_join: None,
                 pending_inbound_member: None,
+                maintenance_health: Default::default(),
                 devices: vec![],
                 recovery: "not_available_in_this_version".to_string(),
                 allowed_actions: vec![],

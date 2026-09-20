@@ -43,9 +43,23 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
+      windows-runner: ${{ steps.select-windows-runner.outputs.runner }}
+      windows-runner-source: ${{ steps.select-windows-runner.outputs.source }}
     steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Select Windows runner
+        id: select-windows-runner
+        env:
+          RUNNER_STATUS_TOKEN: ${{ secrets.WINDOWS_RUNNER_STATUS_TOKEN }}
+        run: node scripts/ci/select-windows-runner.mjs
+
       - name: Generate matrix
         id: set-matrix
+        env:
+          WINDOWS_RUNNER: ${{ steps.select-windows-runner.outputs.runner }}
         run: |
           # CLI Linux target 选 musl 静态编译:
           # uc-cli 走 ring + rustls (无 aws-lc-sys / 无 openssl-sys),依赖图
@@ -54,7 +68,7 @@ jobs:
           # 容器仍用 debian:bookworm 拿 musl-tools / cmake / clang 工具链。
           PLATFORM="${{ inputs.platform || 'all' }}"
           if [ "$PLATFORM" == "all" ]; then
-            echo 'matrix=[{"platform":"macos-latest","target":"aarch64-apple-darwin","args":"--target aarch64-apple-darwin"},{"platform":"macos-latest","target":"x86_64-apple-darwin","args":"--target x86_64-apple-darwin"},{"platform":"ubuntu-22.04","target":"x86_64-unknown-linux-musl","args":"--target x86_64-unknown-linux-musl","container":"ghcr.io/uniclipboard/build-bookworm:latest"},{"platform":"ubuntu-22.04-arm","target":"aarch64-unknown-linux-musl","args":"--target aarch64-unknown-linux-musl","container":"ghcr.io/uniclipboard/build-bookworm:latest"},{"platform":"windows-latest","target":"x86_64-pc-windows-msvc","args":""}]' >> "$GITHUB_OUTPUT"
+            echo "matrix=[{\"platform\":\"macos-latest\",\"target\":\"aarch64-apple-darwin\",\"args\":\"--target aarch64-apple-darwin\"},{\"platform\":\"macos-latest\",\"target\":\"x86_64-apple-darwin\",\"args\":\"--target x86_64-apple-darwin\"},{\"platform\":\"ubuntu-22.04\",\"target\":\"x86_64-unknown-linux-musl\",\"args\":\"--target x86_64-unknown-linux-musl\",\"container\":\"ghcr.io/uniclipboard/build-bookworm:latest\"},{\"platform\":\"ubuntu-22.04-arm\",\"target\":\"aarch64-unknown-linux-musl\",\"args\":\"--target aarch64-unknown-linux-musl\",\"container\":\"ghcr.io/uniclipboard/build-bookworm:latest\"},{\"platform\":\"windows-latest\",\"runner\":\"$WINDOWS_RUNNER\",\"target\":\"x86_64-pc-windows-msvc\",\"args\":\"\"}]" >> "$GITHUB_OUTPUT"
           elif [ "$PLATFORM" == "macos-aarch64" ]; then
             echo 'matrix=[{"platform":"macos-latest","target":"aarch64-apple-darwin","args":"--target aarch64-apple-darwin"}]' >> "$GITHUB_OUTPUT"
           elif [ "$PLATFORM" == "macos-x86_64" ]; then
@@ -64,7 +78,7 @@ jobs:
           elif [ "$PLATFORM" == "ubuntu-22.04-arm" ]; then
             echo 'matrix=[{"platform":"ubuntu-22.04-arm","target":"aarch64-unknown-linux-musl","args":"--target aarch64-unknown-linux-musl","container":"ghcr.io/uniclipboard/build-bookworm:latest"}]' >> "$GITHUB_OUTPUT"
           elif [ "$PLATFORM" == "windows-latest" ]; then
-            echo 'matrix=[{"platform":"windows-latest","target":"x86_64-pc-windows-msvc","args":""}]' >> "$GITHUB_OUTPUT"
+            echo "matrix=[{\"platform\":\"windows-latest\",\"runner\":\"$WINDOWS_RUNNER\",\"target\":\"x86_64-pc-windows-msvc\",\"args\":\"\"}]" >> "$GITHUB_OUTPUT"
           else
             echo "Error: Unknown platform '$PLATFORM'. Valid options: all, macos-aarch64, macos-x86_64, ubuntu-22.04, ubuntu-22.04-arm, windows-latest"
             exit 1
@@ -73,7 +87,7 @@ jobs:
   build-cli:
     name: Build CLI ${{ matrix.target }}
     needs: setup-matrix
-    runs-on: ${{ matrix.platform }}
+    runs-on: ${{ matrix.runner || matrix.platform }}
     container: ${{ matrix.container || null }}
     strategy:
       fail-fast: false
@@ -89,6 +103,7 @@ jobs:
         with:
           ref: ${{ inputs.branch || github.ref }}
           submodules: recursive
+          persist-credentials: false
 
       - name: setup node
         uses: actions/setup-node@v6
@@ -123,6 +138,7 @@ jobs:
         run: echo "${CARGO_HOME:-$HOME/.cargo}/bin" >> "$GITHUB_PATH"
 
       - name: Isolate pinned build toolchain
+        if: runner.environment == 'github-hosted'
         env:
           UC_PINNED_RUST: ${{ steps.rust-channel.outputs.channel }}
         run: node scripts/ci/isolate-build-toolchain.mjs

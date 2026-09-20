@@ -48,10 +48,17 @@ async function acceptRemovalAsRetained(instance) {
     await instance.waitUntil(
       async () =>
         !(await (await instance.$('[data-testid="device-trust-dialog"]')).isExisting()) ||
-        (await (await instance.$('[data-testid="device-trust-error"]')).isExisting()),
+        (await (await instance.$('[data-testid="device-trust-error"]')).isExisting()) ||
+        (await (await instance.$('[data-testid="device-trust-done"]')).isExisting()) ||
+        (await (await instance.$('[data-testid="device-trust-recheck"]')).isExisting()),
       { timeout: 10000, timeoutMsg: 'retained choice produced no visible outcome' }
     )
     if (await dialogClosed(instance, 500)) return 'completed'
+    if (await instance.$('[data-testid="device-trust-done"]').isExisting()) {
+      await click(instance, '[data-testid="device-trust-done"]')
+      return 'completed'
+    }
+    if (await instance.$('[data-testid="device-trust-recheck"]').isExisting()) return 'pending'
     const error = await instance.$('[data-testid="device-trust-error"]')
     if ((await error.getAttribute('data-error')) === 'choice_pending') return 'pending'
   }
@@ -73,7 +80,18 @@ async function confirmLocalRemoval(instance) {
       const confirmExit = await element(instance, '[data-testid="device-trust-confirm"]')
       await confirmExit.waitForEnabled({ timeout: 10000 })
       await confirmExit.click()
+      await instance.waitUntil(
+        async () =>
+          !(await instance.$('[data-testid="device-trust-dialog"]').isExisting()) ||
+          (await instance.$('[data-testid="device-trust-error"]').isExisting()) ||
+          (await instance.$('[data-testid="device-trust-done"]').isExisting()),
+        { timeout: 10000, timeoutMsg: 'local removal choice produced no visible outcome' }
+      )
       if (await dialogClosed(instance)) return
+      if (await instance.$('[data-testid="device-trust-done"]').isExisting()) {
+        await click(instance, '[data-testid="device-trust-done"]')
+        return
+      }
     } catch {
       if (await dialogClosed(instance, 500)) return
     }
@@ -121,7 +139,7 @@ dualDescribe('三设备离线驱逐与设备组选择', () => {
       { timeout: 60000 }
     )
     const removedCode = (await removedCodeDisplay.getText()).replace(/[^A-Z0-9]/g, '')
-    expect(removedCode).toHaveLength(8)
+    expect(removedCode).toHaveLength(6)
     await click(removed, '[data-testid="setup-entry-join"]')
     await enterInvitation(removed, removedCode, passphrase)
     await click(removed, '[data-testid="setup-redeem-submit"]')
@@ -163,6 +181,10 @@ dualDescribe('三设备离线驱逐与设备组选择', () => {
       const retainedOutcome = await acceptRemovalAsRetained(retained)
       expect(['pending', 'completed']).toContain(retainedOutcome)
       await confirmLocalRemoval(removed)
+      if (retainedOutcome === 'pending') {
+        await element(retained, '[data-testid="device-trust-done"]', { timeout: 30000 })
+        await click(retained, '[data-testid="device-trust-done"]')
+      }
       await (
         await retained.$('[data-testid="device-trust-dialog"]')
       ).waitForExist({ timeout: 30000, reverse: true })

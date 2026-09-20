@@ -4,8 +4,11 @@ import React, { useCallback, useEffect, useEffectEvent, useRef, useState } from 
 import { useTranslation } from 'react-i18next'
 import { daemonClient } from '@/api/daemon/client'
 import VisualEffectsProvider from '@/components/motion/VisualEffectsProvider'
+import { Button } from '@/components/ui/button'
+import { toast } from '@/components/ui/toast'
 import { Toaster } from '@/components/ui/toaster'
 import { ShortcutProvider } from '@/contexts/ShortcutContext'
+import { useContentUnlocked } from '@/hooks/useContentUnlocked'
 import { usePlatform } from '@/hooks/usePlatform'
 import { useThemeSync } from '@/hooks/useThemeSync'
 import { useVisualEffectsSampling } from '@/hooks/useVisualEffectsSampling'
@@ -22,16 +25,21 @@ import { setQuickPanelLayout } from './window-layout'
 const log = createLogger('quick-panel-app')
 const SHOW_FALLBACK_DELAY_MS = 50
 
+function QuickPanelEffectsSampling({ active }: { active: boolean }) {
+  useVisualEffectsSampling(active)
+  return null
+}
+
 const QuickPanelApp: React.FC = () => {
   const { t } = useTranslation(undefined, { keyPrefix: 'quickPanel' })
   const { isLinux, isTauri } = usePlatform()
   const layoutClassNames = getQuickPanelLayoutClassNames(isLinux && isTauri)
   const [daemonReady, setDaemonReady] = useState(daemonClient.initialized)
+  const { unlocked: contentUnlocked } = useContentUnlocked(daemonReady)
   useThemeSync(daemonReady)
   const [bootstrapError, setBootstrapError] = useState<string | null>(null)
   const [showRequestId, setShowRequestId] = useState(0)
   const [preparedRequestId, setPreparedRequestId] = useState(0)
-  useVisualEffectsSampling(daemonReady && showRequestId > 0 && preparedRequestId === showRequestId)
   const nextShowRequestIdRef = useRef(0)
   const pendingShowRequestIdRef = useRef<number | null>(null)
   const finalizeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -134,6 +142,24 @@ const QuickPanelApp: React.FC = () => {
         {t('loading')}
       </div>
     )
+  } else if (contentUnlocked !== true) {
+    content = (
+      <div
+        className={`flex h-screen w-screen flex-col items-center justify-center gap-3 ${layoutClassNames.statusSurface} px-6 text-center text-[13px] text-muted-foreground`}
+      >
+        {t('history.locked.description')}
+        <Button
+          onClick={() =>
+            void commands.showContentUnlock().catch(err => {
+              log.warn({ err }, 'Could not open content unlock window')
+              toast.error(t('history.locked.openFailed'))
+            })
+          }
+        >
+          {t('history.locked.action')}
+        </Button>
+      </div>
+    )
   } else {
     content = <ClipboardHistoryPanel showRequestId={showRequestId} onShowPrepared={finalizeShow} />
   }
@@ -149,6 +175,9 @@ const QuickPanelApp: React.FC = () => {
   return (
     <LazyMotion features={domMax} strict>
       <VisualEffectsProvider>
+        <QuickPanelEffectsSampling
+          active={daemonReady && showRequestId > 0 && preparedRequestId === showRequestId}
+        />
         {content}
         {isLinux && isTauri && daemonReady && (
           <ShortcutProvider key={showRequestId}>

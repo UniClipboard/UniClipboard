@@ -31,7 +31,7 @@ dualDescribe('切换空间', () => {
       timeout: 60000,
     })
     const code = (await codeDisplay.getText()).replace(/[^A-Z0-9]/g, '')
-    expect(code).toHaveLength(8)
+    expect(code).toHaveLength(6)
 
     await click(switcher, '[data-testid="device-switch-space"]')
     await expect(await element(switcher, '[data-testid="switch-space-dialog"]')).toExist()

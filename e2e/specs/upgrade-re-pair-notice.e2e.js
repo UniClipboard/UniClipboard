@@ -26,6 +26,8 @@ describe('historical upgrade re-pair notice', () => {
   it('appears after unlock and opens device management', async () => {
     if (expectCleared) return
     await browser.tauri.switchWindow('main')
+    await browser.execute(() => localStorage.removeItem('uc-re-pairing-notice-dismissed'))
+    await browser.refresh()
 
     fs.mkdirSync(screenshotDir, { recursive: true })
     await browser.saveScreenshot(path.join(screenshotDir, 'upgrade-re-pair-startup.png'))
@@ -55,11 +57,11 @@ describe('historical upgrade re-pair notice', () => {
       }
     }
 
-    const rePairingNotice = await $('[data-slot="alert-dialog-content"]')
-    await rePairingNotice.waitForDisplayed({
+    await browser.waitUntil(async () => (await $('body').getText()).includes('请重新配对设备'), {
       timeout: 60000,
       timeoutMsg: 'visible re-pair notice did not appear after unlock',
     })
+    const rePairingNotice = await $('[data-slot="alert-dialog-content"]')
     expect(await rePairingNotice.getText()).toContain('请重新配对设备')
     await finishAnimations()
     await browser.saveScreenshot(path.join(screenshotDir, 'upgrade-re-pair-notice.png'))

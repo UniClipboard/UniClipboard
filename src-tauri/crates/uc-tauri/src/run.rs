@@ -299,6 +299,7 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
     let builder = tauri::Builder::default()
         // Register TauriAppRuntime for Tauri commands
         .manage(runtime.clone())
+        .manage(crate::commands::content_lock::ContentLockState::default())
         .manage(crate::visual_effects::VisualEffectsService::default())
         .manage(uc_daemon_client::DaemonQueryClient::new(daemon_connection_state.clone())?)
         .manage(crate::desktop_theme::DesktopThemeState::default())

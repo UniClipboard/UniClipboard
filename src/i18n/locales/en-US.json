@@ -1,4 +1,18 @@
 {
+  "profileRecovery": {
+    "restartRequired": "Background services could not start. Restart them to continue recovery. Your data is preserved; contact the author if this happens again.",
+    "restart": "Restart background services",
+    "title": "Recover local data",
+    "description": "The saved system key is missing or unusable. Enter your original encryption passphrase to recover. History, clipboard monitoring and device sync are unavailable until recovery completes.",
+    "submit": "Recover and continue",
+    "recovering": "Recovering…",
+    "partial": "Some original keys are missing. Your passphrase may not recover local history or device identity. Keep your data, do not reset, and contact the author for help.",
+    "unsupported": "This version cannot read the recovery data. Keep your original files and update the app or contact the author.",
+    "persistenceFailed": "Recovered keys could not be saved. Check free disk space and system keychain permissions, then retry. Do not delete your original data.",
+    "corrupt": "Recovery data could not be read. Keep your original files and backups, and contact the author.",
+    "failed": "Recovery did not complete. Retry; if it still fails, keep your original data and contact the author.",
+    "help": "An incorrect passphrase will not delete data. If you forgot it or recovery fails, contact mkdir700@gmail.com or open a GitHub issue before clearing any data."
+  },
   "omarchyTheme": {
     "title": "Follow Omarchy theme",
     "description": "Omarchy controls light and dark mode and theme colors.",
@@ -945,7 +959,7 @@
     "invitationAction": "Forgot the old passphrase? Reset it"
   },
   "unlock": {
-    "title": "Unlock UniClipboard",
+    "title": "Unlock",
     "description": "Your data is encrypted. Please unlock to continue.",
     "button": "Unlock",
     "unlocking": "Unlocking...",
@@ -968,7 +982,7 @@
     },
     "passphraseModal": {
       "title": "Enter your space passphrase",
-      "description": "Auto-unlock could not retrieve the key from the keychain. Enter the passphrase you set for this space to unlock manually.",
+      "description": "Enter this space's encryption passphrase to view your content and manage settings.",
       "passphraseLabel": "Passphrase",
       "passphrasePlaceholder": "Enter your passphrase",
       "submit": "Unlock",
@@ -976,7 +990,7 @@
       "cancel": "Cancel",
       "show": "Show passphrase",
       "hide": "Hide passphrase",
-      "hint": "After unlocking once, the keychain will be refreshed so future sessions can auto-unlock again."
+      "hint": "Use your space's encryption passphrase, not your computer's login password."
     },
     "errors": {
       "wrongPassphrase": "Wrong passphrase. Please try again.",
@@ -991,7 +1005,6 @@
       "modal": {
         "title": "Reset and start over",
         "warning": "Once reset, the encrypted clipboard history stored on this device cannot be recovered.",
-        "recovery": "If you have another paired device, you can re-invite this device from it and the history will sync back from the peer.",
         "confirmPrompt": "Type RESET to confirm",
         "confirmPlaceholder": "RESET",
         "confirm": "Reset",
@@ -2179,6 +2192,7 @@
         "title": "Clipboard is locked",
         "description": "Unlock to access your clipboard history",
         "action": "Unlock",
+        "openFailed": "Could not open the unlock window. Try again from the main window.",
         "unlocking": "Unlocking..."
       },
       "status": {

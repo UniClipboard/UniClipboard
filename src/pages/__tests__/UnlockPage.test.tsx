@@ -1,20 +1,15 @@
 import { render, screen, act, fireEvent, waitFor } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import {
-  resetSpace,
-  unlockEncryptionSession,
-  unlockSpaceWithPassphrase,
-  verifyKeychainAccess,
-} from '@/api/security'
+import { resetSpace, verifyKeychainAccess } from '@/api/security'
 import i18n from '@/i18n'
+import { commands } from '@/lib/ipc'
 import UnlockPage from '@/pages/UnlockPage'
-import { ensureSetupRealtimeSync, refreshSetupState } from '@/store/setupRealtimeStore'
+import { refreshSetupState } from '@/store/setupRealtimeStore'
 
 vi.mock('@/api/security', async () => {
   const actual = await vi.importActual<typeof import('@/api/security')>('@/api/security')
   return {
     ...actual,
-    unlockEncryptionSession: vi.fn(),
     unlockSpaceWithPassphrase: vi.fn(),
     verifyKeychainAccess: vi.fn(),
     resetSpace: vi.fn(),
@@ -23,6 +18,10 @@ vi.mock('@/api/security', async () => {
 
 vi.mock('@/hooks/usePlatform', () => ({
   usePlatform: () => ({ isMac: false }),
+}))
+
+vi.mock('@/lib/ipc', () => ({
+  commands: { unlockContent: vi.fn(), unlockContentFromKeyring: vi.fn() },
 }))
 
 const updateSecuritySettingMock = vi.fn()
@@ -45,6 +44,7 @@ describe('UnlockPage', () => {
     vi.clearAllMocks()
     await i18n.changeLanguage('zh-CN')
     vi.mocked(verifyKeychainAccess).mockResolvedValue(true)
+    vi.mocked(commands.unlockContentFromKeyring).mockResolvedValue(false)
   })
 
   it('does not render the lower-right blurred decorative effect', () => {
@@ -53,9 +53,18 @@ describe('UnlockPage', () => {
     expect(container.querySelector('[data-uc-decorative-effect].blur-3xl')).toBeNull()
   })
 
-  it('notifies parent immediately when silent unlock succeeds', async () => {
+  it('keeps the main unlock view focused on one primary action', () => {
+    const { container } = render(<UnlockPage />)
+
+    expect(screen.queryByText(i18n.t('settings.sections.security.title'))).not.toBeInTheDocument()
+    expect(screen.getAllByText('UniClipboard')).toHaveLength(1)
+    expect(screen.getByRole('button', { name: i18n.t('unlock.button') })).toHaveClass('w-full')
+    expect(container.querySelector('.max-w-lg')).not.toBeNull()
+  })
+
+  it('unlocks directly when the explicit keyring attempt succeeds', async () => {
     const onUnlockSucceeded = vi.fn()
-    vi.mocked(unlockEncryptionSession).mockResolvedValue(true)
+    vi.mocked(commands.unlockContentFromKeyring).mockResolvedValue(true)
 
     render(<UnlockPage onUnlockSucceeded={onUnlockSucceeded} />)
 
@@ -63,16 +72,19 @@ describe('UnlockPage', () => {
       screen.getByRole('button', { name: i18n.t('unlock.button') }).click()
     })
 
-    expect(unlockEncryptionSession).toHaveBeenCalledTimes(1)
-    expect(unlockSpaceWithPassphrase).not.toHaveBeenCalled()
-    expect(ensureSetupRealtimeSync).toHaveBeenCalledTimes(1)
-    expect(refreshSetupState).toHaveBeenCalledTimes(1)
+    expect(verifyKeychainAccess).not.toHaveBeenCalled()
+    expect(commands.unlockContent).not.toHaveBeenCalled()
+    expect(commands.unlockContentFromKeyring).toHaveBeenCalledTimes(1)
     expect(onUnlockSucceeded).toHaveBeenCalledTimes(1)
+    expect(
+      screen.queryByLabelText(i18n.t('unlock.passphraseModal.passphraseLabel'))
+    ).not.toBeInTheDocument()
+    expect(screen.queryByRole('switch')).not.toBeInTheDocument()
   })
 
-  it('opens passphrase modal when silent unlock returns false (nothing to resume)', async () => {
+  it('opens passphrase modal when secure storage authentication is unavailable', async () => {
     const onUnlockSucceeded = vi.fn()
-    vi.mocked(unlockEncryptionSession).mockResolvedValue(false)
+    vi.mocked(commands.unlockContentFromKeyring).mockResolvedValue(false)
 
     render(<UnlockPage onUnlockSucceeded={onUnlockSucceeded} />)
 
@@ -84,9 +96,9 @@ describe('UnlockPage', () => {
     expect(screen.getByText(i18n.t('unlock.passphraseModal.title'))).toBeInTheDocument()
   })
 
-  it('opens passphrase modal when silent unlock rejects (keyring/keyslot drift)', async () => {
+  it('opens passphrase modal when secure storage authentication rejects', async () => {
     const onUnlockSucceeded = vi.fn()
-    vi.mocked(unlockEncryptionSession).mockRejectedValue({
+    vi.mocked(commands.unlockContentFromKeyring).mockRejectedValue({
       code: 'INTERNAL',
       message: 'silent unlock failed: WrongPassphrase',
     })
@@ -103,8 +115,8 @@ describe('UnlockPage', () => {
 
   it('successfully unlocks with a correct passphrase from the modal', async () => {
     const onUnlockSucceeded = vi.fn()
-    vi.mocked(unlockEncryptionSession).mockResolvedValue(false)
-    vi.mocked(unlockSpaceWithPassphrase).mockResolvedValue({ spaceId: 'space-x' })
+    vi.mocked(verifyKeychainAccess).mockResolvedValue(false)
+    vi.mocked(commands.unlockContent).mockResolvedValue(null)
 
     render(<UnlockPage onUnlockSucceeded={onUnlockSucceeded} />)
 
@@ -115,13 +127,17 @@ describe('UnlockPage', () => {
     const passphraseInput = screen.getByLabelText(
       i18n.t('unlock.passphraseModal.passphraseLabel')
     ) as HTMLInputElement
-    fireEvent.change(passphraseInput, { target: { value: 'correct-horse-battery-staple' } })
+    fireEvent.change(passphraseInput, {
+      target: { value: 'correct-horse-battery-staple' },
+    })
 
     await act(async () => {
       screen.getByRole('button', { name: i18n.t('unlock.passphraseModal.submit') }).click()
     })
 
-    expect(unlockSpaceWithPassphrase).toHaveBeenCalledWith('correct-horse-battery-staple')
+    expect(commands.unlockContent).toHaveBeenCalledWith({
+      passphrase: 'correct-horse-battery-staple',
+    })
     expect(refreshSetupState).toHaveBeenCalledTimes(1)
     expect(onUnlockSucceeded).toHaveBeenCalledTimes(1)
     await waitFor(() => {
@@ -131,8 +147,10 @@ describe('UnlockPage', () => {
 
   it('shows WRONG_PASSPHRASE message and keeps modal open on wrong passphrase', async () => {
     const onUnlockSucceeded = vi.fn()
-    vi.mocked(unlockEncryptionSession).mockResolvedValue(false)
-    vi.mocked(unlockSpaceWithPassphrase).mockRejectedValue({ code: 'WRONG_PASSPHRASE' })
+    vi.mocked(verifyKeychainAccess).mockResolvedValue(false)
+    vi.mocked(commands.unlockContent).mockRejectedValue({
+      code: 'WRONG_PASSPHRASE',
+    })
 
     render(<UnlockPage onUnlockSucceeded={onUnlockSucceeded} />)
 
@@ -143,7 +161,9 @@ describe('UnlockPage', () => {
     const passphraseInput = screen.getByLabelText(
       i18n.t('unlock.passphraseModal.passphraseLabel')
     ) as HTMLInputElement
-    fireEvent.change(passphraseInput, { target: { value: 'wrong-passphrase' } })
+    fireEvent.change(passphraseInput, {
+      target: { value: 'wrong-passphrase' },
+    })
 
     await act(async () => {
       screen.getByRole('button', { name: i18n.t('unlock.passphraseModal.submit') }).click()
@@ -159,8 +179,10 @@ describe('UnlockPage', () => {
 
   it('shows CORRUPTED_KEY_MATERIAL guidance when the keyslot is broken', async () => {
     const onUnlockSucceeded = vi.fn()
-    vi.mocked(unlockEncryptionSession).mockResolvedValue(false)
-    vi.mocked(unlockSpaceWithPassphrase).mockRejectedValue({ code: 'CORRUPTED_KEY_MATERIAL' })
+    vi.mocked(verifyKeychainAccess).mockResolvedValue(false)
+    vi.mocked(commands.unlockContent).mockRejectedValue({
+      code: 'CORRUPTED_KEY_MATERIAL',
+    })
 
     render(<UnlockPage onUnlockSucceeded={onUnlockSucceeded} />)
 
@@ -178,13 +200,15 @@ describe('UnlockPage', () => {
     })
 
     await waitFor(() => {
-      expect(screen.getByText(i18n.t('unlock.errors.corruptedKeyMaterial'))).toBeInTheDocument()
+      expect(screen.getByText(i18n.t('profileRecovery.corrupt'))).toBeInTheDocument()
     })
   })
 
   it('clears the error message as soon as the user keeps typing', async () => {
-    vi.mocked(unlockEncryptionSession).mockResolvedValue(false)
-    vi.mocked(unlockSpaceWithPassphrase).mockRejectedValue({ code: 'WRONG_PASSPHRASE' })
+    vi.mocked(verifyKeychainAccess).mockResolvedValue(false)
+    vi.mocked(commands.unlockContent).mockRejectedValue({
+      code: 'WRONG_PASSPHRASE',
+    })
 
     render(<UnlockPage />)
 
@@ -252,7 +276,11 @@ describe('UnlockPage', () => {
       fireEvent.change(input, { target: { value: 'RESET' } })
 
       await act(async () => {
-        screen.getByRole('button', { name: i18n.t('unlock.factoryReset.modal.confirm') }).click()
+        screen
+          .getByRole('button', {
+            name: i18n.t('unlock.factoryReset.modal.confirm'),
+          })
+          .click()
       })
 
       expect(resetSpace).toHaveBeenCalledTimes(1)
@@ -283,7 +311,11 @@ describe('UnlockPage', () => {
       fireEvent.change(input, { target: { value: 'RESET' } })
 
       await act(async () => {
-        screen.getByRole('button', { name: i18n.t('unlock.factoryReset.modal.confirm') }).click()
+        screen
+          .getByRole('button', {
+            name: i18n.t('unlock.factoryReset.modal.confirm'),
+          })
+          .click()
       })
 
       await waitFor(() => {

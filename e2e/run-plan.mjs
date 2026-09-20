@@ -99,6 +99,38 @@ export function createSpecRuns({
     }
 
     const isolatedProfile = `${profile}-${slug}`
+    if (slug === 'profile-key-recovery-fresh') {
+      if (hostPlatform !== 'darwin') return []
+      return [
+        {
+          spec,
+          profiles: [isolatedProfile],
+          env: {
+            E2E_UC_PROFILE: isolatedProfile,
+            E2E_UNLOCK_PASSPHRASE: 'isolated-gui-recovery-fixture',
+          },
+        },
+      ]
+    }
+    if (slug === 'unlock-passphrase-fallback' || slug === 'profile-key-recovery') {
+      if (hostPlatform !== 'darwin' || hostArch !== 'arm64') return []
+      const fixture = upgradeFixtures[0]
+      const fallbackProfile = `${isolatedProfile}-${fixture.version.replaceAll('.', '-')}`
+      return [
+        {
+          spec,
+          profiles: [fallbackProfile],
+          env: {
+            E2E_UC_PROFILE: fallbackProfile,
+            E2E_UNLOCK_PASSPHRASE: fixture.passphrase,
+          },
+          fixture: {
+            directory: `tests/e2e/fixtures/upgrades/v${fixture.version}/macos-aarch64/single-node-empty`,
+            profile: fallbackProfile,
+          },
+        },
+      ]
+    }
     if (slug === 'upgrade-re-pair-notice' && hostPlatform === 'darwin' && hostArch === 'arm64') {
       return upgradeFixtures.map(fixture => {
         const versionSlug = fixture.version.replaceAll('.', '-').replaceAll('+', '-')

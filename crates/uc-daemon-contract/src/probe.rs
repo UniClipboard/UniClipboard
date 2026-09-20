@@ -23,6 +23,7 @@ use crate::DAEMON_API_REVISION;
 
 pub const DEGRADED_HEALTH_INCOMPATIBILITY_DETAILS: &str =
     "daemon reported unhealthy status degraded";
+pub const RECOVERY_REQUIRED_HEALTH_STATUS: &str = "recovery_required";
 
 /// 一次健康探测的分类结果。
 ///
@@ -54,7 +55,7 @@ pub fn classify_health_response(
     let observed_package_version = Some(health.package_version.clone());
     let observed_api_revision = Some(health.api_revision.clone());
 
-    if health.status != "ok" {
+    if health.status != "ok" && health.status != RECOVERY_REQUIRED_HEALTH_STATUS {
         let details = if health.status == "degraded" {
             DEGRADED_HEALTH_INCOMPATIBILITY_DETAILS.to_string()
         } else {
@@ -149,6 +150,21 @@ mod tests {
     }
 
     // ------- classify_health_response: pure decision table -------
+
+    #[test]
+    fn recovery_service_is_connectable_but_still_requires_matching_versions() {
+        let mut health = ok_health();
+        health.status = RECOVERY_REQUIRED_HEALTH_STATUS.into();
+        assert_eq!(
+            classify_health_response(health.clone(), TEST_PACKAGE_VERSION),
+            ProbeOutcome::Compatible(health.clone())
+        );
+        health.api_revision = "wrong-revision".into();
+        assert!(matches!(
+            classify_health_response(health, TEST_PACKAGE_VERSION),
+            ProbeOutcome::Incompatible { .. }
+        ));
+    }
 
     #[test]
     fn classify_compatible_when_all_fields_match() {

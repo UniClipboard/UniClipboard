@@ -66,7 +66,20 @@ macro_rules! classify {
     };
 }
 
+use crate::commands::content_lock::ContentUnlockError;
 use crate::commands::error::CommandError;
+
+classify!(ContentUnlockError {
+    "PROFILE_RECOVERY_REQUIRED" => UserError,
+    "PROFILE_RECOVERY_PARTIAL" => SystemError,
+    "PROFILE_RECOVERY_UNSUPPORTED" => SystemError,
+    "PROFILE_RECOVERY_PERSISTENCE_FAILED" => SystemError,
+    "WRONG_PASSPHRASE" => UserError,
+    "SETUP_NOT_COMPLETED" => UserError,
+    "SPACE_NOT_INITIALIZED" => UserError,
+    "CORRUPTED_KEY_MATERIAL" => SystemError,
+    "INTERNAL" => SystemError,
+});
 
 // Generic command taxonomy. `#[serde(tag = "code", content = "message")]` with
 // no `rename_all`, so codes are the PascalCase variant names verbatim.
@@ -86,12 +99,14 @@ classify!(CommandError {
 // classifications were removed here. The daemon emits user-recoverable outcomes
 // as 4xx (no Sentry escalation) and the FE error wrappers log them at info/warn
 // — they no longer flow through `invokeWithTrace` / this taxonomy. `CommandError`
-// is the last remaining frontend-facing Tauri command error.
+// remains the generic frontend-facing Tauri command error. GUI-only content
+// authentication now has its own taxonomy above, distinct from Engine access.
 
 /// Every `(code, severity)` pair across all frontend-facing command errors.
 fn all_code_severities() -> Vec<(&'static str, ErrorSeverity)> {
     let mut all = Vec::new();
     all.extend_from_slice(CommandError::code_severities());
+    all.extend_from_slice(ContentUnlockError::code_severities());
     all
 }
 
@@ -182,6 +197,37 @@ mod tests {
             E::Conflict(s()),
             E::AccessibilityPermissionRequired(s()),
         ]);
+    }
+
+    #[test]
+    fn content_unlock_error_table_is_complete() {
+        use ContentUnlockError as E;
+        fn _coverage(error: &E) {
+            match error {
+                E::WrongPassphrase
+                | E::CorruptedKeyMaterial
+                | E::SetupNotCompleted
+                | E::SpaceNotInitialized
+                | E::ProfileRecoveryRequired
+                | E::ProfileRecoveryPartial
+                | E::ProfileRecoveryUnsupported
+                | E::ProfileRecoveryPersistenceFailed
+                | E::Internal => {}
+            }
+        }
+        assert_table_matches(&[
+            E::WrongPassphrase,
+            E::CorruptedKeyMaterial,
+            E::SetupNotCompleted,
+            E::SpaceNotInitialized,
+            E::ProfileRecoveryRequired,
+            E::ProfileRecoveryPartial,
+            E::ProfileRecoveryUnsupported,
+            E::ProfileRecoveryPersistenceFailed,
+            E::Internal,
+        ]);
+        assert!(user_facing_error_codes().contains(&"WRONG_PASSPHRASE"));
+        assert!(!user_facing_error_codes().contains(&"INTERNAL"));
     }
 
     #[test]

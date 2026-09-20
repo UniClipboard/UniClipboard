@@ -1,7 +1,6 @@
 import { LazyMotion, domMax } from 'framer-motion'
 import { useCallback, useMemo, useState } from 'react'
 import { BrowserRouter as Router, useNavigate } from 'react-router'
-import { unlockEncryptionSession } from '@/api/security'
 import { SidebarTitle, TitleBar } from '@/components'
 import { AppContent } from '@/components/app/AppContent'
 import VisualEffectsProvider from '@/components/motion/VisualEffectsProvider'
@@ -14,11 +13,14 @@ import { useUINavigateListener } from '@/hooks/useUINavigateListener'
 import { useWindowFrame } from '@/hooks/useWindowFrame'
 import { WindowShell } from '@/layouts'
 import { resolveSetupGate } from '@/lib/app-state'
+import { commands } from '@/lib/ipc'
 import { useSetupRealtimeStore } from '@/store/setupRealtimeStore'
 import './App.css'
 
 const handleSetupComplete = () => {
-  unlockEncryptionSession().catch(error => console.warn('Post-setup auto-unlock failed:', error))
+  commands
+    .unlockContentFromKeyring()
+    .catch(error => console.warn('Post-setup content unlock failed:', error))
 }
 
 export default function App() {

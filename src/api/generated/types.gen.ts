@@ -2239,6 +2239,42 @@ export type PreviewImportResponse = {
     sourceMode: string;
 };
 
+/**
+ * Canonical success envelope: `{ "data": T, "ts": <unix millis i64> }`.
+ *
+ * `ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler
+ * via [`ApiEnvelope::now`] (the contract carries only the type + the clock
+ * helper, not a hard dependency on when the handler reads the clock).
+ * `rename_all = "camelCase"` is a no-op for the single-word fields here but is
+ * declared for forward-compat.
+ *
+ * IMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named
+ * OpenAPI component is declared in the `#[aliases(...)]` block below. Add a new
+ * alias line whenever a new payload type needs enveloping. NEVER register the
+ * bare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare
+ * generic, and an un-aliased generic inlines an anonymous schema.
+ */
+export type ProfileRecoveryEnvelope = {
+    data: ProfileRecoveryResponse;
+    /**
+     * Server time when the response was built (unix epoch milliseconds).
+     */
+    ts: number;
+};
+
+export type ProfileRecoveryLossDto = 'local_history' | 'local_control_state' | 'device_identity';
+
+export type ProfileRecoveryResponse = {
+    backgroundReady: boolean;
+    canSubmitPassphrase: boolean;
+    cleanupPending: boolean;
+    losses: Array<ProfileRecoveryLossDto>;
+    restartRequired: boolean;
+    state: ProfileRecoveryStateDto;
+};
+
+export type ProfileRecoveryStateDto = 'not_required' | 'awaiting_passphrase' | 'recovering' | 'recovered' | 'partially_recoverable' | 'failed';
+
 export type QuickPanelDoubleTapModifierDto = 'disabled' | 'alt' | 'control' | 'meta';
 
 /**
@@ -4955,6 +4991,22 @@ export type ChangeEncryptionPassphraseResponses = {
 };
 
 export type ChangeEncryptionPassphraseResponse = ChangeEncryptionPassphraseResponses[keyof ChangeEncryptionPassphraseResponses];
+
+export type GetProfileRecoveryData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/encryption/recovery';
+};
+
+export type GetProfileRecoveryResponses = {
+    /**
+     * Profile recovery status
+     */
+    200: ProfileRecoveryEnvelope;
+};
+
+export type GetProfileRecoveryResponse = GetProfileRecoveryResponses[keyof GetProfileRecoveryResponses];
 
 export type GetEncryptionStateData = {
     body?: never;

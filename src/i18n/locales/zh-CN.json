@@ -1,4 +1,18 @@
 {
+  "profileRecovery": {
+    "restartRequired": "后台服务启动失败，需要重启后才能继续恢复。原资料会保留；若再次失败，请联系作者。",
+    "restart": "重启后台服务",
+    "title": "恢复本机资料",
+    "description": "系统保存的密钥缺失或无法使用。请输入原加密口令恢复。在恢复完成前，历史内容、剪贴板监听和设备同步暂不可用。",
+    "submit": "恢复并继续",
+    "recovering": "正在恢复…",
+    "partial": "部分旧密钥已丢失，现有口令可能无法恢复本机历史和设备身份。请保留资料，不要重置，联系作者协助处理。",
+    "unsupported": "此版本无法读取恢复资料。请保留原资料，更新应用或联系作者。",
+    "persistenceFailed": "无法保存恢复后的密钥。请检查磁盘空间与系统钥匙串权限后重试；不要删除原资料。",
+    "corrupt": "恢复资料无法读取。请保留原资料和备份，联系作者协助处理。",
+    "failed": "恢复未完成。请重试；若仍失败，请保留原资料并联系作者。",
+    "help": "输错口令不会删除资料。若忘记口令或恢复失败，请先联系 mkdir700@gmail.com 或在 GitHub 提交问题，不要急着清空数据。"
+  },
   "omarchyTheme": {
     "title": "跟随 Omarchy 主题",
     "description": "开启后，深浅模式和配色由 Omarchy 控制。",
@@ -945,7 +959,7 @@
     "invitationAction": "忘记原口令？重置口令"
   },
   "unlock": {
-    "title": "解锁 UniClipboard",
+    "title": "解锁",
     "description": "您的数据已加密，请解锁以继续。",
     "button": "解锁",
     "unlocking": "正在解锁...",
@@ -968,7 +982,7 @@
     },
     "passphraseModal": {
       "title": "请输入空间口令",
-      "description": "自动解锁无法从钥匙串中读取密钥，请输入您为该空间设置的口令以手动解锁。",
+      "description": "请输入您为该空间设置的加密口令，验证后即可查看内容和管理设置。",
       "passphraseLabel": "口令",
       "passphrasePlaceholder": "输入您的口令",
       "submit": "解锁",
@@ -976,7 +990,7 @@
       "cancel": "取消",
       "show": "显示口令",
       "hide": "隐藏口令",
-      "hint": "手动解锁成功后，钥匙串将被刷新，后续启动可以恢复自动解锁。"
+      "hint": "这是空间的加密口令，不是电脑的登录密码。"
     },
     "errors": {
       "wrongPassphrase": "口令错误，请重新输入。",
@@ -991,7 +1005,6 @@
       "modal": {
         "title": "重置并重新开始",
         "warning": "重置后，本设备上加密保存的剪贴板历史将无法恢复。",
-        "recovery": "如果你有其他已配对设备，可以从那台设备重新邀请本机加入，历史会从对端同步回来。",
         "confirmPrompt": "请输入 RESET 以确认",
         "confirmPlaceholder": "RESET",
         "confirm": "重置",
@@ -2177,6 +2190,7 @@
         "title": "剪贴板已锁定",
         "description": "解锁后才能查看剪贴板历史",
         "action": "解锁",
+        "openFailed": "无法打开解锁窗口，请从主窗口重试。",
         "unlocking": "正在解锁..."
       },
       "status": {

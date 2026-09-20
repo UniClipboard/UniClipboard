@@ -13,12 +13,27 @@ export async function element(instance, selector, { timeout = 30000 } = {}) {
 
 export async function click(instance, selector) {
   await element(instance, selector)
-  const clicked = await instance.execute(targetSelector => {
-    const button = document.querySelector(targetSelector)
-    if (!(button instanceof HTMLElement)) return false
-    button.click()
-    return true
-  }, selector)
+  let clicked = false
+  await instance.waitUntil(
+    async () => {
+      clicked = await instance.execute(targetSelector => {
+        const button = Array.from(document.querySelectorAll(targetSelector)).find(
+          candidate =>
+            candidate instanceof HTMLElement &&
+            candidate.offsetParent !== null &&
+            !candidate.hasAttribute('disabled')
+        )
+        if (!(button instanceof HTMLElement)) return false
+        button.click()
+        return true
+      }, selector)
+      return clicked
+    },
+    {
+      timeout: 30000,
+      timeoutMsg: `no visible enabled element matched ${selector}`,
+    }
+  )
   expect(clicked).toBe(true)
 }
 
@@ -106,7 +121,7 @@ export async function invitationCode(instance) {
     throw error
   }
   const code = (await display.getText()).replace(/[^A-Z0-9]/g, '')
-  expect(code).toHaveLength(8)
+  expect(code).toHaveLength(6)
   return code
 }
 

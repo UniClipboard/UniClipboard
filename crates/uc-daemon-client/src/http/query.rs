@@ -100,6 +100,27 @@ impl DaemonQueryClient {
         self.enveloped(Method::GET, "/encryption/state").await
     }
 
+    pub async fn get_profile_recovery(
+        &self,
+    ) -> Result<uc_daemon_contract::api::dto::encryption::ProfileRecoveryResponse> {
+        self.enveloped(Method::GET, "/encryption/recovery").await
+    }
+
+    /// Validate the passphrase even when the background session is already ready.
+    /// Never log the request body or include it in errors.
+    pub async fn unlock_with_passphrase(&self, passphrase: &str) -> Result<()> {
+        let _: serde_json::Value = enveloped_request(
+            &self.http,
+            &self.connection_state,
+            &self.client_type,
+            Method::POST,
+            "/encryption/unlock-with-passphrase",
+            |request| request.json(&serde_json::json!({ "passphrase": passphrase })),
+        )
+        .await?;
+        Ok(())
+    }
+
     /// Retry the lifecycle boot on the daemon (starts network, opens clipboard capture gate).
     pub async fn lifecycle_retry(&self) -> Result<()> {
         Ok(empty_request(

@@ -61,6 +61,7 @@ pub mod ws_event {
     /// 发,与 GUI 详情页的 delivery badge 配套;LAN 客户端不订阅即可忽略。
     pub const CLIPBOARD_DELIVERY_STATUS_CHANGED: &str = "clipboard.delivery_status_changed";
     pub const ENCRYPTION_SESSION_READY: &str = "encryption.session_ready";
+    pub const PROFILE_RECOVERY_CHANGED: &str = "encryption.profile_recovery_changed";
     /// Search availability snapshot event (Phase 92).
     pub const SEARCH_STATUS_SNAPSHOT: &str = "search.status_snapshot";
     /// Search rebuild progress event (Phase 92).
@@ -91,12 +92,18 @@ pub mod pairing_busy_reason {
 
 /// HTTP/JSON error codes returned by the daemon pairing API endpoints.
 pub mod pairing_error_code {
+    pub use super::daemon_error_code::RUNTIME_UNAVAILABLE;
+
     pub const ACTIVE_SESSION_EXISTS: &str = "active_session_exists";
     pub const HOST_NOT_DISCOVERABLE: &str = "host_not_discoverable";
     pub const NO_LOCAL_PARTICIPANT: &str = "no_local_participant";
     pub const SESSION_NOT_FOUND: &str = "session_not_found";
     pub const INTERNAL: &str = "internal";
     pub const BAD_REQUEST: &str = "bad_request";
+}
+
+/// HTTP/JSON error codes shared across daemon API endpoints.
+pub mod daemon_error_code {
     pub const RUNTIME_UNAVAILABLE: &str = "runtime_unavailable";
 }
 

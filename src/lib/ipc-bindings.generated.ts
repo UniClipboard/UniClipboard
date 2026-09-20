@@ -13,6 +13,26 @@ import { invoke as __TAURI_INVOKE, Channel } from "@tauri-apps/api/core";
 
 /** Commands */
 export const commands = {
+	getContentUnlocked: (trace: {
+	trace_id: string,
+	timestamp: number,
+} | null) => typedError<boolean, CommandError>(__TAURI_INVOKE("get_content_unlocked", { trace })),
+	getProfileRecovery: (trace: {
+	trace_id: string,
+	timestamp: number,
+} | null) => typedError<ProfileRecoveryResponse, CommandError>(__TAURI_INVOKE("get_profile_recovery", { trace })),
+	unlockContent: (request: ContentUnlockRequest, trace: {
+	trace_id: string,
+	timestamp: number,
+} | null) => typedError<null, ContentUnlockError>(__TAURI_INVOKE("unlock_content", { request, trace })),
+	unlockContentFromKeyring: (trace: {
+	trace_id: string,
+	timestamp: number,
+} | null) => typedError<boolean, CommandError>(__TAURI_INVOKE("unlock_content_from_keyring", { trace })),
+	showContentUnlock: (trace: {
+	trace_id: string,
+	timestamp: number,
+} | null) => __TAURI_INVOKE<void>("show_content_unlock", { trace }),
 	getDesktopTheme: (trace: {
 	trace_id: string,
 	timestamp: number,
@@ -632,6 +652,12 @@ export type ConfigImportPreview = {
 	deviceFingerprint: string,
 };
 
+export type ContentUnlockError = { code: "WRONG_PASSPHRASE" } | { code: "CORRUPTED_KEY_MATERIAL" } | { code: "SETUP_NOT_COMPLETED" } | { code: "SPACE_NOT_INITIALIZED" } | { code: "PROFILE_RECOVERY_REQUIRED" } | { code: "PROFILE_RECOVERY_PARTIAL" } | { code: "PROFILE_RECOVERY_UNSUPPORTED" } | { code: "PROFILE_RECOVERY_PERSISTENCE_FAILED" } | { code: "INTERNAL" };
+
+export type ContentUnlockRequest = {
+	passphrase: string,
+};
+
 /**
  *  Frontend-facing daemon-bootstrap failure payload. `detail` carries the
  *  original error message (English, already user-safe) for diagnostics; the
@@ -843,6 +869,19 @@ export type InstallKind = "macos" | "windows" |
 
 export type ModifierDoubleTapAvailability = "supported" | "accessibility_permission_required" | "unsupported_display_session";
 
+export type ProfileRecoveryLossDto = "local_history" | "local_control_state" | "device_identity";
+
+export type ProfileRecoveryResponse = {
+	state: ProfileRecoveryStateDto,
+	canSubmitPassphrase: boolean,
+	restartRequired: boolean,
+	backgroundReady: boolean,
+	cleanupPending: boolean,
+	losses: ProfileRecoveryLossDto[],
+};
+
+export type ProfileRecoveryStateDto = "not_required" | "awaiting_passphrase" | "recovering" | "recovered" | "partially_recoverable" | "failed";
+
 export type QuickPanelDoubleTapModifierArg = "disabled" | "alt" | "control" | "meta";
 
 /**
@@ -889,7 +928,7 @@ export type StartupSnapshotDto = {
 	allowed_actions: StartupActionsDto,
 };
 
-export type StartupStateDto = "preparing" | "upgrading" | "starting_services" | "ready" | "failed" | "interrupted";
+export type StartupStateDto = "preparing" | "upgrading" | "starting_services" | "ready" | "recovery_available" | "failed" | "interrupted";
 
 export type StartupStepDto = "backing_up" | "checking" | "converting_contents" | "converting_large_contents" | "converting_related_records" | "verifying" | "preparing";
 

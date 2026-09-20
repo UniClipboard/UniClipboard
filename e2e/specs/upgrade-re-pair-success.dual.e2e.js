@@ -78,7 +78,7 @@ async function issueRecoveryInvitation(sponsor) {
     timeout: 30000,
   })
   const code = (await codeDisplay.getText()).replace(/[^A-Z0-9]/g, '')
-  expect(code).toHaveLength(8)
+  expect(code).toHaveLength(6)
   return code
 }
 
@@ -147,8 +147,13 @@ dualDescribe('历史版本升级后重新配对', () => {
     )
 
     const connection = daemonConnection(process.env.E2E_UC_SPONSOR_PROFILE)
-    const response = await daemonRequest(connection, '/v2/setup/state')
-    expect(response.status).toBe(200)
-    expect((await response.json()).data.rePairingRequired).toBe(false)
+    await sponsor.waitUntil(
+      async () => {
+        const response = await daemonRequest(connection, '/v2/setup/state')
+        if (response.status !== 200) return false
+        return (await response.json()).data.rePairingRequired === false
+      },
+      { timeout: 30000, timeoutMsg: 're-pairing recovery state was not cleared after success' }
+    )
   })
 })

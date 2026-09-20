@@ -29,6 +29,15 @@ pub(crate) async fn forward_engine_events(
             event = events.next() => {
                 let Some(event) = event else { return; };
                 match event {
+                    EngineEvent::ProfileRecoveryChanged(summary) => {
+                        if summary.background_ready {
+                            super::host::apply_initial_mobile_lan_target(&engine, mobile_lan.as_ref()).await;
+                            super::startup_recovery::record_upgrade_status_at_startup(&engine).await;
+                        }
+                        if let Some(event) = daemon_ws_event(EngineEvent::ProfileRecoveryChanged(summary)) {
+                            let _ = event_tx.send(event);
+                        }
+                    }
                     EngineEvent::ActiveClipboardChanged(change) => {
                         let _ = active_clipboard_tx.send(change);
                     }

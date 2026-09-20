@@ -30,7 +30,8 @@ use crate::api::dto::diagnostics::{
     UpdateDebugModeResultDto,
 };
 use crate::api::dto::encryption::{
-    EncryptionActionResponse, EncryptionStateResponse, KeychainAccessResponse, UnlockSpaceResponse,
+    EncryptionActionResponse, EncryptionStateResponse, KeychainAccessResponse,
+    ProfileRecoveryResponse, UnlockSpaceResponse,
 };
 use crate::api::dto::member::{
     DeviceGroupChoiceResultDto, DeviceGroupChoicesDto, DeviceTrustSnapshotDto,
@@ -123,6 +124,7 @@ use crate::api::types::{
     LanInterfaceListEnvelope = ApiEnvelope<Vec<LanInterfaceViewDto>>,
     // ── encryption ─────────────────────────────────────────────────
     EncryptionStateEnvelope = ApiEnvelope<EncryptionStateResponse>,
+    ProfileRecoveryEnvelope = ApiEnvelope<ProfileRecoveryResponse>,
     KeychainAccessEnvelope = ApiEnvelope<KeychainAccessResponse>,
     EncryptionActionEnvelope = ApiEnvelope<EncryptionActionResponse>,
     UnlockSpaceEnvelope = ApiEnvelope<UnlockSpaceResponse>,

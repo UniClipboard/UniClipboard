@@ -379,9 +379,12 @@ async fn start_foreground_streams_logs() {
     let profile_name = temp_daemon.profile.name.clone();
     let binary = cli.binary_path().to_string_lossy().into_owned();
 
-    // Kill the temp daemon so foreground can bind the port.
-    temp_daemon.kill();
-    tokio::time::sleep(Duration::from_millis(500)).await;
+    // Stop cleanly so initialization is fully persisted before foreground
+    // startup validates setup state.
+    temp_daemon
+        .stop_gracefully()
+        .await
+        .expect("stop initialized daemon before foreground start");
 
     // Spawn foreground process.
     let mut child = std::process::Command::new(&binary)
@@ -397,10 +400,29 @@ async fn start_foreground_streams_logs() {
 
     // The process should still be alive (foreground mode blocks).
     let try_wait = child.try_wait().expect("try_wait failed");
+    let exited_output = try_wait.map(|status| {
+        use std::io::Read;
+
+        let mut stdout = String::new();
+        let mut stderr = String::new();
+        child
+            .stdout
+            .take()
+            .expect("foreground stdout")
+            .read_to_string(&mut stdout)
+            .expect("read foreground stdout");
+        child
+            .stderr
+            .take()
+            .expect("foreground stderr")
+            .read_to_string(&mut stderr)
+            .expect("read foreground stderr");
+        (status, stdout, stderr)
+    });
     assert!(
-        try_wait.is_none(),
+        exited_output.is_none(),
         "foreground process should still be running, but it exited with: {:?}",
-        try_wait
+        exited_output
     );
 
     // Clean up: send SIGTERM on Unix, kill on other platforms.

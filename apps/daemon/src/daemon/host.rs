@@ -319,7 +319,7 @@ async fn run_daemon_surfaces(
     Ok(())
 }
 
-async fn apply_initial_mobile_lan_target(
+pub(super) async fn apply_initial_mobile_lan_target(
     engine: &Engine,
     controller: &MobileLanLifecycleController,
 ) {

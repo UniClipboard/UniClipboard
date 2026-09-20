@@ -1,0 +1,6 @@
+{
+  "title": "迁移指南",
+  "icon": "RefreshCw",
+  "defaultOpen": true,
+  "pages": ["upgrade-0-19-to-v1"]
+}

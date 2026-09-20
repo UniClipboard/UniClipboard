@@ -1,0 +1,239 @@
+---
+title: Upgrade from 0.19 to 1.0
+description: What to expect from the first launch, data backup, search rebuild, and device re-pairing.
+---
+
+After upgrading from 0.19 to 1.0, the first launch takes longer than usual, search is briefly unavailable, and the old paired-device list is cleared. These are expected parts of the upgrade and do not mean your local history is gone.
+
+<Callout type="warn">
+  A 0.19 device cannot pair with a 1.0 device. Both devices must run 1.0 before you pair them again.
+</Callout>
+
+## One-minute pre-upgrade check
+
+1. Let every 0.19 device finish one last sync.
+2. Confirm important text, images, and files open on at least one device. Save an extra copy of irreplaceable files.
+3. Note the current device names so you can identify them when pairing again.
+4. Fully quit UniClipboard on every device.
+5. Keep the 0.19 installer until every device has upgraded successfully.
+
+For multiple devices, upgrade one at a time. Confirm that the first device's history is intact before upgrading the next one.
+
+## Recommended upgrade order
+
+1. Start with a computer that has complete data and is easy to access.
+2. Let it finish the backup and search rebuild, then confirm its history opens.
+3. Upgrade a second device.
+4. Once both show 1.0, pair them again and test sync in both directions.
+5. After that succeeds, upgrade and pair each remaining device in turn.
+
+A device still on 0.19 keeps its local data, but it cannot pair or sync with a device already on 1.0.
+
+## Normal upgrade
+
+1. Download the 1.0 installer for your operating system and processor from the [official releases page](https://github.com/UniClipboard/UniClipboard/releases).
+2. Fully quit UniClipboard, including its tray or menu-bar process.
+3. Install over the existing app using the same installation style. For Windows portable, replace the program but preserve the existing `data` folder.
+4. Start UniClipboard once and let the first upgrade finish.
+
+An in-place install does not intentionally delete history. Do not uninstall the app, delete its data directory, or switch back to 0.19 during first launch.
+
+## What happens on first launch
+
+First launch completes three stages.
+
+### 1. Back up existing data
+
+The app first copies and verifies the local 0.19 data. This makes the first launch slower than usual, and larger histories take longer. Do not force quit, shut down the computer, or open a second UniClipboard instance before it finishes.
+
+![First launch backs up existing data before the upgrade continues](/images/migration/first-launch-backup-zh.png)
+
+Upgrade backups are stored separately from the active data directory:
+
+| System | Default location |
+| --- | --- |
+| macOS | `~/Library/Application Support/app.uniclipboard.desktop-upgrade-backups/` |
+| Windows | `%LOCALAPPDATA%\app.uniclipboard.desktop-upgrade-backups\` |
+| Linux | `~/.local/share/app.uniclipboard.desktop-upgrade-backups/` |
+
+If you use a named profile, its suffix is added after `desktop`. Windows portable builds still put upgrade backups in the system location above, not inside the portable `data` folder.
+
+After upgrading, view the backup version, time, and size under **Settings → Storage → Upgrade backups**. The app keeps up to five recent backups.
+
+![View the upgrade backup version, time, and size under Settings and Storage](/images/migration/upgrade-backup-list-zh.png)
+
+<Callout type="warn">
+  Do not delete upgrade backups immediately after upgrading. They protect the data upgrade, but they are not a complete app rollback by themselves.
+</Callout>
+
+### 2. Rebuild the search index
+
+Local history is usable when the main window opens, but search is not ready immediately. The app rebuilds the search index from existing history, which normally takes about **10 seconds**.
+
+During that time:
+
+- history still exists and can be browsed or copied;
+- search may say it is rebuilding or temporarily return no results;
+- you do not need to start another rebuild or clear any data.
+
+Check **Settings → Storage → Search index**. Test search after the status changes to Ready.
+
+![The search index is rebuilding, so results may be incomplete until it finishes](/images/migration/search-index-rebuilding-zh.png)
+
+### 3. Clear old paired devices
+
+Pairing relationships created by 0.19 are not retained after the upgrade. An empty device list is expected and does not mean local history was deleted.
+
+Upgrade the other devices to 1.0, then pair them again. Old devices will not reappear automatically.
+
+![The app asks you to pair your devices again after the upgrade](/images/migration/re-pair-required-zh.png)
+
+![Invite device and Join another space appear at the bottom left of Devices](/images/migration/devices-re-pair-actions-zh.png)
+
+## Pair every device again
+
+Check the About page on both devices and confirm both run 1.0, then choose which device will issue the invitation.
+
+### Issue an invitation on the first device
+
+1. Open **Devices**.
+2. Click **Invite device** at the bottom left.
+3. The dialog asks for the original space passphrase used before upgrading. Enter it and click **Confirm and generate code**.
+4. Give the new one-time invitation code to the device that will join.
+
+If you have forgotten the old passphrase, click **Forgot the old passphrase? Reset it** in the dialog:
+
+1. Enter and confirm a new space passphrase.
+2. Click **Reset passphrase**. Local history and local data are preserved.
+3. Save the new passphrase. Every device that joins next must enter this same new passphrase.
+4. After the reset, the app continues by generating an invitation code. Any code created before the reset can no longer be used.
+
+![Confirm the original space passphrase before inviting a device](/images/migration/invite-confirm-passphrase-zh.png)
+
+![If you forgot the old passphrase, set and confirm a new one](/images/migration/reset-space-passphrase-zh.png)
+
+### Join from every other device
+
+1. On another device already upgraded to 1.0, open **Devices**.
+2. Click **Join another space** at the bottom left.
+3. Enter the invitation code just created on the first device.
+4. Enter the same space passphrase as the first device. If it was just reset, use the new passphrase.
+5. Click **Switch** and wait for the join to finish. Do not quit while it is switching.
+6. After pairing succeeds, send a short new text in both directions.
+7. Repeat for the next device only after this test passes. Every joining device needs a new invitation code.
+
+![Enter the invitation code and the same space passphrase on the other device](/images/migration/join-another-space-zh.png)
+
+See [Pairing & sync](../guides/pairing) for the full pairing flow.
+
+<Callout type="info">
+  If either device still runs 0.19, stop pairing and upgrade it first. New invite codes, network restarts, or data deletion cannot make 0.19 pair with 1.0.
+</Callout>
+
+## Confirm the upgrade
+
+- About shows 1.0;
+- old history, favorites, tags, images, and files open;
+- **Settings → Storage → Search index** changes to Ready after about 10 seconds;
+- the old device list is empty, and another 1.0 device can be paired again;
+- two 1.0 devices sync new text in both directions;
+- everything still works after quitting and reopening the app.
+
+## If something looks stuck
+
+### First launch does not finish
+
+A large data set can make the backup noticeably slower than a normal launch. Keep the device powered and wait. Do not restart repeatedly or open a second instance.
+
+If the app reports an error or repeatedly exits, stop retrying, preserve the upgrade backup and logs, and [export diagnostics](#export-diagnostics-and-get-help).
+
+### “Recover local data” appears
+
+![Enter the original encryption passphrase to recover local data without clearing it; screenshot in Chinese](/images/migration/profile-key-recovery-zh.png)
+
+The saved system key is missing or unusable; this does not mean your history was deleted. In newer builds that support passphrase recovery:
+
+1. Enter your original space encryption passphrase, not your computer login password.
+2. An incorrect passphrase does not delete data. Retry it. History, clipboard monitoring and device sync remain unavailable until recovery completes.
+3. After recovery, open old history, copy a new item to check it is saved, then quit and reopen the app.
+4. If original keys are missing, recovery data cannot be read, or recovered keys cannot be saved, stop clearing or resetting anything. Preserve your data and upgrade backups and contact the author.
+
+If background services cannot start and a restart is required, choose **Restart background services** instead of repeatedly entering the passphrase. Your data is preserved. If restarting does not help or recovery does not finish, keep your data and contact the author.
+
+![If background startup fails after key recovery, restart services instead of submitting the passphrase again; screenshot in Chinese](/images/migration/profile-key-recovery-restart-zh.png)
+
+Recovery requires the complete encrypted recovery files to remain on this device. If older keys were lost before the upgrade created those files, the passphrase alone may not restore old history. Do not delete system keychain entries as a troubleshooting step.
+
+The ordinary unlock screen only hides content and settings; background services can keep running. The recovery screen requires restoring keys before background services can resume. If an older build has no recovery screen, preserve your data and contact the author instead of resetting.
+
+### Search is unavailable for more than a minute
+
+First confirm that history can be browsed, then check **Settings → Storage → Search index**. If history is normal but the index is still not ready, restart the app once. Export diagnostics if it still does not improve.
+
+Do not delete history or the data directory to repair search.
+
+### The device list is empty
+
+This is expected after moving from 0.19 to 1.0. Confirm the other device also runs 1.0, then pair again.
+
+### Two devices cannot pair
+
+Check both versions first. If either device still runs 0.19, stop investigating the network and upgrade it to 1.0. If both run 1.0 and pairing still fails, keep both online and export diagnostics from each one.
+
+### History looks missing
+
+1. Stop copying new items. Do not clear history, reset the space, or delete data.
+2. Confirm the original user account and installation style. Windows portable must keep using its original `data` folder.
+3. Fully quit and reopen once, then let the first upgrade finish.
+4. Check **Settings → Storage → Upgrade backups**, but do not delete or manually alter a backup.
+5. If data is still missing, preserve the current state and get help. Do not point 0.19 at a directory already upgraded by 1.0.
+
+## Roll back to 0.19
+
+Do not point 0.19 at a data directory already upgraded to 1.0. New-format data may not be safe for the old app to read.
+
+A safe rollback needs complete pre-upgrade data, its matching system secure storage, and the original 0.19 installer. The automatic upgrade backup primarily protects the upgrade itself and does not guarantee a complete rollback on its own.
+
+Without a verified full-system backup, stop self-service rollback, preserve a successfully upgraded device and the upgrade backups, and get help. Clearing data, resetting the space, and deleting backups are last-resort actions only.
+
+## Export diagnostics and get help
+
+<Callout type="info">
+  For any upgrade problem, email [mkdir700@gmail.com](mailto:mkdir700@gmail.com) or open a [GitHub Issue](https://github.com/UniClipboard/UniClipboard/issues). The author can help investigate and recover the installation. Ask for help before deleting old data.
+</Callout>
+
+If the app opens, choose **Settings → General → Export logs**. If the command line works, run:
+
+```bash
+uniclip debug export-logs
+```
+
+When reporting a problem, include the operating system and device type, Desktop versions before and after upgrading, whether it is stuck on backup/search rebuild/re-pairing, the approximate time, and the version on every device involved in pairing.
+
+Attach the description and diagnostic ZIP to [GitHub Issues](https://github.com/UniClipboard/UniClipboard/issues). Never publish the space passphrase, invite code, or personal clipboard content.
+
+## Last resort: delete old data and install fresh
+
+<Callout type="warn">
+  This is the final fallback for the worst case. Deleting old data permanently removes this device's history, favorites, tags, device identity, and pairing relationships. Contact the author first, and confirm that anything important still exists on another device or in a separate backup.
+</Callout>
+
+If you have decided not to preserve this device's old data:
+
+1. Fully quit UniClipboard, then preserve the existing upgrade backups and diagnostic logs.
+2. Uninstall the current version.
+3. Follow [Emergency reset (last resort)](../help/troubleshooting#emergency-reset-last-resort) to remove the app data and saved UniClipboard credentials from the system.
+4. Install 1.0 again, then create a new space or join an existing one with a new invitation from another 1.0 device.
+5. Send a short new text in both directions before resetting any other device.
+
+If you are unsure what to remove, stop after step 1 and ask for help at [mkdir700@gmail.com](mailto:mkdir700@gmail.com) or [GitHub Issues](https://github.com/UniClipboard/UniClipboard/issues).
+
+## Final checklist
+
+- [ ] Every device finished one last sync before upgrading.
+- [ ] The first device finished its data backup and old history opens.
+- [ ] Search changed to Ready after about 10 seconds.
+- [ ] You understand that clearing the old paired-device list is expected.
+- [ ] Every device being paired now runs 1.0.
+- [ ] Devices were paired again one by one and passed a two-way sync test.
+- [ ] Upgrade backups and the 0.19 installer are still being kept.

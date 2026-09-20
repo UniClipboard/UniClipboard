@@ -56,6 +56,10 @@
 - **gate（已过）**：`cargo check --workspace` clean；clippy clean（changed crate）；`uc-daemon-local` process_metadata 6/6（含 spawned_by round-trip / serde default / env 解析）、daemon_probe 16/16、stop 5/5。行为不变。
 
 ### P4-2 · D9 解锁契约（autostart 硬前置） `feat:` ✅ 已落地
+> **后续修订（2026-09-20）**：本节“GUI 启动的后台在 `auto_unlock_enabled=false` 时保持
+> locked，并延后服务”的行为已被资料恢复与内容锁方案取代。后台始终恢复加密会话；该设置
+> 只决定界面是否自动显示内容，不再控制后台服务生命周期。本节其余内容保留为当时执行记录。
+
 > **范围决策（人确认）**：① 仅 GUI-spawned 转 attended；`cli start` / headless / 手跑保持现状 force-unlock（最小/安全，复用 P4-1 spawn origin）。② P4-2 只 fail-fast，机器可读状态文件 + GUI 红条并入 **P4-5**。
 - **attended 判定**（`startup_recovery::is_attended`，纯函数）：`spawn_origin == Gui && run_mode != ServerHeadless && !strict_unattended`。attended → 尊重 `auto_unlock_enabled`（`false` → 保持 locked，GUI 解锁后经 `/lifecycle/ready` 释放 deferred 服务，通路已核实：`App.tsx` `shouldSignalDaemonLifecycleReady` 在 `session_ready` 时触发）；其余 → force-unlock（历史行为）。修掉 P3-3 把 GUI-spawned daemon 也 force-unlock 的回归。
 - **互斥校验纯函数**（`uc-daemon-local::spawn_contract::validate_unattended_unlock`，单一事实源）：禁「strict-unattended」+「`auto_unlock_enabled = false`」。
@@ -74,6 +78,9 @@
 - **待用户三态真机 UAT**：关窗留托盘 / 轻量退进程留 daemon + 通知只弹一次 / 彻底退 **停连接的 daemon（含 `cli start` 起的）** / 重开 attach 后剪贴板面板 resync 非空（D8 框架 `DaemonWsBridge` 自动重连已在）。
 
 ### P4-4 · D10 autostart = GUI 自启（**已按 2026-06-04 决策大幅简化**） `feat:` ✅ 核心已就绪（确认 + 注释收尾已落地，per-profile 留 P4-7）
+> **后续修订（2026-09-20）**：自启仍以 GUI 为入口，但 GUI 拉起的后台不再因关闭自动解锁
+> 而保持 locked。后台同步与剪贴板监听正常启动，桌面内容是否立即显示由内容锁单独决定。
+
 > **决策（人确认 2026-06-04）**：自启目标 = **GUI**，daemon 是被 GUI 拉起的内核。**砍掉** 原"自建 launchd/systemd-user/Task Scheduler 三平台原生 daemon 投影 + `StartupIntegrationProvider`"整坨高风险工作（见 ADR D10/D17 修订）。
 > **核实结论（2026-06-04）**：P3-3 已建好全部核心链路，本切片无新功能代码——① 自启目标=GUI（`tauri-plugin-autostart` 注册当前 exe，`run.rs:248`/`adapters/autostart.rs:28`）；② settings 派生 + GUI 侧投影（`commands/autostart.rs:63-70` 先写 daemon settings(HTTP) 再 `reconcile_autostart`）；③ 启动期 reconcile 自愈陈旧项（`run.rs:378-386`）；④ GUI 冷启动必拉 daemon（`bootstrap_daemon_in_process` 三分支无绕过，`daemon_probe.rs:201-238`）；⑤ daemon 侧零 autostart 代码，无需 reconcile。
 > **本切片实际改动**：清理 stale "留待 P4" 注释（`run.rs` setup + `daemon_probe.rs` spawn doc）+ 在 plugin init 处显式标注 per-profile 自启缺口（空 launch args，留 P4-7）。`cargo check -p uc-tauri -p uc-desktop` 绿。

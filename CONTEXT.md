@@ -38,6 +38,17 @@ _Avoid_: pin、key、token
 和本地数据，使旧口令与旧邀请失效；已有的 **Re-pairing required** 不会因此清除。
 _Avoid_: space reset、factory reset、history re-encryption
 
+**Profile recovery**：
+Engine 拥有的本机资料密钥恢复状态，区分等待原口令、恢复中、成功、部分可恢复和失败；
+恢复完成前不得把后台连接当作资料可用，错误口令不得改动资料，完整后台恢复失败后必须
+要求重启应用而不是在同一进程内重复尝试。
+_Avoid_: content unlock、client-side recovery state、factory reset
+
+**Content lock**：
+桌面端对内容和管理界面的本地访问控制；`auto_unlock_enabled` 只决定启动后是否自动显示
+内容，不控制后台加密会话、剪贴板监听或设备同步。主窗口与快捷面板必须读取同一权威结果。
+_Avoid_: daemon lock、sync pause、profile recovery
+
 **DeviceId**：
 系统中一台设备的稳定身份值对象（`Copy`、≤64 字节、超限即拒绝而非截断）。
 是机器可比较的标识，区别于用户可读的 `device_name`。
@@ -392,7 +403,8 @@ _Avoid_: recovery、startup cleanup
 
 **Startup progress**：
 Engine 提供、后台在内存中持有的一次启动尝试的当前状态，界面只观察；Engine 就绪、
-后台服务就绪与界面连接成功是不同事实。可认证的启动任务仍存活时，不因耗时长判定失败；
+`RecoveryAvailable`、后台服务就绪与界面连接成功是不同事实。资料需要恢复时，界面必须先
+完成 **Profile recovery**，再读取普通设置、初始化状态或显示内容。可认证的启动任务仍存活时，不因耗时长判定失败；
 重新打开窗口继续观察同一任务，重试不得打断活跃启动。
 详见[桌面启动与资料升级进度](docs/architecture/startup-upgrade-progress.md)。
 _Avoid_: persisted startup state、client-side startup orchestration

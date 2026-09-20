@@ -1,0 +1,6 @@
+{
+  "title": "Migration Guides",
+  "icon": "RefreshCw",
+  "defaultOpen": true,
+  "pages": ["upgrade-0-19-to-v1"]
+}

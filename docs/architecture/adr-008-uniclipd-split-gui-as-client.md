@@ -121,6 +121,12 @@
 
 ### D9：解锁契约——attended / unattended，禁止"无人值守自启 + auto_unlock=false"
 
+> **修订（2026-09-20，资料恢复与内容锁）**：下方把 `auto_unlock=false` 定义为保持后台
+> locked 的方案已被取代。后台启动始终尝试恢复加密会话，使剪贴板监听与设备同步继续工作；
+> `auto_unlock_enabled` 只控制桌面界面是否自动显示内容和管理设置。系统钥匙串不可用时，
+> Engine 进入资料恢复状态并等待原口令；恢复后若完整后台启动失败，必须要求重启应用，
+> 不在同一进程内重复尝试。下方原文保留为历史设计记录。
+
 - `uniclipd` 区分两种 **启动契约**（由拉起方传入，如 `--unattended` flag / env，**不是** run mode）：
   - **attended**（GUI 会来 / 用户在场）：尊重 `auto_unlock`；`false` → 保持 locked 等 GUI 解锁（GUI 必来，不卡死）。
   - **unattended**（自启 / headless / 轻量常驻）：要求 keyring auto-unlock 可用。

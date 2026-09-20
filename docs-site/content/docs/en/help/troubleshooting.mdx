@@ -12,6 +12,8 @@ transport work → did the representation land**. Walk them in that
 order. Each section below tells you which signals to look at and which
 commands to run.
 
+If the problem began after upgrading from 0.19, start with [Upgrade from 0.19 to 1.0](../migration/upgrade-0-19-to-v1). It explains the expected data backup, search rebuild, cleared device list, and re-pairing flow.
+
 <Callout type="info">
   Before guessing, run `uniclip space status` and `uniclip member list` on **both** ends. The "should be
   online" feeling rarely matches what's actually on the wire.
@@ -447,6 +449,10 @@ When filing an issue, please attach:
   passphrases into the issue.
 
 ## Emergency reset (last resort)
+
+If the saved system key is missing but you remember the original encryption passphrase, try [Recover local data](../migration/upgrade-0-19-to-v1#recover-local-data-appears) first. The recovery screen deliberately has no one-click erase action. Resetting is not a required recovery step.
+
+The GUI reset option below is only available on the ordinary content unlock screen, not on the recovery, startup or upgrade screens. Disabling automatic content unlock does not stop normal background sync. Contact the author and back up your data before considering a reset.
 
 The operations below **destroy local clipboard history** and can't be
 rolled back. Use them only after the steps above failed.

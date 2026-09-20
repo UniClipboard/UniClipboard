@@ -8,6 +8,7 @@
     "cli",
     "guides",
     "reference",
+    "migration",
     "help"
   ]
 }

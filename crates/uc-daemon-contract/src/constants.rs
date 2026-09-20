@@ -92,12 +92,18 @@ pub mod pairing_busy_reason {
 
 /// HTTP/JSON error codes returned by the daemon pairing API endpoints.
 pub mod pairing_error_code {
+    pub use super::daemon_error_code::RUNTIME_UNAVAILABLE;
+
     pub const ACTIVE_SESSION_EXISTS: &str = "active_session_exists";
     pub const HOST_NOT_DISCOVERABLE: &str = "host_not_discoverable";
     pub const NO_LOCAL_PARTICIPANT: &str = "no_local_participant";
     pub const SESSION_NOT_FOUND: &str = "session_not_found";
     pub const INTERNAL: &str = "internal";
     pub const BAD_REQUEST: &str = "bad_request";
+}
+
+/// HTTP/JSON error codes shared across daemon API endpoints.
+pub mod daemon_error_code {
     pub const RUNTIME_UNAVAILABLE: &str = "runtime_unavailable";
 }
 

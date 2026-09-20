@@ -87,7 +87,7 @@ fn promote_target_residency(server: bool) -> DaemonResidency {
 ///
 /// Returns `Some(exit_code)` to block, `None` to proceed.
 async fn check_setup_complete(json: bool) -> Option<i32> {
-    match crate::setup_check::is_setup_complete().await {
+    match crate::setup_check::wait_for_setup_complete().await {
         Ok(true) => return None,
         Ok(false) => {}
         Err(error) => {

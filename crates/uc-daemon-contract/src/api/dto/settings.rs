@@ -169,6 +169,59 @@ pub struct RelayCredentialStatusDto {
     pub configured: bool,
 }
 
+/// One Engine-owned custom relay entry. Credential material is never returned.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct CustomRelayDto {
+    pub url: String,
+    pub credential_configured: bool,
+}
+
+/// One item-scoped custom relay mutation.
+#[derive(Clone, Serialize, Deserialize, ToSchema)]
+#[serde(
+    tag = "action",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
+#[schema(rename_all = "camelCase")]
+pub enum CustomRelayMutationDto {
+    Add {
+        url: String,
+        credential: RelayCredentialEditDto,
+    },
+    Edit {
+        #[serde(rename = "previousUrl")]
+        previous_url: String,
+        url: String,
+        credential: RelayCredentialEditDto,
+    },
+    Delete {
+        url: String,
+    },
+}
+
+impl fmt::Debug for CustomRelayMutationDto {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let action = match self {
+            Self::Add { .. } => "add",
+            Self::Edit { .. } => "edit",
+            Self::Delete { .. } => "delete",
+        };
+        formatter
+            .debug_struct("CustomRelayMutationDto")
+            .field("action", &action)
+            .finish()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct CustomRelayMutationResultDto {
+    pub relays: Vec<CustomRelayDto>,
+    pub restart_required: bool,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct RelaySaveResultDto {
@@ -262,6 +315,50 @@ mod relay_credential_wire_tests {
             .expect("serialize relay credential status");
 
         assert_eq!(value, serde_json::json!({ "configured": true }));
+    }
+
+    #[test]
+    fn custom_relay_result_exposes_only_url_and_credential_state() {
+        let value = serde_json::to_value(CustomRelayMutationResultDto {
+            relays: vec![CustomRelayDto {
+                url: "https://relay.example.com/".to_string(),
+                credential_configured: true,
+            }],
+            restart_required: true,
+        })
+        .expect("serialize custom relay result");
+
+        assert_eq!(
+            value,
+            serde_json::json!({
+                "relays": [{
+                    "url": "https://relay.example.com/",
+                    "credentialConfigured": true,
+                }],
+                "restartRequired": true,
+            })
+        );
+        assert!(!value.to_string().contains("accessToken"));
+    }
+
+    #[test]
+    fn custom_relay_mutation_uses_item_scoped_camel_case_wire_shape() {
+        let value = serde_json::to_value(CustomRelayMutationDto::Edit {
+            previous_url: "https://old.example.com/".to_string(),
+            url: "https://new.example.com".to_string(),
+            credential: RelayCredentialEditDto::Keep,
+        })
+        .expect("serialize custom relay mutation");
+
+        assert_eq!(
+            value,
+            serde_json::json!({
+                "action": "edit",
+                "previousUrl": "https://old.example.com/",
+                "url": "https://new.example.com",
+                "credential": { "action": "keep" },
+            })
+        );
     }
 
     #[test]

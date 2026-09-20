@@ -24,13 +24,16 @@
  */
 
 import {
+  getCustomRelays as getCustomRelaysSdk,
   getRelayCredentialStatus as getRelayCredentialStatusSdk,
   getSettings as getSettingsSdk,
+  mutateCustomRelay as mutateCustomRelaySdk,
   probeRelayUrl as probeRelayUrlSdk,
   saveRelay as saveRelaySdk,
   updateSettings as updateSettingsSdk,
 } from '@/api/generated/sdk.gen'
 import type {
+  CustomRelayMutationDto,
   RelayCredentialEditDto,
   RelayCredentialStatusDto,
   RelayProbeCredentialDto,
@@ -38,6 +41,7 @@ import type {
   RelaySaveResultDto,
   SettingsPatchDto,
 } from '@/api/generated/types.gen'
+import type { CustomRelay, CustomRelayMutation, CustomRelayMutationResult } from '@/types/setting'
 import { daemonClient } from './client'
 
 // ── Enums ──────────────────────────────────────────────────────
@@ -84,7 +88,22 @@ export type RelayProbeOutcome =
 
 export type RelayProbeCredential = RelayProbeCredentialDto
 export type RelayCredentialEdit = RelayCredentialEditDto
-export type RelaySaveResult = Omit<RelaySaveResultDto, 'settings'> & { settings: Settings }
+export type RelaySaveResult = Omit<RelaySaveResultDto, 'settings'> & {
+  settings: Settings
+}
+
+export type CustomRelayMutationErrorKind =
+  | 'invalidUrl'
+  | 'duplicate'
+  | 'notFound'
+  | 'credentialDeleteRequiresSeparateStep'
+
+export class CustomRelayMutationError extends Error {
+  constructor(public readonly kind: CustomRelayMutationErrorKind) {
+    super(`Custom relay mutation rejected: ${kind}`)
+    this.name = 'CustomRelayMutationError'
+  }
+}
 
 // ── Sub-setting interfaces ─────────────────────────────────────
 
@@ -300,12 +319,51 @@ export async function getRelayCredentialStatus(url: string): Promise<RelayCreden
   )
 }
 
+export async function getCustomRelays(): Promise<CustomRelay[]> {
+  return daemonClient.callEnveloped(() => getCustomRelaysSdk({ throwOnError: true }))
+}
+
+export async function mutateCustomRelay(
+  mutation: CustomRelayMutation
+): Promise<CustomRelayMutationResult> {
+  try {
+    return await daemonClient.callEnveloped(() =>
+      mutateCustomRelaySdk({
+        body: mutation as CustomRelayMutationDto,
+        throwOnError: true,
+      })
+    )
+  } catch (error) {
+    const code = customRelayErrorCode(error)
+    if (code === 'custom_relay_invalid_url') throw new CustomRelayMutationError('invalidUrl')
+    if (code === 'custom_relay_duplicate') throw new CustomRelayMutationError('duplicate')
+    if (code === 'custom_relay_not_found') throw new CustomRelayMutationError('notFound')
+    if (code === 'custom_relay_credential_delete_requires_separate_step')
+      throw new CustomRelayMutationError('credentialDeleteRequiresSeparateStep')
+    throw error
+  }
+}
+
+function customRelayErrorCode(error: unknown): string | null {
+  if (!error || typeof error !== 'object') return null
+  if ('code' in error && typeof error.code === 'string' && error.code.startsWith('custom_relay_')) {
+    return error.code
+  }
+  if ('details' in error && error.details && typeof error.details === 'object') {
+    const details = error.details
+    if ('code' in details && typeof details.code === 'string') return details.code
+  }
+  return null
+}
+
 export async function saveRelay(
   settings: SettingsPatchInput,
   url: string,
   credential: RelayCredentialEdit
 ): Promise<RelaySaveResult> {
-  const patch = toSettingsPatchRequest(settings)
+  const patch = toSettingsPatchRequest(settings, {
+    includeCustomRelayUrls: true,
+  })
   const result = await daemonClient.callEnveloped(() =>
     saveRelaySdk({
       body: {
@@ -403,7 +461,10 @@ export async function updateSettings(
  * @param settings - A partial Settings object; only top-level sections that are defined will be included in the patch.
  * @returns A SettingsPatchRequest containing the provided sections with their corresponding fields.
  */
-function toSettingsPatchRequest(settings: SettingsPatchInput): SettingsPatchRequest {
+function toSettingsPatchRequest(
+  settings: SettingsPatchInput,
+  options: { includeCustomRelayUrls?: boolean } = {}
+): SettingsPatchRequest {
   const patch: SettingsPatchRequest = {}
 
   if (settings.general) {
@@ -520,11 +581,14 @@ function toSettingsPatchRequest(settings: SettingsPatchInput): SettingsPatchRequ
   }
 
   if (settings.network) {
-    // Spread to only mirror fields actually present on the input — both
-    // existing tests and SettingContext sometimes pass `Partial<NetworkSettings>`
-    // (e.g. just `{ allowRelayFallback: ... }`); we must not emit undefined
-    // fields, since the wire patch interprets `null/undefined` as "no change".
-    patch.network = { ...settings.network }
+    const { customRelayUrls, ...network } = settings.network
+    const networkPatch = {
+      ...network,
+      ...(options.includeCustomRelayUrls && customRelayUrls !== undefined
+        ? { customRelayUrls }
+        : {}),
+    }
+    if (Object.keys(networkPatch).length > 0) patch.network = networkPatch
   }
 
   if (settings.quickPanel) {

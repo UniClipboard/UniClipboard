@@ -109,17 +109,18 @@ describe('settings api — toSettingsPatchRequest network mirror', () => {
     expect(options.body.network).toEqual({ allowRelayFallback: true })
   })
 
-  it('Test 2b: toSettingsPatchRequest 镜像 customRelayUrls 列表', async () => {
-    mockUpdateOk(true)
-    await updateSettings({
+  it('Test 2b: generic settings updates cannot overwrite the Engine-owned relay list', async () => {
+    updateSdkMock.mockImplementationOnce(async ({ body }) => ({
+      data: { data: { success: true, restartRequired: 'network' in body }, ts: 0 },
+    }))
+    const result = await updateSettings({
       network: { customRelayUrls: ['https://relay.example.com.'] },
     } as Partial<Settings>)
 
+    expect(result.restartRequired).toBe(false)
     expect(updateSdkMock).toHaveBeenCalledTimes(1)
     const [options] = updateSdkMock.mock.calls[0]
-    expect(options.body.network).toEqual({
-      customRelayUrls: ['https://relay.example.com.'],
-    })
+    expect(options.body).not.toHaveProperty('network')
   })
 
   it('Test 2c: toSettingsPatchRequest 镜像 sync.syncOnRestore（防 builder 静默丢字段）', async () => {
@@ -219,7 +220,9 @@ describe('settings api — relay credentials', () => {
       data: { data: { configured: true }, ts: 0 },
     })
 
-    await expect(getRelayCredentialStatus(url)).resolves.toEqual({ configured: true })
+    await expect(getRelayCredentialStatus(url)).resolves.toEqual({
+      configured: true,
+    })
     expect(getRelayCredentialStatusSdkMock).toHaveBeenCalledWith({
       body: { url },
       throwOnError: true,

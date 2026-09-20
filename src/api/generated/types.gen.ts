@@ -409,6 +409,82 @@ export type CurrentInvitation = {
 };
 
 /**
+ * One Engine-owned custom relay entry. Credential material is never returned.
+ */
+export type CustomRelayDto = {
+    credentialConfigured: boolean;
+    url: string;
+};
+
+/**
+ * Canonical success envelope: `{ "data": T, "ts": <unix millis i64> }`.
+ *
+ * `ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler
+ * via [`ApiEnvelope::now`] (the contract carries only the type + the clock
+ * helper, not a hard dependency on when the handler reads the clock).
+ * `rename_all = "camelCase"` is a no-op for the single-word fields here but is
+ * declared for forward-compat.
+ *
+ * IMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named
+ * OpenAPI component is declared in the `#[aliases(...)]` block below. Add a new
+ * alias line whenever a new payload type needs enveloping. NEVER register the
+ * bare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare
+ * generic, and an un-aliased generic inlines an anonymous schema.
+ */
+export type CustomRelayListEnvelope = {
+    data: Array<CustomRelayDto>;
+    /**
+     * Server time when the response was built (unix epoch milliseconds).
+     */
+    ts: number;
+};
+
+/**
+ * One item-scoped custom relay mutation.
+ */
+export type CustomRelayMutationDto = {
+    action: 'add';
+    credential: RelayCredentialEditDto;
+    url: string;
+} | {
+    action: 'edit';
+    credential: RelayCredentialEditDto;
+    previousUrl: string;
+    url: string;
+} | {
+    action: 'delete';
+    url: string;
+};
+
+export type CustomRelayMutationResultDto = {
+    relays: Array<CustomRelayDto>;
+    restartRequired: boolean;
+};
+
+/**
+ * Canonical success envelope: `{ "data": T, "ts": <unix millis i64> }`.
+ *
+ * `ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler
+ * via [`ApiEnvelope::now`] (the contract carries only the type + the clock
+ * helper, not a hard dependency on when the handler reads the clock).
+ * `rename_all = "camelCase"` is a no-op for the single-word fields here but is
+ * declared for forward-compat.
+ *
+ * IMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named
+ * OpenAPI component is declared in the `#[aliases(...)]` block below. Add a new
+ * alias line whenever a new payload type needs enveloping. NEVER register the
+ * bare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare
+ * generic, and an un-aliased generic inlines an anonymous schema.
+ */
+export type CustomRelayMutationResultEnvelope = {
+    data: CustomRelayMutationResultDto;
+    /**
+     * Server time when the response was built (unix epoch milliseconds).
+     */
+    ts: number;
+};
+
+/**
  * Daemon residency mode reported in the health/status handshake (ADR-008 P5-L L1).
  *
  * Wire values (camelCase, to match the `HealthResponse`/`StatusResponse` field
@@ -6037,6 +6113,76 @@ export type UpdateSettingsResponses = {
 };
 
 export type UpdateSettingsResponse = UpdateSettingsResponses[keyof UpdateSettingsResponses];
+
+export type GetCustomRelaysData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/settings/custom-relays';
+};
+
+export type GetCustomRelaysErrors = {
+    /**
+     * Relay query failed
+     */
+    500: ApiErrorResponse;
+    /**
+     * Credential storage unavailable
+     */
+    503: ApiErrorResponse;
+};
+
+export type GetCustomRelaysError = GetCustomRelaysErrors[keyof GetCustomRelaysErrors];
+
+export type GetCustomRelaysResponses = {
+    /**
+     * Engine-owned custom relay list
+     */
+    200: CustomRelayListEnvelope;
+};
+
+export type GetCustomRelaysResponse = GetCustomRelaysResponses[keyof GetCustomRelaysResponses];
+
+export type MutateCustomRelayData = {
+    body: CustomRelayMutationDto;
+    path?: never;
+    query?: never;
+    url: '/settings/custom-relays';
+};
+
+export type MutateCustomRelayErrors = {
+    /**
+     * Invalid relay URL
+     */
+    400: ApiErrorResponse;
+    /**
+     * Relay no longer exists
+     */
+    404: ApiErrorResponse;
+    /**
+     * Relay already exists
+     */
+    409: ApiErrorResponse;
+    /**
+     * Relay mutation failed
+     */
+    500: ApiErrorResponse;
+    /**
+     * Credential storage unavailable
+     */
+    503: ApiErrorResponse;
+};
+
+export type MutateCustomRelayError = MutateCustomRelayErrors[keyof MutateCustomRelayErrors];
+
+export type MutateCustomRelayResponses = {
+    /**
+     * Custom relay mutation applied
+     */
+    200: CustomRelayMutationResultEnvelope;
+};
+
+export type MutateCustomRelayResponse = MutateCustomRelayResponses[keyof MutateCustomRelayResponses];
 
 export type SaveRelayData = {
     body: RelaySaveRequestDto;

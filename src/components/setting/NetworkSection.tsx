@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { CustomRelayMutationError } from '@/api/daemon'
 import { AllowOverlayAddrsDisclosure } from '@/components/setting/AllowOverlayAddrsDisclosure'
 import { CustomRelayUrlsField } from '@/components/setting/CustomRelayUrlsField'
 import { LanOnlyDisclosure } from '@/components/setting/LanOnlyDisclosure'
 import { RestartBanner } from '@/components/setting/RestartBanner'
 import { SettingGroup } from '@/components/setting/SettingGroup'
 import { SettingRow } from '@/components/setting/SettingRow'
-import { Switch } from '@/components/ui'
+import { Button, Switch } from '@/components/ui'
 import {
   Select,
   SelectContent,
@@ -17,7 +18,7 @@ import {
 import { useSetting } from '@/hooks/useSetting'
 import { commands } from '@/lib/ipc'
 import { createLogger } from '@/lib/logger'
-import type { CongestionController, RelaySaveMutation } from '@/types/setting'
+import type { CongestionController, CustomRelayMutation } from '@/types/setting'
 
 const log = createLogger('network-section')
 const SAVE_DELAY_MS = 500
@@ -26,38 +27,18 @@ const SAVE_ERROR_DISPLAY_MS = 5000
 interface NetworkDraft {
   allowRelayFallback: boolean
   allowOverlayNetworkAddrs: boolean
-  customRelayUrls: string[]
   congestionController: CongestionController
 }
 
-function normalizeRelayUrls(urls: string[]): string[] {
-  return urls.flatMap(url => {
-    const trimmed = url.trim()
-    return trimmed ? [trimmed] : []
-  })
-}
+class LocalizedRelayMutationError extends Error {
+  readonly cause: unknown
+  readonly presented = true
 
-function validateRelayUrls(urls: string[]): { duplicateUrl?: string; invalidUrl?: string } {
-  const canonicalUrls = new Set<string>()
-  for (const raw of urls) {
-    try {
-      const url = new URL(raw)
-      if (
-        (url.protocol !== 'http:' && url.protocol !== 'https:') ||
-        !url.hostname ||
-        url.username !== '' ||
-        url.password !== ''
-      ) {
-        return { invalidUrl: raw }
-      }
-      const canonical = url.toString()
-      if (canonicalUrls.has(canonical)) return { duplicateUrl: raw }
-      canonicalUrls.add(canonical)
-    } catch {
-      return { invalidUrl: raw }
-    }
+  constructor(message: string, cause: unknown) {
+    super(message)
+    this.name = 'LocalizedRelayMutationError'
+    this.cause = cause
   }
-  return {}
 }
 
 /**
@@ -87,25 +68,31 @@ function validateRelayUrls(urls: string[]): { duplicateUrl?: string; invalidUrl?
  */
 const NetworkSection: React.FC = () => {
   const { t } = useTranslation()
-  const { setting, error, saveRelay, updateNetworkSetting } = useSetting()
+  const {
+    setting,
+    error,
+    customRelays,
+    relayLoading,
+    relayError,
+    reloadCustomRelays,
+    mutateCustomRelay,
+    updateNetworkSetting,
+  } = useSetting()
 
   // 当前持久值（来自 SettingContext，作为 baseline）
   const persistedAllowRelay = setting?.network?.allowRelayFallback ?? true
   const persistedAllowOverlay = setting?.network?.allowOverlayNetworkAddrs ?? false
-  const persistedCustomRelayUrls = setting?.network?.customRelayUrls ?? []
   const persistedCongestionController: CongestionController =
     setting?.network?.congestionController ?? 'cubic'
 
   const persistedDraft: NetworkDraft = {
     allowRelayFallback: persistedAllowRelay,
     allowOverlayNetworkAddrs: persistedAllowOverlay,
-    customRelayUrls: persistedCustomRelayUrls,
     congestionController: persistedCongestionController,
   }
   const [draftOverride, setDraftOverride] = useState<NetworkDraft | null>(null)
   const draft = draftOverride ?? persistedDraft
-  const { allowRelayFallback, allowOverlayNetworkAddrs, customRelayUrls, congestionController } =
-    draft
+  const { allowRelayFallback, allowOverlayNetworkAddrs, congestionController } = draft
 
   // pending 状态（来自两个源：用户切换 / PUT 后 restartRequired；不跨 session）
   const [pending, setPending] = useState(false)
@@ -147,8 +134,6 @@ const NetworkSection: React.FC = () => {
       ...pendingNetworkPatchRef.current,
       ...patch,
     }
-    if (payload.customRelayUrls)
-      payload.customRelayUrls = normalizeRelayUrls(payload.customRelayUrls)
     pendingNetworkPatchRef.current = payload
 
     const generation = saveGenerationRef.current + 1
@@ -188,43 +173,31 @@ const NetworkSection: React.FC = () => {
     queueNetworkUpdate({ allowRelayFallback: newAllowRelay })
   }
 
-  const saveCustomRelay = async (mutation: RelaySaveMutation) => {
-    const nextMutation = {
-      ...mutation,
-      nextUrl: mutation.nextUrl?.trim() || null,
-    }
-    const nextRelayUrls = [...customRelayUrls]
-    if (nextMutation.index === null) {
-      if (nextMutation.nextUrl === null) throw new Error('Invalid relay addition')
-      nextRelayUrls.push(nextMutation.nextUrl)
-    } else if (nextMutation.nextUrl === null) {
-      nextRelayUrls.splice(nextMutation.index, 1)
-    } else {
-      nextRelayUrls[nextMutation.index] = nextMutation.nextUrl
-    }
-
-    const validation = validateRelayUrls(normalizeRelayUrls(nextRelayUrls))
-    if (validation.invalidUrl) {
-      throw new Error(
-        t('settings.sections.network.customRelays.invalidUrl', { url: validation.invalidUrl })
-      )
-    }
-    if (validation.duplicateUrl) {
-      throw new Error(
-        t('settings.sections.network.customRelays.duplicateUrl', {
-          url: validation.duplicateUrl,
-        })
-      )
-    }
-
+  const saveCustomRelay = async (mutation: CustomRelayMutation) => {
+    const trimmedMutation =
+      mutation.action === 'delete' ? mutation : { ...mutation, url: mutation.url.trim() }
     setSaveError(null)
     setRestartError(null)
     try {
-      const result = await saveRelay(nextMutation)
+      const result = await mutateCustomRelay(trimmedMutation)
       setPending(result.restartRequired)
       return result
     } catch (err) {
       log.error({ err }, 'Failed to save a custom relay')
+      if (err instanceof CustomRelayMutationError) {
+        const { url } = mutation
+        const key =
+          err.kind === 'invalidUrl'
+            ? 'settings.sections.network.customRelays.invalidUrl'
+            : err.kind === 'duplicate'
+              ? 'settings.sections.network.customRelays.duplicateUrl'
+              : err.kind === 'notFound'
+                ? 'settings.sections.network.customRelays.notFound'
+                : 'settings.sections.network.customRelays.deleteCredentialAfterAddress'
+        const localized = new LocalizedRelayMutationError(t(key, { url }), err)
+        showSaveError(localized.message)
+        throw localized
+      }
       throw err
     }
   }
@@ -314,7 +287,31 @@ const NetworkSection: React.FC = () => {
           />
         </SettingRow>
       </SettingGroup>
-      <CustomRelayUrlsField value={customRelayUrls} onSave={saveCustomRelay} />
+      {relayError ? (
+        <div className="rounded-lg border border-destructive/20 bg-destructive/5 p-3 text-ui-body text-destructive">
+          <p>{t('settings.sections.network.customRelays.loadError')}</p>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="mt-2"
+            disabled={relayLoading}
+            onClick={() => {
+              void reloadCustomRelays().catch(err => {
+                log.error({ err }, 'Failed to retry loading custom relays')
+              })
+            }}
+          >
+            {t('settings.sections.network.customRelays.retry')}
+          </Button>
+        </div>
+      ) : relayLoading ? (
+        <p className="py-4 text-ui-body text-muted-foreground">
+          {t('settings.sections.network.customRelays.loading')}
+        </p>
+      ) : (
+        <CustomRelayUrlsField value={customRelays} onSave={saveCustomRelay} />
+      )}
       <SettingGroup title={t('settings.sections.network.groups.performance')}>
         <SettingRow
           label={t('settings.sections.network.congestionController.label')}

@@ -123,6 +123,8 @@ pub mod http_route {
     pub const SETTINGS_RELAY_CREDENTIAL_STATUS: &str = "/settings/relay-credential/status";
     /// PUT /settings/relay — save relay settings and credential together.
     pub const SETTINGS_RELAY_SAVE: &str = "/settings/relay";
+    /// GET/POST /settings/custom-relays — query or mutate one custom relay.
+    pub const SETTINGS_CUSTOM_RELAYS: &str = "/settings/custom-relays";
     /// GET/PUT /diagnostics/debug — inspect or update persistent local debug mode.
     pub const DIAGNOSTICS_DEBUG: &str = "/diagnostics/debug";
     /// GET the daemon-owned detailed capture status.

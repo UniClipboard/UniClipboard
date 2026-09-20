@@ -49,10 +49,11 @@ function setup({ syncEnabled = true, autoSyncEnabled = false } = {}) {
       .fn<SettingContextType['updateFileSyncSetting']>()
       .mockResolvedValue(undefined),
     updateNetworkSetting: vi.fn().mockResolvedValue({ restartRequired: false }),
-    saveRelay: vi.fn().mockResolvedValue({
-      restartRequired: false,
-      credentialStatus: { configured: false },
-    }),
+    customRelays: [],
+    relayLoading: false,
+    relayError: null,
+    reloadCustomRelays: vi.fn(),
+    mutateCustomRelay: vi.fn().mockResolvedValue({ relays: [], restartRequired: false }),
     updateQuickPanelSetting: vi.fn().mockResolvedValue({ restartRequired: false }),
   })
 
@@ -97,7 +98,9 @@ describe('SyncSection', () => {
 
     fireEvent.change(input, { target: { value: '20' } })
     await waitFor(() =>
-      expect(update).toHaveBeenCalledWith({ smallFileThreshold: 20 * 1024 * 1024 })
+      expect(update).toHaveBeenCalledWith({
+        smallFileThreshold: 20 * 1024 * 1024,
+      })
     )
     expect(input).not.toHaveAttribute('aria-invalid')
   })
@@ -118,7 +121,9 @@ describe('SyncSection', () => {
       { target: { value: '48' } }
     )
     await waitFor(() => {
-      expect(update).toHaveBeenCalledWith({ fileCacheQuotaPerDevice: 750 * 1024 * 1024 })
+      expect(update).toHaveBeenCalledWith({
+        fileCacheQuotaPerDevice: 750 * 1024 * 1024,
+      })
       expect(update).toHaveBeenCalledWith({ fileRetentionHours: 48 })
     })
   })

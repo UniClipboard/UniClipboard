@@ -27,7 +27,11 @@ beforeEach(() => {
     updateRetentionPolicy: vi.fn(),
     updateNetworkSetting: vi.fn(),
     updateQuickPanelSetting: vi.fn(),
-    saveRelay: vi.fn(),
+    customRelays: [],
+    relayLoading: false,
+    relayError: null,
+    reloadCustomRelays: vi.fn(),
+    mutateCustomRelay: vi.fn(),
   })
 })
 

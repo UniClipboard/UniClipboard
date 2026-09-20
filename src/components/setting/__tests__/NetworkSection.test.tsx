@@ -2,7 +2,8 @@ import '@testing-library/jest-dom/vitest'
 import { render, screen, cleanup, act, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
-import { getRelayCredentialStatus, probeRelayUrl } from '@/api/daemon/settings'
+import { CustomRelayMutationError } from '@/api/daemon'
+import { probeRelayUrl } from '@/api/daemon/settings'
 import NetworkSection from '@/components/setting/NetworkSection'
 import { useSetting } from '@/hooks/useSetting'
 import i18n from '@/i18n'
@@ -28,13 +29,16 @@ vi.mock('@/hooks/useSetting', () => ({
 }))
 
 vi.mock('@/api/daemon/settings', () => ({
-  getRelayCredentialStatus: vi.fn(),
+  CustomRelayMutationError: class CustomRelayMutationError extends Error {
+    constructor(public readonly kind: string) {
+      super(kind)
+    }
+  },
   probeRelayUrl: vi.fn(),
 }))
 
 const mockRestartDaemon = vi.mocked(commands.restartDaemon)
 const mockUseSetting = vi.mocked(useSetting)
-const mockGetRelayCredentialStatus = vi.mocked(getRelayCredentialStatus)
 const mockProbeRelayUrl = vi.mocked(probeRelayUrl)
 
 // ============================================================================
@@ -47,11 +51,14 @@ const baseSetting: Settings = makeBaseSettings({
 type UpdateNetworkSettingFn = (
   newNetworkSetting: Partial<NetworkSettings>
 ) => Promise<{ restartRequired: boolean }>
-type SaveRelayFn = SettingContextType['saveRelay']
+type SaveRelayFn = SettingContextType['mutateCustomRelay']
 
 interface SetupArgs {
   setting?: Settings | null
   error?: string | null
+  customRelays?: SettingContextType['customRelays']
+  relayError?: string | null
+  reloadCustomRelays?: ReturnType<typeof vi.fn<SettingContextType['reloadCustomRelays']>>
   updateNetworkSetting?: ReturnType<typeof vi.fn<UpdateNetworkSettingFn>>
   saveRelay?: ReturnType<typeof vi.fn<SaveRelayFn>>
 }
@@ -59,6 +66,12 @@ interface SetupArgs {
 const setupSetting = ({
   setting = baseSetting,
   error = null,
+  customRelays = (setting?.network.customRelayUrls ?? []).map(url => ({
+    url,
+    credentialConfigured: false,
+  })),
+  relayError = null,
+  reloadCustomRelays = vi.fn().mockResolvedValue(undefined),
   updateNetworkSetting,
   saveRelay,
 }: SetupArgs = {}) => {
@@ -68,14 +81,18 @@ const setupSetting = ({
   const mockSaveRelay =
     saveRelay ??
     vi.fn<SaveRelayFn>().mockResolvedValue({
+      relays: customRelays,
       restartRequired: true,
-      credentialStatus: { configured: false },
     })
   mockUseSetting.mockReturnValue({
     setting,
     loading: false,
     error,
+    customRelays,
+    relayLoading: false,
+    relayError,
     reloadSetting: vi.fn(),
+    reloadCustomRelays,
     updateSetting: vi.fn(),
     updateGeneralSetting: vi.fn(),
     updateAutostart: vi.fn(),
@@ -85,7 +102,7 @@ const setupSetting = ({
     updateKeyboardShortcuts: vi.fn(),
     updateFileSyncSetting: vi.fn(),
     updateNetworkSetting: mockUpdate,
-    saveRelay: mockSaveRelay,
+    mutateCustomRelay: mockSaveRelay,
     updateQuickPanelSetting: vi.fn().mockResolvedValue({ restartRequired: false }),
   })
   return { mockSaveRelay, mockUpdate }
@@ -107,7 +124,6 @@ beforeAll(async () => {
 
 beforeEach(() => {
   vi.clearAllMocks()
-  mockGetRelayCredentialStatus.mockResolvedValue({ configured: false })
   mockProbeRelayUrl.mockResolvedValue({ kind: 'success', latencyMs: 37 })
 })
 
@@ -123,14 +139,16 @@ describe('NetworkSection — Phase 95 集成', () => {
   it('does not store a relay until the user explicitly saves a successful test', async () => {
     const user = userEvent.setup()
     const mockSaveRelay = vi.fn<SaveRelayFn>().mockResolvedValue({
+      relays: [{ url: 'https://relay.example.com/', credentialConfigured: true }],
       restartRequired: true,
-      credentialStatus: { configured: true },
     })
     setupSetting({ saveRelay: mockSaveRelay })
     render(<NetworkSection />)
 
     await user.type(
-      screen.getByRole('textbox', { name: /自定义中继节点 1|Custom relay node 1/ }),
+      screen.getByRole('textbox', {
+        name: /自定义中继节点 1|Custom relay node 1/,
+      }),
       'https://relay.example.com'
     )
     await user.type(screen.getByLabelText(/中继访问令牌 1|Relay access token 1/), 'draft-token')
@@ -170,8 +188,12 @@ describe('NetworkSection — Phase 95 集成', () => {
       name: /自定义中继节点 1|Custom relay node 1/,
     })
     const tokenInput = screen.getByLabelText(/中继访问令牌 1|Relay access token 1/)
-    const testButton = screen.getByRole('button', { name: /测试可用性|Test availability/ })
-    const saveButton = screen.getByRole('button', { name: /保存中继节点|Save relay node/ })
+    const testButton = screen.getByRole('button', {
+      name: /测试可用性|Test availability/,
+    })
+    const saveButton = screen.getByRole('button', {
+      name: /保存中继节点|Save relay node/,
+    })
 
     await user.type(urlInput, 'https://relay.example.com')
     await user.type(tokenInput, 'first-token')
@@ -187,24 +209,21 @@ describe('NetworkSection — Phase 95 集成', () => {
     expect(saveButton).toBeDisabled()
 
     await act(async () =>
-      resolveSecondProbe({ kind: 'handshake', message: 'second token rejected' })
+      resolveSecondProbe({
+        kind: 'handshake',
+        message: 'second token rejected',
+      })
     )
     expect(await screen.findByRole('alert')).toHaveTextContent('second token rejected')
     expect(saveButton).toBeDisabled()
   })
 
-  it('waits for the saved credential status before testing an unchanged relay', async () => {
-    mockGetRelayCredentialStatus.mockImplementation(() => new Promise(() => undefined))
-    renderWithOverrides({ customRelayUrls: ['https://relay.example.com'] })
-
-    expect(screen.getByRole('button', { name: /测试可用性|Test availability/ })).toBeDisabled()
-    expect(mockProbeRelayUrl).not.toHaveBeenCalled()
-  })
-
   it('uses a stored token when an edited URL is canonically unchanged', async () => {
     const user = userEvent.setup()
-    mockGetRelayCredentialStatus.mockResolvedValue({ configured: true })
-    renderWithOverrides({ customRelayUrls: ['https://relay.example.com'] })
+    setupSetting({
+      customRelays: [{ url: 'https://relay.example.com', credentialConfigured: true }],
+    })
+    render(<NetworkSection />)
     await screen.findByText(/访问令牌已保存|Access token saved/)
 
     const urlInput = screen.getByRole('textbox', {
@@ -312,7 +331,9 @@ describe('NetworkSection — Phase 95 集成', () => {
     // Banner 立即可见
     expect(screen.getByRole('status')).toBeInTheDocument()
 
-    const restartBtn = screen.getByRole('button', { name: /立即重启|Restart now/ })
+    const restartBtn = screen.getByRole('button', {
+      name: /立即重启|Restart now/,
+    })
     await user.click(restartBtn)
 
     expect(mockRestartDaemon).toHaveBeenCalled()
@@ -325,13 +346,17 @@ describe('NetworkSection — Phase 95 集成', () => {
     const sw = await screen.findByRole('switch', { name: /LAN-only/ })
     await user.click(sw)
 
-    const restartBtn = await screen.findByRole('button', { name: /立即重启|Restart now/ })
+    const restartBtn = await screen.findByRole('button', {
+      name: /立即重启|Restart now/,
+    })
     await user.click(restartBtn)
 
     // 「重试」与 dismiss 应出现
     await screen.findByRole('button', { name: /重试|Retry/ })
     expect(
-      screen.getByRole('button', { name: /收起重启提示|Dismiss restart notice/ })
+      screen.getByRole('button', {
+        name: /收起重启提示|Dismiss restart notice/,
+      })
     ).toBeInTheDocument()
   })
 
@@ -386,7 +411,9 @@ describe('NetworkSection — Phase 95 集成', () => {
   it('Test 11: LanOnlyDisclosure trigger 在 SettingRow 内可见', async () => {
     renderWithOverrides({ allowRelayFallback: true })
     expect(
-      await screen.findByRole('button', { name: /查看 LAN-only|View the list/ })
+      await screen.findByRole('button', {
+        name: /查看 LAN-only|View the list/,
+      })
     ).toBeInTheDocument()
   })
 
@@ -413,13 +440,17 @@ describe('NetworkSection — Phase 95 集成', () => {
   it('Test 15: allowOverlayNetworkAddrs 正向命名 — checked === allowOverlayNetworkAddrs', async () => {
     // 默认 false ⇒ Switch checked=false
     renderWithOverrides({ allowOverlayNetworkAddrs: false })
-    const offSw = await screen.findByRole('switch', { name: /虚拟网络地址|overlay/i })
+    const offSw = await screen.findByRole('switch', {
+      name: /虚拟网络地址|overlay/i,
+    })
     expect(offSw).toHaveAttribute('aria-checked', 'false')
     cleanup()
 
     // true ⇒ Switch checked=true（无取反）
     renderWithOverrides({ allowOverlayNetworkAddrs: true })
-    const onSw = await screen.findByRole('switch', { name: /虚拟网络地址|overlay/i })
+    const onSw = await screen.findByRole('switch', {
+      name: /虚拟网络地址|overlay/i,
+    })
     expect(onSw).toHaveAttribute('aria-checked', 'true')
   })
 
@@ -430,7 +461,9 @@ describe('NetworkSection — Phase 95 集成', () => {
     setupSetting({ updateNetworkSetting: mockUpdate })
 
     render(<NetworkSection />)
-    const sw = await screen.findByRole('switch', { name: /虚拟网络地址|overlay/i })
+    const sw = await screen.findByRole('switch', {
+      name: /虚拟网络地址|overlay/i,
+    })
     await user.click(sw)
 
     expect(sw).toHaveAttribute('aria-checked', 'true')
@@ -451,7 +484,9 @@ describe('NetworkSection — Phase 95 集成', () => {
 
     render(<NetworkSection />)
     const lanOnlySw = await screen.findByRole('switch', { name: /LAN-only/ })
-    const overlaySw = await screen.findByRole('switch', { name: /虚拟网络地址|overlay/i })
+    const overlaySw = await screen.findByRole('switch', {
+      name: /虚拟网络地址|overlay/i,
+    })
 
     await user.click(lanOnlySw)
     await act(async () => {
@@ -484,18 +519,22 @@ describe('NetworkSection — Phase 95 集成', () => {
       customRelayUrls: ['https://relay-a.example.com.', 'https://relay-b.example.com.'],
     })
     expect(
-      await screen.findByRole('textbox', { name: /自定义中继节点 1|Custom relay node 1/ })
+      await screen.findByRole('textbox', {
+        name: /自定义中继节点 1|Custom relay node 1/,
+      })
     ).toHaveValue('https://relay-a.example.com.')
     expect(
-      screen.getByRole('textbox', { name: /自定义中继节点 2|Custom relay node 2/ })
+      screen.getByRole('textbox', {
+        name: /自定义中继节点 2|Custom relay node 2/,
+      })
     ).toHaveValue('https://relay-b.example.com.')
   })
 
   it('Test 20: 保存经过测试的自定义中继节点', async () => {
     const user = userEvent.setup()
     const mockSaveRelay = vi.fn<SaveRelayFn>().mockResolvedValue({
+      relays: [{ url: 'https://relay-a.example.com./', credentialConfigured: false }],
       restartRequired: true,
-      credentialStatus: { configured: false },
     })
     setupSetting({ saveRelay: mockSaveRelay })
 
@@ -505,13 +544,16 @@ describe('NetworkSection — Phase 95 集成', () => {
     })
     await user.type(firstInput, 'https://relay-a.example.com.')
     await user.click(screen.getByRole('button', { name: /测试可用性|Test availability/ }))
-    await user.click(await screen.findByRole('button', { name: /保存中继节点|Save relay node/ }))
+    await user.click(
+      await screen.findByRole('button', {
+        name: /保存中继节点|Save relay node/,
+      })
+    )
 
     await waitFor(() => {
       expect(mockSaveRelay).toHaveBeenCalledWith({
-        index: null,
-        previousUrl: null,
-        nextUrl: 'https://relay-a.example.com.',
+        action: 'add',
+        url: 'https://relay-a.example.com.',
         credential: { action: 'keep' },
       })
     })
@@ -520,28 +562,31 @@ describe('NetworkSection — Phase 95 集成', () => {
   it('removes the selected saved relay node', async () => {
     const user = userEvent.setup()
     const mockSaveRelay = vi.fn<SaveRelayFn>().mockResolvedValue({
+      relays: [],
       restartRequired: true,
-      credentialStatus: { configured: false },
     })
     setupSetting({
       setting: {
         ...baseSetting,
-        network: { ...baseSetting.network, customRelayUrls: ['https://relay.example.com'] },
+        network: {
+          ...baseSetting.network,
+          customRelayUrls: ['https://relay.example.com'],
+        },
       },
       saveRelay: mockSaveRelay,
     })
     render(<NetworkSection />)
 
     await user.click(
-      await screen.findByRole('button', { name: /移除中继节点 1|Remove relay node 1/ })
+      await screen.findByRole('button', {
+        name: /移除中继节点 1|Remove relay node 1/,
+      })
     )
 
     await waitFor(() => {
       expect(mockSaveRelay).toHaveBeenCalledWith({
-        index: 0,
-        previousUrl: 'https://relay.example.com',
-        nextUrl: null,
-        credential: { action: 'delete' },
+        action: 'delete',
+        url: 'https://relay.example.com',
       })
     })
   })
@@ -569,11 +614,14 @@ describe('NetworkSection — Phase 95 集成', () => {
   it('Test 21: 测试失败时不能保存自定义中继 URL', async () => {
     const user = userEvent.setup()
     const mockSaveRelay = vi.fn<SaveRelayFn>().mockResolvedValue({
+      relays: [],
       restartRequired: true,
-      credentialStatus: { configured: false },
     })
     setupSetting({ saveRelay: mockSaveRelay })
-    mockProbeRelayUrl.mockResolvedValue({ kind: 'invalidUrl', message: 'unsupported scheme' })
+    mockProbeRelayUrl.mockResolvedValue({
+      kind: 'invalidUrl',
+      message: 'unsupported scheme',
+    })
 
     render(<NetworkSection />)
     const textbox = await screen.findByRole('textbox', {
@@ -588,25 +636,23 @@ describe('NetworkSection — Phase 95 集成', () => {
   })
 
   it('shows whether an access token is configured without displaying the token', async () => {
-    mockGetRelayCredentialStatus.mockResolvedValue({ configured: true })
-    renderWithOverrides({ customRelayUrls: ['https://relay.example.com'] })
+    setupSetting({
+      customRelays: [{ url: 'https://relay.example.com', credentialConfigured: true }],
+    })
+    render(<NetworkSection />)
 
     expect(await screen.findByText(/访问令牌已保存|Access token saved/)).toBeInTheDocument()
-    expect(mockGetRelayCredentialStatus).toHaveBeenCalledWith('https://relay.example.com')
     expect(screen.queryByDisplayValue(/relay-secret-token/)).toBeNull()
   })
 
   it('saves a replacement access token together with a tested relay', async () => {
     const user = userEvent.setup()
     const mockSaveRelay = vi.fn<SaveRelayFn>().mockResolvedValue({
+      relays: [{ url: 'https://relay.example.com/', credentialConfigured: true }],
       restartRequired: true,
-      credentialStatus: { configured: true },
     })
     setupSetting({
-      setting: {
-        ...baseSetting,
-        network: { ...baseSetting.network, customRelayUrls: ['https://relay.example.com'] },
-      },
+      customRelays: [{ url: 'https://relay.example.com', credentialConfigured: false }],
       saveRelay: mockSaveRelay,
     })
     render(<NetworkSection />)
@@ -624,9 +670,9 @@ describe('NetworkSection — Phase 95 集成', () => {
     await waitFor(() => {
       expect(mockSaveRelay).toHaveBeenCalledTimes(1)
       expect(mockSaveRelay).toHaveBeenCalledWith({
-        index: 0,
+        action: 'edit',
         previousUrl: 'https://relay.example.com',
-        nextUrl: 'https://relay.example.com',
+        url: 'https://relay.example.com',
         credential: { action: 'set', accessToken: 'replacement-token' },
       })
     })
@@ -635,22 +681,20 @@ describe('NetworkSection — Phase 95 集成', () => {
 
   it('deletes a configured access token only when the relay is finally saved', async () => {
     const user = userEvent.setup()
-    mockGetRelayCredentialStatus.mockResolvedValue({ configured: true })
     const mockSaveRelay = vi.fn<SaveRelayFn>().mockResolvedValue({
+      relays: [{ url: 'https://relay.example.com/', credentialConfigured: false }],
       restartRequired: true,
-      credentialStatus: { configured: false },
     })
     setupSetting({
-      setting: {
-        ...baseSetting,
-        network: { ...baseSetting.network, customRelayUrls: ['https://relay.example.com'] },
-      },
+      customRelays: [{ url: 'https://relay.example.com', credentialConfigured: true }],
       saveRelay: mockSaveRelay,
     })
     render(<NetworkSection />)
 
     await user.click(
-      await screen.findByRole('button', { name: /移除已保存的访问令牌|Remove saved access token/ })
+      await screen.findByRole('button', {
+        name: /移除已保存的访问令牌|Remove saved access token/,
+      })
     )
     expect(mockSaveRelay).not.toHaveBeenCalled()
     expect(
@@ -663,51 +707,171 @@ describe('NetworkSection — Phase 95 集成', () => {
     await waitFor(() => {
       expect(mockSaveRelay).toHaveBeenCalledTimes(1)
       expect(mockSaveRelay).toHaveBeenCalledWith({
-        index: 0,
+        action: 'edit',
         previousUrl: 'https://relay.example.com',
-        nextUrl: 'https://relay.example.com',
+        url: 'https://relay.example.com',
         credential: { action: 'delete' },
       })
     })
-    expect(await screen.findByText(/未配置访问令牌|No access token saved/)).toBeInTheDocument()
+  })
+
+  it('clears token removal when changing a relay address', async () => {
+    const user = userEvent.setup()
+    const mockSaveRelay = vi.fn<SaveRelayFn>().mockResolvedValue({
+      relays: [{ url: 'https://new.example.com/', credentialConfigured: true }],
+      restartRequired: true,
+    })
+    setupSetting({
+      customRelays: [{ url: 'https://relay.example.com/', credentialConfigured: true }],
+      saveRelay: mockSaveRelay,
+    })
+    render(<NetworkSection />)
+
+    await user.click(screen.getByRole('button', { name: /移除已保存的访问令牌/ }))
+    await user.clear(screen.getByRole('textbox', { name: /自定义中继节点 1/ }))
+    await user.type(
+      screen.getByRole('textbox', { name: /自定义中继节点 1/ }),
+      'https://new.example.com'
+    )
+    expect(screen.queryByRole('button', { name: /移除已保存的访问令牌/ })).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /测试可用性/ }))
+    await user.click(screen.getByRole('button', { name: /保存中继节点/ }))
+
+    await waitFor(() => {
+      expect(mockSaveRelay).toHaveBeenCalledWith({
+        action: 'edit',
+        previousUrl: 'https://relay.example.com/',
+        url: 'https://new.example.com',
+        credential: { action: 'keep' },
+      })
+    })
+  })
+
+  it('shows a translated rejection when a relay operation requires separate saves', async () => {
+    const user = userEvent.setup()
+    const mockSaveRelay = vi
+      .fn<SaveRelayFn>()
+      .mockRejectedValue(new CustomRelayMutationError('credentialDeleteRequiresSeparateStep'))
+    setupSetting({
+      customRelays: [{ url: 'https://relay.example.com/', credentialConfigured: true }],
+      saveRelay: mockSaveRelay,
+    })
+    render(<NetworkSection />)
+
+    await user.click(screen.getByRole('button', { name: /测试可用性/ }))
+    await user.click(screen.getByRole('button', { name: /保存中继节点/ }))
+
+    expect(
+      await screen.findByText('请先保存新的中继地址，再单独移除已保存的访问令牌。')
+    ).toBeInTheDocument()
   })
 
   it('rejects a relay URL that canonicalizes to an existing relay', async () => {
     const user = userEvent.setup()
-    const mockSaveRelay = vi.fn<SaveRelayFn>()
+    const mockSaveRelay = vi
+      .fn<SaveRelayFn>()
+      .mockRejectedValue(new CustomRelayMutationError('duplicate'))
     setupSetting({
-      setting: {
-        ...baseSetting,
-        network: { ...baseSetting.network, customRelayUrls: ['https://relay.example.com'] },
-      },
+      customRelays: [{ url: 'https://relay.example.com', credentialConfigured: false }],
       saveRelay: mockSaveRelay,
     })
     render(<NetworkSection />)
 
     await user.click(screen.getByRole('button', { name: /添加中继节点|Add relay node/ }))
     await user.type(
-      screen.getByRole('textbox', { name: /自定义中继节点 2|Custom relay node 2/ }),
+      screen.getByRole('textbox', {
+        name: /自定义中继节点 2|Custom relay node 2/,
+      }),
       'https://relay.example.com/'
     )
-    await user.click(screen.getAllByRole('button', { name: /测试可用性|Test availability/ })[1])
-    await user.click(screen.getAllByRole('button', { name: /保存中继节点|Save relay node/ })[1])
+    await user.click(
+      screen.getAllByRole('button', {
+        name: /测试可用性|Test availability/,
+      })[1]
+    )
+    await user.click(
+      screen.getAllByRole('button', {
+        name: /保存中继节点|Save relay node/,
+      })[1]
+    )
 
-    expect(mockSaveRelay).not.toHaveBeenCalled()
+    expect(mockSaveRelay).toHaveBeenCalledWith({
+      action: 'add',
+      url: 'https://relay.example.com/',
+      credential: { action: 'keep' },
+    })
     expect(await screen.findByRole('alert')).toHaveTextContent(/重复|already exists/i)
   })
 
-  it('updates only the selected item when legacy settings contain exact duplicates', async () => {
+  it('shows a translated invalid-address rejection without daemon text', async () => {
     const user = userEvent.setup()
-    const duplicateUrl = 'https://relay.example.com'
+    const mockSaveRelay = vi
+      .fn<SaveRelayFn>()
+      .mockRejectedValue(new CustomRelayMutationError('invalidUrl'))
+    setupSetting({ saveRelay: mockSaveRelay })
+    render(<NetworkSection />)
+
+    await user.type(
+      screen.getByRole('textbox', {
+        name: /自定义中继节点 1|Custom relay node 1/,
+      }),
+      'https://relay.example.com'
+    )
+    await user.click(screen.getByRole('button', { name: /测试可用性|Test availability/ }))
+    await user.click(screen.getByRole('button', { name: /保存中继节点|Save relay node/ }))
+
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent(/无效的中继 URL|Invalid relay URL/i)
+    expect(alert).not.toHaveTextContent(/internal engine text/i)
+  })
+
+  it('shows a translated not-found rejection for a removed relay', async () => {
+    const user = userEvent.setup()
+    const mockSaveRelay = vi
+      .fn<SaveRelayFn>()
+      .mockRejectedValue(new CustomRelayMutationError('notFound'))
+    setupSetting({
+      customRelays: [{ url: 'https://relay.example.com/', credentialConfigured: false }],
+      saveRelay: mockSaveRelay,
+    })
+    render(<NetworkSection />)
+
+    await user.click(
+      screen.getByRole('button', {
+        name: /移除中继节点 1|Remove relay node 1/,
+      })
+    )
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/已不存在|no longer exists/i)
+  })
+
+  it('retries the authoritative relay query after a list load error', async () => {
+    const user = userEvent.setup()
+    const reloadCustomRelays = vi.fn().mockResolvedValue(undefined)
+    setupSetting({ relayError: 'request failed', reloadCustomRelays })
+    render(<NetworkSection />)
+
+    await user.click(screen.getByRole('button', { name: /重试|Retry/i }))
+    expect(reloadCustomRelays).toHaveBeenCalledTimes(1)
+  })
+
+  it('updates the selected relay by its stable previous address', async () => {
+    const user = userEvent.setup()
     const mockSaveRelay = vi.fn<SaveRelayFn>().mockResolvedValue({
+      relays: [
+        { url: 'https://relay-a.example.com/', credentialConfigured: false },
+        {
+          url: 'https://replacement.example.com/',
+          credentialConfigured: false,
+        },
+      ],
       restartRequired: true,
-      credentialStatus: { configured: false },
     })
     setupSetting({
-      setting: {
-        ...baseSetting,
-        network: { ...baseSetting.network, customRelayUrls: [duplicateUrl, duplicateUrl] },
-      },
+      customRelays: [
+        { url: 'https://relay-a.example.com', credentialConfigured: false },
+        { url: 'https://relay-b.example.com', credentialConfigured: true },
+      ],
       saveRelay: mockSaveRelay,
     })
     render(<NetworkSection />)
@@ -717,14 +881,22 @@ describe('NetworkSection — Phase 95 集成', () => {
     })
     await user.clear(secondUrl)
     await user.type(secondUrl, 'https://replacement.example.com')
-    await user.click(screen.getAllByRole('button', { name: /测试可用性|Test availability/ })[1])
-    await user.click(screen.getAllByRole('button', { name: /保存中继节点|Save relay node/ })[1])
+    await user.click(
+      screen.getAllByRole('button', {
+        name: /测试可用性|Test availability/,
+      })[1]
+    )
+    await user.click(
+      screen.getAllByRole('button', {
+        name: /保存中继节点|Save relay node/,
+      })[1]
+    )
 
     await waitFor(() => {
       expect(mockSaveRelay).toHaveBeenCalledWith({
-        index: 1,
-        previousUrl: duplicateUrl,
-        nextUrl: 'https://replacement.example.com',
+        action: 'edit',
+        previousUrl: 'https://relay-b.example.com',
+        url: 'https://replacement.example.com',
         credential: { action: 'keep' },
       })
     })
@@ -761,7 +933,11 @@ describe('Phase 95 ROADMAP fence — 4 验收 + 3 Pitfall 防御', () => {
   it('Pitfall 5 — 4 类外网请求清单存在（Popover 展开后）', async () => {
     const user = userEvent.setup()
     renderWithOverrides({ allowRelayFallback: true })
-    await user.click(await screen.findByRole('button', { name: /查看 LAN-only|View the list/ }))
+    await user.click(
+      await screen.findByRole('button', {
+        name: /查看 LAN-only|View the list/,
+      })
+    )
     expect(screen.getByText(/首次配对 rendezvous|First-pairing rendezvous/)).toBeInTheDocument()
     expect(screen.getByText(/^遥测$|^Telemetry$/)).toBeInTheDocument()
     expect(

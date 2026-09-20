@@ -212,6 +212,13 @@ _Avoid_: global synchronization、manual resend gate
 不表示设备已经连接；连接目标、机会合并、重试和结果判断仍由 Engine 统一负责。
 _Avoid_: reconnect loop、client-side recovery
 
+**Custom relay configuration**：
+Engine 持久保存的自定义中继列表，是配置的唯一准确信息；每项仅向 Desktop 返回规范化
+地址及是否配置凭据，不返回凭据内容。新增、修改、删除由 Engine 判断，并返回完整最新
+列表；无效地址、重复地址、目标不存在是明确结果。保存后须重新连接才生效；删除全部条目
+恢复默认公共中继。
+_Avoid_: Desktop-owned relay list、whole-list overwrite、credential readback
+
 **ActiveClipboardState**：
 「Space 内当前哪一条内容是活跃剪贴板」的可复制轻量指针（`content_hash`、
 `activated_at_ms`、`activated_by`），用 LWW 在 **在线** 设备间收敛。跨设备身份是

@@ -646,6 +646,153 @@
         ],
         "type": "object"
       },
+      "CustomRelayDto": {
+        "description": "One Engine-owned custom relay entry. Credential material is never returned.",
+        "properties": {
+          "credentialConfigured": {
+            "type": "boolean"
+          },
+          "url": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "url",
+          "credentialConfigured"
+        ],
+        "type": "object"
+      },
+      "CustomRelayListEnvelope": {
+        "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/CustomRelayDto"
+            },
+            "type": "array"
+          },
+          "ts": {
+            "description": "Server time when the response was built (unix epoch milliseconds).",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "data",
+          "ts"
+        ],
+        "type": "object"
+      },
+      "CustomRelayMutationDto": {
+        "description": "One item-scoped custom relay mutation.",
+        "discriminator": {
+          "propertyName": "action"
+        },
+        "oneOf": [
+          {
+            "properties": {
+              "action": {
+                "enum": [
+                  "add"
+                ],
+                "type": "string"
+              },
+              "credential": {
+                "$ref": "#/components/schemas/RelayCredentialEditDto"
+              },
+              "url": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "url",
+              "credential",
+              "action"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "action": {
+                "enum": [
+                  "edit"
+                ],
+                "type": "string"
+              },
+              "credential": {
+                "$ref": "#/components/schemas/RelayCredentialEditDto"
+              },
+              "previousUrl": {
+                "type": "string"
+              },
+              "url": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "previousUrl",
+              "url",
+              "credential",
+              "action"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "action": {
+                "enum": [
+                  "delete"
+                ],
+                "type": "string"
+              },
+              "url": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "url",
+              "action"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "CustomRelayMutationResultDto": {
+        "properties": {
+          "relays": {
+            "items": {
+              "$ref": "#/components/schemas/CustomRelayDto"
+            },
+            "type": "array"
+          },
+          "restartRequired": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "relays",
+          "restartRequired"
+        ],
+        "type": "object"
+      },
+      "CustomRelayMutationResultEnvelope": {
+        "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/CustomRelayMutationResultDto"
+          },
+          "ts": {
+            "description": "Server time when the response was built (unix epoch milliseconds).",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "data",
+          "ts"
+        ],
+        "type": "object"
+      },
       "DaemonResidency": {
         "description": "Daemon residency mode reported in the health/status handshake (ADR-008 P5-L L1).\n\nWire values (camelCase, to match the `HealthResponse`/`StatusResponse` field\nnaming these enums travel inside): `\"standalone\" | \"serverHeadless\" |\n\"oneshot\"`. The wire enum is defined HERE in the contract — it deliberately\ndoes NOT depend on `uc-daemon`'s internal `DaemonRunMode`; the producer maps\n`DaemonRunMode -> DaemonResidency` at the daemon/webserver boundary.\n\nConsumers (CLI L2 version-check, future R8-F2 takeover) read this to learn\nwhether the daemon they are talking to is a persistent member node\n(`Standalone`/`ServerHeadless`) or a transient `Oneshot` that a persistent\nclient may later take over. As of L1 the CLI/GUI do NOT act on this field.\n\nBackward-tolerant: the field carries `#[serde(default)]`, so an OLDER\ndaemon body that omits `residency` decodes to [`Self::Standalone`], and a\nNEWER body's `residency` is simply ignored by an older client. New variants\nmust be added at the END so existing clients keep deserializing known values.",
         "enum": [
@@ -10814,6 +10961,140 @@
           }
         ],
         "summary": "PUT /settings",
+        "tags": [
+          "settings"
+        ]
+      }
+    },
+    "/settings/custom-relays": {
+      "get": {
+        "operationId": "getCustomRelays",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomRelayListEnvelope"
+                }
+              }
+            },
+            "description": "Engine-owned custom relay list"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Relay query failed"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Credential storage unavailable"
+          }
+        },
+        "security": [
+          {
+            "session_query": []
+          },
+          {
+            "session_header": []
+          }
+        ],
+        "tags": [
+          "settings"
+        ]
+      },
+      "post": {
+        "operationId": "mutateCustomRelay",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CustomRelayMutationDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomRelayMutationResultEnvelope"
+                }
+              }
+            },
+            "description": "Custom relay mutation applied"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Invalid relay URL"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Relay no longer exists"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Relay already exists"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Relay mutation failed"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Credential storage unavailable"
+          }
+        },
+        "security": [
+          {
+            "session_query": []
+          },
+          {
+            "session_header": []
+          }
+        ],
         "tags": [
           "settings"
         ]

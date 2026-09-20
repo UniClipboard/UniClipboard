@@ -3724,14 +3724,14 @@ checksum = "b6f5e870be6c3b371b77fe0ee0bafb859fa4964b4404c27de1d380043c4dda20"
 
 [[package]]
 name = "uc-app-paths"
-version = "1.0.0-alpha.16"
+version = "1.0.0-alpha.17"
 dependencies = [
  "dirs",
 ]
 
 [[package]]
 name = "uc-daemon-contract"
-version = "1.0.0-alpha.16"
+version = "1.0.0-alpha.17"
 dependencies = [
  "chrono",
  "semver",
@@ -3745,7 +3745,7 @@ dependencies = [
 
 [[package]]
 name = "uc-daemon-process"
-version = "1.0.0-alpha.16"
+version = "1.0.0-alpha.17"
 dependencies = [
  "anyhow",
  "libc",
@@ -3788,7 +3788,7 @@ dependencies = [
 
 [[package]]
 name = "uc-platform"
-version = "1.0.0-alpha.16"
+version = "1.0.0-alpha.17"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -4876,7 +4876,3 @@ dependencies = [
  "quote",
  "syn 2.0.119",
 ]
-
-[[patch.unused]]
-name = "uc-engine"
-version = "1.1.0-rc.17"

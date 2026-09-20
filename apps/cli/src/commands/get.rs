@@ -1,8 +1,8 @@
-//! `uniclip get` — one-shot reader for already-synced clipboard entries.
+//! `uniclip get` — one-shot reader for current or newly synced entries.
 //!
-//! Unlike `recv` (which subscribes and BLOCKS waiting for the *next* inbound
-//! file), `get` reads what is *already* in the daemon's history and returns
-//! immediately. It is designed to be called by scripts and agents (e.g. an
+//! By default, `get` reads what is *already* in the daemon's history and
+//! returns immediately. `--wait` subscribes first and handles exactly one
+//! remote entry that arrives afterward. It is designed for scripts and agents (e.g. an
 //! editor/agent pulling the latest synced image on a headless SSH box, where
 //! there is no system clipboard to paste from).
 //!
@@ -92,6 +92,8 @@ pub struct GetArgs {
     pub out: Option<String>,
     /// Copy the materialized value through the terminal.
     pub copy: bool,
+    /// Wait for one new remote entry instead of reading current history.
+    pub wait: bool,
 }
 
 pub async fn run(args: GetArgs, json: bool, verbose: bool) -> i32 {
@@ -100,6 +102,10 @@ pub async fn run(args: GetArgs, json: bool, verbose: bool) -> i32 {
         Ok(s) => s,
         Err(code) => return code,
     };
+
+    if args.wait {
+        return run_wait(service, &args, json).await;
+    }
 
     // Hold a control lease so a transient Oneshot daemon does not self-terminate
     // mid-fetch. Bind to a named var (NOT `_`) so it lives to scope end.
@@ -130,6 +136,35 @@ pub async fn run(args: GetArgs, json: bool, verbose: bool) -> i32 {
     };
 
     materialize(&*service, target, &args, json).await
+}
+
+async fn run_wait(service: Box<dyn DaemonService>, args: &GetArgs, json: bool) -> i32 {
+    let mut session =
+        match crate::commands::inbound_wait::InboundWaitSession::connect(service).await {
+            Ok(session) => session,
+            Err(code) => return code,
+        };
+    ui::info(
+        "status",
+        "Waiting for the next synced entry — press Ctrl-C to stop",
+    );
+    let event = match session.next().await {
+        Ok(Some(event)) => event,
+        Ok(None) => return exit_codes::EXIT_SUCCESS,
+        Err(code) => return code,
+    };
+    let entries = match session.service().list_entries(DEFAULT_LIMIT, 0).await {
+        Ok(entries) => entries,
+        Err(err) => {
+            ui::error(&format!("Failed to read the synced entry: {err}"));
+            return exit_codes::EXIT_ERROR;
+        }
+    };
+    let Some(target) = entries.iter().find(|entry| entry.id == event.entry_id) else {
+        ui::error("The synced entry arrived but could not be read from history.");
+        return exit_codes::EXIT_ERROR;
+    };
+    materialize(session.service(), target, args, json).await
 }
 
 /// Pick the entry to materialize. For `--id`, find that exact entry. For
@@ -672,6 +707,7 @@ mod tests {
             limit: None,
             out: None,
             copy: false,
+            wait: false,
         };
 
         let selected = select_target(&entries, &args).expect("image entry should match");

@@ -53,8 +53,7 @@ cargo build -p uc-cli
 | `uniclip member sync set <DEVICE>`  | 只修改明确给出的成员同步设置。                                                                                                                                                                                                                           |
 | `uniclip send [TEXT_OR_FILE]`       | 向在线配对设备发送文字或现有普通文件；省略参数时从 stdin 读取文字。`--text` 强制按文字发送，`-f/--file` 强制按文件发送，`--peer` 可限制目标设备。                                                                                                          |
 | `uniclip watch`                     | 监听并打印收到的剪贴板 payload；不会写入系统剪贴板。                                                                                                                                                                                                     |
-| `uniclip recv`                      | 阻塞等待 **下一个** 入站文件并落盘；不会写入系统剪贴板。                                                                                                                                                                                                 |
-| `uniclip get`                       | 读取 **已同步** 的剪贴板条目并立即返回（headless / 脚本 / agent 友好）。                                                                                                                                                                                 |
+| `uniclip get`                       | 立即读取最近一条已同步内容；加 `--wait` 则等待下一条同步后退出一次。                                                                                                                                                                                      |
 
 旧的顶层 `status`、`init`、`invite` 和 `join` 入口仍可使用，但会提示对应的
 `space` 命令。新脚本和文档应使用 `uniclip space ...`。
@@ -66,11 +65,13 @@ cargo build -p uc-cli
 ## 取回已同步内容（`get`）
 
 无头 / SSH 机器没有系统剪贴板，`Ctrl+V` 无法粘贴已同步的图片或文件。`get`
-直接从 daemon 历史里取出已同步的条目并立即返回（区别于 `recv` 的「阻塞等下一个入站」）：
+默认从 daemon 历史里取出最近一条已同步内容并立即返回；加 `--wait` 时只处理命令启动后到达的下一条内容：
 
 ```bash
 uniclip get                      # 取最新一条可用条目
 uniclip get -c                   # 取回并复制到当前终端所在电脑的剪贴板
+uniclip get -w                   # 等待下一条同步内容，输出后退出
+uniclip get --copy --wait        # 等待下一条同步内容，复制后退出
 uniclip get --type image         # 取最新一张图片
 uniclip get --type file -o ~/in  # 取最新一个文件并落地到 ~/in
 uniclip get --id <ENTRY-ID>      # 取指定条目（id 来自 uniclip search）
@@ -87,8 +88,12 @@ uniclip get --list -n 20         # 仅列出最近 20 条，不取回
 加上 `-c` 或 `--copy` 后，文本和链接会复制内容，图片和文件会复制落盘后的完整
 路径。图片和文件不能同时使用 `--copy` 与 `--out -`，因为后者不会产生文件路径。
 
-`uniclip recv` 仍会交互显示等待和传输进度，但成功后的 stdout 只包含收到文件的
-绝对路径；`--json` 返回完整结果对象。
+等待提示只写入 stderr，实际内容或落盘路径仍只写入 stdout，因此
+`uniclip get --wait | other-command` 可以安全用于管道。等待期间按 Ctrl-C 会结束本次命令。
+
+旧的 `uniclip recv [--out DIR]` 已隐藏并进入弃用期。它本次仍保持原有文件接收、落盘、
+stdout 和退出结果，并在 stderr 提醒改用 `uniclip get --wait`。新脚本不要再使用 `recv`；
+需要指定文件落盘目录时改用 `uniclip get --wait --out DIR`。
 
 退出码：`0` 成功；`6` 无条目匹配 selector；`7` 条目存在但 payload 不可用
 （`Lost` / 未下载——需在源设备重发）。

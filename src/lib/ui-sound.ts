@@ -1,5 +1,6 @@
 import { bind, play, setEnabled, type SoundName } from 'cuelume'
 import { createLogger } from '@/lib/logger'
+import { installIdleSuspendingAudioContext, suspendUiAudioContexts } from '@/lib/ui-sound-context'
 
 const log = createLogger('ui-sound')
 
@@ -82,6 +83,9 @@ export const setUiSoundEnabled = (enabled: boolean, storage?: Storage | null): v
     // Ignore storage write errors so the toggle never breaks the settings UI.
   }
   setEnabled(enabled)
+  if (!enabled) {
+    suspendUiAudioContexts()
+  }
   dispatchUiSoundChanged()
 }
 
@@ -104,16 +108,29 @@ export const playUiSound = (sound: SoundName): void => {
 /**
  * Wires up cuelume's `data-cuelume-*` delegated listeners once and syncs its
  * global enabled flag with the persisted preference. Safe to call repeatedly.
+ *
+ * The idle-suspending audio context must be installed before Cuelume creates
+ * its shared context on the first cue, so the audio hardware is released
+ * whenever no cue is playing.
  */
 export const initializeUiSound = (storage?: Storage | null): (() => void) => {
   if (typeof window === 'undefined') {
     return () => {}
   }
 
+  const disposeAudioContext = installIdleSuspendingAudioContext()
   bind()
   setEnabled(readStoredUiSoundEnabled(storage))
 
-  return subscribeUiSoundChanges(enabled => {
+  const unsubscribe = subscribeUiSoundChanges(enabled => {
     setEnabled(enabled)
+    if (!enabled) {
+      suspendUiAudioContexts()
+    }
   })
+
+  return () => {
+    unsubscribe()
+    disposeAudioContext()
+  }
 }

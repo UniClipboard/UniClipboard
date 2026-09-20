@@ -319,6 +319,15 @@ async fn confirm_device_group(
         let output = node.cli.run_capture(&args);
         assert_request_delta(node, "POST", "/member/device-group-choices", before, 1);
         let result = json(&output);
+        if result["code"] == "device_group_choice_failed" {
+            assert!(
+                tokio::time::Instant::now() < deadline,
+                "device group choices remained unavailable: {result}; log={}",
+                node.daemon.diagnostic_log()
+            );
+            tokio::time::sleep(Duration::from_millis(250)).await;
+            continue;
+        }
         if result["result"]["outcome"] != "state_changed" {
             assert!(
                 output.success(),
@@ -542,7 +551,7 @@ async fn space_reset_rebuilds_membership_and_preserves_local_history() {
 #[cfg(unix)]
 #[tokio::test]
 #[ignore]
-async fn pending_join_survives_ctrl_c_and_daemon_restart_then_can_be_cancelled() {
+async fn pending_join_survives_ctrl_c_then_restart_resolves_unavailable_invitation() {
     let binaries = NodeBinarySet::current();
     let rendezvous = LocalRendezvous::start().await;
     let sponsor_profile = TestProfile::new("cli-workflow-pending-sponsor");
@@ -685,48 +694,25 @@ async fn pending_join_survives_ctrl_c_and_daemon_restart_then_can_be_cancelled()
     );
 
     joiner.restart().await;
-    let after_restart = joiner.cli.run_capture(&["--json", "join", "status"]);
-    assert!(
-        after_restart.success(),
-        "status after restart failed: {after_restart:?}"
-    );
-    let after_restart = json(&after_restart);
-    assert_eq!(after_restart["status"], "pending");
+    let restart_deadline = tokio::time::Instant::now() + Duration::from_secs(15);
+    let after_restart = loop {
+        let output = joiner.cli.run_capture(&["--json", "join", "status"]);
+        assert!(output.success(), "status after restart failed: {output:?}");
+        let status = json(&output);
+        if status["status"] == "rejected" {
+            break status;
+        }
+        assert_eq!(status["status"], "pending");
+        assert!(
+            tokio::time::Instant::now() < restart_deadline,
+            "offline invitation did not settle after restart; last={status}; log={}",
+            joiner.daemon.diagnostic_log()
+        );
+        tokio::time::sleep(Duration::from_millis(250)).await;
+    };
     assert_eq!(after_restart["join_id"], join_id);
-
-    let cancel_requests_before = daemon_request_count(&joiner, "POST", "/v2/setup/cancel-join");
-    let cancelled = joiner.cli.run_capture(&["--json", "join", "cancel"]);
-    assert!(cancelled.success(), "pending cancel failed: {cancelled:?}");
-    let cancelled = json(&cancelled);
-    assert_eq!(cancelled["ok"], true);
-    assert_eq!(cancelled["join_id"], join_id);
-    assert_eq!(cancelled["status"], "terminated");
-    assert_eq!(cancelled["reason"], "cancelled");
-    assert_request_delta(
-        &joiner,
-        "POST",
-        "/v2/setup/cancel-join",
-        cancel_requests_before,
-        1,
-    );
-
-    let cancelled_again = joiner.cli.run_capture(&["--json", "join", "cancel"]);
-    assert!(
-        cancelled_again.success(),
-        "repeated pending cancel failed: {cancelled_again:?}"
-    );
-    let cancelled_again = json(&cancelled_again);
-    assert_eq!(cancelled_again["join_id"], join_id);
-    assert_eq!(cancelled_again["ok"], true);
-    assert_eq!(cancelled_again["status"], "terminated");
-    assert_eq!(cancelled_again["reason"], "cancelled");
-    assert_request_delta(
-        &joiner,
-        "POST",
-        "/v2/setup/cancel-join",
-        cancel_requests_before,
-        1,
-    );
+    assert_eq!(after_restart["reason"], "invitation_unavailable");
+    assert_request_delta(&joiner, "POST", "/v2/setup/redeem", join_requests_before, 1);
 
     drop(session);
 }

@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next'
 import { daemonClient } from '@/api/daemon/client'
 import VisualEffectsProvider from '@/components/motion/VisualEffectsProvider'
 import { Button } from '@/components/ui/button'
+import { toast } from '@/components/ui/toast'
 import { Toaster } from '@/components/ui/toaster'
 import { ShortcutProvider } from '@/contexts/ShortcutContext'
 import { useContentUnlocked } from '@/hooks/useContentUnlocked'
@@ -151,6 +152,7 @@ const QuickPanelApp: React.FC = () => {
           onClick={() =>
             void commands.showContentUnlock().catch(err => {
               log.warn({ err }, 'Could not open content unlock window')
+              toast.error(t('history.locked.openFailed'))
             })
           }
         >

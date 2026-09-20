@@ -2190,6 +2190,7 @@
         "title": "剪貼簿已鎖定",
         "description": "解鎖後才能查看剪貼簿歷史",
         "action": "解鎖",
+        "openFailed": "無法開啟解鎖視窗，請從主視窗重試。",
         "unlocking": "正在解鎖..."
       },
       "status": {

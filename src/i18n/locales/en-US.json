@@ -2192,6 +2192,7 @@
         "title": "Clipboard is locked",
         "description": "Unlock to access your clipboard history",
         "action": "Unlock",
+        "openFailed": "Could not open the unlock window. Try again from the main window.",
         "unlocking": "Unlocking..."
       },
       "status": {

@@ -12,17 +12,28 @@ export async function element(instance, selector, { timeout = 30000 } = {}) {
 }
 
 export async function click(instance, selector) {
-  const target = await element(instance, selector)
-  await target.waitForDisplayed({ timeout: 30000 })
-  await target.waitForEnabled({ timeout: 30000 })
-  const clicked = await instance.execute(targetSelector => {
-    const button = Array.from(document.querySelectorAll(targetSelector)).find(
-      candidate => candidate instanceof HTMLElement && candidate.offsetParent !== null
-    )
-    if (!(button instanceof HTMLElement)) return false
-    button.click()
-    return true
-  }, selector)
+  await element(instance, selector)
+  let clicked = false
+  await instance.waitUntil(
+    async () => {
+      clicked = await instance.execute(targetSelector => {
+        const button = Array.from(document.querySelectorAll(targetSelector)).find(
+          candidate =>
+            candidate instanceof HTMLElement &&
+            candidate.offsetParent !== null &&
+            !candidate.hasAttribute('disabled')
+        )
+        if (!(button instanceof HTMLElement)) return false
+        button.click()
+        return true
+      }, selector)
+      return clicked
+    },
+    {
+      timeout: 30000,
+      timeoutMsg: `no visible enabled element matched ${selector}`,
+    }
+  )
   expect(clicked).toBe(true)
 }
 

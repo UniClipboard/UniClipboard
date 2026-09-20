@@ -2198,6 +2198,7 @@
         "title": "Área de transferência bloqueada",
         "description": "Desbloqueie para acessar seu histórico da área de transferência",
         "action": "Desbloquear",
+        "openFailed": "Não foi possível abrir a janela de desbloqueio. Tente novamente na janela principal.",
         "unlocking": "Desbloqueando..."
       },
       "status": {

@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { getSettings } from '@/api/daemon'
 import { subscribeDesktopTheme } from '@/lib/desktop-theme'
@@ -100,6 +100,25 @@ describe('QuickPanelApp', () => {
     contentAccess.unlocked = true
     view.rerender(<QuickPanelApp />)
     expect(screen.getByText('Clipboard history panel')).toBeVisible()
+  })
+
+  it('shows an error when the unlock window cannot be opened', async () => {
+    contentAccess.unlocked = false
+    connectDaemonWsMock.mockResolvedValue(undefined)
+    invokeMock.mockImplementation((command: string) =>
+      command === 'show_content_unlock'
+        ? Promise.reject(new Error('window unavailable'))
+        : Promise.resolve(undefined)
+    )
+
+    render(<QuickPanelApp />)
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Unlock' })).toBeVisible())
+    fireEvent.click(screen.getByRole('button', { name: 'Unlock' }))
+
+    expect(
+      await screen.findByText('Could not open the unlock window. Try again from the main window.')
+    ).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Unlock' })).toBeEnabled()
   })
 
   it('themes the connecting screen before daemon bootstrap finishes', async () => {

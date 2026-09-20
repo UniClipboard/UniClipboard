@@ -2190,6 +2190,7 @@
         "title": "剪贴板已锁定",
         "description": "解锁后才能查看剪贴板历史",
         "action": "解锁",
+        "openFailed": "无法打开解锁窗口，请从主窗口重试。",
         "unlocking": "正在解锁..."
       },
       "status": {

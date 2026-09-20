@@ -7,9 +7,28 @@ use uc_daemon_client::{DaemonConnectionState, DaemonQueryClient, DaemonSettingsC
 
 use super::{record_trace_fields, CommandError, TraceMetadata};
 
+#[derive(Default)]
+struct ContentGrant {
+    value: Option<bool>,
+    generation: u64,
+}
+
+impl ContentGrant {
+    fn replace(&mut self, value: Option<bool>) {
+        self.value = value;
+        self.generation = self.generation.wrapping_add(1);
+    }
+
+    fn replace_if_generation(&mut self, generation: u64, value: Option<bool>) {
+        if self.generation == generation {
+            self.replace(value);
+        }
+    }
+}
+
 /// A process-local grant shared by every webview; never persisted or set by a webview.
 #[derive(Default)]
-pub struct ContentLockState(Mutex<Option<bool>>);
+pub struct ContentLockState(Mutex<ContentGrant>);
 
 #[derive(serde::Deserialize, specta::Type)]
 pub struct ContentUnlockRequest {
@@ -84,14 +103,18 @@ pub async fn get_content_unlocked(
     );
     record_trace_fields(&span, &_trace);
     async {
-        let mut grant = state.0.lock().await;
+        let (grant_generation, cached_grant) = {
+            let grant = state.0.lock().await;
+            (grant.generation, grant.value)
+        };
         if !query
             .get_profile_recovery()
             .await
             .map_err(CommandError::internal)?
             .background_ready
         {
-            *grant = None;
+            let mut grant = state.0.lock().await;
+            grant.replace_if_generation(grant_generation, None);
             debug!("Content remains hidden during profile recovery");
             return Ok(false);
         }
@@ -100,19 +123,24 @@ pub async fn get_content_unlocked(
             .await
             .map_err(CommandError::internal)?;
         if !encryption.initialized {
-            *grant = None;
+            let mut grant = state.0.lock().await;
+            grant.replace_if_generation(grant_generation, None);
             debug!("Content remains hidden until setup completes");
             return Ok(false);
         }
-        if grant.is_none() {
+        let queried_grant = if cached_grant.is_none() {
             let settings = DaemonSettingsClient::new(connection.inner().clone())
                 .map_err(CommandError::internal)?
                 .get_settings()
                 .await
                 .map_err(CommandError::internal)?;
-            *grant = Some(settings.security.auto_unlock_enabled);
-        }
-        let unlocked = grant.unwrap_or(false) && encryption.session_ready;
+            Some(settings.security.auto_unlock_enabled)
+        } else {
+            cached_grant
+        };
+        let mut grant = state.0.lock().await;
+        grant.replace_if_generation(grant_generation, queried_grant);
+        let unlocked = grant.value.unwrap_or(false) && encryption.session_ready;
         debug!(unlocked, "Content lock status queried");
         Ok(unlocked)
     }
@@ -168,7 +196,7 @@ pub async fn unlock_content_from_keyring(
             return Ok(false);
         }
 
-        *state.0.lock().await = Some(true);
+        state.0.lock().await.replace(Some(true));
         info!("Content unlocked with the keyring after explicit user action");
         if let Err(error) = app.emit("content-lock-changed", ()) {
             warn!(error = %error, "Content lock notification failed");
@@ -195,12 +223,11 @@ pub async fn unlock_content(
     );
     record_trace_fields(&span, &_trace);
     async {
-        let mut grant = state.0.lock().await;
         query
             .unlock_with_passphrase(&request.passphrase)
             .await
             .map_err(ContentUnlockError::from_daemon)?;
-        *grant = Some(true);
+        state.0.lock().await.replace(Some(true));
         info!("Content unlocked after passphrase verification");
         // Events invalidate cached views, never convey authentication authority.
         if let Err(error) = app.emit("content-lock-changed", ()) {
@@ -210,4 +237,31 @@ pub async fn unlock_content(
     }
     .instrument(span)
     .await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ContentGrant;
+
+    #[test]
+    fn replacing_a_grant_advances_its_generation() {
+        let mut grant = ContentGrant::default();
+        let initial_generation = grant.generation;
+
+        grant.replace(Some(true));
+
+        assert_eq!(grant.value, Some(true));
+        assert_ne!(grant.generation, initial_generation);
+    }
+
+    #[test]
+    fn stale_query_cannot_replace_a_newer_grant() {
+        let mut grant = ContentGrant::default();
+        let query_generation = grant.generation;
+        grant.replace(Some(true));
+
+        grant.replace_if_generation(query_generation, Some(false));
+
+        assert_eq!(grant.value, Some(true));
+    }
 }

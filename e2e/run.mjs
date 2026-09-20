@@ -25,12 +25,14 @@ const forwardedArgs = process.argv
   .slice(2)
   .filter(arg => arg !== '--dual-peer' && arg !== '--triple-peer')
 const requestedSpec = process.env.E2E_SPEC
+const spaceWorkSpec = name =>
+  name === 'final-confirmation.dual.e2e.js' || name.startsWith('membership-maintenance-')
 const specFiles = fs
   .readdirSync(path.join(__dirname, 'specs'))
   .filter(name => name.endsWith('.e2e.js'))
   .filter(name => {
     if (name === 'device-group-conflict.e2e.js') return false
-    if (name === 'final-confirmation.dual.e2e.js' && !requestedSpec) return false
+    if (spaceWorkSpec(name) && !requestedSpec) return false
     if (triplePeerMode) return name.endsWith('.triple.e2e.js')
     if (dualPeerMode) return name.endsWith('.dual.e2e.js')
     return !name.endsWith('.dual.e2e.js') && !name.endsWith('.triple.e2e.js')
@@ -39,10 +41,11 @@ const specFiles = fs
   .filter(spec => !requestedSpec || spec === path.resolve(rootDir, requestedSpec))
   .sort()
 if (
-  requestedSpec?.endsWith('/final-confirmation.dual.e2e.js') &&
+  requestedSpec &&
+  spaceWorkSpec(path.basename(requestedSpec)) &&
   process.env.E2E_SKIP_BUILD !== '1'
 ) {
-  throw new Error('最终确认场景需要先使用本地 Engine 测试源码构建后台，再设置 E2E_SKIP_BUILD=1')
+  throw new Error('成员测试场景需要先使用本地 Engine 测试源码构建后台，再设置 E2E_SKIP_BUILD=1')
 }
 const specRuns = createSpecRuns({
   specs: specFiles,
@@ -228,7 +231,7 @@ for (const specRun of specRuns) {
   }
   let rendezvous
   const e2eEnv = { ...process.env, ...specRun.env }
-  if (path.basename(specRun.spec) === 'final-confirmation.dual.e2e.js') {
+  if (spaceWorkSpec(path.basename(specRun.spec))) {
     rendezvous = spawn(process.execPath, [path.join(__dirname, 'fixtures/local-rendezvous.mjs')], {
       stdio: ['ignore', 'pipe', 'inherit'],
     })

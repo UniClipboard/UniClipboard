@@ -6,7 +6,10 @@ use axum::routing::post;
 use axum::{Json, Router};
 use serde::Deserialize;
 use serde_json::{json, Value};
-use uc_engine::{DevOperation, DevOperationResult, DevSpaceWorkEvent, DevSpaceWorkEventKind};
+use uc_engine::{
+    DevMembershipHistoryFailure, DevOperation, DevOperationResult, DevSpaceWorkEvent,
+    DevSpaceWorkEventKind,
+};
 
 use crate::api::server::DaemonApiState;
 
@@ -21,6 +24,8 @@ struct Request {
     command: String,
     after_sequence: Option<u64>,
     kind: Option<String>,
+    failure: Option<String>,
+    count: Option<usize>,
 }
 
 fn kind(name: &str) -> Option<DevSpaceWorkEventKind> {
@@ -40,6 +45,15 @@ fn kind(name: &str) -> Option<DevSpaceWorkEventKind> {
         "membership_history_sync_started" => {
             Some(DevSpaceWorkEventKind::MembershipHistorySyncStarted)
         }
+        "membership_history_sync_retryable_failure" => {
+            Some(DevSpaceWorkEventKind::MembershipHistorySyncRetryableFailure)
+        }
+        "membership_history_sync_needs_attention" => {
+            Some(DevSpaceWorkEventKind::MembershipHistorySyncNeedsAttention)
+        }
+        "membership_history_sync_reply_received" => {
+            Some(DevSpaceWorkEventKind::MembershipHistorySyncReplyReceived)
+        }
         _ => None,
     }
 }
@@ -55,6 +69,15 @@ fn event(value: DevSpaceWorkEvent) -> Value {
         }
         DevSpaceWorkEventKind::OrdinaryMemberUpdateStarted => "ordinary_member_update_started",
         DevSpaceWorkEventKind::MembershipHistorySyncStarted => "membership_history_sync_started",
+        DevSpaceWorkEventKind::MembershipHistorySyncRetryableFailure => {
+            "membership_history_sync_retryable_failure"
+        }
+        DevSpaceWorkEventKind::MembershipHistorySyncNeedsAttention => {
+            "membership_history_sync_needs_attention"
+        }
+        DevSpaceWorkEventKind::MembershipHistorySyncReplyReceived => {
+            "membership_history_sync_reply_received"
+        }
     };
     json!({ "sequence": value.sequence, "kind": name })
 }
@@ -82,6 +105,18 @@ async fn space_work(
     }
     let operation = match request.command.as_str() {
         "arm_complete_ack_failure" => DevOperation::ArmFinalConfirmationConnectionFailure,
+        "arm_membership_history_failures" => DevOperation::ArmMembershipHistoryFailures {
+            failure: match request.failure.as_deref() {
+                Some("retryable") => DevMembershipHistoryFailure::Retryable,
+                Some("needs_attention") => DevMembershipHistoryFailure::NeedsAttention,
+                _ => return Err(StatusCode::BAD_REQUEST),
+            },
+            count: request
+                .count
+                .filter(|count| *count > 0)
+                .ok_or(StatusCode::BAD_REQUEST)?,
+        },
+        "clear_membership_history_failures" => DevOperation::ClearMembershipHistoryFailures,
         "wait_space_work_event" => DevOperation::WaitForSpaceWorkEvent {
             after_sequence: request.after_sequence.ok_or(StatusCode::BAD_REQUEST)?,
             kind: kind(request.kind.as_deref().ok_or(StatusCode::BAD_REQUEST)?)
@@ -98,6 +133,12 @@ async fn space_work(
     let value = match result {
         DevOperationResult::FinalConfirmationConnectionFailureArmed { after_sequence } => {
             json!({ "after_sequence": after_sequence })
+        }
+        DevOperationResult::MembershipHistoryFailuresArmed { after_sequence } => {
+            json!({ "after_sequence": after_sequence })
+        }
+        DevOperationResult::MembershipHistoryFailuresCleared { remaining } => {
+            json!({ "remaining": remaining })
         }
         DevOperationResult::SpaceWorkEvent(value) => event(value),
         DevOperationResult::SpaceWorkEvents(values) => {

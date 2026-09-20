@@ -1,3 +1,5 @@
+import { mkdirSync } from 'node:fs'
+import path from 'node:path'
 import { browser, expect } from '@wdio/globals'
 import {
   click,
@@ -24,6 +26,14 @@ dualDescribe('等待中的加入恢复', () => {
     const code = await issueInvitation(sponsor)
     const sponsorDaemon = daemonConnection(process.env.E2E_UC_SPONSOR_PROFILE)
     const joinerDaemon = daemonConnection(process.env.E2E_UC_JOINER_PROFILE)
+    const evidenceDir = path.join(
+      process.cwd(),
+      '.herdr-project',
+      'uni-t-0028',
+      'evidence',
+      `wdio-${process.pid}`
+    )
+    mkdirSync(evidenceDir, { recursive: true })
 
     process.kill(sponsorDaemon.pid, 'SIGSTOP')
     try {
@@ -33,6 +43,7 @@ dualDescribe('等待中的加入恢复', () => {
       await expect(
         await element(joiner, '[data-testid="setup-join-pending"]', { timeout: 15000 })
       ).toExist()
+      await joiner.saveScreenshot(path.join(evidenceDir, 'pending.png'))
 
       const restartTriggered = await joiner.execute(() => {
         void window.__TAURI_INTERNALS__.invoke('restart_daemon', { trace: null })
@@ -49,6 +60,7 @@ dualDescribe('等待中的加入恢复', () => {
       ])
       await expect(sponsorComplete).toExist()
       await expect(joinerComplete).toExist()
+      await joiner.saveScreenshot(path.join(evidenceDir, 'completed.png'))
     } finally {
       try {
         process.kill(sponsorDaemon.pid, 'SIGCONT')

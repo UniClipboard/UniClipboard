@@ -153,18 +153,35 @@ async fn run_wait(service: Box<dyn DaemonService>, args: &GetArgs, json: bool) -
         Ok(None) => return exit_codes::EXIT_SUCCESS,
         Err(code) => return code,
     };
-    let entries = match session.service().list_entries(DEFAULT_LIMIT, 0).await {
-        Ok(entries) => entries,
+    let target = match find_entry(session.service(), &event.entry_id).await {
+        Ok(Some(entry)) => entry,
+        Ok(None) => {
+            ui::error("The synced entry arrived but could not be read from history.");
+            return exit_codes::EXIT_ERROR;
+        }
         Err(err) => {
             ui::error(&format!("Failed to read the synced entry: {err}"));
             return exit_codes::EXIT_ERROR;
         }
     };
-    let Some(target) = entries.iter().find(|entry| entry.id == event.entry_id) else {
-        ui::error("The synced entry arrived but could not be read from history.");
-        return exit_codes::EXIT_ERROR;
-    };
-    materialize(session.service(), target, args, json).await
+    materialize(session.service(), &target, args, json).await
+}
+
+async fn find_entry(
+    service: &dyn DaemonService,
+    entry_id: &str,
+) -> anyhow::Result<Option<EntryProjectionResponseDto>> {
+    let mut offset = 0;
+    loop {
+        let entries = service.list_entries(DEFAULT_LIMIT, offset).await?;
+        if let Some(entry) = entries.iter().find(|entry| entry.id == entry_id) {
+            return Ok(Some(entry.clone()));
+        }
+        if entries.len() < DEFAULT_LIMIT {
+            return Ok(None);
+        }
+        offset += entries.len();
+    }
 }
 
 /// Pick the entry to materialize. For `--id`, find that exact entry. For

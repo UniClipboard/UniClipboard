@@ -50,7 +50,13 @@ impl InboundWaitSession {
                 _ = tokio::signal::ctrl_c() => return Ok(None),
                 entry = self.entries.recv() => match entry {
                     Some(entry) => return Ok(Some(entry)),
-                    None => self.reconnect().await?,
+                    None => {
+                        tokio::select! {
+                            biased;
+                            _ = tokio::signal::ctrl_c() => return Ok(None),
+                            result = self.reconnect() => result?,
+                        }
+                    }
                 }
             }
         }

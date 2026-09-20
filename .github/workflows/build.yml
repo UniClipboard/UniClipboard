@@ -432,6 +432,8 @@ jobs:
           ls -la "$OUT_DIR"
 
       - name: Upload Sentry debug symbols
+        # Test bundles are not released and should not upload symbols under the release version.
+        if: inputs.build_mode != 'test'
         # 把 release 编译出的 .dSYM (macOS) / .pdb (Windows) / DWARF (Linux)
         # 上传给 Sentry,后续 panic 上报时 Sentry 用 build-id 把地址翻译回
         # 函数名 + 文件 + 行号(配合 --include-sources 还会嵌源码片段)。

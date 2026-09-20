@@ -11,11 +11,11 @@ import {
 } from '../helpers/dualPeer.js'
 
 async function expectRejected(joiner) {
-  return element(joiner, '[data-testid="setup-join-rejected"]', { timeout: 30000 })
+  return element(joiner, '[data-testid="setup-join-ended"]', { timeout: 30000 })
 }
 
 async function retryJoin(joiner) {
-  await click(joiner, '[data-testid="setup-join-rejected-back"]')
+  await click(joiner, '[data-testid="setup-join-ended-back"]')
   await element(joiner, '#join-code')
 }
 

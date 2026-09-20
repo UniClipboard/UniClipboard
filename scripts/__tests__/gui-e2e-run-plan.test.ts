@@ -2,6 +2,21 @@ import { describe, expect, it } from 'vitest'
 import { createSpecRuns } from '../../e2e/run-plan.mjs'
 
 describe('GUI E2E run plan', () => {
+  it.each(['win32', 'linux'])('does not run macOS key-loss fixtures on %s', hostPlatform => {
+    expect(
+      createSpecRuns({
+        specs: [
+          '/repo/e2e/specs/profile-key-recovery.e2e.js',
+          '/repo/e2e/specs/profile-key-recovery-fresh.e2e.js',
+          '/repo/e2e/specs/unlock-passphrase-fallback.e2e.js',
+        ],
+        dualPeerMode: false,
+        profile: 'wdio',
+        hostPlatform,
+        hostArch: 'x64',
+      })
+    ).toEqual([])
+  })
   it('gives every single-window spec its own profile', () => {
     const runs = createSpecRuns({
       specs: ['/repo/e2e/specs/setup-smoke.e2e.js', '/repo/e2e/specs/quick-panel.e2e.js'],
@@ -94,5 +109,31 @@ describe('GUI E2E run plan', () => {
         profile: 'wdio-upgrade-re-pair-notice-0-19-1',
       },
     })
+  })
+
+  it('uses an isolated initialized fixture for the passphrase fallback flow', () => {
+    const runs = createSpecRuns({
+      specs: ['/repo/e2e/specs/unlock-passphrase-fallback.e2e.js'],
+      dualPeerMode: false,
+      triplePeerMode: false,
+      profile: 'wdio',
+      hostPlatform: 'darwin',
+      hostArch: 'arm64',
+    })
+
+    expect(runs).toEqual([
+      {
+        spec: '/repo/e2e/specs/unlock-passphrase-fallback.e2e.js',
+        profiles: ['wdio-unlock-passphrase-fallback-0-19-1'],
+        env: {
+          E2E_UC_PROFILE: 'wdio-unlock-passphrase-fallback-0-19-1',
+          E2E_UNLOCK_PASSPHRASE: 'v0-19-1-upgrade-fixture-passphrase',
+        },
+        fixture: {
+          directory: 'tests/e2e/fixtures/upgrades/v0.19.1/macos-aarch64/single-node-empty',
+          profile: 'wdio-unlock-passphrase-fallback-0-19-1',
+        },
+      },
+    ])
   })
 })

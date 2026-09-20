@@ -8,10 +8,6 @@ pub enum UnlockRecoveryOutcome {
     Unlocked,
     Unavailable,
     Failed,
-    /// Skipped because the user disabled auto-unlock in settings. Distinct
-    /// from `Unavailable` (keyring miss / not initialized) so callers don't
-    /// conflate "nothing to unlock" with "the user asked not to try".
-    Disabled,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -88,20 +84,13 @@ async fn recover_after_restart_with(
     }
 }
 
-/// Auto-unlock + lifecycle-retry for a fresh cold-launch of a desktop shell
-/// (issue #1169), honoring the user's `auto_unlock_enabled` preference.
+/// Session recovery + lifecycle retry for a fresh cold-launch of a desktop shell.
 ///
-/// Unlike [`recover_after_restart`] — which always attempts both steps
-/// because a GUI-triggered daemon restart resumes a session that was
-/// already active before the restart — a cold launch may be starting
-/// against a daemon the user has never unlocked this boot. So this variant:
-/// - skips the keyring unlock attempt entirely when `auto_unlock_enabled`
-///   is `false`, respecting the user's choice to be prompted instead;
-/// - only retries the deferred-service lifecycle after a confirmed unlock,
-///   instead of attempting it unconditionally.
+/// The persisted `auto_unlock_enabled` preference controls only whether the GUI
+/// reveals user content on launch. Background clipboard and sync services must
+/// recover independently of that presentation preference.
 pub async fn recover_after_cold_launch(
     connection_state: DaemonConnectionState,
-    auto_unlock_enabled: bool,
 ) -> DaemonRecoveryReport {
     let client = match DaemonQueryClient::new(connection_state) {
         Ok(client) => client,
@@ -113,21 +102,12 @@ pub async fn recover_after_cold_launch(
             };
         }
     };
-    recover_after_cold_launch_with(&client, auto_unlock_enabled).await
+    recover_after_cold_launch_with(&client).await
 }
 
 async fn recover_after_cold_launch_with(
     client: &(impl DaemonRecoveryClient + ?Sized),
-    auto_unlock_enabled: bool,
 ) -> DaemonRecoveryReport {
-    if !auto_unlock_enabled {
-        tracing::info!("auto unlock disabled by settings; skipping keyring unlock");
-        return DaemonRecoveryReport {
-            unlock: UnlockRecoveryOutcome::Disabled,
-            lifecycle_ready: false,
-        };
-    }
-
     let unlock = match client.unlock_encryption().await {
         Ok(true) => {
             tracing::info!("encryption auto-unlocked via daemon");
@@ -234,21 +214,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn cold_launch_skips_unlock_when_auto_unlock_disabled() {
-        let calls = Arc::new(Mutex::new(Vec::new()));
-        let client = RecordingClient {
-            unlock_result: Ok(true),
-            calls: calls.clone(),
-        };
-
-        let report = recover_after_cold_launch_with(&client, false).await;
-
-        assert!(calls.lock().unwrap().is_empty(), "no RPC should fire");
-        assert_eq!(report.unlock, UnlockRecoveryOutcome::Disabled);
-        assert!(!report.lifecycle_ready);
-    }
-
-    #[tokio::test]
     async fn cold_launch_retries_lifecycle_only_after_confirmed_unlock() {
         let calls = Arc::new(Mutex::new(Vec::new()));
         let client = RecordingClient {
@@ -256,7 +221,7 @@ mod tests {
             calls: calls.clone(),
         };
 
-        let report = recover_after_cold_launch_with(&client, true).await;
+        let report = recover_after_cold_launch_with(&client).await;
 
         assert_eq!(
             calls.lock().unwrap().as_slice(),
@@ -274,7 +239,7 @@ mod tests {
             calls: calls.clone(),
         };
 
-        let report = recover_after_cold_launch_with(&client, true).await;
+        let report = recover_after_cold_launch_with(&client).await;
 
         assert_eq!(calls.lock().unwrap().as_slice(), ["unlock"]);
         assert_eq!(report.unlock, UnlockRecoveryOutcome::Unavailable);
@@ -289,7 +254,7 @@ mod tests {
             calls: calls.clone(),
         };
 
-        let report = recover_after_cold_launch_with(&client, true).await;
+        let report = recover_after_cold_launch_with(&client).await;
 
         assert_eq!(calls.lock().unwrap().as_slice(), ["unlock"]);
         assert_eq!(report.unlock, UnlockRecoveryOutcome::Failed);

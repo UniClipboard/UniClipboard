@@ -1,4 +1,18 @@
 {
+  "profileRecovery": {
+    "restartRequired": "Não foi possível iniciar os serviços em segundo plano. Reinicie-os para continuar a recuperação. Seus dados serão preservados; contate o autor se ocorrer novamente.",
+    "restart": "Reiniciar serviços em segundo plano",
+    "title": "Recuperar dados locais",
+    "description": "A chave salva no sistema está ausente ou inutilizável. Digite a senha de criptografia original. O histórico, o monitoramento da área de transferência e a sincronização ficam indisponíveis até concluir a recuperação.",
+    "submit": "Recuperar e continuar",
+    "recovering": "Recuperando…",
+    "partial": "Algumas chaves antigas foram perdidas. A senha pode não recuperar o histórico e a identidade deste dispositivo. Preserve os dados, não redefina o aplicativo e entre em contato com o autor.",
+    "unsupported": "Esta versão não consegue ler os dados de recuperação. Preserve os arquivos originais e atualize o aplicativo ou contate o autor.",
+    "persistenceFailed": "Não foi possível salvar as chaves recuperadas. Verifique o espaço livre e as permissões do chaveiro do sistema e tente novamente. Não exclua os dados originais.",
+    "corrupt": "Não foi possível ler os dados de recuperação. Preserve os arquivos originais e os backups e contate o autor.",
+    "failed": "A recuperação não foi concluída. Tente novamente; se o problema persistir, preserve os dados e contate o autor.",
+    "help": "Uma senha incorreta não exclui dados. Se esqueceu a senha ou a recuperação falhar, contate mkdir700@gmail.com ou abra uma issue no GitHub antes de apagar dados."
+  },
   "omarchyTheme": {
     "title": "Seguir o tema do Omarchy",
     "description": "O Omarchy controla o modo claro ou escuro e as cores do tema.",
@@ -945,7 +959,7 @@
     "invitationAction": "Esqueceu a frase secreta antiga? Redefina-a"
   },
   "unlock": {
-    "title": "Desbloquear o UniClipboard",
+    "title": "Desbloquear",
     "description": "Seus dados estão criptografados. Desbloqueie para continuar.",
     "button": "Desbloquear",
     "unlocking": "Desbloqueando...",
@@ -968,7 +982,7 @@
     },
     "passphraseModal": {
       "title": "Digite a frase secreta do seu Espaço",
-      "description": "O desbloqueio automático não conseguiu obter a chave do Keychain. Digite a frase secreta que você definiu para este Espaço e desbloqueie manualmente.",
+      "description": "Digite a frase secreta de criptografia deste espaço para visualizar o conteúdo e gerenciar as configurações.",
       "passphraseLabel": "Frase secreta",
       "passphrasePlaceholder": "Digite sua frase secreta",
       "submit": "Desbloquear",
@@ -976,7 +990,7 @@
       "cancel": "Cancelar",
       "show": "Mostrar frase secreta",
       "hide": "Ocultar frase secreta",
-      "hint": "Após desbloquear uma vez, o Keychain será atualizado para que as próximas sessões voltem a ser desbloqueadas automaticamente."
+      "hint": "Use a frase secreta do espaço, não a senha de login do computador."
     },
     "errors": {
       "wrongPassphrase": "Frase secreta incorreta. Tente novamente.",
@@ -991,7 +1005,6 @@
       "modal": {
         "title": "Redefinir e começar de novo",
         "warning": "Depois da redefinição, o histórico criptografado da área de transferência armazenado neste dispositivo não poderá ser recuperado.",
-        "recovery": "Se você tiver outro dispositivo pareado, poderá convidar este dispositivo novamente a partir dele, e o histórico será sincronizado de volta a partir dele.",
         "confirmPrompt": "Digite RESET para confirmar",
         "confirmPlaceholder": "RESET",
         "confirm": "Redefinir",

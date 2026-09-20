@@ -1,17 +1,12 @@
-import type { ReactNode } from 'react'
-import { exportStartupLogs } from '@/api/startup-support'
-import { Toaster } from '@/components/ui/toaster'
+import { type ReactNode } from 'react'
 import { useAppBootstrap } from '@/hooks/useAppBootstrap'
+import { useContentUnlocked } from '@/hooks/useContentUnlocked'
 import { useMainWindowPresentation } from '@/hooks/useMainWindowPresentation'
+import { useProfileRecovery } from '@/hooks/useProfileRecovery'
 import { useVisualEffectsSampling } from '@/hooks/useVisualEffectsSampling'
 import type { SetupGate } from '@/lib/app-state'
-import { startupFailed } from '@/lib/daemon-startup-progress'
-import { pendingStartupSnapshot, startupViewSnapshot } from '@/lib/startup-progress'
-import SetupPage from '@/pages/SetupPage'
-import UnlockPage from '@/pages/UnlockPage'
-import { AppStatusScreen } from './AppStatusScreen'
-import { AuthenticatedRoutes } from './AuthenticatedRoutes'
-import { StartupProgressScreen } from './StartupProgressScreen'
+import { resolveAppContentState } from './app-content-state'
+import { AppContentView } from './AppContentView'
 
 type AppContentProps = {
   fullTitleBar: ReactNode
@@ -27,6 +22,13 @@ export function AppContent({
   sidebarTitle,
 }: AppContentProps) {
   const bootstrap = useAppBootstrap(setupGate !== 'ready')
+  const recovery = useProfileRecovery(bootstrap.daemonBootstrapReady)
+  const contentLock = useContentUnlocked(
+    setupGate === 'ready' &&
+      bootstrap.daemonBootstrapReady &&
+      recovery.status?.backgroundReady === true
+  )
+  const contentUnlocked = contentLock.unlocked
   useVisualEffectsSampling(
     setupGate === 'ready' &&
       bootstrap.daemonBootstrapReady &&
@@ -35,101 +37,39 @@ export function AppContent({
       bootstrap.spaceReadiness === 'ready'
   )
 
-  const hasStartupTask = Boolean(bootstrap.startupStatus && !bootstrap.daemonBootstrapReady)
-  const showFailure =
-    bootstrap.bootstrapFailure?.kind === 'versionTooOld' ||
-    (!hasStartupTask &&
-      !bootstrap.retrying &&
-      Boolean(bootstrap.bootstrapFailure || bootstrap.encryptionError))
-  const showStartup =
-    hasStartupTask ||
-    bootstrap.retrying ||
-    !bootstrap.daemonBootstrapReady ||
-    setupGate === 'loading' ||
-    (setupGate === 'ready' && !bootstrap.resolvedEncryptionStatus) ||
-    (setupGate === 'ready' &&
-      bootstrap.resolvedEncryptionStatus?.session_ready === true &&
-      bootstrap.spaceReadiness !== 'ready')
-  const needsAttention = Boolean(
-    hasStartupTask &&
-    bootstrap.startupStatus &&
-    (startupFailed(bootstrap.startupStatus) ||
-      (!bootstrap.startupStatus.service_ready &&
-        bootstrap.startupStatus.progress.state === 'upgrading' &&
-        bootstrap.startupStatus.progress.upgrade?.required))
-  )
+  const appState = resolveAppContentState({
+    backgroundReady: recovery.status?.backgroundReady ?? null,
+    recoveryFailed: recovery.failed,
+    startupStatus: bootstrap.startupStatus,
+    daemonBootstrapReady: bootstrap.daemonBootstrapReady,
+    retrying: bootstrap.retrying,
+    bootstrapFailure: Boolean(bootstrap.bootstrapFailure),
+    versionTooOld: bootstrap.bootstrapFailure?.kind === 'versionTooOld',
+    encryptionError: Boolean(bootstrap.encryptionError),
+    setupGate,
+    hasEncryptionStatus: Boolean(bootstrap.resolvedEncryptionStatus),
+    sessionReady: bootstrap.resolvedEncryptionStatus?.session_ready === true,
+    encryptionInitialized: bootstrap.resolvedEncryptionStatus?.initialized === true,
+    contentUnlocked,
+    spaceReadiness: bootstrap.spaceReadiness,
+  })
   useMainWindowPresentation(
-    showFailure ||
-      !showStartup ||
-      needsAttention ||
+    (recovery.status !== null && !recovery.status.backgroundReady) ||
+      appState.showFailure ||
+      !appState.showStartup ||
+      appState.needsAttention ||
       bootstrap.spaceReadiness === 'recoveringMembership'
   )
-  if (showFailure) {
-    return (
-      <div className="flex h-full w-full flex-col bg-background">
-        {fullTitleBar}
-        <AppStatusScreen
-          detail={
-            bootstrap.encryptionError ??
-            bootstrap.bootEncryptionError ??
-            bootstrap.bootstrapFailure?.detail
-          }
-          failure={bootstrap.bootstrapFailure}
-          onRetry={bootstrap.retry}
-        />
-      </div>
-    )
-  }
-
-  if (showStartup) {
-    return (
-      <div className="flex h-full w-full flex-col bg-background">
-        {fullTitleBar}
-        <StartupProgressScreen
-          phase={
-            bootstrap.spaceReadiness === 'recoveringMembership' ? 'membershipRecovery' : 'default'
-          }
-          snapshot={
-            hasStartupTask && bootstrap.startupStatus
-              ? startupViewSnapshot(bootstrap.startupStatus, bootstrap.retrying)
-              : pendingStartupSnapshot
-          }
-          onRetry={bootstrap.retry}
-          onExport={async () => (await exportStartupLogs()) !== null}
-        />
-      </div>
-    )
-  }
-
-  if (setupGate === 'setup') {
-    return (
-      <>
-        <SetupPage onCompleteSetup={onSetupComplete} />
-        <Toaster />
-      </>
-    )
-  }
-
-  if (
-    bootstrap.resolvedEncryptionStatus?.initialized &&
-    !bootstrap.resolvedEncryptionStatus.session_ready
-  ) {
-    return (
-      <div className="flex h-full w-full flex-col">
-        {fullTitleBar}
-        <div className="min-h-0 flex-1">
-          <UnlockPage
-            onUnlockSucceeded={() =>
-              bootstrap.setEncryptionStatus({ initialized: true, session_ready: true })
-            }
-            onResetSucceeded={() =>
-              bootstrap.setEncryptionStatus({ initialized: false, session_ready: false })
-            }
-          />
-        </div>
-      </div>
-    )
-  }
-
-  return <AuthenticatedRoutes fullTitleBar={fullTitleBar} sidebarTitle={sidebarTitle} />
+  return (
+    <AppContentView
+      bootstrap={bootstrap}
+      contentLock={contentLock}
+      fullTitleBar={fullTitleBar}
+      hasStartupTask={appState.hasStartupTask}
+      onSetupComplete={onSetupComplete}
+      recovery={recovery}
+      sidebarTitle={sidebarTitle}
+      view={appState.view}
+    />
+  )
 }

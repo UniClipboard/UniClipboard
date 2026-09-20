@@ -33,7 +33,7 @@ dualDescribe('等待中的加入取消', () => {
 
       process.kill(sponsorDaemon.pid, 'SIGCONT')
       await expect(
-        await element(joiner, '[data-testid="setup-join-rejected"]', { timeout: 30000 })
+        await element(joiner, '[data-testid="setup-join-ended"]', { timeout: 30000 })
       ).toExist()
     } finally {
       try {

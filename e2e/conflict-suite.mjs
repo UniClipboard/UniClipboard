@@ -7,6 +7,7 @@ import { stopRunProfiles, testDaemons } from './helpers/conflict-userdata.mjs'
 
 const baseline = process.argv[2] ?? 'four'
 const scenario = process.argv[3] ?? 'apply'
+const engineRepository = process.env.E2E_ENGINE_WORKTREE ?? '../Engine'
 const supported = [
   'apply',
   'keep',
@@ -52,10 +53,10 @@ try {
   console.log(`Run manifest: ${manifest}`)
   const provenance = {
     capturedAt: new Date().toISOString(),
-    engine: execFileSync('git', ['-C', '../Engine', 'rev-parse', 'HEAD'], {
+    engine: execFileSync('git', ['-C', engineRepository, 'rev-parse', 'HEAD'], {
       encoding: 'utf8',
     }).trim(),
-    engineStatus: execFileSync('git', ['-C', '../Engine', 'status', '--short'], {
+    engineStatus: execFileSync('git', ['-C', engineRepository, 'status', '--short'], {
       encoding: 'utf8',
     }),
     desktop: execFileSync('git', ['rev-parse', 'HEAD'], {

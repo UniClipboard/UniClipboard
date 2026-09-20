@@ -94,6 +94,8 @@ export const config = {
     for (const role of browser.instances ?? [])
       try {
         await screenshot(browser[role], run, `failure-${role}`)
-      } catch {}
+      } catch {
+        // Preserve the primary failure when a closing window cannot be captured.
+      }
   },
 }

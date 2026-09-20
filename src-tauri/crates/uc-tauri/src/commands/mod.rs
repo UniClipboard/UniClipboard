@@ -1,5 +1,6 @@
 pub mod autostart;
 pub mod config;
+pub mod content_lock;
 pub mod diagnostics;
 pub mod error;
 pub mod quick_panel;

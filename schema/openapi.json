@@ -1794,6 +1794,78 @@
         ],
         "type": "object"
       },
+      "DispatchFileOutcomeResponse": {
+        "description": "Initial file dispatch result. Delivery may still be pending while peers\nfetch the bytes; callers use `entry_id` to query the delivery view.",
+        "properties": {
+          "atMs": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "entryId": {
+            "type": "string"
+          },
+          "perTarget": {
+            "items": {
+              "$ref": "#/components/schemas/PerTargetOutcomeDto"
+            },
+            "type": "array"
+          },
+          "snapshotHash": {
+            "type": "string"
+          },
+          "totalAccepted": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "totalDuplicate": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "totalErrored": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "totalOffline": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "totalPending": {
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "entryId",
+          "snapshotHash",
+          "atMs",
+          "totalAccepted",
+          "totalDuplicate",
+          "totalOffline",
+          "totalErrored",
+          "totalPending",
+          "perTarget"
+        ],
+        "type": "object"
+      },
+      "DispatchFileRequest": {
+        "description": "Request body for `POST /clipboard/dispatch-file`.\n\nThe path is consumed only by the authenticated local daemon and must never\nbe logged or persisted as clipboard metadata.",
+        "properties": {
+          "peers": {
+            "items": {
+              "type": "string"
+            },
+            "nullable": true,
+            "type": "array"
+          },
+          "sourcePath": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "sourcePath"
+        ],
+        "type": "object"
+      },
       "DispatchOutcomeEnvelope": {
         "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
         "properties": {
@@ -4033,6 +4105,77 @@
           "deviceFingerprint"
         ],
         "type": "object"
+      },
+      "ProfileRecoveryEnvelope": {
+        "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/ProfileRecoveryResponse"
+          },
+          "ts": {
+            "description": "Server time when the response was built (unix epoch milliseconds).",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "data",
+          "ts"
+        ],
+        "type": "object"
+      },
+      "ProfileRecoveryLossDto": {
+        "enum": [
+          "local_history",
+          "local_control_state",
+          "device_identity"
+        ],
+        "type": "string"
+      },
+      "ProfileRecoveryResponse": {
+        "properties": {
+          "backgroundReady": {
+            "type": "boolean"
+          },
+          "canSubmitPassphrase": {
+            "type": "boolean"
+          },
+          "cleanupPending": {
+            "type": "boolean"
+          },
+          "losses": {
+            "items": {
+              "$ref": "#/components/schemas/ProfileRecoveryLossDto"
+            },
+            "type": "array"
+          },
+          "restartRequired": {
+            "type": "boolean"
+          },
+          "state": {
+            "$ref": "#/components/schemas/ProfileRecoveryStateDto"
+          }
+        },
+        "required": [
+          "state",
+          "canSubmitPassphrase",
+          "restartRequired",
+          "backgroundReady",
+          "cleanupPending",
+          "losses"
+        ],
+        "type": "object"
+      },
+      "ProfileRecoveryStateDto": {
+        "enum": [
+          "not_required",
+          "awaiting_passphrase",
+          "recovering",
+          "recovered",
+          "partially_recoverable",
+          "failed"
+        ],
+        "type": "string"
       },
       "QuickPanelDoubleTapModifierDto": {
         "enum": [
@@ -6967,6 +7110,76 @@
         ]
       }
     },
+    "/clipboard/dispatch-file": {
+      "post": {
+        "description": "Registers a local regular file with the daemon-owned host adapter and asks\nthe shared engine to dispatch it. The source path is transient input only.",
+        "operationId": "dispatchClipboardFile",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DispatchFileRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DispatchFileOutcomeResponse"
+                }
+              }
+            },
+            "description": "Initial file dispatch outcome"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Invalid or unavailable file"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal server error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Daemon is draining"
+          }
+        },
+        "security": [
+          {
+            "session_query": []
+          },
+          {
+            "session_header": []
+          }
+        ],
+        "summary": "POST /clipboard/dispatch-file",
+        "tags": [
+          "clipboard"
+        ]
+      }
+    },
     "/clipboard/entries": {
       "get": {
         "deprecated": true,
@@ -8628,6 +8841,34 @@
           }
         ],
         "summary": "POST /encryption/passphrase",
+        "tags": [
+          "encryption"
+        ]
+      }
+    },
+    "/encryption/recovery": {
+      "get": {
+        "operationId": "getProfileRecovery",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileRecoveryEnvelope"
+                }
+              }
+            },
+            "description": "Profile recovery status"
+          }
+        },
+        "security": [
+          {
+            "session_query": []
+          },
+          {
+            "session_header": []
+          }
+        ],
         "tags": [
           "encryption"
         ]

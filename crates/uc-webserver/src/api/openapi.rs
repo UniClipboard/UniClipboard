@@ -35,7 +35,8 @@ use crate::api::dto::diagnostics::{
 };
 use crate::api::dto::encryption::{
     ChangeEncryptionPassphraseRequest, EncryptionActionResponse, EncryptionStateResponse,
-    KeychainAccessResponse, UnlockSpaceRequest, UnlockSpaceResponse,
+    KeychainAccessResponse, ProfileRecoveryLossDto, ProfileRecoveryResponse,
+    ProfileRecoveryStateDto, UnlockSpaceRequest, UnlockSpaceResponse,
 };
 use crate::api::dto::error::ApiErrorResponse;
 use crate::api::dto::member::{
@@ -111,16 +112,16 @@ use uc_daemon_contract::api::dto::envelope::{
     LocalDeviceInfoEnvelope, LogExportEnvelope, MemberSyncPreferencesEnvelope,
     MemberSyncResultEnvelope, MobileDeviceListEnvelope, MobileSyncActionEnvelope,
     MobileSyncSettingsEnvelope, NetworkRecoveryStatusEnvelope, PeerSnapshotListEnvelope,
-    PresenceRefreshEnvelope, PreviewImportEnvelope, RegisterMobileDeviceEnvelope,
-    RelayCredentialStatusEnvelope, RelayProbeOutcomeEnvelope, RelaySaveResultEnvelope,
-    ResendEnvelope, RestartAcceptedEnvelope, RestoreEntryEnvelope, RotateMobilePasswordEnvelope,
-    SearchQueryEnvelope, SearchRebuildEnvelope, SearchStatusEnvelope, SearchTagsEnvelope,
-    SessionTokenEnvelope, SettingsEnvelope, SettingsUpdateResultEnvelope, SetupCancelJoinEnvelope,
-    SetupInitializeEnvelope, SetupIssueInvitationEnvelope, SetupRedeemEnvelope, SetupStateEnvelope,
-    SetupSwitchSpaceEnvelope, SpaceMemberListEnvelope, SpaceProtectionEnvelope, StatusEnvelope,
-    StorageStatsEnvelope, ToggleFavoriteEnvelope, UnlockSpaceEnvelope, UpdateDebugModeEnvelope,
-    UpdateMobileDeviceEnvelope, UpdateMobileSyncSettingsEnvelope, UpgradeBackupListEnvelope,
-    UpgradeStatusEnvelope,
+    PresenceRefreshEnvelope, PreviewImportEnvelope, ProfileRecoveryEnvelope,
+    RegisterMobileDeviceEnvelope, RelayCredentialStatusEnvelope, RelayProbeOutcomeEnvelope,
+    RelaySaveResultEnvelope, ResendEnvelope, RestartAcceptedEnvelope, RestoreEntryEnvelope,
+    RotateMobilePasswordEnvelope, SearchQueryEnvelope, SearchRebuildEnvelope, SearchStatusEnvelope,
+    SearchTagsEnvelope, SessionTokenEnvelope, SettingsEnvelope, SettingsUpdateResultEnvelope,
+    SetupCancelJoinEnvelope, SetupInitializeEnvelope, SetupIssueInvitationEnvelope,
+    SetupRedeemEnvelope, SetupStateEnvelope, SetupSwitchSpaceEnvelope, SpaceMemberListEnvelope,
+    SpaceProtectionEnvelope, StatusEnvelope, StorageStatsEnvelope, ToggleFavoriteEnvelope,
+    UnlockSpaceEnvelope, UpdateDebugModeEnvelope, UpdateMobileDeviceEnvelope,
+    UpdateMobileSyncSettingsEnvelope, UpgradeBackupListEnvelope, UpgradeStatusEnvelope,
 };
 use uc_daemon_contract::api::dto::storage::{
     ClearCacheRequest, ClearCacheResponse, DeleteUpgradeBackupRequest, DeleteUpgradeBackupResponse,
@@ -228,6 +229,7 @@ impl Modify for ContractMeta {
         crate::api::encryption::get_encryption_state_handler,
         crate::api::encryption::unlock_handler,
         crate::api::encryption::unlock_with_passphrase_handler,
+        crate::api::encryption::get_profile_recovery_handler,
         crate::api::encryption::change_encryption_passphrase_handler,
         crate::api::encryption::lock_handler,
         crate::api::encryption::factory_reset_handler,
@@ -432,6 +434,10 @@ impl Modify for ContractMeta {
             UnpairDeviceRequest,
             // ── encryption ─────────────────────────────────────────
             EncryptionStateEnvelope,
+            ProfileRecoveryEnvelope,
+            ProfileRecoveryResponse,
+            ProfileRecoveryStateDto,
+            ProfileRecoveryLossDto,
             EncryptionActionEnvelope,
             KeychainAccessEnvelope,
             UnlockSpaceEnvelope,
@@ -711,6 +717,7 @@ mod assembly_smoke_tests {
         // Upgrade backup management adds two paths and two operations: 78 / 87.
         // Passphrase changes add one path and operation: 79 / 88. Daemon-owned
         // CLI file dispatch adds one path and operation: 80 / 89.
+        // Profile recovery status adds one path and operation: 81 / 90.
         const HTTP_METHODS: [&str; 7] =
             ["get", "put", "post", "delete", "patch", "head", "options"];
         let paths = value
@@ -719,8 +726,8 @@ mod assembly_smoke_tests {
             .expect("OpenAPI doc must declare paths");
         assert_eq!(
             paths.len(),
-            80,
-            "expected exactly 80 path templates, found {}: {:?}",
+            81,
+            "expected exactly 81 path templates, found {}: {:?}",
             paths.len(),
             paths.keys().collect::<Vec<_>>()
         );
@@ -734,8 +741,8 @@ mod assembly_smoke_tests {
             })
             .sum();
         assert_eq!(
-            operation_count, 89,
-            "expected exactly 89 operations across all paths, found {operation_count}"
+            operation_count, 90,
+            "expected exactly 90 operations across all paths, found {operation_count}"
         );
 
         // A few frozen operationIds (§D) must be present somewhere in the doc.

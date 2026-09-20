@@ -40,6 +40,11 @@ pub fn build() -> Builder<tauri::Wry> {
     // daemon WS (`clipboard.delivery_status_changed`, GAP-WS-1), consumed by
     // the frontend `useEntryDelivery` via `daemonWs.subscribe`.
     Builder::<tauri::Wry>::new().commands(collect_commands![
+        crate::commands::content_lock::get_content_unlocked,
+        crate::commands::content_lock::get_profile_recovery,
+        crate::commands::content_lock::unlock_content,
+        crate::commands::content_lock::unlock_content_from_keyring,
+        crate::commands::content_lock::show_content_unlock,
         crate::desktop_theme::get_desktop_theme,
         crate::desktop_theme::set_follow_omarchy_theme,
         crate::commands::visual_effects::get_visual_effects,

@@ -6,6 +6,7 @@ import {
   enterInvitation,
   initializeSponsor,
   openFreshSetup,
+  pageDiagnostics,
   pairingComplete,
 } from '../helpers/dualPeer.js'
 
@@ -18,7 +19,15 @@ dualDescribe('设备页添加设备', () => {
     await openFreshSetup(sponsor, joiner)
     await initializeSponsor(sponsor, passphrase)
     await click(sponsor, '[data-testid="setup-complete-later"]')
-    await element(sponsor, '[data-testid="history-preview-motion"]')
+    try {
+      await element(sponsor, '[data-testid="history-preview-motion"]')
+    } catch (error) {
+      console.error(
+        'Sponsor did not enter history:',
+        JSON.stringify(await pageDiagnostics(sponsor), null, 2)
+      )
+      throw error
+    }
     await click(sponsor, 'a[href="/devices"]')
     await click(sponsor, '[data-testid="devices-add-device"]')
 
@@ -26,7 +35,7 @@ dualDescribe('设备页添加设备', () => {
       timeout: 60000,
     })
     const code = (await codeDisplay.getText()).replace(/[^A-Z0-9]/g, '')
-    expect(code).toHaveLength(8)
+    expect(code).toHaveLength(6)
 
     await click(joiner, '[data-testid="setup-entry-join"]')
     await enterInvitation(joiner, code, passphrase)

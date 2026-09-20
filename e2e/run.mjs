@@ -79,6 +79,24 @@ function resolveProfileDataDir(activeProfile) {
   )
 }
 
+function resolveProfileCacheDir(activeProfile) {
+  if (process.platform === 'win32') return resolveProfileDataDir(activeProfile)
+  if (process.platform === 'darwin') {
+    return path.join(os.homedir(), 'Library', 'Caches', `app.uniclipboard.desktop-${activeProfile}`)
+  }
+  return path.join(
+    process.env.XDG_CACHE_HOME ?? path.join(os.homedir(), '.cache'),
+    `app.uniclipboard.desktop-${activeProfile}`
+  )
+}
+
+function resolveProfileDirectories(activeProfile) {
+  const dataDir = resolveProfileDataDir(activeProfile)
+  return [
+    ...new Set([dataDir, resolveProfileCacheDir(activeProfile), `${dataDir}-upgrade-backups`]),
+  ]
+}
+
 function run(command, args, failureMessage, env = process.env) {
   const result = spawnSync(command, args, {
     cwd: rootDir,
@@ -120,9 +138,25 @@ if (specRuns.length === 0) {
 }
 
 for (const specRun of specRuns) {
+  const recoverySpec = [
+    'profile-key-recovery.e2e.js',
+    'profile-key-recovery-fresh.e2e.js',
+  ].includes(path.basename(specRun.spec))
   if (process.env.E2E_KEEP_PROFILE !== '1') {
     for (const activeProfile of specRun.profiles) {
-      fs.rmSync(resolveProfileDataDir(activeProfile), { recursive: true, force: true })
+      const cli = process.env.UC_E2E_DEV_CLI ?? path.join(rootDir, 'target/debug/uniclip')
+      spawnSync(cli, ['stop'], {
+        cwd: rootDir,
+        env: {
+          ...process.env,
+          UC_PROFILE: activeProfile,
+          UNICLIPBOARD_ENV: 'development',
+        },
+        stdio: 'ignore',
+      })
+      for (const directory of resolveProfileDirectories(activeProfile)) {
+        fs.rmSync(directory, { recursive: true, force: true })
+      }
     }
   }
   if (specRun.fixture && process.env.E2E_UPGRADE_REPAIR_CLEARED !== '1') {
@@ -144,10 +178,75 @@ for (const specRun of specRuns) {
       `升级 userdata 样本恢复失败：${path.basename(specRun.spec)}`
     )
   }
+  if (recoverySpec) {
+    const recoveryProfile = specRun.env.E2E_UC_PROFILE
+    if (!recoveryProfile?.includes('profile-key-recovery'))
+      throw new Error('Recovery test requires an isolated profile')
+    const dataDir = resolveProfileDataDir(recoveryProfile)
+    if (!specRun.fixture) {
+      const cli = process.env.UC_E2E_DEV_CLI ?? path.join(rootDir, 'target/debug/uniclip')
+      const env = {
+        ...process.env,
+        UC_PROFILE: recoveryProfile,
+        UNICLIPBOARD_ENV: 'development',
+        UC_CLIPBOARD_MODE: 'passive',
+      }
+      run(
+        cli,
+        [
+          'space',
+          'init',
+          '--passphrase',
+          specRun.env.E2E_UNLOCK_PASSPHRASE,
+          '--device-name',
+          'Recovery GUI test',
+        ],
+        'Fresh recovery setup failed',
+        env
+      )
+      run(cli, ['stop'], 'Fresh recovery daemon stop failed', env)
+    }
+    run(
+      process.env.UC_E2E_DEV_CLI ?? path.join(rootDir, 'target/debug/uniclip'),
+      ['dev', 'seed-clipboard', '--text', 'profile-recovery-original-history'],
+      'Recovery fixture preparation failed',
+      { ...process.env, UC_PROFILE: recoveryProfile, UNICLIPBOARD_ENV: 'development' }
+    )
+    if (!fs.existsSync(path.join(dataDir, 'vault/profile-secrets-v1'))) {
+      throw new Error('Encrypted recovery material was not prepared')
+    }
+    fs.renameSync(path.join(dataDir, 'keyring'), path.join(dataDir, 'keyring-test-backup'))
+  }
   run(
     'bunx',
     ['wdio', 'run', wdioConfig, '--spec', specRun.spec, ...forwardedArgs],
     `Tauri E2E 测试失败：${path.basename(specRun.spec)}`,
     { ...process.env, ...specRun.env }
   )
+  if (recoverySpec) {
+    // Close the actual GUI before stopping its background, then launch a new GUI process.
+    const cli = process.env.UC_E2E_DEV_CLI ?? path.join(rootDir, 'target/debug/uniclip')
+    const env = {
+      ...process.env,
+      ...specRun.env,
+      UC_PROFILE: specRun.env.E2E_UC_PROFILE,
+      UNICLIPBOARD_ENV: 'development',
+      UC_CLIPBOARD_MODE: 'passive',
+    }
+    run(cli, ['stop'], 'Recovered daemon stop failed', env)
+    run(
+      cli,
+      ['dev', 'seed-clipboard', '--text', 'profile-recovery-new-history'],
+      'Post-recovery encrypted write failed',
+      env
+    )
+    // The diagnostic seed writer bypasses normal capture and index updates.
+    run(cli, ['search', 'rebuild'], 'Post-recovery fixture indexing failed', env)
+    run(
+      'bunx',
+      ['wdio', 'run', wdioConfig, '--spec', specRun.spec, ...forwardedArgs],
+      'Recovery restart verification failed',
+      { ...env, E2E_RECOVERY_RESTART: '1' }
+    )
+  }
 }

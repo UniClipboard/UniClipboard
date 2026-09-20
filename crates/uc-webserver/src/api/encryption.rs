@@ -14,6 +14,8 @@ use uc_engine::error_codes::{
     ENCRYPTION_PASSPHRASE_MULTIPLE_DEVICES_CODE, ENCRYPTION_PASSPHRASE_UNAVAILABLE_CODE,
     FACTORY_RESET_FAILED_CODE, FACTORY_RESET_KEY_MATERIAL_FAILED_CODE,
     FACTORY_RESET_STORAGE_FAILED_CODE, FACTORY_RESET_UNAVAILABLE_CODE, LOCK_ENCRYPTION_FAILED_CODE,
+    PROFILE_RECOVERY_PARTIAL_CODE, PROFILE_RECOVERY_PERSISTENCE_FAILED_CODE,
+    PROFILE_RECOVERY_REQUIRED_CODE, PROFILE_RECOVERY_UNSUPPORTED_CODE,
     QUERY_ENCRYPTION_STATE_FAILED_CODE, RECOVER_SESSION_RECEIVE_UNAVAILABLE_CODE,
     UNLOCK_SPACE_CORRUPTED_CODE, UNLOCK_SPACE_NOT_INITIALIZED_CODE,
     UNLOCK_SPACE_SETUP_NOT_COMPLETED_CODE, UNLOCK_SPACE_UNAUTHORIZED_CODE,
@@ -51,6 +53,7 @@ fn map_encryption_engine_error(
 
 pub fn router() -> Router<DaemonApiState> {
     Router::new()
+        .route("/encryption/recovery", get(get_profile_recovery_handler))
         .route("/encryption/state", get(get_encryption_state_handler))
         .route("/encryption/unlock", post(unlock_handler))
         .route(
@@ -185,7 +188,39 @@ fn map_factory_reset_engine_err(error: EngineError) -> ApiError {
 
 /// Map stable engine unlock failures onto the existing HTTP error contract.
 fn map_unlock_engine_err(err: EngineError) -> ApiError {
+    debug!(engine_error_code = err.code(), category = %err.category(), "Engine rejected passphrase unlock");
     let (variant, api): (&'static str, ApiError) = match err.code() {
+        PROFILE_RECOVERY_REQUIRED_CODE
+        | PROFILE_RECOVERY_PARTIAL_CODE
+        | PROFILE_RECOVERY_UNSUPPORTED_CODE
+        | PROFILE_RECOVERY_PERSISTENCE_FAILED_CODE => {
+            let (code, message) = match err.code() {
+                PROFILE_RECOVERY_REQUIRED_CODE => {
+                    ("PROFILE_RECOVERY_REQUIRED", "profile recovery is required")
+                }
+                PROFILE_RECOVERY_PARTIAL_CODE => (
+                    "PROFILE_RECOVERY_PARTIAL",
+                    "original key material is unavailable",
+                ),
+                PROFILE_RECOVERY_UNSUPPORTED_CODE => (
+                    "PROFILE_RECOVERY_UNSUPPORTED",
+                    "profile recovery format is unsupported",
+                ),
+                _ => (
+                    "PROFILE_RECOVERY_PERSISTENCE_FAILED",
+                    "recovered keys could not be saved",
+                ),
+            };
+            (
+                "profile_recovery",
+                ApiError {
+                    status: StatusCode::CONFLICT,
+                    code: code.into(),
+                    message: message.into(),
+                    details: None,
+                },
+            )
+        }
         UNLOCK_SPACE_SETUP_NOT_COMPLETED_CODE => (
             "setup_not_completed",
             ApiError {
@@ -244,6 +279,59 @@ fn map_unlock_engine_err(err: EngineError) -> ApiError {
         &api.message,
     );
     api
+}
+
+#[utoipa::path(get, path = "/encryption/recovery", operation_id = "getProfileRecovery", tag = "encryption",
+    responses((status = 200, description = "Profile recovery status", body = ProfileRecoveryEnvelope)))]
+#[tracing::instrument(name = "api.profile_recovery.query", skip_all)]
+async fn get_profile_recovery_handler(
+    State(state): State<DaemonApiState>,
+) -> Result<
+    Json<ApiEnvelope<uc_daemon_contract::api::dto::encryption::ProfileRecoveryResponse>>,
+    ApiError,
+> {
+    use uc_daemon_contract::api::dto::encryption::{
+        ProfileRecoveryLossDto as L, ProfileRecoveryResponse, ProfileRecoveryStateDto as S,
+    };
+    use uc_engine::{ProfileRecoveryLoss as EL, ProfileRecoveryState as ES};
+    let result = state
+        .execute(Operation::QueryProfileRecovery)
+        .await
+        .map_err(|error| {
+            map_encryption_engine_error(
+                "query_profile_recovery",
+                PROFILE_RECOVERY_REQUIRED_CODE,
+                "could not query profile recovery",
+                error,
+            )
+        })?;
+    let OperationResult::ProfileRecovery(summary) = result else {
+        return Err(ApiError::internal("unexpected profile recovery result"));
+    };
+    debug!(state = ?summary.state, "Profile recovery status queried");
+    Ok(Json(ApiEnvelope::now(ProfileRecoveryResponse {
+        state: match summary.state {
+            ES::NotRequired => S::NotRequired,
+            ES::AwaitingPassphrase => S::AwaitingPassphrase,
+            ES::Recovering => S::Recovering,
+            ES::Recovered => S::Recovered,
+            ES::PartiallyRecoverable => S::PartiallyRecoverable,
+            ES::Failed => S::Failed,
+        },
+        can_submit_passphrase: summary.can_submit_passphrase,
+        restart_required: summary.restart_required,
+        background_ready: summary.background_ready,
+        cleanup_pending: summary.cleanup_pending,
+        losses: summary
+            .losses
+            .into_iter()
+            .map(|loss| match loss {
+                EL::LocalHistory => L::LocalHistory,
+                EL::LocalControlState => L::LocalControlState,
+                EL::DeviceIdentity => L::DeviceIdentity,
+            })
+            .collect(),
+    })))
 }
 
 fn map_recover_engine_err(err: EngineError) -> ApiError {
@@ -571,6 +659,31 @@ async fn verify_keychain_access_handler(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn profile_recovery_errors_keep_distinct_safe_codes() {
+        for (code, name) in [
+            (PROFILE_RECOVERY_REQUIRED_CODE, "PROFILE_RECOVERY_REQUIRED"),
+            (PROFILE_RECOVERY_PARTIAL_CODE, "PROFILE_RECOVERY_PARTIAL"),
+            (
+                PROFILE_RECOVERY_UNSUPPORTED_CODE,
+                "PROFILE_RECOVERY_UNSUPPORTED",
+            ),
+            (
+                PROFILE_RECOVERY_PERSISTENCE_FAILED_CODE,
+                "PROFILE_RECOVERY_PERSISTENCE_FAILED",
+            ),
+        ] {
+            let api = map_unlock_engine_err(EngineError::new(
+                code,
+                EngineErrorCategory::Unavailable,
+                false,
+            ));
+            assert_eq!(api.code, name);
+            assert_eq!(api.status, StatusCode::CONFLICT);
+            assert!(api.details.is_none());
+        }
+    }
 
     #[test]
     fn map_encryption_operation_errors_keeps_stable_public_messages() {

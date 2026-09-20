@@ -2,6 +2,11 @@ import { describe, expect, it } from 'vitest'
 import { redactSensitiveArgs } from '../redaction'
 
 describe('redactSensitiveArgs', () => {
+  it('redacts the named request inside content unlock positional arguments', () => {
+    expect(redactSensitiveArgs({ arg0: { passphrase: 'never-record-this' } })).toEqual({
+      arg0: { passphrase: '[REDACTED]' },
+    })
+  })
   it('masks sensitive keys recursively', () => {
     const input = {
       password: 'secret',

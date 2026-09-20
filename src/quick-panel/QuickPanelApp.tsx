@@ -4,8 +4,10 @@ import React, { useCallback, useEffect, useEffectEvent, useRef, useState } from 
 import { useTranslation } from 'react-i18next'
 import { daemonClient } from '@/api/daemon/client'
 import VisualEffectsProvider from '@/components/motion/VisualEffectsProvider'
+import { Button } from '@/components/ui/button'
 import { Toaster } from '@/components/ui/toaster'
 import { ShortcutProvider } from '@/contexts/ShortcutContext'
+import { useContentUnlocked } from '@/hooks/useContentUnlocked'
 import { usePlatform } from '@/hooks/usePlatform'
 import { useThemeSync } from '@/hooks/useThemeSync'
 import { useVisualEffectsSampling } from '@/hooks/useVisualEffectsSampling'
@@ -27,6 +29,7 @@ const QuickPanelApp: React.FC = () => {
   const { isLinux, isTauri } = usePlatform()
   const layoutClassNames = getQuickPanelLayoutClassNames(isLinux && isTauri)
   const [daemonReady, setDaemonReady] = useState(daemonClient.initialized)
+  const { unlocked: contentUnlocked } = useContentUnlocked(daemonReady)
   useThemeSync(daemonReady)
   const [bootstrapError, setBootstrapError] = useState<string | null>(null)
   const [showRequestId, setShowRequestId] = useState(0)
@@ -132,6 +135,23 @@ const QuickPanelApp: React.FC = () => {
         className={`flex h-screen w-screen items-center justify-center ${layoutClassNames.statusSurface} text-[13px] text-muted-foreground`}
       >
         {t('loading')}
+      </div>
+    )
+  } else if (contentUnlocked !== true) {
+    content = (
+      <div
+        className={`flex h-screen w-screen flex-col items-center justify-center gap-3 ${layoutClassNames.statusSurface} px-6 text-center text-[13px] text-muted-foreground`}
+      >
+        {t('history.locked.description')}
+        <Button
+          onClick={() =>
+            void commands.showContentUnlock().catch(err => {
+              log.warn({ err }, 'Could not open content unlock window')
+            })
+          }
+        >
+          {t('history.locked.action')}
+        </Button>
       </div>
     )
   } else {

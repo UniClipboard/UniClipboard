@@ -18,5 +18,9 @@ export const USER_FACING_ERROR_CODES: ReadonlySet<string> = new Set([
   "Cancelled",
   "Conflict",
   "NotFound",
+  "PROFILE_RECOVERY_REQUIRED",
+  "SETUP_NOT_COMPLETED",
+  "SPACE_NOT_INITIALIZED",
   "ValidationError",
+  "WRONG_PASSPHRASE",
 ]);

@@ -17,6 +17,7 @@ import {
 } from './helpers/conflict-userdata.mjs'
 
 const [action, name = 'four'] = process.argv.slice(2)
+const engineRepository = process.env.E2E_ENGINE_WORKTREE ?? '../Engine'
 if (!['four', 'five'].includes(name)) throw new Error('Use four or five')
 await mkdir(root, { recursive: true, mode: 0o700 })
 const baseline = join(root, name)
@@ -114,7 +115,7 @@ if (action === 'generate') {
       profiles,
       passphrase,
       createdAt: new Date().toISOString(),
-      engine: execFileSync('git', ['-C', '../Engine', 'rev-parse', 'HEAD'], {
+      engine: execFileSync('git', ['-C', engineRepository, 'rev-parse', 'HEAD'], {
         encoding: 'utf8',
       }).trim(),
       expected,
@@ -154,7 +155,7 @@ if (action === 'generate') {
     }
     if (manifest.version !== 1)
       throw new Error('Unsupported baseline version; regenerate explicitly')
-    const engine = execFileSync('git', ['-C', '../Engine', 'rev-parse', 'HEAD'], {
+    const engine = execFileSync('git', ['-C', engineRepository, 'rev-parse', 'HEAD'], {
       encoding: 'utf8',
     }).trim()
     if (!sourceRun && engine !== manifest.engine)

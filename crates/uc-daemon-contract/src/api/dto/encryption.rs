@@ -1,6 +1,59 @@
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema, specta::Type)]
+#[serde(rename_all = "snake_case")]
+pub enum ProfileRecoveryStateDto {
+    NotRequired,
+    AwaitingPassphrase,
+    Recovering,
+    Recovered,
+    PartiallyRecoverable,
+    Failed,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema, specta::Type)]
+#[serde(rename_all = "snake_case")]
+pub enum ProfileRecoveryLossDto {
+    LocalHistory,
+    LocalControlState,
+    DeviceIdentity,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct ProfileRecoveryResponse {
+    pub state: ProfileRecoveryStateDto,
+    pub can_submit_passphrase: bool,
+    pub restart_required: bool,
+    pub background_ready: bool,
+    pub cleanup_pending: bool,
+    pub losses: Vec<ProfileRecoveryLossDto>,
+}
+
+#[cfg(test)]
+mod recovery_tests {
+    use super::*;
+
+    #[test]
+    fn restart_requirement_survives_the_wire_contract() {
+        let response = ProfileRecoveryResponse {
+            state: ProfileRecoveryStateDto::Failed,
+            can_submit_passphrase: false,
+            restart_required: true,
+            background_ready: false,
+            cleanup_pending: false,
+            losses: Vec::new(),
+        };
+        let value = serde_json::to_value(response).unwrap();
+        assert_eq!(value["restartRequired"], true);
+        assert_eq!(value["canSubmitPassphrase"], false);
+        assert!(value.get("restart_required").is_none());
+        let decoded: ProfileRecoveryResponse = serde_json::from_value(value).unwrap();
+        assert!(decoded.restart_required);
+    }
+}
+
 /// Response payload for GET /encryption/state.
 ///
 /// `Deserialize` is required by the Rust daemon-client (`DaemonQueryClient`),

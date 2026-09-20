@@ -32,6 +32,10 @@ describe('真实多配置设备关系', () => {
     for (const [index, profile] of run.profiles.entries()) {
       const instance = browser['abcde'[index]]
       await instance.tauri.switchWindow('main')
+      await instance.waitUntil(
+        () => instance.execute(() => typeof window.__TAURI_INTERNALS__?.invoke === 'function'),
+        { timeout: 30000, timeoutMsg: `profile ${profile} did not finish loading the Tauri page` }
+      )
       await instance.execute(async () => {
         await window.__TAURI_INTERNALS__.invoke('plugin:window|show', {
           label: 'main',
@@ -52,6 +56,11 @@ describe('真实多配置设备关系', () => {
         30000
       )
       nodes.push(conn)
+      const unlock = await instance.$('[data-testid="unlock-content"]')
+      if (await unlock.isDisplayed()) {
+        await unlock.click()
+        await unlock.waitForExist({ timeout: 30000, reverse: true })
+      }
       if (!run.expected[index]) continue
       if (!['resolve-restored', 'verify-resolved', 'recover-frozen'].includes(scenario))
         await waitFor(async () => {

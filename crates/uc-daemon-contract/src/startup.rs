@@ -9,6 +9,7 @@ pub enum StartupStateDto {
     Upgrading,
     StartingServices,
     Ready,
+    RecoveryAvailable,
     Failed,
     Interrupted,
 }

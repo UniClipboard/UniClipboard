@@ -34,12 +34,24 @@ dualDescribe('设备移除与设备组选择', () => {
       console.error('Joiner device-trust diagnostics:', await pageDiagnostics(joiner))
       throw error
     }
-    await click(joiner, '[data-testid="device-trust-choice-apply"]')
-    await click(joiner, '[data-testid="device-trust-confirm"]')
-    await expect(
-      await element(joiner, '[data-testid="device-trust-local-removal-warning"]')
-    ).toExist()
-    await click(joiner, '[data-testid="device-trust-confirm"]')
+    let completed = false
+    for (let attempt = 0; attempt < 3 && !completed; attempt += 1) {
+      await click(joiner, '[data-testid="device-trust-choice-apply"]')
+      await click(joiner, '[data-testid="device-trust-confirm"]')
+      await expect(
+        await element(joiner, '[data-testid="device-trust-local-removal-warning"]')
+      ).toExist()
+      await click(joiner, '[data-testid="device-trust-confirm"]')
+      await joiner.waitUntil(
+        async () =>
+          (await joiner.$('[data-testid="device-trust-done"]').isExisting()) ||
+          (await joiner.$('[data-testid="device-trust-error"]').isExisting()),
+        { timeout: 30000 }
+      )
+      completed = await joiner.$('[data-testid="device-trust-done"]').isExisting()
+    }
+    await expect(await element(joiner, '[data-testid="device-trust-done"]')).toExist()
+    await click(joiner, '[data-testid="device-trust-done"]')
     await (
       await joiner.$('[data-testid="device-trust-dialog"]')
     ).waitForExist({ timeout: 30000, reverse: true })

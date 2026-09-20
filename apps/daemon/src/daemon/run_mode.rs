@@ -15,10 +15,9 @@ use uc_daemon_local::process_metadata::DaemonProcessMode;
 pub enum DaemonRunMode {
     /// 独立 daemon binary——CLI `start` / GUI detached spawn 出来，或用户手跑。
     /// 自己监听 OS 信号、自己驱动剪贴板/同步服务的 deferred-trigger。
-    /// 启动期是否走 keyring auto-unlock 不再由 run mode 决定，而由 **D9 启动
-    /// 契约**（attended / unattended，见 `startup_recovery`）按 spawn 来源裁定：
-    /// GUI-spawned 为 attended（尊重 `auto_unlock_enabled`、等 GUI 解锁），其余
-    /// 一律 force-unlock。
+    /// Startup always recovers the background encryption session. The GUI
+    /// content lock controls presentation only and never pauses clipboard or
+    /// device-sync services.
     Standalone,
     /// 无头 server daemon——CLI `start --server` 拉起的独立进程，部署在
     /// VPS / 容器里当常驻成员节点。行为与 [`Self::Standalone`] 完全一致

@@ -61,6 +61,7 @@ pub mod ws_event {
     /// 发,与 GUI 详情页的 delivery badge 配套;LAN 客户端不订阅即可忽略。
     pub const CLIPBOARD_DELIVERY_STATUS_CHANGED: &str = "clipboard.delivery_status_changed";
     pub const ENCRYPTION_SESSION_READY: &str = "encryption.session_ready";
+    pub const PROFILE_RECOVERY_CHANGED: &str = "encryption.profile_recovery_changed";
     /// Search availability snapshot event (Phase 92).
     pub const SEARCH_STATUS_SNAPSHOT: &str = "search.status_snapshot";
     /// Search rebuild progress event (Phase 92).

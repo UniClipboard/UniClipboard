@@ -12,9 +12,13 @@ export async function element(instance, selector, { timeout = 30000 } = {}) {
 }
 
 export async function click(instance, selector) {
-  await element(instance, selector)
+  const target = await element(instance, selector)
+  await target.waitForDisplayed({ timeout: 30000 })
+  await target.waitForEnabled({ timeout: 30000 })
   const clicked = await instance.execute(targetSelector => {
-    const button = document.querySelector(targetSelector)
+    const button = Array.from(document.querySelectorAll(targetSelector)).find(
+      candidate => candidate instanceof HTMLElement && candidate.offsetParent !== null
+    )
     if (!(button instanceof HTMLElement)) return false
     button.click()
     return true
@@ -106,7 +110,7 @@ export async function invitationCode(instance) {
     throw error
   }
   const code = (await display.getText()).replace(/[^A-Z0-9]/g, '')
-  expect(code).toHaveLength(8)
+  expect(code).toHaveLength(6)
   return code
 }
 

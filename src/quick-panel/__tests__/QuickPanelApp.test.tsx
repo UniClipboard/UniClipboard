@@ -10,6 +10,10 @@ const connectDaemonWsMock = vi.fn()
 const panelRenderMock = vi.fn()
 const invokeMock = vi.fn()
 let eventHandlers: Record<string, () => void> = {}
+const contentAccess = vi.hoisted(() => ({ unlocked: true as boolean | null }))
+vi.mock('@/hooks/useContentUnlocked', () => ({
+  useContentUnlocked: () => ({ unlocked: contentAccess.unlocked }),
+}))
 
 vi.mock('@/api/daemon', () => ({
   getSettings: vi.fn().mockResolvedValue({ general: { theme: 'system' } }),
@@ -59,6 +63,7 @@ function deferred() {
 describe('QuickPanelApp', () => {
   afterEach(() => vi.restoreAllMocks())
   beforeEach(() => {
+    contentAccess.unlocked = true
     vi.clearAllMocks()
     vi.mocked(subscribeDesktopTheme).mockImplementation(() => () => {})
     eventHandlers = {}
@@ -81,6 +86,20 @@ describe('QuickPanelApp', () => {
     await waitFor(() => {
       expect(screen.getByText('Clipboard history panel')).toBeInTheDocument()
     })
+  })
+
+  it.each([false, null])('does not mount history or previews when access is %s', async unlocked => {
+    contentAccess.unlocked = unlocked
+    connectDaemonWsMock.mockResolvedValue(undefined)
+    const view = render(<QuickPanelApp />)
+    await waitFor(() =>
+      expect(screen.queryByText('Connecting clipboard history...')).not.toBeInTheDocument()
+    )
+    expect(panelRenderMock).not.toHaveBeenCalled()
+    expect(screen.queryByText('Clipboard history panel')).not.toBeInTheDocument()
+    contentAccess.unlocked = true
+    view.rerender(<QuickPanelApp />)
+    expect(screen.getByText('Clipboard history panel')).toBeVisible()
   })
 
   it('themes the connecting screen before daemon bootstrap finishes', async () => {

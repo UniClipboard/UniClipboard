@@ -248,19 +248,14 @@ pub async fn run_cold_launch_actions(
         });
     }
 
-    recover_after_cold_launch(
-        connection_state.clone(),
-        settings.security.auto_unlock_enabled,
-    )
-    .await;
+    recover_after_cold_launch(connection_state.clone()).await;
 
     if settings.general.restore_last_entry_on_startup {
         // Both the pre-restore capture-current (encrypt) and the restore
         // itself (decrypt) touch encrypted history, so they need the
         // encryption session unlocked. `recover_after_cold_launch` above does
-        // NOT guarantee that: it skips unlocking entirely when auto-unlock is
-        // off, and even with it on the session may be resumed by the frontend
-        // a beat later. Wait for the session to become ready before restoring;
+        // not guarantee that because secure storage may be unavailable. Wait
+        // for the session to become ready before restoring;
         // on timeout skip (not fail) so we never fire the doomed 500-ing
         // capture+restore into a locked session (issue #1169).
         if wait_for_encryption_session_ready(

@@ -15,6 +15,12 @@ fn now_ms() -> i64 {
 
 pub fn engine_event_to_ws(event: EngineEvent) -> Option<DaemonWsEvent> {
     let (topic, event_type, ts, payload) = match event {
+        EngineEvent::ProfileRecoveryChanged(_) => (
+            ws_topic::ENCRYPTION,
+            ws_event::PROFILE_RECOVERY_CHANGED,
+            now_ms(),
+            serde_json::json!({}),
+        ),
         EngineEvent::InboundNotice(event) => (
             ws_topic::CLIPBOARD,
             ws_event::CLIPBOARD_INBOUND_NOTICE,
@@ -221,6 +227,22 @@ mod engine_event_tests {
         })
         .expect("serialize inbound notice fixture");
         serde_json::from_slice(&encoded).expect("deserialize inbound notice fixture")
+    }
+
+    #[test]
+    fn profile_recovery_events_invalidate_the_authoritative_query_without_contents() {
+        let summary = uc_engine::ProfileRecoverySummary {
+            state: uc_engine::ProfileRecoveryState::AwaitingPassphrase,
+            can_submit_passphrase: true,
+            restart_required: false,
+            background_ready: false,
+            cleanup_pending: false,
+            losses: Vec::new(),
+        };
+        let event = engine_event_to_ws(EngineEvent::ProfileRecoveryChanged(summary)).unwrap();
+        assert_eq!(event.topic, ws_topic::ENCRYPTION);
+        assert_eq!(event.event_type, ws_event::PROFILE_RECOVERY_CHANGED);
+        assert_eq!(event.payload, serde_json::json!({}));
     }
 
     #[test]

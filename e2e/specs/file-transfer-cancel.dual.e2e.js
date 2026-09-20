@@ -3,7 +3,6 @@ import path from 'node:path'
 import { browser, expect } from '@wdio/globals'
 import {
   click,
-  copyFileToSystemClipboard,
   createTransferFile,
   daemonConnection,
   daemonRequest,
@@ -49,9 +48,10 @@ dualDescribe('接收中的文件传输', () => {
 
     const transferFile = path.join(tmpdir(), `uniclip-e2e-cancel-${Date.now()}.bin`)
     createTransferFile(transferFile)
-    copyFileToSystemClipboard(transferFile)
-    const captureResponse = await daemonRequest(sponsorConnection, '/clipboard/capture-current', {
+    const captureResponse = await daemonRequest(sponsorConnection, '/clipboard/dispatch-file', {
       method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sourcePath: transferFile }),
     })
     expect(captureResponse.status).toBe(200)
 

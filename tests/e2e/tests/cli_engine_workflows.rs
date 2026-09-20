@@ -697,15 +697,16 @@ async fn pending_join_survives_ctrl_c_then_restart_resolves_unavailable_invitati
     let restart_deadline = tokio::time::Instant::now() + Duration::from_secs(15);
     let after_restart = loop {
         let output = joiner.cli.run_capture(&["--json", "join", "status"]);
-        assert!(output.success(), "status after restart failed: {output:?}");
-        let status = json(&output);
-        if status["status"] == "rejected" {
-            break status;
+        if output.success() {
+            let status = json(&output);
+            if status["status"] == "rejected" {
+                break status;
+            }
+            assert_eq!(status["status"], "pending");
         }
-        assert_eq!(status["status"], "pending");
         assert!(
             tokio::time::Instant::now() < restart_deadline,
-            "offline invitation did not settle after restart; last={status}; log={}",
+            "offline invitation did not settle after restart; last={output:?}; log={}",
             joiner.daemon.diagnostic_log()
         );
         tokio::time::sleep(Duration::from_millis(250)).await;

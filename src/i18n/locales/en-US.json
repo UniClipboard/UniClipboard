@@ -1351,6 +1351,11 @@
         "requestFailed": "Could not start connection recovery"
       }
     },
+    "membershipMaintenance": {
+      "retrying": "Device group update failed; it will retry automatically.",
+      "needsAttention": "Device group update failed. Review the device group to restore syncing.",
+      "review": "Review device group"
+    },
     "addDevice": {
       "title": "Invite a new device",
       "subtitle": "Enter this code on the computer or phone you're adding",
@@ -1936,6 +1941,10 @@
         "title": "Waiting for confirmation",
         "subtitle": "Waiting for the other device to confirm this switch."
       },
+      "processing": {
+        "title": "Completing the switch",
+        "subtitle": "The final confirmation is in progress. It will retry automatically if the connection fails."
+      },
       "success": {
         "title": "Switched space",
         "subtitle_one": "Migrated 1 clipboard record under the new master key.",
@@ -2366,6 +2375,10 @@
       }
     },
     "joinPending": {
+      "processing": {
+        "title": "Completing pairing",
+        "subtitle": "Confirmation is in progress. If the connection fails, it will be retried automatically."
+      },
       "title": "Waiting for confirmation",
       "subtitle": "Waiting for the join result.",
       "actions": { "cancel": "Cancel join", "back": "Back" },

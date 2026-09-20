@@ -6,6 +6,7 @@ import {
   EntryScreen,
   InitializeSpaceScreen,
   JoinEndedScreen,
+  JoinPendingScreen,
   PairingCompleteScreen,
   RedeemInvitationScreen,
   ShowInvitationScreen,
@@ -108,6 +109,17 @@ describe('setup screens e2e selectors', () => {
     ).toBeInTheDocument()
     await user.click(screen.getByTestId('setup-join-ended-back'))
     expect(onBack).toHaveBeenCalledTimes(1)
+  })
+
+  it('shows processing without offering cancellation after confirmation', () => {
+    const onCancel = vi.fn()
+    const { rerender } = render(<JoinPendingScreen status="pending" onCancel={onCancel} />)
+    expect(screen.getByTestId('setup-join-pending')).toBeInTheDocument()
+    expect(screen.getByTestId('setup-join-cancel')).toBeInTheDocument()
+    rerender(<JoinPendingScreen status="processing" onCancel={onCancel} />)
+    expect(screen.getByTestId('setup-join-processing')).toBeInTheDocument()
+    expect(screen.getByText('Completing pairing')).toBeInTheDocument()
+    expect(screen.queryByTestId('setup-join-cancel')).not.toBeInTheDocument()
   })
 
   it('clears the consumed invitation after a wrong passphrase', async () => {

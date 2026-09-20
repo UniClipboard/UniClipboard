@@ -15,8 +15,10 @@ use uc_engine::{
     DeviceTrustChoiceSummary, DeviceTrustImpactSummary, DeviceTrustRecoverySummary,
     DeviceTrustRelationshipSummary, DeviceTrustSnapshotSummary,
     DeviceTrustUnavailableReasonSummary, MemberProtectionStatusSummary, MemberProtectionSummary,
-    MemberSyncPreferencesPatch, MemberSyncPreferencesSummary, PairingConfirmationSummary,
-    SpaceProtectionModeSummary, SpaceProtectionSummary,
+    MemberSyncPreferencesPatch, MemberSyncPreferencesSummary,
+    MembershipMaintenanceHealthPhaseSummary, MembershipMaintenanceProblemSummary,
+    MembershipMaintenanceRecoverySummary, PairingConfirmationSummary, SpaceProtectionModeSummary,
+    SpaceProtectionSummary,
 };
 
 use super::{IntoApiDto, IntoDomain};
@@ -26,8 +28,10 @@ use crate::api::dto::member::{
     DeviceMembershipDto, DeviceReachabilityDto, DeviceSyncRelationshipDto, DeviceTrustActionDto,
     DeviceTrustChangeDto, DeviceTrustChoiceDto, DeviceTrustImpactDto, DeviceTrustRelationshipDto,
     DeviceTrustSnapshotDto, DeviceTrustUnavailableReasonDto, MemberProtectionDto,
-    MemberProtectionStatusDto, MemberSyncPreferencesDto, PairingConfirmationDto,
-    PendingInboundMemberDto, SpaceProtectionDto, SpaceProtectionModeDto,
+    MemberProtectionStatusDto, MemberSyncPreferencesDto, MembershipMaintenanceHealthDto,
+    MembershipMaintenanceHealthPhaseDto, MembershipMaintenanceProblemDto,
+    MembershipMaintenanceRecoveryDto, PairingConfirmationDto, PendingInboundMemberDto,
+    SpaceProtectionDto, SpaceProtectionModeDto,
 };
 use crate::api::dto::settings::{ContentTypesDto, ContentTypesPatchDto};
 
@@ -137,6 +141,33 @@ impl IntoApiDto<DeviceTrustSnapshotDto> for DeviceTrustSnapshotSummary {
                     display_name: member.display_name,
                 }
             }),
+            maintenance_health: MembershipMaintenanceHealthDto {
+                phase: match self.maintenance_health.phase {
+                    MembershipMaintenanceHealthPhaseSummary::Healthy => {
+                        MembershipMaintenanceHealthPhaseDto::Healthy
+                    }
+                    MembershipMaintenanceHealthPhaseSummary::Retrying => {
+                        MembershipMaintenanceHealthPhaseDto::Retrying
+                    }
+                    MembershipMaintenanceHealthPhaseSummary::NeedsAttention => {
+                        MembershipMaintenanceHealthPhaseDto::NeedsAttention
+                    }
+                },
+                reason: self.maintenance_health.reason.map(|reason| match reason {
+                    MembershipMaintenanceProblemSummary::MembershipHistoryRejected => {
+                        MembershipMaintenanceProblemDto::MembershipHistoryRejected
+                    }
+                }),
+                recovery: self
+                    .maintenance_health
+                    .recovery
+                    .map(|recovery| match recovery {
+                        MembershipMaintenanceRecoverySummary::ResolveDeviceTrust => {
+                            MembershipMaintenanceRecoveryDto::ResolveDeviceTrust
+                        }
+                    }),
+                next_retry_at_ms: self.maintenance_health.next_retry_at_ms,
+            },
             devices: self
                 .devices
                 .into_iter()
@@ -445,6 +476,12 @@ mod tests {
             }),
             current_join: None,
             pending_inbound_member: None,
+            maintenance_health: uc_engine::MembershipMaintenanceHealthSummary {
+                phase: MembershipMaintenanceHealthPhaseSummary::NeedsAttention,
+                reason: Some(MembershipMaintenanceProblemSummary::MembershipHistoryRejected),
+                recovery: Some(MembershipMaintenanceRecoverySummary::ResolveDeviceTrust),
+                next_retry_at_ms: Some(12345),
+            },
             devices: vec![DeviceTrustRelationshipSummary {
                 device_id: "device-peer".to_string(),
                 display_name: "Peer".to_string(),
@@ -470,6 +507,11 @@ mod tests {
 
         assert_eq!(mapped.local_device_id, "device-local");
         assert_eq!(mapped.revision, 7);
+        assert_eq!(
+            mapped.maintenance_health.phase,
+            MembershipMaintenanceHealthPhaseDto::NeedsAttention
+        );
+        assert_eq!(mapped.maintenance_health.next_retry_at_ms, Some(12345));
         assert_eq!(
             mapped.devices[0].pairing_confirmation,
             Some(PairingConfirmationDto::Unconfirmed)

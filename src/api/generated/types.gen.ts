@@ -796,6 +796,7 @@ export type DeviceTrustSnapshotDto = {
     devices: Array<DeviceTrustRelationshipDto>;
     localDeviceId: string;
     localMembership: DeviceMembershipDto;
+    maintenanceHealth?: MembershipMaintenanceHealthDto;
     pendingInboundMember?: PendingInboundMemberDto | null;
     recovery: string;
     revision: number;
@@ -1651,6 +1652,13 @@ export type JoinSpaceResponse = {
     targetSpaceId?: string | null;
 } | {
     joinId: string;
+    peerUpgradeRequired: boolean;
+    sponsorDeviceId: string;
+    sponsorIdentityFingerprint: string;
+    status: 'processing';
+    targetSpaceId: string;
+} | {
+    joinId: string;
     reason: JoinSpaceRejectionReason;
     status: 'rejected';
 } | {
@@ -1955,6 +1963,19 @@ export type MemberSyncResultEnvelope = {
      */
     ts: number;
 };
+
+export type MembershipMaintenanceHealthDto = {
+    nextRetryAtMs?: number | null;
+    phase: MembershipMaintenanceHealthPhaseDto;
+    reason?: MembershipMaintenanceProblemDto | null;
+    recovery?: MembershipMaintenanceRecoveryDto | null;
+};
+
+export type MembershipMaintenanceHealthPhaseDto = 'healthy' | 'retrying' | 'needs_attention';
+
+export type MembershipMaintenanceProblemDto = 'membership_history_rejected';
+
+export type MembershipMaintenanceRecoveryDto = 'resolve_device_trust';
 
 /**
  * Canonical success envelope: `{ "data": T, "ts": <unix millis i64> }`.

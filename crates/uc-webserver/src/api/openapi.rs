@@ -50,8 +50,9 @@ use crate::api::dto::member::{
     DeviceTrustChangeDto, DeviceTrustChoiceDto, DeviceTrustImpactDto, DeviceTrustRelationshipDto,
     DeviceTrustSnapshotDto, DeviceTrustUnavailableReasonDto, MemberProtectionDto,
     MemberProtectionStatusDto, MemberSyncPreferencesDto, MemberSyncPreferencesPatchDto,
-    MemberSyncResultDto, PairingConfirmationDto, PendingInboundMemberDto, SpaceProtectionDto,
-    SpaceProtectionModeDto,
+    MemberSyncResultDto, MembershipMaintenanceHealthDto, MembershipMaintenanceHealthPhaseDto,
+    MembershipMaintenanceProblemDto, MembershipMaintenanceRecoveryDto, PairingConfirmationDto,
+    PendingInboundMemberDto, SpaceProtectionDto, SpaceProtectionModeDto,
 };
 use crate::api::dto::mobile_sync::{
     LanInterfaceViewDto, MobileDeviceViewDto, MobileSyncActionResultDto, MobileSyncSettingsViewDto,
@@ -407,6 +408,10 @@ impl Modify for ContractMeta {
             DeviceTrustChangeDto,
             DeviceTrustRelationshipDto,
             DeviceTrustSnapshotDto,
+            MembershipMaintenanceHealthDto,
+            MembershipMaintenanceHealthPhaseDto,
+            MembershipMaintenanceProblemDto,
+            MembershipMaintenanceRecoveryDto,
             PendingInboundMemberDto,
             MemberProtectionDto,
             MemberProtectionStatusDto,

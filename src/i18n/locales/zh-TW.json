@@ -1350,6 +1350,11 @@
         "requestFailed": "無法開始恢復連接"
       }
     },
+    "membershipMaintenance": {
+      "retrying": "裝置群組更新暫時失敗，稍後會自動重試。",
+      "needsAttention": "裝置群組更新失敗，請檢查裝置群組以恢復同步。",
+      "review": "檢查裝置群組"
+    },
     "memberRemoval": {
       "deviceRemoved": {
         "title": "此裝置已被移除",
@@ -1935,6 +1940,10 @@
         "title": "等待對方確認",
         "subtitle": "正在等待對方確認這次切換。"
       },
+      "processing": {
+        "title": "正在完成切換",
+        "subtitle": "正在進行最終確認；連線中斷後會自動重試。"
+      },
       "success": {
         "title": "切換成功",
         "subtitle_one": "已用新主密鑰遷移 1 條剪貼簿記錄。",
@@ -2364,6 +2373,7 @@
       }
     },
     "joinPending": {
+      "processing": { "title": "正在完成配對", "subtitle": "正在確認加入；連線中斷後會自動重試。" },
       "title": "等待確認",
       "subtitle": "正在等待加入結果。",
       "actions": { "cancel": "取消加入", "back": "返回" },

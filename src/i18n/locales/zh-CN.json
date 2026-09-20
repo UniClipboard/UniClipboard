@@ -1350,6 +1350,11 @@
         "requestFailed": "无法开始恢复连接"
       }
     },
+    "membershipMaintenance": {
+      "retrying": "设备组更新暂时失败，稍后会自动重试。",
+      "needsAttention": "设备组更新失败，请检查设备组以恢复同步。",
+      "review": "检查设备组"
+    },
     "addDevice": {
       "title": "邀请新设备",
       "subtitle": "在要加入的电脑或手机上输入此邀请码",
@@ -1935,6 +1940,10 @@
         "title": "等待对方确认",
         "subtitle": "正在等待对方确认这次切换。"
       },
+      "processing": {
+        "title": "正在完成切换",
+        "subtitle": "正在进行最终确认；连接中断后会自动重试。"
+      },
       "success": {
         "title": "切换成功",
         "subtitle_one": "已用新主密钥迁移 1 条剪贴板记录。",
@@ -2364,6 +2373,7 @@
       }
     },
     "joinPending": {
+      "processing": { "title": "正在完成配对", "subtitle": "正在确认加入；连接中断后会自动重试。" },
       "title": "等待对方确认",
       "subtitle": "正在等待加入结果。",
       "actions": { "cancel": "取消加入", "back": "返回" },

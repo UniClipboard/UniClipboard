@@ -1531,6 +1531,9 @@
           "localMembership": {
             "$ref": "#/components/schemas/DeviceMembershipDto"
           },
+          "maintenanceHealth": {
+            "$ref": "#/components/schemas/MembershipMaintenanceHealthDto"
+          },
           "pendingInboundMember": {
             "allOf": [
               {
@@ -3244,6 +3247,40 @@
               "joinId": {
                 "type": "string"
               },
+              "peerUpgradeRequired": {
+                "type": "boolean"
+              },
+              "sponsorDeviceId": {
+                "type": "string"
+              },
+              "sponsorIdentityFingerprint": {
+                "type": "string"
+              },
+              "status": {
+                "enum": [
+                  "processing"
+                ],
+                "type": "string"
+              },
+              "targetSpaceId": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "joinId",
+              "targetSpaceId",
+              "sponsorDeviceId",
+              "sponsorIdentityFingerprint",
+              "peerUpgradeRequired",
+              "status"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "joinId": {
+                "type": "string"
+              },
               "reason": {
                 "$ref": "#/components/schemas/JoinSpaceRejectionReason"
               },
@@ -3701,6 +3738,58 @@
           "ts"
         ],
         "type": "object"
+      },
+      "MembershipMaintenanceHealthDto": {
+        "properties": {
+          "nextRetryAtMs": {
+            "format": "int64",
+            "nullable": true,
+            "type": "integer"
+          },
+          "phase": {
+            "$ref": "#/components/schemas/MembershipMaintenanceHealthPhaseDto"
+          },
+          "reason": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MembershipMaintenanceProblemDto"
+              }
+            ],
+            "nullable": true
+          },
+          "recovery": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MembershipMaintenanceRecoveryDto"
+              }
+            ],
+            "nullable": true
+          }
+        },
+        "required": [
+          "phase"
+        ],
+        "type": "object"
+      },
+      "MembershipMaintenanceHealthPhaseDto": {
+        "enum": [
+          "healthy",
+          "retrying",
+          "needs_attention"
+        ],
+        "type": "string"
+      },
+      "MembershipMaintenanceProblemDto": {
+        "enum": [
+          "membership_history_rejected"
+        ],
+        "type": "string"
+      },
+      "MembershipMaintenanceRecoveryDto": {
+        "enum": [
+          "resolve_device_trust"
+        ],
+        "type": "string"
       },
       "MobileDeviceListEnvelope": {
         "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",

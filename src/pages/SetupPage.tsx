@@ -80,7 +80,13 @@ const SetupScreen: React.FC<SetupScreenProps> = ({
         <RedeemInvitationScreen onSubmit={redeemInvitation} onBack={goEntry} loading={loading} />
       )
     case 'join_pending':
-      return <JoinPendingScreen onCancel={() => void cancelJoin(screen.joinId)} loading={loading} />
+      return (
+        <JoinPendingScreen
+          status={screen.status}
+          onCancel={() => void cancelJoin(screen.joinId)}
+          loading={loading}
+        />
+      )
     case 'join_ended':
       return <JoinEndedScreen reason={screen.reason} onBack={startJoinSpace} />
     case 'space_ready':

@@ -705,6 +705,19 @@ pub(crate) fn join_space_response(status: JoinSpaceStatusSummary) -> JoinSpaceRe
             cancel_requested,
             peer_upgrade_required,
         },
+        JoinSpaceStatusSummary::Processing {
+            join_id,
+            target_space_id,
+            sponsor_device_id,
+            sponsor_identity_fingerprint,
+            peer_upgrade_required,
+        } => JoinSpaceResponse::Processing {
+            join_id,
+            target_space_id,
+            sponsor_device_id,
+            sponsor_identity_fingerprint,
+            peer_upgrade_required,
+        },
         JoinSpaceStatusSummary::Rejected { join_id, reason } => JoinSpaceResponse::Rejected {
             join_id,
             reason: match reason {

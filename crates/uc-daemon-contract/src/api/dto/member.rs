@@ -229,11 +229,43 @@ pub struct DeviceTrustSnapshotDto {
     pub current_change: Option<DeviceTrustChangeDto>,
     pub current_join: Option<JoinSpaceResponse>,
     pub pending_inbound_member: Option<PendingInboundMemberDto>,
+    #[serde(default)]
+    pub maintenance_health: MembershipMaintenanceHealthDto,
     pub devices: Vec<DeviceTrustRelationshipDto>,
     pub recovery: String,
     pub allowed_actions: Vec<DeviceTrustActionDto>,
     pub blocked_reason: Option<DeviceTrustUnavailableReasonDto>,
     pub updated_at_ms: i64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum MembershipMaintenanceHealthPhaseDto {
+    #[default]
+    Healthy,
+    Retrying,
+    NeedsAttention,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum MembershipMaintenanceProblemDto {
+    MembershipHistoryRejected,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum MembershipMaintenanceRecoveryDto {
+    ResolveDeviceTrust,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct MembershipMaintenanceHealthDto {
+    pub phase: MembershipMaintenanceHealthPhaseDto,
+    pub reason: Option<MembershipMaintenanceProblemDto>,
+    pub recovery: Option<MembershipMaintenanceRecoveryDto>,
+    pub next_retry_at_ms: Option<i64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
@@ -327,12 +359,30 @@ mod device_group_choice_dto_tests {
             current_change: None,
             current_join: None,
             pending_inbound_member: None,
+            maintenance_health: MembershipMaintenanceHealthDto::default(),
             devices: Vec::new(),
             recovery: "not_available_in_this_version".to_string(),
             allowed_actions: Vec::new(),
             blocked_reason: None,
             updated_at_ms: 1,
         }
+    }
+
+    #[test]
+    fn maintenance_health_uses_stable_wire_fields_and_defaults() {
+        let mut value = serde_json::to_value(snapshot()).unwrap();
+        value["maintenanceHealth"] = json!({
+            "phase": "needs_attention", "reason": "membership_history_rejected",
+            "recovery": "resolve_device_trust", "nextRetryAtMs": 12345
+        });
+        let decoded: DeviceTrustSnapshotDto = serde_json::from_value(value.clone()).unwrap();
+        assert_eq!(serde_json::to_value(decoded).unwrap(), value);
+        value.as_object_mut().unwrap().remove("maintenanceHealth");
+        let legacy: DeviceTrustSnapshotDto = serde_json::from_value(value).unwrap();
+        assert_eq!(
+            legacy.maintenance_health.phase,
+            MembershipMaintenanceHealthPhaseDto::Healthy
+        );
     }
 
     #[test]

@@ -8,6 +8,18 @@ import { fetchLocalDeviceInfo, fetchSpaceMembers } from '@/store/slices/devicesS
 const switchSpace = vi.hoisted(() => vi.fn())
 const cancelJoinSpace = vi.hoisted(() => vi.fn())
 
+vi.mock('@/components/InvitationCodeInput', () => ({
+  InvitationCodeInput: ({
+    id,
+    value,
+    onChange,
+  }: {
+    id?: string
+    value: string
+    onChange: (value: string) => void
+  }) => <input id={id} value={value} onChange={event => onChange(event.target.value)} />,
+}))
+
 vi.mock('@/api/daemon/setupV2', () => ({
   switchSpace: (...args: unknown[]) => switchSpace(...args),
   cancelJoinSpace: (...args: unknown[]) => cancelJoinSpace(...args),

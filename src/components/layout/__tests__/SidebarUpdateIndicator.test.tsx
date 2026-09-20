@@ -88,10 +88,11 @@ function renderSidebar(state: UpdateState, setting: Settings = baseSetting) {
         updateKeyboardShortcuts: vi.fn(),
         updateFileSyncSetting: vi.fn(),
         updateNetworkSetting: vi.fn().mockResolvedValue({ restartRequired: false }),
-        saveRelay: vi.fn().mockResolvedValue({
-          restartRequired: false,
-          credentialStatus: { configured: false },
-        }),
+        customRelays: [],
+        relayLoading: false,
+        relayError: null,
+        reloadCustomRelays: vi.fn(),
+        mutateCustomRelay: vi.fn().mockResolvedValue({ relays: [], restartRequired: false }),
         updateQuickPanelSetting: vi.fn().mockResolvedValue({ restartRequired: false }),
       }}
     >
@@ -121,15 +122,21 @@ function renderSidebarAt(pathname: string) {
         updateKeyboardShortcuts: vi.fn(),
         updateFileSyncSetting: vi.fn(),
         updateNetworkSetting: vi.fn().mockResolvedValue({ restartRequired: false }),
-        saveRelay: vi.fn().mockResolvedValue({
-          restartRequired: false,
-          credentialStatus: { configured: false },
-        }),
+        customRelays: [],
+        relayLoading: false,
+        relayError: null,
+        reloadCustomRelays: vi.fn(),
+        mutateCustomRelay: vi.fn().mockResolvedValue({ relays: [], restartRequired: false }),
         updateQuickPanelSetting: vi.fn().mockResolvedValue({ restartRequired: false }),
       }}
     >
       <UpdateContext.Provider
-        value={buildUpdateValue({ phase: 'idle', info: null, downloaded: 0, total: null })}
+        value={buildUpdateValue({
+          phase: 'idle',
+          info: null,
+          downloaded: 0,
+          total: null,
+        })}
       >
         <MemoryRouter initialEntries={[pathname]}>
           <Sidebar />
@@ -234,7 +241,10 @@ describe('Sidebar update indicator', () => {
   })
 
   it('shows debug badge and disables debug mode through diagnostics', async () => {
-    mockUpdateDebugMode.mockResolvedValue({ debugMode: false, restartRequired: true })
+    mockUpdateDebugMode.mockResolvedValue({
+      debugMode: false,
+      restartRequired: true,
+    })
     const debugSetting: Settings = {
       ...baseSetting,
       general: { ...baseSetting.general, debugMode: true },

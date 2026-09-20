@@ -2,9 +2,22 @@ import { daemonClient } from '@/api/daemon/client'
 import { visualEffectsApi } from '@/api/visual-effects'
 import { INITIAL_EFFECTS, initializeVisualEffects } from '@/lib/visual-effects-store'
 
+declare global {
+  interface Window {
+    __settingsFixtureNative?: {
+      restartCalls: number
+      restartShouldFail: boolean
+    }
+  }
+}
+
 /** Isolate visual checks from the user's daemon, credentials and external services. */
 export function installSettingsFixtureEnvironment() {
   let callbackId = 0
+  window.__settingsFixtureNative = {
+    restartCalls: 0,
+    restartShouldFail: false,
+  }
   Object.defineProperty(window, '__TAURI_INTERNALS__', {
     configurable: true,
     value: {
@@ -16,6 +29,13 @@ export function installSettingsFixtureEnvironment() {
         if (command === 'get_daemon_session')
           return { sessionToken: 'visual-fixture', expiresInSecs: 3600 }
         if (command === 'get_quick_panel_double_tap_availability') return 'supported'
+        if (command === 'restart_daemon') {
+          const native = window.__settingsFixtureNative!
+          native.restartCalls += 1
+          return native.restartShouldFail
+            ? { status: 'error', error: { code: 'restart_failed', message: 'fixture failure' } }
+            : { status: 'ok', data: null }
+        }
         if (command === 'plugin:event|listen') return callbackId
         if (command === 'plugin:event|unlisten' || command === 'plugin:webview|set_webview_zoom')
           return null
@@ -33,6 +53,9 @@ export function installSettingsFixtureEnvironment() {
       })
     }
     if (url.pathname.startsWith('/fixture-daemon/')) {
+      if (url.pathname === '/fixture-daemon/settings/relay-probe') {
+        return Response.json({ data: { kind: 'success', latencyMs: 12 }, ts: Date.now() })
+      }
       const responses: Record<string, unknown> = {
         '/fixture-daemon/storage/stats': {
           totalBytes: 52428800,
@@ -57,9 +80,10 @@ export function installSettingsFixtureEnvironment() {
     }
     return originalFetch(request, options)
   }
+  const fixtureOrigin = location.protocol === 'file:' ? 'http://fixture.local' : location.origin
   daemonClient.initialize({
-    baseUrl: `${location.origin}/fixture-daemon`,
-    wsUrl: `ws://${location.host}/fixture-daemon/ws`,
+    baseUrl: `${fixtureOrigin}/fixture-daemon`,
+    wsUrl: `ws://fixture.local/fixture-daemon/ws`,
   })
   let effects = { ...INITIAL_EFFECTS, sessionId: 'settings-fixture', persistence: 'saved' as const }
   visualEffectsApi.get = async () => effects

@@ -86,10 +86,11 @@ function setup(setting: Settings = baseSetting) {
     updateKeyboardShortcuts: vi.fn(),
     updateFileSyncSetting: vi.fn(),
     updateNetworkSetting: vi.fn().mockResolvedValue({ restartRequired: false }),
-    saveRelay: vi.fn().mockResolvedValue({
-      restartRequired: false,
-      credentialStatus: { configured: false },
-    }),
+    customRelays: [],
+    relayLoading: false,
+    relayError: null,
+    reloadCustomRelays: vi.fn(),
+    mutateCustomRelay: vi.fn().mockResolvedValue({ relays: [], restartRequired: false }),
     updateQuickPanelSetting: vi.fn().mockResolvedValue({ restartRequired: false }),
   })
   return { reloadSetting }
@@ -159,7 +160,10 @@ describe('GeneralSection debug diagnostics controls', () => {
 
   it('enables debug mode then restarts the daemon and app after confirmation', async () => {
     const user = userEvent.setup()
-    mockUpdateDebugMode.mockResolvedValue({ debugMode: true, restartRequired: true })
+    mockUpdateDebugMode.mockResolvedValue({
+      debugMode: true,
+      restartRequired: true,
+    })
     const { reloadSetting } = setup()
 
     render(<GeneralSection />)
@@ -183,7 +187,10 @@ describe('GeneralSection debug diagnostics controls', () => {
 
   it('keeps the dialog open in a forced restarting state after confirmation', async () => {
     const user = userEvent.setup()
-    mockUpdateDebugMode.mockResolvedValue({ debugMode: true, restartRequired: true })
+    mockUpdateDebugMode.mockResolvedValue({
+      debugMode: true,
+      restartRequired: true,
+    })
     setup()
 
     render(<GeneralSection />)
@@ -210,7 +217,10 @@ describe('GeneralSection debug diagnostics controls', () => {
 
   it('reloads the saved debug mode when restart fails', async () => {
     const user = userEvent.setup()
-    mockUpdateDebugMode.mockResolvedValue({ debugMode: true, restartRequired: true })
+    mockUpdateDebugMode.mockResolvedValue({
+      debugMode: true,
+      restartRequired: true,
+    })
     mockRestartDaemon.mockRejectedValueOnce(new Error('restart failed'))
     const { reloadSetting } = setup()
 
@@ -221,7 +231,9 @@ describe('GeneralSection debug diagnostics controls', () => {
 
     await waitFor(() => expect(reloadSetting).toHaveBeenCalledOnce())
     expect(
-      screen.getByRole('button', { name: /settings\.sections\.general\.logs\.debug\.confirm$/ })
+      screen.getByRole('button', {
+        name: /settings\.sections\.general\.logs\.debug\.confirm$/,
+      })
     ).toBeInTheDocument()
     expect(mockRestartApp).not.toHaveBeenCalled()
   })
@@ -270,7 +282,9 @@ describe('GeneralSection debug diagnostics controls', () => {
 
     render(<GeneralSection />)
 
-    const toggle = await screen.findByRole('switch', { name: /logs\.capture\.label/ })
+    const toggle = await screen.findByRole('switch', {
+      name: /logs\.capture\.label/,
+    })
     await waitFor(() => expect(toggle).toBeEnabled())
     await user.click(toggle)
 
@@ -288,7 +302,9 @@ describe('GeneralSection debug diagnostics controls', () => {
 
     render(<GeneralSection />)
 
-    const toggle = await screen.findByRole('switch', { name: /logs\.capture\.label/ })
+    const toggle = await screen.findByRole('switch', {
+      name: /logs\.capture\.label/,
+    })
     await waitFor(() => expect(toggle).toBeEnabled())
     await user.click(toggle)
 
@@ -307,7 +323,9 @@ describe('GeneralSection debug diagnostics controls', () => {
 
     render(<GeneralSection />)
 
-    const toggle = await screen.findByRole('switch', { name: /logs\.capture\.label/ })
+    const toggle = await screen.findByRole('switch', {
+      name: /logs\.capture\.label/,
+    })
     await waitFor(() => expect(toggle).toBeChecked())
     await user.click(toggle)
 
@@ -323,7 +341,9 @@ describe('GeneralSection debug diagnostics controls', () => {
 
     render(<GeneralSection />)
     await user.click(
-      screen.getByRole('button', { name: 'settings.sections.general.logs.export.button' })
+      screen.getByRole('button', {
+        name: 'settings.sections.general.logs.export.button',
+      })
     )
 
     await waitFor(() => expect(mockExportStartupLogs).toHaveBeenCalledOnce())
@@ -355,7 +375,9 @@ describe('GeneralSection debug diagnostics controls', () => {
 
     render(<GeneralSection />)
     await user.click(
-      screen.getByRole('button', { name: 'settings.sections.general.logs.export.button' })
+      screen.getByRole('button', {
+        name: 'settings.sections.general.logs.export.button',
+      })
     )
 
     await waitFor(() =>

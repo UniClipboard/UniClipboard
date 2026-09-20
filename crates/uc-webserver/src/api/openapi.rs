@@ -66,7 +66,8 @@ use crate::api::dto::search::{
     SearchTagDto,
 };
 use crate::api::dto::settings::{
-    CongestionControllerDto, ContentTypesDto, ContentTypesPatchDto, FileSyncSettingsDto,
+    CongestionControllerDto, ContentTypesDto, ContentTypesPatchDto, CustomRelayDto,
+    CustomRelayMutationDto, CustomRelayMutationResultDto, FileSyncSettingsDto,
     FileSyncSettingsPatchDto, GeneralSettingsDto, GeneralSettingsPatchDto,
     KeyboardShortcutsPatchDto, NetworkSettingsDto, NetworkSettingsPatchDto, PairingSettingsDto,
     PairingSettingsPatchDto, QuickPanelDoubleTapModifierDto, QuickPanelPositionDto,
@@ -102,7 +103,8 @@ use uc_daemon_contract::api::dto::config::{
 use uc_daemon_contract::api::dto::envelope::{
     AckUpgradeEnvelope, CancelEntryReceiveEnvelope, CancelTransferEnvelope,
     CaptureCurrentClipboardEnvelope, CaptureUiEventEnvelope, ClearCacheEnvelope,
-    ClearHistoryEnvelope, ClipboardStatsEnvelope, DebugStatusEnvelope, DeleteUpgradeBackupEnvelope,
+    ClearHistoryEnvelope, ClipboardStatsEnvelope, CustomRelayListEnvelope,
+    CustomRelayMutationResultEnvelope, DebugStatusEnvelope, DeleteUpgradeBackupEnvelope,
     DeviceGroupChoiceResultEnvelope, DeviceGroupChoicesEnvelope, DeviceTrustEnvelope,
     DiagnosticCaptureStopEnvelope, DiagnosticStatusEnvelope, DispatchOutcomeEnvelope,
     EncryptionActionEnvelope, EncryptionStateEnvelope, EntryDeliveryViewEnvelope,
@@ -240,6 +242,8 @@ impl Modify for ContractMeta {
         crate::api::settings::probe_relay_url_handler,
         crate::api::settings::get_relay_credential_handler,
         crate::api::settings::save_relay_handler,
+        crate::api::settings::get_custom_relays_handler,
+        crate::api::settings::mutate_custom_relay_handler,
         crate::api::diagnostics::get_debug_status_handler,
         crate::api::diagnostics::update_debug_mode_handler,
         crate::api::diagnostics::get_capture_status_handler,
@@ -453,8 +457,13 @@ impl Modify for ContractMeta {
             RelayProbeOutcomeEnvelope,
             RelayCredentialStatusEnvelope,
             RelaySaveResultEnvelope,
+            CustomRelayListEnvelope,
+            CustomRelayMutationResultEnvelope,
             SettingsDto,
             SettingsUpdateResultDto,
+            CustomRelayDto,
+            CustomRelayMutationDto,
+            CustomRelayMutationResultDto,
             RelayProbeRequestDto,
             RelayProbeCredentialDto,
             RelayProbeOutcomeDto,
@@ -718,6 +727,7 @@ mod assembly_smoke_tests {
         // Passphrase changes add one path and operation: 79 / 88. Daemon-owned
         // CLI file dispatch adds one path and operation: 80 / 89.
         // Profile recovery status adds one path and operation: 81 / 90.
+        // Engine-owned custom relay query/mutation share one path: 82 / 92.
         const HTTP_METHODS: [&str; 7] =
             ["get", "put", "post", "delete", "patch", "head", "options"];
         let paths = value
@@ -726,8 +736,8 @@ mod assembly_smoke_tests {
             .expect("OpenAPI doc must declare paths");
         assert_eq!(
             paths.len(),
-            81,
-            "expected exactly 81 path templates, found {}: {:?}",
+            82,
+            "expected exactly 82 path templates, found {}: {:?}",
             paths.len(),
             paths.keys().collect::<Vec<_>>()
         );
@@ -741,8 +751,8 @@ mod assembly_smoke_tests {
             })
             .sum();
         assert_eq!(
-            operation_count, 90,
-            "expected exactly 90 operations across all paths, found {operation_count}"
+            operation_count, 92,
+            "expected exactly 92 operations across all paths, found {operation_count}"
         );
 
         // A few frozen operationIds (§D) must be present somewhere in the doc.
@@ -759,6 +769,8 @@ mod assembly_smoke_tests {
             "getSpaceProtection",
             "getDeviceGroupChoices",
             "chooseDeviceGroup",
+            "getCustomRelays",
+            "mutateCustomRelay",
         ] {
             assert!(
                 json.contains(&format!("\"{op}\"")),

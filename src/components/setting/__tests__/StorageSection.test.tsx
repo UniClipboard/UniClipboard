@@ -147,10 +147,11 @@ const setupSetting = ({
     updateKeyboardShortcuts: vi.fn(),
     updateFileSyncSetting: vi.fn(),
     updateNetworkSetting: vi.fn().mockResolvedValue({ restartRequired: false }),
-    saveRelay: vi.fn().mockResolvedValue({
-      restartRequired: false,
-      credentialStatus: { configured: false },
-    }),
+    customRelays: [],
+    relayLoading: false,
+    relayError: null,
+    reloadCustomRelays: vi.fn(),
+    mutateCustomRelay: vi.fn().mockResolvedValue({ relays: [], restartRequired: false }),
     updateQuickPanelSetting: vi.fn().mockResolvedValue({ restartRequired: false }),
   })
   return { mockUpdate }
@@ -188,7 +189,9 @@ describe('StorageSection delete confirmation setting', () => {
     setupSetting()
     render(<StorageSection />)
 
-    const toggle = await screen.findByRole('switch', { name: 'Confirm before deleting' })
+    const toggle = await screen.findByRole('switch', {
+      name: 'Confirm before deleting',
+    })
     expect(toggle).toBeChecked()
 
     await user.click(toggle)

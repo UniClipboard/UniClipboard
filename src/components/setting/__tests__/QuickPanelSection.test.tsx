@@ -125,10 +125,11 @@ function setup(Section: ComponentType = QuickPanelSection) {
     updateKeyboardShortcuts: vi.fn(),
     updateFileSyncSetting: vi.fn(),
     updateNetworkSetting: vi.fn().mockResolvedValue({ restartRequired: false }),
-    saveRelay: vi.fn().mockResolvedValue({
-      restartRequired: false,
-      credentialStatus: { configured: false },
-    }),
+    customRelays: [],
+    relayLoading: false,
+    relayError: null,
+    reloadCustomRelays: vi.fn(),
+    mutateCustomRelay: vi.fn().mockResolvedValue({ relays: [], restartRequired: false }),
     updateQuickPanelSetting,
   })
 

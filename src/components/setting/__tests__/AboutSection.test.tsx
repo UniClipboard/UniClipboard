@@ -86,10 +86,11 @@ function renderAboutSection({
         updateKeyboardShortcuts: vi.fn(),
         updateFileSyncSetting: vi.fn(),
         updateNetworkSetting: vi.fn().mockResolvedValue({ restartRequired: false }),
-        saveRelay: vi.fn().mockResolvedValue({
-          restartRequired: false,
-          credentialStatus: { configured: false },
-        }),
+        customRelays: [],
+        relayLoading: false,
+        relayError: null,
+        reloadCustomRelays: vi.fn(),
+        mutateCustomRelay: vi.fn().mockResolvedValue({ relays: [], restartRequired: false }),
         updateQuickPanelSetting: vi.fn().mockResolvedValue({ restartRequired: false }),
       }}
     >
@@ -102,7 +103,11 @@ function renderAboutSection({
           downloadUpdate: vi.fn().mockResolvedValue(undefined),
           cancelDownload: vi.fn().mockResolvedValue(undefined),
           installUpdate: vi.fn(),
-          downloadProgress: { downloaded: 0, total: null, phase: 'idle' as const },
+          downloadProgress: {
+            downloaded: 0,
+            total: null,
+            phase: 'idle' as const,
+          },
           installKind: 'macos',
           isSystemManaged: false,
           isManualUpdate: false,
@@ -132,7 +137,11 @@ describe('AboutSection', () => {
 
     const { user } = renderAboutSection({ checkForUpdates })
 
-    await user.click(screen.getByRole('button', { name: 'settings.sections.about.checkUpdate' }))
+    await user.click(
+      screen.getByRole('button', {
+        name: 'settings.sections.about.checkUpdate',
+      })
+    )
 
     await waitFor(() => {
       expect(checkForUpdates).toHaveBeenCalledTimes(1)
@@ -153,7 +162,9 @@ describe('AboutSection', () => {
     await user.click(autoCheckSwitch)
 
     await waitFor(() => {
-      expect(updateGeneralSetting).toHaveBeenCalledWith({ autoCheckUpdate: false })
+      expect(updateGeneralSetting).toHaveBeenCalledWith({
+        autoCheckUpdate: false,
+      })
     })
   })
 
@@ -168,7 +179,9 @@ describe('AboutSection', () => {
     await user.click(autoDownloadSwitch)
 
     await waitFor(() => {
-      expect(updateGeneralSetting).toHaveBeenCalledWith({ autoDownloadUpdate: true })
+      expect(updateGeneralSetting).toHaveBeenCalledWith({
+        autoDownloadUpdate: true,
+      })
     })
   })
 
@@ -176,7 +189,11 @@ describe('AboutSection', () => {
     renderAboutSection({
       setting: {
         ...baseSetting,
-        general: { ...baseSetting.general, autoCheckUpdate: false, autoDownloadUpdate: true },
+        general: {
+          ...baseSetting.general,
+          autoCheckUpdate: false,
+          autoDownloadUpdate: true,
+        },
       },
     })
 
@@ -232,15 +249,22 @@ describe('AboutSection', () => {
   it('checks the newly selected channel immediately after saving it', async () => {
     const updateGeneralSetting = vi.fn().mockResolvedValue(undefined)
     const checkForUpdates = vi.fn().mockResolvedValue(null)
-    const { user } = renderAboutSection({ updateGeneralSetting, checkForUpdates })
+    const { user } = renderAboutSection({
+      updateGeneralSetting,
+      checkForUpdates,
+    })
 
     await user.click(screen.getByRole('combobox'))
     await user.click(
-      await screen.findByRole('option', { name: 'settings.sections.about.updateChannel.stable' })
+      await screen.findByRole('option', {
+        name: 'settings.sections.about.updateChannel.stable',
+      })
     )
 
     await waitFor(() => {
-      expect(updateGeneralSetting).toHaveBeenCalledWith({ updateChannel: 'stable' })
+      expect(updateGeneralSetting).toHaveBeenCalledWith({
+        updateChannel: 'stable',
+      })
     })
     expect(checkForUpdates).toHaveBeenCalledWith('stable')
   })
@@ -248,11 +272,16 @@ describe('AboutSection', () => {
   it('warns before switching to alpha and checks alpha after confirmation', async () => {
     const updateGeneralSetting = vi.fn().mockResolvedValue(undefined)
     const checkForUpdates = vi.fn().mockResolvedValue(null)
-    const { user } = renderAboutSection({ updateGeneralSetting, checkForUpdates })
+    const { user } = renderAboutSection({
+      updateGeneralSetting,
+      checkForUpdates,
+    })
 
     await user.click(screen.getByRole('combobox'))
     await user.click(
-      await screen.findByRole('option', { name: 'settings.sections.about.updateChannel.alpha' })
+      await screen.findByRole('option', {
+        name: 'settings.sections.about.updateChannel.alpha',
+      })
     )
 
     expect(
@@ -267,7 +296,9 @@ describe('AboutSection', () => {
     )
 
     await waitFor(() => {
-      expect(updateGeneralSetting).toHaveBeenCalledWith({ updateChannel: 'alpha' })
+      expect(updateGeneralSetting).toHaveBeenCalledWith({
+        updateChannel: 'alpha',
+      })
     })
     expect(checkForUpdates).toHaveBeenCalledWith('alpha')
   })

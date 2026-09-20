@@ -1,6 +1,12 @@
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { getSettings, saveRelay as persistRelay, updateSettings } from '@/api/daemon'
+import {
+  CustomRelayMutationError,
+  getCustomRelays,
+  getSettings,
+  mutateCustomRelay,
+  updateSettings,
+} from '@/api/daemon'
 import type { Settings } from '@/api/daemon/settings'
 import { SettingProvider } from '@/contexts/SettingContext'
 import { useSetting } from '@/hooks/useSetting'
@@ -10,8 +16,14 @@ import { invokeWithTrace } from '@/lib/tauri-command'
 import { makeBaseSettings } from '@/test/fixtures/settings'
 
 vi.mock('@/api/daemon', () => ({
+  CustomRelayMutationError: class CustomRelayMutationError extends Error {
+    constructor(public readonly kind: string) {
+      super(kind)
+    }
+  },
+  getCustomRelays: vi.fn(),
   getSettings: vi.fn(),
-  saveRelay: vi.fn(),
+  mutateCustomRelay: vi.fn(),
   updateSettings: vi.fn(),
 }))
 
@@ -38,7 +50,8 @@ vi.mock('@/i18n', () => ({
 }))
 
 const mockGetSettings = vi.mocked(getSettings)
-const mockPersistRelay = vi.mocked(persistRelay)
+const mockGetCustomRelays = vi.mocked(getCustomRelays)
+const mockMutateCustomRelay = vi.mocked(mutateCustomRelay)
 const mockUpdateSettings = vi.mocked(updateSettings)
 const mockConnectDaemonWs = vi.mocked(connectDaemonWs)
 const mockEmitSettingsChanged = vi.mocked(emitSettingsChanged)
@@ -59,12 +72,14 @@ describe('SettingContext network — updateNetworkSetting + saveSetting restartR
     vi.clearAllMocks()
     mockConnectDaemonWs.mockResolvedValue(undefined)
     mockGetSettings.mockResolvedValue(baseSetting)
-    mockUpdateSettings.mockResolvedValue({ success: true, restartRequired: false })
-    mockPersistRelay.mockResolvedValue({
+    mockGetCustomRelays.mockResolvedValue([])
+    mockUpdateSettings.mockResolvedValue({
       success: true,
+      restartRequired: false,
+    })
+    mockMutateCustomRelay.mockResolvedValue({
+      relays: [],
       restartRequired: true,
-      credentialStatus: { configured: false },
-      settings: baseSetting,
     })
     mockEmitSettingsChanged.mockResolvedValue(undefined)
     mockInvokeWithTrace.mockResolvedValue(undefined)
@@ -85,11 +100,16 @@ describe('SettingContext network — updateNetworkSetting + saveSetting restartR
       expect(result.current.setting).toEqual(baseSetting)
     })
 
-    mockUpdateSettings.mockResolvedValueOnce({ success: true, restartRequired: true })
+    mockUpdateSettings.mockResolvedValueOnce({
+      success: true,
+      restartRequired: true,
+    })
 
     let outcome: { restartRequired: boolean } | undefined
     await act(async () => {
-      outcome = await result.current.updateNetworkSetting({ allowRelayFallback: false })
+      outcome = await result.current.updateNetworkSetting({
+        allowRelayFallback: false,
+      })
     })
 
     expect(outcome).toEqual({ restartRequired: true })
@@ -101,7 +121,10 @@ describe('SettingContext network — updateNetworkSetting + saveSetting restartR
       expect(result.current.setting).toEqual(baseSetting)
     })
 
-    mockUpdateSettings.mockResolvedValueOnce({ success: true, restartRequired: true })
+    mockUpdateSettings.mockResolvedValueOnce({
+      success: true,
+      restartRequired: true,
+    })
 
     await act(async () => {
       await result.current.updateNetworkSetting({ allowRelayFallback: false })
@@ -171,11 +194,16 @@ describe('SettingContext network — updateNetworkSetting + saveSetting restartR
       expect(result.current.setting).toEqual(baseSetting)
     })
 
-    mockUpdateSettings.mockResolvedValueOnce({ success: true, restartRequired: false })
+    mockUpdateSettings.mockResolvedValueOnce({
+      success: true,
+      restartRequired: false,
+    })
 
     let outcome: { restartRequired: boolean } | undefined
     await act(async () => {
-      outcome = await result.current.updateNetworkSetting({ allowRelayFallback: true })
+      outcome = await result.current.updateNetworkSetting({
+        allowRelayFallback: true,
+      })
     })
 
     expect(outcome).toEqual({ restartRequired: false })
@@ -185,7 +213,10 @@ describe('SettingContext network — updateNetworkSetting + saveSetting restartR
     const { result } = renderSettingHook()
     await waitFor(() => expect(result.current.setting).toEqual(baseSetting))
 
-    mockUpdateSettings.mockResolvedValueOnce({ success: false, restartRequired: false })
+    mockUpdateSettings.mockResolvedValueOnce({
+      success: false,
+      restartRequired: false,
+    })
 
     await act(async () => {
       await expect(
@@ -216,7 +247,9 @@ describe('SettingContext network — updateNetworkSetting + saveSetting restartR
     let networkSave!: Promise<{ restartRequired: boolean }>
     let generalSave!: Promise<void>
     act(() => {
-      networkSave = result.current.updateNetworkSetting({ allowRelayFallback: false })
+      networkSave = result.current.updateNetworkSetting({
+        allowRelayFallback: false,
+      })
       generalSave = result.current.updateGeneralSetting({ theme: 'dark' })
     })
 
@@ -274,7 +307,39 @@ describe('SettingContext network — updateNetworkSetting + saveSetting restartR
     expect(result.current.setting?.network?.allowRelayFallback).toBe(false)
   })
 
-  it('builds a queued relay save from settings committed by the preceding mutation', async () => {
+  it('uses the Engine relay list instead of a stale list embedded in settings', async () => {
+    mockGetSettings.mockResolvedValueOnce({
+      ...baseSetting,
+      network: {
+        ...baseSetting.network,
+        customRelayUrls: ['https://stale.example.com'],
+      },
+    })
+    mockGetCustomRelays.mockResolvedValueOnce([
+      { url: 'https://relay.example.com/', credentialConfigured: true },
+    ])
+
+    const { result } = renderSettingHook()
+    await waitFor(() => expect(result.current.relayLoading).toBe(false))
+
+    expect(result.current.customRelays).toEqual([
+      { url: 'https://relay.example.com/', credentialConfigured: true },
+    ])
+    expect(result.current.setting?.network.customRelayUrls).toEqual(['https://relay.example.com/'])
+  })
+
+  it('keeps the settings page available when only the relay list fails to load', async () => {
+    mockGetCustomRelays.mockRejectedValueOnce(new Error('relay request failed'))
+
+    const { result } = renderSettingHook()
+    await waitFor(() => expect(result.current.relayLoading).toBe(false))
+
+    expect(result.current.setting).toEqual(baseSetting)
+    expect(result.current.error).toBeNull()
+    expect(result.current.relayError).toContain('relay request failed')
+  })
+
+  it('queues an item mutation and commits the complete returned list', async () => {
     const { result } = renderSettingHook()
     await waitFor(() => expect(result.current.setting).toEqual(baseSetting))
 
@@ -285,34 +350,26 @@ describe('SettingContext network — updateNetworkSetting + saveSetting restartR
           resolveSwitch = resolve
         })
     )
-    mockPersistRelay.mockResolvedValueOnce({
-      success: true,
+    mockMutateCustomRelay.mockResolvedValueOnce({
       restartRequired: true,
-      credentialStatus: { configured: false },
-      settings: {
-        ...baseSetting,
-        network: {
-          ...baseSetting.network,
-          allowRelayFallback: false,
-          customRelayUrls: ['https://relay.example.com'],
-        },
-      },
+      relays: [{ url: 'https://relay.example.com/', credentialConfigured: false }],
     })
 
     let switchSave!: Promise<{ restartRequired: boolean }>
-    let relaySave!: Promise<{ restartRequired: boolean; credentialStatus: { configured: boolean } }>
+    let relaySave!: Promise<{ restartRequired: boolean }>
     act(() => {
-      switchSave = result.current.updateNetworkSetting({ allowRelayFallback: false })
-      relaySave = result.current.saveRelay({
-        index: null,
-        previousUrl: null,
-        nextUrl: 'https://relay.example.com',
+      switchSave = result.current.updateNetworkSetting({
+        allowRelayFallback: false,
+      })
+      relaySave = result.current.mutateCustomRelay({
+        action: 'add',
+        url: 'https://relay.example.com',
         credential: { action: 'keep' },
       })
     })
 
     await waitFor(() => expect(mockUpdateSettings).toHaveBeenCalledTimes(1))
-    expect(mockPersistRelay).not.toHaveBeenCalled()
+    expect(mockMutateCustomRelay).not.toHaveBeenCalled()
 
     await act(async () => {
       resolveSwitch?.({ success: true, restartRequired: true })
@@ -320,128 +377,90 @@ describe('SettingContext network — updateNetworkSetting + saveSetting restartR
       await relaySave
     })
 
-    expect(mockPersistRelay).toHaveBeenCalledWith(
-      { network: { customRelayUrls: ['https://relay.example.com'] } },
-      'https://relay.example.com',
-      { action: 'keep' }
-    )
+    expect(mockMutateCustomRelay).toHaveBeenCalledWith({
+      action: 'add',
+      url: 'https://relay.example.com',
+      credential: { action: 'keep' },
+    })
     expect(result.current.setting?.network).toEqual({
       ...baseSetting.network,
       allowRelayFallback: false,
-      customRelayUrls: ['https://relay.example.com'],
+      customRelayUrls: ['https://relay.example.com/'],
     })
   })
 
-  it('commits the authoritative settings returned by a relay save', async () => {
+  it('preserves the stored credential association when editing an address without a token', async () => {
+    mockGetCustomRelays.mockResolvedValueOnce([
+      { url: 'https://old.example.com/', credentialConfigured: true },
+    ])
     const { result } = renderSettingHook()
-    await waitFor(() => expect(result.current.setting).toEqual(baseSetting))
-    const savedSetting = {
-      ...baseSetting,
-      network: {
-        ...baseSetting.network,
-        customRelayUrls: ['https://relay.example.com/'],
-        congestionController: 'bbr3' as const,
-      },
-    }
-    mockPersistRelay.mockResolvedValueOnce({
-      success: true,
+    await waitFor(() => expect(result.current.relayLoading).toBe(false))
+    mockMutateCustomRelay.mockResolvedValueOnce({
       restartRequired: true,
-      credentialStatus: { configured: false },
-      settings: savedSetting,
+      relays: [{ url: 'https://new.example.com/', credentialConfigured: true }],
     })
 
     await act(async () => {
-      await result.current.saveRelay({
-        index: null,
-        previousUrl: null,
-        nextUrl: 'https://relay.example.com',
+      await result.current.mutateCustomRelay({
+        action: 'edit',
+        previousUrl: 'https://old.example.com/',
+        url: 'https://new.example.com',
         credential: { action: 'keep' },
       })
     })
 
-    expect(result.current.setting).toEqual(savedSetting)
+    expect(mockMutateCustomRelay).toHaveBeenCalledWith({
+      action: 'edit',
+      previousUrl: 'https://old.example.com/',
+      url: 'https://new.example.com',
+      credential: { action: 'keep' },
+    })
+    expect(result.current.customRelays).toEqual([
+      { url: 'https://new.example.com/', credentialConfigured: true },
+    ])
   })
 
-  it('updates only the selected relay when legacy settings contain exact duplicates', async () => {
-    const duplicateUrl = 'https://relay.example.com'
-    const duplicateSetting = {
-      ...baseSetting,
-      network: { ...baseSetting.network, customRelayUrls: [duplicateUrl, duplicateUrl] },
-    }
-    mockGetSettings.mockResolvedValueOnce(duplicateSetting)
+  it('refreshes the complete list when the mutation target no longer exists', async () => {
+    mockGetCustomRelays
+      .mockResolvedValueOnce([{ url: 'https://old.example.com/', credentialConfigured: false }])
+      .mockResolvedValueOnce([{ url: 'https://other.example.com/', credentialConfigured: true }])
     const { result } = renderSettingHook()
-    await waitFor(() => expect(result.current.setting).toEqual(duplicateSetting))
+    await waitFor(() => expect(result.current.relayLoading).toBe(false))
+    mockMutateCustomRelay.mockRejectedValueOnce(new CustomRelayMutationError('notFound'))
 
     await act(async () => {
-      await result.current.saveRelay({
-        index: 1,
-        previousUrl: duplicateUrl,
-        nextUrl: 'https://replacement.example.com',
-        credential: { action: 'keep' },
-      })
+      await expect(
+        result.current.mutateCustomRelay({
+          action: 'delete',
+          url: 'https://old.example.com/',
+        })
+      ).rejects.toBeInstanceOf(CustomRelayMutationError)
     })
 
-    expect(mockPersistRelay).toHaveBeenCalledWith(
-      {
-        network: {
-          customRelayUrls: [duplicateUrl, 'https://replacement.example.com'],
-        },
-      },
-      'https://replacement.example.com',
-      { action: 'keep' }
-    )
+    expect(mockGetCustomRelays).toHaveBeenCalledTimes(2)
+    expect(result.current.customRelays).toEqual([
+      { url: 'https://other.example.com/', credentialConfigured: true },
+    ])
   })
 
-  it('keeps a shared credential when removing only one exact duplicate relay', async () => {
-    const duplicateUrl = 'https://relay.example.com'
-    const duplicateSetting = {
-      ...baseSetting,
-      network: { ...baseSetting.network, customRelayUrls: [duplicateUrl, duplicateUrl] },
-    }
-    mockGetSettings.mockResolvedValueOnce(duplicateSetting)
+  it('preserves not-found when the recovery query also fails', async () => {
+    mockGetCustomRelays
+      .mockResolvedValueOnce([{ url: 'https://old.example.com/', credentialConfigured: false }])
+      .mockRejectedValueOnce(new Error('refresh failed'))
     const { result } = renderSettingHook()
-    await waitFor(() => expect(result.current.setting).toEqual(duplicateSetting))
+    await waitFor(() => expect(result.current.relayLoading).toBe(false))
+    mockMutateCustomRelay.mockRejectedValueOnce(new CustomRelayMutationError('notFound'))
 
     await act(async () => {
-      await result.current.saveRelay({
-        index: 0,
-        previousUrl: duplicateUrl,
-        nextUrl: null,
-        credential: { action: 'delete' },
-      })
+      await expect(
+        result.current.mutateCustomRelay({
+          action: 'delete',
+          url: 'https://old.example.com/',
+        })
+      ).rejects.toMatchObject({ kind: 'notFound' })
     })
 
-    expect(mockPersistRelay).toHaveBeenCalledWith(
-      { network: { customRelayUrls: [duplicateUrl] } },
-      duplicateUrl,
-      { action: 'keep' }
-    )
-  })
-
-  it('deletes a credential when the relay remains saved', async () => {
-    const relayUrl = 'https://relay.example.com'
-    const relaySetting = {
-      ...baseSetting,
-      network: { ...baseSetting.network, customRelayUrls: [relayUrl] },
-    }
-    mockGetSettings.mockResolvedValueOnce(relaySetting)
-    const { result } = renderSettingHook()
-    await waitFor(() => expect(result.current.setting).toEqual(relaySetting))
-
-    await act(async () => {
-      await result.current.saveRelay({
-        index: 0,
-        previousUrl: relayUrl,
-        nextUrl: relayUrl,
-        credential: { action: 'delete' },
-      })
-    })
-
-    expect(mockPersistRelay).toHaveBeenCalledWith(
-      { network: { customRelayUrls: [relayUrl] } },
-      relayUrl,
-      { action: 'delete' }
-    )
+    expect(result.current.relayError).toContain('refresh failed')
   })
 })
 
@@ -450,7 +469,11 @@ describe('SettingContext network — 反向命名 + 契约 fence (Pitfall 1 + Pi
     vi.clearAllMocks()
     mockConnectDaemonWs.mockResolvedValue(undefined)
     mockGetSettings.mockResolvedValue(baseSetting)
-    mockUpdateSettings.mockResolvedValue({ success: true, restartRequired: false })
+    mockGetCustomRelays.mockResolvedValue([])
+    mockUpdateSettings.mockResolvedValue({
+      success: true,
+      restartRequired: false,
+    })
     mockEmitSettingsChanged.mockResolvedValue(undefined)
     mockInvokeWithTrace.mockResolvedValue(undefined)
 
@@ -470,7 +493,10 @@ describe('SettingContext network — 反向命名 + 契约 fence (Pitfall 1 + Pi
       expect(result.current.setting).toEqual(baseSetting)
     })
 
-    mockUpdateSettings.mockResolvedValueOnce({ success: true, restartRequired: true })
+    mockUpdateSettings.mockResolvedValueOnce({
+      success: true,
+      restartRequired: true,
+    })
 
     // 输入 false → 期望 PUT body 中真值 false（不取反）
     await act(async () => {
@@ -481,7 +507,10 @@ describe('SettingContext network — 反向命名 + 契约 fence (Pitfall 1 + Pi
     expect(passed.network.allowRelayFallback).toBe(false)
 
     // 输入 true → 期望 PUT body 中真值 true（不取反）
-    mockUpdateSettings.mockResolvedValueOnce({ success: true, restartRequired: false })
+    mockUpdateSettings.mockResolvedValueOnce({
+      success: true,
+      restartRequired: false,
+    })
     await act(async () => {
       await result.current.updateNetworkSetting({ allowRelayFallback: true })
     })

@@ -1,6 +1,12 @@
 import { listen } from '@tauri-apps/api/event'
 import React, { useCallback, useEffect, useState, type ReactNode } from 'react'
-import { getSettings, saveRelay as persistRelay, updateSettings } from '@/api/daemon'
+import {
+  CustomRelayMutationError,
+  getCustomRelays,
+  getSettings,
+  mutateCustomRelay as persistCustomRelayMutation,
+  updateSettings,
+} from '@/api/daemon'
 import {
   updateKeyboardShortcuts as persistKeyboardShortcuts,
   setQuickPanelDoubleTapModifier as persistQuickPanelDoubleTapModifier,
@@ -16,22 +22,15 @@ import { createLogger } from '@/lib/logger'
 import { emitSettingsChanged } from '@/lib/settings-events'
 import { setDiagnosticsEnabled } from '@/observability/diagnostics'
 import type {
-  RelaySaveContextResult,
-  RelaySaveMutation,
+  CustomRelay,
+  CustomRelayMutation,
+  CustomRelayMutationResult,
   SettingContextType,
   Settings,
 } from '@/types/setting'
 import { SettingContext } from './setting-context'
 
 const log = createLogger('setting-context')
-
-function relayUrlsMatch(left: string, right: string): boolean {
-  try {
-    return new URL(left.trim()).toString() === new URL(right.trim()).toString()
-  } catch {
-    return left.trim() === right.trim()
-  }
-}
 
 // 设置提供者属性接口
 interface SettingProviderProps {
@@ -43,6 +42,9 @@ export const SettingProvider: React.FC<SettingProviderProps> = ({ children }) =>
   const [setting, setSetting] = useState<Settings | null>(null)
   const [loading, setLoading] = useState<boolean>(true)
   const [error, setError] = useState<string | null>(null)
+  const [customRelays, setCustomRelays] = useState<CustomRelay[]>([])
+  const [relayLoading, setRelayLoading] = useState<boolean>(true)
+  const [relayError, setRelayError] = useState<string | null>(null)
   const latestSettingRef = React.useRef<Settings | null>(null)
   const mutationQueueRef = React.useRef<Promise<void>>(Promise.resolve())
 
@@ -55,10 +57,26 @@ export const SettingProvider: React.FC<SettingProviderProps> = ({ children }) =>
     return operation
   }, [])
 
+  const commitCustomRelays = useCallback((relays: CustomRelay[]) => {
+    setCustomRelays(relays)
+    const current = latestSettingRef.current
+    if (!current) return
+    const next = {
+      ...current,
+      network: {
+        ...current.network,
+        customRelayUrls: relays.map(relay => relay.url),
+      },
+    }
+    latestSettingRef.current = next
+    setSetting(next)
+  }, [])
+
   // 加载设置
   const loadSetting = useCallback(async () => {
     try {
       setLoading(true)
+      setRelayLoading(true)
       await enqueueTask(async () => {
         // Ensure daemon is connected before making API calls — the connection may not
         // have been established yet if this fires before AppContent calls connectDaemonWs().
@@ -67,14 +85,42 @@ export const SettingProvider: React.FC<SettingProviderProps> = ({ children }) =>
         latestSettingRef.current = settingObj
         setSetting(settingObj)
         setError(null)
+
+        try {
+          const relays = await getCustomRelays()
+          commitCustomRelays(relays)
+          setRelayError(null)
+        } catch (err) {
+          log.error({ err }, 'Failed to load custom relays')
+          setRelayError(`加载中继列表失败: ${err}`)
+        }
       })
     } catch (err) {
       log.error({ err }, '加载设置失败')
       setError(`加载设置失败: ${err}`)
     } finally {
       setLoading(false)
+      setRelayLoading(false)
     }
   }, [enqueueTask])
+
+  const reloadCustomRelays = useCallback(async () => {
+    setRelayLoading(true)
+    try {
+      await enqueueTask(async () => {
+        await connectDaemonWs()
+        const relays = await getCustomRelays()
+        commitCustomRelays(relays)
+        setRelayError(null)
+      })
+    } catch (err) {
+      log.error({ err }, 'Failed to load custom relays')
+      setRelayError(`加载中继列表失败: ${err}`)
+      throw err
+    } finally {
+      setRelayLoading(false)
+    }
+  }, [commitCustomRelays, enqueueTask])
 
   const enqueueSettingMutation = useCallback(
     <T,>(mutate: (current: Settings) => Promise<{ next: Settings; result: T }>): Promise<T> => {
@@ -156,7 +202,10 @@ export const SettingProvider: React.FC<SettingProviderProps> = ({ children }) =>
       await enqueueSettingMutation(async current => {
         await persistAutostart(enabled)
         return {
-          next: { ...current, general: { ...current.general, autoStart: enabled } },
+          next: {
+            ...current,
+            general: { ...current.general, autoStart: enabled },
+          },
           result: undefined,
         }
       })
@@ -239,55 +288,32 @@ export const SettingProvider: React.FC<SettingProviderProps> = ({ children }) =>
     }))
   }
 
-  const saveRelay = async (mutation: RelaySaveMutation): Promise<RelaySaveContextResult> => {
+  const mutateCustomRelay = async (
+    mutation: CustomRelayMutation
+  ): Promise<CustomRelayMutationResult> => {
     try {
-      return await enqueueSettingMutation(async current => {
-        const customRelayUrls = [...current.network.customRelayUrls]
-        let credentialUrl: string
-
-        if (mutation.index === null) {
-          if (mutation.previousUrl !== null || mutation.nextUrl === null) {
-            throw new Error('Invalid relay addition')
+      return await enqueueTask(async () => {
+        try {
+          const result = await persistCustomRelayMutation(mutation)
+          commitCustomRelays(result.relays)
+          setRelayError(null)
+          return result
+        } catch (err) {
+          if (err instanceof CustomRelayMutationError && err.kind === 'notFound') {
+            try {
+              const relays = await getCustomRelays()
+              commitCustomRelays(relays)
+              setRelayError(null)
+            } catch (refreshErr) {
+              log.error({ err: refreshErr }, 'Failed to refresh custom relays after not found')
+              setRelayError(`加载中继列表失败: ${refreshErr}`)
+            }
           }
-          customRelayUrls.push(mutation.nextUrl)
-          credentialUrl = mutation.nextUrl
-        } else {
-          if (
-            mutation.index < 0 ||
-            mutation.index >= customRelayUrls.length ||
-            customRelayUrls[mutation.index] !== mutation.previousUrl
-          ) {
-            throw new Error('Relay settings changed before the save could run')
-          }
-          credentialUrl = mutation.nextUrl ?? mutation.previousUrl
-          if (mutation.nextUrl === null) customRelayUrls.splice(mutation.index, 1)
-          else customRelayUrls[mutation.index] = mutation.nextUrl
-        }
-
-        const credential =
-          mutation.nextUrl === null &&
-          mutation.credential.action === 'delete' &&
-          customRelayUrls.some(url => relayUrlsMatch(url, credentialUrl))
-            ? { action: 'keep' as const }
-            : mutation.credential
-        const result = await persistRelay(
-          { network: { customRelayUrls } },
-          credentialUrl,
-          credential
-        )
-        if (!result.success) throw new Error('Relay settings update was rejected')
-
-        return {
-          next: result.settings,
-          result: {
-            restartRequired: result.restartRequired,
-            credentialStatus: result.credentialStatus,
-          },
+          throw err
         }
       })
     } catch (err) {
-      log.error({ err }, 'Failed to save relay settings')
-      setError(`保存设置失败: ${err}`)
+      log.error({ err }, 'Failed to mutate custom relay')
       throw err
     }
   }
@@ -407,7 +433,11 @@ export const SettingProvider: React.FC<SettingProviderProps> = ({ children }) =>
     setting,
     loading,
     error,
+    customRelays,
+    relayLoading,
+    relayError,
     reloadSetting: loadSetting,
+    reloadCustomRelays,
     updateSetting,
     updateGeneralSetting,
     updateAutostart,
@@ -417,7 +447,7 @@ export const SettingProvider: React.FC<SettingProviderProps> = ({ children }) =>
     updateKeyboardShortcuts,
     updateFileSyncSetting,
     updateNetworkSetting,
-    saveRelay,
+    mutateCustomRelay,
     updateQuickPanelSetting,
   }
 

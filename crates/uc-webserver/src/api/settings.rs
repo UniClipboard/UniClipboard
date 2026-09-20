@@ -6,6 +6,7 @@
 //! autostart registration and global shortcut updates), these handlers only
 //! update the settings domain model — no autostart, no keyboard shortcuts.
 use axum::extract::State;
+use axum::http::StatusCode;
 use axum::routing::{get, post, put};
 use axum::{Json, Router};
 use tracing::{info, instrument};
@@ -14,16 +15,19 @@ use zeroize::Zeroize;
 
 use uc_daemon_contract::api::dto::envelope::ApiEnvelope;
 use uc_engine::{
+    CustomRelayMutation, CustomRelayMutationOutcome, CustomRelayRejection, CustomRelaySummary,
     EngineError, EngineErrorCategory, Operation, OperationResult, RelayCredentialEdit,
     RelayCredentialInput, RelayCredentialStatus, RelayProbeCredential, RelayProbeInput,
-    RelayProbeOutcome, SaveRelayInput, SaveRelayOutcome, SecretString, SettingsUpdateOutcome,
+    RelayProbeOutcome, SaveRelayInput, SaveRelayOutcome, SecretString, SettingsPatch,
+    SettingsUpdateOutcome,
 };
 
 use crate::api::dto::error::{log_facade_failure, ApiError};
 use crate::api::dto::settings::{
-    RelayCredentialEditDto, RelayCredentialRequestDto, RelayCredentialStatusDto,
-    RelayProbeCredentialDto, RelayProbeOutcomeDto, RelayProbeRequestDto, RelaySaveRequestDto,
-    RelaySaveResultDto, SettingsDto, SettingsPatchDto, SettingsUpdateResultDto,
+    CustomRelayDto, CustomRelayMutationDto, CustomRelayMutationResultDto, RelayCredentialEditDto,
+    RelayCredentialRequestDto, RelayCredentialStatusDto, RelayProbeCredentialDto,
+    RelayProbeOutcomeDto, RelayProbeRequestDto, RelaySaveRequestDto, RelaySaveResultDto,
+    SettingsDto, SettingsPatchDto, SettingsUpdateResultDto,
 };
 use crate::api::projection::{IntoApiDto, IntoDomain};
 use crate::api::server::DaemonApiState;
@@ -38,6 +42,251 @@ pub fn router() -> Router<DaemonApiState> {
             post(get_relay_credential_handler),
         )
         .route("/settings/relay", put(save_relay_handler))
+        .route(
+            "/settings/custom-relays",
+            get(get_custom_relays_handler).post(mutate_custom_relay_handler),
+        )
+}
+
+#[utoipa::path(
+    get,
+    path = "/settings/custom-relays",
+    tag = "settings",
+    operation_id = "getCustomRelays",
+    responses(
+        (status = 200, description = "Engine-owned custom relay list", body = CustomRelayListEnvelope),
+        (status = 500, description = "Relay query failed", body = ApiErrorResponse),
+        (status = 503, description = "Credential storage unavailable", body = ApiErrorResponse)
+    )
+)]
+#[instrument(name = "api.settings.custom_relays.get", level = "info", skip(state))]
+async fn get_custom_relays_handler(
+    State(state): State<DaemonApiState>,
+) -> Result<Json<ApiEnvelope<Vec<CustomRelayDto>>>, ApiError> {
+    let relays = query_custom_relays(&state).await?;
+    info!(relay_count = relays.len(), "custom relay query succeeded");
+    Ok(Json(ApiEnvelope::now(relays)))
+}
+
+#[utoipa::path(
+    post,
+    path = "/settings/custom-relays",
+    tag = "settings",
+    operation_id = "mutateCustomRelay",
+    request_body = CustomRelayMutationDto,
+    responses(
+        (status = 200, description = "Custom relay mutation applied", body = CustomRelayMutationResultEnvelope),
+        (status = 400, description = "Invalid relay URL", body = ApiErrorResponse),
+        (status = 404, description = "Relay no longer exists", body = ApiErrorResponse),
+        (status = 409, description = "Relay already exists", body = ApiErrorResponse),
+        (status = 500, description = "Relay mutation failed", body = ApiErrorResponse),
+        (status = 503, description = "Credential storage unavailable", body = ApiErrorResponse)
+    )
+)]
+#[instrument(
+    name = "api.settings.custom_relays.mutate",
+    level = "info",
+    skip(state, payload)
+)]
+async fn mutate_custom_relay_handler(
+    State(state): State<DaemonApiState>,
+    Json(payload): Json<CustomRelayMutationDto>,
+) -> Result<Json<ApiEnvelope<CustomRelayMutationResultDto>>, ApiError> {
+    let relays = match payload {
+        CustomRelayMutationDto::Add { url, credential } => {
+            let access_token = credential_to_optional_secret(credential)?;
+            execute_custom_relay_mutation(&state, CustomRelayMutation::Add { url, access_token })
+                .await?
+        }
+        CustomRelayMutationDto::Edit {
+            previous_url,
+            url,
+            credential: RelayCredentialEditDto::Delete,
+        } => {
+            execute_custom_relay_mutation(
+                &state,
+                CustomRelayMutation::Edit {
+                    previous_url,
+                    url: url.clone(),
+                    access_token: None,
+                },
+            )
+            .await?;
+            delete_relay_credential(&state, url).await?;
+            query_custom_relays(&state).await?
+        }
+        CustomRelayMutationDto::Edit {
+            previous_url,
+            url,
+            credential,
+        } => {
+            let access_token = credential_to_optional_secret(credential)?;
+            execute_custom_relay_mutation(
+                &state,
+                CustomRelayMutation::Edit {
+                    previous_url,
+                    url,
+                    access_token,
+                },
+            )
+            .await?
+        }
+        CustomRelayMutationDto::Delete { url } => {
+            execute_custom_relay_mutation(&state, CustomRelayMutation::Delete { url }).await?
+        }
+    };
+
+    info!(
+        relay_count = relays.len(),
+        "custom relay mutation succeeded"
+    );
+    Ok(Json(ApiEnvelope::now(CustomRelayMutationResultDto {
+        relays,
+        restart_required: true,
+    })))
+}
+
+fn credential_to_optional_secret(
+    credential: RelayCredentialEditDto,
+) -> Result<Option<SecretString>, ApiError> {
+    match credential {
+        RelayCredentialEditDto::Keep => Ok(None),
+        RelayCredentialEditDto::Set { mut access_token } => {
+            let secret = SecretString::new(&access_token);
+            access_token.zeroize();
+            Ok(Some(secret))
+        }
+        RelayCredentialEditDto::Delete => Err(custom_relay_rejection_to_api(
+            CustomRelayRejection::InvalidUrl,
+        )),
+    }
+}
+
+async fn query_custom_relays(state: &DaemonApiState) -> Result<Vec<CustomRelayDto>, ApiError> {
+    let result = state
+        .execute(Operation::QueryCustomRelays)
+        .await
+        .map_err(|error| relay_credential_error_to_api("query_custom_relays", error))?;
+    let OperationResult::CustomRelays(relays) = result else {
+        return Err(relay_credential_unexpected_result_to_api(
+            "query_custom_relays",
+            "engine returned an unexpected custom-relay result",
+        ));
+    };
+    Ok(custom_relays_to_dto(relays))
+}
+
+async fn execute_custom_relay_mutation(
+    state: &DaemonApiState,
+    mutation: CustomRelayMutation,
+) -> Result<Vec<CustomRelayDto>, ApiError> {
+    let result = state
+        .execute(Operation::MutateCustomRelay(mutation))
+        .await
+        .map_err(|error| relay_credential_error_to_api("mutate_custom_relay", error))?;
+    match result {
+        OperationResult::CustomRelayMutated(CustomRelayMutationOutcome::Saved { relays }) => {
+            Ok(custom_relays_to_dto(relays))
+        }
+        OperationResult::CustomRelayMutated(CustomRelayMutationOutcome::Rejected { reason }) => {
+            Err(custom_relay_rejection_to_api(reason))
+        }
+        _ => Err(relay_credential_unexpected_result_to_api(
+            "mutate_custom_relay",
+            "engine returned an unexpected custom-relay mutation result",
+        )),
+    }
+}
+
+async fn delete_relay_credential(state: &DaemonApiState, url: String) -> Result<(), ApiError> {
+    let result = state
+        .execute(Operation::SaveRelay(Box::new(SaveRelayInput {
+            settings: SettingsPatch::default(),
+            credential: RelayCredentialEdit::Delete { url },
+        })))
+        .await
+        .map_err(|error| relay_credential_error_to_api("delete_relay_credential", error))?;
+    match result {
+        OperationResult::RelaySaved(SaveRelayOutcome::Saved { .. }) => Ok(()),
+        OperationResult::RelaySaved(SaveRelayOutcome::Rejected { .. }) => Err(
+            ApiError::bad_request("custom relay credential deletion was rejected"),
+        ),
+        _ => Err(relay_credential_unexpected_result_to_api(
+            "delete_relay_credential",
+            "engine returned an unexpected relay credential deletion result",
+        )),
+    }
+}
+
+fn custom_relays_to_dto(relays: Vec<CustomRelaySummary>) -> Vec<CustomRelayDto> {
+    relays
+        .into_iter()
+        .map(|relay| CustomRelayDto {
+            url: relay.url,
+            credential_configured: relay.credential_configured,
+        })
+        .collect()
+}
+
+fn custom_relay_rejection_to_api(reason: CustomRelayRejection) -> ApiError {
+    match reason {
+        CustomRelayRejection::InvalidUrl => {
+            ApiError::bad_request("invalid custom relay URL").with_code("custom_relay_invalid_url")
+        }
+        CustomRelayRejection::Duplicate => {
+            ApiError::conflict("custom relay already exists").with_code("custom_relay_duplicate")
+        }
+        CustomRelayRejection::NotFound => ApiError {
+            status: StatusCode::NOT_FOUND,
+            code: "custom_relay_not_found".to_string(),
+            message: "custom relay no longer exists".to_string(),
+            details: None,
+        },
+    }
+}
+
+#[cfg(test)]
+mod custom_relay_tests {
+    use super::*;
+
+    #[test]
+    fn rejection_codes_are_stable_and_distinct() {
+        let cases = [
+            (
+                CustomRelayRejection::InvalidUrl,
+                StatusCode::BAD_REQUEST,
+                "custom_relay_invalid_url",
+            ),
+            (
+                CustomRelayRejection::Duplicate,
+                StatusCode::CONFLICT,
+                "custom_relay_duplicate",
+            ),
+            (
+                CustomRelayRejection::NotFound,
+                StatusCode::NOT_FOUND,
+                "custom_relay_not_found",
+            ),
+        ];
+
+        for (reason, status, code) in cases {
+            let error = custom_relay_rejection_to_api(reason);
+            assert_eq!(error.status, status);
+            assert_eq!(error.code, code);
+        }
+    }
+
+    #[test]
+    fn projection_exposes_only_public_relay_state() {
+        let relays = custom_relays_to_dto(vec![CustomRelaySummary {
+            url: "https://relay.example.com/".to_string(),
+            credential_configured: true,
+        }]);
+
+        assert_eq!(relays.len(), 1);
+        assert_eq!(relays[0].url, "https://relay.example.com/");
+        assert!(relays[0].credential_configured);
+    }
 }
 
 /// GET /settings

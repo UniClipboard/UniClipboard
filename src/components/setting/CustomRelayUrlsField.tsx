@@ -4,11 +4,11 @@ import { useTranslation } from 'react-i18next'
 import { RelayEditor } from '@/components/setting/RelayEditor'
 import { SettingGroup } from '@/components/setting/SettingGroup'
 import { Button, TooltipProvider } from '@/components/ui'
-import type { RelaySaveContextResult, RelaySaveMutation } from '@/types/setting'
+import type { CustomRelay, CustomRelayMutation, CustomRelayMutationResult } from '@/types/setting'
 
 interface CustomRelayUrlsFieldProps {
-  value: string[]
-  onSave: (mutation: RelaySaveMutation) => Promise<RelaySaveContextResult>
+  value: CustomRelay[]
+  onSave: (mutation: CustomRelayMutation) => Promise<CustomRelayMutationResult>
 }
 
 let nextDraftRowId = 0
@@ -34,21 +34,14 @@ export function CustomRelayUrlsField({ value, onSave }: CustomRelayUrlsFieldProp
     setDraftRowIds(previous => previous.filter(id => id !== draftRowId))
   }
 
-  const saveRelay = async (
+  const commitMutation = async (
     draftRowId: string | null,
-    mutation: RelaySaveMutation
-  ): Promise<RelaySaveContextResult> => {
+    mutation: CustomRelayMutation
+  ): Promise<CustomRelayMutationResult> => {
     const result = await onSave(mutation)
     if (draftRowId) discardDraft(draftRowId)
     return result
   }
-
-  const occurrenceCounts = new Map<string, number>()
-  const savedRows = value.map((url, index) => {
-    const occurrence = occurrenceCounts.get(url) ?? 0
-    occurrenceCounts.set(url, occurrence + 1)
-    return { index, key: `${url}\u0000${occurrence}`, url }
-  })
 
   return (
     <TooltipProvider delay={200}>
@@ -58,24 +51,23 @@ export function CustomRelayUrlsField({ value, onSave }: CustomRelayUrlsFieldProp
             {t('settings.sections.network.customRelays.description')}
           </p>
           <div className="mt-4 flex flex-col gap-4">
-            {savedRows.map(({ index, key, url }) => (
+            {value.map((relay, index) => (
               <RelayEditor
-                key={key}
+                key={relay.url}
                 index={index}
-                initialUrl={url}
+                initialUrl={relay.url}
+                initialCredentialConfigured={relay.credentialConfigured}
                 onRemove={async () => {
                   await onSave({
-                    index,
-                    previousUrl: url,
-                    nextUrl: null,
-                    credential: { action: 'delete' },
+                    action: 'delete',
+                    url: relay.url,
                   })
                 }}
                 onSave={(nextUrl, credential) =>
-                  saveRelay(null, {
-                    index,
-                    previousUrl: url,
-                    nextUrl,
+                  commitMutation(null, {
+                    action: 'edit',
+                    previousUrl: relay.url,
+                    url: nextUrl,
                     credential,
                   })
                 }
@@ -87,12 +79,12 @@ export function CustomRelayUrlsField({ value, onSave }: CustomRelayUrlsFieldProp
                 key={draftRowId}
                 index={value.length + draftIndex}
                 initialUrl=""
+                initialCredentialConfigured={false}
                 onRemove={() => discardDraft(draftRowId)}
                 onSave={(nextUrl, credential) =>
-                  saveRelay(draftRowId, {
-                    index: null,
-                    previousUrl: null,
-                    nextUrl,
+                  commitMutation(draftRowId, {
+                    action: 'add',
+                    url: nextUrl,
                     credential,
                   })
                 }

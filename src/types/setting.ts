@@ -202,16 +202,24 @@ export type RelayCredentialEdit =
   | { action: 'set'; accessToken: string }
   | { action: 'delete' }
 
-export interface RelaySaveMutation {
-  index: number | null
-  previousUrl: string | null
-  nextUrl: string | null
-  credential: RelayCredentialEdit
+export interface CustomRelay {
+  url: string
+  credentialConfigured: boolean
 }
 
-export interface RelaySaveContextResult {
+export type CustomRelayMutation =
+  | { action: 'add'; url: string; credential: RelayCredentialEdit }
+  | {
+      action: 'edit'
+      previousUrl: string
+      url: string
+      credential: RelayCredentialEdit
+    }
+  | { action: 'delete'; url: string }
+
+export interface CustomRelayMutationResult {
+  relays: CustomRelay[]
   restartRequired: boolean
-  credentialStatus: { configured: boolean }
 }
 
 /**
@@ -299,7 +307,11 @@ export interface SettingContextType {
   setting: Settings | null
   loading: boolean
   error: string | null
+  customRelays: CustomRelay[]
+  relayLoading: boolean
+  relayError: string | null
   reloadSetting: () => Promise<void>
+  reloadCustomRelays: () => Promise<void>
   updateSetting: (newSetting: Settings) => Promise<void>
   /**
    * Update general settings EXCEPT `autoStart`. Autostart is a desktop-host OS
@@ -325,9 +337,9 @@ export interface SettingContextType {
   ) => Promise<void>
   updateFileSyncSetting: (newFileSyncSetting: Partial<FileSyncSettings>) => Promise<void>
   updateNetworkSetting: (
-    newNetworkSetting: Partial<NetworkSettings>
+    newNetworkSetting: Partial<Omit<NetworkSettings, 'customRelayUrls'>>
   ) => Promise<{ restartRequired: boolean }>
-  saveRelay: (mutation: RelaySaveMutation) => Promise<RelaySaveContextResult>
+  mutateCustomRelay: (mutation: CustomRelayMutation) => Promise<CustomRelayMutationResult>
   updateQuickPanelSetting: (
     newQuickPanelSetting: Partial<QuickPanelSettings>
   ) => Promise<{ restartRequired: boolean }>

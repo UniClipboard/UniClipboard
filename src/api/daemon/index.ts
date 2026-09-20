@@ -5,10 +5,13 @@ export { isSessionExpired } from './types'
 export { DaemonApiError, DaemonErrorCode, mapStatusToErrorCode } from './errors'
 export { signalLifecycleReady, getLifecycleStatus, retryLifecycle } from './lifecycle'
 export {
+  CustomRelayMutationError,
+  getCustomRelays,
   getRelayCredentialStatus,
   getSettings,
   probeRelayUrl,
   saveRelay,
+  mutateCustomRelay,
   updateSettings,
 } from './settings'
 export { exportLogs, getDebugStatus, updateDebugMode } from './diagnostics'
@@ -32,6 +35,7 @@ export type {
   RelayProbeCredential,
   RelayProbeOutcome,
   RelaySaveResult,
+  CustomRelayMutationErrorKind,
   SettingsPatchInput,
 } from './settings'
 export { getEncryptionState, unlockEncryption, lockEncryption } from './encryption'

@@ -1,0 +1,39 @@
+name: Bug report
+description: Report a problem with UniClipboard
+title: "[Bug] "
+body:
+  - type: input
+    id: version
+    attributes:
+      label: Current version
+      description: In the app, see Settings > About. For the CLI, run `uniclip --version`. Include your operating system and its version.
+      placeholder: "For example: UniClipboard 1.0.0-alpha.9, macOS 15.0"
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: |
+        If possible, export logs after the problem occurs and drag the ZIP file here.
+
+        - App: If you can reproduce the problem, turn on "Capture detailed logs" under Settings > General > Logs, reproduce it, then click "Export logs". If the app cannot start, click "Export logs" on the startup error screen.
+        - CLI: After reproducing the problem, run `uniclip debug export-logs`. The command prints the path to the exported file.
+
+        Before uploading, check the logs for personal information, clipboard content, device details, or credentials. Do not post sensitive information publicly. If you cannot export logs or do not want to share them publicly, explain why instead.
+      placeholder: Drag the log ZIP here, or explain why you cannot provide logs.
+    validations:
+      required: false
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Problem description
+      description: Describe what happened, how to reproduce it, and what you expected. Include any error message or approximate time if available.
+      placeholder: |
+        Steps to reproduce:
+        Actual result:
+        Expected result:
+    validations:
+      required: true

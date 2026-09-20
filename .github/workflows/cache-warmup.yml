@@ -8,6 +8,7 @@ on:
       - '.github/workflows/build.yml'
       - 'scripts/ci/configure-build-mode.mjs'
       - 'scripts/ci/isolate-build-toolchain.mjs'
+      - 'scripts/ci/select-windows-runner.mjs'
       - 'scripts/ci/release-cache-policy.mjs'
       - 'scripts/ci/maintain-actions-cache.mjs'
       - 'Cargo.lock'

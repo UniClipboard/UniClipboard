@@ -70,9 +70,23 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
+      windows-runner: ${{ steps.select-windows-runner.outputs.runner }}
+      windows-runner-source: ${{ steps.select-windows-runner.outputs.source }}
     steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Select Windows runner
+        id: select-windows-runner
+        env:
+          RUNNER_STATUS_TOKEN: ${{ secrets.REPO_BOT_TOKEN }}
+        run: node scripts/ci/select-windows-runner.mjs
+
       - name: Generate matrix
         id: set-matrix
+        env:
+          WINDOWS_RUNNER: ${{ steps.select-windows-runner.outputs.runner }}
         run: |
           # Linux 构建在 host=ubuntu-22.04 / ubuntu-22.04-arm 上启容器跑
           # (debian:bookworm, glibc 2.36),其他 platform (macOS/Windows) 不带
@@ -81,7 +95,7 @@ jobs:
           # cross-compile webkit/gtk 栈;x86_64 仍在 ubuntu-22.04。
           PLATFORM="${{ inputs.platform || 'all' }}"
           if [ "$PLATFORM" == "all" ]; then
-            echo 'matrix=[{"platform":"macos-latest","target":"aarch64-apple-darwin","args":"--target aarch64-apple-darwin"},{"platform":"macos-latest","target":"x86_64-apple-darwin","args":"--target x86_64-apple-darwin"},{"platform":"ubuntu-22.04","target":"x86_64-unknown-linux-gnu","args":"","container":"ghcr.io/uniclipboard/build-bookworm:latest"},{"platform":"ubuntu-22.04-arm","target":"aarch64-unknown-linux-gnu","args":"","container":"ghcr.io/uniclipboard/build-bookworm:latest"},{"platform":"windows-latest","target":"x86_64-pc-windows-msvc","args":""},{"platform":"windows-latest","target":"aarch64-pc-windows-msvc","args":"--target aarch64-pc-windows-msvc"}]' >> "$GITHUB_OUTPUT"
+            echo "matrix=[{\"platform\":\"macos-latest\",\"target\":\"aarch64-apple-darwin\",\"args\":\"--target aarch64-apple-darwin\"},{\"platform\":\"macos-latest\",\"target\":\"x86_64-apple-darwin\",\"args\":\"--target x86_64-apple-darwin\"},{\"platform\":\"ubuntu-22.04\",\"target\":\"x86_64-unknown-linux-gnu\",\"args\":\"\",\"container\":\"ghcr.io/uniclipboard/build-bookworm:latest\"},{\"platform\":\"ubuntu-22.04-arm\",\"target\":\"aarch64-unknown-linux-gnu\",\"args\":\"\",\"container\":\"ghcr.io/uniclipboard/build-bookworm:latest\"},{\"platform\":\"windows-latest\",\"runner\":\"$WINDOWS_RUNNER\",\"target\":\"x86_64-pc-windows-msvc\",\"args\":\"\"},{\"platform\":\"windows-latest\",\"runner\":\"$WINDOWS_RUNNER\",\"target\":\"aarch64-pc-windows-msvc\",\"args\":\"--target aarch64-pc-windows-msvc\"}]" >> "$GITHUB_OUTPUT"
           elif [ "$PLATFORM" == "macos-aarch64" ]; then
             echo 'matrix=[{"platform":"macos-latest","target":"aarch64-apple-darwin","args":"--target aarch64-apple-darwin"}]' >> "$GITHUB_OUTPUT"
           elif [ "$PLATFORM" == "macos-x86_64" ]; then
@@ -91,11 +105,11 @@ jobs:
           elif [ "$PLATFORM" == "ubuntu-22.04-arm" ]; then
             echo 'matrix=[{"platform":"ubuntu-22.04-arm","target":"aarch64-unknown-linux-gnu","args":"","container":"ghcr.io/uniclipboard/build-bookworm:latest"}]' >> "$GITHUB_OUTPUT"
           elif [ "$PLATFORM" == "windows-latest" ]; then
-            echo 'matrix=[{"platform":"windows-latest","target":"x86_64-pc-windows-msvc","args":""},{"platform":"windows-latest","target":"aarch64-pc-windows-msvc","args":"--target aarch64-pc-windows-msvc"}]' >> "$GITHUB_OUTPUT"
+            echo "matrix=[{\"platform\":\"windows-latest\",\"runner\":\"$WINDOWS_RUNNER\",\"target\":\"x86_64-pc-windows-msvc\",\"args\":\"\"},{\"platform\":\"windows-latest\",\"runner\":\"$WINDOWS_RUNNER\",\"target\":\"aarch64-pc-windows-msvc\",\"args\":\"--target aarch64-pc-windows-msvc\"}]" >> "$GITHUB_OUTPUT"
           elif [ "$PLATFORM" == "windows-x86_64" ]; then
-            echo 'matrix=[{"platform":"windows-latest","target":"x86_64-pc-windows-msvc","args":""}]' >> "$GITHUB_OUTPUT"
+            echo "matrix=[{\"platform\":\"windows-latest\",\"runner\":\"$WINDOWS_RUNNER\",\"target\":\"x86_64-pc-windows-msvc\",\"args\":\"\"}]" >> "$GITHUB_OUTPUT"
           elif [ "$PLATFORM" == "windows-arm64" ]; then
-            echo 'matrix=[{"platform":"windows-latest","target":"aarch64-pc-windows-msvc","args":"--target aarch64-pc-windows-msvc"}]' >> "$GITHUB_OUTPUT"
+            echo "matrix=[{\"platform\":\"windows-latest\",\"runner\":\"$WINDOWS_RUNNER\",\"target\":\"aarch64-pc-windows-msvc\",\"args\":\"--target aarch64-pc-windows-msvc\"}]" >> "$GITHUB_OUTPUT"
           else
             echo "Error: Unknown platform '$PLATFORM'. Valid options: all, macos-aarch64, macos-x86_64, ubuntu-22.04, ubuntu-22.04-arm, windows-latest, windows-x86_64, windows-arm64"
             exit 1
@@ -104,7 +118,7 @@ jobs:
   build-tauri:
     name: Build ${{ matrix.target }}
     needs: setup-matrix
-    runs-on: ${{ matrix.platform }}
+    runs-on: ${{ matrix.runner || matrix.platform }}
     # matrix.container 仅 Linux 条目设置,其他 platform 该字段缺失 → null →
     # GitHub Actions 跳过容器,直接在 host runner 上执行。
     container: ${{ matrix.container || null }}
@@ -122,6 +136,7 @@ jobs:
         with:
           ref: ${{ inputs.branch || github.ref }}
           submodules: recursive
+          persist-credentials: false
 
       - name: setup node
         uses: actions/setup-node@v6
@@ -177,6 +192,7 @@ jobs:
         run: echo "${CARGO_HOME:-$HOME/.cargo}/bin" >> "$GITHUB_PATH"
 
       - name: Isolate pinned build toolchain
+        if: runner.environment == 'github-hosted'
         env:
           UC_PINNED_RUST: ${{ steps.rust-channel.outputs.channel }}
         run: node scripts/ci/isolate-build-toolchain.mjs

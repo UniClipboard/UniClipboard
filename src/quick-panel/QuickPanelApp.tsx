@@ -24,6 +24,11 @@ import { setQuickPanelLayout } from './window-layout'
 const log = createLogger('quick-panel-app')
 const SHOW_FALLBACK_DELAY_MS = 50
 
+function QuickPanelEffectsSampling({ active }: { active: boolean }) {
+  useVisualEffectsSampling(active)
+  return null
+}
+
 const QuickPanelApp: React.FC = () => {
   const { t } = useTranslation(undefined, { keyPrefix: 'quickPanel' })
   const { isLinux, isTauri } = usePlatform()
@@ -34,7 +39,6 @@ const QuickPanelApp: React.FC = () => {
   const [bootstrapError, setBootstrapError] = useState<string | null>(null)
   const [showRequestId, setShowRequestId] = useState(0)
   const [preparedRequestId, setPreparedRequestId] = useState(0)
-  useVisualEffectsSampling(daemonReady && showRequestId > 0 && preparedRequestId === showRequestId)
   const nextShowRequestIdRef = useRef(0)
   const pendingShowRequestIdRef = useRef<number | null>(null)
   const finalizeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -169,6 +173,9 @@ const QuickPanelApp: React.FC = () => {
   return (
     <LazyMotion features={domMax} strict>
       <VisualEffectsProvider>
+        <QuickPanelEffectsSampling
+          active={daemonReady && showRequestId > 0 && preparedRequestId === showRequestId}
+        />
         {content}
         {isLinux && isTauri && daemonReady && (
           <ShortcutProvider key={showRequestId}>

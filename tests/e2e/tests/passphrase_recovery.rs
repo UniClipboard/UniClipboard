@@ -3,7 +3,7 @@
 
 use reqwest::StatusCode;
 use serde_json::Value;
-use uc_e2e_tests::{get_session_token, setup_initialized_node, TestCli, TestDaemon};
+use uc_e2e_tests::{get_session_token, setup_initialized_node, NodeBinarySet, TestCli, TestDaemon};
 
 const PASSPHRASE: &str = "isolated-content-lock-recovery-test";
 
@@ -93,9 +93,10 @@ async fn wrong_passphrase_is_rejected_with_a_ready_background_session() {
 async fn original_passphrase_recovers_after_keyring_removal() {
     let (mut daemon, cli) =
         setup_initialized_node("missing-keyring", "Recovery test", PASSPHRASE).await;
+    let dev_cli = TestCli::with_binaries(&daemon.profile, &NodeBinarySet::current_dev_cli());
     daemon.stop_gracefully().await.expect("stop before seeding");
     let old_text = "old encrypted history survives key loss";
-    let old_id = seed(&cli, old_text);
+    let old_id = seed(&dev_cli, old_text);
     daemon
         .restart_preserving()
         .await
@@ -149,7 +150,7 @@ async fn original_passphrase_recovers_after_keyring_removal() {
         .await
         .expect("stop before new write");
     let new_text = "new encrypted history after key recovery";
-    let new_id = seed(&cli, new_text);
+    let new_id = seed(&dev_cli, new_text);
     daemon
         .restart_preserving()
         .await

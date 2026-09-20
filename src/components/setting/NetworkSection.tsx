@@ -191,7 +191,9 @@ const NetworkSection: React.FC = () => {
             ? 'settings.sections.network.customRelays.invalidUrl'
             : err.kind === 'duplicate'
               ? 'settings.sections.network.customRelays.duplicateUrl'
-              : 'settings.sections.network.customRelays.notFound'
+              : err.kind === 'notFound'
+                ? 'settings.sections.network.customRelays.notFound'
+                : 'settings.sections.network.customRelays.deleteCredentialAfterAddress'
         const localized = new LocalizedRelayMutationError(t(key, { url }), err)
         showSaveError(localized.message)
         throw localized

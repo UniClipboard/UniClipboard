@@ -38,6 +38,8 @@ interface SettingProviderProps {
 }
 
 // 设置提供者组件
+const settledMutationQueue = Promise.resolve()
+
 export const SettingProvider: React.FC<SettingProviderProps> = ({ children }) => {
   const [setting, setSetting] = useState<Settings | null>(null)
   const [loading, setLoading] = useState<boolean>(true)
@@ -46,7 +48,7 @@ export const SettingProvider: React.FC<SettingProviderProps> = ({ children }) =>
   const [relayLoading, setRelayLoading] = useState<boolean>(true)
   const [relayError, setRelayError] = useState<string | null>(null)
   const latestSettingRef = React.useRef<Settings | null>(null)
-  const mutationQueueRef = React.useRef<Promise<void>>(Promise.resolve())
+  const mutationQueueRef = React.useRef<Promise<void>>(settledMutationQueue)
 
   const enqueueTask = useCallback(<T,>(task: () => Promise<T>): Promise<T> => {
     const operation = mutationQueueRef.current.then(task)
@@ -102,7 +104,7 @@ export const SettingProvider: React.FC<SettingProviderProps> = ({ children }) =>
       setLoading(false)
       setRelayLoading(false)
     }
-  }, [enqueueTask])
+  }, [commitCustomRelays, enqueueTask])
 
   const reloadCustomRelays = useCallback(async () => {
     setRelayLoading(true)

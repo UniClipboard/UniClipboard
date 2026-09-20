@@ -632,6 +632,7 @@
           "invalidUrl": "無效的中繼 URL：{{url}}。請輸入 http 或 https URL。",
           "duplicateUrl": "中繼 URL 已重複：{{url}}。",
           "notFound": "此中繼已不存在：{{url}}。清單已重新整理。",
+          "deleteCredentialAfterAddress": "請先儲存新的中繼位址，再單獨移除已儲存的存取權杖。",
           "loadError": "無法載入自定義中繼清單。",
           "loading": "正在載入自定義中繼清單…",
           "retry": "重試",

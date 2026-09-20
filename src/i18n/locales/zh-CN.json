@@ -632,6 +632,7 @@
           "invalidUrl": "无效的中继 URL：{{url}}。请输入 http 或 https URL。",
           "duplicateUrl": "中继 URL 已重复：{{url}}。",
           "notFound": "此中继已不存在：{{url}}。列表已刷新。",
+          "deleteCredentialAfterAddress": "请先保存新的中继地址，再单独移除已保存的访问令牌。",
           "loadError": "无法加载自定义中继列表。",
           "loading": "正在加载自定义中继列表…",
           "retry": "重试",

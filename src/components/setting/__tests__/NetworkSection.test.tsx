@@ -715,6 +715,57 @@ describe('NetworkSection — Phase 95 集成', () => {
     })
   })
 
+  it('clears token removal when changing a relay address', async () => {
+    const user = userEvent.setup()
+    const mockSaveRelay = vi.fn<SaveRelayFn>().mockResolvedValue({
+      relays: [{ url: 'https://new.example.com/', credentialConfigured: true }],
+      restartRequired: true,
+    })
+    setupSetting({
+      customRelays: [{ url: 'https://relay.example.com/', credentialConfigured: true }],
+      saveRelay: mockSaveRelay,
+    })
+    render(<NetworkSection />)
+
+    await user.click(screen.getByRole('button', { name: /移除已保存的访问令牌/ }))
+    await user.clear(screen.getByRole('textbox', { name: /自定义中继节点 1/ }))
+    await user.type(
+      screen.getByRole('textbox', { name: /自定义中继节点 1/ }),
+      'https://new.example.com'
+    )
+    expect(screen.queryByRole('button', { name: /移除已保存的访问令牌/ })).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /测试可用性/ }))
+    await user.click(screen.getByRole('button', { name: /保存中继节点/ }))
+
+    await waitFor(() => {
+      expect(mockSaveRelay).toHaveBeenCalledWith({
+        action: 'edit',
+        previousUrl: 'https://relay.example.com/',
+        url: 'https://new.example.com',
+        credential: { action: 'keep' },
+      })
+    })
+  })
+
+  it('shows a translated rejection when a relay operation requires separate saves', async () => {
+    const user = userEvent.setup()
+    const mockSaveRelay = vi
+      .fn<SaveRelayFn>()
+      .mockRejectedValue(new CustomRelayMutationError('credentialDeleteRequiresSeparateStep'))
+    setupSetting({
+      customRelays: [{ url: 'https://relay.example.com/', credentialConfigured: true }],
+      saveRelay: mockSaveRelay,
+    })
+    render(<NetworkSection />)
+
+    await user.click(screen.getByRole('button', { name: /测试可用性/ }))
+    await user.click(screen.getByRole('button', { name: /保存中继节点/ }))
+
+    expect(
+      await screen.findByText('请先保存新的中继地址，再单独移除已保存的访问令牌。')
+    ).toBeInTheDocument()
+  })
+
   it('rejects a relay URL that canonicalizes to an existing relay', async () => {
     const user = userEvent.setup()
     const mockSaveRelay = vi

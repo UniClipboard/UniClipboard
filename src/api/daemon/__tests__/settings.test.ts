@@ -110,14 +110,17 @@ describe('settings api — toSettingsPatchRequest network mirror', () => {
   })
 
   it('Test 2b: generic settings updates cannot overwrite the Engine-owned relay list', async () => {
-    mockUpdateOk(true)
-    await updateSettings({
+    updateSdkMock.mockImplementationOnce(async ({ body }) => ({
+      data: { data: { success: true, restartRequired: 'network' in body }, ts: 0 },
+    }))
+    const result = await updateSettings({
       network: { customRelayUrls: ['https://relay.example.com.'] },
     } as Partial<Settings>)
 
+    expect(result.restartRequired).toBe(false)
     expect(updateSdkMock).toHaveBeenCalledTimes(1)
     const [options] = updateSdkMock.mock.calls[0]
-    expect(options.body.network).toEqual({})
+    expect(options.body).not.toHaveProperty('network')
   })
 
   it('Test 2c: toSettingsPatchRequest 镜像 sync.syncOnRestore（防 builder 静默丢字段）', async () => {

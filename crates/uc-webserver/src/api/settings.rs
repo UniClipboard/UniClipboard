@@ -103,16 +103,8 @@ async fn mutate_custom_relay_handler(
             url,
             credential: RelayCredentialEditDto::Delete,
         } => {
-            execute_custom_relay_mutation(
-                &state,
-                CustomRelayMutation::Edit {
-                    previous_url,
-                    url: url.clone(),
-                    access_token: None,
-                },
-            )
-            .await?;
-            delete_relay_credential(&state, url).await?;
+            let credential_url = credential_deletion_url(previous_url, url)?;
+            delete_relay_credential(&state, credential_url).await?;
             query_custom_relays(&state).await?
         }
         CustomRelayMutationDto::Edit {
@@ -144,6 +136,17 @@ async fn mutate_custom_relay_handler(
         relays,
         restart_required: true,
     })))
+}
+
+fn credential_deletion_url(previous_url: String, url: String) -> Result<String, ApiError> {
+    if previous_url != url {
+        return Err(ApiError::bad_request(
+            "save the new relay address before removing its credential",
+        )
+        .with_code("custom_relay_credential_delete_requires_separate_step"));
+    }
+
+    Ok(previous_url)
 }
 
 fn credential_to_optional_secret(
@@ -286,6 +289,27 @@ mod custom_relay_tests {
         assert_eq!(relays.len(), 1);
         assert_eq!(relays[0].url, "https://relay.example.com/");
         assert!(relays[0].credential_configured);
+    }
+
+    #[test]
+    fn deleting_a_credential_cannot_commit_an_address_edit_first() {
+        let rejected = credential_deletion_url(
+            "https://old.example.com/".to_string(),
+            "https://new.example.com/".to_string(),
+        )
+        .expect_err("changing the address and deleting its token must be rejected before mutation");
+        assert_eq!(rejected.status, StatusCode::BAD_REQUEST);
+        assert_eq!(
+            rejected.code,
+            "custom_relay_credential_delete_requires_separate_step"
+        );
+
+        let unchanged = credential_deletion_url(
+            "https://old.example.com/".to_string(),
+            "https://old.example.com/".to_string(),
+        )
+        .expect("deleting a credential without changing the address is supported");
+        assert_eq!(unchanged, "https://old.example.com/");
     }
 }
 

@@ -69,6 +69,10 @@ describe('custom relay API', () => {
     ['custom_relay_invalid_url', 'invalidUrl'],
     ['custom_relay_duplicate', 'duplicate'],
     ['custom_relay_not_found', 'notFound'],
+    [
+      'custom_relay_credential_delete_requires_separate_step',
+      'credentialDeleteRequiresSeparateStep',
+    ],
   ] as const)('maps %s to the stable %s rejection', async (code, kind) => {
     mutateCustomRelaySdkMock.mockRejectedValueOnce({
       code,

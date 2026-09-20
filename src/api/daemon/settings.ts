@@ -92,7 +92,11 @@ export type RelaySaveResult = Omit<RelaySaveResultDto, 'settings'> & {
   settings: Settings
 }
 
-export type CustomRelayMutationErrorKind = 'invalidUrl' | 'duplicate' | 'notFound'
+export type CustomRelayMutationErrorKind =
+  | 'invalidUrl'
+  | 'duplicate'
+  | 'notFound'
+  | 'credentialDeleteRequiresSeparateStep'
 
 export class CustomRelayMutationError extends Error {
   constructor(public readonly kind: CustomRelayMutationErrorKind) {
@@ -334,6 +338,8 @@ export async function mutateCustomRelay(
     if (code === 'custom_relay_invalid_url') throw new CustomRelayMutationError('invalidUrl')
     if (code === 'custom_relay_duplicate') throw new CustomRelayMutationError('duplicate')
     if (code === 'custom_relay_not_found') throw new CustomRelayMutationError('notFound')
+    if (code === 'custom_relay_credential_delete_requires_separate_step')
+      throw new CustomRelayMutationError('credentialDeleteRequiresSeparateStep')
     throw error
   }
 }
@@ -576,12 +582,13 @@ function toSettingsPatchRequest(
 
   if (settings.network) {
     const { customRelayUrls, ...network } = settings.network
-    patch.network = {
+    const networkPatch = {
       ...network,
       ...(options.includeCustomRelayUrls && customRelayUrls !== undefined
         ? { customRelayUrls }
         : {}),
     }
+    if (Object.keys(networkPatch).length > 0) patch.network = networkPatch
   }
 
   if (settings.quickPanel) {

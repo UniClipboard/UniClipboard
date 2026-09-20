@@ -632,6 +632,7 @@
           "invalidUrl": "Invalid relay URL: {{url}}. Enter an http or https URL.",
           "duplicateUrl": "Relay URL already exists: {{url}}.",
           "notFound": "This relay no longer exists: {{url}}. The list has been refreshed.",
+          "deleteCredentialAfterAddress": "Save the new relay address first, then remove its saved access token.",
           "loadError": "Could not load custom relays.",
           "loading": "Loading custom relays…",
           "retry": "Retry",

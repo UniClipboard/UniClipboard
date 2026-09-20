@@ -632,6 +632,7 @@
           "invalidUrl": "URL de relay inválida: {{url}}. Informe uma URL http ou https.",
           "duplicateUrl": "A URL de relay já existe: {{url}}.",
           "notFound": "Este relay não existe mais: {{url}}. A lista foi atualizada.",
+          "deleteCredentialAfterAddress": "Salve primeiro o novo endereço do relay e depois remova o token de acesso salvo.",
           "loadError": "Não foi possível carregar os relays personalizados.",
           "loading": "Carregando relays personalizados…",
           "retry": "Tentar novamente",

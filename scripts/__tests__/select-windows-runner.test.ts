@@ -35,19 +35,84 @@ describe('Windows Actions runner selection', () => {
   })
 
   it('falls back when the status API fails', async () => {
-    const fetchImpl = vi.fn().mockRejectedValue(new Error('network unavailable'))
-    await expect(
-      resolveWindowsRunner({
+    vi.useFakeTimers()
+    try {
+      const fetchImpl = vi.fn().mockRejectedValue(new Error('network unavailable'))
+      await expect(
+        resolveWindowsRunner({
+          apiUrl: 'https://api.github.test',
+          repository: 'UniClipboard/UniClipboard',
+          token: 'test-token',
+          fetchImpl,
+        })
+      ).resolves.toMatchObject({
+        runner: HOSTED_WINDOWS_LABEL,
+        source: 'github-hosted',
+        reason: 'api-error',
+      })
+      expect(vi.getTimerCount()).toBe(0)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('falls back promptly when the status request times out', async () => {
+    vi.useFakeTimers()
+    try {
+      const fetchImpl = vi.fn(
+        (_url, options) =>
+          new Promise((_resolve, reject) => {
+            options.signal.addEventListener('abort', () => reject(options.signal.reason), {
+              once: true,
+            })
+          })
+      )
+      const result = resolveWindowsRunner({
         apiUrl: 'https://api.github.test',
         repository: 'UniClipboard/UniClipboard',
         token: 'test-token',
         fetchImpl,
       })
-    ).resolves.toMatchObject({
-      runner: HOSTED_WINDOWS_LABEL,
-      source: 'github-hosted',
-      reason: 'api-error',
-    })
+
+      await vi.advanceTimersByTimeAsync(10_000)
+      await expect(result).resolves.toEqual({
+        runner: HOSTED_WINDOWS_LABEL,
+        source: 'github-hosted',
+        reason: 'api-error',
+      })
+      expect(fetchImpl.mock.calls[0][1].signal.aborted).toBe(true)
+      expect(vi.getTimerCount()).toBe(0)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('preserves successful selection and clears its timeout', async () => {
+    vi.useFakeTimers()
+    try {
+      const fetchImpl = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ runners: [runner('online', false)] }),
+      })
+      await expect(
+        resolveWindowsRunner({
+          apiUrl: 'https://api.github.test',
+          repository: 'UniClipboard/UniClipboard',
+          token: 'test-token',
+          fetchImpl,
+        })
+      ).resolves.toEqual({
+        runner: SELF_HOSTED_WINDOWS_LABEL,
+        source: 'self-hosted',
+        reason: 'runner-status',
+      })
+      expect(fetchImpl.mock.calls[0][1].signal.aborted).toBe(false)
+      expect(vi.getTimerCount()).toBe(0)
+      await vi.advanceTimersByTimeAsync(10_000)
+      expect(fetchImpl.mock.calls[0][1].signal.aborted).toBe(false)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('falls back when no status token is configured', async () => {

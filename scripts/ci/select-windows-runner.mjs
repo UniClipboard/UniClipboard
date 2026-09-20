@@ -22,8 +22,11 @@ export async function resolveWindowsRunner({ apiUrl, repository, token, fetchImp
     return { runner: HOSTED_WINDOWS_LABEL, source: 'github-hosted', reason: 'missing-token' }
   }
 
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 10_000)
   try {
     const response = await fetchImpl(`${apiUrl}/repos/${repository}/actions/runners`, {
+      signal: controller.signal,
       headers: {
         Accept: 'application/vnd.github+json',
         Authorization: `Bearer ${token}`,
@@ -38,6 +41,8 @@ export async function resolveWindowsRunner({ apiUrl, repository, token, fetchImp
     console.warn(`Unable to read self-hosted runner status; using ${HOSTED_WINDOWS_LABEL}.`)
     console.warn(error instanceof Error ? error.message : String(error))
     return { runner: HOSTED_WINDOWS_LABEL, source: 'github-hosted', reason: 'api-error' }
+  } finally {
+    clearTimeout(timeout)
   }
 }
 
